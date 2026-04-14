@@ -2,7 +2,7 @@
 import { ref, computed, watch, shallowRef } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
+import { type LibrarySelection, useRuntimeStore } from '@renderer/stores/runtime'
 import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
@@ -14,6 +14,13 @@ import { useLibraryContextMenu } from './useLibraryContextMenu'
 import { useLibraryDragAndDrop } from './useLibraryDragAndDrop'
 import { useLibraryTrackCount } from './useLibraryTrackCount'
 import { useLibraryFilter } from './useLibraryFilter'
+import {
+  activateSongsAreaPane,
+  closeSongsAreaSplitPane,
+  replaceSongsAreaPaneSongList,
+  resolveOpenedSplitPaneBySongListUUID,
+  resolveSongsAreaPaneForLibraryClick
+} from '@renderer/utils/songsAreaSplit'
 import type { IDir } from '../../../../types/globals'
 const listIcon = listIconAsset
 const listIconMaskStyle = {
@@ -35,6 +42,27 @@ const props = defineProps({
   }
 })
 const runtime = useRuntimeStore()
+const normalizeLibraryPath = (value: string) => (value || '').replace(/\\/g, '/')
+const syncLibrarySelectionBySongListUUID = (uuid: string) => {
+  const dirPath = normalizeLibraryPath(libraryUtils.findDirPathByUuid(uuid))
+  let nextLibrary: LibrarySelection | '' = ''
+  if (dirPath === 'library/FilterLibrary' || dirPath.startsWith('library/FilterLibrary/')) {
+    nextLibrary = 'FilterLibrary'
+  } else if (
+    dirPath === 'library/CuratedLibrary' ||
+    dirPath.startsWith('library/CuratedLibrary/')
+  ) {
+    nextLibrary = 'CuratedLibrary'
+  } else if (
+    dirPath === 'library/MixtapeLibrary' ||
+    dirPath.startsWith('library/MixtapeLibrary/')
+  ) {
+    nextLibrary = 'MixtapeLibrary'
+  }
+  if (nextLibrary && runtime.libraryAreaSelected !== nextLibrary) {
+    runtime.libraryAreaSelected = nextLibrary
+  }
+}
 const hasAcoustIdKey = computed(() => {
   const key = (runtime.setting?.acoustIdClientKey || '').trim()
   return key.length > 0
@@ -164,6 +192,18 @@ const dirHandleClick = async () => {
     return
   }
   if (isPlaylist.value) {
+    if (runtime.songsAreaPanels.splitEnabled) {
+      const openedPane = resolveOpenedSplitPaneBySongListUUID(runtime, props.uuid)
+      if (openedPane) {
+        closeSongsAreaSplitPane(runtime, openedPane)
+        syncLibrarySelectionBySongListUUID(runtime.songsArea.songListUUID)
+        return
+      }
+      const pane = resolveSongsAreaPaneForLibraryClick(runtime)
+      replaceSongsAreaPaneSongList(runtime, pane, props.uuid)
+      activateSongsAreaPane(runtime, pane)
+      return
+    }
     if (runtime.songsArea.songListUUID === props.uuid) {
       runtime.songsArea.songListUUID = ''
       return
@@ -223,6 +263,15 @@ watch(
   },
   { immediate: true }
 )
+
+const isOpenedInSongsArea = computed(() => {
+  if (runtime.songsAreaPanels.splitEnabled) {
+    return (['left', 'right'] as const).some(
+      (pane) => runtime.songsAreaPanels.panes[pane].songListUUID === props.uuid
+    )
+  }
+  return runtime.songsArea.songListUUID === props.uuid
+})
 
 const displayDirName = computed(() => {
   const d = dirData.value
@@ -289,7 +338,7 @@ const openMixtapeHandleClick = () => {
       borderTop: dragApproach == 'top',
       borderBottom: dragApproach == 'bottom',
       borderCenter: dragApproach == 'center',
-      selectedDir: props.uuid == runtime.songsArea.songListUUID
+      selectedDir: isOpenedInSongsArea
     }"
     @contextmenu.stop="contextmenuEvent"
     @click.stop="dirHandleClick()"

@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
+import { type ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
@@ -7,7 +7,12 @@ import type { ISongInfo } from '../../../../../../types/globals'
 
 export type MoveSongsLibraryName = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 
-export function useSelectAndMoveSongs() {
+interface UseSelectAndMoveSongsParams {
+  songsAreaState: ISongsAreaPaneRuntimeState
+}
+
+export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
+  const { songsAreaState } = params
   const runtime = useRuntimeStore()
   const normalizeUniqueStrings = (values: unknown[]): string[] =>
     Array.from(
@@ -65,14 +70,14 @@ export function useSelectAndMoveSongs() {
    */
   const handleMoveSongsConfirm = async (targetSongListUUID: string) => {
     isDialogVisible.value = false
-    if (targetSongListUUID === runtime.songsArea.songListUUID) {
+    if (targetSongListUUID === songsAreaState.songListUUID) {
       // Moving to the same list, do nothing.
       return
     }
 
-    const sourceSongListUUID = runtime.songsArea.songListUUID
-    const selectedPaths = JSON.parse(JSON.stringify(runtime.songsArea.selectedSongFilePath))
-    const songMap = new Map(runtime.songsArea.songInfoArr.map((song) => [song.filePath, song]))
+    const sourceSongListUUID = songsAreaState.songListUUID
+    const selectedPaths = JSON.parse(JSON.stringify(songsAreaState.selectedSongFilePath))
+    const songMap = new Map(songsAreaState.songInfoArr.map((song) => [song.filePath, song]))
     if (!selectedPaths.length) return
 
     const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
@@ -85,7 +90,7 @@ export function useSelectAndMoveSongs() {
       }
       const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
       const mixtapeSongMap = new Map(
-        runtime.songsArea.songInfoArr
+        songsAreaState.songInfoArr
           .filter((song) => typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.length > 0)
           .map((song) => [song.mixtapeItemId as string, song])
       )
@@ -137,7 +142,7 @@ export function useSelectAndMoveSongs() {
         playlistId: targetSongListUUID,
         items
       })
-      runtime.songsArea.selectedSongFilePath.length = 0
+      songsAreaState.selectedSongFilePath.length = 0
       try {
         emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
         emitter.emit('songsArea/clipboardHint', {
@@ -164,11 +169,11 @@ export function useSelectAndMoveSongs() {
 
     // 不在此处直接修改 original 或 runtime.songsArea.songInfoArr，
     // 统一通过全局事件在 songsArea.vue 中处理，避免与排序/筛选链路竞态。
-    runtime.songsArea.selectedSongFilePath.length = 0 // 清空选择
+    songsAreaState.selectedSongFilePath.length = 0 // 清空选择
 
     // 通知全局，保证 songsArea 与其他视图收到统一的移除事件
     emitter.emit('songsRemoved', {
-      listUUID: runtime.songsArea.songListUUID,
+      listUUID: songsAreaState.songListUUID,
       paths: selectedPaths
     })
 

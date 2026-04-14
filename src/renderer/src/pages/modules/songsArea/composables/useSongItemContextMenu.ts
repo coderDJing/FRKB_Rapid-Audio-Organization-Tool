@@ -1,5 +1,5 @@
 import { nextTick, Ref, ref } from 'vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
+import { type ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import { ISongInfo, IMenu, type IMetadataAutoFillSummary } from '../../../../../../types/globals' // Corrected path
 import { t } from '@renderer/utils/translate'
 import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it's a default export or easily callable
@@ -56,7 +56,8 @@ type OptimisticRestoreItem = {
 
 export function useSongItemContextMenu(
   // runtimeStore: ReturnType<typeof useRuntimeStore>, // Passed implicitly via direct import for now
-  songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null> // For scrolling
+  songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null>, // For scrolling
+  songsAreaState: ISongsAreaPaneRuntimeState
 ) {
   const getErrorMessage = (error: unknown) =>
     error instanceof Error ? error.message : String(error || t('common.unknownError'))
@@ -69,15 +70,15 @@ export function useSongItemContextMenu(
       .replace(/\s+/g, ' ')
       .toLocaleLowerCase()
   const isMixtapeView = () =>
-    libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
+    libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
   const getRowKey = (song: ISongInfo) =>
     isMixtapeView() && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
-  const resolveSelectedKeys = () => runtime.songsArea.selectedSongFilePath
+  const resolveSelectedKeys = () => songsAreaState.selectedSongFilePath
   const resolveSelectedFilePaths = (keys?: string[]) => {
     const selectedKeys = keys ?? resolveSelectedKeys()
     if (!isMixtapeView()) return selectedKeys
     const map = new Map<string, string>()
-    for (const item of runtime.songsArea.songInfoArr) {
+    for (const item of songsAreaState.songInfoArr) {
       if (item.mixtapeItemId) {
         map.set(item.mixtapeItemId, item.filePath)
       }
@@ -90,7 +91,7 @@ export function useSongItemContextMenu(
     if (!isMixtapeView()) return []
     const selectedKeys = keys ?? resolveSelectedKeys()
     const available = new Set(
-      runtime.songsArea.songInfoArr
+      songsAreaState.songInfoArr
         .map((item) => item.mixtapeItemId)
         .filter((id): id is string => typeof id === 'string' && id.length > 0)
     )
@@ -192,11 +193,11 @@ export function useSongItemContextMenu(
     | TrackCacheClearedAction
     | null
   > => {
-    const isRecycleBinView = runtime.songsArea.songListUUID === RECYCLE_BIN_UUID
-    const isExternalView = runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID
+    const isRecycleBinView = songsAreaState.songListUUID === RECYCLE_BIN_UUID
+    const isExternalView = songsAreaState.songListUUID === EXTERNAL_PLAYLIST_UUID
     const matchedCuratedArtist = resolveCuratedArtistMatch(song)
-    if (runtime.songsArea.selectedSongFilePath.indexOf(getRowKey(song)) === -1) {
-      runtime.songsArea.selectedSongFilePath = [getRowKey(song)]
+    if (songsAreaState.selectedSongFilePath.indexOf(getRowKey(song)) === -1) {
+      songsAreaState.selectedSongFilePath = [getRowKey(song)]
     }
 
     const baseMenuArr = isMixtapeView()
@@ -216,7 +217,7 @@ export function useSongItemContextMenu(
       if (isExternalView) {
         return { filePaths: paths, sourceType: 'external' }
       }
-      const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+      const songListPath = libraryUtils.findDirPathByUuid(songsAreaState.songListUUID)
       if (songListPath) {
         return { filePaths: paths, songListPath }
       }
@@ -275,7 +276,7 @@ export function useSongItemContextMenu(
 
     const clearPlayingStateIfTouched = (normalizedPathSet: Set<string>) => {
       const touchesCurrentPlaying =
-        runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID &&
+        runtime.playingData.playingSongListUUID === songsAreaState.songListUUID &&
         normalizedPathSet.has(normalizePath(runtime.playingData.playingSong?.filePath))
       if (!touchesCurrentPlaying) return false
       try {
@@ -341,7 +342,7 @@ export function useSongItemContextMenu(
         const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
         if (removedPaths.length > 0) {
           emitter.emit('songsRemoved', {
-            listUUID: runtime.songsArea.songListUUID,
+            listUUID: songsAreaState.songListUUID,
             paths: removedPaths
           })
         }
@@ -349,7 +350,7 @@ export function useSongItemContextMenu(
         if (playlistUuids.length > 0) {
           emitter.emit('playlistContentChanged', { uuids: playlistUuids })
         }
-        runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+        songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
           (path) => !removedPaths.includes(path)
         )
         await showRestoreSummaryIfNeeded(summary)
@@ -435,7 +436,7 @@ export function useSongItemContextMenu(
           await startAudioConvertFromFiles({
             files,
             allowedSourceExts: runtime.setting.audioExt,
-            songListUUID: runtime.songsArea.songListUUID
+            songListUUID: songsAreaState.songListUUID
           })
         } catch {
           // 忽略错误，由主进程统一上报
@@ -444,7 +445,7 @@ export function useSongItemContextMenu(
       }
       case 'tracks.deleteAllAbove': {
         // 1. 基于当前状态和右键的歌曲，确定要删除的歌曲信息和路径 (delPaths)
-        const initialSongInfoArrSnapshot = [...runtime.songsArea.songInfoArr]
+        const initialSongInfoArrSnapshot = [...songsAreaState.songInfoArr]
         const songIndex = initialSongInfoArrSnapshot.findIndex(
           (item) => item.filePath === song.filePath
         )
@@ -486,7 +487,7 @@ export function useSongItemContextMenu(
         const canOptimisticallyUpdate = true
         clearPlayingStateIfTouched(removedPathSet)
         emitter.emit('songsArea/optimistic-remove', {
-          listUUID: runtime.songsArea.songListUUID,
+          listUUID: songsAreaState.songListUUID,
           paths: delPaths
         })
         scrollSongsAreaToTop()
@@ -519,7 +520,7 @@ export function useSongItemContextMenu(
               : []
           if (failedRestoreItems.length > 0) {
             emitter.emit('songsArea/optimistic-restore', {
-              listUUID: runtime.songsArea.songListUUID,
+              listUUID: songsAreaState.songListUUID,
               items: failedRestoreItems
             })
           }
@@ -531,7 +532,7 @@ export function useSongItemContextMenu(
         } catch {
           if (canOptimisticallyUpdate && optimisticRestoreItems.length > 0) {
             emitter.emit('songsArea/optimistic-restore', {
-              listUUID: runtime.songsArea.songListUUID,
+              listUUID: songsAreaState.songListUUID,
               items: optimisticRestoreItems
             })
           }
@@ -552,10 +553,10 @@ export function useSongItemContextMenu(
         // 通知全局，保证其他视图也能同步（包含当前 songsArea 监听的统一删除处理）
         if (removedPathsForEvent.length > 0) {
           emitter.emit('songsRemoved', {
-            listUUID: runtime.songsArea.songListUUID,
+            listUUID: songsAreaState.songListUUID,
             paths: removedPathsForEvent
           })
-          emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+          emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
         }
         return { action: 'songsRemoved', paths: removedPathsForEvent }
       }
@@ -570,13 +571,13 @@ export function useSongItemContextMenu(
             const itemIds = resolveSelectedItemIds(currentSelectedKeys)
             if (!itemIds.length) return null
             await window.electron.ipcRenderer.invoke('mixtape:remove', {
-              playlistId: runtime.songsArea.songListUUID,
+              playlistId: songsAreaState.songListUUID,
               itemIds: [...itemIds]
             })
-            runtime.songsArea.selectedSongFilePath.length = 0
-            emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+            songsAreaState.selectedSongFilePath.length = 0
+            emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
             emitter.emit('songsRemoved', {
-              listUUID: runtime.songsArea.songListUUID,
+              listUUID: songsAreaState.songListUUID,
               itemIds: [...itemIds]
             })
             return { action: 'songsRemoved', itemIds: [...itemIds] }
@@ -592,7 +593,7 @@ export function useSongItemContextMenu(
           }
 
           if (shouldDelete) {
-            const selectedSnapshot = [...runtime.songsArea.songInfoArr]
+            const selectedSnapshot = [...songsAreaState.songInfoArr]
             const resolvedSelectedPaths = resolveSelectedFilePaths(currentSelectedKeys)
             let removedPathsForEvent = [...resolvedSelectedPaths]
             const selectedPathSet = new Set(
@@ -604,7 +605,7 @@ export function useSongItemContextMenu(
 
             clearPlayingStateIfTouched(selectedPathSet)
             emitter.emit('songsArea/optimistic-remove', {
-              listUUID: runtime.songsArea.songListUUID,
+              listUUID: songsAreaState.songListUUID,
               paths: resolvedSelectedPaths
             })
 
@@ -635,7 +636,7 @@ export function useSongItemContextMenu(
                   : []
               if (failedRestoreItems.length > 0) {
                 emitter.emit('songsArea/optimistic-restore', {
-                  listUUID: runtime.songsArea.songListUUID,
+                  listUUID: songsAreaState.songListUUID,
                   items: failedRestoreItems
                 })
               }
@@ -647,7 +648,7 @@ export function useSongItemContextMenu(
             } catch {
               if (optimisticRestoreItems.length > 0) {
                 emitter.emit('songsArea/optimistic-restore', {
-                  listUUID: runtime.songsArea.songListUUID,
+                  listUUID: songsAreaState.songListUUID,
                   items: optimisticRestoreItems
                 })
               }
@@ -662,13 +663,13 @@ export function useSongItemContextMenu(
               return null
             }
 
-            runtime.songsArea.selectedSongFilePath.length = 0
+            songsAreaState.selectedSongFilePath.length = 0
             if (removedPathsForEvent.length > 0) {
               emitter.emit('songsRemoved', {
-                listUUID: runtime.songsArea.songListUUID,
+                listUUID: songsAreaState.songListUUID,
                 paths: removedPathsForEvent
               })
-              emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+              emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
             }
             return { action: 'songsRemoved', paths: removedPathsForEvent }
           }
@@ -711,7 +712,7 @@ export function useSongItemContextMenu(
           const { folderPathVal, deleteSongsAfterExport } = exportResult
           const songsToExportFilePaths = resolveSelectedFilePaths()
 
-          const songsToExportObjects = runtime.songsArea.songInfoArr.filter((item) =>
+          const songsToExportObjects = songsAreaState.songInfoArr.filter((item) =>
             songsToExportFilePaths.includes(item.filePath)
           )
 
@@ -724,14 +725,13 @@ export function useSongItemContextMenu(
           if (deleteSongsAfterExport && songsToExportFilePaths.length > 0) {
             // 不直接修改显示列表，仅广播，由 songsArea.vue 统一处理 original + applyFiltersAndSorting
             if (isMixtapeView()) {
-              runtime.songsArea.selectedSongFilePath.length = 0
+              songsAreaState.selectedSongFilePath.length = 0
             } else {
-              runtime.songsArea.selectedSongFilePath =
-                runtime.songsArea.selectedSongFilePath.filter(
-                  (path) => !songsToExportFilePaths.includes(path)
-                )
+              songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
+                (path) => !songsToExportFilePaths.includes(path)
+              )
             }
-            if (runtime.songsArea.songListUUID === runtime.playingData.playingSongListUUID) {
+            if (songsAreaState.songListUUID === runtime.playingData.playingSongListUUID) {
               if (
                 runtime.playingData.playingSong &&
                 songsToExportFilePaths.includes(runtime.playingData.playingSong.filePath)
@@ -740,10 +740,10 @@ export function useSongItemContextMenu(
               }
             }
             emitter.emit('songsRemoved', {
-              listUUID: runtime.songsArea.songListUUID,
+              listUUID: songsAreaState.songListUUID,
               paths: songsToExportFilePaths
             })
-            emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+            emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
             return { action: 'songsRemoved', paths: songsToExportFilePaths }
           }
         }

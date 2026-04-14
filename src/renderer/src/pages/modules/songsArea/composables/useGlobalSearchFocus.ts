@@ -1,6 +1,6 @@
 import { nextTick, onUnmounted, ref, watch, type Ref, type ShallowRef } from 'vue'
 import emitter from '@renderer/utils/mitt'
-import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 
 type FocusSongPayload = {
@@ -12,6 +12,7 @@ type FocusSongPayload = {
 
 interface UseGlobalSearchFocusParams {
   runtime: ReturnType<typeof useRuntimeStore>
+  songsAreaState: ISongsAreaPaneRuntimeState
   originalSongInfoArr: ShallowRef<ISongInfo[]>
   columnData: Ref<ISongsAreaColumn[]>
   applyFiltersAndSorting: () => void
@@ -33,6 +34,7 @@ const normalizeSongPath = (value: string | undefined | null) =>
 export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
   const {
     runtime,
+    songsAreaState,
     originalSongInfoArr,
     columnData,
     applyFiltersAndSorting,
@@ -52,9 +54,7 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
   let focusStabilizeUntil = 0
 
   const findVisibleSongIndexByPath = (targetPath: string) =>
-    runtime.songsArea.songInfoArr.findIndex(
-      (song) => normalizeSongPath(song.filePath) === targetPath
-    )
+    songsAreaState.songInfoArr.findIndex((song) => normalizeSongPath(song.filePath) === targetPath)
 
   const hasSongInOriginalByPath = (targetPath: string) =>
     originalSongInfoArr.value.some((song) => normalizeSongPath(song.filePath) === targetPath)
@@ -88,7 +88,7 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
     const targetPath = normalizeSongPath(payload?.filePath)
     const targetListUUID = String(payload?.songListUUID || '')
     if (!targetPath) return false
-    if (targetListUUID && targetListUUID !== runtime.songsArea.songListUUID) {
+    if (targetListUUID && targetListUUID !== songsAreaState.songListUUID) {
       return false
     }
     let targetIndex = findVisibleSongIndexByPath(targetPath)
@@ -102,9 +102,9 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
     if (targetIndex < 0) {
       return false
     }
-    const targetSong = runtime.songsArea.songInfoArr[targetIndex]
+    const targetSong = songsAreaState.songInfoArr[targetIndex]
     const rowKey = getRowKey(targetSong)
-    runtime.songsArea.selectedSongFilePath = [rowKey]
+    songsAreaState.selectedSongFilePath = [rowKey]
     await nextTick()
     scrollToIndex(targetIndex)
     if (payload.autoPlay && !focusAutoPlayed) {
@@ -180,9 +180,9 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
 
   watch(
     () => [
-      runtime.songsArea.songListUUID,
-      runtime.songsArea.songInfoArr.length,
-      runtime.songsArea.songInfoArr
+      songsAreaState.songListUUID,
+      songsAreaState.songInfoArr.length,
+      songsAreaState.songInfoArr
     ],
     () => {
       runPendingFocusAttempt()

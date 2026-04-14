@@ -1,17 +1,18 @@
 import { nextTick } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
-import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import { detectSongsAreaScrollCarrier } from './scrollCarrier'
 
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 
 interface UseAutoScrollParams {
   runtime: ReturnType<typeof useRuntimeStore>
+  songsAreaState: ISongsAreaPaneRuntimeState
   songsAreaRef: { value: OverlayScrollbarsComponentRef }
 }
 
 export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
-  const { runtime, songsAreaRef } = params
+  const { runtime, songsAreaState, songsAreaRef } = params
 
   const ROW_HEIGHT = 30
   const SCROLL_TOLERANCE_PX = 2
@@ -135,7 +136,7 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
   }
 
   const resolveRowElement = (index: number, queryRoot: ParentNode) => {
-    const song = runtime.songsArea.songInfoArr[index]
+    const song = songsAreaState.songInfoArr[index]
     const rowKey = song?.mixtapeItemId || song?.filePath
     if (!rowKey) return null
     const escaped =
@@ -302,7 +303,7 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
 
   const scrollToSong = (filePath?: string | null) => {
     if (!filePath) return
-    const index = runtime.songsArea.songInfoArr.findIndex((s) => s.filePath === filePath)
+    const index = songsAreaState.songInfoArr.findIndex((s) => s.filePath === filePath)
     if (index < 0) return
     scrollToIndex(index)
   }

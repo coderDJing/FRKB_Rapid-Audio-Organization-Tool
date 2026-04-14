@@ -14,6 +14,10 @@ import {
   collectFilesForAudioConvert,
   startAudioConvertFromFiles
 } from '@renderer/utils/audioConvertActions'
+import {
+  clearSongsAreaPaneBySongListUUID,
+  showSongListInPane
+} from '@renderer/utils/songsAreaSplit'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IDir, IMenu, IMetadataAutoFillSummary } from '../../../../types/globals'
 
@@ -97,6 +101,7 @@ export function useLibraryContextMenu({
     }
     return [
       [{ menuName: 'tracks.importTracks' }, { menuName: 'tracks.exportTracks' }],
+      [{ menuName: 'playlist.showInLeftPane' }, { menuName: 'playlist.showInRightPane' }],
       [
         { menuName: 'common.rename' },
         { menuName: 'playlist.deletePlaylist' },
@@ -131,8 +136,11 @@ export function useLibraryContextMenu({
         throw new Error(`libraryTree error: ${JSON.stringify(libraryTree)}`)
       }
       const uuids = libraryUtils.getAllUuids(libraryTree)
-      if (uuids.indexOf(runtime.songsArea.songListUUID) !== -1) {
-        runtime.songsArea.songListUUID = ''
+      for (const pane of ['single', 'left', 'right'] as const) {
+        const paneSongListUUID = runtime.songsAreaPanels.panes[pane].songListUUID
+        if (uuids.indexOf(paneSongListUUID) !== -1) {
+          runtime.clearSongsAreaPaneState(pane)
+        }
       }
       if (uuids.indexOf(runtime.playingData.playingSongListUUID) !== -1) {
         runtime.playingData.playingSongListUUID = ''
@@ -269,13 +277,26 @@ export function useLibraryContextMenu({
         try {
           emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
         } catch {}
-        if (runtime.songsArea.songListUUID === props.uuid) {
+        for (const pane of ['single', 'left', 'right'] as const) {
+          const paneState = runtime.songsAreaPanels.panes[pane]
+          if (paneState.songListUUID === props.uuid) {
+            paneState.selectedSongFilePath.length = 0
+            paneState.songInfoArr = []
+            paneState.totalSongCount = 0
+          }
+        }
+        if (runtime.playingData.playingSongListUUID === props.uuid) {
           runtime.playingData.playingSongListData = []
           runtime.playingData.playingSong = null
-          runtime.songsArea.selectedSongFilePath.length = 0
-          runtime.songsArea.songInfoArr = []
-          runtime.songsArea.totalSongCount = 0
         }
+        break
+      }
+      case 'playlist.showInLeftPane': {
+        showSongListInPane(runtime, 'left', props.uuid)
+        break
+      }
+      case 'playlist.showInRightPane': {
+        showSongListInPane(runtime, 'right', props.uuid)
         break
       }
       case 'tracks.importTracks': {
@@ -301,9 +322,7 @@ export function useLibraryContextMenu({
             dirPath
           )
           if (dialogResult.deleteSongsAfterExport) {
-            if (runtime.songsArea.songListUUID === props.uuid) {
-              runtime.songsArea.songListUUID = ''
-            }
+            clearSongsAreaPaneBySongListUUID(runtime, props.uuid)
             if (runtime.playingData.playingSongListUUID === props.uuid) {
               runtime.playingData.playingSongListUUID = ''
               runtime.playingData.playingSongListData = []
@@ -391,7 +410,11 @@ export function useLibraryContextMenu({
             emitter.emit('metadataBatchUpdated', { updates })
           } catch {}
         }
-        if (runtime.songsArea.songListUUID === props.uuid) {
+        if (
+          (['single', 'left', 'right'] as const).some(
+            (pane) => runtime.songsAreaPanels.panes[pane].songListUUID === props.uuid
+          )
+        ) {
           try {
             emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
           } catch {}
@@ -551,11 +574,7 @@ export function useLibraryContextMenu({
             runtime.playingData.playingSongListData = []
             runtime.playingData.playingSong = null
           }
-          if (runtime.songsArea.songListUUID === props.uuid) {
-            runtime.songsArea.selectedSongFilePath.length = 0
-            runtime.songsArea.songInfoArr = []
-            runtime.songsArea.totalSongCount = 0
-          }
+          clearSongsAreaPaneBySongListUUID(runtime, props.uuid)
           await libraryUtils.diffLibraryTreeExecuteFileOperation()
         }
         break

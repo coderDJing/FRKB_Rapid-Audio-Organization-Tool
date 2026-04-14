@@ -3,13 +3,14 @@ import type { ShallowRef } from 'vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { mapMixtapeSnapshotToSongInfo } from '@renderer/composables/mixtape/mixtapeSnapshotSongMapper'
 import type { ISongInfo } from '../../../../../../types/globals'
-import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
+  songsAreaState: ISongsAreaPaneRuntimeState
   originalSongInfoArr: ShallowRef<ISongInfo[]>
   applyFiltersAndSorting: () => void
 }
@@ -24,7 +25,7 @@ interface SongListDiffSummary {
 }
 
 export function useSongsLoader(params: UseSongsLoaderParams) {
-  const { runtime, originalSongInfoArr, applyFiltersAndSorting } = params
+  const { runtime, songsAreaState, originalSongInfoArr, applyFiltersAndSorting } = params
 
   const loadingShow = ref(false)
   const isRequesting = ref<boolean>(false)
@@ -35,7 +36,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   const renderCount = ref(0)
 
   const isMixtapeListView = () => {
-    const node = libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)
+    const node = libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)
     return node?.type === 'mixtapeList'
   }
   const isMixtapeListUUID = (songListUUID: string) =>
@@ -72,13 +73,13 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     clearBackgroundRefreshTimer()
     backgroundRefreshTimer = setTimeout(() => {
       backgroundRefreshTimer = null
-      if (runtime.songsArea.songListUUID !== songListUUID) return
+      if (songsAreaState.songListUUID !== songListUUID) return
       void loadSongListFromDisk(songListPath, songListUUID).catch(() => {})
     }, 1500)
   }
 
   const hydrateRenderCount = async () => {
-    const totalRows = runtime.songsArea.songInfoArr.length
+    const totalRows = songsAreaState.songInfoArr.length
     const INITIAL_ROWS = 40
     const CHUNK_ROWS = 80
     renderCount.value = Math.min(totalRows, INITIAL_ROWS)
@@ -97,8 +98,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
   const scheduleCoverSweepForCurrentList = () => {
     try {
-      const listRootDir = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''
-      const currentPaths = runtime.songsArea.songInfoArr.map((s) => s.filePath)
+      const listRootDir = libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
+      const currentPaths = songsAreaState.songInfoArr.map((s) => s.filePath)
       setTimeout(() => {
         window.electron.ipcRenderer.invoke('sweepSongListCovers', listRootDir, currentPaths)
       }, 0)
@@ -106,7 +107,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   }
 
   const syncSelectedKeysAfterReload = (scanData: ISongInfo[], songListUUID: string) => {
-    const currentSelection = runtime.songsArea.selectedSongFilePath.filter(Boolean)
+    const currentSelection = songsAreaState.selectedSongFilePath.filter(Boolean)
     if (!currentSelection.length) return
 
     if (isMixtapeListUUID(songListUUID)) {
@@ -115,7 +116,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
           .map((song) => song.mixtapeItemId)
           .filter((id): id is string => typeof id === 'string' && id.length > 0)
       )
-      runtime.songsArea.selectedSongFilePath = currentSelection.filter((key) => validIds.has(key))
+      songsAreaState.selectedSongFilePath = currentSelection.filter((key) => validIds.has(key))
       return
     }
 
@@ -134,13 +135,13 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       seen.add(nextKey)
       nextSelection.push(nextKey)
     }
-    runtime.songsArea.selectedSongFilePath = nextSelection
+    songsAreaState.selectedSongFilePath = nextSelection
   }
 
   const syncPlayingStateAfterReload = (scanData: ISongInfo[], songListUUID: string) => {
     if (runtime.playingData.playingSongListUUID !== songListUUID) return
 
-    runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    runtime.playingData.playingSongListData = songsAreaState.songInfoArr
 
     const currentPlayingSong = runtime.playingData.playingSong
     if (!currentPlayingSong) return
@@ -148,7 +149,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     const playingMixtapeItemId = normalizeComparableText(currentPlayingSong.mixtapeItemId)
     const normalizedPlayingPath = normalizeSongPath(currentPlayingSong.filePath)
     const songCandidates =
-      runtime.songsArea.songInfoArr.length > 0 ? runtime.songsArea.songInfoArr : scanData
+      songsAreaState.songInfoArr.length > 0 ? songsAreaState.songInfoArr : scanData
 
     const matchedSong = songCandidates.find((song) => {
       const songMixtapeItemId = normalizeComparableText(song.mixtapeItemId)
@@ -348,7 +349,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
   const applySongListData = async (
     scanData: ISongInfo[],
-    songListUUID = runtime.songsArea.songListUUID
+    songListUUID = songsAreaState.songListUUID
   ) => {
     originalSongInfoArr.value = markRaw(scanData)
     applyFiltersAndSorting()
@@ -371,7 +372,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       songListPath,
       songListUUID
     )
-    if (loadedUUID !== runtime.songsArea.songListUUID) return false
+    if (loadedUUID !== songsAreaState.songListUUID) return false
     const unchanged = isEquivalentSongListSnapshot(scanData, originalSongInfoArr.value)
     if (unchanged) {
       lastAppliedSongListUUID = loadedUUID
@@ -395,30 +396,30 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   }
 
   const openSongList = async () => {
-    const requestUUID = runtime.songsArea.songListUUID
+    const requestUUID = songsAreaState.songListUUID
     clearBackgroundRefreshTimer()
     isRequesting.value = true
     const shouldResetVisibleList = lastAppliedSongListUUID !== requestUUID
     if (shouldResetVisibleList) {
-      runtime.songsArea.songInfoArr = []
-      runtime.songsArea.totalSongCount = 0
+      songsAreaState.songInfoArr = []
+      songsAreaState.totalSongCount = 0
       originalSongInfoArr.value = []
       renderCount.value = 0
       await nextTick()
     }
 
-    if (runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID) {
+    if (songsAreaState.songListUUID === EXTERNAL_PLAYLIST_UUID) {
       const songs = runtime.externalPlaylist.songs || []
       originalSongInfoArr.value = markRaw([...songs])
       applyFiltersAndSorting()
-      syncSelectedKeysAfterReload(runtime.songsArea.songInfoArr, requestUUID)
-      syncPlayingStateAfterReload(runtime.songsArea.songInfoArr, requestUUID)
+      syncSelectedKeysAfterReload(songsAreaState.songInfoArr, requestUUID)
+      syncPlayingStateAfterReload(songsAreaState.songInfoArr, requestUUID)
       lastAppliedSongListUUID = requestUUID
       isRequesting.value = false
       loadingShow.value = false
       return
     }
-    if (runtime.songsArea.songListUUID === RECYCLE_BIN_UUID) {
+    if (songsAreaState.songListUUID === RECYCLE_BIN_UUID) {
       loadingShow.value = false
       const loadingSetTimeout = setTimeout(() => {
         loadingShow.value = true
@@ -426,7 +427,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       try {
         const { scanData, songListUUID } =
           await window.electron.ipcRenderer.invoke('recycleBin:list')
-        if (songListUUID !== runtime.songsArea.songListUUID) return
+        if (songListUUID !== songsAreaState.songListUUID) return
         originalSongInfoArr.value = markRaw(scanData)
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(scanData, songListUUID)
@@ -447,7 +448,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       }, 100)
       try {
         const result = await window.electron.ipcRenderer.invoke('mixtape:list', {
-          playlistId: runtime.songsArea.songListUUID
+          playlistId: songsAreaState.songListUUID
         })
         const rawItems = Array.isArray(result?.items)
           ? (result.items as Array<Record<string, unknown>>)
@@ -463,7 +464,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         syncPlayingStateAfterReload(songs, requestUUID)
         lastAppliedSongListUUID = requestUUID
 
-        const totalRows = runtime.songsArea.songInfoArr.length
+        const totalRows = songsAreaState.songInfoArr.length
         const INITIAL_ROWS = 40
         const CHUNK_ROWS = 80
         renderCount.value = Math.min(totalRows, INITIAL_ROWS)
@@ -487,7 +488,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       return
     }
 
-    const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+    const songListPath = libraryUtils.findDirPathByUuid(songsAreaState.songListUUID)
     const actualTrackCountPromise =
       songListPath && typeof songListPath === 'string'
         ? window.electron.ipcRenderer
@@ -501,7 +502,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       const fastPayload = await window.electron.ipcRenderer.invoke(
         'song-search:playlist-fast-load',
         {
-          songListUUID: runtime.songsArea.songListUUID
+          songListUUID: songsAreaState.songListUUID
         }
       )
       const hit = Boolean(fastPayload?.hit)
@@ -517,7 +518,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
           isRequesting.value = false
           loadingShow.value = false
           // 后台刷新一次磁盘结果，保证索引与磁盘一致
-          scheduleBackgroundSongListRefresh(songListPath, runtime.songsArea.songListUUID)
+          scheduleBackgroundSongListRefresh(songListPath, songsAreaState.songListUUID)
           return
         }
         notifySongSearchDirty('playlist-fast-load-mismatch')
@@ -530,7 +531,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }, 100)
 
     try {
-      await loadSongListFromDisk(songListPath, runtime.songsArea.songListUUID, {
+      await loadSongListFromDisk(songListPath, songsAreaState.songListUUID, {
         forceNotifySongSearchDirty: true
       })
     } finally {

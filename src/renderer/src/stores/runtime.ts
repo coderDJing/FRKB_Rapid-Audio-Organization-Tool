@@ -5,9 +5,10 @@ import {
   ILayoutConfig,
   IRekordboxLibraryBrowserState,
   ISettingConfig,
-  ISongInfo
+  ISongInfo,
+  ISongsAreaColumn
 } from 'src/types/globals'
-type LibrarySelection =
+export type LibrarySelection =
   | 'FilterLibrary'
   | 'CuratedLibrary'
   | 'MixtapeLibrary'
@@ -16,6 +17,55 @@ type LibrarySelection =
   | 'PioneerDeviceLibrary'
 
 type MainWindowBrowseMode = 'browser' | 'horizontal'
+export type SongsAreaPaneKey = 'single' | 'left' | 'right'
+export type SplitSongsAreaPaneKey = 'left' | 'right'
+export type SongsAreaColumnMode = 'default' | 'recycle' | 'mixtape'
+
+export interface ISongsAreaState {
+  songListUUID: string
+  songInfoArr: ISongInfo[]
+  totalSongCount: number
+  selectedSongFilePath: string[]
+}
+
+export interface ISongsAreaPaneRuntimeState extends ISongsAreaState {
+  columnCacheByMode: Partial<Record<SongsAreaColumnMode, ISongsAreaColumn[]>>
+}
+
+const createSongsAreaState = (): ISongsAreaPaneRuntimeState => ({
+  songListUUID: '',
+  songInfoArr: [],
+  totalSongCount: 0,
+  selectedSongFilePath: [],
+  columnCacheByMode: {}
+})
+
+const assignSongsAreaState = (
+  target: ISongsAreaPaneRuntimeState,
+  source?: Partial<ISongsAreaPaneRuntimeState> | null
+) => {
+  target.songListUUID = String(source?.songListUUID || '')
+  target.songInfoArr = Array.isArray(source?.songInfoArr) ? [...source.songInfoArr] : []
+  target.totalSongCount = Number(source?.totalSongCount || 0)
+  target.selectedSongFilePath = Array.isArray(source?.selectedSongFilePath)
+    ? [...source.selectedSongFilePath]
+    : []
+  const nextCache: ISongsAreaPaneRuntimeState['columnCacheByMode'] = {}
+  const sourceCache = source?.columnCacheByMode
+  if (sourceCache && typeof sourceCache === 'object') {
+    for (const key of ['default', 'recycle', 'mixtape'] as const) {
+      const cached = sourceCache[key]
+      if (Array.isArray(cached)) {
+        nextCache[key] = cached.map((item) => ({ ...item }))
+      }
+    }
+  }
+  target.columnCacheByMode = nextCache
+}
+
+const clearSongsAreaState = (target: ISongsAreaPaneRuntimeState) => {
+  assignSongsAreaState(target, null)
+}
 type AnalysisRuntimeDownloadStatus =
   | 'idle'
   | 'available'
@@ -73,11 +123,11 @@ interface Runtime {
   oldLibraryTree: IDir
   selectSongListDialogShow: boolean
   dialogSelectedSongListUUID: string
-  songsArea: {
-    songListUUID: string
-    songInfoArr: ISongInfo[]
-    totalSongCount: number
-    selectedSongFilePath: string[]
+  songsArea: ISongsAreaPaneRuntimeState
+  songsAreaPanels: {
+    splitEnabled: boolean
+    activePane: SongsAreaPaneKey
+    panes: Record<SongsAreaPaneKey, ISongsAreaPaneRuntimeState>
   }
   lastSongListUUIDByLibrary: {
     FilterLibrary: string
@@ -119,6 +169,9 @@ interface Runtime {
 }
 export const useRuntimeStore = defineStore('runtime', {
   state: (): Runtime => {
+    const singleSongsArea = createSongsAreaState()
+    const leftSongsArea = createSongsAreaState()
+    const rightSongsArea = createSongsAreaState()
     return {
       platform: '', //使用平台
       isWindowMaximized: null,
@@ -153,11 +206,15 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       selectSongListDialogShow: false, //全局是否有歌单选择器正在展示
       dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID
-      songsArea: {
-        songListUUID: '', //被选中的歌单UUID
-        songInfoArr: [], //歌单内容
-        totalSongCount: 0,
-        selectedSongFilePath: [] //歌单内选中的歌曲条目
+      songsArea: singleSongsArea,
+      songsAreaPanels: {
+        splitEnabled: false,
+        activePane: 'single',
+        panes: {
+          single: singleSongsArea,
+          left: leftSongsArea,
+          right: rightSongsArea
+        }
       },
       lastSongListUUIDByLibrary: {
         FilterLibrary: '',
@@ -289,6 +346,27 @@ export const useRuntimeStore = defineStore('runtime', {
       }, //设置
       playerReady: false,
       isSwitchingSong: false
+    }
+  },
+  actions: {
+    setSongsAreaActivePane(pane: SongsAreaPaneKey) {
+      this.songsAreaPanels.activePane = pane
+      this.songsArea = this.songsAreaPanels.panes[pane]
+    },
+    assignSongsAreaPaneState(
+      pane: SongsAreaPaneKey,
+      source?: Partial<ISongsAreaPaneRuntimeState> | null
+    ) {
+      assignSongsAreaState(this.songsAreaPanels.panes[pane], source)
+      if (this.songsAreaPanels.activePane === pane) {
+        this.songsArea = this.songsAreaPanels.panes[pane]
+      }
+    },
+    clearSongsAreaPaneState(pane: SongsAreaPaneKey) {
+      clearSongsAreaState(this.songsAreaPanels.panes[pane])
+      if (this.songsAreaPanels.activePane === pane) {
+        this.songsArea = this.songsAreaPanels.panes[pane]
+      }
     }
   }
 })

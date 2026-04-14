@@ -1,7 +1,7 @@
 import { computed, ref, watch, type ShallowRef } from 'vue'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 import { MIN_WIDTH_BY_KEY } from '../minWidth'
-import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
@@ -10,7 +10,9 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 
 interface UseSongsAreaColumnsParams {
   runtime: ReturnType<typeof useRuntimeStore>
+  songsAreaState: ISongsAreaPaneRuntimeState
   originalSongInfoArr: ShallowRef<ISongInfo[]>
+  shouldPersistToLocalStorage: () => boolean
 }
 
 export type SongsAreaColumnMode = 'default' | 'recycle' | 'mixtape'
@@ -146,15 +148,15 @@ export const buildSongsAreaDefaultColumns = (mode: SongsAreaColumnMode): ISongsA
   })
 
 export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
-  const { runtime, originalSongInfoArr } = params
+  const { runtime, songsAreaState, originalSongInfoArr, shouldPersistToLocalStorage } = params
 
   const getSongField = (song: ISongInfo, key: string): unknown => {
     return song[key as keyof ISongInfo]
   }
 
-  const isRecycleBinView = computed(() => runtime.songsArea.songListUUID === RECYCLE_BIN_UUID)
+  const isRecycleBinView = computed(() => songsAreaState.songListUUID === RECYCLE_BIN_UUID)
   const isMixtapeView = computed(
-    () => libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
+    () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
   )
   const columnMode = computed<SongsAreaColumnMode>(() => {
     if (isRecycleBinView.value) return 'recycle'
@@ -162,7 +164,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     return 'default'
   })
 
-  const loadColumnsFromStorage = (mode: SongsAreaColumnMode): ISongsAreaColumn[] => {
+  const readPersistedColumns = (mode: SongsAreaColumnMode): ISongsAreaColumn[] => {
     const storageKey =
       mode === 'recycle'
         ? SONGS_AREA_RECYCLE_STORAGE_KEY
@@ -267,7 +269,17 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     return finalColumns
   }
 
-  const columnData = ref<ISongsAreaColumn[]>(loadColumnsFromStorage(columnMode.value))
+  const loadColumnsForMode = (mode: SongsAreaColumnMode): ISongsAreaColumn[] => {
+    const cached = songsAreaState.columnCacheByMode[mode]
+    if (Array.isArray(cached) && cached.length > 0) {
+      return cached.map((item) => ({ ...item }))
+    }
+    const loaded = readPersistedColumns(mode)
+    songsAreaState.columnCacheByMode[mode] = loaded.map((item) => ({ ...item }))
+    return loaded
+  }
+
+  const columnData = ref<ISongsAreaColumn[]>(loadColumnsForMode(columnMode.value))
 
   // --- 工具 ---
   function sortArrayByProperty<T extends object>(
@@ -326,6 +338,10 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
 
   // --- 持久化 ---
   const persistColumnData = () => {
+    songsAreaState.columnCacheByMode[columnMode.value] = columnData.value.map((item) => ({
+      ...item
+    }))
+    if (!shouldPersistToLocalStorage()) return
     const storageKey =
       columnMode.value === 'recycle'
         ? SONGS_AREA_RECYCLE_STORAGE_KEY
@@ -338,7 +354,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   // --- 根据列筛选过滤并按当前排序排序 ---
   function applyFiltersAndSorting() {
     let filtered = [...originalSongInfoArr.value]
-    runtime.songsArea.totalSongCount = filtered.length
+    songsAreaState.totalSongCount = filtered.length
     for (const col of columnData.value) {
       if (!col.filterActive) continue
       if (col.filterType === 'text' && col.key) {
@@ -384,7 +400,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     }
 
     if (columnMode.value === 'mixtape') {
-      runtime.songsArea.songInfoArr = filtered
+      songsAreaState.songInfoArr = filtered
       return
     }
 
@@ -449,7 +465,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       return true
     })
 
-    runtime.songsArea.songInfoArr = filtered
+    songsAreaState.songInfoArr = filtered
   }
 
   // --- 列更新 ---
@@ -457,13 +473,13 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     columnData.value = newColumns
     persistColumnData()
     applyFiltersAndSorting()
-    runtime.songsArea.selectedSongFilePath.length = 0
+    songsAreaState.selectedSongFilePath.length = 0
   }
 
   watch(
     () => columnMode.value,
     () => {
-      columnData.value = loadColumnsFromStorage(columnMode.value)
+      columnData.value = loadColumnsForMode(columnMode.value)
       applyFiltersAndSorting()
     }
   )
@@ -519,8 +535,8 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     persistColumnData()
     applyFiltersAndSorting()
 
-    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
+      runtime.playingData.playingSongListData = songsAreaState.songInfoArr
     }
   }
 
@@ -541,6 +557,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     handleToggleColumnVisibility,
     handleColumnsUpdate,
     colMenuClick,
-    applyFiltersAndSorting
+    applyFiltersAndSorting,
+    persistColumnData
   }
 }

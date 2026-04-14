@@ -769,6 +769,9 @@
     "globalSongPlayNow": "Play now"
   },
   "playlist": {
+    "showInLeftPane": "Show on left",
+    "showInRightPane": "Show on right",
+    "noPanePlaylist": "No playlist selected",
     "deletePlaylist": "Delete playlist",
     "emptyPlaylist": "Empty playlist",
     "collapsibleFolder": "Collapsible folder",

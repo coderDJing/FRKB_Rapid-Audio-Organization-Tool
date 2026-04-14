@@ -4,7 +4,7 @@ import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import type { ISongInfo } from '../../../../../../types/globals'
 import emitter from '@renderer/utils/mitt'
-import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
@@ -23,14 +23,17 @@ type OptimisticRestoreItem = {
   index: number
 }
 
+let windowHotkeyBinderCount = 0
+
 interface UseKeyboardSelectionParams {
   runtime: ReturnType<typeof useRuntimeStore>
+  songsAreaState: ISongsAreaPaneRuntimeState
   externalViewportHeight: { value: number }
   scheduleSweepCovers: () => void
 }
 
 export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
-  const { runtime, externalViewportHeight, scheduleSweepCovers } = params
+  const { runtime, songsAreaState, externalViewportHeight, scheduleSweepCovers } = params
   const CUT_POLL_INTERVAL_MS = 1500
   const CUT_POLL_TIMEOUT_MS = 2 * 60 * 1000
   let cutPollTimer: ReturnType<typeof setInterval> | null = null
@@ -41,19 +44,21 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   const normalizePath = (p: string | undefined | null) =>
     (p || '').replace(/\//g, '\\').toLowerCase()
 
-  const isMixtapeView = () =>
-    libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
-  const getRowKey = (song: ISongInfo) =>
-    isMixtapeView() && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
-  const getSelectedKeys = () => runtime.songsArea.selectedSongFilePath
+  const isMixtapeViewForState = (state: ISongsAreaPaneRuntimeState) =>
+    libraryUtils.getLibraryTreeByUUID(state.songListUUID)?.type === 'mixtapeList'
+  const isMixtapeView = () => isMixtapeViewForState(songsAreaState)
+  const getRowKeyForState = (state: ISongsAreaPaneRuntimeState, song: ISongInfo) =>
+    isMixtapeViewForState(state) && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
+  const getRowKey = (song: ISongInfo) => getRowKeyForState(songsAreaState, song)
+  const getSelectedKeys = () => songsAreaState.selectedSongFilePath
   const setSelectedKeys = (next: string[]) => {
-    runtime.songsArea.selectedSongFilePath = next
+    songsAreaState.selectedSongFilePath = next
   }
-  const resolveSelectedFilePaths = (keys?: string[]) => {
-    const selectedKeys = keys ?? getSelectedKeys()
-    if (!isMixtapeView()) return selectedKeys
+  const resolveSelectedFilePathsForState = (state: ISongsAreaPaneRuntimeState, keys?: string[]) => {
+    const selectedKeys = keys ?? state.selectedSongFilePath
+    if (!isMixtapeViewForState(state)) return selectedKeys
     const map = new Map<string, string>()
-    for (const item of runtime.songsArea.songInfoArr) {
+    for (const item of state.songInfoArr) {
       if (item.mixtapeItemId) {
         map.set(item.mixtapeItemId, item.filePath)
       }
@@ -62,6 +67,8 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       .map((key) => map.get(key) || key)
       .filter((p) => typeof p === 'string' && p.length > 0)
   }
+  const resolveSelectedFilePaths = (keys?: string[]) =>
+    resolveSelectedFilePathsForState(songsAreaState, keys)
 
   const clearPlayingStateIfTouched = (normalizedPathSet: Set<string>) => {
     const touchesCurrentPlaying =
@@ -88,9 +95,9 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     if (event.ctrlKey) {
       const index = getSelectedKeys().indexOf(rowKey)
       if (index !== -1) {
-        runtime.songsArea.selectedSongFilePath.splice(index, 1)
+        songsAreaState.selectedSongFilePath.splice(index, 1)
       } else {
-        runtime.songsArea.selectedSongFilePath.push(rowKey)
+        songsAreaState.selectedSongFilePath.push(rowKey)
       }
     } else if (event.shiftKey) {
       let lastClickSongFilePath: string | null = null
@@ -99,22 +106,22 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       }
       let lastClickSongIndex = 0
       if (lastClickSongFilePath) {
-        lastClickSongIndex = runtime.songsArea.songInfoArr.findIndex(
+        lastClickSongIndex = songsAreaState.songInfoArr.findIndex(
           (item) => getRowKey(item) === lastClickSongFilePath
         )
       }
 
-      const clickSongIndex = runtime.songsArea.songInfoArr.findIndex(
+      const clickSongIndex = songsAreaState.songInfoArr.findIndex(
         (item) => getRowKey(item) === rowKey
       )
-      const sliceArr = runtime.songsArea.songInfoArr.slice(
+      const sliceArr = songsAreaState.songInfoArr.slice(
         Math.min(lastClickSongIndex, clickSongIndex),
         Math.max(lastClickSongIndex, clickSongIndex) + 1
       )
       for (const item of sliceArr) {
         const key = getRowKey(item)
         if (getSelectedKeys().indexOf(key) === -1) {
-          runtime.songsArea.selectedSongFilePath.push(key)
+          songsAreaState.selectedSongFilePath.push(key)
         }
       }
     } else {
@@ -208,26 +215,27 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     if (result?.success && existingPaths.length > 0) {
       emitter.emit('songsArea/clipboardHint', { action: operation })
       if (operation === 'cut') {
-        startCutPolling(existingPaths, runtime.songsArea.songListUUID)
+        startCutPolling(existingPaths, songsAreaState.songListUUID)
       }
     }
   }
 
   async function handleDeleteKey() {
-    const selectedKeys = JSON.parse(JSON.stringify(getSelectedKeys()))
+    const activeSongsAreaState = runtime.songsArea
+    const selectedKeys = JSON.parse(JSON.stringify(activeSongsAreaState.selectedSongFilePath))
     if (!selectedKeys.length) return false
 
-    const isInRecycleBin = runtime.songsArea.songListUUID === RECYCLE_BIN_UUID
-    const isExternalView = runtime.songsArea.songListUUID === EXTERNAL_PLAYLIST_UUID
-    if (isMixtapeView()) {
+    const isInRecycleBin = activeSongsAreaState.songListUUID === RECYCLE_BIN_UUID
+    const isExternalView = activeSongsAreaState.songListUUID === EXTERNAL_PLAYLIST_UUID
+    if (isMixtapeViewForState(activeSongsAreaState)) {
       await window.electron.ipcRenderer.invoke('mixtape:remove', {
-        playlistId: runtime.songsArea.songListUUID,
+        playlistId: activeSongsAreaState.songListUUID,
         itemIds: [...selectedKeys]
       })
-      runtime.songsArea.selectedSongFilePath.length = 0
-      emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+      activeSongsAreaState.selectedSongFilePath.length = 0
+      emitter.emit('playlistContentChanged', { uuids: [activeSongsAreaState.songListUUID] })
       emitter.emit('songsRemoved', {
-        listUUID: runtime.songsArea.songListUUID,
+        listUUID: activeSongsAreaState.songListUUID,
         itemIds: selectedKeys
       })
       return false
@@ -237,7 +245,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       if (isExternalView) {
         return { filePaths: paths, sourceType: 'external' }
       }
-      const songListPath = libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID)
+      const songListPath = libraryUtils.findDirPathByUuid(activeSongsAreaState.songListUUID)
       if (songListPath) {
         return { filePaths: paths, songListPath }
       }
@@ -295,8 +303,11 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     }
 
     if (shouldDelete) {
-      const selectedSnapshot = [...runtime.songsArea.songInfoArr]
-      const resolvedSelectedPaths = resolveSelectedFilePaths(selectedKeys)
+      const selectedSnapshot = [...activeSongsAreaState.songInfoArr]
+      const resolvedSelectedPaths = resolveSelectedFilePathsForState(
+        activeSongsAreaState,
+        selectedKeys
+      )
       let removedPathsForEvent = [...resolvedSelectedPaths]
       const selectedPathSet = new Set(resolvedSelectedPaths.map((item) => normalizePath(item)))
       const optimisticRestoreItems: OptimisticRestoreItem[] = selectedSnapshot
@@ -305,7 +316,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
 
       clearPlayingStateIfTouched(selectedPathSet)
       emitter.emit('songsArea/optimistic-remove', {
-        listUUID: runtime.songsArea.songListUUID,
+        listUUID: activeSongsAreaState.songListUUID,
         paths: resolvedSelectedPaths
       })
 
@@ -337,7 +348,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
             : []
         if (failedRestoreItems.length > 0) {
           emitter.emit('songsArea/optimistic-restore', {
-            listUUID: runtime.songsArea.songListUUID,
+            listUUID: activeSongsAreaState.songListUUID,
             items: failedRestoreItems
           })
         }
@@ -349,7 +360,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       } catch {
         if (optimisticRestoreItems.length > 0) {
           emitter.emit('songsArea/optimistic-restore', {
-            listUUID: runtime.songsArea.songListUUID,
+            listUUID: activeSongsAreaState.songListUUID,
             items: optimisticRestoreItems
           })
         }
@@ -364,17 +375,17 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
         return false
       }
 
-      runtime.songsArea.selectedSongFilePath.length = 0
+      activeSongsAreaState.selectedSongFilePath.length = 0
       if (removedPathsForEvent.length > 0) {
         emitter.emit('songsRemoved', {
-          listUUID: runtime.songsArea.songListUUID,
+          listUUID: activeSongsAreaState.songListUUID,
           paths: removedPathsForEvent
         })
       }
       // 兜底：通知库区刷新当前歌单（包含回收站内删除与普通歌单删除）
       try {
-        if (runtime.songsArea.songListUUID) {
-          emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+        if (activeSongsAreaState.songListUUID) {
+          emitter.emit('playlistContentChanged', { uuids: [activeSongsAreaState.songListUUID] })
         }
       } catch {}
     }
@@ -382,33 +393,42 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   }
 
   function getAnchorIndex(): number {
-    const list = runtime.songsArea.songInfoArr
+    const activeSongsAreaState = runtime.songsArea
+    const list = activeSongsAreaState.songInfoArr
     if (!list || list.length === 0) return -1
 
     let anchorKey: string | null = null
-    if (getSelectedKeys().length > 0) {
-      anchorKey = getSelectedKeys()[getSelectedKeys().length - 1]
+    if (activeSongsAreaState.selectedSongFilePath.length > 0) {
+      anchorKey =
+        activeSongsAreaState.selectedSongFilePath[
+          activeSongsAreaState.selectedSongFilePath.length - 1
+        ]
     } else if (
       runtime.playingData.playingSong &&
-      list.some((s) => getRowKey(s) === getRowKey(runtime.playingData.playingSong!))
+      list.some(
+        (s) =>
+          getRowKeyForState(activeSongsAreaState, s) ===
+          getRowKeyForState(activeSongsAreaState, runtime.playingData.playingSong!)
+      )
     ) {
-      anchorKey = getRowKey(runtime.playingData.playingSong!)
+      anchorKey = getRowKeyForState(activeSongsAreaState, runtime.playingData.playingSong!)
     } else {
-      anchorKey = getRowKey(list[0])
+      anchorKey = getRowKeyForState(activeSongsAreaState, list[0])
     }
 
-    return list.findIndex((s) => getRowKey(s) === anchorKey)
+    return list.findIndex((s) => getRowKeyForState(activeSongsAreaState, s) === anchorKey)
   }
 
   function addRangeSelection(startIndex: number, endIndex: number) {
-    const list = runtime.songsArea.songInfoArr
+    const activeSongsAreaState = runtime.songsArea
+    const list = activeSongsAreaState.songInfoArr
     if (!list || list.length === 0) return
     const from = Math.max(0, Math.min(startIndex, endIndex))
     const to = Math.min(list.length - 1, Math.max(startIndex, endIndex))
     for (let i = from; i <= to; i++) {
-      const key = getRowKey(list[i])
-      if (!getSelectedKeys().includes(key)) {
-        runtime.songsArea.selectedSongFilePath.push(key)
+      const key = getRowKeyForState(activeSongsAreaState, list[i])
+      if (!activeSongsAreaState.selectedSongFilePath.includes(key)) {
+        activeSongsAreaState.selectedSongFilePath.push(key)
       }
     }
   }
@@ -448,10 +468,13 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   }
 
   onMounted(() => {
+    const shouldBindWindowHotkeys = windowHotkeyBinderCount === 0
+    windowHotkeyBinderCount += 1
+    if (!shouldBindWindowHotkeys) return
     hotkeys('ctrl+a, command+a', 'windowGlobal', () => {
       runtime.songsArea.selectedSongFilePath.length = 0
       for (const item of runtime.songsArea.songInfoArr) {
-        runtime.songsArea.selectedSongFilePath.push(getRowKey(item))
+        runtime.songsArea.selectedSongFilePath.push(getRowKeyForState(runtime.songsArea, item))
       }
       return false
     })
@@ -461,18 +484,18 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     })
     hotkeys('ctrl+c, command+c', 'windowGlobal', (event) => {
       if (shouldSkipClipboardHotkey(event)) return true
-      const selectedKeys = [...getSelectedKeys()]
+      const selectedKeys = [...runtime.songsArea.selectedSongFilePath]
       if (selectedKeys.length === 0) return true
-      const selectedPaths = resolveSelectedFilePaths(selectedKeys)
+      const selectedPaths = resolveSelectedFilePathsForState(runtime.songsArea, selectedKeys)
       if (selectedPaths.length === 0) return true
       void writeFilesToClipboard('copy', selectedPaths)
       return false
     })
     hotkeys('ctrl+x, command+x', 'windowGlobal', (event) => {
       if (shouldSkipClipboardHotkey(event)) return true
-      const selectedKeys = [...getSelectedKeys()]
+      const selectedKeys = [...runtime.songsArea.selectedSongFilePath]
       if (selectedKeys.length === 0) return true
-      const selectedPaths = resolveSelectedFilePaths(selectedKeys)
+      const selectedPaths = resolveSelectedFilePathsForState(runtime.songsArea, selectedKeys)
       if (selectedPaths.length === 0) return true
       void writeFilesToClipboard('cut', selectedPaths)
       return false
@@ -496,6 +519,8 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   })
 
   onUnmounted(() => {
+    windowHotkeyBinderCount = Math.max(0, windowHotkeyBinderCount - 1)
+    if (windowHotkeyBinderCount > 0) return
     hotkeys.unbind('ctrl+c, command+c', 'windowGlobal')
     hotkeys.unbind('ctrl+x, command+x', 'windowGlobal')
     hotkeys.unbind('shift+home', 'windowGlobal')

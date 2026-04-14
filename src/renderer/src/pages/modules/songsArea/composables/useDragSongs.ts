@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
+import { type ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { ISongInfo } from '../../../../../../types/globals'
 import emitter from '@renderer/utils/mitt'
@@ -19,8 +19,13 @@ type StartDragSongsOptions = {
   dragMode?: SongDragMode
 }
 
-export function useDragSongs() {
+interface UseDragSongsParams {
+  songsAreaState?: ISongsAreaPaneRuntimeState
+}
+
+export function useDragSongs(params: UseDragSongsParams = {}) {
   const runtime = useRuntimeStore()
+  const songsAreaState = params.songsAreaState ?? runtime.songsArea
   const isDragging = ref(false)
   const dragData = ref<DragSongData | null>(null)
   let dragCleanupTimer: ReturnType<typeof setTimeout> | null = null
@@ -59,6 +64,17 @@ export function useDragSongs() {
           .filter(Boolean)
       )
     )
+
+  const resolveSourceSongsAreaState = (sourceSongListUUID: string) => {
+    if (songsAreaState.songListUUID === sourceSongListUUID) return songsAreaState
+    for (const pane of ['single', 'left', 'right'] as const) {
+      const paneState = runtime.songsAreaPanels.panes[pane]
+      if (paneState.songListUUID === sourceSongListUUID) {
+        return paneState
+      }
+    }
+    return runtime.songsArea
+  }
 
   const resolveFileNameAndFormat = (filePath: string) => {
     const baseName =
@@ -125,11 +141,11 @@ export function useDragSongs() {
         songFilePaths = songOrSongs.map((song) => song.filePath)
       } else {
         const singleSong = songOrSongs
-        const isSelected = runtime.songsArea.selectedSongFilePath.includes(singleSong.filePath)
+        const isSelected = songsAreaState.selectedSongFilePath.includes(singleSong.filePath)
 
-        if (isSelected && runtime.songsArea.selectedSongFilePath.length > 0) {
+        if (isSelected && songsAreaState.selectedSongFilePath.length > 0) {
           // 如果这首歌被选中且有其他选中的歌曲，拖拽所有选中的歌曲
-          songFilePaths = [...runtime.songsArea.selectedSongFilePath]
+          songFilePaths = [...songsAreaState.selectedSongFilePath]
         } else {
           // 否则只拖拽这首歌
           songFilePaths = [singleSong.filePath]
@@ -177,7 +193,9 @@ export function useDragSongs() {
       const selectedSongFilePaths =
         dragData.value?.songFilePaths?.length && Array.isArray(dragData.value.songFilePaths)
           ? [...dragData.value.songFilePaths]
-          : [...runtime.songsArea.selectedSongFilePath]
+          : runtime.draggingSongFilePaths.length > 0
+            ? [...runtime.draggingSongFilePaths]
+            : [...songsAreaState.selectedSongFilePath]
       const sourceMixtapeItemIds = normalizeUniqueStrings(
         Array.isArray(dragData.value?.sourceMixtapeItemIds) &&
           dragData.value.sourceMixtapeItemIds.length > 0
@@ -189,7 +207,7 @@ export function useDragSongs() {
       const sourceSongListUUID =
         dragData.value?.sourceSongListUUID ||
         runtime.dragSourceSongListUUID ||
-        runtime.songsArea.songListUUID
+        songsAreaState.songListUUID
 
       if (!selectedSongFilePaths.length || !sourceSongListUUID) {
         return []
@@ -200,6 +218,7 @@ export function useDragSongs() {
 
       const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
       const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
+      const sourceSongsAreaState = resolveSourceSongsAreaState(sourceSongListUUID)
       const isMixtapeTarget = targetNode?.type === 'mixtapeList'
 
       if (isMixtapeTarget) {
@@ -207,9 +226,11 @@ export function useDragSongs() {
           return []
         }
         const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
-        const songMap = new Map(runtime.songsArea.songInfoArr.map((song) => [song.filePath, song]))
+        const songMap = new Map(
+          sourceSongsAreaState.songInfoArr.map((song) => [song.filePath, song])
+        )
         const mixtapeSongMap = new Map(
-          runtime.songsArea.songInfoArr
+          sourceSongsAreaState.songInfoArr
             .filter(
               (song) => typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.length > 0
             )
@@ -290,7 +311,7 @@ export function useDragSongs() {
         targetDirPath,
         {
           curatedArtistNames: selectedSongFilePaths.map((filePath) => {
-            const song = runtime.songsArea.songInfoArr.find((item) => item.filePath === filePath)
+            const song = sourceSongsAreaState.songInfoArr.find((item) => item.filePath === filePath)
             return song?.artist || ''
           })
         }

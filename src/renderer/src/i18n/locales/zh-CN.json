@@ -769,6 +769,9 @@
     "globalSongPlayNow": "立即播放"
   },
   "playlist": {
+    "showInLeftPane": "在左侧显示",
+    "showInRightPane": "在右侧显示",
+    "noPanePlaylist": "未选择歌单",
     "deletePlaylist": "删除歌单",
     "emptyPlaylist": "清空歌单",
     "collapsibleFolder": "折叠文件夹",

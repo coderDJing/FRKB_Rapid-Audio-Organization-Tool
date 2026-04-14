@@ -9,15 +9,16 @@ import {
   markRaw,
   nextTick
 } from 'vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
+import { type SongsAreaPaneKey, useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
-import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
+import { ISongInfo } from '../../../../../types/globals'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { activateSongsAreaPane } from '@renderer/utils/songsAreaSplit'
 
 // 组件导入
-import confirm from '@renderer/components/confirmDialog'
+import dropIntoDialog from '@renderer/components/dropIntoDialog'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import welcomePage from '@renderer/components/welcomePage.vue'
 import SongListHeader from './SongListHeader.vue'
@@ -25,11 +26,7 @@ import SongListRows from './SongListRows.vue'
 import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
 
 // Composable import
-import {
-  useSongItemContextMenu,
-  type MetadataUpdatedAction,
-  type TrackCacheClearedAction
-} from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
+import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
 import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
 import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
 import { useSongsAreaColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
@@ -53,18 +50,52 @@ type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsCompon
 const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
 
+const props = withDefaults(
+  defineProps<{
+    pane: SongsAreaPaneKey
+    enablePreviewPlayer?: boolean
+  }>(),
+  {
+    enablePreviewPlayer: false
+  }
+)
+
 const runtime = useRuntimeStore()
+const songsAreaState = runtime.songsAreaPanels.panes[props.pane]
+const isPaneActive = computed(() =>
+  runtime.songsAreaPanels.splitEnabled ? runtime.songsAreaPanels.activePane === props.pane : true
+)
+const shouldPersistColumnsToLocalStorage = () => props.pane === 'single' || isPaneActive.value
+const activatePaneIfNeeded = () => {
+  if (runtime.songsAreaPanels.splitEnabled && runtime.songsAreaPanels.activePane !== props.pane) {
+    activateSongsAreaPane(runtime, props.pane)
+  }
+}
+const normalizeLibraryPath = (value: string) => (value || '').replace(/\\/g, '/')
+const resolveCoreLibraryNameBySongListUUID = (uuid: string) => {
+  const dirPath = normalizeLibraryPath(libraryUtils.findDirPathByUuid(uuid))
+  if (dirPath === 'library/FilterLibrary' || dirPath.startsWith('library/FilterLibrary/')) {
+    return 'FilterLibrary'
+  }
+  if (dirPath === 'library/CuratedLibrary' || dirPath.startsWith('library/CuratedLibrary/')) {
+    return 'CuratedLibrary'
+  }
+  if (dirPath === 'library/MixtapeLibrary' || dirPath.startsWith('library/MixtapeLibrary/')) {
+    return 'MixtapeLibrary'
+  }
+  return ''
+}
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
 const isMixtapeListView = computed(
-  () => libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList'
+  () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
 )
 const getRowKey = (song: ISongInfo) =>
   isMixtapeListView.value && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
 const resolveSelectedFilePaths = (keys?: string[]) => {
-  const selectedKeys = keys ?? runtime.songsArea.selectedSongFilePath
+  const selectedKeys = keys ?? songsAreaState.selectedSongFilePath
   if (!isMixtapeListView.value) return selectedKeys
   const map = new Map<string, string>()
-  for (const item of runtime.songsArea.songInfoArr) {
+  for (const item of songsAreaState.songInfoArr) {
     if (item.mixtapeItemId) {
       map.set(item.mixtapeItemId, item.filePath)
     }
@@ -74,9 +105,7 @@ const resolveSelectedFilePaths = (keys?: string[]) => {
     .filter((p) => typeof p === 'string' && p.length > 0)
 }
 const songListRootDir = computed(() =>
-  isMixtapeListView.value
-    ? ''
-    : libraryUtils.findDirPathByUuid(runtime.songsArea.songListUUID) || ''
+  isMixtapeListView.value ? '' : libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
 )
 // 使用 shallowRef 承载原始列表，避免不必要的深层响应式开销
 const originalSongInfoArr = shallowRef<ISongInfo[]>([])
@@ -85,17 +114,22 @@ const originalSongInfoArr = shallowRef<ISongInfo[]>([])
 const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
 
 // Initialize composables
-const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef)
+const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef, songsAreaState)
 const {
   isDialogVisible: isSelectSongListDialogVisible,
   targetLibraryName: selectSongListDialogTargetLibraryName,
   initiateMoveSongs,
   handleMoveSongsConfirm,
   handleDialogCancel
-} = useSelectAndMoveSongs()
-const { startDragSongs, scheduleDragCleanup, handleDropToSongList } = useDragSongs()
+} = useSelectAndMoveSongs({ songsAreaState })
+const { startDragSongs, scheduleDragCleanup, handleDropToSongList } = useDragSongs({
+  songsAreaState
+})
 const dragHintVisible = ref(false)
 const dragHintMode = ref<'internal' | 'external'>('internal')
+const paneDropHover = ref(false)
+const paneDropHoverMode = ref<'internal' | 'external' | ''>('')
+let paneDropEnterDepth = 0
 let dragHintCleanup: (() => void) | null = null
 const clipboardHintVisible = ref(false)
 const clipboardHintText = ref('')
@@ -195,15 +229,22 @@ const {
   handleToggleColumnVisibility,
   handleColumnsUpdate,
   colMenuClick,
-  applyFiltersAndSorting
-} = useSongsAreaColumns({ runtime, originalSongInfoArr })
+  applyFiltersAndSorting,
+  persistColumnData
+} = useSongsAreaColumns({
+  runtime,
+  songsAreaState,
+  originalSongInfoArr,
+  shouldPersistToLocalStorage: shouldPersistColumnsToLocalStorage
+})
 
 // 封面清理
-const { scheduleSweepCovers } = useSweepCovers({ runtime })
+const { scheduleSweepCovers } = useSweepCovers({ runtime, songsAreaState })
 
 // 歌单加载
 const { loadingShow, isRequesting, openSongList } = useSongsLoader({
   runtime,
+  songsAreaState,
   originalSongInfoArr,
   applyFiltersAndSorting
 })
@@ -225,9 +266,9 @@ const handleMetadataBatchUpdatedFromEvent = async (payload: {
     if (didTouch) touchedCurrentList = true
   }
   if (!touchedCurrentList) return
-  const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+  const selectionBeforeReload = [...songsAreaState.selectedSongFilePath]
   await openSongList()
-  runtime.songsArea.selectedSongFilePath = selectionBeforeReload.map(
+  songsAreaState.selectedSongFilePath = selectionBeforeReload.map(
     (path) => renameMap.get(path) || path
   )
 }
@@ -236,24 +277,42 @@ emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
 // 键盘与鼠标选择
 const { songClick } = useKeyboardSelection({
   runtime,
+  songsAreaState,
   externalViewportHeight,
   scheduleSweepCovers
 })
 
 // 自动滚动到当前播放项
-const { scrollToIndex, scrollToIndexIfNeeded } = useAutoScrollToCurrent({ runtime, songsAreaRef })
+const { scrollToIndex, scrollToIndexIfNeeded } = useAutoScrollToCurrent({
+  runtime,
+  songsAreaState,
+  songsAreaRef
+})
 attachModifierKeyListeners()
 
 // songsArea 相关事件
 useSongsAreaEvents({
   runtime,
+  songsAreaState,
   originalSongInfoArr,
   applyFiltersAndSorting,
   openSongList,
   scheduleSweepCovers
 })
-useWaveformPreviewPlayer()
+if (props.enablePreviewPlayer) {
+  useWaveformPreviewPlayer()
+}
 emitter.on('songsArea/clipboardHint', handleClipboardHint)
+
+watch(
+  () => isPaneActive.value,
+  (active) => {
+    if (active && runtime.songsAreaPanels.splitEnabled) {
+      persistColumnData()
+    }
+  },
+  { immediate: true }
+)
 
 onUnmounted(() => {
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
@@ -294,7 +353,7 @@ const applyMetadataUpdate = async (
   }
 
   let runtimeListTouched = false
-  runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) => {
+  songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) => {
     if (item.filePath === oldFilePath) {
       runtimeListTouched = true
       return { ...updatedSong }
@@ -308,7 +367,7 @@ const applyMetadataUpdate = async (
   if (runtimeListTouched) touchedCurrentList = true
 
   let selectionTouched = false
-  runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.map((path) => {
+  songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.map((path) => {
     if (path === oldFilePath) {
       selectionTouched = true
       return updatedSong.filePath
@@ -329,7 +388,7 @@ const applyMetadataUpdate = async (
     runtime.playingData.playingSong.filePath = updatedSong.filePath
   }
 
-  if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
+  if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
     runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map((item) =>
       item.filePath === oldFilePath || item.filePath === updatedSong.filePath
         ? { ...item, ...updatedSong }
@@ -337,9 +396,9 @@ const applyMetadataUpdate = async (
     )
   }
 
-  if (touchedCurrentList && runtime.songsArea.songListUUID) {
+  if (touchedCurrentList && songsAreaState.songListUUID) {
     try {
-      emitter.emit('playlistContentChanged', { uuids: [runtime.songsArea.songListUUID] })
+      emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
     } catch {}
   }
   try {
@@ -355,9 +414,9 @@ const applyMetadataUpdate = async (
 
   if (options?.rescan === false || !touchedCurrentList) return touchedCurrentList
 
-  const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+  const selectionBeforeReload = [...songsAreaState.selectedSongFilePath]
   await openSongList()
-  runtime.songsArea.selectedSongFilePath = selectionBeforeReload.map((path) =>
+  songsAreaState.selectedSongFilePath = selectionBeforeReload.map((path) =>
     path === oldFilePath ? updatedSong.filePath : path
   )
   return touchedCurrentList
@@ -397,18 +456,18 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
       if (didTouch) touchedCurrentList = true
     }
     if (!touchedCurrentList) return
-    const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+    const selectionBeforeReload = [...songsAreaState.selectedSongFilePath]
     await openSongList()
-    runtime.songsArea.selectedSongFilePath = selectionBeforeReload.map(
+    songsAreaState.selectedSongFilePath = selectionBeforeReload.map(
       (path) => renameMap.get(path) || path
     )
     return
   }
 
   if (result.action === 'trackCacheCleared') {
-    const selectionBeforeReload = [...runtime.songsArea.selectedSongFilePath]
+    const selectionBeforeReload = [...songsAreaState.selectedSongFilePath]
     await openSongList()
-    runtime.songsArea.selectedSongFilePath = selectionBeforeReload.filter(Boolean)
+    songsAreaState.selectedSongFilePath = selectionBeforeReload.filter(Boolean)
     return
   }
 }
@@ -431,7 +490,7 @@ const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })
   } catch {}
   runtime.activeMenuUUID = ''
-  runtime.songsArea.selectedSongFilePath = []
+  songsAreaState.selectedSongFilePath = []
 
   const normalizedSong = { ...song }
   requestImmediateAnalysis(normalizedSong)
@@ -442,12 +501,12 @@ const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
     })
     return
   }
-  const isSameList = runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID
+  const isSameList = runtime.playingData.playingSongListUUID === songsAreaState.songListUUID
   const isSameSong =
     isSameList && runtime.playingData.playingSong?.filePath === normalizedSong.filePath
 
-  runtime.playingData.playingSongListUUID = runtime.songsArea.songListUUID
-  runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+  runtime.playingData.playingSongListUUID = songsAreaState.songListUUID
+  runtime.playingData.playingSongListData = songsAreaState.songInfoArr
 
   if (isSameSong && runtime.playingData.playingSong) {
     runtime.playingData.playingSong = normalizedSong
@@ -503,6 +562,7 @@ const triggerGlobalSearchFlash = (rowKey: string) => {
 
 useGlobalSearchFocus({
   runtime,
+  songsAreaState,
   originalSongInfoArr,
   columnData,
   applyFiltersAndSorting,
@@ -551,16 +611,18 @@ const currentPlayingRowKey = computed(() => {
   return getRowKey(playingSong)
 })
 
-const viewState = computed<'welcome' | 'loading' | 'list'>(() => {
+const viewState = computed<'welcome' | 'blank' | 'loading' | 'list'>(() => {
   if (loadingShow.value) return 'loading'
-  if (!runtime.songsArea.songListUUID) return 'welcome'
+  if (!songsAreaState.songListUUID) {
+    return runtime.songsAreaPanels.splitEnabled && props.pane !== 'single' ? 'blank' : 'welcome'
+  }
   return 'list'
 })
 
 const currentPlayingIndex = computed(() => {
   const rowKey = currentPlayingRowKey.value
   if (!rowKey) return -1
-  return runtime.songsArea.songInfoArr.findIndex((song) => getRowKey(song) === rowKey)
+  return songsAreaState.songInfoArr.findIndex((song) => getRowKey(song) === rowKey)
 })
 
 const showScrollToPlaying = computed(() => {
@@ -573,7 +635,7 @@ const autoScrollIndexToken = computed(() =>
   currentPlayingIndex.value >= 0 ? String(currentPlayingIndex.value) : 'missing'
 )
 const autoScrollKey = computed(() => {
-  const listUUID = runtime.songsArea.songListUUID || ''
+  const listUUID = songsAreaState.songListUUID || ''
   return `${listUUID}|${currentPlayingRowKey.value}|${autoScrollPresence.value}|${autoScrollIndexToken.value}`
 })
 const autoScrollTriggerKey = computed(() => {
@@ -590,7 +652,7 @@ watch(
     }
     if (currentPlayingIndex.value < 0) return
     if (key === lastAutoScrollKey.value) return
-    if (runtime.playingData.playingSongListUUID !== runtime.songsArea.songListUUID) return
+    if (runtime.playingData.playingSongListUUID !== songsAreaState.songListUUID) return
     lastAutoScrollKey.value = key
     scrollToIndexIfNeeded(currentPlayingIndex.value)
   },
@@ -608,8 +670,8 @@ const handleScrollToPlaying = () => {
 
 // 处理移动歌曲对话框确认后的逻辑
 async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
-  const pathsEffectivelyMoved = [...runtime.songsArea.selectedSongFilePath]
-  const currentListUuid = runtime.songsArea.songListUUID
+  const pathsEffectivelyMoved = [...songsAreaState.selectedSongFilePath]
+  const currentListUuid = songsAreaState.songListUUID
   const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUuid)
   const isMixtapeTarget =
     targetNode?.type === 'mixtapeList' ||
@@ -635,8 +697,8 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     applyFiltersAndSorting()
 
     // 若当前播放列表即为当前视图，同步快照（与其他删除路径保持一致）
-    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-      runtime.playingData.playingSongListData = [...runtime.songsArea.songInfoArr]
+    if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
+      runtime.playingData.playingSongListData = [...songsAreaState.songInfoArr]
       if (
         runtime.playingData.playingSong &&
         pathsEffectivelyMoved.includes(runtime.playingData.playingSong.filePath)
@@ -649,14 +711,12 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
 
 const shouldShowEmptyState = computed(() => {
   return (
-    !isRequesting.value &&
-    runtime.songsArea.songListUUID &&
-    runtime.songsArea.songInfoArr.length === 0
+    !isRequesting.value && songsAreaState.songListUUID && songsAreaState.songInfoArr.length === 0
   )
 })
 // 空状态相关计算
 const hasActiveFilter = computed(() => columnData.value.some((c) => !!c.filterActive))
-const isRecycleBinView = computed(() => runtime.songsArea.songListUUID === RECYCLE_BIN_UUID)
+const isRecycleBinView = computed(() => songsAreaState.songListUUID === RECYCLE_BIN_UUID)
 const emptyTitleText = computed(() => {
   if (hasActiveFilter.value) return t('filters.noResults')
   if (isRecycleBinView.value) return t('recycleBin.noDeletionRecords')
@@ -689,20 +749,149 @@ const dragHintDesc = computed(() => {
 })
 // 派生状态结束
 
-// 拖拽相关函数
-const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
-  if (!runtime.songsArea.songListUUID) return
-  // 若当前拖拽行未选中，则先切换选中项
-  const rowKey = getRowKey(song)
-  const isSelected = runtime.songsArea.selectedSongFilePath.includes(rowKey)
+const resetPaneDropHover = () => {
+  paneDropHover.value = false
+  paneDropHoverMode.value = ''
+  paneDropEnterDepth = 0
+}
 
-  if (!isSelected || runtime.songsArea.selectedSongFilePath.length === 0) {
-    // 保证拖拽时至少有一个明确的选中项
-    runtime.songsArea.selectedSongFilePath = [rowKey]
+const isInternalSongDragEvent = (event: DragEvent) =>
+  runtime.songDragActive ||
+  runtime.draggingSongFilePaths.length > 0 ||
+  event.dataTransfer?.types?.includes('application/x-song-drag')
+
+const isExternalFileDragEvent = (event: DragEvent) => {
+  const types = event.dataTransfer?.types
+  if (types?.includes('Files')) return true
+  const items = event.dataTransfer?.items
+  if (!items || items.length === 0) return false
+  return Array.from(items).some((item) => item.kind === 'file')
+}
+
+const isPlainSongListDropTarget = computed(
+  () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'songList'
+)
+
+const shouldBlockParentDropZone = computed(() => runtime.songsAreaPanels.splitEnabled)
+
+const acceptPaneDrag = (
+  event: DragEvent
+): { accepted: boolean; mode: 'internal' | 'external' | '' } => {
+  if (isInternalSongDragEvent(event)) {
+    if (!isPlainSongListDropTarget.value || runtime.dragTableHeader) {
+      return { accepted: shouldBlockParentDropZone.value, mode: '' }
+    }
+    return { accepted: true, mode: 'internal' }
+  }
+  if (isExternalFileDragEvent(event)) {
+    if (!isPlainSongListDropTarget.value) {
+      return { accepted: shouldBlockParentDropZone.value, mode: '' }
+    }
+    return { accepted: true, mode: 'external' }
+  }
+  return { accepted: false, mode: '' }
+}
+
+const handlePaneDragEnter = (event: DragEvent) => {
+  const { accepted, mode } = acceptPaneDrag(event)
+  if (!accepted) return
+  event.preventDefault()
+  event.stopPropagation()
+  paneDropEnterDepth += 1
+  paneDropHover.value = mode !== ''
+  paneDropHoverMode.value = mode
+}
+
+const handlePaneDragOver = (event: DragEvent) => {
+  const { accepted, mode } = acceptPaneDrag(event)
+  if (!accepted) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.dataTransfer) {
+    event.dataTransfer.dropEffect =
+      mode === 'external' ? 'copy' : mode === 'internal' ? 'move' : 'none'
+  }
+  if (mode) {
+    activatePaneIfNeeded()
+  }
+  paneDropHover.value = mode !== ''
+  paneDropHoverMode.value = mode
+}
+
+const handlePaneDragLeave = (event: DragEvent) => {
+  const { accepted } = acceptPaneDrag(event)
+  if (!accepted) return
+  event.stopPropagation()
+  paneDropEnterDepth = Math.max(0, paneDropEnterDepth - 1)
+  if (paneDropEnterDepth === 0) {
+    resetPaneDropHover()
+  }
+}
+
+const handlePaneDrop = async (event: DragEvent) => {
+  const { accepted, mode } = acceptPaneDrag(event)
+  if (!accepted) return
+  event.preventDefault()
+  event.stopPropagation()
+  resetPaneDropHover()
+  if (!mode) return
+  activatePaneIfNeeded()
+
+  if (mode === 'internal') {
+    const sourceSongListUUID = runtime.dragSourceSongListUUID
+    const targetSongListUUID = songsAreaState.songListUUID
+    if (!targetSongListUUID || !sourceSongListUUID || sourceSongListUUID === targetSongListUUID) {
+      return
+    }
+    const movedSongPaths = await handleDropToSongList(
+      targetSongListUUID,
+      runtime.libraryAreaSelected
+    )
+    if (movedSongPaths.length > 0) {
+      await openSongList()
+    }
+    return
   }
 
-  const selectedKeysSnapshot = runtime.songsArea.selectedSongFilePath.length
-    ? [...runtime.songsArea.selectedSongFilePath]
+  if (event.dataTransfer === null || !songsAreaState.songListUUID) return
+  const filePaths = Array.from(event.dataTransfer.files)
+    .map((item) => window.api.showFilesPath(item))
+    .filter((item): item is string => typeof item === 'string' && item.length > 0)
+  if (!filePaths.length) return
+  const libraryName = resolveCoreLibraryNameBySongListUUID(songsAreaState.songListUUID)
+  if (!libraryName) return
+  const result = await dropIntoDialog({
+    songListUuid: songsAreaState.songListUUID,
+    libraryName
+  })
+  if (result === 'cancel') return
+  runtime.importingSongListUUID = result.importingSongListUUID
+  runtime.isProgressing = true
+  window.electron.ipcRenderer.send('startImportSongs', {
+    filePaths,
+    songListPath: result.songListPath,
+    isDeleteSourceFile: result.isDeleteSourceFile,
+    isComparisonSongFingerprint: result.isComparisonSongFingerprint,
+    isPushSongFingerprintLibrary: result.isPushSongFingerprintLibrary,
+    deduplicateMode: result.deduplicateMode,
+    songListUUID: result.importingSongListUUID
+  })
+}
+
+// 拖拽相关函数
+const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
+  if (!songsAreaState.songListUUID) return
+  // 若当前拖拽行未选中，则先切换选中项
+  const rowKey = getRowKey(song)
+  const isSelected = songsAreaState.selectedSongFilePath.includes(rowKey)
+
+  if (!isSelected || songsAreaState.selectedSongFilePath.length === 0) {
+    // 保证拖拽时至少有一个明确的选中项
+    songsAreaState.selectedSongFilePath = [rowKey]
+  }
+
+  const selectedKeysSnapshot = songsAreaState.selectedSongFilePath.length
+    ? [...songsAreaState.selectedSongFilePath]
     : [rowKey]
   const songFilePaths = resolveSelectedFilePaths(selectedKeysSnapshot)
 
@@ -715,7 +904,7 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
       (typeof event.getModifierState === 'function' && event.getModifierState('Control'))
 
   if (hasExternalModifier) {
-    startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID, {
+    startDragSongs(song, runtime.libraryAreaSelected, songsAreaState.songListUUID, {
       songFilePaths,
       dragMode: 'external'
     })
@@ -729,9 +918,9 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
   }
 
   if (isMixtapeListView.value) {
-    const listUuid = runtime.songsArea.songListUUID
+    const listUuid = songsAreaState.songListUUID
     const selectedSet = new Set(selectedKeysSnapshot)
-    const selectedSongs = runtime.songsArea.songInfoArr.filter(
+    const selectedSongs = songsAreaState.songInfoArr.filter(
       (item) => !!item.mixtapeItemId && selectedSet.has(item.mixtapeItemId)
     )
     const selectedItemIds = selectedSongs
@@ -751,7 +940,7 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
       selectedSongFilePaths.length > 0 ? selectedSongFilePaths : fallbackSongPath
     if (!listUuid || itemIds.length === 0) return
     showDragHint('internal')
-    startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID, {
+    startDragSongs(song, runtime.libraryAreaSelected, songsAreaState.songListUUID, {
       songFilePaths: dragSongFilePaths,
       sourceMixtapeItemIds: itemIds
     })
@@ -769,7 +958,7 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
         JSON.stringify({
           type: 'song',
           sourceLibraryName: runtime.libraryAreaSelected,
-          sourceSongListUUID: runtime.songsArea.songListUUID,
+          sourceSongListUUID: songsAreaState.songListUUID,
           sourceMixtapeItemIds: itemIds
         })
       )
@@ -778,7 +967,7 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
   }
 
   showDragHint('internal')
-  startDragSongs(song, runtime.libraryAreaSelected, runtime.songsArea.songListUUID)
+  startDragSongs(song, runtime.libraryAreaSelected, songsAreaState.songListUUID)
   // 标记当前拖拽来源
   if (event.dataTransfer) {
     event.dataTransfer.effectAllowed = 'copyMove'
@@ -787,7 +976,7 @@ const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
       JSON.stringify({
         type: 'song',
         sourceLibraryName: runtime.libraryAreaSelected,
-        sourceSongListUUID: runtime.songsArea.songListUUID
+        sourceSongListUUID: songsAreaState.songListUUID
       })
     )
   }
@@ -835,7 +1024,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
     .filter((id): id is string => typeof id === 'string' && id.length > 0)
   if (orderedIds.length > 0) {
     window.electron.ipcRenderer.invoke('mixtape:reorder', {
-      playlistId: runtime.songsArea.songListUUID,
+      playlistId: songsAreaState.songListUUID,
       orderedIds
     })
   }
@@ -844,11 +1033,24 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
 // 播放列表同步由 useSongsAreaEvents 管理
 </script>
 <template>
-  <div class="songs-area-root">
+  <div
+    class="songs-area-root"
+    :class="{
+      'is-drop-target': paneDropHover,
+      'is-drop-target-external': paneDropHoverMode === 'external'
+    }"
+    @mousedown.capture="activatePaneIfNeeded"
+    @dragenter="handlePaneDragEnter"
+    @dragover="handlePaneDragOver"
+    @dragleave="handlePaneDragLeave"
+    @drop="handlePaneDrop"
+  >
     <Transition name="songs-area-switch" mode="out-in">
       <div v-if="viewState === 'welcome'" key="welcome" class="unselectable welcomeContainer">
         <welcomePage />
       </div>
+
+      <div v-else-if="viewState === 'blank'" key="blank" class="songs-area-blank"></div>
 
       <div v-else-if="viewState === 'loading'" key="loading" class="loading-wrapper">
         <div class="loading"></div>
@@ -871,7 +1073,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
           element="div"
           style="height: 100%; width: 100%; position: relative"
           defer
-          @click="runtime.songsArea.selectedSongFilePath.length = 0"
+          @click="songsAreaState.selectedSongFilePath.length = 0"
         >
           <SongListHeader
             :columns="columnData"
@@ -888,11 +1090,11 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
 
           <!-- 使用 SongListRows 组件渲染歌曲列表 -->
           <SongListRows
-            v-if="runtime.songsArea.songInfoArr.length > 0"
-            :key="runtime.songsArea.songListUUID"
-            :songs="runtime.songsArea.songInfoArr"
+            v-if="songsAreaState.songInfoArr.length > 0"
+            :key="songsAreaState.songListUUID"
+            :songs="songsAreaState.songInfoArr"
             :visible-columns="columnDataArr"
-            :selected-song-file-paths="runtime.songsArea.selectedSongFilePath"
+            :selected-song-file-paths="songsAreaState.selectedSongFilePath"
             :playing-song-file-path="playingSongFilePathForRows"
             :playing-song-file-paths="playingSongFilePathsForRows"
             :flash-row-key="globalSearchFlashRowKey"
@@ -900,7 +1102,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
             :harmonic-reference-key="harmonicReferenceKeyForRows"
             :total-width="totalColumnsWidth"
             :source-library-name="runtime.libraryAreaSelected"
-            :source-song-list-u-u-i-d="runtime.songsArea.songListUUID"
+            :source-song-list-u-u-i-d="songsAreaState.songListUUID"
             :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
             :external-scroll-top="externalScrollTop"
             :external-viewport-height="externalViewportHeight"

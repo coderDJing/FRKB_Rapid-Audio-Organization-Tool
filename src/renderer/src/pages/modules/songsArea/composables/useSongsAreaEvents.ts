@@ -2,7 +2,7 @@ import { onMounted, onUnmounted, watch, markRaw } from 'vue'
 import emitter from '@renderer/utils/mitt'
 import type { ShallowRef } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
-import type { useRuntimeStore } from '@renderer/stores/runtime'
+import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
@@ -10,6 +10,7 @@ const normalizePath = (p: string | undefined | null) => (p || '').replace(/\//g,
 
 interface UseSongsAreaEventsParams {
   runtime: ReturnType<typeof useRuntimeStore>
+  songsAreaState: ISongsAreaPaneRuntimeState
   originalSongInfoArr: ShallowRef<ISongInfo[]>
   applyFiltersAndSorting: () => void
   openSongList: () => Promise<void>
@@ -19,6 +20,7 @@ interface UseSongsAreaEventsParams {
 export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   const {
     runtime,
+    songsAreaState,
     originalSongInfoArr,
     applyFiltersAndSorting,
     openSongList,
@@ -27,7 +29,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
 
   const onSongsOptimisticallyRemoved = (payload: { listUUID?: string; paths?: string[] }) => {
     const listUUID = payload?.listUUID
-    const currentListUUID = runtime.songsArea.songListUUID
+    const currentListUUID = songsAreaState.songListUUID
     if (listUUID && listUUID !== currentListUUID) return
     const pathsToRemove: string[] = Array.isArray(payload?.paths) ? payload.paths : []
     if (!pathsToRemove.length) return
@@ -45,10 +47,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     applyFiltersAndSorting()
 
     if (runtime.playingData.playingSongListUUID === currentListUUID) {
-      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+      runtime.playingData.playingSongListData = songsAreaState.songInfoArr
     }
 
-    runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+    songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
       (path) => !normalizedSet.has(normalizePath(path))
     )
     scheduleSweepCovers()
@@ -59,7 +61,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     items?: Array<{ song: ISongInfo; index: number }>
   }) => {
     const listUUID = payload?.listUUID
-    const currentListUUID = runtime.songsArea.songListUUID
+    const currentListUUID = songsAreaState.songListUUID
     if (listUUID && listUUID !== currentListUUID) return
     const items = Array.isArray(payload?.items) ? payload.items : []
     if (!items.length) return
@@ -111,7 +113,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     applyFiltersAndSorting()
 
     if (runtime.playingData.playingSongListUUID === currentListUUID) {
-      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+      runtime.playingData.playingSongListData = songsAreaState.songInfoArr
     }
 
     scheduleSweepCovers()
@@ -120,7 +122,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   const onSongsRemoved = (payload: { listUUID?: string; paths?: string[]; itemIds?: string[] }) => {
     const listUUID = payload?.listUUID
     const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
-    const currentListUUID = runtime.songsArea.songListUUID
+    const currentListUUID = songsAreaState.songListUUID
     const isMixtapeView = libraryUtils.getLibraryTreeByUUID(currentListUUID)?.type === 'mixtapeList'
 
     if (itemIds.length > 0) {
@@ -138,7 +140,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       applyFiltersAndSorting()
 
       if (runtime.playingData.playingSongListUUID === currentListUUID) {
-        runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+        runtime.playingData.playingSongListData = songsAreaState.songInfoArr
         if (
           runtime.playingData.playingSong &&
           idSet.has(runtime.playingData.playingSong.mixtapeItemId || '')
@@ -147,7 +149,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
         }
       }
 
-      runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+      songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
         (key) => !idSet.has(key)
       )
 
@@ -173,8 +175,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
 
     applyFiltersAndSorting()
 
-    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
+      runtime.playingData.playingSongListData = songsAreaState.songInfoArr
       if (
         runtime.playingData.playingSong &&
         normalizedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
@@ -183,7 +185,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       }
     }
 
-    runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+    songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
       (path) => !normalizedSet.has(normalizePath(path))
     )
 
@@ -191,7 +193,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   }
 
   const onSongsMovedByDrag = (movedSongPaths: string[]) => {
-    if (libraryUtils.getLibraryTreeByUUID(runtime.songsArea.songListUUID)?.type === 'mixtapeList') {
+    if (libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList') {
       return
     }
     if (!Array.isArray(movedSongPaths) || movedSongPaths.length === 0) return
@@ -205,8 +207,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     applyFiltersAndSorting()
     scheduleSweepCovers()
 
-    if (runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID) {
-      runtime.playingData.playingSongListData = runtime.songsArea.songInfoArr
+    if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
+      runtime.playingData.playingSongListData = songsAreaState.songInfoArr
       if (
         runtime.playingData.playingSong &&
         normalizedMovedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
@@ -215,13 +217,13 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       }
     }
 
-    runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+    songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
       (path) => !normalizedMovedSet.has(normalizePath(path))
     )
   }
 
   const onExternalPlaylistRefresh = () => {
-    if (runtime.songsArea.songListUUID !== EXTERNAL_PLAYLIST_UUID) return
+    if (songsAreaState.songListUUID !== EXTERNAL_PLAYLIST_UUID) return
     const songs = runtime.externalPlaylist.songs || []
     originalSongInfoArr.value = markRaw([...songs])
     applyFiltersAndSorting()
@@ -256,8 +258,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       scheduleApply()
     }
 
-    if (runtime.songsArea.songInfoArr.length > 0) {
-      runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) =>
+    if (songsAreaState.songInfoArr.length > 0) {
+      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
         normalizePath(item.filePath) === normalizedTargetPath ? { ...item, key: keyText } : item
       )
     }
@@ -305,8 +307,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       scheduleApply()
     }
 
-    if (runtime.songsArea.songInfoArr.length > 0) {
-      runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) =>
+    if (songsAreaState.songInfoArr.length > 0) {
+      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
         normalizePath(item.filePath) === normalizedTargetPath ? { ...item, bpm: bpmValue } : item
       )
     }
@@ -386,8 +388,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       scheduleApply()
     }
 
-    if (runtime.songsArea.songInfoArr.length > 0) {
-      runtime.songsArea.songInfoArr = runtime.songsArea.songInfoArr.map((item) =>
+    if (songsAreaState.songInfoArr.length > 0) {
+      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
         normalizePath(item.filePath) === normalizedTargetPath ? applyGridPatch(item) : item
       )
     }
@@ -414,6 +416,39 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
   }
 
+  const onImportFinished = async (_event: unknown, songListUUID: string, _summary: unknown) => {
+    if (songListUUID === songsAreaState.songListUUID) {
+      setTimeout(async () => {
+        await openSongList()
+        // 通知库侧刷新歌单曲目数量徽标
+        try {
+          emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
+        } catch {}
+      }, 1000)
+      return
+    }
+    try {
+      emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
+    } catch {}
+  }
+
+  const onAudioConvertDone = async (_event: unknown, payload?: { songListUUID?: string }) => {
+    const listUUID = payload?.songListUUID
+    if (!listUUID) return
+    if (listUUID === songsAreaState.songListUUID) {
+      setTimeout(async () => {
+        await openSongList()
+        try {
+          emitter.emit('playlistContentChanged', { uuids: [listUUID] })
+        } catch {}
+      }, 300)
+      return
+    }
+    try {
+      emitter.emit('playlistContentChanged', { uuids: [listUUID] })
+    } catch {}
+  }
+
   onMounted(() => {
     emitter.on('songsArea/optimistic-remove', onSongsOptimisticallyRemoved)
     emitter.on('songsArea/optimistic-restore', onSongsOptimisticallyRestored)
@@ -423,6 +458,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.on('song-bpm-updated', onSongBpmUpdated)
     window.electron.ipcRenderer.on('song-grid-updated', onSongGridUpdated)
+    window.electron.ipcRenderer.on('importFinished', onImportFinished)
+    window.electron.ipcRenderer.on('audio:convert:done', onAudioConvertDone)
   })
 
   onUnmounted(() => {
@@ -434,49 +471,15 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.removeListener('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.removeListener('song-bpm-updated', onSongBpmUpdated)
     window.electron.ipcRenderer.removeListener('song-grid-updated', onSongGridUpdated)
-  })
-
-  // 导入完成后重新打开歌单
-  window.electron.ipcRenderer.on('importFinished', async (event, songListUUID, _summary) => {
-    if (songListUUID === runtime.songsArea.songListUUID) {
-      setTimeout(async () => {
-        await openSongList()
-        // 通知库侧刷新歌单曲目数量徽标
-        try {
-          emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
-        } catch {}
-      }, 1000)
-    } else {
-      // 非当前打开歌单：也通知刷新数量（避免徽标不变）
-      try {
-        emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
-      } catch {}
-    }
-  })
-
-  // 转换完成后重新打开歌单
-  window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
-    const listUUID = payload?.songListUUID
-    if (!listUUID) return
-    if (listUUID === runtime.songsArea.songListUUID) {
-      setTimeout(async () => {
-        await openSongList()
-        try {
-          emitter.emit('playlistContentChanged', { uuids: [listUUID] })
-        } catch {}
-      }, 300)
-    } else {
-      try {
-        emitter.emit('playlistContentChanged', { uuids: [listUUID] })
-      } catch {}
-    }
+    window.electron.ipcRenderer.removeListener('importFinished', onImportFinished)
+    window.electron.ipcRenderer.removeListener('audio:convert:done', onAudioConvertDone)
   })
 
   // 切换歌单时刷新列表
   watch(
-    () => runtime.songsArea.songListUUID,
+    () => songsAreaState.songListUUID,
     async (newUUID) => {
-      runtime.songsArea.selectedSongFilePath.length = 0
+      songsAreaState.selectedSongFilePath.length = 0
       if (newUUID) {
         if (newUUID === EXTERNAL_PLAYLIST_UUID) {
           const songs = runtime.externalPlaylist.songs || []
@@ -487,8 +490,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
           await openSongList()
         }
       } else {
-        runtime.songsArea.songInfoArr = []
-        runtime.songsArea.totalSongCount = 0
+        songsAreaState.songInfoArr = []
+        songsAreaState.totalSongCount = 0
         originalSongInfoArr.value = []
       }
     }
@@ -498,11 +501,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   watch(
     () => runtime.playingData.playingSongListData,
     (newPlayingListData) => {
-      const currentSongsAreaListUUID = runtime.songsArea.songListUUID
+      const currentSongsAreaListUUID = songsAreaState.songListUUID
       const currentPlayingListUUID = runtime.playingData.playingSongListUUID
 
       if (currentSongsAreaListUUID && currentSongsAreaListUUID === currentPlayingListUUID) {
-        const songsInArea = runtime.songsArea.songInfoArr
+        const songsInArea = songsAreaState.songInfoArr
         if (!songsInArea || songsInArea.length === 0) return
 
         const areaFilePaths = new Set(songsInArea.map((s) => s.filePath))
@@ -520,7 +523,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
             (item) => !pathsToRemove.includes(item.filePath)
           )
           applyFiltersAndSorting()
-          runtime.songsArea.selectedSongFilePath = runtime.songsArea.selectedSongFilePath.filter(
+          songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
             (path) => !pathsToRemove.includes(path)
           )
         }

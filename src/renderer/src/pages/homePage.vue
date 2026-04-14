@@ -4,7 +4,12 @@ import libraryArea from './modules/libraryArea.vue'
 import pioneerDeviceLibraryArea from './modules/pioneerDeviceLibraryArea.vue'
 import songsArea from './modules/songsArea/songsArea.vue'
 import pioneerSongsArea from './modules/pioneerSongsArea.vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
+import {
+  type ISongsAreaPaneRuntimeState,
+  type LibrarySelection,
+  type SplitSongsAreaPaneKey,
+  useRuntimeStore
+} from '@renderer/stores/runtime'
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import songPlayer from './modules/songPlayer/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
@@ -15,6 +20,11 @@ import { appendExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylis
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import emitter from '@renderer/utils/mitt'
+import {
+  activateSongsAreaPane,
+  exitSongsAreaSplit,
+  getSongsAreaOppositePane
+} from '@renderer/utils/songsAreaSplit'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
@@ -22,6 +32,8 @@ const isHovered = ref(false)
 let hoverTimeout: NodeJS.Timeout
 const librarySwitching = ref(false)
 let librarySwitchTimer: ReturnType<typeof setTimeout> | null = null
+const suspendedSplitActivePane = ref<SplitSongsAreaPaneKey | ''>('')
+const suspendedSinglePaneState = ref<ISongsAreaPaneRuntimeState | null>(null)
 
 // 计算 dragBar 的 left 样式
 const dragBarLeft = computed(() => {
@@ -125,6 +137,7 @@ onUnmounted(() => {
 
 let librarySelected = ref('FilterLibrary')
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary'
+const splitPaneKeys: SplitSongsAreaPaneKey[] = ['left', 'right']
 const normalizeLibraryPath = (value: string) => (value || '').replace(/\\/g, '/')
 const isCoreLibraryName = (value: string): value is CoreLibraryName =>
   ['FilterLibrary', 'CuratedLibrary', 'MixtapeLibrary'].includes(value)
@@ -143,10 +156,96 @@ const isPlaylistUnderLibrary = (uuid: string, libraryName: CoreLibraryName): boo
   const prefix = `library/${libraryName}`
   return normalized === prefix || normalized.startsWith(`${prefix}/`)
 }
-const resolveStoredSongListUUID = (libraryName: CoreLibraryName): string => {
-  const candidate = runtime.lastSongListUUIDByLibrary[libraryName]
-  if (!candidate) return ''
-  return isPlaylistUnderLibrary(candidate, libraryName) ? candidate : ''
+const resolveLibrarySelectionBySongListUUID = (uuid: string): LibrarySelection | '' => {
+  if (!uuid) return ''
+  if (uuid === EXTERNAL_PLAYLIST_UUID) return 'ExternalPlaylist'
+  if (uuid === RECYCLE_BIN_UUID) return 'RecycleBin'
+  const dirPath = normalizeLibraryPath(libraryUtils.findDirPathByUuid(uuid))
+  if (dirPath === 'library/FilterLibrary' || dirPath.startsWith('library/FilterLibrary/')) {
+    return 'FilterLibrary'
+  }
+  if (dirPath === 'library/CuratedLibrary' || dirPath.startsWith('library/CuratedLibrary/')) {
+    return 'CuratedLibrary'
+  }
+  if (dirPath === 'library/MixtapeLibrary' || dirPath.startsWith('library/MixtapeLibrary/')) {
+    return 'MixtapeLibrary'
+  }
+  return ''
+}
+const resolveLibraryLabel = (libraryName: LibrarySelection | '') => {
+  switch (libraryName) {
+    case 'FilterLibrary':
+      return t('library.filter')
+    case 'CuratedLibrary':
+      return t('library.curated')
+    case 'MixtapeLibrary':
+      return t('library.mixtapeLibrary')
+    case 'ExternalPlaylist':
+      return t('library.externalPlaylist')
+    case 'RecycleBin':
+      return t('recycleBin.recycleBin')
+    default:
+      return ''
+  }
+}
+const resolveSongsPaneTitle = (pane: SplitSongsAreaPaneKey | 'single') => {
+  const paneState = runtime.songsAreaPanels.panes[pane]
+  const uuid = paneState.songListUUID
+  if (!uuid) return t('playlist.noPanePlaylist')
+  const libraryLabel = resolveLibraryLabel(resolveLibrarySelectionBySongListUUID(uuid))
+  const dirName = libraryUtils.getLibraryTreeByUUID(uuid)?.dirName || ''
+  if (!libraryLabel) return dirName
+  if (!dirName) return libraryLabel
+  return `${libraryLabel} / ${dirName}`
+}
+const syncLibrarySelectionByPane = (pane: SplitSongsAreaPaneKey | 'single') => {
+  const nextLibrary = resolveLibrarySelectionBySongListUUID(
+    runtime.songsAreaPanels.panes[pane].songListUUID
+  )
+  if (!nextLibrary || runtime.libraryAreaSelected === nextLibrary) return
+  runtime.libraryAreaSelected = nextLibrary
+}
+const cloneSongsAreaPaneState = (
+  state: ISongsAreaPaneRuntimeState
+): ISongsAreaPaneRuntimeState => ({
+  songListUUID: String(state.songListUUID || ''),
+  songInfoArr: Array.isArray(state.songInfoArr) ? [...state.songInfoArr] : [],
+  totalSongCount: Number(state.totalSongCount || 0),
+  selectedSongFilePath: Array.isArray(state.selectedSongFilePath)
+    ? [...state.selectedSongFilePath]
+    : [],
+  columnCacheByMode: Object.fromEntries(
+    Object.entries(state.columnCacheByMode || {}).map(([key, value]) => [
+      key,
+      Array.isArray(value) ? value.map((item) => ({ ...item })) : []
+    ])
+  ) as ISongsAreaPaneRuntimeState['columnCacheByMode']
+})
+const suspendSplitForSpecialLibrary = () => {
+  if (!runtime.songsAreaPanels.splitEnabled) return
+  const activePane = runtime.songsAreaPanels.activePane
+  suspendedSplitActivePane.value = activePane === 'right' ? 'right' : 'left'
+  runtime.songsAreaPanels.splitEnabled = false
+  runtime.setSongsAreaActivePane('single')
+}
+const suspendSinglePaneForSpecialLibrary = () => {
+  if (runtime.songsAreaPanels.splitEnabled) return
+  if (suspendedSinglePaneState.value) return
+  suspendedSinglePaneState.value = cloneSongsAreaPaneState(runtime.songsAreaPanels.panes.single)
+}
+const restoreSplitAfterSpecialLibraryIfNeeded = () => {
+  if (!suspendedSplitActivePane.value) return false
+  runtime.songsAreaPanels.splitEnabled = true
+  runtime.setSongsAreaActivePane(suspendedSplitActivePane.value)
+  suspendedSplitActivePane.value = ''
+  return true
+}
+const restoreSinglePaneAfterSpecialLibraryIfNeeded = () => {
+  if (!suspendedSinglePaneState.value) return false
+  runtime.assignSongsAreaPaneState('single', suspendedSinglePaneState.value)
+  runtime.setSongsAreaActivePane('single')
+  suspendedSinglePaneState.value = null
+  return true
 }
 
 watch(
@@ -164,37 +263,39 @@ watch(
   (val, oldVal) => {
     librarySelected.value = val
     if (val === 'ExternalPlaylist') {
+      if (runtime.songsAreaPanels.splitEnabled) {
+        suspendSplitForSpecialLibrary()
+      } else {
+        suspendSinglePaneForSpecialLibrary()
+      }
       if (runtime.songsArea.songListUUID !== EXTERNAL_PLAYLIST_UUID) {
         runtime.songsArea.songListUUID = EXTERNAL_PLAYLIST_UUID
       }
-    }
-    if (val === 'RecycleBin') {
+    } else if (val === 'RecycleBin') {
+      if (runtime.songsAreaPanels.splitEnabled) {
+        suspendSplitForSpecialLibrary()
+      } else {
+        suspendSinglePaneForSpecialLibrary()
+      }
       if (runtime.songsArea.songListUUID !== RECYCLE_BIN_UUID) {
         runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
       }
-    } else if (val === 'PioneerDeviceLibrary') {
-      if (runtime.songsArea.songListUUID) {
-        runtime.songsArea.songListUUID = ''
-      }
     } else if (isCoreLibraryName(val)) {
-      const storedUuid = resolveStoredSongListUUID(val)
-      const currentUuid = runtime.songsArea.songListUUID
-      const hasCurrent = isPlaylistUnderLibrary(currentUuid, val)
-      if (storedUuid) {
-        if (currentUuid !== storedUuid) {
-          runtime.songsArea.songListUUID = storedUuid
-        }
-      } else if (hasCurrent) {
-        runtime.lastSongListUUIDByLibrary[val] = currentUuid
-      } else if (!hasCurrent) {
-        if (
-          currentUuid === RECYCLE_BIN_UUID ||
-          currentUuid === EXTERNAL_PLAYLIST_UUID ||
-          currentUuid
-        ) {
-          runtime.songsArea.songListUUID = ''
-        }
+      if (restoreSplitAfterSpecialLibraryIfNeeded()) {
+        triggerLibrarySwitchAnimation(oldVal === undefined)
+        return
       }
+      if (restoreSinglePaneAfterSpecialLibraryIfNeeded()) {
+        triggerLibrarySwitchAnimation(oldVal === undefined)
+        return
+      }
+      if (runtime.songsAreaPanels.splitEnabled || !oldVal) {
+        triggerLibrarySwitchAnimation(oldVal === undefined)
+        return
+      }
+      // 单屏核心库切换只切左侧树，不再驱动歌曲列表切换
+    } else if (val === 'PioneerDeviceLibrary') {
+      // 保留当前歌曲列表面板状态，切回核心库时继续使用
     }
     triggerLibrarySwitchAnimation(oldVal === undefined)
   },
@@ -217,6 +318,30 @@ const isLibraryPanelHidden = computed(() => isExternalPlaylistView.value || isRe
 const showMainSongPlayer = computed(
   () => runtime.mainWindowBrowseMode !== 'horizontal' && Boolean(runtime.playingData.playingSong)
 )
+const isSongsAreaSplit = computed(
+  () => runtime.songsAreaPanels.splitEnabled && !isPioneerDeviceLibraryView.value
+)
+const showSingleSongsAreaHeader = computed(
+  () =>
+    !isSongsAreaSplit.value &&
+    !isPioneerDeviceLibraryView.value &&
+    Boolean(runtime.songsAreaPanels.panes.single.songListUUID)
+)
+const isSplitPaneActive = (pane: SplitSongsAreaPaneKey) =>
+  runtime.songsAreaPanels.activePane === pane
+const handleSplitPaneMouseDown = (pane: SplitSongsAreaPaneKey) => {
+  activateSongsAreaPane(runtime, pane)
+  syncLibrarySelectionByPane(pane)
+}
+const handleSplitPaneClose = (pane: SplitSongsAreaPaneKey) => {
+  const remainingPane = getSongsAreaOppositePane(pane)
+  exitSongsAreaSplit(runtime, remainingPane)
+  syncLibrarySelectionByPane('single')
+}
+const handleSinglePaneClose = () => {
+  runtime.clearSongsAreaPaneState('single')
+  runtime.setSongsAreaActivePane('single')
+}
 
 const clearMainPlayerPlaybackState = () => {
   const hasPlayingState =
@@ -249,6 +374,13 @@ const isInternalSongDrag = (e: DragEvent) => {
     e.dataTransfer?.types?.includes('application/x-song-drag')
   )
 }
+const isExternalFileDrag = (e: DragEvent) => {
+  const types = e.dataTransfer?.types
+  if (types?.includes('Files')) return true
+  const items = e.dataTransfer?.items
+  if (!items || items.length === 0) return false
+  return Array.from(items).some((item) => item.kind === 'file')
+}
 const dragover = (e: DragEvent) => {
   if (e.dataTransfer === null) {
     throw new Error(`e.dataTransfer error: ${JSON.stringify(e.dataTransfer)}`)
@@ -256,6 +388,11 @@ const dragover = (e: DragEvent) => {
 
   // 如果是歌曲拖拽，忽略处理
   if (isInternalSongDrag(e)) {
+    return
+  }
+  if (!isExternalFileDrag(e)) {
+    dragOverSongsArea.value = false
+    e.dataTransfer.dropEffect = 'none'
     return
   }
 
@@ -297,6 +434,10 @@ const dragleave = (e: DragEvent) => {
   if (isInternalSongDrag(e)) {
     return
   }
+  if (!isExternalFileDrag(e)) {
+    dragOverSongsArea.value = false
+    return
+  }
 
   if (isRecycleBinView.value) {
     dragOverSongsArea.value = false
@@ -331,6 +472,11 @@ const drop = async (e: DragEvent) => {
 
   // 如果是歌曲拖拽，忽略处理
   if (isInternalSongDrag(e)) {
+    return
+  }
+  if (!isExternalFileDrag(e)) {
+    dragOverSongsArea.value = false
+    e.dataTransfer.dropEffect = 'none'
     return
   }
 
@@ -491,7 +637,50 @@ const drop = async (e: DragEvent) => {
             v-if="isPioneerDeviceLibraryView"
             style="width: 100%; height: 100%; min-width: 0"
           />
-          <songsArea v-else style="width: 100%; height: 100%; min-width: 0" />
+          <div v-else-if="isSongsAreaSplit" class="splitSongsArea">
+            <div
+              v-for="pane in splitPaneKeys"
+              :key="pane"
+              class="splitSongsAreaPane"
+              :class="{ 'is-active': isSplitPaneActive(pane) }"
+              @mousedown.capture="handleSplitPaneMouseDown(pane)"
+            >
+              <div class="splitSongsAreaPaneHeader">
+                <div class="splitSongsAreaPaneTitle">{{ resolveSongsPaneTitle(pane) }}</div>
+                <button
+                  class="splitSongsAreaPaneClose"
+                  type="button"
+                  :title="t('common.close')"
+                  @click.stop="handleSplitPaneClose(pane)"
+                >
+                  <span aria-hidden="true">×</span>
+                </button>
+              </div>
+              <songsArea
+                :pane="pane"
+                :enable-preview-player="pane === 'left'"
+                style="flex: 1; min-width: 0; min-height: 0"
+              />
+            </div>
+          </div>
+          <div v-else class="singleSongsAreaShell">
+            <div v-if="showSingleSongsAreaHeader" class="splitSongsAreaPaneHeader">
+              <div class="splitSongsAreaPaneTitle">{{ resolveSongsPaneTitle('single') }}</div>
+              <button
+                class="splitSongsAreaPaneClose"
+                type="button"
+                :title="t('common.close')"
+                @click.stop="handleSinglePaneClose"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+            <songsArea
+              pane="single"
+              :enable-preview-player="true"
+              style="flex: 1; min-width: 0; min-height: 0"
+            />
+          </div>
         </div>
       </div>
       <div class="mainPlayerShell" :class="{ 'mainPlayerShell--visible': showMainSongPlayer }">
@@ -544,6 +733,75 @@ const drop = async (e: DragEvent) => {
 .libraryPanel {
   &.librarySwitching {
     animation: librarySwitchFade 220ms ease;
+  }
+}
+
+.splitSongsArea {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.singleSongsAreaShell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.splitSongsAreaPane {
+  flex: 1 1 50%;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 97%, var(--font-color) 3%);
+
+  &:last-child {
+    border-right: 0;
+  }
+
+  &.is-active {
+    background: color-mix(in srgb, var(--bg) 92%, var(--main-color) 8%);
+  }
+}
+
+.splitSongsAreaPaneHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 90%, var(--font-color) 10%);
+  flex-shrink: 0;
+}
+
+.splitSongsAreaPaneTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--font-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.splitSongsAreaPaneClose {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--font-color);
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:hover {
+    background: color-mix(in srgb, var(--main-color) 18%, transparent);
   }
 }
 
