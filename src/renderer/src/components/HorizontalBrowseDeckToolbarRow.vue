@@ -17,6 +17,7 @@ const props = defineProps<{
   loopDisabled: boolean
   songPresent: boolean
   readOnlySource: boolean
+  quantizeEnabled: boolean
   masterTempoEnabled: boolean
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
@@ -39,6 +40,7 @@ const emit = defineEmits<{
   (event: 'toggle-loop'): void
   (event: 'toggle-master-tempo'): void
   (event: 'reset-tempo'): void
+  (event: 'toggle-quantize'): void
   (event: 'toggle-metronome'): void
   (event: 'cycle-metronome-volume'): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
@@ -129,30 +131,47 @@ const emit = defineEmits<{
       </div>
     </div>
     <div class="overview__toolbar-actions">
-      <button
-        type="button"
-        class="overview__transport-btn"
-        :class="{ 'is-active': props.masterTempoEnabled }"
-        :disabled="!props.songPresent"
-        title="Master Tempo"
-        @click="emit('toggle-master-tempo')"
-      >
-        MT
-      </button>
-      <button
-        type="button"
-        class="overview__transport-btn"
-        :disabled="!props.songPresent"
-        title="Reset Tempo"
-        @click="emit('reset-tempo')"
-      >
-        RES
-      </button>
-      <HorizontalBrowseDeckMoveButton
-        :disabled="!props.songPresent"
-        :read-only-source="props.readOnlySource"
-        @select-target="emit('select-move-target', $event)"
-      />
+      <div class="overview__toolbar-group overview__toolbar-group--actions">
+        <button
+          type="button"
+          class="overview__transport-btn"
+          :class="{ 'is-active': props.masterTempoEnabled }"
+          :disabled="!props.songPresent"
+          title="Master Tempo"
+          @click="emit('toggle-master-tempo')"
+        >
+          MT
+        </button>
+        <button
+          type="button"
+          class="overview__transport-btn"
+          :disabled="!props.songPresent"
+          title="Reset Tempo"
+          @click="emit('reset-tempo')"
+        >
+          RES
+        </button>
+      </div>
+      <div class="overview__toolbar-group">
+        <button
+          type="button"
+          class="overview__transport-btn"
+          :class="{ 'is-active': props.quantizeEnabled }"
+          :disabled="!props.songPresent"
+          title="Quantize"
+          aria-label="Quantize"
+          @click="emit('toggle-quantize')"
+        >
+          Q
+        </button>
+      </div>
+      <div class="overview__toolbar-group">
+        <HorizontalBrowseDeckMoveButton
+          :disabled="!props.songPresent"
+          :read-only-source="props.readOnlySource"
+          @select-target="emit('select-move-target', $event)"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -185,8 +204,12 @@ const emit = defineEmits<{
 .overview__toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
   margin-left: auto;
+}
+
+.overview__toolbar-group--actions {
+  gap: 6px;
 }
 
 .overview__loop-control {

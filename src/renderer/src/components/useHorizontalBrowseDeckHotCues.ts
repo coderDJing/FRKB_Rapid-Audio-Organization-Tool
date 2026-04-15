@@ -4,7 +4,6 @@ import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot
 } from '@renderer/components/horizontalBrowseNativeTransport'
-import { resolveNearestHotCueGridSec } from '@shared/hotCues'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -17,11 +16,9 @@ type UseHorizontalBrowseDeckHotCuesParams = {
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   setDeckSong: (deck: DeckKey, song: ISongInfo | null) => void
   resolveDeckPlaying: (deck: DeckKey) => boolean
-  resolveDeckCurrentSeconds: (deck: DeckKey) => number
-  resolveDeckRenderCurrentSeconds: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
-  resolveDeckGridBpm: (deck: DeckKey) => number
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
+  resolveDeckMarkerPlacementSec: (deck: DeckKey) => number | null
   nativeTransport: {
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
@@ -33,11 +30,6 @@ type UseHorizontalBrowseDeckHotCuesParams = {
 }
 
 export const useHorizontalBrowseDeckHotCues = (params: UseHorizontalBrowseDeckHotCuesParams) => {
-  const resolveDeckHotCueAnchorSeconds = (deck: DeckKey) =>
-    params.resolveDeckPlaying(deck)
-      ? params.resolveDeckRenderCurrentSeconds(deck)
-      : params.resolveDeckCurrentSeconds(deck)
-
   const patchDeckSongHotCues = (deck: DeckKey, hotCues: ISongHotCue[]) => {
     const currentSong = params.resolveDeckSong(deck)
     if (!currentSong) return
@@ -73,12 +65,7 @@ export const useHorizontalBrowseDeckHotCues = (params: UseHorizontalBrowseDeckHo
       return
     }
 
-    const snappedSec = resolveNearestHotCueGridSec({
-      currentSec: resolveDeckHotCueAnchorSeconds(deck),
-      durationSec: params.resolveDeckDurationSeconds(deck),
-      bpm: params.resolveDeckGridBpm(deck),
-      firstBeatMs: song.firstBeatMs
-    })
+    const snappedSec = params.resolveDeckMarkerPlacementSec(deck)
     if (snappedSec === null) return
 
     const result = (await window.electron.ipcRenderer.invoke('song:set-hot-cue', {

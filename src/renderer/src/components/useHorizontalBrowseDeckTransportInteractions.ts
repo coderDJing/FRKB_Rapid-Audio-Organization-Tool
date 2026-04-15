@@ -78,7 +78,7 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
   resolveDeckDecoding: (deck: DeckKey) => boolean
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
   resolveDeckCuePointRef: (deck: DeckKey) => Ref<number>
-  resolveCuePointSec: (song: ISongInfo | null, currentSec: number, durationSec: number) => number
+  resolveDeckCuePlacementSec: (deck: DeckKey) => number
 }
 
 const CUE_POINT_TRIGGER_EPSILON_SEC = 0.05
@@ -466,12 +466,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
   const handleDeckSetCueFromCurrentPosition = async (deck: DeckKey) => {
     params.touchDeckInteraction(deck)
     const cueRef = params.resolveDeckCuePointRef(deck)
-    const song = params.resolveDeckSong(deck)
-    const nextCuePoint = params.resolveCuePointSec(
-      song,
-      params.resolveDeckCurrentSeconds(deck),
-      params.resolveDeckDurationSeconds(deck)
-    )
+    const nextCuePoint = params.resolveDeckCuePlacementSec(deck)
     cueRef.value = nextCuePoint
     await params.nativeTransport.seek(deck, nextCuePoint)
     params.syncDeckRenderState()

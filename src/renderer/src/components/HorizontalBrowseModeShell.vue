@@ -42,6 +42,7 @@ import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/components
 import { useHorizontalBrowseDeckTransportInteractions } from '@renderer/components/useHorizontalBrowseDeckTransportInteractions'
 import { useHorizontalBrowseDeckHotCues } from '@renderer/components/useHorizontalBrowseDeckHotCues'
 import { useHorizontalBrowseDeckMemoryCues } from '@renderer/components/useHorizontalBrowseDeckMemoryCues'
+import { useHorizontalBrowseDeckQuantize } from '@renderer/components/useHorizontalBrowseDeckQuantize'
 import { useHorizontalBrowseDeckSongSync } from '@renderer/components/useHorizontalBrowseDeckSongSync'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { isHarmonicMixCompatible } from '@shared/keyDisplay'
@@ -376,6 +377,20 @@ const syncDeckDefaultCue = (deck: DeckKey, song: ISongInfo | null, force = false
   if (!force && target.value > 0.000001) return
   target.value = resolveHorizontalBrowseDefaultCuePointSec(song, resolveDeckDurationSeconds(deck))
 }
+const {
+  deckQuantizeEnabled,
+  toggleDeckQuantize,
+  resolveDeckCuePlacementSec,
+  resolveDeckMarkerPlacementSec
+} = useHorizontalBrowseDeckQuantize({
+  resolveDeckPlaying,
+  resolveDeckCurrentSeconds,
+  resolveDeckRenderCurrentSeconds,
+  resolveDeckDurationSeconds,
+  resolveDeckGridBpm,
+  resolveDeckSong,
+  resolveCuePointSec: resolveHorizontalBrowseCuePointSec
+})
 const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   const toolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
   if (deckTempoInputDirty[deck]) {
@@ -562,7 +577,7 @@ const {
   resolveDeckDecoding,
   resolveTransportDeckSnapshot,
   resolveDeckCuePointRef,
-  resolveCuePointSec: resolveHorizontalBrowseCuePointSec
+  resolveDeckCuePlacementSec
 })
 
 const {
@@ -574,11 +589,9 @@ const {
   resolveDeckSong,
   setDeckSong,
   resolveDeckPlaying,
-  resolveDeckCurrentSeconds,
-  resolveDeckRenderCurrentSeconds,
   resolveDeckDurationSeconds,
-  resolveDeckGridBpm,
   resolveTransportDeckSnapshot,
+  resolveDeckMarkerPlacementSec,
   nativeTransport,
   commitDeckStatesToNative,
   syncDeckRenderState,
@@ -589,11 +602,8 @@ const { handleDeckMemoryCueCreate, handleDeckMemoryCueDelete, handleSongMemoryCu
   useHorizontalBrowseDeckMemoryCues({
     resolveDeckSong,
     setDeckSong,
-    resolveDeckPlaying,
-    resolveDeckCurrentSeconds,
-    resolveDeckRenderCurrentSeconds,
     resolveDeckDurationSeconds,
-    resolveDeckGridBpm
+    resolveDeckMarkerPlacementSec
   })
 
 const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
@@ -607,6 +617,11 @@ const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
 
 const resolveDetailRef = (deck: DeckKey) =>
   deck === 'top' ? topDetailRef.value : bottomDetailRef.value
+
+const handleDeckQuantizeToggle = (deck: DeckKey) => {
+  touchDeckInteraction(deck)
+  toggleDeckQuantize(deck)
+}
 
 const handleSharedDetailZoomChange = (payload: {
   value: number
@@ -940,6 +955,7 @@ onUnmounted(() => {
         :toolbar-state="resolveDeckToolbarState('top')"
         :loop-range="resolveDeckLoopRange('top')"
         :read-only-source="isDeckSongReadOnly('top')"
+        :quantize-enabled="deckQuantizeEnabled.top"
         :master-tempo-enabled="isDeckMasterTempoEnabled('top')"
         @region-drag-enter="handleRegionDragEnter"
         @region-drag-over="handleRegionDragOver"
@@ -965,6 +981,7 @@ onUnmounted(() => {
         @toggle-loop="handleDeckLoopToggle('top')"
         @toggle-master-tempo="handleDeckMasterTempoToggle('top')"
         @reset-tempo="resetDeckTempo('top')"
+        @toggle-quantize="handleDeckQuantizeToggle('top')"
         @select-move-target="openDeckMoveDialog('top', $event)"
       />
 
@@ -1043,6 +1060,7 @@ onUnmounted(() => {
         :toolbar-state="resolveDeckToolbarState('bottom')"
         :loop-range="resolveDeckLoopRange('bottom')"
         :read-only-source="isDeckSongReadOnly('bottom')"
+        :quantize-enabled="deckQuantizeEnabled.bottom"
         :master-tempo-enabled="isDeckMasterTempoEnabled('bottom')"
         @region-drag-enter="handleRegionDragEnter"
         @region-drag-over="handleRegionDragOver"
@@ -1068,6 +1086,7 @@ onUnmounted(() => {
         @toggle-loop="handleDeckLoopToggle('bottom')"
         @toggle-master-tempo="handleDeckMasterTempoToggle('bottom')"
         @reset-tempo="resetDeckTempo('bottom')"
+        @toggle-quantize="handleDeckQuantizeToggle('bottom')"
         @select-move-target="openDeckMoveDialog('bottom', $event)"
       />
       <HorizontalBrowseCuePanels

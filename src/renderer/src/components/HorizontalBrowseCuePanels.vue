@@ -190,6 +190,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   background: var(--shell-panel);
   box-sizing: border-box;
   overflow: hidden;
+  pointer-events: auto;
 }
 
 .cue-panel__memory-list {
@@ -201,6 +202,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   flex-direction: column;
   gap: 4px;
   overflow: auto;
+  pointer-events: auto;
 }
 
 .cue-panel__memory-row {
@@ -221,7 +223,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
+  text-align: left;
   color: var(--text);
 }
 
@@ -235,15 +237,18 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   font-size: 10px;
   line-height: 12px;
   cursor: pointer;
+  border-radius: 3px;
   opacity: 0.82;
   transition:
     color 0.14s ease,
-    opacity 0.14s ease;
+    opacity 0.14s ease,
+    background-color 0.14s ease;
 }
 
 .cue-panel__memory-delete:hover {
   color: #ffffff;
   opacity: 1;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
 .cue-panel__memory-empty {
@@ -258,6 +263,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  pointer-events: auto;
 }
 
 .cue-panel__hotcue-row {
@@ -340,15 +346,18 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   font-size: 10px;
   line-height: 12px;
   cursor: pointer;
+  border-radius: 3px;
   opacity: 0.82;
   transition:
     color 0.14s ease,
-    opacity 0.14s ease;
+    opacity 0.14s ease,
+    background-color 0.14s ease;
 }
 
 .cue-panel__hotcue-delete:hover {
   color: #ffffff;
   opacity: 1;
+  background: color-mix(in srgb, var(--cue-slot-color, var(--accent)) 18%, transparent);
 }
 
 .cue-panel__hotcue-delete-placeholder {

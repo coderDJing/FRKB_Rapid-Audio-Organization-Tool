@@ -44,6 +44,7 @@ const props = defineProps<{
   toolbarState: DeckToolbarState
   loopRange: HorizontalBrowseLoopRange | null
   readOnlySource: boolean
+  quantizeEnabled: boolean
   masterTempoEnabled: boolean
 }>()
 
@@ -70,6 +71,7 @@ const emit = defineEmits<{
   (event: 'toggle-loop'): void
   (event: 'toggle-master-tempo'): void
   (event: 'reset-tempo'): void
+  (event: 'toggle-quantize'): void
   (event: 'toggle-metronome'): void
   (event: 'cycle-metronome-volume'): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
@@ -137,6 +139,7 @@ const isTop = props.position === 'top'
         :loop-disabled="props.toolbarState.loopDisabled"
         :song-present="!!props.song"
         :read-only-source="props.readOnlySource"
+        :quantize-enabled="props.quantizeEnabled"
         :master-tempo-enabled="props.masterTempoEnabled"
         :metronome-enabled="props.toolbarState.metronomeEnabled"
         :metronome-volume-level="props.toolbarState.metronomeVolumeLevel"
@@ -156,6 +159,7 @@ const isTop = props.position === 'top'
         @toggle-loop="emit('toggle-loop')"
         @toggle-master-tempo="emit('toggle-master-tempo')"
         @reset-tempo="emit('reset-tempo')"
+        @toggle-quantize="emit('toggle-quantize')"
         @toggle-metronome="emit('toggle-metronome')"
         @cycle-metronome-volume="emit('cycle-metronome-volume')"
         @select-move-target="emit('select-move-target', $event)"

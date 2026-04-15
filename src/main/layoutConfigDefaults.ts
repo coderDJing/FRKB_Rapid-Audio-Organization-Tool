@@ -11,6 +11,11 @@ export const MAIN_WINDOW_SIZE_MIGRATIONS: MainWindowSizeMigration[] = [
     version: 1,
     minWidth: 1200,
     minHeight: 720
+  },
+  {
+    version: 2,
+    minWidth: 1260,
+    minHeight: 720
   }
 ]
 

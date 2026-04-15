@@ -1,7 +1,6 @@
 import type { ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import { mergeHorizontalBrowseSongWithMemoryCues } from '@renderer/components/horizontalBrowseShellSongs'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
-import { resolveNearestHotCueGridSec } from '@shared/hotCues'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -13,21 +12,13 @@ type SongMemoryCuePayload = {
 type UseHorizontalBrowseDeckMemoryCuesParams = {
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   setDeckSong: (deck: DeckKey, song: ISongInfo | null) => void
-  resolveDeckPlaying: (deck: DeckKey) => boolean
-  resolveDeckCurrentSeconds: (deck: DeckKey) => number
-  resolveDeckRenderCurrentSeconds: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
-  resolveDeckGridBpm: (deck: DeckKey) => number
+  resolveDeckMarkerPlacementSec: (deck: DeckKey) => number | null
 }
 
 export const useHorizontalBrowseDeckMemoryCues = (
   params: UseHorizontalBrowseDeckMemoryCuesParams
 ) => {
-  const resolveDeckMemoryCueAnchorSeconds = (deck: DeckKey) =>
-    params.resolveDeckPlaying(deck)
-      ? params.resolveDeckRenderCurrentSeconds(deck)
-      : params.resolveDeckCurrentSeconds(deck)
-
   const patchDeckSongMemoryCues = (deck: DeckKey, memoryCues: ISongMemoryCue[]) => {
     const currentSong = params.resolveDeckSong(deck)
     if (!currentSong) return
@@ -40,12 +31,7 @@ export const useHorizontalBrowseDeckMemoryCues = (
   const handleDeckMemoryCueCreate = async (deck: DeckKey) => {
     const song = params.resolveDeckSong(deck)
     if (!song) return
-    const snappedSec = resolveNearestHotCueGridSec({
-      currentSec: resolveDeckMemoryCueAnchorSeconds(deck),
-      durationSec: params.resolveDeckDurationSeconds(deck),
-      bpm: params.resolveDeckGridBpm(deck),
-      firstBeatMs: song.firstBeatMs
-    })
+    const snappedSec = params.resolveDeckMarkerPlacementSec(deck)
     if (snappedSec === null) return
     const result = (await window.electron.ipcRenderer.invoke('song:add-memory-cue', {
       filePath: song.filePath,
