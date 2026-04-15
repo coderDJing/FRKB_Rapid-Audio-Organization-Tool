@@ -4,6 +4,7 @@ const props = defineProps<{
   decoding?: boolean
   pendingPlay?: boolean
   pendingCue?: boolean
+  cueActive?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -18,7 +19,11 @@ const emit = defineEmits<{
     <button
       type="button"
       class="deck-button deck-button--cue"
-      :class="{ 'is-pending': props.pendingCue, 'is-decoding': props.decoding }"
+      :class="{
+        'is-active': props.cueActive,
+        'is-pending': props.pendingCue,
+        'is-decoding': props.decoding
+      }"
       @pointerdown="emit('cue-pointer-down', $event)"
       @click="emit('cue-click')"
     >
@@ -76,6 +81,16 @@ const emit = defineEmits<{
 
 .deck-button--cue {
   color: var(--shell-cue-accent, #d98921);
+}
+
+.deck-button--cue.is-active {
+  border-color: color-mix(
+    in srgb,
+    var(--shell-cue-accent, #d98921) 72%,
+    var(--shell-border, var(--border))
+  );
+  background: color-mix(in srgb, var(--shell-cue-accent, #d98921) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 18%, transparent);
 }
 
 .deck-button--play {

@@ -1788,20 +1788,37 @@ fn decode_with_ffmpeg(path: &Path) -> StdResult<DecodeAudioResult, String> {
   })
 }
 
-struct FfmpegPcmData {
-  samples_i16: Vec<i16>,
-  sample_rate: u32,
-  channels: u16,
-  total_frames: u64,
+pub(crate) struct FfmpegPcmData {
+  pub(crate) samples_i16: Vec<i16>,
+  pub(crate) sample_rate: u32,
+  pub(crate) channels: u16,
+  pub(crate) total_frames: u64,
 }
 
 fn ffmpeg_decode_to_i16(path: &Path) -> StdResult<FfmpegPcmData, String> {
+  ffmpeg_decode_to_i16_with_window(path, None, None)
+}
+
+pub(crate) fn ffmpeg_decode_to_i16_with_window(
+  path: &Path,
+  start_sec: Option<f64>,
+  max_duration_sec: Option<f64>,
+) -> StdResult<FfmpegPcmData, String> {
   let ffmpeg_path = get_ffmpeg_path()?;
-  let output = Command::new(ffmpeg_path)
-    .arg("-v")
-    .arg("error")
-    .arg("-i")
-    .arg(path)
+  let mut command = Command::new(ffmpeg_path);
+  command.arg("-v").arg("error");
+  if let Some(start_at) = start_sec {
+    if start_at.is_finite() && start_at > 0.0 {
+      command.arg("-ss").arg(format!("{start_at:.3}"));
+    }
+  }
+  command.arg("-i").arg(path);
+  if let Some(max_duration) = max_duration_sec {
+    if max_duration.is_finite() && max_duration > 0.0 {
+      command.arg("-t").arg(format!("{max_duration:.3}"));
+    }
+  }
+  let output = command
     .arg("-f")
     .arg("wav")
     .arg("-acodec")

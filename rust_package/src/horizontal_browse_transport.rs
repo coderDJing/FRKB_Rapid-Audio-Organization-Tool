@@ -20,6 +20,7 @@ struct DeckState {
   file_path: Option<String>,
   loaded_file_path: Option<String>,
   pending_decode_file_path: Option<String>,
+  pending_full_decode_file_path: Option<String>,
   title: Option<String>,
   bpm: Option<f64>,
   first_beat_ms: Option<f64>,
@@ -30,12 +31,19 @@ struct DeckState {
   playback_rate: f64,
   master_tempo_enabled: bool,
   decode_request_id: u64,
+  full_decode_request_id: u64,
   pcm_data: Vec<f32>,
+  pcm_start_sec: f64,
   sample_rate: u32,
   channels: u16,
   gain: f32,
   master_tempo_state: horizontal_browse_transport_audio::DeckMasterTempoState,
 }
+
+const HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC: f64 = 4.0;
+const HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC: f64 = 12.0;
+const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_THRESHOLD_SEC: f64 = 4.0;
+const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC: f64 = 2.0;
 
 impl Default for DeckState {
   fn default() -> Self {
@@ -43,6 +51,7 @@ impl Default for DeckState {
       file_path: None,
       loaded_file_path: None,
       pending_decode_file_path: None,
+      pending_full_decode_file_path: None,
       title: None,
       bpm: None,
       first_beat_ms: None,
@@ -53,7 +62,9 @@ impl Default for DeckState {
       playback_rate: 1.0,
       master_tempo_enabled: true,
       decode_request_id: 0,
+      full_decode_request_id: 0,
       pcm_data: Vec::new(),
+      pcm_start_sec: 0.0,
       sample_rate: 0,
       channels: 0,
       gain: 1.0,
@@ -97,6 +108,36 @@ impl Default for HorizontalBrowseTransportEngine {
 }
 
 impl HorizontalBrowseTransportEngine {
+  fn resolve_bootstrap_segment_start_sec(&self, deck: DeckId) -> f64 {
+    let deck_state = self.deck(deck);
+    deck_state
+      .current_sec
+      .max(0.0)
+      .min(deck_state.duration_sec.max(0.0))
+  }
+
+  fn resolve_loaded_segment_end_sec(&self, deck: DeckId) -> f64 {
+    let deck_state = self.deck(deck);
+    if deck_state.sample_rate == 0 || deck_state.channels == 0 {
+      return deck_state.pcm_start_sec;
+    }
+    let frame_count = deck_state.pcm_data.len() / deck_state.channels as usize;
+    deck_state.pcm_start_sec + frame_count as f64 / deck_state.sample_rate as f64
+  }
+
+  fn has_loaded_segment_covering(&self, deck: DeckId, target_sec: f64) -> bool {
+    let deck_state = self.deck(deck);
+    if deck_state.loaded_file_path.as_deref() != deck_state.file_path.as_deref() {
+      return false;
+    }
+    if deck_state.pcm_data.is_empty() || deck_state.sample_rate == 0 || deck_state.channels == 0 {
+      return false;
+    }
+    let safe_target_sec = target_sec.max(0.0);
+    safe_target_sec + 0.0001 >= deck_state.pcm_start_sec
+      && safe_target_sec < self.resolve_loaded_segment_end_sec(deck) - 0.0001
+  }
+
   fn auto_select_leader_from_playback(&mut self) {
     let top_playing = self.deck(DeckId::Top).playing;
     let bottom_playing = self.deck(DeckId::Bottom).playing;
@@ -132,17 +173,15 @@ impl HorizontalBrowseTransportEngine {
       let target = self.deck_mut(deck);
       target.loaded_file_path = None;
       target.pending_decode_file_path = None;
+      target.pending_full_decode_file_path = None;
       target.pcm_data.clear();
+      target.pcm_start_sec = 0.0;
       target.sample_rate = 0;
       target.channels = 0;
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
       return None;
     }
-    if self.deck(deck).loaded_file_path.as_deref() == Some(file_path.as_str())
-      && !self.deck(deck).pcm_data.is_empty()
-      && self.deck(deck).sample_rate > 0
-      && self.deck(deck).channels > 0
-    {
+    if self.has_loaded_segment_covering(deck, self.resolve_bootstrap_segment_start_sec(deck)) {
       return None;
     }
     if self.deck(deck).pending_decode_file_path.as_deref() == Some(file_path.as_str()) {
@@ -154,6 +193,7 @@ impl HorizontalBrowseTransportEngine {
     target.loaded_file_path = None;
     target.pending_decode_file_path = Some(file_path.clone());
     target.pcm_data.clear();
+    target.pcm_start_sec = 0.0;
     target.sample_rate = 0;
     target.channels = 0;
     horizontal_browse_transport_audio::reset_master_tempo_state(target);
@@ -161,7 +201,106 @@ impl HorizontalBrowseTransportEngine {
       deck,
       file_path,
       request_id,
+      start_sec: self.resolve_bootstrap_segment_start_sec(deck),
+      max_duration_sec: Some(HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC),
+      is_full_decode: false,
     })
+  }
+
+  fn prepare_full_decode_request(&mut self, deck: DeckId) -> Option<DecodeRequest> {
+    let file_path = self
+      .deck(deck)
+      .file_path
+      .as_ref()
+      .map(|value| value.trim().to_string())
+      .unwrap_or_default();
+    if file_path.is_empty() {
+      return None;
+    }
+    if self.deck(deck).pending_full_decode_file_path.as_deref() == Some(file_path.as_str()) {
+      return None;
+    }
+    let target = self.deck_mut(deck);
+    target.full_decode_request_id = target.full_decode_request_id.wrapping_add(1);
+    target.pending_full_decode_file_path = Some(file_path.clone());
+    Some(DecodeRequest {
+      deck,
+      file_path,
+      request_id: target.full_decode_request_id,
+      start_sec: 0.0,
+      max_duration_sec: None,
+      is_full_decode: true,
+    })
+  }
+
+  fn prepare_segment_decode_request(
+    &mut self,
+    deck: DeckId,
+    target_sec: f64,
+    max_duration_sec: f64,
+  ) -> Option<DecodeRequest> {
+    let file_path = self
+      .deck(deck)
+      .file_path
+      .as_ref()
+      .map(|value| value.trim().to_string())
+      .unwrap_or_default();
+    if file_path.is_empty() {
+      return None;
+    }
+    let clamped_target_sec = target_sec.max(0.0).min(self.deck(deck).duration_sec.max(0.0));
+    if self.has_loaded_segment_covering(deck, clamped_target_sec) {
+      return None;
+    }
+    let target = self.deck_mut(deck);
+    target.decode_request_id = target.decode_request_id.wrapping_add(1);
+    target.pending_decode_file_path = Some(file_path.clone());
+    Some(DecodeRequest {
+      deck,
+      file_path,
+      request_id: target.decode_request_id,
+      start_sec: clamped_target_sec,
+      max_duration_sec: Some(max_duration_sec),
+      is_full_decode: false,
+    })
+  }
+
+  fn maybe_prepare_followup_segment_decode_request(&mut self, deck: DeckId) -> Option<DecodeRequest> {
+    let deck_state = self.deck(deck);
+    let playing = deck_state.playing;
+    let pending_decode = deck_state.pending_decode_file_path.is_some();
+    let pcm_ready =
+      !deck_state.pcm_data.is_empty() && deck_state.sample_rate > 0 && deck_state.channels > 0;
+    let current_sec = deck_state.current_sec.max(0.0);
+    let duration_sec = deck_state.duration_sec.max(0.0);
+    if !playing {
+      return None;
+    }
+    if pending_decode {
+      return None;
+    }
+    if !pcm_ready {
+      return self.prepare_segment_decode_request(
+        deck,
+        current_sec,
+        HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC,
+      );
+    }
+    let loaded_end_sec = self.resolve_loaded_segment_end_sec(deck);
+    if loaded_end_sec >= duration_sec - 0.0001 {
+      return None;
+    }
+    if current_sec < loaded_end_sec - HORIZONTAL_BROWSE_SEGMENT_PREFETCH_THRESHOLD_SEC {
+      return None;
+    }
+    let next_start_sec = (loaded_end_sec - HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC)
+      .max(current_sec)
+      .min(duration_sec);
+    self.prepare_segment_decode_request(
+      deck,
+      next_start_sec,
+      HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC,
+    )
   }
 
   fn apply_decoded_audio(
@@ -172,6 +311,8 @@ impl HorizontalBrowseTransportEngine {
     samples: Vec<f32>,
     sample_rate: u32,
     channels: u16,
+    start_sec: f64,
+    fully_decoded: bool,
   ) {
     let current_state = self.deck(deck);
     let current_file_path = current_state
@@ -179,15 +320,25 @@ impl HorizontalBrowseTransportEngine {
       .as_ref()
       .map(|value| value.trim())
       .unwrap_or("");
-    if current_file_path != file_path || current_state.decode_request_id != request_id {
+    let request_matches = if fully_decoded {
+      current_state.full_decode_request_id == request_id
+    } else {
+      current_state.decode_request_id == request_id
+    };
+    if current_file_path != file_path || !request_matches {
       return;
     }
     let target = self.deck_mut(deck);
-    target.pending_decode_file_path = None;
     target.loaded_file_path = Some(file_path.to_string());
     target.pcm_data = samples;
+    target.pcm_start_sec = if fully_decoded { 0.0 } else { start_sec.max(0.0) };
     target.sample_rate = sample_rate;
     target.channels = channels;
+    if fully_decoded {
+      target.pending_full_decode_file_path = None;
+    } else {
+      target.pending_decode_file_path = None;
+    }
     horizontal_browse_transport_audio::reset_master_tempo_state(target);
   }
 
@@ -198,11 +349,16 @@ impl HorizontalBrowseTransportEngine {
       .as_ref()
       .map(|value| value.trim())
       .unwrap_or("");
-    if current_file_path != file_path || current_state.decode_request_id != request_id {
+    let full_decode_request_id = current_state.full_decode_request_id;
+    if current_file_path != file_path {
       return;
     }
     let target = self.deck_mut(deck);
-    target.pending_decode_file_path = None;
+    if full_decode_request_id == request_id {
+      target.pending_full_decode_file_path = None;
+    } else {
+      target.pending_decode_file_path = None;
+    }
   }
 
   fn ensure_output_stream(&mut self) -> napi::Result<()> {
@@ -316,6 +472,9 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn sample_deck(&mut self, deck: DeckId) -> (f32, f32) {
+    if let Some(request) = self.maybe_prepare_followup_segment_decode_request(deck) {
+      schedule_decode_request(request);
+    }
     let output_sample_rate = self.output_sample_rate.max(1) as f64;
     let target = self.deck_mut(deck);
     horizontal_browse_transport_audio::sample_deck(target, output_sample_rate)
@@ -343,12 +502,22 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn is_loaded(&self, deck: DeckId) -> bool {
-    self
-      .deck(deck)
+    let deck_state = self.deck(deck);
+    let file_path = deck_state
       .file_path
       .as_ref()
-      .map(|path| !path.trim().is_empty())
-      .unwrap_or(false)
+      .map(|path| path.trim())
+      .unwrap_or("");
+    let loaded_file_path = deck_state
+      .loaded_file_path
+      .as_ref()
+      .map(|path| path.trim())
+      .unwrap_or("");
+    !file_path.is_empty()
+      && file_path == loaded_file_path
+      && !deck_state.pcm_data.is_empty()
+      && deck_state.sample_rate > 0
+      && deck_state.channels > 0
   }
 
   fn set_sync_lock(&mut self, deck: DeckId, next: &'static str) {
@@ -595,7 +764,8 @@ impl HorizontalBrowseTransportEngine {
             .unwrap_or_default()
         }),
       loaded: self.is_loaded(deck),
-      decoding: deck_state.pending_decode_file_path.is_some(),
+      decoding: deck_state.pending_decode_file_path.is_some()
+        || deck_state.pending_full_decode_file_path.is_some(),
       playing: deck_state.playing,
       current_sec: derived.estimated_current_sec,
       duration_sec: deck_state.duration_sec,
@@ -713,26 +883,45 @@ impl HorizontalBrowseTransportEngine {
     self.refresh();
   }
 
-  fn set_playing(&mut self, deck: DeckId, now_ms: f64, playing: bool) {
+  fn set_playing(&mut self, deck: DeckId, now_ms: f64, playing: bool) -> Option<DecodeRequest> {
     self.last_now_ms = now_ms;
     self.sync_deck_to_now(deck, now_ms);
-    let target = self.deck_mut(deck);
-    target.playing = playing;
-    horizontal_browse_transport_audio::reset_master_tempo_state(target);
+    let current_sec = {
+      let target = self.deck_mut(deck);
+      target.playing = playing;
+      horizontal_browse_transport_audio::reset_master_tempo_state(target);
+      target.current_sec
+    };
+    let decode_request = if playing {
+      self.prepare_segment_decode_request(
+        deck,
+        current_sec,
+        HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC,
+      )
+    } else {
+      None
+    };
     self.refresh();
+    decode_request
   }
 
-  fn seek(&mut self, deck: DeckId, now_ms: f64, current_sec: f64) {
+  fn seek(&mut self, deck: DeckId, now_ms: f64, current_sec: f64) -> Option<DecodeRequest> {
     self.last_now_ms = now_ms;
-    let target = self.deck_mut(deck);
-    target.current_sec = if target.duration_sec.is_finite() && target.duration_sec > 0.0 {
-      current_sec.clamp(0.0, target.duration_sec)
-    } else {
-      current_sec.max(0.0)
+    let seek_sec = {
+      let target = self.deck_mut(deck);
+      target.current_sec = if target.duration_sec.is_finite() && target.duration_sec > 0.0 {
+        current_sec.clamp(0.0, target.duration_sec)
+      } else {
+        current_sec.max(0.0)
+      };
+      target.last_observed_at_ms = now_ms;
+      horizontal_browse_transport_audio::reset_master_tempo_state(target);
+      target.current_sec
     };
-    target.last_observed_at_ms = now_ms;
-    horizontal_browse_transport_audio::reset_master_tempo_state(target);
+    let decode_request =
+      self.prepare_segment_decode_request(deck, seek_sec, HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC);
     self.refresh();
+    decode_request
   }
 
   fn set_sync_enabled(&mut self, deck: DeckId, enabled: bool) {
@@ -814,9 +1003,45 @@ fn decode_transport_audio_file(file_path: &str) -> Option<(Vec<f32>, u32, u16)> 
   Some((samples, result.sample_rate, result.channels as u16))
 }
 
+fn decode_transport_audio_file_head(
+  file_path: &str,
+  start_sec: f64,
+  max_duration_sec: Option<f64>,
+) -> Option<(Vec<f32>, u32, u16)> {
+  let path = std::path::Path::new(file_path);
+  let ffmpeg_pcm =
+    crate::ffmpeg_decode_to_i16_with_window(
+      path,
+      Some(start_sec.max(0.0)),
+      Some(
+        max_duration_sec
+          .filter(|value| value.is_finite() && *value > 0.0)
+          .unwrap_or(HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC),
+      ),
+    )
+    .ok()?;
+  if ffmpeg_pcm.channels == 0 {
+    return None;
+  }
+  let samples = ffmpeg_pcm
+    .samples_i16
+    .iter()
+    .map(|sample| (*sample as f32) / 32768.0)
+    .collect::<Vec<f32>>();
+  Some((samples, ffmpeg_pcm.sample_rate, ffmpeg_pcm.channels))
+}
+
 fn schedule_decode_request(request: DecodeRequest) {
   thread::spawn(move || {
-    let decoded = decode_transport_audio_file(&request.file_path);
+    let decoded = if request.is_full_decode {
+      decode_transport_audio_file(&request.file_path)
+    } else {
+      decode_transport_audio_file_head(
+        &request.file_path,
+        request.start_sec,
+        request.max_duration_sec,
+      )
+    };
     let mut engine_guard = engine().lock();
     match decoded {
       Some((samples, sample_rate, channels)) => {
@@ -827,6 +1052,8 @@ fn schedule_decode_request(request: DecodeRequest) {
           samples,
           sample_rate,
           channels,
+          request.start_sec,
+          request.is_full_decode,
         );
       }
       None => {
@@ -835,6 +1062,37 @@ fn schedule_decode_request(request: DecodeRequest) {
     }
     engine_guard.refresh();
   });
+}
+
+fn execute_decode_request_sync(request: DecodeRequest) {
+  let decoded = if request.is_full_decode {
+    decode_transport_audio_file(&request.file_path)
+  } else {
+    decode_transport_audio_file_head(
+      &request.file_path,
+      request.start_sec,
+      request.max_duration_sec,
+    )
+  };
+  let mut engine_guard = engine().lock();
+  match decoded {
+    Some((samples, sample_rate, channels)) => {
+      engine_guard.apply_decoded_audio(
+        request.deck,
+        &request.file_path,
+        request.request_id,
+        samples,
+        sample_rate,
+        channels,
+        request.start_sec,
+        request.is_full_decode,
+      );
+    }
+    None => {
+      engine_guard.mark_decode_finished(request.deck, &request.file_path, request.request_id);
+    }
+  }
+  engine_guard.refresh();
 }
 
 static HORIZONTAL_BROWSE_TRANSPORT: OnceLock<Mutex<HorizontalBrowseTransportEngine>> =
@@ -874,14 +1132,18 @@ pub fn horizontal_browse_transport_set_deck_state(
     horizontal_browse_transport_audio::reset_master_tempo_state(target);
   }
   let decode_request = engine_guard.prepare_decode_request(deck_id);
+  let full_decode_request = engine_guard.prepare_full_decode_request(deck_id);
   let _ = engine_guard.ensure_output_stream();
   engine_guard.refresh();
-  let snapshot = engine_guard.snapshot(engine_guard.last_now_ms);
   drop(engine_guard);
   if let Some(request) = decode_request {
+    execute_decode_request_sync(request);
+  }
+  if let Some(request) = full_decode_request {
     schedule_decode_request(request);
   }
-  Ok(snapshot)
+  let engine_guard = engine().lock();
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
 #[napi]
@@ -926,17 +1188,25 @@ pub fn horizontal_browse_transport_set_state(
   }
   let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
   let bottom_decode_request = engine_guard.prepare_decode_request(DeckId::Bottom);
+  let top_full_decode_request = engine_guard.prepare_full_decode_request(DeckId::Top);
+  let bottom_full_decode_request = engine_guard.prepare_full_decode_request(DeckId::Bottom);
   let _ = engine_guard.ensure_output_stream();
   engine_guard.refresh();
-  let snapshot = engine_guard.snapshot(engine_guard.last_now_ms);
   drop(engine_guard);
   if let Some(request) = top_decode_request {
-    schedule_decode_request(request);
+    execute_decode_request_sync(request);
   }
   if let Some(request) = bottom_decode_request {
+    execute_decode_request_sync(request);
+  }
+  if let Some(request) = top_full_decode_request {
     schedule_decode_request(request);
   }
-  snapshot
+  if let Some(request) = bottom_full_decode_request {
+    schedule_decode_request(request);
+  }
+  let engine_guard = engine().lock();
+  engine_guard.snapshot(engine_guard.last_now_ms)
 }
 
 #[napi]
@@ -986,10 +1256,15 @@ pub fn horizontal_browse_transport_set_playing(
   playing: bool,
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
-  let mut engine = engine().lock();
-  let _ = engine.ensure_output_stream();
-  engine.set_playing(deck_id, now_ms, playing);
-  Ok(engine.snapshot(engine.last_now_ms))
+  let mut engine_guard = engine().lock();
+  let _ = engine_guard.ensure_output_stream();
+  let decode_request = engine_guard.set_playing(deck_id, now_ms, playing);
+  drop(engine_guard);
+  if let Some(request) = decode_request {
+    execute_decode_request_sync(request);
+  }
+  let engine_guard = engine().lock();
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
 #[napi]
@@ -999,9 +1274,14 @@ pub fn horizontal_browse_transport_seek(
   current_sec: f64,
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
-  let mut engine = engine().lock();
-  engine.seek(deck_id, now_ms, current_sec);
-  Ok(engine.snapshot(engine.last_now_ms))
+  let mut engine_guard = engine().lock();
+  let decode_request = engine_guard.seek(deck_id, now_ms, current_sec);
+  drop(engine_guard);
+  if let Some(request) = decode_request {
+    execute_decode_request_sync(request);
+  }
+  let engine_guard = engine().lock();
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
 #[napi]

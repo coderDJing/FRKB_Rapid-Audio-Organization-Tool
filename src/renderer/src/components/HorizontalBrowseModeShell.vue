@@ -352,6 +352,16 @@ const resolveDeckPlaybackRate = (deck: DeckKey) =>
   Number(resolveTransportDeckSnapshot(deck).playbackRate) || 1
 const topDeckUiPlaying = computed(() => resolveDeckPlaying('top'))
 const bottomDeckUiPlaying = computed(() => resolveDeckPlaying('bottom'))
+const topDeckCueActive = computed(
+  () => resolveDeckCuePreviewRuntimeState('top').active || deckPendingCuePreviewOnLoad.top
+)
+const bottomDeckCueActive = computed(
+  () => resolveDeckCuePreviewRuntimeState('bottom').active || deckPendingCuePreviewOnLoad.bottom
+)
+const topDeckPlayButtonActive = computed(() => topDeckUiPlaying.value && !topDeckCueActive.value)
+const bottomDeckPlayButtonActive = computed(
+  () => bottomDeckUiPlaying.value && !bottomDeckCueActive.value
+)
 const topDeckUiDecoding = computed(() => resolveDeckDecoding('top'))
 const bottomDeckUiDecoding = computed(() => resolveDeckDecoding('bottom'))
 const topDeckShouldDeferWaveformLoad = computed(
@@ -511,7 +521,7 @@ const assignSongToDeck = async (deck: DeckKey, song: ISongInfo) => {
   queueDeckSongPriorityAnalysis(deck, nextSong)
   syncDeckDefaultCue(deck, nextSong, true)
   const nowMs = performance.now()
-  void commitDeckStateToNative(deck, {
+  await commitDeckStateToNative(deck, {
     currentSec: 0,
     lastObservedAtMs: nowMs,
     durationSec: parseHorizontalBrowseDurationToSeconds(nextSong.duration),
@@ -910,10 +920,11 @@ onUnmounted(() => {
   <div class="horizontal-shell">
     <div class="controls">
       <HorizontalBrowseDeckButtons
-        :playing="topDeckUiPlaying"
+        :playing="topDeckPlayButtonActive"
         :decoding="topDeckUiDecoding"
         :pending-play="deckPendingPlayOnLoad.top"
         :pending-cue="deckPendingCuePreviewOnLoad.top"
+        :cue-active="topDeckCueActive"
         @cue-pointer-down="handleDeckCuePointerDown('top', $event)"
         @cue-click="handleDeckCueClick('top')"
         @play-toggle="handleDeckPlayPauseToggle('top')"
@@ -955,10 +966,11 @@ onUnmounted(() => {
       </div>
 
       <HorizontalBrowseDeckButtons
-        :playing="bottomDeckUiPlaying"
+        :playing="bottomDeckPlayButtonActive"
         :decoding="bottomDeckUiDecoding"
         :pending-play="deckPendingPlayOnLoad.bottom"
         :pending-cue="deckPendingCuePreviewOnLoad.bottom"
+        :cue-active="bottomDeckCueActive"
         @cue-pointer-down="handleDeckCuePointerDown('bottom', $event)"
         @cue-click="handleDeckCueClick('bottom')"
         @play-toggle="handleDeckPlayPauseToggle('bottom')"

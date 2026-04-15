@@ -686,6 +686,11 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       void handleDeckBackCue(deck)
       return false
     }
+    if (!params.resolveDeckLoaded(deck)) {
+      deckPendingCuePreviewOnLoad[deck] = true
+      void params.commitDeckStateToNative(deck)
+      return true
+    }
     if (!isDeckStoppedAtCuePoint(deck)) {
       void handleDeckSetCueFromCurrentPosition(deck)
       return false
