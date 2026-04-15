@@ -1,4 +1,6 @@
 import type { ISongInfo } from '../../../../types/globals'
+import { normalizeSongHotCues } from '@shared/hotCues'
+import { normalizeSongMemoryCues } from '@shared/memoryCues'
 
 type MixtapeSnapshotSongRaw = {
   id?: string | number | null
@@ -64,6 +66,8 @@ export const mapMixtapeSnapshotToSongInfo = (
     container: info?.container,
     key: info?.key,
     bpm: info?.bpm,
+    hotCues: normalizeSongHotCues(info?.hotCues),
+    memoryCues: normalizeSongMemoryCues(info?.memoryCues),
     firstBeatMs:
       typeof info?.firstBeatMs === 'number' && Number.isFinite(info.firstBeatMs)
         ? info.firstBeatMs

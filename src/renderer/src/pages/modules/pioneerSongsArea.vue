@@ -15,6 +15,7 @@ import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
+import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import {
   buildRekordboxSourceCacheKey,
   getCachedRekordboxPlaylistTracks,
@@ -45,6 +46,7 @@ const originalTracks = shallowRef<IPioneerPlaylistTrack[]>([])
 const visibleSongs = ref<ISongInfo[]>([])
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
+const lastLoggedSnapshot = ref('')
 const columnData = ref<ISongsAreaColumn[]>(
   buildSongsAreaDefaultColumns('default').map((column) =>
     column.key === 'index' ? { ...column, width: Math.max(column.width, 74) } : column
@@ -150,6 +152,58 @@ const originPathSnapshot = computed(() => {
   return playlistLabel ? `${driveLabel} / ${playlistLabel}` : driveLabel
 })
 
+const safeDebugValue = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => safeDebugValue(item))
+  }
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack
+    }
+  }
+  if (typeof value === 'object') {
+    const output: Record<string, unknown> = {}
+    for (const [key, entry] of Object.entries(value)) {
+      output[key] = safeDebugValue(entry)
+    }
+    return output
+  }
+  return String(value)
+}
+
+const emitPioneerSongsAreaLog = (event: string, payload?: Record<string, unknown>) => {
+  const message = `[pioneerSongsArea] ${JSON.stringify(
+    safeDebugValue({
+      event,
+      at: new Date().toISOString(),
+      sourceKind: selectedSourceKind.value || 'usb',
+      sourceKey: selectedSourceKey.value || '',
+      sourceRootPath: selectedSourceRootPath.value || '',
+      sourceName: selectedSourceName.value || '',
+      libraryType: selectedLibraryType.value || '',
+      playlistId: selectedPlaylistId.value || 0,
+      playlistName: selectedPlaylistNode.value?.name || '',
+      loading: loading.value,
+      originalTrackCount: originalTracks.value.length,
+      visibleSongCount: visibleSongs.value.length,
+      activeFilterCount: columnData.value.filter((col) => !!col.filterActive).length,
+      sortColumn: columnData.value.find((col) => col.order)?.key || '',
+      sortOrder: columnData.value.find((col) => col.order)?.order || '',
+      payload: payload || {}
+    })
+  )}`
+  try {
+    window.electron.ipcRenderer.send('outputLog', message)
+  } catch {}
+  console.error(message)
+}
+
 const getSongField = (song: ISongInfo, key: string): unknown => song[key as keyof ISongInfo]
 
 const pioneerSongMenuArr: IMenu[][] = [
@@ -178,6 +232,8 @@ const toSongInfo = (track: IPioneerPlaylistTrack): ISongInfo => ({
   container: track.container || undefined,
   key: track.key,
   bpm: track.bpm,
+  hotCues: Array.isArray(track.hotCues) ? track.hotCues.map((cue) => ({ ...cue })) : [],
+  memoryCues: Array.isArray(track.memoryCues) ? track.memoryCues.map((cue) => ({ ...cue })) : [],
   mixOrder: track.entryIndex,
   externalAnalyzePath: track.analyzePath || null,
   externalWaveformRootPath: selectedSourceRootPath.value || null,
@@ -240,7 +296,11 @@ const buildSongSnapshot = (filePath: string, song: ISongInfo) => {
     key: song.key,
     originalKey: song.key,
     bpm: song.bpm,
-    originalBpm: song.bpm
+    originalBpm: song.bpm,
+    firstBeatMs: song.firstBeatMs,
+    barBeatOffset: song.barBeatOffset,
+    hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
+    memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
   }
 }
 
@@ -304,8 +364,9 @@ const parseExcludeKeywords = (input: unknown): string[] => {
     .filter(Boolean)
 }
 
-const applyFiltersAndSorting = () => {
+const applyFiltersAndSorting = (reason = 'unspecified') => {
   let filtered = originalTracks.value.map((track) => toSongInfo(track))
+  const beforeCount = filtered.length
   for (const col of columnData.value) {
     if (!col.filterActive) continue
     if (col.filterType === 'text' && col.key) {
@@ -371,11 +432,38 @@ const applyFiltersAndSorting = () => {
   }
 
   visibleSongs.value = filtered
+  emitPioneerSongsAreaLog('apply-filters-and-sorting', {
+    reason,
+    beforeCount,
+    afterCount: filtered.length,
+    selectedRowCount: selectedRowKeys.value.length,
+    filters: columnData.value
+      .filter((col) => !!col.filterActive)
+      .map((col) => ({
+        key: col.key,
+        filterType: col.filterType || '',
+        filterOp: col.filterOp || '',
+        filterValue: col.filterValue || '',
+        filterExcludeValue: col.filterExcludeValue || '',
+        filterDuration: col.filterDuration || '',
+        filterNumber: col.filterNumber || ''
+      })),
+    firstOriginalTracks: originalTracks.value.slice(0, 5).map((track) => ({
+      rowKey: track.rowKey,
+      title: track.title,
+      filePath: track.filePath
+    })),
+    firstVisibleSongs: filtered.slice(0, 5).map((song) => ({
+      rowKey: song.mixtapeItemId || song.filePath,
+      title: song.title,
+      filePath: song.filePath
+    }))
+  })
 }
 
 const handleColumnsUpdate = (nextColumns: ISongsAreaColumn[]) => {
   columnData.value = nextColumns
-  applyFiltersAndSorting()
+  applyFiltersAndSorting('columns-updated')
   selectedRowKeys.value = []
 }
 
@@ -386,7 +474,7 @@ const handleColumnClick = (column: ISongsAreaColumn) => {
     const nextOrder = item.order === 'asc' ? 'desc' : item.order === 'desc' ? 'asc' : 'asc'
     return { ...item, order: nextOrder as 'asc' | 'desc' }
   })
-  applyFiltersAndSorting()
+  applyFiltersAndSorting('column-sort-click')
 }
 
 const isCurrentPlaylistLoadTarget = (sourceCacheKey: string, playlistId: number) =>
@@ -404,6 +492,11 @@ const fetchPlaylistTracks = async (params: {
   const { sourceCacheKey, playlistId, sourceKind, rootPath, libraryType, hasCachedTracks } = params
 
   try {
+    emitPioneerSongsAreaLog('fetch-playlist-tracks-start', {
+      requestToken,
+      hasCachedTracks,
+      sourceCacheKey
+    })
     const result =
       sourceKind === 'desktop'
         ? await window.electron.ipcRenderer.invoke(
@@ -418,17 +511,31 @@ const fetchPlaylistTracks = async (params: {
           )
     const tracks = Array.isArray(result?.tracks) ? result.tracks : []
     setCachedRekordboxPlaylistTracks(sourceCacheKey, playlistId, tracks)
+    emitPioneerSongsAreaLog('fetch-playlist-tracks-success', {
+      requestToken,
+      returnedTrackCount: tracks.length,
+      firstTracks: tracks.slice(0, 5).map((track: IPioneerPlaylistTrack) => ({
+        rowKey: track.rowKey,
+        title: track.title,
+        filePath: track.filePath
+      }))
+    })
 
     if (!isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
     if (requestToken !== playlistTracksRequestToken) return
 
     originalTracks.value = tracks
-    applyFiltersAndSorting()
+    applyFiltersAndSorting('fetch-playlist-tracks-success')
   } catch (error) {
     if (!isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
     if (requestToken !== playlistTracksRequestToken) return
 
     console.error('[pioneerSongsArea] load playlist tracks failed', error)
+    emitPioneerSongsAreaLog('fetch-playlist-tracks-failed', {
+      requestToken,
+      hasCachedTracks,
+      error
+    })
     if (!hasCachedTracks) {
       originalTracks.value = []
       visibleSongs.value = []
@@ -453,15 +560,25 @@ const loadPlaylistTracks = async () => {
     originalTracks.value = []
     visibleSongs.value = []
     selectedRowKeys.value = []
+    emitPioneerSongsAreaLog('load-playlist-tracks-reset-empty-selection', {
+      sourceCacheKey,
+      rootPath,
+      playlistId
+    })
     return
   }
 
   selectedRowKeys.value = []
 
   const cachedTracks = getCachedRekordboxPlaylistTracks(sourceCacheKey, playlistId)
+  emitPioneerSongsAreaLog('load-playlist-tracks-enter', {
+    sourceCacheKey,
+    hasCachedTracks: Boolean(cachedTracks),
+    cachedTrackCount: cachedTracks?.tracks?.length || 0
+  })
   if (cachedTracks) {
     originalTracks.value = cachedTracks.tracks
-    applyFiltersAndSorting()
+    applyFiltersAndSorting('load-playlist-tracks-cache-hit')
     loading.value = false
   } else {
     loading.value = true
@@ -491,6 +608,7 @@ const loadPlaylistTracks = async () => {
 watch(
   () => [selectedSourceRootPath.value, selectedPlaylistId.value, selectedSourceKind.value] as const,
   () => {
+    emitPioneerSongsAreaLog('source-or-playlist-changed')
     try {
       emitter.emit('waveform-preview:stop', { reason: 'switch' })
     } catch {}
@@ -519,7 +637,7 @@ watch(
 watch(
   () => runtime.setting.keyDisplayStyle,
   () => {
-    applyFiltersAndSorting()
+    applyFiltersAndSorting('key-display-style-changed')
   }
 )
 
@@ -685,7 +803,7 @@ const handleSelectSongListDialogConfirm = async (targetSongListUUID: string) => 
       await showErrorDialog(t('library.notExistOnDisk'))
       return
     }
-    await window.electron.ipcRenderer.invoke(
+    const copiedPaths = (await window.electron.ipcRenderer.invoke(
       'moveSongsToDir',
       selectedTracks.map((item) => item.filePath),
       targetDirPath,
@@ -693,6 +811,12 @@ const handleSelectSongListDialogConfirm = async (targetSongListUUID: string) => 
         mode: 'copy',
         curatedArtistNames: selectedTracks.map((item) => item.artist || '')
       }
+    )) as string[]
+    await copySongCueDefinitionsToTargets(
+      copiedPaths.map((targetFilePath, index) => ({
+        targetFilePath,
+        sourceSong: selectedTracks[index]
+      }))
     )
     emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
   } catch (error: unknown) {
@@ -734,6 +858,36 @@ const placeholderText = computed(() => {
   }
   return ''
 })
+
+watch(
+  () => placeholderText.value,
+  (value) => {
+    const snapshot = JSON.stringify({
+      placeholderText: value,
+      loading: loading.value,
+      selectedPlaylistId: selectedPlaylistId.value,
+      originalTrackCount: originalTracks.value.length,
+      visibleSongCount: visibleSongs.value.length,
+      activeFilters: columnData.value.filter((col) => !!col.filterActive).map((col) => col.key)
+    })
+    if (snapshot === lastLoggedSnapshot.value) return
+    lastLoggedSnapshot.value = snapshot
+    emitPioneerSongsAreaLog('placeholder-text-changed', {
+      placeholderText: value,
+      firstOriginalTracks: originalTracks.value.slice(0, 5).map((track) => ({
+        rowKey: track.rowKey,
+        title: track.title,
+        filePath: track.filePath
+      })),
+      firstVisibleSongs: visibleSongs.value.slice(0, 5).map((song) => ({
+        rowKey: song.mixtapeItemId || song.filePath,
+        title: song.title,
+        filePath: song.filePath
+      }))
+    })
+  },
+  { immediate: true }
+)
 </script>
 
 <template>

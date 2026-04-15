@@ -8,12 +8,31 @@ export const HOT_CUE_SLOT_COLORS = [
   '#9b51e0',
   '#eb5757',
   '#f2994a',
-  '#f2c94c',
+  '#ff6b9a',
   '#27ae60',
   '#56ccf2'
 ] as const
+export const REKORDBOX_DEFAULT_HOT_CUE_COLOR = '#30d26e'
+export const REKORDBOX_LOOP_HOT_CUE_COLOR = '#f2c94c'
 
+const HOT_CUE_EPSILON_SEC = 0.0001
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+const normalizeCueText = (value: unknown) => {
+  const text = String(value || '').trim()
+  return text || undefined
+}
+const normalizeCueColor = (value: unknown) => {
+  const text = String(value || '').trim()
+  return text || undefined
+}
+const normalizeCueSource = (value: unknown) => {
+  const text = String(value || '').trim()
+  return text || undefined
+}
+const normalizeCueOrder = (value: unknown) => {
+  const numeric = Number(value)
+  return Number.isInteger(numeric) && numeric >= 0 ? numeric : undefined
+}
 
 export const resolveSongHotCueLabel = (slot: number) =>
   HOT_CUE_SLOT_LABELS[clampNumber(Math.floor(Number(slot) || 0), 0, HOT_CUE_SLOT_COUNT - 1)] || ''
@@ -21,6 +40,17 @@ export const resolveSongHotCueLabel = (slot: number) =>
 export const resolveSongHotCueColor = (slot: number) =>
   HOT_CUE_SLOT_COLORS[clampNumber(Math.floor(Number(slot) || 0), 0, HOT_CUE_SLOT_COUNT - 1)] ||
   HOT_CUE_SLOT_COLORS[0]
+
+export const resolveSongHotCueDisplayLabel = (cue: ISongHotCue) =>
+  normalizeCueText(cue?.label) || resolveSongHotCueLabel(cue?.slot ?? 0)
+
+export const resolveSongHotCueDisplayColor = (cue: ISongHotCue) =>
+  Boolean(cue?.isLoop)
+    ? REKORDBOX_LOOP_HOT_CUE_COLOR
+    : normalizeCueColor(cue?.color) ||
+      (normalizeCueSource(cue?.source) === 'rekordbox'
+        ? REKORDBOX_DEFAULT_HOT_CUE_COLOR
+        : resolveSongHotCueColor(cue?.slot ?? 0))
 
 export const normalizeSongHotCueSlot = (value: unknown) => {
   const numeric = Number(value)
@@ -38,20 +68,47 @@ export const normalizeSongHotCueSec = (value: unknown, durationSec?: number) => 
   return Number(bounded.toFixed(3))
 }
 
+const buildNormalizedSongHotCue = (value: unknown, durationSec?: number): ISongHotCue | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const item = value as {
+    slot?: unknown
+    sec?: unknown
+    label?: unknown
+    comment?: unknown
+    colorIndex?: unknown
+    colorName?: unknown
+    color?: unknown
+    isLoop?: unknown
+    loopEndSec?: unknown
+    source?: unknown
+  }
+  const slot = normalizeSongHotCueSlot(item.slot)
+  const sec = normalizeSongHotCueSec(item.sec, durationSec)
+  if (slot === null || sec === null) return null
+  const loopEndSec = normalizeSongHotCueSec(item.loopEndSec, durationSec)
+  const isLoop =
+    Boolean(item.isLoop) && loopEndSec !== null && loopEndSec > sec + HOT_CUE_EPSILON_SEC
+  return {
+    slot,
+    sec,
+    label: normalizeCueText(item.label) || resolveSongHotCueLabel(slot),
+    comment: normalizeCueText(item.comment),
+    colorIndex: normalizeCueOrder(item.colorIndex),
+    colorName: normalizeCueText(item.colorName),
+    color: normalizeCueColor(item.color),
+    isLoop,
+    loopEndSec: isLoop ? (loopEndSec ?? undefined) : undefined,
+    source: normalizeCueSource(item.source)
+  }
+}
+
 export const normalizeSongHotCues = (value: unknown, durationSec?: number): ISongHotCue[] => {
   if (!Array.isArray(value)) return []
   const normalizedBySlot = new Map<number, ISongHotCue>()
   for (const item of value) {
-    const slot =
-      item && typeof item === 'object' && !Array.isArray(item)
-        ? normalizeSongHotCueSlot((item as { slot?: unknown }).slot)
-        : null
-    const sec =
-      item && typeof item === 'object' && !Array.isArray(item)
-        ? normalizeSongHotCueSec((item as { sec?: unknown }).sec, durationSec)
-        : null
-    if (slot === null || sec === null) continue
-    normalizedBySlot.set(slot, { slot, sec })
+    const normalized = buildNormalizedSongHotCue(item, durationSec)
+    if (!normalized) continue
+    normalizedBySlot.set(normalized.slot, normalized)
   }
   return Array.from(normalizedBySlot.values()).sort((left, right) => left.slot - right.slot)
 }
@@ -72,10 +129,62 @@ export const upsertSongHotCue = (
   }
   const next = normalizeSongHotCues(value, durationSec)
   const nextIndex = next.findIndex((item) => item.slot === normalizedSlot)
+  const existing = nextIndex >= 0 ? next[nextIndex] : null
+  const nextCue: ISongHotCue = {
+    slot: normalizedSlot,
+    sec: normalizedSec,
+    label: existing?.label || resolveSongHotCueLabel(normalizedSlot),
+    comment: existing?.comment,
+    colorIndex: existing?.colorIndex,
+    colorName: existing?.colorName,
+    color: existing?.color,
+    isLoop: false,
+    loopEndSec: undefined,
+    source: existing?.source
+  }
   if (nextIndex >= 0) {
-    next[nextIndex] = { slot: normalizedSlot, sec: normalizedSec }
+    next[nextIndex] = nextCue
   } else {
-    next.push({ slot: normalizedSlot, sec: normalizedSec })
+    next.push(nextCue)
+  }
+  return next.sort((left, right) => left.slot - right.slot)
+}
+
+export const upsertSongHotCueDefinition = (
+  value: unknown,
+  input: Partial<ISongHotCue> & { slot?: unknown; sec?: unknown },
+  durationSec?: number
+) => {
+  const normalizedSlot = normalizeSongHotCueSlot(input?.slot)
+  const normalizedSec = normalizeSongHotCueSec(input?.sec, durationSec)
+  if (normalizedSlot === null || normalizedSec === null) {
+    return normalizeSongHotCues(value, durationSec)
+  }
+  const next = normalizeSongHotCues(value, durationSec)
+  const nextIndex = next.findIndex((item) => item.slot === normalizedSlot)
+  const existing = nextIndex >= 0 ? next[nextIndex] : null
+  const normalizedLoopEndSec = normalizeSongHotCueSec(input?.loopEndSec, durationSec)
+  const isLoop =
+    Boolean(input?.isLoop) &&
+    normalizedLoopEndSec !== null &&
+    normalizedLoopEndSec > normalizedSec + HOT_CUE_EPSILON_SEC
+  const nextCue: ISongHotCue = {
+    slot: normalizedSlot,
+    sec: normalizedSec,
+    label:
+      normalizeCueText(input?.label) || existing?.label || resolveSongHotCueLabel(normalizedSlot),
+    comment: normalizeCueText(input?.comment) ?? existing?.comment,
+    colorIndex: normalizeCueOrder(input?.colorIndex) ?? existing?.colorIndex,
+    colorName: normalizeCueText(input?.colorName) ?? existing?.colorName,
+    color: normalizeCueColor(input?.color) ?? existing?.color,
+    isLoop,
+    loopEndSec: isLoop ? (normalizedLoopEndSec ?? undefined) : undefined,
+    source: normalizeCueSource(input?.source) ?? existing?.source
+  }
+  if (nextIndex >= 0) {
+    next[nextIndex] = nextCue
+  } else {
+    next.push(nextCue)
   }
   return next.sort((left, right) => left.slot - right.slot)
 }
@@ -92,7 +201,19 @@ export const areSongHotCuesEqual = (left: unknown, right: unknown, durationSec?:
   if (normalizedLeft.length !== normalizedRight.length) return false
   return normalizedLeft.every((item, index) => {
     const next = normalizedRight[index]
-    return !!next && next.slot === item.slot && Math.abs(next.sec - item.sec) <= 0.0001
+    return (
+      !!next &&
+      next.slot === item.slot &&
+      Math.abs(next.sec - item.sec) <= HOT_CUE_EPSILON_SEC &&
+      Math.abs((next.loopEndSec || 0) - (item.loopEndSec || 0)) <= HOT_CUE_EPSILON_SEC &&
+      Boolean(next.isLoop) === Boolean(item.isLoop) &&
+      (next.label || '') === (item.label || '') &&
+      (next.comment || '') === (item.comment || '') &&
+      (next.color || '') === (item.color || '') &&
+      (next.colorName || '') === (item.colorName || '') &&
+      Number(next.colorIndex ?? -1) === Number(item.colorIndex ?? -1) &&
+      (next.source || '') === (item.source || '')
+    )
   })
 }
 

@@ -1,5 +1,5 @@
 import { reactive, watch, type Ref } from 'vue'
-import type { ISongInfo } from 'src/types/globals'
+import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot
@@ -148,6 +148,8 @@ const resolveLoopBeatValueIndex = (value: number) => {
 export const useHorizontalBrowseDeckTransportInteractions = (
   params: UseHorizontalBrowseDeckTransportInteractionsParams
 ) => {
+  type DeckStoredCueDefinition = Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec'>
+
   const deckCuePreviewState = reactive<Record<DeckKey, DeckCuePreviewState>>({
     top: createDefaultDeckCuePreviewState(),
     bottom: createDefaultDeckCuePreviewState()
@@ -157,6 +159,10 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     bottom: createDefaultDeckWaveformDragState()
   })
   const deckPendingPlayOnLoad = reactive<Record<DeckKey, boolean>>({
+    top: false,
+    bottom: false
+  })
+  const deckPendingCuePreviewOnLoad = reactive<Record<DeckKey, boolean>>({
     top: false,
     bottom: false
   })
@@ -258,6 +264,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       deactivateDeckLoop(deck)
       return
     }
+    params.resolveDeckCuePointRef(deck).value = loopRange.startSec
     const currentSec = resolveDeckLoopAnchorSeconds(deck)
     const hasReachedLaterHalf =
       params.resolveDeckPlaying(deck) &&
@@ -307,6 +314,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       deactivateDeckLoop(deck)
       return
     }
+    params.resolveDeckCuePointRef(deck).value = loopRange.startSec
     if (
       anchorSec < loopRange.startSec + LOOP_POSITION_EPSILON_SEC ||
       anchorSec >= loopRange.endSec - LOOP_END_EPSILON_SEC
@@ -472,6 +480,97 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     params.syncDeckRenderState()
   }
 
+  const buildDeckStoredCueDefinition = (deck: DeckKey): DeckStoredCueDefinition | null => {
+    const cueSec = Number(params.resolveDeckCuePointRef(deck).value)
+    if (!Number.isFinite(cueSec) || cueSec < 0) return null
+    const loopRange = resolveDeckLoopRange(deck)
+    if (loopRange) {
+      return {
+        sec: loopRange.startSec,
+        isLoop: true,
+        loopEndSec: loopRange.endSec
+      }
+    }
+    return {
+      sec: cueSec,
+      isLoop: false,
+      loopEndSec: undefined
+    }
+  }
+
+  const resolveDeckStoredLoopState = (deck: DeckKey, startSec: number, endSec: number) => {
+    const grid = resolveDeckLoopGridSnapshot(deck)
+    if (!grid) return null
+    const durationSec = endSec - startSec
+    if (!Number.isFinite(durationSec) || durationSec <= LOOP_POSITION_EPSILON_SEC) return null
+    const startBeatIndex = Math.round((startSec - grid.firstBeatSec) / grid.beatSec)
+    if (!Number.isFinite(startBeatIndex)) return null
+    let beatValue = durationSec / grid.beatSec
+    if (!Number.isFinite(beatValue) || beatValue <= 0) return null
+    const nearest = LOOP_BEAT_VALUES.reduce((best, candidate) =>
+      Math.abs(candidate - beatValue) < Math.abs(best - beatValue) ? candidate : best
+    )
+    beatValue = nearest
+    return {
+      startBeatIndex,
+      beatValue
+    }
+  }
+
+  const applyDeckStoredCueDefinition = (
+    deck: DeckKey,
+    cue: DeckStoredCueDefinition | Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec'>
+  ) => {
+    const cueSec = Math.max(0, Number(cue?.sec) || 0)
+    params.resolveDeckCuePointRef(deck).value = cueSec
+    const loopEndSec = Number(cue?.loopEndSec)
+    const isLoop =
+      Boolean(cue?.isLoop) &&
+      Number.isFinite(loopEndSec) &&
+      loopEndSec > cueSec + LOOP_POSITION_EPSILON_SEC
+    if (!isLoop) {
+      deactivateDeckLoop(deck)
+      return null
+    }
+    const loopState = resolveDeckStoredLoopState(deck, cueSec, loopEndSec)
+    if (!loopState) {
+      deactivateDeckLoop(deck)
+      return null
+    }
+    deckLoopState[deck].active = true
+    deckLoopState[deck].startBeatIndex = loopState.startBeatIndex
+    deckLoopState[deck].beatValue = loopState.beatValue
+    deckLoopState[deck].requestToken += 1
+    deckLoopState[deck].seekPending = false
+    return resolveDeckLoopRange(deck)
+  }
+
+  const handleDeckMemoryCueRecall = async (
+    deck: DeckKey,
+    cue: Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec'>
+  ) => {
+    params.touchDeckInteraction(deck)
+    applyDeckStoredCueDefinition(deck, cue)
+    await params.nativeTransport.setPlaying(deck, false)
+    await params.nativeTransport.seek(deck, Math.max(0, Number(cue?.sec) || 0))
+    params.syncDeckRenderState()
+  }
+
+  const handleDeckHotCueRecall = async (
+    deck: DeckKey,
+    cue: Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec'>
+  ) => {
+    params.touchDeckInteraction(deck)
+    const loopRange = applyDeckStoredCueDefinition(deck, cue)
+    await params.nativeTransport.seek(deck, Math.max(0, Number(cue?.sec) || 0))
+    if (params.resolveTransportDeckSnapshot(deck).syncEnabled && !loopRange) {
+      await params.commitDeckStatesToNative()
+      await params.nativeTransport.beatsync(deck)
+    }
+    await params.nativeTransport.setPlaying(deck, true)
+    params.syncDeckRenderState()
+  }
+
   const startDeckCuePreview = (deck: DeckKey, pointerId: number) => {
     params.touchDeckInteraction(deck)
     const cuePreviewState = deckCuePreviewState[deck]
@@ -540,6 +639,8 @@ export const useHorizontalBrowseDeckTransportInteractions = (
   const handleWindowDeckCuePointerUp = (event: PointerEvent) => {
     stopDeckCuePreview('top', event.pointerId)
     stopDeckCuePreview('bottom', event.pointerId)
+    deckPendingCuePreviewOnLoad.top = false
+    deckPendingCuePreviewOnLoad.bottom = false
     clearDeckCueClickSuppressSoon()
   }
 
@@ -551,6 +652,11 @@ export const useHorizontalBrowseDeckTransportInteractions = (
 
     if (params.resolveDeckPlaying(deck)) {
       void handleDeckBackCue(deck)
+      return
+    }
+    if (!params.resolveDeckLoaded(deck)) {
+      deckPendingCuePreviewOnLoad[deck] = true
+      void params.commitDeckStateToNative(deck)
       return
     }
     if (isDeckStoppedAtCuePoint(deck)) {
@@ -630,6 +736,16 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     void handleDeckPlayPauseToggle(deck)
   }
 
+  const maybeResumePendingCuePreview = (deck: DeckKey, loaded: boolean) => {
+    if (!deckPendingCuePreviewOnLoad[deck] || !loaded) return
+    deckPendingCuePreviewOnLoad[deck] = false
+    if (!isDeckStoppedAtCuePoint(deck)) {
+      void handleDeckSetCueFromCurrentPosition(deck)
+      return
+    }
+    startDeckCuePreview(deck, -1)
+  }
+
   watch(
     () =>
       [
@@ -641,6 +757,8 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     ([topLoaded, topDecoding, bottomLoaded, bottomDecoding]) => {
       maybeResumePendingPlay('top', topLoaded, topDecoding)
       maybeResumePendingPlay('bottom', bottomLoaded, bottomDecoding)
+      maybeResumePendingCuePreview('top', topLoaded)
+      maybeResumePendingCuePreview('bottom', bottomLoaded)
     }
   )
 
@@ -653,17 +771,24 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     ([topFilePath, bottomFilePath], [previousTopFilePath, previousBottomFilePath]) => {
       if (topFilePath !== previousTopFilePath) {
         deactivateDeckLoop('top')
-        deckPendingPlayOnLoad.top = false
+        if (!topFilePath) {
+          deckPendingPlayOnLoad.top = false
+          deckPendingCuePreviewOnLoad.top = false
+        }
       }
       if (bottomFilePath !== previousBottomFilePath) {
         deactivateDeckLoop('bottom')
-        deckPendingPlayOnLoad.bottom = false
+        if (!bottomFilePath) {
+          deckPendingPlayOnLoad.bottom = false
+          deckPendingCuePreviewOnLoad.bottom = false
+        }
       }
     }
   )
 
   return {
     deckPendingPlayOnLoad,
+    deckPendingCuePreviewOnLoad,
     suppressDeckCueClick,
     isDeckWaveformDragging: (deck: DeckKey) => deckWaveformDragState[deck].active,
     resolveDeckCuePreviewRuntimeState: (deck: DeckKey) => deckCuePreviewState[deck],
@@ -682,6 +807,9 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     handleDeckSeekPercent,
     handleDeckBackCue,
     handleDeckSetCueFromCurrentPosition,
+    buildDeckStoredCueDefinition,
+    handleDeckMemoryCueRecall,
+    handleDeckHotCueRecall,
     stopAllDeckCuePreview,
     handleWindowDeckCuePointerUp,
     handleDeckCuePointerDown,

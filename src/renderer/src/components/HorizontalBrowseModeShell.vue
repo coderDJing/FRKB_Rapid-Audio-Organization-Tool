@@ -352,6 +352,8 @@ const resolveDeckPlaybackRate = (deck: DeckKey) =>
   Number(resolveTransportDeckSnapshot(deck).playbackRate) || 1
 const topDeckUiPlaying = computed(() => resolveDeckPlaying('top'))
 const bottomDeckUiPlaying = computed(() => resolveDeckPlaying('bottom'))
+const topDeckUiDecoding = computed(() => resolveDeckDecoding('top'))
+const bottomDeckUiDecoding = computed(() => resolveDeckDecoding('bottom'))
 const topDeckShouldDeferWaveformLoad = computed(
   () => bottomDeckUiPlaying.value && !topDeckUiPlaying.value
 )
@@ -478,12 +480,24 @@ const resolveDeckSongWithSharedGrid = async (song: ISongInfo) => {
       window.electron.ipcRenderer.invoke('song:get-hot-cues', { filePath }),
       window.electron.ipcRenderer.invoke('song:get-memory-cues', { filePath })
     ])
+    const resolvedHotCuePayload =
+      Array.isArray(hotCuePayload) && hotCuePayload.length > 0
+        ? { filePath, hotCues: hotCuePayload as ISongHotCue[] }
+        : Array.isArray(song.hotCues) && song.hotCues.length > 0
+          ? { filePath, hotCues: song.hotCues }
+          : null
+    const resolvedMemoryCuePayload =
+      Array.isArray(memoryCuePayload) && memoryCuePayload.length > 0
+        ? { filePath, memoryCues: memoryCuePayload as ISongMemoryCue[] }
+        : Array.isArray(song.memoryCues) && song.memoryCues.length > 0
+          ? { filePath, memoryCues: song.memoryCues }
+          : null
     return mergeHorizontalBrowseSongWithMemoryCues(
       mergeHorizontalBrowseSongWithHotCues(
         mergeHorizontalBrowseSongWithSharedGrid({ ...song }, payload as SharedSongGridPayload),
-        { filePath, hotCues: hotCuePayload as ISongHotCue[] }
+        resolvedHotCuePayload
       ),
-      { filePath, memoryCues: memoryCuePayload as ISongMemoryCue[] }
+      resolvedMemoryCuePayload
     )
   } catch {
     return { ...song }
@@ -492,7 +506,6 @@ const resolveDeckSongWithSharedGrid = async (song: ISongInfo) => {
 
 const assignSongToDeck = async (deck: DeckKey, song: ISongInfo) => {
   touchDeckInteraction(deck)
-  deckPendingPlayOnLoad[deck] = false
   const nextSong = await resolveDeckSongWithSharedGrid(song)
   setDeckSong(deck, nextSong)
   queueDeckSongPriorityAnalysis(deck, nextSong)
@@ -538,6 +551,7 @@ const handleDeckMasterTempoToggle = (deck: DeckKey) => {
 
 const {
   deckPendingPlayOnLoad,
+  deckPendingCuePreviewOnLoad,
   suppressDeckCueClick,
   isDeckWaveformDragging,
   resolveDeckCuePreviewRuntimeState,
@@ -554,6 +568,9 @@ const {
   handleDeckPlayheadSeek,
   handleDeckBarJump,
   handleDeckSeekPercent,
+  buildDeckStoredCueDefinition,
+  handleDeckMemoryCueRecall,
+  handleDeckHotCueRecall,
   stopAllDeckCuePreview,
   handleWindowDeckCuePointerUp,
   handleDeckCuePointerDown,
@@ -591,20 +608,25 @@ const {
   resolveDeckPlaying,
   resolveDeckDurationSeconds,
   resolveTransportDeckSnapshot,
-  resolveDeckMarkerPlacementSec,
+  buildDeckStoredCueDefinition,
+  handleDeckHotCueRecall,
   nativeTransport,
   commitDeckStatesToNative,
   syncDeckRenderState,
   isDeckLoopActive
 })
 
-const { handleDeckMemoryCueCreate, handleDeckMemoryCueDelete, handleSongMemoryCuesUpdated } =
-  useHorizontalBrowseDeckMemoryCues({
-    resolveDeckSong,
-    setDeckSong,
-    resolveDeckDurationSeconds,
-    resolveDeckMarkerPlacementSec
-  })
+const {
+  handleDeckMemoryCueCreate,
+  handleDeckMemoryCueDelete,
+  handleDeckMemoryCueRecallPress,
+  handleSongMemoryCuesUpdated
+} = useHorizontalBrowseDeckMemoryCues({
+  resolveDeckSong,
+  setDeckSong,
+  buildDeckStoredCueDefinition,
+  handleDeckMemoryCueRecall
+})
 
 const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
   resolveDeckCuePreviewRuntimeState,
@@ -889,6 +911,9 @@ onUnmounted(() => {
     <div class="controls">
       <HorizontalBrowseDeckButtons
         :playing="topDeckUiPlaying"
+        :decoding="topDeckUiDecoding"
+        :pending-play="deckPendingPlayOnLoad.top"
+        :pending-cue="deckPendingCuePreviewOnLoad.top"
         @cue-pointer-down="handleDeckCuePointerDown('top', $event)"
         @cue-click="handleDeckCueClick('top')"
         @play-toggle="handleDeckPlayPauseToggle('top')"
@@ -931,6 +956,9 @@ onUnmounted(() => {
 
       <HorizontalBrowseDeckButtons
         :playing="bottomDeckUiPlaying"
+        :decoding="bottomDeckUiDecoding"
+        :pending-play="deckPendingPlayOnLoad.bottom"
+        :pending-cue="deckPendingCuePreviewOnLoad.bottom"
         @cue-pointer-down="handleDeckCuePointerDown('bottom', $event)"
         @cue-click="handleDeckCueClick('bottom')"
         @play-toggle="handleDeckPlayPauseToggle('bottom')"
@@ -1098,6 +1126,7 @@ onUnmounted(() => {
         :bottom-memory-cues="bottomDeckSong?.memoryCues || []"
         @hotcue-press="void handleDeckHotCuePress($event.deck, $event.slot)"
         @hotcue-delete="void handleDeckHotCueDelete($event.deck, $event.slot)"
+        @memorycue-press="void handleDeckMemoryCueRecallPress($event.deck, $event.sec)"
         @memorycue-delete="void handleDeckMemoryCueDelete($event.deck, $event.sec)"
       />
     </div>

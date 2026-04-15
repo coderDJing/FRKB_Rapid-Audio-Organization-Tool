@@ -3,6 +3,7 @@ import { type ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stor
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { ISongInfo } from '../../../../../../types/globals'
 import emitter from '@renderer/utils/mitt'
+import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 
 export interface DragSongData {
   songFilePaths: string[]
@@ -105,7 +106,11 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
       key: song?.key,
       originalKey: song?.key,
       bpm: song?.bpm,
-      originalBpm: song?.bpm
+      originalBpm: song?.bpm,
+      firstBeatMs: song?.firstBeatMs,
+      barBeatOffset: song?.barBeatOffset,
+      hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
+      memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
     }
   }
 
@@ -305,7 +310,7 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
       }
 
       // 调用移动歌曲的 IPC，确保所有参数都是可序列化的
-      await window.electron.ipcRenderer.invoke(
+      const movedPaths = (await window.electron.ipcRenderer.invoke(
         'moveSongsToDir',
         selectedSongFilePaths,
         targetDirPath,
@@ -315,6 +320,15 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
             return song?.artist || ''
           })
         }
+      )) as string[]
+      const sourceSongMap = new Map(
+        sourceSongsAreaState.songInfoArr.map((song) => [song.filePath, song])
+      )
+      await copySongCueDefinitionsToTargets(
+        movedPaths.map((targetFilePath, index) => ({
+          targetFilePath,
+          sourceSong: sourceSongMap.get(selectedSongFilePaths[index])
+        }))
       )
 
       // 广播：源/目标歌单内容发生变化（用于刷新数量）

@@ -1,4 +1,5 @@
 import type { IPioneerPlaylistTrack } from '../../../types/globals'
+import { enrichPioneerTracksWithCueData } from '../pioneerDeviceLibrary/cues'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
 import { runRekordboxDesktopHelper } from './helper'
 import type {
@@ -78,11 +79,13 @@ export async function loadRekordboxDesktopPlaylistTracks(
         .filter((track): track is IPioneerPlaylistTrack => Boolean(track))
     : []
 
+  const tracksWithCues = await enrichPioneerTracksWithCueData(probe.sourceRootPath, tracks)
+
   return {
     probe,
     playlistId: Number(payload?.playlistId) || safePlaylistId,
     playlistName: String(payload?.playlistName || '').trim(),
-    trackTotal: Number(payload?.trackTotal) || tracks.length,
-    tracks
+    trackTotal: Number(payload?.trackTotal) || tracksWithCues.length,
+    tracks: tracksWithCues
   }
 }

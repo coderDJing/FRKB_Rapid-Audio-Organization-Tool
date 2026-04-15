@@ -713,12 +713,14 @@ onUnmounted(() => {
     <MemoryCueMarkersLayer
       :memory-cues="props.memoryCues || []"
       :visible-duration-sec="totalSeconds"
+      show-loop-range
       :anchor="props.markerAnchor || 'top'"
       size="compact"
     />
     <HotCueMarkersLayer
       :hot-cues="props.hotCues || []"
       :visible-duration-sec="totalSeconds"
+      show-loop-range
       :anchor="props.markerAnchor || 'top'"
       size="compact"
     />

@@ -8,6 +8,7 @@ import { t } from '@renderer/utils/translate'
 import emitter from '@renderer/utils/mitt'
 import { WebAudioPlayer } from './webAudioPlayer'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 
@@ -106,7 +107,11 @@ export function usePlayerControlsLogic({
       key: song?.key,
       originalKey: song?.key,
       bpm: song?.bpm,
-      originalBpm: song?.bpm
+      originalBpm: song?.bpm,
+      firstBeatMs: song?.firstBeatMs,
+      barBeatOffset: song?.barBeatOffset,
+      hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
+      memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
     }
   }
   const showDeleteSummaryIfNeeded = async (
@@ -657,7 +662,7 @@ export function usePlayerControlsLogic({
           return
         }
 
-        await window.electron.ipcRenderer.invoke(
+        const copiedPaths = (await window.electron.ipcRenderer.invoke(
           'moveSongsToDir',
           [filePathToMove],
           targetDirPath,
@@ -665,7 +670,13 @@ export function usePlayerControlsLogic({
             mode: 'copy',
             curatedArtistNames: [songToMove?.artist || '']
           }
-        )
+        )) as string[]
+        await copySongCueDefinitionsToTargets([
+          {
+            targetFilePath: copiedPaths[0],
+            sourceSong: songToMove
+          }
+        ])
         emitter.emit('playlistContentChanged', { uuids: [targetListUuid] })
         isFileOperationInProgress.value = false
         return
@@ -708,9 +719,20 @@ export function usePlayerControlsLogic({
       preloadApi.forgetCachesForFile(filePathToMove)
 
       // 先执行移动操作，因为这可能会影响状态或触发其他事件
-      await window.electron.ipcRenderer.invoke('moveSongsToDir', [filePathToMove], targetDirPath, {
-        curatedArtistNames: [songToMove?.artist || '']
-      })
+      const movedPaths = (await window.electron.ipcRenderer.invoke(
+        'moveSongsToDir',
+        [filePathToMove],
+        targetDirPath,
+        {
+          curatedArtistNames: [songToMove?.artist || '']
+        }
+      )) as string[]
+      await copySongCueDefinitionsToTargets([
+        {
+          targetFilePath: movedPaths[0],
+          sourceSong: songToMove
+        }
+      ])
 
       // 先切到下一首，再广播移除事件，避免全局 songsRemoved 监听把当前播放上下文误清空。
       let preloadHit: PreloadHit = null

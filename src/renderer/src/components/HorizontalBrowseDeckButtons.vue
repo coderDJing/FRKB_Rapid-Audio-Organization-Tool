@@ -1,6 +1,9 @@
 <script setup lang="ts">
 const props = defineProps<{
   playing: boolean
+  decoding?: boolean
+  pendingPlay?: boolean
+  pendingCue?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -15,6 +18,7 @@ const emit = defineEmits<{
     <button
       type="button"
       class="deck-button deck-button--cue"
+      :class="{ 'is-pending': props.pendingCue, 'is-decoding': props.decoding }"
       @pointerdown="emit('cue-pointer-down', $event)"
       @click="emit('cue-click')"
     >
@@ -23,7 +27,11 @@ const emit = defineEmits<{
     <button
       type="button"
       class="deck-button deck-button--play"
-      :class="{ 'is-active': props.playing }"
+      :class="{
+        'is-active': props.playing,
+        'is-pending': props.pendingPlay,
+        'is-decoding': props.decoding
+      }"
       @click="emit('play-toggle')"
     >
       <svg v-if="props.playing" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -61,6 +69,9 @@ const emit = defineEmits<{
   letter-spacing: 0.04em;
   text-transform: uppercase;
   box-sizing: border-box;
+  outline: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .deck-button--cue {
@@ -75,6 +86,26 @@ const emit = defineEmits<{
   border-color: rgba(122, 194, 145, 0.72);
   background: rgba(122, 194, 145, 0.12);
   box-shadow: inset 0 0 0 1px rgba(122, 194, 145, 0.08);
+}
+
+.deck-button.is-pending {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--shell-border, var(--border)));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.deck-button.is-decoding {
+  opacity: 0.82;
+}
+
+.deck-button:focus,
+.deck-button:focus-visible {
+  outline: none;
+}
+
+.deck-button:focus-visible {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent) 36%, transparent);
 }
 
 .deck-button svg {

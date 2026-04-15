@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { app, BrowserWindow, ipcMain, shell, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { log, getLogPath, clearLogFileSync } from './log'
+import { log, getLogPath, clearLogFileSync, configureLogTransports } from './log'
 import './cloudSync'
 import errorReport from './errorReport'
 import { saveList } from './fingerprintStore'
@@ -84,6 +84,7 @@ import { acquireDevSingleInstanceLock, configureDevRuntime } from './devInstance
 // import AudioFeatureExtractor from './mfccTest'
 
 const devRuntime = configureDevRuntime(is.dev, process.platform, log)
+configureLogTransports()
 
 try {
   const resolvedUserDataDir = app.getPath('userData')
@@ -234,6 +235,11 @@ void ensureFpcalcExecutable(fpcalcPath)
 store.layoutConfig = loadLayoutConfigSync()
 loadInitialSettings({ getWindowsContextMenuStatus: hasWindowsContextMenu })
 maybeClearLogAfterUpgrade()
+log.info('[startup] log-path', {
+  logPath: getLogPath(),
+  cwd: process.cwd(),
+  userData: app.getPath('userData')
+})
 errorReport.setup()
 registerWhatsNewHandlers()
 registerSettingsHandlers({

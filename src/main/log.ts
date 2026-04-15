@@ -5,13 +5,19 @@ type ElectronAppLike = {
   isPackaged?: boolean
   getVersion?: () => string
   getPath?: (name: string) => string
+  getAppPath?: () => string
+}
+
+type ElectronLogFileLike = {
+  path: string
 }
 
 type LogTransportFileLike = {
-  level?: string
+  level?: string | boolean
   format?: string
   maxSize?: number
   resolvePathFn?: () => string
+  getFile?: () => ElectronLogFileLike
 }
 
 type LoggerLike = {
@@ -26,8 +32,7 @@ type LoggerLike = {
 
 const safeRequire = (id: string): unknown => {
   try {
-    const dynamicRequire = Function('return require')() as NodeRequire
-    return dynamicRequire(id)
+    return require(id)
   } catch {
     return null
   }
@@ -50,21 +55,31 @@ const createConsoleLogger = (): LoggerLike => ({
 })
 
 const loadedElectronLog =
-  (safeRequire('electron-log') as Partial<LoggerLike> | null | undefined) || null
+  ((safeRequire('electron-log/main') || safeRequire('electron-log')) as
+    | Partial<LoggerLike>
+    | null
+    | undefined) || null
 
 export const log: LoggerLike =
   loadedElectronLog &&
   typeof loadedElectronLog.debug === 'function' &&
   typeof loadedElectronLog.info === 'function' &&
   typeof loadedElectronLog.warn === 'function' &&
-  typeof loadedElectronLog.error === 'function'
-    ? ({
-        ...loadedElectronLog,
-        transports: {
-          file: loadedElectronLog.transports?.file || {}
-        }
-      } as LoggerLike)
+  typeof loadedElectronLog.error === 'function' &&
+  loadedElectronLog.transports &&
+  typeof loadedElectronLog.transports === 'object'
+    ? (loadedElectronLog as LoggerLike)
     : createConsoleLogger()
+
+const resolveUserDataDir = () => {
+  try {
+    const resolved = electronApp?.getPath?.('userData')
+    if (typeof resolved === 'string' && resolved.trim()) {
+      return resolved.trim()
+    }
+  } catch {}
+  return process.cwd()
+}
 
 const isPackagedRuntime = (() => {
   try {
@@ -74,48 +89,77 @@ const isPackagedRuntime = (() => {
   }
 })()
 
-const resolveUserDataDir = () => {
-  if (!isPackagedRuntime) return __dirname
-  try {
-    const resolved = electronApp?.getPath?.('userData')
-    return typeof resolved === 'string' && resolved.trim() ? resolved : __dirname
-  } catch {
-    return __dirname
+const resolveDevProjectRoot = () => {
+  const candidates = [
+    process.env.INIT_CWD,
+    process.cwd(),
+    (() => {
+      try {
+        return electronApp?.getAppPath?.()
+      } catch {
+        return ''
+      }
+    })()
+  ]
+  for (const candidate of candidates) {
+    const normalized = typeof candidate === 'string' ? candidate.trim() : ''
+    if (normalized) return normalized
   }
+  return process.cwd()
 }
 
-const appVersion = (() => {
+const resolveAppVersion = () => {
   try {
     const resolved = electronApp?.getVersion?.()
-    return typeof resolved === 'string' && resolved.trim() ? resolved : 'unknown'
-  } catch {
-    return 'unknown'
-  }
-})()
-
-const resolveLogPath = () => {
-  // 打包版日志必须固定写入 userData，别让环境变量把 RC/正式包带到安装目录去
-  if (isPackagedRuntime) {
-    return path.join(resolveUserDataDir(), 'log.txt')
-  }
-  return path.join(process.cwd(), 'log.txt')
+    if (typeof resolved === 'string' && resolved.trim()) {
+      return resolved.trim()
+    }
+  } catch {}
+  return 'unknown'
 }
 
-log.transports.file.level = 'debug'
-log.transports.file.format = `{y}-{m}-{d} {h}:{i}:{s}.{ms} [v${appVersion}] {text}`
-log.transports.file.maxSize = 20 * 1024 * 1024
-log.transports.file.resolvePathFn = resolveLogPath
+const resolveLogPath = () => {
+  if (isPackagedRuntime) {
+    return path.join(resolveUserDataDir(), 'logs', 'main.log')
+  }
+  return path.join(resolveDevProjectRoot(), 'log.txt')
+}
+
+let logConfigured = false
+
+export function configureLogTransports(): void {
+  if (!log?.transports?.file) return
+  const appVersion = resolveAppVersion()
+  log.transports.file.level = 'debug'
+  log.transports.file.format = `{y}-{m}-{d} {h}:{i}:{s}.{ms} [v${appVersion}] {text}`
+  log.transports.file.maxSize = 20 * 1024 * 1024
+  log.transports.file.resolvePathFn = resolveLogPath
+  logConfigured = true
+}
+
+export function ensureLogConfigured(): void {
+  if (logConfigured) return
+  configureLogTransports()
+}
 
 export function getLogPath(): string {
+  ensureLogConfigured()
+  try {
+    const resolved = log.transports.file.getFile?.().path
+    if (typeof resolved === 'string' && resolved.trim()) {
+      return resolved.trim()
+    }
+  } catch {}
   return resolveLogPath()
 }
 
 export function clearLogFileSync(): void {
   try {
-    const filePath = getLogPath()
-    fs.outputFileSync(filePath, '')
+    fs.outputFileSync(getLogPath(), '')
   } catch (e) {
-    log.error('[log] 清空日志失败', e)
+    try {
+      log.error('[log] 清空日志失败', e)
+    } catch {}
   }
 }
 
@@ -151,10 +195,12 @@ export function isExpectedError(error: unknown): boolean {
 
 process.on('uncaughtException', (error) => {
   if (isExpectedError(error)) return
+  ensureLogConfigured()
   log.error(error)
 })
 
 process.on('unhandledRejection', (reason: unknown, promise) => {
   if (isExpectedError(reason)) return
+  ensureLogConfigured()
   log.error('Unhandled Rejection at:', promise, 'reason:', reason)
 })

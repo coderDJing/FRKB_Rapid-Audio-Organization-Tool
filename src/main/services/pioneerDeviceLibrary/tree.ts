@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { log } from '../../log'
+import { enrichPioneerTracksWithCueData } from './cues'
 import { probePioneerDeviceLibraryRoot } from './deviceDetection'
 import { readOneLibraryPlaylistTracks, readOneLibraryPlaylistTree } from './oneLibraryDb'
 import { readPioneerPlaylistTracksInWorker, readPioneerPlaylistTreeInWorker } from './workerPool'
@@ -439,6 +440,8 @@ export async function loadPioneerPlaylistTracksByDrivePath(
     }
   })
 
+  const tracksWithCues = await enrichPioneerTracksWithCueData(rootPath, tracks)
+
   return {
     drivePath: rootPath,
     libraryType,
@@ -446,6 +449,6 @@ export async function loadPioneerPlaylistTracksByDrivePath(
     playlistId: Number(loaded.playlistId) || safePlaylistId,
     playlistName,
     trackTotal: Number(loaded.trackTotal) || tracks.length,
-    tracks
+    tracks: tracksWithCues
   }
 }

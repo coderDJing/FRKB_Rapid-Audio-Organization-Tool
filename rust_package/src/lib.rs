@@ -52,6 +52,8 @@ extern crate napi_derive;
 mod analysis_utils;
 mod horizontal_browse_transport;
 mod mixxx_waveform;
+mod pioneer_anlz_raw;
+mod pioneer_cues;
 mod qm_bpm;
 mod qm_key;
 mod soundtouch_native;
@@ -59,7 +61,7 @@ mod soundtouch_native;
 use crate::analysis_utils::{calc_frames_to_process, to_stereo, K_ANALYSIS_FRAMES_PER_CHUNK};
 pub use crate::horizontal_browse_transport::*;
 use crate::mixxx_waveform::MixxxWaveformData;
-use rekordcrate::anlz::{Content as RekordcrateAnlzContent, ANLZ};
+pub use crate::pioneer_cues::*;
 use rekordcrate::pdb::{
   Header as RekordcrateHeader, PlaylistTreeNode, PlaylistTreeNodeId, Row as RekordcrateRow,
 };
@@ -1286,54 +1288,71 @@ fn build_pioneer_rgb_waveform_column(
 fn read_pioneer_preview_waveform_from_file(
   preview_path: &Path,
 ) -> StdResult<(String, Vec<PioneerPreviewWaveformColumn>, u32), String> {
-  let mut reader =
-    File::open(preview_path).map_err(|error| format!("open preview file failed: {error}"))?;
-  let anlz =
-    ANLZ::read(&mut reader).map_err(|error| format!("parse preview file failed: {error}"))?;
-
+  let sections = pioneer_anlz_raw::read_pioneer_anlz_sections(preview_path)
+    .map_err(|error| format!("parse preview file failed: {error}"))?;
   let mut blue_columns: Option<Vec<PioneerPreviewWaveformColumn>> = None;
 
-  for section in anlz.sections {
-    match section.content {
-      RekordcrateAnlzContent::WaveformColorPreview(preview) => {
-        let mut columns = Vec::with_capacity(preview.data.len());
-        let mut max_height = 0u32;
-        for entry in preview.data {
-          let column = build_pioneer_rgb_waveform_column(
-            entry.energy_bottom_third_freq,
-            entry.energy_mid_third_freq,
-            entry.energy_top_third_freq,
-          );
-          max_height = max_height.max(u32::from(column.back_height));
-          columns.push(column);
-        }
-        return Ok(("rgb".to_string(), columns, max_height));
+  for section in sections {
+    if pioneer_anlz_raw::section_kind_eq(&section, b"PWV4") {
+      if section.header_data.len() < 12 {
+        continue;
       }
-      RekordcrateAnlzContent::WaveformPreview(preview) => {
-        if blue_columns.is_none() {
-          let mut columns = Vec::with_capacity(preview.data.len());
-          for entry in preview.data {
-            columns.push(build_pioneer_blue_waveform_column(
-              entry.height(),
-              entry.whiteness() >= 5,
-            ));
-          }
-          blue_columns = Some(columns);
-        }
+      let entry_size = pioneer_anlz_raw::read_be_u32(&section.header_data[0..4])?;
+      let len_entries = pioneer_anlz_raw::read_be_u32(&section.header_data[4..8])?;
+      if entry_size != 6 {
+        continue;
       }
-      RekordcrateAnlzContent::TinyWaveformPreview(preview) => {
-        if blue_columns.is_none() {
-          let mut columns = Vec::with_capacity(preview.data.len());
-          for entry in preview.data {
-            columns.push(build_pioneer_blue_waveform_column(
-              entry.height().saturating_mul(2),
-              false,
-            ));
-          }
-          blue_columns = Some(columns);
-        }
+      let required_size = usize::try_from(entry_size.saturating_mul(len_entries))
+        .map_err(|_| "preview waveform size overflow".to_string())?;
+      if section.content.len() < required_size {
+        continue;
       }
-      _ => {}
+      let mut columns = Vec::with_capacity(len_entries as usize);
+      let mut max_height = 0u32;
+      for chunk in section.content[..required_size].chunks_exact(6) {
+        let column = build_pioneer_rgb_waveform_column(chunk[3], chunk[4], chunk[5]);
+        max_height = max_height.max(u32::from(column.back_height));
+        columns.push(column);
+      }
+      return Ok(("rgb".to_string(), columns, max_height));
+    }
+    if pioneer_anlz_raw::section_kind_eq(&section, b"PWAV") {
+      if section.header_data.len() < 4 {
+        continue;
+      }
+      let len_preview = pioneer_anlz_raw::read_be_u32(&section.header_data[0..4])?;
+      let preview_len =
+        usize::try_from(len_preview).map_err(|_| "preview waveform length overflow".to_string())?;
+      if section.content.len() < preview_len {
+        continue;
+      }
+      if blue_columns.is_none() {
+        let mut columns = Vec::with_capacity(preview_len);
+        for entry in &section.content[..preview_len] {
+          columns.push(build_pioneer_blue_waveform_column(entry >> 3, (entry & 0x07) >= 5));
+        }
+        blue_columns = Some(columns);
+      }
+      continue;
+    }
+    if pioneer_anlz_raw::section_kind_eq(&section, b"PWV2") {
+      if section.header_data.len() < 4 {
+        continue;
+      }
+      let len_preview = pioneer_anlz_raw::read_be_u32(&section.header_data[0..4])?;
+      let preview_len =
+        usize::try_from(len_preview).map_err(|_| "tiny preview length overflow".to_string())?;
+      if section.content.len() < preview_len {
+        continue;
+      }
+      if blue_columns.is_none() {
+        let mut columns = Vec::with_capacity(preview_len);
+        for entry in &section.content[..preview_len] {
+          columns.push(build_pioneer_blue_waveform_column((entry & 0x0F).saturating_mul(2), false));
+        }
+        blue_columns = Some(columns);
+      }
+      continue;
     }
   }
 

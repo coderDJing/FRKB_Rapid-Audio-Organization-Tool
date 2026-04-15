@@ -18,7 +18,13 @@ type UseHorizontalBrowseDeckHotCuesParams = {
   resolveDeckPlaying: (deck: DeckKey) => boolean
   resolveDeckDurationSeconds: (deck: DeckKey) => number
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
-  resolveDeckMarkerPlacementSec: (deck: DeckKey) => number | null
+  buildDeckStoredCueDefinition: (
+    deck: DeckKey
+  ) => Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec'> | null
+  handleDeckHotCueRecall: (
+    deck: DeckKey,
+    cue: Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec'>
+  ) => Promise<void>
   nativeTransport: {
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
@@ -61,22 +67,24 @@ export const useHorizontalBrowseDeckHotCues = (params: UseHorizontalBrowseDeckHo
       ? song.hotCues.find((item) => item.slot === slot)
       : null
     if (existingHotCue && Number.isFinite(Number(existingHotCue.sec))) {
-      await triggerDeckHotCuePlayback(deck, Number(existingHotCue.sec))
+      await params.handleDeckHotCueRecall(deck, existingHotCue)
       return
     }
 
-    const snappedSec = params.resolveDeckMarkerPlacementSec(deck)
-    if (snappedSec === null) return
+    const cueDefinition = params.buildDeckStoredCueDefinition(deck)
+    if (!cueDefinition) return
 
     const result = (await window.electron.ipcRenderer.invoke('song:set-hot-cue', {
       filePath: song.filePath,
       slot,
-      sec: snappedSec,
+      sec: cueDefinition.sec,
+      isLoop: cueDefinition.isLoop,
+      loopEndSec: cueDefinition.loopEndSec,
       durationSec: params.resolveDeckDurationSeconds(deck)
     })) as { hotCues?: ISongHotCue[] } | null
     const nextHotCues = Array.isArray(result?.hotCues)
       ? result.hotCues
-      : [{ slot, sec: snappedSec }]
+      : [{ slot, sec: cueDefinition.sec }]
     patchDeckSongHotCues(deck, nextHotCues)
   }
 

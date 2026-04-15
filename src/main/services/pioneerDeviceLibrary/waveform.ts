@@ -57,6 +57,8 @@ type PreparedAnalyzePathItem = {
   signature: string
 }
 
+const PIONEER_PREVIEW_WAVEFORM_SIGNATURE_VERSION = 'preview-v2'
+
 const resolvePioneerDevicePath = (rootPath: string, devicePath: string) => {
   const normalizedRoot = String(rootPath || '').trim()
   const normalizedDevicePath = String(devicePath || '').trim()
@@ -85,7 +87,7 @@ const normalizeSignaturePath = (value: string) => {
 
 const buildPreviewFileSignature = async (absoluteAnalyzePath: string) => {
   const candidatePaths = buildPreviewCandidatePaths(absoluteAnalyzePath)
-  const parts: string[] = []
+  const parts: string[] = [PIONEER_PREVIEW_WAVEFORM_SIGNATURE_VERSION]
   for (const candidatePath of candidatePaths) {
     try {
       const stat = await fs.stat(candidatePath)

@@ -6,10 +6,15 @@ import {
   HOT_CUE_SLOT_COUNT,
   normalizeSongHotCues,
   resolveSongHotCueBySlot,
-  resolveSongHotCueColor,
+  resolveSongHotCueDisplayColor,
+  resolveSongHotCueDisplayLabel,
   resolveSongHotCueLabel
 } from '@shared/hotCues'
-import { formatSongMemoryCueTime, normalizeSongMemoryCues } from '@shared/memoryCues'
+import {
+  formatSongMemoryCueTime,
+  normalizeSongMemoryCues,
+  resolveSongMemoryCueDisplayColor
+} from '@shared/memoryCues'
 
 type DeckCuePanelMode = 'memory' | 'hot-cue'
 type DeckKey = 'top' | 'bottom'
@@ -28,17 +33,29 @@ const emit = defineEmits<{
   (event: 'update:bottom-mode', value: DeckCuePanelMode): void
   (event: 'hotcue-press', payload: { deck: DeckKey; slot: number }): void
   (event: 'hotcue-delete', payload: { deck: DeckKey; slot: number }): void
+  (event: 'memorycue-press', payload: { deck: DeckKey; sec: number }): void
   (event: 'memorycue-delete', payload: { deck: DeckKey; sec: number }): void
 }>()
 
 const buildHotCueRows = (hotCues: ISongHotCue[] | null | undefined) =>
   Array.from({ length: HOT_CUE_SLOT_COUNT }, (_, slot) => {
     const hotCue = resolveSongHotCueBySlot(normalizeSongHotCues(hotCues), slot)
+    const isLoop = Boolean(hotCue?.isLoop) && Number(hotCue?.loopEndSec) > Number(hotCue?.sec || 0)
     return {
       slot,
-      label: resolveSongHotCueLabel(slot),
-      color: resolveSongHotCueColor(slot),
+      label: hotCue ? resolveSongHotCueDisplayLabel(hotCue) : resolveSongHotCueLabel(slot),
+      color: hotCue ? resolveSongHotCueDisplayColor(hotCue) : undefined,
       timeText: hotCue ? formatSongHotCueTime(hotCue.sec) : '--:--.---',
+      title: hotCue
+        ? [
+            `Hot Cue ${resolveSongHotCueDisplayLabel(hotCue)}`,
+            formatSongHotCueTime(hotCue.sec),
+            isLoop && hotCue?.loopEndSec ? `Loop ${formatSongHotCueTime(hotCue.loopEndSec)}` : '',
+            hotCue?.comment || ''
+          ]
+            .filter(Boolean)
+            .join(' · ')
+        : `Hot Cue ${resolveSongHotCueLabel(slot)}`,
       active: !!hotCue
     }
   })
@@ -50,7 +67,16 @@ const panels = computed(() => [
     hotCueRows: buildHotCueRows(props.topHotCues),
     memoryCueRows: normalizeSongMemoryCues(props.topMemoryCues).map((item) => ({
       sec: item.sec,
-      timeText: formatSongMemoryCueTime(item.sec)
+      timeText: formatSongMemoryCueTime(item.sec),
+      color: resolveSongMemoryCueDisplayColor(item),
+      title: [
+        'Memory Cue',
+        formatSongMemoryCueTime(item.sec),
+        item.isLoop && item.loopEndSec ? `Loop ${formatSongMemoryCueTime(item.loopEndSec)}` : '',
+        item.comment || ''
+      ]
+        .filter(Boolean)
+        .join(' · ')
     }))
   },
   {
@@ -59,7 +85,16 @@ const panels = computed(() => [
     hotCueRows: buildHotCueRows(props.bottomHotCues),
     memoryCueRows: normalizeSongMemoryCues(props.bottomMemoryCues).map((item) => ({
       sec: item.sec,
-      timeText: formatSongMemoryCueTime(item.sec)
+      timeText: formatSongMemoryCueTime(item.sec),
+      color: resolveSongMemoryCueDisplayColor(item),
+      title: [
+        'Memory Cue',
+        formatSongMemoryCueTime(item.sec),
+        item.isLoop && item.loopEndSec ? `Loop ${formatSongMemoryCueTime(item.loopEndSec)}` : '',
+        item.comment || ''
+      ]
+        .filter(Boolean)
+        .join(' · ')
     }))
   }
 ])
@@ -90,7 +125,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
             class="cue-panel__hotcue-row"
             :class="{ 'has-value': row.active }"
             :style="{ '--cue-slot-color': row.color }"
-            :title="`Hot Cue ${row.label} · ${row.timeText}`"
+            :title="row.title"
             @click="emit('hotcue-press', { deck: panel.deck, slot: row.slot })"
           >
             <span v-if="row.active" class="cue-panel__hotcue-label">
@@ -116,7 +151,9 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
             v-for="memoryCue in panel.memoryCueRows"
             :key="`${panel.deck}-${memoryCue.sec}`"
             class="cue-panel__memory-row"
-            :title="`Memory Cue · ${memoryCue.timeText}`"
+            :style="{ '--memory-cue-row-color': memoryCue.color }"
+            :title="memoryCue.title"
+            @click="emit('memorycue-press', { deck: panel.deck, sec: memoryCue.sec })"
           >
             <span class="cue-panel__memory-time">{{ memoryCue.timeText }}</span>
             <button
@@ -201,17 +238,23 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   pointer-events: auto;
 }
 
 .cue-panel__memory-row {
   width: 100%;
+  min-width: 0;
   min-height: 16px;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 12px;
   align-items: center;
   column-gap: 6px;
+  box-shadow: inset 2px 0 0 var(--memory-cue-row-color, transparent);
+  padding-left: 4px;
+  cursor: pointer;
+  box-sizing: border-box;
 }
 
 .cue-panel__memory-time {
@@ -239,6 +282,8 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   cursor: pointer;
   border-radius: 3px;
   opacity: 0.82;
+  outline: none;
+  appearance: none;
   transition:
     color 0.14s ease,
     opacity 0.14s ease,
@@ -286,6 +331,8 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
     color 0.14s ease,
     box-shadow 0.14s ease;
   pointer-events: auto;
+  outline: none;
+  appearance: none;
 }
 
 .cue-panel__hotcue-row:last-child {
@@ -348,6 +395,8 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   cursor: pointer;
   border-radius: 3px;
   opacity: 0.82;
+  outline: none;
+  appearance: none;
   transition:
     color 0.14s ease,
     opacity 0.14s ease,
@@ -392,11 +441,24 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  outline: none;
+  appearance: none;
   transition:
     background-color 0.14s ease,
     border-color 0.14s ease,
     color 0.14s ease,
     box-shadow 0.14s ease;
+}
+
+.cue-panel__hotcue-row:focus,
+.cue-panel__hotcue-row:focus-visible,
+.cue-panel__memory-delete:focus,
+.cue-panel__memory-delete:focus-visible,
+.cue-panel__hotcue-delete:focus,
+.cue-panel__hotcue-delete:focus-visible,
+.cue-panel__mode-btn:focus,
+.cue-panel__mode-btn:focus-visible {
+  outline: none;
 }
 
 .cue-panel__mode-btn:hover {

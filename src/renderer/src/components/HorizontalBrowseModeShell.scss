@@ -29,6 +29,17 @@
   -webkit-user-select: none;
 }
 
+.horizontal-shell button {
+  outline: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.horizontal-shell button:focus,
+.horizontal-shell button:focus-visible {
+  outline: none;
+}
+
 :global(.theme-light) .horizontal-shell {
   --shell-grid: rgba(31, 31, 31, 0.12);
   --shell-grid-major: rgba(31, 31, 31, 0.08);

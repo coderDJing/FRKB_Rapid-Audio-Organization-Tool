@@ -34,18 +34,42 @@ const cueMarkerLeft = computed(() => {
   width: 10px;
   height: 7px;
   transform: translateX(-50%);
-  background: var(--shell-cue-accent, #d98921);
+  background: transparent;
   pointer-events: none;
   z-index: 3;
 }
 
+.raw-detail-waveform__cue-marker::before,
+.raw-detail-waveform__cue-marker::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
+.raw-detail-waveform__cue-marker::before {
+  background: rgba(0, 0, 0, 0.88);
+}
+
+.raw-detail-waveform__cue-marker::after {
+  inset: 1px;
+  background: var(--shell-cue-accent, #d98921);
+}
+
 .raw-detail-waveform__cue-marker--up {
-  top: -8px;
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  bottom: 0;
+}
+
+.raw-detail-waveform__cue-marker--up::before,
+.raw-detail-waveform__cue-marker--up::after {
+  clip-path: polygon(50% 0, 0 100%, 100% 100%);
 }
 
 .raw-detail-waveform__cue-marker--down {
-  bottom: -8px;
-  clip-path: polygon(50% 0, 0 100%, 100% 100%);
+  top: 0;
+}
+
+.raw-detail-waveform__cue-marker--down::before,
+.raw-detail-waveform__cue-marker--down::after {
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 </style>

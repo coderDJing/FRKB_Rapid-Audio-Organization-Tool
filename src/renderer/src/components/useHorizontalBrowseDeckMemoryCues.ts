@@ -12,8 +12,13 @@ type SongMemoryCuePayload = {
 type UseHorizontalBrowseDeckMemoryCuesParams = {
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   setDeckSong: (deck: DeckKey, song: ISongInfo | null) => void
-  resolveDeckDurationSeconds: (deck: DeckKey) => number
-  resolveDeckMarkerPlacementSec: (deck: DeckKey) => number | null
+  buildDeckStoredCueDefinition: (
+    deck: DeckKey
+  ) => Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec'> | null
+  handleDeckMemoryCueRecall: (
+    deck: DeckKey,
+    cue: Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec'>
+  ) => Promise<void>
 }
 
 export const useHorizontalBrowseDeckMemoryCues = (
@@ -31,12 +36,13 @@ export const useHorizontalBrowseDeckMemoryCues = (
   const handleDeckMemoryCueCreate = async (deck: DeckKey) => {
     const song = params.resolveDeckSong(deck)
     if (!song) return
-    const snappedSec = params.resolveDeckMarkerPlacementSec(deck)
-    if (snappedSec === null) return
+    const cueDefinition = params.buildDeckStoredCueDefinition(deck)
+    if (!cueDefinition) return
     const result = (await window.electron.ipcRenderer.invoke('song:add-memory-cue', {
       filePath: song.filePath,
-      sec: snappedSec,
-      durationSec: params.resolveDeckDurationSeconds(deck)
+      sec: cueDefinition.sec,
+      isLoop: cueDefinition.isLoop,
+      loopEndSec: cueDefinition.loopEndSec
     })) as { memoryCues?: ISongMemoryCue[] } | null
     patchDeckSongMemoryCues(deck, Array.isArray(result?.memoryCues) ? result.memoryCues : [])
   }
@@ -46,10 +52,19 @@ export const useHorizontalBrowseDeckMemoryCues = (
     if (!song) return
     const result = (await window.electron.ipcRenderer.invoke('song:delete-memory-cue', {
       filePath: song.filePath,
-      sec,
-      durationSec: params.resolveDeckDurationSeconds(deck)
+      sec
     })) as { memoryCues?: ISongMemoryCue[] } | null
     patchDeckSongMemoryCues(deck, Array.isArray(result?.memoryCues) ? result.memoryCues : [])
+  }
+
+  const handleDeckMemoryCueRecallPress = async (deck: DeckKey, sec: number) => {
+    const song = params.resolveDeckSong(deck)
+    if (!song) return
+    const memoryCue = Array.isArray(song.memoryCues)
+      ? song.memoryCues.find((item) => Math.abs(item.sec - sec) <= 0.0001)
+      : null
+    if (!memoryCue) return
+    await params.handleDeckMemoryCueRecall(deck, memoryCue)
   }
 
   const handleSongMemoryCuesUpdated = (_event: unknown, payload: SongMemoryCuePayload) => {
@@ -73,6 +88,7 @@ export const useHorizontalBrowseDeckMemoryCues = (
   return {
     handleDeckMemoryCueCreate,
     handleDeckMemoryCueDelete,
+    handleDeckMemoryCueRecallPress,
     handleSongMemoryCuesUpdated
   }
 }

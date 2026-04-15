@@ -3,7 +3,8 @@ import type { ISongMemoryCue } from '../../types/globals'
 import {
   normalizeSongMemoryCueSec,
   removeSongMemoryCue,
-  upsertSongMemoryCue
+  upsertSongMemoryCue,
+  upsertSongMemoryCueDefinition
 } from '../../shared/memoryCues'
 import { upsertMixtapeItemMemoryCuesByFilePath } from '../mixtapeDb'
 import { emitSongMemoryCuesUpdated } from '../services/songMemoryCueEvents'
@@ -22,13 +23,34 @@ export function registerMemoryCueHandlers() {
 
   ipcMain.handle(
     'song:add-memory-cue',
-    async (_event, payload?: { filePath?: string; sec?: number; durationSec?: number }) => {
+    async (
+      _event,
+      payload?: {
+        filePath?: string
+        sec?: number
+        durationSec?: number
+        isLoop?: boolean
+        loopEndSec?: number
+      }
+    ) => {
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       const sec = normalizeSongMemoryCueSec(payload?.sec, payload?.durationSec)
       if (!filePath || sec === null) return { filePath, memoryCues: [] as ISongMemoryCue[] }
 
       const current = await loadSharedSongMemoryCueDefinition(filePath)
-      const memoryCues = upsertSongMemoryCue(current?.memoryCues, sec, payload?.durationSec)
+      const memoryCues =
+        payload?.isLoop &&
+        normalizeSongMemoryCueSec(payload?.loopEndSec, payload?.durationSec) !== null
+          ? upsertSongMemoryCueDefinition(
+              current?.memoryCues,
+              {
+                sec,
+                isLoop: true,
+                loopEndSec: payload?.loopEndSec
+              },
+              payload?.durationSec
+            )
+          : upsertSongMemoryCue(current?.memoryCues, sec, payload?.durationSec)
       const persisted = (await persistSharedSongMemoryCueDefinition({
         filePath,
         memoryCues
