@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { ISongInfo } from 'src/types/globals'
+import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import HorizontalBrowseDeckInfoCard from '@renderer/components/HorizontalBrowseDeckInfoCard.vue'
 import HorizontalBrowseWaveformOverview from '@renderer/components/HorizontalBrowseWaveformOverview.vue'
 import HorizontalBrowseDeckToolbarRow from '@renderer/components/HorizontalBrowseDeckToolbarRow.vue'
@@ -39,6 +39,8 @@ const props = defineProps<{
   keyHighlighted: boolean
   currentSeconds: number
   durationSeconds: number
+  hotCues: ISongHotCue[]
+  memoryCues: ISongMemoryCue[]
   toolbarState: DeckToolbarState
   loopRange: HorizontalBrowseLoopRange | null
   readOnlySource: boolean
@@ -61,6 +63,7 @@ const emit = defineEmits<{
   (event: 'shift-right-large'): void
   (event: 'update-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
+  (event: 'memory-cue'): void
   (event: 'toggle-bar-line-picking'): void
   (event: 'loop-step-down'): void
   (event: 'loop-step-up'): void
@@ -115,6 +118,9 @@ const isTop = props.position === 'top'
         :song="props.song"
         :current-seconds="props.currentSeconds"
         :duration-seconds="props.durationSeconds"
+        :hot-cues="props.hotCues"
+        :memory-cues="props.memoryCues"
+        :marker-anchor="isTop ? 'top' : 'bottom'"
         :loop-range="props.loopRange"
         @seek="emit('seek', $event)"
       />
@@ -143,6 +149,7 @@ const isTop = props.position === 'top'
         @shift-right-large="emit('shift-right-large')"
         @update-bpm-input="emit('update-bpm-input', $event)"
         @blur-bpm-input="emit('blur-bpm-input')"
+        @memory-cue="emit('memory-cue')"
         @toggle-bar-line-picking="emit('toggle-bar-line-picking')"
         @loop-step-down="emit('loop-step-down')"
         @loop-step-up="emit('loop-step-up')"

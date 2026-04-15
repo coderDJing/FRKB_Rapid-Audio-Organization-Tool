@@ -7,6 +7,9 @@ import {
   type MixtapeStemProfile
 } from '../shared/mixtapeStemProfiles'
 import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
+import { areSongHotCuesEqual, normalizeSongHotCues } from '../shared/hotCues'
+import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '../shared/memoryCues'
+import type { ISongHotCue, ISongMemoryCue } from '../types/globals'
 import type { SqliteDatabase } from './libraryDb'
 
 const TABLE = 'mixtape_items'
@@ -742,6 +745,106 @@ export function upsertMixtapeItemGridByFilePath(
     return { updated }
   } catch (error) {
     log.error('[sqlite] mixtape grid upsert failed', error)
+    return { updated: 0 }
+  }
+}
+
+export function upsertMixtapeItemHotCuesByFilePath(
+  entries: Array<{ filePath: string; hotCues?: ISongHotCue[] }>
+): { updated: number } {
+  if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+
+  const hotCuesByFilePath = new Map<string, ISongHotCue[]>()
+  for (const item of entries) {
+    const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
+    if (!filePath) continue
+    hotCuesByFilePath.set(filePath, normalizeSongHotCues(item?.hotCues))
+  }
+  const filePaths = Array.from(hotCuesByFilePath.keys())
+  if (!filePaths.length) return { updated: 0 }
+
+  try {
+    let updated = 0
+    const updateStmt = db.prepare(`UPDATE ${TABLE} SET info_json = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      const CHUNK_SIZE = 300
+      for (let offset = 0; offset < filePaths.length; offset += CHUNK_SIZE) {
+        const chunk = filePaths.slice(offset, offset + CHUNK_SIZE)
+        if (chunk.length === 0) continue
+        const placeholders = chunk.map(() => '?').join(',')
+        const rows = db
+          .prepare(
+            `SELECT id, file_path, info_json FROM ${TABLE} WHERE file_path IN (${placeholders})`
+          )
+          .all(...chunk) as Array<{ id: string; file_path: string; info_json?: string | null }>
+        for (const row of rows) {
+          const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
+          const nextHotCues = hotCuesByFilePath.get(filePath)
+          if (!nextHotCues) continue
+          const info = parseMixtapeItemInfoJson(row?.info_json)
+          if (areSongHotCuesEqual(info.hotCues, nextHotCues)) continue
+          info.hotCues = nextHotCues
+          updateStmt.run(JSON.stringify(info), row.id)
+          updated += 1
+        }
+      }
+    })
+    tx()
+    return { updated }
+  } catch (error) {
+    log.error('[sqlite] mixtape hot cue upsert failed', error)
+    return { updated: 0 }
+  }
+}
+
+export function upsertMixtapeItemMemoryCuesByFilePath(
+  entries: Array<{ filePath: string; memoryCues?: ISongMemoryCue[] }>
+): { updated: number } {
+  if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+
+  const memoryCuesByFilePath = new Map<string, ISongMemoryCue[]>()
+  for (const item of entries) {
+    const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
+    if (!filePath) continue
+    memoryCuesByFilePath.set(filePath, normalizeSongMemoryCues(item?.memoryCues))
+  }
+  const filePaths = Array.from(memoryCuesByFilePath.keys())
+  if (!filePaths.length) return { updated: 0 }
+
+  try {
+    let updated = 0
+    const updateStmt = db.prepare(`UPDATE ${TABLE} SET info_json = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      const CHUNK_SIZE = 300
+      for (let offset = 0; offset < filePaths.length; offset += CHUNK_SIZE) {
+        const chunk = filePaths.slice(offset, offset + CHUNK_SIZE)
+        if (chunk.length === 0) continue
+        const placeholders = chunk.map(() => '?').join(',')
+        const rows = db
+          .prepare(
+            `SELECT id, file_path, info_json FROM ${TABLE} WHERE file_path IN (${placeholders})`
+          )
+          .all(...chunk) as Array<{ id: string; file_path: string; info_json?: string | null }>
+        for (const row of rows) {
+          const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
+          const nextMemoryCues = memoryCuesByFilePath.get(filePath)
+          if (!nextMemoryCues) continue
+          const info = parseMixtapeItemInfoJson(row?.info_json)
+          if (areSongMemoryCuesEqual(info.memoryCues, nextMemoryCues)) continue
+          info.memoryCues = nextMemoryCues
+          updateStmt.run(JSON.stringify(info), row.id)
+          updated += 1
+        }
+      }
+    })
+    tx()
+    return { updated }
+  } catch (error) {
+    log.error('[sqlite] mixtape memory cue upsert failed', error)
     return { updated: 0 }
   }
 }

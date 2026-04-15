@@ -8,6 +8,8 @@
   --shell-cue-accent: #d98921;
   --shell-drop-hover: rgba(0, 120, 212, 0.08);
   --shell-drop-border: rgba(0, 120, 212, 0.32);
+  --shell-side-panel-surface: color-mix(in srgb, var(--bg-elev) 88%, var(--bg));
+  --shell-side-panel-gap: 6px;
   --fader-travel-inset: 17%;
   --shell-z-overview-top: 30;
   --shell-z-detail-pair: 20;
@@ -16,6 +18,7 @@
   --shell-z-deck-info-bottom: 12;
   --shell-z-cover-anchor: 20;
   --shell-z-deck-menu: 45;
+  --shell-track-right-gutter: calc((var(--horizontal-browse-shell-height, 372px) - 1px) / 2);
   display: grid;
   grid-template-columns: 68px minmax(0, 1fr);
   width: 100%;
@@ -183,10 +186,13 @@
 .waveform-stack {
   display: grid;
   grid-template-rows: minmax(0, 0.95fr) minmax(0, 1.1fr) minmax(0, 0.95fr);
+  position: relative;
   min-width: 0;
   min-height: 0;
   border: 1px solid var(--shell-border);
   border-top: 0;
+  padding-right: var(--shell-track-right-gutter);
+  background: var(--shell-panel);
   box-sizing: border-box;
   isolation: isolate;
 }

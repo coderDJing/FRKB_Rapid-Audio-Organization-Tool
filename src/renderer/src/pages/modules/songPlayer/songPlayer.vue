@@ -25,6 +25,8 @@ import { usePlayerControlsLogic } from './usePlayerControlsLogic'
 import { useCover } from './useCover'
 import { usePreloadNextSong } from './usePreloadNextSong'
 import { useWaveform } from './useWaveform'
+import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
+import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
 import emitter from '@renderer/utils/mitt'
 import { useSongLoader } from './useSongLoader'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
@@ -466,6 +468,13 @@ const handleSeekToPercent = (percent: number) => {
   playerInstance.seek(duration * clamped, true)
 }
 
+const handleMainWaveformHotCueClick = (sec: number) => {
+  const playerInstance = audioPlayer.value
+  if (!playerInstance || !waveformShow.value || runtime.isSwitchingSong) return
+  stopWaveformPreviewForManualPlay()
+  playerInstance.play(Math.max(0, Number(sec) || 0))
+}
+
 // 音量控制
 const VOLUME_STEP = 0.05
 
@@ -550,6 +559,24 @@ const hotkeyActions = {
 }
 
 const isPlaying = computed(() => audioPlayer.value?.isPlaying() ?? false)
+const parseDurationToSeconds = (input: unknown) => {
+  const raw = String(input || '').trim()
+  if (!raw) return 0
+  if (/^\d+(\.\d+)?$/.test(raw)) return Math.max(0, Number(raw) || 0)
+  const parts = raw
+    .split(':')
+    .map((part) => Number(part))
+    .filter((part) => Number.isFinite(part))
+  if (!parts.length) return 0
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  if (parts.length === 2) return parts[0] * 60 + parts[1]
+  return parts[0]
+}
+const playerWaveformDurationSec = computed(() => {
+  const playerDuration = Number(audioPlayer.value?.getDuration())
+  if (Number.isFinite(playerDuration) && playerDuration > 0) return playerDuration
+  return parseDurationToSeconds(runtime.playingData.playingSong?.duration)
+})
 const playerState = {
   waveformShow,
   selectSongListDialogShow,
@@ -772,6 +799,20 @@ watch(
           <div id="time">0:00</div>
           <div id="duration">0:00</div>
           <div id="hover"></div>
+          <MemoryCueMarkersLayer
+            :memory-cues="runtime.playingData.playingSong?.memoryCues || []"
+            :visible-duration-sec="playerWaveformDurationSec"
+            anchor="top"
+            size="compact"
+          />
+          <HotCueMarkersLayer
+            :hot-cues="runtime.playingData.playingSong?.hotCues || []"
+            :visible-duration-sec="playerWaveformDurationSec"
+            anchor="top"
+            size="compact"
+            clickable
+            @marker-click="handleMainWaveformHotCueClick($event.sec)"
+          />
         </div>
 
         <PlaybackRangeHandles

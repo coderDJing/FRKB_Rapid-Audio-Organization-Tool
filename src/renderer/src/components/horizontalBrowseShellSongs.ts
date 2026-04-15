@@ -1,4 +1,6 @@
-import type { ISongInfo } from 'src/types/globals'
+import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
+import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
+import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
 
 type SharedSongGridPayload = {
   filePath?: string
@@ -77,4 +79,34 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
     touched = true
   }
   return touched ? nextSong : song
+}
+
+export const mergeHorizontalBrowseSongWithHotCues = (
+  song: ISongInfo,
+  payload: { filePath?: string; hotCues?: ISongHotCue[] } | null
+): ISongInfo => {
+  if (!payload) return song
+  const filePath = String(payload.filePath || '').trim()
+  if (!filePath || !isSameHorizontalBrowseSongFilePath(filePath, song.filePath)) return song
+  const normalizedHotCues = normalizeSongHotCues(payload.hotCues)
+  if (areSongHotCuesEqual(song.hotCues, normalizedHotCues)) return song
+  return {
+    ...song,
+    hotCues: normalizedHotCues
+  }
+}
+
+export const mergeHorizontalBrowseSongWithMemoryCues = (
+  song: ISongInfo,
+  payload: { filePath?: string; memoryCues?: ISongMemoryCue[] } | null
+): ISongInfo => {
+  if (!payload) return song
+  const filePath = String(payload.filePath || '').trim()
+  if (!filePath || !isSameHorizontalBrowseSongFilePath(filePath, song.filePath)) return song
+  const normalizedMemoryCues = normalizeSongMemoryCues(payload.memoryCues)
+  if (areSongMemoryCuesEqual(song.memoryCues, normalizedMemoryCues)) return song
+  return {
+    ...song,
+    memoryCues: normalizedMemoryCues
+  }
 }

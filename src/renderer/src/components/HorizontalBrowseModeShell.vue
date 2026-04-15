@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import type { ISongInfo } from 'src/types/globals'
+import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import HorizontalBrowseDeckButtons from '@renderer/components/HorizontalBrowseDeckButtons.vue'
 import HorizontalBrowseDeckDetailLane from '@renderer/components/HorizontalBrowseDeckDetailLane.vue'
 import HorizontalBrowseDeckMoveDialog from '@renderer/components/HorizontalBrowseDeckMoveDialog.vue'
 import HorizontalBrowseDeckOverviewSection from '@renderer/components/HorizontalBrowseDeckOverviewSection.vue'
+import HorizontalBrowseCuePanels from '@renderer/components/HorizontalBrowseCuePanels.vue'
 import {
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
@@ -20,6 +21,8 @@ import {
 import {
   buildHorizontalBrowseSongSnapshot,
   isSameHorizontalBrowseSongFilePath,
+  mergeHorizontalBrowseSongWithHotCues,
+  mergeHorizontalBrowseSongWithMemoryCues,
   mergeHorizontalBrowseSongWithSharedGrid
 } from '@renderer/components/horizontalBrowseShellSongs'
 import { formatPreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
@@ -37,15 +40,14 @@ import { useHorizontalBrowseHotkeys } from '@renderer/components/useHorizontalBr
 import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
 import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/components/useHorizontalBrowseDeckToolbarInteractions'
 import { useHorizontalBrowseDeckTransportInteractions } from '@renderer/components/useHorizontalBrowseDeckTransportInteractions'
+import { useHorizontalBrowseDeckHotCues } from '@renderer/components/useHorizontalBrowseDeckHotCues'
+import { useHorizontalBrowseDeckMemoryCues } from '@renderer/components/useHorizontalBrowseDeckMemoryCues'
+import { useHorizontalBrowseDeckSongSync } from '@renderer/components/useHorizontalBrowseDeckSongSync'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import emitter from '@renderer/utils/mitt'
 
 type DeckKey = HorizontalBrowseDeckKey
-type HorizontalBrowseLoadSongPayload = {
-  deck?: DeckKey
-  song?: ISongInfo | null
-}
 type SharedSongGridPayload = {
   filePath?: string
   bpm?: number
@@ -67,6 +69,7 @@ type SharedDetailZoomState = {
   sourceDirection: 'up' | 'down' | null
   revision: number
 }
+type DeckCuePanelMode = 'memory' | 'hot-cue'
 type HorizontalBrowseDeckDetailLaneExpose = {
   toggleBarLinePicking?: () => void
   setBarLineAtPlayhead?: () => void
@@ -158,6 +161,10 @@ const faderTicks = Array.from({ length: 9 }, (_, index) => ({
 
 const topOverviewRegions = [1, 2, 3]
 const bottomOverviewRegions = [6, 7, 8]
+const deckCuePanelMode = reactive<Record<DeckKey, DeckCuePanelMode>>({
+  top: 'memory',
+  bottom: 'memory'
+})
 const deckHydrateToken = reactive<Record<DeckKey, number>>({
   top: 0,
   bottom: 0
@@ -438,27 +445,6 @@ const startRenderSyncLoop = () => {
   void tick()
 }
 
-const hydrateDeckSongSharedGrid = async (deck: DeckKey, song: ISongInfo) => {
-  const filePath = String(song.filePath || '').trim()
-  if (!filePath) return
-
-  const token = ++deckHydrateToken[deck]
-  try {
-    const payload = (await window.electron.ipcRenderer.invoke('song:get-shared-grid-definition', {
-      filePath
-    })) as SharedSongGridPayload
-    if (deckHydrateToken[deck] !== token) return
-    const currentSong = deck === 'top' ? topDeckSong.value : bottomDeckSong.value
-    if (!currentSong || currentSong.filePath !== filePath) return
-    const nextSong = mergeHorizontalBrowseSongWithSharedGrid(currentSong, payload)
-    if (nextSong !== currentSong) {
-      setDeckSong(deck, nextSong)
-      syncDeckDefaultCue(deck, nextSong)
-      void commitDeckStateToNative(deck)
-    }
-  } catch {}
-}
-
 const queueDeckSongPriorityAnalysis = (deck: DeckKey, song: ISongInfo | null | undefined) => {
   const filePath = String(song?.filePath || '').trim()
   if (!filePath) return
@@ -472,10 +458,18 @@ const resolveDeckSongWithSharedGrid = async (song: ISongInfo) => {
   const filePath = String(song.filePath || '').trim()
   if (!filePath) return { ...song }
   try {
-    const payload = (await window.electron.ipcRenderer.invoke('song:get-shared-grid-definition', {
-      filePath
-    })) as SharedSongGridPayload
-    return mergeHorizontalBrowseSongWithSharedGrid({ ...song }, payload)
+    const [payload, hotCuePayload, memoryCuePayload] = await Promise.all([
+      window.electron.ipcRenderer.invoke('song:get-shared-grid-definition', { filePath }),
+      window.electron.ipcRenderer.invoke('song:get-hot-cues', { filePath }),
+      window.electron.ipcRenderer.invoke('song:get-memory-cues', { filePath })
+    ])
+    return mergeHorizontalBrowseSongWithMemoryCues(
+      mergeHorizontalBrowseSongWithHotCues(
+        mergeHorizontalBrowseSongWithSharedGrid({ ...song }, payload as SharedSongGridPayload),
+        { filePath, hotCues: hotCuePayload as ISongHotCue[] }
+      ),
+      { filePath, memoryCues: memoryCuePayload as ISongMemoryCue[] }
+    )
   } catch {
     return { ...song }
   }
@@ -570,6 +564,37 @@ const {
   resolveDeckCuePointRef,
   resolveCuePointSec: resolveHorizontalBrowseCuePointSec
 })
+
+const {
+  handleDeckHotCuePress,
+  handleDeckHotCueTrigger,
+  handleDeckHotCueDelete,
+  handleSongHotCuesUpdated
+} = useHorizontalBrowseDeckHotCues({
+  resolveDeckSong,
+  setDeckSong,
+  resolveDeckPlaying,
+  resolveDeckCurrentSeconds,
+  resolveDeckRenderCurrentSeconds,
+  resolveDeckDurationSeconds,
+  resolveDeckGridBpm,
+  resolveTransportDeckSnapshot,
+  nativeTransport,
+  commitDeckStatesToNative,
+  syncDeckRenderState,
+  isDeckLoopActive
+})
+
+const { handleDeckMemoryCueCreate, handleDeckMemoryCueDelete, handleSongMemoryCuesUpdated } =
+  useHorizontalBrowseDeckMemoryCues({
+    resolveDeckSong,
+    setDeckSong,
+    resolveDeckPlaying,
+    resolveDeckCurrentSeconds,
+    resolveDeckRenderCurrentSeconds,
+    resolveDeckDurationSeconds,
+    resolveDeckGridBpm
+  })
 
 const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
   resolveDeckCuePreviewRuntimeState,
@@ -783,57 +808,16 @@ const handleGlobalDragFinish = () => {
   resetRegionDragState()
 }
 
-const handleExternalDeckSongLoad = (payload: HorizontalBrowseLoadSongPayload) => {
-  const deck = payload?.deck
-  const song = payload?.song
-  if (!deck || !song) return
-  void assignSongToDeck(deck, { ...song })
-}
-
-const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) => {
-  const topSong = topDeckSong.value
-  if (topSong) {
-    const nextTopSong = mergeHorizontalBrowseSongWithSharedGrid(topSong, payload)
-    if (nextTopSong !== topSong) {
-      setDeckSong('top', nextTopSong)
-      syncDeckDefaultCue('top', nextTopSong)
-    }
-  }
-
-  const bottomSong = bottomDeckSong.value
-  if (bottomSong) {
-    const nextBottomSong = mergeHorizontalBrowseSongWithSharedGrid(bottomSong, payload)
-    if (nextBottomSong !== bottomSong) {
-      setDeckSong('bottom', nextBottomSong)
-      syncDeckDefaultCue('bottom', nextBottomSong)
-    }
-  }
-
-  void commitDeckStatesToNative()
-}
-
-const handleSongKeyUpdated = (
-  _event: unknown,
-  payload: { filePath?: string; keyText?: string }
-) => {
-  const filePath = String(payload?.filePath || '').trim()
-  const keyText = String(payload?.keyText || '').trim()
-  if (!filePath || !keyText) return
-
-  const patchDeckSongKey = (deck: DeckKey) => {
-    const currentSong = resolveDeckSong(deck)
-    if (!currentSong) return
-    if (!isSameHorizontalBrowseSongFilePath(currentSong.filePath, filePath)) return
-    if (String(currentSong.key || '').trim() === keyText) return
-    setDeckSong(deck, {
-      ...currentSong,
-      key: keyText
-    })
-  }
-
-  patchDeckSongKey('top')
-  patchDeckSongKey('bottom')
-}
+const { handleExternalDeckSongLoad, handleSongGridUpdated, handleSongKeyUpdated } =
+  useHorizontalBrowseDeckSongSync({
+    topDeckSong,
+    bottomDeckSong,
+    resolveDeckSong,
+    setDeckSong,
+    syncDeckDefaultCue,
+    commitDeckStatesToNative,
+    assignSongToDeck
+  })
 
 watch(
   () => deckSyncState.leaderDeck,
@@ -856,6 +840,8 @@ onMounted(() => {
   emitter.on('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.on('song-key-updated', handleSongKeyUpdated)
+  window.electron.ipcRenderer.on('song-hot-cues-updated', handleSongHotCuesUpdated)
+  window.electron.ipcRenderer.on('song-memory-cues-updated', handleSongMemoryCuesUpdated)
 })
 
 onUnmounted(() => {
@@ -872,6 +858,11 @@ onUnmounted(() => {
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)
+  window.electron.ipcRenderer.removeListener('song-hot-cues-updated', handleSongHotCuesUpdated)
+  window.electron.ipcRenderer.removeListener(
+    'song-memory-cues-updated',
+    handleSongMemoryCuesUpdated
+  )
   runtime.horizontalBrowseDecks.topSong = null
   runtime.horizontalBrowseDecks.bottomSong = null
   runtime.horizontalBrowseDecks.leaderDeck = null
@@ -944,6 +935,8 @@ onUnmounted(() => {
         :key-highlighted="deckKeysHarmonicMatched"
         :current-seconds="topDeckRenderCurrentSeconds"
         :duration-seconds="topDeckDurationSeconds"
+        :hot-cues="topDeckSong?.hotCues || []"
+        :memory-cues="topDeckSong?.memoryCues || []"
         :toolbar-state="resolveDeckToolbarState('top')"
         :loop-range="resolveDeckLoopRange('top')"
         :read-only-source="isDeckSongReadOnly('top')"
@@ -963,6 +956,7 @@ onUnmounted(() => {
         @shift-right-large="handleDeckGridShiftLargeRight('top')"
         @update-bpm-input="handleDeckBpmInputUpdate('top', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('top')"
+        @memory-cue="void handleDeckMemoryCueCreate('top')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
         @toggle-metronome="handleDeckMetronomeToggle('top')"
         @cycle-metronome-volume="handleDeckMetronomeVolumeCycle('top')"
@@ -985,6 +979,8 @@ onUnmounted(() => {
           :grid-bpm="topDeckGridBpm"
           :loop-range="resolveDeckLoopRange('top')"
           :cue-seconds="topDeckCuePointSeconds"
+          :hot-cues="topDeckSong?.hotCues || []"
+          :memory-cues="topDeckSong?.memoryCues || []"
           :defer-waveform-load="topDeckShouldDeferWaveformLoad"
           :raw-load-priority-hint="topDeckRawLoadPriorityHint"
           direction="up"
@@ -1010,6 +1006,8 @@ onUnmounted(() => {
           :grid-bpm="bottomDeckGridBpm"
           :loop-range="resolveDeckLoopRange('bottom')"
           :cue-seconds="bottomDeckCuePointSeconds"
+          :hot-cues="bottomDeckSong?.hotCues || []"
+          :memory-cues="bottomDeckSong?.memoryCues || []"
           :defer-waveform-load="bottomDeckShouldDeferWaveformLoad"
           :raw-load-priority-hint="bottomDeckRawLoadPriorityHint"
           direction="down"
@@ -1040,6 +1038,8 @@ onUnmounted(() => {
         :key-highlighted="deckKeysHarmonicMatched"
         :current-seconds="bottomDeckRenderCurrentSeconds"
         :duration-seconds="bottomDeckDurationSeconds"
+        :hot-cues="bottomDeckSong?.hotCues || []"
+        :memory-cues="bottomDeckSong?.memoryCues || []"
         :toolbar-state="resolveDeckToolbarState('bottom')"
         :loop-range="resolveDeckLoopRange('bottom')"
         :read-only-source="isDeckSongReadOnly('bottom')"
@@ -1059,6 +1059,7 @@ onUnmounted(() => {
         @shift-right-large="handleDeckGridShiftLargeRight('bottom')"
         @update-bpm-input="handleDeckBpmInputUpdate('bottom', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
+        @memory-cue="void handleDeckMemoryCueCreate('bottom')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
         @toggle-metronome="handleDeckMetronomeToggle('bottom')"
         @cycle-metronome-volume="handleDeckMetronomeVolumeCycle('bottom')"
@@ -1068,6 +1069,17 @@ onUnmounted(() => {
         @toggle-master-tempo="handleDeckMasterTempoToggle('bottom')"
         @reset-tempo="resetDeckTempo('bottom')"
         @select-move-target="openDeckMoveDialog('bottom', $event)"
+      />
+      <HorizontalBrowseCuePanels
+        v-model:top-mode="deckCuePanelMode.top"
+        v-model:bottom-mode="deckCuePanelMode.bottom"
+        :top-hot-cues="topDeckSong?.hotCues || []"
+        :bottom-hot-cues="bottomDeckSong?.hotCues || []"
+        :top-memory-cues="topDeckSong?.memoryCues || []"
+        :bottom-memory-cues="bottomDeckSong?.memoryCues || []"
+        @hotcue-press="void handleDeckHotCuePress($event.deck, $event.slot)"
+        @hotcue-delete="void handleDeckHotCueDelete($event.deck, $event.slot)"
+        @memorycue-delete="void handleDeckMemoryCueDelete($event.deck, $event.sec)"
       />
     </div>
 

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { ISongInfo } from 'src/types/globals'
+import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import HorizontalBrowseCueMarker from '@renderer/components/HorizontalBrowseCueMarker.vue'
+import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
+import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
 import { createRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformPlaceholder'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import {
@@ -72,6 +74,8 @@ const props = defineProps<{
   gridBpm?: number
   loopRange?: HorizontalBrowseLoopRange | null
   cueSeconds?: number
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
   deferWaveformLoad?: boolean
   rawLoadPriorityHint?: number
 }>()
@@ -118,6 +122,7 @@ const {
   resolvePreviewDurationSec,
   resolveVisibleDurationSec,
   resolvePreviewAnchorSec,
+  resolveSnappedRenderStartSec,
   clampPreviewStart,
   resolvePlaybackAlignedStart,
   scheduleRawStreamDirtyDraw,
@@ -286,6 +291,11 @@ const handleWheel = (event: WheelEvent) => {
 }
 
 const canAdjustGrid = computed(() => !previewLoading.value && !!mixxxData.value)
+const hotCueMarkerStartSec = computed(() => {
+  const visibleDurationSec = Number(resolveVisibleDurationSec())
+  if (!Number.isFinite(visibleDurationSec) || visibleDurationSec <= 0) return 0
+  return resolveSnappedRenderStartSec(visibleDurationSec)
+})
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
 const previewPlaying = ref(false)
 const detailVisible = computed(() => true)
@@ -686,6 +696,22 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       ref="gridCanvasRef"
       class="raw-detail-waveform__canvas raw-detail-waveform__canvas--grid"
     ></canvas>
+    <MemoryCueMarkersLayer
+      :memory-cues="props.memoryCues || []"
+      :start-sec="hotCueMarkerStartSec"
+      :visible-duration-sec="resolveVisibleDurationSec()"
+      :anchor="props.direction === 'up' ? 'top' : 'bottom'"
+      :offset-px="props.direction === 'up' ? -8 : -8"
+      size="default"
+    />
+    <HotCueMarkersLayer
+      :hot-cues="props.hotCues || []"
+      :start-sec="hotCueMarkerStartSec"
+      :visible-duration-sec="resolveVisibleDurationSec()"
+      :anchor="props.direction === 'up' ? 'top' : 'bottom'"
+      size="default"
+      :offset-px="-8"
+    />
     <div v-if="loopMaskStyle" class="raw-detail-waveform__loop-mask" :style="loopMaskStyle"></div>
     <div class="raw-detail-waveform__playhead"></div>
     <HorizontalBrowseCueMarker

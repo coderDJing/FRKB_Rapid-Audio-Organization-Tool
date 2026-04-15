@@ -115,16 +115,18 @@ onUnmounted(() => {
 .deck-move-button__trigger {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  height: 24px;
+  height: 22px;
   min-width: 84px;
-  padding: 0 10px;
+  padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-elev);
   color: var(--text);
-  font-size: 12px;
-  line-height: 22px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
   white-space: nowrap;
   box-sizing: border-box;
   cursor: pointer;
@@ -159,7 +161,7 @@ onUnmounted(() => {
   min-width: 180px;
   padding: 6px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--bg-elev);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.26);
   z-index: var(--shell-z-deck-menu, 45);
@@ -168,13 +170,13 @@ onUnmounted(() => {
 .deck-move-button__menu-item {
   width: 100%;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 3px;
   background: transparent;
   color: var(--text);
   text-align: left;
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.25;
-  padding: 7px 9px;
+  padding: 7px 8px;
   cursor: pointer;
   transition:
     background-color 0.14s ease,

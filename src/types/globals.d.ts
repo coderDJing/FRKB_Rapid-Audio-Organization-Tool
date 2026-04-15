@@ -46,6 +46,8 @@ interface ISongInfo {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
   mixOrder?: number
   mixtapeItemId?: string
   analysisOnly?: boolean
@@ -59,6 +61,15 @@ interface ISongInfo {
   deletedAtMs?: number
   originalPlaylistPath?: string | null
   recycleBinSourceType?: string | null
+}
+
+export interface ISongHotCue {
+  slot: number
+  sec: number
+}
+
+export interface ISongMemoryCue {
+  sec: number
 }
 
 interface ICuratedArtistFavorite {

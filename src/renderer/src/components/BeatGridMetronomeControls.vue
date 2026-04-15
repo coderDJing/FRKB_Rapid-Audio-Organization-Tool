@@ -87,13 +87,13 @@ const metronomeVolumeTitle = computed(() =>
 }
 
 .waveform-action-btn {
-  height: 24px;
-  padding: 0 10px;
+  height: 22px;
+  padding: 0 9px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-elev);
   color: var(--text);
-  font-size: 12px;
+  font-size: 11px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -135,14 +135,14 @@ const metronomeVolumeTitle = computed(() =>
 }
 
 .metronome-volume-btn {
-  height: 24px;
+  height: 22px;
   min-width: 42px;
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-elev);
   color: var(--text);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
   cursor: pointer;
 }

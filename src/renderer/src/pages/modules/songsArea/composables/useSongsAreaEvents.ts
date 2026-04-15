@@ -1,9 +1,11 @@
 import { onMounted, onUnmounted, watch, markRaw } from 'vue'
 import emitter from '@renderer/utils/mitt'
 import type { ShallowRef } from 'vue'
-import type { ISongInfo } from '../../../../../../types/globals'
+import type { ISongHotCue, ISongInfo, ISongMemoryCue } from '../../../../../../types/globals'
 import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
+import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
 const normalizePath = (p: string | undefined | null) => (p || '').replace(/\//g, '\\').toLowerCase()
@@ -416,6 +418,120 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
   }
 
+  const onSongHotCuesUpdated = (
+    _e: unknown,
+    payload: {
+      filePath?: string
+      hotCues?: ISongHotCue[]
+    }
+  ) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
+    if (!filePath) return
+    const normalizedTargetPath = normalizePath(filePath)
+    const normalizedHotCues = normalizeSongHotCues(payload?.hotCues)
+
+    const applyHotCuePatch = (song: ISongInfo): ISongInfo => {
+      if (areSongHotCuesEqual(song.hotCues, normalizedHotCues)) return song
+      return {
+        ...song,
+        hotCues: normalizedHotCues
+      }
+    }
+
+    let touched = false
+    const nextOriginal = originalSongInfoArr.value.map((item) => {
+      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
+      const nextItem = applyHotCuePatch(item)
+      if (nextItem !== item) touched = true
+      return nextItem
+    })
+    if (touched) {
+      originalSongInfoArr.value = markRaw(nextOriginal)
+      scheduleApply()
+    }
+
+    if (songsAreaState.songInfoArr.length > 0) {
+      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
+        normalizePath(item.filePath) === normalizedTargetPath ? applyHotCuePatch(item) : item
+      )
+    }
+
+    const currentPlayingSong = runtime.playingData.playingSong
+    if (currentPlayingSong && normalizePath(currentPlayingSong.filePath) === normalizedTargetPath) {
+      runtime.playingData.playingSong = applyHotCuePatch(currentPlayingSong)
+    }
+
+    if (runtime.playingData.playingSongListData.length > 0) {
+      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
+        (item) =>
+          normalizePath(item.filePath) === normalizedTargetPath ? applyHotCuePatch(item) : item
+      )
+    }
+
+    if (runtime.externalPlaylist.songs.length > 0) {
+      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
+        normalizePath(item.filePath) === normalizedTargetPath ? applyHotCuePatch(item) : item
+      )
+    }
+  }
+
+  const onSongMemoryCuesUpdated = (
+    _e: unknown,
+    payload: {
+      filePath?: string
+      memoryCues?: ISongMemoryCue[]
+    }
+  ) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
+    if (!filePath) return
+    const normalizedTargetPath = normalizePath(filePath)
+    const normalizedMemoryCues = normalizeSongMemoryCues(payload?.memoryCues)
+
+    const applyMemoryCuePatch = (song: ISongInfo): ISongInfo => {
+      if (areSongMemoryCuesEqual(song.memoryCues, normalizedMemoryCues)) return song
+      return {
+        ...song,
+        memoryCues: normalizedMemoryCues
+      }
+    }
+
+    let touched = false
+    const nextOriginal = originalSongInfoArr.value.map((item) => {
+      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
+      const nextItem = applyMemoryCuePatch(item)
+      if (nextItem !== item) touched = true
+      return nextItem
+    })
+    if (touched) {
+      originalSongInfoArr.value = markRaw(nextOriginal)
+      scheduleApply()
+    }
+
+    if (songsAreaState.songInfoArr.length > 0) {
+      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
+        normalizePath(item.filePath) === normalizedTargetPath ? applyMemoryCuePatch(item) : item
+      )
+    }
+
+    const currentPlayingSong = runtime.playingData.playingSong
+    if (currentPlayingSong && normalizePath(currentPlayingSong.filePath) === normalizedTargetPath) {
+      runtime.playingData.playingSong = applyMemoryCuePatch(currentPlayingSong)
+    }
+
+    if (runtime.playingData.playingSongListData.length > 0) {
+      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
+        (item) =>
+          normalizePath(item.filePath) === normalizedTargetPath ? applyMemoryCuePatch(item) : item
+      )
+    }
+
+    if (runtime.externalPlaylist.songs.length > 0) {
+      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
+        normalizePath(item.filePath) === normalizedTargetPath ? applyMemoryCuePatch(item) : item
+      )
+    }
+  }
+
   const onImportFinished = async (_event: unknown, songListUUID: string, _summary: unknown) => {
     if (songListUUID === songsAreaState.songListUUID) {
       setTimeout(async () => {
@@ -458,6 +574,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.on('song-bpm-updated', onSongBpmUpdated)
     window.electron.ipcRenderer.on('song-grid-updated', onSongGridUpdated)
+    window.electron.ipcRenderer.on('song-hot-cues-updated', onSongHotCuesUpdated)
+    window.electron.ipcRenderer.on('song-memory-cues-updated', onSongMemoryCuesUpdated)
     window.electron.ipcRenderer.on('importFinished', onImportFinished)
     window.electron.ipcRenderer.on('audio:convert:done', onAudioConvertDone)
   })
@@ -471,6 +589,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.removeListener('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.removeListener('song-bpm-updated', onSongBpmUpdated)
     window.electron.ipcRenderer.removeListener('song-grid-updated', onSongGridUpdated)
+    window.electron.ipcRenderer.removeListener('song-hot-cues-updated', onSongHotCuesUpdated)
+    window.electron.ipcRenderer.removeListener('song-memory-cues-updated', onSongMemoryCuesUpdated)
     window.electron.ipcRenderer.removeListener('importFinished', onImportFinished)
     window.electron.ipcRenderer.removeListener('audio:convert:done', onAudioConvertDone)
   })

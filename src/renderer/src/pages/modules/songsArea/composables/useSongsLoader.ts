@@ -6,6 +6,8 @@ import type { ISongInfo } from '../../../../../../types/globals'
 import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { areSongHotCuesEqual } from '@shared/hotCues'
+import { areSongMemoryCuesEqual } from '@shared/memoryCues'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 interface UseSongsLoaderParams {
@@ -187,6 +189,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         normalizeComparableText(right.container).toUpperCase() &&
       normalizeComparableText(left.key) === normalizeComparableText(right.key) &&
       normalizeComparableNumber(left.bpm) === normalizeComparableNumber(right.bpm) &&
+      areSongHotCuesEqual(left.hotCues, right.hotCues) &&
+      areSongMemoryCuesEqual(left.memoryCues, right.memoryCues) &&
       normalizeComparableNumber(left.mixOrder) === normalizeComparableNumber(right.mixOrder) &&
       normalizeComparableText(left.mixtapeItemId) ===
         normalizeComparableText(right.mixtapeItemId) &&
@@ -247,6 +251,12 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
     if (normalizeComparableNumber(left.bpm) !== normalizeComparableNumber(right.bpm)) {
       fields.push('bpm')
+    }
+    if (!areSongHotCuesEqual(left.hotCues, right.hotCues)) {
+      fields.push('hotCues')
+    }
+    if (!areSongMemoryCuesEqual(left.memoryCues, right.memoryCues)) {
+      fields.push('memoryCues')
     }
     if (normalizeComparableNumber(left.mixOrder) !== normalizeComparableNumber(right.mixOrder)) {
       fields.push('mixOrder')

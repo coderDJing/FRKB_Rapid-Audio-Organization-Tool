@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { ISongInfo } from 'src/types/globals'
+import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import HorizontalBrowseRawWaveformDetail from '@renderer/components/HorizontalBrowseRawWaveformDetail.vue'
 import type { HorizontalBrowseGridToolbarState } from '@renderer/components/useHorizontalBrowseGridToolbar'
 
@@ -39,6 +39,8 @@ const props = defineProps<{
   gridBpm: number
   loopRange: HorizontalBrowseLoopRange | null
   cueSeconds: number
+  hotCues: ISongHotCue[]
+  memoryCues: ISongMemoryCue[]
   deferWaveformLoad: boolean
   rawLoadPriorityHint: number
   direction: 'up' | 'down'
@@ -96,6 +98,8 @@ defineExpose({
       :grid-bpm="props.gridBpm"
       :loop-range="props.loopRange"
       :cue-seconds="props.cueSeconds"
+      :hot-cues="props.hotCues"
+      :memory-cues="props.memoryCues"
       :defer-waveform-load="props.deferWaveformLoad"
       :raw-load-priority-hint="props.rawLoadPriorityHint"
       :direction="props.direction"

@@ -11,12 +11,7 @@ import {
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import {
-  getKeyDisplayText as formatKeyDisplayText,
-  isHarmonicMixCompatible
-} from '@shared/keyDisplay'
 import { t } from '@renderer/utils/translate'
-import { formatDeletedAtMs, getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { useVirtualRows } from './SongListRows/useVirtualRows'
 import { useSongRowEvents } from './SongListRows/useSongRowEvents'
@@ -24,8 +19,9 @@ import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
 import { useKeyAnalysisQueue } from './SongListRows/useKeyAnalysisQueue'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
 import { useSongRowHoverInteractions } from './SongListRows/useSongRowHoverInteractions'
+import { useSongRowDisplay } from './SongListRows/useSongRowDisplay'
 import { useWaveformPreview } from './SongListRows/useWaveformPreview'
-import { formatBpmDisplay } from '@renderer/utils/bpm'
+import WaveformPreviewCell from './SongListRows/WaveformPreviewCell.vue'
 
 const props = defineProps({
   songs: {
@@ -262,93 +258,17 @@ const scheduleAutoScroll = (event: DragEvent) => {
   host.scrollTop += delta
 }
 
-const getKeyDisplayText = (value: unknown): string => {
-  const text = typeof value === 'string' ? value.trim() : ''
-  const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
-  const display = formatKeyDisplayText(text, style)
-  if (display.toLowerCase() === 'o') {
-    return t('player.keyDisplayNone')
-  }
-  return display
-}
-
-const getCellValue = (song: ISongInfo, colKey: string): string | number => {
-  if (colKey === 'key') {
-    return getKeyDisplayText(song.key)
-  }
-  if (colKey === 'deletedAtMs') {
-    return formatDeletedAtMs(song.deletedAtMs)
-  }
-  if (colKey === 'originalPlaylistPath') {
-    return getOriginalPlaylistDisplay(song)
-  }
-  const raw = song[colKey as keyof ISongInfo]
-  if (colKey === 'bpm') {
-    const bpm = Number(raw)
-    return Number.isFinite(bpm) && bpm > 0 ? formatBpmDisplay(bpm, '') : ''
-  }
-  if (raw === undefined || raw === null) return ''
-  return raw as string | number
-}
-
-const normalizeArtistName = (value: unknown) =>
-  String(value || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLocaleLowerCase()
-
-const curatedArtistFavoriteSet = computed(
-  () =>
-    new Map(
-      (runtime.curatedArtistFavorites || [])
-        .map((artist) => {
-          const normalized = normalizeArtistName(artist?.name)
-          if (!normalized) return null
-          return [
-            normalized,
-            {
-              name: String(artist?.name || '').trim(),
-              count: Math.max(1, Math.round(Number(artist?.count) || 1))
-            }
-          ] as const
-        })
-        .filter((item): item is readonly [string, { name: string; count: number }] => !!item)
-    )
-)
-
-const getCuratedArtistFavorite = (song: ISongInfo) =>
-  curatedArtistFavoriteSet.value.get(normalizeArtistName(song.artist)) || null
-
-const isCuratedArtistHit = (song: ISongInfo, colKey: string) => {
-  if (colKey !== 'artist') return false
-  if (props.sourceLibraryName !== 'FilterLibrary') return false
-  if (runtime.setting.enableCuratedArtistTracking === false) return false
-  return curatedArtistFavoriteSet.value.has(normalizeArtistName(song.artist))
-}
-
-const getCuratedArtistBadgeText = (song: ISongInfo, colKey: string) => {
-  if (colKey !== 'artist') return ''
-  const favorite = getCuratedArtistFavorite(song)
-  if (!favorite) return ''
-  return t('tracks.curatedArtistCountBadge', { count: favorite.count })
-}
-
-const getCuratedArtistBadgeTitle = (song: ISongInfo, colKey: string) => {
-  if (colKey !== 'artist') return ''
-  const favorite = getCuratedArtistFavorite(song)
-  if (!favorite) return ''
-  return t('tracks.curatedArtistCountBadgeTitle', {
-    artist: favorite.name || String(song.artist || ''),
-    count: favorite.count
-  })
-}
-
-const isHarmonicKeyMatch = (song: ISongInfo, colKey: string) => {
-  if (colKey !== 'key') return false
-  const referenceKey = String(props.harmonicReferenceKey || '').trim()
-  if (!referenceKey) return false
-  return isHarmonicMixCompatible(referenceKey, String(song.key || '').trim())
-}
+const {
+  getCellValue,
+  isCuratedArtistHit,
+  getCuratedArtistBadgeText,
+  getCuratedArtistBadgeTitle,
+  isHarmonicKeyMatch
+} = useSongRowDisplay({
+  runtime,
+  sourceLibraryName: () => props.sourceLibraryName,
+  harmonicReferenceKey: () => props.harmonicReferenceKey || ''
+})
 
 const {
   rowsRoot,
@@ -430,6 +350,7 @@ const {
   setWaveformCanvasRef,
   getWaveformClickPercent,
   requestWaveformPreview,
+  requestWaveformPreviewAtSeconds,
   stopWaveformPreview,
   isWaveformPreviewActive,
   getWaveformPreviewPlayheadStyle,
@@ -460,6 +381,11 @@ const handleWaveformStopClick = (event: MouseEvent) => {
   event.stopPropagation()
   event.preventDefault()
   stopWaveformPreview()
+}
+
+const handleWaveformHotCueClick = (song: ISongInfo, sec: number) => {
+  if (!canPreviewWaveform.value) return
+  requestWaveformPreviewAtSeconds(song, sec)
 }
 
 const isSelfExternalSongDrag = () =>
@@ -755,43 +681,20 @@ onUnmounted(() => {
                   <div v-else class="cover-skeleton"></div>
                 </div>
               </div>
-              <div
+              <WaveformPreviewCell
                 v-else-if="col.key === 'waveformPreview'"
-                class="cell-waveform"
-                :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
-                @click="canPreviewWaveform && handleWaveformClick(item.song, $event)"
-              >
-                <div class="waveform-preview-stop-slot">
-                  <button
-                    v-if="isWaveformPreviewActive(item.song.filePath)"
-                    class="waveform-preview-stop"
-                    type="button"
-                    aria-label="Stop preview"
-                    @click="canPreviewWaveform && handleWaveformStopClick($event)"
-                  ></button>
-                </div>
-                <div class="waveform-preview-shell">
-                  <canvas
-                    :ref="
-                      (el) =>
-                        setWaveformCanvasRef(item.song.filePath, el as HTMLCanvasElement | null)
-                    "
-                    class="waveform-preview-canvas"
-                  ></canvas>
-                  <div
-                    v-if="getWaveformPlaceholderText(item.song.filePath)"
-                    class="waveform-preview-placeholder"
-                    :title="getWaveformPlaceholderTitle(item.song.filePath)"
-                  >
-                    {{ getWaveformPlaceholderText(item.song.filePath) }}
-                  </div>
-                  <div
-                    v-if="isWaveformPreviewActive(item.song.filePath)"
-                    class="waveform-preview-playhead"
-                    :style="getWaveformPreviewPlayheadStyle(item.song.filePath)"
-                  ></div>
-                </div>
-              </div>
+                :song="item.song"
+                :width-px="col.width"
+                :can-preview-waveform="canPreviewWaveform"
+                :is-waveform-preview-active="isWaveformPreviewActive"
+                :handle-waveform-click="handleWaveformClick"
+                :handle-waveform-stop-click="handleWaveformStopClick"
+                :handle-hot-cue-click="handleWaveformHotCueClick"
+                :set-waveform-canvas-ref="setWaveformCanvasRef"
+                :get-waveform-placeholder-text="getWaveformPlaceholderText"
+                :get-waveform-placeholder-title="getWaveformPlaceholderTitle"
+                :get-waveform-preview-playhead-style="getWaveformPreviewPlayheadStyle"
+              />
               <div
                 v-else
                 :ref="(el) => setCellRef(getCellKey(item.song, col.key), el)"
@@ -1082,122 +985,6 @@ onUnmounted(() => {
   text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.cell-waveform {
-  height: 100%;
-  box-sizing: border-box;
-  border-right: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  padding: 0 12px 0 7px;
-  position: relative;
-  cursor: default;
-  gap: 6px;
-}
-
-.waveform-preview-stop-slot {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.waveform-preview-shell {
-  position: relative;
-  width: 100%;
-  height: 18px;
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.waveform-preview-canvas {
-  width: 100%;
-  height: 18px;
-  display: block;
-  color: var(--text-weak);
-  pointer-events: none;
-}
-
-.waveform-preview-placeholder {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  color: var(--text-weak);
-  font-size: 11px;
-  line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  pointer-events: none;
-}
-
-.waveform-preview-playhead {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  background: var(--accent);
-  transform: translateX(-50%);
-  pointer-events: none;
-  z-index: 2;
-}
-
-.waveform-preview-stop {
-  width: 16px;
-  height: 16px;
-  background: var(--accent);
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  padding: 0;
-  cursor: pointer;
-  z-index: 3;
-  opacity: 0.95;
-  appearance: none;
-  outline: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.2),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-  transition:
-    transform 120ms ease,
-    box-shadow 120ms ease,
-    opacity 120ms ease;
-}
-
-.waveform-preview-stop::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 1px;
-  background: var(--bg);
-}
-
-.waveform-preview-stop:hover {
-  opacity: 1;
-  transform: scale(1.05);
-  box-shadow:
-    0 2px 6px rgba(0, 0, 0, 0.28),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
-}
-
-.waveform-preview-stop:active {
-  transform: scale(0.98);
-}
-
-.waveform-preview-stop:focus-visible {
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent),
-    0 2px 6px rgba(0, 0, 0, 0.28);
 }
 
 .cell-cover {

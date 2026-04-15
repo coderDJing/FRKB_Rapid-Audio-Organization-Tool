@@ -32,6 +32,7 @@ const emit = defineEmits<{
   (event: 'shift-right-large'): void
   (event: 'update-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
+  (event: 'memory-cue'): void
   (event: 'toggle-bar-line-picking'): void
   (event: 'loop-step-down'): void
   (event: 'loop-step-up'): void
@@ -54,6 +55,7 @@ const emit = defineEmits<{
         :bpm-min="props.bpmMin"
         :bpm-max="props.bpmMax"
         :show-tap-button="false"
+        show-memory-button
         @set-bar-line="emit('set-bar-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"
@@ -61,8 +63,9 @@ const emit = defineEmits<{
         @shift-right-large="emit('shift-right-large')"
         @update-bpm-input="emit('update-bpm-input', $event)"
         @blur-bpm-input="emit('blur-bpm-input')"
+        @memory-cue="emit('memory-cue')"
       />
-      <div class="overview__loop-control">
+      <div class="overview__toolbar-group overview__loop-control">
         <button
           type="button"
           class="overview__loop-arrow"
@@ -99,27 +102,31 @@ const emit = defineEmits<{
           </svg>
         </button>
       </div>
-      <button
-        type="button"
-        class="overview__set-bar-btn"
-        :class="{ 'is-active': props.barLinePicking }"
-        :disabled="props.disabled"
-        @click="emit('toggle-bar-line-picking')"
-      >
-        {{
-          props.barLinePicking
-            ? t('mixtape.gridAdjustSetBarLineCancel')
-            : t('mixtape.gridAdjustSetBarLine')
-        }}
-      </button>
-      <BeatGridMetronomeControls
-        :metronome-enabled="props.metronomeEnabled"
-        :metronome-volume-level="props.metronomeVolumeLevel"
-        :can-toggle-metronome="props.canToggleMetronome"
-        :can-adjust-metronome-volume="props.canAdjustMetronomeVolume"
-        @toggle-metronome="emit('toggle-metronome')"
-        @cycle-metronome-volume="emit('cycle-metronome-volume')"
-      />
+      <div class="overview__toolbar-group">
+        <button
+          type="button"
+          class="overview__set-bar-btn"
+          :class="{ 'is-active': props.barLinePicking }"
+          :disabled="props.disabled"
+          @click="emit('toggle-bar-line-picking')"
+        >
+          {{
+            props.barLinePicking
+              ? t('mixtape.gridAdjustSetBarLineCancel')
+              : t('mixtape.gridAdjustSetBarLine')
+          }}
+        </button>
+      </div>
+      <div class="overview__toolbar-group">
+        <BeatGridMetronomeControls
+          :metronome-enabled="props.metronomeEnabled"
+          :metronome-volume-level="props.metronomeVolumeLevel"
+          :can-toggle-metronome="props.canToggleMetronome"
+          :can-adjust-metronome-volume="props.canAdjustMetronomeVolume"
+          @toggle-metronome="emit('toggle-metronome')"
+          @cycle-metronome-volume="emit('cycle-metronome-volume')"
+        />
+      </div>
     </div>
     <div class="overview__toolbar-actions">
       <button
@@ -139,7 +146,7 @@ const emit = defineEmits<{
         title="Reset Tempo"
         @click="emit('reset-tempo')"
       >
-        RST
+        RES
       </button>
       <HorizontalBrowseDeckMoveButton
         :disabled="!props.songPresent"
@@ -166,8 +173,13 @@ const emit = defineEmits<{
 .overview__toolbar-main {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
   min-width: 0;
+}
+
+.overview__toolbar-group {
+  display: inline-flex;
+  align-items: center;
 }
 
 .overview__toolbar-actions {
@@ -185,9 +197,9 @@ const emit = defineEmits<{
 
 .overview__loop-arrow,
 .overview__loop-value {
-  height: 24px;
+  height: 22px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-elev);
   color: var(--text);
   box-sizing: border-box;
@@ -200,7 +212,7 @@ const emit = defineEmits<{
 }
 
 .overview__loop-arrow {
-  width: 24px;
+  width: 22px;
   padding: 0;
   display: inline-flex;
   align-items: center;
@@ -219,10 +231,13 @@ const emit = defineEmits<{
 
 .overview__loop-value {
   min-width: 44px;
-  padding: 0 10px;
-  font-size: 12px;
-  line-height: 22px;
+  padding: 0 9px;
+  font-size: 11px;
+  line-height: 20px;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .overview__loop-arrow:hover:not(:disabled),
@@ -245,17 +260,20 @@ const emit = defineEmits<{
 }
 
 .overview__set-bar-btn {
-  height: 24px;
+  height: 22px;
   min-width: 36px;
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-elev);
   color: var(--text);
-  font-size: 12px;
-  line-height: 22px;
+  font-size: 11px;
+  line-height: 20px;
   white-space: nowrap;
   box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition:
     border-color 0.14s ease,
@@ -279,18 +297,21 @@ const emit = defineEmits<{
 }
 
 .overview__transport-btn {
-  height: 24px;
+  height: 22px;
   min-width: 34px;
-  padding: 0 8px;
+  padding: 0 7px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-elev);
   color: var(--text);
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 22px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
   letter-spacing: 0;
   box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   transition:
     border-color 0.14s ease,
