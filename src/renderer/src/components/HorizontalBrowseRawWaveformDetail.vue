@@ -6,7 +6,6 @@ import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import HorizontalBrowseCueMarker from '@renderer/components/HorizontalBrowseCueMarker.vue'
 import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
 import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
-import { createRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformPlaceholder'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import {
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
@@ -29,9 +28,14 @@ import {
   normalizeBeatOffset,
   normalizePreviewBpm
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
-import { pickRawDataByFile } from '@renderer/components/mixtapeBeatAlignRawWaveform'
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
 import { useHorizontalBrowseRawWaveformStream } from '@renderer/components/useHorizontalBrowseRawWaveformStream'
+import {
+  resolveHorizontalBrowseWaveformTraceElapsedMs,
+  sendHorizontalBrowseWaveformTrace
+} from '@renderer/components/horizontalBrowseWaveformTrace'
+import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/components/horizontalBrowseInteractionTimeline'
+import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 
 type HorizontalBrowseRawWaveformDetailExpose = {
   toggleBarLinePicking: () => void
@@ -103,9 +107,11 @@ const previewBpmInput = ref('')
 const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const rawStreamActive = ref(false)
+const previewPlaying = ref(false)
 
 const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MS = 2
 const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MS = 8
+const HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN = 1.25
 
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
@@ -113,6 +119,24 @@ let dragStartClientX = 0
 let dragStartSec = 0
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
+let loadStartedAt = 0
+let playbackAnimationRaf = 0
+let playbackAnimationBaseSec = 0
+let playbackAnimationBaseAtMs = 0
+let playbackAnimationSongKey = ''
+
+const traceHorizontalWaveformLoad = (stage: string, payload?: Record<string, unknown>) => {
+  const filePath = String(props.song?.filePath || '').trim()
+  const deck = props.direction === 'up' ? 'top' : 'bottom'
+  sendHorizontalBrowseWaveformTrace('detail', stage, {
+    deck: props.direction,
+    filePath,
+    loadToken,
+    elapsedMs: resolveHorizontalBrowseWaveformTraceElapsedMs(loadStartedAt),
+    sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, filePath),
+    ...payload
+  })
+}
 
 const {
   wrapRef,
@@ -139,6 +163,7 @@ const {
   song: () => props.song,
   direction: () => props.direction,
   playbackRate: () => props.playbackRate,
+  playing: previewPlaying,
   rawData,
   mixxxData,
   previewStartSec,
@@ -176,6 +201,40 @@ const clearBpmTapResetTimer = () => {
   if (!bpmTapResetTimer) return
   clearTimeout(bpmTapResetTimer)
   bpmTapResetTimer = null
+}
+
+const stopPlaybackAnimation = () => {
+  if (!playbackAnimationRaf) return
+  cancelAnimationFrame(playbackAnimationRaf)
+  playbackAnimationRaf = 0
+}
+
+const applyPreviewPlaybackPosition = (seconds: number) => {
+  const safeSeconds = Math.max(0, Number(seconds) || 0)
+  const nextStartSec = resolvePlaybackAlignedStart(safeSeconds)
+  if (Math.abs(nextStartSec - previewStartSec.value) <= 0.0001) return
+  previewStartSec.value = nextStartSec
+  setLastZoomAnchor(safeSeconds, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
+  scheduleDraw()
+}
+
+const startPlaybackAnimation = () => {
+  if (playbackAnimationRaf || !previewPlaying.value) return
+  const tick = () => {
+    if (!previewPlaying.value) {
+      playbackAnimationRaf = 0
+      return
+    }
+    if (!dragging.value && playbackAnimationSongKey) {
+      const playbackRate = Math.max(0.25, Number(props.playbackRate) || 1)
+      const currentSec =
+        playbackAnimationBaseSec +
+        (Math.max(0, performance.now() - playbackAnimationBaseAtMs) / 1000) * playbackRate
+      applyPreviewPlaybackPosition(currentSec)
+    }
+    playbackAnimationRaf = requestAnimationFrame(tick)
+  }
+  playbackAnimationRaf = requestAnimationFrame(tick)
 }
 
 const resetPreviewBpmTap = () => {
@@ -297,7 +356,6 @@ const hotCueMarkerStartSec = computed(() => {
   return resolveSnappedRenderStartSec(visibleDurationSec)
 })
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
-const previewPlaying = ref(false)
 const detailVisible = computed(() => true)
 const loopMaskStyle = computed(() => {
   const loopRange = props.loopRange
@@ -412,6 +470,7 @@ const {
   resolveWaveformTargetRate,
   cancelRawWaveformStream,
   beginRawWaveformStream,
+  maybeContinueRawWaveformStream,
   handleRawLoadPriorityHintChange,
   mount: mountRawWaveformStream,
   dispose: disposeRawWaveformStream
@@ -419,6 +478,11 @@ const {
   song: () => props.song,
   direction: () => props.direction,
   rawLoadPriorityHint: () => props.rawLoadPriorityHint,
+  bootstrapDurationSec: () =>
+    Math.max(4, resolveVisibleDurationSec() * HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN),
+  playing: () => previewPlaying.value,
+  currentSeconds: () => props.currentSeconds,
+  visibleDurationSec: resolveVisibleDurationSec,
   previewLoading,
   rawStreamActive,
   rawData,
@@ -432,6 +496,7 @@ const {
 const loadWaveform = async () => {
   const currentSong = props.song
   const currentToken = ++loadToken
+  loadStartedAt = performance.now()
 
   clearPersistTimer()
   clearStreamDrawScheduling()
@@ -448,6 +513,7 @@ const loadWaveform = async () => {
 
   const filePath = String(currentSong?.filePath || '').trim()
   if (!filePath) {
+    traceHorizontalWaveformLoad('load:no-file')
     syncGridStateFromSong()
     return
   }
@@ -455,33 +521,19 @@ const loadWaveform = async () => {
   try {
     previewLoading.value = true
     const targetRate = resolveWaveformTargetRate(!!props.deferWaveformLoad)
-    const response = await window.electron.ipcRenderer.invoke('mixtape-waveform-raw:batch', {
-      filePaths: [filePath],
+    traceHorizontalWaveformLoad('load:start', {
       targetRate,
-      preferSharedDecode: false,
-      cacheOnly: true
+      deferred: Boolean(props.deferWaveformLoad),
+      priorityHint: Number(props.rawLoadPriorityHint) || 0
     })
-
-    if (currentToken !== loadToken) return
-    const picked = pickRawDataByFile(
-      response,
-      normalizeHorizontalBrowsePathKey(filePath),
-      normalizeHorizontalBrowsePathKey
-    )
-    rawData.value = picked
-    mixxxData.value = picked ? createRawPlaceholderMixxxData(picked) : null
-    if (picked) {
-      storeRawWaveform(filePath, picked)
-      rawStreamActive.value = false
-    } else {
-      beginRawWaveformStream(filePath, targetRate, currentToken)
-    }
-    previewLoading.value = false
+    traceHorizontalWaveformLoad('stream:begin', { targetRate })
+    beginRawWaveformStream(filePath, targetRate, currentToken)
     syncGridStateFromSong()
     previewStartSec.value = resolvePlaybackAlignedStart(0)
     scheduleDraw()
   } catch {
     if (currentToken !== loadToken) return
+    traceHorizontalWaveformLoad('load:error')
     previewLoading.value = false
     rawStreamActive.value = false
     rawData.value = null
@@ -576,6 +628,11 @@ watch(
   () => !!props.playing,
   (playing) => {
     previewPlaying.value = playing
+    if (!playing) {
+      stopPlaybackAnimation()
+      return
+    }
+    startPlaybackAnimation()
   },
   { immediate: true }
 )
@@ -583,17 +640,30 @@ watch(
 watch(
   () => [Number(props.currentSeconds) || 0, !!props.playing, props.song?.filePath ?? ''] as const,
   ([seconds, _playing, songKey]) => {
-    if (dragging.value) return
-    const safeSongKey = String(songKey || '').trim()
-    const safeSeconds = Math.max(0, seconds)
-    if (!safeSongKey) {
-      previewStartSec.value = resolvePlaybackAlignedStart(0)
-      scheduleDraw()
-      return
+    const finishTiming = startHorizontalBrowseUserTiming(
+      `frkb:hb:detail:current-seconds:${props.direction}`
+    )
+    try {
+      if (dragging.value) return
+      const safeSongKey = String(songKey || '').trim()
+      const safeSeconds = Math.max(0, seconds)
+      playbackAnimationSongKey = safeSongKey
+      playbackAnimationBaseSec = safeSeconds
+      playbackAnimationBaseAtMs = performance.now()
+      maybeContinueRawWaveformStream()
+      if (!safeSongKey) {
+        stopPlaybackAnimation()
+        applyPreviewPlaybackPosition(0)
+        return
+      }
+      if (!_playing) {
+        applyPreviewPlaybackPosition(safeSeconds)
+        return
+      }
+      startPlaybackAnimation()
+    } finally {
+      finishTiming()
     }
-    previewStartSec.value = resolvePlaybackAlignedStart(safeSeconds)
-    setLastZoomAnchor(safeSeconds, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
-    scheduleDraw()
   }
 )
 
@@ -653,6 +723,7 @@ onUnmounted(() => {
   loadToken += 1
   clearPersistTimer()
   clearBpmTapResetTimer()
+  stopPlaybackAnimation()
   clearStreamDrawScheduling()
   stopDragging()
   disposeRawWaveformStream()

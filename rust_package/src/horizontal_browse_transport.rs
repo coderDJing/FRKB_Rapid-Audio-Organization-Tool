@@ -41,6 +41,7 @@ struct DeckState {
 }
 
 const HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC: f64 = 4.0;
+const HORIZONTAL_BROWSE_IMMEDIATE_PLAY_SEGMENT_DECODE_SEC: f64 = 0.75;
 const HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC: f64 = 12.0;
 const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_THRESHOLD_SEC: f64 = 4.0;
 const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC: f64 = 2.0;
@@ -896,7 +897,7 @@ impl HorizontalBrowseTransportEngine {
       self.prepare_segment_decode_request(
         deck,
         current_sec,
-        HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC,
+        HORIZONTAL_BROWSE_IMMEDIATE_PLAY_SEGMENT_DECODE_SEC,
       )
     } else {
       None
@@ -1115,6 +1116,7 @@ pub fn horizontal_browse_transport_set_deck_state(
   payload: HorizontalBrowseTransportDeckInput,
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
+  let deck_playing = payload.playing;
   let mut engine_guard = engine().lock();
   engine_guard.last_now_ms = now_ms.unwrap_or(payload.last_observed_at_ms);
   {
@@ -1137,7 +1139,11 @@ pub fn horizontal_browse_transport_set_deck_state(
   engine_guard.refresh();
   drop(engine_guard);
   if let Some(request) = decode_request {
-    execute_decode_request_sync(request);
+    if deck_playing {
+      execute_decode_request_sync(request);
+    } else {
+      schedule_decode_request(request);
+    }
   }
   if let Some(request) = full_decode_request {
     schedule_decode_request(request);
@@ -1150,6 +1156,8 @@ pub fn horizontal_browse_transport_set_deck_state(
 pub fn horizontal_browse_transport_set_state(
   payload: HorizontalBrowseTransportStateInput,
 ) -> HorizontalBrowseTransportSnapshot {
+  let top_playing = payload.top.playing;
+  let bottom_playing = payload.bottom.playing;
   let now_ms = payload.now_ms.unwrap_or(
     payload
       .top
@@ -1194,10 +1202,18 @@ pub fn horizontal_browse_transport_set_state(
   engine_guard.refresh();
   drop(engine_guard);
   if let Some(request) = top_decode_request {
-    execute_decode_request_sync(request);
+    if top_playing {
+      execute_decode_request_sync(request);
+    } else {
+      schedule_decode_request(request);
+    }
   }
   if let Some(request) = bottom_decode_request {
-    execute_decode_request_sync(request);
+    if bottom_playing {
+      execute_decode_request_sync(request);
+    } else {
+      schedule_decode_request(request);
+    }
   }
   if let Some(request) = top_full_decode_request {
     schedule_decode_request(request);

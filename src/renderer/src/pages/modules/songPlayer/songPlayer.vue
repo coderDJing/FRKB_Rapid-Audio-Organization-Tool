@@ -42,6 +42,8 @@ import {
   unregisterTitleAudioVisualizerSource,
   type TitleAudioVisualizerSource
 } from '@renderer/composables/titleAudioVisualizerBridge'
+import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import { sendPlayerWaveformTrace } from './playerWaveformTrace'
 const musicIcon = musicIconAsset
 
 const runtime = useRuntimeStore()
@@ -72,10 +74,12 @@ const titleAudioVisualizerSource: TitleAudioVisualizerSource = {
 
 // 预加载
 const audioPlayer = shallowRef<WebAudioPlayer | null>(null)
+const rawWaveformData = shallowRef<RawWaveformData | null>(null)
 const AUDIO_FOLLOW_SYSTEM_ID = ''
 let pendingAudioOutputDeviceId = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
 const waveformShow = ref(false)
 const waveformContainerWidth = ref(0)
+let lastPlayerWaveformRenderSource = ''
 const updateParentWaveformWidth = () => {
   const waveformEl = waveform.value
   if (waveformEl && waveformShow.value && waveformEl.offsetParent !== null) {
@@ -311,6 +315,7 @@ const { isLoadingBlob, ignoreNextEmptyError, requestLoadSong, handleSongLoadErro
   {
     runtime,
     audioPlayer,
+    rawWaveformData,
     bpm,
     waveformShow,
     setCoverByIPC,
@@ -324,6 +329,34 @@ const requestSongWithRecreate = (
 ) => {
   requestLoadSong(filePath, options)
 }
+
+watch(
+  () => [
+    Boolean(audioPlayer.value?.pioneerPreviewWaveformData),
+    Boolean(audioPlayer.value?.mixxxWaveformData),
+    rawWaveformData.value?.loadedFrames ?? 0,
+    rawWaveformData.value?.frames ?? 0,
+    runtime.setting?.waveformStyle
+  ],
+  () => {
+    const source = audioPlayer.value?.pioneerPreviewWaveformData
+      ? 'pioneer-preview'
+      : audioPlayer.value?.mixxxWaveformData
+        ? 'formal-mixxx'
+        : rawWaveformData.value
+          ? 'raw-stream'
+          : 'none'
+    if (source === lastPlayerWaveformRenderSource) return
+    lastPlayerWaveformRenderSource = source
+    sendPlayerWaveformTrace('render', source, {
+      filePath: runtime.playingData.playingSong?.filePath || '',
+      style: runtime.setting?.waveformStyle,
+      loadedFrames: rawWaveformData.value?.loadedFrames ?? 0,
+      totalFrames: rawWaveformData.value?.frames ?? 0
+    })
+  },
+  { immediate: true }
+)
 
 // 内部切歌标志
 const isInternalSongChange = ref(false)
@@ -365,6 +398,7 @@ onMounted(() => {
   useWaveform({
     waveformEl: waveform,
     audioPlayer,
+    rawWaveformData,
     runtime,
     updateParentWaveformWidth,
     onNextSong: () => playerActions.nextSong(),

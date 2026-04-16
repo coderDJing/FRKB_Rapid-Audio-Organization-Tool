@@ -11,6 +11,8 @@ import exportDialog from '@renderer/components/exportDialog'
 import confirm from '@renderer/components/confirmDialog'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import emitter from '@renderer/utils/mitt'
+import { sendHorizontalBrowseInteractionTrace } from '@renderer/components/horizontalBrowseInteractionTrace'
+import { beginHorizontalBrowseDeckInteraction } from '@renderer/components/horizontalBrowseInteractionTimeline'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
@@ -728,8 +730,15 @@ const handleSongDblClick = (song: ISongInfo, event?: MouseEvent) => {
   const normalizedSong = { ...song }
   requestImmediateAnalysis(normalizedSong)
   if (runtime.mainWindowBrowseMode === 'horizontal') {
+    const deck = event?.shiftKey ? 'bottom' : 'top'
+    beginHorizontalBrowseDeckInteraction(deck, String(normalizedSong.filePath || '').trim())
+    sendHorizontalBrowseInteractionTrace('song-dblclick', {
+      source: 'pioneerSongsArea',
+      deck,
+      filePath: String(normalizedSong.filePath || '').trim()
+    })
     emitter.emit('horizontalBrowse/load-song', {
-      deck: event?.shiftKey ? 'bottom' : 'top',
+      deck,
       song: normalizedSong
     })
     return

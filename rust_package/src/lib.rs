@@ -38,6 +38,18 @@ use symphonia::core::meta::{Limit, MetadataOptions};
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+#[cfg(windows)]
+fn configure_hidden_process(command: &mut Command) {
+  use std::os::windows::process::CommandExt;
+  command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn configure_hidden_process(_command: &mut Command) {}
+
 // 哈希
 use bytemuck::{cast_slice, try_cast_slice};
 use hex;
@@ -1806,6 +1818,7 @@ pub(crate) fn ffmpeg_decode_to_i16_with_window(
 ) -> StdResult<FfmpegPcmData, String> {
   let ffmpeg_path = get_ffmpeg_path()?;
   let mut command = Command::new(ffmpeg_path);
+  configure_hidden_process(&mut command);
   command.arg("-v").arg("error");
   if let Some(start_at) = start_sec {
     if start_at.is_finite() && start_at > 0.0 {

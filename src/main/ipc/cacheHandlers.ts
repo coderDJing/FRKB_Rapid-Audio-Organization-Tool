@@ -52,6 +52,7 @@ type RawWaveformStreamRequest = {
   targetRate?: number
   chunkFrames: number
   expectedDurationSec: number
+  bootstrapDurationSec: number
   priorityHint: number
   enqueuedAt: number
   worker?: Worker
@@ -60,8 +61,23 @@ type RawWaveformStreamRequest = {
   chunkCount: number
 }
 
+type CachedRawWaveformContinuation = {
+  sender: Electron.WebContents
+  requestId: string
+  filePath: string
+  cached: MixtapeRawWaveformData
+  nextStartFrame: number
+  followupFramesPerChunk: number
+  totalFrames: number
+  priorityHint: number
+  startedAt: number
+  chunkCount: number
+  sending: boolean
+}
+
 export function registerCacheHandlers() {
   const rawWaveformStreamRequests = new Map<string, RawWaveformStreamRequest>()
+  const cachedRawWaveformContinuations = new Map<string, CachedRawWaveformContinuation>()
   let nextRawWaveformStreamJobId = 0
   const MAX_ACTIVE_RAW_WAVEFORM_STREAMS = 1
   const resolveRequestedRawRate = (value: unknown) => {
@@ -132,6 +148,7 @@ export function registerCacheHandlers() {
     requestId: string,
     options: { keepQueued?: boolean } = {}
   ) => {
+    cachedRawWaveformContinuations.delete(requestId)
     const request = rawWaveformStreamRequests.get(requestId)
     if (!request) return
     const worker = request.worker
@@ -175,6 +192,185 @@ export function registerCacheHandlers() {
       Number.isFinite(sampleRate) && sampleRate > 0 ? sampleRate : requestedRate
     const requiredRate = Math.max(1, Math.min(requestedRate, cappedSampleRate))
     return cachedRate >= requiredRate
+  }
+
+  const sendCachedRawWaveformStream = async (params: {
+    sender: Electron.WebContents
+    requestId: string
+    filePath: string
+    cached: MixtapeRawWaveformData
+    chunkFrames: number
+    bootstrapDurationSec: number
+    priorityHint: number
+  }) => {
+    const { sender, requestId, filePath, cached, priorityHint } = params
+    const totalFrames = Math.max(0, Number(cached.frames) || 0)
+    const requestedChunkFrames = Math.max(256, Math.floor(Number(params.chunkFrames) || 16384))
+    const requestedBootstrapDurationSec = Math.max(0, Number(params.bootstrapDurationSec) || 0)
+    const rate = Math.max(1, Number(cached.rate) || 1)
+    const requestedBootstrapFrames = requestedBootstrapDurationSec
+      ? Math.ceil(requestedBootstrapDurationSec * rate)
+      : 0
+    const bootstrapFrames = Math.min(
+      totalFrames,
+      Math.max(requestedChunkFrames, requestedBootstrapFrames)
+    )
+    const remainingFrames = Math.max(0, totalFrames - bootstrapFrames)
+    const followupFramesPerChunk = Math.max(requestedChunkFrames, bootstrapFrames)
+    const startedAt = Date.now()
+    let chunkCount = 0
+
+    const sliceBuffer = (buffer: Buffer, startFrame: number, frames: number) =>
+      buffer.subarray(startFrame * 4, (startFrame + frames) * 4)
+
+    if (sender.isDestroyed()) return
+    log.info('[mixtape-raw-stream] first-chunk', {
+      filePath,
+      requestId,
+      priorityHint,
+      fromCache: true,
+      firstChunkMs: Date.now() - startedAt,
+      totalFrames,
+      frames: bootstrapFrames
+    })
+    try {
+      sender.send('mixtape-waveform-raw:stream-chunk', {
+        requestId,
+        filePath,
+        startFrame: 0,
+        frames: bootstrapFrames,
+        totalFrames,
+        duration: Number(cached.duration) || 0,
+        sampleRate: Number(cached.sampleRate) || 0,
+        rate: Number(cached.rate) || 0,
+        minLeft: sliceBuffer(cached.minLeft, 0, bootstrapFrames),
+        maxLeft: sliceBuffer(cached.maxLeft, 0, bootstrapFrames),
+        minRight: sliceBuffer(cached.minRight, 0, bootstrapFrames),
+        maxRight: sliceBuffer(cached.maxRight, 0, bootstrapFrames)
+      })
+    } catch {
+      return
+    }
+    chunkCount += 1
+
+    if (bootstrapFrames < totalFrames) {
+      cachedRawWaveformContinuations.set(requestId, {
+        sender,
+        requestId,
+        filePath,
+        cached,
+        nextStartFrame: bootstrapFrames,
+        followupFramesPerChunk,
+        totalFrames,
+        priorityHint,
+        startedAt,
+        chunkCount,
+        sending: false
+      })
+      return
+    }
+
+    log.info('[mixtape-raw-stream] finished', {
+      filePath,
+      requestId,
+      priorityHint,
+      fromCache: true,
+      streamed: true,
+      chunkCount,
+      firstChunkMs: 0,
+      totalMs: Date.now() - startedAt
+    })
+    if (sender.isDestroyed()) return
+    try {
+      sender.send('mixtape-waveform-raw:stream-done', {
+        requestId,
+        filePath,
+        fromCache: true,
+        streamed: true,
+        duration: Number(cached.duration) || 0,
+        totalFrames
+      })
+    } catch {}
+  }
+
+  const continueCachedRawWaveformStream = async (requestId: string) => {
+    const continuation = cachedRawWaveformContinuations.get(requestId)
+    if (!continuation || continuation.sending) return
+    continuation.sending = true
+
+    const sliceBuffer = (buffer: Buffer, startFrame: number, frames: number) =>
+      buffer.subarray(startFrame * 4, (startFrame + frames) * 4)
+
+    try {
+      if (continuation.sender.isDestroyed()) {
+        cachedRawWaveformContinuations.delete(requestId)
+        return
+      }
+      const startFrame = continuation.nextStartFrame
+      const frames = Math.min(
+        continuation.followupFramesPerChunk,
+        continuation.totalFrames - startFrame
+      )
+      if (frames <= 0) {
+        cachedRawWaveformContinuations.delete(requestId)
+        return
+      }
+      try {
+        continuation.sender.send('mixtape-waveform-raw:stream-chunk', {
+          requestId: continuation.requestId,
+          filePath: continuation.filePath,
+          startFrame,
+          frames,
+          totalFrames: continuation.totalFrames,
+          duration: Number(continuation.cached.duration) || 0,
+          sampleRate: Number(continuation.cached.sampleRate) || 0,
+          rate: Number(continuation.cached.rate) || 0,
+          minLeft: sliceBuffer(continuation.cached.minLeft, startFrame, frames),
+          maxLeft: sliceBuffer(continuation.cached.maxLeft, startFrame, frames),
+          minRight: sliceBuffer(continuation.cached.minRight, startFrame, frames),
+          maxRight: sliceBuffer(continuation.cached.maxRight, startFrame, frames)
+        })
+      } catch {
+        cachedRawWaveformContinuations.delete(requestId)
+        return
+      }
+      continuation.chunkCount += 1
+      continuation.nextStartFrame += frames
+
+      if (continuation.nextStartFrame < continuation.totalFrames) {
+        continuation.sending = false
+        return
+      }
+
+      log.info('[mixtape-raw-stream] finished', {
+        filePath: continuation.filePath,
+        requestId: continuation.requestId,
+        priorityHint: continuation.priorityHint,
+        fromCache: true,
+        streamed: true,
+        chunkCount: continuation.chunkCount,
+        firstChunkMs: 0,
+        totalMs: Date.now() - continuation.startedAt
+      })
+      if (!continuation.sender.isDestroyed()) {
+        try {
+          continuation.sender.send('mixtape-waveform-raw:stream-done', {
+            requestId: continuation.requestId,
+            filePath: continuation.filePath,
+            fromCache: true,
+            streamed: true,
+            duration: Number(continuation.cached.duration) || 0,
+            totalFrames: continuation.totalFrames
+          })
+        } catch {}
+      }
+    } finally {
+      if (continuation.nextStartFrame >= continuation.totalFrames) {
+        cachedRawWaveformContinuations.delete(requestId)
+      } else {
+        continuation.sending = false
+      }
+    }
   }
 
   const drainRawWaveformStreamQueue = () => {
@@ -662,6 +858,7 @@ export function registerCacheHandlers() {
         targetRate?: number
         chunkFrames?: number
         expectedDurationSec?: number
+        bootstrapDurationSec?: number
         priorityHint?: number
       }
     ) => {
@@ -674,6 +871,7 @@ export function registerCacheHandlers() {
       const targetRate = resolveRequestedRawRate(payload?.targetRate)
       const chunkFrames = Math.max(2048, Math.floor(Number(payload?.chunkFrames) || 16384))
       const expectedDurationSec = Math.max(0, Number(payload?.expectedDurationSec) || 0)
+      const bootstrapDurationSec = Math.max(0, Number(payload?.bootstrapDurationSec) || 0)
       const priorityHint = resolveRawWaveformStreamPriorityHint(payload?.priorityHint)
       let listRoot = resolveRendererListRoot(payload?.listRoot)
       if (!listRoot) {
@@ -686,14 +884,15 @@ export function registerCacheHandlers() {
           mtimeMs: stat.mtimeMs
         })
         if (isRawWaveformRateSufficient(cached, targetRate)) {
-          try {
-            event.sender.send('mixtape-waveform-raw:stream-done', {
-              requestId,
-              filePath,
-              data: cached,
-              fromCache: true
-            })
-          } catch {}
+          void sendCachedRawWaveformStream({
+            sender: event.sender,
+            requestId,
+            filePath,
+            cached: cached as MixtapeRawWaveformData,
+            chunkFrames,
+            bootstrapDurationSec,
+            priorityHint
+          })
           return
         }
       }
@@ -707,6 +906,7 @@ export function registerCacheHandlers() {
         targetRate,
         chunkFrames,
         expectedDurationSec,
+        bootstrapDurationSec,
         priorityHint,
         enqueuedAt: Date.now(),
         chunkCount: 0
@@ -729,6 +929,12 @@ export function registerCacheHandlers() {
       rebalanceRawWaveformStreamQueue()
     }
   )
+
+  ipcMain.on('mixtape-waveform-raw:continue-stream', (_event, payload: { requestId?: string }) => {
+    const requestId = String(payload?.requestId || '').trim()
+    if (!requestId) return
+    void continueCachedRawWaveformStream(requestId)
+  })
 
   ipcMain.on('mixtape-waveform-raw:cancel-stream', (_event, payload: { requestId?: string }) => {
     const requestId = String(payload?.requestId || '').trim()

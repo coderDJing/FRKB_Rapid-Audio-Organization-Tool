@@ -6,6 +6,10 @@ import { createRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatA
 import { PREVIEW_RAW_TARGET_RATE } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { normalizeHorizontalBrowsePathKey } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
 import { parseHorizontalBrowseDurationToSeconds } from '@renderer/components/horizontalBrowseShellState'
+import {
+  resolveHorizontalBrowseWaveformTraceElapsedMs,
+  sendHorizontalBrowseWaveformTrace
+} from '@renderer/components/horizontalBrowseWaveformTrace'
 
 type HorizontalBrowseDirection = 'up' | 'down'
 
@@ -50,6 +54,10 @@ type UseHorizontalBrowseRawWaveformStreamOptions = {
   song: () => ISongInfo | null
   direction: () => HorizontalBrowseDirection
   rawLoadPriorityHint: () => number | undefined
+  bootstrapDurationSec: () => number | undefined
+  playing: () => boolean
+  currentSeconds: () => number | undefined
+  visibleDurationSec: () => number
   previewLoading: Ref<boolean>
   rawStreamActive: Ref<boolean>
   rawData: Ref<RawWaveformData | null>
@@ -94,6 +102,7 @@ const normalizeRawWaveformData = (value: unknown): RawWaveformData | null => {
     sampleRate,
     rate,
     frames,
+    loadedFrames: frames,
     minLeft: new Float32Array(minLeft),
     maxLeft: new Float32Array(maxLeft),
     minRight: new Float32Array(minRight),
@@ -107,6 +116,16 @@ export const useHorizontalBrowseRawWaveformStream = (
   let rawStreamRequestId = ''
   let rawStreamStartedAt = 0
   let rawStreamChunkCount = 0
+
+  const traceHorizontalRawStream = (stage: string, payload?: Record<string, unknown>) => {
+    sendHorizontalBrowseWaveformTrace('stream', stage, {
+      deck: options.direction(),
+      filePath: String(options.song()?.filePath || '').trim(),
+      requestId: rawStreamRequestId,
+      elapsedMs: resolveHorizontalBrowseWaveformTraceElapsedMs(rawStreamStartedAt),
+      ...payload
+    })
+  }
 
   const resolveRawLoadPriorityHint = () =>
     Math.max(0, Math.floor(Number(options.rawLoadPriorityHint()) || 0))
@@ -128,6 +147,7 @@ export const useHorizontalBrowseRawWaveformStream = (
         sampleRate: meta.sampleRate,
         rate: meta.rate,
         frames: nextFrames,
+        loadedFrames: 0,
         minLeft: new Float32Array(nextFrames),
         maxLeft: new Float32Array(nextFrames),
         minRight: new Float32Array(nextFrames),
@@ -158,6 +178,7 @@ export const useHorizontalBrowseRawWaveformStream = (
       sampleRate: meta.sampleRate,
       rate: meta.rate,
       frames: grownFrames,
+      loadedFrames: current.loadedFrames,
       minLeft: grow(current.minLeft),
       maxLeft: grow(current.maxLeft),
       minRight: grow(current.minRight),
@@ -168,6 +189,7 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const cancelRawWaveformStream = () => {
     if (!rawStreamRequestId) return
+    traceHorizontalRawStream('raw-stream:cancel')
     window.electron.ipcRenderer.send('mixtape-waveform-raw:cancel-stream', {
       requestId: rawStreamRequestId
     })
@@ -176,19 +198,33 @@ export const useHorizontalBrowseRawWaveformStream = (
     options.clearStreamDrawScheduling()
   }
 
+  const continueRawWaveformStream = (requestId: string) => {
+    if (!requestId) return
+    window.electron.ipcRenderer.send('mixtape-waveform-raw:continue-stream', { requestId })
+  }
+
   const beginRawWaveformStream = (filePath: string, targetRate: number, requestToken: number) => {
     cancelRawWaveformStream()
     rawStreamRequestId = `horizontal-raw-${options.direction()}-${Date.now()}-${requestToken}`
     options.rawStreamActive.value = true
     rawStreamStartedAt = performance.now()
     rawStreamChunkCount = 0
+    const bootstrapDurationSec = Math.max(0, Number(options.bootstrapDurationSec()) || 0)
+    traceHorizontalRawStream('raw-stream:start', {
+      requestToken,
+      targetRate,
+      priorityHint: resolveRawLoadPriorityHint(),
+      expectedDurationSec: parseHorizontalBrowseDurationToSeconds(options.song()?.duration),
+      bootstrapDurationSec
+    })
     window.electron.ipcRenderer.send('mixtape-waveform-raw:stream', {
       requestId: rawStreamRequestId,
       filePath,
       priorityHint: resolveRawLoadPriorityHint(),
       targetRate,
       chunkFrames: 32768,
-      expectedDurationSec: parseHorizontalBrowseDurationToSeconds(options.song()?.duration)
+      expectedDurationSec: parseHorizontalBrowseDurationToSeconds(options.song()?.duration),
+      bootstrapDurationSec
     })
   }
 
@@ -198,6 +234,10 @@ export const useHorizontalBrowseRawWaveformStream = (
   ) => {
     if (!rawStreamRequestId) return
     if (priorityHint === previousPriorityHint) return
+    traceHorizontalRawStream('raw-stream:update-priority', {
+      priorityHint,
+      previousPriorityHint
+    })
     window.electron.ipcRenderer.send('mixtape-waveform-raw:update-priority', {
       requestId: rawStreamRequestId,
       priorityHint
@@ -251,13 +291,29 @@ export const useHorizontalBrowseRawWaveformStream = (
     target.maxLeft.set(maxLeftChunk.subarray(0, chunkFrames), startFrame)
     target.minRight.set(minRightChunk.subarray(0, chunkFrames), startFrame)
     target.maxRight.set(maxRightChunk.subarray(0, chunkFrames), startFrame)
+    const loadedFrames = Math.max(Number(target.loadedFrames) || 0, startFrame + chunkFrames)
+    target.loadedFrames = loadedFrames
+    if (!options.playing()) {
+      options.rawData.value = {
+        ...target
+      }
+    }
 
     if (rawStreamChunkCount === 1) {
+      options.previewLoading.value = false
       console.info('[horizontal-raw-stream] first chunk', {
         filePath: options.song()?.filePath,
         elapsedMs: Number((performance.now() - rawStreamStartedAt).toFixed(1)),
         totalFrames,
         frames: chunkFrames
+      })
+      traceHorizontalRawStream('raw-stream:first-chunk', {
+        startFrame,
+        frames: chunkFrames,
+        totalFrames,
+        duration,
+        sampleRate,
+        rate
       })
     }
 
@@ -278,6 +334,7 @@ export const useHorizontalBrowseRawWaveformStream = (
       return
     }
 
+    const completedRequestId = rawStreamRequestId
     rawStreamRequestId = ''
     options.previewLoading.value = false
     options.rawStreamActive.value = false
@@ -286,6 +343,13 @@ export const useHorizontalBrowseRawWaveformStream = (
       elapsedMs: Number((performance.now() - rawStreamStartedAt).toFixed(1)),
       chunkCount: rawStreamChunkCount,
       fromCache: payload?.fromCache === true,
+      error: payload?.error
+    })
+    traceHorizontalRawStream('raw-stream:done', {
+      requestId: completedRequestId,
+      chunkCount: rawStreamChunkCount,
+      fromCache: payload?.fromCache === true,
+      streamed: payload?.streamed === true,
       error: payload?.error
     })
 
@@ -300,11 +364,19 @@ export const useHorizontalBrowseRawWaveformStream = (
     if (options.rawData.value) {
       const duration = Math.max(0, Number(payload?.duration) || 0)
       const totalFrames = Math.max(0, Number(payload?.totalFrames) || 0)
+      const current = options.rawData.value
       if (duration > 0) {
-        options.rawData.value.duration = duration
+        current.duration = duration
       }
-      if (totalFrames > 0 && totalFrames <= options.rawData.value.frames) {
-        options.rawData.value.frames = totalFrames
+      if (totalFrames > 0 && totalFrames <= current.frames) {
+        current.frames = totalFrames
+      }
+      current.loadedFrames =
+        totalFrames > 0 ? totalFrames : (current.loadedFrames ?? current.frames)
+      if (!options.playing()) {
+        options.rawData.value = {
+          ...current
+        }
       }
     }
 
@@ -313,6 +385,23 @@ export const useHorizontalBrowseRawWaveformStream = (
     }
 
     options.scheduleDraw()
+  }
+
+  const maybeContinueRawWaveformStream = () => {
+    if (!rawStreamRequestId || !options.rawStreamActive.value || !options.rawData.value) return
+    if (!options.playing()) return
+    const rate = Math.max(0, Number(options.rawData.value.rate) || 0)
+    if (!rate) return
+    const loadedFrames = Math.max(
+      0,
+      Number(options.rawData.value.loadedFrames ?? options.rawData.value.frames) || 0
+    )
+    const loadedEndSec = loadedFrames / rate
+    const currentSec = Math.max(0, Number(options.currentSeconds()) || 0)
+    const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
+    const desiredLoadedEndSec = currentSec + visibleDurationSec * 4.0
+    if (loadedEndSec >= desiredLoadedEndSec) return
+    continueRawWaveformStream(rawStreamRequestId)
   }
 
   const mount = () => {
@@ -339,6 +428,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     resolveWaveformTargetRate,
     cancelRawWaveformStream,
     beginRawWaveformStream,
+    maybeContinueRawWaveformStream,
     handleRawLoadPriorityHintChange,
     mount,
     dispose

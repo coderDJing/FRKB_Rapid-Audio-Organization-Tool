@@ -20,10 +20,7 @@ import {
 } from '@renderer/components/horizontalBrowseShellState'
 import {
   buildHorizontalBrowseSongSnapshot,
-  isSameHorizontalBrowseSongFilePath,
-  mergeHorizontalBrowseSongWithHotCues,
-  mergeHorizontalBrowseSongWithMemoryCues,
-  mergeHorizontalBrowseSongWithSharedGrid
+  isSameHorizontalBrowseSongFilePath
 } from '@renderer/components/horizontalBrowseShellSongs'
 import { formatPreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
@@ -47,14 +44,10 @@ import { useHorizontalBrowseDeckSongSync } from '@renderer/components/useHorizon
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import emitter from '@renderer/utils/mitt'
+import { useHorizontalBrowseRenderSync } from '@renderer/components/useHorizontalBrowseRenderSync'
+import { createHorizontalBrowseDeckAssigner } from '@renderer/components/horizontalBrowseDeckAssignment'
 
 type DeckKey = HorizontalBrowseDeckKey
-type SharedSongGridPayload = {
-  filePath?: string
-  bpm?: number
-  firstBeatMs?: number
-  barBeatOffset?: number
-} | null
 type DeckTransportStateOverride = Partial<{
   currentSec: number
   lastObservedAtMs: number
@@ -121,8 +114,6 @@ const sharedDetailZoomState = ref<SharedDetailZoomState>({
   sourceDirection: null,
   revision: 0
 })
-const topDeckRenderCurrentSeconds = ref(0)
-const bottomDeckRenderCurrentSeconds = ref(0)
 const regionDragDepth = reactive<Record<number, number>>({
   1: 0,
   2: 0,
@@ -338,8 +329,6 @@ const resolveDeckCuePointRef = (deck: DeckKey) =>
   deck === 'top' ? topDeckCuePointSeconds : bottomDeckCuePointSeconds
 const resolveDeckCurrentSeconds = (deck: DeckKey) =>
   Number(resolveTransportDeckSnapshot(deck).currentSec) || 0
-const resolveDeckRenderCurrentSeconds = (deck: DeckKey) =>
-  deck === 'top' ? topDeckRenderCurrentSeconds.value : bottomDeckRenderCurrentSeconds.value
 const resolveDeckDurationSeconds = (deck: DeckKey) =>
   resolveHorizontalBrowseDeckDurationSeconds(
     resolveTransportDeckSnapshot(deck).durationSec,
@@ -350,6 +339,18 @@ const resolveDeckLoaded = (deck: DeckKey) => Boolean(resolveTransportDeckSnapsho
 const resolveDeckDecoding = (deck: DeckKey) => Boolean(resolveTransportDeckSnapshot(deck).decoding)
 const resolveDeckPlaybackRate = (deck: DeckKey) =>
   Number(resolveTransportDeckSnapshot(deck).playbackRate) || 1
+const {
+  topDeckRenderCurrentSeconds,
+  bottomDeckRenderCurrentSeconds,
+  resolveDeckRenderCurrentSeconds,
+  syncDeckRenderState,
+  startRenderSyncLoop,
+  stopRenderSyncLoop
+} = useHorizontalBrowseRenderSync({
+  nativeTransport,
+  resolveTransportDeckSnapshot,
+  resolveDeckPlaying
+})
 const topDeckUiPlaying = computed(() => resolveDeckPlaying('top'))
 const bottomDeckUiPlaying = computed(() => resolveDeckPlaying('bottom'))
 const topDeckCueActive = computed(
@@ -418,7 +419,6 @@ const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   }
   return toolbarState.bpmInputValue
 }
-let renderSyncRaf = 0
 
 const buildDeckStateForNative = (deck: DeckKey, override?: DeckTransportStateOverride) => ({
   song: resolveDeckSong(deck),
@@ -444,91 +444,12 @@ const commitDeckStatesToNative = async (
   })
   syncDeckRenderState()
 }
-
-const syncNativeTransportNow = async () => {
-  await nativeTransport.snapshot(performance.now())
-  syncDeckRenderState()
-}
-
-const syncDeckRenderState = () => {
-  topDeckRenderCurrentSeconds.value = Number(nativeTransport.state.top.renderCurrentSec) || 0
-  bottomDeckRenderCurrentSeconds.value = Number(nativeTransport.state.bottom.renderCurrentSec) || 0
-}
-
-const stopRenderSyncLoop = () => {
-  if (!renderSyncRaf) return
-  cancelAnimationFrame(renderSyncRaf)
-  renderSyncRaf = 0
-}
-
-const startRenderSyncLoop = () => {
-  stopRenderSyncLoop()
-  const tick = async () => {
-    await syncNativeTransportNow().catch(() => {})
-    handleDeckLoopPlaybackTick('top')
-    handleDeckLoopPlaybackTick('bottom')
-    renderSyncRaf = requestAnimationFrame(tick)
-  }
-  void tick()
-}
-
-const queueDeckSongPriorityAnalysis = (deck: DeckKey, song: ISongInfo | null | undefined) => {
-  const filePath = String(song?.filePath || '').trim()
-  if (!filePath) return
-  window.electron.ipcRenderer.send('key-analysis:queue-playing', {
-    filePath,
-    focusSlot: `horizontal-browse-${deck}`
-  })
-}
-
-const resolveDeckSongWithSharedGrid = async (song: ISongInfo) => {
-  const filePath = String(song.filePath || '').trim()
-  if (!filePath) return { ...song }
-  try {
-    const [payload, hotCuePayload, memoryCuePayload] = await Promise.all([
-      window.electron.ipcRenderer.invoke('song:get-shared-grid-definition', { filePath }),
-      window.electron.ipcRenderer.invoke('song:get-hot-cues', { filePath }),
-      window.electron.ipcRenderer.invoke('song:get-memory-cues', { filePath })
-    ])
-    const resolvedHotCuePayload =
-      Array.isArray(hotCuePayload) && hotCuePayload.length > 0
-        ? { filePath, hotCues: hotCuePayload as ISongHotCue[] }
-        : Array.isArray(song.hotCues) && song.hotCues.length > 0
-          ? { filePath, hotCues: song.hotCues }
-          : null
-    const resolvedMemoryCuePayload =
-      Array.isArray(memoryCuePayload) && memoryCuePayload.length > 0
-        ? { filePath, memoryCues: memoryCuePayload as ISongMemoryCue[] }
-        : Array.isArray(song.memoryCues) && song.memoryCues.length > 0
-          ? { filePath, memoryCues: song.memoryCues }
-          : null
-    return mergeHorizontalBrowseSongWithMemoryCues(
-      mergeHorizontalBrowseSongWithHotCues(
-        mergeHorizontalBrowseSongWithSharedGrid({ ...song }, payload as SharedSongGridPayload),
-        resolvedHotCuePayload
-      ),
-      resolvedMemoryCuePayload
-    )
-  } catch {
-    return { ...song }
-  }
-}
-
-const assignSongToDeck = async (deck: DeckKey, song: ISongInfo) => {
-  touchDeckInteraction(deck)
-  const nextSong = await resolveDeckSongWithSharedGrid(song)
-  setDeckSong(deck, nextSong)
-  queueDeckSongPriorityAnalysis(deck, nextSong)
-  syncDeckDefaultCue(deck, nextSong, true)
-  const nowMs = performance.now()
-  await commitDeckStateToNative(deck, {
-    currentSec: 0,
-    lastObservedAtMs: nowMs,
-    durationSec: parseHorizontalBrowseDurationToSeconds(nextSong.duration),
-    playing: false,
-    playbackRate: 1
-  })
-}
+const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
+  touchDeckInteraction,
+  setDeckSong,
+  syncDeckDefaultCue,
+  commitDeckStateToNative
+})
 
 const {
   selectSongListDialogVisible,
@@ -878,7 +799,7 @@ watch(
 onMounted(() => {
   syncCrossfaderValue(0)
   void nativeTransport.reset()
-  startRenderSyncLoop()
+  startRenderSyncLoop(handleDeckLoopPlaybackTick)
   window.addEventListener('drop', handleGlobalDragFinish, true)
   window.addEventListener('dragend', handleGlobalDragFinish, true)
   window.addEventListener('pointerup', handleWindowDeckCuePointerUp)

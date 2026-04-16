@@ -4,6 +4,12 @@ import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot
 } from '@renderer/components/horizontalBrowseNativeTransport'
+import {
+  beginHorizontalBrowseDeckAction,
+  resolveHorizontalBrowseDeckActionElapsedMs
+} from '@renderer/components/horizontalBrowseInteractionTimeline'
+import { sendHorizontalBrowseInteractionTrace } from '@renderer/components/horizontalBrowseInteractionTrace'
+import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -587,14 +593,29 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     const token = cuePreviewState.token
     const syncEnabledBefore = cuePreviewState.syncEnabledBefore
     void (async () => {
-      if (syncEnabledBefore) {
-        await params.nativeTransport.setSyncEnabled(deck, false)
+      const filePath = String(params.resolveDeckSong(deck)?.filePath || '').trim()
+      const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:cue-preview:${deck}`)
+      beginHorizontalBrowseDeckAction(deck, 'cue-preview', filePath)
+      traceDeckAction(deck, 'cue-preview:start')
+      try {
+        if (syncEnabledBefore) {
+          await params.nativeTransport.setSyncEnabled(deck, false)
+        }
+        const latestState = deckCuePreviewState[deck]
+        if (!latestState.active || latestState.token !== token) return
+        await params.nativeTransport.setPlaying(deck, true)
+        if (deckCuePreviewState[deck].token !== token) return
+        traceDeckAction(deck, 'cue-preview:playing', {
+          sinceCuePreviewMs: resolveHorizontalBrowseDeckActionElapsedMs(
+            deck,
+            'cue-preview',
+            filePath
+          )
+        })
+        params.syncDeckRenderState()
+      } finally {
+        finishTiming()
       }
-      const latestState = deckCuePreviewState[deck]
-      if (!latestState.active || latestState.token !== token) return
-      await params.nativeTransport.setPlaying(deck, true)
-      if (deckCuePreviewState[deck].token !== token) return
-      params.syncDeckRenderState()
     })()
   }
 
@@ -614,12 +635,28 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     cuePreviewState.token += 1
 
     void (async () => {
-      await params.nativeTransport.setPlaying(deck, false).catch(() => {})
-      await params.nativeTransport.seek(deck, cueSeconds).catch(() => {})
-      if (syncEnabledBefore) {
-        await params.nativeTransport.setSyncEnabled(deck, true).catch(() => {})
+      const filePath = String(params.resolveDeckSong(deck)?.filePath || '').trim()
+      const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:cue-stop:${deck}`)
+      beginHorizontalBrowseDeckAction(deck, 'cue-stop', filePath)
+      beginHorizontalBrowseDeckAction(deck, 'seek', filePath)
+      traceDeckAction(deck, 'cue-stop:start')
+      try {
+        await params.nativeTransport.setPlaying(deck, false).catch(() => {})
+        traceDeckAction(deck, 'cue-stop:paused', {
+          sinceCueStopMs: resolveHorizontalBrowseDeckActionElapsedMs(deck, 'cue-stop', filePath)
+        })
+        await params.nativeTransport.seek(deck, cueSeconds).catch(() => {})
+        traceDeckAction(deck, 'cue-stop:seeked', {
+          sinceSeekMs: resolveHorizontalBrowseDeckActionElapsedMs(deck, 'seek', filePath),
+          cueSeconds
+        })
+        if (syncEnabledBefore) {
+          await params.nativeTransport.setSyncEnabled(deck, true).catch(() => {})
+        }
+        params.syncDeckRenderState()
+      } finally {
+        finishTiming()
       }
-      params.syncDeckRenderState()
     })()
   }
 
@@ -635,6 +672,18 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       suppressDeckCueClick.top = false
       suppressDeckCueClick.bottom = false
     })
+
+  const canDeckExecuteImmediateTransportAction = (deck: DeckKey) =>
+    Boolean(String(params.resolveDeckSong(deck)?.filePath || '').trim())
+
+  const traceDeckAction = (deck: DeckKey, stage: string, payload?: Record<string, unknown>) => {
+    const filePath = String(params.resolveDeckSong(deck)?.filePath || '').trim()
+    sendHorizontalBrowseInteractionTrace(stage, {
+      deck,
+      filePath,
+      ...payload
+    })
+  }
 
   const handleWindowDeckCuePointerUp = (event: PointerEvent) => {
     stopDeckCuePreview('top', event.pointerId)
@@ -655,8 +704,9 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       return
     }
     if (!params.resolveDeckLoaded(deck)) {
-      deckPendingCuePreviewOnLoad[deck] = true
-      void params.commitDeckStateToNative(deck)
+      if (!canDeckExecuteImmediateTransportAction(deck)) return
+      deckPendingCuePreviewOnLoad[deck] = false
+      startDeckCuePreview(deck, event.pointerId)
       return
     }
     if (isDeckStoppedAtCuePoint(deck)) {
@@ -687,8 +737,9 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       return false
     }
     if (!params.resolveDeckLoaded(deck)) {
-      deckPendingCuePreviewOnLoad[deck] = true
-      void params.commitDeckStateToNative(deck)
+      if (!canDeckExecuteImmediateTransportAction(deck)) return false
+      deckPendingCuePreviewOnLoad[deck] = false
+      startDeckCuePreview(deck, -1)
       return true
     }
     if (!isDeckStoppedAtCuePoint(deck)) {
@@ -707,26 +758,43 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     params.touchDeckInteraction(deck)
     const nextPlaying = !params.resolveDeckPlaying(deck)
     void (async () => {
-      if (nextPlaying && !params.resolveDeckLoaded(deck)) {
-        deckPendingPlayOnLoad[deck] = true
-        await params.commitDeckStateToNative(deck)
-        console.info('[horizontal-browse-play] waiting for decode before play', {
-          deck,
-          filePath: params.resolveDeckSong(deck)?.filePath || '',
-          decoding: params.resolveDeckDecoding(deck)
-        })
-        return
-      }
-      deckPendingPlayOnLoad[deck] = false
+      const filePath = String(params.resolveDeckSong(deck)?.filePath || '').trim()
+      const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:play-toggle:${deck}`)
       if (nextPlaying) {
-        await syncDeckIntoLoopRangeBeforePlay(deck)
-        if (params.resolveTransportDeckSnapshot(deck).syncEnabled && !deckLoopState[deck].active) {
-          await params.commitDeckStatesToNative()
-          await params.nativeTransport.beatsync(deck)
-        }
+        beginHorizontalBrowseDeckAction(deck, 'play-toggle', filePath)
+        traceDeckAction(deck, 'play-toggle:start')
       }
-      await params.nativeTransport.setPlaying(deck, nextPlaying)
-      params.syncDeckRenderState()
+      try {
+        if (nextPlaying && !params.resolveDeckLoaded(deck)) {
+          if (!canDeckExecuteImmediateTransportAction(deck)) return
+          deckPendingPlayOnLoad[deck] = false
+        } else {
+          deckPendingPlayOnLoad[deck] = false
+        }
+        if (nextPlaying) {
+          await syncDeckIntoLoopRangeBeforePlay(deck)
+          if (
+            params.resolveTransportDeckSnapshot(deck).syncEnabled &&
+            !deckLoopState[deck].active
+          ) {
+            await params.commitDeckStatesToNative()
+            await params.nativeTransport.beatsync(deck)
+          }
+        }
+        await params.nativeTransport.setPlaying(deck, nextPlaying)
+        if (nextPlaying) {
+          traceDeckAction(deck, 'play-toggle:done', {
+            sincePlayToggleMs: resolveHorizontalBrowseDeckActionElapsedMs(
+              deck,
+              'play-toggle',
+              filePath
+            )
+          })
+        }
+        params.syncDeckRenderState()
+      } finally {
+        finishTiming()
+      }
     })()
   }
 
