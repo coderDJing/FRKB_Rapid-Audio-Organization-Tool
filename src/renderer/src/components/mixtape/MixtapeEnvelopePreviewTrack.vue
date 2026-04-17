@@ -10,6 +10,11 @@ import type { TimelineTrackLayout } from '@renderer/composables/mixtape/types'
 defineProps<{
   item: TimelineTrackLayout
   lines: TrackEnvelopePreviewLine[]
+  loopBlocks: Array<{
+    key: string
+    kind: 'source' | 'repeat'
+    style: CSSProperties
+  }>
   muteSegments: MixSegmentMask[]
   showMuteSegments: boolean
   showStemRows: boolean
@@ -24,6 +29,15 @@ defineProps<{
     :class="{ 'is-stem-mode': showStemRows }"
     :style="trackStyle"
   >
+    <div v-if="loopBlocks.length" class="timeline-envelope-preview__loop-blocks">
+      <div
+        v-for="block in loopBlocks"
+        :key="`envelope-preview-loop-${item.track.id}-${block.key}`"
+        class="timeline-envelope-preview__loop-block"
+        :class="`timeline-envelope-preview__loop-block--${block.kind}`"
+        :style="block.style"
+      ></div>
+    </div>
     <div v-if="showStemRows" class="timeline-envelope-preview__stem-grid">
       <div
         v-for="row in stemRows"
@@ -130,6 +144,36 @@ defineProps<{
   transform: translateY(-0.5px);
   pointer-events: none;
   z-index: 1;
+}
+
+.timeline-envelope-preview__loop-blocks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.timeline-envelope-preview__loop-block {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0;
+}
+
+.timeline-envelope-preview__loop-block--source {
+  background: rgba(255, 214, 102, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(255, 244, 182, 0.24);
+}
+
+.timeline-envelope-preview__loop-block--repeat {
+  background: repeating-linear-gradient(
+    -58deg,
+    rgba(255, 218, 92, 0.28) 0,
+    rgba(255, 218, 92, 0.28) 4px,
+    rgba(255, 218, 92, 0.08) 4px,
+    rgba(255, 218, 92, 0.08) 8px
+  );
+  box-shadow: inset 0 0 0 1px rgba(255, 244, 182, 0.18);
 }
 
 .timeline-envelope-preview__mute-segments {

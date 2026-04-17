@@ -15,8 +15,7 @@ export const ensureMixtapeDeleteAllowed = async (playlistId: string): Promise<bo
       'mixtape:is-window-open-by-playlist-id',
       normalizedId
     )
-  } catch (error) {
-    console.warn('check mixtape window state failed:', error)
+  } catch {
     return true
   }
   if (!isWindowOpen) return true

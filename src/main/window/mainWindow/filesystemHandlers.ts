@@ -332,7 +332,6 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             })
             operationStatus = 'renamed'
           } else {
-            console.warn(`Rename source path not found: ${oldFullPath}`)
             operationStatus = 'rename_failed_source_not_found'
           }
         } else if (item.type === 'delete') {
@@ -472,7 +471,6 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             })
             operationStatus = 'moved'
           } else {
-            console.warn(`Move source path not found: ${srcFullPath}`)
             operationStatus = 'move_failed_source_not_found'
           }
         }
@@ -567,9 +565,7 @@ async function transferCachesAfterDirChange(params: {
         })
       })
       await runWithConcurrency(tasks, { concurrency: 8, stopOnENOSPC: false })
-    } catch (error) {
-      console.warn('songlist cache transfer failed:', error)
-    }
+    } catch {}
     return
   }
 
@@ -602,9 +598,7 @@ async function transferCachesAfterDirChange(params: {
       await renameCacheRoot(oldRoot, songListRoot)
     })
     await runWithConcurrency(tasks, { concurrency: 4, stopOnENOSPC: false })
-  } catch (error) {
-    console.warn('songlist cache transfer failed:', error)
-  }
+  } catch {}
 }
 
 async function syncMixtapePathReferencesAfterDirChange(

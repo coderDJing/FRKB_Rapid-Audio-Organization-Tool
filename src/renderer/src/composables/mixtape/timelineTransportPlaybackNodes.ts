@@ -1,6 +1,9 @@
 import {
   createTransportBufferSource,
   createTransportKeyLockSource,
+  createTransportSequencedBufferSource,
+  createTransportSequencedKeyLockSource,
+  createTransportSequencedSoundTouchSource,
   createTransportSoundTouchPreviewSource,
   type TransportPlayableSource
 } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
@@ -29,9 +32,17 @@ export type TrackGraphNode = {
   gain: GainNode
 }
 
+export type TransportPlaybackSourceMode =
+  | 'buffer'
+  | 'soundtouch'
+  | 'sequenced-soundtouch'
+  | 'sequenced-buffer'
+  | 'sequenced-keylock'
+
 type StartTransportTrackGraphNodeParams = {
   entry: TransportEntry
   offsetTimelineSec: number
+  offsetPlanSec: number
   offsetSourceSec: number
   whenSec: number
   transportGraphNodes: TrackGraphNode[]
@@ -39,7 +50,7 @@ type StartTransportTrackGraphNodeParams = {
   resolveStemIdsForMode: () => TransportStemId[]
   ensureTransportAudioContext: (sampleRate?: number) => AudioContext
   resolveTransportOutputNode: (ctx: AudioContext) => AudioNode
-  shouldUseRealtimeKeyLock: (entry: TransportEntry) => boolean
+  resolvePlaybackSourceMode: (entry: TransportEntry) => TransportPlaybackSourceMode
   resolveEntryEnvelopeValue: (
     entry: TransportEntry,
     param: 'volume' | 'gain' | TransportStemId,
@@ -56,6 +67,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
   const {
     entry,
     offsetTimelineSec,
+    offsetPlanSec,
     offsetSourceSec,
     whenSec,
     transportGraphNodes,
@@ -63,10 +75,42 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
     resolveStemIdsForMode,
     ensureTransportAudioContext,
     resolveTransportOutputNode,
-    shouldUseRealtimeKeyLock,
+    resolvePlaybackSourceMode,
     resolveEntryEnvelopeValue,
     resolveEntryEqDbValue
   } = params
+
+  const resolveSourceStartOffset = (source: TransportPlayableSource, bufferDuration: number) => {
+    const baseOffsetSec = source.startOffsetKind === 'plan' ? offsetPlanSec : offsetSourceSec
+    const offsetDuration =
+      source.startOffsetKind === 'plan'
+        ? Math.max(0, Number(entry.playbackSequence?.totalPlanSec) || 0)
+        : Math.max(0, bufferDuration)
+    return Math.max(0, Math.min(baseOffsetSec, Math.max(0, offsetDuration - 0.02)))
+  }
+
+  const createPlaybackSource = (
+    ctx: AudioContext,
+    buffer: AudioBuffer,
+    mode: TransportPlaybackSourceMode
+  ) => {
+    if (mode === 'sequenced-keylock' && entry.playbackSequence) {
+      return createTransportSequencedKeyLockSource(ctx, buffer, entry.playbackSequence)
+    }
+    if (mode === 'sequenced-soundtouch' && entry.playbackSequence) {
+      return createTransportSequencedSoundTouchSource(ctx, buffer, entry.playbackSequence)
+    }
+    if (mode === 'sequenced-buffer' && entry.playbackSequence) {
+      return createTransportSequencedBufferSource(ctx, buffer, entry.playbackSequence)
+    }
+    if (mode === 'soundtouch') {
+      return createTransportSoundTouchPreviewSource(ctx, buffer)
+    }
+    if (mode === 'sequenced-keylock') {
+      return createTransportKeyLockSource(ctx, buffer)
+    }
+    return createTransportBufferSource(ctx, buffer)
+  }
 
   if (isStemMixMode()) {
     const stemIds = resolveStemIdsForMode()
@@ -94,9 +138,11 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
 
       const stemNodes: TrackStemGraphNode[] = []
       for (const stemAudio of stemAudios) {
-        const source = shouldUseRealtimeKeyLock(entry)
-          ? createTransportSoundTouchPreviewSource(ctx, stemAudio.audioBuffer as AudioBuffer)
-          : createTransportBufferSource(ctx, stemAudio.audioBuffer as AudioBuffer)
+        const source = createPlaybackSource(
+          ctx,
+          stemAudio.audioBuffer as AudioBuffer,
+          resolvePlaybackSourceMode(entry)
+        )
         source.playbackRate.value = entry.tempoRatio
         const stemGain = ctx.createGain()
         stemGain.gain.value = resolveEntryEnvelopeValue(entry, stemAudio.stemId, offsetTimelineSec)
@@ -128,7 +174,10 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
       const remainingTimelineSec = Math.max(0.02, Number(entry.duration) - offsetTimelineSec)
       for (const stemNode of stemNodes) {
         const stemDuration = Number(stemNode.source.buffer?.duration || 0)
-        const safeOffset = Math.max(0, Math.min(offsetSourceSec, Math.max(0, stemDuration - 0.02)))
+        const safeOffset = resolveSourceStartOffset(stemNode.source, stemDuration)
+        try {
+          stemNode.source.playbackRate.setTargetAtTime(entry.tempoRatio, safeWhen, 0.0001)
+        } catch {}
         stemNode.source.start(safeWhen, safeOffset)
         stemNode.source.stop(safeWhen + remainingTimelineSec + 0.02)
       }
@@ -186,9 +235,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
       void ctx.resume()
     }
 
-    const source = shouldUseRealtimeKeyLock(entry)
-      ? createTransportSoundTouchPreviewSource(ctx, audioBuffer)
-      : createTransportBufferSource(ctx, audioBuffer)
+    const source = createPlaybackSource(ctx, audioBuffer, resolvePlaybackSourceMode(entry))
     source.playbackRate.value = entry.tempoRatio
 
     const eqLow = ctx.createBiquadFilter()
@@ -221,10 +268,10 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
     gain.connect(outputNode)
 
     const safeWhen = Number.isFinite(whenSec) ? Math.max(ctx.currentTime, whenSec) : ctx.currentTime
-    const safeOffset = Math.max(
-      0,
-      Math.min(offsetSourceSec, Math.max(0, audioBuffer.duration - 0.02))
-    )
+    const safeOffset = resolveSourceStartOffset(source, audioBuffer.duration)
+    try {
+      source.playbackRate.setTargetAtTime(entry.tempoRatio, safeWhen, 0.0001)
+    } catch {}
     source.start(safeWhen, safeOffset)
     source.stop(safeWhen + Math.max(0.02, Number(entry.duration) - offsetTimelineSec) + 0.02)
 

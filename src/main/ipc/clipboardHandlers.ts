@@ -18,28 +18,15 @@ const DROP_EFFECT_MOVE = 2
 const execFileAsync = promisify(execFile)
 
 const logClipboard = (level: 'debug' | 'warn' | 'error', message: string, payload?: unknown) => {
-  const consoleMethod = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info'
-  const logWriter: Record<
-    'debug' | 'warn' | 'error',
-    (message: string, payload?: unknown) => void
-  > = {
-    debug: (msg, extra) => log.debug(msg, extra),
-    warn: (msg, extra) => log.warn(msg, extra),
-    error: (msg, extra) => log.error(msg, extra)
-  }
-  const consoleWriter: Record<'info' | 'warn' | 'error', (...args: unknown[]) => void> = {
-    info: (...args) => console.info(...args),
-    warn: (...args) => console.warn(...args),
-    error: (...args) => console.error(...args)
-  }
+  if (level !== 'error') return
   try {
-    logWriter[level](message, payload)
+    log.error(message, payload)
   } catch {}
   try {
     if (payload === undefined) {
-      consoleWriter[consoleMethod](message)
+      console.error(message)
     } else {
-      consoleWriter[consoleMethod](message, payload)
+      console.error(message, payload)
     }
   } catch {}
 }

@@ -415,7 +415,7 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
   tracks.value = nextTracks
 }
 
-const shouldTraceOverviewPreview = true
+const shouldTraceOverviewPreview = false
 let overviewPreviewTraceToken = 0
 let lastOverviewPreviewTraceSignature = ''
 
@@ -497,38 +497,12 @@ const emitOverviewPreviewTrace = async (reason: string) => {
     const previewTrackEls = Array.from(
       envelopePreviewRef.value?.querySelectorAll('.timeline-envelope-preview__track') || []
     ) as HTMLElement[]
-    console.info('[mixtape-overview-trace:state]', {
-      reason,
-      trackCount: tracks.value.length,
-      timelineContentWidth: Math.round(Number(timelineContentWidth.value) || 0),
-      timelineViewportWidth: Math.round(Number(timelineViewportWidth.value) || 0),
-      timelineScrollLeft: Math.round(Number(timelineScrollLeft.value) || 0),
-      overviewViewportStyle: stringifyOverviewTraceStyle(overviewViewportStyle.value),
-      overviewClientWidth: Math.round(overviewRef.value?.clientWidth || 0),
-      previewClientWidth: Math.round(envelopePreviewRef.value?.clientWidth || 0),
-      laneItems
-    })
-    console.info('[mixtape-overview-trace:dom]', {
-      overviewLaneCount: overviewLaneEls.length,
-      previewLaneCount: previewLaneEls.length,
-      overviewTrackCount: overviewTrackEls.length,
-      previewTrackCount: previewTrackEls.length,
-      overviewLaneTrackCounts: overviewLaneEls.map(
-        (element) => element.querySelectorAll('.overview-track').length
-      ),
-      previewLaneTrackCounts: previewLaneEls.map(
-        (element) => element.querySelectorAll('.timeline-envelope-preview__track').length
-      ),
-      previewTrackPolylineCounts: previewTrackEls
-        .slice(0, 12)
-        .map((element) => element.querySelectorAll('polyline').length),
-      overviewTrackWidths: overviewTrackEls
-        .slice(0, 12)
-        .map((element) => Number(element.getBoundingClientRect().width.toFixed(2))),
-      previewTrackWidths: previewTrackEls
-        .slice(0, 12)
-        .map((element) => Number(element.getBoundingClientRect().width.toFixed(2)))
-    })
+    void reason
+    void laneItems
+    void overviewLaneEls
+    void previewLaneEls
+    void overviewTrackEls
+    void previewTrackEls
   })
 }
 
@@ -1130,7 +1104,7 @@ watch(
                   >
                     <span
                       class="timeline-envelope-preview__legend-dot"
-                      :style="{ backgroundColor: legend.color }"
+                      :style="legend.dotStyle"
                     ></span>
                     {{ legend.label }}
                   </span>
@@ -1165,6 +1139,7 @@ watch(
                           :item="item"
                           :track-style="resolveTrackBlockStyle(item)"
                           :lines="resolveTrackEnvelopePreviewLines(item)"
+                          :loop-blocks="resolveOverviewTrackLoopBlocks(item)"
                           :stem-rows="resolveTrackStemPreviewRows(item)"
                           :mute-segments="resolveActiveSegmentMasks(item)"
                           :show-stem-rows="isStemMixMode"

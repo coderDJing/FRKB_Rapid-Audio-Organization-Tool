@@ -1,4 +1,4 @@
-import { computed, type Ref } from 'vue'
+import { computed, type CSSProperties, type Ref } from 'vue'
 import {
   MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
   buildMixEnvelopePolylineByControlPoints,
@@ -45,6 +45,13 @@ export type TrackStemPreviewRow = {
   muteSegments: MixSegmentMask[]
 }
 
+export type TrackEnvelopePreviewLegendItem = {
+  key: string
+  label: string
+  color: string
+  dotStyle?: CSSProperties
+}
+
 type TrackPreviewCacheEntry = {
   lines: TrackEnvelopePreviewLine[]
   stemRows: TrackStemPreviewRow[]
@@ -53,6 +60,8 @@ type TrackPreviewCacheEntry = {
 const DEFAULT_TRACK_ENVELOPE_PREVIEW_PARAMS: MixtapeEnvelopeParamId[] = ['gain', 'volume']
 const STEM_PREVIEW_ROW_ORDER: MixtapeWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
 const STEM_PREVIEW_FILL_ALPHA = 0.18
+const LOOP_PREVIEW_SOURCE_COLOR = 'rgba(255, 214, 102, 0.78)'
+const LOOP_PREVIEW_REPEAT_COLOR = 'rgba(255, 214, 102, 0.72)'
 
 const TRACK_ENVELOPE_PREVIEW_COLORS: Record<MixtapeEnvelopeParamId, string> = {
   gain: '#f2f6ff',
@@ -119,13 +128,37 @@ export const useMixtapeEnvelopePreview = (options: UseMixtapeEnvelopePreviewOpti
     }
     return params
   })
-  const trackEnvelopePreviewLegend = computed(() =>
-    previewParams.value.map((param) => ({
+  const trackEnvelopePreviewLegend = computed<TrackEnvelopePreviewLegendItem[]>(() => [
+    ...previewParams.value.map((param) => ({
       key: param,
       label: param.toUpperCase(),
-      color: TRACK_ENVELOPE_PREVIEW_COLORS[param]
-    }))
-  )
+      color: TRACK_ENVELOPE_PREVIEW_COLORS[param],
+      dotStyle: {
+        backgroundColor: TRACK_ENVELOPE_PREVIEW_COLORS[param]
+      }
+    })),
+    {
+      key: 'loop-source',
+      label: 'LOOP',
+      color: LOOP_PREVIEW_SOURCE_COLOR,
+      dotStyle: {
+        borderRadius: '0',
+        background: 'rgba(255, 214, 102, 0.34)',
+        boxShadow: '0 0 0 1px rgba(255, 244, 182, 0.3) inset'
+      }
+    },
+    {
+      key: 'loop-repeat',
+      label: 'REPEAT',
+      color: LOOP_PREVIEW_REPEAT_COLOR,
+      dotStyle: {
+        borderRadius: '0',
+        background:
+          'repeating-linear-gradient(-58deg, rgba(255, 218, 92, 0.34) 0, rgba(255, 218, 92, 0.34) 3px, rgba(255, 218, 92, 0.12) 3px, rgba(255, 218, 92, 0.12) 6px)',
+        boxShadow: '0 0 0 1px rgba(255, 244, 182, 0.22) inset'
+      }
+    }
+  ])
   const trackStateModule = createGainEnvelopeTrackStateModule({
     tracks: options.tracks,
     resolveRenderZoom: () => Math.max(0, Number(unwrapMaybeRef(options.renderZoomLevel)) || 0),

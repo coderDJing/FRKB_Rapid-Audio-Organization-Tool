@@ -559,7 +559,6 @@ const applyAudioOutputDevice = async (deviceId: string) => {
   try {
     await playerInstance.setOutputDevice(deviceId)
   } catch (error) {
-    console.warn('[player] 切换输出设备失败，已回退默认输出', error)
     if (deviceId !== AUDIO_FOLLOW_SYSTEM_ID) {
       pendingAudioOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
       if (runtime.setting.audioOutputDeviceId !== AUDIO_FOLLOW_SYSTEM_ID) {

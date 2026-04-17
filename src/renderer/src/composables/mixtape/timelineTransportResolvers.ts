@@ -157,19 +157,27 @@ export const createTimelineTransportResolversModule = (ctx: TimelineTransportRes
     const maxX = Math.max(TIMELINE_SIDE_PADDING_PX, totalWidth + TIMELINE_SIDE_PADDING_PX)
     const x = resolveTimelineDisplayX(playheadSec.value, pxPerSec, maxX)
     const scrollLeft = Math.max(0, Number(timelineScrollLeft.value) || 0)
-    return Math.max(0, x - scrollLeft)
+    return x - scrollLeft
+  })
+
+  const playheadViewportVisible = computed(() => {
+    const viewportWidth = Math.max(1, Number(timelineViewportWidth.value) || 0)
+    const x = Number(playheadViewportX.value) || 0
+    return x >= 0 && x <= viewportWidth
   })
 
   const playheadViewportStyle = computed(() => ({
     left: `${snapViewportX(playheadViewportX.value)}px`,
-    opacity: playheadVisible.value ? '1' : '0'
+    opacity: playheadVisible.value && playheadViewportVisible.value ? '1' : '0'
   }))
 
   const rulerPlayheadStyle = computed(() => {
     const rulerInset = resolveRulerLeftInset()
+    const rulerX = playheadViewportX.value - rulerInset
+    const rulerWidth = Math.max(1, Number(rulerRef?.value?.clientWidth || 0))
     return {
-      left: `${snapViewportX(Math.max(0, playheadViewportX.value - rulerInset))}px`,
-      opacity: playheadVisible.value ? '1' : '0'
+      left: `${snapViewportX(rulerX)}px`,
+      opacity: playheadVisible.value && rulerX >= 0 && rulerX <= rulerWidth ? '1' : '0'
     }
   })
 

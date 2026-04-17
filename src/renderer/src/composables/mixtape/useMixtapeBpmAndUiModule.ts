@@ -505,9 +505,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
     const missingPathCount = tracks.value.filter(
       (track: MixtapeTrack) => !normalizeMixtapeFilePath(track.filePath)
     ).length
-    if (missingPathCount > 0) {
-      console.warn('[mixtape] BPM analyze skipped tracks without file path', { missingPathCount })
-    }
+    void missingPathCount
     const key = buildMixtapeBpmTargetKey(filePaths)
     const missingTrackCount = resolveMissingBpmCount(bpmTargets)
     const hasMissingBpm = missingTrackCount > 0
@@ -536,12 +534,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
       const unresolvedDetails = Array.isArray(result?.unresolvedDetails)
         ? result.unresolvedDetails
         : []
-      if (unresolvedDetails.length > 0) {
-        console.warn('[mixtape] BPM analyze unresolved details', {
-          count: unresolvedDetails.length,
-          sample: unresolvedDetails.slice(0, 5)
-        })
-      }
       const unresolvedReason = normalizeBpmFailureReason(unresolvedDetails[0]?.reason)
       if (results.length > 0) {
         const { resolvedCount } = applyBpmAnalysisToTracks(results)

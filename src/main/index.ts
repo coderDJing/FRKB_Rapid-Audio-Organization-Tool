@@ -667,12 +667,10 @@ ipcMain.handle('getSongFingerprintListLength', () => {
 
 //     for (const file of files) {
 //       const result = await extractor.extractMFCC(file);
-//       // console.log(result)
 //       // 计算统计特征
 //       const statistics = extractor.calculate_MFCC_Statistics(result.mfcc);
 
 //       // 输出结果
-//       console.log('MFCC statistics:', statistics);
 //     }
 
 //   } catch (error) {

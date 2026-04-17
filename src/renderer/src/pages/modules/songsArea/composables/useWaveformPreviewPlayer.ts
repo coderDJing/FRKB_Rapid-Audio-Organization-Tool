@@ -286,7 +286,6 @@ export function useWaveformPreviewPlayer() {
     try {
       await setSinkId.call(audio, pendingOutputDeviceId)
     } catch (error) {
-      console.warn('[waveform-preview] Failed to switch output device, fallback to default', error)
       if (pendingOutputDeviceId !== AUDIO_FOLLOW_SYSTEM_ID) {
         pendingOutputDeviceId = AUDIO_FOLLOW_SYSTEM_ID
         try {

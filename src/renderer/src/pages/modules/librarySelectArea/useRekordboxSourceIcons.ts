@@ -320,12 +320,6 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
         })
         return
       }
-
-      console.warn('[librarySelectArea] refresh rekordbox source tree failed', {
-        sourceKind,
-        sourceKey,
-        error
-      })
     } finally {
       if (!isCurrentSelectedSource(sourceKind, sourceKey, libraryType)) return
       if (requestToken !== sourceTreeRequestToken) return

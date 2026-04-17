@@ -16,10 +16,15 @@ import {
 } from '@renderer/composables/mixtape/timelineTransportRenderWav'
 import { createTimelineTransportTrackDragModule } from '@renderer/composables/mixtape/timelineTransportTrackDrag'
 import { createTimelineTransportResolversModule } from '@renderer/composables/mixtape/timelineTransportResolvers'
-import { ensureTransportSoundTouchWorkletModule } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
+import {
+  ensureTransportKeyLockWorkletModule,
+  ensureTransportSequencerWorkletModule,
+  ensureTransportSoundTouchWorkletModule
+} from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 import {
   startTransportTrackGraphNode,
-  type TrackGraphNode
+  type TrackGraphNode,
+  type TransportPlaybackSourceMode
 } from '@renderer/composables/mixtape/timelineTransportPlaybackNodes'
 import {
   createTimelineTransportAudioDataModule,
@@ -27,6 +32,11 @@ import {
   type TransportEntry,
   type TransportStemId
 } from '@renderer/composables/mixtape/timelineTransportAudioData'
+import {
+  hasInternalPlaybackSequence,
+  mapPlaybackSequencePlanToLocalSec,
+  mapPlaybackSequenceLocalToPlanSec
+} from '@renderer/composables/mixtape/timelineTransportPlaybackSequence'
 import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import type {
   MixtapeEnvelopeParamId,
@@ -131,7 +141,9 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   let transportGraphNodes: TrackGraphNode[] = []
   let transportMasterTrackId = ''
   let transportVersion = 0
+  let transportSoundTouchWorkletReady = false
   let transportKeyLockWorkletReady = false
+  let transportSequencerWorkletReady = false
   const titleAudioVisualizerSource: TitleAudioVisualizerSource = {
     getAnalyser: () => transportAnalyserNode
   }
@@ -165,8 +177,29 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     if (stemId === 'bass') return String(track.stemBassPath || '').trim()
     return String(track.stemDrumsPath || '').trim()
   }
-  const shouldUseRealtimeKeyLock = (entry: TransportEntry) =>
-    entry.masterTempo && transportKeyLockWorkletReady
+  const hasEntryInternalSequence = (entry: TransportEntry) =>
+    hasInternalPlaybackSequence(entry.playbackSequence)
+  const resolvePlaybackSourceMode = (entry: TransportEntry): TransportPlaybackSourceMode => {
+    const hasSequence = hasEntryInternalSequence(entry)
+    if (
+      hasSequence &&
+      entry.masterTempo &&
+      transportSequencerWorkletReady &&
+      transportSoundTouchWorkletReady
+    ) {
+      return 'sequenced-soundtouch'
+    }
+    if (hasSequence && entry.masterTempo && transportKeyLockWorkletReady) {
+      return 'sequenced-keylock'
+    }
+    if (hasSequence && transportSequencerWorkletReady) {
+      return 'sequenced-buffer'
+    }
+    if (entry.masterTempo && transportSoundTouchWorkletReady) {
+      return 'soundtouch'
+    }
+    return 'buffer'
+  }
 
   const persistTrackStartSec = async (
     entries: Array<{
@@ -256,6 +289,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
 
   const {
     buildTransportEntries,
+    buildTransportPlaybackEntries,
     remapVolumeMuteSegmentsForBpm,
     readTransportBufferCache,
     ensureDecodedStemAudio,
@@ -478,6 +512,33 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     )
   }
 
+  const resolveEntryPlaybackOffsetPlanSec = (
+    entry: TransportEntry,
+    sectionTimelineOffsetSec: number
+  ) => {
+    if (!entry.playbackSequence?.segments?.length) {
+      return resolveEntryPlaybackOffsetSourceSec(entry, sectionTimelineOffsetSec)
+    }
+    const localStartSec = Math.max(0, Number(entry.localStartSec) || 0)
+    const sectionOffsetSec = clampNumber(
+      Number(sectionTimelineOffsetSec) || 0,
+      0,
+      Math.max(0, Number(entry.duration) || 0)
+    )
+    const timeMap = createTrackTimeMapFromSnapshotPayload(entry.tempoSnapshot)
+    const baseTimeMap = createTrackTimeMapFromSnapshotPayload({
+      ...entry.tempoSnapshot,
+      durationSec: entry.tempoSnapshot.baseDurationSec,
+      loopSegments: undefined,
+      loopSegment: undefined
+    })
+    return mapPlaybackSequenceLocalToPlanSec({
+      localSec: localStartSec + sectionOffsetSec,
+      sequence: entry.playbackSequence,
+      mapBaseLocalToSource: (localSec: number) => baseTimeMap.mapLocalToSource(localSec)
+    })
+  }
+
   const resolveRulerSeekSec = (event: MouseEvent) => {
     const target = event.currentTarget as HTMLElement | null
     if (!target) return resolveTransportRestartSec()
@@ -532,6 +593,76 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       if (Number.isFinite(sampleRate) && sampleRate > 0) return sampleRate
     }
     return undefined
+  }
+
+  const resolveSourceLatencySec = (
+    source: Pick<TrackGraphNode['source'], 'resolveLatencySec'> | null | undefined
+  ) => {
+    if (!source?.resolveLatencySec) return 0
+    const latencySec = Number(source.resolveLatencySec())
+    if (!Number.isFinite(latencySec) || latencySec <= 0) return 0
+    return latencySec
+  }
+
+  const createEntryBaseTimeMap = (entry: TransportEntry) =>
+    createTrackTimeMapFromSnapshotPayload({
+      ...entry.tempoSnapshot,
+      durationSec: entry.tempoSnapshot.baseDurationSec,
+      loopSegments: undefined,
+      loopSegment: undefined
+    })
+
+  const resolveEntryTimelineSecFromSourcePosition = (
+    entry: TransportEntry,
+    sourcePositionSec: number,
+    startOffsetKind: 'source' | 'plan'
+  ) => {
+    const safeSourcePositionSec = Math.max(0, Number(sourcePositionSec) || 0)
+    if (startOffsetKind === 'plan' && entry.playbackSequence?.segments?.length) {
+      const baseTimeMap = createEntryBaseTimeMap(entry)
+      const localSec = mapPlaybackSequencePlanToLocalSec({
+        planSec: safeSourcePositionSec,
+        sequence: entry.playbackSequence,
+        mapSourceToBaseLocal: (sourceSec: number) => baseTimeMap.mapSourceToLocal(sourceSec)
+      })
+      return Number(entry.startSec) + localSec
+    }
+    const timeMap = createEntryBaseTimeMap(entry)
+    const localSec = clampNumber(
+      Number(timeMap.mapSourceToLocal(safeSourcePositionSec)) || 0,
+      0,
+      Math.max(0, Number(entry.duration) || 0)
+    )
+    return Number(entry.startSec) + localSec
+  }
+
+  const resolveNodeRuntimeTimelineSec = (node: TrackGraphNode) => {
+    const playbackPositionSec = Number(node.source.resolvePlaybackPositionSec())
+    if (!Number.isFinite(playbackPositionSec) || playbackPositionSec < 0) return null
+    const rawTimelineSec = resolveEntryTimelineSecFromSourcePosition(
+      node.entry,
+      playbackPositionSec,
+      node.source.startOffsetKind
+    )
+    return Math.max(0, rawTimelineSec - resolveSourceLatencySec(node.source))
+  }
+
+  const resolveTransportAudibleTimelineSec = (
+    timelineSec: number,
+    nodes: TrackGraphNode[] = transportGraphNodes,
+    masterTrackId: string = transportMasterTrackId
+  ) => {
+    const masterNode =
+      nodes.find((node) => node.trackId === masterTrackId) ||
+      nodes.find((node) => {
+        const latencySec = resolveSourceLatencySec(node.source)
+        const startSec = Number(node.entry.startSec) || 0
+        const endSec = startSec + Math.max(0, Number(node.entry.duration) || 0) + latencySec
+        return timelineSec >= startSec && timelineSec <= endSec
+      }) ||
+      null
+    if (!masterNode) return timelineSec
+    return resolveNodeRuntimeTimelineSec(masterNode) ?? timelineSec
   }
 
   const applyTransportMixParamsAtTimelineSec = (
@@ -607,7 +738,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   }
 
   const startTransportFrom = async (rawStartSec: number) => {
-    const plan = buildTransportEntries()
+    const plan = buildTransportPlaybackEntries()
     stopTransport()
     const version = ++transportVersion
     const entries = plan.entries
@@ -672,8 +803,16 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       }
       return Boolean(entry.audioRef?.audioBuffer)
     })
+    transportSoundTouchWorkletReady = false
     transportKeyLockWorkletReady = false
-    if (playableEntries.some((entry) => entry.masterTempo)) {
+    transportSequencerWorkletReady = false
+    const needsSequencePlayback = playableEntries.some((entry) => hasEntryInternalSequence(entry))
+    const needsSequencedKeyLock = playableEntries.some(
+      (entry) => hasEntryInternalSequence(entry) && entry.masterTempo
+    )
+    const needsSequencedBuffer = needsSequencePlayback
+    const needsSoundTouch = playableEntries.some((entry) => entry.masterTempo)
+    if (needsSequencedKeyLock || needsSequencedBuffer || needsSoundTouch) {
       const sampleRate = resolveTransportPlanSampleRate(playableEntries)
       const transportCtx = ensureTransportAudioContext(sampleRate)
       if (transportCtx.state === 'suspended') {
@@ -681,14 +820,50 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
           await transportCtx.resume()
         } catch {}
       }
-      try {
-        await ensureTransportSoundTouchWorkletModule(transportCtx)
-        transportKeyLockWorkletReady = true
-      } catch (error) {
-        transportKeyLockWorkletReady = false
-        console.error('[mixtape-transport] soundtouch worklet unavailable, fallback to rate', error)
+      if (needsSequencedBuffer) {
+        try {
+          await ensureTransportSequencerWorkletModule(transportCtx)
+          transportSequencerWorkletReady = true
+        } catch (error) {
+          transportSequencerWorkletReady = false
+          console.error('[mixtape-transport] sequencer worklet unavailable', error)
+        }
+      }
+      if (needsSequencedKeyLock) {
+        try {
+          await ensureTransportKeyLockWorkletModule(transportCtx)
+          transportKeyLockWorkletReady = true
+        } catch (error) {
+          transportKeyLockWorkletReady = false
+          console.error('[mixtape-transport] keylock worklet unavailable', error)
+        }
+      }
+      if (needsSoundTouch) {
+        try {
+          await ensureTransportSoundTouchWorkletModule(transportCtx)
+          transportSoundTouchWorkletReady = true
+        } catch (error) {
+          transportSoundTouchWorkletReady = false
+          console.error(
+            '[mixtape-transport] soundtouch worklet unavailable, fallback to rate',
+            error
+          )
+        }
       }
       if (transportVersion !== version) return
+    }
+    const sequenceUnavailable = playableEntries.some((entry) => {
+      if (!hasEntryInternalSequence(entry)) return false
+      return entry.masterTempo
+        ? (!transportSequencerWorkletReady || !transportSoundTouchWorkletReady) &&
+            !transportKeyLockWorkletReady
+        : !transportSequencerWorkletReady
+    })
+    if (sequenceUnavailable) {
+      transportError.value = 'Loop 连续播放引擎不可用'
+      playheadVisible.value = false
+      transportPlaying.value = false
+      return
     }
 
     const duration = entries.reduce(
@@ -759,10 +934,12 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       if (entryEnd <= startSec) continue
       const delaySec = Math.max(0, entry.startSec - startSec)
       const offsetTimelineSec = Math.max(0, startSec - entry.startSec)
+      const offsetPlanSec = resolveEntryPlaybackOffsetPlanSec(entry, offsetTimelineSec)
       const offsetSourceSec = resolveEntryPlaybackOffsetSourceSec(entry, offsetTimelineSec)
       startTransportTrackGraphNode({
         entry,
         offsetTimelineSec,
+        offsetPlanSec,
         offsetSourceSec,
         whenSec: scheduleStartAt + delaySec,
         transportGraphNodes,
@@ -770,7 +947,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
         resolveStemIdsForMode,
         ensureTransportAudioContext,
         resolveTransportOutputNode,
-        shouldUseRealtimeKeyLock,
+        resolvePlaybackSourceMode,
         resolveEntryEnvelopeValue,
         resolveEntryEqDbValue
       })
@@ -783,17 +960,27 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
           ? Math.max(0, transportAudioCtx.currentTime - transportAudioStartAt)
           : Math.max(0, (performance.now() - transportStartedAt) / 1000)
       const current = transportBaseSec + elapsed
-      playheadSec.value = current
-      syncTimelineScrollByPlayhead(current)
-      applyTransportMixParamsAtTimelineSec(current)
+      const runtimeCurrent = resolveTransportAudibleTimelineSec(
+        current,
+        transportGraphNodes,
+        transportMasterTrackId
+      )
+      applyTransportMixParamsAtTimelineSec(runtimeCurrent)
       const syncResult = applyMixxxTransportSync({
         nodes: transportGraphNodes,
-        timelineSec: current,
+        timelineSec: runtimeCurrent,
         masterTrackId: transportMasterTrackId,
         audioCtx: transportAudioCtx
       })
       transportMasterTrackId = syncResult.masterTrackId
       mirrorTransportStemPlaybackRates(transportGraphNodes, transportAudioCtx)
+      const audibleCurrent = resolveTransportAudibleTimelineSec(
+        runtimeCurrent,
+        transportGraphNodes,
+        transportMasterTrackId
+      )
+      playheadSec.value = audibleCurrent
+      syncTimelineScrollByPlayhead(audibleCurrent)
       if (current >= transportDurationSec) {
         stopTransport()
         playheadVisible.value = false

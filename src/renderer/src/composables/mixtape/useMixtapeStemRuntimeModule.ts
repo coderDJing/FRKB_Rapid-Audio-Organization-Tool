@@ -304,9 +304,6 @@ export const createUseMixtapeStemRuntimeModule = (
     if (!nextPlaylistId || nextPlaylistId !== currentPlaylistId) return
     stemResumeBootstrappedPlaylistIdSet.delete(nextPlaylistId)
     stemResumeSignatureByPlaylistId.delete(nextPlaylistId)
-    console.info('[mixtape] stem auto resume reset on reopen', {
-      playlistId: nextPlaylistId
-    })
   }
 
   const autoResumePendingStemJobs = async (params: {

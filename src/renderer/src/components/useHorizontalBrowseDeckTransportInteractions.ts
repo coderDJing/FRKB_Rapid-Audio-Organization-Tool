@@ -812,11 +812,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
   const maybeResumePendingPlay = (deck: DeckKey, loaded: boolean, decoding: boolean) => {
     if (!deckPendingPlayOnLoad[deck] || !loaded) return
     deckPendingPlayOnLoad[deck] = false
-    console.info('[horizontal-browse-play] decode ready, resuming pending play', {
-      deck,
-      filePath: params.resolveDeckSong(deck)?.filePath || '',
-      decoding
-    })
+    void decoding
     void handleDeckPlayPauseToggle(deck)
   }
 

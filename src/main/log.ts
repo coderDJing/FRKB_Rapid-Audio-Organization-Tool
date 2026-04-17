@@ -43,11 +43,12 @@ const electronModule =
     app?: ElectronAppLike
   } | null) || null
 const electronApp = electronModule?.app || null
+const noopLoggerMethod = (..._args: unknown[]) => {}
 
 const createConsoleLogger = (): LoggerLike => ({
-  debug: (...args: unknown[]) => console.debug(...args),
-  info: (...args: unknown[]) => console.info(...args),
-  warn: (...args: unknown[]) => console.warn(...args),
+  debug: noopLoggerMethod,
+  info: noopLoggerMethod,
+  warn: noopLoggerMethod,
   error: (...args: unknown[]) => console.error(...args),
   transports: {
     file: {}
@@ -60,7 +61,7 @@ const loadedElectronLog =
     | null
     | undefined) || null
 
-export const log: LoggerLike =
+const baseLogger: LoggerLike =
   loadedElectronLog &&
   typeof loadedElectronLog.debug === 'function' &&
   typeof loadedElectronLog.info === 'function' &&
@@ -70,6 +71,14 @@ export const log: LoggerLike =
   typeof loadedElectronLog.transports === 'object'
     ? (loadedElectronLog as LoggerLike)
     : createConsoleLogger()
+
+export const log: LoggerLike = {
+  debug: noopLoggerMethod,
+  info: noopLoggerMethod,
+  warn: noopLoggerMethod,
+  error: (...args: unknown[]) => baseLogger.error(...args),
+  transports: baseLogger.transports
+}
 
 const resolveUserDataDir = () => {
   try {

@@ -61,20 +61,14 @@ const sendToRenderer = (channel: string, payload: Record<string, unknown>) => {
 }
 
 const emitTraceState = (payload: TraceStatePayload) => {
-  const level =
-    payload.phase === 'error' ? 'error' : payload.phase.includes('export') ? 'warn' : 'info'
   const logPayload = {
     phase: payload.phase,
     message: payload.message,
     filePath: payload.filePath,
     durationMs: payload.durationMs
   }
-  if (level === 'error') {
+  if (payload.phase === 'error') {
     log.error('[dev-songlist-trace] state', logPayload)
-  } else if (level === 'warn') {
-    log.warn('[dev-songlist-trace] state', logPayload)
-  } else {
-    log.info('[dev-songlist-trace] state', logPayload)
   }
   sendToRenderer('dev-songlist-trace:state', payload)
 }
@@ -241,12 +235,7 @@ export function registerDevSongListTraceHandlers() {
 
       try {
         await shell.showItemInFolder(finalPath)
-      } catch (error) {
-        log.warn('[dev-songlist-trace] reveal exported trace failed', {
-          filePath: finalPath,
-          error
-        })
-      }
+      } catch {}
 
       return {
         ok: true,

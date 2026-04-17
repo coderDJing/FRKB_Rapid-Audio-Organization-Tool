@@ -97,6 +97,12 @@ const resolveEntryTimeMap = (entry: TransportSyncEntry) => {
   return next
 }
 
+const resolveNodeLatencySec = (node: TransportSyncNode) => {
+  const latencySec = Number(node.source.resolveLatencySec?.() || 0)
+  if (!Number.isFinite(latencySec) || latencySec <= 0) return 0
+  return latencySec
+}
+
 const resolveNodeSourceDurationSec = (node: TransportSyncNode) => {
   const segmentDuration = Number(node.entry.sourceSegmentDuration)
   if (Number.isFinite(segmentDuration) && segmentDuration > 0) return segmentDuration
@@ -107,9 +113,13 @@ const resolveNodeSourceDurationSec = (node: TransportSyncNode) => {
   return 0
 }
 
-const resolveEntryBpmAtTimelineSec = (entry: TransportSyncEntry, timelineSec: number) => {
+const resolveEntryBpmAtTimelineSec = (
+  entry: TransportSyncEntry,
+  timelineSec: number,
+  latencySec = 0
+) => {
   const sectionOffsetSec = clampNumber(
-    Number(timelineSec) - (Number(entry.startSec) || 0),
+    Number(timelineSec) - latencySec - (Number(entry.startSec) || 0),
     0,
     Math.max(0, Number(entry.duration) || 0)
   )
@@ -120,9 +130,10 @@ const resolveEntryBpmAtTimelineSec = (entry: TransportSyncEntry, timelineSec: nu
 
 const resolveEntryBasePlaybackRateAtTimelineSec = (
   entry: TransportSyncEntry,
-  timelineSec: number
+  timelineSec: number,
+  latencySec = 0
 ) => {
-  const targetBpm = resolveEntryBpmAtTimelineSec(entry, timelineSec)
+  const targetBpm = resolveEntryBpmAtTimelineSec(entry, timelineSec, latencySec)
   const originalBpm = Number(entry.originalBpm)
   if (!Number.isFinite(targetBpm) || targetBpm <= 0) {
     return clampNumber(Number(entry.tempoRatio) || 1, 0.25, 4)
@@ -142,7 +153,7 @@ const resolveInitialEstimatedSourceSec = (
   if (!durationSec) return null
   const startSec = Number(node.entry.startSec) || 0
   const sourceOffsetSec = Math.max(0, Number(node.entry.sourceOffsetSec) || 0)
-  const elapsedTimelineSec = Math.max(0, timelineSec - startSec)
+  const elapsedTimelineSec = Math.max(0, timelineSec - resolveNodeLatencySec(node) - startSec)
   const estimated = sourceOffsetSec + elapsedTimelineSec * clampNumber(playbackRate, 0.25, 4)
   return clampNumber(
     estimated,
@@ -159,16 +170,17 @@ const updateEstimatedSourceSec = (
   const durationSec = resolveNodeSourceDurationSec(node)
   if (!durationSec) return null
   const safeRate = clampNumber(playbackRate, 0.25, 4)
+  const effectiveTimelineSec = Math.max(0, timelineSec - resolveNodeLatencySec(node))
   const sourceOffsetSec = Math.max(0, Number(node.entry.sourceOffsetSec) || 0)
   const lastTimelineSec = Number(node.lastTimelineSec)
   const currentEstimated = Number(node.estimatedSourceSec)
   const canIntegrate =
     Number.isFinite(lastTimelineSec) &&
     Number.isFinite(currentEstimated) &&
-    timelineSec >= lastTimelineSec &&
-    timelineSec - lastTimelineSec <= 2
+    effectiveTimelineSec >= lastTimelineSec &&
+    effectiveTimelineSec - lastTimelineSec <= 2
   const estimated = canIntegrate
-    ? currentEstimated + (timelineSec - lastTimelineSec) * safeRate
+    ? currentEstimated + (effectiveTimelineSec - lastTimelineSec) * safeRate
     : resolveInitialEstimatedSourceSec(node, timelineSec, safeRate)
   if (!Number.isFinite(Number(estimated))) return null
   const nextEstimated = clampNumber(
@@ -177,7 +189,7 @@ const updateEstimatedSourceSec = (
     Math.max(sourceOffsetSec, sourceOffsetSec + durationSec - 0.001)
   )
   node.estimatedSourceSec = nextEstimated
-  node.lastTimelineSec = timelineSec
+  node.lastTimelineSec = effectiveTimelineSec
   return nextEstimated
 }
 
@@ -281,8 +293,9 @@ export const applyMixxxTransportSync = (
   const activeNodes = nodes.filter((node) => {
     const entry = node.entry
     if (!Number.isFinite(entry.beatSec) || entry.beatSec <= 0) return false
+    const latencySec = resolveNodeLatencySec(node)
     const start = Number(entry.startSec) || 0
-    const end = start + (Number(entry.duration) || 0)
+    const end = start + (Number(entry.duration) || 0) + latencySec
     return timelineSec >= start && timelineSec <= end
   })
   if (!activeNodes.length) {
@@ -307,11 +320,12 @@ export const applyMixxxTransportSync = (
   nextMasterId = masterNode.trackId
 
   const masterEntry = masterNode.entry
-  const masterTargetBpm = resolveEntryBpmAtTimelineSec(masterEntry, timelineSec)
+  const masterLatencySec = resolveNodeLatencySec(masterNode)
+  const masterTargetBpm = resolveEntryBpmAtTimelineSec(masterEntry, timelineSec, masterLatencySec)
   const sharedMasterBpm = Number(params.sharedMasterBpm)
   const hasSharedMasterBpm = Number.isFinite(sharedMasterBpm) && sharedMasterBpm > 0
   const masterBpm = hasSharedMasterBpm ? sharedMasterBpm : masterTargetBpm
-  const masterAnchorSec = Number(masterEntry.syncAnchorSec)
+  const masterAnchorSec = Number(masterEntry.syncAnchorSec) + masterLatencySec
   const diagnostics: TransportSyncDiagnostic[] = []
   const orderedActiveNodes = [
     masterNode,
@@ -321,15 +335,16 @@ export const applyMixxxTransportSync = (
   for (const node of orderedActiveNodes) {
     const entry = node.entry
     const isMasterNode = node.trackId === masterNode.trackId
+    const latencySec = resolveNodeLatencySec(node)
     const originSyncAnchorSec = Number(entry.syncAnchorSec)
     const safeOriginSyncAnchorSec = Number.isFinite(originSyncAnchorSec) ? originSyncAnchorSec : 0
     const baseRate = clampNumber(
-      resolveEntryBasePlaybackRateAtTimelineSec(entry, timelineSec),
+      resolveEntryBasePlaybackRateAtTimelineSec(entry, timelineSec, latencySec),
       0.25,
       4
     )
     const currentRate = clampNumber(Number(node.source.playbackRate.value) || 1, 0.25, 4)
-    const currentTargetBpm = resolveEntryBpmAtTimelineSec(entry, timelineSec)
+    const currentTargetBpm = resolveEntryBpmAtTimelineSec(entry, timelineSec, latencySec)
     let runtimeSyncAnchorSec = Number.isFinite(Number(node.runtimeSyncAnchorSec))
       ? Number(node.runtimeSyncAnchorSec)
       : safeOriginSyncAnchorSec
@@ -342,6 +357,8 @@ export const applyMixxxTransportSync = (
       node.phaseAnchorMasterTrackId = masterNode.trackId
     }
     node.runtimeSyncAnchorSec = runtimeSyncAnchorSec
+    const audibleOriginSyncAnchorSec = safeOriginSyncAnchorSec + latencySec
+    let audibleRuntimeSyncAnchorSec = runtimeSyncAnchorSec + latencySec
     let tempoScale = 1
     let tempoSyncedRate = baseRate
     let rawPhaseErrorSec = 0
@@ -361,7 +378,7 @@ export const applyMixxxTransportSync = (
         basePlaybackRate: baseRate,
         targetBpm: currentTargetBpm,
         masterBpm,
-        targetAnchorSec: runtimeSyncAnchorSec,
+        targetAnchorSec: audibleRuntimeSyncAnchorSec,
         masterAnchorSec,
         timelineSec,
         phaseLockStrength: 0.16,
@@ -372,12 +389,13 @@ export const applyMixxxTransportSync = (
       if (!node.phaseAnchorLocked) {
         runtimeSyncAnchorSec -= rawSyncDiagnostics.phaseErrorSec
         node.runtimeSyncAnchorSec = runtimeSyncAnchorSec
+        audibleRuntimeSyncAnchorSec = runtimeSyncAnchorSec + latencySec
         node.phaseAnchorLocked = true
         postSyncDiagnostics = resolveSyncPlaybackRateWithDiagnostics({
           basePlaybackRate: baseRate,
           targetBpm: currentTargetBpm,
           masterBpm,
-          targetAnchorSec: runtimeSyncAnchorSec,
+          targetAnchorSec: audibleRuntimeSyncAnchorSec,
           masterAnchorSec,
           timelineSec,
           phaseLockStrength: 0.16,
@@ -425,9 +443,9 @@ export const applyMixxxTransportSync = (
       master: isMasterNode,
       bpm: currentTargetBpm,
       beatSec: Number(entry.beatSec),
-      syncAnchorSec: runtimeSyncAnchorSec,
-      originSyncAnchorSec: safeOriginSyncAnchorSec,
-      phaseAnchorCorrectionSec: runtimeSyncAnchorSec - safeOriginSyncAnchorSec,
+      syncAnchorSec: audibleRuntimeSyncAnchorSec,
+      originSyncAnchorSec: audibleOriginSyncAnchorSec,
+      phaseAnchorCorrectionSec: audibleRuntimeSyncAnchorSec - audibleOriginSyncAnchorSec,
       baseRate,
       currentRate,
       tempoScale,

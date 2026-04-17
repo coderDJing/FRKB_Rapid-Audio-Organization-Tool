@@ -561,9 +561,7 @@ export function useCustomFileSelector(
             await loadDirectory(existingPath)
             return
           }
-        } catch (error) {
-          console.warn('使用保存的路径失败:', error)
-        }
+        } catch {}
       }
 
       await loadDrives()

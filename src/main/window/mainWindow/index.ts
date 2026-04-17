@@ -203,7 +203,6 @@ const captureMainWindowScreenshot = async () => {
     await fs.ensureDir(outputDir)
     const outputPath = path.join(outputDir, `frkb-${formatScreenshotTimestamp()}.png`)
     await fs.outputFile(outputPath, image.toPNG())
-    console.info('[screenshot] saved', outputPath)
   } catch (error) {
     console.error('[screenshot] failed', error)
   } finally {

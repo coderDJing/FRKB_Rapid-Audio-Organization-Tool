@@ -335,14 +335,9 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
 
     const task = (async () => {
       const buffer = canPlayHtmlAudio(filePath)
-        ? await decodeAudioBufferByBrowser(filePath).catch(async (error) => {
-            console.warn(
-              '[mixtape-beat-align] browser decode failed, fallback to ipc:',
-              filePath,
-              error
-            )
-            return await decodeAudioBufferByIpc(filePath)
-          })
+        ? await decodeAudioBufferByBrowser(filePath).catch(
+            async () => await decodeAudioBufferByIpc(filePath)
+          )
         : await decodeAudioBufferByIpc(filePath)
       audioBufferCache.set(filePath, buffer)
       return buffer
@@ -364,9 +359,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     if (!targetPath) return
     try {
       await decodeAudioBuffer(targetPath)
-    } catch (error) {
-      console.warn('[mixtape-beat-align] warmup decode failed', targetPath, error)
-    }
+    } catch {}
   }
 
   const startPlaybackFromBuffer = async (buffer: AudioBuffer, anchorSec: number, token: number) => {

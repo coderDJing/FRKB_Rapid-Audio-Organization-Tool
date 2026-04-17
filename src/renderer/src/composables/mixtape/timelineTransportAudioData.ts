@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import { canPlayHtmlAudio, toPreviewUrl } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import {
   normalizeBeatOffset as normalizeBeatOffsetByMixxx,
   resolveBeatSecByBpm,
@@ -14,6 +15,10 @@ import {
   buildMixtapeTrackLoopSections,
   normalizeMixtapeTrackLoopSegment
 } from '@renderer/composables/mixtape/mixtapeTrackLoop'
+import {
+  buildTransportPlaybackSequence,
+  type TransportPlaybackSequence
+} from '@renderer/composables/mixtape/timelineTransportPlaybackSequence'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type {
   MixtapeEnvelopeParamId,
@@ -104,6 +109,7 @@ export type TransportEntry = {
   mixEnvelopeSources: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
   volumeMuteSegments: MixtapeMuteSegment[]
   volumeMuteSegmentsSource?: MixtapeMuteSegment[]
+  playbackSequence?: TransportPlaybackSequence
   audioRef?: TransportAudioRef
   stemAudioById?: Partial<Record<TransportStemId, TransportStemAudioRef>>
 }
@@ -277,7 +283,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
     clearTransportPreloadTimer()
   }
 
-  const buildTransportEntries = () => {
+  const buildTransportEntriesInternal = (splitLoopSections: boolean) => {
     const pxPerSec = Math.max(0.0001, ctx.resolveRenderPxPerSec(ctx.normalizedRenderZoom.value))
     const snapshot = ctx.buildSequentialLayoutForZoom(ctx.normalizedRenderZoom.value)
     const startSecById = new Map<string, number>()
@@ -384,34 +390,68 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
         Array.isArray(track.loopSegments) && track.loopSegments.length
           ? track.loopSegments
           : normalizeMixtapeTrackLoopSegment(track.loopSegment, tempoSnapshot.baseDurationSec)
-      const sectionList = buildMixtapeTrackLoopSections(tempoSnapshot.baseDurationSec, loopValue)
+      const baseTimeMap = createTrackTimeMapFromSnapshotPayload({
+        ...tempoSnapshot,
+        durationSec: tempoSnapshot.baseDurationSec,
+        loopSegments: undefined,
+        loopSegment: undefined
+      })
+      const playbackSequence = buildTransportPlaybackSequence({
+        baseDurationSec: tempoSnapshot.baseDurationSec,
+        loopSegments: Array.isArray(loopValue) ? loopValue : undefined,
+        loopSegment: Array.isArray(loopValue) ? undefined : loopValue,
+        mapBaseLocalToSource: (localSec: number) => baseTimeMap.mapLocalToSource(localSec)
+      })
+      const sectionList = splitLoopSections
+        ? buildMixtapeTrackLoopSections(tempoSnapshot.baseDurationSec, loopValue)
+        : [
+            {
+              key: 'track',
+              loopKey: null,
+              kind: 'head' as const,
+              displayStartSec: 0,
+              displayEndSec: trackDuration,
+              baseStartSec: 0,
+              baseEndSec: tempoSnapshot.baseDurationSec,
+              repeatIndex: 0
+            }
+          ]
       for (const section of sectionList) {
         const duration = Number((section.displayEndSec - section.displayStartSec).toFixed(4))
         if (!Number.isFinite(duration) || duration <= 0.0001) continue
-        const localStartSec = Number(section.displayStartSec.toFixed(4))
+        const localStartSec = splitLoopSections ? Number(section.displayStartSec.toFixed(4)) : 0
         const sourceOffsetSec = Number(
-          runtimeTempoSnapshot.timeMap.mapLocalToSource(localStartSec).toFixed(4)
+          (splitLoopSections
+            ? runtimeTempoSnapshot.timeMap.mapLocalToSource(localStartSec)
+            : playbackSequence.segments[0]?.sourceStartSec || 0
+          ).toFixed(4)
         )
-        const sourceEndSec = Number(
-          runtimeTempoSnapshot.timeMap.mapLocalToSource(section.displayEndSec).toFixed(4)
-        )
-        const sourceSegmentDuration = Math.max(
-          0,
-          Number((sourceEndSec - sourceOffsetSec).toFixed(4))
-        )
+        const sourceSegmentDuration = splitLoopSections
+          ? Math.max(
+              0,
+              Number(
+                (
+                  runtimeTempoSnapshot.timeMap.mapLocalToSource(section.displayEndSec) -
+                  sourceOffsetSec
+                ).toFixed(4)
+              )
+            )
+          : sourceDuration
         const firstBarLine =
           visibleBarLines.find(
             (line) =>
-              line.sec >= section.displayStartSec - 0.0001 &&
-              line.sec < section.displayEndSec - 0.0001
+              line.sec >= (splitLoopSections ? section.displayStartSec : 0) - 0.0001 &&
+              line.sec < (splitLoopSections ? section.displayEndSec : trackDuration) - 0.0001
           ) || null
-        const startSec = Number((trackStartSec + section.displayStartSec).toFixed(4))
+        const startSec = Number(
+          (trackStartSec + (splitLoopSections ? section.displayStartSec : 0)).toFixed(4)
+        )
         const syncAnchorSec =
           typeof firstBarLine?.sec === 'number'
             ? Number((trackStartSec + firstBarLine.sec).toFixed(4))
             : resolveGridAnchorSec({
                 startSec,
-                firstBeatSec: Math.max(0, firstBeatSec - localStartSec),
+                firstBeatSec: Math.max(0, firstBeatSec - (splitLoopSections ? localStartSec : 0)),
                 beatSec,
                 barBeatOffset
               })
@@ -433,12 +473,13 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           duration,
           trackDuration,
           localStartSec,
-          baseLocalStartSec: Number(section.baseStartSec.toFixed(4)),
+          baseLocalStartSec: splitLoopSections ? Number(section.baseStartSec.toFixed(4)) : 0,
           tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
           mixEnvelopes,
           mixEnvelopeSources,
           volumeMuteSegments,
           volumeMuteSegmentsSource,
+          playbackSequence: splitLoopSections ? undefined : playbackSequence,
           audioRef,
           stemAudioById
         })
@@ -453,6 +494,10 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
       missingStemAssetCount
     }
   }
+
+  const buildTransportEntries = () => buildTransportEntriesInternal(true)
+
+  const buildTransportPlaybackEntries = () => buildTransportEntriesInternal(false)
 
   const decodeBrowser = async (filePath: string): Promise<AudioBuffer> => {
     const url = toPreviewUrl(filePath)
@@ -496,10 +541,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
       inflight = (async () => {
         const buffer =
           audioRef.decodeMode === 'browser'
-            ? await decodeBrowser(filePath).catch(async (error) => {
-                console.warn('[mixtape-transport] 浏览器解码失败，回退 IPC 解码:', filePath, error)
-                return await decodeIpc(filePath)
-              })
+            ? await decodeBrowser(filePath).catch(async () => await decodeIpc(filePath))
             : await decodeIpc(filePath)
         writeTransportBufferCache(filePath, buffer)
         return buffer
@@ -796,6 +838,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
 
   return {
     buildTransportEntries,
+    buildTransportPlaybackEntries,
     remapVolumeMuteSegmentsForBpm,
     readTransportBufferCache,
     ensureDecodedStemAudio,

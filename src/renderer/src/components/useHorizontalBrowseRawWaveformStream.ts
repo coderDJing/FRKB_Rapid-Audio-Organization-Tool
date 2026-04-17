@@ -446,12 +446,6 @@ export const useHorizontalBrowseRawWaveformStream = (
     rawStreamChunkCount += 1
     if (rawStreamChunkCount === 1) {
       options.previewLoading.value = false
-      console.info('[horizontal-raw-stream] first chunk', {
-        filePath: options.song()?.filePath,
-        elapsedMs: Number((performance.now() - rawStreamStartedAt).toFixed(1)),
-        totalFrames: work.totalFrames,
-        frames: work.chunkFrames
-      })
       traceHorizontalRawStream('raw-stream:first-chunk', {
         startSec: work.startSec,
         startFrame: work.startFrame,
@@ -550,13 +544,6 @@ export const useHorizontalBrowseRawWaveformStream = (
     rawStreamRequestId = ''
     options.previewLoading.value = false
     options.rawStreamActive.value = false
-    console.info('[horizontal-raw-stream] done', {
-      filePath: options.song()?.filePath,
-      elapsedMs: Number((performance.now() - rawStreamStartedAt).toFixed(1)),
-      chunkCount: rawStreamChunkCount,
-      fromCache: payload?.fromCache === true,
-      error: payload?.error
-    })
     traceHorizontalRawStream('raw-stream:done', {
       requestId: completedRequestId,
       chunkCount: rawStreamChunkCount,

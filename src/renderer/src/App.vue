@@ -321,30 +321,22 @@ const showDevSongListTraceDialog = async (content: string[]) => {
   })
 }
 
-const DEV_SONGLIST_TRACE_PREFIX = '[dev-songlist-trace]'
-
 const logDevSongListTraceInfo = (message: string, payload?: Record<string, unknown>) => {
-  if (payload && Object.keys(payload).length > 0) {
-    console.info(DEV_SONGLIST_TRACE_PREFIX, message, payload)
-    return
-  }
-  console.info(DEV_SONGLIST_TRACE_PREFIX, message)
+  void message
+  void payload
 }
 
 const logDevSongListTraceWarn = (message: string, payload?: Record<string, unknown>) => {
-  if (payload && Object.keys(payload).length > 0) {
-    console.warn(DEV_SONGLIST_TRACE_PREFIX, message, payload)
-    return
-  }
-  console.warn(DEV_SONGLIST_TRACE_PREFIX, message)
+  void message
+  void payload
 }
 
 const logDevSongListTraceError = (message: string, payload?: Record<string, unknown>) => {
   if (payload && Object.keys(payload).length > 0) {
-    console.error(DEV_SONGLIST_TRACE_PREFIX, message, payload)
+    console.error('[dev-songlist-trace]', message, payload)
     return
   }
-  console.error(DEV_SONGLIST_TRACE_PREFIX, message)
+  console.error('[dev-songlist-trace]', message)
 }
 
 const startDevSongListTrace = async () => {
