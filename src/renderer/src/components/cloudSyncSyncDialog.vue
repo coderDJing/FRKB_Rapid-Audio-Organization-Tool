@@ -38,6 +38,8 @@ type CloudSyncPhase =
 type CloudSyncSummary = {
   addedToServerCount?: number
   pulledToClientCount?: number
+  curatedArtistInitialCount?: number
+  curatedArtistCountAfter?: number
   durationMs?: number
   clientInitialCount?: number
   totalClientCountAfter?: number
@@ -91,6 +93,8 @@ const {
 const summaryView = computed<Required<CloudSyncSummary>>(() => ({
   addedToServerCount: Number(summary.value?.addedToServerCount || 0),
   pulledToClientCount: Number(summary.value?.pulledToClientCount || 0),
+  curatedArtistInitialCount: Number(summary.value?.curatedArtistInitialCount || 0),
+  curatedArtistCountAfter: Number(summary.value?.curatedArtistCountAfter || 0),
   durationMs: Number(summary.value?.durationMs || 0),
   clientInitialCount: Number(summary.value?.clientInitialCount || 0),
   totalClientCountAfter: Number(summary.value?.totalClientCountAfter || 0),
@@ -322,6 +326,7 @@ onUnmounted(() => {
       <div class="title dialog-title dialog-header">{{ t('cloudSync.syncFingerprints') }}</div>
       <div class="body">
         <div v-if="configured === false" class="hint">{{ t('cloudSync.notConfigured') }}</div>
+        <div class="hint hint-secondary">{{ t('cloudSync.syncIncludesCuratedArtists') }}</div>
         <div class="stages">
           <div
             v-for="(s, i) in stages"
@@ -445,6 +450,25 @@ onUnmounted(() => {
                   </svg>
                 </span>
                 <span class="count-text">{{ summaryView.totalServerCountAfter }}</span>
+              </span>
+              <span class="count-pair" style="margin-left: 16px">
+                <span class="count-text"
+                  >{{ t('cloudSync.curatedArtistCount') }}:
+                  {{ summaryView.curatedArtistInitialCount }}</span
+                >
+                <span class="arrow" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M5 12h12M13 6l6 6-6 6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    ></path>
+                  </svg>
+                </span>
+                <span class="count-text">{{ summaryView.curatedArtistCountAfter }}</span>
               </span>
             </div>
           </div>
@@ -617,6 +641,9 @@ onUnmounted(() => {
   text-align: center;
   color: var(--text);
   font-size: 12px;
+}
+.hint-secondary {
+  color: var(--text-weak);
 }
 .log {
   text-align: center;

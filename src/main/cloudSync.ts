@@ -5,6 +5,11 @@ import FingerprintStore from './fingerprintStore'
 import { log } from './log'
 import mainWindow from './window/mainWindow'
 import { persistSettingConfig } from './settingsPersistence'
+import {
+  getCuratedArtistSyncErrorPayload,
+  isCuratedArtistSyncUnsupportedServer,
+  syncCuratedArtistCloudSnapshot
+} from './curatedArtistCloudSync'
 
 const CLOUD_SYNC = {
   BASE_URL: is.dev
@@ -87,6 +92,8 @@ function mapBackendErrorToI18nKey(payload: unknown): string {
       return 'cloudSync.errors.requestTooLarge'
     case 'VALIDATION_ERROR':
       return 'cloudSync.errors.validationFailed'
+    case 'INVALID_CURATED_ARTIST_SNAPSHOT':
+      return 'cloudSync.errors.curatedArtistValidationFailed'
     case 'SYNC_RATE_LIMIT_EXCEEDED':
     case 'RATE_LIMIT_EXCEEDED':
       return 'cloudSync.errors.tooFrequent'
@@ -369,6 +376,9 @@ ipcMain.handle('cloudSync/start', async () => {
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
     }
     let addedToServerTotal = 0
+    let curatedArtistInitialCount = 0
+    let curatedArtistCountAfter = 0
+    let curatedArtistChanged = false
     const toNumber = (v: unknown, fallback = 0) => {
       const n = Number(v)
       return Number.isFinite(n) ? n : fallback
@@ -470,7 +480,7 @@ ipcMain.handle('cloudSync/start', async () => {
     if (Number.isFinite(limitFromServer) && limitFromServer > 0) {
       serverLimit = limitFromServer
     }
-    const needSync = checkJson?.needSync === true
+    const fingerprintNeedSync = checkJson?.needSync === true
     sendProgress('checking', 5, { clientCount, serverCount })
     // 配额上限预检查：若客户端集合数量已大于上限，直接终止
     if (serverLimit && clientCount > serverLimit) {
@@ -491,176 +501,108 @@ ipcMain.handle('cloudSync/start', async () => {
       sendState('failed')
       return 'failed'
     }
-    if (!needSync) {
-      sendProgress('finalizing', 90)
-      await wait(120)
-      sendProgress('finalizing', 100)
-      if (mainWindow.instance) {
-        mainWindow.instance.webContents.send('cloudSync/notice', {
-          message: 'cloudSync.errors.alreadyLatest'
-        })
-      }
-      sendState('success')
-      return 'success'
-    }
-
-    // 2) diff_up 分批
     const batchSize = 1000
-    const toAdd: string[] = []
-    for (let i = 0; i < clientFingerprints.length; i += batchSize) {
-      if (cancelRequested) {
-        sendState('cancelled')
-        return 'cancelled'
-      }
-      const batch = clientFingerprints.slice(i, i + batchSize)
-      if (is.dev) {
-        log.info('[cloudSync] /bidirectional-diff request', {
-          url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/bidirectional-diff`,
-          headers: {
-            Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: {
-            userKey: cloudSyncConfig.userKey,
-            clientFingerprints: batch,
-            batchIndex: Math.floor(i / batchSize),
-            batchSize,
-            mode
-          }
-        })
-      }
-      const diffRes = await limitedFetch(
-        `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/bidirectional-diff`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            userKey: cloudSyncConfig.userKey,
-            clientFingerprints: batch,
-            batchIndex: Math.floor(i / batchSize),
-            batchSize,
-            mode
-          })
+    let mergedList = [...clientFingerprints]
+    let serverFinalCount = toNumber(serverCount)
+    let verifiedHashMatched = !fingerprintNeedSync
+
+    if (fingerprintNeedSync) {
+      // 2) diff_up 分批
+      const toAdd: string[] = []
+      for (let i = 0; i < clientFingerprints.length; i += batchSize) {
+        if (cancelRequested) {
+          sendState('cancelled')
+          return 'cancelled'
         }
-      )
-      const diffJson = await diffRes.json()
-      if (is.dev) {
-        log.info('[cloudSync] /bidirectional-diff response', {
-          status: diffRes.status,
-          json: diffJson
-        })
-      }
-      // 最新后端返回顶层字段
-      const missingServer: string[] = diffJson?.serverMissingFingerprints
-      if (!diffJson?.success) {
-        log.error('[cloudSync] /bidirectional-diff error', {
-          request: {
+        const batch = clientFingerprints.slice(i, i + batchSize)
+        if (is.dev) {
+          log.info('[cloudSync] /bidirectional-diff request', {
             url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/bidirectional-diff`,
+            headers: {
+              Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            },
             body: {
               userKey: cloudSyncConfig.userKey,
               clientFingerprints: batch,
               batchIndex: Math.floor(i / batchSize),
-              batchSize
+              batchSize,
+              mode
             }
-          },
-          status: diffRes.status,
-          response: diffJson
-        })
-        sendError(mapBackendErrorToI18nKey(diffJson), diffJson)
-        sendState('failed')
-        return 'failed'
-      }
-      if (Array.isArray(missingServer)) {
-        for (const m of missingServer) toAdd.push(String(m).toLowerCase())
-      }
-      const progressBase = 5
-      const diffPortion = 30
-      const progress =
-        progressBase +
-        Math.min(
-          ((i + batch.length) / Math.max(clientFingerprints.length, 1)) * diffPortion,
-          diffPortion
+          })
+        }
+        const diffRes = await limitedFetch(
+          `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/bidirectional-diff`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              userKey: cloudSyncConfig.userKey,
+              clientFingerprints: batch,
+              batchIndex: Math.floor(i / batchSize),
+              batchSize,
+              mode
+            })
+          }
         )
-      sendProgress('diffing', Math.round(progress), { toAddCount: toAdd.length })
-    }
-    const uploadList = Array.from(new Set(toAdd))
-    // 3) analyze-diff
-    const clientForAnalyze = clientFingerprints
-    if (is.dev) {
-      log.info('[cloudSync] /analyze-diff request', {
-        url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
-        headers: {
-          Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze, mode }
-      })
-    }
-    const analyzeRes = await limitedFetch(
-      `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userKey: cloudSyncConfig.userKey,
-          clientFingerprints: clientForAnalyze,
-          mode
-        })
+        const diffJson = await diffRes.json()
+        if (is.dev) {
+          log.info('[cloudSync] /bidirectional-diff response', {
+            status: diffRes.status,
+            json: diffJson
+          })
+        }
+        // 最新后端返回顶层字段
+        const missingServer: string[] = diffJson?.serverMissingFingerprints
+        if (!diffJson?.success) {
+          log.error('[cloudSync] /bidirectional-diff error', {
+            request: {
+              url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/bidirectional-diff`,
+              body: {
+                userKey: cloudSyncConfig.userKey,
+                clientFingerprints: batch,
+                batchIndex: Math.floor(i / batchSize),
+                batchSize
+              }
+            },
+            status: diffRes.status,
+            response: diffJson
+          })
+          sendError(mapBackendErrorToI18nKey(diffJson), diffJson)
+          sendState('failed')
+          return 'failed'
+        }
+        if (Array.isArray(missingServer)) {
+          for (const m of missingServer) toAdd.push(String(m).toLowerCase())
+        }
+        const progressBase = 5
+        const diffPortion = 30
+        const progress =
+          progressBase +
+          Math.min(
+            ((i + batch.length) / Math.max(clientFingerprints.length, 1)) * diffPortion,
+            diffPortion
+          )
+        sendProgress('diffing', Math.round(progress), { toAddCount: toAdd.length })
       }
-    )
-    const analyzeJson = await analyzeRes.json()
-    if (is.dev) {
-      log.info('[cloudSync] /analyze-diff response', {
-        status: analyzeRes.status,
-        json: analyzeJson
-      })
-    }
-    // 最新后端返回顶层字段
-    let diffSessionId: string = analyzeJson?.diffSessionId
-    const stats = analyzeJson?.diffStats || {}
-    const clientMissingCount = Number(stats.clientMissingCount ?? 0)
-    const pageSizeFromAnalysis = Number(stats.pageSize ?? 1000)
-    if (!analyzeJson?.success) {
-      log.error('[cloudSync] /analyze-diff error', {
-        request: {
-          url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
-          body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze }
-        },
-        status: analyzeRes.status,
-        response: analyzeJson
-      })
-      sendError(mapBackendErrorToI18nKey(analyzeJson), analyzeJson)
-      sendState('failed')
-      return 'failed'
-    }
-    sendProgress('analyzing', 40)
-
-    // 4) pull-diff-page 分页
-    const totalPages: number = Math.ceil(clientMissingCount / Math.max(pageSizeFromAnalysis, 1))
-    const mergedSet = new Set<string>(clientFingerprints)
-    for (let page = 0; page < totalPages; page++) {
-      if (cancelRequested) {
-        sendState('cancelled')
-        return 'cancelled'
-      }
+      const uploadList = Array.from(new Set(toAdd))
+      // 3) analyze-diff
+      const clientForAnalyze = clientFingerprints
       if (is.dev) {
-        log.info('[cloudSync] /pull-diff-page request', {
-          url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
+        log.info('[cloudSync] /analyze-diff request', {
+          url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
           headers: {
             Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
             'Content-Type': 'application/json'
           },
-          body: { userKey: cloudSyncConfig.userKey, diffSessionId, pageIndex: page, mode }
+          body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze, mode }
         })
       }
-      const pageRes = await limitedFetch(
-        `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
+      const analyzeRes = await limitedFetch(
+        `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
         {
           method: 'POST',
           headers: {
@@ -669,22 +611,140 @@ ipcMain.handle('cloudSync/start', async () => {
           },
           body: JSON.stringify({
             userKey: cloudSyncConfig.userKey,
-            diffSessionId,
-            pageIndex: page,
+            clientFingerprints: clientForAnalyze,
             mode
           })
         }
       )
-      const pageJson = await pageRes.json()
+      const analyzeJson = await analyzeRes.json()
       if (is.dev) {
-        log.info('[cloudSync] /pull-diff-page response', { status: pageRes.status, json: pageJson })
+        log.info('[cloudSync] /analyze-diff response', {
+          status: analyzeRes.status,
+          json: analyzeJson
+        })
       }
       // 最新后端返回顶层字段
-      const missingArr: string[] = pageJson?.missingFingerprints
-      if (!pageJson?.success) {
-        if (pageJson?.error === 'DIFF_SESSION_NOT_FOUND') {
-          page = -1
-          log.error('[cloudSync] /pull-diff-page error: diff session expired', {
+      let diffSessionId: string = analyzeJson?.diffSessionId
+      const stats = analyzeJson?.diffStats || {}
+      const clientMissingCount = Number(stats.clientMissingCount ?? 0)
+      const pageSizeFromAnalysis = Number(stats.pageSize ?? 1000)
+      if (!analyzeJson?.success) {
+        log.error('[cloudSync] /analyze-diff error', {
+          request: {
+            url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
+            body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze }
+          },
+          status: analyzeRes.status,
+          response: analyzeJson
+        })
+        sendError(mapBackendErrorToI18nKey(analyzeJson), analyzeJson)
+        sendState('failed')
+        return 'failed'
+      }
+      sendProgress('analyzing', 40)
+
+      // 4) pull-diff-page 分页
+      const totalPages: number = Math.ceil(clientMissingCount / Math.max(pageSizeFromAnalysis, 1))
+      const mergedSet = new Set<string>(clientFingerprints)
+      for (let page = 0; page < totalPages; page++) {
+        if (cancelRequested) {
+          sendState('cancelled')
+          return 'cancelled'
+        }
+        if (is.dev) {
+          log.info('[cloudSync] /pull-diff-page request', {
+            url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
+            headers: {
+              Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: { userKey: cloudSyncConfig.userKey, diffSessionId, pageIndex: page, mode }
+          })
+        }
+        const pageRes = await limitedFetch(
+          `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              userKey: cloudSyncConfig.userKey,
+              diffSessionId,
+              pageIndex: page,
+              mode
+            })
+          }
+        )
+        const pageJson = await pageRes.json()
+        if (is.dev) {
+          log.info('[cloudSync] /pull-diff-page response', {
+            status: pageRes.status,
+            json: pageJson
+          })
+        }
+        // 最新后端返回顶层字段
+        const missingArr: string[] = pageJson?.missingFingerprints
+        if (!pageJson?.success) {
+          if (pageJson?.error === 'DIFF_SESSION_NOT_FOUND') {
+            page = -1
+            log.error('[cloudSync] /pull-diff-page error: diff session expired', {
+              request: {
+                url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
+                body: { userKey: cloudSyncConfig.userKey, diffSessionId, pageIndex: page }
+              },
+              status: pageRes.status,
+              response: pageJson
+            })
+            if (is.dev) {
+              log.info('[cloudSync] /analyze-diff retry request', {
+                url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
+                headers: {
+                  Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+                  'Content-Type': 'application/json'
+                },
+                body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze }
+              })
+            }
+            const retryAnalyze = await limitedFetch(
+              `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
+              {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  userKey: cloudSyncConfig.userKey,
+                  clientFingerprints: clientForAnalyze
+                })
+              }
+            )
+            const retryAnalyzeJson = await retryAnalyze.json()
+            if (is.dev) {
+              log.info('[cloudSync] /analyze-diff retry response', {
+                status: retryAnalyze.status,
+                json: retryAnalyzeJson
+              })
+            }
+            if (!retryAnalyzeJson?.success) {
+              log.error('[cloudSync] /analyze-diff retry error', {
+                request: {
+                  url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
+                  body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze }
+                },
+                status: retryAnalyze.status,
+                response: retryAnalyzeJson
+              })
+              sendError(mapBackendErrorToI18nKey(retryAnalyzeJson), retryAnalyzeJson)
+              sendState('failed')
+              return 'failed'
+            }
+            diffSessionId = retryAnalyzeJson?.diffSessionId
+            continue
+          }
+          log.error('[cloudSync] /pull-diff-page error', {
             request: {
               url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
               body: { userKey: cloudSyncConfig.userKey, diffSessionId, pageIndex: page }
@@ -692,221 +752,242 @@ ipcMain.handle('cloudSync/start', async () => {
             status: pageRes.status,
             response: pageJson
           })
-          if (is.dev) {
-            log.info('[cloudSync] /analyze-diff retry request', {
-              url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
-              headers: {
-                Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-                'Content-Type': 'application/json'
-              },
-              body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze }
-            })
-          }
-          const retryAnalyze = await limitedFetch(
-            `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
-            {
-              method: 'POST',
-              headers: {
-                Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                userKey: cloudSyncConfig.userKey,
-                clientFingerprints: clientForAnalyze
-              })
-            }
-          )
-          const retryAnalyzeJson = await retryAnalyze.json()
-          if (is.dev) {
-            log.info('[cloudSync] /analyze-diff retry response', {
-              status: retryAnalyze.status,
-              json: retryAnalyzeJson
-            })
-          }
-          if (!retryAnalyzeJson?.success) {
-            log.error('[cloudSync] /analyze-diff retry error', {
-              request: {
-                url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
-                body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze }
-              },
-              status: retryAnalyze.status,
-              response: retryAnalyzeJson
-            })
-            sendError(mapBackendErrorToI18nKey(retryAnalyzeJson), retryAnalyzeJson)
-            sendState('failed')
-            return 'failed'
-          }
-          diffSessionId = retryAnalyzeJson?.diffSessionId
-          continue
+          sendError(mapBackendErrorToI18nKey(pageJson), pageJson)
+          sendState('failed')
+          return 'failed'
         }
-        log.error('[cloudSync] /pull-diff-page error', {
-          request: {
-            url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
-            body: { userKey: cloudSyncConfig.userKey, diffSessionId, pageIndex: page }
-          },
-          status: pageRes.status,
-          response: pageJson
-        })
-        sendError(mapBackendErrorToI18nKey(pageJson), pageJson)
-        sendState('failed')
-        return 'failed'
+        const missing: string[] = Array.isArray(missingArr) ? missingArr : []
+        for (const m of missing) mergedSet.add(String(m).toLowerCase())
+        const pullPortion = 30
+        const progress = 45 + ((page + 1) / Math.max(totalPages, 1)) * pullPortion
+        sendProgress('pulling', Math.round(progress), { pulledPages: page + 1, totalPages })
       }
-      const missing: string[] = Array.isArray(missingArr) ? missingArr : []
-      for (const m of missing) mergedSet.add(String(m).toLowerCase())
-      const pullPortion = 30
-      const progress = 45 + ((page + 1) / Math.max(totalPages, 1)) * pullPortion
-      sendProgress('pulling', Math.round(progress), { pulledPages: page + 1, totalPages })
-    }
 
-    // 5) commit：先 /add 再本地原子替换
-    // 在提交到服务端之前进行本地上限预估
-    if (serverLimit && serverLimit > 0) {
-      const uniqueNewCount = uploadList.length
-      const allowedAddCount = Math.max(0, serverLimit - serverCount)
-      if (serverCount + uniqueNewCount > serverLimit) {
-        log.error('[cloudSync] pre-add limit exceeded', {
-          limit: serverLimit,
-          currentCount: serverCount,
-          uniqueNewCount,
-          allowedAddCount
-        })
-        sendError('cloudSync.errors.limitExceeded', {
-          code: 'FINGERPRINT_LIMIT_EXCEEDED',
-          details: {
-            phase: 'batch_add',
+      // 5) commit：先 /add 再本地原子替换
+      // 在提交到服务端之前进行本地上限预估
+      if (serverLimit && serverLimit > 0) {
+        const uniqueNewCount = uploadList.length
+        const allowedAddCount = Math.max(0, serverLimit - serverCount)
+        if (serverCount + uniqueNewCount > serverLimit) {
+          log.error('[cloudSync] pre-add limit exceeded', {
             limit: serverLimit,
             currentCount: serverCount,
             uniqueNewCount,
             allowedAddCount
-          }
-        })
-        sendState('failed')
-        return 'failed'
+          })
+          sendError('cloudSync.errors.limitExceeded', {
+            code: 'FINGERPRINT_LIMIT_EXCEEDED',
+            details: {
+              phase: 'batch_add',
+              limit: serverLimit,
+              currentCount: serverCount,
+              uniqueNewCount,
+              allowedAddCount
+            }
+          })
+          sendState('failed')
+          return 'failed'
+        }
       }
-    }
-    sendProgress('committing', 78)
-    let committedCount = 0
-    for (let i = 0; i < uploadList.length; i += batchSize) {
-      const slice = uploadList.slice(i, i + batchSize)
-      if (is.dev) {
-        log.info('[cloudSync] /add request', {
-          url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/add`,
-          headers: {
-            Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: { userKey: cloudSyncConfig.userKey, addFingerprints: slice, mode }
-        })
-      }
-      const addRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/add`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ userKey: cloudSyncConfig.userKey, addFingerprints: slice, mode })
-      })
-      const addJson = await addRes.json()
-      if (is.dev) {
-        log.info('[cloudSync] /add response', { status: addRes.status, json: addJson })
-      }
-      const addedCount = toNumber(addJson?.addedCount)
-      if (!addJson?.success) {
-        log.error('[cloudSync] /add error', {
-          request: {
+      sendProgress('committing', 78)
+      let committedCount = 0
+      for (let i = 0; i < uploadList.length; i += batchSize) {
+        const slice = uploadList.slice(i, i + batchSize)
+        if (is.dev) {
+          log.info('[cloudSync] /add request', {
             url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/add`,
-            body: { userKey: cloudSyncConfig.userKey, addFingerprints: slice }
-          },
-          status: addRes.status,
-          response: addJson
-        })
-        sendError(mapBackendErrorToI18nKey(addJson), addJson)
-        sendState('failed')
-        return 'failed'
-      }
-      addedToServerTotal += addedCount
-      committedCount += slice.length
-      const ratio = uploadList.length > 0 ? Math.min(committedCount / uploadList.length, 1) : 1
-      const progress = 78 + Math.round(ratio * 14) // 78 -> 92
-      sendProgress('committing', progress)
-    }
-    if (uploadList.length === 0) {
-      sendProgress('committing', 85)
-    }
-
-    // 本地保存（多版本+指针，原子切换）
-    const mergedList = Array.from(mergedSet)
-    await FingerprintStore.saveList(mergedList)
-
-    // 6) 提交后复查 /check
-    sendProgress('finalizing', 93)
-    const verifyHash = calculateCollectionHashForSet(crypto, mergedList)
-    let verifiedHashMatched = false
-    let serverFinalCount = toNumber(serverCount)
-    try {
-      if (is.dev) {
-        log.info('[cloudSync] /check verify request', {
-          url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
+            headers: {
+              Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: { userKey: cloudSyncConfig.userKey, addFingerprints: slice, mode }
+          })
+        }
+        const addRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/add`, {
+          method: 'POST',
           headers: {
             Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
             'Content-Type': 'application/json'
           },
-          body: {
+          body: JSON.stringify({ userKey: cloudSyncConfig.userKey, addFingerprints: slice, mode })
+        })
+        const addJson = await addRes.json()
+        if (is.dev) {
+          log.info('[cloudSync] /add response', { status: addRes.status, json: addJson })
+        }
+        const addedCount = toNumber(addJson?.addedCount)
+        if (!addJson?.success) {
+          log.error('[cloudSync] /add error', {
+            request: {
+              url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/add`,
+              body: { userKey: cloudSyncConfig.userKey, addFingerprints: slice }
+            },
+            status: addRes.status,
+            response: addJson
+          })
+          sendError(mapBackendErrorToI18nKey(addJson), addJson)
+          sendState('failed')
+          return 'failed'
+        }
+        addedToServerTotal += addedCount
+        committedCount += slice.length
+        const ratio = uploadList.length > 0 ? Math.min(committedCount / uploadList.length, 1) : 1
+        const progress = 78 + Math.round(ratio * 14) // 78 -> 92
+        sendProgress('committing', progress)
+      }
+      if (uploadList.length === 0) {
+        sendProgress('committing', 85)
+      }
+
+      // 本地保存（多版本+指针，原子切换）
+      mergedList = Array.from(mergedSet)
+      await FingerprintStore.saveList(mergedList)
+
+      // 6) 提交后复查 /check
+      sendProgress('finalizing', 93)
+      const verifyHash = calculateCollectionHashForSet(crypto, mergedList)
+      try {
+        if (is.dev) {
+          log.info('[cloudSync] /check verify request', {
+            url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
+            headers: {
+              Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+              'Content-Type': 'application/json'
+            },
+            body: {
+              userKey: cloudSyncConfig.userKey,
+              count: mergedList.length,
+              hash: verifyHash,
+              mode
+            }
+          })
+        }
+        const verifyRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
             userKey: cloudSyncConfig.userKey,
             count: mergedList.length,
             hash: verifyHash,
             mode
-          }
+          })
         })
-      }
-      const verifyRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          userKey: cloudSyncConfig.userKey,
-          count: mergedList.length,
-          hash: verifyHash,
-          mode
-        })
-      })
-      const verifyJson = await verifyRes.json()
-      if (is.dev) {
-        log.info('[cloudSync] /check verify response', {
-          status: verifyRes.status,
-          json: verifyJson
-        })
-      }
-      if (!verifyJson?.success) {
-        log.error('[cloudSync] /check verify error', {
+        const verifyJson = await verifyRes.json()
+        if (is.dev) {
+          log.info('[cloudSync] /check verify response', {
+            status: verifyRes.status,
+            json: verifyJson
+          })
+        }
+        if (!verifyJson?.success) {
+          log.error('[cloudSync] /check verify error', {
+            request: {
+              url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
+              body: {
+                userKey: cloudSyncConfig.userKey,
+                count: mergedList.length,
+                hash: verifyHash
+              }
+            },
+            status: verifyRes.status,
+            response: verifyJson
+          })
+        }
+        if (verifyJson?.success) {
+          verifiedHashMatched = verifyJson?.needSync === false
+          serverFinalCount = toNumber(verifyJson?.serverCount, serverFinalCount)
+        }
+      } catch (_e) {
+        // 错误需记录日志，但不影响主流程
+        log.error('[cloudSync] /check verify network error', {
           request: {
             url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
             body: { userKey: cloudSyncConfig.userKey, count: mergedList.length, hash: verifyHash }
           },
-          status: verifyRes.status,
-          response: verifyJson
+          error: _e
         })
       }
-      if (verifyJson?.success) {
-        verifiedHashMatched = verifyJson?.needSync === false
-        serverFinalCount = toNumber(verifyJson?.serverCount, serverFinalCount)
-      }
-    } catch (_e) {
-      // 错误需记录日志，但不影响主流程
-      log.error('[cloudSync] /check verify network error', {
-        request: {
-          url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
-          body: { userKey: cloudSyncConfig.userKey, count: mergedList.length, hash: verifyHash }
-        },
-        error: _e
-      })
+    } else {
+      sendProgress('finalizing', 85)
     }
 
-    sendProgress('finalizing', 95)
+    sendProgress('finalizing', 96)
+    try {
+      const curatedArtistResult = await syncCuratedArtistCloudSnapshot({
+        config: {
+          baseUrl: CLOUD_SYNC.BASE_URL,
+          apiSecretKey: CLOUD_SYNC.API_SECRET_KEY,
+          userKey: cloudSyncConfig.userKey
+        },
+        limitedFetch
+      })
+      curatedArtistInitialCount = toNumber(curatedArtistResult.localSnapshot.count)
+      curatedArtistCountAfter = toNumber(curatedArtistResult.mergedSnapshot.count)
+      curatedArtistChanged = curatedArtistResult.response?.changed === true
+    } catch (curatedError) {
+      const responsePayload = getCuratedArtistSyncErrorPayload(curatedError)
+      if (responsePayload) {
+        if (isCuratedArtistSyncUnsupportedServer(responsePayload)) {
+          log.warn('[cloudSync] curated artist sync skipped: unsupported server', {
+            request: {
+              url: `${CLOUD_SYNC.BASE_URL}/frkbapi/v1/curated-artist-sync/sync`,
+              body: {
+                userKey: cloudSyncConfig.userKey
+              }
+            },
+            response: responsePayload
+          })
+          if (mainWindow.instance) {
+            mainWindow.instance.webContents.send('cloudSync/notice', {
+              message: 'cloudSync.curatedArtistSkippedUnsupported'
+            })
+          }
+          curatedArtistInitialCount = 0
+          curatedArtistCountAfter = 0
+        } else {
+          log.error('[cloudSync] /curated-artist-sync error', {
+            request: {
+              url: `${CLOUD_SYNC.BASE_URL}/frkbapi/v1/curated-artist-sync/sync`,
+              body: {
+                userKey: cloudSyncConfig.userKey
+              }
+            },
+            response: responsePayload
+          })
+          sendError(mapBackendErrorToI18nKey(responsePayload), responsePayload)
+          sendState('failed')
+          return 'failed'
+        }
+      } else {
+        log.error('[cloudSync] /curated-artist-sync network error', {
+          request: {
+            url: `${CLOUD_SYNC.BASE_URL}/frkbapi/v1/curated-artist-sync/sync`,
+            body: {
+              userKey: cloudSyncConfig.userKey
+            }
+          },
+          error: curatedError
+        })
+        sendError('cloudSync.errors.cannotConnect', {
+          error: 'NETWORK',
+          scope: 'curated_artist_sync'
+        })
+        sendState('failed')
+        return 'failed'
+      }
+    }
+
+    sendProgress('finalizing', 98)
     await wait(120)
     sendProgress('finalizing', 100)
+    if (!fingerprintNeedSync && !curatedArtistChanged && mainWindow.instance) {
+      mainWindow.instance.webContents.send('cloudSync/notice', {
+        message: 'cloudSync.errors.alreadyLatest'
+      })
+    }
     const endAt = Date.now()
     const pulledToClientCount = Math.max(0, mergedList.length - clientFingerprints.length)
     const summary = {
@@ -917,6 +998,8 @@ ipcMain.handle('cloudSync/start', async () => {
       serverInitialCount: toNumber(serverCount),
       addedToServerCount: toNumber(addedToServerTotal),
       pulledToClientCount,
+      curatedArtistInitialCount,
+      curatedArtistCountAfter,
       totalClientCountAfter: toNumber(mergedList.length),
       totalServerCountAfter: toNumber(serverFinalCount),
       verifiedHashMatched

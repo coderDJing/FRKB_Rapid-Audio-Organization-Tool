@@ -475,6 +475,7 @@ const openDialog = async (item: string) => {
   if (item === '退出') item = 'menu.exit'
   if (item === '云同步设置') item = 'cloudSync.settings'
   if (item === '同步曲目指纹库') item = 'cloudSync.syncFingerprints'
+  if (item === '同步指纹库与精选表演者') item = 'cloudSync.syncFingerprints'
   if (item === '手动添加曲目指纹') item = 'fingerprints.manualAdd'
   if (item === '导出曲目指纹库文件') item = 'fingerprints.exportDatabase'
   if (item === '导入曲目指纹库文件') item = 'fingerprints.importDatabase'

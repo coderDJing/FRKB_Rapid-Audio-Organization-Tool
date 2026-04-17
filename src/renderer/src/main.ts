@@ -44,11 +44,24 @@ const normalizeCuratedArtistFavorites = (payload: unknown): ICuratedArtistFavori
     return snapshot.items
       .map((item) => {
         const row = isRecord(item) ? item : null
+        const fingerprints = Array.isArray(row?.fingerprints)
+          ? row.fingerprints
+              .map((fingerprint) =>
+                String(fingerprint || '')
+                  .trim()
+                  .toLowerCase()
+              )
+              .filter((fingerprint) => /^[a-f0-9]{64}$/i.test(fingerprint))
+          : undefined
         return {
           name: String(row?.name || '')
             .trim()
             .replace(/\s+/g, ' '),
-          count: Math.max(1, Math.round(Number(row?.count) || 1))
+          count: Math.max(1, Math.round(Number(row?.count) || 1)),
+          fingerprints:
+            fingerprints && fingerprints.length > 0
+              ? Array.from(new Set(fingerprints)).sort()
+              : undefined
         }
       })
       .filter((item: ICuratedArtistFavorite) => item.name.length > 0)

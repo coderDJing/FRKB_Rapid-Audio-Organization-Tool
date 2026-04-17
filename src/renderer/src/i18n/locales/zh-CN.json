@@ -93,10 +93,12 @@
     "legacyExit": "退出"
   },
   "cloudSync": {
-    "syncFingerprints": "同步曲目指纹库",
+    "syncFingerprints": "同步指纹库与精选表演者",
     "settings": "云同步设置",
     "notConfigured": "尚未配置云同步",
     "notConfiguredHint": "尚未配置云同步，将打开设置面板",
+    "syncIncludesCuratedArtists": "本次会一并同步曲目指纹与精选表演者记录。",
+    "curatedArtistSkippedUnsupported": "当前服务端版本较旧，已跳过精选表演者同步，仅完成指纹同步。",
     "needUserKeyBeforeDanger": "执行该危险操作前需要先设置 userKey。已为你打开云同步设置。",
     "userKey": "同步密钥 userKey",
     "applyEmail": "申请密钥邮箱",
@@ -110,16 +112,17 @@
     "limit": "配额上限",
     "connectivityFailed": "连通失败",
     "startSync": "开始同步",
-    "syncCompleted": "同步完成",
+    "syncCompleted": "云端同步完成",
     "syncResult": "同步结果",
     "inSyncWithServer": "已与服务端一致",
     "notFullyInSync": "未完全一致",
-    "overview": "结果概览",
-    "uploadedNew": "上行新增",
-    "pulledNew": "下行拉取",
-    "totalChanges": "总量变化",
+    "overview": "同步结果概览",
+    "uploadedNew": "上行新增指纹",
+    "pulledNew": "下行拉取指纹",
+    "totalChanges": "同步后总量",
     "clientCount": "客户端数量",
     "serverCount": "服务端数量",
+    "curatedArtistCount": "精选表演者",
     "toUpload": "待上传",
     "pulledPages": "已拉取页",
     "totalPages": "总页数",
@@ -140,7 +143,7 @@
     },
     "errors": {
       "cannotConnect": "无法连接云同步服务",
-      "alreadyLatest": "已是最新，无需同步",
+      "alreadyLatest": "云端数据已是最新，无需同步",
       "tooFrequent": "同步请求过于频繁，请稍后再试",
       "sensitiveOperationTooFrequent": "敏感操作请求过于频繁，请稍后再试",
       "pullDiffPageFailed": "分页拉取差异数据失败",
@@ -148,6 +151,7 @@
       "keyMismatch": "当前 userKey 与会话不匹配",
       "requestTooLarge": "请求体大小超过限制（最大10MB）",
       "validationFailed": "请求参数验证失败",
+      "curatedArtistValidationFailed": "精选表演者同步数据校验失败",
       "keyNotFound": "userKey 未找到或未授权",
       "keyInvalid": "userKey 无效或未授权",
       "keyDisabled": "userKey 已被禁用",
@@ -181,11 +185,11 @@
       }
     },
     "reset": {
-      "sectionTitle": "清除云端指纹库",
-      "title": "危险操作：重置云端指纹库",
-      "description": "该操作将清除云端与当前 userKey 关联的全部指纹与元数据（不影响使用统计）。此操作不可撤销，请谨慎执行。请输入 DELETE 以继续。",
-      "short": "清除云端指纹库",
-      "success": "云端指纹库已清除"
+      "sectionTitle": "清除云端同步数据",
+      "title": "危险操作：重置云端同步数据",
+      "description": "该操作将清除云端与当前 userKey 关联的全部指纹、精选表演者快照及相关元数据（不影响使用统计）。此操作不可撤销，请谨慎执行。请输入 DELETE 以继续。",
+      "short": "清除云端同步数据",
+      "success": "云端同步数据已清除"
     }
   },
   "library": {
@@ -1112,7 +1116,7 @@
     "showPlaylistTrackCount": "在歌单名称后显示曲目数量",
     "curatedArtistTracking": {
       "title": "精选表演者联动",
-      "desc": "当歌曲被加入精选库时，自动记住它的表演者；筛选库里命中这些表演者时会做金色高亮，并支持右键取消收藏。",
+      "desc": "当歌曲被加入精选库时，自动记住它的表演者与对应曲目指纹；筛选库里命中这些表演者时会做金色高亮，这些记录也会参与云同步。",
       "managerButton": "查看与编辑",
       "managerTitle": "管理精选表演者",
       "managerDesc": "这里展示当前音乐库记录的全部精选表演者，可手动新增、编辑、删除。",

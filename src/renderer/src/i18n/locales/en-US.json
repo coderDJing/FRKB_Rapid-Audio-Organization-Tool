@@ -93,10 +93,12 @@
     "legacyExit": "Exit"
   },
   "cloudSync": {
-    "syncFingerprints": "Sync fingerprints",
+    "syncFingerprints": "Sync fingerprints & curated artists",
     "settings": "Cloud Sync Settings",
     "notConfigured": "Not configured",
     "notConfiguredHint": "Not configured. Opening settings...",
+    "syncIncludesCuratedArtists": "This sync also merges curated artist records together with fingerprints.",
+    "curatedArtistSkippedUnsupported": "The server is on an older version. Curated artist sync was skipped and fingerprint sync still completed.",
     "needUserKeyBeforeDanger": "You must configure userKey before performing this dangerous operation. Opening settings...",
     "userKey": "userKey",
     "applyEmail": "Request email",
@@ -110,16 +112,17 @@
     "limit": "Quota limit",
     "connectivityFailed": "Failed",
     "startSync": "Sync",
-    "syncCompleted": "Done",
+    "syncCompleted": "Cloud sync completed",
     "syncResult": "Summary",
     "inSyncWithServer": "In sync",
     "notFullyInSync": "Not fully in sync",
-    "overview": "Overview",
-    "uploadedNew": "Uploaded",
-    "pulledNew": "Pulled",
-    "totalChanges": "Total",
+    "overview": "Sync overview",
+    "uploadedNew": "Uploaded fingerprints",
+    "pulledNew": "Pulled fingerprints",
+    "totalChanges": "Totals after sync",
     "clientCount": "Local",
     "serverCount": "Server",
+    "curatedArtistCount": "Curated artists",
     "toUpload": "To upload",
     "pulledPages": "Pulled pages",
     "totalPages": "Total pages",
@@ -140,7 +143,7 @@
     },
     "errors": {
       "cannotConnect": "Cannot connect",
-      "alreadyLatest": "Up to date",
+      "alreadyLatest": "Cloud data is already up to date",
       "tooFrequent": "Too frequent. Try later.",
       "sensitiveOperationTooFrequent": "Sensitive ops too frequent. Try later.",
       "pullDiffPageFailed": "Failed to pull diff page",
@@ -148,6 +151,7 @@
       "keyMismatch": "userKey mismatch",
       "requestTooLarge": "Body too large (max 10MB)",
       "validationFailed": "Validation failed",
+      "curatedArtistValidationFailed": "Curated artist sync payload validation failed",
       "keyNotFound": "userKey not found/unauthorized",
       "keyInvalid": "userKey invalid/unauthorized",
       "keyDisabled": "userKey disabled",
@@ -181,11 +185,11 @@
       }
     },
     "reset": {
-      "sectionTitle": "Clear cloud fingerprints",
-      "title": "Dangerous: Reset cloud fingerprints",
-      "description": "This will delete ALL fingerprints and metas linked to current userKey on server (usage stats not reset). IRREVERSIBLE. Type DELETE to continue.",
-      "short": "Reset cloud",
-      "success": "Cloud fingerprints cleared"
+      "sectionTitle": "Clear cloud sync data",
+      "title": "Dangerous: Reset cloud sync data",
+      "description": "This will delete all cloud fingerprints, curated artist snapshots, and related metadata linked to the current userKey on the server (usage stats are not reset). IRREVERSIBLE. Type DELETE to continue.",
+      "short": "Reset cloud data",
+      "success": "Cloud sync data cleared"
     }
   },
   "library": {
@@ -1112,7 +1116,7 @@
     "showPlaylistTrackCount": "Show track count after playlist name",
     "curatedArtistTracking": {
       "title": "Curated artist tracking",
-      "desc": "When a track is added to Curated, remember its artist. Matching artists in Filter get a soft gold highlight and can be unfavorited from the context menu.",
+      "desc": "When a track is added to Curated, remember its artist together with the related track fingerprints. Matching artists in Filter get a soft gold highlight, and these records also take part in cloud sync.",
       "managerButton": "View and edit",
       "managerTitle": "Manage Curated Artists",
       "managerDesc": "This list shows every curated artist stored in the current library. You can add, edit, or delete entries manually.",

@@ -299,24 +299,25 @@ export function registerExportHandlers() {
     }
     markGlobalSongSearchDirty(isMove ? 'moveSongsToDir' : 'copySongsToDir')
     if (isCuratedTarget) {
-      const hintedArtists: string[] = []
-      const targetPathsToScan: string[] = []
+      const curatedArtistTracks: Array<{
+        artistName?: string
+        targetPath?: string
+      }> = []
       for (let index = 0; index < results.length; index += 1) {
         const result = results[index]
         if (result instanceof Error) continue
         const movedPath = String(result || '').trim()
         if (!movedPath) continue
         const artistHint = String(options?.curatedArtistNames?.[index] || '').trim()
-        if (artistHint) {
-          hintedArtists.push(artistHint)
-        } else {
-          targetPathsToScan.push(movedPath)
-        }
+        curatedArtistTracks.push({
+          artistName: artistHint || undefined,
+          targetPath: movedPath
+        })
       }
       // 记录精选表演者是附加能力，不能卡住主移动流程和前端列表刷新。
+      // 这里同时带上目标路径，后续会尝试补算原始指纹；若补算失败，再退回 UI 传来的 artist hint。
       void rememberCuratedArtistsForAddedTracks({
-        artistNames: hintedArtists,
-        targetPaths: targetPathsToScan
+        tracks: curatedArtistTracks
       }).catch((error) => {
         log.warn('[curatedArtists] remember after move failed', error)
       })

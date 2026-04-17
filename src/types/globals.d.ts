@@ -91,6 +91,7 @@ export interface ISongMemoryCue {
 interface ICuratedArtistFavorite {
   name: string
   count: number
+  fingerprints?: string[]
 }
 
 interface IPioneerPreviewWaveformColumn {
