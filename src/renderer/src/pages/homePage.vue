@@ -32,6 +32,9 @@ const isHovered = ref(false)
 let hoverTimeout: NodeJS.Timeout
 const librarySwitching = ref(false)
 let librarySwitchTimer: ReturnType<typeof setTimeout> | null = null
+const SONGS_AREA_WELCOME_EXIT_MS = 230
+const singlePaneHeaderRevealPending = ref(false)
+let singlePaneHeaderRevealTimer: ReturnType<typeof setTimeout> | null = null
 const suspendedSplitActivePane = ref<SplitSongsAreaPaneKey | ''>('')
 const suspendedSinglePaneState = ref<ISongsAreaPaneRuntimeState | null>(null)
 
@@ -110,6 +113,21 @@ const triggerLibrarySwitchAnimation = (shouldSkip = false) => {
   })
 }
 
+const clearSinglePaneHeaderRevealTimer = () => {
+  if (!singlePaneHeaderRevealTimer) return
+  clearTimeout(singlePaneHeaderRevealTimer)
+  singlePaneHeaderRevealTimer = null
+}
+
+const deferSinglePaneHeaderReveal = () => {
+  clearSinglePaneHeaderRevealTimer()
+  singlePaneHeaderRevealPending.value = true
+  singlePaneHeaderRevealTimer = setTimeout(() => {
+    singlePaneHeaderRevealPending.value = false
+    singlePaneHeaderRevealTimer = null
+  }, SONGS_AREA_WELCOME_EXIT_MS)
+}
+
 const adjustLibraryWidth = () => {
   const windowWidth = window.innerWidth
   const maxWidth = windowWidth - 100
@@ -133,6 +151,7 @@ onUnmounted(() => {
   if (librarySwitchTimer) {
     clearTimeout(librarySwitchTimer)
   }
+  clearSinglePaneHeaderRevealTimer()
 })
 
 let librarySelected = ref('FilterLibrary')
@@ -325,7 +344,36 @@ const showSingleSongsAreaHeader = computed(
   () =>
     !isSongsAreaSplit.value &&
     !isPioneerDeviceLibraryView.value &&
+    !singlePaneHeaderRevealPending.value &&
     Boolean(runtime.songsAreaPanels.panes.single.songListUUID)
+)
+
+watch(
+  () => runtime.songsAreaPanels.panes.single.songListUUID,
+  (nextUUID, previousUUID) => {
+    if (runtime.songsAreaPanels.splitEnabled || isPioneerDeviceLibraryView.value) {
+      clearSinglePaneHeaderRevealTimer()
+      singlePaneHeaderRevealPending.value = false
+      return
+    }
+    if (!previousUUID && nextUUID) {
+      deferSinglePaneHeaderReveal()
+      return
+    }
+    if (!nextUUID) {
+      clearSinglePaneHeaderRevealTimer()
+      singlePaneHeaderRevealPending.value = false
+    }
+  }
+)
+
+watch(
+  () => [runtime.songsAreaPanels.splitEnabled, isPioneerDeviceLibraryView.value],
+  ([splitEnabled, pioneerView]) => {
+    if (!splitEnabled && !pioneerView) return
+    clearSinglePaneHeaderRevealTimer()
+    singlePaneHeaderRevealPending.value = false
+  }
 )
 const isSplitPaneActive = (pane: SplitSongsAreaPaneKey) =>
   runtime.songsAreaPanels.activePane === pane

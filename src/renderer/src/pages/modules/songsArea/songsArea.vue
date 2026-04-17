@@ -1081,7 +1081,6 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
           }"
           element="div"
           style="height: 100%; width: 100%; position: relative"
-          defer
           @click="songsAreaState.selectedSongFilePath.length = 0"
         >
           <SongListHeader

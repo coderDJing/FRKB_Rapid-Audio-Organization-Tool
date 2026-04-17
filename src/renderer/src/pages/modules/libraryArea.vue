@@ -420,8 +420,8 @@ const drop = async (e: DragEvent) => {
 }
 
 .libraryArea {
-  height: calc(100% - 35px);
-  max-height: calc(100% - 35px);
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -432,6 +432,7 @@ const drop = async (e: DragEvent) => {
   width: 100%;
   display: flex;
   flex-grow: 1;
+  min-height: 0;
   background-color: var(--bg);
   overflow: hidden;
   flex-direction: column;
@@ -463,6 +464,7 @@ const drop = async (e: DragEvent) => {
 }
 
 .librarySearchWrapper {
+  flex-shrink: 0;
   padding: 6px 5px 6px 5px;
   background-color: var(--bg);
 }
