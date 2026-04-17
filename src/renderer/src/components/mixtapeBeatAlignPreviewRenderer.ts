@@ -44,7 +44,6 @@ type FrameState = {
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
   rawData: RawWaveformData | null
-  rawLoadedFrames: number
   maxSamplesPerPixel: number
   showDetailHighlights: boolean
   showCenterLine: boolean
@@ -110,10 +109,6 @@ const buildFrameState = (
   rangeDurationSec: Math.max(0.0001, Number(input.rangeDurationSec) || 0.0001),
   mixxxData: input.mixxxData,
   rawData: input.rawData,
-  rawLoadedFrames: Math.max(
-    0,
-    Math.floor(Number(input.rawData?.loadedFrames ?? input.rawData?.frames) || 0)
-  ),
   maxSamplesPerPixel: input.maxSamplesPerPixel,
   showDetailHighlights: input.showDetailHighlights,
   showCenterLine: input.showCenterLine,
@@ -256,8 +251,6 @@ export const createBeatAlignPreviewRenderer = () => {
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.mixxxData === current.mixxxData &&
       lastFrame.rawData === current.rawData &&
-      lastFrame.rawLoadedFrames === current.rawLoadedFrames &&
-      lastFrame.maxSamplesPerPixel === current.maxSamplesPerPixel &&
       lastFrame.showDetailHighlights === current.showDetailHighlights &&
       lastFrame.showCenterLine === current.showCenterLine &&
       lastFrame.showBackground === current.showBackground &&
@@ -279,8 +272,6 @@ export const createBeatAlignPreviewRenderer = () => {
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.mixxxData === current.mixxxData &&
       lastFrame.rawData === current.rawData &&
-      lastFrame.rawLoadedFrames === current.rawLoadedFrames &&
-      lastFrame.maxSamplesPerPixel === current.maxSamplesPerPixel &&
       lastFrame.showDetailHighlights === current.showDetailHighlights &&
       lastFrame.showCenterLine === current.showCenterLine &&
       lastFrame.showBackground === current.showBackground &&

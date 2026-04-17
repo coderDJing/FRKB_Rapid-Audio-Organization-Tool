@@ -77,6 +77,10 @@ let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
 let seekRaf = 0
 let pendingSeekSeconds: number | null = null
+let lastSeekEmitAt = 0
+let lastSeekEmitSeconds: number | null = null
+const SEEK_EMIT_DUPLICATE_WINDOW_MS = 350
+const SEEK_EMIT_DUPLICATE_EPSILON_SEC = 0.05
 
 const parseDurationToSeconds = (input: unknown) => {
   const raw = String(input || '').trim()
@@ -122,7 +126,19 @@ const loopMaskStyle = computed(() => {
 const flushPendingSeek = () => {
   seekRaf = 0
   if (pendingSeekSeconds === null) return
-  emit('seek', pendingSeekSeconds)
+  const nextSeconds = pendingSeekSeconds
+  pendingSeekSeconds = null
+  const now = performance.now()
+  if (
+    lastSeekEmitSeconds !== null &&
+    now - lastSeekEmitAt <= SEEK_EMIT_DUPLICATE_WINDOW_MS &&
+    Math.abs(lastSeekEmitSeconds - nextSeconds) <= SEEK_EMIT_DUPLICATE_EPSILON_SEC
+  ) {
+    return
+  }
+  lastSeekEmitAt = now
+  lastSeekEmitSeconds = nextSeconds
+  emit('seek', nextSeconds)
 }
 
 const scheduleSeek = (seconds: number, immediate = false) => {

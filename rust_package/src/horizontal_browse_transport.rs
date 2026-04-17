@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -32,7 +32,7 @@ struct DeckState {
   master_tempo_enabled: bool,
   decode_request_id: u64,
   full_decode_request_id: u64,
-  pcm_data: Vec<f32>,
+  pcm_data: Arc<Vec<f32>>,
   pcm_start_sec: f64,
   sample_rate: u32,
   channels: u16,
@@ -40,11 +40,27 @@ struct DeckState {
   master_tempo_state: horizontal_browse_transport_audio::DeckMasterTempoState,
 }
 
+struct DecodeMergeBaseline {
+  pcm_data: Arc<Vec<f32>>,
+  pcm_start_sec: f64,
+  sample_rate: u32,
+  channels: u16,
+}
+
+struct PreparedDecodedAudio {
+  pcm_data: Arc<Vec<f32>>,
+  pcm_start_sec: f64,
+  sample_rate: u32,
+  channels: u16,
+  preserve_master_tempo_state: bool,
+}
+
+const HORIZONTAL_BROWSE_BOOTSTRAP_SEGMENT_DECODE_SEC: f64 = 12.0;
 const HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC: f64 = 4.0;
-const HORIZONTAL_BROWSE_IMMEDIATE_PLAY_SEGMENT_DECODE_SEC: f64 = 0.75;
-const HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC: f64 = 12.0;
-const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_THRESHOLD_SEC: f64 = 4.0;
-const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC: f64 = 2.0;
+const HORIZONTAL_BROWSE_IMMEDIATE_PLAY_SEGMENT_DECODE_SEC: f64 = 12.0;
+const HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC: f64 = 16.0;
+const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_THRESHOLD_SEC: f64 = 8.0;
+const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC: f64 = 4.0;
 
 impl Default for DeckState {
   fn default() -> Self {
@@ -64,7 +80,7 @@ impl Default for DeckState {
       master_tempo_enabled: true,
       decode_request_id: 0,
       full_decode_request_id: 0,
-      pcm_data: Vec::new(),
+      pcm_data: Arc::new(Vec::new()),
       pcm_start_sec: 0.0,
       sample_rate: 0,
       channels: 0,
@@ -175,7 +191,7 @@ impl HorizontalBrowseTransportEngine {
       target.loaded_file_path = None;
       target.pending_decode_file_path = None;
       target.pending_full_decode_file_path = None;
-      target.pcm_data.clear();
+      target.pcm_data = Arc::new(Vec::new());
       target.pcm_start_sec = 0.0;
       target.sample_rate = 0;
       target.channels = 0;
@@ -193,7 +209,7 @@ impl HorizontalBrowseTransportEngine {
     let request_id = target.decode_request_id;
     target.loaded_file_path = None;
     target.pending_decode_file_path = Some(file_path.clone());
-    target.pcm_data.clear();
+    target.pcm_data = Arc::new(Vec::new());
     target.pcm_start_sec = 0.0;
     target.sample_rate = 0;
     target.channels = 0;
@@ -203,34 +219,8 @@ impl HorizontalBrowseTransportEngine {
       file_path,
       request_id,
       start_sec: self.resolve_bootstrap_segment_start_sec(deck),
-      max_duration_sec: Some(HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC),
+      max_duration_sec: Some(HORIZONTAL_BROWSE_BOOTSTRAP_SEGMENT_DECODE_SEC),
       is_full_decode: false,
-    })
-  }
-
-  fn prepare_full_decode_request(&mut self, deck: DeckId) -> Option<DecodeRequest> {
-    let file_path = self
-      .deck(deck)
-      .file_path
-      .as_ref()
-      .map(|value| value.trim().to_string())
-      .unwrap_or_default();
-    if file_path.is_empty() {
-      return None;
-    }
-    if self.deck(deck).pending_full_decode_file_path.as_deref() == Some(file_path.as_str()) {
-      return None;
-    }
-    let target = self.deck_mut(deck);
-    target.full_decode_request_id = target.full_decode_request_id.wrapping_add(1);
-    target.pending_full_decode_file_path = Some(file_path.clone());
-    Some(DecodeRequest {
-      deck,
-      file_path,
-      request_id: target.full_decode_request_id,
-      start_sec: 0.0,
-      max_duration_sec: None,
-      is_full_decode: true,
     })
   }
 
@@ -239,6 +229,7 @@ impl HorizontalBrowseTransportEngine {
     deck: DeckId,
     target_sec: f64,
     max_duration_sec: f64,
+    allow_loaded_overlap: bool,
   ) -> Option<DecodeRequest> {
     let file_path = self
       .deck(deck)
@@ -249,8 +240,10 @@ impl HorizontalBrowseTransportEngine {
     if file_path.is_empty() {
       return None;
     }
-    let clamped_target_sec = target_sec.max(0.0).min(self.deck(deck).duration_sec.max(0.0));
-    if self.has_loaded_segment_covering(deck, clamped_target_sec) {
+    let clamped_target_sec = target_sec
+      .max(0.0)
+      .min(self.deck(deck).duration_sec.max(0.0));
+    if !allow_loaded_overlap && self.has_loaded_segment_covering(deck, clamped_target_sec) {
       return None;
     }
     let target = self.deck_mut(deck);
@@ -266,7 +259,10 @@ impl HorizontalBrowseTransportEngine {
     })
   }
 
-  fn maybe_prepare_followup_segment_decode_request(&mut self, deck: DeckId) -> Option<DecodeRequest> {
+  fn maybe_prepare_followup_segment_decode_request(
+    &mut self,
+    deck: DeckId,
+  ) -> Option<DecodeRequest> {
     let deck_state = self.deck(deck);
     let playing = deck_state.playing;
     let pending_decode = deck_state.pending_decode_file_path.is_some();
@@ -285,6 +281,7 @@ impl HorizontalBrowseTransportEngine {
         deck,
         current_sec,
         HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC,
+        false,
       );
     }
     let loaded_end_sec = self.resolve_loaded_segment_end_sec(deck);
@@ -301,20 +298,17 @@ impl HorizontalBrowseTransportEngine {
       deck,
       next_start_sec,
       HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC,
+      true,
     )
   }
 
-  fn apply_decoded_audio(
-    &mut self,
+  fn request_matches(
+    &self,
     deck: DeckId,
     file_path: &str,
     request_id: u64,
-    samples: Vec<f32>,
-    sample_rate: u32,
-    channels: u16,
-    start_sec: f64,
     fully_decoded: bool,
-  ) {
+  ) -> bool {
     let current_state = self.deck(deck);
     let current_file_path = current_state
       .file_path
@@ -326,21 +320,58 @@ impl HorizontalBrowseTransportEngine {
     } else {
       current_state.decode_request_id == request_id
     };
-    if current_file_path != file_path || !request_matches {
-      return;
+    current_file_path == file_path && request_matches
+  }
+
+  fn capture_decode_merge_baseline(
+    &self,
+    deck: DeckId,
+    file_path: &str,
+    request_id: u64,
+    fully_decoded: bool,
+  ) -> Option<DecodeMergeBaseline> {
+    if !self.request_matches(deck, file_path, request_id, fully_decoded) {
+      return None;
+    }
+    let deck_state = self.deck(deck);
+    Some(DecodeMergeBaseline {
+      pcm_data: Arc::clone(&deck_state.pcm_data),
+      pcm_start_sec: deck_state.pcm_start_sec,
+      sample_rate: deck_state.sample_rate,
+      channels: deck_state.channels,
+    })
+  }
+
+  fn apply_prepared_decoded_audio(
+    &mut self,
+    deck: DeckId,
+    file_path: &str,
+    request_id: u64,
+    prepared: PreparedDecodedAudio,
+    fully_decoded: bool,
+  ) -> bool {
+    if !self.request_matches(deck, file_path, request_id, fully_decoded) {
+      return false;
     }
     let target = self.deck_mut(deck);
+    let should_reset_master_tempo = !prepared.preserve_master_tempo_state
+      || target.sample_rate != prepared.sample_rate
+      || target.channels != prepared.channels
+      || (target.pcm_start_sec - prepared.pcm_start_sec).abs() > 0.0001;
     target.loaded_file_path = Some(file_path.to_string());
-    target.pcm_data = samples;
-    target.pcm_start_sec = if fully_decoded { 0.0 } else { start_sec.max(0.0) };
-    target.sample_rate = sample_rate;
-    target.channels = channels;
+    target.pcm_data = prepared.pcm_data;
+    target.pcm_start_sec = prepared.pcm_start_sec;
+    target.sample_rate = prepared.sample_rate;
+    target.channels = prepared.channels;
     if fully_decoded {
       target.pending_full_decode_file_path = None;
     } else {
       target.pending_decode_file_path = None;
     }
-    horizontal_browse_transport_audio::reset_master_tempo_state(target);
+    if should_reset_master_tempo {
+      horizontal_browse_transport_audio::reset_master_tempo_state(target);
+    }
+    true
   }
 
   fn mark_decode_finished(&mut self, deck: DeckId, file_path: &str, request_id: u64) {
@@ -473,9 +504,6 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn sample_deck(&mut self, deck: DeckId) -> (f32, f32) {
-    if let Some(request) = self.maybe_prepare_followup_segment_decode_request(deck) {
-      schedule_decode_request(request);
-    }
     let output_sample_rate = self.output_sample_rate.max(1) as f64;
     let target = self.deck_mut(deck);
     horizontal_browse_transport_audio::sample_deck(target, output_sample_rate)
@@ -898,6 +926,7 @@ impl HorizontalBrowseTransportEngine {
         deck,
         current_sec,
         HORIZONTAL_BROWSE_IMMEDIATE_PLAY_SEGMENT_DECODE_SEC,
+        false,
       )
     } else {
       None
@@ -919,8 +948,12 @@ impl HorizontalBrowseTransportEngine {
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
       target.current_sec
     };
-    let decode_request =
-      self.prepare_segment_decode_request(deck, seek_sec, HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC);
+    let decode_request = self.prepare_segment_decode_request(
+      deck,
+      seek_sec,
+      HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC,
+      false,
+    );
     self.refresh();
     decode_request
   }
@@ -988,6 +1021,169 @@ impl HorizontalBrowseTransportEngine {
   }
 }
 
+fn merge_partial_pcm_segment(
+  existing_pcm_data: &[f32],
+  existing_start_sec: f64,
+  existing_sample_rate: u32,
+  existing_channels: u16,
+  samples: &[f32],
+  sample_rate: u32,
+  channels: u16,
+  start_sec: f64,
+) -> Option<(Vec<f32>, f64)> {
+  if samples.is_empty()
+    || sample_rate == 0
+    || channels == 0
+    || existing_pcm_data.is_empty()
+    || existing_sample_rate != sample_rate
+    || existing_channels != channels
+  {
+    return None;
+  }
+
+  let channel_count = channels as usize;
+  let old_frame_count = existing_pcm_data.len() / channel_count;
+  let new_frame_count = samples.len() / channel_count;
+  if old_frame_count == 0 || new_frame_count == 0 {
+    return None;
+  }
+
+  let old_start_frame = (existing_start_sec.max(0.0) * sample_rate as f64).round() as i64;
+  let new_start_frame = (start_sec.max(0.0) * sample_rate as f64).round() as i64;
+  let old_end_frame = old_start_frame + old_frame_count as i64;
+  let new_end_frame = new_start_frame + new_frame_count as i64;
+  if new_start_frame > old_end_frame + 1 || new_end_frame + 1 < old_start_frame {
+    return None;
+  }
+
+  let merged_start_frame = old_start_frame.min(new_start_frame);
+  let merged_end_frame = old_end_frame.max(new_end_frame);
+  let merged_frames = (merged_end_frame - merged_start_frame).max(0) as usize;
+  let mut merged = vec![0.0; merged_frames * channel_count];
+  let old_start_sample = (old_start_frame - merged_start_frame).max(0) as usize * channel_count;
+  let old_end_sample = old_start_sample + existing_pcm_data.len();
+  merged[old_start_sample..old_end_sample].copy_from_slice(existing_pcm_data);
+
+  let new_start_offset_frames = (new_start_frame - merged_start_frame).max(0) as usize;
+  let unique_prefix_frames = if new_start_frame < old_start_frame {
+    (old_start_frame - new_start_frame).min(new_frame_count as i64) as usize
+  } else {
+    0
+  };
+  if unique_prefix_frames > 0 {
+    let prefix_sample_count = unique_prefix_frames * channel_count;
+    merged[..prefix_sample_count].copy_from_slice(&samples[..prefix_sample_count]);
+  }
+
+  let unique_suffix_start_frame = if new_end_frame > old_end_frame {
+    (old_end_frame - new_start_frame).max(0).min(new_frame_count as i64) as usize
+  } else {
+    new_frame_count
+  };
+  if unique_suffix_start_frame < new_frame_count {
+    let source_start = unique_suffix_start_frame * channel_count;
+    let target_start = (new_start_offset_frames + unique_suffix_start_frame) * channel_count;
+    let source_end = samples.len();
+    let target_end = target_start + (source_end - source_start);
+    merged[target_start..target_end].copy_from_slice(&samples[source_start..source_end]);
+  }
+
+  Some((merged, merged_start_frame as f64 / sample_rate as f64))
+}
+
+fn prepare_decoded_audio(
+  baseline: Option<DecodeMergeBaseline>,
+  samples: Vec<f32>,
+  sample_rate: u32,
+  channels: u16,
+  start_sec: f64,
+  fully_decoded: bool,
+) -> PreparedDecodedAudio {
+  if fully_decoded {
+    return PreparedDecodedAudio {
+      pcm_data: Arc::new(samples),
+      pcm_start_sec: 0.0,
+      sample_rate,
+      channels,
+      preserve_master_tempo_state: false,
+    };
+  }
+
+  if let Some(existing) = baseline {
+    if let Some((merged_pcm_data, merged_start_sec)) = merge_partial_pcm_segment(
+      existing.pcm_data.as_ref().as_slice(),
+      existing.pcm_start_sec,
+      existing.sample_rate,
+      existing.channels,
+      &samples,
+      sample_rate,
+      channels,
+      start_sec,
+    ) {
+      let preserve_master_tempo_state = existing.sample_rate == sample_rate
+        && existing.channels == channels
+        && (merged_start_sec - existing.pcm_start_sec).abs() <= 0.0001;
+      return PreparedDecodedAudio {
+        pcm_data: Arc::new(merged_pcm_data),
+        pcm_start_sec: merged_start_sec,
+        sample_rate,
+        channels,
+        preserve_master_tempo_state,
+      };
+    }
+  }
+
+  PreparedDecodedAudio {
+    pcm_data: Arc::new(samples),
+    pcm_start_sec: start_sec.max(0.0),
+    sample_rate,
+    channels,
+    preserve_master_tempo_state: false,
+  }
+}
+
+fn finish_decode_request(request: DecodeRequest, decoded: Option<(Vec<f32>, u32, u16)>) {
+  match decoded {
+    Some((samples, sample_rate, channels)) => {
+      let merge_baseline = {
+        let engine_guard = engine().lock();
+        engine_guard.capture_decode_merge_baseline(
+          request.deck,
+          &request.file_path,
+          request.request_id,
+          request.is_full_decode,
+        )
+      };
+      let Some(merge_baseline) = merge_baseline else {
+        return;
+      };
+      let prepared = prepare_decoded_audio(
+        Some(merge_baseline),
+        samples,
+        sample_rate,
+        channels,
+        request.start_sec,
+        request.is_full_decode,
+      );
+      let mut engine_guard = engine().lock();
+      if engine_guard.apply_prepared_decoded_audio(
+        request.deck,
+        &request.file_path,
+        request.request_id,
+        prepared,
+        request.is_full_decode,
+      ) {
+        engine_guard.refresh();
+      }
+    }
+    None => {
+      let mut engine_guard = engine().lock();
+      engine_guard.mark_decode_finished(request.deck, &request.file_path, request.request_id);
+      engine_guard.refresh();
+    }
+  }
+}
+
 fn decode_transport_audio_file(file_path: &str) -> Option<(Vec<f32>, u32, u16)> {
   let result = crate::decode_audio_file(file_path.to_string());
   if result.error.is_some() {
@@ -1010,17 +1206,16 @@ fn decode_transport_audio_file_head(
   max_duration_sec: Option<f64>,
 ) -> Option<(Vec<f32>, u32, u16)> {
   let path = std::path::Path::new(file_path);
-  let ffmpeg_pcm =
-    crate::ffmpeg_decode_to_i16_with_window(
-      path,
-      Some(start_sec.max(0.0)),
-      Some(
-        max_duration_sec
-          .filter(|value| value.is_finite() && *value > 0.0)
-          .unwrap_or(HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC),
-      ),
-    )
-    .ok()?;
+  let ffmpeg_pcm = crate::ffmpeg_decode_to_i16_with_window(
+    path,
+    Some(start_sec.max(0.0)),
+    Some(
+      max_duration_sec
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or(HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC),
+    ),
+  )
+  .ok()?;
   if ffmpeg_pcm.channels == 0 {
     return None;
   }
@@ -1043,25 +1238,7 @@ fn schedule_decode_request(request: DecodeRequest) {
         request.max_duration_sec,
       )
     };
-    let mut engine_guard = engine().lock();
-    match decoded {
-      Some((samples, sample_rate, channels)) => {
-        engine_guard.apply_decoded_audio(
-          request.deck,
-          &request.file_path,
-          request.request_id,
-          samples,
-          sample_rate,
-          channels,
-          request.start_sec,
-          request.is_full_decode,
-        );
-      }
-      None => {
-        engine_guard.mark_decode_finished(request.deck, &request.file_path, request.request_id);
-      }
-    }
-    engine_guard.refresh();
+    finish_decode_request(request, decoded);
   });
 }
 
@@ -1075,33 +1252,39 @@ fn execute_decode_request_sync(request: DecodeRequest) {
       request.max_duration_sec,
     )
   };
-  let mut engine_guard = engine().lock();
-  match decoded {
-    Some((samples, sample_rate, channels)) => {
-      engine_guard.apply_decoded_audio(
-        request.deck,
-        &request.file_path,
-        request.request_id,
-        samples,
-        sample_rate,
-        channels,
-        request.start_sec,
-        request.is_full_decode,
-      );
-    }
-    None => {
-      engine_guard.mark_decode_finished(request.deck, &request.file_path, request.request_id);
-    }
-  }
-  engine_guard.refresh();
+  finish_decode_request(request, decoded);
 }
 
 static HORIZONTAL_BROWSE_TRANSPORT: OnceLock<Mutex<HorizontalBrowseTransportEngine>> =
   OnceLock::new();
 static OUTPUT_THREAD_STARTED: OnceLock<()> = OnceLock::new();
+static PREFETCH_THREAD_STARTED: OnceLock<()> = OnceLock::new();
 
 fn engine() -> &'static Mutex<HorizontalBrowseTransportEngine> {
   HORIZONTAL_BROWSE_TRANSPORT.get_or_init(|| Mutex::new(HorizontalBrowseTransportEngine::default()))
+}
+
+fn ensure_prefetch_worker() {
+  if PREFETCH_THREAD_STARTED.get().is_some() {
+    return;
+  }
+  let _ = PREFETCH_THREAD_STARTED.set(());
+  thread::spawn(|| loop {
+    let requests = {
+      let mut engine_guard = engine().lock();
+      let mut pending = Vec::new();
+      for deck in [DeckId::Top, DeckId::Bottom] {
+        if let Some(request) = engine_guard.maybe_prepare_followup_segment_decode_request(deck) {
+          pending.push(request);
+        }
+      }
+      pending
+    };
+    for request in requests {
+      schedule_decode_request(request);
+    }
+    thread::sleep(Duration::from_millis(200));
+  });
 }
 
 #[napi]
@@ -1134,7 +1317,7 @@ pub fn horizontal_browse_transport_set_deck_state(
     horizontal_browse_transport_audio::reset_master_tempo_state(target);
   }
   let decode_request = engine_guard.prepare_decode_request(deck_id);
-  let full_decode_request = engine_guard.prepare_full_decode_request(deck_id);
+  ensure_prefetch_worker();
   let _ = engine_guard.ensure_output_stream();
   engine_guard.refresh();
   drop(engine_guard);
@@ -1144,9 +1327,6 @@ pub fn horizontal_browse_transport_set_deck_state(
     } else {
       schedule_decode_request(request);
     }
-  }
-  if let Some(request) = full_decode_request {
-    schedule_decode_request(request);
   }
   let engine_guard = engine().lock();
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
@@ -1196,8 +1376,7 @@ pub fn horizontal_browse_transport_set_state(
   }
   let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
   let bottom_decode_request = engine_guard.prepare_decode_request(DeckId::Bottom);
-  let top_full_decode_request = engine_guard.prepare_full_decode_request(DeckId::Top);
-  let bottom_full_decode_request = engine_guard.prepare_full_decode_request(DeckId::Bottom);
+  ensure_prefetch_worker();
   let _ = engine_guard.ensure_output_stream();
   engine_guard.refresh();
   drop(engine_guard);
@@ -1214,12 +1393,6 @@ pub fn horizontal_browse_transport_set_state(
     } else {
       schedule_decode_request(request);
     }
-  }
-  if let Some(request) = top_full_decode_request {
-    schedule_decode_request(request);
-  }
-  if let Some(request) = bottom_full_decode_request {
-    schedule_decode_request(request);
   }
   let engine_guard = engine().lock();
   engine_guard.snapshot(engine_guard.last_now_ms)
@@ -1273,6 +1446,7 @@ pub fn horizontal_browse_transport_set_playing(
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
   let mut engine_guard = engine().lock();
+  ensure_prefetch_worker();
   let _ = engine_guard.ensure_output_stream();
   let decode_request = engine_guard.set_playing(deck_id, now_ms, playing);
   drop(engine_guard);

@@ -865,16 +865,18 @@ watch(
       />
     </div>
   </transition>
-  <selectSongListDialog
-    v-if="selectSongListDialogShow"
-    :library-name="selectSongListDialogLibraryName"
-    @confirm="selectSongListDialogConfirm"
-    @cancel="
-      () => {
-        selectSongListDialogShow = false
-      }
-    "
-  />
+  <Teleport to="body">
+    <selectSongListDialog
+      v-if="selectSongListDialogShow"
+      :library-name="selectSongListDialogLibraryName"
+      @confirm="selectSongListDialogConfirm"
+      @cancel="
+        () => {
+          selectSongListDialogShow = false
+        }
+      "
+    />
+  </Teleport>
 </template>
 <style lang="scss" scoped>
 .songInfo {

@@ -35,6 +35,7 @@ import type {
 import { createHorizontalBrowseDetailWaveformWorker } from '@renderer/workers/horizontalBrowseDetailWaveform.workerClient'
 import { sendHorizontalBrowseWaveformTrace } from '@renderer/components/horizontalBrowseWaveformTrace'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
+import { isRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformData'
 
 type HorizontalBrowseDirection = 'up' | 'down'
 type HorizontalBrowseWaveformLayout = 'top-half' | 'bottom-half'
@@ -60,6 +61,7 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
   playing: Ref<boolean>
   rawData: Ref<RawWaveformData | null>
   mixxxData: Ref<MixxxWaveformData | null>
+  fallbackMixxxData: Ref<MixxxWaveformData | null>
   previewStartSec: Ref<number>
   previewZoom: Ref<number>
   previewBpm: Ref<number>
@@ -81,6 +83,7 @@ const cloneRawWaveformData = (value: RawWaveformData): RawWaveformData => ({
   sampleRate: Number(value.sampleRate) || 0,
   rate: Number(value.rate) || 0,
   frames: Math.max(0, Number(value.frames) || 0),
+  startSec: Math.max(0, Number(value.startSec) || 0),
   minLeft: new Float32Array(value.minLeft),
   maxLeft: new Float32Array(value.maxLeft),
   minRight: new Float32Array(value.minRight),
@@ -110,6 +113,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let pendingRawStreamDirtyStartSec: number | null = null
   let pendingRawStreamDirtyEndSec: number | null = null
   let lastRenderTraceSignature = ''
+  let retainedWaveformFilePath = ''
+  let retainedRawData: RawWaveformData | null = null
+  let retainedMixxxData: MixxxWaveformData | null = null
+  let holdPreviousWaveformFrame = false
 
   const waveformTilePending = new Set<string>()
   const waveformTileCache = new Map<string, HorizontalBrowseWaveformTileCacheEntry>()
@@ -117,7 +124,14 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const traceHorizontalWaveformRender = (source: string, payload?: Record<string, unknown>) => {
     const filePath = String(options.song()?.filePath || '').trim()
-    const signature = `${options.direction()}|${filePath}|${source}`
+    const signature = [
+      options.direction(),
+      filePath,
+      source,
+      String(payload?.mixxxSource ?? ''),
+      String(payload?.effectiveRawCoverage ?? ''),
+      String(payload?.holdingFrame ?? '')
+    ].join('|')
     if (lastRenderTraceSignature === signature) return
     lastRenderTraceSignature = signature
     sendHorizontalBrowseWaveformTrace('render', source, {
@@ -127,6 +141,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       dragging: options.dragging.value,
       hasRawData: Boolean(options.rawData.value),
       hasMixxxData: Boolean(options.mixxxData.value),
+      hasFallbackMixxxData: Boolean(options.fallbackMixxxData.value),
       ...payload
     })
   }
@@ -206,6 +221,17 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     pendingRawStreamDirtyEndSec = null
   }
 
+  const resetRetainedWaveformData = () => {
+    retainedWaveformFilePath = ''
+    retainedRawData = null
+    retainedMixxxData = null
+    holdPreviousWaveformFrame = false
+  }
+
+  const holdCurrentWaveformFrame = () => {
+    holdPreviousWaveformFrame = true
+  }
+
   const clearStreamDrawScheduling = () => {
     if (streamDrawTimer) {
       clearTimeout(streamDrawTimer)
@@ -235,6 +261,50 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     if (!ctx) return
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+  }
+
+  const resolveRawDataCoveredEndSec = (rawData: RawWaveformData | null) => {
+    if (!rawData) return 0
+    const startSec = Math.max(0, Number(rawData.startSec) || 0)
+    const rate = Math.max(0, Number(rawData.rate) || 0)
+    if (!rate) return startSec
+    const loadedFrames = Math.max(0, Number(rawData.loadedFrames ?? rawData.frames) || 0)
+    return startSec + loadedFrames / rate
+  }
+
+  const isRawDataCoveringRange = (
+    rawData: RawWaveformData | null,
+    rangeStartSec: number,
+    rangeDurationSec: number
+  ) => {
+    if (!rawData) return false
+    const rawStartSec = Math.max(0, Number(rawData.startSec) || 0)
+    const rawEndSec = resolveRawDataCoveredEndSec(rawData)
+    const rangeEndSec = rangeStartSec + Math.max(0, rangeDurationSec)
+    return rangeStartSec >= rawStartSec && rangeEndSec <= rawEndSec
+  }
+
+  const isRawDataIntersectingRange = (
+    rawData: RawWaveformData | null,
+    rangeStartSec: number,
+    rangeDurationSec: number
+  ) => {
+    if (!rawData) return false
+    const rawStartSec = Math.max(0, Number(rawData.startSec) || 0)
+    const rawEndSec = resolveRawDataCoveredEndSec(rawData)
+    const rangeEndSec = rangeStartSec + Math.max(0, rangeDurationSec)
+    return rangeEndSec > rawStartSec && rangeStartSec < rawEndSec
+  }
+
+  const resolveActiveMixxxSelection = () => {
+    const liveMixxxData = options.mixxxData.value
+    if (liveMixxxData && !isRawPlaceholderMixxxData(liveMixxxData)) {
+      return { data: liveMixxxData, source: 'live' as const }
+    }
+    if (liveMixxxData) {
+      return { data: liveMixxxData, source: 'placeholder' as const }
+    }
+    return { data: null, source: 'none' as const }
   }
 
   const clearWaveformWorkerQueue = () => {
@@ -644,13 +714,17 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     worker.postMessage(message)
   }
 
-  const drawWaveformTiles = (viewStartSec: number, visibleDuration: number) => {
+  const drawWaveformTiles = (
+    viewStartSec: number,
+    visibleDuration: number,
+    effectiveMixxxData: MixxxWaveformData | null
+  ) => {
     const wrap = wrapRef.value
     const canvas = waveformCanvasRef.value
     if (!wrap || !canvas) return false
 
     const ctx = canvas.getContext('2d')
-    if (!ctx || !options.rawData.value || !options.mixxxData.value) {
+    if (!ctx || !options.rawData.value || !effectiveMixxxData) {
       clearWaveformCanvas()
       return false
     }
@@ -723,41 +797,127 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const streamMaxSamplesPerPixel = playbackStreamReuse
       ? PREVIEW_MAX_SAMPLES_PER_PIXEL
       : DRAG_RAW_MAX_SAMPLES_PER_PIXEL
+    const currentFilePath = String(options.song()?.filePath || '').trim()
+    const activeMixxxSelection = resolveActiveMixxxSelection()
+    const canUseRetainedWaveform =
+      options.rawStreamActive.value &&
+      !!currentFilePath &&
+      currentFilePath === retainedWaveformFilePath &&
+      !!retainedRawData &&
+      !!retainedMixxxData
+    const effectiveRawData =
+      options.rawData.value || (canUseRetainedWaveform ? retainedRawData : null)
+    const effectiveMixxxSelection = activeMixxxSelection.data
+      ? activeMixxxSelection
+      : canUseRetainedWaveform && retainedMixxxData
+        ? {
+            data: retainedMixxxData,
+            source: isRawPlaceholderMixxxData(retainedMixxxData)
+              ? ('retained-placeholder' as const)
+              : ('retained' as const)
+          }
+        : { data: null, source: 'none' as const }
+    const effectiveMixxxData = effectiveMixxxSelection.data
+    const effectiveRawCoverage = isRawDataCoveringRange(
+      effectiveRawData,
+      renderStartSec,
+      visibleDuration
+    )
+    const effectiveRawIntersection = isRawDataIntersectingRange(
+      effectiveRawData,
+      renderStartSec,
+      visibleDuration
+    )
+    const drawableRawData = effectiveRawIntersection ? effectiveRawData : null
+    const canRenderWithoutRawCoverage =
+      effectiveMixxxSelection.source === 'live' || effectiveMixxxSelection.source === 'retained'
 
-    if (!options.rawData.value || !options.mixxxData.value) {
-      traceHorizontalWaveformRender('empty')
+    if (options.rawData.value && currentFilePath) {
+      retainedWaveformFilePath = currentFilePath
+      retainedRawData = options.rawData.value
+      if (activeMixxxSelection.source === 'live') {
+        retainedMixxxData = activeMixxxSelection.data
+      }
+      if (isRawDataCoveringRange(options.rawData.value, renderStartSec, visibleDuration)) {
+        holdPreviousWaveformFrame = false
+      }
+    }
+
+    if (!effectiveMixxxData) {
+      traceHorizontalWaveformRender('empty', {
+        mixxxSource: effectiveMixxxSelection.source,
+        effectiveRawCoverage,
+        holdingFrame: holdPreviousWaveformFrame
+      })
       clearWaveformCanvas()
     } else if (options.rawStreamActive.value || options.dragging.value) {
-      traceHorizontalWaveformRender('stream-live')
-      const finishTiming = startHorizontalBrowseUserTiming(
-        `frkb:hb:canvas:stream-live:${options.direction()}`
-      )
-      streamWaveformRenderer.draw({
-        canvas: waveformCanvas,
-        wrap,
-        bpm: 0,
-        firstBeatMs: 0,
-        barBeatOffset: 0,
-        rangeStartSec: renderStartSec,
-        rangeDurationSec: visibleDuration,
-        mixxxData: options.mixxxData.value,
-        rawData: options.rawData.value,
-        maxSamplesPerPixel: streamMaxSamplesPerPixel,
-        showDetailHighlights: false,
-        showCenterLine: false,
-        showBackground: false,
-        showBeatGrid: false,
-        allowScrollReuse: playbackStreamReuse,
-        waveformLayout: resolveWaveformLayout(),
-        preferRawPeaksOnly: false
-      })
-      finishTiming()
-    } else {
-      const drewTiles = drawWaveformTiles(renderStartSec, visibleDuration)
-      if (drewTiles) {
-        traceHorizontalWaveformRender('tile-cache')
+      if (!drawableRawData) {
+        traceHorizontalWaveformRender(
+          holdPreviousWaveformFrame ? 'stream-hold' : 'stream-await-raw',
+          {
+            mixxxSource: effectiveMixxxSelection.source,
+            effectiveRawCoverage,
+            holdingFrame: holdPreviousWaveformFrame,
+            renderStartSec,
+            visibleDuration,
+            rawStartSec: effectiveRawData ? Number(effectiveRawData.startSec) || 0 : 0,
+            rawEndSec: resolveRawDataCoveredEndSec(effectiveRawData)
+          }
+        )
       } else {
-        traceHorizontalWaveformRender('stream-fallback')
+        traceHorizontalWaveformRender('stream-live', {
+          mixxxSource: effectiveMixxxSelection.source,
+          effectiveRawCoverage,
+          holdingFrame: false
+        })
+        const finishTiming = startHorizontalBrowseUserTiming(
+          `frkb:hb:canvas:stream-live:${options.direction()}`
+        )
+        streamWaveformRenderer.draw({
+          canvas: waveformCanvas,
+          wrap,
+          bpm: 0,
+          firstBeatMs: 0,
+          barBeatOffset: 0,
+          rangeStartSec: renderStartSec,
+          rangeDurationSec: visibleDuration,
+          mixxxData: effectiveMixxxData,
+          rawData: drawableRawData,
+          maxSamplesPerPixel: streamMaxSamplesPerPixel,
+          showDetailHighlights: false,
+          showCenterLine: false,
+          showBackground: false,
+          showBeatGrid: false,
+          allowScrollReuse: playbackStreamReuse,
+          waveformLayout: resolveWaveformLayout(),
+          preferRawPeaksOnly: false
+        })
+        finishTiming()
+      }
+    } else if (!drawableRawData && !canRenderWithoutRawCoverage) {
+      traceHorizontalWaveformRender('await-detail-raw', {
+        mixxxSource: effectiveMixxxSelection.source,
+        effectiveRawCoverage,
+        holdingFrame: holdPreviousWaveformFrame,
+        renderStartSec,
+        visibleDuration,
+        rawStartSec: effectiveRawData ? Number(effectiveRawData.startSec) || 0 : 0,
+        rawEndSec: resolveRawDataCoveredEndSec(effectiveRawData)
+      })
+    } else {
+      const drewTiles = drawWaveformTiles(renderStartSec, visibleDuration, effectiveMixxxData)
+      if (drewTiles) {
+        traceHorizontalWaveformRender('tile-cache', {
+          mixxxSource: effectiveMixxxSelection.source,
+          effectiveRawCoverage,
+          holdingFrame: false
+        })
+      } else {
+        traceHorizontalWaveformRender('stream-fallback', {
+          mixxxSource: effectiveMixxxSelection.source,
+          effectiveRawCoverage,
+          holdingFrame: false
+        })
         const finishTiming = startHorizontalBrowseUserTiming(
           `frkb:hb:canvas:stream-fallback:${options.direction()}`
         )
@@ -769,8 +929,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           barBeatOffset: 0,
           rangeStartSec: renderStartSec,
           rangeDurationSec: visibleDuration,
-          mixxxData: options.mixxxData.value,
-          rawData: options.rawData.value,
+          mixxxData: effectiveMixxxData,
+          rawData: drawableRawData,
           maxSamplesPerPixel: streamMaxSamplesPerPixel,
           showDetailHighlights: false,
           showCenterLine: false,
@@ -940,6 +1100,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     clearStreamDrawScheduling()
     clearWaveformWorkerQueue()
     clearWaveformTileCache()
+    resetRetainedWaveformData()
     gridRenderer.dispose()
     if (waveformWorker) {
       waveformWorker.removeEventListener('message', handleWaveformWorkerMessage)
@@ -974,6 +1135,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     invalidateWaveformTiles,
     scheduleDraw,
     resetGridRenderer,
+    holdCurrentWaveformFrame,
+    resetRetainedWaveformData,
     storeRawWaveform,
     setLastZoomAnchor,
     resetLastZoomAnchor,

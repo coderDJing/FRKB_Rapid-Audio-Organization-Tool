@@ -40,11 +40,13 @@ use symphonia::default::get_probe;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+#[cfg(windows)]
+const BELOW_NORMAL_PRIORITY_CLASS: u32 = 0x00004000;
 
 #[cfg(windows)]
 fn configure_hidden_process(command: &mut Command) {
   use std::os::windows::process::CommandExt;
-  command.creation_flags(CREATE_NO_WINDOW);
+  command.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
 }
 
 #[cfg(not(windows))]
@@ -528,7 +530,8 @@ pub fn process_soundtouch_pcm(
       error: Some("PCM buffer is not aligned to channel count".to_string()),
     });
   }
-  match soundtouch_native::process_interleaved_f32(pcm_f32, sample_rate, safe_channels, tempo_ratio) {
+  match soundtouch_native::process_interleaved_f32(pcm_f32, sample_rate, safe_channels, tempo_ratio)
+  {
     Ok(processed) => {
       let total_frames = (processed.len() / safe_channels) as u32;
       Ok(SoundTouchProcessResult {
@@ -1341,7 +1344,10 @@ fn read_pioneer_preview_waveform_from_file(
       if blue_columns.is_none() {
         let mut columns = Vec::with_capacity(preview_len);
         for entry in &section.content[..preview_len] {
-          columns.push(build_pioneer_blue_waveform_column(entry >> 3, (entry & 0x07) >= 5));
+          columns.push(build_pioneer_blue_waveform_column(
+            entry >> 3,
+            (entry & 0x07) >= 5,
+          ));
         }
         blue_columns = Some(columns);
       }
@@ -1360,7 +1366,10 @@ fn read_pioneer_preview_waveform_from_file(
       if blue_columns.is_none() {
         let mut columns = Vec::with_capacity(preview_len);
         for entry in &section.content[..preview_len] {
-          columns.push(build_pioneer_blue_waveform_column((entry & 0x0F).saturating_mul(2), false));
+          columns.push(build_pioneer_blue_waveform_column(
+            (entry & 0x0F).saturating_mul(2),
+            false,
+          ));
         }
         blue_columns = Some(columns);
       }
@@ -1819,7 +1828,7 @@ pub(crate) fn ffmpeg_decode_to_i16_with_window(
   let ffmpeg_path = get_ffmpeg_path()?;
   let mut command = Command::new(ffmpeg_path);
   configure_hidden_process(&mut command);
-  command.arg("-v").arg("error");
+  command.arg("-v").arg("error").arg("-threads").arg("1");
   if let Some(start_at) = start_sec {
     if start_at.is_finite() && start_at > 0.0 {
       command.arg("-ss").arg(format!("{start_at:.3}"));

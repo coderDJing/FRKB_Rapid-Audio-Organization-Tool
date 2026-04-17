@@ -156,13 +156,27 @@ fn build_pioneer_cue_candidates(input_path: &Path) -> Vec<PathBuf> {
   };
 
   let parsed = input_path.to_path_buf();
-  let stem = parsed.file_stem().map(|value| value.to_string_lossy().to_string());
+  let stem = parsed
+    .file_stem()
+    .map(|value| value.to_string_lossy().to_string());
   let parent = parsed.parent().map(|value| value.to_path_buf());
 
   if let (Some(parent), Some(stem)) = (parent.clone(), stem.clone()) {
-    push_unique(parent.join(format!("{stem}.EXT")), &mut candidates, &mut seen);
-    push_unique(parent.join(format!("{stem}.DAT")), &mut candidates, &mut seen);
-    push_unique(parent.join(format!("{stem}.2EX")), &mut candidates, &mut seen);
+    push_unique(
+      parent.join(format!("{stem}.EXT")),
+      &mut candidates,
+      &mut seen,
+    );
+    push_unique(
+      parent.join(format!("{stem}.DAT")),
+      &mut candidates,
+      &mut seen,
+    );
+    push_unique(
+      parent.join(format!("{stem}.2EX")),
+      &mut candidates,
+      &mut seen,
+    );
   }
 
   push_unique(parsed, &mut candidates, &mut seen);
@@ -211,7 +225,9 @@ fn decode_utf16be_string(bytes: &[u8]) -> Option<String> {
   if units.is_empty() {
     None
   } else {
-    String::from_utf16(&units).ok().and_then(|text| normalize_comment(&text))
+    String::from_utf16(&units)
+      .ok()
+      .and_then(|text| normalize_comment(&text))
   }
 }
 
@@ -227,14 +243,46 @@ fn hot_cue_label(slot: u32) -> String {
 fn memory_color_triplet(color: &ColorIndex) -> (Option<u32>, Option<String>, Option<String>) {
   match color {
     ColorIndex::None => (None, None, None),
-    ColorIndex::Pink => (Some(1), Some("pink".to_string()), Some("#ff7ab6".to_string())),
-    ColorIndex::Red => (Some(2), Some("red".to_string()), Some("#ff4b57".to_string())),
-    ColorIndex::Orange => (Some(3), Some("orange".to_string()), Some("#ff9a3d".to_string())),
-    ColorIndex::Yellow => (Some(4), Some("yellow".to_string()), Some("#ffd34d".to_string())),
-    ColorIndex::Green => (Some(5), Some("green".to_string()), Some("#41d36f".to_string())),
-    ColorIndex::Aqua => (Some(6), Some("aqua".to_string()), Some("#3fd7d3".to_string())),
-    ColorIndex::Blue => (Some(7), Some("blue".to_string()), Some("#4a78ff".to_string())),
-    ColorIndex::Purple => (Some(8), Some("purple".to_string()), Some("#c26bff".to_string())),
+    ColorIndex::Pink => (
+      Some(1),
+      Some("pink".to_string()),
+      Some("#ff7ab6".to_string()),
+    ),
+    ColorIndex::Red => (
+      Some(2),
+      Some("red".to_string()),
+      Some("#ff4b57".to_string()),
+    ),
+    ColorIndex::Orange => (
+      Some(3),
+      Some("orange".to_string()),
+      Some("#ff9a3d".to_string()),
+    ),
+    ColorIndex::Yellow => (
+      Some(4),
+      Some("yellow".to_string()),
+      Some("#ffd34d".to_string()),
+    ),
+    ColorIndex::Green => (
+      Some(5),
+      Some("green".to_string()),
+      Some("#41d36f".to_string()),
+    ),
+    ColorIndex::Aqua => (
+      Some(6),
+      Some("aqua".to_string()),
+      Some("#3fd7d3".to_string()),
+    ),
+    ColorIndex::Blue => (
+      Some(7),
+      Some("blue".to_string()),
+      Some("#4a78ff".to_string()),
+    ),
+    ColorIndex::Purple => (
+      Some(8),
+      Some("purple".to_string()),
+      Some("#c26bff".to_string()),
+    ),
   }
 }
 
@@ -254,11 +302,7 @@ fn hot_cue_color_triplet(
   } else {
     Some(REKORDBOX_DEFAULT_HOT_CUE_HEX.to_string())
   };
-  (
-    resolved_index,
-    resolved_hex.clone(),
-    resolved_hex,
-  )
+  (resolved_index, resolved_hex.clone(), resolved_hex)
 }
 
 fn score_hot_cue(record: &PioneerHotCueRecord, base_priority: u32, extended: bool) -> u32 {
@@ -295,12 +339,22 @@ fn score_memory_cue(record: &PioneerMemoryCueRecord, base_priority: u32, extende
   score
 }
 
-fn merge_hot_cue(target: &mut HashMap<u32, ScoredHotCue>, candidate: PioneerHotCueRecord, score: u32) {
+fn merge_hot_cue(
+  target: &mut HashMap<u32, ScoredHotCue>,
+  candidate: PioneerHotCueRecord,
+  score: u32,
+) {
   let slot = candidate.slot;
   match target.get(&slot) {
     Some(existing) if existing.score >= score => {}
     _ => {
-      target.insert(slot, ScoredHotCue { record: candidate, score });
+      target.insert(
+        slot,
+        ScoredHotCue {
+          record: candidate,
+          score,
+        },
+      );
     }
   }
 }
@@ -498,7 +552,11 @@ fn parse_cues_from_file(
 pub fn read_pioneer_cues(analyze_file_path: String) -> PioneerCueDump {
   let normalized_input = normalize_input_path(&analyze_file_path);
   if normalized_input.is_empty() {
-    return build_empty_cue_dump(analyze_file_path, String::new(), "analyze_file_path is empty");
+    return build_empty_cue_dump(
+      analyze_file_path,
+      String::new(),
+      "analyze_file_path is empty",
+    );
   }
 
   let input_path = Path::new(&normalized_input);
@@ -557,7 +615,10 @@ pub fn read_pioneer_cues(analyze_file_path: String) -> PioneerCueDump {
     analyze_file_path: normalized_input,
     cue_file_path,
     hot_cues: hot_cue_values,
-    memory_cues: memory_cue_values.into_iter().map(|entry| entry.record).collect(),
+    memory_cues: memory_cue_values
+      .into_iter()
+      .map(|entry| entry.record)
+      .collect(),
     error: None,
   }
 }

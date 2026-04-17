@@ -248,8 +248,8 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
   if frame_count == 0 {
     return (0.0, 0.0);
   }
-  let source_frame = ((target.current_sec - target.pcm_start_sec).max(0.0))
-    * target.sample_rate as f64;
+  let source_frame =
+    ((target.current_sec - target.pcm_start_sec).max(0.0)) * target.sample_rate as f64;
   let base_index = source_frame.floor() as usize;
   if base_index >= frame_count {
     return (0.0, 0.0);
@@ -257,23 +257,24 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
   let frac = (source_frame - base_index as f64) as f32;
   let next_index = (base_index + 1).min(frame_count - 1);
   let channels = target.channels as usize;
-  let read_sample = |frame_index: usize, channel: usize, data: &Vec<f32>| -> f32 {
+  let read_sample = |frame_index: usize, channel: usize, data: &[f32]| -> f32 {
     data
       .get(frame_index * channels + channel.min(channels - 1))
       .copied()
       .unwrap_or(0.0)
   };
-  let l0 = read_sample(base_index, 0, &target.pcm_data);
-  let l1 = read_sample(next_index, 0, &target.pcm_data);
+  let pcm_data = target.pcm_data.as_ref().as_slice();
+  let l0 = read_sample(base_index, 0, pcm_data);
+  let l1 = read_sample(next_index, 0, pcm_data);
   let r0 = read_sample(
     base_index,
     if channels > 1 { 1 } else { 0 },
-    &target.pcm_data,
+    pcm_data,
   );
   let r1 = read_sample(
     next_index,
     if channels > 1 { 1 } else { 0 },
-    &target.pcm_data,
+    pcm_data,
   );
   let left = l0 + (l1 - l0) * frac;
   let right = r0 + (r1 - r0) * frac;
@@ -329,8 +330,8 @@ fn sample_deck_master_tempo(target: &mut DeckState, output_sample_rate: f64) -> 
 
   target.master_tempo_state.playhead_source_frame +=
     clamp_rate(target.playback_rate) * target.sample_rate as f64 / output_sample_rate.max(1.0);
-  target.current_sec =
-    target.pcm_start_sec + target.master_tempo_state.playhead_source_frame / target.sample_rate as f64;
+  target.current_sec = target.pcm_start_sec
+    + target.master_tempo_state.playhead_source_frame / target.sample_rate as f64;
   target.last_observed_at_ms = -1.0;
 
   if target.duration_sec.is_finite() && target.current_sec >= target.duration_sec {

@@ -63,7 +63,9 @@ impl SoundTouchHandle {
     if output.is_empty() || max_samples == 0 {
       return 0;
     }
-    unsafe { frkb_soundtouch_receive_samples(self.0, output.as_mut_ptr(), max_samples as u32) as usize }
+    unsafe {
+      frkb_soundtouch_receive_samples(self.0, output.as_mut_ptr(), max_samples as u32) as usize
+    }
   }
 
   pub(crate) fn flush(&mut self) {
