@@ -60,6 +60,7 @@ type DeckTransportStateOverride = Partial<{
 
 type UseHorizontalBrowseDeckTransportInteractionsParams = {
   touchDeckInteraction: (deck: DeckKey) => void
+  notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
   nativeTransport: {
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
@@ -415,6 +416,11 @@ export const useHorizontalBrowseDeckTransportInteractions = (
 
   const handleDeckPlayheadSeek = (deck: DeckKey, seconds: number) => {
     params.touchDeckInteraction(deck)
+    traceDeckAction(deck, 'seek:intent', {
+      source: 'overview-or-playhead',
+      seconds
+    })
+    params.notifyDeckSeekIntent(deck, seconds)
     void params.nativeTransport.seek(deck, seconds).then(() => {
       params.syncDeckRenderState()
     })
@@ -428,6 +434,11 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       0,
       durationSeconds > 0 ? durationSeconds : Number.MAX_SAFE_INTEGER
     )
+    traceDeckAction(deck, 'seek:intent', {
+      source: 'transport',
+      seconds: nextSeconds
+    })
+    params.notifyDeckSeekIntent(deck, nextSeconds)
     void (async () => {
       await params.nativeTransport.seek(deck, nextSeconds)
       if (

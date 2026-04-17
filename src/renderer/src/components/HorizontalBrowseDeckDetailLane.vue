@@ -43,6 +43,8 @@ const props = defineProps<{
   memoryCues: ISongMemoryCue[]
   deferWaveformLoad: boolean
   rawLoadPriorityHint: number
+  seekTargetSeconds: number
+  seekRevision: number
   direction: 'up' | 'down'
   deckHovered: boolean
   regionId: number
@@ -102,6 +104,8 @@ defineExpose({
       :memory-cues="props.memoryCues"
       :defer-waveform-load="props.deferWaveformLoad"
       :raw-load-priority-hint="props.rawLoadPriorityHint"
+      :seek-target-seconds="props.seekTargetSeconds"
+      :seek-revision="props.seekRevision"
       :direction="props.direction"
       @toolbar-state-change="emit('toolbar-state-change', $event)"
       @zoom-change="emit('zoom-change', $event)"

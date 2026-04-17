@@ -31,6 +31,10 @@ import {
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
 import { useHorizontalBrowseRawWaveformStream } from '@renderer/components/useHorizontalBrowseRawWaveformStream'
 import {
+  pickMixxxDataByFile,
+  resolveMixxxWaveformFrameCount
+} from '@renderer/components/mixtapeBeatAlignWaveformData'
+import {
   resolveHorizontalBrowseWaveformTraceElapsedMs,
   sendHorizontalBrowseWaveformTrace
 } from '@renderer/components/horizontalBrowseWaveformTrace'
@@ -82,6 +86,8 @@ const props = defineProps<{
   memoryCues?: ISongMemoryCue[]
   deferWaveformLoad?: boolean
   rawLoadPriorityHint?: number
+  seekTargetSeconds?: number
+  seekRevision?: number
 }>()
 
 const emit = defineEmits<{
@@ -97,6 +103,7 @@ const emit = defineEmits<{
 const runtime = useRuntimeStore()
 const rawData = ref<RawWaveformData | null>(null)
 const mixxxData = ref<MixxxWaveformData | null>(null)
+const fallbackMixxxData = ref<MixxxWaveformData | null>(null)
 const previewLoading = ref(false)
 const previewStartSec = ref(0)
 const dragging = ref(false)
@@ -111,7 +118,7 @@ const previewPlaying = ref(false)
 
 const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MS = 2
 const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MS = 8
-const HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN = 1.25
+const HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN = 8
 
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
@@ -155,6 +162,8 @@ const {
   invalidateWaveformTiles,
   scheduleDraw,
   resetGridRenderer,
+  holdCurrentWaveformFrame,
+  resetRetainedWaveformData,
   storeRawWaveform,
   setLastZoomAnchor,
   resetLastZoomAnchor,
@@ -166,6 +175,7 @@ const {
   playing: previewPlaying,
   rawData,
   mixxxData,
+  fallbackMixxxData,
   previewStartSec,
   previewZoom,
   previewBpm,
@@ -471,6 +481,8 @@ const {
   cancelRawWaveformStream,
   beginRawWaveformStream,
   maybeContinueRawWaveformStream,
+  restartRawWaveformStreamAt,
+  flushDeferredRawWaveformStore,
   handleRawLoadPriorityHintChange,
   mount: mountRawWaveformStream,
   dispose: disposeRawWaveformStream
@@ -490,8 +502,52 @@ const {
   clearStreamDrawScheduling,
   scheduleRawStreamDirtyDraw,
   scheduleDraw,
+  holdCurrentWaveformFrame,
   storeRawWaveform
 })
+
+type HorizontalBrowseWaveformBatchResponse = {
+  items?: Array<{
+    filePath?: unknown
+    data?: unknown
+  }>
+}
+
+const loadFallbackMixxxWaveform = async () => {
+  const currentToken = loadToken
+  const filePath = String(props.song?.filePath || '').trim()
+  fallbackMixxxData.value = null
+  if (!filePath) return
+  const fileKey = normalizeHorizontalBrowsePathKey(filePath)
+  for (const channel of ['waveform-cache:batch', 'mixtape-waveform-cache:batch'] as const) {
+    try {
+      const response = (await window.electron.ipcRenderer.invoke(channel, {
+        filePaths: [filePath]
+      })) as HorizontalBrowseWaveformBatchResponse | null
+      if (currentToken !== loadToken) return
+      const picked = pickMixxxDataByFile(response, fileKey, normalizeHorizontalBrowsePathKey)
+      if (!picked) {
+        traceHorizontalWaveformLoad('fallback:miss-channel', { channel })
+        continue
+      }
+      fallbackMixxxData.value = picked
+      traceHorizontalWaveformLoad('fallback:hit', {
+        channel,
+        frameCount: resolveMixxxWaveformFrameCount(picked),
+        duration: Number(picked.duration) || 0
+      })
+      return
+    } catch (error) {
+      if (currentToken !== loadToken) return
+      traceHorizontalWaveformLoad('fallback:error', {
+        channel,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+  if (currentToken !== loadToken) return
+  traceHorizontalWaveformLoad('fallback:miss')
+}
 
 const loadWaveform = async () => {
   const currentSong = props.song
@@ -506,7 +562,9 @@ const loadWaveform = async () => {
   rawStreamActive.value = false
   rawData.value = null
   mixxxData.value = null
+  fallbackMixxxData.value = null
   previewStartSec.value = 0
+  resetRetainedWaveformData()
   resetGridRenderer()
   clearCanvas()
   resetLastZoomAnchor()
@@ -520,6 +578,7 @@ const loadWaveform = async () => {
 
   try {
     previewLoading.value = true
+    void loadFallbackMixxxWaveform()
     const targetRate = resolveWaveformTargetRate(!!props.deferWaveformLoad)
     traceHorizontalWaveformLoad('load:start', {
       targetRate,
@@ -629,6 +688,7 @@ watch(
   (playing) => {
     previewPlaying.value = playing
     if (!playing) {
+      flushDeferredRawWaveformStore()
       stopPlaybackAnimation()
       return
     }
@@ -668,9 +728,25 @@ watch(
 )
 
 watch(
+  () => [Number(props.seekRevision) || 0, Number(props.seekTargetSeconds) || 0] as const,
+  ([revision, targetSeconds]) => {
+    if (!revision) return
+    if (!props.song?.filePath) return
+    restartRawWaveformStreamAt(Math.max(0, targetSeconds))
+  }
+)
+
+watch(
   () => canAdjustGrid.value,
   () => {
     emitToolbarState()
+  }
+)
+
+watch(
+  () => fallbackMixxxData.value,
+  () => {
+    scheduleDraw()
   }
 )
 

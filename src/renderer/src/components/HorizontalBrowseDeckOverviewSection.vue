@@ -189,6 +189,11 @@ const isTop = props.position === 'top'
   overflow: hidden;
 }
 
+.overview__region--toolbar {
+  overflow: visible;
+  z-index: var(--shell-z-deck-menu, 45);
+}
+
 .overview--top .overview__region--deck-info {
   z-index: var(--shell-z-deck-info-top);
 }

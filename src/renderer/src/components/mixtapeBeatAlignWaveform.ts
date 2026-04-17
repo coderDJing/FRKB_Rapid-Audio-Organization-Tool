@@ -1,5 +1,6 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import { isRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformData'
 
 type DrawWaveformOptions = {
   width: number
@@ -469,6 +470,7 @@ const buildWaveformColumns = (
   const low = mixxxData.bands.low
   const mid = mixxxData.bands.mid
   const high = mixxxData.bands.high
+  const mixxxIsPlaceholder = isRawPlaceholderMixxxData(mixxxData)
   const frameCount = Math.min(
     low.left.length,
     low.right.length,
@@ -494,6 +496,7 @@ const buildWaveformColumns = (
       )
     : 0
   const rawRate = hasRaw ? Number(rawData.rate) : 0
+  const rawStartSec = hasRaw ? Math.max(0, Number(rawData.startSec) || 0) : 0
 
   for (let x = 0; x < width; x += 1) {
     const startTime = rangeStartSec + (x / width) * rangeDurationSec
@@ -528,13 +531,14 @@ const buildWaveformColumns = (
 
     if (hasRaw && rawData && rawFrames > 0 && rawRate > 0) {
       const rawDuration = rawFrames / rawRate
-      const safeRawDuration =
-        Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : duration
-      const rawStartTime = clamp(startTime, 0, safeRawDuration)
-      const rawEndTime = clamp(endTime, rawStartTime, safeRawDuration)
-      if (rawEndTime <= rawStartTime) continue
-      const rawStartFrame = clamp(Math.floor(rawStartTime * rawRate), 0, rawFrames - 1)
-      const rawEndFrame = clamp(Math.ceil(rawEndTime * rawRate), rawStartFrame, rawFrames - 1)
+      const safeRawDuration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0
+      const rawEndSec = rawStartSec + safeRawDuration
+      if (endTime <= rawStartSec || startTime >= rawEndSec) continue
+      const rawLocalStartTime = clamp(startTime - rawStartSec, 0, safeRawDuration)
+      const rawLocalEndTime = clamp(endTime - rawStartSec, rawLocalStartTime, safeRawDuration)
+      if (rawLocalEndTime <= rawLocalStartTime) continue
+      const rawStartFrame = clamp(Math.floor(rawLocalStartTime * rawRate), 0, rawFrames - 1)
+      const rawEndFrame = clamp(Math.ceil(rawLocalEndTime * rawRate), rawStartFrame, rawFrames - 1)
       const rawPeaks = resolveRawPeaksByRange(
         rawData,
         rawStartFrame,
@@ -553,6 +557,8 @@ const buildWaveformColumns = (
       }
       continue
     }
+
+    if (mixxxIsPlaceholder) continue
 
     const applyFrame = (i: number) => {
       const lowTop = low.left[i]

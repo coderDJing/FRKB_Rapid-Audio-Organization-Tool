@@ -6,6 +6,8 @@ type MixtapeRawWaveformJob = {
   jobId: number
   filePath: string
   targetRate: number
+  startSec?: number
+  songDurationSec?: number
   streamChunks?: boolean
   chunkFrames?: number
   expectedDurationSec?: number
@@ -91,6 +93,7 @@ const createRawWaveformAccumulator = (params: {
   channels: number
   targetRate: number
   expectedDurationSec?: number
+  songDurationSec?: number
   streamChunks?: boolean
   chunkFrames?: number
   onChunk?: (payload: MixtapeRawWaveformProgressPayload) => void
@@ -106,6 +109,10 @@ const createRawWaveformAccumulator = (params: {
   const targetDurationSec =
     Number.isFinite(Number(params.expectedDurationSec)) && Number(params.expectedDurationSec) > 0
       ? Number(params.expectedDurationSec)
+      : 0
+  const songDurationSec =
+    Number.isFinite(Number(params.songDurationSec)) && Number(params.songDurationSec) > 0
+      ? Number(params.songDurationSec)
       : 0
   const shouldStream = params.streamChunks === true && typeof params.onChunk === 'function'
   const streamChunkFrames = shouldStream
@@ -151,12 +158,7 @@ const createRawWaveformAccumulator = (params: {
         targetDurationSec > 0
           ? estimatedFrames
           : Math.max(endExclusiveFrame, Math.floor(totalInputFrames / step) + 1),
-      duration:
-        targetDurationSec > 0
-          ? targetDurationSec
-          : sampleRate > 0
-            ? totalInputFrames / sampleRate
-            : 0,
+      duration: songDurationSec > 0 ? songDurationSec : targetDurationSec,
       sampleRate,
       rate,
       minLeft: Buffer.from(
@@ -237,7 +239,8 @@ const createRawWaveformAccumulator = (params: {
     const finalMaxRight = maxRightValues.subarray(0, outIndex)
 
     return {
-      duration: sampleRate > 0 ? totalInputFrames / sampleRate : 0,
+      duration:
+        songDurationSec > 0 ? songDurationSec : sampleRate > 0 ? totalInputFrames / sampleRate : 0,
       sampleRate,
       rate,
       frames: outIndex,
@@ -413,15 +416,19 @@ const buildRawWaveformStreamed = async (
   filePath: string,
   targetRate: number,
   options: {
+    startSec?: number
+    songDurationSec?: number
     expectedDurationSec?: number
     chunkFrames?: number
     onChunk?: (payload: MixtapeRawWaveformProgressPayload) => void
   }
 ) => {
   const ffmpegPath = resolveBundledFfmpegPath()
+  const startSec = Math.max(0, Number(options.startSec) || 0)
   const args = [
     '-v',
     'error',
+    ...(startSec > 0 ? ['-ss', String(startSec)] : []),
     '-i',
     filePath,
     '-map',
@@ -442,6 +449,7 @@ const buildRawWaveformStreamed = async (
     sampleRate: STREAM_SAMPLE_RATE,
     channels: STREAM_CHANNELS,
     targetRate,
+    songDurationSec: options.songDurationSec,
     expectedDurationSec: options.expectedDurationSec,
     streamChunks: true,
     chunkFrames: options.chunkFrames,
@@ -502,6 +510,8 @@ parentPort?.on('message', async (job: MixtapeRawWaveformJob) => {
     }
     if (job.streamChunks) {
       response.result = await buildRawWaveformStreamed(job.filePath, job.targetRate, {
+        startSec: Number(job.startSec) || 0,
+        songDurationSec: Number(job.songDurationSec) || 0,
         expectedDurationSec: Number(job.expectedDurationSec) || 0,
         chunkFrames: job.chunkFrames,
         onChunk: (progress) => {

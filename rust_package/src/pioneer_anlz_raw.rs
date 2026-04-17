@@ -34,17 +34,26 @@ fn read_section_header<R: Read>(reader: &mut R) -> Result<([u8; 4], u32, u32), S
   Ok((kind, size, total_size))
 }
 
-fn read_sections_from_reader<R: Read>(reader: &mut R, total_len: usize) -> Result<Vec<RawAnlzSection>, String> {
+fn read_sections_from_reader<R: Read>(
+  reader: &mut R,
+  total_len: usize,
+) -> Result<Vec<RawAnlzSection>, String> {
   let mut sections = Vec::new();
   let mut consumed = 0usize;
   while consumed < total_len {
     if total_len - consumed < 12 {
-      return Err(format!("remaining bytes too small for section header: {}", total_len - consumed));
+      return Err(format!(
+        "remaining bytes too small for section header: {}",
+        total_len - consumed
+      ));
     }
     let (kind, size, total_size) = read_section_header(reader)?;
-    let header_data_len = usize::try_from(size - 12).map_err(|_| "header_data_len overflow".to_string())?;
-    let content_len = usize::try_from(total_size - size).map_err(|_| "content_len overflow".to_string())?;
-    let section_len = usize::try_from(total_size).map_err(|_| "section_len overflow".to_string())?;
+    let header_data_len =
+      usize::try_from(size - 12).map_err(|_| "header_data_len overflow".to_string())?;
+    let content_len =
+      usize::try_from(total_size - size).map_err(|_| "content_len overflow".to_string())?;
+    let section_len =
+      usize::try_from(total_size).map_err(|_| "section_len overflow".to_string())?;
     if consumed + section_len > total_len {
       return Err(format!("section exceeds parent boundary: consumed={consumed}, section={section_len}, total={total_len}"));
     }
@@ -79,14 +88,16 @@ pub fn read_pioneer_anlz_sections(path: &Path) -> Result<Vec<RawAnlzSection>, St
       kind[0] as char, kind[1] as char, kind[2] as char, kind[3] as char
     ));
   }
-  let header_data_len = usize::try_from(size - 12).map_err(|_| "file header_data_len overflow".to_string())?;
+  let header_data_len =
+    usize::try_from(size - 12).map_err(|_| "file header_data_len overflow".to_string())?;
   if header_data_len > 0 {
     let mut skip = vec![0u8; header_data_len];
     reader
       .read_exact(&mut skip)
       .map_err(|error| format!("read file header data failed: {error}"))?;
   }
-  let content_len = usize::try_from(total_size - size).map_err(|_| "file content_len overflow".to_string())?;
+  let content_len =
+    usize::try_from(total_size - size).map_err(|_| "file content_len overflow".to_string())?;
   read_sections_from_reader(&mut reader, content_len)
 }
 

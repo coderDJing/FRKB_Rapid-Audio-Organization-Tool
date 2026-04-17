@@ -42,6 +42,34 @@ export const isValidMixxxWaveformData = (
   )
 }
 
+export const resolveMixxxWaveformFrameCount = (data: MixxxWaveformData | null | undefined) => {
+  if (!data) return 0
+  const low = data.bands?.low
+  const mid = data.bands?.mid
+  const high = data.bands?.high
+  const all = data.bands?.all
+  if (!low || !mid || !high || !all) return 0
+  return Math.min(
+    low.left.length,
+    low.right.length,
+    mid.left.length,
+    mid.right.length,
+    high.left.length,
+    high.right.length,
+    all.left.length,
+    all.right.length
+  )
+}
+
+export const isRawPlaceholderMixxxData = (data: MixxxWaveformData | null | undefined) => {
+  if (!isValidMixxxWaveformData(data ?? null)) return false
+  const safeData = data
+  if (!safeData) return false
+  if (resolveMixxxWaveformFrameCount(safeData) !== 1) return false
+  const bands = [safeData.bands.low, safeData.bands.mid, safeData.bands.high, safeData.bands.all]
+  return bands.every((band) => !band.peakLeft && !band.peakRight)
+}
+
 export const pickMixxxDataByFile = (
   response: BeatAlignWaveformResponse | null | undefined,
   fileKey: string,
