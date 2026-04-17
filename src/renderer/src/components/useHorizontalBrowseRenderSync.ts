@@ -16,6 +16,7 @@ type UseHorizontalBrowseRenderSyncParams = {
 
 const TRANSPORT_SNAPSHOT_INTERVAL_IDLE_MS = 120
 const TRANSPORT_SNAPSHOT_INTERVAL_PLAYING_MS = 1000
+const TRANSPORT_SNAPSHOT_INTERVAL_SINGLE_DECK_PLAYING_MS = Number.POSITIVE_INFINITY
 
 export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderSyncParams) => {
   const topDeckRenderCurrentSeconds = ref(0)
@@ -76,10 +77,16 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       const nowMs = performance.now()
       handleDeckLoopPlaybackTick('top')
       handleDeckLoopPlaybackTick('bottom')
+      topDeckRenderCurrentSeconds.value = estimateDeckRenderCurrentSeconds('top', nowMs)
+      bottomDeckRenderCurrentSeconds.value = estimateDeckRenderCurrentSeconds('bottom', nowMs)
+      const topPlaying = params.resolveDeckPlaying('top')
+      const bottomPlaying = params.resolveDeckPlaying('bottom')
       const pollIntervalMs =
-        params.resolveDeckPlaying('top') || params.resolveDeckPlaying('bottom')
+        topPlaying && bottomPlaying
           ? TRANSPORT_SNAPSHOT_INTERVAL_PLAYING_MS
-          : TRANSPORT_SNAPSHOT_INTERVAL_IDLE_MS
+          : topPlaying || bottomPlaying
+            ? TRANSPORT_SNAPSHOT_INTERVAL_SINGLE_DECK_PLAYING_MS
+            : TRANSPORT_SNAPSHOT_INTERVAL_IDLE_MS
       if (!transportSnapshotInFlight && nowMs - lastTransportSnapshotAt >= pollIntervalMs) {
         transportSnapshotInFlight = true
         lastTransportSnapshotAt = nowMs

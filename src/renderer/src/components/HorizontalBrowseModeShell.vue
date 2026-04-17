@@ -114,6 +114,10 @@ const sharedDetailZoomState = ref<SharedDetailZoomState>({
   sourceDirection: null,
   revision: 0
 })
+const deckSeekIntent = reactive<Record<DeckKey, { seconds: number; revision: number }>>({
+  top: { seconds: 0, revision: 0 },
+  bottom: { seconds: 0, revision: 0 }
+})
 const regionDragDepth = reactive<Record<number, number>>({
   1: 0,
   2: 0,
@@ -511,6 +515,7 @@ const {
   handleDeckPlayPauseToggle
 } = useHorizontalBrowseDeckTransportInteractions({
   touchDeckInteraction,
+  notifyDeckSeekIntent,
   nativeTransport,
   syncDeckRenderState,
   commitDeckStateToNative,
@@ -594,6 +599,13 @@ const handleSharedDetailZoomChange = (payload: {
   }
 }
 
+function notifyDeckSeekIntent(deck: DeckKey, seconds: number) {
+  deckSeekIntent[deck] = {
+    seconds: Math.max(0, Number(seconds) || 0),
+    revision: deckSeekIntent[deck].revision + 1
+  }
+}
+
 const {
   handleToolbarStateChange,
   handleDeckBarLinePickingToggle,
@@ -635,7 +647,7 @@ const resolveDeckSyncUiLock = (deck: DeckKey) =>
   )
 
 const resolveDeckRawLoadPriorityHint = (deck: DeckKey) => {
-  const recentBoost = deckRecentInteraction[deck] ? 1_000_000 : 0
+  const recentBoost = !resolveDeckPlaying(deck) && deckRecentInteraction[deck] ? 1_000_000 : 0
   const dragBoost = isDeckWaveformDragging(deck) ? 2_000_000 : 0
   const cuePreviewBoost = resolveDeckCuePreviewRuntimeState(deck).active ? 1_500_000 : 0
   const playingBoost = resolveDeckPlaying(deck) ? 500_000 : 0
@@ -814,6 +826,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAllDeckCuePreview()
+  void nativeTransport.reset().catch((error) => {
+    console.error('[horizontal-browse] reset transport failed on exit', error)
+  })
   stopRenderSyncLoop()
   stopFaderDragging()
   clearDeckRecentInteractionTimer('top')
@@ -961,6 +976,8 @@ onUnmounted(() => {
           :memory-cues="topDeckSong?.memoryCues || []"
           :defer-waveform-load="topDeckShouldDeferWaveformLoad"
           :raw-load-priority-hint="topDeckRawLoadPriorityHint"
+          :seek-target-seconds="deckSeekIntent.top.seconds"
+          :seek-revision="deckSeekIntent.top.revision"
           direction="up"
           :deck-hovered="isDeckHovered('top')"
           :region-id="4"
@@ -988,6 +1005,8 @@ onUnmounted(() => {
           :memory-cues="bottomDeckSong?.memoryCues || []"
           :defer-waveform-load="bottomDeckShouldDeferWaveformLoad"
           :raw-load-priority-hint="bottomDeckRawLoadPriorityHint"
+          :seek-target-seconds="deckSeekIntent.bottom.seconds"
+          :seek-revision="deckSeekIntent.bottom.revision"
           direction="down"
           :deck-hovered="isDeckHovered('bottom')"
           :region-id="5"
