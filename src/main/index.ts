@@ -1,7 +1,13 @@
 import 'dotenv/config'
 import { app, BrowserWindow, ipcMain, shell, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { appendPlainLogLineSync, log, getLogPath, clearLogFileSync } from './log'
+import {
+  appendPlainLogLineSync,
+  log,
+  getLogPath,
+  clearLogFileSync,
+  configureLogTransports
+} from './log'
 import './cloudSync'
 import errorReport from './errorReport'
 import { saveList } from './fingerprintStore'
@@ -50,6 +56,8 @@ import { registerPioneerDeviceLibraryHandlers } from './ipc/pioneerDeviceLibrary
 import { registerRekordboxDesktopLibraryHandlers } from './ipc/rekordboxDesktopLibraryHandlers'
 import { registerHorizontalBrowseTransportHandlers } from './ipc/horizontalBrowseTransportHandlers'
 import { registerDevSongListTraceHandlers } from './ipc/devSongListTraceHandlers'
+import { registerHotCueHandlers } from './ipc/hotCueHandlers'
+import { registerMemoryCueHandlers } from './ipc/memoryCueHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
@@ -61,6 +69,8 @@ import {
   type KeyAnalysisBackgroundStatus
 } from './services/keyAnalysisQueue'
 import { songGridEvents } from './services/songGridEvents'
+import { songHotCueEvents } from './services/songHotCueEvents'
+import { songMemoryCueEvents } from './services/songMemoryCueEvents'
 import {
   isMixtapeWaveformHiresQueueBusy,
   startMixtapeWaveformHiresBackground
@@ -80,6 +90,7 @@ import { acquireDevSingleInstanceLock, configureDevRuntime } from './devInstance
 // import AudioFeatureExtractor from './mfccTest'
 
 const devRuntime = configureDevRuntime(is.dev, process.platform, log)
+configureLogTransports()
 
 try {
   const resolvedUserDataDir = app.getPath('userData')
@@ -230,6 +241,11 @@ void ensureFpcalcExecutable(fpcalcPath)
 store.layoutConfig = loadLayoutConfigSync()
 loadInitialSettings({ getWindowsContextMenuStatus: hasWindowsContextMenu })
 maybeClearLogAfterUpgrade()
+log.info('[startup] log-path', {
+  logPath: getLogPath(),
+  cwd: process.cwd(),
+  userData: app.getPath('userData')
+})
 errorReport.setup()
 registerWhatsNewHandlers()
 registerSettingsHandlers({
@@ -254,6 +270,8 @@ registerSongSearchHandlers()
 registerPioneerDeviceLibraryHandlers()
 registerRekordboxDesktopLibraryHandlers()
 registerHorizontalBrowseTransportHandlers()
+registerHotCueHandlers()
+registerMemoryCueHandlers()
 registerDevSongListTraceHandlers()
 
 keyAnalysisEvents.on('key-updated', (payload) => {
@@ -276,6 +294,22 @@ songGridEvents.on('grid-updated', (payload) => {
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-grid-updated', payload)
+    } catch {}
+  }
+})
+
+songHotCueEvents.on('hot-cues-updated', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('song-hot-cues-updated', payload)
+    } catch {}
+  }
+})
+
+songMemoryCueEvents.on('memory-cues-updated', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('song-memory-cues-updated', payload)
     } catch {}
   }
 })

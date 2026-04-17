@@ -17,6 +17,11 @@ type WorkerRequest =
       type: 'read-preview-waveforms'
       analyzeFilePaths: string[]
     }
+  | {
+      jobId: number
+      type: 'read-cues'
+      analyzeFilePaths: string[]
+    }
 
 type WorkerResponse = {
   jobId: number
@@ -31,6 +36,7 @@ const loadRust = () => {
     readPioneerPlaylistTree?: (exportPdbPath: string) => unknown
     readPioneerPlaylistTracks?: (exportPdbPath: string, playlistId: number) => unknown
     readPioneerPreviewWaveform?: (analyzeFilePath: string) => unknown
+    readPioneerCues?: (analyzeFilePath: string) => unknown
   }
 }
 
@@ -72,6 +78,30 @@ parentPort?.on('message', (request: WorkerRequest) => {
         }
         for (const analyzeFilePath of request.analyzeFilePaths) {
           const dump = rust.readPioneerPreviewWaveform!(analyzeFilePath)
+          respond({
+            jobId: request.jobId,
+            type: request.type,
+            progress: {
+              analyzeFilePath,
+              dump
+            }
+          })
+        }
+        respond({
+          jobId: request.jobId,
+          type: request.type,
+          result: {
+            total: request.analyzeFilePaths.length
+          }
+        })
+        return
+      }
+      case 'read-cues': {
+        if (typeof rust.readPioneerCues !== 'function') {
+          throw new Error('rust_package.readPioneerCues 不可用')
+        }
+        for (const analyzeFilePath of request.analyzeFilePaths) {
+          const dump = rust.readPioneerCues!(analyzeFilePath)
           respond({
             jobId: request.jobId,
             type: request.type,

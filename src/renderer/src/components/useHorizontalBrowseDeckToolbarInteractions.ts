@@ -15,6 +15,8 @@ type HorizontalBrowseDetailExpose = {
   shiftGridSmallLeft?: () => void
   shiftGridSmallRight?: () => void
   shiftGridLargeRight?: () => void
+  toggleMetronome?: () => void
+  cycleMetronomeVolume?: () => void
 }
 
 type UseHorizontalBrowseDeckToolbarInteractionsParams = {
@@ -78,6 +80,16 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     params.resolveDetailRef(deck)?.shiftGridLargeRight?.()
   }
 
+  const handleDeckMetronomeToggle = (deck: HorizontalBrowseDeckKey) => {
+    params.touchDeckInteraction(deck)
+    params.resolveDetailRef(deck)?.toggleMetronome?.()
+  }
+
+  const handleDeckMetronomeVolumeCycle = (deck: HorizontalBrowseDeckKey) => {
+    params.touchDeckInteraction(deck)
+    params.resolveDetailRef(deck)?.cycleMetronomeVolume?.()
+  }
+
   const handleDeckBpmInputUpdate = (deck: HorizontalBrowseDeckKey, value: string) => {
     params.touchDeckInteraction(deck)
     const toolbarStateRef = resolveToolbarStateRef(deck)
@@ -128,6 +140,8 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     handleDeckGridShiftSmallLeft,
     handleDeckGridShiftSmallRight,
     handleDeckGridShiftLargeRight,
+    handleDeckMetronomeToggle,
+    handleDeckMetronomeVolumeCycle,
     handleDeckBpmInputUpdate,
     handleDeckBpmInputBlur
   }

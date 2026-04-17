@@ -12,6 +12,8 @@ import {
 import { type SongsAreaPaneKey, useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
+import { sendHorizontalBrowseInteractionTrace } from '@renderer/components/horizontalBrowseInteractionTrace'
+import { beginHorizontalBrowseDeckInteraction } from '@renderer/components/horizontalBrowseInteractionTimeline'
 import { t } from '@renderer/utils/translate'
 import { ISongInfo } from '../../../../../types/globals'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
@@ -495,8 +497,15 @@ const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   const normalizedSong = { ...song }
   requestImmediateAnalysis(normalizedSong)
   if (runtime.mainWindowBrowseMode === 'horizontal') {
+    const deck = event?.shiftKey ? 'bottom' : 'top'
+    beginHorizontalBrowseDeckInteraction(deck, String(normalizedSong.filePath || '').trim())
+    sendHorizontalBrowseInteractionTrace('song-dblclick', {
+      source: 'songsArea',
+      deck,
+      filePath: String(normalizedSong.filePath || '').trim()
+    })
     emitter.emit('horizontalBrowse/load-song', {
-      deck: event?.shiftKey ? 'bottom' : 'top',
+      deck,
       song: normalizedSong
     })
     return

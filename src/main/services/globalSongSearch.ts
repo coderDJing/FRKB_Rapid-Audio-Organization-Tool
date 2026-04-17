@@ -6,6 +6,8 @@ import store from '../store'
 import { getCoreFsDirName } from '../utils'
 import type { ISongInfo } from '../../types/globals'
 import { log } from '../log'
+import { normalizeSongHotCues } from '../../shared/hotCues'
+import { normalizeSongMemoryCues } from '../../shared/memoryCues'
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 
@@ -268,6 +270,14 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     typeof rawInfo?.key === 'string' && rawInfo.key.trim().length > 0 ? rawInfo.key : undefined
   const bpm =
     typeof rawInfo?.bpm === 'number' && Number.isFinite(rawInfo.bpm) ? rawInfo.bpm : undefined
+  const firstBeatMs =
+    typeof rawInfo?.firstBeatMs === 'number' && Number.isFinite(rawInfo.firstBeatMs)
+      ? rawInfo.firstBeatMs
+      : undefined
+  const barBeatOffset =
+    typeof rawInfo?.barBeatOffset === 'number' && Number.isFinite(rawInfo.barBeatOffset)
+      ? rawInfo.barBeatOffset
+      : undefined
 
   return {
     filePath,
@@ -284,6 +294,10 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     container,
     key,
     bpm,
+    firstBeatMs,
+    barBeatOffset,
+    hotCues: normalizeSongHotCues(rawInfo?.hotCues),
+    memoryCues: normalizeSongMemoryCues(rawInfo?.memoryCues),
     analysisOnly: rawInfo?.analysisOnly === true ? true : undefined,
     autoFilled: rawInfo?.autoFilled === true ? true : undefined
   }

@@ -44,6 +44,7 @@ type FrameState = {
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
   rawData: RawWaveformData | null
+  rawLoadedFrames: number
   maxSamplesPerPixel: number
   showDetailHighlights: boolean
   showCenterLine: boolean
@@ -109,6 +110,10 @@ const buildFrameState = (
   rangeDurationSec: Math.max(0.0001, Number(input.rangeDurationSec) || 0.0001),
   mixxxData: input.mixxxData,
   rawData: input.rawData,
+  rawLoadedFrames: Math.max(
+    0,
+    Math.floor(Number(input.rawData?.loadedFrames ?? input.rawData?.frames) || 0)
+  ),
   maxSamplesPerPixel: input.maxSamplesPerPixel,
   showDetailHighlights: input.showDetailHighlights,
   showCenterLine: input.showCenterLine,
@@ -226,6 +231,7 @@ export const createBeatAlignPreviewRenderer = () => {
       waveformLayout: state.waveformLayout,
       preferRawPeaksOnly: state.preferRawPeaksOnly
     })
+    ctx.clearRect(safeSegmentX, 0, safeSegmentWidth, metrics.cssHeight)
     ctx.drawImage(
       segment.canvas,
       0,
@@ -250,12 +256,14 @@ export const createBeatAlignPreviewRenderer = () => {
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.mixxxData === current.mixxxData &&
       lastFrame.rawData === current.rawData &&
+      lastFrame.rawLoadedFrames === current.rawLoadedFrames &&
       lastFrame.maxSamplesPerPixel === current.maxSamplesPerPixel &&
       lastFrame.showDetailHighlights === current.showDetailHighlights &&
       lastFrame.showCenterLine === current.showCenterLine &&
       lastFrame.showBackground === current.showBackground &&
       lastFrame.showBeatGrid === current.showBeatGrid &&
-      lastFrame.waveformLayout === current.waveformLayout
+      lastFrame.waveformLayout === current.waveformLayout &&
+      lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly
     )
   }
 
@@ -271,6 +279,7 @@ export const createBeatAlignPreviewRenderer = () => {
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.mixxxData === current.mixxxData &&
       lastFrame.rawData === current.rawData &&
+      lastFrame.rawLoadedFrames === current.rawLoadedFrames &&
       lastFrame.maxSamplesPerPixel === current.maxSamplesPerPixel &&
       lastFrame.showDetailHighlights === current.showDetailHighlights &&
       lastFrame.showCenterLine === current.showCenterLine &&
@@ -287,6 +296,16 @@ export const createBeatAlignPreviewRenderer = () => {
 
     const metrics = ensureCanvasMetrics(input.canvas, input.wrap, ctx)
     const state = buildFrameState(input, metrics)
+
+    if (
+      input.allowScrollReuse !== false &&
+      canReusePreviousFrame(state, metrics) &&
+      lastFrame &&
+      Math.abs(state.rangeStartSec - lastFrame.rangeStartSec) <= 0.000001
+    ) {
+      lastFrame = state
+      return
+    }
 
     let reused = false
     if (input.allowScrollReuse !== false && canReusePreviousFrame(state, metrics) && lastFrame) {

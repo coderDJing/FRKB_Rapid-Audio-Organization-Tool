@@ -9,10 +9,13 @@ import {
 } from './webAudioPlayer'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
+import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import { drawBufferedRawWaveform } from './waveformRawRenderer'
 
 export function useWaveform(params: {
   waveformEl: Ref<HTMLDivElement | null>
   audioPlayer: Ref<WebAudioPlayer | null>
+  rawWaveformData: Ref<RawWaveformData | null>
   runtime: ReturnType<typeof useRuntimeStore>
   updateParentWaveformWidth: () => void
   onNextSong: () => void
@@ -24,6 +27,7 @@ export function useWaveform(params: {
   const {
     waveformEl,
     audioPlayer,
+    rawWaveformData,
     runtime,
     updateParentWaveformWidth,
     onNextSong,
@@ -704,8 +708,9 @@ export function useWaveform(params: {
     const height = waveformHeight
     const player = audioPlayer.value
     const pioneerPreviewData = player.pioneerPreviewWaveformData ?? null
+    const rawData = rawWaveformData.value
 
-    const duration = player?.getDuration?.() ?? audioBuffer?.duration ?? 0
+    const duration = player?.getDuration?.() ?? audioBuffer?.duration ?? rawData?.duration ?? 0
     const currentTime = player?.getCurrentTime?.() ?? 0
     const progress = duration > 0 ? currentTime / duration : 0
     updateProgressVisual(progress)
@@ -721,17 +726,74 @@ export function useWaveform(params: {
 
     const style = getWaveformStyle()
     if (style === WAVEFORM_STYLE_FINE) {
+      if (rawData && !player.mixxxWaveformData) {
+        drawBufferedRawWaveform({
+          waveformData: rawData,
+          width,
+          height,
+          style,
+          useHalfWaveform: useHalfWaveform(),
+          baseCanvas,
+          progressCanvas,
+          baseCtx,
+          progressCtx,
+          pixelRatio: window.devicePixelRatio || 1,
+          barWidth,
+          barGap,
+          resizeCanvas
+        })
+        return
+      }
       drawFineWaveform(width, height)
       return
     }
 
     if (style === WAVEFORM_STYLE_RGB) {
       const mixxxData = player.mixxxWaveformData ?? null
+      if (mixxxData) {
+        drawMixxxWaveform(width, height, mixxxData)
+        return
+      }
+      if (rawData) {
+        drawBufferedRawWaveform({
+          waveformData: rawData,
+          width,
+          height,
+          style,
+          useHalfWaveform: useHalfWaveform(),
+          baseCanvas,
+          progressCanvas,
+          baseCtx,
+          progressCtx,
+          pixelRatio: window.devicePixelRatio || 1,
+          barWidth,
+          barGap,
+          resizeCanvas
+        })
+        return
+      }
       if (!mixxxData) {
         clearCanvases()
         return
       }
-      drawMixxxWaveform(width, height, mixxxData)
+    }
+
+    if (rawData && !player.mixxxWaveformData) {
+      drawBufferedRawWaveform({
+        waveformData: rawData,
+        width,
+        height,
+        style,
+        useHalfWaveform: useHalfWaveform(),
+        baseCanvas,
+        progressCanvas,
+        baseCtx,
+        progressCtx,
+        pixelRatio: window.devicePixelRatio || 1,
+        barWidth,
+        barGap,
+        resizeCanvas
+      })
       return
     }
 
@@ -746,7 +808,8 @@ export function useWaveform(params: {
     const style = getWaveformStyle()
     const mixxxData = player.mixxxWaveformData ?? null
     const pioneerPreviewData = player.pioneerPreviewWaveformData ?? null
-    if (!mixxxData && !pioneerPreviewData) {
+    const rawData = rawWaveformData.value
+    if (!mixxxData && !pioneerPreviewData && !rawData) {
       audioBuffer = null
       soundCloudMinMaxData = null
       mixxxMinMaxSource = null
@@ -769,9 +832,13 @@ export function useWaveform(params: {
 
     if (style !== WAVEFORM_STYLE_RGB) {
       if (!soundCloudMinMaxData || mixxxMinMaxSource !== mixxxData) {
-        if (!mixxxData) return
-        soundCloudMinMaxData = buildMinMaxDataFromMixxx(mixxxData)
-        mixxxMinMaxSource = mixxxData
+        if (mixxxData) {
+          soundCloudMinMaxData = buildMinMaxDataFromMixxx(mixxxData)
+          mixxxMinMaxSource = mixxxData
+        } else {
+          soundCloudMinMaxData = null
+          mixxxMinMaxSource = null
+        }
       }
     }
 
@@ -957,6 +1024,13 @@ export function useWaveform(params: {
 
   watch(
     () => runtime.setting?.waveformMode,
+    () => {
+      updateWaveform()
+    }
+  )
+
+  watch(
+    () => rawWaveformData.value,
     () => {
       updateWaveform()
     }

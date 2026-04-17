@@ -42,7 +42,15 @@ const cloneTreeNodes = (nodes: IPioneerPlaylistTreeNode[]): IPioneerPlaylistTree
     : []
 
 const clonePlaylistTracks = (tracks: IPioneerPlaylistTrack[]): IPioneerPlaylistTrack[] =>
-  Array.isArray(tracks) ? tracks.map((track) => ({ ...track })) : []
+  Array.isArray(tracks)
+    ? tracks.map((track) => ({
+        ...track,
+        hotCues: Array.isArray(track.hotCues) ? track.hotCues.map((cue) => ({ ...cue })) : [],
+        memoryCues: Array.isArray(track.memoryCues)
+          ? track.memoryCues.map((cue) => ({ ...cue }))
+          : []
+      }))
+    : []
 
 const touchCacheEntry = <T>(cache: Map<string, T>, key: string, value: T) => {
   cache.delete(key)

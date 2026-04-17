@@ -46,6 +46,8 @@ interface ISongInfo {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
   mixOrder?: number
   mixtapeItemId?: string
   analysisOnly?: boolean
@@ -59,6 +61,31 @@ interface ISongInfo {
   deletedAtMs?: number
   originalPlaylistPath?: string | null
   recycleBinSourceType?: string | null
+}
+
+export interface ISongHotCue {
+  slot: number
+  sec: number
+  label?: string
+  comment?: string
+  colorIndex?: number
+  colorName?: string
+  color?: string
+  isLoop?: boolean
+  loopEndSec?: number
+  source?: string
+}
+
+export interface ISongMemoryCue {
+  sec: number
+  order?: number
+  comment?: string
+  colorIndex?: number
+  colorName?: string
+  color?: string
+  isLoop?: boolean
+  loopEndSec?: number
+  source?: string
 }
 
 interface ICuratedArtistFavorite {
@@ -173,6 +200,8 @@ interface IPioneerPlaylistTrack {
   artworkId?: number
   artworkPath?: string
   coverPath?: string
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
 }
 
 interface IMusicBrainzSearchPayload {
@@ -486,6 +515,8 @@ export {
   md5,
   IDir,
   ISongInfo,
+  ISongHotCue,
+  ISongMemoryCue,
   ICuratedArtistFavorite,
   IPioneerPreviewWaveformColumn,
   IPioneerPreviewWaveformData,

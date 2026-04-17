@@ -70,6 +70,37 @@ export interface MixxxWaveformData {
   step: number
   bands: MixxxWaveformBands
 }
+export interface PioneerHotCueRecord {
+  slot: number
+  label: string
+  timeSec: number
+  isLoop: boolean
+  loopTimeSec?: number
+  comment?: string
+  colorIndex?: number
+  colorName?: string
+  colorHex?: string
+  source?: string
+}
+export interface PioneerMemoryCueRecord {
+  timeSec: number
+  isLoop: boolean
+  loopTimeSec?: number
+  order: number
+  comment?: string
+  colorIndex?: number
+  colorName?: string
+  colorHex?: string
+  source?: string
+}
+export interface PioneerCueDump {
+  analyzeFilePath: string
+  cueFilePath: string
+  hotCues: Array<PioneerHotCueRecord>
+  memoryCues: Array<PioneerMemoryCueRecord>
+  error?: string
+}
+export declare function readPioneerCues(analyzeFilePath: string): PioneerCueDump
 /** 进度信息结构体 */
 export interface ProcessProgress {
   processed: number

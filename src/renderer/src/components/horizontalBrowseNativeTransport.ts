@@ -1,5 +1,8 @@
 import { reactive } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
+import { sendHorizontalBrowseWaveformTrace } from '@renderer/components/horizontalBrowseWaveformTrace'
+import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/components/horizontalBrowseInteractionTimeline'
+import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 
 export type HorizontalBrowseDeckKey = 'top' | 'bottom'
 
@@ -65,6 +68,7 @@ const createEmptySnapshot = (): HorizontalBrowseTransportSnapshot => ({
 
 export const createHorizontalBrowseNativeTransport = () => {
   const state = reactive<HorizontalBrowseTransportSnapshot>(createEmptySnapshot())
+  const lastDeckTraceSignature = new Map<HorizontalBrowseDeckKey, string>()
 
   const invoke = async (channel: string, ...args: unknown[]) =>
     (await window.electron.ipcRenderer.invoke(
@@ -86,6 +90,14 @@ export const createHorizontalBrowseNativeTransport = () => {
 
   const setDeckState = async (deck: HorizontalBrowseDeckKey, payload: LocalDeckState) => {
     const nowMs = performance.now()
+    const startedAt = performance.now()
+    const filePath = String(payload.song?.filePath || '').trim()
+    const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:native:set-deck-state:${deck}`)
+    sendHorizontalBrowseWaveformTrace('transport', 'set-deck-state:start', {
+      deck,
+      filePath,
+      sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, filePath)
+    })
     const snapshot = await invoke('horizontal-browse-transport:set-deck-state', deck, nowMs, {
       filePath: payload.song?.filePath || '',
       title: payload.song?.title || payload.song?.fileName || '',
@@ -98,7 +110,24 @@ export const createHorizontalBrowseNativeTransport = () => {
       playbackRate: Number(payload.playbackRate) || 1,
       masterTempoEnabled: payload.masterTempoEnabled !== false
     })
+    finishTiming()
     applySnapshot(snapshot)
+    const deckSnapshot = snapshot?.[deck]
+    const signature = `${filePath}|${Boolean(deckSnapshot?.loaded)}|${Boolean(deckSnapshot?.decoding)}`
+    if (lastDeckTraceSignature.get(deck) !== signature) {
+      lastDeckTraceSignature.set(deck, signature)
+      sendHorizontalBrowseWaveformTrace('transport', 'set-deck-state', {
+        deck,
+        filePath,
+        waitedMs: Number((performance.now() - startedAt).toFixed(1)),
+        sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, filePath),
+        loaded: deckSnapshot?.loaded === true,
+        decoding: deckSnapshot?.decoding === true,
+        playing: deckSnapshot?.playing === true,
+        currentSec: Number(deckSnapshot?.currentSec) || 0,
+        durationSec: Number(deckSnapshot?.durationSec) || 0
+      })
+    }
     return snapshot
   }
 
@@ -163,23 +192,27 @@ export const createHorizontalBrowseNativeTransport = () => {
   }
 
   const setPlaying = async (deck: HorizontalBrowseDeckKey, playing: boolean) => {
+    const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:native:set-playing:${deck}`)
     const snapshot = await invoke(
       'horizontal-browse-transport:set-playing',
       deck,
       performance.now(),
       playing
     )
+    finishTiming()
     applySnapshot(snapshot)
     return snapshot
   }
 
   const seek = async (deck: HorizontalBrowseDeckKey, currentSec: number) => {
+    const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:native:seek:${deck}`)
     const snapshot = await invoke(
       'horizontal-browse-transport:seek',
       deck,
       performance.now(),
       currentSec
     )
+    finishTiming()
     applySnapshot(snapshot)
     return snapshot
   }
@@ -191,7 +224,9 @@ export const createHorizontalBrowseNativeTransport = () => {
   }
 
   const snapshot = async (nowMs?: number) => {
+    const finishTiming = startHorizontalBrowseUserTiming('frkb:hb:native:snapshot')
     const next = await invoke('horizontal-browse-transport:snapshot', nowMs)
+    finishTiming()
     applySnapshot(next)
     return next
   }

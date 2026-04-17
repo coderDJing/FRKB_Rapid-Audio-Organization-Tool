@@ -3,6 +3,7 @@ import { type ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stor
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
+import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import type { ISongInfo } from '../../../../../../types/globals'
 
 export type MoveSongsLibraryName = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
@@ -51,7 +52,11 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
       key: song?.key,
       originalKey: song?.key,
       bpm: song?.bpm,
-      originalBpm: song?.bpm
+      originalBpm: song?.bpm,
+      firstBeatMs: song?.firstBeatMs,
+      barBeatOffset: song?.barBeatOffset,
+      hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
+      memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
     }
   }
 
@@ -156,7 +161,7 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
       return
     }
 
-    await window.electron.ipcRenderer.invoke(
+    const movedPaths = (await window.electron.ipcRenderer.invoke(
       'moveSongsToDir',
       selectedPaths,
       libraryUtils.findDirPathByUuid(targetSongListUUID),
@@ -165,6 +170,12 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
           (filePath: string) => songMap.get(filePath)?.artist || ''
         )
       }
+    )) as string[]
+    await copySongCueDefinitionsToTargets(
+      movedPaths.map((targetFilePath, index) => ({
+        targetFilePath,
+        sourceSong: songMap.get(selectedPaths[index])
+      }))
     )
 
     // 不在此处直接修改 original 或 runtime.songsArea.songInfoArr，

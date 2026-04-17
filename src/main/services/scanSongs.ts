@@ -5,6 +5,8 @@ import { ISongInfo } from '../../types/globals'
 import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 import { readWavRiffInfoWindows } from './wavRiffInfo'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import { normalizeSongHotCues } from '../../shared/hotCues'
+import { normalizeSongMemoryCues } from '../../shared/memoryCues'
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
@@ -340,6 +342,21 @@ export async function scanSongList(
       }
       if (!hasBpm(info.bpm) && hasBpm(cached.bpm)) {
         info.bpm = cached.bpm as number
+      }
+      const cachedInfo = cacheMap.get(normalizePathKey(info.filePath))?.info
+      if (cachedInfo) {
+        if (!hasFirstBeatMs(info.firstBeatMs) && hasFirstBeatMs(cachedInfo.firstBeatMs)) {
+          info.firstBeatMs = cachedInfo.firstBeatMs
+        }
+        if (!hasBarBeatOffset(info.barBeatOffset) && hasBarBeatOffset(cachedInfo.barBeatOffset)) {
+          info.barBeatOffset = cachedInfo.barBeatOffset
+        }
+        if (!Array.isArray(info.hotCues) || info.hotCues.length === 0) {
+          info.hotCues = normalizeSongHotCues(cachedInfo.hotCues)
+        }
+        if (!Array.isArray(info.memoryCues) || info.memoryCues.length === 0) {
+          info.memoryCues = normalizeSongMemoryCues(cachedInfo.memoryCues)
+        }
       }
     }
   }

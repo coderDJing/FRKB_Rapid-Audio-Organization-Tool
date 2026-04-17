@@ -38,6 +38,18 @@ use symphonia::core::meta::{Limit, MetadataOptions};
 use symphonia::core::probe::Hint;
 use symphonia::default::get_probe;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+#[cfg(windows)]
+fn configure_hidden_process(command: &mut Command) {
+  use std::os::windows::process::CommandExt;
+  command.creation_flags(CREATE_NO_WINDOW);
+}
+
+#[cfg(not(windows))]
+fn configure_hidden_process(_command: &mut Command) {}
+
 // 哈希
 use bytemuck::{cast_slice, try_cast_slice};
 use hex;
@@ -52,6 +64,8 @@ extern crate napi_derive;
 mod analysis_utils;
 mod horizontal_browse_transport;
 mod mixxx_waveform;
+mod pioneer_anlz_raw;
+mod pioneer_cues;
 mod qm_bpm;
 mod qm_key;
 mod soundtouch_native;
@@ -59,7 +73,7 @@ mod soundtouch_native;
 use crate::analysis_utils::{calc_frames_to_process, to_stereo, K_ANALYSIS_FRAMES_PER_CHUNK};
 pub use crate::horizontal_browse_transport::*;
 use crate::mixxx_waveform::MixxxWaveformData;
-use rekordcrate::anlz::{Content as RekordcrateAnlzContent, ANLZ};
+pub use crate::pioneer_cues::*;
 use rekordcrate::pdb::{
   Header as RekordcrateHeader, PlaylistTreeNode, PlaylistTreeNodeId, Row as RekordcrateRow,
 };
@@ -1286,54 +1300,71 @@ fn build_pioneer_rgb_waveform_column(
 fn read_pioneer_preview_waveform_from_file(
   preview_path: &Path,
 ) -> StdResult<(String, Vec<PioneerPreviewWaveformColumn>, u32), String> {
-  let mut reader =
-    File::open(preview_path).map_err(|error| format!("open preview file failed: {error}"))?;
-  let anlz =
-    ANLZ::read(&mut reader).map_err(|error| format!("parse preview file failed: {error}"))?;
-
+  let sections = pioneer_anlz_raw::read_pioneer_anlz_sections(preview_path)
+    .map_err(|error| format!("parse preview file failed: {error}"))?;
   let mut blue_columns: Option<Vec<PioneerPreviewWaveformColumn>> = None;
 
-  for section in anlz.sections {
-    match section.content {
-      RekordcrateAnlzContent::WaveformColorPreview(preview) => {
-        let mut columns = Vec::with_capacity(preview.data.len());
-        let mut max_height = 0u32;
-        for entry in preview.data {
-          let column = build_pioneer_rgb_waveform_column(
-            entry.energy_bottom_third_freq,
-            entry.energy_mid_third_freq,
-            entry.energy_top_third_freq,
-          );
-          max_height = max_height.max(u32::from(column.back_height));
-          columns.push(column);
-        }
-        return Ok(("rgb".to_string(), columns, max_height));
+  for section in sections {
+    if pioneer_anlz_raw::section_kind_eq(&section, b"PWV4") {
+      if section.header_data.len() < 12 {
+        continue;
       }
-      RekordcrateAnlzContent::WaveformPreview(preview) => {
-        if blue_columns.is_none() {
-          let mut columns = Vec::with_capacity(preview.data.len());
-          for entry in preview.data {
-            columns.push(build_pioneer_blue_waveform_column(
-              entry.height(),
-              entry.whiteness() >= 5,
-            ));
-          }
-          blue_columns = Some(columns);
-        }
+      let entry_size = pioneer_anlz_raw::read_be_u32(&section.header_data[0..4])?;
+      let len_entries = pioneer_anlz_raw::read_be_u32(&section.header_data[4..8])?;
+      if entry_size != 6 {
+        continue;
       }
-      RekordcrateAnlzContent::TinyWaveformPreview(preview) => {
-        if blue_columns.is_none() {
-          let mut columns = Vec::with_capacity(preview.data.len());
-          for entry in preview.data {
-            columns.push(build_pioneer_blue_waveform_column(
-              entry.height().saturating_mul(2),
-              false,
-            ));
-          }
-          blue_columns = Some(columns);
-        }
+      let required_size = usize::try_from(entry_size.saturating_mul(len_entries))
+        .map_err(|_| "preview waveform size overflow".to_string())?;
+      if section.content.len() < required_size {
+        continue;
       }
-      _ => {}
+      let mut columns = Vec::with_capacity(len_entries as usize);
+      let mut max_height = 0u32;
+      for chunk in section.content[..required_size].chunks_exact(6) {
+        let column = build_pioneer_rgb_waveform_column(chunk[3], chunk[4], chunk[5]);
+        max_height = max_height.max(u32::from(column.back_height));
+        columns.push(column);
+      }
+      return Ok(("rgb".to_string(), columns, max_height));
+    }
+    if pioneer_anlz_raw::section_kind_eq(&section, b"PWAV") {
+      if section.header_data.len() < 4 {
+        continue;
+      }
+      let len_preview = pioneer_anlz_raw::read_be_u32(&section.header_data[0..4])?;
+      let preview_len =
+        usize::try_from(len_preview).map_err(|_| "preview waveform length overflow".to_string())?;
+      if section.content.len() < preview_len {
+        continue;
+      }
+      if blue_columns.is_none() {
+        let mut columns = Vec::with_capacity(preview_len);
+        for entry in &section.content[..preview_len] {
+          columns.push(build_pioneer_blue_waveform_column(entry >> 3, (entry & 0x07) >= 5));
+        }
+        blue_columns = Some(columns);
+      }
+      continue;
+    }
+    if pioneer_anlz_raw::section_kind_eq(&section, b"PWV2") {
+      if section.header_data.len() < 4 {
+        continue;
+      }
+      let len_preview = pioneer_anlz_raw::read_be_u32(&section.header_data[0..4])?;
+      let preview_len =
+        usize::try_from(len_preview).map_err(|_| "tiny preview length overflow".to_string())?;
+      if section.content.len() < preview_len {
+        continue;
+      }
+      if blue_columns.is_none() {
+        let mut columns = Vec::with_capacity(preview_len);
+        for entry in &section.content[..preview_len] {
+          columns.push(build_pioneer_blue_waveform_column((entry & 0x0F).saturating_mul(2), false));
+        }
+        blue_columns = Some(columns);
+      }
+      continue;
     }
   }
 
@@ -1769,20 +1800,38 @@ fn decode_with_ffmpeg(path: &Path) -> StdResult<DecodeAudioResult, String> {
   })
 }
 
-struct FfmpegPcmData {
-  samples_i16: Vec<i16>,
-  sample_rate: u32,
-  channels: u16,
-  total_frames: u64,
+pub(crate) struct FfmpegPcmData {
+  pub(crate) samples_i16: Vec<i16>,
+  pub(crate) sample_rate: u32,
+  pub(crate) channels: u16,
+  pub(crate) total_frames: u64,
 }
 
 fn ffmpeg_decode_to_i16(path: &Path) -> StdResult<FfmpegPcmData, String> {
+  ffmpeg_decode_to_i16_with_window(path, None, None)
+}
+
+pub(crate) fn ffmpeg_decode_to_i16_with_window(
+  path: &Path,
+  start_sec: Option<f64>,
+  max_duration_sec: Option<f64>,
+) -> StdResult<FfmpegPcmData, String> {
   let ffmpeg_path = get_ffmpeg_path()?;
-  let output = Command::new(ffmpeg_path)
-    .arg("-v")
-    .arg("error")
-    .arg("-i")
-    .arg(path)
+  let mut command = Command::new(ffmpeg_path);
+  configure_hidden_process(&mut command);
+  command.arg("-v").arg("error");
+  if let Some(start_at) = start_sec {
+    if start_at.is_finite() && start_at > 0.0 {
+      command.arg("-ss").arg(format!("{start_at:.3}"));
+    }
+  }
+  command.arg("-i").arg(path);
+  if let Some(max_duration) = max_duration_sec {
+    if max_duration.is_finite() && max_duration > 0.0 {
+      command.arg("-t").arg(format!("{max_duration:.3}"));
+    }
+  }
+  let output = command
     .arg("-f")
     .arg("wav")
     .arg("-acodec")

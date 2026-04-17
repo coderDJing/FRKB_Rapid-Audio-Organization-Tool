@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import type { IPioneerPreviewWaveformData, ISongInfo } from 'src/types/globals'
+import type {
+  IPioneerPreviewWaveformData,
+  ISongHotCue,
+  ISongInfo,
+  ISongMemoryCue
+} from 'src/types/globals'
+import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
+import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
 import { isSameHorizontalBrowseSongFilePath } from '@renderer/components/horizontalBrowseShellSongs'
 import {
   getRekordboxPreviewWaveformRequestChannel,
@@ -17,6 +24,9 @@ const props = defineProps<{
   song: ISongInfo | null
   currentSeconds?: number
   durationSeconds?: number
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
+  markerAnchor?: 'top' | 'bottom'
   loopRange?: { startSec: number; endSec: number } | null
 }>()
 
@@ -700,6 +710,20 @@ onUnmounted(() => {
     @pointerdown.stop="handlePointerDown"
   >
     <canvas ref="canvasRef" class="overview-waveform__canvas"></canvas>
+    <MemoryCueMarkersLayer
+      :memory-cues="props.memoryCues || []"
+      :visible-duration-sec="totalSeconds"
+      show-loop-range
+      :anchor="props.markerAnchor || 'top'"
+      size="compact"
+    />
+    <HotCueMarkersLayer
+      :hot-cues="props.hotCues || []"
+      :visible-duration-sec="totalSeconds"
+      show-loop-range
+      :anchor="props.markerAnchor || 'top'"
+      size="compact"
+    />
     <div v-if="loopMaskStyle" class="overview-waveform__loop-mask" :style="loopMaskStyle"></div>
     <div
       v-if="playheadLeft !== null"

@@ -26,6 +26,10 @@ const props = defineProps({
   showTapButton: {
     type: Boolean,
     default: true
+  },
+  showMemoryButton: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -38,6 +42,7 @@ const emit = defineEmits<{
   (event: 'update-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
   (event: 'tap-bpm'): void
+  (event: 'memory-cue'): void
 }>()
 
 type ShiftEventName =
@@ -257,106 +262,121 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="grid-adjust-toolbar">
+    <div class="grid-adjust-toolbar__group grid-adjust-toolbar__group--icons">
+      <button
+        class="grid-adjust-icon-btn"
+        type="button"
+        :disabled="disabled"
+        :title="t('mixtape.gridAdjustShiftLeftLarge')"
+        :aria-label="t('mixtape.gridAdjustShiftLeftLarge')"
+        @click="handleShiftClick('shift-left-large')"
+        @pointerdown="handleShiftPointerDown('shift-left-large')"
+        @pointerup="handleShiftPointerEnd"
+        @pointercancel="handleShiftPointerEnd"
+        @pointerleave="handleShiftPointerEnd"
+        @lostpointercapture="handleShiftPointerEnd"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M11.5 3.5 7.8 8l3.7 4.5"></path>
+          <path d="M8.1 3.5 4.4 8l3.7 4.5"></path>
+        </svg>
+      </button>
+      <button
+        class="grid-adjust-icon-btn"
+        type="button"
+        :disabled="disabled"
+        :title="t('mixtape.gridAdjustShiftLeftSmall')"
+        :aria-label="t('mixtape.gridAdjustShiftLeftSmall')"
+        @click="handleShiftClick('shift-left-small')"
+        @pointerdown="handleShiftPointerDown('shift-left-small')"
+        @pointerup="handleShiftPointerEnd"
+        @pointercancel="handleShiftPointerEnd"
+        @pointerleave="handleShiftPointerEnd"
+        @lostpointercapture="handleShiftPointerEnd"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M10.5 3.5 6 8l4.5 4.5"></path>
+        </svg>
+      </button>
+      <button
+        class="grid-adjust-icon-btn"
+        type="button"
+        :disabled="disabled"
+        :title="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
+        :aria-label="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
+        @click="emit('set-bar-line')"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M3 2v12"></path>
+          <path d="M8 1v14"></path>
+          <path d="M13 2v12"></path>
+        </svg>
+      </button>
+      <button
+        class="grid-adjust-icon-btn"
+        type="button"
+        :disabled="disabled"
+        :title="t('mixtape.gridAdjustShiftRightSmall')"
+        :aria-label="t('mixtape.gridAdjustShiftRightSmall')"
+        @click="handleShiftClick('shift-right-small')"
+        @pointerdown="handleShiftPointerDown('shift-right-small')"
+        @pointerup="handleShiftPointerEnd"
+        @pointercancel="handleShiftPointerEnd"
+        @pointerleave="handleShiftPointerEnd"
+        @lostpointercapture="handleShiftPointerEnd"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
+        </svg>
+      </button>
+      <button
+        class="grid-adjust-icon-btn"
+        type="button"
+        :disabled="disabled"
+        :title="t('mixtape.gridAdjustShiftRightLarge')"
+        :aria-label="t('mixtape.gridAdjustShiftRightLarge')"
+        @click="handleShiftClick('shift-right-large')"
+        @pointerdown="handleShiftPointerDown('shift-right-large')"
+        @pointerup="handleShiftPointerEnd"
+        @pointercancel="handleShiftPointerEnd"
+        @pointerleave="handleShiftPointerEnd"
+        @lostpointercapture="handleShiftPointerEnd"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="m4.5 3.5 3.7 4.5-3.7 4.5"></path>
+          <path d="m7.9 3.5 3.7 4.5-3.7 4.5"></path>
+        </svg>
+      </button>
+    </div>
     <button
-      class="grid-adjust-icon-btn"
+      v-if="showMemoryButton"
+      class="grid-adjust-memory-btn"
       type="button"
       :disabled="disabled"
-      :title="t('mixtape.gridAdjustShiftLeftLarge')"
-      :aria-label="t('mixtape.gridAdjustShiftLeftLarge')"
-      @click="handleShiftClick('shift-left-large')"
-      @pointerdown="handleShiftPointerDown('shift-left-large')"
-      @pointerup="handleShiftPointerEnd"
-      @pointercancel="handleShiftPointerEnd"
-      @pointerleave="handleShiftPointerEnd"
-      @lostpointercapture="handleShiftPointerEnd"
+      title="Memory Cue"
+      aria-label="Memory Cue"
+      @click="emit('memory-cue')"
     >
-      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="M11.5 3.5 7.8 8l3.7 4.5"></path>
-        <path d="M8.1 3.5 4.4 8l3.7 4.5"></path>
-      </svg>
+      MEMORY
     </button>
-    <button
-      class="grid-adjust-icon-btn"
-      type="button"
-      :disabled="disabled"
-      :title="t('mixtape.gridAdjustShiftLeftSmall')"
-      :aria-label="t('mixtape.gridAdjustShiftLeftSmall')"
-      @click="handleShiftClick('shift-left-small')"
-      @pointerdown="handleShiftPointerDown('shift-left-small')"
-      @pointerup="handleShiftPointerEnd"
-      @pointercancel="handleShiftPointerEnd"
-      @pointerleave="handleShiftPointerEnd"
-      @lostpointercapture="handleShiftPointerEnd"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="M10.5 3.5 6 8l4.5 4.5"></path>
-      </svg>
-    </button>
-    <button
-      class="grid-adjust-icon-btn"
-      type="button"
-      :disabled="disabled"
-      :title="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
-      :aria-label="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
-      @click="emit('set-bar-line')"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="M3 2v12"></path>
-        <path d="M8 1v14"></path>
-        <path d="M13 2v12"></path>
-      </svg>
-    </button>
-    <button
-      class="grid-adjust-icon-btn"
-      type="button"
-      :disabled="disabled"
-      :title="t('mixtape.gridAdjustShiftRightSmall')"
-      :aria-label="t('mixtape.gridAdjustShiftRightSmall')"
-      @click="handleShiftClick('shift-right-small')"
-      @pointerdown="handleShiftPointerDown('shift-right-small')"
-      @pointerup="handleShiftPointerEnd"
-      @pointercancel="handleShiftPointerEnd"
-      @pointerleave="handleShiftPointerEnd"
-      @lostpointercapture="handleShiftPointerEnd"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
-      </svg>
-    </button>
-    <button
-      class="grid-adjust-icon-btn"
-      type="button"
-      :disabled="disabled"
-      :title="t('mixtape.gridAdjustShiftRightLarge')"
-      :aria-label="t('mixtape.gridAdjustShiftRightLarge')"
-      @click="handleShiftClick('shift-right-large')"
-      @pointerdown="handleShiftPointerDown('shift-right-large')"
-      @pointerup="handleShiftPointerEnd"
-      @pointercancel="handleShiftPointerEnd"
-      @pointerleave="handleShiftPointerEnd"
-      @lostpointercapture="handleShiftPointerEnd"
-    >
-      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-        <path d="m4.5 3.5 3.7 4.5-3.7 4.5"></path>
-        <path d="m7.9 3.5 3.7 4.5-3.7 4.5"></path>
-      </svg>
-    </button>
-    <input
-      class="grid-adjust-bpm-input"
-      type="number"
-      inputmode="decimal"
-      :step="bpmStep"
-      :min="bpmMin"
-      :max="bpmMax"
-      :disabled="disabled"
-      :value="bpmInputValue"
-      :title="t('mixtape.bpm')"
-      :aria-label="t('mixtape.bpm')"
-      @pointerdown="handleBpmPointerDown"
-      @input="handleBpmInput"
-      @blur="emit('blur-bpm-input')"
-      @keydown.enter.prevent="handleBpmInputEnter"
-    />
+    <div class="grid-adjust-toolbar__group grid-adjust-toolbar__group--input">
+      <input
+        class="grid-adjust-bpm-input"
+        type="number"
+        inputmode="decimal"
+        :step="bpmStep"
+        :min="bpmMin"
+        :max="bpmMax"
+        :disabled="disabled"
+        :value="bpmInputValue"
+        :title="t('mixtape.bpm')"
+        :aria-label="t('mixtape.bpm')"
+        @pointerdown="handleBpmPointerDown"
+        @input="handleBpmInput"
+        @blur="emit('blur-bpm-input')"
+        @keydown.enter.prevent="handleBpmInputEnter"
+      />
+    </div>
     <button
       v-if="showTapButton"
       class="grid-adjust-tap-btn"
@@ -376,25 +396,49 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
-  height: 24px;
+  gap: 12px;
+  height: 22px;
   padding: 0;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
+.grid-adjust-toolbar__group {
+  display: flex;
+  align-items: center;
+}
+
+.grid-adjust-toolbar__group--icons {
+  gap: 6px;
+}
+
 .grid-adjust-icon-btn {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-elev);
   color: var(--text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
+}
+
+.grid-adjust-memory-btn {
+  height: 22px;
+  min-width: 58px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+  box-sizing: border-box;
   cursor: pointer;
 }
 
@@ -425,7 +469,17 @@ onBeforeUnmount(() => {
   background: var(--hover);
 }
 
+.grid-adjust-memory-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
 .grid-adjust-icon-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.grid-adjust-memory-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -434,14 +488,14 @@ onBeforeUnmount(() => {
   appearance: textfield;
   -moz-appearance: textfield;
   width: 62px;
-  height: 24px;
+  height: 22px;
   padding: 0 6px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-elev);
   color: var(--text);
-  font-size: 12px;
-  line-height: 24px;
+  font-size: 11px;
+  line-height: 20px;
   text-align: center;
 }
 
@@ -470,15 +524,15 @@ onBeforeUnmount(() => {
 }
 
 .grid-adjust-tap-btn {
-  height: 24px;
+  height: 22px;
   min-width: 36px;
   padding: 0 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 3px;
   background: var(--bg-elev);
   color: var(--text);
-  font-size: 12px;
-  line-height: 22px;
+  font-size: 11px;
+  line-height: 20px;
   cursor: pointer;
 }
 

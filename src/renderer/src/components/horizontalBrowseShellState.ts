@@ -61,6 +61,10 @@ export const buildHorizontalBrowseDeckToolbarState = (
     bpmMin: number
     bpmMax: number
     barLinePicking: boolean
+    metronomeEnabled: boolean
+    metronomeVolumeLevel: 1 | 2 | 3
+    canToggleMetronome: boolean
+    canAdjustMetronomeVolume: boolean
   },
   bpmInputValue: string,
   loopState?: {
@@ -75,6 +79,10 @@ export const buildHorizontalBrowseDeckToolbarState = (
   bpmMin: toolbarState.bpmMin,
   bpmMax: toolbarState.bpmMax,
   barLinePicking: toolbarState.barLinePicking,
+  metronomeEnabled: toolbarState.metronomeEnabled,
+  metronomeVolumeLevel: toolbarState.metronomeVolumeLevel,
+  canToggleMetronome: toolbarState.canToggleMetronome,
+  canAdjustMetronomeVolume: toolbarState.canAdjustMetronomeVolume,
   loopBeatLabel: loopState?.loopBeatLabel || '8',
   loopActive: loopState?.loopActive === true,
   loopDisabled: loopState?.loopDisabled === true

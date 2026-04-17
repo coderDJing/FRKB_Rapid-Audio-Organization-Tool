@@ -6,6 +6,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
+import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 
 export type HorizontalBrowseDeckMoveTargetLibrary =
   | 'CuratedLibrary'
@@ -54,6 +55,8 @@ const buildSongSnapshot = (filePath: string, song?: ISongInfo | null): ISongInfo
     bpm: song?.bpm,
     firstBeatMs: song?.firstBeatMs,
     barBeatOffset: song?.barBeatOffset,
+    hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
+    memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : [],
     mixOrder: song?.mixOrder,
     mixtapeItemId: song?.mixtapeItemId,
     analysisOnly: false,
@@ -226,6 +229,12 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
       if (!nextFilePath) {
         throw new Error('deck move returned empty target path')
       }
+      await copySongCueDefinitionsToTargets([
+        {
+          targetFilePath: nextFilePath,
+          sourceSong: song
+        }
+      ])
 
       setDeckSong(deck, buildMovedDeckSong(song, nextFilePath))
 

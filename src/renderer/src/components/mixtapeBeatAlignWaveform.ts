@@ -309,13 +309,20 @@ const resolveRawFftScratch = (size: number) => {
 }
 
 const resolveRawMonoSamples = (rawData: RawWaveformData) => {
+  const loadedFrames = Math.max(
+    0,
+    Math.min(
+      Math.floor(Number(rawData.loadedFrames ?? rawData.frames) || 0),
+      Math.floor(Number(rawData.frames) || 0)
+    )
+  )
   const cached = rawMonoSampleCache.get(rawData)
-  if (cached && cached.length === rawData.frames) return cached
+  if (cached && cached.length === loadedFrames) return cached
 
   const frames = Math.max(
     0,
     Math.min(
-      Math.floor(Number(rawData.frames) || 0),
+      loadedFrames,
       rawData.minLeft.length,
       rawData.maxLeft.length,
       rawData.minRight.length,
@@ -477,7 +484,15 @@ const buildWaveformColumns = (
 
   const columns: WaveformColumn[] = new Array(width)
   const hasRaw = isValidRawWaveformData(rawData)
-  const rawFrames = hasRaw ? Math.max(1, Math.floor(rawData.frames)) : 0
+  const rawFrames = hasRaw
+    ? Math.max(
+        1,
+        Math.min(
+          Math.floor(Number(rawData.loadedFrames ?? rawData.frames) || 0),
+          Math.floor(Number(rawData.frames) || 0)
+        )
+      )
+    : 0
   const rawRate = hasRaw ? Number(rawData.rate) : 0
 
   for (let x = 0; x < width; x += 1) {
@@ -512,7 +527,7 @@ const buildWaveformColumns = (
         : 1
 
     if (hasRaw && rawData && rawFrames > 0 && rawRate > 0) {
-      const rawDuration = Number(rawData.duration)
+      const rawDuration = rawFrames / rawRate
       const safeRawDuration =
         Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : duration
       const rawStartTime = clamp(startTime, 0, safeRawDuration)

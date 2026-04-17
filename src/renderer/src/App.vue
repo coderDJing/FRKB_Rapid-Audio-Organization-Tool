@@ -96,6 +96,7 @@ const mainWindowTopGapStyle = computed(() => ({
   zIndex: 'var(--z-app-toolbar)'
 }))
 const horizontalModeShellStyle = computed(() => ({
+  '--horizontal-browse-shell-height': `${horizontalModeShellHeight}px`,
   height: `${horizontalModeShellHeight}px`,
   flex: `0 0 ${horizontalModeShellHeight}px`,
   backgroundColor: 'var(--bg)',

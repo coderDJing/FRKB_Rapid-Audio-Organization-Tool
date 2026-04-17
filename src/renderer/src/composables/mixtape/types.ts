@@ -174,6 +174,7 @@ export type RawWaveformData = {
   sampleRate: number
   rate: number
   frames: number
+  loadedFrames?: number
   minLeft: Float32Array
   maxLeft: Float32Array
   minRight: Float32Array

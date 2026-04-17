@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import BeatGridMetronomeControls from '@renderer/components/BeatGridMetronomeControls.vue'
 import { t } from '@renderer/utils/translate'
 
 const props = defineProps({
@@ -51,12 +52,6 @@ const emit = defineEmits<{
   (event: 'toggle-metronome'): void
   (event: 'cycle-metronome-volume'): void
 }>()
-
-const resolveMetronomeTitle = () =>
-  props.metronomeEnabled ? t('mixtape.metronomeOn') : t('mixtape.metronomeOff')
-
-const resolveMetronomeVolumeTitle = () =>
-  t('mixtape.metronomeVolumeLevel', { level: props.metronomeVolumeLevel })
 </script>
 
 <template>
@@ -124,32 +119,14 @@ const resolveMetronomeVolumeTitle = () =>
             : t('mixtape.gridAdjustSetBarLine')
         }}
       </button>
-      <button
-        class="waveform-action-btn"
-        type="button"
-        :class="{ 'is-active': metronomeEnabled }"
-        :disabled="!canToggleMetronome"
-        :title="resolveMetronomeTitle()"
-        :aria-label="resolveMetronomeTitle()"
-        @click="emit('toggle-metronome')"
-      >
-        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-          <path d="M4.5 2h7l-1.2 11h-4.6L4.5 2Z"></path>
-          <path d="M8 5.3v3.8"></path>
-          <circle cx="8" cy="10.9" r="1.1"></circle>
-        </svg>
-        <span>{{ t('mixtape.metronome') }}</span>
-      </button>
-      <button
-        class="metronome-volume-btn"
-        type="button"
-        :disabled="!canAdjustMetronomeVolume"
-        :title="resolveMetronomeVolumeTitle()"
-        :aria-label="resolveMetronomeVolumeTitle()"
-        @click="emit('cycle-metronome-volume')"
-      >
-        {{ metronomeVolumeLevel }}/3
-      </button>
+      <BeatGridMetronomeControls
+        :metronome-enabled="metronomeEnabled"
+        :metronome-volume-level="metronomeVolumeLevel"
+        :can-toggle-metronome="canToggleMetronome"
+        :can-adjust-metronome-volume="canAdjustMetronomeVolume"
+        @toggle-metronome="emit('toggle-metronome')"
+        @cycle-metronome-volume="emit('cycle-metronome-volume')"
+      />
     </div>
   </div>
 </template>
@@ -183,16 +160,12 @@ const resolveMetronomeVolumeTitle = () =>
 }
 
 .playback-icon-btn:focus,
-.barline-btn:focus,
-.waveform-action-btn:focus,
-.metronome-volume-btn:focus {
+.barline-btn:focus {
   outline: none;
 }
 
 .playback-icon-btn:focus-visible,
-.barline-btn:focus-visible,
-.waveform-action-btn:focus-visible,
-.metronome-volume-btn:focus-visible {
+.barline-btn:focus-visible {
   outline: none;
   box-shadow: none;
 }
@@ -256,75 +229,5 @@ const resolveMetronomeVolumeTitle = () =>
   border-color: rgba(145, 205, 255, 0.95);
   box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
   background: rgba(145, 205, 255, 0.12);
-}
-
-.waveform-action-btn {
-  height: 24px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-elev);
-  color: var(--text);
-  font-size: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.waveform-action-btn svg {
-  width: 14px;
-  height: 14px;
-  display: block;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.waveform-action-btn svg path:first-child {
-  fill: currentColor;
-  stroke: none;
-  opacity: 0.18;
-}
-
-.waveform-action-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--hover);
-}
-
-.waveform-action-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.waveform-action-btn.is-active {
-  border-color: rgba(145, 205, 255, 0.95);
-  box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
-  background: rgba(145, 205, 255, 0.12);
-}
-
-.metronome-volume-btn {
-  height: 24px;
-  min-width: 42px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-elev);
-  color: var(--text);
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.metronome-volume-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--hover);
-}
-
-.metronome-volume-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 </style>

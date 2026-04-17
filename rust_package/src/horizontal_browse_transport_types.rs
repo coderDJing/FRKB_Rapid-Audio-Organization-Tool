@@ -81,6 +81,9 @@ pub(super) struct DecodeRequest {
   pub(super) deck: DeckId,
   pub(super) file_path: String,
   pub(super) request_id: u64,
+  pub(super) start_sec: f64,
+  pub(super) max_duration_sec: Option<f64>,
+  pub(super) is_full_decode: bool,
 }
 
 #[derive(Clone, Copy)]
