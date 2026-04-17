@@ -22,10 +22,10 @@ const modeKeyByTarget = {
 } as const
 const BAR_COUNT = 15
 const LINE_SAMPLE_COUNT = 44
-const MIN_BAR_RATIO = 0.2
+const MIN_BAR_RATIO = 0.12
 const FRAME_INTERVAL_MS = 1000 / 60
-const BAR_RISE_BASE = 0.24
-const BAR_FALL_BASE = 0.065
+const BAR_RISE_BASE = 0.18
+const BAR_FALL_BASE = 0.08
 const LINE_RISE_FACTOR = 0.52
 const LINE_FALL_FACTOR = 0.3
 
@@ -35,6 +35,8 @@ let frequencyData = new Uint8Array(0)
 let timeDomainData = new Uint8Array(0)
 let barLevels: number[] = Array.from({ length: BAR_COUNT }, () => MIN_BAR_RATIO)
 let lineLevels: number[] = Array.from({ length: LINE_SAMPLE_COUNT }, () => 0)
+
+const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
 
 const visible = computed(() => runtime.setting.showTitleAudioVisualizer !== false)
 
@@ -118,7 +120,7 @@ const drawBars = (
   const barWidth = Math.max(1, (width - gap * (BAR_COUNT - 1)) / BAR_COUNT)
   const bottom = height
   for (let barIndex = 0; barIndex < BAR_COUNT; barIndex += 1) {
-    const start = Math.floor((barIndex * frequencyData.length) / BAR_COUNT)
+    const start = Math.max(1, Math.floor((barIndex * frequencyData.length) / BAR_COUNT))
     const end = Math.max(start + 1, Math.floor(((barIndex + 1) * frequencyData.length) / BAR_COUNT))
     let sum = 0
     let peak = 0
@@ -130,15 +132,16 @@ const drawBars = (
     const average = sum / Math.max(1, end - start)
     const normalizedAverage = average / 255
     const normalizedPeak = peak / 255
-    const boostedAverage = Math.pow(normalizedAverage, 0.32) * Math.min(2.9, energyBoost * 1.34)
-    const boostedPeak = Math.pow(normalizedPeak, 0.2) * Math.min(3.9, energyBoost * 1.72)
-    const boosted = Math.min(1.08, Math.max(boostedAverage * 0.88, boostedPeak))
-    const target = active ? MIN_BAR_RATIO + Math.min(0.9, boosted * 0.94) : MIN_BAR_RATIO
+    const transientBlend = normalizedAverage * 0.82 + normalizedPeak * 0.18
+    const response = Math.pow(clamp01(transientBlend), 0.68)
+    const lowBandCompensation = 0.76 + (barIndex / Math.max(1, BAR_COUNT - 1)) * 0.38
+    const boosted = clamp01(response * Math.min(1.65, energyBoost * 0.96) * lowBandCompensation)
+    const target = active ? MIN_BAR_RATIO + boosted * (1 - MIN_BAR_RATIO) : MIN_BAR_RATIO
     const current = barLevels[barIndex] ?? MIN_BAR_RATIO
     const nextLevel =
       target >= current
-        ? Math.min(target, current + BAR_RISE_BASE + (target - current) * 1.05)
-        : Math.max(target, current - (BAR_FALL_BASE + current * 0.16))
+        ? Math.min(target, current + BAR_RISE_BASE + (target - current) * 0.55)
+        : Math.max(target, current - (BAR_FALL_BASE + current * 0.12))
     barLevels[barIndex] = nextLevel
     const barHeight = Math.max(height * MIN_BAR_RATIO, height * nextLevel)
     const x = barIndex * (barWidth + gap)
