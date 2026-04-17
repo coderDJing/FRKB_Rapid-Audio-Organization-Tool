@@ -27,6 +27,7 @@ import {
   type TransportEntry,
   type TransportStemId
 } from '@renderer/composables/mixtape/timelineTransportAudioData'
+import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeMixMode,
@@ -456,6 +457,27 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     return clampNumber(playheadSec.value, minStartSec, total)
   }
 
+  const resolveEntryPlaybackOffsetSourceSec = (
+    entry: TransportEntry,
+    sectionTimelineOffsetSec: number
+  ) => {
+    const localStartSec = Math.max(0, Number(entry.localStartSec) || 0)
+    const sectionOffsetSec = clampNumber(
+      Number(sectionTimelineOffsetSec) || 0,
+      0,
+      Math.max(0, Number(entry.duration) || 0)
+    )
+    const timeMap = createTrackTimeMapFromSnapshotPayload(entry.tempoSnapshot)
+    const sourceOffsetSec = Math.max(0, Number(entry.sourceOffsetSec) || 0)
+    const sourceSegmentDuration = Math.max(0, Number(entry.sourceSegmentDuration) || 0)
+    const sourceLocalSec = timeMap.mapLocalToSource(localStartSec + sectionOffsetSec)
+    return clampNumber(
+      Number(sourceLocalSec) || sourceOffsetSec,
+      sourceOffsetSec,
+      Math.max(sourceOffsetSec, sourceOffsetSec + sourceSegmentDuration)
+    )
+  }
+
   const resolveRulerSeekSec = (event: MouseEvent) => {
     const target = event.currentTarget as HTMLElement | null
     if (!target) return resolveTransportRestartSec()
@@ -737,7 +759,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       if (entryEnd <= startSec) continue
       const delaySec = Math.max(0, entry.startSec - startSec)
       const offsetTimelineSec = Math.max(0, startSec - entry.startSec)
-      const offsetSourceSec = offsetTimelineSec * entry.tempoRatio
+      const offsetSourceSec = resolveEntryPlaybackOffsetSourceSec(entry, offsetTimelineSec)
       startTransportTrackGraphNode({
         entry,
         offsetSourceSec,

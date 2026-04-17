@@ -7,6 +7,7 @@ import TitleBarAudioVisualizer from '@renderer/components/TitleBarAudioVisualize
 import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
 import MixtapeEnvelopePreviewTrack from '@renderer/components/mixtape/MixtapeEnvelopePreviewTrack.vue'
 import MixtapeGlobalBpmEditor from '@renderer/components/mixtape/MixtapeGlobalBpmEditor.vue'
+import MixtapeTrackLoopOverlay from '@renderer/components/mixtape/MixtapeTrackLoopOverlay.vue'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useMixtape } from '@renderer/composables/useMixtape'
 import { createMixtapeGainEnvelopeEditor } from '@renderer/composables/mixtape/useGainEnvelopeEditor'
@@ -17,6 +18,7 @@ import { useMixtapeMasterTempoLane } from '@renderer/composables/mixtape/useMixt
 import { useMixtapeOutputAvailability } from '@renderer/composables/mixtape/useMixtapeOutputAvailability'
 import { useMixtapeShellUi } from '@renderer/composables/mixtape/useMixtapeShellUi'
 import { useMixtapeStemPlaceholderState } from '@renderer/composables/mixtape/useMixtapeStemPlaceholderState'
+import { useMixtapeTrackLoopEditor } from '@renderer/composables/mixtape/useMixtapeTrackLoopEditor'
 import { useMixtapeTrackDragUndo } from '@renderer/composables/mixtape/useMixtapeTrackDragUndo'
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
@@ -205,6 +207,7 @@ const {
   envelopePreviewLineKeys,
   isEnvelopeParamMode,
   isGainParamMode,
+  isLoopParamMode,
   isSegmentSelectionActive,
   isSegmentSelectionSupported,
   isStemMixMode,
@@ -219,6 +222,30 @@ const {
 } = useMixtapeMixParamUi({
   mixtapeMixMode,
   t
+})
+
+const {
+  resolveTrackLoopOverlay,
+  resolveOverviewTrackLoopBlocks,
+  resolveTrackLoopTrackUiState,
+  handleTrackLoopGridLineClick,
+  handleTrackLoopSelectLoop,
+  handleTrackLoopTrackMouseDown,
+  handleTrackLoopRepeatStep,
+  handleRemoveTrackLoop
+} = useMixtapeTrackLoopEditor({
+  t,
+  tracks,
+  mixtapePlaylistId,
+  renderZoomLevel,
+  isLoopParamMode,
+  resolveTrackDurationSeconds,
+  resolveTrackSourceDurationSeconds,
+  clearTimelineLayoutCache,
+  updateTimelineWidth,
+  scheduleTimelineDraw,
+  scheduleFullPreRender,
+  scheduleWorkerPreRender
 })
 
 const {
@@ -349,8 +376,17 @@ const trackDragUndoMouseDown = useMixtapeTrackDragUndo({
 })
 
 const handleLaneTrackMouseDown = (item: TimelineTrackLayout, event: MouseEvent) => {
+  if (isLoopParamMode.value) {
+    handleTrackLoopTrackMouseDown(item, event)
+    return
+  }
   if (!isTrackPositionMode.value) return
   trackDragUndoMouseDown(item, event)
+}
+
+const handleLaneTrackMouseDownCapture = (item: TimelineTrackLayout, event: MouseEvent) => {
+  if (!isLoopParamMode.value) return
+  handleTrackLoopTrackMouseDown(item, event)
 }
 
 const handleUndoMixParam = () => undoLastMixParamChange()
@@ -413,6 +449,7 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
                 { 'is-active': selectedMixParam === item.id }
               ]"
               type="button"
+              :title="item.id === 'loop' ? t('mixtape.loopEditHint') : undefined"
               @click="selectedMixParam = item.id"
             >
               {{ t(item.labelKey) }}
@@ -692,6 +729,13 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
                               :key="`${item.track.id}-${item.startX}`"
                               class="lane-track"
                               :class="{
+                                'is-loop-mode': isLoopParamMode,
+                                'is-loop-selecting': resolveTrackLoopTrackUiState(item.track)
+                                  .selecting,
+                                'is-loop-disabled': resolveTrackLoopTrackUiState(item.track)
+                                  .disabled,
+                                'is-loop-selected': resolveTrackLoopTrackUiState(item.track)
+                                  .selectedLoop,
                                 'is-stem-pending':
                                   stemPlaceholderStateByTrackId[item.track.id]?.kind === 'pending',
                                 'is-stem-running':
@@ -700,6 +744,7 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
                                   stemPlaceholderStateByTrackId[item.track.id]?.kind === 'failed'
                               }"
                               :style="resolveTrackBlockStyle(item)"
+                              @mousedown.capture="handleLaneTrackMouseDownCapture(item, $event)"
                               @mousedown.stop="handleLaneTrackMouseDown(item, $event)"
                               @contextmenu.stop.prevent="handleTrackContextMenu(item, $event)"
                             >
@@ -767,6 +812,15 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
                                   ></div>
                                 </template>
                               </div>
+                              <MixtapeTrackLoopOverlay
+                                :item="item"
+                                :overlay="resolveTrackLoopOverlay(item)"
+                                :loop-edit-mode="isLoopParamMode"
+                                :handle-track-loop-grid-line-click="handleTrackLoopGridLineClick"
+                                :handle-track-loop-select-loop="handleTrackLoopSelectLoop"
+                                :handle-track-loop-repeat-step="handleTrackLoopRepeatStep"
+                                :handle-track-loop-remove="handleRemoveTrackLoop"
+                              />
                               <div
                                 v-if="showTrackEnvelopeEditor"
                                 class="lane-track__envelope-points"
@@ -1021,7 +1075,15 @@ const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
                       :key="`overview-${item.track.id}`"
                       class="overview-track"
                       :style="resolveOverviewTrackStyle(item)"
-                    ></div>
+                    >
+                      <div
+                        v-for="block in resolveOverviewTrackLoopBlocks(item)"
+                        :key="block.key"
+                        class="overview-track__loop"
+                        :class="`overview-track__loop--${block.kind}`"
+                        :style="block.style"
+                      ></div>
+                    </div>
                   </div>
                 </div>
                 <div

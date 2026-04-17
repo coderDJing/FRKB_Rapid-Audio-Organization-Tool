@@ -124,10 +124,12 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
       const safeWhen = Number.isFinite(whenSec)
         ? Math.max(ctx.currentTime, whenSec)
         : ctx.currentTime
+      const remainingTimelineSec = Math.max(0.02, Number(entry.duration) - offsetTimelineSec)
       for (const stemNode of stemNodes) {
         const stemDuration = Number(stemNode.source.buffer?.duration || 0)
         const safeOffset = Math.max(0, Math.min(offsetSourceSec, Math.max(0, stemDuration - 0.02)))
         stemNode.source.start(safeWhen, safeOffset)
+        stemNode.source.stop(safeWhen + remainingTimelineSec + 0.02)
       }
 
       const graphNode: TrackGraphNode = {
@@ -224,6 +226,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
       Math.min(offsetSourceSec, Math.max(0, audioBuffer.duration - 0.02))
     )
     source.start(safeWhen, safeOffset)
+    source.stop(safeWhen + Math.max(0.02, Number(entry.duration) - offsetTimelineSec) + 0.02)
 
     const graphNode: TrackGraphNode = {
       trackId: entry.trackId,

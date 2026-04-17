@@ -327,7 +327,17 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
           stemGain.gain.value = resolveEntryEnvelopeValue(entry, stemAudio.stemId, initialLocalSec)
           source.connect(stemGain)
           stemGain.connect(stemBus)
-          source.start(Math.max(0, entry.startSec - timelineOriginSec), 0)
+          source.start(
+            Math.max(0, entry.startSec - timelineOriginSec),
+            entry.soundTouchRendered
+              ? Math.max(0, Number(entry.baseLocalStartSec) || 0)
+              : Math.max(0, Number(entry.sourceOffsetSec) || 0)
+          )
+          source.stop(
+            Math.max(0, entry.startSec - timelineOriginSec) +
+              Math.max(0.02, Number(entry.duration) || 0) +
+              0.02
+          )
           stemNodes.push({
             stemId: stemAudio.stemId,
             source,
@@ -389,7 +399,17 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
       eqHigh.connect(volume)
       volume.connect(gain)
       gain.connect(offlineCtx.destination)
-      source.start(Math.max(0, entry.startSec - timelineOriginSec), 0)
+      source.start(
+        Math.max(0, entry.startSec - timelineOriginSec),
+        entry.soundTouchRendered
+          ? Math.max(0, Number(entry.baseLocalStartSec) || 0)
+          : Math.max(0, Number(entry.sourceOffsetSec) || 0)
+      )
+      source.stop(
+        Math.max(0, entry.startSec - timelineOriginSec) +
+          Math.max(0.02, Number(entry.duration) || 0) +
+          0.02
+      )
 
       nodes.push({
         trackId: entry.trackId,
@@ -411,6 +431,7 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
     offlineCtx: OfflineAudioContext,
     entries: RenderTransportEntry[]
   ) => {
+    const processedFileKeys = new Set<string>()
     for (const entry of entries) {
       if (!entry.masterTempo || Math.abs(Number(entry.tempoRatio) - 1) <= 0.0001) {
         entry.soundTouchRendered = false
@@ -421,6 +442,8 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
           for (const stemId of resolveStemIds()) {
             const stemAudio = entry.stemAudioById?.[stemId]
             if (!stemAudio?.audioBuffer) continue
+            const processKey = `${stemId}:${stemAudio.filePath}`
+            if (processedFileKeys.has(processKey)) continue
             stemAudio.audioBuffer = await processMixtapeAudioBufferWithSoundTouch(
               stemAudio.filePath,
               stemAudio.audioBuffer,
@@ -428,8 +451,14 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
               (channels, frameCount, sampleRate) =>
                 offlineCtx.createBuffer(channels, frameCount, sampleRate)
             )
+            processedFileKeys.add(processKey)
           }
         } else if (entry.audioRef?.audioBuffer) {
+          const processKey = `mix:${entry.audioRef.filePath}`
+          if (processedFileKeys.has(processKey)) {
+            entry.soundTouchRendered = true
+            continue
+          }
           entry.audioRef.audioBuffer = await processMixtapeAudioBufferWithSoundTouch(
             entry.audioRef.filePath,
             entry.audioRef.audioBuffer,
@@ -437,6 +466,7 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
             (channels, frameCount, sampleRate) =>
               offlineCtx.createBuffer(channels, frameCount, sampleRate)
           )
+          processedFileKeys.add(processKey)
         }
         entry.soundTouchRendered = true
       } catch (error) {
@@ -669,7 +699,7 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
       durationSec,
       sampleRate: renderedBuffer.sampleRate,
       channels: outputChannels,
-      trackCount: playableEntries.length
+      trackCount: new Set(playableEntries.map((entry) => entry.trackId)).size
     }
   }
 

@@ -70,6 +70,10 @@ export type MixtapeTrack = {
   masterTempo?: boolean
   // 全局时间线起点（秒）
   startSec?: number
+  // 兼容旧数据：单段 Loop（轨道内时间）
+  loopSegment?: MixtapeTrackLoopSegment
+  // 多段 Loop（轨道内时间）
+  loopSegments?: MixtapeTrackLoopSegment[]
   // 增益包络线（轨道内时间 -> 线性增益）
   gainEnvelope?: MixtapeGainPoint[]
   // 兼容旧 EQ 三频包络线（迁移期保留）
@@ -109,6 +113,12 @@ export type MixtapeGainPoint = {
   gain: number
 }
 
+export type MixtapeTrackLoopSegment = {
+  startSec: number
+  endSec: number
+  repeatCount: number
+}
+
 export type MixtapeBpmPoint = {
   sec: number
   bpm: number
@@ -125,6 +135,7 @@ export type MixtapeProjectBpmEnvelopeSnapshot = {
 export type SerializedTrackTempoSnapshot = {
   signature: string
   durationSec: number
+  baseDurationSec: number
   sourceDurationSec: number
   baseBpm: number
   gridSourceBpm: number
@@ -137,6 +148,8 @@ export type SerializedTrackTempoSnapshot = {
   masterGridFallbackBpm?: number
   masterGridPhaseOffsetSec?: number
   masterGridPoints?: MixtapeBpmPoint[]
+  loopSegments?: MixtapeTrackLoopSegment[]
+  loopSegment?: MixtapeTrackLoopSegment
   controlPoints: MixtapeBpmPoint[]
 }
 

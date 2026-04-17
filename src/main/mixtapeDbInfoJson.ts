@@ -251,6 +251,140 @@ export function upsertMixtapeItemVolumeMuteSegmentsById(
   }
 }
 
+export function upsertMixtapeItemLoopSegmentsById(
+  entries: Array<{
+    itemId: string
+    loopSegments?: Array<{
+      startSec?: number
+      endSec?: number
+      repeatCount?: number
+    }> | null
+    loopSegment?: {
+      startSec?: number
+      endSec?: number
+      repeatCount?: number
+    } | null
+  }>
+): { updated: number } {
+  if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
+  const db = getLibraryDb()
+  if (!db) return { updated: 0 }
+
+  const normalizeLoopSegment = (raw: unknown) => {
+    const segment = isSqliteRow(raw) ? raw : null
+    const startSec = Number(segment?.startSec)
+    const endSec = Number(segment?.endSec)
+    const repeatCount = Number(segment?.repeatCount)
+    if (!Number.isFinite(startSec) || !Number.isFinite(endSec) || !Number.isFinite(repeatCount)) {
+      return null
+    }
+    const safeRepeatCount = Math.max(0, Math.floor(repeatCount))
+    if (safeRepeatCount <= 0) return null
+    const safeStartSec = Math.max(0, Number(startSec.toFixed(4)))
+    const safeEndSec = Math.max(0, Number(endSec.toFixed(4)))
+    if (safeEndSec - safeStartSec <= 0.0001) return null
+    return {
+      startSec: safeStartSec,
+      endSec: safeEndSec,
+      repeatCount: safeRepeatCount
+    }
+  }
+
+  const normalizeLoopSegments = (raw: unknown) => {
+    const rawItems = Array.isArray(raw) ? raw : raw ? [raw] : []
+    const normalized = rawItems
+      .map((item) => normalizeLoopSegment(item))
+      .filter((item): item is { startSec: number; endSec: number; repeatCount: number } => !!item)
+      .sort((left, right) => {
+        if (Math.abs(left.startSec - right.startSec) > 0.0001) return left.startSec - right.startSec
+        if (Math.abs(left.endSec - right.endSec) > 0.0001) return left.endSec - right.endSec
+        return left.repeatCount - right.repeatCount
+      })
+    const deduped: typeof normalized = []
+    let lastEndSec = -1
+    for (const segment of normalized) {
+      if (segment.startSec < lastEndSec - 0.0001) continue
+      deduped.push(segment)
+      lastEndSec = segment.endSec
+    }
+    return deduped
+  }
+
+  const loopById = new Map<
+    string,
+    Array<{ startSec: number; endSec: number; repeatCount: number }>
+  >()
+  for (const item of entries) {
+    const itemId = typeof item?.itemId === 'string' ? item.itemId.trim() : ''
+    if (!itemId) continue
+    const normalizedSegments = normalizeLoopSegments(item?.loopSegments ?? item?.loopSegment)
+    loopById.set(itemId, normalizedSegments)
+  }
+  const itemIds = Array.from(loopById.keys())
+  if (!itemIds.length) return { updated: 0 }
+
+  try {
+    let updated = 0
+    const updateStmt = db.prepare(`UPDATE ${TABLE} SET info_json = ? WHERE id = ?`)
+    const tx = db.transaction(() => {
+      const CHUNK_SIZE = 300
+      for (let offset = 0; offset < itemIds.length; offset += CHUNK_SIZE) {
+        const chunk = itemIds.slice(offset, offset + CHUNK_SIZE)
+        if (chunk.length === 0) continue
+        const placeholders = chunk.map(() => '?').join(',')
+        const rows = db
+          .prepare(`SELECT id, info_json FROM ${TABLE} WHERE id IN (${placeholders})`)
+          .all(...chunk) as Array<{ id: string; info_json?: string | null }>
+        for (const row of rows) {
+          const itemId = typeof row?.id === 'string' ? row.id.trim() : ''
+          if (!itemId) continue
+          const nextLoopSegments = loopById.get(itemId)
+          if (nextLoopSegments === undefined) continue
+          const info = parseItemInfoJson(row?.info_json)
+          const currentLoopSegments = normalizeLoopSegments(info.loopSegments ?? info.loopSegment)
+          const currentSignature = JSON.stringify(currentLoopSegments)
+          const nextSignature = JSON.stringify(nextLoopSegments)
+          if (currentSignature === nextSignature) continue
+          if (nextLoopSegments.length > 0) {
+            info.loopSegments = nextLoopSegments
+            info.loopSegment = nextLoopSegments[0]
+          } else {
+            delete info.loopSegments
+            delete info.loopSegment
+          }
+          info.loopSegmentsUpdatedAt = Date.now()
+          info.loopSegmentUpdatedAt = Date.now()
+          updateStmt.run(JSON.stringify(info), itemId)
+          updated += 1
+        }
+      }
+    })
+    tx()
+    return { updated }
+  } catch (error) {
+    log.error('[sqlite] mixtape loop segment upsert failed', error)
+    return { updated: 0 }
+  }
+}
+
+export function upsertMixtapeItemLoopSegmentById(
+  entries: Array<{
+    itemId: string
+    loopSegment?: {
+      startSec?: number
+      endSec?: number
+      repeatCount?: number
+    } | null
+  }>
+): { updated: number } {
+  return upsertMixtapeItemLoopSegmentsById(
+    entries.map((item) => ({
+      itemId: item.itemId,
+      loopSegments: item.loopSegment ? [item.loopSegment] : []
+    }))
+  )
+}
+
 export function upsertMixtapeItemStartSecById(
   entries: Array<{
     itemId: string

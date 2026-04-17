@@ -37,6 +37,11 @@
 - There is no root JS test runner yet; add new suites near the code they cover and document how to run them.
 - 代码修改完成后必须运行 `npx vue-tsc --noEmit`；若存在错误，必须先修复再交付。
 
+## Debug Logging
+- 涉及运行时排查、交互链路排查、状态机排查时，默认把调试日志写入 `log.txt` 可落盘链路，不要依赖浏览器控制台临时输出。
+- Renderer 侧调试信息应通过现有 console bridge / `outputLog` / 主进程 `log` 体系进入 `log.txt`，确保我复现一次后，Codex 可以自行读取日志继续排查。
+- 禁止把“请把控制台日志复制给我”当成默认方案；除非日志链路本身损坏，否则应优先由 Codex 自己读取 `log.txt`。
+
 ## Commit & Pull Request Guidelines
 - Recent commits use Conventional Commit prefixes with optional scopes: `feat(ui): ...`, `fix(player): ...`, `refactor(...)`, `docs(...)`.
 - 提交信息必须使用中文（保留 Conventional Commit 结构）。

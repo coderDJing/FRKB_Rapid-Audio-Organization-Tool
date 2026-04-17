@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import { app, BrowserWindow, ipcMain, shell, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
-import { log, getLogPath, clearLogFileSync } from './log'
+import { appendPlainLogLineSync, log, getLogPath, clearLogFileSync } from './log'
 import './cloudSync'
 import errorReport from './errorReport'
 import { saveList } from './fingerprintStore'
@@ -565,6 +565,7 @@ app.on('window-all-closed', async () => {
 // 语言字典将不再通过主进程下发，渲染进程使用 vue-i18n 自行管理
 ipcMain.on('outputLog', (e, logMsg) => {
   log.error(logMsg)
+  appendPlainLogLineSync(String(logMsg || ''))
 })
 
 ipcMain.on('openLocalBrowser', (e, url) => {

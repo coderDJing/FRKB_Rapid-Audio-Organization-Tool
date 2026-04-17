@@ -95,6 +95,10 @@ const showTitleAudioVisualizerModel = computed<boolean>({
     runtime.setting.showTitleAudioVisualizer = value
   }
 })
+
+const currentLibraryPathText = computed(
+  () => runtime.setting.databaseUrl || t('database.notConfigured')
+)
 </script>
 
 <template>
@@ -501,6 +505,14 @@ const showTitleAudioVisualizerModel = computed<boolean>({
               <div class="setting-hint">{{ t('settings.songListBubble.hint') }}</div>
             </div>
 
+            <div class="setting-block">{{ t('settings.currentLibraryPath') }}：</div>
+            <div class="setting-control">
+              <div class="path-display" :title="currentLibraryPathText">
+                {{ currentLibraryPathText }}
+              </div>
+              <div class="setting-hint">{{ t('settings.currentLibraryPathHint') }}</div>
+            </div>
+
             <div class="setting-block">{{ t('database.reselectLocation') }}：</div>
             <div class="setting-control">
               <div class="button settings-inline-button" @click="reSelectLibrary()">
@@ -724,6 +736,21 @@ const showTitleAudioVisualizerModel = computed<boolean>({
     background-color: var(--hover);
     border-color: var(--accent);
   }
+}
+
+.path-display {
+  width: min(520px, 100%);
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--bg-elev);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: normal;
+  word-break: break-all;
+  user-select: text;
 }
 
 .setting-hint {

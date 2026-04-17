@@ -22,6 +22,7 @@ import {
   upsertMixtapeProjectStemProfile,
   upsertMixtapeItemGridByFilePath,
   upsertMixtapeItemGainEnvelopeById,
+  upsertMixtapeItemLoopSegmentsById,
   upsertMixtapeItemMixEnvelopeById,
   upsertMixtapeItemVolumeMuteSegmentsById,
   upsertMixtapeItemStartSecById,
@@ -921,6 +922,57 @@ export function registerMixtapeHandlers() {
       )
     }
   )
+
+  const handleUpdateTrackLoops = async (
+    _e: unknown,
+    payload?: {
+      entries?: Array<{
+        itemId?: string
+        loopSegments?: Array<{
+          startSec?: number
+          endSec?: number
+          repeatCount?: number
+        }> | null
+        loopSegment?: {
+          startSec?: number
+          endSec?: number
+          repeatCount?: number
+        } | null
+      }>
+    }
+  ) => {
+    const entries = Array.isArray(payload?.entries) ? payload.entries : []
+    return upsertMixtapeItemLoopSegmentsById(
+      entries.map((item) => ({
+        itemId: typeof item?.itemId === 'string' ? item.itemId : '',
+        loopSegments: Array.isArray(item?.loopSegments)
+          ? item.loopSegments
+              .map((segment) => ({
+                startSec: Number(segment?.startSec),
+                endSec: Number(segment?.endSec),
+                repeatCount: Number(segment?.repeatCount)
+              }))
+              .filter(
+                (segment) =>
+                  Number.isFinite(segment.startSec) &&
+                  Number.isFinite(segment.endSec) &&
+                  Number.isFinite(segment.repeatCount)
+              )
+          : item?.loopSegment && typeof item.loopSegment === 'object'
+            ? [
+                {
+                  startSec: Number(item.loopSegment.startSec),
+                  endSec: Number(item.loopSegment.endSec),
+                  repeatCount: Number(item.loopSegment.repeatCount)
+                }
+              ]
+            : []
+      }))
+    )
+  }
+
+  ipcMain.handle('mixtape:update-track-loops', handleUpdateTrackLoops)
+  ipcMain.handle('mixtape:update-track-loop', handleUpdateTrackLoops)
 
   ipcMain.handle(
     'mixtape:update-track-start-sec',

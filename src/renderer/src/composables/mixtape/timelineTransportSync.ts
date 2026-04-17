@@ -11,7 +11,11 @@ export type TransportSyncEntry = {
   trackId: string
   startSec: number
   sourceDuration?: number
+  sourceOffsetSec?: number
+  sourceSegmentDuration?: number
   duration: number
+  trackDuration?: number
+  localStartSec?: number
   bpm: number
   originalBpm?: number
   tempoSnapshot: SerializedTrackTempoSnapshot
@@ -94,6 +98,8 @@ const resolveEntryTimeMap = (entry: TransportSyncEntry) => {
 }
 
 const resolveNodeSourceDurationSec = (node: TransportSyncNode) => {
+  const segmentDuration = Number(node.entry.sourceSegmentDuration)
+  if (Number.isFinite(segmentDuration) && segmentDuration > 0) return segmentDuration
   const bufferDuration = Number(node.source.buffer?.duration)
   if (Number.isFinite(bufferDuration) && bufferDuration > 0) return bufferDuration
   const sourceDuration = Number(node.entry.sourceDuration)
@@ -102,11 +108,13 @@ const resolveNodeSourceDurationSec = (node: TransportSyncNode) => {
 }
 
 const resolveEntryBpmAtTimelineSec = (entry: TransportSyncEntry, timelineSec: number) => {
-  const localTimelineSec = clampNumber(
+  const sectionOffsetSec = clampNumber(
     Number(timelineSec) - (Number(entry.startSec) || 0),
     0,
     Math.max(0, Number(entry.duration) || 0)
   )
+  const localTimelineSec =
+    Math.max(0, Number(entry.localStartSec) || 0) + Math.max(0, Number(sectionOffsetSec) || 0)
   return resolveEntryTimeMap(entry).sampleBpmAtLocal(localTimelineSec)
 }
 
@@ -133,9 +141,14 @@ const resolveInitialEstimatedSourceSec = (
   const durationSec = resolveNodeSourceDurationSec(node)
   if (!durationSec) return null
   const startSec = Number(node.entry.startSec) || 0
+  const sourceOffsetSec = Math.max(0, Number(node.entry.sourceOffsetSec) || 0)
   const elapsedTimelineSec = Math.max(0, timelineSec - startSec)
-  const estimated = elapsedTimelineSec * clampNumber(playbackRate, 0.25, 4)
-  return clampNumber(estimated, 0, Math.max(0, durationSec - 0.001))
+  const estimated = sourceOffsetSec + elapsedTimelineSec * clampNumber(playbackRate, 0.25, 4)
+  return clampNumber(
+    estimated,
+    sourceOffsetSec,
+    Math.max(sourceOffsetSec, sourceOffsetSec + durationSec - 0.001)
+  )
 }
 
 const updateEstimatedSourceSec = (
@@ -146,6 +159,7 @@ const updateEstimatedSourceSec = (
   const durationSec = resolveNodeSourceDurationSec(node)
   if (!durationSec) return null
   const safeRate = clampNumber(playbackRate, 0.25, 4)
+  const sourceOffsetSec = Math.max(0, Number(node.entry.sourceOffsetSec) || 0)
   const lastTimelineSec = Number(node.lastTimelineSec)
   const currentEstimated = Number(node.estimatedSourceSec)
   const canIntegrate =
@@ -157,7 +171,11 @@ const updateEstimatedSourceSec = (
     ? currentEstimated + (timelineSec - lastTimelineSec) * safeRate
     : resolveInitialEstimatedSourceSec(node, timelineSec, safeRate)
   if (!Number.isFinite(Number(estimated))) return null
-  const nextEstimated = clampNumber(Number(estimated), 0, Math.max(0, durationSec - 0.001))
+  const nextEstimated = clampNumber(
+    Number(estimated),
+    sourceOffsetSec,
+    Math.max(sourceOffsetSec, sourceOffsetSec + durationSec - 0.001)
+  )
   node.estimatedSourceSec = nextEstimated
   node.lastTimelineSec = timelineSec
   return nextEstimated

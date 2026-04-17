@@ -750,6 +750,8 @@ export type { MixtapeMixEnvelopeParam } from './mixtapeDbInfoJson'
 export {
   upsertMixtapeItemMixEnvelopeById,
   upsertMixtapeItemGainEnvelopeById,
+  upsertMixtapeItemLoopSegmentsById,
+  upsertMixtapeItemLoopSegmentById,
   upsertMixtapeItemVolumeMuteSegmentsById,
   upsertMixtapeItemStartSecById
 } from './mixtapeDbInfoJson'

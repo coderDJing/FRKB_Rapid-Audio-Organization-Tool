@@ -210,6 +210,23 @@
   }
 }
 
+.lane-track.is-loop-mode {
+  cursor: default;
+}
+
+.lane-track.is-loop-selecting {
+  border-color: rgba(255, 223, 120, 0.28);
+  background: rgba(255, 223, 120, 0.035);
+}
+
+.lane-track.is-loop-selected {
+  border-color: rgba(255, 232, 150, 0.34);
+}
+
+.lane-track.is-loop-disabled {
+  opacity: 0.68;
+}
+
 .timeline-transport-error {
   padding: 4px 12px 0;
   font-size: 11px;
@@ -643,7 +660,7 @@
   position: absolute;
   /* Make it sticky horizontally regardless of scroll */
   left: max(6px, calc(var(--timeline-scroll-left, 0px) - var(--track-start, 0px) + 6px));
-  top: 6px;
+  top: 28px;
   padding: 5px 10px;
   border-radius: 6px;
   display: inline-flex;
@@ -655,7 +672,7 @@
   backdrop-filter: blur(8px);
   border: 1px solid var(--mixtape-surface-overlay-border);
   pointer-events: none;
-  z-index: 6;
+  z-index: 5;
   width: max-content;
   max-width: none;
   min-width: 0;

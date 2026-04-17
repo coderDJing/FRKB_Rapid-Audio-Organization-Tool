@@ -8,6 +8,7 @@ import type {
   WaveformStemId
 } from './mixtapeWaveformRender.types'
 import { GRID_BEAT4_LINE_WIDTH, GRID_BEAT_LINE_WIDTH } from '../composables/mixtape/constants'
+import { resolveMixtapeTrackLoopTileSections } from '../composables/mixtape/mixtapeTrackLoop'
 import { createTrackTimeMapFromSnapshotPayload } from '../composables/mixtape/trackTimeMapFactory'
 import { resolveRoundedTrackLocalPx } from '../composables/mixtape/timelinePixelMath'
 import { resizeCanvasWithScaleMetrics } from '../utils/canvasScale'
@@ -336,6 +337,8 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     createTrackTimeMapFromSnapshotPayload({
       signature: String(tempoSnapshot.signature || ''),
       durationSec: Number(tempoSnapshot.durationSec) || 0,
+      baseDurationSec:
+        Number(tempoSnapshot.baseDurationSec) || Number(tempoSnapshot.durationSec) || 0,
       sourceDurationSec: Number(tempoSnapshot.sourceDurationSec) || 0,
       baseBpm: Number(tempoSnapshot.baseBpm) || 128,
       gridSourceBpm: Number(tempoSnapshot.gridSourceBpm) || 0,
@@ -353,6 +356,26 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
             bpm: Number(point.bpm)
           }))
         : undefined,
+      loopSegments: Array.isArray(tempoSnapshot.loopSegments)
+        ? tempoSnapshot.loopSegments.map((segment) => ({
+            startSec: Number(segment.startSec),
+            endSec: Number(segment.endSec),
+            repeatCount: Number(segment.repeatCount)
+          }))
+        : undefined,
+      loopSegment: tempoSnapshot.loopSegment
+        ? {
+            startSec: Number(tempoSnapshot.loopSegment.startSec),
+            endSec: Number(tempoSnapshot.loopSegment.endSec),
+            repeatCount: Number(tempoSnapshot.loopSegment.repeatCount)
+          }
+        : Array.isArray(tempoSnapshot.loopSegments) && tempoSnapshot.loopSegments[0]
+          ? {
+              startSec: Number(tempoSnapshot.loopSegments[0].startSec),
+              endSec: Number(tempoSnapshot.loopSegments[0].endSec),
+              repeatCount: Number(tempoSnapshot.loopSegments[0].repeatCount)
+            }
+          : undefined,
       controlPoints: tempoSnapshot.controlPoints.map((point) => ({
         sec: Number(point.sec),
         bpm: Number(point.bpm),
@@ -385,7 +408,12 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     tileCtx = ensured.ctx
     if (!tileCanvas || !tileCtx) return null
 
-    if (zoom <= summaryZoom + 0.0001) {
+    const loopValue =
+      Array.isArray(tempoSnapshot.loopSegments) && tempoSnapshot.loopSegments.length
+        ? tempoSnapshot.loopSegments
+        : tempoSnapshot.loopSegment
+    const hasLoopSegment = !!loopValue
+    if (!hasLoopSegment && zoom <= summaryZoom + 0.0001) {
       renderSummaryBar(tileCtx, tileWidth, laneHeight)
       return tileCanvas.transferToImageBitmap()
     }
@@ -402,12 +430,14 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       return tileCanvas.transferToImageBitmap()
     }
 
-    const startFrame = Math.floor((tileStart / Math.max(1, trackWidth)) * frameCount)
-    const endFrame = Math.ceil(((tileStart + tileWidth) / Math.max(1, trackWidth)) * frameCount)
     const rawDurationSeconds =
       rawData && Number.isFinite(rawData.duration) && rawData.duration > 0 ? rawData.duration : 0
     const waveformDurationSeconds = rawDurationSeconds > 0 ? rawDurationSeconds : durationSeconds
     const safeTimelineDurationSeconds = Math.max(0, Number(tempoSnapshot.durationSec) || 0)
+    const baseDurationSeconds = Math.max(
+      0,
+      Number(tempoSnapshot.baseDurationSec || safeTimelineDurationSeconds) || 0
+    )
     const timeMap = createTimeMapFromTempoSnapshot(tempoSnapshot)
     const localStartSec = safeTimelineDurationSeconds
       ? (tileStart / Math.max(1, trackWidth)) * safeTimelineDurationSeconds
@@ -415,35 +445,158 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     const localEndSec = safeTimelineDurationSeconds
       ? ((tileStart + tileWidth) / Math.max(1, trackWidth)) * safeTimelineDurationSeconds
       : 0
-    const startTime = waveformDurationSeconds ? timeMap.mapLocalToSource(localStartSec) : 0
-    const endTime = waveformDurationSeconds ? timeMap.mapLocalToSource(localEndSec) : 0
-    const rawSpan = Math.max(0, endTime - startTime)
-    const rawSamplesPerPixel =
-      rawData && rawSpan > 0 ? (rawData.rate * rawSpan) / Math.max(1, tileWidth * pixelRatio) : 0
-    const resolvedRaw =
-      rawData && rawSamplesPerPixel > 0
-        ? resolveRawWaveformLevel(filePath, rawData, rawSamplesPerPixel)
-        : rawData
+    const localSpanSec = Math.max(0.0001, localEndSec - localStartSec)
+    const loopSections = resolveMixtapeTrackLoopTileSections({
+      localStartSec,
+      localEndSec,
+      baseDurationSec: baseDurationSeconds,
+      loopSegments: Array.isArray(tempoSnapshot.loopSegments)
+        ? tempoSnapshot.loopSegments
+        : undefined,
+      loopSegment: tempoSnapshot.loopSegment
+    })
+
+    const drawSectionWaveform = (
+      targetCtx: OffscreenCanvasRenderingContext2D,
+      targetWidth: number,
+      section: {
+        kind?: string
+        displayStartSec: number
+        displayEndSec: number
+        baseStartSec: number
+        baseEndSec: number
+      }
+    ) => {
+      const startTime = waveformDurationSeconds ? timeMap.mapLocalToSource(section.baseStartSec) : 0
+      const endTime = waveformDurationSeconds ? timeMap.mapLocalToSource(section.baseEndSec) : 0
+      const rawSpan = Math.max(0, endTime - startTime)
+      const rawSamplesPerPixel =
+        rawData && rawSpan > 0
+          ? (rawData.rate * rawSpan) / Math.max(1, targetWidth * pixelRatio)
+          : 0
+      const resolvedRaw =
+        rawData && rawSamplesPerPixel > 0
+          ? resolveRawWaveformLevel(filePath, rawData, rawSamplesPerPixel)
+          : rawData
+      const startFrame =
+        baseDurationSeconds > 0
+          ? Math.floor((section.baseStartSec / Math.max(0.0001, baseDurationSeconds)) * frameCount)
+          : 0
+      const endFrame =
+        baseDurationSeconds > 0
+          ? Math.ceil((section.baseEndSec / Math.max(0.0001, baseDurationSeconds)) * frameCount)
+          : frameCount
+      drawStemWaveform(targetCtx, targetWidth, laneHeight, waveform || null, pixelRatio, stemId, {
+        startFrame,
+        endFrame,
+        startTime,
+        endTime,
+        raw: resolvedRaw
+      })
+    }
+
+    const drawLoopSectionBackdrop = (
+      targetCtx: OffscreenCanvasRenderingContext2D,
+      targetWidth: number,
+      section: {
+        kind?: string
+      }
+    ) => {
+      if (section.kind !== 'loop-source' && section.kind !== 'loop-repeat') return
+      targetCtx.save()
+      targetCtx.fillStyle =
+        section.kind === 'loop-source' ? 'rgba(255, 214, 102, 0.34)' : 'rgba(255, 196, 84, 0.24)'
+      targetCtx.fillRect(0, 0, targetWidth, laneHeight)
+      targetCtx.fillStyle =
+        section.kind === 'loop-source' ? 'rgba(255, 242, 196, 0.62)' : 'rgba(255, 223, 152, 0.48)'
+      targetCtx.fillRect(0, 0, targetWidth, 6)
+      targetCtx.strokeStyle =
+        section.kind === 'loop-source' ? 'rgba(255, 245, 210, 0.96)' : 'rgba(255, 220, 132, 0.9)'
+      targetCtx.lineWidth = 2
+      targetCtx.beginPath()
+      targetCtx.moveTo(1, 0)
+      targetCtx.lineTo(1, laneHeight)
+      if (section.kind === 'loop-source') {
+        targetCtx.moveTo(Math.max(1, targetWidth - 1), 0)
+        targetCtx.lineTo(Math.max(1, targetWidth - 1), laneHeight)
+      }
+      targetCtx.stroke()
+      targetCtx.restore()
+    }
+
+    const drawLoopAwareWaveform = (
+      targetCtx: OffscreenCanvasRenderingContext2D,
+      targetWidth: number
+    ) => {
+      const sectionCanvasCache = new Map<string, OffscreenCanvas>()
+      const buildSectionCacheKey = (
+        section: {
+          baseStartSec: number
+          baseEndSec: number
+        },
+        sectionWidth: number
+      ) =>
+        [
+          filePath,
+          stemId,
+          Math.round(section.baseStartSec * 1000),
+          Math.round(section.baseEndSec * 1000),
+          Math.max(1, Math.round(sectionWidth))
+        ].join(':')
+
+      const getOrCreateSectionCanvas = (
+        section: {
+          kind?: string
+          displayStartSec: number
+          displayEndSec: number
+          baseStartSec: number
+          baseEndSec: number
+        },
+        sectionWidth: number
+      ) => {
+        const cacheKey = buildSectionCacheKey(section, sectionWidth)
+        const cachedCanvas = sectionCanvasCache.get(cacheKey)
+        if (cachedCanvas) return cachedCanvas
+        const cacheCanvas = new OffscreenCanvas(sectionWidth, laneHeight)
+        const cacheCtx = cacheCanvas.getContext('2d')
+        if (!cacheCtx) return null
+        drawSectionWaveform(cacheCtx, sectionWidth, {
+          ...section,
+          displayStartSec: section.baseStartSec,
+          displayEndSec: section.baseEndSec
+        })
+        sectionCanvasCache.set(cacheKey, cacheCanvas)
+        return cacheCanvas
+      }
+
+      for (const section of loopSections) {
+        const sectionStartRatio = (section.displayStartSec - localStartSec) / localSpanSec
+        const sectionEndRatio = (section.displayEndSec - localStartSec) / localSpanSec
+        const sectionStartX = Math.max(0, Math.floor(sectionStartRatio * targetWidth))
+        const sectionEndX = Math.min(targetWidth, Math.ceil(sectionEndRatio * targetWidth))
+        const sectionWidth = Math.max(1, sectionEndX - sectionStartX)
+        targetCtx.save()
+        targetCtx.translate(sectionStartX, 0)
+        drawLoopSectionBackdrop(targetCtx, sectionWidth, section)
+        if (section.kind === 'loop-source' || section.kind === 'loop-repeat') {
+          const cachedCanvas = getOrCreateSectionCanvas(section, sectionWidth)
+          if (cachedCanvas) {
+            targetCtx.drawImage(cachedCanvas, 0, 0, sectionWidth, laneHeight)
+          } else {
+            drawSectionWaveform(targetCtx, sectionWidth, section)
+          }
+        } else {
+          drawSectionWaveform(targetCtx, sectionWidth, section)
+        }
+        targetCtx.restore()
+      }
+    }
 
     const renderScale = 1
     if (renderScale > 1) {
       const scratch = ensureScratch(tileWidth * renderScale, laneHeight)
       if (scratch && scratch.ctx) {
-        drawStemWaveform(
-          scratch.ctx,
-          tileWidth * renderScale,
-          laneHeight,
-          waveform || null,
-          pixelRatio,
-          stemId,
-          {
-            startFrame,
-            endFrame,
-            startTime,
-            endTime,
-            raw: resolvedRaw
-          }
-        )
+        drawLoopAwareWaveform(scratch.ctx, tileWidth * renderScale)
         tileCtx.save()
         tileCtx.imageSmoothingEnabled = false
         tileCtx.clearRect(0, 0, tileWidth, laneHeight)
@@ -463,13 +616,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       }
     }
 
-    drawStemWaveform(tileCtx, tileWidth, laneHeight, waveform || null, pixelRatio, stemId, {
-      startFrame,
-      endFrame,
-      startTime,
-      endTime,
-      raw: resolvedRaw
-    })
+    drawLoopAwareWaveform(tileCtx, tileWidth)
     return tileCanvas.transferToImageBitmap()
   }
 

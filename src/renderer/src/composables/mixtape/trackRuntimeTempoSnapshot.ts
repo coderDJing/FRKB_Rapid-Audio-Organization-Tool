@@ -23,6 +23,7 @@ import {
   mixtapeGlobalTempoEnvelope,
   mixtapeGlobalTempoPhaseOffsetSec
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
+import { buildMixtapeTrackLoopSignature } from '@renderer/composables/mixtape/mixtapeTrackLoop'
 import type {
   MixtapeTrack,
   SerializedTrackTempoSnapshot
@@ -31,6 +32,7 @@ import type {
 export type TrackRuntimeTempoSnapshot = {
   track: MixtapeTrack
   durationSec: number
+  baseDurationSec: number
   sourceDurationSec: number
   baseBpm: number
   gridSourceBpm: number
@@ -75,6 +77,9 @@ const buildGridOverrideSignature = (snapshot: {
 const buildTrackStartSignature = (track: Pick<MixtapeTrack, 'startSec'>) =>
   Math.round((Math.max(0, Number(track.startSec) || 0) || 0) * 1000)
 
+const buildTrackLoopSignature = (track: Pick<MixtapeTrack, 'loopSegment' | 'loopSegments'>) =>
+  buildMixtapeTrackLoopSignature(track.loopSegments ?? track.loopSegment)
+
 const resolveFallbackTimelineDuration = (track: MixtapeTrack, sourceDurationSec: number) => {
   const targetBpm = Number(track.bpm)
   const originalBpm = Number(track.originalBpm)
@@ -102,11 +107,13 @@ export const buildTrackTimeMapSignature = (snapshot: TrackRuntimeTempoSnapshot) 
           Number(snapshot.timeMapInput.masterGridPhaseOffsetSec) || 0
         ),
         buildTrackStartSignature(snapshot.track),
+        buildTrackLoopSignature(snapshot.track),
         buildGridOverrideSignature(snapshot)
       ].join('|')
     : [
         'tempoEnvelope',
         buildBpmEnvelopeSignature(snapshot.timeMapInput.controlPoints),
+        buildTrackLoopSignature(snapshot.track),
         buildGridOverrideSignature(snapshot)
       ].join('|')
 
@@ -115,6 +122,7 @@ export const serializeTrackRuntimeTempoSnapshot = (
 ): SerializedTrackTempoSnapshot => ({
   signature: snapshot.signature,
   durationSec: snapshot.durationSec,
+  baseDurationSec: snapshot.baseDurationSec,
   sourceDurationSec: snapshot.sourceDurationSec,
   baseBpm: snapshot.baseBpm,
   gridSourceBpm: snapshot.gridSourceBpm,
@@ -131,6 +139,20 @@ export const serializeTrackRuntimeTempoSnapshot = (
         sec: Number(point.sec),
         bpm: Number(point.bpm)
       }))
+    : undefined,
+  loopSegments: Array.isArray(snapshot.timeMapInput.loopSegments)
+    ? snapshot.timeMapInput.loopSegments.map((segment) => ({
+        startSec: Number(segment.startSec),
+        endSec: Number(segment.endSec),
+        repeatCount: Number(segment.repeatCount)
+      }))
+    : undefined,
+  loopSegment: snapshot.timeMapInput.loopSegment
+    ? {
+        startSec: Number(snapshot.timeMapInput.loopSegment.startSec),
+        endSec: Number(snapshot.timeMapInput.loopSegment.endSec),
+        repeatCount: Number(snapshot.timeMapInput.loopSegment.repeatCount)
+      }
     : undefined,
   controlPoints: snapshot.timeMapInput.controlPoints.map((point) => ({
     sec: Number(point.sec),
@@ -171,7 +193,7 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
             fallbackTrackBpm
         })
       : null
-  const durationSec =
+  const baseDurationSec =
     typeof params.durationSec === 'number' &&
     Number.isFinite(params.durationSec) &&
     params.durationSec > 0
@@ -196,24 +218,32 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
         buildProjectedMasterGridTempoPoints({
           points: mixtapeGlobalTempoEnvelope.value,
           trackStartSec,
-          durationSec,
+          durationSec: baseDurationSec,
           fallbackBpm: baseBpm
         }),
-        durationSec,
+        baseDurationSec,
         baseBpm
       )
     : params.rawPoints !== undefined && params.rawPoints !== null
-      ? normalizeTrackBpmEnvelopePoints(params.rawPoints, durationSec, baseBpm)
-      : buildFlatTrackBpmEnvelope(durationSec, baseBpm)
+      ? normalizeTrackBpmEnvelopePoints(params.rawPoints, baseDurationSec, baseBpm)
+      : buildFlatTrackBpmEnvelope(baseDurationSec, baseBpm)
+  const normalizedLoopSegments =
+    Array.isArray(track.loopSegments) && track.loopSegments.length
+      ? track.loopSegments
+      : track.loopSegment
+        ? [track.loopSegment]
+        : undefined
   const timeMapInput: TrackTimeMapInput = {
     controlPoints,
-    durationSec,
+    durationSec: baseDurationSec,
     sourceDurationSec,
     originalBpm,
     fallbackBpm: baseBpm,
     firstBeatSourceSec: Math.max(0, Number(track.firstBeatMs) || 0) / 1000,
     beatSourceSec,
     barBeatOffset: Number(track.barBeatOffset) || 0,
+    loopSegments: normalizedLoopSegments,
+    loopSegment: normalizedLoopSegments?.[0],
     mappingMode: masterGrid ? 'masterGrid' : 'tempoEnvelope',
     trackStartSec: trackStartSec,
     masterGridFallbackBpm: masterGrid ? masterGrid.tailBpm : undefined,
@@ -224,7 +254,8 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
   const visibleGridLines = timeMap.buildVisibleGridLines(Number(params.zoom) || 0)
   const snapshot: TrackRuntimeTempoSnapshot = {
     track,
-    durationSec,
+    durationSec: timeMap.durationSec,
+    baseDurationSec,
     sourceDurationSec,
     baseBpm,
     gridSourceBpm,

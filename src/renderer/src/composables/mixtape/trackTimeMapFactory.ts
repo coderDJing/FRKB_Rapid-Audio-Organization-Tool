@@ -16,6 +16,13 @@ import {
   mapTrackSourceToLocalOnMasterGrid
 } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
+  buildMixtapeTrackLoopSignature,
+  expandVisibleGridLinesByTrackLoop,
+  mapBaseTrackLocalToFirstLoopedLocal,
+  mapLoopedTrackLocalToBaseLocal,
+  resolveMixtapeTrackTimelineDuration
+} from '@renderer/composables/mixtape/mixtapeTrackLoop'
+import {
   BPM_POINT_SEC_EPSILON,
   clampTrackTempoNumber,
   roundTrackTempoSec
@@ -28,6 +35,7 @@ const trackTimeMapSnapshotCache = new Map<string, TrackTimeMap>()
 const buildSerializedTrackTimeMapCacheKey = (snapshot: SerializedTrackTempoSnapshot) =>
   [
     String(snapshot.signature || ''),
+    Math.round((Number(snapshot.baseDurationSec) || 0) * 1000),
     Math.round((Number(snapshot.sourceDurationSec) || 0) * 1000),
     Math.round((Number(snapshot.firstBeatSourceSec) || 0) * 1000),
     Math.round((Number(snapshot.beatSourceSec) || 0) * 1000),
@@ -125,6 +133,50 @@ const createGridResolvers = (params: {
       }
       return roundTrackTempoSec(nearest)
     }
+  }
+}
+
+const createLoopedTrackTimeMap = (
+  baseMap: TrackTimeMap,
+  input: TrackTimeMapInput
+): TrackTimeMap => {
+  const baseDurationSec = Math.max(0, Number(baseMap.durationSec) || 0)
+  const loopValue =
+    Array.isArray(input.loopSegments) && input.loopSegments.length
+      ? input.loopSegments
+      : input.loopSegment
+  const hasLoop = buildMixtapeTrackLoopSignature(loopValue) !== 'none'
+  if (!hasLoop) return baseMap
+  const durationSec = resolveMixtapeTrackTimelineDuration(baseDurationSec, loopValue)
+  const buildLines = (zoom: number) =>
+    expandVisibleGridLinesByTrackLoop(
+      baseMap.buildVisibleGridLines(zoom),
+      baseDurationSec,
+      loopValue
+    )
+  const gridResolvers = createGridResolvers({ durationSec, buildLines })
+
+  return {
+    ...baseMap,
+    durationSec,
+    mapLocalToSource: (localSec: number) =>
+      baseMap.mapLocalToSource(
+        mapLoopedTrackLocalToBaseLocal(localSec, baseDurationSec, loopValue)
+      ),
+    mapSourceToLocal: (sourceSec: number) =>
+      mapBaseTrackLocalToFirstLoopedLocal(
+        baseMap.mapSourceToLocal(sourceSec),
+        baseDurationSec,
+        loopValue
+      ),
+    sampleBpmAtLocal: (localSec: number) =>
+      baseMap.sampleBpmAtLocal(
+        mapLoopedTrackLocalToBaseLocal(localSec, baseDurationSec, loopValue)
+      ),
+    buildVisibleGridLines: (zoom: number) => buildLines(zoom),
+    buildSnapCandidates: gridResolvers.buildSnapCandidates,
+    resolveNearestGridLine: gridResolvers.resolveNearestGridLine,
+    snapLocalSec: gridResolvers.snapLocalSec
   }
 }
 
@@ -299,7 +351,10 @@ export const createTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
     input.mappingMode === 'masterGrid' &&
     Array.isArray(input.masterGridPoints) &&
     input.masterGridPoints.length >= 2
-  return shouldUseMasterGrid ? createMasterGridTrackTimeMap(input) : createLegacyTrackTimeMap(input)
+  const baseMap = shouldUseMasterGrid
+    ? createMasterGridTrackTimeMap(input)
+    : createLegacyTrackTimeMap(input)
+  return createLoopedTrackTimeMap(baseMap, input)
 }
 
 export const createTrackTimeMapFromSnapshotPayload = (
@@ -318,13 +373,27 @@ export const createTrackTimeMapFromSnapshotPayload = (
           : undefined,
       allowOffGrid: point.allowOffGrid === true ? true : undefined
     })),
-    durationSec: Number(snapshot.durationSec) || 0,
+    durationSec: Number(snapshot.baseDurationSec) || Number(snapshot.durationSec) || 0,
     sourceDurationSec: Number(snapshot.sourceDurationSec) || 0,
     originalBpm: Number(snapshot.originalBpm) || 0,
     fallbackBpm: Number(snapshot.baseBpm) || 128,
     firstBeatSourceSec: Number(snapshot.firstBeatSourceSec) || 0,
     beatSourceSec: Number(snapshot.beatSourceSec) || 0,
     barBeatOffset: Number(snapshot.barBeatOffset) || 0,
+    loopSegments: Array.isArray(snapshot.loopSegments)
+      ? snapshot.loopSegments.map((segment) => ({
+          startSec: Number(segment.startSec),
+          endSec: Number(segment.endSec),
+          repeatCount: Number(segment.repeatCount)
+        }))
+      : undefined,
+    loopSegment: snapshot.loopSegment
+      ? {
+          startSec: Number(snapshot.loopSegment.startSec),
+          endSec: Number(snapshot.loopSegment.endSec),
+          repeatCount: Number(snapshot.loopSegment.repeatCount)
+        }
+      : undefined,
     mappingMode: snapshot.mappingMode,
     trackStartSec: Number(snapshot.trackStartSec) || 0,
     masterGridFallbackBpm:

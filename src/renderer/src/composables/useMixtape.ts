@@ -310,6 +310,210 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       ...(next || {})
     }
   }
+  const normalizeMixtapeComparePath = (value: string | undefined | null) =>
+    normalizeMixtapeFilePath(value).replace(/\//g, '\\').toLowerCase()
+  const parseMixtapeRawItemInfoJson = (item: MixtapeRawItem): Record<string, unknown> => {
+    if (!item?.infoJson) return {}
+    try {
+      const parsed = JSON.parse(String(item.infoJson))
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {}
+    } catch {
+      return {}
+    }
+  }
+  const patchMixtapeRawItemsByFilePath = (
+    filePath: string,
+    patch: (info: Record<string, unknown>) => Record<string, unknown> | null
+  ) => {
+    const normalizedTargetPath = normalizeMixtapeComparePath(filePath)
+    if (!normalizedTargetPath || mixtapeRawItems.value.length === 0) return false
+    let touched = false
+    const nextRawItems = mixtapeRawItems.value.map((item) => {
+      if (normalizeMixtapeComparePath(item.filePath) !== normalizedTargetPath) return item
+      const nextInfo = patch(parseMixtapeRawItemInfoJson(item))
+      if (!nextInfo) return item
+      const nextInfoJson = JSON.stringify(nextInfo)
+      if (String(item.infoJson || '') === nextInfoJson) return item
+      touched = true
+      return {
+        ...item,
+        infoJson: nextInfoJson
+      }
+    })
+    if (touched) {
+      mixtapeRawItems.value = nextRawItems
+    }
+    return touched
+  }
+  const refreshMixtapeTrackDerivedUi = () => {
+    clearTimelineLayoutCache()
+    updateTimelineWidth(false)
+    scheduleTimelineDraw()
+    scheduleFullPreRender()
+    scheduleWorkerPreRender()
+  }
+  const handleSongKeyUpdated = (
+    _e: unknown,
+    eventPayload: { filePath?: string; keyText?: string }
+  ) => {
+    const filePath = normalizeMixtapeFilePath(eventPayload?.filePath)
+    const keyText = typeof eventPayload?.keyText === 'string' ? eventPayload.keyText.trim() : ''
+    if (!filePath || !keyText) return
+    const normalizedTargetPath = normalizeMixtapeComparePath(filePath)
+    let trackTouched = false
+    const nextTracks = tracks.value.map((track) => {
+      if (normalizeMixtapeComparePath(track.filePath) !== normalizedTargetPath) return track
+      const currentKey = typeof track.key === 'string' ? track.key.trim() : ''
+      const currentOriginalKey =
+        typeof track.originalKey === 'string' ? track.originalKey.trim() : ''
+      if (currentKey === keyText && currentOriginalKey) return track
+      trackTouched = true
+      return {
+        ...track,
+        key: keyText,
+        originalKey: currentOriginalKey || keyText
+      }
+    })
+    if (trackTouched) {
+      tracks.value = nextTracks
+    }
+    patchMixtapeRawItemsByFilePath(filePath, (info) => {
+      const currentKey = typeof info.key === 'string' ? info.key.trim() : ''
+      const currentOriginalKey = typeof info.originalKey === 'string' ? info.originalKey.trim() : ''
+      if (currentKey === keyText && currentOriginalKey) return null
+      return {
+        ...info,
+        key: keyText,
+        originalKey: currentOriginalKey || keyText
+      }
+    })
+  }
+  const handleSongBpmUpdated = (_e: unknown, eventPayload: { filePath?: string; bpm?: number }) => {
+    const filePath = normalizeMixtapeFilePath(eventPayload?.filePath)
+    const bpmValue = normalizeBpm(eventPayload?.bpm)
+    if (!filePath || bpmValue === null) return
+    const normalizedTargetPath = normalizeMixtapeComparePath(filePath)
+    let trackTouched = false
+    const nextTracks = tracks.value.map((track) => {
+      if (normalizeMixtapeComparePath(track.filePath) !== normalizedTargetPath) return track
+      const currentBpm = Number(track.gridBaseBpm ?? track.originalBpm ?? track.bpm)
+      if (Number.isFinite(currentBpm) && Math.abs(currentBpm - bpmValue) <= 0.0001) return track
+      trackTouched = true
+      return {
+        ...track,
+        gridBaseBpm: bpmValue,
+        originalBpm: bpmValue,
+        bpm: bpmValue,
+        masterTempo: track.masterTempo !== false
+      }
+    })
+    if (trackTouched) {
+      tracks.value = nextTracks
+    }
+    const rawTouched = patchMixtapeRawItemsByFilePath(filePath, (info) => {
+      const currentBpm = normalizeBpm(info.gridBaseBpm ?? info.originalBpm ?? info.bpm)
+      if (currentBpm !== null && Math.abs(currentBpm - bpmValue) <= 0.0001) return null
+      return {
+        ...info,
+        gridBaseBpm: bpmValue,
+        originalBpm: bpmValue,
+        bpm: bpmValue
+      }
+    })
+    if (trackTouched || rawTouched) {
+      refreshMixtapeTrackDerivedUi()
+    }
+  }
+  const handleSongGridUpdated = (
+    _e: unknown,
+    eventPayload: {
+      filePath?: string
+      bpm?: number
+      firstBeatMs?: number
+      barBeatOffset?: number
+    }
+  ) => {
+    const filePath = normalizeMixtapeFilePath(eventPayload?.filePath)
+    if (!filePath) return
+    const normalizedTargetPath = normalizeMixtapeComparePath(filePath)
+    const bpmValue = normalizeBpm(eventPayload?.bpm)
+    const hasBpm = bpmValue !== null
+    const hasFirstBeatMs =
+      typeof eventPayload?.firstBeatMs === 'number' && Number.isFinite(eventPayload.firstBeatMs)
+    const firstBeatMs = hasFirstBeatMs ? normalizeFirstBeatMs(eventPayload?.firstBeatMs) : undefined
+    const hasBarBeatOffset =
+      typeof eventPayload?.barBeatOffset === 'number' && Number.isFinite(eventPayload.barBeatOffset)
+    const barBeatOffset = hasBarBeatOffset
+      ? normalizeBarBeatOffset(eventPayload?.barBeatOffset)
+      : undefined
+    if (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset) return
+    let trackTouched = false
+    const nextTracks = tracks.value.map((track) => {
+      if (normalizeMixtapeComparePath(track.filePath) !== normalizedTargetPath) return track
+      const currentBpm = Number(track.gridBaseBpm ?? track.originalBpm ?? track.bpm)
+      const currentFirstBeatMs = Number(track.firstBeatMs)
+      const currentBarBeatOffset = Number(track.barBeatOffset)
+      const bpmChanged =
+        hasBpm && (!Number.isFinite(currentBpm) || Math.abs(currentBpm - Number(bpmValue)) > 0.0001)
+      const firstBeatChanged =
+        hasFirstBeatMs &&
+        (!Number.isFinite(currentFirstBeatMs) ||
+          Math.abs(currentFirstBeatMs - Number(firstBeatMs)) > 0.001)
+      const barBeatOffsetChanged =
+        hasBarBeatOffset &&
+        (!Number.isFinite(currentBarBeatOffset) || currentBarBeatOffset !== barBeatOffset)
+      if (!bpmChanged && !firstBeatChanged && !barBeatOffsetChanged) return track
+      trackTouched = true
+      return {
+        ...track,
+        ...(hasBpm
+          ? {
+              gridBaseBpm: bpmValue || undefined,
+              originalBpm: bpmValue || undefined,
+              bpm: bpmValue || undefined,
+              masterTempo: track.masterTempo !== false
+            }
+          : {}),
+        ...(hasFirstBeatMs ? { firstBeatMs } : {}),
+        ...(hasBarBeatOffset ? { barBeatOffset } : {})
+      }
+    })
+    if (trackTouched) {
+      tracks.value = nextTracks
+    }
+    const rawTouched = patchMixtapeRawItemsByFilePath(filePath, (info) => {
+      const currentBpm = normalizeBpm(info.gridBaseBpm ?? info.originalBpm ?? info.bpm)
+      const currentFirstBeatMs = Number(info.firstBeatMs)
+      const currentBarBeatOffset = Number(info.barBeatOffset)
+      const bpmChanged =
+        hasBpm && (currentBpm === null || Math.abs(currentBpm - Number(bpmValue)) > 0.0001)
+      const firstBeatChanged =
+        hasFirstBeatMs &&
+        (!Number.isFinite(currentFirstBeatMs) ||
+          Math.abs(currentFirstBeatMs - Number(firstBeatMs)) > 0.001)
+      const barBeatOffsetChanged =
+        hasBarBeatOffset &&
+        (!Number.isFinite(currentBarBeatOffset) || currentBarBeatOffset !== barBeatOffset)
+      if (!bpmChanged && !firstBeatChanged && !barBeatOffsetChanged) return null
+      return {
+        ...info,
+        ...(hasBpm
+          ? {
+              gridBaseBpm: bpmValue,
+              originalBpm: bpmValue,
+              bpm: bpmValue
+            }
+          : {}),
+        ...(hasFirstBeatMs ? { firstBeatMs } : {}),
+        ...(hasBarBeatOffset ? { barBeatOffset } : {})
+      }
+    })
+    if (trackTouched || rawTouched) {
+      refreshMixtapeTrackDerivedUi()
+    }
+  }
   const buildBpmTargets = () => buildMixtapeBpmTargets(tracks.value)
   const resolveMissingBpmCount = (bpmTargets: Set<string>) =>
     resolveMissingBpmTrackCount(tracks.value, bpmTargets)
@@ -614,6 +818,9 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
   )
   onMounted(() => {
     applyPayload(resolveInitialMixtapePayload())
+    window.electron.ipcRenderer.on('song-key-updated', handleSongKeyUpdated)
+    window.electron.ipcRenderer.on('song-bpm-updated', handleSongBpmUpdated)
+    window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
     window.electron.ipcRenderer.on('mixtape-open', handleOpen)
     window.electron.ipcRenderer.on('mixtape-bpm-batch-ready', handleBpmBatchReady)
     window.electron.ipcRenderer.on('mixtape-stem-status-updated', handleMixtapeStemStatusUpdated)
@@ -634,6 +841,15 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     window.addEventListener('keydown', handleWindowKeydown)
   })
   onBeforeUnmount(() => {
+    try {
+      window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)
+    } catch {}
+    try {
+      window.electron.ipcRenderer.removeListener('song-bpm-updated', handleSongBpmUpdated)
+    } catch {}
+    try {
+      window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
+    } catch {}
     try {
       window.electron.ipcRenderer.removeListener('mixtape-open', handleOpen)
     } catch {}

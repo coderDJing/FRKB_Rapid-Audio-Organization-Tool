@@ -13,11 +13,13 @@ import {
   isSecMutedBySegments,
   normalizeVolumeMuteSegments
 } from '@renderer/composables/mixtape/volumeMuteSegments'
+import { mapLoopedTrackLocalToBaseLocal } from '@renderer/composables/mixtape/mixtapeTrackLoop'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeGainPoint,
   MixtapeMuteSegment,
   MixtapeTrack,
+  MixtapeTrackLoopSegment,
   TimelineLayoutSnapshot,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
@@ -25,6 +27,13 @@ import type {
 type TransportEntryLike = {
   trackId: string
   duration: number
+  trackDuration?: number
+  localStartSec?: number
+  tempoSnapshot?: {
+    baseDurationSec?: number
+    loopSegments?: MixtapeTrackLoopSegment[]
+    loopSegment?: MixtapeTrackLoopSegment
+  }
   mixEnvelopes: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>>
   mixEnvelopeSources: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
   volumeMuteSegments: MixtapeMuteSegment[]
@@ -327,21 +336,33 @@ export const createTimelineTransportResolversModule = (ctx: TimelineTransportRes
     const latestTrack = tracks.value.find((track: MixtapeTrack) => track.id === entry.trackId)
     const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
     const latestEnvelopeSource = latestTrack ? latestTrack[envelopeField] : undefined
+    const baseDuration = Math.max(
+      0,
+      Number(entry.tempoSnapshot?.baseDurationSec ?? entry.trackDuration ?? entry.duration) || 0
+    )
     if (latestTrack && latestEnvelopeSource !== entry.mixEnvelopeSources[param]) {
-      entry.mixEnvelopes[param] = resolveTrackMixEnvelope(latestTrack, entry.duration, param)
+      entry.mixEnvelopes[param] = resolveTrackMixEnvelope(latestTrack, baseDuration, param)
       entry.mixEnvelopeSources[param] = latestEnvelopeSource
     }
     if (param === 'volume' && latestTrack) {
       const latestMuteSource = latestTrack.volumeMuteSegments
       if (latestMuteSource !== entry.volumeMuteSegmentsSource) {
-        entry.volumeMuteSegments = normalizeVolumeMuteSegments(latestMuteSource, entry.duration)
+        entry.volumeMuteSegments = normalizeVolumeMuteSegments(latestMuteSource, baseDuration)
         entry.volumeMuteSegmentsSource = latestMuteSource
       }
     }
+    const trackDuration = Math.max(0, Number(entry.trackDuration ?? entry.duration) || 0)
+    const localStartSec = Math.max(0, Number(entry.localStartSec) || 0)
     const safeOffset = clampNumber(timelineOffsetSec, 0, Math.max(0, entry.duration))
-    const envelopeGain = sampleMixEnvelopeAtSec(param, entry.mixEnvelopes[param], safeOffset, 1)
+    const localSec = clampNumber(localStartSec + safeOffset, 0, Math.max(0, trackDuration))
+    const baseLocalSec = mapLoopedTrackLocalToBaseLocal(
+      localSec,
+      baseDuration,
+      entry.tempoSnapshot?.loopSegments ?? entry.tempoSnapshot?.loopSegment
+    )
+    const envelopeGain = sampleMixEnvelopeAtSec(param, entry.mixEnvelopes[param], baseLocalSec, 1)
     if (param !== 'volume') return envelopeGain
-    const muted = isSecMutedBySegments(entry.volumeMuteSegments, safeOffset)
+    const muted = isSecMutedBySegments(entry.volumeMuteSegments, baseLocalSec)
     return muted ? segmentMuteGain : envelopeGain
   }
 

@@ -10,6 +10,10 @@ import {
   buildTrackRuntimeTempoSnapshot,
   serializeTrackRuntimeTempoSnapshot
 } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
+import {
+  buildMixtapeTrackLoopSections,
+  normalizeMixtapeTrackLoopSegment
+} from '@renderer/composables/mixtape/mixtapeTrackLoop'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type {
   MixtapeEnvelopeParamId,
@@ -89,7 +93,12 @@ export type TransportEntry = {
   masterTempo: boolean
   syncAnchorSec: number
   sourceDuration: number
+  sourceOffsetSec: number
+  sourceSegmentDuration: number
   duration: number
+  trackDuration: number
+  localStartSec: number
+  baseLocalStartSec: number
   tempoRatio: number
   mixEnvelopes: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>>
   mixEnvelopeSources: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
@@ -285,120 +294,128 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
     let stemNotReadyCount = 0
     let missingStemAssetCount = 0
     const useStemMode = ctx.isStemMixMode()
-    const entries = ctx.tracks.value
-      .map((track: MixtapeTrack) => {
-        const stemStatus = useStemMode ? ctx.normalizeMixtapeStemStatus(track.stemStatus) : 'ready'
-        const stemReadyForPlayback = !useStemMode || stemStatus === 'ready'
-        if (useStemMode && !stemReadyForPlayback) {
-          stemNotReadyCount += 1
+    const entries: TransportEntry[] = []
+    for (const track of ctx.tracks.value) {
+      const stemStatus = useStemMode ? ctx.normalizeMixtapeStemStatus(track.stemStatus) : 'ready'
+      const stemReadyForPlayback = !useStemMode || stemStatus === 'ready'
+      if (useStemMode && !stemReadyForPlayback) {
+        stemNotReadyCount += 1
+      }
+      const filePath = String(track.filePath || '').trim()
+      if (!filePath) continue
+      const sourceDuration = ctx.resolveTrackSourceDurationSeconds(track)
+      if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) {
+        missingDurationCount += 1
+        continue
+      }
+      const bpm = Number(track.bpm)
+      const originalBpm = Number(track.originalBpm) || bpm
+      const runtimeTempoSnapshot = buildTrackRuntimeTempoSnapshot({
+        track,
+        sourceDurationSec: sourceDuration
+      })
+      const tempoSnapshot = serializeTrackRuntimeTempoSnapshot(runtimeTempoSnapshot)
+      const beatSec = resolveBeatSecByBpm(bpm)
+      const tempoRatio =
+        sourceDuration > 0 ? sourceDuration / Math.max(0.01, runtimeTempoSnapshot.durationSec) : 1
+      const trackDuration = tempoSnapshot.durationSec
+      const firstBeatSec = runtimeTempoSnapshot.timeMap.mapSourceToLocal(
+        runtimeTempoSnapshot.firstBeatSourceSec
+      )
+      const barBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
+      const masterTempo = track.masterTempo !== false
+      const trackStartSec = startSecById.get(track.id) ?? ctx.resolveTrackStartSec(track)
+      const visibleBarLines = runtimeTempoSnapshot.timeMap
+        .buildVisibleGridLines(Number.POSITIVE_INFINITY)
+        .filter((line) => line.level === 'bar')
+      const activeParams = ctx.resolveMixEnvelopeParams()
+      const mixEnvelopes = activeParams.reduce(
+        (acc, param) => {
+          acc[param] = ctx.resolveTrackMixEnvelope(track, trackDuration, param)
+          return acc
+        },
+        {} as Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>>
+      )
+      const mixEnvelopeSources = activeParams.reduce(
+        (acc, param) => {
+          const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
+          acc[param] = track[envelopeField]
+          return acc
+        },
+        {} as Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
+      )
+      const volumeMuteSegmentsSource = track.volumeMuteSegments
+      const volumeMuteSegments = normalizeVolumeMuteSegments(
+        volumeMuteSegmentsSource,
+        trackDuration
+      )
+      const decodeMode: 'browser' | 'ipc' = canPlayHtmlAudio(filePath) ? 'browser' : 'ipc'
+      const audioRef = useStemMode
+        ? undefined
+        : {
+            filePath,
+            decodeMode,
+            audioBuffer: null
+          }
+      const stemIds = ctx.resolveStemIdsForMode()
+      let stemAudioById: Partial<Record<TransportStemId, TransportStemAudioRef>> | undefined
+      if (useStemMode && stemReadyForPlayback) {
+        const nextStemAudioById: Partial<Record<TransportStemId, TransportStemAudioRef>> = {}
+        let stemAssetsMissing = false
+        for (const stemId of stemIds) {
+          const stemFilePath = ctx.resolveTrackStemFilePath(track, stemId)
+          if (!stemFilePath) {
+            missingStemAssetCount += 1
+            stemAssetsMissing = true
+            break
+          }
+          nextStemAudioById[stemId] = {
+            stemId,
+            filePath: stemFilePath,
+            decodeMode: canPlayHtmlAudio(stemFilePath) ? 'browser' : 'ipc',
+            audioBuffer: null
+          }
         }
-        const filePath = String(track.filePath || '').trim()
-        if (!filePath) return null
-        const sourceDuration = ctx.resolveTrackSourceDurationSeconds(track)
-        if (!Number.isFinite(sourceDuration) || sourceDuration <= 0) {
-          missingDurationCount += 1
-          return null
+        if (!stemAssetsMissing) {
+          stemAudioById = nextStemAudioById
         }
-        const bpm = Number(track.bpm)
-        const originalBpm = Number(track.originalBpm) || bpm
-        const runtimeTempoSnapshot = buildTrackRuntimeTempoSnapshot({
-          track,
-          sourceDurationSec: sourceDuration
-        })
-        const tempoSnapshot = serializeTrackRuntimeTempoSnapshot(runtimeTempoSnapshot)
-        const beatSec = resolveBeatSecByBpm(bpm)
-        const tempoRatio =
-          sourceDuration > 0 ? sourceDuration / Math.max(0.01, runtimeTempoSnapshot.durationSec) : 1
-        const duration = tempoSnapshot.durationSec
-        const firstBeatSec = runtimeTempoSnapshot.timeMap.mapSourceToLocal(
-          runtimeTempoSnapshot.firstBeatSourceSec
+      }
+      const loopValue =
+        Array.isArray(track.loopSegments) && track.loopSegments.length
+          ? track.loopSegments
+          : normalizeMixtapeTrackLoopSegment(track.loopSegment, tempoSnapshot.baseDurationSec)
+      const sectionList = buildMixtapeTrackLoopSections(tempoSnapshot.baseDurationSec, loopValue)
+      for (const section of sectionList) {
+        const duration = Number((section.displayEndSec - section.displayStartSec).toFixed(4))
+        if (!Number.isFinite(duration) || duration <= 0.0001) continue
+        const localStartSec = Number(section.displayStartSec.toFixed(4))
+        const sourceOffsetSec = Number(
+          runtimeTempoSnapshot.timeMap.mapLocalToSource(localStartSec).toFixed(4)
         )
-        const barBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
-        const masterTempo = track.masterTempo !== false
-        const startSec = startSecById.get(track.id) ?? ctx.resolveTrackStartSec(track)
+        const sourceEndSec = Number(
+          runtimeTempoSnapshot.timeMap.mapLocalToSource(section.displayEndSec).toFixed(4)
+        )
+        const sourceSegmentDuration = Math.max(
+          0,
+          Number((sourceEndSec - sourceOffsetSec).toFixed(4))
+        )
         const firstBarLine =
-          runtimeTempoSnapshot.timeMap
-            .buildVisibleGridLines(Number.POSITIVE_INFINITY)
-            .find((line) => line.level === 'bar') || null
+          visibleBarLines.find(
+            (line) =>
+              line.sec >= section.displayStartSec - 0.0001 &&
+              line.sec < section.displayEndSec - 0.0001
+          ) || null
+        const startSec = Number((trackStartSec + section.displayStartSec).toFixed(4))
         const syncAnchorSec =
           typeof firstBarLine?.sec === 'number'
-            ? Number((startSec + firstBarLine.sec).toFixed(4))
+            ? Number((trackStartSec + firstBarLine.sec).toFixed(4))
             : resolveGridAnchorSec({
                 startSec,
-                firstBeatSec,
+                firstBeatSec: Math.max(0, firstBeatSec - localStartSec),
                 beatSec,
                 barBeatOffset
               })
-        const activeParams = ctx.resolveMixEnvelopeParams()
-        const mixEnvelopes = activeParams.reduce(
-          (acc, param) => {
-            acc[param] = ctx.resolveTrackMixEnvelope(track, duration, param)
-            return acc
-          },
-          {} as Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[]>>
-        )
-        const mixEnvelopeSources = activeParams.reduce(
-          (acc, param) => {
-            const envelopeField = MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param]
-            acc[param] = track[envelopeField]
-            return acc
-          },
-          {} as Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
-        )
-        const volumeMuteSegmentsSource = track.volumeMuteSegments
-        const volumeMuteSegments = normalizeVolumeMuteSegments(volumeMuteSegmentsSource, duration)
-        const decodeMode: 'browser' | 'ipc' = canPlayHtmlAudio(filePath) ? 'browser' : 'ipc'
-        if (!useStemMode) {
-          return {
-            trackId: track.id,
-            filePath,
-            startSec,
-            bpm,
-            originalBpm,
-            tempoSnapshot,
-            beatSec,
-            firstBeatSec,
-            barBeatOffset,
-            masterTempo,
-            syncAnchorSec,
-            sourceDuration,
-            duration,
-            tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
-            mixEnvelopes,
-            mixEnvelopeSources,
-            volumeMuteSegments,
-            volumeMuteSegmentsSource,
-            audioRef: {
-              filePath,
-              decodeMode,
-              audioBuffer: null
-            }
-          } as TransportEntry
-        }
-        const stemIds = ctx.resolveStemIdsForMode()
-        let stemAudioById: Partial<Record<TransportStemId, TransportStemAudioRef>> | undefined
-        if (stemReadyForPlayback) {
-          const nextStemAudioById: Partial<Record<TransportStemId, TransportStemAudioRef>> = {}
-          let stemAssetsMissing = false
-          for (const stemId of stemIds) {
-            const stemFilePath = ctx.resolveTrackStemFilePath(track, stemId)
-            if (!stemFilePath) {
-              missingStemAssetCount += 1
-              stemAssetsMissing = true
-              break
-            }
-            nextStemAudioById[stemId] = {
-              stemId,
-              filePath: stemFilePath,
-              decodeMode: canPlayHtmlAudio(stemFilePath) ? 'browser' : 'ipc',
-              audioBuffer: null
-            }
-          }
-          if (!stemAssetsMissing) {
-            stemAudioById = nextStemAudioById
-          }
-        }
-        return {
+        entries.push({
           trackId: track.id,
           filePath,
           startSec,
@@ -411,17 +428,22 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           masterTempo,
           syncAnchorSec,
           sourceDuration,
+          sourceOffsetSec,
+          sourceSegmentDuration,
           duration,
+          trackDuration,
+          localStartSec,
+          baseLocalStartSec: Number(section.baseStartSec.toFixed(4)),
           tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
           mixEnvelopes,
           mixEnvelopeSources,
           volumeMuteSegments,
           volumeMuteSegmentsSource,
-          audioRef: undefined,
+          audioRef,
           stemAudioById
-        } as TransportEntry
-      })
-      .filter(Boolean) as TransportEntry[]
+        })
+      }
+    }
     entries.sort((a, b) => a.startSec - b.startSec)
     return {
       entries,

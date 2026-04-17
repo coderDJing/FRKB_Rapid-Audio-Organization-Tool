@@ -26,6 +26,7 @@ import {
   buildTrackRuntimeTempoSnapshot,
   serializeTrackRuntimeTempoSnapshot
 } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
+import { resolveMixtapeTrackLoopTileSections } from '@renderer/composables/mixtape/mixtapeTrackLoop'
 import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import { createTimelineWaveformLoadingModule } from '@renderer/composables/mixtape/timelineWaveformLoading'
 import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
@@ -589,7 +590,12 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
     tile: WaveformTile
   ) => {
     const { trackWidth, sourceDurationSeconds, data, rawData } = render
-    if (render.renderZoom <= MIXTAPE_SUMMARY_ZOOM + 0.0001) {
+    const loopValue =
+      Array.isArray(render.tempoSnapshot.loopSegments) && render.tempoSnapshot.loopSegments.length
+        ? render.tempoSnapshot.loopSegments
+        : render.tempoSnapshot.loopSegment
+    const hasLoopSegment = !!loopValue
+    if (!hasLoopSegment && render.renderZoom <= MIXTAPE_SUMMARY_ZOOM + 0.0001) {
       renderSummaryWaveformBar(ctx, width, height)
       return
     }
@@ -603,27 +609,56 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
     const localEndSec = render.tempoSnapshot.durationSec
       ? ((tile.start + tile.width) / Math.max(1, trackWidth)) * render.durationSeconds
       : 0
+    const localSpanSec = Math.max(0.0001, localEndSec - localStartSec)
     const renderTimeMap = createTrackTimeMapFromSnapshotPayload({
       ...render.tempoSnapshot,
       sourceDurationSec: waveformDurationSeconds
     })
-    const startTime = waveformDurationSeconds ? renderTimeMap.mapLocalToSource(localStartSec) : 0
-    const endTime = waveformDurationSeconds ? renderTimeMap.mapLocalToSource(localEndSec) : 0
-
-    const pixelRatio = window.devicePixelRatio || 1
-    const rawSpan = Math.max(0, endTime - startTime)
-    const rawSamplesPerPixel =
-      rawData && rawSpan > 0 ? (rawData.rate * rawSpan) / Math.max(1, width * pixelRatio) : 0
-    const resolvedRaw =
-      render.waveformFilePath && rawData
-        ? resolveRawWaveformLevel(render.waveformFilePath, rawData, rawSamplesPerPixel)
-        : rawData
 
     const stemMode = isStemMixMode()
     const stemData = stemMode && isStemWaveformData(data) ? data : null
     const mixxxData = !stemMode && isMixxxWaveformData(data) ? data : null
+    const baseDurationSeconds = Math.max(
+      0,
+      Number(render.tempoSnapshot.baseDurationSec || render.durationSeconds) || 0
+    )
+    const loopSections = resolveMixtapeTrackLoopTileSections({
+      localStartSec,
+      localEndSec,
+      baseDurationSec: baseDurationSeconds,
+      loopSegments: Array.isArray(render.tempoSnapshot.loopSegments)
+        ? render.tempoSnapshot.loopSegments
+        : undefined,
+      loopSegment: render.tempoSnapshot.loopSegment
+    })
 
-    const drawWaveform = (targetCtx: CanvasRenderingContext2D, targetWidth: number) => {
+    const drawWaveform = (
+      targetCtx: CanvasRenderingContext2D,
+      targetWidth: number,
+      section: {
+        kind?: string
+        displayStartSec: number
+        displayEndSec: number
+        baseStartSec: number
+        baseEndSec: number
+      }
+    ) => {
+      const startTime = waveformDurationSeconds
+        ? renderTimeMap.mapLocalToSource(section.baseStartSec)
+        : 0
+      const endTime = waveformDurationSeconds
+        ? renderTimeMap.mapLocalToSource(section.baseEndSec)
+        : 0
+      const pixelRatio = window.devicePixelRatio || 1
+      const rawSpan = Math.max(0, endTime - startTime)
+      const rawSamplesPerPixel =
+        rawData && rawSpan > 0
+          ? (rawData.rate * rawSpan) / Math.max(1, targetWidth * pixelRatio)
+          : 0
+      const resolvedRaw =
+        render.waveformFilePath && rawData
+          ? resolveRawWaveformLevel(render.waveformFilePath, rawData, rawSamplesPerPixel)
+          : rawData
       if (stemMode) {
         if (!stemData && !resolvedRaw) {
           targetCtx.strokeStyle = 'rgba(128, 128, 128, 0.3)'
@@ -640,12 +675,16 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
           ? Math.min(stemData.all.left.length, stemData.all.right.length)
           : 0
         const startFrame =
-          frameCountFromStem > 0
-            ? Math.floor((tile.start / Math.max(1, trackWidth)) * frameCountFromStem)
+          frameCountFromStem > 0 && baseDurationSeconds > 0
+            ? Math.floor(
+                (section.baseStartSec / Math.max(0.0001, baseDurationSeconds)) * frameCountFromStem
+              )
             : 0
         const endFrame =
-          frameCountFromStem > 0
-            ? Math.ceil(((tile.start + tile.width) / Math.max(1, trackWidth)) * frameCountFromStem)
+          frameCountFromStem > 0 && baseDurationSeconds > 0
+            ? Math.ceil(
+                (section.baseEndSec / Math.max(0.0001, baseDurationSeconds)) * frameCountFromStem
+              )
             : 1
         drawStemWaveform(targetCtx, targetWidth, height, stemData, useHalfWaveform(), {
           startFrame,
@@ -680,8 +719,14 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
         targetCtx.setLineDash([])
         return
       }
-      const startFrame = Math.floor((tile.start / Math.max(1, trackWidth)) * frameCount)
-      const endFrame = Math.ceil(((tile.start + tile.width) / Math.max(1, trackWidth)) * frameCount)
+      const startFrame =
+        baseDurationSeconds > 0
+          ? Math.floor((section.baseStartSec / Math.max(0.0001, baseDurationSeconds)) * frameCount)
+          : 0
+      const endFrame =
+        baseDurationSeconds > 0
+          ? Math.ceil((section.baseEndSec / Math.max(0.0001, baseDurationSeconds)) * frameCount)
+          : frameCount
       drawMixxxRgbWaveform(targetCtx, targetWidth, height, mixxxData, useHalfWaveform(), {
         startFrame,
         endFrame,
@@ -691,11 +736,107 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
       })
     }
 
+    const drawLoopSectionBackdrop = (
+      targetCtx: CanvasRenderingContext2D,
+      targetWidth: number,
+      section: {
+        kind?: string
+      }
+    ) => {
+      if (section.kind !== 'loop-source' && section.kind !== 'loop-repeat') return
+      targetCtx.save()
+      targetCtx.fillStyle =
+        section.kind === 'loop-source' ? 'rgba(255, 214, 102, 0.34)' : 'rgba(255, 196, 84, 0.24)'
+      targetCtx.fillRect(0, 0, targetWidth, height)
+      targetCtx.fillStyle =
+        section.kind === 'loop-source' ? 'rgba(255, 242, 196, 0.62)' : 'rgba(255, 223, 152, 0.48)'
+      targetCtx.fillRect(0, 0, targetWidth, 6)
+      targetCtx.strokeStyle =
+        section.kind === 'loop-source' ? 'rgba(255, 245, 210, 0.96)' : 'rgba(255, 220, 132, 0.9)'
+      targetCtx.lineWidth = 2
+      targetCtx.beginPath()
+      targetCtx.moveTo(1, 0)
+      targetCtx.lineTo(1, height)
+      if (section.kind === 'loop-source') {
+        targetCtx.moveTo(Math.max(1, targetWidth - 1), 0)
+        targetCtx.lineTo(Math.max(1, targetWidth - 1), height)
+      }
+      targetCtx.stroke()
+      targetCtx.restore()
+    }
+
+    const drawLoopAwareWaveform = (targetCtx: CanvasRenderingContext2D, targetWidth: number) => {
+      const sectionCanvasCache = new Map<string, HTMLCanvasElement>()
+      const buildSectionCacheKey = (
+        section: {
+          baseStartSec: number
+          baseEndSec: number
+        },
+        sectionWidth: number
+      ) =>
+        [
+          render.waveformFilePath,
+          render.waveformStemId,
+          Math.round(section.baseStartSec * 1000),
+          Math.round(section.baseEndSec * 1000),
+          Math.max(1, Math.round(sectionWidth))
+        ].join(':')
+
+      const getOrCreateSectionCanvas = (
+        section: {
+          kind?: string
+          displayStartSec: number
+          displayEndSec: number
+          baseStartSec: number
+          baseEndSec: number
+        },
+        sectionWidth: number
+      ) => {
+        const cacheKey = buildSectionCacheKey(section, sectionWidth)
+        const cachedCanvas = sectionCanvasCache.get(cacheKey)
+        if (cachedCanvas) return cachedCanvas
+        const cacheCanvas = document.createElement('canvas')
+        cacheCanvas.width = sectionWidth
+        cacheCanvas.height = height
+        const cacheCtx = cacheCanvas.getContext('2d')
+        if (!cacheCtx) return null
+        drawWaveform(cacheCtx, sectionWidth, {
+          ...section,
+          displayStartSec: section.baseStartSec,
+          displayEndSec: section.baseEndSec
+        })
+        sectionCanvasCache.set(cacheKey, cacheCanvas)
+        return cacheCanvas
+      }
+
+      for (const section of loopSections) {
+        const sectionStartRatio = (section.displayStartSec - localStartSec) / localSpanSec
+        const sectionEndRatio = (section.displayEndSec - localStartSec) / localSpanSec
+        const sectionStartX = Math.max(0, Math.floor(sectionStartRatio * targetWidth))
+        const sectionEndX = Math.min(targetWidth, Math.ceil(sectionEndRatio * targetWidth))
+        const sectionWidth = Math.max(1, sectionEndX - sectionStartX)
+        targetCtx.save()
+        targetCtx.translate(sectionStartX, 0)
+        drawLoopSectionBackdrop(targetCtx, sectionWidth, section)
+        if (section.kind === 'loop-source' || section.kind === 'loop-repeat') {
+          const cachedCanvas = getOrCreateSectionCanvas(section, sectionWidth)
+          if (cachedCanvas) {
+            targetCtx.drawImage(cachedCanvas, 0, 0, sectionWidth, height)
+          } else {
+            drawWaveform(targetCtx, sectionWidth, section)
+          }
+        } else {
+          drawWaveform(targetCtx, sectionWidth, section)
+        }
+        targetCtx.restore()
+      }
+    }
+
     const renderScale = render.renderZoom >= 1 ? MIXTAPE_WAVEFORM_SUPERSAMPLE : 1
     if (renderScale > 1) {
       const scratch = ensureWaveformScratch(width * renderScale, height)
       if (scratch) {
-        drawWaveform(scratch.ctx, width * renderScale)
+        drawLoopAwareWaveform(scratch.ctx, width * renderScale)
         ctx.save()
         ctx.imageSmoothingEnabled = true
         ctx.clearRect(0, 0, width, height)
@@ -715,7 +856,7 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
       }
     }
 
-    drawWaveform(ctx, width)
+    drawLoopAwareWaveform(ctx, width)
   }
 
   const scheduleWaveformDraw = (_deferSwap: boolean = false) => {

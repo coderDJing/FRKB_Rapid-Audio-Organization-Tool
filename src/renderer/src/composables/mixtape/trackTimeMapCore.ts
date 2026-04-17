@@ -11,6 +11,7 @@ import {
 } from '@renderer/composables/mixtape/trackTempoModel'
 import type {
   MixtapeBpmPoint,
+  MixtapeTrackLoopSegment,
   SerializedTrackTempoSnapshot
 } from '@renderer/composables/mixtape/types'
 
@@ -29,6 +30,8 @@ export type TrackTimeMapInput = {
   firstBeatSourceSec: number
   beatSourceSec: number
   barBeatOffset?: number
+  loopSegments?: MixtapeTrackLoopSegment[]
+  loopSegment?: MixtapeTrackLoopSegment
   mappingMode?: 'tempoEnvelope' | 'masterGrid'
   trackStartSec?: number
   masterGridFallbackBpm?: number

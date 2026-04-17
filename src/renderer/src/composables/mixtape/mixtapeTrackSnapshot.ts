@@ -2,6 +2,7 @@ import {
   normalizeGainEnvelopePoints,
   normalizeMixEnvelopePoints
 } from '@renderer/composables/mixtape/gainEnvelope'
+import { normalizeMixtapeTrackLoopSegments } from '@renderer/composables/mixtape/mixtapeTrackLoop'
 import { normalizeTrackBpmValue } from '@renderer/composables/mixtape/trackTempoModel'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type {
@@ -117,6 +118,10 @@ export const parseSnapshot = (
     info?.volumeMuteSegments,
     Number(info?.durationSec)
   )
+  const parsedLoopSegments = normalizeMixtapeTrackLoopSegments(
+    info?.loopSegments ?? info?.loopSegment
+  )
+  const parsedLoopSegment = parsedLoopSegments[0]
   const parsedStartSecRaw = Number(info?.startSec)
   const parsedStartSec = Number.isFinite(parsedStartSecRaw)
     ? Number(parsedStartSecRaw.toFixed(4))
@@ -151,6 +156,8 @@ export const parseSnapshot = (
     originalBpm: parsedOriginalBpm,
     masterTempo: parsedMasterTempo,
     startSec: parsedStartSec,
+    loopSegments: parsedLoopSegments.length ? parsedLoopSegments : undefined,
+    loopSegment: parsedLoopSegment,
     gainEnvelope: parsedGainEnvelope.length ? parsedGainEnvelope : undefined,
     highEnvelope: parsedHighEnvelope.length ? parsedHighEnvelope : undefined,
     midEnvelope: parsedMidEnvelope.length ? parsedMidEnvelope : undefined,

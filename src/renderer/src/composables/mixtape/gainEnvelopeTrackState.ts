@@ -4,6 +4,7 @@ import {
   normalizeMixEnvelopePoints,
   sampleMixEnvelopeAtSec
 } from '@renderer/composables/mixtape/gainEnvelope'
+import { buildMixtapeTrackLoopSignature } from '@renderer/composables/mixtape/mixtapeTrackLoop'
 import { snapSecToVisibleGrid as snapSecToVisibleGridByUtils } from '@renderer/composables/mixtape/gainEnvelopeEditorGrid'
 import {
   STEM_SEGMENT_ACTIVE_GAIN,
@@ -37,6 +38,7 @@ export const createGainEnvelopeTrackStateModule = (params: {
     originalBpm?: number
     firstBeatMs?: number
     barBeatOffset?: number
+    loopSignature: string
     visibleGridLines: ReturnType<
       ReturnType<typeof buildTrackRuntimeTempoSnapshot>['timeMap']['buildVisibleGridLines']
     >
@@ -100,7 +102,9 @@ export const createGainEnvelopeTrackStateModule = (params: {
       cached.gridBaseBpm === track.gridBaseBpm &&
       cached.originalBpm === track.originalBpm &&
       cached.firstBeatMs === track.firstBeatMs &&
-      cached.barBeatOffset === track.barBeatOffset
+      cached.barBeatOffset === track.barBeatOffset &&
+      cached.loopSignature ===
+        buildMixtapeTrackLoopSignature(track.loopSegments ?? track.loopSegment)
     ) {
       return cached
     }
@@ -119,6 +123,7 @@ export const createGainEnvelopeTrackStateModule = (params: {
       originalBpm: track.originalBpm,
       firstBeatMs: track.firstBeatMs,
       barBeatOffset: track.barBeatOffset,
+      loopSignature: buildMixtapeTrackLoopSignature(track.loopSegments ?? track.loopSegment),
       visibleGridLines: snapshot.visibleGridLines,
       visibleGridSegments: buildVisibleGridSegmentsFromLines(
         snapshot.visibleGridLines,

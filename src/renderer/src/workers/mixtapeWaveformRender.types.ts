@@ -32,6 +32,7 @@ export type RawWaveformLevel = RawWaveformData & {
 export type SerializedWorkerTrackTempoSnapshot = {
   signature: string
   durationSec: number
+  baseDurationSec: number
   sourceDurationSec: number
   baseBpm: number
   gridSourceBpm: number
@@ -44,6 +45,8 @@ export type SerializedWorkerTrackTempoSnapshot = {
   masterGridFallbackBpm?: number
   masterGridPhaseOffsetSec?: number
   masterGridPoints?: Array<{ sec: number; bpm: number }>
+  loopSegments?: Array<{ startSec: number; endSec: number; repeatCount: number }>
+  loopSegment?: { startSec: number; endSec: number; repeatCount: number }
   controlPoints: Array<{ sec: number; bpm: number; sourceSec?: number; allowOffGrid?: boolean }>
 }
 

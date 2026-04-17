@@ -119,6 +119,18 @@ export function clearLogFileSync(): void {
   }
 }
 
+export function appendPlainLogLineSync(text: string): void {
+  try {
+    const filePath = getLogPath()
+    const line = String(text || '').trim()
+    if (!line) return
+    fs.ensureFileSync(filePath)
+    fs.appendFileSync(filePath, `${new Date().toISOString()} ${line}\n`, 'utf8')
+  } catch (e) {
+    log.error('[log] 追加日志失败', e)
+  }
+}
+
 export type ExpectedErrorRule = {
   code?: string
   messageIncludes?: RegExp

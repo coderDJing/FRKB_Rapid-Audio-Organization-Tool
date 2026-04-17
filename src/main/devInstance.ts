@@ -22,7 +22,6 @@ type DevSingleInstanceLock = {
 const DEV_INSTANCE_ENV = 'FRKB_DEV_INSTANCE'
 const DEV_USER_DATA_ENV = 'FRKB_DEV_USER_DATA_DIR'
 const DEV_DATABASE_ENV = 'FRKB_DEV_DATABASE_URL'
-const LEGACY_WINDOWS_DEV_DATABASE_DIR = 'D:/FRKB_database'
 
 const sanitizeInstanceId = (value: string): string =>
   value
@@ -103,13 +102,7 @@ export const configureDevRuntime = (
   const configuredDatabaseDir = normalizeDirectoryOverride(
     String(process.env[DEV_DATABASE_ENV] || '')
   )
-  const databaseDir =
-    platform === 'win32'
-      ? configuredDatabaseDir ||
-        (usesIsolatedUserData
-          ? path.join(userDataDir || app.getPath('userData'), 'FRKB_database')
-          : LEGACY_WINDOWS_DEV_DATABASE_DIR)
-      : ''
+  const databaseDir = platform === 'win32' ? configuredDatabaseDir : ''
 
   if (instanceId) {
     process.env[DEV_INSTANCE_ENV] = instanceId

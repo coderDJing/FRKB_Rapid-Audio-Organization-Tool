@@ -5,6 +5,7 @@ type TranslateFn = (key: string, payload?: Record<string, unknown>) => string
 
 export type MixParamId =
   | 'position'
+  | 'loop'
   | 'gain'
   | 'high'
   | 'mid'
@@ -37,6 +38,10 @@ export const useMixtapeMixParamUi = ({ mixtapeMixMode, t }: UseMixtapeMixParamUi
           labelKey: 'mixtape.mixParamPosition'
         },
         {
+          id: 'loop',
+          labelKey: 'mixtape.mixParamLoop'
+        },
+        {
           id: 'gain',
           labelKey: 'mixtape.mixParamGain'
         },
@@ -63,6 +68,10 @@ export const useMixtapeMixParamUi = ({ mixtapeMixMode, t }: UseMixtapeMixParamUi
       {
         id: 'position',
         labelKey: 'mixtape.mixParamPosition'
+      },
+      {
+        id: 'loop',
+        labelKey: 'mixtape.mixParamLoop'
       },
       {
         id: 'gain',
@@ -96,10 +105,11 @@ export const useMixtapeMixParamUi = ({ mixtapeMixMode, t }: UseMixtapeMixParamUi
 
   const selectedMixParam = ref<MixParamId>('position')
   const isTrackPositionMode = computed(() => selectedMixParam.value === 'position')
+  const isLoopParamMode = computed(() => selectedMixParam.value === 'loop')
   const isGainParamMode = computed(() => selectedMixParam.value === 'gain')
   const isVolumeParamMode = computed(() => selectedMixParam.value === 'volume')
   const isStemParamMode = computed(() => STEM_PARAM_SET.has(selectedMixParam.value))
-  const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value)
+  const isEnvelopeParamMode = computed(() => !isTrackPositionMode.value && !isLoopParamMode.value)
   const showTrackEnvelopeEditor = computed(() => isEnvelopeParamMode.value)
   const isSegmentSelectionSupported = computed(
     () => isVolumeParamMode.value || isStemParamMode.value
@@ -113,6 +123,9 @@ export const useMixtapeMixParamUi = ({ mixtapeMixMode, t }: UseMixtapeMixParamUi
     isStemMixMode.value ? ['gain', 'volume'] : ['gain', 'high', 'mid', 'low', 'volume']
   )
   const envelopeHintKey = computed(() => {
+    if (isLoopParamMode.value) {
+      return 'mixtape.loopEditHint'
+    }
     if (isSegmentSelectionActive.value) {
       return 'mixtape.segmentMuteHint'
     }
@@ -151,6 +164,7 @@ export const useMixtapeMixParamUi = ({ mixtapeMixMode, t }: UseMixtapeMixParamUi
     envelopePreviewLineKeys,
     isEnvelopeParamMode,
     isGainParamMode,
+    isLoopParamMode,
     isSegmentSelectionActive,
     isSegmentSelectionSupported,
     isStemMixMode,
