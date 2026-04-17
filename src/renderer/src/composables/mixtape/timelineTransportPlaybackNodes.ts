@@ -31,6 +31,7 @@ export type TrackGraphNode = {
 
 type StartTransportTrackGraphNodeParams = {
   entry: TransportEntry
+  offsetTimelineSec: number
   offsetSourceSec: number
   whenSec: number
   transportGraphNodes: TrackGraphNode[]
@@ -54,6 +55,7 @@ type StartTransportTrackGraphNodeParams = {
 export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNodeParams) => {
   const {
     entry,
+    offsetTimelineSec,
     offsetSourceSec,
     whenSec,
     transportGraphNodes,
@@ -83,7 +85,6 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
       const volume = ctx.createGain()
       const gain = ctx.createGain()
       const outputNode = resolveTransportOutputNode(ctx)
-      const offsetTimelineSec = offsetSourceSec / Math.max(0.01, entry.tempoRatio)
       volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', offsetTimelineSec)
       gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', offsetTimelineSec)
       stemBus.gain.value = 1
@@ -206,7 +207,6 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
     const volume = ctx.createGain()
     const gain = ctx.createGain()
     const outputNode = resolveTransportOutputNode(ctx)
-    const offsetTimelineSec = offsetSourceSec / Math.max(0.01, entry.tempoRatio)
     eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', offsetTimelineSec)
     eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', offsetTimelineSec)
     eqLow.gain.value = resolveEntryEqDbValue(entry, 'low', offsetTimelineSec)

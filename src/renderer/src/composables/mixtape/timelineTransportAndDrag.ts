@@ -762,6 +762,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       const offsetSourceSec = resolveEntryPlaybackOffsetSourceSec(entry, offsetTimelineSec)
       startTransportTrackGraphNode({
         entry,
+        offsetTimelineSec,
         offsetSourceSec,
         whenSec: scheduleStartAt + delaySec,
         transportGraphNodes,
