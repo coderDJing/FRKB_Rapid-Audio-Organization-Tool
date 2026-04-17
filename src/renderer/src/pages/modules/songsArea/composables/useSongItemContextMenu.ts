@@ -11,6 +11,8 @@ import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { startAudioConvertFromFiles } from '@renderer/utils/audioConvertActions'
+import choiceDialog from '@renderer/components/choiceDialog'
+import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
@@ -64,11 +66,6 @@ export function useSongItemContextMenu(
   const runtime = useRuntimeStore() // Use the store directly
   const normalizePath = (p: string | undefined | null) =>
     (p || '').replace(/\//g, '\\').toLowerCase()
-  const normalizeArtistName = (value: unknown) =>
-    String(value || '')
-      .trim()
-      .replace(/\s+/g, ' ')
-      .toLocaleLowerCase()
   const isMixtapeView = () =>
     libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
   const getRowKey = (song: ISongInfo) =>
@@ -118,24 +115,28 @@ export function useSongItemContextMenu(
   const cloneMenuArr = (source: IMenu[][]) =>
     source.map((group) => group.map((item) => ({ ...item })))
 
-  const resolveCuratedArtistMatch = (currentSong: ISongInfo) => {
-    if (runtime.setting.enableCuratedArtistTracking === false) return ''
-    if (runtime.libraryAreaSelected !== 'FilterLibrary') return ''
-    const artistName = String(currentSong?.artist || '')
-      .trim()
-      .replace(/\s+/g, ' ')
-    const normalized = normalizeArtistName(artistName)
-    if (!normalized) return ''
-    return (runtime.curatedArtistFavorites || []).some(
-      (item) => normalizeArtistName(item?.name) === normalized
-    )
-      ? artistName
-      : ''
+  const resolveCuratedArtistMatches = (currentSong: ISongInfo) => {
+    if (runtime.setting.enableCuratedArtistTracking === false) return []
+    if (runtime.libraryAreaSelected !== 'FilterLibrary') return []
+    const favorites = runtime.curatedArtistFavorites || []
+    const matchedArtists: string[] = []
+    const seen = new Set<string>()
+    for (const artistName of splitArtistNames(currentSong?.artist)) {
+      const normalized = normalizeArtistName(artistName)
+      if (!normalized || seen.has(normalized)) continue
+      const matchedFavorite = favorites.find(
+        (item) => normalizeArtistName(item?.name) === normalized
+      )
+      if (!matchedFavorite) continue
+      seen.add(normalized)
+      matchedArtists.push(String(matchedFavorite.name || artistName).trim() || artistName)
+    }
+    return matchedArtists
   }
 
-  const buildMenuArr = (base: IMenu[][], matchedArtist: string) => {
+  const buildMenuArr = (base: IMenu[][], matchedArtists: string[]) => {
     const next = cloneMenuArr(base)
-    if (matchedArtist) {
+    if (matchedArtists.length > 0) {
       next.splice(2, 0, [{ menuName: 'library.removeCuratedArtistFavorite' }])
     }
     return next
@@ -195,7 +196,8 @@ export function useSongItemContextMenu(
   > => {
     const isRecycleBinView = songsAreaState.songListUUID === RECYCLE_BIN_UUID
     const isExternalView = songsAreaState.songListUUID === EXTERNAL_PLAYLIST_UUID
-    const matchedCuratedArtist = resolveCuratedArtistMatch(song)
+    const matchedCuratedArtists = resolveCuratedArtistMatches(song)
+    const matchedCuratedArtist = matchedCuratedArtists[0] || ''
     if (songsAreaState.selectedSongFilePath.indexOf(getRowKey(song)) === -1) {
       songsAreaState.selectedSongFilePath = [getRowKey(song)]
     }
@@ -205,7 +207,7 @@ export function useSongItemContextMenu(
       : isRecycleBinView
         ? recycleMenuArr
         : defaultMenuArr
-    menuArr.value = buildMenuArr(baseMenuArr, matchedCuratedArtist)
+    menuArr.value = buildMenuArr(baseMenuArr, matchedCuratedArtists)
     const result = await rightClickMenu({
       menuArr: menuArr.value,
       clickEvent: event
@@ -681,16 +683,40 @@ export function useSongItemContextMenu(
         return null
       }
       case 'library.removeCuratedArtistFavorite': {
-        if (!matchedCuratedArtist) return null
-        const res = await confirm({
-          title: t('library.removeCuratedArtistFavoriteTitle'),
-          content: [
-            t('library.removeCuratedArtistFavoriteConfirm', { artist: matchedCuratedArtist })
-          ]
-        })
-        if (res !== 'confirm') return null
+        if (matchedCuratedArtists.length <= 0) return null
+        let artistToRemove = matchedCuratedArtist
+        if (matchedCuratedArtists.length === 1) {
+          const res = await confirm({
+            title: t('library.removeCuratedArtistFavoriteTitle'),
+            content: [t('library.removeCuratedArtistFavoriteConfirm', { artist: artistToRemove })]
+          })
+          if (res !== 'confirm') return null
+        } else {
+          const selectedArtistKey = await choiceDialog({
+            title: t('library.removeCuratedArtistFavoriteTitle'),
+            content: [
+              t('library.removeCuratedArtistFavoriteSelectHint'),
+              t('library.removeCuratedArtistFavoriteSelectDesc')
+            ],
+            options: [
+              ...matchedCuratedArtists.map((artist) => ({
+                key: normalizeArtistName(artist),
+                label: artist
+              })),
+              { key: 'cancel', label: t('common.cancel') }
+            ],
+            innerHeight: Math.min(220 + matchedCuratedArtists.length * 42, 420),
+            innerWidth: 520
+          })
+          if (selectedArtistKey === 'cancel') return null
+          artistToRemove =
+            matchedCuratedArtists.find(
+              (artist) => normalizeArtistName(artist) === selectedArtistKey
+            ) || ''
+          if (!artistToRemove) return null
+        }
         try {
-          await window.electron.ipcRenderer.invoke('curatedArtists:remove', matchedCuratedArtist)
+          await window.electron.ipcRenderer.invoke('curatedArtists:remove', artistToRemove)
         } catch (error: unknown) {
           await confirm({
             title: t('common.error'),

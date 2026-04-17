@@ -3,6 +3,7 @@ import { getLibraryDb, initLibraryDb, getMetaValue, isSqliteRow, setMetaValue } 
 import mainWindow from './window/mainWindow'
 import { scanSongList } from './services/scanSongs'
 import type { SqliteDatabase } from './libraryDb'
+import { normalizeArtistName, splitArtistNames } from '../shared/artistNames'
 
 const META_KEY = 'curated_artist_library_v1'
 
@@ -17,19 +18,6 @@ export type CuratedArtistLibrarySnapshot = {
   count: number
 }
 
-function normalizeArtistName(value: unknown): string {
-  const text = String(value || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-  return text ? text.toLocaleLowerCase() : ''
-}
-
-function sanitizeArtistName(value: unknown): string {
-  return String(value || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-}
-
 function sanitizeArtistCount(value: unknown, fallback = 1): number {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return fallback
@@ -42,16 +30,17 @@ function normalizeFavoriteEntries(values: unknown[]): CuratedArtistFavoriteEntry
     const record = isSqliteRow(value) ? value : null
     const rawName =
       typeof value === 'string' ? value : typeof record?.name === 'string' ? record.name : ''
-    const name = sanitizeArtistName(rawName)
-    const normalized = normalizeArtistName(name)
-    if (!normalized) continue
     const nextCount = sanitizeArtistCount(record?.count)
-    const existing = map.get(normalized)
-    if (existing) {
-      existing.count += nextCount
-      continue
+    for (const name of splitArtistNames(rawName)) {
+      const normalized = normalizeArtistName(name)
+      if (!normalized) continue
+      const existing = map.get(normalized)
+      if (existing) {
+        existing.count += nextCount
+        continue
+      }
+      map.set(normalized, { name, count: nextCount })
     }
-    map.set(normalized, { name, count: nextCount })
   }
   return [...map.values()]
 }
@@ -59,15 +48,16 @@ function normalizeFavoriteEntries(values: unknown[]): CuratedArtistFavoriteEntry
 function countArtistOccurrences(values: unknown[]): CuratedArtistFavoriteEntry[] {
   const map = new Map<string, CuratedArtistFavoriteEntry>()
   for (const value of values) {
-    const name = sanitizeArtistName(value)
-    const normalized = normalizeArtistName(name)
-    if (!normalized) continue
-    const existing = map.get(normalized)
-    if (existing) {
-      existing.count += 1
-      continue
+    for (const name of splitArtistNames(value)) {
+      const normalized = normalizeArtistName(name)
+      if (!normalized) continue
+      const existing = map.get(normalized)
+      if (existing) {
+        existing.count += 1
+        continue
+      }
+      map.set(normalized, { name, count: 1 })
     }
-    map.set(normalized, { name, count: 1 })
   }
   return [...map.values()]
 }

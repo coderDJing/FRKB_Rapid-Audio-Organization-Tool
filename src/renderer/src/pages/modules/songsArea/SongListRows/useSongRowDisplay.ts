@@ -5,15 +5,10 @@ import {
   getKeyDisplayText as formatKeyDisplayText,
   isHarmonicMixCompatible
 } from '@shared/keyDisplay'
+import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { t } from '@renderer/utils/translate'
 import { formatDeletedAtMs, getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
 import { formatBpmDisplay } from '@renderer/utils/bpm'
-
-const normalizeArtistName = (value: unknown) =>
-  String(value || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .toLocaleLowerCase()
 
 export const useSongRowDisplay = (params: {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -70,26 +65,41 @@ export const useSongRowDisplay = (params: {
       )
   )
 
-  const getCuratedArtistFavorite = (song: ISongInfo) =>
-    curatedArtistFavoriteSet.value.get(normalizeArtistName(song.artist)) || null
+  const getCuratedArtistFavorites = (song: ISongInfo) =>
+    splitArtistNames(song.artist)
+      .map(
+        (artistName) => curatedArtistFavoriteSet.value.get(normalizeArtistName(artistName)) || null
+      )
+      .filter((item): item is { name: string; count: number } => !!item)
 
   const isCuratedArtistHit = (song: ISongInfo, colKey: string) => {
     if (colKey !== 'artist') return false
     if (sourceLibraryName() !== 'FilterLibrary') return false
     if (runtime.setting.enableCuratedArtistTracking === false) return false
-    return curatedArtistFavoriteSet.value.has(normalizeArtistName(song.artist))
+    return getCuratedArtistFavorites(song).length > 0
   }
 
   const getCuratedArtistBadgeText = (song: ISongInfo, colKey: string) => {
     if (colKey !== 'artist') return ''
-    const favorite = getCuratedArtistFavorite(song)
+    const favorites = getCuratedArtistFavorites(song)
+    if (favorites.length > 1) {
+      return t('tracks.curatedArtistMultiCountBadge', { count: favorites.length })
+    }
+    const favorite = favorites[0] || null
     if (!favorite) return ''
     return t('tracks.curatedArtistCountBadge', { count: favorite.count })
   }
 
   const getCuratedArtistBadgeTitle = (song: ISongInfo, colKey: string) => {
     if (colKey !== 'artist') return ''
-    const favorite = getCuratedArtistFavorite(song)
+    const favorites = getCuratedArtistFavorites(song)
+    if (favorites.length > 1) {
+      return t('tracks.curatedArtistMultiCountBadgeTitle', {
+        count: favorites.length,
+        artists: favorites.map((item) => `${item.name} x ${item.count}`).join(' / ')
+      })
+    }
+    const favorite = favorites[0] || null
     if (!favorite) return ''
     return t('tracks.curatedArtistCountBadgeTitle', {
       artist: favorite.name || String(song.artist || ''),
