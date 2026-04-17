@@ -101,27 +101,34 @@ const targetBinaryPath = path.join(
 )
 const builtBinaryPath = path.join(rustPackageDir, `rust_package.${binaryConfig.suffix}.node`)
 const preferredBinaryPath = path.join(rustPackageDir, `index.${binaryConfig.suffix}.node`)
+const binaryArtifactPaths = [targetBinaryPath, preferredBinaryPath, builtBinaryPath]
 
 const hasFreshFile = (filePath) => {
   if (!fs.existsSync(filePath)) return false
   return fs.statSync(filePath).mtimeMs >= newestSourceMtimeMs
 }
 
-const isSyncedWithTarget = (filePath) => {
-  if (!fs.existsSync(filePath) || !fs.existsSync(targetBinaryPath)) return false
-  return fs.statSync(filePath).mtimeMs >= fs.statSync(targetBinaryPath).mtimeMs
+const resolveFreshBinarySource = () => binaryArtifactPaths.find((filePath) => hasFreshFile(filePath)) || ''
+
+const isSyncedWithSource = (filePath, sourcePath) => {
+  if (!sourcePath || !fs.existsSync(filePath) || !fs.existsSync(sourcePath)) return false
+  return fs.statSync(filePath).mtimeMs >= fs.statSync(sourcePath).mtimeMs
 }
 
-const syncBinaryOutputs = () => {
-  if (!fs.existsSync(targetBinaryPath)) {
-    throw new Error(`未找到 Rust 编译产物: ${targetBinaryPath}`)
+const syncBinaryOutputs = (sourcePath) => {
+  if (!sourcePath || !fs.existsSync(sourcePath)) {
+    throw new Error(`未找到可复用的 Rust 编译产物: ${sourcePath || targetBinaryPath}`)
   }
 
-  fs.copyFileSync(targetBinaryPath, builtBinaryPath)
-  fs.copyFileSync(targetBinaryPath, preferredBinaryPath)
+  for (const outputPath of [builtBinaryPath, preferredBinaryPath]) {
+    if (path.resolve(outputPath) === path.resolve(sourcePath)) continue
+    if (isSyncedWithSource(outputPath, sourcePath)) continue
+    fs.copyFileSync(sourcePath, outputPath)
+  }
 }
 
-const needsBuild = !hasFreshFile(targetBinaryPath)
+let binarySourcePath = resolveFreshBinarySource()
+const needsBuild = !binarySourcePath
 
 if (needsBuild) {
   const cargoArgs = ['build', '--manifest-path', cargoManifestPath]
@@ -142,9 +149,14 @@ if (needsBuild) {
   if ((buildResult.status ?? 1) !== 0) {
     process.exit(buildResult.status ?? 1)
   }
+
+  binarySourcePath = targetBinaryPath
 }
 
-if (!isSyncedWithTarget(builtBinaryPath) || !isSyncedWithTarget(preferredBinaryPath)) {
-  syncBinaryOutputs()
-  console.log(`[frkb-native] synced ${path.basename(preferredBinaryPath)}`)
+if (
+  !isSyncedWithSource(builtBinaryPath, binarySourcePath) ||
+  !isSyncedWithSource(preferredBinaryPath, binarySourcePath)
+) {
+  syncBinaryOutputs(binarySourcePath)
+  console.log(`[frkb-native] synced runtime binary from ${path.basename(binarySourcePath)}`)
 }
