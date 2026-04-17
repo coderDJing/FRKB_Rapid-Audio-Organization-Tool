@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, type CSSProperties } from 'vue'
+import { computed, nextTick, ref, watch, type CSSProperties } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import WindowVolumeDial from '@renderer/components/WindowVolumeDial.vue'
@@ -414,6 +414,131 @@ const resolveEnvelopePointBoundaryClass = (point: unknown) => {
 const handleGlobalBpmTrackTargetsSync = (nextTracks: MixtapeTrack[]) => {
   tracks.value = nextTracks
 }
+
+const shouldTraceOverviewPreview = true
+let overviewPreviewTraceToken = 0
+let lastOverviewPreviewTraceSignature = ''
+
+const stringifyOverviewTraceStyle = (style: CSSProperties) => ({
+  left: String(style.left || ''),
+  width: String(style.width || '')
+})
+
+const overviewPreviewTraceSignature = computed(() => {
+  const laneSignatures = laneIndices
+    .map((laneIndex) => {
+      const items = laneTracks.value[laneIndex] || []
+      return `${laneIndex}:${items
+        .map((item) => {
+          const overviewStyle = stringifyOverviewTraceStyle(resolveOverviewTrackStyle(item))
+          return [
+            item.track.id,
+            Number(item.startSec).toFixed(3),
+            Math.round(item.startX),
+            Math.round(item.width),
+            overviewStyle.left,
+            overviewStyle.width
+          ].join('@')
+        })
+        .join(',')}`
+    })
+    .join('|')
+  return [
+    tracks.value.length,
+    Math.round(Number(timelineContentWidth.value) || 0),
+    Math.round(Number(timelineViewportWidth.value) || 0),
+    laneSignatures
+  ].join('||')
+})
+
+const emitOverviewPreviewTrace = async (reason: string) => {
+  if (!shouldTraceOverviewPreview) return
+  const signature = `${reason}::${overviewPreviewTraceSignature.value}`
+  if (!signature || signature === lastOverviewPreviewTraceSignature) return
+  lastOverviewPreviewTraceSignature = signature
+  const token = ++overviewPreviewTraceToken
+  await nextTick()
+  requestAnimationFrame(() => {
+    if (token !== overviewPreviewTraceToken) return
+    const laneItems = laneIndices.map((laneIndex) => {
+      const items = laneTracks.value[laneIndex] || []
+      return {
+        laneIndex,
+        count: items.length,
+        items: items.map((item) => {
+          const overviewStyle = stringifyOverviewTraceStyle(resolveOverviewTrackStyle(item))
+          const previewStyle = stringifyOverviewTraceStyle(resolveTrackBlockStyle(item))
+          const previewLines = resolveTrackEnvelopePreviewLines(item)
+          const overviewLoopBlocks = resolveOverviewTrackLoopBlocks(item)
+          return {
+            trackId: item.track.id,
+            title: resolveTrackTitle(item.track),
+            startSec: Number(item.startSec.toFixed(4)),
+            startX: Math.round(item.startX),
+            widthPx: Math.round(item.width),
+            previewLineCount: previewLines.length,
+            previewLineKeys: previewLines.map((line) => line.key),
+            overviewLoopBlockCount: overviewLoopBlocks.length,
+            overviewStyle,
+            previewStyle
+          }
+        })
+      }
+    })
+    const overviewLaneEls = Array.from(
+      overviewRef.value?.querySelectorAll('.overview-lane') || []
+    ) as HTMLElement[]
+    const previewLaneEls = Array.from(
+      envelopePreviewRef.value?.querySelectorAll('.timeline-envelope-preview__lane') || []
+    ) as HTMLElement[]
+    const overviewTrackEls = Array.from(
+      overviewRef.value?.querySelectorAll('.overview-track') || []
+    ) as HTMLElement[]
+    const previewTrackEls = Array.from(
+      envelopePreviewRef.value?.querySelectorAll('.timeline-envelope-preview__track') || []
+    ) as HTMLElement[]
+    console.info('[mixtape-overview-trace:state]', {
+      reason,
+      trackCount: tracks.value.length,
+      timelineContentWidth: Math.round(Number(timelineContentWidth.value) || 0),
+      timelineViewportWidth: Math.round(Number(timelineViewportWidth.value) || 0),
+      timelineScrollLeft: Math.round(Number(timelineScrollLeft.value) || 0),
+      overviewViewportStyle: stringifyOverviewTraceStyle(overviewViewportStyle.value),
+      overviewClientWidth: Math.round(overviewRef.value?.clientWidth || 0),
+      previewClientWidth: Math.round(envelopePreviewRef.value?.clientWidth || 0),
+      laneItems
+    })
+    console.info('[mixtape-overview-trace:dom]', {
+      overviewLaneCount: overviewLaneEls.length,
+      previewLaneCount: previewLaneEls.length,
+      overviewTrackCount: overviewTrackEls.length,
+      previewTrackCount: previewTrackEls.length,
+      overviewLaneTrackCounts: overviewLaneEls.map(
+        (element) => element.querySelectorAll('.overview-track').length
+      ),
+      previewLaneTrackCounts: previewLaneEls.map(
+        (element) => element.querySelectorAll('.timeline-envelope-preview__track').length
+      ),
+      previewTrackPolylineCounts: previewTrackEls
+        .slice(0, 12)
+        .map((element) => element.querySelectorAll('polyline').length),
+      overviewTrackWidths: overviewTrackEls
+        .slice(0, 12)
+        .map((element) => Number(element.getBoundingClientRect().width.toFixed(2))),
+      previewTrackWidths: previewTrackEls
+        .slice(0, 12)
+        .map((element) => Number(element.getBoundingClientRect().width.toFixed(2)))
+    })
+  })
+}
+
+watch(
+  overviewPreviewTraceSignature,
+  () => {
+    void emitOverviewPreviewTrace('layout-change')
+  },
+  { immediate: true }
+)
 </script>
 
 <template>

@@ -4,7 +4,6 @@ import {
   buildMixtapeTrackLoopSections,
   buildMixtapeTrackLoopSignature,
   mapLoopedTrackLocalToBaseLocal,
-  normalizeMixtapeTrackLoopSegment,
   normalizeMixtapeTrackLoopSegments
 } from '@renderer/composables/mixtape/mixtapeTrackLoop'
 import type {
@@ -127,6 +126,14 @@ const isEditableEventTarget = (target: EventTarget | null) => {
   if (element.isContentEditable) return true
   const tag = element.tagName?.toLowerCase() || ''
   return tag === 'input' || tag === 'textarea' || tag === 'select'
+}
+
+const isLoopControlEventTarget = (target: EventTarget | null) => {
+  const element = target as HTMLElement | null
+  if (!element) return false
+  return !!element.closest(
+    '.mixtape-track-loop__repeat-controls, .mixtape-track-loop__repeat-btn, .mixtape-track-loop__status-chip'
+  )
 }
 
 export const useMixtapeTrackLoopEditor = (options: UseMixtapeTrackLoopEditorOptions) => {
@@ -738,6 +745,7 @@ export const useMixtapeTrackLoopEditor = (options: UseMixtapeTrackLoopEditorOpti
 
   const handleTrackLoopTrackMouseDown = (item: TimelineTrackLayout, event?: MouseEvent) => {
     if (!options.isLoopParamMode.value) return false
+    if (isLoopControlEventTarget(event?.target || null)) return false
     const loops = resolveTrackLoopSegments(item.track)
     const currentSelection = lineSelectionState.value
     if (currentSelection && currentSelection.trackId !== item.track.id) {

@@ -87,19 +87,37 @@ defineProps<{
   left: 0;
   top: 0;
   bottom: 0;
+  min-width: 1px;
   border: 0;
-  box-shadow: inset 0 0 0 1px rgba(0, 120, 212, 0.52);
-  background: linear-gradient(
-    180deg,
-    rgba(0, 120, 212, 0.18) 0%,
-    rgba(0, 120, 212, 0.1) 55%,
-    rgba(0, 120, 212, 0.15) 100%
-  );
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 120, 212, 0.46),
+    inset 1px 0 0 rgba(255, 255, 255, 0.14),
+    inset -1px 0 0 rgba(6, 9, 14, 0.2);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.015) 38%,
+      rgba(0, 0, 0, 0.08) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(0, 120, 212, 0.22) 0%,
+      rgba(0, 120, 212, 0.12) 55%,
+      rgba(0, 120, 212, 0.18) 100%
+    );
   overflow: hidden;
 }
 
 .timeline-envelope-preview__track.is-stem-mode {
-  background: var(--mixtape-preview-stem-base-bg);
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0.02) 34%,
+      rgba(0, 0, 0, 0.12) 100%
+    ),
+    var(--mixtape-preview-stem-base-bg);
 }
 
 .timeline-envelope-preview__track::after {

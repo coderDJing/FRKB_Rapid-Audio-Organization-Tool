@@ -100,6 +100,30 @@ const resolveGridHoverLabelStyle = (
   }
 }
 
+const resolveLoopBlockStyle = (
+  block: TrackLoopOverlayViewModel['blocks'][number],
+  selectedLoopKey: string | null
+): CSSProperties[] => [
+  block.style,
+  {
+    position: 'absolute',
+    top: '4px',
+    bottom: '4px',
+    borderRadius: '0',
+    overflow: 'hidden',
+    pointerEvents: 'auto',
+    zIndex: 9,
+    background:
+      block.kind === 'source'
+        ? 'rgba(255, 214, 102, 0.18)'
+        : 'repeating-linear-gradient(-58deg, rgba(255, 218, 92, 0.18) 0, rgba(255, 218, 92, 0.18) 4px, rgba(255, 218, 92, 0.07) 4px, rgba(255, 218, 92, 0.07) 8px)',
+    opacity: selectedLoopKey ? (block.selected ? 1 : 0.72) : 1,
+    boxShadow: block.selected
+      ? 'inset 0 0 0 1px rgba(255, 236, 164, 0.3), inset 0 0 0 999px rgba(255, 223, 120, 0.04)'
+      : undefined
+  }
+]
+
 const resolveRepeatControlsStyle = (
   repeatControl: NonNullable<TrackLoopOverlayViewModel['repeatControl']>
 ): CSSProperties[] => [
@@ -268,13 +292,7 @@ const resolveStatusMetaStyle = (tone: 'info' | 'error' | undefined): CSSProperti
       v-for="block in overlay.blocks"
       :key="block.key"
       class="mixtape-track-loop__block"
-      :class="{
-        'mixtape-track-loop__block--source': block.kind === 'source',
-        'mixtape-track-loop__block--repeat': block.kind === 'repeat',
-        'is-selected-loop': block.selected,
-        'is-dimmed-loop': !block.selected && !!overlay.selectedLoopKey
-      }"
-      :style="block.style"
+      :style="resolveLoopBlockStyle(block, overlay.selectedLoopKey)"
       @mousedown.stop.prevent="
         loopEditMode ? props.handleTrackLoopSelectLoop(item, $event) : undefined
       "

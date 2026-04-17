@@ -504,21 +504,14 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     })
   }
 
-  const resolveOverviewScale = () => {
-    const width = overviewWidth.value
+  const resolveOverviewTrackStyle = (item: TimelineTrackLayout) => {
     const totalWidth = Math.max(
       1,
       buildSequentialLayoutForZoom(normalizedRenderZoom.value).totalWidth
     )
-    if (!Number.isFinite(width) || width <= 0) return 1
-    return width / totalWidth
-  }
-
-  const resolveOverviewTrackStyle = (item: TimelineTrackLayout) => {
-    const scale = resolveOverviewScale()
     return {
-      width: `${Math.max(1, Math.round(item.width * scale))}px`,
-      transform: `translate3d(${Math.round(item.startX * scale)}px, 0, 0)`
+      width: `${Math.max(0, (item.width / totalWidth) * 100)}%`,
+      left: `${Math.max(0, (item.startX / totalWidth) * 100)}%`
     }
   }
 

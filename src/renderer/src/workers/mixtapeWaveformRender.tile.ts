@@ -495,35 +495,6 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       })
     }
 
-    const drawLoopSectionBackdrop = (
-      targetCtx: OffscreenCanvasRenderingContext2D,
-      targetWidth: number,
-      section: {
-        kind?: string
-      }
-    ) => {
-      if (section.kind !== 'loop-source' && section.kind !== 'loop-repeat') return
-      targetCtx.save()
-      targetCtx.fillStyle =
-        section.kind === 'loop-source' ? 'rgba(255, 214, 102, 0.34)' : 'rgba(255, 196, 84, 0.24)'
-      targetCtx.fillRect(0, 0, targetWidth, laneHeight)
-      targetCtx.fillStyle =
-        section.kind === 'loop-source' ? 'rgba(255, 242, 196, 0.62)' : 'rgba(255, 223, 152, 0.48)'
-      targetCtx.fillRect(0, 0, targetWidth, 6)
-      targetCtx.strokeStyle =
-        section.kind === 'loop-source' ? 'rgba(255, 245, 210, 0.96)' : 'rgba(255, 220, 132, 0.9)'
-      targetCtx.lineWidth = 2
-      targetCtx.beginPath()
-      targetCtx.moveTo(1, 0)
-      targetCtx.lineTo(1, laneHeight)
-      if (section.kind === 'loop-source') {
-        targetCtx.moveTo(Math.max(1, targetWidth - 1), 0)
-        targetCtx.lineTo(Math.max(1, targetWidth - 1), laneHeight)
-      }
-      targetCtx.stroke()
-      targetCtx.restore()
-    }
-
     const drawLoopAwareWaveform = (
       targetCtx: OffscreenCanvasRenderingContext2D,
       targetWidth: number
@@ -577,7 +548,6 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         const sectionWidth = Math.max(1, sectionEndX - sectionStartX)
         targetCtx.save()
         targetCtx.translate(sectionStartX, 0)
-        drawLoopSectionBackdrop(targetCtx, sectionWidth, section)
         if (section.kind === 'loop-source' || section.kind === 'loop-repeat') {
           const cachedCanvas = getOrCreateSectionCanvas(section, sectionWidth)
           if (cachedCanvas) {
