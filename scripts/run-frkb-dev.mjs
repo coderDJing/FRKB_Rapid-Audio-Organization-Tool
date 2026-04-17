@@ -1,6 +1,5 @@
 import 'dotenv/config'
 import { spawn, spawnSync } from 'node:child_process'
-import fs from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 
@@ -21,19 +20,6 @@ const resolveDefaultRendererPort = (instanceId) => {
   if (instanceId === 'b') return '5174'
   const hash = [...instanceId].reduce((sum, char) => sum + char.charCodeAt(0), 0)
   return String(5200 + (hash % 200))
-}
-
-const ensureRustPackageBinaryAlias = () => {
-  if (process.platform !== 'win32' || process.arch !== 'x64') return
-
-  const rustPackageDir = path.resolve('./rust_package')
-  const preferredBinaryPath = path.join(rustPackageDir, 'index.win32-x64-msvc.node')
-  const builtBinaryPath = path.join(rustPackageDir, 'rust_package.win32-x64-msvc.node')
-
-  if (fs.existsSync(preferredBinaryPath) || !fs.existsSync(builtBinaryPath)) return
-
-  fs.copyFileSync(builtBinaryPath, preferredBinaryPath)
-  console.log(`[frkb-dev] synced rust binary alias: ${path.basename(preferredBinaryPath)}`)
 }
 
 const probePortOnHost = (port, host) =>
@@ -117,7 +103,20 @@ if (rendererPort && !(await isRendererPortAvailable(rendererPort))) {
   exitWithRendererPortConflict(rendererPort, env)
 }
 
-ensureRustPackageBinaryAlias()
+const rustPackageEnsureArgs = [
+  path.resolve('./scripts/ensure-rust-package-native.mjs'),
+  '--mode',
+  'dev'
+]
+const rustPackageEnsureResult = spawnSync(process.execPath, rustPackageEnsureArgs, {
+  stdio: 'inherit',
+  windowsHide: false,
+  env
+})
+
+if ((rustPackageEnsureResult.status ?? 1) !== 0) {
+  process.exit(rustPackageEnsureResult.status ?? 1)
+}
 
 const mediaToolsEnsureArgs = [
   path.resolve('./scripts/ensure-bundled-media-tools.mjs'),
