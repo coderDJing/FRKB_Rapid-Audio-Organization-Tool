@@ -200,6 +200,11 @@ export const useHorizontalBrowseRawWaveformStream = (
         maxRight: new Float32Array(nextFrames)
       }
       options.mixxxData.value = createRawPlaceholderMixxxData(options.rawData.value)
+      // 换 rawData ref 往往意味着 seek / 开始新 stream：此前画布可能已经被 hold 清空、
+      // displayReady 已置 false，DOM 层也全部隐藏。必须主动触发一次整帧重绘，让 drawWaveform
+      // 能在新数据一就绪时立即评估是否可画，否则只会走后续 dirty 增量路径——而 dirty 路径
+      // 对"整块画面未就绪"状态的恢复不起作用（它只在 displayReady=true 时增量刷）。
+      options.scheduleDraw()
       return
     }
 

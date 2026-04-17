@@ -340,6 +340,9 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     ) {
       return
     }
+    // 通知大波形"位置要跳转了"，它才会根据新位置判断要不要重启 raw stream，否则 stream 保持在
+    // 原来的窗口里，用户一旦 seek 出覆盖区大波形就会停滞。
+    params.notifyDeckSeekIntent(deck, loopRange.startSec)
     await params.nativeTransport.seek(deck, loopRange.startSec)
   }
 
@@ -399,6 +402,9 @@ export const useHorizontalBrowseDeckTransportInteractions = (
 
     const token = dragState.token
     const targetSec = Math.max(0, Number(payload.anchorSec) || 0)
+    // drag 结束落点通常已经让可视区偏移出原 rawData 覆盖范围，必须 bump seek intent，
+    // 让大波形重新评估是否要重启 raw stream。
+    params.notifyDeckSeekIntent(deck, targetSec)
     void (async () => {
       await params.nativeTransport.seek(deck, targetSec)
       if (deckWaveformDragState[deck].token !== token) return
@@ -483,6 +489,18 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     cueSeconds = params.resolveDeckCuePointRef(deck).value
   ) => {
     params.touchDeckInteraction(deck)
+    const safeCueSeconds = Math.max(0, Number(cueSeconds) || 0)
+    // back-cue 是"正在播放时按 cue 回 cue 点"，必须在任何 IPC await 之前先通知 seek 意图：
+    //   * notifyDeckSeekIntent 会把渲染基准立刻 teleport 到 cue 位置（见 Shell 里
+    //     applyDeckRenderCurrentSeconds 的注释），playbackAnimation / startRenderSyncLoop
+    //     的 RAF tick 会从 cue 位置开始重新外推，哪怕 setPlaying(false) 的 IPC 要 ~10ms，
+    //     这期间大波形最多在 cue 位置附近漂移几个像素，用户看不到"从 65s 继续往前跑"的
+    //     那种视觉抖动。
+    //   * 它同时 bump seekRevision，让 HorizontalBrowseRawWaveformDetail 里的 seekRevision
+    //     watcher 评估 restartRawWaveformStreamAt——cue 点如果已经在覆盖区里就 no-op，
+    //     覆盖不到就 hold + 启新 stream。
+    // 然后再顺序 setPlaying(false) + seek，最终 syncDeckRenderState 用后端 snapshot 兜底对齐。
+    params.notifyDeckSeekIntent(deck, safeCueSeconds)
     await params.nativeTransport.setPlaying(deck, false)
     await params.nativeTransport.seek(deck, cueSeconds)
     params.syncDeckRenderState()
@@ -493,6 +511,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     const cueRef = params.resolveDeckCuePointRef(deck)
     const nextCuePoint = params.resolveDeckCuePlacementSec(deck)
     cueRef.value = nextCuePoint
+    params.notifyDeckSeekIntent(deck, Math.max(0, Number(nextCuePoint) || 0))
     await params.nativeTransport.seek(deck, nextCuePoint)
     params.syncDeckRenderState()
   }
@@ -569,7 +588,9 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     params.touchDeckInteraction(deck)
     applyDeckStoredCueDefinition(deck, cue)
     await params.nativeTransport.setPlaying(deck, false)
-    await params.nativeTransport.seek(deck, Math.max(0, Number(cue?.sec) || 0))
+    const targetSec = Math.max(0, Number(cue?.sec) || 0)
+    params.notifyDeckSeekIntent(deck, targetSec)
+    await params.nativeTransport.seek(deck, targetSec)
     params.syncDeckRenderState()
   }
 
@@ -579,7 +600,9 @@ export const useHorizontalBrowseDeckTransportInteractions = (
   ) => {
     params.touchDeckInteraction(deck)
     const loopRange = applyDeckStoredCueDefinition(deck, cue)
-    await params.nativeTransport.seek(deck, Math.max(0, Number(cue?.sec) || 0))
+    const targetSec = Math.max(0, Number(cue?.sec) || 0)
+    params.notifyDeckSeekIntent(deck, targetSec)
+    await params.nativeTransport.seek(deck, targetSec)
     if (params.resolveTransportDeckSnapshot(deck).syncEnabled && !loopRange) {
       await params.commitDeckStatesToNative()
       await params.nativeTransport.beatsync(deck)
@@ -652,6 +675,10 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       beginHorizontalBrowseDeckAction(deck, 'seek', filePath)
       traceDeckAction(deck, 'cue-stop:start')
       try {
+        // 先通知 seek 意图：teleport 渲染基准到 cue 位置 + bump seekRevision 让大波形
+        // 重新评估 stream 覆盖。这样 cue-preview 播放到的位置不会在 setPlaying(false) 的
+        // IPC 期间继续往前漂，用户松开按键的瞬间大波形就锚定在 cue 位置，避免"先顿再跳"。
+        params.notifyDeckSeekIntent(deck, Math.max(0, Number(cueSeconds) || 0))
         await params.nativeTransport.setPlaying(deck, false).catch(() => {})
         traceDeckAction(deck, 'cue-stop:paused', {
           sinceCueStopMs: resolveHorizontalBrowseDeckActionElapsedMs(deck, 'cue-stop', filePath)
@@ -809,10 +836,9 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     })()
   }
 
-  const maybeResumePendingPlay = (deck: DeckKey, loaded: boolean, decoding: boolean) => {
+  const maybeResumePendingPlay = (deck: DeckKey, loaded: boolean, _decoding: boolean) => {
     if (!deckPendingPlayOnLoad[deck] || !loaded) return
     deckPendingPlayOnLoad[deck] = false
-    void decoding
     void handleDeckPlayPauseToggle(deck)
   }
 

@@ -13,7 +13,6 @@ import {
   HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
   HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR
 } from '@renderer/components/horizontalBrowseWaveform.constants'
-import { normalizeHorizontalBrowsePathKey } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
 import {
   useHorizontalBrowseGridToolbar,
   type HorizontalBrowseGridToolbarState
@@ -30,10 +29,6 @@ import {
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
 import { useHorizontalBrowseRawWaveformStream } from '@renderer/components/useHorizontalBrowseRawWaveformStream'
-import {
-  pickMixxxDataByFile,
-  resolveMixxxWaveformFrameCount
-} from '@renderer/components/mixtapeBeatAlignWaveformData'
 import {
   resolveHorizontalBrowseWaveformTraceElapsedMs,
   sendHorizontalBrowseWaveformTrace
@@ -103,7 +98,6 @@ const emit = defineEmits<{
 const runtime = useRuntimeStore()
 const rawData = ref<RawWaveformData | null>(null)
 const mixxxData = ref<MixxxWaveformData | null>(null)
-const fallbackMixxxData = ref<MixxxWaveformData | null>(null)
 const previewLoading = ref(false)
 const previewStartSec = ref(0)
 const dragging = ref(false)
@@ -167,6 +161,8 @@ const {
   storeRawWaveform,
   setLastZoomAnchor,
   resetLastZoomAnchor,
+  displayStartSec,
+  displayReady,
   dispose: disposeWaveformCanvas
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => props.song,
@@ -175,7 +171,6 @@ const {
   playing: previewPlaying,
   rawData,
   mixxxData,
-  fallbackMixxxData,
   previewStartSec,
   previewZoom,
   previewBpm,
@@ -360,11 +355,11 @@ const handleWheel = (event: WheelEvent) => {
 }
 
 const canAdjustGrid = computed(() => !previewLoading.value && !!mixxxData.value)
-const hotCueMarkerStartSec = computed(() => {
-  const visibleDurationSec = Number(resolveVisibleDurationSec())
-  if (!Number.isFinite(visibleDurationSec) || visibleDurationSec <= 0) return 0
-  return resolveSnappedRenderStartSec(visibleDurationSec)
-})
+// hotCue / memoryCue / loopMask / cue marker 等 DOM 层元素统一以 displayStartSec 为起点
+// （而不是原先的 previewStartSec / renderStartSec），这样它们和 canvas 上的波形像素、
+// grid 像素使用同一个 start sec，任何情况下都不会出现"DOM 标记已经滚到新位置、canvas
+// 还停在旧位置"的错位。播放、seek、切歌都由 composable 统一推进 displayStartSec。
+const hotCueMarkerStartSec = computed(() => Number(displayStartSec.value) || 0)
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
 const detailVisible = computed(() => true)
 const loopMaskStyle = computed(() => {
@@ -372,7 +367,7 @@ const loopMaskStyle = computed(() => {
   if (!loopRange) return null
   const visibleDurationSec = resolveVisibleDurationSec()
   if (!Number.isFinite(visibleDurationSec) || visibleDurationSec <= 0) return null
-  const viewStartSec = clampPreviewStart(previewStartSec.value)
+  const viewStartSec = Number(displayStartSec.value) || 0
   const viewEndSec = viewStartSec + visibleDurationSec
   const visibleStartSec = Math.max(viewStartSec, Number(loopRange.startSec) || 0)
   const visibleEndSec = Math.min(viewEndSec, Number(loopRange.endSec) || 0)
@@ -506,49 +501,6 @@ const {
   storeRawWaveform
 })
 
-type HorizontalBrowseWaveformBatchResponse = {
-  items?: Array<{
-    filePath?: unknown
-    data?: unknown
-  }>
-}
-
-const loadFallbackMixxxWaveform = async () => {
-  const currentToken = loadToken
-  const filePath = String(props.song?.filePath || '').trim()
-  fallbackMixxxData.value = null
-  if (!filePath) return
-  const fileKey = normalizeHorizontalBrowsePathKey(filePath)
-  for (const channel of ['waveform-cache:batch', 'mixtape-waveform-cache:batch'] as const) {
-    try {
-      const response = (await window.electron.ipcRenderer.invoke(channel, {
-        filePaths: [filePath]
-      })) as HorizontalBrowseWaveformBatchResponse | null
-      if (currentToken !== loadToken) return
-      const picked = pickMixxxDataByFile(response, fileKey, normalizeHorizontalBrowsePathKey)
-      if (!picked) {
-        traceHorizontalWaveformLoad('fallback:miss-channel', { channel })
-        continue
-      }
-      fallbackMixxxData.value = picked
-      traceHorizontalWaveformLoad('fallback:hit', {
-        channel,
-        frameCount: resolveMixxxWaveformFrameCount(picked),
-        duration: Number(picked.duration) || 0
-      })
-      return
-    } catch (error) {
-      if (currentToken !== loadToken) return
-      traceHorizontalWaveformLoad('fallback:error', {
-        channel,
-        error: error instanceof Error ? error.message : String(error)
-      })
-    }
-  }
-  if (currentToken !== loadToken) return
-  traceHorizontalWaveformLoad('fallback:miss')
-}
-
 const loadWaveform = async () => {
   const currentSong = props.song
   const currentToken = ++loadToken
@@ -562,7 +514,6 @@ const loadWaveform = async () => {
   rawStreamActive.value = false
   rawData.value = null
   mixxxData.value = null
-  fallbackMixxxData.value = null
   previewStartSec.value = 0
   resetRetainedWaveformData()
   resetGridRenderer()
@@ -578,7 +529,6 @@ const loadWaveform = async () => {
 
   try {
     previewLoading.value = true
-    void loadFallbackMixxxWaveform()
     const targetRate = resolveWaveformTargetRate(!!props.deferWaveformLoad)
     traceHorizontalWaveformLoad('load:start', {
       targetRate,
@@ -744,13 +694,6 @@ watch(
 )
 
 watch(
-  () => fallbackMixxxData.value,
-  () => {
-    scheduleDraw()
-  }
-)
-
-watch(
   () => [previewBpm.value, previewFirstBeatMs.value, previewBarBeatOffset.value] as const,
   () => {
     resetGridRenderer()
@@ -844,6 +787,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       class="raw-detail-waveform__canvas raw-detail-waveform__canvas--grid"
     ></canvas>
     <MemoryCueMarkersLayer
+      v-if="displayReady"
       :memory-cues="props.memoryCues || []"
       :start-sec="hotCueMarkerStartSec"
       :visible-duration-sec="resolveVisibleDurationSec()"
@@ -852,6 +796,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       size="default"
     />
     <HotCueMarkersLayer
+      v-if="displayReady"
       :hot-cues="props.hotCues || []"
       :start-sec="hotCueMarkerStartSec"
       :visible-duration-sec="resolveVisibleDurationSec()"
@@ -859,12 +804,16 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       size="default"
       :offset-px="-8"
     />
-    <div v-if="loopMaskStyle" class="raw-detail-waveform__loop-mask" :style="loopMaskStyle"></div>
-    <div class="raw-detail-waveform__playhead"></div>
+    <div
+      v-if="displayReady && loopMaskStyle"
+      class="raw-detail-waveform__loop-mask"
+      :style="loopMaskStyle"
+    ></div>
+    <div v-show="displayReady" class="raw-detail-waveform__playhead"></div>
     <HorizontalBrowseCueMarker
-      v-if="props.song"
+      v-if="props.song && displayReady"
       :cue-seconds="props.cueSeconds"
-      :preview-start-sec="previewStartSec"
+      :preview-start-sec="hotCueMarkerStartSec"
       :visible-duration-sec="resolveVisibleDurationSec()"
       :direction="props.direction"
     />

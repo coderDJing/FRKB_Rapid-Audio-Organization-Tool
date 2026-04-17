@@ -139,7 +139,7 @@ let logConfigured = false
 export function configureLogTransports(): void {
   if (!log?.transports?.file) return
   const appVersion = resolveAppVersion()
-  log.transports.file.level = 'debug'
+  log.transports.file.level = 'error'
   log.transports.file.format = `{y}-{m}-{d} {h}:{i}:{s}.{ms} [v${appVersion}] {text}`
   log.transports.file.maxSize = 20 * 1024 * 1024
   log.transports.file.resolvePathFn = resolveLogPath

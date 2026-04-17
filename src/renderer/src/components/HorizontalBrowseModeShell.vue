@@ -348,6 +348,7 @@ const {
   bottomDeckRenderCurrentSeconds,
   resolveDeckRenderCurrentSeconds,
   syncDeckRenderState,
+  applyDeckRenderCurrentSeconds,
   startRenderSyncLoop,
   stopRenderSyncLoop
 } = useHorizontalBrowseRenderSync({
@@ -600,10 +601,16 @@ const handleSharedDetailZoomChange = (payload: {
 }
 
 function notifyDeckSeekIntent(deck: DeckKey, seconds: number) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0)
   deckSeekIntent[deck] = {
-    seconds: Math.max(0, Number(seconds) || 0),
+    seconds: safeSeconds,
     revision: deckSeekIntent[deck].revision + 1
   }
+  // 把"渲染当前秒数"立刻 teleport 到目标位置，避免在 nativeTransport.seek IPC 来回期间
+  // playbackAnimation / startRenderSyncLoop 的插值器继续用旧 baseSec 把大波形往前推，
+  // 表现为"点 cue 时波形先向前跳一下、然后才顿住、再偶尔出现不变化"那种错位感。
+  // 详见 useHorizontalBrowseRenderSync.applyDeckRenderCurrentSeconds 的注释。
+  applyDeckRenderCurrentSeconds(deck, safeSeconds)
 }
 
 const {
