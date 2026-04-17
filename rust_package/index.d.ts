@@ -42,6 +42,9 @@ export interface HorizontalBrowseTransportSnapshot {
   top: HorizontalBrowseTransportDeckSnapshot
   bottom: HorizontalBrowseTransportDeckSnapshot
 }
+export interface HorizontalBrowseTransportVisualizerSnapshot {
+  timeDomainData: number[]
+}
 export declare function horizontalBrowseTransportReset(): void
 export declare function horizontalBrowseTransportSetDeckState(deck: string, nowMs: number | undefined | null, payload: HorizontalBrowseTransportDeckInput): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetState(payload: HorizontalBrowseTransportStateInput): HorizontalBrowseTransportSnapshot
@@ -52,6 +55,7 @@ export declare function horizontalBrowseTransportSetPlaying(deck: string, nowMs:
 export declare function horizontalBrowseTransportSeek(deck: string, nowMs: number, currentSec: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetGain(deck: string, gain: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSnapshot(nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportVisualizerSnapshot(): HorizontalBrowseTransportVisualizerSnapshot
 export interface MixxxWaveformBand {
   left: Buffer
   right: Buffer

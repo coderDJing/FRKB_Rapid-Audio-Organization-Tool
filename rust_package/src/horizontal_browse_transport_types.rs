@@ -77,6 +77,11 @@ pub struct HorizontalBrowseTransportSnapshot {
   pub bottom: HorizontalBrowseTransportDeckSnapshot,
 }
 
+#[napi(object)]
+pub struct HorizontalBrowseTransportVisualizerSnapshot {
+  pub time_domain_data: Vec<u8>,
+}
+
 pub(super) struct DecodeRequest {
   pub(super) deck: DeckId,
   pub(super) file_path: String,

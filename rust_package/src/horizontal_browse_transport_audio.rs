@@ -266,16 +266,8 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
   let pcm_data = target.pcm_data.as_ref().as_slice();
   let l0 = read_sample(base_index, 0, pcm_data);
   let l1 = read_sample(next_index, 0, pcm_data);
-  let r0 = read_sample(
-    base_index,
-    if channels > 1 { 1 } else { 0 },
-    pcm_data,
-  );
-  let r1 = read_sample(
-    next_index,
-    if channels > 1 { 1 } else { 0 },
-    pcm_data,
-  );
+  let r0 = read_sample(base_index, if channels > 1 { 1 } else { 0 }, pcm_data);
+  let r1 = read_sample(next_index, if channels > 1 { 1 } else { 0 }, pcm_data);
   let left = l0 + (l1 - l0) * frac;
   let right = r0 + (r1 - r0) * frac;
 

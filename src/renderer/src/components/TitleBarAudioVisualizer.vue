@@ -5,6 +5,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
 import {
   resolveTitleAudioVisualizerAnalyser,
+  type TitleAudioVisualizerAnalyserLike,
   type TitleAudioVisualizerTarget
 } from '@renderer/composables/titleAudioVisualizerBridge'
 
@@ -81,7 +82,7 @@ const ensureCanvasSize = (canvas: HTMLCanvasElement) => {
   return { width, height, ratio }
 }
 
-const ensureAnalyserBuffers = (analyser: AnalyserNode) => {
+const ensureAnalyserBuffers = (analyser: TitleAudioVisualizerAnalyserLike) => {
   if (frequencyData.length !== analyser.frequencyBinCount) {
     frequencyData = new Uint8Array(analyser.frequencyBinCount)
   }
@@ -90,7 +91,7 @@ const ensureAnalyserBuffers = (analyser: AnalyserNode) => {
   }
 }
 
-const resolveSignalMetrics = (analyser: AnalyserNode | null) => {
+const resolveSignalMetrics = (analyser: TitleAudioVisualizerAnalyserLike | null) => {
   if (!analyser) {
     return { analyser: null, active: false, deviationAverage: 0, energyBoost: 1 }
   }

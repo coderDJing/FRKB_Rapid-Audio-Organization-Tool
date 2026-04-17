@@ -79,7 +79,7 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
     const upActive = activeCrossfaderKeys.has('KeyW') || activeCrossfaderKeys.has('ArrowUp')
     const downActive = activeCrossfaderKeys.has('KeyS') || activeCrossfaderKeys.has('ArrowDown')
     if (upActive === downActive) return 0
-    return upActive ? -1 : 1
+    return upActive ? 1 : -1
   }
 
   const scheduleCrossfaderRepeat = () => {

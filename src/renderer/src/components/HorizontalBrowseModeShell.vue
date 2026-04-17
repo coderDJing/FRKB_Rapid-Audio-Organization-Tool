@@ -46,6 +46,7 @@ import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import emitter from '@renderer/utils/mitt'
 import { useHorizontalBrowseRenderSync } from '@renderer/components/useHorizontalBrowseRenderSync'
 import { createHorizontalBrowseDeckAssigner } from '@renderer/components/horizontalBrowseDeckAssignment'
+import { useHorizontalBrowseOutput } from '@renderer/components/useHorizontalBrowseOutput'
 
 type DeckKey = HorizontalBrowseDeckKey
 type DeckTransportStateOverride = Partial<{
@@ -87,8 +88,6 @@ const createDefaultDeckToolbarState = () => ({
   canToggleMetronome: false,
   canAdjustMetronomeVolume: false
 })
-const FADER_TRAVEL_INSET_RATIO = 0.17
-const CROSSFADER_KEY_STEP = 0.25
 
 const runtime = useRuntimeStore()
 const {
@@ -101,13 +100,9 @@ const topDeckCuePointSeconds = ref(0)
 const bottomDeckCuePointSeconds = ref(0)
 const topDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
 const bottomDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
-const faderRef = ref<HTMLElement | null>(null)
-const faderRailRef = ref<HTMLElement | null>(null)
 const topDeckToolbarState = ref(createDefaultDeckToolbarState())
 const bottomDeckToolbarState = ref(createDefaultDeckToolbarState())
 const hoveredDeckKey = ref<DeckKey | null>(null)
-const faderDragging = ref(false)
-const faderValue = ref(0)
 const sharedDetailZoomState = ref<SharedDetailZoomState>({
   value: HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
   anchorRatio: 0.5,
@@ -142,18 +137,6 @@ const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
 }
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
-const resolveFaderTravelPercentByValue = (value: number) => {
-  const travelPercent = FADER_TRAVEL_INSET_RATIO * 100
-  const usablePercent = 100 - travelPercent * 2
-  return travelPercent + (clampNumber(value, -1, 1) + 1) * 0.5 * usablePercent
-}
-
-const faderTicks = Array.from({ length: 9 }, (_, index) => ({
-  id: index,
-  top: `${resolveFaderTravelPercentByValue(index / 4 - 1)}%`,
-  major: index === 0 || index === 4 || index === 8,
-  center: index === 4
-}))
 
 const topOverviewRegions = [1, 2, 3]
 const bottomOverviewRegions = [6, 7, 8]
@@ -219,79 +202,6 @@ const touchDeckInteraction = (deck: DeckKey) => {
   bottomDeckRecentInteractionTimer = timer
 }
 
-const resolveCrossfaderVolumes = (value: number) => {
-  const safeValue = clampNumber(value, -1, 1)
-  if (safeValue <= 0) {
-    return {
-      top: 1 + safeValue,
-      bottom: 1
-    }
-  }
-  return {
-    top: 1,
-    bottom: 1 - safeValue
-  }
-}
-
-const applyCrossfaderVolumes = (value: number) => {
-  const volumes = resolveCrossfaderVolumes(value)
-  void nativeTransport.setGain('top', volumes.top)
-  void nativeTransport.setGain('bottom', volumes.bottom)
-}
-
-const syncCrossfaderValue = (value: number) => {
-  faderValue.value = clampNumber(value, -1, 1)
-  applyCrossfaderVolumes(faderValue.value)
-}
-
-const resolveCrossfaderValueByClientY = (clientY: number) => {
-  const rect =
-    faderRailRef.value?.getBoundingClientRect() || faderRef.value?.getBoundingClientRect()
-  if (!rect || rect.height <= 0) return faderValue.value
-  const travelInsetPx = rect.height * FADER_TRAVEL_INSET_RATIO
-  const travelHeight = Math.max(1, rect.height - travelInsetPx * 2)
-  const relativeY = clampNumber(clientY - rect.top - travelInsetPx, 0, travelHeight)
-  return (relativeY / travelHeight) * 2 - 1
-}
-
-const stopFaderDragging = () => {
-  if (!faderDragging.value) return
-  faderDragging.value = false
-  window.removeEventListener('pointermove', handleWindowFaderPointerMove)
-  window.removeEventListener('pointerup', handleWindowFaderPointerUp)
-  window.removeEventListener('pointercancel', handleWindowFaderPointerUp)
-}
-
-const handleWindowFaderPointerMove = (event: PointerEvent) => {
-  if (!faderDragging.value) return
-  syncCrossfaderValue(resolveCrossfaderValueByClientY(event.clientY))
-}
-
-const handleWindowFaderPointerUp = () => {
-  stopFaderDragging()
-}
-
-const handleFaderPointerDown = (event: PointerEvent) => {
-  if (event.button !== 0) return
-  event.preventDefault()
-  faderDragging.value = true
-  syncCrossfaderValue(resolveCrossfaderValueByClientY(event.clientY))
-  window.addEventListener('pointermove', handleWindowFaderPointerMove)
-  window.addEventListener('pointerup', handleWindowFaderPointerUp)
-  window.addEventListener('pointercancel', handleWindowFaderPointerUp)
-}
-
-const handleFaderDoubleClick = () => {
-  stopFaderDragging()
-  syncCrossfaderValue(0)
-}
-
-const faderThumbStyle = computed(() => {
-  return {
-    top: `${resolveFaderTravelPercentByValue(faderValue.value)}%`
-  }
-})
-
 const resetRegionDragState = () => {
   hoveredDeckKey.value = null
   for (const key of Object.keys(regionDragDepth)) {
@@ -320,6 +230,20 @@ const resolveDraggedSong = () => {
 }
 
 const nativeTransport = createHorizontalBrowseNativeTransport()
+const {
+  faderRef,
+  faderRailRef,
+  faderTicks,
+  faderThumbStyle,
+  faderDragging,
+  syncCrossfaderValue,
+  handleFaderPointerDown,
+  handleFaderDoubleClick,
+  nudgeCrossfaderByKeyboard,
+  resetCrossfaderByKeyboard
+} = useHorizontalBrowseOutput({
+  nativeTransport
+})
 const deckSyncState = nativeTransport.state
 const topDeckPlaybackRate = computed(() => Number(nativeTransport.state.top.playbackRate) || 1)
 const bottomDeckPlaybackRate = computed(
@@ -707,11 +631,11 @@ const triggerDeckBeatSync = async (deck: DeckKey) => {
 }
 
 const handleCrossfaderNudgeByKeyboard = (direction: -1 | 1) => {
-  syncCrossfaderValue(faderValue.value + direction * CROSSFADER_KEY_STEP)
+  nudgeCrossfaderByKeyboard(direction)
 }
 
 const handleCrossfaderResetByKeyboard = () => {
-  syncCrossfaderValue(0)
+  resetCrossfaderByKeyboard()
 }
 
 const handleDeckMoveToFilterHotkey = (deck: DeckKey) => {
@@ -816,8 +740,9 @@ watch(
 )
 
 onMounted(() => {
-  syncCrossfaderValue(0)
-  void nativeTransport.reset()
+  void nativeTransport.reset().finally(() => {
+    syncCrossfaderValue(0)
+  })
   startRenderSyncLoop(handleDeckLoopPlaybackTick)
   window.addEventListener('drop', handleGlobalDragFinish, true)
   window.addEventListener('dragend', handleGlobalDragFinish, true)
@@ -837,7 +762,6 @@ onUnmounted(() => {
     console.error('[horizontal-browse] reset transport failed on exit', error)
   })
   stopRenderSyncLoop()
-  stopFaderDragging()
   clearDeckRecentInteractionTimer('top')
   clearDeckRecentInteractionTimer('bottom')
   window.removeEventListener('drop', handleGlobalDragFinish, true)

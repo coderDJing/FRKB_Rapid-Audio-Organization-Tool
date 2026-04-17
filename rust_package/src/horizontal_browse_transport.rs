@@ -14,6 +14,7 @@ use horizontal_browse_transport_types::{
   parse_deck_id, BeatGridSnapshot, DeckDerivedState, DeckId, DecodeRequest,
   HorizontalBrowseTransportDeckInput, HorizontalBrowseTransportDeckSnapshot,
   HorizontalBrowseTransportSnapshot, HorizontalBrowseTransportStateInput,
+  HorizontalBrowseTransportVisualizerSnapshot,
 };
 
 struct DeckState {
@@ -61,6 +62,7 @@ const HORIZONTAL_BROWSE_IMMEDIATE_PLAY_SEGMENT_DECODE_SEC: f64 = 12.0;
 const HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC: f64 = 16.0;
 const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_THRESHOLD_SEC: f64 = 8.0;
 const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC: f64 = 4.0;
+const HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT: usize = 256;
 
 impl Default for DeckState {
   fn default() -> Self {
@@ -103,6 +105,9 @@ struct HorizontalBrowseTransportEngine {
   target_beat_distance: [f64; 2],
   quantize_enabled: [bool; 2],
   bpm_multiplier: [f64; 2],
+  visualizer_ring: Vec<f32>,
+  visualizer_write_index: usize,
+  visualizer_filled: bool,
 }
 
 impl Default for HorizontalBrowseTransportEngine {
@@ -120,6 +125,9 @@ impl Default for HorizontalBrowseTransportEngine {
       target_beat_distance: [0.0, 0.0],
       quantize_enabled: [true, true],
       bpm_multiplier: [1.0, 1.0],
+      visualizer_ring: vec![0.0; HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT],
+      visualizer_write_index: 0,
+      visualizer_filled: false,
     }
   }
 }
@@ -500,13 +508,66 @@ impl HorizontalBrowseTransportEngine {
       left += l;
       right += r;
     }
-    (left.clamp(-1.0, 1.0), right.clamp(-1.0, 1.0))
+    let clamped_left = left.clamp(-1.0, 1.0);
+    let clamped_right = right.clamp(-1.0, 1.0);
+    self.push_visualizer_sample((clamped_left + clamped_right) * 0.5);
+    (clamped_left, clamped_right)
   }
 
   fn sample_deck(&mut self, deck: DeckId) -> (f32, f32) {
     let output_sample_rate = self.output_sample_rate.max(1) as f64;
     let target = self.deck_mut(deck);
     horizontal_browse_transport_audio::sample_deck(target, output_sample_rate)
+  }
+
+  fn push_visualizer_sample(&mut self, sample: f32) {
+    if self.visualizer_ring.len() != HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT {
+      self.visualizer_ring = vec![0.0; HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT];
+      self.visualizer_write_index = 0;
+      self.visualizer_filled = false;
+    }
+    if self.visualizer_ring.is_empty() {
+      return;
+    }
+    self.visualizer_ring[self.visualizer_write_index] = sample.clamp(-1.0, 1.0);
+    self.visualizer_write_index =
+      (self.visualizer_write_index + 1) % HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT;
+    if self.visualizer_write_index == 0 {
+      self.visualizer_filled = true;
+    }
+  }
+
+  fn visualizer_snapshot(&self) -> HorizontalBrowseTransportVisualizerSnapshot {
+    let sample_count = HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT;
+    if self.visualizer_ring.len() != sample_count {
+      return HorizontalBrowseTransportVisualizerSnapshot {
+        time_domain_data: vec![128; sample_count],
+      };
+    }
+    let available = if self.visualizer_filled {
+      sample_count
+    } else {
+      self.visualizer_write_index.min(sample_count)
+    };
+    let mut time_domain_data = Vec::with_capacity(sample_count);
+    for _ in available..sample_count {
+      time_domain_data.push(128);
+    }
+    if available == 0 {
+      return HorizontalBrowseTransportVisualizerSnapshot { time_domain_data };
+    }
+    let start_index = if self.visualizer_filled {
+      self.visualizer_write_index
+    } else {
+      0
+    };
+    for offset in 0..available {
+      let index = (start_index + offset) % sample_count;
+      let sample = self.visualizer_ring.get(index).copied().unwrap_or(0.0);
+      let encoded = ((sample.clamp(-1.0, 1.0) * 0.5 + 0.5) * 255.0).round() as i32;
+      time_domain_data.push(encoded.clamp(0, 255) as u8);
+    }
+    HorizontalBrowseTransportVisualizerSnapshot { time_domain_data }
   }
 
   fn deck(&self, deck: DeckId) -> &DeckState {
@@ -1076,7 +1137,9 @@ fn merge_partial_pcm_segment(
   }
 
   let unique_suffix_start_frame = if new_end_frame > old_end_frame {
-    (old_end_frame - new_start_frame).max(0).min(new_frame_count as i64) as usize
+    (old_end_frame - new_start_frame)
+      .max(0)
+      .min(new_frame_count as i64) as usize
   } else {
     new_frame_count
   };
@@ -1496,6 +1559,13 @@ pub fn horizontal_browse_transport_snapshot(
 ) -> HorizontalBrowseTransportSnapshot {
   let engine = engine().lock();
   engine.snapshot(now_ms.unwrap_or_else(performance_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_visualizer_snapshot(
+) -> HorizontalBrowseTransportVisualizerSnapshot {
+  let engine = engine().lock();
+  engine.visualizer_snapshot()
 }
 
 fn performance_now_ms() -> f64 {

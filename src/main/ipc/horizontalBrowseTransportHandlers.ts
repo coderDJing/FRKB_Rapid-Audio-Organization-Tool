@@ -39,6 +39,7 @@ type RustHorizontalBrowseTransportBinding = {
   horizontalBrowseTransportSeek?: (deck: string, nowMs: number, currentSec: number) => unknown
   horizontalBrowseTransportSetGain?: (deck: string, gain: number) => unknown
   horizontalBrowseTransportSnapshot?: (nowMs?: number) => unknown
+  horizontalBrowseTransportVisualizerSnapshot?: () => unknown
 }
 
 const resolveBinding = (): RustHorizontalBrowseTransportBinding => {
@@ -149,5 +150,11 @@ export function registerHorizontalBrowseTransportHandlers() {
     const binding = resolveBinding()
     const fn = requireFn(binding, 'horizontalBrowseTransportSnapshot')
     return fn(nowMs)
+  })
+
+  ipcMain.handle('horizontal-browse-transport:visualizer-snapshot', async () => {
+    const binding = resolveBinding()
+    const fn = requireFn(binding, 'horizontalBrowseTransportVisualizerSnapshot')
+    return fn()
   })
 }

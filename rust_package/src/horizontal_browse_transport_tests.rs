@@ -242,15 +242,11 @@ fn apply_decoded_audio_merges_overlapping_partial_segment() {
   assert_eq!(top.pcm_data.len(), 24);
   assert_eq!(
     top.pcm_data[..16],
-    [
-      0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
-    ]
+    [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,]
   );
   assert_eq!(
     top.pcm_data[16..],
-    [
-      108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0, 115.0,
-    ]
+    [108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0, 115.0,]
   );
 }
 
@@ -303,5 +299,8 @@ fn followup_prefetch_allows_overlap_inside_loaded_segment() {
   assert_eq!(request.deck, DeckId::Top);
   assert_eq!(request.file_path, "prefetch.mp3");
   assert!((request.start_sec - 8.0).abs() < 0.0001);
-  assert_eq!(request.max_duration_sec, Some(HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC));
+  assert_eq!(
+    request.max_duration_sec,
+    Some(HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC)
+  );
 }

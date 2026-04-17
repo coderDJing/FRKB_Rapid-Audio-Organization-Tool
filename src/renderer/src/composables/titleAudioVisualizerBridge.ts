@@ -1,12 +1,18 @@
 export type TitleAudioVisualizerTarget = 'mainWindow' | 'mixtapeWindow'
 
+export type TitleAudioVisualizerAnalyserLike = Pick<
+  AnalyserNode,
+  'fftSize' | 'frequencyBinCount' | 'getByteFrequencyData' | 'getByteTimeDomainData'
+>
+
 export type TitleAudioVisualizerSource = {
-  getAnalyser: () => AnalyserNode | null
+  getAnalyser: () => TitleAudioVisualizerAnalyserLike | null
+  priority?: number
 }
 
-const sourceByTarget: Record<TitleAudioVisualizerTarget, TitleAudioVisualizerSource | null> = {
-  mainWindow: null,
-  mixtapeWindow: null
+const sourceStackByTarget: Record<TitleAudioVisualizerTarget, TitleAudioVisualizerSource[]> = {
+  mainWindow: [],
+  mixtapeWindow: []
 }
 
 export const configureTitleAudioVisualizerAnalyser = <T extends AnalyserNode>(analyser: T): T => {
@@ -21,23 +27,44 @@ export const registerTitleAudioVisualizerSource = (
   target: TitleAudioVisualizerTarget,
   source: TitleAudioVisualizerSource
 ): void => {
-  sourceByTarget[target] = source
+  const stack = sourceStackByTarget[target]
+  const existingIndex = stack.indexOf(source)
+  if (existingIndex >= 0) {
+    stack.splice(existingIndex, 1)
+  }
+  stack.push(source)
 }
 
 export const unregisterTitleAudioVisualizerSource = (
   target: TitleAudioVisualizerTarget,
   source?: TitleAudioVisualizerSource
 ): void => {
-  if (!source || sourceByTarget[target] === source) {
-    sourceByTarget[target] = null
+  const stack = sourceStackByTarget[target]
+  if (!source) {
+    stack.length = 0
+    return
+  }
+  const existingIndex = stack.lastIndexOf(source)
+  if (existingIndex >= 0) {
+    stack.splice(existingIndex, 1)
   }
 }
 
 export const resolveTitleAudioVisualizerAnalyser = (
   target: TitleAudioVisualizerTarget
-): AnalyserNode | null => {
+): TitleAudioVisualizerAnalyserLike | null => {
   try {
-    return sourceByTarget[target]?.getAnalyser() ?? null
+    const stack = sourceStackByTarget[target]
+    let selectedSource: TitleAudioVisualizerSource | null = null
+    let selectedPriority = Number.NEGATIVE_INFINITY
+    for (let index = stack.length - 1; index >= 0; index -= 1) {
+      const candidate = stack[index]
+      const priority = Number(candidate?.priority) || 0
+      if (selectedSource && priority <= selectedPriority) continue
+      selectedSource = candidate
+      selectedPriority = priority
+    }
+    return selectedSource?.getAnalyser() ?? null
   } catch {
     return null
   }

@@ -30,6 +30,10 @@ export type HorizontalBrowseTransportSnapshot = {
   bottom: HorizontalBrowseTransportDeckSnapshot
 }
 
+export type HorizontalBrowseTransportVisualizerSnapshot = {
+  timeDomainData: number[]
+}
+
 type LocalDeckState = {
   song: ISongInfo | null
   currentSec: number
@@ -231,6 +235,11 @@ export const createHorizontalBrowseNativeTransport = () => {
     return next
   }
 
+  const visualizerSnapshot = async () =>
+    (await window.electron.ipcRenderer.invoke(
+      'horizontal-browse-transport:visualizer-snapshot'
+    )) as HorizontalBrowseTransportVisualizerSnapshot
+
   return {
     state,
     reset,
@@ -242,6 +251,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     setPlaying,
     seek,
     setGain,
-    snapshot
+    snapshot,
+    visualizerSnapshot
   }
 }

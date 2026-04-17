@@ -234,5 +234,9 @@ export declare function horizontalBrowseTransportSetGain(
 export declare function horizontalBrowseTransportSnapshot(
   nowMs?: number
 ): HorizontalBrowseTransportSnapshot
+export interface HorizontalBrowseTransportVisualizerSnapshot {
+  timeDomainData: number[]
+}
+export declare function horizontalBrowseTransportVisualizerSnapshot(): HorizontalBrowseTransportVisualizerSnapshot
 
 export {}
