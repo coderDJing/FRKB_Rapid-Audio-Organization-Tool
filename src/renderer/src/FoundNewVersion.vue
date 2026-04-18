@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import chromeMiniimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
 import logoAsset from '@renderer/assets/logo.png?asset'
-import { ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import singleCheckbox from './components/singleCheckbox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { formatWindowTitle } from '@renderer/utils/windowTitle'
 const chromeMiniimize = chromeMiniimizeAsset
 const logo = logoAsset
 
@@ -18,6 +19,16 @@ function getSevenDaysLaterISO() {
 }
 const notCheckIn7Days = ref(false)
 const runtime = useRuntimeStore()
+const foundNewVersionTitle = computed(() => formatWindowTitle(t('update.newVersionFound')))
+
+watch(
+  foundNewVersionTitle,
+  (title) => {
+    document.title = title
+  },
+  { immediate: true }
+)
+
 const toggleClose = async () => {
   if (notCheckIn7Days.value) {
     runtime.setting.nextCheckUpdateTime = getSevenDaysLaterISO()
@@ -39,7 +50,7 @@ const checkNow = async () => {
     class="unselectable"
   >
     <div>
-      <div class="title unselectable">{{ t('update.newVersionFound') }}</div>
+      <div class="title unselectable">{{ foundNewVersionTitle }}</div>
       <div class="titleComponent unselectable">
         <div
           v-if="runtime.setting.platform !== 'darwin'"

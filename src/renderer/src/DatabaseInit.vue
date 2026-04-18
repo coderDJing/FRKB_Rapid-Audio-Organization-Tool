@@ -4,8 +4,8 @@ import {
   onMounted,
   onUnmounted,
   computed,
-  useTemplateRef,
   reactive,
+  watch,
   type ComponentPublicInstance
 } from 'vue'
 import { t } from '@renderer/utils/translate'
@@ -18,11 +18,21 @@ import choice from '@renderer/components/choiceDialog'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import hintIconAsset from '@renderer/assets/hint.svg?asset'
+import { formatWindowTitle } from '@renderer/utils/windowTitle'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
 const flashArea = ref('') // 控制动画是否正在播放
 const hintIcon = hintIconAsset
 type FingerprintMode = 'pcm' | 'file'
+const databaseInitWindowTitle = computed(() => formatWindowTitle(t('database.selectLocation')))
+
+watch(
+  databaseInitWindowTitle,
+  (title) => {
+    document.title = title
+  },
+  { immediate: true }
+)
 
 // 模拟闪烁三次的逻辑（使用 setTimeout）
 const flashBorder = (flashAreaName: string) => {
@@ -370,7 +380,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
       class="canDrag"
     >
       <span style="font-weight: bold" class="title unselectable">{{
-        t('database.selectLocation')
+        databaseInitWindowTitle
       }}</span>
     </div>
 

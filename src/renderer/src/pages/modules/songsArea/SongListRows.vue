@@ -293,9 +293,18 @@ const {
   externalViewportHeight: externalViewportHeightRef
 })
 
-const contentHeight = computed(() =>
-  Math.max(totalHeight.value, effectiveViewportHeight.value || 0)
-)
+const headerHeight = computed(() => {
+  const header = rowsRoot.value?.previousElementSibling as HTMLElement | null
+  const measuredHeight = Number(header?.offsetHeight || 0)
+  return measuredHeight > 0 ? measuredHeight : DEFAULT_ROW_HEIGHT
+})
+
+const availableRowsViewportHeight = computed(() => {
+  const viewportHeight = Number(effectiveViewportHeight.value || 0)
+  return Math.max(0, viewportHeight - headerHeight.value)
+})
+
+const contentHeight = computed(() => Math.max(totalHeight.value, availableRowsViewportHeight.value))
 
 const shouldSuppressPointerAction = (event?: MouseEvent) => {
   if (runtime.songDragSuppressClickUntilMs <= Date.now()) return false
@@ -805,7 +814,6 @@ onUnmounted(() => {
 
 .song-rows-root {
   position: relative;
-  min-height: 100%;
 }
 
 .mixtape-drop-pad {

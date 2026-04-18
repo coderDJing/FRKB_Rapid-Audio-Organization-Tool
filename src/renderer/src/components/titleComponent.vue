@@ -55,9 +55,24 @@ const resolveChannel = (action: 'maximize' | 'minimize' | 'close') => {
   if (props.controlPrefix) return `${props.controlPrefix}-toggle-${action}`
   return `toggle-${action}`
 }
-const displayTitle = computed(() => {
+const titleMeta = computed(() => {
   const custom = String(props.titleText || '').trim()
-  return custom || `FRKB - ${t('app.name')}`
+  const title = custom || `FRKB - ${t('app.name')}`
+  const matched = title.match(/^(.*?)(?:\s*)\[dev:([^\]]+)\]\s*$/i)
+  if (!matched) {
+    return {
+      full: title,
+      base: title,
+      devLabel: '',
+      instance: ''
+    }
+  }
+  return {
+    full: title,
+    base: String(matched[1] || '').trim(),
+    devLabel: 'dev:',
+    instance: String(matched[2] || '').trim()
+  }
 })
 const showLogo = computed(() => runtime.platform !== 'Mac' && !props.hideLogo)
 
@@ -316,7 +331,13 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
 }
 </script>
 <template>
-  <div class="title unselectable">{{ displayTitle }}</div>
+  <div class="title unselectable">
+    <span class="title__main">{{ titleMeta.base }}</span>
+    <span v-if="titleMeta.instance" class="title__dev-badge">
+      <span class="title__dev-label">{{ titleMeta.devLabel }}</span>
+      <span class="title__dev-instance">{{ titleMeta.instance }}</span>
+    </span>
+  </div>
   <div class="titleComponent unselectable" v-bind="$attrs">
     <div
       v-if="showLogo"
@@ -418,10 +439,40 @@ const titleMenuButtonMouseEnter = (item: Menu) => {
   display: flex;
   justify-content: center;
   align-items: center;
+  gap: 10px;
   background-color: var(--bg);
   z-index: 0;
   font-size: 13px;
   border-bottom: 1px solid var(--border);
+
+  .title__main {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .title__dev-badge {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .title__dev-label {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    color: inherit;
+  }
+
+  .title__dev-instance {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: inherit;
+  }
 }
 
 .titleComponent {

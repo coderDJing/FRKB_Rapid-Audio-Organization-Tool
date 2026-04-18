@@ -35,6 +35,7 @@ import {
   readWindowVolume,
   writeWindowVolume
 } from '@renderer/utils/windowVolume'
+import { formatWindowTitle } from '@renderer/utils/windowTitle'
 
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
@@ -59,6 +60,14 @@ watch(
       runtime.setting.mainWindowBrowseMode = normalizedMode
     }
     window.electron.ipcRenderer.send('main-window-browse-mode-updated', normalizedMode)
+  },
+  { immediate: true }
+)
+const mainWindowTitleText = computed(() => formatWindowTitle(`FRKB - ${t('app.name')}`))
+watch(
+  mainWindowTitleText,
+  (title) => {
+    document.title = title
   },
   { immediate: true }
 )
@@ -873,7 +882,7 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">
     <div style="height: 35px; position: relative; z-index: var(--z-title-bar); overflow: visible">
-      <titleComponent @open-dialog="openDialog">
+      <titleComponent :title-text="mainWindowTitleText" @open-dialog="openDialog">
         <template #rightExtra>
           <TitleBarAudioVisualizer target="mainWindow" />
         </template>

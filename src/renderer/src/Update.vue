@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import chromeMiniimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
 import logoAsset from '@renderer/assets/logo.png?asset'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import type { UpdateInfo } from 'electron-updater'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { formatWindowTitle } from '@renderer/utils/windowTitle'
 const chromeMiniimize = chromeMiniimizeAsset
 const logo = logoAsset
 
@@ -43,6 +44,15 @@ const downloadedInfo = ref<Required<UpdateDownloadedPayload>>({
   filePath: '',
   downloadDir: ''
 })
+const updateWindowTitle = computed(() => formatWindowTitle(t('menu.checkUpdate')))
+
+watch(
+  updateWindowTitle,
+  (title) => {
+    document.title = title
+  },
+  { immediate: true }
+)
 
 let latestVersion = ref('')
 window.electron.ipcRenderer.once('isLatestVersion', (event, version) => {
@@ -207,7 +217,7 @@ const openApplicationsFolder = () => {
     class="unselectable"
   >
     <div>
-      <div class="title unselectable">{{ t('menu.checkUpdate') }}</div>
+      <div class="title unselectable">{{ updateWindowTitle }}</div>
       <div class="titleComponent unselectable">
         <div
           v-if="runtime.setting.platform !== 'darwin'"

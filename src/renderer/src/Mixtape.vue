@@ -32,6 +32,7 @@ import {
   readWindowVolume,
   writeWindowVolume
 } from '@renderer/utils/windowVolume'
+import { formatWindowTitle } from '@renderer/utils/windowTitle'
 
 const masterTempoLaneExpanded = ref(false)
 
@@ -161,6 +162,15 @@ const {
 
 const mixtapeWindowVolume = ref(readWindowVolume(MIXTAPE_WINDOW_VOLUME_STORAGE_KEY))
 setTransportMasterVolume(mixtapeWindowVolume.value)
+const mixtapeWindowTitle = computed(() => formatWindowTitle(titleLabel.value))
+
+watch(
+  mixtapeWindowTitle,
+  (title) => {
+    document.title = title
+  },
+  { immediate: true }
+)
 
 const handleMixtapeWindowVolumeChange = (value: number) => {
   const nextVolume = writeWindowVolume(MIXTAPE_WINDOW_VOLUME_STORAGE_KEY, value)
@@ -524,7 +534,7 @@ watch(
       <titleComponent
         control-prefix="mixtapeWindow"
         max-event-channel="mixtapeWindow-max"
-        :title-text="titleLabel"
+        :title-text="mixtapeWindowTitle"
         :menu-override="titleMenus"
         :enable-menu-hotkeys="false"
         @open-dialog="handleTitleMenuOpen"

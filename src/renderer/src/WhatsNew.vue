@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { marked } from 'marked'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import chromeMinimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
 import logoAsset from '@renderer/assets/logo.png?asset'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import { formatWindowTitle } from '@renderer/utils/windowTitle'
 const chromeMinimize = chromeMinimizeAsset
 const logo = logoAsset
 
@@ -22,6 +23,7 @@ const runtime = useRuntimeStore()
 const loading = ref(true)
 const release = ref<ReleasePayload | null>(null)
 const bodyHtml = ref('')
+const whatsNewWindowTitle = computed(() => formatWindowTitle(t('whatsNew.title')))
 const overlayOptions = {
   scrollbars: {
     autoHide: 'leave' as const,
@@ -90,12 +92,20 @@ const publishedText = computed(() => {
     return publishedAt
   }
 })
+
+watch(
+  whatsNewWindowTitle,
+  (title) => {
+    document.title = title
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
   <div class="window-root unselectable">
     <div class="title-bar">
-      <div class="title">{{ t('whatsNew.title') }}</div>
+      <div class="title">{{ whatsNewWindowTitle }}</div>
       <div class="toolbar">
         <div v-if="runtime.setting.platform !== 'darwin'" class="logo-area">
           <img :src="logo" style="width: 20px" :draggable="false" class="theme-icon" />
