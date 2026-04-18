@@ -33,6 +33,7 @@ let settingConfig: ISettingConfig = {
   ],
   databaseUrl: '',
   globalCallShortcut: '',
+  enableWindowScreenshotShortcut: true,
   playerGlobalShortcuts: {
     fastForward: 'Shift+Alt+Right',
     fastBackward: 'Shift+Alt+Left',

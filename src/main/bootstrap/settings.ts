@@ -66,6 +66,7 @@ const defaultSettings = {
   databaseUrl: '',
   globalCallShortcut:
     platform === 'win32' ? 'Ctrl+Alt+F' : platform === 'darwin' ? 'Command+Option+F' : '',
+  enableWindowScreenshotShortcut: true,
   playerGlobalShortcuts: { ...defaultPlayerGlobalShortcuts },
   hiddenPlayControlArea: false,
   waveformStyle: 'RGB' as 'SoundCloud' | 'Fine' | 'RGB',

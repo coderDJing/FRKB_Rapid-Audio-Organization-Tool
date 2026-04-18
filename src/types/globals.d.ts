@@ -376,6 +376,7 @@ interface ISettingConfig {
   audioExt: string[]
   databaseUrl: string
   globalCallShortcut: string
+  enableWindowScreenshotShortcut?: boolean
   playerGlobalShortcuts: IPlayerGlobalShortcuts
   nextCheckUpdateTime: string
   hiddenPlayControlArea: boolean

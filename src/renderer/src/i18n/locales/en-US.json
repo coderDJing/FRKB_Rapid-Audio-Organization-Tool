@@ -51,6 +51,7 @@
     "thirdPartyNotices": "Third-Party Notices",
     "about": "About",
     "openLog": "Open Log File",
+    "enableWindowScreenshotShortcut": "Enable Window Screenshot Shortcut",
     "startSongListTrace": "Start Trace Recording",
     "stopSongListTrace": "Stop Trace And Export"
   },

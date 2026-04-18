@@ -311,6 +311,7 @@ export const useRuntimeStore = defineStore('runtime', {
         ],
         databaseUrl: '',
         globalCallShortcut: '',
+        enableWindowScreenshotShortcut: true,
         playerGlobalShortcuts: {
           fastForward: 'Shift+Alt+Right',
           fastBackward: 'Shift+Alt+Left',

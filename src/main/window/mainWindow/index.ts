@@ -1,4 +1,12 @@
-import { app, shell, BrowserWindow, ipcMain, globalShortcut, nativeImage } from 'electron'
+import {
+  app,
+  shell,
+  BrowserWindow,
+  ipcMain,
+  globalShortcut,
+  nativeImage,
+  Notification
+} from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../../resources/icon.png?asset'
 import path = require('path')
@@ -22,6 +30,10 @@ import {
   persistLayoutConfig
 } from '../../layoutConfig'
 import { persistSettingConfig } from '../../settingsPersistence'
+import {
+  WINDOW_SCREENSHOT_SHORTCUT,
+  isWindowScreenshotFeatureAvailable
+} from '../../../shared/windowScreenshotFeature'
 
 let mainWindow: BrowserWindow | null = null
 const getMainWindow = () => mainWindow
@@ -88,7 +100,6 @@ const normalizeExistingExternalDragPaths = (rawPaths: unknown): string[] => {
   return existingPaths
 }
 const registeredPlaybackShortcuts = new Map<PlayerGlobalShortcutAction, string>()
-const screenshotShortcut = is.dev && process.platform === 'win32' ? 'F9' : ''
 const screenshotCss = `
   html,
   body,
@@ -98,6 +109,19 @@ const screenshotCss = `
 `
 let screenshotInProgress = false
 let registeredScreenshotShortcut = ''
+
+const isWindowScreenshotFeatureEnabledForBuild = () =>
+  isWindowScreenshotFeatureAvailable({
+    platform: process.platform,
+    isDev: is.dev,
+    version: app.getVersion()
+  })
+
+const getWindowScreenshotShortcut = () =>
+  isWindowScreenshotFeatureEnabledForBuild() ? WINDOW_SCREENSHOT_SHORTCUT : ''
+
+const isWindowScreenshotShortcutEnabled = () =>
+  store.settingConfig.enableWindowScreenshotShortcut !== false
 
 const ensurePlayerShortcutConfig = (): IPlayerGlobalShortcuts => {
   const current = store.settingConfig.playerGlobalShortcuts
@@ -184,31 +208,87 @@ const getScreenshotOutputDir = () => {
   return app.getPath('desktop')
 }
 
-const captureMainWindowScreenshot = async () => {
-  if (!is.dev || !mainWindow || mainWindow.isDestroyed() || screenshotInProgress) return
+const showWindowScreenshotNotification = (params: {
+  kind: 'success' | 'error'
+  outputPath?: string
+  errorMessage?: string
+}) => {
+  if (!Notification.isSupported()) return
+  const isEnglish = store.settingConfig?.language === 'enUS'
+  const outputPath = String(params.outputPath || '').trim()
+  const errorMessage = String(params.errorMessage || '').trim()
+  const title =
+    params.kind === 'success'
+      ? isEnglish
+        ? 'Window screenshot saved'
+        : '窗口截图已保存'
+      : isEnglish
+        ? 'Window screenshot failed'
+        : '窗口截图失败'
+  const body =
+    params.kind === 'success'
+      ? isEnglish
+        ? outputPath
+          ? `Saved to:\n${outputPath}\nClick to reveal in Explorer.`
+          : 'Saved successfully.'
+        : outputPath
+          ? `已保存到：\n${outputPath}\n点击可打开所在位置。`
+          : '截图已保存。'
+      : isEnglish
+        ? errorMessage || 'Unknown error.'
+        : errorMessage || '未知错误。'
+  try {
+    const notification = new Notification({
+      title,
+      body,
+      silent: false
+    })
+    if (params.kind === 'success' && outputPath) {
+      notification.on('click', () => {
+        try {
+          shell.showItemInFolder(outputPath)
+        } catch {}
+      })
+    }
+    notification.show()
+  } catch {}
+}
+
+const captureFocusedWindowScreenshot = async () => {
+  if (!isWindowScreenshotFeatureEnabledForBuild() || screenshotInProgress) return
+  const targetWindow = BrowserWindow.getFocusedWindow()
+  if (!targetWindow || targetWindow.isDestroyed()) return
   screenshotInProgress = true
   let cssKey: string | null = null
   try {
-    cssKey = await mainWindow.webContents.insertCSS(screenshotCss)
+    cssKey = await targetWindow.webContents.insertCSS(screenshotCss)
   } catch {}
   try {
-    await mainWindow.webContents.executeJavaScript(
+    await targetWindow.webContents.executeJavaScript(
       'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))',
       true
     )
   } catch {}
   try {
-    const image = await mainWindow.webContents.capturePage()
+    const image = await targetWindow.webContents.capturePage()
     const outputDir = getScreenshotOutputDir()
     await fs.ensureDir(outputDir)
     const outputPath = path.join(outputDir, `frkb-${formatScreenshotTimestamp()}.png`)
     await fs.outputFile(outputPath, image.toPNG())
+    showWindowScreenshotNotification({
+      kind: 'success',
+      outputPath
+    })
   } catch (error) {
     console.error('[screenshot] failed', error)
+    showWindowScreenshotNotification({
+      kind: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error || '')
+    })
   } finally {
     if (cssKey) {
       try {
-        await mainWindow.webContents.removeInsertedCSS(cssKey)
+        await targetWindow.webContents.removeInsertedCSS(cssKey)
       } catch {}
     }
     screenshotInProgress = false
@@ -216,11 +296,15 @@ const captureMainWindowScreenshot = async () => {
 }
 
 const registerScreenshotShortcut = () => {
-  if (!mainWindow || !screenshotShortcut) return
+  const screenshotShortcut = getWindowScreenshotShortcut()
+  if (!mainWindow || !screenshotShortcut || !isWindowScreenshotShortcutEnabled()) {
+    unregisterScreenshotShortcut()
+    return
+  }
   unregisterScreenshotShortcut()
   if (globalShortcut.isRegistered(screenshotShortcut)) return
   const success = globalShortcut.register(screenshotShortcut, () => {
-    void captureMainWindowScreenshot()
+    void captureFocusedWindowScreenshot()
   })
   if (success) {
     registeredScreenshotShortcut = screenshotShortcut
@@ -233,6 +317,14 @@ const unregisterScreenshotShortcut = () => {
     globalShortcut.unregister(registeredScreenshotShortcut)
   } catch {}
   registeredScreenshotShortcut = ''
+}
+
+export const syncWindowScreenshotShortcut = () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    unregisterScreenshotShortcut()
+    return
+  }
+  registerScreenshotShortcut()
 }
 
 function ensureSharedHandlersRegistered() {
@@ -293,7 +385,7 @@ function createWindow() {
       }
     })
     registerPlaybackGlobalShortcuts()
-    registerScreenshotShortcut()
+    syncWindowScreenshotShortcut()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {

@@ -9,6 +9,7 @@ import {
 import { rebuildMacMenusForCurrentFocus } from '../menu/macMenu'
 import { saveLibrarySettingsFromConfig } from '../librarySettingsDb'
 import { persistSettingConfig } from '../settingsPersistence'
+import { syncWindowScreenshotShortcut } from '../window/mainWindow'
 import {
   clearCuratedArtistLibrary,
   getCuratedArtistLibrarySnapshot,
@@ -44,6 +45,8 @@ export function registerSettingsHandlers(deps: Dependencies) {
         store.songFingerprintList = Array.isArray(list) ? list : []
       }
     } catch {}
+
+    syncWindowScreenshotShortcut()
 
     if (process.platform === 'darwin') {
       rebuildMacMenusForCurrentFocus()

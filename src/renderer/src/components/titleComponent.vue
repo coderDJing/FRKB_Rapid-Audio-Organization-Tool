@@ -11,6 +11,11 @@ import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
+import pkg from '../../../../package.json'
+import {
+  WINDOW_SCREENSHOT_SHORTCUT,
+  isWindowScreenshotFeatureAvailable
+} from '@shared/windowScreenshotFeature'
 
 const chromeMaximize = chromeMaximizeAsset
 const chromeRestore = chromeRestoreAsset
@@ -110,6 +115,16 @@ type Menu = {
 }
 
 const isDevMode = computed(() => process.env.NODE_ENV === 'development')
+const isWindowScreenshotFeatureVisible = computed(() =>
+  isWindowScreenshotFeatureAvailable({
+    platform: runtime.setting?.platform || '',
+    isDev: isDevMode.value,
+    version: String(pkg.version || '')
+  })
+)
+const isWindowScreenshotShortcutEnabled = computed(
+  () => runtime.setting.enableWindowScreenshotShortcut !== false
+)
 const analysisRuntimeBusy = computed(() => {
   const status = runtime.analysisRuntime.state.status
   return status === 'downloading' || status === 'extracting'
@@ -171,6 +186,18 @@ const defaultMenuConfigs = computed<MenuConfig[]>(() => [
         { name: 'menu.thirdPartyNotices' },
         { name: 'menu.about' }
       ],
+      ...(isWindowScreenshotFeatureVisible.value
+        ? [
+            [
+              {
+                name: 'menu.enableWindowScreenshotShortcut',
+                action: 'toggle-window-screenshot-shortcut',
+                shortcutKey: WINDOW_SCREENSHOT_SHORTCUT,
+                checked: isWindowScreenshotShortcutEnabled.value
+              }
+            ]
+          ]
+        : []),
       // 仅 dev 模式显示开发用 trace 菜单
       ...(isDevMode.value
         ? [
@@ -284,6 +311,20 @@ const menuButtonClick = async (item: MenuItem) => {
       await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
       return
     }
+  }
+  if (item.action === 'toggle-window-screenshot-shortcut') {
+    const previousEnabled = runtime.setting.enableWindowScreenshotShortcut !== false
+    runtime.setting.enableWindowScreenshotShortcut = !previousEnabled
+    try {
+      await window.electron.ipcRenderer.invoke(
+        'setSetting',
+        JSON.parse(JSON.stringify(runtime.setting))
+      )
+    } catch (error) {
+      runtime.setting.enableWindowScreenshotShortcut = previousEnabled
+      console.error('[window-screenshot] update setting failed', error)
+    }
+    return
   }
   if (item.action === 'open-log') {
     window.electron.ipcRenderer.send('openLog')
