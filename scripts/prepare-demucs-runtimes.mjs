@@ -34,8 +34,14 @@ const runtimeRootArg = getArgValue('--runtime-root', 'vendor/demucs')
 const platformArg = getArgValue('--platform', platformDefault)
 const profileArg = getArgValue('--profiles', '')
 const pipExtraArg = getArgValue('--pip-extra', '')
+const pipTimeoutSecArg = Number(
+  getArgValue('--pip-timeout-sec', String(process.env.FRKB_DEMUCS_PIP_TIMEOUT_SEC || '1200'))
+)
 const force = hasFlag('--force')
 const install = hasFlag('--install')
+const pipTimeoutSec = Number.isFinite(pipTimeoutSecArg)
+  ? Math.max(30, Math.trunc(pipTimeoutSecArg))
+  : 1200
 const pipExtraArgs = pipExtraArg
   .split(',')
   .map((item) => item.trim())
@@ -136,6 +142,16 @@ const run = (command, commandArgs, options = {}) => {
   if (result.status === 0) return
   throw new Error(`${command} ${commandArgs.join(' ')} -> exit ${result.status ?? -1}`)
 }
+
+const buildPipInstallArgs = (requirements) => [
+  '-m',
+  'pip',
+  'install',
+  '--upgrade',
+  '--timeout',
+  String(pipTimeoutSec),
+  ...requirements
+]
 
 const normalizeResolvedPath = (value) => {
   const text = String(value || '').trim()
@@ -538,7 +554,7 @@ const main = async () => {
       console.log(
         `[demucs-runtime] Installing pip deps for ${profileName}: ${pipInstallArgs.join(' ')}`
       )
-      run(pythonPath, ['-m', 'pip', 'install', '--upgrade', ...pipInstallArgs], {
+      run(pythonPath, buildPipInstallArgs(pipInstallArgs), {
         cwd: targetRuntimeDir,
         env: runtimeEnv
       })

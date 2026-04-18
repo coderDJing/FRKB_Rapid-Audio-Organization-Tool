@@ -62,6 +62,9 @@ const profileArg = getArgValue('--profiles', '')
 const modelsArg = getArgValue('--models', '')
 const modelRetriesArg = Number(getArgValue('--model-retries', '3'))
 const modelTimeoutSecArg = Number(getArgValue('--model-timeout-sec', '600'))
+const pipTimeoutSecArg = Number(
+  getArgValue('--pip-timeout-sec', String(process.env.FRKB_DEMUCS_PIP_TIMEOUT_SEC || '1200'))
+)
 const install = !hasFlag('--no-install')
 const strict = hasFlag('--strict') || hasFlag('--ci')
 const force = hasFlag('--force')
@@ -76,6 +79,9 @@ const preferRemoteAssets =
 const skip =
   process.env.FRKB_SKIP_DEMUCS_RUNTIME_ENSURE === '1' ||
   process.env.FRKB_SKIP_DEMUCS_RUNTIME_ENSURE === 'true'
+const pipTimeoutSec = Number.isFinite(pipTimeoutSecArg)
+  ? Math.max(30, Math.trunc(pipTimeoutSecArg))
+  : 1200
 
 const runtimeRoot = path.resolve(runtimeRootArg)
 const isPrereleaseVersion = (value) => /-/.test(String(value || '').trim())
@@ -452,6 +458,18 @@ const resolveSystemPythonCommand = () => {
 const normalizeList = (input) =>
   Array.isArray(input) ? input.map((item) => String(item).trim()).filter(Boolean) : []
 
+const isBeatThisRequirement = (value) => {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+  if (!normalized) return false
+  return (
+    normalized.includes('beat-this') ||
+    normalized.includes('beat_this') ||
+    normalized.includes('/cpjku/beat_this')
+  )
+}
+
 const normalizeRelativePath = (value) => {
   const relativePath = String(value || '')
     .trim()
@@ -705,9 +723,7 @@ const ensureBaseRuntime = async (platformKey, platformConfig) => {
       console.log(
         `[demucs-runtime-ensure] Installing base runtime deps: ${basePipInstallArgs.join(' ')}`
       )
-      run(resolvedBasePython, ['-m', 'pip', 'install', '--upgrade', ...basePipInstallArgs], {
-        env: baseEnv
-      })
+      run(resolvedBasePython, buildPipInstallArgs(basePipInstallArgs), { env: baseEnv })
     }
     fs.writeFileSync(
       baseMetadataPath,
@@ -747,6 +763,7 @@ const buildPrepareCommand = (params) => {
   ]
   if (install) commandArgs.push('--install')
   if (params.force) commandArgs.push('--force')
+  commandArgs.push('--pip-timeout-sec', String(pipTimeoutSec))
   return commandArgs
 }
 
@@ -761,6 +778,16 @@ const runPrepare = (profiles, options = {}) => {
   })
   run(process.execPath, commandArgs)
 }
+
+const buildPipInstallArgs = (requirements) => [
+  '-m',
+  'pip',
+  'install',
+  '--upgrade',
+  '--timeout',
+  String(pipTimeoutSec),
+  ...requirements
+]
 
 const main = async () => {
   if (skip) {
@@ -823,7 +850,7 @@ const main = async () => {
     const checkpointPath = checkpointRelativePath
       ? path.join(runtimeDir, ...checkpointRelativePath.split('/'))
       : ''
-    const beatThisExpected = pipInstallArgs.some((item) => item.includes('beat_this'))
+    const beatThisExpected = pipInstallArgs.some((item) => isBeatThisRequirement(item))
 
     if (syncRemoteAssets) {
       const synced = await tryRestorePortableProfileFromRemoteAsset(profileName, runtimeDir)

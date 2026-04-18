@@ -15,7 +15,7 @@
     "profiles": {
       "cpu": {
         "targetDir": "runtime-cpu",
-        "pipInstall": ["https://github.com/CPJKU/beat_this/archive/main.zip"]
+        "pipInstall": ["beat-this==1.1.0"]
       },
       "directml": {
         "targetDir": "runtime-directml",
@@ -25,7 +25,7 @@
           "torch-directml",
           "torchaudio==2.4.1",
           "onnxruntime-directml==1.20.1",
-          "https://github.com/CPJKU/beat_this/archive/main.zip"
+          "beat-this==1.1.0"
         ]
       },
       "cuda": {
@@ -38,7 +38,7 @@
           "numpy<2",
           "torch==2.3.1",
           "torchaudio==2.3.1",
-          "https://github.com/CPJKU/beat_this/archive/main.zip"
+          "beat-this==1.1.0"
         ]
       },
       "xpu": {
@@ -52,7 +52,7 @@
           "torch==2.10.0",
           "torchaudio==2.10.0",
           "torchvision==0.25.0",
-          "https://github.com/CPJKU/beat_this/archive/main.zip"
+          "beat-this==1.1.0"
         ]
       }
     }
@@ -69,11 +69,11 @@
     "profiles": {
       "mps": {
         "targetDir": "runtime-mps",
-        "pipInstall": ["https://github.com/CPJKU/beat_this/archive/main.zip"]
+        "pipInstall": ["beat-this==1.1.0"]
       },
       "cpu": {
         "targetDir": "runtime-cpu",
-        "pipInstall": ["https://github.com/CPJKU/beat_this/archive/main.zip"]
+        "pipInstall": ["beat-this==1.1.0"]
       }
     }
   },
@@ -89,7 +89,7 @@
     "profiles": {
       "cpu": {
         "targetDir": "runtime-cpu",
-        "pipInstall": ["https://github.com/CPJKU/beat_this/archive/main.zip"]
+        "pipInstall": ["beat-this==1.1.0"]
       }
     }
   },
@@ -117,7 +117,7 @@
           "numpy<2",
           "torch==2.3.1",
           "torchaudio==2.3.1",
-          "https://github.com/CPJKU/beat_this/archive/main.zip"
+          "beat-this==1.1.0"
         ]
       },
       "rocm": {
@@ -130,12 +130,12 @@
           "numpy<2",
           "torch==2.3.1",
           "torchaudio==2.3.1",
-          "https://github.com/CPJKU/beat_this/archive/main.zip"
+          "beat-this==1.1.0"
         ]
       },
       "cpu": {
         "targetDir": "runtime-cpu",
-        "pipInstall": ["https://github.com/CPJKU/beat_this/archive/main.zip"]
+        "pipInstall": ["beat-this==1.1.0"]
       }
     }
   },
@@ -151,7 +151,7 @@
     "profiles": {
       "cpu": {
         "targetDir": "runtime-cpu",
-        "pipInstall": ["https://github.com/CPJKU/beat_this/archive/main.zip"]
+        "pipInstall": ["beat-this==1.1.0"]
       }
     }
   }
