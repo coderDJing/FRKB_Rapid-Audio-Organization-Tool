@@ -150,7 +150,7 @@ onUnmounted(() => {
 
 <style scoped lang="scss">
 .windowVolumeDial {
-  --volume-dial-progress-color: color-mix(in srgb, var(--text-weak) 72%, var(--border) 28%);
+  --volume-dial-progress-color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
   --volume-dial-track-color: color-mix(in srgb, var(--border) 90%, transparent);
   position: relative;
   width: var(--volume-dial-size);
@@ -185,7 +185,6 @@ onUnmounted(() => {
 .windowVolumeDial:hover,
 .windowVolumeDial:focus-visible,
 .windowVolumeDial.is-dragging {
-  --volume-dial-progress-color: color-mix(in srgb, var(--accent) 72%, var(--text) 28%);
   --volume-dial-track-color: color-mix(in srgb, var(--accent) 18%, var(--border) 82%);
   background: color-mix(in srgb, var(--accent) 6%, transparent);
 }

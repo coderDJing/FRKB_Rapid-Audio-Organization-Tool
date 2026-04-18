@@ -753,6 +753,7 @@
     "horizontalPlayPause": "Play / pause",
     "horizontalCue": "CUE",
     "horizontalBarJump": "Back / forward one bar",
+    "horizontalPhraseJump": "Back / forward one phrase",
     "horizontalLoadDeck": "Load song",
     "horizontalLoadDeck1Key": "Double-click song",
     "horizontalLoadDeck2Key": "Shift+Double-click song",

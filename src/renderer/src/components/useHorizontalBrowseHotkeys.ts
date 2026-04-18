@@ -14,6 +14,7 @@ type UseHorizontalBrowseHotkeysParams = {
   onCueKeyDown: (deck: HorizontalBrowseDeckKey) => boolean
   onCueKeyUp: (deck: HorizontalBrowseDeckKey) => void
   onJumpBar: (deck: HorizontalBrowseDeckKey, direction: -1 | 1) => void
+  onJumpPhrase: (deck: HorizontalBrowseDeckKey, direction: -1 | 1) => void
   onMoveToFilter: (deck: HorizontalBrowseDeckKey) => void
   onMoveToCurated: (deck: HorizontalBrowseDeckKey) => void
   onDelete: (deck: HorizontalBrowseDeckKey) => void
@@ -46,6 +47,9 @@ const resolvePercentByCode = (code: string) => {
   return Number(matchedDigit[1]) / 10
 }
 
+const isHorizontalBrowsePhraseJumpHotkey = (event: KeyboardEvent) =>
+  event.altKey && (event.code === 'KeyA' || event.code === 'KeyD')
+
 export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysParams) => {
   const activeCueDeckByCode = new Map<string, HorizontalBrowseDeckKey>()
   const activeCrossfaderKeys = new Set<string>()
@@ -59,7 +63,8 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
     if (params.runtime.mainWindowBrowseMode !== 'horizontal') return false
     if (resolveCurrentScope() !== WINDOW_GLOBAL_SCOPE) return false
     if (isEditableTarget(event.target)) return false
-    if (event.ctrlKey || event.metaKey || event.altKey) return false
+    if (event.ctrlKey || event.metaKey) return false
+    if (event.altKey && !isHorizontalBrowsePhraseJumpHotkey(event)) return false
     return true
   }
 
@@ -123,6 +128,13 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
 
     const code = event.code
     const deck = resolveDeckByShiftState(event)
+
+    if (isHorizontalBrowsePhraseJumpHotkey(event)) {
+      stopKeyboardEvent(event)
+      if (event.repeat) return
+      params.onJumpPhrase(deck, code === 'KeyA' ? -1 : 1)
+      return
+    }
 
     if (code === 'Space') {
       stopKeyboardEvent(event)

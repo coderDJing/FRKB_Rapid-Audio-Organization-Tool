@@ -17,11 +17,23 @@ type ShortcutRow = {
   useGlobalShortcut?: boolean
 }
 
+type HorizontalShortcutLayoutItem =
+  | {
+      kind: 'section'
+      leftRows: ShortcutRow[]
+      rightRows: ShortcutRow[]
+    }
+  | {
+      kind: 'wide'
+      row: ShortcutRow
+    }
+
 const runtime = useRuntimeStore()
 const welcomeLogo = welcomeLogoAsset
 const isHorizontalMode = computed(() => runtime.mainWindowBrowseMode === 'horizontal')
 const welcomeContainerRef = ref<HTMLElement | null>(null)
 const horizontalContainerHeight = ref(272)
+const horizontalContainerWidth = ref(820)
 const deckLabels = {
   deck1: t('shortcuts.horizontalDeck1'),
   deck2: t('shortcuts.horizontalDeck2')
@@ -37,18 +49,34 @@ const horizontalLayoutStyle = computed<Record<string, string>>(() => {
 
   const minHeight = 272
   const maxHeight = 420
-  const progress = clampNumber(
+  const heightProgress = clampNumber(
     (horizontalContainerHeight.value - minHeight) / (maxHeight - minHeight),
     0,
     1
   )
+  const minWidth = 760
+  const maxWidth = 1100
+  const widthProgress = clampNumber(
+    (horizontalContainerWidth.value - minWidth) / (maxWidth - minWidth),
+    0,
+    1
+  )
+  const progress = Math.min(heightProgress, widthProgress)
 
   return {
-    '--horizontal-content-gap': roundPx(5 + progress * 5),
-    '--horizontal-column-gap': roundPx(18 + progress * 6),
-    '--horizontal-row-gap': roundPx(1 + progress * 2),
-    '--horizontal-row-min-height': roundPx(23 + progress * 3),
-    '--horizontal-keybinding-min-height': roundPx(19 + progress * 3)
+    '--horizontal-content-gap': roundPx(4 + progress * 6),
+    '--horizontal-grid-column-gap': roundPx(14 + widthProgress * 12),
+    '--horizontal-grid-row-gap': roundPx(4 + progress * 4),
+    '--horizontal-row-gap': roundPx(2 + progress * 3),
+    '--horizontal-row-min-height': roundPx(20 + progress * 5),
+    '--horizontal-keybinding-min-height': roundPx(18 + progress * 4),
+    '--horizontal-title-width': roundPx(104 + widthProgress * 28),
+    '--horizontal-title-font-size': roundPx(11 + progress),
+    '--horizontal-key-font-size': roundPx(9 + progress),
+    '--horizontal-label-font-size': roundPx(9 + progress),
+    '--horizontal-key-padding-y': roundPx(3),
+    '--horizontal-key-padding-x': roundPx(6 + progress * 2),
+    '--horizontal-logo-size': roundPx(54 + progress * 14)
   }
 })
 
@@ -115,123 +143,125 @@ const browserShortcutRows = computed<ShortcutRow[]>(() => [
   }
 ])
 
-const horizontalShortcutRows = computed<ShortcutRow[]>(() => [
+const horizontalShortcutLayoutItems = computed<HorizontalShortcutLayoutItem[]>(() => [
   {
-    title: t('shortcuts.horizontalLoadDeck'),
-    keyGroups: [
-      { label: deckLabels.deck1, key: t('shortcuts.horizontalLoadDeck1Key') },
-      { label: deckLabels.deck2, key: t('shortcuts.horizontalLoadDeck2Key') }
-    ],
-    keySeparator: ' / '
-  },
-  {
-    title: t('shortcuts.horizontalPlayPause'),
-    keyGroups: [
-      { label: deckLabels.deck1, key: 'Space' },
-      { label: deckLabels.deck2, key: 'Shift+Space' }
-    ],
-    keySeparator: ' / '
-  },
-  {
-    title: t('shortcuts.horizontalCue'),
-    keyGroups: [
-      { label: deckLabels.deck1, key: 'C' },
-      { label: deckLabels.deck2, key: 'Shift+C' }
-    ],
-    keySeparator: ' / '
-  },
-  {
-    title: t('shortcuts.horizontalBarJump'),
-    keyGroups: [
-      { label: deckLabels.deck1, key: 'A / D' },
-      { label: deckLabels.deck2, key: 'Shift+A / Shift+D' }
-    ],
-    hint: '( ← / → ) / ( Shift+← / Shift+→ )',
-    keySeparator: ' / '
-  },
-  {
-    title: t('shortcuts.horizontalCrossfaderMove'),
-    keys: ['W / S', '↑ / ↓'],
-    keySeparator: ' / '
-  },
-  {
-    title: t('shortcuts.horizontalCrossfaderReset'),
-    keys: ['Shift+W / Shift+S', 'Shift+↑ / Shift+↓'],
-    keySeparator: ' / '
-  },
-  {
-    title: t('shortcuts.horizontalMoveToFilter'),
-    keyGroups: [
-      { label: deckLabels.deck1, key: 'Q' },
-      { label: deckLabels.deck2, key: 'Shift+Q' }
-    ],
-    keySeparator: ' / '
-  },
-  {
-    title: t('shortcuts.horizontalMoveToCurated'),
-    keyGroups: [
-      { label: deckLabels.deck1, key: 'E' },
-      { label: deckLabels.deck2, key: 'Shift+E' }
-    ],
-    keySeparator: ' / '
-  },
-  {
-    title: t('shortcuts.horizontalDeleteTracks'),
-    keyGroups: [
-      { label: deckLabels.deck1, key: 'F' },
-      { label: deckLabels.deck2, key: 'Shift+F' }
-    ],
-    keySeparator: ' / '
-  },
-  {
-    title: t('shortcuts.horizontalSeekPercent'),
-    keyGroups: [
+    kind: 'section',
+    leftRows: [
       {
-        label: deckLabels.deck1,
-        key: t('shortcuts.horizontalSeekPercentPrimaryKeys')
+        title: t('shortcuts.horizontalLoadDeck'),
+        keyGroups: [
+          { label: deckLabels.deck1, key: t('shortcuts.horizontalLoadDeck1Key') },
+          { label: deckLabels.deck2, key: t('shortcuts.horizontalLoadDeck2Key') }
+        ],
+        keySeparator: ' / '
       },
       {
-        label: deckLabels.deck2,
-        key: t('shortcuts.horizontalSeekPercentSecondaryKeys')
+        title: t('shortcuts.horizontalPlayPause'),
+        keyGroups: [
+          { label: deckLabels.deck1, key: 'Space' },
+          { label: deckLabels.deck2, key: 'Shift+Space' }
+        ],
+        keySeparator: ' / '
+      },
+      {
+        title: t('shortcuts.horizontalCue'),
+        keyGroups: [
+          { label: deckLabels.deck1, key: 'C' },
+          { label: deckLabels.deck2, key: 'Shift+C' }
+        ],
+        keySeparator: ' / '
+      },
+      {
+        title: t('shortcuts.horizontalBarJump'),
+        keyGroups: [
+          { label: deckLabels.deck1, key: 'A / D' },
+          { label: deckLabels.deck2, key: 'Shift+A / Shift+D' }
+        ],
+        hint: '( ← / → ) / ( Shift+← / Shift+→ )',
+        keySeparator: ' / '
+      },
+      {
+        title: t('shortcuts.horizontalPhraseJump'),
+        keyGroups: [
+          { label: deckLabels.deck1, key: 'Alt+A / Alt+D' },
+          { label: deckLabels.deck2, key: 'Shift+Alt+A / Shift+Alt+D' }
+        ],
+        keySeparator: ' / '
+      },
+      {
+        title: t('shortcuts.horizontalDeleteTracks'),
+        keyGroups: [
+          { label: deckLabels.deck1, key: 'F' },
+          { label: deckLabels.deck2, key: 'Shift+F' }
+        ],
+        keySeparator: ' / '
       }
     ],
-    hint: t('player.seekPercentHint'),
-    keySeparator: ' / '
-  },
-  {
-    title: t('player.showHide'),
-    minWidth: 250,
-    useGlobalShortcut: true
+    rightRows: [
+      {
+        title: t('shortcuts.horizontalCrossfaderMove'),
+        keys: ['W / S', '↑ / ↓'],
+        keySeparator: ' / '
+      },
+      {
+        title: t('shortcuts.horizontalCrossfaderReset'),
+        keys: ['Shift+W / Shift+S', 'Shift+↑ / Shift+↓'],
+        keySeparator: ' / '
+      },
+      {
+        title: t('shortcuts.horizontalMoveToFilter'),
+        keyGroups: [
+          { label: deckLabels.deck1, key: 'Q' },
+          { label: deckLabels.deck2, key: 'Shift+Q' }
+        ],
+        keySeparator: ' / '
+      },
+      {
+        title: t('shortcuts.horizontalMoveToCurated'),
+        keyGroups: [
+          { label: deckLabels.deck1, key: 'E' },
+          { label: deckLabels.deck2, key: 'Shift+E' }
+        ],
+        keySeparator: ' / '
+      },
+      {
+        title: t('shortcuts.horizontalSeekPercent'),
+        keyGroups: [
+          {
+            label: deckLabels.deck1,
+            key: t('shortcuts.horizontalSeekPercentPrimaryKeys')
+          },
+          {
+            label: deckLabels.deck2,
+            key: t('shortcuts.horizontalSeekPercentSecondaryKeys')
+          }
+        ],
+        hint: t('player.seekPercentHint'),
+        keySeparator: ' / '
+      },
+      {
+        title: t('player.showHide'),
+        minWidth: 250,
+        useGlobalShortcut: true
+      }
+    ]
   }
 ])
 
-const horizontalShortcutColumns = computed<ShortcutRow[][]>(() => {
-  const rows = horizontalShortcutRows.value
-  const columnCount = 2
-  const columnSize = Math.ceil(rows.length / columnCount)
-
-  return Array.from({ length: columnCount }, (_, index) =>
-    rows.slice(index * columnSize, (index + 1) * columnSize)
-  ).filter((column) => column.length > 0)
-})
-
-const shortcutRows = computed(() =>
-  runtime.mainWindowBrowseMode === 'horizontal'
-    ? horizontalShortcutRows.value
-    : browserShortcutRows.value
-)
+const shortcutRows = browserShortcutRows
 
 let resizeObserver: ResizeObserver | null = null
 
-const syncHorizontalContainerHeight = () => {
+const syncHorizontalContainerMetrics = () => {
   horizontalContainerHeight.value = welcomeContainerRef.value?.clientHeight || 272
+  horizontalContainerWidth.value = welcomeContainerRef.value?.clientWidth || 820
 }
 
 onMounted(() => {
-  syncHorizontalContainerHeight()
+  syncHorizontalContainerMetrics()
   if (typeof ResizeObserver === 'undefined' || !welcomeContainerRef.value) return
   resizeObserver = new ResizeObserver(() => {
-    syncHorizontalContainerHeight()
+    syncHorizontalContainerMetrics()
   })
   resizeObserver.observe(welcomeContainerRef.value)
 })
@@ -260,18 +290,131 @@ onUnmounted(() => {
         draggable="false"
       />
       <div v-if="isHorizontalMode" class="shortcuts shortcuts--horizontal">
-        <div
-          v-for="(column, columnIndex) in horizontalShortcutColumns"
-          :key="`shortcut-column-${columnIndex}`"
-          class="shortcut-column"
-        >
-          <dl v-for="row in column" :key="row.title" class="shortcut-row--horizontal">
-            <dt>{{ row.title }}</dt>
+        <template v-for="(item, itemIndex) in horizontalShortcutLayoutItems" :key="itemIndex">
+          <div v-if="item.kind === 'section'" class="shortcuts--horizontal-section">
+            <div class="shortcut-column">
+              <dl
+                v-for="row in item.leftRows"
+                :key="`${row.title}-left`"
+                class="shortcut-row--horizontal"
+              >
+                <dt>{{ row.title }}</dt>
+                <dd>
+                  <div class="monaco-keybinding">
+                    <template v-if="row.useGlobalShortcut">
+                      <template
+                        v-for="(itemKey, index) in globalShortcut"
+                        :key="`${row.title}-${index}`"
+                      >
+                        <span class="monaco-keybinding-key">{{ itemKey.key }}</span>
+                        <span
+                          v-if="index !== globalShortcut.length - 1"
+                          class="monaco-keybinding-key-separator"
+                          >+</span
+                        >
+                      </template>
+                    </template>
+                    <template v-else-if="row.keyGroups">
+                      <template
+                        v-for="(group, index) in row.keyGroups"
+                        :key="`${row.title}-${group.label}-${group.key}-${index}`"
+                      >
+                        <span class="shortcut-key-group">
+                          <span class="shortcut-key-group-label">{{ group.label }}</span>
+                          <span class="monaco-keybinding-key">{{ group.key }}</span>
+                        </span>
+                        <span
+                          v-if="index !== row.keyGroups.length - 1"
+                          class="monaco-keybinding-key-separator"
+                          >{{ row.keySeparator || '+' }}</span
+                        >
+                      </template>
+                    </template>
+                    <template v-else>
+                      <template
+                        v-for="(key, index) in row.keys"
+                        :key="`${row.title}-${key}-${index}`"
+                      >
+                        <span class="monaco-keybinding-key">{{ key }}</span>
+                        <span
+                          v-if="index !== (row.keys?.length || 0) - 1"
+                          class="monaco-keybinding-key-separator"
+                          >{{ row.keySeparator || '+' }}</span
+                        >
+                      </template>
+                    </template>
+                    <span v-if="row.hint" class="easter-egg">{{ row.hint }}</span>
+                  </div>
+                </dd>
+              </dl>
+            </div>
+            <div class="shortcut-column">
+              <dl
+                v-for="row in item.rightRows"
+                :key="`${row.title}-right`"
+                class="shortcut-row--horizontal"
+              >
+                <dt>{{ row.title }}</dt>
+                <dd>
+                  <div class="monaco-keybinding">
+                    <template v-if="row.useGlobalShortcut">
+                      <template
+                        v-for="(itemKey, index) in globalShortcut"
+                        :key="`${row.title}-${index}`"
+                      >
+                        <span class="monaco-keybinding-key">{{ itemKey.key }}</span>
+                        <span
+                          v-if="index !== globalShortcut.length - 1"
+                          class="monaco-keybinding-key-separator"
+                          >+</span
+                        >
+                      </template>
+                    </template>
+                    <template v-else-if="row.keyGroups">
+                      <template
+                        v-for="(group, index) in row.keyGroups"
+                        :key="`${row.title}-${group.label}-${group.key}-${index}`"
+                      >
+                        <span class="shortcut-key-group">
+                          <span class="shortcut-key-group-label">{{ group.label }}</span>
+                          <span class="monaco-keybinding-key">{{ group.key }}</span>
+                        </span>
+                        <span
+                          v-if="index !== row.keyGroups.length - 1"
+                          class="monaco-keybinding-key-separator"
+                          >{{ row.keySeparator || '+' }}</span
+                        >
+                      </template>
+                    </template>
+                    <template v-else>
+                      <template
+                        v-for="(key, index) in row.keys"
+                        :key="`${row.title}-${key}-${index}`"
+                      >
+                        <span class="monaco-keybinding-key">{{ key }}</span>
+                        <span
+                          v-if="index !== (row.keys?.length || 0) - 1"
+                          class="monaco-keybinding-key-separator"
+                          >{{ row.keySeparator || '+' }}</span
+                        >
+                      </template>
+                    </template>
+                    <span v-if="row.hint" class="easter-egg">{{ row.hint }}</span>
+                  </div>
+                </dd>
+              </dl>
+            </div>
+          </div>
+          <dl v-else class="shortcut-row--horizontal shortcut-row--horizontal-wide">
+            <dt>{{ item.row.title }}</dt>
             <dd>
               <div class="monaco-keybinding">
-                <template v-if="row.useGlobalShortcut">
-                  <template v-for="(item, index) in globalShortcut" :key="`${row.title}-${index}`">
-                    <span class="monaco-keybinding-key">{{ item.key }}</span>
+                <template v-if="item.row.useGlobalShortcut">
+                  <template
+                    v-for="(shortcutItem, index) in globalShortcut"
+                    :key="`${item.row.title}-${index}`"
+                  >
+                    <span class="monaco-keybinding-key">{{ shortcutItem.key }}</span>
                     <span
                       v-if="index !== globalShortcut.length - 1"
                       class="monaco-keybinding-key-separator"
@@ -279,37 +422,40 @@ onUnmounted(() => {
                     >
                   </template>
                 </template>
-                <template v-else-if="row.keyGroups">
+                <template v-else-if="item.row.keyGroups">
                   <template
-                    v-for="(item, index) in row.keyGroups"
-                    :key="`${row.title}-${item.label}-${item.key}-${index}`"
+                    v-for="(group, index) in item.row.keyGroups"
+                    :key="`${item.row.title}-${group.label}-${group.key}-${index}`"
                   >
                     <span class="shortcut-key-group">
-                      <span class="shortcut-key-group-label">{{ item.label }}</span>
-                      <span class="monaco-keybinding-key">{{ item.key }}</span>
+                      <span class="shortcut-key-group-label">{{ group.label }}</span>
+                      <span class="monaco-keybinding-key">{{ group.key }}</span>
                     </span>
                     <span
-                      v-if="index !== row.keyGroups.length - 1"
+                      v-if="index !== item.row.keyGroups.length - 1"
                       class="monaco-keybinding-key-separator"
-                      >{{ row.keySeparator || '+' }}</span
+                      >{{ item.row.keySeparator || '+' }}</span
                     >
                   </template>
                 </template>
                 <template v-else>
-                  <template v-for="(key, index) in row.keys" :key="`${row.title}-${key}-${index}`">
+                  <template
+                    v-for="(key, index) in item.row.keys"
+                    :key="`${item.row.title}-${key}-${index}`"
+                  >
                     <span class="monaco-keybinding-key">{{ key }}</span>
                     <span
-                      v-if="index !== (row.keys?.length || 0) - 1"
+                      v-if="index !== (item.row.keys?.length || 0) - 1"
                       class="monaco-keybinding-key-separator"
-                      >{{ row.keySeparator || '+' }}</span
+                      >{{ item.row.keySeparator || '+' }}</span
                     >
                   </template>
                 </template>
-                <span v-if="row.hint" class="easter-egg">{{ row.hint }}</span>
+                <span v-if="item.row.hint" class="easter-egg">{{ item.row.hint }}</span>
               </div>
             </dd>
           </dl>
-        </div>
+        </template>
       </div>
       <div v-else class="shortcuts">
         <dl v-for="row in shortcutRows" :key="row.title">
@@ -366,14 +512,22 @@ onUnmounted(() => {
 }
 
 .welcome-container--horizontal {
-  padding: 12px 16px;
+  padding: 10px 14px;
   align-items: center;
   justify-content: center;
-  --horizontal-content-gap: 5px;
-  --horizontal-column-gap: 18px;
-  --horizontal-row-gap: 1px;
-  --horizontal-row-min-height: 23px;
-  --horizontal-keybinding-min-height: 19px;
+  --horizontal-content-gap: 4px;
+  --horizontal-grid-column-gap: 14px;
+  --horizontal-grid-row-gap: 4px;
+  --horizontal-row-gap: 2px;
+  --horizontal-row-min-height: 20px;
+  --horizontal-keybinding-min-height: 18px;
+  --horizontal-title-width: 104px;
+  --horizontal-title-font-size: 11px;
+  --horizontal-key-font-size: 9px;
+  --horizontal-label-font-size: 9px;
+  --horizontal-key-padding-y: 3px;
+  --horizontal-key-padding-x: 6px;
+  --horizontal-logo-size: 54px;
 }
 
 .welcome-content {
@@ -389,8 +543,9 @@ onUnmounted(() => {
 }
 
 .welcome-content--horizontal {
-  width: min(100%, 820px);
-  max-width: 820px;
+  width: min(100%, 980px);
+  max-width: 980px;
+  min-height: 0;
   align-items: stretch;
   justify-content: center;
   gap: var(--horizontal-content-gap);
@@ -403,8 +558,8 @@ onUnmounted(() => {
 }
 
 .welcome-logo--horizontal {
-  width: 72px;
-  height: 72px;
+  width: var(--horizontal-logo-size);
+  height: var(--horizontal-logo-size);
   align-self: center;
 }
 
@@ -418,17 +573,26 @@ onUnmounted(() => {
 
 .shortcuts--horizontal {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+  gap: var(--horizontal-grid-row-gap);
+}
+
+.shortcuts--horizontal-section {
+  display: flex;
   align-items: flex-start;
-  justify-content: center;
-  gap: var(--horizontal-column-gap);
+  width: 100%;
+  min-width: 0;
+  column-gap: var(--horizontal-grid-column-gap);
 }
 
 .shortcut-column {
   display: flex;
   flex: 1 1 0;
   flex-direction: column;
-  gap: var(--horizontal-row-gap);
+  gap: var(--horizontal-grid-row-gap);
   min-width: 0;
 }
 
@@ -446,7 +610,18 @@ dl {
 
 .shortcut-row--horizontal {
   margin: 0;
+  width: 100%;
   min-height: var(--horizontal-row-min-height);
+  display: grid;
+  grid-template-columns: minmax(0, var(--horizontal-title-width)) minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: center;
+}
+
+.shortcut-row--horizontal-wide {
+  width: 100%;
+  justify-content: center;
+  grid-template-columns: minmax(0, var(--horizontal-title-width)) max-content;
 }
 
 dt {
@@ -461,13 +636,14 @@ dt {
 }
 
 .shortcut-row--horizontal dt {
-  width: clamp(132px, 38%, 168px);
-  min-width: 132px;
-  padding-right: 8px;
+  width: auto;
+  min-width: 0;
+  padding-right: 0;
   text-align: right;
-  font-size: 12px;
-  line-height: 1.35;
-  white-space: nowrap;
+  font-size: var(--horizontal-title-font-size);
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 dd {
@@ -480,6 +656,10 @@ dd {
 }
 
 .shortcut-row--horizontal dd {
+  width: 100%;
+}
+
+.shortcut-row--horizontal-wide dd {
   width: auto;
 }
 
@@ -546,13 +726,21 @@ dd {
 
 .shortcuts--horizontal .monaco-keybinding {
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  row-gap: 4px;
   min-height: var(--horizontal-keybinding-min-height);
 }
 
 .shortcuts--horizontal .monaco-keybinding-key {
-  padding: 3px 6px;
-  font-size: 10px;
+  flex: 0 0 auto;
+  max-width: 100%;
+  padding: var(--horizontal-key-padding-y) var(--horizontal-key-padding-x);
+  font-size: var(--horizontal-key-font-size);
   line-height: 1.25;
+  min-width: 0;
+  white-space: nowrap;
+  overflow-wrap: normal;
 }
 
 .shortcuts--horizontal .monaco-keybinding-key-separator {
@@ -560,11 +748,13 @@ dd {
 }
 
 .shortcuts--horizontal .shortcut-key-group {
-  gap: 3px;
+  gap: 4px;
+  flex: 0 1 auto;
+  max-width: 100%;
 }
 
 .shortcuts--horizontal .shortcut-key-group-label {
-  font-size: 9px;
+  font-size: var(--horizontal-label-font-size);
 }
 
 .shortcuts--horizontal .easter-egg {

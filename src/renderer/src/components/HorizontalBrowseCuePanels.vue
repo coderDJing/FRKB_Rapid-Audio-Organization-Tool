@@ -37,14 +37,18 @@ const emit = defineEmits<{
   (event: 'memorycue-delete', payload: { deck: DeckKey; sec: number }): void
 }>()
 
+const hasLoopRange = (cue?: { sec?: number; isLoop?: boolean; loopEndSec?: number } | null) =>
+  Boolean(cue?.isLoop) && Number(cue?.loopEndSec) > Number(cue?.sec || 0)
+
 const buildHotCueRows = (hotCues: ISongHotCue[] | null | undefined) =>
   Array.from({ length: HOT_CUE_SLOT_COUNT }, (_, slot) => {
     const hotCue = resolveSongHotCueBySlot(normalizeSongHotCues(hotCues), slot)
-    const isLoop = Boolean(hotCue?.isLoop) && Number(hotCue?.loopEndSec) > Number(hotCue?.sec || 0)
+    const isLoop = hasLoopRange(hotCue)
     return {
       slot,
       label: hotCue ? resolveSongHotCueDisplayLabel(hotCue) : resolveSongHotCueLabel(slot),
       color: hotCue ? resolveSongHotCueDisplayColor(hotCue) : undefined,
+      isLoop,
       timeText: hotCue ? formatSongHotCueTime(hotCue.sec) : '--:--.---',
       title: hotCue
         ? [
@@ -67,6 +71,7 @@ const panels = computed(() => [
     hotCueRows: buildHotCueRows(props.topHotCues),
     memoryCueRows: normalizeSongMemoryCues(props.topMemoryCues).map((item) => ({
       sec: item.sec,
+      isLoop: hasLoopRange(item),
       timeText: formatSongMemoryCueTime(item.sec),
       color: resolveSongMemoryCueDisplayColor(item),
       title: [
@@ -85,6 +90,7 @@ const panels = computed(() => [
     hotCueRows: buildHotCueRows(props.bottomHotCues),
     memoryCueRows: normalizeSongMemoryCues(props.bottomMemoryCues).map((item) => ({
       sec: item.sec,
+      isLoop: hasLoopRange(item),
       timeText: formatSongMemoryCueTime(item.sec),
       color: resolveSongMemoryCueDisplayColor(item),
       title: [
@@ -132,7 +138,16 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
               {{ row.label }}
             </span>
             <span v-else class="cue-panel__hotcue-label-placeholder"></span>
-            <span class="cue-panel__hotcue-time">{{ row.timeText }}</span>
+            <span class="cue-panel__hotcue-time">
+              <span class="cue-panel__time-inline">
+                <span class="cue-panel__time-text">{{ row.timeText }}</span>
+                <span v-if="row.isLoop" class="cue-panel__loop-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" focusable="false">
+                    <path d="M3 5.5h7.5l-1.75-1.75M13 10.5H5.5l1.75 1.75M12.5 5.5v5M3.5 10.5v-5" />
+                  </svg>
+                </span>
+              </span>
+            </span>
             <button
               v-if="row.active"
               type="button"
@@ -155,7 +170,16 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
             :title="memoryCue.title"
             @click="emit('memorycue-press', { deck: panel.deck, sec: memoryCue.sec })"
           >
-            <span class="cue-panel__memory-time">{{ memoryCue.timeText }}</span>
+            <span class="cue-panel__memory-time">
+              <span class="cue-panel__time-inline">
+                <span class="cue-panel__time-text">{{ memoryCue.timeText }}</span>
+                <span v-if="memoryCue.isLoop" class="cue-panel__loop-icon" aria-hidden="true">
+                  <svg viewBox="0 0 16 16" focusable="false">
+                    <path d="M3 5.5h7.5l-1.75-1.75M13 10.5H5.5l1.75 1.75M12.5 5.5v5M3.5 10.5v-5" />
+                  </svg>
+                </span>
+              </span>
+            </span>
             <button
               type="button"
               class="cue-panel__memory-delete"
@@ -258,14 +282,12 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
 }
 
 .cue-panel__memory-time {
+  display: block;
   min-width: 0;
   font-size: 9px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   text-align: left;
   color: var(--text);
 }
@@ -361,15 +383,54 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
 }
 
 .cue-panel__hotcue-time {
+  display: block;
   min-width: 0;
   font-size: 9px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  text-align: center;
+}
+
+.cue-panel__time-inline {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.cue-panel__time-text {
+  display: block;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-align: center;
+}
+
+.cue-panel__loop-icon {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  color: #f2994a;
+  opacity: 0.96;
+  pointer-events: none;
+}
+
+.cue-panel__loop-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cue-panel__loop-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .cue-panel__hotcue-label-placeholder {

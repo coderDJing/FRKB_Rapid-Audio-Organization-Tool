@@ -753,6 +753,7 @@
     "horizontalPlayPause": "播放 / 暂停",
     "horizontalCue": "CUE",
     "horizontalBarJump": "退 / 进一小节",
+    "horizontalPhraseJump": "退 / 进一个大节",
     "horizontalLoadDeck": "载入歌曲",
     "horizontalLoadDeck1Key": "双击歌曲",
     "horizontalLoadDeck2Key": "Shift+双击歌曲",

@@ -7,13 +7,13 @@ export const HOT_CUE_SLOT_COLORS = [
   '#2f80ed',
   '#9b51e0',
   '#eb5757',
-  '#f2994a',
+  '#f2c94c',
   '#ff6b9a',
   '#27ae60',
   '#56ccf2'
 ] as const
 export const REKORDBOX_DEFAULT_HOT_CUE_COLOR = '#30d26e'
-export const REKORDBOX_LOOP_HOT_CUE_COLOR = '#f2c94c'
+export const REKORDBOX_LOOP_HOT_CUE_COLOR = '#f2994a'
 
 const HOT_CUE_EPSILON_SEC = 0.0001
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))

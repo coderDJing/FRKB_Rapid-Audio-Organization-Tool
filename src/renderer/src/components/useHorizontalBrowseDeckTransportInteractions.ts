@@ -90,6 +90,7 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
 
 const CUE_POINT_TRIGGER_EPSILON_SEC = 0.05
 const BAR_JUMP_BEATS = 4
+const PHRASE_JUMP_BEATS = 32
 const LOOP_END_EPSILON_SEC = 0.0005
 const LOOP_POSITION_EPSILON_SEC = 0.0001
 const LOOP_BEAT_INDEX_EPSILON = 1e-6
@@ -322,6 +323,10 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       return
     }
     params.resolveDeckCuePointRef(deck).value = loopRange.startSec
+    if (!params.resolveDeckPlaying(deck)) {
+      handleDeckPlayPauseToggle(deck)
+      return
+    }
     if (
       anchorSec < loopRange.startSec + LOOP_POSITION_EPSILON_SEC ||
       anchorSec >= loopRange.endSec - LOOP_END_EPSILON_SEC
@@ -458,12 +463,18 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     })().catch(() => {})
   }
 
-  const handleDeckBarJump = (deck: DeckKey, direction: -1 | 1) => {
+  const jumpDeckByBeatCount = (deck: DeckKey, direction: -1 | 1, beatCount: number) => {
     const gridBpm = Number(params.resolveDeckGridBpm(deck))
     if (!Number.isFinite(gridBpm) || gridBpm <= 0) return
-    const deltaSeconds = (60 / gridBpm) * BAR_JUMP_BEATS * direction
+    const deltaSeconds = (60 / gridBpm) * beatCount * direction
     seekDeckToSeconds(deck, params.resolveDeckCurrentSeconds(deck) + deltaSeconds)
   }
+
+  const handleDeckBarJump = (deck: DeckKey, direction: -1 | 1) =>
+    jumpDeckByBeatCount(deck, direction, BAR_JUMP_BEATS)
+
+  const handleDeckPhraseJump = (deck: DeckKey, direction: -1 | 1) =>
+    jumpDeckByBeatCount(deck, direction, PHRASE_JUMP_BEATS)
 
   const handleDeckSeekPercent = (deck: DeckKey, percent: number) => {
     const safePercent = clampNumber(Number(percent) || 0, 0, 1)
@@ -910,6 +921,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     handleDeckRawWaveformDragEnd,
     handleDeckPlayheadSeek,
     handleDeckBarJump,
+    handleDeckPhraseJump,
     handleDeckSeekPercent,
     handleDeckBackCue,
     handleDeckSetCueFromCurrentPosition,
