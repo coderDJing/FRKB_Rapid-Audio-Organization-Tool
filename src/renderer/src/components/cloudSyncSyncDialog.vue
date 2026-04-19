@@ -38,8 +38,10 @@ type CloudSyncPhase =
 type CloudSyncSummary = {
   addedToServerCount?: number
   pulledToClientCount?: number
-  curatedArtistInitialCount?: number
-  curatedArtistCountAfter?: number
+  curatedArtistClientInitialCount?: number
+  curatedArtistClientCountAfter?: number
+  curatedArtistServerInitialCount?: number
+  curatedArtistServerCountAfter?: number
   durationMs?: number
   clientInitialCount?: number
   totalClientCountAfter?: number
@@ -93,8 +95,10 @@ const {
 const summaryView = computed<Required<CloudSyncSummary>>(() => ({
   addedToServerCount: Number(summary.value?.addedToServerCount || 0),
   pulledToClientCount: Number(summary.value?.pulledToClientCount || 0),
-  curatedArtistInitialCount: Number(summary.value?.curatedArtistInitialCount || 0),
-  curatedArtistCountAfter: Number(summary.value?.curatedArtistCountAfter || 0),
+  curatedArtistClientInitialCount: Number(summary.value?.curatedArtistClientInitialCount || 0),
+  curatedArtistClientCountAfter: Number(summary.value?.curatedArtistClientCountAfter || 0),
+  curatedArtistServerInitialCount: Number(summary.value?.curatedArtistServerInitialCount || 0),
+  curatedArtistServerCountAfter: Number(summary.value?.curatedArtistServerCountAfter || 0),
   durationMs: Number(summary.value?.durationMs || 0),
   clientInitialCount: Number(summary.value?.clientInitialCount || 0),
   totalClientCountAfter: Number(summary.value?.totalClientCountAfter || 0),
@@ -451,10 +455,15 @@ onUnmounted(() => {
                 </span>
                 <span class="count-text">{{ summaryView.totalServerCountAfter }}</span>
               </span>
-              <span class="count-pair" style="margin-left: 16px">
+            </div>
+          </div>
+          <div class="section">
+            <div class="section-title">{{ t('cloudSync.curatedArtistCount') }}</div>
+            <div class="section-body">
+              <span class="count-pair">
                 <span class="count-text"
-                  >{{ t('cloudSync.curatedArtistCount') }}:
-                  {{ summaryView.curatedArtistInitialCount }}</span
+                  >{{ t('cloudSync.clientCount') }}:
+                  {{ summaryView.curatedArtistClientInitialCount }}</span
                 >
                 <span class="arrow" aria-hidden="true">
                   <svg viewBox="0 0 24 24">
@@ -468,7 +477,26 @@ onUnmounted(() => {
                     ></path>
                   </svg>
                 </span>
-                <span class="count-text">{{ summaryView.curatedArtistCountAfter }}</span>
+                <span class="count-text">{{ summaryView.curatedArtistClientCountAfter }}</span>
+              </span>
+              <span class="count-pair" style="margin-left: 16px">
+                <span class="count-text"
+                  >{{ t('cloudSync.serverCount') }}:
+                  {{ summaryView.curatedArtistServerInitialCount }}</span
+                >
+                <span class="arrow" aria-hidden="true">
+                  <svg viewBox="0 0 24 24">
+                    <path
+                      d="M5 12h12M13 6l6 6-6 6"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    ></path>
+                  </svg>
+                </span>
+                <span class="count-text">{{ summaryView.curatedArtistServerCountAfter }}</span>
               </span>
             </div>
           </div>

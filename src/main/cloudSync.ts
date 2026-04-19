@@ -376,9 +376,11 @@ ipcMain.handle('cloudSync/start', async () => {
       return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
     }
     let addedToServerTotal = 0
-    let curatedArtistInitialCount = 0
-    let curatedArtistCountAfter = 0
-    let curatedArtistChanged = false
+    let curatedArtistClientInitialCount = 0
+    let curatedArtistClientCountAfter = 0
+    let curatedArtistServerInitialCount = 0
+    let curatedArtistServerCountAfter = 0
+    let curatedArtistNeedSync = false
     const toNumber = (v: unknown, fallback = 0) => {
       const n = Number(v)
       return Number.isFinite(n) ? n : fallback
@@ -924,9 +926,16 @@ ipcMain.handle('cloudSync/start', async () => {
         },
         limitedFetch
       })
-      curatedArtistInitialCount = toNumber(curatedArtistResult.localSnapshot.count)
-      curatedArtistCountAfter = toNumber(curatedArtistResult.mergedSnapshot.count)
-      curatedArtistChanged = curatedArtistResult.response?.changed === true
+      curatedArtistClientInitialCount = toNumber(curatedArtistResult.localSnapshot.count)
+      curatedArtistClientCountAfter = toNumber(curatedArtistResult.mergedSnapshot.count)
+      curatedArtistServerInitialCount = toNumber(
+        curatedArtistResult.response?.serverSnapshotBefore?.artistCount
+      )
+      curatedArtistServerCountAfter = toNumber(
+        curatedArtistResult.response?.mergedSnapshot?.artistCount,
+        curatedArtistClientCountAfter
+      )
+      curatedArtistNeedSync = curatedArtistResult.response?.needSync === true
     } catch (curatedError) {
       const responsePayload = getCuratedArtistSyncErrorPayload(curatedError)
       if (responsePayload) {
@@ -945,8 +954,11 @@ ipcMain.handle('cloudSync/start', async () => {
               message: 'cloudSync.curatedArtistSkippedUnsupported'
             })
           }
-          curatedArtistInitialCount = 0
-          curatedArtistCountAfter = 0
+          curatedArtistClientInitialCount = 0
+          curatedArtistClientCountAfter = 0
+          curatedArtistServerInitialCount = 0
+          curatedArtistServerCountAfter = 0
+          curatedArtistNeedSync = false
         } else {
           log.error('[cloudSync] /curated-artist-sync error', {
             request: {
@@ -983,7 +995,7 @@ ipcMain.handle('cloudSync/start', async () => {
     sendProgress('finalizing', 98)
     await wait(120)
     sendProgress('finalizing', 100)
-    if (!fingerprintNeedSync && !curatedArtistChanged && mainWindow.instance) {
+    if (!fingerprintNeedSync && !curatedArtistNeedSync && mainWindow.instance) {
       mainWindow.instance.webContents.send('cloudSync/notice', {
         message: 'cloudSync.errors.alreadyLatest'
       })
@@ -998,8 +1010,10 @@ ipcMain.handle('cloudSync/start', async () => {
       serverInitialCount: toNumber(serverCount),
       addedToServerCount: toNumber(addedToServerTotal),
       pulledToClientCount,
-      curatedArtistInitialCount,
-      curatedArtistCountAfter,
+      curatedArtistClientInitialCount,
+      curatedArtistClientCountAfter,
+      curatedArtistServerInitialCount,
+      curatedArtistServerCountAfter,
       totalClientCountAfter: toNumber(mergedList.length),
       totalServerCountAfter: toNumber(serverFinalCount),
       verifiedHashMatched
