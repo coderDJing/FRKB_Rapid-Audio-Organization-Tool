@@ -1,10 +1,14 @@
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { type ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import type { ISongInfo } from '../../../../../../types/globals'
+import {
+  resolveLibraryTransferActionModeForSongList,
+  type LibraryTransferActionMode
+} from '@renderer/utils/libraryTransfer'
 
 export type MoveSongsLibraryName = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 
@@ -62,6 +66,9 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
 
   const isDialogVisible = ref(false)
   const targetLibraryName = ref<MoveSongsLibraryName | ''>('')
+  const dialogActionMode = computed<LibraryTransferActionMode>(() =>
+    resolveLibraryTransferActionModeForSongList(songsAreaState.songListUUID)
+  )
 
   const initiateMoveSongs = (libraryName: MoveSongsLibraryName) => {
     targetLibraryName.value = libraryName
@@ -81,6 +88,7 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
     }
 
     const sourceSongListUUID = songsAreaState.songListUUID
+    const sourceActionMode = resolveLibraryTransferActionModeForSongList(sourceSongListUUID)
     const selectedPaths = JSON.parse(JSON.stringify(songsAreaState.selectedSongFilePath))
     const songMap = new Map(songsAreaState.songInfoArr.map((song) => [song.filePath, song]))
     if (!selectedPaths.length) return
@@ -157,7 +165,46 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
       return
     }
 
-    if (sourceNode?.type === 'mixtapeList') {
+    if (sourceActionMode === 'copy') {
+      const selectedSourceItems = normalizeUniqueStrings(selectedPaths)
+        .map((key) => {
+          const song =
+            songsAreaState.songInfoArr.find(
+              (item) => typeof item.mixtapeItemId === 'string' && item.mixtapeItemId.trim() === key
+            ) || songMap.get(key)
+          if (!song?.filePath) return null
+          return {
+            filePath: song.filePath,
+            song
+          }
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
+      if (!selectedSourceItems.length) return
+
+      const targetDirPath = libraryUtils.findDirPathByUuid(targetSongListUUID)
+      if (!targetDirPath) return
+
+      const copiedPaths = (await window.electron.ipcRenderer.invoke(
+        'moveSongsToDir',
+        selectedSourceItems.map((item) => item.filePath),
+        targetDirPath,
+        {
+          mode: 'copy',
+          curatedArtistNames: selectedSourceItems.map((item) => item.song.artist || '')
+        }
+      )) as string[]
+      await copySongCueDefinitionsToTargets(
+        copiedPaths.map((targetFilePath, index) => ({
+          targetFilePath,
+          sourceSong: selectedSourceItems[index]?.song
+        }))
+      )
+
+      songsAreaState.selectedSongFilePath.length = 0
+      try {
+        emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+        emitter.emit('songsArea/clipboardHint', { action: 'copy' })
+      } catch {}
       return
     }
 
@@ -202,6 +249,7 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
   return {
     isDialogVisible, // To be bound to v-if or v-model of the dialog component
     targetLibraryName, // To be passed as a prop to the dialog component
+    dialogActionMode,
     initiateMoveSongs, // To be called by the parent component to start the process
     handleMoveSongsConfirm, // To be called by the dialog component on confirm event
     handleDialogCancel // To be called by the dialog component on cancel event

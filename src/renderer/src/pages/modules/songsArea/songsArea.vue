@@ -18,6 +18,7 @@ import { t } from '@renderer/utils/translate'
 import { ISongInfo } from '../../../../../types/globals'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { activateSongsAreaPane } from '@renderer/utils/songsAreaSplit'
+import type { MoveSongsLibraryName } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
 
 // 组件导入
 import dropIntoDialog from '@renderer/components/dropIntoDialog'
@@ -120,6 +121,7 @@ const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef, so
 const {
   isDialogVisible: isSelectSongListDialogVisible,
   targetLibraryName: selectSongListDialogTargetLibraryName,
+  dialogActionMode: selectSongListDialogActionMode,
   initiateMoveSongs,
   handleMoveSongsConfirm,
   handleDialogCancel
@@ -193,6 +195,20 @@ const handleClipboardHint = (payload?: { action?: 'copy' | 'cut'; message?: stri
   if (action === 'copy') {
     showClipboardHint(t('tracks.clipboardCopySuccess'))
   }
+}
+type PreviewMoveRequestPayload = {
+  song?: ISongInfo | null
+  sourceLibraryName?: string
+  sourceSongListUUID?: string
+  sourcePane?: SongsAreaPaneKey
+  targetLibraryName?: MoveSongsLibraryName
+}
+type WaveformPreviewStatePayload = {
+  filePath?: string
+  active?: boolean
+  sourceLibraryName?: string
+  sourceSongListUUID?: string
+  sourcePane?: SongsAreaPaneKey | ''
 }
 const attachModifierKeyListeners = () => {
   if (modifierKeyCleanup) return
@@ -305,6 +321,51 @@ if (props.enablePreviewPlayer) {
   useWaveformPreviewPlayer()
 }
 emitter.on('songsArea/clipboardHint', handleClipboardHint)
+const activePreviewFilePath = ref('')
+const handleWaveformPreviewState = (payload?: WaveformPreviewStatePayload) => {
+  if (
+    payload?.active &&
+    payload?.sourcePane === props.pane &&
+    String(payload?.sourceSongListUUID || '').trim() === songsAreaState.songListUUID &&
+    String(payload?.sourceLibraryName || '').trim() === runtime.libraryAreaSelected
+  ) {
+    activePreviewFilePath.value = String(payload?.filePath || '').trim()
+    return
+  }
+  if (payload?.active) {
+    activePreviewFilePath.value = ''
+    return
+  }
+  const payloadFilePath = String(payload?.filePath || '').trim()
+  if (!payload?.active && (!payloadFilePath || activePreviewFilePath.value === payloadFilePath)) {
+    activePreviewFilePath.value = ''
+  }
+}
+emitter.on('waveform-preview:state', handleWaveformPreviewState)
+const handlePreviewMoveRequest = (payload?: PreviewMoveRequestPayload) => {
+  const song = payload?.song
+  const sourceLibraryName = String(payload?.sourceLibraryName || '').trim()
+  const sourceSongListUUID = String(payload?.sourceSongListUUID || '').trim()
+  const targetLibraryName = payload?.targetLibraryName
+  if (!song?.filePath || !sourceSongListUUID || payload?.sourcePane !== props.pane) return
+  if (sourceLibraryName && sourceLibraryName !== runtime.libraryAreaSelected) return
+  if (sourceSongListUUID !== songsAreaState.songListUUID) return
+  if (
+    targetLibraryName !== 'FilterLibrary' &&
+    targetLibraryName !== 'CuratedLibrary' &&
+    targetLibraryName !== 'MixtapeLibrary'
+  ) {
+    return
+  }
+  const rowKey = getRowKey(song)
+  const exists = songsAreaState.songInfoArr.some((item) => getRowKey(item) === rowKey)
+  if (!exists) return
+  activatePaneIfNeeded()
+  runtime.activeMenuUUID = ''
+  songsAreaState.selectedSongFilePath = [rowKey]
+  initiateMoveSongs(targetLibraryName)
+}
+emitter.on('preview-transfer:open-dialog', handlePreviewMoveRequest)
 
 watch(
   () => isPaneActive.value,
@@ -319,6 +380,8 @@ watch(
 onUnmounted(() => {
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
   emitter.off('songsArea/clipboardHint', handleClipboardHint)
+  emitter.off('waveform-preview:state', handleWaveformPreviewState)
+  emitter.off('preview-transfer:open-dialog', handlePreviewMoveRequest)
   hideDragHint()
   if (clipboardHintTimer) {
     clearTimeout(clipboardHintTimer)
@@ -681,7 +744,10 @@ const handleScrollToPlaying = () => {
 async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   const pathsEffectivelyMoved = [...songsAreaState.selectedSongFilePath]
   const currentListUuid = songsAreaState.songListUUID
+  const sourceActionMode = selectSongListDialogActionMode.value
+  const sourceNode = libraryUtils.getLibraryTreeByUUID(currentListUuid)
   const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUuid)
+  const isMixtapeSource = sourceNode?.type === 'mixtapeList'
   const isMixtapeTarget =
     targetNode?.type === 'mixtapeList' ||
     selectSongListDialogTargetLibraryName.value === 'MixtapeLibrary'
@@ -692,9 +758,56 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     return
   }
 
+  const playingListSnapshot = [...runtime.playingData.playingSongListData]
+  const currentPlayingSong = runtime.playingData.playingSong
+    ? { ...runtime.playingData.playingSong }
+    : null
+  const resolveNextPlayingSong = (list: ISongInfo[], removedPaths: string[]): ISongInfo | null => {
+    if (!currentPlayingSong?.filePath) return null
+    const currentIndex = list.findIndex((item) => item.filePath === currentPlayingSong.filePath)
+    if (currentIndex === -1) return null
+    const normalizedRemovedSet = new Set(
+      removedPaths.map((item) => (item || '').replace(/\//g, '\\').toLowerCase())
+    )
+    if (
+      !normalizedRemovedSet.has(
+        (currentPlayingSong.filePath || '').replace(/\//g, '\\').toLowerCase()
+      )
+    ) {
+      return null
+    }
+    const remaining = list.filter(
+      (item) => !normalizedRemovedSet.has((item.filePath || '').replace(/\//g, '\\').toLowerCase())
+    )
+    if (!remaining.length) return null
+    return remaining[Math.min(currentIndex, remaining.length - 1)] || null
+  }
+  const nextPlayingSong =
+    sourceActionMode === 'move' && runtime.playingData.playingSongListUUID === currentListUuid
+      ? resolveNextPlayingSong(playingListSnapshot, pathsEffectivelyMoved)
+      : null
+
   // 调用 composable 执行移动操作，并处理对话框关闭与选中清理
   await handleMoveSongsConfirm(targetSongListUuid)
-  if (isMixtapeTarget || targetSongListUuid === currentListUuid) return
+  if (
+    sourceActionMode === 'move' &&
+    activePreviewFilePath.value &&
+    pathsEffectivelyMoved.includes(activePreviewFilePath.value)
+  ) {
+    emitter.emit('waveform-preview:stop', { reason: 'switch' })
+  }
+  if (sourceActionMode === 'move' && runtime.playingData.playingSongListUUID === currentListUuid) {
+    runtime.playingData.playingSongListData = [...songsAreaState.songInfoArr]
+    runtime.playingData.playingSong = nextPlayingSong
+  }
+  if (
+    sourceActionMode === 'copy' ||
+    isMixtapeSource ||
+    isMixtapeTarget ||
+    targetSongListUuid === currentListUuid
+  ) {
+    return
+  }
   // 非 Mixtape 目标时，从当前列表中同步移除已移动项
   if (pathsEffectivelyMoved.length > 0) {
     const normalizePath = (p: string | undefined | null) =>
@@ -708,12 +821,6 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     // 若当前播放列表即为当前视图，同步快照（与其他删除路径保持一致）
     if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
       runtime.playingData.playingSongListData = [...songsAreaState.songInfoArr]
-      if (
-        runtime.playingData.playingSong &&
-        pathsEffectivelyMoved.includes(runtime.playingData.playingSong.filePath)
-      ) {
-        runtime.playingData.playingSong = null
-      }
     }
   }
 }
@@ -1111,6 +1218,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
             :total-width="totalColumnsWidth"
             :source-library-name="runtime.libraryAreaSelected"
             :source-song-list-u-u-i-d="songsAreaState.songListUUID"
+            :source-pane-key="props.pane"
             :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
             :external-scroll-top="externalScrollTop"
             :external-viewport-height="externalViewportHeight"
@@ -1175,6 +1283,7 @@ const handleMixtapeReorder = async (payload: { sourceItemIds: string[]; targetIn
       <selectSongListDialog
         v-if="isSelectSongListDialogVisible"
         :library-name="selectSongListDialogTargetLibraryName"
+        :action-mode="selectSongListDialogActionMode"
         @confirm="onMoveSongsDialogConfirmed"
         @cancel="handleDialogCancel"
       />

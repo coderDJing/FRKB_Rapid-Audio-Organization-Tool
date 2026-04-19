@@ -4,6 +4,7 @@ import type {
   ISongInfo,
   ISongsAreaColumn
 } from '../../../../../../types/globals'
+import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import {
@@ -352,6 +353,9 @@ const drawPioneerPreviewWaveform = (
 export function useWaveformPreview(params: {
   visibleSongsWithIndex: Ref<VisibleSongItem[]>
   visibleColumns: Ref<ISongsAreaColumn[]>
+  sourceLibraryName: Ref<string>
+  sourceSongListUUID: Ref<string>
+  sourcePaneKey: Ref<SongsAreaPaneKey | ''>
   songListRootDir: Ref<string | undefined>
   externalWaveformRootPath: Ref<string | undefined>
   actualVisibleStartIndex: Ref<number>
@@ -360,6 +364,9 @@ export function useWaveformPreview(params: {
   const {
     visibleSongsWithIndex,
     visibleColumns,
+    sourceLibraryName,
+    sourceSongListUUID,
+    sourcePaneKey,
     songListRootDir,
     externalWaveformRootPath,
     actualVisibleStartIndex,
@@ -613,7 +620,11 @@ export function useWaveformPreview(params: {
     if (!filePath) return
     emitter.emit('waveform-preview:play', {
       filePath,
-      startPercent: clamp01(startPercent)
+      startPercent: clamp01(startPercent),
+      song: { ...song },
+      sourceLibraryName: String(sourceLibraryName.value || ''),
+      sourceSongListUUID: String(sourceSongListUUID.value || ''),
+      sourcePane: sourcePaneKey.value
     })
     previewActive.value = true
     previewFilePath.value = filePath

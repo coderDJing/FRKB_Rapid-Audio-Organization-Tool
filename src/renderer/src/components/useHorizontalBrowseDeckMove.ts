@@ -7,6 +7,10 @@ import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
+import {
+  resolveLibraryTransferActionModeForPlayback,
+  type LibraryTransferActionMode
+} from '@renderer/utils/libraryTransfer'
 
 export type HorizontalBrowseDeckMoveTargetLibrary =
   | 'CuratedLibrary'
@@ -84,6 +88,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
   const runtime = useRuntimeStore()
   const selectSongListDialogVisible = ref(false)
   const selectSongListDialogTargetLibraryName = ref<HorizontalBrowseDeckMoveTargetLibrary | ''>('')
+  const selectSongListDialogActionMode = ref<LibraryTransferActionMode>('move')
   const pendingDeck = ref<HorizontalBrowseDeckKey | null>(null)
 
   const getDeckSong = (deck: HorizontalBrowseDeckKey) => params.getDeckSong(deck)
@@ -98,7 +103,15 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
 
   const isDeckSongReadOnly = (deck: HorizontalBrowseDeckKey) => {
     const song = getDeckSong(deck)
-    return isRekordboxExternalPlaybackSource('', song)
+    if (!song) return false
+    if (isRekordboxExternalPlaybackSource('', song)) return true
+    if (song.mixtapeItemId) return true
+    const currentSongsAreaListUuid = runtime.songsArea.songListUUID
+    const currentSongsAreaNode = libraryUtils.getLibraryTreeByUUID(currentSongsAreaListUuid)
+    const currentSongsAreaContainsSong = runtime.songsArea.songInfoArr.some(
+      (item) => normalizePath(item.filePath) === normalizePath(song.filePath)
+    )
+    return Boolean(currentSongsAreaContainsSong && currentSongsAreaNode?.type === 'mixtapeList')
   }
 
   const openDeckMoveDialog = (
@@ -108,6 +121,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
     if (!getDeckSong(deck)) return
     pendingDeck.value = deck
     selectSongListDialogTargetLibraryName.value = libraryName
+    selectSongListDialogActionMode.value = isDeckSongReadOnly(deck) ? 'copy' : 'move'
     selectSongListDialogVisible.value = true
   }
 
@@ -129,7 +143,8 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
     const song = getDeckSong(deck)
     if (!song?.filePath) return
     try {
-      const readOnlySource = isRekordboxExternalPlaybackSource('', song)
+      const readOnlySource = selectSongListDialogActionMode.value === 'copy'
+      const requiresVaultCopy = isRekordboxExternalPlaybackSource('', song)
       const currentSongsAreaListUuid = runtime.songsArea.songListUUID
       const currentSongsAreaNode = libraryUtils.getLibraryTreeByUUID(currentSongsAreaListUuid)
       const currentSongsAreaContainsSong = runtime.songsArea.songInfoArr.some(
@@ -143,11 +158,14 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
         songListPath?: string
       } | null
       const sourceSongListUuid = String(sourceResolution?.songListUuid || '')
+      const sourceActionMode = readOnlySource
+        ? 'copy'
+        : resolveLibraryTransferActionModeForPlayback(sourceSongListUuid, song)
       const currentSongListIsSource =
         currentSongsAreaContainsSong && sourceSongListUuid === currentSongsAreaListUuid
 
       if (
-        !readOnlySource &&
+        sourceActionMode === 'move' &&
         ((sourceSongListUuid && sourceSongListUuid === targetSongListUUID) ||
           (currentSongListIsSource && currentSongsAreaListUuid === targetSongListUUID))
       ) {
@@ -160,13 +178,16 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
 
       if (isMixtapeTarget) {
         if (readOnlySource) {
-          const copiedTracks = (await window.electron.ipcRenderer.invoke(
-            'mixtape:copy-files-to-vault',
-            {
-              filePaths: [song.filePath]
-            }
-          )) as Array<{ sourcePath: string; targetPath: string }>
-          const copiedPath = String(copiedTracks[0]?.targetPath || '').trim()
+          let copiedPath = song.filePath
+          if (requiresVaultCopy) {
+            const copiedTracks = (await window.electron.ipcRenderer.invoke(
+              'mixtape:copy-files-to-vault',
+              {
+                filePaths: [song.filePath]
+              }
+            )) as Array<{ sourcePath: string; targetPath: string }>
+            copiedPath = String(copiedTracks[0]?.targetPath || '').trim()
+          }
           if (!copiedPath) {
             throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
           }
@@ -246,7 +267,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
       }
 
       if (
-        !readOnlySource &&
+        sourceActionMode === 'move' &&
         currentSongsAreaContainsSong &&
         currentSongsAreaNode?.type === 'mixtapeList'
       ) {
@@ -270,6 +291,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
   return {
     selectSongListDialogVisible,
     selectSongListDialogTargetLibraryName,
+    selectSongListDialogActionMode,
     isDeckSongReadOnly,
     openDeckMoveDialog,
     handleDeckMoveSong,

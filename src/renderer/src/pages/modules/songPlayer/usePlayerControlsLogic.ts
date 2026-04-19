@@ -11,6 +11,10 @@ import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
+import {
+  resolveLibraryTransferActionModeForPlayback,
+  type LibraryTransferActionMode
+} from '@renderer/utils/libraryTransfer'
 
 type PreloadHit = {
   source: 'next' | 'previous'
@@ -39,6 +43,7 @@ interface UsePlayerControlsOptions {
   waveformShow: Ref<boolean>
   selectSongListDialogShow: Ref<boolean>
   selectSongListDialogLibraryName: Ref<string>
+  selectSongListDialogActionMode: Ref<LibraryTransferActionMode>
   isInternalSongChange: Ref<boolean>
   requestLoadSong: (
     filePath: string,
@@ -67,6 +72,7 @@ export function usePlayerControlsLogic({
   waveformShow,
   selectSongListDialogShow,
   selectSongListDialogLibraryName,
+  selectSongListDialogActionMode,
   isInternalSongChange,
   requestLoadSong,
   cancelPreloadTimer,
@@ -75,7 +81,11 @@ export function usePlayerControlsLogic({
 }: UsePlayerControlsOptions) {
   // 调试日志已清理
   const isFileOperationInProgress = ref(false)
-  const songToMoveRef = ref<ISongInfo | null>(null)
+  const songToMoveRef = ref<{
+    song: ISongInfo
+    sourceListUuid: string
+    actionMode: LibraryTransferActionMode
+  } | null>(null)
   const normalizePath = (p: string | undefined | null) =>
     (p || '').replace(/\//g, '\\').toLowerCase()
   const isReadOnlyPlaybackSource = () =>
@@ -565,27 +575,33 @@ export function usePlayerControlsLogic({
     }
   }
 
-  const moveToListLibrary = (song?: ISongInfo) => {
-    // 保存当前要移动的歌曲（如果提供了参数，使用参数；否则使用当前播放的歌曲）
-    songToMoveRef.value = song || runtime.playingData.playingSong
-
-    selectSongListDialogLibraryName.value = 'FilterLibrary'
+  const openSongMoveDialog = (
+    libraryName: 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary',
+    song?: ISongInfo
+  ) => {
+    const targetSong = song || runtime.playingData.playingSong
+    if (!targetSong) return
+    const sourceListUuid = String(runtime.playingData.playingSongListUUID || '')
+    songToMoveRef.value = {
+      song: targetSong,
+      sourceListUuid,
+      actionMode: resolveLibraryTransferActionModeForPlayback(sourceListUuid, targetSong)
+    }
+    selectSongListDialogActionMode.value = songToMoveRef.value.actionMode
+    selectSongListDialogLibraryName.value = libraryName
     selectSongListDialogShow.value = true
+  }
+
+  const moveToListLibrary = (song?: ISongInfo) => {
+    openSongMoveDialog('FilterLibrary', song)
   }
 
   const moveToLikeLibrary = (song?: ISongInfo) => {
-    // 保存当前要移动的歌曲（如果提供了参数，使用参数；否则使用当前播放的歌曲）
-    songToMoveRef.value = song || runtime.playingData.playingSong
-
-    selectSongListDialogLibraryName.value = 'CuratedLibrary'
-    selectSongListDialogShow.value = true
+    openSongMoveDialog('CuratedLibrary', song)
   }
 
   const moveToMixtapeLibrary = (song?: ISongInfo) => {
-    songToMoveRef.value = song || runtime.playingData.playingSong
-
-    selectSongListDialogLibraryName.value = 'MixtapeLibrary'
-    selectSongListDialogShow.value = true
+    openSongMoveDialog('MixtapeLibrary', song)
   }
 
   // 这个函数在 usePlayerControlsLogic 内部使用，不需要导出
@@ -595,16 +611,34 @@ export function usePlayerControlsLogic({
     }
 
     // 使用存储的歌曲信息或当前播放的歌曲
-    const songToMove = songToMoveRef.value || runtime.playingData.playingSong
-    if (!songToMove) {
+    const moveContext =
+      songToMoveRef.value && songToMoveRef.value.song
+        ? songToMoveRef.value
+        : runtime.playingData.playingSong
+          ? {
+              song: runtime.playingData.playingSong,
+              sourceListUuid: String(runtime.playingData.playingSongListUUID || ''),
+              actionMode: resolveLibraryTransferActionModeForPlayback(
+                runtime.playingData.playingSongListUUID,
+                runtime.playingData.playingSong
+              )
+            }
+          : null
+    if (!moveContext) {
       return
     }
+    const songToMove = moveContext.song
 
-    const readOnlySource = isReadOnlyPlaybackSource()
+    const sourceActionMode = moveContext.actionMode
+    const readOnlySource = sourceActionMode === 'copy'
+    const sourceRequiresVaultCopy = isRekordboxExternalPlaybackSource(
+      moveContext.sourceListUuid,
+      songToMove
+    )
     const targetNode = libraryUtils.getLibraryTreeByUUID(targetListUuid)
     const isMixtapeTarget = targetNode?.type === 'mixtapeList'
 
-    if (!readOnlySource && targetListUuid === runtime.playingData.playingSongListUUID) {
+    if (!readOnlySource && targetListUuid === moveContext.sourceListUuid) {
       // 移动到当前列表，无需操作
       // 重置存储的歌曲信息
       songToMoveRef.value = null
@@ -613,7 +647,7 @@ export function usePlayerControlsLogic({
 
     isFileOperationInProgress.value = true
     const filePathToMove = songToMove.filePath
-    const sourceListUuid = runtime.playingData.playingSongListUUID
+    const sourceListUuid = moveContext.sourceListUuid
     const targetDirPath = isMixtapeTarget ? '' : libraryUtils.findDirPathByUuid(targetListUuid)
 
     // 重置存储的歌曲信息
@@ -633,13 +667,17 @@ export function usePlayerControlsLogic({
 
       if (readOnlySource) {
         if (isMixtapeTarget) {
-          const copiedTracks = (await window.electron.ipcRenderer.invoke(
-            'mixtape:copy-files-to-vault',
-            {
-              filePaths: [filePathToMove]
-            }
-          )) as Array<{ sourcePath: string; targetPath: string }>
-          const copiedPath = copiedTracks[0]?.targetPath
+          let mixtapeTargetPath = filePathToMove
+          if (sourceRequiresVaultCopy) {
+            const copiedTracks = (await window.electron.ipcRenderer.invoke(
+              'mixtape:copy-files-to-vault',
+              {
+                filePaths: [filePathToMove]
+              }
+            )) as Array<{ sourcePath: string; targetPath: string }>
+            mixtapeTargetPath = String(copiedTracks[0]?.targetPath || '').trim()
+          }
+          const copiedPath = mixtapeTargetPath
           if (!copiedPath) {
             throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
           }

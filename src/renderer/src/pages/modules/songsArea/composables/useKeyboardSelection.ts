@@ -23,7 +23,13 @@ type OptimisticRestoreItem = {
   index: number
 }
 
+type WaveformPreviewStatePayload = {
+  active?: boolean
+  song?: ISongInfo | null
+}
+
 let windowHotkeyBinderCount = 0
+let windowPreviewHotkeysLocked = false
 
 interface UseKeyboardSelectionParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -218,6 +224,10 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
         startCutPolling(existingPaths, songsAreaState.songListUUID)
       }
     }
+  }
+
+  const handleWaveformPreviewState = (payload?: WaveformPreviewStatePayload) => {
+    windowPreviewHotkeysLocked = Boolean(payload?.active && payload?.song?.filePath)
   }
 
   async function handleDeleteKey() {
@@ -470,8 +480,10 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   onMounted(() => {
     const shouldBindWindowHotkeys = windowHotkeyBinderCount === 0
     windowHotkeyBinderCount += 1
+    emitter.on('waveform-preview:state', handleWaveformPreviewState)
     if (!shouldBindWindowHotkeys) return
     hotkeys('ctrl+a, command+a', 'windowGlobal', () => {
+      if (windowPreviewHotkeysLocked) return false
       runtime.songsArea.selectedSongFilePath.length = 0
       for (const item of runtime.songsArea.songInfoArr) {
         runtime.songsArea.selectedSongFilePath.push(getRowKeyForState(runtime.songsArea, item))
@@ -479,10 +491,12 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       return false
     })
     hotkeys('delete', 'windowGlobal', () => {
+      if (windowPreviewHotkeysLocked) return false
       handleDeleteKey()
       return false
     })
     hotkeys('ctrl+c, command+c', 'windowGlobal', (event) => {
+      if (windowPreviewHotkeysLocked) return false
       if (shouldSkipClipboardHotkey(event)) return true
       const selectedKeys = [...runtime.songsArea.selectedSongFilePath]
       if (selectedKeys.length === 0) return true
@@ -492,6 +506,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       return false
     })
     hotkeys('ctrl+x, command+x', 'windowGlobal', (event) => {
+      if (windowPreviewHotkeysLocked) return false
       if (shouldSkipClipboardHotkey(event)) return true
       const selectedKeys = [...runtime.songsArea.selectedSongFilePath]
       if (selectedKeys.length === 0) return true
@@ -501,26 +516,34 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       return false
     })
     hotkeys('shift+home', 'windowGlobal', () => {
+      if (windowPreviewHotkeysLocked) return false
       handleShiftHome()
       return false
     })
     hotkeys('shift+end', 'windowGlobal', () => {
+      if (windowPreviewHotkeysLocked) return false
       handleShiftEnd()
       return false
     })
     hotkeys('shift+pageup', 'windowGlobal', () => {
+      if (windowPreviewHotkeysLocked) return false
       handleShiftPageUp()
       return false
     })
     hotkeys('shift+pagedown', 'windowGlobal', () => {
+      if (windowPreviewHotkeysLocked) return false
       handleShiftPageDown()
       return false
     })
   })
 
   onUnmounted(() => {
+    emitter.off('waveform-preview:state', handleWaveformPreviewState)
     windowHotkeyBinderCount = Math.max(0, windowHotkeyBinderCount - 1)
     if (windowHotkeyBinderCount > 0) return
+    windowPreviewHotkeysLocked = false
+    hotkeys.unbind('ctrl+a, command+a', 'windowGlobal')
+    hotkeys.unbind('delete', 'windowGlobal')
     hotkeys.unbind('ctrl+c, command+c', 'windowGlobal')
     hotkeys.unbind('ctrl+x, command+x', 'windowGlobal')
     hotkeys.unbind('shift+home', 'windowGlobal')

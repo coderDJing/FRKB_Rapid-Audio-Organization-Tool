@@ -45,6 +45,10 @@ import {
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { sendPlayerWaveformTrace } from './playerWaveformTrace'
 const musicIcon = musicIconAsset
+type WaveformPreviewStatePayload = {
+  active?: boolean
+  song?: ISongInfo | null
+}
 
 const runtime = useRuntimeStore()
 const waveform = useTemplateRef<HTMLDivElement>('waveform')
@@ -392,6 +396,7 @@ onMounted(() => {
   registerTitleAudioVisualizerSource('mainWindow', titleAudioVisualizerSource)
   emitter.on('player/replay-current-song', handleReplayRequest)
   emitter.on('external-open/play', handleExternalOpenPlay)
+  emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:pause-main', handleWaveformPreviewPauseMain)
   emitter.on('waveform-preview:resume-main', handleWaveformPreviewResumeMain)
 
@@ -427,6 +432,7 @@ onMounted(() => {
 // 歌曲移动、删除、播放控制等统一动作
 const selectSongListDialogLibraryName = ref('FilterLibrary')
 const selectSongListDialogShow = ref(false)
+const selectSongListDialogActionMode = ref<'move' | 'copy'>('move')
 const playerActions = usePlayerControlsLogic({
   audioPlayer,
   runtime,
@@ -434,6 +440,7 @@ const playerActions = usePlayerControlsLogic({
   waveformShow,
   selectSongListDialogShow,
   selectSongListDialogLibraryName,
+  selectSongListDialogActionMode,
   isInternalSongChange,
   requestLoadSong: requestSongWithRecreate,
   cancelPreloadTimer,
@@ -539,6 +546,11 @@ const handleMainWindowVolumeSet = (value: unknown) => {
   setVolume(value)
 }
 
+const previewHotkeysActive = ref(false)
+const handleWaveformPreviewState = (payload?: WaveformPreviewStatePayload) => {
+  previewHotkeysActive.value = Boolean(payload?.active && payload?.song?.filePath)
+}
+
 const selectSongListDialogConfirm = async (item: string) => {
   await playerActions.handleMoveSong(item)
 }
@@ -625,6 +637,9 @@ const handleGlobalPlayerShortcut = (
   _event: IpcRendererEvent,
   action: GlobalPlayerShortcutAction
 ) => {
+  if (previewHotkeysActive.value || runtime.selectSongListDialogShow) {
+    return
+  }
   if (!waveformShow.value) {
     return
   }
@@ -674,6 +689,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', updateParentWaveformWidth)
   emitter.off('player/replay-current-song', handleReplayRequest)
   emitter.off('external-open/play', handleExternalOpenPlay)
+  emitter.off('waveform-preview:state', handleWaveformPreviewState)
   emitter.off('waveform-preview:pause-main', handleWaveformPreviewPauseMain)
   emitter.off('waveform-preview:resume-main', handleWaveformPreviewResumeMain)
   emitter.off(MAIN_WINDOW_VOLUME_SET_EVENT, handleMainWindowVolumeSet)
@@ -868,6 +884,7 @@ watch(
     <selectSongListDialog
       v-if="selectSongListDialogShow"
       :library-name="selectSongListDialogLibraryName"
+      :action-mode="selectSongListDialogActionMode"
       @confirm="selectSongListDialogConfirm"
       @cancel="
         () => {

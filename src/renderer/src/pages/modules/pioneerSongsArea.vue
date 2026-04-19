@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch, useTemplateRef } from 'vue'
+import { computed, onUnmounted, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue'
@@ -56,6 +56,12 @@ const columnData = ref<ISongsAreaColumn[]>(
 )
 const selectSongListDialogVisible = ref(false)
 const selectSongListDialogTargetLibraryName = ref<PioneerTransferTarget | ''>('')
+type PreviewMoveRequestPayload = {
+  song?: ISongInfo | null
+  sourceLibraryName?: string
+  sourceSongListUUID?: string
+  targetLibraryName?: PioneerTransferTarget
+}
 let playlistTracksRequestToken = 0
 
 const ascendingOrder = ascendingOrderAsset
@@ -653,6 +659,20 @@ const openCopyTargetDialog = (libraryName: PioneerTransferTarget) => {
   selectSongListDialogTargetLibraryName.value = libraryName
   selectSongListDialogVisible.value = true
 }
+const handlePreviewMoveRequest = (payload?: PreviewMoveRequestPayload) => {
+  if (String(payload?.sourceLibraryName || '').trim() !== 'PioneerDeviceLibrary') return
+  if (String(payload?.sourceSongListUUID || '').trim() !== currentPlaybackListKey.value) return
+  const targetLibraryName = payload?.targetLibraryName
+  const song = payload?.song
+  if (!song?.filePath || !targetLibraryName) return
+  const rowKey = song.mixtapeItemId || song.filePath
+  if (!rowKey) return
+  const exists = visibleSongs.value.some((item) => (item.mixtapeItemId || item.filePath) === rowKey)
+  if (!exists) return
+  selectedRowKeys.value = [rowKey]
+  openCopyTargetDialog(targetLibraryName)
+}
+emitter.on('preview-transfer:open-dialog', handlePreviewMoveRequest)
 
 const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
   const key = song.mixtapeItemId || song.filePath
@@ -851,6 +871,10 @@ const handleSelectSongListDialogCancel = () => {
   selectSongListDialogTargetLibraryName.value = ''
 }
 
+onUnmounted(() => {
+  emitter.off('preview-transfer:open-dialog', handlePreviewMoveRequest)
+})
+
 const placeholderText = computed(() => {
   if (loading.value) {
     return isDesktopSource.value
@@ -966,6 +990,7 @@ watch(
       <selectSongListDialog
         v-if="selectSongListDialogVisible"
         :library-name="selectSongListDialogTargetLibraryName"
+        action-mode="copy"
         @confirm="handleSelectSongListDialogConfirm"
         @cancel="handleSelectSongListDialogCancel"
       />

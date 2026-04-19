@@ -8,6 +8,7 @@ import {
   ComputedRef,
   useTemplateRef,
   nextTick,
+  type PropType,
   type ComponentPublicInstance
 } from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
@@ -39,11 +40,20 @@ import {
   resolveDialogNavMove,
   type DialogNavItem
 } from '@renderer/components/selectSongListDialogNav'
+import {
+  resolveLibraryTransferActionLabelKey,
+  type LibraryTransferActionMode,
+  type LibraryTransferTarget
+} from '@renderer/utils/libraryTransfer'
 const uuid = uuidV4()
 const props = defineProps({
   libraryName: {
     type: String,
     default: 'FilterLibrary'
+  },
+  actionMode: {
+    type: String as PropType<LibraryTransferActionMode>,
+    default: 'move'
   }
 })
 const isMixtapeDialog = computed(() => props.libraryName === 'MixtapeLibrary')
@@ -229,6 +239,27 @@ const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 const searchInputRef = useTemplateRef<HTMLInputElement>('searchInputRef')
 
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
+const dialogTitleText = computed(() => {
+  if (
+    props.libraryName !== 'FilterLibrary' &&
+    props.libraryName !== 'CuratedLibrary' &&
+    props.libraryName !== 'MixtapeLibrary'
+  ) {
+    return libraryTitleText.value
+  }
+  return t(
+    resolveLibraryTransferActionLabelKey(
+      props.libraryName as LibraryTransferTarget,
+      props.actionMode
+    )
+  )
+})
+const confirmActionText = computed(() => {
+  if (props.libraryName === 'MixtapeLibrary') {
+    return t('common.confirm')
+  }
+  return props.actionMode === 'copy' ? t('common.copy') : t('common.move')
+})
 const listIcon = listIconAsset
 const resolveMixtapeModeTag = (mixMode?: string) =>
   mixMode === 'eq' ? t('mixtape.mixModeEqTag') : t('mixtape.mixModeStemTag')
@@ -587,7 +618,7 @@ watch(
     <div v-dialog-drag="'.dialog-title'" class="content inner" @contextmenu.stop="contextmenuEvent">
       <div v-if="libraryData" class="unselectable libraryTitle dialog-title dialog-header">
         <div class="collapseButtonPlaceholder"></div>
-        <span>{{ libraryTitleText }}</span>
+        <span>{{ dialogTitleText }}</span>
         <div class="collapseButtonWrapper">
           <div style="display: flex; justify-content: center; align-items: center">
             <div
@@ -795,7 +826,7 @@ watch(
 
       <div class="dialog-footer footer-centered">
         <div class="button" style="width: 90px; text-align: center" @click="confirmHandle()">
-          {{ t('common.confirm') }} (E)
+          {{ confirmActionText }} (E)
         </div>
         <div class="button" style="width: 90px; text-align: center" @click="cancel()">
           {{ t('common.cancel') }} (Esc)

@@ -15,6 +15,7 @@ import { t } from '@renderer/utils/translate'
 import confirm from '@renderer/components/confirmDialog'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
+import { resolveLibraryTransferActionModeForPlayback } from '@renderer/utils/libraryTransfer'
 const previousSong = previousSongAsset
 const fastBackward = fastBackwardAsset
 const play = playAsset
@@ -27,6 +28,12 @@ const uuid = uuidV4()
 const runtime = useRuntimeStore()
 const isReadOnlyPlaybackSource = computed(() =>
   isRekordboxExternalPlaybackSource(
+    runtime.playingData.playingSongListUUID,
+    runtime.playingData.playingSong
+  )
+)
+const playbackTransferActionMode = computed(() =>
+  resolveLibraryTransferActionModeForPlayback(
     runtime.playingData.playingSongListUUID,
     runtime.playingData.playingSong
   )
@@ -164,10 +171,14 @@ const exportTrackLabel = computed(() =>
   isReadOnlyPlaybackSource.value ? t('tracks.exportTracksCopyOnly') : t('tracks.exportTracks')
 )
 const moveToFilterLabel = computed(() =>
-  isReadOnlyPlaybackSource.value ? t('library.copyToFilter') : t('library.moveToFilter')
+  playbackTransferActionMode.value === 'copy'
+    ? t('library.copyToFilter')
+    : t('library.moveToFilter')
 )
 const moveToCuratedLabel = computed(() =>
-  isReadOnlyPlaybackSource.value ? t('library.copyToCurated') : t('library.moveToCurated')
+  playbackTransferActionMode.value === 'copy'
+    ? t('library.copyToCurated')
+    : t('library.moveToCurated')
 )
 
 defineExpose({

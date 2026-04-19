@@ -9,6 +9,7 @@ import {
   type ComponentPublicInstance
 } from 'vue'
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
+import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
@@ -63,6 +64,10 @@ const props = defineProps({
   sourceSongListUUID: {
     type: String,
     required: true
+  },
+  sourcePaneKey: {
+    type: String as PropType<SongsAreaPaneKey | ''>,
+    default: ''
   },
   scrollHostElement: {
     type: Object as PropType<HTMLElement | null | undefined>,
@@ -126,6 +131,9 @@ const externalScrollTopRef = toRef(props, 'externalScrollTop')
 const externalViewportHeightRef = toRef(props, 'externalViewportHeight')
 const songListRootDirRef = toRef(props, 'songListRootDir')
 const externalWaveformRootPathRef = toRef(props, 'externalWaveformRootPath')
+const sourceSongListUUIDRef = toRef(props, 'sourceSongListUUID')
+const sourcePaneKeyRef = toRef(props, 'sourcePaneKey')
+const sourceLibraryNameRef = toRef(props, 'sourceLibraryName')
 const enableCoverThumbnailsRef = toRef(props, 'enableCoverThumbnails')
 const enableKeyAnalysisQueueRef = toRef(props, 'enableKeyAnalysisQueue')
 const visibleColumnsRef = toRef(props, 'visibleColumns')
@@ -368,6 +376,9 @@ const {
 } = useWaveformPreview({
   visibleSongsWithIndex,
   visibleColumns: visibleColumnsRef,
+  sourceLibraryName: sourceLibraryNameRef,
+  sourceSongListUUID: sourceSongListUUIDRef,
+  sourcePaneKey: sourcePaneKeyRef,
   songListRootDir: songListRootDirRef,
   externalWaveformRootPath: externalWaveformRootPathRef,
   actualVisibleStartIndex: actualStartIndex,

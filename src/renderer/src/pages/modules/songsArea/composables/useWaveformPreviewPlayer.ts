@@ -1,4 +1,5 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
+import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { canPlayHtmlAudio } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import emitter from '@renderer/utils/mitt'
@@ -8,6 +9,7 @@ import {
   clampVolumeValue,
   readWindowVolume
 } from '@renderer/utils/windowVolume'
+import type { ISongInfo } from '../../../../../../types/globals'
 
 interface AudioOutputSinkTarget {
   setSinkId?(deviceId: string): Promise<void>
@@ -23,6 +25,10 @@ type WindowWithAudioContext = Window & {
 type PreviewPlayPayload = {
   filePath?: string
   startPercent?: number
+  song?: ISongInfo
+  sourceLibraryName?: string
+  sourceSongListUUID?: string
+  sourcePane?: SongsAreaPaneKey | ''
 }
 
 type PreviewStopPayload = {
@@ -98,6 +104,10 @@ export function useWaveformPreviewPlayer() {
   const previewActive = ref(false)
   const previewMode = ref<PreviewPlaybackMode>('html')
   const previewFilePath = ref('')
+  const previewSong = ref<ISongInfo | null>(null)
+  const previewSourceLibraryName = ref('')
+  const previewSourceSongListUUID = ref('')
+  const previewSourcePane = ref<SongsAreaPaneKey | ''>('')
   const resumeMainPlayer = ref(false)
   const pendingStartPercent = ref(0)
   const playToken = ref(0)
@@ -191,7 +201,11 @@ export function useWaveformPreviewPlayer() {
   const emitPreviewState = (active: boolean, filePath: string | null) => {
     emitter.emit('waveform-preview:state', {
       filePath: filePath || '',
-      active
+      active,
+      song: previewSong.value ? { ...previewSong.value } : null,
+      sourceLibraryName: previewSourceLibraryName.value || '',
+      sourceSongListUUID: previewSourceSongListUUID.value || '',
+      sourcePane: previewSourcePane.value || ''
     })
   }
 
@@ -315,6 +329,10 @@ export function useWaveformPreviewPlayer() {
     pcmFallbackToken.value = -1
     playToken.value += 1
     emitPreviewState(false, filePath || null)
+    previewSong.value = null
+    previewSourceLibraryName.value = ''
+    previewSourceSongListUUID.value = ''
+    previewSourcePane.value = ''
     stopProgressLoop()
 
     const audio = audioElement.value
@@ -528,6 +546,15 @@ export function useWaveformPreviewPlayer() {
     previewActive.value = true
     previewMode.value = 'html'
     previewFilePath.value = filePath
+    previewSong.value = payload?.song ? { ...payload.song } : null
+    previewSourceLibraryName.value = String(payload?.sourceLibraryName || '').trim()
+    previewSourceSongListUUID.value = String(payload?.sourceSongListUUID || '').trim()
+    previewSourcePane.value =
+      payload?.sourcePane === 'single' ||
+      payload?.sourcePane === 'left' ||
+      payload?.sourcePane === 'right'
+        ? payload.sourcePane
+        : ''
     pendingStartPercent.value = startPercent
     emitPreviewState(true, filePath)
 

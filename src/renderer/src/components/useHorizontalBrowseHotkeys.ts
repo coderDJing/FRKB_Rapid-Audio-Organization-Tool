@@ -1,6 +1,9 @@
 import { onMounted, onUnmounted } from 'vue'
+import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import emitter from '@renderer/utils/mitt'
+import type { ISongInfo } from '../../../types/globals'
 
 const WINDOW_GLOBAL_SCOPE = 'windowGlobal'
 const CROSSFADER_KEY_REPEAT_DELAY_MS = 180
@@ -21,6 +24,23 @@ type UseHorizontalBrowseHotkeysParams = {
   onSeekPercent: (deck: HorizontalBrowseDeckKey, percent: number) => void
   onNudgeCrossfader: (direction: -1 | 1) => void
   onResetCrossfader: () => void
+}
+
+type PreviewStatePayload = {
+  filePath?: string
+  active?: boolean
+  song?: ISongInfo | null
+  sourceLibraryName?: string
+  sourceSongListUUID?: string
+  sourcePane?: SongsAreaPaneKey | ''
+}
+
+type PreviewMoveRequestPayload = {
+  song: ISongInfo
+  sourceLibraryName: string
+  sourceSongListUUID: string
+  sourcePane: SongsAreaPaneKey | ''
+  targetLibraryName: 'FilterLibrary' | 'CuratedLibrary'
 }
 
 const isEditableTarget = (target: EventTarget | null) => {
@@ -53,6 +73,7 @@ const isHorizontalBrowsePhraseJumpHotkey = (event: KeyboardEvent) =>
 export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysParams) => {
   const activeCueDeckByCode = new Map<string, HorizontalBrowseDeckKey>()
   const activeCrossfaderKeys = new Set<string>()
+  let previewMoveTarget: Omit<PreviewMoveRequestPayload, 'targetLibraryName'> | null = null
   let crossfaderDirection: CrossfaderDirection = 0
   let crossfaderRepeatTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -123,10 +144,34 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
   const resolveDeckByShiftState = (event: KeyboardEvent): HorizontalBrowseDeckKey =>
     event.shiftKey ? 'bottom' : 'top'
 
+  const emitPreviewMoveRequest = (targetLibraryName: 'FilterLibrary' | 'CuratedLibrary') => {
+    if (!previewMoveTarget) return
+    emitter.emit('preview-transfer:open-dialog', {
+      ...previewMoveTarget,
+      targetLibraryName
+    } satisfies PreviewMoveRequestPayload)
+  }
+
   const handleKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented || !isHotkeysContextActive(event)) return
 
     const code = event.code
+    if (previewMoveTarget) {
+      if (code === 'KeyQ') {
+        stopKeyboardEvent(event)
+        if (event.repeat) return
+        emitPreviewMoveRequest('FilterLibrary')
+        return
+      }
+      if (code === 'KeyE') {
+        stopKeyboardEvent(event)
+        if (event.repeat) return
+        emitPreviewMoveRequest('CuratedLibrary')
+        return
+      }
+      stopKeyboardEvent(event)
+      return
+    }
     const deck = resolveDeckByShiftState(event)
 
     if (isHorizontalBrowsePhraseJumpHotkey(event)) {
@@ -243,10 +288,37 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
     clearCrossfaderKeyState()
   }
 
+  const handleWaveformPreviewState = (payload?: PreviewStatePayload) => {
+    if (
+      payload?.active &&
+      payload?.song?.filePath &&
+      payload?.sourceLibraryName &&
+      payload?.sourceSongListUUID
+    ) {
+      previewMoveTarget = {
+        song: { ...payload.song },
+        sourceLibraryName: String(payload.sourceLibraryName || '').trim(),
+        sourceSongListUUID: String(payload.sourceSongListUUID || '').trim(),
+        sourcePane:
+          payload.sourcePane === 'single' ||
+          payload.sourcePane === 'left' ||
+          payload.sourcePane === 'right'
+            ? payload.sourcePane
+            : ''
+      }
+      return
+    }
+    const payloadFilePath = String(payload?.filePath || '').trim()
+    if (!payloadFilePath || previewMoveTarget?.song.filePath === payloadFilePath) {
+      previewMoveTarget = null
+    }
+  }
+
   onMounted(() => {
     window.addEventListener('keydown', handleKeyDown, true)
     window.addEventListener('keyup', handleKeyUp, true)
     window.addEventListener('blur', handleWindowBlur)
+    emitter.on('waveform-preview:state', handleWaveformPreviewState)
   })
 
   onUnmounted(() => {
@@ -254,5 +326,6 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
     window.removeEventListener('keydown', handleKeyDown, true)
     window.removeEventListener('keyup', handleKeyUp, true)
     window.removeEventListener('blur', handleWindowBlur)
+    emitter.off('waveform-preview:state', handleWaveformPreviewState)
   })
 }

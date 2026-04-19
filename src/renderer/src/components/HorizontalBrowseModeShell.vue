@@ -383,6 +383,7 @@ const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
 const {
   selectSongListDialogVisible,
   selectSongListDialogTargetLibraryName,
+  selectSongListDialogActionMode,
   isDeckSongReadOnly,
   openDeckMoveDialog,
   handleDeckMoveSong,
@@ -1019,6 +1020,7 @@ onUnmounted(() => {
     <HorizontalBrowseDeckMoveDialog
       :visible="selectSongListDialogVisible"
       :library-name="selectSongListDialogTargetLibraryName"
+      :action-mode="selectSongListDialogActionMode"
       @confirm="handleDeckMoveSong"
       @cancel="handleDeckMoveDialogCancel"
     />

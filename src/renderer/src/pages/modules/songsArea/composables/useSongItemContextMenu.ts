@@ -15,6 +15,10 @@ import choiceDialog from '@renderer/components/choiceDialog'
 import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import {
+  resolveLibraryTransferActionLabelKey,
+  resolveLibraryTransferActionModeForSongList
+} from '@renderer/utils/libraryTransfer'
 
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
@@ -142,11 +146,16 @@ export function useSongItemContextMenu(
     return next
   }
 
-  const defaultMenuArr: IMenu[][] = [
+  const resolveMoveMenuName = (target: 'FilterLibrary' | 'CuratedLibrary') =>
+    resolveLibraryTransferActionLabelKey(
+      target,
+      resolveLibraryTransferActionModeForSongList(songsAreaState.songListUUID)
+    )
+  const createDefaultMenuArr = (): IMenu[][] => [
     [{ menuName: 'tracks.exportTracks' }],
     [
-      { menuName: 'library.moveToFilter' },
-      { menuName: 'library.moveToCurated' },
+      { menuName: resolveMoveMenuName('FilterLibrary') },
+      { menuName: resolveMoveMenuName('CuratedLibrary') },
       { menuName: 'library.addToMixtape' }
     ],
     [
@@ -159,7 +168,7 @@ export function useSongItemContextMenu(
     [{ menuName: 'tracks.clearTrackCache' }],
     [{ menuName: 'fingerprints.analyzeAndAdd' }]
   ]
-  const recycleMenuArr: IMenu[][] = [
+  const createRecycleMenuArr = (): IMenu[][] => [
     [{ menuName: 'recycleBin.restoreToOriginal' }],
     [{ menuName: 'tracks.exportTracks' }],
     [{ menuName: 'library.moveToFilter' }, { menuName: 'library.moveToCurated' }],
@@ -173,15 +182,19 @@ export function useSongItemContextMenu(
     [{ menuName: 'tracks.clearTrackCache' }],
     [{ menuName: 'fingerprints.analyzeAndAdd' }]
   ]
-  const mixtapeMenuArr: IMenu[][] = [
+  const createMixtapeMenuArr = (): IMenu[][] => [
     [{ menuName: 'tracks.exportTracks' }],
-    [{ menuName: 'library.addToMixtape' }],
+    [
+      { menuName: 'library.copyToFilter' },
+      { menuName: 'library.copyToCurated' },
+      { menuName: 'library.addToMixtape' }
+    ],
     [{ menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' }],
     [{ menuName: 'tracks.showInFileExplorer' }],
     [{ menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }]
   ]
-  const menuArr: Ref<IMenu[][]> = ref(defaultMenuArr)
+  const menuArr: Ref<IMenu[][]> = ref(createDefaultMenuArr())
 
   const showAndHandleSongContextMenu = async (
     event: MouseEvent,
@@ -203,10 +216,10 @@ export function useSongItemContextMenu(
     }
 
     const baseMenuArr = isMixtapeView()
-      ? mixtapeMenuArr
+      ? createMixtapeMenuArr()
       : isRecycleBinView
-        ? recycleMenuArr
-        : defaultMenuArr
+        ? createRecycleMenuArr()
+        : createDefaultMenuArr()
     menuArr.value = buildMenuArr(baseMenuArr, matchedCuratedArtists)
     const result = await rightClickMenu({
       menuArr: menuArr.value,
@@ -727,8 +740,10 @@ export function useSongItemContextMenu(
         return null
       }
       case 'library.moveToCurated':
+      case 'library.copyToCurated':
         return { action: 'openSelectSongListDialog', libraryName: 'CuratedLibrary' }
       case 'library.moveToFilter':
+      case 'library.copyToFilter':
         return { action: 'openSelectSongListDialog', libraryName: 'FilterLibrary' }
       case 'library.addToMixtape':
         return { action: 'openSelectSongListDialog', libraryName: 'MixtapeLibrary' }

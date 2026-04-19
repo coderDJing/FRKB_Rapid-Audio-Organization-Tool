@@ -1,8 +1,10 @@
 import { onMounted, onUnmounted, Ref, ref } from 'vue'
 import hotkeys, { KeyHandler } from 'hotkeys-js'
+import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
+import type { ISongInfo } from '../../../../../types/globals'
 
 // 使用 ReturnType 获取 useRuntimeStore 的返回类型，模拟 Store 类型
 type RuntimeStoreType = ReturnType<typeof useRuntimeStore>
@@ -35,6 +37,23 @@ interface PlayerState {
   isPlaying?: Readonly<Ref<boolean>> // 可选：传入播放状态以优化 space 键
 }
 
+type PreviewStatePayload = {
+  filePath?: string
+  active?: boolean
+  song?: ISongInfo | null
+  sourceLibraryName?: string
+  sourceSongListUUID?: string
+  sourcePane?: SongsAreaPaneKey | ''
+}
+
+type PreviewMoveRequestPayload = {
+  song: ISongInfo
+  sourceLibraryName: string
+  sourceSongListUUID: string
+  sourcePane: SongsAreaPaneKey | ''
+  targetLibraryName: 'FilterLibrary' | 'CuratedLibrary'
+}
+
 export function usePlayerHotkeys(
   actions: PlayerActions,
   state: PlayerState,
@@ -42,18 +61,73 @@ export function usePlayerHotkeys(
 ) {
   // 将 showDelConfirm 的管理移到内部，因为它是快捷键触发的副作用
   const internalShowDelConfirm = ref(false)
+  const previewMoveTarget = ref<{
+    filePath: string
+    song: ISongInfo
+    sourceLibraryName: string
+    sourceSongListUUID: string
+    sourcePane: SongsAreaPaneKey | ''
+  } | null>(null)
   const isReadOnlyPlaybackSource = () =>
     isRekordboxExternalPlaybackSource(
       runtime.playingData.playingSongListUUID,
       runtime.playingData.playingSong
     )
+  const clearPreviewMoveTarget = (filePath?: string) => {
+    if (!filePath) {
+      previewMoveTarget.value = null
+      return
+    }
+    if (previewMoveTarget.value?.filePath === filePath) {
+      previewMoveTarget.value = null
+    }
+  }
+  const handleWaveformPreviewState = (payload?: PreviewStatePayload) => {
+    const filePath = String(payload?.filePath || '').trim()
+    if (!payload?.active) {
+      clearPreviewMoveTarget(filePath)
+      return
+    }
+    const song = payload?.song
+    const sourceLibraryName = String(payload?.sourceLibraryName || '').trim()
+    const sourceSongListUUID = String(payload?.sourceSongListUUID || '').trim()
+    const sourcePane = payload?.sourcePane
+    if (!song?.filePath || !sourceLibraryName || !sourceSongListUUID) {
+      clearPreviewMoveTarget(filePath)
+      return
+    }
+    previewMoveTarget.value = {
+      filePath: String(song.filePath || '').trim(),
+      song: { ...song },
+      sourceLibraryName,
+      sourceSongListUUID,
+      sourcePane:
+        sourcePane === 'single' || sourcePane === 'left' || sourcePane === 'right' ? sourcePane : ''
+    }
+  }
+  const isPreviewMoveActive = () => previewMoveTarget.value !== null
+  const isAnySelectSongListDialogVisible = () =>
+    state.selectSongListDialogShow.value || runtime.selectSongListDialogShow
+  const emitPreviewMoveRequest = (targetLibraryName: 'FilterLibrary' | 'CuratedLibrary') => {
+    const target = previewMoveTarget.value
+    if (!target) return false
+    const payload: PreviewMoveRequestPayload = {
+      song: { ...target.song },
+      sourceLibraryName: target.sourceLibraryName,
+      sourceSongListUUID: target.sourceSongListUUID,
+      sourcePane: target.sourcePane,
+      targetLibraryName
+    }
+    emitter.emit('preview-transfer:open-dialog', payload)
+    return true
+  }
 
   const setupHotkeys = () => {
     const scope = 'windowGlobal' // 定义快捷键作用域
 
     const spaceHandler: KeyHandler = (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value) {
+      if (!state.waveformShow.value || isPreviewMoveActive()) {
         return
       }
       if (actions.togglePlayPause) {
@@ -75,7 +149,7 @@ export function usePlayerHotkeys(
 
     hotkeys('d,right', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value) {
+      if (!state.waveformShow.value || isPreviewMoveActive()) {
         return
       }
       actions.fastForward()
@@ -85,7 +159,7 @@ export function usePlayerHotkeys(
 
     hotkeys('a,left', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value) {
+      if (!state.waveformShow.value || isPreviewMoveActive()) {
         return
       }
       actions.fastBackward()
@@ -93,7 +167,11 @@ export function usePlayerHotkeys(
 
     hotkeys('s,down', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+      if (
+        !state.waveformShow.value ||
+        isPreviewMoveActive() ||
+        isAnySelectSongListDialogVisible()
+      ) {
         return
       }
       actions.nextSong()
@@ -101,7 +179,11 @@ export function usePlayerHotkeys(
 
     hotkeys('w,up', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+      if (
+        !state.waveformShow.value ||
+        isPreviewMoveActive() ||
+        isAnySelectSongListDialogVisible()
+      ) {
         return
       }
       actions.previousSong()
@@ -109,7 +191,11 @@ export function usePlayerHotkeys(
 
     hotkeys('r', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+      if (
+        !state.waveformShow.value ||
+        isPreviewMoveActive() ||
+        isAnySelectSongListDialogVisible()
+      ) {
         return
       }
       runtime.setting.enablePlaybackRange = !runtime.setting.enablePlaybackRange
@@ -118,7 +204,7 @@ export function usePlayerHotkeys(
 
     const deleteHandler: KeyHandler = (event, handler) => {
       event.preventDefault()
-      if (!state.waveformShow.value) {
+      if (!state.waveformShow.value || isPreviewMoveActive()) {
         return
       }
       // 检查是否是 Delete 键触发，并且歌曲列表区有选中的歌曲
@@ -156,23 +242,41 @@ export function usePlayerHotkeys(
 
     hotkeys('q', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+      if (
+        (!state.waveformShow.value && !isPreviewMoveActive()) ||
+        isAnySelectSongListDialogVisible()
+      ) {
         return
       }
+      if (emitPreviewMoveRequest('FilterLibrary')) {
+        return
+      }
+      if (!state.waveformShow.value) return
       actions.moveToListLibrary()
     })
 
     hotkeys('e', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+      if (
+        (!state.waveformShow.value && !isPreviewMoveActive()) ||
+        isAnySelectSongListDialogVisible()
+      ) {
         return
       }
+      if (emitPreviewMoveRequest('CuratedLibrary')) {
+        return
+      }
+      if (!state.waveformShow.value) return
       actions.moveToLikeLibrary()
     })
 
     hotkeys('`', scope, (event) => {
       event.preventDefault()
-      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+      if (
+        !state.waveformShow.value ||
+        isPreviewMoveActive() ||
+        isAnySelectSongListDialogVisible()
+      ) {
         return
       }
       actions.seekToPercent(0)
@@ -180,7 +284,11 @@ export function usePlayerHotkeys(
 
     hotkeys('1,2,3,4,5,6,7,8,9,0', scope, (event, handler) => {
       event.preventDefault()
-      if (!state.waveformShow.value || state.selectSongListDialogShow.value) {
+      if (
+        !state.waveformShow.value ||
+        isPreviewMoveActive() ||
+        isAnySelectSongListDialogVisible()
+      ) {
         return
       }
       const rawKey = handler.key
@@ -194,11 +302,13 @@ export function usePlayerHotkeys(
     // +/- 音量控制
     hotkeys('=,+,shift+=', scope, (event) => {
       event.preventDefault()
+      if (isPreviewMoveActive() || isAnySelectSongListDialogVisible()) return
       actions.volumeUp()
     })
 
     hotkeys('-', scope, (event) => {
       event.preventDefault()
+      if (isPreviewMoveActive() || isAnySelectSongListDialogVisible()) return
       actions.volumeDown()
     })
   }
@@ -222,10 +332,12 @@ export function usePlayerHotkeys(
 
   onMounted(() => {
     setupHotkeys()
+    emitter.on('waveform-preview:state', handleWaveformPreviewState)
   })
 
   onUnmounted(() => {
     cleanupHotkeys()
+    emitter.off('waveform-preview:state', handleWaveformPreviewState)
   })
 
   // 返回内部状态或方法（如果需要的话）

@@ -7,6 +7,7 @@
     "input": "Input",
     "delete": "Delete",
     "move": "Move",
+    "copy": "Copy",
     "export": "Export",
     "import": "Import",
     "setting": "Setting",
