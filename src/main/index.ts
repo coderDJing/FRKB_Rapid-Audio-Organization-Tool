@@ -54,6 +54,7 @@ import { registerMixtapeProjectTempoHandlers } from './ipc/mixtapeProjectTempoHa
 import { registerSongSearchHandlers } from './ipc/songSearchHandlers'
 import { registerPioneerDeviceLibraryHandlers } from './ipc/pioneerDeviceLibraryHandlers'
 import { registerRekordboxDesktopLibraryHandlers } from './ipc/rekordboxDesktopLibraryHandlers'
+import { registerRekordboxXmlExportHandlers } from './ipc/rekordboxXmlExportHandlers'
 import { registerHorizontalBrowseTransportHandlers } from './ipc/horizontalBrowseTransportHandlers'
 import { registerDevSongListTraceHandlers } from './ipc/devSongListTraceHandlers'
 import { registerHotCueHandlers } from './ipc/hotCueHandlers'
@@ -269,6 +270,7 @@ registerMixtapeProjectTempoHandlers()
 registerSongSearchHandlers()
 registerPioneerDeviceLibraryHandlers()
 registerRekordboxDesktopLibraryHandlers()
+registerRekordboxXmlExportHandlers()
 registerHorizontalBrowseTransportHandlers()
 registerHotCueHandlers()
 registerMemoryCueHandlers()

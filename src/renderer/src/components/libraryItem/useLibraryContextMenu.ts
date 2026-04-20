@@ -4,6 +4,7 @@ import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import exportDialog from '@renderer/components/exportDialog'
+import { openRekordboxXmlExportForPlaylist } from '@renderer/utils/rekordboxXmlExport'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
@@ -100,7 +101,11 @@ export function useLibraryContextMenu({
       ]
     }
     return [
-      [{ menuName: 'tracks.importTracks' }, { menuName: 'tracks.exportTracks' }],
+      [
+        { menuName: 'tracks.importTracks' },
+        { menuName: 'tracks.exportTracks' },
+        { menuName: 'rekordboxXmlExport.menuExportPlaylist' }
+      ],
       [{ menuName: 'playlist.showInLeftPane' }, { menuName: 'playlist.showInRightPane' }],
       [
         { menuName: 'common.rename' },
@@ -329,6 +334,48 @@ export function useLibraryContextMenu({
               runtime.playingData.playingSong = null
             }
           }
+        }
+        break
+      }
+      case 'rekordboxXmlExport.menuExportPlaylist': {
+        if (runtime.isProgressing) {
+          await confirmTaskBusy()
+          return
+        }
+        if (props.libraryName !== 'FilterLibrary' && props.libraryName !== 'CuratedLibrary') {
+          await confirm({
+            title: t('rekordboxXmlExport.failureTitle'),
+            content: [t('rekordboxXmlExport.unsupportedSource')],
+            confirmShow: false
+          })
+          return
+        }
+        const currentDirData = getDirData()
+        const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
+        runtime.isProgressing = true
+        try {
+          const summary = await openRekordboxXmlExportForPlaylist({
+            sourceLibraryName: props.libraryName,
+            songListUUID: props.uuid,
+            songListPath,
+            playlistName: String(currentDirData?.dirName || '').trim()
+          })
+          if (summary?.mode === 'move') {
+            clearSongsAreaPaneBySongListUUID(runtime, props.uuid)
+            if (runtime.playingData.playingSongListUUID === props.uuid) {
+              runtime.playingData.playingSongListUUID = ''
+              runtime.playingData.playingSongListData = []
+              runtime.playingData.playingSong = null
+            }
+            if (runtime.setting.showPlaylistTrackCount) {
+              trackCount.value = 0
+            }
+            try {
+              emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
+            } catch {}
+          }
+        } finally {
+          runtime.isProgressing = false
         }
         break
       }

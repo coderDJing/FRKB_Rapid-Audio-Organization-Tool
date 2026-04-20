@@ -5,6 +5,7 @@ import { t } from '@renderer/utils/translate'
 import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it's a default export or easily callable
 import confirm from '@renderer/components/confirmDialog'
 import exportDialog from '@renderer/components/exportDialog'
+import { openRekordboxXmlExportForSelectedTracks } from '@renderer/utils/rekordboxXmlExport'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import emitter from '@renderer/utils/mitt'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
@@ -119,6 +120,27 @@ export function useSongItemContextMenu(
   const cloneMenuArr = (source: IMenu[][]) =>
     source.map((group) => group.map((item) => ({ ...item })))
 
+  const confirmTaskBusy = async () => {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+  }
+
+  const resolveCoreLibraryName = (): 'FilterLibrary' | 'CuratedLibrary' | '' => {
+    const dirPath = String(
+      libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
+    ).replace(/\\/g, '/')
+    if (dirPath === 'library/FilterLibrary' || dirPath.startsWith('library/FilterLibrary/')) {
+      return 'FilterLibrary'
+    }
+    if (dirPath === 'library/CuratedLibrary' || dirPath.startsWith('library/CuratedLibrary/')) {
+      return 'CuratedLibrary'
+    }
+    return ''
+  }
+
   const resolveCuratedArtistMatches = (currentSong: ISongInfo) => {
     if (runtime.setting.enableCuratedArtistTracking === false) return []
     if (runtime.libraryAreaSelected !== 'FilterLibrary') return []
@@ -152,7 +174,10 @@ export function useSongItemContextMenu(
       resolveLibraryTransferActionModeForSongList(songsAreaState.songListUUID)
     )
   const createDefaultMenuArr = (): IMenu[][] => [
-    [{ menuName: 'tracks.exportTracks' }],
+    [
+      { menuName: 'rekordboxXmlExport.menuExportSelectedTracks' },
+      { menuName: 'tracks.exportTracks' }
+    ],
     [
       { menuName: resolveMoveMenuName('FilterLibrary') },
       { menuName: resolveMoveMenuName('CuratedLibrary') },
@@ -748,6 +773,10 @@ export function useSongItemContextMenu(
       case 'library.addToMixtape':
         return { action: 'openSelectSongListDialog', libraryName: 'MixtapeLibrary' }
       case 'tracks.exportTracks': {
+        if (runtime.isProgressing) {
+          await confirmTaskBusy()
+          return null
+        }
         const exportResult = await exportDialog({ title: 'tracks.title' })
         if (exportResult !== 'cancel') {
           const { folderPathVal, deleteSongsAfterExport } = exportResult
@@ -787,6 +816,67 @@ export function useSongItemContextMenu(
             emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
             return { action: 'songsRemoved', paths: songsToExportFilePaths }
           }
+        }
+        break
+      }
+      case 'rekordboxXmlExport.menuExportSelectedTracks': {
+        if (runtime.isProgressing) {
+          await confirmTaskBusy()
+          return null
+        }
+        const sourceLibraryName = resolveCoreLibraryName()
+        if (!sourceLibraryName) {
+          await confirm({
+            title: t('rekordboxXmlExport.failureTitle'),
+            content: [t('rekordboxXmlExport.unsupportedSource')],
+            confirmShow: false
+          })
+          return null
+        }
+        const selectedFilePathSet = new Set(resolveSelectedFilePaths())
+        const selectedSongs = songsAreaState.songInfoArr.filter((item) =>
+          selectedFilePathSet.has(item.filePath)
+        )
+        if (!selectedSongs.length) {
+          await confirm({
+            title: t('rekordboxXmlExport.failureTitle'),
+            content: [t('rekordboxXmlExport.noTracksToExport')],
+            confirmShow: false
+          })
+          return null
+        }
+        runtime.isProgressing = true
+        try {
+          const summary = await openRekordboxXmlExportForSelectedTracks({
+            tracks: selectedSongs,
+            sourceLibraryName,
+            songListUUID: songsAreaState.songListUUID
+          })
+          if (summary && summary.mode === 'move' && summary.sourceFilePaths.length > 0) {
+            if (isMixtapeView()) {
+              songsAreaState.selectedSongFilePath.length = 0
+            } else {
+              songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
+                (item) => !summary.sourceFilePaths.includes(item)
+              )
+            }
+            if (songsAreaState.songListUUID === runtime.playingData.playingSongListUUID) {
+              if (
+                runtime.playingData.playingSong &&
+                summary.sourceFilePaths.includes(runtime.playingData.playingSong.filePath)
+              ) {
+                runtime.playingData.playingSong = null
+              }
+            }
+            emitter.emit('songsRemoved', {
+              listUUID: songsAreaState.songListUUID,
+              paths: summary.sourceFilePaths
+            })
+            emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
+            return { action: 'songsRemoved', paths: summary.sourceFilePaths }
+          }
+        } finally {
+          runtime.isProgressing = false
         }
         break
       }
