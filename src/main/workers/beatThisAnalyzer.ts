@@ -21,6 +21,11 @@ type BeatThisAnalyzeResult = {
   downbeatCoverageScore: number
   downbeatStabilityScore: number
   qualityScore: number
+  rawFirstBeatMs?: number
+  anchorCorrectionMs?: number
+  anchorConfidenceScore?: number
+  anchorMatchedBeatCount?: number
+  anchorStrategy?: string
   windowStartSec?: number
   windowDurationSec?: number
   windowIndex?: number
@@ -136,6 +141,11 @@ const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeR
     Math.min(1, Number(input?.downbeatStabilityScore) || 0)
   )
   const qualityScore = Math.max(0, Math.min(1, Number(input?.qualityScore) || 0))
+  const rawFirstBeatMs = Number(input?.rawFirstBeatMs)
+  const anchorCorrectionMs = Number(input?.anchorCorrectionMs)
+  const anchorConfidenceScore = Math.max(0, Math.min(1, Number(input?.anchorConfidenceScore) || 0))
+  const anchorMatchedBeatCount = Math.max(0, Math.floor(Number(input?.anchorMatchedBeatCount) || 0))
+  const anchorStrategy = String(input?.anchorStrategy || '').trim()
 
   if (!Number.isFinite(bpm) || bpm <= 0) return null
   if (!Number.isFinite(firstBeatMs) || firstBeatMs < 0) return null
@@ -155,6 +165,13 @@ const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeR
     downbeatCoverageScore: Number(downbeatCoverageScore.toFixed(6)),
     downbeatStabilityScore: Number(downbeatStabilityScore.toFixed(6)),
     qualityScore: Number(qualityScore.toFixed(6)),
+    rawFirstBeatMs: Number.isFinite(rawFirstBeatMs) ? Number(rawFirstBeatMs.toFixed(3)) : undefined,
+    anchorCorrectionMs: Number.isFinite(anchorCorrectionMs)
+      ? Number(anchorCorrectionMs.toFixed(3))
+      : undefined,
+    anchorConfidenceScore: Number(anchorConfidenceScore.toFixed(6)),
+    anchorMatchedBeatCount,
+    anchorStrategy: anchorStrategy || undefined,
     windowStartSec: Number(Number(input?.windowStartSec || 0).toFixed(3)),
     windowDurationSec: Number(Number(input?.windowDurationSec || 0).toFixed(3)),
     windowIndex: Math.max(0, Math.floor(Number(input?.windowIndex) || 0))
@@ -502,11 +519,20 @@ export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
       const absoluteResult: BeatThisAnalyzeResult = {
         ...localResult,
         firstBeatMs: Number((localResult.firstBeatMs + windowStartSec * 1000).toFixed(3)),
+        rawFirstBeatMs: Number(
+          (
+            Number(
+              localResult.rawFirstBeatMs !== undefined
+                ? localResult.rawFirstBeatMs
+                : localResult.firstBeatMs
+            ) +
+            windowStartSec * 1000
+          ).toFixed(3)
+        ),
         windowStartSec: Number(windowStartSec.toFixed(3)),
         windowDurationSec: Number(sliced.durationSec.toFixed(3)),
         windowIndex
       }
-
       if (!bestResult || compareWindowResult(absoluteResult, bestResult) > 0) {
         bestResult = absoluteResult
       }
@@ -520,6 +546,8 @@ export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
     windowIndex += 1
   }
 
-  if (bestResult) return bestResult
+  if (bestResult) {
+    return bestResult
+  }
   throw lastError || new Error('Beat This! sliding-window analysis failed')
 }
