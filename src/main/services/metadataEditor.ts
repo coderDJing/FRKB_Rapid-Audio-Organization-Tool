@@ -321,6 +321,24 @@ export async function readTrackMetadata(filePath: string): Promise<ITrackMetadat
   }
 }
 
+export async function readTrackSongInfo(filePath: string): Promise<ISongInfo | null> {
+  try {
+    const metadata = await parseMetadata(filePath)
+    let songInfoMeta = metadata
+    if (process.platform === 'win32' && path.extname(filePath).toLowerCase() === '.wav') {
+      try {
+        const info = await readWavRiffInfoWindows(filePath)
+        if (info) {
+          songInfoMeta = mergeWavInfoMetadata(metadata, info)
+        }
+      } catch {}
+    }
+    return buildSongInfo(filePath, songInfoMeta)
+  } catch {
+    return null
+  }
+}
+
 export async function updateTrackMetadata(
   payload: ITrackMetadataUpdatePayload
 ): Promise<{ songInfo: ISongInfo; detail: ITrackMetadataDetail; renamedFrom?: string }> {
@@ -525,5 +543,6 @@ export async function updateTrackMetadata(
 
 export default {
   readTrackMetadata,
+  readTrackSongInfo,
   updateTrackMetadata
 }

@@ -16,6 +16,16 @@ import {
 import { isSupportedAudioPath } from '../services/externalOpenQueue'
 import { moveFileToRecycleBin, normalizeRendererPlaylistPath } from '../recycleBinService'
 import { findLibraryNodeByPath, findSongListRootByPath } from '../libraryTreeDb'
+import {
+  cancelPlaylistBatchRename,
+  executePlaylistBatchRename,
+  previewPlaylistBatchRename
+} from '../services/playlistBatchRename'
+import type {
+  IBatchRenameExecutionRequestItem,
+  IBatchRenameTemplateSegment,
+  IBatchRenameTrackInput
+} from '../../types/globals'
 
 type DeduplicateSongListPayload =
   | string
@@ -181,6 +191,52 @@ export function registerPlaylistHandlers() {
       return { songListUuid: '', songListPath: '' }
     }
   })
+
+  ipcMain.handle(
+    'playlist:batchRename:preview',
+    async (
+      _e,
+      payload: {
+        tracks?: IBatchRenameTrackInput[]
+        templateSegments?: IBatchRenameTemplateSegment[]
+      }
+    ) => {
+      const tracks = Array.isArray(payload?.tracks) ? payload.tracks : []
+      const templateSegments = Array.isArray(payload?.templateSegments)
+        ? payload.templateSegments
+        : []
+      return await previewPlaylistBatchRename(tracks, templateSegments)
+    }
+  )
+
+  ipcMain.handle(
+    'playlist:batchRename:execute',
+    async (
+      _e,
+      payload: {
+        taskId?: string
+        items?: IBatchRenameExecutionRequestItem[]
+      }
+    ) => {
+      return await executePlaylistBatchRename({
+        taskId: String(payload?.taskId || ''),
+        items: Array.isArray(payload?.items) ? payload.items : []
+      })
+    }
+  )
+
+  ipcMain.handle(
+    'playlist:batchRename:cancel',
+    async (_e, payload: { taskId?: string } | string) => {
+      const taskId =
+        typeof payload === 'string'
+          ? payload
+          : payload && typeof payload === 'object'
+            ? String(payload.taskId || '')
+            : ''
+      return cancelPlaylistBatchRename(taskId)
+    }
+  )
 
   ipcMain.handle(
     'deduplicateSongListByFingerprint',

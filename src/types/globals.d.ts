@@ -290,6 +290,128 @@ interface IMusicBrainzApplyPayload {
   coverDataUrl?: string | null
 }
 
+type IBatchRenameTemplateToken =
+  | 'title'
+  | 'artist'
+  | 'bpm'
+  | 'key'
+  | 'album'
+  | 'genre'
+  | 'label'
+  | 'year'
+  | 'trackNo'
+  | 'fileName'
+  | 'albumArtist'
+  | 'discNo'
+  | 'comment'
+  | 'duration'
+
+type IBatchRenameTemplateSegment =
+  | {
+      id: string
+      type: 'text'
+      value: string
+    }
+  | {
+      id: string
+      type: 'token'
+      token: IBatchRenameTemplateToken
+    }
+
+interface IBatchRenameTemplatePreset {
+  id: string
+  name: string
+  segments: IBatchRenameTemplateSegment[]
+  createdAt: number
+  updatedAt: number
+  isDefault?: boolean
+  isBuiltin?: boolean
+}
+
+interface IBatchRenameTrackInput {
+  order: number
+  songListUUID?: string
+  songListPath?: string
+  filePath: string
+  fileName: string
+  title?: string
+  artist?: string
+  album?: string
+  genre?: string
+  label?: string
+  duration?: string
+  key?: string
+  bpm?: number
+}
+
+type IBatchRenamePreviewStatus =
+  | 'executable'
+  | 'unchanged'
+  | 'invalid_chars'
+  | 'too_long'
+  | 'source_missing'
+  | 'invalid_name'
+
+interface IBatchRenamePreviewItem {
+  id: string
+  order: number
+  songListUUID?: string
+  filePath: string
+  originalFileName: string
+  targetBaseName: string
+  targetFileName: string
+  status: IBatchRenamePreviewStatus
+  track: IBatchRenameTrackInput
+}
+
+interface IBatchRenamePreviewResult {
+  items: IBatchRenamePreviewItem[]
+}
+
+type IBatchRenameExecutionStatus =
+  | 'success'
+  | 'hand_skipped'
+  | 'unchanged'
+  | 'invalid_chars'
+  | 'too_long'
+  | 'invalid_name'
+  | 'source_missing'
+  | 'file_in_use'
+  | 'permission_denied'
+  | 'target_exists'
+  | 'cancelled'
+  | 'failed'
+
+interface IBatchRenameExecutionRequestItem extends IBatchRenamePreviewItem {
+  selected: boolean
+}
+
+interface IBatchRenameExecutionResultItem {
+  id: string
+  order: number
+  filePath: string
+  originalFileName: string
+  targetFileName: string
+  status: IBatchRenameExecutionStatus
+}
+
+interface IBatchRenameExecutionSummary {
+  total: number
+  success: number
+  failed: number
+  skipped: number
+  cancelled: number
+}
+
+interface IBatchRenameExecutionResult {
+  summary: IBatchRenameExecutionSummary
+  items: IBatchRenameExecutionResultItem[]
+  updates: Array<{
+    song: ISongInfo
+    oldFilePath: string
+  }>
+}
+
 // 元数据更新请求结构
 interface ITrackMetadataUpdatePayload {
   filePath: string
@@ -523,6 +645,18 @@ export {
   IPioneerPreviewWaveformColumn,
   IPioneerPreviewWaveformData,
   ITrackMetadataDetail,
+  IBatchRenameTemplateToken,
+  IBatchRenameTemplateSegment,
+  IBatchRenameTemplatePreset,
+  IBatchRenameTrackInput,
+  IBatchRenamePreviewStatus,
+  IBatchRenamePreviewItem,
+  IBatchRenamePreviewResult,
+  IBatchRenameExecutionStatus,
+  IBatchRenameExecutionRequestItem,
+  IBatchRenameExecutionResultItem,
+  IBatchRenameExecutionSummary,
+  IBatchRenameExecutionResult,
   IRekordboxSourceKind,
   IRekordboxSourceLibraryType,
   IRekordboxLibraryBrowserState,

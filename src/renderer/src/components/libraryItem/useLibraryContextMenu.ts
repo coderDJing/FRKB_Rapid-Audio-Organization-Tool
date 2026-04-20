@@ -91,7 +91,8 @@ export function useLibraryContextMenu({
       }
       return [
         [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
-        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
+        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }],
+        [{ menuName: 'playlist.batchRename' }]
       ]
     }
     if (dirData.type === 'mixtapeList') {
@@ -113,7 +114,7 @@ export function useLibraryContextMenu({
         { menuName: 'playlist.emptyPlaylist' }
       ],
       [{ menuName: 'tracks.showInFileExplorer' }],
-      [{ menuName: 'metadata.autoFillMenu' }],
+      [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
       [{ menuName: 'playlist.fingerprintDeduplicate' }],
       [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }],
       [{ menuName: 'fingerprints.analyzeAndAdd' }]
@@ -121,6 +122,26 @@ export function useLibraryContextMenu({
   }
 
   const menuArr = ref<IMenu[][]>(buildMenuArr())
+
+  const collectSongListTargets = (
+    root: IDir
+  ): Array<{ uuid: string; path: string; name: string }> => {
+    const result: Array<{ uuid: string; path: string; name: string }> = []
+    const traverse = (node: IDir) => {
+      if (node.type === 'songList') {
+        result.push({
+          uuid: node.uuid,
+          path: libraryUtils.findDirPathByUuid(node.uuid),
+          name: node.dirName
+        })
+      }
+      if (Array.isArray(node.children)) {
+        node.children.forEach((child) => traverse(child))
+      }
+    }
+    traverse(root)
+    return result
+  }
 
   const deleteDir = async () => {
     if (runtime.isProgressing) {
@@ -466,6 +487,42 @@ export function useLibraryContextMenu({
             emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
           } catch {}
         }
+        break
+      }
+      case 'playlist.batchRename': {
+        if (runtime.isProgressing) {
+          await confirmTaskBusy()
+          return
+        }
+        const rootNode = libraryUtils.getLibraryTreeByUUID(props.uuid)
+        if (!rootNode) {
+          return
+        }
+        const songLists =
+          rootNode.type === 'songList'
+            ? [
+                {
+                  uuid: rootNode.uuid,
+                  path: libraryUtils.findDirPathByUuid(rootNode.uuid),
+                  name: rootNode.dirName
+                }
+              ]
+            : collectSongListTargets(rootNode)
+        if (!songLists.length) {
+          await confirm({
+            title: t('dialog.hint'),
+            content: [t('batchRename.noEligibleTracks')],
+            confirmShow: false
+          })
+          return
+        }
+        const { default: openPlaylistBatchRenameDialog } = await import(
+          '@renderer/components/playlistBatchRename'
+        )
+        await openPlaylistBatchRenameDialog({
+          title: t('batchRename.dialogTitle'),
+          songLists
+        })
         break
       }
       case 'tracks.convertFormat': {
