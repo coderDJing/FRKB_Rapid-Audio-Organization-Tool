@@ -1,5 +1,12 @@
 import { computed } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import {
+  formatAnalysisRuntimeBytes,
+  isAnalysisRuntimeDownloadActiveStatus,
+  resolveAnalysisRuntimeDownloadPercent,
+  resolveAnalysisRuntimeDownloadText,
+  resolveAnalysisRuntimeDownloadTitle
+} from '@renderer/utils/analysisRuntimeDownloadUi'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 type ConfirmDialogFn = typeof import('@renderer/components/confirmDialog').default
@@ -91,32 +98,48 @@ const normalizeAnalysisRuntimePreferredInfo = (value: unknown): AnalysisRuntimeP
   }
 }
 
-const formatAnalysisRuntimeBytes = (bytes: number) => {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = Math.max(0, Number(bytes) || 0)
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-  const digits = unitIndex === 0 ? 0 : unitIndex === 1 ? 1 : 2
-  return `${value.toFixed(digits)} ${units[unitIndex]}`
-}
-
 export const useAnalysisRuntimeDownload = (options: {
   runtime: ReturnType<typeof useRuntimeStore>
   t: TranslateFn
   confirmDialog: ConfirmDialogFn
 }) => {
   let analysisRuntimePromptBusy = false
+  let analysisRuntimeDownloadProgressHintAt = 0
+
+  const showAnalysisRuntimeDownloadInProgressHint = async () => {
+    const now = Date.now()
+    if (now - analysisRuntimeDownloadProgressHintAt < 1200) return
+    analysisRuntimeDownloadProgressHintAt = now
+    const state = options.runtime.analysisRuntime.state
+    const title = state.title
+      ? options.t('analysisRuntime.downloadInProgressTitle', { title: state.title })
+      : options.t('analysisRuntime.downloadInProgressTitleGeneric')
+    await options.confirmDialog({
+      title,
+      content: [
+        options.t('analysisRuntime.downloadInProgressHint'),
+        options.t('analysisRuntime.downloadInProgressProgressHint')
+      ],
+      confirmShow: false,
+      textAlign: 'left',
+      innerWidth: 560,
+      innerHeight: 0
+    })
+  }
 
   const applyAnalysisRuntimeStatus = (params: { preferred?: unknown; state?: unknown }) => {
+    const prevStatus = options.runtime.analysisRuntime.state.status
     const preferred = normalizeAnalysisRuntimePreferredInfo(params.preferred)
     const state = normalizeAnalysisRuntimeDownloadState(params.state)
     options.runtime.analysisRuntime.preferred = preferred
     options.runtime.analysisRuntime.state = state
     options.runtime.analysisRuntime.available =
       preferred.alreadyAvailable || state.status === 'ready'
+    const nextActive = isAnalysisRuntimeDownloadActiveStatus(state.status)
+    const prevActive = isAnalysisRuntimeDownloadActiveStatus(prevStatus)
+    if ((nextActive && !prevActive) || !nextActive) {
+      options.runtime.setAnalysisRuntimeDownloadOverlayMinimized(false)
+    }
     if (
       !options.runtime.analysisRuntime.available &&
       options.runtime.mainWindowBrowseMode === 'horizontal'
@@ -139,47 +162,20 @@ export const useAnalysisRuntimeDownload = (options: {
 
   const analysisRuntimeDownloadVisible = computed(() => {
     const status = options.runtime.analysisRuntime.state.status
-    return status === 'downloading' || status === 'extracting'
+    return isAnalysisRuntimeDownloadActiveStatus(status)
   })
 
   const analysisRuntimeDownloadPercent = computed(() =>
-    Math.max(0, Math.min(100, options.runtime.analysisRuntime.state.percent || 0))
+    resolveAnalysisRuntimeDownloadPercent(options.runtime.analysisRuntime.state)
   )
 
-  const analysisRuntimeDownloadTitle = computed(() => {
-    const { title } = options.runtime.analysisRuntime.state
-    if (title) {
-      return options.t('analysisRuntime.downloadTitle', {
-        title
-      })
-    }
-    return options.t('analysisRuntime.downloadTitleGeneric')
-  })
+  const analysisRuntimeDownloadTitle = computed(() =>
+    resolveAnalysisRuntimeDownloadTitle(options.t, options.runtime.analysisRuntime.state)
+  )
 
-  const analysisRuntimeDownloadText = computed(() => {
-    const state = options.runtime.analysisRuntime.state
-    if (state.status === 'downloading') {
-      const totalBytes = state.totalBytes || state.archiveSize
-      if (totalBytes > 0) {
-        return options.t('analysisRuntime.downloadProgressText', {
-          downloaded: formatAnalysisRuntimeBytes(state.downloadedBytes),
-          total: formatAnalysisRuntimeBytes(totalBytes),
-          percent: analysisRuntimeDownloadPercent.value
-        })
-      }
-    }
-    if (state.status === 'extracting') {
-      return options.t('analysisRuntime.extractingText')
-    }
-    return (
-      state.message ||
-      options.t('analysisRuntime.downloadProgressText', {
-        downloaded: formatAnalysisRuntimeBytes(state.downloadedBytes),
-        total: formatAnalysisRuntimeBytes(state.totalBytes || state.archiveSize),
-        percent: analysisRuntimeDownloadPercent.value
-      })
-    )
-  })
+  const analysisRuntimeDownloadText = computed(() =>
+    resolveAnalysisRuntimeDownloadText(options.t, options.runtime.analysisRuntime.state)
+  )
 
   const resolvePromptResultFromCurrentState = (): AnalysisRuntimePromptResult => {
     if (options.runtime.analysisRuntime.available) return 'ready'
@@ -191,12 +187,25 @@ export const useAnalysisRuntimeDownload = (options: {
   const promptAnalysisRuntimeDownload = async (
     source: AnalysisRuntimePromptSource
   ): Promise<AnalysisRuntimePromptResult> => {
-    if (analysisRuntimePromptBusy) return resolvePromptResultFromCurrentState()
+    if (analysisRuntimePromptBusy) {
+      const currentResult = resolvePromptResultFromCurrentState()
+      if (currentResult === 'started' && source !== 'startup') {
+        options.runtime.setAnalysisRuntimeDownloadOverlayMinimized(false)
+        await showAnalysisRuntimeDownloadInProgressHint()
+      }
+      return currentResult
+    }
     analysisRuntimePromptBusy = true
     try {
       const { preferred, state } = await refreshAnalysisRuntimeStatus()
       if (options.runtime.analysisRuntime.available) return 'ready'
-      if (state.status === 'downloading' || state.status === 'extracting') return 'started'
+      if (isAnalysisRuntimeDownloadActiveStatus(state.status)) {
+        if (source !== 'startup') {
+          options.runtime.setAnalysisRuntimeDownloadOverlayMinimized(false)
+          await showAnalysisRuntimeDownloadInProgressHint()
+        }
+        return 'started'
+      }
 
       if (!preferred.supported) {
         if (source !== 'startup') {

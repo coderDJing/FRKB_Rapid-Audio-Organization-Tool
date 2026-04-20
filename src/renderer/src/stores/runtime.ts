@@ -138,6 +138,7 @@ interface Runtime {
   isProgressing: boolean
   analysisRuntime: {
     available: boolean
+    downloadOverlayMinimized: boolean
     preferred: AnalysisRuntimePreferredInfo
     state: AnalysisRuntimeDownloadState
   }
@@ -226,6 +227,7 @@ export const useRuntimeStore = defineStore('runtime', {
       isProgressing: false, //正在执行某计算或IO任务
       analysisRuntime: {
         available: false,
+        downloadOverlayMinimized: false,
         preferred: {
           supported: false,
           downloadable: false,
@@ -350,6 +352,9 @@ export const useRuntimeStore = defineStore('runtime', {
     }
   },
   actions: {
+    setAnalysisRuntimeDownloadOverlayMinimized(minimized: boolean) {
+      this.analysisRuntime.downloadOverlayMinimized = minimized
+    },
     setSongsAreaActivePane(pane: SongsAreaPaneKey) {
       this.songsAreaPanels.activePane = pane
       this.songsArea = this.songsAreaPanels.panes[pane]

@@ -4,6 +4,12 @@ import { i18n } from '@renderer/i18n'
 import confirm from '@renderer/components/confirmDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
+import {
+  isAnalysisRuntimeDownloadActiveStatus,
+  resolveAnalysisRuntimeDownloadPercent,
+  resolveAnalysisRuntimeDownloadText,
+  resolveAnalysisRuntimeDownloadTitle
+} from '@renderer/utils/analysisRuntimeDownloadUi'
 const runtime = useRuntimeStore()
 
 const currentLocale = computed(() => i18n.global.locale.value)
@@ -45,7 +51,23 @@ type Task = {
   disableProgressTransition?: boolean
 }
 const tasks = ref<Task[]>([])
-const showTotalRow = ref(tasks.value.length === 0)
+const analysisRuntimeTaskVisible = computed(() =>
+  isAnalysisRuntimeDownloadActiveStatus(runtime.analysisRuntime.state.status)
+)
+const analysisRuntimeTaskTitle = computed(() =>
+  resolveAnalysisRuntimeDownloadTitle(t, runtime.analysisRuntime.state)
+)
+const analysisRuntimeTaskText = computed(() =>
+  resolveAnalysisRuntimeDownloadText(t, runtime.analysisRuntime.state)
+)
+const analysisRuntimeTaskPercent = computed(() =>
+  resolveAnalysisRuntimeDownloadPercent(runtime.analysisRuntime.state)
+)
+const analysisRuntimeOverlayMinimized = computed(
+  () => runtime.analysisRuntime.downloadOverlayMinimized
+)
+const hasAnyVisibleTask = computed(() => analysisRuntimeTaskVisible.value || tasks.value.length > 0)
+const showTotalRow = ref(!hasAnyVisibleTask.value)
 const cancelMenuTaskId = ref<string | null>(null)
 const backgroundTaskId = 'key-analysis.background'
 const BACKGROUND_HIDE_DELAY_MS = 6000
@@ -312,14 +334,11 @@ window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) =
   upsertTask(String(titleKey), Number(nowNum) || 0, Number(total) || 0, !!noNumFlag)
 })
 
-watch(
-  () => tasks.value.length,
-  (len) => {
-    if (len > 0) {
-      showTotalRow.value = false
-    }
+watch(hasAnyVisibleTask, (visible) => {
+  if (visible) {
+    showTotalRow.value = false
   }
-)
+})
 
 watch(
   () => runtime.setting?.showIdleAnalysisStatus,
@@ -335,9 +354,13 @@ watch(
 )
 
 const handleAfterLeave = () => {
-  if (tasks.value.length === 0) {
+  if (!hasAnyVisibleTask.value) {
     showTotalRow.value = true
   }
+}
+
+const restoreAnalysisRuntimeOverlay = () => {
+  runtime.setAnalysisRuntimeDownloadOverlayMinimized(false)
 }
 
 const cancelTask = async (task: Task) => {
@@ -492,7 +515,32 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
 })
 </script>
 <template>
-  <div class="bottom-info-area" :class="{ empty: tasks.length === 0 }">
+  <div class="bottom-info-area" :class="{ empty: !hasAnyVisibleTask }">
+    <div v-if="analysisRuntimeTaskVisible" class="task-row task-row--analysis-runtime">
+      <div class="spinner">
+        <div class="loading">
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+        </div>
+      </div>
+      <div class="label label--stacked">
+        <span class="label__title">{{ analysisRuntimeTaskTitle }}</span>
+        <span class="label__detail">{{ analysisRuntimeTaskText }}</span>
+      </div>
+      <div class="container">
+        <div class="progress">
+          <div class="progress-bar" :style="{ width: `${analysisRuntimeTaskPercent}%` }" />
+        </div>
+      </div>
+      <div v-if="analysisRuntimeOverlayMinimized" class="actions">
+        <button class="task-btn" type="button" @click="restoreAnalysisRuntimeOverlay">
+          {{ t('analysisRuntime.restoreOverlay') }}
+        </button>
+      </div>
+    </div>
     <TransitionGroup
       name="progress-fade"
       tag="div"
@@ -897,6 +945,61 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   height: 20px;
   line-height: 20px;
   padding: 0 5px;
+}
+
+.label--stacked {
+  min-width: 0;
+  width: max-content;
+  max-width: min(48vw, 540px);
+  height: auto;
+  line-height: 1.3;
+  padding: 1px 8px 1px 5px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+}
+
+.label__title,
+.label__detail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label__title {
+  font-size: 10px;
+  color: var(--text);
+}
+
+.label__detail {
+  font-size: 9px;
+  color: var(--text-weak);
+}
+
+.task-row--analysis-runtime {
+  min-height: 28px;
+  height: auto;
+}
+
+.task-btn {
+  border: 1px solid var(--divider);
+  background: transparent;
+  color: var(--text);
+  border-radius: 4px;
+  padding: 0 8px;
+  height: 18px;
+  line-height: 16px;
+  box-sizing: border-box;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.task-btn:hover {
+  background: var(--hover);
+  border-color: var(--text-weak);
 }
 .total-row {
   display: flex;

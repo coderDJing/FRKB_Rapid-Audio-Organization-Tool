@@ -3,6 +3,14 @@ import fs from 'node:fs'
 import path = require('path')
 
 const DEMUCS_DEV_ROOT_ENV = 'FRKB_DEMUCS_ROOT'
+const IGNORE_BUNDLED_DEMUCS_RUNTIME_ENV = 'FRKB_IGNORE_BUNDLED_DEMUCS_RUNTIME'
+
+const shouldIgnoreBundledDemucsRuntime = () => {
+  const raw = String(process.env[IGNORE_BUNDLED_DEMUCS_RUNTIME_ENV] || '')
+    .trim()
+    .toLowerCase()
+  return raw === '1' || raw === 'true'
+}
 
 export const resolveDemucsPlatformDir = () => {
   if (process.platform === 'win32') return 'win32-x64'
@@ -54,6 +62,25 @@ const resolveExistingBundledDemucsSubPath = (segments: string[]): string => {
 
 export function resolveBundledDemucsRootPath(): string {
   return resolveBundledDemucsRootCandidates()[0] || resolveDefaultBundledDemucsRootPath()
+}
+
+export function resolveBundledDemucsPlatformRootCandidates(): string[] {
+  const candidates: string[] = []
+  const seen = new Set<string>()
+  const addCandidate = (candidatePath: string) => {
+    const normalizedPath = String(candidatePath || '').trim()
+    if (!normalizedPath || seen.has(normalizedPath)) return
+    seen.add(normalizedPath)
+    candidates.push(normalizedPath)
+  }
+
+  const customRoot = resolveDevDemucsRootOverridePath()
+  if (customRoot) {
+    addCandidate(path.join(customRoot, resolveDemucsPlatformDir()))
+  }
+  if (shouldIgnoreBundledDemucsRuntime()) return candidates
+  addCandidate(path.join(resolveDefaultBundledDemucsRootPath(), resolveDemucsPlatformDir()))
+  return candidates
 }
 
 export function resolveInstalledDemucsRootPath(): string {
@@ -138,7 +165,11 @@ export function resolveBundledDemucsRuntimeCandidates(): BundledDemucsRuntimeCan
     platformRoots.push(path.join(customRoot, resolveDemucsPlatformDir()))
   } else {
     platformRoots.push(resolveInstalledDemucsPlatformRootPath())
-    platformRoots.push(path.join(resolveDefaultBundledDemucsRootPath(), resolveDemucsPlatformDir()))
+    if (!shouldIgnoreBundledDemucsRuntime()) {
+      platformRoots.push(
+        path.join(resolveDefaultBundledDemucsRootPath(), resolveDemucsPlatformDir())
+      )
+    }
   }
   for (const platformRoot of platformRoots) {
     for (const candidate of resolveRuntimeCandidatesFromPlatformRoot(platformRoot)) {

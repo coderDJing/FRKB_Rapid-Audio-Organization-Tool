@@ -5,6 +5,9 @@ import {
   getAnalysisRuntimeDownloadState,
   getPreferredAnalysisRuntimeDownloadInfo
 } from '../services/analysisRuntimeDownload'
+import mainWindow from '../window/mainWindow'
+
+const ANALYSIS_RUNTIME_CLEAR_PROGRESS_ID = 'analysis-runtime.clear-local'
 
 export function registerAnalysisRuntimeHandlers() {
   ipcMain.handle('analysis-runtime:get-status', async () => {
@@ -23,11 +26,31 @@ export function registerAnalysisRuntimeHandlers() {
   })
 
   ipcMain.handle('analysis-runtime:clear-local', async () => {
-    const cleared = await clearInstalledAnalysisRuntimes()
-    return {
-      success: true,
-      cleared,
-      state: getAnalysisRuntimeDownloadState()
+    try {
+      mainWindow.instance?.webContents.send('progressSet', {
+        id: ANALYSIS_RUNTIME_CLEAR_PROGRESS_ID,
+        titleKey: 'settings.clearAnalysisRuntime.progress',
+        now: 0,
+        total: 0,
+        isInitial: true,
+        noProgress: true
+      })
+      const cleared = await clearInstalledAnalysisRuntimes()
+      const preferred = await getPreferredAnalysisRuntimeDownloadInfo()
+      return {
+        success:
+          cleared.removedInstalledRoot &&
+          cleared.removedDownloadCache &&
+          cleared.failedBundledRuntimeDirs.length === 0,
+        cleared,
+        preferred,
+        state: getAnalysisRuntimeDownloadState()
+      }
+    } finally {
+      mainWindow.instance?.webContents.send('progressSet', {
+        id: ANALYSIS_RUNTIME_CLEAR_PROGRESS_ID,
+        dismiss: true
+      })
     }
   })
 }

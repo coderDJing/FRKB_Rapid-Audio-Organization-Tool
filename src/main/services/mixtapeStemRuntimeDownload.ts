@@ -9,6 +9,7 @@ import { app } from 'electron'
 import { ProxyAgent } from 'undici'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
 import {
+  resolveBundledDemucsPlatformRootCandidates,
   resolveBundledDemucsRuntimeCandidates,
   resolveDemucsPlatformDir,
   resolveInstalledDemucsRootPath,
@@ -322,19 +323,44 @@ export const resetStemRuntimeDownloadState = () => {
 export const clearInstalledStemRuntimes = async (): Promise<{
   removedInstalledRoot: boolean
   removedDownloadCache: boolean
+  removedBundledRuntimeDirs: string[]
+  failedBundledRuntimeDirs: string[]
 }> => {
   const installedRoot = resolveInstalledDemucsRootPath()
   const downloadCacheDir = resolveRuntimeDownloadCacheDir()
   let removedInstalledRoot = false
   let removedDownloadCache = false
+  const removedBundledRuntimeDirs: string[] = []
+  const failedBundledRuntimeDirs: string[] = []
   await fs.promises.rm(installedRoot, { recursive: true, force: true }).catch(() => {})
   removedInstalledRoot = !(await fileExists(installedRoot))
   await fs.promises.rm(downloadCacheDir, { recursive: true, force: true }).catch(() => {})
   removedDownloadCache = !(await fileExists(downloadCacheDir))
+  const bundledRuntimeDirSet = new Set<string>()
+  for (const platformRoot of resolveBundledDemucsPlatformRootCandidates()) {
+    const dirEntries = await fs.promises
+      .readdir(platformRoot, { withFileTypes: true })
+      .catch(() => [] as fs.Dirent[])
+    for (const entry of dirEntries) {
+      if (!entry.isDirectory()) continue
+      if (!/^runtime(?:$|-)/i.test(String(entry.name || '').trim())) continue
+      bundledRuntimeDirSet.add(path.join(platformRoot, entry.name))
+    }
+  }
+  for (const runtimeDir of bundledRuntimeDirSet) {
+    await fs.promises.rm(runtimeDir, { recursive: true, force: true }).catch(() => {})
+    if (await fileExists(runtimeDir)) {
+      failedBundledRuntimeDirs.push(runtimeDir)
+      continue
+    }
+    removedBundledRuntimeDirs.push(runtimeDir)
+  }
   resetStemRuntimeDownloadState()
   return {
     removedInstalledRoot,
-    removedDownloadCache
+    removedDownloadCache,
+    removedBundledRuntimeDirs,
+    failedBundledRuntimeDirs
   }
 }
 

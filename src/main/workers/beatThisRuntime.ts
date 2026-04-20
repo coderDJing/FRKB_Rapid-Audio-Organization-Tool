@@ -35,6 +35,7 @@ const ENV_BEAT_THIS_CHECKPOINT = 'FRKB_BEAT_THIS_CHECKPOINT'
 const ENV_BEAT_THIS_EXTRA_SITE_DIRS = 'FRKB_BEAT_THIS_EXTRA_SITE_DIRS'
 const ENV_BEAT_THIS_EXTRA_DLL_DIRS = 'FRKB_BEAT_THIS_EXTRA_DLL_DIRS'
 const ENV_DEMUCS_ROOT = 'FRKB_DEMUCS_ROOT'
+const ENV_IGNORE_BUNDLED_DEMUCS_RUNTIME = 'FRKB_IGNORE_BUNDLED_DEMUCS_RUNTIME'
 const ENV_USER_DATA_DIR = 'FRKB_USER_DATA_DIR'
 const LOCAL_RUNTIME_DIR = 'grid-analysis-lab/beat-this-runtime'
 const DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH = 'beat-this-checkpoints/final0.ckpt'
@@ -103,6 +104,13 @@ const resolveConfiguredDemucsRoot = () => {
   return normalizeBeatThisFsPath(path.resolve(process.cwd(), configuredRoot))
 }
 
+const shouldIgnoreBundledDemucsRuntime = () => {
+  const raw = String(process.env[ENV_IGNORE_BUNDLED_DEMUCS_RUNTIME] || '')
+    .trim()
+    .toLowerCase()
+  return raw === '1' || raw === 'true'
+}
+
 const resolveInstalledDemucsPlatformRoot = () => {
   const userDataDir = normalizeBeatThisFsPath(process.env[ENV_USER_DATA_DIR] || '')
   if (!userDataDir) return ''
@@ -143,6 +151,9 @@ const resolveDemucsPlatformRoots = () => {
   }
 
   addCandidate(resolveInstalledDemucsPlatformRoot())
+  if (shouldIgnoreBundledDemucsRuntime()) {
+    return candidates
+  }
   for (const bundledRoot of resolveBundledDemucsRootCandidates()) {
     addCandidate(path.join(bundledRoot, resolveDemucsPlatformDir()))
   }

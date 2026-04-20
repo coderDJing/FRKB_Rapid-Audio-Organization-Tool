@@ -145,6 +145,7 @@
     "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "start": "electron-vite preview",
     "dev": "node scripts/run-frkb-dev.mjs",
+    "dev:no-runtime": "node scripts/run-frkb-dev.mjs --no-runtime",
     "dev:release-runtime": "node scripts/run-frkb-dev.mjs --release-runtime",
     "build": "node scripts/ensure-rust-package-native.mjs --mode package && electron-vite build",
     "rust-package:ensure": "node scripts/ensure-rust-package-native.mjs --mode dev",

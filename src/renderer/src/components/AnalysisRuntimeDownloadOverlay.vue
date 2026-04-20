@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { t } from '@renderer/utils/translate'
 
 const props = defineProps<{
   visible: boolean
@@ -9,13 +11,26 @@ const props = defineProps<{
   hint: string
 }>()
 
+const runtime = useRuntimeStore()
 const clampedPercent = computed(() => Math.max(0, Math.min(100, Math.round(props.percent || 0))))
+const shouldRender = computed(
+  () => props.visible && !runtime.analysisRuntime.downloadOverlayMinimized
+)
+
+const minimizeOverlay = () => {
+  runtime.setAnalysisRuntimeDownloadOverlayMinimized(true)
+}
 </script>
 
 <template>
-  <div v-if="visible" class="analysis-runtime-download-mask">
+  <div v-if="shouldRender" class="analysis-runtime-download-mask">
     <div class="analysis-runtime-download-card">
-      <div class="analysis-runtime-download-title">{{ title }}</div>
+      <div class="analysis-runtime-download-header">
+        <div class="analysis-runtime-download-title">{{ title }}</div>
+        <button class="analysis-runtime-download-minimize" type="button" @click="minimizeOverlay">
+          {{ t('analysisRuntime.minimizeOverlay') }}
+        </button>
+      </div>
       <div class="analysis-runtime-download-hint">{{ hint }}</div>
       <div class="analysis-runtime-download-text">{{ text }}</div>
       <div class="analysis-runtime-download-progress-row">
@@ -58,9 +73,39 @@ const clampedPercent = computed(() => Math.max(0, Math.min(100, Math.round(props
   gap: 8px;
 }
 
+.analysis-runtime-download-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .analysis-runtime-download-title {
+  flex: 1 1 auto;
   font-size: 14px;
   line-height: 1.5;
+  color: var(--text);
+}
+
+.analysis-runtime-download-minimize {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, transparent);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: color-mix(in srgb, var(--bg) 76%, transparent);
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.analysis-runtime-download-minimize:hover {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
   color: var(--text);
 }
 
