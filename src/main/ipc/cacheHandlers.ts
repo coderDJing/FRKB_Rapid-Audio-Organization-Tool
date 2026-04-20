@@ -263,15 +263,6 @@ export function registerCacheHandlers() {
       buffer.subarray(startFrame * 4, (startFrame + frames) * 4)
 
     if (sender.isDestroyed()) return
-    log.info('[mixtape-raw-stream] first-chunk', {
-      filePath,
-      requestId,
-      priorityHint,
-      fromCache: true,
-      firstChunkMs: Date.now() - startedAt,
-      totalFrames,
-      frames: bootstrapFrames
-    })
     try {
       sender.send('mixtape-waveform-raw:stream-chunk', {
         requestId,
@@ -312,16 +303,6 @@ export function registerCacheHandlers() {
       return
     }
 
-    log.info('[mixtape-raw-stream] finished', {
-      filePath,
-      requestId,
-      priorityHint,
-      fromCache: true,
-      streamed: true,
-      chunkCount,
-      firstChunkMs: 0,
-      totalMs: Date.now() - startedAt
-    })
     if (sender.isDestroyed()) return
     try {
       sender.send('mixtape-waveform-raw:stream-done', {
@@ -403,16 +384,6 @@ export function registerCacheHandlers() {
         return
       }
 
-      log.info('[mixtape-raw-stream] finished', {
-        filePath: continuation.filePath,
-        requestId: continuation.requestId,
-        priorityHint: continuation.priorityHint,
-        fromCache: true,
-        streamed: true,
-        chunkCount: continuation.chunkCount,
-        firstChunkMs: 0,
-        totalMs: Date.now() - continuation.startedAt
-      })
       if (!continuation.sender.isDestroyed()) {
         try {
           continuation.sender.send('mixtape-waveform-raw:stream-done', {
@@ -521,24 +492,6 @@ export function registerCacheHandlers() {
         const liveContinuation = liveRawWaveformContinuations.get(nextRequest.requestId)
         rawWaveformStreamRequests.delete(nextRequest.requestId)
         teardownRawWaveformStreamWorker(worker)
-        log.info('[mixtape-raw-stream] finished', {
-          filePath: nextRequest.filePath,
-          requestId: nextRequest.requestId,
-          priorityHint: nextRequest.priorityHint,
-          fromCache: payloadDone.fromCache === true,
-          streamed: payloadDone.streamed === true,
-          chunkCount: nextRequest.chunkCount,
-          firstChunkMs:
-            typeof nextRequest.firstChunkAt === 'number' &&
-            typeof nextRequest.streamStartedAt === 'number'
-              ? nextRequest.firstChunkAt - nextRequest.streamStartedAt
-              : undefined,
-          totalMs:
-            typeof nextRequest.streamStartedAt === 'number'
-              ? Date.now() - nextRequest.streamStartedAt
-              : undefined,
-          error: payloadDone.error
-        })
         if (liveContinuation) {
           liveContinuation.donePayload = payloadDone
           flushLiveRawWaveformContinuation(nextRequest.requestId)
@@ -573,17 +526,6 @@ export function registerCacheHandlers() {
           }
           if (nextRequest.firstChunkAt === undefined) {
             nextRequest.firstChunkAt = Date.now()
-            log.info('[mixtape-raw-stream] first-chunk', {
-              filePath: nextRequest.filePath,
-              requestId: nextRequest.requestId,
-              priorityHint: nextRequest.priorityHint,
-              firstChunkMs:
-                typeof nextRequest.streamStartedAt === 'number'
-                  ? nextRequest.firstChunkAt - nextRequest.streamStartedAt
-                  : undefined,
-              totalFrames: bufferedChunk.totalFrames,
-              frames: bufferedChunk.frames
-            })
             if (!nextRequest.sender.isDestroyed()) {
               try {
                 nextRequest.sender.send('mixtape-waveform-raw:stream-chunk', {

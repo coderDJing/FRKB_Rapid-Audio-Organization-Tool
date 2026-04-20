@@ -41,6 +41,9 @@
 - 涉及运行时排查、交互链路排查、状态机排查时，默认把调试日志写入 `log.txt` 可落盘链路，不要依赖浏览器控制台临时输出。
 - Renderer 侧调试信息应通过现有 console bridge / `outputLog` / 主进程 `log` 体系进入 `log.txt`，确保我复现一次后，Codex 可以自行读取日志继续排查。
 - 禁止把“请把控制台日志复制给我”当成默认方案；除非日志链路本身损坏，否则应优先由 Codex 自己读取 `log.txt`。
+- 常驻代码里禁止保留非报错落盘日志；提交前必须清理 `log.info` / `log.warn` / `log.debug`、普通 `console.log` / `console.info` / `console.warn` / `console.debug`、以及各类 trace 型 `outputLog`。默认只保留真正的错误/异常日志进入 `log.txt`。
+- 只有在当前任务明确需要运行时排查时，才允许临时增加非错误调试日志；这类日志必须走现有 `log.txt` 链路，并且在交付前删除，不能把调试噪音留在仓库里。
+- `pnpm run dev` 启动阶段的开发提示、脚本提示、端口提示等输出，默认只打印终端，不写入 `log.txt`。这类输出应使用开发脚本/终端控制台，不要接入主进程 `log` 或 renderer `outputLog` 落盘链路。
 
 ## Commit & Pull Request Guidelines
 - Recent commits use Conventional Commit prefixes with optional scopes: `feat(ui): ...`, `fix(player): ...`, `refactor(...)`, `docs(...)`.

@@ -123,7 +123,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     const errors = collectJobResultErrors(payloadResult, payloadError)
     if (errors.length <= 0) return
     const elapsedMs = job.startTime ? Date.now() - job.startTime : job.trace?.elapsedMs
-    log.warn('[闲时分析] 任务完成但有错误', {
+    log.error('[闲时分析] 任务完成但有错误', {
       filePath: job.filePath,
       fileName: path.basename(job.filePath),
       source: job.source,
@@ -217,7 +217,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
             detail: trace?.detail
           }
           if (!wasPreempted && !wasExpectedTermination) {
-            log.warn('[闲时分析] 前台任务 worker 异常退出', logPayload)
+            log.error('[闲时分析] 前台任务 worker 异常退出', logPayload)
           }
         }
         deps.activeByPath.delete(job.normalizedPath)
@@ -271,7 +271,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         applyWorkerProgress(worker, job, payloadProgress)
         await persistAnalyzePartialResult(job, payloadProgress)
       } else {
-        log.warn('[闲时分析] 收到进度但任务不存在', {
+        log.error('[闲时分析] 收到进度但任务不存在', {
           jobId,
           filePath: payload?.filePath,
           workerThreadId: worker.threadId,

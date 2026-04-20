@@ -2,11 +2,12 @@ import 'dotenv/config'
 import { app, BrowserWindow, ipcMain, shell, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import {
-  appendPlainLogLineSync,
   log,
   getLogPath,
   clearLogFileSync,
-  configureLogTransports
+  configureLogTransports,
+  openLogFile,
+  type LogLevel
 } from './log'
 import './cloudSync'
 import errorReport from './errorReport'
@@ -99,7 +100,7 @@ try {
     process.env.FRKB_USER_DATA_DIR = resolvedUserDataDir
   }
 } catch (error) {
-  log.warn('[runtime] 同步 userData 到分析 worker 环境失败', error)
+  log.error('[runtime] 同步 userData 到分析 worker 环境失败', error)
 }
 
 const initDevDatabase = false
@@ -242,11 +243,6 @@ void ensureFpcalcExecutable(fpcalcPath)
 store.layoutConfig = loadLayoutConfigSync()
 loadInitialSettings({ getWindowsContextMenuStatus: hasWindowsContextMenu })
 maybeClearLogAfterUpgrade()
-log.info('[startup] log-path', {
-  logPath: getLogPath(),
-  cwd: process.cwd(),
-  userData: app.getPath('userData')
-})
 errorReport.setup()
 registerWhatsNewHandlers()
 registerSettingsHandlers({
@@ -600,8 +596,58 @@ app.on('window-all-closed', async () => {
 
 // 语言字典将不再通过主进程下发，渲染进程使用 vue-i18n 自行管理
 ipcMain.on('outputLog', (e, logMsg) => {
-  log.error(logMsg)
-  appendPlainLogLineSync(String(logMsg || ''))
+  const normalizeLevelFromText = (text: string): LogLevel => {
+    const normalized = String(text || '').toLowerCase()
+    if (normalized.includes('[console.debug]') || normalized.includes('[debug]')) return 'debug'
+    if (normalized.includes('[console.info]') || normalized.includes('[console.log]')) return 'info'
+    if (normalized.includes('[console.warn]') || /\bwarn(?:ing)?\b|警告/.test(normalized)) {
+      return 'warn'
+    }
+    if (
+      normalized.includes('[console.error]') ||
+      /\b(error|failed|exception|unhandled)\b|错误|异常|失败|捕获|messageerror/.test(normalized)
+    ) {
+      return 'error'
+    }
+    return 'info'
+  }
+
+  const normalizeOutputLogPayload = (
+    payload: unknown
+  ): { level: LogLevel; text: string } | null => {
+    if (typeof payload === 'string') {
+      const text = payload.trim()
+      if (!text) return null
+      return {
+        level: normalizeLevelFromText(text),
+        text
+      }
+    }
+
+    if (!payload || typeof payload !== 'object') return null
+    const record = payload as Record<string, unknown>
+    const rawMessage = record.message
+    const message =
+      typeof rawMessage === 'string' ? rawMessage.trim() : String(rawMessage || '').trim()
+    if (!message) return null
+
+    const rawLevel = typeof record.level === 'string' ? record.level.trim().toLowerCase() : ''
+    const level: LogLevel =
+      rawLevel === 'debug' || rawLevel === 'info' || rawLevel === 'warn' || rawLevel === 'error'
+        ? rawLevel
+        : normalizeLevelFromText(message)
+    const source = typeof record.source === 'string' ? record.source.trim() : ''
+    const scope = typeof record.scope === 'string' ? record.scope.trim() : ''
+    const prefix = [source, scope].filter(Boolean).join(':')
+    return {
+      level,
+      text: prefix ? `[${prefix}] ${message}` : message
+    }
+  }
+
+  const normalized = normalizeOutputLogPayload(logMsg)
+  if (!normalized) return
+  log[normalized.level](normalized.text)
 })
 
 ipcMain.on('openLocalBrowser', (e, url) => {
@@ -609,23 +655,7 @@ ipcMain.on('openLocalBrowser', (e, url) => {
 })
 
 ipcMain.on('openLog', async () => {
-  const logPath = getLogPath()
-  try {
-    // 确保日志文件存在，如果不存在则创建空文件
-    await fs.ensureFile(logPath)
-    // 尝试打开日志文件
-    const result = await shell.openPath(logPath)
-    if (result) {
-      // 如果打开失败（返回非空字符串表示错误），尝试打开日志所在文件夹
-      await shell.showItemInFolder(logPath)
-    }
-  } catch (error) {
-    // 如果所有操作都失败，记录错误并尝试打开文件夹
-    log.error('打开日志文件失败', error)
-    try {
-      await shell.showItemInFolder(logPath)
-    } catch {}
-  }
+  await openLogFile()
 })
 
 ipcMain.on('main-window-browse-mode-updated', (_e, mode: 'browser' | 'horizontal') => {

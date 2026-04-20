@@ -2,7 +2,7 @@ import { ipcMain } from 'electron'
 import fs = require('fs-extra')
 import { is } from '@electron-toolkit/utils'
 import store from './store'
-import { getLogPath, log } from './log'
+import { clearLogFileSync, getLogPath, log } from './log'
 import { persistSettingConfig } from './settingsPersistence'
 
 // 正式阈值：累计运行 100 小时上报一次；失败后每 1 小时重试一次
@@ -24,26 +24,20 @@ function getLogFilePath() {
   return getLogPath()
 }
 
-async function readLogText(): Promise<string> {
+async function readPendingLogText(): Promise<string> {
   try {
     const file = getLogFilePath()
-    if (!(await fs.pathExists(file))) return ''
+    if (!(await fs.pathExists(file))) {
+      return ''
+    }
     const stat = await fs.stat(file)
-    if (!stat.isFile() || stat.size <= 0) return ''
-    const text = await fs.readFile(file, 'utf8')
-    return text || ''
+    if (!stat.isFile() || stat.size <= 0) {
+      return ''
+    }
+    return await fs.readFile(file, 'utf8')
   } catch (e) {
     log.error('[errorReport] 读取日志失败', e)
     return ''
-  }
-}
-
-async function clearLogFile() {
-  try {
-    const file = getLogFilePath()
-    await fs.outputFile(file, '')
-  } catch (e) {
-    log.error('[errorReport] 清空日志失败', e)
   }
 }
 
@@ -77,7 +71,7 @@ function persistSettings() {
 
 async function tryUploadOnce(trigger: 'auto' | 'manual'): Promise<boolean> {
   const setting = store.settingConfig
-  const text = await readLogText()
+  const text = await readPendingLogText()
   if (!text || !text.trim()) {
     // 日志为空：自动触发时重置累计时长，避免每个 tick 都重复尝试
     if (trigger === 'auto') {
@@ -88,9 +82,9 @@ async function tryUploadOnce(trigger: 'auto' | 'manual'): Promise<boolean> {
   }
   const success = await uploadLogText(text)
   if (success) {
-    await clearLogFile()
     setting.errorReportUsageMsSinceLastSuccess = 0
     setting.errorReportRetryMsSinceLastFailure = -1
+    clearLogFileSync()
     persistSettings()
     return true
   }

@@ -105,7 +105,6 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
       } catch (error) {
         const errorMsg = `解码歌曲文件失败(${eventName}) ${filePath}`
         log.error(errorMsg, error)
-        console.error(`${errorMsg}:`, error)
         getWindow()?.webContents.send(errorEvent, filePath, (error as Error).message, requestId)
       }
     }
@@ -133,7 +132,6 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
     } catch (error) {
       const errorMsg = `解码预览文件失败 ${filePath}`
       log.error(errorMsg, error)
-      console.error(`${errorMsg}:`, error)
       getWindow()?.webContents.send(
         'readPreviewSongFileError',
         filePath,

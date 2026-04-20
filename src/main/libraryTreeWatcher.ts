@@ -42,7 +42,7 @@ async function reconcileLibraryTree(window: BrowserWindow | null) {
       window?.webContents.send('library-tree-updated', tree)
     }
   } catch (error) {
-    log.warn('[watcher] library reconcile failed', error)
+    log.error('[watcher] library reconcile failed', error)
   } finally {
     reconciling = false
   }
@@ -66,10 +66,10 @@ export function startLibraryTreeWatcher(window: BrowserWindow | null): void {
       scheduleReconcile(window)
     })
     watcher.on('error', (error) => {
-      log.warn('[watcher] library watcher error', error)
+      log.error('[watcher] library watcher error', error)
     })
   } catch (error) {
-    log.warn('[watcher] library watcher start failed', error)
+    log.error('[watcher] library watcher start failed', error)
   }
 }
 

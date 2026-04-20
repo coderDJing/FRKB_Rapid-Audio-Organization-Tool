@@ -187,7 +187,7 @@ export function registerPlaylistHandlers() {
         songListPath: relativeSongListPath
       }
     } catch (error) {
-      log.warn('songList:resolve-by-file-path failed', error)
+      log.error('songList:resolve-by-file-path failed', error)
       return { songListUuid: '', songListPath: '' }
     }
   })
@@ -353,7 +353,7 @@ export function registerPlaylistHandlers() {
               existingToRemove.push(filePath)
             }
           } catch (err) {
-            log.warn('检查重复文件是否存在失败', { filePath, err })
+            log.error('检查重复文件是否存在失败', { filePath, err })
           }
         }
 

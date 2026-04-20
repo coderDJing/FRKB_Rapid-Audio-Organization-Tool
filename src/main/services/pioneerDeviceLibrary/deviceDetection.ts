@@ -509,7 +509,7 @@ async function listMacRemovableDrives(): Promise<BaseDriveRow[]> {
           isRemovable: true
         })
       } catch (error) {
-        log.warn('[pioneer-device-library] mac diskutil probe failed', {
+        log.error('[pioneer-device-library] mac diskutil probe failed', {
           path: rootPath,
           error
         })
@@ -765,7 +765,7 @@ export async function listPioneerRemovableDrives(): Promise<PioneerRemovableDriv
         pioneer
       })
     } catch (error) {
-      log.warn('[pioneer-device-library] pioneer probe failed', {
+      log.error('[pioneer-device-library] pioneer probe failed', {
         path: baseRow.path,
         error
       })
@@ -803,7 +803,7 @@ export async function ejectPioneerRemovableDrive(
   }
 
   if (!result.success) {
-    log.warn('[pioneer-device-library] eject removable drive failed', {
+    log.error('[pioneer-device-library] eject removable drive failed', {
       rootPath: normalizedRoot,
       code: result.code,
       detail: result.detail

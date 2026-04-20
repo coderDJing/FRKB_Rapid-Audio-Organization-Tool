@@ -571,7 +571,7 @@ export class KeyAnalysisQueue {
         if (current) {
           current.lastProbe = probe
         }
-        log.warn('[闲时分析] 失败文件诊断', {
+        log.error('[闲时分析] 失败文件诊断', {
           filePath: job.filePath,
           fileName: path.basename(job.filePath),
           source: job.source,
@@ -588,7 +588,7 @@ export class KeyAnalysisQueue {
           ...probe
         })
       } catch (error) {
-        log.warn('[闲时分析] 失败文件诊断异常', {
+        log.error('[闲时分析] 失败文件诊断异常', {
           filePath: job.filePath,
           error: error instanceof Error ? error.message : String(error)
         })
@@ -624,7 +624,7 @@ export class KeyAnalysisQueue {
     this.failedByPath.set(normalizedPath, record)
 
     if (cooldownMs === 0) {
-      log.warn('[闲时分析] 任务失败（未进入冷却阈值）', {
+      log.error('[闲时分析] 任务失败（未进入冷却阈值）', {
         filePath: job.filePath,
         fileName: path.basename(job.filePath),
         source: job.source,
@@ -640,7 +640,7 @@ export class KeyAnalysisQueue {
     }
 
     if (cooldownMs > 0) {
-      log.warn('[闲时分析] 任务失败进入冷却期，后续将暂时跳过', {
+      log.error('[闲时分析] 任务失败进入冷却期，后续将暂时跳过', {
         filePath: job.filePath,
         fileName: path.basename(job.filePath),
         source: job.source,
@@ -845,7 +845,7 @@ export class KeyAnalysisQueue {
       const trace = activeJob.trace
       const stageStuckMs =
         typeof trace?.lastUpdateAt === 'number' ? Date.now() - trace.lastUpdateAt : undefined
-      log.warn('[闲时分析] 任务执行超时，终止 worker', {
+      log.error('[闲时分析] 任务执行超时，终止 worker', {
         filePath: activeJob.filePath,
         fileName: path.basename(activeJob.filePath),
         source: activeJob.source,
@@ -949,7 +949,7 @@ export class KeyAnalysisQueue {
         try {
           await this.ensureJobProbe(job)
         } catch (error) {
-          log.warn('[闲时分析] 音频探测失败，回退默认预算', {
+          log.error('[闲时分析] 音频探测失败，回退默认预算', {
             jobId: job.jobId,
             filePath: job.filePath,
             source: job.source,

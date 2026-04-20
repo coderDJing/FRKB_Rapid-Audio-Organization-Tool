@@ -31,9 +31,15 @@ export const installConsoleLogBridge = (scope: string) => {
     const original = console[method].bind(console)
     console[method] = (...args: unknown[]) => {
       original(...args)
+      if (method !== 'error') return
       try {
         const message = args.map((item) => stringifyArg(item)).join(' ')
-        window.electron.ipcRenderer.send('outputLog', `[${scope}][console.${method}] ${message}`)
+        window.electron.ipcRenderer.send('outputLog', {
+          level: 'error',
+          scope,
+          source: 'renderer-console',
+          message: `[console.${method}] ${message}`
+        })
       } catch {}
     }
   }

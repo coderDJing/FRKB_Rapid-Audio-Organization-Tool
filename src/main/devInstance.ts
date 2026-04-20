@@ -3,6 +3,7 @@ import fs from 'fs-extra'
 import path from 'path'
 
 type LoggerLike = {
+  error: (...args: unknown[]) => void
   warn: (...args: unknown[]) => void
 }
 
@@ -91,7 +92,7 @@ export const configureDevRuntime = (
     app.setPath('userData', userDataDir)
     app.setPath('sessionData', path.join(userDataDir, 'session'))
   } catch (error) {
-    log.warn('[dev] 设置隔离用户目录失败', error)
+    log.error('[dev] 设置隔离用户目录失败', error)
     try {
       userDataDir = app.getPath('userData')
     } catch {
@@ -156,7 +157,7 @@ export const acquireDevSingleInstanceLock = (
       const code =
         error && typeof error === 'object' && 'code' in error ? String(error.code || '') : ''
       if (code !== 'EEXIST') {
-        log.warn('[dev] 创建实例锁失败，继续沿用多开模式', error)
+        log.error('[dev] 创建实例锁失败，继续沿用多开模式', error)
         return {
           isPrimaryInstance: true,
           release: () => {}
@@ -174,7 +175,7 @@ export const acquireDevSingleInstanceLock = (
       try {
         fs.removeSync(lockFilePath)
       } catch (removeError) {
-        log.warn('[dev] 清理失效实例锁失败', removeError)
+        log.error('[dev] 清理失效实例锁失败', removeError)
         return {
           isPrimaryInstance: false,
           release: () => {}

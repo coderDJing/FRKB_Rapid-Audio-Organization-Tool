@@ -22,13 +22,6 @@ const logClipboard = (level: 'debug' | 'warn' | 'error', message: string, payloa
   try {
     log.error(message, payload)
   } catch {}
-  try {
-    if (payload === undefined) {
-      console.error(message)
-    } else {
-      console.error(message, payload)
-    }
-  } catch {}
 }
 
 const normalizePaths = (raw: unknown): string[] => {

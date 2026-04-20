@@ -13,8 +13,7 @@ const app = createApp(App)
 installConsoleLogBridge('whats-new')
 
 app.config.errorHandler = (err: Error) => {
-  window.electron.ipcRenderer.send('outputLog', `VUE全局错误捕获: ${err.stack}`)
-  console.error(`VUE全局错误捕获: ${err.stack}`)
+  console.error('VUE全局错误捕获', err)
 }
 
 app.use(pinia)

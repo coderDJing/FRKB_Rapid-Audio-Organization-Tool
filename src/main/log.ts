@@ -1,4 +1,5 @@
-import path = require('path')
+import path from 'node:path'
+import util from 'node:util'
 import fs = require('fs-extra')
 
 type ElectronAppLike = {
@@ -8,27 +9,22 @@ type ElectronAppLike = {
   getAppPath?: () => string
 }
 
-type ElectronLogFileLike = {
-  path: string
+type ElectronShellLike = {
+  openPath: (fullPath: string) => Promise<string>
+  showItemInFolder: (fullPath: string) => void | Promise<void>
 }
 
-type LogTransportFileLike = {
-  level?: string | boolean
-  format?: string
-  maxSize?: number
-  resolvePathFn?: () => string
-  getFile?: () => ElectronLogFileLike
-}
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
+type ConsoleMethod = LogLevel | 'log'
 
 type LoggerLike = {
   debug: (...args: unknown[]) => void
   info: (...args: unknown[]) => void
   warn: (...args: unknown[]) => void
   error: (...args: unknown[]) => void
-  transports: {
-    file: LogTransportFileLike
-  }
 }
+
+const CONSOLE_METHODS: ConsoleMethod[] = ['log', 'info', 'warn', 'error', 'debug']
 
 const safeRequire = (id: string): unknown => {
   try {
@@ -41,43 +37,28 @@ const safeRequire = (id: string): unknown => {
 const electronModule =
   (safeRequire('electron') as {
     app?: ElectronAppLike
+    shell?: ElectronShellLike
   } | null) || null
+
 const electronApp = electronModule?.app || null
-const noopLoggerMethod = (..._args: unknown[]) => {}
+const electronShell = electronModule?.shell || null
 
-const createConsoleLogger = (): LoggerLike => ({
-  debug: noopLoggerMethod,
-  info: noopLoggerMethod,
-  warn: noopLoggerMethod,
-  error: (...args: unknown[]) => console.error(...args),
-  transports: {
-    file: {}
-  }
-})
+const originalConsoleMethods: Record<ConsoleMethod, (...args: unknown[]) => void> = {
+  log: console.log.bind(console),
+  info: console.info.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  debug: console.debug.bind(console)
+}
 
-const loadedElectronLog =
-  ((safeRequire('electron-log/main') || safeRequire('electron-log')) as
-    | Partial<LoggerLike>
-    | null
-    | undefined) || null
+let logConfigured = false
+let consoleHookInstalled = false
 
-const baseLogger: LoggerLike =
-  loadedElectronLog &&
-  typeof loadedElectronLog.debug === 'function' &&
-  typeof loadedElectronLog.info === 'function' &&
-  typeof loadedElectronLog.warn === 'function' &&
-  typeof loadedElectronLog.error === 'function' &&
-  loadedElectronLog.transports &&
-  typeof loadedElectronLog.transports === 'object'
-    ? (loadedElectronLog as LoggerLike)
-    : createConsoleLogger()
-
-export const log: LoggerLike = {
-  debug: noopLoggerMethod,
-  info: noopLoggerMethod,
-  warn: noopLoggerMethod,
-  error: (...args: unknown[]) => baseLogger.error(...args),
-  transports: baseLogger.transports
+const safeConsoleWrite = (method: ConsoleMethod, args: unknown[]) => {
+  try {
+    const writer = originalConsoleMethods[method] || originalConsoleMethods.log
+    writer(...args)
+  } catch {}
 }
 
 const resolveUserDataDir = () => {
@@ -127,23 +108,97 @@ const resolveAppVersion = () => {
   return 'unknown'
 }
 
+const formatValue = (value: unknown): string => {
+  if (typeof value === 'string') return value
+  if (value instanceof Error) {
+    return value.stack || value.message || String(value)
+  }
+  return util.inspect(value, {
+    depth: 6,
+    breakLength: 140,
+    compact: false,
+    maxArrayLength: 200,
+    maxStringLength: 10_000
+  })
+}
+
+const formatArgs = (args: unknown[]): string => {
+  return args
+    .map((item) => formatValue(item))
+    .map((item) => String(item || '').replace(/\r\n?/g, '\n'))
+    .join(' ')
+    .trim()
+}
+
 const resolveLogPath = () => {
   if (isPackagedRuntime) {
-    return path.join(resolveUserDataDir(), 'logs', 'main.log')
+    return path.join(resolveUserDataDir(), 'log.txt')
   }
   return path.join(resolveDevProjectRoot(), 'log.txt')
 }
 
-let logConfigured = false
+const appendFormattedLogSync = (level: LogLevel, text: string) => {
+  const normalizedText = String(text || '').trim()
+  if (!normalizedText) return
+  const timestamp = new Date().toISOString()
+  const versionTag = `[v${resolveAppVersion()}]`
+  const levelTag = `[${level.toUpperCase()}]`
+  const lines = normalizedText
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0)
+    .map((line) => `${timestamp} ${versionTag} ${levelTag} ${line}`)
+  if (lines.length === 0) return
+  try {
+    const filePath = getLogPath()
+    fs.ensureFileSync(filePath)
+    fs.appendFileSync(filePath, `${lines.join('\n')}\n`, 'utf8')
+  } catch (error) {
+    safeConsoleWrite('error', ['[log] 写入日志失败', error])
+  }
+}
+
+const consoleMethodToLevel = (method: ConsoleMethod): LogLevel => {
+  if (method === 'log') return 'info'
+  return method
+}
+
+const writeLog = (level: LogLevel, args: unknown[], mirrorMethod: ConsoleMethod) => {
+  ensureLogConfigured()
+  safeConsoleWrite(mirrorMethod, args)
+  appendFormattedLogSync(level, formatArgs(args))
+}
+
+const installMainConsoleHook = () => {
+  if (consoleHookInstalled) return
+  consoleHookInstalled = true
+  const consoleRecord = console as unknown as Record<ConsoleMethod, (...args: unknown[]) => void>
+  for (const method of CONSOLE_METHODS) {
+    consoleRecord[method] = (...args: unknown[]) => {
+      safeConsoleWrite(method, args)
+      if (method === 'error') {
+        appendFormattedLogSync('error', formatArgs(args))
+      }
+    }
+  }
+}
+
+export const log: LoggerLike = {
+  debug: (...args: unknown[]) => writeLog('debug', args, 'debug'),
+  info: (...args: unknown[]) => writeLog('info', args, 'info'),
+  warn: (...args: unknown[]) => writeLog('warn', args, 'warn'),
+  error: (...args: unknown[]) => writeLog('error', args, 'error')
+}
 
 export function configureLogTransports(): void {
-  if (!log?.transports?.file) return
-  const appVersion = resolveAppVersion()
-  log.transports.file.level = 'error'
-  log.transports.file.format = `{y}-{m}-{d} {h}:{i}:{s}.{ms} [v${appVersion}] {text}`
-  log.transports.file.maxSize = 20 * 1024 * 1024
-  log.transports.file.resolvePathFn = resolveLogPath
+  if (logConfigured) return
   logConfigured = true
+  installMainConsoleHook()
+  try {
+    fs.ensureFileSync(resolveLogPath())
+  } catch (error) {
+    safeConsoleWrite('error', ['[log] 初始化日志文件失败', error])
+  }
 }
 
 export function ensureLogConfigured(): void {
@@ -153,34 +208,36 @@ export function ensureLogConfigured(): void {
 
 export function getLogPath(): string {
   ensureLogConfigured()
-  try {
-    const resolved = log.transports.file.getFile?.().path
-    if (typeof resolved === 'string' && resolved.trim()) {
-      return resolved.trim()
-    }
-  } catch {}
   return resolveLogPath()
 }
 
 export function clearLogFileSync(): void {
   try {
     fs.outputFileSync(getLogPath(), '')
-  } catch (e) {
-    try {
-      log.error('[log] 清空日志失败', e)
-    } catch {}
+  } catch (error) {
+    safeConsoleWrite('error', ['[log] 清空日志失败', error])
   }
 }
 
-export function appendPlainLogLineSync(text: string): void {
+export function appendPlainLogLineSync(text: string, level: LogLevel = 'info'): void {
+  ensureLogConfigured()
+  appendFormattedLogSync(level, String(text || ''))
+}
+
+export async function openLogFile(): Promise<void> {
+  const logPath = getLogPath()
   try {
-    const filePath = getLogPath()
-    const line = String(text || '').trim()
-    if (!line) return
-    fs.ensureFileSync(filePath)
-    fs.appendFileSync(filePath, `${new Date().toISOString()} ${line}\n`, 'utf8')
-  } catch (e) {
-    log.error('[log] 追加日志失败', e)
+    await fs.ensureFile(logPath)
+    if (!electronShell) return
+    const result = await electronShell.openPath(logPath)
+    if (result) {
+      await electronShell.showItemInFolder(logPath)
+    }
+  } catch (error) {
+    safeConsoleWrite('error', ['[log] 打开日志文件失败', error])
+    try {
+      await electronShell?.showItemInFolder(logPath)
+    } catch {}
   }
 }
 

@@ -597,21 +597,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         lineno: (event as ErrorEvent)?.lineno,
         colno: (event as ErrorEvent)?.colno
       })
-      try {
-        window.electron.ipcRenderer.send(
-          'outputLog',
-          `[horizontal-browse-waveform-worker] error: ${message}`
-        )
-      } catch {}
     })
     waveformWorker.addEventListener('messageerror', () => {
       console.error('[horizontal-browse-waveform-worker] messageerror')
-      try {
-        window.electron.ipcRenderer.send(
-          'outputLog',
-          '[horizontal-browse-waveform-worker] messageerror'
-        )
-      } catch {}
     })
     return waveformWorker
   }

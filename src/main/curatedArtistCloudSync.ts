@@ -56,17 +56,6 @@ export async function syncCuratedArtistCloudSnapshot(params: {
     hash: localSnapshot.hash
   }
 
-  if (is.dev) {
-    log.info('[cloudSync] /curated-artist-sync request', {
-      url: `${config.baseUrl}${CURATED_ARTIST_PREFIX}/sync`,
-      headers: {
-        Authorization: `Bearer ${config.apiSecretKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: payload
-    })
-  }
-
   const response = await limitedFetch(`${config.baseUrl}${CURATED_ARTIST_PREFIX}/sync`, {
     method: 'POST',
     headers: {
@@ -76,10 +65,6 @@ export async function syncCuratedArtistCloudSnapshot(params: {
     body: JSON.stringify(payload)
   })
   const json = await response.json()
-
-  if (is.dev) {
-    log.info('[cloudSync] /curated-artist-sync response', { status: response.status, json })
-  }
 
   if (!json?.success) {
     const error = new Error('curated artist sync failed') as CuratedArtistSyncError

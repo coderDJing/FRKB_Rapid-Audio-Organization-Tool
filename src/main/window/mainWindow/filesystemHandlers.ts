@@ -2,6 +2,7 @@ import { ipcMain, shell, type BrowserWindow } from 'electron'
 import path = require('path')
 import fs = require('fs-extra')
 import store from '../../store'
+import { log } from '../../log'
 import {
   collectFilesWithExtensions,
   mapRendererPathToFsPath,
@@ -267,7 +268,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         now: 1,
         total: 1
       })
-      console.error('清空回收站失败:', error)
+      log.error('清空回收站失败:', error)
       return {
         total: deleteTasks.length,
         success,
@@ -435,7 +436,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                 now: 1,
                 total: 1
               })
-              console.error(`Error moving ${item.path} to recycle bin:`, moveError)
+              log.error(`Error moving ${item.path} to recycle bin:`, moveError)
               operationStatus = 'recycle_failed'
             }
           }
@@ -486,7 +487,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       }
       return { success: true, details: results }
     } catch (error) {
-      console.error('operateFileSystemChange error:', error)
+      log.error('operateFileSystemChange error:', error)
       return { success: false, error: (error as Error).message, details: results }
     }
   })
@@ -652,7 +653,7 @@ async function isDirectoryEffectivelyEmpty(dirPath: string, audioExtensions: str
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return true
     }
-    console.error(`Error checking directory emptiness for ${dirPath}:`, error)
+    log.error(`Error checking directory emptiness for ${dirPath}:`, error)
     return false
   }
 }

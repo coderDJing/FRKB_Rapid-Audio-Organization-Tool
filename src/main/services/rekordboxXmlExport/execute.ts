@@ -1,7 +1,7 @@
 import path from 'path'
 import fs from 'fs-extra'
 import store from '../../store'
-import { appendPlainLogLineSync, getLogPath, log } from '../../log'
+import { getLogPath, log } from '../../log'
 import { mapRendererPathToFsPath } from '../../utils'
 import { markGlobalSongSearchDirty } from '../globalSongSearch'
 import { readTrackMetadata } from '../metadataEditor'
@@ -31,11 +31,6 @@ import {
 } from './types'
 
 const activeJobControls = new Map<string, RekordboxXmlExportJobControl>()
-
-const writeJobLog = (jobId: string, message: string, extra?: Record<string, unknown>) => {
-  const suffix = extra ? ` ${JSON.stringify(extra, null, 0)}` : ''
-  appendPlainLogLineSync(`[rekordbox-xml-export][${jobId}] ${message}${suffix}`)
-}
 
 const buildFailureResponse = (params: {
   errorCode: string
@@ -208,7 +203,6 @@ export const requestCancelRekordboxXmlExport = (jobId: string) => {
   const control = activeJobControls.get(String(jobId || '').trim())
   if (!control) return false
   control.cancelled = true
-  writeJobLog(String(jobId || '').trim(), '收到取消请求')
   return true
 }
 
@@ -220,11 +214,6 @@ export async function runRekordboxXmlExportJob(
   let exportDirPath = ''
   let xmlPath = ''
   activeJobControls.set(request.jobId, control)
-  writeJobLog(request.jobId, '导出开始', {
-    mode: request.mode,
-    sourceKind: request.source.kind,
-    sourceLibraryName: request.sourceLibraryName
-  })
 
   const throwIfCancelled = () => {
     if (control.cancelled) {
@@ -235,7 +224,6 @@ export async function runRekordboxXmlExportJob(
   try {
     const libraryValidation = validateRequestLibrary(request)
     if (!libraryValidation.ok) {
-      writeJobLog(request.jobId, '来源校验失败', { code: libraryValidation.code })
       return buildFailureResponse({
         errorCode: libraryValidation.code,
         errorMessage: libraryValidation.message,
@@ -246,7 +234,6 @@ export async function runRekordboxXmlExportJob(
 
     const rootValidation = await validateExportRootDir(request.targetRootDir, store.databaseDir)
     if (!rootValidation.ok) {
-      writeJobLog(request.jobId, '导出目录校验失败', { code: rootValidation.code })
       return buildFailureResponse({
         errorCode: rootValidation.code,
         errorMessage: rootValidation.message,
@@ -257,7 +244,6 @@ export async function runRekordboxXmlExportJob(
 
     const sourceTracksResult = await resolveSourceTracks(request)
     if (!sourceTracksResult.ok) {
-      writeJobLog(request.jobId, '源曲目解析失败', { code: sourceTracksResult.code })
       return buildFailureResponse({
         errorCode: sourceTracksResult.code,
         errorMessage: sourceTracksResult.message,
@@ -271,7 +257,6 @@ export async function runRekordboxXmlExportJob(
       sourceTracks.map((track) => track.sourcePath)
     )
     if (missingPaths.length > 0) {
-      writeJobLog(request.jobId, '导出前校验发现缺失文件', { missingCount: missingPaths.length })
       return buildFailureResponse({
         errorCode: 'SOURCE_FILE_MISSING',
         errorMessage: `存在缺失文件，已阻止导出。缺失数量：${missingPaths.length}`,
@@ -351,11 +336,6 @@ export async function runRekordboxXmlExportJob(
       total: totalSteps
     })
 
-    writeJobLog(request.jobId, '导出成功', {
-      trackCount: stagedTracks.length,
-      exportDirPath,
-      xmlPath
-    })
     if (request.mode === 'move') {
       markGlobalSongSearchDirty('rekordbox-xml-export-move')
     }
@@ -419,11 +399,6 @@ export async function runRekordboxXmlExportJob(
           : '导出失败。'
 
     log.error('[rekordbox-xml-export] export failed', error)
-    writeJobLog(request.jobId, '导出失败', {
-      message,
-      cancelled: isCancelled,
-      rollbackErrors
-    })
 
     return buildFailureResponse({
       errorCode: isCancelled ? REKORDBOX_XML_EXPORT_CANCELLED : 'EXPORT_FAILED',

@@ -319,7 +319,7 @@ export function registerExportHandlers() {
       void rememberCuratedArtistsForAddedTracks({
         tracks: curatedArtistTracks
       }).catch((error) => {
-        log.warn('[curatedArtists] remember after move failed', error)
+        log.error('[curatedArtists] remember after move failed', error)
       })
     }
     return results.filter((item) => !(item instanceof Error))

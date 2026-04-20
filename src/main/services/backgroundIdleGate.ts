@@ -65,7 +65,7 @@ const isForegroundBusy = (): boolean => {
     try {
       if (provider()) return true
     } catch (error) {
-      log.warn('[background-idle-gate] foreground busy provider failed', {
+      log.error('[background-idle-gate] foreground busy provider failed', {
         providerName,
         error
       })

@@ -185,32 +185,7 @@ const safeDebugValue = (value: unknown): unknown => {
   return String(value)
 }
 
-const emitPioneerSongsAreaLog = (event: string, payload?: Record<string, unknown>) => {
-  const message = `[pioneerSongsArea] ${JSON.stringify(
-    safeDebugValue({
-      event,
-      at: new Date().toISOString(),
-      sourceKind: selectedSourceKind.value || 'usb',
-      sourceKey: selectedSourceKey.value || '',
-      sourceRootPath: selectedSourceRootPath.value || '',
-      sourceName: selectedSourceName.value || '',
-      libraryType: selectedLibraryType.value || '',
-      playlistId: selectedPlaylistId.value || 0,
-      playlistName: selectedPlaylistNode.value?.name || '',
-      loading: loading.value,
-      originalTrackCount: originalTracks.value.length,
-      visibleSongCount: visibleSongs.value.length,
-      activeFilterCount: columnData.value.filter((col) => !!col.filterActive).length,
-      sortColumn: columnData.value.find((col) => col.order)?.key || '',
-      sortOrder: columnData.value.find((col) => col.order)?.order || '',
-      payload: payload || {}
-    })
-  )}`
-  try {
-    window.electron.ipcRenderer.send('outputLog', message)
-  } catch {}
-  console.error(message)
-}
+const emitPioneerSongsAreaLog = (_event: string, _payload?: Record<string, unknown>) => {}
 
 const getSongField = (song: ISongInfo, key: string): unknown => song[key as keyof ISongInfo]
 

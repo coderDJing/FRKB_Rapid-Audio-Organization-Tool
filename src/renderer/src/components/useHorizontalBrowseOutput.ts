@@ -76,8 +76,6 @@ export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrow
   let visualizerPollTimer: number | null = null
   let visualizerPollActive = false
   let visualizerPollStopped = false
-  let visualizerEmptyLogged = false
-  let visualizerErrorLogged = false
   const syntheticTimeDomainData = new Uint8Array(VISUALIZER_FFT_SIZE).fill(128)
   const syntheticFrequencyData = new Uint8Array(VISUALIZER_FREQUENCY_BIN_COUNT)
   const scratchTimeDomainData = new Uint8Array(VISUALIZER_FFT_SIZE)
@@ -215,15 +213,9 @@ export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrow
     scratchTimeDomainData.fill(128)
     const raw = resolveByteArray(snapshot?.timeDomainData)
     if (!raw.length) {
-      if (!visualizerEmptyLogged) {
-        visualizerEmptyLogged = true
-        window.electron.ipcRenderer.send(
-          'outputLog',
-          '[horizontal-browse][visualizer] snapshot returned empty time-domain data'
-        )
-      }
-    } else {
-      visualizerEmptyLogged = false
+      syntheticTimeDomainData.set(scratchTimeDomainData)
+      updateSyntheticFrequencyData()
+      return
     }
     const copyLength = Math.min(raw.length, scratchTimeDomainData.length)
     const offset = scratchTimeDomainData.length - copyLength
@@ -246,18 +238,8 @@ export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrow
     visualizerPollActive = true
     try {
       const snapshot = await nativeTransport.visualizerSnapshot()
-      visualizerErrorLogged = false
       updateSyntheticVisualizerData(snapshot)
-    } catch (error) {
-      if (!visualizerErrorLogged) {
-        visualizerErrorLogged = true
-        window.electron.ipcRenderer.send(
-          'outputLog',
-          `[horizontal-browse][visualizer] snapshot failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        )
-      }
+    } catch {
       updateSyntheticVisualizerData(null)
     } finally {
       visualizerPollActive = false

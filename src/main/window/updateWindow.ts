@@ -64,7 +64,7 @@ const resolveUpdateFiles = (updateInfo: UpdateInfo): ResolvedUpdateFileInfo[] =>
     try {
       return provider.resolveFiles(updateInfo) as ResolvedUpdateFileInfo[]
     } catch (error) {
-      log.warn('[updateWindow] resolveFiles failed', error)
+      log.error('[updateWindow] resolveFiles failed', error)
     }
   }
 
@@ -88,7 +88,7 @@ const rememberMacManualUpdateAsset = (updateInfo: UpdateInfo) => {
   latestMacManualUpdateResult = null
   latestMacManualUpdateAsset = pickManualMacUpdateAsset(updateInfo, resolveUpdateFiles(updateInfo))
   if (!latestMacManualUpdateAsset) {
-    log.warn('[updateWindow] no mac manual update asset resolved', {
+    log.error('[updateWindow] no mac manual update asset resolved', {
       version: updateInfo?.version,
       files: updateInfo?.files
     })
@@ -196,7 +196,7 @@ const handleStartDownload = () => {
         manualUrl: MANUAL_UPDATE_URL
       }
       sendToUpdateWindow('isError', payload)
-      log.warn('[updateWindow] missing mac manual update asset')
+      log.error('[updateWindow] missing mac manual update asset')
       return
     }
 
@@ -260,11 +260,11 @@ const handleOpenManualDownload = () => {
 const openDownloadedFilePath = (filePath: string) => {
   void shell.openPath(filePath).then((result) => {
     if (!result) return
-    log.warn('[updateWindow] open downloaded file failed', { filePath, result })
+    log.error('[updateWindow] open downloaded file failed', { filePath, result })
     try {
       shell.showItemInFolder(filePath)
     } catch (error) {
-      log.warn('[updateWindow] fallback showItemInFolder failed', { filePath, error })
+      log.error('[updateWindow] fallback showItemInFolder failed', { filePath, error })
     }
   })
 }
@@ -281,7 +281,7 @@ const handleOpenDownloadFolder = () => {
   try {
     shell.showItemInFolder(filePath)
   } catch (error) {
-    log.warn('[updateWindow] showItemInFolder failed', { filePath, error })
+    log.error('[updateWindow] showItemInFolder failed', { filePath, error })
   }
 }
 
@@ -289,7 +289,7 @@ const handleOpenApplicationsFolder = () => {
   if (process.platform !== 'darwin') return
   void shell.openPath('/Applications').then((result) => {
     if (result) {
-      log.warn('[updateWindow] open applications folder failed', result)
+      log.error('[updateWindow] open applications folder failed', result)
     }
   })
 }

@@ -210,7 +210,7 @@ export async function archiveLegacyDescriptionFiles(
       if (await fs.pathExists(legacyPath)) continue
       await fs.move(descPath, legacyPath, { overwrite: false })
     } catch (error) {
-      log.warn('[sqlite] archive legacy description failed', { path: descPath, error })
+      log.error('[sqlite] archive legacy description failed', { path: descPath, error })
     }
   }
   const dbInstance = db || getLibraryDb()
@@ -243,7 +243,7 @@ export async function archiveLegacyDescriptionFilesByRoot(
         }
       }
     } catch (error) {
-      log.warn('[sqlite] archive legacy description failed', { path: descPath, error })
+      log.error('[sqlite] archive legacy description failed', { path: descPath, error })
     }
     let entries: fs.Dirent[] = []
     try {

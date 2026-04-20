@@ -334,15 +334,6 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
         )
         return
       }
-
-      if (sanitizedStderr) {
-        log.warn('[rekordbox-desktop-library] helper stderr', {
-          command,
-          stderr: sanitizedStderr,
-          runtimeSource: pythonCommand.runtimeSource
-        })
-      }
-
       finishResolve(response.result)
     })
 

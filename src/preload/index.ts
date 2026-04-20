@@ -1,4 +1,4 @@
-import { contextBridge, webUtils } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 export interface PreloadApi {
@@ -43,6 +43,14 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
+    try {
+      ipcRenderer.send('outputLog', {
+        level: 'error',
+        source: 'preload',
+        scope: 'context-bridge',
+        message: error instanceof Error ? error.stack || error.message : String(error)
+      })
+    } catch {}
     console.error(error)
   }
 } else {

@@ -87,7 +87,6 @@ export function registerFilesystemHandlers() {
           const drives = drivesData.map((drive) => normalizeDriveInfo(drive))
           return drives.filter((drive) => drive.name)
         } catch (psError) {
-          log.warn('PowerShell failed, falling back to wmic:', psError)
           const { stdout } = await execAsync('wmic logicaldisk get name,size,freespace')
           const lines = stdout.split('\n').slice(1)
           const drives = lines

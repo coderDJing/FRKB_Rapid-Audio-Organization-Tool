@@ -423,18 +423,9 @@ export function useWaveformPreview(params: {
         lineno: (event as ErrorEvent)?.lineno,
         colno: (event as ErrorEvent)?.colno
       })
-      try {
-        window.electron.ipcRenderer.send(
-          'outputLog',
-          `[song-list-waveform-worker] error: ${message}`
-        )
-      } catch {}
     })
     waveformWorker.addEventListener('messageerror', () => {
       console.error('[song-list-waveform-worker] messageerror')
-      try {
-        window.electron.ipcRenderer.send('outputLog', '[song-list-waveform-worker] messageerror')
-      } catch {}
     })
     return waveformWorker
   }

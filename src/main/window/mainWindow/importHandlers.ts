@@ -239,7 +239,7 @@ export function registerImportHandlers(
         .map((item) => item.trim())
       // 导入完成提示和列表刷新优先，精选表演者记录异步补上即可。
       void rememberCuratedArtistsForAddedTracks({ targetPaths }).catch((error) => {
-        log.warn('[curatedArtists] remember after import failed', error)
+        log.error('[curatedArtists] remember after import failed', error)
       })
     }
     if (hasENOSPC) {

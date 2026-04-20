@@ -161,7 +161,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       })
       const payload: KeyAnalysisResult = { filePath, keyText }
       deps.events.emit('key-updated', payload)
-      log.warn('[闲时分析] persistKey 失败，已写入内存兜底', {
+      log.error('[闲时分析] persistKey 失败，已写入内存兜底', {
         filePath,
         error: error instanceof Error ? error.message : String(error)
       })
@@ -238,7 +238,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         barBeatOffset: normalizedBarBeatOffset
       })
       deps.events.emit('bpm-updated', payload)
-      log.warn('[闲时分析] persistBpm 失败，已写入内存兜底', {
+      log.error('[闲时分析] persistBpm 失败，已写入内存兜底', {
         filePath,
         bpm: normalizedBpm,
         error: error instanceof Error ? error.message : String(error)
@@ -294,7 +294,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         barBeatOffset: existing?.barBeatOffset,
         hasWaveform: true
       })
-      log.warn('[闲时分析] persistWaveform 失败，已写入内存兜底', {
+      log.error('[闲时分析] persistWaveform 失败，已写入内存兜底', {
         filePath,
         error: error instanceof Error ? error.message : String(error)
       })

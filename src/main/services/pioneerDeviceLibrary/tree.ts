@@ -269,15 +269,7 @@ export async function debugWritePioneerPlaylistTreeLog(
   libraryType: PioneerLibraryKind = 'deviceLibrary'
 ): Promise<void> {
   try {
-    const loaded = await loadPioneerPlaylistTreeByDrivePath(rootPath, libraryType)
-    log.info('[pioneer-device-library] playlist tree loaded', {
-      drivePath: rootPath,
-      libraryType,
-      databasePath: loaded.databasePath,
-      nodeTotal: loaded.nodeTotal,
-      folderTotal: loaded.folderTotal,
-      playlistTotal: loaded.playlistTotal
-    })
+    await loadPioneerPlaylistTreeByDrivePath(rootPath, libraryType)
   } catch (error) {
     log.error('[pioneer-device-library] playlist tree load failed', { rootPath, error })
   }

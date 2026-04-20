@@ -12,6 +12,7 @@ import icon from '../../../../resources/icon.png?asset'
 import path = require('path')
 import fs = require('fs-extra')
 import store from '../../store'
+import { log } from '../../log'
 import updateWindow from '../updateWindow'
 import databaseInitWindow from '../databaseInitWindow'
 import { registerAudioDecodeHandlers } from './audioDecodeHandlers'
@@ -280,7 +281,7 @@ const captureFocusedWindowScreenshot = async () => {
       outputPath
     })
   } catch (error) {
-    console.error('[screenshot] failed', error)
+    log.error('[screenshot] failed', error)
     showWindowScreenshotNotification({
       kind: 'error',
       errorMessage: error instanceof Error ? error.message : String(error || '')
@@ -420,7 +421,7 @@ function createWindow() {
           icon: dragIcon
         })
       } catch (error) {
-        console.error('[startExternalSongDrag] failed', error)
+        log.error('[startExternalSongDrag] failed', error)
       }
     })()
   })
