@@ -468,6 +468,23 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     songsAreaState.songInfoArr = filtered
   }
 
+  const shouldApplyFiltersAndSortingForSongChange = (fields: string[]) => {
+    if (!Array.isArray(fields) || fields.length === 0) return false
+    if (columnMode.value === 'mixtape') return false
+    const fieldSet = new Set(fields.filter(Boolean))
+    if (!fieldSet.size) return false
+    return columnData.value.some((col) => {
+      if (col.order) {
+        if (col.key === 'key') return fieldSet.has('key')
+        return fieldSet.has(String(col.key || ''))
+      }
+      if (!col.filterActive) return false
+      if (col.filterType === 'bpm') return fieldSet.has('bpm')
+      if (col.filterType === 'text' && col.key === 'key') return fieldSet.has('key')
+      return false
+    })
+  }
+
   // --- 列更新 ---
   const handleColumnsUpdate = (newColumns: ISongsAreaColumn[]) => {
     columnData.value = newColumns
@@ -558,6 +575,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     handleColumnsUpdate,
     colMenuClick,
     applyFiltersAndSorting,
+    shouldApplyFiltersAndSortingForSongChange,
     persistColumnData
   }
 }

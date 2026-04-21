@@ -68,6 +68,19 @@ pub struct HorizontalBrowseTransportDeckSnapshot {
   pub sync_enabled: bool,
   pub sync_lock: String,
   pub leader: bool,
+  pub loop_active: bool,
+  pub loop_beat_value: f64,
+  pub loop_start_beat_index: Option<i32>,
+  pub loop_start_sec: f64,
+  pub loop_end_sec: f64,
+}
+
+#[napi(object)]
+pub struct HorizontalBrowseTransportOutputSnapshot {
+  pub crossfader_value: f64,
+  pub master_gain: f64,
+  pub top_deck_gain: f64,
+  pub bottom_deck_gain: f64,
 }
 
 #[napi(object)]
@@ -75,6 +88,7 @@ pub struct HorizontalBrowseTransportSnapshot {
   pub leader_deck: Option<String>,
   pub top: HorizontalBrowseTransportDeckSnapshot,
   pub bottom: HorizontalBrowseTransportDeckSnapshot,
+  pub output: HorizontalBrowseTransportOutputSnapshot,
 }
 
 #[napi(object)]

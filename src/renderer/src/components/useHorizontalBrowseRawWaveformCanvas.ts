@@ -1,5 +1,5 @@
 import { ref, type Ref } from 'vue'
-import type { ISongInfo } from 'src/types/globals'
+import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import {
@@ -36,6 +36,7 @@ import { createHorizontalBrowseDetailWaveformWorker } from '@renderer/workers/ho
 import { sendHorizontalBrowseWaveformTrace } from '@renderer/components/horizontalBrowseWaveformTrace'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import { isRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformData'
+import { createHorizontalBrowseDetailOverlayRenderer } from '@renderer/components/horizontalBrowseDetailOverlayRenderer'
 
 type HorizontalBrowseDirection = 'up' | 'down'
 type HorizontalBrowseWaveformLayout = 'top-half' | 'bottom-half'
@@ -57,6 +58,11 @@ type HorizontalBrowseVisibleTilePaintPayload = {
 type UseHorizontalBrowseRawWaveformCanvasOptions = {
   song: () => ISongInfo | null
   direction: () => HorizontalBrowseDirection
+  cueSeconds: () => number | undefined
+  hotCues: () => ISongHotCue[] | null | undefined
+  memoryCues: () => ISongMemoryCue[] | null | undefined
+  loopRange: () => { startSec: number; endSec: number } | null | undefined
+  currentSeconds: () => number | undefined
   playbackRate: () => number | undefined
   playing: Ref<boolean>
   rawData: Ref<RawWaveformData | null>
@@ -95,8 +101,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const wrapRef = ref<HTMLDivElement | null>(null)
   const waveformCanvasRef = ref<HTMLCanvasElement | null>(null)
   const gridCanvasRef = ref<HTMLCanvasElement | null>(null)
+  const overlayCanvasRef = ref<HTMLCanvasElement | null>(null)
   const gridRenderer = createBeatAlignPreviewRenderer()
   const streamWaveformRenderer = createBeatAlignPreviewRenderer()
+  const overlayRenderer = createHorizontalBrowseDetailOverlayRenderer()
 
   let waveformWorker: Worker | null = null
   let waveformRenderToken = 0
@@ -211,15 +219,21 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   }
 
   const resolveSnappedRenderStartSec = (visibleDuration: number) => {
-    const wrap = wrapRef.value
     const clampedStart = clampPreviewStart(options.previewStartSec.value)
-    if (!wrap || visibleDuration <= 0) return clampedStart
-    const cssWidth = Math.max(1, Math.floor(wrap.clientWidth))
-    const pixelRatio = window.devicePixelRatio || 1
-    const scaledWidth = Math.max(1, Math.round(cssWidth * pixelRatio))
-    const secPerPixel = visibleDuration / scaledWidth
-    if (!Number.isFinite(secPerPixel) || secPerPixel <= 0) return clampedStart
-    return clampPreviewStart(Math.round(clampedStart / secPerPixel) * secPerPixel)
+    if (visibleDuration <= 0) return clampedStart
+    // 这里不能再按像素步长把时间轴量化了。
+    // 旧逻辑会把 renderStartSec snap 到整像素对应的秒数，真实位移不是"每帧整像素"
+    // 时就会出现 0px / 1px / 2px 交替跳，肉眼看起来就是"规律性滚一下卡一下"。
+    // 保留连续时间，再交给 renderer 用亚像素 scroll reuse 处理，视觉上才是连续滚动。
+    return clampedStart
+  }
+
+  const resolvePlaybackDrivenRenderStartSec = (visibleDuration: number) => {
+    if (!options.playing.value || options.dragging.value) {
+      return resolveSnappedRenderStartSec(visibleDuration)
+    }
+    const playbackSeconds = Math.max(0, Number(options.currentSeconds()) || 0)
+    return resolvePlaybackAlignedStart(playbackSeconds)
   }
 
   const resolveWaveformLayout = (): HorizontalBrowseWaveformLayout =>
@@ -277,13 +291,14 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   }
 
   const clearCanvas = () => {
-    for (const canvas of [waveformCanvasRef.value, gridCanvasRef.value]) {
+    for (const canvas of [waveformCanvasRef.value, gridCanvasRef.value, overlayCanvasRef.value]) {
       if (!canvas) continue
       const ctx = canvas.getContext('2d')
       if (!ctx) continue
       ctx.setTransform(1, 0, 0, 1, 0, 0)
       ctx.clearRect(0, 0, canvas.width, canvas.height)
     }
+    overlayRenderer.reset()
   }
 
   const clearWaveformCanvas = () => {
@@ -302,6 +317,54 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     if (!ctx) return
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+  }
+
+  const clearOverlayCanvas = () => {
+    const canvas = overlayCanvasRef.value
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.setTransform(1, 0, 0, 1, 0, 0)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    overlayRenderer.reset()
+  }
+
+  const drawGridAndOverlay = (rangeStartSec: number, rangeDurationSec: number) => {
+    const wrap = wrapRef.value
+    const gridCanvas = gridCanvasRef.value
+    const overlayCanvas = overlayCanvasRef.value
+    if (!wrap || !gridCanvas || !overlayCanvas) return
+    const playbackStreamReuse = options.playing.value && !options.dragging.value
+    gridRenderer.draw({
+      canvas: gridCanvas,
+      wrap,
+      bpm: Number(options.previewBpm.value) || 0,
+      firstBeatMs: Number(options.previewFirstBeatMs.value) || 0,
+      barBeatOffset: Number(options.previewBarBeatOffset.value) || 0,
+      rangeStartSec,
+      rangeDurationSec,
+      mixxxData: null,
+      rawData: null,
+      maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
+      showDetailHighlights: false,
+      showCenterLine: false,
+      showBackground: false,
+      showBeatGrid: Number(options.previewBpm.value) > 0,
+      allowScrollReuse: playbackStreamReuse,
+      waveformLayout: resolveWaveformLayout()
+    })
+    overlayRenderer.draw({
+      canvas: overlayCanvas,
+      wrap,
+      direction: options.direction(),
+      rangeStartSec,
+      rangeDurationSec,
+      cueSeconds: options.cueSeconds(),
+      hotCues: options.hotCues(),
+      memoryCues: options.memoryCues(),
+      loopRange: options.loopRange(),
+      allowScrollReuse: playbackStreamReuse
+    })
   }
 
   const resolveRawDataCoveredEndSec = (rawData: RawWaveformData | null) => {
@@ -453,25 +516,21 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       payload.entry.width > 0
         ? payload.entry.bitmap.width / payload.entry.width
         : payload.entry.pixelRatio || 1
-    const srcLeftPx = Math.round(
+    const srcLeftPx =
       ((overlapStartSec - tileStartSec) / payload.tileRangeDurationSec) *
-        payload.entry.width *
-        srcScaleX
-    )
-    const srcRightPx = Math.round(
+      payload.entry.width *
+      srcScaleX
+    const srcRightPx =
       ((overlapEndSec - tileStartSec) / payload.tileRangeDurationSec) *
-        payload.entry.width *
-        srcScaleX
-    )
-    const destLeftPx = Math.round(
+      payload.entry.width *
+      srcScaleX
+    const destLeftPx =
       ((overlapStartSec - payload.viewStartSec) / payload.visibleDuration) * payload.scaledWidth
-    )
-    const destRightPx = Math.round(
+    const destRightPx =
       ((overlapEndSec - payload.viewStartSec) / payload.visibleDuration) * payload.scaledWidth
-    )
     const srcWidth = srcRightPx - srcLeftPx
     const destWidth = destRightPx - destLeftPx
-    if (srcWidth <= 0 || destWidth <= 0) return false
+    if (srcWidth <= 0.0001 || destWidth <= 0.0001) return false
 
     payload.ctx.drawImage(
       payload.entry.bitmap,
@@ -519,7 +578,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       return
     }
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
-    const renderStartSec = resolveSnappedRenderStartSec(visibleDuration)
+    const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
     let paintedAnyTile = false
     for (const payload of pendingVisibleTilePaints.values()) {
       const entry = waveformTileCache.get(payload.cacheKey)
@@ -536,10 +595,20 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     pendingVisibleTilePaints.clear()
     if (!paintedAnyTile) {
       scheduleDraw()
+      return
     }
+    displayStartSec.value = renderStartSec
+    displayReady.value = true
+    drawGridAndOverlay(renderStartSec, visibleDuration)
   }
 
   const scheduleVisibleTilePaint = (payload: HorizontalBrowseVisibleTilePaintPayload) => {
+    if (options.playing.value) {
+      if (!drawRaf) {
+        scheduleDraw()
+      }
+      return
+    }
     pendingVisibleTilePaints.set(payload.cacheKey, payload)
     if (drawRaf || tilePaintRaf) return
     tilePaintRaf = requestAnimationFrame(() => {
@@ -578,6 +647,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       used: waveformTileCacheTick
     })
     pruneWaveformTileCache()
+    if (options.playing.value) {
+      if (!drawRaf) {
+        scheduleDraw()
+      }
+      return
+    }
     scheduleVisibleTilePaint({
       cacheKey: payload.cacheKey,
       rangeStartSec: Number(payload.rangeStartSec) || 0,
@@ -848,7 +923,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
     const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
-    const renderStartSec = resolveSnappedRenderStartSec(visibleDuration)
+    const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
     const playbackStreamReuse = options.playing.value && !options.dragging.value
     const streamMaxSamplesPerPixel = playbackStreamReuse
       ? PREVIEW_MAX_SAMPLES_PER_PIXEL
@@ -975,7 +1050,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       lastStreamRenderedRawData = null
       // 完全无数据可画：通知 DOM 层也整块隐藏，避免只剩 grid/cue 悬在那里。
       displayReady.value = false
-    } else if (options.rawStreamActive.value || options.dragging.value) {
+    } else if (options.playing.value || options.rawStreamActive.value || options.dragging.value) {
       // 判断是否可以把当前这帧交给 streamWaveformRenderer.draw 绘制：
       //   * effectiveRawCoverage=true（rawData 严格覆盖可视区）：无论 renderer 走 scroll reuse
       //     还是 clearRect+drawRange 都能得到完整波形，安全。
@@ -1117,30 +1192,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       // 成功绘制时所有元素同步出现在 displayStartSec 上。
       gridRenderer.reset()
       clearGridCanvas()
+      clearOverlayCanvas()
       return
     }
 
-    // grid 用 displayStartSec（= 本帧成功绘制分支里刚赋的 renderStartSec），与 canvas 像素
-    // 和 DOM 层标记统一对齐；这样即使 previewStartSec 在 tick 推进，grid 也绝不会单独跑在
-    // 波形之前。
-    gridRenderer.draw({
-      canvas: gridCanvas,
-      wrap,
-      bpm: Number(options.previewBpm.value) || 0,
-      firstBeatMs: Number(options.previewFirstBeatMs.value) || 0,
-      barBeatOffset: Number(options.previewBarBeatOffset.value) || 0,
-      rangeStartSec: displayStartSec.value,
-      rangeDurationSec: visibleDuration,
-      mixxxData: null,
-      rawData: null,
-      maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
-      showDetailHighlights: false,
-      showCenterLine: false,
-      showBackground: false,
-      showBeatGrid: Number(options.previewBpm.value) > 0,
-      allowScrollReuse: false,
-      waveformLayout: resolveWaveformLayout()
-    })
+    // grid / overlay 都跟 displayStartSec 走同一帧，任何补画路径都必须一起推进。
+    drawGridAndOverlay(displayStartSec.value, visibleDuration)
   }
 
   const flushRawStreamDirtyDraw = () => {
@@ -1188,7 +1245,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
     const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
-    const renderStartSec = resolveSnappedRenderStartSec(visibleDuration)
+    const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
     traceHorizontalWaveformRender('stream-dirty')
     const finishTiming = startHorizontalBrowseUserTiming(
       `frkb:hb:canvas:stream-dirty:${options.direction()}`
@@ -1271,6 +1328,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const resetGridRenderer = () => {
     gridRenderer.reset()
+    overlayRenderer.reset()
   }
 
   const storeRawWaveform = (filePath: string, data: RawWaveformData) => {
@@ -1292,6 +1350,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     clearWaveformTileCache()
     resetRetainedWaveformData()
     gridRenderer.dispose()
+    overlayRenderer.dispose()
     if (waveformWorker) {
       waveformWorker.removeEventListener('message', handleWaveformWorkerMessage)
       waveformWorker.terminate()
@@ -1312,6 +1371,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     wrapRef,
     waveformCanvasRef,
     gridCanvasRef,
+    overlayCanvasRef,
     resolvePreviewTimeScale,
     resolvePreviewDurationSec,
     resolveVisibleDurationSec,

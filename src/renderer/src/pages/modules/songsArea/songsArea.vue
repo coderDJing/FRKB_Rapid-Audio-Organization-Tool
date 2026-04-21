@@ -248,6 +248,7 @@ const {
   handleColumnsUpdate,
   colMenuClick,
   applyFiltersAndSorting,
+  shouldApplyFiltersAndSortingForSongChange,
   persistColumnData
 } = useSongsAreaColumns({
   runtime,
@@ -314,6 +315,7 @@ useSongsAreaEvents({
   songsAreaState,
   originalSongInfoArr,
   applyFiltersAndSorting,
+  shouldApplyFiltersAndSortingForSongChange,
   openSongList,
   scheduleSweepCovers
 })

@@ -23,7 +23,13 @@ type HorizontalBrowseVisualizerSnapshot = {
 
 type UseHorizontalBrowseOutputParams = {
   nativeTransport: {
-    setGain: (deck: DeckKey, gain: number) => Promise<unknown>
+    state: {
+      output?: {
+        crossfaderValue?: number
+        masterGain?: number
+      }
+    }
+    setOutputState: (crossfaderValue: number, masterGain: number) => Promise<unknown>
     visualizerSnapshot: () => Promise<HorizontalBrowseVisualizerSnapshot | null | undefined>
   }
 }
@@ -70,7 +76,6 @@ export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrow
   const faderRef = ref<HTMLElement | null>(null)
   const faderRailRef = ref<HTMLElement | null>(null)
   const faderDragging = ref(false)
-  const faderValue = ref(0)
   const mainWindowVolume = ref(readWindowVolume(MAIN_WINDOW_VOLUME_STORAGE_KEY))
 
   let visualizerPollTimer: number | null = null
@@ -111,40 +116,23 @@ export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrow
     center: index === 4
   }))
 
+  const resolveCrossfaderValue = () =>
+    clampNumber(Number(nativeTransport.state.output?.crossfaderValue) || 0, -1, 1)
+
   const faderThumbStyle = computed(() => ({
-    top: `${resolveCrossfaderTravelPercentByValue(faderValue.value)}%`
+    top: `${resolveCrossfaderTravelPercentByValue(resolveCrossfaderValue())}%`
   }))
 
-  const resolveCrossfaderVolumes = (value: number) => {
-    const safeValue = clampNumber(value, -1, 1)
-    if (safeValue >= 0) {
-      return {
-        top: 1,
-        bottom: 1 - safeValue
-      }
-    }
-    return {
-      top: 1 + safeValue,
-      bottom: 1
-    }
-  }
-
-  const applyDeckOutputGains = (value = faderValue.value) => {
-    const deckVolumes = resolveCrossfaderVolumes(value)
-    const masterVolume = clampVolumeValue(mainWindowVolume.value)
-    void nativeTransport.setGain('top', deckVolumes.top * masterVolume)
-    void nativeTransport.setGain('bottom', deckVolumes.bottom * masterVolume)
-  }
-
   const syncCrossfaderValue = (value: number) => {
-    faderValue.value = clampNumber(value, -1, 1)
-    applyDeckOutputGains(faderValue.value)
+    const safeValue = clampNumber(value, -1, 1)
+    const masterVolume = clampVolumeValue(mainWindowVolume.value)
+    void nativeTransport.setOutputState(safeValue, masterVolume)
   }
 
   const resolveCrossfaderValueByClientY = (clientY: number) => {
     const rect =
       faderRailRef.value?.getBoundingClientRect() || faderRef.value?.getBoundingClientRect()
-    if (!rect || rect.height <= 0) return faderValue.value
+    if (!rect || rect.height <= 0) return resolveCrossfaderValue()
     const travelInsetPx = rect.height * FADER_TRAVEL_INSET_RATIO
     const travelHeight = Math.max(1, rect.height - travelInsetPx * 2)
     const relativeY = clampNumber(clientY - rect.top - travelInsetPx, 0, travelHeight)
@@ -258,11 +246,11 @@ export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrow
   const handleMainWindowVolumeSync = (value: unknown) => {
     if (typeof value !== 'number' || !Number.isFinite(value)) return
     mainWindowVolume.value = clampVolumeValue(value)
-    applyDeckOutputGains()
+    void nativeTransport.setOutputState(resolveCrossfaderValue(), mainWindowVolume.value)
   }
 
   const nudgeCrossfaderByKeyboard = (direction: -1 | 1) => {
-    syncCrossfaderValue(faderValue.value + direction * CROSSFADER_KEY_STEP)
+    syncCrossfaderValue(resolveCrossfaderValue() + direction * CROSSFADER_KEY_STEP)
   }
 
   const resetCrossfaderByKeyboard = () => {
@@ -273,6 +261,7 @@ export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrow
     registerTitleAudioVisualizerSource('mainWindow', titleAudioVisualizerSource)
     emitter.on(MAIN_WINDOW_VOLUME_SET_EVENT, handleMainWindowVolumeSync)
     emitter.on(MAIN_WINDOW_VOLUME_CHANGED_EVENT, handleMainWindowVolumeSync)
+    void nativeTransport.setOutputState(resolveCrossfaderValue(), mainWindowVolume.value)
     updateSyntheticVisualizerData(null)
     scheduleVisualizerPoll()
   })

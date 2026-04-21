@@ -274,6 +274,14 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
   let rate = clamp_rate(target.playback_rate);
   target.current_sec += rate / output_sample_rate;
   target.last_observed_at_ms = -1.0;
+  if target.loop_active
+    && target.loop_end_sec - target.loop_start_sec > 0.0001
+    && (target.current_sec >= target.loop_end_sec - 0.0005
+      || target.current_sec < target.loop_start_sec - 0.0001)
+  {
+    target.current_sec = target.loop_start_sec;
+    reset_master_tempo_state(target);
+  }
   if target.duration_sec.is_finite() && target.current_sec >= target.duration_sec {
     target.current_sec = target.duration_sec;
     target.playing = false;
@@ -325,6 +333,14 @@ fn sample_deck_master_tempo(target: &mut DeckState, output_sample_rate: f64) -> 
   target.current_sec = target.pcm_start_sec
     + target.master_tempo_state.playhead_source_frame / target.sample_rate as f64;
   target.last_observed_at_ms = -1.0;
+  if target.loop_active
+    && target.loop_end_sec - target.loop_start_sec > 0.0001
+    && (target.current_sec >= target.loop_end_sec - 0.0005
+      || target.current_sec < target.loop_start_sec - 0.0001)
+  {
+    target.current_sec = target.loop_start_sec;
+    reset_master_tempo_state(target);
+  }
 
   if target.duration_sec.is_finite() && target.current_sec >= target.duration_sec {
     target.current_sec = target.duration_sec;

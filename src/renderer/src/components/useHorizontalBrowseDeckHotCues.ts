@@ -15,6 +15,7 @@ type SongHotCuePayload = {
 type UseHorizontalBrowseDeckHotCuesParams = {
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   setDeckSong: (deck: DeckKey, song: ISongInfo | null) => void
+  resolveDeckMarkerPlacementSec: (deck: DeckKey) => number
   resolveDeckPlaying: (deck: DeckKey) => boolean
   resolveDeckDurationSeconds: (deck: DeckKey) => number
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
@@ -71,8 +72,14 @@ export const useHorizontalBrowseDeckHotCues = (params: UseHorizontalBrowseDeckHo
       return
     }
 
-    const cueDefinition = params.buildDeckStoredCueDefinition(deck)
-    if (!cueDefinition) return
+    const storedCueDefinition = params.buildDeckStoredCueDefinition(deck)
+    if (!storedCueDefinition) return
+    const cueDefinition = storedCueDefinition.isLoop
+      ? storedCueDefinition
+      : {
+          ...storedCueDefinition,
+          sec: params.resolveDeckMarkerPlacementSec(deck)
+        }
 
     const result = (await window.electron.ipcRenderer.invoke('song:set-hot-cue', {
       filePath: song.filePath,

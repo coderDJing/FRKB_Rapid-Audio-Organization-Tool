@@ -111,11 +111,23 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   syncEnabled: boolean
   syncLock: string
   leader: boolean
+  loopActive: boolean
+  loopBeatValue: number
+  loopStartBeatIndex?: number
+  loopStartSec: number
+  loopEndSec: number
+}
+export interface HorizontalBrowseTransportOutputSnapshot {
+  crossfaderValue: number
+  masterGain: number
+  topDeckGain: number
+  bottomDeckGain: number
 }
 export interface HorizontalBrowseTransportSnapshot {
   leaderDeck?: string
   top: HorizontalBrowseTransportDeckSnapshot
   bottom: HorizontalBrowseTransportDeckSnapshot
+  output: HorizontalBrowseTransportOutputSnapshot
 }
 export interface HorizontalBrowseTransportStateInput {
   top: HorizontalBrowseTransportDeckInput
@@ -227,9 +239,30 @@ export declare function horizontalBrowseTransportSeek(
   nowMs: number,
   currentSec: number
 ): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportToggleLoop(
+  deck: string,
+  nowMs: number
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportStepLoopBeats(
+  deck: string,
+  nowMs: number,
+  direction: number
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetLoopFromRange(
+  deck: string,
+  startSec: number,
+  endSec: number
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportClearLoop(
+  deck: string
+): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetGain(
   deck: string,
   gain: number
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetOutputState(
+  crossfaderValue: number,
+  masterGain: number
 ): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSnapshot(
   nowMs?: number

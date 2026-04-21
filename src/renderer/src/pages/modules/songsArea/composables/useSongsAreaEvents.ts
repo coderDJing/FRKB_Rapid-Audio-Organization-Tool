@@ -1,4 +1,4 @@
-import { onMounted, onUnmounted, watch, markRaw } from 'vue'
+import { onMounted, onUnmounted, watch, markRaw, triggerRef } from 'vue'
 import emitter from '@renderer/utils/mitt'
 import type { ShallowRef } from 'vue'
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from '../../../../../../types/globals'
@@ -15,6 +15,7 @@ interface UseSongsAreaEventsParams {
   songsAreaState: ISongsAreaPaneRuntimeState
   originalSongInfoArr: ShallowRef<ISongInfo[]>
   applyFiltersAndSorting: () => void
+  shouldApplyFiltersAndSortingForSongChange: (fields: string[]) => boolean
   openSongList: () => Promise<void>
   scheduleSweepCovers: () => void
 }
@@ -25,6 +26,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     songsAreaState,
     originalSongInfoArr,
     applyFiltersAndSorting,
+    shouldApplyFiltersAndSortingForSongChange,
     openSongList,
     scheduleSweepCovers
   } = params
@@ -233,6 +235,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   }
 
   let keyUpdateScheduled = false
+  type SongPatchFn = (song: ISongInfo) => ISongInfo
   const scheduleApply = () => {
     if (keyUpdateScheduled) return
     keyUpdateScheduled = true
@@ -242,53 +245,91 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     })
   }
 
+  const scheduleApplyIfNeeded = (fields: string[]) => {
+    if (!shouldApplyFiltersAndSortingForSongChange(fields)) return
+    scheduleApply()
+  }
+
+  const findSongIndexByPath = (songs: readonly ISongInfo[], normalizedTargetPath: string) => {
+    for (let index = 0; index < songs.length; index += 1) {
+      if (normalizePath(songs[index]?.filePath) === normalizedTargetPath) {
+        return index
+      }
+    }
+    return -1
+  }
+
+  const patchSongListAtIndex = (songs: ISongInfo[], index: number, patch: SongPatchFn) => {
+    if (index < 0 || index >= songs.length) return false
+    const currentSong = songs[index]
+    if (!currentSong) return false
+    const nextSong = patch(currentSong)
+    if (nextSong === currentSong) return false
+    songs[index] = nextSong
+    return true
+  }
+
+  const patchSongListByPath = (
+    songs: ISongInfo[] | null | undefined,
+    normalizedTargetPath: string,
+    patch: SongPatchFn
+  ) => {
+    if (!songs?.length) return false
+    const targetIndex = findSongIndexByPath(songs, normalizedTargetPath)
+    return patchSongListAtIndex(songs, targetIndex, patch)
+  }
+
+  const patchOriginalSongByPath = (normalizedTargetPath: string, patch: SongPatchFn) => {
+    const touched = patchSongListByPath(originalSongInfoArr.value, normalizedTargetPath, patch)
+    if (touched) {
+      triggerRef(originalSongInfoArr)
+    }
+    return touched
+  }
+
+  const patchSongsAreaSongByPath = (normalizedTargetPath: string, patch: SongPatchFn) =>
+    patchSongListByPath(songsAreaState.songInfoArr, normalizedTargetPath, patch)
+
+  const patchPlayingSongListByPath = (normalizedTargetPath: string, patch: SongPatchFn) => {
+    if (runtime.playingData.playingSongListData === songsAreaState.songInfoArr) return false
+    return patchSongListByPath(runtime.playingData.playingSongListData, normalizedTargetPath, patch)
+  }
+
+  const patchExternalPlaylistSongByPath = (normalizedTargetPath: string, patch: SongPatchFn) =>
+    patchSongListByPath(runtime.externalPlaylist.songs, normalizedTargetPath, patch)
+
+  const patchPlayingSongByPath = (normalizedTargetPath: string, patch: SongPatchFn) => {
+    const currentPlayingSong = runtime.playingData.playingSong
+    if (!currentPlayingSong) return false
+    if (normalizePath(currentPlayingSong.filePath) !== normalizedTargetPath) return false
+    const nextPlayingSong = patch(currentPlayingSong)
+    if (nextPlayingSong === currentPlayingSong) return false
+    runtime.playingData.playingSong = nextPlayingSong
+    return true
+  }
+
   const onSongKeyUpdated = (_e: unknown, payload: { filePath?: string; keyText?: string }) => {
     const filePath = payload?.filePath
     const keyText = payload?.keyText
     if (!filePath || typeof keyText !== 'string') return
     const normalizedTargetPath = normalizePath(filePath)
 
-    let touched = false
-    const nextOriginal = originalSongInfoArr.value.map((item) => {
-      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
-      if (item.key === keyText) return item
-      touched = true
-      return { ...item, key: keyText }
-    })
-    if (touched) {
-      originalSongInfoArr.value = markRaw(nextOriginal)
-      scheduleApply()
+    const applyKeyPatch = (song: ISongInfo): ISongInfo =>
+      song.key === keyText
+        ? song
+        : {
+            ...song,
+            key: keyText
+          }
+
+    if (patchOriginalSongByPath(normalizedTargetPath, applyKeyPatch)) {
+      scheduleApplyIfNeeded(['key'])
     }
 
-    if (songsAreaState.songInfoArr.length > 0) {
-      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? { ...item, key: keyText } : item
-      )
-    }
-
-    const currentPlayingSongForKey = runtime.playingData.playingSong
-    if (
-      currentPlayingSongForKey &&
-      normalizePath(currentPlayingSongForKey.filePath) === normalizedTargetPath
-    ) {
-      runtime.playingData.playingSong = {
-        ...currentPlayingSongForKey,
-        key: keyText
-      }
-    }
-
-    if (runtime.playingData.playingSongListData.length > 0) {
-      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
-        (item) =>
-          normalizePath(item.filePath) === normalizedTargetPath ? { ...item, key: keyText } : item
-      )
-    }
-
-    if (runtime.externalPlaylist.songs.length > 0) {
-      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? { ...item, key: keyText } : item
-      )
-    }
+    patchSongsAreaSongByPath(normalizedTargetPath, applyKeyPatch)
+    patchPlayingSongByPath(normalizedTargetPath, applyKeyPatch)
+    patchPlayingSongListByPath(normalizedTargetPath, applyKeyPatch)
+    patchExternalPlaylistSongByPath(normalizedTargetPath, applyKeyPatch)
   }
 
   const onSongBpmUpdated = (_e: unknown, payload: { filePath?: string; bpm?: number }) => {
@@ -297,47 +338,22 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (!filePath || typeof bpmValue !== 'number' || !Number.isFinite(bpmValue)) return
     const normalizedTargetPath = normalizePath(filePath)
 
-    let touched = false
-    const nextOriginal = originalSongInfoArr.value.map((item) => {
-      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
-      if (item.bpm === bpmValue) return item
-      touched = true
-      return { ...item, bpm: bpmValue }
-    })
-    if (touched) {
-      originalSongInfoArr.value = markRaw(nextOriginal)
-      scheduleApply()
+    const applyBpmPatch = (song: ISongInfo): ISongInfo =>
+      song.bpm === bpmValue
+        ? song
+        : {
+            ...song,
+            bpm: bpmValue
+          }
+
+    if (patchOriginalSongByPath(normalizedTargetPath, applyBpmPatch)) {
+      scheduleApplyIfNeeded(['bpm'])
     }
 
-    if (songsAreaState.songInfoArr.length > 0) {
-      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? { ...item, bpm: bpmValue } : item
-      )
-    }
-
-    const currentPlayingSongForBpm = runtime.playingData.playingSong
-    if (
-      currentPlayingSongForBpm &&
-      normalizePath(currentPlayingSongForBpm.filePath) === normalizedTargetPath
-    ) {
-      runtime.playingData.playingSong = {
-        ...currentPlayingSongForBpm,
-        bpm: bpmValue
-      }
-    }
-
-    if (runtime.playingData.playingSongListData.length > 0) {
-      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
-        (item) =>
-          normalizePath(item.filePath) === normalizedTargetPath ? { ...item, bpm: bpmValue } : item
-      )
-    }
-
-    if (runtime.externalPlaylist.songs.length > 0) {
-      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? { ...item, bpm: bpmValue } : item
-      )
-    }
+    patchSongsAreaSongByPath(normalizedTargetPath, applyBpmPatch)
+    patchPlayingSongByPath(normalizedTargetPath, applyBpmPatch)
+    patchPlayingSongListByPath(normalizedTargetPath, applyBpmPatch)
+    patchExternalPlaylistSongByPath(normalizedTargetPath, applyBpmPatch)
   }
 
   const onSongGridUpdated = (
@@ -359,6 +375,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     const hasBarBeatOffset =
       typeof payload?.barBeatOffset === 'number' && Number.isFinite(payload.barBeatOffset)
     if (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset) return
+    const changedFields = [
+      hasBpm ? 'bpm' : '',
+      hasFirstBeatMs ? 'firstBeatMs' : '',
+      hasBarBeatOffset ? 'barBeatOffset' : ''
+    ].filter(Boolean)
 
     const applyGridPatch = (song: ISongInfo): ISongInfo => {
       let touched = false
@@ -378,44 +399,14 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       return touched ? nextSong : song
     }
 
-    let touched = false
-    const nextOriginal = originalSongInfoArr.value.map((item) => {
-      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
-      const nextItem = applyGridPatch(item)
-      if (nextItem !== item) touched = true
-      return nextItem
-    })
-    if (touched) {
-      originalSongInfoArr.value = markRaw(nextOriginal)
-      scheduleApply()
+    if (patchOriginalSongByPath(normalizedTargetPath, applyGridPatch)) {
+      scheduleApplyIfNeeded(changedFields)
     }
 
-    if (songsAreaState.songInfoArr.length > 0) {
-      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? applyGridPatch(item) : item
-      )
-    }
-
-    const currentPlayingSongForGrid = runtime.playingData.playingSong
-    if (
-      currentPlayingSongForGrid &&
-      normalizePath(currentPlayingSongForGrid.filePath) === normalizedTargetPath
-    ) {
-      runtime.playingData.playingSong = applyGridPatch(currentPlayingSongForGrid)
-    }
-
-    if (runtime.playingData.playingSongListData.length > 0) {
-      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
-        (item) =>
-          normalizePath(item.filePath) === normalizedTargetPath ? applyGridPatch(item) : item
-      )
-    }
-
-    if (runtime.externalPlaylist.songs.length > 0) {
-      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? applyGridPatch(item) : item
-      )
-    }
+    patchSongsAreaSongByPath(normalizedTargetPath, applyGridPatch)
+    patchPlayingSongByPath(normalizedTargetPath, applyGridPatch)
+    patchPlayingSongListByPath(normalizedTargetPath, applyGridPatch)
+    patchExternalPlaylistSongByPath(normalizedTargetPath, applyGridPatch)
   }
 
   const onSongHotCuesUpdated = (
@@ -438,41 +429,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       }
     }
 
-    let touched = false
-    const nextOriginal = originalSongInfoArr.value.map((item) => {
-      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
-      const nextItem = applyHotCuePatch(item)
-      if (nextItem !== item) touched = true
-      return nextItem
-    })
-    if (touched) {
-      originalSongInfoArr.value = markRaw(nextOriginal)
-      scheduleApply()
-    }
-
-    if (songsAreaState.songInfoArr.length > 0) {
-      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? applyHotCuePatch(item) : item
-      )
-    }
-
-    const currentPlayingSong = runtime.playingData.playingSong
-    if (currentPlayingSong && normalizePath(currentPlayingSong.filePath) === normalizedTargetPath) {
-      runtime.playingData.playingSong = applyHotCuePatch(currentPlayingSong)
-    }
-
-    if (runtime.playingData.playingSongListData.length > 0) {
-      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
-        (item) =>
-          normalizePath(item.filePath) === normalizedTargetPath ? applyHotCuePatch(item) : item
-      )
-    }
-
-    if (runtime.externalPlaylist.songs.length > 0) {
-      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? applyHotCuePatch(item) : item
-      )
-    }
+    patchOriginalSongByPath(normalizedTargetPath, applyHotCuePatch)
+    patchSongsAreaSongByPath(normalizedTargetPath, applyHotCuePatch)
+    patchPlayingSongByPath(normalizedTargetPath, applyHotCuePatch)
+    patchPlayingSongListByPath(normalizedTargetPath, applyHotCuePatch)
+    patchExternalPlaylistSongByPath(normalizedTargetPath, applyHotCuePatch)
   }
 
   const onSongMemoryCuesUpdated = (
@@ -495,41 +456,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       }
     }
 
-    let touched = false
-    const nextOriginal = originalSongInfoArr.value.map((item) => {
-      if (normalizePath(item.filePath) !== normalizedTargetPath) return item
-      const nextItem = applyMemoryCuePatch(item)
-      if (nextItem !== item) touched = true
-      return nextItem
-    })
-    if (touched) {
-      originalSongInfoArr.value = markRaw(nextOriginal)
-      scheduleApply()
-    }
-
-    if (songsAreaState.songInfoArr.length > 0) {
-      songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? applyMemoryCuePatch(item) : item
-      )
-    }
-
-    const currentPlayingSong = runtime.playingData.playingSong
-    if (currentPlayingSong && normalizePath(currentPlayingSong.filePath) === normalizedTargetPath) {
-      runtime.playingData.playingSong = applyMemoryCuePatch(currentPlayingSong)
-    }
-
-    if (runtime.playingData.playingSongListData.length > 0) {
-      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map(
-        (item) =>
-          normalizePath(item.filePath) === normalizedTargetPath ? applyMemoryCuePatch(item) : item
-      )
-    }
-
-    if (runtime.externalPlaylist.songs.length > 0) {
-      runtime.externalPlaylist.songs = runtime.externalPlaylist.songs.map((item) =>
-        normalizePath(item.filePath) === normalizedTargetPath ? applyMemoryCuePatch(item) : item
-      )
-    }
+    patchOriginalSongByPath(normalizedTargetPath, applyMemoryCuePatch)
+    patchSongsAreaSongByPath(normalizedTargetPath, applyMemoryCuePatch)
+    patchPlayingSongByPath(normalizedTargetPath, applyMemoryCuePatch)
+    patchPlayingSongListByPath(normalizedTargetPath, applyMemoryCuePatch)
+    patchExternalPlaylistSongByPath(normalizedTargetPath, applyMemoryCuePatch)
   }
 
   const onImportFinished = async (_event: unknown, songListUUID: string, _summary: unknown) => {

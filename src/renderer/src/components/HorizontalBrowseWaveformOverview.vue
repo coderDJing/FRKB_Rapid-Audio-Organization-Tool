@@ -689,6 +689,7 @@ const handleSongWaveformUpdated = (_event: unknown, payload: { filePath?: string
   const currentSongFilePath = String(props.song?.filePath || '').trim()
   if (!filePath || !currentSongFilePath) return
   if (!isSameHorizontalBrowseSongFilePath(filePath, currentSongFilePath)) return
+  if (waveformData.value || pioneerPreviewData.value) return
   void loadWaveform()
 }
 

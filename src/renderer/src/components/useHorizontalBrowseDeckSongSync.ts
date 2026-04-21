@@ -30,7 +30,19 @@ type UseHorizontalBrowseDeckSongSyncParams = {
   assignSongToDeck: (deck: DeckKey, song: ISongInfo) => Promise<void>
 }
 
+const GRID_SYNC_COMMIT_DEBOUNCE_MS = 120
+
 export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckSongSyncParams) => {
+  let gridSyncCommitTimer: ReturnType<typeof setTimeout> | null = null
+
+  const scheduleDeckStateCommit = () => {
+    if (gridSyncCommitTimer) clearTimeout(gridSyncCommitTimer)
+    gridSyncCommitTimer = setTimeout(() => {
+      gridSyncCommitTimer = null
+      void params.commitDeckStatesToNative()
+    }, GRID_SYNC_COMMIT_DEBOUNCE_MS)
+  }
+
   const handleExternalDeckSongLoad = (payload: HorizontalBrowseLoadSongPayload) => {
     const deck = payload?.deck
     const song = payload?.song
@@ -39,12 +51,14 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
   }
 
   const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) => {
+    let touched = false
     const topSong = params.topDeckSong.value
     if (topSong) {
       const nextTopSong = mergeHorizontalBrowseSongWithSharedGrid(topSong, payload)
       if (nextTopSong !== topSong) {
         params.setDeckSong('top', nextTopSong)
         params.syncDeckDefaultCue('top', nextTopSong)
+        touched = true
       }
     }
 
@@ -54,10 +68,13 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
       if (nextBottomSong !== bottomSong) {
         params.setDeckSong('bottom', nextBottomSong)
         params.syncDeckDefaultCue('bottom', nextBottomSong)
+        touched = true
       }
     }
 
-    void params.commitDeckStatesToNative()
+    if (touched) {
+      scheduleDeckStateCommit()
+    }
   }
 
   const handleSongKeyUpdated = (
@@ -84,6 +101,11 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
   }
 
   return {
+    disposeSongSync() {
+      if (!gridSyncCommitTimer) return
+      clearTimeout(gridSyncCommitTimer)
+      gridSyncCommitTimer = null
+    },
     handleExternalDeckSongLoad,
     handleSongGridUpdated,
     handleSongKeyUpdated

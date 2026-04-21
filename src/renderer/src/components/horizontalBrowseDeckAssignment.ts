@@ -1,6 +1,7 @@
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import { parseHorizontalBrowseDurationToSeconds } from '@renderer/components/horizontalBrowseShellState'
+import type { HorizontalBrowseDeckTransportStateOverride } from '@renderer/components/useHorizontalBrowseTransportMutations'
 import {
   mergeHorizontalBrowseSongWithHotCues,
   mergeHorizontalBrowseSongWithMemoryCues,
@@ -18,21 +19,13 @@ type SharedSongGridPayload = {
   barBeatOffset?: number
 } | null
 
-type DeckTransportStateOverride = Partial<{
-  currentSec: number
-  lastObservedAtMs: number
-  durationSec: number
-  playing: boolean
-  playbackRate: number
-}>
-
 type CreateHorizontalBrowseDeckAssignerParams = {
   touchDeckInteraction: (deck: DeckKey) => void
   setDeckSong: (deck: DeckKey, song: ISongInfo | null) => void
   syncDeckDefaultCue: (deck: DeckKey, song: ISongInfo | null, force?: boolean) => void
   commitDeckStateToNative: (
     deck: DeckKey,
-    override?: DeckTransportStateOverride
+    override?: HorizontalBrowseDeckTransportStateOverride
   ) => Promise<unknown>
 }
 

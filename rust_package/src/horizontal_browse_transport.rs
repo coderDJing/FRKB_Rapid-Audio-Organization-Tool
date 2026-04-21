@@ -8,13 +8,17 @@ use parking_lot::Mutex;
 
 #[path = "horizontal_browse_transport_audio.rs"]
 mod horizontal_browse_transport_audio;
+#[path = "horizontal_browse_transport_engine_state.rs"]
+mod horizontal_browse_transport_engine_state;
+#[path = "horizontal_browse_transport_napi.rs"]
+mod horizontal_browse_transport_napi;
 #[path = "horizontal_browse_transport_types.rs"]
 mod horizontal_browse_transport_types;
 use horizontal_browse_transport_types::{
   parse_deck_id, BeatGridSnapshot, DeckDerivedState, DeckId, DecodeRequest,
   HorizontalBrowseTransportDeckInput, HorizontalBrowseTransportDeckSnapshot,
-  HorizontalBrowseTransportSnapshot, HorizontalBrowseTransportStateInput,
-  HorizontalBrowseTransportVisualizerSnapshot,
+  HorizontalBrowseTransportOutputSnapshot, HorizontalBrowseTransportSnapshot,
+  HorizontalBrowseTransportStateInput, HorizontalBrowseTransportVisualizerSnapshot,
 };
 
 struct DeckState {
@@ -38,6 +42,11 @@ struct DeckState {
   sample_rate: u32,
   channels: u16,
   gain: f32,
+  loop_active: bool,
+  loop_beat_value: f64,
+  loop_start_beat_index: Option<i32>,
+  loop_start_sec: f64,
+  loop_end_sec: f64,
   master_tempo_state: horizontal_browse_transport_audio::DeckMasterTempoState,
 }
 
@@ -63,6 +72,28 @@ const HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC: f64 = 16.0;
 const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_THRESHOLD_SEC: f64 = 8.0;
 const HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC: f64 = 4.0;
 const HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT: usize = 256;
+const HORIZONTAL_BROWSE_LOOP_END_EPSILON_SEC: f64 = 0.0005;
+const HORIZONTAL_BROWSE_LOOP_POSITION_EPSILON_SEC: f64 = 0.0001;
+const HORIZONTAL_BROWSE_LOOP_BEAT_INDEX_EPSILON: f64 = 1e-6;
+const HORIZONTAL_BROWSE_LOOP_DEFAULT_BEAT_VALUE: f64 = 8.0;
+const HORIZONTAL_BROWSE_LOOP_BEAT_VALUES: [f64; 16] = [
+  1.0 / 64.0,
+  1.0 / 32.0,
+  1.0 / 16.0,
+  1.0 / 8.0,
+  1.0 / 4.0,
+  1.0 / 2.0,
+  1.0,
+  2.0,
+  4.0,
+  8.0,
+  16.0,
+  32.0,
+  64.0,
+  128.0,
+  256.0,
+  512.0,
+];
 
 impl Default for DeckState {
   fn default() -> Self {
@@ -87,6 +118,11 @@ impl Default for DeckState {
       sample_rate: 0,
       channels: 0,
       gain: 1.0,
+      loop_active: false,
+      loop_beat_value: 8.0,
+      loop_start_beat_index: None,
+      loop_start_sec: 0.0,
+      loop_end_sec: 0.0,
       master_tempo_state: horizontal_browse_transport_audio::DeckMasterTempoState::default(),
     }
   }
@@ -105,6 +141,9 @@ struct HorizontalBrowseTransportEngine {
   target_beat_distance: [f64; 2],
   quantize_enabled: [bool; 2],
   bpm_multiplier: [f64; 2],
+  trim_gain: [f32; 2],
+  master_gain: f32,
+  crossfader_value: f32,
   visualizer_ring: Vec<f32>,
   visualizer_write_index: usize,
   visualizer_filled: bool,
@@ -125,6 +164,9 @@ impl Default for HorizontalBrowseTransportEngine {
       target_beat_distance: [0.0, 0.0],
       quantize_enabled: [true, true],
       bpm_multiplier: [1.0, 1.0],
+      trim_gain: [1.0, 1.0],
+      master_gain: 1.0,
+      crossfader_value: 0.0,
       visualizer_ring: vec![0.0; HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT],
       visualizer_write_index: 0,
       visualizer_filled: false,
@@ -591,6 +633,44 @@ impl HorizontalBrowseTransportEngine {
     }
   }
 
+  fn clamp_unit_gain(value: f64) -> f32 {
+    if value.is_finite() {
+      value.clamp(0.0, 1.0) as f32
+    } else {
+      1.0
+    }
+  }
+
+  fn clamp_crossfader_value(value: f64) -> f32 {
+    if value.is_finite() {
+      value.clamp(-1.0, 1.0) as f32
+    } else {
+      0.0
+    }
+  }
+
+  fn resolve_crossfader_volumes(value: f32) -> (f32, f32) {
+    let safe_value = value.clamp(-1.0, 1.0);
+    if safe_value >= 0.0 {
+      (1.0, 1.0 - safe_value)
+    } else {
+      (1.0 + safe_value, 1.0)
+    }
+  }
+
+  fn refresh_output_gains(&mut self) {
+    let (top_crossfader_gain, bottom_crossfader_gain) =
+      Self::resolve_crossfader_volumes(self.crossfader_value);
+    let top_gain = self.trim_gain[Self::deck_index(DeckId::Top)]
+      * self.master_gain
+      * top_crossfader_gain;
+    let bottom_gain = self.trim_gain[Self::deck_index(DeckId::Bottom)]
+      * self.master_gain
+      * bottom_crossfader_gain;
+    self.top.gain = top_gain.clamp(0.0, 1.0);
+    self.bottom.gain = bottom_gain.clamp(0.0, 1.0);
+  }
+
   fn is_loaded(&self, deck: DeckId) -> bool {
     let deck_state = self.deck(deck);
     let file_path = deck_state
@@ -619,467 +699,6 @@ impl HorizontalBrowseTransportEngine {
     };
   }
 
-  fn original_beat_grid(&self, deck: DeckId) -> Option<BeatGridSnapshot> {
-    let deck_state = self.deck(deck);
-    let bpm = deck_state.bpm?;
-    if !bpm.is_finite() || bpm <= 0.0 {
-      return None;
-    }
-    Some(BeatGridSnapshot {
-      bpm,
-      beat_sec: 60.0 / bpm,
-      first_beat_sec: (deck_state.first_beat_ms.unwrap_or(0.0).max(0.0)) / 1000.0,
-    })
-  }
-
-  fn beat_grid(&self, deck: DeckId) -> Option<BeatGridSnapshot> {
-    let original = self.original_beat_grid(deck)?;
-    let multiplier = self.bpm_multiplier[Self::deck_index(deck)];
-    let adjusted_bpm = original.bpm
-      * if multiplier.is_finite() && multiplier > 0.0 {
-        multiplier
-      } else {
-        1.0
-      };
-    if !adjusted_bpm.is_finite() || adjusted_bpm <= 0.0 {
-      return None;
-    }
-    Some(BeatGridSnapshot {
-      bpm: adjusted_bpm,
-      beat_sec: 60.0 / adjusted_bpm,
-      first_beat_sec: original.first_beat_sec,
-    })
-  }
-
-  fn effective_bpm_for_deck(&self, deck: DeckId) -> f64 {
-    let Some(grid) = self.beat_grid(deck) else {
-      return 0.0;
-    };
-    let playback_rate = self.deck(deck).playback_rate;
-    grid.bpm
-      * if playback_rate.is_finite() && playback_rate > 0.0 {
-        playback_rate
-      } else {
-        1.0
-      }
-  }
-
-  fn estimate_current_sec(deck: &DeckState, now_ms: f64) -> f64 {
-    let base = if deck.current_sec.is_finite() {
-      deck.current_sec.max(0.0)
-    } else {
-      0.0
-    };
-    if deck.pcm_data.is_empty() || deck.sample_rate == 0 || deck.channels == 0 {
-      return base;
-    }
-    if !deck.playing {
-      return base;
-    }
-    if deck.last_observed_at_ms < 0.0 {
-      return base;
-    }
-    if !deck.last_observed_at_ms.is_finite() || deck.last_observed_at_ms <= 0.0 {
-      return base;
-    }
-    let rate = if deck.playback_rate.is_finite() && deck.playback_rate > 0.0 {
-      deck.playback_rate
-    } else {
-      1.0
-    };
-    let delta_sec = ((now_ms - deck.last_observed_at_ms).max(0.0)) / 1000.0;
-    let estimated = base + delta_sec * rate;
-    if deck.duration_sec.is_finite() && deck.duration_sec > 0.0 {
-      estimated.clamp(0.0, deck.duration_sec)
-    } else {
-      estimated.max(0.0)
-    }
-  }
-
-  fn resolve_leader_candidate(&self, requested: DeckId) -> Option<DeckId> {
-    if let Some(leader) = self.leader {
-      if self.is_loaded(leader) {
-        return Some(leader);
-      }
-    }
-    let other = requested.other();
-    if self.deck(other).playing {
-      return Some(other);
-    }
-    if self.is_loaded(other) {
-      return Some(other);
-    }
-    if self.is_loaded(requested) {
-      return Some(requested);
-    }
-    None
-  }
-
-  fn resolve_bpm_multiplier(&self, deck: DeckId, master_effective_bpm: f64) -> f64 {
-    let Some(grid) = self.original_beat_grid(deck) else {
-      return 1.0;
-    };
-    let candidates = [0.5_f64, 1.0, 2.0];
-    let mut best = 1.0;
-    let mut best_diff = f64::INFINITY;
-    for candidate in candidates {
-      let adjusted = grid.bpm * candidate;
-      if !adjusted.is_finite() || adjusted <= 0.0 {
-        continue;
-      }
-      let diff = (master_effective_bpm / adjusted).ln().abs();
-      if diff < best_diff {
-        best = candidate;
-        best_diff = diff;
-      }
-    }
-    best
-  }
-
-  fn update_multipliers(&mut self) {
-    let Some(leader) = self.leader else {
-      self.bpm_multiplier = [1.0, 1.0];
-      return;
-    };
-    if self.original_beat_grid(leader).is_none() {
-      self.bpm_multiplier = [1.0, 1.0];
-      return;
-    }
-    let leader_effective_bpm = self.effective_bpm_for_deck(leader);
-    if !leader_effective_bpm.is_finite() || leader_effective_bpm <= 0.0 {
-      self.bpm_multiplier = [1.0, 1.0];
-      return;
-    }
-    for deck in [DeckId::Top, DeckId::Bottom] {
-      let index = Self::deck_index(deck);
-      self.bpm_multiplier[index] = if deck == leader {
-        1.0
-      } else {
-        self.resolve_bpm_multiplier(deck, leader_effective_bpm)
-      };
-    }
-  }
-
-  fn derive_state(&self, deck: DeckId, now_ms: f64) -> DeckDerivedState {
-    let deck_state = self.deck(deck);
-    let current_sec = Self::estimate_current_sec(deck_state, now_ms);
-    if self.beat_grid(deck).is_none() {
-      return DeckDerivedState {
-        estimated_current_sec: current_sec,
-        effective_bpm: 0.0,
-        render_current_sec: current_sec,
-      };
-    }
-    DeckDerivedState {
-      estimated_current_sec: current_sec,
-      effective_bpm: self.effective_bpm_for_deck(deck),
-      render_current_sec: current_sec,
-    }
-  }
-
-  fn recompute_distances(&mut self) {
-    let now_ms = self.last_now_ms;
-    for deck in [DeckId::Top, DeckId::Bottom] {
-      let index = Self::deck_index(deck);
-      let Some(grid) = self.beat_grid(deck) else {
-        self.beat_distance[index] = 0.0;
-        self.target_beat_distance[index] = 0.0;
-        continue;
-      };
-      let current_sec = Self::estimate_current_sec(self.deck(deck), now_ms);
-      self.beat_distance[index] = (current_sec - grid.first_beat_sec) / grid.beat_sec;
-      self.target_beat_distance[index] = self.beat_distance[index];
-    }
-    if let Some(leader) = self.leader {
-      let leader_index = Self::deck_index(leader);
-      let leader_target = self.beat_distance[leader_index];
-      for deck in [DeckId::Top, DeckId::Bottom] {
-        let index = Self::deck_index(deck);
-        self.target_beat_distance[index] = if deck == leader {
-          self.beat_distance[index]
-        } else {
-          leader_target
-        };
-      }
-    }
-  }
-
-  fn target_sec_from_beat_distance(grid: BeatGridSnapshot, beat_distance: f64) -> f64 {
-    grid.first_beat_sec + beat_distance * grid.beat_sec
-  }
-
-  fn nearest_valid_beat_distance_with_phase(
-    current_beat_distance: f64,
-    leader_beat_distance: f64,
-    min_beat_distance: f64,
-    max_beat_distance: f64,
-  ) -> f64 {
-    let leader_phase = leader_beat_distance.rem_euclid(1.0);
-    let min_index = (min_beat_distance - leader_phase).ceil();
-    let max_index = (max_beat_distance - leader_phase).floor();
-    if min_index > max_index {
-      return current_beat_distance.clamp(min_beat_distance, max_beat_distance);
-    }
-    let snapped_index = (current_beat_distance - leader_phase)
-      .round()
-      .clamp(min_index, max_index);
-    leader_phase + snapped_index
-  }
-
-  fn snapshot(&self, now_ms: f64) -> HorizontalBrowseTransportSnapshot {
-    let top = self.deck_snapshot(DeckId::Top, now_ms);
-    let bottom = self.deck_snapshot(DeckId::Bottom, now_ms);
-    HorizontalBrowseTransportSnapshot {
-      leader_deck: self.leader.map(|deck| deck.as_str().to_string()),
-      top,
-      bottom,
-    }
-  }
-
-  fn deck_snapshot(&self, deck: DeckId, now_ms: f64) -> HorizontalBrowseTransportDeckSnapshot {
-    let deck_state = self.deck(deck);
-    let derived = self.derive_state(deck, now_ms);
-    HorizontalBrowseTransportDeckSnapshot {
-      deck: deck.as_str().to_string(),
-      label: deck_state
-        .title
-        .as_ref()
-        .filter(|value| !value.trim().is_empty())
-        .cloned()
-        .unwrap_or_else(|| {
-          deck_state
-            .file_path
-            .as_ref()
-            .and_then(|path| path.split(['/', '\\']).last().map(|s| s.to_string()))
-            .unwrap_or_default()
-        }),
-      loaded: self.is_loaded(deck),
-      decoding: deck_state.pending_decode_file_path.is_some()
-        || deck_state.pending_full_decode_file_path.is_some(),
-      playing: deck_state.playing,
-      current_sec: derived.estimated_current_sec,
-      duration_sec: deck_state.duration_sec,
-      playback_rate: deck_state.playback_rate,
-      master_tempo_enabled: deck_state.master_tempo_enabled,
-      bpm: deck_state.bpm.unwrap_or(0.0),
-      effective_bpm: derived.effective_bpm,
-      render_current_sec: derived.render_current_sec,
-      sync_enabled: self.sync_enabled[Self::deck_index(deck)],
-      sync_lock: self.sync_lock[Self::deck_index(deck)].to_string(),
-      leader: self.leader == Some(deck),
-    }
-  }
-
-  fn refresh(&mut self) {
-    self.auto_select_leader_from_playback();
-    self.update_multipliers();
-    self.recompute_distances();
-    for deck in [DeckId::Top, DeckId::Bottom] {
-      let index = Self::deck_index(deck);
-      if !self.sync_enabled[index] {
-        self.set_sync_lock(deck, "off");
-        continue;
-      }
-      if self.leader.is_none() {
-        self.set_sync_lock(deck, "off");
-        continue;
-      }
-      if self.leader == Some(deck) {
-        self.set_sync_lock(deck, "full");
-        continue;
-      }
-      if self.sync_lock[index] == "off" {
-        self.set_sync_lock(deck, "full");
-      }
-    }
-    if let Some(leader) = self.leader {
-      let now_ms = self.last_now_ms;
-      let Some(leader_grid) = self.beat_grid(leader) else {
-        return;
-      };
-      let leader_current_sec = Self::estimate_current_sec(self.deck(leader), now_ms);
-      let leader_target_beat_distance =
-        (leader_current_sec - leader_grid.first_beat_sec) / leader_grid.beat_sec;
-      for deck in [DeckId::Top, DeckId::Bottom] {
-        if deck == leader {
-          continue;
-        }
-        let deck_index = Self::deck_index(deck);
-        if !self.sync_enabled[deck_index] || self.sync_lock[deck_index] == "off" {
-          continue;
-        }
-        let Some(target_grid) = self.beat_grid(deck) else {
-          continue;
-        };
-        let target_current_sec = Self::estimate_current_sec(self.deck(deck), now_ms);
-        let target_beat_distance =
-          (target_current_sec - target_grid.first_beat_sec) / target_grid.beat_sec;
-        self.target_beat_distance[deck_index] = leader_target_beat_distance;
-
-        let leader_effective_bpm = self.effective_bpm_for_deck(leader);
-        if let Some(tempo_rate) = {
-          let multiplier = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
-          self.bpm_multiplier[deck_index] = multiplier;
-          self.original_beat_grid(deck).and_then(|grid| {
-            let adjusted_target_bpm = grid.bpm
-              * if multiplier.is_finite() && multiplier > 0.0 {
-                multiplier
-              } else {
-                1.0
-              };
-            if adjusted_target_bpm.is_finite() && adjusted_target_bpm > 0.0 {
-              Some((leader_effective_bpm / adjusted_target_bpm).clamp(0.25, 4.0))
-            } else {
-              None
-            }
-          })
-        } {
-          self.deck_mut(deck).playback_rate = tempo_rate;
-        }
-
-        if self.sync_lock[deck_index] == "full"
-          && self.quantize_enabled[deck_index]
-          && self.deck(deck).playing
-        {
-          let target_phase = ((target_beat_distance % 1.0) + 1.0) % 1.0 * target_grid.beat_sec;
-          let leader_phase =
-            ((leader_target_beat_distance % 1.0) + 1.0) % 1.0 * target_grid.beat_sec;
-          let mut phase_offset = target_phase - leader_phase;
-          if phase_offset > target_grid.beat_sec / 2.0 {
-            phase_offset -= target_grid.beat_sec;
-          }
-          if phase_offset < -target_grid.beat_sec / 2.0 {
-            phase_offset += target_grid.beat_sec;
-          }
-          let target = self.deck_mut(deck);
-          target.current_sec =
-            (target_current_sec - phase_offset).clamp(0.0, target.duration_sec.max(0.0));
-          target.last_observed_at_ms = now_ms;
-        }
-      }
-      self.recompute_distances();
-    }
-  }
-
-  fn sync_deck_to_now(&mut self, deck: DeckId, now_ms: f64) {
-    let estimated = Self::estimate_current_sec(self.deck(deck), now_ms);
-    let target = self.deck_mut(deck);
-    target.current_sec = estimated;
-    target.last_observed_at_ms = now_ms;
-  }
-
-  fn set_leader(&mut self, deck: Option<DeckId>) {
-    self.leader = deck.filter(|candidate| self.is_loaded(*candidate));
-    self.refresh();
-  }
-
-  fn set_playing(&mut self, deck: DeckId, now_ms: f64, playing: bool) -> Option<DecodeRequest> {
-    self.last_now_ms = now_ms;
-    self.sync_deck_to_now(deck, now_ms);
-    let current_sec = {
-      let target = self.deck_mut(deck);
-      target.playing = playing;
-      horizontal_browse_transport_audio::reset_master_tempo_state(target);
-      target.current_sec
-    };
-    let decode_request = if playing {
-      self.prepare_segment_decode_request(
-        deck,
-        current_sec,
-        HORIZONTAL_BROWSE_IMMEDIATE_PLAY_SEGMENT_DECODE_SEC,
-        false,
-      )
-    } else {
-      None
-    };
-    self.refresh();
-    decode_request
-  }
-
-  fn seek(&mut self, deck: DeckId, now_ms: f64, current_sec: f64) -> Option<DecodeRequest> {
-    self.last_now_ms = now_ms;
-    let seek_sec = {
-      let target = self.deck_mut(deck);
-      target.current_sec = if target.duration_sec.is_finite() && target.duration_sec > 0.0 {
-        current_sec.clamp(0.0, target.duration_sec)
-      } else {
-        current_sec.max(0.0)
-      };
-      target.last_observed_at_ms = now_ms;
-      horizontal_browse_transport_audio::reset_master_tempo_state(target);
-      target.current_sec
-    };
-    let decode_request = self.prepare_segment_decode_request(
-      deck,
-      seek_sec,
-      HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC,
-      false,
-    );
-    self.refresh();
-    decode_request
-  }
-
-  fn set_sync_enabled(&mut self, deck: DeckId, enabled: bool) {
-    let index = Self::deck_index(deck);
-    self.sync_enabled[index] = enabled;
-    if !enabled {
-      self.set_sync_lock(deck, "off");
-      self.refresh();
-      return;
-    }
-    let leader = self.resolve_leader_candidate(deck);
-    if self.leader != leader {
-      self.leader = leader;
-    }
-    self.refresh();
-  }
-
-  fn beatsync(&mut self, deck: DeckId) {
-    let Some(leader) = self.resolve_leader_candidate(deck) else {
-      return;
-    };
-    if leader == deck {
-      self.leader = Some(deck);
-      self.refresh();
-      return;
-    }
-    self.leader = Some(leader);
-    self.sync_enabled[Self::deck_index(deck)] = true;
-    self.set_sync_lock(deck, "full");
-    let now_ms = self.last_now_ms;
-    let leader_index = Self::deck_index(leader);
-    let deck_index = Self::deck_index(deck);
-    self.bpm_multiplier[leader_index] = 1.0;
-    let leader_effective_bpm = self.effective_bpm_for_deck(leader);
-    self.bpm_multiplier[deck_index] = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
-    if let (Some(leader_grid), Some(target_grid)) = (self.beat_grid(leader), self.beat_grid(deck)) {
-      let leader_current_sec = Self::estimate_current_sec(self.deck(leader), now_ms);
-      let leader_beat_distance =
-        (leader_current_sec - leader_grid.first_beat_sec) / leader_grid.beat_sec;
-      let target_current_sec = Self::estimate_current_sec(self.deck(deck), now_ms);
-      let target_current_beat_distance =
-        (target_current_sec - target_grid.first_beat_sec) / target_grid.beat_sec;
-      let target_duration_sec = self.deck(deck).duration_sec.max(0.0);
-      let min_target_beat_distance = (0.0 - target_grid.first_beat_sec) / target_grid.beat_sec;
-      let max_target_beat_distance =
-        (target_duration_sec - target_grid.first_beat_sec) / target_grid.beat_sec;
-      let snapped_target_beat_distance = Self::nearest_valid_beat_distance_with_phase(
-        target_current_beat_distance,
-        leader_beat_distance,
-        min_target_beat_distance,
-        max_target_beat_distance,
-      );
-      let target_sec =
-        Self::target_sec_from_beat_distance(target_grid, snapped_target_beat_distance);
-      let target = self.deck_mut(deck);
-      target.current_sec = target_sec.clamp(0.0, target.duration_sec.max(0.0));
-      target.last_observed_at_ms = now_ms;
-      self.deck_mut(deck).playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
-      let target = self.deck_mut(deck);
-      horizontal_browse_transport_audio::reset_master_tempo_state(target);
-    }
-    self.refresh();
-  }
 }
 
 fn merge_partial_pcm_segment(
@@ -1348,224 +967,6 @@ fn ensure_prefetch_worker() {
     }
     thread::sleep(Duration::from_millis(200));
   });
-}
-
-#[napi]
-pub fn horizontal_browse_transport_reset() {
-  *engine().lock() = HorizontalBrowseTransportEngine::default();
-}
-
-#[napi]
-pub fn horizontal_browse_transport_set_deck_state(
-  deck: String,
-  now_ms: Option<f64>,
-  payload: HorizontalBrowseTransportDeckInput,
-) -> napi::Result<HorizontalBrowseTransportSnapshot> {
-  let deck_id = parse_deck_id(&deck)?;
-  let deck_playing = payload.playing;
-  let mut engine_guard = engine().lock();
-  engine_guard.last_now_ms = now_ms.unwrap_or(payload.last_observed_at_ms);
-  {
-    let target = engine_guard.deck_mut(deck_id);
-    target.file_path = payload.file_path;
-    target.title = payload.title;
-    target.bpm = payload.bpm;
-    target.first_beat_ms = payload.first_beat_ms;
-    target.duration_sec = payload.duration_sec;
-    target.current_sec = payload.current_sec;
-    target.last_observed_at_ms = payload.last_observed_at_ms;
-    target.playing = payload.playing;
-    target.playback_rate = payload.playback_rate;
-    target.master_tempo_enabled = payload.master_tempo_enabled;
-    horizontal_browse_transport_audio::reset_master_tempo_state(target);
-  }
-  let decode_request = engine_guard.prepare_decode_request(deck_id);
-  ensure_prefetch_worker();
-  let _ = engine_guard.ensure_output_stream();
-  engine_guard.refresh();
-  drop(engine_guard);
-  if let Some(request) = decode_request {
-    if deck_playing {
-      execute_decode_request_sync(request);
-    } else {
-      schedule_decode_request(request);
-    }
-  }
-  let engine_guard = engine().lock();
-  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
-}
-
-#[napi]
-pub fn horizontal_browse_transport_set_state(
-  payload: HorizontalBrowseTransportStateInput,
-) -> HorizontalBrowseTransportSnapshot {
-  let top_playing = payload.top.playing;
-  let bottom_playing = payload.bottom.playing;
-  let now_ms = payload.now_ms.unwrap_or(
-    payload
-      .top
-      .last_observed_at_ms
-      .max(payload.bottom.last_observed_at_ms),
-  );
-  let mut engine_guard = engine().lock();
-  engine_guard.last_now_ms = now_ms;
-  {
-    let top = engine_guard.deck_mut(DeckId::Top);
-    top.file_path = payload.top.file_path;
-    top.title = payload.top.title;
-    top.bpm = payload.top.bpm;
-    top.first_beat_ms = payload.top.first_beat_ms;
-    top.duration_sec = payload.top.duration_sec;
-    top.current_sec = payload.top.current_sec;
-    top.last_observed_at_ms = payload.top.last_observed_at_ms;
-    top.playing = payload.top.playing;
-    top.playback_rate = payload.top.playback_rate;
-    top.master_tempo_enabled = payload.top.master_tempo_enabled;
-    horizontal_browse_transport_audio::reset_master_tempo_state(top);
-  }
-  {
-    let bottom = engine_guard.deck_mut(DeckId::Bottom);
-    bottom.file_path = payload.bottom.file_path;
-    bottom.title = payload.bottom.title;
-    bottom.bpm = payload.bottom.bpm;
-    bottom.first_beat_ms = payload.bottom.first_beat_ms;
-    bottom.duration_sec = payload.bottom.duration_sec;
-    bottom.current_sec = payload.bottom.current_sec;
-    bottom.last_observed_at_ms = payload.bottom.last_observed_at_ms;
-    bottom.playing = payload.bottom.playing;
-    bottom.playback_rate = payload.bottom.playback_rate;
-    bottom.master_tempo_enabled = payload.bottom.master_tempo_enabled;
-    horizontal_browse_transport_audio::reset_master_tempo_state(bottom);
-  }
-  let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
-  let bottom_decode_request = engine_guard.prepare_decode_request(DeckId::Bottom);
-  ensure_prefetch_worker();
-  let _ = engine_guard.ensure_output_stream();
-  engine_guard.refresh();
-  drop(engine_guard);
-  if let Some(request) = top_decode_request {
-    if top_playing {
-      execute_decode_request_sync(request);
-    } else {
-      schedule_decode_request(request);
-    }
-  }
-  if let Some(request) = bottom_decode_request {
-    if bottom_playing {
-      execute_decode_request_sync(request);
-    } else {
-      schedule_decode_request(request);
-    }
-  }
-  let engine_guard = engine().lock();
-  engine_guard.snapshot(engine_guard.last_now_ms)
-}
-
-#[napi]
-pub fn horizontal_browse_transport_set_sync_enabled(
-  deck: String,
-  now_ms: Option<f64>,
-  enabled: bool,
-) -> napi::Result<HorizontalBrowseTransportSnapshot> {
-  let deck_id = parse_deck_id(&deck)?;
-  let mut engine = engine().lock();
-  engine.last_now_ms = now_ms.unwrap_or(engine.last_now_ms);
-  engine.set_sync_enabled(deck_id, enabled);
-  Ok(engine.snapshot(engine.last_now_ms))
-}
-
-#[napi]
-pub fn horizontal_browse_transport_beatsync(
-  deck: String,
-  now_ms: Option<f64>,
-) -> napi::Result<HorizontalBrowseTransportSnapshot> {
-  let deck_id = parse_deck_id(&deck)?;
-  let mut engine = engine().lock();
-  engine.last_now_ms = now_ms.unwrap_or(engine.last_now_ms);
-  engine.beatsync(deck_id);
-  Ok(engine.snapshot(engine.last_now_ms))
-}
-
-#[napi]
-pub fn horizontal_browse_transport_set_leader(
-  deck: Option<String>,
-  now_ms: Option<f64>,
-) -> napi::Result<HorizontalBrowseTransportSnapshot> {
-  let next_leader = match deck {
-    Some(value) => Some(parse_deck_id(&value)?),
-    None => None,
-  };
-  let mut engine = engine().lock();
-  engine.last_now_ms = now_ms.unwrap_or(engine.last_now_ms);
-  engine.set_leader(next_leader);
-  Ok(engine.snapshot(engine.last_now_ms))
-}
-
-#[napi]
-pub fn horizontal_browse_transport_set_playing(
-  deck: String,
-  now_ms: f64,
-  playing: bool,
-) -> napi::Result<HorizontalBrowseTransportSnapshot> {
-  let deck_id = parse_deck_id(&deck)?;
-  let mut engine_guard = engine().lock();
-  ensure_prefetch_worker();
-  let _ = engine_guard.ensure_output_stream();
-  let decode_request = engine_guard.set_playing(deck_id, now_ms, playing);
-  drop(engine_guard);
-  if let Some(request) = decode_request {
-    execute_decode_request_sync(request);
-  }
-  let engine_guard = engine().lock();
-  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
-}
-
-#[napi]
-pub fn horizontal_browse_transport_seek(
-  deck: String,
-  now_ms: f64,
-  current_sec: f64,
-) -> napi::Result<HorizontalBrowseTransportSnapshot> {
-  let deck_id = parse_deck_id(&deck)?;
-  let mut engine_guard = engine().lock();
-  let decode_request = engine_guard.seek(deck_id, now_ms, current_sec);
-  drop(engine_guard);
-  if let Some(request) = decode_request {
-    execute_decode_request_sync(request);
-  }
-  let engine_guard = engine().lock();
-  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
-}
-
-#[napi]
-pub fn horizontal_browse_transport_set_gain(
-  deck: String,
-  gain: f64,
-) -> napi::Result<HorizontalBrowseTransportSnapshot> {
-  let deck_id = parse_deck_id(&deck)?;
-  let mut engine = engine().lock();
-  let target = engine.deck_mut(deck_id);
-  target.gain = if gain.is_finite() {
-    gain.clamp(0.0, 1.0) as f32
-  } else {
-    1.0
-  };
-  Ok(engine.snapshot(engine.last_now_ms))
-}
-
-#[napi]
-pub fn horizontal_browse_transport_snapshot(
-  now_ms: Option<f64>,
-) -> HorizontalBrowseTransportSnapshot {
-  let engine = engine().lock();
-  engine.snapshot(now_ms.unwrap_or_else(performance_now_ms))
-}
-
-#[napi]
-pub fn horizontal_browse_transport_visualizer_snapshot(
-) -> HorizontalBrowseTransportVisualizerSnapshot {
-  let engine = engine().lock();
-  engine.visualizer_snapshot()
 }
 
 fn performance_now_ms() -> f64 {

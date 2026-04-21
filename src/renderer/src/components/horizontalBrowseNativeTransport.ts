@@ -3,36 +3,19 @@ import type { ISongInfo } from 'src/types/globals'
 import { sendHorizontalBrowseWaveformTrace } from '@renderer/components/horizontalBrowseWaveformTrace'
 import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/components/horizontalBrowseInteractionTimeline'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
-
-export type HorizontalBrowseDeckKey = 'top' | 'bottom'
-
-export type HorizontalBrowseTransportDeckSnapshot = {
-  deck: string
-  label: string
-  loaded: boolean
-  decoding: boolean
-  playing: boolean
-  currentSec: number
-  durationSec: number
-  playbackRate: number
-  masterTempoEnabled: boolean
-  bpm: number
-  effectiveBpm: number
-  renderCurrentSec: number
-  syncEnabled: boolean
-  syncLock: string
-  leader: boolean
-}
-
-export type HorizontalBrowseTransportSnapshot = {
-  leaderDeck?: string
-  top: HorizontalBrowseTransportDeckSnapshot
-  bottom: HorizontalBrowseTransportDeckSnapshot
-}
-
-export type HorizontalBrowseTransportVisualizerSnapshot = {
-  timeDomainData: number[]
-}
+import {
+  createEmptyHorizontalBrowseTransportSnapshot,
+  HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT,
+  type HorizontalBrowseDeckKey,
+  type HorizontalBrowseTransportSnapshot,
+  type HorizontalBrowseTransportVisualizerSnapshot
+} from '@shared/horizontalBrowseTransport'
+export type {
+  HorizontalBrowseDeckKey,
+  HorizontalBrowseTransportDeckSnapshot,
+  HorizontalBrowseTransportSnapshot,
+  HorizontalBrowseTransportVisualizerSnapshot
+} from '@shared/horizontalBrowseTransport'
 
 type LocalDeckState = {
   song: ISongInfo | null
@@ -44,35 +27,15 @@ type LocalDeckState = {
   masterTempoEnabled: boolean
 }
 
-const createEmptyDeckSnapshot = (
-  deck: HorizontalBrowseDeckKey
-): HorizontalBrowseTransportDeckSnapshot => ({
-  deck,
-  label: '',
-  playing: false,
-  currentSec: 0,
-  durationSec: 0,
-  loaded: false,
-  decoding: false,
-  playbackRate: 1,
-  masterTempoEnabled: true,
-  bpm: 0,
-  effectiveBpm: 0,
-  renderCurrentSec: 0,
-  syncEnabled: false,
-  syncLock: 'off',
-  leader: false
-})
-
-const createEmptySnapshot = (): HorizontalBrowseTransportSnapshot => ({
-  leaderDeck: undefined,
-  top: createEmptyDeckSnapshot('top'),
-  bottom: createEmptyDeckSnapshot('bottom')
-})
+type SnapshotListener = (snapshot: HorizontalBrowseTransportSnapshot) => void
 
 export const createHorizontalBrowseNativeTransport = () => {
-  const state = reactive<HorizontalBrowseTransportSnapshot>(createEmptySnapshot())
+  const state = reactive<HorizontalBrowseTransportSnapshot>(
+    createEmptyHorizontalBrowseTransportSnapshot()
+  )
   const lastDeckTraceSignature = new Map<HorizontalBrowseDeckKey, string>()
+  const snapshotListeners = new Set<SnapshotListener>()
+  let snapshotEventBound = false
 
   const invoke = async (channel: string, ...args: unknown[]) =>
     (await window.electron.ipcRenderer.invoke(
@@ -80,16 +43,54 @@ export const createHorizontalBrowseNativeTransport = () => {
       ...args
     )) as HorizontalBrowseTransportSnapshot
 
-  const applySnapshot = (snapshot: HorizontalBrowseTransportSnapshot | null | undefined) => {
+  const notifySnapshotListeners = (snapshot: HorizontalBrowseTransportSnapshot) => {
+    snapshotListeners.forEach((listener) => {
+      try {
+        listener(snapshot)
+      } catch {}
+    })
+  }
+
+  const applySnapshot = (
+    snapshot: HorizontalBrowseTransportSnapshot | null | undefined,
+    notifyListeners = true
+  ) => {
     if (!snapshot) return
     state.leaderDeck = snapshot.leaderDeck
     state.top = { ...snapshot.top }
     state.bottom = { ...snapshot.bottom }
+    if (notifyListeners) {
+      notifySnapshotListeners(snapshot)
+    }
+  }
+
+  const handleSnapshotUpdated = (_event: unknown, snapshot: HorizontalBrowseTransportSnapshot) => {
+    applySnapshot(snapshot)
+  }
+
+  const ensureSnapshotEventBound = () => {
+    if (snapshotEventBound) return
+    window.electron.ipcRenderer.on(
+      HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT,
+      handleSnapshotUpdated
+    )
+    snapshotEventBound = true
+  }
+
+  const maybeUnbindSnapshotEvent = () => {
+    if (!snapshotEventBound || snapshotListeners.size > 0) return
+    window.electron.ipcRenderer.removeListener(
+      HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT,
+      handleSnapshotUpdated
+    )
+    snapshotEventBound = false
   }
 
   const reset = async () => {
-    await window.electron.ipcRenderer.invoke('horizontal-browse-transport:reset')
-    applySnapshot(createEmptySnapshot())
+    const snapshot = (await window.electron.ipcRenderer.invoke(
+      'horizontal-browse-transport:reset'
+    )) as HorizontalBrowseTransportSnapshot
+    applySnapshot(snapshot || createEmptyHorizontalBrowseTransportSnapshot())
   }
 
   const setDeckState = async (deck: HorizontalBrowseDeckKey, payload: LocalDeckState) => {
@@ -227,6 +228,58 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
+  const toggleLoop = async (deck: HorizontalBrowseDeckKey) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:toggle-loop',
+      deck,
+      performance.now()
+    )
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
+  const stepLoopBeats = async (deck: HorizontalBrowseDeckKey, direction: -1 | 1) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:step-loop-beats',
+      deck,
+      performance.now(),
+      direction
+    )
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
+  const setLoopFromRange = async (
+    deck: HorizontalBrowseDeckKey,
+    startSec: number,
+    endSec: number
+  ) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:set-loop-from-range',
+      deck,
+      startSec,
+      endSec
+    )
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
+  const clearLoop = async (deck: HorizontalBrowseDeckKey) => {
+    const snapshot = await invoke('horizontal-browse-transport:clear-loop', deck)
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
+  const setOutputState = async (crossfaderValue: number, masterGain: number) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:set-output-state',
+      crossfaderValue,
+      masterGain
+    )
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
   const snapshot = async (nowMs?: number) => {
     const finishTiming = startHorizontalBrowseUserTiming('frkb:hb:native:snapshot')
     const next = await invoke('horizontal-browse-transport:snapshot', nowMs)
@@ -240,6 +293,15 @@ export const createHorizontalBrowseNativeTransport = () => {
       'horizontal-browse-transport:visualizer-snapshot'
     )) as HorizontalBrowseTransportVisualizerSnapshot
 
+  const subscribeSnapshot = (listener: SnapshotListener) => {
+    snapshotListeners.add(listener)
+    ensureSnapshotEventBound()
+    return () => {
+      snapshotListeners.delete(listener)
+      maybeUnbindSnapshotEvent()
+    }
+  }
+
   return {
     state,
     reset,
@@ -250,8 +312,14 @@ export const createHorizontalBrowseNativeTransport = () => {
     setLeader,
     setPlaying,
     seek,
+    toggleLoop,
+    stepLoopBeats,
+    setLoopFromRange,
+    clearLoop,
     setGain,
+    setOutputState,
     snapshot,
-    visualizerSnapshot
+    visualizerSnapshot,
+    subscribeSnapshot
   }
 }

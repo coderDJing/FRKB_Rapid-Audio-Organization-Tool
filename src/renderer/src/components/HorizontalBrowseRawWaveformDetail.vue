@@ -3,9 +3,6 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import HorizontalBrowseCueMarker from '@renderer/components/HorizontalBrowseCueMarker.vue'
-import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
-import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import {
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
@@ -121,10 +118,6 @@ let dragStartSec = 0
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
 let loadStartedAt = 0
-let playbackAnimationRaf = 0
-let playbackAnimationBaseSec = 0
-let playbackAnimationBaseAtMs = 0
-let playbackAnimationSongKey = ''
 
 const traceHorizontalWaveformLoad = (stage: string, payload?: Record<string, unknown>) => {
   const filePath = String(props.song?.filePath || '').trim()
@@ -143,6 +136,7 @@ const {
   wrapRef,
   waveformCanvasRef,
   gridCanvasRef,
+  overlayCanvasRef,
   resolvePreviewTimeScale,
   resolvePreviewDurationSec,
   resolveVisibleDurationSec,
@@ -161,12 +155,16 @@ const {
   storeRawWaveform,
   setLastZoomAnchor,
   resetLastZoomAnchor,
-  displayStartSec,
   displayReady,
   dispose: disposeWaveformCanvas
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => props.song,
   direction: () => props.direction,
+  cueSeconds: () => props.cueSeconds,
+  hotCues: () => props.hotCues,
+  memoryCues: () => props.memoryCues,
+  loopRange: () => props.loopRange,
+  currentSeconds: () => props.currentSeconds,
   playbackRate: () => props.playbackRate,
   playing: previewPlaying,
   rawData,
@@ -208,12 +206,6 @@ const clearBpmTapResetTimer = () => {
   bpmTapResetTimer = null
 }
 
-const stopPlaybackAnimation = () => {
-  if (!playbackAnimationRaf) return
-  cancelAnimationFrame(playbackAnimationRaf)
-  playbackAnimationRaf = 0
-}
-
 const applyPreviewPlaybackPosition = (seconds: number) => {
   const safeSeconds = Math.max(0, Number(seconds) || 0)
   const nextStartSec = resolvePlaybackAlignedStart(safeSeconds)
@@ -221,25 +213,6 @@ const applyPreviewPlaybackPosition = (seconds: number) => {
   previewStartSec.value = nextStartSec
   setLastZoomAnchor(safeSeconds, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
   scheduleDraw()
-}
-
-const startPlaybackAnimation = () => {
-  if (playbackAnimationRaf || !previewPlaying.value) return
-  const tick = () => {
-    if (!previewPlaying.value) {
-      playbackAnimationRaf = 0
-      return
-    }
-    if (!dragging.value && playbackAnimationSongKey) {
-      const playbackRate = Math.max(0.25, Number(props.playbackRate) || 1)
-      const currentSec =
-        playbackAnimationBaseSec +
-        (Math.max(0, performance.now() - playbackAnimationBaseAtMs) / 1000) * playbackRate
-      applyPreviewPlaybackPosition(currentSec)
-    }
-    playbackAnimationRaf = requestAnimationFrame(tick)
-  }
-  playbackAnimationRaf = requestAnimationFrame(tick)
 }
 
 const resetPreviewBpmTap = () => {
@@ -355,28 +328,8 @@ const handleWheel = (event: WheelEvent) => {
 }
 
 const canAdjustGrid = computed(() => !previewLoading.value && !!mixxxData.value)
-// hotCue / memoryCue / loopMask / cue marker 等 DOM 层元素统一以 displayStartSec 为起点
-// （而不是原先的 previewStartSec / renderStartSec），这样它们和 canvas 上的波形像素、
-// grid 像素使用同一个 start sec，任何情况下都不会出现"DOM 标记已经滚到新位置、canvas
-// 还停在旧位置"的错位。播放、seek、切歌都由 composable 统一推进 displayStartSec。
-const hotCueMarkerStartSec = computed(() => Number(displayStartSec.value) || 0)
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
 const detailVisible = computed(() => true)
-const loopMaskStyle = computed(() => {
-  const loopRange = props.loopRange
-  if (!loopRange) return null
-  const visibleDurationSec = resolveVisibleDurationSec()
-  if (!Number.isFinite(visibleDurationSec) || visibleDurationSec <= 0) return null
-  const viewStartSec = Number(displayStartSec.value) || 0
-  const viewEndSec = viewStartSec + visibleDurationSec
-  const visibleStartSec = Math.max(viewStartSec, Number(loopRange.startSec) || 0)
-  const visibleEndSec = Math.min(viewEndSec, Number(loopRange.endSec) || 0)
-  if (visibleEndSec <= visibleStartSec) return null
-  return {
-    left: `${((visibleStartSec - viewStartSec) / visibleDurationSec) * 100}%`,
-    width: `${((visibleEndSec - visibleStartSec) / visibleDurationSec) * 100}%`
-  }
-})
 
 const {
   previewBarLinePicking,
@@ -572,6 +525,34 @@ watch(
 )
 
 watch(
+  () =>
+    [
+      Number(props.cueSeconds) || 0,
+      props.loopRange?.startSec ?? null,
+      props.loopRange?.endSec ?? null
+    ] as const,
+  () => {
+    scheduleDraw()
+  }
+)
+
+watch(
+  () => props.hotCues,
+  () => {
+    scheduleDraw()
+  },
+  { deep: true }
+)
+
+watch(
+  () => props.memoryCues,
+  () => {
+    scheduleDraw()
+  },
+  { deep: true }
+)
+
+watch(
   () => props.direction,
   () => {
     invalidateWaveformTiles()
@@ -639,10 +620,7 @@ watch(
     previewPlaying.value = playing
     if (!playing) {
       flushDeferredRawWaveformStore()
-      stopPlaybackAnimation()
-      return
     }
-    startPlaybackAnimation()
   },
   { immediate: true }
 )
@@ -657,20 +635,12 @@ watch(
       if (dragging.value) return
       const safeSongKey = String(songKey || '').trim()
       const safeSeconds = Math.max(0, seconds)
-      playbackAnimationSongKey = safeSongKey
-      playbackAnimationBaseSec = safeSeconds
-      playbackAnimationBaseAtMs = performance.now()
       maybeContinueRawWaveformStream()
       if (!safeSongKey) {
-        stopPlaybackAnimation()
         applyPreviewPlaybackPosition(0)
         return
       }
-      if (!_playing) {
-        applyPreviewPlaybackPosition(safeSeconds)
-        return
-      }
-      startPlaybackAnimation()
+      applyPreviewPlaybackPosition(safeSeconds)
     } finally {
       finishTiming()
     }
@@ -742,7 +712,6 @@ onUnmounted(() => {
   loadToken += 1
   clearPersistTimer()
   clearBpmTapResetTimer()
-  stopPlaybackAnimation()
   clearStreamDrawScheduling()
   stopDragging()
   disposeRawWaveformStream()
@@ -786,37 +755,11 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       ref="gridCanvasRef"
       class="raw-detail-waveform__canvas raw-detail-waveform__canvas--grid"
     ></canvas>
-    <MemoryCueMarkersLayer
-      v-if="displayReady"
-      :memory-cues="props.memoryCues || []"
-      :start-sec="hotCueMarkerStartSec"
-      :visible-duration-sec="resolveVisibleDurationSec()"
-      :anchor="props.direction === 'up' ? 'top' : 'bottom'"
-      :offset-px="props.direction === 'up' ? -8 : -8"
-      size="default"
-    />
-    <HotCueMarkersLayer
-      v-if="displayReady"
-      :hot-cues="props.hotCues || []"
-      :start-sec="hotCueMarkerStartSec"
-      :visible-duration-sec="resolveVisibleDurationSec()"
-      :anchor="props.direction === 'up' ? 'top' : 'bottom'"
-      size="default"
-      :offset-px="-8"
-    />
-    <div
-      v-if="displayReady && loopMaskStyle"
-      class="raw-detail-waveform__loop-mask"
-      :style="loopMaskStyle"
-    ></div>
+    <canvas
+      ref="overlayCanvasRef"
+      class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay"
+    ></canvas>
     <div v-show="displayReady" class="raw-detail-waveform__playhead"></div>
-    <HorizontalBrowseCueMarker
-      v-if="props.song && displayReady"
-      :cue-seconds="props.cueSeconds"
-      :preview-start-sec="hotCueMarkerStartSec"
-      :visible-duration-sec="resolveVisibleDurationSec()"
-      :direction="props.direction"
-    />
     <div
       v-if="previewBarLineHoverVisible"
       class="raw-detail-waveform__barline-glow"
@@ -855,16 +798,11 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   pointer-events: none;
 }
 
-.raw-detail-waveform__loop-mask {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  background: color-mix(in srgb, var(--shell-cue-accent, #d98921) 28%, transparent);
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 46%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--shell-cue-accent, #d98921) 14%, transparent);
+.raw-detail-waveform__canvas--overlay {
+  inset: -12px 0;
+  height: calc(100% + 24px);
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
 }
 
 .raw-detail-waveform__playhead {
@@ -877,7 +815,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
   pointer-events: none;
-  z-index: 2;
+  z-index: 4;
 }
 
 :global(.theme-light) .raw-detail-waveform__playhead {
@@ -898,5 +836,6 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   background: rgba(255, 214, 92, 0.88);
   box-shadow: 0 0 0 1px rgba(255, 214, 92, 0.2);
   pointer-events: none;
+  z-index: 5;
 }
 </style>

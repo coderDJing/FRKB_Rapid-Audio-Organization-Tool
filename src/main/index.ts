@@ -57,6 +57,7 @@ import { registerPioneerDeviceLibraryHandlers } from './ipc/pioneerDeviceLibrary
 import { registerRekordboxDesktopLibraryHandlers } from './ipc/rekordboxDesktopLibraryHandlers'
 import { registerRekordboxXmlExportHandlers } from './ipc/rekordboxXmlExportHandlers'
 import { registerHorizontalBrowseTransportHandlers } from './ipc/horizontalBrowseTransportHandlers'
+import { stopHorizontalBrowseTransportSnapshotBroadcaster } from './ipc/horizontalBrowseTransportSnapshotBroadcaster'
 import { registerDevSongListTraceHandlers } from './ipc/devSongListTraceHandlers'
 import { registerHotCueHandlers } from './ipc/hotCueHandlers'
 import { registerMemoryCueHandlers } from './ipc/memoryCueHandlers'
@@ -590,6 +591,7 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', async () => {
   ipcMain.removeAllListeners()
+  stopHorizontalBrowseTransportSnapshotBroadcaster()
   stopBackgroundOrchestrator()
   app.quit()
 })

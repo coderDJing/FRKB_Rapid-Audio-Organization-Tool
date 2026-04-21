@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import { normalizePreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
+import type { HorizontalBrowseDeckTransportStateOverride } from '@renderer/components/useHorizontalBrowseTransportMutations'
 import type { ISongInfo } from 'src/types/globals'
 
 type TempoControlSnapshot = {
@@ -19,13 +20,7 @@ type UseHorizontalBrowseDeckTempoControlsParams = {
   }
   commitDeckStateToNative: (
     deck: HorizontalBrowseDeckKey,
-    override?: Partial<{
-      currentSec: number
-      lastObservedAtMs: number
-      durationSec: number
-      playing: boolean
-      playbackRate: number
-    }>
+    override?: HorizontalBrowseDeckTransportStateOverride
   ) => Promise<unknown>
 }
 

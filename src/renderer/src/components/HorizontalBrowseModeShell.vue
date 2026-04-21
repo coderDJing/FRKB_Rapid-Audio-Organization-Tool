@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
+import type { ISongInfo } from 'src/types/globals'
 import HorizontalBrowseDeckButtons from '@renderer/components/HorizontalBrowseDeckButtons.vue'
 import HorizontalBrowseDeckDetailLane from '@renderer/components/HorizontalBrowseDeckDetailLane.vue'
 import HorizontalBrowseDeckMoveDialog from '@renderer/components/HorizontalBrowseDeckMoveDialog.vue'
@@ -12,19 +12,14 @@ import {
 } from '@renderer/components/horizontalBrowseWaveform.constants'
 import {
   buildHorizontalBrowseDeckToolbarState,
-  parseHorizontalBrowseDurationToSeconds,
   resolveHorizontalBrowseDeckDurationSeconds,
   resolveHorizontalBrowseDeckGridBpm,
   resolveHorizontalBrowseDeckSyncUiEnabled,
   resolveHorizontalBrowseDeckSyncUiLock
 } from '@renderer/components/horizontalBrowseShellState'
-import {
-  buildHorizontalBrowseSongSnapshot,
-  isSameHorizontalBrowseSongFilePath
-} from '@renderer/components/horizontalBrowseShellSongs'
+import { buildHorizontalBrowseSongSnapshot } from '@renderer/components/horizontalBrowseShellSongs'
 import { formatPreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
-import { createHorizontalBrowseNativeTransport } from '@renderer/components/horizontalBrowseNativeTransport'
 import {
   resolveHorizontalBrowseCuePointSec,
   resolveHorizontalBrowseDefaultCuePointSec
@@ -44,19 +39,12 @@ import { useHorizontalBrowseDeckSongSync } from '@renderer/components/useHorizon
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import emitter from '@renderer/utils/mitt'
-import { useHorizontalBrowseRenderSync } from '@renderer/components/useHorizontalBrowseRenderSync'
 import { createHorizontalBrowseDeckAssigner } from '@renderer/components/horizontalBrowseDeckAssignment'
 import { useHorizontalBrowseOutput } from '@renderer/components/useHorizontalBrowseOutput'
+import { useHorizontalBrowseTransportController } from '@renderer/components/useHorizontalBrowseTransportController'
+import { useHorizontalBrowseTransportMutations } from '@renderer/components/useHorizontalBrowseTransportMutations'
 
 type DeckKey = HorizontalBrowseDeckKey
-type DeckTransportStateOverride = Partial<{
-  currentSec: number
-  lastObservedAtMs: number
-  durationSec: number
-  playing: boolean
-  playbackRate: number
-  masterTempoEnabled: boolean
-}>
 
 type SharedDetailZoomState = {
   value: number
@@ -109,10 +97,6 @@ const sharedDetailZoomState = ref<SharedDetailZoomState>({
   sourceDirection: null,
   revision: 0
 })
-const deckSeekIntent = reactive<Record<DeckKey, { seconds: number; revision: number }>>({
-  top: { seconds: 0, revision: 0 },
-  bottom: { seconds: 0, revision: 0 }
-})
 const regionDragDepth = reactive<Record<number, number>>({
   1: 0,
   2: 0,
@@ -143,10 +127,6 @@ const bottomOverviewRegions = [6, 7, 8]
 const deckCuePanelMode = reactive<Record<DeckKey, DeckCuePanelMode>>({
   top: 'memory',
   bottom: 'memory'
-})
-const deckHydrateToken = reactive<Record<DeckKey, number>>({
-  top: 0,
-  bottom: 0
 })
 const deckTempoInputDirty = reactive<Record<DeckKey, boolean>>({
   top: false,
@@ -229,7 +209,28 @@ const resolveDraggedSong = () => {
   return buildHorizontalBrowseSongSnapshot(filePath)
 }
 
-const nativeTransport = createHorizontalBrowseNativeTransport()
+const {
+  nativeTransport,
+  deckSyncState,
+  deckSeekIntent,
+  topDeckPlaybackRate,
+  bottomDeckPlaybackRate,
+  topDeckRenderCurrentSeconds,
+  bottomDeckRenderCurrentSeconds,
+  resolveTransportDeckSnapshot,
+  resolveDeckCurrentSeconds,
+  resolveDeckPlaying,
+  resolveDeckLoaded,
+  resolveDeckDecoding,
+  resolveDeckPlaybackRate,
+  resolveDeckRenderCurrentSeconds,
+  syncDeckRenderState,
+  startSnapshotSync,
+  stopSnapshotSync,
+  startRenderSyncLoop,
+  stopRenderSyncLoop,
+  notifyDeckSeekIntent
+} = useHorizontalBrowseTransportController()
 const {
   faderRef,
   faderRailRef,
@@ -244,42 +245,15 @@ const {
 } = useHorizontalBrowseOutput({
   nativeTransport
 })
-const deckSyncState = nativeTransport.state
-const topDeckPlaybackRate = computed(() => Number(nativeTransport.state.top.playbackRate) || 1)
-const bottomDeckPlaybackRate = computed(
-  () => Number(nativeTransport.state.bottom.playbackRate) || 1
-)
 const topDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('top'))
 const bottomDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('bottom'))
-const resolveTransportDeckSnapshot = (deck: DeckKey) =>
-  deck === 'top' ? nativeTransport.state.top : nativeTransport.state.bottom
 const resolveDeckCuePointRef = (deck: DeckKey) =>
   deck === 'top' ? topDeckCuePointSeconds : bottomDeckCuePointSeconds
-const resolveDeckCurrentSeconds = (deck: DeckKey) =>
-  Number(resolveTransportDeckSnapshot(deck).currentSec) || 0
 const resolveDeckDurationSeconds = (deck: DeckKey) =>
   resolveHorizontalBrowseDeckDurationSeconds(
     resolveTransportDeckSnapshot(deck).durationSec,
     resolveDeckSong(deck)?.duration
   )
-const resolveDeckPlaying = (deck: DeckKey) => Boolean(resolveTransportDeckSnapshot(deck).playing)
-const resolveDeckLoaded = (deck: DeckKey) => Boolean(resolveTransportDeckSnapshot(deck).loaded)
-const resolveDeckDecoding = (deck: DeckKey) => Boolean(resolveTransportDeckSnapshot(deck).decoding)
-const resolveDeckPlaybackRate = (deck: DeckKey) =>
-  Number(resolveTransportDeckSnapshot(deck).playbackRate) || 1
-const {
-  topDeckRenderCurrentSeconds,
-  bottomDeckRenderCurrentSeconds,
-  resolveDeckRenderCurrentSeconds,
-  syncDeckRenderState,
-  applyDeckRenderCurrentSeconds,
-  startRenderSyncLoop,
-  stopRenderSyncLoop
-} = useHorizontalBrowseRenderSync({
-  nativeTransport,
-  resolveTransportDeckSnapshot,
-  resolveDeckPlaying
-})
 const topDeckUiPlaying = computed(() => resolveDeckPlaying('top'))
 const bottomDeckUiPlaying = computed(() => resolveDeckPlaying('bottom'))
 const topDeckCueActive = computed(
@@ -333,6 +307,8 @@ const {
   resolveDeckSong,
   resolveCuePointSec: resolveHorizontalBrowseCuePointSec
 })
+const resolveDeckMarkerPlacementSeconds = (deck: DeckKey) =>
+  Math.max(0, Number(resolveDeckMarkerPlacementSec(deck)) || 0)
 const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   const toolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
   if (deckTempoInputDirty[deck]) {
@@ -349,36 +325,21 @@ const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   return toolbarState.bpmInputValue
 }
 
-const buildDeckStateForNative = (deck: DeckKey, override?: DeckTransportStateOverride) => ({
-  song: resolveDeckSong(deck),
-  currentSec: override?.currentSec ?? resolveDeckCurrentSeconds(deck),
-  lastObservedAtMs: override?.lastObservedAtMs ?? performance.now(),
-  durationSec: override?.durationSec ?? resolveDeckDurationSeconds(deck),
-  playing: override?.playing ?? resolveDeckPlaying(deck),
-  playbackRate: override?.playbackRate ?? resolveDeckPlaybackRate(deck),
-  masterTempoEnabled: override?.masterTempoEnabled ?? isDeckMasterTempoEnabled(deck)
-})
+let resolveDeckMasterTempoEnabledForTransport: (deck: DeckKey) => boolean = () => true
 
-const commitDeckStateToNative = async (deck: DeckKey, override?: DeckTransportStateOverride) => {
-  await nativeTransport.setDeckState(deck, buildDeckStateForNative(deck, override))
-  syncDeckRenderState()
-}
-
-const commitDeckStatesToNative = async (
-  overrides?: Partial<Record<DeckKey, DeckTransportStateOverride>>
-) => {
-  await nativeTransport.setState({
-    top: buildDeckStateForNative('top', overrides?.top),
-    bottom: buildDeckStateForNative('bottom', overrides?.bottom)
+const { commitDeckStateToNative, commitDeckStatesToNative, toggleDeckMaster, triggerDeckBeatSync } =
+  useHorizontalBrowseTransportMutations({
+    touchDeckInteraction,
+    nativeTransport,
+    syncDeckRenderState,
+    resolveDeckSong,
+    resolveDeckCurrentSeconds,
+    resolveDeckDurationSeconds,
+    resolveDeckPlaying,
+    resolveDeckPlaybackRate,
+    resolveDeckMasterTempoEnabled: (deck) => resolveDeckMasterTempoEnabledForTransport(deck),
+    resolveTransportDeckSnapshot
   })
-  syncDeckRenderState()
-}
-const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
-  touchDeckInteraction,
-  setDeckSong,
-  syncDeckDefaultCue,
-  commitDeckStateToNative
-})
 
 const {
   selectSongListDialogVisible,
@@ -402,6 +363,8 @@ const { isDeckMasterTempoEnabled, toggleDeckMasterTempo, setDeckTargetBpm, reset
     commitDeckStateToNative
   })
 
+resolveDeckMasterTempoEnabledForTransport = isDeckMasterTempoEnabled
+
 const handleDeckMasterTempoToggle = (deck: DeckKey) => {
   touchDeckInteraction(deck)
   toggleDeckMasterTempo(deck)
@@ -409,6 +372,13 @@ const handleDeckMasterTempoToggle = (deck: DeckKey) => {
     masterTempoEnabled: isDeckMasterTempoEnabled(deck)
   })
 }
+
+const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
+  touchDeckInteraction,
+  setDeckSong,
+  syncDeckDefaultCue,
+  commitDeckStateToNative
+})
 
 const {
   deckPendingPlayOnLoad,
@@ -445,7 +415,6 @@ const {
   notifyDeckSeekIntent,
   nativeTransport,
   syncDeckRenderState,
-  commitDeckStateToNative,
   commitDeckStatesToNative,
   resolveDeckSong,
   resolveDeckGridBpm,
@@ -454,7 +423,6 @@ const {
   resolveDeckRenderCurrentSeconds,
   resolveDeckPlaying,
   resolveDeckLoaded,
-  resolveDeckDecoding,
   resolveTransportDeckSnapshot,
   resolveDeckCuePointRef,
   resolveDeckCuePlacementSec
@@ -468,6 +436,7 @@ const {
 } = useHorizontalBrowseDeckHotCues({
   resolveDeckSong,
   setDeckSong,
+  resolveDeckMarkerPlacementSec: resolveDeckMarkerPlacementSeconds,
   resolveDeckPlaying,
   resolveDeckDurationSeconds,
   resolveTransportDeckSnapshot,
@@ -524,19 +493,6 @@ const handleSharedDetailZoomChange = (payload: {
     sourceDirection: payload?.sourceDirection || null,
     revision: sharedDetailZoomState.value.revision + 1
   }
-}
-
-function notifyDeckSeekIntent(deck: DeckKey, seconds: number) {
-  const safeSeconds = Math.max(0, Number(seconds) || 0)
-  deckSeekIntent[deck] = {
-    seconds: safeSeconds,
-    revision: deckSeekIntent[deck].revision + 1
-  }
-  // 把"渲染当前秒数"立刻 teleport 到目标位置，避免在 nativeTransport.seek IPC 来回期间
-  // playbackAnimation / startRenderSyncLoop 的插值器继续用旧 baseSec 把大波形往前推，
-  // 表现为"点 cue 时波形先向前跳一下、然后才顿住、再偶尔出现不变化"那种错位感。
-  // 详见 useHorizontalBrowseRenderSync.applyDeckRenderCurrentSeconds 的注释。
-  applyDeckRenderCurrentSeconds(deck, safeSeconds)
 }
 
 const {
@@ -608,29 +564,6 @@ const resolveDeckToolbarState = (deck: DeckKey) =>
       loopDisabled: resolveDeckLoopDisabled(deck)
     }
   )
-
-const toggleDeckMaster = async (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  await commitDeckStatesToNative()
-  await nativeTransport.setLeader(deck)
-  syncDeckRenderState()
-}
-
-const triggerDeckBeatSync = async (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  await commitDeckStatesToNative()
-  const snapshot = deck === 'top' ? nativeTransport.state.top : nativeTransport.state.bottom
-  if (snapshot.syncEnabled) {
-    await nativeTransport.setSyncEnabled(deck, false)
-    syncDeckRenderState()
-    return
-  }
-  await nativeTransport.setSyncEnabled(deck, true)
-  if (resolveDeckPlaying(deck)) {
-    await nativeTransport.beatsync(deck)
-  }
-  syncDeckRenderState()
-}
 
 const handleCrossfaderNudgeByKeyboard = (direction: -1 | 1) => {
   nudgeCrossfaderByKeyboard(direction)
@@ -722,7 +655,7 @@ const handleGlobalDragFinish = () => {
   resetRegionDragState()
 }
 
-const { handleExternalDeckSongLoad, handleSongGridUpdated, handleSongKeyUpdated } =
+const { disposeSongSync, handleExternalDeckSongLoad, handleSongGridUpdated, handleSongKeyUpdated } =
   useHorizontalBrowseDeckSongSync({
     topDeckSong,
     bottomDeckSong,
@@ -743,6 +676,7 @@ watch(
 )
 
 onMounted(() => {
+  startSnapshotSync()
   void nativeTransport.reset().finally(() => {
     syncCrossfaderValue(0)
   })
@@ -761,6 +695,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAllDeckCuePreview()
+  stopSnapshotSync()
   void nativeTransport.reset().catch((error) => {
     console.error('[horizontal-browse] reset transport failed on exit', error)
   })
@@ -772,6 +707,7 @@ onUnmounted(() => {
   window.removeEventListener('pointerup', handleWindowDeckCuePointerUp)
   window.removeEventListener('pointercancel', handleWindowDeckCuePointerUp)
   window.removeEventListener('blur', stopAllDeckCuePreview)
+  disposeSongSync()
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)

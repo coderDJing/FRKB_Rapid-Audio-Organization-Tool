@@ -14,9 +14,8 @@ type UseHorizontalBrowseRenderSyncParams = {
   resolveDeckPlaying: (deck: DeckKey) => boolean
 }
 
-const TRANSPORT_SNAPSHOT_INTERVAL_IDLE_MS = 120
-const TRANSPORT_SNAPSHOT_INTERVAL_PLAYING_MS = 1000
-const TRANSPORT_SNAPSHOT_INTERVAL_SINGLE_DECK_PLAYING_MS = Number.POSITIVE_INFINITY
+const TRANSPORT_SNAPSHOT_FALLBACK_INTERVAL_IDLE_MS = 1000
+const TRANSPORT_SNAPSHOT_FALLBACK_INTERVAL_PLAYING_MS = 4000
 
 export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderSyncParams) => {
   const topDeckRenderCurrentSeconds = ref(0)
@@ -65,8 +64,8 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   //   但 nativeTransport.seek 的 IPC 来回要 10~30ms，这期间如果放任：
   //     * startRenderSyncLoop 的 RAF tick 会用 playing=true&baseSec=旧值 继续外推，
   //       把 topDeckRenderCurrentSeconds 往前推；
-  //     * HorizontalBrowseRawWaveformDetail 里的 playbackAnimation tick 继续驱动
-  //       previewStartSec / 大波形 canvas 向前滚动几个像素；
+  //     * HorizontalBrowseRawWaveformDetail 会继续吃旧的 currentSeconds，
+  //       previewStartSec / 大波形 canvas 还会沿着旧时间基准往前滚几个像素；
   //   视觉上就是"点了 cue 波形先往前跳一下再顿住"。
   //
   // 通过在 notifyDeckSeekIntent 里先调用本函数，把 baseSec=目标秒、baseAtMs=now、
@@ -74,9 +73,8 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   // 立刻 teleport 到新位置：
   //   * RAF tick: playing=true 时算出的 estimate = 目标秒 + 几 ms 漂移（几乎不可见）；
   //     playing=false 后 estimate 就等于目标秒，稳稳停在目标位置。
-  //   * playbackAnimation tick: currentSeconds watcher 因为 topDeckRenderCurrentSeconds
-  //     变了会刷新 playbackAnimationBaseSec=目标秒、baseAtMs=now，后续几帧从 0 delta 开始算，
-  //     不会再从旧位置持续往前跑。
+  //   * currentSeconds watcher: 大波形收到新的 topDeckRenderCurrentSeconds 后会立刻把
+  //     previewStartSec 推到目标秒对应的位置，不会再沿着旧位置继续外推。
   //   * drawWaveform: previewStartSec 经 watcher → applyPreviewPlaybackPosition 推到
   //     目标秒 - visible/2，配合 rawData 覆盖判断立刻进入 stream-live，用户看到大波形
   //     瞬间锚定在目标位置。
@@ -100,6 +98,10 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     syncDeckRenderState(performance.now())
   }
 
+  const markTransportStateFresh = (nowMs = performance.now()) => {
+    lastTransportSnapshotAt = nowMs
+  }
+
   const stopRenderSyncLoop = () => {
     if (!renderSyncRaf) return
     cancelAnimationFrame(renderSyncRaf)
@@ -118,14 +120,12 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       const topPlaying = params.resolveDeckPlaying('top')
       const bottomPlaying = params.resolveDeckPlaying('bottom')
       const pollIntervalMs =
-        topPlaying && bottomPlaying
-          ? TRANSPORT_SNAPSHOT_INTERVAL_PLAYING_MS
-          : topPlaying || bottomPlaying
-            ? TRANSPORT_SNAPSHOT_INTERVAL_SINGLE_DECK_PLAYING_MS
-            : TRANSPORT_SNAPSHOT_INTERVAL_IDLE_MS
+        topPlaying || bottomPlaying
+          ? TRANSPORT_SNAPSHOT_FALLBACK_INTERVAL_PLAYING_MS
+          : TRANSPORT_SNAPSHOT_FALLBACK_INTERVAL_IDLE_MS
       if (!transportSnapshotInFlight && nowMs - lastTransportSnapshotAt >= pollIntervalMs) {
         transportSnapshotInFlight = true
-        lastTransportSnapshotAt = nowMs
+        markTransportStateFresh(nowMs)
         void syncNativeTransportNow()
           .catch(() => {})
           .finally(() => {
@@ -142,6 +142,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     bottomDeckRenderCurrentSeconds,
     resolveDeckRenderCurrentSeconds,
     syncDeckRenderState,
+    markTransportStateFresh,
     applyDeckRenderCurrentSeconds,
     startRenderSyncLoop,
     stopRenderSyncLoop

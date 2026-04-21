@@ -300,12 +300,11 @@ export const createBeatAlignPreviewRenderer = () => {
 
     let reused = false
     if (input.allowScrollReuse !== false && canReusePreviousFrame(state, metrics) && lastFrame) {
-      const shiftScaledPx = Math.round(
+      const shiftScaledPx =
         ((state.rangeStartSec - lastFrame.rangeStartSec) / state.rangeDurationSec) *
-          metrics.scaledWidth
-      )
+        metrics.scaledWidth
       const absShiftScaledPx = Math.abs(shiftScaledPx)
-      if (absShiftScaledPx >= 1 && absShiftScaledPx < metrics.scaledWidth) {
+      if (absShiftScaledPx > 0.0001 && absShiftScaledPx < metrics.scaledWidth) {
         const scratch = ensureScrollScratch(metrics.scaledWidth, metrics.scaledHeight)
         if (scratch) {
           scratch.ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -351,13 +350,13 @@ export const createBeatAlignPreviewRenderer = () => {
           const absShiftCssPx = absShiftScaledPx / metrics.scaleX
           if (shiftScaledPx > 0) {
             const keepCssWidth = Math.max(0, metrics.cssWidth - absShiftCssPx)
-            const segmentX = Math.max(0, Math.floor(keepCssWidth) - 1)
+            const segmentX = Math.max(0, Math.floor(keepCssWidth) - 2)
             const segmentWidth = Math.max(1, metrics.cssWidth - segmentX)
             drawSegment(ctx, metrics, state, segmentX, segmentWidth)
           } else {
             const segmentWidth = Math.max(
               1,
-              Math.min(metrics.cssWidth, Math.ceil(absShiftCssPx) + 1)
+              Math.min(metrics.cssWidth, Math.ceil(absShiftCssPx) + 2)
             )
             drawSegment(ctx, metrics, state, 0, segmentWidth)
           }

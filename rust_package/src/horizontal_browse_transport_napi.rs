@@ -1,0 +1,271 @@
+use super::*;
+
+#[napi]
+pub fn horizontal_browse_transport_reset() {
+  *engine().lock() = HorizontalBrowseTransportEngine::default();
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_deck_state(
+  deck: String,
+  now_ms: Option<f64>,
+  payload: HorizontalBrowseTransportDeckInput,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let deck_playing = payload.playing;
+  let mut engine_guard = engine().lock();
+  engine_guard.last_now_ms = now_ms.unwrap_or(payload.last_observed_at_ms);
+  {
+    let target = engine_guard.deck_mut(deck_id);
+    target.file_path = payload.file_path;
+    target.title = payload.title;
+    target.bpm = payload.bpm;
+    target.first_beat_ms = payload.first_beat_ms;
+    target.duration_sec = payload.duration_sec;
+    target.current_sec = payload.current_sec;
+    target.last_observed_at_ms = payload.last_observed_at_ms;
+    target.playing = payload.playing;
+    target.playback_rate = payload.playback_rate;
+    target.master_tempo_enabled = payload.master_tempo_enabled;
+    horizontal_browse_transport_audio::reset_master_tempo_state(target);
+  }
+  let decode_request = engine_guard.prepare_decode_request(deck_id);
+  ensure_prefetch_worker();
+  let _ = engine_guard.ensure_output_stream();
+  engine_guard.refresh();
+  drop(engine_guard);
+  if let Some(request) = decode_request {
+    if deck_playing {
+      execute_decode_request_sync(request);
+    } else {
+      schedule_decode_request(request);
+    }
+  }
+  let engine_guard = engine().lock();
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_state(
+  payload: HorizontalBrowseTransportStateInput,
+) -> HorizontalBrowseTransportSnapshot {
+  let top_playing = payload.top.playing;
+  let bottom_playing = payload.bottom.playing;
+  let now_ms = payload.now_ms.unwrap_or(
+    payload
+      .top
+      .last_observed_at_ms
+      .max(payload.bottom.last_observed_at_ms),
+  );
+  let mut engine_guard = engine().lock();
+  engine_guard.last_now_ms = now_ms;
+  {
+    let top = engine_guard.deck_mut(DeckId::Top);
+    top.file_path = payload.top.file_path;
+    top.title = payload.top.title;
+    top.bpm = payload.top.bpm;
+    top.first_beat_ms = payload.top.first_beat_ms;
+    top.duration_sec = payload.top.duration_sec;
+    top.current_sec = payload.top.current_sec;
+    top.last_observed_at_ms = payload.top.last_observed_at_ms;
+    top.playing = payload.top.playing;
+    top.playback_rate = payload.top.playback_rate;
+    top.master_tempo_enabled = payload.top.master_tempo_enabled;
+    horizontal_browse_transport_audio::reset_master_tempo_state(top);
+  }
+  {
+    let bottom = engine_guard.deck_mut(DeckId::Bottom);
+    bottom.file_path = payload.bottom.file_path;
+    bottom.title = payload.bottom.title;
+    bottom.bpm = payload.bottom.bpm;
+    bottom.first_beat_ms = payload.bottom.first_beat_ms;
+    bottom.duration_sec = payload.bottom.duration_sec;
+    bottom.current_sec = payload.bottom.current_sec;
+    bottom.last_observed_at_ms = payload.bottom.last_observed_at_ms;
+    bottom.playing = payload.bottom.playing;
+    bottom.playback_rate = payload.bottom.playback_rate;
+    bottom.master_tempo_enabled = payload.bottom.master_tempo_enabled;
+    horizontal_browse_transport_audio::reset_master_tempo_state(bottom);
+  }
+  let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
+  let bottom_decode_request = engine_guard.prepare_decode_request(DeckId::Bottom);
+  ensure_prefetch_worker();
+  let _ = engine_guard.ensure_output_stream();
+  engine_guard.refresh();
+  drop(engine_guard);
+  if let Some(request) = top_decode_request {
+    if top_playing {
+      execute_decode_request_sync(request);
+    } else {
+      schedule_decode_request(request);
+    }
+  }
+  if let Some(request) = bottom_decode_request {
+    if bottom_playing {
+      execute_decode_request_sync(request);
+    } else {
+      schedule_decode_request(request);
+    }
+  }
+  let engine_guard = engine().lock();
+  engine_guard.snapshot(engine_guard.last_now_ms)
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_sync_enabled(
+  deck: String,
+  now_ms: Option<f64>,
+  enabled: bool,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine = engine().lock();
+  engine.last_now_ms = now_ms.unwrap_or(engine.last_now_ms);
+  engine.set_sync_enabled(deck_id, enabled);
+  Ok(engine.snapshot(engine.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_beatsync(
+  deck: String,
+  now_ms: Option<f64>,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine = engine().lock();
+  engine.last_now_ms = now_ms.unwrap_or(engine.last_now_ms);
+  engine.beatsync(deck_id);
+  Ok(engine.snapshot(engine.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_leader(
+  deck: Option<String>,
+  now_ms: Option<f64>,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let next_leader = match deck {
+    Some(value) => Some(parse_deck_id(&value)?),
+    None => None,
+  };
+  let mut engine = engine().lock();
+  engine.last_now_ms = now_ms.unwrap_or(engine.last_now_ms);
+  engine.set_leader(next_leader);
+  Ok(engine.snapshot(engine.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_playing(
+  deck: String,
+  now_ms: f64,
+  playing: bool,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  ensure_prefetch_worker();
+  let _ = engine_guard.ensure_output_stream();
+  let decode_request = engine_guard.set_playing(deck_id, now_ms, playing);
+  drop(engine_guard);
+  if let Some(request) = decode_request {
+    execute_decode_request_sync(request);
+  }
+  let engine_guard = engine().lock();
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_seek(
+  deck: String,
+  now_ms: f64,
+  current_sec: f64,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  let decode_request = engine_guard.seek(deck_id, now_ms, current_sec);
+  drop(engine_guard);
+  if let Some(request) = decode_request {
+    execute_decode_request_sync(request);
+  }
+  let engine_guard = engine().lock();
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_toggle_loop(
+  deck: String,
+  now_ms: f64,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.toggle_loop(deck_id, now_ms);
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_step_loop_beats(
+  deck: String,
+  now_ms: f64,
+  direction: i32,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.step_loop_beats_command(deck_id, direction.signum(), now_ms);
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_loop_from_range(
+  deck: String,
+  start_sec: f64,
+  end_sec: f64,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.set_loop_from_range_command(deck_id, start_sec, end_sec);
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_clear_loop(
+  deck: String,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.clear_loop(deck_id);
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_gain(
+  deck: String,
+  gain: f64,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine = engine().lock();
+  engine.trim_gain[HorizontalBrowseTransportEngine::deck_index(deck_id)] =
+    HorizontalBrowseTransportEngine::clamp_unit_gain(gain);
+  engine.refresh_output_gains();
+  Ok(engine.snapshot(engine.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_output_state(
+  crossfader_value: f64,
+  master_gain: f64,
+) -> HorizontalBrowseTransportSnapshot {
+  let mut engine = engine().lock();
+  engine.set_output_state(crossfader_value, master_gain);
+  engine.snapshot(engine.last_now_ms)
+}
+
+#[napi]
+pub fn horizontal_browse_transport_snapshot(
+  now_ms: Option<f64>,
+) -> HorizontalBrowseTransportSnapshot {
+  let engine = engine().lock();
+  engine.snapshot(now_ms.unwrap_or_else(performance_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_visualizer_snapshot(
+) -> HorizontalBrowseTransportVisualizerSnapshot {
+  let engine = engine().lock();
+  engine.visualizer_snapshot()
+}

@@ -158,8 +158,12 @@ const drawBeatGrid = (
     const safeWidth = Math.max(1, lineWidth)
     const halfWidth = safeWidth * 0.5
     if (x < -halfWidth || x > width + halfWidth) return
-    const left = Math.max(0, Math.round(x - safeWidth * 0.5))
-    const right = Math.min(width, left + safeWidth)
+    // 网格线必须跟着波形做连续位移，不能再把 x 强行 round 到整 CSS 像素。
+    // 否则波形已经亚像素平滑滚动了，grid 还在 1px 台阶上跳，视觉上就像两层速度不一样。
+    const rawLeft = x - halfWidth
+    const rawRight = rawLeft + safeWidth
+    const left = Math.max(0, rawLeft)
+    const right = Math.min(width, rawRight)
     if (right <= left) return
     ctx.fillStyle = color
     ctx.fillRect(
