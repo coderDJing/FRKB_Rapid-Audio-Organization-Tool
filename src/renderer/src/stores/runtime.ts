@@ -26,6 +26,8 @@ export interface ISongsAreaState {
   songInfoArr: ISongInfo[]
   totalSongCount: number
   selectedSongFilePath: string[]
+  scrollTop: number
+  scrollLeft: number
 }
 
 export interface ISongsAreaPaneRuntimeState extends ISongsAreaState {
@@ -37,6 +39,8 @@ const createSongsAreaState = (): ISongsAreaPaneRuntimeState => ({
   songInfoArr: [],
   totalSongCount: 0,
   selectedSongFilePath: [],
+  scrollTop: 0,
+  scrollLeft: 0,
   columnCacheByMode: {}
 })
 
@@ -50,6 +54,14 @@ const assignSongsAreaState = (
   target.selectedSongFilePath = Array.isArray(source?.selectedSongFilePath)
     ? [...source.selectedSongFilePath]
     : []
+  target.scrollTop =
+    typeof source?.scrollTop === 'number' && Number.isFinite(source.scrollTop)
+      ? source.scrollTop
+      : 0
+  target.scrollLeft =
+    typeof source?.scrollLeft === 'number' && Number.isFinite(source.scrollLeft)
+      ? source.scrollLeft
+      : 0
   const nextCache: ISongsAreaPaneRuntimeState['columnCacheByMode'] = {}
   const sourceCache = source?.columnCacheByMode
   if (sourceCache && typeof sourceCache === 'object') {

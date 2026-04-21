@@ -1,5 +1,15 @@
 <script setup lang="ts">
-import { ref, shallowRef, computed, useTemplateRef, onUnmounted, watch, nextTick } from 'vue'
+import {
+  ref,
+  shallowRef,
+  computed,
+  useTemplateRef,
+  onMounted,
+  onUnmounted,
+  watch,
+  markRaw,
+  nextTick
+} from 'vue'
 import { type SongsAreaPaneKey, useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
@@ -32,6 +42,7 @@ import { useSongsAreaEvents } from '@renderer/pages/modules/songsArea/composable
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useGlobalSearchFocus } from '@renderer/pages/modules/songsArea/composables/useGlobalSearchFocus'
 import { useSongsAreaDragAndDrop } from '@renderer/pages/modules/songsArea/composables/useSongsAreaDragAndDrop'
+import { detectSongsAreaScrollCarrier } from '@renderer/pages/modules/songsArea/composables/scrollCarrier'
 
 // 资源导入
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
@@ -106,6 +117,56 @@ const originalSongInfoArr = shallowRef<ISongInfo[]>([])
 
 // 父级滚动采样
 const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
+
+let detachPaneScrollListener: (() => void) | null = null
+const resolvePaneScrollCarrier = () => {
+  const scrollElements = songsAreaRef.value?.osInstance()?.elements()
+  const explicitViewport = scrollElements?.viewport as HTMLElement | undefined
+  const explicitHost = scrollElements?.host as HTMLElement | undefined
+  return detectSongsAreaScrollCarrier(
+    explicitViewport || explicitHost || null,
+    explicitHost || null
+  ).carrier
+}
+const persistPaneScrollPosition = () => {
+  const carrier = resolvePaneScrollCarrier()
+  if (!carrier) return
+  songsAreaState.scrollTop = Math.max(0, Number(carrier.scrollTop || 0))
+  songsAreaState.scrollLeft = Math.max(0, Number(carrier.scrollLeft || 0))
+}
+const restorePaneScrollPosition = () => {
+  const carrier = resolvePaneScrollCarrier()
+  if (!carrier) return
+  const nextTop = Math.max(0, Number(songsAreaState.scrollTop || 0))
+  const nextLeft = Math.max(0, Number(songsAreaState.scrollLeft || 0))
+  if (Math.abs(carrier.scrollTop - nextTop) > 1) {
+    carrier.scrollTop = nextTop
+  }
+  if (Math.abs(carrier.scrollLeft - nextLeft) > 1) {
+    carrier.scrollLeft = nextLeft
+  }
+}
+const bindPaneScrollListener = () => {
+  const carrier = resolvePaneScrollCarrier()
+  if (!carrier) return
+  detachPaneScrollListener?.()
+  const handleScroll = () => {
+    songsAreaState.scrollTop = Math.max(0, Number(carrier.scrollTop || 0))
+    songsAreaState.scrollLeft = Math.max(0, Number(carrier.scrollLeft || 0))
+  }
+  carrier.addEventListener('scroll', handleScroll, { passive: true })
+  detachPaneScrollListener = () => carrier.removeEventListener('scroll', handleScroll)
+  handleScroll()
+}
+const schedulePaneScrollRestore = () => {
+  void nextTick().then(() => {
+    requestAnimationFrame(() => {
+      if (viewState.value !== 'list') return
+      bindPaneScrollListener()
+      restorePaneScrollPosition()
+    })
+  })
+}
 
 // Initialize composables
 const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef, songsAreaState)
@@ -239,6 +300,10 @@ const {
   applyFiltersAndSorting
 })
 
+onMounted(() => {
+  schedulePaneScrollRestore()
+})
+
 // songsArea 相关事件
 useSongsAreaEvents({
   runtime,
@@ -310,6 +375,9 @@ watch(
 )
 
 onUnmounted(() => {
+  persistPaneScrollPosition()
+  detachPaneScrollListener?.()
+  detachPaneScrollListener = null
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
   emitter.off('songsArea/clipboardHint', handleClipboardHint)
   emitter.off('waveform-preview:state', handleWaveformPreviewState)
@@ -613,6 +681,20 @@ const viewState = computed<'welcome' | 'blank' | 'loading' | 'list'>(() => {
   }
   return 'list'
 })
+
+watch(
+  () => [viewState.value, songsAreaState.songListUUID] as const,
+  ([state]) => {
+    if (state !== 'list') {
+      persistPaneScrollPosition()
+      detachPaneScrollListener?.()
+      detachPaneScrollListener = null
+      return
+    }
+    schedulePaneScrollRestore()
+  },
+  { flush: 'post' }
+)
 
 const currentPlayingIndex = computed(() => {
   const rowKey = currentPlayingRowKey.value

@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { spawnSync } from 'node:child_process'
 import fs from 'fs-extra'
 import path from 'path'
 
@@ -17,7 +18,14 @@ type DevRuntimeConfig = {
 
 type DevSingleInstanceLock = {
   isPrimaryInstance: boolean
+  lockFilePath: string
+  ownerPid: number
   release: () => void
+}
+
+type DevLockFile = {
+  pid: number
+  createdAtMs: number
 }
 
 const DEV_INSTANCE_ENV = 'FRKB_DEV_INSTANCE'
@@ -38,15 +46,62 @@ const normalizeDirectoryOverride = (value: string): string => {
   return path.resolve(normalized)
 }
 
-const readLockPid = (lockFilePath: string): number => {
+const parsePositiveInteger = (value: unknown): number => {
+  const parsed = Number(value || 0)
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 0
+}
+
+const readLockFile = (lockFilePath: string): DevLockFile => {
   try {
     const raw = fs.readFileSync(lockFilePath, 'utf8')
-    const parsed = JSON.parse(raw) as { pid?: unknown }
-    const pid = Number(parsed.pid || 0)
-    return Number.isInteger(pid) && pid > 0 ? pid : 0
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') {
+      return { pid: 0, createdAtMs: 0 }
+    }
+    const record = parsed as Record<string, unknown>
+    const createdAt = typeof record.createdAt === 'string' ? Date.parse(record.createdAt) : 0
+    return {
+      pid: parsePositiveInteger(record.pid),
+      createdAtMs: Number.isFinite(createdAt) ? createdAt : 0
+    }
   } catch {
-    return 0
+    return { pid: 0, createdAtMs: 0 }
   }
+}
+
+const readProcessStartTimeMs = (pid: number): number => {
+  if (!Number.isInteger(pid) || pid <= 0) return 0
+
+  if (process.platform === 'win32') {
+    const command = [
+      `$process = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}" -ErrorAction SilentlyContinue`,
+      'if ($process) { $process.CreationDate.ToUniversalTime().ToString("o") }'
+    ].join('; ')
+    const result = spawnSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', command],
+      {
+        encoding: 'utf8',
+        timeout: 3000,
+        windowsHide: true
+      }
+    )
+    const createdAt =
+      String(result.stdout || '')
+        .trim()
+        .split(/\r?\n/)[0] || ''
+    const parsed = Date.parse(createdAt)
+    return Number.isFinite(parsed) ? parsed : 0
+  }
+
+  const result = spawnSync('ps', ['-p', String(pid), '-o', 'lstart='], {
+    encoding: 'utf8',
+    timeout: 3000,
+    windowsHide: true
+  })
+  const startedAt = String(result.stdout || '').trim()
+  const parsed = Date.parse(startedAt)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 const isProcessAlive = (pid: number): boolean => {
@@ -61,10 +116,19 @@ const isProcessAlive = (pid: number): boolean => {
   }
 }
 
+const isLockOwnerAlive = (lockFile: DevLockFile): boolean => {
+  if (!isProcessAlive(lockFile.pid)) return false
+
+  const processStartTimeMs = readProcessStartTimeMs(lockFile.pid)
+  if (!processStartTimeMs || !lockFile.createdAtMs) return true
+
+  return processStartTimeMs <= lockFile.createdAtMs + 5000
+}
+
 const removeLockFileIfOwned = (lockFilePath: string) => {
   try {
     if (!fs.pathExistsSync(lockFilePath)) return
-    if (readLockPid(lockFilePath) !== process.pid) return
+    if (readLockFile(lockFilePath).pid !== process.pid) return
     fs.removeSync(lockFilePath)
   } catch {}
 }
@@ -151,6 +215,8 @@ export const acquireDevSingleInstanceLock = (
       const release = () => removeLockFileIfOwned(lockFilePath)
       return {
         isPrimaryInstance: true,
+        lockFilePath,
+        ownerPid: process.pid,
         release
       }
     } catch (error) {
@@ -160,14 +226,18 @@ export const acquireDevSingleInstanceLock = (
         log.error('[dev] 创建实例锁失败，继续沿用多开模式', error)
         return {
           isPrimaryInstance: true,
+          lockFilePath,
+          ownerPid: process.pid,
           release: () => {}
         }
       }
 
-      const currentPid = readLockPid(lockFilePath)
-      if (isProcessAlive(currentPid)) {
+      const lockFile = readLockFile(lockFilePath)
+      if (isLockOwnerAlive(lockFile)) {
         return {
           isPrimaryInstance: false,
+          lockFilePath,
+          ownerPid: lockFile.pid,
           release: () => {}
         }
       }
@@ -178,6 +248,8 @@ export const acquireDevSingleInstanceLock = (
         log.error('[dev] 清理失效实例锁失败', removeError)
         return {
           isPrimaryInstance: false,
+          lockFilePath,
+          ownerPid: lockFile.pid,
           release: () => {}
         }
       }

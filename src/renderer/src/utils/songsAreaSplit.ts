@@ -17,6 +17,8 @@ const cloneSongsAreaPaneState = (
   selectedSongFilePath: Array.isArray(state.selectedSongFilePath)
     ? [...state.selectedSongFilePath]
     : [],
+  scrollTop: Number.isFinite(state.scrollTop) ? state.scrollTop : 0,
+  scrollLeft: Number.isFinite(state.scrollLeft) ? state.scrollLeft : 0,
   columnCacheByMode: Object.fromEntries(
     Object.entries(state.columnCacheByMode || {}).map(([key, value]) => [
       key,
@@ -33,11 +35,28 @@ const buildPaneStateWithSongList = (
   songListUUID,
   songInfoArr: [],
   totalSongCount: 0,
-  selectedSongFilePath: []
+  selectedSongFilePath: [],
+  scrollTop: 0,
+  scrollLeft: 0
 })
 
 const isPlainSongListUUID = (uuid: string) =>
   libraryUtils.getLibraryTreeByUUID(uuid)?.type === 'songList'
+
+const syncPlayingSongListDataFromVisiblePane = (runtime: RuntimeStore) => {
+  const playingSongListUUID = String(runtime.playingData.playingSongListUUID || '')
+  if (!playingSongListUUID) return
+
+  const paneOrder = runtime.songsAreaPanels.splitEnabled
+    ? (['left', 'right', 'single'] as const)
+    : (['single', 'left', 'right'] as const)
+  const matchedPane = paneOrder.find(
+    (pane) => runtime.songsAreaPanels.panes[pane].songListUUID === playingSongListUUID
+  )
+  if (!matchedPane) return
+
+  runtime.playingData.playingSongListData = runtime.songsAreaPanels.panes[matchedPane].songInfoArr
+}
 
 export const getSongsAreaOppositePane = (pane: SplitSongsAreaPaneKey): SplitSongsAreaPaneKey =>
   pane === 'left' ? 'right' : 'left'
@@ -90,6 +109,7 @@ export const showSongListInPane = (
   if (runtime.songsAreaPanels.splitEnabled) {
     if (panes[pane].songListUUID === songListUUID) {
       runtime.setSongsAreaActivePane(pane)
+      syncPlayingSongListDataFromVisiblePane(runtime)
       return
     }
     if (panes[otherPane].songListUUID === songListUUID) {
@@ -97,10 +117,12 @@ export const showSongListInPane = (
       runtime.assignSongsAreaPaneState(pane, panes[otherPane])
       runtime.assignSongsAreaPaneState(otherPane, targetSnapshot)
       runtime.setSongsAreaActivePane(pane)
+      syncPlayingSongListDataFromVisiblePane(runtime)
       return
     }
     replaceSongsAreaPaneSongList(runtime, pane, songListUUID)
     runtime.setSongsAreaActivePane(pane)
+    syncPlayingSongListDataFromVisiblePane(runtime)
     return
   }
 
@@ -121,12 +143,14 @@ export const showSongListInPane = (
   }
   runtime.songsAreaPanels.splitEnabled = true
   runtime.setSongsAreaActivePane(pane)
+  syncPlayingSongListDataFromVisiblePane(runtime)
 }
 
 export const exitSongsAreaSplit = (runtime: RuntimeStore, paneToKeep: SplitSongsAreaPaneKey) => {
   runtime.assignSongsAreaPaneState('single', runtime.songsAreaPanels.panes[paneToKeep])
   runtime.songsAreaPanels.splitEnabled = false
   runtime.setSongsAreaActivePane('single')
+  syncPlayingSongListDataFromVisiblePane(runtime)
 }
 
 export const closeSongsAreaSplitPane = (

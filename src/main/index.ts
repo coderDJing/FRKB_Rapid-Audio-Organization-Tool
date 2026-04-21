@@ -211,6 +211,11 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 if (!gotTheLock) {
+  if (is.dev && devInstanceLock) {
+    console.error(
+      `[frkb-dev] 实例 ${devRuntime?.instanceId || 'default'} 已被占用（pid=${devInstanceLock.ownerPid || 'unknown'}，lock=${devInstanceLock.lockFilePath}）。请先关闭已有 dev 进程，或修改 .env 里的 FRKB_DEV_INSTANCE / FRKB_DEV_USER_DATA_DIR。`
+    )
+  }
   app.quit()
 } else {
   if (!devInstanceLock) {

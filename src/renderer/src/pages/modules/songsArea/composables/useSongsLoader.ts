@@ -31,7 +31,13 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
   const loadingShow = ref(false)
   const isRequesting = ref<boolean>(false)
-  let lastAppliedSongListUUID = ''
+  const hydrateFromPaneSnapshot = () => {
+    if (originalSongInfoArr.value.length > 0) return false
+    if (!songsAreaState.songListUUID || songsAreaState.songInfoArr.length === 0) return false
+    originalSongInfoArr.value = markRaw([...songsAreaState.songInfoArr])
+    return true
+  }
+  let lastAppliedSongListUUID = hydrateFromPaneSnapshot() ? songsAreaState.songListUUID : ''
   let backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
   // 渐进式渲染（当前行数）

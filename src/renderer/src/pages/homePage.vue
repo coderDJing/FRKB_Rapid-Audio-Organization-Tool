@@ -233,6 +233,8 @@ const cloneSongsAreaPaneState = (
   selectedSongFilePath: Array.isArray(state.selectedSongFilePath)
     ? [...state.selectedSongFilePath]
     : [],
+  scrollTop: Number.isFinite(state.scrollTop) ? state.scrollTop : 0,
+  scrollLeft: Number.isFinite(state.scrollLeft) ? state.scrollLeft : 0,
   columnCacheByMode: Object.fromEntries(
     Object.entries(state.columnCacheByMode || {}).map(([key, value]) => [
       key,
