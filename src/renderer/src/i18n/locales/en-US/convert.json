@@ -1,0 +1,30 @@
+{
+  "convert": {
+    "title": "Format conversion",
+    "completed": "Conversion completed",
+    "targetFormat": "Target format",
+    "sourceFiles": "Source files",
+    "chooseFiles": "Choose files",
+    "selectedFilesTitle": "Selected files",
+    "noSelectedFiles": "No files selected",
+    "selectSourceFiles": "Select audio files to convert",
+    "selectedFiles": "{count} files selected",
+    "outputDir": "Output folder",
+    "selectOutputDir": "Select output folder",
+    "scanningSourceFiles": "Collecting files to convert",
+    "strategy": "Output strategy",
+    "newFile": "Create new file",
+    "replaceOriginal": "Replace original file",
+    "preserveMetadata": "Preserve metadata",
+    "metadataHint": "We'll try to keep the tags, but some formats simply don't support metadata.",
+    "addFingerprint": "Add fingerprint of new file",
+    "converted": "Converted",
+    "skippedSameFormat": "Skipped (same format)",
+    "failed": "Failed",
+    "createdNew": "Created new file",
+    "replaced": "Replaced original",
+    "noNonMp3Files": "No non-MP3 files are available to convert, or MP3 copies already exist",
+    "errorDetails": "Failure details",
+    "backupCount": ""
+  }
+}

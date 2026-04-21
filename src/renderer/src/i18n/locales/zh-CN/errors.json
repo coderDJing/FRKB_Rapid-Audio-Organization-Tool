@@ -1,0 +1,7 @@
+{
+  "errors": {
+    "diskFullTitle": "磁盘空间不足",
+    "diskFullHint": "可用磁盘空间不足，请释放空间后重试。",
+    "diskFullInterruptedHint": "可用空间不足。已完成 {0} 项，待处理 {1} 项。释放空间后可重试，或跳过剩余任务。"
+  }
+}

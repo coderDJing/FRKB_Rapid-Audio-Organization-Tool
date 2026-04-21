@@ -1,0 +1,10 @@
+{
+  "migration": {
+    "legacyTitle": "库升级",
+    "legacyInProgress": "检测到上次升级未完成，将重新执行。",
+    "legacyRequired": "检测到旧库，需要升级后继续使用。",
+    "legacyActions": "升级会整理库数据，升级后的库不兼容旧版本 FRKB，请勿在旧版本中打开。若库较大可能耗时较久，请勿强制退出。",
+    "legacyConfirm": "开始升级",
+    "legacyExit": "退出"
+  }
+}

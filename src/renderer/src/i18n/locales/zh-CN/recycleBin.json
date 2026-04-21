@@ -1,0 +1,27 @@
+{
+  "recycleBin": {
+    "recycleBin": "回收站",
+    "emptyRecycleBin": "清空回收站",
+    "noDeletionRecords": "暂无删除记录",
+    "permanentlyDelete": "彻底删除",
+    "permanentlyDeleteTracks": "彻底删除曲目",
+    "restoreToOriginal": "恢复到原歌单",
+    "externalSource": "外部曲目/导入去重",
+    "confirmEmpty": "确认清空回收站吗？",
+    "deleteSummaryTitle": "删除结果",
+    "deleteSummarySuccess": "成功删除 {count} 首曲目",
+    "deleteSummaryFailed": "失败 {count} 首曲目",
+    "deleteSummaryRestoredFailed": "未成功删除的 {count} 首曲目已恢复到列表中",
+    "progressScanning": "正在扫描回收站内容",
+    "progressDeleting": "正在彻底删除回收站内容",
+    "progressFinished": "回收站清空完成",
+    "progressFailed": "回收站清空未完成",
+    "restoreSummaryTitle": "恢复结果",
+    "restoreSummarySuccess": "成功恢复 {count} 首曲目",
+    "restoreSummaryMissingPlaylist": "原歌单不存在 {count} 首曲目",
+    "restoreSummaryMissingFile": "文件已不存在 {count} 首曲目",
+    "restoreSummaryMissingRecord": "记录缺失 {count} 首曲目",
+    "restoreSummaryFailed": "恢复失败 {count} 首曲目",
+    "restoreMissingPlaylistHint": "原来的歌单不存在了，请自行移动到筛选库或精选库"
+  }
+}

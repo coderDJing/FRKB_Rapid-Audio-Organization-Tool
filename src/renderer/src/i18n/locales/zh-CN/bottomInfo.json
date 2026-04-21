@@ -1,0 +1,23 @@
+{
+  "bottomInfo": {
+    "totalDurationLabel": "总时长：",
+    "durationUnits": {
+      "day": {
+        "one": "{count}天",
+        "other": "{count}天"
+      },
+      "hour": {
+        "one": "{count}小时",
+        "other": "{count}小时"
+      },
+      "minute": {
+        "one": "{count}分钟",
+        "other": "{count}分钟"
+      },
+      "second": {
+        "one": "{count}秒",
+        "other": "{count}秒"
+      }
+    }
+  }
+}

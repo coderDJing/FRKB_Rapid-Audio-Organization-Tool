@@ -1,0 +1,6 @@
+{
+  "errorReport": {
+    "enable": "Enable error log reporting",
+    "hint": "Only crash and error logs are uploaded. No user data is included."
+  }
+}

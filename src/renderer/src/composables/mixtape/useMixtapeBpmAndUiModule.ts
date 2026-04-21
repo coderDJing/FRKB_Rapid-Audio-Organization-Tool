@@ -1,4 +1,3 @@
-import { nextTick } from 'vue'
 import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
 import type ConfirmDialog from '@renderer/components/confirmDialog'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
@@ -43,17 +42,16 @@ import type {
   StemRuntimeProgressEntry
 } from '@renderer/composables/mixtape/useMixtapeStemRuntimeModule'
 import type { MixtapeOutputProgressState } from '@renderer/composables/mixtape/mixtapeOutputProgress'
-
+import { createMixtapeOutputUi } from '@renderer/composables/mixtape/mixtapeOutputUi'
+import { createMixtapeWindowInputHandlers } from '@renderer/composables/mixtape/mixtapeWindowInput'
 type TrackMenuContextItem = {
   track?: {
     id?: string | null
   } | null
 }
-
 type BpmBatchReadyPayload = {
   results?: BpmAnalysisResultItem[]
 }
-
 type MixtapeListPayload = {
   items?: MixtapeRawItem[]
   recovery?: {
@@ -63,7 +61,6 @@ type MixtapeListPayload = {
   stemProfile?: unknown
   stemSummary?: unknown
 }
-
 type EnvelopeField =
   | 'gainEnvelope'
   | 'highEnvelope'
@@ -1023,233 +1020,53 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
     })
   }
 
-  const handleGlobalPointerDown = (event: PointerEvent) => {
-    if (!trackContextMenuVisible.value) return
-    const target = event.target as HTMLElement | null
-    if (target?.closest('.mixtape-track-menu')) return
-    closeTrackContextMenu()
-  }
+  const { handleGlobalPointerDown, handleWindowKeydown } = createMixtapeWindowInputHandlers({
+    trackContextMenuVisible,
+    beatAlignDialogVisible,
+    transportPreloading,
+    transportPlaying,
+    transportDecoding,
+    outputDialogVisible,
+    outputRunning,
+    autoGainDialogVisible,
+    closeTrackContextMenu,
+    handleTransportStop,
+    handleTransportPlayFromStart
+  })
 
-  const isEditableEventTarget = (target: EventTarget | null) => {
-    const element = target as HTMLElement | null
-    if (!element) return false
-    if (element.isContentEditable) return true
-    const tag = element.tagName?.toLowerCase() || ''
-    return tag === 'input' || tag === 'textarea' || tag === 'select'
-  }
-
-  const handleWindowKeydown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented) return
-    if (event.isComposing) return
-    if (event.code !== 'Space' && event.key !== ' ') return
-    if (event.repeat) {
-      event.preventDefault()
-      return
-    }
-    if (isEditableEventTarget(event.target)) return
-    if (
-      beatAlignDialogVisible.value ||
-      transportPreloading.value ||
-      outputDialogVisible.value ||
-      outputRunning.value ||
-      autoGainDialogVisible.value
-    )
-      return
-
-    event.preventDefault()
-    if (transportPlaying.value || transportDecoding.value) {
-      handleTransportStop()
-      return
-    }
-    handleTransportPlayFromStart()
-  }
-
-  const openOutputDialog = () => {
-    if (outputRunning.value) return
-    outputDialogVisible.value = true
-  }
-
-  const applyOutputProgressPayload = (payload: MixtapeOutputProgressPayload | null) => {
-    const nextState = resolveMixtapeOutputProgressState(
-      {
-        stageKey: outputProgressKey.value,
-        done: outputProgressDone.value,
-        total: outputProgressTotal.value,
-        percent: outputProgressPercent.value
-      },
-      payload
-    )
-    outputProgressKey.value = nextState.stageKey
-    outputProgressDone.value = nextState.done
-    outputProgressTotal.value = nextState.total
-    outputProgressPercent.value = nextState.percent
-  }
-
-  const runMixtapeOutput = async () => {
-    if (outputRunning.value) return
-    const normalizedOutputPath = outputPath.value.trim()
-    const normalizedFilename = outputFilename.value.trim()
-    if (!normalizedOutputPath) {
-      await confirmDialog({
-        title: t('common.error'),
-        content: [t('mixtape.outputPathRequired')],
-        confirmShow: false
-      })
-      return
-    }
-    if (!normalizedFilename) {
-      await confirmDialog({
-        title: t('common.error'),
-        content: [t('mixtape.outputFilenameRequired')],
-        confirmShow: false
-      })
-      return
-    }
-    if (!tracks.value.length) {
-      await confirmDialog({
-        title: t('common.error'),
-        content: [t('mixtape.outputNoTracks')],
-        confirmShow: false
-      })
-      return
-    }
-    if (mixtapeMixMode.value === 'stem') {
-      const exportProfile = normalizeStemProfile(
-        mixtapeStemProfile.value,
-        DEFAULT_MIXTAPE_STEM_PROFILE
-      )
-      const exportModel = resolveMixtapeStemModelByProfile(exportProfile)
-      const notReadyTracks = tracks.value.filter((track: MixtapeTrack) => {
-        if (normalizeMixtapeStemStatus(track.stemStatus) !== 'ready') return true
-        if (!hasTrackStemPathsReady(track, mixtapeStemMode.value)) return true
-        return resolveTrackStemModel(track) !== exportModel
-      })
-      if (notReadyTracks.length > 0) {
-        const trackSample = notReadyTracks
-          .slice(0, 3)
-          .map((track: MixtapeTrack) => resolveTrackTitle(track))
-        const filePaths = Array.from(
-          new Set(
-            notReadyTracks
-              .map((track: MixtapeTrack) => normalizeMixtapeFilePath(track.filePath))
-              .filter((filePath: string): filePath is string => !!filePath)
-          )
-        )
-        if (
-          filePaths.length > 0 &&
-          window?.electron?.ipcRenderer?.invoke &&
-          payload.value.playlistId
-        ) {
-          try {
-            await window.electron.ipcRenderer.invoke('mixtape:stem:enqueue', {
-              playlistId: payload.value.playlistId,
-              filePaths,
-              stemMode: mixtapeStemMode.value,
-              profile: exportProfile,
-              force: false
-            })
-          } catch (error) {
-            console.error('[mixtape] enqueue export stem profile failed', {
-              playlistId: payload.value.playlistId,
-              profile: exportProfile,
-              count: filePaths.length,
-              error
-            })
-          }
-        }
-        await confirmDialog({
-          title: t('common.warning'),
-          content: [
-            t('mixtape.exportStemPreparing', { count: notReadyTracks.length }),
-            ...trackSample
-          ],
-          confirmShow: false
-        })
-        return
-      }
-    }
-
-    outputRunning.value = true
-    outputProgressKey.value = 'mixtape.outputProgressPreparing'
-    outputProgressDone.value = 0
-    outputProgressTotal.value = 100
-    outputProgressPercent.value = 0
-    await nextTick()
-    await new Promise<void>((resolve) => {
-      requestAnimationFrame(() => resolve())
-    })
-
-    const outputRequest = {
-      outputPath: normalizedOutputPath,
-      outputFormat: outputFormat.value,
-      outputFilename: normalizedFilename
-    }
-
-    try {
-      const rendered = await renderMixtapeOutputWav({
-        onProgress: applyOutputProgressPayload
-      })
-      const result = await window.electron.ipcRenderer.invoke('mixtape:output', {
-        ...outputRequest,
-        wavBytes: rendered.wavBytes,
-        durationSec: rendered.durationSec,
-        sampleRate: rendered.sampleRate,
-        channels: rendered.channels
-      })
-      if (!result?.ok) {
-        throw new Error(result?.error || t('common.unknownError'))
-      }
-      applyOutputProgressPayload({
-        stageKey: 'mixtape.outputProgressFinished',
-        done: 100,
-        total: 100,
-        percent: 100
-      })
-      outputRunning.value = false
-      await confirmDialog({
-        title: t('common.finished'),
-        content: [t('mixtape.outputFinishedHint', { path: String(result?.outputPath || '') })],
-        confirmShow: false,
-        textAlign: 'left',
-        innerWidth: 500
-      })
-    } catch (error) {
-      const rawMessage = error instanceof Error ? error.message : String(error || t('common.error'))
-      const message = t(rawMessage)
-      applyOutputProgressPayload({
-        stageKey: 'mixtape.outputProgressFailed',
-        done: 100,
-        total: 100,
-        percent: 100
-      })
-      outputRunning.value = false
-      await confirmDialog({
-        title: t('common.error'),
-        content: [t('mixtape.outputFailedHint', { reason: message })],
-        confirmShow: false,
-        textAlign: 'left',
-        innerWidth: 500
-      })
-    } finally {
-      outputRunning.value = false
-    }
-  }
-
-  const handleOutputDialogConfirm = async (payload: {
-    outputPath: string
-    outputFormat: 'wav' | 'mp3'
-    outputFilename: string
-  }) => {
-    outputPath.value = payload.outputPath
-    outputFormat.value = payload.outputFormat
-    outputFilename.value = payload.outputFilename
-    outputDialogVisible.value = false
-    await runMixtapeOutput()
-  }
-
-  const handleOutputDialogCancel = () => {
-    outputDialogVisible.value = false
-  }
+  const {
+    openOutputDialog,
+    applyOutputProgressPayload,
+    handleOutputDialogConfirm,
+    handleOutputDialogCancel
+  } = createMixtapeOutputUi({
+    payload,
+    tracks,
+    mixtapeMixMode,
+    mixtapeStemMode,
+    mixtapeStemProfile,
+    outputDialogVisible,
+    outputRunning,
+    outputPath,
+    outputFormat,
+    outputFilename,
+    outputProgressKey,
+    outputProgressPercent,
+    outputProgressDone,
+    outputProgressTotal,
+    renderMixtapeOutputWav,
+    normalizeMixtapeFilePath,
+    normalizeStemProfile,
+    normalizeMixtapeStemStatus,
+    hasTrackStemPathsReady,
+    resolveTrackStemModel,
+    resolveTrackTitle,
+    resolveMixtapeStemModelByProfile,
+    resolveMixtapeOutputProgressState,
+    DEFAULT_MIXTAPE_STEM_PROFILE,
+    confirmDialog,
+    t
+  })
 
   const resetBpmAnalysisSession = () => {
     bpmAnalysisToken = 0

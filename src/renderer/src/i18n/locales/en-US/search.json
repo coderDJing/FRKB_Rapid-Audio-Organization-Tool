@@ -1,0 +1,10 @@
+{
+  "search": {
+    "globalSongPlaceholder": "Type keywords (title / artist / album / composer / year / genre / key / BPM / filename / path)",
+    "globalSongLocateHint": "Enter: locate and select",
+    "globalSongPlayHint": "Ctrl+Enter: play now",
+    "globalSongEmptyHint": "Type to start global search",
+    "globalSongLocateNow": "Locate",
+    "globalSongPlayNow": "Play now"
+  }
+}

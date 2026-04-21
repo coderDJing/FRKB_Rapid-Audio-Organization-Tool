@@ -1,0 +1,27 @@
+{
+  "recycleBin": {
+    "recycleBin": "Recycle Bin",
+    "emptyRecycleBin": "Empty Recycle Bin",
+    "noDeletionRecords": "No records",
+    "permanentlyDelete": "Permanently delete",
+    "permanentlyDeleteTracks": "Permanently delete tracks",
+    "restoreToOriginal": "Restore to original playlist",
+    "externalSource": "External / Import dedup",
+    "confirmEmpty": "Empty recycle bin?",
+    "deleteSummaryTitle": "Delete Summary",
+    "deleteSummarySuccess": "Deleted {count} track(s)",
+    "deleteSummaryFailed": "Failed {count} track(s)",
+    "deleteSummaryRestoredFailed": "{count} track(s) that failed to delete were restored to the list",
+    "progressScanning": "Scanning recycle bin items",
+    "progressDeleting": "Permanently deleting recycle bin items",
+    "progressFinished": "Recycle bin cleared",
+    "progressFailed": "Recycle bin clear did not finish",
+    "restoreSummaryTitle": "Restore Summary",
+    "restoreSummarySuccess": "Restored {count} track(s)",
+    "restoreSummaryMissingPlaylist": "Original playlist missing: {count}",
+    "restoreSummaryMissingFile": "File missing: {count}",
+    "restoreSummaryMissingRecord": "Record missing: {count}",
+    "restoreSummaryFailed": "Failed to restore: {count}",
+    "restoreMissingPlaylistHint": "Original playlist no longer exists. Please move it to Filter/Curated manually."
+  }
+}

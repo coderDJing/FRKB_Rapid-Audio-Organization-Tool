@@ -1,0 +1,26 @@
+{
+  "playlist": {
+    "showInLeftPane": "Show on left",
+    "showInRightPane": "Show on right",
+    "noPanePlaylist": "No playlist selected",
+    "deletePlaylist": "Delete playlist",
+    "emptyPlaylist": "Empty playlist",
+    "collapsibleFolder": "Collapsible folder",
+    "searchPlaylists": "Search playlists...",
+    "createNow": "Create now",
+    "batchRename": "Batch Rename",
+    "fingerprintDeduplicate": "Fingerprint deduplication",
+    "autoMix": "Mixtape Auto-Recording...",
+    "deduplicateConfirmTitle": "Deduplication confirmation",
+    "deduplicateConfirm": "We will analyze this playlist using the current fingerprint mode (content hash / file hash) and move duplicates to the recycle bin. Continue?",
+    "deduplicateFinished": "Deduplication completed",
+    "deduplicateScannedCount": "Tracks analyzed: {n}",
+    "deduplicateRemovedCount": "Duplicates moved to recycle bin: {n}",
+    "deduplicateModeUsed": "Fingerprint mode used: {mode}",
+    "deduplicateProgressScanning": "Scanning playlist tracks",
+    "deduplicateProgressAnalyzing": "Analyzing fingerprints",
+    "deduplicateProgressRemoving": "Removing duplicate tracks",
+    "deduplicateProgressFinished": "Fingerprint deduplication complete",
+    "deduplicateProgressFailed": "Fingerprint deduplication failed"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "pioneer": {
+    "loadTreeFailed": "读取 Pioneer U 盘库失败",
+    "loadingPlaylistTree": "正在读取 Pioneer U 盘库歌单树...",
+    "noMatchingPlaylists": "没有匹配的歌单。",
+    "emptyPlaylistTree": "这个 U 盘里暂时没有可显示的歌单树。",
+    "loadingPlaylistTracks": "正在读取 Pioneer 歌单内容...",
+    "selectPlaylistPrompt": "先在左侧选择一个 Pioneer 歌单。",
+    "emptyPlaylist": "这个歌单里暂时没有可显示的曲目。",
+    "mixtapeVaultUnavailable": "混音库保底目录不可用。",
+    "copyToMixtapeFailed": "复制到混音库失败。",
+    "copyTracksFailed": "复制曲目失败。",
+    "deviceLibraryLabel": "Device Library",
+    "oneLibraryLabel": "OneLibrary"
+  }
+}

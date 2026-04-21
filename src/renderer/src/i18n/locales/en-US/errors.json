@@ -1,0 +1,7 @@
+{
+  "errors": {
+    "diskFullTitle": "Disk space low",
+    "diskFullHint": "",
+    "diskFullInterruptedHint": "Insufficient space. Completed {0}, pending {1}. Free space then retry or skip the rest."
+  }
+}

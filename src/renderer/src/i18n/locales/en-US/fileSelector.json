@@ -1,0 +1,27 @@
+{
+  "fileSelector": {
+    "title": "Select Files/Folders",
+    "searchPlaceholder": "Search files/folders...",
+    "loading": "Loading...",
+    "selectedItems": "Selected Items",
+    "files": "{count} files",
+    "folders": "{count} folders",
+    "clear": "Clear",
+    "clearAll": "Clear All",
+    "helpText": "Click to select/deselect items, double-click folders to navigate, Enter to confirm, Esc to cancel",
+    "navigateUp": "Back",
+    "name": "Name",
+    "size": "Size",
+    "type": "Type",
+    "folder": "Folder",
+    "commonFolder": "Common Folder",
+    "drive": "Drive",
+    "filesSelected": "{count} files selected",
+    "foldersSelected": "{count} folders selected",
+    "moreItems": "{count} more items",
+    "noSelection": "No items selected",
+    "selectItems": "Select {count} items",
+    "desktop": "Desktop",
+    "rootLabel": "Drives"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "rekordboxDesktop": {
+    "loadTreeFailed": "Failed to load the Rekordbox desktop library.",
+    "loadingPlaylistTree": "Loading the Rekordbox desktop playlist tree...",
+    "emptyPlaylistTree": "There are no visible playlists in this Rekordbox desktop library yet.",
+    "loadingPlaylistTracks": "Loading Rekordbox desktop playlist tracks...",
+    "selectPlaylistPrompt": "Select a Rekordbox playlist from the left first.",
+    "emptyPlaylist": "There are no visible tracks in this Rekordbox playlist yet."
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "import": {
+    "completed": "导入完成",
+    "overview": "结果概览",
+    "importedToPlaylist": "导入到歌单",
+    "removedSkippedDuplicates": "去重删除/跳过",
+    "analysisFailed": "分析失败",
+    "fingerprintChanges": "指纹库变化",
+    "newFingerprints": "指纹新增",
+    "alreadyExists": "已存在",
+    "totalFingerprints": "现有指纹总量",
+    "waitForTask": "请等待当前任务执行结束",
+    "scannedTracks": "文件夹下共扫描曲目：{count}",
+    "removedDuplicates": "比对声音指纹去除重复曲目：{count}",
+    "fingerprintAdded": "声音指纹库新增：{count}",
+    "fingerprintCurrent": "声音指纹库现有：{count}",
+    "analysisFailedCount": "尝试分析失败：{count}",
+    "analysisFailedHint": " (通常由于文件内容损坏或传输过程发生错误)",
+    "playlistImported": "歌单共导入曲目：{count}",
+    "fingerprintNotAdded": "未添加声音指纹：{count}",
+    "fingerprintNotAddedHint": " (因为已存在于声音指纹库中)"
+  }
+}

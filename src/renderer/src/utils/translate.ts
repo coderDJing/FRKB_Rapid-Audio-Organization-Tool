@@ -7,6 +7,10 @@ export const LIBRARY_NAME_TO_I18N_KEY: Record<string, string> = {
   MixtapeLibrary: 'library.mixtapeLibrary',
   RecycleBin: 'recycleBin.recycleBin'
 }
+type RuntimeI18nGlobal = {
+  locale: string | { value: string }
+  t: (key: string, values?: Record<string, unknown>) => string
+}
 
 // 仅用于将核心库名转为展示文本（遵循正常 i18n）
 export function toLibraryDisplayName(libraryName: string): string {
@@ -24,11 +28,12 @@ export function t(text: string, valuesOrIndex?: number | Record<string, unknown>
     if (!looksLikeKey(text)) return text
 
     // 访问 locale 以建立对语言的响应式依赖，切换语言时触发重渲染
-    const localeRef = i18n.global.locale
+    const i18nGlobal = i18n.global as unknown as RuntimeI18nGlobal
+    const localeRef = i18nGlobal.locale
 
     typeof localeRef === 'object' ? localeRef.value : localeRef
 
-    const i18nT = i18n.global.t
+    const i18nT = i18nGlobal.t
     const translated =
       valuesOrIndex && typeof valuesOrIndex === 'object' ? i18nT(text, valuesOrIndex) : i18nT(text)
 

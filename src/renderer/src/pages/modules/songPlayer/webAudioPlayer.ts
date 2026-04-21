@@ -2,210 +2,41 @@ import mitt from 'mitt'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import { t } from '@renderer/utils/translate'
 import { configureTitleAudioVisualizerAnalyser } from '@renderer/composables/titleAudioVisualizerBridge'
+import {
+  canPlayHtmlAudio,
+  clampNumber,
+  getErrorLike,
+  isEmptySourceAudioErrorMessage,
+  isIgnorablePlayInterruptionError,
+  normalizePcmData,
+  toPreviewUrl
+} from './webAudioPlayer.shared'
+import type {
+  AudioContextConstructor,
+  AudioContextWithExtensions,
+  AudioElementWithExtensions,
+  PcmLoadPayload,
+  WebAudioPlayerEvents,
+  WindowWithAudioContext,
+  MixxxWaveformData,
+  MixxxWaveformBand,
+  MixxxWaveformBandKey,
+  RGBWaveformBandKey,
+  SeekedEventPayload,
+  WaveformStyle
+} from './webAudioPlayer.shared'
 
-export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
-export type MixxxWaveformBandKey = RGBWaveformBandKey | 'all'
-
-export type WaveformStyle = 'SoundCloud' | 'Fine' | 'RGB'
-
-export type MixxxWaveformBand = {
-  left: Uint8Array
-  right: Uint8Array
-  peakLeft?: Uint8Array
-  peakRight?: Uint8Array
-}
-
-export type MixxxWaveformData = {
-  duration: number
-  sampleRate: number
-  step: number
-  bands: Record<MixxxWaveformBandKey, MixxxWaveformBand>
-}
-
-export type PcmLoadPayload = {
-  pcmData: Float32Array | ArrayBuffer | ArrayBufferView | null
-  sampleRate: number
-  channels: number
-  totalFrames: number
-  mixxxWaveformData?: MixxxWaveformData | null
-  filePath?: string | null
-}
-
-export type SeekedEventPayload = {
-  time: number
-  manual: boolean
-}
-
-export type WebAudioPlayerEvents = {
-  ready: undefined
-  play: undefined
-  pause: undefined
-  finish: undefined
-  seeked: SeekedEventPayload
-  timeupdate: number
-  decode: number
-  error: unknown
-  mixxxwaveformready: undefined
-} & Record<string, unknown>
-
-type ErrorLike = {
-  name?: unknown
-  message?: unknown
-}
-
-interface AudioOutputSinkTarget {
-  setSinkId?(deviceId: string): Promise<void>
-}
-
-type AudioElementWithExtensions = HTMLAudioElement &
-  AudioOutputSinkTarget & {
-    crossOrigin: string | null
-  }
-type AudioContextWithExtensions = AudioContext & AudioOutputSinkTarget
-type AudioContextConstructor = new (options?: AudioContextOptions) => AudioContext
-type WindowWithAudioContext = Window & {
-  AudioContext?: AudioContextConstructor
-  webkitAudioContext?: AudioContextConstructor
-}
-
-const getErrorLike = (value: unknown): ErrorLike | null =>
-  value && typeof value === 'object' ? (value as ErrorLike) : null
-
-const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
-
-const isIgnorablePlayInterruptionError = (error: unknown) => {
-  const errorLike = getErrorLike(error)
-  const name = String(errorLike?.name || '').trim()
-  const message = String(errorLike?.message || error || '').trim()
-  if (name === 'AbortError') return true
-  const lowered = message.toLowerCase()
-  return (
-    lowered.includes('play() request was interrupted by a call to pause()') ||
-    lowered.includes('play() request was interrupted by a new load request')
-  )
-}
-
-const isEmptySourceAudioErrorMessage = (message: unknown) =>
-  String(message || '')
-    .trim()
-    .toLowerCase()
-    .includes('empty src attribute')
-
-const AUDIO_MIME_BY_EXTENSION: Record<string, string> = {
-  aac: 'audio/aac',
-  ac3: 'audio/ac3',
-  aif: 'audio/aiff',
-  aiff: 'audio/aiff',
-  alac: 'audio/mp4',
-  ape: 'audio/x-ape',
-  dts: 'audio/vnd.dts',
-  flac: 'audio/flac',
-  m4a: 'audio/mp4',
-  m4b: 'audio/mp4',
-  mka: 'audio/x-matroska',
-  mp3: 'audio/mpeg',
-  mp4: 'audio/mp4',
-  mpeg: 'audio/mpeg',
-  oga: 'audio/ogg',
-  ogg: 'audio/ogg',
-  opus: 'audio/ogg',
-  tak: 'audio/x-tak',
-  tta: 'audio/x-tta',
-  wav: 'audio/wav',
-  wave: 'audio/wav',
-  webm: 'audio/webm',
-  wma: 'audio/x-ms-wma',
-  wv: 'audio/x-wavpack'
-}
-
-const htmlAudioSupportCache = new Map<string, boolean>()
-
-const normalizeExtension = (filePath: string) => {
-  const raw = (filePath || '').trim().toLowerCase()
-  if (!raw) return ''
-  const match = raw.match(/\.([a-z0-9]+)$/i)
-  return match ? match[1] : ''
-}
-
-// 强制使用后端解码的扩展名
-// 后端解码策略：优先 Symphonia (快)，不支持时自动降级到 FFmpeg
-//
-// Symphonia 支持: AAC, M4A(AAC), MP3, FLAC, WAV, AIFF, Ogg/Vorbis
-// FFmpeg 降级支持: ALAC, APE, TAK, TTA, WavPack, DTS, AC3, WMA, Opus 等
-const FORCE_PCM_EXTENSIONS = new Set([
-  // 容器格式（可能包含多种编解码器，不可靠）
-  'm4a', // M4A: 如果是 AAC → Symphonia(快)；如果是 ALAC → FFmpeg
-  'm4b', // M4B (有声书): 同 M4A
-  'mp4', // MP4 音频: 同 M4A
-  'mka', // Matroska: FFmpeg
-  'webm', // WebM: FFmpeg
-
-  // 无损/专业格式（浏览器不支持，需要后端解码）
-  'alac', // Apple Lossless → FFmpeg
-  'ape', // Monkey's Audio → FFmpeg
-  'tak', // TAK → FFmpeg
-  'tta', // True Audio → FFmpeg
-  'wv', // WavPack → FFmpeg
-
-  // 专业音频格式（浏览器不支持）
-  'dts', // DTS → FFmpeg
-  'ac3', // AC3/Dolby Digital → FFmpeg
-  'wma', // Windows Media Audio → FFmpeg
-
-  // AAC 裸流（容器不完整，不可靠）
-  'aac' // AAC 裸流 → Symphonia/FFmpeg
-])
-
-// 浏览器原生支持良好的格式（保持 HTML 直接播放，性能最佳）：
-// - mp3: 浏览器原生支持 ✅
-// - wav: 浏览器原生支持 ✅
-// - flac: 现代浏览器支持 ✅
-// - ogg/oga: Vorbis，浏览器支持 ✅
-// - opus: 现代浏览器支持 ✅
-// - aif/aiff: 部分浏览器支持 ✅
-
-export const canPlayHtmlAudio = (filePath: string) => {
-  const ext = normalizeExtension(filePath)
-  if (!ext) return false
-
-  // 黑名单：强制使用 PCM 解码
-  if (FORCE_PCM_EXTENSIONS.has(ext)) return false
-
-  const mime = AUDIO_MIME_BY_EXTENSION[ext]
-  if (!mime) return false
-  if (typeof document === 'undefined') return true
-  const cached = htmlAudioSupportCache.get(mime)
-  if (cached !== undefined) return cached
-  const audio = document.createElement('audio')
-  const result = audio.canPlayType(mime)
-  const supported = result === 'probably' || result === 'maybe'
-  htmlAudioSupportCache.set(mime, supported)
-  return supported
-}
-
-export const toPreviewUrl = (filePath: string) => {
-  const raw = (filePath || '').trim()
-  if (!raw) return ''
-  if (raw.startsWith('frkb-preview://')) return raw
-  return `frkb-preview://local/?path=${encodeURIComponent(raw)}`
-}
-
-const normalizePcmData = (pcmData: unknown): Float32Array => {
-  if (!pcmData) {
-    return new Float32Array(0)
-  }
-  if (pcmData instanceof Float32Array) {
-    return pcmData
-  }
-  if (pcmData instanceof ArrayBuffer) {
-    return new Float32Array(pcmData)
-  }
-  if (ArrayBuffer.isView(pcmData)) {
-    const view = pcmData as ArrayBufferView
-    return new Float32Array(view.buffer, view.byteOffset, Math.floor(view.byteLength / 4))
-  }
-  return new Float32Array(0)
-}
+export { canPlayHtmlAudio, toPreviewUrl } from './webAudioPlayer.shared'
+export type {
+  MixxxWaveformData,
+  MixxxWaveformBand,
+  MixxxWaveformBandKey,
+  PcmLoadPayload,
+  RGBWaveformBandKey,
+  SeekedEventPayload,
+  WaveformStyle,
+  WebAudioPlayerEvents
+} from './webAudioPlayer.shared'
 
 export class WebAudioPlayer {
   public audioBuffer: AudioBuffer | null = null

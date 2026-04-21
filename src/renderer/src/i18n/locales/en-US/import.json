@@ -1,0 +1,23 @@
+{
+  "import": {
+    "completed": "Import done",
+    "overview": "Overview",
+    "importedToPlaylist": "Imported to playlist",
+    "removedSkippedDuplicates": "Removed/Skipped duplicates",
+    "analysisFailed": "Analysis failed",
+    "fingerprintChanges": "Fingerprint changes",
+    "newFingerprints": "New",
+    "alreadyExists": "Existing",
+    "totalFingerprints": "Total",
+    "waitForTask": "Please wait for the current task",
+    "scannedTracks": "Tracks scanned: {count}",
+    "removedDuplicates": "Duplicates removed by fingerprints: {count}",
+    "fingerprintAdded": "Fingerprints added: {count}",
+    "fingerprintCurrent": "Fingerprints total: {count}",
+    "analysisFailedCount": "Failed: {count}",
+    "analysisFailedHint": " (usually corrupted or transfer error)",
+    "playlistImported": "Imported to playlist: {count}",
+    "fingerprintNotAdded": "Fingerprints not added: {count}",
+    "fingerprintNotAddedHint": " (already in library)"
+  }
+}

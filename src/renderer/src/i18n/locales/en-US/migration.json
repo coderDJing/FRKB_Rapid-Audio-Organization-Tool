@@ -1,0 +1,10 @@
+{
+  "migration": {
+    "legacyTitle": "Library Upgrade",
+    "legacyInProgress": "Previous upgrade didn't finish. It will run again.",
+    "legacyRequired": "Legacy library detected. Upgrade required to continue.",
+    "legacyActions": "The upgrade will reorganize library data. The upgraded library won't work with older FRKB versions. Please don't open it with older versions. Large libraries may take longer. Please don't force quit.",
+    "legacyConfirm": "Start upgrade",
+    "legacyExit": "Exit"
+  }
+}

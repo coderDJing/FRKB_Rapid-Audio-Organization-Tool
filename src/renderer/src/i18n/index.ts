@@ -1,10 +1,14 @@
 import { createI18n } from 'vue-i18n'
-import zhCN from './locales/zh-CN.json'
-import enUS from './locales/en-US.json'
+import zhCN from './locales/zh-CN/index'
+import enUS from './locales/en-US/index'
 
 // 支持的语言列表
 export const SUPPORTED_LOCALES = ['zh-CN', 'en-US'] as const
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
+const messages = {
+  'zh-CN': zhCN,
+  'en-US': enUS
+}
 
 // 创建i18n实例
 export const i18n = createI18n({
@@ -12,10 +16,7 @@ export const i18n = createI18n({
   globalInjection: true,
   locale: 'zh-CN', // 默认语言
   fallbackLocale: 'zh-CN', // 回退语言
-  messages: {
-    'zh-CN': zhCN,
-    'en-US': enUS
-  },
+  messages: messages as never,
   // 开发环境下显示警告
   missingWarn: process.env.NODE_ENV === 'development',
   fallbackWarn: process.env.NODE_ENV === 'development'

@@ -1,0 +1,8 @@
+{
+  "keyAnalysis": {
+    "backgroundAnalyzing": "Idle-time track analysis in progress",
+    "pause1h": "Pause for 1 hour",
+    "pause3h": "Pause for 3 hours",
+    "pauseUntilRestart": "Pause until restart"
+  }
+}

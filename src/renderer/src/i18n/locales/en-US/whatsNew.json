@@ -1,0 +1,9 @@
+{
+  "whatsNew": {
+    "title": "FRKB Release Notes",
+    "subtitle": "Published: {date}",
+    "ok": "Got it",
+    "empty": "No release information available yet",
+    "noChangelog": "This release does not provide changelog details"
+  }
+}

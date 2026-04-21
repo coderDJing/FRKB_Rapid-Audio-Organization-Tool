@@ -1,0 +1,25 @@
+{
+  "menu": {
+    "file": "文件(F)",
+    "browseMode": "浏览模式(M)",
+    "fullBrowseMode": "浏览器模式",
+    "horizontalBrowseMode": "双轨横推模式",
+    "migration": "迁移(G)",
+    "help": "帮助(H)",
+    "cloudSync": "云同步(C)",
+    "globalSongSearch": "全局搜歌",
+    "formatConversionTool": "格式转换工具",
+    "exit": "退出",
+    "visitGithub": "访问 GitHub",
+    "visitWebsite": "访问官网",
+    "checkUpdate": "检查更新",
+    "downloadAnalysisRuntime": "下载分析运行时",
+    "whatsNew": "更新日志",
+    "thirdPartyNotices": "第三方许可",
+    "about": "关于",
+    "openLog": "打开日志",
+    "enableWindowScreenshotShortcut": "启用窗口截图快捷键",
+    "startSongListTrace": "开始 Trace 录制",
+    "stopSongListTrace": "结束 Trace 并导出"
+  }
+}

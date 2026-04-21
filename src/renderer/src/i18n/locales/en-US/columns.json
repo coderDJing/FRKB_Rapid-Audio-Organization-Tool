@@ -1,0 +1,23 @@
+{
+  "columns": {
+    "cover": "Cover",
+    "title": "Title",
+    "fileName": "File Name",
+    "artist": "Artist",
+    "duration": "Duration",
+    "album": "Album",
+    "genre": "Genre",
+    "label": "Label",
+    "key": "Key",
+    "bitrate": "Bitrate",
+    "fileFormat": "File Format",
+    "format": "Format",
+    "bpm": "BPM",
+    "waveformPreview": "Waveform",
+    "index": "Index",
+    "mixOrder": "Recording order",
+    "deletedAt": "Deleted At",
+    "originalPlaylist": "Original Playlist",
+    "mixSource": "Source path"
+  }
+}

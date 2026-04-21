@@ -1,0 +1,30 @@
+{
+  "convert": {
+    "title": "转换格式",
+    "completed": "转换完成",
+    "targetFormat": "目标格式",
+    "sourceFiles": "源文件",
+    "chooseFiles": "选择文件",
+    "selectedFilesTitle": "已选择文件",
+    "noSelectedFiles": "未选择任何文件",
+    "selectSourceFiles": "请选择要转换的音频文件",
+    "selectedFiles": "已选择 {count} 个文件",
+    "outputDir": "输出目录",
+    "selectOutputDir": "请选择输出目录",
+    "scanningSourceFiles": "正在收集待转换文件",
+    "strategy": "输出策略",
+    "newFile": "生成新文件",
+    "replaceOriginal": "替换原文件",
+    "preserveMetadata": "保留元数据",
+    "metadataHint": "我们会尽量保留标签，但部分格式可能天然不支持，勾选后若无效请知悉。",
+    "addFingerprint": "将新文件指纹加入指纹库",
+    "converted": "成功转换",
+    "skippedSameFormat": "同格式跳过",
+    "failed": "失败",
+    "createdNew": "新文件（重命名）",
+    "replaced": "替换覆盖",
+    "noNonMp3Files": "没有可转换的非 MP3 音频文件，或 MP3 副本已存在",
+    "errorDetails": "失败详情",
+    "backupCount": ""
+  }
+}

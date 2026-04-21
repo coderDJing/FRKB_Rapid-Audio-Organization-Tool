@@ -1,0 +1,27 @@
+{
+  "fileSelector": {
+    "title": "选择文件和文件夹",
+    "searchPlaceholder": "搜索文件和文件夹...",
+    "loading": "正在加载...",
+    "selectedItems": "已选择项目",
+    "files": "{count}个文件",
+    "folders": "{count}个文件夹",
+    "clear": "清空",
+    "clearAll": "清空",
+    "helpText": "点击项目选择/取消选择，双击文件夹导航，Enter确认，Esc取消",
+    "navigateUp": "返回上一级",
+    "name": "名称",
+    "size": "大小",
+    "type": "类型",
+    "folder": "文件夹",
+    "commonFolder": "常用文件夹",
+    "drive": "驱动器",
+    "filesSelected": "已选择{count}个文件",
+    "foldersSelected": "已选择{count}个文件夹",
+    "moreItems": "还有{count}项",
+    "noSelection": "未选择任何项目",
+    "selectItems": "选择{count}项",
+    "desktop": "桌面",
+    "rootLabel": "驱动器"
+  }
+}

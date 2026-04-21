@@ -1,0 +1,7 @@
+{
+  "export": {
+    "exportTo": "Export to",
+    "exportMigrationFile": "Export migration file",
+    "importMigrationFile": "Import migration file"
+  }
+}

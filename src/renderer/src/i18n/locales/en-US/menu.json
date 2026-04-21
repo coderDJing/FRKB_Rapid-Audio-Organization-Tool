@@ -1,0 +1,25 @@
+{
+  "menu": {
+    "file": "File(F)",
+    "browseMode": "Browse Mode(M)",
+    "fullBrowseMode": "Browser Mode",
+    "horizontalBrowseMode": "Dual-Track Horizontal Mode",
+    "migration": "Migrate(G)",
+    "help": "Help(H)",
+    "cloudSync": "Sync(C)",
+    "globalSongSearch": "Global Song Search",
+    "formatConversionTool": "Format Conversion Tool",
+    "exit": "Exit",
+    "visitGithub": "Visit GitHub",
+    "visitWebsite": "Visit Website",
+    "checkUpdate": "Check for Update",
+    "downloadAnalysisRuntime": "Download Analysis Runtime",
+    "whatsNew": "Release Notes",
+    "thirdPartyNotices": "Third-Party Notices",
+    "about": "About",
+    "openLog": "Open Log File",
+    "enableWindowScreenshotShortcut": "Enable Window Screenshot Shortcut",
+    "startSongListTrace": "Start Trace Recording",
+    "stopSongListTrace": "Stop Trace And Export"
+  }
+}

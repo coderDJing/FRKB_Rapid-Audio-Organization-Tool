@@ -1,0 +1,29 @@
+{
+  "common": {
+    "confirm": "OK",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "input": "Input",
+    "delete": "Delete",
+    "move": "Move",
+    "copy": "Copy",
+    "export": "Export",
+    "import": "Import",
+    "setting": "Setting",
+    "error": "Error",
+    "success": "Success",
+    "warning": "Warning",
+    "finished": "Done",
+    "test": "Test",
+    "rename": "Rename",
+    "eject": "Eject",
+    "language": "Language",
+    "exit": "Exit",
+    "retry": "Retry",
+    "skip": "Skip",
+    "required": "Required",
+    "loading": "Loading...",
+    "unknownError": "Unknown error"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "keyAnalysis": {
+    "backgroundAnalyzing": "闲时自动分析曲目中",
+    "pause1h": "暂停1小时",
+    "pause3h": "暂停3小时",
+    "pauseUntilRestart": "直到重启"
+  }
+}

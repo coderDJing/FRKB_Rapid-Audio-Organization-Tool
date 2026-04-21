@@ -1,0 +1,9 @@
+{
+  "whatsNew": {
+    "title": "FRKB 更新日志",
+    "subtitle": "发布日期：{date}",
+    "ok": "我知道了",
+    "empty": "暂未获取到发布信息",
+    "noChangelog": "此版本未提供更新日志内容"
+  }
+}

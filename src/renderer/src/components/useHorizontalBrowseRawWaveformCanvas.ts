@@ -8,52 +8,23 @@ import {
 } from '@renderer/components/horizontalBrowseDetailMath'
 import { createBeatAlignPreviewRenderer } from '@renderer/components/mixtapeBeatAlignPreviewRenderer'
 import {
-  HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
-  HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC,
-  HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR
+  HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC
 } from '@renderer/components/horizontalBrowseWaveform.constants'
-import {
-  buildHorizontalBrowseWaveformTileCacheKey,
-  disposeHorizontalBrowseWaveformBitmap,
-  normalizeHorizontalBrowsePathKey,
-  resolveHorizontalBrowseWaveformThemeVariant
-} from '@renderer/components/horizontalBrowseWaveformDetail.utils'
 import { parseHorizontalBrowseDurationToSeconds } from '@renderer/components/horizontalBrowseShellState'
 import {
   PREVIEW_MAX_SAMPLES_PER_PIXEL,
   clampNumber
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
-import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
-import type {
-  HorizontalBrowseDetailWaveformTileRequest,
-  HorizontalBrowseDetailWaveformWorkerIncoming,
-  HorizontalBrowseDetailWaveformWorkerOutgoing,
-  HorizontalBrowseWaveformThemeVariant
-} from '@renderer/workers/horizontalBrowseDetailWaveform.types'
-import { createHorizontalBrowseDetailWaveformWorker } from '@renderer/workers/horizontalBrowseDetailWaveform.workerClient'
 import { sendHorizontalBrowseWaveformTrace } from '@renderer/components/horizontalBrowseWaveformTrace'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import { isRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformData'
 import { createHorizontalBrowseDetailOverlayRenderer } from '@renderer/components/horizontalBrowseDetailOverlayRenderer'
+import { createHorizontalBrowseRawWaveformTileManager } from '@renderer/components/horizontalBrowseRawWaveformTileManager'
 
 type HorizontalBrowseDirection = 'up' | 'down'
 type HorizontalBrowseWaveformLayout = 'top-half' | 'bottom-half'
-
-type HorizontalBrowseWaveformTileCacheEntry = {
-  bitmap: ImageBitmap
-  width: number
-  height: number
-  pixelRatio: number
-  used: number
-}
-
-type HorizontalBrowseVisibleTilePaintPayload = {
-  cacheKey: string
-  rangeStartSec: number
-  rangeDurationSec: number
-}
 
 type UseHorizontalBrowseRawWaveformCanvasOptions = {
   song: () => ISongInfo | null
@@ -76,24 +47,8 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
   rawStreamActive: Ref<boolean>
 }
 
-const WAVEFORM_TILE_WIDTH = 256
-const WAVEFORM_TILE_OVERSCAN = 1
-const WAVEFORM_TILE_CACHE_LIMIT = 72
-const WAVEFORM_PREWARM_STEP_COUNT = 2
 const DRAG_RAW_MAX_SAMPLES_PER_PIXEL = 32
 const RAW_STREAM_REDRAW_INTERVAL_MS = 80
-
-const cloneRawWaveformData = (value: RawWaveformData): RawWaveformData => ({
-  duration: Number(value.duration) || 0,
-  sampleRate: Number(value.sampleRate) || 0,
-  rate: Number(value.rate) || 0,
-  frames: Math.max(0, Number(value.frames) || 0),
-  startSec: Math.max(0, Number(value.startSec) || 0),
-  minLeft: new Float32Array(value.minLeft),
-  maxLeft: new Float32Array(value.maxLeft),
-  minRight: new Float32Array(value.minRight),
-  maxRight: new Float32Array(value.maxRight)
-})
 
 export const useHorizontalBrowseRawWaveformCanvas = (
   options: UseHorizontalBrowseRawWaveformCanvasOptions
@@ -106,16 +61,11 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const streamWaveformRenderer = createBeatAlignPreviewRenderer()
   const overlayRenderer = createHorizontalBrowseDetailOverlayRenderer()
 
-  let waveformWorker: Worker | null = null
-  let waveformRenderToken = 0
-  let waveformTileCacheTick = 0
-  let lastWaveformBatchSignature = ''
   let lastZoomAnchorSec = 0
   let lastZoomAnchorRatio = HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
   let drawRaf = 0
   let gridOverlayRaf = 0
   let streamDrawRaf = 0
-  let tilePaintRaf = 0
   let streamDrawTimer: ReturnType<typeof setTimeout> | null = null
   let nextAllowedStreamDrawAt = 0
   let pendingRawStreamDirtyStartSec: number | null = null
@@ -156,9 +106,29 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   // 却没波形的错位感。displayReady=true 才表示"canvas + DOM 已全部同步到 displayStartSec"。
   const displayReady = ref(false)
 
-  const waveformTilePending = new Set<string>()
-  const waveformTileCache = new Map<string, HorizontalBrowseWaveformTileCacheEntry>()
-  const pendingVisibleTilePaints = new Map<string, HorizontalBrowseVisibleTilePaintPayload>()
+  const tileManager = createHorizontalBrowseRawWaveformTileManager({
+    wrapRef,
+    waveformCanvasRef,
+    displayStartSec,
+    displayReady,
+    rawData: options.rawData,
+    previewStartSec: options.previewStartSec,
+    previewZoom: options.previewZoom,
+    playing: options.playing,
+    getSongFilePath: () => String(options.song()?.filePath || '').trim(),
+    resolvePreviewTimeScale: () => resolvePreviewTimeScale(),
+    resolvePreviewDurationSec: () => resolvePreviewDurationSec(),
+    resolveVisibleDurationSec: () => resolveVisibleDurationSec(),
+    resolvePreviewAnchorSec: () => resolvePreviewAnchorSec(),
+    clampPreviewStart: (value: number) => clampPreviewStart(value),
+    resolvePlaybackDrivenRenderStartSec: (visibleDuration: number) =>
+      resolvePlaybackDrivenRenderStartSec(visibleDuration),
+    resolveWaveformLayout: () => resolveWaveformLayout(),
+    resolveLastZoomAnchor: () => ({ sec: lastZoomAnchorSec, ratio: lastZoomAnchorRatio }),
+    drawGridAndOverlay: (rangeStartSec: number, rangeDurationSec: number) =>
+      drawGridAndOverlay(rangeStartSec, rangeDurationSec),
+    scheduleDraw: () => scheduleDraw()
+  })
 
   const traceHorizontalWaveformRender = (source: string, payload?: Record<string, unknown>) => {
     const filePath = String(options.song()?.filePath || '').trim()
@@ -428,485 +398,14 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     return { data: null, source: 'none' as const }
   }
 
-  const clearWaveformWorkerQueue = () => {
-    if (!waveformWorker) return
-    const message: HorizontalBrowseDetailWaveformWorkerIncoming = { type: 'clearQueue' }
-    waveformWorker.postMessage(message)
-  }
-
-  const clearWaveformTileCache = () => {
-    waveformTilePending.clear()
-    pendingVisibleTilePaints.clear()
-    lastWaveformBatchSignature = ''
-    waveformTileCacheTick = 0
-    for (const entry of waveformTileCache.values()) {
-      disposeHorizontalBrowseWaveformBitmap(entry.bitmap)
-    }
-    waveformTileCache.clear()
-  }
-
-  const invalidateWaveformTiles = () => {
-    waveformRenderToken += 1
-    clearWaveformWorkerQueue()
-    clearWaveformTileCache()
-  }
-
-  const pruneWaveformTileCache = () => {
-    while (waveformTileCache.size > WAVEFORM_TILE_CACHE_LIMIT) {
-      let oldestKey = ''
-      let oldestUsed = Number.POSITIVE_INFINITY
-      for (const [key, entry] of waveformTileCache.entries()) {
-        if (entry.used >= oldestUsed) continue
-        oldestUsed = entry.used
-        oldestKey = key
-      }
-      if (!oldestKey) break
-      const entry = waveformTileCache.get(oldestKey)
-      if (entry) {
-        disposeHorizontalBrowseWaveformBitmap(entry.bitmap)
-      }
-      waveformTileCache.delete(oldestKey)
-      waveformTilePending.delete(oldestKey)
-    }
-  }
-
-  const resolveWaveformCanvasMetrics = () => {
-    const wrap = wrapRef.value
-    const canvas = waveformCanvasRef.value
-    if (!wrap || !canvas) return null
-    const cssWidth = Math.max(1, wrap.clientWidth)
-    const cssHeight = Math.max(1, wrap.clientHeight)
-    const metrics = resolveCanvasScaleMetrics(cssWidth, cssHeight, window.devicePixelRatio || 1)
-    if (canvas.width !== metrics.scaledWidth) {
-      canvas.width = metrics.scaledWidth
-    }
-    if (canvas.height !== metrics.scaledHeight) {
-      canvas.height = metrics.scaledHeight
-    }
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return null
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.imageSmoothingEnabled = false
-    return {
-      wrap,
-      canvas,
-      ctx,
-      metrics
-    }
-  }
-
-  const drawWaveformTileSegment = (payload: {
-    ctx: CanvasRenderingContext2D
-    scaledWidth: number
-    scaledHeight: number
-    entry: HorizontalBrowseWaveformTileCacheEntry
-    tileRangeStartSec: number
-    tileRangeDurationSec: number
-    viewStartSec: number
-    visibleDuration: number
-  }) => {
-    const tileStartSec = payload.tileRangeStartSec
-    const tileEndSec = tileStartSec + payload.tileRangeDurationSec
-    const viewEndSec = payload.viewStartSec + payload.visibleDuration
-    const overlapStartSec = Math.max(payload.viewStartSec, tileStartSec)
-    const overlapEndSec = Math.min(viewEndSec, tileEndSec)
-    if (overlapEndSec <= overlapStartSec) return false
-
-    waveformTileCacheTick += 1
-    payload.entry.used = waveformTileCacheTick
-    const srcScaleX =
-      payload.entry.width > 0
-        ? payload.entry.bitmap.width / payload.entry.width
-        : payload.entry.pixelRatio || 1
-    const srcLeftPx =
-      ((overlapStartSec - tileStartSec) / payload.tileRangeDurationSec) *
-      payload.entry.width *
-      srcScaleX
-    const srcRightPx =
-      ((overlapEndSec - tileStartSec) / payload.tileRangeDurationSec) *
-      payload.entry.width *
-      srcScaleX
-    const destLeftPx =
-      ((overlapStartSec - payload.viewStartSec) / payload.visibleDuration) * payload.scaledWidth
-    const destRightPx =
-      ((overlapEndSec - payload.viewStartSec) / payload.visibleDuration) * payload.scaledWidth
-    const srcWidth = srcRightPx - srcLeftPx
-    const destWidth = destRightPx - destLeftPx
-    if (srcWidth <= 0.0001 || destWidth <= 0.0001) return false
-
-    payload.ctx.drawImage(
-      payload.entry.bitmap,
-      srcLeftPx,
-      0,
-      srcWidth,
-      payload.entry.bitmap.height,
-      destLeftPx,
-      0,
-      destWidth,
-      payload.scaledHeight
-    )
-    return true
-  }
-
-  const drawSingleWaveformTile = (
-    entry: HorizontalBrowseWaveformTileCacheEntry,
-    tileRangeStartSec: number,
-    tileRangeDurationSec: number,
-    viewStartSec: number,
-    visibleDuration: number
-  ) => {
-    const waveformState = resolveWaveformCanvasMetrics()
-    if (!waveformState) return false
-    return drawWaveformTileSegment({
-      ctx: waveformState.ctx,
-      scaledWidth: waveformState.metrics.scaledWidth,
-      scaledHeight: waveformState.metrics.scaledHeight,
-      entry,
-      tileRangeStartSec,
-      tileRangeDurationSec,
-      viewStartSec,
-      visibleDuration
-    })
-  }
-
-  const flushVisibleTilePaints = () => {
-    tilePaintRaf = 0
-    if (!pendingVisibleTilePaints.size) return
-    const filePath = String(options.song()?.filePath || '').trim()
-    const duration = resolvePreviewDurationSec()
-    const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
-    if (!filePath || !duration || visibleDuration <= 0) {
-      pendingVisibleTilePaints.clear()
-      return
-    }
-    options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
-    const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
-    let paintedAnyTile = false
-    for (const payload of pendingVisibleTilePaints.values()) {
-      const entry = waveformTileCache.get(payload.cacheKey)
-      if (!entry) continue
-      paintedAnyTile =
-        drawSingleWaveformTile(
-          entry,
-          payload.rangeStartSec,
-          payload.rangeDurationSec,
-          renderStartSec,
-          visibleDuration
-        ) || paintedAnyTile
-    }
-    pendingVisibleTilePaints.clear()
-    if (!paintedAnyTile) {
-      scheduleDraw()
-      return
-    }
-    displayStartSec.value = renderStartSec
-    displayReady.value = true
-    drawGridAndOverlay(renderStartSec, visibleDuration)
-  }
-
-  const scheduleVisibleTilePaint = (payload: HorizontalBrowseVisibleTilePaintPayload) => {
-    if (options.playing.value) {
-      if (!drawRaf) {
-        scheduleDraw()
-      }
-      return
-    }
-    pendingVisibleTilePaints.set(payload.cacheKey, payload)
-    if (drawRaf || tilePaintRaf) return
-    tilePaintRaf = requestAnimationFrame(() => {
-      flushVisibleTilePaints()
-    })
-  }
-
-  const handleWaveformWorkerMessage = (
-    event: MessageEvent<HorizontalBrowseDetailWaveformWorkerOutgoing>
-  ) => {
-    const message = event.data
-    if (message?.type !== 'tileRendered') return
-    const { payload } = message
-    waveformTilePending.delete(payload.cacheKey)
-
-    const currentFilePath = normalizeHorizontalBrowsePathKey(options.song()?.filePath)
-    if (
-      payload.requestToken !== waveformRenderToken ||
-      normalizeHorizontalBrowsePathKey(payload.filePath) !== currentFilePath ||
-      !payload.bitmap
-    ) {
-      disposeHorizontalBrowseWaveformBitmap(payload.bitmap)
-      return
-    }
-
-    const existing = waveformTileCache.get(payload.cacheKey)
-    if (existing) {
-      disposeHorizontalBrowseWaveformBitmap(existing.bitmap)
-    }
-    waveformTileCacheTick += 1
-    waveformTileCache.set(payload.cacheKey, {
-      bitmap: payload.bitmap,
-      width: payload.width,
-      height: payload.height,
-      pixelRatio: payload.pixelRatio,
-      used: waveformTileCacheTick
-    })
-    pruneWaveformTileCache()
-    if (options.playing.value) {
-      if (!drawRaf) {
-        scheduleDraw()
-      }
-      return
-    }
-    scheduleVisibleTilePaint({
-      cacheKey: payload.cacheKey,
-      rangeStartSec: Number(payload.rangeStartSec) || 0,
-      rangeDurationSec: Math.max(0.0001, Number(payload.rangeDurationSec) || 0.0001)
-    })
-  }
-
-  const ensureWaveformWorker = () => {
-    if (waveformWorker) return waveformWorker
-    waveformWorker = createHorizontalBrowseDetailWaveformWorker()
-    waveformWorker.addEventListener('message', handleWaveformWorkerMessage)
-    waveformWorker.addEventListener('error', (event) => {
-      const message = event instanceof ErrorEvent ? event.message : 'unknown worker error'
-      console.error('[horizontal-browse-waveform-worker] error', {
-        message,
-        filename: (event as ErrorEvent)?.filename,
-        lineno: (event as ErrorEvent)?.lineno,
-        colno: (event as ErrorEvent)?.colno
-      })
-    })
-    waveformWorker.addEventListener('messageerror', () => {
-      console.error('[horizontal-browse-waveform-worker] messageerror')
-    })
-    return waveformWorker
-  }
-
-  const buildWaveformTileRequests = (request: {
-    filePath: string
-    zoom: number
-    cssWidth: number
-    cssHeight: number
-    pixelRatio: number
-    rangeStartSec: number
-    rangeDurationSec: number
-    themeVariant: HorizontalBrowseWaveformThemeVariant
-    overscanTiles: number
-  }): HorizontalBrowseDetailWaveformTileRequest[] => {
-    const safeCssWidth = Math.max(1, Math.floor(request.cssWidth))
-    const safeCssHeight = Math.max(1, Math.floor(request.cssHeight))
-    const tileWidth = Math.max(1, Math.min(WAVEFORM_TILE_WIDTH, safeCssWidth))
-    const tileDurationSec = (Math.max(0.0001, request.rangeDurationSec) * tileWidth) / safeCssWidth
-    if (!Number.isFinite(tileDurationSec) || tileDurationSec <= 0) return []
-
-    const rangeEndSec = request.rangeStartSec + request.rangeDurationSec
-    const firstIndex = Math.max(
-      0,
-      Math.floor(request.rangeStartSec / tileDurationSec) - Math.max(0, request.overscanTiles)
-    )
-    const lastIndex =
-      Math.max(
-        firstIndex,
-        Math.floor(Math.max(0, rangeEndSec - Number.EPSILON) / tileDurationSec)
-      ) + Math.max(0, request.overscanTiles)
-
-    const requests: HorizontalBrowseDetailWaveformTileRequest[] = []
-    for (let tileIndex = firstIndex; tileIndex <= lastIndex; tileIndex += 1) {
-      requests.push({
-        requestToken: waveformRenderToken,
-        filePath: request.filePath,
-        cacheKey: buildHorizontalBrowseWaveformTileCacheKey({
-          filePath: request.filePath,
-          waveformLayout: resolveWaveformLayout(),
-          themeVariant: request.themeVariant,
-          zoom: request.zoom,
-          timeScale: resolvePreviewTimeScale(),
-          cssWidth: safeCssWidth,
-          cssHeight: safeCssHeight,
-          pixelRatio: request.pixelRatio,
-          tileIndex
-        }),
-        width: tileWidth,
-        height: safeCssHeight,
-        pixelRatio: request.pixelRatio,
-        rangeStartSec: tileIndex * tileDurationSec,
-        rangeDurationSec: tileDurationSec,
-        maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
-        themeVariant: request.themeVariant,
-        waveformLayout: resolveWaveformLayout()
-      })
-    }
-    return requests
-  }
-
-  const buildWaveformRenderPlan = (request: {
-    filePath: string
-    cssWidth: number
-    cssHeight: number
-    pixelRatio: number
-    rangeStartSec: number
-    themeVariant: HorizontalBrowseWaveformThemeVariant
-  }) => {
-    const duration = resolvePreviewDurationSec()
-    const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
-    const visibleRequests = buildWaveformTileRequests({
-      filePath: request.filePath,
-      zoom: options.previewZoom.value,
-      cssWidth: request.cssWidth,
-      cssHeight: request.cssHeight,
-      pixelRatio: request.pixelRatio,
-      rangeStartSec: request.rangeStartSec,
-      rangeDurationSec: visibleDuration,
-      themeVariant: request.themeVariant,
-      overscanTiles: WAVEFORM_TILE_OVERSCAN
-    })
-
-    const anchorSec = clampNumber(
-      Number.isFinite(lastZoomAnchorSec) ? lastZoomAnchorSec : resolvePreviewAnchorSec(),
-      0,
-      Math.max(0, duration)
-    )
-    const anchorRatio = clampNumber(lastZoomAnchorRatio, 0, 1)
-    const prewarmRequests: HorizontalBrowseDetailWaveformTileRequest[] = []
-
-    for (let step = 1; step <= WAVEFORM_PREWARM_STEP_COUNT; step += 1) {
-      const factor = HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR ** step
-      for (const nextZoom of [
-        clampNumber(
-          options.previewZoom.value * factor,
-          HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
-          HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
-        ),
-        clampNumber(
-          options.previewZoom.value / factor,
-          HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
-          HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
-        )
-      ]) {
-        if (Math.abs(nextZoom - options.previewZoom.value) <= 0.000001) continue
-        const nextVisibleDuration = Math.max(
-          0.001,
-          (HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC * resolvePreviewTimeScale()) /
-            nextZoom
-        )
-        const nextStartSec = clampHorizontalBrowsePreviewStartByVisibleDuration(
-          anchorSec - nextVisibleDuration * anchorRatio,
-          duration,
-          nextVisibleDuration
-        )
-        prewarmRequests.push(
-          ...buildWaveformTileRequests({
-            filePath: request.filePath,
-            zoom: nextZoom,
-            cssWidth: request.cssWidth,
-            cssHeight: request.cssHeight,
-            pixelRatio: request.pixelRatio,
-            rangeStartSec: nextStartSec,
-            rangeDurationSec: nextVisibleDuration,
-            themeVariant: request.themeVariant,
-            overscanTiles: 0
-          })
-        )
-      }
-    }
-
-    return {
-      visibleRequests,
-      prewarmRequests
-    }
-  }
-
-  const requestWaveformTileBatch = (requests: HorizontalBrowseDetailWaveformTileRequest[]) => {
-    const missingRequests = requests.filter((request) => !waveformTileCache.has(request.cacheKey))
-    const signature = missingRequests.map((request) => request.cacheKey).join('\n')
-    if (signature === lastWaveformBatchSignature) return
-    lastWaveformBatchSignature = signature
-
-    waveformTilePending.clear()
-    if (!missingRequests.length) return
-    for (const request of missingRequests) {
-      waveformTilePending.add(request.cacheKey)
-    }
-
-    const worker = ensureWaveformWorker()
-    const message: HorizontalBrowseDetailWaveformWorkerIncoming = {
-      type: 'renderBatch',
-      payload: { requests: missingRequests }
-    }
-    worker.postMessage(message)
-  }
-
+  const invalidateWaveformTiles = () => tileManager.invalidateWaveformTiles()
   const drawWaveformTiles = (
     viewStartSec: number,
     visibleDuration: number,
     effectiveMixxxData: MixxxWaveformData | null
-  ) => {
-    const wrap = wrapRef.value
-    const canvas = waveformCanvasRef.value
-    if (!wrap || !canvas) return false
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx || !options.rawData.value || !effectiveMixxxData) {
-      clearWaveformCanvas()
-      return false
-    }
-
-    const metrics = resolveCanvasScaleMetrics(
-      wrap.clientWidth,
-      wrap.clientHeight,
-      window.devicePixelRatio || 1
-    )
-
-    const filePath = String(options.song()?.filePath || '').trim()
-    const themeVariant = resolveHorizontalBrowseWaveformThemeVariant()
-    const { visibleRequests, prewarmRequests } = buildWaveformRenderPlan({
-      filePath,
-      cssWidth: metrics.cssWidth,
-      cssHeight: metrics.cssHeight,
-      pixelRatio: metrics.pixelRatio,
-      rangeStartSec: viewStartSec,
-      themeVariant
-    })
-
-    // 先登记 tile 渲染请求，异步补齐缓存；不阻塞后续判定
-    requestWaveformTileBatch([...visibleRequests, ...prewarmRequests])
-
-    // 只有在至少一个 visible tile 已命中缓存时才接管 canvas；
-    // 否则直接返回 false，交给调用方的 stream-fallback 渲染器处理，
-    // 避免无条件 clearRect 破坏渲染器的滚动复用路径（会导致播放时波形消失只剩网格线）。
-    const hasAnyCachedTile = visibleRequests.some((request) =>
-      waveformTileCache.has(request.cacheKey)
-    )
-    if (!hasAnyCachedTile) return false
-
-    if (canvas.width !== metrics.scaledWidth) {
-      canvas.width = metrics.scaledWidth
-    }
-    if (canvas.height !== metrics.scaledHeight) {
-      canvas.height = metrics.scaledHeight
-    }
-    ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
-    ctx.imageSmoothingEnabled = false
-
-    let drewAnyTile = false
-    for (const request of visibleRequests) {
-      const entry = waveformTileCache.get(request.cacheKey)
-      if (!entry) continue
-      drewAnyTile =
-        drawWaveformTileSegment({
-          ctx,
-          scaledWidth: metrics.scaledWidth,
-          scaledHeight: metrics.scaledHeight,
-          entry,
-          tileRangeStartSec: request.rangeStartSec,
-          tileRangeDurationSec: request.rangeDurationSec,
-          viewStartSec,
-          visibleDuration
-        }) || drewAnyTile
-    }
-
-    return drewAnyTile
-  }
+  ) => tileManager.drawWaveformTiles(viewStartSec, visibleDuration, effectiveMixxxData)
+  const storeRawWaveform = (filePath: string, data: RawWaveformData) =>
+    tileManager.storeRawWaveform(filePath, data)
 
   const drawWaveform = () => {
     const wrap = wrapRef.value
@@ -1316,14 +815,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const scheduleDraw = () => {
     clearStreamDrawScheduling()
-    pendingVisibleTilePaints.clear()
+    tileManager.cancelVisibleTilePaints()
     if (gridOverlayRaf) {
       cancelAnimationFrame(gridOverlayRaf)
       gridOverlayRaf = 0
-    }
-    if (tilePaintRaf) {
-      cancelAnimationFrame(tilePaintRaf)
-      tilePaintRaf = 0
     }
     if (drawRaf) return
     drawRaf = requestAnimationFrame(() => {
@@ -1355,31 +850,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     overlayRenderer.reset()
   }
 
-  const storeRawWaveform = (filePath: string, data: RawWaveformData) => {
-    const worker = ensureWaveformWorker()
-    const message: HorizontalBrowseDetailWaveformWorkerIncoming = {
-      type: 'storeRaw',
-      payload: {
-        filePath,
-        data: cloneRawWaveformData(data)
-      }
-    }
-    worker.postMessage(message)
-  }
-
   const dispose = () => {
-    waveformRenderToken += 1
     clearStreamDrawScheduling()
-    clearWaveformWorkerQueue()
-    clearWaveformTileCache()
+    tileManager.dispose()
     resetRetainedWaveformData()
     gridRenderer.dispose()
     overlayRenderer.dispose()
-    if (waveformWorker) {
-      waveformWorker.removeEventListener('message', handleWaveformWorkerMessage)
-      waveformWorker.terminate()
-      waveformWorker = null
-    }
     if (drawRaf) {
       cancelAnimationFrame(drawRaf)
       drawRaf = 0
@@ -1387,10 +863,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     if (gridOverlayRaf) {
       cancelAnimationFrame(gridOverlayRaf)
       gridOverlayRaf = 0
-    }
-    if (tilePaintRaf) {
-      cancelAnimationFrame(tilePaintRaf)
-      tilePaintRaf = 0
     }
     streamWaveformRenderer.dispose()
   }

@@ -1,0 +1,23 @@
+{
+  "bottomInfo": {
+    "totalDurationLabel": "Total duration: ",
+    "durationUnits": {
+      "day": {
+        "one": "{count} day",
+        "other": "{count} days"
+      },
+      "hour": {
+        "one": "{count} hour",
+        "other": "{count} hours"
+      },
+      "minute": {
+        "one": "{count} minute",
+        "other": "{count} minutes"
+      },
+      "second": {
+        "one": "{count} second",
+        "other": "{count} seconds"
+      }
+    }
+  }
+}

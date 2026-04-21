@@ -1,0 +1,7 @@
+{
+  "export": {
+    "exportTo": "导出到",
+    "exportMigrationFile": "导出迁移文件",
+    "importMigrationFile": "导入迁移文件"
+  }
+}
