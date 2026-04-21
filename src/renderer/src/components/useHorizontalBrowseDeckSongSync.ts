@@ -37,6 +37,15 @@ type UseHorizontalBrowseDeckSongSyncParams = {
 }
 
 export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckSongSyncParams) => {
+  const patchDeckSongSharedGrid = (song: ISongInfo, payload: SharedSongGridPayload) => {
+    const nextSong = mergeHorizontalBrowseSongWithSharedGrid(song, payload)
+    if (nextSong === song) return false
+    song.bpm = nextSong.bpm
+    song.firstBeatMs = nextSong.firstBeatMs
+    song.barBeatOffset = nextSong.barBeatOffset
+    return true
+  }
+
   const buildNativeGridPayload = (
     payload: SharedSongGridPayload
   ): HorizontalBrowseTransportBeatGridInput | null => {
@@ -66,10 +75,9 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     let touched = false
     const topSong = params.topDeckSong.value
     if (topSong) {
-      const nextTopSong = mergeHorizontalBrowseSongWithSharedGrid(topSong, payload)
-      if (nextTopSong !== topSong) {
-        params.setDeckSong('top', nextTopSong)
-        params.syncDeckDefaultCue('top', nextTopSong)
+      if (patchDeckSongSharedGrid(topSong, payload)) {
+        params.setDeckSong('top', topSong)
+        params.syncDeckDefaultCue('top', topSong)
         if (nativeGridPayload) {
           nativeUpdates.push(params.setDeckBeatGridToNative('top', nativeGridPayload))
         }
@@ -79,10 +87,9 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
 
     const bottomSong = params.bottomDeckSong.value
     if (bottomSong) {
-      const nextBottomSong = mergeHorizontalBrowseSongWithSharedGrid(bottomSong, payload)
-      if (nextBottomSong !== bottomSong) {
-        params.setDeckSong('bottom', nextBottomSong)
-        params.syncDeckDefaultCue('bottom', nextBottomSong)
+      if (patchDeckSongSharedGrid(bottomSong, payload)) {
+        params.setDeckSong('bottom', bottomSong)
+        params.syncDeckDefaultCue('bottom', bottomSong)
         if (nativeGridPayload) {
           nativeUpdates.push(params.setDeckBeatGridToNative('bottom', nativeGridPayload))
         }

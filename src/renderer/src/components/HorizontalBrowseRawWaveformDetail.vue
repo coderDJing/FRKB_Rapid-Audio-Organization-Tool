@@ -71,7 +71,6 @@ const props = defineProps<{
   currentSeconds?: number
   playing?: boolean
   playbackRate?: number
-  gridBpm?: number
   loopRange?: HorizontalBrowseLoopRange | null
   cueSeconds?: number
   hotCues?: ISongHotCue[]
@@ -107,10 +106,10 @@ const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const rawStreamActive = ref(false)
 const previewPlaying = ref(false)
 
-const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS = 5
-const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS = 20
-const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX = 2
-const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX = 6
+const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS = 4
+const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS = 10
+const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX = 1
+const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX = 2.5
 const HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN = 8
 
 let resizeObserver: ResizeObserver | null = null
@@ -120,6 +119,7 @@ let dragStartSec = 0
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
 let loadStartedAt = 0
+let pendingLocalGridSignature = ''
 
 const traceHorizontalWaveformLoad = (stage: string, payload?: Record<string, unknown>) => {
   const filePath = String(props.song?.filePath || '').trim()
@@ -182,11 +182,9 @@ const {
 })
 
 const resolveDisplayGridBpm = () =>
-  Number.isFinite(Number(props.gridBpm)) && Number(props.gridBpm) > 0
-    ? normalizePreviewBpm(Number(props.gridBpm))
-    : Number.isFinite(Number(props.song?.bpm)) && Number(props.song?.bpm) > 0
-      ? normalizePreviewBpm(Number(props.song?.bpm))
-      : 0
+  Number.isFinite(Number(props.song?.bpm)) && Number(props.song?.bpm) > 0
+    ? normalizePreviewBpm(Number(props.song?.bpm))
+    : 0
 
 const resolveGridShiftMs = (targetPx: number, minMs: number) => {
   const visibleDurationMs = Math.max(1, resolveVisibleDurationSec() * 1000)
@@ -216,6 +214,35 @@ const clearBpmTapResetTimer = () => {
   bpmTapResetTimer = null
 }
 
+const normalizeGridSignatureBpm = (value: unknown) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0
+  return normalizePreviewBpm(numeric)
+}
+
+const normalizeGridSignatureFirstBeatMs = (value: unknown) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) return 0
+  return Number(numeric.toFixed(3))
+}
+
+const normalizeGridSignatureBarBeatOffset = (value: unknown) =>
+  normalizeBeatOffset(Number(value) || 0, PREVIEW_BAR_BEAT_INTERVAL)
+
+const buildPreviewGridSignature = () =>
+  [
+    normalizeGridSignatureBpm(previewBpm.value).toFixed(6),
+    normalizeGridSignatureFirstBeatMs(previewFirstBeatMs.value).toFixed(3),
+    normalizeGridSignatureBarBeatOffset(previewBarBeatOffset.value)
+  ].join('|')
+
+const buildSongGridSignature = () =>
+  [
+    normalizeGridSignatureBpm(props.song?.bpm).toFixed(6),
+    normalizeGridSignatureFirstBeatMs(props.song?.firstBeatMs).toFixed(3),
+    normalizeGridSignatureBarBeatOffset(props.song?.barBeatOffset)
+  ].join('|')
+
 const applyPreviewPlaybackPosition = (seconds: number) => {
   const safeSeconds = Math.max(0, Number(seconds) || 0)
   const nextStartSec = resolvePlaybackAlignedStart(safeSeconds)
@@ -242,6 +269,7 @@ const persistGridDefinition = async () => {
   clearPersistTimer()
   const filePath = String(props.song?.filePath || '').trim()
   if (!filePath) return
+  pendingLocalGridSignature = buildPreviewGridSignature()
   try {
     await window.electron.ipcRenderer.invoke('mixtape:update-grid-definition', {
       filePath,
@@ -254,6 +282,7 @@ const persistGridDefinition = async () => {
 
 const schedulePersistGridDefinition = () => {
   clearPersistTimer()
+  pendingLocalGridSignature = buildPreviewGridSignature()
   persistTimer = setTimeout(() => {
     persistTimer = null
     void persistGridDefinition()
@@ -489,6 +518,7 @@ const loadWaveform = async () => {
   const currentSong = props.song
   const currentToken = ++loadToken
   loadStartedAt = performance.now()
+  pendingLocalGridSignature = ''
 
   clearPersistTimer()
   clearStreamDrawScheduling()
@@ -546,9 +576,15 @@ watch(
 )
 
 watch(
-  () =>
-    [props.song?.bpm, props.song?.firstBeatMs, props.song?.barBeatOffset, props.gridBpm] as const,
+  () => [props.song?.bpm, props.song?.firstBeatMs, props.song?.barBeatOffset] as const,
   () => {
+    const songGridSignature = buildSongGridSignature()
+    if (pendingLocalGridSignature) {
+      if (songGridSignature !== pendingLocalGridSignature) {
+        return
+      }
+      pendingLocalGridSignature = ''
+    }
     syncGridStateFromSong()
     scheduleGridOverlayDraw()
   }

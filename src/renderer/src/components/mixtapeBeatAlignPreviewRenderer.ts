@@ -19,6 +19,7 @@ type BeatAlignPreviewRenderInput = {
   showBackground?: boolean
   showBeatGrid?: boolean
   allowScrollReuse?: boolean
+  phaseAwareScrollReuse?: boolean
   waveformLayout?: 'full' | 'top-half' | 'bottom-half'
   preferRawPeaksOnly?: boolean
 }
@@ -240,13 +241,17 @@ export const createBeatAlignPreviewRenderer = () => {
     )
   }
 
-  const canReusePreviousFrame = (current: FrameState, metrics: CanvasMetrics) => {
+  const canReusePreviousFrame = (
+    current: FrameState,
+    metrics: CanvasMetrics,
+    ignoreFirstBeatMs = false
+  ) => {
     if (metrics.resized || !lastFrame) return false
     return (
       lastFrame.width === current.width &&
       lastFrame.height === current.height &&
       lastFrame.bpm === current.bpm &&
-      lastFrame.firstBeatMs === current.firstBeatMs &&
+      (ignoreFirstBeatMs || lastFrame.firstBeatMs === current.firstBeatMs) &&
       lastFrame.barBeatOffset === current.barBeatOffset &&
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.mixxxData === current.mixxxData &&
@@ -287,10 +292,11 @@ export const createBeatAlignPreviewRenderer = () => {
 
     const metrics = ensureCanvasMetrics(input.canvas, input.wrap, ctx)
     const state = buildFrameState(input, metrics)
+    const phaseAwareScrollReuse = input.phaseAwareScrollReuse === true
 
     if (
       input.allowScrollReuse !== false &&
-      canReusePreviousFrame(state, metrics) &&
+      canReusePreviousFrame(state, metrics, phaseAwareScrollReuse) &&
       lastFrame &&
       Math.abs(state.rangeStartSec - lastFrame.rangeStartSec) <= 0.000001
     ) {
@@ -299,9 +305,16 @@ export const createBeatAlignPreviewRenderer = () => {
     }
 
     let reused = false
-    if (input.allowScrollReuse !== false && canReusePreviousFrame(state, metrics) && lastFrame) {
+    if (
+      input.allowScrollReuse !== false &&
+      canReusePreviousFrame(state, metrics, phaseAwareScrollReuse) &&
+      lastFrame
+    ) {
+      const phaseShiftSec = phaseAwareScrollReuse
+        ? (state.firstBeatMs - lastFrame.firstBeatMs) / 1000
+        : 0
       const shiftScaledPx =
-        ((state.rangeStartSec - lastFrame.rangeStartSec) / state.rangeDurationSec) *
+        ((state.rangeStartSec - lastFrame.rangeStartSec - phaseShiftSec) / state.rangeDurationSec) *
         metrics.scaledWidth
       const absShiftScaledPx = Math.abs(shiftScaledPx)
       if (absShiftScaledPx > 0.0001 && absShiftScaledPx < metrics.scaledWidth) {

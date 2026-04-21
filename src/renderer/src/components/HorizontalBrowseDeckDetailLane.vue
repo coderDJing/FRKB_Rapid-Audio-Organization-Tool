@@ -36,7 +36,6 @@ const props = defineProps<{
   currentSeconds: number
   playing: boolean
   playbackRate: number
-  gridBpm: number
   loopRange: HorizontalBrowseLoopRange | null
   cueSeconds: number
   hotCues: ISongHotCue[]
@@ -97,7 +96,6 @@ defineExpose({
       :current-seconds="props.currentSeconds"
       :playing="props.playing"
       :playback-rate="props.playbackRate"
-      :grid-bpm="props.gridBpm"
       :loop-range="props.loopRange"
       :cue-seconds="props.cueSeconds"
       :hot-cues="props.hotCues"

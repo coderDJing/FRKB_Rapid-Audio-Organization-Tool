@@ -352,6 +352,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       showBackground: false,
       showBeatGrid: Number(options.previewBpm.value) > 0,
       allowScrollReuse: playbackStreamReuse,
+      phaseAwareScrollReuse: playbackStreamReuse,
       waveformLayout: resolveWaveformLayout()
     })
     overlayRenderer.draw({
