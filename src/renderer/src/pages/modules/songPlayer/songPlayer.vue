@@ -23,7 +23,6 @@ import PlaybackRangeHandles from './PlaybackRangeHandles.vue'
 import { usePlayerHotkeys } from './usePlayerHotkeys'
 import { usePlayerControlsLogic } from './usePlayerControlsLogic'
 import { useCover } from './useCover'
-import { usePreloadNextSong } from './usePreloadNextSong'
 import { useWaveform } from './useWaveform'
 import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
 import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
@@ -129,8 +128,6 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
 
   const onPlay = () => {
     playerControlsRef.value?.setPlayingValue?.(true)
-    cancelPreloadTimer()
-    schedulePreloadAfterPlay()
     runtime.playerReady = true
     runtime.isSwitchingSong = false
     previousTime = player.getCurrentTime()
@@ -139,14 +136,12 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   disposers.push(() => player.off('play', onPlay))
 
   const onPause = () => {
-    cancelPreloadTimer()
     playerControlsRef.value?.setPlayingValue?.(false)
   }
   player.on('pause', onPause)
   disposers.push(() => player.off('pause', onPause))
 
   const onFinish = () => {
-    cancelPreloadTimer()
     if (runtime.setting.autoPlayNextSong) {
       playerActions.nextSong()
     }
@@ -301,18 +296,6 @@ const {
   setCoverByIPC
 } = useCover(runtime)
 
-// 预加载
-const {
-  schedulePreloadAfterPlay,
-  cancelPreloadTimer,
-  refreshPreloadWindow,
-  clearNextCaches,
-  clearAllCaches,
-  takePreloadedData,
-  rememberPlayback,
-  forgetCachesForFile
-} = usePreloadNextSong({ runtime })
-
 // 加载/播放与错误处理
 const bpm = ref<number | string>('')
 const { isLoadingBlob, ignoreNextEmptyError, requestLoadSong, handleSongLoadError } = useSongLoader(
@@ -322,17 +305,9 @@ const { isLoadingBlob, ignoreNextEmptyError, requestLoadSong, handleSongLoadErro
     rawWaveformData,
     bpm,
     waveformShow,
-    setCoverByIPC,
-    onSongBuffered: rememberPlayback
+    setCoverByIPC
   }
 )
-
-const requestSongWithRecreate = (
-  filePath: string,
-  options?: { preloadedAudio?: HTMLAudioElement | null; preloadedBpm?: number | string | null }
-) => {
-  requestLoadSong(filePath, options)
-}
 
 watch(
   () => [
@@ -407,8 +382,6 @@ onMounted(() => {
     runtime,
     updateParentWaveformWidth,
     onNextSong: () => playerActions.nextSong(),
-    schedulePreloadAfterPlay,
-    cancelPreloadTimer,
     playerControlsRef,
     onError: async (_error: unknown) => {
       if (isIgnorablePlayerEmptySourceError(_error)) {
@@ -442,17 +415,8 @@ const playerActions = usePlayerControlsLogic({
   selectSongListDialogLibraryName,
   selectSongListDialogActionMode,
   isInternalSongChange,
-  requestLoadSong: requestSongWithRecreate,
-  cancelPreloadTimer,
-  ignoreNextEmptyError,
-  preloadApi: {
-    takePreloadedData,
-    refreshPreloadWindow,
-    clearNextCaches,
-    clearAllCaches,
-    rememberPlayback,
-    forgetCachesForFile
-  }
+  requestLoadSong,
+  ignoreNextEmptyError
 })
 
 const handleWaveformPreviewPauseMain = (payload?: { onPaused?: (wasPlaying: boolean) => void }) => {
@@ -674,7 +638,6 @@ watch(
 // 初始化与销毁
 
 onUnmounted(() => {
-  cancelPreloadTimer()
   runtime.playerReady = false
   clearManualSeekTimer()
   unregisterTitleAudioVisualizerSource('mainWindow', titleAudioVisualizerSource)
@@ -714,8 +677,6 @@ watch(
     }
 
     if (newSong === null) {
-      cancelPreloadTimer()
-      clearAllCaches()
       if (audioPlayer.value) {
         ignoreNextEmptyError.value = true
         audioPlayer.value.empty()
@@ -726,18 +687,7 @@ watch(
     } else if (newSong?.filePath !== oldSong?.filePath) {
       const newPath = newSong.filePath
       setCoverByIPC(newPath)
-      const preloadHit = takePreloadedData(newPath)
-      if (preloadHit) {
-        requestSongWithRecreate(newPath, {
-          preloadedAudio: preloadHit.audio,
-          preloadedBpm: preloadHit.bpm ?? undefined
-        })
-      } else {
-        cancelPreloadTimer()
-        clearNextCaches()
-        requestSongWithRecreate(newPath)
-      }
-      refreshPreloadWindow()
+      requestLoadSong(newPath)
     } else if (newSong && oldSong && newSong !== oldSong && newSong.filePath === oldSong.filePath) {
       setCoverByIPC(newSong.filePath)
     }

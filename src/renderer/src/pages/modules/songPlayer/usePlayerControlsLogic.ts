@@ -16,13 +16,6 @@ import {
   type LibraryTransferActionMode
 } from '@renderer/utils/libraryTransfer'
 
-type PreloadHit = {
-  source: 'next' | 'previous'
-  filePath: string
-  audio: HTMLAudioElement
-  bpm: number | string | null
-} | null
-
 type DeleteSummary = {
   total?: number
   success?: number
@@ -45,24 +38,8 @@ interface UsePlayerControlsOptions {
   selectSongListDialogLibraryName: Ref<string>
   selectSongListDialogActionMode: Ref<LibraryTransferActionMode>
   isInternalSongChange: Ref<boolean>
-  requestLoadSong: (
-    filePath: string,
-    options?: { preloadedAudio?: HTMLAudioElement | null; preloadedBpm?: number | string | null }
-  ) => void
-  cancelPreloadTimer: (reason?: string) => void
+  requestLoadSong: (filePath: string) => void
   ignoreNextEmptyError: Ref<boolean>
-  preloadApi: {
-    takePreloadedData: (filePath: string) => PreloadHit
-    refreshPreloadWindow: () => void
-    clearNextCaches: () => void
-    clearAllCaches: () => void
-    rememberPlayback: (
-      filePath: string,
-      audio: HTMLAudioElement,
-      bpm: number | string | null
-    ) => void
-    forgetCachesForFile: (filePath: string) => void
-  }
 }
 
 export function usePlayerControlsLogic({
@@ -75,9 +52,7 @@ export function usePlayerControlsLogic({
   selectSongListDialogActionMode,
   isInternalSongChange,
   requestLoadSong,
-  cancelPreloadTimer,
-  ignoreNextEmptyError,
-  preloadApi
+  ignoreNextEmptyError
 }: UsePlayerControlsOptions) {
   // 调试日志已清理
   const isFileOperationInProgress = ref(false)
@@ -195,14 +170,11 @@ export function usePlayerControlsLogic({
     runtime.playingData.playingSongListData = payload.listData
     runtime.playingData.playingSong = payload.song
     requestLoadSong(payload.song.filePath)
-    preloadApi.refreshPreloadWindow()
   }
   const clearPlayerStateForDelete = () => {
     try {
       emitter.emit('waveform-preview:stop', { reason: 'switch' })
     } catch {}
-    cancelPreloadTimer('delSong clear player state')
-    preloadApi.clearAllCaches()
     runtime.playerReady = false
     runtime.isSwitchingSong = false
     if (audioPlayer.value) {
@@ -306,7 +278,6 @@ export function usePlayerControlsLogic({
     // 切歌开始，标记未就绪，阻止快进再次触发
     runtime.playerReady = false
     runtime.isSwitchingSong = true
-    cancelPreloadTimer('nextSong start')
     if (!runtime.playingData.playingSong) return
     const currentIndex = runtime.playingData.playingSongListData.findIndex(
       (item) => item.filePath === runtime.playingData.playingSong?.filePath
@@ -331,24 +302,13 @@ export function usePlayerControlsLogic({
     // 重要：在开始加载前先更新UI状态
     isInternalSongChange.value = true // 标记内部切换
     runtime.playingData.playingSong = nextSongData
-
-    const preloadHit = preloadApi.takePreloadedData(nextSongFilePath)
-    if (preloadHit) {
-      requestLoadSong(nextSongFilePath, {
-        preloadedAudio: preloadHit.audio,
-        preloadedBpm: preloadHit.bpm ?? undefined
-      })
-    } else {
-      requestLoadSong(nextSongFilePath)
-    }
-    preloadApi.refreshPreloadWindow()
+    requestLoadSong(nextSongFilePath)
   }
 
   const previousSong = () => {
     // 切歌开始，标记未就绪，阻止快进再次触发
     runtime.playerReady = false
     runtime.isSwitchingSong = true
-    cancelPreloadTimer('previousSong start')
     if (!runtime.playingData.playingSong) return
 
     const currentIndex = runtime.playingData.playingSongListData.findIndex(
@@ -379,17 +339,7 @@ export function usePlayerControlsLogic({
     // 设置内部切换并请求加载
     isInternalSongChange.value = true // 标记内部切换
     runtime.playingData.playingSong = prevCandidate
-
-    const preloadHit = preloadApi.takePreloadedData(prevSongFilePath)
-    if (preloadHit) {
-      requestLoadSong(prevSongFilePath, {
-        preloadedAudio: preloadHit.audio,
-        preloadedBpm: preloadHit.bpm ?? undefined
-      })
-    } else {
-      requestLoadSong(prevSongFilePath)
-    }
-    preloadApi.refreshPreloadWindow()
+    requestLoadSong(prevSongFilePath)
   }
 
   const delSong = async () => {
@@ -418,9 +368,6 @@ export function usePlayerControlsLogic({
       let shouldRestorePlaybackAfterFailure = false
 
       try {
-        cancelPreloadTimer('delSong start')
-        preloadApi.forgetCachesForFile(filePathToDelete)
-
         // 检查是否在回收站
         const isInRecycleBin = currentSongListUUID === RECYCLE_BIN_UUID
         const isExternalView = currentSongListUUID === EXTERNAL_PLAYLIST_UUID
@@ -534,7 +481,6 @@ export function usePlayerControlsLogic({
           runtime.playingData.playingSongListData = playbackAfterDelete.nextList
           runtime.playingData.playingSong = playbackAfterDelete.nextSong
           requestLoadSong(playbackAfterDelete.nextSong.filePath)
-          preloadApi.refreshPreloadWindow()
           shouldRestorePlaybackAfterFailure = false
         } else {
           shouldFinalizeDestroyedPlayerState = true
@@ -662,7 +608,6 @@ export function usePlayerControlsLogic({
     }
 
     try {
-      cancelPreloadTimer('handleMoveSong start')
       selectSongListDialogShow.value = false // 关闭对话框
 
       if (readOnlySource) {
@@ -747,14 +692,10 @@ export function usePlayerControlsLogic({
 
       // 确定下一首要播放的歌曲
       let nextPlayingSong: ISongInfo | null = null
-      let nextPlayingSongPath: string | null = null
       if (currentList.length > 0) {
         const nextIndex = Math.min(currentIndex, currentList.length - 1)
         nextPlayingSong = currentList[nextIndex]
-        nextPlayingSongPath = nextPlayingSong?.filePath ?? null
       }
-
-      preloadApi.forgetCachesForFile(filePathToMove)
 
       // 先执行移动操作，因为这可能会影响状态或触发其他事件
       const movedPaths = (await window.electron.ipcRenderer.invoke(
@@ -773,31 +714,15 @@ export function usePlayerControlsLogic({
       ])
 
       // 先切到下一首，再广播移除事件，避免全局 songsRemoved 监听把当前播放上下文误清空。
-      let preloadHit: PreloadHit = null
-      if (nextPlayingSongPath) {
-        preloadHit = preloadApi.takePreloadedData(nextPlayingSongPath)
-      }
-
-      if (nextPlayingSongPath && preloadHit) {
-        isInternalSongChange.value = true
-        runtime.playingData.playingSongListUUID = sourceListUuid
-        runtime.playingData.playingSong = nextPlayingSong
-        requestLoadSong(nextPlayingSongPath, {
-          preloadedAudio: preloadHit.audio,
-          preloadedBpm: preloadHit.bpm ?? undefined
-        })
-        preloadApi.refreshPreloadWindow()
-      } else if (nextPlayingSong) {
+      if (nextPlayingSong) {
         isInternalSongChange.value = true
         runtime.playingData.playingSongListUUID = sourceListUuid
         runtime.playingData.playingSong = nextPlayingSong
         requestLoadSong(nextPlayingSong.filePath)
-        preloadApi.refreshPreloadWindow()
       } else {
         isInternalSongChange.value = true
         runtime.playingData.playingSong = null
         runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
-        preloadApi.clearAllCaches()
       }
 
       // 广播源/目标歌单变化
@@ -838,7 +763,6 @@ export function usePlayerControlsLogic({
   }
 
   const exportTrack = async () => {
-    cancelPreloadTimer('exportTrack start') // 取消预加载
     if (!runtime.playingData.playingSong) {
       console.error('无法导出，没有歌曲正在播放。')
       return
@@ -881,18 +805,13 @@ export function usePlayerControlsLogic({
             bpm.value = ''
 
             // 从列表中删除
-            preloadApi.forgetCachesForFile(filePath)
             currentList.splice(currentIndex, 1)
 
             // 确定下一首歌
             let nextPlayingSong: ISongInfo | null = null
-            let preloadHit: PreloadHit = null
             if (currentList.length > 0) {
               const nextIndex = Math.min(currentIndex, currentList.length - 1)
               nextPlayingSong = currentList[nextIndex]
-              if (nextPlayingSong?.filePath) {
-                preloadHit = preloadApi.takePreloadedData(nextPlayingSong.filePath)
-              }
             }
 
             // 更新播放状态
@@ -901,18 +820,10 @@ export function usePlayerControlsLogic({
             runtime.playingData.playingSong = nextPlayingSong
 
             // 加载下一首歌或清空列表
-            if (nextPlayingSong && preloadHit) {
-              requestLoadSong(nextPlayingSong.filePath, {
-                preloadedAudio: preloadHit.audio,
-                preloadedBpm: preloadHit.bpm ?? undefined
-              })
-              preloadApi.refreshPreloadWindow()
-            } else if (nextPlayingSong) {
+            if (nextPlayingSong) {
               requestLoadSong(nextPlayingSong.filePath)
-              preloadApi.refreshPreloadWindow()
             } else {
               runtime.playingData.playingSongListUUID = ''
-              preloadApi.clearAllCaches()
             }
           }
           emitter.emit('songsRemoved', { listUUID: listUuidAtExportStart, paths: [filePath] })

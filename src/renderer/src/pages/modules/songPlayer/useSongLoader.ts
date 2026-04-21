@@ -55,11 +55,6 @@ type DecodePayload = {
   mixxxWaveformData?: MixxxWaveformData | null
 }
 
-type LoadOptions = {
-  preloadedAudio?: HTMLAudioElement | null
-  preloadedBpm?: number | string | null
-}
-
 const PLAYER_RAW_WAVEFORM_TARGET_RATE = 4800
 const PLAYER_RAW_WAVEFORM_CHUNK_FRAMES = 32768
 const PLAYER_RAW_WAVEFORM_PRIORITY_HINT = 1000
@@ -113,17 +108,8 @@ export function useSongLoader(params: {
   bpm: { value: number | string }
   waveformShow: { value: boolean }
   setCoverByIPC: (filePath: string) => void
-  onSongBuffered?: (filePath: string, audio: HTMLAudioElement, bpm: number | string | null) => void
 }) {
-  const {
-    runtime,
-    audioPlayer,
-    rawWaveformData,
-    bpm,
-    waveformShow,
-    setCoverByIPC,
-    onSongBuffered
-  } = params
+  const { runtime, audioPlayer, rawWaveformData, bpm, waveformShow, setCoverByIPC } = params
   const isAbortError = (error: unknown) =>
     error instanceof Error ? error.name === 'AbortError' : false
 
@@ -227,15 +213,7 @@ export function useSongLoader(params: {
     }
   }
 
-  const resolveBpmValue = (preloadedBpmValue?: number | string | null) => {
-    if (
-      typeof preloadedBpmValue === 'number' &&
-      Number.isFinite(preloadedBpmValue) &&
-      preloadedBpmValue > 0
-    ) {
-      bpm.value = preloadedBpmValue
-      return true
-    }
+  const resolveBpmValue = () => {
     const cachedBpm = runtime.playingData.playingSong?.bpm
     if (typeof cachedBpm === 'number' && Number.isFinite(cachedBpm) && cachedBpm > 0) {
       bpm.value = cachedBpm
@@ -447,7 +425,7 @@ export function useSongLoader(params: {
     playerInstance.once('ready', startPlay)
   }
 
-  const handleLoadSong = async (filePath: string, requestId: number, options?: LoadOptions) => {
+  const handleLoadSong = async (filePath: string, requestId: number) => {
     if (requestId !== currentLoadRequestId.value) return
     if (runtime.playingData.playingSong?.filePath !== filePath) return
 
@@ -456,7 +434,7 @@ export function useSongLoader(params: {
 
     setCoverByIPC(filePath)
     waveformShow.value = true
-    resolveBpmValue(options?.preloadedBpm ?? null)
+    resolveBpmValue()
     cancelRawWaveformStream()
     rawWaveformData.value = null
     playerInstance.setPioneerPreviewWaveformData(null)
@@ -471,20 +449,12 @@ export function useSongLoader(params: {
     })
     tracePlayerWaveform('loader', 'load:start', filePath, {
       useHtmlPlayback,
-      hasExternalWaveformSource: Boolean(externalWaveformSource),
-      hasPreloadedAudio: Boolean(options?.preloadedAudio)
+      hasExternalWaveformSource: Boolean(externalWaveformSource)
     })
     try {
       playerInstance.setMixxxWaveformData(null, filePath)
       if (useHtmlPlayback) {
-        playerInstance.loadFile(filePath, {
-          audioElement: options?.preloadedAudio ?? null
-        })
-
-        const activeAudio = playerInstance.getAudioElement()
-        if (activeAudio) {
-          onSongBuffered?.(filePath, activeAudio, bpm.value || null)
-        }
+        playerInstance.loadFile(filePath)
 
         startPlaybackWhenReady(playerInstance, filePath, requestId)
 
@@ -519,7 +489,7 @@ export function useSongLoader(params: {
     }
   }
 
-  const requestLoadSong = (filePath: string, options?: LoadOptions) => {
+  const requestLoadSong = (filePath: string) => {
     const normalized = typeof filePath === 'string' ? filePath.trim() : ''
     if (!normalized) return
 
@@ -539,7 +509,7 @@ export function useSongLoader(params: {
     waveformTraceStartedAt = performance.now()
     rawWaveformChunkCount = 0
     tracePlayerWaveform('loader', 'request-load', normalized)
-    void handleLoadSong(normalized, newRequestId, options)
+    void handleLoadSong(normalized, newRequestId)
   }
 
   const handleWaveformUpdated = (_event: unknown, payload: { filePath?: string }) => {

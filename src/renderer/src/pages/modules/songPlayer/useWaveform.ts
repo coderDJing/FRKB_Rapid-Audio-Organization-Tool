@@ -19,8 +19,6 @@ export function useWaveform(params: {
   runtime: ReturnType<typeof useRuntimeStore>
   updateParentWaveformWidth: () => void
   onNextSong: () => void
-  schedulePreloadAfterPlay: () => void
-  cancelPreloadTimer: () => void
   playerControlsRef?: { value?: { setPlayingValue?: (v: boolean) => void } | null }
   onError?: (error: unknown) => void
 }) {
@@ -31,8 +29,6 @@ export function useWaveform(params: {
     runtime,
     updateParentWaveformWidth,
     onNextSong,
-    schedulePreloadAfterPlay,
-    cancelPreloadTimer,
     playerControlsRef,
     onError
   } = params
@@ -908,14 +904,11 @@ export function useWaveform(params: {
 
     const handlePlay = () => {
       playerControlsRef?.value?.setPlayingValue?.(true)
-      cancelPreloadTimer()
-      schedulePreloadAfterPlay()
       runtime.playerReady = true
       runtime.isSwitchingSong = false
     }
 
     const handlePause = () => {
-      cancelPreloadTimer()
       playerControlsRef?.value?.setPlayingValue?.(false)
       drawWaveform()
     }
@@ -926,7 +919,6 @@ export function useWaveform(params: {
     }
 
     const handleFinish = () => {
-      cancelPreloadTimer()
       if (runtime.setting.autoPlayNextSong) {
         onNextSong()
       }

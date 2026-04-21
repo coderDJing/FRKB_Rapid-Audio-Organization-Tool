@@ -22,12 +22,6 @@ export type MixxxWaveformData = {
   bands: Record<MixxxWaveformBandKey, MixxxWaveformBand>
 }
 
-type LoadFileOptions = {
-  filePath?: string | null
-  mixxxWaveformData?: MixxxWaveformData | null
-  audioElement?: HTMLAudioElement | null
-}
-
 export type PcmLoadPayload = {
   pcmData: Float32Array | ArrayBuffer | ArrayBufferView | null
   sampleRate: number
@@ -298,10 +292,6 @@ export class WebAudioPlayer {
     }
   }
 
-  getAudioElement(): HTMLAudioElement | null {
-    return this.mode === 'html' ? this.audioElement : null
-  }
-
   getVisualizerAnalyser(): AnalyserNode | null {
     return this.visualizerAnalyserNode
   }
@@ -321,8 +311,8 @@ export class WebAudioPlayer {
     this.ignoreNextEmptySourceError = true
   }
 
-  loadFile(filePath: string, options?: LoadFileOptions): void {
-    const normalized = (filePath || options?.filePath || '').trim()
+  loadFile(filePath: string): void {
+    const normalized = (filePath || '').trim()
     if (!normalized) {
       this.emit('error', new Error('No file path provided'))
       return
@@ -337,27 +327,22 @@ export class WebAudioPlayer {
     this.releaseMixxxWaveformData()
     this.releasePioneerPreviewWaveformData()
 
-    const audio = options?.audioElement ?? this.createAudioElement()
+    const audio = this.createAudioElement()
     this.attachAudioElement(audio)
 
     const src = toPreviewUrl(normalized)
     this.activeFilePath = normalized
     this.activeSrc = src
 
-    const isPreloaded = Boolean(options?.audioElement)
-    const sourceChanged = !isPreloaded && audio.src !== src
-    if (isPreloaded) {
-      if (!audio.src) {
-        audio.src = src
-      }
-    } else if (sourceChanged) {
+    const sourceChanged = audio.src !== src
+    if (sourceChanged) {
       audio.src = src
     }
     audio.preload = 'auto'
     audio.autoplay = false
     audio.muted = false
     audio.volume = this.volume
-    if (!isPreloaded || sourceChanged) {
+    if (sourceChanged) {
       try {
         audio.load()
       } catch (error) {
@@ -365,10 +350,6 @@ export class WebAudioPlayer {
       }
     }
     this.ensureHtmlAnalysis(audio)
-
-    if (options?.mixxxWaveformData !== undefined) {
-      this.setMixxxWaveformData(options.mixxxWaveformData ?? null, normalized)
-    }
 
     if (audio.readyState >= 1) {
       this.handleMetadataReady()
