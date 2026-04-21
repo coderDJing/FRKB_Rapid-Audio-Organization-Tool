@@ -113,6 +113,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let lastZoomAnchorSec = 0
   let lastZoomAnchorRatio = HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
   let drawRaf = 0
+  let gridOverlayRaf = 0
   let streamDrawRaf = 0
   let tilePaintRaf = 0
   let streamDrawTimer: ReturnType<typeof setTimeout> | null = null
@@ -1315,6 +1316,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const scheduleDraw = () => {
     clearStreamDrawScheduling()
     pendingVisibleTilePaints.clear()
+    if (gridOverlayRaf) {
+      cancelAnimationFrame(gridOverlayRaf)
+      gridOverlayRaf = 0
+    }
     if (tilePaintRaf) {
       cancelAnimationFrame(tilePaintRaf)
       tilePaintRaf = 0
@@ -1323,6 +1328,24 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     drawRaf = requestAnimationFrame(() => {
       drawRaf = 0
       drawWaveform()
+    })
+  }
+
+  const scheduleGridOverlayDraw = () => {
+    if (drawRaf || gridOverlayRaf) return
+    gridOverlayRaf = requestAnimationFrame(() => {
+      gridOverlayRaf = 0
+      if (!displayReady.value) {
+        scheduleDraw()
+        return
+      }
+      const duration = resolvePreviewDurationSec()
+      if (!duration) {
+        scheduleDraw()
+        return
+      }
+      const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
+      drawGridAndOverlay(displayStartSec.value, visibleDuration)
     })
   }
 
@@ -1360,6 +1383,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       cancelAnimationFrame(drawRaf)
       drawRaf = 0
     }
+    if (gridOverlayRaf) {
+      cancelAnimationFrame(gridOverlayRaf)
+      gridOverlayRaf = 0
+    }
     if (tilePaintRaf) {
       cancelAnimationFrame(tilePaintRaf)
       tilePaintRaf = 0
@@ -1384,6 +1411,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     clearCanvas,
     invalidateWaveformTiles,
     scheduleDraw,
+    scheduleGridOverlayDraw,
     resetGridRenderer,
     holdCurrentWaveformFrame,
     resetRetainedWaveformData,

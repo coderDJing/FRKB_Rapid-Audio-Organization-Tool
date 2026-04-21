@@ -16,6 +16,12 @@ export type HorizontalBrowseTransportDeckInput = {
   masterTempoEnabled: boolean
 }
 
+export type HorizontalBrowseTransportBeatGridInput = {
+  filePath?: string
+  bpm?: number
+  firstBeatMs?: number
+}
+
 export type HorizontalBrowseTransportStateInput = {
   nowMs?: number
   top: HorizontalBrowseTransportDeckInput

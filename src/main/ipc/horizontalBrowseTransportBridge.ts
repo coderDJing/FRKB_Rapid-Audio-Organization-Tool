@@ -1,4 +1,5 @@
 import type {
+  HorizontalBrowseTransportBeatGridInput,
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckInput,
   HorizontalBrowseTransportSnapshot,
@@ -16,6 +17,11 @@ type RustHorizontalBrowseTransportBinding = {
   ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSetState?: (
     payload: HorizontalBrowseTransportStateInput
+  ) => HorizontalBrowseTransportSnapshot
+  horizontalBrowseTransportSetBeatGrid?: (
+    deck: HorizontalBrowseDeckKey,
+    nowMs: number | undefined,
+    payload: HorizontalBrowseTransportBeatGridInput
   ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSetSyncEnabled?: (
     deck: HorizontalBrowseDeckKey,
@@ -39,6 +45,11 @@ type RustHorizontalBrowseTransportBinding = {
     deck: HorizontalBrowseDeckKey,
     nowMs: number,
     currentSec: number
+  ) => HorizontalBrowseTransportSnapshot
+  horizontalBrowseTransportSetMetronome?: (
+    deck: HorizontalBrowseDeckKey,
+    enabled: boolean,
+    volumeLevel: number
   ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportToggleLoop?: (
     deck: HorizontalBrowseDeckKey,
@@ -106,6 +117,13 @@ export const horizontalBrowseTransportBridge = {
   setState(payload: HorizontalBrowseTransportStateInput) {
     return requireFn('horizontalBrowseTransportSetState')(payload)
   },
+  setBeatGrid(
+    deck: HorizontalBrowseDeckKey,
+    nowMs: number | undefined,
+    payload: HorizontalBrowseTransportBeatGridInput
+  ) {
+    return requireFn('horizontalBrowseTransportSetBeatGrid')(deck, nowMs, payload)
+  },
   setSyncEnabled(deck: HorizontalBrowseDeckKey, nowMs: number | undefined, enabled: boolean) {
     return requireFn('horizontalBrowseTransportSetSyncEnabled')(deck, nowMs, enabled)
   },
@@ -120,6 +138,9 @@ export const horizontalBrowseTransportBridge = {
   },
   seek(deck: HorizontalBrowseDeckKey, nowMs: number, currentSec: number) {
     return requireFn('horizontalBrowseTransportSeek')(deck, nowMs, currentSec)
+  },
+  setMetronome(deck: HorizontalBrowseDeckKey, enabled: boolean, volumeLevel: number) {
+    return requireFn('horizontalBrowseTransportSetMetronome')(deck, enabled, volumeLevel)
   },
   toggleLoop(deck: HorizontalBrowseDeckKey, nowMs: number) {
     return requireFn('horizontalBrowseTransportToggleLoop')(deck, nowMs)

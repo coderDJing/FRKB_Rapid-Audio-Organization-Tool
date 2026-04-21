@@ -395,7 +395,11 @@ impl HorizontalBrowseTransportEngine {
     }
   }
 
-  pub(super) fn deck_snapshot(&self, deck: DeckId, now_ms: f64) -> HorizontalBrowseTransportDeckSnapshot {
+  pub(super) fn deck_snapshot(
+    &self,
+    deck: DeckId,
+    now_ms: f64,
+  ) -> HorizontalBrowseTransportDeckSnapshot {
     let deck_state = self.deck(deck);
     let derived = self.derive_state(deck, now_ms);
     HorizontalBrowseTransportDeckSnapshot {
@@ -434,7 +438,23 @@ impl HorizontalBrowseTransportEngine {
     }
   }
 
-  pub(super) fn refresh(&mut self) {
+  fn relax_sync_lock_after_grid_change(&mut self, updated_deck: DeckId) {
+    let leader = self.leader;
+    for deck in [DeckId::Top, DeckId::Bottom] {
+      let index = Self::deck_index(deck);
+      if !self.sync_enabled[index] || self.sync_lock[index] == "off" {
+        continue;
+      }
+      if leader == Some(deck) {
+        continue;
+      }
+      if deck == updated_deck || leader == Some(updated_deck) {
+        self.set_sync_lock(deck, "tempo-only");
+      }
+    }
+  }
+
+  fn refresh_sync_state(&mut self, allow_phase_alignment: bool) {
     self.auto_select_leader_from_playback();
     self.update_multipliers();
     self.recompute_distances();
@@ -501,7 +521,8 @@ impl HorizontalBrowseTransportEngine {
           self.deck_mut(deck).playback_rate = tempo_rate;
         }
 
-        if self.sync_lock[deck_index] == "full"
+        if allow_phase_alignment
+          && self.sync_lock[deck_index] == "full"
           && self.quantize_enabled[deck_index]
           && self.deck(deck).playing
         {
@@ -523,6 +544,34 @@ impl HorizontalBrowseTransportEngine {
       }
       self.recompute_distances();
     }
+  }
+
+  pub(super) fn refresh(&mut self) {
+    self.refresh_sync_state(true);
+  }
+
+  pub(super) fn set_beat_grid(
+    &mut self,
+    deck: DeckId,
+    bpm: Option<f64>,
+    first_beat_ms: Option<f64>,
+  ) {
+    {
+      let target = self.deck_mut(deck);
+      if let Some(next_bpm) = bpm.filter(|value| value.is_finite() && *value > 0.0) {
+        target.bpm = Some(next_bpm);
+      }
+      if let Some(next_first_beat_ms) =
+        first_beat_ms.filter(|value| value.is_finite() && *value >= 0.0)
+      {
+        target.first_beat_ms = Some(next_first_beat_ms);
+      }
+      target.metronome_state.next_beat_index = None;
+    }
+    self.relax_sync_lock_after_grid_change(deck);
+    self.refresh_sync_state(false);
+    self.sync_loop_range_for_deck(DeckId::Top);
+    self.sync_loop_range_for_deck(DeckId::Bottom);
   }
 
   pub(super) fn sync_deck_to_now(&mut self, deck: DeckId, now_ms: f64) {
@@ -562,7 +611,12 @@ impl HorizontalBrowseTransportEngine {
     horizontal_browse_transport_audio::reset_master_tempo_state(target);
   }
 
-  pub(super) fn set_playing(&mut self, deck: DeckId, now_ms: f64, playing: bool) -> Option<DecodeRequest> {
+  pub(super) fn set_playing(
+    &mut self,
+    deck: DeckId,
+    now_ms: f64,
+    playing: bool,
+  ) -> Option<DecodeRequest> {
     self.last_now_ms = now_ms;
     self.sync_deck_to_now(deck, now_ms);
     if playing {
@@ -588,7 +642,12 @@ impl HorizontalBrowseTransportEngine {
     decode_request
   }
 
-  pub(super) fn seek(&mut self, deck: DeckId, now_ms: f64, current_sec: f64) -> Option<DecodeRequest> {
+  pub(super) fn seek(
+    &mut self,
+    deck: DeckId,
+    now_ms: f64,
+    current_sec: f64,
+  ) -> Option<DecodeRequest> {
     self.last_now_ms = now_ms;
     let seek_sec = {
       let target = self.deck_mut(deck);
@@ -598,6 +657,7 @@ impl HorizontalBrowseTransportEngine {
         current_sec.max(0.0)
       };
       target.last_observed_at_ms = now_ms;
+      target.metronome_state.next_beat_index = None;
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
       target.current_sec
     };
@@ -609,6 +669,17 @@ impl HorizontalBrowseTransportEngine {
     );
     self.refresh();
     decode_request
+  }
+
+  pub(super) fn set_metronome(&mut self, deck: DeckId, enabled: bool, volume_level: u8) {
+    let target = self.deck_mut(deck);
+    target.metronome_enabled = enabled;
+    target.metronome_volume_level = volume_level.clamp(1, 3);
+    if !enabled {
+      target.metronome_state = MetronomeState::default();
+      return;
+    }
+    target.metronome_state.next_beat_index = None;
   }
 
   pub(super) fn toggle_loop(&mut self, deck: DeckId, now_ms: f64) {
@@ -707,4 +778,3 @@ impl HorizontalBrowseTransportEngine {
     self.refresh();
   }
 }
-

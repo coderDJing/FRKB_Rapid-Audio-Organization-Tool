@@ -6,11 +6,13 @@ import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontal
 import {
   createEmptyHorizontalBrowseTransportSnapshot,
   HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT,
+  type HorizontalBrowseTransportBeatGridInput,
   type HorizontalBrowseDeckKey,
   type HorizontalBrowseTransportSnapshot,
   type HorizontalBrowseTransportVisualizerSnapshot
 } from '@shared/horizontalBrowseTransport'
 export type {
+  HorizontalBrowseTransportBeatGridInput,
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot,
   HorizontalBrowseTransportSnapshot,
@@ -169,6 +171,20 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
+  const setBeatGrid = async (
+    deck: HorizontalBrowseDeckKey,
+    payload: HorizontalBrowseTransportBeatGridInput
+  ) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:set-beat-grid',
+      deck,
+      performance.now(),
+      payload
+    )
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
   const beatsync = async (deck: HorizontalBrowseDeckKey) => {
     const snapshot = await invoke('horizontal-browse-transport:beatsync', deck, performance.now())
     applySnapshot(snapshot)
@@ -218,6 +234,21 @@ export const createHorizontalBrowseNativeTransport = () => {
       currentSec
     )
     finishTiming()
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
+  const setMetronome = async (
+    deck: HorizontalBrowseDeckKey,
+    enabled: boolean,
+    volumeLevel: number
+  ) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:set-metronome',
+      deck,
+      enabled,
+      volumeLevel
+    )
     applySnapshot(snapshot)
     return snapshot
   }
@@ -307,11 +338,13 @@ export const createHorizontalBrowseNativeTransport = () => {
     reset,
     setDeckState,
     setState,
+    setBeatGrid,
     beatsync,
     setSyncEnabled,
     setLeader,
     setPlaying,
     seek,
+    setMetronome,
     toggleLoop,
     stepLoopBeats,
     setLoopFromRange,

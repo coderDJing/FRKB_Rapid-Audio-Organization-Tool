@@ -16,9 +16,10 @@ mod horizontal_browse_transport_napi;
 mod horizontal_browse_transport_types;
 use horizontal_browse_transport_types::{
   parse_deck_id, BeatGridSnapshot, DeckDerivedState, DeckId, DecodeRequest,
-  HorizontalBrowseTransportDeckInput, HorizontalBrowseTransportDeckSnapshot,
-  HorizontalBrowseTransportOutputSnapshot, HorizontalBrowseTransportSnapshot,
-  HorizontalBrowseTransportStateInput, HorizontalBrowseTransportVisualizerSnapshot,
+  HorizontalBrowseTransportBeatGridInput, HorizontalBrowseTransportDeckInput,
+  HorizontalBrowseTransportDeckSnapshot, HorizontalBrowseTransportOutputSnapshot,
+  HorizontalBrowseTransportSnapshot, HorizontalBrowseTransportStateInput,
+  HorizontalBrowseTransportVisualizerSnapshot,
 };
 
 struct DeckState {
@@ -42,12 +43,22 @@ struct DeckState {
   sample_rate: u32,
   channels: u16,
   gain: f32,
+  metronome_enabled: bool,
+  metronome_volume_level: u8,
+  metronome_state: MetronomeState,
   loop_active: bool,
   loop_beat_value: f64,
   loop_start_beat_index: Option<i32>,
   loop_start_sec: f64,
   loop_end_sec: f64,
   master_tempo_state: horizontal_browse_transport_audio::DeckMasterTempoState,
+}
+
+struct MetronomeState {
+  next_beat_index: Option<i64>,
+  click_elapsed_samples: u32,
+  click_total_samples: u32,
+  oscillator_phase: f64,
 }
 
 struct DecodeMergeBaseline {
@@ -75,6 +86,13 @@ const HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT: usize = 256;
 const HORIZONTAL_BROWSE_LOOP_END_EPSILON_SEC: f64 = 0.0005;
 const HORIZONTAL_BROWSE_LOOP_POSITION_EPSILON_SEC: f64 = 0.0001;
 const HORIZONTAL_BROWSE_LOOP_BEAT_INDEX_EPSILON: f64 = 1e-6;
+const HORIZONTAL_BROWSE_METRONOME_BEAT_EPSILON_SEC: f64 = 1e-7;
+const HORIZONTAL_BROWSE_METRONOME_TICK_FREQUENCY_HZ: f64 = 1560.0;
+const HORIZONTAL_BROWSE_METRONOME_TICK_END_FREQUENCY_HZ: f64 = 1320.0;
+const HORIZONTAL_BROWSE_METRONOME_TICK_ATTACK_SEC: f64 = 0.002;
+const HORIZONTAL_BROWSE_METRONOME_TICK_DURATION_SEC: f64 = 0.045;
+const HORIZONTAL_BROWSE_METRONOME_GAIN_FLOOR: f32 = 0.0001;
+const HORIZONTAL_BROWSE_METRONOME_VOLUME_LEVELS: [f32; 3] = [0.17, 0.32, 0.96];
 const HORIZONTAL_BROWSE_LOOP_DEFAULT_BEAT_VALUE: f64 = 8.0;
 const HORIZONTAL_BROWSE_LOOP_BEAT_VALUES: [f64; 16] = [
   1.0 / 64.0,
@@ -94,6 +112,17 @@ const HORIZONTAL_BROWSE_LOOP_BEAT_VALUES: [f64; 16] = [
   256.0,
   512.0,
 ];
+
+impl Default for MetronomeState {
+  fn default() -> Self {
+    Self {
+      next_beat_index: None,
+      click_elapsed_samples: 0,
+      click_total_samples: 0,
+      oscillator_phase: 0.0,
+    }
+  }
+}
 
 impl Default for DeckState {
   fn default() -> Self {
@@ -118,6 +147,9 @@ impl Default for DeckState {
       sample_rate: 0,
       channels: 0,
       gain: 1.0,
+      metronome_enabled: false,
+      metronome_volume_level: 2,
+      metronome_state: MetronomeState::default(),
       loop_active: false,
       loop_beat_value: 8.0,
       loop_start_beat_index: None,
@@ -558,8 +590,166 @@ impl HorizontalBrowseTransportEngine {
 
   fn sample_deck(&mut self, deck: DeckId) -> (f32, f32) {
     let output_sample_rate = self.output_sample_rate.max(1) as f64;
+    let before_sec = self.deck(deck).current_sec;
+    let was_playing = self.deck(deck).playing;
     let target = self.deck_mut(deck);
-    horizontal_browse_transport_audio::sample_deck(target, output_sample_rate)
+    let (deck_left, deck_right) =
+      horizontal_browse_transport_audio::sample_deck(target, output_sample_rate);
+    let after_sec = self.deck(deck).current_sec;
+    let metronome =
+      self.sample_metronome(deck, before_sec, after_sec, was_playing) * self.deck(deck).gain;
+    (deck_left + metronome, deck_right + metronome)
+  }
+
+  fn resolve_next_metronome_beat_index(current_sec: f64, grid: BeatGridSnapshot) -> i64 {
+    let raw = (current_sec - grid.first_beat_sec) / grid.beat_sec;
+    let epsilon_beats = HORIZONTAL_BROWSE_METRONOME_BEAT_EPSILON_SEC / grid.beat_sec;
+    let mut index = (raw - epsilon_beats).ceil() as i64;
+    while grid.first_beat_sec + index as f64 * grid.beat_sec < 0.0 {
+      index += 1;
+    }
+    index
+  }
+
+  fn maybe_trigger_metronome(
+    target: &mut DeckState,
+    grid: BeatGridSnapshot,
+    before_sec: f64,
+    after_sec: f64,
+    was_playing: bool,
+    output_sample_rate: f64,
+  ) {
+    if !target.metronome_enabled
+      || !was_playing
+      || !target.playing
+      || target.pcm_data.is_empty()
+      || target.sample_rate == 0
+      || target.channels == 0
+      || !before_sec.is_finite()
+      || !after_sec.is_finite()
+      || !grid.beat_sec.is_finite()
+      || grid.beat_sec <= 0.0
+    {
+      target.metronome_state.next_beat_index = None;
+      target.metronome_state.click_elapsed_samples = 0;
+      target.metronome_state.click_total_samples = 0;
+      return;
+    }
+
+    let expected_index = Self::resolve_next_metronome_beat_index(before_sec.max(0.0), grid);
+    let mut next_index = target
+      .metronome_state
+      .next_beat_index
+      .unwrap_or(expected_index);
+    if next_index < expected_index || next_index > expected_index + 1 {
+      next_index = expected_index;
+    }
+
+    let beat_time_sec = grid.first_beat_sec + next_index as f64 * grid.beat_sec;
+    if beat_time_sec >= before_sec - HORIZONTAL_BROWSE_METRONOME_BEAT_EPSILON_SEC
+      && beat_time_sec <= after_sec + HORIZONTAL_BROWSE_METRONOME_BEAT_EPSILON_SEC
+    {
+      target.metronome_state.click_elapsed_samples = 0;
+      target.metronome_state.click_total_samples =
+        (HORIZONTAL_BROWSE_METRONOME_TICK_DURATION_SEC * output_sample_rate).ceil() as u32;
+      target.metronome_state.oscillator_phase = 0.0;
+      next_index += 1;
+    }
+
+    target.metronome_state.next_beat_index = Some(next_index);
+  }
+
+  fn sample_metronome_click(target: &mut DeckState, output_sample_rate: f64) -> f32 {
+    let state = &mut target.metronome_state;
+    if state.click_elapsed_samples >= state.click_total_samples || state.click_total_samples == 0 {
+      return 0.0;
+    }
+
+    let elapsed_sec = state.click_elapsed_samples as f64 / output_sample_rate.max(1.0);
+    let progress = (elapsed_sec / HORIZONTAL_BROWSE_METRONOME_TICK_DURATION_SEC).clamp(0.0, 1.0);
+    let frequency = HORIZONTAL_BROWSE_METRONOME_TICK_FREQUENCY_HZ
+      * (HORIZONTAL_BROWSE_METRONOME_TICK_END_FREQUENCY_HZ
+        / HORIZONTAL_BROWSE_METRONOME_TICK_FREQUENCY_HZ)
+        .powf(progress);
+    state.oscillator_phase = (state.oscillator_phase
+      + std::f64::consts::TAU * frequency / output_sample_rate.max(1.0))
+      % std::f64::consts::TAU;
+    let wave = Self::band_limited_square(
+      state.oscillator_phase,
+      frequency,
+      output_sample_rate.max(1.0),
+    );
+    let volume_index = target.metronome_volume_level.saturating_sub(1) as usize;
+    let volume = HORIZONTAL_BROWSE_METRONOME_VOLUME_LEVELS
+      .get(volume_index)
+      .copied()
+      .unwrap_or(HORIZONTAL_BROWSE_METRONOME_VOLUME_LEVELS[1]);
+    let envelope = if elapsed_sec < HORIZONTAL_BROWSE_METRONOME_TICK_ATTACK_SEC {
+      Self::exponential_ramp(
+        HORIZONTAL_BROWSE_METRONOME_GAIN_FLOOR,
+        volume,
+        elapsed_sec / HORIZONTAL_BROWSE_METRONOME_TICK_ATTACK_SEC,
+      )
+    } else {
+      let decay_sec =
+        HORIZONTAL_BROWSE_METRONOME_TICK_DURATION_SEC - HORIZONTAL_BROWSE_METRONOME_TICK_ATTACK_SEC;
+      Self::exponential_ramp(
+        volume,
+        HORIZONTAL_BROWSE_METRONOME_GAIN_FLOOR,
+        (elapsed_sec - HORIZONTAL_BROWSE_METRONOME_TICK_ATTACK_SEC) / decay_sec,
+      )
+    };
+    state.click_elapsed_samples = state.click_elapsed_samples.saturating_add(1);
+    wave * envelope
+  }
+
+  fn band_limited_square(phase: f64, frequency: f64, output_sample_rate: f64) -> f32 {
+    if !frequency.is_finite() || frequency <= 0.0 {
+      return 0.0;
+    }
+    let nyquist = output_sample_rate.max(1.0) * 0.5;
+    let max_odd_harmonic = ((nyquist / frequency).floor() as i32).max(1).min(31);
+    let mut harmonic = 1;
+    let mut sum = 0.0_f64;
+    while harmonic <= max_odd_harmonic {
+      sum += (phase * harmonic as f64).sin() / harmonic as f64;
+      harmonic += 2;
+    }
+    ((4.0 / std::f64::consts::PI) * sum).clamp(-1.0, 1.0) as f32
+  }
+
+  fn exponential_ramp(start: f32, end: f32, progress: f64) -> f32 {
+    let safe_start = start.max(HORIZONTAL_BROWSE_METRONOME_GAIN_FLOOR);
+    let safe_end = end.max(HORIZONTAL_BROWSE_METRONOME_GAIN_FLOOR);
+    let ratio = safe_end / safe_start;
+    safe_start * ratio.powf(progress.clamp(0.0, 1.0) as f32)
+  }
+
+  fn sample_metronome(
+    &mut self,
+    deck: DeckId,
+    before_sec: f64,
+    after_sec: f64,
+    was_playing: bool,
+  ) -> f32 {
+    let output_sample_rate = self.output_sample_rate.max(1) as f64;
+    let grid = self.beat_grid(deck);
+    let target = self.deck_mut(deck);
+    if let Some(grid) = grid {
+      Self::maybe_trigger_metronome(
+        target,
+        grid,
+        before_sec,
+        after_sec,
+        was_playing,
+        output_sample_rate,
+      );
+    } else {
+      target.metronome_state.next_beat_index = None;
+      target.metronome_state.click_elapsed_samples = 0;
+      target.metronome_state.click_total_samples = 0;
+    }
+    Self::sample_metronome_click(target, output_sample_rate)
   }
 
   fn push_visualizer_sample(&mut self, sample: f32) {
@@ -661,12 +851,10 @@ impl HorizontalBrowseTransportEngine {
   fn refresh_output_gains(&mut self) {
     let (top_crossfader_gain, bottom_crossfader_gain) =
       Self::resolve_crossfader_volumes(self.crossfader_value);
-    let top_gain = self.trim_gain[Self::deck_index(DeckId::Top)]
-      * self.master_gain
-      * top_crossfader_gain;
-    let bottom_gain = self.trim_gain[Self::deck_index(DeckId::Bottom)]
-      * self.master_gain
-      * bottom_crossfader_gain;
+    let top_gain =
+      self.trim_gain[Self::deck_index(DeckId::Top)] * self.master_gain * top_crossfader_gain;
+    let bottom_gain =
+      self.trim_gain[Self::deck_index(DeckId::Bottom)] * self.master_gain * bottom_crossfader_gain;
     self.top.gain = top_gain.clamp(0.0, 1.0);
     self.bottom.gain = bottom_gain.clamp(0.0, 1.0);
   }
@@ -698,7 +886,6 @@ impl HorizontalBrowseTransportEngine {
       "off"
     };
   }
-
 }
 
 fn merge_partial_pcm_segment(

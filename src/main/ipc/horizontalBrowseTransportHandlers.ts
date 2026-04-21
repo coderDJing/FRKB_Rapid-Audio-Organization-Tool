@@ -46,6 +46,20 @@ export function registerHorizontalBrowseTransportHandlers() {
   )
 
   ipcMain.handle(
+    'horizontal-browse-transport:set-beat-grid',
+    async (
+      _event,
+      deck: HorizontalBrowseDeckKey,
+      nowMs: number | undefined,
+      payload: { filePath?: string; bpm?: number; firstBeatMs?: number }
+    ) => {
+      const snapshot = horizontalBrowseTransportBridge.setBeatGrid(deck, nowMs, payload)
+      broadcastHorizontalBrowseTransportSnapshot(snapshot)
+      return snapshot
+    }
+  )
+
+  ipcMain.handle(
     'horizontal-browse-transport:set-sync-enabled',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number | undefined, enabled: boolean) => {
       const snapshot = horizontalBrowseTransportBridge.setSyncEnabled(deck, nowMs, enabled)
@@ -85,6 +99,15 @@ export function registerHorizontalBrowseTransportHandlers() {
     'horizontal-browse-transport:seek',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number, currentSec: number) => {
       const snapshot = horizontalBrowseTransportBridge.seek(deck, nowMs, currentSec)
+      broadcastHorizontalBrowseTransportSnapshot(snapshot)
+      return snapshot
+    }
+  )
+
+  ipcMain.handle(
+    'horizontal-browse-transport:set-metronome',
+    async (_event, deck: HorizontalBrowseDeckKey, enabled: boolean, volumeLevel: number) => {
+      const snapshot = horizontalBrowseTransportBridge.setMetronome(deck, enabled, volumeLevel)
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }

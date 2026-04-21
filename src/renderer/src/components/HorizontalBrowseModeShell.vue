@@ -662,7 +662,7 @@ const { disposeSongSync, handleExternalDeckSongLoad, handleSongGridUpdated, hand
     resolveDeckSong,
     setDeckSong,
     syncDeckDefaultCue,
-    commitDeckStatesToNative,
+    setDeckBeatGridToNative: (deck, payload) => nativeTransport.setBeatGrid(deck, payload),
     assignSongToDeck
   })
 

@@ -27,6 +27,7 @@ pub fn horizontal_browse_transport_set_deck_state(
     target.playing = payload.playing;
     target.playback_rate = payload.playback_rate;
     target.master_tempo_enabled = payload.master_tempo_enabled;
+    target.metronome_state.next_beat_index = None;
     horizontal_browse_transport_audio::reset_master_tempo_state(target);
   }
   let decode_request = engine_guard.prepare_decode_request(deck_id);
@@ -71,6 +72,7 @@ pub fn horizontal_browse_transport_set_state(
     top.playing = payload.top.playing;
     top.playback_rate = payload.top.playback_rate;
     top.master_tempo_enabled = payload.top.master_tempo_enabled;
+    top.metronome_state.next_beat_index = None;
     horizontal_browse_transport_audio::reset_master_tempo_state(top);
   }
   {
@@ -85,6 +87,7 @@ pub fn horizontal_browse_transport_set_state(
     bottom.playing = payload.bottom.playing;
     bottom.playback_rate = payload.bottom.playback_rate;
     bottom.master_tempo_enabled = payload.bottom.master_tempo_enabled;
+    bottom.metronome_state.next_beat_index = None;
     horizontal_browse_transport_audio::reset_master_tempo_state(bottom);
   }
   let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
@@ -109,6 +112,44 @@ pub fn horizontal_browse_transport_set_state(
   }
   let engine_guard = engine().lock();
   engine_guard.snapshot(engine_guard.last_now_ms)
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_beat_grid(
+  deck: String,
+  now_ms: Option<f64>,
+  payload: HorizontalBrowseTransportBeatGridInput,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  if let Some(next_now_ms) = now_ms.filter(|value| value.is_finite() && *value >= 0.0) {
+    engine_guard.last_now_ms = next_now_ms;
+  }
+
+  if let Some(expected_file_path) = payload.file_path.as_deref().map(str::trim) {
+    if !expected_file_path.is_empty() {
+      let current_file_path = engine_guard
+        .deck(deck_id)
+        .file_path
+        .as_deref()
+        .map(str::trim)
+        .unwrap_or("");
+      if current_file_path != expected_file_path {
+        return Ok(engine_guard.snapshot(engine_guard.last_now_ms));
+      }
+    }
+  }
+
+  let next_bpm = payload.bpm.filter(|value| value.is_finite() && *value > 0.0);
+  let next_first_beat_ms = payload
+    .first_beat_ms
+    .filter(|value| value.is_finite() && *value >= 0.0);
+  if next_bpm.is_none() && next_first_beat_ms.is_none() {
+    return Ok(engine_guard.snapshot(engine_guard.last_now_ms));
+  }
+
+  engine_guard.set_beat_grid(deck_id, next_bpm, next_first_beat_ms);
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
 #[napi]
@@ -184,6 +225,18 @@ pub fn horizontal_browse_transport_seek(
     execute_decode_request_sync(request);
   }
   let engine_guard = engine().lock();
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_metronome(
+  deck: String,
+  enabled: bool,
+  volume_level: u32,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.set_metronome(deck_id, enabled, volume_level.clamp(1, 3) as u8);
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 

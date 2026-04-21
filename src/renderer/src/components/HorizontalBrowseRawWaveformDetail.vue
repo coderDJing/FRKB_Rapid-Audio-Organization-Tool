@@ -107,8 +107,10 @@ const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const rawStreamActive = ref(false)
 const previewPlaying = ref(false)
 
-const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MS = 2
-const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MS = 8
+const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS = 5
+const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS = 20
+const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX = 2
+const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX = 6
 const HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN = 8
 
 let resizeObserver: ResizeObserver | null = null
@@ -149,6 +151,7 @@ const {
   clearCanvas,
   invalidateWaveformTiles,
   scheduleDraw,
+  scheduleGridOverlayDraw,
   resetGridRenderer,
   holdCurrentWaveformFrame,
   resetRetainedWaveformData,
@@ -184,6 +187,13 @@ const resolveDisplayGridBpm = () =>
     : Number.isFinite(Number(props.song?.bpm)) && Number(props.song?.bpm) > 0
       ? normalizePreviewBpm(Number(props.song?.bpm))
       : 0
+
+const resolveGridShiftMs = (targetPx: number, minMs: number) => {
+  const visibleDurationMs = Math.max(1, resolveVisibleDurationSec() * 1000)
+  const wrapWidth = Math.max(1, Number(wrapRef.value?.clientWidth || 0))
+  const msPerPixel = visibleDurationMs / wrapWidth
+  return Math.max(minMs, Math.round(msPerPixel * targetPx))
+}
 
 const normalizeSharedZoom = (value: unknown) => {
   const numeric =
@@ -329,6 +339,23 @@ const handleWheel = (event: WheelEvent) => {
 
 const canAdjustGrid = computed(() => !previewLoading.value && !!mixxxData.value)
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
+const metronomePlaybackRate = computed(() => Math.max(0.25, Number(props.playbackRate) || 1))
+const metronomeResetKey = computed(
+  () => `${String(props.song?.filePath || '')}:${Number(props.seekRevision) || 0}`
+)
+const resolveNativeMetronomeDeck = () => (props.direction === 'up' ? 'top' : 'bottom')
+const syncNativeMetronomeState = (state: { enabled: boolean; volumeLevel: 1 | 2 | 3 }) => {
+  void window.electron.ipcRenderer
+    .invoke(
+      'horizontal-browse-transport:set-metronome',
+      resolveNativeMetronomeDeck(),
+      state.enabled,
+      state.volumeLevel
+    )
+    .catch((error) => {
+      console.error('[horizontal-browse-metronome] sync native state failed', error)
+    })
+}
 const detailVisible = computed(() => true)
 
 const {
@@ -357,7 +384,7 @@ const {
   resolveVisibleDurationSec,
   clampPreviewStart,
   getPreviewPlaybackSec: resolvePreviewAnchorSec,
-  schedulePreviewDraw: scheduleDraw,
+  schedulePreviewDraw: scheduleGridOverlayDraw,
   barBeatInterval: PREVIEW_BAR_BEAT_INTERVAL,
   barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX
 })
@@ -373,7 +400,11 @@ const {
   previewPlaying,
   bpm: previewBpm,
   firstBeatMs: previewFirstBeatMsComputed,
-  resolveAnchorSec: resolvePreviewAnchorSec
+  playbackRate: metronomePlaybackRate,
+  resetKey: metronomeResetKey,
+  outputMode: 'external',
+  syncExternalState: syncNativeMetronomeState,
+  resolveAnchorSec: () => Math.max(0, Number(props.currentSeconds) || 0)
 })
 
 const canToggleMetronome = computed(() => canAdjustGrid.value && metronomeSupported.value)
@@ -407,7 +438,7 @@ const {
   resolveDisplayGridBpm,
   resolveSongFirstBeatMs: () => Number(props.song?.firstBeatMs) || 0,
   resolveSongBarBeatOffset: () => Number(props.song?.barBeatOffset) || 0,
-  scheduleDraw,
+  scheduleDraw: scheduleGridOverlayDraw,
   schedulePreviewBpmTapReset,
   persistGridDefinition,
   schedulePersistGridDefinition,
@@ -519,8 +550,7 @@ watch(
     [props.song?.bpm, props.song?.firstBeatMs, props.song?.barBeatOffset, props.gridBpm] as const,
   () => {
     syncGridStateFromSong()
-    resetGridRenderer()
-    scheduleDraw()
+    scheduleGridOverlayDraw()
   }
 )
 
@@ -666,8 +696,7 @@ watch(
 watch(
   () => [previewBpm.value, previewFirstBeatMs.value, previewBarBeatOffset.value] as const,
   () => {
-    resetGridRenderer()
-    scheduleDraw()
+    scheduleGridOverlayDraw()
     emitToolbarState()
   }
 )
@@ -725,10 +754,34 @@ onUnmounted(() => {
 defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   toggleBarLinePicking,
   setBarLineAtPlayhead,
-  shiftGridSmallLeft: () => shiftGrid(-HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MS),
-  shiftGridLargeLeft: () => shiftGrid(-HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MS),
-  shiftGridSmallRight: () => shiftGrid(HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MS),
-  shiftGridLargeRight: () => shiftGrid(HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MS),
+  shiftGridSmallLeft: () =>
+    shiftGrid(
+      -resolveGridShiftMs(
+        HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX,
+        HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS
+      )
+    ),
+  shiftGridLargeLeft: () =>
+    shiftGrid(
+      -resolveGridShiftMs(
+        HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX,
+        HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS
+      )
+    ),
+  shiftGridSmallRight: () =>
+    shiftGrid(
+      resolveGridShiftMs(
+        HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX,
+        HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS
+      )
+    ),
+  shiftGridLargeRight: () =>
+    shiftGrid(
+      resolveGridShiftMs(
+        HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX,
+        HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS
+      )
+    ),
   updateBpmInput: handlePreviewBpmInputUpdate,
   blurBpmInput: handlePreviewBpmInputBlur,
   tapBpm: handlePreviewBpmTap,

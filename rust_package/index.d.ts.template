@@ -97,6 +97,11 @@ export interface HorizontalBrowseTransportDeckInput {
   playbackRate: number
   masterTempoEnabled: boolean
 }
+export interface HorizontalBrowseTransportBeatGridInput {
+  filePath?: string
+  bpm?: number
+  firstBeatMs?: number
+}
 export interface HorizontalBrowseTransportDeckSnapshot {
   deck: string
   label: string
@@ -130,6 +135,7 @@ export interface HorizontalBrowseTransportSnapshot {
   output: HorizontalBrowseTransportOutputSnapshot
 }
 export interface HorizontalBrowseTransportStateInput {
+  nowMs?: number
   top: HorizontalBrowseTransportDeckInput
   bottom: HorizontalBrowseTransportDeckInput
 }
@@ -219,6 +225,11 @@ export declare function horizontalBrowseTransportReset(): void
 export declare function horizontalBrowseTransportSetState(
   payload: HorizontalBrowseTransportStateInput
 ): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetBeatGrid(
+  deck: string,
+  nowMs: number | undefined | null,
+  payload: HorizontalBrowseTransportBeatGridInput
+): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetSyncEnabled(
   deck: string,
   enabled: boolean
@@ -238,6 +249,11 @@ export declare function horizontalBrowseTransportSeek(
   deck: string,
   nowMs: number,
   currentSec: number
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetMetronome(
+  deck: string,
+  enabled: boolean,
+  volumeLevel: number
 ): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportToggleLoop(
   deck: string,

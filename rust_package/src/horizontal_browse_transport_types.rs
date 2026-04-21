@@ -45,6 +45,13 @@ pub struct HorizontalBrowseTransportDeckInput {
 }
 
 #[napi(object)]
+pub struct HorizontalBrowseTransportBeatGridInput {
+  pub file_path: Option<String>,
+  pub bpm: Option<f64>,
+  pub first_beat_ms: Option<f64>,
+}
+
+#[napi(object)]
 pub struct HorizontalBrowseTransportStateInput {
   pub now_ms: Option<f64>,
   pub top: HorizontalBrowseTransportDeckInput,

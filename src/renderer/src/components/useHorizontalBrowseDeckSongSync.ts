@@ -4,7 +4,10 @@ import {
   isSameHorizontalBrowseSongFilePath,
   mergeHorizontalBrowseSongWithSharedGrid
 } from '@renderer/components/horizontalBrowseShellSongs'
-import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
+import type {
+  HorizontalBrowseDeckKey,
+  HorizontalBrowseTransportBeatGridInput
+} from '@renderer/components/horizontalBrowseNativeTransport'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -26,21 +29,28 @@ type UseHorizontalBrowseDeckSongSyncParams = {
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   setDeckSong: (deck: DeckKey, song: ISongInfo | null) => void
   syncDeckDefaultCue: (deck: DeckKey, song: ISongInfo | null, force?: boolean) => void
-  commitDeckStatesToNative: () => Promise<unknown>
+  setDeckBeatGridToNative: (
+    deck: DeckKey,
+    payload: HorizontalBrowseTransportBeatGridInput
+  ) => Promise<unknown>
   assignSongToDeck: (deck: DeckKey, song: ISongInfo) => Promise<void>
 }
 
-const GRID_SYNC_COMMIT_DEBOUNCE_MS = 120
-
 export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckSongSyncParams) => {
-  let gridSyncCommitTimer: ReturnType<typeof setTimeout> | null = null
-
-  const scheduleDeckStateCommit = () => {
-    if (gridSyncCommitTimer) clearTimeout(gridSyncCommitTimer)
-    gridSyncCommitTimer = setTimeout(() => {
-      gridSyncCommitTimer = null
-      void params.commitDeckStatesToNative()
-    }, GRID_SYNC_COMMIT_DEBOUNCE_MS)
+  const buildNativeGridPayload = (
+    payload: SharedSongGridPayload
+  ): HorizontalBrowseTransportBeatGridInput | null => {
+    const filePath = String(payload?.filePath || '').trim()
+    const bpm = Number(payload?.bpm)
+    const firstBeatMs = Number(payload?.firstBeatMs)
+    const hasBpm = Number.isFinite(bpm) && bpm > 0
+    const hasFirstBeatMs = Number.isFinite(firstBeatMs) && firstBeatMs >= 0
+    if (!filePath || (!hasBpm && !hasFirstBeatMs)) return null
+    return {
+      filePath,
+      bpm: hasBpm ? bpm : undefined,
+      firstBeatMs: hasFirstBeatMs ? firstBeatMs : undefined
+    }
   }
 
   const handleExternalDeckSongLoad = (payload: HorizontalBrowseLoadSongPayload) => {
@@ -51,6 +61,8 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
   }
 
   const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) => {
+    const nativeGridPayload = buildNativeGridPayload(payload)
+    const nativeUpdates: Promise<unknown>[] = []
     let touched = false
     const topSong = params.topDeckSong.value
     if (topSong) {
@@ -58,6 +70,9 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
       if (nextTopSong !== topSong) {
         params.setDeckSong('top', nextTopSong)
         params.syncDeckDefaultCue('top', nextTopSong)
+        if (nativeGridPayload) {
+          nativeUpdates.push(params.setDeckBeatGridToNative('top', nativeGridPayload))
+        }
         touched = true
       }
     }
@@ -68,13 +83,17 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
       if (nextBottomSong !== bottomSong) {
         params.setDeckSong('bottom', nextBottomSong)
         params.syncDeckDefaultCue('bottom', nextBottomSong)
+        if (nativeGridPayload) {
+          nativeUpdates.push(params.setDeckBeatGridToNative('bottom', nativeGridPayload))
+        }
         touched = true
       }
     }
 
-    if (touched) {
-      scheduleDeckStateCommit()
+    if (!touched || nativeUpdates.length === 0) {
+      return
     }
+    void Promise.allSettled(nativeUpdates)
   }
 
   const handleSongKeyUpdated = (
@@ -101,11 +120,7 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
   }
 
   return {
-    disposeSongSync() {
-      if (!gridSyncCommitTimer) return
-      clearTimeout(gridSyncCommitTimer)
-      gridSyncCommitTimer = null
-    },
+    disposeSongSync() {},
     handleExternalDeckSongLoad,
     handleSongGridUpdated,
     handleSongKeyUpdated
