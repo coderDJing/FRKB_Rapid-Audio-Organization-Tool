@@ -4,6 +4,7 @@ import { v4 as uuidV4 } from 'uuid'
 import confirm from '@renderer/components/confirmDialog'
 import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
 import exportDialog from '@renderer/components/exportDialog'
+import { openRekordboxDesktopPlaylistForPlaylist } from '@renderer/utils/rekordboxDesktopPlaylist'
 import { openRekordboxXmlExportForPlaylist } from '@renderer/utils/rekordboxXmlExport'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -105,6 +106,7 @@ export function useLibraryContextMenu({
       [
         { menuName: 'tracks.importTracks' },
         { menuName: 'tracks.exportTracks' },
+        { menuName: 'rekordboxDesktop.menuCreatePlaylistFromPlaylist' },
         { menuName: 'rekordboxXmlExport.menuExportPlaylist' }
       ],
       [{ menuName: 'playlist.showInLeftPane' }, { menuName: 'playlist.showInRightPane' }],
@@ -382,6 +384,49 @@ export function useLibraryContextMenu({
             playlistName: String(currentDirData?.dirName || '').trim()
           })
           if (summary?.mode === 'move') {
+            clearSongsAreaPaneBySongListUUID(runtime, props.uuid)
+            if (runtime.playingData.playingSongListUUID === props.uuid) {
+              runtime.playingData.playingSongListUUID = ''
+              runtime.playingData.playingSongListData = []
+              runtime.playingData.playingSong = null
+            }
+            if (runtime.setting.showPlaylistTrackCount) {
+              trackCount.value = 0
+            }
+            try {
+              emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
+            } catch {}
+          }
+        } finally {
+          runtime.isProgressing = false
+        }
+        break
+      }
+      case 'rekordboxDesktop.menuCreatePlaylistFromPlaylist': {
+        if (runtime.isProgressing) {
+          await confirmTaskBusy()
+          return
+        }
+        const currentDirData = getDirData()
+        const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
+        runtime.isProgressing = true
+        try {
+          const summary = await openRekordboxDesktopPlaylistForPlaylist({
+            songListUUID: props.uuid,
+            songListPath,
+            playlistName: String(currentDirData?.dirName || '').trim(),
+            deletePayload: {
+              songListPath
+            }
+          })
+          if (summary?.removedSourceFilePaths?.length) {
+            const removedAll = summary.removedSourceFilePaths.length >= summary.trackCount
+            if (!removedAll) {
+              try {
+                emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
+              } catch {}
+              break
+            }
             clearSongsAreaPaneBySongListUUID(runtime, props.uuid)
             if (runtime.playingData.playingSongListUUID === props.uuid) {
               runtime.playingData.playingSongListUUID = ''

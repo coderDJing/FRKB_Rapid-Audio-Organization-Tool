@@ -18,6 +18,7 @@ const normalizeTreeNode = (
     parentId: Number(node?.parentId) || 0,
     name,
     isFolder: Boolean(node?.isFolder),
+    isSmartPlaylist: Boolean(node?.isSmartPlaylist),
     order: Number(node?.order) || 0
   }
 }

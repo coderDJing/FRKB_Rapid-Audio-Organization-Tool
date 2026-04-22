@@ -5,6 +5,7 @@ import { t } from '@renderer/utils/translate'
 import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it's a default export or easily callable
 import confirm from '@renderer/components/confirmDialog'
 import exportDialog from '@renderer/components/exportDialog'
+import { openRekordboxDesktopPlaylistForSelectedTracks } from '@renderer/utils/rekordboxDesktopPlaylist'
 import { openRekordboxXmlExportForSelectedTracks } from '@renderer/utils/rekordboxXmlExport'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import emitter from '@renderer/utils/mitt'
@@ -175,6 +176,7 @@ export function useSongItemContextMenu(
     )
   const createDefaultMenuArr = (): IMenu[][] => [
     [
+      { menuName: 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks' },
       { menuName: 'rekordboxXmlExport.menuExportSelectedTracks' },
       { menuName: 'tracks.exportTracks' }
     ],
@@ -874,6 +876,63 @@ export function useSongItemContextMenu(
             })
             emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
             return { action: 'songsRemoved', paths: summary.sourceFilePaths }
+          }
+        } finally {
+          runtime.isProgressing = false
+        }
+        break
+      }
+      case 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks': {
+        if (runtime.isProgressing) {
+          await confirmTaskBusy()
+          return null
+        }
+        const selectedFilePathSet = new Set(resolveSelectedFilePaths())
+        const selectedSongs = songsAreaState.songInfoArr.filter((item) =>
+          selectedFilePathSet.has(item.filePath)
+        )
+        if (!selectedSongs.length) {
+          await confirm({
+            title: t('rekordboxDesktop.failureTitle'),
+            content: [t('rekordboxDesktop.noTracksToImport')],
+            confirmShow: false
+          })
+          return null
+        }
+        runtime.isProgressing = true
+        try {
+          const summary = await openRekordboxDesktopPlaylistForSelectedTracks({
+            tracks: selectedSongs,
+            songListUUID: songsAreaState.songListUUID,
+            deletePayload: {
+              songListPath: isExternalView
+                ? undefined
+                : libraryUtils.findDirPathByUuid(songsAreaState.songListUUID),
+              sourceType: isExternalView ? 'external' : undefined
+            }
+          })
+          if (summary?.removedSourceFilePaths?.length) {
+            if (isMixtapeView()) {
+              songsAreaState.selectedSongFilePath.length = 0
+            } else {
+              songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
+                (item) => !summary.removedSourceFilePaths?.includes(item)
+              )
+            }
+            if (songsAreaState.songListUUID === runtime.playingData.playingSongListUUID) {
+              if (
+                runtime.playingData.playingSong &&
+                summary.removedSourceFilePaths.includes(runtime.playingData.playingSong.filePath)
+              ) {
+                runtime.playingData.playingSong = null
+              }
+            }
+            emitter.emit('songsRemoved', {
+              listUUID: songsAreaState.songListUUID,
+              paths: summary.removedSourceFilePaths
+            })
+            emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
+            return { action: 'songsRemoved', paths: summary.removedSourceFilePaths }
           }
         } finally {
           runtime.isProgressing = false

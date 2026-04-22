@@ -3,13 +3,28 @@ import fs from 'node:fs'
 import path from 'node:path'
 import childProcess from 'node:child_process'
 import { log } from '../../log'
-import type { RekordboxDesktopHelperError, RekordboxDesktopLibraryErrorCode } from './types'
+import type {
+  RekordboxDesktopHelperError,
+  RekordboxDesktopHelperProgressPayload,
+  RekordboxDesktopLibraryErrorCode
+} from './types'
 
 const ENV_RUNTIME_ROOT = 'FRKB_REKORDBOX_DESKTOP_RUNTIME_ROOT'
 const ENV_PYTHON = 'FRKB_REKORDBOX_DESKTOP_PYTHON'
 const ENV_BRIDGE = 'FRKB_REKORDBOX_DESKTOP_BRIDGE'
 
-type RekordboxDesktopHelperCommand = 'probe' | 'load-tree' | 'load-playlist-tracks'
+type RekordboxDesktopHelperCommand =
+  | 'probe'
+  | 'probe-write'
+  | 'load-tree'
+  | 'load-playlist-tracks'
+  | 'create-empty-playlist'
+  | 'move-playlist'
+  | 'rename-playlist'
+  | 'delete-playlist'
+  | 'create-playlist'
+  | 'append-playlist'
+  | 'create-folder'
 
 type RekordboxDesktopHelperRequest<TPayload> = {
   command: RekordboxDesktopHelperCommand
@@ -25,6 +40,15 @@ type RekordboxDesktopHelperResponse<TResult> =
       ok: false
       error?: RekordboxDesktopHelperError
     }
+
+type RekordboxDesktopHelperProgressEvent = {
+  event?: string
+  payload?: RekordboxDesktopHelperProgressPayload
+}
+
+type RunRekordboxDesktopHelperOptions = {
+  onProgress?: (payload: RekordboxDesktopHelperProgressPayload) => void
+}
 
 type ResolvedPythonCommand = {
   command: string
@@ -215,7 +239,8 @@ const createHelperError = (
 
 export async function runRekordboxDesktopHelper<TResult, TPayload extends Record<string, unknown>>(
   command: RekordboxDesktopHelperCommand,
-  payload: TPayload
+  payload: TPayload,
+  options?: RunRekordboxDesktopHelperOptions
 ): Promise<TResult> {
   if (process.platform !== 'win32' && process.platform !== 'darwin') {
     throw createHelperError('当前平台暂不支持 Rekordbox 本机库。', 'UNSUPPORTED_PLATFORM')
@@ -258,7 +283,9 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
 
     let stdout = ''
     let stderr = ''
+    let stdoutBuffer = ''
     let settled = false
+    let response: RekordboxDesktopHelperResponse<TResult> | null = null
 
     const finishReject = (error: unknown) => {
       if (settled) return
@@ -272,8 +299,69 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
       resolve(value)
     }
 
+    const handleParsedStdoutObject = (value: unknown) => {
+      if (!value || typeof value !== 'object') return false
+
+      const maybeEvent = value as RekordboxDesktopHelperProgressEvent
+      if (maybeEvent.event === 'progress' && maybeEvent.payload && options?.onProgress) {
+        try {
+          options.onProgress(maybeEvent.payload)
+        } catch (error) {
+          log.error('[rekordbox-desktop-library] helper progress callback failed', {
+            command,
+            error
+          })
+        }
+        return true
+      }
+
+      const maybeResponse = value as RekordboxDesktopHelperResponse<TResult>
+      if (typeof maybeResponse.ok === 'boolean') {
+        response = maybeResponse
+        return true
+      }
+
+      return false
+    }
+
+    const consumeStdoutBuffer = (flush = false) => {
+      const normalizedBuffer = flush ? stdoutBuffer : stdoutBuffer.replace(/\r\n/g, '\n')
+      const segments = normalizedBuffer.split('\n')
+      if (!flush) {
+        stdoutBuffer = segments.pop() || ''
+      } else {
+        stdoutBuffer = ''
+      }
+
+      for (const segment of segments) {
+        const trimmed = String(segment || '').trim()
+        if (!trimmed) continue
+        try {
+          const parsed = JSON.parse(trimmed) as unknown
+          if (!handleParsedStdoutObject(parsed)) {
+            log.error('[rekordbox-desktop-library] helper returned unexpected event', {
+              command,
+              stdout: trimmed
+            })
+          }
+        } catch {
+          if (!flush) {
+            stdoutBuffer = trimmed
+            return
+          }
+          log.error('[rekordbox-desktop-library] helper returned invalid JSON line', {
+            command,
+            stdout: trimmed
+          })
+        }
+      }
+    }
+
     child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString()
+      const text = chunk.toString()
+      stdout += text
+      stdoutBuffer += text
+      consumeStdoutBuffer(false)
     })
 
     child.stderr.on('data', (chunk) => {
@@ -290,10 +378,11 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
     })
 
     child.once('close', (code) => {
+      consumeStdoutBuffer(true)
       const trimmedStdout = stdout.trim()
       const trimmedStderr = stderr.trim()
       const sanitizedStderr = sanitizeHelperStderr(trimmedStderr)
-      if (!trimmedStdout) {
+      if (!trimmedStdout && !response) {
         finishReject(
           createHelperError(
             sanitizedStderr ||
@@ -304,22 +393,23 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
         return
       }
 
-      let response: RekordboxDesktopHelperResponse<TResult> | null = null
-      try {
-        response = JSON.parse(trimmedStdout) as RekordboxDesktopHelperResponse<TResult>
-      } catch (error) {
-        log.error('[rekordbox-desktop-library] helper returned invalid JSON', {
-          command,
-          stdout: trimmedStdout,
-          stderr: sanitizedStderr
-        })
-        finishReject(
-          createHelperError(
-            `Rekordbox Desktop helper 返回了无效 JSON: ${error instanceof Error ? error.message : String(error || '')}`,
-            'HELPER_PROTOCOL_ERROR'
+      if (!response && trimmedStdout) {
+        try {
+          response = JSON.parse(trimmedStdout) as RekordboxDesktopHelperResponse<TResult>
+        } catch (error) {
+          log.error('[rekordbox-desktop-library] helper returned invalid JSON', {
+            command,
+            stdout: trimmedStdout,
+            stderr: sanitizedStderr
+          })
+          finishReject(
+            createHelperError(
+              `Rekordbox Desktop helper 返回了无效 JSON: ${error instanceof Error ? error.message : String(error || '')}`,
+              'HELPER_PROTOCOL_ERROR'
+            )
           )
-        )
-        return
+          return
+        }
       }
 
       if (!response?.ok) {

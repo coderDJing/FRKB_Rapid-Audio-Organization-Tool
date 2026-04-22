@@ -444,6 +444,15 @@ const playerGlobalShortcutHandle = async (action: PlayerGlobalShortcutAction) =>
   await playerGlobalShortcutDialog(action)
 }
 
+const chooseRekordboxDesktopTrackStorageDir = async () => {
+  const folderPath = (await window.electron.ipcRenderer.invoke('select-folder', false)) as
+    | string[]
+    | null
+  if (!Array.isArray(folderPath) || !folderPath[0]) return
+  runtime.setting.rekordboxDesktopTrackStorageDir = String(folderPath[0] || '').trim()
+  await setSetting()
+}
+
 const reSelectLibrary = async () => {
   if (runtime.isProgressing) {
     await confirm({
@@ -758,6 +767,7 @@ const settingDialogContext: SettingDialogContext = {
   globalCallShortcutHandle,
   playerGlobalShortcutHandle,
   reSelectLibrary,
+  chooseRekordboxDesktopTrackStorageDir,
   hintIcon,
   fpModeHintRefs,
   setFpModeHintRef,

@@ -21,6 +21,8 @@ type RustPioneerPlaylistTreeNode = {
   name: string
   isFolder?: boolean
   is_folder?: boolean
+  isSmartPlaylist?: boolean
+  is_smart_playlist?: boolean
   order: number
 }
 
@@ -112,6 +114,7 @@ const normalizePioneerPlaylistTreeDump = (
     parentId: Number(node?.parentId ?? node?.parent_id) || 0,
     name: String(node?.name || '').trim(),
     isFolder: Boolean(node?.isFolder ?? node?.is_folder),
+    isSmartPlaylist: Boolean(node?.isSmartPlaylist ?? node?.is_smart_playlist),
     order: Number(node?.order) || 0
   }))
 
@@ -227,6 +230,7 @@ export function buildPioneerPlaylistTree(
           parentId: Number(node.parentId) || 0,
           name: String(node.name || '').trim(),
           isFolder: Boolean(node.isFolder),
+          isSmartPlaylist: Boolean(node.isSmartPlaylist),
           order: Number(node.order) || 0,
           children: [] as IPioneerPlaylistTreeNode[]
         }))

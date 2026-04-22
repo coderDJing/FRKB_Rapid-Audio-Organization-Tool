@@ -1,14 +1,53 @@
 import { ipcMain } from 'electron'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { probeRekordboxDesktopLibrary } from '../services/rekordboxDesktopLibrary/detect'
+import mainWindow from '../window/mainWindow'
+import {
+  probeRekordboxDesktopLibrary,
+  probeRekordboxDesktopLibraryWriteAvailability
+} from '../services/rekordboxDesktopLibrary/detect'
+import { createRekordboxDesktopPlaylist } from '../services/rekordboxDesktopLibrary/createPlaylist'
+import {
+  createRekordboxDesktopEmptyPlaylist,
+  createRekordboxDesktopPlaylistFolder
+} from '../services/rekordboxDesktopLibrary/playlistFolder'
+import { moveRekordboxDesktopPlaylist } from '../services/rekordboxDesktopLibrary/movePlaylist'
+import {
+  deleteRekordboxDesktopPlaylistNode,
+  renameRekordboxDesktopPlaylistNode
+} from '../services/rekordboxDesktopLibrary/playlistNode'
 import { loadRekordboxDesktopPlaylistTree } from '../services/rekordboxDesktopLibrary/tree'
 import { loadRekordboxDesktopPlaylistTracks } from '../services/rekordboxDesktopLibrary/tracks'
 import {
   loadRekordboxDesktopPreviewWaveforms,
   streamRekordboxDesktopPreviewWaveforms
 } from '../services/rekordboxDesktopLibrary/waveform'
+import {
+  cleanupCopiedTracks,
+  copyTracksToRekordboxDesktopStorage
+} from '../services/rekordboxDesktopLibrary/storage'
 import { buildPioneerPlaylistTree } from '../services/pioneerDeviceLibrary/tree'
+import type {
+  RekordboxDesktopCreateEmptyPlaylistRequest,
+  RekordboxDesktopCreateEmptyPlaylistResponse,
+  RekordboxDesktopPlaylistRequest,
+  RekordboxDesktopPlaylistResponse,
+  RekordboxDesktopCreateFolderRequest,
+  RekordboxDesktopCreateFolderResponse,
+  RekordboxDesktopDeletePlaylistRequest,
+  RekordboxDesktopDeletePlaylistResponse,
+  RekordboxDesktopRenamePlaylistRequest,
+  RekordboxDesktopRenamePlaylistResponse
+} from '../../shared/rekordboxDesktopPlaylist'
+import type {
+  RekordboxDesktopMovePlaylistRequest,
+  RekordboxDesktopMovePlaylistResponse
+} from '../../shared/rekordboxDesktopPlaylist'
+import type {
+  RekordboxDesktopCopyTracksToStorageRequest,
+  RekordboxDesktopCopyTracksToStorageResponse
+} from '../../shared/rekordboxDesktopPlaylist'
+import type { RekordboxDesktopCleanupCopiedTracksRequest } from '../../shared/rekordboxDesktopPlaylist'
 
 export function registerRekordboxDesktopLibraryHandlers() {
   const mimeFromExt = (ext: string) =>
@@ -24,6 +63,10 @@ export function registerRekordboxDesktopLibraryHandlers() {
 
   ipcMain.handle('rekordbox-desktop-library:probe', async () => {
     return await probeRekordboxDesktopLibrary(false)
+  })
+
+  ipcMain.handle('rekordbox-desktop-library:probe-write', async () => {
+    return await probeRekordboxDesktopLibraryWriteAvailability(true)
   })
 
   ipcMain.handle('rekordbox-desktop-library:load-tree', async () => {
@@ -45,6 +88,94 @@ export function registerRekordboxDesktopLibraryHandlers() {
         trackTotal: loaded.trackTotal,
         tracks: loaded.tracks
       }
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:create-playlist',
+    async (
+      _event,
+      request: RekordboxDesktopPlaylistRequest
+    ): Promise<RekordboxDesktopPlaylistResponse> => {
+      return await createRekordboxDesktopPlaylist(request, {
+        reportProgress: (payload) => {
+          mainWindow.instance?.webContents.send('progressSet', payload)
+        }
+      })
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:create-empty-playlist',
+    async (
+      _event,
+      request: RekordboxDesktopCreateEmptyPlaylistRequest
+    ): Promise<RekordboxDesktopCreateEmptyPlaylistResponse> => {
+      return await createRekordboxDesktopEmptyPlaylist(request)
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:create-folder',
+    async (
+      _event,
+      request: RekordboxDesktopCreateFolderRequest
+    ): Promise<RekordboxDesktopCreateFolderResponse> => {
+      return await createRekordboxDesktopPlaylistFolder(request)
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:move-playlist',
+    async (
+      _event,
+      request: RekordboxDesktopMovePlaylistRequest
+    ): Promise<RekordboxDesktopMovePlaylistResponse> => {
+      return await moveRekordboxDesktopPlaylist(request)
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:rename-playlist',
+    async (
+      _event,
+      request: RekordboxDesktopRenamePlaylistRequest
+    ): Promise<RekordboxDesktopRenamePlaylistResponse> => {
+      return await renameRekordboxDesktopPlaylistNode(request)
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:delete-playlist',
+    async (
+      _event,
+      request: RekordboxDesktopDeletePlaylistRequest
+    ): Promise<RekordboxDesktopDeletePlaylistResponse> => {
+      return await deleteRekordboxDesktopPlaylistNode(request)
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:copy-tracks-to-storage',
+    async (
+      _event,
+      request: RekordboxDesktopCopyTracksToStorageRequest
+    ): Promise<RekordboxDesktopCopyTracksToStorageResponse> => {
+      const jobId = `rekordbox-desktop-copy-${Date.now()}`
+      return await copyTracksToRekordboxDesktopStorage(request, {
+        jobId,
+        reportProgress: (payload) => {
+          mainWindow.instance?.webContents.send('progressSet', payload)
+        }
+      })
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:cleanup-copied-tracks',
+    async (_event, request: RekordboxDesktopCleanupCopiedTracksRequest) => {
+      await cleanupCopiedTracks(Array.isArray(request?.filePaths) ? request.filePaths : [])
+      return { ok: true }
     }
   )
 

@@ -51,6 +51,7 @@ const {
   globalCallShortcutHandle,
   playerGlobalShortcutHandle,
   reSelectLibrary,
+  chooseRekordboxDesktopTrackStorageDir,
   hintIcon,
   fpModeHintRefs,
   setFpModeHintRef,
@@ -98,6 +99,11 @@ const showTitleAudioVisualizerModel = computed<boolean>({
 
 const currentLibraryPathText = computed(
   () => runtime.setting.databaseUrl || t('database.notConfigured')
+)
+const rekordboxDesktopTrackStorageDirText = computed(
+  () =>
+    runtime.setting.rekordboxDesktopTrackStorageDir ||
+    t('settings.rekordboxDesktopTrackStorageDir.notConfigured')
 )
 </script>
 
@@ -511,6 +517,26 @@ const currentLibraryPathText = computed(
                 {{ currentLibraryPathText }}
               </div>
               <div class="setting-hint">{{ t('settings.currentLibraryPathHint') }}</div>
+            </div>
+
+            <div class="setting-block">
+              {{ t('settings.rekordboxDesktopTrackStorageDir.title') }}：
+            </div>
+            <div class="setting-control">
+              <div class="path-display" :title="rekordboxDesktopTrackStorageDirText">
+                {{ rekordboxDesktopTrackStorageDirText }}
+              </div>
+              <div class="setting-hint">
+                {{ t('settings.rekordboxDesktopTrackStorageDir.hint') }}
+              </div>
+              <div class="buttonRow">
+                <div
+                  class="button settings-inline-button"
+                  @click="chooseRekordboxDesktopTrackStorageDir()"
+                >
+                  {{ t('settings.rekordboxDesktopTrackStorageDir.chooseButton') }}
+                </div>
+              </div>
             </div>
 
             <div class="setting-block">{{ t('database.reselectLocation') }}：</div>

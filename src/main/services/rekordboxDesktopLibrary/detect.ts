@@ -1,5 +1,13 @@
-import type { RekordboxDesktopHelperProbePayload, RekordboxDesktopLibraryProbe } from './types'
+import type {
+  RekordboxDesktopHelperProbePayload,
+  RekordboxDesktopHelperWriteAvailabilityPayload,
+  RekordboxDesktopLibraryProbe
+} from './types'
 import { runRekordboxDesktopHelper } from './helper'
+import type {
+  RekordboxDesktopWriteAvailability,
+  RekordboxDesktopWriteAvailabilityStatus
+} from '../../../shared/rekordboxDesktopPlaylist'
 
 const PROBE_CACHE_TTL_MS = 15_000
 
@@ -13,6 +21,40 @@ const toTrimmedString = (value: unknown) => String(value || '').trim()
 const toErrorCode = (value: unknown): RekordboxDesktopLibraryProbe['errorCode'] => {
   const normalized = toTrimmedString(value)
   return normalized ? (normalized as RekordboxDesktopLibraryProbe['errorCode']) : undefined
+}
+
+const toWriteStatus = (value: unknown): RekordboxDesktopWriteAvailabilityStatus => {
+  const normalized = toTrimmedString(value)
+  if (
+    normalized === 'available' ||
+    normalized === 'busy' ||
+    normalized === 'unavailable' ||
+    normalized === 'unknown'
+  ) {
+    return normalized
+  }
+  return 'unknown'
+}
+
+const normalizeWriteAvailability = (
+  payload: RekordboxDesktopHelperWriteAvailabilityPayload | null | undefined,
+  fallback?: Partial<RekordboxDesktopWriteAvailability>
+): RekordboxDesktopWriteAvailability => {
+  const status = toWriteStatus(payload?.status || fallback?.status)
+  const writable =
+    typeof payload?.writable === 'boolean'
+      ? payload.writable
+      : typeof fallback?.writable === 'boolean'
+        ? fallback.writable
+        : status === 'available'
+  return {
+    writable,
+    status,
+    errorCode: toTrimmedString(payload?.errorCode || fallback?.errorCode) || undefined,
+    errorMessage: toTrimmedString(payload?.errorMessage || fallback?.errorMessage) || undefined,
+    rekordboxPid: Math.max(0, Number(payload?.rekordboxPid || fallback?.rekordboxPid) || 0),
+    checkedAt: Number(payload?.checkedAt || fallback?.checkedAt) || Date.now()
+  }
 }
 
 const createUnavailableProbe = (params?: {
@@ -32,7 +74,13 @@ const createUnavailableProbe = (params?: {
   folderTotal: 0,
   trackTotal: 0,
   errorCode: params?.errorCode,
-  errorMessage: toTrimmedString(params?.errorMessage) || undefined
+  errorMessage: toTrimmedString(params?.errorMessage) || undefined,
+  writeStatus: normalizeWriteAvailability(null, {
+    writable: false,
+    status: 'unavailable',
+    errorCode: params?.errorCode,
+    errorMessage: params?.errorMessage
+  })
 })
 
 const normalizeProbeError = (error: unknown) => {
@@ -70,7 +118,13 @@ const normalizeProbe = (
     appVersion: toTrimmedString(payload?.appVersion) || undefined,
     libraryVersion: toTrimmedString(payload?.libraryVersion) || undefined,
     errorCode: toErrorCode(payload?.errorCode),
-    errorMessage: toTrimmedString(payload?.errorMessage) || undefined
+    errorMessage: toTrimmedString(payload?.errorMessage) || undefined,
+    writeStatus: normalizeWriteAvailability(payload?.writeStatus, {
+      writable: Boolean(payload?.available),
+      status: payload?.available ? 'available' : 'unavailable',
+      errorCode: toErrorCode(payload?.errorCode),
+      errorMessage: toTrimmedString(payload?.errorMessage) || undefined
+    })
   }
 }
 
@@ -110,4 +164,46 @@ export async function requireRekordboxDesktopLibraryProbe() {
     throw new Error(probe.errorMessage || '未检测到可读的 Rekordbox 本机库。')
   }
   return probe
+}
+
+export async function probeRekordboxDesktopLibraryWriteAvailability(
+  forceRefresh = true
+): Promise<RekordboxDesktopWriteAvailability> {
+  const probe = await probeRekordboxDesktopLibrary(forceRefresh)
+  if (!probe.available) {
+    return normalizeWriteAvailability(probe.writeStatus, {
+      writable: false,
+      status: 'unavailable',
+      errorCode: probe.errorCode,
+      errorMessage: probe.errorMessage
+    })
+  }
+
+  try {
+    const payload = await runRekordboxDesktopHelper<
+      RekordboxDesktopHelperWriteAvailabilityPayload,
+      {
+        dbPath: string
+        dbDir: string
+        shareDir: string
+      }
+    >('probe-write', {
+      dbPath: probe.dbPath,
+      dbDir: probe.dbDir,
+      shareDir: probe.shareDir
+    })
+    return normalizeWriteAvailability(payload, probe.writeStatus)
+  } catch (error) {
+    const code = toErrorCode((error as { code?: unknown } | null)?.code)
+    const message =
+      error instanceof Error
+        ? error.message
+        : toTrimmedString((error as { message?: unknown } | null)?.message || error)
+    return normalizeWriteAvailability(null, {
+      writable: false,
+      status: code === 'REKORDBOX_DB_BUSY' ? 'busy' : 'unknown',
+      errorCode: code,
+      errorMessage: message || '检测 Rekordbox 写入状态失败。'
+    })
+  }
 }

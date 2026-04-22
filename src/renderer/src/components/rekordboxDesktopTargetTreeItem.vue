@@ -1,57 +1,29 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import type { IPioneerPlaylistTreeNode } from '../../../types/globals'
 
-const listIconMaskStyle = {
-  '--icon-mask': `url("${listIconAsset}")`
-}
+const listIcon = listIconAsset
 
-const runtime = useRuntimeStore()
+const props = defineProps<{
+  node: IPioneerPlaylistTreeNode
+  depth?: number
+  expandedIds: Set<number>
+  selectedPlaylistId: number
+  interactionDisabled?: boolean
+  dragTargetNodeId?: number | null
+  dragTargetApproach?: '' | 'top' | 'center' | 'bottom'
+  dragSourceId?: number | null
+}>()
 
-const props = defineProps({
-  node: {
-    type: Object as () => IPioneerPlaylistTreeNode,
-    required: true
-  },
-  depth: {
-    type: Number,
-    default: 0
-  },
-  expandedIds: {
-    type: Object as () => Set<number>,
-    required: true
-  },
-  filterText: {
-    type: String,
-    default: ''
-  },
-  interactionDisabled: {
-    type: Boolean,
-    default: false
-  },
-  draggableNodes: {
-    type: Boolean,
-    default: false
-  },
-  dragTargetNodeId: {
-    type: Number,
-    default: null
-  },
-  dragTargetApproach: {
-    type: String as () => '' | 'top' | 'center' | 'bottom',
-    default: ''
-  },
-  dragSourceId: {
-    type: Number,
-    default: null
-  }
+defineOptions({
+  name: 'RekordboxDesktopTargetTreeItem'
 })
 
 const emit = defineEmits<{
   toggleFolder: [node: IPioneerPlaylistTreeNode]
   selectPlaylist: [node: IPioneerPlaylistTreeNode]
+  dblClickSongList: [node: IPioneerPlaylistTreeNode]
   contextmenuNode: [event: MouseEvent, node: IPioneerPlaylistTreeNode]
   dragstartNode: [event: DragEvent, node: IPioneerPlaylistTreeNode]
   dragoverNode: [event: DragEvent, node: IPioneerPlaylistTreeNode]
@@ -67,21 +39,18 @@ const hasChildren = computed(
 const isExpanded = computed(() =>
   props.node.isFolder ? props.expandedIds.has(props.node.id) : false
 )
-const paddingLeft = computed(() => `${Math.max(0, props.depth) * 10}px`)
+const indentWidth = computed(() => `${Math.max(0, Number(props.depth) || 0) * 10}px`)
 const isSelected = computed(
-  () => !props.node.isFolder && runtime.pioneerDeviceLibrary.selectedPlaylistId === props.node.id
+  () =>
+    !props.node.isFolder &&
+    !props.node.isSmartPlaylist &&
+    props.selectedPlaylistId === props.node.id
 )
 const dragApproach = computed(() =>
   props.dragTargetNodeId === props.node.id ? props.dragTargetApproach || '' : ''
 )
 const isDragging = computed(() => props.dragSourceId === props.node.id)
-const canDrag = computed(
-  () =>
-    props.draggableNodes &&
-    !props.interactionDisabled &&
-    !props.node.isSmartPlaylist &&
-    !!props.node.name
-)
+const canDrag = computed(() => !props.node.isSmartPlaylist && !!props.node.name)
 
 const handleClick = () => {
   if (props.interactionDisabled) return
@@ -89,20 +58,20 @@ const handleClick = () => {
     emit('toggleFolder', props.node)
     return
   }
+  if (props.node.isSmartPlaylist) return
   emit('selectPlaylist', props.node)
 }
 
-const handleContextmenu = (event: MouseEvent) => {
-  if (props.interactionDisabled || !props.draggableNodes || props.node.isSmartPlaylist) return
-  emit('contextmenuNode', event, props.node)
+const handleDblClick = () => {
+  if (props.interactionDisabled) return
+  if (props.node.isFolder || props.node.isSmartPlaylist) return
+  emit('dblClickSongList', props.node)
 }
 
-const handleDragStart = (event: DragEvent) => {
-  if (!canDrag.value) {
-    event.preventDefault()
-    return
-  }
-  emit('dragstartNode', event, props.node)
+const handleContextmenu = (event: MouseEvent) => {
+  if (props.interactionDisabled) return
+  if (props.node.isSmartPlaylist) return
+  emit('contextmenuNode', event, props.node)
 }
 
 const handleChildContextmenu = (event: MouseEvent, node: IPioneerPlaylistTreeNode) => {
@@ -132,14 +101,21 @@ const handleChildDrop = (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
 const handleChildDragEnd = (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
   emit('dragendNode', event, node)
 }
+
+const handleDragStart = (event: DragEvent) => {
+  if (props.interactionDisabled || !canDrag.value) {
+    event.preventDefault()
+    return
+  }
+  emit('dragstartNode', event, props.node)
+}
 </script>
 
 <template>
-  <div class="pioneer-tree-item">
+  <div class="rekordbox-dialog-item">
     <div
       class="mainBody"
-      style="display: flex; box-sizing: border-box"
-      :style="{ paddingLeft }"
+      :style="{ paddingLeft: indentWidth }"
       :class="{
         selectedDir: isSelected,
         borderTop: dragApproach === 'top',
@@ -148,8 +124,9 @@ const handleChildDragEnd = (event: DragEvent, node: IPioneerPlaylistTreeNode) =>
         dragging: isDragging,
         disabled: interactionDisabled
       }"
-      :draggable="canDrag"
+      :draggable="canDrag && !interactionDisabled"
       @click.stop="handleClick"
+      @dblclick.stop="handleDblClick"
       @contextmenu.stop.prevent="handleContextmenu"
       @dragstart.stop="handleDragStart"
       @dragover.stop.prevent="emit('dragoverNode', $event, node)"
@@ -187,32 +164,30 @@ const handleChildDragEnd = (event: DragEvent, node: IPioneerPlaylistTreeNode) =>
             d="M7.976 10.072l4.357-4.357.62.618L8.284 11h-.618L3 6.333l.619-.618 4.357 4.357z"
           />
         </svg>
-        <span v-else class="library-list-icon" :style="listIconMaskStyle"></span>
+        <img v-else class="songlist-icon" :src="listIcon" />
       </div>
-      <div style="height: 23px; width: calc(100% - 20px)">
+      <div class="nameBox">
         <div class="nameRow">
           <span class="nameText">{{ node.name }}</span>
+          <span v-if="node.isSmartPlaylist" class="smartBadge">Smart</span>
         </div>
       </div>
     </div>
 
-    <div
-      v-if="node.isFolder && isExpanded && hasChildren"
-      style="width: 100%; box-sizing: border-box"
-    >
-      <template v-for="child of node.children" :key="`${child.id}:${child.order}`">
-        <pioneerDeviceLibraryItem
+    <div v-if="node.isFolder && isExpanded && hasChildren">
+      <template v-for="child of node.children" :key="`${child.id}`">
+        <RekordboxDesktopTargetTreeItem
           :node="child"
-          :depth="depth + 1"
+          :depth="(depth || 0) + 1"
           :expanded-ids="expandedIds"
-          :filter-text="filterText"
+          :selected-playlist-id="selectedPlaylistId"
           :interaction-disabled="interactionDisabled"
-          :draggable-nodes="draggableNodes"
           :drag-target-node-id="dragTargetNodeId"
           :drag-target-approach="dragTargetApproach"
           :drag-source-id="dragSourceId"
           @toggle-folder="emit('toggleFolder', $event)"
           @select-playlist="emit('selectPlaylist', $event)"
+          @dbl-click-song-list="emit('dblClickSongList', $event)"
           @contextmenu-node="handleChildContextmenu"
           @dragstart-node="handleChildDragStart"
           @dragover-node="handleChildDragOver"
@@ -227,38 +202,13 @@ const handleChildDragEnd = (event: DragEvent, node: IPioneerPlaylistTreeNode) =>
 </template>
 
 <style scoped lang="scss">
-.library-list-icon {
-  width: 13px;
-  height: 13px;
-  display: inline-block;
-  background-color: currentColor;
-  color: var(--text);
-  mask-image: var(--icon-mask);
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: contain;
-  -webkit-mask-image: var(--icon-mask);
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: contain;
-}
-
-.nameRow {
-  line-height: 23px;
-  font-size: 13px;
+.mainBody {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-right: 8px;
-  position: relative;
-}
+  box-sizing: border-box;
 
-.nameText {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  &:hover {
+    background-color: var(--hover);
+  }
 }
 
 .selectedDir {
@@ -266,12 +216,6 @@ const handleChildDragEnd = (event: DragEvent, node: IPioneerPlaylistTreeNode) =>
 
   &:hover {
     background-color: var(--hover) !important;
-  }
-}
-
-.mainBody {
-  &:hover {
-    background-color: var(--hover);
   }
 }
 
@@ -304,5 +248,46 @@ const handleChildDragEnd = (event: DragEvent, node: IPioneerPlaylistTreeNode) =>
   display: flex;
   justify-content: center;
   align-items: center;
+}
+
+.songlist-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.nameBox {
+  height: 23px;
+  width: calc(100% - 20px);
+}
+
+.nameRow {
+  line-height: 23px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
+  position: relative;
+}
+
+.nameText {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.smartBadge {
+  flex: 0 0 auto;
+  min-width: 38px;
+  height: 16px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  background-color: var(--hover);
+  color: var(--text-weak);
 }
 </style>

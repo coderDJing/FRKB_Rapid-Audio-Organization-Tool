@@ -89,6 +89,7 @@ const defaultSettings = {
   enableCuratedArtistTracking: true,
   enableExplorerContextMenu: platform === 'win32',
   showPlaylistTrackCount: true,
+  rekordboxDesktopTrackStorageDir: '',
   nextCheckUpdateTime: '',
   enableErrorReport: true,
   errorReportUsageMsSinceLastSuccess: 0,

@@ -56,6 +56,9 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime
   if (runtime.setting.enableExplorerContextMenu === undefined) {
     runtime.setting.enableExplorerContextMenu = runtime.setting.platform === 'win32'
   }
+  if (runtime.setting.rekordboxDesktopTrackStorageDir === undefined) {
+    runtime.setting.rekordboxDesktopTrackStorageDir = ''
+  }
   if (runtime.setting.songListBubbleAlways === undefined) {
     runtime.setting.songListBubbleAlways = false
   }

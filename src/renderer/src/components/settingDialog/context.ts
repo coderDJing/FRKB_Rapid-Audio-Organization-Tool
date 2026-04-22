@@ -64,6 +64,7 @@ export type SettingDialogContext = {
   globalCallShortcutHandle: () => Promise<void>
   playerGlobalShortcutHandle: (action: PlayerGlobalShortcutAction) => Promise<void>
   reSelectLibrary: () => Promise<void>
+  chooseRekordboxDesktopTrackStorageDir: () => Promise<void>
   hintIcon: string
   fpModeHintRefs: Record<string, HTMLImageElement | null>
   setFpModeHintRef: (value: string, el: HTMLImageElement | null) => void

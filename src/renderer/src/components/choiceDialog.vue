@@ -63,8 +63,7 @@ onUnmounted(() => {
         <div
           v-for="(opt, i) in props.options"
           :key="opt.key"
-          class="button"
-          style="min-width: 120px; text-align: center"
+          class="button choice-dialog__button"
           @click="clickOption(opt.key)"
         >
           {{ opt.label }}<span v-if="keyHint(opt.key, i)"> ({{ keyHint(opt.key, i) }})</span>
@@ -73,4 +72,15 @@ onUnmounted(() => {
     </div>
   </div>
 </template>
-<style lang="scss" scoped></style>
+<style lang="scss" scoped>
+.dialog-footer {
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.choice-dialog__button {
+  min-width: 120px;
+  text-align: center;
+}
+</style>

@@ -33,6 +33,12 @@
       "always": "悬停时总是显示气泡",
       "hint": "影响歌单中文案悬停时的提示气泡显示规则"
     },
+    "rekordboxDesktopTrackStorageDir": {
+      "title": "Rekordbox 歌曲存放目录",
+      "hint": "使用“写入 Rekordbox”功能时，会先把歌曲复制到这里，再写入 Rekordbox。",
+      "chooseButton": "选择目录",
+      "notConfigured": "未配置"
+    },
     "currentLibraryPath": "当前音乐库所在路径",
     "currentLibraryPathHint": "这里显示当前正在使用的 FRKB 资料库根目录，方便确认和排查。",
     "explorerContextMenuLabel": "在 FRKB 中播放",
