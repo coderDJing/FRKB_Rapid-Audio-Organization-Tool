@@ -697,6 +697,8 @@ const clearAnalysisRuntime = async () => {
       })
       return
     }
+    runtime.setting.analysisRuntimeStartupPromptShownVersion = ''
+    await setSetting().catch(() => {})
     await confirm({
       title: t('common.success'),
       content: [

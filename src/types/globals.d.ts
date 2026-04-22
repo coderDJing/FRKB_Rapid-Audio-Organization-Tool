@@ -584,6 +584,8 @@ interface ISettingConfig {
   acoustIdClientKey?: string
   // 自动补齐时跳过已补齐过的曲目
   autoFillSkipCompleted?: boolean
+  // 当前版本启动阶段是否已经展示过分析运行时下载提示
+  analysisRuntimeStartupPromptShownVersion?: string
 }
 
 interface ILanguageDict {

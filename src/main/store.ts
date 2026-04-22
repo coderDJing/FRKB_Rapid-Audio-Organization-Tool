@@ -67,7 +67,8 @@ let settingConfig: ISettingConfig = {
   showPlaylistTrackCount: true,
   lastSeenWhatsNewVersion: '',
   pendingWhatsNewForVersion: '',
-  lastRunAppVersion: ''
+  lastRunAppVersion: '',
+  analysisRuntimeStartupPromptShownVersion: ''
 } //设置config
 let analyseSongPort: string = ''
 export default {

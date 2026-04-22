@@ -101,7 +101,8 @@ const defaultSettings = {
   pendingWhatsNewForVersion: '',
   lastRunAppVersion: '',
   acoustIdClientKey: '',
-  autoFillSkipCompleted: true
+  autoFillSkipCompleted: true,
+  analysisRuntimeStartupPromptShownVersion: ''
 } as ISettingConfig
 
 type LoadSettingsOptions = {
@@ -176,6 +177,10 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
 
   if (typeof finalSettings.acoustIdClientKey !== 'string') {
     finalSettings.acoustIdClientKey = ''
+  }
+
+  if (typeof finalSettings.analysisRuntimeStartupPromptShownVersion !== 'string') {
+    finalSettings.analysisRuntimeStartupPromptShownVersion = ''
   }
 
   try {

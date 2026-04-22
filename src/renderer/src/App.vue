@@ -137,7 +137,8 @@ const {
 } = useAnalysisRuntimeDownload({
   runtime,
   t,
-  confirmDialog: confirm
+  confirmDialog: confirm,
+  appVersion: String(pkg.version || '')
 })
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'

@@ -102,9 +102,32 @@ export const useAnalysisRuntimeDownload = (options: {
   runtime: ReturnType<typeof useRuntimeStore>
   t: TranslateFn
   confirmDialog: ConfirmDialogFn
+  appVersion: string
 }) => {
   let analysisRuntimePromptBusy = false
   let analysisRuntimeDownloadProgressHintAt = 0
+  const normalizedAppVersion = String(options.appVersion || '').trim()
+
+  const persistAnalysisRuntimeStartupPromptShownVersion = async () => {
+    if (!normalizedAppVersion) return
+    if (options.runtime.setting.analysisRuntimeStartupPromptShownVersion === normalizedAppVersion) {
+      return
+    }
+    options.runtime.setting.analysisRuntimeStartupPromptShownVersion = normalizedAppVersion
+    try {
+      await window.electron.ipcRenderer.invoke(
+        'setSetting',
+        JSON.parse(JSON.stringify(options.runtime.setting))
+      )
+    } catch (error) {
+      console.error('[analysis-runtime] 保存启动提示状态失败', error)
+    }
+  }
+
+  const hasShownAnalysisRuntimeStartupPromptForCurrentVersion = () => {
+    if (!normalizedAppVersion) return false
+    return options.runtime.setting.analysisRuntimeStartupPromptShownVersion === normalizedAppVersion
+  }
 
   const showAnalysisRuntimeDownloadInProgressHint = async () => {
     const now = Date.now()
@@ -243,6 +266,12 @@ export const useAnalysisRuntimeDownload = (options: {
       }
 
       if (!preferred.downloadable || !preferred.profile) return 'blocked'
+      if (source === 'startup' && hasShownAnalysisRuntimeStartupPromptForCurrentVersion()) {
+        return 'blocked'
+      }
+      if (source === 'startup') {
+        await persistAnalysisRuntimeStartupPromptShownVersion()
+      }
 
       const confirmResult = await options.confirmDialog({
         title: options.t('analysisRuntime.promptTitle'),
