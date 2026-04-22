@@ -2,11 +2,18 @@ import type { IPioneerPlaylistTrack } from '../../../types/globals'
 import { enrichPioneerTracksWithCueData } from '../pioneerDeviceLibrary/cues'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
 import { runRekordboxDesktopHelper } from './helper'
+import { getLogPath, log } from '../../log'
 import type {
+  RekordboxDesktopHelperError,
+  RekordboxDesktopHelperRemovePlaylistTracksPayload,
   RekordboxDesktopHelperTrackRecord,
   RekordboxDesktopHelperTracksPayload,
   RekordboxDesktopLibraryTrackLoadResult
 } from './types'
+import type {
+  RekordboxDesktopRemovePlaylistTracksRequest,
+  RekordboxDesktopRemovePlaylistTracksResponse
+} from '../../../shared/rekordboxDesktopPlaylist'
 
 const normalizeTrack = (
   track: RekordboxDesktopHelperTrackRecord | null | undefined
@@ -87,5 +94,106 @@ export async function loadRekordboxDesktopPlaylistTracks(
     playlistName: String(payload?.playlistName || '').trim(),
     trackTotal: Number(payload?.trackTotal) || tracksWithCues.length,
     tracks: tracksWithCues
+  }
+}
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    const message = String(error.message || '').trim()
+    return message || fallback
+  }
+  return String(error || fallback)
+}
+
+const getErrorCode = (error: unknown, fallback: string) => {
+  const code = (error as RekordboxDesktopHelperError | null)?.code
+  return typeof code === 'string' && code.trim() ? code.trim() : fallback
+}
+
+const buildRemoveTracksFailureResponse = (
+  errorCode: string,
+  errorMessage: string,
+  details?: Record<string, unknown>
+): RekordboxDesktopRemovePlaylistTracksResponse => {
+  log.error('[rekordbox-desktop-playlist] remove playlist tracks failed', {
+    errorCode,
+    errorMessage,
+    ...details
+  })
+  return {
+    ok: false,
+    summary: {
+      errorCode,
+      errorMessage,
+      logPath: getLogPath()
+    }
+  }
+}
+
+export async function removeRekordboxDesktopPlaylistTracks(
+  request: RekordboxDesktopRemovePlaylistTracksRequest
+): Promise<RekordboxDesktopRemovePlaylistTracksResponse> {
+  const playlistId = Math.max(0, Number(request.playlistId) || 0)
+  const rowKeys = Array.isArray(request.rowKeys)
+    ? request.rowKeys.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+
+  if (playlistId <= 0) {
+    return buildRemoveTracksFailureResponse(
+      'INVALID_PLAYLIST_ID',
+      '目标 Rekordbox 播放列表无效。',
+      { playlistId, rowKeys }
+    )
+  }
+  if (rowKeys.length === 0) {
+    return buildRemoveTracksFailureResponse(
+      'PLAYLIST_TRACK_REMOVE_FAILED',
+      '没有可移除的播放列表曲目。',
+      { playlistId }
+    )
+  }
+
+  let probe: Awaited<ReturnType<typeof requireRekordboxDesktopLibraryProbe>>
+  try {
+    probe = await requireRekordboxDesktopLibraryProbe()
+  } catch (error) {
+    return buildRemoveTracksFailureResponse(
+      getErrorCode(error, 'REKORDBOX_DB_OPEN_FAILED'),
+      getErrorMessage(error, '未检测到可写入的 Rekordbox 本机库。'),
+      { playlistId, rowKeys }
+    )
+  }
+
+  try {
+    const payload = await runRekordboxDesktopHelper<
+      RekordboxDesktopHelperRemovePlaylistTracksPayload,
+      {
+        dbPath: string
+        dbDir: string
+        playlistId: number
+        rowKeys: string[]
+      }
+    >('remove-playlist-tracks', {
+      dbPath: probe.dbPath,
+      dbDir: probe.dbDir,
+      playlistId,
+      rowKeys
+    })
+
+    return {
+      ok: true,
+      summary: {
+        playlistId: Number(payload?.playlistId) || playlistId,
+        requestedCount: Number(payload?.requestedCount) || rowKeys.length,
+        removedCount: Number(payload?.removedCount) || 0,
+        skippedCount: Number(payload?.skippedCount) || 0
+      }
+    }
+  } catch (error) {
+    return buildRemoveTracksFailureResponse(
+      getErrorCode(error, 'PLAYLIST_TRACK_REMOVE_FAILED'),
+      getErrorMessage(error, '从 Rekordbox 播放列表移除曲目失败。'),
+      { playlistId, rowKeys, error }
+    )
   }
 }

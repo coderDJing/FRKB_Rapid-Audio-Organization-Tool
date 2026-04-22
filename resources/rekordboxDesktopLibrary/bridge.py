@@ -3,6 +3,7 @@ import os
 import re
 import sys
 import time
+import datetime
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 
@@ -606,6 +607,7 @@ def _build_track_record(
     entry_index: int,
     share_dir: str,
     db_dir: str,
+    row_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     file_path = _normalize_path(getattr(content, "FolderPath", ""))
     file_name = _derive_file_name(file_path, getattr(content, "FileNameL", ""))
@@ -617,7 +619,7 @@ def _build_track_record(
     )
 
     return {
-        "rowKey": f"rekordbox-desktop:{playlist_id}:{entry_index}:{track_id}",
+        "rowKey": str(row_key or f"rekordbox-desktop:{playlist_id}:{entry_index}:{track_id}").strip(),
         "playlistId": playlist_id,
         "playlistName": playlist_name,
         "trackId": track_id,
@@ -704,6 +706,8 @@ def _build_playlist_tracks_payload(request_payload: Dict[str, Any]) -> Dict[str,
                         entry_index,
                         share_dir,
                         db_dir,
+                        row_key=str(_parse_int(getattr(entry, "ID", 0), 0) or "").strip()
+                        or None,
                     )
                 )
 
@@ -1148,6 +1152,149 @@ def _build_delete_playlist_payload(request_payload: Dict[str, Any]) -> Dict[str,
         _close_database(db)
 
 
+def _parse_playlist_entry_key(value: Any) -> Dict[str, int]:
+    raw = str(value or "").strip()
+    if not raw:
+        return {"entryId": 0, "entryKey": "", "playlistId": 0, "trackNo": 0, "trackId": 0}
+    direct_entry_id = _parse_int(raw, 0)
+    if direct_entry_id > 0:
+        return {
+            "entryId": direct_entry_id,
+            "entryKey": raw,
+            "playlistId": 0,
+            "trackNo": 0,
+            "trackId": 0,
+        }
+    matched = re.match(r"^rekordbox-desktop:(\d+):(\d+):(\d+)$", raw)
+    if not matched:
+        return {"entryId": 0, "entryKey": raw, "playlistId": 0, "trackNo": 0, "trackId": 0}
+    return {
+        "entryId": 0,
+        "entryKey": "",
+        "playlistId": _parse_int(matched.group(1), 0),
+        "trackNo": _parse_int(matched.group(2), 0),
+        "trackId": _parse_int(matched.group(3), 0),
+    }
+
+
+def _build_remove_playlist_tracks_payload(request_payload: Dict[str, Any]) -> Dict[str, Any]:
+    config = _ensure_request_config(request_payload)
+    playlist_id = _parse_int(request_payload.get("playlistId"), 0)
+    if playlist_id <= 0:
+        raise HelperCommandError("INVALID_PLAYLIST_ID", "目标 Rekordbox 播放列表无效。")
+
+    raw_row_keys = request_payload.get("rowKeys")
+    if not isinstance(raw_row_keys, list):
+        raw_row_keys = []
+    normalized_row_keys = []
+    seen_row_keys = set()
+    for item in raw_row_keys:
+        normalized = str(item or "").strip()
+        if not normalized or normalized in seen_row_keys:
+            continue
+        seen_row_keys.add(normalized)
+        normalized_row_keys.append(normalized)
+    if not normalized_row_keys:
+        raise HelperCommandError("PLAYLIST_TRACK_REMOVE_FAILED", "没有可移除的播放列表曲目。")
+    entry_hints = [_parse_playlist_entry_key(item) for item in normalized_row_keys]
+
+    db = None
+    try:
+        db = _open_database(config)
+        playlist = _resolve_playlist_by_id(db, playlist_id)
+        _ensure_writable_playlist(playlist, playlist_id)
+        entries = (
+            db.get_playlist_songs(PlaylistID=getattr(playlist, "ID", playlist_id))
+            .order_by(tables.DjmdSongPlaylist.TrackNo)
+            .all()
+        )
+        entries_by_id = {}
+        entries_by_track_hint = {}
+        for entry in entries:
+            entry_key = str(getattr(entry, "ID", "") or "").strip()
+            if entry_key:
+                entries_by_id[entry_key] = entry
+            track_no = _parse_int(getattr(entry, "TrackNo", 0), 0)
+            content_id = _parse_int(getattr(entry, "ContentID", 0), 0)
+            if content_id <= 0:
+                content = getattr(entry, "Content", None)
+                content_id = _parse_int(getattr(content, "ID", 0), 0)
+            if track_no > 0 and content_id > 0:
+                entries_by_track_hint[(track_no, content_id)] = entry
+
+        removable_entries = []
+        resolved_entry_ids = set()
+        for hint in entry_hints:
+            hinted_playlist_id = hint.get("playlistId", 0)
+            if hinted_playlist_id > 0 and hinted_playlist_id != playlist_id:
+                continue
+            entry = None
+            hinted_entry_key = str(hint.get("entryKey", "") or "").strip()
+            if hinted_entry_key:
+                entry = entries_by_id.get(hinted_entry_key)
+            else:
+                hinted_track_no = hint.get("trackNo", 0)
+                hinted_track_id = hint.get("trackId", 0)
+                if hinted_track_no > 0 and hinted_track_id > 0:
+                    entry = entries_by_track_hint.get((hinted_track_no, hinted_track_id))
+            if entry is None:
+                continue
+            entry_id = str(getattr(entry, "ID", "") or "").strip()
+            if not entry_id or entry_id in resolved_entry_ids:
+                continue
+            resolved_entry_ids.add(entry_id)
+            removable_entries.append(entry)
+        if not removable_entries:
+            raise HelperCommandError("PLAYLIST_TRACK_REMOVE_FAILED", "未找到可移除的播放列表曲目。")
+
+        removed_entry_ids = {
+            str(getattr(entry, "ID", "") or "").strip()
+            for entry in removable_entries
+        }
+        now = datetime.datetime.now()
+        for entry in removable_entries:
+            db.delete(entry)
+
+        moved = []
+        next_track_no = 1
+        with db.registry.disabled():
+            for entry in entries:
+                entry_id = str(getattr(entry, "ID", "") or "").strip()
+                if entry_id in removed_entry_ids:
+                    continue
+                current_track_no = _parse_int(getattr(entry, "TrackNo", 0), 0)
+                if current_track_no != next_track_no:
+                    entry.TrackNo = next_track_no
+                    entry.updated_at = now
+                    moved.append(entry)
+                next_track_no += 1
+
+        if moved:
+            db.registry.on_move(moved)
+
+        _commit_database(db, "PLAYLIST_TRACK_REMOVE_FAILED")
+        removed_count = len(removable_entries)
+        requested_count = len(normalized_row_keys)
+        return {
+            "probe": config,
+            "playlistId": playlist_id,
+            "requestedCount": requested_count,
+            "removedCount": removed_count,
+            "skippedCount": max(0, requested_count - removed_count),
+        }
+    except HelperCommandError:
+        _rollback_database(db)
+        raise
+    except Exception as exc:
+        _rollback_database(db)
+        raise HelperCommandError(
+            "PLAYLIST_TRACK_REMOVE_FAILED",
+            str(exc).strip() or "从 Rekordbox 播放列表移除曲目失败。",
+        ) from exc
+    finally:
+        _close_database(db)
+
+
 def _build_create_folder_payload(request_payload: Dict[str, Any]) -> Dict[str, Any]:
     config = _ensure_request_config(request_payload)
     folder_name = str(request_payload.get("folderName") or "").strip()
@@ -1203,6 +1350,10 @@ def _handle_delete_playlist(payload: Dict[str, Any]) -> Dict[str, Any]:
     return _build_delete_playlist_payload(payload)
 
 
+def _handle_remove_playlist_tracks(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return _build_remove_playlist_tracks_payload(payload)
+
+
 def _handle_create_folder(payload: Dict[str, Any]) -> Dict[str, Any]:
     return _build_create_folder_payload(payload)
 
@@ -1218,6 +1369,7 @@ COMMANDS = {
     "move-playlist": _handle_move_playlist,
     "rename-playlist": _handle_rename_playlist,
     "delete-playlist": _handle_delete_playlist,
+    "remove-playlist-tracks": _handle_remove_playlist_tracks,
     "create-folder": _handle_create_folder,
 }
 

@@ -16,6 +16,8 @@ export const useSongRowDisplay = (params: {
   harmonicReferenceKey: () => string
 }) => {
   const { runtime, sourceLibraryName, harmonicReferenceKey } = params
+  const isDesktopRekordboxSong = (song: ISongInfo) =>
+    sourceLibraryName() === 'PioneerDeviceLibrary' && song.externalSourceKind === 'desktop'
 
   const getKeyDisplayText = (value: unknown): string => {
     const text = typeof value === 'string' ? value.trim() : ''
@@ -29,6 +31,9 @@ export const useSongRowDisplay = (params: {
 
   const getCellValue = (song: ISongInfo, colKey: string): string | number => {
     if (colKey === 'key') {
+      if (isDesktopRekordboxSong(song) && !String(song.key || '').trim()) {
+        return t('rekordboxDesktop.analysisRequired')
+      }
       return getKeyDisplayText(song.key)
     }
     if (colKey === 'deletedAtMs') {
@@ -40,7 +45,10 @@ export const useSongRowDisplay = (params: {
     const raw = song[colKey as keyof ISongInfo]
     if (colKey === 'bpm') {
       const bpm = Number(raw)
-      return Number.isFinite(bpm) && bpm > 0 ? formatBpmDisplay(bpm, '') : ''
+      if (Number.isFinite(bpm) && bpm > 0) {
+        return formatBpmDisplay(bpm, '')
+      }
+      return isDesktopRekordboxSong(song) ? t('rekordboxDesktop.analysisRequired') : ''
     }
     if (raw === undefined || raw === null) return ''
     return raw as string | number

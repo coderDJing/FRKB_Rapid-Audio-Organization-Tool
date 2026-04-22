@@ -189,6 +189,28 @@ export type RekordboxDesktopDeletePlaylistResponse =
       summary: RekordboxDesktopPlaylistFailureSummary
     }
 
+export type RekordboxDesktopRemovePlaylistTracksRequest = {
+  playlistId: number
+  rowKeys: string[]
+}
+
+export type RekordboxDesktopRemovePlaylistTracksSuccessSummary = {
+  playlistId: number
+  requestedCount: number
+  removedCount: number
+  skippedCount: number
+}
+
+export type RekordboxDesktopRemovePlaylistTracksResponse =
+  | {
+      ok: true
+      summary: RekordboxDesktopRemovePlaylistTracksSuccessSummary
+    }
+  | {
+      ok: false
+      summary: RekordboxDesktopPlaylistFailureSummary
+    }
+
 export type RekordboxDesktopCopyTracksToStorageRequest = {
   targetRootDir: string
   tracks: RekordboxDesktopPlaylistTrackInput[]

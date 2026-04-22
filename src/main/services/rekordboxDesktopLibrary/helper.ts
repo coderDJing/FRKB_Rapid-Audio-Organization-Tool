@@ -22,6 +22,7 @@ type RekordboxDesktopHelperCommand =
   | 'move-playlist'
   | 'rename-playlist'
   | 'delete-playlist'
+  | 'remove-playlist-tracks'
   | 'create-playlist'
   | 'append-playlist'
   | 'create-folder'

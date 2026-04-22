@@ -444,7 +444,13 @@ export function useWaveformPreview(params: {
     placeholderVersion.value
     const state = placeholderStateMap.get(filePath)
     if (state === 'loading') return t('tracks.waveformPreviewLoading')
-    if (state === 'unavailable') return t('tracks.waveformPreviewUnavailable')
+    if (state === 'unavailable') {
+      const song = resolveVisibleSongByFilePath(filePath)
+      if (song?.externalSourceKind === 'desktop') {
+        return t('rekordboxDesktop.analysisRequired')
+      }
+      return t('tracks.waveformPreviewUnavailable')
+    }
     return ''
   }
   const getWaveformPlaceholderTitle = (filePath: string) => {

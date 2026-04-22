@@ -17,7 +17,10 @@ import {
   renameRekordboxDesktopPlaylistNode
 } from '../services/rekordboxDesktopLibrary/playlistNode'
 import { loadRekordboxDesktopPlaylistTree } from '../services/rekordboxDesktopLibrary/tree'
-import { loadRekordboxDesktopPlaylistTracks } from '../services/rekordboxDesktopLibrary/tracks'
+import {
+  loadRekordboxDesktopPlaylistTracks,
+  removeRekordboxDesktopPlaylistTracks
+} from '../services/rekordboxDesktopLibrary/tracks'
 import {
   loadRekordboxDesktopPreviewWaveforms,
   streamRekordboxDesktopPreviewWaveforms
@@ -36,6 +39,8 @@ import type {
   RekordboxDesktopCreateFolderResponse,
   RekordboxDesktopDeletePlaylistRequest,
   RekordboxDesktopDeletePlaylistResponse,
+  RekordboxDesktopRemovePlaylistTracksRequest,
+  RekordboxDesktopRemovePlaylistTracksResponse,
   RekordboxDesktopRenamePlaylistRequest,
   RekordboxDesktopRenamePlaylistResponse
 } from '../../shared/rekordboxDesktopPlaylist'
@@ -152,6 +157,16 @@ export function registerRekordboxDesktopLibraryHandlers() {
       request: RekordboxDesktopDeletePlaylistRequest
     ): Promise<RekordboxDesktopDeletePlaylistResponse> => {
       return await deleteRekordboxDesktopPlaylistNode(request)
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:remove-playlist-tracks',
+    async (
+      _event,
+      request: RekordboxDesktopRemovePlaylistTracksRequest
+    ): Promise<RekordboxDesktopRemovePlaylistTracksResponse> => {
+      return await removeRekordboxDesktopPlaylistTracks(request)
     }
   )
 
