@@ -98,6 +98,30 @@ fn audio_owned_current_sec_does_not_double_count_elapsed_time() {
 }
 
 #[test]
+fn set_playing_reuses_pending_decode_for_current_file() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("pending.mp3".to_string());
+    top.pending_decode_file_path = Some("pending.mp3".to_string());
+    top.duration_sec = 60.0;
+    top.current_sec = 0.0;
+    top.last_observed_at_ms = 1000.0;
+    top.decode_request_id = 7;
+  }
+
+  let request = engine.set_playing(DeckId::Top, 1200.0, true);
+
+  assert!(request.is_none());
+  assert!(engine.deck(DeckId::Top).playing);
+  assert_eq!(
+    engine.deck(DeckId::Top).pending_decode_file_path.as_deref(),
+    Some("pending.mp3")
+  );
+  assert_eq!(engine.deck(DeckId::Top).decode_request_id, 7);
+}
+
+#[test]
 fn beatsync_with_multiplier_snaps_to_nearest_phase_aligned_beat() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   engine.last_now_ms = 1000.0;

@@ -228,6 +228,10 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
   const handleDeckPlayPauseToggle = (deck: DeckKey) => {
     params.touchDeckInteraction(deck)
+    if (deckPendingPlayOnLoad[deck] && !params.resolveDeckPlaying(deck)) {
+      deckPendingPlayOnLoad[deck] = false
+      return
+    }
     const nextPlaying = !params.resolveDeckPlaying(deck)
     void (async () => {
       const filePath = String(params.resolveDeckSong(deck)?.filePath || '').trim()
@@ -238,8 +242,12 @@ export const useHorizontalBrowseDeckPlaybackController = (
       }
       try {
         if (nextPlaying && !params.resolveDeckLoaded(deck)) {
-          if (!canDeckExecuteImmediateTransportAction(deck)) return
+          if (!canDeckExecuteImmediateTransportAction(deck)) {
+            deckPendingPlayOnLoad[deck] = true
+            return
+          }
           deckPendingPlayOnLoad[deck] = false
+          await params.commitDeckStatesToNative()
         } else {
           deckPendingPlayOnLoad[deck] = false
         }

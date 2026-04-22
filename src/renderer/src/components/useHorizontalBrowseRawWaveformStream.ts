@@ -405,6 +405,17 @@ export const useHorizontalBrowseRawWaveformStream = (
     return dirtyEndSec >= viewStartSec && dirtyStartSec <= viewEndSec + redrawLeadSec
   }
 
+  const resolvePlaybackBootstrapTargetLoadedFrames = (rate: number, startSec: number) => {
+    if (!options.playing()) return 0
+    if (rawStreamFirstVisibleReadyLogged) return 0
+    // 播放已经开始但首屏还没真正画出来时，优先把"当前可视窗口右半边"需要的 raw 数据
+    // 一次性补齐，避免 2048 帧一刀地零碎写入，导致首帧在 await/live 之间来回切几次。
+    const currentSec = Math.max(0, Number(options.currentSeconds()) || 0)
+    const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
+    const desiredLoadedEndSec = currentSec + visibleDurationSec * 0.5
+    return Math.max(0, Math.ceil(Math.max(0, desiredLoadedEndSec - startSec) * rate))
+  }
+
   const buildPendingRawStreamChunkWork = (
     payload: HorizontalBrowseRawWaveformStreamChunkPayload
   ): PendingRawStreamChunkWork | null => {
@@ -489,7 +500,19 @@ export const useHorizontalBrowseRawWaveformStream = (
     const remainingFrames = work.chunkFrames - work.appliedFrames
     if (remainingFrames <= 0) return true
 
-    const copyFrames = Math.min(HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES, remainingFrames)
+    const playbackBootstrapTargetLoadedFrames = Math.min(
+      work.totalFrames,
+      resolvePlaybackBootstrapTargetLoadedFrames(work.rate, work.startSec)
+    )
+    const loadedFrames = Math.max(
+      Math.max(0, Number(target.loadedFrames) || 0),
+      work.startFrame + work.appliedFrames
+    )
+    const bootstrapCopyFrames = Math.max(0, playbackBootstrapTargetLoadedFrames - loadedFrames)
+    const copyFrames = Math.min(
+      remainingFrames,
+      Math.max(HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES, bootstrapCopyFrames)
+    )
     const sourceStart = work.appliedFrames
     const sourceEnd = sourceStart + copyFrames
     const targetStart = work.startFrame + sourceStart

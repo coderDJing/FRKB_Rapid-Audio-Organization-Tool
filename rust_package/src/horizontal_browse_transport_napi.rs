@@ -140,7 +140,9 @@ pub fn horizontal_browse_transport_set_beat_grid(
     }
   }
 
-  let next_bpm = payload.bpm.filter(|value| value.is_finite() && *value > 0.0);
+  let next_bpm = payload
+    .bpm
+    .filter(|value| value.is_finite() && *value > 0.0);
   let next_first_beat_ms = payload
     .first_beat_ms
     .filter(|value| value.is_finite() && *value >= 0.0);
@@ -205,7 +207,7 @@ pub fn horizontal_browse_transport_set_playing(
   let decode_request = engine_guard.set_playing(deck_id, now_ms, playing);
   drop(engine_guard);
   if let Some(request) = decode_request {
-    execute_decode_request_sync(request);
+    schedule_decode_request(request);
   }
   let engine_guard = engine().lock();
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))

@@ -374,7 +374,9 @@ const handleDeckMasterTempoToggle = (deck: DeckKey) => {
 const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
   touchDeckInteraction,
   setDeckSong,
+  resolveDeckSong,
   syncDeckDefaultCue,
+  setDeckBeatGridToNative: nativeTransport.setBeatGrid,
   commitDeckStateToNative
 })
 

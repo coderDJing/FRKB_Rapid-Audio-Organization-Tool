@@ -75,6 +75,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let retainedRawData: RawWaveformData | null = null
   let retainedMixxxData: MixxxWaveformData | null = null
   let holdPreviousWaveformFrame = false
+  // 从"空白/冻结"恢复的第一帧先整帧落位，紧接着再禁一次 scroll reuse，
+  // 避免首帧 full redraw 和下一帧 reuse 紧挨着出现，肉眼看到抽两下。
+  let suppressNextPlaybackScrollReuse = false
   // 记录最近一次 streamWaveformRenderer.draw 成功画过的 rawData 引用。
   // 作用：判断本次要画的 rawData 和 renderer 内部 lastFrame.rawData 是否同一个对象：
   //   * 若相同：canReusePreviousFrame=true，streamWaveformRenderer.draw 会走 scroll reuse
@@ -239,6 +242,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     retainedRawData = null
     retainedMixxxData = null
     holdPreviousWaveformFrame = false
+    suppressNextPlaybackScrollReuse = false
     lastStreamRenderedRawData = null
     // 外部重置 retained（例如切歌、loadWaveform）会清掉 canvas 上所有可用像素，
     // 此时 DOM 层也要同步进入"未就绪"状态；等下一次成功绘制时统一恢复显示。
@@ -247,6 +251,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const holdCurrentWaveformFrame = () => {
     holdPreviousWaveformFrame = true
+    suppressNextPlaybackScrollReuse = false
   }
 
   const clearStreamDrawScheduling = () => {
@@ -425,7 +430,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
     const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
+    const wasDisplayReady = displayReady.value
     const playbackStreamReuse = options.playing.value && !options.dragging.value
+    const allowPlaybackScrollReuse =
+      playbackStreamReuse && wasDisplayReady && !suppressNextPlaybackScrollReuse
     const streamMaxSamplesPerPixel = playbackStreamReuse
       ? PREVIEW_MAX_SAMPLES_PER_PIXEL
       : DRAG_RAW_MAX_SAMPLES_PER_PIXEL
@@ -593,6 +601,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         // 绘制出的位置，杜绝"grid 在动、波形停"这种错位感。等下一帧能画出来时再统一推进。
       } else {
         holdPreviousWaveformFrame = false
+        const shouldSuppressNextPlaybackScrollReuse = playbackStreamReuse && !wasDisplayReady
         traceHorizontalWaveformRender('stream-live', {
           mixxxSource: effectiveMixxxSelection.source,
           effectiveRawCoverage,
@@ -617,7 +626,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           showCenterLine: false,
           showBackground: false,
           showBeatGrid: false,
-          allowScrollReuse: playbackStreamReuse,
+          allowScrollReuse: allowPlaybackScrollReuse,
           waveformLayout: resolveWaveformLayout(),
           preferRawPeaksOnly: false
         })
@@ -625,6 +634,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         commitRetainedFromDrawn()
         displayStartSec.value = renderStartSec
         displayReady.value = true
+        suppressNextPlaybackScrollReuse = shouldSuppressNextPlaybackScrollReuse
         finishTiming()
       }
     } else if (!drawableRawData && !canRenderWithoutRawCoverage) {
@@ -653,6 +663,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         displayReady.value = true
       } else {
         holdPreviousWaveformFrame = false
+        const shouldSuppressNextPlaybackScrollReuse = playbackStreamReuse && !wasDisplayReady
         traceHorizontalWaveformRender('stream-fallback', {
           mixxxSource: effectiveMixxxSelection.source,
           effectiveRawCoverage,
@@ -676,7 +687,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           showCenterLine: false,
           showBackground: false,
           showBeatGrid: false,
-          allowScrollReuse: playbackStreamReuse,
+          allowScrollReuse: allowPlaybackScrollReuse,
           waveformLayout: resolveWaveformLayout(),
           preferRawPeaksOnly: false
         })
@@ -684,6 +695,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         commitRetainedFromDrawn()
         displayStartSec.value = renderStartSec
         displayReady.value = true
+        suppressNextPlaybackScrollReuse = shouldSuppressNextPlaybackScrollReuse
         finishTiming()
       }
     }

@@ -628,7 +628,7 @@ impl HorizontalBrowseTransportEngine {
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
       target.current_sec
     };
-    let decode_request = if playing {
+    let decode_request = if playing && !self.has_pending_decode_for_current_file(deck) {
       self.prepare_segment_decode_request(
         deck,
         current_sec,
