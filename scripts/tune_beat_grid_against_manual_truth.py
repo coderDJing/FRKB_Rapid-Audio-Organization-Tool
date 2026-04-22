@@ -35,97 +35,30 @@ def _prepare_selected_track(
         return None
 
     pcm_data = benchmark._decode_pcm_window(ffmpeg_path, file_path, benchmark.MAX_SCAN_SEC)
-    total_samples = len(pcm_data) // 4
-    total_frames = total_samples // benchmark.CHANNELS
-    total_duration_sec = total_frames / benchmark.SAMPLE_RATE
-    scan_limit_sec = min(total_duration_sec, benchmark.MAX_SCAN_SEC)
-
-    best_payload: dict[str, Any] | None = None
-    best_signal: Any = None
-    best_beats: list[float] | None = None
-    best_downbeats: list[float] | None = None
-    best_interval: float | None = None
-
-    for window_index, window_start_sec in enumerate(
-        [offset for offset in range(0, int(scan_limit_sec), int(benchmark.WINDOW_SEC))]
-    ):
-        remaining_sec = scan_limit_sec - float(window_start_sec)
-        if remaining_sec < benchmark.WINDOW_MIN_DURATION_SEC:
-            break
-        window_duration_sec = min(benchmark.WINDOW_SEC, remaining_sec)
-        window_pcm, actual_duration_sec = benchmark._slice_pcm_window(
-            pcm_data, float(window_start_sec), window_duration_sec
-        )
-        if actual_duration_sec < benchmark.WINDOW_MIN_DURATION_SEC or not window_pcm:
-            break
-
-        signal = bridge._decode_signal(window_pcm, benchmark.CHANNELS)
-        beats, downbeats = bridge._predict_beats(
-            predictor, signal, benchmark.SAMPLE_RATE, "cpu", None
-        )
-        beat_list = bridge._to_float_list(beats)
-        downbeat_list = bridge._to_float_list(downbeats)
-        bpm = bridge._derive_bpm(beat_list)
-        raw_beat_interval = bridge._derive_interval(beat_list)
-        if bpm is None or raw_beat_interval is None or not beat_list:
-            continue
-        tuning = bridge._resolve_anchor_tuning()
-        bpm = bridge._stabilize_bpm_for_grid(bpm, tuning)
-        beat_interval = 60.0 / bpm if bpm > 0 else raw_beat_interval
-
-        expected_beat_count = actual_duration_sec / beat_interval if beat_interval > 0 else 0.0
-        expected_downbeat_count = expected_beat_count / 4.0 if expected_beat_count > 0 else 0.0
-        beat_coverage_score = bridge._clamp01(
-            len(beat_list)
-            / max(8.0, expected_beat_count * 0.85 if expected_beat_count > 0 else 8.0)
-        )
-        downbeat_coverage_score = bridge._clamp01(
-            len(downbeat_list)
-            / max(2.0, expected_downbeat_count * 0.6 if expected_downbeat_count > 0 else 2.0)
-        )
-        beat_stability_score = bridge._derive_stability(beat_list, raw_beat_interval, 1.0)
-        downbeat_stability_score = bridge._derive_stability(downbeat_list, raw_beat_interval, 4.0)
-        quality_score = (
-            beat_coverage_score * 0.4
-            + beat_stability_score * 0.35
-            + downbeat_coverage_score * 0.1
-            + downbeat_stability_score * 0.15
-        )
-
-        normalized = benchmark._normalize_result(
-            {
-                "bpm": bpm,
-                "firstBeatMs": beat_list[0] * 1000.0 + float(window_start_sec) * 1000.0,
-                "rawFirstBeatMs": beat_list[0] * 1000.0 + float(window_start_sec) * 1000.0,
-                "barBeatOffset": bridge._derive_bar_beat_offset(beat_list, downbeat_list),
-                "beatCount": len(beat_list),
-                "downbeatCount": len(downbeat_list),
-                "qualityScore": quality_score,
-                "anchorCorrectionMs": 0.0,
-                "anchorConfidenceScore": 0.0,
-                "anchorMatchedBeatCount": 0,
-                "anchorStrategy": "legacy",
-                "windowIndex": window_index,
-                "windowStartSec": float(window_start_sec),
-                "windowDurationSec": actual_duration_sec,
-            }
-        )
-        if not normalized:
-            continue
-
-        if best_payload is None or benchmark._compare_window_result(normalized, best_payload) > 0:
-            best_payload = normalized
-            best_signal = signal
-            best_beats = beat_list
-            best_downbeats = downbeat_list
-            best_interval = raw_beat_interval
-        if benchmark._is_window_good_enough(normalized):
-            break
-
-    if not best_payload or best_signal is None or best_beats is None or best_interval is None:
+    signal = bridge._decode_signal(pcm_data, benchmark.CHANNELS)
+    total_duration_sec = signal.shape[0] / benchmark.SAMPLE_RATE
+    scan_duration_sec = min(total_duration_sec, benchmark.MAX_SCAN_SEC)
+    prepared_windows = bridge._prepare_analysis_windows(
+        predictor,
+        None,
+        signal,
+        benchmark.SAMPLE_RATE,
+        "cpu",
+        benchmark.WINDOW_SEC,
+        benchmark.MAX_SCAN_SEC,
+    )
+    if not prepared_windows:
         return None
-
-    legacy_result = dict(best_payload)
+    legacy_result = bridge._analyze_prepared_windows_to_track_result(
+        prepared_windows,
+        signal,
+        benchmark.SAMPLE_RATE,
+        scan_duration_sec,
+        bridge._resolve_anchor_tuning(),
+        file_path,
+        force_legacy_anchor=True,
+        use_global_solver=False,
+    )
     legacy_metrics = benchmark._derive_grid_metrics(legacy_result, ground_truth)
 
     return {
@@ -133,11 +66,9 @@ def _prepare_selected_track(
         "artist": ground_truth["artist"],
         "filePath": file_path,
         "groundTruth": ground_truth,
-        "signal": best_signal,
-        "beatList": best_beats,
-        "downbeatList": best_downbeats,
-        "beatInterval": best_interval,
-        "window": best_payload,
+        "signal": signal,
+        "scanDurationSec": scan_duration_sec,
+        "preparedWindows": prepared_windows,
         "legacyResult": {**legacy_result, **legacy_metrics},
     }
 
@@ -152,33 +83,26 @@ def _evaluate_candidate(
     rows: list[dict[str, Any]] = []
     refined_errors: list[float] = []
     deltas: list[float] = []
+    tuning = bridge._resolve_anchor_tuning()
 
     for track in prepared_tracks:
-        window = track["window"]
         signal = track["signal"]
-        beat_list = track["beatList"]
-        beat_interval = track["beatInterval"]
+        scan_duration_sec = float(track["scanDurationSec"])
+        prepared_windows = list(track["preparedWindows"])
         ground_truth = track["groundTruth"]
         legacy_result = track["legacyResult"]
 
-        (
-            anchor_correction_ms,
-            anchor_confidence_score,
-            anchor_matched_beat_count,
-        ) = bridge._estimate_anchor_correction(
-            signal, benchmark.SAMPLE_RATE, beat_list, beat_interval
-        )
-
         refined_result = benchmark._normalize_result(
-            {
-                **window,
-                "firstBeatMs": window["rawFirstBeatMs"] + anchor_correction_ms,
-                "rawFirstBeatMs": window["rawFirstBeatMs"],
-                "anchorCorrectionMs": anchor_correction_ms,
-                "anchorConfidenceScore": anchor_confidence_score,
-                "anchorMatchedBeatCount": anchor_matched_beat_count,
-                "anchorStrategy": "refined",
-            }
+            bridge._analyze_prepared_windows_to_track_result(
+                prepared_windows,
+                signal,
+                benchmark.SAMPLE_RATE,
+                scan_duration_sec,
+                tuning,
+                track["filePath"],
+                force_legacy_anchor=False,
+                use_global_solver=True,
+            )
         )
         if not refined_result:
             continue
@@ -218,7 +142,13 @@ def _evaluate_candidate(
     complexity_penalty = 0.0
     if str(config.get("positiveShiftPolicy")) == "allow":
         complexity_penalty += 0.15
-        complexity_penalty += max(0.0, float(config.get("positiveMaxShiftMs") or 0.0) - 10.0) * 0.03
+        default_positive_max_shift_ms = float(
+            bridge.DEFAULT_ANCHOR_TUNING["positiveMaxShiftMs"]
+        )
+        complexity_penalty += (
+            max(0.0, float(config.get("positiveMaxShiftMs") or 0.0) - default_positive_max_shift_ms)
+            * 0.03
+        )
         complexity_penalty += max(0.0, 6.0 - float(config.get("positiveMinShiftMs") or 0.0)) * 0.04
 
     stable_score = (
@@ -281,14 +211,14 @@ def main() -> int:
         backtrack_threshold_floor,
     ) in itertools.product(
         ["zero", "allow"],
-        [0.0, 8.0, 12.0],
-        [4.0, 6.0, 8.0],
-        [8.0, 10.0, 14.0],
-        [0.82, 0.9],
-        [0.08, 0.12],
-        [0.025, 0.05],
-        [0.1, 0.12, 0.14],
-        [0.004, 0.006, 0.008],
+        [8.0, 12.0],
+        [4.0, 6.0],
+        [10.0, 14.0, 18.0],
+        [0.78, 0.82],
+        [0.08],
+        [0.025],
+        [0.1, 0.12],
+        [0.004, 0.006],
     ):
         config = dict(bridge.DEFAULT_ANCHOR_TUNING)
         config.update(

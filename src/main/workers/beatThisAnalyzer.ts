@@ -11,6 +11,7 @@ import {
 type BeatThisAnalyzeResult = {
   bpm: number
   firstBeatMs: number
+  rawBpm?: number
   barBeatOffset: number
   beatCount: number
   downbeatCount: number
@@ -127,6 +128,7 @@ const resolveBridgeScriptPath = () => {
 
 const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeResult | null => {
   const bpm = Number(input?.bpm)
+  const rawBpm = Number(input?.rawBpm)
   const firstBeatMs = Number(input?.firstBeatMs)
   const rawBarBeatOffset = Number(input?.barBeatOffset)
   const beatCount = Math.max(0, Math.floor(Number(input?.beatCount) || 0))
@@ -152,6 +154,7 @@ const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeR
 
   return {
     bpm: Number(bpm.toFixed(6)),
+    rawBpm: Number.isFinite(rawBpm) && rawBpm > 0 ? Number(rawBpm.toFixed(6)) : undefined,
     firstBeatMs: Number(firstBeatMs.toFixed(3)),
     barBeatOffset: Number.isFinite(rawBarBeatOffset)
       ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
@@ -388,6 +391,8 @@ export const analyzeBeatGridWithBeatThisFromPcm = async (params: {
   sampleRate: number
   channels: number
   sourceFilePath?: string
+  windowSec?: number
+  maxScanSec?: number
 }) => {
   const pcmData = Buffer.isBuffer(params.pcmData) ? params.pcmData : Buffer.from(params.pcmData)
   const totalSamples = Math.floor(pcmData.byteLength / 4)
@@ -410,7 +415,12 @@ export const analyzeBeatGridWithBeatThisFromPcm = async (params: {
         sampleRate: Math.max(1, Math.floor(Number(params.sampleRate) || 0)),
         channels,
         byteLength: pcmSlice.byteLength,
-        sourceFilePath: params.sourceFilePath || ''
+        sourceFilePath: params.sourceFilePath || '',
+        windowSec: Math.max(1, Number(params.windowSec) || DEFAULT_WINDOW_SEC),
+        maxScanSec: Math.max(
+          Math.max(1, Number(params.windowSec) || DEFAULT_WINDOW_SEC),
+          Number(params.maxScanSec) || DEFAULT_MAX_SCAN_SEC
+        )
       })
 
       const response = new Promise<BeatThisAnalyzeResult>((resolve, reject) => {
@@ -430,48 +440,6 @@ export const analyzeBeatGridWithBeatThisFromPcm = async (params: {
   return runRequest
 }
 
-const slicePcmWindow = (params: {
-  pcmData: Buffer
-  sampleRate: number
-  channels: number
-  startSec: number
-  durationSec: number
-}) => {
-  const sampleRate = Math.max(1, Math.floor(Number(params.sampleRate) || 0))
-  const channels = Math.max(1, Math.floor(Number(params.channels) || 0))
-  const totalSamples = Math.floor(params.pcmData.byteLength / 4)
-  const totalFrames = Math.floor(totalSamples / channels)
-  const startFrame = Math.max(0, Math.floor(Math.max(0, params.startSec) * sampleRate))
-  const durationFrames = Math.max(1, Math.floor(Math.max(0, params.durationSec) * sampleRate))
-  const endFrame = Math.min(totalFrames, startFrame + durationFrames)
-  const actualFrames = Math.max(0, endFrame - startFrame)
-  if (actualFrames <= 0) {
-    return {
-      pcmData: Buffer.alloc(0),
-      durationSec: 0
-    }
-  }
-  const byteOffset = startFrame * channels * 4
-  const byteLength = actualFrames * channels * 4
-  return {
-    pcmData: params.pcmData.subarray(byteOffset, byteOffset + byteLength),
-    durationSec: actualFrames / sampleRate
-  }
-}
-
-const isWindowGoodEnough = (result: BeatThisAnalyzeResult) =>
-  result.qualityScore >= QUALITY_EARLY_STOP_THRESHOLD && result.beatCount >= QUALITY_MIN_BEAT_COUNT
-
-const compareWindowResult = (left: BeatThisAnalyzeResult, right: BeatThisAnalyzeResult) => {
-  if (Math.abs(left.qualityScore - right.qualityScore) > 0.000001) {
-    return left.qualityScore - right.qualityScore
-  }
-  if (left.beatCount !== right.beatCount) {
-    return left.beatCount - right.beatCount
-  }
-  return left.downbeatCount - right.downbeatCount
-}
-
 export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
   pcmData: Buffer
   sampleRate: number
@@ -488,66 +456,15 @@ export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
   const totalDurationSec = totalFrames / sampleRate
   const windowSec = Math.max(1, Number(params.windowSec) || DEFAULT_WINDOW_SEC)
   const maxScanSec = Math.max(windowSec, Number(params.maxScanSec) || DEFAULT_MAX_SCAN_SEC)
-  const scanLimitSec = Math.min(totalDurationSec, maxScanSec)
-
-  let bestResult: BeatThisAnalyzeResult | null = null
-  let lastError: Error | null = null
-  let windowIndex = 0
-
-  for (let windowStartSec = 0; windowStartSec < scanLimitSec; windowStartSec += windowSec) {
-    const remainingSec = scanLimitSec - windowStartSec
-    if (remainingSec < WINDOW_MIN_DURATION_SEC) break
-    const windowDurationSec = Math.min(windowSec, remainingSec)
-    const sliced = slicePcmWindow({
-      pcmData,
-      sampleRate,
-      channels,
-      startSec: windowStartSec,
-      durationSec: windowDurationSec
-    })
-    if (sliced.durationSec < WINDOW_MIN_DURATION_SEC || sliced.pcmData.byteLength <= 0) {
-      break
-    }
-
-    try {
-      const localResult = await analyzeBeatGridWithBeatThisFromPcm({
-        pcmData: sliced.pcmData,
-        sampleRate,
-        channels,
-        sourceFilePath: params.sourceFilePath
-      })
-      const absoluteResult: BeatThisAnalyzeResult = {
-        ...localResult,
-        firstBeatMs: Number((localResult.firstBeatMs + windowStartSec * 1000).toFixed(3)),
-        rawFirstBeatMs: Number(
-          (
-            Number(
-              localResult.rawFirstBeatMs !== undefined
-                ? localResult.rawFirstBeatMs
-                : localResult.firstBeatMs
-            ) +
-            windowStartSec * 1000
-          ).toFixed(3)
-        ),
-        windowStartSec: Number(windowStartSec.toFixed(3)),
-        windowDurationSec: Number(sliced.durationSec.toFixed(3)),
-        windowIndex
-      }
-      if (!bestResult || compareWindowResult(absoluteResult, bestResult) > 0) {
-        bestResult = absoluteResult
-      }
-      if (isWindowGoodEnough(absoluteResult)) {
-        return absoluteResult
-      }
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error || 'unknown error'))
-    }
-
-    windowIndex += 1
+  if (Math.min(totalDurationSec, maxScanSec) < WINDOW_MIN_DURATION_SEC) {
+    throw new Error('Beat This! sliding-window analysis failed')
   }
-
-  if (bestResult) {
-    return bestResult
-  }
-  throw lastError || new Error('Beat This! sliding-window analysis failed')
+  return analyzeBeatGridWithBeatThisFromPcm({
+    pcmData,
+    sampleRate,
+    channels,
+    sourceFilePath: params.sourceFilePath,
+    windowSec,
+    maxScanSec
+  })
 }

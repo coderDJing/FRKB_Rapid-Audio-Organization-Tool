@@ -81,6 +81,15 @@ def _resolve_first_beat_label_from_offset(bar_beat_offset: int) -> int:
     return ((5 - normalized - 1) % 4) + 1
 
 
+def _phase_delta_ms(candidate_ms: float, reference_ms: float, interval_ms: float) -> float:
+    if not math.isfinite(interval_ms) or interval_ms <= 0:
+        return candidate_ms - reference_ms
+    delta = (candidate_ms - reference_ms) % interval_ms
+    if delta > interval_ms / 2:
+        delta -= interval_ms
+    return delta
+
+
 def _apply_manual_truth(
     ground_truth: dict[str, Any],
     manual_truth_map: dict[str, dict[str, Any]],
@@ -249,12 +258,12 @@ def _analyze_pcm_windows(
         beats, downbeats = bridge._predict_beats(predictor, signal, SAMPLE_RATE, "cpu", None)
         beat_list = bridge._to_float_list(beats)
         downbeat_list = bridge._to_float_list(downbeats)
-        bpm = bridge._derive_bpm(beat_list)
+        raw_bpm = bridge._derive_bpm(beat_list)
         raw_beat_interval = bridge._derive_interval(beat_list)
-        if bpm is None or raw_beat_interval is None or not beat_list:
+        if raw_bpm is None or raw_beat_interval is None or not beat_list:
             continue
         tuning = bridge._resolve_anchor_tuning()
-        bpm = bridge._stabilize_bpm_for_grid(bpm, tuning)
+        bpm = bridge._stabilize_bpm_for_grid(raw_bpm, tuning)
         beat_interval = 60.0 / bpm if bpm > 0 else raw_beat_interval
 
         raw_first_beat_ms = beat_list[0] * 1000.0
@@ -270,8 +279,26 @@ def _analyze_pcm_windows(
                 anchor_confidence_score,
                 anchor_matched_beat_count,
             ) = bridge._estimate_anchor_correction(signal, SAMPLE_RATE, beat_list, raw_beat_interval)
+            grid_phase_correction = bridge._estimate_grid_phase_correction(
+                signal,
+                SAMPLE_RATE,
+                beat_list,
+                raw_beat_interval,
+                anchor_correction_ms,
+            )
+            if grid_phase_correction is not None:
+                (
+                    anchor_correction_ms,
+                    anchor_confidence_score,
+                    anchor_matched_beat_count,
+                ) = grid_phase_correction
+                anchor_strategy = "grid-solver"
+                if bridge._should_preserve_grid_solver_bpm(raw_bpm, bpm):
+                    bpm = round(raw_bpm, 6)
+                    beat_interval = 60.0 / bpm if bpm > 0 else raw_beat_interval
+            else:
+                anchor_strategy = "refined"
             corrected_first_beat_ms = max(0.0, raw_first_beat_ms + anchor_correction_ms)
-            anchor_strategy = "refined"
 
         expected_beat_count = actual_duration_sec / beat_interval if beat_interval > 0 else 0.0
         expected_downbeat_count = expected_beat_count / 4.0 if expected_beat_count > 0 else 0.0
@@ -325,17 +352,20 @@ def _analyze_pcm_windows(
 
 def _derive_grid_metrics(result: dict[str, Any], ground_truth: dict[str, Any]) -> dict[str, Any]:
     predicted_bpm = float(result["bpm"])
-    predicted_first_sec = float(result["firstBeatMs"]) / 1000.0
     beat_interval_sec = 60.0 / predicted_bpm if predicted_bpm > 0 else 0.0
-    gt_grid = ground_truth["grid"]
-    compare_count = min(len(gt_grid), 128)
+    truth_bpm = float(ground_truth["bpm"])
+    truth_beat_interval_sec = 60.0 / truth_bpm if truth_bpm > 0 else 0.0
+    compare_count = min(len(ground_truth["grid"]), 128)
+    phase_error_ms = _phase_delta_ms(
+        float(result["firstBeatMs"]),
+        float(ground_truth["firstBeatMs"]),
+        truth_beat_interval_sec * 1000.0,
+    )
 
     abs_errors_ms: list[float] = []
     signed_errors_ms: list[float] = []
     for index in range(compare_count):
-        predicted_sec = predicted_first_sec + index * beat_interval_sec
-        gt_sec = float(gt_grid[index]["timeSec"])
-        error_ms = (predicted_sec - gt_sec) * 1000.0
+        error_ms = phase_error_ms + index * (beat_interval_sec - truth_beat_interval_sec) * 1000.0
         signed_errors_ms.append(error_ms)
         abs_errors_ms.append(abs(error_ms))
 
@@ -345,10 +375,8 @@ def _derive_grid_metrics(result: dict[str, Any], ground_truth: dict[str, Any]) -
     return {
         "bpmError": round(predicted_bpm - float(ground_truth["bpm"]), 6),
         "absBpmError": round(abs(predicted_bpm - float(ground_truth["bpm"])), 6),
-        "firstBeatErrorMs": round(float(result["firstBeatMs"]) - float(ground_truth["firstBeatMs"]), 3),
-        "absFirstBeatErrorMs": round(
-            abs(float(result["firstBeatMs"]) - float(ground_truth["firstBeatMs"])), 3
-        ),
+        "firstBeatErrorMs": round(phase_error_ms, 3),
+        "absFirstBeatErrorMs": round(abs(phase_error_ms), 3),
         "barBeatOffsetMatches": int(result["barBeatOffset"]) == int(ground_truth["barBeatOffset"]),
         "gridCompareCount": compare_count,
         "gridRmseMs": round(rmse_ms, 3),
@@ -393,19 +421,37 @@ def main() -> int:
         if not ground_truth or not file_path:
             continue
         pcm_data = _decode_pcm_window(ffmpeg_path, file_path, MAX_SCAN_SEC)
-        refined_result = _analyze_pcm_windows(
-            bridge,
+        signal = bridge._decode_signal(pcm_data, CHANNELS)
+        duration_sec = signal.shape[0] / SAMPLE_RATE if SAMPLE_RATE > 0 else 0.0
+        tuning = bridge._resolve_anchor_tuning()
+        prepared_windows = bridge._prepare_analysis_windows(
             predictor,
-            pcm_data,
-            file_path,
-            use_legacy_anchor=False,
+            None,
+            signal,
+            SAMPLE_RATE,
+            "cpu",
+            WINDOW_SEC,
+            MAX_SCAN_SEC,
         )
-        legacy_result = _analyze_pcm_windows(
-            bridge,
-            predictor,
-            pcm_data,
+        refined_result = bridge._analyze_prepared_windows_to_track_result(
+            prepared_windows,
+            signal,
+            SAMPLE_RATE,
+            min(duration_sec, MAX_SCAN_SEC),
+            tuning,
             file_path,
-            use_legacy_anchor=True,
+            force_legacy_anchor=False,
+            use_global_solver=True,
+        )
+        legacy_result = bridge._analyze_prepared_windows_to_track_result(
+            prepared_windows,
+            signal,
+            SAMPLE_RATE,
+            min(duration_sec, MAX_SCAN_SEC),
+            tuning,
+            file_path,
+            force_legacy_anchor=True,
+            use_global_solver=False,
         )
         refined_metrics = _derive_grid_metrics(refined_result, ground_truth)
         legacy_metrics = _derive_grid_metrics(legacy_result, ground_truth)

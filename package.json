@@ -31,6 +31,10 @@
       {
         "from": "scripts/beat_this_bridge.py",
         "to": "demucs/bootstrap/beat_this_bridge.py"
+      },
+      {
+        "from": "scripts/beat_this_grid_solver.py",
+        "to": "demucs/bootstrap/beat_this_grid_solver.py"
       }
     ],
     "appId": "com.electron.frkb",
