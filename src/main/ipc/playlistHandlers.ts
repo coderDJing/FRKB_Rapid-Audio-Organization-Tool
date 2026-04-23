@@ -21,6 +21,8 @@ import {
   executePlaylistBatchRename,
   previewPlaylistBatchRename
 } from '../services/playlistBatchRename'
+import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
+import { setSongListTrackNumbersByOrder } from '../services/playlistTrackNumbers'
 import type {
   IBatchRenameExecutionRequestItem,
   IBatchRenameTemplateSegment,
@@ -41,6 +43,11 @@ type AudioConvertCollectFilesPayload = {
   }>
   progressId?: string
   titleKey?: string
+}
+
+type ReorderSongListTrackNumbersPayload = {
+  songListPath?: string
+  orderedFilePaths?: string[]
 }
 
 export function registerPlaylistHandlers() {
@@ -67,6 +74,35 @@ export function registerPlaylistHandlers() {
         )
         return await runSongListScan(scanPaths, songListUUID)
       }
+    }
+  )
+
+  ipcMain.handle(
+    'songList:reorder-track-numbers',
+    async (_e, payload: ReorderSongListTrackNumbersPayload) => {
+      const songListPath = String(payload?.songListPath || '').trim()
+      const orderedFilePaths = Array.isArray(payload?.orderedFilePaths)
+        ? payload.orderedFilePaths.map((item) => String(item || '').trim()).filter(Boolean)
+        : []
+      if (!songListPath) {
+        throw new Error('缺少歌单路径')
+      }
+      if (orderedFilePaths.length === 0) {
+        throw new Error('缺少排序后的曲目列表')
+      }
+      const absolutePlaylistPath = path.join(
+        store.databaseDir,
+        mapRendererPathToFsPath(songListPath)
+      )
+      const result = await setSongListTrackNumbersByOrder({
+        listRoot: absolutePlaylistPath,
+        orderedFilePaths
+      })
+      if (!result.updated || result.total <= 0) {
+        throw new Error('重排序号未写入，目标歌单可能不支持真实序号或没有可写入曲目')
+      }
+      markGlobalSongSearchDirty('songList:reorder-track-numbers')
+      return result
     }
   )
 

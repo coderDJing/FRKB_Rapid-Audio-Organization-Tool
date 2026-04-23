@@ -8,6 +8,7 @@ import type { ISongInfo } from '../../types/globals'
 import { log } from '../log'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
+import { normalizePlaylistTrackNumber } from './playlistTrackNumbers'
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 
@@ -235,6 +236,25 @@ const fallbackFileFormat = (filePath: string) => {
   return ext.slice(1).toUpperCase()
 }
 
+const playlistTrackNumberCollator = new Intl.Collator('zh-CN', {
+  numeric: true,
+  sensitivity: 'base'
+})
+
+const comparePlaylistSongOrder = (left: ISongInfo, right: ISongInfo) => {
+  const leftNumber = normalizePlaylistTrackNumber(left.playlistTrackNumber)
+  const rightNumber = normalizePlaylistTrackNumber(right.playlistTrackNumber)
+  if (leftNumber !== undefined && rightNumber !== undefined && leftNumber !== rightNumber) {
+    return leftNumber - rightNumber
+  }
+  if (leftNumber !== undefined && rightNumber === undefined) return -1
+  if (leftNumber === undefined && rightNumber !== undefined) return 1
+  return playlistTrackNumberCollator.compare(
+    String(left.filePath || ''),
+    String(right.filePath || '')
+  )
+}
+
 const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISongInfo => {
   const fileName =
     String(rawInfo?.fileName || path.basename(filePath)).trim() || path.basename(filePath)
@@ -278,6 +298,7 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     typeof rawInfo?.barBeatOffset === 'number' && Number.isFinite(rawInfo.barBeatOffset)
       ? rawInfo.barBeatOffset
       : undefined
+  const playlistTrackNumber = normalizePlaylistTrackNumber(rawInfo?.playlistTrackNumber)
 
   return {
     filePath,
@@ -296,6 +317,7 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     bpm,
     firstBeatMs,
     barBeatOffset,
+    playlistTrackNumber,
     hotCues: normalizeSongHotCues(rawInfo?.hotCues),
     memoryCues: normalizeSongMemoryCues(rawInfo?.memoryCues),
     analysisOnly: rawInfo?.analysisOnly === true ? true : undefined,
@@ -694,7 +716,7 @@ class GlobalSongSearchEngine {
 
     const playlistSongs = new Map<string, ISongInfo[]>()
     for (const [uuid, bucket] of playlistSongsMap) {
-      playlistSongs.set(uuid, Array.from(bucket.values()))
+      playlistSongs.set(uuid, Array.from(bucket.values()).sort(comparePlaylistSongOrder))
     }
     for (const uuid of knownPlaylists) {
       if (!playlistSongs.has(uuid)) {

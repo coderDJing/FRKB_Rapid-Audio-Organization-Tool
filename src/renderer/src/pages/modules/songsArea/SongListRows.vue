@@ -693,7 +693,10 @@ onUnmounted(() => {
                 {{
                   typeof item.song.mixOrder === 'number' && item.song.mixOrder > 0
                     ? item.song.mixOrder
-                    : item.idx + 1
+                    : typeof item.song.playlistTrackNumber === 'number' &&
+                        item.song.playlistTrackNumber > 0
+                      ? item.song.playlistTrackNumber
+                      : item.idx + 1
                 }}
               </div>
               <div

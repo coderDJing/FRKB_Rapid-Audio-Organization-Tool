@@ -29,6 +29,12 @@ import { scanSongList as svcScanSongList } from '../services/scanSongs'
 import { RECYCLE_BIN_UUID } from '../../shared/recycleBin'
 import { getLibraryDb, type SqliteDatabase } from '../libraryDb'
 import { getLibraryStemCacheRootAbs } from '../services/libraryStemAssetStorage'
+import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
+import {
+  appendSongListTrackNumbers,
+  compactSongListTrackNumbers,
+  isSupportedPlaylistTrackNumberListRoot
+} from '../services/playlistTrackNumbers'
 
 const DIRTY_DATA_SQL_TABLES = [
   'song_cache',
@@ -253,6 +259,17 @@ export function registerLibraryMaintenanceHandlers() {
           !(item instanceof Error) && isRecycleBinMoveResult(item)
       )
       .map((item) => item.srcPath)
+    const songListPath =
+      payload && !Array.isArray(payload)
+        ? normalizeRendererPlaylistPath(payload.songListPath || '')
+        : ''
+    if (removedPaths.length > 0 && songListPath) {
+      const sourceSongListRoot = path.join(store.databaseDir, songListPath)
+      if (isSupportedPlaylistTrackNumberListRoot(sourceSongListRoot)) {
+        await compactSongListTrackNumbers(sourceSongListRoot)
+        markGlobalSongSearchDirty('delSongs')
+      }
+    }
     return {
       total: tasks.length,
       success,
@@ -424,6 +441,7 @@ export function registerLibraryMaintenanceHandlers() {
       : Array.isArray(payload?.filePaths)
         ? payload.filePaths
         : []
+    const rootDir = store.databaseDir
     const uniquePaths = Array.from(new Set(filePaths.filter(Boolean)))
     if (uniquePaths.length === 0) {
       return {
@@ -478,6 +496,27 @@ export function registerLibraryMaintenanceHandlers() {
       if (res.status === 'failed') {
         failed += 1
       }
+    }
+    if (restored > 0) {
+      const restoredByPlaylist = new Map<string, string[]>()
+      for (const res of results) {
+        if (res instanceof Error || !res || res.status !== 'restored') continue
+        const playlistPath = String(res.playlistPath || '').trim()
+        const destPath = String(res.destPath || '').trim()
+        if (!playlistPath || !destPath) continue
+        const list = restoredByPlaylist.get(playlistPath) || []
+        list.push(destPath)
+        restoredByPlaylist.set(playlistPath, list)
+      }
+      for (const [playlistPath, destPaths] of restoredByPlaylist) {
+        const playlistRoot = path.join(rootDir, playlistPath)
+        if (!isSupportedPlaylistTrackNumberListRoot(playlistRoot)) continue
+        await appendSongListTrackNumbers({
+          listRoot: playlistRoot,
+          appendedFilePaths: destPaths
+        })
+      }
+      markGlobalSongSearchDirty('recycleBin:restore')
     }
     return {
       total: uniquePaths.length,

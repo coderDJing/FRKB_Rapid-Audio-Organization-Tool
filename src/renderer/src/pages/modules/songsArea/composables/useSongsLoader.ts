@@ -9,6 +9,7 @@ import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { areSongHotCuesEqual } from '@shared/hotCues'
 import { areSongMemoryCuesEqual } from '@shared/memoryCues'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { t } from '@renderer/utils/translate'
 
 interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -39,6 +40,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   }
   let lastAppliedSongListUUID = hydrateFromPaneSnapshot() ? songsAreaState.songListUUID : ''
   let backgroundRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  const playlistTrackNumberTipStorageKey = 'playlistTrackNumberInitHintShown'
 
   // 渐进式渲染（当前行数）
   const renderCount = ref(0)
@@ -75,6 +77,29 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     if (!backgroundRefreshTimer) return
     clearTimeout(backgroundRefreshTimer)
     backgroundRefreshTimer = null
+  }
+
+  const maybeShowPlaylistTrackNumberInitHint = (
+    songListUUID: string,
+    payload?: { initialized?: boolean } | null
+  ) => {
+    if (!payload?.initialized || !songListUUID) return
+    try {
+      const raw = localStorage.getItem(playlistTrackNumberTipStorageKey)
+      const parsed = raw ? JSON.parse(raw) : {}
+      const shownMap =
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, boolean>)
+          : {}
+      if (shownMap[songListUUID]) return
+      shownMap[songListUUID] = true
+      localStorage.setItem(playlistTrackNumberTipStorageKey, JSON.stringify(shownMap))
+    } catch {}
+    try {
+      emitter.emit('songsArea/clipboardHint', {
+        message: t('tracks.playlistTrackNumbersInitializedHint')
+      })
+    } catch {}
   }
 
   const scheduleBackgroundSongListRefresh = (songListPath: string, songListUUID: string) => {
@@ -205,7 +230,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       normalizeComparableText(left.originalPlaylistPath) ===
         normalizeComparableText(right.originalPlaylistPath) &&
       normalizeComparableText(left.recycleBinSourceType) ===
-        normalizeComparableText(right.recycleBinSourceType)
+        normalizeComparableText(right.recycleBinSourceType) &&
+      normalizeComparableNumber(left.playlistTrackNumber) ===
+        normalizeComparableNumber(right.playlistTrackNumber)
     )
   }
 
@@ -288,6 +315,12 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       normalizeComparableText(right.recycleBinSourceType)
     ) {
       fields.push('recycleBinSourceType')
+    }
+    if (
+      normalizeComparableNumber(left.playlistTrackNumber) !==
+      normalizeComparableNumber(right.playlistTrackNumber)
+    ) {
+      fields.push('playlistTrackNumber')
     }
     return fields
   }
@@ -383,12 +416,15 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     songListUUID: string,
     options?: LoadSongListFromDiskOptions
   ) => {
-    const { scanData, songListUUID: loadedUUID } = await window.electron.ipcRenderer.invoke(
+    const result = await window.electron.ipcRenderer.invoke(
       'scanSongList',
       songListPath,
       songListUUID
     )
+    const scanData = Array.isArray(result?.scanData) ? result.scanData : []
+    const loadedUUID = String(result?.songListUUID || '')
     if (loadedUUID !== songsAreaState.songListUUID) return false
+    maybeShowPlaylistTrackNumberInitHint(loadedUUID, result?.playlistTrackNumbering || null)
     const unchanged = isEquivalentSongListSnapshot(scanData, originalSongInfoArr.value)
     if (unchanged) {
       lastAppliedSongListUUID = loadedUUID

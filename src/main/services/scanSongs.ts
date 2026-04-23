@@ -7,6 +7,11 @@ import { readWavRiffInfoWindows } from './wavRiffInfo'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
+import {
+  ensurePlaylistTrackNumbers,
+  normalizePlaylistTrackNumber,
+  sortSongsByPlaylistTrackNumber
+} from './playlistTrackNumbers'
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
@@ -58,6 +63,10 @@ export async function scanSongList(
 ): Promise<{
   scanData: ISongInfo[]
   songListUUID: string
+  playlistTrackNumbering: null | {
+    initialized: boolean
+    repaired: boolean
+  }
   perf: {
     listFilesMs: number
     cacheCheckMs: number
@@ -76,6 +85,10 @@ export async function scanSongList(
   let songInfoArr: ISongInfo[] = []
   let songFileUrls: string[] = []
   const cleanedDirs = new Set<string>()
+  let playlistTrackNumbering: {
+    initialized: boolean
+    repaired: boolean
+  } | null = null
 
   const cleanupConversionTempFiles = async (dir: string) => {
     if (cleanedDirs.has(dir)) return
@@ -362,6 +375,18 @@ export async function scanSongList(
   }
   songInfoArr = [...cachedInfos, ...parsedInfos]
 
+  for (const info of songInfoArr) {
+    const cachedInfo = cacheMap.get(normalizePathKey(info.filePath))?.info
+    if (!cachedInfo) continue
+    const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(cachedInfo.playlistTrackNumber)
+    if (
+      normalizePlaylistTrackNumber(info.playlistTrackNumber) === undefined &&
+      cachedPlaylistTrackNumber !== undefined
+    ) {
+      info.playlistTrackNumber = cachedPlaylistTrackNumber
+    }
+  }
+
   // Windows 下 WAV：对缓存与新解析的结果做一次统一修正，避免列表残留 '0!0!0!' 或含 \x00 的值
   if (process.platform === 'win32') {
     const refined = await Promise.all(
@@ -400,6 +425,17 @@ export async function scanSongList(
   }
   const perfParseEnd = Date.now()
 
+  if (cacheRoot) {
+    const ensureResult = ensurePlaylistTrackNumbers(songInfoArr, cacheRoot)
+    if (ensureResult.changed) {
+      playlistTrackNumbering = {
+        initialized: ensureResult.initialized,
+        repaired: ensureResult.repaired
+      }
+    }
+    songInfoArr = sortSongsByPlaylistTrackNumber(songInfoArr, cacheRoot)
+  }
+
   // 回写缓存
   if (cacheRoot) {
     try {
@@ -423,6 +459,15 @@ export async function scanSongList(
           if (nextInfo.analysisOnly === undefined && cached.info.analysisOnly) {
             nextInfo.analysisOnly = true
           }
+          const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(
+            cached.info.playlistTrackNumber
+          )
+          if (
+            normalizePlaylistTrackNumber(nextInfo.playlistTrackNumber) === undefined &&
+            cachedPlaylistTrackNumber !== undefined
+          ) {
+            nextInfo.playlistTrackNumber = cachedPlaylistTrackNumber
+          }
         }
         newEntriesMap.set(st.file, {
           size: st.size,
@@ -444,6 +489,7 @@ export async function scanSongList(
   return {
     scanData: songInfoArr,
     songListUUID,
+    playlistTrackNumbering,
     perf: {
       listFilesMs: perfListEnd - perfListStart,
       cacheCheckMs: perfCacheCheckEnd - perfCacheCheckStart,

@@ -21,6 +21,11 @@ import { replaceMixtapeFilePath } from '../mixtapeDb'
 import { rememberCuratedArtistsForAddedTracks } from '../curatedArtistLibrary'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import { remapKeyAnalysisTrackedPath } from '../services/keyAnalysisQueue'
+import {
+  appendSongListTrackNumbers,
+  compactSongListTrackNumbers,
+  isSupportedPlaylistTrackNumberListRoot
+} from '../services/playlistTrackNumbers'
 
 type MoveSongsToDirOptions = {
   mode?: 'copy' | 'move'
@@ -212,6 +217,7 @@ export function registerExportHandlers() {
       path.join('library', getCoreFsDirName('CuratedLibrary'))
     )
     const isCuratedTarget = targetDir === curatedRoot || targetDir.startsWith(`${curatedRoot}/`)
+    const targetListRoot = path.join(store.databaseDir, mapRendererPathToFsPath(dest))
     const tasks: Array<() => Promise<string>> = []
     for (const src of srcs) {
       const matches = src.match(/[^\\]+$/)
@@ -297,15 +303,33 @@ export function registerExportHandlers() {
     if (failed > 0) {
       throw new Error(isMove ? 'moveSongsToDir failed' : 'copySongsToDir failed')
     }
+    const movedPaths = results.filter((item): item is string => typeof item === 'string')
+    if (movedPaths.length > 0 && isSupportedPlaylistTrackNumberListRoot(targetListRoot)) {
+      await appendSongListTrackNumbers({
+        listRoot: targetListRoot,
+        appendedFilePaths: movedPaths
+      })
+    }
+    if (isMove) {
+      const sourceRoots = new Set<string>()
+      for (const src of srcs) {
+        const sourceRoot = await findSongListRoot(path.dirname(String(src || '').trim()))
+        if (!sourceRoot || !isSupportedPlaylistTrackNumberListRoot(sourceRoot)) continue
+        if (path.resolve(sourceRoot) === path.resolve(targetListRoot)) continue
+        sourceRoots.add(sourceRoot)
+      }
+      for (const sourceRoot of sourceRoots) {
+        await compactSongListTrackNumbers(sourceRoot)
+      }
+    }
     markGlobalSongSearchDirty(isMove ? 'moveSongsToDir' : 'copySongsToDir')
     if (isCuratedTarget) {
       const curatedArtistTracks: Array<{
         artistName?: string
         targetPath?: string
       }> = []
-      for (let index = 0; index < results.length; index += 1) {
-        const result = results[index]
-        if (result instanceof Error) continue
+      for (let index = 0; index < movedPaths.length; index += 1) {
+        const result = movedPaths[index]
         const movedPath = String(result || '').trim()
         if (!movedPath) continue
         const artistHint = String(options?.curatedArtistNames?.[index] || '').trim()
@@ -322,6 +346,6 @@ export function registerExportHandlers() {
         log.error('[curatedArtists] remember after move failed', error)
       })
     }
-    return results.filter((item) => !(item instanceof Error))
+    return movedPaths
   })
 }

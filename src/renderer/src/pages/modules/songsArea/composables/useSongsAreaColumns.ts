@@ -406,7 +406,23 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
 
     const sortedCol = columnData.value.find((c) => c.order)
     if (sortedCol) {
-      if (sortedCol.key === 'key') {
+      if (sortedCol.key === 'index') {
+        filtered = [...filtered].sort((a, b) => {
+          const valueA =
+            typeof a.playlistTrackNumber === 'number' && Number.isFinite(a.playlistTrackNumber)
+              ? a.playlistTrackNumber
+              : Number.MAX_SAFE_INTEGER
+          const valueB =
+            typeof b.playlistTrackNumber === 'number' && Number.isFinite(b.playlistTrackNumber)
+              ? b.playlistTrackNumber
+              : Number.MAX_SAFE_INTEGER
+          if (valueA === valueB) {
+            const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
+            return collator.compare(String(a.filePath || ''), String(b.filePath || ''))
+          }
+          return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
+        })
+      } else if (sortedCol.key === 'key') {
         const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
         const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
         filtered = [...filtered].sort((a, b) => {
@@ -475,6 +491,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     if (!fieldSet.size) return false
     return columnData.value.some((col) => {
       if (col.order) {
+        if (col.key === 'index') return fieldSet.has('playlistTrackNumber')
         if (col.key === 'key') return fieldSet.has('key')
         return fieldSet.has(String(col.key || ''))
       }
@@ -537,7 +554,8 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   // --- 列头排序点击 ---
   const colMenuClick = (col: ISongsAreaColumn) => {
     if (columnMode.value === 'mixtape') return
-    if (col.key === 'index' || col.key === 'cover' || col.key === 'waveformPreview') return
+    if (col.key === 'cover' || col.key === 'waveformPreview') return
+    if (col.key === 'index' && columnMode.value !== 'default') return
 
     const newColumnData = columnData.value.map((item) => {
       if (item.key !== col.key) {

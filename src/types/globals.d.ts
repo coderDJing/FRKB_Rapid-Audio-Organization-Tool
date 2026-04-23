@@ -46,6 +46,7 @@ interface ISongInfo {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  playlistTrackNumber?: number
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
   mixOrder?: number

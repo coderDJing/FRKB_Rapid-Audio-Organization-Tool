@@ -18,6 +18,10 @@ import { moveFileToRecycleBin } from '../../recycleBinService'
 import { rememberCuratedArtistsForAddedTracks } from '../../curatedArtistLibrary'
 import { log } from '../../log'
 import { markGlobalSongSearchDirty } from '../../services/globalSongSearch'
+import {
+  appendSongListTrackNumbers,
+  isSupportedPlaylistTrackNumberListRoot
+} from '../../services/playlistTrackNumbers'
 
 type ImportItem = md5 | string
 
@@ -226,6 +230,17 @@ export function registerImportHandlers(
       fingerprintMode: getFingerprintMode()
     }
 
+    const importedPaths = results
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim())
+    const targetSongListRoot = path.join(store.databaseDir, formData.songListPath)
+    if (importedPaths.length > 0 && isSupportedPlaylistTrackNumberListRoot(targetSongListRoot)) {
+      await appendSongListTrackNumbers({
+        listRoot: targetSongListRoot,
+        appendedFilePaths: importedPaths
+      })
+    }
+
     markGlobalSongSearchDirty('importSongs')
     getWindow()?.webContents.send(
       'importFinished',
@@ -234,9 +249,7 @@ export function registerImportHandlers(
       progressId
     )
     if (isCuratedTarget) {
-      const targetPaths = results
-        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-        .map((item) => item.trim())
+      const targetPaths = importedPaths
       // 导入完成提示和列表刷新优先，精选表演者记录异步补上即可。
       void rememberCuratedArtistsForAddedTracks({ targetPaths }).catch((error) => {
         log.error('[curatedArtists] remember after import failed', error)

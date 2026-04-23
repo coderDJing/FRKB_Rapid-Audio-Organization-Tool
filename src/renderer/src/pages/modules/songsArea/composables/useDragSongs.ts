@@ -77,6 +77,19 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
     return runtime.songsArea
   }
 
+  const sortFilePathsByVisibleSongOrder = (filePaths: string[], songs: ISongInfo[]) => {
+    const normalizedSet = new Set(
+      filePaths.map((item) => String(item || '').trim()).filter(Boolean)
+    )
+    if (normalizedSet.size <= 1) return [...normalizedSet]
+    const ordered = songs
+      .map((song) => String(song.filePath || '').trim())
+      .filter((filePath) => normalizedSet.has(filePath))
+    if (ordered.length === normalizedSet.size) return ordered
+    const seen = new Set(ordered)
+    return [...ordered, ...[...normalizedSet].filter((filePath) => !seen.has(filePath))]
+  }
+
   const resolveFileNameAndFormat = (filePath: string) => {
     const baseName =
       String(filePath || '')
@@ -224,6 +237,10 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
       const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
       const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
       const sourceSongsAreaState = resolveSourceSongsAreaState(sourceSongListUUID)
+      const orderedSongFilePaths = sortFilePathsByVisibleSongOrder(
+        selectedSongFilePaths,
+        sourceSongsAreaState.songInfoArr
+      )
       const isMixtapeTarget = targetNode?.type === 'mixtapeList'
 
       if (isMixtapeTarget) {
@@ -278,7 +295,7 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
             ? itemsFromMixtapeIds.length > 0
               ? itemsFromMixtapeIds
               : itemsFromMixtapePaths
-            : normalizeUniqueStrings(selectedSongFilePaths).map((filePath) => ({
+            : orderedSongFilePaths.map((filePath) => ({
                 filePath,
                 originPlaylistUuid: sourceSongListUUID,
                 originPathSnapshot,
@@ -312,10 +329,10 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
       // 调用移动歌曲的 IPC，确保所有参数都是可序列化的
       const movedPaths = (await window.electron.ipcRenderer.invoke(
         'moveSongsToDir',
-        selectedSongFilePaths,
+        orderedSongFilePaths,
         targetDirPath,
         {
-          curatedArtistNames: selectedSongFilePaths.map((filePath) => {
+          curatedArtistNames: orderedSongFilePaths.map((filePath) => {
             const song = sourceSongsAreaState.songInfoArr.find((item) => item.filePath === filePath)
             return song?.artist || ''
           })
@@ -327,7 +344,7 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
       await copySongCueDefinitionsToTargets(
         movedPaths.map((targetFilePath, index) => ({
           targetFilePath,
-          sourceSong: sourceSongMap.get(selectedSongFilePaths[index])
+          sourceSong: sourceSongMap.get(orderedSongFilePaths[index])
         }))
       )
 
@@ -341,14 +358,14 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
       try {
         const normalizePath = (p: string | undefined | null) =>
           (p || '').replace(/\//g, '\\').toLowerCase()
-        const normalized = selectedSongFilePaths.map((p) => normalizePath(p))
+        const normalized = orderedSongFilePaths.map((p) => normalizePath(p))
         emitter.emit('songsRemoved', {
           listUUID: sourceSongListUUID,
           paths: normalized
         })
       } catch {}
 
-      return selectedSongFilePaths
+      return orderedSongFilePaths
     } finally {
       endDragSongs()
     }

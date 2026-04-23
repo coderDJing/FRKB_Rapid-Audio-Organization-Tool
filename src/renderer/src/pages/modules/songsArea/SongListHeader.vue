@@ -5,6 +5,7 @@ import filterIconAsset from '@renderer/assets/filterIcon.svg?asset'
 import { UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
 import { MIN_WIDTH_BY_KEY } from './minWidth'
 import filterDialog from '@renderer/components/filterDialog.vue'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 const filterIcon = filterIconAsset
 const filterIconMaskStyle = {
   '--icon-mask': `url("${filterIcon}")`
@@ -67,6 +68,10 @@ const emit = defineEmits<{
 // 创建一个 ref 来存储可见的、可拖拽的列
 const draggableVisibleColumns = ref<ISongsAreaColumn[]>([])
 const draggableInstanceKey = ref(0) // 新增：用于强制重新渲染 draggable 容器的 key
+const indexActionButtonRef = ref<HTMLElement | null>(null)
+const setIndexActionButtonRef = (el: Element | null) => {
+  indexActionButtonRef.value = (el as HTMLElement | null) || null
+}
 
 // 监听 props.columns 的变化，以更新 draggableVisibleColumns
 watch(
@@ -464,9 +469,10 @@ const handleIndexActionClick = () => {
       <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
         <button
           v-if="col.key === 'index' && props.showIndexAction"
+          :ref="setIndexActionButtonRef"
           class="headerActionButton"
           type="button"
-          :title="props.indexActionTitle"
+          :aria-label="props.indexActionTitle"
           :disabled="props.indexActionDisabled"
           @click.stop="handleIndexActionClick"
         >
@@ -499,6 +505,12 @@ const handleIndexActionClick = () => {
             />
           </svg>
         </button>
+        <bubbleBox
+          v-if="col.key === 'index' && props.showIndexAction"
+          :dom="indexActionButtonRef || undefined"
+          :title="props.indexActionTitle"
+          :max-width="220"
+        />
         <span
           v-if="col.key !== 'index' && col.filterType"
           class="mask-icon filter-icon"

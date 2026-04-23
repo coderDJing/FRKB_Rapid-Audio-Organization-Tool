@@ -42,6 +42,7 @@ import { useSongsAreaEvents } from '@renderer/pages/modules/songsArea/composable
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useGlobalSearchFocus } from '@renderer/pages/modules/songsArea/composables/useGlobalSearchFocus'
 import { useSongsAreaDragAndDrop } from '@renderer/pages/modules/songsArea/composables/useSongsAreaDragAndDrop'
+import { usePlaylistTrackNumbers } from '@renderer/pages/modules/songsArea/composables/usePlaylistTrackNumbers'
 import { detectSongsAreaScrollCarrier } from '@renderer/pages/modules/songsArea/composables/scrollCarrier'
 
 // 资源导入
@@ -226,6 +227,21 @@ const { loadingShow, isRequesting, openSongList } = useSongsLoader({
   songsAreaState,
   originalSongInfoArr,
   applyFiltersAndSorting
+})
+const {
+  trackNumberMutationPending,
+  canReorderPlaylistTracks,
+  canRenumberPlaylistTracks,
+  handlePlaylistReorder,
+  handleRenumberTracksByVisibleOrder
+} = usePlaylistTrackNumbers({
+  runtime,
+  songsAreaState,
+  originalSongInfoArr,
+  columnData,
+  isRequesting,
+  applyFiltersAndSorting,
+  resolveCoreLibraryNameBySongListUUID
 })
 
 const handleMetadataBatchUpdatedFromEvent = async (payload: {
@@ -900,11 +916,15 @@ const emptyHintText = computed(() => {
             :ascending-order="ascendingOrder"
             :descending-order="descendingOrder"
             :total-width="totalColumnsWidth"
+            :show-index-action="canRenumberPlaylistTracks"
+            :index-action-title="t('tracks.renumberPlaylistTrackNumbersAction')"
+            :index-action-disabled="trackNumberMutationPending || isRequesting"
             @update:columns="handleColumnsUpdate"
             @column-click="colMenuClick"
             @header-contextmenu="contextmenuEvent"
             @drag-start="runtime.dragTableHeader = true"
             @drag-end="runtime.dragTableHeader = false"
+            @index-action-click="handleRenumberTracksByVisibleOrder"
           />
 
           <!-- 使用 SongListRows 组件渲染歌曲列表 -->
@@ -927,13 +947,16 @@ const emptyHintText = computed(() => {
             :external-scroll-top="externalScrollTop"
             :external-viewport-height="externalViewportHeight"
             :song-list-root-dir="songListRootDir"
-            :reorder-mode="isMixtapeListView ? 'mixtape' : 'none'"
+            :reorder-mode="
+              isMixtapeListView ? 'mixtape' : canReorderPlaylistTracks ? 'playlist' : 'none'
+            "
             @song-click="songClick"
             @song-contextmenu="handleSongContextMenuEvent"
             @song-dblclick="songDblClick"
             @song-dragstart="handleSongDragStart"
             @song-dragend="handleSongDragEnd"
             @mixtape-reorder="handleMixtapeReorder"
+            @playlist-reorder="handlePlaylistReorder"
           />
         </OverlayScrollbarsComponent>
 

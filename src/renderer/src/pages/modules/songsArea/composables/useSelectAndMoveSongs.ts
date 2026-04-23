@@ -28,6 +28,16 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
           .filter(Boolean)
       )
     )
+  const sortFilePathsByVisibleSongOrder = (filePaths: string[]) => {
+    const normalizedSet = new Set(normalizeUniqueStrings(filePaths))
+    if (normalizedSet.size <= 1) return [...normalizedSet]
+    const ordered = songsAreaState.songInfoArr
+      .map((song) => String(song.filePath || '').trim())
+      .filter((filePath) => normalizedSet.has(filePath))
+    if (ordered.length === normalizedSet.size) return ordered
+    const seen = new Set(ordered)
+    return [...ordered, ...[...normalizedSet].filter((filePath) => !seen.has(filePath))]
+  }
   const resolveFileNameAndFormat = (filePath: string) => {
     const baseName =
       String(filePath || '')
@@ -89,7 +99,9 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
 
     const sourceSongListUUID = songsAreaState.songListUUID
     const sourceActionMode = resolveLibraryTransferActionModeForSongList(sourceSongListUUID)
-    const selectedPaths = JSON.parse(JSON.stringify(songsAreaState.selectedSongFilePath))
+    const selectedPaths = sortFilePathsByVisibleSongOrder(
+      JSON.parse(JSON.stringify(songsAreaState.selectedSongFilePath))
+    )
     const songMap = new Map(songsAreaState.songInfoArr.map((song) => [song.filePath, song]))
     if (!selectedPaths.length) return
 

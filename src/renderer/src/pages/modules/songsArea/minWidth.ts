@@ -1,7 +1,7 @@
 // 统一的最小列宽映射，供表头拖拽与启动初始化同时使用
 export const MIN_WIDTH_BY_KEY: Record<string, number> = {
   cover: 56,
-  index: 60,
+  index: 96,
   title: 140,
   fileName: 160,
   artist: 120,
