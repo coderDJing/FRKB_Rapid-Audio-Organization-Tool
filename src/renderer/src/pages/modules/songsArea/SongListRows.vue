@@ -13,7 +13,6 @@ import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
-import libraryUtils from '@renderer/utils/libraryUtils'
 import { useVirtualRows } from './SongListRows/useVirtualRows'
 import { useSongRowEvents } from './SongListRows/useSongRowEvents'
 import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
@@ -104,6 +103,10 @@ const props = defineProps({
   allowContextMenuWhenReadOnly: { type: Boolean, default: false },
   allowDblclickWhenReadOnly: { type: Boolean, default: false },
   allowWaveformPreviewWhenReadOnly: { type: Boolean, default: false },
+  reorderMode: {
+    type: String as PropType<'none' | 'mixtape' | 'playlist'>,
+    default: 'none'
+  },
   harmonicReferenceKey: {
     type: String as PropType<string | undefined>,
     default: ''
@@ -122,6 +125,7 @@ const emit = defineEmits<{
   (e: 'song-dragstart', event: DragEvent, song: ISongInfo): void
   (e: 'song-dragend', event: DragEvent): void
   (e: 'mixtape-reorder', payload: { sourceItemIds: string[]; targetIndex: number }): void
+  (e: 'playlist-reorder', payload: { sourceItemIds: string[]; targetIndex: number }): void
   (e: 'rows-rendered', count: number): void
 }>()
 
@@ -149,8 +153,10 @@ const playingSongRowKeySet = computed(
         .filter(Boolean)
     )
 )
-const isMixtapeList = computed(
-  () => libraryUtils.getLibraryTreeByUUID(props.sourceSongListUUID)?.type === 'mixtapeList'
+const isMixtapeList = computed(() => props.reorderMode === 'mixtape')
+const isPlaylistReorder = computed(() => props.reorderMode === 'playlist')
+const isInternalReorderEnabled = computed(
+  () => props.reorderMode === 'mixtape' || props.reorderMode === 'playlist'
 )
 const canPreviewWaveform = computed(() => !props.readOnly || props.allowWaveformPreviewWhenReadOnly)
 
@@ -441,8 +447,18 @@ const resolveDragItemIds = (event: DragEvent): string[] => {
   return sourceItemIds
 }
 
+const emitInternalReorder = (payload: { sourceItemIds: string[]; targetIndex: number }) => {
+  if (isMixtapeList.value) {
+    emit('mixtape-reorder', payload)
+    return
+  }
+  if (isPlaylistReorder.value) {
+    emit('playlist-reorder', payload)
+  }
+}
+
 const handleRowDragOver = (event: DragEvent, item: { song: ISongInfo; idx: number }) => {
-  if (props.readOnly) return
+  if (props.readOnly && !isInternalReorderEnabled.value) return
   if (isSelfExternalSongDrag()) {
     event.preventDefault()
     event.stopPropagation()
@@ -452,7 +468,7 @@ const handleRowDragOver = (event: DragEvent, item: { song: ISongInfo; idx: numbe
     clearDragHover()
     return
   }
-  if (!isMixtapeList.value) return
+  if (!isInternalReorderEnabled.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
   updateDropPadRects()
@@ -477,8 +493,8 @@ const handleRowDragOver = (event: DragEvent, item: { song: ISongInfo; idx: numbe
 }
 
 const handleEdgeDragOver = (event: DragEvent, edge: 'top' | 'bottom') => {
-  if (props.readOnly) return
-  if (!isMixtapeList.value) return
+  if (props.readOnly && !isInternalReorderEnabled.value) return
+  if (!isInternalReorderEnabled.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
   updateDropPadRects()
@@ -493,8 +509,8 @@ const handleEdgeDragOver = (event: DragEvent, edge: 'top' | 'bottom') => {
 }
 
 const handleEdgeDrop = (event: DragEvent, edge: 'top' | 'bottom') => {
-  if (props.readOnly) return
-  if (!isMixtapeList.value) return
+  if (props.readOnly && !isInternalReorderEnabled.value) return
+  if (!isInternalReorderEnabled.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
   const listLen = songsRef.value.length
@@ -504,7 +520,7 @@ const handleEdgeDrop = (event: DragEvent, edge: 'top' | 'bottom') => {
   }
   const targetIndex = edge === 'top' ? 0 : listLen
   clearDragHover()
-  emit('mixtape-reorder', { sourceItemIds, targetIndex })
+  emitInternalReorder({ sourceItemIds, targetIndex })
 }
 
 const handleTopPadDragOver = (event: DragEvent) => {
@@ -528,14 +544,14 @@ const handleBottomPadDrop = (event: DragEvent) => {
 }
 
 const handleRowDrop = (event: DragEvent, item: { song: ISongInfo; idx: number }) => {
-  if (props.readOnly) return
+  if (props.readOnly && !isInternalReorderEnabled.value) return
   if (isSelfExternalSongDrag()) {
     event.preventDefault()
     event.stopPropagation()
     clearDragHover()
     return
   }
-  if (!isMixtapeList.value) return
+  if (!isInternalReorderEnabled.value) return
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
   event.preventDefault()
@@ -554,11 +570,11 @@ const handleRowDrop = (event: DragEvent, item: { song: ISongInfo; idx: number })
   }
   clearDragHover()
   const targetIndex = item.idx + (position === 'after' ? 1 : 0)
-  emit('mixtape-reorder', { sourceItemIds, targetIndex })
+  emitInternalReorder({ sourceItemIds, targetIndex })
 }
 
 const handleRowDragEnd = (event: DragEvent) => {
-  if (props.readOnly) return
+  if (props.readOnly && !isInternalReorderEnabled.value) return
   draggingItemIds.value = []
   draggingSourceListUUID.value = ''
   clearDragHover()
@@ -568,8 +584,8 @@ const handleRowDragEnd = (event: DragEvent) => {
 }
 
 const handleRowDragStart = (event: DragEvent, item: { song: ISongInfo }) => {
-  if (props.readOnly) return
-  if (isMixtapeList.value) {
+  if (props.readOnly && !isInternalReorderEnabled.value) return
+  if (isInternalReorderEnabled.value) {
     const rowKey = getRowKey(item.song)
     const selectedKeys = (props.selectedSongFilePaths || []).filter(Boolean)
     const shouldUseSelection = rowKey.length > 0 && selectedKeys.includes(rowKey)
@@ -632,17 +648,23 @@ onUnmounted(() => {
           class="song-row-item unselectable"
           :class="{
             'drag-over-before':
-              isMixtapeList && dragHoverIndex === item.idx && dragHoverPosition === 'before',
+              isInternalReorderEnabled &&
+              dragHoverIndex === item.idx &&
+              dragHoverPosition === 'before',
             'drag-over-after':
-              isMixtapeList && dragHoverIndex === item.idx && dragHoverPosition === 'after'
+              isInternalReorderEnabled &&
+              dragHoverIndex === item.idx &&
+              dragHoverPosition === 'after'
           }"
           :data-filepath="item.song.filePath"
           :data-rowkey="getRowKey(item.song)"
-          :draggable="!props.readOnly"
-          @dragstart.stop="!props.readOnly && handleRowDragStart($event, item)"
-          @dragend.stop="!props.readOnly && handleRowDragEnd($event)"
-          @dragover="!props.readOnly && handleRowDragOver($event, item)"
-          @drop="!props.readOnly && handleRowDrop($event, item)"
+          :draggable="!props.readOnly || isInternalReorderEnabled"
+          @dragstart.stop="
+            (!props.readOnly || isInternalReorderEnabled) && handleRowDragStart($event, item)
+          "
+          @dragend.stop="(!props.readOnly || isInternalReorderEnabled) && handleRowDragEnd($event)"
+          @dragover="isInternalReorderEnabled && handleRowDragOver($event, item)"
+          @drop="isInternalReorderEnabled && handleRowDrop($event, item)"
         >
           <div
             class="song-row-content"
@@ -755,7 +777,7 @@ onUnmounted(() => {
   </div>
   <teleport to="body">
     <div
-      v-if="isMixtapeList && draggingItemIds.length > 0 && topPadVisible"
+      v-if="isInternalReorderEnabled && draggingItemIds.length > 0 && topPadVisible"
       class="mixtape-drop-pad mixtape-drop-pad--top"
       :class="{ 'is-active': dragHoverEdge === 'top' }"
       :style="topPadStyle"
@@ -764,7 +786,7 @@ onUnmounted(() => {
       @drop.stop.prevent="handleTopPadDrop"
     ></div>
     <div
-      v-if="isMixtapeList && draggingItemIds.length > 0 && bottomPadVisible"
+      v-if="isInternalReorderEnabled && draggingItemIds.length > 0 && bottomPadVisible"
       class="mixtape-drop-pad mixtape-drop-pad--bottom"
       :class="{ 'is-active': dragHoverEdge === 'bottom' }"
       :style="bottomPadStyle"

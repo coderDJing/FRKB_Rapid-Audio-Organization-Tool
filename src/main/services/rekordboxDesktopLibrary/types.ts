@@ -27,6 +27,7 @@ export type RekordboxDesktopLibraryErrorCode =
   | 'PLAYLIST_RENAME_FAILED'
   | 'PLAYLIST_DELETE_FAILED'
   | 'PLAYLIST_TRACK_REMOVE_FAILED'
+  | 'PLAYLIST_TRACK_REORDER_FAILED'
   | 'PLAYLIST_FOLDER_CREATE_FAILED'
   | 'TRACK_IMPORT_FAILED'
 
@@ -222,6 +223,14 @@ export type RekordboxDesktopHelperRemovePlaylistTracksPayload = {
   requestedCount?: number | string
   removedCount?: number | string
   skippedCount?: number | string
+}
+
+export type RekordboxDesktopHelperReorderPlaylistTracksPayload = {
+  probe?: RekordboxDesktopHelperProbePayload
+  playlistId?: number | string
+  requestedCount?: number | string
+  movedCount?: number | string
+  targetIndex?: number | string
 }
 
 export type RekordboxDesktopHelperProgressPayload = {

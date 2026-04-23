@@ -19,6 +19,7 @@ import {
 import { loadRekordboxDesktopPlaylistTree } from '../services/rekordboxDesktopLibrary/tree'
 import {
   loadRekordboxDesktopPlaylistTracks,
+  reorderRekordboxDesktopPlaylistTracks,
   removeRekordboxDesktopPlaylistTracks
 } from '../services/rekordboxDesktopLibrary/tracks'
 import {
@@ -39,6 +40,8 @@ import type {
   RekordboxDesktopCreateFolderResponse,
   RekordboxDesktopDeletePlaylistRequest,
   RekordboxDesktopDeletePlaylistResponse,
+  RekordboxDesktopReorderPlaylistTracksRequest,
+  RekordboxDesktopReorderPlaylistTracksResponse,
   RekordboxDesktopRemovePlaylistTracksRequest,
   RekordboxDesktopRemovePlaylistTracksResponse,
   RekordboxDesktopRenamePlaylistRequest,
@@ -167,6 +170,16 @@ export function registerRekordboxDesktopLibraryHandlers() {
       request: RekordboxDesktopRemovePlaylistTracksRequest
     ): Promise<RekordboxDesktopRemovePlaylistTracksResponse> => {
       return await removeRekordboxDesktopPlaylistTracks(request)
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:reorder-playlist-tracks',
+    async (
+      _event,
+      request: RekordboxDesktopReorderPlaylistTracksRequest
+    ): Promise<RekordboxDesktopReorderPlaylistTracksResponse> => {
+      return await reorderRekordboxDesktopPlaylistTracks(request)
     }
   )
 

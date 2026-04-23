@@ -21,18 +21,17 @@ import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import {
   buildRekordboxSourceCacheKey,
-  clearRekordboxSourceCache,
   getCachedRekordboxPlaylistTracks,
   rememberRekordboxSourceSelectedPlaylist,
   setCachedRekordboxPlaylistTracks,
   shouldRefreshRekordboxPlaylistTracks
 } from '@renderer/utils/rekordboxLibraryCache'
-import { ensureRekordboxDesktopWriteAvailable } from '@renderer/utils/rekordboxDesktopWriteAvailability'
 import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import { buildRekordboxSourceChannel, type RekordboxSourceKind } from '@shared/rekordboxSources'
+import { usePioneerDesktopPlaylistActions } from './pioneerSongsArea/usePioneerDesktopPlaylistActions'
 import type {
   IMenu,
   IPioneerPlaylistTrack,
@@ -41,7 +40,6 @@ import type {
   ISongInfo,
   ISongsAreaColumn
 } from '../../../../types/globals'
-import type { RekordboxDesktopRemovePlaylistTracksResponse } from '@shared/rekordboxDesktopPlaylist'
 
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 type PioneerTransferTarget = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
@@ -91,7 +89,6 @@ const selectedSourceRootPath = computed(
 const selectedLibraryType = computed(
   () => runtime.pioneerDeviceLibrary.selectedLibraryType || 'deviceLibrary'
 )
-const playlistMutationPending = ref(false)
 const selectedPlaylistNode = computed(() => {
   const targetId = selectedPlaylistId.value
   if (!targetId) return null
@@ -175,6 +172,19 @@ const canRemoveTracksFromDesktopPlaylist = computed(
     Boolean(selectedPlaylistNode.value) &&
     !selectedPlaylistNode.value?.isFolder &&
     !selectedPlaylistNode.value?.isSmartPlaylist
+)
+const hasActiveTrackFilters = computed(() =>
+  columnData.value.some((col) => Boolean(col.filterActive))
+)
+const sortedTrackColumn = computed(() => columnData.value.find((col) => Boolean(col.order)) || null)
+const canReorderDesktopTracks = computed(
+  () =>
+    canRemoveTracksFromDesktopPlaylist.value &&
+    !loading.value &&
+    !playlistMutationPending.value &&
+    !hasActiveTrackFilters.value &&
+    (!sortedTrackColumn.value ||
+      (sortedTrackColumn.value.key === 'index' && sortedTrackColumn.value.order === 'asc'))
 )
 
 const pioneerSongMenuArr = computed<IMenu[][]>(() => {
@@ -285,24 +295,6 @@ const showErrorDialog = async (message: string) => {
     title: t('common.error'),
     content: [message || t('common.unknownError')],
     confirmShow: false
-  })
-}
-
-const showRekordboxFailureDialog = async (message: string, logPath?: string) => {
-  const content = [
-    t('rekordboxDesktop.failedReason', { message: message || t('common.unknownError') })
-  ]
-  if (logPath) {
-    content.push(t('rekordboxDesktop.failureLogHint', { path: logPath }))
-  }
-  await confirm({
-    title: t('rekordboxDesktop.failureTitle'),
-    content,
-    confirmShow: false,
-    innerWidth: 620,
-    innerHeight: 0,
-    textAlign: 'left',
-    canCopyText: Boolean(logPath)
   })
 }
 
@@ -599,6 +591,17 @@ const loadPlaylistTracks = async () => {
   }
 }
 
+const { playlistMutationPending, removeTracksFromDesktopPlaylist, reorderTracksInDesktopPlaylist } =
+  usePioneerDesktopPlaylistActions({
+    runtime,
+    selectedPlaylistId,
+    selectedSourceCacheKey,
+    currentPlaybackListKey,
+    visibleSongs,
+    selectedRowKeys,
+    loadPlaylistTracks
+  })
+
 watch(
   () => [selectedSourceRootPath.value, selectedPlaylistId.value, selectedSourceKind.value] as const,
   () => {
@@ -680,7 +683,10 @@ const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
 
   switch (result.menuName) {
     case 'rekordboxDesktop.removeTracksFromPlaylistAction':
-      await removeTracksFromDesktopPlaylist(selectedTracks)
+      await removeTracksFromDesktopPlaylist(
+        selectedTracks,
+        canRemoveTracksFromDesktopPlaylist.value
+      )
       return
     case 'library.copyToCurated':
       openCopyTargetDialog('CuratedLibrary')
@@ -719,74 +725,12 @@ const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
   }
 }
 
-const removeTracksFromDesktopPlaylist = async (selectedTracks: ISongInfo[]) => {
-  if (!canRemoveTracksFromDesktopPlaylist.value) return
-  const playlistId = selectedPlaylistId.value
-  const rowKeys = selectedTracks
-    .map((item) => String(item.mixtapeItemId || '').trim())
-    .filter(Boolean)
-  if (!playlistId || rowKeys.length === 0) return
-
-  const confirmContent =
-    rowKeys.length === 1
-      ? [
-          t('rekordboxDesktop.removeTrackFromPlaylistConfirmLine1', {
-            name: selectedTracks[0]?.title || t('tracks.unknownTrack')
-          }),
-          t('rekordboxDesktop.removeTracksFromPlaylistConfirmLine2')
-        ]
-      : [
-          t('rekordboxDesktop.removeTracksFromPlaylistConfirmCount', { count: rowKeys.length }),
-          t('rekordboxDesktop.removeTracksFromPlaylistConfirmLine2')
-        ]
-  const confirmResult = await confirm({
-    title: t('rekordboxDesktop.removeTracksFromPlaylistTitle'),
-    content: confirmContent,
-    innerWidth: 620,
-    innerHeight: 0,
-    textAlign: 'left'
-  })
-  if (confirmResult !== 'confirm') return
-
-  if (!(await ensureRekordboxDesktopWriteAvailable('edit'))) {
-    return
-  }
-
-  playlistMutationPending.value = true
-  try {
-    const response = (await window.electron.ipcRenderer.invoke(
-      buildRekordboxSourceChannel('desktop', 'remove-playlist-tracks'),
-      {
-        playlistId,
-        rowKeys
-      }
-    )) as RekordboxDesktopRemovePlaylistTracksResponse
-
-    if (!response.ok) {
-      await showRekordboxFailureDialog(response.summary.errorMessage, response.summary.logPath)
-      return
-    }
-
-    const removedKeySet = new Set(rowKeys)
-    selectedRowKeys.value = []
-    if (selectedSourceCacheKey.value) {
-      clearRekordboxSourceCache(selectedSourceCacheKey.value)
-    }
-
-    if (runtime.playingData.playingSongListUUID === currentPlaybackListKey.value) {
-      runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.filter(
-        (item) => !removedKeySet.has(String(item.mixtapeItemId || '').trim())
-      )
-    }
-
-    await loadPlaylistTracks()
-  } catch (error) {
-    await showRekordboxFailureDialog(
-      error instanceof Error ? error.message : String(error || t('common.unknownError'))
-    )
-  } finally {
-    playlistMutationPending.value = false
-  }
+const handlePlaylistReorder = async (payload: { sourceItemIds: string[]; targetIndex: number }) => {
+  await reorderTracksInDesktopPlaylist(
+    payload.sourceItemIds,
+    payload.targetIndex,
+    canReorderDesktopTracks.value
+  )
 }
 
 const requestImmediateAnalysis = (song: ISongInfo) => {
@@ -1041,11 +985,13 @@ watch(
         :allow-context-menu-when-read-only="true"
         :allow-dblclick-when-read-only="true"
         :allow-waveform-preview-when-read-only="true"
+        :reorder-mode="canReorderDesktopTracks ? 'playlist' : 'none'"
         :enable-cover-thumbnails="true"
         :enable-key-analysis-queue="false"
         @song-click="handleSongClick"
         @song-contextmenu="handleSongContextMenu"
         @song-dblclick="handleSongDblClick"
+        @playlist-reorder="handlePlaylistReorder"
       />
     </OverlayScrollbarsComponent>
     <RekordboxDesktopWritingOverlay v-if="playlistMutationPending" />

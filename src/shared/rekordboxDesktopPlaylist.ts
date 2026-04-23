@@ -211,6 +211,29 @@ export type RekordboxDesktopRemovePlaylistTracksResponse =
       summary: RekordboxDesktopPlaylistFailureSummary
     }
 
+export type RekordboxDesktopReorderPlaylistTracksRequest = {
+  playlistId: number
+  rowKeys: string[]
+  targetIndex: number
+}
+
+export type RekordboxDesktopReorderPlaylistTracksSuccessSummary = {
+  playlistId: number
+  requestedCount: number
+  movedCount: number
+  targetIndex: number
+}
+
+export type RekordboxDesktopReorderPlaylistTracksResponse =
+  | {
+      ok: true
+      summary: RekordboxDesktopReorderPlaylistTracksSuccessSummary
+    }
+  | {
+      ok: false
+      summary: RekordboxDesktopPlaylistFailureSummary
+    }
+
 export type RekordboxDesktopCopyTracksToStorageRequest = {
   targetRootDir: string
   tracks: RekordboxDesktopPlaylistTrackInput[]

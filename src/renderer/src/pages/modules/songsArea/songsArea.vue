@@ -927,6 +927,7 @@ const emptyHintText = computed(() => {
             :external-scroll-top="externalScrollTop"
             :external-viewport-height="externalViewportHeight"
             :song-list-root-dir="songListRootDir"
+            :reorder-mode="isMixtapeListView ? 'mixtape' : 'none'"
             @song-click="songClick"
             @song-contextmenu="handleSongContextMenuEvent"
             @song-dblclick="songDblClick"

@@ -5,12 +5,15 @@ import { runRekordboxDesktopHelper } from './helper'
 import { getLogPath, log } from '../../log'
 import type {
   RekordboxDesktopHelperError,
+  RekordboxDesktopHelperReorderPlaylistTracksPayload,
   RekordboxDesktopHelperRemovePlaylistTracksPayload,
   RekordboxDesktopHelperTrackRecord,
   RekordboxDesktopHelperTracksPayload,
   RekordboxDesktopLibraryTrackLoadResult
 } from './types'
 import type {
+  RekordboxDesktopReorderPlaylistTracksRequest,
+  RekordboxDesktopReorderPlaylistTracksResponse,
   RekordboxDesktopRemovePlaylistTracksRequest,
   RekordboxDesktopRemovePlaylistTracksResponse
 } from '../../../shared/rekordboxDesktopPlaylist'
@@ -110,12 +113,13 @@ const getErrorCode = (error: unknown, fallback: string) => {
   return typeof code === 'string' && code.trim() ? code.trim() : fallback
 }
 
-const buildRemoveTracksFailureResponse = (
+const buildTracksFailureResponse = (
+  action: 'remove' | 'reorder',
   errorCode: string,
   errorMessage: string,
   details?: Record<string, unknown>
-): RekordboxDesktopRemovePlaylistTracksResponse => {
-  log.error('[rekordbox-desktop-playlist] remove playlist tracks failed', {
+): RekordboxDesktopRemovePlaylistTracksResponse | RekordboxDesktopReorderPlaylistTracksResponse => {
+  log.error(`[rekordbox-desktop-playlist] ${action} playlist tracks failed`, {
     errorCode,
     errorMessage,
     ...details
@@ -139,29 +143,32 @@ export async function removeRekordboxDesktopPlaylistTracks(
     : []
 
   if (playlistId <= 0) {
-    return buildRemoveTracksFailureResponse(
+    return buildTracksFailureResponse(
+      'remove',
       'INVALID_PLAYLIST_ID',
       '目标 Rekordbox 播放列表无效。',
       { playlistId, rowKeys }
-    )
+    ) as RekordboxDesktopRemovePlaylistTracksResponse
   }
   if (rowKeys.length === 0) {
-    return buildRemoveTracksFailureResponse(
+    return buildTracksFailureResponse(
+      'remove',
       'PLAYLIST_TRACK_REMOVE_FAILED',
       '没有可移除的播放列表曲目。',
       { playlistId }
-    )
+    ) as RekordboxDesktopRemovePlaylistTracksResponse
   }
 
   let probe: Awaited<ReturnType<typeof requireRekordboxDesktopLibraryProbe>>
   try {
     probe = await requireRekordboxDesktopLibraryProbe()
   } catch (error) {
-    return buildRemoveTracksFailureResponse(
+    return buildTracksFailureResponse(
+      'remove',
       getErrorCode(error, 'REKORDBOX_DB_OPEN_FAILED'),
       getErrorMessage(error, '未检测到可写入的 Rekordbox 本机库。'),
       { playlistId, rowKeys }
-    )
+    ) as RekordboxDesktopRemovePlaylistTracksResponse
   }
 
   try {
@@ -190,10 +197,86 @@ export async function removeRekordboxDesktopPlaylistTracks(
       }
     }
   } catch (error) {
-    return buildRemoveTracksFailureResponse(
+    return buildTracksFailureResponse(
+      'remove',
       getErrorCode(error, 'PLAYLIST_TRACK_REMOVE_FAILED'),
       getErrorMessage(error, '从 Rekordbox 播放列表移除曲目失败。'),
       { playlistId, rowKeys, error }
-    )
+    ) as RekordboxDesktopRemovePlaylistTracksResponse
+  }
+}
+
+export async function reorderRekordboxDesktopPlaylistTracks(
+  request: RekordboxDesktopReorderPlaylistTracksRequest
+): Promise<RekordboxDesktopReorderPlaylistTracksResponse> {
+  const playlistId = Math.max(0, Number(request.playlistId) || 0)
+  const rowKeys = Array.isArray(request.rowKeys)
+    ? request.rowKeys.map((item) => String(item || '').trim()).filter(Boolean)
+    : []
+  const targetIndex = Math.max(0, Number(request.targetIndex) || 0)
+
+  if (playlistId <= 0) {
+    return buildTracksFailureResponse(
+      'reorder',
+      'INVALID_PLAYLIST_ID',
+      '目标 Rekordbox 播放列表无效。',
+      { playlistId, rowKeys, targetIndex }
+    ) as RekordboxDesktopReorderPlaylistTracksResponse
+  }
+  if (rowKeys.length === 0) {
+    return buildTracksFailureResponse(
+      'reorder',
+      'PLAYLIST_TRACK_REORDER_FAILED',
+      '没有可排序的播放列表曲目。',
+      { playlistId, targetIndex }
+    ) as RekordboxDesktopReorderPlaylistTracksResponse
+  }
+
+  let probe: Awaited<ReturnType<typeof requireRekordboxDesktopLibraryProbe>>
+  try {
+    probe = await requireRekordboxDesktopLibraryProbe()
+  } catch (error) {
+    return buildTracksFailureResponse(
+      'reorder',
+      getErrorCode(error, 'REKORDBOX_DB_OPEN_FAILED'),
+      getErrorMessage(error, '未检测到可写入的 Rekordbox 本机库。'),
+      { playlistId, rowKeys, targetIndex }
+    ) as RekordboxDesktopReorderPlaylistTracksResponse
+  }
+
+  try {
+    const payload = await runRekordboxDesktopHelper<
+      RekordboxDesktopHelperReorderPlaylistTracksPayload,
+      {
+        dbPath: string
+        dbDir: string
+        playlistId: number
+        rowKeys: string[]
+        targetIndex: number
+      }
+    >('reorder-playlist-tracks', {
+      dbPath: probe.dbPath,
+      dbDir: probe.dbDir,
+      playlistId,
+      rowKeys,
+      targetIndex
+    })
+
+    return {
+      ok: true,
+      summary: {
+        playlistId: Number(payload?.playlistId) || playlistId,
+        requestedCount: Number(payload?.requestedCount) || rowKeys.length,
+        movedCount: Number(payload?.movedCount) || 0,
+        targetIndex: Number(payload?.targetIndex) || targetIndex
+      }
+    }
+  } catch (error) {
+    return buildTracksFailureResponse(
+      'reorder',
+      getErrorCode(error, 'PLAYLIST_TRACK_REORDER_FAILED'),
+      getErrorMessage(error, '调整 Rekordbox 播放列表曲目顺序失败。'),
+      { playlistId, rowKeys, targetIndex, error }
+    ) as RekordboxDesktopReorderPlaylistTracksResponse
   }
 }
