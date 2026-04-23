@@ -186,6 +186,15 @@ const canReorderDesktopTracks = computed(
     (!sortedTrackColumn.value ||
       (sortedTrackColumn.value.key === 'index' && sortedTrackColumn.value.order === 'asc'))
 )
+const canRenumberDesktopTracks = computed(
+  () =>
+    canRemoveTracksFromDesktopPlaylist.value &&
+    !loading.value &&
+    !playlistMutationPending.value &&
+    visibleSongs.value.length > 1 &&
+    Boolean(sortedTrackColumn.value) &&
+    sortedTrackColumn.value?.key !== 'index'
+)
 
 const pioneerSongMenuArr = computed<IMenu[][]>(() => {
   const groups: IMenu[][] = []
@@ -591,16 +600,20 @@ const loadPlaylistTracks = async () => {
   }
 }
 
-const { playlistMutationPending, removeTracksFromDesktopPlaylist, reorderTracksInDesktopPlaylist } =
-  usePioneerDesktopPlaylistActions({
-    runtime,
-    selectedPlaylistId,
-    selectedSourceCacheKey,
-    currentPlaybackListKey,
-    visibleSongs,
-    selectedRowKeys,
-    loadPlaylistTracks
-  })
+const {
+  playlistMutationPending,
+  removeTracksFromDesktopPlaylist,
+  reorderTracksInDesktopPlaylist,
+  renumberTracksInDesktopPlaylist
+} = usePioneerDesktopPlaylistActions({
+  runtime,
+  selectedPlaylistId,
+  selectedSourceCacheKey,
+  currentPlaybackListKey,
+  visibleSongs,
+  selectedRowKeys,
+  loadPlaylistTracks
+})
 
 watch(
   () => [selectedSourceRootPath.value, selectedPlaylistId.value, selectedSourceKind.value] as const,
@@ -731,6 +744,10 @@ const handlePlaylistReorder = async (payload: { sourceItemIds: string[]; targetI
     payload.targetIndex,
     canReorderDesktopTracks.value
   )
+}
+
+const handleRenumberTracksByVisibleOrder = async () => {
+  await renumberTracksInDesktopPlaylist(visibleSongs.value, canRenumberDesktopTracks.value)
 }
 
 const requestImmediateAnalysis = (song: ISongInfo) => {
@@ -958,9 +975,13 @@ watch(
         :ascending-order="ascendingOrder"
         :descending-order="descendingOrder"
         :total-width="totalWidth"
+        :show-index-action="canRenumberDesktopTracks"
+        :index-action-title="t('rekordboxDesktop.renumberPlaylistTracksAction')"
+        :index-action-disabled="playlistMutationPending || loading"
         @update:columns="handleColumnsUpdate"
         @column-click="handleColumnClick"
         @header-contextmenu.stop.prevent
+        @index-action-click="handleRenumberTracksByVisibleOrder"
       />
 
       <SongListRows

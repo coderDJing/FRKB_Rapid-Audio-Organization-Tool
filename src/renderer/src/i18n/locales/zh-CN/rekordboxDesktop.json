@@ -43,6 +43,7 @@
     "removeTrackFromPlaylistConfirmLine1": "将从当前 Rekordbox 播放列表移除：{name}",
     "removeTracksFromPlaylistConfirmCount": "将从当前 Rekordbox 播放列表移除 {count} 首曲目。",
     "removeTracksFromPlaylistConfirmLine2": "只会移除播放列表里的条目，不会删除歌曲文件。",
+    "renumberPlaylistTracksAction": "重新编号曲目顺序",
     "deletePlaylistConfirmLine1": "将删除 Rekordbox 播放列表：{name}",
     "deletePlaylistConfirmLine2": "只会删除 Rekordbox 里的歌单结构，不会删除歌曲文件。",
     "deleteFolderConfirmLine1": "将删除 Rekordbox 文件夹：{name}",

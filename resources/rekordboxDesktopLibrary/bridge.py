@@ -1356,11 +1356,7 @@ def _build_reorder_playlist_tracks_payload(request_payload: Dict[str, Any]) -> D
             for entry in entries
             if str(getattr(entry, "ID", "") or "").strip() not in selected_entry_ids
         ]
-        selected_entries_in_order = [
-            entry
-            for entry in entries
-            if str(getattr(entry, "ID", "") or "").strip() in selected_entry_ids
-        ]
+        selected_entries_in_order = selected_entries
         insert_index = max(0, min(len(remaining_entries), target_index - selected_before_target))
         next_entries = (
             remaining_entries[:insert_index]

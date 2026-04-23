@@ -32,6 +32,15 @@ export const usePioneerDesktopPlaylistActions = (params: {
 
   const playlistMutationPending = ref(false)
 
+  const runWithPlaylistMutationPending = async <T>(task: () => Promise<T>): Promise<T> => {
+    playlistMutationPending.value = true
+    try {
+      return await task()
+    } finally {
+      playlistMutationPending.value = false
+    }
+  }
+
   const showRekordboxFailureDialog = async (message: string, logPath?: string) => {
     const content = [
       t('rekordboxDesktop.failedReason', { message: message || t('common.unknownError') })
@@ -53,6 +62,23 @@ export const usePioneerDesktopPlaylistActions = (params: {
   const syncPlaybackListFromVisibleSongs = () => {
     if (runtime.playingData.playingSongListUUID !== currentPlaybackListKey.value) return
     runtime.playingData.playingSongListData = [...visibleSongs.value]
+  }
+
+  const sortRowKeysByVisibleSongs = (rowKeys: string[]) => {
+    const indexMap = new Map<string, number>()
+    visibleSongs.value.forEach((item, index) => {
+      const key = String(item.mixtapeItemId || '').trim()
+      if (!key || indexMap.has(key)) return
+      indexMap.set(key, index)
+    })
+    return [...rowKeys].sort((left, right) => {
+      const leftIndex = indexMap.get(left)
+      const rightIndex = indexMap.get(right)
+      if (leftIndex === undefined && rightIndex === undefined) return 0
+      if (leftIndex === undefined) return 1
+      if (rightIndex === undefined) return -1
+      return leftIndex - rightIndex
+    })
   }
 
   const removeTracksFromDesktopPlaylist = async (selectedTracks: ISongInfo[], enabled: boolean) => {
@@ -83,44 +109,43 @@ export const usePioneerDesktopPlaylistActions = (params: {
       textAlign: 'left'
     })
     if (confirmResult !== 'confirm') return
-    if (!(await ensureRekordboxDesktopWriteAvailable('edit'))) return
 
-    playlistMutationPending.value = true
-    try {
-      const response = (await window.electron.ipcRenderer.invoke(
-        buildRekordboxSourceChannel('desktop', 'remove-playlist-tracks'),
-        {
-          playlistId,
-          rowKeys
+    await runWithPlaylistMutationPending(async () => {
+      try {
+        if (!(await ensureRekordboxDesktopWriteAvailable('edit'))) return
+        const response = (await window.electron.ipcRenderer.invoke(
+          buildRekordboxSourceChannel('desktop', 'remove-playlist-tracks'),
+          {
+            playlistId,
+            rowKeys
+          }
+        )) as RekordboxDesktopRemovePlaylistTracksResponse
+
+        if (!response.ok) {
+          await showRekordboxFailureDialog(response.summary.errorMessage, response.summary.logPath)
+          return
         }
-      )) as RekordboxDesktopRemovePlaylistTracksResponse
 
-      if (!response.ok) {
-        await showRekordboxFailureDialog(response.summary.errorMessage, response.summary.logPath)
-        return
-      }
+        const removedKeySet = new Set(rowKeys)
+        selectedRowKeys.value = []
+        if (selectedSourceCacheKey.value) {
+          clearRekordboxSourceCache(selectedSourceCacheKey.value)
+        }
 
-      const removedKeySet = new Set(rowKeys)
-      selectedRowKeys.value = []
-      if (selectedSourceCacheKey.value) {
-        clearRekordboxSourceCache(selectedSourceCacheKey.value)
-      }
+        if (runtime.playingData.playingSongListUUID === currentPlaybackListKey.value) {
+          runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.filter(
+            (item) => !removedKeySet.has(String(item.mixtapeItemId || '').trim())
+          )
+        }
 
-      if (runtime.playingData.playingSongListUUID === currentPlaybackListKey.value) {
-        runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.filter(
-          (item) => !removedKeySet.has(String(item.mixtapeItemId || '').trim())
+        await loadPlaylistTracks()
+        syncPlaybackListFromVisibleSongs()
+      } catch (error) {
+        await showRekordboxFailureDialog(
+          error instanceof Error ? error.message : String(error || t('common.unknownError'))
         )
       }
-
-      await loadPlaylistTracks()
-      syncPlaybackListFromVisibleSongs()
-    } catch (error) {
-      await showRekordboxFailureDialog(
-        error instanceof Error ? error.message : String(error || t('common.unknownError'))
-      )
-    } finally {
-      playlistMutationPending.value = false
-    }
+    })
   }
 
   const reorderTracksInDesktopPlaylist = async (
@@ -130,45 +155,87 @@ export const usePioneerDesktopPlaylistActions = (params: {
   ) => {
     if (!enabled) return
     const playlistId = selectedPlaylistId.value
-    const rowKeys = sourceItemIds.map((item) => String(item || '').trim()).filter(Boolean)
+    const rowKeys = sortRowKeysByVisibleSongs(
+      sourceItemIds.map((item) => String(item || '').trim()).filter(Boolean)
+    )
     if (!playlistId || rowKeys.length === 0) return
-    if (!(await ensureRekordboxDesktopWriteAvailable('edit'))) return
 
-    playlistMutationPending.value = true
-    try {
-      const response = (await window.electron.ipcRenderer.invoke(
-        buildRekordboxSourceChannel('desktop', 'reorder-playlist-tracks'),
-        {
-          playlistId,
-          rowKeys,
-          targetIndex
+    await runWithPlaylistMutationPending(async () => {
+      try {
+        if (!(await ensureRekordboxDesktopWriteAvailable('edit'))) return
+        const response = (await window.electron.ipcRenderer.invoke(
+          buildRekordboxSourceChannel('desktop', 'reorder-playlist-tracks'),
+          {
+            playlistId,
+            rowKeys,
+            targetIndex
+          }
+        )) as RekordboxDesktopReorderPlaylistTracksResponse
+
+        if (!response.ok) {
+          await showRekordboxFailureDialog(response.summary.errorMessage, response.summary.logPath)
+          return
         }
-      )) as RekordboxDesktopReorderPlaylistTracksResponse
 
-      if (!response.ok) {
-        await showRekordboxFailureDialog(response.summary.errorMessage, response.summary.logPath)
-        return
+        if (selectedSourceCacheKey.value) {
+          clearRekordboxSourceCache(selectedSourceCacheKey.value)
+        }
+
+        await loadPlaylistTracks()
+        selectedRowKeys.value = rowKeys
+        syncPlaybackListFromVisibleSongs()
+      } catch (error) {
+        await showRekordboxFailureDialog(
+          error instanceof Error ? error.message : String(error || t('common.unknownError'))
+        )
       }
+    })
+  }
 
-      if (selectedSourceCacheKey.value) {
-        clearRekordboxSourceCache(selectedSourceCacheKey.value)
+  const renumberTracksInDesktopPlaylist = async (orderedSongs: ISongInfo[], enabled: boolean) => {
+    if (!enabled) return
+    const playlistId = selectedPlaylistId.value
+    const rowKeys = orderedSongs
+      .map((item) => String(item.mixtapeItemId || '').trim())
+      .filter(Boolean)
+    if (!playlistId || rowKeys.length <= 1) return
+
+    await runWithPlaylistMutationPending(async () => {
+      try {
+        if (!(await ensureRekordboxDesktopWriteAvailable('edit'))) return
+        const response = (await window.electron.ipcRenderer.invoke(
+          buildRekordboxSourceChannel('desktop', 'reorder-playlist-tracks'),
+          {
+            playlistId,
+            rowKeys,
+            targetIndex: 0
+          }
+        )) as RekordboxDesktopReorderPlaylistTracksResponse
+
+        if (!response.ok) {
+          await showRekordboxFailureDialog(response.summary.errorMessage, response.summary.logPath)
+          return
+        }
+
+        if (selectedSourceCacheKey.value) {
+          clearRekordboxSourceCache(selectedSourceCacheKey.value)
+        }
+
+        await loadPlaylistTracks()
+        selectedRowKeys.value = rowKeys
+        syncPlaybackListFromVisibleSongs()
+      } catch (error) {
+        await showRekordboxFailureDialog(
+          error instanceof Error ? error.message : String(error || t('common.unknownError'))
+        )
       }
-
-      await loadPlaylistTracks()
-      selectedRowKeys.value = rowKeys
-      syncPlaybackListFromVisibleSongs()
-    } catch (error) {
-      await showRekordboxFailureDialog(
-        error instanceof Error ? error.message : String(error || t('common.unknownError'))
-      )
-    } finally {
-      playlistMutationPending.value = false
-    }
+    })
   }
 
   return {
     playlistMutationPending,
     removeTracksFromDesktopPlaylist,
-    reorderTracksInDesktopPlaylist
+    reorderTracksInDesktopPlaylist,
+    renumberTracksInDesktopPlaylist
   }
 }

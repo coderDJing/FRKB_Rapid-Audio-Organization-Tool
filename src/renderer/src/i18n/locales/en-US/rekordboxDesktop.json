@@ -43,6 +43,7 @@
     "removeTrackFromPlaylistConfirmLine1": "The following track will be removed from the current Rekordbox playlist: {name}",
     "removeTracksFromPlaylistConfirmCount": "{count} tracks will be removed from the current Rekordbox playlist.",
     "removeTracksFromPlaylistConfirmLine2": "Only playlist entries will be removed. Track files will be kept.",
+    "renumberPlaylistTracksAction": "Renumber track order",
     "deletePlaylistConfirmLine1": "The following Rekordbox playlist will be deleted: {name}",
     "deletePlaylistConfirmLine2": "Only the Rekordbox playlist structure will be removed. Track files will be kept.",
     "deleteFolderConfirmLine1": "The following Rekordbox folder will be deleted: {name}",

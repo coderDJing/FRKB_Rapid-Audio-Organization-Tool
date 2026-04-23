@@ -39,6 +39,18 @@ const props = defineProps({
   totalWidth: {
     type: Number,
     required: true
+  },
+  showIndexAction: {
+    type: Boolean,
+    default: false
+  },
+  indexActionTitle: {
+    type: String,
+    default: ''
+  },
+  indexActionDisabled: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -49,6 +61,7 @@ const emit = defineEmits<{
   (e: 'header-contextmenu', event: MouseEvent): void
   (e: 'drag-start'): void
   (e: 'drag-end'): void
+  (e: 'index-action-click'): void
 }>()
 
 // 创建一个 ref 来存储可见的、可拖拽的列
@@ -390,6 +403,11 @@ function resolveFilterDialogType(col: ISongsAreaColumn): FilterDialogType {
 const handleContextMenu = (event: MouseEvent) => {
   emit('header-contextmenu', event)
 }
+
+const handleIndexActionClick = () => {
+  if (!props.showIndexAction || props.indexActionDisabled) return
+  emit('index-action-click')
+}
 </script>
 
 <template>
@@ -444,6 +462,43 @@ const handleContextMenu = (event: MouseEvent) => {
       </div>
       <!-- 筛选图标：靠右对齐、垂直居中，固定 20×20，不触发排序 -->
       <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px">
+        <button
+          v-if="col.key === 'index' && props.showIndexAction"
+          class="headerActionButton"
+          type="button"
+          :title="props.indexActionTitle"
+          :disabled="props.indexActionDisabled"
+          @click.stop="handleIndexActionClick"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 14 14"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+          >
+            <path
+              d="M4 3.5H10M4 7H10M4 10.5H10"
+              stroke="currentColor"
+              stroke-width="1.2"
+              stroke-linecap="round"
+            />
+            <path
+              d="M2.2 2.5L1.2 3.5L2.2 4.5"
+              stroke="currentColor"
+              stroke-width="1.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+            <path
+              d="M11.8 9.5L12.8 10.5L11.8 11.5"
+              stroke="currentColor"
+              stroke-width="1.2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
         <span
           v-if="col.key !== 'index' && col.filterType"
           class="mask-icon filter-icon"
@@ -536,6 +591,32 @@ const handleContextMenu = (event: MouseEvent) => {
 .resize-handle {
   /* 右侧拖拽手柄样式补充，避免空规则 */
   background: transparent;
+}
+
+.headerActionButton {
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg) 78%, var(--accent) 22%);
+  color: color-mix(in srgb, var(--accent) 72%, var(--text));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bg-elev) 78%, transparent);
+
+  &:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--bg) 60%, var(--accent) 40%);
+    border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+    color: var(--accent);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
 }
 
 /* 如果需要，可以从 songsArea.vue 复制其他相关样式，例如 .unselectable */
