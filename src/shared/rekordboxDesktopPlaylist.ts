@@ -1,3 +1,5 @@
+import type { ISongHotCue, ISongMemoryCue } from '../types/globals'
+
 export type RekordboxDesktopPlaylistTrackInput = {
   filePath: string
   displayName?: string
@@ -7,6 +9,8 @@ export type RekordboxDesktopPlaylistTrackInput = {
   label?: string
   bitrate?: number
   duration?: string
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
 }
 
 export type RekordboxDesktopWriteAvailabilityStatus =

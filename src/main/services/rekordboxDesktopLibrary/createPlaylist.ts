@@ -5,6 +5,10 @@ import store from '../../store'
 import { mapRendererPathToFsPath } from '../../utils'
 import { readTrackMetadata } from '../metadataEditor'
 import { scanSongListOffMainThread } from '../songListScanWorker'
+import { loadSharedSongHotCueDefinition } from '../sharedSongHotCues'
+import { loadSharedSongMemoryCueDefinition } from '../sharedSongMemoryCues'
+import { normalizeSongHotCues } from '../../../shared/hotCues'
+import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
 import { runRekordboxDesktopHelper } from './helper'
 import type {
@@ -18,6 +22,7 @@ import type {
   RekordboxDesktopPlaylistTrackInput,
   RekordboxDesktopPlaylistWriteTarget
 } from '../../../shared/rekordboxDesktopPlaylist'
+import type { ISongHotCue, ISongMemoryCue } from '../../../types/globals'
 
 type ResolvedTrack = {
   sourcePath: string
@@ -36,6 +41,8 @@ type ResolvedTrack = {
   discNumber?: number
   durationSeconds?: number
   bitrate?: number
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
 }
 
 type SourceTracksResult =
@@ -175,7 +182,9 @@ const validateSelectedTrackInputs = (tracks: RekordboxDesktopPlaylistTrackInput[
         bitrate:
           typeof item.bitrate === 'number' && Number.isFinite(item.bitrate) && item.bitrate > 0
             ? item.bitrate
-            : undefined
+            : undefined,
+        hotCues: normalizeSongHotCues(item.hotCues),
+        memoryCues: normalizeSongMemoryCues(item.memoryCues)
       } satisfies ResolvedTrack
     })
   }
@@ -242,7 +251,9 @@ const resolvePlaylistTracks = async (
         bitrate:
           typeof item.bitrate === 'number' && Number.isFinite(item.bitrate) && item.bitrate > 0
             ? item.bitrate
-            : undefined
+            : undefined,
+        hotCues: normalizeSongHotCues(item.hotCues),
+        memoryCues: normalizeSongMemoryCues(item.memoryCues)
       } satisfies ResolvedTrack
     })
   }
@@ -300,6 +311,43 @@ const enrichTracksWithMetadata = async (tracks: ResolvedTrack[]) => {
   )
 }
 
+const enrichTracksWithSharedCues = async (tracks: ResolvedTrack[]) => {
+  return await Promise.all(
+    tracks.map(async (track) => {
+      const existingHotCues = normalizeSongHotCues(track.hotCues)
+      const existingMemoryCues = normalizeSongMemoryCues(track.memoryCues)
+      if (existingHotCues.length > 0 && existingMemoryCues.length > 0) {
+        return {
+          ...track,
+          hotCues: existingHotCues,
+          memoryCues: existingMemoryCues
+        }
+      }
+
+      const [sharedHotCueDefinition, sharedMemoryCueDefinition] = await Promise.all([
+        existingHotCues.length > 0
+          ? Promise.resolve(null)
+          : loadSharedSongHotCueDefinition(track.sourcePath),
+        existingMemoryCues.length > 0
+          ? Promise.resolve(null)
+          : loadSharedSongMemoryCueDefinition(track.sourcePath)
+      ])
+
+      return {
+        ...track,
+        hotCues:
+          existingHotCues.length > 0
+            ? existingHotCues
+            : normalizeSongHotCues(sharedHotCueDefinition?.hotCues),
+        memoryCues:
+          existingMemoryCues.length > 0
+            ? existingMemoryCues
+            : normalizeSongMemoryCues(sharedMemoryCueDefinition?.memoryCues)
+      } satisfies ResolvedTrack
+    })
+  )
+}
+
 const collectMissingSourcePaths = async (sourcePaths: string[]) => {
   const missing: string[] = []
   for (const sourcePath of sourcePaths) {
@@ -341,7 +389,9 @@ const buildHelperTrackPayload = (
       ? track.durationSeconds
       : null,
   bitrate:
-    typeof track.bitrate === 'number' && Number.isFinite(track.bitrate) ? track.bitrate : null
+    typeof track.bitrate === 'number' && Number.isFinite(track.bitrate) ? track.bitrate : null,
+  hotCues: Array.isArray(track.hotCues) ? track.hotCues.map((cue) => ({ ...cue })) : [],
+  memoryCues: Array.isArray(track.memoryCues) ? track.memoryCues.map((cue) => ({ ...cue })) : []
 })
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -429,7 +479,9 @@ export async function createRekordboxDesktopPlaylist(
     })
   }
 
-  const sourceTracks = await enrichTracksWithMetadata(sourceTracksResult.tracks)
+  const sourceTracks = await enrichTracksWithSharedCues(
+    await enrichTracksWithMetadata(sourceTracksResult.tracks)
+  )
   const missingPaths = await collectMissingSourcePaths(
     sourceTracks.map((track) => track.sourcePath)
   )

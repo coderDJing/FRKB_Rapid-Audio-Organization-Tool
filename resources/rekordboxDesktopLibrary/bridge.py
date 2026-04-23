@@ -5,7 +5,8 @@ import sys
 import time
 import datetime
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
+from uuid import uuid4
 
 PYREKORDBOX_IMPORT_ERROR: Optional[str] = None
 
@@ -101,6 +102,19 @@ def _parse_float(value: Any) -> Optional[float]:
     return num
 
 
+def _parse_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    text = str(value or "").strip().lower()
+    if text in ("1", "true", "yes", "on"):
+        return True
+    if text in ("0", "false", "no", "off"):
+        return False
+    return default
+
+
 def _normalize_text(value: Any) -> str:
     return str(value or "").strip()
 
@@ -108,6 +122,276 @@ def _normalize_text(value: Any) -> str:
 def _normalize_optional_text(value: Any) -> Optional[str]:
     text = _normalize_text(value)
     return text or None
+
+
+HOT_CUE_SLOT_COUNT = 8
+CUE_FRAME_RATE = 150.0
+
+
+def _normalize_cue_sec(value: Any) -> Optional[float]:
+    num = _parse_float(value)
+    if num is None or num < 0:
+        return None
+    return round(num, 3)
+
+
+def _normalize_cue_color_index(value: Any) -> Optional[int]:
+    num = _parse_int(value, -1)
+    return num if num >= 0 else None
+
+
+def _normalize_hot_cue_payload(track: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw_items = track.get("hotCues")
+    if not isinstance(raw_items, list):
+        return []
+
+    normalized: List[Dict[str, Any]] = []
+    used_slots = set()
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            continue
+        slot = _parse_int(raw_item.get("slot"), -1)
+        if slot < 0 or slot >= HOT_CUE_SLOT_COUNT or slot in used_slots:
+            continue
+        sec = _normalize_cue_sec(raw_item.get("sec"))
+        if sec is None:
+            continue
+        loop_end_sec = _normalize_cue_sec(raw_item.get("loopEndSec"))
+        is_loop = bool(
+            _parse_bool(raw_item.get("isLoop"), False)
+            and loop_end_sec is not None
+            and loop_end_sec > sec
+        )
+        normalized.append(
+            {
+                "slot": slot,
+                "sec": sec,
+                "label": _normalize_optional_text(raw_item.get("label")),
+                "comment": _normalize_optional_text(raw_item.get("comment")),
+                "colorIndex": _normalize_cue_color_index(raw_item.get("colorIndex")),
+                "isLoop": is_loop,
+                "loopEndSec": loop_end_sec if is_loop else None,
+            }
+        )
+        used_slots.add(slot)
+    normalized.sort(key=lambda item: int(item.get("slot", 0)))
+    return normalized
+
+
+def _normalize_memory_cue_payload(track: Dict[str, Any]) -> List[Dict[str, Any]]:
+    raw_items = track.get("memoryCues")
+    if not isinstance(raw_items, list):
+        return []
+
+    normalized: List[Dict[str, Any]] = []
+    seen_keys = set()
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            continue
+        sec = _normalize_cue_sec(raw_item.get("sec"))
+        if sec is None:
+            continue
+        loop_end_sec = _normalize_cue_sec(raw_item.get("loopEndSec"))
+        is_loop = bool(
+            _parse_bool(raw_item.get("isLoop"), False)
+            and loop_end_sec is not None
+            and loop_end_sec > sec
+        )
+        dedupe_key = (sec, loop_end_sec if is_loop else None)
+        if dedupe_key in seen_keys:
+            continue
+        normalized.append(
+            {
+                "sec": sec,
+                "order": _parse_int(raw_item.get("order"), -1),
+                "comment": _normalize_optional_text(raw_item.get("comment")),
+                "colorIndex": _normalize_cue_color_index(raw_item.get("colorIndex")),
+                "isLoop": is_loop,
+                "loopEndSec": loop_end_sec if is_loop else None,
+            }
+        )
+        seen_keys.add(dedupe_key)
+    normalized.sort(
+        key=lambda item: (
+            int(item.get("order", -1)) if int(item.get("order", -1)) >= 0 else 999999,
+            float(item.get("sec", 0.0)),
+        )
+    )
+    return normalized
+
+
+def _resolve_hot_cue_comment(slot: int, label: Optional[str], comment: Optional[str]) -> Optional[str]:
+    if comment:
+        return comment
+    default_label = chr(ord("A") + slot) if 0 <= slot < 26 else ""
+    if label and label != default_label:
+        return label
+    return None
+
+
+def _resolve_content_cues(content: Any) -> Dict[str, Any]:
+    raw_cues = getattr(content, "Cues", None)
+    if raw_cues is None:
+        return {"hotCues": None, "memoryCues": None}
+
+    try:
+        cue_rows = list(raw_cues)
+    except Exception:
+        cue_rows = []
+
+    ordered_rows = sorted(
+        cue_rows,
+        key=lambda item: (
+            _parse_int(getattr(item, "Kind", 0), 0),
+            _parse_int(getattr(item, "InMsec", 0), 0),
+            _normalize_identifier(getattr(item, "ID", "")),
+        ),
+    )
+
+    hot_cues: List[Dict[str, Any]] = []
+    memory_cues: List[Dict[str, Any]] = []
+    used_hot_slots = set()
+    for row in ordered_rows:
+        kind = _parse_int(getattr(row, "Kind", 0), 0)
+        in_msec = _parse_int(getattr(row, "InMsec", 0), 0)
+        out_msec = _parse_int(getattr(row, "OutMsec", -1), -1)
+        start_sec = _normalize_cue_sec(in_msec / 1000.0)
+        if start_sec is None:
+            continue
+        is_loop = out_msec > in_msec
+        loop_end_sec = _normalize_cue_sec(out_msec / 1000.0) if is_loop else None
+        comment = _normalize_optional_text(getattr(row, "Comment", None))
+        color_index = _normalize_cue_color_index(getattr(row, "ColorTableIndex", None))
+        if kind <= 0:
+            memory_cues.append(
+                {
+                    "sec": start_sec,
+                    "order": len(memory_cues),
+                    "comment": comment,
+                    "colorIndex": color_index,
+                    "isLoop": is_loop,
+                    "loopEndSec": loop_end_sec if is_loop else None,
+                    "source": "rekordbox",
+                }
+            )
+            continue
+
+        slot = kind - 1
+        if slot < 0 or slot >= HOT_CUE_SLOT_COUNT or slot in used_hot_slots:
+            continue
+        hot_cues.append(
+            {
+                "slot": slot,
+                "sec": start_sec,
+                "label": chr(ord("A") + slot),
+                "comment": comment,
+                "colorIndex": color_index,
+                "isLoop": is_loop,
+                "loopEndSec": loop_end_sec if is_loop else None,
+                "source": "rekordbox",
+            }
+        )
+        used_hot_slots.add(slot)
+
+    return {
+        "hotCues": hot_cues or None,
+        "memoryCues": memory_cues or None,
+    }
+
+
+def _content_has_cues(content: Any) -> bool:
+    raw_cues = getattr(content, "Cues", None)
+    if raw_cues is None:
+        return False
+    try:
+        return len(raw_cues) > 0
+    except Exception:
+        try:
+            return any(True for _ in raw_cues)
+        except Exception:
+            return False
+
+
+def _build_cue_row(
+    content: Any,
+    kind: int,
+    start_sec: float,
+    loop_end_sec: Optional[float],
+    comment: Optional[str],
+    color_index: Optional[int],
+) -> Any:
+    now = datetime.datetime.now()
+    in_msec = int(round(start_sec * 1000))
+    out_msec = -1
+    out_frame = -1
+    if loop_end_sec is not None and loop_end_sec > start_sec:
+        out_msec = int(round(loop_end_sec * 1000))
+        out_frame = int(round(loop_end_sec * CUE_FRAME_RATE))
+    return tables.DjmdCue.create(
+        ID=str(uuid4()),
+        UUID=str(uuid4()),
+        ContentID=_normalize_identifier(getattr(content, "ID", "")),
+        ContentUUID=_normalize_identifier(getattr(content, "UUID", "")),
+        InMsec=in_msec,
+        InFrame=int(round(start_sec * CUE_FRAME_RATE)),
+        InMpegFrame=0,
+        InMpegAbs=0,
+        OutMsec=out_msec,
+        OutFrame=out_frame,
+        OutMpegFrame=-1 if out_msec < 0 else 0,
+        OutMpegAbs=-1 if out_msec < 0 else 0,
+        Kind=kind,
+        Color=-1,
+        ColorTableIndex=color_index,
+        ActiveLoop=0,
+        Comment=comment,
+        BeatLoopSize=0,
+        CueMicrosec=int(round(start_sec * 1_000_000)),
+        InPointSeekInfo=None,
+        OutPointSeekInfo=None,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _apply_track_cues(db: Any, content: Any, track: Dict[str, Any]) -> None:
+    hot_cues = _normalize_hot_cue_payload(track)
+    memory_cues = _normalize_memory_cue_payload(track)
+    if not hot_cues and not memory_cues:
+        return
+    if _content_has_cues(content):
+        return
+
+    for cue in memory_cues:
+        db.add(
+            _build_cue_row(
+                content=content,
+                kind=0,
+                start_sec=float(cue.get("sec") or 0.0),
+                loop_end_sec=cue.get("loopEndSec"),
+                comment=_normalize_optional_text(cue.get("comment")),
+                color_index=_normalize_cue_color_index(cue.get("colorIndex")),
+            )
+        )
+
+    for cue in hot_cues:
+        slot = _parse_int(cue.get("slot"), -1)
+        if slot < 0 or slot >= HOT_CUE_SLOT_COUNT:
+            continue
+        db.add(
+            _build_cue_row(
+                content=content,
+                kind=slot + 1,
+                start_sec=float(cue.get("sec") or 0.0),
+                loop_end_sec=cue.get("loopEndSec"),
+                comment=_resolve_hot_cue_comment(
+                    slot,
+                    _normalize_optional_text(cue.get("label")),
+                    _normalize_optional_text(cue.get("comment")),
+                ),
+                color_index=_normalize_cue_color_index(cue.get("colorIndex")),
+            )
+        )
 
 
 def _normalize_identifier(value: Any) -> str:
@@ -617,6 +901,7 @@ def _build_track_record(
         getattr(content, "ImagePath", ""),
         (db_dir, share_dir),
     )
+    cue_payload = _resolve_content_cues(content)
 
     return {
         "rowKey": str(row_key or f"rekordbox-desktop:{playlist_id}:{entry_index}:{track_id}").strip(),
@@ -648,6 +933,8 @@ def _build_track_record(
         "dateAdded": _normalize_date(getattr(content, "StockDate", None)),
         "artworkPath": artwork_path or None,
         "coverPath": artwork_path or None,
+        "hotCues": cue_payload.get("hotCues"),
+        "memoryCues": cue_payload.get("memoryCues"),
     }
 
 
@@ -875,6 +1162,13 @@ def _write_tracks_to_playlist(db: Any, playlist: Any, tracks: Any) -> Dict[str, 
             raise HelperCommandError(
                 "TRACK_IMPORT_FAILED",
                 f"写入曲目元数据失败：{Path(file_path).name}：{str(exc).strip() or 'unknown error'}",
+            ) from exc
+        try:
+            _apply_track_cues(db, content, track)
+        except Exception as exc:
+            raise HelperCommandError(
+                "TRACK_IMPORT_FAILED",
+                f"写入曲目 Cue 失败：{Path(file_path).name}：{str(exc).strip() or 'unknown error'}",
             ) from exc
 
         content_id = _normalize_identifier(getattr(content, "ID", ""))

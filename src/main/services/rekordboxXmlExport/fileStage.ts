@@ -87,7 +87,9 @@ export const stageTrackFiles = async (params: {
       trackNumber: track.trackNumber,
       discNumber: track.discNumber,
       bitrate: track.bitrate,
-      duration: track.duration
+      duration: track.duration,
+      hotCues: track.hotCues,
+      memoryCues: track.memoryCues
     })
     appliedOperations.push({
       mode,

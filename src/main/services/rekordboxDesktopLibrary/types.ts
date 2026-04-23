@@ -1,7 +1,9 @@
 import type {
   IPioneerPlaylistTrack,
   IPioneerPlaylistTreeNode,
-  IPioneerPreviewWaveformData
+  IPioneerPreviewWaveformData,
+  ISongHotCue,
+  ISongMemoryCue
 } from '../../../types/globals'
 import type { RekordboxDesktopWriteAvailability } from '../../../shared/rekordboxDesktopPlaylist'
 
@@ -140,6 +142,8 @@ export type RekordboxDesktopHelperTrackRecord = {
   dateAdded?: string | null
   artworkPath?: string | null
   coverPath?: string | null
+  hotCues?: ISongHotCue[] | null
+  memoryCues?: ISongMemoryCue[] | null
 }
 
 export type RekordboxDesktopHelperTracksPayload = {
@@ -167,6 +171,8 @@ export type RekordboxDesktopHelperCreatePlaylistTrack = {
   discNumber?: number | string | null
   durationSeconds?: number | string | null
   bitrate?: number | string | null
+  hotCues?: ISongHotCue[] | null
+  memoryCues?: ISongMemoryCue[] | null
 }
 
 export type RekordboxDesktopHelperCreatePlaylistPayload = {

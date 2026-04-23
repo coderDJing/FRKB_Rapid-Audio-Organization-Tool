@@ -51,7 +51,9 @@ const buildTrackInput = (song: ISongInfo): RekordboxDesktopPlaylistTrackInput =>
   genre: typeof song.genre === 'string' ? song.genre : '',
   label: typeof song.label === 'string' ? song.label : '',
   bitrate: typeof song.bitrate === 'number' ? song.bitrate : undefined,
-  duration: typeof song.duration === 'string' ? song.duration : ''
+  duration: typeof song.duration === 'string' ? song.duration : '',
+  hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
+  memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
 })
 
 const buildJobId = () =>

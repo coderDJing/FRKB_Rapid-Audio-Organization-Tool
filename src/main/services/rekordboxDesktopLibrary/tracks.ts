@@ -57,7 +57,11 @@ const normalizeTrack = (
     comment: String(track?.comment || '').trim() || undefined,
     dateAdded: String(track?.dateAdded || '').trim() || undefined,
     artworkPath: String(track?.artworkPath || '').trim() || undefined,
-    coverPath: String(track?.coverPath || '').trim() || undefined
+    coverPath: String(track?.coverPath || '').trim() || undefined,
+    hotCues: Array.isArray(track?.hotCues) ? track.hotCues.map((cue) => ({ ...cue })) : undefined,
+    memoryCues: Array.isArray(track?.memoryCues)
+      ? track.memoryCues.map((cue) => ({ ...cue }))
+      : undefined
   }
 }
 

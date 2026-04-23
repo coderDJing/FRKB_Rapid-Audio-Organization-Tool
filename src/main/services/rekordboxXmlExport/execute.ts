@@ -6,6 +6,10 @@ import { mapRendererPathToFsPath } from '../../utils'
 import { markGlobalSongSearchDirty } from '../globalSongSearch'
 import { readTrackMetadata } from '../metadataEditor'
 import { scanSongListOffMainThread } from '../songListScanWorker'
+import { loadSharedSongHotCueDefinition } from '../sharedSongHotCues'
+import { loadSharedSongMemoryCueDefinition } from '../sharedSongMemoryCues'
+import { normalizeSongHotCues } from '../../../shared/hotCues'
+import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
 import type {
   RekordboxXmlExportRequest,
   RekordboxXmlExportResponse
@@ -90,7 +94,9 @@ const resolveSelectedTracks = (request: RekordboxXmlExportRequest) => {
       genre: typeof track.genre === 'string' ? track.genre : '',
       label: typeof track.label === 'string' ? track.label : '',
       bitrate: typeof track.bitrate === 'number' ? track.bitrate : undefined,
-      duration: typeof track.duration === 'string' ? track.duration : ''
+      duration: typeof track.duration === 'string' ? track.duration : '',
+      hotCues: normalizeSongHotCues(track.hotCues),
+      memoryCues: normalizeSongMemoryCues(track.memoryCues)
     }
   })
   return {
@@ -142,7 +148,9 @@ const resolvePlaylistTracks = async (request: RekordboxXmlExportRequest) => {
       genre: typeof item.genre === 'string' ? item.genre : '',
       label: typeof item.label === 'string' ? item.label : '',
       bitrate: typeof item.bitrate === 'number' ? item.bitrate : undefined,
-      duration: typeof item.duration === 'string' ? item.duration : ''
+      duration: typeof item.duration === 'string' ? item.duration : '',
+      hotCues: normalizeSongHotCues(item.hotCues),
+      memoryCues: normalizeSongMemoryCues(item.memoryCues)
     }))
   }
 }
@@ -194,6 +202,43 @@ const enrichTracksWithMetadata = async (tracks: RekordboxXmlExportResolvedTrack[
         }
       } catch {
         return track
+      }
+    })
+  )
+}
+
+const enrichTracksWithSharedCues = async (tracks: RekordboxXmlExportResolvedTrack[]) => {
+  return await Promise.all(
+    tracks.map(async (track) => {
+      const existingHotCues = normalizeSongHotCues(track.hotCues)
+      const existingMemoryCues = normalizeSongMemoryCues(track.memoryCues)
+      if (existingHotCues.length > 0 && existingMemoryCues.length > 0) {
+        return {
+          ...track,
+          hotCues: existingHotCues,
+          memoryCues: existingMemoryCues
+        }
+      }
+
+      const [sharedHotCueDefinition, sharedMemoryCueDefinition] = await Promise.all([
+        existingHotCues.length > 0
+          ? Promise.resolve(null)
+          : loadSharedSongHotCueDefinition(track.sourcePath),
+        existingMemoryCues.length > 0
+          ? Promise.resolve(null)
+          : loadSharedSongMemoryCueDefinition(track.sourcePath)
+      ])
+
+      return {
+        ...track,
+        hotCues:
+          existingHotCues.length > 0
+            ? existingHotCues
+            : normalizeSongHotCues(sharedHotCueDefinition?.hotCues),
+        memoryCues:
+          existingMemoryCues.length > 0
+            ? existingMemoryCues
+            : normalizeSongMemoryCues(sharedMemoryCueDefinition?.memoryCues)
       }
     })
   )
@@ -252,7 +297,9 @@ export async function runRekordboxXmlExportJob(
       })
     }
 
-    const sourceTracks = await enrichTracksWithMetadata(sourceTracksResult.tracks)
+    const sourceTracks = await enrichTracksWithSharedCues(
+      await enrichTracksWithMetadata(sourceTracksResult.tracks)
+    )
     const missingPaths = await collectMissingSourcePaths(
       sourceTracks.map((track) => track.sourcePath)
     )

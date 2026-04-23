@@ -1,5 +1,7 @@
 import fs from 'fs-extra'
 import path from 'path'
+import { normalizeSongHotCues } from '../../../shared/hotCues'
+import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
 import type {
   RekordboxXmlExportRequest,
   RekordboxXmlExportSourceLibraryName,
@@ -93,7 +95,9 @@ export const validateSelectedTrackInputs = (tracks: RekordboxXmlExportTrackInput
       genre: String(item.genre || '').trim(),
       label: String(item.label || '').trim(),
       bitrate: typeof item.bitrate === 'number' ? item.bitrate : undefined,
-      duration: String(item.duration || '').trim()
+      duration: String(item.duration || '').trim(),
+      hotCues: normalizeSongHotCues(item.hotCues),
+      memoryCues: normalizeSongMemoryCues(item.memoryCues)
     }))
   }
 }

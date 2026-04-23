@@ -2,6 +2,7 @@ import type {
   RekordboxXmlExportMode,
   RekordboxXmlExportRequest
 } from '../../../shared/rekordboxXmlExport'
+import type { ISongHotCue, ISongMemoryCue } from '../../../types/globals'
 
 export const REKORDBOX_XML_EXPORT_CANCELLED = 'REKORDBOX_XML_EXPORT_CANCELLED'
 
@@ -33,6 +34,8 @@ export type RekordboxXmlExportResolvedTrack = {
   discNumber?: number
   bitrate?: number
   duration?: string
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
 }
 
 export type RekordboxXmlExportStagedTrack = {
@@ -51,6 +54,8 @@ export type RekordboxXmlExportStagedTrack = {
   discNumber?: number
   bitrate?: number
   duration?: string
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
 }
 
 export type RekordboxXmlExportAppliedOperation = {

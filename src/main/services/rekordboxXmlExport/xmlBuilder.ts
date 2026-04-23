@@ -1,6 +1,13 @@
 import fs from 'fs'
 import path from 'path'
 import { app } from 'electron'
+import {
+  normalizeSongHotCues,
+  resolveSongHotCueDisplayLabel,
+  resolveSongHotCueLabel
+} from '../../../shared/hotCues'
+import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
+import type { ISongHotCue, ISongMemoryCue } from '../../../types/globals'
 import type { RekordboxXmlExportStagedTrack } from './types'
 
 const escapeXmlAttribute = (value: string) =>
@@ -83,6 +90,86 @@ const pushTrackAttribute = (pairs: string[], key: string, value: string | number
   pairs.push(`${key}="${value}"`)
 }
 
+const pushRequiredXmlAttribute = (pairs: string[], key: string, value: string | number) => {
+  if (typeof value === 'string') {
+    pairs.push(`${key}="${escapeXmlAttribute(value)}"`)
+    return
+  }
+  pairs.push(`${key}="${value}"`)
+}
+
+type RekordboxXmlTrackMark = {
+  name?: string
+  type: 'cue' | 'loop'
+  start: number
+  end?: number
+  num: number
+}
+
+const REKORDBOX_POSITION_MARK_TYPE_MAP: Record<RekordboxXmlTrackMark['type'], number> = {
+  cue: 0,
+  loop: 4
+}
+
+const normalizeCueName = (value: string | undefined) => {
+  const text = String(value || '').trim()
+  return text || undefined
+}
+
+const normalizeCuePointSec = (value: number | undefined) => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined
+  return Number(value.toFixed(3))
+}
+
+const resolveHotCueXmlName = (cue: ISongHotCue) => {
+  const comment = normalizeCueName(cue.comment)
+  if (comment) return comment
+  const label = normalizeCueName(cue.label)
+  const defaultLabel = resolveSongHotCueLabel(cue.slot)
+  if (label && label !== defaultLabel) return label
+  return undefined
+}
+
+const resolveMemoryCueXmlName = (cue: ISongMemoryCue) => normalizeCueName(cue.comment)
+
+const buildTrackMarks = (track: RekordboxXmlExportStagedTrack): RekordboxXmlTrackMark[] => {
+  const memoryMarks = normalizeSongMemoryCues(track.memoryCues).flatMap((cue) => {
+    const start = normalizeCuePointSec(cue.sec)
+    if (start === undefined) return []
+    const end = normalizeCuePointSec(cue.loopEndSec)
+    const isLoop =
+      Boolean(cue.isLoop) && end !== undefined && typeof end === 'number' && end > start + 0.0001
+    return [
+      {
+        name: resolveMemoryCueXmlName(cue),
+        type: isLoop ? 'loop' : 'cue',
+        start,
+        end: isLoop ? end : undefined,
+        num: -1
+      } satisfies RekordboxXmlTrackMark
+    ]
+  })
+
+  const hotMarks = normalizeSongHotCues(track.hotCues).flatMap((cue) => {
+    const start = normalizeCuePointSec(cue.sec)
+    if (start === undefined) return []
+    const end = normalizeCuePointSec(cue.loopEndSec)
+    const isLoop =
+      Boolean(cue.isLoop) && end !== undefined && typeof end === 'number' && end > start + 0.0001
+    return [
+      {
+        name: resolveHotCueXmlName(cue) || resolveSongHotCueDisplayLabel(cue),
+        type: isLoop ? 'loop' : 'cue',
+        start,
+        end: isLoop ? end : undefined,
+        num: cue.slot
+      } satisfies RekordboxXmlTrackMark
+    ]
+  })
+
+  return [...memoryMarks, ...hotMarks]
+}
+
 export const buildRekordboxXml = (params: {
   playlistName: string
   tracks: RekordboxXmlExportStagedTrack[]
@@ -123,7 +210,23 @@ export const buildRekordboxXml = (params: {
     pushTrackAttribute(attrs, 'BitRate', normalizeBitRateKbps(track.bitrate))
     pushTrackAttribute(attrs, 'Comments', track.comment)
     pushTrackAttribute(attrs, 'Location', toRekordboxLocation(track.outputPath))
-    lines.push(`    <TRACK ${attrs.join(' ')} />`)
+    const marks = buildTrackMarks(track)
+    if (marks.length === 0) {
+      lines.push(`    <TRACK ${attrs.join(' ')} />`)
+      continue
+    }
+
+    lines.push(`    <TRACK ${attrs.join(' ')}>`)
+    for (const mark of marks) {
+      const markAttrs: string[] = []
+      pushRequiredXmlAttribute(markAttrs, 'Name', mark.name || '')
+      pushRequiredXmlAttribute(markAttrs, 'Type', REKORDBOX_POSITION_MARK_TYPE_MAP[mark.type])
+      pushRequiredXmlAttribute(markAttrs, 'Start', mark.start)
+      pushRequiredXmlAttribute(markAttrs, 'Num', mark.num)
+      pushTrackAttribute(markAttrs, 'End', mark.end)
+      lines.push(`      <POSITION_MARK ${markAttrs.join(' ')} />`)
+    }
+    lines.push('    </TRACK>')
   }
   lines.push('  </COLLECTION>')
   lines.push('  <PLAYLISTS>')
