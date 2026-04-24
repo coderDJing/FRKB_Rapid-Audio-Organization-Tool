@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type { ISongHotCue, ISongMemoryCue } from 'src/types/globals'
 import {
   formatSongHotCueTime,
@@ -124,7 +125,8 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
     >
       <div class="cue-panel__placeholder">
         <div v-if="panel.mode === 'hot-cue'" class="cue-panel__hotcue-grid">
-          <button
+          <bubbleBoxTrigger
+            tag="button"
             v-for="row in panel.hotCueRows"
             :key="`${panel.deck}-${row.slot}`"
             type="button"
@@ -148,7 +150,8 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
                 </span>
               </span>
             </span>
-            <button
+            <bubbleBoxTrigger
+              tag="button"
               v-if="row.active"
               type="button"
               class="cue-panel__hotcue-delete"
@@ -157,12 +160,13 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
               @click.stop="emit('hotcue-delete', { deck: panel.deck, slot: row.slot })"
             >
               ×
-            </button>
+            </bubbleBoxTrigger>
             <span v-else class="cue-panel__hotcue-delete-placeholder"></span>
-          </button>
+          </bubbleBoxTrigger>
         </div>
         <div v-else class="cue-panel__memory-list">
-          <div
+          <bubbleBoxTrigger
+            tag="div"
             v-for="memoryCue in panel.memoryCueRows"
             :key="`${panel.deck}-${memoryCue.sec}`"
             class="cue-panel__memory-row"
@@ -180,7 +184,8 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
                 </span>
               </span>
             </span>
-            <button
+            <bubbleBoxTrigger
+              tag="button"
               type="button"
               class="cue-panel__memory-delete"
               title="Delete Memory Cue"
@@ -188,8 +193,8 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
               @click.stop="emit('memorycue-delete', { deck: panel.deck, sec: memoryCue.sec })"
             >
               ×
-            </button>
-          </div>
+            </bubbleBoxTrigger>
+          </bubbleBoxTrigger>
           <div v-if="panel.memoryCueRows.length === 0" class="cue-panel__memory-empty"></div>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import WindowVolumeDial from '@renderer/components/WindowVolumeDial.vue'
 import TitleBarAudioVisualizer from '@renderer/components/TitleBarAudioVisualizer.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import MixtapeDialogsLayer from '@renderer/components/MixtapeDialogsLayer.vue'
 import MixtapeEnvelopePreviewTrack from '@renderer/components/mixtape/MixtapeEnvelopePreviewTrack.vue'
 import MixtapeGlobalBpmEditor from '@renderer/components/mixtape/MixtapeGlobalBpmEditor.vue'
@@ -235,7 +236,8 @@ const {
         <div class="mixtape-param-bar">
           <div class="mixtape-param-bar__title">{{ t('mixtape.mixPanelTitle') }}</div>
           <div class="mixtape-param-bar__tabs">
-            <button
+            <bubbleBoxTrigger
+              tag="button"
               v-for="item in mixParamOptions"
               :key="item.id"
               class="mixtape-param-bar__tab"
@@ -248,7 +250,7 @@ const {
               @click="selectedMixParam = item.id"
             >
               {{ t(item.labelKey) }}
-            </button>
+            </bubbleBoxTrigger>
             <button
               class="mixtape-param-bar__tab mixtape-param-bar__tab--bpm"
               :class="{ 'is-active': masterTempoLaneExpanded }"
@@ -274,7 +276,8 @@ const {
             {{ t(envelopeHintKey) }}
           </div>
           <div class="mixtape-param-bar__actions">
-            <button
+            <bubbleBoxTrigger
+              tag="button"
               class="button mixtape-param-bar__action-btn mixtape-param-bar__action-btn--icon"
               type="button"
               :title="t('mixtape.zoomOut')"
@@ -289,8 +292,9 @@ const {
                   stroke-linecap="round"
                 ></path>
               </svg>
-            </button>
-            <button
+            </bubbleBoxTrigger>
+            <bubbleBoxTrigger
+              tag="button"
               class="button mixtape-param-bar__action-btn mixtape-param-bar__action-btn--icon"
               type="button"
               :title="t('mixtape.zoomIn')"
@@ -305,8 +309,10 @@ const {
                   stroke-linecap="round"
                 ></path>
               </svg>
-            </button>
-            <button
+            </bubbleBoxTrigger>
+            <bubbleBoxTrigger
+              wrapper-tag="span"
+              tag="button"
               class="button mixtape-param-bar__action-btn mixtape-param-bar__action-btn--icon"
               type="button"
               :disabled="!canUndoMixParam"
@@ -318,8 +324,9 @@ const {
                 <path d="M6 3.5 2.5 7l3.5 3.5"></path>
                 <path d="M3 7h5.5a3.5 3.5 0 1 1 0 7H7.5"></path>
               </svg>
-            </button>
-            <button
+            </bubbleBoxTrigger>
+            <bubbleBoxTrigger
+              tag="button"
               class="button mixtape-param-bar__action-btn mixtape-param-bar__action-btn--icon"
               :class="{ 'is-active': followPlayheadEnabled }"
               type="button"
@@ -341,7 +348,7 @@ const {
                 <path d="M5.9 5.4 8 3.3l2.1 2.1"></path>
                 <path d="M5.9 10.6 8 12.7l2.1-2.1"></path>
               </svg>
-            </button>
+            </bubbleBoxTrigger>
             <button
               v-if="selectedMixParam === 'gain'"
               class="button mixtape-param-bar__action-btn"
@@ -374,7 +381,8 @@ const {
             <div class="timeline-primary-zone">
               <div class="timeline-ruler-wrap">
                 <div class="timeline-ruler-stop-float">
-                  <button
+                  <bubbleBoxTrigger
+                    tag="button"
                     v-if="transportPlaying || transportDecoding"
                     class="timeline-stop-btn"
                     type="button"
@@ -386,8 +394,9 @@ const {
                     <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                       <rect x="4" y="4" width="8" height="8" rx="1"></rect>
                     </svg>
-                  </button>
-                  <button
+                  </bubbleBoxTrigger>
+                  <bubbleBoxTrigger
+                    tag="button"
                     v-else
                     class="timeline-stop-btn"
                     type="button"
@@ -399,7 +408,7 @@ const {
                     <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                       <polygon points="5,4 12,8 5,12"></polygon>
                     </svg>
-                  </button>
+                  </bubbleBoxTrigger>
                   <span v-if="transportDecoding" class="timeline-decoding-hint">
                     {{ t('mixtape.transportDecoding') }}
                   </span>

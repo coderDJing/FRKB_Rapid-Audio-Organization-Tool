@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount } from 'vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 
 const props = defineProps({
@@ -263,7 +264,9 @@ onBeforeUnmount(() => {
 <template>
   <div class="grid-adjust-toolbar">
     <div class="grid-adjust-toolbar__group grid-adjust-toolbar__group--icons">
-      <button
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="grid-adjust-icon-btn"
         type="button"
         :disabled="disabled"
@@ -280,8 +283,10 @@ onBeforeUnmount(() => {
           <path d="M11.5 3.5 7.8 8l3.7 4.5"></path>
           <path d="M8.1 3.5 4.4 8l3.7 4.5"></path>
         </svg>
-      </button>
-      <button
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="grid-adjust-icon-btn"
         type="button"
         :disabled="disabled"
@@ -297,8 +302,10 @@ onBeforeUnmount(() => {
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="M10.5 3.5 6 8l4.5 4.5"></path>
         </svg>
-      </button>
-      <button
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="grid-adjust-icon-btn"
         type="button"
         :disabled="disabled"
@@ -311,8 +318,10 @@ onBeforeUnmount(() => {
           <path d="M8 1v14"></path>
           <path d="M13 2v12"></path>
         </svg>
-      </button>
-      <button
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="grid-adjust-icon-btn"
         type="button"
         :disabled="disabled"
@@ -328,8 +337,10 @@ onBeforeUnmount(() => {
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
         </svg>
-      </button>
-      <button
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="grid-adjust-icon-btn"
         type="button"
         :disabled="disabled"
@@ -346,9 +357,11 @@ onBeforeUnmount(() => {
           <path d="m4.5 3.5 3.7 4.5-3.7 4.5"></path>
           <path d="m7.9 3.5 3.7 4.5-3.7 4.5"></path>
         </svg>
-      </button>
+      </bubbleBoxTrigger>
     </div>
-    <button
+    <bubbleBoxTrigger
+      wrapper-tag="span"
+      tag="button"
       v-if="showMemoryButton"
       class="grid-adjust-memory-btn"
       type="button"
@@ -358,9 +371,11 @@ onBeforeUnmount(() => {
       @click="emit('memory-cue')"
     >
       MEMORY
-    </button>
+    </bubbleBoxTrigger>
     <div class="grid-adjust-toolbar__group grid-adjust-toolbar__group--input">
-      <input
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="input"
         class="grid-adjust-bpm-input"
         type="number"
         inputmode="decimal"
@@ -377,7 +392,9 @@ onBeforeUnmount(() => {
         @keydown.enter.prevent="handleBpmInputEnter"
       />
     </div>
-    <button
+    <bubbleBoxTrigger
+      wrapper-tag="span"
+      tag="button"
       v-if="showTapButton"
       class="grid-adjust-tap-btn"
       type="button"
@@ -387,7 +404,7 @@ onBeforeUnmount(() => {
       @click="emit('tap-bpm')"
     >
       Tap
-    </button>
+    </bubbleBoxTrigger>
   </div>
 </template>
 

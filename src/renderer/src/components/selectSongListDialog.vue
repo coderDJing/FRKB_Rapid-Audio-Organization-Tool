@@ -22,6 +22,7 @@ import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import utils from '../utils/utils'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import emitter from '../utils/mitt'
 import type { IDir } from 'src/types/globals'
 import { handleLibraryAreaEmptySpaceDrop } from '../utils/dragUtils'
@@ -752,7 +753,8 @@ watch(
                     <div class="nameRow">
                       <span class="nameText">{{ item.dirName }}</span>
                       <span v-if="item.type === 'mixtapeList'" class="mixtapeBadgeGroup">
-                        <span
+                        <bubbleBoxTrigger
+                          tag="span"
                           class="mixModeBadge"
                           :class="{
                             'is-eq': item.mixMode === 'eq',
@@ -761,7 +763,7 @@ watch(
                           :title="resolveMixtapeBadgeTitle(item.mixMode)"
                         >
                           <span>{{ resolveMixtapeModeTag(item.mixMode) }}</span>
-                        </span>
+                        </bubbleBoxTrigger>
                       </span>
                       <span
                         v-if="runtime.setting.showPlaylistTrackCount && item.type === 'songList'"

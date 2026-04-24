@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type { ISongMemoryCue } from 'src/types/globals'
 import {
   formatSongMemoryCueTime,
@@ -96,7 +97,8 @@ const visibleMarkers = computed(() => {
         '--memorycue-marker-offset': `${Number(props.offsetPx) || 0}px`
       }"
     ></div>
-    <div
+    <bubbleBoxTrigger
+      tag="div"
       class="memorycue-marker"
       :class="[
         props.anchor === 'bottom' ? 'memorycue-marker--bottom' : 'memorycue-marker--top',
@@ -109,7 +111,7 @@ const visibleMarkers = computed(() => {
         '--memorycue-marker-offset': `${Number(props.offsetPx) || 0}px`
       }"
       :title="marker.title"
-    ></div>
+    />
   </template>
 </template>
 

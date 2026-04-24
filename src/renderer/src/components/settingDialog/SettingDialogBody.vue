@@ -2,6 +2,7 @@
 import { computed, inject } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import BaseSelect from '@renderer/components/BaseSelect.vue'
@@ -167,13 +168,14 @@ const rekordboxDesktopTrackStorageDirText = computed(
 
             <div class="setting-block">{{ t('shortcuts.globalCallShortcut') }}：</div>
             <div class="setting-control">
-              <div
+              <bubbleBoxTrigger
+                tag="div"
                 class="chooseDirDiv"
                 :title="runtime.setting.globalCallShortcut"
                 @click="globalCallShortcutHandle()"
               >
                 {{ runtime.setting.globalCallShortcut }}
-              </div>
+              </bubbleBoxTrigger>
             </div>
 
             <div class="setting-block">{{ t('player.autoPlayNext') }}：</div>
@@ -274,45 +276,49 @@ const rekordboxDesktopTrackStorageDirText = computed(
                   <div class="playerShortcutLabel">
                     {{ t('shortcuts.globalFastForwardShortcut') }}
                   </div>
-                  <div
+                  <bubbleBoxTrigger
+                    tag="div"
                     class="chooseDirDiv"
                     :title="runtime.setting.playerGlobalShortcuts.fastForward"
                     @click="playerGlobalShortcutHandle('fastForward')"
                   >
                     {{ runtime.setting.playerGlobalShortcuts.fastForward }}
-                  </div>
+                  </bubbleBoxTrigger>
                 </div>
                 <div class="playerShortcutRow">
                   <div class="playerShortcutLabel">
                     {{ t('shortcuts.globalFastBackwardShortcut') }}
                   </div>
-                  <div
+                  <bubbleBoxTrigger
+                    tag="div"
                     class="chooseDirDiv"
                     :title="runtime.setting.playerGlobalShortcuts.fastBackward"
                     @click="playerGlobalShortcutHandle('fastBackward')"
                   >
                     {{ runtime.setting.playerGlobalShortcuts.fastBackward }}
-                  </div>
+                  </bubbleBoxTrigger>
                 </div>
                 <div class="playerShortcutRow">
                   <div class="playerShortcutLabel">{{ t('shortcuts.globalNextShortcut') }}</div>
-                  <div
+                  <bubbleBoxTrigger
+                    tag="div"
                     class="chooseDirDiv"
                     :title="runtime.setting.playerGlobalShortcuts.nextSong"
                     @click="playerGlobalShortcutHandle('nextSong')"
                   >
                     {{ runtime.setting.playerGlobalShortcuts.nextSong }}
-                  </div>
+                  </bubbleBoxTrigger>
                 </div>
                 <div class="playerShortcutRow">
                   <div class="playerShortcutLabel">{{ t('shortcuts.globalPreviousShortcut') }}</div>
-                  <div
+                  <bubbleBoxTrigger
+                    tag="div"
                     class="chooseDirDiv"
                     :title="runtime.setting.playerGlobalShortcuts.previousSong"
                     @click="playerGlobalShortcutHandle('previousSong')"
                   >
                     {{ runtime.setting.playerGlobalShortcuts.previousSong }}
-                  </div>
+                  </bubbleBoxTrigger>
                 </div>
               </div>
               <div class="playerShortcutHint">{{ t('shortcuts.playerGlobalShortcutsHint') }}</div>
@@ -513,9 +519,9 @@ const rekordboxDesktopTrackStorageDirText = computed(
 
             <div class="setting-block">{{ t('settings.currentLibraryPath') }}：</div>
             <div class="setting-control">
-              <div class="path-display" :title="currentLibraryPathText">
+              <bubbleBoxTrigger tag="div" class="path-display" :title="currentLibraryPathText">
                 {{ currentLibraryPathText }}
-              </div>
+              </bubbleBoxTrigger>
               <div class="setting-hint">{{ t('settings.currentLibraryPathHint') }}</div>
             </div>
 
@@ -523,9 +529,13 @@ const rekordboxDesktopTrackStorageDirText = computed(
               {{ t('settings.rekordboxDesktopTrackStorageDir.title') }}：
             </div>
             <div class="setting-control">
-              <div class="path-display" :title="rekordboxDesktopTrackStorageDirText">
+              <bubbleBoxTrigger
+                tag="div"
+                class="path-display"
+                :title="rekordboxDesktopTrackStorageDirText"
+              >
                 {{ rekordboxDesktopTrackStorageDirText }}
-              </div>
+              </bubbleBoxTrigger>
               <div class="setting-hint">
                 {{ t('settings.rekordboxDesktopTrackStorageDir.hint') }}
               </div>

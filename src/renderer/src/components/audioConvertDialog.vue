@@ -9,6 +9,7 @@ import hotkeys from 'hotkeys-js'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import hintIconAsset from '@renderer/assets/hint.svg?asset'
 import {
   SUPPORTED_AUDIO_FORMATS,
@@ -345,14 +346,15 @@ const cancel = () => {
           <template v-if="isStandaloneMode">
             <div>{{ t('convert.sourceFiles') }}：</div>
             <div class="standalone-actions">
-              <div
+              <bubbleBoxTrigger
+                tag="div"
                 class="picker-box flashing-border"
                 :class="{ 'is-flashing': flashArea == 'selectedFiles' }"
                 :title="selectedFilesTooltip"
                 @click="clickChooseFiles()"
               >
                 {{ selectedFilesLabel }}
-              </div>
+              </bubbleBoxTrigger>
               <div class="button action-button" @click="clickChooseFiles()">
                 {{ t('convert.chooseFiles') }}
               </div>
@@ -384,12 +386,20 @@ const cancel = () => {
                       class="selected-file-item"
                     >
                       <div class="selected-file-meta">
-                        <div class="selected-file-name" :title="item.fileName">
+                        <bubbleBoxTrigger
+                          tag="div"
+                          class="selected-file-name"
+                          :title="item.fileName"
+                        >
                           {{ item.fileName }}
-                        </div>
-                        <div class="selected-file-path" :title="item.filePath">
+                        </bubbleBoxTrigger>
+                        <bubbleBoxTrigger
+                          tag="div"
+                          class="selected-file-path"
+                          :title="item.filePath"
+                        >
                           {{ item.parentPath || item.filePath }}
-                        </div>
+                        </bubbleBoxTrigger>
                       </div>
                       <div
                         class="button action-button delete-button"
@@ -406,14 +416,15 @@ const cancel = () => {
             <template v-if="shouldShowOutputDir">
               <div style="margin-top: 20px">{{ t('convert.outputDir') }}：</div>
               <div style="margin-top: 10px">
-                <div
+                <bubbleBoxTrigger
+                  tag="div"
                   class="picker-box flashing-border"
                   :class="{ 'is-flashing': flashArea == 'outputDir' }"
                   :title="outputDirTooltip"
                   @click="clickChooseOutputDir()"
                 >
                   {{ outputDirLabel }}
-                </div>
+                </bubbleBoxTrigger>
               </div>
             </template>
           </template>

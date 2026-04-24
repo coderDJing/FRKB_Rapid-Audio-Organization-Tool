@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 
 const props = defineProps({
@@ -37,7 +38,9 @@ const metronomeVolumeTitle = computed(() =>
 
 <template>
   <div class="metronome-controls">
-    <button
+    <bubbleBoxTrigger
+      wrapper-tag="span"
+      tag="button"
       class="waveform-action-btn"
       type="button"
       :class="{ 'is-active': metronomeEnabled }"
@@ -52,8 +55,10 @@ const metronomeVolumeTitle = computed(() =>
         <circle cx="8" cy="10.9" r="1.1"></circle>
       </svg>
       <span>{{ t('mixtape.metronome') }}</span>
-    </button>
-    <button
+    </bubbleBoxTrigger>
+    <bubbleBoxTrigger
+      wrapper-tag="span"
+      tag="button"
       class="metronome-volume-btn"
       type="button"
       :disabled="!canAdjustMetronomeVolume"
@@ -62,7 +67,7 @@ const metronomeVolumeTitle = computed(() =>
       @click="emit('cycle-metronome-volume')"
     >
       {{ metronomeVolumeLevel }}/3
-    </button>
+    </bubbleBoxTrigger>
   </div>
 </template>
 

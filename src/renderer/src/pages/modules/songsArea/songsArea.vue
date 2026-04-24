@@ -15,6 +15,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { sendHorizontalBrowseInteractionTrace } from '@renderer/components/horizontalBrowseInteractionTrace'
 import { beginHorizontalBrowseDeckInteraction } from '@renderer/components/horizontalBrowseInteractionTimeline'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 import { ISongInfo } from '../../../../../types/globals'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
@@ -960,7 +961,8 @@ const emptyHintText = computed(() => {
           />
         </OverlayScrollbarsComponent>
 
-        <button
+        <bubbleBoxTrigger
+          tag="button"
           v-if="showScrollToPlaying"
           class="songs-area-float-jump"
           type="button"
@@ -968,7 +970,7 @@ const emptyHintText = computed(() => {
           @click.stop="handleScrollToPlaying"
         >
           <span class="songs-area-float-jump__icon" aria-hidden="true"></span>
-        </button>
+        </bubbleBoxTrigger>
 
         <Transition name="songs-area-drag-hint">
           <div

@@ -5,6 +5,7 @@ import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '@renderer/utils/utils'
 import { t } from '@renderer/utils/translate'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import type { ICuratedArtistFavorite } from 'src/types/globals'
 
@@ -200,7 +201,8 @@ onUnmounted(() => {
                   :placeholder="t('settings.curatedArtistTracking.managerInputPlaceholder')"
                   @input="clearValidationState()"
                 />
-                <div
+                <bubbleBoxTrigger
+                  tag="div"
                   class="artist-count"
                   :title="
                     t('settings.curatedArtistTracking.managerAddedCountTitle', {
@@ -213,7 +215,7 @@ onUnmounted(() => {
                   {{
                     t('settings.curatedArtistTracking.managerAddedCount', { count: entry.count })
                   }}
-                </div>
+                </bubbleBoxTrigger>
                 <div class="dangerButton artist-delete" @click="removeEntry(entry.id)">
                   {{ t('common.delete') }}
                 </div>

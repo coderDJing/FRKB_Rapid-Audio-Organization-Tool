@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, type CSSProperties } from 'vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type { TimelineTrackLayout } from '@renderer/composables/mixtape/types'
 import type { TrackLoopOverlayViewModel } from '@renderer/composables/mixtape/useMixtapeTrackLoopEditor'
 
@@ -256,7 +257,8 @@ const resolveStatusMetaStyle = (tone: 'info' | 'error' | undefined): CSSProperti
         {{ overlay.statusChip.hint }}
       </span>
     </div>
-    <div
+    <bubbleBoxTrigger
+      tag="div"
       v-for="line in overlay.gridLines"
       :key="line.key"
       class="mixtape-track-loop__grid-line"
@@ -281,7 +283,7 @@ const resolveStatusMetaStyle = (tone: 'info' | 'error' | undefined): CSSProperti
       <span class="mixtape-track-loop__grid-hover-label" :style="resolveGridHoverLabelStyle(line)">
         {{ line.hoverLabel }}
       </span>
-    </div>
+    </bubbleBoxTrigger>
     <div
       v-if="loopEditMode && overlay.gridLines.length === 0 && overlay.blocks.length === 0"
       class="mixtape-track-loop__grid-empty-hint"
@@ -311,7 +313,9 @@ const resolveStatusMetaStyle = (tone: 'info' | 'error' | undefined): CSSProperti
       :style="resolveRepeatControlsStyle(overlay.repeatControl)"
       @mousedown.stop.prevent
     >
-      <button
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="mixtape-track-loop__repeat-btn"
         type="button"
         :title="overlay.repeatControl.decreaseTitle"
@@ -325,11 +329,13 @@ const resolveStatusMetaStyle = (tone: 'info' | 'error' | undefined): CSSProperti
         @click.stop.prevent="props.handleTrackLoopRepeatStep(item, -1)"
       >
         -
-      </button>
+      </bubbleBoxTrigger>
       <span class="mixtape-track-loop__repeat-label" :style="repeatLabelStyle">
         {{ overlay.repeatControl.label }}
       </span>
-      <button
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="mixtape-track-loop__repeat-btn"
         type="button"
         :title="overlay.repeatControl.increaseTitle"
@@ -343,8 +349,10 @@ const resolveStatusMetaStyle = (tone: 'info' | 'error' | undefined): CSSProperti
         @click.stop.prevent="props.handleTrackLoopRepeatStep(item, 1)"
       >
         +
-      </button>
-      <button
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="mixtape-track-loop__repeat-btn mixtape-track-loop__repeat-btn--clear"
         type="button"
         :title="overlay.repeatControl.clearTitle"
@@ -356,7 +364,7 @@ const resolveStatusMetaStyle = (tone: 'info' | 'error' | undefined): CSSProperti
         "
       >
         {{ overlay.repeatControl.clearTitle }}
-      </button>
+      </bubbleBoxTrigger>
     </div>
   </div>
 </template>

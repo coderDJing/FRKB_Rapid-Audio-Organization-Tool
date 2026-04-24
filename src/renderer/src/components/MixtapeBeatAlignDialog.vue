@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatAlignGridAdjustToolbar.vue'
@@ -910,10 +911,10 @@ onBeforeUnmount(() => {
         <span>{{ t('mixtape.beatAlignDialogTitle') }}</span>
       </div>
       <div class="dialog-body">
-        <div v-if="trackTitle" class="track-name" :title="trackNameTitle">
+        <bubbleBoxTrigger v-if="trackTitle" tag="div" class="track-name" :title="trackNameTitle">
           <span class="track-name__title">{{ trackTitle }}</span>
           <span class="track-name__meta"> · {{ trackMetaDisplay }}</span>
-        </div>
+        </bubbleBoxTrigger>
         <MixtapeBeatAlignTopControls
           :preview-decoding="previewDecoding"
           :preview-playing="previewPlaying"

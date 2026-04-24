@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useCustomFileSelector } from './useCustomFileSelector'
 import type {
   CustomFileSelectorEmits,
@@ -65,9 +66,9 @@ const getSelectedItemIcon = (item: SelectedItem) =>
           <button class="back-button" type="button" :disabled="!currentPath" @click="navigateUp">
             {{ t('fileSelector.navigateUp') }}
           </button>
-          <span v-if="currentPath" class="path-current" :title="currentPath">{{
-            currentPath
-          }}</span>
+          <bubbleBoxTrigger v-if="currentPath" tag="span" class="path-current" :title="currentPath">
+            {{ currentPath }}
+          </bubbleBoxTrigger>
           <span v-else class="path-current">{{ t('fileSelector.rootLabel') }}</span>
         </div>
         <div class="path-search">
@@ -120,7 +121,9 @@ const getSelectedItemIcon = (item: SelectedItem) =>
                   <img :src="getItemIcon(item)" alt="" />
                 </div>
                 <div class="item-name-wrapper">
-                  <div class="item-name" :title="item.name">{{ item.name }}</div>
+                  <bubbleBoxTrigger tag="div" class="item-name" :title="item.name">
+                    {{ item.name }}
+                  </bubbleBoxTrigger>
                 </div>
                 <div v-if="item.size && item.size > 0" class="item-size">
                   {{ formatFileSize(item.size) }}
@@ -178,8 +181,12 @@ const getSelectedItemIcon = (item: SelectedItem) =>
                 <img :src="getSelectedItemIcon(item)" alt="" />
               </div>
               <div class="selected-info">
-                <div class="selected-name" :title="item.name">{{ item.name }}</div>
-                <div class="selected-path" :title="item.path">{{ item.path }}</div>
+                <bubbleBoxTrigger tag="div" class="selected-name" :title="item.name">
+                  {{ item.name }}
+                </bubbleBoxTrigger>
+                <bubbleBoxTrigger tag="div" class="selected-path" :title="item.path">
+                  {{ item.path }}
+                </bubbleBoxTrigger>
               </div>
               <button class="remove-btn" @click="removeSelectionByPath(item.path)">×</button>
             </div>

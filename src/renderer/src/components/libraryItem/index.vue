@@ -2,6 +2,7 @@
 import { ref, computed, watch, shallowRef } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { type LibrarySelection, useRuntimeStore } from '@renderer/stores/runtime'
 import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -430,7 +431,8 @@ const openMixtapeHandleClick = () => {
           class="rowActions"
           @click.stop
         >
-          <span
+          <bubbleBoxTrigger
+            tag="span"
             v-if="dirData.type === 'mixtapeList'"
             class="mixModeBadge"
             :class="{
@@ -441,8 +443,9 @@ const openMixtapeHandleClick = () => {
             :title="resolveMixtapeBadgeTitle(dirData.mixMode)"
           >
             <span>{{ resolveMixtapeModeTag(dirData.mixMode) }}</span>
-          </span>
-          <button
+          </bubbleBoxTrigger>
+          <bubbleBoxTrigger
+            tag="button"
             v-if="dirData.type === 'mixtapeList'"
             type="button"
             class="recordButton"
@@ -455,14 +458,16 @@ const openMixtapeHandleClick = () => {
             @contextmenu.stop
           >
             {{ t('mixtape.recordButton') }}
-          </button>
-          <span
+          </bubbleBoxTrigger>
+          <bubbleBoxTrigger
+            tag="span"
             v-if="showTrackCount"
             class="countBadge"
             :class="{ isPlaying: isPlaying }"
             :title="t('tracks.title')"
-            >{{ trackCount }}</span
           >
+            {{ trackCount }}
+          </bubbleBoxTrigger>
         </span>
       </div>
       <div v-if="!dirData.dirName">

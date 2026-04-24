@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { clampVolumeValue, formatVolumePercent } from '@renderer/utils/windowVolume'
 
 const props = withDefaults(
@@ -127,7 +128,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <button
+  <bubbleBoxTrigger
+    wrapper-tag="span"
+    tag="button"
     class="windowVolumeDial"
     :class="{ 'is-dragging': dragging, 'is-disabled': disabled }"
     type="button"
@@ -145,7 +148,7 @@ onUnmounted(() => {
     @keydown="handleKeydown"
   >
     <span class="windowVolumeDial__ring" aria-hidden="true"></span>
-  </button>
+  </bubbleBoxTrigger>
 </template>
 
 <style scoped lang="scss">

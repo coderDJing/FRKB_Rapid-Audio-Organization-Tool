@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import { t } from '@renderer/utils/translate'
 import utils from '../utils/utils'
@@ -79,14 +80,15 @@ onUnmounted(() => {
         </div>
         <div class="path-section">
           <div class="path-label">{{ t('rekordboxDesktop.storageDirSetupPathLabel') }}</div>
-          <div
+          <bubbleBoxTrigger
+            tag="div"
             class="chooseDirDiv flashing-border"
             :class="{ 'chooseDirDiv--empty': !selectedPath, 'is-flashing': flashPath }"
             :title="pathText"
             @click="void pickStorageDir()"
           >
             {{ pathText }}
-          </div>
+          </bubbleBoxTrigger>
         </div>
       </div>
       <div class="dialog-footer">

@@ -13,6 +13,7 @@ import {
 import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import songPlayer from './modules/songPlayer/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
@@ -697,14 +698,15 @@ const drop = async (e: DragEvent) => {
             >
               <div class="splitSongsAreaPaneHeader">
                 <div class="splitSongsAreaPaneTitle">{{ resolveSongsPaneTitle(pane) }}</div>
-                <button
+                <bubbleBoxTrigger
+                  tag="button"
                   class="splitSongsAreaPaneClose"
                   type="button"
                   :title="t('common.close')"
                   @click.stop="handleSplitPaneClose(pane)"
                 >
                   <span aria-hidden="true">×</span>
-                </button>
+                </bubbleBoxTrigger>
               </div>
               <songsArea
                 :pane="pane"
@@ -716,14 +718,15 @@ const drop = async (e: DragEvent) => {
           <div v-else class="singleSongsAreaShell">
             <div v-if="showSingleSongsAreaHeader" class="splitSongsAreaPaneHeader">
               <div class="splitSongsAreaPaneTitle">{{ resolveSongsPaneTitle('single') }}</div>
-              <button
+              <bubbleBoxTrigger
+                tag="button"
                 class="splitSongsAreaPaneClose"
                 type="button"
                 :title="t('common.close')"
                 @click.stop="handleSinglePaneClose"
               >
                 <span aria-hidden="true">×</span>
-              </button>
+              </bubbleBoxTrigger>
             </div>
             <songsArea
               pane="single"

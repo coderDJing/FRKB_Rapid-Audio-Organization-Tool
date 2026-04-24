@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import type {
   IBatchRenameExecutionResult,
@@ -134,8 +135,12 @@ const resolveStatusLabel = (status: IBatchRenameExecutionStatus) => {
             >
               <div class="rows">
                 <div v-for="item in group.items" :key="item.id" class="row">
-                  <div class="name" :title="item.originalFileName">{{ item.originalFileName }}</div>
-                  <div class="target" :title="item.targetFileName">{{ item.targetFileName }}</div>
+                  <bubbleBoxTrigger tag="div" class="name" :title="item.originalFileName">
+                    {{ item.originalFileName }}
+                  </bubbleBoxTrigger>
+                  <bubbleBoxTrigger tag="div" class="target" :title="item.targetFileName">
+                    {{ item.targetFileName }}
+                  </bubbleBoxTrigger>
                   <div class="status">{{ resolveStatusLabel(item.status) }}</div>
                 </div>
               </div>

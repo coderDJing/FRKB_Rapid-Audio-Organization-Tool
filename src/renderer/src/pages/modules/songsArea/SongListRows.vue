@@ -11,6 +11,7 @@ import {
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
 import { useVirtualRows } from './SongListRows/useVirtualRows'
@@ -755,12 +756,13 @@ onUnmounted(() => {
                   v-if="col.key === 'artist' && getCuratedArtistBadgeText(item.song, col.key)"
                 >
                   <span class="cell-title__text">{{ getCellValue(item.song, col.key) }}</span>
-                  <span
+                  <bubbleBoxTrigger
+                    tag="span"
                     class="curated-artist-count-badge"
                     :title="getCuratedArtistBadgeTitle(item.song, col.key)"
                   >
                     {{ getCuratedArtistBadgeText(item.song, col.key) }}
-                  </span>
+                  </bubbleBoxTrigger>
                 </template>
                 <template v-else>
                   {{ getCellValue(item.song, col.key) }}

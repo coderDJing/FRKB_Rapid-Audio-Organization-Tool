@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { formatBpmDisplay } from '@renderer/utils/bpm'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { getKeyDisplayText } from '@shared/keyDisplay'
 import { t } from '@renderer/utils/translate'
 
@@ -173,7 +174,8 @@ onUnmounted(() => {
         <img v-if="coverUrl" :src="coverUrl" alt="" draggable="false" />
         <div v-else class="deck-info-card__cover-placeholder"></div>
       </div>
-      <button
+      <bubbleBoxTrigger
+        tag="button"
         v-if="props.song"
         type="button"
         class="deck-info-card__eject-btn"
@@ -186,7 +188,7 @@ onUnmounted(() => {
           <path d="M8 2.5 13 9H3z" fill="currentColor" />
           <rect x="3" y="10.75" width="10" height="2.25" rx="0.8" fill="currentColor" />
         </svg>
-      </button>
+      </bubbleBoxTrigger>
     </div>
 
     <div class="deck-info-card__content">

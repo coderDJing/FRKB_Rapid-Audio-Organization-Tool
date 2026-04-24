@@ -5,6 +5,7 @@ import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { ref, onUnmounted, onMounted } from 'vue'
 import { t } from '@renderer/utils/translate'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 const uuid = uuidV4()
 const props = defineProps({
@@ -144,14 +145,15 @@ onUnmounted(() => {
             <span>{{ t('tracks.exportToFolder') }}：</span>
           </div>
           <div style="width: 290px">
-            <div
+            <bubbleBoxTrigger
+              tag="div"
               class="chooseDirDiv flashing-border"
               :title="folderPathVal"
               :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
               @click="clickChooseDir()"
             >
               {{ folderPathVal }}
-            </div>
+            </bubbleBoxTrigger>
           </div>
         </div>
         <div v-if="!props.forceCopyOnly" style="display: flex">

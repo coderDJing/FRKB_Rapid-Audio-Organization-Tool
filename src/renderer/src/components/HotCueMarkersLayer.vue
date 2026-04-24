@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type { ISongHotCue } from 'src/types/globals'
 import {
   formatSongHotCueTime,
@@ -101,7 +102,8 @@ const visibleMarkers = computed(() => {
         '--hotcue-marker-offset': `${Number(props.offsetPx) || 0}px`
       }"
     ></div>
-    <div
+    <bubbleBoxTrigger
+      tag="div"
       class="hotcue-marker"
       :class="[
         props.anchor === 'bottom' ? 'hotcue-marker--bottom' : 'hotcue-marker--top',
@@ -127,7 +129,7 @@ const visibleMarkers = computed(() => {
       >
         {{ marker.label }}
       </component>
-    </div>
+    </bubbleBoxTrigger>
   </template>
 </template>
 

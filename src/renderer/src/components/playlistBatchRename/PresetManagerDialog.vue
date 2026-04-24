@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import BaseSelect from '@renderer/components/BaseSelect.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
@@ -390,15 +391,19 @@ onUnmounted(() => {
                 <div v-for="item in sampleItems" :key="item.id" class="sample-row">
                   <div class="sample-line sample-line-source">
                     <span class="sample-label">{{ t('batchRename.sampleOriginalLabel') }}</span>
-                    <span class="sample-source" :title="item.originalFileName">{{
-                      item.originalFileName
-                    }}</span>
+                    <bubbleBoxTrigger
+                      tag="span"
+                      class="sample-source"
+                      :title="item.originalFileName"
+                    >
+                      {{ item.originalFileName }}
+                    </bubbleBoxTrigger>
                   </div>
                   <div class="sample-line sample-line-target">
                     <span class="sample-label">{{ t('batchRename.sampleTargetLabel') }}</span>
-                    <span class="sample-target" :title="item.targetFileName">{{
-                      item.targetFileName
-                    }}</span>
+                    <bubbleBoxTrigger tag="span" class="sample-target" :title="item.targetFileName">
+                      {{ item.targetFileName }}
+                    </bubbleBoxTrigger>
                   </div>
                 </div>
               </div>

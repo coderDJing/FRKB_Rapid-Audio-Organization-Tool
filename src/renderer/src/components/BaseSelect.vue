@@ -14,7 +14,7 @@
     @click="toggleDropdown"
     @keydown.stop="handleKeydown"
   >
-    <div class="base-select__value" :title="selectedLabel || placeholder">
+    <div class="base-select__value">
       <span v-if="selectedLabel">{{ selectedLabel }}</span>
       <span v-else class="base-select__placeholder">{{ placeholder }}</span>
     </div>
@@ -57,11 +57,13 @@
       </OverlayScrollbarsComponent>
     </transition>
   </div>
+  <bubbleBox :dom="triggerRef || undefined" :title="selectedLabel || placeholder" />
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, type PropType } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 
 type SelectValue = string | number | boolean | null | undefined
 

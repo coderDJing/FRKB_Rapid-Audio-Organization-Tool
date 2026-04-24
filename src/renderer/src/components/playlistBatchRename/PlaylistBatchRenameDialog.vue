@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import BaseSelect from '@renderer/components/BaseSelect.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import { t } from '@renderer/utils/translate'
 import type { BatchRenameSongListTarget } from './index'
@@ -108,9 +109,9 @@ const handleGeneratePreview = async () => {
 
             <div class="formula-box">
               <div class="formula-name">{{ selectedPreset?.name || '' }}</div>
-              <div class="formula-text" :title="formulaSummary || ''">
+              <bubbleBoxTrigger tag="div" class="formula-text" :title="formulaSummary || ''">
                 {{ formulaSummary || t('batchRename.sampleEmptyTemplate') }}
-              </div>
+              </bubbleBoxTrigger>
             </div>
 
             <div class="sample-box">
@@ -129,15 +130,19 @@ const handleGeneratePreview = async () => {
                 <div v-for="item in sampleItems" :key="item.id" class="sample-row">
                   <div class="sample-line sample-line-source">
                     <span class="sample-label">{{ t('batchRename.sampleOriginalLabel') }}</span>
-                    <span class="sample-source" :title="item.originalFileName">
+                    <bubbleBoxTrigger
+                      tag="span"
+                      class="sample-source"
+                      :title="item.originalFileName"
+                    >
                       {{ item.originalFileName }}
-                    </span>
+                    </bubbleBoxTrigger>
                   </div>
                   <div class="sample-line sample-line-target">
                     <span class="sample-label">{{ t('batchRename.sampleTargetLabel') }}</span>
-                    <span class="sample-target" :title="item.targetFileName">
+                    <bubbleBoxTrigger tag="span" class="sample-target" :title="item.targetFileName">
                       {{ item.targetFileName }}
-                    </span>
+                    </bubbleBoxTrigger>
                   </div>
                 </div>
               </div>

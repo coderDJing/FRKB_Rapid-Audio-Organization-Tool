@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import BeatGridMetronomeControls from '@renderer/components/BeatGridMetronomeControls.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 
 const props = defineProps({
@@ -57,7 +58,9 @@ const emit = defineEmits<{
 <template>
   <div class="preview-toolbar">
     <div class="preview-tools">
-      <button
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="playback-icon-btn"
         type="button"
         :disabled="!canTogglePreviewPlayback"
@@ -93,8 +96,10 @@ const emit = defineEmits<{
         <svg v-else viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <polygon points="5,3.5 12.5,8 5,12.5"></polygon>
         </svg>
-      </button>
-      <button
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        wrapper-tag="span"
+        tag="button"
         class="playback-icon-btn"
         type="button"
         :disabled="!canStopPreviewPlayback"
@@ -105,7 +110,7 @@ const emit = defineEmits<{
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <rect x="4" y="4" width="8" height="8" rx="1"></rect>
         </svg>
-      </button>
+      </bubbleBoxTrigger>
       <button
         class="barline-btn"
         type="button"

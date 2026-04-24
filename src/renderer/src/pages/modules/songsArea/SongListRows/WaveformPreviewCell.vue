@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
 import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type { ISongInfo } from 'src/types/globals'
 
 const props = defineProps<{
@@ -68,13 +69,14 @@ const parseDurationToSeconds = (input: unknown) => {
         clickable
         @marker-click="props.handleHotCueClick(props.song, $event.sec)"
       />
-      <div
+      <bubbleBoxTrigger
+        tag="div"
         v-if="props.getWaveformPlaceholderText(props.song.filePath)"
         class="waveform-preview-placeholder"
         :title="props.getWaveformPlaceholderTitle(props.song.filePath)"
       >
         {{ props.getWaveformPlaceholderText(props.song.filePath) }}
-      </div>
+      </bubbleBoxTrigger>
       <div
         v-if="props.isWaveformPreviewActive(props.song.filePath)"
         class="waveform-preview-playhead"

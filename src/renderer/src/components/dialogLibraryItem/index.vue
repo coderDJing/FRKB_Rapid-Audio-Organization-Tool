@@ -3,6 +3,7 @@ import { ref, nextTick, useTemplateRef, reactive, onMounted, watch, computed } f
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -691,7 +692,8 @@ watch(
           :only-when-overflow="onlyShowBubbleWhenOverflow"
         />
         <span v-if="dirData.type === 'mixtapeList'" class="mixtapeBadgeGroup">
-          <span
+          <bubbleBoxTrigger
+            tag="span"
             class="mixModeBadge"
             :class="{
               'is-eq': dirData.mixMode === 'eq',
@@ -700,9 +702,10 @@ watch(
             :title="resolveMixtapeBadgeTitle(dirData.mixMode)"
           >
             <span>{{ resolveMixtapeModeTag(dirData.mixMode) }}</span>
-          </span>
+          </bubbleBoxTrigger>
         </span>
-        <span
+        <bubbleBoxTrigger
+          tag="span"
           v-if="
             dirData.type === 'songList' &&
             runtime.setting.showPlaylistTrackCount &&
@@ -710,8 +713,9 @@ watch(
           "
           class="countBadge"
           :title="t('tracks.title')"
-          >{{ trackCount }}</span
         >
+          {{ trackCount }}
+        </bubbleBoxTrigger>
       </div>
       <div v-if="!dirData.dirName">
         <input

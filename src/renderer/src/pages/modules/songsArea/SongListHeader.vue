@@ -6,6 +6,7 @@ import { UseDraggableOptions, vDraggable } from 'vue-draggable-plus'
 import { MIN_WIDTH_BY_KEY } from './minWidth'
 import filterDialog from '@renderer/components/filterDialog.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 const filterIcon = filterIconAsset
 const filterIconMaskStyle = {
   '--icon-mask': `url("${filterIcon}")`
@@ -511,14 +512,15 @@ const handleIndexActionClick = () => {
           :title="props.indexActionTitle"
           :max-width="220"
         />
-        <span
+        <bubbleBoxTrigger
+          tag="span"
           v-if="col.key !== 'index' && col.filterType"
           class="mask-icon filter-icon"
           :class="{ 'is-active': col.filterActive }"
           :style="filterIconMaskStyle"
           :title="getFilterTooltip(col)"
           @click.stop="(e) => handleFilterIconClick(e, col)"
-        ></span>
+        />
       </div>
       <Teleport to="body">
         <filterDialog

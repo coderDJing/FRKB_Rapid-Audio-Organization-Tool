@@ -2,6 +2,7 @@
 import hotkeys from 'hotkeys-js'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import { t } from '@renderer/utils/translate'
 import utils from '@renderer/utils/utils'
@@ -166,14 +167,15 @@ onUnmounted(() => {
         <div class="form-row">
           <div class="form-label">{{ t('rekordboxXmlExport.exportRootDir') }}：</div>
           <div class="form-control">
-            <div
+            <bubbleBoxTrigger
+              tag="div"
               class="choose-dir flashing-border"
               :title="targetRootDir"
               :class="{ 'is-flashing': flashArea === 'targetRootDir' }"
               @click="chooseDirectory()"
             >
               {{ targetRootDir || t('rekordboxXmlExport.selectExportRootDir') }}
-            </div>
+            </bubbleBoxTrigger>
           </div>
         </div>
 

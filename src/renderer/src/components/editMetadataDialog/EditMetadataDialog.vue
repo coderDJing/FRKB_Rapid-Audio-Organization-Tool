@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useEditMetadataDialog } from './useEditMetadataDialog'
 import type { ISongInfo, ITrackMetadataDetail } from 'src/types/globals'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
@@ -101,7 +102,9 @@ const {
 
               <div class="path-row">
                 <label>{{ t('metadata.filePath') }}</label>
-                <div class="path-value" :title="currentFilePath">{{ currentFilePath }}</div>
+                <bubbleBoxTrigger tag="div" class="path-value" :title="currentFilePath">
+                  {{ currentFilePath }}
+                </bubbleBoxTrigger>
               </div>
 
               <div v-if="loading" class="loading">{{ t('metadata.loading') }}</div>

@@ -2,6 +2,7 @@
 import type { TitleAudioVisualizerMode } from 'src/types/globals'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 import {
   resolveTitleAudioVisualizerAnalyser,
@@ -263,7 +264,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <button
+  <bubbleBoxTrigger
+    tag="button"
     v-if="visible"
     type="button"
     class="title-audio-visualizer canNotDrag"
@@ -272,7 +274,7 @@ onBeforeUnmount(() => {
     @click.stop="toggleMode"
   >
     <canvas ref="canvasRef" class="title-audio-visualizer__canvas"></canvas>
-  </button>
+  </bubbleBoxTrigger>
 </template>
 
 <style scoped lang="scss">

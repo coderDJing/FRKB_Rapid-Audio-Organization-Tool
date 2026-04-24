@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import choiceDialog from '@renderer/components/choiceDialog'
 import confirm from '@renderer/components/confirmDialog'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import emitter from '@renderer/utils/mitt'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -314,12 +315,12 @@ const handleClose = async () => {
                     "
                   />
                 </div>
-                <div class="cell ellipsis" :title="item.originalFileName">
+                <bubbleBoxTrigger tag="div" class="cell ellipsis" :title="item.originalFileName">
                   {{ item.originalFileName }}
-                </div>
-                <div class="cell ellipsis" :title="item.targetFileName">
+                </bubbleBoxTrigger>
+                <bubbleBoxTrigger tag="div" class="cell ellipsis" :title="item.targetFileName">
                   {{ item.targetFileName }}
-                </div>
+                </bubbleBoxTrigger>
                 <div class="cell status-cell">{{ resolvePreviewStatusLabel(item.status) }}</div>
               </div>
             </div>

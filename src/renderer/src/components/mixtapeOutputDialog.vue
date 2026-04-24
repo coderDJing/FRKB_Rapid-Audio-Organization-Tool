@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import BaseSelect from '@renderer/components/BaseSelect.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 
 const props = defineProps({
   outputPath: {
@@ -84,14 +85,15 @@ const cancel = () => {
         <div class="form-row">
           <div class="form-label">{{ t('mixtape.outputPath') }}：</div>
           <div class="form-field">
-            <div
+            <bubbleBoxTrigger
+              tag="div"
               class="chooseDirDiv"
               :class="{ 'chooseDirDiv--empty': !draftPath }"
               :title="outputPathDisplay"
               @click="handlePickOutputPath"
             >
               {{ outputPathDisplay }}
-            </div>
+            </bubbleBoxTrigger>
           </div>
         </div>
         <div class="form-row">

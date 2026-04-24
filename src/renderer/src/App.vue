@@ -21,6 +21,7 @@ import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
 import emitter from './utils/mitt'
 import { replaceExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
 import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import HorizontalBrowseModeShell from '@renderer/components/HorizontalBrowseModeShell.vue'
 import AnalysisRuntimeDownloadOverlay from '@renderer/components/AnalysisRuntimeDownloadOverlay.vue'
 import { useAnalysisRuntimeDownload } from '@renderer/composables/useAnalysisRuntimeDownload'
@@ -891,7 +892,8 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
     </div>
     <div :style="mainWindowTopGapStyle" class="mainWindowTopGap">
       <div ref="mainWindowBrowseModeMenuRef" class="topToolbarModeDropdown">
-        <button
+        <bubbleBoxTrigger
+          tag="button"
           class="topToolbarModeButton"
           :class="{ 'is-open': mainWindowBrowseModeMenuOpen }"
           :title="currentMainWindowBrowseModeLabel"
@@ -916,7 +918,7 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
               stroke-linejoin="round"
             />
           </svg>
-        </button>
+        </bubbleBoxTrigger>
         <div
           v-if="mainWindowBrowseModeMenuOpen"
           class="topToolbarModeMenu"
@@ -947,7 +949,8 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
           :size="28"
           @update:model-value="handleMainWindowVolumeChange"
         />
-        <button
+        <bubbleBoxTrigger
+          tag="button"
           class="topToolbarSettingButton"
           :style="topToolbarSettingIconStyle"
           :title="t('common.setting')"
@@ -956,7 +959,7 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
           @click="openSettingsDialog"
         >
           <span class="topToolbarSettingIcon"></span>
-        </button>
+        </bubbleBoxTrigger>
       </div>
     </div>
     <div v-if="showHorizontalModeShell" :style="horizontalModeShellStyle">

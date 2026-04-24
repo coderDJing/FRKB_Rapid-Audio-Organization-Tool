@@ -17,6 +17,7 @@ import confirm from '@renderer/components/confirmDialog'
 import choice from '@renderer/components/choiceDialog'
 import singleRadioGroup from '@renderer/components/singleRadioGroup.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import hintIconAsset from '@renderer/assets/hint.svg?asset'
 import { formatWindowTitle } from '@renderer/utils/windowTitle'
 const runtime = useRuntimeStore()
@@ -431,7 +432,8 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
       <template v-else>
         <div class="field">
           <div class="fieldLabel" style="font-size: 14px">{{ t('database.createNewDb') }}</div>
-          <div
+          <bubbleBoxTrigger
+            tag="div"
             class="chooseDirDiv flashing-border"
             :title="folderPathVal"
             :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
@@ -439,7 +441,7 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event,
             @click="clickChooseDir()"
           >
             {{ folderPathVal || t('database.pickFolder') }}
-          </div>
+          </bubbleBoxTrigger>
         </div>
         <div class="field">
           <div class="fieldLabel" style="font-size: 14px">{{ t('database.inputDbName') }}</div>

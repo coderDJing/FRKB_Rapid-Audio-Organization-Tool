@@ -2,6 +2,7 @@
 import BeatGridMetronomeControls from '@renderer/components/BeatGridMetronomeControls.vue'
 import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatAlignGridAdjustToolbar.vue'
 import HorizontalBrowseDeckMoveButton from '@renderer/components/HorizontalBrowseDeckMoveButton.vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/components/useHorizontalBrowseDeckMove'
 import { t } from '@renderer/utils/translate'
 
@@ -68,7 +69,9 @@ const emit = defineEmits<{
         @memory-cue="emit('memory-cue')"
       />
       <div class="overview__toolbar-group overview__loop-control">
-        <button
+        <bubbleBoxTrigger
+          wrapper-tag="span"
+          tag="button"
           type="button"
           class="overview__loop-arrow"
           :disabled="props.loopDisabled"
@@ -79,8 +82,10 @@ const emit = defineEmits<{
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             <path d="M10.5 3.5 6 8l4.5 4.5"></path>
           </svg>
-        </button>
-        <button
+        </bubbleBoxTrigger>
+        <bubbleBoxTrigger
+          wrapper-tag="span"
+          tag="button"
           type="button"
           class="overview__loop-value"
           :class="{ 'is-active': props.loopActive }"
@@ -90,8 +95,10 @@ const emit = defineEmits<{
           @click="emit('toggle-loop')"
         >
           {{ props.loopBeatLabel }}
-        </button>
-        <button
+        </bubbleBoxTrigger>
+        <bubbleBoxTrigger
+          wrapper-tag="span"
+          tag="button"
           type="button"
           class="overview__loop-arrow"
           :disabled="props.loopDisabled"
@@ -102,7 +109,7 @@ const emit = defineEmits<{
           <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
             <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
           </svg>
-        </button>
+        </bubbleBoxTrigger>
       </div>
       <div class="overview__toolbar-group">
         <button
@@ -132,7 +139,9 @@ const emit = defineEmits<{
     </div>
     <div class="overview__toolbar-actions">
       <div class="overview__toolbar-group overview__toolbar-group--actions">
-        <button
+        <bubbleBoxTrigger
+          wrapper-tag="span"
+          tag="button"
           type="button"
           class="overview__transport-btn"
           :class="{ 'is-active': props.masterTempoEnabled }"
@@ -141,8 +150,10 @@ const emit = defineEmits<{
           @click="emit('toggle-master-tempo')"
         >
           MT
-        </button>
-        <button
+        </bubbleBoxTrigger>
+        <bubbleBoxTrigger
+          wrapper-tag="span"
+          tag="button"
           type="button"
           class="overview__transport-btn"
           :disabled="!props.songPresent"
@@ -150,10 +161,12 @@ const emit = defineEmits<{
           @click="emit('reset-tempo')"
         >
           RES
-        </button>
+        </bubbleBoxTrigger>
       </div>
       <div class="overview__toolbar-group">
-        <button
+        <bubbleBoxTrigger
+          wrapper-tag="span"
+          tag="button"
           type="button"
           class="overview__transport-btn"
           :class="{ 'is-active': props.quantizeEnabled }"
@@ -163,7 +176,7 @@ const emit = defineEmits<{
           @click="emit('toggle-quantize')"
         >
           Q
-        </button>
+        </bubbleBoxTrigger>
       </div>
       <div class="overview__toolbar-group">
         <HorizontalBrowseDeckMoveButton
