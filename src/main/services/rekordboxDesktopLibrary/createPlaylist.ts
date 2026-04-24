@@ -9,6 +9,7 @@ import { loadSharedSongHotCueDefinition } from '../sharedSongHotCues'
 import { loadSharedSongMemoryCueDefinition } from '../sharedSongMemoryCues'
 import { normalizeSongHotCues } from '../../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
+import { sortByPlaylistTrackNumber } from '../../../shared/playlistTrackOrder'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
 import { runRekordboxDesktopHelper } from './helper'
 import type {
@@ -170,7 +171,7 @@ const validateSelectedTrackInputs = (tracks: RekordboxDesktopPlaylistTrackInput[
   }
   return {
     ok: true as const,
-    tracks: normalized.map((item) => {
+    tracks: sortByPlaylistTrackNumber(normalized).map((item) => {
       return {
         sourcePath: path.resolve(item.filePath),
         title: sanitizeOptionalText(item.displayName),
@@ -236,10 +237,11 @@ const resolvePlaylistTracks = async (
       message: '当前歌单里没有可写入 Rekordbox 的曲目。'
     }
   }
+  const orderedScanData = sortByPlaylistTrackNumber(scanData)
 
   return {
     ok: true,
-    tracks: scanData.map((item) => {
+    tracks: orderedScanData.map((item) => {
       return {
         sourcePath: path.resolve(item.filePath),
         title: sanitizeOptionalText(item.title),

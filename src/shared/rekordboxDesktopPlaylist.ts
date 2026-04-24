@@ -3,6 +3,7 @@ import type { ISongHotCue, ISongMemoryCue } from '../types/globals'
 export type RekordboxDesktopPlaylistTrackInput = {
   filePath: string
   displayName?: string
+  playlistTrackNumber?: number
   artist?: string
   album?: string
   genre?: string

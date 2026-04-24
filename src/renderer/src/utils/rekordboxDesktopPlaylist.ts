@@ -11,6 +11,7 @@ import {
 } from '@renderer/utils/rekordboxLibraryCache'
 import { t } from '@renderer/utils/translate'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
+import { normalizePlaylistTrackNumber, sortByPlaylistTrackNumber } from '@shared/playlistTrackOrder'
 import type { IPioneerPlaylistTreeNode, ISongInfo } from '../../../types/globals'
 import type {
   RekordboxDesktopCleanupCopiedTracksRequest,
@@ -46,6 +47,7 @@ const buildDefaultSelectedTracksPlaylistName = () =>
 const buildTrackInput = (song: ISongInfo): RekordboxDesktopPlaylistTrackInput => ({
   filePath: song.filePath,
   displayName: String(song.title || song.fileName || '').trim(),
+  playlistTrackNumber: normalizePlaylistTrackNumber(song.playlistTrackNumber),
   artist: typeof song.artist === 'string' ? song.artist : '',
   album: typeof song.album === 'string' ? song.album : '',
   genre: typeof song.genre === 'string' ? song.genre : '',
@@ -211,7 +213,7 @@ const collectPlaylistTrackInputs = async (params: {
     scanData?: ISongInfo[]
   } | null
   const scanData = Array.isArray(result?.scanData) ? result.scanData : []
-  return scanData.map((item) => buildTrackInput(item))
+  return sortByPlaylistTrackNumber(scanData).map((item) => buildTrackInput(item))
 }
 
 const copyTracksToStorage = async (params: {
@@ -332,7 +334,9 @@ export const openRekordboxDesktopPlaylistForSelectedTracks = async (params: {
   if (retentionChoice === 'cancel') return null
   const deleteSourceAfterWrite = retentionChoice === 'reset'
 
-  const originalTracks = params.tracks.map((track) => buildTrackInput(track))
+  const originalTracks = sortByPlaylistTrackNumber(params.tracks).map((track) =>
+    buildTrackInput(track)
+  )
   if (!(await ensureRekordboxDesktopWriteAvailable('write'))) {
     return null
   }

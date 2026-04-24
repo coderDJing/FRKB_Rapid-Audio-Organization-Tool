@@ -7,6 +7,7 @@ export type RekordboxXmlExportSourceLibraryName = 'FilterLibrary' | 'CuratedLibr
 export type RekordboxXmlExportTrackInput = {
   filePath: string
   displayName?: string
+  playlistTrackNumber?: number
   artist?: string
   album?: string
   genre?: string

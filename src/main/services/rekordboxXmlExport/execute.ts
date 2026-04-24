@@ -10,6 +10,7 @@ import { loadSharedSongHotCueDefinition } from '../sharedSongHotCues'
 import { loadSharedSongMemoryCueDefinition } from '../sharedSongMemoryCues'
 import { normalizeSongHotCues } from '../../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
+import { sortByPlaylistTrackNumber } from '../../../shared/playlistTrackOrder'
 import type {
   RekordboxXmlExportRequest,
   RekordboxXmlExportResponse
@@ -84,21 +85,23 @@ const resolveSelectedTracks = (request: RekordboxXmlExportRequest) => {
   if (!validated.ok) {
     return validated
   }
-  const tracks: RekordboxXmlExportResolvedTrack[] = validated.tracks.map((track) => {
-    const fallbackName = path.basename(track.filePath, path.extname(track.filePath))
-    return {
-      sourcePath: track.filePath,
-      displayName: track.displayName || fallbackName,
-      artist: typeof track.artist === 'string' ? track.artist : '',
-      album: typeof track.album === 'string' ? track.album : '',
-      genre: typeof track.genre === 'string' ? track.genre : '',
-      label: typeof track.label === 'string' ? track.label : '',
-      bitrate: typeof track.bitrate === 'number' ? track.bitrate : undefined,
-      duration: typeof track.duration === 'string' ? track.duration : '',
-      hotCues: normalizeSongHotCues(track.hotCues),
-      memoryCues: normalizeSongMemoryCues(track.memoryCues)
+  const tracks: RekordboxXmlExportResolvedTrack[] = sortByPlaylistTrackNumber(validated.tracks).map(
+    (track) => {
+      const fallbackName = path.basename(track.filePath, path.extname(track.filePath))
+      return {
+        sourcePath: track.filePath,
+        displayName: track.displayName || fallbackName,
+        artist: typeof track.artist === 'string' ? track.artist : '',
+        album: typeof track.album === 'string' ? track.album : '',
+        genre: typeof track.genre === 'string' ? track.genre : '',
+        label: typeof track.label === 'string' ? track.label : '',
+        bitrate: typeof track.bitrate === 'number' ? track.bitrate : undefined,
+        duration: typeof track.duration === 'string' ? track.duration : '',
+        hotCues: normalizeSongHotCues(track.hotCues),
+        memoryCues: normalizeSongMemoryCues(track.memoryCues)
+      }
     }
-  })
+  )
   return {
     ok: true as const,
     tracks
@@ -136,9 +139,10 @@ const resolvePlaylistTracks = async (request: RekordboxXmlExportRequest) => {
       message: '当前歌单里没有可导出的曲目。'
     }
   }
+  const orderedScanData = sortByPlaylistTrackNumber(scanData)
   return {
     ok: true as const,
-    tracks: scanData.map((item) => ({
+    tracks: orderedScanData.map((item) => ({
       sourcePath: path.resolve(item.filePath),
       displayName:
         String(item.title || '').trim() ||

@@ -2,6 +2,7 @@ import confirm from '@renderer/components/confirmDialog'
 import openRekordboxXmlExportDialog from '@renderer/components/rekordboxXmlExportDialog'
 import { t } from '@renderer/utils/translate'
 import type { ISongInfo } from '../../../types/globals'
+import { normalizePlaylistTrackNumber, sortByPlaylistTrackNumber } from '@shared/playlistTrackOrder'
 import type {
   RekordboxXmlExportRequest,
   RekordboxXmlExportResponse,
@@ -50,6 +51,7 @@ const buildDefaultXmlFileName = (playlistName: string) => {
 const buildTrackInput = (song: ISongInfo): RekordboxXmlExportTrackInput => ({
   filePath: song.filePath,
   displayName: String(song.title || song.fileName || basename(song.filePath)).trim(),
+  playlistTrackNumber: normalizePlaylistTrackNumber(song.playlistTrackNumber),
   artist: typeof song.artist === 'string' ? song.artist : '',
   album: typeof song.album === 'string' ? song.album : '',
   genre: typeof song.genre === 'string' ? song.genre : '',
@@ -144,6 +146,7 @@ export const openRekordboxXmlExportForSelectedTracks = async (params: {
   sourceLibraryName: RekordboxXmlExportSourceLibraryName
   songListUUID: string
 }) => {
+  const orderedTracks = sortByPlaylistTrackNumber(params.tracks)
   const defaultPlaylistName = buildSelectedTracksDefaultPlaylistName()
   const dialogResult = await openRekordboxXmlExportDialog({
     dialogTitle: t('rekordboxXmlExport.dialogTitleTracks'),
@@ -164,7 +167,7 @@ export const openRekordboxXmlExportForSelectedTracks = async (params: {
     source: {
       kind: 'selected-tracks',
       songListUUID: params.songListUUID,
-      tracks: params.tracks.map(buildTrackInput)
+      tracks: orderedTracks.map(buildTrackInput)
     }
   })
 }

@@ -2,6 +2,7 @@ import fs from 'fs-extra'
 import path from 'path'
 import { normalizeSongHotCues } from '../../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
+import { normalizePlaylistTrackNumber } from '../../../shared/playlistTrackOrder'
 import type {
   RekordboxXmlExportRequest,
   RekordboxXmlExportSourceLibraryName,
@@ -90,6 +91,7 @@ export const validateSelectedTrackInputs = (tracks: RekordboxXmlExportTrackInput
     tracks: normalized.map((item) => ({
       filePath: path.resolve(item.filePath),
       displayName: String(item.displayName || '').trim(),
+      playlistTrackNumber: normalizePlaylistTrackNumber(item.playlistTrackNumber),
       artist: String(item.artist || '').trim(),
       album: String(item.album || '').trim(),
       genre: String(item.genre || '').trim(),
