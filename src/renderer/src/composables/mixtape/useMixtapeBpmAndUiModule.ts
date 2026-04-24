@@ -240,7 +240,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
     renderMixtapeOutputWav,
     normalizeMixtapeFilePath,
     normalizeMixtapeMixMode,
-    normalizeMixtapeStemMode,
     normalizeStemProfile,
     normalizeMixtapeStemStatus,
     normalizeStemSummary,

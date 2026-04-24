@@ -12,7 +12,6 @@ import {
 import './cloudSync'
 import errorReport from './errorReport'
 import { saveList } from './fingerprintStore'
-import { initDatabaseStructure } from './initDatabase'
 import mainWindow from './window/mainWindow'
 import databaseInitWindow from './window/databaseInitWindow'
 import { is } from '@electron-toolkit/utils'
@@ -104,9 +103,7 @@ try {
   log.error('[runtime] 同步 userData 到分析 worker 环境失败', error)
 }
 
-const initDevDatabase = false
 const devDatabase = devRuntime?.databaseDir || ''
-const my_real_DB = devDatabase
 
 // 主题：默认按设置文件（首次为 system），不再强制日间模式
 
@@ -369,28 +366,8 @@ registerBackgroundForegroundBusyProvider(
     isMixtapeWaveformHiresQueueBusy()
 )
 
-let devInitDatabaseFunction = async () => {
-  if (!fs.pathExistsSync(store.settingConfig.databaseUrl)) {
-    return
-  }
-  // 在 dev 环境下每次启动时重新初始化数据库
-  if (fs.pathExistsSync(store.settingConfig.databaseUrl)) {
-    fs.removeSync(store.settingConfig.databaseUrl)
-  }
-  await initDatabaseStructure(store.settingConfig.databaseUrl)
-  // 指纹列表使用新方案初始化为空版本
-  store.databaseDir = store.settingConfig.databaseUrl
-  store.songFingerprintList = []
-  await saveList([])
-}
 if (is.dev && platform === 'win32' && devDatabase) {
   store.settingConfig.databaseUrl = devDatabase
-  // if (initDevDatabase) {
-  //   if (devDatabase !== my_real_DB) {
-  //     // 做一个保险，防止误操作把我真实数据库删了
-  //     void devInitDatabaseFunction()
-  //   }
-  // }
 }
 
 app.whenReady().then(async () => {
@@ -602,7 +579,7 @@ app.on('window-all-closed', async () => {
 })
 
 // 语言字典将不再通过主进程下发，渲染进程使用 vue-i18n 自行管理
-ipcMain.on('outputLog', (e, logMsg) => {
+ipcMain.on('outputLog', (_event, logMsg) => {
   const normalizeLevelFromText = (text: string): LogLevel => {
     const normalized = String(text || '').toLowerCase()
     if (normalized.includes('[console.debug]') || normalized.includes('[debug]')) return 'debug'
@@ -657,7 +634,7 @@ ipcMain.on('outputLog', (e, logMsg) => {
   log[normalized.level](normalized.text)
 })
 
-ipcMain.on('openLocalBrowser', (e, url) => {
+ipcMain.on('openLocalBrowser', (_event, url) => {
   shell.openExternal(url)
 })
 

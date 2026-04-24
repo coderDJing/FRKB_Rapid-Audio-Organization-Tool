@@ -5,7 +5,6 @@ import {
   resolveBundledDemucsBootstrapDirPath,
   resolveBundledDemucsModelsPath,
   resolveBundledDemucsPythonPath,
-  resolveBundledDemucsRootPath,
   resolveBundledDemucsRuntimeDir
 } from '../demucs'
 import type { MixtapeStemMode } from '../mixtapeDb'
@@ -26,13 +25,11 @@ import {
 import type {
   MixtapeStemComputeDevice,
   MixtapeStemCpuFallbackReasonCode,
-  MixtapeStemDeviceProbeSnapshot,
   MixtapeStemRuntimeProgress,
   MixtapeStemSeparationResult
 } from './mixtapeStemSeparationShared'
 
 const {
-  DEFAULT_STEM_MODEL,
   DEMUCS_NO_SPLIT_MAX_DURATION_SECONDS,
   DEMUCS_PROFILE_OPTIONS,
   buildStemProcessEnv,
@@ -577,13 +574,6 @@ export const runStemSeparation = async (params: {
               })
               return
             } catch (error) {
-              const errorCode = getErrorCode(error) || 'XPU_WORKER_FALLBACK'
-              const errorMessage = normalizeText(
-                error instanceof Error
-                  ? error.message
-                  : String(error || 'persistent xpu worker failed'),
-                800
-              )
               await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
               await fs.promises.mkdir(rawOutputRoot, { recursive: true })
             }

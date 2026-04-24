@@ -120,8 +120,6 @@ const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
   setDeckSongState(deck, song)
 }
 
-const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
-
 const topOverviewRegions = [1, 2, 3]
 const bottomOverviewRegions = [6, 7, 8]
 const deckCuePanelMode = reactive<Record<DeckKey, DeckCuePanelMode>>({
@@ -428,25 +426,21 @@ const {
   resolveDeckCuePlacementSec
 })
 
-const {
-  handleDeckHotCuePress,
-  handleDeckHotCueTrigger,
-  handleDeckHotCueDelete,
-  handleSongHotCuesUpdated
-} = useHorizontalBrowseDeckHotCues({
-  resolveDeckSong,
-  setDeckSong,
-  resolveDeckMarkerPlacementSec: resolveDeckMarkerPlacementSeconds,
-  resolveDeckPlaying,
-  resolveDeckDurationSeconds,
-  resolveTransportDeckSnapshot,
-  buildDeckStoredCueDefinition,
-  handleDeckHotCueRecall,
-  nativeTransport,
-  commitDeckStatesToNative,
-  syncDeckRenderState,
-  isDeckLoopActive
-})
+const { handleDeckHotCuePress, handleDeckHotCueDelete, handleSongHotCuesUpdated } =
+  useHorizontalBrowseDeckHotCues({
+    resolveDeckSong,
+    setDeckSong,
+    resolveDeckMarkerPlacementSec: resolveDeckMarkerPlacementSeconds,
+    resolveDeckPlaying,
+    resolveDeckDurationSeconds,
+    resolveTransportDeckSnapshot,
+    buildDeckStoredCueDefinition,
+    handleDeckHotCueRecall,
+    nativeTransport,
+    commitDeckStatesToNative,
+    syncDeckRenderState,
+    isDeckLoopActive
+  })
 
 const {
   handleDeckMemoryCueCreate,

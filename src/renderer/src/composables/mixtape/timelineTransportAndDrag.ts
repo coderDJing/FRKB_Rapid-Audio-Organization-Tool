@@ -98,7 +98,6 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   const {
     tracks,
     mixtapeMixMode,
-    mixtapeStemMode,
     timelineLayout,
     normalizedRenderZoom,
     timelineScrollRef,
@@ -525,7 +524,6 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       0,
       Math.max(0, Number(entry.duration) || 0)
     )
-    const timeMap = createTrackTimeMapFromSnapshotPayload(entry.tempoSnapshot)
     const baseTimeMap = createTrackTimeMapFromSnapshotPayload({
       ...entry.tempoSnapshot,
       durationSec: entry.tempoSnapshot.baseDurationSec,

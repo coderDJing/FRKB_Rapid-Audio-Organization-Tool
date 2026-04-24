@@ -143,7 +143,7 @@ const { trackCount } = useLibraryTrackCount({ runtime, dirDataRef, props })
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
 
-const { rightClickMenuShow, menuArr, contextmenuEvent, deleteDir } = useLibraryContextMenu({
+const { rightClickMenuShow, contextmenuEvent, deleteDir } = useLibraryContextMenu({
   dirDataRef,
   fatherDirDataRef,
   runtime,

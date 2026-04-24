@@ -3,7 +3,6 @@ import fs = require('fs-extra')
 import { mapRendererPathToFsPath, operateHiddenFile } from '../utils'
 import store from '../store'
 import * as LibraryCacheDb from '../libraryCacheDb'
-import type { IPicture } from 'music-metadata'
 
 const toNodeBuffer = (value: unknown): Buffer | null => {
   if (!value) return null
@@ -64,7 +63,7 @@ export const extFromMime = (mime: string) => {
 
 export async function getSongCoverThumb(
   filePath: string,
-  size: number = 48,
+  _size: number = 48,
   listRootDir?: string | null
 ): Promise<{ format: string; data: Buffer; dataUrl: string } | null> {
   try {

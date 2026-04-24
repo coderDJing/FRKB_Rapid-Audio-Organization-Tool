@@ -7,8 +7,7 @@ import {
   calculateAudioHashesWithProgress,
   calculateFileHashesWithProgress,
   type AudioFileResult,
-  ProcessProgress,
-  decodeAudioFile
+  ProcessProgress
 } from 'rust_package'
 import { BrowserWindow, ipcMain, session } from 'electron'
 import {
@@ -112,8 +111,6 @@ export async function getSongsAnalyseResult(
   } else {
     results = await calculateAudioHashesWithProgress(songFilePaths, progressCallback)
   }
-  const existingHashes = new Set(store.songFingerprintList)
-
   const songsAnalyseResult: md5[] = []
   const errorSongsAnalyseResult: md5[] = []
 
@@ -130,11 +127,9 @@ export async function getSongsAnalyseResult(
       continue
     }
 
-    let likelyDuplicate = false
-
     // 1. SHA256 直接判重复
     if (store.songFingerprintList.includes(common.sha256_Hash)) {
-      likelyDuplicate = true
+      // 指纹重复标记仅用于命中检查，不再额外写回字段
     }
 
     // 指纹 hash 与相似度判定分支已移除
@@ -454,7 +449,7 @@ export async function runWithConcurrency<T>(
     return null
   }
 
-  async function handleENOSPC(idx: number, err: unknown) {
+  async function handleENOSPC(idx: number, _err: unknown) {
     hasENOSPC = true
     // 记录待重试
     retryQueue.push(idx)

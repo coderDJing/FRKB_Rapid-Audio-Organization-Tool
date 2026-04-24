@@ -11,11 +11,7 @@ import { v4 as uuidV4 } from 'uuid'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import hintIconAsset from '@renderer/assets/hint.svg?asset'
-import {
-  SUPPORTED_AUDIO_FORMATS,
-  type SupportedAudioFormat,
-  METADATA_PRESERVABLE_FORMATS
-} from '../../../shared/audioFormats'
+import { SUPPORTED_AUDIO_FORMATS, type SupportedAudioFormat } from '../../../shared/audioFormats'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import type { ConvertOptions, StandaloneConvertPayload } from './audioConvertDialog.types'
 const hintIcon = hintIconAsset
@@ -64,7 +60,6 @@ const form = ref<ConvertDefaults>({
 })
 
 // 依据容器/编码支持情况，尽量保留元数据；无法保留时 FFmpeg 会忽略
-const metadataCapableFormats = new Set<SupportedAudioFormat>(METADATA_PRESERVABLE_FORMATS)
 const metadataHint = computed(() => t('convert.metadataHint'))
 const metadataHintRef = useTemplateRef<HTMLImageElement>('metadataHintRef')
 const { dialogVisible, closeWithAnimation } = useDialogTransition()

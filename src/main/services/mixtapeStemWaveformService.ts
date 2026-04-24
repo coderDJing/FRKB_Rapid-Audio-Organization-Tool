@@ -272,7 +272,7 @@ export async function ensureMixtapeStemWaveformBundle(
     },
     {}
   )
-  const stored = await LibraryCacheDb.upsertMixtapeStemWaveformCacheEntry(
+  await LibraryCacheDb.upsertMixtapeStemWaveformCacheEntry(
     {
       listRoot,
       filePath: sourceFilePath,

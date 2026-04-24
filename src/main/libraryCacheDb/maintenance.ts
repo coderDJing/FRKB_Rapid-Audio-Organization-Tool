@@ -502,9 +502,9 @@ export async function migrateCacheKeysToRelativeIfNeeded(): Promise<void> {
       if (!rel) continue
       const newKey = normalizeRoot(rel)
       if (!newKey) continue
-      const songMoved = migrateSongCacheRows(db, root, newKey, root)
-      const coverMoved = migrateCoverIndexRows(db, root, newKey, root)
-      const waveformMoved = migrateWaveformCacheRows(db, root, newKey, root)
+      migrateSongCacheRows(db, root, newKey, root)
+      migrateCoverIndexRows(db, root, newKey, root)
+      migrateWaveformCacheRows(db, root, newKey, root)
     }
     const remaining = collectMigratableCacheRoots(db, baseRoot)
     if (remaining.size === 0) {

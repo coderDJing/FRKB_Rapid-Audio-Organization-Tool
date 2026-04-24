@@ -4,7 +4,6 @@ import fs = require('fs-extra')
 import child_process = require('child_process')
 import { v4 as uuidV4 } from 'uuid'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from '../ffmpeg'
-import { operateHiddenFile } from '../utils'
 import { ISongInfo, ITrackMetadataDetail, ITrackMetadataUpdatePayload } from '../../types/globals'
 import { extFromMime } from './covers'
 import { writeWavRiffInfoWindows, readWavRiffInfoWindows } from './wavRiffInfo'

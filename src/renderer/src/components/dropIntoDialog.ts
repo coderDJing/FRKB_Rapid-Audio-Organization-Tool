@@ -15,7 +15,7 @@ interface IResult {
   deduplicateMode: 'library' | 'batch'
 }
 export default ({ songListUuid, libraryName }: IArgs): Promise<IResult | 'cancel'> => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
 

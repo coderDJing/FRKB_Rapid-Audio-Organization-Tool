@@ -473,8 +473,6 @@ export async function handleLibraryAreaEmptySpaceDrop(
   libraryData: IDir
 ): Promise<boolean> {
   try {
-    const runtime = useRuntimeStore()
-
     // 验证拖拽数据
     if (!dragItemData) {
       return false

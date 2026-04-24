@@ -13,7 +13,7 @@ import {
 } from '../utils'
 import { log } from '../log'
 import mainWindow from '../window/mainWindow'
-import { saveList, exportSnapshot, importFromJsonFile } from '../fingerprintStore'
+import { exportSnapshot, importFromJsonFile } from '../fingerprintStore'
 import { deleteRecycleBinRecord } from '../recycleBinDb'
 import { isInRecycleBinAbsPath, toLibraryRelativePath } from '../recycleBinService'
 import { findSongListRoot, transferTrackCaches } from '../services/cacheMaintenance'

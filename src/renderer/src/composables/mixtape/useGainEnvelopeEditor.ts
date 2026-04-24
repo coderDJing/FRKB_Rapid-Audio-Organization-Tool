@@ -11,13 +11,11 @@ import {
   linearGainToDb
 } from '@renderer/composables/mixtape/gainEnvelope'
 import {
-  GAIN_ENVELOPE_LOCKED_SEC_EPSILON,
   GAIN_ENVELOPE_MAX_POINTS_PER_SEC,
   GAIN_ENVELOPE_MIN_GAP_RATIO,
   GAIN_ENVELOPE_PERSIST_DEBOUNCE_MS,
   GAIN_ENVELOPE_SAME_SEC_EPSILON,
-  MIX_PARAM_UNDO_STACK_LIMIT,
-  VOLUME_MUTE_SEGMENT_EPSILON
+  MIX_PARAM_UNDO_STACK_LIMIT
 } from '@renderer/composables/mixtape/gainEnvelopeEditorConstants'
 import {
   clampNumber,
@@ -28,7 +26,6 @@ import {
 } from '@renderer/composables/mixtape/gainEnvelopeEditorGrid'
 import { buildStemEnvelopeBySegments } from '@renderer/composables/mixtape/gainEnvelopeStemSegments'
 import { createGainEnvelopeTrackStateModule } from '@renderer/composables/mixtape/gainEnvelopeTrackState'
-import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type {
   CreateMixtapeGainEnvelopeEditorParams,
   EnvelopeDragState,
@@ -578,7 +575,6 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     const pointer = resolveEnvelopePointer(state.param, state.stageEl, event, durationSec)
     if (!pointer) return
 
-    const minGapSec = resolveEnvelopeMinGapSec(durationSec)
     const isFineTune = event.shiftKey
 
     if (state.pointIndices.length === 1) {

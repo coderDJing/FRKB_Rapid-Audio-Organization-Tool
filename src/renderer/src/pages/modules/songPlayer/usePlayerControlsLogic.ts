@@ -237,7 +237,6 @@ export function usePlayerControlsLogic({
     const duration = player.getDuration()
     if (!duration || Number.isNaN(duration)) return
 
-    const currentSongPath = runtime.playingData.playingSong?.filePath ?? null
     const skipAmount = runtime.setting.fastForwardTime
 
     let hasNextSong = false

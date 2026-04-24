@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, ipcMain, screen } from 'electron'
+import { BrowserWindow, shell, ipcMain, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import path = require('path')

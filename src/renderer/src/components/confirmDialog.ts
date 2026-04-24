@@ -15,7 +15,7 @@ interface DialogOptions {
 }
 
 export default (options: DialogOptions) => {
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<string>((resolve, _reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
 

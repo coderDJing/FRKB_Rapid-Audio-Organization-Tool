@@ -1,18 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
 import childProcess from 'node:child_process'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
 import mixtapeWindow from '../window/mixtapeWindow'
 import type { MixtapeStemMode } from '../mixtapeDb'
 import { listMixtapeItems } from '../mixtapeDb'
 import {
-  resolveBundledDemucsModelsPath,
-  resolveBundledDemucsPythonPath,
-  resolveBundledDemucsRuntimeDir
-} from '../demucs'
-import {
-  DEFAULT_MIXTAPE_STEM_BASE_MODEL,
   DEFAULT_MIXTAPE_STEM_PROFILE,
   normalizeMixtapeStemProfile,
   parseMixtapeStemModel,
@@ -23,13 +16,10 @@ import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import { prewarmMixtapeStemWaveformBundle } from './mixtapeStemWaveformService'
 import {
   getMixtapeStemAsset,
-  listMixtapeTrackStemStatusByPlaylist,
   summarizeMixtapeStemStatusByPlaylist,
   type MixtapeStemStatus,
-  upsertMixtapeItemStemStateById,
-  upsertMixtapeStemAsset
+  upsertMixtapeItemStemStateById
 } from '../mixtapeStemDb'
-import { findSongListRoot } from './cacheMaintenance'
 import {
   computeLibraryStemSourceSignature,
   resolveLibraryStemCacheDir,
@@ -249,7 +239,7 @@ export const normalizeModel = (
   return normalizeText(parsed.requestedModel, 128) || DEFAULT_STEM_MODEL
 }
 
-export const normalizeStemVersion = (value: unknown, model?: string): string => {
+export const normalizeStemVersion = (value: unknown, _model?: string): string => {
   const normalized = normalizeText(value, 128)
   if (!normalized) return DEFAULT_STEM_VERSION
   return normalized

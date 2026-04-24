@@ -143,7 +143,6 @@ const {
   resolvePreviewDurationSec,
   resolveVisibleDurationSec,
   resolvePreviewAnchorSec,
-  resolveSnappedRenderStartSec,
   clampPreviewStart,
   resolvePlaybackAlignedStart,
   scheduleRawStreamDirtyDraw,

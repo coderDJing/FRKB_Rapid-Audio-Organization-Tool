@@ -55,7 +55,7 @@ watch(
 )
 
 let latestVersion = ref('')
-window.electron.ipcRenderer.once('isLatestVersion', (event, version) => {
+window.electron.ipcRenderer.once('isLatestVersion', (_event, version) => {
   latestVersion.value = version
   state.value = 'isLatest'
 })
@@ -67,7 +67,7 @@ let newVersionInfo = ref<UpdateInfo>({
   sha512: '',
   releaseDate: ''
 })
-window.electron.ipcRenderer.once('newVersion', (event, versionInfo: UpdateInfo) => {
+window.electron.ipcRenderer.once('newVersion', (_event, versionInfo: UpdateInfo) => {
   newVersionInfo.value = versionInfo
   state.value = 'isNewVersion'
 })
@@ -103,7 +103,7 @@ let progress = ref({
   totalBytes: 0,
   fileName: ''
 })
-window.electron.ipcRenderer.on('updateProgress', (event, progressObj) => {
+window.electron.ipcRenderer.on('updateProgress', (_event, progressObj) => {
   progress.value = {
     percent: Number(progressObj?.percent) || 0,
     bytesPerSecond: Number(progressObj?.bytesPerSecond) || 0,

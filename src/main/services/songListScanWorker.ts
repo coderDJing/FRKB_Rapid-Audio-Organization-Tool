@@ -1,4 +1,3 @@
-import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import type { scanSongList } from './scanSongs'
 import { resolveMainWorkerPath } from '../workerPath'

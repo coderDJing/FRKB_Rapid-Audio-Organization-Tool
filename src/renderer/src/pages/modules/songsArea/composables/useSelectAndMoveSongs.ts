@@ -1,5 +1,5 @@
 import { computed, ref } from 'vue'
-import { type ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
+import type { ISongsAreaPaneRuntimeState } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
@@ -18,7 +18,6 @@ interface UseSelectAndMoveSongsParams {
 
 export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
   const { songsAreaState } = params
-  const runtime = useRuntimeStore()
   const normalizeUniqueStrings = (values: unknown[]): string[] =>
     Array.from(
       new Set(

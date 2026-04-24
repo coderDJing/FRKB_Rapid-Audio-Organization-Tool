@@ -877,11 +877,6 @@ const toggleFolder = (node: IPioneerPlaylistTreeNode) => {
   expandedFolderIds.value = next
 }
 
-const resolveNodeDragApproach = (nodeId: number) =>
-  dragTarget.value?.nodeId === nodeId ? dragTarget.value.approach : ''
-
-const isDraggingNode = (nodeId: number) => dragSourceId.value === nodeId
-
 const resetDragState = () => {
   dragSourceId.value = null
   dragTarget.value = null
@@ -955,7 +950,7 @@ const handleDragEndNode = () => {
   resetDragState()
 }
 
-const handleDropNode = async (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
+const handleDropNode = async (_event: DragEvent, node: IPioneerPlaylistTreeNode) => {
   if (dialogWriting.value) {
     resetDragState()
     return

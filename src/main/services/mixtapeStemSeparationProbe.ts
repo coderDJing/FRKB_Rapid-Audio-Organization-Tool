@@ -1,6 +1,4 @@
 import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
 import {
   resolveBundledDemucsPythonPath,
   resolveBundledDemucsRuntimeCandidates,
@@ -19,19 +17,10 @@ import type {
   MixtapeStemDeviceProbeSnapshot
 } from './mixtapeStemSeparationShared'
 const {
-  STEM_DEVICE_COMPATIBILITY_TIMEOUT_MS,
   STEM_DEVICE_PROBE_CACHE_TTL_MS,
   STEM_DEVICE_PROBE_TIMEOUT_MS,
-  STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_2,
-  STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_3,
-  STEM_GPU_JOB_CONCURRENCY_DIRECTML_MAX,
-  STEM_GPU_JOB_CONCURRENCY_MAX,
-  STEM_GPU_JOB_CONCURRENCY_MIN,
-  STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_2,
-  STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_3,
   STEM_WINDOWS_GPU_ADAPTER_PROBE_TIMEOUT_MS,
   buildStemProcessEnv,
-  normalizeFilePath,
   normalizeNumberOrNull,
   normalizeText,
   runProbeProcess,
@@ -65,7 +54,6 @@ export const probeWindowsGpuAdapters = async () => {
       maxStderrLen: 1500
     })
     const stdoutText = normalizeText(result.stdout, 2400)
-    const stderrText = normalizeText(result.stderr, 1200)
     if ((result.status !== 0 || result.timedOut) && !stdoutText) {
       return emptyResult
     }

@@ -102,7 +102,7 @@ const toggleClose = async () => {
 }
 const runtime = useRuntimeStore()
 
-window.electron.ipcRenderer.on(props.maxEventChannel, (event, bool) => {
+window.electron.ipcRenderer.on(props.maxEventChannel, (_event, bool) => {
   runtime.isWindowMaximized = bool
 })
 

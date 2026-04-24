@@ -1,9 +1,7 @@
-import { is } from '@electron-toolkit/utils'
 import {
   getCuratedArtistLibrarySnapshot,
   replaceCuratedArtistLibrary
 } from './curatedArtistLibrary'
-import { log } from './log'
 
 type LimitedFetch = (
   input: Parameters<typeof fetch>[0],

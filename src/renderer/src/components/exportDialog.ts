@@ -9,7 +9,7 @@ export default ({
   title: string
   forceCopyOnly?: boolean
 }): Promise<'cancel' | { folderPathVal: string; deleteSongsAfterExport: boolean }> => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
 

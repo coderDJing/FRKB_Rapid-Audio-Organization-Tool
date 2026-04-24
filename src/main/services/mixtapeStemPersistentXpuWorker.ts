@@ -395,7 +395,7 @@ class PersistentXpuStemWorkerSlot {
     }
   }
 
-  stopWorker(reason: string) {
+  stopWorker(_reason: string) {
     this.clearIdleTimer()
     const child = this.child
     this.child = null

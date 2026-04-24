@@ -29,14 +29,6 @@ class AudioFeatureExtractor {
       const audioDecode = await import('audio-decode')
       // 使用 audioDecode 解码
       const audioBuffer = await audioDecode.default(buffer)
-      // 计算音频数据的MD5
-      const crypto = require('crypto')
-      const md5Hash = crypto.createHash('md5')
-
-      // 将AudioBuffer转换为Buffer以计算MD5
-      const audioDataBuffer = Buffer.from(audioBuffer.getChannelData(0).buffer)
-      md5Hash.update(audioDataBuffer)
-      const md5Value = md5Hash.digest('hex')
       // 获取音频数据（如果是立体声，转换为单声道）
       const audioData = this.getMonoChannel(audioBuffer)
 

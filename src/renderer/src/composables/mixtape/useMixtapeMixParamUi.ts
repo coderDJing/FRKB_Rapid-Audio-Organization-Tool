@@ -28,7 +28,7 @@ type UseMixtapeMixParamUiOptions = {
 
 const STEM_PARAM_SET = new Set<MixParamId>(['vocal', 'inst', 'bass', 'drums'])
 
-export const useMixtapeMixParamUi = ({ mixtapeMixMode, t }: UseMixtapeMixParamUiOptions) => {
+export const useMixtapeMixParamUi = ({ mixtapeMixMode, t: _t }: UseMixtapeMixParamUiOptions) => {
   const isStemMixMode = computed(() => mixtapeMixMode.value === 'stem')
   const mixParamOptions = computed<MixParamOption[]>(() => {
     if (!isStemMixMode.value) {

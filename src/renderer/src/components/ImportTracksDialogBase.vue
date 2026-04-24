@@ -13,7 +13,6 @@ import hotkeys from 'hotkeys-js'
 import { v4 as uuidV4 } from 'uuid'
 import utils from '../utils/utils'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
-import { i18n } from '@renderer/i18n'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 const hintIcon = hintIconAsset
 
@@ -166,9 +165,6 @@ const songListSelectedDisplay = computed(() => {
   if (arr[0]) arr[0] = toLibraryDisplayName(arr[0])
   return arr.join('\\')
 })
-
-const isEnglishLocale = computed(() => i18n.global.locale.value === 'en-US')
-const labelWidth = computed(() => (isEnglishLocale.value ? '142px' : '126px'))
 
 const confirm = () => {
   if (props.mode === 'scan') {

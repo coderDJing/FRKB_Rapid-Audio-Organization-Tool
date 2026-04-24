@@ -1,4 +1,3 @@
-import { ipcMain } from 'electron'
 import fs = require('fs-extra')
 import { is } from '@electron-toolkit/utils'
 import store from './store'

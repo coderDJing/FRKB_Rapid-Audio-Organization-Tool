@@ -3,9 +3,7 @@ import {
   BASE_PX_PER_SEC,
   FALLBACK_TRACK_WIDTH,
   GRID_BEAT4_LINE_WIDTH,
-  GRID_BEAT4_LINE_ZOOM,
   GRID_BEAT_LINE_WIDTH,
-  GRID_BEAT_LINE_ZOOM,
   LANE_COUNT,
   MIXXX_MAX_RGB_ENERGY,
   MIXTAPE_BASE_TRACK_LANE_HEIGHT,
@@ -22,7 +20,6 @@ import {
   ZOOM_MIN
 } from '@renderer/composables/mixtape/constants'
 import {
-  normalizeBeatOffset as normalizeBeatOffsetByMixxx,
   resolveFirstBeatTimelineSec,
   resolveTempoRatioByBpm
 } from '@renderer/composables/mixtape/mixxxSyncModel'
@@ -117,7 +114,6 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     timelineLayoutCache,
     timelineLayoutVersion,
     waveformVersion,
-    overviewWidth,
     timelineVisualScale,
     waveformTileCache,
     waveformTileCacheIndex,
@@ -274,10 +270,6 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     const numeric = Number(value)
     if (!Number.isFinite(numeric) || numeric <= 0) return null
     return numeric
-  }
-
-  const normalizeBeatOffset = (value: number, interval: number) => {
-    return normalizeBeatOffsetByMixxx(value, interval)
   }
 
   const resolveTrackTempoRatio = (track: MixtapeTrack, targetBpm?: number) => {
@@ -535,7 +527,7 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     track: MixtapeTrack,
     trackStartSec: number,
     renderPxPerSec: number,
-    barBeatOffset: number,
+    _barBeatOffset: number,
     range: { start: number; end: number },
     barWidth: number
   ) => {

@@ -2,7 +2,7 @@
 import { t } from '@renderer/utils/translate'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 
-const props = defineProps<{
+defineProps<{
   summary: {
     startAt: string
     endAt: string

@@ -261,8 +261,6 @@ const collapsedPointChips = computed<CollapsedPointChip[]>(() => {
   for (let index = 0; index < displayPoints.length; index += 1) {
     const point = displayPoints[index]
     const xPx = resolveTimelineXPx(Number(point.sec))
-    const label = `BPM ${formatBpmLabel(point.bpm)}`
-    const estimatedWidth = estimateCollapsedChipWidth(label)
     if (!cluster) {
       cluster = { indices: [index], startXPx: xPx, bpms: [Number(point.bpm)] }
       continue
@@ -712,7 +710,7 @@ const handleStageMouseMove = (event: MouseEvent) => {
   }
 }
 
-const handleStageMouseLeave = (event: MouseEvent) => {
+const handleStageMouseLeave = (_event: MouseEvent) => {
   ghostPointState.value = null
 }
 

@@ -12,7 +12,6 @@ import {
 } from '../databaseManifest'
 import { mergeLayoutConfig, persistLayoutConfig } from '../layoutConfig'
 import store from '../store'
-import { mapRendererPathToFsPath, getCoreFsDirName } from '../utils'
 import { SUPPORTED_AUDIO_FORMATS } from '../../shared/audioFormats'
 
 type DriveInfo = {

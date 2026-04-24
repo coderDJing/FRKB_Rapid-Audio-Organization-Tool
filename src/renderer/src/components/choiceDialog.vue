@@ -21,7 +21,7 @@ const clickOption = (key: string) => {
 }
 
 // 为常见三选项设置快捷键：enter=Q, reset=E, cancel=Esc
-const keyHint = (key: string, index: number) => {
+const keyHint = (key: string, _index: number) => {
   if (key === 'enter') return 'Q'
   if (key === 'reset') return 'E'
   if (key === 'cancel') return 'Esc'

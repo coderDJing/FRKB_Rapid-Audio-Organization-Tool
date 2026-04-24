@@ -3,7 +3,6 @@ import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import { t } from '@renderer/utils/translate'
 import { configureTitleAudioVisualizerAnalyser } from '@renderer/composables/titleAudioVisualizerBridge'
 import {
-  canPlayHtmlAudio,
   clampNumber,
   getErrorLike,
   isEmptySourceAudioErrorMessage,
@@ -18,12 +17,7 @@ import type {
   PcmLoadPayload,
   WebAudioPlayerEvents,
   WindowWithAudioContext,
-  MixxxWaveformData,
-  MixxxWaveformBand,
-  MixxxWaveformBandKey,
-  RGBWaveformBandKey,
-  SeekedEventPayload,
-  WaveformStyle
+  MixxxWaveformData
 } from './webAudioPlayer.shared'
 
 export { canPlayHtmlAudio, toPreviewUrl } from './webAudioPlayer.shared'
@@ -53,7 +47,6 @@ export class WebAudioPlayer {
   private activeFilePath: string | null = null
   private activeSrc = ''
   private mixxxWaveformFilePath: string | null = null
-  private mixxxWaveformBytes = 0
   private suppressPauseEvent = false
   private ignoreNextEmptySourceError = false
   private mode: 'none' | 'html' | 'pcm' = 'none'
@@ -449,7 +442,6 @@ export class WebAudioPlayer {
     this.mixxxWaveformData = data
     if (filePath) {
       this.mixxxWaveformFilePath = filePath
-      this.mixxxWaveformBytes = this.calculateMixxxWaveformBytes(data)
     }
     this.emit('mixxxwaveformready')
   }
@@ -467,28 +459,12 @@ export class WebAudioPlayer {
   private releaseMixxxWaveformData(): void {
     if (this.mixxxWaveformFilePath) {
       this.mixxxWaveformFilePath = null
-      this.mixxxWaveformBytes = 0
     }
     this.mixxxWaveformData = null
   }
 
   private releasePioneerPreviewWaveformData(): void {
     this.pioneerPreviewWaveformData = null
-  }
-
-  private calculateMixxxWaveformBytes(data: MixxxWaveformData): number {
-    const bands: MixxxWaveformBandKey[] = ['low', 'mid', 'high', 'all']
-    let total = 0
-    bands.forEach((band) => {
-      const bandData = data.bands[band]
-      if (bandData) {
-        total += bandData.left.length
-        total += bandData.right.length
-        if (bandData.peakLeft) total += bandData.peakLeft.length
-        if (bandData.peakRight) total += bandData.peakRight.length
-      }
-    })
-    return total
   }
 
   destroy(): void {
@@ -758,17 +734,6 @@ export class WebAudioPlayer {
     if (!isEmptySourceAudioErrorMessage(errorLike)) return false
     this.ignoreNextEmptySourceError = false
     return true
-  }
-
-  private async applyOutputDevice(
-    audio: AudioElementWithExtensions,
-    deviceId: string
-  ): Promise<void> {
-    const setSinkId = audio.setSinkId
-    if (typeof setSinkId !== 'function') {
-      throw new Error('setSinkIdUnsupported')
-    }
-    await setSinkId.call(audio, deviceId)
   }
 
   private switchToHtml(): void {

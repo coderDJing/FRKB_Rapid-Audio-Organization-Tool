@@ -12,7 +12,7 @@ interface UseAutoScrollParams {
 }
 
 export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
-  const { runtime, songsAreaState, songsAreaRef } = params
+  const { songsAreaState, songsAreaRef } = params
 
   const ROW_HEIGHT = 30
   const SCROLL_TOLERANCE_PX = 2

@@ -46,8 +46,7 @@ import type {
   MixtapeStemMode,
   MixtapeStemProfile as RendererMixtapeStemProfile,
   MixtapeTrack,
-  MixtapeRawItem,
-  TimelineTrackLayout
+  MixtapeRawItem
 } from '@renderer/composables/mixtape/types'
 import type { MixtapeOutputProgressPayload } from '@renderer/composables/mixtape/timelineTransportRenderWav'
 import type { Ref } from 'vue'
@@ -589,7 +588,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     dismissBpmAnalysisFailure,
     retryBpmAnalysis,
     loadMixtapeItems,
-    closeTrackContextMenu,
     handleTrackContextMenu,
     handleTrackMenuAdjustGrid,
     handleTrackMenuToggleMasterTempo,

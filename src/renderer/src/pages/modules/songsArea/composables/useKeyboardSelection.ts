@@ -39,7 +39,7 @@ interface UseKeyboardSelectionParams {
 }
 
 export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
-  const { runtime, songsAreaState, externalViewportHeight, scheduleSweepCovers } = params
+  const { runtime, songsAreaState, externalViewportHeight } = params
   const CUT_POLL_INTERVAL_MS = 1500
   const CUT_POLL_TIMEOUT_MS = 2 * 60 * 1000
   let cutPollTimer: ReturnType<typeof setInterval> | null = null
@@ -52,7 +52,6 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
 
   const isMixtapeViewForState = (state: ISongsAreaPaneRuntimeState) =>
     libraryUtils.getLibraryTreeByUUID(state.songListUUID)?.type === 'mixtapeList'
-  const isMixtapeView = () => isMixtapeViewForState(songsAreaState)
   const getRowKeyForState = (state: ISongsAreaPaneRuntimeState, song: ISongInfo) =>
     isMixtapeViewForState(state) && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
   const getRowKey = (song: ISongInfo) => getRowKeyForState(songsAreaState, song)
@@ -73,9 +72,6 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       .map((key) => map.get(key) || key)
       .filter((p) => typeof p === 'string' && p.length > 0)
   }
-  const resolveSelectedFilePaths = (keys?: string[]) =>
-    resolveSelectedFilePathsForState(songsAreaState, keys)
-
   const clearPlayingStateIfTouched = (normalizedPathSet: Set<string>) => {
     const touchesCurrentPlaying =
       runtime.playingData.playingSongListUUID === runtime.songsArea.songListUUID &&

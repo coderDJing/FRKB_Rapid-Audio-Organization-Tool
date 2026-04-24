@@ -1,5 +1,4 @@
 import fs = require('fs-extra')
-import path = require('path')
 import iconv = require('iconv-lite')
 
 type SimpleTags = {
@@ -114,7 +113,7 @@ export async function writeWavRiffInfoWindows(filePath: string, tags: SimpleTags
   const wav = await fs.readFile(filePath)
   const listInfo = buildListInfoChunk(tags, encoding)
   if (!listInfo) return
-  const { header, chunks } = removeExistingListInfoChunks(wav)
+  const { chunks } = removeExistingListInfoChunks(wav)
 
   const body = Buffer.concat([...chunks, listInfo])
   const riffSize = Buffer.alloc(4)

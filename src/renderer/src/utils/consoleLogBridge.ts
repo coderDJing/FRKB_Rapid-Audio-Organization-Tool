@@ -1,1 +1,0 @@
-export { installConsoleLogBridge } from './installConsoleLogBridge'

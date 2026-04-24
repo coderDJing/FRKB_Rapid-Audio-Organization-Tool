@@ -218,8 +218,6 @@ const handleError = async (_e: unknown, err: CloudSyncErrorPayload | null) => {
   try {
     const code = (err?.error?.code || err?.error?.error || '').toString().toUpperCase()
     if (code === 'RATE_LIMITED' && err?.error?.scope === 'sync_start') {
-      const retryAfterMs = Math.max(0, Number(err?.error?.retryAfterMs || 0))
-      const seconds = Math.ceil(retryAfterMs / 1000)
       const message = t('cloudSync.errors.sensitiveOperationTooFrequent')
       logMsg.value = `${message}`
       await confirm({ title: t('dialog.hint'), content: [logMsg.value], confirmShow: false })

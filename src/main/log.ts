@@ -158,11 +158,6 @@ const appendFormattedLogSync = (level: LogLevel, text: string) => {
   }
 }
 
-const consoleMethodToLevel = (method: ConsoleMethod): LogLevel => {
-  if (method === 'log') return 'info'
-  return method
-}
-
 const writeLog = (level: LogLevel, args: unknown[], mirrorMethod: ConsoleMethod) => {
   ensureLogConfigured()
   safeConsoleWrite(mirrorMethod, args)

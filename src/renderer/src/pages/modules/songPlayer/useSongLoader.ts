@@ -121,8 +121,6 @@ export function useSongLoader(params: {
   let rawWaveformChunkCount = 0
 
   let errorDialogShowing = false
-  let lastErrorMessage = ''
-
   const handleSongLoadError = async (
     filePath: string | null,
     _isPreload: boolean,

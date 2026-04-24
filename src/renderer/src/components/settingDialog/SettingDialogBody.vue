@@ -55,7 +55,6 @@ const {
   chooseRekordboxDesktopTrackStorageDir,
   hintIcon,
   fpModeHintRefs,
-  setFpModeHintRef,
   bindFpModeHintRef,
   onFingerprintModeChange,
   clearCloudFingerprints,

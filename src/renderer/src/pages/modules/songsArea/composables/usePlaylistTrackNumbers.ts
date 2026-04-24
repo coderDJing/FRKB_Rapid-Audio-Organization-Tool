@@ -21,13 +21,6 @@ const normalizePath = (value: string | undefined | null) =>
     .replace(/\//g, '\\')
     .toLowerCase()
 
-const normalizePlaylistTrackNumber = (value: unknown) => {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return undefined
-  const rounded = Math.floor(numeric)
-  return rounded > 0 ? rounded : undefined
-}
-
 const buildNumberMap = (orderedFilePaths: string[]) =>
   new Map(orderedFilePaths.map((filePath, index) => [normalizePath(filePath), index + 1]))
 

@@ -3,7 +3,7 @@ import BeatGridMetronomeControls from '@renderer/components/BeatGridMetronomeCon
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 
-const props = defineProps({
+defineProps({
   previewDecoding: {
     type: Boolean,
     default: false

@@ -8,7 +8,7 @@ interface IArgs {
   clickEvent: MouseEvent
 }
 export default ({ menuArr, clickEvent }: IArgs): Promise<IMenu | 'cancel'> => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
 

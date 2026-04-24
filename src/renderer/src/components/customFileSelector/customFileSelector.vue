@@ -37,7 +37,6 @@ const {
   confirm,
   cancel,
   modalRef,
-  fileListRef,
   selectedListRef,
   formatFileSize,
   getItemIcon,
@@ -104,7 +103,7 @@ const getSelectedItemIcon = (item: SelectedItem) =>
             class="file-list"
             defer
           >
-            <div v-for="(item, index) in filteredTree" :key="item.path" class="file-item-wrapper">
+            <div v-for="item in filteredTree" :key="item.path" class="file-item-wrapper">
               <div
                 class="file-item"
                 :class="{

@@ -3,7 +3,7 @@ import globalCallShortcutDialog from './globalCallShortcutDialog.vue'
 import { attachAppContext } from '@renderer/utils/appContext'
 
 export default () => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
 

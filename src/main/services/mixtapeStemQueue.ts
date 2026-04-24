@@ -1,27 +1,16 @@
 import fs from 'node:fs'
-import crypto from 'node:crypto'
 import path from 'node:path'
 import os from 'node:os'
-import childProcess from 'node:child_process'
-import { app } from 'electron'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
 import { log } from '../log'
 import mixtapeWindow from '../window/mixtapeWindow'
 import type { MixtapeStemMode } from '../mixtapeDb'
 import { listMixtapeItems } from '../mixtapeDb'
+import { resolveBundledDemucsRuntimeCandidates } from '../demucs'
 import {
-  resolveBundledDemucsModelsPath,
-  resolveBundledDemucsPythonPath,
-  resolveBundledDemucsRuntimeCandidates,
-  resolveBundledDemucsRuntimeDir,
-  type BundledDemucsRuntimeCandidate
-} from '../demucs'
-import {
-  DEFAULT_MIXTAPE_STEM_BASE_MODEL,
   DEFAULT_MIXTAPE_STEM_PROFILE,
   normalizeMixtapeStemProfile,
   parseMixtapeStemModel,
-  resolveMixtapeStemBaseModelByProfile,
   resolveMixtapeStemModelByProfile,
   type MixtapeStemProfile
 } from '../../shared/mixtapeStemProfiles'
@@ -148,7 +137,7 @@ const normalizeModel = (
   return normalizeText(parsed.requestedModel, 128) || DEFAULT_STEM_MODEL
 }
 
-const normalizeStemVersion = (value: unknown, model?: string): string => {
+const normalizeStemVersion = (value: unknown, _model?: string): string => {
   const normalized = normalizeText(value, 128)
   if (!normalized) return DEFAULT_STEM_VERSION
   return normalized
@@ -782,7 +771,7 @@ export async function enqueueMixtapeStemJobs(
   const force = !!params?.force
   const profile = normalizeStemProfile(params?.profile, DEFAULT_MIXTAPE_STEM_PROFILE)
   const model = normalizeModel(params?.model, profile)
-  const stemVersion = normalizeStemVersion(params?.stemVersion, model)
+  const stemVersion = normalizeStemVersion(params?.stemVersion)
   const source = normalizeEnqueueSource(params?.source)
   const inputPaths = Array.isArray(params?.filePaths) ? params.filePaths : []
   if (!playlistId || !inputPaths.length) {

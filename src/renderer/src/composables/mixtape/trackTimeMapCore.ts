@@ -9,11 +9,7 @@ import {
   resolveTrackBpmEnvelopeClampRange,
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'
-import type {
-  MixtapeBpmPoint,
-  MixtapeTrackLoopSegment,
-  SerializedTrackTempoSnapshot
-} from '@renderer/composables/mixtape/types'
+import type { MixtapeBpmPoint, MixtapeTrackLoopSegment } from '@renderer/composables/mixtape/types'
 
 export type TrackVisibleGridLine = {
   sec: number

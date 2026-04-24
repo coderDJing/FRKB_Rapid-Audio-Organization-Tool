@@ -1,8 +1,5 @@
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
-import {
-  MIXTAPE_WAVEFORM_HEIGHT_SCALE,
-  TIMELINE_SIDE_PADDING_PX
-} from '@renderer/composables/mixtape/constants'
+import { MIXTAPE_WAVEFORM_HEIGHT_SCALE } from '@renderer/composables/mixtape/constants'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type {
   MinMaxSample,
@@ -18,10 +15,7 @@ import type {
   WaveformPreRenderTask,
   WaveformTile
 } from '@renderer/composables/mixtape/types'
-import type {
-  StemWaveformBatchRequestItem,
-  TimelineWaveformData
-} from '@renderer/composables/mixtape/timelineRenderAndLoadTypes'
+import type { TimelineWaveformData } from '@renderer/composables/mixtape/timelineRenderAndLoadTypes'
 import {
   buildTrackRuntimeTempoSnapshot,
   serializeTrackRuntimeTempoSnapshot
@@ -63,12 +57,9 @@ type TimelineRenderAndLoadContext = {
   timelineScrollRef: ValueRef<TimelineScrollHost | null>
   timelineViewport: ValueRef<HTMLElement | null>
   timelineViewportWidth: ValueRef<number>
-  timelineViewportHeight: ValueRef<number>
   timelineScrollLeft: ValueRef<number>
-  timelineScrollTop: ValueRef<number>
   isTimelineZooming: ValueRef<boolean>
   timelineCanvasRafRef: ValueRef<number>
-  timelineContentWidth: ValueRef<number>
   normalizedRenderZoom: ValueRef<number>
   waveformLoadTimerRef: ValueRef<ReturnType<typeof setTimeout> | null>
   clampZoomValue: (value: number) => number
@@ -106,10 +97,6 @@ type TimelineRenderAndLoadContext = {
   waveformRenderWorker: Worker | null
   waveformTileCache: Map<string, WaveformCacheEntry>
   waveformTileCacheTickRef: ValueRef<number>
-  registerWaveformTileCacheKey: (filePath: string, cacheKey: string) => void
-  pruneWaveformTileCache: () => void
-  waveformTilePending: Set<string>
-  disposeWaveformCacheEntry: (entry: WaveformCacheEntry | null) => void
   clearWaveformTileCacheForFile: (filePath: string) => void
   pushStemWaveformToWorker: (filePath: string, data: StemWaveformData | null) => void
   pushRawWaveformToWorker: (filePath: string, data: RawWaveformData | null) => void
@@ -161,7 +148,6 @@ type TimelineRenderAndLoadContext = {
   LANE_PADDING_TOP: number
   MIXTAPE_WAVEFORM_Y_OFFSET: number
   SHOW_GRID_LINES: boolean
-  GRID_BAR_ONLY_ZOOM: number
   RENDER_X_BUFFER_PX: number
   bpmAnalysisActive: ValueRef<boolean>
   bpmAnalysisFailed: ValueRef<boolean>
@@ -190,12 +176,9 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
     timelineScrollRef,
     timelineViewport,
     timelineViewportWidth,
-    timelineViewportHeight,
     timelineScrollLeft,
-    timelineScrollTop,
     isTimelineZooming,
     timelineCanvasRafRef,
-    timelineContentWidth,
     normalizedRenderZoom,
     clampZoomValue,
     resolveLaneHeightForZoom,
@@ -214,11 +197,6 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
     waveformScratch,
     waveformRenderWorker,
     waveformTileCache,
-    waveformTileCacheTickRef,
-    registerWaveformTileCacheKey,
-    pruneWaveformTileCache,
-    waveformTilePending,
-    disposeWaveformCacheEntry,
     pushStemWaveformToWorker,
     pushRawWaveformToWorker,
     clearWaveformTileCacheForFile,
@@ -247,7 +225,6 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
     LANE_PADDING_TOP,
     MIXTAPE_WAVEFORM_Y_OFFSET,
     SHOW_GRID_LINES,
-    GRID_BAR_ONLY_ZOOM,
     bpmAnalysisActive,
     bpmAnalysisFailed,
     transportPreloading,
@@ -277,10 +254,6 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
     return Math.max(0, Math.round(Number(lanes?.offsetTop) || 0))
   }
 
-  const getWaveformTileCacheTick = () => Number(waveformTileCacheTickRef.value || 0)
-  const setWaveformTileCacheTick = (value: number) => {
-    waveformTileCacheTickRef.value = value
-  }
   const getTimelineCanvasRaf = () => Number(timelineCanvasRafRef.value || 0)
   const setTimelineCanvasRaf = (value: number) => {
     timelineCanvasRafRef.value = value

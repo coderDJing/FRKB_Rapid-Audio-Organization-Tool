@@ -1,5 +1,4 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import emitter from '@renderer/utils/mitt'
 import {
   registerTitleAudioVisualizerSource,
@@ -14,8 +13,6 @@ import {
   clampVolumeValue,
   readWindowVolume
 } from '@renderer/utils/windowVolume'
-
-type DeckKey = HorizontalBrowseDeckKey
 
 type HorizontalBrowseVisualizerSnapshot = {
   timeDomainData?: unknown

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useTemplateRef, nextTick } from 'vue'
+import { computed, ref, useTemplateRef } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -18,7 +18,6 @@ import {
   setPendingMixtapeProjectMode
 } from '@renderer/composables/mixtape/stemMode'
 import type { IDir } from 'src/types/globals'
-import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 const runtime = useRuntimeStore()
 const props = defineProps({
@@ -288,7 +287,7 @@ const drop = async (e: DragEvent) => {
 
   try {
     // 使用 dragUtils 中的函数处理拖放到空白区域
-    const handled = await handleLibraryAreaEmptySpaceDrop(runtime.dragItemData, libraryData.value)
+    await handleLibraryAreaEmptySpaceDrop(runtime.dragItemData, libraryData.value)
 
     // 如果处理成功或失败，都清除拖拽数据
   } catch (error) {

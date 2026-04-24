@@ -1,7 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
-import { v4 as uuidV4 } from 'uuid'
 import mainWindow from '../window/mainWindow'
 import store from '../store'
 import { initDatabaseStructure } from '../initDatabase'
@@ -86,7 +85,7 @@ const createWindow = ({ needErrorHint = false } = {}) => {
   ipcMain.handle(
     'databaseInitWindow-InitDataBase',
     async (
-      e,
+      _event,
       dirPath: string,
       options?: { createSamples?: boolean; reset?: boolean; fingerprintMode?: 'pcm' | 'file' }
     ) => {

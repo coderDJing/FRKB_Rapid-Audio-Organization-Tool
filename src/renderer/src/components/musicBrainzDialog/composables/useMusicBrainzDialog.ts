@@ -651,11 +651,6 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
     }
   }
 
-  function normalizeText(value?: string | null) {
-    if (!value) return ''
-    return value.trim()
-  }
-
   function normalizeIsrcValue(value?: string | null) {
     if (typeof value !== 'string') return ''
     const trimmed = value.trim()

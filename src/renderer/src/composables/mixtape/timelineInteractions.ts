@@ -10,7 +10,7 @@ import {
   WHEEL_ZOOM_MAX_STEP,
   WHEEL_ZOOM_RATIO_STEP
 } from '@renderer/composables/mixtape/constants'
-import type { MixtapeTrack, TimelineLayoutSnapshot } from '@renderer/composables/mixtape/types'
+import type { TimelineLayoutSnapshot } from '@renderer/composables/mixtape/types'
 
 type ValueRef<T> = {
   value: T
@@ -25,9 +25,7 @@ type TimelineInteractionsContext = {
   renderZoom: ValueRef<number>
   zoomTouched: ValueRef<boolean>
   normalizedZoom: ValueRef<number>
-  normalizedRenderZoom: ValueRef<number>
   resolveRenderZoomLevel: (value: number) => number
-  tracks: ValueRef<MixtapeTrack[]>
   timelineScrollRef: ValueRef<TimelineScrollHost | null>
   timelineViewportWidth: ValueRef<number>
   timelineScrollWidth: ValueRef<number>
@@ -47,15 +45,11 @@ type TimelineInteractionsContext = {
   overviewViewportWidth: ValueRef<number>
   alignZoomToRenderLevel: (value: number) => number
   clampZoomValue: (value: number) => number
-  resolveTrackDurationSeconds: (track: MixtapeTrack) => number
-  resolveRenderPxPerSec: (value: number) => number
   computeTimelineDuration: () => number
   renderPxPerSec: ValueRef<number>
-  clearTimelineLayoutCache: () => void
   scheduleTimelineDraw: () => void
   scheduleWaveformLoad: () => void
   scheduleFullPreRender: () => void
-  scheduleWorkerPreRender: () => void
   markTimelineInteracting: () => void
 }
 
@@ -65,9 +59,7 @@ export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContex
     renderZoom,
     zoomTouched,
     normalizedZoom,
-    normalizedRenderZoom,
     resolveRenderZoomLevel,
-    tracks,
     timelineScrollRef,
     timelineViewportWidth,
     timelineScrollWidth,
@@ -87,15 +79,11 @@ export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContex
     overviewViewportWidth,
     alignZoomToRenderLevel,
     clampZoomValue,
-    resolveTrackDurationSeconds,
-    resolveRenderPxPerSec,
     computeTimelineDuration,
     renderPxPerSec,
-    clearTimelineLayoutCache,
     scheduleTimelineDraw,
     scheduleWaveformLoad,
     scheduleFullPreRender,
-    scheduleWorkerPreRender,
     markTimelineInteracting
   } = ctx
 

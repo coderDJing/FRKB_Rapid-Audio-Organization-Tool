@@ -1,6 +1,5 @@
 import os from 'node:os'
 import fs from 'node:fs'
-import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { log } from '../log'
 import { resolveMainWorkerPath } from '../workerPath'
@@ -111,7 +110,6 @@ const analyzeMixtapeBpmBatch = async (
   }
 
   const fastAnalysis = options.fastAnalysis === true
-  const stage = options.stage || (fastAnalysis ? 'retry-fast' : 'primary')
   const jobTimeoutMs = resolveBpmJobTimeoutMs(fastAnalysis)
 
   const maxWorkers = Math.max(1, Math.min(2, os.cpus().length, unique.length))

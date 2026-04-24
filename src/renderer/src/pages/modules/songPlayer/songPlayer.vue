@@ -298,16 +298,14 @@ const {
 
 // 加载/播放与错误处理
 const bpm = ref<number | string>('')
-const { isLoadingBlob, ignoreNextEmptyError, requestLoadSong, handleSongLoadError } = useSongLoader(
-  {
-    runtime,
-    audioPlayer,
-    rawWaveformData,
-    bpm,
-    waveformShow,
-    setCoverByIPC
-  }
-)
+const { ignoreNextEmptyError, requestLoadSong, handleSongLoadError } = useSongLoader({
+  runtime,
+  audioPlayer,
+  rawWaveformData,
+  bpm,
+  waveformShow,
+  setCoverByIPC
+})
 
 watch(
   () => [

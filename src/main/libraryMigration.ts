@@ -451,7 +451,6 @@ export async function ensureLegacyMigration(
   const db = initLibraryDb(dbRoot)
   if (!db) return true
 
-  const done = hasMetaFlag(db, MIGRATION_DONE_KEY)
   const inProgress = hasMetaFlag(db, MIGRATION_IN_PROGRESS_KEY)
   const treeDone = isLibraryTreeMigrationDone(db)
   const treeInProgress = isLibraryTreeMigrationInProgress(db)

@@ -355,7 +355,7 @@ onUnmounted(() => {
   utils.delHotkeysScope(uuid)
 })
 
-window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (event, databaseUrl) => {
+window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (_event, databaseUrl) => {
   await confirm({
     title: t('common.error'),
     content: [databaseUrl, t('database.cannotRead'), t('database.possibleDamage')],

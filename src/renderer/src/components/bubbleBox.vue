@@ -2,7 +2,6 @@
 import { onMounted, onUnmounted, ref, watch, nextTick, computed, getCurrentInstance } from 'vue'
 import type { PropType } from 'vue'
 import shortcutIconAsset from '@renderer/assets/shortcutIcon.svg?asset'
-import { t } from '@renderer/utils/translate'
 const shortcutIcon = shortcutIconAsset
 
 type BoundaryType = 'window' | 'element'

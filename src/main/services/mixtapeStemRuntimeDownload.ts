@@ -18,8 +18,7 @@ import {
   buildStemProcessEnv,
   createStemError,
   normalizeText,
-  runProbeProcess,
-  runProcess
+  runProbeProcess
 } from './mixtapeStemSeparationShared'
 import { probeWindowsGpuAdapters } from './mixtapeStemSeparationProbe'
 import { getCachedStemDeviceProbeSnapshot, probeDemucsDevices } from './mixtapeStemSeparationProbe'

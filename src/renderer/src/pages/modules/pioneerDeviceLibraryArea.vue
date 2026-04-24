@@ -694,7 +694,7 @@ const handleDragEndNode = () => {
   resetDragState()
 }
 
-const handleDropNode = async (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
+const handleDropNode = async (_event: DragEvent, node: IPioneerPlaylistTreeNode) => {
   if (!isDesktopSource.value || dialogWriting.value) {
     resetDragState()
     return

@@ -1,6 +1,5 @@
 import { parentPort } from 'node:worker_threads'
 import childProcess from 'node:child_process'
-import path from 'node:path'
 
 type MixtapeRawWaveformJob = {
   jobId: number

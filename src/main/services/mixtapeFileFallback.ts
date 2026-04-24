@@ -48,7 +48,7 @@ export const resolveMixtapeFilePathWithFallback = async (
   if (!recoveredPath) return null
   if (!(await pathExists(recoveredPath))) return null
 
-  const replaceResult = replaceMixtapeFilePath(normalized, recoveredPath)
+  replaceMixtapeFilePath(normalized, recoveredPath)
   const libraryRoot = getLibraryRootAbs()
   if (libraryRoot) {
     replaceMixtapeStemAssetFilePath({

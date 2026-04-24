@@ -7,7 +7,6 @@ import {
   onMounted,
   onUnmounted,
   watch,
-  markRaw,
   nextTick
 } from 'vue'
 import { type SongsAreaPaneKey, useRuntimeStore } from '@renderer/stores/runtime'

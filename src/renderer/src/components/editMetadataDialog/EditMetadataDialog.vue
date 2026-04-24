@@ -30,7 +30,6 @@ const {
   form,
   isWavFile,
   coverDataUrl,
-  originalCoverDataUrl,
   fileInputRef,
   isRemoveDisabled,
   showRestoreButton,

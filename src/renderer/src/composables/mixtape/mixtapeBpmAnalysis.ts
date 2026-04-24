@@ -1,8 +1,5 @@
 import type { MixtapeTrack } from '@renderer/composables/mixtape/types'
-import {
-  normalizeBpm,
-  normalizeMixtapeFilePath
-} from '@renderer/composables/mixtape/mixtapeTrackSnapshot'
+import { normalizeMixtapeFilePath } from '@renderer/composables/mixtape/mixtapeTrackSnapshot'
 
 type BpmAnalysisEntry = {
   bpm: number

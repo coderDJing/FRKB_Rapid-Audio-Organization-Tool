@@ -180,7 +180,7 @@ const drawHotCue = (
 const drawLoopMask = (
   ctx: CanvasRenderingContext2D,
   width: number,
-  height: number,
+  _height: number,
   waveformTop: number,
   waveformHeight: number,
   rangeStartSec: number,

@@ -7,7 +7,7 @@ interface UseSweepCoversParams {
 }
 
 export function useSweepCovers(params: UseSweepCoversParams) {
-  const { runtime, songsAreaState } = params
+  const { songsAreaState } = params
   let sweepTimer: ReturnType<typeof setTimeout> | null = null
 
   function scheduleSweepCovers() {

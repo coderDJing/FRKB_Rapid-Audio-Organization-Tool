@@ -16,7 +16,6 @@ import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { v4 as uuidV4 } from 'uuid'
-import confirm from '@renderer/components/confirmDialog'
 import hotkeys from 'hotkeys-js'
 import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import utils from '../utils/utils'
@@ -443,7 +442,7 @@ const drop = async () => {
     return
   }
   try {
-    const handled = await handleLibraryAreaEmptySpaceDrop(runtime.dragItemData, libraryData.value)
+    await handleLibraryAreaEmptySpaceDrop(runtime.dragItemData, libraryData.value)
   } catch (error) {
     console.error('Drop operation failed:', error)
   } finally {

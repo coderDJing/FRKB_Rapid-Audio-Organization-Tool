@@ -4,37 +4,20 @@ import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import {
-  BASE_PX_PER_SEC,
-  FALLBACK_TRACK_WIDTH,
-  GRID_BAR_ONLY_ZOOM,
-  GRID_BAR_WIDTH_MAX,
-  GRID_BAR_WIDTH_MAX_ZOOM,
-  GRID_BAR_WIDTH_MIN,
-  LANE_COUNT,
   LANE_GAP,
   LANE_PADDING_TOP,
   MIXTAPE_SUMMARY_ZOOM,
   MIXTAPE_WAVEFORM_SUPERSAMPLE,
   MIXTAPE_WAVEFORM_Y_OFFSET,
-  MIXTAPE_WIDTH_SCALE,
-  MIN_TRACK_WIDTH,
   PRE_RENDER_RANGE_BUFFER,
   RAW_WAVEFORM_BATCH_SIZE,
   RAW_WAVEFORM_MIN_ZOOM,
   RAW_WAVEFORM_TARGET_RATE,
   RENDER_X_BUFFER_PX,
-  RENDER_ZOOM_STEP,
   SHOW_GRID_LINES,
   WAVEFORM_BATCH_SIZE,
   WAVEFORM_TILE_WIDTH,
-  WHEEL_LINE_HEIGHT_PX,
-  WHEEL_MAX_STEPS_PER_FRAME,
-  WHEEL_ZOOM_BASE_STEP,
-  WHEEL_ZOOM_MAX_STEP,
-  WHEEL_ZOOM_RATIO_STEP,
-  ZOOM_MAX,
-  ZOOM_MIN,
-  ZOOM_STEP
+  ZOOM_MIN
 } from '@renderer/composables/mixtape/constants'
 import type {
   MinMaxSample,
@@ -51,10 +34,7 @@ import type {
   WaveformPreRenderTask
 } from '@renderer/composables/mixtape/types'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import {
-  buildRawWaveformPyramid,
-  resolveRawWaveformLevel as resolveRawWaveformLevelByMap
-} from '@renderer/composables/mixtape/waveformPyramid'
+import { buildRawWaveformPyramid } from '@renderer/composables/mixtape/waveformPyramid'
 import { drawMixxxRgbWaveform, drawStemWaveform } from '@renderer/composables/mixtape/waveformDraw'
 import { createTimelineRenderAndLoadModule } from '@renderer/composables/mixtape/timelineRenderAndLoad'
 import { createTimelineInteractionsModule } from '@renderer/composables/mixtape/timelineInteractions'
@@ -173,8 +153,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   }
   const {
     clampZoomValue,
-    buildZoomLevels,
-    quantizeRenderZoom,
     normalizedZoom,
     normalizedRenderZoom,
     resolveRenderZoomLevel,
@@ -199,26 +177,19 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     resolveTrackGridSignature,
     resolveTrackRenderWidthPx,
     clearTimelineLayoutCache,
-    resolveFirstVisibleLayoutIndex,
     forEachVisibleLayoutItem,
     buildSequentialLayoutForZoom,
     resolveTrackBlockStyle,
     resolveGainEnvelopePolyline,
     resolveOverviewTrackStyle,
-    resolveTrackTilesForWidth,
     drawTrackGridLines,
     resolveWaveformListRoot,
     resolveTrackWaveformSources,
     resolveTrackWaveformFilePaths,
     resolveWaveformSubLaneMetrics,
-    isWaveformReady,
     isRawWaveformLoading,
-    resolveWaveformTitle,
     computeTimelineDuration,
-    buildMinMaxDataFromStemWaveform,
     isValidWaveformData,
-    getMinMaxSamples,
-    decodeRawFloatArray,
     decodeRawWaveformData,
     resolveRawWaveformLevel,
     buildWaveformTileCacheKey,
@@ -250,8 +221,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     waveformTileCacheTickRef,
     waveformTileCacheLimitRef
   })
-  const ZOOM_LEVELS = buildZoomLevels()
-
   const timelineLayout = computed(() => {
     void timelineLayoutVersion.value
     return buildSequentialLayoutForZoom(normalizedRenderZoom.value)
@@ -262,7 +231,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     )
   )
   const {
-    overviewViewportMetrics,
     overviewViewportLeft,
     overviewViewportWidth,
     overviewViewportStyle,
@@ -808,19 +776,11 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     (value: ReturnType<typeof setTimeout> | null) => (waveformPreRenderTimer = value)
   )
   const {
-    drawTimelineCanvas,
     scheduleTimelineDraw,
     resizeCanvas,
-    ensureWaveformScratch,
     buildTrackRenderContext,
-    renderSummaryWaveformBar,
     renderWaveformTileContents,
     scheduleWaveformDraw,
-    storeWaveformData,
-    fetchWaveformBatch,
-    fetchRawWaveformBatch,
-    loadWaveforms,
-    loadRawWaveforms,
     scheduleWaveformLoad,
     handleWaveformUpdated
   } = createTimelineRenderAndLoadModule({
@@ -832,12 +792,9 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     timelineScrollRef,
     timelineViewport,
     timelineViewportWidth,
-    timelineViewportHeight,
     timelineScrollLeft,
-    timelineScrollTop,
     isTimelineZooming,
     timelineCanvasRafRef,
-    timelineContentWidth,
     normalizedRenderZoom,
     clampZoomValue,
     resolveLaneHeightForZoom,
@@ -859,10 +816,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     waveformRenderWorker,
     waveformTileCache,
     waveformTileCacheTickRef,
-    registerWaveformTileCacheKey,
-    pruneWaveformTileCache,
-    waveformTilePending,
-    disposeWaveformCacheEntry,
     pushStemWaveformToWorker,
     pushRawWaveformToWorker,
     clearWaveformTileCacheForFile,
@@ -892,7 +845,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     LANE_PADDING_TOP,
     MIXTAPE_WAVEFORM_Y_OFFSET,
     SHOW_GRID_LINES,
-    GRID_BAR_ONLY_ZOOM,
     bpmAnalysisActive,
     bpmAnalysisFailed,
     MIXTAPE_SUMMARY_ZOOM,
@@ -912,27 +864,13 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
   const {
     applyRenderZoomImmediate,
     setZoomValue,
-    autoFitZoom,
     updateTimelineWidth,
-    syncTimelineScrollState,
     startTimelineScrollSampler,
-    resolveTimelineViewportEl,
-    normalizeWheelDeltaY,
-    flushPendingWheelZoom,
-    scheduleWheelZoomFlush,
-    isWheelInsideTimeline,
     handleTimelineWheel,
     handleTimelinePanStart,
     handleTimelineHorizontalPanStart,
-    handleTimelinePanMove,
-    handleTimelinePanEnd,
     updateOverviewWidth,
-    resolveOverviewPointer,
-    scrollTimelineToRatio,
-    scrollTimelineToCenterRatio,
     handleOverviewMouseDown,
-    handleOverviewMouseMove,
-    handleOverviewMouseUp,
     handleOverviewClick,
     setTimelineWheelTarget,
     cleanupInteractions
@@ -941,9 +879,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     renderZoom,
     zoomTouched,
     normalizedZoom,
-    normalizedRenderZoom,
     resolveRenderZoomLevel,
-    tracks,
     timelineScrollRef,
     timelineViewportWidth,
     timelineScrollWidth,
@@ -963,15 +899,11 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     overviewViewportWidth,
     alignZoomToRenderLevel,
     clampZoomValue,
-    resolveTrackDurationSeconds,
-    resolveRenderPxPerSec,
     computeTimelineDuration,
     renderPxPerSec,
-    clearTimelineLayoutCache,
     scheduleTimelineDraw,
     scheduleWaveformLoad,
     scheduleFullPreRender,
-    scheduleWorkerPreRender,
     markTimelineInteracting
   })
 

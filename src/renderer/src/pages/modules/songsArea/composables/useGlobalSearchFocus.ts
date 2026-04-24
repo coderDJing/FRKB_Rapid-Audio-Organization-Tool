@@ -33,7 +33,6 @@ const normalizeSongPath = (value: string | undefined | null) =>
 
 export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
   const {
-    runtime,
     songsAreaState,
     originalSongInfoArr,
     columnData,
@@ -84,7 +83,7 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
     return true
   }
 
-  const applyFocusSongPayload = async (payload: FocusSongPayload, attemptNo: number) => {
+  const applyFocusSongPayload = async (payload: FocusSongPayload, _attemptNo: number) => {
     const targetPath = normalizeSongPath(payload?.filePath)
     const targetListUUID = String(payload?.songListUUID || '')
     if (!targetPath) return false

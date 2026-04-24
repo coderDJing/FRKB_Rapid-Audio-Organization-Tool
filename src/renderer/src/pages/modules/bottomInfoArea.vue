@@ -380,13 +380,7 @@ const cancelTask = async (task: Task) => {
   }
 }
 
-const setTaskCanceling = (taskId: string, canceling: boolean) => {
-  const task = tasks.value.find((item) => item.id === taskId)
-  if (task) task.canceling = canceling
-}
-
 const pauseKeyAnalysisBackground = async (mode: '1h' | '3h' | 'until-restart') => {
-  const taskId = backgroundTaskId
   dismissBackgroundTaskNow()
   try {
     await window.electron.ipcRenderer.invoke('key-analysis:cancel-background', { mode })
@@ -427,7 +421,7 @@ onBeforeUnmount(() => {
 })
 window.electron.ipcRenderer.on(
   'importFinished',
-  async (event, _songListUUID, importSummary, progressId?: string) => {
+  async (_event, _songListUUID, importSummary, progressId?: string) => {
     runtime.isProgressing = false
     runtime.importingSongListUUID = ''
     // 有 progressId 则按 id 清理；否则清理整组 import
@@ -444,7 +438,7 @@ window.electron.ipcRenderer.on(
 
 window.electron.ipcRenderer.on(
   'addSongFingerprintFinished',
-  async (event, fingerprintSummary, progressId?: string) => {
+  async (_event, fingerprintSummary, progressId?: string) => {
     runtime.isProgressing = false
     // 清理导入/指纹相关进度行
     if (progressId) {
@@ -461,7 +455,7 @@ window.electron.ipcRenderer.on(
 
 window.electron.ipcRenderer.on(
   'fingerprints:addExistingFinished',
-  async (event, summary, progressId?: string) => {
+  async (_event, summary, progressId?: string) => {
     runtime.isProgressing = false
     if (progressId) {
       tasks.value = tasks.value.filter((t) => t.id !== String(progressId))

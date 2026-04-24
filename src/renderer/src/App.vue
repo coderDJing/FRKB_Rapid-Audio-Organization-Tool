@@ -72,7 +72,7 @@ watch(
   },
   { immediate: true }
 )
-window.electron.ipcRenderer.on('layoutConfigReaded', (event, layoutConfig) => {
+window.electron.ipcRenderer.on('layoutConfigReaded', (_event, layoutConfig) => {
   runtime.layoutConfig = layoutConfig
 })
 const activeDialog = ref('')

@@ -3,7 +3,6 @@ import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { Worker } from 'node:worker_threads'
-import { log } from '../log'
 import { resolveMainWorkerPath } from '../workerPath'
 import {
   clearTrackCache as svcClearTrackCache,
@@ -254,7 +253,6 @@ export function registerCacheHandlers() {
       totalFrames,
       Math.max(requestedChunkFrames, requestedBootstrapFrames)
     )
-    const remainingFrames = Math.max(0, totalFrames - bootstrapFrames)
     const followupFramesPerChunk = Math.max(4096, requestedChunkFrames)
     const startedAt = Date.now()
     let chunkCount = 0

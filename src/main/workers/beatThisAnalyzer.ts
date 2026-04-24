@@ -63,8 +63,6 @@ const PACKAGED_BRIDGE_RELATIVE_PATH = 'demucs/bootstrap/beat_this_bridge.py'
 const DEFAULT_WINDOW_SEC = 30
 const DEFAULT_MAX_SCAN_SEC = 120
 const WINDOW_MIN_DURATION_SEC = 8
-const QUALITY_EARLY_STOP_THRESHOLD = 0.72
-const QUALITY_MIN_BEAT_COUNT = 32
 
 let cachedBridgePath = ''
 let bridgeChild: ChildProcessWithoutNullStreams | null = null
@@ -77,20 +75,6 @@ let bridgeNextRequestId = 0
 let bridgeRequestQueue: Promise<unknown> = Promise.resolve()
 const bridgePendingRequests = new Map<string, PendingRequest>()
 let cleanupHooksRegistered = false
-
-const toFloat32ArrayFromBuffer = (input: Buffer): Float32Array => {
-  if (!input || input.length < 4) return new Float32Array(0)
-  const byteOffsetAligned = input.byteOffset % 4 === 0
-  const byteLengthAligned = input.byteLength % 4 === 0
-  if (byteOffsetAligned && byteLengthAligned) {
-    return new Float32Array(input.buffer, input.byteOffset, input.byteLength / 4)
-  }
-  const usableBytes = input.byteLength - (input.byteLength % 4)
-  if (usableBytes <= 0) return new Float32Array(0)
-  const copied = new Uint8Array(usableBytes)
-  copied.set(input.subarray(0, usableBytes))
-  return new Float32Array(copied.buffer)
-}
 
 const resolveBridgeScriptPath = () => {
   if (cachedBridgePath) return cachedBridgePath

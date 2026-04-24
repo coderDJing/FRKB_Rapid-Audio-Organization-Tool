@@ -3,15 +3,13 @@ import {
   createTransportBufferSource,
   createTransportKeyLockSource,
   ensureTransportKeyLockWorkletModule,
-  type TransportPlayableAudioContext,
-  type TransportPlayableSource
+  type TransportPlayableAudioContext
 } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 import { processMixtapeAudioBufferWithSoundTouch } from '@renderer/composables/mixtape/mixtapeSoundTouch'
 import type { TransportSyncNode } from '@renderer/composables/mixtape/timelineTransportSync'
 import type { MixtapeEnvelopeParamId } from '@renderer/composables/mixtape/types'
 import type {
   TransportEntry,
-  TransportAudioRef,
   TransportStemAudioRef,
   TransportStemId
 } from '@renderer/composables/mixtape/timelineTransportAudioData'
