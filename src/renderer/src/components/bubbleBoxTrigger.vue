@@ -8,6 +8,10 @@ defineOptions({
 })
 
 type BoundaryType = 'window' | 'element'
+type ScopedVNode = {
+  scopeId?: string | null
+  slotScopeIds?: string[] | null
+}
 
 const props = defineProps({
   tag: {
@@ -86,10 +90,12 @@ const bubbleAnchorDom = computed(() =>
 )
 
 const inheritedScopeAttrs = computed<Record<string, string>>(() => {
-  const parentType = instance?.parent?.type as { __scopeId?: string } | undefined
-  const scopeId = parentType?.__scopeId
-  if (!scopeId) return {}
-  return { [scopeId]: '' }
+  const vnode: ScopedVNode | undefined = instance?.vnode
+  const scopeIds = [vnode?.scopeId, ...(vnode?.slotScopeIds ?? [])].filter(
+    (scopeId): scopeId is string => typeof scopeId === 'string' && scopeId.length > 0
+  )
+
+  return Object.fromEntries(scopeIds.map((scopeId) => [scopeId, '']))
 })
 
 const anchorAttrs = computed<Record<string, unknown>>(() => ({
