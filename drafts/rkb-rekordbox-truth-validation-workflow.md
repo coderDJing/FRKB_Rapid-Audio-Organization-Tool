@@ -20,6 +20,23 @@
 - 不为了视觉贴合去改 `firstBeatMs`。
 - 不把离线能量峰、可见起点、最大振幅点当成 Rekordbox 网格真值。
 
+新对话如果从本文开始接手算法优化，可以直接使用这段任务说明：
+
+```text
+按 drafts/rkb-rekordbox-truth-validation-workflow.md，把 FRKB 自己的 BPM / firstBeat / barBeatOffset 分析结果归一化到同一 timeline，先做 benchmark，对齐 Rekordbox truth，再优化 FRKB 自己的分析算法。
+
+不要改 rkb truth 链路。
+不要用 Rekordbox 波形。
+不要做歌名特判或逐曲补偿。
+不要为了视觉贴合修改 Rekordbox 的 firstBeatMs。
+
+rkb 是真值歌单，Rekordbox 只提供 bpm / firstBeatMs / barBeatOffset / PQTZ。
+FRKB 波形必须继续使用自己的 FFmpeg/raw 波形。
+普通歌单未来也应输出同样语义的数据，但来源必须是 FRKB analyzer。
+先建立 benchmark 和误差报告，再修改算法。
+修改代码后必须运行 npx vue-tsc --noEmit。
+```
+
 ## 2. 数据层应该怎么看
 
 一首歌在这个验证体系里有三层数据。
@@ -74,6 +91,7 @@ frkbFirstBeatTimelineMs = frkbFirstBeatAudioMs + timeBasisOffsetMs
 - Rekordbox 播放列表名：`abc`
 - Rekordbox 快照文件：`resources/rkbRekordboxAbcGridSnapshot.json`
 - rkb 运行时代码：`src/main/services/keyAnalysis/rkbRekordboxGrid.ts`
+- 本文是当前唯一保留的 rkb/Rekordbox 真值工作流文档；旧交接草案和离线探针输出已清理，避免继续误导。
 
 当前匹配规则：
 
@@ -86,6 +104,13 @@ frkbFirstBeatTimelineMs = frkbFirstBeatAudioMs + timeBasisOffsetMs
   - `timeBasisOffsetMs`
 
 `src/main/services/scanSongs.ts` 也会在扫描 `rkb` 时重新应用当前快照，避免旧 `song_cache` 把旧 offset 带回 UI。
+
+当前验证基线：
+
+- `rkb/abc` 33 首样本已由用户复测通过。
+- `Developer`、`len faki - zig zag`、`Enrico`、`Gamma`、`Leviws` 这类关键分歧样本都必须继续作为回归样本。
+- 代码侧已通过 `npx vue-tsc --noEmit`。
+- 没有保留运行时调试日志。
 
 ## 4. Rekordbox 数据怎么拿
 
@@ -151,10 +176,17 @@ USB 导出可用于交叉验证。
 
 当前已验证过的重点：
 
+- `G:/PIONEER/rekordbox/export.pdb` 中 `abc` 歌单共 `33` 首。
+- 这 `33` 首全部能在 `USBANLZ` 找到对应 `ANLZ0000.DAT`。
+- 这 `33` 首全部存在 `PQTZ`。
 - `PQTZ` 存的是逐拍记录，不是只有第一拍。
+- `PQTZ` 每条记录为 8 字节：`u16 beat`、`u16 bpm_x100`、`u32 time_ms`。
+- 这批样本没有多 BPM 段：`tracksWithVariableBpm = 0`。
 - 这批 `abc` 样本里，`PQTZ[0].timeMs` 与快照 `firstBeatMs` 一致。
 - `PQTZ[0].bpm` 与快照 `bpm` 一致。
 - `PQTZ[0].beat` 与快照 `firstBeatLabel` 一致。
+- 以 `PQTZ[0]` 和 `60000 / bpm` 外推整首歌时，没有任何一首 `maxBeatTimeDriftMs >= 10`。
+- 最差样本也只有 `6.521ms / 1121 beats`，属于整数毫秒量化级别，不是结构性 drift。
 
 因此 `PQTZ` 可作为多点真值校验来源：
 
@@ -169,6 +201,8 @@ expectedBeatMs[i] = firstBeatMs + i * 60000 / bpm
 ```
 
 但如果未来遇到变 BPM 或多锚点歌曲，应优先使用完整 `PQTZ`，不要只用首拍外推。
+
+当前结论：`PQTZ` 证明 Rekordbox 网格真值本身基本可信；这批 33 首的错位根因不应继续归因到“没有读取完整 PQTZ 多锚点”。
 
 ## 5. Rekordbox 时间轴怎么对应到 FRKB
 
@@ -281,6 +315,26 @@ audioSec = timelineSec - timeBasisOffsetMs / 1000
 UI 里的 coverage、dirty range、grid range、cue marker 都应该使用 timeline sec。
 
 这两个轴混用，就会出现“只差一点”的稳定偏移。
+
+### 6.4 当前必须保持一致的工程触点
+
+`timeBasisOffsetMs` 不是只给某一个渲染函数用。它必须贯穿所有 raw waveform、grid、播放和缓存路径：
+
+- `src/main/services/keyAnalysis/rkbRekordboxGrid.ts`：快照命中时计算 `timeBasisOffsetMs`。
+- `src/main/services/scanSongs.ts`：扫描 `rkb` 时重新应用快照，避免旧 `song_cache` 污染。
+- `src/renderer/src/components/mixtapeBeatAlignWaveform.ts`：raw 波形绘制映射到 timeline。
+- `src/renderer/src/components/horizontalBrowseRawWaveformTileManager.ts`：tile 请求和 cache key 必须包含 offset 语义。
+- `src/renderer/src/workers/horizontalBrowseDetailWaveform.worker.ts`：worker 渲染 tile 时使用 offset。
+- `src/renderer/src/components/useHorizontalBrowseRawWaveformCanvas.ts`：coverage/intersection 使用 timeline 轴。
+- `src/renderer/src/components/useHorizontalBrowseRawWaveformStream.ts`：FFmpeg stream 用 audio 轴，loaded/dirty range 转回 timeline 轴。
+- `src/renderer/src/components/HorizontalBrowseRawWaveformDetail.vue`：detail raw stream/canvas 统一使用 `previewTimeBasisOffsetMs`。
+- `src/renderer/src/components/MixtapeBeatAlignDialog.vue`：调网格弹窗也必须接收 offset。
+- `src/renderer/src/components/MixtapeDialogsLayer.vue`：从 `beatAlignTrack` 传递 offset。
+- `src/renderer/src/composables/mixtape/mixtapeTrackSnapshot.ts`：mixtape track 快照保留 offset。
+- `src/renderer/src/composables/mixtape/mixtapeSnapshotSongMapper.ts`：mixtape song 映射保留 offset。
+- `rust_package/src/horizontal_browse_transport_engine_state.rs`：native transport 内部做 `timeline_sec <-> audio_sec` 转换。
+
+漏掉任意一条链路，都可能出现“某个视图还是晚一点”的假象。
 
 ## 7. FRKB 分析结果怎样才等价于 Rekordbox
 
@@ -536,12 +590,13 @@ LAME3.100 + start_time 25.057ms + skip_samples 1105
 
 ### 10.3 `PWV5` 只能辅助排查
 
-`PWV5` 能帮助观察 Rekordbox 自己的细节波形语义，但不能作为 FRKB 默认波形源。
+`PWV5` 能帮助临时观察 Rekordbox 自己的细节波形语义，但不能作为 FRKB 默认波形源，也不应把离线可见起点 JSON 放进 `resources`。
 
 原因：
 
 - 目标是比较 FRKB analyzer 与 Rekordbox analyzer。
 - 如果波形也换成 Rekordbox 的，验证基准就被污染。
+- 临时探针输出只能留在本地或文档结论里，不能成为运行时补偿表。
 
 ### 10.4 缓存会误导复测
 
@@ -565,7 +620,44 @@ firstBeatMs + i * 60000 / bpm
 
 决定。
 
-## 11. 当前结论
+### 10.6 不要把内容级起音当通用 offset
+
+离线能量峰、首个可见非零点、first-cross 都只能帮助排查，不能当成 Rekordbox 真网格。
+
+原因：
+
+- 鼓头视觉位置不一定等于最大能量点。
+- 不同频段、窗口、聚合方式会改变峰值位置。
+- `PWV5 visibleOnset` 是 Rekordbox 细节波形显示语义，不等于 FRKB 的时间基准。
+- 这类方法容易变成逐曲 offset 或歌名特判。
+
+### 10.7 不要恢复已经证伪的说法
+
+以下说法不要再恢复：
+
+- “当前应该回到 `timeBasisOffsetMs = 0`。”
+- “`ffprobe stream.start_time` 已被完全证伪。”
+- “只要搬 `PQTZ[0]` 就够。”
+- “`PQTZ` 多锚点是当前 33 首大漂移主因。”
+- “对齐 `PWV5 visibleOnset` 就是下一步修法。”
+- “改 `firstBeatMs` 可以解决视觉偏移。”
+
+更准确的表述是：`stream.start_time` 和大写 `LAME` + 第一包 `Skip Samples` 都是音频格式/解码轴映射信号；它们必须全链路传播，但不能扩展成逐曲补偿表。
+
+## 11. 当前代表样本
+
+后续任何规则、重构或算法优化，至少要解释这些样本：
+
+| file | bpm | firstBeatMs | timeBasisOffsetMs | 作用 |
+| --- | ---: | ---: | ---: | --- |
+| `Developer - Have It All (Original Mix).mp3` | `141` | `61` | `50.114ms` | 大写 `LAME3.100` + `start_time` + `skip_samples` 的关键样本 |
+| `len faki - zig zag (original mix) (1).mp3` | `137` | `52` | `50.114ms` | 与 `Developer` 同类，曾经只用 `25.057ms` 时偏后 |
+| `enrico sangiuliano - the techno code (...) (1).mp3` | `140` | `274` | `25.057ms` | `Lavc59.37`，有 `skip_samples` 但不追加第二层 |
+| `len faki - gamma (glaskin remix) (1).mp3` | `145` | `26` | `0ms` | 无 offset 也应对齐，防止全局硬加 |
+| `leviws - foul play (1).mp3` | `138` | `28` | `0ms` | 无 offset 对照样本 |
+| `lewis fautzi - diversity of known substances (...) (1).mp3` | `138` | `225` | 按元数据计算 | 防止“修 Developer 但反向搞坏其他歌”的对照样本 |
+
+## 12. 当前结论
 
 当前 33 首 `rkb/abc` 验证通过后，可以把这条链路作为后续 FRKB 分析算法优化的基准：
 
