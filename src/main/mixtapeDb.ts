@@ -595,8 +595,7 @@ export function upsertMixtapeItemBpmByFilePath(
     const bpm = Number(item?.bpm)
     if (!filePath || !Number.isFinite(bpm) || bpm <= 0) continue
     const firstBeatMs = Number(item?.firstBeatMs)
-    const normalizedFirstBeatMs =
-      Number.isFinite(firstBeatMs) && firstBeatMs >= 0 ? Number(firstBeatMs.toFixed(3)) : 0
+    const normalizedFirstBeatMs = Number.isFinite(firstBeatMs) ? Number(firstBeatMs.toFixed(3)) : 0
     analysisMap.set(filePath, {
       bpm: Number(bpm.toFixed(6)),
       firstBeatMs: normalizedFirstBeatMs
@@ -629,10 +628,9 @@ export function upsertMixtapeItemBpmByFilePath(
           const normalizedCurrentBpm = Number.isFinite(currentBpm)
             ? Number(currentBpm.toFixed(6))
             : NaN
-          const normalizedCurrentFirstBeatMs =
-            Number.isFinite(currentFirstBeatMs) && currentFirstBeatMs >= 0
-              ? Number(currentFirstBeatMs.toFixed(3))
-              : 0
+          const normalizedCurrentFirstBeatMs = Number.isFinite(currentFirstBeatMs)
+            ? Number(currentFirstBeatMs.toFixed(3))
+            : 0
           if (
             normalizedCurrentBpm === nextAnalysis.bpm &&
             normalizedCurrentFirstBeatMs === nextAnalysis.firstBeatMs
@@ -675,7 +673,7 @@ export function upsertMixtapeItemGridByFilePath(
 
   const normalizeFirstBeatMs = (value: number) => {
     const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric < 0) return 0
+    if (!Number.isFinite(numeric)) return 0
     return numeric
   }
 

@@ -300,6 +300,200 @@ def _refine_non_integer_bpm_from_logits(
     }
 
 
+def _should_attempt_broad_logit_bpm_rescue(result: dict[str, Any]) -> bool:
+    bpm = float(result.get("bpm") or 0.0)
+    if not math.isfinite(bpm) or bpm <= 0.0:
+        return False
+    quality = float(result.get("qualityScore") or 0.0)
+    drift_128_ms = abs(float(result.get("beatThisEstimatedDrift128Ms") or 0.0))
+    beat_count = int(result.get("beatCount") or 0)
+    return 90.0 <= bpm <= 180.0 and quality < 0.72 and drift_128_ms >= 1000.0 and beat_count >= 32
+
+
+def _find_broad_logit_bpm_candidate(
+    beat_logits: np.ndarray,
+    bpm: float,
+    duration_sec: float,
+) -> dict[str, float] | None:
+    current_candidate = _find_best_logit_phase_ms(beat_logits, bpm, duration_sec)
+    if current_candidate is None:
+        return None
+    current_phase_ms, current_score, current_support = current_candidate
+
+    best_bpm = bpm
+    best_phase_ms = current_phase_ms
+    best_score = float(current_score)
+    best_support = int(current_support)
+
+    for step in range(360):
+        candidate_bpm = 90.0 + float(step) * 0.25
+        candidate = _find_best_logit_phase_ms(beat_logits, candidate_bpm, duration_sec)
+        if candidate is None:
+            continue
+        phase_ms, score, support = candidate
+        if score > best_score:
+            best_bpm = candidate_bpm
+            best_phase_ms = phase_ms
+            best_score = float(score)
+            best_support = int(support)
+
+    refined_start = best_bpm - 0.24
+    for step in range(49):
+        candidate_bpm = refined_start + float(step) * 0.01
+        if candidate_bpm < 90.0 or candidate_bpm > 180.0:
+            continue
+        candidate = _find_best_logit_phase_ms(beat_logits, candidate_bpm, duration_sec)
+        if candidate is None:
+            continue
+        phase_ms, score, support = candidate
+        if score > best_score:
+            best_bpm = candidate_bpm
+            best_phase_ms = phase_ms
+            best_score = float(score)
+            best_support = int(support)
+
+    score_gain = best_score - float(current_score)
+    if score_gain < 0.12 or abs(best_bpm - bpm) < max(0.5, bpm * 0.004):
+        return None
+
+    return {
+        "sourceBpm": bpm,
+        "sourcePhaseMs": current_phase_ms,
+        "sourceScore": float(current_score),
+        "sourceSupport": float(current_support),
+        "bestBpm": round(best_bpm),
+        "bestLogitBpm": best_bpm,
+        "bestPhaseMs": best_phase_ms,
+        "bestScore": best_score,
+        "bestSupport": float(best_support),
+        "scoreGain": score_gain,
+    }
+
+
+def _has_unresolved_zero_bar_positive_guard(result: dict[str, Any]) -> bool:
+    strategy = str(result.get("anchorStrategy") or "")
+    if "positive-guard" not in strategy:
+        return False
+    if (
+        "head-attack" in strategy
+        or "grid-solver" in strategy
+        or "frame-center" in strategy
+        or "early-cluster" in strategy
+    ):
+        return False
+    if int(result.get("barBeatOffset") or 0) % 4 != 0:
+        return False
+
+    first_beat_ms = float(result.get("firstBeatMs") or 0.0)
+    raw_first_beat_ms = float(result.get("rawFirstBeatMs") or first_beat_ms)
+    anchor_correction_ms = abs(float(result.get("anchorCorrectionMs") or 0.0))
+    quality_score = float(result.get("qualityScore") or 0.0)
+    return (
+        math.isfinite(first_beat_ms)
+        and math.isfinite(raw_first_beat_ms)
+        and 120.0 <= first_beat_ms <= 320.0
+        and abs(first_beat_ms - raw_first_beat_ms) <= 0.001
+        and anchor_correction_ms <= 0.001
+        and quality_score < 0.9
+    )
+
+
+def _find_positive_full_logit_overrun_phase(
+    beat_logits: np.ndarray,
+    signal: np.ndarray,
+    sample_rate: int,
+    bpm: float,
+    duration_sec: float,
+    original_phase_ms: float,
+    current_phase_ms: float,
+    current_score: float,
+    result: dict[str, Any],
+    tuning: dict[str, Any],
+) -> tuple[float, dict[str, float]] | None:
+    beat_interval_ms = 60000.0 / bpm if bpm > 0.0 else 0.0
+    if beat_interval_ms <= 0.0:
+        return None
+
+    positive_shift_ms = phase_delta_ms(current_phase_ms, original_phase_ms, beat_interval_ms)
+    raw_bpm = float(result.get("rawBpm") or bpm)
+    if (
+        positive_shift_ms < 32.0
+        or positive_shift_ms > 80.0
+        or abs(raw_bpm - bpm) < 2.0
+        or float(result.get("qualityScore") or 0.0) >= 0.74
+        or abs(float(result.get("anchorCorrectionMs") or 0.0)) > 1.0
+    ):
+        return None
+
+    beat_interval_sec = 60.0 / bpm
+    search_start_ms = original_phase_ms + 12.0
+    search_end_ms = original_phase_ms + min(32.0, positive_shift_ms - 8.0)
+    if search_end_ms - search_start_ms < 8.0:
+        return None
+
+    candidates: list[tuple[float, int, float, float]] = []
+    phase_ms = search_start_ms
+    while phase_ms <= search_end_ms + 0.000001:
+        normalized_phase_ms = normalize_phase_ms(phase_ms, beat_interval_ms)
+        candidate_score, candidate_support = _score_frame_grid(
+            beat_logits,
+            bpm,
+            normalized_phase_ms,
+            duration_sec,
+        )
+        if candidate_support >= 16 and candidate_score >= current_score - 0.20:
+            candidate_beats = _grid_times_for_phase(normalized_phase_ms, bpm, duration_sec).tolist()
+            anchor_correction_ms, anchor_confidence, anchor_matched_count = estimate_anchor_correction(
+                signal,
+                sample_rate,
+                candidate_beats,
+                beat_interval_sec,
+                tuning,
+            )
+            if (
+                abs(anchor_correction_ms) <= 1.0
+                and anchor_confidence >= 0.90
+                and anchor_matched_count >= 32
+            ):
+                candidates.append(
+                    (
+                        float(anchor_confidence),
+                        int(anchor_matched_count),
+                        float(normalized_phase_ms),
+                        float(candidate_score),
+                    )
+                )
+        phase_ms += 0.5
+
+    if not candidates:
+        return None
+
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    confidence, matched_count, phase_ms, candidate_score = candidates[0]
+    if phase_delta_ms(phase_ms, current_phase_ms, beat_interval_ms) > -12.0:
+        return None
+    return phase_ms, {
+        "positiveShiftMs": positive_shift_ms,
+        "confidence": confidence,
+        "matchedCount": float(matched_count),
+        "score": candidate_score,
+    }
+
+
+def _should_attempt_full_track_downbeat_refinement(result: dict[str, Any]) -> bool:
+    if str(result.get("anchorStrategy") or "").strip() != "grid-solver":
+        return False
+    bpm = float(result.get("bpm") or 0.0)
+    return (
+        math.isfinite(bpm)
+        and bpm > 0.0
+        and float(result.get("qualityScore") or 0.0) >= 0.94
+        and float(result.get("anchorConfidenceScore") or 0.0) >= 0.95
+        and int(result.get("beatCount") or 0) >= 32
+        and int(result.get("downbeatCount") or 0) >= 8
+    )
+
+
 def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
     bpm = float(result.get("bpm") or 0.0)
     if not math.isfinite(bpm) or bpm <= 0.0:
@@ -321,6 +515,16 @@ def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
         return False
     if "head-attack" in strategy and anchor_confidence >= 0.9 and first_beat_ms <= 18.0:
         return False
+    if (
+        anchor_confidence >= 0.9
+        and drift_128_ms <= 5.0
+        and raw_bpm > 0.0
+        and abs(raw_bpm - round(raw_bpm)) <= 0.05
+        and first_beat_ms >= 120.0
+        and "positive-guard" not in strategy
+        and "grid-solver" not in strategy
+    ):
+        return False
 
     has_unresolved_positive_guard = (
         "positive-guard" in strategy
@@ -328,6 +532,8 @@ def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
         and "early-cluster" not in strategy
         and bar_beat_offset != 0
     )
+    has_unresolved_zero_bar_positive_guard = _has_unresolved_zero_bar_positive_guard(result)
+    has_full_track_downbeat_refinement = _should_attempt_full_track_downbeat_refinement(result)
     has_low_confidence_downbeat = anchor_confidence < 0.9 and bar_beat_offset != 0
     has_non_integer_drift = not _is_integer_bpm(bpm) and drift_128_ms > 5.0
     is_half_bpm_rescue = (
@@ -359,6 +565,8 @@ def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
     )
     return (
         has_unresolved_positive_guard
+        or has_unresolved_zero_bar_positive_guard
+        or has_full_track_downbeat_refinement
         or has_low_confidence_downbeat
         or has_non_integer_drift
         or has_large_negative_correction
@@ -394,6 +602,37 @@ def apply_full_track_logit_rescue(
         device,
         cpu_spect,
     )
+    if _should_attempt_full_track_downbeat_refinement(result):
+        current_bar_offset = int(result.get("barBeatOffset") or 0)
+        current_phase_ms = float(result.get("firstBeatMs") or 0.0)
+        bar_beat_offset, downbeat_margin = _select_downbeat_bar_offset(
+            downbeat_logits,
+            bpm,
+            current_phase_ms,
+            duration_sec,
+            current_bar_offset,
+        )
+        if bar_beat_offset != current_bar_offset % 4 and downbeat_margin >= 1.0:
+            next_result = dict(result)
+            next_result["barBeatOffset"] = int(
+                (current_bar_offset - current_bar_offset % 4 + bar_beat_offset) % 32
+            )
+            current_strategy = str(next_result.get("anchorStrategy") or "").strip()
+            next_result["anchorStrategy"] = (
+                f"{current_strategy}-full-logit-downbeat"
+                if current_strategy
+                else "full-logit-downbeat"
+            )
+            next_result["downbeatRefinementMargin"] = round(float(downbeat_margin), 6)
+            return next_result
+        return result
+
+    broad_bpm_refinement: dict[str, float] | None = None
+    if _should_attempt_broad_logit_bpm_rescue(result):
+        broad_bpm_refinement = _find_broad_logit_bpm_candidate(beat_logits, bpm, duration_sec)
+        if broad_bpm_refinement is not None:
+            bpm = float(broad_bpm_refinement["bestBpm"])
+
     phase_candidate = _find_best_logit_phase_ms(beat_logits, bpm, duration_sec)
     if phase_candidate is None:
         return result
@@ -416,6 +655,34 @@ def apply_full_track_logit_rescue(
     original_phase_ms = float(result.get("firstBeatMs") or 0.0)
     original_anchor_correction_ms = float(result.get("anchorCorrectionMs") or 0.0)
     original_raw_first_beat_ms = float(result.get("rawFirstBeatMs") or 0.0)
+    raw_bpm = float(result.get("rawBpm") or bpm)
+    drift_128_ms = abs(float(result.get("beatThisEstimatedDrift128Ms") or 0.0))
+    has_unresolved_zero_bar_positive_guard = _has_unresolved_zero_bar_positive_guard(result)
+    if has_unresolved_zero_bar_positive_guard:
+        phase_shift_ms = phase_delta_ms(phase_ms, original_phase_ms, beat_interval_ms)
+        current_score, current_support = _score_frame_grid(
+            beat_logits,
+            bpm,
+            original_phase_ms,
+            duration_sec,
+        )
+        score_gain = beat_score - current_score
+        if (
+            phase_shift_ms < 2.0
+            or phase_shift_ms > 8.0
+            or score_gain < 0.35
+            or beat_support < max(16, int(current_support * 0.8))
+        ):
+            return result
+    preserve_stable_phase = (
+        drift_128_ms <= 5.0
+        and original_phase_ms >= 120.0
+        and "positive-guard" not in str(result.get("anchorStrategy") or "")
+        and "grid-solver" not in str(result.get("anchorStrategy") or "")
+        and math.isfinite(raw_bpm)
+        and raw_bpm > 0.0
+        and abs(raw_bpm - round(raw_bpm)) <= 0.05
+    )
     if (
         original_anchor_correction_ms <= -14.0
         and original_phase_ms > 1.0
@@ -437,6 +704,8 @@ def apply_full_track_logit_rescue(
         and float(result.get("anchorConfidenceScore") or 0.0) < 0.9
     ):
         phase_ms = normalize_phase_ms(phase_ms - 4.0, beat_interval_ms)
+    if preserve_stable_phase:
+        phase_ms = normalize_phase_ms(original_phase_ms, beat_interval_ms)
 
     bpm, bpm_refinement = _refine_non_integer_bpm_from_logits(
         beat_logits,
@@ -447,6 +716,28 @@ def apply_full_track_logit_rescue(
     beat_interval_sec = 60.0 / bpm
     beat_interval_ms = beat_interval_sec * 1000.0
     phase_ms = normalize_phase_ms(phase_ms, beat_interval_ms)
+    current_phase_score, _current_phase_support = _score_frame_grid(
+        beat_logits,
+        bpm,
+        phase_ms,
+        duration_sec,
+    )
+    pre_overrun_phase_ms = phase_ms
+    positive_overrun_candidate = _find_positive_full_logit_overrun_phase(
+        beat_logits,
+        signal,
+        sample_rate,
+        bpm,
+        duration_sec,
+        original_phase_ms,
+        phase_ms,
+        current_phase_score,
+        result,
+        tuning,
+    )
+    positive_overrun_guard: dict[str, float] | None = None
+    if positive_overrun_candidate is not None:
+        phase_ms, positive_overrun_guard = positive_overrun_candidate
 
     phase_wrap_beat_shift = 0
     if beat_interval_ms > 0.0:
@@ -468,6 +759,17 @@ def apply_full_track_logit_rescue(
         duration_sec,
         current_bar_offset,
     )
+    if positive_overrun_guard is not None:
+        pre_overrun_bar_beat_offset, pre_overrun_downbeat_margin = _select_downbeat_bar_offset(
+            downbeat_logits,
+            bpm,
+            pre_overrun_phase_ms,
+            duration_sec,
+            current_bar_offset,
+        )
+        if pre_overrun_downbeat_margin >= 0.8:
+            bar_beat_offset = pre_overrun_bar_beat_offset
+            downbeat_margin = pre_overrun_downbeat_margin
     if phase_wrap_beat_shift != 0 and abs(phase_delta_ms(phase_ms, original_phase_ms, beat_interval_ms)) <= 8.0:
         bar_beat_offset = current_bar_offset % 32
     if (
@@ -506,9 +808,32 @@ def apply_full_track_logit_rescue(
     next_result["phaseRefinementScore"] = round(float(beat_score), 6)
     next_result["phaseRefinementSupport"] = int(beat_support)
     next_result["downbeatRefinementMargin"] = round(float(downbeat_margin), 6)
+    if positive_overrun_guard is not None:
+        next_result["phaseRefinementStrategy"] = "full-track-logit-positive-overrun-guard"
+        next_result["phaseOverrunGuardShiftMs"] = round(
+            phase_delta_ms(phase_ms, original_phase_ms, beat_interval_ms),
+            3,
+        )
+        next_result["phaseOverrunGuardOriginalShiftMs"] = round(
+            float(positive_overrun_guard["positiveShiftMs"]),
+            3,
+        )
+        next_result["phaseOverrunGuardConfidence"] = round(
+            float(positive_overrun_guard["confidence"]),
+            6,
+        )
+        next_result["phaseOverrunGuardMatchedCount"] = int(
+            positive_overrun_guard["matchedCount"]
+        )
+        next_result["phaseOverrunGuardScore"] = round(float(positive_overrun_guard["score"]), 6)
     if bpm_refinement is not None:
         next_result["bpmRefinementStrategy"] = "full-track-logit-centibpm"
         next_result["bpmRefinementSourceBpm"] = round(float(bpm_refinement["sourceBpm"]), 6)
         next_result["bpmRefinementBestLogitBpm"] = round(float(bpm_refinement["bestLogitBpm"]), 6)
         next_result["bpmRefinementScoreGain"] = round(float(bpm_refinement["scoreGain"]), 6)
+    if broad_bpm_refinement is not None:
+        next_result["bpmRefinementStrategy"] = "full-track-logit-broad"
+        next_result["bpmRefinementSourceBpm"] = round(float(broad_bpm_refinement["sourceBpm"]), 6)
+        next_result["bpmRefinementBestLogitBpm"] = round(float(broad_bpm_refinement["bestLogitBpm"]), 6)
+        next_result["bpmRefinementScoreGain"] = round(float(broad_bpm_refinement["scoreGain"]), 6)
     return next_result

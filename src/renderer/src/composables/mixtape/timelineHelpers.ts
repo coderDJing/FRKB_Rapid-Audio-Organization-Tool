@@ -291,12 +291,15 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
   const resolveTrackGridSignature = (track: MixtapeTrack, durationSec?: number) =>
     [
       resolveTrackTimeMapSignature(track, durationSec),
-      Math.round((Math.max(0, Number(track.firstBeatMs) || 0) || 0) * 1000),
+      Math.round(
+        (Number.isFinite(Number(track.firstBeatMs)) ? Number(track.firstBeatMs) : 0) * 1000
+      ),
       Math.round(Number(track.barBeatOffset) || 0)
     ].join('|')
 
   const resolveTrackFirstBeatSeconds = (track: MixtapeTrack, targetBpm?: number) => {
-    const firstBeatSourceSec = Math.max(0, Number(track.firstBeatMs) || 0) / 1000
+    const firstBeatMs = Number(track.firstBeatMs)
+    const firstBeatSourceSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
     if (!Number.isFinite(firstBeatSourceSec) || firstBeatSourceSec <= 0) return 0
 
     const hasTargetBpm =

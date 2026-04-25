@@ -47,7 +47,7 @@ const normalizeBpm = (value: unknown) => {
 
 const normalizeFirstBeatMs = (value: unknown) => {
   const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric < 0) return undefined
+  if (!Number.isFinite(numeric)) return undefined
   return Number(numeric.toFixed(3))
 }
 

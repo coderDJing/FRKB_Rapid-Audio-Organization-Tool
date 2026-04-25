@@ -56,7 +56,7 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     const firstBeatMs = Number(payload?.firstBeatMs)
     const timeBasisOffsetMs = Number(payload?.timeBasisOffsetMs)
     const hasBpm = Number.isFinite(bpm) && bpm > 0
-    const hasFirstBeatMs = Number.isFinite(firstBeatMs) && firstBeatMs >= 0
+    const hasFirstBeatMs = Number.isFinite(firstBeatMs)
     const hasTimeBasisOffsetMs = Number.isFinite(timeBasisOffsetMs) && timeBasisOffsetMs >= 0
     if (!filePath || (!hasBpm && !hasFirstBeatMs && !hasTimeBasisOffsetMs)) return null
     return {

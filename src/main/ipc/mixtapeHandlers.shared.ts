@@ -282,10 +282,9 @@ const analyzeMixtapeBpmBatch = async (
           const bpmValue = payload?.result?.bpm
           if (typeof bpmValue === 'number' && Number.isFinite(bpmValue) && bpmValue > 0) {
             const rawFirstBeatMs = Number(payload?.result?.firstBeatMs)
-            const firstBeatAudioMs =
-              Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0
-                ? Number(rawFirstBeatMs.toFixed(3))
-                : 0
+            const firstBeatAudioMs = Number.isFinite(rawFirstBeatMs)
+              ? Number(rawFirstBeatMs.toFixed(3))
+              : 0
             const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(filePath)
             const firstBeatMs = resolveAudioFirstBeatTimelineMs(firstBeatAudioMs, timeBasisOffsetMs)
             const rawBarBeatOffset = Number(payload?.result?.barBeatOffset)

@@ -1,12 +1,25 @@
 import argparse
+import hashlib
+import inspect
 import importlib.util
 import json
 import math
+import os
 import statistics
 import subprocess
+import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+import numpy as np
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TRUTH = REPO_ROOT / "resources" / "rkbRekordboxGridSnapshot.json"
@@ -14,6 +27,9 @@ DEFAULT_AUDIO_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/rkb")
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
 DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
 DEFAULT_OUTPUT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "latest.json"
+DEFAULT_PREDICTION_CACHE_DIR = (
+    REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "beatthis-prediction-cache"
+)
 BEAT_THIS_BRIDGE = REPO_ROOT / "scripts" / "beat_this_bridge.py"
 
 SAMPLE_RATE = 44100
@@ -22,6 +38,9 @@ WINDOW_SEC = 30.0
 MAX_SCAN_SEC = 120.0
 DRIFT_BEAT_HORIZONS = (32, 64, 128)
 STRICT_TOLERANCE_MS = 2.0
+PREDICTION_CACHE_VERSION = 1
+
+_ACTIVE_LOGIT_CACHE_CONTEXT: dict[str, Any] | None = None
 
 
 def _load_bridge_module() -> Any:
@@ -31,6 +50,417 @@ def _load_bridge_module() -> Any:
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+def _normalized_path_identity(path: Path) -> str:
+    try:
+        resolved = path.resolve()
+    except Exception:
+        resolved = path.absolute()
+    return os.path.normcase(str(resolved))
+
+def _file_signature(path_value: str | Path | None) -> dict[str, Any]:
+    raw_value = str(path_value or "").strip()
+    if not raw_value:
+        return {"path": "", "exists": False}
+    path = Path(raw_value)
+    identity = _normalized_path_identity(path)
+    if not path.exists():
+        return {"path": identity, "exists": False}
+    stat = path.stat()
+    return {
+        "path": identity,
+        "exists": True,
+        "size": int(stat.st_size),
+        "mtimeNs": int(stat.st_mtime_ns),
+    }
+
+def _module_signature(module_name: str) -> dict[str, Any]:
+    module = sys.modules.get(module_name)
+    module_file = getattr(module, "__file__", None) if module is not None else None
+    return _file_signature(module_file)
+
+
+def _function_source_signature(function: Any) -> dict[str, Any]:
+    if function is None:
+        return {"available": False}
+    original_signature = getattr(function, "_frkb_original_source_signature", None)
+    if isinstance(original_signature, dict):
+        return original_signature
+    try:
+        source = inspect.getsource(function)
+    except Exception:
+        return {
+            "available": False,
+            "module": str(getattr(function, "__module__", "") or ""),
+            "qualname": str(getattr(function, "__qualname__", "") or ""),
+        }
+    return {
+        "available": True,
+        "module": str(getattr(function, "__module__", "") or ""),
+        "qualname": str(getattr(function, "__qualname__", "") or ""),
+        "sourceSha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+    }
+
+
+def _stable_cache_hash(payload: dict[str, Any]) -> str:
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _prediction_cache_base_payload(
+    *,
+    bridge: Any,
+    file_path: Path,
+    checkpoint_path: str,
+    device: str,
+) -> dict[str, Any]:
+    return {
+        "cacheVersion": PREDICTION_CACHE_VERSION,
+        "audioFile": _file_signature(file_path),
+        "sampleRate": SAMPLE_RATE,
+        "channels": CHANNELS,
+        "windowSec": WINDOW_SEC,
+        "maxScanSec": MAX_SCAN_SEC,
+        "device": str(device or "cpu").strip().lower() or "cpu",
+        "checkpoint": _file_signature(checkpoint_path),
+        "beatThisInference": _module_signature("beat_this.inference"),
+        "beatThisPreprocessing": _module_signature("beat_this.preprocessing"),
+        "predictionFunctions": {
+            "decodeSignal": _function_source_signature(getattr(bridge, "_decode_signal", None)),
+            "predictBeats": _function_source_signature(getattr(bridge, "_predict_beats", None)),
+            "predictBeatsAccelerated": _function_source_signature(
+                getattr(bridge, "_predict_beats_with_accelerated_device", None)
+            ),
+            "predictFrameLogits": _function_source_signature(
+                bridge._apply_full_track_logit_rescue.__globals__.get("_predict_frame_logits")
+            ),
+        },
+        "predictionImplementation": {
+            "usesAcceleratedDevice": bool(bridge._uses_accelerated_device(device)),
+        },
+    }
+
+
+def _prediction_cache_key(
+    base_payload: dict[str, Any],
+    kind: str,
+    extra: dict[str, Any] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    payload = {
+        **base_payload,
+        "kind": kind,
+        **(extra or {}),
+    }
+    return _stable_cache_hash(payload), payload
+
+
+def _cache_stats() -> dict[str, int]:
+    return {
+        "windowHits": 0,
+        "windowMisses": 0,
+        "windowWrites": 0,
+        "logitHits": 0,
+        "logitMisses": 0,
+        "logitWrites": 0,
+        "errors": 0,
+    }
+
+
+def _bump_cache_stat(stats: dict[str, int] | None, key: str) -> None:
+    if stats is not None:
+        stats[key] = int(stats.get(key, 0)) + 1
+
+
+def _prediction_window_cache_path(cache_dir: Path, cache_key: str) -> Path:
+    return cache_dir / f"windows-{cache_key}.json"
+
+
+def _prediction_logit_cache_path(cache_dir: Path, cache_key: str) -> Path:
+    return cache_dir / f"full-logits-{cache_key}.npz"
+
+
+def _serialize_prediction_windows(prepared_windows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    serialized: list[dict[str, Any]] = []
+    for window in prepared_windows:
+        signal = window.get("signal")
+        frame_count = int(getattr(signal, "shape", [0])[0] or 0)
+        serialized.append(
+            {
+                "windowIndex": int(window.get("windowIndex") or 0),
+                "windowStartSec": float(window.get("windowStartSec") or 0.0),
+                "windowDurationSec": float(window.get("windowDurationSec") or 0.0),
+                "signalFrameCount": frame_count,
+                "beats": [float(value) for value in window.get("beats", [])],
+                "downbeats": [float(value) for value in window.get("downbeats", [])],
+            }
+        )
+    return serialized
+
+
+def _slice_cached_signal_window(
+    signal: Any,
+    *,
+    sample_rate: int,
+    window_start_sec: float,
+    signal_frame_count: int,
+) -> tuple[Any, float]:
+    total_frames = int(signal.shape[0])
+    start_frame = max(0, int(max(0.0, window_start_sec) * sample_rate))
+    end_frame = min(total_frames, start_frame + max(0, int(signal_frame_count)))
+    actual_frames = max(0, end_frame - start_frame)
+    if actual_frames <= 0:
+        return signal[:0], 0.0
+    return signal[start_frame:end_frame], actual_frames / sample_rate
+
+
+def _rebuild_cached_prediction_windows(
+    *,
+    bridge: Any,
+    signal: Any,
+    tuning: dict[str, Any],
+    cached_windows: list[Any],
+) -> list[dict[str, Any]]:
+    prepared_windows: list[dict[str, Any]] = []
+    for item in cached_windows:
+        if not isinstance(item, dict):
+            continue
+        beat_list = [float(value) for value in item.get("beats", [])]
+        downbeat_list = [float(value) for value in item.get("downbeats", [])]
+        raw_bpm = bridge._derive_bpm(beat_list)
+        raw_beat_interval = bridge._derive_interval(beat_list)
+        if raw_bpm is None or raw_beat_interval is None or not beat_list:
+            continue
+        window_start_sec = float(item.get("windowStartSec") or 0.0)
+        signal_frame_count = int(item.get("signalFrameCount") or 0)
+        window_signal, actual_duration_sec = _slice_cached_signal_window(
+            signal,
+            sample_rate=SAMPLE_RATE,
+            window_start_sec=window_start_sec,
+            signal_frame_count=signal_frame_count,
+        )
+        if actual_duration_sec <= 0.0 or getattr(window_signal, "size", 0) == 0:
+            continue
+        bpm = bridge._stabilize_bpm_for_grid(raw_bpm, tuning)
+        beat_interval = 60.0 / bpm if bpm > 0 else raw_beat_interval
+        quality_metrics = bridge._derive_quality_metrics(
+            beat_list,
+            downbeat_list,
+            beat_interval,
+            actual_duration_sec,
+        )
+        prepared_windows.append(
+            {
+                "signal": window_signal,
+                "beats": beat_list,
+                "downbeats": downbeat_list,
+                "rawBpm": round(raw_bpm, 6),
+                "rawBeatInterval": round(raw_beat_interval, 6),
+                "windowIndex": int(item.get("windowIndex") or 0),
+                "windowStartSec": round(window_start_sec, 3),
+                "windowDurationSec": round(float(item.get("windowDurationSec") or actual_duration_sec), 3),
+                "beatCount": len(beat_list),
+                "downbeatCount": len(downbeat_list),
+                **quality_metrics,
+            }
+        )
+    return prepared_windows
+
+
+def _read_cached_prediction_windows(
+    *,
+    cache_dir: Path,
+    cache_key: str,
+    bridge: Any,
+    signal: Any,
+    tuning: dict[str, Any],
+    stats: dict[str, int],
+) -> list[dict[str, Any]] | None:
+    cache_path = _prediction_window_cache_path(cache_dir, cache_key)
+    if not cache_path.exists():
+        _bump_cache_stat(stats, "windowMisses")
+        return None
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict) or payload.get("cacheKey") != cache_key:
+            raise RuntimeError("cache key mismatch")
+        cached_windows = payload.get("windows")
+        if not isinstance(cached_windows, list):
+            raise RuntimeError("cache windows payload is not a list")
+        prepared_windows = _rebuild_cached_prediction_windows(
+            bridge=bridge,
+            signal=signal,
+            tuning=tuning,
+            cached_windows=cached_windows,
+        )
+        _bump_cache_stat(stats, "windowHits")
+        return prepared_windows
+    except Exception as error:
+        _bump_cache_stat(stats, "errors")
+        print(f"  prediction cache ignored: {error}", flush=True)
+        return None
+
+
+def _write_cached_prediction_windows(
+    *,
+    cache_dir: Path,
+    cache_key: str,
+    cache_payload: dict[str, Any],
+    prepared_windows: list[dict[str, Any]],
+    stats: dict[str, int],
+) -> None:
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path = _prediction_window_cache_path(cache_dir, cache_key)
+        payload = {
+            "cacheKey": cache_key,
+            "cachePayload": cache_payload,
+            "createdAt": round(time.time(), 3),
+            "windows": _serialize_prediction_windows(prepared_windows),
+        }
+        cache_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        _bump_cache_stat(stats, "windowWrites")
+    except Exception as error:
+        _bump_cache_stat(stats, "errors")
+        print(f"  prediction cache write failed: {error}", flush=True)
+
+
+def _prepare_analysis_windows_with_cache(
+    *,
+    bridge: Any,
+    predictor: Any,
+    cpu_spect: Any,
+    signal: Any,
+    sample_rate: int,
+    device: str,
+    tuning: dict[str, Any],
+    cache_dir: Path | None,
+    cache_base_payload: dict[str, Any],
+    stats: dict[str, int],
+) -> list[dict[str, Any]]:
+    if cache_dir is None:
+        return bridge._prepare_analysis_windows(
+            predictor,
+            cpu_spect,
+            signal,
+            sample_rate,
+            device,
+            WINDOW_SEC,
+            MAX_SCAN_SEC,
+        )
+
+    cache_key, cache_payload = _prediction_cache_key(cache_base_payload, "analysis-windows")
+    cached_windows = _read_cached_prediction_windows(
+        cache_dir=cache_dir,
+        cache_key=cache_key,
+        bridge=bridge,
+        signal=signal,
+        tuning=tuning,
+        stats=stats,
+    )
+    if cached_windows is not None:
+        return cached_windows
+
+    prepared_windows = bridge._prepare_analysis_windows(
+        predictor,
+        cpu_spect,
+        signal,
+        sample_rate,
+        device,
+        WINDOW_SEC,
+        MAX_SCAN_SEC,
+    )
+    _write_cached_prediction_windows(
+        cache_dir=cache_dir,
+        cache_key=cache_key,
+        cache_payload=cache_payload,
+        prepared_windows=prepared_windows,
+        stats=stats,
+    )
+    return prepared_windows
+
+
+@contextmanager
+def _active_logit_cache_context(context: dict[str, Any] | None) -> Any:
+    global _ACTIVE_LOGIT_CACHE_CONTEXT
+    previous_context = _ACTIVE_LOGIT_CACHE_CONTEXT
+    _ACTIVE_LOGIT_CACHE_CONTEXT = context
+    try:
+        yield
+    finally:
+        _ACTIVE_LOGIT_CACHE_CONTEXT = previous_context
+
+
+def _install_full_logit_prediction_cache(bridge: Any) -> None:
+    rescue_module = sys.modules.get("beat_this_full_logit_rescue")
+    original_predict = getattr(rescue_module, "_predict_frame_logits", None) if rescue_module else None
+    if original_predict is None or getattr(original_predict, "_frkb_cache_wrapped", False):
+        return
+
+    def cached_predict_frame_logits(
+        predictor: Any,
+        signal: Any,
+        sample_rate: int,
+        device: str,
+        cpu_spect: Any,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        context = _ACTIVE_LOGIT_CACHE_CONTEXT
+        if not context or context.get("cacheDir") is None:
+            return original_predict(predictor, signal, sample_rate, device, cpu_spect)
+
+        cache_dir = Path(str(context["cacheDir"]))
+        stats = context.get("stats")
+        base_payload = dict(context["basePayload"])
+        signal_shape = tuple(int(value) for value in getattr(signal, "shape", ()))
+        cache_key, cache_payload = _prediction_cache_key(
+            base_payload,
+            "full-track-logits",
+            {
+                "logitSampleRate": int(sample_rate),
+                "signalShape": signal_shape,
+                "logitDevice": str(device or "cpu").strip().lower() or "cpu",
+            },
+        )
+        cache_path = _prediction_logit_cache_path(cache_dir, cache_key)
+        if cache_path.exists():
+            try:
+                with np.load(cache_path, allow_pickle=False) as cached:
+                    stored_key = str(cached["cacheKey"].item())
+                    if stored_key != cache_key:
+                        raise RuntimeError("cache key mismatch")
+                    beat_logits = cached["beatLogits"].astype("float64", copy=False)
+                    downbeat_logits = cached["downbeatLogits"].astype("float64", copy=False)
+                _bump_cache_stat(stats, "logitHits")
+                return beat_logits, downbeat_logits
+            except Exception as error:
+                _bump_cache_stat(stats, "errors")
+                print(f"  full-logit cache ignored: {error}", flush=True)
+
+        _bump_cache_stat(stats, "logitMisses")
+        beat_logits, downbeat_logits = original_predict(predictor, signal, sample_rate, device, cpu_spect)
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            with cache_path.open("wb") as output:
+                np.savez(
+                    output,
+                    cacheKey=np.asarray(cache_key),
+                    cachePayload=np.asarray(json.dumps(cache_payload, ensure_ascii=False, sort_keys=True)),
+                    beatLogits=np.asarray(beat_logits, dtype="float64"),
+                    downbeatLogits=np.asarray(downbeat_logits, dtype="float64"),
+                )
+            _bump_cache_stat(stats, "logitWrites")
+        except Exception as error:
+            _bump_cache_stat(stats, "errors")
+            print(f"  full-logit cache write failed: {error}", flush=True)
+        return beat_logits, downbeat_logits
+
+    setattr(cached_predict_frame_logits, "_frkb_cache_wrapped", True)
+    setattr(
+        cached_predict_frame_logits,
+        "_frkb_original_source_signature",
+        _function_source_signature(original_predict),
+    )
+    setattr(rescue_module, "_predict_frame_logits", cached_predict_frame_logits)
+    bridge._apply_full_track_logit_rescue.__globals__["_predict_frame_logits"] = cached_predict_frame_logits
 
 
 def _to_float(value: Any) -> float | None:
@@ -349,6 +779,9 @@ def _analyze_track(
     cpu_spect: Any,
     ffmpeg_path: Path,
     device: str,
+    checkpoint_path: str,
+    prediction_cache_dir: Path | None,
+    prediction_cache_stats: dict[str, int],
     truth: dict[str, Any],
 ) -> dict[str, Any]:
     file_path = Path(str(truth["filePath"]))
@@ -356,28 +789,47 @@ def _analyze_track(
     signal = bridge._decode_signal(pcm_data, CHANNELS)
     duration_sec = signal.shape[0] / SAMPLE_RATE if SAMPLE_RATE > 0 else 0.0
     tuning = bridge._resolve_anchor_tuning()
-    prepared_windows = bridge._prepare_analysis_windows(
-        predictor,
-        cpu_spect,
-        signal,
-        SAMPLE_RATE,
-        device,
-        WINDOW_SEC,
-        MAX_SCAN_SEC,
-    )
-    result = bridge._analyze_prepared_windows_to_track_result(
-        prepared_windows,
-        signal,
-        SAMPLE_RATE,
-        min(duration_sec, MAX_SCAN_SEC),
-        tuning,
-        str(file_path),
-        force_legacy_anchor=False,
-        use_global_solver=True,
-        predictor=predictor,
-        cpu_spect=cpu_spect,
+    cache_base_payload = _prediction_cache_base_payload(
+        bridge=bridge,
+        file_path=file_path,
+        checkpoint_path=checkpoint_path,
         device=device,
     )
+    prepared_windows = _prepare_analysis_windows_with_cache(
+        bridge=bridge,
+        predictor=predictor,
+        cpu_spect=cpu_spect,
+        signal=signal,
+        sample_rate=SAMPLE_RATE,
+        device=device,
+        tuning=tuning,
+        cache_dir=prediction_cache_dir,
+        cache_base_payload=cache_base_payload,
+        stats=prediction_cache_stats,
+    )
+    logit_cache_context = (
+        {
+            "cacheDir": prediction_cache_dir,
+            "basePayload": cache_base_payload,
+            "stats": prediction_cache_stats,
+        }
+        if prediction_cache_dir is not None
+        else None
+    )
+    with _active_logit_cache_context(logit_cache_context):
+        result = bridge._analyze_prepared_windows_to_track_result(
+            prepared_windows,
+            signal,
+            SAMPLE_RATE,
+            min(duration_sec, MAX_SCAN_SEC),
+            tuning,
+            str(file_path),
+            force_legacy_anchor=False,
+            use_global_solver=True,
+            predictor=predictor,
+            cpu_spect=cpu_spect,
+            device=device,
+        )
     return _normalize_bridge_result(result)
 
 
@@ -529,6 +981,12 @@ def main() -> int:
     parser.add_argument("--ffprobe", default=str(DEFAULT_FFPROBE))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--prediction-cache-dir", default=str(DEFAULT_PREDICTION_CACHE_DIR))
+    parser.add_argument(
+        "--no-prediction-cache",
+        action="store_true",
+        help="Disable deterministic BeatThis raw prediction cache.",
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument(
         "--only",
@@ -544,6 +1002,7 @@ def main() -> int:
     ffprobe_path = Path(args.ffprobe)
     output_path = Path(args.output)
     device = str(args.device or "cpu").strip() or "cpu"
+    prediction_cache_dir = None if args.no_prediction_cache else Path(args.prediction_cache_dir)
 
     if not truth_path.exists():
         raise SystemExit(f"truth not found: {truth_path}")
@@ -566,8 +1025,11 @@ def main() -> int:
         truth_tracks = truth_tracks[: args.limit]
 
     bridge = _load_bridge_module()
-    predictor = bridge.Audio2Beats(checkpoint_path=bridge._resolve_checkpoint_path(), device=device, dbn=False)
+    _install_full_logit_prediction_cache(bridge)
+    checkpoint_path = str(bridge._resolve_checkpoint_path())
+    predictor = bridge.Audio2Beats(checkpoint_path=checkpoint_path, device=device, dbn=False)
     cpu_spect = bridge.LogMelSpect(device="cpu") if bridge._uses_accelerated_device(device) else None
+    prediction_cache_stats = _cache_stats()
 
     rows: list[dict[str, Any]] = []
     error_rows: list[dict[str, Any]] = []
@@ -581,6 +1043,9 @@ def main() -> int:
                 cpu_spect=cpu_spect,
                 ffmpeg_path=ffmpeg_path,
                 device=device,
+                checkpoint_path=checkpoint_path,
+                prediction_cache_dir=prediction_cache_dir,
+                prediction_cache_stats=prediction_cache_stats,
                 truth=truth,
             )
             rows.append(_build_track_report(analysis, truth))
@@ -604,6 +1069,11 @@ def main() -> int:
             "windowSec": WINDOW_SEC,
             "maxScanSec": MAX_SCAN_SEC,
             "strictToleranceMs": STRICT_TOLERANCE_MS,
+            "predictionCache": {
+                "enabled": prediction_cache_dir is not None,
+                "dir": str(prediction_cache_dir) if prediction_cache_dir is not None else None,
+                **prediction_cache_stats,
+            },
             "durationSec": round(time.time() - started_at, 3),
         },
         "errors": error_rows,

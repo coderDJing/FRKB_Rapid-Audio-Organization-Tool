@@ -27,7 +27,7 @@ const resolveBpmAnalysisMap = (results: unknown[]) => {
       continue
     }
     const rawFirstBeatMs = Number(payload?.firstBeatMs)
-    const firstBeatMs = Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0 ? rawFirstBeatMs : 0
+    const firstBeatMs = Number.isFinite(rawFirstBeatMs) ? rawFirstBeatMs : 0
     const rawBarBeatOffset = Number(payload?.barBeatOffset)
     const barBeatOffset = Number.isFinite(rawBarBeatOffset)
       ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
@@ -57,7 +57,7 @@ export const buildMixtapeBpmTargets = (tracks: MixtapeTrack[]) => {
     const firstBeatMsValue = Number(track.firstBeatMs)
     const barBeatOffsetValue = Number(track.barBeatOffset)
     const hasValidBpm = Number.isFinite(bpmValue) && bpmValue > 0
-    const hasValidFirstBeatMs = Number.isFinite(firstBeatMsValue) && firstBeatMsValue >= 0
+    const hasValidFirstBeatMs = Number.isFinite(firstBeatMsValue)
     const hasValidBarBeatOffset = Number.isFinite(barBeatOffsetValue)
     if (hasValidBpm && hasValidFirstBeatMs && hasValidBarBeatOffset) continue
     unique.add(filePath)
@@ -77,7 +77,7 @@ export const resolveMissingBpmTrackCount = (tracks: MixtapeTrack[], bpmTargets: 
     const firstBeatMsValue = Number(track.firstBeatMs)
     const barBeatOffsetValue = Number(track.barBeatOffset)
     const missingBpm = !Number.isFinite(bpmValue) || bpmValue <= 0
-    const missingFirstBeat = !Number.isFinite(firstBeatMsValue) || firstBeatMsValue < 0
+    const missingFirstBeat = !Number.isFinite(firstBeatMsValue)
     const missingBarBeatOffset = !Number.isFinite(barBeatOffsetValue)
     return missingBpm || missingFirstBeat || missingBarBeatOffset
   }).length
@@ -100,9 +100,7 @@ export const applyBpmResultsToTracks = (tracks: MixtapeTrack[], results: unknown
     if (!trackAnalysis) return track
     const currentBpm = Number(track.gridBaseBpm ?? track.originalBpm ?? track.bpm)
     const hasCurrentFirstBeatMs =
-      typeof track.firstBeatMs === 'number' &&
-      Number.isFinite(track.firstBeatMs) &&
-      track.firstBeatMs >= 0
+      typeof track.firstBeatMs === 'number' && Number.isFinite(track.firstBeatMs)
     const hasCurrentBarBeatOffset =
       typeof track.barBeatOffset === 'number' && Number.isFinite(track.barBeatOffset)
     const currentFirstBeatMs = hasCurrentFirstBeatMs ? Number(track.firstBeatMs) : 0

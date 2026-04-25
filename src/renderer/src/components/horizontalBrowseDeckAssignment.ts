@@ -55,7 +55,7 @@ export const createHorizontalBrowseDeckAssigner = (
     const bpm = Number(song.bpm)
     const firstBeatMs = Number(song.firstBeatMs)
     const hasBpm = Number.isFinite(bpm) && bpm > 0
-    const hasFirstBeatMs = Number.isFinite(firstBeatMs) && firstBeatMs >= 0
+    const hasFirstBeatMs = Number.isFinite(firstBeatMs)
     if (!filePath || (!hasBpm && !hasFirstBeatMs)) return null
     return {
       filePath,

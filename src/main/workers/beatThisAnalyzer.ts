@@ -138,7 +138,7 @@ const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeR
   const beatThisWindowCount = Math.max(0, Math.floor(Number(input?.beatThisWindowCount) || 0))
 
   if (!Number.isFinite(bpm) || bpm <= 0) return null
-  if (!Number.isFinite(firstBeatMs) || firstBeatMs < 0) return null
+  if (!Number.isFinite(firstBeatMs)) return null
 
   return {
     bpm: Number(bpm.toFixed(6)),

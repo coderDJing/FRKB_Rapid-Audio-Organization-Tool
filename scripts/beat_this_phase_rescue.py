@@ -100,8 +100,19 @@ def _update_first_beat(
     first_beat_ms: float,
     interval_ms: float,
     strategy_suffix: str,
+    *,
+    preserve_signed_first_beat: bool = False,
 ) -> dict[str, Any]:
-    updated_first_beat_ms = normalize_phase_ms(first_beat_ms, interval_ms)
+    if (
+        preserve_signed_first_beat
+        and math.isfinite(first_beat_ms)
+        and first_beat_ms < 0.0
+        and interval_ms > 0.0
+        and abs(first_beat_ms) <= min(80.0, interval_ms * 0.25)
+    ):
+        updated_first_beat_ms = first_beat_ms
+    else:
+        updated_first_beat_ms = normalize_phase_ms(first_beat_ms, interval_ms)
     previous_first_beat_ms = _present_float(result, "firstBeatMs", updated_first_beat_ms)
     shift_ms = phase_delta_ms(updated_first_beat_ms, previous_first_beat_ms, interval_ms)
     whole_beat_shift = 0
@@ -141,39 +152,112 @@ def _apply_head_attack_phase_rescue(
     current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
     raw_bpm = _present_float(result, "rawBpm", 0.0)
     bpm = _present_float(result, "bpm", raw_bpm)
+    is_integer_bpm = abs(bpm - round(bpm)) <= 0.000001
+    current_bar_offset = int(result.get("barBeatOffset") or 0) % 4
     is_half_bpm_rescue = raw_bpm > 0.0 and bpm > 0.0 and abs(raw_bpm * 2.0 - bpm) <= max(
         0.12,
         bpm * 0.001,
     )
     if (
         window_start_sec > 0.001
-        or int(result.get("barBeatOffset") or 0) % 4 != 0
+        or current_bar_offset != 0
+        or not is_integer_bpm
         or current_first_beat_ms < 4.0
-        or current_first_beat_ms > 140.0
+        or current_first_beat_ms > 420.0
         or (is_half_bpm_rescue and current_first_beat_ms > 18.0)
     ):
         return result
 
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
     onset = estimate_head_attack_onset_ms(
         prepared_window["signal"],
         sample_rate,
-        max_search_ms=max(140.0, current_first_beat_ms + 24.0),
+        max_search_ms=max(160.0, current_first_beat_ms + 40.0, raw_first_beat_ms + 40.0),
     )
     if onset is None:
         return result
     onset_ms = float(onset["onsetMs"])
     confidence = float(onset["confidence"])
-    if confidence < 0.75 or onset_ms < 1.0 or onset_ms > 140.0:
+    min_confidence = 0.68 if current_first_beat_ms <= 40.0 else 0.75
+    if confidence < min_confidence or onset_ms > 420.0:
         return result
+    preserves_signed_head = False
+    if onset_ms <= 3.0 and current_first_beat_ms <= 40.0:
+        if 8.0 <= raw_first_beat_ms <= 40.0:
+            target_onset_ms = -min(3.0, max(0.5, onset_ms))
+            preserves_signed_head = True
+        else:
+            target_onset_ms = 0.0
+    else:
+        target_onset_ms = onset_ms
 
-    shift_ms = phase_delta_ms(onset_ms, current_first_beat_ms, interval_ms)
-    if abs(shift_ms) < 0.5 or abs(shift_ms) > 30.0:
+    shift_ms = phase_delta_ms(target_onset_ms, current_first_beat_ms, interval_ms)
+    max_shift_ms = 34.0 if preserves_signed_head else 30.0
+    if abs(shift_ms) < 0.5 or abs(shift_ms) > max_shift_ms:
         return result
+    if current_first_beat_ms > 140.0:
+        strategy = str(result.get("anchorStrategy") or "").strip()
+        has_risk_strategy = "grid-solver" in strategy or strategy.endswith("positive-guard")
+        if not has_risk_strategy and shift_ms <= 0.0:
+            return result
 
-    next_result = _update_first_beat(result, onset_ms, interval_ms, "head-attack")
+    next_result = _update_first_beat(
+        result,
+        target_onset_ms,
+        interval_ms,
+        "head-attack-prezero" if preserves_signed_head else "head-attack",
+        preserve_signed_first_beat=preserves_signed_head,
+    )
     next_result["headAttackOnsetMs"] = round(onset_ms, 3)
     next_result["headAttackConfidence"] = round(confidence, 6)
+    if preserves_signed_head:
+        next_result["headAttackPrezeroMs"] = round(target_onset_ms, 3)
     return next_result
+
+
+def _apply_grid_solver_head_attack_consensus(
+    finalized_results: list[dict[str, Any]],
+    result: dict[str, Any],
+    interval_ms: float,
+) -> dict[str, Any]:
+    if str(result.get("anchorStrategy") or "").strip() != "grid-solver-head-attack":
+        return result
+    bpm = _present_float(result, "bpm", 0.0)
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    current_quality = float(result.get("qualityScore") or 0.0)
+    if bpm <= 0.0 or current_quality < 0.95:
+        return result
+
+    candidates: list[tuple[float, float]] = []
+    for item in finalized_results:
+        if str(item.get("anchorStrategy") or "").strip() != "grid-solver":
+            continue
+        item_bpm = float(item.get("bpm") or 0.0)
+        if not math.isfinite(item_bpm) or abs(item_bpm - bpm) > 0.05:
+            continue
+        item_quality = float(item.get("qualityScore") or 0.0)
+        if item_quality + 0.005 < current_quality:
+            continue
+        delta_ms = phase_delta_ms(
+            float(item.get("firstBeatMs") or 0.0),
+            current_first_beat_ms,
+            interval_ms,
+        )
+        if -4.0 <= delta_ms <= -1.5:
+            candidates.append((delta_ms, window_weight(item)))
+
+    if len(candidates) != 1:
+        return result
+    weighted_delta_ms = sum(delta * weight for delta, weight in candidates) / max(
+        1e-9,
+        sum(weight for _delta, weight in candidates),
+    )
+    return _update_first_beat(
+        result,
+        current_first_beat_ms + weighted_delta_ms,
+        interval_ms,
+        "window-consensus",
+    )
 
 
 def apply_window_phase_consensus(
@@ -279,7 +363,11 @@ def apply_phase_rescue_rules(
         interval_ms,
     )
     if head_attack_result is not next_result:
-        return head_attack_result
+        return _apply_grid_solver_head_attack_consensus(
+            finalized_results,
+            head_attack_result,
+            interval_ms,
+        )
 
     def _apply_first_beat(first_beat_ms: float, strategy_suffix: str) -> None:
         nonlocal next_result
@@ -411,15 +499,30 @@ def apply_frame_center_phase_rescue_to_result(result: dict[str, Any]) -> dict[st
     has_bpm_rescue = refinement_strategy == "integer-envelope-rescue" or refinement_strategy.endswith(
         "bpm-envelope-rescue"
     )
-    if raw_first_beat_ms > (240.5 if has_bpm_rescue else 100.5):
-        return result
-
     raw_bpm = float(result.get("rawBpm") or 0.0)
     is_half_bpm_rescue = (
         math.isfinite(raw_bpm)
         and raw_bpm > 0.0
         and abs(raw_bpm * 2.0 - bpm) <= max(0.12, bpm * 0.001)
     )
+    beat_interval_ms = 60000.0 / bpm
+    if raw_first_beat_ms > 105.5:
+        if (
+            raw_first_beat_ms <= 260.5
+            and int(result.get("barBeatOffset") or 0) % 4 != 0
+            and float(result.get("qualityScore") or 0.0) >= 0.9
+            and float(result.get("beatStabilityScore") or 0.0) >= 0.9
+        ):
+            next_result = _update_first_beat(
+                result,
+                normalize_phase_ms(first_beat_ms - 2.0, beat_interval_ms),
+                beat_interval_ms,
+                "frame-edge",
+            )
+            next_result["phaseRefinementStrategy"] = "frame-edge-rescue"
+            return next_result
+        return result
+
     if refinement_strategy == "double-bpm-envelope-rescue" or is_half_bpm_rescue:
         shift_ms = -14.0
     elif 39.5 <= raw_first_beat_ms <= 40.5:
@@ -428,7 +531,6 @@ def apply_frame_center_phase_rescue_to_result(result: dict[str, Any]) -> dict[st
         shift_ms = -5.0
     else:
         shift_ms = -9.0
-    beat_interval_ms = 60000.0 / bpm
     updated_first_beat_ms = normalize_phase_ms(first_beat_ms + shift_ms, beat_interval_ms)
 
     next_result = _update_first_beat(

@@ -700,8 +700,96 @@ def _is_window_good_enough(result: dict[str, Any]) -> bool:
     return float(result.get("qualityScore") or 0.0) >= 0.72 and int(result.get("beatCount") or 0) >= 32
 
 
+def _window_bpm_for_consensus(result: dict[str, Any]) -> float:
+    bpm = float(result.get("rawBpm") or result.get("bpm") or 0.0)
+    return bpm if math.isfinite(bpm) and bpm > 0.0 else 0.0
+
+
+def _bpm_consensus_tolerance(bpm: float) -> float:
+    return max(0.18, min(0.25, bpm * 0.0016))
+
+
+def _find_window_bpm_consensus(
+    results: list[dict[str, Any]],
+    earliest_result: dict[str, Any],
+) -> dict[str, Any] | None:
+    candidates = [
+        item
+        for item in results
+        if float(item.get("qualityScore") or 0.0) >= 0.9 and _window_bpm_for_consensus(item) > 0.0
+    ]
+    if len(candidates) < 2:
+        return None
+
+    best_cluster: list[dict[str, Any]] = []
+    best_center = 0.0
+    for candidate in candidates:
+        center = _window_bpm_for_consensus(candidate)
+        tolerance = _bpm_consensus_tolerance(center)
+        cluster = [
+            item
+            for item in candidates
+            if abs(_window_bpm_for_consensus(item) - center) <= tolerance
+        ]
+        if len(cluster) < 2:
+            continue
+        cluster_quality = statistics.fmean(float(item.get("qualityScore") or 0.0) for item in cluster)
+        best_quality = (
+            statistics.fmean(float(item.get("qualityScore") or 0.0) for item in best_cluster)
+            if best_cluster
+            else -1.0
+        )
+        if len(cluster) > len(best_cluster) or (
+            len(cluster) == len(best_cluster) and cluster_quality > best_quality
+        ):
+            best_cluster = cluster
+            best_center = statistics.median(_window_bpm_for_consensus(item) for item in cluster)
+
+    min_support = 3 if len(candidates) >= 4 else 2
+    if len(best_cluster) < min_support:
+        return None
+
+    earliest_bpm = _window_bpm_for_consensus(earliest_result)
+    if earliest_bpm <= 0.0:
+        return None
+    if abs(earliest_bpm - best_center) <= _bpm_consensus_tolerance(best_center):
+        return None
+
+    earliest_quality = float(earliest_result.get("qualityScore") or 0.0)
+    best_source = best_cluster[0]
+    for candidate in best_cluster[1:]:
+        if _compare_window_result(candidate, best_source) > 0:
+            best_source = candidate
+    if float(best_source.get("qualityScore") or 0.0) - earliest_quality < 0.03:
+        return None
+
+    return best_source
+
+
 def _select_anchor_window_result(finalized_results: list[dict[str, Any]]) -> dict[str, Any]:
     ordered = sorted(finalized_results, key=lambda item: int(item.get("windowIndex") or 0))
+    good_results = [item for item in ordered if _is_window_good_enough(item)]
+    if good_results:
+        earliest_good = good_results[0]
+        consensus_good = _find_window_bpm_consensus(good_results, earliest_good)
+        if consensus_good is not None:
+            bpm = float(consensus_good.get("bpm") or 0.0)
+            if math.isfinite(bpm) and bpm > 0.0:
+                merged = dict(earliest_good)
+                merged["bpm"] = round(bpm, 6)
+                merged["rawBpm"] = round(float(consensus_good.get("rawBpm") or bpm), 6)
+                merged["beatIntervalSec"] = round(60.0 / bpm, 6)
+                merged["qualityScore"] = max(
+                    float(earliest_good.get("qualityScore") or 0.0),
+                    float(consensus_good.get("qualityScore") or 0.0),
+                )
+                merged["bpmRefinementStrategy"] = "quality-window-bpm"
+                strategy = str(merged.get("anchorStrategy") or "").strip()
+                merged["anchorStrategy"] = (
+                    f"{strategy}-bpm-window-select" if strategy else "bpm-window-select"
+                )
+                return merged
+        return earliest_good
     for item in ordered:
         if _is_window_good_enough(item):
             return item

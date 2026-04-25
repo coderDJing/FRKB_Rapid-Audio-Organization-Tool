@@ -183,7 +183,8 @@ const createLoopedTrackTimeMap = (
 const createLegacyTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
   const durationSec = Math.max(0, Number(input.durationSec) || 0)
   const sourceDurationSec = Math.max(0, Number(input.sourceDurationSec) || 0)
-  const firstBeatSourceSec = Math.max(0, Number(input.firstBeatSourceSec) || 0)
+  const inputFirstBeatSourceSec = Number(input.firstBeatSourceSec)
+  const firstBeatSourceSec = Number.isFinite(inputFirstBeatSourceSec) ? inputFirstBeatSourceSec : 0
   const beatSourceSec = Math.max(0, Number(input.beatSourceSec) || 0)
   const barBeatOffset = Number(input.barBeatOffset) || 0
   const renderPoints = resolveTrackBpmEnvelopeRenderablePoints({
@@ -268,7 +269,8 @@ const createLegacyTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
 const createMasterGridTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
   const durationSec = Math.max(0, Number(input.durationSec) || 0)
   const sourceDurationSec = Math.max(0, Number(input.sourceDurationSec) || 0)
-  const firstBeatSourceSec = Math.max(0, Number(input.firstBeatSourceSec) || 0)
+  const inputFirstBeatSourceSec = Number(input.firstBeatSourceSec)
+  const firstBeatSourceSec = Number.isFinite(inputFirstBeatSourceSec) ? inputFirstBeatSourceSec : 0
   const beatSourceSec = Math.max(BPM_POINT_SEC_EPSILON, Number(input.beatSourceSec) || 0)
   const barBeatOffset = Number(input.barBeatOffset) || 0
   const trackStartSec = Math.max(0, Number(input.trackStartSec) || 0)

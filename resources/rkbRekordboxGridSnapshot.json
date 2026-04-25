@@ -1,7 +1,7 @@
 {
   "source": {
     "type": "rekordbox-rkb-unified-grid-snapshot",
-    "dbPath": "D:/PIONEER/Master/master.db",
+    "dbPath": "D:\\PIONEER\\Master\\master.db",
     "sourcePlaylists": [
       {
         "playlistName": "abc",
@@ -11,11 +11,16 @@
         "playlistName": "abc2",
         "playlistId": 2473521850,
         "trackCount": 7
+      },
+      {
+        "playlistName": "test",
+        "playlistId": 3758290321,
+        "trackCount": 28
       }
     ],
     "playlistName": "rkb-unified-samples",
-    "trackCount": 40,
-    "note": "2026-04-25 unified FRKB rkb/sample Rekordbox truth snapshot"
+    "trackCount": 68,
+    "note": "2026-04-25 unified FRKB rkb/sample/new Rekordbox truth snapshot"
   },
   "tracks": [
     {
@@ -377,6 +382,258 @@
       "firstBeatMs": 422,
       "firstBeatLabel": 2,
       "barBeatOffset": 3
+    },
+    {
+      "fileName": "namhar - broken tape (original mix) (1).mp3",
+      "title": "Broken Tape (Original Mix)",
+      "artist": "Namhar",
+      "bpm": 145.0,
+      "firstBeatMs": 83.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "muttiah ashnim - evasion (original mix).mp3",
+      "title": "Evasion (Original Mix)",
+      "artist": "Muttiah Ashnim",
+      "bpm": 129.0,
+      "firstBeatMs": 47.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "mython - copper (original mix).mp3",
+      "title": "Copper (Original Mix)",
+      "artist": "Mython",
+      "bpm": 140.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 3,
+      "barBeatOffset": 2
+    },
+    {
+      "fileName": "nathan homan - spot the second train (original mix).mp3",
+      "title": "Spot The Second Train (Original Mix)",
+      "artist": "Nathan Homan",
+      "bpm": 133.0,
+      "firstBeatMs": 124.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "mython - naiv (original mix).mp3",
+      "title": "Naiv (Original Mix)",
+      "artist": "Mython",
+      "bpm": 140.0,
+      "firstBeatMs": 34.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "na nich - white soil (original mix) (1).mp3",
+      "title": "White Soil (Original Mix)",
+      "artist": "Na Nich",
+      "bpm": 135.0,
+      "firstBeatMs": 378.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "mython, vault records - socialite (original mix) (1).mp3",
+      "title": "Socialite (Original Mix)",
+      "artist": "Mython, Vault Records",
+      "bpm": 138.0,
+      "firstBeatMs": 82.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "naajet - terraforming (1).mp3",
+      "title": "Terraforming",
+      "artist": "Naajet",
+      "bpm": 138.0,
+      "firstBeatMs": 268.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "naems - rulers of the night (extended mix) (1).mp3",
+      "title": "Rulers of the Night (Extended Mix)",
+      "artist": "NAEMS",
+      "bpm": 142.0,
+      "firstBeatMs": 23.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "naimo - trust me (original mix).mp3",
+      "title": "Trust Me (Original Mix)",
+      "artist": "NAIMO",
+      "bpm": 141.0,
+      "firstBeatMs": 71.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "naomind & are bee - cosmic interference (extended mix).mp3",
+      "title": "Cosmic Interference (Extended Mix)",
+      "artist": "NaoMind & Are Bee",
+      "bpm": 136.0,
+      "firstBeatMs": 50.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "narko - altima (original mix).mp3",
+      "title": "Altima (Original Mix)",
+      "artist": "Narko",
+      "bpm": 159.0,
+      "firstBeatMs": 70.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nastia reigel - do it now (original mix).mp3",
+      "title": "Do It Now (Original Mix)",
+      "artist": "Nastia Reigel",
+      "bpm": 136.0,
+      "firstBeatMs": 254.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nathan alexander - language (original mix) (1).mp3",
+      "title": "Language (Original Mix)",
+      "artist": "Nathan Alexander",
+      "bpm": 144.0,
+      "firstBeatMs": 157.0,
+      "firstBeatLabel": 4,
+      "barBeatOffset": 1
+    },
+    {
+      "fileName": "nãrbak - sinto (original mix) (1).mp3",
+      "title": "Sinto (Original Mix)",
+      "artist": "NÃRBAK",
+      "bpm": 138.0,
+      "firstBeatMs": 272.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nelayan - angels (original mix).mp3",
+      "title": "Angels (Original Mix)",
+      "artist": "Nelayan",
+      "bpm": 140.0,
+      "firstBeatMs": 82.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "neo (au) - wrong number (original mix) (1).mp3",
+      "title": "Wrong Number (Original Mix)",
+      "artist": "Neo (AU)",
+      "bpm": 139.0,
+      "firstBeatMs": 271.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "ness - fades away (original mix).mp3",
+      "title": "Fades Away (Original Mix)",
+      "artist": "Ness",
+      "bpm": 129.0,
+      "firstBeatMs": 288.0,
+      "firstBeatLabel": 4,
+      "barBeatOffset": 1
+    },
+    {
+      "fileName": "newest - missing part of me (original mix).mp3",
+      "title": "Missing Part Of Me (Original Mix)",
+      "artist": "Newest",
+      "bpm": 136.0,
+      "firstBeatMs": 50.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nhoah - love that there (original mix) (1).mp3",
+      "title": "Love That There (Original Mix)",
+      "artist": "NHOAH",
+      "bpm": 140.0,
+      "firstBeatMs": 78.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nic jaro - gravitate (original mix) (1).mp3",
+      "title": "Gravitate (Original Mix)",
+      "artist": "Nic Jaro",
+      "bpm": 136.0,
+      "firstBeatMs": 292.0,
+      "firstBeatLabel": 4,
+      "barBeatOffset": 1
+    },
+    {
+      "fileName": "nic jaro - quest (original mix).mp3",
+      "title": "Quest (Original Mix)",
+      "artist": "Nic Jaro",
+      "bpm": 138.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nicko shuo - generating the impossible (original mix) (1).mp3",
+      "title": "Generating the Impossible (Original Mix)",
+      "artist": "Nicko Shuo",
+      "bpm": 138.0,
+      "firstBeatMs": 71.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nico banfi - amaze (original mix) (1).mp3",
+      "title": "Amaze (Original Mix)",
+      "artist": "Nico Banfi",
+      "bpm": 131.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nicola cruz - data passenger (1).mp3",
+      "title": "Data Passenger",
+      "artist": "Nicola Cruz",
+      "bpm": 127.0,
+      "firstBeatMs": 225.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nicolas masseyeff - let's dance (1).mp3",
+      "title": "Let's Dance",
+      "artist": "Nicolas Masseyeff",
+      "bpm": 127.0,
+      "firstBeatMs": 199.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nicole lovera - jealous girl (original mix) (1).mp3",
+      "title": "Jealous Girl (Original Mix)",
+      "artist": "Nicole Lovera",
+      "bpm": 144.0,
+      "firstBeatMs": 71.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nicole moudaber & space 92 - eyes on me (original mix).mp3",
+      "title": "Eyes On Me (Original Mix)",
+      "artist": "Nicole Moudaber & Space 92",
+      "bpm": 137.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
     }
   ]
 }

@@ -200,7 +200,7 @@ export const isValidBpm = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0
 
 export const isValidFirstBeatMs = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0
+  typeof value === 'number' && Number.isFinite(value)
 
 export const isValidBarBeatOffset = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)

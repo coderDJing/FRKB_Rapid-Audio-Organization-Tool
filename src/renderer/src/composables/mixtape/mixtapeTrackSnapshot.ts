@@ -34,7 +34,7 @@ export const normalizeBarBeatOffset = (value: unknown) => {
 
 export const normalizeFirstBeatMs = (value: unknown) => {
   const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric < 0) return 0
+  if (!Number.isFinite(numeric)) return 0
   return numeric
 }
 

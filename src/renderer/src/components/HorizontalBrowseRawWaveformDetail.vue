@@ -223,7 +223,7 @@ const normalizeGridSignatureBpm = (value: unknown) => {
 
 const normalizeGridSignatureFirstBeatMs = (value: unknown) => {
   const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric < 0) return 0
+  if (!Number.isFinite(numeric)) return 0
   return Number(numeric.toFixed(3))
 }
 
@@ -277,7 +277,9 @@ const persistGridDefinition = async () => {
     await window.electron.ipcRenderer.invoke('mixtape:update-grid-definition', {
       filePath,
       bpm: Number(previewBpm.value) || 0,
-      firstBeatMs: Math.max(0, Number(previewFirstBeatMs.value) || 0),
+      firstBeatMs: Number.isFinite(Number(previewFirstBeatMs.value))
+        ? Number(previewFirstBeatMs.value)
+        : 0,
       barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL)
     })
   } catch {}

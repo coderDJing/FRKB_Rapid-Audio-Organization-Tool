@@ -135,5 +135,6 @@ export const resolveAudioFirstBeatTimelineMs = (
   timeBasisOffsetMs: number
 ) =>
   toFixedMs(
-    Math.max(0, Number(firstBeatAudioMs) || 0) + Math.max(0, Number(timeBasisOffsetMs) || 0)
+    (Number.isFinite(Number(firstBeatAudioMs)) ? Number(firstBeatAudioMs) : 0) +
+      Math.max(0, Number(timeBasisOffsetMs) || 0)
   )

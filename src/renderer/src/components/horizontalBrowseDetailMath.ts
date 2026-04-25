@@ -52,7 +52,8 @@ export const resolveHorizontalBrowseCuePointSec = (
   const beatSec = 60 / bpm
   if (!Number.isFinite(beatSec) || beatSec <= 0) return 0
 
-  const firstBeatSec = Math.max(0, (Number(song?.firstBeatMs) || 0) / 1000)
+  const firstBeatMs = Number(song?.firstBeatMs)
+  const firstBeatSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
   const nearestBeatIndex = Math.round((safeCandidate - firstBeatSec) / beatSec)
   const snappedBeatSec =
     duration > 0
@@ -68,7 +69,8 @@ export const resolveHorizontalBrowseDefaultCuePointSec = (
 ) => {
   const duration =
     Number.isFinite(durationSec) && durationSec > 0 ? durationSec : Number.POSITIVE_INFINITY
-  const firstBeatSec = Math.max(0, (Number(song?.firstBeatMs) || 0) / 1000)
+  const firstBeatMs = Number(song?.firstBeatMs)
+  const firstBeatSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
   if (firstBeatSec <= 0.000001) return 0
   return clampNumber(firstBeatSec, 0, duration)
 }

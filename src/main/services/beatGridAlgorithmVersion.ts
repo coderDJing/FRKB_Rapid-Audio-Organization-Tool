@@ -1,4 +1,4 @@
-export const CURRENT_BEAT_GRID_ALGORITHM_VERSION = 3
+export const CURRENT_BEAT_GRID_ALGORITHM_VERSION = 8
 
 export type BeatGridCacheVersionInfo = {
   beatThisWindowCount?: unknown

@@ -25,7 +25,6 @@ const hasCompleteKeyAnalysis = (song: ISongInfo | undefined) => {
     Number.isFinite(bpm) &&
     bpm > 0 &&
     Number.isFinite(firstBeatMs) &&
-    firstBeatMs >= 0 &&
     Number.isFinite(barBeatOffset)
   if (!hasCoreAnalysis) return false
   if (!SHOULD_BACKFILL_BEAT_THIS_DEBUG_METRICS) return true

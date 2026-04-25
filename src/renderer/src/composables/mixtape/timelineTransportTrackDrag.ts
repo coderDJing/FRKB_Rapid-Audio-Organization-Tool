@@ -233,7 +233,8 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
       Number(resolveTrackSourceDurationSeconds(payload.track)) || 0
     )
     const sourceDurationBeats = sourceDurationSec / beatSourceSec
-    const firstBeatSourceSec = Math.max(0, Number(payload.track.firstBeatMs) || 0) / 1000
+    const firstBeatMs = Number(payload.track.firstBeatMs)
+    const firstBeatSourceSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
     const firstBeatSourceBeats = firstBeatSourceSec / beatSourceSec
     const barBeatOffset = normalizeBeatOffset(payload.track.barBeatOffset, 32)
     let phaseOffsetBeats = firstBeatSourceBeats
