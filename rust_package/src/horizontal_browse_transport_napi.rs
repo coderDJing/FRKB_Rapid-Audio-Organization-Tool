@@ -21,6 +21,7 @@ pub fn horizontal_browse_transport_set_deck_state(
     target.title = payload.title;
     target.bpm = payload.bpm;
     target.first_beat_ms = payload.first_beat_ms;
+    target.time_basis_offset_ms = payload.time_basis_offset_ms;
     target.duration_sec = payload.duration_sec;
     target.current_sec = payload.current_sec;
     target.last_observed_at_ms = payload.last_observed_at_ms;
@@ -66,6 +67,7 @@ pub fn horizontal_browse_transport_set_state(
     top.title = payload.top.title;
     top.bpm = payload.top.bpm;
     top.first_beat_ms = payload.top.first_beat_ms;
+    top.time_basis_offset_ms = payload.top.time_basis_offset_ms;
     top.duration_sec = payload.top.duration_sec;
     top.current_sec = payload.top.current_sec;
     top.last_observed_at_ms = payload.top.last_observed_at_ms;
@@ -81,6 +83,7 @@ pub fn horizontal_browse_transport_set_state(
     bottom.title = payload.bottom.title;
     bottom.bpm = payload.bottom.bpm;
     bottom.first_beat_ms = payload.bottom.first_beat_ms;
+    bottom.time_basis_offset_ms = payload.bottom.time_basis_offset_ms;
     bottom.duration_sec = payload.bottom.duration_sec;
     bottom.current_sec = payload.bottom.current_sec;
     bottom.last_observed_at_ms = payload.bottom.last_observed_at_ms;
@@ -146,11 +149,13 @@ pub fn horizontal_browse_transport_set_beat_grid(
   let next_first_beat_ms = payload
     .first_beat_ms
     .filter(|value| value.is_finite() && *value >= 0.0);
-  if next_bpm.is_none() && next_first_beat_ms.is_none() {
+  let next_time_basis_offset_ms = payload
+    .time_basis_offset_ms
+    .filter(|value| value.is_finite() && *value >= 0.0);
+  if next_bpm.is_none() && next_first_beat_ms.is_none() && next_time_basis_offset_ms.is_none() {
     return Ok(engine_guard.snapshot(engine_guard.last_now_ms));
   }
-
-  engine_guard.set_beat_grid(deck_id, next_bpm, next_first_beat_ms);
+  engine_guard.set_beat_grid(deck_id, next_bpm, next_first_beat_ms, next_time_basis_offset_ms);
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 

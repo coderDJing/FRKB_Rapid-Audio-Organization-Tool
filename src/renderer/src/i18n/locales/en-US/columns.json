@@ -13,6 +13,7 @@
     "fileFormat": "File Format",
     "format": "Format",
     "bpm": "BPM",
+    "beatThisEstimatedDrift128": "Est. 128-beat drift",
     "waveformPreview": "Waveform",
     "index": "Index",
     "mixOrder": "Recording order",

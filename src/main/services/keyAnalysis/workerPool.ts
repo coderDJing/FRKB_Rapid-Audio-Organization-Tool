@@ -159,7 +159,12 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         job.filePath,
         partialResult.bpm,
         partialResult.firstBeatMs,
-        partialResult.barBeatOffset
+        partialResult.barBeatOffset,
+        partialResult.timeBasisOffsetMs,
+        {
+          beatThisEstimatedDrift128Ms: partialResult.beatThisEstimatedDrift128Ms,
+          beatThisWindowCount: partialResult.beatThisWindowCount
+        }
       )
       bpmPersisted = true
     }
@@ -328,7 +333,12 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           job.filePath,
           bpmValue,
           payloadResult.firstBeatMs,
-          payloadResult.barBeatOffset
+          payloadResult.barBeatOffset,
+          payloadResult.timeBasisOffsetMs,
+          {
+            beatThisEstimatedDrift128Ms: payloadResult.beatThisEstimatedDrift128Ms,
+            beatThisWindowCount: payloadResult.beatThisWindowCount
+          }
         )
       }
     }

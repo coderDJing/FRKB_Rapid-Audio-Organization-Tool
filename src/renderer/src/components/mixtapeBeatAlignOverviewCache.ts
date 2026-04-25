@@ -10,6 +10,7 @@ type BuildBeatAlignOverviewCacheParams = {
   maxRenderColumns: number
   waveformVerticalPadding: number
   leadingPadSec: number
+  timeBasisOffsetMs?: number
 }
 
 export const rebuildBeatAlignOverviewCache = (
@@ -22,7 +23,8 @@ export const rebuildBeatAlignOverviewCache = (
     rawData,
     maxRenderColumns,
     waveformVerticalPadding,
-    leadingPadSec
+    leadingPadSec,
+    timeBasisOffsetMs
   } = params
   // 节拍对齐仅展示精细(raw)波形，raw 未就绪时不渲染概览波形
   if (!wrap || !mixxxData || !rawData) return null
@@ -81,6 +83,7 @@ export const rebuildBeatAlignOverviewCache = (
     bpm: 0,
     firstBeatMs: 0,
     barBeatOffset: 0,
+    timeBasisOffsetMs,
     rangeStartSec: 0,
     rangeDurationSec: Math.max(0.0001, duration),
     mixxxData,

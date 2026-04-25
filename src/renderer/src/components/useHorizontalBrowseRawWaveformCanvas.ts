@@ -43,6 +43,7 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
   previewBpm: Ref<number>
   previewFirstBeatMs: Ref<number>
   previewBarBeatOffset: Ref<number>
+  previewTimeBasisOffsetMs: Ref<number>
   dragging: Ref<boolean>
   rawStreamActive: Ref<boolean>
 }
@@ -123,6 +124,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     resolvePreviewDurationSec: () => resolvePreviewDurationSec(),
     resolveVisibleDurationSec: () => resolveVisibleDurationSec(),
     resolvePreviewAnchorSec: () => resolvePreviewAnchorSec(),
+    resolveTimeBasisOffsetMs: () => Number(options.previewTimeBasisOffsetMs.value) || 0,
     clampPreviewStart: (value: number) => clampPreviewStart(value),
     resolvePlaybackDrivenRenderStartSec: (visibleDuration: number) =>
       resolvePlaybackDrivenRenderStartSec(visibleDuration),
@@ -317,6 +319,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       bpm: Number(options.previewBpm.value) || 0,
       firstBeatMs: Number(options.previewFirstBeatMs.value) || 0,
       barBeatOffset: Number(options.previewBarBeatOffset.value) || 0,
+      timeBasisOffsetMs: Number(options.previewTimeBasisOffsetMs.value) || 0,
       rangeStartSec,
       rangeDurationSec,
       mixxxData: null,
@@ -344,9 +347,24 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     })
   }
 
+  const resolveTimeBasisOffsetSec = () =>
+    Math.max(0, Number(options.previewTimeBasisOffsetMs.value) || 0) / 1000
+
+  const resolveRawDataStartSec = (rawData: RawWaveformData | null) => {
+    if (!rawData) return 0
+    return Math.max(0, Number(rawData.startSec) || 0) + resolveTimeBasisOffsetSec()
+  }
+
+  const resolveRawDataCoverageStartSec = (rawData: RawWaveformData | null) => {
+    if (!rawData) return 0
+    const audioStartSec = Math.max(0, Number(rawData.startSec) || 0)
+    if (audioStartSec <= 0.0001) return 0
+    return resolveRawDataStartSec(rawData)
+  }
+
   const resolveRawDataCoveredEndSec = (rawData: RawWaveformData | null) => {
     if (!rawData) return 0
-    const startSec = Math.max(0, Number(rawData.startSec) || 0)
+    const startSec = resolveRawDataStartSec(rawData)
     const rate = Math.max(0, Number(rawData.rate) || 0)
     if (!rate) return startSec
     const loadedFrames = Math.max(0, Number(rawData.loadedFrames ?? rawData.frames) || 0)
@@ -359,7 +377,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     rangeDurationSec: number
   ) => {
     if (!rawData) return false
-    const rawStartSec = Math.max(0, Number(rawData.startSec) || 0)
+    const rawStartSec = resolveRawDataCoverageStartSec(rawData)
     const rawEndSec = resolveRawDataCoveredEndSec(rawData)
     const rangeEndSec = rangeStartSec + Math.max(0, rangeDurationSec)
     // 播放头被定位在可视区中间（playheadRatio=0.5），所以歌曲开头时 renderStartSec 会是负值
@@ -386,7 +404,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     rangeDurationSec: number
   ) => {
     if (!rawData) return false
-    const rawStartSec = Math.max(0, Number(rawData.startSec) || 0)
+    const rawStartSec = resolveRawDataCoverageStartSec(rawData)
     const rawEndSec = resolveRawDataCoveredEndSec(rawData)
     const rangeEndSec = rangeStartSec + Math.max(0, rangeDurationSec)
     return rangeEndSec > rawStartSec && rangeStartSec < rawEndSec
@@ -567,12 +585,19 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       //     canReusePreviousFrame 返回 true，renderer 走 scroll reuse：复用当前 canvas 像素 +
       //     只重绘右边缘 shift 出来的一小段。即使 rawData 末尾几帧数据还没填入，右边缘最多
       //     短暂画成平线，左边旧波形像素会被保留——波形主体跟 playback 同步滚动。
+      //   * allowPartialFirstPaint=true：首屏尚未 ready、且不是 seek-hold 场景时，允许用
+      //     当前已到达的 partial rawData 先画出可见部分。这样 deck 初次载入时不会整块空白
+      //     到第二个 chunk 才出现波形；后续 chunk 再通过 dirty draw 把右侧补齐。
       //   * 以上都不满足（rawData 新换 ref 且尚未覆盖可视区）：draw 会走 clearRect+drawRange，
       //     用稀疏数据整屏重画，导致大片空白（历史"波形消失只剩网格线"bug）。必须放弃绘制，
       //     保留 canvas 现状，等下一次 ensureRawWaveformCapacity 填充或同一 ref 稳定后再画。
       const rawDataRefStable =
         drawableRawData != null && drawableRawData === lastStreamRenderedRawData
-      const canDrawStream = Boolean(drawableRawData) && (effectiveRawCoverage || rawDataRefStable)
+      const allowPartialFirstPaint =
+        Boolean(drawableRawData) && !wasDisplayReady && !holdPreviousWaveformFrame
+      const canDrawStream =
+        Boolean(drawableRawData) &&
+        (effectiveRawCoverage || rawDataRefStable || allowPartialFirstPaint)
       if (!canDrawStream) {
         traceHorizontalWaveformRender(
           holdPreviousWaveformFrame ? 'stream-hold' : 'stream-await-raw',
@@ -580,6 +605,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
             mixxxSource: effectiveMixxxSelection.source,
             effectiveRawCoverage,
             rawDataRefStable,
+            allowPartialFirstPaint,
             holdingFrame: holdPreviousWaveformFrame,
             renderStartSec,
             visibleDuration,
@@ -606,6 +632,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           mixxxSource: effectiveMixxxSelection.source,
           effectiveRawCoverage,
           rawDataRefStable,
+          allowPartialFirstPaint,
           holdingFrame: false
         })
         const finishTiming = startHorizontalBrowseUserTiming(
@@ -617,6 +644,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           bpm: 0,
           firstBeatMs: 0,
           barBeatOffset: 0,
+          timeBasisOffsetMs: Number(options.previewTimeBasisOffsetMs.value) || 0,
           rangeStartSec: renderStartSec,
           rangeDurationSec: visibleDuration,
           mixxxData: effectiveMixxxData,
@@ -678,6 +706,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           bpm: 0,
           firstBeatMs: 0,
           barBeatOffset: 0,
+          timeBasisOffsetMs: Number(options.previewTimeBasisOffsetMs.value) || 0,
           rangeStartSec: renderStartSec,
           rangeDurationSec: visibleDuration,
           mixxxData: effectiveMixxxData,
@@ -771,6 +800,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         bpm: 0,
         firstBeatMs: 0,
         barBeatOffset: 0,
+        timeBasisOffsetMs: Number(options.previewTimeBasisOffsetMs.value) || 0,
         rangeStartSec: renderStartSec,
         rangeDurationSec: visibleDuration,
         mixxxData: options.mixxxData.value,

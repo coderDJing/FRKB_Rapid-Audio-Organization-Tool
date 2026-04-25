@@ -8,6 +8,7 @@ type DrawWaveformOptions = {
   bpm: number
   firstBeatMs: number
   barBeatOffset?: number
+  timeBasisOffsetMs?: number
   rangeStartSec: number
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
@@ -469,6 +470,7 @@ const buildWaveformColumns = (
   rangeStartSec: number,
   rangeDurationSec: number,
   maxSamplesPerPixel?: number,
+  timeBasisOffsetMs?: number,
   preferRawPeaksOnly = false
 ): WaveformColumn[] => {
   const low = mixxxData.bands.low
@@ -500,7 +502,8 @@ const buildWaveformColumns = (
       )
     : 0
   const rawRate = hasRaw ? Number(rawData.rate) : 0
-  const rawStartSec = hasRaw ? Math.max(0, Number(rawData.startSec) || 0) : 0
+  const timeBasisOffsetSec = Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
+  const rawStartSec = hasRaw ? Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec : 0
 
   for (let x = 0; x < width; x += 1) {
     const startTime = rangeStartSec + (x / width) * rangeDurationSec
@@ -728,6 +731,7 @@ export const drawBeatAlignRekordboxWaveform = (
     showBeatGrid,
     waveformLayout,
     themeVariant,
+    timeBasisOffsetMs,
     preferRawPeaksOnly
   } = options
   if (width <= 0 || height <= 0) return false
@@ -760,6 +764,7 @@ export const drawBeatAlignRekordboxWaveform = (
     rangeStartSec,
     rangeDurationSec,
     maxSamplesPerPixel,
+    timeBasisOffsetMs,
     preferRawPeaksOnly
   )
   if (!columns.length) {

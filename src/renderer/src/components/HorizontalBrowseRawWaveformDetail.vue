@@ -99,6 +99,7 @@ const previewStartSec = ref(0)
 const dragging = ref(false)
 const previewBarBeatOffset = ref(0)
 const previewFirstBeatMs = ref(0)
+const previewTimeBasisOffsetMs = ref(0)
 const previewBpm = ref(0)
 const previewBpmInput = ref('')
 const bpmTapTimestamps = ref<number[]>([])
@@ -176,6 +177,7 @@ const {
   previewBpm,
   previewFirstBeatMs,
   previewBarBeatOffset,
+  previewTimeBasisOffsetMs,
   dragging,
   rawStreamActive
 })
@@ -232,14 +234,16 @@ const buildPreviewGridSignature = () =>
   [
     normalizeGridSignatureBpm(previewBpm.value).toFixed(6),
     normalizeGridSignatureFirstBeatMs(previewFirstBeatMs.value).toFixed(3),
-    normalizeGridSignatureBarBeatOffset(previewBarBeatOffset.value)
+    normalizeGridSignatureBarBeatOffset(previewBarBeatOffset.value),
+    normalizeGridSignatureFirstBeatMs(previewTimeBasisOffsetMs.value).toFixed(3)
   ].join('|')
 
 const buildSongGridSignature = () =>
   [
     normalizeGridSignatureBpm(props.song?.bpm).toFixed(6),
     normalizeGridSignatureFirstBeatMs(props.song?.firstBeatMs).toFixed(3),
-    normalizeGridSignatureBarBeatOffset(props.song?.barBeatOffset)
+    normalizeGridSignatureBarBeatOffset(props.song?.barBeatOffset),
+    normalizeGridSignatureFirstBeatMs(props.song?.timeBasisOffsetMs).toFixed(3)
   ].join('|')
 
 const applyPreviewPlaybackPosition = (seconds: number) => {
@@ -456,6 +460,7 @@ const {
   previewBpmInput,
   previewFirstBeatMs,
   previewBarBeatOffset,
+  previewTimeBasisOffsetMs,
   bpmTapTimestamps,
   previewBarLinePicking,
   metronomeEnabled,
@@ -466,6 +471,7 @@ const {
   resolveDisplayGridBpm,
   resolveSongFirstBeatMs: () => Number(props.song?.firstBeatMs) || 0,
   resolveSongBarBeatOffset: () => Number(props.song?.barBeatOffset) || 0,
+  resolveSongTimeBasisOffsetMs: () => Number(props.song?.timeBasisOffsetMs) || 0,
   scheduleDraw: scheduleGridOverlayDraw,
   schedulePreviewBpmTapReset,
   persistGridDefinition,
@@ -499,6 +505,7 @@ const {
   rawLoadPriorityHint: () => props.rawLoadPriorityHint,
   bootstrapDurationSec: () =>
     Math.max(4, resolveVisibleDurationSec() * HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN),
+  timeBasisOffsetMs: () => Number(previewTimeBasisOffsetMs.value) || 0,
   playing: () => previewPlaying.value,
   currentSeconds: () => props.currentSeconds,
   visibleDurationSec: resolveVisibleDurationSec,
@@ -575,7 +582,13 @@ watch(
 )
 
 watch(
-  () => [props.song?.bpm, props.song?.firstBeatMs, props.song?.barBeatOffset] as const,
+  () =>
+    [
+      props.song?.bpm,
+      props.song?.firstBeatMs,
+      props.song?.barBeatOffset,
+      props.song?.timeBasisOffsetMs
+    ] as const,
   () => {
     const songGridSignature = buildSongGridSignature()
     if (pendingLocalGridSignature) {
@@ -729,7 +742,13 @@ watch(
 )
 
 watch(
-  () => [previewBpm.value, previewFirstBeatMs.value, previewBarBeatOffset.value] as const,
+  () =>
+    [
+      previewBpm.value,
+      previewFirstBeatMs.value,
+      previewBarBeatOffset.value,
+      previewTimeBasisOffsetMs.value
+    ] as const,
   () => {
     scheduleGridOverlayDraw()
     emitToolbarState()

@@ -138,6 +138,10 @@ export type RekordboxDesktopHelperTrackRecord = {
   discNumber?: number | string | null
   year?: number | string | null
   analyzePath?: string | null
+  gridBpm?: number | string | null
+  gridFirstBeatMs?: number | string | null
+  gridFirstBeatLabel?: number | string | null
+  gridBarBeatOffset?: number | string | null
   comment?: string | null
   dateAdded?: string | null
   artworkPath?: string | null

@@ -732,6 +732,210 @@ def _window_weight(item: dict[str, Any]) -> float:
     return max(0.001, quality * base)
 
 
+def _result_raw_bpm(item: dict[str, Any]) -> float:
+    try:
+        bpm = float(item.get("rawBpm") or item.get("bpm") or 0.0)
+    except Exception:
+        return 0.0
+    return bpm if math.isfinite(bpm) and bpm > 0.0 else 0.0
+
+
+def _compatible_bpm_results(
+    window_results: list[dict[str, Any]],
+    reference_bpm: float,
+) -> list[dict[str, Any]]:
+    if not math.isfinite(reference_bpm) or reference_bpm <= 0.0:
+        return []
+    bpm_tolerance = max(0.35, reference_bpm * 0.0025)
+    return [
+        item
+        for item in window_results
+        if _result_raw_bpm(item) > 0.0 and abs(_result_raw_bpm(item) - reference_bpm) <= bpm_tolerance
+    ]
+
+
+def _score_integer_bpm_candidate(
+    score_envelope: np.ndarray,
+    envelope_sample_rate: int,
+    bpm: float,
+    anchor_ms: float,
+    max_beats: int,
+) -> tuple[float, int]:
+    if (
+        score_envelope.size == 0
+        or envelope_sample_rate <= 0
+        or not math.isfinite(bpm)
+        or bpm <= 0.0
+        or not math.isfinite(anchor_ms)
+        or max_beats <= 0
+    ):
+        return 0.0, 0
+
+    beat_interval_ms = 60000.0 / bpm
+    beat_interval_samples = (beat_interval_ms / 1000.0) * envelope_sample_rate
+    if beat_interval_samples <= 0.0:
+        return 0.0, 0
+
+    best_score = 0.0
+    best_support = 0
+    for phase_shift_ms in range(-30, 31, 2):
+        first_beat_ms = anchor_ms + float(phase_shift_ms)
+        while first_beat_ms >= beat_interval_ms:
+            first_beat_ms -= beat_interval_ms
+        if first_beat_ms < 0.0:
+            first_beat_ms += math.ceil(abs(first_beat_ms) / beat_interval_ms) * beat_interval_ms
+
+        position = (first_beat_ms / 1000.0) * envelope_sample_rate
+        values: list[float] = []
+        while len(values) < max_beats and position < float(score_envelope.size):
+            rounded = int(round(position))
+            if 0 <= rounded < score_envelope.size:
+                values.append(float(score_envelope[rounded]))
+            position += beat_interval_samples
+
+        if len(values) < 64:
+            continue
+        ordered_values = sorted(values)
+        lower_quarter = ordered_values[: max(1, len(ordered_values) // 4)]
+        score = statistics.fmean(values) * 0.75 + statistics.fmean(lower_quarter) * 0.25
+        if score > best_score:
+            best_score = score
+            best_support = len(values)
+
+    return best_score, best_support
+
+
+def apply_integer_bpm_rescue_to_result(
+    signal: np.ndarray,
+    sample_rate: int,
+    window_results: list[dict[str, Any]],
+    result: dict[str, Any],
+    tuning: dict[str, Any],
+) -> dict[str, Any]:
+    if signal.size == 0 or sample_rate <= 0:
+        return result
+
+    raw_bpm = _result_raw_bpm(result)
+    if not math.isfinite(raw_bpm) or raw_bpm <= 0.0:
+        return result
+
+    nearest_integer = round(raw_bpm)
+    integer_delta = abs(raw_bpm - nearest_integer)
+    snap_threshold = float(tuning["bpmSnapIntegerThreshold"])
+    if integer_delta <= snap_threshold or integer_delta > max(0.08, snap_threshold * 2.7):
+        return result
+
+    current_bpm = float(result.get("bpm") or raw_bpm)
+    if abs(current_bpm - nearest_integer) <= 0.000001:
+        return result
+
+    compatible_results = _compatible_bpm_results(window_results, raw_bpm)
+    integer_aligned_results = [
+        item
+        for item in compatible_results
+        if abs(_result_raw_bpm(item) - nearest_integer) <= snap_threshold
+        or abs(float(item.get("bpm") or 0.0) - nearest_integer) <= 0.000001
+    ]
+    if len(integer_aligned_results) < 2:
+        return result
+    current_quality = float(result.get("qualityScore") or 0.0)
+    best_integer_quality = max(float(item.get("qualityScore") or 0.0) for item in integer_aligned_results)
+    if best_integer_quality - current_quality < 0.005:
+        return result
+
+    absolute_first_beat_ms = result.get("absoluteFirstBeatMs")
+    if absolute_first_beat_ms is not None:
+        try:
+            absolute_first_beat_ms = float(absolute_first_beat_ms)
+        except Exception:
+            absolute_first_beat_ms = None
+    if not isinstance(absolute_first_beat_ms, float) or not math.isfinite(absolute_first_beat_ms):
+        absolute_first_beat_ms = float(result.get("firstBeatMs") or 0.0)
+
+    attack_result = build_attack_envelope(signal, sample_rate, tuning)
+    if attack_result is None:
+        return result
+    attack_envelope, envelope_sample_rate = attack_result
+    score_window = max(1, int(round(envelope_sample_rate * (float(tuning["scoreWindowMs"]) / 1000.0))))
+    score_envelope = moving_average(attack_envelope, score_window)
+    max_beats = max(128, int(tuning["maxBeats"]) * 4)
+    raw_score, raw_support = _score_integer_bpm_candidate(
+        score_envelope,
+        envelope_sample_rate,
+        raw_bpm,
+        absolute_first_beat_ms,
+        max_beats,
+    )
+    integer_score, integer_support = _score_integer_bpm_candidate(
+        score_envelope,
+        envelope_sample_rate,
+        float(nearest_integer),
+        absolute_first_beat_ms,
+        max_beats,
+    )
+    if raw_support < 64 or integer_support < 64:
+        return result
+    score_gain = (integer_score - raw_score) / max(1e-9, integer_score, raw_score)
+    if score_gain < 0.12 or integer_score - raw_score < 0.01:
+        return result
+
+    bpm = float(nearest_integer)
+    beat_interval_ms = 60000.0 / bpm
+    if not math.isfinite(beat_interval_ms) or beat_interval_ms <= 0.0:
+        return result
+
+    next_result = dict(result)
+    next_result["bpm"] = round(bpm, 6)
+    next_result["beatIntervalSec"] = round(60.0 / bpm, 6)
+    next_result["bpmRefinementStrategy"] = "integer-envelope-rescue"
+    next_result["bpmRefinementScoreGain"] = round(score_gain, 6)
+    return next_result
+
+
+def estimate_bpm_drift_proxy(
+    window_results: list[dict[str, Any]],
+    reference_result: dict[str, Any],
+) -> dict[str, Any]:
+    reference_bpm = _result_raw_bpm(reference_result)
+    if not math.isfinite(reference_bpm) or reference_bpm <= 0.0:
+        return {}
+
+    valid_results = [item for item in window_results if _result_raw_bpm(item) > 0.0]
+    if not valid_results:
+        return {}
+
+    bpm_values = np.asarray(
+        [_result_raw_bpm(item) for item in valid_results],
+        dtype="float64",
+    )
+    weights = np.asarray([_window_weight(item) for item in valid_results], dtype="float64")
+    if bpm_values.size < 2:
+        return {
+            "beatThisWindowCount": int(bpm_values.size),
+        }
+
+    bpm_mad = weighted_mad(bpm_values, weights, reference_bpm)
+    if bpm_mad is None or not math.isfinite(float(bpm_mad)):
+        return {
+            "beatThisWindowCount": int(bpm_values.size),
+        }
+
+    bpm_mad_value = abs(float(bpm_mad))
+    beat_interval_ms = 60000.0 / reference_bpm
+    interval_error_ms = 0.0
+    lower_bpm = reference_bpm - bpm_mad_value
+    upper_bpm = reference_bpm + bpm_mad_value
+    if lower_bpm > 0.0:
+        interval_error_ms = max(interval_error_ms, abs((60000.0 / lower_bpm) - beat_interval_ms))
+    if upper_bpm > 0.0:
+        interval_error_ms = max(interval_error_ms, abs((60000.0 / upper_bpm) - beat_interval_ms))
+
+    return {
+        "beatThisEstimatedDrift128Ms": round(interval_error_ms * 128.0, 3),
+        "beatThisWindowCount": int(bpm_values.size),
+    }
+
+
 def solve_global_track_grid(
     signal: np.ndarray,
     sample_rate: int,
@@ -765,13 +969,8 @@ def solve_global_track_grid(
     if len(valid_results) == 1:
         return dict(reference_window)
 
-    reference_bpm = float(reference_window.get("rawBpm") or reference_window.get("bpm") or 0.0)
-    bpm_tolerance = max(0.35, reference_bpm * 0.0025) if reference_bpm > 0 else 0.35
-    compatible_results = [
-        item
-        for item in valid_results
-        if abs(float(item.get("rawBpm") or item.get("bpm") or 0.0) - reference_bpm) <= bpm_tolerance
-    ]
+    reference_bpm = _result_raw_bpm(reference_window)
+    compatible_results = _compatible_bpm_results(valid_results, reference_bpm)
     if len(compatible_results) < 2:
         return dict(reference_window)
     valid_results = compatible_results
@@ -861,6 +1060,14 @@ def solve_global_track_grid(
 
     first_beat_ms = round(normalize_phase_ms(reference_first_beat_ms + shift_ms, beat_interval_ms), 3)
     raw_first_beat_ms = round(reference_raw_first_beat_ms, 3)
+    reference_absolute_first_beat_ms = float(
+        reference_window.get("absoluteFirstBeatMs") or reference_first_beat_ms
+    )
+    reference_absolute_raw_first_beat_ms = float(
+        reference_window.get("absoluteRawFirstBeatMs") or reference_absolute_first_beat_ms
+    )
+    absolute_first_beat_ms = reference_absolute_first_beat_ms + shift_ms
+    absolute_raw_first_beat_ms = reference_absolute_raw_first_beat_ms
     if beat_interval_ms > 0.0 and beat_interval_ms - first_beat_ms <= float(tuning["snapToZeroCorrectedMaxMs"]):
         first_beat_ms = 0.0
     if beat_interval_ms > 0.0 and beat_interval_ms - raw_first_beat_ms <= float(tuning["snapToZeroRawFirstBeatMaxMs"]):
@@ -920,6 +1127,8 @@ def solve_global_track_grid(
         "rawBpm": round(raw_bpm, 6),
         "firstBeatMs": first_beat_ms,
         "rawFirstBeatMs": raw_first_beat_ms,
+        "absoluteFirstBeatMs": round(absolute_first_beat_ms, 3),
+        "absoluteRawFirstBeatMs": round(absolute_raw_first_beat_ms, 3),
         "barBeatOffset": bar_beat_offset,
         "beatCount": beat_count,
         "downbeatCount": downbeat_count,

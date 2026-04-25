@@ -19,6 +19,7 @@ MAX_SCAN_SEC = 120.0
 WINDOW_MIN_DURATION_SEC = 8.0
 QUALITY_EARLY_STOP_THRESHOLD = 0.72
 QUALITY_MIN_BEAT_COUNT = 32
+DRIFT_BEAT_HORIZONS = (32, 64, 128)
 
 
 def _load_bridge_module():
@@ -355,6 +356,7 @@ def _derive_grid_metrics(result: dict[str, Any], ground_truth: dict[str, Any]) -
     beat_interval_sec = 60.0 / predicted_bpm if predicted_bpm > 0 else 0.0
     truth_bpm = float(ground_truth["bpm"])
     truth_beat_interval_sec = 60.0 / truth_bpm if truth_bpm > 0 else 0.0
+    beat_interval_error_ms = (beat_interval_sec - truth_beat_interval_sec) * 1000.0
     compare_count = min(len(ground_truth["grid"]), 128)
     phase_error_ms = _phase_delta_ms(
         float(result["firstBeatMs"]),
@@ -371,6 +373,13 @@ def _derive_grid_metrics(result: dict[str, Any], ground_truth: dict[str, Any]) -
 
     rmse_ms = math.sqrt(sum(error * error for error in signed_errors_ms) / max(1, compare_count))
     mean_abs_ms = sum(abs_errors_ms) / max(1, compare_count)
+    drift_metrics = {
+        "beatIntervalErrorMs": round(beat_interval_error_ms, 6),
+    }
+    for horizon in DRIFT_BEAT_HORIZONS:
+        drift_ms = beat_interval_error_ms * horizon
+        drift_metrics[f"drift{horizon}BeatsMs"] = round(drift_ms, 3)
+        drift_metrics[f"absDrift{horizon}BeatsMs"] = round(abs(drift_ms), 3)
 
     return {
         "bpmError": round(predicted_bpm - float(ground_truth["bpm"]), 6),
@@ -381,6 +390,7 @@ def _derive_grid_metrics(result: dict[str, Any], ground_truth: dict[str, Any]) -
         "gridCompareCount": compare_count,
         "gridRmseMs": round(rmse_ms, 3),
         "gridMeanAbsMs": round(mean_abs_ms, 3),
+        **drift_metrics,
     }
 
 
@@ -410,6 +420,10 @@ def main() -> int:
     benchmark_rows: list[dict[str, Any]] = []
     refined_grid_errors: list[float] = []
     legacy_grid_errors: list[float] = []
+    refined_abs_bpm_errors: list[float] = []
+    legacy_abs_bpm_errors: list[float] = []
+    refined_abs_drift_errors: dict[int, list[float]] = {horizon: [] for horizon in DRIFT_BEAT_HORIZONS}
+    legacy_abs_drift_errors: dict[int, list[float]] = {horizon: [] for horizon in DRIFT_BEAT_HORIZONS}
 
     for track in truth_tracks:
         if not isinstance(track, dict):
@@ -457,6 +471,11 @@ def main() -> int:
         legacy_metrics = _derive_grid_metrics(legacy_result, ground_truth)
         refined_grid_errors.append(float(refined_metrics["gridMeanAbsMs"]))
         legacy_grid_errors.append(float(legacy_metrics["gridMeanAbsMs"]))
+        refined_abs_bpm_errors.append(float(refined_metrics["absBpmError"]))
+        legacy_abs_bpm_errors.append(float(legacy_metrics["absBpmError"]))
+        for horizon in DRIFT_BEAT_HORIZONS:
+            refined_abs_drift_errors[horizon].append(float(refined_metrics[f"absDrift{horizon}BeatsMs"]))
+            legacy_abs_drift_errors[horizon].append(float(legacy_metrics[f"absDrift{horizon}BeatsMs"]))
 
         benchmark_rows.append(
             {
@@ -500,7 +519,32 @@ def main() -> int:
         "legacyMeanGridAbsMs": round(
             sum(legacy_grid_errors) / max(1, len(legacy_grid_errors)), 3
         ),
+        "refinedMeanAbsBpmError": round(
+            sum(refined_abs_bpm_errors) / max(1, len(refined_abs_bpm_errors)), 6
+        ),
+        "legacyMeanAbsBpmError": round(
+            sum(legacy_abs_bpm_errors) / max(1, len(legacy_abs_bpm_errors)), 6
+        ),
+        "refinedWorstAbsBpmError": round(max(refined_abs_bpm_errors, default=0.0), 6),
+        "legacyWorstAbsBpmError": round(max(legacy_abs_bpm_errors, default=0.0), 6),
     }
+    for horizon in DRIFT_BEAT_HORIZONS:
+        summary[f"refinedMeanAbsDrift{horizon}BeatsMs"] = round(
+            sum(refined_abs_drift_errors[horizon]) / max(1, len(refined_abs_drift_errors[horizon])),
+            3,
+        )
+        summary[f"legacyMeanAbsDrift{horizon}BeatsMs"] = round(
+            sum(legacy_abs_drift_errors[horizon]) / max(1, len(legacy_abs_drift_errors[horizon])),
+            3,
+        )
+        summary[f"refinedWorstAbsDrift{horizon}BeatsMs"] = round(
+            max(refined_abs_drift_errors[horizon], default=0.0),
+            3,
+        )
+        summary[f"legacyWorstAbsDrift{horizon}BeatsMs"] = round(
+            max(legacy_abs_drift_errors[horizon], default=0.0),
+            3,
+        )
 
     payload = {
         "summary": summary,

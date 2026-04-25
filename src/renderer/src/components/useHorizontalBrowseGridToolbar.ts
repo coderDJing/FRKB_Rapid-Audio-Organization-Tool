@@ -34,6 +34,7 @@ type UseHorizontalBrowseGridToolbarParams = {
   previewBpmInput: Ref<string>
   previewFirstBeatMs: Ref<number>
   previewBarBeatOffset: Ref<number>
+  previewTimeBasisOffsetMs: Ref<number>
   bpmTapTimestamps: Ref<number[]>
   previewBarLinePicking: Ref<boolean>
   metronomeEnabled: Ref<boolean>
@@ -44,6 +45,7 @@ type UseHorizontalBrowseGridToolbarParams = {
   resolveDisplayGridBpm: () => number
   resolveSongFirstBeatMs: () => number
   resolveSongBarBeatOffset: () => number
+  resolveSongTimeBasisOffsetMs: () => number
   scheduleDraw: () => void
   schedulePreviewBpmTapReset: () => void
   persistGridDefinition: () => Promise<void>
@@ -81,6 +83,10 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     params.previewBarBeatOffset.value = normalizeBeatOffset(
       params.resolveSongBarBeatOffset(),
       PREVIEW_BAR_BEAT_INTERVAL
+    )
+    params.previewTimeBasisOffsetMs.value = Math.max(
+      0,
+      Number(params.resolveSongTimeBasisOffsetMs()) || 0
     )
     params.resetPreviewBpmTap()
     params.resetBarLinePicking()

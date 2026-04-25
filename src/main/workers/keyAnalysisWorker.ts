@@ -17,6 +17,8 @@ type KeyResultPayload = {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  beatThisEstimatedDrift128Ms?: number
+  beatThisWindowCount?: number
   bpmError?: string
   mixxxWaveformData?: MixxxWaveformData | null
 }
@@ -197,6 +199,8 @@ const analyzeKeyForFileInternal = async (
         result.bpm = beatThisResult.bpm
         result.firstBeatMs = beatThisResult.firstBeatMs
         result.barBeatOffset = beatThisResult.barBeatOffset
+        result.beatThisEstimatedDrift128Ms = beatThisResult.beatThisEstimatedDrift128Ms
+        result.beatThisWindowCount = beatThisResult.beatThisWindowCount
         result.bpmError = undefined
       } catch (error) {
         result.bpmError =

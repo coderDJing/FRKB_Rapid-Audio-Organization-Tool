@@ -51,7 +51,7 @@ export function registerHorizontalBrowseTransportHandlers() {
       _event,
       deck: HorizontalBrowseDeckKey,
       nowMs: number | undefined,
-      payload: { filePath?: string; bpm?: number; firstBeatMs?: number }
+      payload: { filePath?: string; bpm?: number; firstBeatMs?: number; timeBasisOffsetMs?: number }
     ) => {
       const snapshot = horizontalBrowseTransportBridge.setBeatGrid(deck, nowMs, payload)
       broadcastHorizontalBrowseTransportSnapshot(snapshot)

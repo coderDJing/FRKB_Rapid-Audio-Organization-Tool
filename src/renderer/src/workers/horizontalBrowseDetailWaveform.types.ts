@@ -11,6 +11,7 @@ export type HorizontalBrowseDetailWaveformTileRequest = {
   pixelRatio: number
   rangeStartSec: number
   rangeDurationSec: number
+  timeBasisOffsetMs: number
   maxSamplesPerPixel: number
   themeVariant: HorizontalBrowseWaveformThemeVariant
   waveformLayout: 'top-half' | 'bottom-half'

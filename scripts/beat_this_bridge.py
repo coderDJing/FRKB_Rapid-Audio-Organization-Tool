@@ -6,17 +6,12 @@ import sys
 from typing import Any
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MANUAL_TRUTH_PATH = os.path.join(REPO_ROOT, "grid-analysis-lab", "manual-truth", "truth-sample.json")
-SAMPLE_LIST_SEGMENT = "/library/filterlibrary/sample/"
 ENV_BEAT_THIS_EXTRA_SITE_DIRS = "FRKB_BEAT_THIS_EXTRA_SITE_DIRS"
 ENV_BEAT_THIS_EXTRA_DLL_DIRS = "FRKB_BEAT_THIS_EXTRA_DLL_DIRS"
 ENV_BEAT_THIS_CHECKPOINT = "FRKB_BEAT_THIS_CHECKPOINT"
 ENV_BEAT_THIS_ANCHOR_TUNING_JSON = "FRKB_BEAT_THIS_ANCHOR_TUNING_JSON"
-ENV_BEAT_THIS_DEV_PLAYLIST_RULES = "FRKB_BEAT_THIS_DEV_PLAYLIST_RULES"
 DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH = os.path.join("beat-this-checkpoints", "final0.ckpt")
 _DLL_DIR_HANDLES: list[Any] = []
-_MANUAL_TRUTH_CACHE: dict[str, dict[str, Any]] | None = None
-_MANUAL_TRUTH_CACHE_MTIME: float | None = None
 WINDOW_MIN_DURATION_SEC = 8.0
 
 DEFAULT_ANCHOR_TUNING = {
@@ -121,17 +116,22 @@ import torch
 from beat_this.inference import Audio2Beats, split_predict_aggregate
 from beat_this.preprocessing import LogMelSpect
 from beat_this_grid_solver import (
+    apply_integer_bpm_rescue_to_result as _apply_integer_bpm_rescue_to_result,
     build_attack_envelope as _build_attack_envelope,
     clamp01 as _clamp01,
+    estimate_bpm_drift_proxy as _estimate_bpm_drift_proxy,
     estimate_anchor_correction as _estimate_anchor_correction,
     estimate_grid_phase_correction as _estimate_grid_phase_correction,
     estimate_head_bootstrap_candidate as _estimate_head_bootstrap_candidate,
     estimate_lowband_firstbeat_offset as _estimate_lowband_firstbeat_offset,
+    normalize_phase_ms as _normalize_phase_ms,
+    phase_delta_ms as _phase_delta_ms,
     score_anchor_offset as _score_anchor_offset,
     should_block_ambiguous_positive_correction as _should_block_ambiguous_positive_correction,
     should_preserve_grid_solver_bpm as _should_preserve_grid_solver_bpm,
     solve_global_track_grid as _solve_global_track_grid,
     stabilize_bpm_for_grid as _stabilize_bpm_for_grid,
+    _window_weight,
 )
 
 
@@ -352,96 +352,6 @@ def _derive_interval(beats: list[float]) -> float | None:
     if not intervals:
         return None
     return statistics.median(intervals)
-
-
-def _normalize_file_name(file_path: str) -> str:
-    return os.path.basename(str(file_path or "").strip()).strip().lower()
-
-
-def _normalize_list_path(source_file_path: str) -> str:
-    normalized_path = os.path.normpath(str(source_file_path or "").strip()).lower()
-    return normalized_path.replace("\\", "/")
-
-
-def _uses_dev_playlist_rules() -> bool:
-    raw_value = str(os.environ.get(ENV_BEAT_THIS_DEV_PLAYLIST_RULES) or "").strip().lower()
-    return raw_value in {"1", "true", "yes", "on"}
-
-
-def _load_manual_truth_cache() -> dict[str, dict[str, Any]]:
-    global _MANUAL_TRUTH_CACHE
-    global _MANUAL_TRUTH_CACHE_MTIME
-    try:
-        current_mtime = os.path.getmtime(MANUAL_TRUTH_PATH)
-    except OSError:
-        _MANUAL_TRUTH_CACHE = {}
-        _MANUAL_TRUTH_CACHE_MTIME = None
-        return {}
-
-    if _MANUAL_TRUTH_CACHE is not None and _MANUAL_TRUTH_CACHE_MTIME == current_mtime:
-        return _MANUAL_TRUTH_CACHE
-
-    try:
-        with open(MANUAL_TRUTH_PATH, "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except Exception:
-        _MANUAL_TRUTH_CACHE = {}
-        _MANUAL_TRUTH_CACHE_MTIME = current_mtime
-        return {}
-
-    mapped: dict[str, dict[str, Any]] = {}
-    tracks = payload.get("tracks")
-    if isinstance(tracks, list):
-        for track in tracks:
-            if not isinstance(track, dict):
-                continue
-            file_name = _normalize_file_name(
-                str(track.get("fileName") or track.get("filePath") or "")
-            )
-            if not file_name:
-                continue
-            mapped[file_name] = track
-
-    _MANUAL_TRUTH_CACHE = mapped
-    _MANUAL_TRUTH_CACHE_MTIME = current_mtime
-    return mapped
-
-
-def _resolve_manual_truth_result(source_file_path: str, duration_sec: float) -> dict[str, Any] | None:
-    if not _uses_dev_playlist_rules():
-        return None
-    if SAMPLE_LIST_SEGMENT not in _normalize_list_path(source_file_path):
-        return None
-    track = _load_manual_truth_cache().get(_normalize_file_name(source_file_path))
-    if not track:
-        return None
-    try:
-        bpm = float(track.get("bpm"))
-        first_beat_ms = max(0.0, float(track.get("firstBeatMs")))
-        bar_beat_offset = int(track.get("barBeatOffset") or 0)
-    except Exception:
-        return None
-    if not math.isfinite(bpm) or bpm <= 0.0:
-        return None
-    return {
-        "bpm": bpm,
-        "firstBeatMs": first_beat_ms,
-        "rawFirstBeatMs": first_beat_ms,
-        "barBeatOffset": bar_beat_offset,
-        "beatCount": 0,
-        "downbeatCount": 0,
-        "durationSec": duration_sec,
-        "beatIntervalSec": 60.0 / bpm,
-        "beatCoverageScore": 1.0,
-        "beatStabilityScore": 1.0,
-        "downbeatCoverageScore": 1.0,
-        "downbeatStabilityScore": 1.0,
-        "qualityScore": 1.0,
-        "anchorCorrectionMs": 0.0,
-        "anchorConfidenceScore": 1.0,
-        "anchorMatchedBeatCount": 0,
-        "anchorStrategy": "manual-truth",
-    }
 
 
 def _derive_stability(events: list[float], target_interval: float, multiplier: float = 1.0) -> float:
@@ -711,6 +621,8 @@ def _finalize_prepared_window(
         "rawBpm": round(raw_bpm, 6),
         "firstBeatMs": normalized_first_beat_ms,
         "rawFirstBeatMs": normalized_raw_first_beat_ms,
+        "absoluteFirstBeatMs": round(absolute_first_beat_ms, 3),
+        "absoluteRawFirstBeatMs": round(absolute_raw_first_beat_ms, 3),
         "barBeatOffset": _derive_bar_beat_offset(beat_list, downbeat_list),
         "beatCount": int(prepared_window["beatCount"]),
         "downbeatCount": int(prepared_window["downbeatCount"]),
@@ -763,6 +675,129 @@ def _select_anchor_window_result(finalized_results: list[dict[str, Any]]) -> dic
     return best_result
 
 
+def _find_prepared_window_by_index(
+    prepared_windows: list[dict[str, Any]],
+    window_index: int,
+) -> dict[str, Any] | None:
+    for item in prepared_windows:
+        if int(item.get("windowIndex") or -1) == window_index:
+            return item
+    return None
+
+
+def _apply_phase_rescue_rules(
+    prepared_windows: list[dict[str, Any]],
+    finalized_results: list[dict[str, Any]],
+    result: dict[str, Any],
+    sample_rate: int,
+    tuning: dict[str, Any],
+) -> dict[str, Any]:
+    next_result = dict(result)
+    interval_ms = 60000.0 / float(next_result.get("bpm") or 0.0)
+    if not math.isfinite(interval_ms) or interval_ms <= 0.0:
+        return next_result
+
+    window_index = int(next_result.get("windowIndex") or -1)
+    prepared_window = _find_prepared_window_by_index(prepared_windows, window_index)
+    anchor_window = next(
+        (
+            item
+            for item in finalized_results
+            if int(item.get("windowIndex") or -1) == window_index
+        ),
+        None,
+    )
+    if prepared_window is None or anchor_window is None:
+        return next_result
+
+    def _apply_first_beat(first_beat_ms: float, strategy_suffix: str) -> None:
+        nonlocal next_result
+        updated_first_beat_ms = _normalize_phase_ms(first_beat_ms, interval_ms)
+        if (
+            interval_ms > 0.0
+            and interval_ms - updated_first_beat_ms <= float(tuning["snapToZeroCorrectedMaxMs"])
+        ):
+            updated_first_beat_ms = 0.0
+        next_result["firstBeatMs"] = round(updated_first_beat_ms, 3)
+        raw_first_beat_ms = float(
+            next_result.get("rawFirstBeatMs")
+            or anchor_window.get("rawFirstBeatMs")
+            or updated_first_beat_ms
+        )
+        next_result["anchorCorrectionMs"] = round(
+            _phase_delta_ms(updated_first_beat_ms, raw_first_beat_ms, interval_ms),
+            3,
+        )
+        current_strategy = str(next_result.get("anchorStrategy") or "").strip()
+        next_result["anchorStrategy"] = (
+            f"{current_strategy}-{strategy_suffix}" if current_strategy else strategy_suffix
+        )
+
+    lowband_offset = _estimate_lowband_firstbeat_offset(
+        prepared_window["signal"],
+        sample_rate,
+        list(prepared_window["beats"]),
+        tuning,
+    )
+    current_first_beat_ms = float(next_result.get("firstBeatMs") or 0.0)
+    raw_first_beat_ms = float(next_result.get("rawFirstBeatMs") or current_first_beat_ms)
+    if lowband_offset is not None:
+        lowband_match_ratio = float(lowband_offset.get("matchRatio") or 0.0)
+        lowband_offset_mad_ms = float(lowband_offset.get("offsetMadMs") or 999.0)
+        lowband_offset_ms = float(lowband_offset.get("offsetMs") or 0.0)
+        if (
+            current_first_beat_ms > 0.0
+            and current_first_beat_ms <= 24.0
+            and lowband_match_ratio >= 0.85
+            and lowband_offset_mad_ms <= 4.5
+            and abs(lowband_offset_ms + raw_first_beat_ms) <= 6.0
+        ):
+            _apply_first_beat(0.0, "snap-zero-lowband")
+            return next_result
+        if (
+            current_first_beat_ms > 0.0
+            and current_first_beat_ms <= 18.0
+            and lowband_match_ratio >= 0.8
+            and lowband_offset_mad_ms <= 4.5
+            and lowband_offset_ms <= -30.0
+        ):
+            _apply_first_beat(0.0, "snap-zero-lowband")
+            return next_result
+
+    anchor_strategy = str(next_result.get("anchorStrategy") or "").strip()
+    if not anchor_strategy.endswith("positive-guard"):
+        return next_result
+
+    anchor_quality = float(anchor_window.get("qualityScore") or 0.0)
+    early_deltas_ms: list[float] = []
+    early_weights: list[float] = []
+    for item in finalized_results:
+        item_bpm = float(item.get("bpm") or 0.0)
+        if not math.isfinite(item_bpm) or abs(item_bpm - float(next_result["bpm"])) > 0.05:
+            continue
+        item_quality = float(item.get("qualityScore") or 0.0)
+        if anchor_quality - item_quality > 0.01:
+            continue
+        delta_ms = _phase_delta_ms(
+            float(item.get("firstBeatMs") or 0.0),
+            float(next_result["firstBeatMs"]),
+            interval_ms,
+        )
+        if -24.0 <= delta_ms <= -4.0:
+            early_deltas_ms.append(delta_ms)
+            early_weights.append(_window_weight(item))
+    if len(early_deltas_ms) < 2:
+        return next_result
+    if max(early_deltas_ms) - min(early_deltas_ms) > 18.0:
+        return next_result
+
+    weighted_delta_ms = sum(
+        delta_ms * weight for delta_ms, weight in zip(early_deltas_ms, early_weights)
+    ) / max(1e-9, sum(early_weights))
+    _apply_first_beat(float(next_result["firstBeatMs"]) + weighted_delta_ms, "early-cluster")
+    return next_result
+
+
 def _analyze_prepared_windows_to_track_result(
     prepared_windows: list[dict[str, Any]],
     signal: np.ndarray,
@@ -786,10 +821,35 @@ def _analyze_prepared_windows_to_track_result(
         )
         for prepared_window in prepared_windows
     ]
+
+    def _attach_bpm_metrics(result: dict[str, Any]) -> dict[str, Any]:
+        next_result = result
+        if not force_legacy_anchor:
+            next_result = _apply_integer_bpm_rescue_to_result(
+                signal,
+                sample_rate,
+                finalized_results,
+                next_result,
+                tuning,
+            )
+            next_result = _apply_phase_rescue_rules(
+                prepared_windows,
+                finalized_results,
+                next_result,
+                sample_rate,
+                tuning,
+            )
+        proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
+        if not proxy:
+            return next_result
+        next_result = dict(next_result)
+        next_result.update(proxy)
+        return next_result
+
     anchor_window = _select_anchor_window_result(finalized_results)
 
     if force_legacy_anchor or not use_global_solver:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
 
     scan_duration_sec = max(
         (
@@ -807,20 +867,20 @@ def _analyze_prepared_windows_to_track_result(
         anchor_window=anchor_window,
     )
     if not global_result:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if float(anchor_window.get("anchorConfidenceScore") or 0.0) >= 0.95:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if float(anchor_window.get("firstBeatMs") or 0.0) <= 0.0:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if float(global_result.get("anchorConfidenceScore") or 0.0) < 0.95:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if abs(float(global_result.get("qualityScore") or 0.0) - float(anchor_window.get("qualityScore") or 0.0)) > 0.02:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if abs(float(global_result.get("firstBeatMs") or 0.0) - float(anchor_window.get("firstBeatMs") or 0.0)) < 4.0:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if abs(float(global_result.get("firstBeatMs") or 0.0) - float(anchor_window.get("firstBeatMs") or 0.0)) > 8.0:
-        return anchor_window
-    return global_result
+        return _attach_bpm_metrics(anchor_window)
+    return _attach_bpm_metrics(global_result)
 
 def _uses_accelerated_device(device: str) -> bool:
     normalized = str(device or "").strip().lower()
@@ -933,12 +993,6 @@ def serve(device: str, dbn: bool) -> int:
                 raise RuntimeError("byteLength must be positive")
 
             pcm_bytes = _read_exact(byte_length)
-            duration_sec = byte_length / float(channels * 4 * sample_rate) if sample_rate > 0 else 0.0
-            manual_truth_result = _resolve_manual_truth_result(source_file_path, duration_sec)
-            if manual_truth_result is not None:
-                _emit({"type": "result", "requestId": request_id, "result": manual_truth_result})
-                continue
-
             signal = _decode_signal(pcm_bytes, channels)
             duration_sec = signal.shape[0] / float(sample_rate) if sample_rate > 0 else 0.0
             tuning = _resolve_anchor_tuning()

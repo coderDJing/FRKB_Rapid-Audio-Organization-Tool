@@ -74,6 +74,10 @@ const props = defineProps({
     type: Number,
     default: 0
   },
+  timeBasisOffsetMs: {
+    type: Number,
+    default: 0
+  },
   barBeatOffset: {
     type: Number,
     default: 0
@@ -327,6 +331,7 @@ const drawPreviewCanvas = () => {
     bpm: Number(previewBpm.value) || 0,
     firstBeatMs: Number(previewFirstBeatMs.value) || 0,
     barBeatOffset: previewBarBeatOffset.value,
+    timeBasisOffsetMs: Math.max(0, Number(props.timeBasisOffsetMs) || 0),
     rangeStartSec,
     rangeDurationSec: safeDuration,
     mixxxData: previewMixxxData.value,
@@ -513,7 +518,8 @@ const rebuildOverviewCache = () => {
     rawData: overviewRawData.value,
     maxRenderColumns: OVERVIEW_MAX_RENDER_COLUMNS,
     waveformVerticalPadding: OVERVIEW_WAVEFORM_VERTICAL_PADDING,
-    leadingPadSec: resolvePreviewLeadingPadSec()
+    leadingPadSec: resolvePreviewLeadingPadSec(),
+    timeBasisOffsetMs: Math.max(0, Number(props.timeBasisOffsetMs) || 0)
   })
 }
 
@@ -855,6 +861,15 @@ watch(
     if (previewBarBeatOffset.value === normalized) return
     previewBarBeatOffset.value = normalized
     schedulePreviewDraw()
+  }
+)
+
+watch(
+  () => props.timeBasisOffsetMs,
+  () => {
+    previewRenderer.reset()
+    schedulePreviewDraw()
+    scheduleOverviewRebuild()
   }
 )
 

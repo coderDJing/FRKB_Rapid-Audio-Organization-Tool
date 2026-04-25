@@ -57,6 +57,7 @@ type CreateHorizontalBrowseRawWaveformTileManagerOptions = {
   resolvePreviewDurationSec: () => number
   resolveVisibleDurationSec: () => number
   resolvePreviewAnchorSec: () => number
+  resolveTimeBasisOffsetMs: () => number
   clampPreviewStart: (value: number) => number
   resolvePlaybackDrivenRenderStartSec: (visibleDuration: number) => number
   resolveWaveformLayout: () => HorizontalBrowseWaveformLayout
@@ -363,6 +364,7 @@ export const createHorizontalBrowseRawWaveformTileManager = (
     const tileWidth = Math.max(1, Math.min(WAVEFORM_TILE_WIDTH, safeCssWidth))
     const tileDurationSec = (Math.max(0.0001, request.rangeDurationSec) * tileWidth) / safeCssWidth
     if (!Number.isFinite(tileDurationSec) || tileDurationSec <= 0) return []
+    const timeBasisOffsetMs = Math.max(0, Number(options.resolveTimeBasisOffsetMs()) || 0)
 
     const rangeEndSec = request.rangeStartSec + request.rangeDurationSec
     const firstIndex = Math.max(
@@ -389,13 +391,15 @@ export const createHorizontalBrowseRawWaveformTileManager = (
           cssWidth: safeCssWidth,
           cssHeight: safeCssHeight,
           pixelRatio: request.pixelRatio,
-          tileIndex
+          tileIndex,
+          timeBasisOffsetMs
         }),
         width: tileWidth,
         height: safeCssHeight,
         pixelRatio: request.pixelRatio,
         rangeStartSec: tileIndex * tileDurationSec,
         rangeDurationSec: tileDurationSec,
+        timeBasisOffsetMs,
         maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
         themeVariant: request.themeVariant,
         waveformLayout: options.resolveWaveformLayout()

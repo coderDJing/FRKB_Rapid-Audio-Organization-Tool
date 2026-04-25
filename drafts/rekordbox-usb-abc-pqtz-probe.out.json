@@ -1,0 +1,4879 @@
+{
+  "generatedAt": "2026-04-24T03:31:40.738Z",
+  "summary": {
+    "driveRoot": "G:/",
+    "playlistName": "abc",
+    "playlistId": 72,
+    "trackCount": 33,
+    "pqtzTrackCount": 33,
+    "pqt2TrackCount": 7,
+    "tracksWithVariableBpm": [],
+    "tracksWithLargeBeatDrift": []
+  },
+  "tracks": [
+    {
+      "entryIndex": 1,
+      "trackId": 1876,
+      "title": "Gamma (Glaskin Remix)",
+      "fileName": "len faki - gamma (glaskin remix) (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P003/0002DD25/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "len faki - gamma (glaskin remix) (1).mp3",
+        "title": "Gamma (Glaskin Remix)",
+        "artist": "Len Faki",
+        "bpm": 145,
+        "firstBeatMs": 26,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 776,
+        "parsedCount": 776
+      },
+      "pqtzStats": {
+        "entryCount": 776,
+        "uniqueBpmCount": 1,
+        "bpmValues": [145],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 145,
+          "timeMs": 26
+        },
+        "lastEntry": {
+          "index": 775,
+          "beat": 4,
+          "bpm": 145,
+          "timeMs": 320715
+        },
+        "maxBeatTimeDriftMs": 0.655,
+        "meanBeatTimeDriftMs": 0.279,
+        "maxIntervalDriftMs": 0.793,
+        "meanIntervalDriftMs": 0.329
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 145,
+          "timeMs": 26
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 145,
+          "timeMs": 440
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 145,
+          "timeMs": 853
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 145,
+          "timeMs": 1267
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 145,
+          "timeMs": 1681
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 145,
+          "timeMs": 2095
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 145,
+          "timeMs": 2509
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 145,
+          "timeMs": 2922
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 768,
+          "beat": 1,
+          "bpm": 145,
+          "timeMs": 317819
+        },
+        {
+          "index": 769,
+          "beat": 2,
+          "bpm": 145,
+          "timeMs": 318233
+        },
+        {
+          "index": 770,
+          "beat": 3,
+          "bpm": 145,
+          "timeMs": 318647
+        },
+        {
+          "index": 771,
+          "beat": 4,
+          "bpm": 145,
+          "timeMs": 319060
+        },
+        {
+          "index": 772,
+          "beat": 1,
+          "bpm": 145,
+          "timeMs": 319474
+        },
+        {
+          "index": 773,
+          "beat": 2,
+          "bpm": 145,
+          "timeMs": 319888
+        },
+        {
+          "index": 774,
+          "beat": 3,
+          "bpm": 145,
+          "timeMs": 320302
+        },
+        {
+          "index": 775,
+          "beat": 4,
+          "bpm": 145,
+          "timeMs": 320715
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 80036, 26, 276644, 320715, 776, 135701569, 0, 0],
+        "contentByteLength": 1552,
+        "inferredEntrySize": 8,
+        "inferredEntryCount": 194,
+        "firstEntryHex": "01460071039a02c501f00132005c036f029a01dc01070031035b028601b100db"
+      }
+    },
+    {
+      "entryIndex": 2,
+      "trackId": 1877,
+      "title": "Sexuality (My Reality) (Hardspace Mix)",
+      "fileName": "len faki - sexuality (my reality) (hardspace.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P01E/000247E6/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 903,
+        "parsedCount": 903
+      },
+      "pqtzStats": {
+        "entryCount": 903,
+        "uniqueBpmCount": 1,
+        "bpmValues": [140],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 36
+        },
+        "lastEntry": {
+          "index": 902,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 386608
+        },
+        "maxBeatTimeDriftMs": 0.714,
+        "meanBeatTimeDriftMs": 0.327,
+        "maxIntervalDriftMs": 0.571,
+        "meanIntervalDriftMs": 0.49
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 36
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 465
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 893
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 1322
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 1751
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 2179
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 2608
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 3036
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 895,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 383608
+        },
+        {
+          "index": 896,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 384036
+        },
+        {
+          "index": 897,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 384465
+        },
+        {
+          "index": 898,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 384893
+        },
+        {
+          "index": 899,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 385322
+        },
+        {
+          "index": 900,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 385751
+        },
+        {
+          "index": 901,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 386179
+        },
+        {
+          "index": 902,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 386608
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79536, 36, 210608, 386608, 903, 187214022, 0, 0],
+        "contentByteLength": 1806,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "0322017603b102050058029300e70322017603b102050058029300e703220176"
+      }
+    },
+    {
+      "entryIndex": 3,
+      "trackId": 1878,
+      "title": "Zig Zag (Original Mix)",
+      "fileName": "len faki - zig zag (original mix) (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P01C/000052C2/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "len faki - zig zag (original mix) (1).mp3",
+        "title": "Zig Zag (Original Mix)",
+        "artist": "Len Faki",
+        "bpm": 137,
+        "firstBeatMs": 52,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 741,
+        "parsedCount": 741
+      },
+      "pqtzStats": {
+        "entryCount": 741,
+        "uniqueBpmCount": 1,
+        "bpmValues": [137],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 137,
+          "timeMs": 52
+        },
+        "lastEntry": {
+          "index": 740,
+          "beat": 1,
+          "bpm": 137,
+          "timeMs": 324139
+        },
+        "maxBeatTimeDriftMs": 0.949,
+        "meanBeatTimeDriftMs": 0.458,
+        "maxIntervalDriftMs": 0.956,
+        "meanIntervalDriftMs": 0.084
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 137,
+          "timeMs": 52
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 137,
+          "timeMs": 490
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 137,
+          "timeMs": 927
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 137,
+          "timeMs": 1365
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 137,
+          "timeMs": 1803
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 137,
+          "timeMs": 2241
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 137,
+          "timeMs": 2679
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 137,
+          "timeMs": 3117
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 733,
+          "beat": 2,
+          "bpm": 137,
+          "timeMs": 321073
+        },
+        {
+          "index": 734,
+          "beat": 3,
+          "bpm": 137,
+          "timeMs": 321511
+        },
+        {
+          "index": 735,
+          "beat": 4,
+          "bpm": 137,
+          "timeMs": 321949
+        },
+        {
+          "index": 736,
+          "beat": 1,
+          "bpm": 137,
+          "timeMs": 322387
+        },
+        {
+          "index": 737,
+          "beat": 2,
+          "bpm": 137,
+          "timeMs": 322825
+        },
+        {
+          "index": 738,
+          "beat": 3,
+          "bpm": 137,
+          "timeMs": 323263
+        },
+        {
+          "index": 739,
+          "beat": 4,
+          "bpm": 137,
+          "timeMs": 323701
+        },
+        {
+          "index": 740,
+          "beat": 1,
+          "bpm": 137,
+          "timeMs": 324139
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79236, 52, 79236, 324139, 741, 130266198, 0, 0],
+        "contentByteLength": 1482,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "0028000003bf037f0356032e030502dc02b3028a024b022201f901d001a8017f"
+      }
+    },
+    {
+      "entryIndex": 4,
+      "trackId": 1879,
+      "title": "Loop 2 (Hardspace Mix)",
+      "fileName": "len faki & kenny larkin & alex reece - loop .mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P013/0002C33D/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 853,
+        "parsedCount": 853
+      },
+      "pqtzStats": {
+        "entryCount": 853,
+        "uniqueBpmCount": 1,
+        "bpmValues": [139],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 139,
+          "timeMs": 51
+        },
+        "lastEntry": {
+          "index": 852,
+          "beat": 1,
+          "bpm": 139,
+          "timeMs": 367821
+        },
+        "maxBeatTimeDriftMs": 0.942,
+        "meanBeatTimeDriftMs": 0.373,
+        "maxIntervalDriftMs": 0.655,
+        "meanIntervalDriftMs": 0.452
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 139,
+          "timeMs": 51
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 139,
+          "timeMs": 482
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 139,
+          "timeMs": 914
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 139,
+          "timeMs": 1346
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 139,
+          "timeMs": 1777
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 139,
+          "timeMs": 2209
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 139,
+          "timeMs": 2640
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 139,
+          "timeMs": 3072
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 845,
+          "beat": 2,
+          "bpm": 139,
+          "timeMs": 364799
+        },
+        {
+          "index": 846,
+          "beat": 3,
+          "bpm": 139,
+          "timeMs": 365231
+        },
+        {
+          "index": 847,
+          "beat": 4,
+          "bpm": 139,
+          "timeMs": 365662
+        },
+        {
+          "index": 848,
+          "beat": 1,
+          "bpm": 139,
+          "timeMs": 366094
+        },
+        {
+          "index": 849,
+          "beat": 2,
+          "bpm": 139,
+          "timeMs": 366526
+        },
+        {
+          "index": 850,
+          "beat": 3,
+          "bpm": 139,
+          "timeMs": 366957
+        },
+        {
+          "index": 851,
+          "beat": 4,
+          "bpm": 139,
+          "timeMs": 367389
+        },
+        {
+          "index": 852,
+          "beat": 1,
+          "bpm": 139,
+          "timeMs": 367821
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79436, 51, 79436, 367821, 853, 168755852, 0, 0],
+        "contentByteLength": 1706,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "004102d10178001f02af015603e5028d013403c3026b011203a1024900f0037f"
+      }
+    },
+    {
+      "entryIndex": 5,
+      "trackId": 1880,
+      "title": "Passion Deviante (Original Mix)",
+      "fileName": "leo thomas - passion deviante (original mix).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P079/000162B9/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "leo thomas - passion deviante (original mix).mp3",
+        "title": "Passion Deviante (Original Mix)",
+        "artist": "Leo Thomas",
+        "bpm": 126,
+        "firstBeatMs": 76,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 757,
+        "parsedCount": 757
+      },
+      "pqtzStats": {
+        "entryCount": 757,
+        "uniqueBpmCount": 1,
+        "bpmValues": [126],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 76
+        },
+        "lastEntry": {
+          "index": 756,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 360076
+        },
+        "maxBeatTimeDriftMs": 0.857,
+        "meanBeatTimeDriftMs": 0.394,
+        "maxIntervalDriftMs": 0.81,
+        "meanIntervalDriftMs": 0.308
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 76
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 126,
+          "timeMs": 553
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 126,
+          "timeMs": 1029
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 126,
+          "timeMs": 1505
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 1981
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 126,
+          "timeMs": 2457
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 126,
+          "timeMs": 2934
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 126,
+          "timeMs": 3410
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 749,
+          "beat": 2,
+          "bpm": 126,
+          "timeMs": 356743
+        },
+        {
+          "index": 750,
+          "beat": 3,
+          "bpm": 126,
+          "timeMs": 357219
+        },
+        {
+          "index": 751,
+          "beat": 4,
+          "bpm": 126,
+          "timeMs": 357695
+        },
+        {
+          "index": 752,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 358172
+        },
+        {
+          "index": 753,
+          "beat": 2,
+          "bpm": 126,
+          "timeMs": 358648
+        },
+        {
+          "index": 754,
+          "beat": 3,
+          "bpm": 126,
+          "timeMs": 359124
+        },
+        {
+          "index": 755,
+          "beat": 4,
+          "bpm": 126,
+          "timeMs": 359600
+        },
+        {
+          "index": 756,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 360076
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78136, 76, 78136, 360076, 757, 145857911, 0, 0],
+        "contentByteLength": 1514,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "0366003d00fb01ba02780337000d00cc018a0249030703c5009c015a021902d7"
+      }
+    },
+    {
+      "entryIndex": 6,
+      "trackId": 1881,
+      "title": "Airlock Alert (Original Mix)",
+      "fileName": "leonardo chevy - airlock alert (original mix.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P058/00011E82/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 745,
+        "parsedCount": 745
+      },
+      "pqtzStats": {
+        "entryCount": 745,
+        "uniqueBpmCount": 1,
+        "bpmValues": [128],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 128,
+          "timeMs": 49
+        },
+        "lastEntry": {
+          "index": 744,
+          "beat": 1,
+          "bpm": 128,
+          "timeMs": 348799
+        },
+        "maxBeatTimeDriftMs": 0.75,
+        "meanBeatTimeDriftMs": 0.374,
+        "maxIntervalDriftMs": 0.75,
+        "meanIntervalDriftMs": 0.375
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 128,
+          "timeMs": 49
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 128,
+          "timeMs": 518
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 128,
+          "timeMs": 987
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 128,
+          "timeMs": 1456
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 128,
+          "timeMs": 1924
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 128,
+          "timeMs": 2393
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 128,
+          "timeMs": 2862
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 128,
+          "timeMs": 3331
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 737,
+          "beat": 2,
+          "bpm": 128,
+          "timeMs": 345518
+        },
+        {
+          "index": 738,
+          "beat": 3,
+          "bpm": 128,
+          "timeMs": 345987
+        },
+        {
+          "index": 739,
+          "beat": 4,
+          "bpm": 128,
+          "timeMs": 346456
+        },
+        {
+          "index": 740,
+          "beat": 1,
+          "bpm": 128,
+          "timeMs": 346924
+        },
+        {
+          "index": 741,
+          "beat": 2,
+          "bpm": 128,
+          "timeMs": 347393
+        },
+        {
+          "index": 742,
+          "beat": 3,
+          "bpm": 128,
+          "timeMs": 347862
+        },
+        {
+          "index": 743,
+          "beat": 4,
+          "bpm": 128,
+          "timeMs": 348331
+        },
+        {
+          "index": 744,
+          "beat": 1,
+          "bpm": 128,
+          "timeMs": 348799
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78336, 49, 78336, 348799, 745, 139484020, 0, 0],
+        "contentByteLength": 1490,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "03d102da01e200eb03dc02e501ee00e003d102da01e200eb03dc02e501ee00e0"
+      }
+    },
+    {
+      "entryIndex": 7,
+      "trackId": 1882,
+      "title": "Mechanised Old Factory (Original Mix)",
+      "fileName": "leonardo chevy - mechanised old factory (ori.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P075/00013743/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 777,
+        "parsedCount": 777
+      },
+      "pqtzStats": {
+        "entryCount": 777,
+        "uniqueBpmCount": 1,
+        "bpmValues": [138],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 50
+        },
+        "lastEntry": {
+          "index": 776,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 337442
+        },
+        "maxBeatTimeDriftMs": 0.783,
+        "meanBeatTimeDriftMs": 0.342,
+        "maxIntervalDriftMs": 0.783,
+        "meanIntervalDriftMs": 0.34
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 50
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 485
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 920
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 1355
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 1789
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 2224
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 2659
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 3094
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 769,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 334398
+        },
+        {
+          "index": 770,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 334833
+        },
+        {
+          "index": 771,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 335268
+        },
+        {
+          "index": 772,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 335702
+        },
+        {
+          "index": 773,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 336137
+        },
+        {
+          "index": 774,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 336572
+        },
+        {
+          "index": 775,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 337007
+        },
+        {
+          "index": 776,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 337442
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79336, 50, 79336, 337442, 777, 141840149, 0, 0],
+        "contentByteLength": 1554,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "03190242016a009303a302b501de0107002f03400268019100b903ca02f3021b"
+      }
+    },
+    {
+      "entryIndex": 8,
+      "trackId": 1883,
+      "title": "Slightly Higher (Original Mix)",
+      "fileName": "leonardo chevy - slightly higher (original m.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P02C/000221E8/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 1049,
+        "parsedCount": 1049
+      },
+      "pqtzStats": {
+        "entryCount": 1049,
+        "uniqueBpmCount": 1,
+        "bpmValues": [126],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 52
+        },
+        "lastEntry": {
+          "index": 1048,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 499100
+        },
+        "maxBeatTimeDriftMs": 0.524,
+        "meanBeatTimeDriftMs": 0.252,
+        "maxIntervalDriftMs": 0.81,
+        "meanIntervalDriftMs": 0.309
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 52
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 126,
+          "timeMs": 528
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 126,
+          "timeMs": 1004
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 126,
+          "timeMs": 1481
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 1957
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 126,
+          "timeMs": 2433
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 126,
+          "timeMs": 2909
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 126,
+          "timeMs": 3385
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 1041,
+          "beat": 2,
+          "bpm": 126,
+          "timeMs": 495766
+        },
+        {
+          "index": 1042,
+          "beat": 3,
+          "bpm": 126,
+          "timeMs": 496243
+        },
+        {
+          "index": 1043,
+          "beat": 4,
+          "bpm": 126,
+          "timeMs": 496719
+        },
+        {
+          "index": 1044,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 497195
+        },
+        {
+          "index": 1045,
+          "beat": 2,
+          "bpm": 126,
+          "timeMs": 497671
+        },
+        {
+          "index": 1046,
+          "beat": 3,
+          "bpm": 126,
+          "timeMs": 498147
+        },
+        {
+          "index": 1047,
+          "beat": 4,
+          "bpm": 126,
+          "timeMs": 498623
+        },
+        {
+          "index": 1048,
+          "beat": 1,
+          "bpm": 126,
+          "timeMs": 499100
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78136, 52, 78136, 499100, 1049, 275025095, 0, 0],
+        "contentByteLength": 2098,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "021b02da0398006f012d01ec02aa0369003f00fd01bc027a0339000f00ce018c"
+      }
+    },
+    {
+      "entryIndex": 9,
+      "trackId": 1884,
+      "title": "Sprawling Metropolis (Original Mix)",
+      "fileName": "leonardo chevy - sprawling metropolis (origi.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P030/0002EF10/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 769,
+        "parsedCount": 769
+      },
+      "pqtzStats": {
+        "entryCount": 769,
+        "uniqueBpmCount": 1,
+        "bpmValues": [130],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 52
+        },
+        "lastEntry": {
+          "index": 768,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 354513
+        },
+        "maxBeatTimeDriftMs": 0.769,
+        "meanBeatTimeDriftMs": 0.343,
+        "maxIntervalDriftMs": 0.538,
+        "meanIntervalDriftMs": 0.497
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 52
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 513
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 975
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 1436
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 1898
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 2359
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 2821
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 3282
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 761,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 351282
+        },
+        {
+          "index": 762,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 351744
+        },
+        {
+          "index": 763,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 352206
+        },
+        {
+          "index": 764,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 352667
+        },
+        {
+          "index": 765,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 353129
+        },
+        {
+          "index": 766,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 353590
+        },
+        {
+          "index": 767,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 354052
+        },
+        {
+          "index": 768,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 354513
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78536, 52, 78536, 354513, 769, 146329134, 0, 0],
+        "contentByteLength": 1538,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "00c702e5011b0339016f037601ac03ca0200003602540073029100c702e5011b"
+      }
+    },
+    {
+      "entryIndex": 10,
+      "trackId": 1885,
+      "title": "Crescendo (Extended Mix)",
+      "fileName": "les hemstock, darren jones - crescendo (exte.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P009/0002C199/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 1024,
+        "parsedCount": 1024
+      },
+      "pqtzStats": {
+        "entryCount": 1024,
+        "uniqueBpmCount": 1,
+        "bpmValues": [136],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 70
+        },
+        "lastEntry": {
+          "index": 1023,
+          "beat": 4,
+          "bpm": 136,
+          "timeMs": 451394
+        },
+        "maxBeatTimeDriftMs": 1.235,
+        "meanBeatTimeDriftMs": 0.55,
+        "maxIntervalDriftMs": 0.824,
+        "meanIntervalDriftMs": 0.291
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 70
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 136,
+          "timeMs": 512
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 136,
+          "timeMs": 953
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 136,
+          "timeMs": 1394
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 1835
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 136,
+          "timeMs": 2276
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 136,
+          "timeMs": 2717
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 136,
+          "timeMs": 3159
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 1016,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 448306
+        },
+        {
+          "index": 1017,
+          "beat": 2,
+          "bpm": 136,
+          "timeMs": 448747
+        },
+        {
+          "index": 1018,
+          "beat": 3,
+          "bpm": 136,
+          "timeMs": 449188
+        },
+        {
+          "index": 1019,
+          "beat": 4,
+          "bpm": 136,
+          "timeMs": 449630
+        },
+        {
+          "index": 1020,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 450071
+        },
+        {
+          "index": 1021,
+          "beat": 2,
+          "bpm": 136,
+          "timeMs": 450512
+        },
+        {
+          "index": 1022,
+          "beat": 3,
+          "bpm": 136,
+          "timeMs": 450953
+        },
+        {
+          "index": 1023,
+          "beat": 4,
+          "bpm": 136,
+          "timeMs": 451394
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79136, 70, 275744, 451394, 1024, 245078847, 0, 0],
+        "contentByteLength": 2048,
+        "inferredEntrySize": 8,
+        "inferredEntryCount": 256,
+        "firstEntryHex": "0347001200c50178022b02de0391005c011001c30276032903dc00a7015a020e"
+      }
+    },
+    {
+      "entryIndex": 11,
+      "trackId": 1886,
+      "title": "Foul Play",
+      "fileName": "leviws - foul play (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P07B/00012BBF/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "leviws - foul play (1).mp3",
+        "title": "Foul Play",
+        "artist": "LeviwS",
+        "bpm": 138,
+        "firstBeatMs": 28,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 845,
+        "parsedCount": 845
+      },
+      "pqtzStats": {
+        "entryCount": 845,
+        "uniqueBpmCount": 1,
+        "bpmValues": [138],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 28
+        },
+        "lastEntry": {
+          "index": 844,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 366985
+        },
+        "maxBeatTimeDriftMs": 0.565,
+        "meanBeatTimeDriftMs": 0.257,
+        "maxIntervalDriftMs": 0.783,
+        "meanIntervalDriftMs": 0.34
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 28
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 463
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 898
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 1332
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 1767
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 2202
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 2637
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 3072
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 837,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 363941
+        },
+        {
+          "index": 838,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 364376
+        },
+        {
+          "index": 839,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 364811
+        },
+        {
+          "index": 840,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 365245
+        },
+        {
+          "index": 841,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 365680
+        },
+        {
+          "index": 842,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 366115
+        },
+        {
+          "index": 843,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 366550
+        },
+        {
+          "index": 844,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 366985
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79336, 28, 79336, 366985, 845, 166725975, 0, 0],
+        "contentByteLength": 1690,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "0252017a00a303b302dc02050116003f0350027801a100c903da0302022b0154"
+      }
+    },
+    {
+      "entryIndex": 12,
+      "trackId": 1887,
+      "title": "Diversity Of Known Substances (Original Mix)",
+      "fileName": "lewis fautzi - diversity of known substances.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P029/000034BB/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 706,
+        "parsedCount": 706
+      },
+      "pqtzStats": {
+        "entryCount": 706,
+        "uniqueBpmCount": 1,
+        "bpmValues": [138],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 225
+        },
+        "lastEntry": {
+          "index": 705,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 306747
+        },
+        "maxBeatTimeDriftMs": 0.696,
+        "meanBeatTimeDriftMs": 0.296,
+        "maxIntervalDriftMs": 0.783,
+        "meanIntervalDriftMs": 0.34
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 225
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 660
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 1095
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 1530
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 1964
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 2399
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 2834
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 3269
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 698,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 303703
+        },
+        {
+          "index": 699,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 304138
+        },
+        {
+          "index": 700,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 304573
+        },
+        {
+          "index": 701,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 305008
+        },
+        {
+          "index": 702,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 305443
+        },
+        {
+          "index": 703,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 305877
+        },
+        {
+          "index": 704,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 306312
+        },
+        {
+          "index": 705,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 306747
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79336, 225, 144872, 306747, 706, 118105740, 0, 0],
+        "contentByteLength": 1412,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "02ca01f2011b00440354027d01a500ce03de02f002190141006a037b02a301cc"
+      }
+    },
+    {
+      "entryIndex": 13,
+      "trackId": 1888,
+      "title": "LOOP (LFO VS. F.U.S.E.) (FUSE MIX)",
+      "fileName": "lfo & f.u.s.e. & richie hawtin - loop (lfo v.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P00E/00008DCC/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 1121,
+        "parsedCount": 1121
+      },
+      "pqtzStats": {
+        "entryCount": 1121,
+        "uniqueBpmCount": 1,
+        "bpmValues": [131.99],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 131.99,
+          "timeMs": 19
+        },
+        "lastEntry": {
+          "index": 1120,
+          "beat": 1,
+          "bpm": 131.99,
+          "timeMs": 509142
+        },
+        "maxBeatTimeDriftMs": 6.521,
+        "meanBeatTimeDriftMs": 2.968,
+        "maxIntervalDriftMs": 0.58,
+        "meanIntervalDriftMs": 0.488
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 131.99,
+          "timeMs": 19
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 131.99,
+          "timeMs": 474
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 131.99,
+          "timeMs": 928
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 131.99,
+          "timeMs": 1383
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 131.99,
+          "timeMs": 1838
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 131.99,
+          "timeMs": 2292
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 131.99,
+          "timeMs": 2747
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 131.99,
+          "timeMs": 3201
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 1113,
+          "beat": 2,
+          "bpm": 131.99,
+          "timeMs": 505960
+        },
+        {
+          "index": 1114,
+          "beat": 3,
+          "bpm": 131.99,
+          "timeMs": 506415
+        },
+        {
+          "index": 1115,
+          "beat": 4,
+          "bpm": 131.99,
+          "timeMs": 506870
+        },
+        {
+          "index": 1116,
+          "beat": 1,
+          "bpm": 131.99,
+          "timeMs": 507324
+        },
+        {
+          "index": 1117,
+          "beat": 2,
+          "bpm": 131.99,
+          "timeMs": 507779
+        },
+        {
+          "index": 1118,
+          "beat": 3,
+          "bpm": 131.99,
+          "timeMs": 508233
+        },
+        {
+          "index": 1119,
+          "beat": 4,
+          "bpm": 131.99,
+          "timeMs": 508688
+        },
+        {
+          "index": 1120,
+          "beat": 1,
+          "bpm": 131.99,
+          "timeMs": 509142
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78735, 19, 78735, 509142, 1121, 300183944, 0, 0],
+        "contentByteLength": 2242,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "02aa011d031e019100040205007802d300eb034701ba03ba022d00a002fc0114"
+      }
+    },
+    {
+      "entryIndex": 14,
+      "trackId": 1889,
+      "title": "Take My Love (Hard Mix)",
+      "fileName": "Mha Iri - Take My Love (Hard Mix) (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P022/0002A906/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "Mha Iri - Take My Love (Hard Mix) (1).mp3",
+        "title": "Take My Love (Hard Mix)",
+        "artist": "Mha Iri",
+        "bpm": 150,
+        "firstBeatMs": 95,
+        "barBeatOffset": 1,
+        "firstBeatLabel": 4
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 860,
+        "parsedCount": 860
+      },
+      "pqtzStats": {
+        "entryCount": 860,
+        "uniqueBpmCount": 1,
+        "bpmValues": [150],
+        "firstEntry": {
+          "index": 0,
+          "beat": 4,
+          "bpm": 150,
+          "timeMs": 95
+        },
+        "lastEntry": {
+          "index": 859,
+          "beat": 3,
+          "bpm": 150,
+          "timeMs": 343695
+        },
+        "maxBeatTimeDriftMs": 0,
+        "meanBeatTimeDriftMs": 0,
+        "maxIntervalDriftMs": 0,
+        "meanIntervalDriftMs": 0
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 4,
+          "bpm": 150,
+          "timeMs": 95
+        },
+        {
+          "index": 1,
+          "beat": 1,
+          "bpm": 150,
+          "timeMs": 495
+        },
+        {
+          "index": 2,
+          "beat": 2,
+          "bpm": 150,
+          "timeMs": 895
+        },
+        {
+          "index": 3,
+          "beat": 3,
+          "bpm": 150,
+          "timeMs": 1295
+        },
+        {
+          "index": 4,
+          "beat": 4,
+          "bpm": 150,
+          "timeMs": 1695
+        },
+        {
+          "index": 5,
+          "beat": 1,
+          "bpm": 150,
+          "timeMs": 2095
+        },
+        {
+          "index": 6,
+          "beat": 2,
+          "bpm": 150,
+          "timeMs": 2495
+        },
+        {
+          "index": 7,
+          "beat": 3,
+          "bpm": 150,
+          "timeMs": 2895
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 852,
+          "beat": 4,
+          "bpm": 150,
+          "timeMs": 340895
+        },
+        {
+          "index": 853,
+          "beat": 1,
+          "bpm": 150,
+          "timeMs": 341295
+        },
+        {
+          "index": 854,
+          "beat": 2,
+          "bpm": 150,
+          "timeMs": 341695
+        },
+        {
+          "index": 855,
+          "beat": 3,
+          "bpm": 150,
+          "timeMs": 342095
+        },
+        {
+          "index": 856,
+          "beat": 4,
+          "bpm": 150,
+          "timeMs": 342495
+        },
+        {
+          "index": 857,
+          "beat": 1,
+          "bpm": 150,
+          "timeMs": 342895
+        },
+        {
+          "index": 858,
+          "beat": 2,
+          "bpm": 150,
+          "timeMs": 343295
+        },
+        {
+          "index": 859,
+          "beat": 3,
+          "bpm": 150,
+          "timeMs": 343695
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 277144, 95, 211608, 343695, 860, 160731850, 0, 0],
+        "contentByteLength": 1720,
+        "inferredEntrySize": 8,
+        "inferredEntryCount": 215,
+        "firstEntryHex": "0132013201320132013201320132013201320132013201320132013201320132"
+      }
+    },
+    {
+      "entryIndex": 15,
+      "trackId": 1890,
+      "title": "Take My Love (Original Mix)",
+      "fileName": "Mha Iri - Take My Love (Original Mix) (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P00A/00000C94/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "Mha Iri - Take My Love (Original Mix) (1).mp3",
+        "title": "Take My Love (Original Mix)",
+        "artist": "Mha Iri",
+        "bpm": 142,
+        "firstBeatMs": 236,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 857,
+        "parsedCount": 857
+      },
+      "pqtzStats": {
+        "entryCount": 857,
+        "uniqueBpmCount": 1,
+        "bpmValues": [142],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 142,
+          "timeMs": 236
+        },
+        "lastEntry": {
+          "index": 856,
+          "beat": 1,
+          "bpm": 142,
+          "timeMs": 361926
+        },
+        "maxBeatTimeDriftMs": 0.62,
+        "meanBeatTimeDriftMs": 0.266,
+        "maxIntervalDriftMs": 0.535,
+        "meanIntervalDriftMs": 0.498
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 142,
+          "timeMs": 236
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 142,
+          "timeMs": 659
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 142,
+          "timeMs": 1081
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 142,
+          "timeMs": 1504
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 142,
+          "timeMs": 1926
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 142,
+          "timeMs": 2349
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 142,
+          "timeMs": 2771
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 142,
+          "timeMs": 3194
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 849,
+          "beat": 2,
+          "bpm": 142,
+          "timeMs": 358969
+        },
+        {
+          "index": 850,
+          "beat": 3,
+          "bpm": 142,
+          "timeMs": 359391
+        },
+        {
+          "index": 851,
+          "beat": 4,
+          "bpm": 142,
+          "timeMs": 359814
+        },
+        {
+          "index": 852,
+          "beat": 1,
+          "bpm": 142,
+          "timeMs": 360236
+        },
+        {
+          "index": 853,
+          "beat": 2,
+          "bpm": 142,
+          "timeMs": 360659
+        },
+        {
+          "index": 854,
+          "beat": 3,
+          "bpm": 142,
+          "timeMs": 361081
+        },
+        {
+          "index": 855,
+          "beat": 4,
+          "bpm": 142,
+          "timeMs": 361504
+        },
+        {
+          "index": 856,
+          "beat": 1,
+          "bpm": 142,
+          "timeMs": 361926
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79736, 236, 79736, 361926, 857, 167358127, 0, 0],
+        "contentByteLength": 1714,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "028300a002bc00f0030c013f03440178039401c703e302000034024f0083029f"
+      }
+    },
+    {
+      "entryIndex": 16,
+      "trackId": 1891,
+      "title": "Tanciki (Extended Mix)",
+      "fileName": "Molella & Alex Nocera & Mike Candys & Lucio .mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P01D/0002CEFB/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 675,
+        "parsedCount": 675
+      },
+      "pqtzStats": {
+        "entryCount": 675,
+        "uniqueBpmCount": 1,
+        "bpmValues": [140],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 171
+        },
+        "lastEntry": {
+          "index": 674,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 289028
+        },
+        "maxBeatTimeDriftMs": 0.571,
+        "meanBeatTimeDriftMs": 0.265,
+        "maxIntervalDriftMs": 0.571,
+        "meanIntervalDriftMs": 0.49
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 171
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 599
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 1028
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 1457
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 1885
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 2314
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 2742
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 3171
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 667,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 286028
+        },
+        {
+          "index": 668,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 286457
+        },
+        {
+          "index": 669,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 286885
+        },
+        {
+          "index": 670,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 287314
+        },
+        {
+          "index": 671,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 287742
+        },
+        {
+          "index": 672,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 288171
+        },
+        {
+          "index": 673,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 288599
+        },
+        {
+          "index": 674,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 289028
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79536, 171, 210608, 289028, 675, 107056300, 0, 0],
+        "contentByteLength": 1350,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "019503d10224007802b301070342019503d10224007802b301070342019503d1"
+      }
+    },
+    {
+      "entryIndex": 17,
+      "trackId": 1892,
+      "title": "Dephts of Your Mind (Original Mix)",
+      "fileName": "Morees - Dephts of Your Mind (Original Mix) .mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P057/00014F45/ANLZ0001.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 720,
+        "parsedCount": 720
+      },
+      "pqtzStats": {
+        "entryCount": 720,
+        "uniqueBpmCount": 1,
+        "bpmValues": [135],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 71
+        },
+        "lastEntry": {
+          "index": 719,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 319627
+        },
+        "maxBeatTimeDriftMs": 0.556,
+        "meanBeatTimeDriftMs": 0.259,
+        "maxIntervalDriftMs": 0.556,
+        "meanIntervalDriftMs": 0.494
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 71
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 516
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 960
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 1404
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 1849
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 2293
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 2738
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 3182
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 712,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 316516
+        },
+        {
+          "index": 713,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 316960
+        },
+        {
+          "index": 714,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 317404
+        },
+        {
+          "index": 715,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 317849
+        },
+        {
+          "index": 716,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 318293
+        },
+        {
+          "index": 717,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 318738
+        },
+        {
+          "index": 718,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 319182
+        },
+        {
+          "index": 719,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 319627
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79036, 71, 275644, 319627, 720, 124813000, 0, 0],
+        "contentByteLength": 1440,
+        "inferredEntrySize": 8,
+        "inferredEntryCount": 180,
+        "firstEntryHex": "0261003601f203af01830340011402d100a50261003601f203af018303400114"
+      }
+    },
+    {
+      "entryIndex": 18,
+      "trackId": 1893,
+      "title": "Take It Down (Original Mix)",
+      "fileName": "Phoenix Movement, Bora Project - Take It Dow.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P038/0002EBB2/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 895,
+        "parsedCount": 895
+      },
+      "pqtzStats": {
+        "entryCount": 895,
+        "uniqueBpmCount": 1,
+        "bpmValues": [135],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 24
+        },
+        "lastEntry": {
+          "index": 894,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 397358
+        },
+        "maxBeatTimeDriftMs": 0.667,
+        "meanBeatTimeDriftMs": 0.296,
+        "maxIntervalDriftMs": 0.556,
+        "meanIntervalDriftMs": 0.494
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 24
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 469
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 913
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 1358
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 1802
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 2246
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 2691
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 3135
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 887,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 394246
+        },
+        {
+          "index": 888,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 394691
+        },
+        {
+          "index": 889,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 395135
+        },
+        {
+          "index": 890,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 395580
+        },
+        {
+          "index": 891,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 396024
+        },
+        {
+          "index": 892,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 396469
+        },
+        {
+          "index": 893,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 396913
+        },
+        {
+          "index": 894,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 397358
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79036, 24, 210108, 397358, 895, 189913082, 0, 0],
+        "contentByteLength": 1790,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "02f900ce028a005f021b03d801ac0369013d02f900ce028a005f021b03d801ac"
+      }
+    },
+    {
+      "entryIndex": 19,
+      "trackId": 1894,
+      "title": "Sympoiesis (Original Mix)",
+      "fileName": "Pleasurekraft, Zimmz - Sympoiesis (Original .mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P02E/0000BDD6/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 843,
+        "parsedCount": 843
+      },
+      "pqtzStats": {
+        "entryCount": 843,
+        "uniqueBpmCount": 1,
+        "bpmValues": [134],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 71
+        },
+        "lastEntry": {
+          "index": 842,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 377086
+        },
+        "maxBeatTimeDriftMs": 0.642,
+        "meanBeatTimeDriftMs": 0.26,
+        "maxIntervalDriftMs": 0.761,
+        "meanIntervalDriftMs": 0.364
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 71
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 519
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 966
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 1414
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 1862
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 2310
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 2758
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 3205
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 835,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 373952
+        },
+        {
+          "index": 836,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 374400
+        },
+        {
+          "index": 837,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 374847
+        },
+        {
+          "index": 838,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 375295
+        },
+        {
+          "index": 839,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 375743
+        },
+        {
+          "index": 840,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 376191
+        },
+        {
+          "index": 841,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 376638
+        },
+        {
+          "index": 842,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 377086
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78936, 71, 210008, 377086, 843, 170270006, 0, 0],
+        "contentByteLength": 1686,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "01d9011203d8031001ee012600040324025d013b007303390271014f008803a8"
+      }
+    },
+    {
+      "entryIndex": 20,
+      "trackId": 1895,
+      "title": "Sync Out (Original Mix)",
+      "fileName": "Popof - Sync Out (Original Mix) (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P035/0000E649/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "Popof - Sync Out (Original Mix) (1).mp3",
+        "title": "Sync Out (Original Mix)",
+        "artist": "Popof",
+        "bpm": 130,
+        "firstBeatMs": 329,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 770,
+        "parsedCount": 770
+      },
+      "pqtzStats": {
+        "entryCount": 770,
+        "uniqueBpmCount": 1,
+        "bpmValues": [130],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 329
+        },
+        "lastEntry": {
+          "index": 769,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 355252
+        },
+        "maxBeatTimeDriftMs": 0.923,
+        "meanBeatTimeDriftMs": 0.461,
+        "maxIntervalDriftMs": 0.538,
+        "meanIntervalDriftMs": 0.497
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 329
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 790
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 1252
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 1713
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 2175
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 2636
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 3098
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 3559
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 762,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 352021
+        },
+        {
+          "index": 763,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 352482
+        },
+        {
+          "index": 764,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 352944
+        },
+        {
+          "index": 765,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 353405
+        },
+        {
+          "index": 766,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 353867
+        },
+        {
+          "index": 767,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 354329
+        },
+        {
+          "index": 768,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 354790
+        },
+        {
+          "index": 769,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 355252
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78536, 329, 144072, 355252, 770, 146910283, 0, 0],
+        "contentByteLength": 1540,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "00460264009a02b800ee02f5012b0349017f039d01d303da021000460264009a"
+      }
+    },
+    {
+      "entryIndex": 21,
+      "trackId": 1896,
+      "title": "Swipe Right (Extended Mix)",
+      "fileName": "Sam WOLFE - Swipe Right (Extended Mix).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P07A/00013B9C/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "Sam WOLFE - Swipe Right (Extended Mix).mp3",
+        "title": "Swipe Right (Extended Mix)",
+        "artist": "Sam WOLFE",
+        "bpm": 134,
+        "firstBeatMs": 52,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 658,
+        "parsedCount": 658
+      },
+      "pqtzStats": {
+        "entryCount": 658,
+        "uniqueBpmCount": 1,
+        "bpmValues": [134],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 52
+        },
+        "lastEntry": {
+          "index": 657,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 294232
+        },
+        "maxBeatTimeDriftMs": 1.418,
+        "meanBeatTimeDriftMs": 0.45,
+        "maxIntervalDriftMs": 0.761,
+        "meanIntervalDriftMs": 0.363
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 52
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 499
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 947
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 1395
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 1843
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 2290
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 2738
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 3186
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 650,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 291098
+        },
+        {
+          "index": 651,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 291545
+        },
+        {
+          "index": 652,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 291993
+        },
+        {
+          "index": 653,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 292441
+        },
+        {
+          "index": 654,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 292889
+        },
+        {
+          "index": 655,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 293337
+        },
+        {
+          "index": 656,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 293784
+        },
+        {
+          "index": 657,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 294232
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78936, 52, 144472, 294232, 658, 105638150, 0, 0],
+        "contentByteLength": 1316,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "003f035f023d01760053037402ac018a00c3038802c1019e00d7000f02d5020e"
+      }
+    },
+    {
+      "entryIndex": 22,
+      "trackId": 1897,
+      "title": "TAKEOVER (Original Mix)",
+      "fileName": "Scrufizzer, G-Rex, Bebi - TAKEOVER (Original.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P02F/0000A5CF/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 358,
+        "parsedCount": 358
+      },
+      "pqtzStats": {
+        "entryCount": 358,
+        "uniqueBpmCount": 1,
+        "bpmValues": [147],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 147,
+          "timeMs": 71
+        },
+        "lastEntry": {
+          "index": 357,
+          "beat": 2,
+          "bpm": 147,
+          "timeMs": 145785
+        },
+        "maxBeatTimeDriftMs": 0.755,
+        "meanBeatTimeDriftMs": 0.318,
+        "maxIntervalDriftMs": 0.837,
+        "meanIntervalDriftMs": 0.273
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 147,
+          "timeMs": 71
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 147,
+          "timeMs": 479
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 147,
+          "timeMs": 887
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 147,
+          "timeMs": 1295
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 147,
+          "timeMs": 1703
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 147,
+          "timeMs": 2112
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 147,
+          "timeMs": 2520
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 147,
+          "timeMs": 2928
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 350,
+          "beat": 3,
+          "bpm": 147,
+          "timeMs": 142928
+        },
+        {
+          "index": 351,
+          "beat": 4,
+          "bpm": 147,
+          "timeMs": 143336
+        },
+        {
+          "index": 352,
+          "beat": 1,
+          "bpm": 147,
+          "timeMs": 143744
+        },
+        {
+          "index": 353,
+          "beat": 2,
+          "bpm": 147,
+          "timeMs": 144152
+        },
+        {
+          "index": 354,
+          "beat": 3,
+          "bpm": 147,
+          "timeMs": 144561
+        },
+        {
+          "index": 355,
+          "beat": 4,
+          "bpm": 147,
+          "timeMs": 144969
+        },
+        {
+          "index": 356,
+          "beat": 1,
+          "bpm": 147,
+          "timeMs": 145377
+        },
+        {
+          "index": 357,
+          "beat": 2,
+          "bpm": 147,
+          "timeMs": 145785
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 80236, 71, 145772, 145785, 358, 31371674, 0, 0],
+        "contentByteLength": 716,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "00e00183022702ca036d002800cc016f021202b50359001400b7015a01fe02a1"
+      }
+    },
+    {
+      "entryIndex": 23,
+      "trackId": 1898,
+      "title": "Party All The Time (Adam Beyer, Layton Giordani & Green Velvet Remix)",
+      "fileName": "sharam - party all the time (adam beyer, lay.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P05B/000182AF/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 769,
+        "parsedCount": 769
+      },
+      "pqtzStats": {
+        "entryCount": 769,
+        "uniqueBpmCount": 1,
+        "bpmValues": [133],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 133,
+          "timeMs": 49
+        },
+        "lastEntry": {
+          "index": 768,
+          "beat": 1,
+          "bpm": 133,
+          "timeMs": 346515
+        },
+        "maxBeatTimeDriftMs": 0.511,
+        "meanBeatTimeDriftMs": 0.25,
+        "maxIntervalDriftMs": 0.872,
+        "meanIntervalDriftMs": 0.223
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 133,
+          "timeMs": 49
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 133,
+          "timeMs": 500
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 133,
+          "timeMs": 951
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 133,
+          "timeMs": 1402
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 133,
+          "timeMs": 1854
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 133,
+          "timeMs": 2305
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 133,
+          "timeMs": 2756
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 133,
+          "timeMs": 3207
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 761,
+          "beat": 2,
+          "bpm": 133,
+          "timeMs": 343357
+        },
+        {
+          "index": 762,
+          "beat": 3,
+          "bpm": 133,
+          "timeMs": 343808
+        },
+        {
+          "index": 763,
+          "beat": 4,
+          "bpm": 133,
+          "timeMs": 344260
+        },
+        {
+          "index": 764,
+          "beat": 1,
+          "bpm": 133,
+          "timeMs": 344711
+        },
+        {
+          "index": 765,
+          "beat": 2,
+          "bpm": 133,
+          "timeMs": 345162
+        },
+        {
+          "index": 766,
+          "beat": 3,
+          "bpm": 133,
+          "timeMs": 345613
+        },
+        {
+          "index": 767,
+          "beat": 4,
+          "bpm": 133,
+          "timeMs": 346064
+        },
+        {
+          "index": 768,
+          "beat": 1,
+          "bpm": 133,
+          "timeMs": 346515
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78836, 49, 78836, 346515, 769, 143483554, 0, 0],
+        "contentByteLength": 1538,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "01f402850302037f00140091010e018b0208029a03170394002900a6012301a0"
+      }
+    },
+    {
+      "entryIndex": 24,
+      "trackId": 1899,
+      "title": "Move Your Soul (Original Mix)",
+      "fileName": "tom wax - move your soul (original mix) (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P010/00020320/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "tom wax - move your soul (original mix) (1).mp3",
+        "title": "Move Your Soul (Original Mix)",
+        "artist": "Tom Wax",
+        "bpm": 136,
+        "firstBeatMs": 96,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 866,
+        "parsedCount": 866
+      },
+      "pqtzStats": {
+        "entryCount": 866,
+        "uniqueBpmCount": 1,
+        "bpmValues": [136],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 96
+        },
+        "lastEntry": {
+          "index": 865,
+          "beat": 2,
+          "bpm": 136,
+          "timeMs": 381714
+        },
+        "maxBeatTimeDriftMs": 0.765,
+        "meanBeatTimeDriftMs": 0.336,
+        "maxIntervalDriftMs": 0.824,
+        "meanIntervalDriftMs": 0.291
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 96
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 136,
+          "timeMs": 537
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 136,
+          "timeMs": 979
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 136,
+          "timeMs": 1420
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 1861
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 136,
+          "timeMs": 2302
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 136,
+          "timeMs": 2743
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 136,
+          "timeMs": 3185
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 858,
+          "beat": 3,
+          "bpm": 136,
+          "timeMs": 378626
+        },
+        {
+          "index": 859,
+          "beat": 4,
+          "bpm": 136,
+          "timeMs": 379067
+        },
+        {
+          "index": 860,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 379508
+        },
+        {
+          "index": 861,
+          "beat": 2,
+          "bpm": 136,
+          "timeMs": 379949
+        },
+        {
+          "index": 862,
+          "beat": 3,
+          "bpm": 136,
+          "timeMs": 380390
+        },
+        {
+          "index": 863,
+          "beat": 4,
+          "bpm": 136,
+          "timeMs": 380832
+        },
+        {
+          "index": 864,
+          "beat": 1,
+          "bpm": 136,
+          "timeMs": 381273
+        },
+        {
+          "index": 865,
+          "beat": 2,
+          "bpm": 136,
+          "timeMs": 381714
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79136, 96, 144672, 381714, 866, 177103595, 0, 0],
+        "contentByteLength": 1732,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "032203d500a00154020702ba036d002200d50188023b02ee03a1006c011f01d3"
+      }
+    },
+    {
+      "entryIndex": 25,
+      "trackId": 1900,
+      "title": "Take U Higher (Original Mix)",
+      "fileName": "Wehbba & Alan Fitzpatrick - Take U Higher (O.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P06A/0001B594/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 745,
+        "parsedCount": 745
+      },
+      "pqtzStats": {
+        "entryCount": 745,
+        "uniqueBpmCount": 1,
+        "bpmValues": [135],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 50
+        },
+        "lastEntry": {
+          "index": 744,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 330717
+        },
+        "maxBeatTimeDriftMs": 0.778,
+        "meanBeatTimeDriftMs": 0.358,
+        "maxIntervalDriftMs": 0.556,
+        "meanIntervalDriftMs": 0.494
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 50
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 495
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 939
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 1384
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 1828
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 2273
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 2717
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 3161
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 737,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 327606
+        },
+        {
+          "index": 738,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 328050
+        },
+        {
+          "index": 739,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 328495
+        },
+        {
+          "index": 740,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 328939
+        },
+        {
+          "index": 741,
+          "beat": 2,
+          "bpm": 135,
+          "timeMs": 329384
+        },
+        {
+          "index": 742,
+          "beat": 3,
+          "bpm": 135,
+          "timeMs": 329828
+        },
+        {
+          "index": 743,
+          "beat": 4,
+          "bpm": 135,
+          "timeMs": 330273
+        },
+        {
+          "index": 744,
+          "beat": 1,
+          "bpm": 135,
+          "timeMs": 330717
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79036, 50, 79036, 330717, 745, 133270193, 0, 0],
+        "contentByteLength": 1490,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "035d013202ee00c3027f0053021003cc01a1035d013202ee00c3027f00530210"
+      }
+    },
+    {
+      "entryIndex": 26,
+      "trackId": 1901,
+      "title": "Synapse Impulse (Original Mix)",
+      "fileName": "Wigbert - Synapse Impulse (Original Mix) (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P05D/000196E9/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "Wigbert - Synapse Impulse (Original Mix) (1).mp3",
+        "title": "Synapse Impulse (Original Mix)",
+        "artist": "Wigbert",
+        "bpm": 138,
+        "firstBeatMs": 97,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 968,
+        "parsedCount": 968
+      },
+      "pqtzStats": {
+        "entryCount": 968,
+        "uniqueBpmCount": 1,
+        "bpmValues": [138],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 97
+        },
+        "lastEntry": {
+          "index": 967,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 420532
+        },
+        "maxBeatTimeDriftMs": 0.87,
+        "meanBeatTimeDriftMs": 0.402,
+        "maxIntervalDriftMs": 0.783,
+        "meanIntervalDriftMs": 0.34
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 97
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 532
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 967
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 1402
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 1837
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 2271
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 2706
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 3141
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 960,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 417489
+        },
+        {
+          "index": 961,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 417923
+        },
+        {
+          "index": 962,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 418358
+        },
+        {
+          "index": 963,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 418793
+        },
+        {
+          "index": 964,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 419228
+        },
+        {
+          "index": 965,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 419663
+        },
+        {
+          "index": 966,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 420097
+        },
+        {
+          "index": 967,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 420532
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79336, 97, 275944, 420532, 968, 216945529, 0, 0],
+        "contentByteLength": 1936,
+        "inferredEntrySize": 8,
+        "inferredEntryCount": 242,
+        "firstEntryHex": "037b02a301cc00f4001d032e0256017f009103a102ca01f2011b00440354027d"
+      }
+    },
+    {
+      "entryIndex": 27,
+      "trackId": 1902,
+      "title": "Talkin' (Original Mix)",
+      "fileName": "William Kiss - Talkin' (Original Mix) (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P02F/000020F7/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "William Kiss - Talkin' (Original Mix) (1).mp3",
+        "title": "Talkin' (Original Mix)",
+        "artist": "William Kiss",
+        "bpm": 130,
+        "firstBeatMs": 51,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 848,
+        "parsedCount": 848
+      },
+      "pqtzStats": {
+        "entryCount": 848,
+        "uniqueBpmCount": 1,
+        "bpmValues": [130],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 51
+        },
+        "lastEntry": {
+          "index": 847,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 390975
+        },
+        "maxBeatTimeDriftMs": 1.692,
+        "meanBeatTimeDriftMs": 0.855,
+        "maxIntervalDriftMs": 0.538,
+        "meanIntervalDriftMs": 0.497
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 51
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 513
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 975
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 1436
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 1898
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 2359
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 2821
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 3282
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 840,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 387745
+        },
+        {
+          "index": 841,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 388206
+        },
+        {
+          "index": 842,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 388668
+        },
+        {
+          "index": 843,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 389129
+        },
+        {
+          "index": 844,
+          "beat": 1,
+          "bpm": 130,
+          "timeMs": 389591
+        },
+        {
+          "index": 845,
+          "beat": 2,
+          "bpm": 130,
+          "timeMs": 390052
+        },
+        {
+          "index": 846,
+          "beat": 3,
+          "bpm": 130,
+          "timeMs": 390514
+        },
+        {
+          "index": 847,
+          "beat": 4,
+          "bpm": 130,
+          "timeMs": 390975
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78536, 51, 275144, 390975, 848, 176821478, 0, 0],
+        "contentByteLength": 1696,
+        "inferredEntrySize": 8,
+        "inferredEntryCount": 212,
+        "firstEntryHex": "03cc01d500380229008c027d00e002d1013403240188037801dc03cc02300038"
+      }
+    },
+    {
+      "entryIndex": 28,
+      "trackId": 1903,
+      "title": "Talking To Myself (Wehbba Remix)",
+      "fileName": "Woo York, PONGO - Talking To Myself (Wehbba .mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P07F/00017BEF/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 825,
+        "parsedCount": 825
+      },
+      "pqtzStats": {
+        "entryCount": 825,
+        "uniqueBpmCount": 1,
+        "bpmValues": [134],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 71
+        },
+        "lastEntry": {
+          "index": 824,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 369027
+        },
+        "maxBeatTimeDriftMs": 1.03,
+        "meanBeatTimeDriftMs": 0.431,
+        "maxIntervalDriftMs": 0.761,
+        "meanIntervalDriftMs": 0.363
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 71
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 519
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 967
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 1415
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 1862
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 2310
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 2758
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 3206
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 817,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 365892
+        },
+        {
+          "index": 818,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 366340
+        },
+        {
+          "index": 819,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 366788
+        },
+        {
+          "index": 820,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 367236
+        },
+        {
+          "index": 821,
+          "beat": 2,
+          "bpm": 134,
+          "timeMs": 367683
+        },
+        {
+          "index": 822,
+          "beat": 3,
+          "bpm": 134,
+          "timeMs": 368131
+        },
+        {
+          "index": 823,
+          "beat": 4,
+          "bpm": 134,
+          "timeMs": 368579
+        },
+        {
+          "index": 824,
+          "beat": 1,
+          "bpm": 134,
+          "timeMs": 369027
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 78936, 71, 78936, 369027, 825, 163310012, 0, 0],
+        "contentByteLength": 1650,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "0344027d015a009303590291016f00a703c802a601de00bc03dc02ba01f2012b"
+      }
+    },
+    {
+      "entryIndex": 29,
+      "trackId": 1904,
+      "title": "Have It All (Original Mix)",
+      "fileName": "Developer - Have It All (Original Mix).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P037/0002BB6F/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "Developer - Have It All (Original Mix).mp3",
+        "title": "Have It All (Original Mix)",
+        "artist": "Developer",
+        "bpm": 141,
+        "firstBeatMs": 61,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 775,
+        "parsedCount": 775
+      },
+      "pqtzStats": {
+        "entryCount": 775,
+        "uniqueBpmCount": 1,
+        "bpmValues": [141],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 141,
+          "timeMs": 61
+        },
+        "lastEntry": {
+          "index": 774,
+          "beat": 3,
+          "bpm": 141,
+          "timeMs": 329423
+        },
+        "maxBeatTimeDriftMs": 0.596,
+        "meanBeatTimeDriftMs": 0.261,
+        "maxIntervalDriftMs": 0.532,
+        "meanIntervalDriftMs": 0.498
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 141,
+          "timeMs": 61
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 141,
+          "timeMs": 487
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 141,
+          "timeMs": 912
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 141,
+          "timeMs": 1338
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 141,
+          "timeMs": 1763
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 141,
+          "timeMs": 2189
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 141,
+          "timeMs": 2614
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 141,
+          "timeMs": 3040
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 767,
+          "beat": 4,
+          "bpm": 141,
+          "timeMs": 326444
+        },
+        {
+          "index": 768,
+          "beat": 1,
+          "bpm": 141,
+          "timeMs": 326870
+        },
+        {
+          "index": 769,
+          "beat": 2,
+          "bpm": 141,
+          "timeMs": 327295
+        },
+        {
+          "index": 770,
+          "beat": 3,
+          "bpm": 141,
+          "timeMs": 327721
+        },
+        {
+          "index": 771,
+          "beat": 4,
+          "bpm": 141,
+          "timeMs": 328146
+        },
+        {
+          "index": 772,
+          "beat": 1,
+          "bpm": 141,
+          "timeMs": 328572
+        },
+        {
+          "index": 773,
+          "beat": 2,
+          "bpm": 141,
+          "timeMs": 328997
+        },
+        {
+          "index": 774,
+          "beat": 3,
+          "bpm": 141,
+          "timeMs": 329423
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79636, 61, 210708, 329423, 775, 138604453, 0, 0],
+        "contentByteLength": 1550,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "0261008e02a300d002e50112032701540369017f039401c003d50202002f0244"
+      }
+    },
+    {
+      "entryIndex": 30,
+      "trackId": 1905,
+      "title": "The Techno Code (Charlotte de Witte's Acid Code)",
+      "fileName": "enrico sangiuliano - the techno code (charlo.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P036/0000AE74/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 974,
+        "parsedCount": 974
+      },
+      "pqtzStats": {
+        "entryCount": 974,
+        "uniqueBpmCount": 1,
+        "bpmValues": [140],
+        "firstEntry": {
+          "index": 0,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 274
+        },
+        "lastEntry": {
+          "index": 973,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 417274
+        },
+        "maxBeatTimeDriftMs": 0.571,
+        "meanBeatTimeDriftMs": 0.265,
+        "maxIntervalDriftMs": 0.571,
+        "meanIntervalDriftMs": 0.49
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 274
+        },
+        {
+          "index": 1,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 703
+        },
+        {
+          "index": 2,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 1131
+        },
+        {
+          "index": 3,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 1560
+        },
+        {
+          "index": 4,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 1988
+        },
+        {
+          "index": 5,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 2417
+        },
+        {
+          "index": 6,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 2846
+        },
+        {
+          "index": 7,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 3274
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 966,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 414274
+        },
+        {
+          "index": 967,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 414703
+        },
+        {
+          "index": 968,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 415131
+        },
+        {
+          "index": 969,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 415560
+        },
+        {
+          "index": 970,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 415988
+        },
+        {
+          "index": 971,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 416417
+        },
+        {
+          "index": 972,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 416846
+        },
+        {
+          "index": 973,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 417274
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 210608, 274, 276144, 417274, 974, 216984452, 0, 0],
+        "contentByteLength": 1948,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "0244009702d30126036201b500090244009702d30126036201b5000902440097"
+      }
+    },
+    {
+      "entryIndex": 31,
+      "trackId": 1906,
+      "title": "Out of Step (2024 Remake)",
+      "fileName": "eric sneo - out of step (2024 remake) (1).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P041/00019D13/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "eric sneo - out of step (2024 remake) (1).mp3",
+        "title": "Out of Step (2024 Remake)",
+        "artist": "Eric Sneo",
+        "bpm": 140,
+        "firstBeatMs": 27,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 747,
+        "parsedCount": 747
+      },
+      "pqtzStats": {
+        "entryCount": 747,
+        "uniqueBpmCount": 1,
+        "bpmValues": [140],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 27
+        },
+        "lastEntry": {
+          "index": 746,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 319741
+        },
+        "maxBeatTimeDriftMs": 0.857,
+        "meanBeatTimeDriftMs": 0.428,
+        "maxIntervalDriftMs": 0.571,
+        "meanIntervalDriftMs": 0.49
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 27
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 455
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 884
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 1312
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 1741
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 2169
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 2598
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 3027
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 739,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 316741
+        },
+        {
+          "index": 740,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 317169
+        },
+        {
+          "index": 741,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 317598
+        },
+        {
+          "index": 742,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 318027
+        },
+        {
+          "index": 743,
+          "beat": 4,
+          "bpm": 140,
+          "timeMs": 318455
+        },
+        {
+          "index": 744,
+          "beat": 1,
+          "bpm": 140,
+          "timeMs": 318884
+        },
+        {
+          "index": 745,
+          "beat": 2,
+          "bpm": 140,
+          "timeMs": 319312
+        },
+        {
+          "index": 746,
+          "beat": 3,
+          "bpm": 140,
+          "timeMs": 319741
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79536, 27, 210608, 319741, 747, 129893001, 0, 0],
+        "contentByteLength": 1494,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "004a028600d90315016803a301f7004a028600d90315016803a301f7004a0286"
+      }
+    },
+    {
+      "entryIndex": 32,
+      "trackId": 1907,
+      "title": "Again & Again (Frash Deeper Remix)",
+      "fileName": "fx synergy - again & again (frash deeper rem.mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P038/000237BA/ANLZ0000.DAT",
+      "snapshot": null,
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 779,
+        "parsedCount": 779
+      },
+      "pqtzStats": {
+        "entryCount": 779,
+        "uniqueBpmCount": 1,
+        "bpmValues": [139.94],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 139.94,
+          "timeMs": 42
+        },
+        "lastEntry": {
+          "index": 778,
+          "beat": 3,
+          "bpm": 139.94,
+          "timeMs": 333610
+        },
+        "maxBeatTimeDriftMs": 3.531,
+        "meanBeatTimeDriftMs": 1.642,
+        "maxIntervalDriftMs": 0.755,
+        "meanIntervalDriftMs": 0.372
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 139.94,
+          "timeMs": 42
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 139.94,
+          "timeMs": 471
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 139.94,
+          "timeMs": 899
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 139.94,
+          "timeMs": 1328
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 139.94,
+          "timeMs": 1757
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 139.94,
+          "timeMs": 2186
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 139.94,
+          "timeMs": 2614
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 139.94,
+          "timeMs": 3043
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 771,
+          "beat": 4,
+          "bpm": 139.94,
+          "timeMs": 330609
+        },
+        {
+          "index": 772,
+          "beat": 1,
+          "bpm": 139.94,
+          "timeMs": 331038
+        },
+        {
+          "index": 773,
+          "beat": 2,
+          "bpm": 139.94,
+          "timeMs": 331467
+        },
+        {
+          "index": 774,
+          "beat": 3,
+          "bpm": 139.94,
+          "timeMs": 331895
+        },
+        {
+          "index": 775,
+          "beat": 4,
+          "bpm": 139.94,
+          "timeMs": 332324
+        },
+        {
+          "index": 776,
+          "beat": 1,
+          "bpm": 139.94,
+          "timeMs": 332753
+        },
+        {
+          "index": 777,
+          "beat": 2,
+          "bpm": 139.94,
+          "timeMs": 333182
+        },
+        {
+          "index": 778,
+          "beat": 3,
+          "bpm": 139.94,
+          "timeMs": 333610
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79530, 42, 210602, 333610, 779, 140860825, 0, 0],
+        "contentByteLength": 1558,
+        "inferredEntrySize": null,
+        "inferredEntryCount": null,
+        "firstEntryHex": "010b00140305020e0116001f031002190122002b031b0224012d003603270230"
+      }
+    },
+    {
+      "entryIndex": 33,
+      "trackId": 1908,
+      "title": "Rito (Platypuss Remix)",
+      "fileName": "leigh boy - rito (platypuss remix).mp3",
+      "analyzePath": "/PIONEER/USBANLZ/P007/0002996D/ANLZ0000.DAT",
+      "snapshot": {
+        "fileName": "leigh boy - rito (platypuss remix).mp3",
+        "title": "Rito (Platypuss Remix)",
+        "artist": "Leigh Boy",
+        "bpm": 138,
+        "firstBeatMs": 70,
+        "barBeatOffset": 0,
+        "firstBeatLabel": 1
+      },
+      "pqtzHeader": {
+        "unknown0": 0,
+        "entrySize": 8,
+        "unknown1": 0,
+        "entryCount": 1112,
+        "parsedCount": 1112
+      },
+      "pqtzStats": {
+        "entryCount": 1112,
+        "uniqueBpmCount": 1,
+        "bpmValues": [138],
+        "firstEntry": {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 70
+        },
+        "lastEntry": {
+          "index": 1111,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 483114
+        },
+        "maxBeatTimeDriftMs": 0.87,
+        "meanBeatTimeDriftMs": 0.403,
+        "maxIntervalDriftMs": 0.783,
+        "meanIntervalDriftMs": 0.34
+      },
+      "pqtzFirstEntries": [
+        {
+          "index": 0,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 70
+        },
+        {
+          "index": 1,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 505
+        },
+        {
+          "index": 2,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 940
+        },
+        {
+          "index": 3,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 1375
+        },
+        {
+          "index": 4,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 1810
+        },
+        {
+          "index": 5,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 2244
+        },
+        {
+          "index": 6,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 2679
+        },
+        {
+          "index": 7,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 3114
+        }
+      ],
+      "pqtzLastEntries": [
+        {
+          "index": 1104,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 480070
+        },
+        {
+          "index": 1105,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 480505
+        },
+        {
+          "index": 1106,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 480940
+        },
+        {
+          "index": 1107,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 481375
+        },
+        {
+          "index": 1108,
+          "beat": 1,
+          "bpm": 138,
+          "timeMs": 481810
+        },
+        {
+          "index": 1109,
+          "beat": 2,
+          "bpm": 138,
+          "timeMs": 482244
+        },
+        {
+          "index": 1110,
+          "beat": 3,
+          "bpm": 138,
+          "timeMs": 482679
+        },
+        {
+          "index": 1111,
+          "beat": 4,
+          "bpm": 138,
+          "timeMs": 483114
+        }
+      ],
+      "pqt2": {
+        "headerByteLength": 44,
+        "headerWords": [0, 16777218, 0, 79336, 70, 275944, 483114, 1112, 283998829, 0, 0],
+        "contentByteLength": 2224,
+        "inferredEntrySize": 8,
+        "inferredEntryCount": 278,
+        "firstEntryHex": "0374029c01c500ee0016032702390161008a039a02c301ec0114003d034d0276"
+      }
+    }
+  ]
+}

@@ -432,6 +432,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       bpm?: number
       firstBeatMs?: number
       barBeatOffset?: number
+      timeBasisOffsetMs?: number
     }
   ) => {
     const filePath = normalizeMixtapeFilePath(eventPayload?.filePath)
@@ -447,13 +448,20 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     const barBeatOffset = hasBarBeatOffset
       ? normalizeBarBeatOffset(eventPayload?.barBeatOffset)
       : undefined
-    if (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset) return
+    const hasTimeBasisOffsetMs =
+      typeof eventPayload?.timeBasisOffsetMs === 'number' &&
+      Number.isFinite(eventPayload.timeBasisOffsetMs)
+    const timeBasisOffsetMs = hasTimeBasisOffsetMs
+      ? normalizeFirstBeatMs(eventPayload?.timeBasisOffsetMs)
+      : undefined
+    if (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset && !hasTimeBasisOffsetMs) return
     let trackTouched = false
     const nextTracks = tracks.value.map((track) => {
       if (normalizeMixtapeComparePath(track.filePath) !== normalizedTargetPath) return track
       const currentBpm = Number(track.gridBaseBpm ?? track.originalBpm ?? track.bpm)
       const currentFirstBeatMs = Number(track.firstBeatMs)
       const currentBarBeatOffset = Number(track.barBeatOffset)
+      const currentTimeBasisOffsetMs = Number(track.timeBasisOffsetMs)
       const bpmChanged =
         hasBpm && (!Number.isFinite(currentBpm) || Math.abs(currentBpm - Number(bpmValue)) > 0.0001)
       const firstBeatChanged =
@@ -463,7 +471,12 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       const barBeatOffsetChanged =
         hasBarBeatOffset &&
         (!Number.isFinite(currentBarBeatOffset) || currentBarBeatOffset !== barBeatOffset)
-      if (!bpmChanged && !firstBeatChanged && !barBeatOffsetChanged) return track
+      const timeBasisOffsetChanged =
+        hasTimeBasisOffsetMs &&
+        (!Number.isFinite(currentTimeBasisOffsetMs) ||
+          Math.abs(currentTimeBasisOffsetMs - Number(timeBasisOffsetMs)) > 0.001)
+      if (!bpmChanged && !firstBeatChanged && !barBeatOffsetChanged && !timeBasisOffsetChanged)
+        return track
       trackTouched = true
       return {
         ...track,
@@ -476,7 +489,8 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
             }
           : {}),
         ...(hasFirstBeatMs ? { firstBeatMs } : {}),
-        ...(hasBarBeatOffset ? { barBeatOffset } : {})
+        ...(hasBarBeatOffset ? { barBeatOffset } : {}),
+        ...(hasTimeBasisOffsetMs ? { timeBasisOffsetMs } : {})
       }
     })
     if (trackTouched) {
@@ -486,6 +500,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       const currentBpm = normalizeBpm(info.gridBaseBpm ?? info.originalBpm ?? info.bpm)
       const currentFirstBeatMs = Number(info.firstBeatMs)
       const currentBarBeatOffset = Number(info.barBeatOffset)
+      const currentTimeBasisOffsetMs = Number(info.timeBasisOffsetMs)
       const bpmChanged =
         hasBpm && (currentBpm === null || Math.abs(currentBpm - Number(bpmValue)) > 0.0001)
       const firstBeatChanged =
@@ -495,7 +510,12 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       const barBeatOffsetChanged =
         hasBarBeatOffset &&
         (!Number.isFinite(currentBarBeatOffset) || currentBarBeatOffset !== barBeatOffset)
-      if (!bpmChanged && !firstBeatChanged && !barBeatOffsetChanged) return null
+      const timeBasisOffsetChanged =
+        hasTimeBasisOffsetMs &&
+        (!Number.isFinite(currentTimeBasisOffsetMs) ||
+          Math.abs(currentTimeBasisOffsetMs - Number(timeBasisOffsetMs)) > 0.001)
+      if (!bpmChanged && !firstBeatChanged && !barBeatOffsetChanged && !timeBasisOffsetChanged)
+        return null
       return {
         ...info,
         ...(hasBpm
@@ -506,7 +526,8 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
             }
           : {}),
         ...(hasFirstBeatMs ? { firstBeatMs } : {}),
-        ...(hasBarBeatOffset ? { barBeatOffset } : {})
+        ...(hasBarBeatOffset ? { barBeatOffset } : {}),
+        ...(hasTimeBasisOffsetMs ? { timeBasisOffsetMs } : {})
       }
     })
     if (trackTouched || rawTouched) {

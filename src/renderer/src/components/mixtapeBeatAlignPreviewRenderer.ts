@@ -9,6 +9,7 @@ type BeatAlignPreviewRenderInput = {
   bpm: number
   firstBeatMs: number
   barBeatOffset: number
+  timeBasisOffsetMs?: number
   rangeStartSec: number
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
@@ -41,6 +42,7 @@ type FrameState = {
   bpm: number
   firstBeatMs: number
   barBeatOffset: number
+  timeBasisOffsetMs: number
   rangeStartSec: number
   rangeDurationSec: number
   mixxxData: MixxxWaveformData | null
@@ -106,6 +108,7 @@ const buildFrameState = (
   bpm: Number(input.bpm) || 0,
   firstBeatMs: Number(input.firstBeatMs) || 0,
   barBeatOffset: Number(input.barBeatOffset) || 0,
+  timeBasisOffsetMs: Number(input.timeBasisOffsetMs) || 0,
   rangeStartSec: Number.isFinite(input.rangeStartSec) ? input.rangeStartSec : 0,
   rangeDurationSec: Math.max(0.0001, Number(input.rangeDurationSec) || 0.0001),
   mixxxData: input.mixxxData,
@@ -172,6 +175,7 @@ export const createBeatAlignPreviewRenderer = () => {
       bpm: input.bpm,
       firstBeatMs: input.firstBeatMs,
       barBeatOffset: input.barBeatOffset,
+      timeBasisOffsetMs: input.timeBasisOffsetMs,
       rangeStartSec,
       rangeDurationSec,
       mixxxData: input.mixxxData,
@@ -215,6 +219,7 @@ export const createBeatAlignPreviewRenderer = () => {
       bpm: state.bpm,
       firstBeatMs: state.firstBeatMs,
       barBeatOffset: state.barBeatOffset,
+      timeBasisOffsetMs: state.timeBasisOffsetMs,
       rangeStartSec: segmentStartSec,
       rangeDurationSec: segmentDurationSec,
       mixxxData: state.mixxxData,
@@ -253,6 +258,7 @@ export const createBeatAlignPreviewRenderer = () => {
       lastFrame.bpm === current.bpm &&
       (ignoreFirstBeatMs || lastFrame.firstBeatMs === current.firstBeatMs) &&
       lastFrame.barBeatOffset === current.barBeatOffset &&
+      lastFrame.timeBasisOffsetMs === current.timeBasisOffsetMs &&
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.mixxxData === current.mixxxData &&
       lastFrame.rawData === current.rawData &&
@@ -273,6 +279,7 @@ export const createBeatAlignPreviewRenderer = () => {
       lastFrame.bpm === current.bpm &&
       lastFrame.firstBeatMs === current.firstBeatMs &&
       lastFrame.barBeatOffset === current.barBeatOffset &&
+      lastFrame.timeBasisOffsetMs === current.timeBasisOffsetMs &&
       lastFrame.rangeStartSec === current.rangeStartSec &&
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.mixxxData === current.mixxxData &&

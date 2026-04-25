@@ -21,6 +21,7 @@ type SharedSongGridPayload = {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  timeBasisOffsetMs?: number
 } | null
 
 type UseHorizontalBrowseDeckSongSyncParams = {
@@ -43,6 +44,7 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     song.bpm = nextSong.bpm
     song.firstBeatMs = nextSong.firstBeatMs
     song.barBeatOffset = nextSong.barBeatOffset
+    song.timeBasisOffsetMs = nextSong.timeBasisOffsetMs
     return true
   }
 
@@ -52,13 +54,16 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     const filePath = String(payload?.filePath || '').trim()
     const bpm = Number(payload?.bpm)
     const firstBeatMs = Number(payload?.firstBeatMs)
+    const timeBasisOffsetMs = Number(payload?.timeBasisOffsetMs)
     const hasBpm = Number.isFinite(bpm) && bpm > 0
     const hasFirstBeatMs = Number.isFinite(firstBeatMs) && firstBeatMs >= 0
-    if (!filePath || (!hasBpm && !hasFirstBeatMs)) return null
+    const hasTimeBasisOffsetMs = Number.isFinite(timeBasisOffsetMs) && timeBasisOffsetMs >= 0
+    if (!filePath || (!hasBpm && !hasFirstBeatMs && !hasTimeBasisOffsetMs)) return null
     return {
       filePath,
       bpm: hasBpm ? bpm : undefined,
-      firstBeatMs: hasFirstBeatMs ? firstBeatMs : undefined
+      firstBeatMs: hasFirstBeatMs ? firstBeatMs : undefined,
+      timeBasisOffsetMs: hasTimeBasisOffsetMs ? timeBasisOffsetMs : undefined
     }
   }
 

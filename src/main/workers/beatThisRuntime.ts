@@ -34,7 +34,6 @@ const ENV_BEAT_THIS_DEVICE = 'FRKB_BEAT_THIS_DEVICE'
 const ENV_BEAT_THIS_CHECKPOINT = 'FRKB_BEAT_THIS_CHECKPOINT'
 const ENV_BEAT_THIS_EXTRA_SITE_DIRS = 'FRKB_BEAT_THIS_EXTRA_SITE_DIRS'
 const ENV_BEAT_THIS_EXTRA_DLL_DIRS = 'FRKB_BEAT_THIS_EXTRA_DLL_DIRS'
-const ENV_BEAT_THIS_DEV_PLAYLIST_RULES = 'FRKB_BEAT_THIS_DEV_PLAYLIST_RULES'
 const ENV_DEMUCS_ROOT = 'FRKB_DEMUCS_ROOT'
 const ENV_IGNORE_BUNDLED_DEMUCS_RUNTIME = 'FRKB_IGNORE_BUNDLED_DEMUCS_RUNTIME'
 const ENV_USER_DATA_DIR = 'FRKB_USER_DATA_DIR'
@@ -417,7 +416,6 @@ export const buildBeatThisChildEnv = (candidate: BeatThisPythonCommand): NodeJS.
     PYTHONIOENCODING: 'utf-8',
     [ENV_BEAT_THIS_EXTRA_SITE_DIRS]: joinEnvPathList(candidate.extraSiteDirs || []),
     [ENV_BEAT_THIS_EXTRA_DLL_DIRS]: joinEnvPathList(candidate.extraDllDirs || []),
-    [ENV_BEAT_THIS_DEV_PLAYLIST_RULES]: process.env.NODE_ENV === 'development' ? '1' : '0',
     ...(checkpointPath ? { [ENV_BEAT_THIS_CHECKPOINT]: checkpointPath } : {})
   }
 }

@@ -1,6 +1,8 @@
 import { onUnmounted, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
+import { isRcVersion } from '@shared/windowScreenshotFeature'
+import pkg from '../../../../../../../package.json'
 
 interface UseKeyAnalysisQueueOptions {
   visibleSongsWithIndex: Ref<Array<{ song: ISongInfo; idx: number }>>
@@ -9,6 +11,8 @@ interface UseKeyAnalysisQueueOptions {
 }
 
 const CURRENT_LIST_QUEUE_LIMIT = 400
+const SHOULD_BACKFILL_BEAT_THIS_DEBUG_METRICS =
+  process.env.NODE_ENV === 'development' || isRcVersion(String(pkg.version || ''))
 
 const hasCompleteKeyAnalysis = (song: ISongInfo | undefined) => {
   if (!song) return false
@@ -16,14 +20,17 @@ const hasCompleteKeyAnalysis = (song: ISongInfo | undefined) => {
   const bpm = Number(song.bpm)
   const firstBeatMs = Number(song.firstBeatMs)
   const barBeatOffset = Number(song.barBeatOffset)
-  return (
+  const hasCoreAnalysis =
     keyText.length > 0 &&
     Number.isFinite(bpm) &&
     bpm > 0 &&
     Number.isFinite(firstBeatMs) &&
     firstBeatMs >= 0 &&
     Number.isFinite(barBeatOffset)
-  )
+  if (!hasCoreAnalysis) return false
+  if (!SHOULD_BACKFILL_BEAT_THIS_DEBUG_METRICS) return true
+  const beatThisWindowCount = Number(song.beatThisWindowCount)
+  return Number.isFinite(beatThisWindowCount) && beatThisWindowCount > 0
 }
 
 export function useKeyAnalysisQueue({
