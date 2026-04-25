@@ -1,18 +1,29 @@
 {
   "source": {
-    "type": "rekordbox-abc-snapshot",
+    "type": "rekordbox-rkb-unified-grid-snapshot",
     "dbPath": "D:/PIONEER/Master/master.db",
-    "playlistName": "abc",
-    "trackCount": 33,
-    "note": "2026-04-23 fixed snapshot for FRKB rkb temporary grid bypass"
+    "sourcePlaylists": [
+      {
+        "playlistName": "abc",
+        "trackCount": 33
+      },
+      {
+        "playlistName": "abc2",
+        "playlistId": 2473521850,
+        "trackCount": 7
+      }
+    ],
+    "playlistName": "rkb-unified-samples",
+    "trackCount": 40,
+    "note": "2026-04-25 unified FRKB rkb/sample Rekordbox truth snapshot"
   },
   "tracks": [
     {
       "fileName": "Developer - Have It All (Original Mix).mp3",
       "title": "Have It All (Original Mix)",
       "artist": "Developer",
-      "bpm": 141.0,
-      "firstBeatMs": 61.0,
+      "bpm": 141,
+      "firstBeatMs": 61,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -20,8 +31,8 @@
       "fileName": "enrico sangiuliano - the techno code (charlotte de witte's acid code) (1).mp3",
       "title": "The Techno Code (Charlotte de Witte's Acid Code)",
       "artist": "Enrico Sangiuliano",
-      "bpm": 140.0,
-      "firstBeatMs": 274.0,
+      "bpm": 140,
+      "firstBeatMs": 274,
       "firstBeatLabel": 3,
       "barBeatOffset": 2
     },
@@ -29,8 +40,8 @@
       "fileName": "eric sneo - out of step (2024 remake) (1).mp3",
       "title": "Out of Step (2024 Remake)",
       "artist": "Eric Sneo",
-      "bpm": 140.0,
-      "firstBeatMs": 27.0,
+      "bpm": 140,
+      "firstBeatMs": 27,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -39,7 +50,7 @@
       "title": "Again & Again (Frash Deeper Remix)",
       "artist": "FX Synergy",
       "bpm": 139.94,
-      "firstBeatMs": 42.0,
+      "firstBeatMs": 42,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -47,8 +58,8 @@
       "fileName": "leigh boy - rito (platypuss remix).mp3",
       "title": "Rito (Platypuss Remix)",
       "artist": "Leigh Boy",
-      "bpm": 138.0,
-      "firstBeatMs": 70.0,
+      "bpm": 138,
+      "firstBeatMs": 70,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -56,8 +67,8 @@
       "fileName": "len faki & kenny larkin & alex reece - loop 2 (hardspace mix) (1).mp3",
       "title": "Loop 2 (Hardspace Mix)",
       "artist": "Len Faki & Kenny Larkin & Alex Reece",
-      "bpm": 139.0,
-      "firstBeatMs": 51.0,
+      "bpm": 139,
+      "firstBeatMs": 51,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -65,8 +76,8 @@
       "fileName": "len faki - gamma (glaskin remix) (1).mp3",
       "title": "Gamma (Glaskin Remix)",
       "artist": "Len Faki",
-      "bpm": 145.0,
-      "firstBeatMs": 26.0,
+      "bpm": 145,
+      "firstBeatMs": 26,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -74,8 +85,8 @@
       "fileName": "len faki - sexuality (my reality) (hardspace mix) (1).mp3",
       "title": "Sexuality (My Reality) (Hardspace Mix)",
       "artist": "Len Faki",
-      "bpm": 140.0,
-      "firstBeatMs": 36.0,
+      "bpm": 140,
+      "firstBeatMs": 36,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -83,8 +94,8 @@
       "fileName": "len faki - zig zag (original mix) (1).mp3",
       "title": "Zig Zag (Original Mix)",
       "artist": "Len Faki",
-      "bpm": 137.0,
-      "firstBeatMs": 52.0,
+      "bpm": 137,
+      "firstBeatMs": 52,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -92,8 +103,8 @@
       "fileName": "leo thomas - passion deviante (original mix).mp3",
       "title": "Passion Deviante (Original Mix)",
       "artist": "Leo Thomas",
-      "bpm": 126.0,
-      "firstBeatMs": 76.0,
+      "bpm": 126,
+      "firstBeatMs": 76,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -101,8 +112,8 @@
       "fileName": "leonardo chevy - airlock alert (original mix).mp3",
       "title": "Airlock Alert (Original Mix)",
       "artist": "Leonardo Chevy",
-      "bpm": 128.0,
-      "firstBeatMs": 49.0,
+      "bpm": 128,
+      "firstBeatMs": 49,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -110,8 +121,8 @@
       "fileName": "leonardo chevy - mechanised old factory (original mix).mp3",
       "title": "Mechanised Old Factory (Original Mix)",
       "artist": "Leonardo Chevy",
-      "bpm": 138.0,
-      "firstBeatMs": 50.0,
+      "bpm": 138,
+      "firstBeatMs": 50,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -119,8 +130,8 @@
       "fileName": "leonardo chevy - slightly higher (original mix).mp3",
       "title": "Slightly Higher (Original Mix)",
       "artist": "Leonardo Chevy",
-      "bpm": 126.0,
-      "firstBeatMs": 52.0,
+      "bpm": 126,
+      "firstBeatMs": 52,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -128,8 +139,8 @@
       "fileName": "leonardo chevy - sprawling metropolis (original mix).mp3",
       "title": "Sprawling Metropolis (Original Mix)",
       "artist": "Leonardo Chevy",
-      "bpm": 130.0,
-      "firstBeatMs": 52.0,
+      "bpm": 130,
+      "firstBeatMs": 52,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -137,8 +148,8 @@
       "fileName": "les hemstock, darren jones - crescendo (extended mix).mp3",
       "title": "Crescendo (Extended Mix)",
       "artist": "Les Hemstock, Darren Jones",
-      "bpm": 136.0,
-      "firstBeatMs": 70.0,
+      "bpm": 136,
+      "firstBeatMs": 70,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -146,8 +157,8 @@
       "fileName": "leviws - foul play (1).mp3",
       "title": "Foul Play",
       "artist": "LeviwS",
-      "bpm": 138.0,
-      "firstBeatMs": 28.0,
+      "bpm": 138,
+      "firstBeatMs": 28,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -155,8 +166,8 @@
       "fileName": "lewis fautzi - diversity of known substances (original mix) (1).mp3",
       "title": "Diversity Of Known Substances (Original Mix)",
       "artist": "Lewis Fautzi",
-      "bpm": 138.0,
-      "firstBeatMs": 225.0,
+      "bpm": 138,
+      "firstBeatMs": 225,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -165,7 +176,7 @@
       "title": "LOOP (LFO VS. F.U.S.E.) (FUSE MIX)",
       "artist": "LFO & F.U.S.E. & Richie Hawtin",
       "bpm": 131.99,
-      "firstBeatMs": 19.0,
+      "firstBeatMs": 19,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -173,8 +184,8 @@
       "fileName": "Mha Iri - Take My Love (Hard Mix) (1).mp3",
       "title": "Take My Love (Hard Mix)",
       "artist": "Mha Iri",
-      "bpm": 150.0,
-      "firstBeatMs": 95.0,
+      "bpm": 150,
+      "firstBeatMs": 95,
       "firstBeatLabel": 4,
       "barBeatOffset": 1
     },
@@ -182,8 +193,8 @@
       "fileName": "Mha Iri - Take My Love (Original Mix) (1).mp3",
       "title": "Take My Love (Original Mix)",
       "artist": "Mha Iri",
-      "bpm": 142.0,
-      "firstBeatMs": 236.0,
+      "bpm": 142,
+      "firstBeatMs": 236,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -191,8 +202,8 @@
       "fileName": "Molella & Alex Nocera & Mike Candys & Lucio Elia - Tanciki (Extended Mix).mp3",
       "title": "Tanciki (Extended Mix)",
       "artist": "Molella & Alex Nocera & Mike Candys & Lucio Elia",
-      "bpm": 140.0,
-      "firstBeatMs": 171.0,
+      "bpm": 140,
+      "firstBeatMs": 171,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -200,8 +211,8 @@
       "fileName": "Morees - Dephts of Your Mind (Original Mix) (1).mp3",
       "title": "Dephts of Your Mind (Original Mix)",
       "artist": "Morees",
-      "bpm": 135.0,
-      "firstBeatMs": 71.0,
+      "bpm": 135,
+      "firstBeatMs": 71,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -209,8 +220,8 @@
       "fileName": "Phoenix Movement, Bora Project - Take It Down (Original Mix).mp3",
       "title": "Take It Down (Original Mix)",
       "artist": "Phoenix Movement, Bora Project",
-      "bpm": 135.0,
-      "firstBeatMs": 24.0,
+      "bpm": 135,
+      "firstBeatMs": 24,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -218,8 +229,8 @@
       "fileName": "Pleasurekraft, Zimmz - Sympoiesis (Original Mix).mp3",
       "title": "Sympoiesis (Original Mix)",
       "artist": "Pleasurekraft, Zimmz",
-      "bpm": 134.0,
-      "firstBeatMs": 71.0,
+      "bpm": 134,
+      "firstBeatMs": 71,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -227,8 +238,8 @@
       "fileName": "Popof - Sync Out (Original Mix) (1).mp3",
       "title": "Sync Out (Original Mix)",
       "artist": "Popof",
-      "bpm": 130.0,
-      "firstBeatMs": 329.0,
+      "bpm": 130,
+      "firstBeatMs": 329,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -236,8 +247,8 @@
       "fileName": "Sam WOLFE - Swipe Right (Extended Mix).mp3",
       "title": "Swipe Right (Extended Mix)",
       "artist": "Sam WOLFE",
-      "bpm": 134.0,
-      "firstBeatMs": 52.0,
+      "bpm": 134,
+      "firstBeatMs": 52,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -245,8 +256,8 @@
       "fileName": "Scrufizzer, G-Rex, Bebi - TAKEOVER (Original Mix).mp3",
       "title": "TAKEOVER (Original Mix)",
       "artist": "Scrufizzer, G-Rex, Bebi",
-      "bpm": 147.0,
-      "firstBeatMs": 71.0,
+      "bpm": 147,
+      "firstBeatMs": 71,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -254,8 +265,8 @@
       "fileName": "sharam - party all the time (adam beyer, layton giordani & green velvet remix) (1).mp3",
       "title": "Party All The Time (Adam Beyer, Layton Giordani & Green Velvet Remix)",
       "artist": "Sharam",
-      "bpm": 133.0,
-      "firstBeatMs": 49.0,
+      "bpm": 133,
+      "firstBeatMs": 49,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -263,8 +274,8 @@
       "fileName": "tom wax - move your soul (original mix) (1).mp3",
       "title": "Move Your Soul (Original Mix)",
       "artist": "Tom Wax",
-      "bpm": 136.0,
-      "firstBeatMs": 96.0,
+      "bpm": 136,
+      "firstBeatMs": 96,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -272,8 +283,8 @@
       "fileName": "Wehbba & Alan Fitzpatrick - Take U Higher (Original Mix).mp3",
       "title": "Take U Higher (Original Mix)",
       "artist": "Wehbba & Alan Fitzpatrick",
-      "bpm": 135.0,
-      "firstBeatMs": 50.0,
+      "bpm": 135,
+      "firstBeatMs": 50,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -281,8 +292,8 @@
       "fileName": "Wigbert - Synapse Impulse (Original Mix) (1).mp3",
       "title": "Synapse Impulse (Original Mix)",
       "artist": "Wigbert",
-      "bpm": 138.0,
-      "firstBeatMs": 97.0,
+      "bpm": 138,
+      "firstBeatMs": 97,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -290,8 +301,8 @@
       "fileName": "William Kiss - Talkin' (Original Mix) (1).mp3",
       "title": "Talkin' (Original Mix)",
       "artist": "William Kiss",
-      "bpm": 130.0,
-      "firstBeatMs": 51.0,
+      "bpm": 130,
+      "firstBeatMs": 51,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -299,10 +310,73 @@
       "fileName": "Woo York, PONGO - Talking To Myself (Wehbba Remix) (1).mp3",
       "title": "Talking To Myself (Wehbba Remix)",
       "artist": "Woo York, PONGO",
-      "bpm": 134.0,
-      "firstBeatMs": 71.0,
+      "bpm": 134,
+      "firstBeatMs": 71,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
+    },
+    {
+      "fileName": "D'Angello & Francis - Blade (Extended).mp3",
+      "title": "Blade (Extended)",
+      "artist": "D'Angello & Francis",
+      "bpm": 150,
+      "firstBeatMs": 51,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "JOKESONYOU - Get Personal [Master by Nightsub].wav",
+      "title": "Burn in Hell",
+      "artist": "Judas Priest",
+      "bpm": 152,
+      "firstBeatMs": 99,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Mika Heggemann - Apologize.wav",
+      "title": "Upside Down & Backwards",
+      "artist": "Little Jimmy King",
+      "bpm": 148,
+      "firstBeatMs": 404,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "juju, azzle 447 - komm (feat. juju).mp3",
+      "title": "Komm (feat. Juju)",
+      "artist": "Juju, AZZLE 447",
+      "bpm": 155,
+      "firstBeatMs": 70,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "jennie - like jennie (lyndo remix).mp3",
+      "title": "JENNIE - like JENNIE (LYNDO REMIX)",
+      "artist": "LYNDOsounds",
+      "bpm": 160,
+      "firstBeatMs": 84,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "maddix - move it 2 the drum (extended mix).mp3",
+      "title": "Move It 2 The Drum (Extended Mix)",
+      "artist": "Maddix",
+      "bpm": 147,
+      "firstBeatMs": 51,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "YMCA (SHU & IDKY Remix) Master.wav",
+      "title": "Crystal Waves",
+      "artist": "Phlogiston feat. Shnabubula",
+      "bpm": 142,
+      "firstBeatMs": 422,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
     }
   ]
 }

@@ -17,12 +17,24 @@ import {
   isCompleteSharedSongGridDefinition,
   loadSharedSongGridDefinitions
 } from '../services/sharedSongGrid'
+import {
+  resolveAudioFirstBeatTimelineMs,
+  resolveAudioTimeBasisOffsetMsForFile
+} from '../services/audioTimeBasisOffset'
+import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
 import { resolveMissingMixtapeFilePath } from '../recycleBinService'
 
 const resolveKeyAnalysisWorkerPath = () => resolveMainWorkerPath(__dirname, 'keyAnalysisWorker.js')
 
 export type MixtapeBpmAnalyzeResult = {
-  results: Array<{ filePath: string; bpm: number; firstBeatMs: number; barBeatOffset?: number }>
+  results: Array<{
+    filePath: string
+    bpm: number
+    firstBeatMs: number
+    barBeatOffset?: number
+    timeBasisOffsetMs?: number
+    beatGridAlgorithmVersion?: number
+  }>
   unresolved: string[]
   unresolvedDetails: Array<{ filePath: string; reason: string }>
 }
@@ -122,6 +134,8 @@ const analyzeMixtapeBpmBatch = async (
     bpm: number
     firstBeatMs: number
     barBeatOffset?: number
+    timeBasisOffsetMs?: number
+    beatGridAlgorithmVersion?: number
   }> = []
   const unresolvedReasons = new Map<string, string>()
   let cursor = 0
@@ -243,7 +257,7 @@ const analyzeMixtapeBpmBatch = async (
       })
     }
 
-    const handleMessage = (worker: Worker, payload: BpmWorkerPayload) => {
+    const handleMessage = async (worker: Worker, payload: BpmWorkerPayload) => {
       const hasProgressPayload =
         payload &&
         typeof payload === 'object' &&
@@ -259,40 +273,54 @@ const analyzeMixtapeBpmBatch = async (
 
       clearWorkerTimer(worker)
       const currentJobId = busy.get(worker)
-      if (currentJobId !== undefined) {
-        busy.delete(worker)
-      }
       const resolvedJobId =
         typeof payload?.jobId === 'number' ? payload.jobId : (currentJobId ?? -1)
-      const filePath = jobMap.get(resolvedJobId)
-      if (filePath) {
-        jobMap.delete(resolvedJobId)
-        const bpmValue = payload?.result?.bpm
-        if (typeof bpmValue === 'number' && Number.isFinite(bpmValue) && bpmValue > 0) {
-          const rawFirstBeatMs = Number(payload?.result?.firstBeatMs)
-          const firstBeatMs =
-            Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0
-              ? Number(rawFirstBeatMs.toFixed(3))
-              : 0
-          const rawBarBeatOffset = Number(payload?.result?.barBeatOffset)
-          const barBeatOffset = Number.isFinite(rawBarBeatOffset)
-            ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
-            : undefined
-          results.push({ filePath, bpm: bpmValue, firstBeatMs, barBeatOffset })
-          unresolved.delete(filePath)
-        } else {
-          const reason =
-            (typeof payload?.error === 'string' && payload.error) ||
-            (typeof payload?.result?.bpmError === 'string' && payload.result.bpmError) ||
-            `invalid bpm value: ${String(bpmValue)}`
-          markUnresolvedReason(filePath, reason)
+      try {
+        const filePath = jobMap.get(resolvedJobId)
+        if (filePath) {
+          jobMap.delete(resolvedJobId)
+          const bpmValue = payload?.result?.bpm
+          if (typeof bpmValue === 'number' && Number.isFinite(bpmValue) && bpmValue > 0) {
+            const rawFirstBeatMs = Number(payload?.result?.firstBeatMs)
+            const firstBeatAudioMs =
+              Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0
+                ? Number(rawFirstBeatMs.toFixed(3))
+                : 0
+            const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(filePath)
+            const firstBeatMs = resolveAudioFirstBeatTimelineMs(firstBeatAudioMs, timeBasisOffsetMs)
+            const rawBarBeatOffset = Number(payload?.result?.barBeatOffset)
+            const barBeatOffset = Number.isFinite(rawBarBeatOffset)
+              ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
+              : undefined
+            results.push({
+              filePath,
+              bpm: bpmValue,
+              firstBeatMs,
+              barBeatOffset,
+              timeBasisOffsetMs,
+              beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
+            })
+            unresolved.delete(filePath)
+          } else {
+            const reason =
+              (typeof payload?.error === 'string' && payload.error) ||
+              (typeof payload?.result?.bpmError === 'string' && payload.result.bpmError) ||
+              `invalid bpm value: ${String(bpmValue)}`
+            markUnresolvedReason(filePath, reason)
+          }
         }
+      } finally {
+        if (currentJobId !== undefined) {
+          busy.delete(worker)
+        }
+        assignNext(worker)
       }
-      assignNext(worker)
     }
 
     const bindWorker = (worker: Worker) => {
-      worker.on('message', (payload) => handleMessage(worker, payload))
+      worker.on('message', (payload) => {
+        void handleMessage(worker, payload)
+      })
       worker.on('error', (error) => handleFailure(worker, error))
       worker.on('exit', (code) => {
         const activeJobId = busy.get(worker)
@@ -363,6 +391,8 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
         bpm: number
         firstBeatMs: number
         barBeatOffset?: number
+        timeBasisOffsetMs?: number
+        beatGridAlgorithmVersion?: number
       }
     >()
     const unresolvedReasonMap = new Map<string, string>()
@@ -380,7 +410,17 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
         filePath,
         bpm: Number(sharedGrid.bpm!.toFixed(6)),
         firstBeatMs: Number(sharedGrid.firstBeatMs!.toFixed(3)),
-        barBeatOffset: ((Math.round(sharedGrid.barBeatOffset!) % 32) + 32) % 32
+        barBeatOffset: ((Math.round(sharedGrid.barBeatOffset!) % 32) + 32) % 32,
+        timeBasisOffsetMs:
+          typeof sharedGrid.timeBasisOffsetMs === 'number' &&
+          Number.isFinite(sharedGrid.timeBasisOffsetMs)
+            ? Number(sharedGrid.timeBasisOffsetMs.toFixed(3))
+            : undefined,
+        beatGridAlgorithmVersion:
+          typeof sharedGrid.beatGridAlgorithmVersion === 'number' &&
+          Number.isFinite(sharedGrid.beatGridAlgorithmVersion)
+            ? Math.max(1, Math.floor(sharedGrid.beatGridAlgorithmVersion))
+            : undefined
       })
     }
     let pending = input.filter((filePath) => !resultMap.has(normalizePathForBatchKey(filePath)))
@@ -404,6 +444,15 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
           barBeatOffset:
             typeof item.barBeatOffset === 'number' && Number.isFinite(item.barBeatOffset)
               ? ((Math.round(item.barBeatOffset) % 32) + 32) % 32
+              : undefined,
+          timeBasisOffsetMs:
+            typeof item.timeBasisOffsetMs === 'number' && Number.isFinite(item.timeBasisOffsetMs)
+              ? Number(item.timeBasisOffsetMs.toFixed(3))
+              : undefined,
+          beatGridAlgorithmVersion:
+            typeof item.beatGridAlgorithmVersion === 'number' &&
+            Number.isFinite(item.beatGridAlgorithmVersion)
+              ? Math.max(1, Math.floor(item.beatGridAlgorithmVersion))
               : undefined
         })
         unresolvedReasonMap.delete(normalizedPath)

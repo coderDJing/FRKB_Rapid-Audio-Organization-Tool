@@ -50,6 +50,7 @@ interface ISongInfo {
   timeBasisOffsetMs?: number
   beatThisEstimatedDrift128Ms?: number
   beatThisWindowCount?: number
+  beatGridAlgorithmVersion?: number
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
   mixOrder?: number

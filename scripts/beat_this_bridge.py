@@ -42,16 +42,16 @@ DEFAULT_ANCHOR_TUNING = {
     "offsetMadCenterMs": 8.0,
     "offsetMadScaleMs": 5.0,
     "positiveShiftPolicy": "allow",
-    "positiveMinRawFirstBeatMs": 8.0,
+    "positiveMinRawFirstBeatMs": 0.0,
     "positiveMinShiftMs": 6.0,
-    "positiveMaxShiftMs": 14.0,
+    "positiveMaxShiftMs": 8.0,
     "positiveMatchRatioMin": 0.82,
     "positiveOffsetMadMaxMs": 5.0,
     "positiveRelativeGainMin": 0.08,
     "positiveScoreContrastMin": 0.025,
     "positiveConfidenceMin": 0.82,
     "positiveAmbiguityGuardRawFirstBeatMinMs": 100.0,
-    "positiveAmbiguityGuardMinCorrectionMs": 10.0,
+    "positiveAmbiguityGuardMinCorrectionMs": 6.0,
     "positiveAmbiguityGuardWideLeadMs": 30.0,
     "positiveAmbiguityGuardWideScoreRatioMin": 1.02,
     "lowbandFallbackMinMatchRatio": 1.01,
@@ -116,10 +116,8 @@ import torch
 from beat_this.inference import Audio2Beats, split_predict_aggregate
 from beat_this.preprocessing import LogMelSpect
 from beat_this_grid_solver import (
-    apply_integer_bpm_rescue_to_result as _apply_integer_bpm_rescue_to_result,
     build_attack_envelope as _build_attack_envelope,
     clamp01 as _clamp01,
-    estimate_bpm_drift_proxy as _estimate_bpm_drift_proxy,
     estimate_anchor_correction as _estimate_anchor_correction,
     estimate_grid_phase_correction as _estimate_grid_phase_correction,
     estimate_head_bootstrap_candidate as _estimate_head_bootstrap_candidate,
@@ -129,10 +127,22 @@ from beat_this_grid_solver import (
     score_anchor_offset as _score_anchor_offset,
     should_block_ambiguous_positive_correction as _should_block_ambiguous_positive_correction,
     should_preserve_grid_solver_bpm as _should_preserve_grid_solver_bpm,
-    solve_global_track_grid as _solve_global_track_grid,
     stabilize_bpm_for_grid as _stabilize_bpm_for_grid,
-    _window_weight,
 )
+from beat_this_grid_rescue import (
+    apply_half_double_bpm_rescue_to_result as _apply_half_double_bpm_rescue_to_result,
+    apply_integer_bpm_rescue_to_result as _apply_integer_bpm_rescue_to_result,
+    solve_global_track_grid as _solve_global_track_grid,
+)
+from beat_this_full_logit_rescue import (
+    apply_full_track_logit_rescue as _apply_full_track_logit_rescue,
+)
+from beat_this_phase_rescue import (
+    apply_frame_center_phase_rescue_to_result as _apply_frame_center_phase_rescue_to_result,
+    apply_phase_rescue_rules as _apply_phase_rescue_rules,
+    apply_window_phase_consensus as _apply_window_phase_consensus,
+)
+from beat_this_bpm_metrics import estimate_bpm_drift_proxy as _estimate_bpm_drift_proxy
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -534,6 +544,9 @@ def _finalize_prepared_window(
         anchor_strategy = "legacy"
         corrected_first_beat_ms_local = raw_first_beat_ms_local
     else:
+        anchor_tuning = dict(tuning)
+        if raw_first_beat_ms_local <= 0.001 or raw_first_beat_ms_local >= 55.0:
+            anchor_tuning["positiveMaxShiftMs"] = max(float(tuning["positiveMaxShiftMs"]), 10.0)
         (
             anchor_correction_ms,
             anchor_confidence_score,
@@ -543,7 +556,7 @@ def _finalize_prepared_window(
             sample_rate,
             beat_list,
             raw_beat_interval,
-            tuning,
+            anchor_tuning,
         )
         grid_phase_correction = _estimate_grid_phase_correction(
             window_signal,
@@ -565,6 +578,30 @@ def _finalize_prepared_window(
                 beat_interval = 60.0 / bpm if bpm > 0 else raw_beat_interval
         else:
             anchor_strategy = "refined"
+        if anchor_correction_ms > 0.0 and raw_first_beat_ms_local <= 0.001:
+            head_lowband_offset = _estimate_lowband_firstbeat_offset(
+                window_signal,
+                sample_rate,
+                beat_list,
+                tuning,
+            )
+            head_lowband_match_ratio = (
+                float(head_lowband_offset.get("matchRatio") or 0.0)
+                if head_lowband_offset is not None
+                else 0.0
+            )
+            head_lowband_offset_mad_ms = (
+                float(head_lowband_offset.get("offsetMadMs") or 999.0)
+                if head_lowband_offset is not None
+                else 999.0
+            )
+            if (
+                float(prepared_window.get("qualityScore") or 0.0) < 0.9
+                or head_lowband_match_ratio < 0.9
+                or head_lowband_offset_mad_ms > 4.5
+            ):
+                anchor_correction_ms = 0.0
+                anchor_strategy = f"{anchor_strategy}-head-positive-guard"
         if (
             anchor_correction_ms > 0.0
             and _should_block_ambiguous_positive_correction(
@@ -674,130 +711,6 @@ def _select_anchor_window_result(finalized_results: list[dict[str, Any]]) -> dic
             best_result = candidate
     return best_result
 
-
-def _find_prepared_window_by_index(
-    prepared_windows: list[dict[str, Any]],
-    window_index: int,
-) -> dict[str, Any] | None:
-    for item in prepared_windows:
-        if int(item.get("windowIndex") or -1) == window_index:
-            return item
-    return None
-
-
-def _apply_phase_rescue_rules(
-    prepared_windows: list[dict[str, Any]],
-    finalized_results: list[dict[str, Any]],
-    result: dict[str, Any],
-    sample_rate: int,
-    tuning: dict[str, Any],
-) -> dict[str, Any]:
-    next_result = dict(result)
-    interval_ms = 60000.0 / float(next_result.get("bpm") or 0.0)
-    if not math.isfinite(interval_ms) or interval_ms <= 0.0:
-        return next_result
-
-    window_index = int(next_result.get("windowIndex") or -1)
-    prepared_window = _find_prepared_window_by_index(prepared_windows, window_index)
-    anchor_window = next(
-        (
-            item
-            for item in finalized_results
-            if int(item.get("windowIndex") or -1) == window_index
-        ),
-        None,
-    )
-    if prepared_window is None or anchor_window is None:
-        return next_result
-
-    def _apply_first_beat(first_beat_ms: float, strategy_suffix: str) -> None:
-        nonlocal next_result
-        updated_first_beat_ms = _normalize_phase_ms(first_beat_ms, interval_ms)
-        if (
-            interval_ms > 0.0
-            and interval_ms - updated_first_beat_ms <= float(tuning["snapToZeroCorrectedMaxMs"])
-        ):
-            updated_first_beat_ms = 0.0
-        next_result["firstBeatMs"] = round(updated_first_beat_ms, 3)
-        raw_first_beat_ms = float(
-            next_result.get("rawFirstBeatMs")
-            or anchor_window.get("rawFirstBeatMs")
-            or updated_first_beat_ms
-        )
-        next_result["anchorCorrectionMs"] = round(
-            _phase_delta_ms(updated_first_beat_ms, raw_first_beat_ms, interval_ms),
-            3,
-        )
-        current_strategy = str(next_result.get("anchorStrategy") or "").strip()
-        next_result["anchorStrategy"] = (
-            f"{current_strategy}-{strategy_suffix}" if current_strategy else strategy_suffix
-        )
-
-    lowband_offset = _estimate_lowband_firstbeat_offset(
-        prepared_window["signal"],
-        sample_rate,
-        list(prepared_window["beats"]),
-        tuning,
-    )
-    current_first_beat_ms = float(next_result.get("firstBeatMs") or 0.0)
-    raw_first_beat_ms = float(next_result.get("rawFirstBeatMs") or current_first_beat_ms)
-    if lowband_offset is not None:
-        lowband_match_ratio = float(lowband_offset.get("matchRatio") or 0.0)
-        lowband_offset_mad_ms = float(lowband_offset.get("offsetMadMs") or 999.0)
-        lowband_offset_ms = float(lowband_offset.get("offsetMs") or 0.0)
-        if (
-            current_first_beat_ms > 0.0
-            and current_first_beat_ms <= 24.0
-            and lowband_match_ratio >= 0.85
-            and lowband_offset_mad_ms <= 4.5
-            and abs(lowband_offset_ms + raw_first_beat_ms) <= 6.0
-        ):
-            _apply_first_beat(0.0, "snap-zero-lowband")
-            return next_result
-        if (
-            current_first_beat_ms > 0.0
-            and current_first_beat_ms <= 18.0
-            and lowband_match_ratio >= 0.8
-            and lowband_offset_mad_ms <= 4.5
-            and lowband_offset_ms <= -30.0
-        ):
-            _apply_first_beat(0.0, "snap-zero-lowband")
-            return next_result
-
-    anchor_strategy = str(next_result.get("anchorStrategy") or "").strip()
-    if not anchor_strategy.endswith("positive-guard"):
-        return next_result
-
-    anchor_quality = float(anchor_window.get("qualityScore") or 0.0)
-    early_deltas_ms: list[float] = []
-    early_weights: list[float] = []
-    for item in finalized_results:
-        item_bpm = float(item.get("bpm") or 0.0)
-        if not math.isfinite(item_bpm) or abs(item_bpm - float(next_result["bpm"])) > 0.05:
-            continue
-        item_quality = float(item.get("qualityScore") or 0.0)
-        if anchor_quality - item_quality > 0.01:
-            continue
-        delta_ms = _phase_delta_ms(
-            float(item.get("firstBeatMs") or 0.0),
-            float(next_result["firstBeatMs"]),
-            interval_ms,
-        )
-        if -24.0 <= delta_ms <= -4.0:
-            early_deltas_ms.append(delta_ms)
-            early_weights.append(_window_weight(item))
-    if len(early_deltas_ms) < 2:
-        return next_result
-    if max(early_deltas_ms) - min(early_deltas_ms) > 18.0:
-        return next_result
-
-    weighted_delta_ms = sum(
-        delta_ms * weight for delta_ms, weight in zip(early_deltas_ms, early_weights)
-    ) / max(1e-9, sum(early_weights))
-    _apply_first_beat(float(next_result["firstBeatMs"]) + weighted_delta_ms, "early-cluster")
-    return next_result
-
-
 def _analyze_prepared_windows_to_track_result(
     prepared_windows: list[dict[str, Any]],
     signal: np.ndarray,
@@ -808,6 +721,9 @@ def _analyze_prepared_windows_to_track_result(
     *,
     force_legacy_anchor: bool,
     use_global_solver: bool,
+    predictor: Audio2Beats | None = None,
+    cpu_spect: LogMelSpect | None = None,
+    device: str = "cpu",
 ) -> dict[str, Any]:
     if not prepared_windows:
         raise RuntimeError(f"no valid beat-this result for {source_file_path}")
@@ -825,6 +741,13 @@ def _analyze_prepared_windows_to_track_result(
     def _attach_bpm_metrics(result: dict[str, Any]) -> dict[str, Any]:
         next_result = result
         if not force_legacy_anchor:
+            next_result = _apply_half_double_bpm_rescue_to_result(
+                signal,
+                sample_rate,
+                finalized_results,
+                next_result,
+                tuning,
+            )
             next_result = _apply_integer_bpm_rescue_to_result(
                 signal,
                 sample_rate,
@@ -839,11 +762,28 @@ def _analyze_prepared_windows_to_track_result(
                 sample_rate,
                 tuning,
             )
+            next_result = _apply_frame_center_phase_rescue_to_result(next_result)
+            next_result = _apply_window_phase_consensus(finalized_results, next_result)
         proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
-        if not proxy:
-            return next_result
-        next_result = dict(next_result)
-        next_result.update(proxy)
+        if proxy:
+            next_result = dict(next_result)
+            next_result.update(proxy)
+        if not force_legacy_anchor and predictor is not None:
+            rescued_result = _apply_full_track_logit_rescue(
+                predictor,
+                cpu_spect,
+                signal,
+                sample_rate,
+                device,
+                next_result,
+                tuning,
+            )
+            if rescued_result is not next_result:
+                next_result = rescued_result
+                refreshed_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
+                if refreshed_proxy:
+                    next_result = dict(next_result)
+                    next_result.update(refreshed_proxy)
         return next_result
 
     anchor_window = _select_anchor_window_result(finalized_results)
@@ -1014,6 +954,9 @@ def serve(device: str, dbn: bool) -> int:
                 source_file_path,
                 force_legacy_anchor=False,
                 use_global_solver=True,
+                predictor=predictor,
+                cpu_spect=cpu_spect,
+                device=device,
             )
 
             _emit(

@@ -162,6 +162,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         partialResult.barBeatOffset,
         partialResult.timeBasisOffsetMs,
         {
+          firstBeatCoordinate: 'audio',
           beatThisEstimatedDrift128Ms: partialResult.beatThisEstimatedDrift128Ms,
           beatThisWindowCount: partialResult.beatThisWindowCount
         }
@@ -336,6 +337,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           payloadResult.barBeatOffset,
           payloadResult.timeBasisOffsetMs,
           {
+            firstBeatCoordinate: 'audio',
             beatThisEstimatedDrift128Ms: payloadResult.beatThisEstimatedDrift128Ms,
             beatThisWindowCount: payloadResult.beatThisWindowCount
           }

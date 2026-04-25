@@ -1,17 +1,11 @@
 import fs from 'node:fs/promises'
-import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import { app } from 'electron'
-import { resolveBundledFfmpegPath } from '../../ffmpeg'
 import { log } from '../../log'
+import { resolveAudioTimeBasisOffsetMsForFile } from '../audioTimeBasisOffset'
 
 const FRKB_RKB_LIST_NAME = 'rkb'
-const SNAPSHOT_FILE_NAME = 'rkbRekordboxAbcGridSnapshot.json'
-const FFPROBE_TIMEOUT_MS = 5000
-
-const execFileAsync = promisify(execFile)
+const SNAPSHOT_FILE_NAME = 'rkbRekordboxGridSnapshot.json'
 
 type SnapshotTrack = {
   fileName?: unknown
@@ -23,6 +17,9 @@ type SnapshotTrack = {
 }
 
 type SnapshotPayload = {
+  source?: {
+    playlistName?: unknown
+  }
   tracks?: SnapshotTrack[]
 }
 
@@ -37,7 +34,6 @@ type RkbRekordboxGridValue = {
 
 let cache: Map<string, RkbRekordboxGridValue> | null = null
 let inFlight: Promise<Map<string, RkbRekordboxGridValue>> | null = null
-const timeBasisOffsetCache = new Map<string, Promise<number>>()
 
 const normalizeText = (value: unknown) => String(value || '').trim()
 
@@ -62,7 +58,7 @@ const normalizeBarBeatOffset = (value: unknown) => {
   return ((rounded % 32) + 32) % 32
 }
 
-const resolveSnapshotPathCandidates = () => {
+const resolveSnapshotPathCandidates = (snapshotFileName: string) => {
   const candidates: string[] = []
   const seen = new Set<string>()
 
@@ -74,27 +70,31 @@ const resolveSnapshotPathCandidates = () => {
   }
 
   if (app.isPackaged) {
-    addCandidate(path.join(process.resourcesPath, SNAPSHOT_FILE_NAME))
-    addCandidate(path.join(process.resourcesPath, 'resources', SNAPSHOT_FILE_NAME))
+    addCandidate(path.join(process.resourcesPath, snapshotFileName))
+    addCandidate(path.join(process.resourcesPath, 'resources', snapshotFileName))
   }
 
-  addCandidate(path.resolve(__dirname, '../../../..', 'resources', SNAPSHOT_FILE_NAME))
-  addCandidate(path.resolve(process.cwd(), 'resources', SNAPSHOT_FILE_NAME))
+  addCandidate(path.resolve(__dirname, '../../../..', 'resources', snapshotFileName))
+  addCandidate(path.resolve(process.cwd(), 'resources', snapshotFileName))
 
   return candidates
 }
 
-const resolveSnapshotPath = async () => {
-  for (const candidate of resolveSnapshotPathCandidates()) {
+const resolveSnapshotPath = async (snapshotFileName: string) => {
+  const candidates = resolveSnapshotPathCandidates(snapshotFileName)
+  for (const candidate of candidates) {
     try {
       await fs.access(candidate)
       return candidate
     } catch {}
   }
-  return resolveSnapshotPathCandidates()[0] || ''
+  return ''
 }
 
-const buildGridValue = (track: SnapshotTrack | null | undefined): RkbRekordboxGridValue | null => {
+const buildGridValue = (
+  track: SnapshotTrack | null | undefined,
+  sourcePlaylistName: string
+): RkbRekordboxGridValue | null => {
   const sourceFileName = normalizeText(track?.fileName)
   const bpm = normalizeBpm(track?.bpm)
   const firstBeatMs = normalizeFirstBeatMs(track?.firstBeatMs)
@@ -115,142 +115,34 @@ const buildGridValue = (track: SnapshotTrack | null | undefined): RkbRekordboxGr
     firstBeatMs,
     barBeatOffset,
     timeBasisOffsetMs: 0,
-    sourcePlaylistName: 'abc',
+    sourcePlaylistName,
     sourceFileName
   }
 }
 
-const resolveBundledFfprobePath = () => {
-  const ffmpegPath = resolveBundledFfmpegPath()
-  const ffprobeName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'
-  return path.join(path.dirname(ffmpegPath), ffprobeName)
-}
-
-type FfprobeRkbAudioPacketSideData = {
-  side_data_type?: string
-  skip_samples?: number | string
-}
-
-type FfprobeRkbAudioPacket = {
-  side_data_list?: FfprobeRkbAudioPacketSideData[]
-}
-
-type FfprobeRkbAudioStream = {
-  sample_rate?: string
-  start_time?: string
-  tags?: {
-    encoder?: string
-  }
-}
-
-type FfprobeRkbAudioPayload = {
-  packets?: FfprobeRkbAudioPacket[]
-  streams?: FfprobeRkbAudioStream[]
-}
-
-const toFixedMs = (value: number) => Number(value.toFixed(3))
-
-const parsePositiveNumber = (value: unknown) => {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
-}
-
-const resolveFirstPacketSkipSamples = (packet: FfprobeRkbAudioPacket | undefined) => {
-  const sideDataList = Array.isArray(packet?.side_data_list) ? packet.side_data_list : []
-  for (const sideData of sideDataList) {
-    if (String(sideData?.side_data_type || '') !== 'Skip Samples') continue
-    return parsePositiveNumber(sideData?.skip_samples)
-  }
-  return 0
-}
-
-const shouldApplyLameGaplessSkipOffset = (stream: FfprobeRkbAudioStream | undefined) => {
-  const encoder = String(stream?.tags?.encoder || '').trim()
-  return encoder.startsWith('LAME')
-}
-
-const probeFfmpegTimeBasisOffsetMs = async (filePath: string): Promise<number> => {
-  let ffprobePath = ''
-  try {
-    ffprobePath = resolveBundledFfprobePath()
-  } catch {
-    return 0
-  }
-  if (!ffprobePath || !existsSync(ffprobePath)) return 0
-
-  try {
-    const { stdout } = await execFileAsync(
-      ffprobePath,
-      [
-        '-v',
-        'error',
-        '-print_format',
-        'json',
-        '-show_entries',
-        'stream=start_time,sample_rate:stream_tags=encoder:packet_side_data=side_data_type,skip_samples',
-        '-show_packets',
-        '-read_intervals',
-        '%+#1',
-        '-select_streams',
-        'a:0',
-        filePath
-      ],
-      {
-        windowsHide: true,
-        timeout: FFPROBE_TIMEOUT_MS,
-        maxBuffer: 256 * 1024
-      }
-    )
-    const parsed = JSON.parse(String(stdout || '{}')) as FfprobeRkbAudioPayload
-    const stream = Array.isArray(parsed.streams) ? parsed.streams[0] : undefined
-    const startTimeSec = parsePositiveNumber(stream?.start_time)
-    if (!startTimeSec) return 0
-
-    const sampleRate = parsePositiveNumber(stream?.sample_rate)
-    const skipSamples = resolveFirstPacketSkipSamples(
-      Array.isArray(parsed.packets) ? parsed.packets[0] : undefined
-    )
-    const skipSamplesMs = sampleRate > 0 ? (skipSamples / sampleRate) * 1000 : 0
-    const startTimeMs = startTimeSec * 1000
-    const gaplessSkipOffsetMs =
-      skipSamplesMs > 0 && shouldApplyLameGaplessSkipOffset(stream) ? skipSamplesMs : 0
-    return toFixedMs(startTimeMs + gaplessSkipOffsetMs)
-  } catch (error) {
-    log.error('[rkb-rekordbox-grid] probe ffmpeg time basis failed', {
-      filePath,
-      error: error instanceof Error ? error.message : String(error)
-    })
-    return 0
-  }
-}
-
-const resolveTimeBasisOffsetMsForFile = async (filePath: string) => {
-  const cacheKey = normalizeLookupKey(path.resolve(filePath))
-  if (!cacheKey) return 0
-  let promise = timeBasisOffsetCache.get(cacheKey)
-  if (!promise) {
-    promise = probeFfmpegTimeBasisOffsetMs(filePath)
-    timeBasisOffsetCache.set(cacheKey, promise)
-  }
-  return await promise
-}
-
-const loadSnapshotGridMap = async (): Promise<Map<string, RkbRekordboxGridValue>> => {
-  const snapshotPath = await resolveSnapshotPath()
+const loadSnapshotGridMapFromFile = async (
+  snapshotFileName: string
+): Promise<Map<string, RkbRekordboxGridValue>> => {
+  const snapshotPath = await resolveSnapshotPath(snapshotFileName)
   if (!snapshotPath) {
     return new Map()
   }
   const raw = await fs.readFile(snapshotPath, 'utf-8')
   const payload = JSON.parse(raw) as SnapshotPayload
+  const sourcePlaylistName = normalizeText(payload?.source?.playlistName) || snapshotFileName
   const map = new Map<string, RkbRekordboxGridValue>()
   for (const track of Array.isArray(payload?.tracks) ? payload.tracks : []) {
-    const gridValue = buildGridValue(track)
+    const gridValue = buildGridValue(track, sourcePlaylistName)
     if (!gridValue) continue
     const lookupKey = normalizeLookupKey(gridValue.sourceFileName)
     if (!lookupKey || map.has(lookupKey)) continue
     map.set(lookupKey, gridValue)
   }
   return map
+}
+
+const loadSnapshotGridMap = async (): Promise<Map<string, RkbRekordboxGridValue>> => {
+  return await loadSnapshotGridMapFromFile(SNAPSHOT_FILE_NAME)
 }
 
 const getCachedSnapshotGridMap = async () => {
@@ -289,6 +181,6 @@ export const resolveRkbRekordboxGridForFile = async (
   if (!matched) return null
   return {
     ...matched,
-    timeBasisOffsetMs: await resolveTimeBasisOffsetMsForFile(filePath)
+    timeBasisOffsetMs: await resolveAudioTimeBasisOffsetMsForFile(filePath)
   }
 }

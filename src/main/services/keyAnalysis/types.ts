@@ -128,6 +128,7 @@ export type BpmAnalysisResult = {
   timeBasisOffsetMs?: number
   beatThisEstimatedDrift128Ms?: number | null
   beatThisWindowCount?: number | null
+  beatGridAlgorithmVersion?: number | null
 }
 
 export type DoneEntry = {
@@ -140,6 +141,7 @@ export type DoneEntry = {
   timeBasisOffsetMs?: number
   beatThisEstimatedDrift128Ms?: number
   beatThisWindowCount?: number
+  beatGridAlgorithmVersion?: number
   hasWaveform?: boolean
 }
 

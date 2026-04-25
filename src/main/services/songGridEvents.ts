@@ -11,6 +11,8 @@ export const emitSongGridUpdated = (payload: SharedSongGridDefinition | null | u
     bpm: payload?.bpm,
     firstBeatMs: payload?.firstBeatMs,
     barBeatOffset: payload?.barBeatOffset,
-    timeBasisOffsetMs: payload?.timeBasisOffsetMs
+    timeBasisOffsetMs: payload?.timeBasisOffsetMs,
+    beatThisWindowCount: payload?.beatThisWindowCount,
+    beatGridAlgorithmVersion: payload?.beatGridAlgorithmVersion
   } satisfies SharedSongGridDefinition)
 }

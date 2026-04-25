@@ -79,6 +79,7 @@ type BpmAnalysisResultItem = {
   bpm?: unknown
   firstBeatMs?: unknown
   barBeatOffset?: unknown
+  timeBasisOffsetMs?: unknown
 }
 
 type ValueRef<T> = {
