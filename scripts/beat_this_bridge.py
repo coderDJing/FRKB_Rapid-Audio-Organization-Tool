@@ -138,7 +138,6 @@ from beat_this_full_logit_rescue import (
     apply_full_track_logit_rescue as _apply_full_track_logit_rescue,
 )
 from beat_this_phase_rescue import (
-    apply_frame_center_phase_rescue_to_result as _apply_frame_center_phase_rescue_to_result,
     apply_phase_rescue_rules as _apply_phase_rescue_rules,
     apply_window_phase_consensus as _apply_window_phase_consensus,
 )
@@ -686,38 +685,6 @@ def _finalize_prepared_window(
     }
 
 
-def _quantize_result_phase_to_ms(result: dict[str, Any]) -> dict[str, Any]:
-    next_result = dict(result)
-    changed = False
-    for key in ("firstBeatMs", "absoluteFirstBeatMs"):
-        try:
-            value = float(next_result.get(key) or 0.0)
-        except Exception:
-            continue
-        if not math.isfinite(value) or value < 0.0:
-            continue
-        quantized = float(math.floor(value + 0.000001))
-        if abs(quantized - value) > 0.000001:
-            next_result[key] = round(quantized, 3)
-            changed = True
-    if not changed:
-        return result
-
-    bpm = float(next_result.get("bpm") or 0.0)
-    raw_first_beat_ms = float(next_result.get("rawFirstBeatMs") or 0.0)
-    beat_interval_ms = 60000.0 / bpm if bpm > 0.0 else 0.0
-    if math.isfinite(beat_interval_ms) and beat_interval_ms > 0.0:
-        next_result["anchorCorrectionMs"] = round(
-            _phase_delta_ms(
-                float(next_result.get("firstBeatMs") or 0.0),
-                raw_first_beat_ms,
-                beat_interval_ms,
-            ),
-            3,
-        )
-    return next_result
-
-
 def _analyze_prepared_windows_to_track_result(
     prepared_windows: list[dict[str, Any]],
     signal: np.ndarray,
@@ -773,7 +740,6 @@ def _analyze_prepared_windows_to_track_result(
                 sample_rate,
                 tuning,
             )
-            next_result = _apply_frame_center_phase_rescue_to_result(next_result)
             next_result = _apply_window_phase_consensus(finalized_results, next_result)
         proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
         if proxy:
@@ -795,7 +761,7 @@ def _analyze_prepared_windows_to_track_result(
                 if refreshed_proxy:
                     next_result = dict(next_result)
                     next_result.update(refreshed_proxy)
-        return _quantize_result_phase_to_ms(next_result)
+        return next_result
 
     anchor_window = _select_anchor_window_result(finalized_results)
 

@@ -1,57 +1,168 @@
 # rkb Rekordbox 真值验证工作流
 
-## 1. 目的
+## 1. 当前结论
 
-`rkb` 歌单不是为了让 FRKB 永久依赖 Rekordbox，而是用 Rekordbox 作为“分析真值”来校准和评估 FRKB 自己的节拍分析算法。
+`rkb` / Rekordbox 真值链路的目标不是让 FRKB 依赖 Rekordbox 运行，而是用 Rekordbox 作为外部分析参照，校准 FRKB 自己的 beat grid analyzer。
 
-核心目标：
-
-- 使用同一个音频文件。
-- FRKB 继续使用自己的 FFmpeg/raw 波形作为视觉和算法基准。
-- Rekordbox 只提供分析真值：`bpm`、`firstBeatMs`、`barBeatOffset`、`PQTZ`。
-- 把 Rekordbox 真值放到 FRKB 的时间轴上后，比较 FRKB 自己分析输出和 Rekordbox 真值的差异。
-- 用这个差异去优化 FRKB 的 BPM、首拍、downbeat/bar 相位分析程序。
-
-禁止目标：
-
-- 不用 Rekordbox `PWV5` 波形替换 FRKB 大波形。
-- 不用歌名特判。
-- 不用高维特征组合做隐式歌曲特判。
-- 不维护逐曲 offset 表。
-- 不为了视觉贴合去改 `firstBeatMs`。
-- 不把离线能量峰、可见起点、最大振幅点当成 Rekordbox 网格真值。
-
-新对话如果从本文开始接手算法优化，可以直接使用这段任务说明：
+当前有效基线：
 
 ```text
-按 drafts/rkb-rekordbox-truth-validation-workflow.md，把 FRKB 自己的 BPM / firstBeat / barBeatOffset 分析结果归一化到同一 timeline，先做 benchmark，对齐 Rekordbox truth，再优化 FRKB 自己的分析算法。
-
-不要改 rkb truth 链路。
-不要用 Rekordbox 波形。
-不要做歌名特判或逐曲补偿。
-不要做只命中极少数样本的高维特征指纹规则。
-不要为了视觉贴合修改 Rekordbox 的 firstBeatMs。
-
-`rkb` 和 `sample` 是同一批真值样本的两份 FRKB 目录，Rekordbox 只提供 bpm / firstBeatMs / barBeatOffset / PQTZ。
-`new` 只作为新样本临时入口，真值提取和样本迁移完成后必须清空。
-FRKB 波形必须继续使用自己的 FFmpeg/raw 波形。
-普通歌单未来也应输出同样语义的数据，但来源必须是 FRKB analyzer。
-先建立 benchmark 和误差报告，再修改算法。
-当前统一样本池是 184 首，当前算法版本是 8，验收阈值是严格 2ms，无灰区。
-负 firstBeatMs 在 analyzer audio 轴上是合法相位语义，不能提前 clamp 到 0。
-修改代码后必须运行 npx vue-tsc --noEmit。
-新增规则必须先通过防过拟合检查：解释稳定失败类型、使用通用音频信号、避免只救单曲、不得用 blind 样本反复调参。
+grid-analysis-lab/rkb-rekordbox-benchmark/after-late-edge-full-1.json
+trackTotal = 184
+pass = 174
+first-beat-phase = 10
+errorTrackCount = 0
+currentTimeline.bpmOnlyDrift128BeatsMs.max = 0.0ms
+strictToleranceMs = 2.0ms
 ```
 
-## 2. 数据层应该怎么看
+旧的 `184/184 pass` 输出不再作为当前算法质量结论。那轮结果混入了过窄的相位修补规则，样本内能全过，但存在明显多特征拟合风险。
+
+当前策略：
+
+- 保留这 184 首作为回归集。
+- 暂停继续追杀剩余 10 首失败样本。
+- 下一步先扩充新样本，再观察失败模式是否重复出现。
+- 只有新旧样本中都出现的稳定模式，才允许沉淀为新的 Rekordbox-compatible phase prior。
+
+当前保留产物：
+
+- `after-late-edge-full-1.json` / `.progress.json`：当前可信基线。
+- `after-overfit-prune-1.json` / `.progress.json`：删除明显过拟合补丁后的基线。
+- `after-local-onset-lead-full-1.json` / `.progress.json`：local onset lead 里程碑。
+- `after-logit-edge-full-1.json` / `.progress.json`：full-track logit edge 里程碑。
+- `after-frame-prior-full-2.json` / `.progress.json`：frame prior 里程碑。
+- `test-101-captured-truth.json`、`test-truth.json`：truth 数据，不作为算法质量结论。
+
+`targeted-*`、`try-*`、`diag-*`、`old40-*`、`abc*`、`test-new-*`、旧 `test-101-unified-184-*` 和 `latest.json` 都属于历史试跑噪音；需要复查时重新跑，不再作为交接资料保留。
+
+## 2. 绝对禁止
+
+以下做法一律禁止，即使能提升当前 184 首通过率：
+
+- 用歌名、artist、路径、basename、播放列表来源做算法特判。
+- 用文件大小、mtime、hash、fingerprint 参与 analyzer 决策。
+- 维护逐曲 offset 表或逐曲 phase 修正表。
+- 在 analyzer 决策中读取 Rekordbox truth、benchmark 误差、pass/fail 结果。
+- 为了贴合某一首歌移动 Rekordbox truth 的 `firstBeatMs`。
+- 用 Rekordbox `PWV5` 波形替换 FRKB raw waveform。
+- 把离线能量峰、首个可见起点、最大振幅点当成 Rekordbox 网格真值。
+- 写一串过窄布尔条件，只命中 1-2 首失败样本。
+
+没有歌名特判不代表没有过拟合。`rawFirstBeatMs + confidence + quality + strategy + barOffset + windowStartSec` 这种高维组合如果只服务极少数样本，也视为过拟合风险。
+
+## 3. 可以引入什么
+
+可以引入 **Rekordbox-compatible phase prior**，但它必须是低维、通用、可解释的目标系统偏置，而不是样本记忆。
+
+允许的信号：
+
+- BeatThis raw beats / downbeats。
+- full-track beat logits / downbeat logits。
+- attack envelope / local onset。
+- 多窗口 BPM 和相位共识。
+- downbeat margin。
+- beat 序列中位相位和 MAD。
+- 音频格式时间轴信号：`stream.start_time`、`Skip Samples`、encoder tag。
+
+允许的 prior 类型：
+
+- `model-frame-prior`：BeatThis / Rekordbox 风格的 20ms 帧边界残差先验。
+- `integer-head-prezero`：首拍落在 decoded sample 0 之前时允许小幅负相位。
+- `downbeat-one-beat-guard`：相位已接近但 bar offset 明显偏一拍时修正 downbeat。
+- `sequence-median-phase`：beat 序列中位相位稳定且 MAD 很低时使用序列相位。
+- `late-phase-edge`：晚相位、非 0 bar、anchor 未修正时贴近前侧边缘。
+- `local-onset-lead`：低置信 head attack 可用稳定 onset lead 微调。
+- `full-track-logit-*`：只有 logits 分数、support、downbeat margin 同时支持时才介入。
+
+这些 prior 的名字必须描述机制，不能描述样本、歌单或临时现象。
+
+## 4. 新规则合并门槛
+
+新增规则必须同时满足：
+
+- 不使用任何元数据身份信号。
+- 不使用 truth 或 benchmark 结果参与 analyzer。
+- 能解释一个稳定失败类型，例如 `first-beat-phase`、`downbeat`、`bpm`、`time-basis`、`frame-residual`。
+- 使用粗粒度、可解释阈值，不能为了某首歌写精确误差值。
+- 先跑 targeted，再跑完整 184 回归。
+- 完整 184 回归必须 `0` 回归。
+- 不能引入新的 `bpm`、`half-or-double-bpm` 或 `downbeat` 失败。
+- 输出必须记录触发数、救回数、回归数。
+
+推荐记录格式：
+
+```text
+rule = model-frame-prior
+failureType = first-beat-phase
+signals = raw/current phase, bar offset, quality, confidence, drift
+targeted = improved 4, regressed 0
+full184 = improved 9, regressed 0
+notes = no metadata, no truth, no file identity
+```
+
+如果某条规则只救 1 首：
+
+- 默认不合并。
+- 除非它是已有机制的自然扩展，并且有明确反例保护。
+- 如果连续出现多个单首规则，停止堆补丁，重构 solver。
+
+## 5. 样本扩充后的新流程
+
+当前剩余 10 首失败样本先保留，不继续单独追杀。下一步流程改为：
+
+1. 把新样本放入 FRKB `new` 目录。
+2. 把同一批音频导入 Rekordbox。
+3. 建临时 Rekordbox playlist。
+4. 让 Rekordbox 完成分析，必要时人工修正 beat grid。
+5. 从 Rekordbox 读取 `.DAT beat_grid` / `PQTZ`。
+6. 合并进 `resources/rkbRekordboxGridSnapshot.json`。
+7. 把音频复制到 `rkb` 和 `sample`。
+8. 清空 `new`。
+9. 跑旧 184 回归。
+10. 跑扩展后全集 benchmark。
+11. 对失败样本做聚类，而不是逐首补规则。
+
+聚类维度：
+
+- BPM 错。
+- half/double BPM。
+- firstBeat phase 错。
+- downbeat/barBeatOffset 错。
+- timeBasisOffset 错。
+- full-logit 拉偏。
+- head attack / local onset 偏差。
+- model frame / quantization 残差。
+- 多窗口相位不一致。
+
+只有当新样本中出现和旧失败样本相同的稳定模式，才继续设计 prior。
+
+## 6. dev / regression / blind 约束
+
+当前 184 首是 **regression + dev 历史混合集**，不能当 locked blind。
+
+建议后续分层：
+
+- `dev`：允许看失败、调规则。
+- `regression`：旧样本，保证不退化。
+- `locked blind`：冻结算法后才跑，只评估不调参。
+
+规则：
+
+- 如果根据某批新样本失败结果改了算法，那批新样本自动降级为 dev。
+- 需要重新准备另一批 locked blind。
+- “全通过”必须说明是 dev 全通过、regression 全通过，还是 locked blind 全通过。
+- 没有 locked blind 时，只能说样本内通过，不能说泛化已解决。
+
+## 7. 数据层语义
 
 一首歌在这个验证体系里有三层数据。
 
-### 2.1 音频文件
+### 7.1 音频文件
 
 音频文件是唯一共同输入。
 
-对 MP3 来说，文件不是“从 0ms 开始的一串裸 PCM”。它包含：
+MP3 不是从 `0ms` 开始的一串裸 PCM。它可能包含：
 
 - MPEG frame。
 - encoder delay / padding。
@@ -59,239 +170,58 @@ FRKB 波形必须继续使用自己的 FFmpeg/raw 波形。
 - 第一包 `Skip Samples`。
 - encoder tag，例如 `LAME3.100`、`Lavc59.37`。
 
-这些字段会影响“FFmpeg 解码输出 sample 0”应该映射到哪一个 Rekordbox 时间点。
+这些字段只用于坐标映射，不允许扩展成逐曲补偿表。
 
-### 2.2 Rekordbox 真值
+### 7.2 Rekordbox 真值
 
-Rekordbox 真值来自 Rekordbox 分析后的 beat grid：
+Rekordbox truth 来自 Rekordbox beat grid：
 
-- `bpm`：Rekordbox 的网格 BPM。
-- `firstBeatMs`：Rekordbox 时间轴上的第一条 beat grid 时间戳。
-- `firstBeatLabel`：Rekordbox 第一条 beat grid 的拍号，通常 `1..4`。
-- `barBeatOffset`：FRKB 内部使用的小节相位字段，由 `firstBeatLabel` 转换得到。
-- `PQTZ`：Rekordbox 导出的逐拍时间记录，可用于多点验证。
+- `bpm`
+- `firstBeatMs`
+- `firstBeatLabel`
+- `barBeatOffset`
+- `PQTZ`
 
-重点：`firstBeatMs` 不是“文件开头后第一个声音一定在 0ms”。它是 Rekordbox 自己时间轴上的网格时间戳。
+重点：`firstBeatMs` 是 Rekordbox 时间轴上的网格时间戳，不是“音频文件第一个声音的位置”。
 
-### 2.3 FRKB 分析结果
+### 7.3 FRKB analyzer 输出
 
-FRKB 自己的分析程序最终也必须输出同一语义的数据：
+FRKB analyzer 最终也必须输出同一语义：
 
 - `bpm`
 - `firstBeatMs`
 - `barBeatOffset`
 
-如果 FRKB 分析器内部是在“解码 PCM sample 0 = 0ms”的音频轴上做判断，那么进入 benchmark 前必须先转换：
+如果 analyzer 输出在 audio 轴上，benchmark 前必须转换：
 
 ```text
 frkbFirstBeatTimelineMs = frkbFirstBeatAudioMs + timeBasisOffsetMs
 ```
 
-如果 FRKB 分析器已经直接输出 app timeline 语义，则不能再加一次 offset。
+如果 analyzer 已经输出 app timeline 语义，则不能再加一次 offset。
 
-### 2.4 负 `firstBeatMs` 不是脏数据
+### 7.4 负 firstBeatMs
 
-FRKB analyzer 的中间结果如果处在 audio 轴上，`firstBeatMs < 0` 是合法语义。
+analyzer 中间结果允许 `firstBeatMs < 0`。
 
-它表示：按当前 BPM 和相位外推，等价网格的某一条拍线落在 FFmpeg decoded sample 0 之前。这个值进入 benchmark 前应先按坐标语义转换：
+它表示按当前 BPM 和相位外推，某条等价拍线落在 decoded sample 0 之前。算法候选、缓存、benchmark 归一化阶段不能因为负数提前丢信息。
 
-```text
-timelineFirstBeatMs = audioFirstBeatMs + timeBasisOffsetMs
-```
-
-禁止把 analyzer 中间结果里的负 `firstBeatMs` 直接当成错误、脏数据或需要清零的 UI 修正。尤其禁止恢复这类逻辑：
+禁止恢复这类逻辑：
 
 ```text
 firstBeatMs = max(0, firstBeatMs)
 if firstBeatMs < 0: discard result
 ```
 
-只有明确保存 Rekordbox truth 或 app timeline song grid 时，才可以按对应数据结构的语义决定是否接受负值。算法候选、缓存、benchmark 归一化阶段不能因为负数提前丢信息。
+## 8. timeBasisOffsetMs
 
-## 3. 统一样本池当前约定
+Rekordbox 的 `firstBeatMs` 是 Rekordbox 时间轴；FRKB raw waveform 来自 FFmpeg decoded PCM。
 
-当前实验链路约定：
-
-- FRKB 真值样本目录 basename：`rkb`
-- FRKB benchmark 样本目录 basename：`sample`
-- FRKB 临时入口目录 basename：`new`
-- Rekordbox 播放列表：只作为临时采集容器使用；历史 `abc` / `abc2` 已完成真值提取并删除。
-- Rekordbox 统一快照文件：`resources/rkbRekordboxGridSnapshot.json`
-- rkb 运行时代码：`src/main/services/keyAnalysis/rkbRekordboxGrid.ts`
-- 本文是当前唯一保留的 rkb/Rekordbox 真值工作流文档；旧交接草案和离线探针输出已清理，避免继续误导。
-
-当前匹配规则：
-
-- `rkb` 运行时命中统一快照后启用 Rekordbox truth 覆盖。
-- `sample` 用同一批音频跑 FRKB analyzer benchmark，不写入 Rekordbox truth 覆盖结果。
-- `new` 不参与 benchmark，只用于暂存待采集真值的新样本。
-- 用音频文件 basename 匹配快照里的 `fileName`。
-- 快照命中后覆盖 FRKB song 上的：
-  - `bpm`
-  - `firstBeatMs`
-  - `barBeatOffset`
-  - `timeBasisOffsetMs`
-
-`src/main/services/scanSongs.ts` 也会在扫描 `rkb` 时重新应用当前快照，避免旧 `song_cache` 把旧 offset 带回 UI。
-
-当前验证基线：
-
-- 统一 truth dataset 当前为 `184` 首，全部记录在 `resources/rkbRekordboxGridSnapshot.json`。
-- 快照来源元数据包含 `abc` 33 首、`abc2` 7 首、`test` 101 首；播放列表来源可能重叠，最终以统一快照去重后的 184 首为准。
-- 2026-04-26 `test` 播放列表重新采集 101 首真值；其中 9 首与既有样本池 basename、SHA256、Rekordbox truth 完全一致，作为重复复核样本处理；剩余 92 首迁入统一 truth dataset。
-- `rkb` 和 `sample` 目录当前各有 184 个音频文件；`new` 当前为空。
-- 2026-04-26 上一轮 `test` 38 首真值已采集；其中 1 首已确认 Rekordbox 分析有问题并移出统一 truth dataset，剩余 37 首继续保留。
-- 上一轮 `test` 样本移除问题样本后，25 首是统一池新增样本，12 首为已存在样本复核。
-- `nic jaro - gravitate (original mix) (1).mp3` 已确认为问题样本，不能计入统一 truth dataset。
-- 当前统一 184 首 benchmark 已通过：`184/184 pass`，`errorTrackCount = 0`，失败分布为空。
-- 本轮 `test` 播放列表新增范围已纳入统一回归；历史非 `test` 的 83 首、9 首重复复核样本、本轮新增样本均在同一 184 首 benchmark 中通过。
-- 当前没有灰区概念；硬性验收阈值是 `2ms`。任何 `firstBeatPhaseAbsErrorMs`、`gridMaxAbsMs`、`bpmOnlyDrift128BeatsMs` 超过 `2ms` 都算失败。
-- 当前算法版本：`CURRENT_BEAT_GRID_ALGORITHM_VERSION = 8`。
-- 当前代表 benchmark 输出：
-  - `grid-analysis-lab/rkb-rekordbox-benchmark/test-101-unified-184-after-full-pass-attempt-1.json`
-  - `trackTotal = 184`，`pass = 184`，`errorTrackCount = 0`
-  - `currentTimeline.firstBeatPhaseAbsErrorMs.max = 2.0ms`
-  - `currentTimeline.gridMaxAbsMs.max = 2.0ms`
-  - `currentTimeline.bpmOnlyDrift128BeatsMs.max = 0.0ms`
-  - progress 镜像文件：`grid-analysis-lab/rkb-rekordbox-benchmark/test-101-unified-184-after-full-pass-attempt-1.progress.json`
-- 2026-04-26 本轮算法优化历史中间结果：
-  - `grid-analysis-lab/rkb-rekordbox-benchmark/test-101-unified-184-after-phase-floor-1.json`
-  - `trackTotal = 184`，`pass = 155`，`errorTrackCount = 0`
-  - 失败分布：`first-beat-phase = 23`、`bpm = 4`、`half-or-double-bpm = 2`
-  - 该输出只保留作优化过程追溯，不再代表当前结论。
-- 上一个全通过基线：
-  - `grid-analysis-lab/rkb-rekordbox-benchmark/after-invalid-sample-removal-92.json`
-  - `trackTotal = 92`，`pass = 92`，`errorTrackCount = 0`，`currentTimeline.gridMaxAbsMs.max = 1.975ms`
-- 历史 67 首和 93 首基线输出只保留作追溯，不作为当前结论替代：
-  - `grid-analysis-lab/rkb-rekordbox-benchmark/after-gravitate-removal-67.json`
-  - `trackTotal = 67`，`pass = 67`，`errorTrackCount = 0`，`currentTimeline.gridMaxAbsMs.max = 1.964ms`
-- 历史输出只保留作追溯，不作为当前结论替代：
-  - `grid-analysis-lab/rkb-rekordbox-benchmark/old40-parallel-after-overrun-guard.json`
-  - `grid-analysis-lab/rkb-rekordbox-benchmark/test-new-parallel-after-overrun-guard.json`
-  - `grid-analysis-lab/rkb-rekordbox-benchmark/abc-sample-after-abc2-final.json`
-  - `grid-analysis-lab/rkb-rekordbox-benchmark/abc2-sample-final.json`
-- `Developer`、`len faki - zig zag`、`Enrico`、`Gamma`、`Leviws` 这类关键分歧样本都必须继续作为回归样本。
-- 上一轮 `test` 保留样本里最差样本仍低于 `2ms`；本轮 101 首扩充后新增范围曾出现 47 首失败，当前已通过统一 184 首完整回归。
-- 最近一次代码侧验证已通过 `npx vue-tsc --noEmit`（2026-04-26）。
-- 没有保留运行时调试日志。
-
-## 4. Rekordbox 数据怎么拿
-
-### 4.1 在 Rekordbox 里准备真值
-
-推荐流程：
-
-1. 把新样本先放进 FRKB 的 `new` 目录。
-2. 把同一批音频导入 Rekordbox。
-3. 为这批样本创建一个临时 Rekordbox 播放列表。
-4. 让 Rekordbox 完成分析。
-5. 必要时在 Rekordbox 里人工修正 beat grid。
-6. 确认 Rekordbox 里看到的网格是你认定的真值。
-7. 从临时播放列表提取 truth，并合并进 `resources/rkbRekordboxGridSnapshot.json`。
-8. 把这批音频各复制一份到 FRKB 的 `rkb` 和 `sample` 目录。
-9. 清空 `new`。
-10. 删除临时 Rekordbox 播放列表。
-11. 跑统一样本池的完整回归。
-
-注意：
-
-- 如果人工修过网格，必须确认 Rekordbox 已保存。
-- 读取桌面库时，最好关闭 Rekordbox，避免数据库锁或未落盘。
-- 每次替换音频文件后，都必须重新确认文件大小、mtime、basename 是否匹配。
-
-### 4.2 从 Rekordbox 桌面库读取
-
-桌面库读取依赖：
-
-- Rekordbox `master.db`
-- Rekordbox analyze 文件，例如 `.DAT`
-- `pyrekordbox`
-- `resources/rekordboxDesktopLibrary/bridge.py`
-
-当前 bridge 的 beat grid 读取逻辑在：
-
-- `resources/rekordboxDesktopLibrary/bridge.py`
-- `_resolve_track_grid_payload(...)`
-
-它从 analyze `.DAT` 里读取 `beat_grid` tag：
-
-```text
-beats = beat_grid.beats
-bpms = beat_grid.bpms
-times = beat_grid.times
-```
-
-然后生成：
-
-```text
-gridBpm = bpms[0]
-gridFirstBeatMs = times[0] * 1000
-gridFirstBeatLabel = beats[0]
-gridBarBeatOffset = (5 - gridFirstBeatLabel) % 4
-```
-
-这些字段进入快照后对应：
-
-```text
-bpm = gridBpm
-firstBeatMs = gridFirstBeatMs
-firstBeatLabel = gridFirstBeatLabel
-barBeatOffset = gridBarBeatOffset
-```
-
-### 4.3 从 Rekordbox USB / 设备库读取
-
-USB 导出可用于交叉验证。
-
-历史第一批 `abc` 33 首曾用 USB 导出做过交叉验证。该段是历史验证结论，不代表当前样本池仍只来自 `abc`。
-
-当时已验证过的重点：
-
-- `G:/PIONEER/rekordbox/export.pdb` 中 `abc` 歌单共 `33` 首。
-- 这 `33` 首全部能在 `USBANLZ` 找到对应 `ANLZ0000.DAT`。
-- 这 `33` 首全部存在 `PQTZ`。
-- `PQTZ` 存的是逐拍记录，不是只有第一拍。
-- `PQTZ` 每条记录为 8 字节：`u16 beat`、`u16 bpm_x100`、`u32 time_ms`。
-- 这批样本没有多 BPM 段：`tracksWithVariableBpm = 0`。
-- 这批 `abc` 样本里，`PQTZ[0].timeMs` 与快照 `firstBeatMs` 一致。
-- `PQTZ[0].bpm` 与快照 `bpm` 一致。
-- `PQTZ[0].beat` 与快照 `firstBeatLabel` 一致。
-- 以 `PQTZ[0]` 和 `60000 / bpm` 外推整首歌时，没有任何一首 `maxBeatTimeDriftMs >= 10`。
-- 最差样本也只有 `6.521ms / 1121 beats`，属于整数毫秒量化级别，不是结构性 drift。
-
-因此 `PQTZ` 可作为多点真值校验来源：
-
-```text
-expectedBeatMs[i] = PQTZ[i].timeMs
-```
-
-当歌曲是固定 BPM 时，也可以用：
-
-```text
-expectedBeatMs[i] = firstBeatMs + i * 60000 / bpm
-```
-
-但如果未来遇到变 BPM 或多锚点歌曲，应优先使用完整 `PQTZ`，不要只用首拍外推。
-
-当前结论：`PQTZ` 证明 Rekordbox 网格真值本身基本可信；历史第一批 33 首的错位根因不应继续归因到“没有读取完整 PQTZ 多锚点”。
-
-## 5. Rekordbox 时间轴怎么对应到 FRKB
-
-### 5.1 核心问题
-
-Rekordbox 的 `firstBeatMs` 是 Rekordbox 时间轴。
-
-FRKB 大波形来自 FFmpeg raw pipe，FFmpeg 输出的是一串没有原始 PTS 的 PCM sample。
-
-所以必须明确：
+必须明确：
 
 ```text
 FFmpeg decoded sample 0 -> Rekordbox timeline ?
 ```
-
-这个映射就是 `timeBasisOffsetMs`。
-
-### 5.2 当前 rkb timeBasisOffsetMs 规则
 
 当前规则：
 
@@ -307,7 +237,7 @@ timeBasisOffsetMs = ffprobe stream.start_time * 1000
   timeBasisOffsetMs += skip_samples / sample_rate * 1000
 ```
 
-也就是：
+坐标转换：
 
 ```text
 timelineSec = audioSec + timeBasisOffsetMs / 1000
@@ -324,128 +254,28 @@ audioSec = timelineSec - timeBasisOffsetMs / 1000
 | `len faki - gamma (glaskin remix) (1).mp3` | `Lame3.100` | `0ms` | 无 | `0ms` |
 | `leviws - foul play (1).mp3` | `Lame3.100` | `0ms` | 无 | `0ms` |
 
-这个规则已经让当前统一样本池中的历史第一批 33 首视觉对齐，并继续作为后续 184 首统一回归的一部分。
+这里修的是坐标，不是移动音频，也不是改 Rekordbox truth。
 
-### 5.3 为什么不是改歌曲
+## 9. benchmark 等价定义
 
-这里没有移动音频，也没有改 `firstBeatMs`。
-
-实际修正的是坐标转换：
+FRKB 输出归一化到 Rekordbox timeline 后比较：
 
 ```text
-FFmpeg raw PCM sample index -> Rekordbox timeline
+beatIntervalMs = 60000 / rekordboxBpm
+phaseErrorMs = circularPhase(frkbFirstBeatTimelineMs - rekordboxFirstBeatMs, beatIntervalMs)
 ```
 
-也就是说，同一份音频文件在两个系统里的“0 点语义”不同。`timeBasisOffsetMs` 把两个 0 点放到同一坐标系里。
+首拍相位必须用 circular phase，不能普通相减。
 
-## 6. FRKB 里怎么使用这些数据
-
-### 6.1 song 数据
-
-进入 FRKB 后，rkb 快照命中的歌曲应携带：
-
-```json
-{
-  "bpm": 141,
-  "firstBeatMs": 61,
-  "barBeatOffset": 0,
-  "timeBasisOffsetMs": 50.114
-}
-```
-
-含义：
-
-- `bpm / firstBeatMs / barBeatOffset` 是 Rekordbox 真值。
-- `timeBasisOffsetMs` 是音频解码轴到 Rekordbox timeline 的映射。
-- `firstBeatMs` 不因为 offset 改动。
-
-### 6.2 波形绘制
-
-FRKB raw waveform 的本地音频时间要转换到 timeline：
+比较 downbeat 时，必须把首拍按整数拍折叠带来的 shift 同步应用到 `barBeatOffset`：
 
 ```text
-rawTimelineStartSec = rawData.startSec + timeBasisOffsetMs / 1000
-```
-
-grid 直接按 Rekordbox 时间戳画：
-
-```text
-beatTimeSec[i] = firstBeatMs / 1000 + i * 60 / bpm
-```
-
-这样 FRKB 自己的波形和 Rekordbox 真值网格才在同一个时间坐标里。
-
-### 6.3 seek / streaming
-
-发给 FFmpeg 的 `-ss` 必须是 audio sec：
-
-```text
-audioSec = timelineSec - timeBasisOffsetMs / 1000
-```
-
-UI 里的 coverage、dirty range、grid range、cue marker 都应该使用 timeline sec。
-
-这两个轴混用，就会出现“只差一点”的稳定偏移。
-
-### 6.4 当前必须保持一致的工程触点
-
-`timeBasisOffsetMs` 不是只给某一个渲染函数用。它必须贯穿所有 raw waveform、grid、播放和缓存路径：
-
-- `src/main/services/keyAnalysis/rkbRekordboxGrid.ts`：快照命中时计算 `timeBasisOffsetMs`。
-- `src/main/services/scanSongs.ts`：扫描 `rkb` 时重新应用快照，避免旧 `song_cache` 污染。
-- `src/renderer/src/components/mixtapeBeatAlignWaveform.ts`：raw 波形绘制映射到 timeline。
-- `src/renderer/src/components/horizontalBrowseRawWaveformTileManager.ts`：tile 请求和 cache key 必须包含 offset 语义。
-- `src/renderer/src/workers/horizontalBrowseDetailWaveform.worker.ts`：worker 渲染 tile 时使用 offset。
-- `src/renderer/src/components/useHorizontalBrowseRawWaveformCanvas.ts`：coverage/intersection 使用 timeline 轴。
-- `src/renderer/src/components/useHorizontalBrowseRawWaveformStream.ts`：FFmpeg stream 用 audio 轴，loaded/dirty range 转回 timeline 轴。
-- `src/renderer/src/components/HorizontalBrowseRawWaveformDetail.vue`：detail raw stream/canvas 统一使用 `previewTimeBasisOffsetMs`。
-- `src/renderer/src/components/MixtapeBeatAlignDialog.vue`：调网格弹窗也必须接收 offset。
-- `src/renderer/src/components/MixtapeDialogsLayer.vue`：从 `beatAlignTrack` 传递 offset。
-- `src/renderer/src/composables/mixtape/mixtapeTrackSnapshot.ts`：mixtape track 快照保留 offset。
-- `src/renderer/src/composables/mixtape/mixtapeSnapshotSongMapper.ts`：mixtape song 映射保留 offset。
-- `rust_package/src/horizontal_browse_transport_engine_state.rs`：native transport 内部做 `timeline_sec <-> audio_sec` 转换。
-
-漏掉任意一条链路，都可能出现“某个视图还是晚一点”的假象。
-
-## 7. FRKB 分析结果怎样才等价于 Rekordbox
-
-### 7.1 单首歌的等价定义
-
-FRKB 分析输出要先归一化到 Rekordbox timeline：
-
-```text
-frkbBpm
-frkbFirstBeatTimelineMs
-frkbBarBeatOffset
-```
-
-与 Rekordbox 真值比较：
-
-```text
-bpmError = frkbBpm - rekordboxBpm
-firstBeatErrorMs = phaseDistance(frkbFirstBeatTimelineMs, rekordboxFirstBeatMs, beatIntervalMs)
-firstBeatShiftBeats = nearestIntegerBeatShift(frkbFirstBeatTimelineMs, rekordboxFirstBeatMs, beatIntervalMs)
+firstBeatShiftBeats = nearestIntegerBeatShift(...)
 normalizedFrkbBarBeatOffset = normalize(frkbBarBeatOffset + firstBeatShiftBeats)
 barBeatOffsetMatch = normalizedFrkbBarBeatOffset == normalize(rekordboxBarBeatOffset)
 ```
 
-`phaseDistance` 不能只做普通减法。因为首拍可能差一个或多个完整 beat，但网格相位仍可能等价。
-
-推荐：
-
-```text
-beatIntervalMs = 60000 / rekordboxBpm
-rawDelta = frkbFirstBeatTimelineMs - rekordboxFirstBeatMs
-phaseError = rawDelta modulo beatIntervalMs, 折叠到 [-beatIntervalMs/2, +beatIntervalMs/2]
-```
-
-关键细节：`phaseDistance` 折叠相位时可能把 `firstBeat` 按整数拍前后移动。比较 `barBeatOffset` 时必须把这个 `firstBeatShiftBeats` 同步应用到 FRKB 的 offset，再做 `mod 4` 或精确比较；否则等价网格会被误判成 downbeat mismatch。
-
-### 7.2 多拍网格等价
-
-仅看第一拍不够。应比较一组 beat：
-
-固定 BPM 时：
+固定 BPM 时，多拍比较：
 
 ```text
 rbBeatMs[i] = rekordboxFirstBeatMs + i * 60000 / rekordboxBpm
@@ -453,405 +283,103 @@ frkbBeatMs[i] = frkbFirstBeatTimelineMs + i * 60000 / frkbBpm
 gridErrorMs[i] = frkbBeatMs[i] - rbBeatMs[i]
 ```
 
-如果有 `PQTZ`：
+如果未来遇到变 BPM 或多锚点歌曲，优先使用完整 `PQTZ`。
 
-```text
-rbBeatMs[i] = PQTZ[i].timeMs
+硬阈值：
+
+- `firstBeatPhaseAbsErrorMs <= 2ms`
+- `gridMaxAbsMs <= 2ms`
+- `bpmOnlyDrift128BeatsMs <= 2ms`
+- `barBeatOffset` 必须匹配
+
+没有灰区。任何一项超过阈值都算失败。
+
+## 10. 运行 benchmark
+
+完整 184 回归：
+
+```powershell
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --jobs 4 --output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.json" --progress-output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.progress.json"
 ```
 
-指标建议：
+针对样本：
 
-- `bpmAbsError`
-- `firstBeatPhaseAbsErrorMs`
-- `gridMeanAbsMs`
-- `gridP95AbsMs`
-- `gridMaxAbsMs`
-- `drift128Ms`
-- `barBeatOffsetMatched`
-
-当前验收没有灰区，全部按硬性阈值处理：
-
-- `firstBeatPhaseAbsErrorMs <= 2ms`。
-- `gridMaxAbsMs <= 2ms`。
-- `bpmOnlyDrift128BeatsMs <= 2ms`。
-- `barBeatOffset` 必须在等价首拍归一化后匹配；不匹配就是 downbeat 错。
-
-任何一项超过阈值都算失败，不能靠人工解释放行。
-
-### 7.3 BPM 等价
-
-BPM 不能只看显示小数。
-
-更可靠的是看网格漂移：
-
-```text
-drift128Ms = frkbBeatMs[127] - rbBeatMs[127]
+```powershell
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --jobs 4 --only "artist or title substring" --output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.json" --progress-output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.progress.json"
 ```
 
-如果 `bpmError` 很小但 `drift128Ms` 大，说明 BPM 仍不等价。
+Python 编译检查：
 
-如果 BPM 是半速/倍速关系，需要单独归类：
-
-- `70` vs `140`
-- `140` vs `280`
-
-这类不应直接算作通过，除非产品层明确允许 half/double BPM 等价。
-
-### 7.4 当前算法原则
-
-当前算法版本是 `8`，但版本号本身不是质量保证；质量只由统一 184 首 truth dataset 的硬阈值结果证明。
-
-必须遵守：
-
-- 不按歌名、artist、文件名、路径、播放列表来源做任何特判。
-- 不维护逐曲 offset 表。
-- 不写只命中极少数样本的高维特征指纹规则；没有元数据特判不等于没有过拟合。
-- 不用 Rekordbox 波形、`PWV5 visibleOnset`、离线能量峰表去替代 FRKB 自己的 raw 波形和 analyzer。
-- 不为了贴合某一首歌而移动 Rekordbox truth 的 `firstBeatMs`。
-- 不把 BeatThis 输出当最终真值；BeatThis 只能作为候选来源，最终结果必须经过 FRKB 自己的网格求解、相位归一化和 benchmark 验证。
-- 可以大改底层，甚至替换 BeatThis，但新系统必须在同一 184 首样本上不降级，并且规则能解释为普适音频信号逻辑。
-
-当前已验证有效的通用修正：
-
-- `head-attack-prezero`：允许保留 sample 0 之前的 head attack 相位候选，解决首拍应落在解码起点之前时被错误清零的问题。
-- `grid-solver-head-attack-window-consensus`：用多窗口一致性确认 head attack anchor，避免只信某一个局部峰值。
-- `full-track-logit-positive-overrun-guard`：当 full-track logits 给出低质量的大正向相位跳变时阻断 overrun，并在需要时保留 overrun 之前的 downbeat 证据。
-- `quality-window-bpm`：只在多个窗口形成 BPM 共识时借用后续窗口 BPM；借用后必须按新 BPM 重新归一化相位。
-- `nearby-phase`：只在首窗相位靠后、相邻窗口 grid-solver 质量相当且置信度足够时借用相邻窗口相位，并保留首窗 downbeat。
-- `head-attack` / `full-logit` 保护：head attack 已稳定时禁止 full-track logits 或窗口相位共识再次大幅重写；低置信高漂移头部样本才允许 full-logit 介入。
-- `prezero-integer-head`：首拍卡在 sample 0 且 raw BPM 轻微低于整数 BPM 时，允许小幅负相位，不提前 clamp 到 0。
-- `attack-bpm-rescue` / `full-track-logit-broad`：只在 attack envelope 或 full-track logits 对候选 BPM 给出足够分数优势时修正近整数、宽范围或半/倍速 BPM；真非整数样本必须继续保留非整数 BPM。
-- `frame residual` 系列：针对 20ms frame 中心、head attack、late tail、positive overrun 等可解释量化残差做小范围修正，触发条件必须同时约束 raw/current phase、质量、置信度、窗口位置和 downbeat 形态。
-- `mid-window-unsnap-zero`：中段窗口低置信 snap-zero 不能无条件归零，必须允许基于当前窗口证据恢复非零相位。
-
-这些规则不是样本特判。它们必须继续以信号质量、相位一致性、窗口共识、downbeat margin 等通用指标为依据。
-
-### 7.5 防过拟合硬约束
-
-1000 首一致只能证明样本内一致，不能单独证明 FRKB 已经达到 Rekordbox 的泛化效果。后续所有算法规则必须先通过下面的防过拟合约束。
-
-禁止的隐式特判：
-
-- 用一串过窄条件组合只修 1 首或极少数歌曲，即使条件里没有歌名、artist、路径，也视为过拟合风险。
-- 使用音频 hash、fingerprint、basename、文件大小、mtime、播放列表来源参与算法决策。它们只能用于样本身份校验、去重和缓存命中。
-- 使用 Rekordbox truth、benchmark 误差、pass/fail 结果反向参与 analyzer 决策。
-- 为了贴合某个样本，把阈值调成没有物理含义的精确小数。
-- 为单个失败样本新增专门 rescue，且无法解释为稳定失败类型。
-
-允许的通用信号：
-
-- BPM 候选的一致性、漂移、half/double 密度、整数 BPM 先验。
-- onset / attack envelope 的峰值结构、相位残差、窗口质量、窗口间共识。
-- BeatThis raw window、full-track logits、downbeat margin、置信度和稳定性。
-- 音频格式时间轴信号，例如 `stream.start_time`、`Skip Samples`、encoder tag，但只能用于坐标映射，不能变成逐曲 offset 表。
-
-新增规则合并前必须记录：
-
-- 规则要解决的失败类型，例如 `bpm`、`half-or-double-bpm`、`first-beat-phase`、`downbeat`、`time-basis`、`frame-residual`。
-- 使用了哪些通用信号，以及为什么这些信号和失败类型有关。
-- 在 dev / regression 上分别影响多少首：新增通过数、变坏数、触发数。
-- 是否只命中 1-2 首；如果是，默认不得合并，除非能给出清晰音频机制和反例保护。
-- 是否引入新的魔法阈值；阈值应尽量粗粒度、可解释，不能来自某一首歌的误差数值。
-
-盲测约束：
-
-- blind 样本只能用于冻结算法后的评估，不能边看 blind 失败边补规则。
-- blind 失败时只能先做聚合分类和风险判断，不能立刻按失败单曲补条件。
-- 如果确实需要用 blind 失败来改算法，必须把该批样本降级为 dev，并重新准备新的 locked blind 样本。
-- 任何“1000 首全通过”的结论必须说明其中哪些样本参与过调参，哪些是 locked blind；否则只能称为样本内通过。
-
-规则复杂度约束：
-
-- 优先使用连续评分、排序和窗口共识，少用长串布尔条件。
-- 单条 rescue 规则条件过多时，必须拆解成更通用的 score 或 solver 逻辑。
-- 同一失败类型如果连续出现多个窄规则，应停止堆补丁，改为重构对应 solver。
-- 规则命名必须描述机制，不得以样本、歌单或临时现象命名。
-
-## 8. 以后优化算法的验证工作流
-
-### 8.1 建 truth dataset
-
-每次从 Rekordbox 准备一批样本，都合并进同一个 truth dataset：`resources/rkbRekordboxGridSnapshot.json`。
-
-每首歌至少记录：
-
-```json
-{
-  "fileName": "Developer - Have It All (Original Mix).mp3",
-  "filePath": "D:/FRKB_database-B/library/FilterLibrary/rkb/Developer - Have It All (Original Mix).mp3",
-  "size": 13123456,
-  "mtimeMs": 1234567890,
-  "rekordbox": {
-    "bpm": 141,
-    "firstBeatMs": 61,
-    "firstBeatLabel": 1,
-    "barBeatOffset": 0,
-    "pqtz": []
-  },
-  "timeBasis": {
-    "offsetMs": 50.114,
-    "streamStartTimeMs": 25.057,
-    "sampleRate": 44100,
-    "encoder": "LAME3.100",
-    "skipSamples": 1105
-  }
-}
+```powershell
+py -3 -m py_compile "scripts/beat_this_bridge.py" "scripts/beat_this_phase_rescue.py" "scripts/beat_this_grid_rescue.py" "scripts/beat_this_full_logit_rescue.py" "scripts/benchmark_rkb_rekordbox_truth.py"
 ```
 
-建议后续不要只靠 `fileName`，逐步增加：
+如果修改了代码，最终还必须运行：
 
-- `filePath`
-- `size`
-- `mtimeMs`
-- audio hash 或 fingerprint
-
-这样可以避免同名不同文件污染 benchmark。
-
-### 8.2 跑 FRKB analyzer
-
-对同一批音频运行 FRKB 自己分析器，输出：
-
-```json
-{
-  "fileName": "...",
-  "frkb": {
-    "bpm": 141.0001,
-    "firstBeatMs": 60.5,
-    "barBeatOffset": 0,
-    "coordinate": "timeline"
-  }
-}
+```powershell
+npx vue-tsc --noEmit
 ```
 
-如果 analyzer 输出的是 audio 轴：
+## 11. 缓存边界
 
-```json
-{
-  "coordinate": "audio",
-  "firstBeatMs": 10.386
-}
-```
+允许缓存：
 
-benchmark 必须转换：
+- BeatThis raw window predictions。
+- full-track logits。
+- 与算法决策无关、同音频同模型必然相同的中间输出。
 
-```text
-timelineFirstBeatMs = audioFirstBeatMs + timeBasisOffsetMs
-```
+禁止缓存：
 
-### 8.3 生成 benchmark 报告
+- 最终 `bpm` / `firstBeatMs` / `barBeatOffset`。
+- benchmark pass/fail 结论。
+- anchor 选择、phase rescue、downbeat 归一化后的最终结果。
 
-每次算法改动后生成报告：
-
-```text
-trackCount
-passCount
-failCount
-bpmAbsErrorMedian
-firstBeatPhaseAbsErrorMedianMs
-gridMeanAbsMs
-gridP95AbsMs
-gridMaxAbsMs
-bpmOnlyDrift128BeatsMs
-downbeatMismatchCount
-worstTracks
-```
-
-失败分类至少包括：
-
-- BPM 错。
-- firstBeat 相位错。
-- downbeat/barBeatOffset 错。
-- 变 BPM / 多锚点没处理。
-- 时间轴映射缺失。
-- 音频文件和 Rekordbox truth 不匹配。
-
-### 8.4 人工复核闭环
-
-当 benchmark 出现失败：
-
-1. 在 FRKB 里显示 Rekordbox truth grid。
-2. 显示 FRKB analyzer grid。
-3. 两套 grid 都画在 FRKB raw waveform 上。
-4. 看差异是 BPM、首拍、downbeat，还是时间轴。
-5. 如果 Rekordbox 真值本身有误，回 Rekordbox 修 grid，再重新生成 truth dataset。
-
-不要在 FRKB 里手工写补偿把失败样本抹平。
-
-### 8.5 验证性能和缓存边界
-
-验证可以并发跑，但不能降低验证质量。
-
-允许：
-
-- 用 `scripts/run_parallel_rkb_rekordbox_benchmark.py` 并发分析样本。
-- 并行 benchmark 默认写同名 `.progress.json`，每个 shard 完成后刷新一次 partial summary；断线后优先查看 progress 文件和 shard 目录，不要盲目从零重跑。
-- 如需续跑同一批分片，可以复用同一个 `--shard-dir` 并显式加 `--resume-existing-shards`；脚本会校验 shard 输出里的曲目列表，曲目不一致时不会复用旧输出。
-- 缓存 BeatThis raw window predictions。
-- 缓存 full-track logits。
-- 复用确定性、与算法决策无关的中间原始模型输出。
-
-禁止：
-
-- 缓存最终 `bpm` / `firstBeatMs` / `barBeatOffset` 后把它当成新算法结果。
-- 缓存 benchmark pass/fail 结论。
-- 因为提速跳过样本、缩短 truth 对比、放宽 `2ms` 阈值、关闭 downbeat 校验。
-- 只跑新增样本就宣布算法通过；最终验收必须覆盖统一 184 首。
-
-判断缓存是否安全的标准：
+判断标准：
 
 ```text
 改 FRKB 网格求解算法后，缓存内容本身是否仍应完全相同？
 ```
 
-如果答案是“是”，例如 BeatThis 对同一音频输出的 raw windows 和 full logits，可以缓存。如果答案是“不一定”，例如 anchor 选择、phase rescue、downbeat 归一化、最终误差分类，就不能作为跨算法版本复用的验收结论。
+如果答案不是明确的“是”，就不能作为跨算法版本复用的验收结论。
 
-## 9. 推荐的工程落地顺序
+## 12. 人工复核闭环
 
-### 阶段 1：固定统一 truth dataset
+benchmark 失败时：
 
-- 保留当前 184 首作为统一回归样本。
-- 每首记录 Rekordbox grid 和 `timeBasisOffsetMs` 计算明细。
-- 把当前 `184/184 pass` 作为统一回归基线；92 首、67 首等旧全通过输出只作为历史追溯。
+1. 在 FRKB raw waveform 上显示 Rekordbox truth grid。
+2. 同轴显示 FRKB analyzer grid。
+3. 判断差异属于 BPM、首拍相位、downbeat、time basis，还是多锚点。
+4. 如果 Rekordbox truth 错，回 Rekordbox 修 grid，再重新生成 truth。
+5. 如果 FRKB analyzer 错，先聚类失败类型，再决定是否设计通用 prior。
 
-### 阶段 2：自动提取 Rekordbox truth
+不要在 FRKB 里手工写补偿把失败样本抹平。
 
-- 从 Rekordbox 桌面库临时播放列表读取 `.DAT beat_grid`。
-- 合并生成统一 `truth` JSON。
-- 对 USB/PQTZ 做抽样交叉验证。
+## 13. 当前剩余失败处理原则
 
-### 阶段 3：自动 benchmark FRKB analyzer
+当前剩余 10 首失败样本不再单独作为新增规则来源。
 
-- 跑 FRKB 分析器。
-- 输出 normalized timeline result。
-- 与 truth dataset 对比。
-- 生成可读报告。
+它们的作用是：
 
-### 阶段 4：算法优化
+- 保留在回归报告里。
+- 等新样本扩充后做失败模式对照。
+- 如果同类错误在新样本中重复出现，再设计通用 prior。
 
-优先优化顺序：
+如果某个剩余失败样本长期孤立存在：
 
-1. BPM 稳定性。
-2. firstBeat 相位。
-3. downbeat/barBeatOffset。
-4. 多锚点/PQTZ 级别网格。
+- 可以继续失败。
+- 不为它写单曲规则。
+- 不为它牺牲新样本泛化。
 
-每次改算法必须跑同一批 truth dataset，不能只看一两首歌。
+当前最重要的目标不是把 184 首压到 184/184，而是让新样本加入后还能稳定解释失败并避免回归。
 
-## 10. 常见坑
-
-### 10.1 “Rekordbox 里看起来是 0ms”不等于 `firstBeatMs = 0`
-
-Rekordbox 里网格线压在拍头上，只说明：
+## 14. 一句话交接
 
 ```text
-Rekordbox beat grid time == Rekordbox 认为的拍头时间
+按 drafts/rkb-rekordbox-truth-validation-workflow.md 工作。
+当前可信基线是 184 首中 174 首通过，剩余 10 首暂停追杀。
+旧 184/184 是样本内过窄补丁结果，不再作为质量结论。
+下一步先扩充样本，用新旧样本共同暴露稳定失败模式。
+新增 Rekordbox-compatible phase prior 必须低维、通用、可解释、0 回归。
+禁止歌名/文件名/truth/pass-fail/高维特征指纹规则。
+修改代码后必须跑 py_compile、完整 benchmark、npx vue-tsc --noEmit。
 ```
-
-不说明这个时间是音频文件绝对 0ms。
-
-### 10.2 `stream.start_time` 不是完整答案
-
-LAME MP3 可能还需要第一包 `Skip Samples`。
-
-当前已验证规则：
-
-```text
-LAME3.100 + start_time 25.057ms + skip_samples 1105
-=> timeBasisOffsetMs 50.114ms
-```
-
-但 `Lavc59.37` 同样有 `start_time` 和 `skip_samples` 时，不追加第二层。
-
-### 10.3 `PWV5` 只能辅助排查
-
-`PWV5` 能帮助临时观察 Rekordbox 自己的细节波形语义，但不能作为 FRKB 默认波形源，也不应把离线可见起点 JSON 放进 `resources`。
-
-原因：
-
-- 目标是比较 FRKB analyzer 与 Rekordbox analyzer。
-- 如果波形也换成 Rekordbox 的，验证基准就被污染。
-- 临时探针输出只能留在本地或文档结论里，不能成为运行时补偿表。
-
-### 10.4 缓存会误导复测
-
-旧 `song_cache` 里可能保存旧的 `timeBasisOffsetMs`。
-
-当前已经在扫描链路对 `rkb` 做了统一快照覆盖，但以后如果更新 truth dataset，也要确认：
-
-- song cache 已刷新。
-- raw waveform cache 没混进旧坐标语义。
-- UI song 对象拿到的是最新字段。
-
-### 10.5 barBeatOffset 不参与 beat 位置
-
-`barBeatOffset` 影响大拍/小节线样式，不应该拿它修首拍位置。
-
-beat 位置由：
-
-```text
-firstBeatMs + i * 60000 / bpm
-```
-
-决定。
-
-### 10.6 不要把内容级起音当通用 offset
-
-离线能量峰、首个可见非零点、first-cross 都只能帮助排查，不能当成 Rekordbox 真网格。
-
-原因：
-
-- 鼓头视觉位置不一定等于最大能量点。
-- 不同频段、窗口、聚合方式会改变峰值位置。
-- `PWV5 visibleOnset` 是 Rekordbox 细节波形显示语义，不等于 FRKB 的时间基准。
-- 这类方法容易变成逐曲 offset 或歌名特判。
-
-### 10.7 不要恢复已经证伪的说法
-
-以下说法不要再恢复：
-
-- “当前应该回到 `timeBasisOffsetMs = 0`。”
-- “`ffprobe stream.start_time` 已被完全证伪。”
-- “只要搬 `PQTZ[0]` 就够。”
-- “`PQTZ` 多锚点是当前样本池大漂移主因。”
-- “对齐 `PWV5 visibleOnset` 就是下一步修法。”
-- “改 `firstBeatMs` 可以解决视觉偏移。”
-
-更准确的表述是：`stream.start_time` 和大写 `LAME` + 第一包 `Skip Samples` 都是音频格式/解码轴映射信号；它们必须全链路传播，但不能扩展成逐曲补偿表。
-
-## 11. 当前代表样本
-
-后续任何规则、重构或算法优化，至少要解释这些样本：
-
-| file | bpm | firstBeatMs | timeBasisOffsetMs | 作用 |
-| --- | ---: | ---: | ---: | --- |
-| `Developer - Have It All (Original Mix).mp3` | `141` | `61` | `50.114ms` | 大写 `LAME3.100` + `start_time` + `skip_samples` 的关键样本 |
-| `len faki - zig zag (original mix) (1).mp3` | `137` | `52` | `50.114ms` | 与 `Developer` 同类，曾经只用 `25.057ms` 时偏后 |
-| `enrico sangiuliano - the techno code (...) (1).mp3` | `140` | `274` | `25.057ms` | `Lavc59.37`，有 `skip_samples` 但不追加第二层 |
-| `len faki - gamma (glaskin remix) (1).mp3` | `145` | `26` | `0ms` | 无 offset 也应对齐，防止全局硬加 |
-| `leviws - foul play (1).mp3` | `138` | `28` | `0ms` | 无 offset 对照样本 |
-| `lewis fautzi - diversity of known substances (...) (1).mp3` | `138` | `225` | 按元数据计算 | 防止“修 Developer 但反向搞坏其他歌”的对照样本 |
-
-## 12. 当前结论
-
-当前统一 184 首样本池完成采集、去重、迁移和 benchmark 后，当前算法已在 184 首上通过严格 `2ms` 硬阈值；后续任何规则、重构或模型替换都必须以这个输出为最低回归基线：
-
-```text
-grid-analysis-lab/rkb-rekordbox-benchmark/test-101-unified-184-after-full-pass-attempt-1.json
-trackTotal = 184
-pass = 184
-errorTrackCount = 0
-currentTimeline.gridMaxAbsMs.max = 2.0ms
-currentTimeline.bpmOnlyDrift128BeatsMs.max = 0.0ms
-```
-
-```text
-Rekordbox 分析/人工校准
--> 提取 beat grid truth
--> 计算音频 timeBasisOffsetMs
--> FRKB raw waveform + Rekordbox truth grid 同轴显示
--> FRKB analyzer 输出同轴归一化
--> benchmark 比较
--> 优化 FRKB 自己的分析算法
-```
-
-这个流程的本质是“同一音频波形上的分析结果对比”，不是“让 FRKB 伪装成 Rekordbox”。

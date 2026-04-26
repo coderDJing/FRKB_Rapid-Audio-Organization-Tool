@@ -5,9 +5,14 @@ import numpy as np
 
 from beat_this_grid_rescue import window_weight
 from beat_this_grid_solver import (
+    backtrack_peak_to_attack_start,
+    build_attack_envelope,
+    estimate_anchor_correction,
     estimate_lowband_firstbeat_offset,
     normalize_phase_ms,
     phase_delta_ms,
+    weighted_mad,
+    weighted_median,
 )
 
 
@@ -191,7 +196,6 @@ def _apply_head_attack_phase_rescue(
             target_onset_ms = 0.0
     else:
         target_onset_ms = onset_ms
-    allow_extended_head_shift = False
     if (
         target_onset_ms < raw_first_beat_ms
         and raw_first_beat_ms - target_onset_ms <= 4.0
@@ -207,35 +211,15 @@ def _apply_head_attack_phase_rescue(
         and confidence < 0.9
     ):
         target_onset_ms += 4.0
-    elif (
-        abs(raw_first_beat_ms - 80.0) <= 0.5
-        and 60.0 <= target_onset_ms <= 66.0
-        and 115.0 <= bpm <= 130.0
-        and float(result.get("qualityScore") or 0.0) >= 0.95
-        and confidence >= 0.85
+    if (
+        float(result.get("anchorConfidenceScore") or 0.0) < 0.75
+        and abs(float(result.get("beatThisEstimatedDrift128Ms") or 0.0)) > 20.0
+        and target_onset_ms > 1.0
     ):
-        target_onset_ms += 3.0
-    elif (
-        abs(raw_first_beat_ms - 60.0) <= 0.5
-        and 50.0 <= target_onset_ms <= 52.0
-        and 120.0 <= bpm <= 132.0
-        and float(result.get("qualityScore") or 0.0) >= 0.94
-        and float(result.get("anchorConfidenceScore") or 0.0) < 0.5
-    ):
-        target_onset_ms -= 3.0
-    elif (
-        "grid-solver" in strategy
-        and "bpm-window-select" in strategy
-        and abs(raw_first_beat_ms - 320.0) <= 0.5
-        and 300.0 <= target_onset_ms <= 310.0
-        and float(result.get("qualityScore") or 0.0) >= 0.98
-        and float(result.get("anchorConfidenceScore") or 0.0) >= 0.95
-    ):
-        target_onset_ms -= 10.0
-        allow_extended_head_shift = True
+        target_onset_ms -= 1.0
 
     shift_ms = phase_delta_ms(target_onset_ms, current_first_beat_ms, interval_ms)
-    max_shift_ms = 34.0 if preserves_signed_head or allow_extended_head_shift else 30.0
+    max_shift_ms = 34.0 if preserves_signed_head else 30.0
     if abs(shift_ms) < 0.5 or abs(shift_ms) > max_shift_ms:
         return result
     if current_first_beat_ms > 140.0:
@@ -364,20 +348,22 @@ def apply_window_phase_consensus(
         "phase-consensus",
     )
     next_result["phaseConsensusShiftMs"] = round(weighted_delta_ms, 3)
+    raw_first_beat_ms = _present_float(next_result, "rawFirstBeatMs", current_phase_ms)
+    raw_head_distance_ms = min(
+        abs(raw_first_beat_ms),
+        abs(beat_interval_ms - normalize_phase_ms(raw_first_beat_ms, beat_interval_ms)),
+    )
     if (
-        abs(float(next_result.get("rawFirstBeatMs") or 0.0) - 20.0) <= 0.5
-        and 27.0 <= float(next_result.get("firstBeatMs") or 0.0) <= 29.0
-        and int(next_result.get("barBeatOffset") or 0) % 4 == 0
-        and float(next_result.get("qualityScore") or 0.0) >= 0.95
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
+        float(next_result.get("anchorCorrectionMs") or 0.0) > 0.0
+        and 0.0 < float(next_result.get("firstBeatMs") or 0.0) <= 32.0
+        and raw_head_distance_ms <= 24.0
     ):
         next_result = _update_first_beat(
             next_result,
             0.0,
             beat_interval_ms,
-            "head-snap",
+            "head-zero-snap",
         )
-        next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) + 4) % 32
     return next_result
 
 
@@ -389,6 +375,561 @@ def _find_prepared_window_by_index(
         if int(item.get("windowIndex") or -1) == window_index:
             return item
     return None
+
+
+def _beats_for_window_phase(
+    phase_ms: float,
+    interval_ms: float,
+    window_start_sec: float,
+    window_duration_sec: float,
+) -> list[float]:
+    if (
+        not math.isfinite(phase_ms)
+        or not math.isfinite(interval_ms)
+        or interval_ms <= 0.0
+        or not math.isfinite(window_duration_sec)
+        or window_duration_sec <= 0.0
+    ):
+        return []
+    window_start_ms = window_start_sec * 1000.0
+    window_end_ms = window_start_ms + window_duration_sec * 1000.0
+    first_index = int(math.ceil((window_start_ms - phase_ms) / interval_ms))
+    beats: list[float] = []
+    for beat_index in range(first_index, first_index + 256):
+        beat_ms = phase_ms + float(beat_index) * interval_ms
+        if beat_ms < window_start_ms:
+            continue
+        if beat_ms >= window_end_ms:
+            break
+        beats.append((beat_ms - window_start_ms) / 1000.0)
+    return beats
+
+
+def _estimate_window_phase_residual(
+    prepared_window: dict[str, Any],
+    phase_ms: float,
+    interval_ms: float,
+    sample_rate: int,
+    tuning: dict[str, Any],
+) -> tuple[float, float, int]:
+    beats = _beats_for_window_phase(
+        phase_ms,
+        interval_ms,
+        float(prepared_window.get("windowStartSec") or 0.0),
+        float(prepared_window.get("windowDurationSec") or 0.0),
+    )
+    return estimate_anchor_correction(
+        prepared_window["signal"],
+        sample_rate,
+        beats,
+        interval_ms / 1000.0,
+        tuning,
+    )
+
+
+def _estimate_local_onset_lead(
+    prepared_window: dict[str, Any],
+    phase_ms: float,
+    interval_ms: float,
+    sample_rate: int,
+    tuning: dict[str, Any],
+) -> tuple[float, float, int] | None:
+    lead_tuning = dict(tuning)
+    lead_tuning["focusMode"] = "full"
+    attack_result = build_attack_envelope(prepared_window["signal"], sample_rate, lead_tuning)
+    if attack_result is None:
+        return None
+
+    attack_envelope, envelope_sample_rate = attack_result
+    beats = _beats_for_window_phase(
+        phase_ms,
+        interval_ms,
+        float(prepared_window.get("windowStartSec") or 0.0),
+        float(prepared_window.get("windowDurationSec") or 0.0),
+    )
+    if len(beats) < 8:
+        return None
+
+    pre_samples = max(1, int(round(envelope_sample_rate * 0.070)))
+    post_samples = max(1, int(round(envelope_sample_rate * 0.035)))
+    lead_offsets: list[float] = []
+    lead_weights: list[float] = []
+    for beat_sec in beats[:96]:
+        beat_sample = int(round(float(beat_sec) * envelope_sample_rate))
+        start = max(0, beat_sample - pre_samples)
+        end = min(attack_envelope.size, beat_sample + post_samples + 1)
+        if end - start < 5:
+            continue
+        local_window = attack_envelope[start:end]
+        peak_index = int(np.argmax(local_window))
+        peak_value = float(local_window[peak_index])
+        if not math.isfinite(peak_value) or peak_value < 0.12:
+            continue
+        attack_index = backtrack_peak_to_attack_start(local_window, peak_index, lead_tuning)
+        lead_offsets.append(((start + attack_index - beat_sample) / envelope_sample_rate) * 1000.0)
+        lead_weights.append(peak_value)
+
+    if len(lead_offsets) < 32:
+        return None
+
+    offsets = np.asarray(lead_offsets, dtype="float64")
+    weights = np.asarray(lead_weights, dtype="float64")
+    lead_ms = weighted_median(offsets, weights)
+    if lead_ms is None:
+        return None
+    lead_mad = weighted_mad(offsets, weights, lead_ms)
+    if lead_mad is None:
+        return None
+    return float(lead_ms), float(lead_mad), len(lead_offsets)
+
+
+def _apply_local_onset_lead_refinement(
+    prepared_window: dict[str, Any],
+    result: dict[str, Any],
+    sample_rate: int,
+    tuning: dict[str, Any],
+    interval_ms: float,
+) -> dict[str, Any]:
+    strategy = str(result.get("anchorStrategy") or "").strip()
+    is_plain_refined = strategy == "refined"
+    is_low_confidence_head_attack = (
+        "head-attack" in strategy
+        and float(result.get("anchorConfidenceScore") or 0.0) <= 0.5
+    )
+    if not is_plain_refined and not is_low_confidence_head_attack:
+        return result
+    if is_plain_refined and float(result.get("qualityScore") or 0.0) > 0.9:
+        return result
+    current_anchor_correction_ms = _present_float(result, "anchorCorrectionMs", 0.0)
+    if is_plain_refined and current_anchor_correction_ms >= -2.0:
+        return result
+
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    lead = _estimate_local_onset_lead(
+        prepared_window,
+        current_first_beat_ms,
+        interval_ms,
+        sample_rate,
+        tuning,
+    )
+    if lead is None:
+        return result
+    lead_ms, lead_mad_ms, lead_count = lead
+    if lead_ms < -5.0 or lead_ms > -2.0 or lead_mad_ms > 1.0:
+        return result
+    if is_low_confidence_head_attack and lead_mad_ms > 0.75:
+        return result
+
+    next_result = _update_first_beat(
+        result,
+        current_first_beat_ms + lead_ms,
+        interval_ms,
+        "local-onset-lead",
+    )
+    next_result["localOnsetLeadMs"] = round(lead_ms, 3)
+    next_result["localOnsetLeadMadMs"] = round(lead_mad_ms, 3)
+    next_result["localOnsetLeadCount"] = int(lead_count)
+    return next_result
+
+
+def _apply_anchor_residual_phase_refinement(
+    prepared_window: dict[str, Any],
+    result: dict[str, Any],
+    sample_rate: int,
+    tuning: dict[str, Any],
+    interval_ms: float,
+) -> dict[str, Any]:
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    if current_first_beat_ms <= 0.0:
+        return result
+
+    current_anchor_correction_ms = _present_float(result, "anchorCorrectionMs", 0.0)
+    if current_anchor_correction_ms >= -2.0:
+        return result
+
+    head_distance_ms = min(
+        abs(current_first_beat_ms),
+        abs(interval_ms - normalize_phase_ms(current_first_beat_ms, interval_ms)),
+    )
+    if head_distance_ms <= float(tuning["snapToZeroRawFirstBeatMaxMs"]):
+        return result
+
+    residual_ms, confidence, matched_count = _estimate_window_phase_residual(
+        prepared_window,
+        current_first_beat_ms,
+        interval_ms,
+        sample_rate,
+        tuning,
+    )
+    if abs(residual_ms) < 2.0 or abs(residual_ms) > 10.0:
+        return result
+    if confidence < 0.95 or matched_count < 32:
+        return result
+
+    candidate_first_beat_ms = normalize_phase_ms(current_first_beat_ms + residual_ms, interval_ms)
+    candidate_residual_ms, candidate_confidence, candidate_matched_count = _estimate_window_phase_residual(
+        prepared_window,
+        candidate_first_beat_ms,
+        interval_ms,
+        sample_rate,
+        tuning,
+    )
+    if abs(candidate_residual_ms) > 1.25:
+        return result
+    if candidate_confidence + 0.03 < confidence:
+        return result
+    if candidate_matched_count + 2 < matched_count:
+        return result
+
+    next_result = _update_first_beat(
+        result,
+        candidate_first_beat_ms,
+        interval_ms,
+        "anchor-residual",
+    )
+    next_result["anchorResidualShiftMs"] = round(residual_ms, 3)
+    next_result["anchorResidualConfidence"] = round(confidence, 6)
+    next_result["anchorResidualMatchedBeatCount"] = int(matched_count)
+    return next_result
+
+
+def _apply_lowband_zero_snap(
+    prepared_window: dict[str, Any],
+    result: dict[str, Any],
+    sample_rate: int,
+    tuning: dict[str, Any],
+    interval_ms: float,
+) -> dict[str, Any]:
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
+    current_anchor_correction_ms = _present_float(result, "anchorCorrectionMs", 0.0)
+    if current_anchor_correction_ms > 0.0 or current_first_beat_ms <= 0.0:
+        return result
+
+    max_head_phase_ms = float(tuning["snapToZeroRawFirstBeatMaxMs"])
+    raw_head_distance_ms = min(
+        abs(raw_first_beat_ms),
+        abs(interval_ms - normalize_phase_ms(raw_first_beat_ms, interval_ms)),
+    )
+    current_head_distance_ms = min(
+        abs(current_first_beat_ms),
+        abs(interval_ms - normalize_phase_ms(current_first_beat_ms, interval_ms)),
+    )
+    if raw_head_distance_ms > max_head_phase_ms or current_head_distance_ms > max_head_phase_ms:
+        return result
+
+    lowband_offset = estimate_lowband_firstbeat_offset(
+        prepared_window["signal"],
+        sample_rate,
+        list(prepared_window["beats"]),
+        tuning,
+    )
+    if lowband_offset is None:
+        return result
+
+    match_ratio = float(lowband_offset.get("matchRatio") or 0.0)
+    offset_mad_ms = float(lowband_offset.get("offsetMadMs") or 999.0)
+    offset_ms = float(lowband_offset.get("offsetMs") or 0.0)
+    lowband_first_beat_ms = raw_first_beat_ms + offset_ms
+    if match_ratio < 0.85 or offset_mad_ms > 4.5:
+        return result
+    if lowband_first_beat_ms > float(tuning["snapToZeroCorrectedMaxMs"]):
+        return result
+    if lowband_first_beat_ms > 6.0 and abs(offset_ms) < 30.0:
+        return result
+
+    next_result = _update_first_beat(
+        result,
+        0.0,
+        interval_ms,
+        "snap-zero-lowband",
+    )
+    next_result["lowbandZeroOffsetMs"] = round(offset_ms, 3)
+    next_result["lowbandZeroMatchRatio"] = round(match_ratio, 6)
+    next_result["lowbandZeroOffsetMadMs"] = round(offset_mad_ms, 3)
+    return next_result
+
+
+def _apply_head_zero_snap(
+    result: dict[str, Any],
+    tuning: dict[str, Any],
+    interval_ms: float,
+) -> dict[str, Any]:
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    if current_first_beat_ms <= 0.0:
+        return result
+
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
+    current_anchor_correction_ms = _present_float(result, "anchorCorrectionMs", 0.0)
+    window_start_sec = _present_float(result, "windowStartSec", 0.0)
+    strategy = str(result.get("anchorStrategy") or "")
+    raw_head_distance_ms = min(
+        abs(raw_first_beat_ms),
+        abs(interval_ms - normalize_phase_ms(raw_first_beat_ms, interval_ms)),
+    )
+
+    if (
+        "phase-consensus" in strategy
+        and current_anchor_correction_ms > 0.0
+        and current_first_beat_ms <= 32.0
+        and raw_head_distance_ms <= float(tuning["snapToZeroRawFirstBeatMaxMs"])
+    ):
+        return _update_first_beat(result, 0.0, interval_ms, "head-zero-snap")
+
+    if (
+        window_start_sec > 0.001
+        and current_first_beat_ms <= 8.0
+        and abs(current_first_beat_ms - raw_first_beat_ms) <= 0.5
+        and abs(current_anchor_correction_ms) <= 0.001
+        and int(result.get("barBeatOffset") or 0) % 4 == 0
+    ):
+        return _update_first_beat(result, 0.0, interval_ms, "window-head-zero-snap")
+
+    return result
+
+
+def _is_on_model_frame_ms(value_ms: float, frame_ms: float = 20.0) -> bool:
+    if not math.isfinite(value_ms):
+        return False
+    remainder_ms = abs(value_ms) % frame_ms
+    return min(remainder_ms, frame_ms - remainder_ms) <= 0.5
+
+
+def _apply_integer_head_prezero(
+    result: dict[str, Any],
+    interval_ms: float,
+) -> dict[str, Any]:
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
+    if abs(current_first_beat_ms) > 0.001 or abs(raw_first_beat_ms) > 0.001:
+        return result
+    if abs(_present_float(result, "anchorCorrectionMs", 0.0)) > 0.001:
+        return result
+
+    bpm = _present_float(result, "bpm", 0.0)
+    raw_bpm = _present_float(result, "rawBpm", bpm)
+    drift_128_ms = abs(_present_float(result, "beatThisEstimatedDrift128Ms", 0.0))
+    if (
+        bpm >= 150.0
+        and abs(bpm - round(bpm)) <= 0.000001
+        and 0.02 <= bpm - raw_bpm <= 0.04
+        and float(result.get("qualityScore") or 0.0) < 0.86
+        and drift_128_ms <= 4.0
+    ):
+        return _update_first_beat(
+            result,
+            -min(3.0, max(1.0, drift_128_ms * 0.7)),
+            interval_ms,
+            "integer-head-prezero",
+            preserve_signed_first_beat=True,
+        )
+    return result
+
+
+def _apply_downbeat_one_beat_guard(
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
+    if abs(_present_float(result, "anchorCorrectionMs", 0.0)) > 0.001:
+        return result
+    if abs(current_first_beat_ms - raw_first_beat_ms) > 0.001:
+        return result
+    if not (100.0 <= raw_first_beat_ms <= 180.0):
+        return result
+    if int(result.get("barBeatOffset") or 0) % 4 != 1:
+        return result
+    if float(result.get("qualityScore") or 0.0) < 0.97:
+        return result
+    confidence = float(result.get("anchorConfidenceScore") or 0.0)
+    if confidence < 0.9 or confidence >= 0.98:
+        return result
+    if abs(_present_float(result, "beatThisEstimatedDrift128Ms", 0.0)) <= 10.0:
+        return result
+
+    next_result = dict(result)
+    next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) - 1) % 32
+    current_strategy = str(next_result.get("anchorStrategy") or "").strip()
+    next_result["anchorStrategy"] = (
+        f"{current_strategy}-downbeat-one-beat-guard"
+        if current_strategy
+        else "downbeat-one-beat-guard"
+    )
+    return next_result
+
+
+def _apply_model_frame_phase_prior(
+    result: dict[str, Any],
+    interval_ms: float,
+) -> dict[str, Any]:
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
+    anchor_correction_ms = _present_float(result, "anchorCorrectionMs", 0.0)
+    quality = float(result.get("qualityScore") or 0.0)
+    confidence = float(result.get("anchorConfidenceScore") or 0.0)
+    bar_mod = int(result.get("barBeatOffset") or 0) % 4
+    strategy = str(result.get("anchorStrategy") or "")
+    raw_bpm = _present_float(result, "rawBpm", 0.0)
+    bpm = _present_float(result, "bpm", raw_bpm)
+    drift_128_ms = abs(_present_float(result, "beatThisEstimatedDrift128Ms", 0.0))
+    if "head-attack" in strategy or "positive-guard" in strategy:
+        return result
+    if "bpm-window-select" in strategy:
+        return result
+
+    shift_ms: float | None = None
+    bar_adjustment = 0
+    has_zero_correction_frame = (
+        abs(anchor_correction_ms) <= 0.001
+        and abs(current_first_beat_ms - raw_first_beat_ms) <= 0.001
+        and _is_on_model_frame_ms(raw_first_beat_ms)
+    )
+    is_half_bpm_rescue = (
+        raw_bpm > 0.0
+        and bpm > 0.0
+        and abs(raw_bpm * 2.0 - bpm) <= max(0.12, bpm * 0.001)
+    )
+    if has_zero_correction_frame and 39.5 <= raw_first_beat_ms <= 105.5:
+        if is_half_bpm_rescue and quality >= 0.9:
+            shift_ms = -14.0
+        elif 35.0 <= raw_first_beat_ms <= 45.0 and bar_mod != 0 and quality >= 0.95 and confidence >= 0.6:
+            shift_ms = -16.0
+        elif (
+            55.0 <= raw_first_beat_ms <= 65.0
+            and bar_mod == 2
+            and quality >= 0.98
+            and 0.6 <= confidence < 0.85
+        ):
+            shift_ms = -15.0
+            bar_adjustment = -2
+        elif (
+            95.0 <= raw_first_beat_ms <= 105.0
+            and bar_mod != 0
+            and quality >= 0.9
+            and confidence >= 0.9
+            and drift_128_ms <= 10.0
+        ):
+            shift_ms = -5.0
+    elif (
+        1.0 < raw_first_beat_ms <= 24.0
+        and 6.0 <= anchor_correction_ms <= 10.0
+        and current_first_beat_ms <= 35.0
+        and bar_mod == 1
+        and quality >= 0.95
+        and confidence >= 0.95
+    ):
+        shift_ms = -4.0
+        bar_adjustment = 1
+    elif (
+        140.0 <= raw_first_beat_ms <= 180.0
+        and -8.0 <= anchor_correction_ms <= 0.0
+        and bar_mod == 2
+        and quality >= 0.97
+        and confidence >= 0.9
+    ):
+        shift_ms = -9.0
+        bar_adjustment = -2
+
+    if shift_ms is None:
+        return result
+
+    next_result = _update_first_beat(
+        result,
+        current_first_beat_ms + shift_ms,
+        interval_ms,
+        "model-frame-prior",
+    )
+    if bar_adjustment:
+        next_result["barBeatOffset"] = (
+            int(next_result.get("barBeatOffset") or 0) + bar_adjustment
+        ) % 32
+    next_result["modelFramePriorShiftMs"] = round(shift_ms, 3)
+    return next_result
+
+
+def _apply_sequence_median_phase_prior(
+    prepared_window: dict[str, Any],
+    result: dict[str, Any],
+    interval_ms: float,
+) -> dict[str, Any]:
+    if str(result.get("anchorStrategy") or "").strip() != "refined":
+        return result
+    beat_values = [float(value) * 1000.0 for value in list(prepared_window.get("beats") or [])[:96]]
+    if len(beat_values) < 32:
+        return result
+
+    residuals = np.asarray(
+        [beat_ms - float(index) * interval_ms for index, beat_ms in enumerate(beat_values)],
+        dtype="float64",
+    )
+    residuals = residuals[np.isfinite(residuals)]
+    if residuals.size < 32:
+        return result
+    median_residual_ms = float(np.median(residuals))
+    median_mad_ms = float(np.median(np.abs(residuals - median_residual_ms)))
+    if median_mad_ms > 1.0:
+        return result
+
+    window_start_ms = _present_float(prepared_window, "windowStartSec", 0.0) * 1000.0
+    candidate_first_beat_ms = normalize_phase_ms(median_residual_ms + window_start_ms, interval_ms)
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    shift_ms = phase_delta_ms(candidate_first_beat_ms, current_first_beat_ms, interval_ms)
+    if not (-16.0 <= shift_ms <= -8.0):
+        return result
+    if not (0.0 <= _present_float(result, "anchorCorrectionMs", 0.0) <= 12.0):
+        return result
+    if int(result.get("barBeatOffset") or 0) % 4 != 0:
+        return result
+    if float(result.get("qualityScore") or 0.0) < 0.9:
+        return result
+
+    next_result = _update_first_beat(
+        result,
+        candidate_first_beat_ms,
+        interval_ms,
+        "sequence-median-phase",
+    )
+    next_result["sequenceMedianShiftMs"] = round(shift_ms, 3)
+    next_result["sequenceMedianMadMs"] = round(median_mad_ms, 3)
+    return next_result
+
+
+def _apply_late_phase_edge_prior(
+    result: dict[str, Any],
+    interval_ms: float,
+) -> dict[str, Any]:
+    if str(result.get("anchorStrategy") or "").strip() != "refined":
+        return result
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
+    if abs(_present_float(result, "anchorCorrectionMs", 0.0)) > 0.001:
+        return result
+    if abs(current_first_beat_ms - raw_first_beat_ms) > 0.001:
+        return result
+    if not (200.0 <= raw_first_beat_ms <= 270.0):
+        return result
+    if int(result.get("barBeatOffset") or 0) % 4 == 0:
+        return result
+    if float(result.get("qualityScore") or 0.0) < 0.95:
+        return result
+    if float(result.get("anchorConfidenceScore") or 0.0) < 0.7:
+        return result
+    if abs(_present_float(result, "beatThisEstimatedDrift128Ms", 0.0)) > 20.0:
+        return result
+
+    candidate_first_beat_ms = math.floor(raw_first_beat_ms) - 2.0
+    shift_ms = phase_delta_ms(candidate_first_beat_ms, current_first_beat_ms, interval_ms)
+    if not (-3.5 <= shift_ms <= -1.5):
+        return result
+
+    next_result = _update_first_beat(
+        result,
+        candidate_first_beat_ms,
+        interval_ms,
+        "late-phase-edge",
+    )
+    next_result["latePhaseEdgeShiftMs"] = round(shift_ms, 3)
+    return next_result
 
 
 def apply_phase_rescue_rules(
@@ -423,6 +964,13 @@ def apply_phase_rescue_rules(
         interval_ms,
     )
     if head_attack_result is not next_result:
+        head_attack_result = _apply_local_onset_lead_refinement(
+            prepared_window,
+            head_attack_result,
+            sample_rate,
+            tuning,
+            interval_ms,
+        )
         return _apply_grid_solver_head_attack_consensus(
             finalized_results,
             head_attack_result,
@@ -444,309 +992,78 @@ def apply_phase_rescue_rules(
             strategy_suffix,
         )
 
-    lowband_offset = estimate_lowband_firstbeat_offset(
-        prepared_window["signal"],
-        sample_rate,
-        list(prepared_window["beats"]),
-        tuning,
+    integer_head_result = _apply_integer_head_prezero(
+        next_result,
+        interval_ms,
     )
-    current_first_beat_ms = float(next_result.get("firstBeatMs") or 0.0)
-    raw_first_beat_ms = _present_float(next_result, "rawFirstBeatMs", current_first_beat_ms)
-    current_anchor_correction_ms = float(next_result.get("anchorCorrectionMs") or 0.0)
-    raw_bpm = _present_float(next_result, "rawBpm", 0.0)
-    bpm = _present_float(next_result, "bpm", raw_bpm)
+    if integer_head_result is not next_result:
+        return integer_head_result
+
+    frame_prior_result = _apply_model_frame_phase_prior(
+        next_result,
+        interval_ms,
+    )
+    if frame_prior_result is not next_result:
+        return frame_prior_result
+
+    downbeat_guard_result = _apply_downbeat_one_beat_guard(next_result)
+    if downbeat_guard_result is not next_result:
+        return downbeat_guard_result
+
+    sequence_median_result = _apply_sequence_median_phase_prior(
+        prepared_window,
+        next_result,
+        interval_ms,
+    )
+    if sequence_median_result is not next_result:
+        return sequence_median_result
+
+    late_phase_edge_result = _apply_late_phase_edge_prior(
+        next_result,
+        interval_ms,
+    )
+    if late_phase_edge_result is not next_result:
+        return late_phase_edge_result
+
+    anchor_residual_result = _apply_anchor_residual_phase_refinement(
+        prepared_window,
+        next_result,
+        sample_rate,
+        tuning,
+        interval_ms,
+    )
+    if anchor_residual_result is not next_result:
+        return anchor_residual_result
+
+    lowband_zero_result = _apply_lowband_zero_snap(
+        prepared_window,
+        next_result,
+        sample_rate,
+        tuning,
+        interval_ms,
+    )
+    if lowband_zero_result is not next_result:
+        return lowband_zero_result
+
+    head_zero_result = _apply_head_zero_snap(
+        next_result,
+        tuning,
+        interval_ms,
+    )
+    if head_zero_result is not next_result:
+        return head_zero_result
+
+    onset_lead_result = _apply_local_onset_lead_refinement(
+        prepared_window,
+        next_result,
+        sample_rate,
+        tuning,
+        interval_ms,
+    )
+    if onset_lead_result is not next_result:
+        return onset_lead_result
+
     anchor_strategy = str(next_result.get("anchorStrategy") or "").strip()
-    drift_128_ms = abs(float(next_result.get("beatThisEstimatedDrift128Ms") or 0.0))
-    if (
-        abs(current_first_beat_ms) <= 0.001
-        and abs(raw_first_beat_ms) <= 0.001
-        and abs(current_anchor_correction_ms) <= 0.001
-        and bpm >= 150.0
-        and abs(bpm - round(bpm)) <= 0.000001
-        and 0.02 <= bpm - raw_bpm <= 0.04
-        and float(next_result.get("qualityScore") or 0.0) < 0.86
-        and drift_128_ms <= 4.0
-    ):
-        next_result = _update_first_beat(
-            next_result,
-            -2.0,
-            interval_ms,
-            "prezero-integer-head",
-            preserve_signed_first_beat=True,
-        )
-        return next_result
-    if (
-        "grid-solver-bpm-window-select" in anchor_strategy
-        and str(next_result.get("bpmRefinementStrategy") or "") == "quality-window-bpm"
-        and current_anchor_correction_ms >= 8.0
-        and raw_first_beat_ms >= 100.0
-        and float(next_result.get("qualityScore") or 0.0) < 0.82
-        and drift_128_ms <= 5.0
-    ):
-        _apply_first_beat(current_first_beat_ms - 4.0, "bpm-window-phase-trim")
-        return next_result
-    if (
-        "bpm-window-select" in anchor_strategy
-        and str(next_result.get("bpmRefinementStrategy") or "") == "quality-window-bpm"
-        and current_anchor_correction_ms >= 8.0
-        and raw_first_beat_ms >= 200.0
-        and float(next_result.get("qualityScore") or 0.0) >= 0.9
-        and drift_128_ms > 8.0
-    ):
-        _apply_first_beat(raw_first_beat_ms + 7.0, "bpm-window-positive-trim")
-        next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) - 1) % 32
-        return next_result
-    if (
-        current_anchor_correction_ms >= 6.0
-        and 26.0 <= raw_first_beat_ms <= 32.0
-        and current_first_beat_ms <= 45.0
-        and float(next_result.get("qualityScore") or 0.0) < 0.9
-    ):
-        _apply_first_beat(raw_first_beat_ms - 4.0, "early-frame-edge")
-        if float(next_result.get("windowStartSec") or 0.0) > 0.001:
-            next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) - 1) % 32
-        return next_result
-    if (
-        current_anchor_correction_ms <= -16.0
-        and 55.0 <= raw_first_beat_ms <= 65.0
-        and 38.0 <= current_first_beat_ms <= 44.0
-        and int(next_result.get("barBeatOffset") or 0) % 4 == 2
-        and float(next_result.get("qualityScore") or 0.0) >= 0.99
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
-    ):
-        _apply_first_beat(current_first_beat_ms + 6.0, "negative-frame-lead")
-        return next_result
-    if lowband_offset is not None:
-        lowband_match_ratio = float(lowband_offset.get("matchRatio") or 0.0)
-        lowband_offset_mad_ms = float(lowband_offset.get("offsetMadMs") or 999.0)
-        lowband_offset_ms = float(lowband_offset.get("offsetMs") or 0.0)
-        if (
-            current_anchor_correction_ms <= 0.0
-            and current_first_beat_ms > 0.0
-            and current_first_beat_ms <= 24.0
-            and raw_first_beat_ms <= 30.0
-            and lowband_match_ratio >= 0.85
-            and lowband_offset_mad_ms <= 4.5
-            and abs(lowband_offset_ms + raw_first_beat_ms) <= 6.0
-        ):
-            _apply_first_beat(0.0, "snap-zero-lowband")
-            return next_result
-        if (
-            current_anchor_correction_ms <= 0.0
-            and current_first_beat_ms > 0.0
-            and current_first_beat_ms <= 18.0
-            and raw_first_beat_ms <= 30.0
-            and lowband_match_ratio >= 0.8
-            and lowband_offset_mad_ms <= 4.5
-            and lowband_offset_ms <= -30.0
-        ):
-            _apply_first_beat(0.0, "snap-zero-lowband")
-            return next_result
-        if (
-            current_anchor_correction_ms <= 0.0
-            and current_first_beat_ms > 0.0
-            and current_first_beat_ms <= 24.0
-            and raw_first_beat_ms <= 30.0
-            and lowband_match_ratio >= 0.85
-            and lowband_offset_mad_ms <= 4.5
-            and lowband_offset_ms <= -30.0
-        ):
-            _apply_first_beat(0.0, "snap-zero-lowband")
-            return next_result
-
-    if (
-        float(next_result.get("windowStartSec") or 0.0) > 0.001
-        and current_anchor_correction_ms <= 0.0
-        and 0.5 <= current_first_beat_ms <= 8.0
-        and int(next_result.get("barBeatOffset") or 0) != 0
-    ):
-        if (
-            "bpm-window-select" in anchor_strategy
-            and 4.0 <= raw_first_beat_ms <= 8.0
-            and float(next_result.get("qualityScore") or 0.0) >= 0.97
-            and float(next_result.get("anchorConfidenceScore") or 0.0) < 0.9
-        ):
-            _apply_first_beat(45.0, "mid-window-unsnap-zero")
-            next_result["barBeatOffset"] = 0
-        else:
-            _apply_first_beat(0.0, "snap-zero-phase")
-            next_result["barBeatOffset"] = 0
-        return next_result
-
-    if (
-        abs(current_anchor_correction_ms) <= 0.001
-        and abs(current_first_beat_ms - raw_first_beat_ms) <= 0.001
-        and raw_first_beat_ms >= 200.0
-        and float(next_result.get("qualityScore") or 0.0) >= 0.95
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
-        and drift_128_ms > 10.0
-        and int(next_result.get("barBeatOffset") or 0) % 4 != 0
-    ):
-        _apply_first_beat(current_first_beat_ms - 2.0, "late-frame-edge")
-        return next_result
-
-    if (
-        abs(current_anchor_correction_ms) <= 0.001
-        and abs(current_first_beat_ms - raw_first_beat_ms) <= 0.001
-        and 100.0 <= raw_first_beat_ms <= 180.0
-        and float(next_result.get("qualityScore") or 0.0) >= 0.97
-        and 0.9 <= float(next_result.get("anchorConfidenceScore") or 0.0) < 0.98
-        and drift_128_ms > 10.0
-        and int(next_result.get("barBeatOffset") or 0) % 4 == 1
-    ):
-        next_result = dict(next_result)
-        next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) - 1) % 32
-        current_strategy = str(next_result.get("anchorStrategy") or "").strip()
-        next_result["anchorStrategy"] = (
-            f"{current_strategy}-downbeat-one-beat-guard"
-            if current_strategy
-            else "downbeat-one-beat-guard"
-        )
-        return next_result
-
-    if (
-        abs(current_anchor_correction_ms) <= 0.001
-        and abs(current_first_beat_ms - raw_first_beat_ms) <= 0.001
-        and current_first_beat_ms >= 400.0
-        and float(next_result.get("qualityScore") or 0.0) >= 0.95
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
-    ):
-        _apply_first_beat(current_first_beat_ms - 14.0, "late-frame-tail")
-        return next_result
-
-    if (
-        abs(current_anchor_correction_ms) <= 0.001
-        and abs(current_first_beat_ms - raw_first_beat_ms) <= 0.001
-        and 230.0 <= raw_first_beat_ms <= 250.0
-        and float(next_result.get("qualityScore") or 0.0) >= 0.95
-        and float(next_result.get("anchorConfidenceScore") or 0.0) < 0.5
-    ):
-        _apply_first_beat(current_first_beat_ms - 17.0, "low-confidence-frame-tail")
-        return next_result
-
-    if (
-        abs(raw_first_beat_ms - 180.0) <= 0.5
-        and abs(current_first_beat_ms - 175.0) <= 0.5
-        and 0.8 <= float(next_result.get("qualityScore") or 0.0) <= 0.87
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
-    ):
-        _apply_first_beat(current_first_beat_ms - 4.0, "frame-tail-trim")
-        return next_result
-
-    if (
-        abs(raw_first_beat_ms - 160.0) <= 0.5
-        and abs(current_first_beat_ms - 155.0) <= 0.5
-        and int(next_result.get("barBeatOffset") or 0) % 4 == 2
-        and float(next_result.get("qualityScore") or 0.0) >= 0.97
-    ):
-        _apply_first_beat(current_first_beat_ms - 9.0, "bar-two-frame-trim")
-        next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) - 2) % 32
-        return next_result
-
-    if (
-        "head-attack" in anchor_strategy
-        and abs(raw_first_beat_ms - 80.0) <= 0.5
-        and abs(current_first_beat_ms - 64.0) <= 0.5
-        and float(next_result.get("qualityScore") or 0.0) >= 0.95
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
-    ):
-        _apply_first_beat(current_first_beat_ms + 3.0, "head-attack-frame-lead")
-        return next_result
-
-    if (
-        abs(raw_first_beat_ms - 20.0) <= 0.5
-        and abs(current_first_beat_ms - 28.0) <= 0.5
-        and int(next_result.get("barBeatOffset") or 0) % 4 == 1
-        and float(next_result.get("qualityScore") or 0.0) >= 0.95
-    ):
-        _apply_first_beat(current_first_beat_ms - 4.0, "bar-one-frame-trim")
-        next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) + 1) % 32
-        return next_result
-
-    if (
-        "phase-consensus" in anchor_strategy
-        and abs(raw_first_beat_ms - 20.0) <= 0.5
-        and abs(current_first_beat_ms - 28.0) <= 0.5
-        and int(next_result.get("barBeatOffset") or 0) % 4 == 0
-        and float(next_result.get("qualityScore") or 0.0) >= 0.95
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
-    ):
-        _apply_first_beat(0.0, "phase-consensus-head-snap")
-        next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) - 1) % 32
-        return next_result
-
-    if (
-        abs(raw_first_beat_ms - 200.0) <= 0.5
-        and abs(current_first_beat_ms - 210.0) <= 0.5
-        and 0.9 <= float(next_result.get("qualityScore") or 0.0) <= 0.95
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
-        and int(next_result.get("downbeatCount") or 0) <= 16
-    ):
-        _apply_first_beat(current_first_beat_ms - 9.0, "positive-frame-tail-trim")
-        return next_result
-
-    if (
-        250.0 <= raw_first_beat_ms <= 270.0
-        and -8.0 <= current_anchor_correction_ms <= -6.0
-        and float(next_result.get("qualityScore") or 0.0) < 0.9
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
-        and int(next_result.get("downbeatCount") or 0) >= 20
-        and int(next_result.get("barBeatOffset") or 0) % 4 == 0
-    ):
-        _apply_first_beat(current_first_beat_ms - 7.0, "low-quality-tail-trim")
-        return next_result
-
-    if (
-        "grid-solver" in anchor_strategy
-        and "bpm-window-select" in anchor_strategy
-        and "head-attack" in anchor_strategy
-        and abs(raw_first_beat_ms - 320.0) <= 0.5
-        and abs(current_first_beat_ms - 305.0) <= 0.5
-        and float(next_result.get("qualityScore") or 0.0) >= 0.98
-        and float(next_result.get("anchorConfidenceScore") or 0.0) >= 0.95
-    ):
-        _apply_first_beat(current_first_beat_ms - 10.0, "head-attack-tail-trim")
-        return next_result
-
-    if (
-        anchor_strategy == "refined"
-        and abs(raw_first_beat_ms - 160.0) <= 0.5
-        and abs(current_first_beat_ms - 170.0) <= 0.5
-        and 8.0 <= current_anchor_correction_ms <= 12.0
-        and 118.0 <= bpm <= 126.0
-        and 0.95 <= float(next_result.get("qualityScore") or 0.0) <= 0.98
-        and 0.85 <= float(next_result.get("anchorConfidenceScore") or 0.0) < 0.92
-        and int(next_result.get("downbeatCount") or 0) <= 18
-    ):
-        _apply_first_beat(current_first_beat_ms - 38.0, "positive-frame-overrun-trim")
-        return next_result
-
-    if (
-        anchor_strategy == "refined"
-        and 155.0 <= raw_first_beat_ms <= 165.0
-        and 155.0 <= current_first_beat_ms <= 165.0
-        and abs(current_anchor_correction_ms) <= 1.5
-        and bpm >= 150.0
-        and float(next_result.get("windowStartSec") or 0.0) >= 30.0
-        and float(next_result.get("qualityScore") or 0.0) >= 0.96
-        and 0.9 <= float(next_result.get("anchorConfidenceScore") or 0.0) <= 0.95
-        and int(next_result.get("barBeatOffset") or 0) % 4 == 0
-    ):
-        _apply_first_beat(current_first_beat_ms + 44.0, "late-window-downbeat-phase")
-        next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) + 3) % 32
-        return next_result
-
-    if (
-        "bpm-window-select" in anchor_strategy
-        and "snap-zero-phase" in anchor_strategy
-        and float(next_result.get("windowStartSec") or 0.0) >= 30.0
-        and abs(current_first_beat_ms) <= 0.001
-        and 4.0 <= raw_first_beat_ms <= 8.0
-        and float(next_result.get("qualityScore") or 0.0) >= 0.97
-        and float(next_result.get("anchorConfidenceScore") or 0.0) < 0.9
-    ):
-        _apply_first_beat(45.0, "mid-window-unsnap-zero")
-        return next_result
 
     if not anchor_strategy.endswith("positive-guard"):
         return next_result
@@ -778,102 +1095,4 @@ def apply_phase_rescue_rules(
         delta_ms * weight for delta_ms, weight in zip(early_deltas_ms, early_weights)
     ) / max(1e-9, sum(early_weights))
     _apply_first_beat(float(next_result["firstBeatMs"]) + weighted_delta_ms, "early-cluster")
-    return next_result
-
-
-def apply_frame_center_phase_rescue_to_result(result: dict[str, Any]) -> dict[str, Any]:
-    bpm = float(result.get("bpm") or 0.0)
-    if not math.isfinite(bpm) or bpm <= 0.0:
-        return result
-    if abs(bpm - round(bpm)) > 0.000001:
-        return result
-
-    anchor_correction_ms = float(result.get("anchorCorrectionMs") or 0.0)
-    if abs(anchor_correction_ms) > 0.001:
-        return result
-
-    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", 0.0)
-    first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
-    if not math.isfinite(raw_first_beat_ms) or not math.isfinite(first_beat_ms):
-        return result
-    if abs(first_beat_ms - raw_first_beat_ms) > 0.001:
-        return result
-    if raw_first_beat_ms < 39.5:
-        return result
-    strategy = str(result.get("anchorStrategy") or "")
-    if "head-attack" in strategy and abs(float(result.get("beatThisEstimatedDrift128Ms") or 0.0)) > 10.0:
-        return result
-    frame_remainder_ms = raw_first_beat_ms % 20.0
-    if min(frame_remainder_ms, 20.0 - frame_remainder_ms) > 0.001:
-        return result
-
-    refinement_strategy = str(result.get("bpmRefinementStrategy") or "")
-    has_bpm_rescue = refinement_strategy == "integer-envelope-rescue" or refinement_strategy.endswith(
-        "bpm-envelope-rescue"
-    )
-    raw_bpm = float(result.get("rawBpm") or 0.0)
-    is_half_bpm_rescue = (
-        math.isfinite(raw_bpm)
-        and raw_bpm > 0.0
-        and abs(raw_bpm * 2.0 - bpm) <= max(0.12, bpm * 0.001)
-    )
-    beat_interval_ms = 60000.0 / bpm
-    if raw_first_beat_ms > 105.5:
-        if (
-            raw_first_beat_ms <= 260.5
-            and int(result.get("barBeatOffset") or 0) % 4 != 0
-            and float(result.get("qualityScore") or 0.0) >= 0.9
-            and float(result.get("beatStabilityScore") or 0.0) >= 0.9
-        ):
-            drift_128_ms = abs(float(result.get("beatThisEstimatedDrift128Ms") or 0.0))
-            if drift_128_ms > 10.0 and raw_first_beat_ms < 200.0:
-                return result
-            next_result = _update_first_beat(
-                result,
-                normalize_phase_ms(first_beat_ms - 2.0, beat_interval_ms),
-                beat_interval_ms,
-                "frame-edge",
-            )
-            next_result["phaseRefinementStrategy"] = "frame-edge-rescue"
-            return next_result
-        return result
-
-    bar_offset_adjustment = 0
-    if (
-        59.5 <= raw_first_beat_ms <= 60.5
-        and int(result.get("barBeatOffset") or 0) % 4 == 2
-        and float(result.get("qualityScore") or 0.0) >= 0.98
-        and 0.6 <= float(result.get("anchorConfidenceScore") or 0.0) < 0.85
-    ):
-        shift_ms = -15.0
-        bar_offset_adjustment = -2
-    elif refinement_strategy == "double-bpm-envelope-rescue" or is_half_bpm_rescue:
-        shift_ms = -14.0
-    elif 39.5 <= raw_first_beat_ms <= 40.5:
-        if (
-            int(result.get("barBeatOffset") or 0) % 4 != 0
-            and float(result.get("anchorConfidenceScore") or 0.0) >= 0.6
-        ):
-            shift_ms = -16.0
-        else:
-            shift_ms = -4.0 if float(result.get("anchorConfidenceScore") or 0.0) < 0.5 else -12.0
-    elif 95.0 <= raw_first_beat_ms <= 105.0:
-        if float(result.get("anchorConfidenceScore") or 0.0) < 0.5:
-            return result
-        shift_ms = -5.0
-    else:
-        shift_ms = -9.0
-    updated_first_beat_ms = normalize_phase_ms(first_beat_ms + shift_ms, beat_interval_ms)
-
-    next_result = _update_first_beat(
-        result,
-        updated_first_beat_ms,
-        beat_interval_ms,
-        "frame-center",
-    )
-    if bar_offset_adjustment != 0:
-        next_result["barBeatOffset"] = (
-            int(next_result.get("barBeatOffset") or 0) + bar_offset_adjustment
-        ) % 32
-    next_result["phaseRefinementStrategy"] = "frame-center-rescue"
     return next_result
