@@ -597,6 +597,7 @@ interface ILanguageDict {
 interface IMenu {
   menuName: string
   shortcutKey?: string
+  children?: IMenu[]
 }
 
 interface IImportSongsFormData {

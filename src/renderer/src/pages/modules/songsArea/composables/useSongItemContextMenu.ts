@@ -118,8 +118,12 @@ export function useSongItemContextMenu(
     })
   }
 
-  const cloneMenuArr = (source: IMenu[][]) =>
-    source.map((group) => group.map((item) => ({ ...item })))
+  const cloneMenuItem = (item: IMenu): IMenu => ({
+    ...item,
+    ...(item.children ? { children: item.children.map(cloneMenuItem) } : {})
+  })
+  const cloneMenuArr = (source: IMenu[][]): IMenu[][] =>
+    source.map((group) => group.map(cloneMenuItem))
 
   const confirmTaskBusy = async () => {
     await confirm({
@@ -174,6 +178,17 @@ export function useSongItemContextMenu(
       target,
       resolveLibraryTransferActionModeForSongList(songsAreaState.songListUUID)
     )
+  const createNeteaseSearchMenu = (): IMenu[] => [
+    {
+      menuName: 'tracks.neteaseSearch',
+      children: [
+        { menuName: 'tracks.neteaseSearchTitleArtist' },
+        { menuName: 'tracks.neteaseSearchTitle' },
+        { menuName: 'tracks.neteaseSearchArtist' },
+        { menuName: 'tracks.neteaseSearchAlbum' }
+      ]
+    }
+  ]
   const createDefaultMenuArr = (): IMenu[][] => [
     [
       { menuName: 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks' },
@@ -190,6 +205,7 @@ export function useSongItemContextMenu(
       { menuName: 'tracks.deleteAllAbove' }
     ],
     [{ menuName: 'tracks.showInFileExplorer' }],
+    createNeteaseSearchMenu(),
     [{ menuName: 'metadata.autoFillMenu' }],
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }],
@@ -204,6 +220,7 @@ export function useSongItemContextMenu(
       { menuName: 'tracks.deleteAllAbove' }
     ],
     [{ menuName: 'tracks.showInFileExplorer' }],
+    createNeteaseSearchMenu(),
     [{ menuName: 'metadata.autoFillMenu' }],
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }],
@@ -218,6 +235,7 @@ export function useSongItemContextMenu(
     ],
     [{ menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' }],
     [{ menuName: 'tracks.showInFileExplorer' }],
+    createNeteaseSearchMenu(),
     [{ menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }]
   ]
@@ -264,6 +282,24 @@ export function useSongItemContextMenu(
         return { filePaths: paths, songListPath }
       }
       return paths
+    }
+    const normalizeSearchText = (value: string | undefined | null) =>
+      typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
+    const showNeteaseSearchEmptyHint = async (messageKey: string) => {
+      await confirm({
+        title: t('dialog.hint'),
+        content: [t(messageKey)],
+        confirmShow: false
+      })
+    }
+    const openNeteaseSearch = async (query: string) => {
+      const normalized = normalizeSearchText(query)
+      if (!normalized) {
+        await showNeteaseSearchEmptyHint('tracks.neteaseSearchEmpty')
+        return
+      }
+      const url = `https://music.163.com/#/search/m/?s=${encodeURIComponent(normalized)}&type=1`
+      window.electron.ipcRenderer.send('openLocalBrowser', url)
     }
     const requestDeleteSongs = async (paths: string[]) => {
       const summary = await window.electron.ipcRenderer.invoke(
@@ -942,6 +978,43 @@ export function useSongItemContextMenu(
       case 'tracks.showInFileExplorer':
         window.electron.ipcRenderer.send('show-item-in-folder', song.filePath)
         break
+      case 'tracks.neteaseSearchTitle': {
+        const title = normalizeSearchText(song.title)
+        if (!title) {
+          await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleEmpty')
+          break
+        }
+        await openNeteaseSearch(title)
+        break
+      }
+      case 'tracks.neteaseSearchArtist': {
+        const artist = normalizeSearchText(song.artist)
+        if (!artist) {
+          await showNeteaseSearchEmptyHint('tracks.neteaseSearchArtistEmpty')
+          break
+        }
+        await openNeteaseSearch(artist)
+        break
+      }
+      case 'tracks.neteaseSearchAlbum': {
+        const album = normalizeSearchText(song.album)
+        if (!album) {
+          await showNeteaseSearchEmptyHint('tracks.neteaseSearchAlbumEmpty')
+          break
+        }
+        await openNeteaseSearch(album)
+        break
+      }
+      case 'tracks.neteaseSearchTitleArtist': {
+        const title = normalizeSearchText(song.title)
+        const artist = normalizeSearchText(song.artist)
+        if (!title && !artist) {
+          await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleArtistEmpty')
+          break
+        }
+        await openNeteaseSearch([title, artist].filter(Boolean).join(' '))
+        break
+      }
       case 'tracks.clearTrackCache': {
         await window.electron.ipcRenderer.invoke('track:cache:clear', song.filePath)
         return { action: 'trackCacheCleared' }

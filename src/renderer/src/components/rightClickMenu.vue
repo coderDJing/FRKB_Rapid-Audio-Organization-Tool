@@ -65,11 +65,16 @@ const handleAfterLeave = () => {
 
 let positionTop = ref(0)
 let positionLeft = ref(0)
+let openSubmenuLeft = ref(false)
 
 positionTop.value = -9999
 positionLeft.value = -9999
 
 const menuButtonClick = (item: IMenu) => {
+  if (item.children?.length) {
+    hoverItem.value = item
+    return
+  }
   requestClose(item)
 }
 const hoverItem = ref<IMenu | null>(null)
@@ -102,10 +107,14 @@ onMounted(() => {
 
     positionTop.value = y
     positionLeft.value = x
+    openSubmenuLeft.value = x + divWidth + 230 > window.innerWidth - 8
   })
 
+  const getNavigableItems = () =>
+    props.menuArr.flat(1).flatMap((item) => [item, ...(item.children || [])])
+
   hotkeys('w', uuid, () => {
-    let menuArr = props.menuArr.flat(1)
+    let menuArr = getNavigableItems()
     if (hoverItem.value === null || menuArr.indexOf(hoverItem.value) === 0) {
       hoverItem.value = menuArr[menuArr.length - 1]
     } else {
@@ -114,7 +123,7 @@ onMounted(() => {
     return false
   })
   hotkeys('s', uuid, () => {
-    let menuArr = props.menuArr.flat(1)
+    let menuArr = getNavigableItems()
     if (hoverItem.value === null || menuArr.indexOf(hoverItem.value) === menuArr.length - 1) {
       hoverItem.value = menuArr[0]
     } else {
@@ -124,10 +133,10 @@ onMounted(() => {
   })
   hotkeys('E,Enter', uuid, () => {
     if (hoverItem.value === null) {
-      const flattened = props.menuArr.flat(1)
+      const flattened = getNavigableItems()
       hoverItem.value = flattened[0]
     }
-    if (hoverItem.value) {
+    if (hoverItem.value && !hoverItem.value.children?.length) {
       requestClose(hoverItem.value)
     }
   })
@@ -156,14 +165,42 @@ onUnmounted(() => {
           v-for="button of item"
           class="menuButton"
           :class="{
-            menuButtonOver: hoverItem === null ? false : hoverItem.menuName === button.menuName
+            menuButtonOver:
+              hoverItem === null
+                ? false
+                : hoverItem.menuName === button.menuName ||
+                  !!button.children?.some((child) => child.menuName === hoverItem?.menuName)
           }"
           @click="menuButtonClick(button)"
           @mouseover.stop="mouseover(button)"
           @contextmenu="menuButtonClick(button)"
         >
           <span>{{ t(button.menuName) }}</span>
-          <span>{{ button.shortcutKey }}</span>
+          <span>{{ button.children?.length ? '>' : button.shortcutKey }}</span>
+          <div
+            v-if="
+              button.children?.length &&
+              hoverItem &&
+              (hoverItem.menuName === button.menuName ||
+                button.children.some((child) => child.menuName === hoverItem?.menuName))
+            "
+            class="submenu"
+            :class="{ submenuLeft: openSubmenuLeft }"
+            @click.stop="() => {}"
+            @contextmenu.stop.prevent
+          >
+            <div
+              v-for="child of button.children"
+              class="submenuButton"
+              :class="{ menuButtonOver: hoverItem?.menuName === child.menuName }"
+              @click.stop="menuButtonClick(child)"
+              @mouseover.stop="mouseover(child)"
+              @contextmenu.stop.prevent="menuButtonClick(child)"
+            >
+              <span>{{ t(child.menuName) }}</span>
+              <span>{{ child.shortcutKey }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -199,6 +236,7 @@ onUnmounted(() => {
     padding: 5px 5px;
 
     .menuButton {
+      position: relative;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
@@ -225,6 +263,50 @@ onUnmounted(() => {
     .menuButtonOver {
       background-color: var(--accent);
       color: #ffffff;
+    }
+
+    .submenu {
+      position: absolute;
+      top: -5px;
+      left: 100%;
+      min-width: 220px;
+      width: max-content;
+      max-width: calc(100vw - 12px);
+      padding: 5px;
+      background-color: var(--bg-elev);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text);
+      z-index: 1;
+    }
+
+    .submenuLeft {
+      left: auto;
+      right: 100%;
+    }
+
+    .submenuButton {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      column-gap: 24px;
+      padding: 5px 20px;
+      border-radius: 5px;
+      color: var(--text);
+
+      &:hover {
+        background-color: var(--accent);
+        color: #ffffff;
+      }
+    }
+
+    .submenuButton > span {
+      white-space: nowrap;
+    }
+
+    .submenuButton > span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
 
