@@ -59,7 +59,8 @@ const resolveTrackVisibleAnchorLocalSec = (params: {
     Number(params.resolveTrackSourceDurationSeconds(track)) || 0
   )
   const sourceDurationBeats = sourceDurationSec / beatSourceSec
-  const firstBeatSourceSec = Math.max(0, Number(track.firstBeatMs) || 0) / 1000
+  const firstBeatMs = Number(track.firstBeatMs)
+  const firstBeatSourceSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
   const firstBeatSourceBeats = firstBeatSourceSec / beatSourceSec
   const normalizedBarBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
   const firstBarLineSourceBeats = firstBeatSourceBeats + normalizedBarBeatOffset

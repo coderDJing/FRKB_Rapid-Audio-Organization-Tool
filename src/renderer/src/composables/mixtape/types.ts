@@ -96,6 +96,8 @@ export type MixtapeTrack = {
   firstBeatMs?: number
   // 大节线相位偏移（以拍为单位，仅改变网格线定义，不改变网格线位置）
   barBeatOffset?: number
+  // 仅用于把 FRKB 播放/波形时间基准对齐到外部分析源（如 Rekordbox）
+  timeBasisOffsetMs?: number
   // Stem 素材状态（pending/running/ready/failed）
   stemStatus?: MixtapeStemStatus
   stemError?: string

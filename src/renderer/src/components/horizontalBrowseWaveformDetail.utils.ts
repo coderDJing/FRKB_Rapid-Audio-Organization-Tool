@@ -32,6 +32,7 @@ export const buildHorizontalBrowseWaveformTileCacheKey = (params: {
   cssHeight: number
   pixelRatio: number
   tileIndex: number
+  timeBasisOffsetMs?: number
 }) =>
   [
     normalizeHorizontalBrowsePathKey(params.filePath),
@@ -42,5 +43,6 @@ export const buildHorizontalBrowseWaveformTileCacheKey = (params: {
     Math.max(1, Math.floor(params.cssWidth)),
     Math.max(1, Math.floor(params.cssHeight)),
     Number(params.pixelRatio || 1).toFixed(3),
-    params.tileIndex
+    params.tileIndex,
+    Number(params.timeBasisOffsetMs || 0).toFixed(3)
   ].join('|')

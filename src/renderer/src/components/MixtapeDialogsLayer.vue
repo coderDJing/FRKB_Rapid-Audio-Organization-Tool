@@ -301,6 +301,7 @@ const autoGainColumnMenuVisibleModel = computed({
       128
     "
     :first-beat-ms="Number(beatAlignTrack.firstBeatMs) || 0"
+    :time-basis-offset-ms="Number(beatAlignTrack.timeBasisOffsetMs) || 0"
     :bar-beat-offset="Number(beatAlignTrack.barBeatOffset) || 0"
     @save-grid-definition="handleBeatAlignGridDefinitionSave"
     @cancel="handleBeatAlignDialogCancel"

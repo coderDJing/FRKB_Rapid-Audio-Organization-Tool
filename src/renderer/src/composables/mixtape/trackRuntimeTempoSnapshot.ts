@@ -239,7 +239,9 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
     sourceDurationSec,
     originalBpm,
     fallbackBpm: baseBpm,
-    firstBeatSourceSec: Math.max(0, Number(track.firstBeatMs) || 0) / 1000,
+    firstBeatSourceSec: Number.isFinite(Number(track.firstBeatMs))
+      ? Number(track.firstBeatMs) / 1000
+      : 0,
     beatSourceSec,
     barBeatOffset: Number(track.barBeatOffset) || 0,
     loopSegments: normalizedLoopSegments,

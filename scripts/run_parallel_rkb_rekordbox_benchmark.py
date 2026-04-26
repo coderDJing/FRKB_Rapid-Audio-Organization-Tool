@@ -1,0 +1,283 @@
+import argparse
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Any
+
+import benchmark_rkb_rekordbox_truth as benchmark
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BENCHMARK_SCRIPT = REPO_ROOT / "scripts" / "benchmark_rkb_rekordbox_truth.py"
+DEFAULT_OUTPUT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "parallel-latest.json"
+
+
+def _load_raw_truth_tracks(truth_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    payload = json.loads(truth_path.read_text(encoding="utf-8"))
+    tracks = payload.get("tracks") if isinstance(payload, dict) else None
+    if not isinstance(tracks, list) or not tracks:
+        raise RuntimeError(f"truth contains no tracks: {truth_path}")
+    return payload, [item for item in tracks if isinstance(item, dict)]
+
+
+def _matches_only_filters(track: dict[str, Any], filters: list[str]) -> bool:
+    if not filters:
+        return True
+    haystack = " ".join(
+        [
+            str(track.get("fileName") or ""),
+            str(track.get("title") or ""),
+            str(track.get("artist") or ""),
+        ]
+    ).lower()
+    return any(item in haystack for item in filters)
+
+
+def _select_tracks(
+    tracks: list[dict[str, Any]],
+    *,
+    only_filters: list[str],
+    limit: int,
+) -> list[dict[str, Any]]:
+    selected: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for track in tracks:
+        file_name = str(track.get("fileName") or "").strip()
+        lookup_key = benchmark._normalize_lookup_key(file_name)
+        if not file_name or lookup_key in seen_keys:
+            continue
+        if not _matches_only_filters(track, only_filters):
+            continue
+        seen_keys.add(lookup_key)
+        selected.append(track)
+        if limit > 0 and len(selected) >= limit:
+            break
+    return selected
+
+
+def _resolve_job_count(requested_jobs: int, track_count: int) -> int:
+    if track_count <= 1:
+        return max(1, track_count)
+    if requested_jobs > 0:
+        return max(1, min(requested_jobs, track_count))
+    cpu_count = os.cpu_count() or 1
+    return max(1, min(track_count, cpu_count, 4))
+
+
+def _partition_tracks(tracks: list[dict[str, Any]], job_count: int) -> list[list[dict[str, Any]]]:
+    shards = [[] for _ in range(job_count)]
+    for index, track in enumerate(tracks):
+        shards[index % job_count].append(track)
+    return [shard for shard in shards if shard]
+
+
+def _write_shard_truth(
+    *,
+    base_payload: dict[str, Any],
+    tracks: list[dict[str, Any]],
+    shard_path: Path,
+    shard_index: int,
+    shard_count: int,
+) -> None:
+    payload = {
+        key: value
+        for key, value in base_payload.items()
+        if key not in {"tracks", "trackCount", "sourcePlaylists"}
+    }
+    payload["note"] = f"parallel benchmark shard {shard_index + 1}/{shard_count}"
+    payload["trackCount"] = len(tracks)
+    payload["tracks"] = tracks
+    shard_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _run_shard(
+    *,
+    shard_index: int,
+    shard_count: int,
+    shard_truth_path: Path,
+    shard_output_path: Path,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    cmd = [
+        sys.executable,
+        "-B",
+        str(BENCHMARK_SCRIPT),
+        "--truth",
+        str(shard_truth_path),
+        "--audio-root",
+        str(args.audio_root),
+        "--ffmpeg",
+        str(args.ffmpeg),
+        "--ffprobe",
+        str(args.ffprobe),
+        "--output",
+        str(shard_output_path),
+        "--device",
+        str(args.device),
+        "--prediction-cache-dir",
+        str(args.prediction_cache_dir),
+    ]
+    if args.no_prediction_cache:
+        cmd.append("--no-prediction-cache")
+
+    print(f"[shard {shard_index + 1}/{shard_count}] start {shard_truth_path.name}", flush=True)
+    result = subprocess.run(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if result.returncode != 0:
+        print(result.stdout, flush=True)
+        raise RuntimeError(f"shard {shard_index + 1}/{shard_count} failed with {result.returncode}")
+    print(f"[shard {shard_index + 1}/{shard_count}] done", flush=True)
+    return json.loads(shard_output_path.read_text(encoding="utf-8"))
+
+
+def _sum_prediction_cache_stats(shard_payloads: list[dict[str, Any]]) -> dict[str, int]:
+    keys = [
+        "windowHits",
+        "windowMisses",
+        "windowWrites",
+        "logitHits",
+        "logitMisses",
+        "logitWrites",
+        "errors",
+    ]
+    totals = {key: 0 for key in keys}
+    for payload in shard_payloads:
+        cache = (payload.get("summary") or {}).get("predictionCache") or {}
+        for key in keys:
+            totals[key] += int(cache.get(key) or 0)
+    return totals
+
+
+def _merge_payloads(
+    *,
+    shard_payloads: list[dict[str, Any]],
+    selected_tracks: list[dict[str, Any]],
+    args: argparse.Namespace,
+    duration_sec: float,
+    job_count: int,
+) -> dict[str, Any]:
+    order = {
+        benchmark._normalize_lookup_key(track.get("fileName")): index
+        for index, track in enumerate(selected_tracks)
+    }
+    rows = [row for payload in shard_payloads for row in payload.get("tracks", [])]
+    errors = [row for payload in shard_payloads for row in payload.get("errors", [])]
+    rows.sort(key=lambda row: order.get(benchmark._normalize_lookup_key(row.get("fileName")), 999999))
+    errors.sort(key=lambda row: order.get(benchmark._normalize_lookup_key(row.get("fileName")), 999999))
+
+    summary = benchmark._build_summary(rows, errors)
+    return {
+        "summary": {
+            **summary,
+            "truthPath": str(args.truth),
+            "audioRoot": str(args.audio_root),
+            "device": str(args.device),
+            "windowSec": benchmark.WINDOW_SEC,
+            "maxScanSec": benchmark.MAX_SCAN_SEC,
+            "strictToleranceMs": benchmark.STRICT_TOLERANCE_MS,
+            "predictionCache": {
+                "enabled": not bool(args.no_prediction_cache),
+                "dir": str(args.prediction_cache_dir) if not args.no_prediction_cache else None,
+                **_sum_prediction_cache_stats(shard_payloads),
+            },
+            "parallel": {
+                "jobs": job_count,
+                "shards": len(shard_payloads),
+                "shardDir": str(args.shard_dir),
+            },
+            "durationSec": round(duration_sec, 3),
+        },
+        "errors": errors,
+        "tracks": rows,
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run rkb Rekordbox benchmark shards in parallel")
+    parser.add_argument("--truth", default=str(benchmark.DEFAULT_TRUTH))
+    parser.add_argument("--audio-root", default=str(benchmark.DEFAULT_AUDIO_ROOT))
+    parser.add_argument("--ffmpeg", default=str(benchmark.DEFAULT_FFMPEG))
+    parser.add_argument("--ffprobe", default=str(benchmark.DEFAULT_FFPROBE))
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
+    parser.add_argument("--device", default="cpu")
+    parser.add_argument("--prediction-cache-dir", default=str(benchmark.DEFAULT_PREDICTION_CACHE_DIR))
+    parser.add_argument("--no-prediction-cache", action="store_true")
+    parser.add_argument("--jobs", type=int, default=0)
+    parser.add_argument("--shard-dir", default="")
+    parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument(
+        "--only",
+        action="append",
+        default=[],
+        help="Filter tracks by case-insensitive file/title/artist substring. Can be repeated.",
+    )
+    args = parser.parse_args()
+
+    truth_path = Path(args.truth)
+    output_path = Path(args.output)
+    base_payload, raw_tracks = _load_raw_truth_tracks(truth_path)
+    only_filters = [benchmark._normalize_lookup_key(item) for item in args.only if benchmark._normalize_lookup_key(item)]
+    selected_tracks = _select_tracks(raw_tracks, only_filters=only_filters, limit=int(args.limit or 0))
+    if not selected_tracks:
+        raise SystemExit("no tracks selected")
+
+    job_count = _resolve_job_count(int(args.jobs or 0), len(selected_tracks))
+    shards = _partition_tracks(selected_tracks, job_count)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    started_at = time.time()
+
+    tmp_path = (
+        Path(args.shard_dir)
+        if str(args.shard_dir or "").strip()
+        else Path(tempfile.mkdtemp(prefix="frkb-rkb-benchmark-shards-", dir=str(output_path.parent)))
+    )
+    args.shard_dir = str(tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    futures = []
+    with ThreadPoolExecutor(max_workers=len(shards)) as executor:
+        for shard_index, shard_tracks in enumerate(shards):
+            shard_truth_path = tmp_path / f"truth-shard-{shard_index + 1}.json"
+            shard_output_path = tmp_path / f"output-shard-{shard_index + 1}.json"
+            _write_shard_truth(
+                base_payload=base_payload,
+                tracks=shard_tracks,
+                shard_path=shard_truth_path,
+                shard_index=shard_index,
+                shard_count=len(shards),
+            )
+            futures.append(
+                executor.submit(
+                    _run_shard,
+                    shard_index=shard_index,
+                    shard_count=len(shards),
+                    shard_truth_path=shard_truth_path,
+                    shard_output_path=shard_output_path,
+                    args=args,
+                )
+            )
+        shard_payloads = [future.result() for future in as_completed(futures)]
+
+    payload = _merge_payloads(
+        shard_payloads=shard_payloads,
+        selected_tracks=selected_tracks,
+        args=args,
+        duration_sec=time.time() - started_at,
+        job_count=job_count,
+    )
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps({"summary": payload["summary"], "output": str(output_path)}, ensure_ascii=False, indent=2))
+    return 0 if not payload["errors"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

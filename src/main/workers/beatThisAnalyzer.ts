@@ -27,6 +27,8 @@ type BeatThisAnalyzeResult = {
   anchorConfidenceScore?: number
   anchorMatchedBeatCount?: number
   anchorStrategy?: string
+  beatThisEstimatedDrift128Ms?: number
+  beatThisWindowCount?: number
   windowStartSec?: number
   windowDurationSec?: number
   windowIndex?: number
@@ -132,9 +134,11 @@ const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeR
   const anchorConfidenceScore = Math.max(0, Math.min(1, Number(input?.anchorConfidenceScore) || 0))
   const anchorMatchedBeatCount = Math.max(0, Math.floor(Number(input?.anchorMatchedBeatCount) || 0))
   const anchorStrategy = String(input?.anchorStrategy || '').trim()
+  const beatThisEstimatedDrift128Ms = Number(input?.beatThisEstimatedDrift128Ms)
+  const beatThisWindowCount = Math.max(0, Math.floor(Number(input?.beatThisWindowCount) || 0))
 
   if (!Number.isFinite(bpm) || bpm <= 0) return null
-  if (!Number.isFinite(firstBeatMs) || firstBeatMs < 0) return null
+  if (!Number.isFinite(firstBeatMs)) return null
 
   return {
     bpm: Number(bpm.toFixed(6)),
@@ -159,6 +163,10 @@ const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeR
     anchorConfidenceScore: Number(anchorConfidenceScore.toFixed(6)),
     anchorMatchedBeatCount,
     anchorStrategy: anchorStrategy || undefined,
+    beatThisEstimatedDrift128Ms: Number.isFinite(beatThisEstimatedDrift128Ms)
+      ? Number(beatThisEstimatedDrift128Ms.toFixed(3))
+      : undefined,
+    beatThisWindowCount: beatThisWindowCount > 0 ? beatThisWindowCount : undefined,
     windowStartSec: Number(Number(input?.windowStartSec || 0).toFixed(3)),
     windowDurationSec: Number(Number(input?.windowDurationSec || 0).toFixed(3)),
     windowIndex: Math.max(0, Math.floor(Number(input?.windowIndex) || 0))

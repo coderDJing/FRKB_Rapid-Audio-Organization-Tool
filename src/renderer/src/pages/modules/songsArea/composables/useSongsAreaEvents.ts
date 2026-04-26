@@ -332,22 +332,71 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     patchExternalPlaylistSongByPath(normalizedTargetPath, applyKeyPatch)
   }
 
-  const onSongBpmUpdated = (_e: unknown, payload: { filePath?: string; bpm?: number }) => {
+  const onSongBpmUpdated = (
+    _e: unknown,
+    payload: {
+      filePath?: string
+      bpm?: number
+      beatThisEstimatedDrift128Ms?: number | null
+      beatThisWindowCount?: number | null
+    }
+  ) => {
     const filePath = payload?.filePath
     const bpmValue = payload?.bpm
     if (!filePath || typeof bpmValue !== 'number' || !Number.isFinite(bpmValue)) return
     const normalizedTargetPath = normalizePath(filePath)
+    const hasBeatThisEstimatedDrift128Ms = Object.prototype.hasOwnProperty.call(
+      payload,
+      'beatThisEstimatedDrift128Ms'
+    )
+    const hasBeatThisWindowCount = Object.prototype.hasOwnProperty.call(
+      payload,
+      'beatThisWindowCount'
+    )
 
-    const applyBpmPatch = (song: ISongInfo): ISongInfo =>
-      song.bpm === bpmValue
-        ? song
-        : {
-            ...song,
-            bpm: bpmValue
+    const applyBpmPatch = (song: ISongInfo): ISongInfo => {
+      let touched = false
+      const nextSong: ISongInfo = song.bpm === bpmValue ? song : { ...song, bpm: bpmValue }
+      if (nextSong !== song) {
+        touched = true
+      }
+      if (hasBeatThisEstimatedDrift128Ms) {
+        const nextValue =
+          typeof payload?.beatThisEstimatedDrift128Ms === 'number' &&
+          Number.isFinite(payload.beatThisEstimatedDrift128Ms)
+            ? payload.beatThisEstimatedDrift128Ms
+            : undefined
+        if (nextSong.beatThisEstimatedDrift128Ms !== nextValue) {
+          if (!touched) {
+            touched = true
           }
+          nextSong.beatThisEstimatedDrift128Ms = nextValue
+        }
+      }
+      if (hasBeatThisWindowCount) {
+        const nextValue =
+          typeof payload?.beatThisWindowCount === 'number' &&
+          Number.isFinite(payload.beatThisWindowCount)
+            ? payload.beatThisWindowCount
+            : undefined
+        if (nextSong.beatThisWindowCount !== nextValue) {
+          if (!touched) {
+            touched = true
+          }
+          nextSong.beatThisWindowCount = nextValue
+        }
+      }
+      return touched ? nextSong : song
+    }
 
     if (patchOriginalSongByPath(normalizedTargetPath, applyBpmPatch)) {
-      scheduleApplyIfNeeded(['bpm'])
+      scheduleApplyIfNeeded(
+        [
+          'bpm',
+          hasBeatThisEstimatedDrift128Ms ? 'beatThisEstimatedDrift128Ms' : '',
+          hasBeatThisWindowCount ? 'beatThisWindowCount' : ''
+        ].filter(Boolean)
+      )
     }
 
     patchSongsAreaSongByPath(normalizedTargetPath, applyBpmPatch)
@@ -363,6 +412,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       bpm?: number
       firstBeatMs?: number
       barBeatOffset?: number
+      timeBasisOffsetMs?: number
     }
   ) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
@@ -374,11 +424,14 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       typeof payload?.firstBeatMs === 'number' && Number.isFinite(payload.firstBeatMs)
     const hasBarBeatOffset =
       typeof payload?.barBeatOffset === 'number' && Number.isFinite(payload.barBeatOffset)
-    if (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset) return
+    const hasTimeBasisOffsetMs =
+      typeof payload?.timeBasisOffsetMs === 'number' && Number.isFinite(payload.timeBasisOffsetMs)
+    if (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset && !hasTimeBasisOffsetMs) return
     const changedFields = [
       hasBpm ? 'bpm' : '',
       hasFirstBeatMs ? 'firstBeatMs' : '',
-      hasBarBeatOffset ? 'barBeatOffset' : ''
+      hasBarBeatOffset ? 'barBeatOffset' : '',
+      hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : ''
     ].filter(Boolean)
 
     const applyGridPatch = (song: ISongInfo): ISongInfo => {
@@ -394,6 +447,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       }
       if (hasBarBeatOffset && nextSong.barBeatOffset !== payload.barBeatOffset) {
         nextSong.barBeatOffset = payload.barBeatOffset
+        touched = true
+      }
+      if (hasTimeBasisOffsetMs && nextSong.timeBasisOffsetMs !== payload.timeBasisOffsetMs) {
+        nextSong.timeBasisOffsetMs = payload.timeBasisOffsetMs
         touched = true
       }
       return touched ? nextSong : song

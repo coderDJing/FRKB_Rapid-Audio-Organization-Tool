@@ -55,6 +55,7 @@ type RawWaveformStreamRequest = {
   expectedDurationSec: number
   bootstrapDurationSec: number
   priorityHint: number
+  forceLiveDecode: boolean
   enqueuedAt: number
   worker?: Worker
   streamStartedAt?: number
@@ -110,6 +111,7 @@ export function registerCacheHandlers() {
   const liveRawWaveformContinuations = new Map<string, LiveRawWaveformContinuation>()
   let nextRawWaveformStreamJobId = 0
   const MAX_ACTIVE_RAW_WAVEFORM_STREAMS = 1
+
   const resolveRequestedRawRate = (value: unknown) => {
     const parsed = Number(value)
     if (!Number.isFinite(parsed) || parsed <= 0) return undefined
@@ -569,7 +571,7 @@ export function registerCacheHandlers() {
         }
 
         if (message?.result?.rawWaveformData) {
-          if (nextRequest.listRoot && nextRequest.stat) {
+          if (nextRequest.startSec <= 0.0001 && nextRequest.listRoot && nextRequest.stat) {
             await LibraryCacheDb.upsertMixtapeRawWaveformCacheEntry(
               nextRequest.listRoot,
               nextRequest.filePath,
@@ -968,6 +970,7 @@ export function registerCacheHandlers() {
         expectedDurationSec?: number
         bootstrapDurationSec?: number
         priorityHint?: number
+        forceLiveDecode?: boolean
       }
     ) => {
       const requestId = String(payload?.requestId || '').trim()
@@ -983,12 +986,13 @@ export function registerCacheHandlers() {
       const expectedDurationSec = Math.max(0, Number(payload?.expectedDurationSec) || 0)
       const bootstrapDurationSec = Math.max(0, Number(payload?.bootstrapDurationSec) || 0)
       const priorityHint = resolveRawWaveformStreamPriorityHint(payload?.priorityHint)
+      const forceLiveDecode = payload?.forceLiveDecode === true
       let listRoot = resolveRendererListRoot(payload?.listRoot)
       if (!listRoot) {
         listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
       }
       const stat = await fs.stat(filePath).catch(() => null)
-      if (listRoot && stat) {
+      if (!forceLiveDecode && listRoot && stat) {
         const cached = await LibraryCacheDb.loadMixtapeRawWaveformCacheData(listRoot, filePath, {
           size: stat.size,
           mtimeMs: stat.mtimeMs
@@ -1021,6 +1025,7 @@ export function registerCacheHandlers() {
         expectedDurationSec,
         bootstrapDurationSec,
         priorityHint,
+        forceLiveDecode,
         enqueuedAt: Date.now(),
         chunkCount: 0
       })

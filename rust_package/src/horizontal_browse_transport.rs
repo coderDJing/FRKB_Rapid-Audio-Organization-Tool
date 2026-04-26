@@ -38,6 +38,7 @@ struct DeckState {
   title: Option<String>,
   bpm: Option<f64>,
   first_beat_ms: Option<f64>,
+  time_basis_offset_ms: Option<f64>,
   duration_sec: f64,
   current_sec: f64,
   last_observed_at_ms: f64,
@@ -142,6 +143,7 @@ impl Default for DeckState {
       title: None,
       bpm: None,
       first_beat_ms: None,
+      time_basis_offset_ms: None,
       duration_sec: 0.0,
       current_sec: 0.0,
       last_observed_at_ms: 0.0,
@@ -219,10 +221,10 @@ impl Default for HorizontalBrowseTransportEngine {
 impl HorizontalBrowseTransportEngine {
   fn resolve_bootstrap_segment_start_sec(&self, deck: DeckId) -> f64 {
     let deck_state = self.deck(deck);
-    deck_state
-      .current_sec
-      .max(0.0)
-      .min(deck_state.duration_sec.max(0.0))
+    Self::timeline_sec_to_audio_sec(
+      deck_state,
+      deck_state.current_sec.max(0.0).min(deck_state.duration_sec.max(0.0)),
+    )
   }
 
   fn resolve_loaded_segment_end_sec(&self, deck: DeckId) -> f64 {
@@ -242,7 +244,7 @@ impl HorizontalBrowseTransportEngine {
     if deck_state.pcm_data.is_empty() || deck_state.sample_rate == 0 || deck_state.channels == 0 {
       return false;
     }
-    let safe_target_sec = target_sec.max(0.0);
+    let safe_target_sec = Self::timeline_sec_to_audio_sec(deck_state, target_sec.max(0.0));
     safe_target_sec + 0.0001 >= deck_state.pcm_start_sec
       && safe_target_sec < self.resolve_loaded_segment_end_sec(deck) - 0.0001
   }
@@ -360,6 +362,7 @@ impl HorizontalBrowseTransportEngine {
     if !allow_loaded_overlap && self.has_loaded_segment_covering(deck, clamped_target_sec) {
       return None;
     }
+    let audio_target_sec = Self::timeline_sec_to_audio_sec(self.deck(deck), clamped_target_sec);
     let target = self.deck_mut(deck);
     target.decode_request_id = target.decode_request_id.wrapping_add(1);
     target.pending_decode_file_path = Some(file_path.clone());
@@ -367,7 +370,7 @@ impl HorizontalBrowseTransportEngine {
       deck,
       file_path,
       request_id: target.decode_request_id,
-      start_sec: clamped_target_sec,
+      start_sec: audio_target_sec,
       max_duration_sec: Some(max_duration_sec),
       is_full_decode: false,
     })
@@ -383,6 +386,7 @@ impl HorizontalBrowseTransportEngine {
     let pcm_ready =
       !deck_state.pcm_data.is_empty() && deck_state.sample_rate > 0 && deck_state.channels > 0;
     let current_sec = deck_state.current_sec.max(0.0);
+    let current_audio_sec = Self::timeline_sec_to_audio_sec(deck_state, current_sec);
     let duration_sec = deck_state.duration_sec.max(0.0);
     if !playing {
       return None;
@@ -399,14 +403,17 @@ impl HorizontalBrowseTransportEngine {
       );
     }
     let loaded_end_sec = self.resolve_loaded_segment_end_sec(deck);
-    if loaded_end_sec >= duration_sec - 0.0001 {
+    let loaded_end_timeline_sec = Self::audio_sec_to_timeline_sec(deck_state, loaded_end_sec);
+    if loaded_end_timeline_sec >= duration_sec - 0.0001 {
       return None;
     }
-    if current_sec < loaded_end_sec - HORIZONTAL_BROWSE_SEGMENT_PREFETCH_THRESHOLD_SEC {
+    if current_audio_sec < loaded_end_sec - HORIZONTAL_BROWSE_SEGMENT_PREFETCH_THRESHOLD_SEC {
       return None;
     }
-    let next_start_sec = (loaded_end_sec - HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC)
-      .max(current_sec)
+    let next_start_audio_sec = (loaded_end_sec - HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC)
+      .max(current_audio_sec)
+      .min(Self::timeline_sec_to_audio_sec(deck_state, duration_sec));
+    let next_start_sec = Self::audio_sec_to_timeline_sec(deck_state, next_start_audio_sec)
       .min(duration_sec);
     self.prepare_segment_decode_request(
       deck,

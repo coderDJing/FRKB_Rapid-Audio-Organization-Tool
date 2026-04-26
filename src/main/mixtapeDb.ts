@@ -595,8 +595,7 @@ export function upsertMixtapeItemBpmByFilePath(
     const bpm = Number(item?.bpm)
     if (!filePath || !Number.isFinite(bpm) || bpm <= 0) continue
     const firstBeatMs = Number(item?.firstBeatMs)
-    const normalizedFirstBeatMs =
-      Number.isFinite(firstBeatMs) && firstBeatMs >= 0 ? Number(firstBeatMs.toFixed(3)) : 0
+    const normalizedFirstBeatMs = Number.isFinite(firstBeatMs) ? Number(firstBeatMs.toFixed(3)) : 0
     analysisMap.set(filePath, {
       bpm: Number(bpm.toFixed(6)),
       firstBeatMs: normalizedFirstBeatMs
@@ -629,10 +628,9 @@ export function upsertMixtapeItemBpmByFilePath(
           const normalizedCurrentBpm = Number.isFinite(currentBpm)
             ? Number(currentBpm.toFixed(6))
             : NaN
-          const normalizedCurrentFirstBeatMs =
-            Number.isFinite(currentFirstBeatMs) && currentFirstBeatMs >= 0
-              ? Number(currentFirstBeatMs.toFixed(3))
-              : 0
+          const normalizedCurrentFirstBeatMs = Number.isFinite(currentFirstBeatMs)
+            ? Number(currentFirstBeatMs.toFixed(3))
+            : 0
           if (
             normalizedCurrentBpm === nextAnalysis.bpm &&
             normalizedCurrentFirstBeatMs === nextAnalysis.firstBeatMs
@@ -655,7 +653,14 @@ export function upsertMixtapeItemBpmByFilePath(
 }
 
 export function upsertMixtapeItemGridByFilePath(
-  entries: Array<{ filePath: string; barBeatOffset?: number; firstBeatMs?: number; bpm?: number }>
+  entries: Array<{
+    filePath: string
+    barBeatOffset?: number
+    firstBeatMs?: number
+    bpm?: number
+    timeBasisOffsetMs?: number
+    beatGridAlgorithmVersion?: number
+  }>
 ): { updated: number } {
   if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
   const db = getLibraryDb()
@@ -668,7 +673,7 @@ export function upsertMixtapeItemGridByFilePath(
 
   const normalizeFirstBeatMs = (value: number) => {
     const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric < 0) return 0
+    if (!Number.isFinite(numeric)) return 0
     return numeric
   }
 
@@ -678,7 +683,28 @@ export function upsertMixtapeItemGridByFilePath(
     return Number(numeric.toFixed(6))
   }
 
-  const offsetMap = new Map<string, { barBeatOffset: number; firstBeatMs?: number; bpm?: number }>()
+  const normalizeTimeBasisOffsetMs = (value: number) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric < 0) return undefined
+    return Number(numeric.toFixed(3))
+  }
+
+  const normalizeBeatGridAlgorithmVersion = (value: number) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric) || numeric <= 0) return undefined
+    return Math.max(1, Math.floor(numeric))
+  }
+
+  const offsetMap = new Map<
+    string,
+    {
+      barBeatOffset: number
+      firstBeatMs?: number
+      bpm?: number
+      timeBasisOffsetMs?: number
+      beatGridAlgorithmVersion?: number
+    }
+  >()
   for (const item of entries) {
     const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
     if (!filePath) continue
@@ -686,10 +712,16 @@ export function upsertMixtapeItemGridByFilePath(
     const hasFirstBeatMs = Number.isFinite(Number(item?.firstBeatMs))
     const normalizedBpm = normalizeBpm(Number(item?.bpm))
     const hasBpm = normalizedBpm > 0
+    const normalizedTimeBasisOffsetMs = normalizeTimeBasisOffsetMs(Number(item?.timeBasisOffsetMs))
+    const normalizedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
+      Number(item?.beatGridAlgorithmVersion)
+    )
     offsetMap.set(filePath, {
       barBeatOffset: normalizedOffset,
       firstBeatMs: hasFirstBeatMs ? normalizeFirstBeatMs(Number(item?.firstBeatMs)) : undefined,
-      bpm: hasBpm ? normalizedBpm : undefined
+      bpm: hasBpm ? normalizedBpm : undefined,
+      timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
+      beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion
     })
   }
   const filePaths = Array.from(offsetMap.keys())
@@ -718,23 +750,58 @@ export function upsertMixtapeItemGridByFilePath(
           const currentOffset = normalizeBarBeatOffset(Number(info.barBeatOffset) || 0)
           const currentFirstBeatMs = normalizeFirstBeatMs(Number(info.firstBeatMs) || 0)
           const currentBpm = normalizeBpm(Number(info.bpm) || 0)
+          const currentTimeBasisOffsetMs = normalizeTimeBasisOffsetMs(
+            Number(info.timeBasisOffsetMs)
+          )
+          const currentBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
+            Number(info.beatGridAlgorithmVersion)
+          )
           const hasNextFirstBeatMs = Number.isFinite(Number(nextGrid.firstBeatMs))
           const nextFirstBeatMs = hasNextFirstBeatMs
             ? normalizeFirstBeatMs(Number(nextGrid.firstBeatMs))
             : currentFirstBeatMs
           const hasNextBpm = Number.isFinite(Number(nextGrid.bpm)) && Number(nextGrid.bpm) > 0
           const nextBpm = hasNextBpm ? normalizeBpm(Number(nextGrid.bpm)) : currentBpm
+          const hasNextTimeBasisOffsetMs =
+            typeof nextGrid.timeBasisOffsetMs === 'number' &&
+            Number.isFinite(nextGrid.timeBasisOffsetMs)
+          const hasNextBeatGridAlgorithmVersion =
+            typeof nextGrid.beatGridAlgorithmVersion === 'number' &&
+            Number.isFinite(nextGrid.beatGridAlgorithmVersion)
           const offsetChanged = currentOffset !== nextOffset
           const firstBeatChanged =
             hasNextFirstBeatMs && Math.abs(currentFirstBeatMs - nextFirstBeatMs) > 0.0001
           const bpmChanged = hasNextBpm && Math.abs(currentBpm - nextBpm) > 0.0001
-          if (!offsetChanged && !firstBeatChanged && !bpmChanged) continue
+          const timeBasisChanged =
+            hasNextTimeBasisOffsetMs &&
+            currentTimeBasisOffsetMs !== normalizeTimeBasisOffsetMs(nextGrid.timeBasisOffsetMs!)
+          const beatGridAlgorithmVersionChanged =
+            hasNextBeatGridAlgorithmVersion &&
+            currentBeatGridAlgorithmVersion !==
+              normalizeBeatGridAlgorithmVersion(nextGrid.beatGridAlgorithmVersion!)
+          if (
+            !offsetChanged &&
+            !firstBeatChanged &&
+            !bpmChanged &&
+            !timeBasisChanged &&
+            !beatGridAlgorithmVersionChanged
+          ) {
+            continue
+          }
           info.barBeatOffset = nextOffset
           if (hasNextFirstBeatMs) {
             info.firstBeatMs = nextFirstBeatMs
           }
           if (hasNextBpm) {
             info.bpm = nextBpm
+          }
+          if (hasNextTimeBasisOffsetMs) {
+            info.timeBasisOffsetMs = normalizeTimeBasisOffsetMs(nextGrid.timeBasisOffsetMs!)
+          }
+          if (hasNextBeatGridAlgorithmVersion) {
+            info.beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
+              nextGrid.beatGridAlgorithmVersion!
+            )
           }
           updateStmt.run(JSON.stringify(info), row.id)
           updated += 1

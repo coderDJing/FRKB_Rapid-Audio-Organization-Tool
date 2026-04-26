@@ -74,6 +74,10 @@ const props = defineProps({
     type: Number,
     default: 0
   },
+  timeBasisOffsetMs: {
+    type: Number,
+    default: 0
+  },
   barBeatOffset: {
     type: Number,
     default: 0
@@ -255,7 +259,9 @@ const cancel = () => closeDialog()
 const save = () => {
   emit('save-grid-definition', {
     barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL),
-    firstBeatMs: Math.max(0, Number(previewFirstBeatMs.value) || 0),
+    firstBeatMs: Number.isFinite(Number(previewFirstBeatMs.value))
+      ? Number(previewFirstBeatMs.value)
+      : 0,
     bpm: normalizePreviewBpm(previewBpm.value)
   })
   closeDialog()
@@ -327,6 +333,7 @@ const drawPreviewCanvas = () => {
     bpm: Number(previewBpm.value) || 0,
     firstBeatMs: Number(previewFirstBeatMs.value) || 0,
     barBeatOffset: previewBarBeatOffset.value,
+    timeBasisOffsetMs: Math.max(0, Number(props.timeBasisOffsetMs) || 0),
     rangeStartSec,
     rangeDurationSec: safeDuration,
     mixxxData: previewMixxxData.value,
@@ -513,7 +520,8 @@ const rebuildOverviewCache = () => {
     rawData: overviewRawData.value,
     maxRenderColumns: OVERVIEW_MAX_RENDER_COLUMNS,
     waveformVerticalPadding: OVERVIEW_WAVEFORM_VERTICAL_PADDING,
-    leadingPadSec: resolvePreviewLeadingPadSec()
+    leadingPadSec: resolvePreviewLeadingPadSec(),
+    timeBasisOffsetMs: Math.max(0, Number(props.timeBasisOffsetMs) || 0)
   })
 }
 
@@ -741,7 +749,9 @@ const loadPreviewWaveform = async (filePath: string) => {
   previewStartSec.value = 0
   syncPreviewBpmFromProps()
   previewBarBeatOffset.value = normalizeBeatOffset(props.barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
-  previewFirstBeatMs.value = Math.max(0, Number(props.firstBeatMs) || 0)
+  previewFirstBeatMs.value = Number.isFinite(Number(props.firstBeatMs))
+    ? Number(props.firstBeatMs)
+    : 0
   resetBarLinePicking()
   stopPreviewDragging()
   stopOverviewDragging()
@@ -843,7 +853,7 @@ watch(
 watch(
   () => props.firstBeatMs,
   (next) => {
-    previewFirstBeatMs.value = Math.max(0, Number(next) || 0)
+    previewFirstBeatMs.value = Number.isFinite(Number(next)) ? Number(next) : 0
     schedulePreviewDraw()
   }
 )
@@ -855,6 +865,15 @@ watch(
     if (previewBarBeatOffset.value === normalized) return
     previewBarBeatOffset.value = normalized
     schedulePreviewDraw()
+  }
+)
+
+watch(
+  () => props.timeBasisOffsetMs,
+  () => {
+    previewRenderer.reset()
+    schedulePreviewDraw()
+    scheduleOverviewRebuild()
   }
 )
 

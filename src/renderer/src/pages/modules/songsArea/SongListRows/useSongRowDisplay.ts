@@ -50,6 +50,15 @@ export const useSongRowDisplay = (params: {
       }
       return isDesktopRekordboxSong(song) ? t('rekordboxDesktop.analysisRequired') : ''
     }
+    if (colKey === 'beatThisEstimatedDrift128Ms') {
+      const driftMs = Number(song.beatThisEstimatedDrift128Ms)
+      const windowCount = Math.max(0, Math.floor(Number(song.beatThisWindowCount) || 0))
+      if (!Number.isFinite(driftMs) || driftMs < 0) {
+        return windowCount > 0 ? `--/${windowCount}w` : t('keyAnalysis.pendingBackfill')
+      }
+      const display = driftMs >= 10 ? driftMs.toFixed(1) : driftMs.toFixed(2)
+      return windowCount > 0 ? `${display}ms/${windowCount}w` : `${display}ms`
+    }
     if (raw === undefined || raw === null) return ''
     return raw as string | number
   }

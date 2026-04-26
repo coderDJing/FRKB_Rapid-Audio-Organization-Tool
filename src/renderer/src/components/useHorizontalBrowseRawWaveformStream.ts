@@ -74,6 +74,7 @@ type UseHorizontalBrowseRawWaveformStreamOptions = {
   direction: () => HorizontalBrowseDirection
   rawLoadPriorityHint: () => number | undefined
   bootstrapDurationSec: () => number | undefined
+  timeBasisOffsetMs: () => number
   playing: () => boolean
   currentSeconds: () => number | undefined
   visibleDurationSec: () => number
@@ -95,6 +96,14 @@ const HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES = 2048
 const HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR = 0.8
 const HORIZONTAL_BROWSE_RAW_VISIBLE_REDRAW_LEAD_FACTOR = 0.25
 const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR = 0.5
+
+const shouldForceLiveRawWaveformStream = (filePath: string) => {
+  const normalized = String(filePath || '')
+    .trim()
+    .replace(/\//g, '\\')
+    .toLowerCase()
+  return normalized.includes('\\filterlibrary\\rkb\\')
+}
 
 const toFloat32Array = (value: unknown) => {
   if (value instanceof Float32Array) return value
@@ -168,6 +177,21 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const resolveWaveformTargetRate = (deferred: boolean) =>
     deferred ? HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE : PREVIEW_RAW_TARGET_RATE
+
+  const resolveTimeBasisOffsetSec = () =>
+    Math.max(0, Number(options.timeBasisOffsetMs()) || 0) / 1000
+
+  const resolveAudioSecToTimelineSec = (audioSec: number) =>
+    Math.max(0, (Number(audioSec) || 0) + resolveTimeBasisOffsetSec())
+
+  const resolveAudioRangeStartSecToTimelineSec = (audioSec: number) => {
+    const safeAudioSec = Math.max(0, Number(audioSec) || 0)
+    if (safeAudioSec <= 0.0001) return 0
+    return resolveAudioSecToTimelineSec(safeAudioSec)
+  }
+
+  const resolveTimelineSecToAudioSec = (timelineSec: number) =>
+    Math.max(0, (Number(timelineSec) || 0) - resolveTimeBasisOffsetSec())
 
   const hasSameRawWaveformMeta = (
     current: RawWaveformData,
@@ -313,6 +337,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     window.electron.ipcRenderer.send('mixtape-waveform-raw:stream', {
       requestId: rawStreamRequestId,
       filePath,
+      forceLiveDecode: shouldForceLiveRawWaveformStream(filePath),
       priorityHint: resolveRawLoadPriorityHint(),
       targetRate,
       startSec: rawStreamStartSec,
@@ -352,12 +377,14 @@ export const useHorizontalBrowseRawWaveformStream = (
   const restartRawWaveformStreamAt = (targetSec: number) => {
     const filePath = String(options.song()?.filePath || '').trim()
     if (!filePath) return false
-    const targetStartSec = resolveRawWaveformBootstrapStartSec(targetSec)
+    const targetStartTimelineSec = resolveRawWaveformBootstrapStartSec(targetSec)
+    const targetStartSec = resolveTimelineSecToAudioSec(targetStartTimelineSec)
     if (!options.rawData.value) {
       traceHorizontalRawStream('raw-stream:seek-restart:skip', {
         reason: 'no-raw-data',
         targetSec,
-        targetStartSec
+        targetStartSec,
+        targetStartTimelineSec
       })
       return false
     }
@@ -366,8 +393,11 @@ export const useHorizontalBrowseRawWaveformStream = (
       0,
       Number(options.rawData.value?.loadedFrames ?? options.rawData.value?.frames) || 0
     )
-    const loadedStartSec = rawStreamStartSec
-    const loadedEndSec = rate > 0 ? loadedStartSec + loadedFrames / rate : loadedStartSec
+    const loadedStartSec = resolveAudioRangeStartSecToTimelineSec(rawStreamStartSec)
+    const loadedEndSec =
+      rate > 0
+        ? resolveAudioSecToTimelineSec(rawStreamStartSec + loadedFrames / rate)
+        : loadedStartSec
     const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
     const visibleStartSec = Math.max(0, targetSec - visibleDurationSec * 0.5)
     const visibleEndSec = targetSec + visibleDurationSec * 0.5
@@ -378,6 +408,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     traceHorizontalRawStream('raw-stream:seek-restart:check', {
       targetSec,
       targetStartSec,
+      targetStartTimelineSec,
       loadedStartSec,
       loadedEndSec,
       visibleStartSec,
@@ -389,7 +420,8 @@ export const useHorizontalBrowseRawWaveformStream = (
     beginRawWaveformStream(filePath, resolveWaveformTargetRate(false), Date.now(), targetStartSec)
     traceHorizontalRawStream('raw-stream:seek-restart:started', {
       targetSec,
-      targetStartSec
+      targetStartSec,
+      targetStartTimelineSec
     })
     return true
   }
@@ -413,7 +445,8 @@ export const useHorizontalBrowseRawWaveformStream = (
     const currentSec = Math.max(0, Number(options.currentSeconds()) || 0)
     const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
     const desiredLoadedEndSec = currentSec + visibleDurationSec * 0.5
-    return Math.max(0, Math.ceil(Math.max(0, desiredLoadedEndSec - startSec) * rate))
+    const desiredLoadedEndAudioSec = resolveTimelineSecToAudioSec(desiredLoadedEndSec)
+    return Math.max(0, Math.ceil(Math.max(0, desiredLoadedEndAudioSec - startSec) * rate))
   }
 
   const buildPendingRawStreamChunkWork = (
@@ -479,8 +512,12 @@ export const useHorizontalBrowseRawWaveformStream = (
       }
     }
 
-    const dirtyStartSec = work.startSec + work.startFrame / work.rate
-    const dirtyEndSec = work.startSec + (work.startFrame + work.chunkFrames) / work.rate
+    const dirtyStartSec = resolveAudioRangeStartSecToTimelineSec(
+      work.startSec + work.startFrame / work.rate
+    )
+    const dirtyEndSec = resolveAudioSecToTimelineSec(
+      work.startSec + (work.startFrame + work.chunkFrames) / work.rate
+    )
     if (shouldScheduleRawStreamRedraw(dirtyStartSec, dirtyEndSec)) {
       options.scheduleRawStreamDirtyDraw(dirtyStartSec, dirtyEndSec)
     }
@@ -526,8 +563,10 @@ export const useHorizontalBrowseRawWaveformStream = (
     work.appliedFrames = sourceEnd
     target.loadedFrames = Math.max(Number(target.loadedFrames) || 0, targetStart + copyFrames)
 
-    const dirtyStartSec = work.startSec + targetStart / work.rate
-    const dirtyEndSec = work.startSec + targetEnd / work.rate
+    const dirtyStartSec = resolveAudioRangeStartSecToTimelineSec(
+      work.startSec + targetStart / work.rate
+    )
+    const dirtyEndSec = resolveAudioSecToTimelineSec(work.startSec + targetEnd / work.rate)
     if (shouldScheduleRawStreamRedraw(dirtyStartSec, dirtyEndSec)) {
       if (!rawStreamFirstVisibleReadyLogged) {
         rawStreamFirstVisibleReadyLogged = true

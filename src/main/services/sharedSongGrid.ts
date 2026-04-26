@@ -5,11 +5,18 @@ import * as LibraryCacheDb from '../libraryCacheDb'
 import { listMixtapeItemsByFilePath } from '../mixtapeDb'
 import { findSongListRoot } from './cacheMaintenance'
 import { applyLiteDefaults, buildLiteSongInfo } from './songInfoLite'
+import {
+  normalizeBeatGridAlgorithmVersion,
+  shouldAcceptBeatGridCacheVersion
+} from './beatGridAlgorithmVersion'
 
 type SharedGridInfo = Partial<ISongInfo> & {
   bpm?: unknown
   firstBeatMs?: unknown
   barBeatOffset?: unknown
+  timeBasisOffsetMs?: unknown
+  beatThisWindowCount?: unknown
+  beatGridAlgorithmVersion?: unknown
 }
 
 export type SharedSongGridDefinition = {
@@ -17,6 +24,9 @@ export type SharedSongGridDefinition = {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  timeBasisOffsetMs?: number
+  beatThisWindowCount?: number
+  beatGridAlgorithmVersion?: number
 }
 
 export const isCompleteSharedSongGridDefinition = (
@@ -25,7 +35,8 @@ export const isCompleteSharedSongGridDefinition = (
   !!value &&
   value.bpm !== undefined &&
   value.firstBeatMs !== undefined &&
-  value.barBeatOffset !== undefined
+  value.barBeatOffset !== undefined &&
+  shouldAcceptBeatGridCacheVersion(value)
 
 const normalizeBpm = (value: unknown): number | undefined => {
   const numeric = Number(value)
@@ -35,7 +46,7 @@ const normalizeBpm = (value: unknown): number | undefined => {
 
 const normalizeFirstBeatMs = (value: unknown): number | undefined => {
   const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric < 0) return undefined
+  if (!Number.isFinite(numeric)) return undefined
   return Number(numeric.toFixed(3))
 }
 
@@ -46,11 +57,28 @@ const normalizeBarBeatOffset = (value: unknown): number | undefined => {
   return ((rounded % 32) + 32) % 32
 }
 
+const normalizeTimeBasisOffsetMs = (value: unknown): number | undefined => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric < 0) return undefined
+  return Number(numeric.toFixed(3))
+}
+
+const normalizeBeatThisWindowCount = (value: unknown): number | undefined => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined
+  return Math.max(1, Math.floor(numeric))
+}
+
 const hasSharedGridValue = (
   value: SharedSongGridDefinition | null
 ): value is SharedSongGridDefinition =>
   !!value &&
-  (value.bpm !== undefined || value.firstBeatMs !== undefined || value.barBeatOffset !== undefined)
+  (value.bpm !== undefined ||
+    value.firstBeatMs !== undefined ||
+    value.barBeatOffset !== undefined ||
+    value.timeBasisOffsetMs !== undefined ||
+    value.beatThisWindowCount !== undefined ||
+    value.beatGridAlgorithmVersion !== undefined)
 
 const parseInfoJson = (value: unknown): SharedGridInfo | null => {
   if (typeof value !== 'string' || !value.trim()) return null
@@ -72,14 +100,27 @@ const extractSharedGridFromInfo = (
   const bpm = normalizeBpm(info.bpm)
   const firstBeatMs = normalizeFirstBeatMs(info.firstBeatMs)
   const barBeatOffset = normalizeBarBeatOffset(info.barBeatOffset)
-  if (bpm === undefined && firstBeatMs === undefined && barBeatOffset === undefined) {
+  const timeBasisOffsetMs = normalizeTimeBasisOffsetMs(info.timeBasisOffsetMs)
+  const beatThisWindowCount = normalizeBeatThisWindowCount(info.beatThisWindowCount)
+  const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(info.beatGridAlgorithmVersion)
+  if (
+    bpm === undefined &&
+    firstBeatMs === undefined &&
+    barBeatOffset === undefined &&
+    timeBasisOffsetMs === undefined &&
+    beatThisWindowCount === undefined &&
+    beatGridAlgorithmVersion === undefined
+  ) {
     return null
   }
   return {
     filePath,
     bpm,
     firstBeatMs,
-    barBeatOffset
+    barBeatOffset,
+    timeBasisOffsetMs,
+    beatThisWindowCount,
+    beatGridAlgorithmVersion
   }
 }
 
@@ -93,7 +134,10 @@ const mergeSharedGridDefinition = (
     filePath: base.filePath || next.filePath,
     bpm: next.bpm ?? base.bpm,
     firstBeatMs: next.firstBeatMs ?? base.firstBeatMs,
-    barBeatOffset: next.barBeatOffset ?? base.barBeatOffset
+    barBeatOffset: next.barBeatOffset ?? base.barBeatOffset,
+    timeBasisOffsetMs: next.timeBasisOffsetMs ?? base.timeBasisOffsetMs,
+    beatThisWindowCount: next.beatThisWindowCount ?? base.beatThisWindowCount,
+    beatGridAlgorithmVersion: next.beatGridAlgorithmVersion ?? base.beatGridAlgorithmVersion
   }
 }
 
@@ -128,7 +172,9 @@ export async function loadSharedSongGridDefinition(
     }
   }
 
-  return hasSharedGridValue(resolved) ? resolved : null
+  return hasSharedGridValue(resolved) && shouldAcceptBeatGridCacheVersion(resolved)
+    ? resolved
+    : null
 }
 
 export async function loadSharedSongGridDefinitions(filePaths: string[]) {
@@ -164,7 +210,19 @@ export async function persistSharedSongGridDefinition(
   const bpm = normalizeBpm(input?.bpm)
   const firstBeatMs = normalizeFirstBeatMs(input?.firstBeatMs)
   const barBeatOffset = normalizeBarBeatOffset(input?.barBeatOffset)
-  if (bpm === undefined && firstBeatMs === undefined && barBeatOffset === undefined) {
+  const timeBasisOffsetMs = normalizeTimeBasisOffsetMs(input?.timeBasisOffsetMs)
+  const beatThisWindowCount = normalizeBeatThisWindowCount(input?.beatThisWindowCount)
+  const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
+    input?.beatGridAlgorithmVersion
+  )
+  if (
+    bpm === undefined &&
+    firstBeatMs === undefined &&
+    barBeatOffset === undefined &&
+    timeBasisOffsetMs === undefined &&
+    beatThisWindowCount === undefined &&
+    beatGridAlgorithmVersion === undefined
+  ) {
     return null
   }
 
@@ -174,7 +232,10 @@ export async function persistSharedSongGridDefinition(
       filePath: normalizedPath,
       bpm,
       firstBeatMs,
-      barBeatOffset
+      barBeatOffset,
+      timeBasisOffsetMs,
+      beatThisWindowCount,
+      beatGridAlgorithmVersion
     }
   }
 
@@ -200,6 +261,15 @@ export async function persistSharedSongGridDefinition(
   }
   if (barBeatOffset !== undefined) {
     normalizedInfo.barBeatOffset = barBeatOffset
+  }
+  if (timeBasisOffsetMs !== undefined) {
+    normalizedInfo.timeBasisOffsetMs = timeBasisOffsetMs
+  }
+  if (beatThisWindowCount !== undefined) {
+    normalizedInfo.beatThisWindowCount = beatThisWindowCount
+  }
+  if (beatGridAlgorithmVersion !== undefined) {
+    normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
   }
 
   await LibraryCacheDb.upsertSongCacheEntry(songListRoot, normalizedPath, {

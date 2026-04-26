@@ -35,6 +35,22 @@
       {
         "from": "scripts/beat_this_grid_solver.py",
         "to": "demucs/bootstrap/beat_this_grid_solver.py"
+      },
+      {
+        "from": "scripts/beat_this_grid_rescue.py",
+        "to": "demucs/bootstrap/beat_this_grid_rescue.py"
+      },
+      {
+        "from": "scripts/beat_this_full_logit_rescue.py",
+        "to": "demucs/bootstrap/beat_this_full_logit_rescue.py"
+      },
+      {
+        "from": "scripts/beat_this_phase_rescue.py",
+        "to": "demucs/bootstrap/beat_this_phase_rescue.py"
+      },
+      {
+        "from": "scripts/beat_this_bpm_metrics.py",
+        "to": "demucs/bootstrap/beat_this_bpm_metrics.py"
       }
     ],
     "appId": "com.electron.frkb",

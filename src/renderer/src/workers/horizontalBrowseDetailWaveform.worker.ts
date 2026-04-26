@@ -76,6 +76,7 @@ const renderTileBitmap = (request: HorizontalBrowseDetailWaveformTileRequest) =>
     barBeatOffset: 0,
     rangeStartSec: request.rangeStartSec,
     rangeDurationSec: request.rangeDurationSec,
+    timeBasisOffsetMs: request.timeBasisOffsetMs,
     mixxxData,
     rawData: raw,
     showBackground: false,

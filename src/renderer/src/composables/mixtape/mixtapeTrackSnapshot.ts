@@ -34,7 +34,7 @@ export const normalizeBarBeatOffset = (value: unknown) => {
 
 export const normalizeFirstBeatMs = (value: unknown) => {
   const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric < 0) return 0
+  if (!Number.isFinite(numeric)) return 0
   return numeric
 }
 
@@ -94,10 +94,19 @@ export const parseSnapshot = (
   const hasFirstBeatField = !!info && Object.prototype.hasOwnProperty.call(info, 'firstBeatMs')
   const hasBarBeatOffsetField =
     !!info && Object.prototype.hasOwnProperty.call(info, 'barBeatOffset')
+  const hasTimeBasisOffsetField =
+    !!info && Object.prototype.hasOwnProperty.call(info, 'timeBasisOffsetMs')
   const parsedFirstBeatMsValue = Number(info?.firstBeatMs)
   const parsedFirstBeatMs =
     hasFirstBeatField && Number.isFinite(parsedFirstBeatMsValue) && parsedFirstBeatMsValue >= 0
       ? parsedFirstBeatMsValue
+      : undefined
+  const parsedTimeBasisOffsetMsValue = Number(info?.timeBasisOffsetMs)
+  const parsedTimeBasisOffsetMs =
+    hasTimeBasisOffsetField &&
+    Number.isFinite(parsedTimeBasisOffsetMsValue) &&
+    parsedTimeBasisOffsetMsValue >= 0
+      ? parsedTimeBasisOffsetMsValue
       : undefined
   const parsedKey = typeof info?.key === 'string' ? info.key.trim() : ''
   const parsedOriginalKeyRaw = typeof info?.originalKey === 'string' ? info.originalKey.trim() : ''
@@ -170,6 +179,7 @@ export const parseSnapshot = (
     volumeMuteSegments: parsedVolumeMuteSegments.length ? parsedVolumeMuteSegments : undefined,
     firstBeatMs: parsedFirstBeatMs,
     barBeatOffset: parsedBarBeatOffset,
+    timeBasisOffsetMs: parsedTimeBasisOffsetMs,
     stemStatus: parsedStemStatus,
     stemError: parsedStemError,
     stemReadyAt: parsedStemReadyAt,

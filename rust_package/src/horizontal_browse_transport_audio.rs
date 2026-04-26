@@ -141,11 +141,13 @@ fn configure_processor(target: &mut DeckState) {
 }
 
 pub(super) fn reset_master_tempo_state(target: &mut DeckState) {
+  let audio_current_sec =
+    super::HorizontalBrowseTransportEngine::timeline_sec_to_audio_sec(target, target.current_sec);
   target.master_tempo_state.source_frame_cursor =
-    ((target.current_sec - target.pcm_start_sec).max(0.0) * target.sample_rate as f64).floor()
+    ((audio_current_sec - target.pcm_start_sec).max(0.0) * target.sample_rate as f64).floor()
       as usize;
   target.master_tempo_state.playhead_source_frame =
-    ((target.current_sec - target.pcm_start_sec).max(0.0)) * target.sample_rate as f64;
+    ((audio_current_sec - target.pcm_start_sec).max(0.0)) * target.sample_rate as f64;
   target.master_tempo_state.output_buffer.clear();
   target.master_tempo_state.output_offset = 0;
   target.master_tempo_state.flushed = false;
@@ -248,8 +250,9 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
   if frame_count == 0 {
     return (0.0, 0.0);
   }
-  let source_frame =
-    ((target.current_sec - target.pcm_start_sec).max(0.0)) * target.sample_rate as f64;
+  let audio_current_sec =
+    super::HorizontalBrowseTransportEngine::timeline_sec_to_audio_sec(target, target.current_sec);
+  let source_frame = ((audio_current_sec - target.pcm_start_sec).max(0.0)) * target.sample_rate as f64;
   let base_index = source_frame.floor() as usize;
   if base_index >= frame_count {
     return (0.0, 0.0);
@@ -330,8 +333,12 @@ fn sample_deck_master_tempo(target: &mut DeckState, output_sample_rate: f64) -> 
 
   target.master_tempo_state.playhead_source_frame +=
     clamp_rate(target.playback_rate) * target.sample_rate as f64 / output_sample_rate.max(1.0);
-  target.current_sec = target.pcm_start_sec
-    + target.master_tempo_state.playhead_source_frame / target.sample_rate as f64;
+  let audio_sec =
+    target.pcm_start_sec + target.master_tempo_state.playhead_source_frame / target.sample_rate as f64;
+  target.current_sec = super::HorizontalBrowseTransportEngine::audio_sec_to_timeline_sec(
+    target,
+    audio_sec,
+  );
   target.last_observed_at_ms = -1.0;
   if target.loop_active
     && target.loop_end_sec - target.loop_start_sec > 0.0001

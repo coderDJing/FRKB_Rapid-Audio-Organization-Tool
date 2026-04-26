@@ -1,6 +1,23 @@
 use super::*;
 
 impl HorizontalBrowseTransportEngine {
+  pub(super) fn deck_time_basis_offset_sec(deck_state: &DeckState) -> f64 {
+    let raw = deck_state.time_basis_offset_ms.unwrap_or(0.0);
+    if raw.is_finite() && raw > 0.0 {
+      raw / 1000.0
+    } else {
+      0.0
+    }
+  }
+
+  pub(super) fn timeline_sec_to_audio_sec(deck_state: &DeckState, timeline_sec: f64) -> f64 {
+    (timeline_sec - Self::deck_time_basis_offset_sec(deck_state)).max(0.0)
+  }
+
+  pub(super) fn audio_sec_to_timeline_sec(deck_state: &DeckState, audio_sec: f64) -> f64 {
+    (audio_sec + Self::deck_time_basis_offset_sec(deck_state)).max(0.0)
+  }
+
   pub(super) fn original_beat_grid(&self, deck: DeckId) -> Option<BeatGridSnapshot> {
     let deck_state = self.deck(deck);
     let bpm = deck_state.bpm?;
@@ -555,6 +572,7 @@ impl HorizontalBrowseTransportEngine {
     deck: DeckId,
     bpm: Option<f64>,
     first_beat_ms: Option<f64>,
+    time_basis_offset_ms: Option<f64>,
   ) {
     {
       let target = self.deck_mut(deck);
@@ -565,6 +583,11 @@ impl HorizontalBrowseTransportEngine {
         first_beat_ms.filter(|value| value.is_finite() && *value >= 0.0)
       {
         target.first_beat_ms = Some(next_first_beat_ms);
+      }
+      if let Some(next_time_basis_offset_ms) =
+        time_basis_offset_ms.filter(|value| value.is_finite() && *value >= 0.0)
+      {
+        target.time_basis_offset_ms = Some(next_time_basis_offset_ms);
       }
       target.metronome_state.next_beat_index = None;
     }

@@ -125,6 +125,10 @@ export type BpmAnalysisResult = {
   bpm: number
   firstBeatMs?: number
   barBeatOffset?: number
+  timeBasisOffsetMs?: number
+  beatThisEstimatedDrift128Ms?: number | null
+  beatThisWindowCount?: number | null
+  beatGridAlgorithmVersion?: number | null
 }
 
 export type DoneEntry = {
@@ -134,6 +138,10 @@ export type DoneEntry = {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  timeBasisOffsetMs?: number
+  beatThisEstimatedDrift128Ms?: number
+  beatThisWindowCount?: number
+  beatGridAlgorithmVersion?: number
   hasWaveform?: boolean
 }
 
@@ -151,6 +159,9 @@ export type KeyAnalysisWorkerPartialResult = {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  timeBasisOffsetMs?: number
+  beatThisEstimatedDrift128Ms?: number
+  beatThisWindowCount?: number
   bpmError?: string
 }
 
@@ -189,7 +200,7 @@ export const isValidBpm = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0
 
 export const isValidFirstBeatMs = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0
+  typeof value === 'number' && Number.isFinite(value)
 
 export const isValidBarBeatOffset = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)

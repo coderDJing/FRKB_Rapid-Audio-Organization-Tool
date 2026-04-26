@@ -12,12 +12,14 @@ PYREKORDBOX_IMPORT_ERROR: Optional[str] = None
 
 try:
     from pyrekordbox import Rekordbox6Database, get_config, update_config
+    from pyrekordbox.anlz import AnlzFile
     from pyrekordbox.config import get_pioneer_app_dir, read_rekordbox6_options
     from pyrekordbox.db6 import tables
     from pyrekordbox.utils import get_rekordbox_pid
 except Exception as exc:  # pragma: no cover
     PYREKORDBOX_IMPORT_ERROR = str(exc)
     Rekordbox6Database = None  # type: ignore[assignment]
+    AnlzFile = None  # type: ignore[assignment]
     get_config = None  # type: ignore[assignment]
     update_config = None  # type: ignore[assignment]
     get_pioneer_app_dir = None  # type: ignore[assignment]
@@ -515,6 +517,47 @@ def _resolve_track_analyze_path(db: Any, content: Any, share_dir: str) -> str:
     return ""
 
 
+def _resolve_track_grid_payload(db: Any, content: Any, share_dir: str) -> Dict[str, Any]:
+    if db is None or content is None or AnlzFile is None:
+        return {}
+    analyze_path = None
+    try:
+        analyze_path = db.get_anlz_path(content, "DAT")
+    except Exception:
+        analyze_path = None
+    resolved_path = _resolve_candidate_path(analyze_path, (share_dir,))
+    if not resolved_path or not os.path.exists(resolved_path):
+        return {}
+
+    try:
+        anlz = AnlzFile.parse_file(resolved_path)
+        beat_grid = anlz.get_tag("beat_grid")
+        beats = getattr(beat_grid, "beats", None)
+        bpms = getattr(beat_grid, "bpms", None)
+        times = getattr(beat_grid, "times", None)
+        if beats is None or bpms is None or times is None:
+            return {}
+        if len(beats) == 0 or len(bpms) == 0 or len(times) == 0:
+            return {}
+
+        first_label = _parse_int(beats[0], 1)
+        if first_label < 1 or first_label > 4:
+            first_label = 1
+        first_bpm = _parse_float(bpms[0])
+        first_time_sec = _parse_float(times[0])
+        if first_bpm is None or first_bpm <= 0 or first_time_sec is None or first_time_sec < 0:
+            return {}
+
+        return {
+            "gridBpm": round(float(first_bpm), 6),
+            "gridFirstBeatMs": round(float(first_time_sec) * 1000.0, 3),
+            "gridFirstBeatLabel": first_label,
+            "gridBarBeatOffset": (5 - first_label) % 4,
+        }
+    except Exception:
+        return {}
+
+
 def _resolve_artist_name(content: Any) -> str:
     artist = getattr(content, "ArtistName", None)
     if artist:
@@ -902,6 +945,7 @@ def _build_track_record(
         (db_dir, share_dir),
     )
     cue_payload = _resolve_content_cues(content)
+    grid_payload = _resolve_track_grid_payload(db, content, share_dir)
 
     return {
         "rowKey": str(row_key or f"rekordbox-desktop:{playlist_id}:{entry_index}:{track_id}").strip(),
@@ -929,6 +973,10 @@ def _build_track_record(
         "discNumber": _parse_int(getattr(content, "DiscNo", 0)) or None,
         "year": _parse_int(getattr(content, "ReleaseYear", 0)) or None,
         "analyzePath": _resolve_track_analyze_path(db, content, share_dir) or None,
+        "gridBpm": grid_payload.get("gridBpm"),
+        "gridFirstBeatMs": grid_payload.get("gridFirstBeatMs"),
+        "gridFirstBeatLabel": grid_payload.get("gridFirstBeatLabel"),
+        "gridBarBeatOffset": grid_payload.get("gridBarBeatOffset"),
         "comment": str(getattr(content, "Commnt", "") or "").strip() or None,
         "dateAdded": _normalize_date(getattr(content, "StockDate", None)),
         "artworkPath": artwork_path or None,

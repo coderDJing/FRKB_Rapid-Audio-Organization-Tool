@@ -5,6 +5,7 @@ type BpmAnalysisEntry = {
   bpm: number
   firstBeatMs: number
   barBeatOffset?: number
+  timeBasisOffsetMs?: number
 }
 
 const resolveBpmAnalysisMap = (results: unknown[]) => {
@@ -17,6 +18,7 @@ const resolveBpmAnalysisMap = (results: unknown[]) => {
             bpm?: unknown
             firstBeatMs?: unknown
             barBeatOffset?: unknown
+            timeBasisOffsetMs?: unknown
           })
         : null
     const filePath = normalizeMixtapeFilePath(payload?.filePath)
@@ -25,15 +27,21 @@ const resolveBpmAnalysisMap = (results: unknown[]) => {
       continue
     }
     const rawFirstBeatMs = Number(payload?.firstBeatMs)
-    const firstBeatMs = Number.isFinite(rawFirstBeatMs) && rawFirstBeatMs >= 0 ? rawFirstBeatMs : 0
+    const firstBeatMs = Number.isFinite(rawFirstBeatMs) ? rawFirstBeatMs : 0
     const rawBarBeatOffset = Number(payload?.barBeatOffset)
     const barBeatOffset = Number.isFinite(rawBarBeatOffset)
       ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
       : undefined
+    const rawTimeBasisOffsetMs = Number(payload?.timeBasisOffsetMs)
+    const timeBasisOffsetMs =
+      Number.isFinite(rawTimeBasisOffsetMs) && rawTimeBasisOffsetMs >= 0
+        ? Number(rawTimeBasisOffsetMs.toFixed(3))
+        : undefined
     analysisMap.set(filePath, {
       bpm: bpmValue,
       firstBeatMs,
-      barBeatOffset
+      barBeatOffset,
+      timeBasisOffsetMs
     })
   }
   return analysisMap
@@ -49,7 +57,7 @@ export const buildMixtapeBpmTargets = (tracks: MixtapeTrack[]) => {
     const firstBeatMsValue = Number(track.firstBeatMs)
     const barBeatOffsetValue = Number(track.barBeatOffset)
     const hasValidBpm = Number.isFinite(bpmValue) && bpmValue > 0
-    const hasValidFirstBeatMs = Number.isFinite(firstBeatMsValue) && firstBeatMsValue >= 0
+    const hasValidFirstBeatMs = Number.isFinite(firstBeatMsValue)
     const hasValidBarBeatOffset = Number.isFinite(barBeatOffsetValue)
     if (hasValidBpm && hasValidFirstBeatMs && hasValidBarBeatOffset) continue
     unique.add(filePath)
@@ -69,7 +77,7 @@ export const resolveMissingBpmTrackCount = (tracks: MixtapeTrack[], bpmTargets: 
     const firstBeatMsValue = Number(track.firstBeatMs)
     const barBeatOffsetValue = Number(track.barBeatOffset)
     const missingBpm = !Number.isFinite(bpmValue) || bpmValue <= 0
-    const missingFirstBeat = !Number.isFinite(firstBeatMsValue) || firstBeatMsValue < 0
+    const missingFirstBeat = !Number.isFinite(firstBeatMsValue)
     const missingBarBeatOffset = !Number.isFinite(barBeatOffsetValue)
     return missingBpm || missingFirstBeat || missingBarBeatOffset
   }).length
@@ -92,13 +100,12 @@ export const applyBpmResultsToTracks = (tracks: MixtapeTrack[], results: unknown
     if (!trackAnalysis) return track
     const currentBpm = Number(track.gridBaseBpm ?? track.originalBpm ?? track.bpm)
     const hasCurrentFirstBeatMs =
-      typeof track.firstBeatMs === 'number' &&
-      Number.isFinite(track.firstBeatMs) &&
-      track.firstBeatMs >= 0
+      typeof track.firstBeatMs === 'number' && Number.isFinite(track.firstBeatMs)
     const hasCurrentBarBeatOffset =
       typeof track.barBeatOffset === 'number' && Number.isFinite(track.barBeatOffset)
     const currentFirstBeatMs = hasCurrentFirstBeatMs ? Number(track.firstBeatMs) : 0
     const currentBarBeatOffset = hasCurrentBarBeatOffset ? Number(track.barBeatOffset) : 0
+    const currentTimeBasisOffsetMs = Number(track.timeBasisOffsetMs)
     const bpmChanged =
       !Number.isFinite(currentBpm) || Math.abs(trackAnalysis.bpm - currentBpm) > 0.0001
     const firstBeatChanged =
@@ -106,7 +113,13 @@ export const applyBpmResultsToTracks = (tracks: MixtapeTrack[], results: unknown
     const barBeatOffsetChanged =
       trackAnalysis.barBeatOffset !== undefined &&
       (!hasCurrentBarBeatOffset || trackAnalysis.barBeatOffset !== currentBarBeatOffset)
-    if (!bpmChanged && !firstBeatChanged && !barBeatOffsetChanged) return track
+    const timeBasisOffsetChanged =
+      trackAnalysis.timeBasisOffsetMs !== undefined &&
+      (!Number.isFinite(currentTimeBasisOffsetMs) ||
+        Math.abs(trackAnalysis.timeBasisOffsetMs - currentTimeBasisOffsetMs) > 0.001)
+    if (!bpmChanged && !firstBeatChanged && !barBeatOffsetChanged && !timeBasisOffsetChanged) {
+      return track
+    }
     changedCount += 1
     return {
       ...track,
@@ -116,7 +129,8 @@ export const applyBpmResultsToTracks = (tracks: MixtapeTrack[], results: unknown
       bpm: trackAnalysis.bpm,
       masterTempo: track.masterTempo !== false,
       firstBeatMs: trackAnalysis.firstBeatMs,
-      barBeatOffset: trackAnalysis.barBeatOffset ?? track.barBeatOffset
+      barBeatOffset: trackAnalysis.barBeatOffset ?? track.barBeatOffset,
+      timeBasisOffsetMs: trackAnalysis.timeBasisOffsetMs ?? track.timeBasisOffsetMs
     }
   })
 

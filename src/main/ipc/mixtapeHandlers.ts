@@ -54,6 +54,7 @@ import {
   type SharedSongGridDefinition
 } from '../services/sharedSongGrid'
 import { emitSongGridUpdated } from '../services/songGridEvents'
+import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
 import {
   runMixtapeOutput,
   type MixtapeOutputInput,
@@ -67,6 +68,9 @@ type MixtapeAnalysisCopyField =
   | 'originalBpm'
   | 'firstBeatMs'
   | 'barBeatOffset'
+  | 'timeBasisOffsetMs'
+  | 'beatThisWindowCount'
+  | 'beatGridAlgorithmVersion'
   | 'key'
   | 'originalKey'
   | 'stemStatus'
@@ -83,6 +87,9 @@ type MixtapeAnalysisInfo = Record<string, unknown> & {
   originalBpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  timeBasisOffsetMs?: number
+  beatThisWindowCount?: number
+  beatGridAlgorithmVersion?: number
   key?: string
   originalKey?: string
   stemStatus?: string
@@ -115,7 +122,9 @@ export function registerMixtapeHandlers() {
         item.filePath.trim().length > 0 &&
         (item.bpm !== undefined ||
           item.firstBeatMs !== undefined ||
-          item.barBeatOffset !== undefined)
+          item.barBeatOffset !== undefined ||
+          item.timeBasisOffsetMs !== undefined ||
+          item.beatGridAlgorithmVersion !== undefined)
     )
     if (!normalizedEntries.length) return
     const results = await Promise.allSettled(
@@ -447,6 +456,9 @@ export function registerMixtapeHandlers() {
         'originalBpm',
         'firstBeatMs',
         'barBeatOffset',
+        'timeBasisOffsetMs',
+        'beatThisWindowCount',
+        'beatGridAlgorithmVersion',
         'key',
         'originalKey',
         'stemStatus',
@@ -634,7 +646,9 @@ export function registerMixtapeHandlers() {
                     filePath: item.filePath,
                     bpm: item.bpm,
                     firstBeatMs: item.firstBeatMs,
-                    barBeatOffset: item.barBeatOffset
+                    barBeatOffset: item.barBeatOffset,
+                    timeBasisOffsetMs: item.timeBasisOffsetMs,
+                    beatGridAlgorithmVersion: item.beatGridAlgorithmVersion
                   }))
                 )
                 try {
@@ -703,7 +717,9 @@ export function registerMixtapeHandlers() {
             filePath: item.filePath,
             bpm: item.bpm,
             firstBeatMs: item.firstBeatMs,
-            barBeatOffset: item.barBeatOffset
+            barBeatOffset: item.barBeatOffset,
+            timeBasisOffsetMs: item.timeBasisOffsetMs,
+            beatGridAlgorithmVersion: item.beatGridAlgorithmVersion
           }))
         )
       }
@@ -785,7 +801,8 @@ export function registerMixtapeHandlers() {
           filePath,
           barBeatOffset: hasOffset ? rawOffset : 0,
           firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
-          bpm: hasBpm ? rawBpm : undefined
+          bpm: hasBpm ? rawBpm : undefined,
+          beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
         }
       ])
       await persistAndBroadcastSharedGridBatch([
@@ -793,7 +810,8 @@ export function registerMixtapeHandlers() {
           filePath,
           barBeatOffset: hasOffset ? rawOffset : undefined,
           firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
-          bpm: hasBpm ? rawBpm : undefined
+          bpm: hasBpm ? rawBpm : undefined,
+          beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
         }
       ])
       return result

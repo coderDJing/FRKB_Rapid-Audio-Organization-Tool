@@ -6,17 +6,12 @@ import sys
 from typing import Any
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MANUAL_TRUTH_PATH = os.path.join(REPO_ROOT, "grid-analysis-lab", "manual-truth", "truth-sample.json")
-SAMPLE_LIST_SEGMENT = "/library/filterlibrary/sample/"
 ENV_BEAT_THIS_EXTRA_SITE_DIRS = "FRKB_BEAT_THIS_EXTRA_SITE_DIRS"
 ENV_BEAT_THIS_EXTRA_DLL_DIRS = "FRKB_BEAT_THIS_EXTRA_DLL_DIRS"
 ENV_BEAT_THIS_CHECKPOINT = "FRKB_BEAT_THIS_CHECKPOINT"
 ENV_BEAT_THIS_ANCHOR_TUNING_JSON = "FRKB_BEAT_THIS_ANCHOR_TUNING_JSON"
-ENV_BEAT_THIS_DEV_PLAYLIST_RULES = "FRKB_BEAT_THIS_DEV_PLAYLIST_RULES"
 DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH = os.path.join("beat-this-checkpoints", "final0.ckpt")
 _DLL_DIR_HANDLES: list[Any] = []
-_MANUAL_TRUTH_CACHE: dict[str, dict[str, Any]] | None = None
-_MANUAL_TRUTH_CACHE_MTIME: float | None = None
 WINDOW_MIN_DURATION_SEC = 8.0
 
 DEFAULT_ANCHOR_TUNING = {
@@ -47,16 +42,16 @@ DEFAULT_ANCHOR_TUNING = {
     "offsetMadCenterMs": 8.0,
     "offsetMadScaleMs": 5.0,
     "positiveShiftPolicy": "allow",
-    "positiveMinRawFirstBeatMs": 8.0,
+    "positiveMinRawFirstBeatMs": 0.0,
     "positiveMinShiftMs": 6.0,
-    "positiveMaxShiftMs": 14.0,
+    "positiveMaxShiftMs": 8.0,
     "positiveMatchRatioMin": 0.82,
     "positiveOffsetMadMaxMs": 5.0,
     "positiveRelativeGainMin": 0.08,
     "positiveScoreContrastMin": 0.025,
     "positiveConfidenceMin": 0.82,
     "positiveAmbiguityGuardRawFirstBeatMinMs": 100.0,
-    "positiveAmbiguityGuardMinCorrectionMs": 10.0,
+    "positiveAmbiguityGuardMinCorrectionMs": 6.0,
     "positiveAmbiguityGuardWideLeadMs": 30.0,
     "positiveAmbiguityGuardWideScoreRatioMin": 1.02,
     "lowbandFallbackMinMatchRatio": 1.01,
@@ -127,12 +122,27 @@ from beat_this_grid_solver import (
     estimate_grid_phase_correction as _estimate_grid_phase_correction,
     estimate_head_bootstrap_candidate as _estimate_head_bootstrap_candidate,
     estimate_lowband_firstbeat_offset as _estimate_lowband_firstbeat_offset,
+    normalize_phase_ms as _normalize_phase_ms,
+    phase_delta_ms as _phase_delta_ms,
     score_anchor_offset as _score_anchor_offset,
     should_block_ambiguous_positive_correction as _should_block_ambiguous_positive_correction,
     should_preserve_grid_solver_bpm as _should_preserve_grid_solver_bpm,
-    solve_global_track_grid as _solve_global_track_grid,
     stabilize_bpm_for_grid as _stabilize_bpm_for_grid,
 )
+from beat_this_grid_rescue import (
+    apply_half_double_bpm_rescue_to_result as _apply_half_double_bpm_rescue_to_result,
+    apply_integer_bpm_rescue_to_result as _apply_integer_bpm_rescue_to_result,
+    solve_global_track_grid as _solve_global_track_grid,
+)
+from beat_this_full_logit_rescue import (
+    apply_full_track_logit_rescue as _apply_full_track_logit_rescue,
+)
+from beat_this_phase_rescue import (
+    apply_frame_center_phase_rescue_to_result as _apply_frame_center_phase_rescue_to_result,
+    apply_phase_rescue_rules as _apply_phase_rescue_rules,
+    apply_window_phase_consensus as _apply_window_phase_consensus,
+)
+from beat_this_bpm_metrics import estimate_bpm_drift_proxy as _estimate_bpm_drift_proxy
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -354,96 +364,6 @@ def _derive_interval(beats: list[float]) -> float | None:
     return statistics.median(intervals)
 
 
-def _normalize_file_name(file_path: str) -> str:
-    return os.path.basename(str(file_path or "").strip()).strip().lower()
-
-
-def _normalize_list_path(source_file_path: str) -> str:
-    normalized_path = os.path.normpath(str(source_file_path or "").strip()).lower()
-    return normalized_path.replace("\\", "/")
-
-
-def _uses_dev_playlist_rules() -> bool:
-    raw_value = str(os.environ.get(ENV_BEAT_THIS_DEV_PLAYLIST_RULES) or "").strip().lower()
-    return raw_value in {"1", "true", "yes", "on"}
-
-
-def _load_manual_truth_cache() -> dict[str, dict[str, Any]]:
-    global _MANUAL_TRUTH_CACHE
-    global _MANUAL_TRUTH_CACHE_MTIME
-    try:
-        current_mtime = os.path.getmtime(MANUAL_TRUTH_PATH)
-    except OSError:
-        _MANUAL_TRUTH_CACHE = {}
-        _MANUAL_TRUTH_CACHE_MTIME = None
-        return {}
-
-    if _MANUAL_TRUTH_CACHE is not None and _MANUAL_TRUTH_CACHE_MTIME == current_mtime:
-        return _MANUAL_TRUTH_CACHE
-
-    try:
-        with open(MANUAL_TRUTH_PATH, "r", encoding="utf-8") as handle:
-            payload = json.load(handle)
-    except Exception:
-        _MANUAL_TRUTH_CACHE = {}
-        _MANUAL_TRUTH_CACHE_MTIME = current_mtime
-        return {}
-
-    mapped: dict[str, dict[str, Any]] = {}
-    tracks = payload.get("tracks")
-    if isinstance(tracks, list):
-        for track in tracks:
-            if not isinstance(track, dict):
-                continue
-            file_name = _normalize_file_name(
-                str(track.get("fileName") or track.get("filePath") or "")
-            )
-            if not file_name:
-                continue
-            mapped[file_name] = track
-
-    _MANUAL_TRUTH_CACHE = mapped
-    _MANUAL_TRUTH_CACHE_MTIME = current_mtime
-    return mapped
-
-
-def _resolve_manual_truth_result(source_file_path: str, duration_sec: float) -> dict[str, Any] | None:
-    if not _uses_dev_playlist_rules():
-        return None
-    if SAMPLE_LIST_SEGMENT not in _normalize_list_path(source_file_path):
-        return None
-    track = _load_manual_truth_cache().get(_normalize_file_name(source_file_path))
-    if not track:
-        return None
-    try:
-        bpm = float(track.get("bpm"))
-        first_beat_ms = max(0.0, float(track.get("firstBeatMs")))
-        bar_beat_offset = int(track.get("barBeatOffset") or 0)
-    except Exception:
-        return None
-    if not math.isfinite(bpm) or bpm <= 0.0:
-        return None
-    return {
-        "bpm": bpm,
-        "firstBeatMs": first_beat_ms,
-        "rawFirstBeatMs": first_beat_ms,
-        "barBeatOffset": bar_beat_offset,
-        "beatCount": 0,
-        "downbeatCount": 0,
-        "durationSec": duration_sec,
-        "beatIntervalSec": 60.0 / bpm,
-        "beatCoverageScore": 1.0,
-        "beatStabilityScore": 1.0,
-        "downbeatCoverageScore": 1.0,
-        "downbeatStabilityScore": 1.0,
-        "qualityScore": 1.0,
-        "anchorCorrectionMs": 0.0,
-        "anchorConfidenceScore": 1.0,
-        "anchorMatchedBeatCount": 0,
-        "anchorStrategy": "manual-truth",
-    }
-
-
 def _derive_stability(events: list[float], target_interval: float, multiplier: float = 1.0) -> float:
     if len(events) < 3 or not math.isfinite(target_interval) or target_interval <= 0.0:
         return 0.0
@@ -624,6 +544,9 @@ def _finalize_prepared_window(
         anchor_strategy = "legacy"
         corrected_first_beat_ms_local = raw_first_beat_ms_local
     else:
+        anchor_tuning = dict(tuning)
+        if raw_first_beat_ms_local <= 0.001 or raw_first_beat_ms_local >= 55.0:
+            anchor_tuning["positiveMaxShiftMs"] = max(float(tuning["positiveMaxShiftMs"]), 10.0)
         (
             anchor_correction_ms,
             anchor_confidence_score,
@@ -633,7 +556,7 @@ def _finalize_prepared_window(
             sample_rate,
             beat_list,
             raw_beat_interval,
-            tuning,
+            anchor_tuning,
         )
         grid_phase_correction = _estimate_grid_phase_correction(
             window_signal,
@@ -655,6 +578,30 @@ def _finalize_prepared_window(
                 beat_interval = 60.0 / bpm if bpm > 0 else raw_beat_interval
         else:
             anchor_strategy = "refined"
+        if anchor_correction_ms > 0.0 and raw_first_beat_ms_local <= 0.001:
+            head_lowband_offset = _estimate_lowband_firstbeat_offset(
+                window_signal,
+                sample_rate,
+                beat_list,
+                tuning,
+            )
+            head_lowband_match_ratio = (
+                float(head_lowband_offset.get("matchRatio") or 0.0)
+                if head_lowband_offset is not None
+                else 0.0
+            )
+            head_lowband_offset_mad_ms = (
+                float(head_lowband_offset.get("offsetMadMs") or 999.0)
+                if head_lowband_offset is not None
+                else 999.0
+            )
+            if (
+                float(prepared_window.get("qualityScore") or 0.0) < 0.9
+                or head_lowband_match_ratio < 0.9
+                or head_lowband_offset_mad_ms > 4.5
+            ):
+                anchor_correction_ms = 0.0
+                anchor_strategy = f"{anchor_strategy}-head-positive-guard"
         if (
             anchor_correction_ms > 0.0
             and _should_block_ambiguous_positive_correction(
@@ -711,6 +658,8 @@ def _finalize_prepared_window(
         "rawBpm": round(raw_bpm, 6),
         "firstBeatMs": normalized_first_beat_ms,
         "rawFirstBeatMs": normalized_raw_first_beat_ms,
+        "absoluteFirstBeatMs": round(absolute_first_beat_ms, 3),
+        "absoluteRawFirstBeatMs": round(absolute_raw_first_beat_ms, 3),
         "barBeatOffset": _derive_bar_beat_offset(beat_list, downbeat_list),
         "beatCount": int(prepared_window["beatCount"]),
         "downbeatCount": int(prepared_window["downbeatCount"]),
@@ -751,8 +700,96 @@ def _is_window_good_enough(result: dict[str, Any]) -> bool:
     return float(result.get("qualityScore") or 0.0) >= 0.72 and int(result.get("beatCount") or 0) >= 32
 
 
+def _window_bpm_for_consensus(result: dict[str, Any]) -> float:
+    bpm = float(result.get("rawBpm") or result.get("bpm") or 0.0)
+    return bpm if math.isfinite(bpm) and bpm > 0.0 else 0.0
+
+
+def _bpm_consensus_tolerance(bpm: float) -> float:
+    return max(0.18, min(0.25, bpm * 0.0016))
+
+
+def _find_window_bpm_consensus(
+    results: list[dict[str, Any]],
+    earliest_result: dict[str, Any],
+) -> dict[str, Any] | None:
+    candidates = [
+        item
+        for item in results
+        if float(item.get("qualityScore") or 0.0) >= 0.9 and _window_bpm_for_consensus(item) > 0.0
+    ]
+    if len(candidates) < 2:
+        return None
+
+    best_cluster: list[dict[str, Any]] = []
+    best_center = 0.0
+    for candidate in candidates:
+        center = _window_bpm_for_consensus(candidate)
+        tolerance = _bpm_consensus_tolerance(center)
+        cluster = [
+            item
+            for item in candidates
+            if abs(_window_bpm_for_consensus(item) - center) <= tolerance
+        ]
+        if len(cluster) < 2:
+            continue
+        cluster_quality = statistics.fmean(float(item.get("qualityScore") or 0.0) for item in cluster)
+        best_quality = (
+            statistics.fmean(float(item.get("qualityScore") or 0.0) for item in best_cluster)
+            if best_cluster
+            else -1.0
+        )
+        if len(cluster) > len(best_cluster) or (
+            len(cluster) == len(best_cluster) and cluster_quality > best_quality
+        ):
+            best_cluster = cluster
+            best_center = statistics.median(_window_bpm_for_consensus(item) for item in cluster)
+
+    min_support = 3 if len(candidates) >= 4 else 2
+    if len(best_cluster) < min_support:
+        return None
+
+    earliest_bpm = _window_bpm_for_consensus(earliest_result)
+    if earliest_bpm <= 0.0:
+        return None
+    if abs(earliest_bpm - best_center) <= _bpm_consensus_tolerance(best_center):
+        return None
+
+    earliest_quality = float(earliest_result.get("qualityScore") or 0.0)
+    best_source = best_cluster[0]
+    for candidate in best_cluster[1:]:
+        if _compare_window_result(candidate, best_source) > 0:
+            best_source = candidate
+    if float(best_source.get("qualityScore") or 0.0) - earliest_quality < 0.03:
+        return None
+
+    return best_source
+
+
 def _select_anchor_window_result(finalized_results: list[dict[str, Any]]) -> dict[str, Any]:
     ordered = sorted(finalized_results, key=lambda item: int(item.get("windowIndex") or 0))
+    good_results = [item for item in ordered if _is_window_good_enough(item)]
+    if good_results:
+        earliest_good = good_results[0]
+        consensus_good = _find_window_bpm_consensus(good_results, earliest_good)
+        if consensus_good is not None:
+            bpm = float(consensus_good.get("bpm") or 0.0)
+            if math.isfinite(bpm) and bpm > 0.0:
+                merged = dict(earliest_good)
+                merged["bpm"] = round(bpm, 6)
+                merged["rawBpm"] = round(float(consensus_good.get("rawBpm") or bpm), 6)
+                merged["beatIntervalSec"] = round(60.0 / bpm, 6)
+                merged["qualityScore"] = max(
+                    float(earliest_good.get("qualityScore") or 0.0),
+                    float(consensus_good.get("qualityScore") or 0.0),
+                )
+                merged["bpmRefinementStrategy"] = "quality-window-bpm"
+                strategy = str(merged.get("anchorStrategy") or "").strip()
+                merged["anchorStrategy"] = (
+                    f"{strategy}-bpm-window-select" if strategy else "bpm-window-select"
+                )
+                return merged
+        return earliest_good
     for item in ordered:
         if _is_window_good_enough(item):
             return item
@@ -761,7 +798,6 @@ def _select_anchor_window_result(finalized_results: list[dict[str, Any]]) -> dic
         if _compare_window_result(candidate, best_result) > 0:
             best_result = candidate
     return best_result
-
 
 def _analyze_prepared_windows_to_track_result(
     prepared_windows: list[dict[str, Any]],
@@ -773,6 +809,9 @@ def _analyze_prepared_windows_to_track_result(
     *,
     force_legacy_anchor: bool,
     use_global_solver: bool,
+    predictor: Audio2Beats | None = None,
+    cpu_spect: LogMelSpect | None = None,
+    device: str = "cpu",
 ) -> dict[str, Any]:
     if not prepared_windows:
         raise RuntimeError(f"no valid beat-this result for {source_file_path}")
@@ -786,10 +825,59 @@ def _analyze_prepared_windows_to_track_result(
         )
         for prepared_window in prepared_windows
     ]
+
+    def _attach_bpm_metrics(result: dict[str, Any]) -> dict[str, Any]:
+        next_result = result
+        if not force_legacy_anchor:
+            next_result = _apply_half_double_bpm_rescue_to_result(
+                signal,
+                sample_rate,
+                finalized_results,
+                next_result,
+                tuning,
+            )
+            next_result = _apply_integer_bpm_rescue_to_result(
+                signal,
+                sample_rate,
+                finalized_results,
+                next_result,
+                tuning,
+            )
+            next_result = _apply_phase_rescue_rules(
+                prepared_windows,
+                finalized_results,
+                next_result,
+                sample_rate,
+                tuning,
+            )
+            next_result = _apply_frame_center_phase_rescue_to_result(next_result)
+            next_result = _apply_window_phase_consensus(finalized_results, next_result)
+        proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
+        if proxy:
+            next_result = dict(next_result)
+            next_result.update(proxy)
+        if not force_legacy_anchor and predictor is not None:
+            rescued_result = _apply_full_track_logit_rescue(
+                predictor,
+                cpu_spect,
+                signal,
+                sample_rate,
+                device,
+                next_result,
+                tuning,
+            )
+            if rescued_result is not next_result:
+                next_result = rescued_result
+                refreshed_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
+                if refreshed_proxy:
+                    next_result = dict(next_result)
+                    next_result.update(refreshed_proxy)
+        return next_result
+
     anchor_window = _select_anchor_window_result(finalized_results)
 
     if force_legacy_anchor or not use_global_solver:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
 
     scan_duration_sec = max(
         (
@@ -807,20 +895,20 @@ def _analyze_prepared_windows_to_track_result(
         anchor_window=anchor_window,
     )
     if not global_result:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if float(anchor_window.get("anchorConfidenceScore") or 0.0) >= 0.95:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if float(anchor_window.get("firstBeatMs") or 0.0) <= 0.0:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if float(global_result.get("anchorConfidenceScore") or 0.0) < 0.95:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if abs(float(global_result.get("qualityScore") or 0.0) - float(anchor_window.get("qualityScore") or 0.0)) > 0.02:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if abs(float(global_result.get("firstBeatMs") or 0.0) - float(anchor_window.get("firstBeatMs") or 0.0)) < 4.0:
-        return anchor_window
+        return _attach_bpm_metrics(anchor_window)
     if abs(float(global_result.get("firstBeatMs") or 0.0) - float(anchor_window.get("firstBeatMs") or 0.0)) > 8.0:
-        return anchor_window
-    return global_result
+        return _attach_bpm_metrics(anchor_window)
+    return _attach_bpm_metrics(global_result)
 
 def _uses_accelerated_device(device: str) -> bool:
     normalized = str(device or "").strip().lower()
@@ -933,12 +1021,6 @@ def serve(device: str, dbn: bool) -> int:
                 raise RuntimeError("byteLength must be positive")
 
             pcm_bytes = _read_exact(byte_length)
-            duration_sec = byte_length / float(channels * 4 * sample_rate) if sample_rate > 0 else 0.0
-            manual_truth_result = _resolve_manual_truth_result(source_file_path, duration_sec)
-            if manual_truth_result is not None:
-                _emit({"type": "result", "requestId": request_id, "result": manual_truth_result})
-                continue
-
             signal = _decode_signal(pcm_bytes, channels)
             duration_sec = signal.shape[0] / float(sample_rate) if sample_rate > 0 else 0.0
             tuning = _resolve_anchor_tuning()
@@ -960,6 +1042,9 @@ def serve(device: str, dbn: bool) -> int:
                 source_file_path,
                 force_legacy_anchor=False,
                 use_global_solver=True,
+                predictor=predictor,
+                cpu_spect=cpu_spect,
+                device=device,
             )
 
             _emit(
