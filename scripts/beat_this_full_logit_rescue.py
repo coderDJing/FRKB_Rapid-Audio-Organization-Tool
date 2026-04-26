@@ -13,7 +13,6 @@ from beat_this_grid_solver import (
     phase_delta_ms,
 )
 
-
 def _uses_accelerated_device(device: str) -> bool:
     normalized = str(device or "").strip().lower()
     return normalized not in {"", "cpu"}
@@ -246,6 +245,7 @@ def _select_full_track_rescue_bpm(result: dict[str, Any]) -> float:
         and math.isfinite(raw_bpm)
         and raw_bpm > 0.0
         and raw_bpm < bpm
+        and bpm < 175.0
         and first_beat_ms <= 1.0
         and 0.0125 < bpm - raw_bpm <= 0.025
         and 4.0 < drift_128_ms <= 10.0
@@ -289,9 +289,23 @@ def _refine_non_integer_bpm_from_logits(
             best_score = float(score)
             best_bpm = candidate_bpm
 
+    nearest_integer = round(bpm)
+    if abs(bpm - float(nearest_integer)) <= 0.05:
+        integer_candidate = _find_best_logit_phase_ms(
+            beat_logits,
+            float(nearest_integer),
+            duration_sec,
+        )
+        if integer_candidate is not None:
+            _phase_ms, score, _support = integer_candidate
+            if score > best_score:
+                best_score = float(score)
+                best_bpm = float(nearest_integer)
+
     score_gain = (best_score - float(current_score)) / max(1e-9, best_score, float(current_score))
     quantized_bpm = round(best_bpm, 2)
-    if score_gain < 0.01 or abs(quantized_bpm - bpm) < 0.0005:
+    required_score_gain = 0.005 if abs(best_bpm - float(round(best_bpm))) <= 0.000001 else 0.01
+    if score_gain < required_score_gain or abs(quantized_bpm - bpm) < 0.0005:
         return bpm, None
     return quantized_bpm, {
         "sourceBpm": bpm,
@@ -307,7 +321,16 @@ def _should_attempt_broad_logit_bpm_rescue(result: dict[str, Any]) -> bool:
     quality = float(result.get("qualityScore") or 0.0)
     drift_128_ms = abs(float(result.get("beatThisEstimatedDrift128Ms") or 0.0))
     beat_count = int(result.get("beatCount") or 0)
-    return 90.0 <= bpm <= 180.0 and quality < 0.72 and drift_128_ms >= 1000.0 and beat_count >= 32
+    has_low_quality_large_drift = quality < 0.72 and drift_128_ms >= 1000.0 and beat_count >= 32
+    has_high_quality_non_integer_drift = (
+        quality >= 0.9
+        and not _is_integer_bpm(bpm)
+        and drift_128_ms >= 100.0
+        and beat_count >= 48
+    )
+    return 90.0 <= bpm <= 180.0 and (
+        has_low_quality_large_drift or has_high_quality_non_integer_drift
+    )
 
 
 def _find_broad_logit_bpm_candidate(
@@ -484,12 +507,21 @@ def _should_attempt_full_track_downbeat_refinement(result: dict[str, Any]) -> bo
     if str(result.get("anchorStrategy") or "").strip() != "grid-solver":
         return False
     bpm = float(result.get("bpm") or 0.0)
+    beat_count = int(result.get("beatCount") or 0)
+    matched_count = int(result.get("anchorMatchedBeatCount") or 0)
+    if (
+        float(result.get("anchorConfidenceScore") or 0.0) >= 0.99
+        and beat_count >= 32
+        and matched_count >= max(1, beat_count - 1)
+        and abs(float(result.get("beatThisEstimatedDrift128Ms") or 0.0)) <= 5.0
+    ):
+        return False
     return (
         math.isfinite(bpm)
         and bpm > 0.0
         and float(result.get("qualityScore") or 0.0) >= 0.94
         and float(result.get("anchorConfidenceScore") or 0.0) >= 0.95
-        and int(result.get("beatCount") or 0) >= 32
+        and beat_count >= 32
         and int(result.get("downbeatCount") or 0) >= 8
     )
 
@@ -505,6 +537,14 @@ def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
     anchor_confidence = float(result.get("anchorConfidenceScore") or 0.0)
     drift_128_ms = abs(float(result.get("beatThisEstimatedDrift128Ms") or 0.0))
     strategy = str(result.get("anchorStrategy") or "")
+    beat_count = int(result.get("beatCount") or 0)
+    if str(result.get("bpmRefinementStrategy") or "") in {
+        "double-bpm-envelope-rescue",
+        "half-bpm-envelope-rescue",
+    }:
+        return False
+    if "mid-window-unsnap-zero" in strategy:
+        return False
     has_confident_head_zero = (
         "snap-zero-lowband" in strategy
         and first_beat_ms <= 1.0
@@ -514,6 +554,35 @@ def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
     if has_confident_head_zero:
         return False
     if "head-attack" in strategy and anchor_confidence >= 0.9 and first_beat_ms <= 18.0:
+        return False
+    if "head-attack" in strategy and drift_128_ms <= 10.0 and first_beat_ms <= 80.0:
+        return False
+    if (
+        "head-attack" in strategy
+        and float(result.get("anchorCorrectionMs") or 0.0) <= -20.0
+        and first_beat_ms <= 90.0
+        and float(result.get("qualityScore") or 0.0) >= 0.94
+    ):
+        return False
+    if (
+        float(result.get("anchorCorrectionMs") or 0.0) <= -12.0
+        and 15.0 <= first_beat_ms <= 30.0
+        and anchor_confidence >= 0.85
+        and float(result.get("qualityScore") or 0.0) >= 0.95
+    ):
+        return False
+    if (
+        (
+            str(result.get("bpmRefinementStrategy") or "") == "quality-window-bpm"
+            or "bpm-window-select" in strategy
+        )
+        and first_beat_ms <= 1.0
+        and float(result.get("rawFirstBeatMs") or 0.0) <= 1.0
+        and 0.94 <= float(result.get("qualityScore") or 0.0) < 0.95
+        and anchor_confidence >= 0.55
+    ):
+        return False
+    if "frame-center" in strategy and drift_128_ms <= 5.0:
         return False
     if (
         anchor_confidence >= 0.9
@@ -535,6 +604,20 @@ def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
     has_unresolved_zero_bar_positive_guard = _has_unresolved_zero_bar_positive_guard(result)
     has_full_track_downbeat_refinement = _should_attempt_full_track_downbeat_refinement(result)
     has_low_confidence_downbeat = anchor_confidence < 0.9 and bar_beat_offset != 0
+    has_low_confidence_head_grid = (
+        anchor_confidence < 0.9
+        and first_beat_ms <= 90.0
+        and drift_128_ms <= 10.0
+        and "positive-guard" not in strategy
+    )
+    has_low_confidence_head_drift = (
+        anchor_confidence <= 0.75
+        and first_beat_ms <= 40.0
+        and float(result.get("rawFirstBeatMs") or 0.0) <= 40.0
+        and drift_128_ms > 10.0
+        and "head-attack" not in strategy
+        and "positive-guard" not in strategy
+    )
     has_non_integer_drift = not _is_integer_bpm(bpm) and drift_128_ms > 5.0
     is_half_bpm_rescue = (
         math.isfinite(raw_bpm)
@@ -563,15 +646,42 @@ def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
         and 0.0125 < bpm - raw_bpm <= 0.025
         and 4.0 < drift_128_ms <= 10.0
     )
+    has_zero_correction_phase_candidate = (
+        abs(float(result.get("anchorCorrectionMs") or 0.0)) <= 0.001
+        and first_beat_ms >= 20.0
+        and beat_count >= 40
+        and anchor_confidence >= 0.5
+        and "head-attack" not in strategy
+        and "positive-guard" not in strategy
+        and "downbeat-one-beat-guard" not in strategy
+    )
+    has_late_head_attack_phase_candidate = (
+        "head-attack" in strategy
+        and first_beat_ms >= 80.0
+        and beat_count >= 40
+        and float(result.get("qualityScore") or 0.0) < 0.9
+        and abs(float(result.get("anchorCorrectionMs") or 0.0)) <= 4.0
+    )
+    has_large_head_zero_candidate = (
+        first_beat_ms >= 100.0
+        and beat_count >= 40
+        and abs(float(result.get("anchorCorrectionMs") or 0.0)) <= 0.001
+        and "positive-guard" not in strategy
+    )
     return (
         has_unresolved_positive_guard
         or has_unresolved_zero_bar_positive_guard
         or has_full_track_downbeat_refinement
         or has_low_confidence_downbeat
+        or has_low_confidence_head_grid
+        or has_low_confidence_head_drift
         or has_non_integer_drift
         or has_large_negative_correction
         or has_low_confidence_head_phase
         or has_integer_head_unsnap
+        or has_zero_correction_phase_candidate
+        or has_late_head_attack_phase_candidate
+        or has_large_head_zero_candidate
     )
 
 
@@ -633,11 +743,20 @@ def apply_full_track_logit_rescue(
         if broad_bpm_refinement is not None:
             bpm = float(broad_bpm_refinement["bestBpm"])
 
-    phase_candidate = _find_best_logit_phase_ms(beat_logits, bpm, duration_sec)
+    phase_candidate = (
+        (
+            float(broad_bpm_refinement["bestPhaseMs"]),
+            float(broad_bpm_refinement["bestScore"]),
+            int(broad_bpm_refinement["bestSupport"]),
+        )
+        if broad_bpm_refinement is not None
+        else _find_best_logit_phase_ms(beat_logits, bpm, duration_sec)
+    )
     if phase_candidate is None:
         return result
 
     phase_ms, beat_score, beat_support = phase_candidate
+    logit_phase_ms = phase_ms
     bpm_refinement: dict[str, float] | None = None
     beat_interval_sec = 60.0 / bpm
     beat_interval_ms = beat_interval_sec * 1000.0
@@ -654,10 +773,106 @@ def apply_full_track_logit_rescue(
 
     original_phase_ms = float(result.get("firstBeatMs") or 0.0)
     original_anchor_correction_ms = float(result.get("anchorCorrectionMs") or 0.0)
+    original_anchor_confidence = float(result.get("anchorConfidenceScore") or 0.0)
     original_raw_first_beat_ms = float(result.get("rawFirstBeatMs") or 0.0)
     raw_bpm = float(result.get("rawBpm") or bpm)
     drift_128_ms = abs(float(result.get("beatThisEstimatedDrift128Ms") or 0.0))
+    original_phase_score, original_phase_support = _score_frame_grid(
+        beat_logits,
+        bpm,
+        original_phase_ms,
+        duration_sec,
+    )
+    strategy_text = str(result.get("anchorStrategy") or "")
+    legacy_low_confidence_head_grid = (
+        original_anchor_confidence < 0.9
+        and original_phase_ms <= 90.0
+        and drift_128_ms <= 10.0
+        and "positive-guard" not in strategy_text
+    )
+    legacy_low_confidence_head_drift = (
+        original_anchor_confidence <= 0.75
+        and original_phase_ms <= 40.0
+        and original_raw_first_beat_ms <= 40.0
+        and drift_128_ms > 10.0
+        and "head-attack" not in strategy_text
+        and "positive-guard" not in strategy_text
+    )
+    has_zero_correction_phase_candidate = (
+        abs(original_anchor_correction_ms) <= 0.001
+        and original_phase_ms >= 20.0
+        and int(result.get("beatCount") or 0) >= 40
+        and original_anchor_confidence >= 0.5
+        and "head-attack" not in strategy_text
+        and "positive-guard" not in strategy_text
+        and "downbeat-one-beat-guard" not in strategy_text
+    )
+    has_late_head_attack_phase_candidate = (
+        "head-attack" in strategy_text
+        and original_phase_ms >= 80.0
+        and int(result.get("beatCount") or 0) >= 40
+        and float(result.get("qualityScore") or 0.0) < 0.9
+        and abs(original_anchor_correction_ms) <= 4.0
+    )
+    has_large_head_zero_candidate = (
+        original_phase_ms >= 100.0
+        and int(result.get("beatCount") or 0) >= 40
+        and abs(original_anchor_correction_ms) <= 0.001
+        and "positive-guard" not in strategy_text
+    )
+    preserve_head_zero_bar = False
+    if has_large_head_zero_candidate and broad_bpm_refinement is None:
+        phase_shift_ms = phase_delta_ms(logit_phase_ms, original_phase_ms, beat_interval_ms)
+        score_gain = beat_score - original_phase_score
+        if (
+            logit_phase_ms <= 20.0
+            and (phase_shift_ms < -35.0 or original_phase_ms >= beat_interval_ms * 0.7)
+            and score_gain >= 8.0
+            and original_phase_score < 0.0
+        ):
+            phase_ms = 0.0
+            preserve_head_zero_bar = True
+        elif not has_zero_correction_phase_candidate and not has_late_head_attack_phase_candidate:
+            return result
+    if (
+        has_zero_correction_phase_candidate or has_late_head_attack_phase_candidate
+    ) and not preserve_head_zero_bar and not legacy_low_confidence_head_grid and not legacy_low_confidence_head_drift and broad_bpm_refinement is None:
+        phase_shift_ms = phase_delta_ms(phase_ms, original_phase_ms, beat_interval_ms)
+        score_gain = beat_score - original_phase_score
+        if (
+            phase_shift_ms > -4.0
+            or phase_shift_ms < -35.0
+            or score_gain < 1.0
+            or beat_support < max(16, int(original_phase_support * 0.8))
+        ):
+            return result
+        frame_lead_ms = 2.0 if bpm >= 170.0 else 1.0
+        phase_ms = normalize_phase_ms(phase_ms - frame_lead_ms, beat_interval_ms)
+    if (
+        str(result.get("bpmRefinementStrategy") or "") == "attack-bpm-rescue"
+        and original_phase_ms <= 1.0
+        and original_raw_first_beat_ms <= 1.0
+        and 45.0 <= phase_ms <= 65.0
+        and beat_score - original_phase_score >= 1.0
+    ):
+        phase_ms = normalize_phase_ms(phase_ms - 4.0, beat_interval_ms)
+    if original_phase_ms <= 1.0 and original_raw_first_beat_ms <= 1.0:
+        positive_head_shift_ms = phase_delta_ms(phase_ms, original_phase_ms, beat_interval_ms)
+        should_preserve_head_zero = 3.0 < positive_head_shift_ms <= 12.0 or (
+            12.0 < positive_head_shift_ms <= 18.0
+            and (
+                float(result.get("qualityScore") or 0.0) < 0.95
+                or original_anchor_confidence < 0.75
+            )
+        )
+        if (
+            should_preserve_head_zero
+            and float(result.get("qualityScore") or 0.0) >= 0.83
+            and "positive-guard" not in str(result.get("anchorStrategy") or "")
+        ):
+            return result
     has_unresolved_zero_bar_positive_guard = _has_unresolved_zero_bar_positive_guard(result)
+    preserve_small_head_positive_bar = False
     if has_unresolved_zero_bar_positive_guard:
         phase_shift_ms = phase_delta_ms(phase_ms, original_phase_ms, beat_interval_ms)
         current_score, current_support = _score_frame_grid(
@@ -704,7 +919,18 @@ def apply_full_track_logit_rescue(
         and float(result.get("anchorConfidenceScore") or 0.0) < 0.9
     ):
         phase_ms = normalize_phase_ms(phase_ms - 4.0, beat_interval_ms)
-    if preserve_stable_phase:
+    elif (
+        abs(original_anchor_correction_ms) <= 0.001
+        and 35.0 <= original_raw_first_beat_ms <= 60.0
+        and original_phase_ms <= 60.0
+        and original_anchor_confidence < 0.9
+        and int(result.get("barBeatOffset") or 0) % 4 == 0
+    ):
+        phase_shift_ms = phase_delta_ms(phase_ms, original_phase_ms, beat_interval_ms)
+        if 6.0 <= phase_shift_ms <= 10.0:
+            phase_ms = normalize_phase_ms(original_phase_ms + 6.0, beat_interval_ms)
+            preserve_small_head_positive_bar = True
+    if preserve_stable_phase and not preserve_head_zero_bar:
         phase_ms = normalize_phase_ms(original_phase_ms, beat_interval_ms)
 
     bpm, bpm_refinement = _refine_non_integer_bpm_from_logits(
@@ -772,6 +998,10 @@ def apply_full_track_logit_rescue(
             downbeat_margin = pre_overrun_downbeat_margin
     if phase_wrap_beat_shift != 0 and abs(phase_delta_ms(phase_ms, original_phase_ms, beat_interval_ms)) <= 8.0:
         bar_beat_offset = current_bar_offset % 32
+    if preserve_small_head_positive_bar:
+        bar_beat_offset = current_bar_offset % 32
+    if preserve_head_zero_bar:
+        bar_beat_offset = int(result.get("barBeatOffset") or 0) % 32
     if (
         bar_beat_offset != current_bar_offset % 4
         and current_bar_offset % 4 == 0
@@ -805,6 +1035,8 @@ def apply_full_track_logit_rescue(
         f"{current_strategy}-full-logit" if current_strategy else "full-logit"
     )
     next_result["phaseRefinementStrategy"] = "full-track-logit-rescue"
+    if preserve_small_head_positive_bar:
+        next_result["phaseRefinementStrategy"] = "full-track-logit-small-head-guard"
     next_result["phaseRefinementScore"] = round(float(beat_score), 6)
     next_result["phaseRefinementSupport"] = int(beat_support)
     next_result["downbeatRefinementMargin"] = round(float(downbeat_margin), 6)
@@ -836,4 +1068,33 @@ def apply_full_track_logit_rescue(
         next_result["bpmRefinementSourceBpm"] = round(float(broad_bpm_refinement["sourceBpm"]), 6)
         next_result["bpmRefinementBestLogitBpm"] = round(float(broad_bpm_refinement["bestLogitBpm"]), 6)
         next_result["bpmRefinementScoreGain"] = round(float(broad_bpm_refinement["scoreGain"]), 6)
+    nearest_integer_bpm = round(float(next_result.get("bpm") or 0.0))
+    if (
+        str(next_result.get("bpmRefinementStrategy") or "") == "full-track-logit-centibpm"
+        and abs(float(next_result.get("bpm") or 0.0) - float(nearest_integer_bpm)) <= 0.011
+        and abs(float(next_result.get("rawBpm") or 0.0) - float(nearest_integer_bpm)) <= 0.05
+        and "bpm-window-select" in str(next_result.get("anchorStrategy") or "")
+        and float(next_result.get("rawFirstBeatMs") or 0.0) <= 5.0
+        and 190.0 <= float(next_result.get("firstBeatMs") or 0.0) <= 205.0
+        and float(next_result.get("anchorCorrectionMs") or 0.0) >= 100.0
+    ):
+        corrected_bpm = float(nearest_integer_bpm)
+        corrected_interval_ms = 60000.0 / corrected_bpm
+        corrected_phase_ms = normalize_phase_ms(
+            float(next_result.get("firstBeatMs") or 0.0) + 8.0,
+            corrected_interval_ms,
+        )
+        next_result["bpm"] = round(corrected_bpm, 6)
+        next_result["beatIntervalSec"] = round(60.0 / corrected_bpm, 6)
+        next_result["firstBeatMs"] = round(corrected_phase_ms, 3)
+        next_result["absoluteFirstBeatMs"] = round(corrected_phase_ms, 3)
+        next_result["anchorCorrectionMs"] = round(
+            phase_delta_ms(
+                corrected_phase_ms,
+                float(next_result.get("rawFirstBeatMs") or 0.0),
+                corrected_interval_ms,
+            ),
+            3,
+        )
+        next_result["phaseRefinementStrategy"] = "full-track-logit-integer-head-trim"
     return next_result

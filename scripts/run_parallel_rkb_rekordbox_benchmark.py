@@ -140,6 +140,47 @@ def _run_shard(
     return json.loads(shard_output_path.read_text(encoding="utf-8"))
 
 
+def _load_existing_shard_payload(
+    *,
+    shard_index: int,
+    shard_count: int,
+    shard_output_path: Path,
+    expected_tracks: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not shard_output_path.exists():
+        return None
+    try:
+        payload = json.loads(shard_output_path.read_text(encoding="utf-8"))
+    except Exception as error:
+        print(
+            f"[shard {shard_index + 1}/{shard_count}] ignore unreadable existing output: {error}",
+            flush=True,
+        )
+        return None
+    if not isinstance(payload, dict) or "summary" not in payload or "tracks" not in payload:
+        print(f"[shard {shard_index + 1}/{shard_count}] ignore invalid existing output", flush=True)
+        return None
+    expected_names = [
+        benchmark._normalize_lookup_key(track.get("fileName"))
+        for track in expected_tracks
+        if benchmark._normalize_lookup_key(track.get("fileName"))
+    ]
+    actual_rows = list(payload.get("tracks") or []) + list(payload.get("errors") or [])
+    actual_names = [
+        benchmark._normalize_lookup_key(row.get("fileName"))
+        for row in actual_rows
+        if isinstance(row, dict) and benchmark._normalize_lookup_key(row.get("fileName"))
+    ]
+    if actual_names != expected_names:
+        print(
+            f"[shard {shard_index + 1}/{shard_count}] ignore stale existing output",
+            flush=True,
+        )
+        return None
+    print(f"[shard {shard_index + 1}/{shard_count}] reuse {shard_output_path.name}", flush=True)
+    return payload
+
+
 def _sum_prediction_cache_stats(shard_payloads: list[dict[str, Any]]) -> dict[str, int]:
     keys = [
         "windowHits",
@@ -165,6 +206,9 @@ def _merge_payloads(
     args: argparse.Namespace,
     duration_sec: float,
     job_count: int,
+    shard_count: int,
+    status: str,
+    shard_failures: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     order = {
         benchmark._normalize_lookup_key(track.get("fileName")): index
@@ -193,13 +237,61 @@ def _merge_payloads(
             "parallel": {
                 "jobs": job_count,
                 "shards": len(shard_payloads),
+                "plannedShards": shard_count,
+                "completedShards": len(shard_payloads),
+                "failedShards": len(shard_failures or []),
+                "status": status,
                 "shardDir": str(args.shard_dir),
             },
             "durationSec": round(duration_sec, 3),
         },
         "errors": errors,
+        "shardFailures": shard_failures or [],
         "tracks": rows,
     }
+
+
+def _resolve_progress_output_path(args: argparse.Namespace, output_path: Path) -> Path:
+    explicit_path = str(args.progress_output or "").strip()
+    if explicit_path:
+        return Path(explicit_path)
+    suffix = output_path.suffix or ".json"
+    return output_path.with_name(f"{output_path.stem}.progress{suffix}")
+
+
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_name(f"{path.name}.tmp")
+    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp_path.replace(path)
+
+
+def _write_progress_payload(
+    *,
+    progress_path: Path,
+    shard_payloads: list[dict[str, Any]],
+    selected_tracks: list[dict[str, Any]],
+    args: argparse.Namespace,
+    started_at: float,
+    job_count: int,
+    shard_count: int,
+    status: str,
+    shard_failures: list[dict[str, Any]],
+) -> dict[str, Any]:
+    payload = _merge_payloads(
+        shard_payloads=shard_payloads,
+        selected_tracks=selected_tracks,
+        args=args,
+        duration_sec=time.time() - started_at,
+        job_count=job_count,
+        shard_count=shard_count,
+        status=status,
+        shard_failures=shard_failures,
+    )
+    payload["summary"]["progressOutput"] = str(progress_path)
+    payload["summary"]["parallel"]["selectedTrackCount"] = len(selected_tracks)
+    _write_json_atomic(progress_path, payload)
+    return payload
 
 
 def main() -> int:
@@ -214,6 +306,12 @@ def main() -> int:
     parser.add_argument("--no-prediction-cache", action="store_true")
     parser.add_argument("--jobs", type=int, default=0)
     parser.add_argument("--shard-dir", default="")
+    parser.add_argument("--progress-output", default="")
+    parser.add_argument(
+        "--resume-existing-shards",
+        action="store_true",
+        help="Reuse valid output-shard-*.json files in --shard-dir instead of recomputing them.",
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument(
         "--only",
@@ -234,6 +332,7 @@ def main() -> int:
     job_count = _resolve_job_count(int(args.jobs or 0), len(selected_tracks))
     shards = _partition_tracks(selected_tracks, job_count)
     output_path.parent.mkdir(parents=True, exist_ok=True)
+    progress_path = _resolve_progress_output_path(args, output_path)
     started_at = time.time()
 
     tmp_path = (
@@ -243,7 +342,9 @@ def main() -> int:
     )
     args.shard_dir = str(tmp_path)
     tmp_path.mkdir(parents=True, exist_ok=True)
-    futures = []
+    shard_payloads: list[dict[str, Any]] = []
+    shard_failures: list[dict[str, Any]] = []
+    future_to_shard: dict[Any, dict[str, Any]] = {}
     with ThreadPoolExecutor(max_workers=len(shards)) as executor:
         for shard_index, shard_tracks in enumerate(shards):
             shard_truth_path = tmp_path / f"truth-shard-{shard_index + 1}.json"
@@ -255,17 +356,90 @@ def main() -> int:
                 shard_index=shard_index,
                 shard_count=len(shards),
             )
-            futures.append(
-                executor.submit(
-                    _run_shard,
+            existing_payload = (
+                _load_existing_shard_payload(
                     shard_index=shard_index,
                     shard_count=len(shards),
-                    shard_truth_path=shard_truth_path,
                     shard_output_path=shard_output_path,
-                    args=args,
+                    expected_tracks=shard_tracks,
                 )
+                if args.resume_existing_shards
+                else None
             )
-        shard_payloads = [future.result() for future in as_completed(futures)]
+            if existing_payload is not None:
+                shard_payloads.append(existing_payload)
+                _write_progress_payload(
+                    progress_path=progress_path,
+                    shard_payloads=shard_payloads,
+                    selected_tracks=selected_tracks,
+                    args=args,
+                    started_at=started_at,
+                    job_count=job_count,
+                    shard_count=len(shards),
+                    status="running",
+                    shard_failures=shard_failures,
+                )
+                continue
+            future = executor.submit(
+                _run_shard,
+                shard_index=shard_index,
+                shard_count=len(shards),
+                shard_truth_path=shard_truth_path,
+                shard_output_path=shard_output_path,
+                args=args,
+            )
+            future_to_shard[future] = {
+                "index": shard_index,
+                "truthPath": str(shard_truth_path),
+                "outputPath": str(shard_output_path),
+            }
+
+        for future in as_completed(future_to_shard):
+            shard_meta = future_to_shard[future]
+            try:
+                shard_payloads.append(future.result())
+            except Exception as error:
+                shard_failures.append(
+                    {
+                        "shardIndex": int(shard_meta["index"]) + 1,
+                        "truthPath": shard_meta["truthPath"],
+                        "outputPath": shard_meta["outputPath"],
+                        "error": str(error),
+                    }
+                )
+            _write_progress_payload(
+                progress_path=progress_path,
+                shard_payloads=shard_payloads,
+                selected_tracks=selected_tracks,
+                args=args,
+                started_at=started_at,
+                job_count=job_count,
+                shard_count=len(shards),
+                status="failed" if shard_failures else "running",
+                shard_failures=shard_failures,
+            )
+
+    if shard_failures:
+        progress_payload = _write_progress_payload(
+            progress_path=progress_path,
+            shard_payloads=shard_payloads,
+            selected_tracks=selected_tracks,
+            args=args,
+            started_at=started_at,
+            job_count=job_count,
+            shard_count=len(shards),
+            status="failed",
+            shard_failures=shard_failures,
+        )
+        print(
+            json.dumps(
+                {"summary": progress_payload["summary"], "progress": str(progress_path)},
+                ensure_ascii=False,
+                indent=2,
+            ),
+            flush=True,
+        )
+        return 1
 
     payload = _merge_payloads(
         shard_payloads=shard_payloads,
@@ -273,9 +447,20 @@ def main() -> int:
         args=args,
         duration_sec=time.time() - started_at,
         job_count=job_count,
+        shard_count=len(shards),
+        status="complete",
     )
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"summary": payload["summary"], "output": str(output_path)}, ensure_ascii=False, indent=2))
+    payload["summary"]["progressOutput"] = str(progress_path)
+    payload["summary"]["parallel"]["selectedTrackCount"] = len(selected_tracks)
+    _write_json_atomic(output_path, payload)
+    _write_json_atomic(progress_path, payload)
+    print(
+        json.dumps(
+            {"summary": payload["summary"], "output": str(output_path), "progress": str(progress_path)},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 0 if not payload["errors"] else 1
 
 

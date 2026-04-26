@@ -60,8 +60,12 @@ def _run_bridge(bridge_path: Path, command: str, payload: dict[str, Any]) -> dic
     return result_payload
 
 
-def _resolve_playlist_id(bridge_path: Path, playlist_name: str) -> tuple[int, str]:
-    tree = _run_bridge(bridge_path, "load-tree", {})
+def _bridge_payload(db_path: str) -> dict[str, Any]:
+    return {"dbPath": db_path} if db_path.strip() else {}
+
+
+def _resolve_playlist_id(bridge_path: Path, playlist_name: str, db_path: str) -> tuple[int, str]:
+    tree = _run_bridge(bridge_path, "load-tree", _bridge_payload(db_path))
     nodes = tree.get("nodes")
     if not isinstance(nodes, list):
         raise RuntimeError("Rekordbox playlist tree is invalid")
@@ -118,9 +122,20 @@ def _truth_track_from_rekordbox_track(track: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _load_playlist_truth(bridge_path: Path, playlist_name: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    playlist_id, resolved_name = _resolve_playlist_id(bridge_path, playlist_name)
-    payload = _run_bridge(bridge_path, "load-playlist-tracks", {"playlistId": playlist_id})
+def _load_playlist_truth(
+    bridge_path: Path,
+    playlist_name: str,
+    db_path: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    playlist_id, resolved_name = _resolve_playlist_id(bridge_path, playlist_name, db_path)
+    payload = _run_bridge(
+        bridge_path,
+        "load-playlist-tracks",
+        {
+            **_bridge_payload(db_path),
+            "playlistId": playlist_id,
+        },
+    )
     tracks = payload.get("tracks")
     if not isinstance(tracks, list) or not tracks:
         raise RuntimeError(f"playlist has no tracks: {resolved_name}")
@@ -220,6 +235,7 @@ def main() -> int:
     parser.add_argument("--bridge", default=str(DEFAULT_BRIDGE))
     parser.add_argument("--audio-root", default=str(DEFAULT_AUDIO_ROOT))
     parser.add_argument("--truth", default=str(DEFAULT_TRUTH))
+    parser.add_argument("--db-path", default="")
     parser.add_argument("--output", default="")
     parser.add_argument("--merge", action="store_true")
     args = parser.parse_args()
@@ -232,7 +248,7 @@ def main() -> int:
     if not bridge_path.exists():
         raise SystemExit(f"bridge not found: {bridge_path}")
 
-    source, tracks = _load_playlist_truth(bridge_path, args.playlist)
+    source, tracks = _load_playlist_truth(bridge_path, args.playlist, str(args.db_path or ""))
     missing_audio = _validate_audio_root(audio_root, tracks)
     if missing_audio:
         preview = ", ".join(missing_audio[:8])

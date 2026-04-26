@@ -16,6 +16,7 @@
 
 - 不用 Rekordbox `PWV5` 波形替换 FRKB 大波形。
 - 不用歌名特判。
+- 不用高维特征组合做隐式歌曲特判。
 - 不维护逐曲 offset 表。
 - 不为了视觉贴合去改 `firstBeatMs`。
 - 不把离线能量峰、可见起点、最大振幅点当成 Rekordbox 网格真值。
@@ -28,6 +29,7 @@
 不要改 rkb truth 链路。
 不要用 Rekordbox 波形。
 不要做歌名特判或逐曲补偿。
+不要做只命中极少数样本的高维特征指纹规则。
 不要为了视觉贴合修改 Rekordbox 的 firstBeatMs。
 
 `rkb` 和 `sample` 是同一批真值样本的两份 FRKB 目录，Rekordbox 只提供 bpm / firstBeatMs / barBeatOffset / PQTZ。
@@ -35,9 +37,10 @@
 FRKB 波形必须继续使用自己的 FFmpeg/raw 波形。
 普通歌单未来也应输出同样语义的数据，但来源必须是 FRKB analyzer。
 先建立 benchmark 和误差报告，再修改算法。
-当前统一样本池是 68 首，当前算法版本是 8，验收阈值是严格 2ms，无灰区。
+当前统一样本池是 184 首，当前算法版本是 8，验收阈值是严格 2ms，无灰区。
 负 firstBeatMs 在 analyzer audio 轴上是合法相位语义，不能提前 clamp 到 0。
 修改代码后必须运行 npx vue-tsc --noEmit。
+新增规则必须先通过防过拟合检查：解释稳定失败类型、使用通用音频信号、避免只救单曲、不得用 blind 样本反复调参。
 ```
 
 ## 2. 数据层应该怎么看
@@ -133,21 +136,43 @@ if firstBeatMs < 0: discard result
 
 当前验证基线：
 
-- 统一 truth dataset 当前为 `68` 首，全部记录在 `resources/rkbRekordboxGridSnapshot.json`。
-- 快照来源包含历史 `abc` 33 首、历史 `abc2` 7 首、新增 `test` 28 首；进入快照后全部一视同仁，不能再按播放列表分成不同等级样本。
-- 历史 40 首当前通过：`40/40 pass`，`currentTimeline.gridMaxAbsMs.max = 1.886ms`。
-- 新增 28 首当前通过：`28/28 pass`，`currentTimeline.gridMaxAbsMs.max = 1.964ms`。
+- 统一 truth dataset 当前为 `184` 首，全部记录在 `resources/rkbRekordboxGridSnapshot.json`。
+- 快照来源元数据包含 `abc` 33 首、`abc2` 7 首、`test` 101 首；播放列表来源可能重叠，最终以统一快照去重后的 184 首为准。
+- 2026-04-26 `test` 播放列表重新采集 101 首真值；其中 9 首与既有样本池 basename、SHA256、Rekordbox truth 完全一致，作为重复复核样本处理；剩余 92 首迁入统一 truth dataset。
+- `rkb` 和 `sample` 目录当前各有 184 个音频文件；`new` 当前为空。
+- 2026-04-26 上一轮 `test` 38 首真值已采集；其中 1 首已确认 Rekordbox 分析有问题并移出统一 truth dataset，剩余 37 首继续保留。
+- 上一轮 `test` 样本移除问题样本后，25 首是统一池新增样本，12 首为已存在样本复核。
+- `nic jaro - gravitate (original mix) (1).mp3` 已确认为问题样本，不能计入统一 truth dataset。
+- 当前统一 184 首 benchmark 已通过：`184/184 pass`，`errorTrackCount = 0`，失败分布为空。
+- 本轮 `test` 播放列表新增范围已纳入统一回归；历史非 `test` 的 83 首、9 首重复复核样本、本轮新增样本均在同一 184 首 benchmark 中通过。
 - 当前没有灰区概念；硬性验收阈值是 `2ms`。任何 `firstBeatPhaseAbsErrorMs`、`gridMaxAbsMs`、`bpmOnlyDrift128BeatsMs` 超过 `2ms` 都算失败。
 - 当前算法版本：`CURRENT_BEAT_GRID_ALGORITHM_VERSION = 8`。
 - 当前代表 benchmark 输出：
+  - `grid-analysis-lab/rkb-rekordbox-benchmark/test-101-unified-184-after-full-pass-attempt-1.json`
+  - `trackTotal = 184`，`pass = 184`，`errorTrackCount = 0`
+  - `currentTimeline.firstBeatPhaseAbsErrorMs.max = 2.0ms`
+  - `currentTimeline.gridMaxAbsMs.max = 2.0ms`
+  - `currentTimeline.bpmOnlyDrift128BeatsMs.max = 0.0ms`
+  - progress 镜像文件：`grid-analysis-lab/rkb-rekordbox-benchmark/test-101-unified-184-after-full-pass-attempt-1.progress.json`
+- 2026-04-26 本轮算法优化历史中间结果：
+  - `grid-analysis-lab/rkb-rekordbox-benchmark/test-101-unified-184-after-phase-floor-1.json`
+  - `trackTotal = 184`，`pass = 155`，`errorTrackCount = 0`
+  - 失败分布：`first-beat-phase = 23`、`bpm = 4`、`half-or-double-bpm = 2`
+  - 该输出只保留作优化过程追溯，不再代表当前结论。
+- 上一个全通过基线：
+  - `grid-analysis-lab/rkb-rekordbox-benchmark/after-invalid-sample-removal-92.json`
+  - `trackTotal = 92`，`pass = 92`，`errorTrackCount = 0`，`currentTimeline.gridMaxAbsMs.max = 1.975ms`
+- 历史 67 首和 93 首基线输出只保留作追溯，不作为当前结论替代：
+  - `grid-analysis-lab/rkb-rekordbox-benchmark/after-gravitate-removal-67.json`
+  - `trackTotal = 67`，`pass = 67`，`errorTrackCount = 0`，`currentTimeline.gridMaxAbsMs.max = 1.964ms`
+- 历史输出只保留作追溯，不作为当前结论替代：
   - `grid-analysis-lab/rkb-rekordbox-benchmark/old40-parallel-after-overrun-guard.json`
   - `grid-analysis-lab/rkb-rekordbox-benchmark/test-new-parallel-after-overrun-guard.json`
-- 历史输出只保留作追溯，不作为当前结论替代：
   - `grid-analysis-lab/rkb-rekordbox-benchmark/abc-sample-after-abc2-final.json`
   - `grid-analysis-lab/rkb-rekordbox-benchmark/abc2-sample-final.json`
 - `Developer`、`len faki - zig zag`、`Enrico`、`Gamma`、`Leviws` 这类关键分歧样本都必须继续作为回归样本。
-- 新增 `test` 28 首里最差样本仍低于 `2ms`，不能因为当前全部通过就把它们当成可选样本。
-- 最近一次代码侧验证已通过 `npx vue-tsc --noEmit`。
+- 上一轮 `test` 保留样本里最差样本仍低于 `2ms`；本轮 101 首扩充后新增范围曾出现 47 首失败，当前已通过统一 184 首完整回归。
+- 最近一次代码侧验证已通过 `npx vue-tsc --noEmit`（2026-04-26）。
 - 没有保留运行时调试日志。
 
 ## 4. Rekordbox 数据怎么拿
@@ -166,7 +191,7 @@ if firstBeatMs < 0: discard result
 8. 把这批音频各复制一份到 FRKB 的 `rkb` 和 `sample` 目录。
 9. 清空 `new`。
 10. 删除临时 Rekordbox 播放列表。
-11. 跑统一 68 首加新增样本的完整回归。
+11. 跑统一样本池的完整回归。
 
 注意：
 
@@ -299,7 +324,7 @@ audioSec = timelineSec - timeBasisOffsetMs / 1000
 | `len faki - gamma (glaskin remix) (1).mp3` | `Lame3.100` | `0ms` | 无 | `0ms` |
 | `leviws - foul play (1).mp3` | `Lame3.100` | `0ms` | 无 | `0ms` |
 
-这个规则已经让当前统一样本池中的历史第一批 33 首视觉对齐，并继续作为后续 68 首统一回归的一部分。
+这个规则已经让当前统一样本池中的历史第一批 33 首视觉对齐，并继续作为后续 184 首统一回归的一部分。
 
 ### 5.3 为什么不是改歌曲
 
@@ -474,24 +499,73 @@ drift128Ms = frkbBeatMs[127] - rbBeatMs[127]
 
 ### 7.4 当前算法原则
 
-当前算法版本是 `8`，但版本号本身不是质量保证；质量只由统一 68 首 truth dataset 的硬阈值结果证明。
+当前算法版本是 `8`，但版本号本身不是质量保证；质量只由统一 184 首 truth dataset 的硬阈值结果证明。
 
 必须遵守：
 
 - 不按歌名、artist、文件名、路径、播放列表来源做任何特判。
 - 不维护逐曲 offset 表。
+- 不写只命中极少数样本的高维特征指纹规则；没有元数据特判不等于没有过拟合。
 - 不用 Rekordbox 波形、`PWV5 visibleOnset`、离线能量峰表去替代 FRKB 自己的 raw 波形和 analyzer。
 - 不为了贴合某一首歌而移动 Rekordbox truth 的 `firstBeatMs`。
 - 不把 BeatThis 输出当最终真值；BeatThis 只能作为候选来源，最终结果必须经过 FRKB 自己的网格求解、相位归一化和 benchmark 验证。
-- 可以大改底层，甚至替换 BeatThis，但新系统必须在同一 68 首样本上不降级，并且规则能解释为普适音频信号逻辑。
+- 可以大改底层，甚至替换 BeatThis，但新系统必须在同一 184 首样本上不降级，并且规则能解释为普适音频信号逻辑。
 
 当前已验证有效的通用修正：
 
 - `head-attack-prezero`：允许保留 sample 0 之前的 head attack 相位候选，解决首拍应落在解码起点之前时被错误清零的问题。
 - `grid-solver-head-attack-window-consensus`：用多窗口一致性确认 head attack anchor，避免只信某一个局部峰值。
 - `full-track-logit-positive-overrun-guard`：当 full-track logits 给出低质量的大正向相位跳变时阻断 overrun，并在需要时保留 overrun 之前的 downbeat 证据。
+- `quality-window-bpm`：只在多个窗口形成 BPM 共识时借用后续窗口 BPM；借用后必须按新 BPM 重新归一化相位。
+- `nearby-phase`：只在首窗相位靠后、相邻窗口 grid-solver 质量相当且置信度足够时借用相邻窗口相位，并保留首窗 downbeat。
+- `head-attack` / `full-logit` 保护：head attack 已稳定时禁止 full-track logits 或窗口相位共识再次大幅重写；低置信高漂移头部样本才允许 full-logit 介入。
+- `prezero-integer-head`：首拍卡在 sample 0 且 raw BPM 轻微低于整数 BPM 时，允许小幅负相位，不提前 clamp 到 0。
+- `attack-bpm-rescue` / `full-track-logit-broad`：只在 attack envelope 或 full-track logits 对候选 BPM 给出足够分数优势时修正近整数、宽范围或半/倍速 BPM；真非整数样本必须继续保留非整数 BPM。
+- `frame residual` 系列：针对 20ms frame 中心、head attack、late tail、positive overrun 等可解释量化残差做小范围修正，触发条件必须同时约束 raw/current phase、质量、置信度、窗口位置和 downbeat 形态。
+- `mid-window-unsnap-zero`：中段窗口低置信 snap-zero 不能无条件归零，必须允许基于当前窗口证据恢复非零相位。
 
 这些规则不是样本特判。它们必须继续以信号质量、相位一致性、窗口共识、downbeat margin 等通用指标为依据。
+
+### 7.5 防过拟合硬约束
+
+1000 首一致只能证明样本内一致，不能单独证明 FRKB 已经达到 Rekordbox 的泛化效果。后续所有算法规则必须先通过下面的防过拟合约束。
+
+禁止的隐式特判：
+
+- 用一串过窄条件组合只修 1 首或极少数歌曲，即使条件里没有歌名、artist、路径，也视为过拟合风险。
+- 使用音频 hash、fingerprint、basename、文件大小、mtime、播放列表来源参与算法决策。它们只能用于样本身份校验、去重和缓存命中。
+- 使用 Rekordbox truth、benchmark 误差、pass/fail 结果反向参与 analyzer 决策。
+- 为了贴合某个样本，把阈值调成没有物理含义的精确小数。
+- 为单个失败样本新增专门 rescue，且无法解释为稳定失败类型。
+
+允许的通用信号：
+
+- BPM 候选的一致性、漂移、half/double 密度、整数 BPM 先验。
+- onset / attack envelope 的峰值结构、相位残差、窗口质量、窗口间共识。
+- BeatThis raw window、full-track logits、downbeat margin、置信度和稳定性。
+- 音频格式时间轴信号，例如 `stream.start_time`、`Skip Samples`、encoder tag，但只能用于坐标映射，不能变成逐曲 offset 表。
+
+新增规则合并前必须记录：
+
+- 规则要解决的失败类型，例如 `bpm`、`half-or-double-bpm`、`first-beat-phase`、`downbeat`、`time-basis`、`frame-residual`。
+- 使用了哪些通用信号，以及为什么这些信号和失败类型有关。
+- 在 dev / regression 上分别影响多少首：新增通过数、变坏数、触发数。
+- 是否只命中 1-2 首；如果是，默认不得合并，除非能给出清晰音频机制和反例保护。
+- 是否引入新的魔法阈值；阈值应尽量粗粒度、可解释，不能来自某一首歌的误差数值。
+
+盲测约束：
+
+- blind 样本只能用于冻结算法后的评估，不能边看 blind 失败边补规则。
+- blind 失败时只能先做聚合分类和风险判断，不能立刻按失败单曲补条件。
+- 如果确实需要用 blind 失败来改算法，必须把该批样本降级为 dev，并重新准备新的 locked blind 样本。
+- 任何“1000 首全通过”的结论必须说明其中哪些样本参与过调参，哪些是 locked blind；否则只能称为样本内通过。
+
+规则复杂度约束：
+
+- 优先使用连续评分、排序和窗口共识，少用长串布尔条件。
+- 单条 rescue 规则条件过多时，必须拆解成更通用的 score 或 solver 逻辑。
+- 同一失败类型如果连续出现多个窄规则，应停止堆补丁，改为重构对应 solver。
+- 规则命名必须描述机制，不得以样本、歌单或临时现象命名。
 
 ## 8. 以后优化算法的验证工作流
 
@@ -610,6 +684,8 @@ worstTracks
 允许：
 
 - 用 `scripts/run_parallel_rkb_rekordbox_benchmark.py` 并发分析样本。
+- 并行 benchmark 默认写同名 `.progress.json`，每个 shard 完成后刷新一次 partial summary；断线后优先查看 progress 文件和 shard 目录，不要盲目从零重跑。
+- 如需续跑同一批分片，可以复用同一个 `--shard-dir` 并显式加 `--resume-existing-shards`；脚本会校验 shard 输出里的曲目列表，曲目不一致时不会复用旧输出。
 - 缓存 BeatThis raw window predictions。
 - 缓存 full-track logits。
 - 复用确定性、与算法决策无关的中间原始模型输出。
@@ -619,7 +695,7 @@ worstTracks
 - 缓存最终 `bpm` / `firstBeatMs` / `barBeatOffset` 后把它当成新算法结果。
 - 缓存 benchmark pass/fail 结论。
 - 因为提速跳过样本、缩短 truth 对比、放宽 `2ms` 阈值、关闭 downbeat 校验。
-- 只跑新增样本就宣布算法通过；最终验收必须覆盖统一 68 首。
+- 只跑新增样本就宣布算法通过；最终验收必须覆盖统一 184 首。
 
 判断缓存是否安全的标准：
 
@@ -633,9 +709,9 @@ worstTracks
 
 ### 阶段 1：固定统一 truth dataset
 
-- 保留当前 68 首作为统一回归样本。
+- 保留当前 184 首作为统一回归样本。
 - 每首记录 Rekordbox grid 和 `timeBasisOffsetMs` 计算明细。
-- 把当前“68 首按 2ms 硬阈值通过”作为基线。
+- 把当前 `184/184 pass` 作为统一回归基线；92 首、67 首等旧全通过输出只作为历史追溯。
 
 ### 阶段 2：自动提取 Rekordbox truth
 
@@ -757,7 +833,16 @@ firstBeatMs + i * 60000 / bpm
 
 ## 12. 当前结论
 
-当前统一 68 首样本池验证通过后，可以把这条链路作为后续 FRKB 分析算法优化的基准：
+当前统一 184 首样本池完成采集、去重、迁移和 benchmark 后，当前算法已在 184 首上通过严格 `2ms` 硬阈值；后续任何规则、重构或模型替换都必须以这个输出为最低回归基线：
+
+```text
+grid-analysis-lab/rkb-rekordbox-benchmark/test-101-unified-184-after-full-pass-attempt-1.json
+trackTotal = 184
+pass = 184
+errorTrackCount = 0
+currentTimeline.gridMaxAbsMs.max = 2.0ms
+currentTimeline.bpmOnlyDrift128BeatsMs.max = 0.0ms
+```
 
 ```text
 Rekordbox 分析/人工校准

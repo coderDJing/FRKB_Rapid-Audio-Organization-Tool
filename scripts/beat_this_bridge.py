@@ -72,7 +72,7 @@ DEFAULT_ANCHOR_TUNING = {
     "gridSolverMinRawFirstBeatMs": 160.0,
     "gridSolverMaxAnchorCorrectionMs": 8.0,
     "gridSolverMinCorrectionMs": 6.0,
-    "gridSolverMaxCorrectionMs": 18.0,
+    "gridSolverMaxCorrectionMs": 12.0,
     "gridSolverMinCorrectionGainMs": 4.0,
     "gridSolverMinRelativeGain": 0.18,
     "gridSolverMinScoreContrast": 0.12,
@@ -143,6 +143,7 @@ from beat_this_phase_rescue import (
     apply_window_phase_consensus as _apply_window_phase_consensus,
 )
 from beat_this_bpm_metrics import estimate_bpm_drift_proxy as _estimate_bpm_drift_proxy
+from beat_this_window_selection import select_anchor_window_result as _select_anchor_window_result
 
 
 def _emit(payload: dict[str, Any]) -> None:
@@ -653,6 +654,11 @@ def _finalize_prepared_window(
     normalized_raw_first_beat_ms = (
         round(absolute_raw_first_beat_ms % beat_interval_ms, 3) if beat_interval_ms > 0 else 0.0
     )
+    normalized_beat_shift = 0
+    if beat_interval_ms > 0.0:
+        normalized_beat_shift = int(
+            round((absolute_first_beat_ms - normalized_first_beat_ms) / beat_interval_ms)
+        )
     return {
         "bpm": round(bpm, 6),
         "rawBpm": round(raw_bpm, 6),
@@ -660,7 +666,7 @@ def _finalize_prepared_window(
         "rawFirstBeatMs": normalized_raw_first_beat_ms,
         "absoluteFirstBeatMs": round(absolute_first_beat_ms, 3),
         "absoluteRawFirstBeatMs": round(absolute_raw_first_beat_ms, 3),
-        "barBeatOffset": _derive_bar_beat_offset(beat_list, downbeat_list),
+        "barBeatOffset": (_derive_bar_beat_offset(beat_list, downbeat_list) + normalized_beat_shift) % 32,
         "beatCount": int(prepared_window["beatCount"]),
         "downbeatCount": int(prepared_window["downbeatCount"]),
         "durationSec": round(window_duration_sec, 3),
@@ -680,124 +686,37 @@ def _finalize_prepared_window(
     }
 
 
-def _compare_window_result(left: dict[str, Any], right: dict[str, Any]) -> int:
-    left_quality = float(left.get("qualityScore") or 0.0)
-    right_quality = float(right.get("qualityScore") or 0.0)
-    if abs(left_quality - right_quality) > 0.000001:
-        return -1 if left_quality < right_quality else 1
-    left_beats = int(left.get("beatCount") or 0)
-    right_beats = int(right.get("beatCount") or 0)
-    if left_beats != right_beats:
-        return -1 if left_beats < right_beats else 1
-    left_downbeats = int(left.get("downbeatCount") or 0)
-    right_downbeats = int(right.get("downbeatCount") or 0)
-    if left_downbeats != right_downbeats:
-        return -1 if left_downbeats < right_downbeats else 1
-    return 0
-
-
-def _is_window_good_enough(result: dict[str, Any]) -> bool:
-    return float(result.get("qualityScore") or 0.0) >= 0.72 and int(result.get("beatCount") or 0) >= 32
-
-
-def _window_bpm_for_consensus(result: dict[str, Any]) -> float:
-    bpm = float(result.get("rawBpm") or result.get("bpm") or 0.0)
-    return bpm if math.isfinite(bpm) and bpm > 0.0 else 0.0
-
-
-def _bpm_consensus_tolerance(bpm: float) -> float:
-    return max(0.18, min(0.25, bpm * 0.0016))
-
-
-def _find_window_bpm_consensus(
-    results: list[dict[str, Any]],
-    earliest_result: dict[str, Any],
-) -> dict[str, Any] | None:
-    candidates = [
-        item
-        for item in results
-        if float(item.get("qualityScore") or 0.0) >= 0.9 and _window_bpm_for_consensus(item) > 0.0
-    ]
-    if len(candidates) < 2:
-        return None
-
-    best_cluster: list[dict[str, Any]] = []
-    best_center = 0.0
-    for candidate in candidates:
-        center = _window_bpm_for_consensus(candidate)
-        tolerance = _bpm_consensus_tolerance(center)
-        cluster = [
-            item
-            for item in candidates
-            if abs(_window_bpm_for_consensus(item) - center) <= tolerance
-        ]
-        if len(cluster) < 2:
+def _quantize_result_phase_to_ms(result: dict[str, Any]) -> dict[str, Any]:
+    next_result = dict(result)
+    changed = False
+    for key in ("firstBeatMs", "absoluteFirstBeatMs"):
+        try:
+            value = float(next_result.get(key) or 0.0)
+        except Exception:
             continue
-        cluster_quality = statistics.fmean(float(item.get("qualityScore") or 0.0) for item in cluster)
-        best_quality = (
-            statistics.fmean(float(item.get("qualityScore") or 0.0) for item in best_cluster)
-            if best_cluster
-            else -1.0
+        if not math.isfinite(value) or value < 0.0:
+            continue
+        quantized = float(math.floor(value + 0.000001))
+        if abs(quantized - value) > 0.000001:
+            next_result[key] = round(quantized, 3)
+            changed = True
+    if not changed:
+        return result
+
+    bpm = float(next_result.get("bpm") or 0.0)
+    raw_first_beat_ms = float(next_result.get("rawFirstBeatMs") or 0.0)
+    beat_interval_ms = 60000.0 / bpm if bpm > 0.0 else 0.0
+    if math.isfinite(beat_interval_ms) and beat_interval_ms > 0.0:
+        next_result["anchorCorrectionMs"] = round(
+            _phase_delta_ms(
+                float(next_result.get("firstBeatMs") or 0.0),
+                raw_first_beat_ms,
+                beat_interval_ms,
+            ),
+            3,
         )
-        if len(cluster) > len(best_cluster) or (
-            len(cluster) == len(best_cluster) and cluster_quality > best_quality
-        ):
-            best_cluster = cluster
-            best_center = statistics.median(_window_bpm_for_consensus(item) for item in cluster)
+    return next_result
 
-    min_support = 3 if len(candidates) >= 4 else 2
-    if len(best_cluster) < min_support:
-        return None
-
-    earliest_bpm = _window_bpm_for_consensus(earliest_result)
-    if earliest_bpm <= 0.0:
-        return None
-    if abs(earliest_bpm - best_center) <= _bpm_consensus_tolerance(best_center):
-        return None
-
-    earliest_quality = float(earliest_result.get("qualityScore") or 0.0)
-    best_source = best_cluster[0]
-    for candidate in best_cluster[1:]:
-        if _compare_window_result(candidate, best_source) > 0:
-            best_source = candidate
-    if float(best_source.get("qualityScore") or 0.0) - earliest_quality < 0.03:
-        return None
-
-    return best_source
-
-
-def _select_anchor_window_result(finalized_results: list[dict[str, Any]]) -> dict[str, Any]:
-    ordered = sorted(finalized_results, key=lambda item: int(item.get("windowIndex") or 0))
-    good_results = [item for item in ordered if _is_window_good_enough(item)]
-    if good_results:
-        earliest_good = good_results[0]
-        consensus_good = _find_window_bpm_consensus(good_results, earliest_good)
-        if consensus_good is not None:
-            bpm = float(consensus_good.get("bpm") or 0.0)
-            if math.isfinite(bpm) and bpm > 0.0:
-                merged = dict(earliest_good)
-                merged["bpm"] = round(bpm, 6)
-                merged["rawBpm"] = round(float(consensus_good.get("rawBpm") or bpm), 6)
-                merged["beatIntervalSec"] = round(60.0 / bpm, 6)
-                merged["qualityScore"] = max(
-                    float(earliest_good.get("qualityScore") or 0.0),
-                    float(consensus_good.get("qualityScore") or 0.0),
-                )
-                merged["bpmRefinementStrategy"] = "quality-window-bpm"
-                strategy = str(merged.get("anchorStrategy") or "").strip()
-                merged["anchorStrategy"] = (
-                    f"{strategy}-bpm-window-select" if strategy else "bpm-window-select"
-                )
-                return merged
-        return earliest_good
-    for item in ordered:
-        if _is_window_good_enough(item):
-            return item
-    best_result = ordered[0]
-    for candidate in ordered[1:]:
-        if _compare_window_result(candidate, best_result) > 0:
-            best_result = candidate
-    return best_result
 
 def _analyze_prepared_windows_to_track_result(
     prepared_windows: list[dict[str, Any]],
@@ -843,6 +762,10 @@ def _analyze_prepared_windows_to_track_result(
                 next_result,
                 tuning,
             )
+            pre_phase_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
+            if pre_phase_proxy:
+                next_result = dict(next_result)
+                next_result.update(pre_phase_proxy)
             next_result = _apply_phase_rescue_rules(
                 prepared_windows,
                 finalized_results,
@@ -872,7 +795,7 @@ def _analyze_prepared_windows_to_track_result(
                 if refreshed_proxy:
                     next_result = dict(next_result)
                     next_result.update(refreshed_proxy)
-        return next_result
+        return _quantize_result_phase_to_ms(next_result)
 
     anchor_window = _select_anchor_window_result(finalized_results)
 

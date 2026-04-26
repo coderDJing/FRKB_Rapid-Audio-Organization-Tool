@@ -15,12 +15,12 @@
       {
         "playlistName": "test",
         "playlistId": 3758290321,
-        "trackCount": 28
+        "trackCount": 101
       }
     ],
     "playlistName": "rkb-unified-samples",
-    "trackCount": 68,
-    "note": "2026-04-25 unified FRKB rkb/sample/new Rekordbox truth snapshot"
+    "trackCount": 184,
+    "note": "2026-04-26 unified FRKB rkb/sample/new Rekordbox truth snapshot; test playlist recaptured 101 tracks, 9 duplicate review tracks and 92 new tracks"
   },
   "tracks": [
     {
@@ -65,15 +65,6 @@
       "artist": "Leigh Boy",
       "bpm": 138,
       "firstBeatMs": 70,
-      "firstBeatLabel": 1,
-      "barBeatOffset": 0
-    },
-    {
-      "fileName": "len faki & kenny larkin & alex reece - loop 2 (hardspace mix) (1).mp3",
-      "title": "Loop 2 (Hardspace Mix)",
-      "artist": "Len Faki & Kenny Larkin & Alex Reece",
-      "bpm": 139,
-      "firstBeatMs": 51,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     },
@@ -276,15 +267,6 @@
       "barBeatOffset": 0
     },
     {
-      "fileName": "tom wax - move your soul (original mix) (1).mp3",
-      "title": "Move Your Soul (Original Mix)",
-      "artist": "Tom Wax",
-      "bpm": 136,
-      "firstBeatMs": 96,
-      "firstBeatLabel": 1,
-      "barBeatOffset": 0
-    },
-    {
       "fileName": "Wehbba & Alan Fitzpatrick - Take U Higher (Original Mix).mp3",
       "title": "Take U Higher (Original Mix)",
       "artist": "Wehbba & Alan Fitzpatrick",
@@ -319,69 +301,6 @@
       "firstBeatMs": 71,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
-    },
-    {
-      "fileName": "D'Angello & Francis - Blade (Extended).mp3",
-      "title": "Blade (Extended)",
-      "artist": "D'Angello & Francis",
-      "bpm": 150,
-      "firstBeatMs": 51,
-      "firstBeatLabel": 1,
-      "barBeatOffset": 0
-    },
-    {
-      "fileName": "JOKESONYOU - Get Personal [Master by Nightsub].wav",
-      "title": "Burn in Hell",
-      "artist": "Judas Priest",
-      "bpm": 152,
-      "firstBeatMs": 99,
-      "firstBeatLabel": 1,
-      "barBeatOffset": 0
-    },
-    {
-      "fileName": "Mika Heggemann - Apologize.wav",
-      "title": "Upside Down & Backwards",
-      "artist": "Little Jimmy King",
-      "bpm": 148,
-      "firstBeatMs": 404,
-      "firstBeatLabel": 2,
-      "barBeatOffset": 3
-    },
-    {
-      "fileName": "juju, azzle 447 - komm (feat. juju).mp3",
-      "title": "Komm (feat. Juju)",
-      "artist": "Juju, AZZLE 447",
-      "bpm": 155,
-      "firstBeatMs": 70,
-      "firstBeatLabel": 1,
-      "barBeatOffset": 0
-    },
-    {
-      "fileName": "jennie - like jennie (lyndo remix).mp3",
-      "title": "JENNIE - like JENNIE (LYNDO REMIX)",
-      "artist": "LYNDOsounds",
-      "bpm": 160,
-      "firstBeatMs": 84,
-      "firstBeatLabel": 1,
-      "barBeatOffset": 0
-    },
-    {
-      "fileName": "maddix - move it 2 the drum (extended mix).mp3",
-      "title": "Move It 2 The Drum (Extended Mix)",
-      "artist": "Maddix",
-      "bpm": 147,
-      "firstBeatMs": 51,
-      "firstBeatLabel": 1,
-      "barBeatOffset": 0
-    },
-    {
-      "fileName": "YMCA (SHU & IDKY Remix) Master.wav",
-      "title": "Crystal Waves",
-      "artist": "Phlogiston feat. Shnabubula",
-      "bpm": 142,
-      "firstBeatMs": 422,
-      "firstBeatLabel": 2,
-      "barBeatOffset": 3
     },
     {
       "fileName": "namhar - broken tape (original mix) (1).mp3",
@@ -600,15 +519,6 @@
       "barBeatOffset": 0
     },
     {
-      "fileName": "nicola cruz - data passenger (1).mp3",
-      "title": "Data Passenger",
-      "artist": "Nicola Cruz",
-      "bpm": 127.0,
-      "firstBeatMs": 225.0,
-      "firstBeatLabel": 1,
-      "barBeatOffset": 0
-    },
-    {
       "fileName": "nicolas masseyeff - let's dance (1).mp3",
       "title": "Let's Dance",
       "artist": "Nicolas Masseyeff",
@@ -627,11 +537,1145 @@
       "barBeatOffset": 0
     },
     {
+      "fileName": "nicola cruz - data passenger (1).mp3",
+      "title": "Data Passenger",
+      "artist": "Nicola Cruz",
+      "bpm": 127.0,
+      "firstBeatMs": 225.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
       "fileName": "nicole moudaber & space 92 - eyes on me (original mix).mp3",
       "title": "Eyes On Me (Original Mix)",
       "artist": "Nicole Moudaber & Space 92",
       "bpm": 137.0,
       "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "niels van gogh - pulverturm (anna rework - extended) (1).mp3",
+      "title": "Pulverturm (Anna Rework - Extended)",
+      "artist": "Niels Van Gogh",
+      "bpm": 136.0,
+      "firstBeatMs": 82.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nikmind - rockstar 2000 (1).mp3",
+      "title": "Rockstar 2000",
+      "artist": "Nikmind",
+      "bpm": 129.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 3,
+      "barBeatOffset": 2
+    },
+    {
+      "fileName": "no valentia - trebuchet (original mix).mp3",
+      "title": "Trebuchet (Original Mix)",
+      "artist": "No Valentia",
+      "bpm": 144.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "noah tauber - dark matter (original mix) (1).mp3",
+      "title": "Dark Matter (Original Mix)",
+      "artist": "Noah Tauber",
+      "bpm": 140.0,
+      "firstBeatMs": 74.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "noaria - melody de alegria (1).mp3",
+      "title": "Melody de Alegria",
+      "artist": "Noaria",
+      "bpm": 130.0,
+      "firstBeatMs": 119.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nocapz. - master of coin (jordan peak remix) (1).mp3",
+      "title": "Master of Coin (Jordan Peak Remix)",
+      "artist": "nocapz.",
+      "bpm": 131.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "noir - anachronism (original mix) (1).mp3",
+      "title": "Anachronism (Original Mix)",
+      "artist": "Noir",
+      "bpm": 134.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "noir - elusive (1).mp3",
+      "title": "Elusive",
+      "artist": "Noir",
+      "bpm": 138.0,
+      "firstBeatMs": 25.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "noir - p5ycho5i5 (1).mp3",
+      "title": "P5ycho5i5",
+      "artist": "Noir",
+      "bpm": 138.0,
+      "firstBeatMs": 25.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "noir - satori (1).mp3",
+      "title": "Satori",
+      "artist": "Noir",
+      "bpm": 138.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "noise not war, dirtytech - pumped people (original mix) (1).mp3",
+      "title": "Pumped People (Original Mix)",
+      "artist": "Noise Not War, Dirtytech",
+      "bpm": 154.0,
+      "firstBeatMs": 26.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nomas - unseen between a million eyes (original mix).mp3",
+      "title": "Unseen Between A Million Eyes (Original Mix)",
+      "artist": "Nomas",
+      "bpm": 138.0,
+      "firstBeatMs": 112.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nonick.n & dom warney - push up (original mix) (1).mp3",
+      "title": "Push Up (Original Mix)",
+      "artist": "Nonick.n & Dom Warney",
+      "bpm": 128.0,
+      "firstBeatMs": 50.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "norvis - do you like this (original mix).mp3",
+      "title": "Do You Like This (Original Mix)",
+      "artist": "Norvis",
+      "bpm": 135.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nrnt - alliance (original mix) (1).mp3",
+      "title": "Alliance (Original Mix)",
+      "artist": "NRNT",
+      "bpm": 135.0,
+      "firstBeatMs": 33.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nulla taar - into the v0rtexxx (original mix).mp3",
+      "title": "INTO THE V0RTEXXX (Original Mix)",
+      "artist": "Nulla Taar",
+      "bpm": 159.0,
+      "firstBeatMs": 70.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nullhertz - acid devine (original mix).mp3",
+      "title": "Acid Devine (Original Mix)",
+      "artist": "NULLHERTZ",
+      "bpm": 141.0,
+      "firstBeatMs": 25.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nuron - stavelot (1).mp3",
+      "title": "Stavelot",
+      "artist": "Nuron",
+      "bpm": 129.0,
+      "firstBeatMs": 166.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "nzgãl - faceless (original mix) (1).mp3",
+      "title": "faceless (Original Mix)",
+      "artist": "NZGÃL",
+      "bpm": 170.0,
+      "firstBeatMs": 75.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "o.b.i.  &  dj ocram - ready to fly (buchecha remix) (1).mp3",
+      "title": "Ready to Fly (Buchecha Remix)",
+      "artist": "O.B.I.  &  Dj Ocram",
+      "bpm": 152.0,
+      "firstBeatMs": 243.0,
+      "firstBeatLabel": 3,
+      "barBeatOffset": 2
+    },
+    {
+      "fileName": "o.b.i. & lukas - intensive training (1).mp3",
+      "title": "Intensive Training",
+      "artist": "O.B.I. & Lukas",
+      "bpm": 152.0,
+      "firstBeatMs": 27.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "o.b.i. - self preservation (buchecha remix) (1).mp3",
+      "title": "Self Preservation (Buchecha Remix)",
+      "artist": "O.B.I.",
+      "bpm": 156.0,
+      "firstBeatMs": 23.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "obscure shape - im angesicht der zeit (original mix).mp3",
+      "title": "Im Angesicht Der Zeit (Original Mix)",
+      "artist": "Obscure Shape",
+      "bpm": 144.0,
+      "firstBeatMs": 182.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "ø [phase] - ghost coder (original mix) (1).mp3",
+      "title": "Ghost Coder (Original Mix)",
+      "artist": "Ø [Phase]",
+      "bpm": 139.0,
+      "firstBeatMs": 179.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "Aaron Sevilla, Daniel Matheus - Habibi (Orginal Mix).mp3",
+      "title": "Habibi (Orginal Mix)",
+      "artist": "Aaron Sevilla, Daniel Matheus",
+      "bpm": 122.0,
+      "firstBeatMs": 71.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Adne - Scream And Shout (Original Mix).mp3",
+      "title": "Scream And Shout (Original Mix)",
+      "artist": "Adne",
+      "bpm": 130.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Monkey Safari - Loud Enough (Original Mix).mp3",
+      "title": "Loud Enough",
+      "artist": "RAFO",
+      "bpm": 122.0,
+      "firstBeatMs": 194.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "喜saysay (extended mix).mp3",
+      "title": "喜SaySay (Extended Mix)",
+      "artist": "Dirty Class",
+      "bpm": 122.0,
+      "firstBeatMs": 294.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Airwave - Sunset on the Aegean Sea (Extended Mix).mp3",
+      "title": "Sunset On The Aegean Sea (extended mix)",
+      "artist": "Airwave",
+      "bpm": 156.0,
+      "firstBeatMs": 240.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "05 - miss jay & girl tool - walk.mp3",
+      "title": "WALK",
+      "artist": "Miss Jay & Girl Tool",
+      "bpm": 137.0,
+      "firstBeatMs": 254.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Erhalder, Stahl - Chip Stress 13 A (Original Mix).mp3",
+      "title": "Chip Stress 13 A",
+      "artist": "Erhalder feat. Stahl",
+      "bpm": 135.0,
+      "firstBeatMs": 248.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Willone, LAADS - Playin (Original Mix).mp3",
+      "title": "Playin",
+      "artist": "Willone & LAADS",
+      "bpm": 140.0,
+      "firstBeatMs": 26.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "011 - oden & fatzo, theos, noa milee - only you.flac",
+      "title": "Only You",
+      "artist": "Oden & Fatzo, THEOS, Noa Milee",
+      "bpm": 128.0,
+      "firstBeatMs": 350.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "026 - mascolo - where you been.mp3",
+      "title": "Where You Been",
+      "artist": "Mascolo",
+      "bpm": 120.0,
+      "firstBeatMs": 72.0,
+      "firstBeatLabel": 3,
+      "barBeatOffset": 2
+    },
+    {
+      "fileName": "Jack District - Not The Last Time (Original Mix) (1).mp3",
+      "title": "Not The Last Time (Original Mix)",
+      "artist": "Jack District",
+      "bpm": 120.0,
+      "firstBeatMs": 71.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Jackers Revenge - September (Original Mix) (1).mp3",
+      "title": "September (Original Mix)",
+      "artist": "Jackers Revenge",
+      "bpm": 122.0,
+      "firstBeatMs": 96.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Jaden Bojsen - LET'S GO (Original Mix) (1).flac",
+      "title": "LET’S GO",
+      "artist": "Jaden Bojsen",
+      "bpm": 129.0,
+      "firstBeatMs": 0.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Jose Vilches - White Magic (Original Mix) (1).mp3",
+      "title": "White Magic (Original Mix)",
+      "artist": "Jose Vilches",
+      "bpm": 125.0,
+      "firstBeatMs": 91.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "massive new york (sir gio edit).mp3",
+      "title": "MASSIVE NEW YORK (SIR GIO EDIT)",
+      "artist": "ALICIA KEYS X DRAKE",
+      "bpm": 125.0,
+      "firstBeatMs": 31.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Nail - Afternoon Jam (Original Mix) (1).mp3",
+      "title": "Afternoon Jam (Original Mix)",
+      "artist": "Nail",
+      "bpm": 127.0,
+      "firstBeatMs": 71.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "purple disco machine, kaleta, bosq - wake up! (extended) (1).mp3",
+      "title": "Wake Up! (Extended)",
+      "artist": "Purple Disco Machine, Kaleta, Bosq",
+      "bpm": 122.0,
+      "firstBeatMs": 124.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "the shapeshifters, tripolism - lola's theme (tripolism extended remix).flac",
+      "title": "Lola's Theme (Tripolism Extended Remix)",
+      "artist": "The Shapeshifters, Tripolism",
+      "bpm": 124.0,
+      "firstBeatMs": 68.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "sidepiece - cry for you (extended mix).mp3",
+      "title": "Cry For You (Extended Mix)",
+      "artist": "SIDEPIECE",
+      "bpm": 132.0,
+      "firstBeatMs": 75.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "the patchouli brothers, planet b, kiinjo - love on the dancefloor (extended mix).flac",
+      "title": "Love On The Dancefloor (Extended Mix)",
+      "artist": "The Patchouli Brothers, Planet B, Kiinjo",
+      "bpm": 126.0,
+      "firstBeatMs": 31.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "the trip (uk) - my paradise (original mix) (1).mp3",
+      "title": "My Paradise (Original Mix)",
+      "artist": "The Trip (UK)",
+      "bpm": 132.0,
+      "firstBeatMs": 382.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "tommy genesis, mochakk - no boys allowed (og house mix) (1).mp3",
+      "title": "No Boys Allowed (OG House Mix)",
+      "artist": "Tommy Genesis, Mochakk",
+      "bpm": 128.0,
+      "firstBeatMs": 70.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "zhu - faded (blacklizt version) (hntr extended remix) (1).mp3",
+      "title": "Faded (Blacklizt Version) (HNTR Extended Remix)",
+      "artist": "ZHU",
+      "bpm": 132.0,
+      "firstBeatMs": 72.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "02. Calibre - Archive.flac",
+      "title": "Archive",
+      "artist": "Calibre",
+      "bpm": 174.0,
+      "firstBeatMs": 2.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Bugwell - Django (Original Mix) (1).mp3",
+      "title": "Django (Original Mix)",
+      "artist": "Bugwell",
+      "bpm": 174.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "mandidextrous, matt scratch - the underneath (original mix).mp3",
+      "title": "The Underneath (Original Mix)",
+      "artist": "Mandidextrous, Matt Scratch",
+      "bpm": 174.0,
+      "firstBeatMs": 70.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Marlon Hoffstadt,Dimension,DJ Daddy Trance - It's That Time (Dimension Remix).flac",
+      "title": "It’s That Time",
+      "artist": "Marlon Hoffstadt A.K.A. DJ Daddy Trance",
+      "bpm": 174.0,
+      "firstBeatMs": 344.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "rider shafique, grove, oko uk - been busy (original mix).mp3",
+      "title": "Been Busy (Original Mix)",
+      "artist": "Rider Shafique, Grove, OKO UK",
+      "bpm": 175.0,
+      "firstBeatMs": 242.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Seph - OBI (Original Mix).mp3",
+      "title": "OBI (Original Mix)",
+      "artist": "Seph",
+      "bpm": 130.0,
+      "firstBeatMs": 320.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "BandCampDownloader.app - Baila Bolero _Bad Boombox Club Edit_ - Bad Boombox.mp3",
+      "title": "Baila Bolero (Bad Boombox club edit)",
+      "artist": "Bad Boombox",
+      "bpm": 145.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "IsGwan - What's A Girl To Do (Original Mix).mp3",
+      "title": "What's A Girl To Do (Original Mix)",
+      "artist": "IsGwan",
+      "bpm": 140.0,
+      "firstBeatMs": 131.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "The Prodigy - No Good (Marlon Hoffstadt Rave Revival Edit).mp3",
+      "title": "No Good (Marlon Hoffstadt Rave Revival Edit)",
+      "artist": "The Prodigy",
+      "bpm": 150.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "B.O.T.A. (Baddest Of Them All).mp3",
+      "title": "B.O.T.A. (Baddest of Them All)",
+      "artist": "Eliza Rose & Interplanetary Criminal",
+      "bpm": 137.0,
+      "firstBeatMs": 139.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Devault - Let's Begin (Extended).flac",
+      "title": "Let's Begin (Extended)",
+      "artist": "Devault",
+      "bpm": 134.0,
+      "firstBeatMs": 0.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Eleganto, Silver Nova - Body and Mind (Extended Mix) (1).mp3",
+      "title": "Body and Mind (Extended Mix)",
+      "artist": "Eleganto, Silver Nova",
+      "bpm": 134.0,
+      "firstBeatMs": 70.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Alex Medina - Aural (Original Mix).mp3",
+      "title": "Ride (Tiësto remix)",
+      "artist": "Cary Brothers",
+      "bpm": 122.0,
+      "firstBeatMs": 471.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Alexander Delanois - Bits And Pieces (Original Mix).mp3",
+      "title": "Bits And Pieces (Original Mix)",
+      "artist": "Alexander Delanois",
+      "bpm": 126.0,
+      "firstBeatMs": 80.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Darlyn Vlys - Climbers (Original Mix) (1).mp3",
+      "title": "Climbers (Original Mix)",
+      "artist": "Darlyn Vlys",
+      "bpm": 126.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Marc DePulse, SNYL - Attraction (Extended Mix).mp3",
+      "title": "Attraction (Extended Mix)",
+      "artist": "Marc DePulse, SNYL",
+      "bpm": 127.0,
+      "firstBeatMs": 248.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "noporn, lucas freire (br) - i know you (original mix) (1).mp3",
+      "title": "I Know You (Original Mix)",
+      "artist": "Noporn, Lucas Freire (BR)",
+      "bpm": 138.0,
+      "firstBeatMs": 74.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Leyo - Hello (Intro) (1).mp3",
+      "title": "Hello (Intro)",
+      "artist": "Leyo",
+      "bpm": 110.0,
+      "firstBeatMs": 146.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "01 Ruines.flac",
+      "title": "Ruines",
+      "artist": "Aoko × HoKø",
+      "bpm": 170.0,
+      "firstBeatMs": 47.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "03 Learning To Love.flac",
+      "title": "Learning to Love",
+      "artist": "C4C",
+      "bpm": 84.0,
+      "firstBeatMs": 0.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "05 Today (ft. Stuffed Tomato).flac",
+      "title": "Today",
+      "artist": "Aphrow feat. Stuffed Tomato",
+      "bpm": 160.0,
+      "firstBeatMs": 2.0,
+      "firstBeatLabel": 3,
+      "barBeatOffset": 2
+    },
+    {
+      "fileName": "06 Loner.flac",
+      "title": "Loner",
+      "artist": "Leavv",
+      "bpm": 84.0,
+      "firstBeatMs": 712.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "Fideles, Re-Type - Are We Dreaming (Original Mix) (1) (1).mp3",
+      "title": "Are We Dreaming",
+      "artist": "Fideles & Re-Type",
+      "bpm": 124.0,
+      "firstBeatMs": 271.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "John Monkman - Jungle (Extended Mix) (1).mp3",
+      "title": "Jungle (extended mix)",
+      "artist": "John Monkman",
+      "bpm": 128.0,
+      "firstBeatMs": 102.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "julian wassermann - revelation (1).mp3",
+      "title": "Revelation",
+      "artist": "Julian Wassermann",
+      "bpm": 132.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 3,
+      "barBeatOffset": 2
+    },
+    {
+      "fileName": "Cassian,SCRIPT,Belladonna (ofc) - Where I'm From.flac",
+      "title": "Where I'm From",
+      "artist": "Cassian, SCRIPT & Belladonna",
+      "bpm": 128.0,
+      "firstBeatMs": 468.0,
+      "firstBeatLabel": 4,
+      "barBeatOffset": 1
+    },
+    {
+      "fileName": "Cherry (UA) - Puer (Extended Mix).mp3",
+      "title": "Puer (extended mix)",
+      "artist": "Cherry (UA)",
+      "bpm": 126.0,
+      "firstBeatMs": 25.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Erly Tepshi - Bankai (Original Mix) (1).mp3",
+      "title": "Bankai",
+      "artist": "Mortal Soul",
+      "bpm": 126.0,
+      "firstBeatMs": 25.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Final Request - CUT THE LINE (Extended) (1).mp3",
+      "title": "CUT THE LINE (Extended)",
+      "artist": "Final Request",
+      "bpm": 125.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Ønawa - Stranger Things (Extended).wav",
+      "title": "Blog Song",
+      "artist": "Paul Benjamin",
+      "bpm": 125.0,
+      "firstBeatMs": 0.0,
+      "firstBeatLabel": 4,
+      "barBeatOffset": 1
+    },
+    {
+      "fileName": "Alkalino - Krinoline (Original Mix) (1).mp3",
+      "title": "Krinoline (Original Mix)",
+      "artist": "Alkalino",
+      "bpm": 130.0,
+      "firstBeatMs": 24.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "sgt slick - gimme! gimme! gimme! (sgt slick's melbourne recut) (1).mp3",
+      "title": "Gimme! Gimme! Gimme! (Sgt Slick's Melbourne Recut)",
+      "artist": "Sgt Slick",
+      "bpm": 123.0,
+      "firstBeatMs": 92.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Cedric Salander - Masevela (Extended Mix).mp3",
+      "title": "Masevela (Extended Mix)",
+      "artist": "Cedric Salander",
+      "bpm": 122.0,
+      "firstBeatMs": 77.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Kasper Koman, Shai T - Good People (Original Mix) (1) (1) (1).mp3",
+      "title": "Good People",
+      "artist": "Kasper Koman & Shai T",
+      "bpm": 122.0,
+      "firstBeatMs": 70.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Monkey Safari, Eli & Fur - Oceanside (Monkey Safari Extended Remix) (1).mp3",
+      "title": "Oceanside (Monkey Safari Extended Remix)",
+      "artist": "Monkey Safari, Eli & Fur",
+      "bpm": 120.0,
+      "firstBeatMs": 86.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Slow Nomaden - Peacock Dance.flac",
+      "title": "Dance Of The Peacock",
+      "artist": "Raquin",
+      "bpm": 120.0,
+      "firstBeatMs": 201.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Weird Sounding Dude - Bell to Ashes (Original Mix) (1) (1) (1).mp3",
+      "title": "Bell to Ashes (Original Mix)",
+      "artist": "Weird Sounding Dude",
+      "bpm": 119.0,
+      "firstBeatMs": 167.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "XG - GALA.mp3",
+      "title": "GALA",
+      "artist": "XG",
+      "bpm": 131.0,
+      "firstBeatMs": 156.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Firebeatz - Out Of Control (Extended Mix).mp3",
+      "title": "Out of Control (extended mix)",
+      "artist": "Firebeatz",
+      "bpm": 130.0,
+      "firstBeatMs": 87.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Hadj y Baba - Transmission.flac",
+      "title": "Transmission",
+      "artist": "Hadj y Baba",
+      "bpm": 134.0,
+      "firstBeatMs": 222.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Lloyd Barwood - Chain Of Thoughts (Original Mix).mp3",
+      "title": "Chain Of Thoughts (Original Mix)",
+      "artist": "Lloyd Barwood",
+      "bpm": 125.0,
+      "firstBeatMs": 45.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Ben E. King, &friends - Stand By Me (&friends Remix Extended) (1).flac",
+      "title": "Stand By Me (&friends Remix Extended)",
+      "artist": "Ben E. King, &friends",
+      "bpm": 122.0,
+      "firstBeatMs": 132.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "City Off - Interstellar (Original Mix) (1) (1).mp3",
+      "title": "Interstellar (Original Mix)",
+      "artist": "City Off",
+      "bpm": 120.0,
+      "firstBeatMs": 196.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Dyzen - Try (Original Mix) (1).flac",
+      "title": "Try (Original Mix)",
+      "artist": "Dyzen",
+      "bpm": 126.0,
+      "firstBeatMs": 475.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "Lemurian, Bakean - Shakti (Original Mix) (1) (1) (1).mp3",
+      "title": "Shakti (Original Mix)",
+      "artist": "Lemurian, Bakean",
+      "bpm": 160.0,
+      "firstBeatMs": 228.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "Electric Universe - Himalaya Remix (Original Mix).mp3",
+      "title": "Himalaya Remix (Original Mix)",
+      "artist": "Electric Universe",
+      "bpm": 142.0,
+      "firstBeatMs": 70.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "victor ruiz, mila journee - all night long (original mix).mp3",
+      "title": "All Night Long (Original Mix)",
+      "artist": "Victor Ruiz, Mila Journee",
+      "bpm": 133.0,
+      "firstBeatMs": 78.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "volkoder - she kisses (extended mix).mp3",
+      "title": "She Kisses (Extended Mix)",
+      "artist": "Volkoder",
+      "bpm": 128.0,
+      "firstBeatMs": 71.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "jackie hollander - all my friends are hot (weska remix) (1).mp3",
+      "title": "All My Friends Are Hot (Weska Remix)",
+      "artist": "Jackie Hollander",
+      "bpm": 132.0,
+      "firstBeatMs": 106.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "jan fleck - nzjam (original mix) (1).mp3",
+      "title": "Nzjam (Original Mix)",
+      "artist": "Jan Fleck",
+      "bpm": 140.0,
+      "firstBeatMs": 79.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "jay lumen - back to funk (original mix) (1).mp3",
+      "title": "Back To Funk (Original Mix)",
+      "artist": "Jay Lumen",
+      "bpm": 140.0,
+      "firstBeatMs": 151.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "joyce mercedes - in the heat (original mix).mp3",
+      "title": "In The Heat (Original Mix)",
+      "artist": "Joyce Mercedes",
+      "bpm": 134.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Len Faki & Kenny Larkin & Alex Reece - Loop 2 (Hardspace Mix) (1).mp3",
+      "title": "Loop 2 (Hardspace Mix)",
+      "artist": "Len Faki & Kenny Larkin & Alex Reece",
+      "bpm": 139.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "LUSU - Rise (Extended Mix).mp3",
+      "title": "Rise (Extended Mix)",
+      "artist": "LUSU",
+      "bpm": 138.0,
+      "firstBeatMs": 52.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "tom wax - move your soul (original mix) (1).mp3",
+      "title": "Move Your Soul (Original Mix)",
+      "artist": "Tom Wax",
+      "bpm": 136.0,
+      "firstBeatMs": 96.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "D'Angello & Francis - Blade (Extended).mp3",
+      "title": "Blade (Extended)",
+      "artist": "D'Angello & Francis",
+      "bpm": 150.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "jennie - like jennie (lyndo remix).mp3",
+      "title": "JENNIE - like JENNIE (LYNDO REMIX)",
+      "artist": "LYNDOsounds",
+      "bpm": 160.0,
+      "firstBeatMs": 84.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "JOKESONYOU - Get Personal [Master by Nightsub].wav",
+      "title": "Burn in Hell",
+      "artist": "Judas Priest",
+      "bpm": 152.0,
+      "firstBeatMs": 99.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "juju, azzle 447 - komm (feat. juju).mp3",
+      "title": "Komm (feat. Juju)",
+      "artist": "Juju, AZZLE 447",
+      "bpm": 155.0,
+      "firstBeatMs": 70.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "ki-ki - what's a girl to do in '25 (extended).mp3",
+      "title": "What's A Girl To Do In '25 (Extended)",
+      "artist": "Ki-Ki",
+      "bpm": 146.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "maddix - move it 2 the drum (extended mix).mp3",
+      "title": "Move It 2 The Drum (Extended Mix)",
+      "artist": "Maddix",
+      "bpm": 147.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Mika Heggemann - Apologize.wav",
+      "title": "Upside Down & Backwards",
+      "artist": "Little Jimmy King",
+      "bpm": 148.0,
+      "firstBeatMs": 404.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "YMCA (SHU & IDKY Remix) Master.wav",
+      "title": "Crystal Waves",
+      "artist": "Phlogiston feat. Shnabubula",
+      "bpm": 142.0,
+      "firstBeatMs": 422.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "DISCO李克勤 - 红日 (LY Remix).mp3",
+      "title": "DISCO李克勤 - 红日 (LY Remix)",
+      "artist": "EDMFK.COM 微信dj6666056 买DJ电脑送软件歌库 找炎哥",
+      "bpm": 150.0,
+      "firstBeatMs": 28.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "王绎龙-摇摆哥(銀製品Agprod Funkot Edit).wav",
+      "title": "王绎龙-摇摆哥(銀製品Agprod Funkot Edit)",
+      "artist": "Mathias Stub?",
+      "bpm": 180.0,
+      "firstBeatMs": 332.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "jennie - like jennie (munk remix) - hard techno.mp3",
+      "title": "JENNIE - like JENNIE (MUNK Remix) - Hard Techno",
+      "artist": "MUNK",
+      "bpm": 158.0,
+      "firstBeatMs": 25.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Lowerzone, Gabriel Padrevita, Thundhertz - TRASGRESSIVO (Original Mix) (1).mp3",
+      "title": "TRASGRESSIVO Original Mix",
+      "artist": "Lowerzone, Gabriel Padrevita, Thundhertz",
+      "bpm": 155.0,
+      "firstBeatMs": 71.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Mae - Breathe (Original Mix) (1).mp3",
+      "title": "Breathe (Original Mix)",
+      "artist": "Mae",
+      "bpm": 163.0,
+      "firstBeatMs": 51.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "ZEP & RAVN - R4VESTARS [Extended].wav",
+      "title": "Made of Iron",
+      "artist": "Ana Egge",
+      "bpm": 160.0,
+      "firstBeatMs": 374.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "JACKSON (BRA) - Nissan Altima (JACKSON Twist) (JACKSON Twist).flac",
+      "title": "Nissan Altima (JACKSON Twist) (JACKSON Twist)",
+      "artist": "JACKSON (BRA)",
+      "bpm": 127.0,
+      "firstBeatMs": 472.0,
+      "firstBeatLabel": 2,
+      "barBeatOffset": 3
+    },
+    {
+      "fileName": "Make A Dance - Down (Original Mix).mp3",
+      "title": "Down (Original Mix)",
+      "artist": "Make A Dance",
+      "bpm": 125.0,
+      "firstBeatMs": 231.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Marcello V.O.R. - What to Do (Extended Mix) (1).mp3",
+      "title": "What to Do (Extended Mix)",
+      "artist": "Marcello V.O.R.",
+      "bpm": 128.0,
+      "firstBeatMs": 73.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Hans Zimmer - Dune Theme (REDD Techno Remix).mp3",
+      "title": "Disk Jockey Jump",
+      "artist": "Gene Krupa",
+      "bpm": 125.0,
+      "firstBeatMs": 28.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "DJz To - Freestyle 2.wav",
+      "title": "That's the Kind of Love",
+      "artist": "Mystery Man",
+      "bpm": 146.0,
+      "firstBeatMs": 9.0,
+      "firstBeatLabel": 4,
+      "barBeatOffset": 1
+    },
+    {
+      "fileName": "LBI_-_跳楼机_Drop_Tower_EDI_EDIT_UK.mp3",
+      "title": "LBI_-_跳楼机_Drop_Tower_EDI_EDIT_UK",
+      "artist": "",
+      "bpm": 140.01,
+      "firstBeatMs": 98.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Ugress - Witch Parade Assassin.flac",
+      "title": "Witch Parade Assassin",
+      "artist": "Ugress",
+      "bpm": 102.0,
+      "firstBeatMs": 0.0,
+      "firstBeatLabel": 3,
+      "barBeatOffset": 2
+    },
+    {
+      "fileName": "大展鸿图 RACO&MMQ(3).mp3",
+      "title": "Singin' the Blues",
+      "artist": "Naked Brown",
+      "bpm": 170.0,
+      "firstBeatMs": 28.0,
+      "firstBeatLabel": 1,
+      "barBeatOffset": 0
+    },
+    {
+      "fileName": "Dragan Zaranoff - Power Move (Original Mix) (1).mp3",
+      "title": "Power Move (Original Mix)",
+      "artist": "Dragan Zaranoff",
+      "bpm": 140.0,
+      "firstBeatMs": 24.0,
       "firstBeatLabel": 1,
       "barBeatOffset": 0
     }

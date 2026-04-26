@@ -4,6 +4,7 @@ from typing import Any
 
 import numpy as np
 
+from beat_this_bpm_metrics import estimate_bpm_drift_proxy
 from beat_this_grid_solver import (
     build_attack_envelope,
     clamp01,
@@ -130,6 +131,167 @@ def _score_integer_bpm_candidate(
     return best_score, best_support
 
 
+def _score_attack_bpm_phase(
+    score_envelope: np.ndarray,
+    envelope_sample_rate: int,
+    bpm: float,
+    phase_ms: float,
+    max_beats: int,
+) -> tuple[float, int]:
+    if (
+        score_envelope.size == 0
+        or envelope_sample_rate <= 0
+        or not math.isfinite(bpm)
+        or bpm <= 0.0
+        or not math.isfinite(phase_ms)
+        or max_beats <= 0
+    ):
+        return 0.0, 0
+
+    beat_interval_samples = (60.0 / bpm) * float(envelope_sample_rate)
+    if beat_interval_samples <= 0.0:
+        return 0.0, 0
+
+    values: list[float] = []
+    position = (phase_ms / 1000.0) * float(envelope_sample_rate)
+    while len(values) < max_beats and position < float(score_envelope.size):
+        rounded = int(round(position))
+        if 0 <= rounded < score_envelope.size:
+            values.append(float(score_envelope[rounded]))
+        position += beat_interval_samples
+
+    if len(values) < 64:
+        return 0.0, len(values)
+    ordered_values = sorted(values)
+    lower_quarter = ordered_values[: max(1, len(ordered_values) // 4)]
+    score = statistics.fmean(values) * 0.75 + statistics.fmean(lower_quarter) * 0.25
+    return score, len(values)
+
+
+def _find_best_attack_bpm_phase(
+    score_envelope: np.ndarray,
+    envelope_sample_rate: int,
+    bpm: float,
+    max_beats: int,
+) -> tuple[float, float, int] | None:
+    if not math.isfinite(bpm) or bpm <= 0.0:
+        return None
+    beat_interval_ms = 60000.0 / bpm
+    if not math.isfinite(beat_interval_ms) or beat_interval_ms <= 0.0:
+        return None
+
+    best_phase_ms = 0.0
+    best_score = 0.0
+    best_support = 0
+    phase_ms = 0.0
+    while phase_ms < beat_interval_ms:
+        score, support = _score_attack_bpm_phase(
+            score_envelope,
+            envelope_sample_rate,
+            bpm,
+            phase_ms,
+            max_beats,
+        )
+        if support >= 64 and score > best_score:
+            best_phase_ms = phase_ms
+            best_score = score
+            best_support = support
+        phase_ms += 1.0
+
+    if best_support < 64:
+        return None
+    return best_phase_ms, best_score, best_support
+
+
+def _find_attack_bpm_refinement(
+    signal: np.ndarray,
+    sample_rate: int,
+    result: dict[str, Any],
+    tuning: dict[str, Any],
+) -> dict[str, float] | None:
+    current_bpm = float(result.get("bpm") or _result_raw_bpm(result))
+    if not math.isfinite(current_bpm) or current_bpm <= 0.0 or current_bpm < 90.0 or current_bpm > 180.0:
+        return None
+    if abs(current_bpm - round(current_bpm)) <= 0.000001:
+        return None
+    current_first_beat_ms = float(result.get("firstBeatMs") or 0.0)
+    if current_first_beat_ms < 30.0 and int(result.get("barBeatOffset") or 0) % 4 != 0:
+        return None
+
+    nearest_integer = round(current_bpm)
+    if nearest_integer >= 170:
+        return None
+    if abs(current_bpm - nearest_integer) > 0.15:
+        return None
+
+    attack_tuning = dict(tuning)
+    attack_tuning["focusMode"] = "full"
+    attack_tuning["envelopeSampleRateFull"] = max(4000, int(attack_tuning["envelopeSampleRateFull"]))
+    attack_tuning["scoreWindowMs"] = min(float(attack_tuning["scoreWindowMs"]), 4.0)
+    attack_result = build_attack_envelope(signal, sample_rate, attack_tuning)
+    if attack_result is None:
+        return None
+    attack_envelope, envelope_sample_rate = attack_result
+    score_window = max(
+        1,
+        int(round(envelope_sample_rate * (float(attack_tuning["scoreWindowMs"]) / 1000.0))),
+    )
+    score_envelope = moving_average(attack_envelope, score_window)
+    max_beats = max(192, int(tuning["maxBeats"]) * 4)
+
+    current_candidate = _find_best_attack_bpm_phase(
+        score_envelope,
+        envelope_sample_rate,
+        current_bpm,
+        max_beats,
+    )
+    if current_candidate is None:
+        return None
+    _current_phase_ms, current_score, current_support = current_candidate
+
+    best_bpm = current_bpm
+    best_phase_ms = _current_phase_ms
+    best_score = current_score
+    best_support = current_support
+    for step in range(-20, 21):
+        candidate_bpm = float(nearest_integer) + float(step) * 0.005
+        if candidate_bpm < 90.0 or candidate_bpm > 180.0:
+            continue
+        candidate = _find_best_attack_bpm_phase(
+            score_envelope,
+            envelope_sample_rate,
+            candidate_bpm,
+            max_beats,
+        )
+        if candidate is None:
+            continue
+        phase_ms, score, support = candidate
+        if score > best_score:
+            best_bpm = candidate_bpm
+            best_phase_ms = phase_ms
+            best_score = score
+            best_support = support
+
+    refined_bpm = round(best_bpm, 2)
+    if abs(refined_bpm - current_bpm) < 0.005:
+        return None
+    score_gain = best_score - current_score
+    relative_gain = score_gain / max(1e-9, best_score, current_score)
+    if score_gain < 0.015 or relative_gain < 0.08:
+        return None
+    return {
+        "sourceBpm": current_bpm,
+        "bestBpm": refined_bpm,
+        "bestAttackBpm": best_bpm,
+        "bestPhaseMs": best_phase_ms,
+        "sourceScore": current_score,
+        "bestScore": best_score,
+        "scoreGain": score_gain,
+        "sourceSupport": float(current_support),
+        "bestSupport": float(best_support),
+    }
+
+
 def apply_integer_bpm_rescue_to_result(
     signal: np.ndarray,
     sample_rate: int,
@@ -143,11 +305,32 @@ def apply_integer_bpm_rescue_to_result(
     raw_bpm = _result_raw_bpm(result)
     if not math.isfinite(raw_bpm) or raw_bpm <= 0.0:
         return result
+    refinement_strategy = str(result.get("bpmRefinementStrategy") or "")
+    if refinement_strategy in {"double-bpm-envelope-rescue", "half-bpm-envelope-rescue"}:
+        return result
+
+    attack_bpm_refinement = _find_attack_bpm_refinement(signal, sample_rate, result, tuning)
+    if attack_bpm_refinement is not None:
+        bpm = float(attack_bpm_refinement["bestBpm"])
+        next_result = dict(result)
+        next_result["bpm"] = round(bpm, 6)
+        next_result["beatIntervalSec"] = round(60.0 / bpm, 6)
+        next_result["bpmRefinementStrategy"] = "attack-bpm-rescue"
+        next_result["bpmRefinementSourceBpm"] = round(float(attack_bpm_refinement["sourceBpm"]), 6)
+        next_result["bpmRefinementBestAttackBpm"] = round(
+            float(attack_bpm_refinement["bestAttackBpm"]),
+            6,
+        )
+        next_result["bpmRefinementScoreGain"] = round(
+            float(attack_bpm_refinement["scoreGain"]),
+            6,
+        )
+        return next_result
 
     nearest_integer = round(raw_bpm)
     integer_delta = abs(raw_bpm - nearest_integer)
     snap_threshold = float(tuning["bpmSnapIntegerThreshold"])
-    if integer_delta > 0.25:
+    if integer_delta > 0.35:
         return result
 
     current_bpm = float(result.get("bpm") or raw_bpm)
@@ -274,6 +457,8 @@ def apply_half_double_bpm_rescue_to_result(
     )
     if current_support < 64:
         return result
+    drift_proxy = estimate_bpm_drift_proxy(window_results, result)
+    drift_proxy_128_ms = abs(float(drift_proxy.get("beatThisEstimatedDrift128Ms") or 0.0))
 
     best_result: dict[str, Any] | None = None
     best_score_gain = 0.0
@@ -296,7 +481,24 @@ def apply_half_double_bpm_rescue_to_result(
             )
             <= tolerance
         ]
-        if len(direct_support) < 2 or len(related_support) < 2:
+        dense_direct_support = [
+            item
+            for item in direct_support
+            if int(item.get("beatCount") or 0) >= int(max(1, int(result.get("beatCount") or 0)) * 1.75)
+            and float(item.get("qualityScore") or 0.0) + 0.01 >= float(result.get("qualityScore") or 0.0)
+        ]
+        has_direct_consensus = len(direct_support) >= 2
+        has_dense_direct_support = strategy == "double" and len(dense_direct_support) >= 1
+        has_drift_double_support = (
+            strategy == "double"
+            and len(direct_support) == 0
+            and len(related_support) >= 3
+            and drift_proxy_128_ms >= 40.0
+            and float(result.get("qualityScore") or 0.0) >= 0.95
+        )
+        if not has_direct_consensus and not has_dense_direct_support and not has_drift_double_support:
+            continue
+        if len(related_support) < 2:
             continue
         candidate_score, candidate_support = _score_integer_bpm_candidate(
             score_envelope,
@@ -308,7 +510,13 @@ def apply_half_double_bpm_rescue_to_result(
         if candidate_support < 64:
             continue
         score_gain = (candidate_score - current_score) / max(1e-9, candidate_score, current_score)
-        if score_gain < 0.12 or candidate_score - current_score < 0.01:
+        if has_dense_direct_support:
+            if candidate_score + 0.002 < current_score:
+                continue
+        elif has_drift_double_support:
+            if score_gain < 0.10 or candidate_score - current_score < 0.005:
+                continue
+        elif score_gain < 0.12 or candidate_score - current_score < 0.01:
             continue
         next_result = dict(result)
         next_result["bpm"] = round(candidate_bpm, 6)
@@ -316,6 +524,36 @@ def apply_half_double_bpm_rescue_to_result(
         next_result["bpmRefinementStrategy"] = f"{strategy}-bpm-envelope-rescue"
         next_result["bpmRefinementScoreGain"] = round(score_gain, 6)
         next_result["bpmRefinementWindowSupport"] = len(related_support)
+        if has_drift_double_support:
+            phase_candidate = _find_best_attack_bpm_phase(
+                score_envelope,
+                envelope_sample_rate,
+                candidate_bpm,
+                max_beats,
+            )
+            if phase_candidate is not None:
+                beat_interval_ms = 60000.0 / candidate_bpm
+                phase_ms = normalize_phase_ms(float(phase_candidate[0]) + 5.0, beat_interval_ms)
+                previous_phase_ms = normalize_phase_ms(
+                    float(next_result.get("firstBeatMs") or 0.0),
+                    beat_interval_ms,
+                )
+                phase_shift_ms = phase_delta_ms(phase_ms, previous_phase_ms, beat_interval_ms)
+                next_result["firstBeatMs"] = round(phase_ms, 3)
+                absolute_first_beat = float(next_result.get("absoluteFirstBeatMs") or previous_phase_ms)
+                next_result["absoluteFirstBeatMs"] = round(absolute_first_beat + phase_shift_ms, 3)
+                raw_first_beat_ms = float(next_result.get("rawFirstBeatMs") or 0.0)
+                next_result["anchorCorrectionMs"] = round(
+                    phase_delta_ms(phase_ms, raw_first_beat_ms, beat_interval_ms),
+                    3,
+                )
+                next_result["phaseRefinementStrategy"] = "double-bpm-attack-phase"
+        if (
+            strategy == "double"
+            and float(next_result.get("firstBeatMs") or 0.0) <= 1.0
+            and float(next_result.get("rawFirstBeatMs") or 0.0) <= 1.0
+        ):
+            next_result["barBeatOffset"] = (int(next_result.get("barBeatOffset") or 0) + 2) % 32
         if best_result is None or score_gain > best_score_gain:
             best_result = next_result
             best_score_gain = score_gain
