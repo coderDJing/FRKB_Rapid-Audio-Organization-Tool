@@ -127,7 +127,11 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
 
   const mergedSettings = {
     ...defaultSettings,
-    ...loadedSettings
+    ...(Object.fromEntries(
+      Object.entries(loadedSettings as Record<string, unknown>).filter(
+        ([key]) => key !== 'lastFmApiKey'
+      )
+    ) as StoredSettings)
   }
   const sanitizeShortcut = (value: unknown, fallback: string) =>
     typeof value === 'string' && value.trim() ? value : fallback

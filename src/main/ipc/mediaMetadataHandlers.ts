@@ -20,12 +20,14 @@ import {
   cancelAcoustIdRequests,
   validateAcoustIdClientKeyValue
 } from '../services/acoustId'
+import { findSimilarTracks, cancelSimilarTracksRequests } from '../services/similarTracks'
 import {
   IMusicBrainzSearchPayload,
   IMusicBrainzSuggestionParams,
   IMusicBrainzAcoustIdPayload,
   ITrackMetadataUpdatePayload,
-  IMetadataAutoFillRequest
+  IMetadataAutoFillRequest,
+  ISimilarTracksRequest
 } from '../../types/globals'
 
 type MetadataUpdateError = {
@@ -115,5 +117,13 @@ export function registerMediaMetadataHandlers() {
 
   ipcMain.handle('acoustid:cancelRequests', async () => {
     cancelAcoustIdRequests()
+  })
+
+  ipcMain.handle('similarTracks:find', async (_e, payload: ISimilarTracksRequest) => {
+    return await findSimilarTracks(payload)
+  })
+
+  ipcMain.handle('similarTracks:cancel', async () => {
+    cancelSimilarTracksRequests()
   })
 }

@@ -280,6 +280,55 @@ interface IMusicBrainzSuggestionParams {
   cancelToken?: { cancelled: boolean }
 }
 
+type ISimilarTrackSource = 'listenbrainz' | 'lastfm'
+
+interface ISimilarTracksRequest {
+  filePath: string
+  title?: string
+  artist?: string
+  album?: string
+  durationSeconds?: number
+  limit?: number
+}
+
+interface ISimilarTracksSeed {
+  title: string
+  artist: string
+  album?: string
+  recordingMbid?: string
+  releaseMbid?: string
+  score?: number
+  source: 'acoustid' | 'tags'
+}
+
+interface ISimilarTrackItem {
+  id: string
+  title: string
+  artist: string
+  album?: string
+  recordingMbid?: string
+  artistMbid?: string
+  releaseMbid?: string
+  coverUrl?: string
+  score: number
+  sources: ISimilarTrackSource[]
+  sourceScores?: Partial<Record<ISimilarTrackSource, number>>
+  sourceUrls?: Partial<Record<ISimilarTrackSource, string>>
+}
+
+interface ISimilarTracksProviderStatus {
+  source: ISimilarTrackSource
+  status: 'ok' | 'missing-key' | 'no-seed' | 'error'
+  count?: number
+  message?: string
+}
+
+interface ISimilarTracksResult {
+  seed?: ISimilarTracksSeed
+  tracks: ISimilarTrackItem[]
+  providerStatus: ISimilarTracksProviderStatus[]
+}
+
 interface IMusicBrainzApplyPayload {
   title?: string
   artist?: string
@@ -695,5 +744,11 @@ export {
   IMusicBrainzSuggestion,
   IMusicBrainzSuggestionResult,
   IMusicBrainzSuggestionParams,
-  IMusicBrainzApplyPayload
+  IMusicBrainzApplyPayload,
+  ISimilarTrackSource,
+  ISimilarTracksRequest,
+  ISimilarTracksSeed,
+  ISimilarTrackItem,
+  ISimilarTracksProviderStatus,
+  ISimilarTracksResult
 }

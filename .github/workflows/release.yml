@@ -140,6 +140,7 @@ jobs:
         env:
           CLOUD_SYNC_BASE_URL_PROD: ${{ secrets.CLOUD_SYNC_BASE_URL_PROD }}
           CLOUD_SYNC_API_SECRET_KEY: ${{ secrets.CLOUD_SYNC_API_SECRET_KEY }}
+          FRKB_LASTFM_API_KEY: ${{ secrets.FRKB_LASTFM_API_KEY }}
         run: pnpm build
 
       - name: Package (electron-builder, no publish)
@@ -436,6 +437,7 @@ jobs:
         env:
           CLOUD_SYNC_BASE_URL_PROD: ${{ secrets.CLOUD_SYNC_BASE_URL_PROD }}
           CLOUD_SYNC_API_SECRET_KEY: ${{ secrets.CLOUD_SYNC_API_SECRET_KEY }}
+          FRKB_LASTFM_API_KEY: ${{ secrets.FRKB_LASTFM_API_KEY }}
         run: pnpm build
 
       - name: Package macOS (universal, no publish)

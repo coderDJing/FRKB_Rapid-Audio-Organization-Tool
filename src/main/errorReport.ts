@@ -3,6 +3,7 @@ import { is } from '@electron-toolkit/utils'
 import store from './store'
 import { clearLogFileSync, getLogPath, log } from './log'
 import { persistSettingConfig } from './settingsPersistence'
+import { fetchWithSystemProxy } from './fetchWithSystemProxy'
 
 // 正式阈值：累计运行 100 小时上报一次；失败后每 1 小时重试一次
 const USAGE_UPLOAD_THRESHOLD_MS = 100 * 60 * 60 * 1000
@@ -42,7 +43,7 @@ async function readPendingLogText(): Promise<string> {
 
 async function uploadLogText(text: string): Promise<boolean> {
   try {
-    const res = await fetch(`${ERROR_API.BASE_URL}${ERROR_API.PATH}`, {
+    const res = await fetchWithSystemProxy(`${ERROR_API.BASE_URL}${ERROR_API.PATH}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${ERROR_API.API_SECRET_KEY}`,

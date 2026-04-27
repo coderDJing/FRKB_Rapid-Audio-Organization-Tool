@@ -10,6 +10,7 @@ const rendererServer =
         strictPort: true
       }
     : undefined
+const defaultLastFmApiKey = process.env.FRKB_LASTFM_API_KEY || process.env.LASTFM_API_KEY || ''
 
 export default defineConfig({
   main: {
@@ -70,7 +71,8 @@ export default defineConfig({
       ),
       'process.env.CLOUD_SYNC_API_SECRET_KEY': JSON.stringify(
         process.env.CLOUD_SYNC_API_SECRET_KEY || ''
-      )
+      ),
+      'process.env.FRKB_LASTFM_API_KEY': JSON.stringify(defaultLastFmApiKey)
     }
   },
   preload: {

@@ -5,6 +5,7 @@ import FingerprintStore from './fingerprintStore'
 import { log } from './log'
 import mainWindow from './window/mainWindow'
 import { persistSettingConfig } from './settingsPersistence'
+import { fetchWithSystemProxy } from './fetchWithSystemProxy'
 import {
   getCuratedArtistSyncErrorPayload,
   isCuratedArtistSyncUnsupportedServer,
@@ -56,7 +57,7 @@ function createRateLimiter(minIntervalMs: number) {
 const limitRequestOnce = createRateLimiter(RATE_LIMIT_MIN_INTERVAL_MS)
 async function limitedFetch(input: FetchInput, init?: FetchInit) {
   await limitRequestOnce()
-  return fetch(input, init)
+  return await fetchWithSystemProxy(input, init)
 }
 
 // 同步启动频控：5 分钟内最多 10 次

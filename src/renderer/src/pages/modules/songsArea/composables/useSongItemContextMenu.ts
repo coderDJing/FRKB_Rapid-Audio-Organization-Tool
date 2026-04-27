@@ -21,6 +21,11 @@ import {
   resolveLibraryTransferActionLabelKey,
   resolveLibraryTransferActionModeForSongList
 } from '@renderer/utils/libraryTransfer'
+import {
+  buildNeteaseSearchQuery,
+  normalizeNeteaseSearchText,
+  openNeteaseSearch
+} from '@renderer/utils/neteaseSearch'
 
 // Type for the return value when a dialog needs to be opened by the parent
 export interface OpenDialogAction {
@@ -206,6 +211,7 @@ export function useSongItemContextMenu(
     ],
     [{ menuName: 'tracks.showInFileExplorer' }],
     createNeteaseSearchMenu(),
+    [{ menuName: 'similarTracks.menu' }],
     [{ menuName: 'metadata.autoFillMenu' }],
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }],
@@ -221,6 +227,7 @@ export function useSongItemContextMenu(
     ],
     [{ menuName: 'tracks.showInFileExplorer' }],
     createNeteaseSearchMenu(),
+    [{ menuName: 'similarTracks.menu' }],
     [{ menuName: 'metadata.autoFillMenu' }],
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }],
@@ -236,6 +243,7 @@ export function useSongItemContextMenu(
     [{ menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' }],
     [{ menuName: 'tracks.showInFileExplorer' }],
     createNeteaseSearchMenu(),
+    [{ menuName: 'similarTracks.menu' }],
     [{ menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }]
   ]
@@ -283,8 +291,6 @@ export function useSongItemContextMenu(
       }
       return paths
     }
-    const normalizeSearchText = (value: string | undefined | null) =>
-      typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''
     const showNeteaseSearchEmptyHint = async (messageKey: string) => {
       await confirm({
         title: t('dialog.hint'),
@@ -292,14 +298,10 @@ export function useSongItemContextMenu(
         confirmShow: false
       })
     }
-    const openNeteaseSearch = async (query: string) => {
-      const normalized = normalizeSearchText(query)
-      if (!normalized) {
+    const openSongNeteaseSearch = async (query: string) => {
+      if (!openNeteaseSearch(query)) {
         await showNeteaseSearchEmptyHint('tracks.neteaseSearchEmpty')
-        return
       }
-      const url = `https://music.163.com/#/search/m/?s=${encodeURIComponent(normalized)}&type=1`
-      window.electron.ipcRenderer.send('openLocalBrowser', url)
     }
     const requestDeleteSongs = async (paths: string[]) => {
       const summary = await window.electron.ipcRenderer.invoke(
@@ -519,6 +521,13 @@ export function useSongItemContextMenu(
         } catch {
           // 忽略错误，由主进程统一上报
         }
+        return null
+      }
+      case 'similarTracks.menu': {
+        const { default: openSimilarTracksDialog } = await import(
+          '@renderer/components/similarTracksDialog'
+        )
+        await openSimilarTracksDialog(song)
         return null
       }
       case 'tracks.deleteAllAbove': {
@@ -979,40 +988,40 @@ export function useSongItemContextMenu(
         window.electron.ipcRenderer.send('show-item-in-folder', song.filePath)
         break
       case 'tracks.neteaseSearchTitle': {
-        const title = normalizeSearchText(song.title)
+        const title = normalizeNeteaseSearchText(song.title)
         if (!title) {
           await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleEmpty')
           break
         }
-        await openNeteaseSearch(title)
+        await openSongNeteaseSearch(title)
         break
       }
       case 'tracks.neteaseSearchArtist': {
-        const artist = normalizeSearchText(song.artist)
+        const artist = normalizeNeteaseSearchText(song.artist)
         if (!artist) {
           await showNeteaseSearchEmptyHint('tracks.neteaseSearchArtistEmpty')
           break
         }
-        await openNeteaseSearch(artist)
+        await openSongNeteaseSearch(artist)
         break
       }
       case 'tracks.neteaseSearchAlbum': {
-        const album = normalizeSearchText(song.album)
+        const album = normalizeNeteaseSearchText(song.album)
         if (!album) {
           await showNeteaseSearchEmptyHint('tracks.neteaseSearchAlbumEmpty')
           break
         }
-        await openNeteaseSearch(album)
+        await openSongNeteaseSearch(album)
         break
       }
       case 'tracks.neteaseSearchTitleArtist': {
-        const title = normalizeSearchText(song.title)
-        const artist = normalizeSearchText(song.artist)
+        const title = normalizeNeteaseSearchText(song.title)
+        const artist = normalizeNeteaseSearchText(song.artist)
         if (!title && !artist) {
           await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleArtistEmpty')
           break
         }
-        await openNeteaseSearch([title, artist].filter(Boolean).join(' '))
+        await openSongNeteaseSearch(buildNeteaseSearchQuery(title, artist))
         break
       }
       case 'tracks.clearTrackCache': {

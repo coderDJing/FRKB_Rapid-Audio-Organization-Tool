@@ -48,6 +48,11 @@
 - 只有在当前任务明确需要运行时排查时，才允许临时增加非错误调试日志；这类日志必须走现有 `log.txt` 链路，并且在交付前删除，不能把调试噪音留在仓库里。
 - `pnpm run dev` 启动阶段的开发提示、脚本提示、端口提示等输出，默认只打印终端，不写入 `log.txt`。这类输出应使用开发脚本/终端控制台，不要接入主进程 `log` 或 renderer `outputLog` 落盘链路。
 
+## Network & Proxy Rules
+- 任何对外网络请求都必须默认遵守用户当前网络环境：用户开启 VPN / TUN 时应跟随系统路由；用户配置系统代理 / PAC 时必须显式接入系统代理，不能绕过。
+- 主进程新增外部 HTTP 请求时，禁止直接写裸 `fetch`；必须复用现有系统代理链路（如 `getSystemProxy()` + `ProxyAgent` 或统一封装），确保请求自动走用户已开启的 VPN / 代理。
+- Renderer 禁止直接发起新的外部网络请求；涉及外部服务统一下沉到主进程代理层处理，再由主进程按系统代理规则发出。
+
 ## Commit & Pull Request Guidelines
 - Recent commits use Conventional Commit prefixes with optional scopes: `feat(ui): ...`, `fix(player): ...`, `refactor(...)`, `docs(...)`.
 - 提交信息必须使用中文（保留 Conventional Commit 结构）。
