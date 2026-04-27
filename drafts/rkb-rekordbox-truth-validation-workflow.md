@@ -1,33 +1,114 @@
-# rkb Rekordbox 真值验证工作流
+# Rekordbox 真值验证工作流
 
 ## 1. 当前结论
 
-`rkb` / Rekordbox 真值链路的目标不是让 FRKB 依赖 Rekordbox 运行，而是用 Rekordbox 作为外部分析参照，校准 FRKB 自己的 beat grid analyzer。
+`rkb` 是历史命名。当前 Rekordbox 真值链路的目标不是让 FRKB 依赖
+Rekordbox 运行，而是用 Rekordbox 作为外部分析参照，校准 FRKB 自己的
+beat grid analyzer。
 
 当前有效基线：
 
 ```text
-grid-analysis-lab/rkb-rekordbox-benchmark/after-late-edge-full-1.json
-trackTotal = 184
-pass = 174
-first-beat-phase = 10
+sample pass regression = grid-analysis-lab/rkb-rekordbox-benchmark/sample-pass-after-layout-3.json
+trackTotal = 219
+pass = 219
 errorTrackCount = 0
 currentTimeline.bpmOnlyDrift128BeatsMs.max = 0.0ms
 strictToleranceMs = 2.0ms
+
+current failures = grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-after-layout-1.json
+trackTotal = 56
+first-beat-phase = 50
+downbeat = 3
+bpm = 3
+errorTrackCount = 0
 ```
 
 旧的 `184/184 pass` 输出不再作为当前算法质量结论。那轮结果混入了过窄的相位修补规则，样本内能全过，但存在明显多特征拟合风险。
 
 当前策略：
 
-- 保留这 184 首作为回归集。
-- 暂停继续追杀剩余 10 首失败样本。
+- 历史旧 184 结果继续保留，但当前 `sample` 只放通过样本。
+- 软件运行态不再把 `rkb` 歌单当特殊入口，也不再用 Rekordbox truth 覆盖 FRKB 分析结果。
+- 本地通过样本根是 `D:/FRKB_database-B/library/FilterLibrary/sample`。
+- FRKB 软件内 `rkb` 歌单已废弃，当前失败样本只归入 `grid-failures-current`。
+- 暂停逐首追杀当前失败样本。
 - 下一步先扩充新样本，再观察失败模式是否重复出现。
 - 只有新旧样本中都出现的稳定模式，才允许沉淀为新的 Rekordbox-compatible phase prior。
 
+2026-04-27 新增 `test` 歌单首轮观察：
+
+```text
+captured truth = grid-analysis-lab/rkb-rekordbox-benchmark/test-95-captured-truth.json
+test playlist trackTotal = 95
+duplicateWithOld = 4
+uniqueNew = 91
+audio source root = C:/Users/coder/Desktop/新建文件夹
+
+old184 rerun = grid-analysis-lab/rkb-rekordbox-benchmark/current-old184-before-new95.json
+old184 pass = 174
+old184 first-beat-phase = 10
+old184 errorTrackCount = 0
+
+new95 baseline = grid-analysis-lab/rkb-rekordbox-benchmark/new95-baseline-1.json
+new95 pass = 47
+new95 first-beat-phase = 40
+new95 downbeat = 5
+new95 bpm = 3
+new95 errorTrackCount = 0
+```
+
+首轮聚类结论：新增失败分布不是单一低维模式，`first-beat-phase`
+需要的修正方向正负混杂；`full-logit` 在旧 184 里救回大量样本，但在新增 95
+里触发样本质量不稳定，不能直接关停或粗暴收紧；`bpm` 失败也不能简单贴整数，
+旧样本里存在真实 `131.99` 反例。
+
+2026-04-27 合并规则：
+
+```text
+rule = refined-head-downbeat-logit-margin
+failureType = downbeat
+signals = refined head phase <= 30ms, beat/downbeat support, quality/confidence, full-track downbeat logits margin
+guard = only adjacent one-beat bar change, margin >= 8.0
+targetedNew95 = improved 2, regressed 0
+fullNew95 = pass 49, first-beat-phase 40, downbeat 3, bpm 3, errorTrackCount 0
+fullOld184 = pass 174, first-beat-phase 10, errorTrackCount 0
+notes = no metadata, no truth, no file identity; old184 per-track diff is empty
+```
+
+本规则只修 `barBeatOffset`，不移动 BPM 或 first beat。完整新 95 中只有
+`Vil & cravo - Sambatuga (1).mp3` 和
+`Yigitoglu - Cloudy And Beautiful (Original Mix).mp3` 从 `downbeat` 变 `pass`；
+旧 184 没有任何逐曲输出变化。
+
+2026-04-27 本地样本整理：
+
+```text
+D:/FRKB_database-B/library/FilterLibrary/sample = current pass sample root, 219 tracks
+D:/FRKB_database-B/library/FilterLibrary/new = Rekordbox test intake staging, 0 tracks
+D:/FRKB_database-B/library/FilterLibrary/grid-failures-current = current FRKB failures, 56 tracks
+D:/FRKB_database-B/library/FilterLibrary/rkb = deleted
+
+sample source:
+old184 pass = 174 tracks
+new95 pass unique = 45 tracks
+new95 pass duplicate with old sample = 4 tracks, skipped
+
+grid-failures-current source:
+old184-after-downbeat-logit-1 = 10 failures
+new95-after-downbeat-logit-3 = 46 failures
+categoryCounts = first-beat-phase 50, downbeat 3, bpm 3
+manifest = grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-current-manifest.json
+failure truth = grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-current-truth.json
+```
+
 当前保留产物：
 
-- `after-late-edge-full-1.json` / `.progress.json`：当前可信基线。
+- `sample-pass-after-layout-3.json` / `.progress.json`：当前默认 `sample` 通过集基线。
+- `grid-failures-after-layout-1.json` / `.progress.json`：当前失败集基线。
+- `grid-failures-current-truth.json`：失败集 truth。
+- `grid-failures-current-manifest.json`：失败集来源和分类清单。
+- `after-late-edge-full-1.json` / `.progress.json`：旧 184 历史基线。
 - `after-overfit-prune-1.json` / `.progress.json`：删除明显过拟合补丁后的基线。
 - `after-local-onset-lead-full-1.json` / `.progress.json`：local onset lead 里程碑。
 - `after-logit-edge-full-1.json` / `.progress.json`：full-track logit edge 里程碑。
@@ -38,7 +119,7 @@ strictToleranceMs = 2.0ms
 
 ## 2. 绝对禁止
 
-以下做法一律禁止，即使能提升当前 184 首通过率：
+以下做法一律禁止，即使能提升当前失败集通过率：
 
 - 用歌名、artist、路径、basename、播放列表来源做算法特判。
 - 用文件大小、mtime、hash、fingerprint 参与 analyzer 决策。
@@ -85,8 +166,9 @@ strictToleranceMs = 2.0ms
 - 不使用 truth 或 benchmark 结果参与 analyzer。
 - 能解释一个稳定失败类型，例如 `first-beat-phase`、`downbeat`、`bpm`、`time-basis`、`frame-residual`。
 - 使用粗粒度、可解释阈值，不能为了某首歌写精确误差值。
-- 先跑 targeted，再跑完整 184 回归。
-- 完整 184 回归必须 `0` 回归。
+- 先跑 targeted，再跑 `sample` 通过集回归。
+- `sample` 通过集必须 `0` 回归。
+- 如果规则针对失败聚类，还必须显式跑 `grid-failures-current`，并单独记录改善和新增失败。
 - 不能引入新的 `bpm`、`half-or-double-bpm` 或 `downbeat` 失败。
 - 输出必须记录触发数、救回数、回归数。
 
@@ -97,7 +179,8 @@ rule = model-frame-prior
 failureType = first-beat-phase
 signals = raw/current phase, bar offset, quality, confidence, drift
 targeted = improved 4, regressed 0
-full184 = improved 9, regressed 0
+sample = pass 219, regressed 0
+failures = improved 9, regressed 0
 notes = no metadata, no truth, no file identity
 ```
 
@@ -109,19 +192,21 @@ notes = no metadata, no truth, no file identity
 
 ## 5. 样本扩充后的新流程
 
-当前剩余 10 首失败样本先保留，不继续单独追杀。下一步流程改为：
+当前剩余失败样本先保留，不继续单独追杀。下一步流程改为：
 
-1. 把新样本放入 FRKB `new` 目录。
-2. 把同一批音频导入 Rekordbox。
-3. 建临时 Rekordbox playlist。
-4. 让 Rekordbox 完成分析，必要时人工修正 beat grid。
-5. 从 Rekordbox 读取 `.DAT beat_grid` / `PQTZ`。
-6. 合并进 `resources/rkbRekordboxGridSnapshot.json`。
-7. 把音频复制到 `rkb` 和 `sample`。
-8. 清空 `new`。
-9. 跑旧 184 回归。
-10. 跑扩展后全集 benchmark。
-11. 对失败样本做聚类，而不是逐首补规则。
+1. Rekordbox 端只维护一个 `test` playlist。
+2. 新样本先进入 Rekordbox `test`，由 Rekordbox 完成分析。
+3. 人工删除 Rekordbox 自己也失败或不可信的曲目。
+4. 从 Rekordbox 读取剩余曲目的 `.DAT beat_grid` / `PQTZ`。
+5. 合并进 `resources/rkbRekordboxGridSnapshot.json`。
+6. 跑 `sample` 通过集回归。
+7. 把 FRKB 当前仍失败的曲目归入软件内 `grid-failures-current` 歌单。
+8. 对 `grid-failures-current` 做聚类，而不是逐首补规则。
+9. 只有聚类结果形成稳定、可解释、跨样本重复的模式，才设计通用 prior。
+
+`rkb` 不再作为 FRKB 软件里的当前验证歌单名称；`sample` 只保存当前通过样本，
+`grid-failures-current` 只保存当前失败样本。同一首失败样本不应同时留在
+`sample` 和 `grid-failures-current`。
 
 聚类维度：
 
@@ -139,7 +224,9 @@ notes = no metadata, no truth, no file identity
 
 ## 6. dev / regression / blind 约束
 
-当前 184 首是 **regression + dev 历史混合集**，不能当 locked blind。
+历史旧 184 是 **regression + dev 历史混合集**，不能当 locked blind。
+当前 `sample` 是通过集回归样本，不代表 blind 泛化；`grid-failures-current`
+是失败聚类输入，不参与默认通过集回归。
 
 建议后续分层：
 
@@ -296,7 +383,9 @@ gridErrorMs[i] = frkbBeatMs[i] - rbBeatMs[i]
 
 ## 10. 运行 benchmark
 
-完整 184 回归：
+默认回归跑 `sample` 通过集。默认 truth 是
+`resources/rkbRekordboxGridSnapshot.json`，默认 `audio-root` 是
+`D:/FRKB_database-B/library/FilterLibrary/sample`，当前应为 219 首：
 
 ```powershell
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --jobs 4 --output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.json" --progress-output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.progress.json"
@@ -308,10 +397,16 @@ gridErrorMs[i] = frkbBeatMs[i] - rbBeatMs[i]
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --jobs 4 --only "artist or title substring" --output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.json" --progress-output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.progress.json"
 ```
 
+失败集单独跑，不和默认 `sample` 回归混在一起：
+
+```powershell
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --jobs 4 --truth "grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-current-truth.json" --audio-root "D:/FRKB_database-B/library/FilterLibrary/grid-failures-current" --output "grid-analysis-lab/rkb-rekordbox-benchmark/<failure-name>.json" --progress-output "grid-analysis-lab/rkb-rekordbox-benchmark/<failure-name>.progress.json"
+```
+
 Python 编译检查：
 
 ```powershell
-py -3 -m py_compile "scripts/beat_this_bridge.py" "scripts/beat_this_phase_rescue.py" "scripts/beat_this_grid_rescue.py" "scripts/beat_this_full_logit_rescue.py" "scripts/benchmark_rkb_rekordbox_truth.py"
+py -3 -m py_compile "scripts/beat_this_bridge.py" "scripts/beat_this_phase_rescue.py" "scripts/beat_this_grid_rescue.py" "scripts/beat_this_full_logit_rescue.py" "scripts/benchmark_rkb_rekordbox_truth.py" "scripts/capture_rekordbox_playlist_truth.py" "scripts/run_parallel_rkb_rekordbox_benchmark.py"
 ```
 
 如果修改了代码，最终还必须运行：
@@ -356,11 +451,11 @@ benchmark 失败时：
 
 ## 13. 当前剩余失败处理原则
 
-当前剩余 10 首失败样本不再单独作为新增规则来源。
+当前失败样本不再单独作为逐曲新增规则来源。
 
 它们的作用是：
 
-- 保留在回归报告里。
+- 保留在 `grid-failures-current` 和对应 failure truth 里。
 - 等新样本扩充后做失败模式对照。
 - 如果同类错误在新样本中重复出现，再设计通用 prior。
 
@@ -370,16 +465,16 @@ benchmark 失败时：
 - 不为它写单曲规则。
 - 不为它牺牲新样本泛化。
 
-当前最重要的目标不是把 184 首压到 184/184，而是让新样本加入后还能稳定解释失败并避免回归。
+当前最重要的目标不是把失败集压到全过，而是让新样本加入后还能稳定解释失败并避免回归。
 
 ## 14. 一句话交接
 
 ```text
 按 drafts/rkb-rekordbox-truth-validation-workflow.md 工作。
-当前可信基线是 184 首中 174 首通过，剩余 10 首暂停追杀。
+当前默认 `sample` 是通过集；失败样本在 `grid-failures-current` 单独聚类。
 旧 184/184 是样本内过窄补丁结果，不再作为质量结论。
 下一步先扩充样本，用新旧样本共同暴露稳定失败模式。
 新增 Rekordbox-compatible phase prior 必须低维、通用、可解释、0 回归。
 禁止歌名/文件名/truth/pass-fail/高维特征指纹规则。
-修改代码后必须跑 py_compile、完整 benchmark、npx vue-tsc --noEmit。
+修改代码后必须跑 py_compile、相关 benchmark、npx vue-tsc --noEmit。
 ```

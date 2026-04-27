@@ -295,7 +295,7 @@ def _write_progress_payload(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run rkb Rekordbox benchmark shards in parallel")
+    parser = argparse.ArgumentParser(description="Run Rekordbox truth benchmark shards in parallel")
     parser.add_argument("--truth", default=str(benchmark.DEFAULT_TRUTH))
     parser.add_argument("--audio-root", default=str(benchmark.DEFAULT_AUDIO_ROOT))
     parser.add_argument("--ffmpeg", default=str(benchmark.DEFAULT_FFMPEG))

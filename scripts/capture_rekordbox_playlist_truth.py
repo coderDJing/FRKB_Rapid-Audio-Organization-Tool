@@ -145,7 +145,7 @@ def _load_playlist_truth(
         raise RuntimeError(f"some playlist tracks are invalid: {resolved_name}")
 
     source = {
-        "type": "rekordbox-rkb-playlist-grid-snapshot",
+        "type": "rekordbox-playlist-grid-snapshot",
         "dbPath": str((payload.get("probe") or {}).get("dbPath") or ""),
         "playlistName": resolved_name,
         "playlistId": playlist_id,
@@ -211,12 +211,12 @@ def _merge_truth(
 
     merged_source = {
         **existing_source,
-        "type": "rekordbox-rkb-unified-grid-snapshot",
+        "type": "rekordbox-truth-unified-grid-snapshot",
         "dbPath": source.get("dbPath") or existing_source.get("dbPath"),
         "sourcePlaylists": playlist_summaries,
-        "playlistName": "rkb-unified-samples",
+        "playlistName": "rekordbox-truth-unified-samples",
         "trackCount": len(merged_tracks),
-        "note": f"{datetime.now().strftime('%Y-%m-%d')} unified FRKB rkb/sample/new Rekordbox truth snapshot",
+        "note": f"{datetime.now().strftime('%Y-%m-%d')} unified FRKB sample/new Rekordbox truth snapshot",
     }
     return {
         "source": merged_source,

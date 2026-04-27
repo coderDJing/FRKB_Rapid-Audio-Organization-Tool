@@ -12,10 +12,6 @@ import {
   normalizePlaylistTrackNumber,
   sortSongsByPlaylistTrackNumber
 } from './playlistTrackNumbers'
-import {
-  isRkbRekordboxGridBypassSongListRoot,
-  resolveRkbRekordboxGridForFile
-} from './keyAnalysis/rkbRekordboxGrid'
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
@@ -44,9 +40,8 @@ export const scheduleSongListPostScanTasks = async (
 
   if (!cacheRoot || scanData.length === 0) return
 
-  const shouldRefreshRkbRekordboxGrid = isRkbRekordboxGridBypassSongListRoot(cacheRoot)
   const pendingKeys = scanData
-    .filter((info) => shouldRefreshRkbRekordboxGrid || !hasKey(info.key) || !hasCompleteGrid(info))
+    .filter((info) => !hasKey(info.key) || !hasCompleteGrid(info))
     .map((info) => info.filePath)
     .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
   if (pendingKeys.length > 0) {
@@ -241,27 +236,6 @@ export async function scanSongList(
     }
   }
 
-  const applyRkbRekordboxGridSnapshot = async (infos: ISongInfo[]) => {
-    if (!cacheRoot || !isRkbRekordboxGridBypassSongListRoot(cacheRoot) || infos.length === 0) {
-      return infos
-    }
-    const tasks = infos.map((info) => async () => {
-      const grid = await resolveRkbRekordboxGridForFile(cacheRoot, info.filePath)
-      if (!grid) return info
-      return enrichSongInfo({
-        ...info,
-        bpm: grid.bpm,
-        firstBeatMs: grid.firstBeatMs,
-        barBeatOffset: grid.barBeatOffset,
-        timeBasisOffsetMs: grid.timeBasisOffsetMs
-      })
-    })
-    const { results } = await runWithConcurrency(tasks, { concurrency: 4 })
-    return results.map((result, index) =>
-      result && !(result instanceof Error) ? (result as ISongInfo) : infos[index]
-    )
-  }
-
   if (cacheFromDb && cacheRoot && cacheMap.size > 0 && filesStatList.length > 0) {
     for (const st of filesStatList) {
       const entry = cacheMap.get(st.key)
@@ -409,7 +383,6 @@ export async function scanSongList(
     }
   }
   songInfoArr = [...cachedInfos, ...parsedInfos]
-  songInfoArr = await applyRkbRekordboxGridSnapshot(songInfoArr)
 
   for (const info of songInfoArr) {
     const cachedInfo = cacheMap.get(normalizePathKey(info.filePath))?.info

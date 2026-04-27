@@ -12,7 +12,6 @@ import { persistSharedSongGridDefinition } from '../sharedSongGrid'
 import { emitSongGridUpdated } from '../songGridEvents'
 import { isRcVersion } from '../../../shared/windowScreenshotFeature'
 import { getBeatThisRuntimeAvailabilitySnapshot } from '../../workers/beatThisRuntime'
-import { resolveRkbRekordboxGridForFile } from './rkbRekordboxGrid'
 import {
   resolveAudioFirstBeatTimelineMs,
   resolveAudioTimeBasisOffsetMsForFile
@@ -467,8 +466,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
 
   const prepareJob = async (job: KeyAnalysisJob): Promise<boolean> => {
     const filePath = job.filePath
-    const mayForceRkbRekordboxGrid =
-      path.basename(path.dirname(filePath)).trim().toLowerCase() === 'rkb'
     let stat: { size: number; mtimeMs: number }
     let listRootResolved = false
     let doneEntryHit = false
@@ -522,7 +519,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       if (done.hasWaveform) {
         needsWaveform = false
       }
-      if (!needsKey && !needsBpm && !needsWaveform && !mayForceRkbRekordboxGrid) {
+      if (!needsKey && !needsBpm && !needsWaveform) {
         job.needsKey = false
         job.needsBpm = false
         job.needsWaveform = false
@@ -614,7 +611,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           })
           needsWaveform = false
         }
-        if (!needsKey && !needsBpm && !needsWaveform && !mayForceRkbRekordboxGrid) {
+        if (!needsKey && !needsBpm && !needsWaveform) {
           job.needsKey = false
           job.needsBpm = false
           job.needsWaveform = false
@@ -633,23 +630,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       }
     } else {
       needsWaveform = false
-    }
-
-    if (listRoot) {
-      const rekordboxGrid = await resolveRkbRekordboxGridForFile(listRoot, filePath).catch(
-        () => null
-      )
-      if (rekordboxGrid) {
-        await persistBpm(
-          filePath,
-          rekordboxGrid.bpm,
-          rekordboxGrid.firstBeatMs,
-          rekordboxGrid.barBeatOffset,
-          rekordboxGrid.timeBasisOffsetMs,
-          { firstBeatCoordinate: 'timeline' }
-        )
-        needsBpm = false
-      }
     }
 
     if (!needsKey && !needsBpm && !needsWaveform) {

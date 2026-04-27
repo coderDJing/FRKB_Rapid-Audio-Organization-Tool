@@ -97,14 +97,6 @@ const HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR = 0.8
 const HORIZONTAL_BROWSE_RAW_VISIBLE_REDRAW_LEAD_FACTOR = 0.25
 const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR = 0.5
 
-const shouldForceLiveRawWaveformStream = (filePath: string) => {
-  const normalized = String(filePath || '')
-    .trim()
-    .replace(/\//g, '\\')
-    .toLowerCase()
-  return normalized.includes('\\filterlibrary\\rkb\\')
-}
-
 const toFloat32Array = (value: unknown) => {
   if (value instanceof Float32Array) return value
   if (value instanceof ArrayBuffer) return new Float32Array(value)
@@ -337,7 +329,6 @@ export const useHorizontalBrowseRawWaveformStream = (
     window.electron.ipcRenderer.send('mixtape-waveform-raw:stream', {
       requestId: rawStreamRequestId,
       filePath,
-      forceLiveDecode: shouldForceLiveRawWaveformStream(filePath),
       priorityHint: resolveRawLoadPriorityHint(),
       targetRate,
       startSec: rawStreamStartSec,

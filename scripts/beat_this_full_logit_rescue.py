@@ -134,11 +134,12 @@ def _find_positive_full_logit_overrun_phase(
 
 
 def _should_attempt_full_track_downbeat_refinement(result: dict[str, Any]) -> bool:
-    if str(result.get("anchorStrategy") or "").strip() != "grid-solver":
-        return False
+    strategy = str(result.get("anchorStrategy") or "").strip()
     bpm = float(result.get("bpm") or 0.0)
     beat_count = int(result.get("beatCount") or 0)
     matched_count = int(result.get("anchorMatchedBeatCount") or 0)
+    if strategy != "grid-solver":
+        return False
     if (
         float(result.get("anchorConfidenceScore") or 0.0) >= 0.99
         and beat_count >= 32
@@ -156,7 +157,31 @@ def _should_attempt_full_track_downbeat_refinement(result: dict[str, Any]) -> bo
     )
 
 
-def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
+def _should_attempt_refined_head_downbeat_refinement(result: dict[str, Any]) -> bool:
+    strategy = str(result.get("anchorStrategy") or "").strip()
+    bpm = float(result.get("bpm") or 0.0)
+    return (
+        strategy == "refined"
+        and math.isfinite(bpm)
+        and bpm > 0.0
+        and float(result.get("firstBeatMs") or 0.0) <= 30.0
+        and float(result.get("qualityScore") or 0.0) >= 0.8
+        and float(result.get("anchorConfidenceScore") or 0.0) >= 0.8
+        and int(result.get("beatCount") or 0) >= 32
+        and int(result.get("downbeatCount") or 0) >= 8
+    )
+
+
+def _is_adjacent_bar_change(current_bar_offset: int, next_bar_offset: int) -> bool:
+    delta = (int(next_bar_offset) % 4 - int(current_bar_offset) % 4) % 4
+    return delta in {1, 3}
+
+
+def _should_attempt_full_track_logit_rescue(
+    result: dict[str, Any],
+    *,
+    include_refined_head_downbeat: bool = True,
+) -> bool:
     bpm = float(result.get("bpm") or 0.0)
     if not math.isfinite(bpm) or bpm <= 0.0:
         return False
@@ -316,10 +341,14 @@ def _should_attempt_full_track_logit_rescue(result: dict[str, Any]) -> bool:
         and abs(float(result.get("anchorCorrectionMs") or 0.0)) <= 0.001
         and "positive-guard" not in strategy
     )
+    has_refined_head_downbeat_refinement = (
+        include_refined_head_downbeat and _should_attempt_refined_head_downbeat_refinement(result)
+    )
     return (
         has_unresolved_positive_guard
         or has_unresolved_zero_bar_positive_guard
         or has_full_track_downbeat_refinement
+        or has_refined_head_downbeat_refinement
         or has_low_confidence_downbeat
         or has_low_confidence_head_grid
         or has_low_confidence_head_drift
@@ -361,7 +390,9 @@ def apply_full_track_logit_rescue(
         device,
         cpu_spect,
     )
-    if _should_attempt_full_track_downbeat_refinement(result):
+    has_grid_downbeat_refinement = _should_attempt_full_track_downbeat_refinement(result)
+    has_refined_head_downbeat_refinement = _should_attempt_refined_head_downbeat_refinement(result)
+    if has_grid_downbeat_refinement or has_refined_head_downbeat_refinement:
         current_bar_offset = int(result.get("barBeatOffset") or 0)
         current_phase_ms = float(result.get("firstBeatMs") or 0.0)
         bar_beat_offset, downbeat_margin = _select_downbeat_bar_offset(
@@ -371,7 +402,18 @@ def apply_full_track_logit_rescue(
             duration_sec,
             current_bar_offset,
         )
-        if bar_beat_offset != current_bar_offset % 4 and downbeat_margin >= 1.0:
+        is_refined_head_downbeat = has_refined_head_downbeat_refinement
+        required_margin = 8.0 if is_refined_head_downbeat else 1.0
+        allowed_bar_change = (
+            _is_adjacent_bar_change(current_bar_offset, bar_beat_offset)
+            if is_refined_head_downbeat
+            else True
+        )
+        if (
+            bar_beat_offset != current_bar_offset % 4
+            and downbeat_margin >= required_margin
+            and allowed_bar_change
+        ):
             next_result = dict(result)
             next_result["barBeatOffset"] = int(
                 (current_bar_offset - current_bar_offset % 4 + bar_beat_offset) % 32
@@ -383,8 +425,19 @@ def apply_full_track_logit_rescue(
                 else "full-logit-downbeat"
             )
             next_result["downbeatRefinementMargin"] = round(float(downbeat_margin), 6)
+            next_result["downbeatRefinementStrategy"] = (
+                "full-track-logit-refined-head-downbeat"
+                if is_refined_head_downbeat
+                else "full-track-logit-downbeat"
+            )
             return next_result
-        return result
+        if has_grid_downbeat_refinement:
+            return result
+        if not _should_attempt_full_track_logit_rescue(
+            result,
+            include_refined_head_downbeat=False,
+        ):
+            return result
 
     broad_bpm_refinement: dict[str, float] | None = None
     if _should_attempt_broad_logit_bpm_rescue(result):

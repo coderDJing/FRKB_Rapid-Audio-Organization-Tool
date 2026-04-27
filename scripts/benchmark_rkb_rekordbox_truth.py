@@ -23,7 +23,7 @@ except Exception:
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_TRUTH = REPO_ROOT / "resources" / "rkbRekordboxGridSnapshot.json"
-DEFAULT_AUDIO_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/rkb")
+DEFAULT_AUDIO_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/sample")
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
 DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
 DEFAULT_OUTPUT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "latest.json"
@@ -974,7 +974,7 @@ def _build_summary(rows: list[dict[str, Any]], error_rows: list[dict[str, Any]])
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Benchmark FRKB BeatThis grid against rkb Rekordbox truth")
+    parser = argparse.ArgumentParser(description="Benchmark FRKB BeatThis grid against Rekordbox truth")
     parser.add_argument("--truth", default=str(DEFAULT_TRUTH))
     parser.add_argument("--audio-root", default=str(DEFAULT_AUDIO_ROOT))
     parser.add_argument("--ffmpeg", default=str(DEFAULT_FFMPEG))
