@@ -829,6 +829,7 @@ def _analyze_track(
             predictor=predictor,
             cpu_spect=cpu_spect,
             device=device,
+            time_basis=truth.get("timeBasis") if isinstance(truth.get("timeBasis"), dict) else None,
         )
     return _normalize_bridge_result(result)
 

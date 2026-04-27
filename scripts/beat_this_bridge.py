@@ -139,6 +139,7 @@ from beat_this_full_logit_rescue import (
 )
 from beat_this_phase_rescue import (
     apply_phase_rescue_rules as _apply_phase_rescue_rules,
+    apply_stream_start_frame_prezero_to_result as _apply_stream_start_frame_prezero_to_result,
     apply_window_phase_consensus as _apply_window_phase_consensus,
 )
 from beat_this_bpm_metrics import estimate_bpm_drift_proxy as _estimate_bpm_drift_proxy
@@ -698,6 +699,7 @@ def _analyze_prepared_windows_to_track_result(
     predictor: Audio2Beats | None = None,
     cpu_spect: LogMelSpect | None = None,
     device: str = "cpu",
+    time_basis: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if not prepared_windows:
         raise RuntimeError(f"no valid beat-this result for {source_file_path}")
@@ -739,6 +741,7 @@ def _analyze_prepared_windows_to_track_result(
                 next_result,
                 sample_rate,
                 tuning,
+                time_basis=time_basis,
             )
             next_result = _apply_window_phase_consensus(finalized_results, next_result)
         proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
@@ -757,6 +760,16 @@ def _analyze_prepared_windows_to_track_result(
             )
             if rescued_result is not next_result:
                 next_result = rescued_result
+                refreshed_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
+                if refreshed_proxy:
+                    next_result = dict(next_result)
+                    next_result.update(refreshed_proxy)
+            stream_start_frame_result = _apply_stream_start_frame_prezero_to_result(
+                next_result,
+                time_basis=time_basis,
+            )
+            if stream_start_frame_result is not next_result:
+                next_result = stream_start_frame_result
                 refreshed_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
                 if refreshed_proxy:
                     next_result = dict(next_result)
@@ -900,6 +913,7 @@ def serve(device: str, dbn: bool) -> int:
             channels = int(header.get("channels") or 0)
             byte_length = int(header.get("byteLength") or 0)
             source_file_path = str(header.get("sourceFilePath") or "").strip()
+            time_basis = header.get("timeBasis") if isinstance(header.get("timeBasis"), dict) else None
             window_sec = max(1.0, float(header.get("windowSec") or 30.0))
             max_scan_sec = max(window_sec, float(header.get("maxScanSec") or 120.0))
             if sample_rate <= 0:
@@ -934,6 +948,7 @@ def serve(device: str, dbn: bool) -> int:
                 predictor=predictor,
                 cpu_spect=cpu_spect,
                 device=device,
+                time_basis=time_basis,
             )
 
             _emit(

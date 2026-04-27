@@ -726,6 +726,128 @@ def _apply_integer_head_prezero(
     return result
 
 
+def _to_time_basis_float(time_basis: dict[str, Any] | None, key: str) -> float:
+    if not isinstance(time_basis, dict):
+        return 0.0
+    return _present_float(time_basis, key, 0.0)
+
+
+def _has_non_lame_mp3_stream_start(time_basis: dict[str, Any] | None) -> bool:
+    if not isinstance(time_basis, dict):
+        return False
+    encoder = str(time_basis.get("encoder") or "").strip().upper()
+    if encoder.startswith("LAME"):
+        return False
+
+    offset_ms = _to_time_basis_float(time_basis, "offsetMs")
+    start_time_ms = _to_time_basis_float(time_basis, "streamStartTimeMs")
+    skip_samples_ms = _to_time_basis_float(time_basis, "skipSamplesMs")
+    skip_samples = _to_time_basis_float(time_basis, "skipSamples")
+    return (
+        20.0 <= start_time_ms <= 32.0
+        and skip_samples > 0.0
+        and abs(skip_samples_ms - start_time_ms) <= 0.75
+        and abs(offset_ms - start_time_ms) <= 0.75
+    )
+
+
+def _apply_stream_start_frame_prezero(
+    result: dict[str, Any],
+    interval_ms: float,
+    time_basis: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not _has_non_lame_mp3_stream_start(time_basis):
+        return result
+
+    strategy = str(result.get("anchorStrategy") or "")
+    if "stream-start-frame-prezero" in strategy:
+        return result
+    if "head-attack" in strategy:
+        return result
+    if int(result.get("barBeatOffset") or 0) % 4 != 0:
+        return result
+
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
+    if not (19.5 <= raw_first_beat_ms <= 20.5):
+        return result
+    if not (-4.0 <= current_first_beat_ms <= 30.0):
+        return result
+    if float(result.get("qualityScore") or 0.0) < 0.8:
+        return result
+    if float(result.get("anchorConfidenceScore") or 0.0) < 0.7:
+        return result
+
+    target_first_beat_ms = -1.0
+    shift_ms = phase_delta_ms(target_first_beat_ms, current_first_beat_ms, interval_ms)
+    if not (-31.0 <= shift_ms <= 1.0):
+        return result
+
+    next_result = _update_first_beat(
+        result,
+        target_first_beat_ms,
+        interval_ms,
+        "stream-start-frame-prezero",
+        preserve_signed_first_beat=True,
+    )
+    next_result["streamStartFramePrezeroShiftMs"] = round(shift_ms, 3)
+    return next_result
+
+
+def _apply_stream_start_late_frame_prior(
+    result: dict[str, Any],
+    interval_ms: float,
+    time_basis: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if not _has_non_lame_mp3_stream_start(time_basis):
+        return result
+    if str(result.get("anchorStrategy") or "").strip() != "refined":
+        return result
+    if int(result.get("barBeatOffset") or 0) % 4 != 0:
+        return result
+
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
+    if abs(_present_float(result, "anchorCorrectionMs", 0.0)) > 0.001:
+        return result
+    if abs(current_first_beat_ms - raw_first_beat_ms) > 0.001:
+        return result
+    if not (220.0 <= raw_first_beat_ms <= 280.0):
+        return result
+    if not _is_on_model_frame_ms(raw_first_beat_ms):
+        return result
+    if float(result.get("qualityScore") or 0.0) < 0.8:
+        return result
+    if float(result.get("anchorConfidenceScore") or 0.0) < 0.35:
+        return result
+    if abs(_present_float(result, "beatThisEstimatedDrift128Ms", 0.0)) > 15.0:
+        return result
+
+    shift_ms = -11.0
+    next_result = _update_first_beat(
+        result,
+        current_first_beat_ms + shift_ms,
+        interval_ms,
+        "stream-start-late-frame-prior",
+    )
+    next_result["streamStartLateFrameShiftMs"] = round(shift_ms, 3)
+    return next_result
+
+
+def apply_stream_start_frame_prezero_to_result(
+    result: dict[str, Any],
+    time_basis: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    interval_ms = 60000.0 / float(result.get("bpm") or 0.0)
+    if not math.isfinite(interval_ms) or interval_ms <= 0.0:
+        return result
+    return _apply_stream_start_frame_prezero(
+        result,
+        interval_ms,
+        time_basis,
+    )
+
+
 def _apply_downbeat_one_beat_guard(
     result: dict[str, Any],
 ) -> dict[str, Any]:
@@ -938,6 +1060,7 @@ def apply_phase_rescue_rules(
     result: dict[str, Any],
     sample_rate: int,
     tuning: dict[str, Any],
+    time_basis: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     next_result = dict(result)
     interval_ms = 60000.0 / float(next_result.get("bpm") or 0.0)
@@ -998,6 +1121,22 @@ def apply_phase_rescue_rules(
     )
     if integer_head_result is not next_result:
         return integer_head_result
+
+    stream_start_frame_result = _apply_stream_start_frame_prezero(
+        next_result,
+        interval_ms,
+        time_basis,
+    )
+    if stream_start_frame_result is not next_result:
+        return stream_start_frame_result
+
+    stream_start_late_frame_result = _apply_stream_start_late_frame_prior(
+        next_result,
+        interval_ms,
+        time_basis,
+    )
+    if stream_start_late_frame_result is not next_result:
+        return stream_start_late_frame_result
 
     frame_prior_result = _apply_model_frame_phase_prior(
         next_result,

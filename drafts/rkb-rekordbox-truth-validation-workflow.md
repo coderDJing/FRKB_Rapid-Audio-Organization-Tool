@@ -9,18 +9,18 @@ beat grid analyzer。
 当前有效基线：
 
 ```text
-sample pass regression = grid-analysis-lab/rkb-rekordbox-benchmark/sample-pass-after-layout-3.json
-trackTotal = 219
-pass = 219
+sample pass regression = grid-analysis-lab/rkb-rekordbox-benchmark/sample-after-new120-intake-1.json
+trackTotal = 276
+pass = 276
 errorTrackCount = 0
 currentTimeline.bpmOnlyDrift128BeatsMs.max = 0.0ms
 strictToleranceMs = 2.0ms
 
-current failures = grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-after-layout-1.json
-trackTotal = 56
-first-beat-phase = 50
-downbeat = 3
-bpm = 3
+current failures = grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-after-new120-intake-1.json
+trackTotal = 119
+first-beat-phase = 103
+downbeat = 4
+bpm = 12
 errorTrackCount = 0
 ```
 
@@ -81,33 +81,76 @@ notes = no metadata, no truth, no file identity; old184 per-track diff is empty
 `Yigitoglu - Cloudy And Beautiful (Original Mix).mp3` 从 `downbeat` 变 `pass`；
 旧 184 没有任何逐曲输出变化。
 
+2026-04-27 新增 `test` 歌单第二轮观察与合并规则：
+
+```text
+captured truth = grid-analysis-lab/rkb-rekordbox-benchmark/test-captured-current.json
+test playlist trackTotal = 120
+duplicateWithExistingTruth = 0
+uniqueNew = 120
+audio source root = C:/Users/coder/Desktop/新建文件夹
+
+new120 baseline = grid-analysis-lab/rkb-rekordbox-benchmark/test-120-baseline-1.json
+new120 baseline pass = 42
+new120 baseline first-beat-phase = 68
+new120 baseline bpm = 9
+new120 baseline downbeat = 1
+new120 baseline errorTrackCount = 0
+
+rule = stream-start-frame-priors
+failureType = first-beat-phase
+signals = non-LAME MP3 stream.start_time ~= 25ms, Skip Samples ~= stream.start_time,
+          BeatThis 20ms model frame phase, bar/downbeat support, quality/confidence, drift
+subrules = stream-start-frame-prezero, stream-start-late-frame-prior
+targetedNew120 = improved 15, regressed 0
+fullNew120 = pass 57, first-beat-phase 53, bpm 9, downbeat 1, errorTrackCount 0
+sampleBeforeIntake = pass 219, regressed 0
+failuresBeforeIntake = first-beat-phase 50, downbeat 3, bpm 3, regressed 0
+postIntakeSample = pass 276, errorTrackCount 0
+postIntakeFailures = first-beat-phase 103, downbeat 4, bpm 12, errorTrackCount 0
+notes = no metadata identity, no truth, no pass/fail, no file identity
+```
+
+`stream-start-frame-prezero` 处理非 LAME MP3 在 decoded sample 0 前侧的头部
+20ms 模型帧残差，允许稳定的小幅负 `firstBeatMs`；`stream-start-late-frame-prior`
+处理同类文件中 `refined` 零修正结果落在 220-280ms 模型帧且整体偏晚的残差。
+两条规则只使用音频格式时间轴信号和 BeatThis 分析信号，不读取 Rekordbox truth 或
+benchmark 结论。
+
 2026-04-27 本地样本整理：
 
 ```text
-D:/FRKB_database-B/library/FilterLibrary/sample = current pass sample root, 219 tracks
+D:/FRKB_database-B/library/FilterLibrary/sample = current pass sample root, 276 audio tracks
 D:/FRKB_database-B/library/FilterLibrary/new = Rekordbox test intake staging, 0 tracks
-D:/FRKB_database-B/library/FilterLibrary/grid-failures-current = current FRKB failures, 56 tracks
+D:/FRKB_database-B/library/FilterLibrary/grid-failures-current = current FRKB failures, 119 audio tracks
 D:/FRKB_database-B/library/FilterLibrary/rkb = deleted
 
 sample source:
 old184 pass = 174 tracks
 new95 pass unique = 45 tracks
 new95 pass duplicate with old sample = 4 tracks, skipped
+new120 pass unique = 57 tracks
 
 grid-failures-current source:
 old184-after-downbeat-logit-1 = 10 failures
 new95-after-downbeat-logit-3 = 46 failures
-categoryCounts = first-beat-phase 50, downbeat 3, bpm 3
+new120-after-stream-start-frame-priors-1 = 63 failures
+categoryCounts = first-beat-phase 103, downbeat 4, bpm 12
 manifest = grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-current-manifest.json
 failure truth = grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-current-truth.json
 ```
 
 当前保留产物：
 
-- `sample-pass-after-layout-3.json` / `.progress.json`：当前默认 `sample` 通过集基线。
-- `grid-failures-after-layout-1.json` / `.progress.json`：当前失败集基线。
-- `grid-failures-current-truth.json`：失败集 truth。
-- `grid-failures-current-manifest.json`：失败集来源和分类清单。
+- `sample-after-new120-intake-1.json` / `.progress.json`：当前默认 `sample` 通过集基线。
+- `grid-failures-after-new120-intake-1.json` / `.progress.json`：当前失败集基线。
+- `test-captured-current.json`：当前 Rekordbox `test` 120 首 truth 捕获。
+- `test-120-baseline-1.json` / `.progress.json`：新 120 优化前 baseline。
+- `test-120-after-stream-start-frame-priors-1.json` / `.progress.json`：新 120 stream-start priors 里程碑。
+- `grid-failures-current-truth.json`：当前 119 首失败集 truth。
+- `grid-failures-current-manifest.json`：当前 119 首失败集来源和分类清单。
+- `sample-pass-after-layout-3.json` / `.progress.json`：219 首历史通过集基线。
+- `grid-failures-after-layout-1.json` / `.progress.json`：56 首历史失败集基线。
 - `after-late-edge-full-1.json` / `.progress.json`：旧 184 历史基线。
 - `after-overfit-prune-1.json` / `.progress.json`：删除明显过拟合补丁后的基线。
 - `after-local-onset-lead-full-1.json` / `.progress.json`：local onset lead 里程碑。
@@ -179,7 +222,7 @@ rule = model-frame-prior
 failureType = first-beat-phase
 signals = raw/current phase, bar offset, quality, confidence, drift
 targeted = improved 4, regressed 0
-sample = pass 219, regressed 0
+sample = pass 276, regressed 0
 failures = improved 9, regressed 0
 notes = no metadata, no truth, no file identity
 ```
@@ -385,7 +428,7 @@ gridErrorMs[i] = frkbBeatMs[i] - rbBeatMs[i]
 
 默认回归跑 `sample` 通过集。默认 truth 是
 `resources/rkbRekordboxGridSnapshot.json`，默认 `audio-root` 是
-`D:/FRKB_database-B/library/FilterLibrary/sample`，当前应为 219 首：
+`D:/FRKB_database-B/library/FilterLibrary/sample`，当前应为 276 首：
 
 ```powershell
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --jobs 4 --output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.json" --progress-output "grid-analysis-lab/rkb-rekordbox-benchmark/<name>.progress.json"
