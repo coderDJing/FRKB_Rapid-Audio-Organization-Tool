@@ -22,8 +22,15 @@ except Exception:
     pass
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TRUTH = REPO_ROOT / "resources" / "rkbRekordboxGridSnapshot.json"
-DEFAULT_AUDIO_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/sample")
+DEFAULT_TRUTH = (
+    REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "rekordbox-current-truth.json"
+)
+DEFAULT_AUDIO_ROOTS = [
+    Path("D:/FRKB_database-B/library/FilterLibrary/new"),
+    Path("D:/FRKB_database-B/library/FilterLibrary/sample"),
+    Path("D:/FRKB_database-B/library/FilterLibrary/grid-failures-current"),
+]
+DEFAULT_AUDIO_ROOT = ";".join(str(item) for item in DEFAULT_AUDIO_ROOTS)
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
 DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
 DEFAULT_OUTPUT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "latest.json"
@@ -586,7 +593,22 @@ def _probe_time_basis(ffprobe_path: Path, file_path: Path) -> dict[str, Any]:
     }
 
 
-def _load_truth_tracks(truth_path: Path, audio_root: Path, ffprobe_path: Path) -> list[dict[str, Any]]:
+def _parse_audio_roots(value: str) -> list[Path]:
+    roots = [Path(item.strip()) for item in str(value or "").split(";") if item.strip()]
+    if not roots:
+        raise RuntimeError("audio root is empty")
+    return roots
+
+
+def _resolve_audio_path(audio_roots: list[Path], file_name: str) -> Path:
+    for audio_root in audio_roots:
+        file_path = audio_root / file_name
+        if file_path.exists():
+            return file_path
+    return audio_roots[0] / file_name
+
+
+def _load_truth_tracks(truth_path: Path, audio_roots: list[Path], ffprobe_path: Path) -> list[dict[str, Any]]:
     payload = json.loads(truth_path.read_text(encoding="utf-8"))
     tracks = payload.get("tracks") if isinstance(payload, dict) else None
     if not isinstance(tracks, list) or not tracks:
@@ -608,7 +630,7 @@ def _load_truth_tracks(truth_path: Path, audio_root: Path, ffprobe_path: Path) -
         if bpm is None or bpm <= 0.0 or first_beat_ms is None or first_beat_ms < 0.0:
             continue
 
-        file_path = audio_root / file_name
+        file_path = _resolve_audio_path(audio_roots, file_name)
         bar_beat_offset = _normalize_bar_offset(item.get("barBeatOffset"), 32)
         first_beat_label = int(item.get("firstBeatLabel") or _resolve_first_beat_label_from_offset(bar_beat_offset))
         resolved.append(
@@ -998,7 +1020,7 @@ def main() -> int:
     args = parser.parse_args()
 
     truth_path = Path(args.truth)
-    audio_root = Path(args.audio_root)
+    audio_roots = _parse_audio_roots(args.audio_root)
     ffmpeg_path = Path(args.ffmpeg)
     ffprobe_path = Path(args.ffprobe)
     output_path = Path(args.output)
@@ -1007,19 +1029,21 @@ def main() -> int:
 
     if not truth_path.exists():
         raise SystemExit(f"truth not found: {truth_path}")
-    if not audio_root.exists():
-        raise SystemExit(f"audio root not found: {audio_root}")
+    missing_audio_roots = [item for item in audio_roots if not item.exists()]
+    if missing_audio_roots:
+        missing = ", ".join(str(item) for item in missing_audio_roots)
+        raise SystemExit(f"audio root not found: {missing}")
     if not ffmpeg_path.exists():
         raise SystemExit(f"ffmpeg not found: {ffmpeg_path}")
     if not ffprobe_path.exists():
         raise SystemExit(f"ffprobe not found: {ffprobe_path}")
 
     started_at = time.time()
-    truth_tracks = _load_truth_tracks(truth_path, audio_root, ffprobe_path)
+    truth_tracks = _load_truth_tracks(truth_path, audio_roots, ffprobe_path)
     missing_tracks = [item for item in truth_tracks if not item["fileExists"]]
     if missing_tracks:
         missing_names = ", ".join(item["fileName"] for item in missing_tracks[:5])
-        raise SystemExit(f"truth tracks missing from audio root: {missing_names}")
+        raise SystemExit(f"truth tracks missing from audio roots: {missing_names}")
     only_filters = [_normalize_lookup_key(item) for item in args.only if _normalize_lookup_key(item)]
     truth_tracks = [item for item in truth_tracks if _matches_only_filters(item, only_filters)]
     if args.limit and args.limit > 0:
@@ -1065,7 +1089,8 @@ def main() -> int:
         "summary": {
             **summary,
             "truthPath": str(truth_path),
-            "audioRoot": str(audio_root),
+            "audioRoot": str(args.audio_root),
+            "audioRoots": [str(item) for item in audio_roots],
             "device": device,
             "windowSec": WINDOW_SEC,
             "maxScanSec": MAX_SCAN_SEC,

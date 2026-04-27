@@ -9,7 +9,11 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BRIDGE = REPO_ROOT / "resources" / "rekordboxDesktopLibrary" / "bridge.py"
-DEFAULT_TRUTH = REPO_ROOT / "resources" / "rkbRekordboxGridSnapshot.json"
+BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
+DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "intake-current-truth.json"
+DEFAULT_TRUTH = (
+    BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
+)
 DEFAULT_AUDIO_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/new")
 
 
@@ -166,6 +170,42 @@ def _validate_audio_root(audio_root: Path, tracks: list[dict[str, Any]]) -> list
     ]
 
 
+def _load_truth_keys(truth_path: Path) -> set[str]:
+    if not truth_path.exists():
+        return set()
+    payload = json.loads(truth_path.read_text(encoding="utf-8"))
+    tracks = payload.get("tracks") if isinstance(payload, dict) else None
+    if not isinstance(tracks, list):
+        raise RuntimeError(f"truth has no tracks array: {truth_path}")
+    return {
+        _normalize_key(track.get("fileName"))
+        for track in tracks
+        if isinstance(track, dict) and _normalize_key(track.get("fileName"))
+    }
+
+
+def _filter_existing_truth_tracks(
+    source: dict[str, Any],
+    tracks: list[dict[str, Any]],
+    truth_path: Path,
+    *,
+    include_existing: bool,
+) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
+    if include_existing:
+        return source, tracks, 0
+    existing_keys = _load_truth_keys(truth_path)
+    filtered_tracks = [
+        track for track in tracks if _normalize_key(track.get("fileName")) not in existing_keys
+    ]
+    skipped_count = len(tracks) - len(filtered_tracks)
+    return {
+        **source,
+        "playlistTrackCount": len(tracks),
+        "trackCount": len(filtered_tracks),
+        "skippedExistingTruthCount": skipped_count,
+    }, filtered_tracks, skipped_count
+
+
 def _build_snapshot(source: dict[str, Any], tracks: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "source": source,
@@ -211,12 +251,12 @@ def _merge_truth(
 
     merged_source = {
         **existing_source,
-        "type": "rekordbox-truth-unified-grid-snapshot",
+        "type": "rekordbox-current-grid-truth",
         "dbPath": source.get("dbPath") or existing_source.get("dbPath"),
         "sourcePlaylists": playlist_summaries,
-        "playlistName": "rekordbox-truth-unified-samples",
+        "playlistName": "rekordbox-current-truth",
         "trackCount": len(merged_tracks),
-        "note": f"{datetime.now().strftime('%Y-%m-%d')} unified FRKB sample/new Rekordbox truth snapshot",
+        "note": f"{datetime.now().strftime('%Y-%m-%d')} unified Rekordbox truth snapshot",
     }
     return {
         "source": merged_source,
@@ -236,8 +276,13 @@ def main() -> int:
     parser.add_argument("--audio-root", default=str(DEFAULT_AUDIO_ROOT))
     parser.add_argument("--truth", default=str(DEFAULT_TRUTH))
     parser.add_argument("--db-path", default="")
-    parser.add_argument("--output", default="")
+    parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--merge", action="store_true")
+    parser.add_argument(
+        "--include-existing",
+        action="store_true",
+        help="Include tracks that already exist in the current truth. Default is to skip them.",
+    )
     args = parser.parse_args()
 
     bridge_path = Path(args.bridge)
@@ -249,6 +294,12 @@ def main() -> int:
         raise SystemExit(f"bridge not found: {bridge_path}")
 
     source, tracks = _load_playlist_truth(bridge_path, args.playlist, str(args.db_path or ""))
+    source, tracks, skipped_existing_count = _filter_existing_truth_tracks(
+        source,
+        tracks,
+        truth_path,
+        include_existing=bool(args.include_existing),
+    )
     missing_audio = _validate_audio_root(audio_root, tracks)
     if missing_audio:
         preview = ", ".join(missing_audio[:8])
@@ -273,6 +324,7 @@ def main() -> int:
                 "playlistName": source.get("playlistName"),
                 "playlistId": source.get("playlistId"),
                 "capturedTrackCount": len(tracks),
+                "skippedExistingTruthCount": skipped_existing_count,
                 "output": str(output_path) if output_path else "",
                 "merged": bool(args.merge),
                 "mergedTrackCount": merged_count,

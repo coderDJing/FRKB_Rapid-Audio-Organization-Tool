@@ -1,9 +1,9 @@
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -13,7 +13,45 @@ import benchmark_rkb_rekordbox_truth as benchmark
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_SCRIPT = REPO_ROOT / "scripts" / "benchmark_rkb_rekordbox_truth.py"
-DEFAULT_OUTPUT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "parallel-latest.json"
+BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
+INTAKE_TRUTH = BENCHMARK_OUTPUT_DIR / "intake-current-truth.json"
+CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
+DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "parallel-latest.json"
+PROFILE_DEFAULTS: dict[str, dict[str, str]] = {
+    "current": {
+        "truth": str(CURRENT_TRUTH),
+        "audio_root": str(benchmark.DEFAULT_AUDIO_ROOT),
+        "output": str(BENCHMARK_OUTPUT_DIR / "frkb-current-latest.json"),
+    },
+    "intake": {
+        "truth": str(INTAKE_TRUTH),
+        "audio_root": "D:/FRKB_database-B/library/FilterLibrary/new",
+        "output": str(BENCHMARK_OUTPUT_DIR / "intake-current-latest.json"),
+    },
+}
+
+
+def _arg_supplied(argv: list[str], *names: str) -> bool:
+    for arg in argv:
+        for name in names:
+            if arg == name or arg.startswith(f"{name}="):
+                return True
+    return False
+
+
+def _apply_profile_defaults(args: argparse.Namespace, argv: list[str]) -> None:
+    profile = str(args.profile or "").strip()
+    if not profile:
+        return
+    defaults = PROFILE_DEFAULTS.get(profile)
+    if defaults is None:
+        raise SystemExit(f"unsupported profile: {profile}")
+    if not _arg_supplied(argv, "--truth"):
+        args.truth = defaults["truth"]
+    if not _arg_supplied(argv, "--audio-root"):
+        args.audio_root = defaults["audio_root"]
+    if not _arg_supplied(argv, "--output"):
+        args.output = defaults["output"]
 
 
 def _load_raw_truth_tracks(truth_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -259,6 +297,22 @@ def _resolve_progress_output_path(args: argparse.Namespace, output_path: Path) -
     return output_path.with_name(f"{output_path.stem}.progress{suffix}")
 
 
+def _resolve_shard_dir(args: argparse.Namespace, output_path: Path) -> tuple[Path, bool]:
+    explicit_path = str(args.shard_dir or "").strip()
+    if explicit_path:
+        return Path(explicit_path), False
+    return output_path.with_name(f"{output_path.stem}.shards"), True
+
+
+def _prepare_auto_shard_dir(shard_dir: Path, *, resume_existing_shards: bool) -> None:
+    if resume_existing_shards:
+        shard_dir.mkdir(parents=True, exist_ok=True)
+        return
+    if shard_dir.exists():
+        shutil.rmtree(shard_dir)
+    shard_dir.mkdir(parents=True, exist_ok=True)
+
+
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f"{path.name}.tmp")
@@ -296,6 +350,12 @@ def _write_progress_payload(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run Rekordbox truth benchmark shards in parallel")
+    parser.add_argument(
+        "--profile",
+        choices=sorted(PROFILE_DEFAULTS.keys()),
+        default="",
+        help="Use fixed truth/audio/output paths for a maintained benchmark record.",
+    )
     parser.add_argument("--truth", default=str(benchmark.DEFAULT_TRUTH))
     parser.add_argument("--audio-root", default=str(benchmark.DEFAULT_AUDIO_ROOT))
     parser.add_argument("--ffmpeg", default=str(benchmark.DEFAULT_FFMPEG))
@@ -312,6 +372,11 @@ def main() -> int:
         action="store_true",
         help="Reuse valid output-shard-*.json files in --shard-dir instead of recomputing them.",
     )
+    parser.add_argument(
+        "--keep-shards",
+        action="store_true",
+        help="Keep auto-created shard files after a successful run for inspection or resume.",
+    )
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument(
         "--only",
@@ -320,6 +385,7 @@ def main() -> int:
         help="Filter tracks by case-insensitive file/title/artist substring. Can be repeated.",
     )
     args = parser.parse_args()
+    _apply_profile_defaults(args, sys.argv[1:])
 
     truth_path = Path(args.truth)
     output_path = Path(args.output)
@@ -335,13 +401,12 @@ def main() -> int:
     progress_path = _resolve_progress_output_path(args, output_path)
     started_at = time.time()
 
-    tmp_path = (
-        Path(args.shard_dir)
-        if str(args.shard_dir or "").strip()
-        else Path(tempfile.mkdtemp(prefix="frkb-rkb-benchmark-shards-", dir=str(output_path.parent)))
-    )
+    tmp_path, auto_shard_dir = _resolve_shard_dir(args, output_path)
     args.shard_dir = str(tmp_path)
-    tmp_path.mkdir(parents=True, exist_ok=True)
+    if auto_shard_dir:
+        _prepare_auto_shard_dir(tmp_path, resume_existing_shards=bool(args.resume_existing_shards))
+    else:
+        tmp_path.mkdir(parents=True, exist_ok=True)
     shard_payloads: list[dict[str, Any]] = []
     shard_failures: list[dict[str, Any]] = []
     future_to_shard: dict[Any, dict[str, Any]] = {}
@@ -454,6 +519,8 @@ def main() -> int:
     payload["summary"]["parallel"]["selectedTrackCount"] = len(selected_tracks)
     _write_json_atomic(output_path, payload)
     _write_json_atomic(progress_path, payload)
+    if auto_shard_dir and not args.keep_shards and not args.resume_existing_shards:
+        shutil.rmtree(tmp_path, ignore_errors=True)
     print(
         json.dumps(
             {"summary": payload["summary"], "output": str(output_path), "progress": str(progress_path)},

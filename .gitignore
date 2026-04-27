@@ -51,4 +51,13 @@ vendor/demucs/bootstrap/*
 __pycache__/
 
 # Local grid analysis lab
-grid-analysis-lab/
+grid-analysis-lab/*
+!grid-analysis-lab/rkb-rekordbox-benchmark/
+grid-analysis-lab/rkb-rekordbox-benchmark/*
+!grid-analysis-lab/rkb-rekordbox-benchmark/intake-current-truth.json
+!grid-analysis-lab/rkb-rekordbox-benchmark/rekordbox-current-truth.json
+!grid-analysis-lab/rkb-rekordbox-benchmark/frkb-current-latest.json
+!grid-analysis-lab/rkb-rekordbox-benchmark/frkb-classification-current.json
+!grid-analysis-lab/rkb-rekordbox-benchmark/sample-regression-latest.json
+!grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-current-latest.json
+!grid-analysis-lab/rkb-rekordbox-benchmark/grid-failures-current-manifest.json
