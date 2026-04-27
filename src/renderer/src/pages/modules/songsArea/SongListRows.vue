@@ -11,7 +11,6 @@ import {
 import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
-import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { useVirtualRows } from './SongListRows/useVirtualRows'
 import { useSongRowEvents } from './SongListRows/useSongRowEvents'
@@ -21,6 +20,7 @@ import { useCoverPreview } from './SongListRows/useCoverPreview'
 import { useSongRowHoverInteractions } from './SongListRows/useSongRowHoverInteractions'
 import { useSongRowDisplay } from './SongListRows/useSongRowDisplay'
 import { useWaveformPreview } from './SongListRows/useWaveformPreview'
+import CuratedArtistCellContent from './SongListRows/CuratedArtistCellContent.vue'
 import WaveformPreviewCell from './SongListRows/WaveformPreviewCell.vue'
 
 const props = defineProps({
@@ -283,6 +283,8 @@ const {
   sourceLibraryName: () => props.sourceLibraryName,
   harmonicReferenceKey: () => props.harmonicReferenceKey || ''
 })
+const hasCuratedArtistBadge = (song: ISongInfo, colKey: string) =>
+  colKey === 'artist' && getCuratedArtistBadgeText(song, colKey).length > 0
 
 const {
   rowsRoot,
@@ -751,23 +753,21 @@ onUnmounted(() => {
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
                 :data-key="getCellKey(item.song, col.key)"
               >
-                <template
-                  v-if="col.key === 'artist' && getCuratedArtistBadgeText(item.song, col.key)"
-                >
-                  <span class="cell-title__text">{{ getCellValue(item.song, col.key) }}</span>
-                  <bubbleBoxTrigger
-                    tag="span"
-                    class="curated-artist-count-badge"
-                    :title="getCuratedArtistBadgeTitle(item.song, col.key)"
-                  >
-                    {{ getCuratedArtistBadgeText(item.song, col.key) }}
-                  </bubbleBoxTrigger>
-                </template>
+                <CuratedArtistCellContent
+                  v-if="hasCuratedArtistBadge(item.song, col.key)"
+                  :value="getCellValue(item.song, col.key)"
+                  :badge-text="getCuratedArtistBadgeText(item.song, col.key)"
+                  :badge-title="getCuratedArtistBadgeTitle(item.song, col.key)"
+                  :only-when-overflow="onlyWhenOverflowComputed"
+                />
                 <template v-else>
                   {{ getCellValue(item.song, col.key) }}
                 </template>
                 <bubbleBox
-                  v-if="hoveredCellKey === getCellKey(item.song, col.key)"
+                  v-if="
+                    hoveredCellKey === getCellKey(item.song, col.key) &&
+                    !hasCuratedArtistBadge(item.song, col.key)
+                  "
                   :dom="cellRefMap[getCellKey(item.song, col.key)] || undefined"
                   :title="String(getCellValue(item.song, col.key))"
                   :only-when-overflow="onlyWhenOverflowComputed"
@@ -1002,32 +1002,6 @@ onUnmounted(() => {
   padding-left: 10px;
   padding-right: 10px;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.cell-title__text {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.curated-artist-count-badge {
-  flex: 0 0 auto;
-  margin-left: auto;
-  min-width: 24px;
-  max-width: 56px;
-  height: 16px;
-  line-height: 16px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: rgba(200, 162, 60, 0.14);
-  border: 1px solid rgba(200, 162, 60, 0.34);
-  color: #a67a08;
-  font-size: 11px;
-  font-weight: 700;
-  text-align: center;
   overflow: hidden;
   text-overflow: ellipsis;
 }
