@@ -2,7 +2,11 @@ import { ref, reactive, computed, watch, nextTick, onMounted, onUnmounted } from
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
 import utils from '@renderer/utils/utils'
-import { mapAcoustIdClientError } from '@renderer/utils/acoustid'
+import {
+  fetchAcoustIdClientKeyStatus,
+  hasConfiguredAcoustIdClientKey,
+  mapAcoustIdClientError
+} from '@renderer/utils/acoustid'
 import { v4 as uuidV4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import type {
@@ -110,17 +114,39 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
   const acoustIdKeyError = ref('')
   const savingAcoustIdKey = ref(false)
   const pendingFingerprintAfterKey = ref(false)
+  const hasDevAcoustIdKey = ref(false)
+  const acoustIdKeyStatusLoaded = ref(false)
+  const hasConfiguredAcoustIdKey = computed(() => hasConfiguredAcoustIdClientKey(runtime.setting))
   const hasAcoustIdKey = computed(() => {
-    const key = runtime.setting?.acoustIdClientKey
-    if (typeof key !== 'string') return false
-    return key.trim() !== ''
+    return hasConfiguredAcoustIdKey.value || hasDevAcoustIdKey.value
   })
+
+  async function refreshAcoustIdKeyStatus(): Promise<boolean> {
+    if (hasConfiguredAcoustIdKey.value) {
+      hasDevAcoustIdKey.value = false
+      acoustIdKeyStatusLoaded.value = true
+      return true
+    }
+    const status = await fetchAcoustIdClientKeyStatus()
+    hasDevAcoustIdKey.value = status.source === 'dev-env' && status.hasEffectiveKey
+    acoustIdKeyStatusLoaded.value = true
+    return status.hasEffectiveKey
+  }
 
   watch(hasAcoustIdKey, (val) => {
     if (val) {
       showAcoustIdPanel.value = false
       acoustIdKeyInput.value = runtime.setting?.acoustIdClientKey || ''
       acoustIdKeyError.value = ''
+    }
+  })
+
+  watch(hasConfiguredAcoustIdKey, (val) => {
+    if (val) {
+      hasDevAcoustIdKey.value = false
+      acoustIdKeyStatusLoaded.value = true
+    } else {
+      void refreshAcoustIdKeyStatus()
     }
   })
 
@@ -261,8 +287,9 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
     return t('metadata.musicbrainzGenericError')
   }
 
-  function ensureAcoustIdKeyReady(triggerMatch: boolean): boolean {
+  async function ensureAcoustIdKeyReady(triggerMatch: boolean): Promise<boolean> {
     if (hasAcoustIdKey.value) return true
+    if (!acoustIdKeyStatusLoaded.value && (await refreshAcoustIdKeyStatus())) return true
     pendingFingerprintAfterKey.value = triggerMatch
     acoustIdKeyInput.value = runtime.setting?.acoustIdClientKey || ''
     acoustIdKeyError.value = ''
@@ -321,8 +348,10 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
   }
 
   function triggerFingerprintMatch() {
-    if (!ensureAcoustIdKeyReady(true)) return
-    void matchFingerprint()
+    void (async () => {
+      if (!(await ensureAcoustIdKeyReady(true))) return
+      await matchFingerprint()
+    })()
   }
 
   async function cancelBackendRequests() {
@@ -405,7 +434,7 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
 
   async function matchFingerprint() {
     if (state.fingerprintMatching || state.searching) return
-    if (!ensureAcoustIdKeyReady(true)) {
+    if (!(await ensureAcoustIdKeyReady(true))) {
       state.fingerprintError = ''
       return
     }
@@ -670,6 +699,7 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
     })
     utils.setHotkeysScpoe(uuid)
     autoSearch()
+    void refreshAcoustIdKeyStatus()
   })
 
   onUnmounted(() => {

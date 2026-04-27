@@ -1,4 +1,5 @@
 import { app } from 'electron'
+import { is } from '@electron-toolkit/utils'
 import path = require('path')
 import fs = require('fs-extra')
 import { createHash } from 'crypto'
@@ -16,6 +17,7 @@ const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
 const CACHE_FILE_NAME = 'fingerprintCache.json'
 const LOOKUP_URL = 'https://api.acoustid.org/v2/lookup'
 const VALIDATION_TRACK_ID = '889584fb-b962-4601-9d10-252e07310713'
+const DEV_CLIENT_KEY_ENV = 'FRKB_ACOUSTID_CLIENT_KEY'
 // NOTE: meta 参数使用空格分隔，URLSearchParams 会将空格编码为 '+'，符合 AcoustID 要求
 const LOOKUP_META = 'recordings releasegroups releases tracks'
 
@@ -28,6 +30,12 @@ type ErrorLike = {
   code?: unknown
   message?: unknown
   name?: unknown
+}
+
+export type AcoustIdClientKeyStatus = {
+  hasConfiguredKey: boolean
+  hasEffectiveKey: boolean
+  source: 'setting' | 'dev-env' | ''
 }
 
 async function ensureProxyInitialized(): Promise<void> {
@@ -246,13 +254,43 @@ let requestProcessing = false
 const MIN_LOOKUP_INTERVAL = 400
 let currentLookupAbort: AbortController | null = null
 
-function resolveAcoustIdClientKey(): string {
+function readConfiguredAcoustIdClientKey(): string {
   const fromSetting = store.settingConfig?.acoustIdClientKey
   if (typeof fromSetting === 'string') {
     const trimmed = fromSetting.trim()
     if (trimmed) return trimmed
   }
   return ''
+}
+
+function readDevAcoustIdClientKey(): string {
+  if (!is.dev) return ''
+  return String(process.env[DEV_CLIENT_KEY_ENV] || '').trim()
+}
+
+export function getAcoustIdClientKeyStatus(): AcoustIdClientKeyStatus {
+  const configuredKey = readConfiguredAcoustIdClientKey()
+  if (configuredKey) {
+    return {
+      hasConfiguredKey: true,
+      hasEffectiveKey: true,
+      source: 'setting'
+    }
+  }
+  const devKey = readDevAcoustIdClientKey()
+  return {
+    hasConfiguredKey: false,
+    hasEffectiveKey: devKey.length > 0,
+    source: devKey ? 'dev-env' : ''
+  }
+}
+
+export function hasEffectiveAcoustIdClientKey(): boolean {
+  return getAcoustIdClientKeyStatus().hasEffectiveKey
+}
+
+function resolveAcoustIdClientKey(): string {
+  return readConfiguredAcoustIdClientKey() || readDevAcoustIdClientKey()
 }
 
 function isInvalidClientError(message?: string) {

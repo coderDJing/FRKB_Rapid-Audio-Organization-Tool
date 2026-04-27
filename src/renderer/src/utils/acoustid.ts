@@ -1,5 +1,34 @@
 import { t } from './translate'
 
+export type AcoustIdClientKeyStatus = {
+  hasConfiguredKey: boolean
+  hasEffectiveKey: boolean
+  source: 'setting' | 'dev-env' | ''
+}
+
+export function hasConfiguredAcoustIdClientKey(setting?: { acoustIdClientKey?: string }): boolean {
+  return String(setting?.acoustIdClientKey || '').trim().length > 0
+}
+
+export async function fetchAcoustIdClientKeyStatus(): Promise<AcoustIdClientKeyStatus> {
+  try {
+    const status = (await window.electron.ipcRenderer.invoke(
+      'acoustid:getClientKeyStatus'
+    )) as Partial<AcoustIdClientKeyStatus> | null
+    return {
+      hasConfiguredKey: status?.hasConfiguredKey === true,
+      hasEffectiveKey: status?.hasEffectiveKey === true,
+      source: status?.source === 'setting' || status?.source === 'dev-env' ? status.source : ''
+    }
+  } catch {
+    return {
+      hasConfiguredKey: false,
+      hasEffectiveKey: false,
+      source: ''
+    }
+  }
+}
+
 export function mapAcoustIdClientError(code?: string): string {
   if (!code) return t('metadata.acoustidKeyVerifyUnknown')
   const normalized = String(code || '').split(':')[0]

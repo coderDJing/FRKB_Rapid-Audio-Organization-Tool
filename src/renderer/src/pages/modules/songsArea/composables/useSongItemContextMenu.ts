@@ -11,6 +11,10 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import emitter from '@renderer/utils/mitt'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
+import {
+  fetchAcoustIdClientKeyStatus,
+  hasConfiguredAcoustIdClientKey
+} from '@renderer/utils/acoustid'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { startAudioConvertFromFiles } from '@renderer/utils/audioConvertActions'
 import choiceDialog from '@renderer/components/choiceDialog'
@@ -105,22 +109,26 @@ export function useSongItemContextMenu(
     )
     return selectedKeys.filter((key) => available.has(key))
   }
-  const hasAcoustIdKey = () => {
-    const key = (runtime.setting?.acoustIdClientKey || '').trim()
-    return key.length > 0
+  const hasAcoustIdKey = async () => {
+    if (hasConfiguredAcoustIdClientKey(runtime.setting)) return true
+    const status = await fetchAcoustIdClientKeyStatus()
+    return status.hasEffectiveKey
   }
   const hasWarnedMissingAcoustId = ref(false)
   const warnAcoustIdMissing = () => {
-    if (hasAcoustIdKey() || hasWarnedMissingAcoustId.value) return
-    hasWarnedMissingAcoustId.value = true
-    void confirm({
-      title: t('metadata.autoFillFingerprintHintTitle'),
-      content: [
-        t('metadata.autoFillFingerprintHintMissing'),
-        t('metadata.autoFillFingerprintHintGuide')
-      ],
-      confirmShow: false
-    })
+    if (hasWarnedMissingAcoustId.value) return
+    void (async () => {
+      if (await hasAcoustIdKey()) return
+      hasWarnedMissingAcoustId.value = true
+      void confirm({
+        title: t('metadata.autoFillFingerprintHintTitle'),
+        content: [
+          t('metadata.autoFillFingerprintHintMissing'),
+          t('metadata.autoFillFingerprintHintGuide')
+        ],
+        confirmShow: false
+      })
+    })()
   }
 
   const cloneMenuItem = (item: IMenu): IMenu => ({

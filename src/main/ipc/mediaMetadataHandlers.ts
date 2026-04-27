@@ -18,7 +18,8 @@ import {
 import {
   matchTrackWithAcoustId,
   cancelAcoustIdRequests,
-  validateAcoustIdClientKeyValue
+  validateAcoustIdClientKeyValue,
+  getAcoustIdClientKeyStatus
 } from '../services/acoustId'
 import { findSimilarTracks, cancelSimilarTracksRequests } from '../services/similarTracks'
 import {
@@ -113,6 +114,10 @@ export function registerMediaMetadataHandlers() {
 
   ipcMain.handle('acoustid:validateClientKey', async (_e, clientKey: string) => {
     await validateAcoustIdClientKeyValue(typeof clientKey === 'string' ? clientKey : '')
+  })
+
+  ipcMain.handle('acoustid:getClientKeyStatus', () => {
+    return getAcoustIdClientKeyStatus()
   })
 
   ipcMain.handle('acoustid:cancelRequests', async () => {

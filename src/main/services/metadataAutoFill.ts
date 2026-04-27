@@ -11,7 +11,11 @@ import {
   ITrackMetadataUpdatePayload
 } from '../../types/globals'
 import { readTrackMetadata, updateTrackMetadata } from './metadataEditor'
-import { matchTrackWithAcoustId, cancelAcoustIdRequests } from './acoustId'
+import {
+  matchTrackWithAcoustId,
+  cancelAcoustIdRequests,
+  hasEffectiveAcoustIdClientKey
+} from './acoustId'
 import {
   searchMusicBrainz,
   fetchMusicBrainzSuggestion,
@@ -212,11 +216,7 @@ export async function autoFillTrackMetadata(
 
     pushProgress('metadata.autoFillProgressPreparing', 0, uniquePaths.length, { isInitial: true })
 
-    const configuredAcoustIdKey =
-      typeof store.settingConfig?.acoustIdClientKey === 'string'
-        ? String(store.settingConfig.acoustIdClientKey).trim()
-        : ''
-    let fingerprintDisabledCode: string | null = configuredAcoustIdKey
+    let fingerprintDisabledCode: string | null = hasEffectiveAcoustIdClientKey()
       ? null
       : 'ACOUSTID_CLIENT_MISSING'
 

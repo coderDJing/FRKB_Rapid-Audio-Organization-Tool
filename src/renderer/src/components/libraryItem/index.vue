@@ -10,6 +10,10 @@ import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import emitter from '../../utils/mitt'
 import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
+import {
+  fetchAcoustIdClientKeyStatus,
+  hasConfiguredAcoustIdClientKey
+} from '@renderer/utils/acoustid'
 import { useLibraryItemEditing } from './useLibraryItemEditing'
 import { useLibraryContextMenu } from './useLibraryContextMenu'
 import { useLibraryDragAndDrop } from './useLibraryDragAndDrop'
@@ -64,22 +68,26 @@ const syncLibrarySelectionBySongListUUID = (uuid: string) => {
     runtime.libraryAreaSelected = nextLibrary
   }
 }
-const hasAcoustIdKey = computed(() => {
-  const key = (runtime.setting?.acoustIdClientKey || '').trim()
-  return key.length > 0
-})
 const hasWarnedAcoustId = ref(false)
+const hasAcoustIdKey = async () => {
+  if (hasConfiguredAcoustIdClientKey(runtime.setting)) return true
+  const status = await fetchAcoustIdClientKeyStatus()
+  return status.hasEffectiveKey
+}
 const warnAcoustIdMissing = () => {
-  if (hasAcoustIdKey.value || hasWarnedAcoustId.value) return
-  hasWarnedAcoustId.value = true
-  void confirm({
-    title: t('metadata.autoFillFingerprintHintTitle'),
-    content: [
-      t('metadata.autoFillFingerprintHintMissing'),
-      t('metadata.autoFillFingerprintHintGuide')
-    ],
-    confirmShow: false
-  })
+  if (hasWarnedAcoustId.value) return
+  void (async () => {
+    if (await hasAcoustIdKey()) return
+    hasWarnedAcoustId.value = true
+    void confirm({
+      title: t('metadata.autoFillFingerprintHintTitle'),
+      content: [
+        t('metadata.autoFillFingerprintHintMissing'),
+        t('metadata.autoFillFingerprintHintGuide')
+      ],
+      confirmShow: false
+    })
+  })()
 }
 const { handleDropToSongList } = useDragSongs()
 
@@ -309,7 +317,7 @@ const showTrackCount = computed(
 const nameTextRef = ref<HTMLElement | null>(null)
 const nameTextHovered = ref(false)
 const onlyShowBubbleWhenOverflow = computed(
-  () => !Boolean(Reflect.get(runtime.setting, 'songListBubbleAlways'))
+  () => !Reflect.get(runtime.setting, 'songListBubbleAlways')
 )
 const openMixtapeHandleClick = () => {
   const currentDirData = dirDataRef.value

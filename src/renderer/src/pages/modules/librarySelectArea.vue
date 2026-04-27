@@ -25,6 +25,10 @@ import tempListIconAsset from '@renderer/assets/tempList.svg?asset'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import confirm from '@renderer/components/confirmDialog'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
+import {
+  fetchAcoustIdClientKeyStatus,
+  hasConfiguredAcoustIdClientKey
+} from '@renderer/utils/acoustid'
 import emitter from '@renderer/utils/mitt'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import {
@@ -121,21 +125,25 @@ selectedIcon.value.src = selectedIcon.value.white
 const runtime = useRuntimeStore()
 const hasWarnedAcoustId = ref(false)
 const waitForUiIdle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-const hasAcoustIdKey = () => {
-  const key = (runtime.setting?.acoustIdClientKey || '').trim()
-  return key.length > 0
+const hasAcoustIdKey = async () => {
+  if (hasConfiguredAcoustIdClientKey(runtime.setting)) return true
+  const status = await fetchAcoustIdClientKeyStatus()
+  return status.hasEffectiveKey
 }
 const warnAcoustIdMissing = () => {
-  if (hasAcoustIdKey() || hasWarnedAcoustId.value) return
-  hasWarnedAcoustId.value = true
-  void confirm({
-    title: t('metadata.autoFillFingerprintHintTitle'),
-    content: [
-      t('metadata.autoFillFingerprintHintMissing'),
-      t('metadata.autoFillFingerprintHintGuide')
-    ],
-    confirmShow: false
-  })
+  if (hasWarnedAcoustId.value) return
+  void (async () => {
+    if (await hasAcoustIdKey()) return
+    hasWarnedAcoustId.value = true
+    void confirm({
+      title: t('metadata.autoFillFingerprintHintTitle'),
+      content: [
+        t('metadata.autoFillFingerprintHintMissing'),
+        t('metadata.autoFillFingerprintHintGuide')
+      ],
+      confirmShow: false
+    })
+  })()
 }
 
 const updateSelectedIcon = (item: HoverableIcon | undefined) => {
