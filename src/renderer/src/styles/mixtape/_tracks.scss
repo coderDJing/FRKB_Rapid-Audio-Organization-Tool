@@ -660,7 +660,7 @@
   position: absolute;
   /* Make it sticky horizontally regardless of scroll */
   left: max(6px, calc(var(--timeline-scroll-left, 0px) - var(--track-start, 0px) + 6px));
-  top: 28px;
+  top: 6px;
   padding: 5px 10px;
   border-radius: 6px;
   display: inline-flex;
