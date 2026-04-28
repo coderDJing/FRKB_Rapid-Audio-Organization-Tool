@@ -1,9 +1,11 @@
 import type { Ref } from 'vue'
+import { normalizeMixtapeLaneIndex } from '@renderer/composables/mixtape/constants'
 import type { MixtapeMuteSegment, MixtapeTrack } from '@renderer/composables/mixtape/types'
 
 export type TrackTimingUndoSnapshot = {
   trackId: string
   startSec: number
+  laneIndex: number
   bpm?: number
   originalBpm?: number
   masterTempo: boolean
@@ -17,7 +19,8 @@ const normalizeTrackTimingSnapshotNumber = (value: unknown) => {
 
 export const buildTrackTimingUndoSnapshot = (
   track: MixtapeTrack,
-  fallbackStartSec: number
+  fallbackStartSec: number,
+  fallbackLaneIndex = 0
 ): TrackTimingUndoSnapshot => {
   const trackStartSec = normalizeTrackTimingSnapshotNumber(track.startSec)
   const safeFallbackStartSec = Math.max(
@@ -37,6 +40,7 @@ export const buildTrackTimingUndoSnapshot = (
   return {
     trackId: track.id,
     startSec: Number(startSec.toFixed(4)),
+    laneIndex: normalizeMixtapeLaneIndex(track.laneIndex, fallbackLaneIndex),
     bpm: typeof bpm === 'number' && bpm > 0 ? Number(bpm.toFixed(6)) : undefined,
     originalBpm:
       typeof originalBpm === 'number' && originalBpm > 0
@@ -52,65 +56,71 @@ export const isTrackTimingSnapshotSame = (
   right: TrackTimingUndoSnapshot | null
 ) => JSON.stringify(left) === JSON.stringify(right)
 
-export const restoreTrackTimingUndoSnapshot = (
+export const restoreTrackTimingUndoSnapshots = (
   tracks: Ref<MixtapeTrack[]>,
-  snapshot: TrackTimingUndoSnapshot
+  snapshots: TrackTimingUndoSnapshot[]
 ) => {
-  const targetIndex = tracks.value.findIndex((track) => track.id === snapshot.trackId)
-  if (targetIndex < 0) return false
-  const currentTrack = tracks.value[targetIndex]
-  if (!currentTrack) return false
-  const nextTrack: MixtapeTrack = {
-    ...currentTrack,
-    startSec: snapshot.startSec,
-    bpm: snapshot.bpm,
-    originalBpm: snapshot.originalBpm,
-    masterTempo: snapshot.masterTempo,
-    volumeMuteSegments: snapshot.volumeMuteSegments.map((segment) => ({
-      startSec: Number(segment.startSec),
-      endSec: Number(segment.endSec)
-    }))
-  }
-  const nextTracks = [...tracks.value]
-  nextTracks.splice(targetIndex, 1, nextTrack)
+  if (!Array.isArray(snapshots) || !snapshots.length) return false
+  const snapshotById = new Map(snapshots.map((snapshot) => [snapshot.trackId, snapshot]))
+  let restored = false
+  const nextTracks = tracks.value.map((track) => {
+    const snapshot = snapshotById.get(track.id)
+    if (!snapshot) return track
+    restored = true
+    return {
+      ...track,
+      startSec: snapshot.startSec,
+      laneIndex: snapshot.laneIndex,
+      bpm: snapshot.bpm,
+      originalBpm: snapshot.originalBpm,
+      masterTempo: snapshot.masterTempo,
+      volumeMuteSegments: snapshot.volumeMuteSegments.map((segment) => ({
+        startSec: Number(segment.startSec),
+        endSec: Number(segment.endSec)
+      }))
+    }
+  })
+  if (!restored) return false
   tracks.value = nextTracks
   if (window?.electron?.ipcRenderer?.invoke) {
     void window.electron.ipcRenderer
       .invoke('mixtape:update-track-start-sec', {
-        entries: [
-          {
-            itemId: snapshot.trackId,
-            startSec: Number(snapshot.startSec),
-            bpm: snapshot.bpm,
-            originalBpm: snapshot.originalBpm,
-            masterTempo: snapshot.masterTempo
-          }
-        ]
+        entries: snapshots.map((snapshot) => ({
+          itemId: snapshot.trackId,
+          startSec: Number(snapshot.startSec),
+          laneIndex: snapshot.laneIndex,
+          bpm: snapshot.bpm,
+          originalBpm: snapshot.originalBpm,
+          masterTempo: snapshot.masterTempo
+        }))
       })
       .catch((error) => {
         console.error('[mixtape] undo track timing failed', {
-          itemId: snapshot.trackId,
+          count: snapshots.length,
           error
         })
       })
     void window.electron.ipcRenderer
       .invoke('mixtape:update-volume-mute-segments', {
-        entries: [
-          {
-            itemId: snapshot.trackId,
-            segments: snapshot.volumeMuteSegments.map((segment) => ({
-              startSec: Number(segment.startSec),
-              endSec: Number(segment.endSec)
-            }))
-          }
-        ]
+        entries: snapshots.map((snapshot) => ({
+          itemId: snapshot.trackId,
+          segments: snapshot.volumeMuteSegments.map((segment) => ({
+            startSec: Number(segment.startSec),
+            endSec: Number(segment.endSec)
+          }))
+        }))
       })
       .catch((error) => {
         console.error('[mixtape] undo volume mute segments failed', {
-          itemId: snapshot.trackId,
+          count: snapshots.length,
           error
         })
       })
   }
   return true
 }
+
+export const restoreTrackTimingUndoSnapshot = (
+  tracks: Ref<MixtapeTrack[]>,
+  snapshot: TrackTimingUndoSnapshot
+) => restoreTrackTimingUndoSnapshots(tracks, [snapshot])

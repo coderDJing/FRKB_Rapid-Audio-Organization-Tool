@@ -108,6 +108,8 @@
     "mixParamMid": "Mid",
     "mixParamLow": "Low",
     "mixParamVolume": "Volume",
+    "positionModeActionHint": "Drag tracks to adjust position. Hold Shift while dragging to move following tracks together.",
+    "positionModeTrackHoverHint": "Drag to adjust position. Shift-drag moves following tracks.",
     "envelopeEditHint": "Click to add, drag to adjust, double-click to delete",
     "masterTempoLaneEdited": "Edited",
     "masterTempoLaneCurrentBpm": "Current {bpm} BPM",

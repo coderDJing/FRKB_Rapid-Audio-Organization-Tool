@@ -207,6 +207,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       bpm?: number
       masterTempo?: boolean
       originalBpm?: number
+      laneIndex?: number
     }>
   ) => {
     if (!entries.length || !window?.electron?.ipcRenderer?.invoke) return
@@ -263,7 +264,6 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     rulerMinuteTicks,
     rulerInactiveStyle,
     resolveTrackStartSec,
-    resolveTrackStartSecById,
     resolveTrackMixEnvelope,
     resolveEntryEnvelopeValue,
     resolveEntryEqDbValue
@@ -1032,7 +1032,6 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       resolveTrackDurationSeconds,
       resolveTrackSourceDurationSeconds,
       resolveTrackFirstBeatSeconds,
-      resolveTrackStartSecById,
       resolveTimelineSecByX,
       stopTransportForTrackChange,
       scheduleFullPreRender,

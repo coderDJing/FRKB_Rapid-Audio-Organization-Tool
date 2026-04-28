@@ -70,6 +70,8 @@ export type MixtapeTrack = {
   masterTempo?: boolean
   // 全局时间线起点（秒）
   startSec?: number
+  // 时间线轨道索引（0 起）
+  laneIndex?: number
   // 兼容旧数据：单段 Loop（轨道内时间）
   loopSegment?: MixtapeTrackLoopSegment
   // 多段 Loop（轨道内时间）

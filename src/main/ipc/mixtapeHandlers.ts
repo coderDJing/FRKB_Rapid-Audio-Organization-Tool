@@ -1002,6 +1002,7 @@ export function registerMixtapeHandlers() {
           bpm?: number
           masterTempo?: boolean
           originalBpm?: number
+          laneIndex?: number
         }>
       }
     ) => {
@@ -1012,7 +1013,8 @@ export function registerMixtapeHandlers() {
           startSec: Number(item?.startSec),
           bpm: Number(item?.bpm),
           masterTempo: typeof item?.masterTempo === 'boolean' ? item.masterTempo : undefined,
-          originalBpm: Number(item?.originalBpm)
+          originalBpm: Number(item?.originalBpm),
+          laneIndex: Number(item?.laneIndex)
         }))
       )
     }

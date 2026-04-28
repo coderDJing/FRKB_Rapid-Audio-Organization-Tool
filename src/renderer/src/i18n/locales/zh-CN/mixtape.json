@@ -108,6 +108,8 @@
     "mixParamMid": "中频",
     "mixParamLow": "低频",
     "mixParamVolume": "音量",
+    "positionModeActionHint": "拖动歌曲调整位置；按住 Shift 拖动可带动后续歌曲一起移动",
+    "positionModeTrackHoverHint": "拖动调整位置；Shift 拖动带动后续歌曲",
     "envelopeEditHint": "单击加点，拖拽调节，双击删除点",
     "masterTempoLaneEdited": "已编辑",
     "masterTempoLaneCurrentBpm": "当前 {bpm} BPM",

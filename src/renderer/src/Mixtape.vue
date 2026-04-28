@@ -242,7 +242,13 @@ const {
                 { 'is-active': selectedMixParam === item.id }
               ]"
               type="button"
-              :title="item.id === 'loop' ? t('mixtape.loopEditHint') : undefined"
+              :title="
+                item.id === 'position'
+                  ? t('mixtape.positionModeActionHint')
+                  : item.id === 'loop'
+                    ? t('mixtape.loopEditHint')
+                    : undefined
+              "
               @click="selectedMixParam = item.id"
             >
               {{ t(item.labelKey) }}
@@ -524,9 +530,10 @@ const {
                             class="lane-body"
                             :style="{ height: `${laneHeight}px`, minHeight: `${laneHeight}px` }"
                           >
-                            <div
+                            <bubbleBoxTrigger
                               v-for="item in laneTracks[laneIndex]"
                               :key="`${item.track.id}-${item.startX}`"
+                              tag="div"
                               class="lane-track"
                               :class="{
                                 'is-loop-mode': isLoopParamMode,
@@ -544,6 +551,16 @@ const {
                                   stemPlaceholderStateByTrackId[item.track.id]?.kind === 'failed'
                               }"
                               :style="resolveTrackBlockStyle(item)"
+                              :title="
+                                isTrackPositionMode
+                                  ? t('mixtape.positionModeTrackHoverHint')
+                                  : undefined
+                              "
+                              :show-delay="240"
+                              :hide-delay="60"
+                              :show-when-mouse-idle="true"
+                              :interactive="false"
+                              :max-width="260"
                               @mousedown.capture="handleLaneTrackMouseDownCapture(item, $event)"
                               @mousedown.stop="handleLaneTrackMouseDown(item, $event)"
                               @contextmenu.stop.prevent="handleTrackContextMenu(item, $event)"
@@ -767,7 +784,7 @@ const {
                               <div v-if="isRawWaveformLoading(item.track)" class="lane-loading">
                                 {{ t('mixtape.rawWaveformLoading') }}
                               </div>
-                            </div>
+                            </bubbleBoxTrigger>
                           </div>
                         </div>
                       </template>

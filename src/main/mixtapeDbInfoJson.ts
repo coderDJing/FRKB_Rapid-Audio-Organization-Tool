@@ -3,6 +3,7 @@ import { isSqliteRow } from './libraryDb'
 import { log } from './log'
 
 const TABLE = 'mixtape_items'
+const MIXTAPE_LANE_COUNT = 2
 
 export type MixtapeMixEnvelopeParam =
   | 'gain'
@@ -392,6 +393,7 @@ export function upsertMixtapeItemStartSecById(
     bpm?: number
     masterTempo?: boolean
     originalBpm?: number
+    laneIndex?: number
   }>
 ): { updated: number } {
   if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
@@ -410,6 +412,12 @@ export function upsertMixtapeItemStartSecById(
     return Number(numeric.toFixed(6))
   }
 
+  const normalizeLaneIndex = (value: unknown) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return null
+    return Math.max(0, Math.min(MIXTAPE_LANE_COUNT - 1, Math.floor(numeric)))
+  }
+
   const trackPatchById = new Map<
     string,
     {
@@ -417,6 +425,7 @@ export function upsertMixtapeItemStartSecById(
       bpm?: number
       masterTempo?: boolean
       originalBpm?: number
+      laneIndex?: number
     }
   >()
   for (const item of entries) {
@@ -424,9 +433,16 @@ export function upsertMixtapeItemStartSecById(
     const startSec = normalizeStartSec(item?.startSec)
     const bpm = normalizeBpm(item?.bpm)
     const originalBpm = normalizeBpm(item?.originalBpm)
+    const laneIndex = normalizeLaneIndex(item?.laneIndex)
     const masterTempo = typeof item?.masterTempo === 'boolean' ? item.masterTempo : undefined
     if (!itemId) continue
-    if (startSec === null && bpm === null && originalBpm === null && masterTempo === undefined) {
+    if (
+      startSec === null &&
+      bpm === null &&
+      originalBpm === null &&
+      laneIndex === null &&
+      masterTempo === undefined
+    ) {
       continue
     }
     const prev = trackPatchById.get(itemId) || {}
@@ -435,6 +451,7 @@ export function upsertMixtapeItemStartSecById(
       ...(startSec === null ? {} : { startSec }),
       ...(bpm === null ? {} : { bpm }),
       ...(originalBpm === null ? {} : { originalBpm }),
+      ...(laneIndex === null ? {} : { laneIndex }),
       ...(masterTempo === undefined ? {} : { masterTempo })
     })
   }
@@ -495,6 +512,15 @@ export function upsertMixtapeItemStartSecById(
             const currentMasterTempo = info.masterTempo !== false
             if (currentMasterTempo !== nextPatch.masterTempo) {
               info.masterTempo = nextPatch.masterTempo
+              changed = true
+            }
+          }
+
+          if (typeof nextPatch.laneIndex === 'number') {
+            const currentLaneIndex = normalizeLaneIndex(info.laneIndex)
+            if (currentLaneIndex === null || currentLaneIndex !== nextPatch.laneIndex) {
+              info.laneIndex = nextPatch.laneIndex
+              info.laneIndexUpdatedAt = Date.now()
               changed = true
             }
           }

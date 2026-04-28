@@ -2,6 +2,7 @@ import {
   normalizeGainEnvelopePoints,
   normalizeMixEnvelopePoints
 } from '@renderer/composables/mixtape/gainEnvelope'
+import { LANE_COUNT, normalizeMixtapeLaneIndex } from '@renderer/composables/mixtape/constants'
 import { normalizeMixtapeTrackLoopSegments } from '@renderer/composables/mixtape/mixtapeTrackLoop'
 import { normalizeTrackBpmValue } from '@renderer/composables/mixtape/trackTempoModel'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
@@ -96,6 +97,7 @@ export const parseSnapshot = (
     !!info && Object.prototype.hasOwnProperty.call(info, 'barBeatOffset')
   const hasTimeBasisOffsetField =
     !!info && Object.prototype.hasOwnProperty.call(info, 'timeBasisOffsetMs')
+  const hasLaneIndexField = !!info && Object.prototype.hasOwnProperty.call(info, 'laneIndex')
   const parsedFirstBeatMsValue = Number(info?.firstBeatMs)
   const parsedFirstBeatMs =
     hasFirstBeatField && Number.isFinite(parsedFirstBeatMsValue) && parsedFirstBeatMsValue >= 0
@@ -135,6 +137,9 @@ export const parseSnapshot = (
   const parsedStartSec = Number.isFinite(parsedStartSecRaw)
     ? Number(parsedStartSecRaw.toFixed(4))
     : undefined
+  const parsedLaneIndex = hasLaneIndexField
+    ? normalizeMixtapeLaneIndex(info?.laneIndex, index % LANE_COUNT)
+    : undefined
   const parsedStemStatus = normalizeStemStatus(info?.stemStatus, 'ready')
   const parsedStemError =
     typeof info?.stemError === 'string' && info.stemError.trim() ? info.stemError.trim() : undefined
@@ -165,6 +170,7 @@ export const parseSnapshot = (
     originalBpm: parsedOriginalBpm,
     masterTempo: parsedMasterTempo,
     startSec: parsedStartSec,
+    laneIndex: parsedLaneIndex,
     loopSegments: parsedLoopSegments.length ? parsedLoopSegments : undefined,
     loopSegment: parsedLoopSegment,
     gainEnvelope: parsedGainEnvelope.length ? parsedGainEnvelope : undefined,

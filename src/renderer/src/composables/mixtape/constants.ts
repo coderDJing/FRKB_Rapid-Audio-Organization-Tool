@@ -19,6 +19,16 @@ export const WHEEL_MAX_STEPS_PER_FRAME = 2
 export const WHEEL_LINE_HEIGHT_PX = 16
 export const LANE_GAP = 8
 export const LANE_COUNT = 2
+export const normalizeMixtapeLaneIndex = (value: unknown, fallback: unknown = 0) => {
+  const numeric = Number(value)
+  const fallbackNumeric = Number(fallback)
+  const resolved = Number.isFinite(numeric)
+    ? numeric
+    : Number.isFinite(fallbackNumeric)
+      ? fallbackNumeric
+      : 0
+  return Math.max(0, Math.min(LANE_COUNT - 1, Math.floor(resolved)))
+}
 export const LANE_PADDING_TOP = 10
 export const TIMELINE_SIDE_PADDING_PX = 18
 export const TIMELINE_END_EXTENSION_PX = 120

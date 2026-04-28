@@ -1,6 +1,7 @@
 import { nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import { LANE_COUNT, normalizeMixtapeLaneIndex } from '@renderer/composables/mixtape/constants'
 import type {
   MixtapeMixMode,
   MixtapeStemMode,
@@ -170,10 +171,11 @@ export const createTimelineWatchAndMountModule = (ctx: TimelineWatchAndMountCont
   watch(
     () =>
       tracks.value
-        .map((track: MixtapeTrack) => {
+        .map((track: MixtapeTrack, index: number) => {
           const startSec = Number(track.startSec) || 0
+          const laneIndex = normalizeMixtapeLaneIndex(track.laneIndex, index % LANE_COUNT)
           const masterTempo = track.masterTempo === false ? 0 : 1
-          return `${track.id}:${Math.round(startSec * 1000)}:${resolveTrackGridSignature(
+          return `${track.id}:${laneIndex}:${Math.round(startSec * 1000)}:${resolveTrackGridSignature(
             track
           )}:${masterTempo}`
         })

@@ -58,6 +58,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  showWhenMouseIdle: {
+    type: Boolean,
+    default: false
+  },
   zIndex: {
     type: [Number, String] as PropType<number | string>,
     default: 'var(--z-tooltip)'
@@ -140,6 +144,7 @@ const resolvedWrapperStyle = computed(() => {
     :max-width="maxWidth"
     :interactive="interactive"
     :follow-mouse="followMouse"
+    :show-when-mouse-idle="showWhenMouseIdle"
     :z-index="zIndex"
     :only-when-overflow="onlyWhenOverflow"
   />

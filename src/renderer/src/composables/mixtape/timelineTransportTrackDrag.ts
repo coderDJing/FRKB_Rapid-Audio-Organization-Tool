@@ -2,7 +2,8 @@ import { ref } from 'vue'
 import {
   GRID_BEAT4_LINE_ZOOM,
   GRID_BEAT_LINE_ZOOM,
-  LANE_COUNT
+  LANE_COUNT,
+  normalizeMixtapeLaneIndex
 } from '@renderer/composables/mixtape/constants'
 import {
   resolveBeatSecByBpm,
@@ -27,6 +28,14 @@ type ValueRef<T> = {
   value: T
 }
 
+type TrackTimingItem = {
+  id: string
+  laneIndex: number
+  startSec: number
+  endSec: number
+  durationSec: number
+}
+
 type TimelineTransportTrackDragContext = {
   tracks: ValueRef<MixtapeTrack[]>
   normalizedRenderZoom: ValueRef<number>
@@ -34,7 +43,6 @@ type TimelineTransportTrackDragContext = {
   resolveTrackDurationSeconds: (track: MixtapeTrack) => number
   resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
   resolveTrackFirstBeatSeconds: (track: MixtapeTrack, targetBpm?: number) => number
-  resolveTrackStartSecById: (trackId: string) => number
   resolveTimelineSecByX: (x: number, pxPerSec: number) => number
   stopTransportForTrackChange: () => void
   scheduleFullPreRender: () => void
@@ -46,6 +54,7 @@ type TimelineTransportTrackDragContext = {
       bpm?: number
       masterTempo?: boolean
       originalBpm?: number
+      laneIndex?: number
     }>
   ) => Promise<void>
   persistTrackVolumeMuteSegments?: (
@@ -68,7 +77,6 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
     resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds,
     resolveTrackFirstBeatSeconds,
-    resolveTrackStartSecById,
     resolveTimelineSecByX,
     stopTransportForTrackChange,
     scheduleFullPreRender,
@@ -85,26 +93,52 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
     trackId: string
     startClientX: number
     initialStartSec: number
-    previousTrackId: string
+    initialLaneIndex: number
+    currentLaneIndex: number
+    laneRects: Array<{ laneIndex: number; top: number; bottom: number }>
     snapshotTracks: MixtapeTrack[]
   } | null = null
-
-  const resolvePreviousTrackId = (trackId: string) => {
-    const ordered = [...tracks.value].sort(
-      (a: MixtapeTrack, b: MixtapeTrack) => a.mixOrder - b.mixOrder
-    )
-    const index = ordered.findIndex((item: MixtapeTrack) => item.id === trackId)
-    if (index <= 0) return ''
-    return ordered[index - 1]?.id || ''
-  }
 
   const findTrack = (trackId: string) =>
     tracks.value.find((item: MixtapeTrack) => item.id === trackId) || null
 
+  const resolveTrackLaneIndex = (track: MixtapeTrack | undefined, fallbackIndex: number) =>
+    normalizeMixtapeLaneIndex(track?.laneIndex, fallbackIndex % LANE_COUNT)
+
+  const resolveDragLaneRects = (event: MouseEvent) => {
+    const eventTarget = event.currentTarget || event.target
+    const targetElement = eventTarget instanceof HTMLElement ? eventTarget : null
+    const laneRoot = targetElement?.closest('.timeline-lanes')
+    if (!laneRoot) return [] as Array<{ laneIndex: number; top: number; bottom: number }>
+    return Array.from(laneRoot.querySelectorAll('.timeline-lane'))
+      .map((element, index) => {
+        const rect = element.getBoundingClientRect()
+        return {
+          laneIndex: normalizeMixtapeLaneIndex(index),
+          top: rect.top,
+          bottom: rect.bottom
+        }
+      })
+      .filter((rect) => Number.isFinite(rect.top) && Number.isFinite(rect.bottom))
+  }
+
+  const resolvePointerLaneIndex = (clientY: number) => {
+    if (!trackDragState) return 0
+    const laneRects = trackDragState.laneRects
+    if (!laneRects.length) return trackDragState.currentLaneIndex
+    const hit = laneRects.find((rect) => clientY >= rect.top && clientY <= rect.bottom)
+    if (hit) return hit.laneIndex
+    const first = laneRects[0]
+    const last = laneRects[laneRects.length - 1]
+    if (first && clientY < first.top) return first.laneIndex
+    if (last && clientY > last.bottom) return last.laneIndex
+    return trackDragState.currentLaneIndex
+  }
+
   const buildTrackTimingSnapshot = (inputTracks: MixtapeTrack[]) => {
     let cursorSec = 0
     return inputTracks.map((track, index) => {
-      const laneIndex = index % LANE_COUNT
+      const laneIndex = resolveTrackLaneIndex(track, index)
       const duration = resolveTrackDurationSeconds(track)
       const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0
       const rawStartSec = Number(track.startSec)
@@ -119,38 +153,164 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
         endSec,
         durationSec: safeDuration
       }
-    })
+    }) satisfies TrackTimingItem[]
   }
 
-  const resolveTrackDragBounds = (snapshotTracks: MixtapeTrack[], trackId: string) => {
-    const timings = buildTrackTimingSnapshot(snapshotTracks)
-    const target = timings.find((item) => item.id === trackId)
-    if (!target) {
-      return {
-        minStart: 0,
-        maxStart: Number.POSITIVE_INFINITY
+  const resolveLanePlacement = (payload: {
+    trackId: string
+    laneIndex: number
+    rawStartSec: number
+    durationSec: number
+    inputTracks?: MixtapeTrack[]
+    excludeTrackIds?: Set<string>
+  }) => {
+    const rawStartSec = Math.max(0, Number(payload.rawStartSec) || 0)
+    const durationSec = Math.max(0, Number(payload.durationSec) || 0)
+    const timings = buildTrackTimingSnapshot(payload.inputTracks || tracks.value)
+    const occupied = timings
+      .filter(
+        (item) =>
+          item.id !== payload.trackId &&
+          !payload.excludeTrackIds?.has(item.id) &&
+          item.laneIndex === payload.laneIndex &&
+          item.endSec > item.startSec + BPM_POINT_SEC_EPSILON
+      )
+      .sort((a, b) => a.startSec - b.startSec)
+    const merged: Array<{ startSec: number; endSec: number }> = []
+    for (const item of occupied) {
+      const startSec = Math.max(0, Number(item.startSec) || 0)
+      const endSec = Math.max(startSec, Number(item.endSec) || startSec)
+      const last = merged[merged.length - 1]
+      if (last && startSec <= last.endSec + BPM_POINT_SEC_EPSILON) {
+        last.endSec = Math.max(last.endSec, endSec)
+      } else {
+        merged.push({ startSec, endSec })
       }
     }
-    const sameLane = timings.filter((item) => item.laneIndex === target.laneIndex)
-    const lanePos = sameLane.findIndex((item) => item.id === trackId)
-    if (lanePos < 0) {
-      return {
-        minStart: 0,
-        maxStart: Number.POSITIVE_INFINITY
+    const boundaryCandidates = [0]
+    const candidates: number[] = []
+    let previousEndSec = 0
+    for (const item of merged) {
+      const gapStartSec = previousEndSec
+      const gapEndSec = Math.max(gapStartSec, item.startSec)
+      if (gapEndSec - gapStartSec + BPM_POINT_SEC_EPSILON >= durationSec) {
+        const maxStartSec = Math.max(gapStartSec, gapEndSec - durationSec)
+        candidates.push(clampNumber(rawStartSec, gapStartSec, maxStartSec))
+        boundaryCandidates.push(gapStartSec, maxStartSec)
       }
+      previousEndSec = Math.max(previousEndSec, item.endSec)
     }
-    const prev = lanePos > 0 ? sameLane[lanePos - 1] : null
-    const next = lanePos < sameLane.length - 1 ? sameLane[lanePos + 1] : null
-
-    const minStart = prev ? prev.endSec : 0
-    let maxStart = Number.POSITIVE_INFINITY
-    if (next) {
-      maxStart = Math.max(minStart, next.startSec - target.durationSec)
+    candidates.push(Math.max(rawStartSec, previousEndSec))
+    boundaryCandidates.push(previousEndSec)
+    let nearestStartSec = candidates[0] ?? rawStartSec
+    let nearestDiffSec = Math.abs(nearestStartSec - rawStartSec)
+    for (let index = 1; index < candidates.length; index += 1) {
+      const candidate = candidates[index]
+      const diffSec = Math.abs(candidate - rawStartSec)
+      if (diffSec < nearestDiffSec - BPM_POINT_SEC_EPSILON) {
+        nearestStartSec = candidate
+        nearestDiffSec = diffSec
+      }
     }
     return {
-      minStart,
-      maxStart
+      startSec: roundTrackTempoSec(Math.max(0, nearestStartSec)),
+      boundaryCandidates: Array.from(
+        new Set(
+          boundaryCandidates
+            .map((candidate) => roundTrackTempoSec(Math.max(0, Number(candidate) || 0)))
+            .filter((candidate) => Number.isFinite(candidate))
+        )
+      )
     }
+  }
+
+  const buildTimingById = (inputTracks: MixtapeTrack[]) =>
+    new Map(buildTrackTimingSnapshot(inputTracks).map((item) => [item.id, item]))
+
+  const resolveRippleTrackIdSet = (snapshotTracks: MixtapeTrack[], trackId: string) => {
+    const targetIndex = snapshotTracks.findIndex((item) => item.id === trackId)
+    if (targetIndex < 0) return new Set<string>([trackId])
+    return new Set(
+      snapshotTracks
+        .slice(targetIndex)
+        .map((item) => item.id)
+        .filter(Boolean)
+    )
+  }
+
+  const subtractForbiddenDeltaInterval = (
+    intervals: Array<{ min: number; max: number }>,
+    forbiddenMin: number,
+    forbiddenMax: number
+  ) => {
+    if (!Number.isFinite(forbiddenMin) || !Number.isFinite(forbiddenMax)) return intervals
+    if (forbiddenMax <= forbiddenMin + BPM_POINT_SEC_EPSILON) return intervals
+    const nextIntervals: Array<{ min: number; max: number }> = []
+    for (const interval of intervals) {
+      if (forbiddenMax <= interval.min || forbiddenMin >= interval.max) {
+        nextIntervals.push(interval)
+        continue
+      }
+      const leftMax = Math.min(interval.max, forbiddenMin)
+      if (leftMax > interval.min + BPM_POINT_SEC_EPSILON) {
+        nextIntervals.push({ min: interval.min, max: leftMax })
+      }
+      const rightMin = Math.max(interval.min, forbiddenMax)
+      if (interval.max > rightMin + BPM_POINT_SEC_EPSILON) {
+        nextIntervals.push({ min: rightMin, max: interval.max })
+      }
+    }
+    return nextIntervals
+  }
+
+  const resolveRippleDeltaSec = (payload: {
+    trackId: string
+    targetLaneIndex: number
+    requestedDeltaSec: number
+    rippleTrackIds: Set<string>
+    snapshotTracks: MixtapeTrack[]
+  }) => {
+    const snapshotTimings = buildTrackTimingSnapshot(payload.snapshotTracks)
+    const movingItems = snapshotTimings
+      .filter((item) => payload.rippleTrackIds.has(item.id))
+      .map((item) => ({
+        ...item,
+        laneIndex: item.id === payload.trackId ? payload.targetLaneIndex : item.laneIndex
+      }))
+    if (!movingItems.length) return 0
+    const fixedItems = snapshotTimings.filter((item) => !payload.rippleTrackIds.has(item.id))
+    const minDeltaSec = movingItems.reduce(
+      (minDelta, item) => Math.max(minDelta, -Math.max(0, Number(item.startSec) || 0)),
+      Number.NEGATIVE_INFINITY
+    )
+    let intervals = [{ min: Math.max(0, minDeltaSec), max: Number.POSITIVE_INFINITY }]
+    if (minDeltaSec < 0) {
+      intervals = [{ min: minDeltaSec, max: Number.POSITIVE_INFINITY }]
+    }
+    for (const movingItem of movingItems) {
+      for (const fixedItem of fixedItems) {
+        if (movingItem.laneIndex !== fixedItem.laneIndex) continue
+        const forbiddenMin = fixedItem.startSec - movingItem.endSec + BPM_POINT_SEC_EPSILON
+        const forbiddenMax = fixedItem.endSec - movingItem.startSec - BPM_POINT_SEC_EPSILON
+        intervals = subtractForbiddenDeltaInterval(intervals, forbiddenMin, forbiddenMax)
+        if (!intervals.length) return 0
+      }
+    }
+    const requestedDeltaSec = Number(payload.requestedDeltaSec) || 0
+    let nearestDeltaSec = intervals[0]
+      ? clampNumber(requestedDeltaSec, intervals[0].min, intervals[0].max)
+      : 0
+    let nearestDiffSec = Math.abs(nearestDeltaSec - requestedDeltaSec)
+    for (let index = 1; index < intervals.length; index += 1) {
+      const interval = intervals[index]
+      const candidate = clampNumber(requestedDeltaSec, interval.min, interval.max)
+      const diffSec = Math.abs(candidate - requestedDeltaSec)
+      if (diffSec < nearestDiffSec - BPM_POINT_SEC_EPSILON) {
+        nearestDeltaSec = candidate
+        nearestDiffSec = diffSec
+      }
+    }
+    return roundTrackTempoSec(nearestDeltaSec)
   }
 
   const resolveVisibleGridSnapStepBeats = () => {
@@ -424,90 +584,43 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
 
   const handleTrackDragMove = (event: MouseEvent) => {
     if (!trackDragState) return
+    const targetIndex = tracks.value.findIndex(
+      (item: MixtapeTrack) => item.id === trackDragState?.trackId
+    )
+    if (targetIndex < 0) return
+    const currentTrackForSnap = tracks.value[targetIndex]
+    if (!currentTrackForSnap) return
     const pxPerSec = Math.max(0.0001, resolveRenderPxPerSec(normalizedRenderZoom.value))
     const deltaSec = (event.clientX - trackDragState.startClientX) / pxPerSec
     const rawStartSec = Math.max(0, trackDragState.initialStartSec + deltaSec)
-    const dragBounds = resolveTrackDragBounds(trackDragState.snapshotTracks, trackDragState.trackId)
-    const clampedRawStartSec = clampNumber(rawStartSec, dragBounds.minStart, dragBounds.maxStart)
-    let nextStartSec = clampedRawStartSec
-    const currentTrackForSnap = findTrack(trackDragState.trackId)
+    const targetLaneIndex = resolvePointerLaneIndex(event.clientY)
+    trackDragState.currentLaneIndex = targetLaneIndex
+    const trackDurationSec = resolveTrackDurationSeconds(currentTrackForSnap)
+    const rippleTrackIds = resolveRippleTrackIdSet(
+      trackDragState.snapshotTracks,
+      trackDragState.trackId
+    )
+    const rippleActive = event.shiftKey && rippleTrackIds.size > 1
+    const initialPlacement = resolveLanePlacement({
+      trackId: trackDragState.trackId,
+      laneIndex: targetLaneIndex,
+      rawStartSec,
+      durationSec: trackDurationSec,
+      inputTracks: trackDragState.snapshotTracks,
+      excludeTrackIds: rippleActive ? rippleTrackIds : undefined
+    })
+    let nextStartSec = rawStartSec
     const snapStepBeats = resolveVisibleGridSnapStepBeats()
-    const previousTrack = findTrack(trackDragState.previousTrackId)
-    let currentLocalGridSecs = currentTrackForSnap
-      ? buildTrackVisibleLocalGridSecs(currentTrackForSnap)
-      : []
-    let previousTimelineGridSecs: number[] = []
-    if (previousTrack) {
-      const previousStartSec = resolveTrackStartSecById(previousTrack.id)
-      previousTimelineGridSecs = isMixtapeGlobalTempoReady()
-        ? buildGlobalTimelineGridSecs(trackDragState.snapshotTracks, {
-            minSec: dragBounds.minStart,
-            maxSec: clampNumber(
-              clampedRawStartSec +
-                resolveTrackDurationSeconds(currentTrackForSnap || previousTrack),
-              dragBounds.minStart,
-              Number.isFinite(dragBounds.maxStart)
-                ? Math.max(dragBounds.minStart, dragBounds.maxStart)
-                : clampedRawStartSec +
-                    resolveTrackDurationSeconds(currentTrackForSnap || previousTrack)
-            )
-          })
-        : buildTrackVisibleLocalGridSecs(previousTrack).map((sec) =>
-            Number((previousStartSec + sec).toFixed(4))
-          )
-      if (currentTrackForSnap && isMixtapeGlobalTempoReady()) {
-        const strictSnappedStartSec = resolveStrictVisibleGridSnappedStartSec({
-          track: currentTrackForSnap,
-          rawStartSec: clampedRawStartSec,
-          minStartSec: dragBounds.minStart,
-          maxStartSec: dragBounds.maxStart,
-          snapshotTracks: trackDragState.snapshotTracks
-        })
-        const projectedSnap =
-          typeof strictSnappedStartSec === 'number'
-            ? {
-                snappedStartSec: strictSnappedStartSec,
-                currentLocalGridSecs: buildTrackVisibleLocalGridSecs(currentTrackForSnap, {
-                  startSec: strictSnappedStartSec
-                }),
-                candidateStartSec: strictSnappedStartSec
-              }
-            : resolveSnappedStartSecByProjectedGrid({
-                track: currentTrackForSnap,
-                rawStartSec: clampedRawStartSec,
-                minStartSec: dragBounds.minStart,
-                maxStartSec: dragBounds.maxStart,
-                targetTimelineGridSecs: previousTimelineGridSecs,
-                boundaryCandidates: [dragBounds.minStart]
-              })
-        currentLocalGridSecs = projectedSnap.currentLocalGridSecs
-        if (typeof projectedSnap.snappedStartSec === 'number') {
-          nextStartSec = projectedSnap.snappedStartSec
-        }
-      } else {
-        const snappedStartSec = resolveSnappedStartSecByVisibleGrid({
-          rawStartSec: clampedRawStartSec,
-          minStartSec: dragBounds.minStart,
-          maxStartSec: dragBounds.maxStart,
-          currentLocalGridSecs,
-          targetTimelineGridSecs: previousTimelineGridSecs,
-          boundaryCandidates: [dragBounds.minStart]
-        })
-        if (typeof snappedStartSec === 'number') {
-          nextStartSec = snappedStartSec
-        }
-      }
-    }
-    if (currentTrackForSnap && isMixtapeGlobalTempoReady() && !previousTrack) {
-      previousTimelineGridSecs = buildGlobalTimelineGridSecs(trackDragState.snapshotTracks, {
-        minSec: dragBounds.minStart,
-        maxSec: clampedRawStartSec + resolveTrackDurationSeconds(currentTrackForSnap)
+    if (isMixtapeGlobalTempoReady()) {
+      const previousTimelineGridSecs = buildGlobalTimelineGridSecs(trackDragState.snapshotTracks, {
+        minSec: 0,
+        maxSec: rawStartSec + trackDurationSec
       })
       const strictSnappedStartSec = resolveStrictVisibleGridSnappedStartSec({
         track: currentTrackForSnap,
-        rawStartSec: clampedRawStartSec,
-        minStartSec: dragBounds.minStart,
-        maxStartSec: dragBounds.maxStart,
+        rawStartSec,
+        minStartSec: 0,
+        maxStartSec: Number.POSITIVE_INFINITY,
         snapshotTracks: trackDragState.snapshotTracks
       })
       const projectedSnap =
@@ -521,60 +634,113 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
             }
           : resolveSnappedStartSecByProjectedGrid({
               track: currentTrackForSnap,
-              rawStartSec: clampedRawStartSec,
-              minStartSec: dragBounds.minStart,
-              maxStartSec: dragBounds.maxStart,
+              rawStartSec,
+              minStartSec: 0,
+              maxStartSec: Number.POSITIVE_INFINITY,
               targetTimelineGridSecs: previousTimelineGridSecs,
-              boundaryCandidates: [dragBounds.minStart]
+              boundaryCandidates: initialPlacement.boundaryCandidates
             })
-      currentLocalGridSecs = projectedSnap.currentLocalGridSecs
       if (typeof projectedSnap.snappedStartSec === 'number') {
         nextStartSec = projectedSnap.snappedStartSec
       }
     }
-    if (currentTrackForSnap && !isMixtapeGlobalTempoReady()) {
+    if (!isMixtapeGlobalTempoReady()) {
       const currentBpm = Number(currentTrackForSnap.bpm)
       if (Number.isFinite(currentBpm) && currentBpm > 0) {
         const beatSec = resolveBeatSecByBpm(currentBpm)
         const snapStepSec = beatSec * snapStepBeats
         const currentFirstBeatSec = resolveTrackFirstBeatSeconds(currentTrackForSnap, currentBpm)
         const currentAnchorRawSec = resolveGridAnchorSec({
-          startSec: clampedRawStartSec,
+          startSec: rawStartSec,
           firstBeatSec: currentFirstBeatSec,
           beatSec,
           barBeatOffset: normalizeBeatOffset(currentTrackForSnap.barBeatOffset, 32)
         })
         const snappedStartSec = resolveSnappedStartSec({
-          rawStartSec: clampedRawStartSec,
-          minStartSec: dragBounds.minStart,
-          maxStartSec: dragBounds.maxStart,
+          rawStartSec,
+          minStartSec: 0,
+          maxStartSec: Number.POSITIVE_INFINITY,
           snapAnchorSec: 0,
           currentAnchorRawSec,
           stepSec: snapStepSec,
-          boundaryCandidates: [dragBounds.minStart]
+          boundaryCandidates: initialPlacement.boundaryCandidates
         })
         if (typeof snappedStartSec === 'number') {
           nextStartSec = snappedStartSec
         }
       }
     }
-    nextStartSec = clampNumber(nextStartSec, dragBounds.minStart, dragBounds.maxStart)
+    const finalPlacement = resolveLanePlacement({
+      trackId: trackDragState.trackId,
+      laneIndex: targetLaneIndex,
+      rawStartSec: nextStartSec,
+      durationSec: trackDurationSec,
+      inputTracks: trackDragState.snapshotTracks,
+      excludeTrackIds: rippleActive ? rippleTrackIds : undefined
+    })
+    nextStartSec = finalPlacement.startSec
 
-    const targetIndex = tracks.value.findIndex(
-      (item: MixtapeTrack) => item.id === trackDragState?.trackId
-    )
-    if (targetIndex < 0) return
     const currentTrack = tracks.value[targetIndex]
     if (!currentTrack) return
-    const currentStartSec = resolveTrackStartSecById(currentTrack.id)
-    const shouldUpdateStart = Math.abs(nextStartSec - currentStartSec) > 0.0001
-    if (!shouldUpdateStart) return
-    const nextTrack: MixtapeTrack = {
-      ...currentTrack,
-      startSec: nextStartSec
-    }
-    const nextTracks = [...tracks.value]
-    nextTracks.splice(targetIndex, 1, nextTrack)
+    const snapshotTimingById = buildTimingById(trackDragState.snapshotTracks)
+    const snapshotTrackById = new Map(
+      trackDragState.snapshotTracks.map((track) => [track.id, track])
+    )
+    const targetSnapshotTiming = snapshotTimingById.get(trackDragState.trackId)
+    const requestedRippleDeltaSec =
+      nextStartSec - (targetSnapshotTiming?.startSec ?? trackDragState.initialStartSec)
+    const rippleDeltaSec = rippleActive
+      ? resolveRippleDeltaSec({
+          trackId: trackDragState.trackId,
+          targetLaneIndex,
+          requestedDeltaSec: requestedRippleDeltaSec,
+          rippleTrackIds,
+          snapshotTracks: trackDragState.snapshotTracks
+        })
+      : 0
+    const nextTracks = tracks.value.map((track, index) => {
+      const snapshotTrack = snapshotTrackById.get(track.id)
+      const snapshotTiming = snapshotTimingById.get(track.id)
+      if (!snapshotTrack || !snapshotTiming) return track
+      if (track.id === trackDragState?.trackId) {
+        const targetStartSec = rippleActive
+          ? roundTrackTempoSec(Math.max(0, snapshotTiming.startSec + rippleDeltaSec))
+          : nextStartSec
+        return {
+          ...track,
+          startSec: targetStartSec,
+          laneIndex: targetLaneIndex
+        }
+      }
+      if (!rippleTrackIds.has(track.id)) return track
+      const restoredLaneIndex = resolveTrackLaneIndex(snapshotTrack, index)
+      const restoredStartSec = roundTrackTempoSec(Math.max(0, snapshotTiming.startSec))
+      if (!rippleActive) {
+        return {
+          ...track,
+          startSec: restoredStartSec,
+          laneIndex: restoredLaneIndex
+        }
+      }
+      return {
+        ...track,
+        startSec: roundTrackTempoSec(Math.max(0, snapshotTiming.startSec + rippleDeltaSec)),
+        laneIndex: restoredLaneIndex
+      }
+    })
+    const anyTrackChanged = nextTracks.some((track, index) => {
+      const previousTrack = tracks.value[index]
+      if (!previousTrack || previousTrack.id !== track.id) return true
+      const previousStartSec = normalizeStartSec(previousTrack.startSec) ?? 0
+      const nextStartSecValue = normalizeStartSec(track.startSec) ?? 0
+      const previousLaneIndex = resolveTrackLaneIndex(previousTrack, index)
+      const nextLaneIndex = resolveTrackLaneIndex(track, index)
+      return (
+        Math.abs(previousStartSec - nextStartSecValue) > 0.0001 ||
+        previousLaneIndex !== nextLaneIndex
+      )
+    })
+    if (!anyTrackChanged) return
     tracks.value = nextTracks
     event.preventDefault()
   }
@@ -582,11 +748,8 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
   const handleTrackDragEnd = () => {
     if (!trackDragState) return
     const targetTrackId = trackDragState.trackId
-    const previousTrack =
-      trackDragState.snapshotTracks.find((item: MixtapeTrack) => item.id === targetTrackId) || null
     const currentTrack = findTrack(targetTrackId)
-    const previousStartSec = normalizeStartSec(previousTrack?.startSec)
-    const currentStartSec = normalizeStartSec(currentTrack?.startSec)
+    const snapshotTracks = trackDragState.snapshotTracks
     isTrackDragging.value = false
     trackDragState = null
     window.removeEventListener('mousemove', handleTrackDragMove as EventListener)
@@ -594,16 +757,32 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
     scheduleFullPreRender()
     scheduleWorkerPreRender()
     if (!currentTrack) return
-    const startChanged =
-      currentStartSec !== null &&
-      (previousStartSec === null || Math.abs(previousStartSec - currentStartSec) > 0.0001)
-    if (!startChanged) return
-    void persistTrackStartSec([
-      {
-        itemId: targetTrackId,
-        startSec: Number(currentStartSec)
-      }
-    ])
+    const previousTimingById = buildTimingById(snapshotTracks)
+    const currentTimingById = buildTimingById(tracks.value)
+    const previousTrackById = new Map(snapshotTracks.map((track) => [track.id, track]))
+    const changedEntries = tracks.value
+      .map((track, index) => {
+        const previousTrack = previousTrackById.get(track.id)
+        const previousTiming = previousTimingById.get(track.id)
+        const currentTiming = currentTimingById.get(track.id)
+        if (!previousTrack || !previousTiming || !currentTiming) return null
+        const previousLaneIndex = resolveTrackLaneIndex(previousTrack, index)
+        const currentLaneIndex = resolveTrackLaneIndex(track, index)
+        const startChanged =
+          Math.abs(Number(previousTiming.startSec) - Number(currentTiming.startSec)) > 0.0001
+        const laneChanged = previousLaneIndex !== currentLaneIndex
+        if (!startChanged && !laneChanged) return null
+        return {
+          itemId: track.id,
+          startSec: Number(currentTiming.startSec),
+          laneIndex: currentLaneIndex
+        }
+      })
+      .filter(
+        (entry): entry is { itemId: string; startSec: number; laneIndex: number } => entry !== null
+      )
+    if (!changedEntries.length) return
+    void persistTrackStartSec(changedEntries)
   }
 
   const handleTrackDragStart = (item: TimelineTrackLayout, event: MouseEvent) => {
@@ -622,7 +801,9 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
       initialStartSec: Number.isFinite(Number(item.startSec))
         ? Number(item.startSec)
         : resolveTimelineSecByX(item.startX, pxPerSec),
-      previousTrackId: resolvePreviousTrackId(trackId),
+      initialLaneIndex: normalizeMixtapeLaneIndex(item.laneIndex),
+      currentLaneIndex: normalizeMixtapeLaneIndex(item.laneIndex),
+      laneRects: resolveDragLaneRects(event),
       snapshotTracks: tracks.value.map((trackItem: MixtapeTrack) => ({ ...trackItem }))
     }
     isTrackDragging.value = true

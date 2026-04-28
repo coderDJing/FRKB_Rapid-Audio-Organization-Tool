@@ -14,6 +14,7 @@ import {
   MIXTAPE_WIDTH_SCALE,
   RAW_WAVEFORM_MIN_ZOOM,
   RENDER_ZOOM_STEP,
+  normalizeMixtapeLaneIndex,
   resolveTimelineGridBarWidth,
   WAVEFORM_TILE_WIDTH,
   ZOOM_MAX,
@@ -201,6 +202,8 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
   const laneHeight = computed(() => resolveLaneHeightForZoom(normalizedRenderZoom.value))
 
   const laneIndices = Array.from({ length: LANE_COUNT }, (_, index) => index)
+  const resolveTrackLaneIndex = (track: MixtapeTrack, fallbackIndex: number) =>
+    normalizeMixtapeLaneIndex(track?.laneIndex, fallbackIndex % LANE_COUNT)
   const STEM_IDS_4STEMS: MixtapeWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
   const isStemMixMode = (): boolean =>
     (mixtapeMixMode?.value as MixtapeMixMode | undefined) !== 'eq'
@@ -447,7 +450,7 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
       }
       layout.push({
         track,
-        laneIndex: i % LANE_COUNT,
+        laneIndex: resolveTrackLaneIndex(track, i),
         startSec,
         startX,
         width

@@ -60,6 +60,11 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  // 鼠标静止后才显示；移动时立即收起，并重新等待 showDelay
+  showWhenMouseIdle: {
+    type: Boolean,
+    default: false
+  },
   // 层级
   zIndex: {
     type: [Number, String] as PropType<number | string>,
@@ -156,6 +161,13 @@ function onAnchorMouseMove(e: MouseEvent) {
   // 总是记录最新鼠标位置
   mouseX.value = e.clientX
   mouseY.value = e.clientY
+  if (props.showWhenMouseIdle) {
+    if (visible.value) {
+      visible.value = false
+    }
+    queueShowForAnchor(props.dom)
+    return
+  }
   // 仅在需要跟随且已显示时才实时更新
   if (props.followMouse && visible.value) updatePosition()
 }
