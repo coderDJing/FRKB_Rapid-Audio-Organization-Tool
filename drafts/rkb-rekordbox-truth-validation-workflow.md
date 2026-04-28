@@ -84,20 +84,20 @@ strategy pass 数。迁移分析只作为当次验收输出，不进入长期状
 
 #### classic current
 
-- 算法版本：`classic` = `2`。
+- 算法版本：`classic` = `3`。
 - benchmark：`frkb-classic-current-latest.json`。
 - classification：`frkb-classic-classification-current.json`。
 - 样本总数：`trackTotal = 506`。
 - 已分析：`analyzedTrackCount = 506`。
 - 错误：`errorTrackCount = 0`。
-- 通过：`pass = 30`。
-- 失败：`fail = 476`。
+- 通过：`pass = 33`。
+- 失败：`fail = 473`。
 - 分类数量：
-  - `bpm = 298`
-  - `half-or-double-bpm = 48`
-  - `first-beat-phase = 76`
-  - `downbeat = 54`
-  - `pass = 30`
+  - `bpm = 255`
+  - `half-or-double-bpm = 49`
+  - `first-beat-phase = 111`
+  - `downbeat = 58`
+  - `pass = 33`
 
 不保留 `*.progress.json`、临时 shard 目录、`targeted-*`、`try-*`、`diag-*`、
 随手命名的 `after-*`、以及任何未在本节列出的 benchmark JSON。需要复查时重新跑。

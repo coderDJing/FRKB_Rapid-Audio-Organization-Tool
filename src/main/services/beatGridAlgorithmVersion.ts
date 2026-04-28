@@ -7,7 +7,7 @@ export const ENV_BEAT_GRID_ANALYZER_PROVIDER = 'FRKB_BEAT_GRID_ANALYZER'
 
 export const BEAT_GRID_ALGORITHM_VERSIONS: Record<BeatGridAnalyzerProvider, number> = {
   beatthis: 8,
-  classic: 2
+  classic: 3
 }
 
 export const CURRENT_BEAT_GRID_ALGORITHM_VERSION =

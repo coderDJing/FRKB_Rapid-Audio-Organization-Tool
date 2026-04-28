@@ -13,6 +13,9 @@ const BPM_INTEGER_SNAP_THRESHOLD = 0.18
 const HEAD_PREZERO_THRESHOLD_MS = 2
 const SUBDIVISION_RESCUE_GRID_FLOOR = 0.62
 const SUBDIVISION_RESCUE_SCORE_DROP_LIMIT = 0.13
+const TEMPO_SELECTION_GRID_WEIGHT = 0.82
+const TEMPO_SELECTION_AUTOCORRELATION_WEIGHT = 0.18
+const INTEGER_BPM_SNAP_REPHASE_MIN_SCORE_GAIN = 0.025
 
 const SUBDIVISION_RESCUE_RULES = [
   {
@@ -42,6 +45,7 @@ type TempoCandidate = {
   bpm: number
   lagFrames: number
   score: number
+  tempoSource: string
 }
 
 type PhaseSeed = {
@@ -220,20 +224,27 @@ const estimateTempoCandidates = (envelope: Float64Array, hopSec: number) => {
         : 0
     const lagFrames = Math.max(2, item.lag + delta)
     const bpm = 60 / (lagFrames * hopSec)
-    addTempoCandidate(candidates, { bpm, lagFrames, score: item.score })
+    addTempoCandidate(candidates, {
+      bpm,
+      lagFrames,
+      score: item.score,
+      tempoSource: 'direct'
+    })
 
     if (bpm < 105) {
       addTempoCandidate(candidates, {
         bpm: bpm * 2,
         lagFrames: lagFrames / 2,
-        score: item.score * 0.94
+        score: item.score * 0.94,
+        tempoSource: 'tempo-half-harmonic'
       })
     }
     if (bpm > 135) {
       addTempoCandidate(candidates, {
         bpm: bpm / 2,
         lagFrames: lagFrames * 2,
-        score: item.score * 0.82
+        score: item.score * 0.82,
+        tempoSource: 'tempo-double-harmonic'
       })
     }
     if (candidates.length >= MAX_TEMPO_CANDIDATES) break
@@ -506,6 +517,38 @@ const selectSubdivisionRescue = (
   return best ? { label: best.label, bpm: best.bpm, grid: best.grid } : null
 }
 
+const applyIntegerBpmSnap = (
+  envelope: Float64Array,
+  hopSec: number,
+  hitThreshold: number,
+  bpm: number,
+  grid: GridScore
+): { bpm: number; grid: GridScore; snapped: boolean } => {
+  const snappedBpm = snapIntegerBpm(bpm)
+  if (snappedBpm === bpm || snappedBpm < MIN_BPM || snappedBpm > MAX_BPM) {
+    return { bpm, grid, snapped: false }
+  }
+
+  const candidateLagFrames = 60 / snappedBpm / hopSec
+  if (!Number.isFinite(candidateLagFrames) || candidateLagFrames <= 1) {
+    return { bpm, grid, snapped: false }
+  }
+
+  const candidateGrid = scoreGrid(
+    envelope,
+    snappedBpm,
+    candidateLagFrames,
+    ((grid.phaseFrame % candidateLagFrames) + candidateLagFrames) % candidateLagFrames,
+    hopSec,
+    hitThreshold
+  )
+  if (candidateGrid.score - grid.score < INTEGER_BPM_SNAP_REPHASE_MIN_SCORE_GAIN) {
+    return { bpm: snappedBpm, grid, snapped: true }
+  }
+
+  return { bpm: snappedBpm, grid: candidateGrid, snapped: true }
+}
+
 const solveClassicGridLines = (
   envelope: Float64Array,
   hopSec: number,
@@ -534,7 +577,9 @@ const solveClassicGridLines = (
         hitThreshold
       )
       const tempoConfidence = clamp01(tempo.score / Math.max(tempo.score + 0.16, 0.0001))
-      const candidateScore = grid.score * 0.82 + tempoConfidence * 0.18
+      const candidateScore =
+        grid.score * TEMPO_SELECTION_GRID_WEIGHT +
+        tempoConfidence * TEMPO_SELECTION_AUTOCORRELATION_WEIGHT
       if (candidateScore > bestScore) {
         bestTempo = tempo
         bestGrid = grid
@@ -550,12 +595,22 @@ const solveClassicGridLines = (
   const rawBpm = bestTempo.bpm
   let bpm = bestTempo.bpm
   let resolvedGrid = bestGrid
-  let anchorStrategy = 'classic-grid-line-lattice-v3'
-  const rescue = selectSubdivisionRescue(envelope, hopSec, hitThreshold, bpm, bestGrid)
+  const tempoSource = String(bestTempo.tempoSource || 'direct').trim()
+  let anchorStrategy = 'classic-grid-line-lattice-v4'
+  if (tempoSource && tempoSource !== 'direct') {
+    anchorStrategy = `${anchorStrategy}-${tempoSource}`
+  }
+  const rescue = selectSubdivisionRescue(envelope, hopSec, hitThreshold, bpm, resolvedGrid)
   if (rescue) {
     bpm = rescue.bpm
     resolvedGrid = rescue.grid
-    anchorStrategy = `classic-grid-line-lattice-v3-${rescue.label}`
+    anchorStrategy = `${anchorStrategy}-${rescue.label}`
+  }
+  const integerSnap = applyIntegerBpmSnap(envelope, hopSec, hitThreshold, bpm, resolvedGrid)
+  bpm = integerSnap.bpm
+  resolvedGrid = integerSnap.grid
+  if (integerSnap.snapped) {
+    anchorStrategy = `${anchorStrategy}-integer-bpm`
   }
 
   const beatIntervalSec = 60 / bpm

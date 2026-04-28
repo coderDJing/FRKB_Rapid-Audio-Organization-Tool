@@ -15,6 +15,9 @@ BPM_INTEGER_SNAP_THRESHOLD = 0.18
 HEAD_PREZERO_THRESHOLD_MS = 2.0
 SUBDIVISION_RESCUE_GRID_FLOOR = 0.62
 SUBDIVISION_RESCUE_SCORE_DROP_LIMIT = 0.13
+TEMPO_SELECTION_GRID_WEIGHT = 0.82
+TEMPO_SELECTION_AUTOCORRELATION_WEIGHT = 0.18
+INTEGER_BPM_SNAP_REPHASE_MIN_SCORE_GAIN = 0.025
 SUBDIVISION_RESCUE_RULES = (
     ("third-subdivision", 1.5, (1.0 / 3.0, 2.0 / 3.0), 0.82, 118.0),
     ("half-subdivision", 2.0, (0.5,), 0.68, 78.0),
@@ -108,7 +111,7 @@ def _score_tempo_lag(envelope: np.ndarray, lag: int) -> float:
     return direct + double * 0.48 + triple * 0.18 - half * 0.1
 
 
-def _add_tempo_candidate(candidates: list[dict[str, float]], candidate: dict[str, float]) -> None:
+def _add_tempo_candidate(candidates: list[dict[str, Any]], candidate: dict[str, Any]) -> None:
     bpm = float(candidate["bpm"])
     if not math.isfinite(bpm) or bpm < MIN_BPM or bpm > MAX_BPM:
         return
@@ -117,7 +120,7 @@ def _add_tempo_candidate(candidates: list[dict[str, float]], candidate: dict[str
     candidates.append(candidate)
 
 
-def _estimate_tempo_candidates(envelope: np.ndarray, hop_sec: float) -> list[dict[str, float]]:
+def _estimate_tempo_candidates(envelope: np.ndarray, hop_sec: float) -> list[dict[str, Any]]:
     min_lag = max(2, int(math.floor(60.0 / MAX_BPM / hop_sec)))
     max_lag = min(envelope.shape[0] - 2, int(math.ceil(60.0 / MIN_BPM / hop_sec)))
     scored: list[dict[str, float]] = []
@@ -127,7 +130,7 @@ def _estimate_tempo_candidates(envelope: np.ndarray, hop_sec: float) -> list[dic
             scored.append({"lag": float(lag), "score": score})
 
     scored.sort(key=lambda item: float(item["score"]), reverse=True)
-    candidates: list[dict[str, float]] = []
+    candidates: list[dict[str, Any]] = []
     for item in scored[:28]:
         lag = int(item["lag"])
         center_score = float(item["score"])
@@ -141,16 +144,34 @@ def _estimate_tempo_candidates(envelope: np.ndarray, hop_sec: float) -> list[dic
         )
         lag_frames = max(2.0, float(lag) + delta)
         bpm = 60.0 / (lag_frames * hop_sec)
-        _add_tempo_candidate(candidates, {"bpm": bpm, "lagFrames": lag_frames, "score": center_score})
+        _add_tempo_candidate(
+            candidates,
+            {
+                "bpm": bpm,
+                "lagFrames": lag_frames,
+                "score": center_score,
+                "tempoSource": "direct",
+            },
+        )
         if bpm < 105.0:
             _add_tempo_candidate(
                 candidates,
-                {"bpm": bpm * 2.0, "lagFrames": lag_frames / 2.0, "score": center_score * 0.94},
+                {
+                    "bpm": bpm * 2.0,
+                    "lagFrames": lag_frames / 2.0,
+                    "score": center_score * 0.94,
+                    "tempoSource": "tempo-half-harmonic",
+                },
             )
         if bpm > 135.0:
             _add_tempo_candidate(
                 candidates,
-                {"bpm": bpm / 2.0, "lagFrames": lag_frames * 2.0, "score": center_score * 0.82},
+                {
+                    "bpm": bpm / 2.0,
+                    "lagFrames": lag_frames * 2.0,
+                    "score": center_score * 0.82,
+                    "tempoSource": "tempo-double-harmonic",
+                },
             )
         if len(candidates) >= MAX_TEMPO_CANDIDATES:
             break
@@ -412,6 +433,41 @@ def _select_subdivision_rescue(
     return label, candidate_bpm, candidate_grid
 
 
+def _apply_integer_bpm_snap(
+    envelope: np.ndarray,
+    hop_sec: float,
+    hit_threshold: float,
+    bpm: float,
+    grid: dict[str, float],
+) -> tuple[float, dict[str, float], bool]:
+    snapped_bpm = _snap_integer_bpm(bpm)
+    if snapped_bpm == bpm:
+        return bpm, grid, False
+    if snapped_bpm < MIN_BPM or snapped_bpm > MAX_BPM:
+        return bpm, grid, False
+
+    candidate_lag_frames = 60.0 / snapped_bpm / hop_sec
+    if candidate_lag_frames <= 1.0 or not math.isfinite(candidate_lag_frames):
+        return bpm, grid, False
+
+    candidate_phase_frame = float(grid["phaseFrame"]) % candidate_lag_frames
+    candidate_grid = _score_grid(
+        envelope,
+        snapped_bpm,
+        candidate_lag_frames,
+        candidate_phase_frame,
+        hop_sec,
+        hit_threshold,
+    )
+    if (
+        float(candidate_grid["score"]) - float(grid["score"])
+        < INTEGER_BPM_SNAP_REPHASE_MIN_SCORE_GAIN
+    ):
+        return snapped_bpm, grid, True
+
+    return snapped_bpm, candidate_grid, True
+
+
 def _solve_classic_grid_lines(envelope: np.ndarray, hop_sec: float, duration_sec: float) -> dict[str, Any]:
     tempo_candidates = _estimate_tempo_candidates(envelope, hop_sec)
     if not tempo_candidates:
@@ -434,7 +490,10 @@ def _solve_classic_grid_lines(envelope: np.ndarray, hop_sec: float, duration_sec
                 hit_threshold,
             )
             tempo_confidence = _clamp01(float(tempo["score"]) / max(float(tempo["score"]) + 0.16, 0.0001))
-            candidate_score = float(grid["score"]) * 0.82 + tempo_confidence * 0.18
+            candidate_score = (
+                float(grid["score"]) * TEMPO_SELECTION_GRID_WEIGHT
+                + tempo_confidence * TEMPO_SELECTION_AUTOCORRELATION_WEIGHT
+            )
             if candidate_score > best_score:
                 best_tempo = tempo
                 best_grid = grid
@@ -445,11 +504,23 @@ def _solve_classic_grid_lines(envelope: np.ndarray, hop_sec: float, duration_sec
 
     bpm = float(best_tempo["bpm"])
     raw_bpm = bpm
-    anchor_strategy = "classic-grid-line-lattice-v3"
+    tempo_source = str(best_tempo.get("tempoSource") or "direct").strip()
+    anchor_strategy = "classic-grid-line-lattice-v4"
+    if tempo_source and tempo_source != "direct":
+        anchor_strategy = f"{anchor_strategy}-{tempo_source}"
     rescue = _select_subdivision_rescue(envelope, hop_sec, hit_threshold, bpm, best_grid)
     if rescue is not None:
         rescue_label, bpm, best_grid = rescue
-        anchor_strategy = f"classic-grid-line-lattice-v3-{rescue_label}"
+        anchor_strategy = f"{anchor_strategy}-{rescue_label}"
+    bpm, best_grid, integer_snapped = _apply_integer_bpm_snap(
+        envelope,
+        hop_sec,
+        hit_threshold,
+        bpm,
+        best_grid,
+    )
+    if integer_snapped:
+        anchor_strategy = f"{anchor_strategy}-integer-bpm"
 
     beat_interval_sec = 60.0 / bpm
     interval_ms = beat_interval_sec * 1000.0
