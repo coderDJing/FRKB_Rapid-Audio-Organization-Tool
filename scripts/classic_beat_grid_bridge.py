@@ -11,6 +11,15 @@ MIN_DURATION_SEC = 8.0
 PHASE_PEAK_RADIUS_FRAMES = 5
 MAX_TEMPO_CANDIDATES = 14
 MAX_PHASE_CANDIDATES_PER_TEMPO = 8
+BPM_INTEGER_SNAP_THRESHOLD = 0.18
+HEAD_PREZERO_THRESHOLD_MS = 2.0
+SUBDIVISION_RESCUE_GRID_FLOOR = 0.62
+SUBDIVISION_RESCUE_SCORE_DROP_LIMIT = 0.13
+SUBDIVISION_RESCUE_RULES = (
+    ("third-subdivision", 1.5, (1.0 / 3.0, 2.0 / 3.0), 0.82, 118.0),
+    ("half-subdivision", 2.0, (0.5,), 0.68, 78.0),
+    ("fifth-subdivision", 2.5, (0.4, 0.6, 0.8), 0.82, 84.0),
+)
 
 
 def _clamp01(value: float) -> float:
@@ -304,6 +313,105 @@ def _score_grid(
     }
 
 
+def _fractional_support_ratio(
+    envelope: np.ndarray,
+    lag_frames: float,
+    phase_frame: float,
+    fractions: tuple[float, ...],
+) -> float:
+    beat_strength = 0.0
+    subdivision_strength = 0.0
+    beat_count = 0
+    subdivision_count = 0
+    beat_frame = phase_frame
+    while beat_frame < envelope.shape[0]:
+        beat_strength += _local_peak(envelope, beat_frame, PHASE_PEAK_RADIUS_FRAMES)[1]
+        beat_count += 1
+        for fraction in fractions:
+            subdivision_strength += _local_peak(envelope, beat_frame + lag_frames * fraction, 2)[1]
+            subdivision_count += 1
+        beat_frame += lag_frames
+
+    if beat_count <= 0 or subdivision_count <= 0 or beat_strength <= 0.0:
+        return 0.0
+    return (subdivision_strength / float(subdivision_count)) / (beat_strength / float(beat_count))
+
+
+def _snap_integer_bpm(bpm: float) -> float:
+    rounded = round(bpm)
+    if abs(float(bpm) - float(rounded)) <= BPM_INTEGER_SNAP_THRESHOLD:
+        return float(rounded)
+    return bpm
+
+
+def _normalize_head_phase_ms(phase_ms: float, interval_ms: float) -> float:
+    if interval_ms <= 0.0 or not math.isfinite(interval_ms):
+        return phase_ms
+    if interval_ms - phase_ms <= HEAD_PREZERO_THRESHOLD_MS:
+        return phase_ms - interval_ms
+    return phase_ms
+
+
+def _select_subdivision_rescue(
+    envelope: np.ndarray,
+    hop_sec: float,
+    hit_threshold: float,
+    base_bpm: float,
+    base_grid: dict[str, float],
+) -> tuple[str, float, dict[str, float]] | None:
+    if base_bpm <= 0.0 or not math.isfinite(base_bpm):
+        return None
+
+    base_lag_frames = 60.0 / base_bpm / hop_sec
+    base_phase_frame = float(base_grid["phaseFrame"])
+    base_score = float(base_grid["score"])
+    best: tuple[float, str, float, dict[str, float]] | None = None
+
+    for label, multiplier, fractions, min_support, max_base_bpm in SUBDIVISION_RESCUE_RULES:
+        if base_bpm > max_base_bpm:
+            continue
+        support_ratio = _fractional_support_ratio(
+            envelope,
+            base_lag_frames,
+            base_phase_frame,
+            fractions,
+        )
+        if support_ratio < min_support:
+            continue
+
+        candidate_bpm = _snap_integer_bpm(base_bpm * multiplier)
+        if candidate_bpm < MIN_BPM or candidate_bpm > MAX_BPM:
+            continue
+
+        candidate_lag_frames = 60.0 / candidate_bpm / hop_sec
+        if candidate_lag_frames <= 1.0 or not math.isfinite(candidate_lag_frames):
+            continue
+
+        candidate_phase_frame = base_phase_frame % candidate_lag_frames
+        candidate_grid = _score_grid(
+            envelope,
+            candidate_bpm,
+            candidate_lag_frames,
+            candidate_phase_frame,
+            hop_sec,
+            hit_threshold,
+        )
+        candidate_score = float(candidate_grid["score"])
+        if candidate_score < SUBDIVISION_RESCUE_GRID_FLOOR:
+            continue
+        if candidate_score + SUBDIVISION_RESCUE_SCORE_DROP_LIMIT < base_score:
+            continue
+
+        ranking_score = candidate_score + min(1.25, support_ratio) * 0.08
+        if best is None or ranking_score > best[0]:
+            best = (ranking_score, label, candidate_bpm, candidate_grid)
+
+    if best is None:
+        return None
+    _ranking_score, label, candidate_bpm, candidate_grid = best
+    return label, candidate_bpm, candidate_grid
+
+
 def _solve_classic_grid_lines(envelope: np.ndarray, hop_sec: float, duration_sec: float) -> dict[str, Any]:
     tempo_candidates = _estimate_tempo_candidates(envelope, hop_sec)
     if not tempo_candidates:
@@ -336,16 +444,25 @@ def _solve_classic_grid_lines(envelope: np.ndarray, hop_sec: float, duration_sec
         raise RuntimeError("classic grid-line analyzer found no stable phase candidate")
 
     bpm = float(best_tempo["bpm"])
+    raw_bpm = bpm
+    anchor_strategy = "classic-grid-line-lattice-v3"
+    rescue = _select_subdivision_rescue(envelope, hop_sec, hit_threshold, bpm, best_grid)
+    if rescue is not None:
+        rescue_label, bpm, best_grid = rescue
+        anchor_strategy = f"classic-grid-line-lattice-v3-{rescue_label}"
+
     beat_interval_sec = 60.0 / bpm
+    interval_ms = beat_interval_sec * 1000.0
+    first_beat_ms = _normalize_head_phase_ms(float(best_grid["phaseMs"]), interval_ms)
     tempo_score = _clamp01(float(best_tempo["score"]) / max(float(best_tempo["score"]) + 0.16, 0.0001))
     quality = _clamp01(float(best_grid["score"]) * 0.75 + tempo_score * 0.25)
     return {
         "bpm": round(bpm, 6),
-        "rawBpm": round(bpm, 6),
-        "firstBeatMs": round(float(best_grid["phaseMs"]), 3),
-        "rawFirstBeatMs": round(float(best_grid["phaseMs"]), 3),
-        "absoluteFirstBeatMs": round(float(best_grid["phaseMs"]), 3),
-        "absoluteRawFirstBeatMs": round(float(best_grid["phaseMs"]), 3),
+        "rawBpm": round(raw_bpm, 6),
+        "firstBeatMs": round(first_beat_ms, 3),
+        "rawFirstBeatMs": round(first_beat_ms, 3),
+        "absoluteFirstBeatMs": round(first_beat_ms, 3),
+        "absoluteRawFirstBeatMs": round(first_beat_ms, 3),
         "barBeatOffset": int(best_grid["downbeatOffset"]) % 32,
         "beatCount": int(best_grid["beatCount"]),
         "downbeatCount": int(best_grid["beatCount"]) // 4,
@@ -359,7 +476,7 @@ def _solve_classic_grid_lines(envelope: np.ndarray, hop_sec: float, duration_sec
         "anchorCorrectionMs": 0.0,
         "anchorConfidenceScore": round(float(best_grid["score"]), 6),
         "anchorMatchedBeatCount": int(best_grid["hitCount"]),
-        "anchorStrategy": "classic-grid-line-lattice-v2",
+        "anchorStrategy": anchor_strategy,
         "windowStartSec": 0.0,
         "windowDurationSec": round(duration_sec, 3),
         "windowIndex": 0,

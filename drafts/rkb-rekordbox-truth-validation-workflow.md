@@ -47,9 +47,57 @@ benchmark、classification、派生视图、音频样本目录全部分开。它
 - `frkb-classic-grid-failures-current-manifest.json`：`classic` 当前失败聚类清单。
 - `beatthis-prediction-cache/`：BeatThis 可复用预测缓存。
 
-这些文件只表达当前本机样本库状态；数量以 JSON 实际内容为准，不写进仓库文档。
-新增 provider 时沿用 `frkb-<provider>-...` 命名，禁止新增无 provider 作用域的
-benchmark/classification 文件。
+这些文件只表达当前本机样本库状态；算法、样本集、benchmark、classification
+或音频派生目录发生变化后，必须同步更新本文档的“当前算法状态记录”。禁止把
+pass/fail 和失败分类数量只留在 JSON 里。新增 provider 时沿用 `frkb-<provider>-...`
+命名，禁止新增无 provider 作用域的 benchmark/classification 文件。
+
+当前算法状态记录至少包含：
+
+- provider、算法版本、benchmark 文件、classification 文件。
+- `trackTotal`、`analyzedTrackCount`、`errorTrackCount`、`pass`、`fail`。
+- 完整 `categoryCounts`，包括 `bpm`、`half-or-double-bpm`、`first-beat-phase`、
+  `downbeat`、`grid-drift`、`pass`、`error` 等实际出现的类别。
+
+状态记录只写当前数量，不写本次优化成果、相对上一轮迁移、具体改善样本清单或
+strategy pass 数。迁移分析只作为当次验收输出，不进入长期状态快照。
+
+当前状态只维护一份；后续状态变化时直接覆盖本节，不追加历史条目。
+
+### 当前算法状态
+
+#### beatthis current
+
+- 算法版本：`beatthis` = `8`。
+- benchmark：`frkb-current-latest.json`。
+- classification：`frkb-classification-current.json`。
+- 样本总数：`trackTotal = 506`。
+- 已分析：`analyzedTrackCount = 506`。
+- 错误：`errorTrackCount = 0`。
+- 通过：`pass = 351`。
+- 失败：`fail = 155`。
+- 分类数量：
+  - `bpm = 19`
+  - `first-beat-phase = 128`
+  - `downbeat = 8`
+  - `pass = 351`
+
+#### classic current
+
+- 算法版本：`classic` = `2`。
+- benchmark：`frkb-classic-current-latest.json`。
+- classification：`frkb-classic-classification-current.json`。
+- 样本总数：`trackTotal = 506`。
+- 已分析：`analyzedTrackCount = 506`。
+- 错误：`errorTrackCount = 0`。
+- 通过：`pass = 30`。
+- 失败：`fail = 476`。
+- 分类数量：
+  - `bpm = 298`
+  - `half-or-double-bpm = 48`
+  - `first-beat-phase = 76`
+  - `downbeat = 54`
+  - `pass = 30`
 
 不保留 `*.progress.json`、临时 shard 目录、`targeted-*`、`try-*`、`diag-*`、
 随手命名的 `after-*`、以及任何未在本节列出的 benchmark JSON。需要复查时重新跑。
@@ -202,11 +250,18 @@ truth 入库后，后续算法优化只更新对应 provider 的 benchmark、cla
 
 - `model-frame-prior`
 - `integer-head-prezero`
+- `classic-subdivision-tempo-rescue`
 - `downbeat-one-beat-guard`
 - `sequence-median-phase`
 - `late-phase-edge`
 - `local-onset-lead`
 - `full-track-logit-*`
+
+`classic-subdivision-tempo-rescue` 只能使用 classic 当前 onset envelope 与已选 grid
+内部的固定低维分数拍支撑，识别 1/3、1/2、2/5 等稳定子分割是否说明当前 tempo
+落在过慢的谐波上。它只能按少量固定倍数提升 BPM，必须重新用提升后的 beat interval
+评分 phase/downbeat，禁止读取 truth、benchmark category、歌名、路径或逐曲名单。
+验收时必须固定检查 `pass -> fail = 0`，并单独报告每种 subdivision strategy 的迁移。
 
 ## 8. 数据语义
 

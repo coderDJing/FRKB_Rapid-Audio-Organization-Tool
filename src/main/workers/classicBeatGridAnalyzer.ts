@@ -9,6 +9,34 @@ const MIN_DURATION_SEC = 8
 const PHASE_PEAK_RADIUS_FRAMES = 5
 const MAX_TEMPO_CANDIDATES = 14
 const MAX_PHASE_CANDIDATES_PER_TEMPO = 8
+const BPM_INTEGER_SNAP_THRESHOLD = 0.18
+const HEAD_PREZERO_THRESHOLD_MS = 2
+const SUBDIVISION_RESCUE_GRID_FLOOR = 0.62
+const SUBDIVISION_RESCUE_SCORE_DROP_LIMIT = 0.13
+
+const SUBDIVISION_RESCUE_RULES = [
+  {
+    label: 'third-subdivision',
+    multiplier: 1.5,
+    fractions: [1 / 3, 2 / 3],
+    minSupport: 0.82,
+    maxBaseBpm: 118
+  },
+  {
+    label: 'half-subdivision',
+    multiplier: 2,
+    fractions: [0.5],
+    minSupport: 0.68,
+    maxBaseBpm: 78
+  },
+  {
+    label: 'fifth-subdivision',
+    multiplier: 2.5,
+    fractions: [0.4, 0.6, 0.8],
+    minSupport: 0.82,
+    maxBaseBpm: 84
+  }
+] as const
 
 type TempoCandidate = {
   bpm: number
@@ -49,6 +77,7 @@ type ClassicGridLineAnalysis = {
   tempoScore: number
   gridScore: GridScore
   qualityScore: number
+  anchorStrategy: string
 }
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
@@ -388,6 +417,95 @@ const scoreGrid = (
   }
 }
 
+const fractionalSupportRatio = (
+  envelope: Float64Array,
+  lagFrames: number,
+  phaseFrame: number,
+  fractions: readonly number[]
+) => {
+  let beatStrength = 0
+  let subdivisionStrength = 0
+  let beatCount = 0
+  let subdivisionCount = 0
+
+  for (let beatFrame = phaseFrame; beatFrame < envelope.length; beatFrame += lagFrames) {
+    beatStrength += localPeak(envelope, beatFrame, PHASE_PEAK_RADIUS_FRAMES).value
+    beatCount += 1
+    for (const fraction of fractions) {
+      subdivisionStrength += localPeak(envelope, beatFrame + lagFrames * fraction, 2).value
+      subdivisionCount += 1
+    }
+  }
+
+  if (beatCount <= 0 || subdivisionCount <= 0 || beatStrength <= 0) return 0
+  return subdivisionStrength / subdivisionCount / (beatStrength / beatCount)
+}
+
+const snapIntegerBpm = (bpm: number) => {
+  const rounded = Math.round(bpm)
+  return Math.abs(bpm - rounded) <= BPM_INTEGER_SNAP_THRESHOLD ? rounded : bpm
+}
+
+const normalizeHeadPhaseMs = (phaseMs: number, intervalMs: number) => {
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) return phaseMs
+  if (intervalMs - phaseMs <= HEAD_PREZERO_THRESHOLD_MS) return phaseMs - intervalMs
+  return phaseMs
+}
+
+const selectSubdivisionRescue = (
+  envelope: Float64Array,
+  hopSec: number,
+  hitThreshold: number,
+  baseBpm: number,
+  baseGrid: GridScore
+): { label: string; bpm: number; grid: GridScore } | null => {
+  if (!Number.isFinite(baseBpm) || baseBpm <= 0) return null
+
+  const baseLagFrames = 60 / baseBpm / hopSec
+  const baseScore = baseGrid.score
+  let best: { rankingScore: number; label: string; bpm: number; grid: GridScore } | null = null
+
+  for (const rule of SUBDIVISION_RESCUE_RULES) {
+    if (baseBpm > rule.maxBaseBpm) continue
+    const supportRatio = fractionalSupportRatio(
+      envelope,
+      baseLagFrames,
+      baseGrid.phaseFrame,
+      rule.fractions
+    )
+    if (supportRatio < rule.minSupport) continue
+
+    const candidateBpm = snapIntegerBpm(baseBpm * rule.multiplier)
+    if (candidateBpm < MIN_BPM || candidateBpm > MAX_BPM) continue
+
+    const candidateLagFrames = 60 / candidateBpm / hopSec
+    if (!Number.isFinite(candidateLagFrames) || candidateLagFrames <= 1) continue
+
+    const candidateGrid = scoreGrid(
+      envelope,
+      candidateBpm,
+      candidateLagFrames,
+      ((baseGrid.phaseFrame % candidateLagFrames) + candidateLagFrames) % candidateLagFrames,
+      hopSec,
+      hitThreshold
+    )
+    if (candidateGrid.score < SUBDIVISION_RESCUE_GRID_FLOOR) continue
+    if (candidateGrid.score + SUBDIVISION_RESCUE_SCORE_DROP_LIMIT < baseScore) continue
+
+    const rankingScore = candidateGrid.score + Math.min(1.25, supportRatio) * 0.08
+    if (!best || rankingScore > best.rankingScore) {
+      best = {
+        rankingScore,
+        label: rule.label,
+        bpm: candidateBpm,
+        grid: candidateGrid
+      }
+    }
+  }
+
+  return best ? { label: best.label, bpm: best.bpm, grid: best.grid } : null
+}
+
 const solveClassicGridLines = (
   envelope: Float64Array,
   hopSec: number,
@@ -429,24 +547,37 @@ const solveClassicGridLines = (
     throw new Error('Classic grid-line analyzer found no stable phase candidate')
   }
 
-  const beatIntervalSec = 60 / bestTempo.bpm
+  const rawBpm = bestTempo.bpm
+  let bpm = bestTempo.bpm
+  let resolvedGrid = bestGrid
+  let anchorStrategy = 'classic-grid-line-lattice-v3'
+  const rescue = selectSubdivisionRescue(envelope, hopSec, hitThreshold, bpm, bestGrid)
+  if (rescue) {
+    bpm = rescue.bpm
+    resolvedGrid = rescue.grid
+    anchorStrategy = `classic-grid-line-lattice-v3-${rescue.label}`
+  }
+
+  const beatIntervalSec = 60 / bpm
+  const firstBeatMs = normalizeHeadPhaseMs(resolvedGrid.phaseMs, beatIntervalSec * 1000)
   const tempoScore = clamp01(bestTempo.score / Math.max(bestTempo.score + 0.16, 0.0001))
-  const downbeatCount = Math.floor(bestGrid.beatCount / 4)
-  const qualityScore = clamp01(bestGrid.score * 0.75 + tempoScore * 0.25)
+  const downbeatCount = Math.floor(resolvedGrid.beatCount / 4)
+  const qualityScore = clamp01(resolvedGrid.score * 0.75 + tempoScore * 0.25)
 
   return {
-    bpm: Number(bestTempo.bpm.toFixed(6)),
-    rawBpm: Number(bestTempo.bpm.toFixed(6)),
-    firstBeatMs: Number(bestGrid.phaseMs.toFixed(3)),
-    rawFirstBeatMs: Number(bestGrid.phaseMs.toFixed(3)),
-    barBeatOffset: bestGrid.downbeatOffset % 32,
-    beatCount: bestGrid.beatCount,
+    bpm: Number(bpm.toFixed(6)),
+    rawBpm: Number(rawBpm.toFixed(6)),
+    firstBeatMs: Number(firstBeatMs.toFixed(3)),
+    rawFirstBeatMs: Number(firstBeatMs.toFixed(3)),
+    barBeatOffset: resolvedGrid.downbeatOffset % 32,
+    beatCount: resolvedGrid.beatCount,
     downbeatCount,
     durationSec: Number(durationSec.toFixed(3)),
     beatIntervalSec: Number(beatIntervalSec.toFixed(6)),
     tempoScore,
-    gridScore: bestGrid,
-    qualityScore
+    gridScore: resolvedGrid,
+    qualityScore,
+    anchorStrategy
   }
 }
 
@@ -469,7 +600,7 @@ const toBeatGridResult = (analysis: ClassicGridLineAnalysis): BeatGridAnalyzeRes
   anchorCorrectionMs: 0,
   anchorConfidenceScore: Number(analysis.gridScore.score.toFixed(6)),
   anchorMatchedBeatCount: analysis.gridScore.hitCount,
-  anchorStrategy: 'classic-grid-line-lattice-v2',
+  anchorStrategy: analysis.anchorStrategy,
   windowStartSec: 0,
   windowDurationSec: analysis.durationSec,
   windowIndex: 0
