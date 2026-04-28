@@ -29,7 +29,11 @@ export function registerSettingsHandlers(deps: Dependencies) {
   ipcMain.handle('setSetting', async (_event, setting) => {
     const prevContextMenu = !!store.settingConfig?.enableExplorerContextMenu
     const prevMode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
+    const normalizedBeatGridAnalyzerProvider =
+      setting?.beatGridAnalyzerProvider === 'classic' ? 'classic' : 'beatthis'
+    setting.beatGridAnalyzerProvider = normalizedBeatGridAnalyzerProvider
     store.settingConfig = setting
+    process.env.FRKB_BEAT_GRID_ANALYZER = normalizedBeatGridAnalyzerProvider
     await persistSettingConfig(setting)
     await saveLibrarySettingsFromConfig()
 

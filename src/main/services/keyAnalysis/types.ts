@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import type { BeatGridAnalyzerProvider } from '../beatGridAlgorithmVersion'
 import type { MixxxWaveformData } from '../../waveformCache'
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
@@ -128,6 +129,7 @@ export type BpmAnalysisResult = {
   timeBasisOffsetMs?: number
   beatThisEstimatedDrift128Ms?: number | null
   beatThisWindowCount?: number | null
+  beatGridAnalyzerProvider?: BeatGridAnalyzerProvider | null
   beatGridAlgorithmVersion?: number | null
 }
 
@@ -141,6 +143,7 @@ export type DoneEntry = {
   timeBasisOffsetMs?: number
   beatThisEstimatedDrift128Ms?: number
   beatThisWindowCount?: number
+  beatGridAnalyzerProvider?: BeatGridAnalyzerProvider
   beatGridAlgorithmVersion?: number
   hasWaveform?: boolean
 }
@@ -162,6 +165,7 @@ export type KeyAnalysisWorkerPartialResult = {
   timeBasisOffsetMs?: number
   beatThisEstimatedDrift128Ms?: number
   beatThisWindowCount?: number
+  beatGridAnalyzerProvider?: BeatGridAnalyzerProvider
   bpmError?: string
 }
 

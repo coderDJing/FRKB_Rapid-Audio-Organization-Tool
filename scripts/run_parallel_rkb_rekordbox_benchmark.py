@@ -10,25 +10,29 @@ from pathlib import Path
 from typing import Any
 
 import benchmark_rkb_rekordbox_truth as benchmark
+from frkb_provider_paths import BENCHMARK_OUTPUT_DIR, provider_audio_root_arg, provider_json_path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_SCRIPT = REPO_ROOT / "scripts" / "benchmark_rkb_rekordbox_truth.py"
-BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
 INTAKE_TRUTH = BENCHMARK_OUTPUT_DIR / "intake-current-truth.json"
 CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
-DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "parallel-latest.json"
+DEFAULT_OUTPUT = provider_json_path("beatthis", "manual_latest")
 PROFILE_DEFAULTS: dict[str, dict[str, str]] = {
     "current": {
         "truth": str(CURRENT_TRUTH),
-        "audio_root": str(benchmark.DEFAULT_AUDIO_ROOT),
-        "output": str(BENCHMARK_OUTPUT_DIR / "frkb-current-latest.json"),
+        "output_key": "current_latest",
     },
     "intake": {
         "truth": str(INTAKE_TRUTH),
-        "audio_root": "D:/FRKB_database-B/library/FilterLibrary/new",
-        "output": str(BENCHMARK_OUTPUT_DIR / "intake-current-latest.json"),
+        "output_key": "intake_latest",
     },
 }
+
+
+def _profile_audio_root_for_analyzer(profile: str, analyzer: str) -> str:
+    if profile == "intake":
+        return provider_audio_root_arg(analyzer, ("new",))
+    return provider_audio_root_arg(analyzer)
 
 
 def _arg_supplied(argv: list[str], *names: str) -> bool:
@@ -41,7 +45,12 @@ def _arg_supplied(argv: list[str], *names: str) -> bool:
 
 def _apply_profile_defaults(args: argparse.Namespace, argv: list[str]) -> None:
     profile = str(args.profile or "").strip()
+    analyzer = str(args.analyzer or "beatthis")
     if not profile:
+        if not _arg_supplied(argv, "--audio-root"):
+            args.audio_root = provider_audio_root_arg(analyzer)
+        if not _arg_supplied(argv, "--output"):
+            args.output = str(provider_json_path(analyzer, "manual_latest"))
         return
     defaults = PROFILE_DEFAULTS.get(profile)
     if defaults is None:
@@ -49,9 +58,9 @@ def _apply_profile_defaults(args: argparse.Namespace, argv: list[str]) -> None:
     if not _arg_supplied(argv, "--truth"):
         args.truth = defaults["truth"]
     if not _arg_supplied(argv, "--audio-root"):
-        args.audio_root = defaults["audio_root"]
+        args.audio_root = _profile_audio_root_for_analyzer(profile, analyzer)
     if not _arg_supplied(argv, "--output"):
-        args.output = defaults["output"]
+        args.output = str(provider_json_path(analyzer, defaults["output_key"]))
 
 
 def _load_raw_truth_tracks(truth_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -154,6 +163,8 @@ def _run_shard(
         str(args.ffprobe),
         "--output",
         str(shard_output_path),
+        "--analyzer",
+        str(args.analyzer),
         "--device",
         str(args.device),
         "--prediction-cache-dir",
@@ -361,6 +372,7 @@ def main() -> int:
     parser.add_argument("--ffmpeg", default=str(benchmark.DEFAULT_FFMPEG))
     parser.add_argument("--ffprobe", default=str(benchmark.DEFAULT_FFPROBE))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
+    parser.add_argument("--analyzer", choices=benchmark.ANALYZERS, default="beatthis")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--prediction-cache-dir", default=str(benchmark.DEFAULT_PREDICTION_CACHE_DIR))
     parser.add_argument("--no-prediction-cache", action="store_true")

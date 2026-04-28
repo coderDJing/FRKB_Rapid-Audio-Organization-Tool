@@ -5,6 +5,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from frkb_provider_paths import provider_audio_root
+
 from capture_rekordbox_playlist_truth import (
     DEFAULT_BRIDGE,
     _bridge_payload,
@@ -23,7 +25,10 @@ except Exception:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
 DEFAULT_CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
-DEFAULT_TARGET_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/new")
+DEFAULT_TARGET_ROOTS = [
+    provider_audio_root("beatthis", "new"),
+    provider_audio_root("classic", "new"),
+]
 
 
 def _normalize_key(value: Any) -> str:
@@ -51,17 +56,22 @@ def _load_playlist_tracks(
     return payload, [track for track in tracks if isinstance(track, dict)]
 
 
+def _resolve_target_roots(values: list[str]) -> list[Path]:
+    roots = [Path(str(item).strip()) for item in values if str(item).strip()]
+    return roots or list(DEFAULT_TARGET_ROOTS)
+
+
 def _resolve_copy_plan(
     *,
     tracks: list[dict[str, Any]],
-    target_root: Path,
+    target_roots: list[Path],
     existing_truth_index: dict[str, Any],
     overwrite: bool,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[str]]:
     copy_items: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
     errors: list[str] = []
-    planned_destinations: set[str] = set()
+    planned_destinations: set[tuple[str, str]] = set()
 
     for track in tracks:
         source_path = Path(str(track.get("filePath") or "").strip())
@@ -78,27 +88,38 @@ def _resolve_copy_plan(
             errors.append(f"source file missing: {source_path}")
             continue
 
-        destination_path = target_root / file_name
-        destination_key = _normalize_key(destination_path)
-        if destination_key in planned_destinations:
-            errors.append(f"duplicate destination fileName in playlist: {file_name}")
-            continue
-        planned_destinations.add(destination_key)
-
-        if destination_path.exists() and not overwrite:
-            if destination_path.stat().st_size == source_path.stat().st_size:
-                skipped.append({"fileName": file_name, "reason": "already-in-new"})
+        already_present_roots: list[str] = []
+        for target_root in target_roots:
+            destination_path = target_root / file_name
+            destination_key = (str(target_root.resolve()), key)
+            if destination_key in planned_destinations:
+                errors.append(f"duplicate destination fileName in playlist: {file_name}")
                 continue
-            errors.append(f"destination collision: {destination_path}")
-            continue
+            planned_destinations.add(destination_key)
 
-        copy_items.append(
-            {
-                "fileName": file_name,
-                "source": str(source_path),
-                "destination": str(destination_path),
-            }
-        )
+            if destination_path.exists() and not overwrite:
+                if destination_path.stat().st_size == source_path.stat().st_size:
+                    already_present_roots.append(str(target_root))
+                    continue
+                errors.append(f"destination collision: {destination_path}")
+                continue
+
+            copy_items.append(
+                {
+                    "fileName": file_name,
+                    "source": str(source_path),
+                    "destination": str(destination_path),
+                    "targetRoot": str(target_root),
+                }
+            )
+
+        if already_present_roots and len(already_present_roots) == len(target_roots):
+            skipped.append(
+                {
+                    "fileName": file_name,
+                    "reason": "already-in-all-target-roots",
+                }
+            )
 
     return copy_items, skipped, errors
 
@@ -109,13 +130,13 @@ def main() -> int:
     parser.add_argument("--bridge", default=str(DEFAULT_BRIDGE))
     parser.add_argument("--db-path", default="")
     parser.add_argument("--current-truth", default=str(DEFAULT_CURRENT_TRUTH))
-    parser.add_argument("--target-root", default=str(DEFAULT_TARGET_ROOT))
+    parser.add_argument("--target-root", action="append", default=[])
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
     bridge_path = Path(args.bridge)
-    target_root = Path(args.target_root)
+    target_roots = _resolve_target_roots(args.target_root)
     current_truth_path = Path(args.current_truth)
 
     if not bridge_path.exists():
@@ -129,7 +150,7 @@ def main() -> int:
     existing_truth_index = _load_current_truth_duplicate_index(current_truth_path)
     copy_items, skipped, errors = _resolve_copy_plan(
         tracks=tracks,
-        target_root=target_root,
+        target_roots=target_roots,
         existing_truth_index=existing_truth_index,
         overwrite=bool(args.overwrite),
     )
@@ -139,11 +160,17 @@ def main() -> int:
         raise SystemExit(f"sync plan has errors:\n{preview}")
 
     if not args.dry_run:
-        target_root.mkdir(parents=True, exist_ok=True)
+        for target_root in target_roots:
+            target_root.mkdir(parents=True, exist_ok=True)
         for item in copy_items:
             destination = Path(item["destination"])
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(item["source"], destination)
+
+    copy_count_by_root: dict[str, int] = {}
+    for item in copy_items:
+        root_key = str(item.get("targetRoot") or "")
+        copy_count_by_root[root_key] = copy_count_by_root.get(root_key, 0) + 1
 
     print(
         json.dumps(
@@ -153,8 +180,9 @@ def main() -> int:
                 "playlistTrackCount": len(tracks),
                 "currentTruthTrackCount": int(existing_truth_index.get("trackCount") or 0),
                 "copyCount": len(copy_items),
+                "copyCountByRoot": copy_count_by_root,
                 "skippedCount": len(skipped),
-                "targetRoot": str(target_root),
+                "targetRoots": [str(item) for item in target_roots],
                 "dryRun": bool(args.dry_run),
                 "copied": copy_items,
                 "skipped": skipped[:20],

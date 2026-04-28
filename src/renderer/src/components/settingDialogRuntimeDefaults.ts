@@ -83,5 +83,8 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime
   if (runtime.setting.keyDisplayStyle === undefined) {
     runtime.setting.keyDisplayStyle = 'Classic'
   }
+  if (runtime.setting.beatGridAnalyzerProvider === undefined) {
+    runtime.setting.beatGridAnalyzerProvider = 'beatthis'
+  }
   ensurePlayerGlobalShortcuts(runtime)
 }

@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from frkb_provider_paths import provider_audio_root_arg
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -23,7 +25,12 @@ DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "intake-current-truth.json"
 DEFAULT_TRUTH = (
     BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
 )
-DEFAULT_AUDIO_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/new")
+DEFAULT_AUDIO_ROOT = ";".join(
+    [
+        provider_audio_root_arg("beatthis", ("new",)),
+        provider_audio_root_arg("classic", ("new",)),
+    ]
+)
 DUPLICATE_BPM_TOLERANCE = 0.01
 
 
@@ -205,15 +212,35 @@ def _load_playlist_truth(
     return source, truth_tracks
 
 
-def _validate_audio_root(audio_root: Path, tracks: list[dict[str, Any]]) -> list[str]:
-    if not audio_root.exists():
-        raise RuntimeError(f"audio root not found: {audio_root}")
-    existing = {_normalize_key(item.name) for item in audio_root.iterdir() if item.is_file()}
-    return [
-        str(item.get("fileName") or "")
-        for item in tracks
-        if _normalize_key(item.get("fileName")) not in existing
-    ]
+def _parse_audio_roots(value: str) -> list[Path]:
+    roots = [Path(item.strip()) for item in str(value or "").split(";") if item.strip()]
+    if not roots:
+        raise RuntimeError("audio root is empty")
+    return roots
+
+
+def _validate_audio_roots(audio_roots: list[Path], tracks: list[dict[str, Any]]) -> list[str]:
+    existing_by_root: list[tuple[Path, set[str]]] = []
+    for audio_root in audio_roots:
+        if not audio_root.exists():
+            raise RuntimeError(f"audio root not found: {audio_root}")
+        existing_by_root.append(
+            (
+                audio_root,
+                {_normalize_key(item.name) for item in audio_root.iterdir() if item.is_file()},
+            )
+        )
+
+    missing: list[str] = []
+    for item in tracks:
+        file_name = str(item.get("fileName") or "")
+        lookup_key = _normalize_key(file_name)
+        if not lookup_key:
+            continue
+        missing_roots = [str(root) for root, existing in existing_by_root if lookup_key not in existing]
+        if missing_roots:
+            missing.append(f"{file_name} -> missing in: {', '.join(missing_roots)}")
+    return missing
 
 
 def _load_current_truth_duplicate_index(truth_path: Path) -> dict[str, Any]:
@@ -391,7 +418,7 @@ def main() -> int:
     args = parser.parse_args()
 
     bridge_path = Path(args.bridge)
-    audio_root = Path(args.audio_root)
+    audio_roots = _parse_audio_roots(args.audio_root)
     truth_path = Path(args.truth)
     output_path = Path(args.output) if str(args.output or "").strip() else None
 
@@ -405,7 +432,7 @@ def main() -> int:
         truth_path,
         include_existing=bool(args.include_existing),
     )
-    missing_audio = _validate_audio_root(audio_root, tracks)
+    missing_audio = _validate_audio_roots(audio_roots, tracks)
     if missing_audio:
         preview = ", ".join(missing_audio[:8])
         raise SystemExit(f"playlist tracks missing from audio root: {preview}")

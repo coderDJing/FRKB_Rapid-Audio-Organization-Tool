@@ -21,7 +21,12 @@ import {
   resolveAudioFirstBeatTimelineMs,
   resolveAudioTimeBasisOffsetMsForFile
 } from '../services/audioTimeBasisOffset'
-import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
+import {
+  getCurrentBeatGridAlgorithmVersion,
+  normalizeBeatGridAnalyzerProvider,
+  resolveConfiguredBeatGridAnalyzerProvider,
+  type BeatGridAnalyzerProvider
+} from '../services/beatGridAlgorithmVersion'
 import { resolveMissingMixtapeFilePath } from '../recycleBinService'
 
 const resolveKeyAnalysisWorkerPath = () => resolveMainWorkerPath(__dirname, 'keyAnalysisWorker.js')
@@ -33,6 +38,7 @@ export type MixtapeBpmAnalyzeResult = {
     firstBeatMs: number
     barBeatOffset?: number
     timeBasisOffsetMs?: number
+    beatGridAnalyzerProvider?: BeatGridAnalyzerProvider
     beatGridAlgorithmVersion?: number
   }>
   unresolved: string[]
@@ -60,6 +66,7 @@ type BpmWorkerPayload = {
     bpmError?: unknown
     firstBeatMs?: unknown
     barBeatOffset?: unknown
+    beatGridAnalyzerProvider?: unknown
   }
 }
 
@@ -135,6 +142,7 @@ const analyzeMixtapeBpmBatch = async (
     firstBeatMs: number
     barBeatOffset?: number
     timeBasisOffsetMs?: number
+    beatGridAnalyzerProvider?: BeatGridAnalyzerProvider
     beatGridAlgorithmVersion?: number
   }> = []
   const unresolvedReasons = new Map<string, string>()
@@ -297,7 +305,13 @@ const analyzeMixtapeBpmBatch = async (
               firstBeatMs,
               barBeatOffset,
               timeBasisOffsetMs,
-              beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
+              beatGridAnalyzerProvider:
+                normalizeBeatGridAnalyzerProvider(payload?.result?.beatGridAnalyzerProvider) ??
+                resolveConfiguredBeatGridAnalyzerProvider(),
+              beatGridAlgorithmVersion: getCurrentBeatGridAlgorithmVersion(
+                normalizeBeatGridAnalyzerProvider(payload?.result?.beatGridAnalyzerProvider) ??
+                  resolveConfiguredBeatGridAnalyzerProvider()
+              )
             })
             unresolved.delete(filePath)
           } else {
@@ -391,6 +405,7 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
         firstBeatMs: number
         barBeatOffset?: number
         timeBasisOffsetMs?: number
+        beatGridAnalyzerProvider?: BeatGridAnalyzerProvider
         beatGridAlgorithmVersion?: number
       }
     >()
@@ -410,6 +425,7 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
         bpm: Number(sharedGrid.bpm!.toFixed(6)),
         firstBeatMs: Number(sharedGrid.firstBeatMs!.toFixed(3)),
         barBeatOffset: ((Math.round(sharedGrid.barBeatOffset!) % 32) + 32) % 32,
+        beatGridAnalyzerProvider: sharedGrid.beatGridAnalyzerProvider,
         timeBasisOffsetMs:
           typeof sharedGrid.timeBasisOffsetMs === 'number' &&
           Number.isFinite(sharedGrid.timeBasisOffsetMs)
@@ -448,6 +464,7 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
             typeof item.timeBasisOffsetMs === 'number' && Number.isFinite(item.timeBasisOffsetMs)
               ? Number(item.timeBasisOffsetMs.toFixed(3))
               : undefined,
+          beatGridAnalyzerProvider: item.beatGridAnalyzerProvider,
           beatGridAlgorithmVersion:
             typeof item.beatGridAlgorithmVersion === 'number' &&
             Number.isFinite(item.beatGridAlgorithmVersion)

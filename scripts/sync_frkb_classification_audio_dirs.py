@@ -5,18 +5,38 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from frkb_provider_paths import ANALYZERS, provider_audio_root, provider_json_path
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 except Exception:
     pass
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
-DEFAULT_CLASSIFICATION = BENCHMARK_OUTPUT_DIR / "frkb-classification-current.json"
-DEFAULT_NEW_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/new")
-DEFAULT_SAMPLE_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/sample")
-DEFAULT_FAILURE_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/grid-failures-current")
+DEFAULT_CLASSIFICATION = provider_json_path("beatthis", "classification_current")
+DEFAULT_NEW_ROOT = provider_audio_root("beatthis", "new")
+DEFAULT_SAMPLE_ROOT = provider_audio_root("beatthis", "sample")
+DEFAULT_FAILURE_ROOT = provider_audio_root("beatthis", "grid-failures-current")
+
+
+def _arg_supplied(argv: list[str], *names: str) -> bool:
+    for arg in argv:
+        for name in names:
+            if arg == name or arg.startswith(f"{name}="):
+                return True
+    return False
+
+
+def _apply_analyzer_defaults(args: argparse.Namespace, argv: list[str]) -> None:
+    analyzer = str(args.analyzer or "beatthis").strip().lower()
+    if not _arg_supplied(argv, "--classification"):
+        args.classification = str(provider_json_path(analyzer, "classification_current"))
+    if not _arg_supplied(argv, "--new-root"):
+        args.new_root = str(provider_audio_root(analyzer, "new"))
+    if not _arg_supplied(argv, "--sample-root"):
+        args.sample_root = str(provider_audio_root(analyzer, "sample"))
+    if not _arg_supplied(argv, "--failure-root"):
+        args.failure_root = str(provider_audio_root(analyzer, "grid-failures-current"))
 
 
 def _normalize_key(value: Any) -> str:
@@ -97,6 +117,8 @@ def _build_move_plan(
     targets: dict[str, tuple[str, str]],
     located_files: dict[str, list[tuple[str, Path]]],
     roots: dict[str, Path],
+    allowed_roots: dict[str, Path],
+    mode: str,
 ) -> tuple[list[dict[str, str]], list[str]]:
     moves: list[dict[str, str]] = []
     errors: list[str] = []
@@ -105,20 +127,32 @@ def _build_move_plan(
         if not locations:
             errors.append(f"classified audio missing from roots: {file_name}")
             continue
-        if len(locations) > 1:
-            joined = ", ".join(str(path) for _label, path in locations)
-            errors.append(f"audio exists in multiple roots: {file_name} -> {joined}")
-            continue
 
         source_label, source_path = locations[0]
         target_root = roots[target_set]
         destination_path = (target_root / file_name).resolve()
-        if not _is_within_root(source_path, roots) or not _is_within_root(destination_path, roots):
+        target_locations = [
+            path
+            for label, path in locations
+            if label == target_set and path.resolve() == destination_path
+        ]
+        if target_locations:
+            continue
+
+        source_locations = [(label, path) for label, path in locations if label != target_set]
+        if len(source_locations) != 1:
+            joined = ", ".join(str(path) for _label, path in locations)
+            errors.append(f"audio exists in ambiguous roots: {file_name} -> {joined}")
+            continue
+        source_label, source_path = source_locations[0]
+        if not _is_within_root(source_path, allowed_roots) or not _is_within_root(destination_path, roots):
             errors.append(f"unsafe move path: {source_path} -> {destination_path}")
             continue
         if source_label == target_set:
             continue
         if destination_path.exists():
+            if mode == "copy":
+                continue
             errors.append(f"destination already exists: {destination_path}")
             continue
         moves.append(
@@ -126,6 +160,7 @@ def _build_move_plan(
                 "fileName": file_name,
                 "fromSet": source_label,
                 "toSet": target_set,
+                "mode": mode,
                 "source": str(source_path),
                 "destination": str(destination_path),
             }
@@ -135,24 +170,40 @@ def _build_move_plan(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Sync FRKB audio directories from current classification")
+    parser.add_argument("--analyzer", choices=ANALYZERS, default="beatthis")
     parser.add_argument("--classification", default=str(DEFAULT_CLASSIFICATION))
     parser.add_argument("--new-root", default=str(DEFAULT_NEW_ROOT))
     parser.add_argument("--sample-root", default=str(DEFAULT_SAMPLE_ROOT))
     parser.add_argument("--failure-root", default=str(DEFAULT_FAILURE_ROOT))
+    parser.add_argument(
+        "--source-root",
+        action="append",
+        default=[],
+        help="Additional source roots used for non-destructive comparison playlist copies.",
+    )
+    parser.add_argument("--mode", choices=["move", "copy"], default="move")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
+    _apply_analyzer_defaults(args, sys.argv[1:])
 
     roots = {
         "new": _resolve_root(args.new_root),
         "sample": _resolve_root(args.sample_root),
         "grid-failures-current": _resolve_root(args.failure_root),
     }
+    source_roots = {
+        f"source-{index + 1}": _resolve_root(path_value)
+        for index, path_value in enumerate(args.source_root)
+        if str(path_value or "").strip()
+    }
     targets = _load_targets(Path(args.classification))
-    located_files, scan_errors = _scan_audio_files(roots)
+    located_files, scan_errors = _scan_audio_files({**source_roots, **roots})
     moves, plan_errors = _build_move_plan(
         targets=targets,
         located_files=located_files,
         roots=roots,
+        allowed_roots={**source_roots, **roots},
+        mode=str(args.mode),
     )
     errors = scan_errors + plan_errors
     if errors:
@@ -163,7 +214,10 @@ def main() -> int:
         for item in moves:
             destination = Path(item["destination"])
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(item["source"], destination)
+            if item["mode"] == "copy":
+                shutil.copy2(item["source"], destination)
+            else:
+                shutil.move(item["source"], destination)
 
     move_counts: dict[str, int] = {}
     for item in moves:
@@ -174,6 +228,8 @@ def main() -> int:
         json.dumps(
             {
                 "classification": str(Path(args.classification)),
+                "analyzer": str(args.analyzer),
+                "mode": str(args.mode),
                 "trackCount": len(targets),
                 "moveCount": len(moves),
                 "moveCounts": move_counts,

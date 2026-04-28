@@ -45,6 +45,7 @@ let settingConfig: ISettingConfig = {
   waveformStyle: 'RGB' as 'SoundCloud' | 'Fine' | 'RGB',
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
+  beatGridAnalyzerProvider: 'beatthis',
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,

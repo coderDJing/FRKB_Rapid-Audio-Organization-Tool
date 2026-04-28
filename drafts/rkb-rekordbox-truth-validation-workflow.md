@@ -1,11 +1,11 @@
-# Rekordbox 真值验证工作流
+# Rekordbox 真值验证双管线工作流
 
 ## 1. 核心原则
 
 Rekordbox 只作为外部真值来源，用来校准 FRKB 的 beat grid analyzer。FRKB
 运行态不能依赖 Rekordbox，也不能用 Rekordbox truth 覆盖分析结果。
 
-当前流程只维护一个长期 truth：
+当前只维护一个长期 Rekordbox truth：
 
 ```text
 grid-analysis-lab/rkb-rekordbox-benchmark/rekordbox-current-truth.json
@@ -15,30 +15,66 @@ grid-analysis-lab/rkb-rekordbox-benchmark/rekordbox-current-truth.json
 和失败清单都跟本机样本库绑定，不作为仓库可提交资产。历史上已跟踪的旧 JSON
 即使继续出现在 `git status`，也不代表应该提交。
 
-FRKB pass/fail 是当前算法状态，只存在于 classification 和派生 benchmark 视图中。
-禁止再拆成 `sample truth` / `failure truth` 两份长期真值。
+FRKB pass/fail 是某个 analyzer provider 的当前算法状态，只能存在于该 provider
+自己的 classification、派生 benchmark 视图和音频目录中。禁止再拆成
+`sample truth` / `failure truth` 两份长期真值，也禁止一套 provider 改写另一套
+provider 的分类状态。
+
+当前长期并行维护两套 provider：
+
+- `beatthis`：默认运行态 provider。
+- `classic`：非 AI provider，用于长期独立对照。
+
+两套 provider 共享同一个 Rekordbox truth 和同一个 intake truth；除此之外，
+benchmark、classification、派生视图、音频样本目录全部分开。它们不是短期胜负模式，
+也不要求通过一两次 benchmark 判定胜负。
 
 ## 2. 本地固定文件
 
-`grid-analysis-lab/rkb-rekordbox-benchmark/` 在本机只保留这些长期有用产物：
+`grid-analysis-lab/rkb-rekordbox-benchmark/` 只保留这些长期有用产物：
 
-- `intake-current-truth.json`：新样本 Rekordbox truth 暂存队列。
-- `rekordbox-current-truth.json`：唯一长期 Rekordbox truth 源。
-- `frkb-current-latest.json`：当前算法对主 truth 的全量 benchmark，固定覆盖。
-- `frkb-classification-current.json`：当前算法分类，决定每首歌属于 `sample` 还是 `grid-failures-current`。
-- `sample-regression-latest.json`：从 classification 派生的当前通过集视图，固定覆盖。
-- `grid-failures-current-latest.json`：从 classification 派生的当前失败集视图，固定覆盖。
-- `grid-failures-current-manifest.json`：当前失败聚类清单，固定覆盖。
-- `beatthis-prediction-cache/`：可复用预测缓存。
+- `intake-current-truth.json`：新样本 Rekordbox truth 暂存队列，双 provider 共享。
+- `rekordbox-current-truth.json`：唯一长期 Rekordbox truth 源，双 provider 共享。
+- `frkb-beatthis-current-latest.json`：`beatthis` 对主 truth 的全量 benchmark。
+- `frkb-beatthis-classification-current.json`：`beatthis` 当前分类。
+- `frkb-beatthis-sample-regression-latest.json`：从 `beatthis` classification 派生的通过集视图。
+- `frkb-beatthis-grid-failures-current-latest.json`：从 `beatthis` classification 派生的失败集视图。
+- `frkb-beatthis-grid-failures-current-manifest.json`：`beatthis` 当前失败聚类清单。
+- `frkb-classic-current-latest.json`：`classic` 对主 truth 的全量 benchmark。
+- `frkb-classic-classification-current.json`：`classic` 当前分类。
+- `frkb-classic-sample-regression-latest.json`：从 `classic` classification 派生的通过集视图。
+- `frkb-classic-grid-failures-current-latest.json`：从 `classic` classification 派生的失败集视图。
+- `frkb-classic-grid-failures-current-manifest.json`：`classic` 当前失败聚类清单。
+- `beatthis-prediction-cache/`：BeatThis 可复用预测缓存。
 
 这些文件只表达当前本机样本库状态；数量以 JSON 实际内容为准，不写进仓库文档。
+新增 provider 时沿用 `frkb-<provider>-...` 命名，禁止新增无 provider 作用域的
+benchmark/classification 文件。
 
 不保留 `*.progress.json`、临时 shard 目录、`targeted-*`、`try-*`、`diag-*`、
 随手命名的 `after-*`、以及任何未在本节列出的 benchmark JSON。需要复查时重新跑。
 
 ## 3. 音频目录
 
-音频文件只在三个目录中流转：
+两套 provider 的音频目录必须按 provider 命名空间隔离：
+
+```text
+D:/FRKB_database-B/library/FilterLibrary/beatthis/new
+D:/FRKB_database-B/library/FilterLibrary/beatthis/sample
+D:/FRKB_database-B/library/FilterLibrary/beatthis/grid-failures-current
+
+D:/FRKB_database-B/library/FilterLibrary/classic/new
+D:/FRKB_database-B/library/FilterLibrary/classic/sample
+D:/FRKB_database-B/library/FilterLibrary/classic/grid-failures-current
+```
+
+每个 provider 内部目录语义一致：
+
+- `new`：从 Rekordbox `test` 曲目源路径复制出来、尚未按该 provider 分类的新样本。
+- `sample`：该 provider 当前 classification = `pass` 的音频。
+- `grid-failures-current`：该 provider 当前 classification != `pass` 或 benchmark error 的音频。
+
+旧的无作用域目录不再属于正式工作流：
 
 ```text
 D:/FRKB_database-B/library/FilterLibrary/new
@@ -46,13 +82,17 @@ D:/FRKB_database-B/library/FilterLibrary/sample
 D:/FRKB_database-B/library/FilterLibrary/grid-failures-current
 ```
 
-目录语义：
+迁移旧目录时必须执行 `copy -> verify -> delete old dirs`：
 
-- `new`：由脚本从 Rekordbox `test` 曲目源路径复制出来的新样本暂存区。
-- `sample`：当前 classification = `pass` 的音频。
-- `grid-failures-current`：当前 classification != `pass` 或 benchmark error 的音频。
+1. 旧 `new/sample/grid-failures-current` 原样复制到 `beatthis/new/sample/grid-failures-current`，
+   因为旧状态本来就是 BeatThis 的分类结果。
+2. 旧 `new`、旧 `sample`、旧 `grid-failures-current` 的完整样本全集复制到 `classic/new`。
+3. `classic/sample` 和 `classic/grid-failures-current` 初始化为空。
+4. 复制校验通过后，才允许删除旧无作用域目录。
 
-同一首歌不能同时存在于多个目录。目录是 classification 的派生状态，不是真值来源。
+同一 provider 内，同一首歌不能同时存在于 `new`、`sample`、`grid-failures-current`
+多个目录。跨 provider 允许存在同名音频，因为它们表达的是不同 analyzer 的独立分类状态。
+目录是 classification 的派生状态，不是真值来源。
 
 ## 4. 新样本闭环
 
@@ -60,31 +100,43 @@ D:/FRKB_database-B/library/FilterLibrary/grid-failures-current
 
 1. 把新歌加入 Rekordbox `test` playlist，让 Rekordbox 完成分析。
 2. 人工删除 Rekordbox 自己也失败、不可信、或音频缺失的曲目。
-3. 从 Rekordbox `test` 读取曲目源路径，把主 truth 里没有的新音频复制到 `new`。
-4. 抓取 Rekordbox truth 到 `intake-current-truth.json`；已在主 truth 里的重复样本默认跳过，不进入 intake。
-   重复判定至少包含 `fileName`，以及保守的 `title + artist + BPM` 元数据匹配。
-5. 确认 `intake-current-truth.json` 与 `new` 目录音频一一对应。
+3. 从 Rekordbox `test` 读取曲目源路径，把主 truth 里没有的新音频同时复制到：
+   `beatthis/new` 和 `classic/new`。
+4. 抓取 Rekordbox truth 到 `intake-current-truth.json`；已在主 truth 里的重复样本默认跳过，
+   不进入 intake。重复判定至少包含 `fileName`，以及保守的 `title + artist + BPM`
+   元数据匹配。
+5. 确认 `intake-current-truth.json` 与两个 provider 的 `new` 目录音频一一对应。
 6. 把 intake 合入 `rekordbox-current-truth.json`，同时清空 intake。
-7. 跑 `current` benchmark，生成 `frkb-current-latest.json`。
-8. 生成 `frkb-classification-current.json` 和三个派生视图。
-9. 按 classification 同步音频目录：`pass -> sample`，其他 -> `grid-failures-current`。
+7. 分别跑 `beatthis` 和 `classic` 的 current benchmark。
+8. 分别生成 `beatthis` 和 `classic` 的 classification 与派生视图。
+9. 每个 provider 按自己的 classification 同步自己的音频目录：
+   `pass -> sample`，其他 -> `grid-failures-current`。
 10. 清理 Rekordbox `test` 中已处理曲目。
 
-truth 入库后，后续算法优化只更新 classification 和派生视图，不再搬 truth。
+truth 入库后，后续算法优化只更新对应 provider 的 benchmark、classification
+和音频派生状态，不再搬 truth，也不得覆盖另一套 provider 的状态。
 
 ## 5. 算法优化闭环
 
 优化算法时按这个顺序验收：
 
-1. 用失败清单定位稳定失败类型。
+1. 用当前 provider 的失败清单定位稳定失败类型。
 2. 设计低维、通用、可解释的 Rekordbox-compatible prior。
 3. 跑针对性排查，但临时输出用完即删。
-4. 跑全量 `current` benchmark。
-5. 重建 classification 和派生视图。
-6. 检查通过集是否回归、失败集是否改善、是否引入新失败类型。
+4. 跑当前 provider 的全量 `current` benchmark。
+5. 重建当前 provider 的 classification 和派生视图。
+6. 同步当前 provider 的 `sample` / `grid-failures-current`。
+7. 检查通过集是否回归、失败集是否改善、是否引入新失败类型。
    必须固定输出 `pass -> fail`、`fail -> pass` 和分类迁移；默认不接受新的
    `pass -> fail`，除非能明确证明只是分类暴露而非 analyzer 退化。
-7. 只有稳定跨样本重复的机制才允许合并。
+8. 只有稳定跨样本重复的机制才允许合并。
+
+跨 provider 比较时，必须用同一份 `rekordbox-current-truth.json` 和同一批音频全集：
+
+- `beatthis` 和 `classic` 都只读取自己的 provider 目录。
+- 对比只看各自 provider-scoped JSON 之间的迁移。
+- 任何 provider 的 pass/fail 都不能写回 Rekordbox truth。
+- 长期胜出选择不属于日常闭环；真正切换时再做一次性运行态默认 provider 变更。
 
 当前失败样本不作为逐曲补丁来源。它们只用于聚类和验证新规则是否泛化。
 
@@ -174,7 +226,8 @@ frkbFirstBeatTimelineMs = frkbFirstBeatAudioMs + timeBasisOffsetMs
 
 如果 analyzer 已经输出 app timeline 语义，不能再加一次 offset。
 
-analyzer 中间结果允许 `firstBeatMs < 0`。负值表示按当前 BPM 和相位外推，某条等价拍线落在 decoded sample 0 之前。候选、缓存、benchmark 归一化阶段不能提前丢弃。
+analyzer 中间结果允许 `firstBeatMs < 0`。负值表示按当前 BPM 和相位外推，
+某条等价拍线落在 decoded sample 0 之前。候选、缓存、benchmark 归一化阶段不能提前丢弃。
 
 ## 9. time basis
 
@@ -239,20 +292,21 @@ gridErrorMs[i] = frkbBeatMs[i] - rbBeatMs[i]
 
 ## 11. 命令
 
-从 Rekordbox `test` playlist 复制新增音频到 `new`：
+从 Rekordbox `test` playlist 复制新增音频到两个 provider 的 `new`：
 
 ```powershell
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "test" --dry-run
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "test"
 ```
 
-抓取 Rekordbox `test` playlist 到 intake：
+抓取 Rekordbox `test` playlist 到共享 intake：
 
 ```powershell
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/capture_rekordbox_playlist_truth.py" --playlist "test"
 ```
 
-这一步默认跳过已经存在于 `rekordbox-current-truth.json` 的曲目，避免重复样本重新进入闭环。
+这一步默认校验两个 provider 的 `new` 目录，并跳过已经存在于
+`rekordbox-current-truth.json` 的曲目，避免重复样本重新进入闭环。
 
 合入主 truth 并清空 intake：
 
@@ -264,34 +318,57 @@ gridErrorMs[i] = frkbBeatMs[i] - rbBeatMs[i]
 跑全量当前 benchmark：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --profile current --jobs 4
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --profile current --analyzer beatthis --jobs 4
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --profile current --analyzer classic --jobs 4
+```
+
+默认输出：
+
+```text
+frkb-beatthis-current-latest.json
+frkb-classic-current-latest.json
 ```
 
 生成 classification 和派生视图：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/build_frkb_current_classification.py"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/build_frkb_current_classification.py" --analyzer beatthis
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/build_frkb_current_classification.py" --analyzer classic
 ```
 
-按 classification 同步音频目录：
+按各自 classification 同步各自音频目录：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_frkb_classification_audio_dirs.py" --dry-run
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_frkb_classification_audio_dirs.py"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_frkb_classification_audio_dirs.py" --analyzer beatthis --dry-run
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_frkb_classification_audio_dirs.py" --analyzer beatthis
+
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_frkb_classification_audio_dirs.py" --analyzer classic --dry-run
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_frkb_classification_audio_dirs.py" --analyzer classic
 ```
+
+迁移旧无作用域目录：
+
+```powershell
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/migrate_frkb_provider_audio_dirs.py" --dry-run
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/migrate_frkb_provider_audio_dirs.py"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/migrate_frkb_provider_audio_dirs.py" --delete-old --confirm-delete-old
+```
+
+第三条只有在复制和校验都通过后才允许执行。
 
 临时排查单曲或子集：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --profile current --jobs 4 --only "artist or title substring" --output "grid-analysis-lab/rkb-rekordbox-benchmark/diagnostic-local.json"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --profile current --analyzer beatthis --jobs 4 --only "artist or title substring" --output "grid-analysis-lab/rkb-rekordbox-benchmark/diagnostic-local-beatthis.json"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --profile current --analyzer classic --jobs 4 --only "artist or title substring" --output "grid-analysis-lab/rkb-rekordbox-benchmark/diagnostic-local-classic.json"
 ```
 
-`diagnostic-local.json` 只是临时排查文件，用完删除，不进入保留清单。
+`diagnostic-local*.json` 只是临时排查文件，用完删除，不进入保留清单。
 
 Python 编译检查：
 
 ```powershell
-py -3 -m py_compile "scripts/beat_this_bridge.py" "scripts/beat_this_phase_arbitration.py" "scripts/beat_this_phase_rescue.py" "scripts/beat_this_grid_rescue.py" "scripts/beat_this_full_logit_rescue.py" "scripts/benchmark_rkb_rekordbox_truth.py" "scripts/capture_rekordbox_playlist_truth.py" "scripts/sync_rekordbox_playlist_audio.py" "scripts/run_parallel_rkb_rekordbox_benchmark.py" "scripts/merge_rekordbox_truth_intake.py" "scripts/build_frkb_current_classification.py" "scripts/sync_frkb_classification_audio_dirs.py"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" -m py_compile "scripts/frkb_provider_paths.py" "scripts/beat_this_bridge.py" "scripts/classic_beat_grid_bridge.py" "scripts/beat_this_phase_arbitration.py" "scripts/beat_this_phase_rescue.py" "scripts/beat_this_grid_rescue.py" "scripts/beat_this_full_logit_rescue.py" "scripts/benchmark_rkb_rekordbox_truth.py" "scripts/capture_rekordbox_playlist_truth.py" "scripts/sync_rekordbox_playlist_audio.py" "scripts/run_parallel_rkb_rekordbox_benchmark.py" "scripts/merge_rekordbox_truth_intake.py" "scripts/build_frkb_current_classification.py" "scripts/sync_frkb_classification_audio_dirs.py" "scripts/migrate_frkb_provider_audio_dirs.py"
 ```
 
 代码修改后必须运行：
@@ -334,19 +411,38 @@ benchmark 失败时：
 
 不要在 FRKB 里手工写补偿把失败样本抹平。
 
-## 14. 交接摘要
+## 14. 运行态切换
+
+运行态默认 analyzer provider 是 `beatthis`。
+
+开发版和 RC 版可以在设置 dialog 中切换：
+
+- `beatthis`
+- `classic`
+
+切换后新分析结果必须带上对应 `beatGridAnalyzerProvider` 和 provider 自己的
+`beatGridAlgorithmVersion`。缓存验收必须检查 provider；`beatthis` 的缓存不能被
+`classic` 复用，反过来也一样。
+
+正式版不展示切换入口，继续使用默认 `beatthis`。
+
+## 15. 交接摘要
 
 ```text
 唯一长期 truth = rekordbox-current-truth.json。
-grid-analysis-lab/ 是本地样本分析工作区，不提交 truth、benchmark 或 classification 派生数据；旧的已跟踪 JSON 即使出现在 git status，也不纳入代码提交。
-新增音频由 sync_rekordbox_playlist_audio.py 从 Rekordbox test 源路径复制到 new。
+共享 intake = intake-current-truth.json。
+grid-analysis-lab/ 是本地样本分析工作区，不提交 truth、benchmark 或 classification 派生数据。
+beatthis 和 classic 是两套长期独立 provider 管线，只共享 Rekordbox truth。
+新增音频由 sync_rekordbox_playlist_audio.py 从 Rekordbox test 源路径同时复制到 beatthis/new 和 classic/new。
 已有主 truth 的重复样本会被跳过；新 truth 进入 intake-current-truth.json，确认后合入主 truth 并清空 intake。
-FRKB pass/fail 只存在于 frkb-classification-current.json 和派生 latest/manifest。
-音频目录由 classification 派生：pass -> sample，其他 -> grid-failures-current。
-算法优化只更新 classification，不搬 truth。
+所有 FRKB benchmark / classification / latest / manifest 必须使用 frkb-<provider>-... 命名。
+beatthis 音频只在 beatthis/new、beatthis/sample、beatthis/grid-failures-current 内流转。
+classic 音频只在 classic/new、classic/sample、classic/grid-failures-current 内流转。
+旧无作用域 new/sample/grid-failures-current 只用于一次性迁移，迁移顺序是 copy -> verify -> delete old dirs。
+算法优化只更新当前 provider 的 classification 和音频派生状态，不搬 truth，不覆盖另一套 provider 状态。
 新增 prior 必须低维、通用、可解释，禁止身份特判和逐曲补丁。
 每次优化都要固定检查 pass -> fail、fail -> pass 和分类迁移，防止失败集优化反向伤到成功集。
-允许结构性大改；大改也必须由失败聚类驱动，并通过全量 current benchmark 验收。
+允许结构性大改；大改也必须由失败聚类驱动，并通过对应 provider 的全量 current benchmark 验收。
 临时 benchmark 输出用完即删。
 修改代码后必须跑 py_compile、相关 benchmark、npx vue-tsc --noEmit。
 ```

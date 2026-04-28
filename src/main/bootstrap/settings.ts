@@ -72,6 +72,7 @@ const defaultSettings = {
   waveformStyle: 'RGB' as 'SoundCloud' | 'Fine' | 'RGB',
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
+  beatGridAnalyzerProvider: 'beatthis' as 'beatthis' | 'classic',
   showIdleAnalysisStatus: false,
   autoPlayNextSong: false,
   startPlayPercent: 0,
@@ -169,6 +170,9 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
     keyDisplayStyle: mergedSettings.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
   }
 
+  finalSettings.beatGridAnalyzerProvider =
+    mergedSettings.beatGridAnalyzerProvider === 'classic' ? 'classic' : 'beatthis'
+
   if (process.platform === 'win32') {
     if (typeof finalSettings.enableExplorerContextMenu !== 'boolean') {
       finalSettings.enableExplorerContextMenu = settingFileExisted
@@ -210,6 +214,7 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
   }
 
   store.settingConfig = finalSettings
+  process.env.FRKB_BEAT_GRID_ANALYZER = finalSettings.beatGridAnalyzerProvider || 'beatthis'
   persistSettingConfigSync(finalSettings)
   return finalSettings
 }

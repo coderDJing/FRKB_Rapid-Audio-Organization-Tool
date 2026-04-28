@@ -9,6 +9,8 @@ import { createKeyAnalysisPersistence, type KeyAnalysisPersistence } from './per
 import { createKeyAnalysisWorkerPool, type KeyAnalysisWorkerPool } from './workerPool'
 import { resolveBundledFfmpegPath } from '../../ffmpeg'
 import { log } from '../../log'
+import store from '../../store'
+import { normalizeBeatGridAnalyzerProvider } from '../beatGridAlgorithmVersion'
 import {
   BACKGROUND_MAX_INFLIGHT,
   KEY_ANALYSIS_ANALYZE_STAGE_TIMEOUT_MS,
@@ -37,6 +39,9 @@ import {
 } from './types'
 
 const execFileAsync = promisify(execFile)
+
+const resolveCurrentBeatGridAnalyzerProvider = () =>
+  normalizeBeatGridAnalyzerProvider(store.settingConfig?.beatGridAnalyzerProvider) ?? 'beatthis'
 
 export class KeyAnalysisQueue {
   private workers: Worker[] = []
@@ -969,7 +974,8 @@ export class KeyAnalysisQueue {
           fastAnalysis: job.fastAnalysis,
           needsKey: job.needsKey,
           needsBpm: job.needsBpm,
-          needsWaveform: job.needsWaveform
+          needsWaveform: job.needsWaveform,
+          beatGridAnalyzerProvider: resolveCurrentBeatGridAnalyzerProvider()
         })
       })()
     }

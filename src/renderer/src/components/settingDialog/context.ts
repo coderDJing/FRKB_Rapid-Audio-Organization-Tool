@@ -50,6 +50,7 @@ export type SettingDialogContext = {
   waveformStyleOptions: ComputedRef<SettingDialogOption[]>
   waveformModeOptions: ComputedRef<SettingDialogOption[]>
   keyDisplayStyleOptions: ComputedRef<SettingDialogOption[]>
+  beatGridAnalyzerProviderOptions: ComputedRef<SettingDialogOption[]>
   audioOutputSelectOptions: ComputedRef<SettingDialogOption[]>
   handleAudioOutputChange: () => Promise<void>
   openAcoustIdSite: () => void

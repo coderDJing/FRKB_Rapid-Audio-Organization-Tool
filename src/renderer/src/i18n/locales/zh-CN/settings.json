@@ -39,6 +39,12 @@
       "chooseButton": "选择目录",
       "notConfigured": "未配置"
     },
+    "beatGridAnalyzerProvider": {
+      "title": "Beat Grid 分析器（仅开发/预发布）",
+      "beatthis": "BeatThis",
+      "classic": "Classic",
+      "hint": "只影响后续新分析与缓存判定；正式版固定使用 BeatThis。"
+    },
     "currentLibraryPath": "当前音乐库所在路径",
     "currentLibraryPathHint": "这里显示当前正在使用的 FRKB 资料库根目录，方便确认和排查。",
     "explorerContextMenuLabel": "在 FRKB 中播放",
