@@ -14,6 +14,12 @@ const runtime = useRuntimeStore()
 
 const currentLocale = computed(() => i18n.global.locale.value)
 const totalDurationLabel = computed(() => t('bottomInfo.totalDurationLabel'))
+const selectedSongCount = computed(
+  () => runtime.songsArea.selectedSongFilePath.filter(Boolean).length
+)
+const selectedSongsText = computed(() =>
+  t('bottomInfo.selectedSongs', { count: selectedSongCount.value })
+)
 
 function formatDurationUnit(unit: 'day' | 'hour' | 'minute' | 'second', count: number): string {
   const pluralKey = count === 1 ? 'one' : 'other'
@@ -604,6 +610,7 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
       "
       class="total-row"
     >
+      <div v-if="selectedSongCount > 0" class="selected-count-text">{{ selectedSongsText }}</div>
       <div class="total-text">{{ totalDurationLabel }}{{ playlistTotalDaysHoursSeconds }}</div>
     </div>
   </div>
@@ -999,9 +1006,11 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   display: flex;
   justify-content: flex-end;
   align-items: center;
+  gap: 12px;
   min-height: 20px;
   padding: 0 8px;
 }
+.selected-count-text,
 .total-text {
   font-size: 11px;
   color: var(--text-weak);

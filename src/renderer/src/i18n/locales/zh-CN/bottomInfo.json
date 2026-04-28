@@ -1,6 +1,7 @@
 {
   "bottomInfo": {
     "totalDurationLabel": "总时长：",
+    "selectedSongs": "已选 {count} 首",
     "durationUnits": {
       "day": {
         "one": "{count}天",
