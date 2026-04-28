@@ -6,7 +6,6 @@ import { listMixtapeItemsByFilePath } from '../mixtapeDb'
 import { findSongListRoot } from './cacheMaintenance'
 import { applyLiteDefaults, buildLiteSongInfo } from './songInfoLite'
 import {
-  normalizeBeatGridAnalyzerProvider,
   normalizeBeatGridAlgorithmVersion,
   shouldAcceptBeatGridCacheVersion
 } from './beatGridAlgorithmVersion'
@@ -17,7 +16,6 @@ type SharedGridInfo = Partial<ISongInfo> & {
   barBeatOffset?: unknown
   timeBasisOffsetMs?: unknown
   beatThisWindowCount?: unknown
-  beatGridAnalyzerProvider?: unknown
   beatGridAlgorithmVersion?: unknown
 }
 
@@ -28,7 +26,6 @@ export type SharedSongGridDefinition = {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   beatThisWindowCount?: number
-  beatGridAnalyzerProvider?: 'beatthis' | 'classic'
   beatGridAlgorithmVersion?: number
 }
 
@@ -81,7 +78,6 @@ const hasSharedGridValue = (
     value.barBeatOffset !== undefined ||
     value.timeBasisOffsetMs !== undefined ||
     value.beatThisWindowCount !== undefined ||
-    value.beatGridAnalyzerProvider !== undefined ||
     value.beatGridAlgorithmVersion !== undefined)
 
 const parseInfoJson = (value: unknown): SharedGridInfo | null => {
@@ -106,7 +102,6 @@ const extractSharedGridFromInfo = (
   const barBeatOffset = normalizeBarBeatOffset(info.barBeatOffset)
   const timeBasisOffsetMs = normalizeTimeBasisOffsetMs(info.timeBasisOffsetMs)
   const beatThisWindowCount = normalizeBeatThisWindowCount(info.beatThisWindowCount)
-  const beatGridAnalyzerProvider = normalizeBeatGridAnalyzerProvider(info.beatGridAnalyzerProvider)
   const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(info.beatGridAlgorithmVersion)
   if (
     bpm === undefined &&
@@ -114,7 +109,6 @@ const extractSharedGridFromInfo = (
     barBeatOffset === undefined &&
     timeBasisOffsetMs === undefined &&
     beatThisWindowCount === undefined &&
-    beatGridAnalyzerProvider === undefined &&
     beatGridAlgorithmVersion === undefined
   ) {
     return null
@@ -126,7 +120,6 @@ const extractSharedGridFromInfo = (
     barBeatOffset,
     timeBasisOffsetMs,
     beatThisWindowCount,
-    beatGridAnalyzerProvider,
     beatGridAlgorithmVersion
   }
 }
@@ -144,7 +137,6 @@ const mergeSharedGridDefinition = (
     barBeatOffset: next.barBeatOffset ?? base.barBeatOffset,
     timeBasisOffsetMs: next.timeBasisOffsetMs ?? base.timeBasisOffsetMs,
     beatThisWindowCount: next.beatThisWindowCount ?? base.beatThisWindowCount,
-    beatGridAnalyzerProvider: next.beatGridAnalyzerProvider ?? base.beatGridAnalyzerProvider,
     beatGridAlgorithmVersion: next.beatGridAlgorithmVersion ?? base.beatGridAlgorithmVersion
   }
 }
@@ -220,9 +212,6 @@ export async function persistSharedSongGridDefinition(
   const barBeatOffset = normalizeBarBeatOffset(input?.barBeatOffset)
   const timeBasisOffsetMs = normalizeTimeBasisOffsetMs(input?.timeBasisOffsetMs)
   const beatThisWindowCount = normalizeBeatThisWindowCount(input?.beatThisWindowCount)
-  const beatGridAnalyzerProvider = normalizeBeatGridAnalyzerProvider(
-    input?.beatGridAnalyzerProvider
-  )
   const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
     input?.beatGridAlgorithmVersion
   )
@@ -232,7 +221,6 @@ export async function persistSharedSongGridDefinition(
     barBeatOffset === undefined &&
     timeBasisOffsetMs === undefined &&
     beatThisWindowCount === undefined &&
-    beatGridAnalyzerProvider === undefined &&
     beatGridAlgorithmVersion === undefined
   ) {
     return null
@@ -247,7 +235,6 @@ export async function persistSharedSongGridDefinition(
       barBeatOffset,
       timeBasisOffsetMs,
       beatThisWindowCount,
-      beatGridAnalyzerProvider,
       beatGridAlgorithmVersion
     }
   }
@@ -280,9 +267,6 @@ export async function persistSharedSongGridDefinition(
   }
   if (beatThisWindowCount !== undefined) {
     normalizedInfo.beatThisWindowCount = beatThisWindowCount
-  }
-  if (beatGridAnalyzerProvider !== undefined) {
-    normalizedInfo.beatGridAnalyzerProvider = beatGridAnalyzerProvider
   }
   if (beatGridAlgorithmVersion !== undefined) {
     normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion

@@ -38,7 +38,6 @@ const {
   waveformStyleOptions,
   waveformModeOptions,
   keyDisplayStyleOptions,
-  beatGridAnalyzerProviderOptions,
   audioOutputSelectOptions,
   handleAudioOutputChange,
   openAcoustIdSite,
@@ -258,21 +257,6 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 @change="setSetting"
               />
             </div>
-
-            <template v-if="isDevOrPrerelease">
-              <div class="setting-block">{{ t('settings.beatGridAnalyzerProvider.title') }}：</div>
-              <div class="setting-control">
-                <BaseSelect
-                  v-model="runtime.setting.beatGridAnalyzerProvider"
-                  :options="beatGridAnalyzerProviderOptions"
-                  :width="220"
-                  @change="setSetting"
-                />
-                <div class="setting-hint">
-                  {{ t('settings.beatGridAnalyzerProvider.hint') }}
-                </div>
-              </div>
-            </template>
 
             <div class="setting-block">{{ t('player.showTitleAudioVisualizer') }}：</div>
             <div class="setting-control">

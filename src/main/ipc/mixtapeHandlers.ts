@@ -54,10 +54,7 @@ import {
   type SharedSongGridDefinition
 } from '../services/sharedSongGrid'
 import { emitSongGridUpdated } from '../services/songGridEvents'
-import {
-  getCurrentBeatGridAlgorithmVersion,
-  resolveConfiguredBeatGridAnalyzerProvider
-} from '../services/beatGridAlgorithmVersion'
+import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
 import {
   runMixtapeOutput,
   type MixtapeOutputInput,
@@ -73,7 +70,6 @@ type MixtapeAnalysisCopyField =
   | 'barBeatOffset'
   | 'timeBasisOffsetMs'
   | 'beatThisWindowCount'
-  | 'beatGridAnalyzerProvider'
   | 'beatGridAlgorithmVersion'
   | 'key'
   | 'originalKey'
@@ -93,7 +89,6 @@ type MixtapeAnalysisInfo = Record<string, unknown> & {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   beatThisWindowCount?: number
-  beatGridAnalyzerProvider?: 'beatthis' | 'classic'
   beatGridAlgorithmVersion?: number
   key?: string
   originalKey?: string
@@ -129,7 +124,6 @@ export function registerMixtapeHandlers() {
           item.firstBeatMs !== undefined ||
           item.barBeatOffset !== undefined ||
           item.timeBasisOffsetMs !== undefined ||
-          item.beatGridAnalyzerProvider !== undefined ||
           item.beatGridAlgorithmVersion !== undefined)
     )
     if (!normalizedEntries.length) return
@@ -464,7 +458,6 @@ export function registerMixtapeHandlers() {
         'barBeatOffset',
         'timeBasisOffsetMs',
         'beatThisWindowCount',
-        'beatGridAnalyzerProvider',
         'beatGridAlgorithmVersion',
         'key',
         'originalKey',
@@ -655,7 +648,6 @@ export function registerMixtapeHandlers() {
                     firstBeatMs: item.firstBeatMs,
                     barBeatOffset: item.barBeatOffset,
                     timeBasisOffsetMs: item.timeBasisOffsetMs,
-                    beatGridAnalyzerProvider: item.beatGridAnalyzerProvider,
                     beatGridAlgorithmVersion: item.beatGridAlgorithmVersion
                   }))
                 )
@@ -727,7 +719,6 @@ export function registerMixtapeHandlers() {
             firstBeatMs: item.firstBeatMs,
             barBeatOffset: item.barBeatOffset,
             timeBasisOffsetMs: item.timeBasisOffsetMs,
-            beatGridAnalyzerProvider: item.beatGridAnalyzerProvider,
             beatGridAlgorithmVersion: item.beatGridAlgorithmVersion
           }))
         )
@@ -805,16 +796,13 @@ export function registerMixtapeHandlers() {
       if (!filePath || (!hasOffset && !hasFirstBeatMs && !hasBpm)) {
         return { updated: 0 }
       }
-      const beatGridAnalyzerProvider = resolveConfiguredBeatGridAnalyzerProvider()
-      const beatGridAlgorithmVersion = getCurrentBeatGridAlgorithmVersion(beatGridAnalyzerProvider)
       const result = upsertMixtapeItemGridByFilePath([
         {
           filePath,
           barBeatOffset: hasOffset ? rawOffset : 0,
           firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
           bpm: hasBpm ? rawBpm : undefined,
-          beatGridAnalyzerProvider,
-          beatGridAlgorithmVersion
+          beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
         }
       ])
       await persistAndBroadcastSharedGridBatch([
@@ -823,8 +811,7 @@ export function registerMixtapeHandlers() {
           barBeatOffset: hasOffset ? rawOffset : undefined,
           firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
           bpm: hasBpm ? rawBpm : undefined,
-          beatGridAnalyzerProvider,
-          beatGridAlgorithmVersion
+          beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
         }
       ])
       return result

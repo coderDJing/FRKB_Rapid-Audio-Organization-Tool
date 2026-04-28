@@ -1,11 +1,7 @@
 import { parentPort } from 'node:worker_threads'
 import childProcess from 'node:child_process'
 import type { MixxxWaveformData } from '../waveformCache'
-import { analyzeBeatGridFromPcm, resolveBeatGridAnalyzerProvider } from './beatGridAnalyzer'
-import {
-  normalizeBeatGridAnalyzerProvider,
-  type BeatGridAnalyzerProvider
-} from '../services/beatGridAlgorithmVersion'
+import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 
 type KeyJob = {
   jobId: number
@@ -14,7 +10,6 @@ type KeyJob = {
   needsKey?: boolean
   needsBpm?: boolean
   needsWaveform?: boolean
-  beatGridAnalyzerProvider?: BeatGridAnalyzerProvider
 }
 
 type KeyResultPayload = {
@@ -25,7 +20,6 @@ type KeyResultPayload = {
   barBeatOffset?: number
   beatThisEstimatedDrift128Ms?: number
   beatThisWindowCount?: number
-  beatGridAnalyzerProvider?: BeatGridAnalyzerProvider
   bpmError?: string
   mixxxWaveformData?: MixxxWaveformData | null
 }
@@ -69,10 +63,6 @@ const K_FAST_ANALYSIS_SECONDS = 60
 const BEAT_GRID_ANALYSIS_SAMPLE_RATE = 44100
 const BEAT_GRID_ANALYSIS_CHANNELS = 2
 const BEAT_GRID_ANALYSIS_MAX_SCAN_SEC = 120
-
-const resolveRequestedBeatGridAnalyzerProvider = (
-  value: unknown
-): BeatGridAnalyzerProvider | undefined => normalizeBeatGridAnalyzerProvider(value)
 
 type RustBinding = ReturnType<typeof loadRust>
 
@@ -210,13 +200,7 @@ const decodeBeatGridPcmForFile = async (filePath: string): Promise<DecodedBeatGr
 
 const analyzeKeyForFile = (
   filePath: string,
-  options: {
-    fastAnalysis: boolean
-    needsKey: boolean
-    needsBpm: boolean
-    needsWaveform: boolean
-    beatGridAnalyzerProvider?: BeatGridAnalyzerProvider
-  },
+  options: { fastAnalysis: boolean; needsKey: boolean; needsBpm: boolean; needsWaveform: boolean },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
   return analyzeKeyForFileInternal(filePath, options, reportProgress)
@@ -224,13 +208,7 @@ const analyzeKeyForFile = (
 
 const analyzeKeyForFileInternal = async (
   filePath: string,
-  options: {
-    fastAnalysis: boolean
-    needsKey: boolean
-    needsBpm: boolean
-    needsWaveform: boolean
-    beatGridAnalyzerProvider?: BeatGridAnalyzerProvider
-  },
+  options: { fastAnalysis: boolean; needsKey: boolean; needsBpm: boolean; needsWaveform: boolean },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
   const result: KeyResultPayload = {}
@@ -238,8 +216,6 @@ const analyzeKeyForFileInternal = async (
   const needsBpm = Boolean(options.needsBpm)
   const needsWaveform = Boolean(options.needsWaveform)
   const needsRustDecode = needsKey || needsWaveform
-  const beatGridAnalyzerProvider =
-    options.beatGridAnalyzerProvider ?? resolveBeatGridAnalyzerProvider()
   let rust: RustBinding | null = null
   let decoded: ReturnType<RustBinding['decodeAudioFile']> | null = null
   let beatGridDecoded: DecodedBeatGridPcm | null = null
@@ -293,7 +269,9 @@ const analyzeKeyForFileInternal = async (
       options.fastAnalysis
     )
     const analyzePlanDetail = needsBpm
-      ? `${options.fastAnalysis ? 'key+grid-fast' : 'key+grid'}-${beatGridAnalyzerProvider}`
+      ? options.fastAnalysis
+        ? 'key+beat-this-windowed-fast'
+        : 'key+beat-this-windowed'
       : options.fastAnalysis
         ? 'key-fast'
         : 'key-full'
@@ -333,29 +311,27 @@ const analyzeKeyForFileInternal = async (
         if (!beatGridDecoded) {
           beatGridDecoded = await decodeBeatGridPcmForFile(filePath)
         }
-        const beatGridResult = await analyzeBeatGridFromPcm({
+        const beatThisResult = await analyzeBeatGridWithBeatThisSlidingWindowsFromPcm({
           pcmData: beatGridDecoded.pcmData,
           sampleRate: beatGridDecoded.sampleRate,
           channels: beatGridDecoded.channels,
-          sourceFilePath: filePath,
-          analyzerProvider: beatGridAnalyzerProvider
+          sourceFilePath: filePath
         })
-        result.bpm = beatGridResult.bpm
-        result.firstBeatMs = beatGridResult.firstBeatMs
-        result.barBeatOffset = beatGridResult.barBeatOffset
-        result.beatThisEstimatedDrift128Ms = beatGridResult.beatThisEstimatedDrift128Ms
-        result.beatThisWindowCount = beatGridResult.beatThisWindowCount
-        result.beatGridAnalyzerProvider = beatGridResult.analyzerProvider
+        result.bpm = beatThisResult.bpm
+        result.firstBeatMs = beatThisResult.firstBeatMs
+        result.barBeatOffset = beatThisResult.barBeatOffset
+        result.beatThisEstimatedDrift128Ms = beatThisResult.beatThisEstimatedDrift128Ms
+        result.beatThisWindowCount = beatThisResult.beatThisWindowCount
         result.bpmError = undefined
       } catch (error) {
         result.bpmError =
-          error instanceof Error ? error.message : String(error || 'Beat grid analyze failed')
+          error instanceof Error ? error.message : String(error || 'Beat This! analyze failed')
       }
 
       if (!result.bpmError) {
         const normalizedBpm = Number(result.bpm)
         if (!Number.isFinite(normalizedBpm) || normalizedBpm <= 0) {
-          result.bpmError = 'invalid bpm value from beat grid analyzer'
+          result.bpmError = 'invalid bpm value from Beat This! analyzer'
         }
       }
 
@@ -374,7 +350,6 @@ const analyzeKeyForFileInternal = async (
         bpm: result.bpm,
         firstBeatMs: result.firstBeatMs,
         barBeatOffset: result.barBeatOffset,
-        beatGridAnalyzerProvider: result.beatGridAnalyzerProvider,
         bpmError: result.bpmError
       }
     })
@@ -443,10 +418,7 @@ parentPort?.on('message', async (job: KeyJob) => {
         fastAnalysis: Boolean(job.fastAnalysis),
         needsKey: Boolean(job.needsKey),
         needsBpm: Boolean(job.needsBpm),
-        needsWaveform: Boolean(job.needsWaveform),
-        beatGridAnalyzerProvider: resolveRequestedBeatGridAnalyzerProvider(
-          job.beatGridAnalyzerProvider
-        )
+        needsWaveform: Boolean(job.needsWaveform)
       },
       reportProgress
     )

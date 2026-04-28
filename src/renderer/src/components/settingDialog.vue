@@ -127,11 +127,6 @@ const keyDisplayStyleOptions = computed<SettingDialogOption[]>(() => [
   { label: t('player.keyDisplayStyleCamelot'), value: 'Camelot' }
 ])
 
-const beatGridAnalyzerProviderOptions = computed<SettingDialogOption[]>(() => [
-  { label: t('settings.beatGridAnalyzerProvider.beatthis'), value: 'beatthis' },
-  { label: t('settings.beatGridAnalyzerProvider.classic'), value: 'classic' }
-])
-
 const audioOutputSelectOptions = computed(() => {
   const unknownText = t('player.audioOutputDeviceUnknown')
   return [
@@ -759,7 +754,6 @@ const settingDialogContext: SettingDialogContext = {
   waveformStyleOptions,
   waveformModeOptions,
   keyDisplayStyleOptions,
-  beatGridAnalyzerProviderOptions,
   audioOutputSelectOptions,
   handleAudioOutputChange,
   openAcoustIdSite,

@@ -659,7 +659,6 @@ export function upsertMixtapeItemGridByFilePath(
     firstBeatMs?: number
     bpm?: number
     timeBasisOffsetMs?: number
-    beatGridAnalyzerProvider?: 'beatthis' | 'classic'
     beatGridAlgorithmVersion?: number
   }>
 ): { updated: number } {
@@ -696,18 +695,6 @@ export function upsertMixtapeItemGridByFilePath(
     return Math.max(1, Math.floor(numeric))
   }
 
-  const normalizeBeatGridAnalyzerProvider = (value: unknown) => {
-    const normalized = String(value || '')
-      .trim()
-      .toLowerCase()
-      .replace(/[_\s-]+/g, '')
-    if (normalized === 'beatthis') return 'beatthis' as const
-    if (normalized === 'classic' || normalized === 'classical' || normalized === 'dsp') {
-      return 'classic' as const
-    }
-    return undefined
-  }
-
   const offsetMap = new Map<
     string,
     {
@@ -715,7 +702,6 @@ export function upsertMixtapeItemGridByFilePath(
       firstBeatMs?: number
       bpm?: number
       timeBasisOffsetMs?: number
-      beatGridAnalyzerProvider?: 'beatthis' | 'classic'
       beatGridAlgorithmVersion?: number
     }
   >()
@@ -727,9 +713,6 @@ export function upsertMixtapeItemGridByFilePath(
     const normalizedBpm = normalizeBpm(Number(item?.bpm))
     const hasBpm = normalizedBpm > 0
     const normalizedTimeBasisOffsetMs = normalizeTimeBasisOffsetMs(Number(item?.timeBasisOffsetMs))
-    const normalizedBeatGridAnalyzerProvider = normalizeBeatGridAnalyzerProvider(
-      item?.beatGridAnalyzerProvider
-    )
     const normalizedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
       Number(item?.beatGridAlgorithmVersion)
     )
@@ -738,7 +721,6 @@ export function upsertMixtapeItemGridByFilePath(
       firstBeatMs: hasFirstBeatMs ? normalizeFirstBeatMs(Number(item?.firstBeatMs)) : undefined,
       bpm: hasBpm ? normalizedBpm : undefined,
       timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
-      beatGridAnalyzerProvider: normalizedBeatGridAnalyzerProvider,
       beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion
     })
   }
@@ -771,9 +753,6 @@ export function upsertMixtapeItemGridByFilePath(
           const currentTimeBasisOffsetMs = normalizeTimeBasisOffsetMs(
             Number(info.timeBasisOffsetMs)
           )
-          const currentBeatGridAnalyzerProvider = normalizeBeatGridAnalyzerProvider(
-            info.beatGridAnalyzerProvider
-          )
           const currentBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
             Number(info.beatGridAlgorithmVersion)
           )
@@ -786,10 +765,6 @@ export function upsertMixtapeItemGridByFilePath(
           const hasNextTimeBasisOffsetMs =
             typeof nextGrid.timeBasisOffsetMs === 'number' &&
             Number.isFinite(nextGrid.timeBasisOffsetMs)
-          const nextBeatGridAnalyzerProvider = normalizeBeatGridAnalyzerProvider(
-            nextGrid.beatGridAnalyzerProvider
-          )
-          const hasNextBeatGridAnalyzerProvider = nextBeatGridAnalyzerProvider !== undefined
           const hasNextBeatGridAlgorithmVersion =
             typeof nextGrid.beatGridAlgorithmVersion === 'number' &&
             Number.isFinite(nextGrid.beatGridAlgorithmVersion)
@@ -800,9 +775,6 @@ export function upsertMixtapeItemGridByFilePath(
           const timeBasisChanged =
             hasNextTimeBasisOffsetMs &&
             currentTimeBasisOffsetMs !== normalizeTimeBasisOffsetMs(nextGrid.timeBasisOffsetMs!)
-          const beatGridAnalyzerProviderChanged =
-            hasNextBeatGridAnalyzerProvider &&
-            currentBeatGridAnalyzerProvider !== nextBeatGridAnalyzerProvider
           const beatGridAlgorithmVersionChanged =
             hasNextBeatGridAlgorithmVersion &&
             currentBeatGridAlgorithmVersion !==
@@ -812,7 +784,6 @@ export function upsertMixtapeItemGridByFilePath(
             !firstBeatChanged &&
             !bpmChanged &&
             !timeBasisChanged &&
-            !beatGridAnalyzerProviderChanged &&
             !beatGridAlgorithmVersionChanged
           ) {
             continue
@@ -826,9 +797,6 @@ export function upsertMixtapeItemGridByFilePath(
           }
           if (hasNextTimeBasisOffsetMs) {
             info.timeBasisOffsetMs = normalizeTimeBasisOffsetMs(nextGrid.timeBasisOffsetMs!)
-          }
-          if (hasNextBeatGridAnalyzerProvider) {
-            info.beatGridAnalyzerProvider = nextBeatGridAnalyzerProvider
           }
           if (hasNextBeatGridAlgorithmVersion) {
             info.beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(

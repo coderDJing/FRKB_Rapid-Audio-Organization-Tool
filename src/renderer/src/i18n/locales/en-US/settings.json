@@ -39,12 +39,6 @@
       "chooseButton": "Choose directory",
       "notConfigured": "Not configured"
     },
-    "beatGridAnalyzerProvider": {
-      "title": "Beat Grid Analyzer (Dev/Prerelease only)",
-      "beatthis": "BeatThis",
-      "classic": "Classic",
-      "hint": "Affects new analysis and cache validation only; release builds stay fixed to BeatThis."
-    },
     "currentLibraryPath": "Current library path",
     "currentLibraryPathHint": "Shows the FRKB library root currently in use for quick confirmation and troubleshooting.",
     "explorerContextMenuLabel": "Play in FRKB",

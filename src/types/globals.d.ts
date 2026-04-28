@@ -50,7 +50,6 @@ interface ISongInfo {
   timeBasisOffsetMs?: number
   beatThisEstimatedDrift128Ms?: number
   beatThisWindowCount?: number
-  beatGridAnalyzerProvider?: 'beatthis' | 'classic'
   beatGridAlgorithmVersion?: number
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
@@ -561,7 +560,6 @@ interface ISettingConfig {
   waveformStyle?: 'SoundCloud' | 'Fine' | 'RGB'
   waveformMode?: 'half' | 'full'
   keyDisplayStyle?: 'Classic' | 'Camelot'
-  beatGridAnalyzerProvider?: 'beatthis' | 'classic'
   // 是否显示闲时分析状态（默认不显示）
   showIdleAnalysisStatus?: boolean
   autoPlayNextSong: boolean

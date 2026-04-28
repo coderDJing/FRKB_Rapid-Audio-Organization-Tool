@@ -7,9 +7,32 @@ import {
   resolveBeatThisProjectRoot,
   resolveBeatThisRuntime
 } from './beatThisRuntime'
-import type { BeatGridAnalyzeParams, BeatGridAnalyzeResult } from './beatGridAnalyzerTypes'
 
-type BeatThisAnalyzeResult = Omit<BeatGridAnalyzeResult, 'analyzerProvider'>
+type BeatThisAnalyzeResult = {
+  bpm: number
+  firstBeatMs: number
+  rawBpm?: number
+  barBeatOffset: number
+  beatCount: number
+  downbeatCount: number
+  durationSec: number
+  beatIntervalSec: number
+  beatCoverageScore: number
+  beatStabilityScore: number
+  downbeatCoverageScore: number
+  downbeatStabilityScore: number
+  qualityScore: number
+  rawFirstBeatMs?: number
+  anchorCorrectionMs?: number
+  anchorConfidenceScore?: number
+  anchorMatchedBeatCount?: number
+  anchorStrategy?: string
+  beatThisEstimatedDrift128Ms?: number
+  beatThisWindowCount?: number
+  windowStartSec?: number
+  windowDurationSec?: number
+  windowIndex?: number
+}
 
 type BeatThisBridgeMessage =
   | {
@@ -31,7 +54,7 @@ type BeatThisBridgeMessage =
     }
 
 type PendingRequest = {
-  resolve: (value: BeatGridAnalyzeResult) => void
+  resolve: (value: BeatThisAnalyzeResult) => void
   reject: (error: Error) => void
 }
 
@@ -89,7 +112,7 @@ const resolveBridgeScriptPath = () => {
   return localBridge
 }
 
-const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatGridAnalyzeResult | null => {
+const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeResult | null => {
   const bpm = Number(input?.bpm)
   const rawBpm = Number(input?.rawBpm)
   const firstBeatMs = Number(input?.firstBeatMs)
@@ -118,7 +141,6 @@ const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatGridAnalyzeR
   if (!Number.isFinite(firstBeatMs)) return null
 
   return {
-    analyzerProvider: 'beatthis',
     bpm: Number(bpm.toFixed(6)),
     rawBpm: Number.isFinite(rawBpm) && rawBpm > 0 ? Number(rawBpm.toFixed(6)) : undefined,
     firstBeatMs: Number(firstBeatMs.toFixed(3)),
@@ -356,9 +378,14 @@ const writeToBridge = async (child: ChildProcessWithoutNullStreams, chunk: Buffe
   })
 }
 
-export const analyzeBeatGridWithBeatThisFromPcm = async (
-  params: BeatGridAnalyzeParams
-): Promise<BeatGridAnalyzeResult> => {
+export const analyzeBeatGridWithBeatThisFromPcm = async (params: {
+  pcmData: Buffer
+  sampleRate: number
+  channels: number
+  sourceFilePath?: string
+  windowSec?: number
+  maxScanSec?: number
+}) => {
   const pcmData = Buffer.isBuffer(params.pcmData) ? params.pcmData : Buffer.from(params.pcmData)
   const totalSamples = Math.floor(pcmData.byteLength / 4)
   const channels = Math.max(1, Math.floor(Number(params.channels) || 0))
@@ -388,7 +415,7 @@ export const analyzeBeatGridWithBeatThisFromPcm = async (
         )
       })
 
-      const response = new Promise<BeatGridAnalyzeResult>((resolve, reject) => {
+      const response = new Promise<BeatThisAnalyzeResult>((resolve, reject) => {
         bridgePendingRequests.set(requestId, { resolve, reject })
       })
 
@@ -405,9 +432,14 @@ export const analyzeBeatGridWithBeatThisFromPcm = async (
   return runRequest
 }
 
-export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (
-  params: BeatGridAnalyzeParams
-): Promise<BeatGridAnalyzeResult> => {
+export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
+  pcmData: Buffer
+  sampleRate: number
+  channels: number
+  sourceFilePath?: string
+  windowSec?: number
+  maxScanSec?: number
+}) => {
   const pcmData = Buffer.isBuffer(params.pcmData) ? params.pcmData : Buffer.from(params.pcmData)
   const sampleRate = Math.max(1, Math.floor(Number(params.sampleRate) || 0))
   const channels = Math.max(1, Math.floor(Number(params.channels) || 0))

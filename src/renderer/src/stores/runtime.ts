@@ -337,7 +337,6 @@ export const useRuntimeStore = defineStore('runtime', {
         waveformStyle: 'RGB',
         waveformMode: 'half',
         keyDisplayStyle: 'Classic',
-        beatGridAnalyzerProvider: 'beatthis',
         autoPlayNextSong: false,
         startPlayPercent: 0,
         endPlayPercent: 100,

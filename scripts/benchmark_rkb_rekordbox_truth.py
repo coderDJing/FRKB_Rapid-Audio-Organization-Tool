@@ -15,8 +15,6 @@ from typing import Any
 
 import numpy as np
 
-from frkb_provider_paths import ANALYZERS, provider_audio_root_arg, provider_json_path
-
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -28,18 +26,18 @@ DEFAULT_TRUTH = (
     REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "rekordbox-current-truth.json"
 )
 DEFAULT_AUDIO_ROOTS = [
-    Path(item)
-    for item in provider_audio_root_arg("beatthis").split(";")
+    Path("D:/FRKB_database-B/library/FilterLibrary/new"),
+    Path("D:/FRKB_database-B/library/FilterLibrary/sample"),
+    Path("D:/FRKB_database-B/library/FilterLibrary/grid-failures-current"),
 ]
-DEFAULT_AUDIO_ROOT = provider_audio_root_arg("beatthis")
+DEFAULT_AUDIO_ROOT = ";".join(str(item) for item in DEFAULT_AUDIO_ROOTS)
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
 DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
-DEFAULT_OUTPUT = provider_json_path("beatthis", "manual_latest")
+DEFAULT_OUTPUT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "latest.json"
 DEFAULT_PREDICTION_CACHE_DIR = (
     REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "beatthis-prediction-cache"
 )
 BEAT_THIS_BRIDGE = REPO_ROOT / "scripts" / "beat_this_bridge.py"
-CLASSIC_BRIDGE = REPO_ROOT / "scripts" / "classic_beat_grid_bridge.py"
 
 SAMPLE_RATE = 44100
 CHANNELS = 2
@@ -52,32 +50,13 @@ PREDICTION_CACHE_VERSION = 1
 _ACTIVE_LOGIT_CACHE_CONTEXT: dict[str, Any] | None = None
 
 
-def _load_bridge_module(analyzer: str) -> Any:
-    bridge_path = CLASSIC_BRIDGE if analyzer == "classic" else BEAT_THIS_BRIDGE
-    module_name = "classic_beat_grid_bridge" if analyzer == "classic" else "beat_this_bridge"
-    spec = importlib.util.spec_from_file_location(module_name, bridge_path)
+def _load_bridge_module() -> Any:
+    spec = importlib.util.spec_from_file_location("beat_this_bridge", BEAT_THIS_BRIDGE)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"failed to load bridge module: {bridge_path}")
+        raise RuntimeError(f"failed to load bridge module: {BEAT_THIS_BRIDGE}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def _arg_supplied(argv: list[str], *names: str) -> bool:
-    for arg in argv:
-        for name in names:
-            if arg == name or arg.startswith(f"{name}="):
-                return True
-    return False
-
-
-def _apply_analyzer_defaults(args: argparse.Namespace, argv: list[str]) -> None:
-    analyzer = str(args.analyzer or "beatthis").strip().lower()
-    if not _arg_supplied(argv, "--audio-root"):
-        args.audio_root = provider_audio_root_arg(analyzer)
-    if not _arg_supplied(argv, "--output"):
-        args.output = str(provider_json_path(analyzer, "manual_latest"))
-
 
 def _normalized_path_identity(path: Path) -> str:
     try:
@@ -788,7 +767,6 @@ def _classify(metrics: dict[str, Any], result_bpm: float, truth_bpm: float) -> d
 
 def _normalize_bridge_result(result: dict[str, Any]) -> dict[str, Any]:
     return {
-        "analyzerProvider": str(result.get("analyzerProvider") or "beatthis").strip() or "beatthis",
         "bpm": round(_to_float(result.get("bpm")) or 0.0, 6),
         "rawBpm": round(_to_float(result.get("rawBpm")) or 0.0, 6),
         "firstBeatMs": round(_to_float(result.get("firstBeatMs")) or 0.0, 3),
@@ -818,7 +796,6 @@ def _normalize_bridge_result(result: dict[str, Any]) -> dict[str, Any]:
 
 def _analyze_track(
     *,
-    analyzer: str,
     bridge: Any,
     predictor: Any,
     cpu_spect: Any,
@@ -831,17 +808,6 @@ def _analyze_track(
 ) -> dict[str, Any]:
     file_path = Path(str(truth["filePath"]))
     pcm_data = _decode_pcm_window(ffmpeg_path, file_path, MAX_SCAN_SEC)
-    if analyzer == "classic":
-        result = bridge.analyze_pcm(
-            pcm_data,
-            SAMPLE_RATE,
-            CHANNELS,
-            str(file_path),
-            MAX_SCAN_SEC,
-            truth.get("timeBasis") if isinstance(truth.get("timeBasis"), dict) else None,
-        )
-        return _normalize_bridge_result(result)
-
     signal = bridge._decode_signal(pcm_data, CHANNELS)
     duration_sec = signal.shape[0] / SAMPLE_RATE if SAMPLE_RATE > 0 else 0.0
     tuning = bridge._resolve_anchor_tuning()
@@ -1031,13 +997,12 @@ def _build_summary(rows: list[dict[str, Any]], error_rows: list[dict[str, Any]])
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Benchmark FRKB beat grid analyzers against Rekordbox truth")
+    parser = argparse.ArgumentParser(description="Benchmark FRKB BeatThis grid against Rekordbox truth")
     parser.add_argument("--truth", default=str(DEFAULT_TRUTH))
     parser.add_argument("--audio-root", default=str(DEFAULT_AUDIO_ROOT))
     parser.add_argument("--ffmpeg", default=str(DEFAULT_FFMPEG))
     parser.add_argument("--ffprobe", default=str(DEFAULT_FFPROBE))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
-    parser.add_argument("--analyzer", choices=ANALYZERS, default="beatthis")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--prediction-cache-dir", default=str(DEFAULT_PREDICTION_CACHE_DIR))
     parser.add_argument(
@@ -1053,18 +1018,14 @@ def main() -> int:
         help="Filter tracks by case-insensitive file/title/artist substring. Can be repeated.",
     )
     args = parser.parse_args()
-    _apply_analyzer_defaults(args, sys.argv[1:])
 
     truth_path = Path(args.truth)
     audio_roots = _parse_audio_roots(args.audio_root)
     ffmpeg_path = Path(args.ffmpeg)
     ffprobe_path = Path(args.ffprobe)
     output_path = Path(args.output)
-    analyzer = str(args.analyzer or "beatthis").strip().lower()
     device = str(args.device or "cpu").strip() or "cpu"
-    prediction_cache_dir = (
-        None if args.no_prediction_cache or analyzer != "beatthis" else Path(args.prediction_cache_dir)
-    )
+    prediction_cache_dir = None if args.no_prediction_cache else Path(args.prediction_cache_dir)
 
     if not truth_path.exists():
         raise SystemExit(f"truth not found: {truth_path}")
@@ -1088,15 +1049,11 @@ def main() -> int:
     if args.limit and args.limit > 0:
         truth_tracks = truth_tracks[: args.limit]
 
-    bridge = _load_bridge_module(analyzer)
-    checkpoint_path = ""
-    predictor = None
-    cpu_spect = None
-    if analyzer == "beatthis":
-        _install_full_logit_prediction_cache(bridge)
-        checkpoint_path = str(bridge._resolve_checkpoint_path())
-        predictor = bridge.Audio2Beats(checkpoint_path=checkpoint_path, device=device, dbn=False)
-        cpu_spect = bridge.LogMelSpect(device="cpu") if bridge._uses_accelerated_device(device) else None
+    bridge = _load_bridge_module()
+    _install_full_logit_prediction_cache(bridge)
+    checkpoint_path = str(bridge._resolve_checkpoint_path())
+    predictor = bridge.Audio2Beats(checkpoint_path=checkpoint_path, device=device, dbn=False)
+    cpu_spect = bridge.LogMelSpect(device="cpu") if bridge._uses_accelerated_device(device) else None
     prediction_cache_stats = _cache_stats()
 
     rows: list[dict[str, Any]] = []
@@ -1106,7 +1063,6 @@ def main() -> int:
         print(label, flush=True)
         try:
             analysis = _analyze_track(
-                analyzer=analyzer,
                 bridge=bridge,
                 predictor=predictor,
                 cpu_spect=cpu_spect,
@@ -1135,7 +1091,6 @@ def main() -> int:
             "truthPath": str(truth_path),
             "audioRoot": str(args.audio_root),
             "audioRoots": [str(item) for item in audio_roots],
-            "analyzer": analyzer,
             "device": device,
             "windowSec": WINDOW_SEC,
             "maxScanSec": MAX_SCAN_SEC,

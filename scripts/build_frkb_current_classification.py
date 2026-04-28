@@ -1,42 +1,19 @@
 import argparse
 import json
-import sys
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import benchmark_rkb_rekordbox_truth as benchmark
-from frkb_provider_paths import ANALYZERS, provider_json_path
 
 
-DEFAULT_CURRENT_BENCHMARK = provider_json_path("beatthis", "current_latest")
-DEFAULT_CLASSIFICATION = provider_json_path("beatthis", "classification_current")
-DEFAULT_SAMPLE_BENCHMARK = provider_json_path("beatthis", "sample_regression_latest")
-DEFAULT_FAILURE_BENCHMARK = provider_json_path("beatthis", "grid_failures_current_latest")
-DEFAULT_FAILURE_MANIFEST = provider_json_path("beatthis", "grid_failures_current_manifest")
-
-
-def _arg_supplied(argv: list[str], *names: str) -> bool:
-    for arg in argv:
-        for name in names:
-            if arg == name or arg.startswith(f"{name}="):
-                return True
-    return False
-
-
-def _apply_analyzer_defaults(args: argparse.Namespace, argv: list[str]) -> None:
-    analyzer = str(args.analyzer or "beatthis").strip().lower()
-    if not _arg_supplied(argv, "--output-benchmark"):
-        args.output_benchmark = str(provider_json_path(analyzer, "current_latest"))
-    if not _arg_supplied(argv, "--classification"):
-        args.classification = str(provider_json_path(analyzer, "classification_current"))
-    if not _arg_supplied(argv, "--sample-output"):
-        args.sample_output = str(provider_json_path(analyzer, "sample_regression_latest"))
-    if not _arg_supplied(argv, "--failure-output"):
-        args.failure_output = str(provider_json_path(analyzer, "grid_failures_current_latest"))
-    if not _arg_supplied(argv, "--failure-manifest"):
-        args.failure_manifest = str(provider_json_path(analyzer, "grid_failures_current_manifest"))
+REPO_ROOT = Path(__file__).resolve().parents[1]
+BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
+DEFAULT_CURRENT_BENCHMARK = BENCHMARK_OUTPUT_DIR / "frkb-current-latest.json"
+DEFAULT_CLASSIFICATION = BENCHMARK_OUTPUT_DIR / "frkb-classification-current.json"
+DEFAULT_SAMPLE_BENCHMARK = BENCHMARK_OUTPUT_DIR / "sample-regression-latest.json"
+DEFAULT_FAILURE_BENCHMARK = BENCHMARK_OUTPUT_DIR / "grid-failures-current-latest.json"
+DEFAULT_FAILURE_MANIFEST = BENCHMARK_OUTPUT_DIR / "grid-failures-current-manifest.json"
 
 
 def _normalize_key(value: Any) -> str:
@@ -54,20 +31,7 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f"{path.name}.tmp")
     tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    last_error: PermissionError | None = None
-    for attempt in range(8):
-        try:
-            tmp_path.replace(path)
-            return
-        except PermissionError as error:
-            last_error = error
-            time.sleep(0.15 * float(attempt + 1))
-    if last_error is not None:
-        path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        try:
-            tmp_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+    tmp_path.replace(path)
 
 
 def _category(row: dict[str, Any]) -> str:
@@ -220,7 +184,6 @@ def _build_failure_manifest(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build current FRKB classification and derived benchmark views")
-    parser.add_argument("--analyzer", choices=ANALYZERS, default="beatthis")
     parser.add_argument("--benchmark", action="append", default=[])
     parser.add_argument("--output-benchmark", default=str(DEFAULT_CURRENT_BENCHMARK))
     parser.add_argument("--classification", default=str(DEFAULT_CLASSIFICATION))
@@ -229,12 +192,9 @@ def main() -> int:
     parser.add_argument("--failure-manifest", default=str(DEFAULT_FAILURE_MANIFEST))
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    _apply_analyzer_defaults(args, sys.argv[1:])
 
     benchmark_paths = [Path(item) for item in args.benchmark] or [Path(args.output_benchmark)]
     current_payload = _merge_benchmark_payloads(benchmark_paths)
-    if isinstance(current_payload.get("summary"), dict):
-        current_payload["summary"]["analyzer"] = str(args.analyzer)
     all_rows = [item for item in current_payload.get("tracks") or [] if isinstance(item, dict)]
     all_errors = [item for item in current_payload.get("errors") or [] if isinstance(item, dict)]
     pass_rows = [row for row in all_rows if _category(row) == "pass"]
@@ -278,7 +238,6 @@ def main() -> int:
                 "sourceBenchmarks": [str(item) for item in benchmark_paths],
                 "currentBenchmark": str(output_benchmark_path),
                 "classification": str(args.classification),
-                "analyzer": str(args.analyzer),
                 "trackTotal": len(all_rows) + len(all_errors),
                 "pass": len(pass_rows),
                 "fail": len(fail_rows),
