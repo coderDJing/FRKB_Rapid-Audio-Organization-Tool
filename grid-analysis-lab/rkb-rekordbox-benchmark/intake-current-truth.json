@@ -1,9 +1,0 @@
-{
-  "source": {
-    "type": "rekordbox-truth-intake-grid-snapshot",
-    "playlistName": "rekordbox-intake",
-    "trackCount": 0,
-    "note": "Staging Rekordbox truth before FRKB pass/failure classification."
-  },
-  "tracks": []
-}
