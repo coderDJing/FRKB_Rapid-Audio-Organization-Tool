@@ -1,16 +1,24 @@
 import argparse
 import json
 import shutil
+import sys
 from pathlib import Path
 from typing import Any
 
 from capture_rekordbox_playlist_truth import (
     DEFAULT_BRIDGE,
     _bridge_payload,
+    _current_truth_duplicate_match,
+    _load_current_truth_duplicate_index,
     _resolve_playlist_id,
     _run_bridge,
 )
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
@@ -20,20 +28,6 @@ DEFAULT_TARGET_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/new")
 
 def _normalize_key(value: Any) -> str:
     return str(value or "").strip().casefold()
-
-
-def _load_existing_truth_keys(truth_path: Path) -> set[str]:
-    if not truth_path.exists():
-        return set()
-    payload = json.loads(truth_path.read_text(encoding="utf-8"))
-    tracks = payload.get("tracks") if isinstance(payload, dict) else None
-    if not isinstance(tracks, list):
-        raise RuntimeError(f"truth has no tracks array: {truth_path}")
-    return {
-        _normalize_key(track.get("fileName"))
-        for track in tracks
-        if isinstance(track, dict) and _normalize_key(track.get("fileName"))
-    }
 
 
 def _load_playlist_tracks(
@@ -61,7 +55,7 @@ def _resolve_copy_plan(
     *,
     tracks: list[dict[str, Any]],
     target_root: Path,
-    existing_truth_keys: set[str],
+    existing_truth_index: dict[str, Any],
     overwrite: bool,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], list[str]]:
     copy_items: list[dict[str, str]] = []
@@ -76,8 +70,9 @@ def _resolve_copy_plan(
         if not key:
             errors.append("playlist track has no fileName")
             continue
-        if key in existing_truth_keys:
-            skipped.append({"fileName": file_name, "reason": "already-in-current-truth"})
+        duplicate_match = _current_truth_duplicate_match(track, existing_truth_index)
+        if duplicate_match is not None:
+            skipped.append({"fileName": file_name, **duplicate_match})
             continue
         if not source_path.exists() or not source_path.is_file():
             errors.append(f"source file missing: {source_path}")
@@ -131,11 +126,11 @@ def main() -> int:
         playlist_name=str(args.playlist),
         db_path=str(args.db_path or ""),
     )
-    existing_truth_keys = _load_existing_truth_keys(current_truth_path)
+    existing_truth_index = _load_current_truth_duplicate_index(current_truth_path)
     copy_items, skipped, errors = _resolve_copy_plan(
         tracks=tracks,
         target_root=target_root,
-        existing_truth_keys=existing_truth_keys,
+        existing_truth_index=existing_truth_index,
         overwrite=bool(args.overwrite),
     )
 
@@ -156,7 +151,7 @@ def main() -> int:
                 "playlistName": payload.get("playlistName"),
                 "playlistId": payload.get("playlistId"),
                 "playlistTrackCount": len(tracks),
-                "currentTruthTrackCount": len(existing_truth_keys),
+                "currentTruthTrackCount": int(existing_truth_index.get("trackCount") or 0),
                 "copyCount": len(copy_items),
                 "skippedCount": len(skipped),
                 "targetRoot": str(target_root),

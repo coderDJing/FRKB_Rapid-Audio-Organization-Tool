@@ -848,6 +848,55 @@ def apply_stream_start_frame_prezero_to_result(
     )
 
 
+def apply_full_logit_head_zero_overrun_guard_to_result(
+    result: dict[str, Any],
+    time_basis: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    strategy = str(result.get("anchorStrategy") or "")
+    if "full-logit" not in strategy or "positive-guard" in strategy:
+        return result
+    if int(result.get("barBeatOffset") or 0) % 4 != 0:
+        return result
+
+    bpm = _present_float(result, "bpm", 0.0)
+    if bpm <= 0.0:
+        return result
+    interval_ms = 60000.0 / bpm
+    if not math.isfinite(interval_ms) or interval_ms <= 0.0:
+        return result
+
+    current_first_beat_ms = _present_float(result, "firstBeatMs", 0.0)
+    raw_first_beat_ms = _present_float(result, "rawFirstBeatMs", current_first_beat_ms)
+    if raw_first_beat_ms > 1.0 or current_first_beat_ms <= 0.0:
+        return result
+
+    head_shift_ms = phase_delta_ms(current_first_beat_ms, raw_first_beat_ms, interval_ms)
+    if head_shift_ms <= 0.0:
+        return result
+    if float(result.get("qualityScore") or 0.0) < 0.8:
+        return result
+    if float(result.get("anchorConfidenceScore") or 0.0) < 0.8:
+        return result
+
+    offset_ms = _to_time_basis_float(time_basis, "offsetMs")
+    is_pcm_head_overrun = abs(offset_ms) <= 0.5 and 3.0 <= head_shift_ms <= 8.0
+    is_non_lame_frame_overrun = (
+        _has_non_lame_mp3_stream_start(time_basis)
+        and 18.0 <= head_shift_ms <= 24.0
+    )
+    if not is_pcm_head_overrun and not is_non_lame_frame_overrun:
+        return result
+
+    next_result = _update_first_beat(
+        result,
+        0.0,
+        interval_ms,
+        "full-logit-head-zero-overrun-guard",
+    )
+    next_result["fullLogitHeadZeroOverrunShiftMs"] = round(head_shift_ms, 3)
+    return next_result
+
+
 def _apply_downbeat_one_beat_guard(
     result: dict[str, Any],
 ) -> dict[str, Any]:

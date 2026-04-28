@@ -138,10 +138,12 @@ from beat_this_full_logit_rescue import (
     apply_full_track_logit_rescue as _apply_full_track_logit_rescue,
 )
 from beat_this_phase_rescue import (
+    apply_full_logit_head_zero_overrun_guard_to_result as _apply_full_logit_head_zero_overrun_guard_to_result,
     apply_phase_rescue_rules as _apply_phase_rescue_rules,
     apply_stream_start_frame_prezero_to_result as _apply_stream_start_frame_prezero_to_result,
     apply_window_phase_consensus as _apply_window_phase_consensus,
 )
+from beat_this_phase_arbitration import apply_final_phase_arbitration as _apply_final_phase_arbitration
 from beat_this_bpm_metrics import estimate_bpm_drift_proxy as _estimate_bpm_drift_proxy
 from beat_this_window_selection import select_anchor_window_result as _select_anchor_window_result
 
@@ -764,6 +766,16 @@ def _analyze_prepared_windows_to_track_result(
                 if refreshed_proxy:
                     next_result = dict(next_result)
                     next_result.update(refreshed_proxy)
+            full_logit_head_zero_result = _apply_full_logit_head_zero_overrun_guard_to_result(
+                next_result,
+                time_basis=time_basis,
+            )
+            if full_logit_head_zero_result is not next_result:
+                next_result = full_logit_head_zero_result
+                refreshed_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
+                if refreshed_proxy:
+                    next_result = dict(next_result)
+                    next_result.update(refreshed_proxy)
             stream_start_frame_result = _apply_stream_start_frame_prezero_to_result(
                 next_result,
                 time_basis=time_basis,
@@ -774,6 +786,11 @@ def _analyze_prepared_windows_to_track_result(
                 if refreshed_proxy:
                     next_result = dict(next_result)
                     next_result.update(refreshed_proxy)
+        next_result = _apply_final_phase_arbitration(
+            finalized_results,
+            next_result,
+            time_basis=time_basis,
+        )
         return next_result
 
     anchor_window = _select_anchor_window_result(finalized_results)

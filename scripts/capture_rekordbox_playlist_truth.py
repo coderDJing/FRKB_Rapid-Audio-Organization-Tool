@@ -1,24 +1,55 @@
 import argparse
 import json
+import os
+import platform
+import re
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BRIDGE = REPO_ROOT / "resources" / "rekordboxDesktopLibrary" / "bridge.py"
+DEFAULT_REKORDBOX_RUNTIME_ROOT = REPO_ROOT / "vendor" / "rekordbox-desktop-runtime"
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
 DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "intake-current-truth.json"
 DEFAULT_TRUTH = (
     BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
 )
 DEFAULT_AUDIO_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/new")
+DUPLICATE_BPM_TOLERANCE = 0.01
+
+
+def _default_rekordbox_python() -> Path:
+    if sys.platform == "win32":
+        return DEFAULT_REKORDBOX_RUNTIME_ROOT / "win32-x64" / "python" / "python.exe"
+    if sys.platform == "darwin":
+        arch_key = "darwin-arm64" if platform.machine().lower() == "arm64" else "darwin-x64"
+        return DEFAULT_REKORDBOX_RUNTIME_ROOT / arch_key / "python" / "bin" / "python3"
+    return Path(sys.executable)
+
+
+def _resolve_bridge_python() -> str:
+    configured = os.environ.get("FRKB_REKORDBOX_HELPER_PYTHON", "").strip()
+    if configured:
+        return configured
+    runtime_python = _default_rekordbox_python()
+    return str(runtime_python) if runtime_python.exists() else sys.executable
 
 
 def _normalize_key(value: Any) -> str:
     return str(value or "").strip().casefold()
+
+
+def _normalize_metadata_key_part(value: Any) -> str:
+    return re.sub(r"[\W_]+", " ", str(value or "").casefold()).strip()
 
 
 def _to_float(value: Any) -> float | None:
@@ -27,6 +58,21 @@ def _to_float(value: Any) -> float | None:
     except Exception:
         return None
     return numeric
+
+
+def _duplicate_bpm(track: dict[str, Any]) -> float | None:
+    bpm = _to_float(track.get("bpm"))
+    if bpm is None:
+        bpm = _to_float(track.get("gridBpm"))
+    return bpm if bpm is not None and bpm > 0 else None
+
+
+def _duplicate_metadata_key(track: dict[str, Any]) -> tuple[str, str] | None:
+    title_key = _normalize_metadata_key_part(track.get("title"))
+    artist_key = _normalize_metadata_key_part(track.get("artist"))
+    if not title_key or not artist_key:
+        return None
+    return title_key, artist_key
 
 
 def _to_int(value: Any) -> int | None:
@@ -39,7 +85,7 @@ def _to_int(value: Any) -> int | None:
 def _run_bridge(bridge_path: Path, command: str, payload: dict[str, Any]) -> dict[str, Any]:
     request = json.dumps({"command": command, "payload": payload}, ensure_ascii=False)
     result = subprocess.run(
-        [sys.executable, str(bridge_path)],
+        [_resolve_bridge_python(), str(bridge_path)],
         input=request,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -170,18 +216,70 @@ def _validate_audio_root(audio_root: Path, tracks: list[dict[str, Any]]) -> list
     ]
 
 
-def _load_truth_keys(truth_path: Path) -> set[str]:
+def _load_current_truth_duplicate_index(truth_path: Path) -> dict[str, Any]:
+    index: dict[str, Any] = {
+        "trackCount": 0,
+        "fileNames": {},
+        "metadata": {},
+    }
     if not truth_path.exists():
-        return set()
+        return index
     payload = json.loads(truth_path.read_text(encoding="utf-8"))
     tracks = payload.get("tracks") if isinstance(payload, dict) else None
     if not isinstance(tracks, list):
         raise RuntimeError(f"truth has no tracks array: {truth_path}")
-    return {
-        _normalize_key(track.get("fileName"))
-        for track in tracks
-        if isinstance(track, dict) and _normalize_key(track.get("fileName"))
-    }
+    file_names: dict[str, dict[str, Any]] = {}
+    metadata: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for track in tracks:
+        if not isinstance(track, dict):
+            continue
+        file_key = _normalize_key(track.get("fileName"))
+        if file_key:
+            file_names[file_key] = track
+        metadata_key = _duplicate_metadata_key(track)
+        if metadata_key is not None and _duplicate_bpm(track) is not None:
+            metadata.setdefault(metadata_key, []).append(track)
+    index["trackCount"] = len(tracks)
+    index["fileNames"] = file_names
+    index["metadata"] = metadata
+    return index
+
+
+def _current_truth_duplicate_match(
+    track: dict[str, Any],
+    duplicate_index: dict[str, Any],
+) -> dict[str, str] | None:
+    file_names = duplicate_index.get("fileNames") if isinstance(duplicate_index, dict) else None
+    file_key = _normalize_key(track.get("fileName"))
+    if file_key and isinstance(file_names, dict):
+        existing = file_names.get(file_key)
+        if isinstance(existing, dict):
+            return {
+                "reason": "already-in-current-truth",
+                "matchedFileName": str(existing.get("fileName") or ""),
+            }
+
+    metadata_key = _duplicate_metadata_key(track)
+    candidate_bpm = _duplicate_bpm(track)
+    if metadata_key is None or candidate_bpm is None:
+        return None
+
+    metadata = duplicate_index.get("metadata") if isinstance(duplicate_index, dict) else None
+    candidates = metadata.get(metadata_key) if isinstance(metadata, dict) else None
+    if not isinstance(candidates, list):
+        return None
+    for existing in candidates:
+        if not isinstance(existing, dict):
+            continue
+        existing_bpm = _duplicate_bpm(existing)
+        if existing_bpm is None:
+            continue
+        if abs(candidate_bpm - existing_bpm) <= DUPLICATE_BPM_TOLERANCE:
+            return {
+                "reason": "already-in-current-truth-metadata",
+                "matchedFileName": str(existing.get("fileName") or ""),
+            }
+    return None
 
 
 def _filter_existing_truth_tracks(
@@ -193,16 +291,23 @@ def _filter_existing_truth_tracks(
 ) -> tuple[dict[str, Any], list[dict[str, Any]], int]:
     if include_existing:
         return source, tracks, 0
-    existing_keys = _load_truth_keys(truth_path)
-    filtered_tracks = [
-        track for track in tracks if _normalize_key(track.get("fileName")) not in existing_keys
-    ]
+    duplicate_index = _load_current_truth_duplicate_index(truth_path)
+    filtered_tracks: list[dict[str, Any]] = []
+    skipped_reasons: dict[str, int] = {}
+    for track in tracks:
+        duplicate_match = _current_truth_duplicate_match(track, duplicate_index)
+        if duplicate_match is None:
+            filtered_tracks.append(track)
+            continue
+        reason = duplicate_match.get("reason") or "already-in-current-truth"
+        skipped_reasons[reason] = skipped_reasons.get(reason, 0) + 1
     skipped_count = len(tracks) - len(filtered_tracks)
     return {
         **source,
         "playlistTrackCount": len(tracks),
         "trackCount": len(filtered_tracks),
         "skippedExistingTruthCount": skipped_count,
+        "skippedExistingTruthReasons": skipped_reasons,
     }, filtered_tracks, skipped_count
 
 
