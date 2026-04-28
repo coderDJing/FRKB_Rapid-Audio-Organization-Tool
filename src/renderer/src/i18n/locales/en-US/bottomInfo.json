@@ -1,6 +1,7 @@
 {
   "bottomInfo": {
     "totalDurationLabel": "Total duration: ",
+    "selectedSongs": "{count} selected",
     "durationUnits": {
       "day": {
         "one": "{count} day",
