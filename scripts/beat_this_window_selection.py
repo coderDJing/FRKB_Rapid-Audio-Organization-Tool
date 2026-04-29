@@ -204,6 +204,108 @@ def _find_later_high_density_bpm_candidate(
     return None
 
 
+def _find_later_single_high_quality_bpm_candidate(
+    results: list[dict[str, Any]],
+    earliest_result: dict[str, Any],
+) -> dict[str, Any] | None:
+    earliest_bpm = _window_bpm_for_consensus(earliest_result)
+    earliest_quality = float(earliest_result.get("qualityScore") or 0.0)
+    earliest_beats = max(1, int(earliest_result.get("beatCount") or 0))
+    if not math.isfinite(earliest_bpm) or earliest_bpm <= 0.0:
+        return None
+    if earliest_quality >= 0.88:
+        return None
+
+    candidates: list[dict[str, Any]] = []
+    for item in results:
+        if int(item.get("windowIndex") or 0) <= int(earliest_result.get("windowIndex") or 0):
+            continue
+        item_bpm = _window_bpm_for_consensus(item)
+        item_quality = float(item.get("qualityScore") or 0.0)
+        item_beats = int(item.get("beatCount") or 0)
+        item_stabilized_bpm = float(item.get("bpm") or 0.0)
+        if not math.isfinite(item_bpm) or item_bpm <= 0.0:
+            continue
+        if item_quality < 0.96 or item_quality - earliest_quality < 0.10:
+            continue
+        if item_beats + 1 < earliest_beats:
+            continue
+        if abs(item_stabilized_bpm - earliest_bpm) < max(0.5, earliest_bpm * 0.004):
+            continue
+        if abs(item_stabilized_bpm - round(item_stabilized_bpm)) > 0.000001:
+            continue
+        if abs(item_bpm - item_stabilized_bpm) > 0.08:
+            continue
+        candidates.append(item)
+
+    if len(candidates) != 1:
+        return None
+    return candidates[0]
+
+
+def _find_later_integer_cluster_bpm_candidate(
+    results: list[dict[str, Any]],
+    earliest_result: dict[str, Any],
+) -> dict[str, Any] | None:
+    earliest_bpm = _window_bpm_for_consensus(earliest_result)
+    earliest_quality = float(earliest_result.get("qualityScore") or 0.0)
+    earliest_beats = max(1, int(earliest_result.get("beatCount") or 0))
+    if not math.isfinite(earliest_bpm) or earliest_bpm <= 0.0:
+        return None
+    if earliest_quality < 0.9:
+        return None
+
+    support_candidates: list[dict[str, Any]] = []
+    integer_sources: list[dict[str, Any]] = []
+    for item in results:
+        if int(item.get("windowIndex") or 0) <= int(earliest_result.get("windowIndex") or 0):
+            continue
+        item_quality = float(item.get("qualityScore") or 0.0)
+        item_beats = int(item.get("beatCount") or 0)
+        item_bpm = _window_bpm_for_consensus(item)
+        stabilized_bpm = float(item.get("bpm") or 0.0)
+        nearest_integer = round(stabilized_bpm)
+        nearest_raw_integer = round(item_bpm)
+        if item_quality + 0.012 < earliest_quality:
+            continue
+        if item_beats < earliest_beats:
+            continue
+        if abs(item_bpm - nearest_raw_integer) > 0.12:
+            continue
+        if abs(float(nearest_raw_integer) - earliest_bpm) < max(0.35, earliest_bpm * 0.0025):
+            continue
+        support_candidates.append(item)
+        if abs(stabilized_bpm - nearest_integer) <= 0.000001:
+            integer_sources.append(item)
+
+    best_cluster: list[dict[str, Any]] = []
+    for candidate in integer_sources:
+        candidate_bpm = float(candidate.get("bpm") or 0.0)
+        cluster = [
+            item
+            for item in support_candidates
+            if abs(_window_bpm_for_consensus(item) - candidate_bpm) <= 0.12
+        ]
+        if len(cluster) > len(best_cluster):
+            best_cluster = cluster
+        elif len(cluster) == len(best_cluster) and cluster:
+            cluster_quality = statistics.fmean(float(item.get("qualityScore") or 0.0) for item in cluster)
+            best_quality = statistics.fmean(
+                float(item.get("qualityScore") or 0.0) for item in best_cluster
+            )
+            if cluster_quality > best_quality:
+                best_cluster = cluster
+
+    if len(best_cluster) < 2:
+        return None
+    best_source = _best_window_result(best_cluster)
+    if best_source is None:
+        return None
+    if int(best_source.get("beatCount") or 0) < earliest_beats + 1:
+        return None
+    return best_source
+
+
 def _merge_bpm_from_window(
     phase_source: dict[str, Any],
     bpm_source: dict[str, Any],
@@ -319,6 +421,16 @@ def select_anchor_window_result(finalized_results: list[dict[str, Any]]) -> dict
         consensus_good = _find_window_bpm_consensus(good_results, earliest_good)
         if consensus_good is None:
             consensus_good = _find_later_high_density_bpm_candidate(good_results, earliest_good)
+        if consensus_good is None:
+            consensus_good = _find_later_single_high_quality_bpm_candidate(
+                good_results,
+                earliest_good,
+            )
+        if consensus_good is None:
+            consensus_good = _find_later_integer_cluster_bpm_candidate(
+                good_results,
+                earliest_good,
+            )
         if consensus_good is not None:
             earliest_bpm = _window_bpm_for_consensus(earliest_good)
             consensus_bpm = _window_bpm_for_consensus(consensus_good)

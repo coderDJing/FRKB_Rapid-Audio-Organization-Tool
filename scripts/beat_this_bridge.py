@@ -129,9 +129,14 @@ from beat_this_grid_solver import (
     should_preserve_grid_solver_bpm as _should_preserve_grid_solver_bpm,
     stabilize_bpm_for_grid as _stabilize_bpm_for_grid,
 )
+from beat_this_candidate_solver import (
+    build_grid_candidate as _build_grid_candidate,
+    select_grid_candidate as _select_grid_candidate,
+)
 from beat_this_grid_rescue import (
     apply_half_double_bpm_rescue_to_result as _apply_half_double_bpm_rescue_to_result,
     apply_integer_bpm_rescue_to_result as _apply_integer_bpm_rescue_to_result,
+    generate_octave_bpm_candidates as _generate_octave_bpm_candidates,
     solve_global_track_grid as _solve_global_track_grid,
 )
 from beat_this_full_logit_rescue import (
@@ -716,87 +721,29 @@ def _analyze_prepared_windows_to_track_result(
         for prepared_window in prepared_windows
     ]
 
-    def _attach_bpm_metrics(result: dict[str, Any]) -> dict[str, Any]:
-        next_result = result
-        if not force_legacy_anchor:
-            next_result = _apply_half_double_bpm_rescue_to_result(
-                signal,
-                sample_rate,
-                finalized_results,
-                next_result,
-                tuning,
-            )
-            next_result = _apply_integer_bpm_rescue_to_result(
-                signal,
-                sample_rate,
-                finalized_results,
-                next_result,
-                tuning,
-            )
-            pre_phase_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
-            if pre_phase_proxy:
-                next_result = dict(next_result)
-                next_result.update(pre_phase_proxy)
-            next_result = _apply_phase_rescue_rules(
-                prepared_windows,
-                finalized_results,
-                next_result,
-                sample_rate,
-                tuning,
-                time_basis=time_basis,
-            )
-            next_result = _apply_window_phase_consensus(finalized_results, next_result)
-        proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
-        if proxy:
-            next_result = dict(next_result)
-            next_result.update(proxy)
-        if not force_legacy_anchor and predictor is not None:
-            rescued_result = _apply_full_track_logit_rescue(
-                predictor,
-                cpu_spect,
-                signal,
-                sample_rate,
-                device,
-                next_result,
-                tuning,
-            )
-            if rescued_result is not next_result:
-                next_result = rescued_result
-                refreshed_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
-                if refreshed_proxy:
-                    next_result = dict(next_result)
-                    next_result.update(refreshed_proxy)
-            full_logit_head_zero_result = _apply_full_logit_head_zero_overrun_guard_to_result(
-                next_result,
-                time_basis=time_basis,
-            )
-            if full_logit_head_zero_result is not next_result:
-                next_result = full_logit_head_zero_result
-                refreshed_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
-                if refreshed_proxy:
-                    next_result = dict(next_result)
-                    next_result.update(refreshed_proxy)
-            stream_start_frame_result = _apply_stream_start_frame_prezero_to_result(
-                next_result,
-                time_basis=time_basis,
-            )
-            if stream_start_frame_result is not next_result:
-                next_result = stream_start_frame_result
-                refreshed_proxy = _estimate_bpm_drift_proxy(finalized_results, next_result)
-                if refreshed_proxy:
-                    next_result = dict(next_result)
-                    next_result.update(refreshed_proxy)
-        next_result = _apply_final_phase_arbitration(
-            finalized_results,
-            next_result,
-            time_basis=time_basis,
-        )
+    candidates: list[dict[str, Any]] = []
+
+    def _with_bpm_metrics(result: dict[str, Any]) -> dict[str, Any]:
+        proxy = _estimate_bpm_drift_proxy(finalized_results, result)
+        if not proxy:
+            return result
+        next_result = dict(result)
+        next_result.update(proxy)
         return next_result
 
-    anchor_window = _select_anchor_window_result(finalized_results)
+    def _add_candidate(source: str, result: dict[str, Any], details: dict[str, Any] | None = None) -> None:
+        candidates.append(_build_grid_candidate(source, _with_bpm_metrics(result), details))
 
-    if force_legacy_anchor or not use_global_solver:
-        return _attach_bpm_metrics(anchor_window)
+    def _changed(left: dict[str, Any], right: dict[str, Any]) -> bool:
+        return right is not left or any(
+            left.get(key) != right.get(key)
+            for key in ("bpm", "firstBeatMs", "barBeatOffset", "anchorStrategy", "bpmRefinementStrategy")
+        )
+
+    anchor_window = _select_anchor_window_result(finalized_results)
+    for item in finalized_results:
+        _add_candidate("window", item, {"windowIndex": int(item.get("windowIndex") or 0)})
+    _add_candidate("window-anchor", anchor_window)
 
     scan_duration_sec = max(
         (
@@ -805,29 +752,124 @@ def _analyze_prepared_windows_to_track_result(
         ),
         default=duration_sec,
     )
-    global_result = _solve_global_track_grid(
-        signal,
-        sample_rate,
-        min(duration_sec, scan_duration_sec),
+    global_result = None
+    if use_global_solver and not force_legacy_anchor:
+        global_result = _solve_global_track_grid(
+            signal,
+            sample_rate,
+            min(duration_sec, scan_duration_sec),
+            finalized_results,
+            tuning,
+            anchor_window=anchor_window,
+        )
+        if global_result:
+            _add_candidate("global-solver", global_result)
+
+    legacy_base = anchor_window
+    if (
+        global_result
+        and float(anchor_window.get("anchorConfidenceScore") or 0.0) < 0.95
+        and float(anchor_window.get("firstBeatMs") or 0.0) > 0.0
+        and float(global_result.get("anchorConfidenceScore") or 0.0) >= 0.95
+        and abs(float(global_result.get("qualityScore") or 0.0) - float(anchor_window.get("qualityScore") or 0.0)) <= 0.02
+        and 4.0 <= abs(float(global_result.get("firstBeatMs") or 0.0) - float(anchor_window.get("firstBeatMs") or 0.0)) <= 8.0
+    ):
+        legacy_base = global_result
+    _add_candidate("legacy-base", legacy_base)
+    if not force_legacy_anchor:
+        for octave_candidate in _generate_octave_bpm_candidates(signal, sample_rate, legacy_base, tuning):
+            _add_candidate("bpm-octave", octave_candidate)
+
+    next_result = legacy_base
+    if not force_legacy_anchor:
+        for source, transform in (
+            (
+                "legacy-half-double-bpm",
+                lambda item: _apply_half_double_bpm_rescue_to_result(
+                    signal, sample_rate, finalized_results, item, tuning
+                ),
+            ),
+            (
+                "legacy-integer-bpm",
+                lambda item: _apply_integer_bpm_rescue_to_result(
+                    signal, sample_rate, finalized_results, item, tuning
+                ),
+            ),
+        ):
+            transformed = transform(next_result)
+            if _changed(next_result, transformed):
+                next_result = transformed
+                _add_candidate(source, next_result)
+
+        next_result = _with_bpm_metrics(next_result)
+        transformed = _apply_phase_rescue_rules(
+            prepared_windows,
+            finalized_results,
+            next_result,
+            sample_rate,
+            tuning,
+            time_basis=time_basis,
+        )
+        if _changed(next_result, transformed):
+            next_result = transformed
+            _add_candidate("legacy-phase-rescue", next_result)
+        transformed = _apply_window_phase_consensus(finalized_results, next_result)
+        if _changed(next_result, transformed):
+            next_result = transformed
+            _add_candidate("legacy-window-phase-consensus", next_result)
+
+    next_result = _with_bpm_metrics(next_result)
+    if not force_legacy_anchor and predictor is not None:
+        transformed = _apply_full_track_logit_rescue(
+            predictor,
+            cpu_spect,
+            signal,
+            sample_rate,
+            device,
+            next_result,
+            tuning,
+        )
+        if _changed(next_result, transformed):
+            next_result = transformed
+            _add_candidate("full-logit", next_result)
+        transformed = _apply_full_logit_head_zero_overrun_guard_to_result(
+            next_result,
+            time_basis=time_basis,
+        )
+        if _changed(next_result, transformed):
+            next_result = transformed
+            _add_candidate("full-logit-head-zero", next_result)
+        transformed = _apply_stream_start_frame_prezero_to_result(
+            next_result,
+            time_basis=time_basis,
+        )
+        if _changed(next_result, transformed):
+            next_result = transformed
+            _add_candidate("stream-start-time-basis", next_result)
+        transformed = _apply_integer_bpm_rescue_to_result(
+            signal,
+            sample_rate,
+            finalized_results,
+            next_result,
+            tuning,
+        )
+        if _changed(next_result, transformed):
+            next_result = transformed
+            _add_candidate("post-logit-integer-bpm", next_result)
+
+    next_result = _with_bpm_metrics(next_result)
+    transformed = _apply_final_phase_arbitration(finalized_results, next_result, time_basis=time_basis)
+    if _changed(next_result, transformed):
+        next_result = transformed
+        _add_candidate("final-phase-arbitration", next_result)
+    _add_candidate("legacy-final", next_result)
+    return _select_grid_candidate(
+        candidates,
         finalized_results,
-        tuning,
-        anchor_window=anchor_window,
+        signal=signal,
+        sample_rate=sample_rate,
+        tuning=tuning,
     )
-    if not global_result:
-        return _attach_bpm_metrics(anchor_window)
-    if float(anchor_window.get("anchorConfidenceScore") or 0.0) >= 0.95:
-        return _attach_bpm_metrics(anchor_window)
-    if float(anchor_window.get("firstBeatMs") or 0.0) <= 0.0:
-        return _attach_bpm_metrics(anchor_window)
-    if float(global_result.get("anchorConfidenceScore") or 0.0) < 0.95:
-        return _attach_bpm_metrics(anchor_window)
-    if abs(float(global_result.get("qualityScore") or 0.0) - float(anchor_window.get("qualityScore") or 0.0)) > 0.02:
-        return _attach_bpm_metrics(anchor_window)
-    if abs(float(global_result.get("firstBeatMs") or 0.0) - float(anchor_window.get("firstBeatMs") or 0.0)) < 4.0:
-        return _attach_bpm_metrics(anchor_window)
-    if abs(float(global_result.get("firstBeatMs") or 0.0) - float(anchor_window.get("firstBeatMs") or 0.0)) > 8.0:
-        return _attach_bpm_metrics(anchor_window)
-    return _attach_bpm_metrics(global_result)
 
 def _uses_accelerated_device(device: str) -> bool:
     normalized = str(device or "").strip().lower()

@@ -58,6 +58,10 @@ def _row_identity(row: dict[str, Any]) -> dict[str, Any]:
         "barBeatOffset": analysis.get("barBeatOffset"),
         "truthBarBeatOffset": truth.get("barBeatOffset"),
         "anchorStrategy": analysis.get("anchorStrategy"),
+        "gridSolverSelectedSource": analysis.get("gridSolverSelectedSource"),
+        "gridSolverCandidateCount": analysis.get("gridSolverCandidateCount"),
+        "gridSolverScore": analysis.get("gridSolverScore"),
+        "gridSolverSelectionGuard": analysis.get("gridSolverSelectionGuard"),
     }
 
 

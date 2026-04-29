@@ -19,6 +19,22 @@ extraResources:
     to: demucs/bootstrap/beat_this_bridge.py
   - from: scripts/beat_this_grid_solver.py
     to: demucs/bootstrap/beat_this_grid_solver.py
+  - from: scripts/beat_this_candidate_solver.py
+    to: demucs/bootstrap/beat_this_candidate_solver.py
+  - from: scripts/beat_this_grid_rescue.py
+    to: demucs/bootstrap/beat_this_grid_rescue.py
+  - from: scripts/beat_this_full_logit_rescue.py
+    to: demucs/bootstrap/beat_this_full_logit_rescue.py
+  - from: scripts/beat_this_full_logit_utils.py
+    to: demucs/bootstrap/beat_this_full_logit_utils.py
+  - from: scripts/beat_this_phase_rescue.py
+    to: demucs/bootstrap/beat_this_phase_rescue.py
+  - from: scripts/beat_this_phase_arbitration.py
+    to: demucs/bootstrap/beat_this_phase_arbitration.py
+  - from: scripts/beat_this_bpm_metrics.py
+    to: demucs/bootstrap/beat_this_bpm_metrics.py
+  - from: scripts/beat_this_window_selection.py
+    to: demucs/bootstrap/beat_this_window_selection.py
   - from: vendor/rekordbox-desktop-runtime
     to: rekordboxDesktopRuntime
   - from: resources/rekordboxDesktopLibrary

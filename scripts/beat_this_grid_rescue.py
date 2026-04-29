@@ -306,7 +306,11 @@ def apply_integer_bpm_rescue_to_result(
     if not math.isfinite(raw_bpm) or raw_bpm <= 0.0:
         return result
     refinement_strategy = str(result.get("bpmRefinementStrategy") or "")
-    if refinement_strategy in {"double-bpm-envelope-rescue", "half-bpm-envelope-rescue"}:
+    if refinement_strategy in {
+        "attack-bpm-rescue",
+        "double-bpm-envelope-rescue",
+        "half-bpm-envelope-rescue",
+    }:
         return result
 
     attack_bpm_refinement = _find_attack_bpm_refinement(signal, sample_rate, result, tuning)
@@ -559,6 +563,109 @@ def apply_half_double_bpm_rescue_to_result(
             best_score_gain = score_gain
 
     return best_result if best_result is not None else result
+
+
+def generate_octave_bpm_candidates(
+    signal: np.ndarray,
+    sample_rate: int,
+    result: dict[str, Any],
+    tuning: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if signal.size == 0 or sample_rate <= 0:
+        return []
+
+    current_bpm = float(result.get("bpm") or _result_raw_bpm(result))
+    if not math.isfinite(current_bpm) or current_bpm <= 0.0:
+        return []
+
+    bpm_candidates: list[tuple[str, float]] = []
+    if 55.0 <= current_bpm <= 95.0:
+        doubled_bpm = current_bpm * 2.0
+        nearest_integer = round(doubled_bpm)
+        bpm_candidates.append(
+            (
+                "double",
+                float(nearest_integer)
+                if abs(doubled_bpm - nearest_integer) <= max(0.18, float(tuning["bpmSnapIntegerThreshold"]) * 6.0)
+                else doubled_bpm,
+            )
+        )
+    if 180.0 <= current_bpm <= 260.0:
+        halved_bpm = current_bpm / 2.0
+        nearest_integer = round(halved_bpm)
+        bpm_candidates.append(
+            (
+                "half",
+                float(nearest_integer)
+                if abs(halved_bpm - nearest_integer) <= max(0.18, float(tuning["bpmSnapIntegerThreshold"]) * 6.0)
+                else halved_bpm,
+            )
+        )
+    if not bpm_candidates:
+        return []
+
+    attack_tuning = dict(tuning)
+    attack_tuning["focusMode"] = "full"
+    attack_tuning["envelopeSampleRateFull"] = max(4000, int(attack_tuning["envelopeSampleRateFull"]))
+    attack_tuning["scoreWindowMs"] = min(float(attack_tuning["scoreWindowMs"]), 4.0)
+    attack_result = build_attack_envelope(signal, sample_rate, attack_tuning)
+    if attack_result is None:
+        return []
+    attack_envelope, envelope_sample_rate = attack_result
+    score_window = max(
+        1,
+        int(round(envelope_sample_rate * (float(attack_tuning["scoreWindowMs"]) / 1000.0))),
+    )
+    score_envelope = moving_average(attack_envelope, score_window)
+    max_beats = max(192, int(tuning["maxBeats"]) * 4)
+    current_candidate = _find_best_attack_bpm_phase(
+        score_envelope,
+        envelope_sample_rate,
+        current_bpm,
+        max_beats,
+    )
+    current_score = float(current_candidate[1]) if current_candidate is not None else 0.0
+
+    generated: list[dict[str, Any]] = []
+    for strategy, candidate_bpm in bpm_candidates:
+        if not math.isfinite(candidate_bpm) or candidate_bpm <= 0.0:
+            continue
+        phase_candidate = _find_best_attack_bpm_phase(
+            score_envelope,
+            envelope_sample_rate,
+            candidate_bpm,
+            max_beats,
+        )
+        if phase_candidate is None:
+            continue
+        phase_ms, candidate_score, candidate_support = phase_candidate
+        beat_interval_ms = 60000.0 / candidate_bpm
+        if not math.isfinite(beat_interval_ms) or beat_interval_ms <= 0.0:
+            continue
+        next_result = dict(result)
+        previous_phase_ms = normalize_phase_ms(float(result.get("firstBeatMs") or 0.0), beat_interval_ms)
+        normalized_phase_ms = normalize_phase_ms(float(phase_ms), beat_interval_ms)
+        phase_shift_ms = phase_delta_ms(normalized_phase_ms, previous_phase_ms, beat_interval_ms)
+        next_result["bpm"] = round(candidate_bpm, 6)
+        next_result["beatIntervalSec"] = round(60.0 / candidate_bpm, 6)
+        next_result["firstBeatMs"] = round(normalized_phase_ms, 3)
+        absolute_first_beat = float(next_result.get("absoluteFirstBeatMs") or previous_phase_ms)
+        next_result["absoluteFirstBeatMs"] = round(absolute_first_beat + phase_shift_ms, 3)
+        raw_first_beat_ms = float(next_result.get("rawFirstBeatMs") or 0.0)
+        next_result["anchorCorrectionMs"] = round(
+            phase_delta_ms(normalized_phase_ms, raw_first_beat_ms, beat_interval_ms),
+            3,
+        )
+        next_result["bpmRefinementStrategy"] = f"{strategy}-bpm-candidate"
+        next_result["bpmRefinementSourceBpm"] = round(current_bpm, 6)
+        next_result["bpmRefinementScoreGain"] = round(
+            (float(candidate_score) - current_score) / max(1e-9, float(candidate_score), current_score),
+            6,
+        )
+        next_result["bpmRefinementBestScore"] = round(float(candidate_score), 6)
+        next_result["bpmRefinementSupport"] = int(candidate_support)
+        generated.append(next_result)
+    return generated
 
 
 def solve_global_track_grid(

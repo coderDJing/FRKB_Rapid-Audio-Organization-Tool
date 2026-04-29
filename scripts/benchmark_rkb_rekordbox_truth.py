@@ -15,6 +15,10 @@ from typing import Any
 
 import numpy as np
 
+from rkb_benchmark_candidate_oracle import derive_candidate_oracle as _derive_candidate_oracle
+from rkb_benchmark_bridge_result import normalize_bridge_result as _normalize_bridge_result
+from rkb_benchmark_summary import build_summary as _build_summary_impl
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -765,35 +769,6 @@ def _classify(metrics: dict[str, Any], result_bpm: float, truth_bpm: float) -> d
     }
 
 
-def _normalize_bridge_result(result: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "bpm": round(_to_float(result.get("bpm")) or 0.0, 6),
-        "rawBpm": round(_to_float(result.get("rawBpm")) or 0.0, 6),
-        "firstBeatMs": round(_to_float(result.get("firstBeatMs")) or 0.0, 3),
-        "rawFirstBeatMs": round(_to_float(result.get("rawFirstBeatMs")) or 0.0, 3),
-        "absoluteFirstBeatMs": round(_to_float(result.get("absoluteFirstBeatMs")) or 0.0, 3),
-        "absoluteRawFirstBeatMs": round(_to_float(result.get("absoluteRawFirstBeatMs")) or 0.0, 3),
-        "barBeatOffset": _normalize_bar_offset(result.get("barBeatOffset"), 32),
-        "beatCount": int(result.get("beatCount") or 0),
-        "downbeatCount": int(result.get("downbeatCount") or 0),
-        "durationSec": round(_to_float(result.get("durationSec")) or 0.0, 3),
-        "beatIntervalSec": round(_to_float(result.get("beatIntervalSec")) or 0.0, 6),
-        "qualityScore": round(_to_float(result.get("qualityScore")) or 0.0, 6),
-        "anchorCorrectionMs": round(_to_float(result.get("anchorCorrectionMs")) or 0.0, 3),
-        "anchorConfidenceScore": round(_to_float(result.get("anchorConfidenceScore")) or 0.0, 6),
-        "anchorMatchedBeatCount": int(result.get("anchorMatchedBeatCount") or 0),
-        "anchorStrategy": str(result.get("anchorStrategy") or "").strip() or None,
-        "windowIndex": int(result.get("windowIndex") or 0),
-        "windowStartSec": round(_to_float(result.get("windowStartSec")) or 0.0, 3),
-        "windowDurationSec": round(_to_float(result.get("windowDurationSec")) or 0.0, 3),
-        "beatThisEstimatedDrift128Ms": round(
-            _to_float(result.get("beatThisEstimatedDrift128Ms")) or 0.0,
-            3,
-        ),
-        "beatThisWindowCount": int(result.get("beatThisWindowCount") or 0),
-    }
-
-
 def _analyze_track(
     *,
     bridge: Any,
@@ -885,6 +860,16 @@ def _build_track_report(analysis: dict[str, Any], truth: dict[str, Any]) -> dict
         compare_count=compare_count,
     )
     classification = _classify(current_metrics, float(analysis["bpm"]), float(truth["bpm"]))
+    candidate_oracle = _derive_candidate_oracle(
+        analysis,
+        truth,
+        offset_ms=offset_ms,
+        compare_count=compare_count,
+        derive_grid_metrics=_derive_grid_metrics,
+        classify=_classify,
+        to_float=_to_float,
+        normalize_bar_offset=_normalize_bar_offset,
+    )
 
     return {
         "fileName": truth["fileName"],
@@ -916,84 +901,12 @@ def _build_track_report(analysis: dict[str, Any], truth: dict[str, Any]) -> dict
             "firstBeatMs": round(raw_timeline_first_beat_ms, 3),
             **raw_metrics,
         },
-    }
-
-
-def _summarize_metric(rows: list[dict[str, Any]], metric_path: tuple[str, ...]) -> dict[str, float]:
-    values: list[float] = []
-    for row in rows:
-        value: Any = row
-        for key in metric_path:
-            value = value.get(key) if isinstance(value, dict) else None
-        numeric = _to_float(value)
-        if numeric is not None:
-            values.append(abs(numeric))
-    if not values:
-        return {"mean": 0.0, "median": 0.0, "p95": 0.0, "max": 0.0}
-    return {
-        "mean": round(statistics.fmean(values), 3),
-        "median": round(statistics.median(values), 3),
-        "p95": round(_percentile(values, 95.0), 3),
-        "max": round(max(values), 3),
+        "candidateOracle": candidate_oracle,
     }
 
 
 def _build_summary(rows: list[dict[str, Any]], error_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    categories: dict[str, int] = {}
-    for row in rows:
-        category = str((row.get("currentTimeline") or {}).get("category") or "unknown")
-        categories[category] = categories.get(category, 0) + 1
-
-    worst_tracks = sorted(
-        rows,
-        key=lambda row: float((row.get("currentTimeline") or {}).get("gridMeanAbsMs") or 0.0),
-        reverse=True,
-    )[:8]
-
-    return {
-        "trackTotal": len(rows) + len(error_rows),
-        "analyzedTrackCount": len(rows),
-        "errorTrackCount": len(error_rows),
-        "categoryCounts": categories,
-        "currentTimeline": {
-            "firstBeatPhaseAbsErrorMs": _summarize_metric(rows, ("currentTimeline", "firstBeatPhaseAbsErrorMs")),
-            "gridMeanAbsMs": _summarize_metric(rows, ("currentTimeline", "gridMeanAbsMs")),
-            "gridP95AbsMs": _summarize_metric(rows, ("currentTimeline", "gridP95AbsMs")),
-            "gridMaxAbsMs": _summarize_metric(rows, ("currentTimeline", "gridMaxAbsMs")),
-            "bpmOnlyDrift128BeatsMs": _summarize_metric(rows, ("currentTimeline", "bpmOnlyDrift128BeatsMs")),
-        },
-        "absoluteTimelineCandidate": {
-            "firstBeatPhaseAbsErrorMs": _summarize_metric(
-                rows,
-                ("absoluteTimelineCandidate", "firstBeatPhaseAbsErrorMs"),
-            ),
-            "gridMeanAbsMs": _summarize_metric(rows, ("absoluteTimelineCandidate", "gridMeanAbsMs")),
-            "gridP95AbsMs": _summarize_metric(rows, ("absoluteTimelineCandidate", "gridP95AbsMs")),
-            "gridMaxAbsMs": _summarize_metric(rows, ("absoluteTimelineCandidate", "gridMaxAbsMs")),
-        },
-        "downbeatMismatchMod4Count": sum(
-            1 for row in rows if not bool((row.get("currentTimeline") or {}).get("barBeatOffsetMatchedMod4"))
-        ),
-        "exact32OffsetMismatchCount": sum(
-            1 for row in rows if not bool((row.get("currentTimeline") or {}).get("barBeatOffsetMatchedExact32"))
-        ),
-        "worstTracks": [
-            {
-                "fileName": row["fileName"],
-                "category": (row.get("currentTimeline") or {}).get("category"),
-                "bpm": (row.get("analysis") or {}).get("bpm"),
-                "truthBpm": (row.get("truth") or {}).get("bpm"),
-                "firstBeatPhaseAbsErrorMs": (row.get("currentTimeline") or {}).get("firstBeatPhaseAbsErrorMs"),
-                "gridMeanAbsMs": (row.get("currentTimeline") or {}).get("gridMeanAbsMs"),
-                "gridMaxAbsMs": (row.get("currentTimeline") or {}).get("gridMaxAbsMs"),
-                "bpmOnlyDrift128BeatsMs": (row.get("currentTimeline") or {}).get("bpmOnlyDrift128BeatsMs"),
-                "barBeatOffset": (row.get("analysis") or {}).get("barBeatOffset"),
-                "truthBarBeatOffset": (row.get("truth") or {}).get("barBeatOffset"),
-                "anchorStrategy": (row.get("analysis") or {}).get("anchorStrategy"),
-            }
-            for row in worst_tracks
-        ],
-    }
+    return _build_summary_impl(rows, error_rows, strict_tolerance_ms=STRICT_TOLERANCE_MS)
 
 
 def main() -> int:
