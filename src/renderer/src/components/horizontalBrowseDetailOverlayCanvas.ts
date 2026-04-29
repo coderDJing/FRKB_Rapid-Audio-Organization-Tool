@@ -5,6 +5,7 @@ import {
   resolveSongHotCueDisplayLabel
 } from '@shared/hotCues'
 import { normalizeSongMemoryCues, resolveSongMemoryCueDisplayColor } from '@shared/memoryCues'
+import { resolveSongCueTimelineSec } from '@shared/songCueTimeBasis'
 import { resolveHorizontalBrowseTimePercent } from '@renderer/components/horizontalBrowseDetailMath'
 
 type HorizontalBrowseDirection = 'up' | 'down'
@@ -14,8 +15,10 @@ type HorizontalBrowseLoopRange = {
   endSec: number
 }
 
+type DetailOverlayCanvasContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+
 type DrawHorizontalBrowseDetailOverlayOptions = {
-  ctx: CanvasRenderingContext2D
+  ctx: DetailOverlayCanvasContext
   width: number
   height: number
   waveformHeight: number
@@ -27,6 +30,9 @@ type DrawHorizontalBrowseDetailOverlayOptions = {
   hotCues?: ISongHotCue[] | null
   memoryCues?: ISongMemoryCue[] | null
   loopRange?: HorizontalBrowseLoopRange | null
+  cueAccentColor?: string
+  timeBasisOffsetMs?: number
+  xPixelScale?: number
 }
 
 const CUE_MARKER_WIDTH = 10
@@ -42,8 +48,16 @@ const MEMORY_CUE_OFFSET_PX = -8
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
+const resolvePixelScale = (value?: number) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 1
+}
+
+const snapToDevicePixel = (value: number, pixelScale: number) =>
+  Math.round(value * pixelScale) / pixelScale
+
 const pathRoundedRect = (
-  ctx: CanvasRenderingContext2D,
+  ctx: DetailOverlayCanvasContext,
   x: number,
   y: number,
   width: number,
@@ -64,7 +78,10 @@ const pathRoundedRect = (
   ctx.closePath()
 }
 
-const resolveCueAccentColor = () => {
+const resolveCueAccentColor = (override?: string) => {
+  const safeOverride = String(override || '').trim()
+  if (safeOverride) return safeOverride
+  if (typeof document === 'undefined') return '#d98921'
   const cssValue = getComputedStyle(document.documentElement)
     .getPropertyValue('--shell-cue-accent')
     .trim()
@@ -75,15 +92,16 @@ const resolveMarkerCenterX = (
   seconds: number | undefined,
   rangeStartSec: number,
   rangeDurationSec: number,
-  width: number
+  width: number,
+  xPixelScale: number
 ) => {
   const ratio = resolveHorizontalBrowseTimePercent(Number(seconds), rangeStartSec, rangeDurationSec)
   if (ratio === null) return null
-  return ratio * width
+  return snapToDevicePixel(ratio * width, xPixelScale)
 }
 
 const drawCueTriangle = (
-  ctx: CanvasRenderingContext2D,
+  ctx: DetailOverlayCanvasContext,
   centerX: number,
   topY: number,
   direction: HorizontalBrowseDirection,
@@ -124,7 +142,7 @@ const drawCueTriangle = (
 }
 
 const drawMemoryCue = (
-  ctx: CanvasRenderingContext2D,
+  ctx: DetailOverlayCanvasContext,
   centerX: number,
   topY: number,
   anchor: 'top' | 'bottom',
@@ -149,7 +167,7 @@ const drawMemoryCue = (
 }
 
 const drawHotCue = (
-  ctx: CanvasRenderingContext2D,
+  ctx: DetailOverlayCanvasContext,
   centerX: number,
   topY: number,
   label: string,
@@ -178,7 +196,7 @@ const drawHotCue = (
 }
 
 const drawLoopMask = (
-  ctx: CanvasRenderingContext2D,
+  ctx: DetailOverlayCanvasContext,
   width: number,
   _height: number,
   waveformTop: number,
@@ -186,14 +204,22 @@ const drawLoopMask = (
   rangeStartSec: number,
   rangeDurationSec: number,
   cueAccent: string,
+  xPixelScale: number,
   loopRange?: HorizontalBrowseLoopRange | null
 ) => {
   if (!loopRange) return
   const visibleStartSec = Math.max(rangeStartSec, Number(loopRange.startSec) || 0)
   const visibleEndSec = Math.min(rangeStartSec + rangeDurationSec, Number(loopRange.endSec) || 0)
   if (visibleEndSec <= visibleStartSec) return
-  const left = ((visibleStartSec - rangeStartSec) / rangeDurationSec) * width
-  const rectWidth = ((visibleEndSec - visibleStartSec) / rangeDurationSec) * width
+  const left = snapToDevicePixel(
+    ((visibleStartSec - rangeStartSec) / rangeDurationSec) * width,
+    xPixelScale
+  )
+  const right = snapToDevicePixel(
+    ((visibleEndSec - rangeStartSec) / rangeDurationSec) * width,
+    xPixelScale
+  )
+  const rectWidth = Math.max(0, right - left)
   if (rectWidth <= 0.0001) return
 
   ctx.save()
@@ -231,12 +257,16 @@ export const drawHorizontalBrowseDetailOverlay = (
     cueSeconds,
     hotCues,
     memoryCues,
-    loopRange
+    loopRange,
+    cueAccentColor,
+    timeBasisOffsetMs,
+    xPixelScale
   } = options
   if (width <= 0 || height <= 0 || waveformHeight <= 0 || rangeDurationSec <= 0) return
 
   const waveformTop = overlayInsetPx
-  const cueAccent = resolveCueAccentColor()
+  const cueAccent = resolveCueAccentColor(cueAccentColor)
+  const safeXPixelScale = resolvePixelScale(xPixelScale)
   drawLoopMask(
     ctx,
     width,
@@ -246,10 +276,17 @@ export const drawHorizontalBrowseDetailOverlay = (
     rangeStartSec,
     rangeDurationSec,
     cueAccent,
+    safeXPixelScale,
     loopRange
   )
 
-  const cueCenterX = resolveMarkerCenterX(cueSeconds, rangeStartSec, rangeDurationSec, width)
+  const cueCenterX = resolveMarkerCenterX(
+    cueSeconds,
+    rangeStartSec,
+    rangeDurationSec,
+    width,
+    safeXPixelScale
+  )
   if (cueCenterX !== null) {
     const cueTopY =
       direction === 'up' ? waveformTop + waveformHeight - CUE_MARKER_HEIGHT : waveformTop
@@ -262,7 +299,14 @@ export const drawHorizontalBrowseDetailOverlay = (
       ? waveformTop + MEMORY_CUE_OFFSET_PX
       : waveformTop + waveformHeight - MEMORY_CUE_HEIGHT - MEMORY_CUE_OFFSET_PX
   for (const marker of normalizeSongMemoryCues(memoryCues)) {
-    const centerX = resolveMarkerCenterX(marker.sec, rangeStartSec, rangeDurationSec, width)
+    const markerSec = resolveSongCueTimelineSec(marker.sec, marker, timeBasisOffsetMs)
+    const centerX = resolveMarkerCenterX(
+      markerSec ?? undefined,
+      rangeStartSec,
+      rangeDurationSec,
+      width,
+      safeXPixelScale
+    )
     if (centerX === null) continue
     drawMemoryCue(ctx, centerX, memoryTopY, memoryAnchor, resolveSongMemoryCueDisplayColor(marker))
   }
@@ -272,7 +316,14 @@ export const drawHorizontalBrowseDetailOverlay = (
       ? waveformTop + HOT_CUE_OFFSET_PX
       : waveformTop + waveformHeight - HOT_CUE_LABEL_HEIGHT - HOT_CUE_OFFSET_PX
   for (const marker of normalizeSongHotCues(hotCues)) {
-    const centerX = resolveMarkerCenterX(marker.sec, rangeStartSec, rangeDurationSec, width)
+    const markerSec = resolveSongCueTimelineSec(marker.sec, marker, timeBasisOffsetMs)
+    const centerX = resolveMarkerCenterX(
+      markerSec ?? undefined,
+      rangeStartSec,
+      rangeDurationSec,
+      width,
+      safeXPixelScale
+    )
     if (centerX === null) continue
     drawHotCue(
       ctx,

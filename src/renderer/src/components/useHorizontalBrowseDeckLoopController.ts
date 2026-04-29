@@ -4,6 +4,7 @@ import type {
   HorizontalBrowseTransportDeckSnapshot
 } from '@renderer/components/horizontalBrowseNativeTransport'
 import type { Ref } from 'vue'
+import { resolveSongCueTimelineDefinition } from '@shared/songCueTimeBasis'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -17,7 +18,7 @@ export type HorizontalBrowseLoopRange = {
 
 export type HorizontalBrowseStoredCueDefinition = Pick<
   ISongMemoryCue,
-  'sec' | 'isLoop' | 'loopEndSec'
+  'sec' | 'isLoop' | 'loopEndSec' | 'source'
 >
 
 type ToggleDeckLoopStateResult = {
@@ -153,12 +154,19 @@ export const useHorizontalBrowseDeckLoopController = (
 
   const applyDeckStoredCueDefinition = async (
     deck: DeckKey,
-    cue: HorizontalBrowseStoredCueDefinition | Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec'>
+    cue:
+      | HorizontalBrowseStoredCueDefinition
+      | Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec' | 'source'>
   ) => {
-    const cueSec = Math.max(0, Number(cue?.sec) || 0)
+    const timelineCue = resolveSongCueTimelineDefinition(
+      cue,
+      params.resolveDeckSong(deck)?.timeBasisOffsetMs
+    )
+    const cueSec = timelineCue?.sec ?? Math.max(0, Number(cue?.sec) || 0)
     params.resolveDeckCuePointRef(deck).value = cueSec
-    const loopEndSec = Number(cue?.loopEndSec)
-    const isLoop = Boolean(cue?.isLoop) && Number.isFinite(loopEndSec) && loopEndSec > cueSec
+    const loopEndSec = Number(timelineCue?.loopEndSec)
+    const isLoop =
+      Boolean(timelineCue?.isLoop) && Number.isFinite(loopEndSec) && loopEndSec > cueSec
     if (!isLoop) {
       await params.nativeTransport.clearLoop(deck)
       return null

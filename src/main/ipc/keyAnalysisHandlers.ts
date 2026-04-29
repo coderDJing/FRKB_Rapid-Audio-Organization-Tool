@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import {
   cancelKeyAnalysisBackground,
+  enqueueKeyAnalysis,
   enqueueKeyAnalysisImmediate,
   replaceVisibleKeyAnalysisList,
   getKeyAnalysisBackgroundStatus
@@ -26,6 +27,15 @@ export function registerKeyAnalysisHandlers() {
       enqueueKeyAnalysisImmediate(filePath, { focusSlot })
     }
   )
+
+  ipcMain.on('key-analysis:queue-deck-idle', (_e, payload: { filePath?: string }) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+    if (!filePath) return
+    enqueueKeyAnalysis(filePath, 'low', {
+      source: 'foreground',
+      preemptible: true
+    })
+  })
 
   ipcMain.handle('key-analysis:cancel-background', (_e, payload?: { mode?: string }) => {
     const mode = String(payload?.mode || '')

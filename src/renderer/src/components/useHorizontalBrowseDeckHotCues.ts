@@ -24,7 +24,7 @@ type UseHorizontalBrowseDeckHotCuesParams = {
   ) => Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec'> | null
   handleDeckHotCueRecall: (
     deck: DeckKey,
-    cue: Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec'>
+    cue: Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec' | 'source'>
   ) => Promise<void>
   nativeTransport: {
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>

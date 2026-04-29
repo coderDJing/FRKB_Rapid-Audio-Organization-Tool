@@ -17,7 +17,7 @@ type UseHorizontalBrowseDeckMemoryCuesParams = {
   ) => Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec'> | null
   handleDeckMemoryCueRecall: (
     deck: DeckKey,
-    cue: Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec'>
+    cue: Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec' | 'source'>
   ) => Promise<void>
 }
 

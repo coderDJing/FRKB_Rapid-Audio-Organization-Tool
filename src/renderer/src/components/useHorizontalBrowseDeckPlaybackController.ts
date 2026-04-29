@@ -11,6 +11,7 @@ import {
 import { sendHorizontalBrowseInteractionTrace } from '@renderer/components/horizontalBrowseInteractionTrace'
 import type { HorizontalBrowseLoopRange } from '@renderer/components/useHorizontalBrowseDeckLoopController'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
+import { resolveSongCueTimelineDefinition } from '@shared/songCueTimeBasis'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -47,7 +48,7 @@ type UseHorizontalBrowseDeckPlaybackControllerParams = {
   syncDeckIntoLoopRangeBeforePlay: (deck: DeckKey) => Promise<void>
   applyDeckStoredCueDefinition: (
     deck: DeckKey,
-    cue: Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec'>
+    cue: Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec' | 'source'>
   ) => Promise<HorizontalBrowseLoopRange | null>
 }
 
@@ -81,6 +82,15 @@ export const useHorizontalBrowseDeckPlaybackController = (
       deck,
       filePath,
       ...payload
+    })
+  }
+
+  const queueDeckSongPriorityAnalysis = (deck: DeckKey, filePath: string) => {
+    const normalizedPath = String(filePath || '').trim()
+    if (!normalizedPath) return
+    window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+      filePath: normalizedPath,
+      focusSlot: `horizontal-browse-${deck}`
     })
   }
 
@@ -198,12 +208,14 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
   const handleDeckMemoryCueRecall = async (
     deck: DeckKey,
-    cue: Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec'>
+    cue: Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec' | 'source'>
   ) => {
     params.touchDeckInteraction(deck)
     await params.applyDeckStoredCueDefinition(deck, cue)
     await params.nativeTransport.setPlaying(deck, false)
-    const targetSec = Math.max(0, Number(cue?.sec) || 0)
+    const targetSec =
+      resolveSongCueTimelineDefinition(cue, params.resolveDeckSong(deck)?.timeBasisOffsetMs)?.sec ??
+      Math.max(0, Number(cue?.sec) || 0)
     params.notifyDeckSeekIntent(deck, targetSec)
     await params.nativeTransport.seek(deck, targetSec)
     params.syncDeckRenderState()
@@ -211,11 +223,13 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
   const handleDeckHotCueRecall = async (
     deck: DeckKey,
-    cue: Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec'>
+    cue: Pick<ISongHotCue, 'sec' | 'isLoop' | 'loopEndSec' | 'source'>
   ) => {
     params.touchDeckInteraction(deck)
     const loopRange = await params.applyDeckStoredCueDefinition(deck, cue)
-    const targetSec = Math.max(0, Number(cue?.sec) || 0)
+    const targetSec =
+      resolveSongCueTimelineDefinition(cue, params.resolveDeckSong(deck)?.timeBasisOffsetMs)?.sec ??
+      Math.max(0, Number(cue?.sec) || 0)
     params.notifyDeckSeekIntent(deck, targetSec)
     await params.nativeTransport.seek(deck, targetSec)
     if (params.resolveTransportDeckSnapshot(deck).syncEnabled && !loopRange) {
@@ -238,6 +252,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:play-toggle:${deck}`)
       if (nextPlaying) {
         beginHorizontalBrowseDeckAction(deck, 'play-toggle', filePath)
+        queueDeckSongPriorityAnalysis(deck, filePath)
         traceDeckAction(deck, 'play-toggle:start')
       }
       try {

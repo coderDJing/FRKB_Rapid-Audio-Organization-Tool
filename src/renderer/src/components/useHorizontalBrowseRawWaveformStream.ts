@@ -2,6 +2,10 @@ import type { Ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import type {
+  HorizontalBrowseDetailLiveCanvasRawChunk,
+  HorizontalBrowseDetailLiveCanvasRawMeta
+} from '@renderer/workers/horizontalBrowseDetailLiveCanvas.types'
 import { createRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformPlaceholder'
 import { PREVIEW_RAW_TARGET_RATE } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { normalizeHorizontalBrowsePathKey } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
@@ -72,6 +76,7 @@ type PendingRawStreamChunkWork = {
 type UseHorizontalBrowseRawWaveformStreamOptions = {
   song: () => ISongInfo | null
   direction: () => HorizontalBrowseDirection
+  deferWaveformLoad: () => boolean
   rawLoadPriorityHint: () => number | undefined
   bootstrapDurationSec: () => number | undefined
   timeBasisOffsetMs: () => number
@@ -87,12 +92,23 @@ type UseHorizontalBrowseRawWaveformStreamOptions = {
   scheduleDraw: () => void
   holdCurrentWaveformFrame: () => void
   storeRawWaveform: (filePath: string, data: RawWaveformData) => void
+  resetLiveWaveformRaw: (meta: HorizontalBrowseDetailLiveCanvasRawMeta) => void
+  ensureLiveWaveformRawCapacity: (meta: HorizontalBrowseDetailLiveCanvasRawMeta) => void
+  applyLiveWaveformRawChunk: (
+    chunk: HorizontalBrowseDetailLiveCanvasRawChunk,
+    transferOwnership?: boolean
+  ) => void
+  replaceLiveWaveformRaw: (data: RawWaveformData | null) => void
+  updateLiveWaveformRawMeta: (meta: Partial<HorizontalBrowseDetailLiveCanvasRawMeta>) => void
 }
 
-const HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE = Math.min(PREVIEW_RAW_TARGET_RATE, 2400)
+const HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE = Math.min(PREVIEW_RAW_TARGET_RATE, 1200)
 const HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES = 32768
 const HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS = 4
+const HORIZONTAL_BROWSE_DEFERRED_RAW_CHUNK_PROCESS_BUDGET_MS = 1.5
 const HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES = 2048
+const HORIZONTAL_BROWSE_DEFERRED_RAW_CHUNK_COPY_SLICE_FRAMES = 1024
+const HORIZONTAL_BROWSE_DEFERRED_RAW_WAVEFORM_CHUNK_FRAMES = 49152
 const HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR = 0.8
 const HORIZONTAL_BROWSE_RAW_VISIBLE_REDRAW_LEAD_FACTOR = 0.25
 const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR = 0.5
@@ -167,6 +183,27 @@ export const useHorizontalBrowseRawWaveformStream = (
   const resolveRawLoadPriorityHint = () =>
     Math.max(0, Math.floor(Number(options.rawLoadPriorityHint()) || 0))
 
+  const resolveDeckKey = () => (options.direction() === 'up' ? 'top' : 'bottom')
+
+  const resolveProtectsPlayback = () => options.playing() === true
+
+  const resolveChunkProcessBudgetMs = () =>
+    options.deferWaveformLoad() && !options.playing()
+      ? HORIZONTAL_BROWSE_DEFERRED_RAW_CHUNK_PROCESS_BUDGET_MS
+      : HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS
+
+  const resolveChunkCopySliceFrames = () =>
+    options.deferWaveformLoad() && !options.playing()
+      ? HORIZONTAL_BROWSE_DEFERRED_RAW_CHUNK_COPY_SLICE_FRAMES
+      : HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES
+
+  const shouldKeepMainThreadRawArrays = () => !(options.deferWaveformLoad() && !options.playing())
+
+  const resolveStreamChunkFrames = () =>
+    options.deferWaveformLoad() && !options.playing()
+      ? HORIZONTAL_BROWSE_DEFERRED_RAW_WAVEFORM_CHUNK_FRAMES
+      : HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES
+
   const resolveWaveformTargetRate = (deferred: boolean) =>
     deferred ? HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE : PREVIEW_RAW_TARGET_RATE
 
@@ -203,6 +240,7 @@ export const useHorizontalBrowseRawWaveformStream = (
 
     const current = options.rawData.value
     if (!current || !hasSameRawWaveformMeta(current, meta)) {
+      const rawArrayFrames = shouldKeepMainThreadRawArrays() ? nextFrames : 0
       options.rawData.value = {
         duration: meta.duration,
         sampleRate: meta.sampleRate,
@@ -210,12 +248,20 @@ export const useHorizontalBrowseRawWaveformStream = (
         frames: nextFrames,
         startSec: meta.startSec,
         loadedFrames: 0,
-        minLeft: new Float32Array(nextFrames),
-        maxLeft: new Float32Array(nextFrames),
-        minRight: new Float32Array(nextFrames),
-        maxRight: new Float32Array(nextFrames)
+        minLeft: new Float32Array(rawArrayFrames),
+        maxLeft: new Float32Array(rawArrayFrames),
+        minRight: new Float32Array(rawArrayFrames),
+        maxRight: new Float32Array(rawArrayFrames)
       }
       options.mixxxData.value = createRawPlaceholderMixxxData(options.rawData.value)
+      options.resetLiveWaveformRaw({
+        duration: meta.duration,
+        sampleRate: meta.sampleRate,
+        rate: meta.rate,
+        frames: nextFrames,
+        startSec: meta.startSec,
+        loadedFrames: 0
+      })
       // 换 rawData ref 往往意味着 seek / 开始新 stream：此前画布可能已经被 hold 清空、
       // displayReady 已置 false，DOM 层也全部隐藏。必须主动触发一次整帧重绘，让 drawWaveform
       // 能在新数据一就绪时立即评估是否可画，否则只会走后续 dirty 增量路径——而 dirty 路径
@@ -224,12 +270,19 @@ export const useHorizontalBrowseRawWaveformStream = (
       return
     }
 
-    if (current.frames >= nextFrames) return
+    const keepMainThreadRawArrays = shouldKeepMainThreadRawArrays()
+    if (
+      current.frames >= nextFrames &&
+      (!keepMainThreadRawArrays || current.minLeft.length >= nextFrames)
+    ) {
+      return
+    }
 
     const grownFrames = Math.max(nextFrames, current.frames)
+    const grownArrayFrames = keepMainThreadRawArrays ? grownFrames : current.minLeft.length
     const grow = (source: Float32Array) => {
-      const target = new Float32Array(grownFrames)
-      target.set(source.subarray(0, Math.min(source.length, grownFrames)))
+      const target = new Float32Array(grownArrayFrames)
+      target.set(source.subarray(0, Math.min(source.length, grownArrayFrames)))
       return target
     }
 
@@ -246,6 +299,14 @@ export const useHorizontalBrowseRawWaveformStream = (
       maxRight: grow(current.maxRight)
     }
     options.mixxxData.value = createRawPlaceholderMixxxData(options.rawData.value)
+    options.ensureLiveWaveformRawCapacity({
+      duration: Math.max(current.duration, meta.duration),
+      sampleRate: meta.sampleRate,
+      rate: meta.rate,
+      frames: grownFrames,
+      startSec: meta.startSec,
+      loadedFrames: current.loadedFrames
+    })
   }
 
   const clearQueuedRawStreamPayloads = () => {
@@ -322,18 +383,22 @@ export const useHorizontalBrowseRawWaveformStream = (
       requestToken,
       targetRate,
       startSec: rawStreamStartSec,
+      deckKey: resolveDeckKey(),
       priorityHint: resolveRawLoadPriorityHint(),
+      protectsPlayback: resolveProtectsPlayback(),
       expectedDurationSec: remainingDurationSec,
       bootstrapDurationSec
     })
     window.electron.ipcRenderer.send('mixtape-waveform-raw:stream', {
       requestId: rawStreamRequestId,
       filePath,
+      deckKey: resolveDeckKey(),
+      protectsPlayback: resolveProtectsPlayback(),
       priorityHint: resolveRawLoadPriorityHint(),
       targetRate,
       startSec: rawStreamStartSec,
       songDurationSec,
-      chunkFrames: HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES,
+      chunkFrames: resolveStreamChunkFrames(),
       expectedDurationSec: remainingDurationSec,
       bootstrapDurationSec
     })
@@ -347,11 +412,13 @@ export const useHorizontalBrowseRawWaveformStream = (
     if (priorityHint === previousPriorityHint) return
     traceHorizontalRawStream('raw-stream:update-priority', {
       priorityHint,
-      previousPriorityHint
+      previousPriorityHint,
+      protectsPlayback: resolveProtectsPlayback()
     })
     window.electron.ipcRenderer.send('mixtape-waveform-raw:update-priority', {
       requestId: rawStreamRequestId,
-      priorityHint
+      priorityHint,
+      protectsPlayback: resolveProtectsPlayback()
     })
   }
 
@@ -532,6 +599,7 @@ export const useHorizontalBrowseRawWaveformStream = (
       work.totalFrames,
       resolvePlaybackBootstrapTargetLoadedFrames(work.rate, work.startSec)
     )
+    const keepMainThreadRawArrays = shouldKeepMainThreadRawArrays()
     const loadedFrames = Math.max(
       Math.max(0, Number(target.loadedFrames) || 0),
       work.startFrame + work.appliedFrames
@@ -539,20 +607,39 @@ export const useHorizontalBrowseRawWaveformStream = (
     const bootstrapCopyFrames = Math.max(0, playbackBootstrapTargetLoadedFrames - loadedFrames)
     const copyFrames = Math.min(
       remainingFrames,
-      Math.max(HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES, bootstrapCopyFrames)
+      keepMainThreadRawArrays
+        ? Math.max(resolveChunkCopySliceFrames(), bootstrapCopyFrames)
+        : remainingFrames
     )
     const sourceStart = work.appliedFrames
     const sourceEnd = sourceStart + copyFrames
     const targetStart = work.startFrame + sourceStart
     const targetEnd = targetStart + copyFrames
-    if (targetEnd > target.minLeft.length) return true
+    if (keepMainThreadRawArrays && targetEnd > target.minLeft.length) return true
 
-    target.minLeft.set(work.minLeft.subarray(sourceStart, sourceEnd), targetStart)
-    target.maxLeft.set(work.maxLeft.subarray(sourceStart, sourceEnd), targetStart)
-    target.minRight.set(work.minRight.subarray(sourceStart, sourceEnd), targetStart)
-    target.maxRight.set(work.maxRight.subarray(sourceStart, sourceEnd), targetStart)
+    if (keepMainThreadRawArrays) {
+      target.minLeft.set(work.minLeft.subarray(sourceStart, sourceEnd), targetStart)
+      target.maxLeft.set(work.maxLeft.subarray(sourceStart, sourceEnd), targetStart)
+      target.minRight.set(work.minRight.subarray(sourceStart, sourceEnd), targetStart)
+      target.maxRight.set(work.maxRight.subarray(sourceStart, sourceEnd), targetStart)
+    }
     work.appliedFrames = sourceEnd
     target.loadedFrames = Math.max(Number(target.loadedFrames) || 0, targetStart + copyFrames)
+    const liveChunk: HorizontalBrowseDetailLiveCanvasRawChunk = {
+      duration: target.duration,
+      sampleRate: target.sampleRate,
+      rate: target.rate,
+      frames: target.frames,
+      startSec: Math.max(0, Number(target.startSec) || work.startSec),
+      loadedFrames: target.loadedFrames,
+      startFrame: targetStart,
+      chunkFrames: copyFrames,
+      minLeft: work.minLeft.subarray(sourceStart, sourceEnd),
+      maxLeft: work.maxLeft.subarray(sourceStart, sourceEnd),
+      minRight: work.minRight.subarray(sourceStart, sourceEnd),
+      maxRight: work.maxRight.subarray(sourceStart, sourceEnd)
+    }
+    options.applyLiveWaveformRawChunk(liveChunk, !keepMainThreadRawArrays)
 
     const dirtyStartSec = resolveAudioRangeStartSecToTimelineSec(
       work.startSec + targetStart / work.rate
@@ -616,6 +703,7 @@ export const useHorizontalBrowseRawWaveformStream = (
         normalized.startSec = Math.max(0, Number(payload?.startSec) || rawStreamStartSec)
         options.rawData.value = normalized
         options.mixxxData.value = createRawPlaceholderMixxxData(normalized)
+        options.replaceLiveWaveformRaw(normalized)
       }
     }
 
@@ -633,6 +721,12 @@ export const useHorizontalBrowseRawWaveformStream = (
       }
       current.loadedFrames =
         totalFrames > 0 ? totalFrames : (current.loadedFrames ?? current.frames)
+      options.updateLiveWaveformRawMeta({
+        duration: current.duration,
+        frames: current.frames,
+        startSec: Math.max(0, Number(current.startSec) || 0),
+        loadedFrames: current.loadedFrames
+      })
       if (!options.playing()) {
         options.rawData.value = {
           ...current
@@ -671,7 +765,7 @@ export const useHorizontalBrowseRawWaveformStream = (
         pendingRawStreamChunks.shift()
         finalizePendingRawStreamChunkWork(nextWork)
       }
-      if (performance.now() - startedAt >= HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS) {
+      if (performance.now() - startedAt >= resolveChunkProcessBudgetMs()) {
         break
       }
     }

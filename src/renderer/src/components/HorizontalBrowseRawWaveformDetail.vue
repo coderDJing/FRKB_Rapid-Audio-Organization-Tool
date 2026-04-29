@@ -106,12 +106,16 @@ const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const rawStreamActive = ref(false)
 const previewPlaying = ref(false)
+const deferredWaveformLoad = computed(
+  () => Boolean(props.deferWaveformLoad) && !previewPlaying.value
+)
 
 const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS = 4
 const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS = 10
 const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX = 1
 const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX = 2.5
 const HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN = 8
+const HORIZONTAL_BROWSE_DEFERRED_BOOTSTRAP_OVERSCAN = 1.5
 
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
@@ -150,11 +154,17 @@ const {
   clearStreamDrawScheduling,
   clearCanvas,
   invalidateWaveformTiles,
+  mountWaveformCanvasWorker,
   scheduleDraw,
   scheduleGridOverlayDraw,
   resetGridRenderer,
   holdCurrentWaveformFrame,
   resetRetainedWaveformData,
+  resetLiveWaveformRaw,
+  ensureLiveWaveformRawCapacity,
+  applyLiveWaveformRawChunk,
+  replaceLiveWaveformRaw,
+  updateLiveWaveformRawMeta,
   storeRawWaveform,
   setLastZoomAnchor,
   resetLastZoomAnchor,
@@ -163,6 +173,7 @@ const {
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => props.song,
   direction: () => props.direction,
+  deferWaveformLoad: deferredWaveformLoad,
   cueSeconds: () => props.cueSeconds,
   hotCues: () => props.hotCues,
   memoryCues: () => props.memoryCues,
@@ -246,13 +257,17 @@ const buildSongGridSignature = () =>
     normalizeGridSignatureFirstBeatMs(props.song?.timeBasisOffsetMs).toFixed(3)
   ].join('|')
 
-const applyPreviewPlaybackPosition = (seconds: number) => {
+const applyPreviewPlaybackPosition = (seconds: number, scheduleFrame = true) => {
   const safeSeconds = Math.max(0, Number(seconds) || 0)
   const nextStartSec = resolvePlaybackAlignedStart(safeSeconds)
-  if (Math.abs(nextStartSec - previewStartSec.value) <= 0.0001) return
-  previewStartSec.value = nextStartSec
+  const changed = Math.abs(nextStartSec - previewStartSec.value) > 0.0001
+  if (changed) {
+    previewStartSec.value = nextStartSec
+  }
   setLastZoomAnchor(safeSeconds, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
-  scheduleDraw()
+  if (scheduleFrame) {
+    scheduleDraw()
+  }
 }
 
 const resetPreviewBpmTap = () => {
@@ -504,9 +519,16 @@ const {
 } = useHorizontalBrowseRawWaveformStream({
   song: () => props.song,
   direction: () => props.direction,
+  deferWaveformLoad: () => deferredWaveformLoad.value,
   rawLoadPriorityHint: () => props.rawLoadPriorityHint,
   bootstrapDurationSec: () =>
-    Math.max(4, resolveVisibleDurationSec() * HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN),
+    Math.max(
+      deferredWaveformLoad.value ? 1.5 : 4,
+      resolveVisibleDurationSec() *
+        (deferredWaveformLoad.value
+          ? HORIZONTAL_BROWSE_DEFERRED_BOOTSTRAP_OVERSCAN
+          : HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN)
+    ),
   timeBasisOffsetMs: () => Number(previewTimeBasisOffsetMs.value) || 0,
   playing: () => previewPlaying.value,
   currentSeconds: () => props.currentSeconds,
@@ -519,7 +541,12 @@ const {
   scheduleRawStreamDirtyDraw,
   scheduleDraw,
   holdCurrentWaveformFrame,
-  storeRawWaveform
+  storeRawWaveform,
+  resetLiveWaveformRaw,
+  ensureLiveWaveformRawCapacity,
+  applyLiveWaveformRawChunk,
+  replaceLiveWaveformRaw,
+  updateLiveWaveformRawMeta
 })
 
 const loadWaveform = async () => {
@@ -561,7 +588,9 @@ const loadWaveform = async () => {
     beginRawWaveformStream(filePath, targetRate, currentToken)
     syncGridStateFromSong()
     previewStartSec.value = resolvePlaybackAlignedStart(0)
-    scheduleDraw()
+    if (!deferredWaveformLoad.value) {
+      scheduleDraw()
+    }
   } catch {
     if (currentToken !== loadToken) return
     traceHorizontalWaveformLoad('load:error')
@@ -707,7 +736,7 @@ watch(
 
 watch(
   () => [Number(props.currentSeconds) || 0, !!props.playing, props.song?.filePath ?? ''] as const,
-  ([seconds, _playing, songKey]) => {
+  ([seconds, playing, songKey], previousValue) => {
     const finishTiming = startHorizontalBrowseUserTiming(
       `frkb:hb:detail:current-seconds:${props.direction}`
     )
@@ -720,7 +749,15 @@ watch(
         applyPreviewPlaybackPosition(0)
         return
       }
-      applyPreviewPlaybackPosition(safeSeconds)
+      const previousPlaying = Boolean(previousValue?.[1])
+      const previousSongKey = String(previousValue?.[2] || '').trim()
+      const shouldScheduleFrame =
+        !playing ||
+        dragging.value ||
+        !displayReady.value ||
+        playing !== previousPlaying ||
+        safeSongKey !== previousSongKey
+      applyPreviewPlaybackPosition(safeSeconds, shouldScheduleFrame)
     } finally {
       finishTiming()
     }
@@ -780,6 +817,7 @@ watch(
 )
 
 onMounted(() => {
+  mountWaveformCanvasWorker()
   if (wrapRef.value) {
     resizeObserver = new ResizeObserver(() => {
       invalidateWaveformTiles()

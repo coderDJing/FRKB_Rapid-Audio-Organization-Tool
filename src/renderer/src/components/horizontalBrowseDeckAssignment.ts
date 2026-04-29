@@ -25,6 +25,7 @@ type CreateHorizontalBrowseDeckAssignerParams = {
   touchDeckInteraction: (deck: DeckKey) => void
   setDeckSong: (deck: DeckKey, song: ISongInfo | null) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
+  shouldDeferDeckSongPriorityAnalysis: (deck: DeckKey) => boolean
   syncDeckDefaultCue: (deck: DeckKey, song: ISongInfo | null, force?: boolean) => void
   setDeckBeatGridToNative: (
     deck: DeckKey,
@@ -42,6 +43,10 @@ export const createHorizontalBrowseDeckAssigner = (
   const queueDeckSongPriorityAnalysis = (deck: DeckKey, song: ISongInfo | null | undefined) => {
     const filePath = String(song?.filePath || '').trim()
     if (!filePath) return
+    if (params.shouldDeferDeckSongPriorityAnalysis(deck)) {
+      window.electron.ipcRenderer.send('key-analysis:queue-deck-idle', { filePath })
+      return
+    }
     window.electron.ipcRenderer.send('key-analysis:queue-playing', {
       filePath,
       focusSlot: `horizontal-browse-${deck}`

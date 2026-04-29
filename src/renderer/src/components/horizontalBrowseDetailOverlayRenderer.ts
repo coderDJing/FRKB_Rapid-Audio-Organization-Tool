@@ -140,6 +140,7 @@ const drawRange = (
   waveformHeight: number,
   rangeStartSec: number,
   rangeDurationSec: number,
+  xPixelScale: number,
   input: HorizontalBrowseDetailOverlayRenderInput
 ) => {
   drawHorizontalBrowseDetailOverlay({
@@ -154,7 +155,8 @@ const drawRange = (
     cueSeconds: input.cueSeconds,
     hotCues: input.hotCues,
     memoryCues: input.memoryCues,
-    loopRange: input.loopRange
+    loopRange: input.loopRange,
+    xPixelScale
   })
 }
 
@@ -244,6 +246,7 @@ export const createHorizontalBrowseDetailOverlayRenderer = () => {
       metrics.waveformCssHeight,
       segmentStartSec,
       segmentDurationSec,
+      metrics.scaleX,
       input
     )
 
@@ -354,6 +357,7 @@ export const createHorizontalBrowseDetailOverlayRenderer = () => {
         metrics.waveformCssHeight,
         state.rangeStartSec,
         state.rangeDurationSec,
+        metrics.scaleX,
         input
       )
     }

@@ -299,7 +299,6 @@ const {
   resolveDeckCurrentSeconds,
   resolveDeckRenderCurrentSeconds,
   resolveDeckDurationSeconds,
-  resolveDeckGridBpm,
   resolveDeckSong,
   resolveCuePointSec: resolveHorizontalBrowseCuePointSec
 })
@@ -373,6 +372,10 @@ const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
   touchDeckInteraction,
   setDeckSong,
   resolveDeckSong,
+  shouldDeferDeckSongPriorityAnalysis: (deck) => {
+    const otherDeck = deck === 'top' ? 'bottom' : 'top'
+    return resolveDeckPlaying(otherDeck) && !resolveDeckPlaying(deck)
+  },
   syncDeckDefaultCue,
   setDeckBeatGridToNative: nativeTransport.setBeatGrid,
   commitDeckStateToNative
@@ -530,16 +533,16 @@ const resolveDeckSyncUiLock = (deck: DeckKey) =>
   )
 
 const resolveDeckRawLoadPriorityHint = (deck: DeckKey) => {
+  const playingBoost = resolveDeckPlaying(deck) ? 4_000_000 : 0
+  const dragBoost = isDeckWaveformDragging(deck) ? 3_000_000 : 0
+  const cuePreviewBoost = resolveDeckCuePreviewRuntimeState(deck).active ? 2_500_000 : 0
   const recentBoost = !resolveDeckPlaying(deck) && deckRecentInteraction[deck] ? 1_000_000 : 0
-  const dragBoost = isDeckWaveformDragging(deck) ? 2_000_000 : 0
-  const cuePreviewBoost = resolveDeckCuePreviewRuntimeState(deck).active ? 1_500_000 : 0
-  const playingBoost = resolveDeckPlaying(deck) ? 500_000 : 0
   const loadedBoost = resolveDeckSong(deck) ? 100_000 : 0
   return (
+    playingBoost +
     dragBoost +
     cuePreviewBoost +
     recentBoost +
-    playingBoost +
     loadedBoost +
     deckInteractionOrder[deck]
   )

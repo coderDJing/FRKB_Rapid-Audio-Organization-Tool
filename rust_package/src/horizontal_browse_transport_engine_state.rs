@@ -60,7 +60,7 @@ impl HorizontalBrowseTransportEngine {
       target.loop_end_sec = 0.0;
       return false;
     };
-    let Some(grid) = self.beat_grid(deck) else {
+    let Some(grid) = self.original_beat_grid(deck) else {
       let target = self.deck_mut(deck);
       target.loop_active = false;
       target.loop_start_beat_index = None;
@@ -107,7 +107,7 @@ impl HorizontalBrowseTransportEngine {
   }
 
   pub(super) fn activate_loop_from_anchor(&mut self, deck: DeckId, anchor_sec: f64) -> bool {
-    let Some(grid) = self.beat_grid(deck) else {
+    let Some(grid) = self.original_beat_grid(deck) else {
       self.deactivate_loop(deck);
       return false;
     };
@@ -183,7 +183,7 @@ impl HorizontalBrowseTransportEngine {
   }
 
   pub(super) fn set_loop_from_range(&mut self, deck: DeckId, start_sec: f64, end_sec: f64) -> bool {
-    let Some(grid) = self.beat_grid(deck) else {
+    let Some(grid) = self.original_beat_grid(deck) else {
       self.deactivate_loop(deck);
       return false;
     };
