@@ -335,10 +335,35 @@ jobs:
           install -m 755 "$ARM64_FFMPEG_PATH" vendor/ffmpeg/darwin-arm64/ffmpeg
           install -m 755 "$ARM64_FFPROBE_PATH" vendor/ffmpeg/darwin-arm64/ffprobe
 
-          # 从多个源尝试下载 x64 版本
+          download_and_verify_zip() {
+            local url="$1"
+            local output="$2"
+            local attempt
+
+            for attempt in 1 2 3 4 5; do
+              rm -f "$output"
+              echo "Downloading $output (attempt ${attempt}/5)"
+              if curl --fail --location --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 30 --max-time 600 "$url" -o "$output" \
+                && unzip -tq "$output" >/dev/null; then
+                return 0
+              fi
+
+              echo "WARN: downloaded archive is missing or invalid: $output"
+              if [ -f "$output" ]; then
+                file "$output" || true
+                wc -c "$output" || true
+              fi
+              sleep $((attempt * 3))
+            done
+
+            echo "ERROR: failed to download a valid zip archive: $output"
+            exit 1
+          }
+
+          # 带 zip 校验重试下载 x64 版本，避免 GitHub 资产链路偶发返回错误页却被当成包解压。
           echo "Downloading x64 ffmpeg/ffprobe from ffbinaries..."
-          curl -L "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-osx-64.zip" -o ffmpeg-x64.zip
-          curl -L "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffprobe-4.4.1-osx-64.zip" -o ffprobe-x64.zip
+          download_and_verify_zip "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-osx-64.zip" ffmpeg-x64.zip
+          download_and_verify_zip "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffprobe-4.4.1-osx-64.zip" ffprobe-x64.zip
           unzip -q ffmpeg-x64.zip -d ffmpeg-x64-temp
           unzip -q ffprobe-x64.zip -d ffprobe-x64-temp
           X64_FFMPEG_PATH="$(find ffmpeg-x64-temp -type f -name ffmpeg | head -n 1 || true)"
