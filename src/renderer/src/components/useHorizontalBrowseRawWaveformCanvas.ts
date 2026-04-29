@@ -45,11 +45,12 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
   currentSeconds: () => number | undefined
   playbackRate: () => number | undefined
   playing: Ref<boolean>
+  playbackSyncRevision: Readonly<Ref<number>>
   rawData: Ref<RawWaveformData | null>
   mixxxData: Ref<MixxxWaveformData | null>
   previewStartSec: Ref<number>
   previewZoom: Ref<number>
-  previewBpm: Ref<number>
+  previewBpm: Readonly<Ref<number>>
   previewFirstBeatMs: Ref<number>
   previewBarBeatOffset: Ref<number>
   previewTimeBasisOffsetMs: Ref<number>
@@ -382,6 +383,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       cueAccentColor: resolveCueAccentColor(),
       playbackActive: options.playing.value && !options.dragging.value,
       playbackSeconds: Math.max(0, Number(options.currentSeconds()) || 0),
+      playbackSyncRevision: Math.max(
+        0,
+        Math.floor(Number(options.playbackSyncRevision.value) || 0)
+      ),
       playbackRate: Math.max(0.25, Number(options.playbackRate()) || 1),
       playbackDurationSec: resolvePreviewDurationSec(),
       dirtyStartSec: payload.dirtyStartSec,

@@ -10,6 +10,7 @@ type UseHorizontalBrowseDeckQuantizeParams = {
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
   resolveDeckRenderCurrentSeconds: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
+  resolveDeckGridBpm: (deck: DeckKey) => number
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveCuePointSec: (song: ISongInfo | null, currentSec: number, durationSec: number) => number
 }
@@ -40,11 +41,18 @@ export const useHorizontalBrowseDeckQuantize = (params: UseHorizontalBrowseDeckQ
     if (!deckQuantizeEnabled[deck]) {
       return resolveDeckUnquantizedSec(deck)
     }
-    return params.resolveCuePointSec(
-      params.resolveDeckSong(deck),
-      Number(resolveDeckAnchorSeconds(deck)) || 0,
-      params.resolveDeckDurationSeconds(deck)
-    )
+    const song = params.resolveDeckSong(deck)
+    const gridBpm = params.resolveDeckGridBpm(deck)
+    const anchorSec = Number(resolveDeckAnchorSeconds(deck)) || 0
+    const durationSec = params.resolveDeckDurationSeconds(deck)
+    const gridSong =
+      song && Number.isFinite(gridBpm) && gridBpm > 0
+        ? {
+            ...song,
+            bpm: gridBpm
+          }
+        : song
+    return params.resolveCuePointSec(gridSong, anchorSec, durationSec)
   }
 
   const resolveDeckMarkerPlacementSec = (deck: DeckKey) => {
@@ -52,10 +60,13 @@ export const useHorizontalBrowseDeckQuantize = (params: UseHorizontalBrowseDeckQ
       return resolveDeckUnquantizedSec(deck)
     }
     const song = params.resolveDeckSong(deck)
+    const anchorSec = resolveDeckAnchorSeconds(deck)
+    const durationSec = params.resolveDeckDurationSeconds(deck)
+    const gridBpm = params.resolveDeckGridBpm(deck)
     return resolveNearestHotCueGridSec({
-      currentSec: resolveDeckAnchorSeconds(deck),
-      durationSec: params.resolveDeckDurationSeconds(deck),
-      bpm: song?.bpm,
+      currentSec: anchorSec,
+      durationSec,
+      bpm: gridBpm,
       firstBeatMs: song?.firstBeatMs
     })
   }

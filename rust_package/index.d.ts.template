@@ -90,6 +90,8 @@ export interface HorizontalBrowseTransportDeckInput {
   title?: string
   bpm?: number
   firstBeatMs?: number
+  barBeatOffset?: number
+  timeBasisOffsetMs?: number
   durationSec: number
   currentSec: number
   lastObservedAtMs: number
@@ -101,6 +103,8 @@ export interface HorizontalBrowseTransportBeatGridInput {
   filePath?: string
   bpm?: number
   firstBeatMs?: number
+  barBeatOffset?: number
+  timeBasisOffsetMs?: number
 }
 export interface HorizontalBrowseTransportDeckSnapshot {
   deck: string

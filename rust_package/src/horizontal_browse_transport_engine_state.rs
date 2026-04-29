@@ -1,6 +1,14 @@
 use super::*;
 
 impl HorizontalBrowseTransportEngine {
+  pub(super) fn normalize_bar_beat_offset(value: f64) -> f64 {
+    if !value.is_finite() {
+      return 0.0;
+    }
+    let rounded = value.round();
+    ((rounded % 32.0) + 32.0) % 32.0
+  }
+
   pub(super) fn deck_time_basis_offset_sec(deck_state: &DeckState) -> f64 {
     let raw = deck_state.time_basis_offset_ms.unwrap_or(0.0);
     if raw.is_finite() && raw > 0.0 {
@@ -28,6 +36,7 @@ impl HorizontalBrowseTransportEngine {
       bpm,
       beat_sec: 60.0 / bpm,
       first_beat_sec: (deck_state.first_beat_ms.unwrap_or(0.0).max(0.0)) / 1000.0,
+      bar_beat_offset: Self::normalize_bar_beat_offset(deck_state.bar_beat_offset.unwrap_or(0.0)),
     })
   }
 
@@ -47,6 +56,7 @@ impl HorizontalBrowseTransportEngine {
       bpm: adjusted_bpm,
       beat_sec: 60.0 / adjusted_bpm,
       first_beat_sec: original.first_beat_sec,
+      bar_beat_offset: original.bar_beat_offset,
     })
   }
 
@@ -572,6 +582,7 @@ impl HorizontalBrowseTransportEngine {
     deck: DeckId,
     bpm: Option<f64>,
     first_beat_ms: Option<f64>,
+    bar_beat_offset: Option<f64>,
     time_basis_offset_ms: Option<f64>,
   ) {
     {
@@ -583,6 +594,9 @@ impl HorizontalBrowseTransportEngine {
         first_beat_ms.filter(|value| value.is_finite() && *value >= 0.0)
       {
         target.first_beat_ms = Some(next_first_beat_ms);
+      }
+      if let Some(next_bar_beat_offset) = bar_beat_offset.filter(|value| value.is_finite()) {
+        target.bar_beat_offset = Some(Self::normalize_bar_beat_offset(next_bar_beat_offset));
       }
       if let Some(next_time_basis_offset_ms) =
         time_basis_offset_ms.filter(|value| value.is_finite() && *value >= 0.0)

@@ -57,6 +57,7 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   cueAccentColor: string
   playbackActive: boolean
   playbackSeconds: number
+  playbackSyncRevision: number
   playbackRate: number
   playbackDurationSec: number
   dirtyStartSec?: number

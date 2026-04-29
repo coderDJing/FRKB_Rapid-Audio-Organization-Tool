@@ -4,6 +4,7 @@ import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot
 } from '@renderer/components/horizontalBrowseNativeTransport'
+import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -32,7 +33,7 @@ type UseHorizontalBrowseDeckHotCuesParams = {
     beatsync: (deck: DeckKey) => Promise<unknown>
   }
   commitDeckStatesToNative: () => Promise<unknown>
-  syncDeckRenderState: () => void
+  syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
   isDeckLoopActive: (deck: DeckKey) => boolean
 }
 
@@ -58,7 +59,7 @@ export const useHorizontalBrowseDeckHotCues = (params: UseHorizontalBrowseDeckHo
     if (!wasPlaying) {
       await params.nativeTransport.setPlaying(deck, true)
     }
-    params.syncDeckRenderState()
+    params.syncDeckRenderState({ force: deck })
   }
 
   const handleDeckHotCuePress = async (deck: DeckKey, slot: number) => {
@@ -113,7 +114,7 @@ export const useHorizontalBrowseDeckHotCues = (params: UseHorizontalBrowseDeckHo
       durationSec: params.resolveDeckDurationSeconds(deck)
     })) as { hotCues?: ISongHotCue[] } | null
     patchDeckSongHotCues(deck, Array.isArray(result?.hotCues) ? result.hotCues : [])
-    params.syncDeckRenderState()
+    params.syncDeckRenderState({ force: deck })
   }
 
   const handleSongHotCuesUpdated = (_event: unknown, payload: SongHotCuePayload) => {

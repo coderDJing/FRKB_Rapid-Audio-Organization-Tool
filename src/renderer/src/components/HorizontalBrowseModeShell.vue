@@ -215,6 +215,8 @@ const {
   bottomDeckPlaybackRate,
   topDeckRenderCurrentSeconds,
   bottomDeckRenderCurrentSeconds,
+  topDeckPlaybackSyncRevision,
+  bottomDeckPlaybackSyncRevision,
   resolveTransportDeckSnapshot,
   resolveDeckCurrentSeconds,
   resolveDeckPlaying,
@@ -278,6 +280,8 @@ const resolveDeckGridBpm = (deck: DeckKey) =>
     resolveTransportDeckSnapshot(deck).playbackRate,
     resolveDeckSong(deck)?.bpm
   )
+const topDeckGridBpm = computed(() => resolveDeckGridBpm('top'))
+const bottomDeckGridBpm = computed(() => resolveDeckGridBpm('bottom'))
 const deckKeysHarmonicMatched = computed(() =>
   isHarmonicMixCompatible(
     String(topDeckSong.value?.key || ''),
@@ -299,6 +303,7 @@ const {
   resolveDeckCurrentSeconds,
   resolveDeckRenderCurrentSeconds,
   resolveDeckDurationSeconds,
+  resolveDeckGridBpm,
   resolveDeckSong,
   resolveCuePointSec: resolveHorizontalBrowseCuePointSec
 })
@@ -836,6 +841,8 @@ onUnmounted(() => {
           :current-seconds="topDeckRenderCurrentSeconds"
           :playing="topDeckUiPlaying"
           :playback-rate="topDeckPlaybackRate"
+          :playback-sync-revision="topDeckPlaybackSyncRevision"
+          :grid-bpm="topDeckGridBpm"
           :loop-range="resolveDeckLoopRange('top')"
           :cue-seconds="topDeckCuePointSeconds"
           :hot-cues="topDeckSong?.hotCues || []"
@@ -864,6 +871,8 @@ onUnmounted(() => {
           :current-seconds="bottomDeckRenderCurrentSeconds"
           :playing="bottomDeckUiPlaying"
           :playback-rate="bottomDeckPlaybackRate"
+          :playback-sync-revision="bottomDeckPlaybackSyncRevision"
+          :grid-bpm="bottomDeckGridBpm"
           :loop-range="resolveDeckLoopRange('bottom')"
           :cue-seconds="bottomDeckCuePointSeconds"
           :hot-cues="bottomDeckSong?.hotCues || []"

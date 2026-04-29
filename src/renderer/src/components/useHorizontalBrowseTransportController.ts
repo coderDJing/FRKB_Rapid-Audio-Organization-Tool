@@ -35,6 +35,8 @@ export const useHorizontalBrowseTransportController = () => {
   const {
     topDeckRenderCurrentSeconds,
     bottomDeckRenderCurrentSeconds,
+    topDeckPlaybackSyncRevision,
+    bottomDeckPlaybackSyncRevision,
     resolveDeckRenderCurrentSeconds,
     syncDeckRenderState,
     markTransportStateFresh,
@@ -82,6 +84,8 @@ export const useHorizontalBrowseTransportController = () => {
     bottomDeckPlaybackRate,
     topDeckRenderCurrentSeconds,
     bottomDeckRenderCurrentSeconds,
+    topDeckPlaybackSyncRevision,
+    bottomDeckPlaybackSyncRevision,
     resolveTransportDeckSnapshot,
     resolveDeckCurrentSeconds,
     resolveDeckPlaying,

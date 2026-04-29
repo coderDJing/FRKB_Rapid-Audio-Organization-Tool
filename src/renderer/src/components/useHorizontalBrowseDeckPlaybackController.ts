@@ -12,6 +12,7 @@ import { sendHorizontalBrowseInteractionTrace } from '@renderer/components/horiz
 import type { HorizontalBrowseLoopRange } from '@renderer/components/useHorizontalBrowseDeckLoopController'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import { resolveSongCueTimelineDefinition } from '@shared/songCueTimeBasis'
+import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -35,7 +36,7 @@ type UseHorizontalBrowseDeckPlaybackControllerParams = {
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
     beatsync: (deck: DeckKey) => Promise<unknown>
   }
-  syncDeckRenderState: () => void
+  syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
   commitDeckStatesToNative: () => Promise<unknown>
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckGridBpm: (deck: DeckKey) => number
@@ -117,7 +118,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
         if (!deckWaveformDragState[deck].active || deckWaveformDragState[deck].token !== token) {
           return
         }
-        params.syncDeckRenderState()
+        params.syncDeckRenderState({ force: deck })
       })
       .catch(() => {})
   }
@@ -149,7 +150,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
         await params.nativeTransport.setPlaying(deck, true)
         if (deckWaveformDragState[deck].token !== token) return
       }
-      params.syncDeckRenderState()
+      params.syncDeckRenderState({ force: deck })
     })().catch(() => {})
   }
 
@@ -175,7 +176,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       ) {
         await params.nativeTransport.beatsync(deck)
       }
-      params.syncDeckRenderState()
+      params.syncDeckRenderState({ force: deck })
     })().catch(() => {})
   }
 
@@ -218,7 +219,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       Math.max(0, Number(cue?.sec) || 0)
     params.notifyDeckSeekIntent(deck, targetSec)
     await params.nativeTransport.seek(deck, targetSec)
-    params.syncDeckRenderState()
+    params.syncDeckRenderState({ force: deck })
   }
 
   const handleDeckHotCueRecall = async (
@@ -237,7 +238,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       await params.nativeTransport.beatsync(deck)
     }
     await params.nativeTransport.setPlaying(deck, true)
-    params.syncDeckRenderState()
+    params.syncDeckRenderState({ force: deck })
   }
 
   const handleDeckPlayPauseToggle = (deck: DeckKey) => {
@@ -286,7 +287,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
             )
           })
         }
-        params.syncDeckRenderState()
+        params.syncDeckRenderState({ force: deck })
       } finally {
         finishTiming()
       }

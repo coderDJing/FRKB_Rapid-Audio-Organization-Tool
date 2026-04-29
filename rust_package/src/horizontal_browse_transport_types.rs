@@ -36,6 +36,7 @@ pub struct HorizontalBrowseTransportDeckInput {
   pub title: Option<String>,
   pub bpm: Option<f64>,
   pub first_beat_ms: Option<f64>,
+  pub bar_beat_offset: Option<f64>,
   pub time_basis_offset_ms: Option<f64>,
   pub duration_sec: f64,
   pub current_sec: f64,
@@ -50,6 +51,7 @@ pub struct HorizontalBrowseTransportBeatGridInput {
   pub file_path: Option<String>,
   pub bpm: Option<f64>,
   pub first_beat_ms: Option<f64>,
+  pub bar_beat_offset: Option<f64>,
   pub time_basis_offset_ms: Option<f64>,
 }
 
@@ -119,6 +121,7 @@ pub(super) struct BeatGridSnapshot {
   pub(super) bpm: f64,
   pub(super) beat_sec: f64,
   pub(super) first_beat_sec: f64,
+  pub(super) bar_beat_offset: f64,
 }
 
 #[derive(Clone, Copy)]

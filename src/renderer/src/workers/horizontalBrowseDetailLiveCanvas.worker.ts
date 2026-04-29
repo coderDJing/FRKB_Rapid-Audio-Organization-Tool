@@ -851,8 +851,15 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
   const token = current?.token ?? playbackAnimationToken + 1
   const nowMs = performance.now()
   const incomingSeconds = Math.max(0, Number(request.playbackSeconds) || 0)
+  const forceIncomingSeconds =
+    current &&
+    Math.floor(Number(request.playbackSyncRevision) || 0) !==
+      Math.floor(Number(current.request.playbackSyncRevision) || 0)
   const baseSeconds = current
     ? (() => {
+        if (forceIncomingSeconds) {
+          return incomingSeconds
+        }
         const predictedSeconds = resolvePlaybackSeconds(
           current.request,
           current.baseSeconds,

@@ -3,6 +3,7 @@ import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot
 } from '@shared/horizontalBrowseTransport'
+import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -33,8 +34,9 @@ type UseHorizontalBrowseTransportMutationsParams = {
     setLeader: (deck?: DeckKey | null) => Promise<unknown>
     setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
     beatsync: (deck: DeckKey) => Promise<unknown>
+    snapshot: (nowMs?: number) => Promise<unknown>
   }
-  syncDeckRenderState: () => void
+  syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
@@ -65,7 +67,7 @@ export const useHorizontalBrowseTransportMutations = (
     override?: HorizontalBrowseDeckTransportStateOverride
   ) => {
     await params.nativeTransport.setDeckState(deck, buildDeckStateForNative(deck, override))
-    params.syncDeckRenderState()
+    params.syncDeckRenderState({ force: deck })
   }
 
   const commitDeckStatesToNative = async (
@@ -82,23 +84,23 @@ export const useHorizontalBrowseTransportMutations = (
     params.touchDeckInteraction(deck)
     await commitDeckStatesToNative()
     await params.nativeTransport.setLeader(deck)
-    params.syncDeckRenderState()
+    params.syncDeckRenderState({ force: deck })
   }
 
   const triggerDeckBeatSync = async (deck: DeckKey) => {
     params.touchDeckInteraction(deck)
-    await commitDeckStatesToNative()
+    await params.nativeTransport.snapshot(performance.now())
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     if (snapshot.syncEnabled) {
       await params.nativeTransport.setSyncEnabled(deck, false)
-      params.syncDeckRenderState()
+      params.syncDeckRenderState({ force: deck })
       return
     }
     await params.nativeTransport.setSyncEnabled(deck, true)
     if (params.resolveDeckPlaying(deck)) {
       await params.nativeTransport.beatsync(deck)
     }
-    params.syncDeckRenderState()
+    params.syncDeckRenderState({ force: deck })
   }
 
   return {

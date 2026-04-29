@@ -7,6 +7,7 @@ import type {
 import { useHorizontalBrowseDeckCueController } from '@renderer/components/useHorizontalBrowseDeckCueController'
 import { useHorizontalBrowseDeckLoopController } from '@renderer/components/useHorizontalBrowseDeckLoopController'
 import { useHorizontalBrowseDeckPlaybackController } from '@renderer/components/useHorizontalBrowseDeckPlaybackController'
+import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -23,7 +24,7 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
     setLoopFromRange: (deck: DeckKey, startSec: number, endSec: number) => Promise<unknown>
     clearLoop: (deck: DeckKey) => Promise<unknown>
   }
-  syncDeckRenderState: () => void
+  syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
   commitDeckStatesToNative: () => Promise<unknown>
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckGridBpm: (deck: DeckKey) => number

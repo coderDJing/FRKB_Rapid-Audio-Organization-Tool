@@ -10,6 +10,7 @@ import {
 } from '@renderer/components/horizontalBrowseInteractionTimeline'
 import { sendHorizontalBrowseInteractionTrace } from '@renderer/components/horizontalBrowseInteractionTrace'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
+import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -30,7 +31,7 @@ type UseHorizontalBrowseDeckCueControllerParams = {
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
     setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
   }
-  syncDeckRenderState: () => void
+  syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckLoaded: (deck: DeckKey) => boolean
   resolveDeckPlaying: (deck: DeckKey) => boolean
@@ -93,7 +94,7 @@ export const useHorizontalBrowseDeckCueController = (
     params.notifyDeckSeekIntent(deck, safeCueSeconds)
     await params.nativeTransport.setPlaying(deck, false)
     await params.nativeTransport.seek(deck, cueSeconds)
-    params.syncDeckRenderState()
+    params.syncDeckRenderState({ force: deck })
   }
 
   const handleDeckSetCueFromCurrentPosition = async (deck: DeckKey) => {
@@ -103,7 +104,7 @@ export const useHorizontalBrowseDeckCueController = (
     cueRef.value = nextCuePoint
     params.notifyDeckSeekIntent(deck, Math.max(0, Number(nextCuePoint) || 0))
     await params.nativeTransport.seek(deck, nextCuePoint)
-    params.syncDeckRenderState()
+    params.syncDeckRenderState({ force: deck })
   }
 
   const startDeckCuePreview = (deck: DeckKey, pointerId: number) => {
@@ -141,7 +142,7 @@ export const useHorizontalBrowseDeckCueController = (
             filePath
           )
         })
-        params.syncDeckRenderState()
+        params.syncDeckRenderState({ force: deck })
       } finally {
         finishTiming()
       }
@@ -183,7 +184,7 @@ export const useHorizontalBrowseDeckCueController = (
         if (syncEnabledBefore) {
           await params.nativeTransport.setSyncEnabled(deck, true).catch(() => {})
         }
-        params.syncDeckRenderState()
+        params.syncDeckRenderState({ force: deck })
       } finally {
         finishTiming()
       }

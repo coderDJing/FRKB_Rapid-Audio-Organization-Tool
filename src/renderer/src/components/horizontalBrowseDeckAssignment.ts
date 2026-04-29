@@ -59,13 +59,21 @@ export const createHorizontalBrowseDeckAssigner = (
     const filePath = String(song.filePath || '').trim()
     const bpm = Number(song.bpm)
     const firstBeatMs = Number(song.firstBeatMs)
+    const barBeatOffset = Number(song.barBeatOffset)
+    const timeBasisOffsetMs = Number(song.timeBasisOffsetMs)
     const hasBpm = Number.isFinite(bpm) && bpm > 0
     const hasFirstBeatMs = Number.isFinite(firstBeatMs)
-    if (!filePath || (!hasBpm && !hasFirstBeatMs)) return null
+    const hasBarBeatOffset = Number.isFinite(barBeatOffset)
+    const hasTimeBasisOffsetMs = Number.isFinite(timeBasisOffsetMs) && timeBasisOffsetMs >= 0
+    if (!filePath || (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset && !hasTimeBasisOffsetMs)) {
+      return null
+    }
     return {
       filePath,
       bpm: hasBpm ? bpm : undefined,
-      firstBeatMs: hasFirstBeatMs ? firstBeatMs : undefined
+      firstBeatMs: hasFirstBeatMs ? firstBeatMs : undefined,
+      barBeatOffset: hasBarBeatOffset ? barBeatOffset : undefined,
+      timeBasisOffsetMs: hasTimeBasisOffsetMs ? timeBasisOffsetMs : undefined
     }
   }
 

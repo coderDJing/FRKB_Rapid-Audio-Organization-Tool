@@ -71,6 +71,8 @@ const props = defineProps<{
   currentSeconds?: number
   playing?: boolean
   playbackRate?: number
+  playbackSyncRevision?: number
+  gridBpm?: number
   loopRange?: HorizontalBrowseLoopRange | null
   cueSeconds?: number
   hotCues?: ISongHotCue[]
@@ -106,6 +108,9 @@ const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const rawStreamActive = ref(false)
 const previewPlaying = ref(false)
+const playbackSyncRevision = computed(() =>
+  Math.max(0, Math.floor(Number(props.playbackSyncRevision) || 0))
+)
 const deferredWaveformLoad = computed(
   () => Boolean(props.deferWaveformLoad) && !previewPlaying.value
 )
@@ -116,6 +121,8 @@ const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX = 1
 const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX = 2.5
 const HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN = 8
 const HORIZONTAL_BROWSE_DEFERRED_BOOTSTRAP_OVERSCAN = 1.5
+const HORIZONTAL_BROWSE_PLAYBACK_RESYNC_THRESHOLD_SEC = 0.04
+const HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON = 0.0005
 
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
@@ -125,6 +132,13 @@ let persistTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
 let loadStartedAt = 0
 let pendingLocalGridSignature = ''
+let lastPlaybackPositionSample: {
+  songKey: string
+  seconds: number
+  atMs: number
+  playbackRate: number
+  playing: boolean
+} | null = null
 
 const traceHorizontalWaveformLoad = (stage: string, payload?: Record<string, unknown>) => {
   const filePath = String(props.song?.filePath || '').trim()
@@ -138,6 +152,27 @@ const traceHorizontalWaveformLoad = (stage: string, payload?: Record<string, unk
     ...payload
   })
 }
+
+const resolveDisplayGridBpm = () =>
+  Number.isFinite(Number(props.song?.bpm)) && Number(props.song?.bpm) > 0
+    ? normalizePreviewBpm(Number(props.song?.bpm))
+    : 0
+
+const previewRenderBpm = computed(() => {
+  const localBpm = Number(previewBpm.value)
+  if (
+    Number.isFinite(localBpm) &&
+    localBpm > 0 &&
+    Math.abs(localBpm - resolveDisplayGridBpm()) > HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON
+  ) {
+    return normalizePreviewBpm(localBpm)
+  }
+  const gridBpm = Number(props.gridBpm)
+  if (Number.isFinite(gridBpm) && gridBpm > 0) {
+    return normalizePreviewBpm(gridBpm)
+  }
+  return localBpm || 0
+})
 
 const {
   wrapRef,
@@ -181,22 +216,18 @@ const {
   currentSeconds: () => props.currentSeconds,
   playbackRate: () => props.playbackRate,
   playing: previewPlaying,
+  playbackSyncRevision,
   rawData,
   mixxxData,
   previewStartSec,
   previewZoom,
-  previewBpm,
+  previewBpm: previewRenderBpm,
   previewFirstBeatMs,
   previewBarBeatOffset,
   previewTimeBasisOffsetMs,
   dragging,
   rawStreamActive
 })
-
-const resolveDisplayGridBpm = () =>
-  Number.isFinite(Number(props.song?.bpm)) && Number(props.song?.bpm) > 0
-    ? normalizePreviewBpm(Number(props.song?.bpm))
-    : 0
 
 const resolveGridShiftMs = (targetPx: number, minMs: number) => {
   const visibleDurationMs = Math.max(1, resolveVisibleDurationSec() * 1000)
@@ -268,6 +299,34 @@ const applyPreviewPlaybackPosition = (seconds: number, scheduleFrame = true) => 
   if (scheduleFrame) {
     scheduleDraw()
   }
+}
+
+const resolvePlaybackPositionDiscontinuity = (
+  songKey: string,
+  seconds: number,
+  playing: boolean
+) => {
+  const nowMs = performance.now()
+  const playbackRate = Math.max(0.25, Number(props.playbackRate) || 1)
+  const previous = lastPlaybackPositionSample
+  lastPlaybackPositionSample = {
+    songKey,
+    seconds,
+    atMs: nowMs,
+    playbackRate,
+    playing
+  }
+
+  if (!playing || !previous?.playing || previous.songKey !== songKey) return false
+
+  const elapsedSec = Math.max(0, nowMs - previous.atMs) / 1000
+  const expectedSeconds = previous.seconds + elapsedSec * previous.playbackRate
+  const duration = resolvePreviewDurationSec()
+  const boundedExpectedSeconds =
+    duration > 0 ? clampNumber(expectedSeconds, 0, duration) : Math.max(0, expectedSeconds)
+  return (
+    Math.abs(seconds - boundedExpectedSeconds) > HORIZONTAL_BROWSE_PLAYBACK_RESYNC_THRESHOLD_SEC
+  )
 }
 
 const resetPreviewBpmTap = () => {
@@ -735,8 +794,14 @@ watch(
 )
 
 watch(
-  () => [Number(props.currentSeconds) || 0, !!props.playing, props.song?.filePath ?? ''] as const,
-  ([seconds, playing, songKey], previousValue) => {
+  () =>
+    [
+      Number(props.currentSeconds) || 0,
+      !!props.playing,
+      props.song?.filePath ?? '',
+      playbackSyncRevision.value
+    ] as const,
+  ([seconds, playing, songKey, syncRevision], previousValue) => {
     const finishTiming = startHorizontalBrowseUserTiming(
       `frkb:hb:detail:current-seconds:${props.direction}`
     )
@@ -746,17 +811,27 @@ watch(
       const safeSeconds = Math.max(0, seconds)
       maybeContinueRawWaveformStream()
       if (!safeSongKey) {
+        lastPlaybackPositionSample = null
         applyPreviewPlaybackPosition(0)
         return
       }
+      const playbackPositionJumped = resolvePlaybackPositionDiscontinuity(
+        safeSongKey,
+        safeSeconds,
+        playing
+      )
       const previousPlaying = Boolean(previousValue?.[1])
       const previousSongKey = String(previousValue?.[2] || '').trim()
+      const previousSyncRevision = Math.max(0, Math.floor(Number(previousValue?.[3]) || 0))
+      const playbackSyncChanged = syncRevision !== previousSyncRevision
       const shouldScheduleFrame =
         !playing ||
         dragging.value ||
         !displayReady.value ||
         playing !== previousPlaying ||
-        safeSongKey !== previousSongKey
+        safeSongKey !== previousSongKey ||
+        playbackSyncChanged ||
+        playbackPositionJumped
       applyPreviewPlaybackPosition(safeSeconds, shouldScheduleFrame)
     } finally {
       finishTiming()
@@ -784,6 +859,7 @@ watch(
   () =>
     [
       previewBpm.value,
+      previewRenderBpm.value,
       previewFirstBeatMs.value,
       previewBarBeatOffset.value,
       previewTimeBasisOffsetMs.value

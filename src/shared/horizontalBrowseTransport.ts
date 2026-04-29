@@ -8,6 +8,7 @@ export type HorizontalBrowseTransportDeckInput = {
   title?: string
   bpm?: number
   firstBeatMs?: number
+  barBeatOffset?: number
   timeBasisOffsetMs?: number
   durationSec: number
   currentSec: number
@@ -21,6 +22,7 @@ export type HorizontalBrowseTransportBeatGridInput = {
   filePath?: string
   bpm?: number
   firstBeatMs?: number
+  barBeatOffset?: number
   timeBasisOffsetMs?: number
 }
 
