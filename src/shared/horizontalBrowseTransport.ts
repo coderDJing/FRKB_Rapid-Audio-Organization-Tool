@@ -36,7 +36,12 @@ export type HorizontalBrowseTransportDeckSnapshot = {
   deck: string
   label: string
   loaded: boolean
+  fullyDecoded: boolean
   decoding: boolean
+  fullDecoding: boolean
+  playRequested: boolean
+  playingAudible: boolean
+  playheadLoaded: boolean
   playing: boolean
   currentSec: number
   durationSec: number
@@ -63,6 +68,9 @@ export type HorizontalBrowseTransportOutputSnapshot = {
 }
 
 export type HorizontalBrowseTransportSnapshot = {
+  capturedAtEpochMs?: number
+  snapshotSequence?: number
+  stateRevision?: number
   leaderDeck?: string
   top: HorizontalBrowseTransportDeckSnapshot
   bottom: HorizontalBrowseTransportDeckSnapshot
@@ -79,10 +87,15 @@ export const createEmptyHorizontalBrowseTransportDeckSnapshot = (
   deck,
   label: '',
   playing: false,
+  playRequested: false,
+  playingAudible: false,
+  playheadLoaded: false,
   currentSec: 0,
   durationSec: 0,
   loaded: false,
+  fullyDecoded: false,
   decoding: false,
+  fullDecoding: false,
   playbackRate: 1,
   masterTempoEnabled: true,
   bpm: 0,
@@ -100,6 +113,9 @@ export const createEmptyHorizontalBrowseTransportDeckSnapshot = (
 
 export const createEmptyHorizontalBrowseTransportSnapshot =
   (): HorizontalBrowseTransportSnapshot => ({
+    capturedAtEpochMs: undefined,
+    snapshotSequence: 0,
+    stateRevision: 0,
     leaderDeck: undefined,
     top: createEmptyHorizontalBrowseTransportDeckSnapshot('top'),
     bottom: createEmptyHorizontalBrowseTransportDeckSnapshot('bottom'),

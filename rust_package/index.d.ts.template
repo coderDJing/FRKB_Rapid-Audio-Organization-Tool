@@ -109,6 +109,13 @@ export interface HorizontalBrowseTransportBeatGridInput {
 export interface HorizontalBrowseTransportDeckSnapshot {
   deck: string
   label: string
+  loaded: boolean
+  fullyDecoded: boolean
+  decoding: boolean
+  fullDecoding: boolean
+  playRequested: boolean
+  playingAudible: boolean
+  playheadLoaded: boolean
   playing: boolean
   currentSec: number
   durationSec: number
@@ -133,6 +140,8 @@ export interface HorizontalBrowseTransportOutputSnapshot {
   bottomDeckGain: number
 }
 export interface HorizontalBrowseTransportSnapshot {
+  snapshotSequence: number
+  stateRevision: number
   leaderDeck?: string
   top: HorizontalBrowseTransportDeckSnapshot
   bottom: HorizontalBrowseTransportDeckSnapshot
@@ -226,6 +235,11 @@ export declare function analyzeKeyAndBpmFromPcm(
   fastAnalysis: boolean
 ): KeyBpmAnalysisResult
 export declare function horizontalBrowseTransportReset(): void
+export declare function horizontalBrowseTransportSetDeckState(
+  deck: string,
+  nowMs: number | undefined | null,
+  payload: HorizontalBrowseTransportDeckInput
+): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetState(
   payload: HorizontalBrowseTransportStateInput
 ): HorizontalBrowseTransportSnapshot
@@ -236,13 +250,21 @@ export declare function horizontalBrowseTransportSetBeatGrid(
 ): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetSyncEnabled(
   deck: string,
+  nowMs: number | undefined | null,
   enabled: boolean
 ): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportBeatsync(
-  deck: string
+  deck: string,
+  nowMs?: number | undefined | null
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportAlignToLeader(
+  deck: string,
+  nowMs?: number | undefined | null,
+  targetSec?: number | undefined | null
 ): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetLeader(
-  deck?: string
+  deck?: string | undefined | null,
+  nowMs?: number | undefined | null
 ): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetPlaying(
   deck: string,

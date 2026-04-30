@@ -19,8 +19,12 @@ export const broadcastHorizontalBrowseTransportSnapshot = (
 ) => {
   const targetWindow = mainWindow.instance
   if (!targetWindow || targetWindow.isDestroyed()) return
+  const capturedSnapshot: HorizontalBrowseTransportSnapshot = {
+    ...snapshot,
+    capturedAtEpochMs: Date.now()
+  }
   try {
-    targetWindow.webContents.send(HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT, snapshot)
+    targetWindow.webContents.send(HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT, capturedSnapshot)
   } catch {}
 }
 

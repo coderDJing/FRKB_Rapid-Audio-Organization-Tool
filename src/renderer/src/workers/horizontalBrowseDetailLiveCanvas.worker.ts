@@ -58,7 +58,7 @@ type WorkerAnimationFrameScope = typeof globalThis & {
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const PLAYHEAD_RATIO = 0.5
 const PLAYBACK_RENDER_INTERVAL_MS = 16
-const PLAYBACK_SYNC_TOLERANCE_SEC = 0.5
+const PLAYBACK_SYNC_TOLERANCE_SEC = 0.02
 
 let canvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null

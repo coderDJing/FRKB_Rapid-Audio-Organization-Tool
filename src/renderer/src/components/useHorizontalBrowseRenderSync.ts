@@ -8,6 +8,7 @@ type DeckKey = HorizontalBrowseDeckKey
 export type HorizontalBrowseRenderSyncTarget = DeckKey | DeckKey[] | 'all'
 export type HorizontalBrowseRenderSyncOptions = {
   nowMs?: number
+  snapshotAtMs?: number
   force?: HorizontalBrowseRenderSyncTarget
 }
 
@@ -22,6 +23,13 @@ type UseHorizontalBrowseRenderSyncParams = {
 const TRANSPORT_SNAPSHOT_FALLBACK_INTERVAL_IDLE_MS = 1000
 const TRANSPORT_SNAPSHOT_FALLBACK_INTERVAL_PLAYING_MS = 4000
 const RENDER_SYNC_REANCHOR_DRIFT_SEC = 0.35
+const RENDER_SYNC_PENDING_INTENT_EPSILON_SEC = 0.05
+const RENDER_SYNC_PENDING_INTENT_MAX_MS = 1500
+
+type PendingRenderSeekIntent = {
+  seconds: number
+  startedAtMs: number
+}
 
 export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderSyncParams) => {
   const topDeckRenderCurrentSeconds = ref(0)
@@ -41,6 +49,10 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     top: '',
     bottom: ''
   })
+  const pendingRenderSeekIntent = reactive<Record<DeckKey, PendingRenderSeekIntent | null>>({
+    top: null,
+    bottom: null
+  })
 
   let renderSyncRaf = 0
   let transportSnapshotInFlight = false
@@ -52,7 +64,8 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const playbackRate = Number(snapshot.playbackRate) || 1
     const baseSec = Math.max(0, Number(deckRenderSyncBaseSec[deck]) || 0)
     const baseAtMs = Math.max(0, Number(deckRenderSyncBaseAtMs[deck]) || 0)
-    const deltaSec = snapshot.playing && baseAtMs > 0 ? Math.max(0, nowMs - baseAtMs) / 1000 : 0
+    const canEstimatePlayback = snapshot.playingAudible && baseAtMs > 0
+    const deltaSec = canEstimatePlayback ? Math.max(0, nowMs - baseAtMs) / 1000 : 0
     const nextSec = baseSec + deltaSec * Math.max(0.25, playbackRate)
     return durationSec > 0 ? Math.min(durationSec, nextSec) : Math.max(0, nextSec)
   }
@@ -63,7 +76,11 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     [
       snapshot.label || '',
       snapshot.loaded ? 1 : 0,
+      snapshot.fullyDecoded ? 1 : 0,
+      snapshot.fullDecoding ? 1 : 0,
+      snapshot.decoding ? 1 : 0,
       snapshot.playing ? 1 : 0,
+      snapshot.playingAudible ? 1 : 0,
       Number(snapshot.durationSec || 0).toFixed(3),
       Number(snapshot.playbackRate || 1).toFixed(6),
       snapshot.masterTempoEnabled ? 1 : 0,
@@ -86,31 +103,77 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     bottomDeckPlaybackSyncRevision.value += 1
   }
 
-  const syncDeckFromSnapshot = (deck: DeckKey, nowMs: number, force: boolean) => {
+  const syncDeckFromSnapshot = (
+    deck: DeckKey,
+    snapshotAtMs: number,
+    renderNowMs: number,
+    force: boolean
+  ) => {
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const snapshotSec = Math.max(0, Number(snapshot.renderCurrentSec) || 0)
-    const estimatedSec = estimateDeckRenderCurrentSeconds(deck, nowMs)
+    const estimatedSec = estimateDeckRenderCurrentSeconds(deck, snapshotAtMs)
+    const renderEstimatedSec = estimateDeckRenderCurrentSeconds(deck, renderNowMs)
+    const pendingIntent = pendingRenderSeekIntent[deck]
+    if (pendingIntent) {
+      const intentAgeMs = renderNowMs - pendingIntent.startedAtMs
+      const intentConfirmed =
+        Math.abs(snapshotSec - pendingIntent.seconds) <= RENDER_SYNC_PENDING_INTENT_EPSILON_SEC
+      const intentExpired = intentAgeMs >= RENDER_SYNC_PENDING_INTENT_MAX_MS
+      if (!force && !intentConfirmed && !intentExpired) {
+        const nextSec = estimateDeckRenderCurrentSeconds(deck, renderNowMs)
+        if (deck === 'top') {
+          topDeckRenderCurrentSeconds.value = nextSec
+        } else {
+          bottomDeckRenderCurrentSeconds.value = nextSec
+        }
+        return
+      }
+      pendingRenderSeekIntent[deck] = null
+    }
     const signature = buildDeckRenderSnapshotSignature(snapshot)
     const previousSignature = deckRenderSnapshotSignature[deck]
     const signatureChanged = previousSignature !== signature
+    const playbackSnapshotAuthoritative = !snapshot.playing || snapshot.playingAudible
+    const previousBaseAtMs = deckRenderSyncBaseAtMs[deck]
+    const stalePlayingSnapshot =
+      !force &&
+      snapshot.playing &&
+      previousSignature === signature &&
+      snapshotAtMs + 1 < previousBaseAtMs
+    if (stalePlayingSnapshot) {
+      const nextSec = estimateDeckRenderCurrentSeconds(deck, renderNowMs)
+      if (deck === 'top') {
+        topDeckRenderCurrentSeconds.value = nextSec
+      } else {
+        bottomDeckRenderCurrentSeconds.value = nextSec
+      }
+      return
+    }
     const driftSec = Math.abs(snapshotSec - estimatedSec)
     const shouldReanchor =
       force ||
       !previousSignature ||
       !snapshot.playing ||
       signatureChanged ||
-      driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC
+      (playbackSnapshotAuthoritative && driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)
+    const shouldBumpPlaybackRevision =
+      shouldReanchor &&
+      (force ||
+        (snapshot.playing &&
+          (!previousSignature || signatureChanged || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)))
 
     if (shouldReanchor) {
       deckRenderSyncBaseSec[deck] = snapshotSec
-      deckRenderSyncBaseAtMs[deck] = nowMs
-      if (force) {
+      deckRenderSyncBaseAtMs[deck] = snapshotAtMs
+      if (shouldBumpPlaybackRevision) {
         bumpDeckPlaybackSyncRevision(deck)
       }
     }
     deckRenderSnapshotSignature[deck] = signature
 
-    const nextSec = shouldReanchor ? estimateDeckRenderCurrentSeconds(deck, nowMs) : estimatedSec
+    const nextSec = shouldReanchor
+      ? estimateDeckRenderCurrentSeconds(deck, renderNowMs)
+      : renderEstimatedSec
     if (deck === 'top') {
       topDeckRenderCurrentSeconds.value = nextSec
     } else {
@@ -122,9 +185,16 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     input: number | HorizontalBrowseRenderSyncOptions = performance.now()
   ) => {
     const nowMs = typeof input === 'number' ? input : (input.nowMs ?? performance.now())
+    const snapshotAtMs = typeof input === 'number' ? nowMs : (input.snapshotAtMs ?? nowMs)
     const forcedDecks = resolveForcedDecks(typeof input === 'number' ? undefined : input.force)
-    syncDeckFromSnapshot('top', nowMs, forcedDecks.has('top'))
-    syncDeckFromSnapshot('bottom', nowMs, forcedDecks.has('bottom'))
+    if (forcedDecks.size > 0) {
+      for (const deck of forcedDecks) {
+        syncDeckFromSnapshot(deck, snapshotAtMs, nowMs, true)
+      }
+      return
+    }
+    syncDeckFromSnapshot('top', snapshotAtMs, nowMs, false)
+    syncDeckFromSnapshot('bottom', snapshotAtMs, nowMs, false)
   }
 
   // 强制把某条 deck 的"渲染当前播放位置"立刻拉到指定秒数。
@@ -153,6 +223,10 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   const applyDeckRenderCurrentSeconds = (deck: DeckKey, seconds: number) => {
     const nowMs = performance.now()
     const safeSeconds = Math.max(0, Number(seconds) || 0)
+    pendingRenderSeekIntent[deck] = {
+      seconds: safeSeconds,
+      startedAtMs: nowMs
+    }
     deckRenderSyncBaseSec[deck] = safeSeconds
     deckRenderSyncBaseAtMs[deck] = nowMs
     bumpDeckPlaybackSyncRevision(deck)
@@ -164,8 +238,12 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   }
 
   const syncNativeTransportNow = async () => {
-    await params.nativeTransport.snapshot(performance.now())
-    syncDeckRenderState(performance.now())
+    const snapshotAtMs = performance.now()
+    await params.nativeTransport.snapshot(snapshotAtMs)
+    syncDeckRenderState({
+      nowMs: performance.now(),
+      snapshotAtMs
+    })
   }
 
   const markTransportStateFresh = (nowMs = performance.now()) => {

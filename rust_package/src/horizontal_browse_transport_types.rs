@@ -67,7 +67,12 @@ pub struct HorizontalBrowseTransportDeckSnapshot {
   pub deck: String,
   pub label: String,
   pub loaded: bool,
+  pub fully_decoded: bool,
   pub decoding: bool,
+  pub full_decoding: bool,
+  pub play_requested: bool,
+  pub playing_audible: bool,
+  pub playhead_loaded: bool,
   pub playing: bool,
   pub current_sec: f64,
   pub duration_sec: f64,
@@ -96,6 +101,8 @@ pub struct HorizontalBrowseTransportOutputSnapshot {
 
 #[napi(object)]
 pub struct HorizontalBrowseTransportSnapshot {
+  pub snapshot_sequence: f64,
+  pub state_revision: f64,
   pub leader_deck: Option<String>,
   pub top: HorizontalBrowseTransportDeckSnapshot,
   pub bottom: HorizontalBrowseTransportDeckSnapshot,
@@ -129,4 +136,5 @@ pub(super) struct DeckDerivedState {
   pub(super) estimated_current_sec: f64,
   pub(super) effective_bpm: f64,
   pub(super) render_current_sec: f64,
+  pub(super) playing_audible: bool,
 }

@@ -380,7 +380,10 @@ const stopDragging = (commitPlayhead = false) => {
   })
 }
 
-const handleWindowMouseUp = () => stopDragging(true)
+const handleWindowMouseUp = (event: MouseEvent) => {
+  handleDragMove(event)
+  stopDragging(true)
+}
 
 function handleDragMove(event: MouseEvent) {
   if (!dragging.value) return
