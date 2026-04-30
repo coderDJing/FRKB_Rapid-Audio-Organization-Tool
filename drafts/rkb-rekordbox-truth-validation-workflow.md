@@ -35,10 +35,60 @@ FRKB pass/fail 是当前算法状态，只存在于 classification 和派生 ben
 - `frkb-current-baseline-before-candidate-solver.json`：candidate solver 切换期的旧方案对照。
 - `beatthis-prediction-cache/`：可复用预测缓存。
 
-这些文件只表达当前本机样本库状态；数量以 JSON 实际内容为准，不写进仓库文档。
+这些文件只表达当前本机样本库状态；固定清单不写死数量，数量变更统一维护在下面的
+当前状态快照中。快照只代表最新状态，更新时直接改写当前值，不追加历史流水账。
 
 不保留 `*.progress.json`、临时 shard 目录、`targeted-*`、`try-*`、`diag-*`、
 随手命名的 `after-*`、以及任何未在本节列出的 benchmark JSON。需要复查时重新跑。
+
+## 2.1 当前状态快照
+
+数据集：
+
+- 唯一长期 truth：`grid-analysis-lab/rkb-rekordbox-benchmark/rekordbox-current-truth.json`
+- 当前 truth 曲目数：931
+- intake 状态：空
+- 当前 benchmark 曲目数：931
+- 当前 benchmark error：0
+- 当前固定 split：train 527，tune 201，holdout 203
+- Rekordbox `test` playlist：空
+- 临时 benchmark progress 文件：无
+
+当前成绩：
+
+- pass：587
+- fail：344
+- pass rate：63.05%
+
+失败分类：
+
+- `first-beat-phase`：298
+- `bpm`：31
+- `downbeat`：14
+- `half-or-double-bpm`：1
+
+候选覆盖：
+
+- 全量 fail：344
+- 没有 passing candidate：302
+- 有 passing candidate 但 scorer 未选中：42
+
+音频目录已经按当前 classification 同步完毕：
+
+- `D:/FRKB_database-B/library/FilterLibrary/new`：0
+- `D:/FRKB_database-B/library/FilterLibrary/sample`：587
+- `D:/FRKB_database-B/library/FilterLibrary/grid-failures-current`：344
+
+同步校验命令：
+
+```powershell
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_frkb_classification_audio_dirs.py" --dry-run
+```
+
+当前期望结果：`moveCount = 0`。
+
+当前主要问题仍是 phase 候选覆盖不足。下一步优先检查 candidate generator；
+scorer 只处理已有正确候选的通用排名问题，不堆逐曲规则。
 
 ## 3. 音频目录
 
