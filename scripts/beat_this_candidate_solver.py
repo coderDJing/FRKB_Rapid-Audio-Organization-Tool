@@ -694,12 +694,77 @@ def _passes_precision_guard(candidate: dict[str, Any]) -> bool:
     )
 
 
+def _should_keep_head_zero_leader(selected: dict[str, Any], quantized: dict[str, Any]) -> bool:
+    selected_result = selected["result"]
+    quantized_result = quantized["result"]
+    selected_first_beat_ms = _present_float(selected_result, "firstBeatMs")
+    if not (-4.0 <= selected_first_beat_ms <= 0.5):
+        return False
+    if not _bpm_close(_candidate_bpm(selected_result), _candidate_bpm(quantized_result)):
+        return False
+    if _present_int(selected_result, "barBeatOffset") % 4 != _present_int(quantized_result, "barBeatOffset") % 4:
+        return False
+    return float(selected["features"]["solverScore"]) > float(quantized["features"]["solverScore"])
+
+
+def _should_keep_precision_leader(selected: dict[str, Any], quantized: dict[str, Any]) -> bool:
+    selected_features = selected["features"]
+    quantized_features = quantized["features"]
+    if float(selected_features["timelineQuantizationScore"]) >= 0.5:
+        return False
+    if float(selected_features["solverScore"]) <= float(quantized_features["solverScore"]):
+        return False
+
+    selected_result = selected["result"]
+    quantized_result = quantized["result"]
+    if not _bpm_close(_candidate_bpm(selected_result), _candidate_bpm(quantized_result)):
+        return False
+
+    selected_bar_mod = _present_int(selected_result, "barBeatOffset") % 4
+    quantized_bar_mod = _present_int(quantized_result, "barBeatOffset") % 4
+
+    unsupported_integer_refinement = (
+        float(selected_features["bpmRefinementScore"]) >= 0.8
+        and float(selected_features["bpmRefinementSupportScore"]) <= 0.001
+        and float(selected_features["anchorCorrectionRisk"]) <= 0.001
+        and float(selected_features["candidateBpmPeerScore"]) >= 0.7
+        and float(selected_features["candidateDownbeat8PeerScore"]) >= 0.4
+    )
+    if unsupported_integer_refinement:
+        return True
+
+    same_bar_high_correction = (
+        selected_bar_mod == quantized_bar_mod
+        and 0.24 <= float(selected_features["anchorCorrectionRisk"]) <= 0.32
+        and float(quantized_features["anchorCorrectionRisk"])
+        >= float(selected_features["anchorCorrectionRisk"])
+        and abs(
+            float(selected_features["candidatePhase8PeerScore"])
+            - float(quantized_features["candidatePhase8PeerScore"])
+        )
+        <= 0.02
+        and abs(
+            float(selected_features["candidateDownbeat8PeerScore"])
+            - float(quantized_features["candidateDownbeat8PeerScore"])
+        )
+        <= 0.02
+        and float(selected_features["signalScore"]) + 0.02 >= float(quantized_features["signalScore"])
+    )
+    return same_bar_high_correction
+
+
 def _select_scored_candidate(scored_candidates: list[dict[str, Any]]) -> dict[str, Any]:
     selected = scored_candidates[0]
     quantized_candidates = [candidate for candidate in scored_candidates if _passes_precision_guard(candidate)]
     if not quantized_candidates:
         return selected
     quantized = max(quantized_candidates, key=_candidate_sort_key)
+    if _should_keep_head_zero_leader(selected, quantized):
+        selected["selectionGuard"] = "head-zero-leader"
+        return selected
+    if _should_keep_precision_leader(selected, quantized):
+        selected["selectionGuard"] = "precision-leader"
+        return selected
     score_margin = float(selected["features"]["solverScore"]) - float(quantized["features"]["solverScore"])
     if score_margin <= 1.8:
         quantized["selectionGuard"] = "timeline-precision"
