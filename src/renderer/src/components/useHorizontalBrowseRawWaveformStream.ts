@@ -82,6 +82,7 @@ type UseHorizontalBrowseRawWaveformStreamOptions = {
   timeBasisOffsetMs: () => number
   playing: () => boolean
   currentSeconds: () => number | undefined
+  viewportAnchorSec: () => number
   visibleDurationSec: () => number
   previewLoading: Ref<boolean>
   rawStreamActive: Ref<boolean>
@@ -102,14 +103,12 @@ type UseHorizontalBrowseRawWaveformStreamOptions = {
   updateLiveWaveformRawMeta: (meta: Partial<HorizontalBrowseDetailLiveCanvasRawMeta>) => void
 }
 
-const HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE = Math.min(PREVIEW_RAW_TARGET_RATE, 1200)
 const HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES = 32768
 const HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS = 4
-const HORIZONTAL_BROWSE_DEFERRED_RAW_CHUNK_PROCESS_BUDGET_MS = 1.5
 const HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES = 2048
-const HORIZONTAL_BROWSE_DEFERRED_RAW_CHUNK_COPY_SLICE_FRAMES = 1024
-const HORIZONTAL_BROWSE_DEFERRED_RAW_WAVEFORM_CHUNK_FRAMES = 49152
 const HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR = 0.8
+const HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR = 0.25
+const HORIZONTAL_BROWSE_RAW_VIEWPORT_RESTART_GAP_FACTOR = 0.75
 const HORIZONTAL_BROWSE_RAW_VISIBLE_REDRAW_LEAD_FACTOR = 0.25
 const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR = 0.5
 
@@ -187,25 +186,15 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const resolveProtectsPlayback = () => options.playing() === true
 
-  const resolveChunkProcessBudgetMs = () =>
-    options.deferWaveformLoad() && !options.playing()
-      ? HORIZONTAL_BROWSE_DEFERRED_RAW_CHUNK_PROCESS_BUDGET_MS
-      : HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS
+  const resolveChunkProcessBudgetMs = () => HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS
 
-  const resolveChunkCopySliceFrames = () =>
-    options.deferWaveformLoad() && !options.playing()
-      ? HORIZONTAL_BROWSE_DEFERRED_RAW_CHUNK_COPY_SLICE_FRAMES
-      : HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES
+  const resolveChunkCopySliceFrames = () => HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES
 
-  const shouldKeepMainThreadRawArrays = () => !(options.deferWaveformLoad() && !options.playing())
+  const shouldKeepMainThreadRawArrays = () => true
 
-  const resolveStreamChunkFrames = () =>
-    options.deferWaveformLoad() && !options.playing()
-      ? HORIZONTAL_BROWSE_DEFERRED_RAW_WAVEFORM_CHUNK_FRAMES
-      : HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES
+  const resolveStreamChunkFrames = () => HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES
 
-  const resolveWaveformTargetRate = (deferred: boolean) =>
-    deferred ? HORIZONTAL_BROWSE_DEFERRED_RAW_TARGET_RATE : PREVIEW_RAW_TARGET_RATE
+  const resolveWaveformTargetRate = (_deferred: boolean) => PREVIEW_RAW_TARGET_RATE
 
   const resolveTimeBasisOffsetSec = () =>
     Math.max(0, Number(options.timeBasisOffsetMs()) || 0) / 1000
@@ -262,10 +251,8 @@ export const useHorizontalBrowseRawWaveformStream = (
         startSec: meta.startSec,
         loadedFrames: 0
       })
-      // 换 rawData ref 往往意味着 seek / 开始新 stream：此前画布可能已经被 hold 清空、
-      // displayReady 已置 false，DOM 层也全部隐藏。必须主动触发一次整帧重绘，让 drawWaveform
-      // 能在新数据一就绪时立即评估是否可画，否则只会走后续 dirty 增量路径——而 dirty 路径
-      // 对"整块画面未就绪"状态的恢复不起作用（它只在 displayReady=true 时增量刷）。
+      // 换 rawData ref 往往意味着 seek / 开始新 stream：必须主动触发一次整帧重绘，
+      // 让 drawWaveform 在新数据一就绪时立即评估是画局部高清，还是继续保持波形层黑屏。
       options.scheduleDraw()
       return
     }
@@ -432,37 +419,58 @@ export const useHorizontalBrowseRawWaveformStream = (
     clearPendingRawWaveformStore()
   }
 
-  const restartRawWaveformStreamAt = (targetSec: number) => {
+  const resolveLoadedTimelineRange = () => {
+    const current = options.rawData.value
+    const rate = Math.max(0, Number(current?.rate) || 0)
+    const loadedFrames = Math.max(0, Number(current?.loadedFrames ?? current?.frames) || 0)
+    const rawStartSec = Math.max(0, Number(current?.startSec) || rawStreamStartSec)
+    const loadedStartSec = resolveAudioRangeStartSecToTimelineSec(rawStartSec)
+    const loadedEndSec =
+      rate > 0 ? resolveAudioSecToTimelineSec(rawStartSec + loadedFrames / rate) : loadedStartSec
+    return {
+      rate,
+      loadedFrames,
+      loadedStartSec,
+      loadedEndSec
+    }
+  }
+
+  const resolveVisibleTimelineRange = (anchorSec: number, overscanFactor = 0) => {
+    const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
+    const halfVisible = visibleDurationSec * 0.5
+    const overscanSec = Math.max(0, visibleDurationSec * overscanFactor)
+    const songDurationSec = resolveSongDurationSec()
+    const visibleStartSec = Math.max(0, anchorSec - halfVisible - overscanSec)
+    const visibleEndSec =
+      songDurationSec > 0
+        ? Math.min(songDurationSec, anchorSec + halfVisible + overscanSec)
+        : anchorSec + halfVisible + overscanSec
+    return {
+      visibleDurationSec,
+      visibleStartSec,
+      visibleEndSec
+    }
+  }
+
+  const isCurrentRawCoveringVisibleRange = (anchorSec: number, overscanFactor = 0) => {
+    const current = options.rawData.value
+    if (!current) return false
+    const { loadedStartSec, loadedEndSec } = resolveLoadedTimelineRange()
+    const { visibleStartSec, visibleEndSec } = resolveVisibleTimelineRange(
+      anchorSec,
+      overscanFactor
+    )
+    return visibleStartSec >= loadedStartSec && visibleEndSec <= loadedEndSec
+  }
+
+  const restartRawWaveformStreamAt = (targetSec: number, holdFrame = true) => {
     const filePath = String(options.song()?.filePath || '').trim()
     if (!filePath) return false
     const targetStartTimelineSec = resolveRawWaveformBootstrapStartSec(targetSec)
     const targetStartSec = resolveTimelineSecToAudioSec(targetStartTimelineSec)
-    if (!options.rawData.value) {
-      traceHorizontalRawStream('raw-stream:seek-restart:skip', {
-        reason: 'no-raw-data',
-        targetSec,
-        targetStartSec,
-        targetStartTimelineSec
-      })
-      return false
-    }
-    const rate = Math.max(0, Number(options.rawData.value?.rate) || 0)
-    const loadedFrames = Math.max(
-      0,
-      Number(options.rawData.value?.loadedFrames ?? options.rawData.value?.frames) || 0
-    )
-    const loadedStartSec = resolveAudioRangeStartSecToTimelineSec(rawStreamStartSec)
-    const loadedEndSec =
-      rate > 0
-        ? resolveAudioSecToTimelineSec(rawStreamStartSec + loadedFrames / rate)
-        : loadedStartSec
-    const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
-    const visibleStartSec = Math.max(0, targetSec - visibleDurationSec * 0.5)
-    const visibleEndSec = targetSec + visibleDurationSec * 0.5
-    const hasCoverage =
-      Boolean(options.rawData.value) &&
-      visibleStartSec >= loadedStartSec &&
-      visibleEndSec <= loadedEndSec
+    const { loadedStartSec, loadedEndSec } = resolveLoadedTimelineRange()
+    const { visibleStartSec, visibleEndSec } = resolveVisibleTimelineRange(targetSec)
+    const hasCoverage = isCurrentRawCoveringVisibleRange(targetSec)
     traceHorizontalRawStream('raw-stream:seek-restart:check', {
       targetSec,
       targetStartSec,
@@ -474,12 +482,15 @@ export const useHorizontalBrowseRawWaveformStream = (
       hasCoverage
     })
     if (hasCoverage) return false
-    options.holdCurrentWaveformFrame()
+    if (holdFrame) {
+      options.holdCurrentWaveformFrame()
+    }
     beginRawWaveformStream(filePath, resolveWaveformTargetRate(false), Date.now(), targetStartSec)
     traceHorizontalRawStream('raw-stream:seek-restart:started', {
       targetSec,
       targetStartSec,
-      targetStartTimelineSec
+      targetStartTimelineSec,
+      holdFrame
     })
     return true
   }
@@ -775,6 +786,8 @@ export const useHorizontalBrowseRawWaveformStream = (
       return
     }
 
+    maybeContinueRawWaveformStream()
+
     if (pendingRawStreamDonePayload) {
       const donePayload = pendingRawStreamDonePayload
       pendingRawStreamDonePayload = null
@@ -827,20 +840,59 @@ export const useHorizontalBrowseRawWaveformStream = (
     applyRawWaveformStreamDone(payload)
   }
 
-  const maybeContinueRawWaveformStream = () => {
-    if (!rawStreamRequestId || !options.rawStreamActive.value || !options.rawData.value) return
-    if (!options.playing()) return
-    const rate = Math.max(0, Number(options.rawData.value.rate) || 0)
-    if (!rate) return
-    const currentSec = Math.max(0, Number(options.currentSeconds()) || 0)
-    const loadedFrames = Math.max(
+  const maybeContinueRawWaveformStream = (anchorSec?: number) => {
+    const filePath = String(options.song()?.filePath || '').trim()
+    if (!filePath) return
+    const viewportAnchorSec = Math.max(
       0,
-      Number(options.rawData.value.loadedFrames ?? options.rawData.value.frames) || 0
+      Number(
+        anchorSec ?? (options.playing() ? options.currentSeconds() : options.viewportAnchorSec())
+      ) || 0
     )
-    const loadedEndSec = rawStreamStartSec + loadedFrames / rate
-    const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
-    const desiredLoadedEndSec =
-      currentSec + visibleDurationSec * HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR
+    if (
+      isCurrentRawCoveringVisibleRange(
+        viewportAnchorSec,
+        HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR
+      )
+    ) {
+      return
+    }
+    if (rawStreamRequestId && options.rawStreamActive.value && !options.rawData.value) {
+      const targetStartSec = resolveRawWaveformBootstrapStartSec(viewportAnchorSec)
+      const activeStartSec = resolveAudioRangeStartSecToTimelineSec(rawStreamStartSec)
+      const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
+      if (
+        Math.abs(targetStartSec - activeStartSec) <=
+        visibleDurationSec * HORIZONTAL_BROWSE_RAW_VIEWPORT_RESTART_GAP_FACTOR
+      ) {
+        return
+      }
+      restartRawWaveformStreamAt(viewportAnchorSec, false)
+      return
+    }
+    if (!rawStreamRequestId || !options.rawStreamActive.value || !options.rawData.value) {
+      restartRawWaveformStreamAt(viewportAnchorSec, false)
+      return
+    }
+
+    const { rate, loadedStartSec, loadedEndSec } = resolveLoadedTimelineRange()
+    if (!rate) return
+    const { visibleStartSec, visibleEndSec, visibleDurationSec } = resolveVisibleTimelineRange(
+      viewportAnchorSec,
+      HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR
+    )
+    const restartGapSec = Math.max(
+      0.5,
+      visibleDurationSec * HORIZONTAL_BROWSE_RAW_VIEWPORT_RESTART_GAP_FACTOR
+    )
+    if (visibleStartSec + restartGapSec < loadedStartSec || visibleStartSec > loadedEndSec) {
+      restartRawWaveformStreamAt(viewportAnchorSec, false)
+      return
+    }
+
+    const desiredLoadedEndSec = options.playing()
+      ? viewportAnchorSec + visibleDurationSec * HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR
+      : visibleEndSec
     if (loadedEndSec >= desiredLoadedEndSec) return
     continueRawWaveformStream(rawStreamRequestId)
   }

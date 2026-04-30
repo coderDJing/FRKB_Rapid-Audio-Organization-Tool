@@ -5,6 +5,7 @@ type UseMixtapeBeatAlignGridAdjustParams = {
   previewWrapRef: Ref<HTMLDivElement | null>
   previewLoading: Ref<boolean>
   previewMixxxData: Ref<MixxxWaveformData | null>
+  canAdjustGrid?: Ref<boolean>
   previewPlaying: Ref<boolean>
   previewBarBeatOffset: Ref<number>
   previewFirstBeatMs: Ref<number>
@@ -42,6 +43,7 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
   const previewBarLineHoverHit = ref(false)
 
   const canAdjustGrid = computed(() => {
+    if (params.canAdjustGrid) return params.canAdjustGrid.value
     if (params.previewLoading.value) return false
     return !!params.previewMixxxData.value
   })

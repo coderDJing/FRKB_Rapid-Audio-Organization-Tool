@@ -203,7 +203,6 @@ const {
   storeRawWaveform,
   setLastZoomAnchor,
   resetLastZoomAnchor,
-  displayReady,
   dispose: disposeWaveformCanvas
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => props.song,
@@ -394,13 +393,15 @@ function handleDragMove(event: MouseEvent) {
   const deltaX = event.clientX - dragStartClientX
   const deltaSec = (deltaX / Math.max(1, wrap.clientWidth)) * visibleDuration
   previewStartSec.value = clampPreviewStart(dragStartSec - deltaSec)
-  setLastZoomAnchor(resolvePreviewAnchorSec(), HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
+  const anchorSec = resolvePreviewAnchorSec()
+  setLastZoomAnchor(anchorSec, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
+  maybeContinueRawWaveformStream(anchorSec)
   scheduleDraw()
 }
 
 const handleMouseDown = (event: MouseEvent) => {
   if (event.button !== 0) return
-  if (!rawData.value || !mixxxData.value) return
+  if (!props.song?.filePath || !resolvePreviewDurationSec()) return
   if (handlePreviewMouseDownForBarLinePicking(event)) {
     emitToolbarState()
     schedulePersistGridDefinition()
@@ -410,6 +411,7 @@ const handleMouseDown = (event: MouseEvent) => {
   dragStartClientX = event.clientX
   dragStartSec = previewStartSec.value
   emit('drag-session-start')
+  maybeContinueRawWaveformStream(resolvePreviewAnchorSec())
   window.addEventListener('mousemove', handleDragMove, { passive: false })
   window.addEventListener('mouseup', handleWindowMouseUp, { passive: true })
   event.preventDefault()
@@ -445,10 +447,14 @@ const handleWheel = (event: WheelEvent) => {
     anchorRatio: ratio,
     sourceDirection: props.direction
   })
+  maybeContinueRawWaveformStream(resolvePreviewAnchorSec())
   scheduleDraw()
 }
 
-const canAdjustGrid = computed(() => !previewLoading.value && !!mixxxData.value)
+const canAdjustGrid = computed(() => {
+  if (previewLoading.value) return false
+  return !!props.song?.filePath && resolvePreviewDurationSec() > 0
+})
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
 const metronomePlaybackRate = computed(() => Math.max(0.25, Number(props.playbackRate) || 1))
 const metronomeResetKey = computed(
@@ -484,6 +490,7 @@ const {
   previewWrapRef: wrapRef,
   previewLoading,
   previewMixxxData: mixxxData,
+  canAdjustGrid,
   previewPlaying,
   previewBarBeatOffset,
   previewFirstBeatMs,
@@ -594,6 +601,7 @@ const {
   timeBasisOffsetMs: () => Number(previewTimeBasisOffsetMs.value) || 0,
   playing: () => previewPlaying.value,
   currentSeconds: () => props.currentSeconds,
+  viewportAnchorSec: resolvePreviewAnchorSec,
   visibleDurationSec: resolveVisibleDurationSec,
   previewLoading,
   rawStreamActive,
@@ -650,9 +658,7 @@ const loadWaveform = async () => {
     beginRawWaveformStream(filePath, targetRate, currentToken)
     syncGridStateFromSong()
     previewStartSec.value = resolvePlaybackAlignedStart(0)
-    if (!deferredWaveformLoad.value) {
-      scheduleDraw()
-    }
+    scheduleDraw()
   } catch {
     if (currentToken !== loadToken) return
     traceHorizontalWaveformLoad('load:error')
@@ -780,6 +786,7 @@ watch(
     const nextVisible = resolveVisibleDurationSec()
     previewStartSec.value = clampPreviewStart(anchorSec - nextVisible * anchorRatio)
     resetGridRenderer()
+    maybeContinueRawWaveformStream(resolvePreviewAnchorSec())
     scheduleDraw()
   },
   { immediate: true }
@@ -791,6 +798,7 @@ watch(
     previewPlaying.value = playing
     if (!playing) {
       flushDeferredRawWaveformStore()
+      maybeContinueRawWaveformStream(resolvePreviewAnchorSec())
     }
   },
   { immediate: true }
@@ -830,7 +838,6 @@ watch(
       const shouldScheduleFrame =
         !playing ||
         dragging.value ||
-        !displayReady.value ||
         playing !== previousPlaying ||
         safeSongKey !== previousSongKey ||
         playbackSyncChanged ||
@@ -847,7 +854,9 @@ watch(
   ([revision, targetSeconds]) => {
     if (!revision) return
     if (!props.song?.filePath) return
-    restartRawWaveformStreamAt(Math.max(0, targetSeconds))
+    const safeTargetSeconds = Math.max(0, targetSeconds)
+    restartRawWaveformStreamAt(safeTargetSeconds)
+    applyPreviewPlaybackPosition(safeTargetSeconds, true)
   }
 )
 
@@ -985,7 +994,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       ref="overlayCanvasRef"
       class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay"
     ></canvas>
-    <div v-show="displayReady" class="raw-detail-waveform__playhead"></div>
+    <div v-show="!!props.song" class="raw-detail-waveform__playhead"></div>
     <div
       v-if="previewBarLineHoverVisible"
       class="raw-detail-waveform__barline-glow"

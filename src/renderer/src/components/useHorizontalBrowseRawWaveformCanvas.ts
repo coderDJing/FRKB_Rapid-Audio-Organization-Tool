@@ -58,10 +58,8 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
   rawStreamActive: Ref<boolean>
 }
 
-const DRAG_RAW_MAX_SAMPLES_PER_PIXEL = 32
 const RAW_STREAM_REDRAW_INTERVAL_MS = 80
 const DEFERRED_RAW_STREAM_REDRAW_INTERVAL_MS = 160
-const DEFERRED_RAW_MAX_SAMPLES_PER_PIXEL = 12
 const DEFAULT_CUE_ACCENT_COLOR = '#d98921'
 
 export const useHorizontalBrowseRawWaveformCanvas = (
@@ -102,23 +100,16 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   // 通过它把上面两种情形区分开：引用稳定时宽松允许绘制，引用刚变化时严格等覆盖。
   let lastStreamRenderedRawData: RawWaveformData | null = null
 
-  // displayStartSec 代表"当前 canvas 像素与 DOM 层标记（grid / cue / hotcue / memory cue / loop mask）
-  // 统一对应的 start sec"——即 **这一帧真正呈现给用户的可视区起点**。
+  // displayStartSec 代表最近一帧 worker 已处理的可视区起点。grid / cue / hotcue 现在由
+  // worker overlay 独立渲染，即使 displayReady=false，也会跟随当前 range 立即更新。
   // 它和 previewStartSec / renderStartSec 的关系：
   //   * renderStartSec：由 previewStartSec 在本帧决定的"理想显示位置"（随 playback tick 推进、
   //     随 seek 立即跳）。
-  //   * displayStartSec：只有在"本帧波形真的画出来了"的分支里才会被更新为 renderStartSec；
-  //     如果波形这一帧画不出来（seek 后 rawData 还没覆盖新可视区 / 首批 chunk 未到 / 引用刚换），
-  //     displayStartSec 保持上一帧的值 —— canvas 冻结在旧像素，grid / cue / hotcue 等 DOM
-  //     层元素也一并冻结在同一起点，视觉上所有元素完全同步。
-  //   * 一旦波形重新画出来，这一帧 displayStartSec = renderStartSec，所有元素同步跳到当前位置。
-  // 这样 seek 后允许出现短暂的整体冻结（音频仍然立即响应，画面延后统一出现），但杜绝
-  // "网格在滚、波形冻结"这种局部错位。
+  //   * displayStartSec：由 worker 回报的当前 range 起点。
+  //   * displayReady：高清波形层是否真的画出了这一帧。
+  // 这样 seek 后允许波形短暂黑屏，但 grid / cue / hotcue / playhead 不被波形加载状态绑架。
   const displayStartSec = ref(0)
-  // displayReady = false 表示"这一帧的可视画面尚不可用"——canvas 上没有对应 displayStartSec 的
-  // 有效波形像素（例如 seek 后被 hold 清空、首帧尚未就绪）。DOM 层（grid / cue / hotcue /
-  // memory cue / loop mask）在 displayReady=false 时会统一隐藏，呈现整块空白，避免只画 grid
-  // 却没波形的错位感。displayReady=true 才表示"canvas + DOM 已全部同步到 displayStartSec"。
+  // displayReady 只表示高清波形层是否已经画到当前 range；时间线 overlay 不依赖它。
   const displayReady = ref(false)
 
   const liveCanvasBridge = createHorizontalBrowseDetailLiveCanvasBridge({
@@ -259,8 +250,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     holdPreviousWaveformFrame = false
     suppressNextPlaybackScrollReuse = false
     lastStreamRenderedRawData = null
-    // 外部重置 retained（例如切歌、loadWaveform）会清掉 canvas 上所有可用像素，
-    // 此时 DOM 层也要同步进入"未就绪"状态；等下一次成功绘制时统一恢复显示。
+    // 外部重置 retained（例如切歌、loadWaveform）会清掉 canvas 上所有可用像素。
     displayReady.value = false
   }
 
@@ -293,11 +283,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     }
   }
 
-  const clearWaveformCanvas = () => {
-    liveCanvasRenderToken += 1
-    liveCanvasBridge.clear()
-  }
-
   const clearGridCanvas = () => {
     const canvas = gridCanvasRef.value
     if (!canvas) return
@@ -328,12 +313,11 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     >['payload']
   ) => {
     if (payload.renderToken !== liveCanvasRenderToken) return
+    displayStartSec.value = payload.rangeStartSec
     if (!payload.ready) {
       displayReady.value = false
-      clearGridCanvas()
       return
     }
-    displayStartSec.value = payload.rangeStartSec
     displayReady.value = true
   }
 
@@ -499,12 +483,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const playbackStreamReuse = options.playing.value && !options.dragging.value
     const allowPlaybackScrollReuse =
       playbackStreamReuse && wasDisplayReady && !suppressNextPlaybackScrollReuse
-    const deferredVisualProtection = resolveDeferredVisualProtection()
-    const streamMaxSamplesPerPixel = playbackStreamReuse
-      ? PREVIEW_MAX_SAMPLES_PER_PIXEL
-      : deferredVisualProtection
-        ? DEFERRED_RAW_MAX_SAMPLES_PER_PIXEL
-        : DRAG_RAW_MAX_SAMPLES_PER_PIXEL
+    const streamMaxSamplesPerPixel = PREVIEW_MAX_SAMPLES_PER_PIXEL
     const currentFilePath = String(options.song()?.filePath || '').trim()
     const activeMixxxSelection = resolveActiveMixxxSelection()
     const canUseRetainedWaveform =
@@ -622,10 +601,17 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         effectiveRawCoverage,
         holdingFrame: holdPreviousWaveformFrame
       })
-      clearWaveformCanvas()
       lastStreamRenderedRawData = null
-      // 完全无数据可画：通知 DOM 层也整块隐藏，避免只剩 grid/cue 悬在那里。
+      // 完全无高清波形可画：只清波形层；时间线 overlay 仍按当前 range 渲染。
       displayReady.value = false
+      queueLiveWaveformRender({
+        rangeStartSec: renderStartSec,
+        rangeDurationSec: visibleDuration,
+        rawData: null,
+        maxSamplesPerPixel: streamMaxSamplesPerPixel,
+        allowScrollReuse: false,
+        preferRawPeaksOnly: false
+      })
     } else if (options.playing.value || options.rawStreamActive.value || options.dragging.value) {
       // 判断是否可以把当前这帧交给 live canvas worker 绘制：
       //   * effectiveRawCoverage=true（rawData 严格覆盖可视区）：无论 worker 走 scroll reuse
@@ -634,19 +620,19 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       //     worker 走 scroll reuse：复用当前 canvas 像素 +
       //     只重绘右边缘 shift 出来的一小段。即使 rawData 末尾几帧数据还没填入，右边缘最多
       //     短暂画成平线，左边旧波形像素会被保留——波形主体跟 playback 同步滚动。
-      //   * allowPartialFirstPaint=true：首屏尚未 ready、且不是 seek-hold 场景时，允许用
-      //     当前已到达的 partial rawData 先画出可见部分。这样 deck 初次载入时不会整块空白
-      //     到第二个 chunk 才出现波形；后续 chunk 再通过 dirty draw 把右侧补齐。
+      //   * allowPartialViewportPaint=true：拖动/暂停/首屏时允许用当前已到达的 partial rawData
+      //     先画出可见部分，未加载出来的列保持黑；后续 chunk 再通过 dirty draw 补齐。
       //   * 以上都不满足（rawData 新换 ref 且尚未覆盖可视区）：draw 会走 clearRect+drawRange，
-      //     用稀疏数据整屏重画，导致大片空白（历史"波形消失只剩网格线"bug）。必须放弃绘制，
-      //     保留 canvas 现状，等下一次 ensureRawWaveformCapacity 填充或同一 ref 稳定后再画。
+      //     用稀疏数据整屏重画，导致大片空白。seek 允许这样黑屏，但 overlay 必须继续更新。
       const rawDataRefStable =
         drawableRawData != null && drawableRawData === lastStreamRenderedRawData
-      const allowPartialFirstPaint =
-        Boolean(drawableRawData) && !wasDisplayReady && !holdPreviousWaveformFrame
+      const allowPartialViewportPaint =
+        Boolean(drawableRawData) &&
+        !holdPreviousWaveformFrame &&
+        (options.dragging.value || !options.playing.value || !wasDisplayReady)
       const canDrawStream =
         Boolean(drawableRawData) &&
-        (effectiveRawCoverage || rawDataRefStable || allowPartialFirstPaint)
+        (effectiveRawCoverage || rawDataRefStable || allowPartialViewportPaint)
       if (!canDrawStream) {
         traceHorizontalWaveformRender(
           holdPreviousWaveformFrame ? 'stream-hold' : 'stream-await-raw',
@@ -654,7 +640,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
             mixxxSource: effectiveMixxxSelection.source,
             effectiveRawCoverage,
             rawDataRefStable,
-            allowPartialFirstPaint,
+            allowPartialViewportPaint,
             holdingFrame: holdPreviousWaveformFrame,
             renderStartSec,
             visibleDuration,
@@ -662,17 +648,16 @@ export const useHorizontalBrowseRawWaveformCanvas = (
             rawEndSec: resolveRawDataCoveredEndSec(effectiveRawData)
           }
         )
-        if (holdPreviousWaveformFrame) {
-          // seek 情境：清空画布，并通知 DOM 层整块隐藏（grid / cue / hotcue 一起空白），
-          // 避免出现"canvas 空、grid 还在旧位置滚动"这种视觉错位；等 rawData 覆盖新位置
-          // 再一次性把全部元素一起显示到当前 renderStartSec。
-          clearWaveformCanvas()
-          lastStreamRenderedRawData = null
-          displayReady.value = false
-        }
-        // 非 seek：保留 canvas 现有内容，并且 **不** 更新 displayStartSec / displayReady，
-        // grid / cue / hotcue 等 DOM 层也保持上一帧的位置——整块画面同步"冻结"在上次成功
-        // 绘制出的位置，杜绝"grid 在动、波形停"这种错位感。等下一帧能画出来时再统一推进。
+        lastStreamRenderedRawData = null
+        displayReady.value = false
+        queueLiveWaveformRender({
+          rangeStartSec: renderStartSec,
+          rangeDurationSec: visibleDuration,
+          rawData: null,
+          maxSamplesPerPixel: streamMaxSamplesPerPixel,
+          allowScrollReuse: false,
+          preferRawPeaksOnly: false
+        })
       } else {
         holdPreviousWaveformFrame = false
         const shouldSuppressNextPlaybackScrollReuse = playbackStreamReuse && !wasDisplayReady
@@ -680,7 +665,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           mixxxSource: effectiveMixxxSelection.source,
           effectiveRawCoverage,
           rawDataRefStable,
-          allowPartialFirstPaint,
+          allowPartialViewportPaint,
           holdingFrame: false
         })
         const finishTiming = startHorizontalBrowseUserTiming(
@@ -711,8 +696,16 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         rawStartSec: effectiveRawData ? Number(effectiveRawData.startSec) || 0 : 0,
         rawEndSec: resolveRawDataCoveredEndSec(effectiveRawData)
       })
-      // 保留 canvas 现有内容，且不推进 displayStartSec / displayReady——整块画面冻结在
-      // 上次成功绘制出的位置，等新数据可用后和波形一起同步推进。
+      lastStreamRenderedRawData = null
+      displayReady.value = false
+      queueLiveWaveformRender({
+        rangeStartSec: renderStartSec,
+        rangeDurationSec: visibleDuration,
+        rawData: null,
+        maxSamplesPerPixel: streamMaxSamplesPerPixel,
+        allowScrollReuse: false,
+        preferRawPeaksOnly: false
+      })
     } else {
       holdPreviousWaveformFrame = false
       const shouldSuppressNextPlaybackScrollReuse = playbackStreamReuse && !wasDisplayReady
@@ -777,12 +770,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       return
     }
 
-    // 如果当前整块画面还处于"未就绪"状态（例如 seek 后被 hold 清空、等 stream 补数据），
-    // 不能走 dirty 增量路径——那只会在隐藏的 DOM 层下偷偷在 canvas 上画零碎波形，而
-    // displayReady 永远没机会被拉回 true，grid / cue / hotcue / playhead 一直处于 v-if=false
-    // / v-show=false 状态，表现为"波形停在意外位置、cue/grid 都没有、拖动等交互看起来也无响应"。
-    // 这里强制 fallback 到整帧 scheduleDraw，让 drawWaveform 根据最新 rawData 判定是否
-    // 可以进入 stream-live / stream-fallback / tile-cache 分支并把 displayReady 恢复为 true。
+    // 如果高清波形层还没就绪，不能走 dirty 增量路径；让整帧逻辑决定是显示局部高清，
+    // 还是先保持波形层黑屏并继续推进 overlay。
     if (!displayReady.value) {
       scheduleDraw()
       return
@@ -800,7 +789,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       rangeStartSec: renderStartSec,
       rangeDurationSec: visibleDuration,
       rawData: options.rawData.value,
-      maxSamplesPerPixel: DRAG_RAW_MAX_SAMPLES_PER_PIXEL,
+      maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
       allowScrollReuse: true,
       preferRawPeaksOnly: false,
       dirtyStartSec,
@@ -811,9 +800,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const scheduleRawStreamDirtyDraw = (dirtyStartSec: number, dirtyEndSec: number) => {
     if (options.playing.value) {
-      if (!displayReady.value) {
-        scheduleDraw()
-      }
+      scheduleDraw()
       return
     }
     const safeStartSec = Math.max(0, Math.min(dirtyStartSec, dirtyEndSec))

@@ -426,7 +426,7 @@ const buildFrameState = (
   showDetailHighlights: request.showDetailHighlights,
   showCenterLine: request.showCenterLine,
   showBackground: request.showBackground,
-  showBeatGrid: request.showBeatGrid,
+  showBeatGrid: false,
   waveformLayout: request.waveformLayout,
   preferRawPeaksOnly: request.preferRawPeaksOnly,
   themeVariant: request.themeVariant
@@ -561,14 +561,18 @@ const canReuseDirtySegment = (current: FrameState, metrics: CanvasMetrics) => {
   )
 }
 
-const clearCanvasPixels = () => {
-  pendingRender = null
-  stopPlaybackAnimation()
-  resetFrameState()
+const clearWaveformPixels = () => {
   if (canvas && ctx) {
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
   }
+  resetFrameState()
+}
+
+const clearCanvasPixels = () => {
+  pendingRender = null
+  stopPlaybackAnimation()
+  clearWaveformPixels()
   overlayRenderer.clear()
 }
 
@@ -700,7 +704,6 @@ const renderFullFrame = (
 
   if (!reused) {
     lastWaveformRenderMode = 'failed'
-    ctx.clearRect(0, 0, metrics.cssWidth, metrics.cssHeight)
     resetFrameState()
     return false
   }
@@ -766,6 +769,12 @@ const renderDirtyRange = (
   return rendered
 }
 
+const renderTimelineFallback = () => {
+  if (!ctx) return
+  clearWaveformPixels()
+  lastWaveformRenderMode = 'timeline-only'
+}
+
 const processRender = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
   notifyMain = true
@@ -781,13 +790,17 @@ const processRender = (
       ? renderDirtyRange(request, metrics, renderState as FrameState)
       : renderFullFrame(request, metrics, renderState as FrameState))
 
-  if (!ready) {
-    clearCanvasPixels()
-  } else if (
+  if (metrics && renderState && !ready) {
+    renderTimelineFallback()
+  }
+
+  if (
+    metrics &&
+    renderState &&
     !overlayRenderer.render(
       request,
-      renderState?.rangeStartSec ?? request.rangeStartSec,
-      renderState?.rangeDurationSec ?? request.rangeDurationSec,
+      renderState.rangeStartSec,
+      renderState.rangeDurationSec,
       lastWaveformScrollShiftScaledPx
     )
   ) {
@@ -889,7 +902,6 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
 const processRenderRequest = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
   const shouldAnimatePlayback =
     request.playbackActive === true &&
-    request.rawSlot !== null &&
     typeof request.dirtyStartSec !== 'number' &&
     typeof request.dirtyEndSec !== 'number'
 
