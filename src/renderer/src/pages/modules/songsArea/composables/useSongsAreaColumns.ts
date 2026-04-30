@@ -32,7 +32,12 @@ export const buildSongsAreaBaseColumns = (
   const showBeatThisDebugColumn =
     !isMixtape && (process.env.NODE_ENV === 'development' || isRcVersion(String(pkg.version || '')))
   const columns: Omit<ISongsAreaColumn, 'width'>[] = [
-    { columnName: isMixtape ? 'columns.mixOrder' : 'columns.index', key: 'index', show: true }
+    {
+      columnName: isMixtape ? 'columns.mixOrder' : 'columns.index',
+      key: 'index',
+      show: true,
+      order: mode === 'default' ? 'asc' : undefined
+    }
   ]
   if (isRecycleBin) {
     columns.push({
@@ -55,8 +60,7 @@ export const buildSongsAreaBaseColumns = (
       columnName: 'columns.artist',
       key: 'artist',
       show: true,
-      filterType: isMixtape ? undefined : 'text',
-      order: isRecycleBin || isMixtape ? undefined : 'asc'
+      filterType: isMixtape ? undefined : 'text'
     }
   )
   if (isRecycleBin) {
@@ -253,9 +257,9 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
           }
         }
       } else {
-        const durationColIndex = finalColumns.findIndex((col) => col.key === 'duration')
-        if (durationColIndex !== -1) {
-          finalColumns[durationColIndex] = { ...finalColumns[durationColIndex], order: 'asc' }
+        const indexColIndex = finalColumns.findIndex((col) => col.key === 'index')
+        if (indexColIndex !== -1) {
+          finalColumns[indexColIndex] = { ...finalColumns[indexColIndex], order: 'asc' }
         } else {
           const titleColIndex = finalColumns.findIndex((col) => col.key === 'title')
           if (titleColIndex !== -1) {
