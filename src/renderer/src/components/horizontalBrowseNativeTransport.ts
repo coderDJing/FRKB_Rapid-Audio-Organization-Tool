@@ -38,6 +38,7 @@ export const createHorizontalBrowseNativeTransport = () => {
   const lastDeckTraceSignature = new Map<HorizontalBrowseDeckKey, string>()
   const snapshotListeners = new Set<SnapshotListener>()
   let snapshotEventBound = false
+  let lastAppliedSnapshotSequence = 0
 
   const invoke = async (channel: string, ...args: unknown[]) =>
     (await window.electron.ipcRenderer.invoke(
@@ -58,6 +59,21 @@ export const createHorizontalBrowseNativeTransport = () => {
     notifyListeners = true
   ) => {
     if (!snapshot) return
+    const snapshotSequence = Number(snapshot.snapshotSequence)
+    if (
+      Number.isFinite(snapshotSequence) &&
+      snapshotSequence > 0 &&
+      lastAppliedSnapshotSequence > 0 &&
+      snapshotSequence < lastAppliedSnapshotSequence
+    ) {
+      return
+    }
+    if (Number.isFinite(snapshotSequence) && snapshotSequence > lastAppliedSnapshotSequence) {
+      lastAppliedSnapshotSequence = snapshotSequence
+    }
+    state.capturedAtEpochMs = snapshot.capturedAtEpochMs
+    state.snapshotSequence = snapshot.snapshotSequence
+    state.stateRevision = snapshot.stateRevision
     state.leaderDeck = snapshot.leaderDeck
     state.top = { ...snapshot.top }
     state.bottom = { ...snapshot.bottom }
@@ -197,6 +213,17 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
+  const alignToLeader = async (deck: HorizontalBrowseDeckKey, targetSec?: number) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:align-to-leader',
+      deck,
+      performance.now(),
+      Number.isFinite(Number(targetSec)) ? Math.max(0, Number(targetSec)) : undefined
+    )
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
   const setSyncEnabled = async (deck: HorizontalBrowseDeckKey, enabled: boolean) => {
     const snapshot = await invoke(
       'horizontal-browse-transport:set-sync-enabled',
@@ -321,7 +348,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     const finishTiming = startHorizontalBrowseUserTiming('frkb:hb:native:snapshot')
     const next = await invoke('horizontal-browse-transport:snapshot', nowMs)
     finishTiming()
-    applySnapshot(next)
+    applySnapshot(next, false)
     return next
   }
 
@@ -346,6 +373,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     setState,
     setBeatGrid,
     beatsync,
+    alignToLeader,
     setSyncEnabled,
     setLeader,
     setPlaying,

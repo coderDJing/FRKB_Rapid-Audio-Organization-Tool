@@ -17,8 +17,8 @@ mod horizontal_browse_transport_runtime;
 mod horizontal_browse_transport_types;
 pub use horizontal_browse_transport_napi::*;
 use horizontal_browse_transport_runtime::{
-  engine, ensure_prefetch_worker, execute_decode_request_sync, performance_now_ms,
-  schedule_decode_request,
+  engine, ensure_prefetch_worker, execute_decode_request_sync, native_now_ms,
+  next_snapshot_sequence, schedule_decode_request,
 };
 use horizontal_browse_transport_types::{
   parse_deck_id, BeatGridSnapshot, DeckDerivedState, DeckId, DecodeRequest,
@@ -176,6 +176,8 @@ struct HorizontalBrowseTransportEngine {
   top: DeckState,
   bottom: DeckState,
   last_now_ms: f64,
+  last_native_now_ms: f64,
+  state_revision: u64,
   output_sample_rate: u32,
   output_channels: u16,
   leader: Option<DeckId>,
@@ -201,6 +203,8 @@ impl Default for HorizontalBrowseTransportEngine {
       top: DeckState::default(),
       bottom: DeckState::default(),
       last_now_ms: 0.0,
+      last_native_now_ms: 0.0,
+      state_revision: 0,
       output_sample_rate: 44100,
       output_channels: 2,
       leader: None,
@@ -221,11 +225,36 @@ impl Default for HorizontalBrowseTransportEngine {
 }
 
 impl HorizontalBrowseTransportEngine {
+  fn mark_state_changed(&mut self) {
+    self.state_revision = self.state_revision.wrapping_add(1);
+    if self.state_revision == 0 {
+      self.state_revision = 1;
+    }
+  }
+
+  fn observe_external_now_ms(&mut self, now_ms: f64) {
+    if !now_ms.is_finite() || now_ms < 0.0 {
+      return;
+    }
+    self.last_now_ms = now_ms;
+    self.last_native_now_ms = native_now_ms();
+  }
+
+  fn current_external_now_ms(&self) -> f64 {
+    if self.last_native_now_ms <= 0.0 {
+      return self.last_now_ms;
+    }
+    self.last_now_ms + (native_now_ms() - self.last_native_now_ms).max(0.0)
+  }
+
   fn resolve_bootstrap_segment_start_sec(&self, deck: DeckId) -> f64 {
     let deck_state = self.deck(deck);
     Self::timeline_sec_to_audio_sec(
       deck_state,
-      deck_state.current_sec.max(0.0).min(deck_state.duration_sec.max(0.0)),
+      deck_state
+        .current_sec
+        .max(0.0)
+        .min(deck_state.duration_sec.max(0.0)),
     )
   }
 
@@ -251,6 +280,25 @@ impl HorizontalBrowseTransportEngine {
       && safe_target_sec < self.resolve_loaded_segment_end_sec(deck) - 0.0001
   }
 
+  fn is_playing_audible_at(&self, deck: DeckId, now_ms: f64) -> bool {
+    let deck_state = self.deck(deck);
+    if !deck_state.playing {
+      return false;
+    }
+    let current_sec = Self::estimate_current_sec(deck_state, now_ms);
+    self.has_loaded_segment_covering(deck, current_sec)
+  }
+
+  fn is_sync_ready(&self, deck: DeckId, now_ms: f64) -> bool {
+    if !self.is_loaded(deck) {
+      return false;
+    }
+    if !self.deck(deck).playing {
+      return true;
+    }
+    self.is_playing_audible_at(deck, now_ms)
+  }
+
   fn has_pending_decode_for_current_file(&self, deck: DeckId) -> bool {
     let deck_state = self.deck(deck);
     let file_path = deck_state
@@ -274,22 +322,23 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn auto_select_leader_from_playback(&mut self) {
-    let top_playing = self.deck(DeckId::Top).playing;
-    let bottom_playing = self.deck(DeckId::Bottom).playing;
-    match (top_playing, bottom_playing) {
+    let now_ms = self.last_now_ms;
+    let top_audible = self.is_playing_audible_at(DeckId::Top, now_ms);
+    let bottom_audible = self.is_playing_audible_at(DeckId::Bottom, now_ms);
+    match (top_audible, bottom_audible) {
       (true, false) => {
-        if self.leader.is_none() || !self.deck(self.leader.unwrap()).playing {
+        if self.leader.is_none() || !self.is_playing_audible_at(self.leader.unwrap(), now_ms) {
           self.leader = Some(DeckId::Top);
         }
       }
       (false, true) => {
-        if self.leader.is_none() || !self.deck(self.leader.unwrap()).playing {
+        if self.leader.is_none() || !self.is_playing_audible_at(self.leader.unwrap(), now_ms) {
           self.leader = Some(DeckId::Bottom);
         }
       }
       _ => {
         if let Some(leader) = self.leader {
-          if !self.is_loaded(leader) {
+          if !self.is_sync_ready(leader, now_ms) {
             self.leader = None;
           }
         }
@@ -314,6 +363,7 @@ impl HorizontalBrowseTransportEngine {
       target.sample_rate = 0;
       target.channels = 0;
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
+      self.mark_state_changed();
       return None;
     }
     if self.has_loaded_segment_covering(deck, self.resolve_bootstrap_segment_start_sec(deck)) {
@@ -332,6 +382,7 @@ impl HorizontalBrowseTransportEngine {
     target.sample_rate = 0;
     target.channels = 0;
     horizontal_browse_transport_audio::reset_master_tempo_state(target);
+    self.mark_state_changed();
     Some(DecodeRequest {
       deck,
       file_path,
@@ -367,11 +418,13 @@ impl HorizontalBrowseTransportEngine {
     let audio_target_sec = Self::timeline_sec_to_audio_sec(self.deck(deck), clamped_target_sec);
     let target = self.deck_mut(deck);
     target.decode_request_id = target.decode_request_id.wrapping_add(1);
+    let request_id = target.decode_request_id;
     target.pending_decode_file_path = Some(file_path.clone());
+    self.mark_state_changed();
     Some(DecodeRequest {
       deck,
       file_path,
-      request_id: target.decode_request_id,
+      request_id,
       start_sec: audio_target_sec,
       max_duration_sec: Some(max_duration_sec),
       is_full_decode: false,
@@ -415,8 +468,8 @@ impl HorizontalBrowseTransportEngine {
     let next_start_audio_sec = (loaded_end_sec - HORIZONTAL_BROWSE_SEGMENT_PREFETCH_OVERLAP_SEC)
       .max(current_audio_sec)
       .min(Self::timeline_sec_to_audio_sec(deck_state, duration_sec));
-    let next_start_sec = Self::audio_sec_to_timeline_sec(deck_state, next_start_audio_sec)
-      .min(duration_sec);
+    let next_start_sec =
+      Self::audio_sec_to_timeline_sec(deck_state, next_start_audio_sec).min(duration_sec);
     self.prepare_segment_decode_request(
       deck,
       next_start_sec,
@@ -494,6 +547,7 @@ impl HorizontalBrowseTransportEngine {
     if should_reset_master_tempo {
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
     }
+    self.mark_state_changed();
     true
   }
 
@@ -514,6 +568,7 @@ impl HorizontalBrowseTransportEngine {
     } else {
       target.pending_decode_file_path = None;
     }
+    self.mark_state_changed();
   }
 
   fn ensure_output_stream(&mut self) -> napi::Result<()> {

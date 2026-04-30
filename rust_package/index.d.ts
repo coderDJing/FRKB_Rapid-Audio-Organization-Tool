@@ -9,6 +9,7 @@ export declare function horizontalBrowseTransportSetState(payload: HorizontalBro
 export declare function horizontalBrowseTransportSetBeatGrid(deck: string, nowMs: number | undefined | null, payload: HorizontalBrowseTransportBeatGridInput): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetSyncEnabled(deck: string, nowMs: number | undefined | null, enabled: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportBeatsync(deck: string, nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportAlignToLeader(deck: string, nowMs?: number | undefined | null, targetSec?: number | undefined | null): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetLeader(deck?: string | undefined | null, nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetPlaying(deck: string, nowMs: number, playing: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSeek(deck: string, nowMs: number, currentSec: number): HorizontalBrowseTransportSnapshot
@@ -52,6 +53,9 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   label: string
   loaded: boolean
   decoding: boolean
+  playRequested: boolean
+  playingAudible: boolean
+  playheadLoaded: boolean
   playing: boolean
   currentSec: number
   durationSec: number
@@ -76,6 +80,8 @@ export interface HorizontalBrowseTransportOutputSnapshot {
   bottomDeckGain: number
 }
 export interface HorizontalBrowseTransportSnapshot {
+  snapshotSequence: number
+  stateRevision: number
   leaderDeck?: string
   top: HorizontalBrowseTransportDeckSnapshot
   bottom: HorizontalBrowseTransportDeckSnapshot

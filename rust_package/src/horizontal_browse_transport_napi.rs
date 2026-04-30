@@ -14,7 +14,7 @@ pub fn horizontal_browse_transport_set_deck_state(
   let deck_id = parse_deck_id(&deck)?;
   let deck_playing = payload.playing;
   let mut engine_guard = engine().lock();
-  engine_guard.last_now_ms = now_ms.unwrap_or(payload.last_observed_at_ms);
+  engine_guard.observe_external_now_ms(now_ms.unwrap_or(payload.last_observed_at_ms));
   {
     let target = engine_guard.deck_mut(deck_id);
     target.file_path = payload.file_path;
@@ -35,6 +35,7 @@ pub fn horizontal_browse_transport_set_deck_state(
     target.metronome_state.next_beat_index = None;
     horizontal_browse_transport_audio::reset_master_tempo_state(target);
   }
+  engine_guard.mark_state_changed();
   let decode_request = engine_guard.prepare_decode_request(deck_id);
   ensure_prefetch_worker();
   let _ = engine_guard.ensure_output_stream();
@@ -64,7 +65,7 @@ pub fn horizontal_browse_transport_set_state(
       .max(payload.bottom.last_observed_at_ms),
   );
   let mut engine_guard = engine().lock();
-  engine_guard.last_now_ms = now_ms;
+  engine_guard.observe_external_now_ms(now_ms);
   {
     let top = engine_guard.deck_mut(DeckId::Top);
     top.file_path = payload.top.file_path;
@@ -107,6 +108,7 @@ pub fn horizontal_browse_transport_set_state(
     bottom.metronome_state.next_beat_index = None;
     horizontal_browse_transport_audio::reset_master_tempo_state(bottom);
   }
+  engine_guard.mark_state_changed();
   let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
   let bottom_decode_request = engine_guard.prepare_decode_request(DeckId::Bottom);
   ensure_prefetch_worker();
@@ -140,7 +142,7 @@ pub fn horizontal_browse_transport_set_beat_grid(
   let deck_id = parse_deck_id(&deck)?;
   let mut engine_guard = engine().lock();
   if let Some(next_now_ms) = now_ms.filter(|value| value.is_finite() && *value >= 0.0) {
-    engine_guard.last_now_ms = next_now_ms;
+    engine_guard.observe_external_now_ms(next_now_ms);
   }
 
   if let Some(expected_file_path) = payload.file_path.as_deref().map(str::trim) {
@@ -192,7 +194,9 @@ pub fn horizontal_browse_transport_set_sync_enabled(
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
   let mut engine = engine().lock();
-  engine.last_now_ms = now_ms.unwrap_or(engine.last_now_ms);
+  if let Some(next_now_ms) = now_ms {
+    engine.observe_external_now_ms(next_now_ms);
+  }
   engine.set_sync_enabled(deck_id, enabled);
   Ok(engine.snapshot(engine.last_now_ms))
 }
@@ -204,9 +208,31 @@ pub fn horizontal_browse_transport_beatsync(
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
   let mut engine = engine().lock();
-  engine.last_now_ms = now_ms.unwrap_or(engine.last_now_ms);
+  if let Some(next_now_ms) = now_ms {
+    engine.observe_external_now_ms(next_now_ms);
+  }
   engine.beatsync(deck_id);
   Ok(engine.snapshot(engine.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_align_to_leader(
+  deck: String,
+  now_ms: Option<f64>,
+  target_sec: Option<f64>,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  if let Some(next_now_ms) = now_ms {
+    engine_guard.observe_external_now_ms(next_now_ms);
+  }
+  let decode_request = engine_guard.align_to_leader(deck_id, target_sec);
+  drop(engine_guard);
+  if let Some(request) = decode_request {
+    schedule_decode_request(request);
+  }
+  let engine_guard = engine().lock();
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
 #[napi]
@@ -219,7 +245,9 @@ pub fn horizontal_browse_transport_set_leader(
     None => None,
   };
   let mut engine = engine().lock();
-  engine.last_now_ms = now_ms.unwrap_or(engine.last_now_ms);
+  if let Some(next_now_ms) = now_ms {
+    engine.observe_external_now_ms(next_now_ms);
+  }
   engine.set_leader(next_leader);
   Ok(engine.snapshot(engine.last_now_ms))
 }
@@ -232,6 +260,7 @@ pub fn horizontal_browse_transport_set_playing(
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
   let mut engine_guard = engine().lock();
+  engine_guard.observe_external_now_ms(now_ms);
   ensure_prefetch_worker();
   let _ = engine_guard.ensure_output_stream();
   let decode_request = engine_guard.set_playing(deck_id, now_ms, playing);
@@ -251,10 +280,11 @@ pub fn horizontal_browse_transport_seek(
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
   let mut engine_guard = engine().lock();
+  engine_guard.observe_external_now_ms(now_ms);
   let decode_request = engine_guard.seek(deck_id, now_ms, current_sec);
   drop(engine_guard);
   if let Some(request) = decode_request {
-    execute_decode_request_sync(request);
+    schedule_decode_request(request);
   }
   let engine_guard = engine().lock();
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
@@ -279,6 +309,7 @@ pub fn horizontal_browse_transport_toggle_loop(
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
   let mut engine_guard = engine().lock();
+  engine_guard.observe_external_now_ms(now_ms);
   engine_guard.toggle_loop(deck_id, now_ms);
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
@@ -291,6 +322,7 @@ pub fn horizontal_browse_transport_step_loop_beats(
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
   let mut engine_guard = engine().lock();
+  engine_guard.observe_external_now_ms(now_ms);
   engine_guard.step_loop_beats_command(deck_id, direction.signum(), now_ms);
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
@@ -324,6 +356,7 @@ pub fn horizontal_browse_transport_set_gain(
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
   let mut engine = engine().lock();
+  engine.mark_state_changed();
   engine.trim_gain[HorizontalBrowseTransportEngine::deck_index(deck_id)] =
     HorizontalBrowseTransportEngine::clamp_unit_gain(gain);
   engine.refresh_output_gains();
@@ -345,7 +378,10 @@ pub fn horizontal_browse_transport_snapshot(
   now_ms: Option<f64>,
 ) -> HorizontalBrowseTransportSnapshot {
   let engine = engine().lock();
-  engine.snapshot(now_ms.unwrap_or_else(performance_now_ms))
+  let snapshot_now_ms = now_ms
+    .filter(|value| value.is_finite() && *value >= 0.0)
+    .unwrap_or_else(|| engine.current_external_now_ms());
+  engine.snapshot(snapshot_now_ms)
 }
 
 #[napi]

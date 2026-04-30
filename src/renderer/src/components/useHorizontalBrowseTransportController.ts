@@ -3,10 +3,24 @@ import { createHorizontalBrowseNativeTransport } from '@renderer/components/hori
 import { useHorizontalBrowseRenderSync } from '@renderer/components/useHorizontalBrowseRenderSync'
 import type {
   HorizontalBrowseDeckKey,
+  HorizontalBrowseTransportSnapshot,
   HorizontalBrowseTransportDeckSnapshot
 } from '@shared/horizontalBrowseTransport'
 
 type DeckKey = HorizontalBrowseDeckKey
+const MAX_SNAPSHOT_EVENT_AGE_MS = 10000
+
+const resolveSnapshotAtMs = (snapshot: HorizontalBrowseTransportSnapshot, receivedAtMs: number) => {
+  const capturedAtEpochMs = Number(snapshot.capturedAtEpochMs)
+  if (!Number.isFinite(capturedAtEpochMs) || capturedAtEpochMs <= 0) {
+    return receivedAtMs
+  }
+  const ageMs = Date.now() - capturedAtEpochMs
+  if (!Number.isFinite(ageMs) || ageMs < 0) {
+    return receivedAtMs
+  }
+  return Math.max(0, receivedAtMs - Math.min(ageMs, MAX_SNAPSHOT_EVENT_AGE_MS))
+}
 
 export const useHorizontalBrowseTransportController = () => {
   const nativeTransport = createHorizontalBrowseNativeTransport()
@@ -63,10 +77,13 @@ export const useHorizontalBrowseTransportController = () => {
 
   const startSnapshotSync = () => {
     if (stopSnapshotSubscription) return
-    stopSnapshotSubscription = nativeTransport.subscribeSnapshot(() => {
+    stopSnapshotSubscription = nativeTransport.subscribeSnapshot((snapshot) => {
       const nowMs = performance.now()
       markTransportStateFresh(nowMs)
-      syncDeckRenderState(nowMs)
+      syncDeckRenderState({
+        nowMs,
+        snapshotAtMs: resolveSnapshotAtMs(snapshot, nowMs)
+      })
     })
   }
 

@@ -32,6 +32,7 @@ import {
 } from '@renderer/components/horizontalBrowseWaveformTrace'
 import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/components/horizontalBrowseInteractionTimeline'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
+import { sendHorizontalBrowseDragSyncDiagnostics } from '@renderer/components/horizontalBrowseDragDiagnostics'
 
 type HorizontalBrowseRawWaveformDetailExpose = {
   toggleBarLinePicking: () => void
@@ -132,6 +133,11 @@ let persistTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
 let loadStartedAt = 0
 let pendingLocalGridSignature = ''
+let dragStartedAt = 0,
+  dragMoveCount = 0,
+  dragMaxMoveGapMs = 0
+let dragLastMoveAt = 0,
+  dragLastClientX = 0
 let lastPlaybackPositionSample: {
   songKey: string
   seconds: number
@@ -371,6 +377,18 @@ const schedulePersistGridDefinition = () => {
 const stopDragging = (commitPlayhead = false) => {
   if (!dragging.value) return
   const finalAnchorSec = resolvePreviewAnchorSec()
+  const deck = props.direction === 'up' ? 'top' : 'bottom'
+  sendHorizontalBrowseDragSyncDiagnostics('detail-drag-end', {
+    deck,
+    committed: commitPlayhead && Boolean(props.song),
+    anchorSec: finalAnchorSec,
+    previewStartSec: previewStartSec.value,
+    visibleDurationSec: resolveVisibleDurationSec(),
+    elapsedMs: dragStartedAt > 0 ? performance.now() - dragStartedAt : 0,
+    moveCount: dragMoveCount,
+    maxMoveGapMs: dragMaxMoveGapMs,
+    deltaClientX: dragLastClientX - dragStartClientX
+  })
   dragging.value = false
   window.removeEventListener('mousemove', handleDragMove)
   window.removeEventListener('mouseup', handleWindowMouseUp)
@@ -380,10 +398,18 @@ const stopDragging = (commitPlayhead = false) => {
   })
 }
 
-const handleWindowMouseUp = () => stopDragging(true)
+const handleWindowMouseUp = (event: MouseEvent) => {
+  handleDragMove(event)
+  stopDragging(true)
+}
 
 function handleDragMove(event: MouseEvent) {
   if (!dragging.value) return
+  const nowMs = performance.now()
+  if (dragLastMoveAt > 0) dragMaxMoveGapMs = Math.max(dragMaxMoveGapMs, nowMs - dragLastMoveAt)
+  dragLastMoveAt = nowMs
+  dragMoveCount += 1
+  dragLastClientX = event.clientX
   const wrap = wrapRef.value
   if (!wrap) return
   const visibleDuration = resolveVisibleDurationSec()
@@ -406,6 +432,17 @@ const handleMouseDown = (event: MouseEvent) => {
   dragging.value = true
   dragStartClientX = event.clientX
   dragStartSec = previewStartSec.value
+  dragStartedAt = performance.now()
+  dragMoveCount = 0
+  dragMaxMoveGapMs = 0
+  dragLastMoveAt = dragStartedAt
+  dragLastClientX = event.clientX
+  sendHorizontalBrowseDragSyncDiagnostics('detail-drag-start', {
+    deck: props.direction === 'up' ? 'top' : 'bottom',
+    previewStartSec: previewStartSec.value,
+    anchorSec: resolvePreviewAnchorSec(),
+    visibleDurationSec: resolveVisibleDurationSec()
+  })
   emit('drag-session-start')
   window.addEventListener('mousemove', handleDragMove, { passive: false })
   window.addEventListener('mouseup', handleWindowMouseUp, { passive: true })

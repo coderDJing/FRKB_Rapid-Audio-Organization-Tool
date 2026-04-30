@@ -1,5 +1,6 @@
 use super::*;
 use parking_lot::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 fn finish_decode_request(request: DecodeRequest, decoded: Option<(Vec<f32>, u32, u16)>) {
@@ -118,6 +119,8 @@ pub(super) fn execute_decode_request_sync(request: DecodeRequest) {
 static HORIZONTAL_BROWSE_TRANSPORT: OnceLock<Mutex<HorizontalBrowseTransportEngine>> =
   OnceLock::new();
 static PREFETCH_THREAD_STARTED: OnceLock<()> = OnceLock::new();
+static NATIVE_CLOCK_STARTED_AT: OnceLock<std::time::Instant> = OnceLock::new();
+static SNAPSHOT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 pub(super) fn engine() -> &'static Mutex<HorizontalBrowseTransportEngine> {
   HORIZONTAL_BROWSE_TRANSPORT.get_or_init(|| Mutex::new(HorizontalBrowseTransportEngine::default()))
@@ -146,16 +149,14 @@ pub(super) fn ensure_prefetch_worker() {
   });
 }
 
-pub(super) fn performance_now_ms() -> f64 {
-  #[cfg(target_arch = "wasm32")]
-  {
-    0.0
-  }
-  #[cfg(not(target_arch = "wasm32"))]
-  {
-    let now = std::time::SystemTime::now()
-      .duration_since(std::time::UNIX_EPOCH)
-      .unwrap_or_default();
-    now.as_secs_f64() * 1000.0
-  }
+pub(super) fn native_now_ms() -> f64 {
+  NATIVE_CLOCK_STARTED_AT
+    .get_or_init(std::time::Instant::now)
+    .elapsed()
+    .as_secs_f64()
+    * 1000.0
+}
+
+pub(super) fn next_snapshot_sequence() -> f64 {
+  SNAPSHOT_SEQUENCE.fetch_add(1, Ordering::Relaxed) as f64 + 1.0
 }
