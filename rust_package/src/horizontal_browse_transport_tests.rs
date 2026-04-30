@@ -308,7 +308,7 @@ fn snapshot_sequence_advances_without_state_revision_change() {
 }
 
 #[test]
-fn set_playing_reuses_pending_decode_for_current_file() {
+fn set_playing_keeps_pending_startup_decode() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   {
     let top = engine.deck_mut(DeckId::Top);
@@ -320,15 +320,45 @@ fn set_playing_reuses_pending_decode_for_current_file() {
     top.decode_request_id = 7;
   }
 
-  let request = engine.set_playing(DeckId::Top, 1200.0, true);
+  engine.set_playing(DeckId::Top, 1200.0, true);
 
-  assert!(request.is_none());
   assert!(engine.deck(DeckId::Top).playing);
   assert_eq!(
     engine.deck(DeckId::Top).pending_decode_file_path.as_deref(),
     Some("pending.mp3")
   );
   assert_eq!(engine.deck(DeckId::Top).decode_request_id, 7);
+}
+
+#[test]
+fn set_playing_does_not_start_seek_segment_while_full_decode_is_pending() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("pending-full.mp3".to_string());
+    top.pending_full_decode_file_path = Some("pending-full.mp3".to_string());
+    top.duration_sec = 60.0;
+    top.current_sec = 12.0;
+    top.last_observed_at_ms = 1000.0;
+    top.decode_request_id = 7;
+    top.full_decode_request_id = 3;
+  }
+
+  engine.set_playing(DeckId::Top, 1200.0, true);
+
+  assert!(engine.deck(DeckId::Top).playing);
+  assert_eq!(engine.deck(DeckId::Top).decode_request_id, 7);
+  assert_eq!(
+    engine.deck(DeckId::Top).pending_decode_file_path.as_deref(),
+    None
+  );
+  assert_eq!(
+    engine
+      .deck(DeckId::Top)
+      .pending_full_decode_file_path
+      .as_deref(),
+    Some("pending-full.mp3")
+  );
 }
 
 #[test]
@@ -489,91 +519,122 @@ fn bpm_multiplier_picks_closest_half_double() {
 }
 
 #[test]
-fn apply_decoded_audio_merges_overlapping_partial_segment() {
+fn full_decode_marks_snapshot_ready_and_invalidates_pending_segment_result() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   {
     let top = engine.deck_mut(DeckId::Top);
-    top.file_path = Some("merge.mp3".to_string());
-    top.loaded_file_path = Some("merge.mp3".to_string());
-    top.decode_request_id = 1;
-    top.current_sec = 1.5;
+    top.file_path = Some("full.mp3".to_string());
+    top.loaded_file_path = Some("full.mp3".to_string());
+    top.pending_decode_file_path = Some("full.mp3".to_string());
+    top.pending_full_decode_file_path = Some("full.mp3".to_string());
+    top.decode_request_id = 4;
+    top.full_decode_request_id = 9;
+    top.duration_sec = 10.0;
+    top.current_sec = 6.0;
     top.pcm_start_sec = 0.0;
     top.sample_rate = 4;
     top.channels = 1;
-    top.pcm_data = Arc::new((0..16).map(|value| value as f32).collect::<Vec<f32>>());
+    top.pcm_data = Arc::new(vec![0.0; 12]);
   }
 
-  let next_segment = (100..116).map(|value| value as f32).collect::<Vec<f32>>();
-  let baseline = engine
-    .capture_decode_merge_baseline(DeckId::Top, "merge.mp3", 1, false)
+  let segment_baseline = engine
+    .capture_decode_apply_baseline(DeckId::Top, "full.mp3", 4, false)
     .unwrap();
-  let prepared = prepare_decoded_audio(Some(baseline), next_segment, 4, 1, 2.0, false);
-  assert!(engine.apply_prepared_decoded_audio(DeckId::Top, "merge.mp3", 1, prepared, false));
+  let full_prepared = prepare_decoded_audio(None, vec![1.0; 40], 4, 1, 0.0, true);
+  assert!(engine.apply_prepared_decoded_audio(DeckId::Top, "full.mp3", 9, full_prepared, true));
 
-  let top = engine.deck(DeckId::Top);
-  assert_eq!(top.pcm_start_sec, 0.0);
-  assert_eq!(top.pcm_data.len(), 24);
+  let stale_segment = prepare_decoded_audio(Some(segment_baseline), vec![2.0; 8], 4, 1, 6.0, false);
+  assert!(!engine.apply_prepared_decoded_audio(DeckId::Top, "full.mp3", 4, stale_segment, false));
+
+  let snapshot = engine.snapshot(1000.0);
+  assert!(snapshot.top.loaded);
+  assert!(snapshot.top.fully_decoded);
+  assert!(snapshot.top.playhead_loaded);
+  assert!(!snapshot.top.decoding);
   assert_eq!(
-    top.pcm_data[..16],
-    [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,]
+    engine.deck(DeckId::Top).fully_decoded_file_path.as_deref(),
+    Some("full.mp3")
+  );
+  assert_eq!(engine.deck(DeckId::Top).pcm_data.len(), 40);
+}
+
+#[test]
+fn prepare_full_decode_request_waits_until_bootstrap_segment_is_loaded() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("load.mp3".to_string());
+    top.duration_sec = 60.0;
+    top.current_sec = 0.0;
+  }
+
+  let bootstrap = engine.prepare_decode_request(DeckId::Top);
+  let full = engine.prepare_full_decode_request(DeckId::Top);
+
+  assert!(bootstrap.is_some());
+  assert!(full.is_none());
+  let bootstrap = bootstrap.unwrap();
+  assert!(!bootstrap.is_full_decode);
+  assert_eq!(bootstrap.start_sec, 0.0);
+  assert_eq!(
+    bootstrap.max_duration_sec,
+    Some(HORIZONTAL_BROWSE_STARTUP_DECODE_SEC)
   );
   assert_eq!(
-    top.pcm_data[16..],
-    [108.0, 109.0, 110.0, 111.0, 112.0, 113.0, 114.0, 115.0,]
+    engine.deck(DeckId::Top).pending_decode_file_path.as_deref(),
+    Some("load.mp3")
+  );
+  assert_eq!(
+    engine
+      .deck(DeckId::Top)
+      .pending_full_decode_file_path
+      .as_deref(),
+    None
+  );
+
+  let prepared = prepare_decoded_audio(None, vec![0.0; 12], 4, 1, bootstrap.start_sec, false);
+  assert!(engine.apply_prepared_decoded_audio(
+    DeckId::Top,
+    "load.mp3",
+    bootstrap.request_id,
+    prepared,
+    false
+  ));
+
+  let full = engine.prepare_full_decode_request(DeckId::Top);
+  assert!(full.is_some());
+  let full = full.unwrap();
+  assert!(full.is_full_decode);
+  assert_eq!(full.max_duration_sec, None);
+  assert_eq!(
+    engine
+      .deck(DeckId::Top)
+      .pending_full_decode_file_path
+      .as_deref(),
+    Some("load.mp3")
   );
 }
 
 #[test]
-fn apply_decoded_audio_replaces_disjoint_partial_segment() {
+fn seek_outside_startup_block_does_not_request_stream_decode() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   {
     let top = engine.deck_mut(DeckId::Top);
-    top.file_path = Some("seek.mp3".to_string());
-    top.loaded_file_path = Some("seek.mp3".to_string());
-    top.decode_request_id = 2;
-    top.current_sec = 12.0;
-    top.pcm_start_sec = 0.0;
-    top.sample_rate = 4;
-    top.channels = 1;
-    top.pcm_data = Arc::new((0..16).map(|value| value as f32).collect::<Vec<f32>>());
-  }
-
-  let seek_segment = vec![10.0, 11.0, 12.0, 13.0];
-  let baseline = engine
-    .capture_decode_merge_baseline(DeckId::Top, "seek.mp3", 2, false)
-    .unwrap();
-  let prepared = prepare_decoded_audio(Some(baseline), seek_segment, 4, 1, 10.0, false);
-  assert!(engine.apply_prepared_decoded_audio(DeckId::Top, "seek.mp3", 2, prepared, false));
-
-  let top = engine.deck(DeckId::Top);
-  assert_eq!(top.pcm_start_sec, 10.0);
-  assert_eq!(top.pcm_data.as_ref().as_slice(), [10.0, 11.0, 12.0, 13.0]);
-}
-
-#[test]
-fn followup_prefetch_allows_overlap_inside_loaded_segment() {
-  let mut engine = HorizontalBrowseTransportEngine::default();
-  {
-    let top = engine.deck_mut(DeckId::Top);
-    top.file_path = Some("prefetch.mp3".to_string());
-    top.loaded_file_path = Some("prefetch.mp3".to_string());
+    top.file_path = Some("startup.mp3".to_string());
+    top.loaded_file_path = Some("startup.mp3".to_string());
     top.duration_sec = 60.0;
     top.current_sec = 4.2;
     top.playing = true;
     top.sample_rate = 4;
     top.channels = 1;
     top.pcm_start_sec = 0.0;
-    top.pcm_data = Arc::new(vec![0.0; 12 * 4]);
+    top.pcm_data = Arc::new(vec![0.0; HORIZONTAL_BROWSE_STARTUP_DECODE_SEC as usize * 4]);
+    top.decode_request_id = 11;
   }
 
-  let request = engine.maybe_prepare_followup_segment_decode_request(DeckId::Top);
-  assert!(request.is_some());
-  let request = request.unwrap();
-  assert_eq!(request.deck, DeckId::Top);
-  assert_eq!(request.file_path, "prefetch.mp3");
-  assert!((request.start_sec - 8.0).abs() < 0.0001);
-  assert_eq!(
-    request.max_duration_sec,
-    Some(HORIZONTAL_BROWSE_ASYNC_SEGMENT_DECODE_SEC)
-  );
+  engine.seek(DeckId::Top, 1500.0, 42.0);
+
+  assert_eq!(engine.deck(DeckId::Top).current_sec, 42.0);
+  assert_eq!(engine.deck(DeckId::Top).decode_request_id, 11);
+  assert_eq!(engine.deck(DeckId::Top).pending_decode_file_path, None);
 }

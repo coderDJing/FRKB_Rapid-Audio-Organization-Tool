@@ -456,6 +456,7 @@ impl HorizontalBrowseTransportEngine {
     let deck_state = self.deck(deck);
     let derived = self.derive_state(deck, now_ms);
     let playhead_loaded = self.has_loaded_segment_covering(deck, derived.estimated_current_sec);
+    let full_decoding = deck_state.pending_full_decode_file_path.is_some();
     HorizontalBrowseTransportDeckSnapshot {
       deck: deck.as_str().to_string(),
       label: deck_state
@@ -471,8 +472,9 @@ impl HorizontalBrowseTransportEngine {
             .unwrap_or_default()
         }),
       loaded: self.is_loaded(deck),
-      decoding: deck_state.pending_decode_file_path.is_some()
-        || deck_state.pending_full_decode_file_path.is_some(),
+      fully_decoded: self.is_fully_decoded(deck),
+      decoding: deck_state.pending_decode_file_path.is_some() || full_decoding,
+      full_decoding,
       play_requested: deck_state.playing,
       playing_audible: derived.playing_audible,
       playhead_loaded,
@@ -694,47 +696,25 @@ impl HorizontalBrowseTransportEngine {
     horizontal_browse_transport_audio::reset_master_tempo_state(target);
   }
 
-  pub(super) fn set_playing(
-    &mut self,
-    deck: DeckId,
-    now_ms: f64,
-    playing: bool,
-  ) -> Option<DecodeRequest> {
+  pub(super) fn set_playing(&mut self, deck: DeckId, now_ms: f64, playing: bool) {
     self.mark_state_changed();
     self.last_now_ms = now_ms;
     self.sync_deck_to_now(deck, now_ms);
     if playing {
       self.sync_loop_before_play(deck);
     }
-    let current_sec = {
+    {
       let target = self.deck_mut(deck);
       target.playing = playing;
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
-      target.current_sec
-    };
-    let decode_request = if playing && !self.has_pending_decode_for_current_file(deck) {
-      self.prepare_segment_decode_request(
-        deck,
-        current_sec,
-        HORIZONTAL_BROWSE_IMMEDIATE_PLAY_SEGMENT_DECODE_SEC,
-        false,
-      )
-    } else {
-      None
-    };
+    }
     self.refresh();
-    decode_request
   }
 
-  pub(super) fn seek(
-    &mut self,
-    deck: DeckId,
-    now_ms: f64,
-    current_sec: f64,
-  ) -> Option<DecodeRequest> {
+  pub(super) fn seek(&mut self, deck: DeckId, now_ms: f64, current_sec: f64) {
     self.mark_state_changed();
     self.last_now_ms = now_ms;
-    let seek_sec = {
+    {
       let target = self.deck_mut(deck);
       target.current_sec = if target.duration_sec.is_finite() && target.duration_sec > 0.0 {
         current_sec.clamp(0.0, target.duration_sec)
@@ -744,16 +724,8 @@ impl HorizontalBrowseTransportEngine {
       target.last_observed_at_ms = now_ms;
       target.metronome_state.next_beat_index = None;
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
-      target.current_sec
-    };
-    let decode_request = self.prepare_segment_decode_request(
-      deck,
-      seek_sec,
-      HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC,
-      false,
-    );
+    }
     self.refresh();
-    decode_request
   }
 
   pub(super) fn set_metronome(&mut self, deck: DeckId, enabled: bool, volume_level: u8) {
@@ -870,21 +842,17 @@ impl HorizontalBrowseTransportEngine {
     self.refresh_sync_state(false);
   }
 
-  pub(super) fn align_to_leader(
-    &mut self,
-    deck: DeckId,
-    target_sec: Option<f64>,
-  ) -> Option<DecodeRequest> {
+  pub(super) fn align_to_leader(&mut self, deck: DeckId, target_sec: Option<f64>) {
     self.mark_state_changed();
     let Some(leader) = self.resolve_leader_candidate(deck) else {
-      return None;
+      return;
     };
     if leader == deck {
       self.leader = Some(deck);
       self.sync_enabled[Self::deck_index(deck)] = true;
       self.set_sync_lock(deck, "full");
       self.refresh_sync_state(false);
-      return None;
+      return;
     }
 
     self.leader = Some(leader);
@@ -898,7 +866,6 @@ impl HorizontalBrowseTransportEngine {
     let leader_effective_bpm = self.effective_bpm_for_deck(leader);
     self.bpm_multiplier[deck_index] = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
 
-    let mut aligned_sec = None;
     if let (Some(target_grid), Some(leader_visual_grid), Some(target_visual_grid)) = (
       self.beat_grid(deck),
       self.original_beat_grid(leader),
@@ -927,17 +894,8 @@ impl HorizontalBrowseTransportEngine {
       target.playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
       target.metronome_state.next_beat_index = None;
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
-      aligned_sec = Some(target.current_sec);
     }
 
     self.refresh_sync_state(false);
-    aligned_sec.and_then(|seek_sec| {
-      self.prepare_segment_decode_request(
-        deck,
-        seek_sec,
-        HORIZONTAL_BROWSE_SYNC_SEGMENT_DECODE_SEC,
-        false,
-      )
-    })
   }
 }

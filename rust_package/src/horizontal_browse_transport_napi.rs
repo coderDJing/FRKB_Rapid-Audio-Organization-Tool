@@ -37,7 +37,7 @@ pub fn horizontal_browse_transport_set_deck_state(
   }
   engine_guard.mark_state_changed();
   let decode_request = engine_guard.prepare_decode_request(deck_id);
-  ensure_prefetch_worker();
+  let full_decode_request = engine_guard.prepare_full_decode_request(deck_id);
   let _ = engine_guard.ensure_output_stream();
   engine_guard.refresh();
   drop(engine_guard);
@@ -47,6 +47,9 @@ pub fn horizontal_browse_transport_set_deck_state(
     } else {
       schedule_decode_request(request);
     }
+  }
+  if let Some(request) = full_decode_request {
+    schedule_decode_request(request);
   }
   let engine_guard = engine().lock();
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
@@ -111,7 +114,8 @@ pub fn horizontal_browse_transport_set_state(
   engine_guard.mark_state_changed();
   let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
   let bottom_decode_request = engine_guard.prepare_decode_request(DeckId::Bottom);
-  ensure_prefetch_worker();
+  let top_full_decode_request = engine_guard.prepare_full_decode_request(DeckId::Top);
+  let bottom_full_decode_request = engine_guard.prepare_full_decode_request(DeckId::Bottom);
   let _ = engine_guard.ensure_output_stream();
   engine_guard.refresh();
   drop(engine_guard);
@@ -128,6 +132,12 @@ pub fn horizontal_browse_transport_set_state(
     } else {
       schedule_decode_request(request);
     }
+  }
+  if let Some(request) = top_full_decode_request {
+    schedule_decode_request(request);
+  }
+  if let Some(request) = bottom_full_decode_request {
+    schedule_decode_request(request);
   }
   let engine_guard = engine().lock();
   engine_guard.snapshot(engine_guard.last_now_ms)
@@ -226,12 +236,7 @@ pub fn horizontal_browse_transport_align_to_leader(
   if let Some(next_now_ms) = now_ms {
     engine_guard.observe_external_now_ms(next_now_ms);
   }
-  let decode_request = engine_guard.align_to_leader(deck_id, target_sec);
-  drop(engine_guard);
-  if let Some(request) = decode_request {
-    schedule_decode_request(request);
-  }
-  let engine_guard = engine().lock();
+  engine_guard.align_to_leader(deck_id, target_sec);
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
@@ -261,14 +266,8 @@ pub fn horizontal_browse_transport_set_playing(
   let deck_id = parse_deck_id(&deck)?;
   let mut engine_guard = engine().lock();
   engine_guard.observe_external_now_ms(now_ms);
-  ensure_prefetch_worker();
   let _ = engine_guard.ensure_output_stream();
-  let decode_request = engine_guard.set_playing(deck_id, now_ms, playing);
-  drop(engine_guard);
-  if let Some(request) = decode_request {
-    schedule_decode_request(request);
-  }
-  let engine_guard = engine().lock();
+  engine_guard.set_playing(deck_id, now_ms, playing);
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
@@ -281,12 +280,7 @@ pub fn horizontal_browse_transport_seek(
   let deck_id = parse_deck_id(&deck)?;
   let mut engine_guard = engine().lock();
   engine_guard.observe_external_now_ms(now_ms);
-  let decode_request = engine_guard.seek(deck_id, now_ms, current_sec);
-  drop(engine_guard);
-  if let Some(request) = decode_request {
-    schedule_decode_request(request);
-  }
-  let engine_guard = engine().lock();
+  engine_guard.seek(deck_id, now_ms, current_sec);
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 

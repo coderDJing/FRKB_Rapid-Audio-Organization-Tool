@@ -3,10 +3,6 @@ import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot
 } from '@renderer/components/horizontalBrowseNativeTransport'
-import {
-  buildHorizontalBrowseDeckDiagnostics,
-  sendHorizontalBrowseDragSyncDiagnostics
-} from '@renderer/components/horizontalBrowseDragDiagnostics'
 
 type DeckKey = HorizontalBrowseDeckKey
 export type HorizontalBrowseRenderSyncTarget = DeckKey | DeckKey[] | 'all'
@@ -80,6 +76,8 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     [
       snapshot.label || '',
       snapshot.loaded ? 1 : 0,
+      snapshot.fullyDecoded ? 1 : 0,
+      snapshot.fullDecoding ? 1 : 0,
       snapshot.decoding ? 1 : 0,
       snapshot.playing ? 1 : 0,
       snapshot.playingAudible ? 1 : 0,
@@ -164,25 +162,6 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
         (snapshot.playing &&
           (!previousSignature || signatureChanged || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)))
 
-    if (force || signatureChanged || driftSec >= 0.08) {
-      sendHorizontalBrowseDragSyncDiagnostics('render-sync-snapshot', {
-        deck,
-        force,
-        signatureChanged,
-        shouldReanchor,
-        shouldSoftCorrect: false,
-        snapshotSec,
-        estimatedSec,
-        renderEstimatedSec,
-        driftSec,
-        snapshotAtMs,
-        renderNowMs,
-        previousBaseSec: deckRenderSyncBaseSec[deck],
-        previousBaseAtMs: deckRenderSyncBaseAtMs[deck],
-        snapshot: buildHorizontalBrowseDeckDiagnostics(snapshot)
-      })
-    }
-
     if (shouldReanchor) {
       deckRenderSyncBaseSec[deck] = snapshotSec
       deckRenderSyncBaseAtMs[deck] = snapshotAtMs
@@ -248,14 +227,6 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       seconds: safeSeconds,
       startedAtMs: nowMs
     }
-    sendHorizontalBrowseDragSyncDiagnostics('render-seek-intent-apply', {
-      deck,
-      seconds: safeSeconds,
-      previousBaseSec: deckRenderSyncBaseSec[deck],
-      previousRenderSec:
-        deck === 'top' ? topDeckRenderCurrentSeconds.value : bottomDeckRenderCurrentSeconds.value,
-      snapshot: buildHorizontalBrowseDeckDiagnostics(params.resolveTransportDeckSnapshot(deck))
-    })
     deckRenderSyncBaseSec[deck] = safeSeconds
     deckRenderSyncBaseAtMs[deck] = nowMs
     bumpDeckPlaybackSyncRevision(deck)

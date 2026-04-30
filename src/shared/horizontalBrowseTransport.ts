@@ -36,7 +36,9 @@ export type HorizontalBrowseTransportDeckSnapshot = {
   deck: string
   label: string
   loaded: boolean
+  fullyDecoded: boolean
   decoding: boolean
+  fullDecoding: boolean
   playRequested: boolean
   playingAudible: boolean
   playheadLoaded: boolean
@@ -91,7 +93,9 @@ export const createEmptyHorizontalBrowseTransportDeckSnapshot = (
   currentSec: 0,
   durationSec: 0,
   loaded: false,
+  fullyDecoded: false,
   decoding: false,
+  fullDecoding: false,
   playbackRate: 1,
   masterTempoEnabled: true,
   bpm: 0,

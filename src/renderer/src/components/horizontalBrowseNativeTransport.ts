@@ -1,7 +1,5 @@
 import { reactive } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
-import { sendHorizontalBrowseWaveformTrace } from '@renderer/components/horizontalBrowseWaveformTrace'
-import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/components/horizontalBrowseInteractionTimeline'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import {
   createEmptyHorizontalBrowseTransportSnapshot,
@@ -35,7 +33,6 @@ export const createHorizontalBrowseNativeTransport = () => {
   const state = reactive<HorizontalBrowseTransportSnapshot>(
     createEmptyHorizontalBrowseTransportSnapshot()
   )
-  const lastDeckTraceSignature = new Map<HorizontalBrowseDeckKey, string>()
   const snapshotListeners = new Set<SnapshotListener>()
   let snapshotEventBound = false
   let lastAppliedSnapshotSequence = 0
@@ -113,14 +110,7 @@ export const createHorizontalBrowseNativeTransport = () => {
 
   const setDeckState = async (deck: HorizontalBrowseDeckKey, payload: LocalDeckState) => {
     const nowMs = performance.now()
-    const startedAt = performance.now()
-    const filePath = String(payload.song?.filePath || '').trim()
     const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:native:set-deck-state:${deck}`)
-    sendHorizontalBrowseWaveformTrace('transport', 'set-deck-state:start', {
-      deck,
-      filePath,
-      sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, filePath)
-    })
     const snapshot = await invoke('horizontal-browse-transport:set-deck-state', deck, nowMs, {
       filePath: payload.song?.filePath || '',
       title: payload.song?.title || payload.song?.fileName || '',
@@ -137,22 +127,6 @@ export const createHorizontalBrowseNativeTransport = () => {
     })
     finishTiming()
     applySnapshot(snapshot)
-    const deckSnapshot = snapshot?.[deck]
-    const signature = `${filePath}|${Boolean(deckSnapshot?.loaded)}|${Boolean(deckSnapshot?.decoding)}`
-    if (lastDeckTraceSignature.get(deck) !== signature) {
-      lastDeckTraceSignature.set(deck, signature)
-      sendHorizontalBrowseWaveformTrace('transport', 'set-deck-state', {
-        deck,
-        filePath,
-        waitedMs: Number((performance.now() - startedAt).toFixed(1)),
-        sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, filePath),
-        loaded: deckSnapshot?.loaded === true,
-        decoding: deckSnapshot?.decoding === true,
-        playing: deckSnapshot?.playing === true,
-        currentSec: Number(deckSnapshot?.currentSec) || 0,
-        durationSec: Number(deckSnapshot?.durationSec) || 0
-      })
-    }
     return snapshot
   }
 

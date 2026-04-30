@@ -110,7 +110,9 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   deck: string
   label: string
   loaded: boolean
+  fullyDecoded: boolean
   decoding: boolean
+  fullDecoding: boolean
   playRequested: boolean
   playingAudible: boolean
   playheadLoaded: boolean

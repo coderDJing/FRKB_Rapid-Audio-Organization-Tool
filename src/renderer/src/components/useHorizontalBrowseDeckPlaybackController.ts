@@ -13,10 +13,6 @@ import type { HorizontalBrowseLoopRange } from '@renderer/components/useHorizont
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import { resolveSongCueTimelineDefinition } from '@shared/songCueTimeBasis'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
-import {
-  buildHorizontalBrowseDeckDiagnostics,
-  sendHorizontalBrowseDragSyncDiagnostics
-} from '@renderer/components/horizontalBrowseDragDiagnostics'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -123,9 +119,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
     })
   }
 
-  const stringifyError = (error: unknown) =>
-    error instanceof Error ? error.stack || error.message : String(error)
-
   const buildDeckBeatDiagnostics = (deck: DeckKey) => {
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const song = params.resolveDeckSong(deck)
@@ -153,23 +146,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
     }
   }
 
-  const traceDeckDragSync = (deck: DeckKey, stage: string, payload?: Record<string, unknown>) => {
-    const otherDeck = deck === 'top' ? 'bottom' : 'top'
-    sendHorizontalBrowseDragSyncDiagnostics(stage, {
-      deck,
-      filePath: String(params.resolveDeckSong(deck)?.filePath || '').trim(),
-      targetSnapshot: buildHorizontalBrowseDeckDiagnostics(
-        params.resolveTransportDeckSnapshot(deck)
-      ),
-      otherSnapshot: buildHorizontalBrowseDeckDiagnostics(
-        params.resolveTransportDeckSnapshot(otherDeck)
-      ),
-      targetBeat: buildDeckBeatDiagnostics(deck),
-      otherBeat: buildDeckBeatDiagnostics(otherDeck),
-      ...payload
-    })
-  }
-
   const resolveCircularPhaseDelta = (leftPhase: number, rightPhase: number) => {
     if (!Number.isFinite(leftPhase) || !Number.isFinite(rightPhase)) return null
     const normalized = (((leftPhase - rightPhase) % 1) + 1) % 1
@@ -188,11 +164,13 @@ export const useHorizontalBrowseDeckPlaybackController = (
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const phaseDelta = resolveSyncedSeekPhaseDelta(deck)
     const phaseReady = phaseDelta === null || phaseDelta <= SYNCED_SEEK_PHASE_EPSILON_BEATS
+    const playheadReady = snapshot.playheadLoaded
     return {
       snapshot,
       phaseDelta,
       phaseReady,
-      ready: snapshot.playheadLoaded && snapshot.syncLock === 'full' && phaseReady
+      playheadReady,
+      ready: playheadReady && snapshot.syncLock === 'full' && phaseReady
     }
   }
 
@@ -213,7 +191,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       ? deckWaveformDragState[deck].token === token
       : deckSeekActionToken[deck] === token
 
-  const waitForSyncedSeekPlayheadLoaded = async (
+  const waitForSyncedSeekPlayheadReady = async (
     deck: DeckKey,
     token: number,
     source: string,
@@ -221,11 +199,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
   ) => {
     const startedAt = performance.now()
     let lastSnapshot = params.resolveTransportDeckSnapshot(deck)
-    if (lastSnapshot.playheadLoaded) return true
-    traceDeckDragSync(deck, 'controller-synced-seek-wait-playhead-loaded-start', {
-      token,
-      source
-    })
+    const isPlayheadReady = () => lastSnapshot.playheadLoaded
+    if (isPlayheadReady()) return true
     while (performance.now() - startedAt < timeoutMs) {
       if (!isSyncedSeekTokenCurrent(deck, token, source)) {
         return false
@@ -233,25 +208,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
       await wait(SYNCED_SEEK_PLAYHEAD_READY_POLL_MS)
       await params.nativeTransport.snapshot(performance.now()).catch(() => undefined)
       lastSnapshot = params.resolveTransportDeckSnapshot(deck)
-      if (lastSnapshot.playheadLoaded) {
-        traceDeckDragSync(deck, 'controller-synced-seek-wait-playhead-loaded-complete', {
-          token,
-          source,
-          elapsedMs: performance.now() - startedAt
-        })
+      if (isPlayheadReady()) {
         return true
       }
     }
-    traceDeckDragSync(deck, 'controller-synced-seek-wait-playhead-loaded-timeout', {
-      token,
-      source,
-      elapsedMs: performance.now() - startedAt,
-      timeoutMs,
-      playheadLoaded: lastSnapshot.playheadLoaded,
-      decoding: lastSnapshot.decoding,
-      currentSec: lastSnapshot.currentSec
-    })
-    return lastSnapshot.playheadLoaded
+    return isPlayheadReady()
   }
 
   const prepareSyncedSeekBeforeResume = async (
@@ -263,12 +224,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
     const startedAt = performance.now()
     let anchorSec = Math.max(0, Number(requestedSec) || 0)
 
-    traceDeckDragSync(deck, 'controller-synced-seek-prepare-start', {
-      token,
-      source,
-      requestedSec: anchorSec
-    })
-
     for (
       let alignmentAttempt = 1;
       alignmentAttempt <= SYNCED_SEEK_PREPARE_MAX_ALIGNMENTS;
@@ -278,53 +233,28 @@ export const useHorizontalBrowseDeckPlaybackController = (
         return null
       }
 
-      const alignStartedAt = performance.now()
-      traceDeckDragSync(deck, 'controller-synced-seek-prepare-align-request', {
-        token,
-        source,
-        alignmentAttempt,
-        anchorSec
-      })
       await params.nativeTransport.alignToLeader(deck, anchorSec)
       params.syncDeckRenderState({ force: 'all' })
 
       let prepareState = resolveSyncedSeekPreparationState(deck)
       let alignedSec = Math.max(0, Number(prepareState.snapshot.currentSec) || 0)
       params.notifyDeckSeekIntent(deck, alignedSec)
-      traceDeckDragSync(deck, 'controller-synced-seek-prepare-align-complete', {
-        token,
-        source,
-        alignmentAttempt,
-        anchorSec,
-        alignedSec,
-        elapsedMs: performance.now() - alignStartedAt,
-        playheadLoaded: prepareState.snapshot.playheadLoaded,
-        decoding: prepareState.snapshot.decoding,
-        syncLock: prepareState.snapshot.syncLock,
-        phaseDelta: prepareState.phaseDelta
-      })
 
       if (!isSyncedSeekTokenCurrent(deck, token, source)) {
         return null
       }
 
-      if (!prepareState.snapshot.playheadLoaded) {
+      if (!prepareState.playheadReady) {
         const remainingTimeoutMs = SYNCED_SEEK_PREPARE_TIMEOUT_MS - (performance.now() - startedAt)
         if (remainingTimeoutMs <= 0) break
 
-        const loaded = await waitForSyncedSeekPlayheadLoaded(
+        const playheadReady = await waitForSyncedSeekPlayheadReady(
           deck,
           token,
           source,
           Math.max(SYNCED_SEEK_PLAYHEAD_READY_POLL_MS, remainingTimeoutMs)
         )
-        if (!loaded) {
-          traceDeckDragSync(deck, 'controller-synced-seek-prepare-load-failed', {
-            token,
-            source,
-            alignmentAttempt,
-            elapsedMs: performance.now() - startedAt
-          })
+        if (!playheadReady) {
           return null
         }
 
@@ -333,17 +263,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
         prepareState = resolveSyncedSeekPreparationState(deck)
         alignedSec = Math.max(0, Number(prepareState.snapshot.currentSec) || 0)
         params.notifyDeckSeekIntent(deck, alignedSec)
-        traceDeckDragSync(deck, 'controller-synced-seek-prepare-loaded', {
-          token,
-          source,
-          alignmentAttempt,
-          alignedSec,
-          elapsedMs: performance.now() - startedAt,
-          playheadLoaded: prepareState.snapshot.playheadLoaded,
-          decoding: prepareState.snapshot.decoding,
-          syncLock: prepareState.snapshot.syncLock,
-          phaseDelta: prepareState.phaseDelta
-        })
       }
 
       if (!isSyncedSeekTokenCurrent(deck, token, source)) {
@@ -351,14 +270,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
       }
 
       if (prepareState.ready) {
-        traceDeckDragSync(deck, 'controller-synced-seek-prepare-ready', {
-          token,
-          source,
-          alignmentAttempt,
-          alignedSec,
-          elapsedMs: performance.now() - startedAt,
-          phaseDelta: prepareState.phaseDelta
-        })
         return alignedSec
       }
 
@@ -367,29 +278,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
       }
 
       anchorSec = alignedSec
-      traceDeckDragSync(deck, 'controller-synced-seek-prepare-retry', {
-        token,
-        source,
-        alignmentAttempt,
-        anchorSec,
-        playheadLoaded: prepareState.snapshot.playheadLoaded,
-        syncLock: prepareState.snapshot.syncLock,
-        phaseReady: prepareState.phaseReady,
-        phaseDelta: prepareState.phaseDelta
-      })
     }
 
-    const finalState = resolveSyncedSeekPreparationState(deck)
-    traceDeckDragSync(deck, 'controller-synced-seek-prepare-timeout', {
-      token,
-      source,
-      requestedSec,
-      elapsedMs: performance.now() - startedAt,
-      playheadLoaded: finalState.snapshot.playheadLoaded,
-      decoding: finalState.snapshot.decoding,
-      syncLock: finalState.snapshot.syncLock,
-      phaseDelta: finalState.phaseDelta
-    })
     return null
   }
 
@@ -413,17 +303,9 @@ export const useHorizontalBrowseDeckPlaybackController = (
             !params.isDeckLoopActive(deck)
 
           if (shouldPauseForSyncedSeek && params.resolveDeckPlaying(deck)) {
-            const pauseStartedAt = performance.now()
-            traceDeckDragSync(deck, 'controller-seek-pause-request', { token, source })
             await params.nativeTransport.setPlaying(deck, false)
-            traceDeckDragSync(deck, 'controller-seek-pause-complete', {
-              token,
-              source,
-              elapsedMs: performance.now() - pauseStartedAt
-            })
 
             if (deckSeekActionToken[deck] !== token) {
-              traceDeckDragSync(deck, 'controller-seek-stale-after-pause', { token, source })
               continue
             }
           }
@@ -431,33 +313,17 @@ export const useHorizontalBrowseDeckPlaybackController = (
           if (alignToLeader) {
             const preparedSec = await prepareSyncedSeekBeforeResume(deck, token, source, targetSec)
             if (deckSeekActionToken[deck] !== token) {
-              traceDeckDragSync(deck, 'controller-seek-stale-after-prepare', {
-                token,
-                source
-              })
               continue
             }
             if (preparedSec === null) {
               deckSeekResumeOnComplete[deck] = false
-              traceDeckDragSync(deck, 'controller-seek-prepare-aborted', {
-                token,
-                source
-              })
               continue
             }
           } else {
-            const seekStartedAt = performance.now()
             await params.nativeTransport.seek(deck, targetSec)
-            traceDeckDragSync(deck, 'controller-seek-complete', {
-              token,
-              source,
-              targetSec,
-              elapsedMs: performance.now() - seekStartedAt
-            })
           }
 
           if (deckSeekActionToken[deck] !== token) {
-            traceDeckDragSync(deck, 'controller-seek-stale-after-seek', { token, source })
             continue
           }
 
@@ -467,70 +333,33 @@ export const useHorizontalBrowseDeckPlaybackController = (
             params.resolveTransportDeckSnapshot(deck).syncEnabled &&
             !params.isDeckLoopActive(deck)
           ) {
-            const beatSyncStartedAt = performance.now()
-            traceDeckDragSync(deck, 'controller-seek-beatsync-request', { token, source })
             await params.nativeTransport.beatsync(deck)
-            traceDeckDragSync(deck, 'controller-seek-beatsync-complete', {
-              token,
-              source,
-              elapsedMs: performance.now() - beatSyncStartedAt
-            })
 
             if (deckSeekActionToken[deck] !== token) {
-              traceDeckDragSync(deck, 'controller-seek-stale-after-beatsync', { token, source })
               continue
             }
           }
 
           if (shouldPauseForSyncedSeek && deckSeekResumeOnComplete[deck]) {
-            const resumeStartedAt = performance.now()
-            traceDeckDragSync(deck, 'controller-seek-resume-request', { token, source })
             await params.nativeTransport.setPlaying(deck, true)
-            traceDeckDragSync(deck, 'controller-seek-resume-complete', {
-              token,
-              source,
-              elapsedMs: performance.now() - resumeStartedAt
-            })
 
             if (deckSeekActionToken[deck] !== token) {
-              traceDeckDragSync(deck, 'controller-seek-stale-after-resume', { token, source })
               continue
             }
           }
 
           if (deckSeekActionToken[deck] !== token) {
-            traceDeckDragSync(deck, 'controller-seek-stale-before-render-sync', { token, source })
             continue
           }
 
           params.syncDeckRenderState({ force: alignToLeader ? 'all' : deck })
-          traceDeckDragSync(deck, 'controller-seek-render-sync-complete', { token, source })
           deckSeekResumeOnComplete[deck] = false
-        } catch (error) {
-          traceDeckDragSync(deck, 'controller-seek-error', {
-            token,
-            source,
-            targetSec,
-            error: stringifyError(error)
-          })
+        } catch {
           if (deckSeekActionToken[deck] === token) {
             if (deckSeekResumeOnComplete[deck] && !params.resolveDeckPlaying(deck)) {
-              const resumeStartedAt = performance.now()
-              traceDeckDragSync(deck, 'controller-seek-error-resume-request', { token, source })
               try {
                 await params.nativeTransport.setPlaying(deck, true)
-                traceDeckDragSync(deck, 'controller-seek-error-resume-complete', {
-                  token,
-                  source,
-                  elapsedMs: performance.now() - resumeStartedAt
-                })
-              } catch (resumeError) {
-                traceDeckDragSync(deck, 'controller-seek-error-resume-error', {
-                  token,
-                  source,
-                  error: stringifyError(resumeError)
-                })
-              }
+              } catch {}
             }
             deckSeekResumeOnComplete[deck] = false
           }
@@ -548,7 +377,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
     params.touchDeckInteraction(deck)
     const dragState = deckWaveformDragState[deck]
     if (dragState.active) {
-      traceDeckDragSync(deck, 'controller-drag-start-ignored', { token: dragState.token })
       return
     }
 
@@ -557,38 +385,21 @@ export const useHorizontalBrowseDeckPlaybackController = (
     dragState.wasPlaying = snapshot.playing
     dragState.syncEnabledBefore = snapshot.syncEnabled
     dragState.token += 1
-    traceDeckDragSync(deck, 'controller-drag-start', {
-      token: dragState.token,
-      wasPlaying: dragState.wasPlaying,
-      syncEnabledBefore: dragState.syncEnabledBefore
-    })
 
     if (!dragState.wasPlaying) return
 
     const token = dragState.token
-    const pauseStartedAt = performance.now()
-    traceDeckDragSync(deck, 'controller-drag-pause-request', { token })
     dragState.pausePromise = params.nativeTransport
       .setPlaying(deck, false)
       .then(() => {
         const stale =
           !deckWaveformDragState[deck].active || deckWaveformDragState[deck].token !== token
-        traceDeckDragSync(deck, 'controller-drag-pause-complete', {
-          token,
-          stale,
-          elapsedMs: performance.now() - pauseStartedAt
-        })
         if (stale) {
           return
         }
         params.syncDeckRenderState({ force: deck })
       })
-      .catch((error) => {
-        traceDeckDragSync(deck, 'controller-drag-pause-error', {
-          token,
-          error: stringifyError(error)
-        })
-      })
+      .catch(() => {})
   }
 
   const handleDeckRawWaveformDragEnd = (deck: DeckKey, payload: DeckWaveformDragEndPayload) => {
@@ -606,13 +417,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
     const token = dragState.token
     const targetSec = Math.max(0, Number(payload.anchorSec) || 0)
-    traceDeckDragSync(deck, 'controller-drag-end', {
-      token,
-      committed: payload?.committed === true,
-      targetSec,
-      shouldResume,
-      syncEnabledBefore
-    })
     if (!payload?.committed) return
 
     const shouldAlignToLeader =
@@ -623,13 +427,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
     if (!shouldAlignToLeader) {
       params.notifyDeckSeekIntent(deck, targetSec)
-      traceDeckDragSync(deck, 'controller-drag-seek-intent-applied', { token, targetSec })
     }
     void (async () => {
       if (pausePromise) {
         await pausePromise
         if (deckWaveformDragState[deck].token !== token) {
-          traceDeckDragSync(deck, 'controller-drag-stale-after-pause-await', { token })
           return
         }
       }
@@ -641,47 +443,25 @@ export const useHorizontalBrowseDeckPlaybackController = (
           targetSec
         )
         if (deckWaveformDragState[deck].token !== token) {
-          traceDeckDragSync(deck, 'controller-drag-stale-after-prepare', { token })
           return
         }
         if (preparedSec === null) {
-          traceDeckDragSync(deck, 'controller-drag-prepare-aborted', { token })
           return
         }
       } else {
-        const startedAt = performance.now()
         await params.nativeTransport.seek(deck, targetSec)
-        traceDeckDragSync(deck, 'controller-drag-seek-complete', {
-          token,
-          targetSec,
-          elapsedMs: performance.now() - startedAt
-        })
         if (deckWaveformDragState[deck].token !== token) {
-          traceDeckDragSync(deck, 'controller-drag-seek-stale', { token })
           return
         }
       }
       if (shouldResume) {
-        const resumeStartedAt = performance.now()
-        traceDeckDragSync(deck, 'controller-drag-resume-request', { token })
         await params.nativeTransport.setPlaying(deck, true)
-        traceDeckDragSync(deck, 'controller-drag-resume-complete', {
-          token,
-          elapsedMs: performance.now() - resumeStartedAt
-        })
         if (deckWaveformDragState[deck].token !== token) {
-          traceDeckDragSync(deck, 'controller-drag-resume-stale', { token })
           return
         }
       }
       params.syncDeckRenderState({ force: shouldAlignToLeader ? 'all' : deck })
-      traceDeckDragSync(deck, 'controller-drag-render-sync-complete', { token })
-    })().catch((error) => {
-      traceDeckDragSync(deck, 'controller-drag-error', {
-        token,
-        error: stringifyError(error)
-      })
-    })
+    })().catch(() => {})
   }
 
   const seekDeckToSeconds = (deck: DeckKey, seconds: number, source: string) => {
@@ -712,13 +492,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
       params.notifyDeckSeekIntent(deck, nextSeconds)
     }
     deckPendingSeekRequest[deck] = { token, seconds: nextSeconds, source, alignToLeader }
-    traceDeckDragSync(deck, 'controller-seek-start', {
-      token,
-      source,
-      targetSec: nextSeconds,
-      alignToLeader,
-      running: deckSeekRunning[deck]
-    })
     runLatestDeckSeekRequest(deck)
   }
 
