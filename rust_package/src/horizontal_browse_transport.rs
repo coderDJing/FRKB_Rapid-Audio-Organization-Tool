@@ -347,7 +347,7 @@ impl HorizontalBrowseTransportEngine {
       target.pcm_start_sec = 0.0;
       target.sample_rate = 0;
       target.channels = 0;
-      horizontal_browse_transport_audio::reset_master_tempo_state(target);
+      horizontal_browse_transport_audio::clear_master_tempo_state(target);
       self.mark_state_changed();
       return None;
     }
@@ -371,7 +371,7 @@ impl HorizontalBrowseTransportEngine {
       target.pcm_start_sec = 0.0;
       target.sample_rate = 0;
       target.channels = 0;
-      horizontal_browse_transport_audio::reset_master_tempo_state(target);
+      horizontal_browse_transport_audio::clear_master_tempo_state(target);
     }
     self.mark_state_changed();
     Some(DecodeRequest {
@@ -465,6 +465,7 @@ impl HorizontalBrowseTransportEngine {
     if !self.request_matches(deck, file_path, request_id, fully_decoded) {
       return false;
     }
+    let output_sample_rate = self.output_sample_rate.max(1) as f64;
     let target = self.deck_mut(deck);
     let should_reset_master_tempo = !prepared.preserve_master_tempo_state
       || target.sample_rate != prepared.sample_rate
@@ -486,6 +487,7 @@ impl HorizontalBrowseTransportEngine {
     }
     if should_reset_master_tempo {
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
+      horizontal_browse_transport_audio::prime_master_tempo_state(target, output_sample_rate);
     }
     self.mark_state_changed();
     true
@@ -879,6 +881,42 @@ impl HorizontalBrowseTransportEngine {
     } else {
       0.0
     }
+  }
+
+  fn normalize_playback_rate(value: f64) -> f64 {
+    if value.is_finite() && value > 0.0 {
+      value.clamp(0.25, 4.0)
+    } else {
+      1.0
+    }
+  }
+
+  fn sync_master_tempo_state_after_change(
+    &mut self,
+    deck: DeckId,
+    was_active: bool,
+    force_reset: bool,
+  ) {
+    let output_sample_rate = self.output_sample_rate.max(1) as f64;
+    let is_active = horizontal_browse_transport_audio::should_use_master_tempo(self.deck(deck));
+    let target = self.deck_mut(deck);
+    if is_active {
+      if force_reset || !was_active {
+        horizontal_browse_transport_audio::reset_master_tempo_state(target);
+      }
+      horizontal_browse_transport_audio::prime_master_tempo_state(target, output_sample_rate);
+      return;
+    }
+    if was_active || force_reset {
+      horizontal_browse_transport_audio::clear_master_tempo_state(target);
+    }
+  }
+
+  fn reset_and_prime_master_tempo_state(&mut self, deck: DeckId) {
+    let output_sample_rate = self.output_sample_rate.max(1) as f64;
+    let target = self.deck_mut(deck);
+    horizontal_browse_transport_audio::reset_master_tempo_state(target);
+    horizontal_browse_transport_audio::prime_master_tempo_state(target, output_sample_rate);
   }
 
   fn resolve_crossfader_volumes(value: f32) -> (f32, f32) {

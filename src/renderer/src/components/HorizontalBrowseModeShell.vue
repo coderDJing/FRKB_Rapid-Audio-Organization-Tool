@@ -359,8 +359,7 @@ const { isDeckMasterTempoEnabled, toggleDeckMasterTempo, setDeckTargetBpm, reset
     resolveDeckSong,
     resolveDeckGridBpm,
     resolveTransportDeckSnapshot,
-    nativeTransport,
-    commitDeckStateToNative
+    nativeTransport
   })
 
 resolveDeckMasterTempoEnabledForTransport = isDeckMasterTempoEnabled
@@ -368,9 +367,7 @@ resolveDeckMasterTempoEnabledForTransport = isDeckMasterTempoEnabled
 const handleDeckMasterTempoToggle = (deck: DeckKey) => {
   touchDeckInteraction(deck)
   toggleDeckMasterTempo(deck)
-  void commitDeckStateToNative(deck, {
-    masterTempoEnabled: isDeckMasterTempoEnabled(deck)
-  })
+  void nativeTransport.setMasterTempoEnabled(deck, isDeckMasterTempoEnabled(deck))
 }
 
 const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({

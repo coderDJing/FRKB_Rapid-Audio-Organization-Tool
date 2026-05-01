@@ -105,6 +105,79 @@ fn audio_owned_current_sec_does_not_double_count_elapsed_time() {
 }
 
 #[test]
+fn external_same_file_state_does_not_rewind_playing_deck() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  engine.last_now_ms = 2000.0;
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("a.mp3".to_string());
+    top.title = Some("A".to_string());
+    top.bpm = Some(128.0);
+    top.duration_sec = 20.0;
+    top.current_sec = 5.0;
+    top.last_observed_at_ms = -1.0;
+    top.playing = true;
+    top.playback_rate = 1.25;
+    top.master_tempo_enabled = true;
+    install_loaded_test_pcm(top, 20);
+  }
+
+  engine.apply_external_deck_state(
+    DeckId::Top,
+    2200.0,
+    HorizontalBrowseTransportDeckInput {
+      file_path: Some("a.mp3".to_string()),
+      title: Some("A".to_string()),
+      bpm: Some(128.0),
+      first_beat_ms: Some(0.0),
+      bar_beat_offset: Some(0.0),
+      time_basis_offset_ms: Some(0.0),
+      duration_sec: 20.0,
+      current_sec: 1.0,
+      last_observed_at_ms: 1800.0,
+      playing: true,
+      playback_rate: 1.25,
+      master_tempo_enabled: true,
+    },
+  );
+
+  assert!((engine.deck(DeckId::Top).current_sec - 5.0).abs() < 0.0001);
+  assert_eq!(engine.deck(DeckId::Top).last_observed_at_ms, 2200.0);
+}
+
+#[test]
+fn master_tempo_and_rate_commands_preserve_audio_owned_playhead() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  engine.last_now_ms = 3000.0;
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("a.mp3".to_string());
+    top.title = Some("A".to_string());
+    top.bpm = Some(128.0);
+    top.duration_sec = 20.0;
+    top.current_sec = 6.0;
+    top.last_observed_at_ms = -1.0;
+    top.playing = true;
+    top.playback_rate = 1.2;
+    top.master_tempo_enabled = true;
+    install_loaded_test_pcm(top, 20);
+  }
+
+  engine.set_master_tempo_enabled(DeckId::Top, 3200.0, false);
+  assert!((engine.deck(DeckId::Top).current_sec - 6.0).abs() < 0.0001);
+  assert!(!engine.deck(DeckId::Top).master_tempo_enabled);
+
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.current_sec = 7.0;
+    top.last_observed_at_ms = -1.0;
+  }
+  engine.set_playback_rate(DeckId::Top, 3400.0, 0.8);
+  assert!((engine.deck(DeckId::Top).current_sec - 7.0).abs() < 0.0001);
+  assert!((engine.deck(DeckId::Top).playback_rate - 0.8).abs() < 0.0001);
+}
+
+#[test]
 fn playing_audible_requires_loaded_segment_covering_playhead() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   {

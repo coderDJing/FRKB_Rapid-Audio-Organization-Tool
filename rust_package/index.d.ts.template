@@ -243,6 +243,16 @@ export declare function horizontalBrowseTransportSetDeckState(
 export declare function horizontalBrowseTransportSetState(
   payload: HorizontalBrowseTransportStateInput
 ): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetPlaybackRate(
+  deck: string,
+  nowMs: number,
+  playbackRate: number
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetMasterTempoEnabled(
+  deck: string,
+  nowMs: number,
+  enabled: boolean
+): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetBeatGrid(
   deck: string,
   nowMs: number | undefined | null,

@@ -83,7 +83,6 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       snapshot.playingAudible ? 1 : 0,
       Number(snapshot.durationSec || 0).toFixed(3),
       Number(snapshot.playbackRate || 1).toFixed(6),
-      snapshot.masterTempoEnabled ? 1 : 0,
       snapshot.loopActive ? 1 : 0,
       Number(snapshot.loopStartSec || 0).toFixed(6),
       Number(snapshot.loopEndSec || 0).toFixed(6)

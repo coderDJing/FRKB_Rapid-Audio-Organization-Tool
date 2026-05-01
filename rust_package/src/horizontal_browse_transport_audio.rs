@@ -84,7 +84,8 @@ impl Drop for SoundTouchHandle {
 pub(super) struct DeckMasterTempoState {
   processor: Option<SoundTouchHandle>,
   channels: usize,
-  source_frame_cursor: usize,
+  processor_sample_rate: u32,
+  source_frame_cursor: f64,
   playhead_source_frame: f64,
   output_buffer: Vec<f32>,
   output_offset: usize,
@@ -98,7 +99,8 @@ impl Default for DeckMasterTempoState {
     Self {
       processor: None,
       channels: 2,
-      source_frame_cursor: 0,
+      processor_sample_rate: 0,
+      source_frame_cursor: 0.0,
       playhead_source_frame: 0.0,
       output_buffer: Vec::new(),
       output_offset: 0,
@@ -121,19 +123,41 @@ fn resolved_channels(target: &DeckState) -> usize {
   target.channels.max(1).min(2) as usize
 }
 
-fn configure_processor(target: &mut DeckState) {
+fn resolved_output_sample_rate(output_sample_rate: f64, source_sample_rate: u32) -> u32 {
+  if output_sample_rate.is_finite() && output_sample_rate >= 1.0 {
+    output_sample_rate.round().clamp(1.0, u32::MAX as f64) as u32
+  } else {
+    source_sample_rate.max(1)
+  }
+}
+
+pub(super) fn should_use_master_tempo(target: &DeckState) -> bool {
+  target.master_tempo_enabled
+    && (target.playback_rate - 1.0).abs() > 0.0001
+    && !target.pcm_data.is_empty()
+    && target.sample_rate > 0
+    && target.channels > 0
+}
+
+fn configure_processor(target: &mut DeckState, output_sample_rate: f64) {
   let channels = resolved_channels(target);
   if target.sample_rate == 0 {
     target.master_tempo_state.processor = None;
+    target.master_tempo_state.processor_sample_rate = 0;
     return;
   }
+  let processor_sample_rate = resolved_output_sample_rate(output_sample_rate, target.sample_rate);
   let processor = SoundTouchHandle::new(
     channels as u32,
-    target.sample_rate,
+    processor_sample_rate,
     clamp_rate(target.playback_rate),
   );
   target.master_tempo_state.channels = channels;
+  target.master_tempo_state.processor_sample_rate = processor_sample_rate;
   target.master_tempo_state.processor = processor;
+  target.master_tempo_state.output_buffer.clear();
+  target.master_tempo_state.output_offset = 0;
+  target.master_tempo_state.flushed = false;
   target
     .master_tempo_state
     .staging_output
@@ -144,42 +168,100 @@ pub(super) fn reset_master_tempo_state(target: &mut DeckState) {
   let audio_current_sec =
     super::HorizontalBrowseTransportEngine::timeline_sec_to_audio_sec(target, target.current_sec);
   target.master_tempo_state.source_frame_cursor =
-    ((audio_current_sec - target.pcm_start_sec).max(0.0) * target.sample_rate as f64).floor()
-      as usize;
+    (audio_current_sec - target.pcm_start_sec).max(0.0) * target.sample_rate as f64;
   target.master_tempo_state.playhead_source_frame =
     ((audio_current_sec - target.pcm_start_sec).max(0.0)) * target.sample_rate as f64;
   target.master_tempo_state.output_buffer.clear();
   target.master_tempo_state.output_offset = 0;
   target.master_tempo_state.flushed = false;
-  configure_processor(target);
+  target.master_tempo_state.processor = None;
+  target.master_tempo_state.processor_sample_rate = 0;
 }
 
-fn append_source_chunk(target: &mut DeckState) -> bool {
-  let channels = target.master_tempo_state.channels.max(1);
-  let frame_count = target.pcm_data.len() / target.channels.max(1) as usize;
-  let start_frame = target
-    .master_tempo_state
-    .source_frame_cursor
-    .min(frame_count);
-  if start_frame >= frame_count {
+pub(super) fn clear_master_tempo_state(target: &mut DeckState) {
+  target.master_tempo_state.processor = None;
+  target.master_tempo_state.processor_sample_rate = 0;
+  target.master_tempo_state.output_buffer.clear();
+  target.master_tempo_state.output_offset = 0;
+  target.master_tempo_state.staging_input.clear();
+  target.master_tempo_state.flushed = false;
+}
+
+fn ensure_processor_configured(target: &mut DeckState, output_sample_rate: f64) {
+  let channels = resolved_channels(target);
+  let processor_sample_rate = resolved_output_sample_rate(output_sample_rate, target.sample_rate);
+  let already_configured = target.master_tempo_state.processor.is_some()
+    && target.master_tempo_state.channels == channels
+    && target.master_tempo_state.processor_sample_rate == processor_sample_rate;
+  if already_configured {
+    return;
+  }
+  configure_processor(target, output_sample_rate);
+}
+
+fn read_source_sample(
+  source_data: &[f32],
+  frame_count: usize,
+  source_channels: usize,
+  source_frame: f64,
+  channel: usize,
+) -> f32 {
+  if frame_count == 0 || source_channels == 0 {
+    return 0.0;
+  }
+  let base_index = source_frame.floor().max(0.0) as usize;
+  if base_index >= frame_count {
+    return 0.0;
+  }
+  let next_index = (base_index + 1).min(frame_count - 1);
+  let frac = (source_frame - base_index as f64).clamp(0.0, 1.0) as f32;
+  let source_channel = channel.min(source_channels - 1);
+  let left = source_data
+    .get(base_index * source_channels + source_channel)
+    .copied()
+    .unwrap_or(0.0);
+  let right = source_data
+    .get(next_index * source_channels + source_channel)
+    .copied()
+    .unwrap_or(left);
+  left + (right - left) * frac
+}
+
+fn append_source_chunk(target: &mut DeckState, output_sample_rate: f64) -> bool {
+  if target.master_tempo_state.processor.is_none() {
     return false;
   }
-  let end_frame = (start_frame + MASTER_TEMPO_FEED_FRAMES).min(frame_count);
-  let frames_to_feed = end_frame - start_frame;
+  let channels = target.master_tempo_state.channels.max(1);
+  let frame_count = target.pcm_data.len() / target.channels.max(1) as usize;
+  let start_frame = target.master_tempo_state.source_frame_cursor.max(0.0);
+  if start_frame >= frame_count as f64 {
+    return false;
+  }
+  let source_step = target.sample_rate as f64 / output_sample_rate.max(1.0);
+  let remaining_output_frames = ((frame_count as f64 - start_frame) / source_step.max(0.000001))
+    .ceil()
+    .max(0.0) as usize;
+  let frames_to_feed = MASTER_TEMPO_FEED_FRAMES.min(remaining_output_frames);
+  if frames_to_feed == 0 {
+    return false;
+  }
   target
     .master_tempo_state
     .staging_input
     .resize(frames_to_feed * channels, 0.0);
 
   let source_channels = target.channels.max(1) as usize;
+  let pcm_data = target.pcm_data.as_ref().as_slice();
   for frame_offset in 0..frames_to_feed {
+    let source_frame = start_frame + frame_offset as f64 * source_step;
     for channel in 0..channels {
-      let source_channel = channel.min(source_channels - 1);
-      let sample = target
-        .pcm_data
-        .get((start_frame + frame_offset) * source_channels + source_channel)
-        .copied()
-        .unwrap_or(0.0);
+      let sample = read_source_sample(
+        pcm_data,
+        frame_count,
+        source_channels,
+        source_frame,
+        channel,
+      );
       target.master_tempo_state.staging_input[frame_offset * channels + channel] = sample;
     }
   }
@@ -191,7 +273,8 @@ fn append_source_chunk(target: &mut DeckState) -> bool {
       target.master_tempo_state.staging_input.len() / channels,
     );
   }
-  target.master_tempo_state.source_frame_cursor = end_frame;
+  target.master_tempo_state.source_frame_cursor =
+    (start_frame + frames_to_feed as f64 * source_step).min(frame_count as f64);
   true
 }
 
@@ -215,7 +298,7 @@ fn pull_processed_output(target: &mut DeckState) -> usize {
   received
 }
 
-fn ensure_output_samples(target: &mut DeckState) {
+fn ensure_output_samples(target: &mut DeckState, output_sample_rate: f64) {
   let channels = target.master_tempo_state.channels.max(1);
   loop {
     let available_frames = (target.master_tempo_state.output_buffer.len()
@@ -229,7 +312,7 @@ fn ensure_output_samples(target: &mut DeckState) {
       continue;
     }
 
-    if append_source_chunk(target) {
+    if append_source_chunk(target, output_sample_rate) {
       continue;
     }
 
@@ -243,6 +326,17 @@ fn ensure_output_samples(target: &mut DeckState) {
 
     return;
   }
+}
+
+pub(super) fn prime_master_tempo_state(target: &mut DeckState, output_sample_rate: f64) {
+  if !should_use_master_tempo(target) {
+    return;
+  }
+  ensure_processor_configured(target, output_sample_rate);
+  if target.master_tempo_state.processor.is_none() {
+    return;
+  }
+  ensure_output_samples(target, output_sample_rate);
 }
 
 fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f32) {
@@ -295,9 +389,9 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
 
 fn sample_deck_master_tempo(target: &mut DeckState, output_sample_rate: f64) -> (f32, f32) {
   if target.master_tempo_state.processor.is_none() {
-    configure_processor(target);
+    reset_master_tempo_state(target);
   }
-  ensure_output_samples(target);
+  prime_master_tempo_state(target, output_sample_rate);
 
   let channels = target.master_tempo_state.channels.max(1);
   let available_frames = (target.master_tempo_state.output_buffer.len()
@@ -364,7 +458,7 @@ pub(super) fn sample_deck(target: &mut DeckState, output_sample_rate: f64) -> (f
   {
     return (0.0, 0.0);
   }
-  if target.master_tempo_enabled && (target.playback_rate - 1.0).abs() > 0.0001 {
+  if should_use_master_tempo(target) {
     return sample_deck_master_tempo(target, output_sample_rate);
   }
   sample_deck_rate(target, output_sample_rate)

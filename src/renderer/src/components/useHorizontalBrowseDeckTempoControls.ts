@@ -1,7 +1,6 @@
 import { reactive } from 'vue'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import { normalizePreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
-import type { HorizontalBrowseDeckTransportStateOverride } from '@renderer/components/useHorizontalBrowseTransportMutations'
 import type { ISongInfo } from 'src/types/globals'
 
 type TempoControlSnapshot = {
@@ -17,11 +16,8 @@ type UseHorizontalBrowseDeckTempoControlsParams = {
   resolveTransportDeckSnapshot: (deck: HorizontalBrowseDeckKey) => TempoControlSnapshot
   nativeTransport: {
     setSyncEnabled: (deck: HorizontalBrowseDeckKey, enabled: boolean) => Promise<unknown>
+    setPlaybackRate: (deck: HorizontalBrowseDeckKey, playbackRate: number) => Promise<unknown>
   }
-  commitDeckStateToNative: (
-    deck: HorizontalBrowseDeckKey,
-    override?: HorizontalBrowseDeckTransportStateOverride
-  ) => Promise<unknown>
 }
 
 const RATE_EPSILON = 0.0001
@@ -72,10 +68,7 @@ export const useHorizontalBrowseDeckTempoControls = (
     const currentPlaybackRate = Number(snapshot.playbackRate) || 1
     if (Math.abs(currentPlaybackRate - nextPlaybackRate) <= RATE_EPSILON) return
 
-    await params.commitDeckStateToNative(deck, {
-      playbackRate: nextPlaybackRate,
-      lastObservedAtMs: performance.now()
-    })
+    await params.nativeTransport.setPlaybackRate(deck, nextPlaybackRate)
   }
 
   const resetDeckTempo = async (deck: HorizontalBrowseDeckKey) => {
@@ -100,10 +93,7 @@ export const useHorizontalBrowseDeckTempoControls = (
 
     if (!needsRateReset) return
 
-    await params.commitDeckStateToNative(deck, {
-      playbackRate: 1,
-      lastObservedAtMs: performance.now()
-    })
+    await params.nativeTransport.setPlaybackRate(deck, 1)
   }
 
   return {

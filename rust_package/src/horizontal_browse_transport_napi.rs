@@ -15,26 +15,8 @@ pub fn horizontal_browse_transport_set_deck_state(
   let deck_playing = payload.playing;
   let mut engine_guard = engine().lock();
   engine_guard.observe_external_now_ms(now_ms.unwrap_or(payload.last_observed_at_ms));
-  {
-    let target = engine_guard.deck_mut(deck_id);
-    target.file_path = payload.file_path;
-    target.title = payload.title;
-    target.bpm = payload.bpm;
-    target.first_beat_ms = payload.first_beat_ms;
-    target.bar_beat_offset = payload
-      .bar_beat_offset
-      .filter(|value| value.is_finite())
-      .map(HorizontalBrowseTransportEngine::normalize_bar_beat_offset);
-    target.time_basis_offset_ms = payload.time_basis_offset_ms;
-    target.duration_sec = payload.duration_sec;
-    target.current_sec = payload.current_sec;
-    target.last_observed_at_ms = payload.last_observed_at_ms;
-    target.playing = payload.playing;
-    target.playback_rate = payload.playback_rate;
-    target.master_tempo_enabled = payload.master_tempo_enabled;
-    target.metronome_state.next_beat_index = None;
-    horizontal_browse_transport_audio::reset_master_tempo_state(target);
-  }
+  let apply_now_ms = engine_guard.last_now_ms;
+  engine_guard.apply_external_deck_state(deck_id, apply_now_ms, payload);
   engine_guard.mark_state_changed();
   let decode_request = engine_guard.prepare_decode_request(deck_id);
   let full_decode_request = engine_guard.prepare_full_decode_request(deck_id);
@@ -69,48 +51,9 @@ pub fn horizontal_browse_transport_set_state(
   );
   let mut engine_guard = engine().lock();
   engine_guard.observe_external_now_ms(now_ms);
-  {
-    let top = engine_guard.deck_mut(DeckId::Top);
-    top.file_path = payload.top.file_path;
-    top.title = payload.top.title;
-    top.bpm = payload.top.bpm;
-    top.first_beat_ms = payload.top.first_beat_ms;
-    top.bar_beat_offset = payload
-      .top
-      .bar_beat_offset
-      .filter(|value| value.is_finite())
-      .map(HorizontalBrowseTransportEngine::normalize_bar_beat_offset);
-    top.time_basis_offset_ms = payload.top.time_basis_offset_ms;
-    top.duration_sec = payload.top.duration_sec;
-    top.current_sec = payload.top.current_sec;
-    top.last_observed_at_ms = payload.top.last_observed_at_ms;
-    top.playing = payload.top.playing;
-    top.playback_rate = payload.top.playback_rate;
-    top.master_tempo_enabled = payload.top.master_tempo_enabled;
-    top.metronome_state.next_beat_index = None;
-    horizontal_browse_transport_audio::reset_master_tempo_state(top);
-  }
-  {
-    let bottom = engine_guard.deck_mut(DeckId::Bottom);
-    bottom.file_path = payload.bottom.file_path;
-    bottom.title = payload.bottom.title;
-    bottom.bpm = payload.bottom.bpm;
-    bottom.first_beat_ms = payload.bottom.first_beat_ms;
-    bottom.bar_beat_offset = payload
-      .bottom
-      .bar_beat_offset
-      .filter(|value| value.is_finite())
-      .map(HorizontalBrowseTransportEngine::normalize_bar_beat_offset);
-    bottom.time_basis_offset_ms = payload.bottom.time_basis_offset_ms;
-    bottom.duration_sec = payload.bottom.duration_sec;
-    bottom.current_sec = payload.bottom.current_sec;
-    bottom.last_observed_at_ms = payload.bottom.last_observed_at_ms;
-    bottom.playing = payload.bottom.playing;
-    bottom.playback_rate = payload.bottom.playback_rate;
-    bottom.master_tempo_enabled = payload.bottom.master_tempo_enabled;
-    bottom.metronome_state.next_beat_index = None;
-    horizontal_browse_transport_audio::reset_master_tempo_state(bottom);
-  }
+  let apply_now_ms = engine_guard.last_now_ms;
+  engine_guard.apply_external_deck_state(DeckId::Top, apply_now_ms, payload.top);
+  engine_guard.apply_external_deck_state(DeckId::Bottom, apply_now_ms, payload.bottom);
   engine_guard.mark_state_changed();
   let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
   let bottom_decode_request = engine_guard.prepare_decode_request(DeckId::Bottom);
@@ -141,6 +84,32 @@ pub fn horizontal_browse_transport_set_state(
   }
   let engine_guard = engine().lock();
   engine_guard.snapshot(engine_guard.last_now_ms)
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_playback_rate(
+  deck: String,
+  now_ms: f64,
+  playback_rate: f64,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.observe_external_now_ms(now_ms);
+  engine_guard.set_playback_rate(deck_id, now_ms, playback_rate);
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_master_tempo_enabled(
+  deck: String,
+  now_ms: f64,
+  enabled: bool,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.observe_external_now_ms(now_ms);
+  engine_guard.set_master_tempo_enabled(deck_id, now_ms, enabled);
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
 #[napi]

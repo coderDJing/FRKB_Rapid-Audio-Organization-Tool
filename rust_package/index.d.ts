@@ -6,6 +6,8 @@
 export declare function horizontalBrowseTransportReset(): void
 export declare function horizontalBrowseTransportSetDeckState(deck: string, nowMs: number | undefined | null, payload: HorizontalBrowseTransportDeckInput): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetState(payload: HorizontalBrowseTransportStateInput): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetPlaybackRate(deck: string, nowMs: number, playbackRate: number): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetMasterTempoEnabled(deck: string, nowMs: number, enabled: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetBeatGrid(deck: string, nowMs: number | undefined | null, payload: HorizontalBrowseTransportBeatGridInput): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetSyncEnabled(deck: string, nowMs: number | undefined | null, enabled: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportBeatsync(deck: string, nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot

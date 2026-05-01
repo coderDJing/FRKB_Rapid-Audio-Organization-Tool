@@ -184,10 +184,12 @@ impl HorizontalBrowseTransportEngine {
         || has_reached_later_half
       {
         let now_ms = self.last_now_ms;
-        let target = self.deck_mut(deck);
-        target.current_sec = loop_start_sec;
-        target.last_observed_at_ms = now_ms;
-        horizontal_browse_transport_audio::reset_master_tempo_state(target);
+        {
+          let target = self.deck_mut(deck);
+          target.current_sec = loop_start_sec;
+          target.last_observed_at_ms = now_ms;
+        }
+        self.reset_and_prime_master_tempo_state(deck);
       }
     }
   }
@@ -664,6 +666,99 @@ impl HorizontalBrowseTransportEngine {
     target.last_observed_at_ms = now_ms;
   }
 
+  pub(super) fn apply_external_deck_state(
+    &mut self,
+    deck: DeckId,
+    now_ms: f64,
+    payload: HorizontalBrowseTransportDeckInput,
+  ) {
+    let current_file_path = self
+      .deck(deck)
+      .file_path
+      .as_deref()
+      .map(str::trim)
+      .unwrap_or("")
+      .to_string();
+    let next_file_path = payload
+      .file_path
+      .as_deref()
+      .map(str::trim)
+      .unwrap_or("")
+      .to_string();
+    let same_file = current_file_path == next_file_path;
+    let previous_current_sec = Self::estimate_current_sec(self.deck(deck), now_ms);
+    let preserve_playhead =
+      same_file && !next_file_path.is_empty() && self.deck(deck).playing && payload.playing;
+    let next_current_sec = if preserve_playhead {
+      previous_current_sec
+    } else {
+      payload.current_sec
+    };
+    let position_changed = !preserve_playhead
+      && (previous_current_sec - next_current_sec).abs()
+        > HORIZONTAL_BROWSE_LOOP_POSITION_EPSILON_SEC;
+    let file_changed = !same_file;
+    let was_master_tempo_active =
+      horizontal_browse_transport_audio::should_use_master_tempo(self.deck(deck));
+
+    {
+      let target = self.deck_mut(deck);
+      target.file_path = payload.file_path;
+      target.title = payload.title;
+      target.bpm = payload.bpm;
+      target.first_beat_ms = payload.first_beat_ms;
+      target.bar_beat_offset = payload
+        .bar_beat_offset
+        .filter(|value| value.is_finite())
+        .map(HorizontalBrowseTransportEngine::normalize_bar_beat_offset);
+      target.time_basis_offset_ms = payload.time_basis_offset_ms;
+      target.duration_sec = payload.duration_sec;
+      target.current_sec = next_current_sec;
+      target.last_observed_at_ms = if preserve_playhead {
+        now_ms
+      } else {
+        payload.last_observed_at_ms
+      };
+      target.playing = payload.playing;
+      target.playback_rate = Self::normalize_playback_rate(payload.playback_rate);
+      target.master_tempo_enabled = payload.master_tempo_enabled;
+      target.metronome_state.next_beat_index = None;
+    }
+
+    self.sync_master_tempo_state_after_change(
+      deck,
+      was_master_tempo_active,
+      file_changed || position_changed,
+    );
+  }
+
+  pub(super) fn set_playback_rate(&mut self, deck: DeckId, now_ms: f64, playback_rate: f64) {
+    self.mark_state_changed();
+    self.last_now_ms = now_ms;
+    self.sync_deck_to_now(deck, now_ms);
+    let was_master_tempo_active =
+      horizontal_browse_transport_audio::should_use_master_tempo(self.deck(deck));
+    {
+      let target = self.deck_mut(deck);
+      target.playback_rate = Self::normalize_playback_rate(playback_rate);
+    }
+    self.sync_master_tempo_state_after_change(deck, was_master_tempo_active, false);
+    self.refresh_sync_state(false);
+  }
+
+  pub(super) fn set_master_tempo_enabled(&mut self, deck: DeckId, now_ms: f64, enabled: bool) {
+    self.mark_state_changed();
+    self.last_now_ms = now_ms;
+    self.sync_deck_to_now(deck, now_ms);
+    let was_master_tempo_active =
+      horizontal_browse_transport_audio::should_use_master_tempo(self.deck(deck));
+    {
+      let target = self.deck_mut(deck);
+      target.master_tempo_enabled = enabled;
+    }
+    self.sync_master_tempo_state_after_change(deck, was_master_tempo_active, false);
+  }
+
   pub(super) fn set_leader(&mut self, deck: Option<DeckId>) {
     self.mark_state_changed();
     self.leader = deck.filter(|candidate| self.is_loaded(*candidate));
@@ -690,10 +785,12 @@ impl HorizontalBrowseTransportEngine {
       return;
     }
     let now_ms = self.last_now_ms;
-    let target = self.deck_mut(deck);
-    target.current_sec = loop_start_sec;
-    target.last_observed_at_ms = now_ms;
-    horizontal_browse_transport_audio::reset_master_tempo_state(target);
+    {
+      let target = self.deck_mut(deck);
+      target.current_sec = loop_start_sec;
+      target.last_observed_at_ms = now_ms;
+    }
+    self.reset_and_prime_master_tempo_state(deck);
   }
 
   pub(super) fn set_playing(&mut self, deck: DeckId, now_ms: f64, playing: bool) {
@@ -706,8 +803,8 @@ impl HorizontalBrowseTransportEngine {
     {
       let target = self.deck_mut(deck);
       target.playing = playing;
-      horizontal_browse_transport_audio::reset_master_tempo_state(target);
     }
+    self.reset_and_prime_master_tempo_state(deck);
     self.refresh();
   }
 
@@ -723,8 +820,8 @@ impl HorizontalBrowseTransportEngine {
       };
       target.last_observed_at_ms = now_ms;
       target.metronome_state.next_beat_index = None;
-      horizontal_browse_transport_audio::reset_master_tempo_state(target);
     }
+    self.reset_and_prime_master_tempo_state(deck);
     self.refresh();
   }
 
@@ -836,8 +933,7 @@ impl HorizontalBrowseTransportEngine {
       target.current_sec = target_sec.clamp(0.0, target.duration_sec.max(0.0));
       target.last_observed_at_ms = now_ms;
       self.deck_mut(deck).playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
-      let target = self.deck_mut(deck);
-      horizontal_browse_transport_audio::reset_master_tempo_state(target);
+      self.reset_and_prime_master_tempo_state(deck);
     }
     self.refresh_sync_state(false);
   }
@@ -893,7 +989,7 @@ impl HorizontalBrowseTransportEngine {
       target.last_observed_at_ms = now_ms;
       target.playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
       target.metronome_state.next_beat_index = None;
-      horizontal_browse_transport_audio::reset_master_tempo_state(target);
+      self.reset_and_prime_master_tempo_state(deck);
     }
 
     self.refresh_sync_state(false);

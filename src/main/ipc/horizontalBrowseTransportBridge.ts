@@ -18,6 +18,16 @@ type RustHorizontalBrowseTransportBinding = {
   horizontalBrowseTransportSetState?: (
     payload: HorizontalBrowseTransportStateInput
   ) => HorizontalBrowseTransportSnapshot
+  horizontalBrowseTransportSetPlaybackRate?: (
+    deck: HorizontalBrowseDeckKey,
+    nowMs: number,
+    playbackRate: number
+  ) => HorizontalBrowseTransportSnapshot
+  horizontalBrowseTransportSetMasterTempoEnabled?: (
+    deck: HorizontalBrowseDeckKey,
+    nowMs: number,
+    enabled: boolean
+  ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSetBeatGrid?: (
     deck: HorizontalBrowseDeckKey,
     nowMs: number | undefined,
@@ -121,6 +131,12 @@ export const horizontalBrowseTransportBridge = {
   },
   setState(payload: HorizontalBrowseTransportStateInput) {
     return requireFn('horizontalBrowseTransportSetState')(payload)
+  },
+  setPlaybackRate(deck: HorizontalBrowseDeckKey, nowMs: number, playbackRate: number) {
+    return requireFn('horizontalBrowseTransportSetPlaybackRate')(deck, nowMs, playbackRate)
+  },
+  setMasterTempoEnabled(deck: HorizontalBrowseDeckKey, nowMs: number, enabled: boolean) {
+    return requireFn('horizontalBrowseTransportSetMasterTempoEnabled')(deck, nowMs, enabled)
   },
   setBeatGrid(
     deck: HorizontalBrowseDeckKey,
