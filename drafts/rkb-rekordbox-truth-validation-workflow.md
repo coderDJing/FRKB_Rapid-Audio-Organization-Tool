@@ -56,28 +56,31 @@ FRKB pass/fail 是当前算法状态，只存在于 classification 和派生 ben
 
 当前成绩：
 
-- pass：587
-- fail：344
-- pass rate：63.05%
+- pass：594
+- fail：337
+- pass rate：63.80%
+- 本轮净变化：`fail -> pass` 10，`pass -> fail` 3，净增 7
 
 失败分类：
 
-- `first-beat-phase`：298
-- `bpm`：31
-- `downbeat`：14
+- `first-beat-phase`：289
+- `bpm`：30
+- `downbeat`：17
 - `half-or-double-bpm`：1
 
 候选覆盖：
 
-- 全量 fail：344
-- 没有 passing candidate：302
-- 有 passing candidate 但 scorer 未选中：42
+- 全量 fail：337
+- constant-grid-dp candidate oracle：872 / 931 = 93.66%
+- 没有 passing candidate：59
+- 有 passing candidate 但 scorer 未选中：278
+- 最终选择来源：legacy fallback 902，constant-grid-dp conservative switch 29
 
 音频目录已经按当前 classification 同步完毕：
 
 - `D:/FRKB_database-B/library/FilterLibrary/new`：0
-- `D:/FRKB_database-B/library/FilterLibrary/sample`：587
-- `D:/FRKB_database-B/library/FilterLibrary/grid-failures-current`：344
+- `D:/FRKB_database-B/library/FilterLibrary/sample`：594
+- `D:/FRKB_database-B/library/FilterLibrary/grid-failures-current`：337
 
 同步校验命令：
 
@@ -87,8 +90,11 @@ FRKB pass/fail 是当前算法状态，只存在于 classification 和派生 ben
 
 当前期望结果：`moveCount = 0`。
 
-当前主要问题仍是 phase 候选覆盖不足。下一步优先检查 candidate generator；
-scorer 只处理已有正确候选的通用排名问题，不堆逐曲规则。
+当前主要问题已经从候选覆盖不足转成 selector / phase 语义不清。constant-grid-dp
+候选池能覆盖大多数正确 grid，但现有音频峰值、BeatThis beat 和 attack envelope 特征无法稳定
+判断 Rekordbox 风格 first beat 应贴前缘、峰值中心还是视觉网格习惯。下一步不继续堆
+selector 权重，优先做人工观察工具：同轴显示 Rekordbox truth、legacy grid、top candidate、
+oracle candidate、waveform peak、onset/front 和 BeatThis beats，用分布统计确认相位语义。
 
 ## 3. 音频目录
 

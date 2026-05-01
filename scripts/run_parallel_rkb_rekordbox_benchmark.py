@@ -22,11 +22,25 @@ PROFILE_DEFAULTS: dict[str, dict[str, str]] = {
         "truth": str(CURRENT_TRUTH),
         "audio_root": str(benchmark.DEFAULT_AUDIO_ROOT),
         "output": str(BENCHMARK_OUTPUT_DIR / "frkb-current-latest.json"),
+        "solver": "legacy",
+    },
+    "hybrid-current": {
+        "truth": str(CURRENT_TRUTH),
+        "audio_root": str(benchmark.DEFAULT_AUDIO_ROOT),
+        "output": str(BENCHMARK_OUTPUT_DIR / "frkb-hybrid-current-latest.json"),
+        "solver": "hybrid",
+    },
+    "constant-grid-dp-current": {
+        "truth": str(CURRENT_TRUTH),
+        "audio_root": str(benchmark.DEFAULT_AUDIO_ROOT),
+        "output": str(BENCHMARK_OUTPUT_DIR / "frkb-constant-grid-dp-current-latest.json"),
+        "solver": "constant-grid-dp",
     },
     "intake": {
         "truth": str(INTAKE_TRUTH),
         "audio_root": "D:/FRKB_database-B/library/FilterLibrary/new",
         "output": str(BENCHMARK_OUTPUT_DIR / "intake-current-latest.json"),
+        "solver": "legacy",
     },
 }
 
@@ -52,6 +66,8 @@ def _apply_profile_defaults(args: argparse.Namespace, argv: list[str]) -> None:
         args.audio_root = defaults["audio_root"]
     if not _arg_supplied(argv, "--output"):
         args.output = defaults["output"]
+    if not _arg_supplied(argv, "--solver"):
+        args.solver = defaults["solver"]
 
 
 def _load_raw_truth_tracks(truth_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -154,8 +170,12 @@ def _run_shard(
         str(args.ffprobe),
         "--output",
         str(shard_output_path),
+        "--solver",
+        str(args.solver),
         "--device",
         str(args.device),
+        "--feature-cache-dir",
+        str(args.feature_cache_dir),
         "--prediction-cache-dir",
         str(args.prediction_cache_dir),
     ]
@@ -264,8 +284,15 @@ def _merge_payloads(
             "truthPath": str(args.truth),
             "audioRoot": str(args.audio_root),
             "device": str(args.device),
+            "solver": str(args.solver),
             "windowSec": benchmark.WINDOW_SEC,
             "maxScanSec": benchmark.MAX_SCAN_SEC,
+            "featureCache": {
+                "enabled": str(args.solver) in {"hybrid", "constant-grid-dp"},
+                "dir": str(args.feature_cache_dir)
+                if str(args.solver) in {"hybrid", "constant-grid-dp"}
+                else None,
+            },
             "strictToleranceMs": benchmark.STRICT_TOLERANCE_MS,
             "predictionCache": {
                 "enabled": not bool(args.no_prediction_cache),
@@ -361,7 +388,9 @@ def main() -> int:
     parser.add_argument("--ffmpeg", default=str(benchmark.DEFAULT_FFMPEG))
     parser.add_argument("--ffprobe", default=str(benchmark.DEFAULT_FFPROBE))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
+    parser.add_argument("--solver", choices=["legacy", "hybrid", "constant-grid-dp"], default="legacy")
     parser.add_argument("--device", default="cpu")
+    parser.add_argument("--feature-cache-dir", default=str(benchmark.DEFAULT_FEATURE_CACHE_DIR))
     parser.add_argument("--prediction-cache-dir", default=str(benchmark.DEFAULT_PREDICTION_CACHE_DIR))
     parser.add_argument("--no-prediction-cache", action="store_true")
     parser.add_argument("--jobs", type=int, default=0)
