@@ -11,96 +11,16 @@ import type { MixxxWaveformData } from '../waveformCache'
 import type { MixtapeRawWaveformData } from '../libraryCacheDb/mixtapeRawWaveformCache'
 import { requestMixtapeRawWaveform } from '../services/mixtapeRawWaveformQueue'
 import { decodeAudioShared } from '../services/audioDecodePool'
-
-type MixtapeRawWaveformStreamWorkerPayload = {
-  jobId?: number
-  filePath?: string
-  progress?: {
-    type?: string
-    startFrame?: number
-    frames?: number
-    totalFrames?: number
-    duration?: number
-    sampleRate?: number
-    rate?: number
-    minLeft?: Uint8Array | Buffer
-    maxLeft?: Uint8Array | Buffer
-    minRight?: Uint8Array | Buffer
-    maxRight?: Uint8Array | Buffer
-  }
-  result?: {
-    rawWaveformData?: MixtapeRawWaveformData
-  }
-  error?: string
-}
-
-type RawWaveformStreamRequest = {
-  requestId: string
-  filePath: string
-  deckKey: string
-  sender: Electron.WebContents
-  listRoot: string
-  stat: { size: number; mtimeMs: number } | null
-  targetRate?: number
-  startSec: number
-  songDurationSec: number
-  chunkFrames: number
-  expectedDurationSec: number
-  bootstrapDurationSec: number
-  priorityHint: number
-  protectsPlayback: boolean
-  forceLiveDecode: boolean
-  enqueuedAt: number
-  worker?: Worker
-  streamStartedAt?: number
-  firstChunkAt?: number
-  chunkCount: number
-}
-
-type CachedRawWaveformContinuation = {
-  sender: Electron.WebContents
-  requestId: string
-  filePath: string
-  startFrameOffset: number
-  songDurationSec: number
-  cached: MixtapeRawWaveformData
-  nextStartFrame: number
-  followupFramesPerChunk: number
-  totalFrames: number
-  priorityHint: number
-  startedAt: number
-  chunkCount: number
-  sending: boolean
-}
-
-type LiveRawWaveformBufferedChunk = {
-  startFrame: number
-  frames: number
-  totalFrames: number
-  duration: number
-  sampleRate: number
-  rate: number
-  minLeft: Uint8Array | Buffer
-  maxLeft: Uint8Array | Buffer
-  minRight: Uint8Array | Buffer
-  maxRight: Uint8Array | Buffer
-}
-
-type LiveRawWaveformContinuation = {
-  sender: Electron.WebContents
-  requestId: string
-  filePath: string
-  startSec: number
-  priorityHint: number
-  startedAt: number
-  chunkCount: number
-  queue: LiveRawWaveformBufferedChunk[]
-  continueCredits: number
-  donePayload: Record<string, unknown> | null
-}
-
-const MAX_ACTIVE_RAW_WAVEFORM_STREAMS = 2
-const MAX_ACTIVE_RAW_WAVEFORM_STREAMS_PER_DECK = 1
+import {
+  MAX_ACTIVE_RAW_WAVEFORM_STREAMS,
+  MAX_ACTIVE_RAW_WAVEFORM_STREAMS_PER_DECK,
+  MAX_LIVE_RAW_WAVEFORM_CONTINUE_CREDITS,
+  type CachedRawWaveformContinuation,
+  type LiveRawWaveformBufferedChunk,
+  type LiveRawWaveformContinuation,
+  type MixtapeRawWaveformStreamWorkerPayload,
+  type RawWaveformStreamRequest
+} from './mixtapeRawWaveformStreamTypes'
 
 const resolveRequestedRawRate = (value: unknown) => {
   const parsed = Number(value)
@@ -322,6 +242,7 @@ export function registerMixtapeRawWaveformHandlers() {
         sender,
         requestId,
         filePath,
+        startSec: Math.max(0, Number(params.startSec) || 0),
         startFrameOffset,
         songDurationSec: Number(cached.duration) || 0,
         cached,
@@ -352,7 +273,10 @@ export function registerMixtapeRawWaveformHandlers() {
 
   const continueCachedRawWaveformStream = async (requestId: string) => {
     const continuation = cachedRawWaveformContinuations.get(requestId)
-    if (!continuation || continuation.sending) return
+    if (!continuation) return
+    if (continuation.sending) {
+      return
+    }
     continuation.sending = true
 
     const sliceBuffer = (buffer: Buffer, startFrame: number, frames: number) =>
@@ -380,8 +304,7 @@ export function registerMixtapeRawWaveformHandlers() {
           frames,
           totalFrames: continuation.totalFrames,
           duration: continuation.songDurationSec,
-          startSec:
-            continuation.startFrameOffset / Math.max(1, Number(continuation.cached.rate) || 1),
+          startSec: continuation.startSec,
           sampleRate: Number(continuation.cached.sampleRate) || 0,
           rate: Number(continuation.cached.rate) || 0,
           minLeft: sliceBuffer(
@@ -425,8 +348,7 @@ export function registerMixtapeRawWaveformHandlers() {
             fromCache: true,
             streamed: true,
             duration: continuation.songDurationSec,
-            startSec:
-              continuation.startFrameOffset / Math.max(1, Number(continuation.cached.rate) || 1),
+            startSec: continuation.startSec,
             totalFrames: continuation.totalFrames
           })
         } catch {}
@@ -495,10 +417,37 @@ export function registerMixtapeRawWaveformHandlers() {
     liveRawWaveformContinuations.delete(requestId)
   }
 
+  const createLiveRawWaveformContinuation = (request: RawWaveformStreamRequest) =>
+    ({
+      sender: request.sender,
+      requestId: request.requestId,
+      filePath: request.filePath,
+      startSec: request.startSec,
+      priorityHint: request.priorityHint,
+      startedAt: request.streamStartedAt || Date.now(),
+      chunkCount: request.chunkCount,
+      queue: [],
+      continueCredits: 0,
+      donePayload: null
+    }) satisfies LiveRawWaveformContinuation
+
+  const resolveLiveRawWaveformContinuation = (requestId: string) => {
+    const existing = liveRawWaveformContinuations.get(requestId)
+    if (existing) return existing
+    const request = rawWaveformStreamRequests.get(requestId)
+    if (!request) return null
+    const continuation = createLiveRawWaveformContinuation(request)
+    liveRawWaveformContinuations.set(requestId, continuation)
+    return continuation
+  }
+
   const continueLiveRawWaveformStream = async (requestId: string) => {
-    const continuation = liveRawWaveformContinuations.get(requestId)
+    const continuation = resolveLiveRawWaveformContinuation(requestId)
     if (!continuation) return
-    continuation.continueCredits += 1
+    continuation.continueCredits = Math.min(
+      MAX_LIVE_RAW_WAVEFORM_CONTINUE_CREDITS,
+      continuation.continueCredits + 1
+    )
     flushLiveRawWaveformContinuation(requestId)
   }
 
@@ -582,23 +531,10 @@ export function registerMixtapeRawWaveformHandlers() {
             return
           }
 
-          const continuation =
-            liveRawWaveformContinuations.get(nextRequest.requestId) ||
-            ({
-              sender: nextRequest.sender,
-              requestId: nextRequest.requestId,
-              filePath: nextRequest.filePath,
-              startSec: nextRequest.startSec,
-              priorityHint: nextRequest.priorityHint,
-              startedAt: nextRequest.streamStartedAt || Date.now(),
-              chunkCount: nextRequest.chunkCount,
-              queue: [],
-              continueCredits: 0,
-              donePayload: null
-            } satisfies LiveRawWaveformContinuation)
+          const continuation = resolveLiveRawWaveformContinuation(nextRequest.requestId)
+          if (!continuation) return
           continuation.priorityHint = nextRequest.priorityHint
           continuation.queue.push(bufferedChunk)
-          liveRawWaveformContinuations.set(nextRequest.requestId, continuation)
           flushLiveRawWaveformContinuation(nextRequest.requestId)
           return
         }

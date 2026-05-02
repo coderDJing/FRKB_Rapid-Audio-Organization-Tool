@@ -464,8 +464,7 @@ const drawRange = (
     themeVariant: state.themeVariant
   })
 
-const drawSegment = (
-  targetCtx: OffscreenCanvasRenderingContext2D,
+const renderSegmentToScratch = (
   metrics: CanvasMetrics,
   state: FrameState,
   segmentX: number,
@@ -495,18 +494,35 @@ const drawSegment = (
     segmentDurationSec,
     state
   )
-  targetCtx.clearRect(safeSegmentX, 0, safeSegmentWidth, metrics.cssHeight)
   if (!rendered || !segment.canvas) return false
 
+  return {
+    canvas: segment.canvas,
+    scaledSegmentWidth,
+    safeSegmentX,
+    safeSegmentWidth
+  }
+}
+
+const drawSegment = (
+  targetCtx: OffscreenCanvasRenderingContext2D,
+  metrics: CanvasMetrics,
+  state: FrameState,
+  segmentX: number,
+  segmentWidth: number
+) => {
+  const segment = renderSegmentToScratch(metrics, state, segmentX, segmentWidth)
+  if (!segment) return false
+  targetCtx.clearRect(segment.safeSegmentX, 0, segment.safeSegmentWidth, metrics.cssHeight)
   targetCtx.drawImage(
     segment.canvas,
     0,
     0,
-    scaledSegmentWidth,
+    segment.scaledSegmentWidth,
     metrics.scaledHeight,
-    safeSegmentX,
+    segment.safeSegmentX,
     0,
-    safeSegmentWidth,
+    segment.safeSegmentWidth,
     metrics.cssHeight
   )
   return true
@@ -635,49 +651,64 @@ const renderFullFrame = (
           scratch.ctx.drawImage(canvas, 0, 0)
         }
 
-        ctx.setTransform(1, 0, 0, 1, 0, 0)
-        ctx.imageSmoothingEnabled = false
-        ctx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
-
-        const keepScaledWidth = Math.max(0, metrics.scaledWidth - absShiftScaledPx)
-        if (keepScaledWidth > 0) {
-          if (shiftScaledPx > 0) {
-            ctx.drawImage(
-              scratch.canvas,
-              absShiftScaledPx,
-              0,
-              keepScaledWidth,
-              metrics.scaledHeight,
-              0,
-              0,
-              keepScaledWidth,
-              metrics.scaledHeight
-            )
-          } else {
-            ctx.drawImage(
-              scratch.canvas,
-              0,
-              0,
-              keepScaledWidth,
-              metrics.scaledHeight,
-              absShiftScaledPx,
-              0,
-              keepScaledWidth,
-              metrics.scaledHeight
-            )
-          }
-        }
-
-        applyCanvasScaleTransform(ctx, metrics.scaleX, metrics.scaleY)
         const absShiftCssPx = absShiftScaledPx / metrics.scaleX
+        let segment: ReturnType<typeof renderSegmentToScratch> | false = false
         if (shiftScaledPx > 0) {
           const keepCssWidth = Math.max(0, metrics.cssWidth - absShiftCssPx)
           const segmentX = Math.max(0, Math.floor(keepCssWidth) - 2)
           const segmentWidth = Math.max(1, metrics.cssWidth - segmentX)
-          reused = drawSegment(ctx, metrics, state, segmentX, segmentWidth)
+          segment = renderSegmentToScratch(metrics, state, segmentX, segmentWidth)
         } else {
           const segmentWidth = Math.max(1, Math.min(metrics.cssWidth, Math.ceil(absShiftCssPx) + 2))
-          reused = drawSegment(ctx, metrics, state, 0, segmentWidth)
+          segment = renderSegmentToScratch(metrics, state, 0, segmentWidth)
+        }
+        if (segment) {
+          ctx.setTransform(1, 0, 0, 1, 0, 0)
+          ctx.imageSmoothingEnabled = false
+          ctx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
+
+          const keepScaledWidth = Math.max(0, metrics.scaledWidth - absShiftScaledPx)
+          if (keepScaledWidth > 0) {
+            if (shiftScaledPx > 0) {
+              ctx.drawImage(
+                scratch.canvas,
+                absShiftScaledPx,
+                0,
+                keepScaledWidth,
+                metrics.scaledHeight,
+                0,
+                0,
+                keepScaledWidth,
+                metrics.scaledHeight
+              )
+            } else {
+              ctx.drawImage(
+                scratch.canvas,
+                0,
+                0,
+                keepScaledWidth,
+                metrics.scaledHeight,
+                absShiftScaledPx,
+                0,
+                keepScaledWidth,
+                metrics.scaledHeight
+              )
+            }
+          }
+
+          applyCanvasScaleTransform(ctx, metrics.scaleX, metrics.scaleY)
+          ctx.drawImage(
+            segment.canvas,
+            0,
+            0,
+            segment.scaledSegmentWidth,
+            metrics.scaledHeight,
+            segment.safeSegmentX,
+            0,
+            segment.safeSegmentWidth,
+            metrics.cssHeight
+          )
+          reused = true
         }
         if (reused) {
           lastWaveformScrollShiftScaledPx = shiftScaledPx
@@ -688,15 +719,26 @@ const renderFullFrame = (
   }
 
   if (!reused) {
-    ctx.clearRect(0, 0, metrics.cssWidth, metrics.cssHeight)
-    reused = drawRange(
-      ctx,
-      metrics.cssWidth,
-      metrics.cssHeight,
-      state.rangeStartSec,
-      state.rangeDurationSec,
-      state
-    )
+    const fullFrame = ensureSegmentScratch(metrics.scaledWidth, metrics.scaledHeight)
+    if (fullFrame) {
+      applyCanvasScaleTransform(fullFrame.ctx, metrics.scaleX, metrics.scaleY)
+      fullFrame.ctx.clearRect(0, 0, metrics.cssWidth, metrics.cssHeight)
+      reused = drawRange(
+        fullFrame.ctx,
+        metrics.cssWidth,
+        metrics.cssHeight,
+        state.rangeStartSec,
+        state.rangeDurationSec,
+        state
+      )
+      if (reused) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.imageSmoothingEnabled = false
+        ctx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
+        ctx.drawImage(fullFrame.canvas, 0, 0)
+        applyCanvasScaleTransform(ctx, metrics.scaleX, metrics.scaleY)
+      }
+    }
     if (reused) {
       lastWaveformRenderMode = 'full'
     }
@@ -704,7 +746,6 @@ const renderFullFrame = (
 
   if (!reused) {
     lastWaveformRenderMode = 'failed'
-    resetFrameState()
     return false
   }
 
@@ -775,6 +816,30 @@ const renderTimelineFallback = () => {
   lastWaveformRenderMode = 'timeline-only'
 }
 
+const canPreserveWaveformAfterRenderMiss = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  state: FrameState,
+  previousFrame: FrameState | null
+) => {
+  if (request.playbackActive !== true || !previousFrame || !state.rawData) return false
+  return (
+    previousFrame.width === state.width &&
+    previousFrame.height === state.height &&
+    previousFrame.bpm === state.bpm &&
+    previousFrame.barBeatOffset === state.barBeatOffset &&
+    previousFrame.timeBasisOffsetMs === state.timeBasisOffsetMs &&
+    previousFrame.rangeDurationSec === state.rangeDurationSec &&
+    previousFrame.rawData === state.rawData &&
+    previousFrame.showDetailHighlights === state.showDetailHighlights &&
+    previousFrame.showCenterLine === state.showCenterLine &&
+    previousFrame.showBackground === state.showBackground &&
+    previousFrame.showBeatGrid === state.showBeatGrid &&
+    previousFrame.waveformLayout === state.waveformLayout &&
+    previousFrame.preferRawPeaksOnly === state.preferRawPeaksOnly &&
+    previousFrame.themeVariant === state.themeVariant
+  )
+}
+
 const processRender = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
   notifyMain = true
@@ -783,6 +848,7 @@ const processRender = (
   const rawData = resolveRawForRender(request)
   const state = metrics ? buildFrameState(request, metrics, rawData) : null
   const renderState = state as FrameState | null
+  const previousFrame = lastFrame
   const ready =
     !!metrics &&
     !!rawData &&
@@ -790,7 +856,16 @@ const processRender = (
       ? renderDirtyRange(request, metrics, renderState as FrameState)
       : renderFullFrame(request, metrics, renderState as FrameState))
 
-  if (metrics && renderState && !ready) {
+  const preserved =
+    !!metrics &&
+    !!renderState &&
+    !ready &&
+    canPreserveWaveformAfterRenderMiss(request, renderState, previousFrame)
+  if (preserved) {
+    lastFrame = previousFrame
+    lastWaveformScrollShiftScaledPx = null
+    lastWaveformRenderMode = 'preserve-missed-playback'
+  } else if (metrics && renderState && !ready) {
     renderTimelineFallback()
   }
 
@@ -814,7 +889,7 @@ const processRender = (
         renderToken: request.renderToken,
         rangeStartSec: renderState?.rangeStartSec ?? request.rangeStartSec,
         rangeDurationSec: renderState?.rangeDurationSec ?? request.rangeDurationSec,
-        ready
+        ready: ready || preserved
       }
     })
   }

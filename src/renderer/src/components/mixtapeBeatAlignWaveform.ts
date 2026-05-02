@@ -767,7 +767,7 @@ export const drawBeatAlignRekordboxWaveform = (
     timeBasisOffsetMs,
     preferRawPeaksOnly
   )
-  if (!columns.length) {
+  if (!columns.some(Boolean)) {
     if (showBeatGrid !== false) {
       drawBeatGrid(
         ctx,

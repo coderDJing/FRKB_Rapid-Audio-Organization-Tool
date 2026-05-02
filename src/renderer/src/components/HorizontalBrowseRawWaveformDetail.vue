@@ -619,6 +619,8 @@ const {
   updateLiveWaveformRawMeta
 })
 
+mountRawWaveformStream()
+
 const loadWaveform = async () => {
   const currentSong = props.song
   const currentToken = ++loadToken
@@ -855,7 +857,7 @@ watch(
     if (!revision) return
     if (!props.song?.filePath) return
     const safeTargetSeconds = Math.max(0, targetSeconds)
-    restartRawWaveformStreamAt(safeTargetSeconds)
+    restartRawWaveformStreamAt(safeTargetSeconds, false)
     applyPreviewPlaybackPosition(safeTargetSeconds, true)
   }
 )
@@ -914,7 +916,6 @@ onMounted(() => {
     })
     resizeObserver.observe(wrapRef.value)
   }
-  mountRawWaveformStream()
   emitToolbarState()
   scheduleDraw()
 })

@@ -1,11 +1,6 @@
-import type { Ref } from 'vue'
-import type { ISongInfo } from 'src/types/globals'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import type {
-  HorizontalBrowseDetailLiveCanvasRawChunk,
-  HorizontalBrowseDetailLiveCanvasRawMeta
-} from '@renderer/workers/horizontalBrowseDetailLiveCanvas.types'
+import type { HorizontalBrowseDetailLiveCanvasRawChunk } from '@renderer/workers/horizontalBrowseDetailLiveCanvas.types'
 import { createRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformPlaceholder'
 import { PREVIEW_RAW_TARGET_RATE } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { normalizeHorizontalBrowsePathKey } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
@@ -14,145 +9,29 @@ import {
   resolveHorizontalBrowseWaveformTraceElapsedMs,
   sendHorizontalBrowseWaveformTrace
 } from '@renderer/components/horizontalBrowseWaveformTrace'
-
-type HorizontalBrowseDirection = 'up' | 'down'
-
-type HorizontalBrowseRawWaveformPayload = {
-  frames?: unknown
-  duration?: unknown
-  sampleRate?: unknown
-  rate?: unknown
-  startSec?: unknown
-  minLeft?: unknown
-  maxLeft?: unknown
-  minRight?: unknown
-  maxRight?: unknown
-}
-
-type HorizontalBrowseRawWaveformStreamChunkPayload = {
-  requestId?: string
-  filePath?: string
-  startFrame?: number
-  frames?: number
-  totalFrames?: number
-  duration?: number
-  sampleRate?: number
-  rate?: number
-  startSec?: number
-  minLeft?: unknown
-  maxLeft?: unknown
-  minRight?: unknown
-  maxRight?: unknown
-}
-
-type HorizontalBrowseRawWaveformStreamDonePayload = {
-  requestId?: string
-  filePath?: string
-  data?: unknown
-  duration?: unknown
-  totalFrames?: unknown
-  startSec?: unknown
-  error?: string
-  fromCache?: boolean
-  streamed?: boolean
-}
-
-type PendingRawStreamChunkWork = {
-  payload: HorizontalBrowseRawWaveformStreamChunkPayload
-  startFrame: number
-  chunkFrames: number
-  totalFrames: number
-  duration: number
-  sampleRate: number
-  rate: number
-  startSec: number
-  minLeft: Float32Array
-  maxLeft: Float32Array
-  minRight: Float32Array
-  maxRight: Float32Array
-  appliedFrames: number
-}
-
-type UseHorizontalBrowseRawWaveformStreamOptions = {
-  song: () => ISongInfo | null
-  direction: () => HorizontalBrowseDirection
-  deferWaveformLoad: () => boolean
-  rawLoadPriorityHint: () => number | undefined
-  bootstrapDurationSec: () => number | undefined
-  timeBasisOffsetMs: () => number
-  playing: () => boolean
-  currentSeconds: () => number | undefined
-  viewportAnchorSec: () => number
-  visibleDurationSec: () => number
-  previewLoading: Ref<boolean>
-  rawStreamActive: Ref<boolean>
-  rawData: Ref<RawWaveformData | null>
-  mixxxData: Ref<MixxxWaveformData | null>
-  clearStreamDrawScheduling: () => void
-  scheduleRawStreamDirtyDraw: (dirtyStartSec: number, dirtyEndSec: number) => void
-  scheduleDraw: () => void
-  holdCurrentWaveformFrame: () => void
-  storeRawWaveform: (filePath: string, data: RawWaveformData) => void
-  resetLiveWaveformRaw: (meta: HorizontalBrowseDetailLiveCanvasRawMeta) => void
-  ensureLiveWaveformRawCapacity: (meta: HorizontalBrowseDetailLiveCanvasRawMeta) => void
-  applyLiveWaveformRawChunk: (
-    chunk: HorizontalBrowseDetailLiveCanvasRawChunk,
-    transferOwnership?: boolean
-  ) => void
-  replaceLiveWaveformRaw: (data: RawWaveformData | null) => void
-  updateLiveWaveformRawMeta: (meta: Partial<HorizontalBrowseDetailLiveCanvasRawMeta>) => void
-}
-
-const HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES = 32768
-const HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS = 4
-const HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES = 2048
-const HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR = 0.8
-const HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR = 0.25
-const HORIZONTAL_BROWSE_RAW_VIEWPORT_RESTART_GAP_FACTOR = 0.75
-const HORIZONTAL_BROWSE_RAW_VISIBLE_REDRAW_LEAD_FACTOR = 0.25
-const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR = 0.5
-
-const toFloat32Array = (value: unknown) => {
-  if (value instanceof Float32Array) return value
-  if (value instanceof ArrayBuffer) return new Float32Array(value)
-  if (ArrayBuffer.isView(value)) {
-    const view = value as ArrayBufferView
-    return new Float32Array(view.buffer, view.byteOffset, Math.floor(view.byteLength / 4))
-  }
-  return new Float32Array(0)
-}
-
-const normalizeRawWaveformData = (value: unknown): RawWaveformData | null => {
-  const payload =
-    value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as HorizontalBrowseRawWaveformPayload)
-      : null
-  if (!payload) return null
-
-  const frames = Math.max(0, Number(payload.frames) || 0)
-  const duration = Math.max(0, Number(payload.duration) || 0)
-  const sampleRate = Math.max(0, Number(payload.sampleRate) || 0)
-  const rate = Math.max(0, Number(payload.rate) || 0)
-  const startSec = Math.max(0, Number(payload.startSec) || 0)
-  const minLeft = toFloat32Array(payload.minLeft)
-  const maxLeft = toFloat32Array(payload.maxLeft)
-  const minRight = toFloat32Array(payload.minRight)
-  const maxRight = toFloat32Array(payload.maxRight)
-  if (!frames || !duration || !sampleRate || !rate) return null
-
-  return {
-    duration,
-    sampleRate,
-    rate,
-    frames,
-    startSec,
-    loadedFrames: frames,
-    minLeft: new Float32Array(minLeft),
-    maxLeft: new Float32Array(maxLeft),
-    minRight: new Float32Array(minRight),
-    maxRight: new Float32Array(maxRight)
-  }
-}
+import {
+  HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES,
+  HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS,
+  HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR,
+  HORIZONTAL_BROWSE_RAW_CONTINUE_TIMEOUT_MS,
+  HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_MAX_RETRIES,
+  HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_TIMEOUT_MS,
+  HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES,
+  HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR,
+  HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_MIN_SEC,
+  HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_OVERSCAN_FACTOR,
+  HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR,
+  HORIZONTAL_BROWSE_RAW_VIEWPORT_RESTART_GAP_FACTOR,
+  HORIZONTAL_BROWSE_RAW_VISIBLE_REDRAW_LEAD_FACTOR,
+  HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES,
+  normalizeRawWaveformData,
+  toFloat32Array,
+  type HorizontalBrowseRawWaveformStreamChunkPayload,
+  type HorizontalBrowseRawWaveformStreamDonePayload,
+  type PendingRawStreamChunkWork,
+  type RawWaveformStreamStartOptions,
+  type UseHorizontalBrowseRawWaveformStreamOptions
+} from '@renderer/components/horizontalBrowseRawWaveformStreamTypes'
 
 export const useHorizontalBrowseRawWaveformStream = (
   options: UseHorizontalBrowseRawWaveformStreamOptions
@@ -168,6 +47,11 @@ export const useHorizontalBrowseRawWaveformStream = (
   let rawChunkProcessTimer: ReturnType<typeof setTimeout> | null = null
   let rawChunkProcessRaf = 0
   let rawStreamFirstVisibleReadyLogged = false
+  let rawStreamBootstrapDurationSec = 0
+  let rawStreamContinuePending = false
+  let rawStreamInitialRetryCount = 0
+  let rawStreamContinueStartedAt = 0
+  let rawStreamWatchdogTimer: ReturnType<typeof setTimeout> | null = null
 
   const traceHorizontalRawStream = (stage: string, payload?: Record<string, unknown>) => {
     sendHorizontalBrowseWaveformTrace('stream', stage, {
@@ -190,11 +74,24 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const resolveChunkCopySliceFrames = () => HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES
 
+  const resolveMaxChunkCopyFrames = (bootstrapCopyFrames: number) =>
+    options.playing()
+      ? HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES
+      : Math.max(resolveChunkCopySliceFrames(), bootstrapCopyFrames)
+
   const shouldKeepMainThreadRawArrays = () => true
 
   const resolveStreamChunkFrames = () => HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES
 
   const resolveWaveformTargetRate = (_deferred: boolean) => PREVIEW_RAW_TARGET_RATE
+
+  const resolveSeekBootstrapDurationSec = () => {
+    const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
+    return Math.max(
+      HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_MIN_SEC,
+      visibleDurationSec * HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_OVERSCAN_FACTOR
+    )
+  }
 
   const resolveTimeBasisOffsetSec = () =>
     Math.max(0, Number(options.timeBasisOffsetMs()) || 0) / 1000
@@ -315,13 +212,71 @@ export const useHorizontalBrowseRawWaveformStream = (
     pendingRawWaveformStoreData = null
   }
 
+  const clearRawStreamWatchdog = () => {
+    if (!rawStreamWatchdogTimer) return
+    clearTimeout(rawStreamWatchdogTimer)
+    rawStreamWatchdogTimer = null
+  }
+
+  const recoverStalledInitialStream = (viewportAnchorSec: number) => {
+    if (!rawStreamRequestId || !options.rawStreamActive.value || rawStreamChunkCount > 0) {
+      return false
+    }
+    const elapsedMs = rawStreamStartedAt > 0 ? performance.now() - rawStreamStartedAt : 0
+    if (elapsedMs < HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_TIMEOUT_MS) return false
+    if (rawStreamInitialRetryCount >= HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_MAX_RETRIES) {
+      return false
+    }
+    return restartRawWaveformStreamAt(viewportAnchorSec, false, {
+      forceRestart: true,
+      forceLiveDecode: true,
+      initialRetryCount: rawStreamInitialRetryCount + 1,
+      bootstrapDurationSec: resolveSeekBootstrapDurationSec()
+    })
+  }
+
+  const recoverStalledContinue = () => {
+    if (!rawStreamContinuePending) return false
+    const elapsedMs =
+      rawStreamContinueStartedAt > 0 ? performance.now() - rawStreamContinueStartedAt : 0
+    if (elapsedMs < HORIZONTAL_BROWSE_RAW_CONTINUE_TIMEOUT_MS) return false
+    rawStreamContinuePending = false
+    rawStreamContinueStartedAt = 0
+    return true
+  }
+
+  const runRawStreamWatchdog = () => {
+    rawStreamWatchdogTimer = null
+    if (!rawStreamRequestId || !options.rawStreamActive.value) return
+    const anchorSec = Math.max(
+      0,
+      Number(options.playing() ? options.currentSeconds() : options.viewportAnchorSec()) || 0
+    )
+    if (recoverStalledInitialStream(anchorSec)) return
+    if (recoverStalledContinue()) {
+      maybeContinueRawWaveformStream(anchorSec)
+      return
+    }
+    if (rawStreamChunkCount === 0 || rawStreamContinuePending) {
+      scheduleRawStreamWatchdog()
+    }
+  }
+
+  const scheduleRawStreamWatchdog = () => {
+    if (rawStreamWatchdogTimer) return
+    rawStreamWatchdogTimer = setTimeout(runRawStreamWatchdog, 250)
+  }
+
   const cancelRawWaveformStream = () => {
     if (!rawStreamRequestId) return
+    clearRawStreamWatchdog()
     traceHorizontalRawStream('raw-stream:cancel')
     window.electron.ipcRenderer.send('mixtape-waveform-raw:cancel-stream', {
       requestId: rawStreamRequestId
     })
     rawStreamRequestId = ''
+    rawStreamContinuePending = false
+    rawStreamContinueStartedAt = 0
     options.rawStreamActive.value = false
     options.clearStreamDrawScheduling()
     clearQueuedRawStreamPayloads()
@@ -329,8 +284,13 @@ export const useHorizontalBrowseRawWaveformStream = (
   }
 
   const continueRawWaveformStream = (requestId: string) => {
-    if (!requestId) return
+    if (!requestId) return false
+    if (rawStreamContinuePending) return false
+    rawStreamContinuePending = true
+    rawStreamContinueStartedAt = performance.now()
     window.electron.ipcRenderer.send('mixtape-waveform-raw:continue-stream', { requestId })
+    scheduleRawStreamWatchdog()
+    return true
   }
 
   const resolveSongDurationSec = () =>
@@ -353,7 +313,8 @@ export const useHorizontalBrowseRawWaveformStream = (
     filePath: string,
     targetRate: number,
     requestToken: number,
-    startSec = 0
+    startSec = 0,
+    startOptions: RawWaveformStreamStartOptions = {}
   ) => {
     clearQueuedRawStreamPayloads()
     cancelRawWaveformStream()
@@ -363,7 +324,17 @@ export const useHorizontalBrowseRawWaveformStream = (
     rawStreamStartedAt = performance.now()
     rawStreamChunkCount = 0
     rawStreamFirstVisibleReadyLogged = false
-    const bootstrapDurationSec = Math.max(0, Number(options.bootstrapDurationSec()) || 0)
+    rawStreamContinuePending = false
+    rawStreamContinueStartedAt = 0
+    rawStreamInitialRetryCount = Math.max(
+      0,
+      Math.floor(Number(startOptions.initialRetryCount) || 0)
+    )
+    const bootstrapDurationSec = Math.max(
+      0,
+      Number(startOptions.bootstrapDurationSec ?? options.bootstrapDurationSec()) || 0
+    )
+    rawStreamBootstrapDurationSec = bootstrapDurationSec
     const songDurationSec = resolveSongDurationSec()
     const remainingDurationSec = Math.max(0, songDurationSec - rawStreamStartSec)
     traceHorizontalRawStream('raw-stream:start', {
@@ -387,8 +358,10 @@ export const useHorizontalBrowseRawWaveformStream = (
       songDurationSec,
       chunkFrames: resolveStreamChunkFrames(),
       expectedDurationSec: remainingDurationSec,
-      bootstrapDurationSec
+      bootstrapDurationSec,
+      forceLiveDecode: startOptions.forceLiveDecode === true
     })
+    scheduleRawStreamWatchdog()
   }
 
   const handleRawLoadPriorityHintChange = (
@@ -463,7 +436,31 @@ export const useHorizontalBrowseRawWaveformStream = (
     return visibleStartSec >= loadedStartSec && visibleEndSec <= loadedEndSec
   }
 
-  const restartRawWaveformStreamAt = (targetSec: number, holdFrame = true) => {
+  const resolveActiveInitialStreamTimelineRange = () => {
+    if (!rawStreamRequestId || !options.rawStreamActive.value || rawStreamChunkCount > 0) {
+      return null
+    }
+    const startSec = resolveAudioRangeStartSecToTimelineSec(rawStreamStartSec)
+    return {
+      startSec,
+      endSec: startSec + Math.max(rawStreamBootstrapDurationSec, 0.001)
+    }
+  }
+
+  const isActiveInitialStreamCoveringVisibleCore = (anchorSec: number) => {
+    const activeRange = resolveActiveInitialStreamTimelineRange()
+    if (!activeRange) return false
+    const { visibleStartSec, visibleEndSec } = resolveVisibleTimelineRange(anchorSec)
+    return (
+      visibleStartSec >= activeRange.startSec - 0.001 && visibleEndSec <= activeRange.endSec + 0.001
+    )
+  }
+
+  const restartRawWaveformStreamAt = (
+    targetSec: number,
+    holdFrame = true,
+    startOptions: RawWaveformStreamStartOptions & { forceRestart?: boolean } = {}
+  ) => {
     const filePath = String(options.song()?.filePath || '').trim()
     if (!filePath) return false
     const targetStartTimelineSec = resolveRawWaveformBootstrapStartSec(targetSec)
@@ -482,10 +479,17 @@ export const useHorizontalBrowseRawWaveformStream = (
       hasCoverage
     })
     if (hasCoverage) return false
+    if (!startOptions.forceRestart && isActiveInitialStreamCoveringVisibleCore(targetSec)) {
+      return false
+    }
     if (holdFrame) {
       options.holdCurrentWaveformFrame()
     }
-    beginRawWaveformStream(filePath, resolveWaveformTargetRate(false), Date.now(), targetStartSec)
+    beginRawWaveformStream(filePath, resolveWaveformTargetRate(false), Date.now(), targetStartSec, {
+      bootstrapDurationSec: startOptions.bootstrapDurationSec ?? resolveSeekBootstrapDurationSec(),
+      forceLiveDecode: startOptions.forceLiveDecode,
+      initialRetryCount: startOptions.initialRetryCount
+    })
     traceHorizontalRawStream('raw-stream:seek-restart:started', {
       targetSec,
       targetStartSec,
@@ -561,6 +565,8 @@ export const useHorizontalBrowseRawWaveformStream = (
   }
 
   const finalizePendingRawStreamChunkWork = (work: PendingRawStreamChunkWork) => {
+    rawStreamContinuePending = false
+    rawStreamContinueStartedAt = 0
     rawStreamChunkCount += 1
     if (rawStreamChunkCount === 1) {
       options.previewLoading.value = false
@@ -618,9 +624,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     const bootstrapCopyFrames = Math.max(0, playbackBootstrapTargetLoadedFrames - loadedFrames)
     const copyFrames = Math.min(
       remainingFrames,
-      keepMainThreadRawArrays
-        ? Math.max(resolveChunkCopySliceFrames(), bootstrapCopyFrames)
-        : remainingFrames
+      keepMainThreadRawArrays ? resolveMaxChunkCopyFrames(bootstrapCopyFrames) : remainingFrames
     )
     const sourceStart = work.appliedFrames
     const sourceEnd = sourceStart + copyFrames
@@ -666,6 +670,7 @@ export const useHorizontalBrowseRawWaveformStream = (
           loadedFrames: target.loadedFrames,
           chunkFrames: work.chunkFrames
         })
+        options.scheduleDraw()
       }
       options.scheduleRawStreamDirtyDraw(dirtyStartSec, dirtyEndSec)
     }
@@ -698,6 +703,9 @@ export const useHorizontalBrowseRawWaveformStream = (
 
     const completedRequestId = rawStreamRequestId
     rawStreamRequestId = ''
+    rawStreamContinuePending = false
+    rawStreamContinueStartedAt = 0
+    clearRawStreamWatchdog()
     options.previewLoading.value = false
     options.rawStreamActive.value = false
     traceHorizontalRawStream('raw-stream:done', {
@@ -768,19 +776,23 @@ export const useHorizontalBrowseRawWaveformStream = (
     rawChunkProcessTimer = null
     rawChunkProcessRaf = 0
     const startedAt = performance.now()
+    let processedWorkCount = 0
     while (pendingRawStreamChunks.length > 0) {
       const nextWork = pendingRawStreamChunks[0]
       if (!nextWork) break
       const completed = processPendingRawStreamChunkWork(nextWork)
+      processedWorkCount += 1
       if (completed) {
         pendingRawStreamChunks.shift()
         finalizePendingRawStreamChunkWork(nextWork)
+      }
+      if (options.playing() && processedWorkCount >= 1) {
+        break
       }
       if (performance.now() - startedAt >= resolveChunkProcessBudgetMs()) {
         break
       }
     }
-
     if (pendingRawStreamChunks.length > 0) {
       scheduleQueuedRawStreamPayloadFlush()
       return
@@ -849,11 +861,19 @@ export const useHorizontalBrowseRawWaveformStream = (
         anchorSec ?? (options.playing() ? options.currentSeconds() : options.viewportAnchorSec())
       ) || 0
     )
+    if (isActiveInitialStreamCoveringVisibleCore(viewportAnchorSec)) {
+      if (recoverStalledInitialStream(viewportAnchorSec)) {
+        return
+      }
+      return
+    }
+    const currentCoversVisible = isCurrentRawCoveringVisibleRange(
+      viewportAnchorSec,
+      HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR
+    )
     if (
-      isCurrentRawCoveringVisibleRange(
-        viewportAnchorSec,
-        HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR
-      )
+      currentCoversVisible &&
+      (!options.playing() || !rawStreamRequestId || !options.rawStreamActive.value)
     ) {
       return
     }
@@ -876,7 +896,9 @@ export const useHorizontalBrowseRawWaveformStream = (
     }
 
     const { rate, loadedStartSec, loadedEndSec } = resolveLoadedTimelineRange()
-    if (!rate) return
+    if (!rate) {
+      return
+    }
     const { visibleStartSec, visibleEndSec, visibleDurationSec } = resolveVisibleTimelineRange(
       viewportAnchorSec,
       HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR
@@ -893,7 +915,9 @@ export const useHorizontalBrowseRawWaveformStream = (
     const desiredLoadedEndSec = options.playing()
       ? viewportAnchorSec + visibleDurationSec * HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR
       : visibleEndSec
-    if (loadedEndSec >= desiredLoadedEndSec) return
+    if (loadedEndSec >= desiredLoadedEndSec) {
+      return
+    }
     continueRawWaveformStream(rawStreamRequestId)
   }
 
@@ -907,6 +931,7 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const dispose = () => {
     cancelRawWaveformStream()
+    clearRawStreamWatchdog()
     clearQueuedRawStreamPayloads()
     clearPendingRawWaveformStore()
     window.electron.ipcRenderer.removeListener(
