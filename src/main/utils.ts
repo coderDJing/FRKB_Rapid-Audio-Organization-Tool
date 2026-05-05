@@ -17,69 +17,13 @@ import {
 } from './libraryTreeDb'
 import { pruneOrphanedSongListCaches } from './services/cacheMaintenance'
 import { getMixtapeProjectStemConfig } from './mixtapeDb'
+import { CORE_KEYS, ensureEnglishCoreLibraries, getCoreFsDirName } from './coreLibraries'
+
+export { ensureEnglishCoreLibraries, getCoreFsDirName } from './coreLibraries'
 
 interface SongsAnalyseResult {
   songsAnalyseResult: md5[]
   errorSongsAnalyseResult: md5[]
-}
-
-// ===== 核心库英文/中文名称映射与路径解析 =====
-const CORE_EN_TO_CN: Record<string, string> = {
-  FilterLibrary: '筛选库',
-  CuratedLibrary: '精选库',
-  MixtapeLibrary: '混音库',
-  RecycleBin: '回收站'
-}
-const CORE_KEYS = Object.keys(CORE_EN_TO_CN) as Array<
-  'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
->
-// 运行期：英文名 -> 实际物理目录名（优先英文，若重命名失败则回退中文）
-const coreEnToFsName: Record<string, string> = {
-  FilterLibrary: 'FilterLibrary',
-  CuratedLibrary: 'CuratedLibrary',
-  MixtapeLibrary: 'MixtapeLibrary',
-  RecycleBin: 'RecycleBin'
-}
-
-export async function ensureEnglishCoreLibraries(dbRootDir: string): Promise<void> {
-  const base = path.join(dbRootDir, 'library')
-  await fs.ensureDir(base)
-  for (const enName of CORE_KEYS) {
-    const cnName = CORE_EN_TO_CN[enName]
-    const enPath = path.join(base, enName)
-    const cnPath = path.join(base, cnName)
-    const enExists = await fs.pathExists(enPath)
-    const cnExists = await fs.pathExists(cnPath)
-    try {
-      if (enExists) {
-        coreEnToFsName[enName] = enName
-      } else if (cnExists) {
-        // 尝试将中文目录重命名为英文
-        try {
-          await fs.rename(cnPath, enPath)
-          coreEnToFsName[enName] = enName
-        } catch (_e) {
-          // 重命名失败，回退使用中文目录名，后续重试
-          coreEnToFsName[enName] = cnName
-          // 确保目标英文目录占位以便后续创建（不强制）
-          // 不创建，避免与中文并存造成歧义
-        }
-      } else {
-        // 两者都不存在，创建英文目录
-        await fs.ensureDir(enPath)
-        coreEnToFsName[enName] = enName
-      }
-    } catch (_err) {
-      // 任一异常时，保守回退到中文
-      coreEnToFsName[enName] = cnExists ? cnName : enName
-    }
-  }
-}
-
-export function getCoreFsDirName(
-  enName: 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
-): string {
-  return coreEnToFsName[enName] || enName
 }
 
 export function mapRendererPathToFsPath(rendererPath: string): string {

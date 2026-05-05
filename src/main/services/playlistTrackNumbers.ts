@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import store from '../store'
-import { getCoreFsDirName } from '../utils'
+import { getCoreFsDirName } from '../coreLibraries'
 import { collectFilesWithExtensions } from '../nodeTaskUtils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { SongCacheEntry } from '../libraryCacheDb/types'
