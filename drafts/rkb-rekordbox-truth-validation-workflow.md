@@ -89,12 +89,12 @@ FRKB pass/fail 是当前算法状态，只存在于 classification 和派生 ben
 音频目录同步状态：
 
 - `D:/FRKB_database-B/library/FilterLibrary/new`：0
-- 5ms classification 期望 `sample`：684
-- 5ms classification 期望 `grid-failures-current`：247
-- 当前音频目录还未执行 5ms 同步；`sync_frkb_classification_audio_dirs.py --dry-run`
-  显示 `moveCount = 90`，全部为 `grid-failures-current -> sample`。
+- `D:/FRKB_database-B/library/FilterLibrary/sample`：684
+- `D:/FRKB_database-B/library/FilterLibrary/grid-failures-current`：247
+- 当前音频目录已经按 5ms classification 同步完成；`sync_frkb_classification_audio_dirs.py --dry-run`
+  必须显示 `moveCount = 0`。
 
-需要正式整理目录时，先复查 dry-run，再执行不带 `--dry-run` 的同步命令。
+后续每次刷新 classification 后，先复查 dry-run，再执行不带 `--dry-run` 的同步命令。
 
 同步校验命令：
 
