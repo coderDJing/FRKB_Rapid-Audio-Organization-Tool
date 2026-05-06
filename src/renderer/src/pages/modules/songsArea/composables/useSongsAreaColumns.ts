@@ -180,6 +180,18 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     if (isMixtapeView.value) return 'mixtape'
     return 'default'
   })
+  const canUsePlaylistTrackNumberForIndex = computed(() => {
+    if (columnMode.value !== 'default') return false
+    const dirPath = String(
+      libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
+    ).replace(/\\/g, '/')
+    return (
+      dirPath === 'library/FilterLibrary' ||
+      dirPath.startsWith('library/FilterLibrary/') ||
+      dirPath === 'library/CuratedLibrary' ||
+      dirPath.startsWith('library/CuratedLibrary/')
+    )
+  })
 
   const readPersistedColumns = (mode: SongsAreaColumnMode): ISongsAreaColumn[] => {
     const storageKey =
@@ -436,21 +448,25 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     const sortedCol = columnData.value.find((c) => c.order)
     if (sortedCol) {
       if (sortedCol.key === 'index') {
-        filtered = [...filtered].sort((a, b) => {
-          const valueA =
-            typeof a.playlistTrackNumber === 'number' && Number.isFinite(a.playlistTrackNumber)
-              ? a.playlistTrackNumber
-              : Number.MAX_SAFE_INTEGER
-          const valueB =
-            typeof b.playlistTrackNumber === 'number' && Number.isFinite(b.playlistTrackNumber)
-              ? b.playlistTrackNumber
-              : Number.MAX_SAFE_INTEGER
-          if (valueA === valueB) {
-            const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
-            return collator.compare(String(a.filePath || ''), String(b.filePath || ''))
-          }
-          return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
-        })
+        if (canUsePlaylistTrackNumberForIndex.value) {
+          filtered = [...filtered].sort((a, b) => {
+            const valueA =
+              typeof a.playlistTrackNumber === 'number' && Number.isFinite(a.playlistTrackNumber)
+                ? a.playlistTrackNumber
+                : Number.MAX_SAFE_INTEGER
+            const valueB =
+              typeof b.playlistTrackNumber === 'number' && Number.isFinite(b.playlistTrackNumber)
+                ? b.playlistTrackNumber
+                : Number.MAX_SAFE_INTEGER
+            if (valueA === valueB) {
+              const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
+              return collator.compare(String(a.filePath || ''), String(b.filePath || ''))
+            }
+            return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
+          })
+        } else if (sortedCol.order === 'desc') {
+          filtered = [...filtered].reverse()
+        }
       } else if (sortedCol.key === 'key') {
         const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
         const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })

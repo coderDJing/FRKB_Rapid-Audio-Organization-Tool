@@ -22,7 +22,11 @@ import {
   previewPlaylistBatchRename
 } from '../services/playlistBatchRename'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
-import { setSongListTrackNumbersByOrder } from '../services/playlistTrackNumbers'
+import {
+  compactSongListTrackNumbers,
+  compactSongListTrackNumbersByFilePaths,
+  setSongListTrackNumbersByOrder
+} from '../services/playlistTrackNumbers'
 import type {
   IBatchRenameExecutionRequestItem,
   IBatchRenameTemplateSegment,
@@ -48,6 +52,11 @@ type AudioConvertCollectFilesPayload = {
 type ReorderSongListTrackNumbersPayload = {
   songListPath?: string
   orderedFilePaths?: string[]
+}
+
+type CompactSongListTrackNumbersPayload = {
+  songListPath?: string
+  filePaths?: string[]
 }
 
 export function registerPlaylistHandlers() {
@@ -102,6 +111,34 @@ export function registerPlaylistHandlers() {
         throw new Error('重排序号未写入，目标歌单可能不支持真实序号或没有可写入曲目')
       }
       markGlobalSongSearchDirty('songList:reorder-track-numbers')
+      return result
+    }
+  )
+
+  ipcMain.handle(
+    'songList:compact-track-numbers',
+    async (_e, payload: CompactSongListTrackNumbersPayload) => {
+      const songListPath = String(payload?.songListPath || '').trim()
+      if (songListPath) {
+        const absolutePlaylistPath = path.join(
+          store.databaseDir,
+          mapRendererPathToFsPath(songListPath)
+        )
+        const result = await compactSongListTrackNumbers(absolutePlaylistPath)
+        markGlobalSongSearchDirty('songList:compact-track-numbers')
+        return {
+          ...result,
+          roots: 1
+        }
+      }
+
+      const filePaths = Array.isArray(payload?.filePaths)
+        ? payload.filePaths.map((item) => String(item || '').trim()).filter(Boolean)
+        : []
+      const result = await compactSongListTrackNumbersByFilePaths(filePaths)
+      if (result.roots > 0) {
+        markGlobalSongSearchDirty('songList:compact-track-numbers')
+      }
       return result
     }
   )
@@ -431,6 +468,10 @@ export function registerPlaylistHandlers() {
           failedMoves.forEach((err, index) => {
             log.error('指纹去重移动重复文件失败', { error: err?.message, index })
           })
+        }
+        if (movedPaths.length > 0) {
+          await compactSongListTrackNumbers(scanPath)
+          markGlobalSongSearchDirty('deduplicateSongListByFingerprint')
         }
 
         const recycleBinInfo = null

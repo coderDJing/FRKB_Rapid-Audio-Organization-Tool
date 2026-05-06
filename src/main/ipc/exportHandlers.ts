@@ -24,6 +24,7 @@ import { remapKeyAnalysisTrackedPath } from '../services/keyAnalysisQueue'
 import {
   appendSongListTrackNumbers,
   compactSongListTrackNumbers,
+  compactSongListTrackNumbersByFilePaths,
   isSupportedPlaylistTrackNumberListRoot
 } from '../services/playlistTrackNumbers'
 
@@ -139,6 +140,14 @@ export function registerExportHandlers() {
           total: tasks.length
         })
       }
+      if (
+        deleteSongsAfterExport &&
+        success > 0 &&
+        isSupportedPlaylistTrackNumberListRoot(scanPath)
+      ) {
+        await compactSongListTrackNumbers(scanPath)
+        markGlobalSongSearchDirty('exportSongListToDir')
+      }
       if (failed > 0) {
         throw new Error('exportSongListToDir failed')
       }
@@ -203,6 +212,15 @@ export function registerExportHandlers() {
         now: tasks.length,
         total: tasks.length
       })
+    }
+    if (deleteSongsAfterExport && success > 0) {
+      const sourcePaths = Array.isArray(songs)
+        ? songs.map((item) => String(item?.filePath || '').trim()).filter((item) => item.length > 0)
+        : []
+      const compactResult = await compactSongListTrackNumbersByFilePaths(sourcePaths)
+      if (compactResult.roots > 0) {
+        markGlobalSongSearchDirty('exportSongsToDir')
+      }
     }
     if (failed > 0) {
       throw new Error('exportSongsToDir failed')
@@ -300,9 +318,6 @@ export function registerExportHandlers() {
         total: tasks.length
       })
     }
-    if (failed > 0) {
-      throw new Error(isMove ? 'moveSongsToDir failed' : 'copySongsToDir failed')
-    }
     const movedPaths = results.filter((item): item is string => typeof item === 'string')
     if (movedPaths.length > 0 && isSupportedPlaylistTrackNumberListRoot(targetListRoot)) {
       await appendSongListTrackNumbers({
@@ -322,7 +337,12 @@ export function registerExportHandlers() {
         await compactSongListTrackNumbers(sourceRoot)
       }
     }
-    markGlobalSongSearchDirty(isMove ? 'moveSongsToDir' : 'copySongsToDir')
+    if (movedPaths.length > 0) {
+      markGlobalSongSearchDirty(isMove ? 'moveSongsToDir' : 'copySongsToDir')
+    }
+    if (failed > 0) {
+      throw new Error(isMove ? 'moveSongsToDir failed' : 'copySongsToDir failed')
+    }
     if (isCuratedTarget) {
       const curatedArtistTracks: Array<{
         artistName?: string

@@ -178,6 +178,15 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       const missingPaths = paths.filter((p) => !existingPaths.has(p))
       if (missingPaths.length > 0) {
         missingPaths.forEach((p) => pendingCutPaths.delete(p))
+        const songListPath = pendingCutListUUID
+          ? libraryUtils.findDirPathByUuid(pendingCutListUUID)
+          : ''
+        void window.electron.ipcRenderer
+          .invoke(
+            'songList:compact-track-numbers',
+            songListPath ? { songListPath } : { filePaths: missingPaths }
+          )
+          .catch(() => {})
         emitter.emit('songsRemoved', {
           listUUID: pendingCutListUUID,
           paths: missingPaths

@@ -158,12 +158,32 @@ const isPlaylistReorder = computed(() => props.reorderMode === 'playlist')
 const isInternalReorderEnabled = computed(
   () => props.reorderMode === 'mixtape' || props.reorderMode === 'playlist'
 )
+const shouldDisplayPlaylistTrackNumber = computed(() => {
+  const rootDir = String(props.songListRootDir || '').replace(/\\/g, '/')
+  return (
+    rootDir === 'library/FilterLibrary' ||
+    rootDir.startsWith('library/FilterLibrary/') ||
+    rootDir === 'library/CuratedLibrary' ||
+    rootDir.startsWith('library/CuratedLibrary/')
+  )
+})
 const canPreviewWaveform = computed(() => !props.readOnly || props.allowWaveformPreviewWhenReadOnly)
 
 const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
 const coverCellRefMap = markRaw(new Map<string, HTMLElement | null>())
 const getRowKey = (song: ISongInfo) => song.mixtapeItemId || song.filePath
 const getCellKey = (song: ISongInfo, colKey: string) => `${getRowKey(song)}__${colKey}`
+const getIndexCellValue = (song: ISongInfo, index: number) => {
+  if (typeof song.mixOrder === 'number' && song.mixOrder > 0) return song.mixOrder
+  if (
+    shouldDisplayPlaylistTrackNumber.value &&
+    typeof song.playlistTrackNumber === 'number' &&
+    song.playlistTrackNumber > 0
+  ) {
+    return song.playlistTrackNumber
+  }
+  return index + 1
+}
 const resolveHTMLElement = (el: Element | ComponentPublicInstance | null) => {
   if (el && typeof (el as ComponentPublicInstance).$el !== 'undefined') {
     return ((el as ComponentPublicInstance).$el || null) as Element | null
@@ -692,14 +712,7 @@ onUnmounted(() => {
                 class="cell-title"
                 :style="{ width: `var(--songs-col-${col.key}, ${col.width}px)` }"
               >
-                {{
-                  typeof item.song.mixOrder === 'number' && item.song.mixOrder > 0
-                    ? item.song.mixOrder
-                    : typeof item.song.playlistTrackNumber === 'number' &&
-                        item.song.playlistTrackNumber > 0
-                      ? item.song.playlistTrackNumber
-                      : item.idx + 1
-                }}
+                {{ getIndexCellValue(item.song, item.idx) }}
               </div>
               <div
                 v-else-if="col.key === 'cover'"

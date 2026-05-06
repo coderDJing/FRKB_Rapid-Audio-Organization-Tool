@@ -31,6 +31,62 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     scheduleSweepCovers
   } = params
 
+  const isSupportedPlaylistTrackNumberList = () => {
+    const currentListUUID = songsAreaState.songListUUID
+    const node = libraryUtils.getLibraryTreeByUUID(currentListUUID)
+    if (node?.type !== 'songList') return false
+    const dirPath = String(libraryUtils.findDirPathByUuid(currentListUUID) || '').replace(
+      /\\/g,
+      '/'
+    )
+    return (
+      dirPath === 'library/FilterLibrary' ||
+      dirPath.startsWith('library/FilterLibrary/') ||
+      dirPath === 'library/CuratedLibrary' ||
+      dirPath.startsWith('library/CuratedLibrary/')
+    )
+  }
+
+  const renumberPlaylistTrackNumbersIfNeeded = () => {
+    if (!isSupportedPlaylistTrackNumberList()) return false
+    let changed = false
+    const nextSongs = originalSongInfoArr.value.map((song, index) => {
+      const nextNumber = index + 1
+      if (song.playlistTrackNumber === nextNumber) return song
+      changed = true
+      return {
+        ...song,
+        playlistTrackNumber: nextNumber
+      }
+    })
+    if (changed) {
+      originalSongInfoArr.value = markRaw(nextSongs)
+    }
+    return changed
+  }
+
+  const syncPlayingSongTrackNumberForCurrentList = () => {
+    const currentListUUID = songsAreaState.songListUUID
+    if (runtime.playingData.playingSongListUUID !== currentListUUID) return
+    runtime.playingData.playingSongListData = songsAreaState.songInfoArr
+    const currentPlayingSong = runtime.playingData.playingSong
+    if (!currentPlayingSong?.filePath) return
+    const matchedSong = songsAreaState.songInfoArr.find(
+      (song) => normalizePath(song.filePath) === normalizePath(currentPlayingSong.filePath)
+    )
+    if (!matchedSong) return
+    runtime.playingData.playingSong = {
+      ...currentPlayingSong,
+      playlistTrackNumber: matchedSong.playlistTrackNumber
+    }
+  }
+
+  const applyMembershipChange = () => {
+    renumberPlaylistTrackNumbersIfNeeded()
+    applyFiltersAndSorting()
+    syncPlayingSongTrackNumberForCurrentList()
+  }
+
   const onSongsOptimisticallyRemoved = (payload: { listUUID?: string; paths?: string[] }) => {
     const listUUID = payload?.listUUID
     const currentListUUID = songsAreaState.songListUUID
@@ -48,7 +104,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
       (song) => !normalizedSet.has(normalizePath(song.filePath))
     )
-    applyFiltersAndSorting()
+    applyMembershipChange()
 
     if (runtime.playingData.playingSongListUUID === currentListUUID) {
       runtime.playingData.playingSongListData = songsAreaState.songInfoArr
@@ -114,7 +170,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
 
     originalSongInfoArr.value = markRaw(rebuilt)
-    applyFiltersAndSorting()
+    applyMembershipChange()
 
     if (runtime.playingData.playingSongListUUID === currentListUUID) {
       runtime.playingData.playingSongListData = songsAreaState.songInfoArr
@@ -177,7 +233,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       (song) => !normalizedSet.has(normalizePath(song.filePath))
     )
 
-    applyFiltersAndSorting()
+    applyMembershipChange()
 
     if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
       runtime.playingData.playingSongListData = songsAreaState.songInfoArr
@@ -208,7 +264,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
       (song) => !normalizedMovedSet.has(normalizePath(song.filePath))
     )
-    applyFiltersAndSorting()
+    applyMembershipChange()
     scheduleSweepCovers()
 
     if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {

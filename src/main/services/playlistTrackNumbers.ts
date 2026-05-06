@@ -4,6 +4,7 @@ import store from '../store'
 import { getCoreFsDirName } from '../coreLibraries'
 import { collectFilesWithExtensions } from '../nodeTaskUtils'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import { findSongListRootByPath } from '../libraryTreeDb'
 import type { SongCacheEntry } from '../libraryCacheDb/types'
 import type { ISongInfo } from '../../types/globals'
 import { buildLiteSongInfo, applyLiteDefaults } from './songInfoLite'
@@ -311,6 +312,31 @@ export const compactSongListTrackNumbers = async (listRoot: string) => {
   )
   const existingOrder = resolveExistingOrder(currentFiles, cacheMapByNormalizedPath, listRoot)
   return await persistSongListTrackNumberOrder(listRoot, existingOrder)
+}
+
+export const compactSongListTrackNumbersByFilePaths = async (filePaths: string[]) => {
+  const roots = new Map<string, string>()
+  for (const rawPath of Array.isArray(filePaths) ? filePaths : []) {
+    const filePath = String(rawPath || '').trim()
+    if (!filePath) continue
+    const songListRoot = await findSongListRootByPath(path.dirname(filePath))
+    if (!songListRoot || !isSupportedPlaylistTrackNumberListRoot(songListRoot)) continue
+    roots.set(normalizePath(songListRoot), songListRoot)
+  }
+
+  let updated = false
+  let total = 0
+  for (const songListRoot of roots.values()) {
+    const result = await compactSongListTrackNumbers(songListRoot)
+    updated = updated || Boolean(result.updated)
+    total += Number(result.total || 0)
+  }
+
+  return {
+    updated,
+    total,
+    roots: roots.size
+  }
 }
 
 export { isSupportedPlaylistTrackNumberListRoot }

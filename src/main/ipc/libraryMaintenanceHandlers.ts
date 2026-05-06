@@ -33,6 +33,7 @@ import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import {
   appendSongListTrackNumbers,
   compactSongListTrackNumbers,
+  compactSongListTrackNumbersByFilePaths,
   isSupportedPlaylistTrackNumberListRoot
 } from '../services/playlistTrackNumbers'
 
@@ -263,10 +264,19 @@ export function registerLibraryMaintenanceHandlers() {
       payload && !Array.isArray(payload)
         ? normalizeRendererPlaylistPath(payload.songListPath || '')
         : ''
-    if (removedPaths.length > 0 && songListPath) {
-      const sourceSongListRoot = path.join(store.databaseDir, songListPath)
-      if (isSupportedPlaylistTrackNumberListRoot(sourceSongListRoot)) {
-        await compactSongListTrackNumbers(sourceSongListRoot)
+    if (removedPaths.length > 0) {
+      let compacted = false
+      if (songListPath) {
+        const sourceSongListRoot = path.join(store.databaseDir, songListPath)
+        if (isSupportedPlaylistTrackNumberListRoot(sourceSongListRoot)) {
+          await compactSongListTrackNumbers(sourceSongListRoot)
+          compacted = true
+        }
+      } else {
+        const compactResult = await compactSongListTrackNumbersByFilePaths(removedPaths)
+        compacted = compactResult.roots > 0
+      }
+      if (compacted) {
         markGlobalSongSearchDirty('delSongs')
       }
     }

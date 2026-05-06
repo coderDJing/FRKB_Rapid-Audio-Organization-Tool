@@ -15,6 +15,8 @@ import {
 } from '../../shared/audioFormats'
 import { writeWavRiffInfoWindows } from './wavRiffInfo'
 import { moveFileToRecycleBin } from '../recycleBinService'
+import { compactSongListTrackNumbersByFilePaths } from './playlistTrackNumbers'
+import { markGlobalSongSearchDirty } from './globalSongSearch'
 import type { IAudioMetadata } from 'music-metadata'
 
 type ConvertJobOptions = {
@@ -392,6 +394,7 @@ export async function startAudioConversion(
   let fingerprintAddedCount = 0
   let skipped = 0
   const errors: Array<{ filePath: string; message: string; stderr?: string }> = []
+  const convertedDestPaths: string[] = []
 
   const pushError = (filePath: string, err: unknown, stderr?: string, args?: string[]) => {
     const message = err instanceof Error ? err.message : String(err || 'unknown error')
@@ -605,8 +608,6 @@ export async function startAudioConversion(
         } catch {}
       }
 
-      success += 1
-
       // 校验输出是否为空（或未生成）
       try {
         const outputPath =
@@ -619,7 +620,6 @@ export async function startAudioConversion(
         }
       } catch (err) {
         failed += 1
-        success -= 1
         pushError(src, err, lastFfmpegStderr, lastFfmpegArgs)
         await Promise.all(
           tmpPaths.map(async (tmpPath) => {
@@ -635,6 +635,11 @@ export async function startAudioConversion(
         }
         if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
         return
+      }
+
+      success += 1
+      if (dest) {
+        convertedDestPaths.push(dest)
       }
 
       if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
@@ -664,6 +669,16 @@ export async function startAudioConversion(
         })
     }
   })
+
+  if (success > 0 || backupCount > 0) {
+    const compactResult = await compactSongListTrackNumbersByFilePaths([
+      ...files,
+      ...convertedDestPaths
+    ])
+    if (compactResult.roots > 0) {
+      markGlobalSongSearchDirty('audio:convert')
+    }
+  }
 
   if (mainWindow) {
     mainWindow.webContents.send('progressSet', {

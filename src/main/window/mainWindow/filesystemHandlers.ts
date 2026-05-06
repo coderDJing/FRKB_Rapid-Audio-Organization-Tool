@@ -45,6 +45,12 @@ import {
 import { replaceMixtapeStemAssetFilePath } from '../../mixtapeStemDb'
 import { getLibraryRootAbs } from '../../services/libraryStemAssetStorage'
 import { isMixtapeWindowOpenByPlaylistId } from '../mixtapeWindow'
+import {
+  compactSongListTrackNumbers,
+  compactSongListTrackNumbersByFilePaths,
+  isSupportedPlaylistTrackNumberListRoot
+} from '../../services/playlistTrackNumbers'
+import { markGlobalSongSearchDirty } from '../../services/globalSongSearch'
 
 const MIXTAPE_WINDOW_OPEN_ERROR_CODE = 'MIXTAPE_WINDOW_OPEN'
 const FILE_BATCH_CONCURRENCY = 8
@@ -62,6 +68,13 @@ const normalizeLibraryNodeType = (value: unknown): LibraryNodeType => {
       return 'dir'
   }
 }
+
+const isRecycleBinMoveResult = (value: unknown): value is RecycleBinMoveResult =>
+  !!value &&
+  typeof value === 'object' &&
+  !Array.isArray(value) &&
+  typeof Reflect.get(value, 'status') === 'string' &&
+  typeof Reflect.get(value, 'srcPath') === 'string'
 
 export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null) {
   const sendProgress = (payload: Record<string, unknown>) => {
@@ -93,9 +106,15 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
     const audioExts = store.settingConfig.audioExt
     const songFileUrls = await collectFilesWithExtensions(absPath, audioExts)
     const originalPlaylistPath = normalizeRendererPlaylistPath(targetPath)
+    const compactTrackNumbersIfSupported = async () => {
+      if (!isSupportedPlaylistTrackNumberListRoot(absPath)) return
+      await compactSongListTrackNumbers(absPath)
+      markGlobalSongSearchDirty('emptyDir')
+    }
 
     if (songFileUrls.length === 0) {
       await removeNonAudioEntries(absPath, audioExts)
+      await compactTrackNumbersIfSupported()
       return
     }
     const tasks: Array<() => Promise<RecycleBinMoveResult>> = songFileUrls.map((srcPath) => {
@@ -118,6 +137,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         waitForUserDecision(getWindow(), batchId, 'emptyDir', payload)
     })
     await removeNonAudioEntries(absPath, audioExts)
+    await compactTrackNumbersIfSupported()
     const targetWindow = getWindow()
     if (targetWindow && hasENOSPC) {
       targetWindow.webContents.send('file-batch-summary', {
@@ -384,22 +404,31 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                 noProgress: false
               })
               const batchId = `recycleMove_${Date.now()}`
-              const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
-                concurrency: FILE_BATCH_CONCURRENCY,
-                stopOnENOSPC: true,
-                yieldEvery: FILE_BATCH_YIELD_EVERY,
-                onProgress: (done: number, total: number) => {
-                  sendProgress({
-                    id: progressId,
-                    titleKey: 'library.deleteProgressRemoving',
-                    now: done,
-                    total,
-                    noProgress: false
-                  })
-                },
-                onInterrupted: async (payload) =>
-                  waitForUserDecision(getWindow(), batchId, 'recycleMove', payload)
-              })
+              const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(
+                tasks,
+                {
+                  concurrency: FILE_BATCH_CONCURRENCY,
+                  stopOnENOSPC: true,
+                  yieldEvery: FILE_BATCH_YIELD_EVERY,
+                  onProgress: (done: number, total: number) => {
+                    sendProgress({
+                      id: progressId,
+                      titleKey: 'library.deleteProgressRemoving',
+                      now: done,
+                      total,
+                      noProgress: false
+                    })
+                  },
+                  onInterrupted: async (payload) =>
+                    waitForUserDecision(getWindow(), batchId, 'recycleMove', payload)
+                }
+              )
+              const movedPaths = results
+                .filter(
+                  (result): result is RecycleBinMoveResult =>
+                    !(result instanceof Error) && isRecycleBinMoveResult(result)
+                )
+                .map((result) => result.srcPath)
               await removeNonAudioEntries(dirPath, audioExts)
               const allAudioMoved = failed === 0 && skipped === 0 && success === tasks.length
               if (allAudioMoved) {
@@ -407,6 +436,11 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                 removeLibraryNode(item.uuid)
                 if (item.nodeType === 'mixtapeList') {
                   await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
+                }
+              } else if (movedPaths.length > 0) {
+                const compactResult = await compactSongListTrackNumbersByFilePaths(movedPaths)
+                if (compactResult.roots > 0) {
+                  markGlobalSongSearchDirty('library-delete-partial')
                 }
               }
               operationStatus = allAudioMoved ? 'recycled' : 'recycle_failed'

@@ -4,6 +4,7 @@ import store from '../../store'
 import { getLogPath, log } from '../../log'
 import { mapRendererPathToFsPath } from '../../utils'
 import { markGlobalSongSearchDirty } from '../globalSongSearch'
+import { compactSongListTrackNumbersByFilePaths } from '../playlistTrackNumbers'
 import { readTrackMetadata } from '../metadataEditor'
 import { scanSongListOffMainThread } from '../songListScanWorker'
 import { loadSharedSongHotCueDefinition } from '../sharedSongHotCues'
@@ -388,6 +389,7 @@ export async function runRekordboxXmlExportJob(
     })
 
     if (request.mode === 'move') {
+      await compactSongListTrackNumbersByFilePaths(stagedTracks.map((track) => track.sourcePath))
       markGlobalSongSearchDirty('rekordbox-xml-export-move')
     }
 
