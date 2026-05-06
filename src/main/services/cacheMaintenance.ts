@@ -15,6 +15,7 @@ import {
   removeMixtapeStemAssetsByFilePath,
   replaceMixtapeStemAssetFilePath
 } from '../mixtapeStemDb'
+import { invalidateKeyAnalysisCache, enqueueKeyAnalysisImmediate } from './keyAnalysisQueue'
 
 const normalizePath = (value: string): string => {
   if (!value) return ''
@@ -306,6 +307,9 @@ export async function clearTrackCache(filePath: string) {
     }
 
     await purgeCoverCacheForTrack(filePath)
+
+    invalidateKeyAnalysisCache(filePath)
+    enqueueKeyAnalysisImmediate(filePath)
   } catch {}
 }
 
