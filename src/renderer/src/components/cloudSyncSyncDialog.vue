@@ -92,19 +92,34 @@ const {
   show: showSummaryDialog
 } = useDialogTransition(DIALOG_TRANSITION_DURATION, false)
 
-const summaryView = computed<Required<CloudSyncSummary>>(() => ({
+const summaryView = computed(() => ({
   addedToServerCount: Number(summary.value?.addedToServerCount || 0),
   pulledToClientCount: Number(summary.value?.pulledToClientCount || 0),
   curatedArtistClientInitialCount: Number(summary.value?.curatedArtistClientInitialCount || 0),
   curatedArtistClientCountAfter: Number(summary.value?.curatedArtistClientCountAfter || 0),
   curatedArtistServerInitialCount: Number(summary.value?.curatedArtistServerInitialCount || 0),
   curatedArtistServerCountAfter: Number(summary.value?.curatedArtistServerCountAfter || 0),
-  durationMs: Number(summary.value?.durationMs || 0),
   clientInitialCount: Number(summary.value?.clientInitialCount || 0),
   totalClientCountAfter: Number(summary.value?.totalClientCountAfter || 0),
   serverInitialCount: Number(summary.value?.serverInitialCount || 0),
   totalServerCountAfter: Number(summary.value?.totalServerCountAfter || 0)
 }))
+
+const curatedArtistSummaryView = computed(() => {
+  const view = summaryView.value
+  const uploadedCount = Math.max(
+    view.curatedArtistServerCountAfter - view.curatedArtistServerInitialCount,
+    0
+  )
+  const pulledCount = Math.max(
+    view.curatedArtistClientCountAfter - view.curatedArtistClientInitialCount,
+    0
+  )
+  return {
+    uploadedCount,
+    pulledCount
+  }
+})
 
 const openSummary = (data: CloudSyncSummary) => {
   summary.value = data
@@ -286,12 +301,6 @@ const closeSummaryAndCancel = () => {
   })
 }
 
-const formatDurationSec = (ms: number) => {
-  const seconds = ms / 1000
-  if (seconds >= 10) return String(Math.round(seconds))
-  return String(Math.round(seconds * 10) / 10)
-}
-
 onMounted(async () => {
   const cfg = await window.electron.ipcRenderer.invoke('cloudSync/config/get')
   configured.value = !!cfg?.userKey
@@ -398,7 +407,7 @@ onUnmounted(() => {
       <div class="body summary-body">
         <div class="stats">
           <div class="section">
-            <div class="section-title">{{ t('cloudSync.overview') }}</div>
+            <div class="section-title">{{ t('cloudSync.audioFingerprintCount') }}</div>
             <div class="chips">
               <div class="chip" :class="{ success: summaryView.addedToServerCount > 0 }">
                 <div class="num">{{ summaryView.addedToServerCount }}</div>
@@ -408,14 +417,7 @@ onUnmounted(() => {
                 <div class="num">{{ summaryView.pulledToClientCount }}</div>
                 <div class="cap">{{ t('cloudSync.pulledNew') }}</div>
               </div>
-              <div class="chip">
-                <div class="num">{{ formatDurationSec(summaryView.durationMs) }}</div>
-                <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
-              </div>
             </div>
-          </div>
-          <div class="section">
-            <div class="section-title">{{ t('cloudSync.totalChanges') }}</div>
             <div class="section-body">
               <span class="count-pair">
                 <span class="count-text"
@@ -457,6 +459,16 @@ onUnmounted(() => {
           </div>
           <div class="section">
             <div class="section-title">{{ t('cloudSync.curatedArtistCount') }}</div>
+            <div class="chips">
+              <div class="chip" :class="{ success: curatedArtistSummaryView.uploadedCount > 0 }">
+                <div class="num">{{ curatedArtistSummaryView.uploadedCount }}</div>
+                <div class="cap">{{ t('cloudSync.curatedArtistUploadedNew') }}</div>
+              </div>
+              <div class="chip" :class="{ success: curatedArtistSummaryView.pulledCount > 0 }">
+                <div class="num">{{ curatedArtistSummaryView.pulledCount }}</div>
+                <div class="cap">{{ t('cloudSync.curatedArtistPulledNew') }}</div>
+              </div>
+            </div>
             <div class="section-body">
               <span class="count-pair">
                 <span class="count-text"
