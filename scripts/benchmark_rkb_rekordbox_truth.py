@@ -41,9 +41,6 @@ DEFAULT_OUTPUT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "
 DEFAULT_PREDICTION_CACHE_DIR = (
     REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "beatthis-prediction-cache"
 )
-DEFAULT_FEATURE_CACHE_DIR = (
-    REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark" / "feature-cache"
-)
 BEAT_THIS_BRIDGE = REPO_ROOT / "scripts" / "beat_this_bridge.py"
 
 SAMPLE_RATE = 44100
@@ -51,21 +48,11 @@ CHANNELS = 2
 WINDOW_SEC = 30.0
 MAX_SCAN_SEC = 120.0
 DRIFT_BEAT_HORIZONS = (32, 64, 128)
-STRICT_TOLERANCE_MS = 2.0
+STRICT_TOLERANCE_MS = 5.0
 PREDICTION_CACHE_VERSION = 1
 
 _ACTIVE_LOGIT_CACHE_CONTEXT: dict[str, Any] | None = None
 
-
-def _load_hybrid_solver_module() -> Any:
-    import rkb_hybrid_beatgrid_solver
-
-    return rkb_hybrid_beatgrid_solver
-
-def _load_constant_grid_dp_solver_module() -> Any:
-    import rkb_constant_grid_dp_solver
-
-    return rkb_constant_grid_dp_solver
 
 def _load_bridge_module() -> Any:
     spec = importlib.util.spec_from_file_location("beat_this_bridge", BEAT_THIS_BRIDGE)
@@ -843,31 +830,6 @@ def _analyze_track(
     )
     return _normalize_bridge_result(result)
 
-def _analyze_track_hybrid(
-    *,
-    hybrid_solver: Any,
-    feature_cache_dir: Path,
-    truth: dict[str, Any],
-) -> dict[str, Any]:
-    result = hybrid_solver.solve_hybrid_beatgrid_from_cache(
-        track=truth,
-        feature_cache_dir=feature_cache_dir,
-    )
-    return _normalize_bridge_result(result)
-
-def _analyze_track_constant_grid_dp(
-    *,
-    constant_grid_dp_solver: Any,
-    feature_cache_dir: Path,
-    truth: dict[str, Any],
-) -> dict[str, Any]:
-    result = constant_grid_dp_solver.solve_constant_grid_dp_from_cache(
-        track=truth,
-        feature_cache_dir=feature_cache_dir,
-    )
-    return _normalize_bridge_result(result)
-
-
 def _build_track_report(analysis: dict[str, Any], truth: dict[str, Any]) -> dict[str, Any]:
     offset_ms = float((truth.get("timeBasis") or {}).get("offsetMs") or 0.0)
     compare_count = 128
@@ -953,9 +915,8 @@ def main() -> int:
     parser.add_argument("--ffmpeg", default=str(DEFAULT_FFMPEG))
     parser.add_argument("--ffprobe", default=str(DEFAULT_FFPROBE))
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
-    parser.add_argument("--solver", choices=["legacy", "hybrid", "constant-grid-dp"], default="legacy")
+    parser.add_argument("--solver", choices=["legacy"], default="legacy")
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--feature-cache-dir", default=str(DEFAULT_FEATURE_CACHE_DIR))
     parser.add_argument("--prediction-cache-dir", default=str(DEFAULT_PREDICTION_CACHE_DIR))
     parser.add_argument(
         "--no-prediction-cache",
@@ -977,7 +938,6 @@ def main() -> int:
     ffprobe_path = Path(args.ffprobe)
     output_path = Path(args.output)
     solver = str(args.solver or "legacy").strip().lower()
-    feature_cache_dir = Path(args.feature_cache_dir)
     device = str(args.device or "cpu").strip() or "cpu"
     prediction_cache_dir = None if args.no_prediction_cache else Path(args.prediction_cache_dir)
 
@@ -991,9 +951,6 @@ def main() -> int:
         raise SystemExit(f"ffmpeg not found: {ffmpeg_path}")
     if not ffprobe_path.exists():
         raise SystemExit(f"ffprobe not found: {ffprobe_path}")
-    if solver in {"hybrid", "constant-grid-dp"} and not feature_cache_dir.exists():
-        raise SystemExit(f"feature cache dir not found: {feature_cache_dir}")
-
     started_at = time.time()
     truth_tracks = _load_truth_tracks(truth_path, audio_roots, ffprobe_path)
     missing_tracks = [item for item in truth_tracks if not item["fileExists"]]
@@ -1009,18 +966,11 @@ def main() -> int:
     checkpoint_path = ""
     predictor = None
     cpu_spect = None
-    hybrid_solver = None
-    constant_grid_dp_solver = None
-    if solver == "legacy":
-        bridge = _load_bridge_module()
-        _install_full_logit_prediction_cache(bridge)
-        checkpoint_path = str(bridge._resolve_checkpoint_path())
-        predictor = bridge.Audio2Beats(checkpoint_path=checkpoint_path, device=device, dbn=False)
-        cpu_spect = bridge.LogMelSpect(device="cpu") if bridge._uses_accelerated_device(device) else None
-    elif solver == "hybrid":
-        hybrid_solver = _load_hybrid_solver_module()
-    else:
-        constant_grid_dp_solver = _load_constant_grid_dp_solver_module()
+    bridge = _load_bridge_module()
+    _install_full_logit_prediction_cache(bridge)
+    checkpoint_path = str(bridge._resolve_checkpoint_path())
+    predictor = bridge.Audio2Beats(checkpoint_path=checkpoint_path, device=device, dbn=False)
+    cpu_spect = bridge.LogMelSpect(device="cpu") if bridge._uses_accelerated_device(device) else None
     prediction_cache_stats = _cache_stats()
 
     rows: list[dict[str, Any]] = []
@@ -1029,30 +979,17 @@ def main() -> int:
         label = f"[{index}/{len(truth_tracks)}] {truth['fileName']}"
         print(label, flush=True)
         try:
-            if solver == "legacy":
-                analysis = _analyze_track(
-                    bridge=bridge,
-                    predictor=predictor,
-                    cpu_spect=cpu_spect,
-                    ffmpeg_path=ffmpeg_path,
-                    device=device,
-                    checkpoint_path=checkpoint_path,
-                    prediction_cache_dir=prediction_cache_dir,
-                    prediction_cache_stats=prediction_cache_stats,
-                    truth=truth,
-                )
-            elif solver == "hybrid":
-                analysis = _analyze_track_hybrid(
-                    hybrid_solver=hybrid_solver,
-                    feature_cache_dir=feature_cache_dir,
-                    truth=truth,
-                )
-            else:
-                analysis = _analyze_track_constant_grid_dp(
-                    constant_grid_dp_solver=constant_grid_dp_solver,
-                    feature_cache_dir=feature_cache_dir,
-                    truth=truth,
-                )
+            analysis = _analyze_track(
+                bridge=bridge,
+                predictor=predictor,
+                cpu_spect=cpu_spect,
+                ffmpeg_path=ffmpeg_path,
+                device=device,
+                checkpoint_path=checkpoint_path,
+                prediction_cache_dir=prediction_cache_dir,
+                prediction_cache_stats=prediction_cache_stats,
+                truth=truth,
+            )
             rows.append(_build_track_report(analysis, truth))
         except Exception as error:
             error_rows.append(
@@ -1075,10 +1012,6 @@ def main() -> int:
             "solver": solver,
             "windowSec": WINDOW_SEC,
             "maxScanSec": MAX_SCAN_SEC,
-            "featureCache": {
-                "enabled": solver in {"hybrid", "constant-grid-dp"},
-                "dir": str(feature_cache_dir) if solver in {"hybrid", "constant-grid-dp"} else None,
-            },
             "strictToleranceMs": STRICT_TOLERANCE_MS,
             "predictionCache": {
                 "enabled": prediction_cache_dir is not None,

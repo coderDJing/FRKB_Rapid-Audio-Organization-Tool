@@ -87,6 +87,7 @@ def build_summary(
     )[:8]
 
     return {
+        "strictToleranceMs": strict_tolerance_ms,
         "trackTotal": len(rows) + len(error_rows),
         "analyzedTrackCount": len(rows),
         "errorTrackCount": len(error_rows),
