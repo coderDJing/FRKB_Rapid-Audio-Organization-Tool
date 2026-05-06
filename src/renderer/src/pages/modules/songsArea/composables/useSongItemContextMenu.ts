@@ -203,10 +203,10 @@ export function useSongItemContextMenu(
     }
   ]
   const createDefaultMenuArr = (): IMenu[][] => [
+    [{ menuName: 'tracks.exportTracks' }],
     [
       { menuName: 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks' },
-      { menuName: 'rekordboxXmlExport.menuExportSelectedTracks' },
-      { menuName: 'tracks.exportTracks' }
+      { menuName: 'rekordboxXmlExport.menuExportSelectedTracks' }
     ],
     [
       { menuName: resolveMoveMenuName('FilterLibrary') },
@@ -220,10 +220,10 @@ export function useSongItemContextMenu(
     [{ menuName: 'tracks.showInFileExplorer' }],
     createNeteaseSearchMenu(),
     [{ menuName: 'similarTracks.menu' }],
-    [{ menuName: 'metadata.autoFillMenu' }],
-    [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
-    [{ menuName: 'tracks.clearTrackCache' }],
-    [{ menuName: 'fingerprints.analyzeAndAdd' }]
+    [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'tracks.editMetadata' }],
+    [{ menuName: 'fingerprints.analyzeAndAdd' }],
+    [{ menuName: 'tracks.convertFormat' }],
+    [{ menuName: 'tracks.clearTrackCache' }]
   ]
   const createRecycleMenuArr = (): IMenu[][] => [
     [{ menuName: 'recycleBin.restoreToOriginal' }],
@@ -236,10 +236,10 @@ export function useSongItemContextMenu(
     [{ menuName: 'tracks.showInFileExplorer' }],
     createNeteaseSearchMenu(),
     [{ menuName: 'similarTracks.menu' }],
-    [{ menuName: 'metadata.autoFillMenu' }],
-    [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.editMetadata' }],
-    [{ menuName: 'tracks.clearTrackCache' }],
-    [{ menuName: 'fingerprints.analyzeAndAdd' }]
+    [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'tracks.editMetadata' }],
+    [{ menuName: 'fingerprints.analyzeAndAdd' }],
+    [{ menuName: 'tracks.convertFormat' }],
+    [{ menuName: 'tracks.clearTrackCache' }]
   ]
   const createMixtapeMenuArr = (): IMenu[][] => [
     [{ menuName: 'tracks.exportTracks' }],
@@ -1033,7 +1033,8 @@ export function useSongItemContextMenu(
         break
       }
       case 'tracks.clearTrackCache': {
-        await window.electron.ipcRenderer.invoke('track:cache:clear', song.filePath)
+        const files = resolveSelectedFilePaths()
+        await window.electron.ipcRenderer.invoke('track:cache:clear:batch', files)
         return { action: 'trackCacheCleared' }
       }
     }

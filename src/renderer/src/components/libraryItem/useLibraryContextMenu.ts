@@ -102,24 +102,25 @@ export function useLibraryContextMenu({
         [{ menuName: 'common.rename' }, { menuName: 'playlist.deletePlaylist' }]
       ]
     }
+    const isCoreLibrary =
+      props.libraryName === 'FilterLibrary' || props.libraryName === 'CuratedLibrary'
     return [
+      [{ menuName: 'tracks.importTracks' }, { menuName: 'tracks.exportTracks' }],
       [
-        { menuName: 'tracks.importTracks' },
-        { menuName: 'tracks.exportTracks' },
         { menuName: 'rekordboxDesktop.menuCreatePlaylistFromPlaylist' },
         { menuName: 'rekordboxXmlExport.menuExportPlaylist' }
       ],
-      [{ menuName: 'playlist.showInLeftPane' }, { menuName: 'playlist.showInRightPane' }],
       [
         { menuName: 'common.rename' },
         { menuName: 'playlist.deletePlaylist' },
         { menuName: 'playlist.emptyPlaylist' }
       ],
+      [{ menuName: 'playlist.showInLeftPane' }, { menuName: 'playlist.showInRightPane' }],
       [{ menuName: 'tracks.showInFileExplorer' }],
       [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
-      [{ menuName: 'playlist.fingerprintDeduplicate' }],
+      [{ menuName: 'playlist.fingerprintDeduplicate' }, { menuName: 'fingerprints.analyzeAndAdd' }],
       [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }],
-      [{ menuName: 'fingerprints.analyzeAndAdd' }]
+      ...(isCoreLibrary ? [[{ menuName: 'tracks.reanalyzePlaylist' }]] : [])
     ]
   }
 
@@ -726,6 +727,39 @@ export function useLibraryContextMenu({
           clearSongsAreaPaneBySongListUUID(runtime, props.uuid)
           await libraryUtils.diffLibraryTreeExecuteFileOperation()
         }
+        break
+      }
+      case 'tracks.reanalyzePlaylist': {
+        if (runtime.isProgressing) {
+          await confirmTaskBusy()
+          return
+        }
+        const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+        const scan = (await window.electron.ipcRenderer.invoke(
+          'scanSongList',
+          dirPath,
+          props.uuid
+        )) as ScanSongListResult | null
+        const files: string[] = Array.isArray(scan?.scanData)
+          ? scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item)
+          : []
+        if (!files.length) {
+          await confirm({
+            title: t('dialog.hint'),
+            content: [t('metadata.autoFillNoEligible')],
+            confirmShow: false
+          })
+          return
+        }
+        runtime.isProgressing = true
+        try {
+          await window.electron.ipcRenderer.invoke('track:cache:clear:batch', files)
+        } finally {
+          runtime.isProgressing = false
+        }
+        try {
+          emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
+        } catch {}
         break
       }
     }

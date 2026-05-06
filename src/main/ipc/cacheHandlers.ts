@@ -15,6 +15,8 @@ import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { ensureMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
 import { ensureMixtapeStemWaveformBundle } from '../services/mixtapeStemWaveformService'
 import { registerMixtapeRawWaveformHandlers } from './mixtapeRawWaveformHandlers'
+import mainWindow from '../window/mainWindow'
+import { invalidateKeyAnalysisCache, enqueueKeyAnalysisList } from '../services/keyAnalysisQueue'
 
 export function registerCacheHandlers() {
   registerMixtapeRawWaveformHandlers()
@@ -25,8 +27,38 @@ export function registerCacheHandlers() {
     return parsed
   }
 
-  ipcMain.handle('track:cache:clear', async (_e, filePath: string) => {
-    await svcClearTrackCache(filePath)
+  ipcMain.handle('track:cache:clear:batch', async (_e, filePaths: string[]) => {
+    const files = Array.isArray(filePaths)
+      ? filePaths.filter((p) => typeof p === 'string' && p.trim())
+      : []
+    if (files.length === 0) return { cleared: 0 }
+
+    const progressId = `reanalyze_${Date.now()}`
+    const sendProgress = (now: number, dismiss = false) => {
+      mainWindow.instance?.webContents.send('progressSet', {
+        id: progressId,
+        titleKey: 'tracks.clearingOldAnalysis',
+        now,
+        total: files.length,
+        dismiss
+      })
+    }
+    sendProgress(0)
+
+    let cleared = 0
+    for (let i = 0; i < files.length; i++) {
+      await svcClearTrackCache(files[i])
+      cleared++
+      if (cleared % 10 === 0 || cleared === files.length) {
+        sendProgress(cleared)
+      }
+    }
+
+    invalidateKeyAnalysisCache(files)
+    enqueueKeyAnalysisList(files, 'high')
+
+    sendProgress(files.length, true)
+    return { cleared }
   })
 
   ipcMain.handle('getLibrary', async () => {

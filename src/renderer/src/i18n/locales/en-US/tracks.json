@@ -64,6 +64,8 @@
     "convertFormat": "Convert format",
     "convertNonMp3ToMp3": "Convert All to MP3",
     "editMetadata": "Edit track info",
-    "clearTrackCache": "Re-analyze track"
+    "clearTrackCache": "Re-analyze track",
+    "reanalyzePlaylist": "Re-analyze all tracks",
+    "clearingOldAnalysis": "Clearing old analysis"
   }
 }

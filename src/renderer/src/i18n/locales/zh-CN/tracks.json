@@ -64,6 +64,8 @@
     "convertFormat": "转换格式",
     "convertNonMp3ToMp3": "统一转为 MP3",
     "editMetadata": "编辑曲目信息",
-    "clearTrackCache": "重新分析曲目"
+    "clearTrackCache": "重新分析曲目",
+    "reanalyzePlaylist": "重新分析所有曲目",
+    "clearingOldAnalysis": "清除旧分析结果"
   }
 }
