@@ -74,6 +74,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     state.leaderDeck = snapshot.leaderDeck
     state.top = { ...snapshot.top }
     state.bottom = { ...snapshot.bottom }
+    state.output = { ...snapshot.output }
     if (notifyListeners) {
       notifySnapshotListeners(snapshot)
     }
