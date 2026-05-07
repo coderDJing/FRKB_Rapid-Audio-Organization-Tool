@@ -89,7 +89,6 @@ import {
 import globalSongSearchEngine from './services/globalSongSearch'
 import { registerBackgroundForegroundBusyProvider } from './services/backgroundIdleGate'
 import { acquireDevSingleInstanceLock, configureDevRuntime } from './devInstance'
-// import AudioFeatureExtractor from './mfccTest'
 
 const devRuntime = configureDevRuntime(is.dev, process.platform, log)
 configureLogTransports()
@@ -665,33 +664,3 @@ ipcMain.handle('clearTracksFingerprintLibrary', async (_e) => {
 ipcMain.handle('getSongFingerprintListLength', () => {
   return store.songFingerprintList.length
 })
-
-// async function mainTest() {
-//   const extractor = new AudioFeatureExtractor({
-//     windowSize: 2048,
-//     hopSize: 1024,
-//     numberOfMFCCCoefficients: 13
-//   });
-
-//   try {
-//     // 测试不同格式
-//     const files = [
-//       'E:\\test.mp3'
-//       // 'path/to/audio.wav',
-//       // 'path/to/audio.flac'
-//     ];
-
-//     for (const file of files) {
-//       const result = await extractor.extractMFCC(file);
-//       // 计算统计特征
-//       const statistics = extractor.calculate_MFCC_Statistics(result.mfcc);
-
-//       // 输出结果
-//     }
-
-//   } catch (error) {
-//     console.error('Error in main:', error);
-//   }
-// }
-
-// mainTest()
