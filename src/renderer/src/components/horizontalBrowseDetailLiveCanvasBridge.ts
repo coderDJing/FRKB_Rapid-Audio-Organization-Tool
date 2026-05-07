@@ -15,6 +15,12 @@ type CreateHorizontalBrowseDetailLiveCanvasBridgeOptions = {
       { type: 'rendered' }
     >['payload']
   ) => void
+  onPresentation: (
+    payload: Extract<
+      HorizontalBrowseDetailLiveCanvasWorkerOutgoing,
+      { type: 'presentation' }
+    >['payload']
+  ) => void
 }
 
 const cloneRawWaveformData = (value: RawWaveformData): RawWaveformData => ({
@@ -70,6 +76,10 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
     const message = event.data
     if (message?.type === 'rendered') {
       options.onRendered(message.payload)
+      return
+    }
+    if (message?.type === 'presentation') {
+      options.onPresentation(message.payload)
     }
   }
 

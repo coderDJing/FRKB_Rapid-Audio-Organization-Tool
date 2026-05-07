@@ -107,12 +107,20 @@ export type HorizontalBrowseDetailLiveCanvasWorkerIncoming =
       payload: HorizontalBrowseDetailLiveCanvasRenderRequest
     }
 
-export type HorizontalBrowseDetailLiveCanvasWorkerOutgoing = {
-  type: 'rendered'
-  payload: {
-    renderToken: number
-    rangeStartSec: number
-    rangeDurationSec: number
-    ready: boolean
-  }
-}
+export type HorizontalBrowseDetailLiveCanvasWorkerOutgoing =
+  | {
+      type: 'rendered'
+      payload: {
+        renderToken: number
+        rangeStartSec: number
+        rangeDurationSec: number
+        ready: boolean
+      }
+    }
+  | {
+      type: 'presentation'
+      payload: {
+        renderToken: number
+        offsetCssPx: number
+      }
+    }

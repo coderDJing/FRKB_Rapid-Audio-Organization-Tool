@@ -1028,6 +1028,8 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   display: block;
   width: 100%;
   height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
 }
 
 .raw-detail-waveform__canvas--grid {

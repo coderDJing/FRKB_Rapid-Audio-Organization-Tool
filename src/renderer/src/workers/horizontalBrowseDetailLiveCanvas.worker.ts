@@ -79,7 +79,6 @@ let playbackAnimation: PlaybackAnimationState | null = null
 let playbackAnimationToken = 0
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
 let playbackRaf = 0
-let lastWaveformRenderMode = 'none'
 
 const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => {
   const scope = self as typeof globalThis & {
@@ -91,7 +90,6 @@ const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => 
 const resetFrameState = () => {
   lastFrame = null
   lastWaveformScrollShiftScaledPx = null
-  lastWaveformRenderMode = 'reset'
 }
 
 const bumpLiveRawRevision = () => {
@@ -531,7 +529,8 @@ const drawSegment = (
 const canReusePreviousFrame = (
   current: FrameState,
   metrics: CanvasMetrics,
-  ignoreFirstBeatMs = false
+  ignoreFirstBeatMs = false,
+  ignoreRawRevision = false
 ) => {
   if (metrics.resized || !lastFrame) return false
   return (
@@ -543,7 +542,7 @@ const canReusePreviousFrame = (
     lastFrame.timeBasisOffsetMs === current.timeBasisOffsetMs &&
     lastFrame.rangeDurationSec === current.rangeDurationSec &&
     lastFrame.rawData === current.rawData &&
-    lastFrame.rawRevision === current.rawRevision &&
+    (ignoreRawRevision || lastFrame.rawRevision === current.rawRevision) &&
     lastFrame.showDetailHighlights === current.showDetailHighlights &&
     lastFrame.showCenterLine === current.showCenterLine &&
     lastFrame.showBackground === current.showBackground &&
@@ -554,7 +553,11 @@ const canReusePreviousFrame = (
   )
 }
 
-const canReuseDirtySegment = (current: FrameState, metrics: CanvasMetrics) => {
+const canReuseDirtySegment = (
+  current: FrameState,
+  metrics: CanvasMetrics,
+  ignoreRawRevision = false
+) => {
   if (metrics.resized || !lastFrame) return false
   return (
     lastFrame.width === current.width &&
@@ -566,7 +569,7 @@ const canReuseDirtySegment = (current: FrameState, metrics: CanvasMetrics) => {
     lastFrame.rangeStartSec === current.rangeStartSec &&
     lastFrame.rangeDurationSec === current.rangeDurationSec &&
     lastFrame.rawData === current.rawData &&
-    lastFrame.rawRevision === current.rawRevision &&
+    (ignoreRawRevision || lastFrame.rawRevision === current.rawRevision) &&
     lastFrame.showDetailHighlights === current.showDetailHighlights &&
     lastFrame.showCenterLine === current.showCenterLine &&
     lastFrame.showBackground === current.showBackground &&
@@ -599,31 +602,36 @@ const renderFullFrame = (
 ) => {
   if (!ctx) return false
   const phaseAwareScrollReuse = request.phaseAwareScrollReuse === true
+  const canReuseStreamingRawRevision =
+    request.playbackActive === true && lastFrame?.rawData === state.rawData
+  const resolveReusedFrameState = () =>
+    canReuseStreamingRawRevision && lastFrame && lastFrame.rawRevision !== state.rawRevision
+      ? { ...state, rawRevision: lastFrame.rawRevision }
+      : state
   const resolvePhaseShiftSec = (previous: FrameState) =>
     phaseAwareScrollReuse ? (state.firstBeatMs - previous.firstBeatMs) / 1000 : 0
   lastWaveformScrollShiftScaledPx = null
 
   if (
     request.allowScrollReuse !== false &&
-    canReusePreviousFrame(state, metrics, phaseAwareScrollReuse) &&
+    canReusePreviousFrame(state, metrics, phaseAwareScrollReuse, canReuseStreamingRawRevision) &&
     lastFrame &&
     Math.abs(state.rangeStartSec - lastFrame.rangeStartSec - resolvePhaseShiftSec(lastFrame)) <=
       0.000001
   ) {
     state.rangeStartSec = lastFrame.rangeStartSec + resolvePhaseShiftSec(lastFrame)
-    lastWaveformRenderMode = 'unchanged'
     if (state.rawData && state.rawData === liveRawData) {
       retainedRawData = liveRawData
       retainedRawRevision = liveRawRevision
     }
-    lastFrame = state
+    lastFrame = resolveReusedFrameState()
     return true
   }
 
   let reused = false
   if (
     request.allowScrollReuse !== false &&
-    canReusePreviousFrame(state, metrics, phaseAwareScrollReuse) &&
+    canReusePreviousFrame(state, metrics, phaseAwareScrollReuse, canReuseStreamingRawRevision) &&
     lastFrame
   ) {
     const phaseShiftSec = resolvePhaseShiftSec(lastFrame)
@@ -635,7 +643,6 @@ const renderFullFrame = (
     if (absShiftScaledPx === 0) {
       state.rangeStartSec = lastFrame.rangeStartSec + phaseShiftSec
       lastWaveformScrollShiftScaledPx = 0
-      lastWaveformRenderMode = 'scroll-reuse'
       reused = true
     } else if (absShiftScaledPx < metrics.scaledWidth) {
       state.rangeStartSec =
@@ -712,7 +719,6 @@ const renderFullFrame = (
         }
         if (reused) {
           lastWaveformScrollShiftScaledPx = shiftScaledPx
-          lastWaveformRenderMode = 'scroll-reuse'
         }
       }
     }
@@ -739,13 +745,9 @@ const renderFullFrame = (
         applyCanvasScaleTransform(ctx, metrics.scaleX, metrics.scaleY)
       }
     }
-    if (reused) {
-      lastWaveformRenderMode = 'full'
-    }
   }
 
   if (!reused) {
-    lastWaveformRenderMode = 'failed'
     return false
   }
 
@@ -753,7 +755,7 @@ const renderFullFrame = (
     retainedRawData = liveRawData
     retainedRawRevision = liveRawRevision
   }
-  lastFrame = state
+  lastFrame = lastWaveformScrollShiftScaledPx === null ? state : resolveReusedFrameState()
   return true
 }
 
@@ -764,7 +766,14 @@ const renderDirtyRange = (
 ) => {
   if (!ctx) return false
   lastWaveformScrollShiftScaledPx = null
-  if (!canReuseDirtySegment(state, metrics)) {
+  const requestRangeStartSec = state.rangeStartSec
+  const canReuseStreamingRawRevision =
+    request.playbackActive === true && lastFrame?.rawData === state.rawData
+  if (request.playbackActive === true && lastFrame) {
+    state.rangeStartSec = lastFrame.rangeStartSec
+  }
+  if (!canReuseDirtySegment(state, metrics, canReuseStreamingRawRevision)) {
+    state.rangeStartSec = requestRangeStartSec
     return renderFullFrame(request, metrics, state)
   }
 
@@ -779,7 +788,6 @@ const renderDirtyRange = (
   const clampedStartSec = clampNumber(dirtyStartSec, viewStartSec, viewEndSec)
   const clampedEndSec = clampNumber(dirtyEndSec, clampedStartSec, viewEndSec)
   if (clampedEndSec <= clampedStartSec) {
-    lastWaveformRenderMode = 'dirty-empty'
     lastFrame = state
     return true
   }
@@ -798,14 +806,11 @@ const renderDirtyRange = (
   const segmentWidth = Math.max(1, segmentEndX - segmentX)
   const rendered = drawSegment(ctx, metrics, state, segmentX, segmentWidth)
   if (rendered) {
-    lastWaveformRenderMode = 'dirty-segment'
     if (state.rawData && state.rawData === liveRawData) {
       retainedRawData = liveRawData
       retainedRawRevision = liveRawRevision
     }
     lastFrame = state
-  } else {
-    lastWaveformRenderMode = 'dirty-failed'
   }
   return rendered
 }
@@ -813,7 +818,6 @@ const renderDirtyRange = (
 const renderTimelineFallback = () => {
   if (!ctx) return
   clearWaveformPixels()
-  lastWaveformRenderMode = 'timeline-only'
 }
 
 const canPreserveWaveformAfterRenderMiss = (
@@ -840,6 +844,15 @@ const canPreserveWaveformAfterRenderMiss = (
   )
 }
 
+const resolvePresentationOffsetCssPx = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  metrics: CanvasMetrics,
+  state: FrameState
+) =>
+  request.playbackActive === true && state.rangeDurationSec > 0
+    ? ((state.rangeStartSec - request.rangeStartSec) / state.rangeDurationSec) * metrics.cssWidth
+    : 0
+
 const processRender = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
   notifyMain = true
@@ -864,7 +877,6 @@ const processRender = (
   if (preserved) {
     lastFrame = previousFrame
     lastWaveformScrollShiftScaledPx = null
-    lastWaveformRenderMode = 'preserve-missed-playback'
   } else if (metrics && renderState && !ready) {
     renderTimelineFallback()
   }
@@ -880,6 +892,16 @@ const processRender = (
     )
   ) {
     overlayRenderer.clear()
+  }
+
+  if (metrics && renderState) {
+    postToMain({
+      type: 'presentation',
+      payload: {
+        renderToken: request.renderToken,
+        offsetCssPx: resolvePresentationOffsetCssPx(request, metrics, renderState)
+      }
+    })
   }
 
   if (notifyMain) {
@@ -975,18 +997,29 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
 }
 
 const processRenderRequest = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
-  const shouldAnimatePlayback =
-    request.playbackActive === true &&
-    typeof request.dirtyStartSec !== 'number' &&
-    typeof request.dirtyEndSec !== 'number'
+  const isDirtyRender =
+    typeof request.dirtyStartSec === 'number' || typeof request.dirtyEndSec === 'number'
+  const shouldAnimatePlayback = request.playbackActive === true && !isDirtyRender
 
   if (shouldAnimatePlayback) {
     activatePlaybackAnimation(request)
     return
   }
 
-  stopPlaybackAnimation()
-  processRender(request)
+  const renderRequest =
+    request.playbackActive === true && isDirtyRender && playbackAnimation
+      ? {
+          ...buildPlaybackRenderRequest(playbackAnimation),
+          renderToken: request.renderToken,
+          rawSlot: request.rawSlot,
+          dirtyStartSec: request.dirtyStartSec,
+          dirtyEndSec: request.dirtyEndSec
+        }
+      : request
+  if (renderRequest.playbackActive !== true) {
+    stopPlaybackAnimation()
+  }
+  processRender(renderRequest)
 }
 
 const scheduleRender = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {

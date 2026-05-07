@@ -113,7 +113,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const displayReady = ref(false)
 
   const liveCanvasBridge = createHorizontalBrowseDetailLiveCanvasBridge({
-    onRendered: (payload) => handleLiveCanvasRendered(payload)
+    onRendered: (payload) => handleLiveCanvasRendered(payload),
+    onPresentation: (payload) => handleLiveCanvasPresentation(payload)
   })
 
   const traceHorizontalWaveformRender = (source: string, payload?: Record<string, unknown>) => {
@@ -250,6 +251,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     holdPreviousWaveformFrame = false
     suppressNextPlaybackScrollReuse = false
     lastStreamRenderedRawData = null
+    applyLiveCanvasPresentationOffset(0)
     // 外部重置 retained（例如切歌、loadWaveform）会清掉 canvas 上所有可用像素。
     displayReady.value = false
   }
@@ -274,6 +276,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const clearCanvas = () => {
     liveCanvasRenderToken += 1
     liveCanvasBridge.clear()
+    applyLiveCanvasPresentationOffset(0)
     for (const canvas of [gridCanvasRef.value]) {
       if (!canvas) continue
       const ctx = canvas.getContext('2d')
@@ -319,6 +322,30 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       return
     }
     displayReady.value = true
+  }
+
+  const applyLiveCanvasPresentationOffset = (offsetPx: number) => {
+    const transform =
+      Math.abs(offsetPx) <= 0.0001 ? '' : `translate3d(${offsetPx.toFixed(3)}px, 0, 0)`
+    for (const canvas of [waveformCanvasRef.value, overlayCanvasRef.value]) {
+      if (!canvas) continue
+      if (transform) {
+        canvas.style.transform = transform
+      } else {
+        canvas.style.removeProperty('transform')
+      }
+    }
+  }
+
+  const handleLiveCanvasPresentation = (
+    payload: Extract<
+      HorizontalBrowseDetailLiveCanvasWorkerOutgoing,
+      { type: 'presentation' }
+    >['payload']
+  ) => {
+    if (payload.renderToken !== liveCanvasRenderToken) return
+    const offsetPx = Number(payload.offsetCssPx) || 0
+    applyLiveCanvasPresentationOffset(offsetPx)
   }
 
   const queueLiveWaveformRender = (payload: {
@@ -753,7 +780,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       dirtyStartSec === null ||
       dirtyEndSec === null ||
       !options.rawStreamActive.value ||
-      options.playing.value ||
       options.dragging.value ||
       !options.rawData.value ||
       !options.mixxxData.value ||
@@ -799,10 +825,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   }
 
   const scheduleRawStreamDirtyDraw = (dirtyStartSec: number, dirtyEndSec: number) => {
-    if (options.playing.value) {
-      scheduleDraw()
-      return
-    }
     const safeStartSec = Math.max(0, Math.min(dirtyStartSec, dirtyEndSec))
     const safeEndSec = Math.max(safeStartSec, dirtyEndSec)
     pendingRawStreamDirtyStartSec =
