@@ -372,9 +372,11 @@ blind baseline 已跑；第一版 intro leading-edge phase evidence 只带来小
 
 下一次会话不要从头扫：
 
+0. 先读 `drafts/rkb-beatgrid-next-session-handoff.md`。
 1. 先看 `drafts/rkb-rekordbox-truth-validation-workflow.md` 的 sealed-eval 命令。
 2. 先跑 `scripts/rkb_phase_ranker_rising_edge_locked_replay.py` 做 current/blind sanity check。
-3. 如果用户已经准备好 Rekordbox `sealed-eval-*` 歌单，只按 locked replay 原样验收。
+3. 如果用户已经准备好新 Rekordbox 样本歌单，必须使用用户提供的实际歌单名；不要假设歌单名。
+   然后只按 locked replay 原样验收。
 4. 如果没有新 sealed truth，继续研究新的结构性 phase evidence；当前主 truth 和 blind 只能做开发/回归，
    不能当 fresh proof。
 5. 不要再把 post-hoc 配置叫“预注册证据”；正确叫法是验后污染假设 / future-data hypothesis。

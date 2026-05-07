@@ -570,51 +570,53 @@ gridErrorMs[i] = frkbBeatMs[i] - rbBeatMs[i]
 准备好人工确认歌单后，先把当前污染假设锁死原样 replay；跑完这批样本即失去 sealed 身份，
 后续再并入普通回归/开发池。禁止根据 sealed-eval 当场改阈值、删歌、挑样本或重训选择规则。
 
-以 Rekordbox 歌单 `sealed-eval-001` 为例：
+不要在文档或下次会话里假设 Rekordbox 新样本歌单名。用户给出实际歌单名后填入 `$playlist`：
 
 ```powershell
-$sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval-001"
+$playlist = "<用户提供的实际 Rekordbox 歌单名>"
+$sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval"
 ```
 
 复制 sealed-eval 音频到项目分析区：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "sealed-eval-001" --target-root "$sealedRoot/audio" --dry-run
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "sealed-eval-001" --target-root "$sealedRoot/audio"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "$playlist" --target-root "$sealedRoot/audio" --dry-run
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "$playlist" --target-root "$sealedRoot/audio"
 ```
 
 抓取 sealed-eval truth。默认仍按 `rekordbox-current-truth.json` 跳过已经在主 truth 里的重复样本；
 不要加 `--include-existing`，除非明确是在修数据流程：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/capture_rekordbox_playlist_truth.py" --playlist "sealed-eval-001" --audio-root "$sealedRoot/audio" --output "$sealedRoot/rekordbox-sealed-eval-001-truth.json"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/capture_rekordbox_playlist_truth.py" --playlist "$playlist" --audio-root "$sealedRoot/audio" --output "$sealedRoot/rekordbox-sealed-truth.json"
 ```
 
 生成 sealed-eval feature cache 和 production baseline benchmark：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_beatgrid_feature_cache.py" --truth "$sealedRoot/rekordbox-sealed-eval-001-truth.json" --audio-root "$sealedRoot/audio" --cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --truth "$sealedRoot/rekordbox-sealed-eval-001-truth.json" --audio-root "$sealedRoot/audio" --output "$sealedRoot/frkb-sealed-eval-001-constant-grid-dp.json" --solver constant-grid-dp --feature-cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_beatgrid_feature_cache.py" --truth "$sealedRoot/rekordbox-sealed-truth.json" --audio-root "$sealedRoot/audio" --cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --truth "$sealedRoot/rekordbox-sealed-truth.json" --audio-root "$sealedRoot/audio" --output "$sealedRoot/frkb-sealed-constant-grid-dp.json" --solver constant-grid-dp --feature-cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
 ```
 
 按锁死 rising-edge hypothesis 原样复验。这个脚本只用 current/train + blind/train 训练固定模型，
 sealed-eval 全部按 holdout 报告；脚本不会自动给出上线许可：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/rkb_phase_ranker_rising_edge_locked_replay.py" --sealed-name "sealed-eval-001" --sealed-benchmark "$sealedRoot/frkb-sealed-eval-001-constant-grid-dp.json" --sealed-feature-cache "$sealedRoot/feature-cache" --output "$sealedRoot/phase-ranker-rising-edge-locked-replay.json"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/rkb_phase_ranker_rising_edge_locked_replay.py" --sealed-name "$playlist" --sealed-benchmark "$sealedRoot/frkb-sealed-constant-grid-dp.json" --sealed-feature-cache "$sealedRoot/feature-cache" --output "$sealedRoot/phase-ranker-rising-edge-locked-replay.json"
 ```
 
 下一次会话快速开始：
 
 ```powershell
 git status --short --branch
+Get-Content "drafts/rkb-beatgrid-next-session-handoff.md"
 rg -n "下一次新样本验收|当前状态|rising-edge|验后污染|交接摘要" "drafts/rkb-rekordbox-truth-validation-workflow.md"
 rg -n "当前结论|phase-ranker rising-edge|direct phase shift|不要继续" "drafts/rkb-beatgrid-solver-pitfalls.md"
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/rkb_phase_ranker_rising_edge_locked_replay.py"
 ```
 
-第一条看分支和本地状态；中间两条恢复 truth/sealed-eval/踩坑上下文；最后一条只做 current/blind
-污染回放 sanity check，不是生产提升证明。
+第一条看分支和本地状态；handoff 文件恢复交接上下文；后面两条恢复 truth/sealed-eval/踩坑上下文；
+最后一条只做 current/blind 污染回放 sanity check，不是生产提升证明。
 
 从 Rekordbox `test` playlist 复制新增音频到 `new`：
 
@@ -747,7 +749,8 @@ benchmark 失败时：
 ```text
 唯一长期 truth = rekordbox-current-truth.json。
 grid-analysis-lab/ 是本地样本分析工作区，不提交 truth、benchmark 或 classification 派生数据；旧的已跟踪 JSON 即使出现在 git status，也不纳入代码提交。
-新增音频由 sync_rekordbox_playlist_audio.py 从 Rekordbox test 源路径复制到 new。
+新增主样本默认由 sync_rekordbox_playlist_audio.py 从 Rekordbox test 源路径复制到 new；sealed-eval
+必须使用用户提供的实际 Rekordbox 歌单名。
 已有主 truth 的重复样本会被跳过；新 truth 进入 intake-current-truth.json，确认后合入主 truth 并清空 intake。
 FRKB pass/fail 只存在于 frkb-classification-current.json 和派生 latest/manifest。
 音频目录由 classification 派生：pass -> sample，其他 -> grid-failures-current。
