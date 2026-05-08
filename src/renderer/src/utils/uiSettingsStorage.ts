@@ -40,7 +40,7 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
     const value = input[key]
     switch (key) {
       case 'mainWindowBrowseMode':
-        if (value === 'browser' || value === 'horizontal') {
+        if (value === 'browser' || value === 'horizontal' || value === 'edit') {
           output[key] = value
         }
         break

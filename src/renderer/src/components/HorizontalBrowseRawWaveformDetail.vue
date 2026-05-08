@@ -63,6 +63,8 @@ type HorizontalBrowseLoopRange = {
   startSec: number
   endSec: number
 }
+type HorizontalBrowseWaveformLayout = 'auto' | 'full'
+type HorizontalBrowseWaveformRenderStyle = 'columns' | 'raw-curve'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -81,6 +83,9 @@ const props = defineProps<{
   rawLoadPriorityHint?: number
   seekTargetSeconds?: number
   seekRevision?: number
+  maxZoom?: number
+  waveformLayout?: HorizontalBrowseWaveformLayout
+  waveformRenderStyle?: HorizontalBrowseWaveformRenderStyle
 }>()
 
 const emit = defineEmits<{
@@ -111,9 +116,21 @@ const previewPlaying = ref(false)
 const playbackSyncRevision = computed(() =>
   Math.max(0, Math.floor(Number(props.playbackSyncRevision) || 0))
 )
+const previewMaxZoom = computed(() => {
+  const value = Number(props.maxZoom)
+  return Number.isFinite(value) && value > HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
+    ? value
+    : HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
+})
 const deferredWaveformLoad = computed(
   () => Boolean(props.deferWaveformLoad) && !previewPlaying.value
 )
+
+const resolveWaveformLayout = () =>
+  props.waveformLayout === 'full' ? 'full' : props.direction === 'up' ? 'top-half' : 'bottom-half'
+
+const resolveWaveformRenderStyle = () =>
+  props.waveformRenderStyle === 'raw-curve' ? 'raw-curve' : 'columns'
 
 const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS = 4
 const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS = 10
@@ -225,7 +242,9 @@ const {
   previewBarBeatOffset,
   previewTimeBasisOffsetMs,
   dragging,
-  rawStreamActive
+  rawStreamActive,
+  waveformLayout: resolveWaveformLayout,
+  waveformRenderStyle: resolveWaveformRenderStyle
 })
 
 const resolveGridShiftMs = (targetPx: number, minMs: number) => {
@@ -241,7 +260,7 @@ const normalizeSharedZoom = (value: unknown) => {
       ? Number((value as { value?: unknown }).value)
       : Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
-  return clampNumber(numeric, HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM, HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM)
+  return clampNumber(numeric, HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM, previewMaxZoom.value)
 }
 
 const clearPersistTimer = () => {
@@ -434,7 +453,7 @@ const handleWheel = (event: WheelEvent) => {
   const nextZoom = clampNumber(
     previewZoom.value * factor,
     HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
-    HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
+    previewMaxZoom.value
   )
   if (Math.abs(nextZoom - previewZoom.value) <= 0.000001) return
 

@@ -641,8 +641,8 @@ ipcMain.on('openLog', async () => {
   await openLogFile()
 })
 
-ipcMain.on('main-window-browse-mode-updated', (_e, mode: 'browser' | 'horizontal') => {
-  if (mode !== 'browser' && mode !== 'horizontal') return
+ipcMain.on('main-window-browse-mode-updated', (_e, mode: 'browser' | 'horizontal' | 'edit') => {
+  if (mode !== 'browser' && mode !== 'horizontal' && mode !== 'edit') return
   setMacMainWindowBrowseMode(mode)
   rebuildMacMenusForCurrentFocus()
 })

@@ -6,7 +6,7 @@ import store from '../store'
 import mainWindow from '../window/mainWindow'
 import { openLogFile } from '../log'
 
-type MainWindowBrowseMode = 'browser' | 'horizontal'
+type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
 
 let mainWindowBrowseMode: MainWindowBrowseMode = 'browser'
 
@@ -131,6 +131,16 @@ const buildFullMenu = () =>
           click: () => {
             setMacMainWindowBrowseMode('horizontal')
             mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.horizontalBrowseMode')
+            rebuildMacMenusForCurrentFocus()
+          }
+        },
+        {
+          label: tMenu('menu.editBrowseMode'),
+          type: 'checkbox',
+          checked: mainWindowBrowseMode === 'edit',
+          click: () => {
+            setMacMainWindowBrowseMode('edit')
+            mainWindow.instance?.webContents.send('openDialogFromTray', 'menu.editBrowseMode')
             rebuildMacMenusForCurrentFocus()
           }
         }

@@ -547,7 +547,7 @@ type TitleAudioVisualizerMode = 'bars' | 'line'
 interface ISettingConfig {
   platform: 'win32' | 'darwin'
   language: '' | 'enUS' | 'zhCN'
-  mainWindowBrowseMode?: 'browser' | 'horizontal'
+  mainWindowBrowseMode?: 'browser' | 'horizontal' | 'edit'
   // 主题模式：system（跟随系统）/ light（浅色）/ dark（深色）
   themeMode?: 'system' | 'light' | 'dark'
   audioExt: string[]

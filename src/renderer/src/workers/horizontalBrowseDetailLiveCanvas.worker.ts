@@ -38,7 +38,8 @@ type FrameState = {
   showCenterLine: boolean
   showBackground: boolean
   showBeatGrid: boolean
-  waveformLayout: 'top-half' | 'bottom-half'
+  waveformLayout: 'full' | 'top-half' | 'bottom-half'
+  waveformRenderStyle: 'columns' | 'raw-curve'
   preferRawPeaksOnly: boolean
   themeVariant: 'light' | 'dark'
 }
@@ -426,6 +427,7 @@ const buildFrameState = (
   showBackground: request.showBackground,
   showBeatGrid: false,
   waveformLayout: request.waveformLayout,
+  waveformRenderStyle: request.waveformRenderStyle,
   preferRawPeaksOnly: request.preferRawPeaksOnly,
   themeVariant: request.themeVariant
 })
@@ -458,6 +460,7 @@ const drawRange = (
     showDetailHighlights: state.showDetailHighlights,
     showCenterLine: state.showCenterLine,
     waveformLayout: state.waveformLayout,
+    waveformRenderStyle: state.waveformRenderStyle,
     preferRawPeaksOnly: state.preferRawPeaksOnly,
     themeVariant: state.themeVariant
   })
@@ -548,6 +551,7 @@ const canReusePreviousFrame = (
     lastFrame.showBackground === current.showBackground &&
     lastFrame.showBeatGrid === current.showBeatGrid &&
     lastFrame.waveformLayout === current.waveformLayout &&
+    lastFrame.waveformRenderStyle === current.waveformRenderStyle &&
     lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly &&
     lastFrame.themeVariant === current.themeVariant
   )
@@ -575,6 +579,7 @@ const canReuseDirtySegment = (
     lastFrame.showBackground === current.showBackground &&
     lastFrame.showBeatGrid === current.showBeatGrid &&
     lastFrame.waveformLayout === current.waveformLayout &&
+    lastFrame.waveformRenderStyle === current.waveformRenderStyle &&
     lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly &&
     lastFrame.themeVariant === current.themeVariant
   )
@@ -839,6 +844,7 @@ const canPreserveWaveformAfterRenderMiss = (
     previousFrame.showBackground === state.showBackground &&
     previousFrame.showBeatGrid === state.showBeatGrid &&
     previousFrame.waveformLayout === state.waveformLayout &&
+    previousFrame.waveformRenderStyle === state.waveformRenderStyle &&
     previousFrame.preferRawPeaksOnly === state.preferRawPeaksOnly &&
     previousFrame.themeVariant === state.themeVariant
   )

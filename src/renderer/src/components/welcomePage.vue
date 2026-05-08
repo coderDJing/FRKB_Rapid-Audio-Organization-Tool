@@ -30,7 +30,7 @@ type HorizontalShortcutLayoutItem =
 
 const runtime = useRuntimeStore()
 const welcomeLogo = welcomeLogoAsset
-const isHorizontalMode = computed(() => runtime.mainWindowBrowseMode === 'horizontal')
+const isHorizontalMode = computed(() => runtime.mainWindowBrowseMode !== 'browser')
 const welcomeContainerRef = ref<HTMLElement | null>(null)
 const horizontalContainerHeight = ref(272)
 const horizontalContainerWidth = ref(820)

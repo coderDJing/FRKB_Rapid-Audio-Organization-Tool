@@ -165,7 +165,7 @@ export const useAnalysisRuntimeDownload = (options: {
     }
     if (
       !options.runtime.analysisRuntime.available &&
-      options.runtime.mainWindowBrowseMode === 'horizontal'
+      options.runtime.mainWindowBrowseMode !== 'browser'
     ) {
       options.runtime.mainWindowBrowseMode = 'browser'
     }

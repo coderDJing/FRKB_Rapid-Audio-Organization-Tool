@@ -3,6 +3,7 @@ import type { ISongHotCue, ISongMemoryCue } from 'src/types/globals'
 
 export type HorizontalBrowseDetailLiveCanvasRawSlot = 'live' | 'retained'
 export type HorizontalBrowseDetailLiveCanvasDirection = 'up' | 'down'
+export type HorizontalBrowseDetailLiveCanvasWaveformRenderStyle = 'columns' | 'raw-curve'
 
 export type HorizontalBrowseDetailLiveCanvasLoopRange = {
   startSec: number
@@ -45,7 +46,8 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   showBeatGrid: boolean
   allowScrollReuse: boolean
   phaseAwareScrollReuse: boolean
-  waveformLayout: 'top-half' | 'bottom-half'
+  waveformLayout: 'full' | 'top-half' | 'bottom-half'
+  waveformRenderStyle: HorizontalBrowseDetailLiveCanvasWaveformRenderStyle
   preferRawPeaksOnly: boolean
   themeVariant: 'light' | 'dark'
   rawSlot: HorizontalBrowseDetailLiveCanvasRawSlot | null

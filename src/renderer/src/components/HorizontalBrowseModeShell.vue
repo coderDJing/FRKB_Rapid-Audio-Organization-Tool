@@ -7,6 +7,7 @@ import HorizontalBrowseDeckMoveDialog from '@renderer/components/HorizontalBrows
 import HorizontalBrowseDeckOverviewSection from '@renderer/components/HorizontalBrowseDeckOverviewSection.vue'
 import HorizontalBrowseCuePanels from '@renderer/components/HorizontalBrowseCuePanels.vue'
 import {
+  HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
 } from '@renderer/components/horizontalBrowseWaveform.constants'
@@ -45,6 +46,7 @@ import { useHorizontalBrowseTransportController } from '@renderer/components/use
 import { useHorizontalBrowseTransportMutations } from '@renderer/components/useHorizontalBrowseTransportMutations'
 
 type DeckKey = HorizontalBrowseDeckKey
+type HorizontalBrowseViewMode = 'dual' | 'edit'
 
 type SharedDetailZoomState = {
   value: number
@@ -63,6 +65,15 @@ type HorizontalBrowseDeckDetailLaneExpose = {
   toggleMetronome?: () => void
   cycleMetronomeVolume?: () => void
 }
+
+const props = withDefaults(
+  defineProps<{
+    viewMode?: HorizontalBrowseViewMode
+  }>(),
+  {
+    viewMode: 'dual'
+  }
+)
 
 const createDefaultDeckToolbarState = () => ({
   disabled: true,
@@ -97,6 +108,14 @@ const sharedDetailZoomState = ref<SharedDetailZoomState>({
   sourceDirection: null,
   revision: 0
 })
+const editDetailZoomState = ref<SharedDetailZoomState>({
+  value: HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
+  anchorRatio: 0.5,
+  sourceDirection: null,
+  revision: 0
+})
+const horizontalBrowseViewMode = computed<HorizontalBrowseViewMode>(() => props.viewMode)
+const isEditMode = computed(() => horizontalBrowseViewMode.value === 'edit')
 const regionDragDepth = reactive<Record<number, number>>({
   1: 0,
   2: 0,
@@ -494,6 +513,36 @@ const handleSharedDetailZoomChange = (payload: {
   }
 }
 
+const handleEditDetailZoomChange = (payload: {
+  value: number
+  anchorRatio: number
+  sourceDirection: 'up' | 'down'
+}) => {
+  const numeric = Number(payload?.value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return
+  editDetailZoomState.value = {
+    value: Math.max(
+      HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
+      Math.min(HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM, numeric)
+    ),
+    anchorRatio: Math.max(0, Math.min(1, Number(payload?.anchorRatio) || 0)),
+    sourceDirection: payload?.sourceDirection || null,
+    revision: editDetailZoomState.value.revision + 1
+  }
+}
+
+const handleDetailZoomChange = (payload: {
+  value: number
+  anchorRatio: number
+  sourceDirection: 'up' | 'down'
+}) => {
+  if (horizontalBrowseViewMode.value === 'edit') {
+    handleEditDetailZoomChange(payload)
+    return
+  }
+  handleSharedDetailZoomChange(payload)
+}
+
 const {
   handleToolbarStateChange,
   handleDeckBarLinePickingToggle,
@@ -606,6 +655,32 @@ useHorizontalBrowseHotkeys({
   onSeekPercent: handleDeckSeekPercent,
   onNudgeCrossfader: handleCrossfaderNudgeByKeyboard,
   onResetCrossfader: handleCrossfaderResetByKeyboard
+})
+
+const enterEditMode = async () => {
+  stopAllDeckCuePreview()
+  syncCrossfaderValue(0)
+  if (resolveDeckPlaying('top')) {
+    await nativeTransport.setPlaying('top', false)
+  }
+  setDeckSong('bottom', null)
+  await commitDeckStateToNative('bottom', {
+    currentSec: 0,
+    durationSec: 0,
+    playing: false,
+    playbackRate: 1
+  })
+  if (deckSyncState.leaderDeck === 'bottom') {
+    await nativeTransport.setLeader(resolveDeckSong('top') ? 'top' : null)
+  }
+  syncDeckRenderState({ force: 'all' })
+}
+
+watch(isEditMode, (editMode) => {
+  if (!editMode) return
+  void enterEditMode().catch((error) => {
+    console.error('[horizontal-browse] enter edit mode failed', error)
+  })
 })
 
 const resolveDeckDragDepth = (deck: DeckKey) => {
@@ -722,8 +797,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="horizontal-shell">
-    <div class="controls">
+  <div class="horizontal-shell" :class="{ 'is-edit-mode': isEditMode }">
+    <div class="controls" :class="{ 'controls--edit': isEditMode }">
       <HorizontalBrowseDeckButtons
         :playing="topDeckPlayButtonActive"
         :decoding="topDeckUiDecoding"
@@ -736,6 +811,7 @@ onUnmounted(() => {
       />
 
       <div
+        v-if="!isEditMode"
         ref="faderRef"
         class="fader"
         :class="{ 'is-dragging': faderDragging }"
@@ -771,6 +847,7 @@ onUnmounted(() => {
       </div>
 
       <HorizontalBrowseDeckButtons
+        v-if="!isEditMode"
         :playing="bottomDeckPlayButtonActive"
         :decoding="bottomDeckUiDecoding"
         :pending-play="deckPendingPlayOnLoad.bottom"
@@ -782,7 +859,7 @@ onUnmounted(() => {
       />
     </div>
 
-    <div class="waveform-stack">
+    <div class="waveform-stack" :class="{ 'waveform-stack--edit': isEditMode }">
       <HorizontalBrowseDeckOverviewSection
         position="top"
         :region-ids="topOverviewRegions"
@@ -830,11 +907,11 @@ onUnmounted(() => {
         @select-move-target="openDeckMoveDialog('top', $event)"
       />
 
-      <section class="detail-pair">
+      <section class="detail-pair" :class="{ 'detail-pair--edit': isEditMode }">
         <HorizontalBrowseDeckDetailLane
           ref="topDetailRef"
           :song="topDeckSong"
-          :shared-zoom-state="sharedDetailZoomState"
+          :shared-zoom-state="isEditMode ? editDetailZoomState : sharedDetailZoomState"
           :current-seconds="topDeckRenderCurrentSeconds"
           :playing="topDeckUiPlaying"
           :playback-rate="topDeckPlaybackRate"
@@ -848,6 +925,11 @@ onUnmounted(() => {
           :raw-load-priority-hint="topDeckRawLoadPriorityHint"
           :seek-target-seconds="deckSeekIntent.top.seconds"
           :seek-revision="deckSeekIntent.top.revision"
+          :max-zoom="
+            isEditMode ? HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM : HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
+          "
+          :waveform-layout="isEditMode ? 'full' : 'auto'"
+          :waveform-render-style="isEditMode ? 'raw-curve' : 'columns'"
           direction="up"
           :deck-hovered="isDeckHovered('top')"
           :region-id="4"
@@ -856,12 +938,13 @@ onUnmounted(() => {
           @region-drag-leave="handleRegionDragLeave"
           @region-drop="handleRegionDrop"
           @toolbar-state-change="handleToolbarStateChange('top', $event)"
-          @zoom-change="handleSharedDetailZoomChange"
+          @zoom-change="handleDetailZoomChange"
           @drag-session-start="handleDeckRawWaveformDragStart('top')"
           @drag-session-end="handleDeckRawWaveformDragEnd('top', $event)"
         />
 
         <HorizontalBrowseDeckDetailLane
+          v-if="!isEditMode"
           ref="bottomDetailRef"
           :song="bottomDeckSong"
           :shared-zoom-state="sharedDetailZoomState"
@@ -878,6 +961,9 @@ onUnmounted(() => {
           :raw-load-priority-hint="bottomDeckRawLoadPriorityHint"
           :seek-target-seconds="deckSeekIntent.bottom.seconds"
           :seek-revision="deckSeekIntent.bottom.revision"
+          :max-zoom="HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM"
+          waveform-layout="auto"
+          waveform-render-style="columns"
           direction="down"
           :deck-hovered="isDeckHovered('bottom')"
           :region-id="5"
@@ -886,13 +972,14 @@ onUnmounted(() => {
           @region-drag-leave="handleRegionDragLeave"
           @region-drop="handleRegionDrop"
           @toolbar-state-change="handleToolbarStateChange('bottom', $event)"
-          @zoom-change="handleSharedDetailZoomChange"
+          @zoom-change="handleDetailZoomChange"
           @drag-session-start="handleDeckRawWaveformDragStart('bottom')"
           @drag-session-end="handleDeckRawWaveformDragEnd('bottom', $event)"
         />
       </section>
 
       <HorizontalBrowseDeckOverviewSection
+        v-if="!isEditMode"
         position="bottom"
         :region-ids="bottomOverviewRegions"
         deck="bottom"

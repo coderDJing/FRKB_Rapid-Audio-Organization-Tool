@@ -16,7 +16,7 @@ export type LibrarySelection =
   | 'ExternalPlaylist'
   | 'PioneerDeviceLibrary'
 
-type MainWindowBrowseMode = 'browser' | 'horizontal'
+type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
 export type SongsAreaPaneKey = 'single' | 'left' | 'right'
 export type SplitSongsAreaPaneKey = 'left' | 'right'
 export type SongsAreaColumnMode = 'default' | 'recycle' | 'mixtape'

@@ -41,8 +41,9 @@ import { formatWindowTitle } from '@renderer/utils/windowTitle'
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
 const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
-const normalizeMainWindowBrowseMode = (value: unknown): 'browser' | 'horizontal' =>
-  value === 'horizontal' ? 'horizontal' : 'browser'
+type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
+const normalizeMainWindowBrowseMode = (value: unknown): MainWindowBrowseMode =>
+  value === 'horizontal' || value === 'edit' ? value : 'browser'
 // 运行期平台展示优先取持久化设置，避免依赖不稳定的 userAgent
 {
   const p = runtime.setting?.platform
@@ -88,13 +89,22 @@ let songSearchWarmupTimer: ReturnType<typeof setTimeout> | null = null
 const CTRL_DOUBLE_TAP_MS = 260
 const mainWindowTopGapHeight = 41
 const horizontalModeShellHeight = 372
+const editModeShellHeight = (horizontalModeShellHeight * 3) / 5
+const horizontalModeSidePanelWidth = (horizontalModeShellHeight - 1) / 2
 const mainWindowBrowseModeMenuOpen = ref(false)
 const mainWindowBrowseModeMenuRef = ref<HTMLElement | null>(null)
 const mainWindowBrowseModeOptions = [
   { value: 'browser', labelKey: 'modeSwitcher.browser' },
-  { value: 'horizontal', labelKey: 'modeSwitcher.horizontal' }
+  { value: 'horizontal', labelKey: 'modeSwitcher.horizontal' },
+  { value: 'edit', labelKey: 'modeSwitcher.edit' }
 ] as const
-const showHorizontalModeShell = computed(() => runtime.mainWindowBrowseMode === 'horizontal')
+const showHorizontalModeShell = computed(() => runtime.mainWindowBrowseMode !== 'browser')
+const horizontalModeShellViewMode = computed(() =>
+  runtime.mainWindowBrowseMode === 'edit' ? 'edit' : 'dual'
+)
+const currentHorizontalModeShellHeight = computed(() =>
+  runtime.mainWindowBrowseMode === 'edit' ? editModeShellHeight : horizontalModeShellHeight
+)
 const mainWindowTopGapStyle = computed(() => ({
   height: `${mainWindowTopGapHeight}px`,
   flex: `0 0 ${mainWindowTopGapHeight}px`,
@@ -106,9 +116,10 @@ const mainWindowTopGapStyle = computed(() => ({
   zIndex: 'var(--z-app-toolbar)'
 }))
 const horizontalModeShellStyle = computed(() => ({
-  '--horizontal-browse-shell-height': `${horizontalModeShellHeight}px`,
-  height: `${horizontalModeShellHeight}px`,
-  flex: `0 0 ${horizontalModeShellHeight}px`,
+  '--horizontal-browse-shell-height': `${currentHorizontalModeShellHeight.value}px`,
+  '--horizontal-browse-side-panel-width': `${horizontalModeSidePanelWidth}px`,
+  height: `${currentHorizontalModeShellHeight.value}px`,
+  flex: `0 0 ${currentHorizontalModeShellHeight.value}px`,
   backgroundColor: 'var(--bg)',
   borderBottom: '1px solid var(--border)',
   boxSizing: 'border-box' as const,
@@ -502,6 +513,12 @@ const openDialog = async (item: string) => {
     runtime.mainWindowBrowseMode = 'horizontal'
     return
   }
+  if (item === 'menu.editBrowseMode') {
+    const canEnterHorizontalMode = await ensureAnalysisRuntimeForHorizontalMode()
+    if (!canEnterHorizontalMode) return
+    runtime.mainWindowBrowseMode = 'edit'
+    return
+  }
   if (item === 'menu.downloadAnalysisRuntime') {
     await promptAnalysisRuntimeDownload('help')
     return
@@ -622,10 +639,16 @@ const toggleMainWindowBrowseModeMenu = () => {
   mainWindowBrowseModeMenuOpen.value = !mainWindowBrowseModeMenuOpen.value
 }
 
-const selectMainWindowBrowseMode = async (mode: 'browser' | 'horizontal') => {
+const resolveMainWindowBrowseModeMenuKey = (mode: MainWindowBrowseMode) => {
+  if (mode === 'browser') return 'menu.fullBrowseMode'
+  if (mode === 'edit') return 'menu.editBrowseMode'
+  return 'menu.horizontalBrowseMode'
+}
+
+const selectMainWindowBrowseMode = async (mode: MainWindowBrowseMode) => {
   closeMainWindowBrowseModeMenu()
   if (runtime.mainWindowBrowseMode === mode) return
-  await openDialog(mode === 'browser' ? 'menu.fullBrowseMode' : 'menu.horizontalBrowseMode')
+  await openDialog(resolveMainWindowBrowseModeMenuKey(mode))
 }
 
 const openSettingsDialog = () => {
@@ -963,7 +986,7 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
       </div>
     </div>
     <div v-if="showHorizontalModeShell" :style="horizontalModeShellStyle">
-      <HorizontalBrowseModeShell />
+      <HorizontalBrowseModeShell :view-mode="horizontalModeShellViewMode" />
     </div>
     <div style="flex: 1 1 auto; min-height: 0">
       <homePage />

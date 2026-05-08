@@ -547,7 +547,7 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
 const requestImmediateAnalysis = (song: ISongInfo) => {
   const filePath = song?.filePath
   if (!filePath) return
-  if (runtime.mainWindowBrowseMode === 'horizontal') return
+  if (runtime.mainWindowBrowseMode !== 'browser') return
   try {
     window.electron.ipcRenderer.send('key-analysis:queue-playing', {
       filePath,
@@ -566,8 +566,9 @@ const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
 
   const normalizedSong = { ...song }
   requestImmediateAnalysis(normalizedSong)
-  if (runtime.mainWindowBrowseMode === 'horizontal') {
-    const deck = event?.shiftKey ? 'bottom' : 'top'
+  if (runtime.mainWindowBrowseMode !== 'browser') {
+    const deck =
+      runtime.mainWindowBrowseMode === 'edit' ? 'top' : event?.shiftKey ? 'bottom' : 'top'
     beginHorizontalBrowseDeckInteraction(deck, String(normalizedSong.filePath || '').trim())
     sendHorizontalBrowseInteractionTrace('song-dblclick', {
       source: 'songsArea',
@@ -674,7 +675,10 @@ const playingSongFilePathsForRows = computed(() => {
   return [...keys]
 })
 const harmonicReferenceKeyForRows = computed(() => {
-  if (runtime.mainWindowBrowseMode !== 'horizontal') return ''
+  if (runtime.mainWindowBrowseMode === 'browser') return ''
+  if (runtime.mainWindowBrowseMode === 'edit') {
+    return String(runtime.horizontalBrowseDecks.topSong?.key || '').trim()
+  }
   const leaderDeck = runtime.horizontalBrowseDecks.leaderDeck
   if (leaderDeck === 'top') {
     return String(runtime.horizontalBrowseDecks.topSong?.key || '').trim()

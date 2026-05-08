@@ -1,6 +1,7 @@
 {
   "modeSwitcher": {
     "browser": "浏览器模式",
-    "horizontal": "双轨模式"
+    "horizontal": "双轨模式",
+    "edit": "编辑模式"
   }
 }

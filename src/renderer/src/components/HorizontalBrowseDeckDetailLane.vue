@@ -47,6 +47,9 @@ const props = defineProps<{
   seekTargetSeconds: number
   seekRevision: number
   direction: 'up' | 'down'
+  maxZoom?: number
+  waveformLayout?: 'auto' | 'full'
+  waveformRenderStyle?: 'columns' | 'raw-curve'
   deckHovered: boolean
   regionId: number
 }>()
@@ -108,6 +111,9 @@ defineExpose({
       :raw-load-priority-hint="props.rawLoadPriorityHint"
       :seek-target-seconds="props.seekTargetSeconds"
       :seek-revision="props.seekRevision"
+      :max-zoom="props.maxZoom"
+      :waveform-layout="props.waveformLayout"
+      :waveform-render-style="props.waveformRenderStyle"
       :direction="props.direction"
       @toolbar-state-change="emit('toolbar-state-change', $event)"
       @zoom-change="emit('zoom-change', $event)"

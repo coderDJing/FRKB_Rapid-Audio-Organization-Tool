@@ -338,7 +338,7 @@ const isPioneerDeviceLibraryView = computed(
 )
 const isLibraryPanelHidden = computed(() => isExternalPlaylistView.value || isRecycleBinView.value)
 const showMainSongPlayer = computed(
-  () => runtime.mainWindowBrowseMode !== 'horizontal' && Boolean(runtime.playingData.playingSong)
+  () => runtime.mainWindowBrowseMode === 'browser' && Boolean(runtime.playingData.playingSong)
 )
 const isSongsAreaSplit = computed(
   () => runtime.songsAreaPanels.splitEnabled && !isPioneerDeviceLibraryView.value
@@ -413,7 +413,7 @@ const clearMainPlayerPlaybackState = () => {
 watch(
   () => runtime.mainWindowBrowseMode,
   (mode, previousMode) => {
-    if (mode === 'horizontal' && previousMode !== 'horizontal') {
+    if (mode !== 'browser' && previousMode === 'browser') {
       clearMainPlayerPlaybackState()
     }
   }

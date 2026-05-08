@@ -32,7 +32,8 @@ import type {
 } from '@renderer/workers/horizontalBrowseDetailLiveCanvas.types'
 
 type HorizontalBrowseDirection = 'up' | 'down'
-type HorizontalBrowseWaveformLayout = 'top-half' | 'bottom-half'
+type HorizontalBrowseWaveformLayout = 'full' | 'top-half' | 'bottom-half'
+type HorizontalBrowseWaveformRenderStyle = 'columns' | 'raw-curve'
 
 type UseHorizontalBrowseRawWaveformCanvasOptions = {
   song: () => ISongInfo | null
@@ -56,6 +57,8 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
   previewTimeBasisOffsetMs: Ref<number>
   dragging: Ref<boolean>
   rawStreamActive: Ref<boolean>
+  waveformLayout: () => HorizontalBrowseWaveformLayout
+  waveformRenderStyle: () => HorizontalBrowseWaveformRenderStyle
 }
 
 const RAW_STREAM_REDRAW_INTERVAL_MS = 80
@@ -194,8 +197,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     return resolvePlaybackAlignedStart(playbackSeconds)
   }
 
-  const resolveWaveformLayout = (): HorizontalBrowseWaveformLayout =>
-    options.direction() === 'up' ? 'top-half' : 'bottom-half'
+  const resolveWaveformLayout = (): HorizontalBrowseWaveformLayout => options.waveformLayout()
 
   const resolvePlaybackAlignedStart = (seconds: number) =>
     resolveHorizontalBrowsePlaybackAlignedStart(
@@ -381,6 +383,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       allowScrollReuse: payload.allowScrollReuse,
       phaseAwareScrollReuse: payload.allowScrollReuse,
       waveformLayout: resolveWaveformLayout(),
+      waveformRenderStyle: options.waveformRenderStyle(),
       preferRawPeaksOnly: payload.preferRawPeaksOnly,
       themeVariant: resolveHorizontalBrowseWaveformThemeVariant(),
       rawSlot: resolveRawSlotForRender(payload.rawData),

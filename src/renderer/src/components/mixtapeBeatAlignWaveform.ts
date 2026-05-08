@@ -19,6 +19,7 @@ type DrawWaveformOptions = {
   showCenterLine?: boolean
   showBeatGrid?: boolean
   waveformLayout?: 'full' | 'top-half' | 'bottom-half'
+  waveformRenderStyle?: WaveformRenderStyle
   themeVariant?: 'light' | 'dark'
   preferRawPeaksOnly?: boolean
 }
@@ -33,6 +34,9 @@ type WaveformColumn = {
   }
 }
 
+type WaveformRenderStyle = 'columns' | 'raw-curve'
+type WaveformLayout = 'full' | 'top-half' | 'bottom-half'
+
 const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
 const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
 const BAR_BEAT_INTERVAL = 32
@@ -42,6 +46,7 @@ const MAJOR_GRID_LINE_WIDTH = 1
 const MINOR_GRID_LINE_WIDTH = 1
 const GRID_LINE_VERTICAL_OVERSCAN = 2
 const HALF_WAVEFORM_AMPLITUDE_RATIO = 0.8
+const RAW_CURVE_VERTICAL_SCALE = 0.82
 const RAW_FFT_MIN_SIZE = 128
 const RAW_FFT_MAX_SIZE = 512
 const RAW_FFT_LOW_RATIO = 0.18
@@ -648,7 +653,7 @@ const drawWaveformColumns = (
     showDetailHighlights?: boolean
     showCenterLine?: boolean
     palette?: BeatAlignWaveformPalette
-    waveformLayout?: 'full' | 'top-half' | 'bottom-half'
+    waveformLayout?: WaveformLayout
   }
 ) => {
   const centerY = Math.round(height / 2)
@@ -710,6 +715,117 @@ const drawWaveformColumns = (
   }
 }
 
+const resolveRawCurvePeaksByRange = (
+  rawData: RawWaveformData,
+  startFrame: number,
+  endFrame: number,
+  maxSamplesPerPixel?: number
+) => {
+  const span = endFrame - startFrame + 1
+  const sampleCap = Number(maxSamplesPerPixel)
+  const step =
+    Number.isFinite(sampleCap) && sampleCap > 0
+      ? Math.max(1, Math.floor(span / Math.max(1, Math.floor(sampleCap))))
+      : 1
+  let minPeak = 1
+  let maxPeak = -1
+  let lastFrame = startFrame
+  const applyFrame = (frame: number) => {
+    const minValue = ((rawData.minLeft[frame] || 0) + (rawData.minRight[frame] || 0)) * 0.5
+    const maxValue = ((rawData.maxLeft[frame] || 0) + (rawData.maxRight[frame] || 0)) * 0.5
+    if (minValue < minPeak) minPeak = minValue
+    if (maxValue > maxPeak) maxPeak = maxValue
+  }
+  for (let frame = startFrame; frame <= endFrame; frame += step) {
+    applyFrame(frame)
+    lastFrame = frame
+  }
+  if (lastFrame !== endFrame) {
+    applyFrame(endFrame)
+  }
+  return {
+    min: clamp(minPeak === 1 ? 0 : minPeak, -1, 1),
+    max: clamp(maxPeak === -1 ? 0 : maxPeak, -1, 1)
+  }
+}
+
+const drawRawCurveWaveform = (
+  ctx: BeatAlignCanvasContext,
+  width: number,
+  height: number,
+  columns: WaveformColumn[],
+  rawData: RawWaveformData | null,
+  rangeStartSec: number,
+  rangeDurationSec: number,
+  maxSamplesPerPixel: number | undefined,
+  timeBasisOffsetMs: number | undefined,
+  waveformLayout: WaveformLayout
+) => {
+  if (!isValidRawWaveformData(rawData) || rangeDurationSec <= 0) return false
+  const rawFrames = Math.max(
+    1,
+    Math.min(
+      Math.floor(Number(rawData.loadedFrames ?? rawData.frames) || 0),
+      Math.floor(Number(rawData.frames) || 0)
+    )
+  )
+  const rawRate = Math.max(1, Number(rawData.rate) || 1)
+  const rawStartSec =
+    Math.max(0, Number(rawData.startSec) || 0) + Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
+  const rawEndSec = rawStartSec + rawFrames / rawRate
+  const visibleStartSec = Math.max(rangeStartSec, rawStartSec)
+  const visibleEndSec = Math.min(rangeStartSec + rangeDurationSec, rawEndSec)
+  if (visibleEndSec <= visibleStartSec) return false
+
+  const centerY = height * 0.5
+  const fullScale = Math.max(1, centerY - 1)
+  const halfScale = Math.max(1, height - 2)
+  const resolveY = (value: number) => {
+    const safeValue = clamp(value, -1, 1) * RAW_CURVE_VERTICAL_SCALE
+    if (waveformLayout === 'top-half') return height - 1 - (safeValue + 1) * 0.5 * halfScale
+    if (waveformLayout === 'bottom-half') return 1 + (safeValue + 1) * 0.5 * halfScale
+    return centerY - safeValue * fullScale
+  }
+
+  ctx.imageSmoothingEnabled = true
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.lineWidth = 1.35
+
+  let hasDrawn = false
+  let previousX = 0
+  let previousY = 0
+  for (let x = 0; x < width; x += 1) {
+    const startTime = rangeStartSec + (x / width) * rangeDurationSec
+    const endTime = rangeStartSec + ((x + 1) / width) * rangeDurationSec
+    if (endTime <= rawStartSec || startTime >= rawEndSec) continue
+    const localStart = clamp(startTime - rawStartSec, 0, rawEndSec - rawStartSec)
+    const localEnd = clamp(endTime - rawStartSec, localStart, rawEndSec - rawStartSec)
+    const startFrame = clamp(Math.floor(localStart * rawRate), 0, rawFrames - 1)
+    const endFrame = clamp(Math.ceil(localEnd * rawRate), startFrame, rawFrames - 1)
+    const peaks = resolveRawCurvePeaksByRange(rawData, startFrame, endFrame, maxSamplesPerPixel)
+    const color = columns[x]?.color || { r: 235, g: 242, b: 248 }
+    const firstY = resolveY(peaks.max)
+    const secondY = resolveY(peaks.min)
+    const firstX = x + 0.25
+    const secondX = x + 0.75
+    ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
+    ctx.beginPath()
+    if (hasDrawn) {
+      ctx.moveTo(previousX, previousY)
+      ctx.lineTo(firstX, firstY)
+    } else {
+      ctx.moveTo(firstX, firstY)
+    }
+    ctx.lineTo(secondX, secondY)
+    ctx.stroke()
+    previousX = secondX
+    previousY = secondY
+    hasDrawn = true
+  }
+  return hasDrawn
+}
+
 export const drawBeatAlignRekordboxWaveform = (
   ctx: BeatAlignCanvasContext,
   options: DrawWaveformOptions
@@ -730,6 +846,7 @@ export const drawBeatAlignRekordboxWaveform = (
     showCenterLine,
     showBeatGrid,
     waveformLayout,
+    waveformRenderStyle,
     themeVariant,
     timeBasisOffsetMs,
     preferRawPeaksOnly
@@ -767,7 +884,41 @@ export const drawBeatAlignRekordboxWaveform = (
     timeBasisOffsetMs,
     preferRawPeaksOnly
   )
-  if (!columns.some(Boolean)) {
+  const hasColumns = columns.some(Boolean)
+  const resolvedWaveformLayout = waveformLayout || 'full'
+
+  if (
+    waveformRenderStyle === 'raw-curve' &&
+    drawRawCurveWaveform(
+      ctx,
+      width,
+      height,
+      columns,
+      rawData || null,
+      rangeStartSec,
+      rangeDurationSec,
+      maxSamplesPerPixel,
+      timeBasisOffsetMs,
+      resolvedWaveformLayout
+    )
+  ) {
+    if (showBeatGrid !== false) {
+      drawBeatGrid(
+        ctx,
+        width,
+        height,
+        bpm,
+        firstBeatMs,
+        Number(barBeatOffset) || 0,
+        rangeStartSec,
+        rangeDurationSec,
+        palette
+      )
+    }
+    return true
+  }
+
+  if (!hasColumns) {
     if (showBeatGrid !== false) {
       drawBeatGrid(
         ctx,
@@ -788,7 +939,7 @@ export const drawBeatAlignRekordboxWaveform = (
     showDetailHighlights,
     showCenterLine,
     palette,
-    waveformLayout
+    waveformLayout: resolvedWaveformLayout
   })
 
   if (showBeatGrid !== false) {

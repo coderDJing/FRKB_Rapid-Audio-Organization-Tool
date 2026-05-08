@@ -80,8 +80,11 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
   const resolveCurrentScope = () =>
     params.runtime.hotkeysScopesHeap[params.runtime.hotkeysScopesHeap.length - 1] || ''
 
+  const isDeckBrowseModeActive = () => params.runtime.mainWindowBrowseMode !== 'browser'
+  const isEditModeActive = () => params.runtime.mainWindowBrowseMode === 'edit'
+
   const isHotkeysContextActive = (event: KeyboardEvent) => {
-    if (params.runtime.mainWindowBrowseMode !== 'horizontal') return false
+    if (!isDeckBrowseModeActive()) return false
     if (resolveCurrentScope() !== WINDOW_GLOBAL_SCOPE) return false
     if (isEditableTarget(event.target)) return false
     if (event.ctrlKey || event.metaKey) return false
@@ -142,7 +145,7 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
   }
 
   const resolveDeckByShiftState = (event: KeyboardEvent): HorizontalBrowseDeckKey =>
-    event.shiftKey ? 'bottom' : 'top'
+    isEditModeActive() ? 'top' : event.shiftKey ? 'bottom' : 'top'
 
   const emitPreviewMoveRequest = (targetLibraryName: 'FilterLibrary' | 'CuratedLibrary') => {
     if (!previewMoveTarget) return
@@ -213,6 +216,7 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
 
     if (code === 'KeyW' || code === 'ArrowUp') {
       stopKeyboardEvent(event)
+      if (isEditModeActive()) return
       if (event.shiftKey) {
         clearCrossfaderKeyState()
         if (event.repeat) return
@@ -227,6 +231,7 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
 
     if (code === 'KeyS' || code === 'ArrowDown') {
       stopKeyboardEvent(event)
+      if (isEditModeActive()) return
       if (event.shiftKey) {
         clearCrossfaderKeyState()
         if (event.repeat) return

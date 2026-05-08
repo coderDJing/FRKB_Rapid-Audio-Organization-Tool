@@ -1,6 +1,7 @@
 {
   "modeSwitcher": {
     "browser": "Browser Mode",
-    "horizontal": "Dual-Track"
+    "horizontal": "Dual-Track",
+    "edit": "Edit"
   }
 }
