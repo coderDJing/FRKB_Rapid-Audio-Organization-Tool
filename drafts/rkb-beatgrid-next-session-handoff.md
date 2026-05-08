@@ -7,20 +7,81 @@
 - 已推送到：`origin/main`
 - 核心诊断提交：`62b643f3 feat(rkb): 增加 beatgrid 诊断与 sealed 验收入口`
 
-## 当前生产状态
+## 当前算法接入状态
 
-生产 solver 没有切换到 rising-edge ranker。
+`constant-grid-dp` 验收链路已接入 locked rising-edge ranker。
 
-当前生产仍是：
+当前 `scripts/rkb_constant_grid_dp_solver.py` 版本：
 
 ```text
-constant-grid-dp phase evidence v2 + phasePath diagnostic
+constant-grid-dp-cache-v3-locked-rising-edge-ranker
 ```
 
-当前 5ms 成绩：
+接入边界：
+
+- 已接入：`scripts/rkb_constant_grid_dp_solver.py`
+- 新增冻结模型：`scripts/rkb_locked_phase_ranker.py`
+- 已验证链路：`scripts/run_parallel_rkb_rekordbox_benchmark.py --solver constant-grid-dp`
+- 运行时注意：Electron 当前入口仍是 `scripts/beat_this_bridge.py` / `scripts/beat_this_candidate_solver.py`，如果要让应用实时分析也走这套 ranker，需要单独检查并迁移运行时链路，不能直接把 sealed benchmark 结果当作运行时已生效。
+
+locked replay 的 current/blind sanity：
 
 - current：`685 / 931 = 73.58%`
 - blind：`425 / 608 = 69.90%`
+
+## sealed-eval 结果（2026-05-08）
+
+用户在 Rekordbox `test` 歌单新增样本后，已按锁死流程完成一次 sealed 验收。
+
+样本摄取：
+
+- `test` 歌单总数：`378`
+- 已在 current truth 中存在并跳过：`1`
+- 本轮 sealed truth 有效新增：`377`
+- 被跳过旧样本：`Yanamaste - Evil (Original Mix).mp3`
+
+产物路径：
+
+- truth：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/rekordbox-sealed-truth.json`
+- feature cache：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/feature-cache`
+- production baseline：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-constant-grid-dp.json`
+- locked replay：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/phase-ranker-rising-edge-locked-replay.json`
+- integrated solver：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-constant-grid-dp-locked-ranker.json`
+
+生产 baseline（constant-grid-dp）在 `test` sealed 上：
+
+- baseline：`274 / 377 = 72.68%`
+
+locked rising-edge hypothesis 在 `test` sealed 上：
+
+- selected：`277 / 377 = 73.47%`
+- net：`+3`
+- fail -> pass：`3`
+- pass -> fail：`0`
+- 改善曲目：
+  - `Alvaro Medina - This Sound (Original Mix).mp3`
+  - `Meloko, Konvex (FR) & Garla - If U Ever (Original Mix).mp3`
+  - `Kiko & Olivier Giacomotto - Making G's (Extended Mix).mp3`
+
+接入 `constant-grid-dp` 后的 sealed benchmark：
+
+- selected：`277 / 377 = 73.47%`
+- errorTrackCount：`0`
+- fail -> pass：`3`
+- pass -> fail：`0`
+- category delta：`first-beat-phase 80 -> 77`，其他失败类型不变
+- 三首命中样本 ranker probability：
+  - `Alvaro Medina - This Sound (Original Mix).mp3`：`0.954081355`
+  - `Meloko, Konvex (FR) & Garla - If U Ever (Original Mix).mp3`：`0.958105093`
+  - `Kiko & Olivier Giacomotto - Making G's (Extended Mix).mp3`：`0.960401998`
+
+同次 replay 的 current/blind sanity 仍为：
+
+- current：`685 -> 694`
+- blind：`425 -> 430`
+- 全 split：`pass -> fail = 0`
+
+结论：这次 `test` 是新 truth 上的正向 sealed 证据，不再只是 current/blind 验后污染回放。locked ranker 已按冻结规则接入 `constant-grid-dp`，并且 integrated solver 与 locked replay 结果一致。
 
 ## 当前候选假设
 
@@ -36,20 +97,18 @@ rising-edge + onset-foot locked hypothesis
 - blind：`425 -> 430`
 - 全 split：`pass -> fail = 0`
 
-但这不是生产提升证明。它是在看过 current/blind 报告后形成的验后污染假设，只能等下一批新 truth
-按锁死配置原样复验。
+current/blind 本身仍不是生产提升证明，因为它是在看过 current/blind 报告后形成的验后污染假设。2026-05-08 的 `test` sealed 结果是该锁死假设的第一批新 truth 正向证据，且已通过集成后的 `constant-grid-dp` benchmark 复现。
 
-## 等用户提供的信息
+## 下一步建议
 
-下一次继续时，不要假设 Rekordbox 新样本歌单名。
+不要继续在 current/blind 或已消耗的 `test` sealed 上扫阈值。
 
-只等用户明确说出实际歌单名，例如：
+可选下一步：
 
-```text
-新样本歌单叫 <实际 Rekordbox 歌单名>
-```
+- 如果要让 Electron 实时分析路径也获得同样收益，先确认运行时是否能复用 `constant-grid-dp` feature cache / arrays；不能复用时，需要把等价的 signal feature 提取迁移到运行时。
+- 如果还想更保守，再让用户提供另一批全新 Rekordbox 歌单，按下面流程原样复验。不要复用 `test` 当 sealed。
 
-拿到实际歌单名后，把它填入下面命令里的 `$playlist`，不要改阈值、不要现场挑歌、不要重训选择规则。
+拿到新的实际歌单名后，把它填入下面命令里的 `$playlist`，不要改阈值、不要现场挑歌、不要重训选择规则。
 
 ## sealed-eval 一次性验收流程
 
@@ -99,6 +158,8 @@ $sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval"
 
 ## 关键脚本
 
+- `scripts/rkb_constant_grid_dp_solver.py`
+- `scripts/rkb_locked_phase_ranker.py`
 - `scripts/rkb_phase_ranker_rising_edge_locked_replay.py`
 - `scripts/rkb_phase_ranker_rising_edge_diagnostic.py`
 - `scripts/rkb_phase_ranker_diagnostic.py`
@@ -110,5 +171,6 @@ $sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval"
 
 - `py_compile` 通过。
 - `npx vue-tsc --noEmit` 通过。
-- `git diff --check` 通过。
+- `git diff --check` 通过（仅 Git CRLF 提示）。
 - `scripts/rkb_phase_ranker_rising_edge_locked_replay.py` current/blind sanity check 跑通。
+- `constant-grid-dp` integrated sealed benchmark：`277 / 377`，`pass -> fail = 0`。

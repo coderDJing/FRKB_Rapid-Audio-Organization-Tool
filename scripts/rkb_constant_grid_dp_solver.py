@@ -25,6 +25,7 @@ from rkb_beatgrid_lab_common import (
     resolve_feature_entry,
 )
 from rkb_hybrid_beatgrid_solver import _metadata_legacy_candidate, _window_summary
+from rkb_locked_phase_ranker import choose_locked_rising_edge_candidate
 
 DEFAULT_MIN_BPM = 70.0
 DEFAULT_MAX_BPM = 200.0
@@ -32,7 +33,7 @@ DEFAULT_TEMPO_STEP_BPM = 0.5
 DEFAULT_TEMPO_LIMIT = 24
 DEFAULT_PHASE_STEP_MS = 2.0
 DEFAULT_MAX_CANDIDATES = 640
-SOLVER_VERSION = "constant-grid-dp-cache-v2-phasepath-diagnostic"
+SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker"
 PHASE_EVIDENCE_SWITCH_THRESHOLD = 0.905
 PHASE_EVIDENCE_LEGACY_WEAKNESS_THRESHOLD = 0.6
 PHASE_PATH_TARGET_OFFSETS_MS = (8.0, 10.0, 12.0)
@@ -920,11 +921,39 @@ def solve_constant_grid_dp(
         selected = phase_evidence_selected
     else:
         selected = legacy_candidate
+    audio = metadata.get("audio") if isinstance(metadata.get("audio"), dict) else {}
+    duration_sec = _to_float(audio.get("durationSec"))
+    baseline_selected_source = _candidate_source(selected) if use_new else "constant-grid-dp:legacy-fallback"
+    baseline_ranker_selected = {
+        **selected,
+        "features": {
+            **dict(selected.get("features") or {}),
+            "constantGridDpConfidence": round(confidence, 6),
+            "constantGridDpConfidenceLevel": confidence_level,
+            "constantGridDpLowConfidenceReasons": low_reasons,
+            "constantGridDpUsedNewCandidate": use_new,
+            "constantGridDpConservativeSwitch": conservative_switch,
+            "constantGridDpPhaseEvidenceSwitch": phase_evidence_switch,
+            "constantGridDpPhaseEvidenceSwitchScore": phase_evidence_score,
+            "constantGridDpPhaseEvidenceRank": phase_evidence_rank,
+            "constantGridDpLegacyWeaknessScore": legacy_weakness,
+        },
+    }
+    locked_ranker_selected, locked_ranker_meta = choose_locked_rising_edge_candidate(
+        candidates=candidates,
+        selected=baseline_ranker_selected,
+        selected_source=baseline_selected_source,
+        arrays=arrays,
+        duration_sec=duration_sec,
+    )
+    locked_ranker_switch = locked_ranker_selected is not None
+    if locked_ranker_switch:
+        selected = locked_ranker_selected
+        use_new = True
+
     selected_bpm = _to_float(selected.get("bpm"))
     selected_first_beat_ms = _to_float(selected.get("firstBeatMs"))
     beat_interval_sec = 60.0 / selected_bpm if selected_bpm > 0.0 else 0.0
-    audio = metadata.get("audio") if isinstance(metadata.get("audio"), dict) else {}
-    duration_sec = _to_float(audio.get("durationSec"))
     window = _window_summary(metadata)
     selected_score = _to_float(selected.get("score"))
     selected_features = dict(selected.get("features") or {})
@@ -932,7 +961,9 @@ def solve_constant_grid_dp(
     if legacy_candidate is not None:
         candidate_payload.append(_diagnostic_candidate(legacy_candidate))
 
-    if confidence_level == "high" and use_new:
+    if locked_ranker_switch:
+        guard = "constant-grid-dp-locked-rising-edge-ranker"
+    elif confidence_level == "high" and use_new:
         guard = "constant-grid-dp-high-confidence"
     elif conservative_switch and use_new:
         guard = "constant-grid-dp-conservative-switch"
@@ -944,6 +975,11 @@ def solve_constant_grid_dp(
         selected_source = _candidate_source(selected)
     else:
         selected_source = "constant-grid-dp:legacy-fallback"
+    anchor_confidence_score = (
+        _to_float(locked_ranker_meta.get("probability"))
+        if locked_ranker_switch
+        else confidence if use_new else _to_float(selected.get("score"))
+    )
 
     return {
         "bpm": round(selected_bpm, 6),
@@ -959,7 +995,7 @@ def solve_constant_grid_dp(
         "beatIntervalSec": round(beat_interval_sec, 6),
         "qualityScore": float(window["qualityScore"]),
         "anchorCorrectionMs": 0.0,
-        "anchorConfidenceScore": round(confidence if use_new else _to_float(selected.get("score")), 6),
+        "anchorConfidenceScore": round(anchor_confidence_score, 6),
         "anchorMatchedBeatCount": 0,
         "anchorStrategy": "constant-grid-dp",
         "windowIndex": int(window["windowIndex"]),
@@ -987,6 +1023,12 @@ def solve_constant_grid_dp(
             "constantGridDpPhaseEvidenceSwitchScore": phase_evidence_score,
             "constantGridDpPhaseEvidenceRank": phase_evidence_rank,
             "constantGridDpLegacyWeaknessScore": legacy_weakness,
+            "constantGridDpLockedRisingEdgeRankerSwitch": locked_ranker_switch,
+            "constantGridDpLockedRisingEdgeRankerReason": str(locked_ranker_meta.get("reason") or ""),
+            "constantGridDpLockedRisingEdgeRankerProbability": round(_to_float(locked_ranker_meta.get("probability")), 9),
+            "constantGridDpLockedRisingEdgeRankerCandidateRank": int(locked_ranker_meta.get("candidateRank") or 0),
+            "constantGridDpLockedRisingEdgeRankerThreshold": _to_float(locked_ranker_meta.get("threshold"), 0.93),
+            "constantGridDpLockedRisingEdgeRankerVersion": str(locked_ranker_meta.get("version") or ""),
         },
         "gridSolverTopCandidates": candidate_payload[:10],
         "gridSolverCandidates": candidate_payload,
