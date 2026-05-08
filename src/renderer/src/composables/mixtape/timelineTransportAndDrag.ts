@@ -1,8 +1,8 @@
 import { ref, type Ref } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
-import { normalizeBeatOffset as normalizeBeatOffsetByMixxx } from '@renderer/composables/mixtape/mixxxSyncModel'
-import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
+import { normalizeBeatOffset as normalizeBeatOffsetByGrid } from '@renderer/composables/mixtape/beatSyncModel'
+import { applyTimelineTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
 import {
   configureTitleAudioVisualizerAnalyser,
   registerTitleAudioVisualizerSource,
@@ -152,7 +152,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   const clampNumber = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value))
   const normalizeBeatOffset = (value: unknown, interval: number) => {
-    return normalizeBeatOffsetByMixxx(value, interval)
+    return normalizeBeatOffsetByGrid(value, interval)
   }
   const normalizeStartSec = (value: unknown) => {
     const numeric = Number(value)
@@ -964,7 +964,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
         transportMasterTrackId
       )
       applyTransportMixParamsAtTimelineSec(runtimeCurrent)
-      const syncResult = applyMixxxTransportSync({
+      const syncResult = applyTimelineTransportSync({
         nodes: transportGraphNodes,
         timelineSec: runtimeCurrent,
         masterTrackId: transportMasterTrackId,

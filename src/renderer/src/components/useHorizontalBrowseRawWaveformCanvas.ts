@@ -18,7 +18,7 @@ import {
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { sendHorizontalBrowseWaveformTrace } from '@renderer/components/horizontalBrowseWaveformTrace'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
-import { isRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformData'
+import { isRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformData'
 import { resolveHorizontalBrowseWaveformThemeVariant } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
 import { createHorizontalBrowseDetailLiveCanvasBridge } from '@renderer/components/horizontalBrowseDetailLiveCanvasBridge'
 import { normalizeSongHotCues } from '@shared/hotCues'

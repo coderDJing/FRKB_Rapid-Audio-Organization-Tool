@@ -569,6 +569,8 @@ const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   if (runtime.mainWindowBrowseMode !== 'browser') {
     const deck =
       runtime.mainWindowBrowseMode === 'edit' ? 'top' : event?.shiftKey ? 'bottom' : 'top'
+    runtime.playingData.playingSongListUUID = songsAreaState.songListUUID
+    runtime.playingData.playingSongListData = [...songsAreaState.songInfoArr]
     beginHorizontalBrowseDeckInteraction(deck, String(normalizedSong.filePath || '').trim())
     sendHorizontalBrowseInteractionTrace('song-dblclick', {
       source: 'songsArea',
@@ -965,8 +967,8 @@ const emptyHintText = computed(() => {
         </OverlayScrollbarsComponent>
 
         <bubbleBoxTrigger
-          tag="button"
           v-if="showScrollToPlaying"
+          tag="button"
           class="songs-area-float-jump"
           type="button"
           title="Scroll to playing"

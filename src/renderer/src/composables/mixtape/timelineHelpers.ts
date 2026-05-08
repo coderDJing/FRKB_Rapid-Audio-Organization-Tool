@@ -23,7 +23,7 @@ import {
 import {
   resolveFirstBeatTimelineSec,
   resolveTempoRatioByBpm
-} from '@renderer/composables/mixtape/mixxxSyncModel'
+} from '@renderer/composables/mixtape/beatSyncModel'
 import { resolveRoundedTrackLocalPx } from '@renderer/composables/mixtape/timelinePixelMath'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import {

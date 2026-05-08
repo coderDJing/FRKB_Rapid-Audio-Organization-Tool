@@ -1,8 +1,8 @@
-import { resolveTempoRatioByBpm } from '@renderer/composables/mixtape/mixxxSyncModel'
 import {
   normalizeBeatOffset,
-  resolveBeatSecByBpm
-} from '@renderer/composables/mixtape/mixxxSyncModel'
+  resolveBeatSecByBpm,
+  resolveTempoRatioByBpm
+} from '@renderer/composables/mixtape/beatSyncModel'
 import {
   buildProjectedMasterGridTempoPoints,
   mapMixtapeMasterGridTimelineSec,

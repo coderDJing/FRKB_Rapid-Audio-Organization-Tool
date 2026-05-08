@@ -1,7 +1,7 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import { createRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformPlaceholder'
-import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
+import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
+import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRenderer'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import { createHorizontalBrowseDetailLiveCanvasOverlayRenderer } from './horizontalBrowseDetailLiveCanvasOverlay'
 import type {
@@ -443,7 +443,7 @@ const drawRange = (
   rangeDurationSec: number,
   state: FrameState
 ) =>
-  drawBeatAlignRekordboxWaveform(targetCtx, {
+  drawBeatGridWaveform(targetCtx, {
     width,
     height,
     bpm: state.bpm,

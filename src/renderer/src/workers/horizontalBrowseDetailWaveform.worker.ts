@@ -1,5 +1,5 @@
-import { createRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformPlaceholder'
-import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
+import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
+import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRenderer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 import type {
@@ -68,7 +68,7 @@ const renderTileBitmap = (request: HorizontalBrowseDetailWaveformTileRequest) =>
 
   const mixxxData = createRawPlaceholderMixxxData(raw)
 
-  drawBeatAlignRekordboxWaveform(ctx, {
+  drawBeatGridWaveform(ctx, {
     width: request.width,
     height: request.height,
     bpm: 0,

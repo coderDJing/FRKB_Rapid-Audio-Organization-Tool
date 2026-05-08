@@ -539,9 +539,12 @@ const fetchPlaylistTracks = async (params: {
       visibleSongs.value = []
     }
   } finally {
-    if (!isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
-    if (requestToken !== playlistTracksRequestToken) return
-    loading.value = false
+    if (
+      isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId) &&
+      requestToken === playlistTracksRequestToken
+    ) {
+      loading.value = false
+    }
   }
 }
 
@@ -778,6 +781,11 @@ const handleSongDblClick = (song: ISongInfo, event?: MouseEvent) => {
   if (runtime.mainWindowBrowseMode !== 'browser') {
     const deck =
       runtime.mainWindowBrowseMode === 'edit' ? 'top' : event?.shiftKey ? 'bottom' : 'top'
+    const playbackListKey = currentPlaybackListKey.value
+    if (playbackListKey) {
+      runtime.playingData.playingSongListUUID = playbackListKey
+      runtime.playingData.playingSongListData = [...visibleSongs.value]
+    }
     beginHorizontalBrowseDeckInteraction(deck, String(normalizedSong.filePath || '').trim())
     sendHorizontalBrowseInteractionTrace('song-dblclick', {
       source: 'pioneerSongsArea',

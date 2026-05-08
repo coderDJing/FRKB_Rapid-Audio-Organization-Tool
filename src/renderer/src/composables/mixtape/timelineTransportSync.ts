@@ -2,7 +2,7 @@ import {
   clampNumber,
   resolveTempoRatioByBpm,
   resolveSyncPlaybackRateWithDiagnostics
-} from '@renderer/composables/mixtape/mixxxSyncModel'
+} from '@renderer/composables/mixtape/beatSyncModel'
 import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import type { TransportPlayableSource } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 import type { SerializedTrackTempoSnapshot } from '@renderer/composables/mixtape/types'
@@ -277,7 +277,7 @@ const resolveTransientLagDiagnostics = (params: {
   }
 }
 
-export const applyMixxxTransportSync = (
+export const applyTimelineTransportSync = (
   params: ApplyTransportSyncParams
 ): ApplyTransportSyncResult => {
   const { nodes, timelineSec, audioCtx } = params

@@ -1,6 +1,6 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import { isRawPlaceholderMixxxData } from '@renderer/components/mixtapeBeatAlignWaveformData'
+import { isRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformData'
 
 type DrawWaveformOptions = {
   width: number
@@ -41,9 +41,9 @@ const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
 const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
 const BAR_BEAT_INTERVAL = 32
 const BEAT4_INTERVAL = 4
-const BAR_GRID_LINE_WIDTH = 2
-const MAJOR_GRID_LINE_WIDTH = 1
-const MINOR_GRID_LINE_WIDTH = 1
+const BAR_GRID_LINE_WIDTH = 2.4
+const MAJOR_GRID_LINE_WIDTH = 1.5
+const MINOR_GRID_LINE_WIDTH = 1.15
 const GRID_LINE_VERTICAL_OVERSCAN = 2
 const HALF_WAVEFORM_AMPLITUDE_RATIO = 0.8
 const RAW_CURVE_VERTICAL_SCALE = 0.82
@@ -85,9 +85,9 @@ const DARK_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
   backgroundStart: '#0f1b2e',
   backgroundEnd: '#0a1322',
   backgroundStripe: 'rgba(255, 255, 255, 0.03)',
-  barLine: '#48b2ff',
-  majorGrid: '#ffbf47',
-  minorGrid: '#f0f4f8',
+  barLine: '#8fd6ff',
+  majorGrid: '#ffdf94',
+  minorGrid: '#ffffff',
   detailHighlightBase: '255, 255, 255',
   centerLine: 'rgba(210, 236, 255, 0.28)'
 }
@@ -96,9 +96,9 @@ const LIGHT_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
   backgroundStart: '#eef4fb',
   backgroundEnd: '#dde7f4',
   backgroundStripe: 'rgba(15, 23, 42, 0.03)',
-  barLine: '#0068d8',
-  majorGrid: '#c97800',
-  minorGrid: '#556274',
+  barLine: '#003f96',
+  majorGrid: '#7c4300',
+  minorGrid: '#202b3a',
   detailHighlightBase: '15, 23, 42',
   centerLine: 'rgba(43, 102, 217, 0.18)'
 }
@@ -826,10 +826,7 @@ const drawRawCurveWaveform = (
   return hasDrawn
 }
 
-export const drawBeatAlignRekordboxWaveform = (
-  ctx: BeatAlignCanvasContext,
-  options: DrawWaveformOptions
-) => {
+export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawWaveformOptions) => {
   const {
     width,
     height,

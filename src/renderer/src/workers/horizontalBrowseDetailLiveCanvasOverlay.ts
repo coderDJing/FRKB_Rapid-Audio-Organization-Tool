@@ -64,14 +64,14 @@ const normalizeBeatOffset = (value: number, interval: number) => {
 const resolveGridPalette = (themeVariant: 'light' | 'dark') =>
   themeVariant === 'light'
     ? {
-        barLine: 'rgba(22, 22, 22, 0.46)',
-        majorGrid: 'rgba(22, 22, 22, 0.28)',
-        minorGrid: 'rgba(22, 22, 22, 0.14)'
+        barLine: 'rgba(22, 22, 22, 0.82)',
+        majorGrid: 'rgba(22, 22, 22, 0.6)',
+        minorGrid: 'rgba(22, 22, 22, 0.38)'
       }
     : {
-        barLine: 'rgba(255, 255, 255, 0.42)',
-        majorGrid: 'rgba(255, 255, 255, 0.25)',
-        minorGrid: 'rgba(255, 255, 255, 0.13)'
+        barLine: 'rgba(255, 255, 255, 0.8)',
+        majorGrid: 'rgba(255, 255, 255, 0.58)',
+        minorGrid: 'rgba(255, 255, 255, 0.36)'
       }
 
 const drawBeatGridOverlay = (
@@ -121,11 +121,11 @@ const drawBeatGridOverlay = (
     const modBar = ((shiftedIndex % BAR_BEAT_INTERVAL) + BAR_BEAT_INTERVAL) % BAR_BEAT_INTERVAL
     const mod4 = ((shiftedIndex % BEAT4_INTERVAL) + BEAT4_INTERVAL) % BEAT4_INTERVAL
     if (modBar === 0) {
-      drawVerticalLine(x, 1.8, palette.barLine)
+      drawVerticalLine(x, 2.3, palette.barLine)
     } else if (mod4 === 0) {
-      drawVerticalLine(x, 1.25, palette.majorGrid)
+      drawVerticalLine(x, 1.7, palette.majorGrid)
     } else {
-      drawVerticalLine(x, 1, palette.minorGrid)
+      drawVerticalLine(x, 1.15, palette.minorGrid)
     }
   }
 }

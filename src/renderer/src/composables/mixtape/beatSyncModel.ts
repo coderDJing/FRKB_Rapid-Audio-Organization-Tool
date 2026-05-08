@@ -26,8 +26,8 @@ export type SyncPlaybackRateDiagnostics = {
   phasePull: number
 }
 
-export const MIXXX_SYNC_MIN_RATE = 0.25
-export const MIXXX_SYNC_MAX_RATE = 4
+export const BEAT_SYNC_MIN_RATE = 0.25
+export const BEAT_SYNC_MAX_RATE = 4
 
 export const clampNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value))
@@ -51,7 +51,7 @@ export const resolveTempoRatioByBpm = (targetBpm: number, originalBpm: number) =
   if (!Number.isFinite(target) || !Number.isFinite(original) || target <= 0 || original <= 0) {
     return 1
   }
-  return clampNumber(target / original, MIXXX_SYNC_MIN_RATE, MIXXX_SYNC_MAX_RATE)
+  return clampNumber(target / original, BEAT_SYNC_MIN_RATE, BEAT_SYNC_MAX_RATE)
 }
 
 export const resolveFirstBeatTimelineSec = (firstBeatMs: unknown, tempoRatio: number) => {
@@ -92,8 +92,8 @@ export const resolveSyncPlaybackRateWithDiagnostics = (
 ): SyncPlaybackRateDiagnostics => {
   const baseRate = clampNumber(
     Number(params.basePlaybackRate) || 1,
-    MIXXX_SYNC_MIN_RATE,
-    MIXXX_SYNC_MAX_RATE
+    BEAT_SYNC_MIN_RATE,
+    BEAT_SYNC_MAX_RATE
   )
   const targetBpm = Number(params.targetBpm)
   const masterBpm = Number(params.masterBpm)
@@ -114,13 +114,9 @@ export const resolveSyncPlaybackRateWithDiagnostics = (
     }
   }
 
-  // Mixxx 风格：先做 tempo sync（把从 deck tempo 拉到 master tempo）。
+  // 先做 tempo sync，把当前 deck tempo 拉到 master tempo。
   const tempoScale = clampNumber(masterBpm / targetBpm, 0.5, 2)
-  const tempoSyncedRate = clampNumber(
-    baseRate * tempoScale,
-    MIXXX_SYNC_MIN_RATE,
-    MIXXX_SYNC_MAX_RATE
-  )
+  const tempoSyncedRate = clampNumber(baseRate * tempoScale, BEAT_SYNC_MIN_RATE, BEAT_SYNC_MAX_RATE)
 
   const masterBeatSec = resolveBeatSecByBpm(masterBpm)
   if (!masterBeatSec) {
@@ -135,7 +131,7 @@ export const resolveSyncPlaybackRateWithDiagnostics = (
     }
   }
 
-  // Mixxx 风格：再做 phase sync（相位误差小幅回拉，避免“跑马”）。
+  // 再做 phase sync，相位误差小幅回拉，避免“跑马”。
   const targetPhase = resolvePhaseSecAtTime(
     Number(params.timelineSec),
     Number(params.targetAnchorSec),
@@ -156,7 +152,7 @@ export const resolveSyncPlaybackRateWithDiagnostics = (
   )
 
   return {
-    rate: clampNumber(tempoSyncedRate * (1 + phasePull), MIXXX_SYNC_MIN_RATE, MIXXX_SYNC_MAX_RATE),
+    rate: clampNumber(tempoSyncedRate * (1 + phasePull), BEAT_SYNC_MIN_RATE, BEAT_SYNC_MAX_RATE),
     baseRate,
     tempoScale,
     tempoSyncedRate,

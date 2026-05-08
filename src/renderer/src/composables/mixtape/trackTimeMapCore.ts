@@ -1,5 +1,5 @@
 import { GRID_BEAT4_LINE_ZOOM, GRID_BEAT_LINE_ZOOM } from '@renderer/composables/mixtape/constants'
-import { normalizeBeatOffset } from '@renderer/composables/mixtape/mixxxSyncModel'
+import { normalizeBeatOffset } from '@renderer/composables/mixtape/beatSyncModel'
 import {
   BPM_MIN_VALUE,
   BPM_POINT_SEC_EPSILON,

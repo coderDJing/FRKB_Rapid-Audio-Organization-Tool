@@ -2,10 +2,10 @@ import type { Ref } from 'vue'
 import { canPlayHtmlAudio, toPreviewUrl } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import {
-  normalizeBeatOffset as normalizeBeatOffsetByMixxx,
+  normalizeBeatOffset as normalizeBeatOffsetByGrid,
   resolveBeatSecByBpm,
   resolveGridAnchorSec
-} from '@renderer/composables/mixtape/mixxxSyncModel'
+} from '@renderer/composables/mixtape/beatSyncModel'
 import { MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM } from '@renderer/composables/mixtape/gainEnvelope'
 import {
   buildTrackRuntimeTempoSnapshot,
@@ -163,7 +163,7 @@ const fillAudioBufferFromInterleavedPcm = (
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
 const normalizeBeatOffset = (value: unknown, interval: number) => {
-  return normalizeBeatOffsetByMixxx(value, interval)
+  return normalizeBeatOffsetByGrid(value, interval)
 }
 
 export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAudioDataCtx) => {

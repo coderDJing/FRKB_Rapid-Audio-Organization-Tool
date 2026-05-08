@@ -511,6 +511,9 @@ export const useHorizontalBrowseDeckPlaybackController = (
   const handleDeckPhraseJump = (deck: DeckKey, direction: -1 | 1) =>
     jumpDeckByBeatCount(deck, direction, PHRASE_JUMP_BEATS)
 
+  const handleDeckBeatJump = (deck: DeckKey, direction: -1 | 1, beatCount: number) =>
+    jumpDeckByBeatCount(deck, direction, beatCount)
+
   const handleDeckSeekPercent = (deck: DeckKey, percent: number) => {
     const safePercent = clampNumber(Number(percent) || 0, 0, 1)
     if (safePercent === 0) {
@@ -623,6 +626,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     handleDeckPlayheadSeek,
     handleDeckBarJump,
     handleDeckPhraseJump,
+    handleDeckBeatJump,
     handleDeckSeekPercent,
     handleDeckMemoryCueRecall,
     handleDeckHotCueRecall,

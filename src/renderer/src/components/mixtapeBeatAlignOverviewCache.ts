@@ -1,5 +1,5 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
+import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRenderer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 
 type BuildBeatAlignOverviewCacheParams = {
@@ -77,7 +77,7 @@ export const rebuildBeatAlignOverviewCache = (
   const drawHeight = Math.max(1, height - verticalPadding * 2)
   cacheCtx.save()
   cacheCtx.translate(leadingPadPx, verticalPadding)
-  drawBeatAlignRekordboxWaveform(cacheCtx, {
+  drawBeatGridWaveform(cacheCtx, {
     width: Math.max(1, Math.floor(contentWidth)),
     height: drawHeight,
     bpm: 0,

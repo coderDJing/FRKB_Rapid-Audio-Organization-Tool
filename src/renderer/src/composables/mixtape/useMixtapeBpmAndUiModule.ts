@@ -17,7 +17,7 @@ import {
   mixtapeGlobalTempoSource,
   resetMixtapeGlobalTempoState
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
-import { resolveBeatSecByBpm } from '@renderer/composables/mixtape/mixxxSyncModel'
+import { resolveBeatSecByBpm } from '@renderer/composables/mixtape/beatSyncModel'
 import {
   BPM_POINT_SEC_EPSILON,
   resolveTrackGridSourceBpm,

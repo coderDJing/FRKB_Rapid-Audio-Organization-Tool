@@ -1,4 +1,4 @@
-import { resolveTempoRatioByBpm } from '@renderer/composables/mixtape/mixxxSyncModel'
+import { resolveTempoRatioByBpm } from '@renderer/composables/mixtape/beatSyncModel'
 import {
   buildFlatGainEnvelope,
   dbToLinearGain,

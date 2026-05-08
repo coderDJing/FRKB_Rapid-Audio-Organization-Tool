@@ -1,4 +1,4 @@
-import { applyMixxxTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
+import { applyTimelineTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
 import {
   createTransportBufferSource,
   createTransportKeyLockSource,
@@ -239,7 +239,7 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
         audioCtx: offlineCtx,
         automationAtSec: renderSec
       })
-      const syncResult = applyMixxxTransportSync({
+      const syncResult = applyTimelineTransportSync({
         nodes: schedulingNodes,
         timelineSec,
         masterTrackId,

@@ -8,7 +8,7 @@ import {
 import {
   resolveBeatSecByBpm,
   resolveGridAnchorSec
-} from '@renderer/composables/mixtape/mixxxSyncModel'
+} from '@renderer/composables/mixtape/beatSyncModel'
 import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
   isMixtapeGlobalTempoReady,

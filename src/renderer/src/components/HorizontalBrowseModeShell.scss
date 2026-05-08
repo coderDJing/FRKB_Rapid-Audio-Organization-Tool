@@ -32,6 +32,10 @@
   -webkit-user-select: none;
 }
 
+.horizontal-shell.is-edit-mode {
+  grid-template-columns: 84px minmax(0, 1fr);
+}
+
 .horizontal-shell button {
   outline: none;
   appearance: none;
@@ -65,7 +69,7 @@
 }
 
 .controls--edit {
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .deck-controls {
@@ -111,6 +115,17 @@
   width: 14px;
   height: 14px;
   fill: currentColor;
+}
+
+.controls--edit :deep(.deck-button) {
+  width: 42px;
+  height: 42px;
+  font-size: 11px;
+}
+
+.controls--edit :deep(.deck-button svg) {
+  width: 16px;
+  height: 16px;
 }
 
 .fader {
@@ -325,7 +340,8 @@
 }
 
 .detail-pair--edit :deep(.raw-detail-waveform) {
-  height: 100%;
+  height: calc(100% - 32px);
+  margin: 16px 0;
 }
 
 .detail-lane {
@@ -341,12 +357,16 @@
     grid-template-columns: 64px minmax(0, 1fr);
   }
 
+  .horizontal-shell.is-edit-mode {
+    grid-template-columns: 82px minmax(0, 1fr);
+  }
+
   .controls {
     grid-template-rows: 94px minmax(0, 1fr) 94px;
   }
 
   .controls--edit {
-    grid-template-rows: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .deck-button {

@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import HorizontalBrowseDeckButtons from '@renderer/components/HorizontalBrowseDeckButtons.vue'
 import HorizontalBrowseDeckDetailLane from '@renderer/components/HorizontalBrowseDeckDetailLane.vue'
+import HorizontalBrowseEditDeckControls from '@renderer/components/HorizontalBrowseEditDeckControls.vue'
 import HorizontalBrowseDeckMoveDialog from '@renderer/components/HorizontalBrowseDeckMoveDialog.vue'
 import HorizontalBrowseDeckOverviewSection from '@renderer/components/HorizontalBrowseDeckOverviewSection.vue'
 import HorizontalBrowseCuePanels from '@renderer/components/HorizontalBrowseCuePanels.vue'
@@ -33,6 +34,7 @@ import { useHorizontalBrowseHotkeys } from '@renderer/components/useHorizontalBr
 import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
 import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/components/useHorizontalBrowseDeckToolbarInteractions'
 import { useHorizontalBrowseDeckTransportInteractions } from '@renderer/components/useHorizontalBrowseDeckTransportInteractions'
+import { useHorizontalBrowseEditDeckNavigation } from '@renderer/components/useHorizontalBrowseEditDeckNavigation'
 import { useHorizontalBrowseDeckHotCues } from '@renderer/components/useHorizontalBrowseDeckHotCues'
 import { useHorizontalBrowseDeckMemoryCues } from '@renderer/components/useHorizontalBrowseDeckMemoryCues'
 import { useHorizontalBrowseDeckQuantize } from '@renderer/components/useHorizontalBrowseDeckQuantize'
@@ -421,6 +423,7 @@ const {
   handleDeckPlayheadSeek,
   handleDeckBarJump,
   handleDeckPhraseJump,
+  handleDeckBeatJump,
   handleDeckSeekPercent,
   buildDeckStoredCueDefinition,
   handleDeckMemoryCueRecall,
@@ -448,6 +451,18 @@ const {
   resolveTransportDeckSnapshot,
   resolveDeckCuePointRef,
   resolveDeckCuePlacementSec
+})
+
+const {
+  editBeatStep,
+  canPreviousEditSong,
+  canNextEditSong,
+  loadEditAdjacentSong,
+  jumpEditDeckByBeats
+} = useHorizontalBrowseEditDeckNavigation({
+  topDeckSong,
+  assignSongToDeck,
+  handleDeckBeatJump
 })
 
 const { handleDeckHotCuePress, handleDeckHotCueDelete, handleSongHotCuesUpdated } =
@@ -799,6 +814,17 @@ onUnmounted(() => {
 <template>
   <div class="horizontal-shell" :class="{ 'is-edit-mode': isEditMode }">
     <div class="controls" :class="{ 'controls--edit': isEditMode }">
+      <HorizontalBrowseEditDeckControls
+        v-if="isEditMode"
+        v-model:beat-step="editBeatStep"
+        :song-present="!!topDeckSong"
+        :can-previous-song="canPreviousEditSong"
+        :can-next-song="canNextEditSong"
+        @previous-song="loadEditAdjacentSong(-1)"
+        @next-song="loadEditAdjacentSong(1)"
+        @jump-beats="jumpEditDeckByBeats"
+      />
+
       <HorizontalBrowseDeckButtons
         :playing="topDeckPlayButtonActive"
         :decoding="topDeckUiDecoding"

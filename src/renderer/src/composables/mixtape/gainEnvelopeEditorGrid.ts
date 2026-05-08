@@ -1,8 +1,8 @@
 import { GRID_BEAT4_LINE_ZOOM, GRID_BEAT_LINE_ZOOM } from '@renderer/composables/mixtape/constants'
 import {
-  normalizeBeatOffset as normalizeBeatOffsetByMixxx,
+  normalizeBeatOffset as normalizeBeatOffsetByGrid,
   resolveBeatSecByBpm
-} from '@renderer/composables/mixtape/mixxxSyncModel'
+} from '@renderer/composables/mixtape/beatSyncModel'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import { VOLUME_MUTE_SEGMENT_EPSILON } from '@renderer/composables/mixtape/gainEnvelopeEditorConstants'
 import type { MixSegmentMask } from '@renderer/composables/mixtape/gainEnvelopeEditorTypes'
@@ -50,7 +50,7 @@ export const resolveVolumeMuteGrid = ({
   const beatSec = resolveBeatSecByBpm(Number(track.bpm))
   if (!beatSec) return null
   const stepBeats = resolveVolumeMuteStepBeats(zoom)
-  const barOffset = normalizeBeatOffsetByMixxx(track.barBeatOffset, 32)
+  const barOffset = normalizeBeatOffsetByGrid(track.barBeatOffset, 32)
   const baseSec = stepBeats === 1 ? firstBeatSec : firstBeatSec + barOffset * beatSec
   const stepSec = beatSec * stepBeats
   if (!Number.isFinite(stepSec) || stepSec <= 0) return null
@@ -195,7 +195,7 @@ export const snapSecToVisibleGrid = ({
   const safeSec = clampNumber(Number(sec) || 0, safeMinSec, safeMaxSec)
   const beatSec = resolveBeatSecByBpm(Number(track.bpm))
   if (!beatSec) return null
-  const barOffset = normalizeBeatOffsetByMixxx(track.barBeatOffset, 32)
+  const barOffset = normalizeBeatOffsetByGrid(track.barBeatOffset, 32)
   const barBaseSec = firstBeatSec + barOffset * beatSec
   const { snapBar, snapBeat4, snapBeat } = resolveGridSnapModes(zoom)
   const candidates: number[] = []

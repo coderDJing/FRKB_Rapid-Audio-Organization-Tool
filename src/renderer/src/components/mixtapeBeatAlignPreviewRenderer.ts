@@ -1,6 +1,6 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import { drawBeatAlignRekordboxWaveform } from '@renderer/components/mixtapeBeatAlignWaveform'
+import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRenderer'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 
 type BeatAlignPreviewRenderInput = {
@@ -169,7 +169,7 @@ export const createBeatAlignPreviewRenderer = () => {
     rangeDurationSec: number,
     input: BeatAlignPreviewRenderInput
   ) => {
-    drawBeatAlignRekordboxWaveform(ctx, {
+    drawBeatGridWaveform(ctx, {
       width,
       height,
       bpm: input.bpm,
@@ -213,7 +213,7 @@ export const createBeatAlignPreviewRenderer = () => {
 
     applyCanvasScaleTransform(segment.ctx, metrics.scaleX, metrics.scaleY)
     segment.ctx.clearRect(0, 0, safeSegmentWidth, metrics.cssHeight)
-    drawBeatAlignRekordboxWaveform(segment.ctx, {
+    drawBeatGridWaveform(segment.ctx, {
       width: safeSegmentWidth,
       height: metrics.cssHeight,
       bpm: state.bpm,
