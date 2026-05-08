@@ -150,6 +150,9 @@ from beat_this_phase_rescue import (
 )
 from beat_this_phase_arbitration import apply_final_phase_arbitration as _apply_final_phase_arbitration
 from beat_this_bpm_metrics import estimate_bpm_drift_proxy as _estimate_bpm_drift_proxy
+from beat_this_runtime_constant_grid import (
+    try_solve_runtime_constant_grid_dp as _try_solve_runtime_constant_grid_dp,
+)
 from beat_this_window_selection import select_anchor_window_result as _select_anchor_window_result
 
 
@@ -707,6 +710,7 @@ def _analyze_prepared_windows_to_track_result(
     cpu_spect: LogMelSpect | None = None,
     device: str = "cpu",
     time_basis: dict[str, Any] | None = None,
+    use_runtime_constant_grid: bool = False,
 ) -> dict[str, Any]:
     if not prepared_windows:
         raise RuntimeError(f"no valid beat-this result for {source_file_path}")
@@ -863,13 +867,29 @@ def _analyze_prepared_windows_to_track_result(
         next_result = transformed
         _add_candidate("final-phase-arbitration", next_result)
     _add_candidate("legacy-final", next_result)
-    return _select_grid_candidate(
+    selected_result = _select_grid_candidate(
         candidates,
         finalized_results,
         signal=signal,
         sample_rate=sample_rate,
         tuning=tuning,
     )
+    if use_runtime_constant_grid and not force_legacy_anchor and predictor is not None:
+        constant_grid_result = _try_solve_runtime_constant_grid_dp(
+            prepared_windows=prepared_windows,
+            signal=signal,
+            sample_rate=sample_rate,
+            duration_sec=duration_sec,
+            tuning=tuning,
+            legacy_result=selected_result,
+            predictor=predictor,
+            cpu_spect=cpu_spect,
+            device=device,
+            time_basis=time_basis,
+        )
+        if constant_grid_result is not None:
+            return constant_grid_result
+    return selected_result
 
 def _uses_accelerated_device(device: str) -> bool:
     normalized = str(device or "").strip().lower()
@@ -1008,6 +1028,7 @@ def serve(device: str, dbn: bool) -> int:
                 cpu_spect=cpu_spect,
                 device=device,
                 time_basis=time_basis,
+                use_runtime_constant_grid=str(tuning.get("gridSolverPolicy") or "") != "off",
             )
 
             _emit(

@@ -67,6 +67,15 @@
       {
         "from": "scripts/beat_this_window_selection.py",
         "to": "demucs/bootstrap/beat_this_window_selection.py"
+      },
+      {
+        "from": "scripts",
+        "to": "demucs/bootstrap",
+        "filter": [
+          "beat_this_runtime_constant_grid.py",
+          "benchmark_rkb_rekordbox_truth.py",
+          "rkb_*.py"
+        ]
       }
     ],
     "appId": "com.electron.frkb",

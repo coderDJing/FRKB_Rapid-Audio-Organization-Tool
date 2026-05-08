@@ -9,7 +9,7 @@
 
 ## 当前算法接入状态
 
-`constant-grid-dp` 验收链路已接入 locked rising-edge ranker。
+`constant-grid-dp` 验收链路已接入 locked rising-edge ranker，并已迁移到 Electron 实时分析入口。
 
 当前 `scripts/rkb_constant_grid_dp_solver.py` 版本：
 
@@ -22,7 +22,10 @@ constant-grid-dp-cache-v3-locked-rising-edge-ranker
 - 已接入：`scripts/rkb_constant_grid_dp_solver.py`
 - 新增冻结模型：`scripts/rkb_locked_phase_ranker.py`
 - 已验证链路：`scripts/run_parallel_rkb_rekordbox_benchmark.py --solver constant-grid-dp`
-- 运行时注意：Electron 当前入口仍是 `scripts/beat_this_bridge.py` / `scripts/beat_this_candidate_solver.py`，如果要让应用实时分析也走这套 ranker，需要单独检查并迁移运行时链路，不能直接把 sealed benchmark 结果当作运行时已生效。
+- 运行时接入：`scripts/beat_this_bridge.py` 通过 `scripts/beat_this_runtime_constant_grid.py` 现场构造同形 metadata/arrays，然后调用同一套 `constant-grid-dp + locked ranker`。
+- 运行时保护：`_analyze_prepared_windows_to_track_result` 默认仍不启用 runtime constant-grid，Electron bridge 仅在 `gridSolverPolicy != "off"` 时启用，避免 feature-cache 生成 legacyGridSolver 时递归污染。
+- 打包资源：`package.json` 与 `electron-builder.yml` 已补充 `beat_this_runtime_constant_grid.py`、`benchmark_rkb_rekordbox_truth.py`、`rkb_*.py` 到 `demucs/bootstrap`。
+- `pnpm run build:unpack` 已验证 unpacked package，`dist/win-unpacked/resources/demucs/bootstrap` 内包含 runtime constant-grid 依赖。
 
 locked replay 的 current/blind sanity：
 
@@ -75,6 +78,14 @@ locked rising-edge hypothesis 在 `test` sealed 上：
   - `Meloko, Konvex (FR) & Garla - If U Ever (Original Mix).mp3`：`0.958105093`
   - `Kiko & Olivier Giacomotto - Making G's (Extended Mix).mp3`：`0.960401998`
 
+Electron runtime smoke：
+
+- `Alvaro Medina - This Sound (Original Mix).mp3`：legacy `firstBeatMs=220.0`，runtime constant-grid `firstBeatMs=202.0`，guard=`constant-grid-dp-locked-rising-edge-ranker`，probability=`0.949674285`。
+- `Meloko, Konvex (FR) & Garla - If U Ever (Original Mix).mp3`：runtime constant-grid `firstBeatMs=175.0`，guard=`constant-grid-dp-locked-rising-edge-ranker`，probability=`0.957195868`。
+- `Kiko & Olivier Giacomotto - Making G's (Extended Mix).mp3`：runtime constant-grid `firstBeatMs=237.0`，guard=`constant-grid-dp-locked-rising-edge-ranker`，probability=`0.952505352`。
+- `A.Paul - Reverie (Original).mp3`：legacy 与 runtime 都是 `142 BPM / firstBeatMs=0.0`，未切换，作为 pass 样本冒烟。
+- runtime smoke 不读 sealed feature-cache，直接从 PCM 重算 logits/attack；概率和缓存 benchmark 有小数差异是预期内的路径差异。
+
 同次 replay 的 current/blind sanity 仍为：
 
 - current：`685 -> 694`
@@ -105,7 +116,7 @@ current/blind 本身仍不是生产提升证明，因为它是在看过 current/
 
 可选下一步：
 
-- 如果要让 Electron 实时分析路径也获得同样收益，先确认运行时是否能复用 `constant-grid-dp` feature cache / arrays；不能复用时，需要把等价的 signal feature 提取迁移到运行时。
+- 若要发布安装包，继续跑 `pnpm run build:win`；当前已通过 unpacked package 验证，尚未生成安装器。
 - 如果还想更保守，再让用户提供另一批全新 Rekordbox 歌单，按下面流程原样复验。不要复用 `test` 当 sealed。
 
 拿到新的实际歌单名后，把它填入下面命令里的 `$playlist`，不要改阈值、不要现场挑歌、不要重训选择规则。
@@ -158,6 +169,8 @@ $sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval"
 
 ## 关键脚本
 
+- `scripts/beat_this_bridge.py`
+- `scripts/beat_this_runtime_constant_grid.py`
 - `scripts/rkb_constant_grid_dp_solver.py`
 - `scripts/rkb_locked_phase_ranker.py`
 - `scripts/rkb_phase_ranker_rising_edge_locked_replay.py`
@@ -170,7 +183,14 @@ $sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval"
 ## 已验证
 
 - `py_compile` 通过。
+- `beat_this_bridge` / `beat_this_runtime_constant_grid` import smoke 通过。
+- `dist/win-unpacked/resources/demucs/bootstrap` packaged import smoke 通过。
+- `package.json` 解析通过。
+- `electron-builder.yml` 解析通过。
+- `pnpm run build:unpack` 通过。
+- `dist/win-unpacked/resources/demucs/bootstrap` 资源检查通过：`beat_this_runtime_constant_grid.py`、`rkb_constant_grid_dp_solver.py`、`rkb_locked_phase_ranker.py`、`benchmark_rkb_rekordbox_truth.py` 均存在。
 - `npx vue-tsc --noEmit` 通过。
 - `git diff --check` 通过（仅 Git CRLF 提示）。
 - `scripts/rkb_phase_ranker_rising_edge_locked_replay.py` current/blind sanity check 跑通。
 - `constant-grid-dp` integrated sealed benchmark：`277 / 377`，`pass -> fail = 0`。
+- Electron runtime smoke：三首 sealed 命中样本均切到 locked ranker，一首 pass 样本不切换。
