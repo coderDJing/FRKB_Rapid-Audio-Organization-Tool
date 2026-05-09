@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import benchmark_rkb_rekordbox_truth as benchmark
+from frkb_database_paths import FRKB_FILTER_NEW_ROOT
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_SCRIPT = REPO_ROOT / "scripts" / "benchmark_rkb_rekordbox_truth.py"
@@ -32,7 +33,7 @@ PROFILE_DEFAULTS: dict[str, dict[str, str]] = {
     },
     "intake": {
         "truth": str(INTAKE_TRUTH),
-        "audio_root": "D:/FRKB_database-B/library/FilterLibrary/new",
+        "audio_root": str(FRKB_FILTER_NEW_ROOT),
         "output": str(BENCHMARK_OUTPUT_DIR / "intake-current-latest.json"),
         "solver": "legacy",
     },

@@ -35,7 +35,11 @@ constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-mater
 - rank1 material legacy weakness 后：current `696 / 931`，blind `432 / 608`，test `279 / 377`
 - 逐曲 diff：三套集合相对上一版均 `pass -> fail = 0`
 - `frkb-current-latest.json`、`frkb-classification-current.json`、sample/failure 派生视图已按 current `696 / 931` 刷新。
-- 本地音频目录已同步：`sample = 696`，`grid-failures-current = 235`，`new = 0`；`sync_frkb_classification_audio_dirs.py --dry-run` 为 `moveCount = 0`。
+- FRKB-5 正式开发音乐库固定为 `D:/FRKB_database-E`；B 只作为历史来源，不再作为脚本默认目标。
+- 音乐库长期保留 5 个音频歌单：`new`、`sample`、`grid-failures-current`、
+  `blind-rekordbox-truth`、`sealed-eval`；`sealed-intake` 是唯一固定临时入口。
+- current 音频目标分布：`new = 0`，`sample = 696`，`grid-failures-current = 235`；
+  `sync_frkb_classification_audio_dirs.py --dry-run` 必须为 `moveCount = 0`。
 - current 命中：`Aftertime - Franky Wah.mp3`，`124.035116 -> 124.0 BPM`，`bpm -> pass`
 - test 命中：`Kosheen & Kasia - Catch (Extended Mix).mp3`，`131.98 -> 132.0 BPM`，`bpm -> pass`
 - rank1 material legacy weakness 命中：
@@ -77,7 +81,8 @@ rank1 material legacy weakness 规则：
 产物路径：
 
 - truth：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/rekordbox-sealed-truth.json`
-- audio：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/audio`，当前 377 个 MP3；`test` playlist dry-run 复制为 `copyCount = 0`
+- audio：`D:/FRKB_database-E/library/FilterLibrary/sealed-eval`，当前 377 个 MP3；历史本地分析区
+  `grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/audio` 只作为迁移前归档来源
 - feature cache：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/feature-cache`
 - production baseline：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-constant-grid-dp.json`
 - locked replay：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/phase-ranker-rising-edge-locked-replay.json`
@@ -129,6 +134,17 @@ Electron runtime smoke：
 - blind：`425 -> 430 -> 430 -> 432`
 - 全 split：`pass -> fail = 0`
 
+2026-05-09 重新完整跑 `scripts/rkb_phase_ranker_rising_edge_locked_replay.py` 后，需要区分两种口径：
+
+- 上面的 `685 -> 694 -> 695 -> 696` / `425 -> 430 -> 430 -> 432` 是分阶段回归口径：
+  legacy/phase-evidence 基线、locked ranker、integer BPM snap、rank1 material legacy weakness 逐步叠加。
+- 现在脚本默认输入 `frkb-current-latest.json`，baseline 已经包含 locked ranker、integer BPM snap 和
+  rank1 material legacy weakness；因此默认 current/blind replay 输出为 current `696 -> 697`、
+  blind `425 -> 432`，两边 `pass -> fail = 0`。
+- 带 sealed/test 参数完整重跑输出为 current `696 -> 697`、blind `425 -> 432`、test `274 -> 277`，
+  三套集合 `pass -> fail = 0`。这只是当前 latest 基线上继续 replay locked ranker 的 sanity check，
+  不是新的生产提升证明。
+
 结论：`test` 对 locked ranker 的那次结果是新 truth 上的正向 sealed 证据。后续 integer BPM snap 和 rank1 material legacy weakness 都是在 `test` 已被使用后的回归优化，只能当开发回归证据；不能把 `278 / 377` 或 `279 / 377` 再包装成新的 sealed 泛化证明。
 
 ## 当前候选假设
@@ -166,27 +182,32 @@ current/blind 本身仍不是生产提升证明，因为它是在看过 current/
 ```powershell
 $playlist = "<用户提供的实际 Rekordbox 歌单名>"
 $sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval"
+$sealedIntakeRoot = "D:/FRKB_database-E/library/FilterLibrary/sealed-intake"
+$sealedArchiveRoot = "D:/FRKB_database-E/library/FilterLibrary/sealed-eval"
 ```
 
 复制音频：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "$playlist" --target-root "$sealedRoot/audio" --dry-run
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "$playlist" --target-root "$sealedRoot/audio"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "$playlist" --target-root "$sealedIntakeRoot" --dry-run
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_rekordbox_playlist_audio.py" --playlist "$playlist" --target-root "$sealedIntakeRoot"
 ```
 
 抓取 Rekordbox truth：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/capture_rekordbox_playlist_truth.py" --playlist "$playlist" --audio-root "$sealedRoot/audio" --output "$sealedRoot/rekordbox-sealed-truth.json"
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/capture_rekordbox_playlist_truth.py" --playlist "$playlist" --audio-root "$sealedIntakeRoot" --output "$sealedRoot/rekordbox-sealed-truth.json"
 ```
 
 生成 feature cache 和当前 production solver benchmark：
 
 ```powershell
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_beatgrid_feature_cache.py" --truth "$sealedRoot/rekordbox-sealed-truth.json" --audio-root "$sealedRoot/audio" --cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
-& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --truth "$sealedRoot/rekordbox-sealed-truth.json" --audio-root "$sealedRoot/audio" --output "$sealedRoot/frkb-sealed-constant-grid-dp.json" --solver constant-grid-dp --feature-cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_beatgrid_feature_cache.py" --truth "$sealedRoot/rekordbox-sealed-truth.json" --audio-root "$sealedIntakeRoot" --cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --truth "$sealedRoot/rekordbox-sealed-truth.json" --audio-root "$sealedIntakeRoot" --output "$sealedRoot/frkb-sealed-constant-grid-dp.json" --solver constant-grid-dp --feature-cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
 ```
+
+验收完成并记录 manifest 后，把本批音频从 `sealed-intake` 并入 `sealed-eval`，再清空
+`sealed-intake`。下一批 fresh sealed 仍复用同一个 `sealed-intake`。
 
 如需单独复核 locked rising-edge replay，可继续跑：
 
@@ -199,6 +220,7 @@ $sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval"
 - 不要在 current/blind 上继续扫阈值当证据。
 - 不要根据 sealed-eval 现场改阈值、删歌、挑样本或重训选择规则。
 - sealed-eval 跑完后就不再是 sealed，后续只能当普通回归数据。
+- 不要按批次新建长期 sealed 歌单；fresh sealed 只进固定 `sealed-intake`，验收后归档到 `sealed-eval`。
 - 禁止使用 `fileName`、`artist`、`title`、path、truth、benchmark error、pass/fail、split identity 做 solver/ranker 决策。
 - 没有新样本时，可以继续找新的结构性 phase evidence，但不能报成真实准确率提升。
 
@@ -237,6 +259,11 @@ $sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval"
 - integer BPM snap 回归：current `695 / 931`，blind `430 / 608`，test `278 / 377`，三套逐曲 diff 均 `pass -> fail = 0`。
 - rank1 material legacy weakness 回归：current `696 / 931`，blind `432 / 608`，test `279 / 377`，三套逐曲 diff 均 `pass -> fail = 0`。
 - current classification / sample-regression / grid-failures-current 派生视图已刷新到 `696 / 931`。
-- 本地音频目录同步 dry-run 已验证 `moveCount = 0`。
-- sealed-eval `test` 音频归档 dry-run 已验证 `copyCount = 0`。
+- E 音乐库 current 目标分布为 `new = 0`、`sample = 696`、`grid-failures-current = 235`，
+  同步后 `sync_frkb_classification_audio_dirs.py --dry-run` 必须为 `moveCount = 0`。
+- sealed-eval `test` 音频归档长期位置为 `D:/FRKB_database-E/library/FilterLibrary/sealed-eval`。
+- `scripts/rkb_phase_ranker_rising_edge_locked_replay.py` 默认 current/blind 重跑完成：current
+  `696 -> 697`、blind `425 -> 432`，两边 `pass -> fail = 0`。
+- 同脚本带 sealed/test 参数完整重跑完成：current `696 -> 697`、blind `425 -> 432`、
+  test `274 -> 277`，三套集合 `pass -> fail = 0`。
 - Electron runtime smoke：三首 sealed 命中样本均切到 locked ranker，一首 pass 样本不切换。

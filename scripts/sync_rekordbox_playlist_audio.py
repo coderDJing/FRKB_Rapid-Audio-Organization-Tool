@@ -13,6 +13,7 @@ from capture_rekordbox_playlist_truth import (
     _resolve_playlist_id,
     _run_bridge,
 )
+from frkb_database_paths import FRKB_FILTER_NEW_ROOT
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -23,7 +24,7 @@ except Exception:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
 DEFAULT_CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
-DEFAULT_TARGET_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/new")
+DEFAULT_TARGET_ROOT = FRKB_FILTER_NEW_ROOT
 
 
 def _normalize_key(value: Any) -> str:

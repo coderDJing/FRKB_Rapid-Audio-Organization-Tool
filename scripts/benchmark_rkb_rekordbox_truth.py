@@ -18,6 +18,7 @@ import numpy as np
 from rkb_benchmark_candidate_oracle import derive_candidate_oracle as _derive_candidate_oracle
 from rkb_benchmark_bridge_result import normalize_bridge_result as _normalize_bridge_result
 from rkb_benchmark_summary import build_summary as _build_summary_impl
+from frkb_database_paths import FRKB_BENCHMARK_CURRENT_AUDIO_ROOT
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -28,12 +29,7 @@ except Exception:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_ROOT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
 DEFAULT_TRUTH = BENCHMARK_ROOT / "rekordbox-current-truth.json"
-DEFAULT_AUDIO_ROOTS = [
-    Path("D:/FRKB_database-B/library/FilterLibrary/new"),
-    Path("D:/FRKB_database-B/library/FilterLibrary/sample"),
-    Path("D:/FRKB_database-B/library/FilterLibrary/grid-failures-current"),
-]
-DEFAULT_AUDIO_ROOT = ";".join(str(item) for item in DEFAULT_AUDIO_ROOTS)
+DEFAULT_AUDIO_ROOT = FRKB_BENCHMARK_CURRENT_AUDIO_ROOT
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
 DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
 DEFAULT_OUTPUT = BENCHMARK_ROOT / "latest.json"

@@ -5,6 +5,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from frkb_database_paths import (
+    FRKB_FILTER_FAILURE_ROOT,
+    FRKB_FILTER_NEW_ROOT,
+    FRKB_FILTER_SAMPLE_ROOT,
+)
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -14,9 +20,9 @@ except Exception:
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
 DEFAULT_CLASSIFICATION = BENCHMARK_OUTPUT_DIR / "frkb-classification-current.json"
-DEFAULT_NEW_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/new")
-DEFAULT_SAMPLE_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/sample")
-DEFAULT_FAILURE_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/grid-failures-current")
+DEFAULT_NEW_ROOT = FRKB_FILTER_NEW_ROOT
+DEFAULT_SAMPLE_ROOT = FRKB_FILTER_SAMPLE_ROOT
+DEFAULT_FAILURE_ROOT = FRKB_FILTER_FAILURE_ROOT
 
 
 def _normalize_key(value: Any) -> str:

@@ -9,6 +9,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from frkb_database_paths import FRKB_FILTER_NEW_ROOT
+
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
@@ -23,7 +25,7 @@ DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "intake-current-truth.json"
 DEFAULT_TRUTH = (
     BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
 )
-DEFAULT_AUDIO_ROOT = Path("D:/FRKB_database-B/library/FilterLibrary/new")
+DEFAULT_AUDIO_ROOT = FRKB_FILTER_NEW_ROOT
 DUPLICATE_BPM_TOLERANCE = 0.01
 
 
