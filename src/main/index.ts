@@ -50,6 +50,7 @@ import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
 import { registerAnalysisRuntimeHandlers } from './ipc/analysisRuntimeHandlers'
 import { registerMixtapeHandlers } from './ipc/mixtapeHandlers'
+import { registerMixtapeDragSessionHandlers } from './ipc/mixtapeDragSessionHandlers'
 import { registerMixtapeProjectTempoHandlers } from './ipc/mixtapeProjectTempoHandlers'
 import { registerSongSearchHandlers } from './ipc/songSearchHandlers'
 import { registerPioneerDeviceLibraryHandlers } from './ipc/pioneerDeviceLibraryHandlers'
@@ -264,6 +265,7 @@ registerExportHandlers()
 registerKeyAnalysisHandlers()
 registerAnalysisRuntimeHandlers()
 registerMixtapeHandlers()
+registerMixtapeDragSessionHandlers()
 registerMixtapeProjectTempoHandlers()
 registerSongSearchHandlers()
 registerPioneerDeviceLibraryHandlers()

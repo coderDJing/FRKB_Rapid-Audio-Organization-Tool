@@ -4,6 +4,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { ISongInfo } from '../../../../../../types/globals'
 import emitter from '@renderer/utils/mitt'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
+import { buildMixtapeDragSessionItem } from '@renderer/utils/mixtapeDragSession'
 
 export interface DragSongData {
   songFilePaths: string[]
@@ -88,43 +89,6 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
     if (ordered.length === normalizedSet.size) return ordered
     const seen = new Set(ordered)
     return [...ordered, ...[...normalizedSet].filter((filePath) => !seen.has(filePath))]
-  }
-
-  const resolveFileNameAndFormat = (filePath: string) => {
-    const baseName =
-      String(filePath || '')
-        .split(/[/\\]/)
-        .pop() || ''
-    const parts = baseName.split('.')
-    const ext = parts.length > 1 ? parts.pop() || '' : ''
-    const fileFormat = ext ? ext.toUpperCase() : ''
-    return { fileName: baseName, fileFormat }
-  }
-
-  const buildSongSnapshot = (filePath: string, song?: ISongInfo | null) => {
-    const meta = resolveFileNameAndFormat(filePath)
-    return {
-      filePath,
-      fileName: song?.fileName || meta.fileName,
-      fileFormat: song?.fileFormat || meta.fileFormat,
-      cover: null,
-      title: song?.title ?? meta.fileName,
-      artist: song?.artist,
-      album: song?.album,
-      duration: song?.duration ?? '',
-      genre: song?.genre,
-      label: song?.label,
-      bitrate: song?.bitrate,
-      container: song?.container,
-      key: song?.key,
-      originalKey: song?.key,
-      bpm: song?.bpm,
-      originalBpm: song?.bpm,
-      firstBeatMs: song?.firstBeatMs,
-      barBeatOffset: song?.barBeatOffset,
-      hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
-      memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
-    }
   }
 
   /**
@@ -263,31 +227,29 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
             const song = mixtapeSongMap.get(itemId)
             const filePath = song?.filePath || ''
             if (!song || !filePath) return null
-            return {
+            return buildMixtapeDragSessionItem({
+              song,
               filePath,
-              originPlaylistUuid: sourceSongListUUID,
               originPathSnapshot,
-              info: buildSongSnapshot(filePath, song),
-              sourcePlaylistId: sourceSongListUUID,
+              sourceSongListUUID,
               sourceItemId: itemId
-            }
+            })
           })
           .filter((item): item is NonNullable<typeof item> => item !== null)
         const itemsFromMixtapePaths = normalizeUniqueStrings(selectedSongFilePaths)
           .map((filePath) => {
             const song = songMap.get(filePath)
             if (!song || !song.filePath) return null
-            return {
+            return buildMixtapeDragSessionItem({
+              song,
               filePath: song.filePath,
-              originPlaylistUuid: sourceSongListUUID,
               originPathSnapshot,
-              info: buildSongSnapshot(song.filePath, song),
-              sourcePlaylistId: sourceSongListUUID,
+              sourceSongListUUID,
               sourceItemId:
                 typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.trim()
                   ? song.mixtapeItemId.trim()
                   : undefined
-            }
+            })
           })
           .filter((item): item is NonNullable<typeof item> => item !== null)
         const items =
@@ -295,12 +257,16 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
             ? itemsFromMixtapeIds.length > 0
               ? itemsFromMixtapeIds
               : itemsFromMixtapePaths
-            : orderedSongFilePaths.map((filePath) => ({
-                filePath,
-                originPlaylistUuid: sourceSongListUUID,
-                originPathSnapshot,
-                info: buildSongSnapshot(filePath, songMap.get(filePath))
-              }))
+            : orderedSongFilePaths
+                .map((filePath) =>
+                  buildMixtapeDragSessionItem({
+                    song: songMap.get(filePath),
+                    filePath,
+                    originPathSnapshot,
+                    sourceSongListUUID
+                  })
+                )
+                .filter((item): item is NonNullable<typeof item> => item !== null)
         if (items.length === 0) {
           return []
         }

@@ -9,6 +9,7 @@ import type {
   MixtapeMixMode,
   MixtapeOpenPayload,
   MixtapeStemMode,
+  MixtapeStemStatus,
   MixtapeStemProfile as RendererMixtapeStemProfile,
   MixtapeTrack
 } from '@renderer/composables/mixtape/types'
@@ -48,6 +49,13 @@ type StemStatusPayload = {
   playlistId?: string
   stemStatus?: unknown
   itemIds?: unknown[]
+  filePath?: unknown
+  errorMessage?: unknown
+  stemReadyAt?: unknown
+  stemVocalPath?: unknown
+  stemInstPath?: unknown
+  stemBassPath?: unknown
+  stemDrumsPath?: unknown
   stemSummary?: unknown
 }
 
@@ -90,11 +98,60 @@ export const createUseMixtapeStemRuntimeModule = (
     fallback: RendererMixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
   ): RendererMixtapeStemProfile => normalizeMixtapeStemProfile(value, fallback)
 
-  const normalizeMixtapeStemStatus = (value: unknown) => {
+  const normalizeMixtapeStemStatus = (value: unknown): MixtapeStemStatus => {
     if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
       return value
     }
     return 'ready'
+  }
+
+  const normalizeStemReadyAt = (value: unknown): number | undefined => {
+    const parsed = Number(value)
+    if (!Number.isFinite(parsed) || parsed <= 0) return undefined
+    return parsed
+  }
+
+  const applyStemStatusToTracks = (
+    itemIds: string[],
+    stemStatus: MixtapeStemStatus,
+    eventPayload: StemStatusPayload | null
+  ) => {
+    const targetIds = new Set(itemIds)
+    if (!targetIds.size) return
+    const errorMessage =
+      typeof eventPayload?.errorMessage === 'string' && eventPayload.errorMessage.trim()
+        ? eventPayload.errorMessage.trim()
+        : ''
+    options.tracks.value = options.tracks.value.map((track) => {
+      if (!targetIds.has(String(track.id || '').trim())) return track
+      const nextTrack: MixtapeTrack = {
+        ...track,
+        stemStatus
+      }
+      if (stemStatus === 'pending' || stemStatus === 'running') {
+        delete nextTrack.stemError
+        delete nextTrack.stemReadyAt
+        delete nextTrack.stemVocalPath
+        delete nextTrack.stemInstPath
+        delete nextTrack.stemBassPath
+        delete nextTrack.stemDrumsPath
+      } else if (stemStatus === 'failed') {
+        nextTrack.stemError = errorMessage || options.t('mixtape.stemTrackFailedHint')
+        delete nextTrack.stemReadyAt
+        delete nextTrack.stemVocalPath
+        delete nextTrack.stemInstPath
+        delete nextTrack.stemBassPath
+        delete nextTrack.stemDrumsPath
+      } else {
+        delete nextTrack.stemError
+        nextTrack.stemReadyAt = normalizeStemReadyAt(eventPayload?.stemReadyAt)
+        nextTrack.stemVocalPath = normalizeMixtapeFilePath(eventPayload?.stemVocalPath) || undefined
+        nextTrack.stemInstPath = normalizeMixtapeFilePath(eventPayload?.stemInstPath) || undefined
+        nextTrack.stemBassPath = normalizeMixtapeFilePath(eventPayload?.stemBassPath) || undefined
+        nextTrack.stemDrumsPath = normalizeMixtapeFilePath(eventPayload?.stemDrumsPath) || undefined
+      }
+      return nextTrack
+    })
   }
 
   const normalizeStemSummaryValue = (value: unknown) => {
@@ -414,6 +471,7 @@ export const createUseMixtapeStemRuntimeModule = (
           .map((itemId: unknown) => (typeof itemId === 'string' ? itemId.trim() : ''))
           .filter(Boolean)
       : []
+    applyStemStatusToTracks(itemIds, stemStatus, eventPayload)
     if (stemStatus !== 'running' && itemIds.length > 0) {
       removeStemRuntimeProgressByItemIds(itemIds)
     }
@@ -478,6 +536,12 @@ export const createUseMixtapeStemRuntimeModule = (
           .filter(Boolean)
       : []
     if (!itemIds.length) return
+    applyStemStatusToTracks(itemIds, 'running', {
+      playlistId: targetPlaylistId,
+      stemStatus: 'running',
+      itemIds,
+      filePath: eventPayload?.filePath
+    })
     const percent = normalizeStemRuntimePercent(eventPayload?.percent)
     const processedSec = normalizeStemRuntimeSeconds(eventPayload?.processedSec)
     const totalSec = normalizeStemRuntimeSeconds(eventPayload?.totalSec)

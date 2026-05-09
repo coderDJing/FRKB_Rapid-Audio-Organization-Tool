@@ -3,6 +3,17 @@ import { type ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stor
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { t } from '@renderer/utils/translate'
 import dropIntoDialog from '@renderer/components/dropIntoDialog'
+import {
+  MIXTAPE_DRAG_SESSION_MIME,
+  buildMixtapeDragSessionText,
+  type MixtapeDragSessionItem,
+  type MixtapeDragSessionPayload,
+  type MixtapeDragSessionPreview
+} from '@shared/mixtapeDragSession'
+import {
+  buildMixtapeDragSessionItem,
+  createMixtapeDragSessionToken
+} from '@renderer/utils/mixtapeDragSession'
 import type { ISongInfo } from '../../../../../../types/globals'
 
 type StartDragSongsOptions = {
@@ -286,6 +297,62 @@ export const useSongsAreaDragAndDrop = (options: UseSongsAreaDragAndDropOptions)
         })
   )
 
+  let activeMixtapeDragSessionToken = ''
+
+  const cancelActiveMixtapeDragSession = (delayMs = 0) => {
+    if (!activeMixtapeDragSessionToken) return
+    const token = activeMixtapeDragSessionToken
+    activeMixtapeDragSessionToken = ''
+    if (delayMs > 0) {
+      setTimeout(() => {
+        window.electron.ipcRenderer.send('mixtape-drag-session:cancel', token)
+      }, delayMs)
+      return
+    }
+    window.electron.ipcRenderer.send('mixtape-drag-session:cancel', token)
+  }
+
+  const resolveSelectedSongsInVisibleOrder = (
+    selectedKeys: string[],
+    fallbackSong: ISongInfo,
+    keyResolver: (song: ISongInfo) => string
+  ) => {
+    const selectedSet = new Set(selectedKeys.filter(Boolean))
+    const visibleSongs = options.songsAreaState.songInfoArr.filter((item) =>
+      selectedSet.has(keyResolver(item))
+    )
+    if (visibleSongs.length > 0) return visibleSongs
+    return fallbackSong?.filePath ? [fallbackSong] : []
+  }
+
+  const registerMixtapeDragSession = (
+    event: DragEvent,
+    items: MixtapeDragSessionItem[],
+    sourceSongListUUID: string
+  ) => {
+    const normalizedItems = items.filter((item) => item.filePath)
+    if (!normalizedItems.length) return
+    cancelActiveMixtapeDragSession()
+    const token = createMixtapeDragSessionToken()
+    const payload: MixtapeDragSessionPayload = {
+      token,
+      sourceSongListUUID,
+      items: normalizedItems
+    }
+    const preview: MixtapeDragSessionPreview = {
+      token,
+      sourceSongListUUID,
+      itemCount: normalizedItems.length
+    }
+    activeMixtapeDragSessionToken = token
+    window.electron.ipcRenderer.send('mixtape-drag-session:create', payload)
+    if (!event.dataTransfer) return
+    try {
+      event.dataTransfer.setData(MIXTAPE_DRAG_SESSION_MIME, JSON.stringify(preview))
+      event.dataTransfer.setData('text/plain', buildMixtapeDragSessionText(token))
+    } catch {}
+  }
+
   const handleSongDragStart = (event: DragEvent, song: ISongInfo) => {
     if (!options.songsAreaState.songListUUID) return
     const rowKey = options.getRowKey(song)
@@ -309,6 +376,7 @@ export const useSongsAreaDragAndDrop = (options: UseSongsAreaDragAndDropOptions)
         (typeof event.getModifierState === 'function' && event.getModifierState('Control'))
 
     if (hasExternalModifier) {
+      cancelActiveMixtapeDragSession()
       options.startDragSongs(
         song,
         runtime.libraryAreaSelected,
@@ -349,6 +417,22 @@ export const useSongsAreaDragAndDrop = (options: UseSongsAreaDragAndDropOptions)
       const dragSongFilePaths =
         selectedSongFilePaths.length > 0 ? selectedSongFilePaths : fallbackSongPath
       if (!listUuid || itemIds.length === 0) return
+      const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(listUuid)
+      const dragSessionSongs = selectedSongs.length > 0 ? selectedSongs : [song]
+      const dragSessionItems = dragSessionSongs
+        .map((item) =>
+          buildMixtapeDragSessionItem({
+            song: item,
+            filePath: item.filePath,
+            originPathSnapshot,
+            sourceSongListUUID: listUuid,
+            sourceItemId:
+              typeof item.mixtapeItemId === 'string' && item.mixtapeItemId.trim()
+                ? item.mixtapeItemId.trim()
+                : undefined
+          })
+        )
+        .filter((item): item is NonNullable<typeof item> => item !== null)
       showDragHint('internal')
       options.startDragSongs(
         song,
@@ -378,9 +462,28 @@ export const useSongsAreaDragAndDrop = (options: UseSongsAreaDragAndDropOptions)
           })
         )
       }
+      registerMixtapeDragSession(event, dragSessionItems, listUuid)
       return
     }
 
+    const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(
+      options.songsAreaState.songListUUID
+    )
+    const dragSessionSongs = resolveSelectedSongsInVisibleOrder(
+      selectedKeysSnapshot,
+      song,
+      (item) => options.getRowKey(item)
+    )
+    const dragSessionItems = dragSessionSongs
+      .map((item) =>
+        buildMixtapeDragSessionItem({
+          song: item,
+          filePath: item.filePath,
+          originPathSnapshot,
+          sourceSongListUUID: options.songsAreaState.songListUUID
+        })
+      )
+      .filter((item): item is NonNullable<typeof item> => item !== null)
     showDragHint('internal')
     options.startDragSongs(song, runtime.libraryAreaSelected, options.songsAreaState.songListUUID)
     if (event.dataTransfer) {
@@ -394,9 +497,11 @@ export const useSongsAreaDragAndDrop = (options: UseSongsAreaDragAndDropOptions)
         })
       )
     }
+    registerMixtapeDragSession(event, dragSessionItems, options.songsAreaState.songListUUID)
   }
 
   const handleSongDragEnd = () => {
+    cancelActiveMixtapeDragSession(2000)
     runtime.songDragSuppressClickUntilMs = Date.now() + 450
     hideDragHint()
     options.scheduleDragCleanup()

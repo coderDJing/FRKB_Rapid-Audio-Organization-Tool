@@ -99,6 +99,14 @@ const {
   bpmAnalysisFailedReason,
   dismissBpmAnalysisFailure,
   retryBpmAnalysis,
+  mixtapeDropOverlayVisible,
+  mixtapeDropOverlayTitle,
+  mixtapeDropOverlayHint,
+  mixtapeDropBusy,
+  handleMixtapeSongDragEnter,
+  handleMixtapeSongDragOver,
+  handleMixtapeSongDragLeave,
+  handleMixtapeSongDrop,
   outputDialogVisible,
   outputPath,
   outputFormat,
@@ -212,6 +220,10 @@ const {
   <div
     class="mixtape-shell"
     :class="{ 'is-light-theme': isLightTheme, 'is-dark-theme': !isLightTheme }"
+    @dragenter="handleMixtapeSongDragEnter"
+    @dragover="handleMixtapeSongDragOver"
+    @dragleave="handleMixtapeSongDragLeave"
+    @drop="handleMixtapeSongDrop"
   >
     <div class="mixtape-title-wrap">
       <titleComponent
@@ -980,6 +992,18 @@ const {
       :handle-beat-align-grid-definition-save="handleBeatAlignGridDefinitionSave"
       :handle-beat-align-dialog-cancel="handleBeatAlignDialogCancel"
     />
+    <Transition name="mixtape-drop-overlay">
+      <div
+        v-if="mixtapeDropOverlayVisible"
+        class="mixtape-drop-overlay"
+        :class="{ 'is-busy': mixtapeDropBusy }"
+      >
+        <div class="mixtape-drop-overlay__panel">
+          <div class="mixtape-drop-overlay__title">{{ mixtapeDropOverlayTitle }}</div>
+          <div class="mixtape-drop-overlay__hint">{{ mixtapeDropOverlayHint }}</div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 

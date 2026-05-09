@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
@@ -33,6 +33,7 @@ import {
   resolveMixtapeOutputProgressState
 } from '@renderer/composables/mixtape/mixtapeOutputProgress'
 import { createMixtapeMissingTracksNotifier } from '@renderer/composables/mixtape/mixtapeMissingTracksNotifier'
+import { useMixtapeMainWindowDrop } from '@renderer/composables/mixtape/useMixtapeMainWindowDrop'
 import { getKeyDisplayText as formatKeyDisplayText } from '@shared/keyDisplay'
 import {
   DEFAULT_MIXTAPE_STEM_PROFILE,
@@ -712,6 +713,34 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       loadMixtapeItems({ background: true })
     }, 120)
   }
+  const scrollTimelineToEnd = () => {
+    nextTick(() => {
+      requestAnimationFrame(() => {
+        const viewport = timelineScrollRef.value?.osInstance()?.elements().viewport as
+          | HTMLElement
+          | undefined
+        if (!viewport) return
+        viewport.scrollLeft = Math.max(0, viewport.scrollWidth - viewport.clientWidth)
+      })
+    })
+  }
+  const {
+    mixtapeDropOverlayVisible,
+    mixtapeDropOverlayTitle,
+    mixtapeDropOverlayHint,
+    dropBusy: mixtapeDropBusy,
+    handleMixtapeSongDragEnter,
+    handleMixtapeSongDragOver,
+    handleMixtapeSongDragLeave,
+    handleMixtapeSongDrop
+  } = useMixtapeMainWindowDrop({
+    payload,
+    tracks,
+    selectedTrackId,
+    loadMixtapeItems,
+    scrollTimelineToEnd,
+    t
+  })
   const handlePlaylistContentChanged = (eventPayload: PlaylistContentChangedPayload | null) => {
     const playlistId = payload.value.playlistId
     if (!playlistId) return
@@ -1046,6 +1075,14 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     autoGainBusy,
     autoGainProgressText,
     canStartAutoGain,
+    mixtapeDropOverlayVisible,
+    mixtapeDropOverlayTitle,
+    mixtapeDropOverlayHint,
+    mixtapeDropBusy,
+    handleMixtapeSongDragEnter,
+    handleMixtapeSongDragOver,
+    handleMixtapeSongDragLeave,
+    handleMixtapeSongDrop,
     openAutoGainDialog,
     handleAutoGainDialogCancel,
     handleAutoGainDialogConfirm,

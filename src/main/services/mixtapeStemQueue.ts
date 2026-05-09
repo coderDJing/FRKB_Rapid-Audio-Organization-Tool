@@ -234,6 +234,11 @@ const notifyStemStatusUpdated = (params: {
   filePath?: string
   errorCode?: string | null
   errorMessage?: string | null
+  stemReadyAt?: number | null
+  stemVocalPath?: string | null
+  stemInstPath?: string | null
+  stemBassPath?: string | null
+  stemDrumsPath?: string | null
 }) => {
   const playlistId = normalizePlaylistId(params.playlistId)
   if (!playlistId) return
@@ -245,6 +250,14 @@ const notifyStemStatusUpdated = (params: {
       filePath: normalizeFilePath(params.filePath),
       errorCode: normalizeText(params.errorCode, 80) || null,
       errorMessage: normalizeText(params.errorMessage, 1200) || null,
+      stemReadyAt:
+        typeof params.stemReadyAt === 'number' && Number.isFinite(params.stemReadyAt)
+          ? params.stemReadyAt
+          : null,
+      stemVocalPath: normalizeFilePath(params.stemVocalPath),
+      stemInstPath: normalizeFilePath(params.stemInstPath),
+      stemBassPath: normalizeFilePath(params.stemBassPath),
+      stemDrumsPath: normalizeFilePath(params.stemDrumsPath),
       stemSummary: summarizeMixtapeStemStatusByPlaylist(playlistId)
     })
   } catch {}
@@ -399,7 +412,12 @@ const upsertItemStemStatus = (
       stemStatus: status,
       filePath: extra?.filePath,
       errorCode: extra?.errorCode || null,
-      errorMessage: extra?.stemError || null
+      errorMessage: extra?.stemError || null,
+      stemReadyAt: extra?.stemReadyAt ?? null,
+      stemVocalPath: extra?.stemVocalPath ?? null,
+      stemInstPath: extra?.stemInstPath ?? null,
+      stemBassPath: extra?.stemBassPath ?? null,
+      stemDrumsPath: extra?.stemDrumsPath ?? null
     })
   }
 }
@@ -856,6 +874,46 @@ export async function enqueueMixtapeStemJobs(
       }
     }
 
+    const pendingJob = pendingJobMap.get(jobKey)
+    if (pendingJob) {
+      mergeJobTargets(pendingJob, queueTargets)
+      if (source === 'foreground' && pendingJob.source !== 'foreground') {
+        pendingJob.source = 'foreground'
+      }
+      upsertItemStemStatus(queueTargets, 'pending', {
+        stemError: null,
+        stemModel: pendingJob.model,
+        stemVersion: pendingJob.stemVersion,
+        stemReadyAt: null,
+        stemVocalPath: null,
+        stemInstPath: null,
+        stemBassPath: null,
+        stemDrumsPath: null,
+        filePath
+      })
+      merged += 1
+      continue
+    }
+    const inFlightJob = inFlightJobMap.get(jobKey)
+    if (inFlightJob) {
+      mergeJobTargets(inFlightJob, queueTargets)
+      if (source === 'foreground' && inFlightJob.source !== 'foreground') {
+        inFlightJob.source = 'foreground'
+      }
+      upsertItemStemStatus(queueTargets, 'running', {
+        stemError: null,
+        stemModel: inFlightJob.model,
+        stemVersion: inFlightJob.stemVersion,
+        stemReadyAt: null,
+        stemVocalPath: null,
+        stemInstPath: null,
+        stemBassPath: null,
+        stemDrumsPath: null,
+        filePath
+      })
+      merged += 1
+      continue
+    }
     upsertItemStemStatus(queueTargets, 'pending', {
       stemError: null,
       stemModel: model,
@@ -877,25 +935,6 @@ export async function enqueueMixtapeStemJobs(
       errorCode: null,
       errorMessage: null
     })
-
-    const pendingJob = pendingJobMap.get(jobKey)
-    if (pendingJob) {
-      mergeJobTargets(pendingJob, queueTargets)
-      if (source === 'foreground' && pendingJob.source !== 'foreground') {
-        pendingJob.source = 'foreground'
-      }
-      merged += 1
-      continue
-    }
-    const inFlightJob = inFlightJobMap.get(jobKey)
-    if (inFlightJob) {
-      mergeJobTargets(inFlightJob, queueTargets)
-      if (source === 'foreground' && inFlightJob.source !== 'foreground') {
-        inFlightJob.source = 'foreground'
-      }
-      merged += 1
-      continue
-    }
     const job: MixtapeStemQueueJob = {
       key: jobKey,
       sourceSignature,
