@@ -202,11 +202,26 @@ const handleBeatStepChange = (event: Event) => {
   text-align: center;
   box-sizing: border-box;
   cursor: pointer;
+  outline: none;
+  transition:
+    border-color 0.16s ease,
+    color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .edit-deck-controls__select:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--accent) 56%, var(--border));
   color: var(--text);
+}
+
+.edit-deck-controls__select:focus {
+  outline: none;
+}
+
+.edit-deck-controls__select:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 64%, var(--border));
+  color: var(--text);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .edit-deck-controls__select:disabled {
