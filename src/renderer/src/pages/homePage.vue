@@ -14,12 +14,14 @@ import { onMounted, onUnmounted, ref, computed, watch } from 'vue'
 import songPlayer from './modules/songPlayer/songPlayer.vue'
 import dropIntoDialog from '../components/dropIntoDialog'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
+import EmptyRecycleBinIcon from '@renderer/components/EmptyRecycleBinIcon.vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import { appendExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import emitter from '@renderer/utils/mitt'
 import {
   activateSongsAreaPane,
@@ -342,6 +344,12 @@ const showMainSongPlayer = computed(
 )
 const isSongsAreaSplit = computed(
   () => runtime.songsAreaPanels.splitEnabled && !isPioneerDeviceLibraryView.value
+)
+const showEmptyRecycleBinButton = computed(
+  () =>
+    isRecycleBinView.value &&
+    runtime.songsArea.songListUUID === RECYCLE_BIN_UUID &&
+    runtime.songsArea.totalSongCount > 0
 )
 const showSingleSongsAreaHeader = computed(
   () =>
@@ -699,6 +707,16 @@ const drop = async (e: DragEvent) => {
               <div class="splitSongsAreaPaneHeader">
                 <div class="splitSongsAreaPaneTitle">{{ resolveSongsPaneTitle(pane) }}</div>
                 <bubbleBoxTrigger
+                  v-if="showEmptyRecycleBinButton"
+                  tag="button"
+                  class="splitSongsAreaPaneClose"
+                  type="button"
+                  :title="t('recycleBin.emptyRecycleBin')"
+                  @click.stop="emptyRecycleBinWithOptimisticUpdate(runtime)"
+                >
+                  <EmptyRecycleBinIcon />
+                </bubbleBoxTrigger>
+                <bubbleBoxTrigger
                   tag="button"
                   class="splitSongsAreaPaneClose"
                   type="button"
@@ -718,6 +736,16 @@ const drop = async (e: DragEvent) => {
           <div v-else class="singleSongsAreaShell">
             <div v-if="showSingleSongsAreaHeader" class="splitSongsAreaPaneHeader">
               <div class="splitSongsAreaPaneTitle">{{ resolveSongsPaneTitle('single') }}</div>
+              <bubbleBoxTrigger
+                v-if="showEmptyRecycleBinButton"
+                tag="button"
+                class="splitSongsAreaPaneClose"
+                type="button"
+                :title="t('recycleBin.emptyRecycleBin')"
+                @click.stop="emptyRecycleBinWithOptimisticUpdate(runtime)"
+              >
+                <EmptyRecycleBinIcon />
+              </bubbleBoxTrigger>
               <bubbleBoxTrigger
                 tag="button"
                 class="splitSongsAreaPaneClose"
@@ -846,6 +874,9 @@ const drop = async (e: DragEvent) => {
 .splitSongsAreaPaneClose {
   width: 24px;
   height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   border-radius: 6px;
   background: transparent;

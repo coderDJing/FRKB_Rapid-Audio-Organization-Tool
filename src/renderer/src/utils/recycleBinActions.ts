@@ -93,6 +93,8 @@ export async function emptyRecycleBinWithOptimisticUpdate(
       )
     : []
 
+  if (isRecycleBinView && optimisticPaths.length === 0) return
+
   runtime.isProgressing = true
   try {
     if (optimisticPaths.length > 0) {
