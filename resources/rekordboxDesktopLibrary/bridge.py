@@ -1150,6 +1150,23 @@ def _normalize_tracks(request_payload: Dict[str, Any]) -> Any:
     return tracks
 
 
+def _normalize_track_ids(request_payload: Dict[str, Any]) -> List[int]:
+    raw_track_ids = request_payload.get("trackIds")
+    if not isinstance(raw_track_ids, list):
+        raw_track_ids = []
+    track_ids = []
+    seen_ids = set()
+    for raw_value in raw_track_ids:
+        track_id = _parse_int(raw_value, 0)
+        if track_id <= 0 or track_id in seen_ids:
+            continue
+        seen_ids.add(track_id)
+        track_ids.append(track_id)
+    if not track_ids:
+        raise HelperCommandError("TRACK_IMPORT_FAILED", "没有可写入 Rekordbox 的曲目。")
+    return track_ids
+
+
 def _resolve_track_content(db: Any, file_path: str) -> Any:
     content = _resolve_single_query_result(db.get_content(FolderPath=file_path))
     if content is not None:
@@ -1246,6 +1263,52 @@ def _write_tracks_to_playlist(db: Any, playlist: Any, tracks: Any) -> Dict[str, 
     return {
         "addedToCollectionCount": added_to_collection_count,
         "reusedCollectionCount": reused_collection_count,
+        "addedToPlaylistCount": added_to_playlist_count,
+        "skippedDuplicateCount": skipped_duplicate_count,
+    }
+
+
+def _write_existing_track_ids_to_playlist(db: Any, playlist: Any, track_ids: List[int]) -> Dict[str, int]:
+    existing_content_ids, max_track_no = _collect_playlist_content_state(db, playlist)
+    next_track_no = max_track_no + 1
+    added_to_playlist_count = 0
+    skipped_duplicate_count = 0
+
+    for entry_index, track_id in enumerate(track_ids, start=1):
+        content = _resolve_single_query_result(db.get_content(ID=str(track_id)))
+        if content is None:
+            content = _resolve_single_query_result(db.get_content(ID=track_id))
+        if content is None:
+            raise HelperCommandError("TRACK_NOT_FOUND", f"未找到 Rekordbox 曲目：{track_id}")
+
+        content_id = _normalize_identifier(getattr(content, "ID", ""))
+        if content_id and content_id in existing_content_ids:
+            skipped_duplicate_count += 1
+        else:
+            try:
+                db.add_to_playlist(playlist, content, track_no=next_track_no)
+            except Exception as exc:
+                title = str(getattr(content, "Title", "") or "").strip() or str(track_id)
+                raise HelperCommandError(
+                    "TRACK_IMPORT_FAILED",
+                    f"加入播放列表失败：{title}：{str(exc).strip() or 'unknown error'}",
+                ) from exc
+            added_to_playlist_count += 1
+            next_track_no += 1
+            if content_id:
+                existing_content_ids.add(content_id)
+
+        _write_progress(
+            {
+                "stage": "importing",
+                "completedTracks": entry_index,
+                "totalTracks": len(track_ids),
+            }
+        )
+
+    return {
+        "addedToCollectionCount": 0,
+        "reusedCollectionCount": len(track_ids),
         "addedToPlaylistCount": added_to_playlist_count,
         "skippedDuplicateCount": skipped_duplicate_count,
     }
@@ -1370,6 +1433,50 @@ def _build_append_playlist_payload(request_payload: Dict[str, Any]) -> Dict[str,
             "playlistId": _parse_int(getattr(playlist, "ID", 0)),
             "playlistName": str(getattr(playlist, "Name", "") or "").strip(),
             "trackTotal": len(tracks),
+            **counters,
+        }
+    except HelperCommandError:
+        _rollback_database(db)
+        raise
+    except Exception as exc:
+        _rollback_database(db)
+        raise HelperCommandError(
+            "PLAYLIST_APPEND_FAILED",
+            str(exc).strip() or "追加曲目到 Rekordbox 播放列表失败。",
+        ) from exc
+    finally:
+        _close_database(db)
+
+
+def _build_append_existing_playlist_tracks_payload(request_payload: Dict[str, Any]) -> Dict[str, Any]:
+    config = _ensure_request_config(request_payload)
+    playlist_id = _parse_int(request_payload.get("playlistId"), 0)
+    if playlist_id <= 0:
+        raise HelperCommandError("INVALID_PLAYLIST_ID", "目标 Rekordbox 播放列表无效。")
+
+    track_ids = _normalize_track_ids(request_payload)
+
+    db = None
+    try:
+        db = _open_database(config)
+        playlist = _resolve_playlist_by_id(db, playlist_id)
+        _ensure_writable_playlist(playlist, playlist_id)
+        counters = _write_existing_track_ids_to_playlist(db, playlist, track_ids)
+
+        _write_progress(
+            {
+                "stage": "committing",
+                "completedTracks": len(track_ids),
+                "totalTracks": len(track_ids),
+            }
+        )
+        _commit_database(db, "PLAYLIST_APPEND_FAILED")
+
+        return {
+            "probe": config,
+            "playlistId": _parse_int(getattr(playlist, "ID", 0)),
+            "playlistName": str(getattr(playlist, "Name", "") or "").strip(),
+            "trackTotal": len(track_ids),
             **counters,
         }
     except HelperCommandError:
@@ -1784,6 +1891,10 @@ def _handle_append_playlist(payload: Dict[str, Any]) -> Dict[str, Any]:
     return _build_append_playlist_payload(payload)
 
 
+def _handle_append_existing_playlist_tracks(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return _build_append_existing_playlist_tracks_payload(payload)
+
+
 def _handle_move_playlist(payload: Dict[str, Any]) -> Dict[str, Any]:
     return _build_move_playlist_payload(payload)
 
@@ -1816,6 +1927,7 @@ COMMANDS = {
     "create-empty-playlist": _handle_create_empty_playlist,
     "create-playlist": _handle_create_playlist,
     "append-playlist": _handle_append_playlist,
+    "append-existing-playlist-tracks": _handle_append_existing_playlist_tracks,
     "move-playlist": _handle_move_playlist,
     "rename-playlist": _handle_rename_playlist,
     "delete-playlist": _handle_delete_playlist,
