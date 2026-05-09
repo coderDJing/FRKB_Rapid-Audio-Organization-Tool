@@ -485,8 +485,9 @@ const renderSegmentToScratch = (
     state.rangeStartSec + (safeSegmentX / metrics.cssWidth) * state.rangeDurationSec
   const segmentDurationSec = (safeSegmentWidth / metrics.cssWidth) * state.rangeDurationSec
 
+  segment.ctx.setTransform(1, 0, 0, 1, 0, 0)
+  segment.ctx.clearRect(0, 0, segment.canvas.width, segment.canvas.height)
   applyCanvasScaleTransform(segment.ctx, metrics.scaleX, metrics.scaleY)
-  segment.ctx.clearRect(0, 0, safeSegmentWidth, metrics.cssHeight)
   const rendered = drawRange(
     segment.ctx,
     safeSegmentWidth,
@@ -732,8 +733,9 @@ const renderFullFrame = (
   if (!reused) {
     const fullFrame = ensureSegmentScratch(metrics.scaledWidth, metrics.scaledHeight)
     if (fullFrame) {
+      fullFrame.ctx.setTransform(1, 0, 0, 1, 0, 0)
+      fullFrame.ctx.clearRect(0, 0, fullFrame.canvas.width, fullFrame.canvas.height)
       applyCanvasScaleTransform(fullFrame.ctx, metrics.scaleX, metrics.scaleY)
-      fullFrame.ctx.clearRect(0, 0, metrics.cssWidth, metrics.cssHeight)
       reused = drawRange(
         fullFrame.ctx,
         metrics.cssWidth,
