@@ -174,6 +174,28 @@ blind all 只 `+3`；说明 bar prior 确实带来一部分救回，但不能靠
 min-score 网格在 current 上普遍净负，blind 也不稳；这条线不要进 production，只保留候选级
 ranker 特征。
 
+locked rising-edge ranker 已集成到 `constant-grid-dp`，后续又加了两条窄 guard：
+
+- `legacy-fallback-integer-bpm-snap`：只对仍落在 legacy fallback 的近整数 BPM 做 `<= 0.04 BPM`
+  量化，current `694 -> 695`，blind `430 -> 430`，test `277 -> 278`，三套逐曲
+  `pass -> fail = 0`。
+- `constant-grid-dp-rank1-locked-legacy-weakness-switch`：只在普通 locked ranker 未切换、baseline
+  仍是 legacy fallback、rank1 probability `>= 0.9`、legacy score `<= 2.5`、且 rank1 与 legacy
+  相位差 `> 5ms` 时切换。结果为 current `695 -> 696`，blind `430 -> 432`，test
+  `278 -> 279`，三套逐曲 `pass -> fail = 0`。
+
+这两条都不能包装成新的 sealed 泛化证据：`test` 已被继续优化消耗，current / blind 也是已看过的
+开发回归集。它们只能作为窄边界、零回退的生产候选，等待下一批 fresh truth 原样复验。
+
+不要把这个结果误读成“可以降 locked 阈值”。离线检查过把 `0.93` 降到 `0.90`，会出现：
+
+- current：`fail -> pass = 10`，`pass -> fail = 6`
+- blind：`fail -> pass = 13`，`pass -> fail = 7`
+- test：`fail -> pass = 7`，`pass -> fail = 1`
+
+这条是明确证伪方向。也不要把 rank1-only guard 改回 top16 best-prob switch；top16 扫法容易把
+ranker 变成验后挑样本器，不符合当前防过拟合边界。
+
 原因：
 
 - 正确 phase 有时更靠近前缘，有时更像峰值中心或视觉网格习惯。
@@ -357,6 +379,10 @@ blind baseline 已跑；第一版 intro leading-edge phase evidence 只带来小
   安全增益，current all 仍 `pass -> fail = 1`，只保留诊断。
 - phase-ranker rising-edge diagnostic：onset-foot + rising-edge derivative 当前回放 current all
   `+9`、blind all `+5`，全 split 零伤害；但它是验后污染假设，只能 future-data 复验。
+- integrated solver 已接入 locked ranker、legacy integer BPM snap 和 rank1 material legacy weakness：
+  current `685 -> 694 -> 695 -> 696`，blind `425 -> 430 -> 430 -> 432`，
+  test `274 -> 277 -> 278 -> 279`，三套逐曲均无 `pass -> fail`。其中 `test` 只有 locked
+  ranker 阶段仍可算 fresh sealed 证据；后续两条 guard 都只是开发回归证据。
 - rising-edge no-bar-prior ablation：current all `+3`、blind all `+3`，少于完整 rising-edge，
   只作为抗过拟合检查留档。
 - rising-edge direct phase shift：按 rising-edge median 直接平移 selected grid 在 current 净负，

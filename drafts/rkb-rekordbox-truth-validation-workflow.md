@@ -91,14 +91,24 @@ FRKB pass/fail 是当前算法状态，只存在于 classification 和派生 ben
 - blind truth 位置：`grid-analysis-lab/rkb-rekordbox-benchmark/blind-rekordbox-truth/`
 - blind truth 状态：已归档，未合入主 truth；baseline 已跑，已生成固定 split，禁止无 split 调参
 - blind 固定 split：train 334，tune 146，holdout 128
+- sealed-eval `test` 样本归档：Rekordbox playlist 原始 378 首；跳过主 truth 已有样本 1 首；
+  当前 sealed truth 有效 377 首，音频归档 377 个 MP3，feature-cache 已生成。
+- sealed-eval 状态：已被本轮验收和后续回归优化消耗，不再是 sealed；后续只能作为普通回归集。
+- sealed-eval 音频归档校验：`sync_rekordbox_playlist_audio.py --playlist "test" --target-root sealed-eval/audio --dry-run`
+  显示 `copyCount = 0`。
 - 临时 benchmark progress 文件：不作为长期状态，存在时只视为可复跑的中间产物
 
-当前主 truth selected（`constant-grid-dp` phase evidence v2 + phasePath diagnostic）：
+当前主 truth selected（`constant-grid-dp` + locked ranker + integer BPM snap + rank1 material legacy weakness）：
 
-- pass：685
-- fail：246
-- pass rate：73.58%
+- pass：696
+- fail：235
+- pass rate：74.76%
 - error：0
+- 失败分类：`first-beat-phase` 186，`downbeat` 31，`bpm` 17，`half-or-double-bpm` 1
+- guard 计数：`legacy-fallback-low-confidence` 872，`constant-grid-dp-conservative-switch` 29，
+  `constant-grid-dp-locked-rising-edge-ranker` 15，`legacy-fallback-integer-bpm-snap` 11，
+  `constant-grid-dp-rank1-locked-legacy-weakness-switch` 3，
+  `constant-grid-dp-phase-evidence-switch` 1
 
 冻结 blind baseline：
 
@@ -112,44 +122,45 @@ FRKB pass/fail 是当前算法状态，只存在于 classification 和派生 ben
 - 有 passing candidate 但 scorer 未选中：176
 - 最终选择来源：legacy fallback 595，candidate solver conservative switch 13
 
-当前 blind selected（`constant-grid-dp` phase evidence v2 + phasePath diagnostic）：
+当前 blind selected（`constant-grid-dp` + locked ranker + integer BPM snap + rank1 material legacy weakness）：
 
-- pass：425 / 608 = 69.90%
+- pass：432 / 608 = 71.05%
 - error：0
-- 固定 split：train 245 / 334，tune 92 / 146，holdout 88 / 128
-- 失败分类：`first-beat-phase` 139，`downbeat` 27，`bpm` 15，`grid-drift` 1，
+- 失败分类：`first-beat-phase` 132，`downbeat` 28，`bpm` 15，
   `half-or-double-bpm` 1
 - candidate oracle：599 / 608 = 98.52%
 - 没有 passing candidate：9
-- 有 passing candidate 但 scorer 未选中：174
-- 最终选择来源：legacy fallback 592，candidate solver switch 16
-- 相比冻结 baseline 净增 2 首，没有 `pass -> fail`；仍远不到 `80%`，不能把 blind 全量当调参靶子继续扫阈值
-- phasePath 已作为候选诊断字段落地，但不参与生产切换评分；包含 phasePath 权重的 v3 switch
-  会让 blind holdout 从 `88 / 128` 退到 `87 / 128`，因此只保留诊断，不接受为算法提升
+- 有 passing candidate 但 scorer 未选中：167
+- guard 计数：`legacy-fallback-low-confidence` 575，`constant-grid-dp-conservative-switch` 13，
+  `constant-grid-dp-locked-rising-edge-ranker` 9，`legacy-fallback-integer-bpm-snap` 6，
+  `constant-grid-dp-phase-evidence-switch` 3，
+  `constant-grid-dp-rank1-locked-legacy-weakness-switch` 2
+- 相比 phase evidence v2 净增 7 首；相比上一版 integer BPM snap 净增 2 首；逐曲 diff 没有
+  `pass -> fail`。这仍是已看过 blind 上的开发回归，不是新的泛化证明。
 
 失败分类：
 
-- `first-beat-phase`：197
-- `downbeat`：28
-- `bpm`：20
+- `first-beat-phase`：186
+- `downbeat`：31
+- `bpm`：17
 - `half-or-double-bpm`：1
 
 候选覆盖：
 
-- 全量 fail：246
+- 全量 fail：235
 - candidate oracle：899 / 931 = 96.56%
 - 没有 passing candidate：32
-- 有 passing candidate 但 scorer 未选中：214
-- 最终选择来源：legacy fallback 901，candidate solver switch 30
+- 有 passing candidate 但 scorer 未选中：203
+- 最终选择来源：legacy fallback 883，candidate solver switch 48
 
-当前 5ms benchmark、classification 和派生视图已经刷新完毕。
+当前 5ms benchmark、classification、派生视图和音频目录已经刷新完毕。
 
 音频目录同步状态：
 
 - `D:/FRKB_database-B/library/FilterLibrary/new`：0
-- `D:/FRKB_database-B/library/FilterLibrary/sample`：685
-- `D:/FRKB_database-B/library/FilterLibrary/grid-failures-current`：246
-- 当前音频目录已经按 phase evidence v2 classification 同步完成；`sync_frkb_classification_audio_dirs.py --dry-run`
+- `D:/FRKB_database-B/library/FilterLibrary/sample`：696
+- `D:/FRKB_database-B/library/FilterLibrary/grid-failures-current`：235
+- 当前音频目录已经按最新 classification 同步完成；`sync_frkb_classification_audio_dirs.py --dry-run`
   必须显示 `moveCount = 0`。
 
 后续每次刷新 classification 后，先复查 dry-run，再执行不带 `--dry-run` 的同步命令。
@@ -160,15 +171,14 @@ FRKB pass/fail 是当前算法状态，只存在于 classification 和派生 ben
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/sync_frkb_classification_audio_dirs.py" --dry-run
 ```
 
-phase evidence v2 / phasePath diagnostic classification 与音频目录同步后，期望结果：`moveCount = 0`。
+最新 classification 与音频目录同步后，期望结果：`moveCount = 0`。
 
 当前主要问题已经从候选覆盖不足转成 selector / phase 语义不清。主 truth oracle 是 96.56%，
 blind oracle 是 98.52%，说明候选池已经覆盖大多数正确 grid；真正缺的是稳定判断
-Rekordbox 风格 first beat phase 的证据。第一版 intro leading-edge phase evidence 已落地，
-在强 guard 下只带来 current +1、blind +2，且没有 `pass -> fail`；这说明方向有信号，
-但现有证据强度远远不足以接近 `80%`。phasePath 分段证据目前只能作为诊断：把它放进
-生产切换评分会伤 blind holdout。下一步不继续堆 selector 权重，也不把 blind 全量当阈值
-扫描目标；优先做更强的 intro segmentation 和 Rekordbox-compatible waveform 语义。
+Rekordbox 风格 first beat phase 的证据。locked ranker、integer BPM snap、rank1 material
+legacy weakness 都只是在窄 guard 下带来小幅干净提升。`test` 已被消耗，current / blind
+也都是已看过数据；下一步不能继续扫阈值或扩大 guard，只能拿 fresh sealed 样本原样复验，
+或另找新的结构性 phase evidence。
 
 phase 语义诊断报告：
 
@@ -591,15 +601,17 @@ $sealedRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval"
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/capture_rekordbox_playlist_truth.py" --playlist "$playlist" --audio-root "$sealedRoot/audio" --output "$sealedRoot/rekordbox-sealed-truth.json"
 ```
 
-生成 sealed-eval feature cache 和 production baseline benchmark：
+生成 sealed-eval feature cache 和当前 production solver benchmark。当前 `constant-grid-dp` 已包含
+locked ranker、integer BPM snap 和 rank1 material legacy weakness；这一步就是主验收输出，
+不要在 sealed-eval 上现场改阈值：
 
 ```powershell
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_beatgrid_feature_cache.py" --truth "$sealedRoot/rekordbox-sealed-truth.json" --audio-root "$sealedRoot/audio" --cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_rekordbox_benchmark.py" --truth "$sealedRoot/rekordbox-sealed-truth.json" --audio-root "$sealedRoot/audio" --output "$sealedRoot/frkb-sealed-constant-grid-dp.json" --solver constant-grid-dp --feature-cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
 ```
 
-按锁死 rising-edge hypothesis 原样复验。这个脚本只用 current/train + blind/train 训练固定模型，
-sealed-eval 全部按 holdout 报告；脚本不会自动给出上线许可：
+如需复核 locked rising-edge 子模型，可单独跑 replay。它只用于解释 locked ranker 本身；
+当前 production solver 的最终结果仍以上面的 `constant-grid-dp` benchmark 为准：
 
 ```powershell
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/rkb_phase_ranker_rising_edge_locked_replay.py" --sealed-name "$playlist" --sealed-benchmark "$sealedRoot/frkb-sealed-constant-grid-dp.json" --sealed-feature-cache "$sealedRoot/feature-cache" --output "$sealedRoot/phase-ranker-rising-edge-locked-replay.json"
@@ -616,7 +628,8 @@ rg -n "当前结论|phase-ranker rising-edge|direct phase shift|不要继续" "d
 ```
 
 第一条看分支和本地状态；handoff 文件恢复交接上下文；后面两条恢复 truth/sealed-eval/踩坑上下文；
-最后一条只做 current/blind 污染回放 sanity check，不是生产提升证明。
+最后一条只做 current/blind 污染回放 sanity check，不是生产提升证明，也不是当前 production
+solver 的最终 benchmark。
 
 从 Rekordbox `test` playlist 复制新增音频到 `new`：
 

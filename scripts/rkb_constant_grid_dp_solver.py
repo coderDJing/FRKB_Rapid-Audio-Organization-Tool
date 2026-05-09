@@ -24,6 +24,19 @@ from rkb_beatgrid_lab_common import (
     resolve_feature_arrays_path,
     resolve_feature_entry,
 )
+from rkb_constant_grid_dp_selection import (
+    PHASE_EVIDENCE_LEGACY_WEAKNESS_THRESHOLD,
+    PHASE_EVIDENCE_SWITCH_THRESHOLD,
+    RANK1_LOCKED_LEGACY_WEAKNESS_PROBABILITY_THRESHOLD,
+    RANK1_LOCKED_LEGACY_WEAKNESS_MIN_PHASE_DELTA_MS,
+    RANK1_LOCKED_LEGACY_WEAKNESS_SCORE_MAX,
+    choose_rank1_locked_legacy_weakness_candidate,
+    confidence_from_selected,
+    legacy_weakness_score,
+    passes_conservative_switch_guard,
+    select_phase_evidence_candidate,
+    snap_legacy_integer_bpm,
+)
 from rkb_hybrid_beatgrid_solver import _metadata_legacy_candidate, _window_summary
 from rkb_locked_phase_ranker import choose_locked_rising_edge_candidate
 
@@ -33,9 +46,7 @@ DEFAULT_TEMPO_STEP_BPM = 0.5
 DEFAULT_TEMPO_LIMIT = 24
 DEFAULT_PHASE_STEP_MS = 2.0
 DEFAULT_MAX_CANDIDATES = 640
-SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker"
-PHASE_EVIDENCE_SWITCH_THRESHOLD = 0.905
-PHASE_EVIDENCE_LEGACY_WEAKNESS_THRESHOLD = 0.6
+SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness"
 PHASE_PATH_TARGET_OFFSETS_MS = (8.0, 10.0, 12.0)
 
 
@@ -659,126 +670,6 @@ def _add_phase_path_features(
         candidate["features"] = {**features, **phase_path_stats}
 
 
-def _confidence_from_selected(
-    *,
-    selected: dict[str, Any],
-    ranked: list[dict[str, Any]],
-    legacy_candidate: dict[str, Any] | None,
-) -> tuple[float, str, list[str]]:
-    selected_features = selected.get("features") if isinstance(selected.get("features"), dict) else {}
-    selected_score = _to_float(selected.get("score"))
-    next_score = _to_float(ranked[1].get("score")) if len(ranked) > 1 else selected_score
-    margin = selected_score - next_score
-    downbeat_margin = _to_float(selected_features.get("downbeatMargin"))
-    beat_agreement = _to_float(selected_features.get("dpBeatSegmentAgreement"))
-    full_agreement = _to_float(selected_features.get("dpFullAttackSegmentAgreement"))
-    phase_shift = _to_float(selected_features.get("phaseShiftMs"), 0.0)
-    leading_mad = _to_float(selected_features.get("leadingEdgePeakOffsetMadMs"), 14.0)
-
-    confidence = 0.0
-    confidence += _clamp01(margin / 0.08) * 0.24
-    confidence += _clamp01(downbeat_margin / 0.18) * 0.16
-    confidence += _clamp01(beat_agreement) * 0.18
-    confidence += _clamp01(full_agreement) * 0.12
-    confidence += _clamp01((14.0 - leading_mad) / 14.0) * 0.12
-    confidence += (0.12 if -24.0 <= phase_shift <= -3.0 else 0.02)
-    if legacy_candidate is not None:
-        legacy_features = legacy_candidate.get("features") if isinstance(legacy_candidate.get("features"), dict) else {}
-        legacy_score = _to_float(legacy_features.get("legacyGridSolverScore"))
-        confidence += _clamp01((6.0 - legacy_score) / 6.0) * 0.06
-
-    reasons: list[str] = []
-    if margin < 0.035:
-        reasons.append("weak-phase-margin")
-    if downbeat_margin < 0.08:
-        reasons.append("weak-downbeat-margin")
-    if beat_agreement < 0.55:
-        reasons.append("weak-beat-segment-agreement")
-    if leading_mad > 8.0:
-        reasons.append("wide-leading-edge-offset")
-    if not (-28.0 <= phase_shift <= 4.0):
-        reasons.append("untrusted-leading-edge-shift")
-
-    confidence = _clamp01(confidence)
-    if confidence >= 0.98 and not reasons and margin >= 0.16 and downbeat_margin >= 0.18:
-        return confidence, "high", []
-    if confidence >= 0.58 and len(reasons) <= 2:
-        return confidence, "medium", reasons
-    return confidence, "low", reasons
-
-
-def _passes_conservative_switch_guard(
-    *,
-    selected: dict[str, Any],
-    legacy_candidate: dict[str, Any] | None,
-) -> bool:
-    if legacy_candidate is None:
-        return True
-    selected_features = selected.get("features") if isinstance(selected.get("features"), dict) else {}
-    legacy_features = (
-        legacy_candidate.get("features") if isinstance(legacy_candidate.get("features"), dict) else {}
-    )
-    legacy_solver_score = _to_float(legacy_features.get("legacyGridSolverScore"), 999.0)
-    selected_score = _to_float(selected.get("score"))
-    downbeat_score = _to_float(selected_features.get("downbeatScore"))
-    tempo_score = _to_float(selected_features.get("tempoScore"))
-    return (
-        legacy_solver_score <= 2.5
-        and selected_score >= 0.84
-        and tempo_score >= 0.85
-        and downbeat_score <= 0.65
-    )
-
-
-def _phase_evidence_switch_score(candidate: dict[str, Any], *, rank: int) -> float:
-    features = candidate.get("features") if isinstance(candidate.get("features"), dict) else {}
-    downbeat_rank = int(features.get("downbeatRank") or 0)
-    rank_score = _clamp01(1.0 - float(max(0, rank - 1)) / 20.0)
-    score = (
-        _to_float(candidate.get("score")) * 0.42
-        + max(0.0, _to_float(features.get("downbeatMargin"))) * 0.18
-        + (0.08 if downbeat_rank == 0 else 0.0)
-        + _to_float(features.get("introLeadingEdgeScore")) * 0.18
-        + _to_float(features.get("leadingEdgeTargetScore")) * 0.08
-        + rank_score * 0.06
-    )
-    return _round_feature(score)
-
-
-def _legacy_weakness_score(legacy_candidate: dict[str, Any] | None) -> float:
-    if legacy_candidate is None:
-        return 1.0
-    features = legacy_candidate.get("features") if isinstance(legacy_candidate.get("features"), dict) else {}
-    legacy_score = _to_float(features.get("legacyGridSolverScore"), 6.0)
-    anchor_confidence = _to_float(features.get("anchorConfidenceScore"), 1.0)
-    drift_128_ms = abs(_to_float(features.get("beatThisEstimatedDrift128Ms"), 0.0))
-    weakness = (
-        _clamp01((6.0 - legacy_score) / 8.0) * 0.45
-        + _clamp01(1.0 - anchor_confidence) * 0.35
-        + _clamp01(drift_128_ms / 40.0) * 0.20
-    )
-    return _round_feature(weakness)
-
-
-def _select_phase_evidence_candidate(
-    candidates: list[dict[str, Any]],
-) -> tuple[dict[str, Any] | None, float, int]:
-    best_candidate: dict[str, Any] | None = None
-    best_score = -999.0
-    best_rank = 0
-    for rank, candidate in enumerate(candidates[:20], start=1):
-        score = _phase_evidence_switch_score(candidate, rank=rank)
-        features = candidate.get("features") if isinstance(candidate.get("features"), dict) else {}
-        features["constantGridDpPhaseEvidenceSwitchScore"] = score
-        features["constantGridDpPhaseEvidenceRank"] = rank
-        candidate["features"] = features
-        if score > best_score:
-            best_candidate = candidate
-            best_score = score
-            best_rank = rank
-    return best_candidate, _round_feature(best_score), best_rank
-
-
 def build_constant_grid_dp_candidates(
     *,
     metadata: dict[str, Any],
@@ -887,7 +778,7 @@ def solve_constant_grid_dp(
 
     new_selected = candidates[0] if candidates else None
     if new_selected is not None:
-        confidence, confidence_level, low_reasons = _confidence_from_selected(
+        confidence, confidence_level, low_reasons = confidence_from_selected(
             selected=new_selected,
             ranked=candidates,
             legacy_candidate=legacy_candidate,
@@ -898,15 +789,15 @@ def solve_constant_grid_dp(
     conservative_switch = bool(
         new_selected is not None
         and confidence_level != "high"
-        and _passes_conservative_switch_guard(
+        and passes_conservative_switch_guard(
             selected=new_selected,
             legacy_candidate=legacy_candidate,
         )
     )
-    phase_evidence_selected, phase_evidence_score, phase_evidence_rank = _select_phase_evidence_candidate(
+    phase_evidence_selected, phase_evidence_score, phase_evidence_rank = select_phase_evidence_candidate(
         candidates
     )
-    legacy_weakness = _legacy_weakness_score(legacy_candidate)
+    legacy_weakness = legacy_weakness_score(legacy_candidate)
     phase_evidence_switch = bool(
         legacy_candidate is not None
         and phase_evidence_selected is not None
@@ -950,6 +841,31 @@ def solve_constant_grid_dp(
     if locked_ranker_switch:
         selected = locked_ranker_selected
         use_new = True
+    rank1_legacy_weakness_selected, rank1_legacy_weakness_meta = (
+        choose_rank1_locked_legacy_weakness_candidate(
+            candidates=candidates,
+            selected_source=baseline_selected_source,
+            legacy_candidate=legacy_candidate,
+        )
+    )
+    rank1_legacy_weakness_switch = bool(
+        not locked_ranker_switch and rank1_legacy_weakness_selected is not None
+    )
+    if rank1_legacy_weakness_switch:
+        selected = rank1_legacy_weakness_selected
+        use_new = True
+    integer_bpm_snap_meta: dict[str, Any] = {
+        "snapped": False,
+        "originalBpm": _round_feature(_to_float(selected.get("bpm"))),
+        "snappedBpm": _round_feature(_to_float(selected.get("bpm"))),
+        "deltaBpm": 0.0,
+        "maxDeltaBpm": 0.04,
+    }
+    if not use_new:
+        selected, integer_bpm_snap_meta = snap_legacy_integer_bpm(
+            selected=selected,
+            selected_source=baseline_selected_source,
+        )
 
     selected_bpm = _to_float(selected.get("bpm"))
     selected_first_beat_ms = _to_float(selected.get("firstBeatMs"))
@@ -959,16 +875,21 @@ def solve_constant_grid_dp(
     selected_features = dict(selected.get("features") or {})
     candidate_payload = [_diagnostic_candidate(item) for item in candidates]
     if legacy_candidate is not None:
-        candidate_payload.append(_diagnostic_candidate(legacy_candidate))
+        legacy_payload = selected if bool(integer_bpm_snap_meta.get("snapped")) else legacy_candidate
+        candidate_payload.append(_diagnostic_candidate(legacy_payload))
 
     if locked_ranker_switch:
         guard = "constant-grid-dp-locked-rising-edge-ranker"
+    elif rank1_legacy_weakness_switch:
+        guard = "constant-grid-dp-rank1-locked-legacy-weakness-switch"
     elif confidence_level == "high" and use_new:
         guard = "constant-grid-dp-high-confidence"
     elif conservative_switch and use_new:
         guard = "constant-grid-dp-conservative-switch"
     elif phase_evidence_switch and use_new:
         guard = "constant-grid-dp-phase-evidence-switch"
+    elif bool(integer_bpm_snap_meta.get("snapped")):
+        guard = "legacy-fallback-integer-bpm-snap"
     else:
         guard = "legacy-fallback-low-confidence"
     if use_new:
@@ -978,6 +899,8 @@ def solve_constant_grid_dp(
     anchor_confidence_score = (
         _to_float(locked_ranker_meta.get("probability"))
         if locked_ranker_switch
+        else _to_float(rank1_legacy_weakness_meta.get("probability"))
+        if rank1_legacy_weakness_switch
         else confidence if use_new else _to_float(selected.get("score"))
     )
 
@@ -1023,12 +946,54 @@ def solve_constant_grid_dp(
             "constantGridDpPhaseEvidenceSwitchScore": phase_evidence_score,
             "constantGridDpPhaseEvidenceRank": phase_evidence_rank,
             "constantGridDpLegacyWeaknessScore": legacy_weakness,
+            "constantGridDpLegacyIntegerBpmSnap": bool(integer_bpm_snap_meta.get("snapped")),
+            "constantGridDpLegacyIntegerBpmOriginalBpm": _to_float(
+                integer_bpm_snap_meta.get("originalBpm")
+            ),
+            "constantGridDpLegacyIntegerBpmSnappedBpm": _to_float(
+                integer_bpm_snap_meta.get("snappedBpm")
+            ),
+            "constantGridDpLegacyIntegerBpmDelta": _to_float(integer_bpm_snap_meta.get("deltaBpm")),
+            "constantGridDpLegacyIntegerBpmMaxDelta": _to_float(
+                integer_bpm_snap_meta.get("maxDeltaBpm"), 0.04
+            ),
             "constantGridDpLockedRisingEdgeRankerSwitch": locked_ranker_switch,
             "constantGridDpLockedRisingEdgeRankerReason": str(locked_ranker_meta.get("reason") or ""),
             "constantGridDpLockedRisingEdgeRankerProbability": round(_to_float(locked_ranker_meta.get("probability")), 9),
             "constantGridDpLockedRisingEdgeRankerCandidateRank": int(locked_ranker_meta.get("candidateRank") or 0),
             "constantGridDpLockedRisingEdgeRankerThreshold": _to_float(locked_ranker_meta.get("threshold"), 0.93),
             "constantGridDpLockedRisingEdgeRankerVersion": str(locked_ranker_meta.get("version") or ""),
+            "constantGridDpRank1LockedLegacyWeaknessSwitch": rank1_legacy_weakness_switch,
+            "constantGridDpRank1LockedLegacyWeaknessReason": str(
+                rank1_legacy_weakness_meta.get("reason") or ""
+            ),
+            "constantGridDpRank1LockedLegacyWeaknessProbability": round(
+                _to_float(rank1_legacy_weakness_meta.get("probability")), 9
+            ),
+            "constantGridDpRank1LockedLegacyWeaknessCandidateRank": int(
+                rank1_legacy_weakness_meta.get("candidateRank") or 0
+            ),
+            "constantGridDpRank1LockedLegacyWeaknessThreshold": _to_float(
+                rank1_legacy_weakness_meta.get("probabilityThreshold"),
+                RANK1_LOCKED_LEGACY_WEAKNESS_PROBABILITY_THRESHOLD,
+            ),
+            "constantGridDpRank1LockedLegacyWeaknessLegacyScore": _to_float(
+                rank1_legacy_weakness_meta.get("legacyGridSolverScore")
+            ),
+            "constantGridDpRank1LockedLegacyWeaknessLegacyScoreMax": _to_float(
+                rank1_legacy_weakness_meta.get("legacyGridSolverScoreMax"),
+                RANK1_LOCKED_LEGACY_WEAKNESS_SCORE_MAX,
+            ),
+            "constantGridDpRank1LockedLegacyWeaknessPhaseDeltaAbsMs": _to_float(
+                rank1_legacy_weakness_meta.get("phaseDeltaAbsMs")
+            ),
+            "constantGridDpRank1LockedLegacyWeaknessMinPhaseDeltaMs": _to_float(
+                rank1_legacy_weakness_meta.get("minPhaseDeltaAbsMs"),
+                RANK1_LOCKED_LEGACY_WEAKNESS_MIN_PHASE_DELTA_MS,
+            ),
+            "constantGridDpRank1LockedLegacyWeaknessVersion": str(
+                rank1_legacy_weakness_meta.get("version") or ""
+            ),
         },
         "gridSolverTopCandidates": candidate_payload[:10],
         "gridSolverCandidates": candidate_payload,
