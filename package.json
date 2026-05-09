@@ -86,6 +86,7 @@
       "!vendor{,/**/*}",
       "!drafts{,/**/*}",
       "!tmp{,/**/*}",
+      "!grid-analysis-lab{,/**/*}",
       "!rust_package/target{,/**/*}",
       "!node_modules/rust_package/target{,/**/*}"
     ],
