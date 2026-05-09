@@ -133,7 +133,7 @@ const zhContent = {
     titleTop: '符合人机工学的',
     titleBottom: '开源音频快速整理工具',
     subtitle:
-      '从内容感知去重、真实文件映射、波形试听，到 Mixtape 自动录制、Stem 分轨、Pioneer U 盘库、全局搜歌与格式转换，一套桌面应用把音频整理和后续处理串起来。'
+      '从内容感知去重、真实文件映射、波形试听，到双轨横推浏览、Rekordbox 库集成、Mixtape 自动录制、Stem 分轨、Pioneer U 盘库、全局搜歌与格式转换，一套桌面应用把音频整理和后续处理串起来。'
   },
   featuresIntro: {
     title: '核心能力',
@@ -154,7 +154,8 @@ const zhContent = {
     },
     {
       title: '波形试听与筛歌',
-      details: '支持 SoundCloud、细节与 RGB 波形，配合区间播放和列表预览快速筛歌。'
+      details:
+        '支持 SoundCloud、细节、RGB 以及单轨编辑模式波形，配合区间播放和列表预览快速筛歌。标题栏实时显示音频频谱，播放状态一目了然。'
     },
     {
       title: 'BPM 与调性分析',
@@ -162,11 +163,22 @@ const zhContent = {
     },
     {
       title: '元数据与封面',
-      details: '支持标签整理、封面替换与 MusicBrainz / AcoustID 自动补齐。'
+      details:
+        '支持标签整理、封面替换与 MusicBrainz / AcoustID 自动补齐。非 MP3 格式可一键转换为 MP3。'
+    },
+    {
+      title: '双轨横推模式',
+      details:
+        '类 DJ 混音台的双轨并排浏览界面，支持音量推子、交叉渐变、Hot Cue、Memory Cue、Loop、Quantize 和调性高亮。'
+    },
+    {
+      title: 'Rekordbox 库集成',
+      details: '直接读取本机 Rekordbox 库与歌单，支持拖拽排序、Cue/Loop 读取和 XML 一次性导出。'
     },
     {
       title: 'Mixtape 自动录制',
-      details: '独立时间线工作台用于排录制、听效果、调参数并直接导出结果。'
+      details:
+        '独立时间线工作台用于排录制、听效果、调参数并直接导出结果。支持跨窗口拖入与跨轨道拖拽定位。'
     },
     {
       title: 'Stem 分轨运行时',
@@ -178,7 +190,12 @@ const zhContent = {
     },
     {
       title: '全局搜歌与格式转换',
-      details: '全局搜歌、定位反馈和独立格式转换工具都已收进桌面端入口。'
+      details:
+        '全局搜歌、定位反馈和独立格式转换工具都已收进桌面端入口。支持网易云网页搜索和相似歌曲双源查询。'
+    },
+    {
+      title: '精选表演者云同步',
+      details: '精选表演者自动拆分联动与云端同步，跨设备保持一致。'
     },
     {
       title: '闲时分析调度',
@@ -233,7 +250,7 @@ const enContent = {
     titleTop: 'Ergonomic',
     titleBottom: 'Fast Audio Organization Tool',
     subtitle:
-      'Content-aware dedup, true file mapping, waveform-driven preview, Mixtape auto-recording, stem separation, Pioneer USB libraries, global search, and format conversion all live inside one desktop workflow.'
+      'Content-aware dedup, true file mapping, waveform-driven preview, dual-deck browsing, Rekordbox library integration, Mixtape auto-recording, stem separation, Pioneer USB libraries, global search, and format conversion all live inside one desktop workflow.'
   },
   featuresIntro: {
     title: 'Core Capabilities',
@@ -255,7 +272,8 @@ const enContent = {
     },
     {
       title: 'Waveform Preview',
-      details: 'SoundCloud, detailed, and RGB waveforms with range playback keep screening fast.'
+      details:
+        'SoundCloud, detailed, RGB, and single-track editing waveforms with range playback keep screening fast. Title bar shows real-time audio spectrum.'
     },
     {
       title: 'BPM & Key Analysis',
@@ -264,12 +282,22 @@ const enContent = {
     {
       title: 'Metadata & Artwork',
       details:
-        'Tag cleanup, cover replacement, and MusicBrainz / AcoustID assisted metadata filling.'
+        'Tag cleanup, cover replacement, and MusicBrainz / AcoustID assisted metadata filling. One-click non-MP3 to MP3 conversion.'
+    },
+    {
+      title: 'Dual-Deck Browse Mode',
+      details:
+        'DJ mixer-style side-by-side dual-track browsing with volume faders, crossfader, Hot Cue, Memory Cue, Loop, Quantize, and key highlighting.'
+    },
+    {
+      title: 'Rekordbox Library Integration',
+      details:
+        'Directly read local Rekordbox libraries and playlists with drag-to-reorder, Cue/Loop reading, and one-click XML export.'
     },
     {
       title: 'Mixtape Auto-Recording',
       details:
-        'A dedicated timeline workspace for arranging, previewing, tweaking, and exporting mixes.'
+        'A dedicated timeline workspace for arranging, previewing, tweaking, and exporting mixes. Supports cross-window drag-in and cross-track positioning.'
     },
     {
       title: 'Managed Stem Runtime',
@@ -284,7 +312,11 @@ const enContent = {
     {
       title: 'Global Search & Conversion',
       details:
-        'Global search, locate feedback, and a standalone format conversion tool are built in.'
+        'Global search, locate feedback, and a standalone format conversion tool are built in. Includes NetEase Cloud search and dual-source similar track discovery.'
+    },
+    {
+      title: 'Curated Artist Cloud Sync',
+      details: 'Automatic curated artist split-linking with cloud sync across devices.'
     },
     {
       title: 'Idle Analysis Scheduling',
