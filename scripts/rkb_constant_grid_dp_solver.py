@@ -27,13 +27,12 @@ from rkb_beatgrid_lab_common import (
 from rkb_constant_grid_dp_selection import (
     PHASE_EVIDENCE_LEGACY_WEAKNESS_THRESHOLD,
     PHASE_EVIDENCE_SWITCH_THRESHOLD,
-    RANK1_LOCKED_LEGACY_WEAKNESS_PROBABILITY_THRESHOLD,
-    RANK1_LOCKED_LEGACY_WEAKNESS_MIN_PHASE_DELTA_MS,
-    RANK1_LOCKED_LEGACY_WEAKNESS_SCORE_MAX,
     choose_rank1_locked_legacy_weakness_candidate,
+    choose_rank1_structural_phase_candidate,
     confidence_from_selected,
     legacy_weakness_score,
     passes_conservative_switch_guard,
+    rank1_switch_diagnostic_features,
     select_phase_evidence_candidate,
     snap_legacy_integer_bpm,
 )
@@ -46,7 +45,7 @@ DEFAULT_TEMPO_STEP_BPM = 0.5
 DEFAULT_TEMPO_LIMIT = 24
 DEFAULT_PHASE_STEP_MS = 2.0
 DEFAULT_MAX_CANDIDATES = 640
-SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness"
+SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2"
 PHASE_PATH_TARGET_OFFSETS_MS = (8.0, 10.0, 12.0)
 
 
@@ -854,6 +853,31 @@ def solve_constant_grid_dp(
     if rank1_legacy_weakness_switch:
         selected = rank1_legacy_weakness_selected
         use_new = True
+    rank1_structural_phase_selected, rank1_structural_phase_meta = (
+        choose_rank1_structural_phase_candidate(
+            candidates=candidates,
+            selected_source=baseline_selected_source,
+            legacy_candidate=legacy_candidate,
+        )
+    )
+    rank1_structural_phase_switch = bool(
+        not locked_ranker_switch
+        and not rank1_legacy_weakness_switch
+        and rank1_structural_phase_selected is not None
+    )
+    if (
+        not rank1_structural_phase_switch
+        and (locked_ranker_switch or rank1_legacy_weakness_switch)
+        and rank1_structural_phase_selected is not None
+    ):
+        rank1_structural_phase_meta = {
+            **rank1_structural_phase_meta,
+            "selected": False,
+            "reason": "previous-switch-selected",
+        }
+    if rank1_structural_phase_switch:
+        selected = rank1_structural_phase_selected
+        use_new = True
     integer_bpm_snap_meta: dict[str, Any] = {
         "snapped": False,
         "originalBpm": _round_feature(_to_float(selected.get("bpm"))),
@@ -882,6 +906,8 @@ def solve_constant_grid_dp(
         guard = "constant-grid-dp-locked-rising-edge-ranker"
     elif rank1_legacy_weakness_switch:
         guard = "constant-grid-dp-rank1-locked-legacy-weakness-switch"
+    elif rank1_structural_phase_switch:
+        guard = "constant-grid-dp-rank1-structural-phase-switch"
     elif confidence_level == "high" and use_new:
         guard = "constant-grid-dp-high-confidence"
     elif conservative_switch and use_new:
@@ -901,6 +927,8 @@ def solve_constant_grid_dp(
         if locked_ranker_switch
         else _to_float(rank1_legacy_weakness_meta.get("probability"))
         if rank1_legacy_weakness_switch
+        else _to_float(rank1_structural_phase_meta.get("probability"))
+        if rank1_structural_phase_switch
         else confidence if use_new else _to_float(selected.get("score"))
     )
 
@@ -963,36 +991,11 @@ def solve_constant_grid_dp(
             "constantGridDpLockedRisingEdgeRankerCandidateRank": int(locked_ranker_meta.get("candidateRank") or 0),
             "constantGridDpLockedRisingEdgeRankerThreshold": _to_float(locked_ranker_meta.get("threshold"), 0.93),
             "constantGridDpLockedRisingEdgeRankerVersion": str(locked_ranker_meta.get("version") or ""),
-            "constantGridDpRank1LockedLegacyWeaknessSwitch": rank1_legacy_weakness_switch,
-            "constantGridDpRank1LockedLegacyWeaknessReason": str(
-                rank1_legacy_weakness_meta.get("reason") or ""
-            ),
-            "constantGridDpRank1LockedLegacyWeaknessProbability": round(
-                _to_float(rank1_legacy_weakness_meta.get("probability")), 9
-            ),
-            "constantGridDpRank1LockedLegacyWeaknessCandidateRank": int(
-                rank1_legacy_weakness_meta.get("candidateRank") or 0
-            ),
-            "constantGridDpRank1LockedLegacyWeaknessThreshold": _to_float(
-                rank1_legacy_weakness_meta.get("probabilityThreshold"),
-                RANK1_LOCKED_LEGACY_WEAKNESS_PROBABILITY_THRESHOLD,
-            ),
-            "constantGridDpRank1LockedLegacyWeaknessLegacyScore": _to_float(
-                rank1_legacy_weakness_meta.get("legacyGridSolverScore")
-            ),
-            "constantGridDpRank1LockedLegacyWeaknessLegacyScoreMax": _to_float(
-                rank1_legacy_weakness_meta.get("legacyGridSolverScoreMax"),
-                RANK1_LOCKED_LEGACY_WEAKNESS_SCORE_MAX,
-            ),
-            "constantGridDpRank1LockedLegacyWeaknessPhaseDeltaAbsMs": _to_float(
-                rank1_legacy_weakness_meta.get("phaseDeltaAbsMs")
-            ),
-            "constantGridDpRank1LockedLegacyWeaknessMinPhaseDeltaMs": _to_float(
-                rank1_legacy_weakness_meta.get("minPhaseDeltaAbsMs"),
-                RANK1_LOCKED_LEGACY_WEAKNESS_MIN_PHASE_DELTA_MS,
-            ),
-            "constantGridDpRank1LockedLegacyWeaknessVersion": str(
-                rank1_legacy_weakness_meta.get("version") or ""
+            **rank1_switch_diagnostic_features(
+                rank1_legacy_weakness_switch=rank1_legacy_weakness_switch,
+                rank1_legacy_weakness_meta=rank1_legacy_weakness_meta,
+                rank1_structural_phase_switch=rank1_structural_phase_switch,
+                rank1_structural_phase_meta=rank1_structural_phase_meta,
             ),
         },
         "gridSolverTopCandidates": candidate_payload[:10],

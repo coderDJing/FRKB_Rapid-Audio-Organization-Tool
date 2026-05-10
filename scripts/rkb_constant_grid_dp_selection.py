@@ -5,9 +5,19 @@ PHASE_EVIDENCE_SWITCH_THRESHOLD = 0.905
 PHASE_EVIDENCE_LEGACY_WEAKNESS_THRESHOLD = 0.6
 LEGACY_INTEGER_BPM_SNAP_MAX_DELTA = 0.04
 RANK1_LOCKED_LEGACY_WEAKNESS_PROBABILITY_THRESHOLD = 0.9
-RANK1_LOCKED_LEGACY_WEAKNESS_SCORE_MAX = 2.5
+RANK1_LOCKED_LEGACY_WEAKNESS_SCORE_MAX = 2.6
 RANK1_LOCKED_LEGACY_WEAKNESS_MIN_PHASE_DELTA_MS = 5.0
-RANK1_LOCKED_LEGACY_WEAKNESS_VERSION = "rank1-locked-legacy-weakness-v2"
+RANK1_LOCKED_LEGACY_WEAKNESS_VERSION = "rank1-locked-legacy-weakness-v3"
+RANK1_STRUCTURAL_PHASE_PROBABILITY_THRESHOLD = 0.86
+RANK1_STRUCTURAL_PHASE_LOW_PROBABILITY_THRESHOLD = 0.85
+RANK1_STRUCTURAL_PHASE_LEGACY_SCORE_MAX = 6.0
+RANK1_STRUCTURAL_PHASE_MIN_PHASE_DELTA_MS = 15.0
+RANK1_STRUCTURAL_PHASE_MIN_GRID_SCORE = 0.8
+RANK1_STRUCTURAL_PHASE_MIN_DOWNBEAT_MARGIN = 0.1
+RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_GRID_SCORE = 0.88
+RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_DOWNBEAT_MARGIN = 0.5
+RANK1_STRUCTURAL_PHASE_MAX_BPM_DELTA = 0.08
+RANK1_STRUCTURAL_PHASE_VERSION = "rank1-structural-phase-v2"
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -16,6 +26,13 @@ def _to_float(value: Any, default: float = 0.0) -> float:
     except Exception:
         return default
     return numeric if math.isfinite(numeric) else default
+
+
+def _to_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
 
 
 def _clamp01(value: float) -> float:
@@ -272,3 +289,274 @@ def choose_rank1_locked_legacy_weakness_candidate(
         }
     )
     return {**rank1, "features": features}, {**next_meta, "selected": True, "reason": "selected"}
+
+
+def choose_rank1_structural_phase_candidate(
+    *,
+    candidates: list[dict[str, Any]],
+    selected_source: str,
+    legacy_candidate: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    meta: dict[str, Any] = {
+        "enabled": True,
+        "selected": False,
+        "reason": "not-evaluated",
+        "candidateRank": 1,
+        "probability": 0.0,
+        "probabilityThreshold": RANK1_STRUCTURAL_PHASE_PROBABILITY_THRESHOLD,
+        "lowProbabilityThreshold": RANK1_STRUCTURAL_PHASE_LOW_PROBABILITY_THRESHOLD,
+        "legacyGridSolverScore": 999.0,
+        "legacyGridSolverScoreMax": RANK1_STRUCTURAL_PHASE_LEGACY_SCORE_MAX,
+        "phaseDeltaAbsMs": 0.0,
+        "minPhaseDeltaAbsMs": RANK1_STRUCTURAL_PHASE_MIN_PHASE_DELTA_MS,
+        "gridScore": 0.0,
+        "gridScoreMin": RANK1_STRUCTURAL_PHASE_MIN_GRID_SCORE,
+        "lowProbabilityGridScoreMin": RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_GRID_SCORE,
+        "downbeatMargin": 0.0,
+        "downbeatMarginMin": RANK1_STRUCTURAL_PHASE_MIN_DOWNBEAT_MARGIN,
+        "lowProbabilityDownbeatMarginMin": (
+            RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_DOWNBEAT_MARGIN
+        ),
+        "downbeatRank": 0,
+        "bpmDelta": 999.0,
+        "maxBpmDelta": RANK1_STRUCTURAL_PHASE_MAX_BPM_DELTA,
+        "lowProbabilityHighEvidence": False,
+        "sameBarBeatOffsetMod4": False,
+        "version": RANK1_STRUCTURAL_PHASE_VERSION,
+    }
+    if "legacy" not in selected_source.lower():
+        return None, {**meta, "reason": "selected-source-not-legacy"}
+    if legacy_candidate is None:
+        return None, {**meta, "reason": "no-legacy-candidate"}
+    if not candidates:
+        return None, {**meta, "reason": "no-candidates"}
+
+    legacy_features = (
+        legacy_candidate.get("features") if isinstance(legacy_candidate.get("features"), dict) else {}
+    )
+    legacy_score = _to_float(legacy_features.get("legacyGridSolverScore"), 999.0)
+    rank1 = candidates[0]
+    rank1_features = rank1.get("features") if isinstance(rank1.get("features"), dict) else {}
+    probability = _to_float(rank1_features.get("lockedRisingEdgeRankerProbability"))
+    grid_score = _to_float(rank1.get("score"))
+    downbeat_margin = _to_float(rank1_features.get("downbeatMargin"))
+    downbeat_rank = _to_int(rank1_features.get("downbeatRank"))
+    rank1_bpm = _to_float(rank1.get("bpm"))
+    legacy_bpm = _to_float(legacy_candidate.get("bpm"))
+    bpm_delta = abs(rank1_bpm - legacy_bpm)
+    interval_ms = 60000.0 / rank1_bpm if rank1_bpm > 0.0 else 0.0
+    phase_delta_abs_ms = abs(
+        _phase_delta_ms(
+            _to_float(rank1.get("firstBeatMs")),
+            _to_float(legacy_candidate.get("firstBeatMs")),
+            interval_ms,
+        )
+    )
+    same_bar_beat_offset_mod4 = (_to_int(rank1.get("barBeatOffset")) % 4) == (
+        _to_int(legacy_candidate.get("barBeatOffset")) % 4
+    )
+    low_probability_high_evidence = (
+        probability >= RANK1_STRUCTURAL_PHASE_LOW_PROBABILITY_THRESHOLD
+        and probability < RANK1_STRUCTURAL_PHASE_PROBABILITY_THRESHOLD
+        and grid_score >= RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_GRID_SCORE
+        and downbeat_margin >= RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_DOWNBEAT_MARGIN
+    )
+    next_meta = {
+        **meta,
+        "probability": round(probability, 9),
+        "legacyGridSolverScore": _round_feature(legacy_score),
+        "phaseDeltaAbsMs": _round_feature(phase_delta_abs_ms),
+        "gridScore": _round_feature(grid_score),
+        "downbeatMargin": _round_feature(downbeat_margin),
+        "downbeatRank": downbeat_rank,
+        "bpmDelta": _round_feature(bpm_delta),
+        "lowProbabilityHighEvidence": low_probability_high_evidence,
+        "sameBarBeatOffsetMod4": same_bar_beat_offset_mod4,
+    }
+    if legacy_score > RANK1_STRUCTURAL_PHASE_LEGACY_SCORE_MAX:
+        return None, {**next_meta, "reason": "legacy-score-too-strong"}
+    if (
+        probability < RANK1_STRUCTURAL_PHASE_PROBABILITY_THRESHOLD
+        and not low_probability_high_evidence
+    ):
+        return None, {**next_meta, "reason": "below-threshold"}
+    if phase_delta_abs_ms <= RANK1_STRUCTURAL_PHASE_MIN_PHASE_DELTA_MS:
+        return None, {**next_meta, "reason": "phase-delta-not-material"}
+    if bpm_delta > RANK1_STRUCTURAL_PHASE_MAX_BPM_DELTA:
+        return None, {**next_meta, "reason": "bpm-delta-too-large"}
+    if not same_bar_beat_offset_mod4:
+        return None, {**next_meta, "reason": "bar-offset-mod4-mismatch"}
+    if downbeat_rank != 0:
+        return None, {**next_meta, "reason": "downbeat-rank-not-zero"}
+    if downbeat_margin < RANK1_STRUCTURAL_PHASE_MIN_DOWNBEAT_MARGIN:
+        return None, {**next_meta, "reason": "downbeat-margin-too-low"}
+    if grid_score < RANK1_STRUCTURAL_PHASE_MIN_GRID_SCORE:
+        return None, {**next_meta, "reason": "grid-score-too-low"}
+
+    features = dict(rank1_features)
+    features.update(
+        {
+            "constantGridDpRank1StructuralPhaseSwitch": True,
+            "constantGridDpRank1StructuralPhaseProbability": round(probability, 9),
+            "constantGridDpRank1StructuralPhaseThreshold": (
+                RANK1_STRUCTURAL_PHASE_PROBABILITY_THRESHOLD
+            ),
+            "constantGridDpRank1StructuralPhaseLowProbabilityThreshold": (
+                RANK1_STRUCTURAL_PHASE_LOW_PROBABILITY_THRESHOLD
+            ),
+            "constantGridDpRank1StructuralPhaseLegacyScore": _round_feature(legacy_score),
+            "constantGridDpRank1StructuralPhaseLegacyScoreMax": (
+                RANK1_STRUCTURAL_PHASE_LEGACY_SCORE_MAX
+            ),
+            "constantGridDpRank1StructuralPhasePhaseDeltaAbsMs": (
+                _round_feature(phase_delta_abs_ms)
+            ),
+            "constantGridDpRank1StructuralPhaseMinPhaseDeltaMs": (
+                RANK1_STRUCTURAL_PHASE_MIN_PHASE_DELTA_MS
+            ),
+            "constantGridDpRank1StructuralPhaseGridScore": _round_feature(grid_score),
+            "constantGridDpRank1StructuralPhaseGridScoreMin": (
+                RANK1_STRUCTURAL_PHASE_MIN_GRID_SCORE
+            ),
+            "constantGridDpRank1StructuralPhaseLowProbabilityGridScoreMin": (
+                RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_GRID_SCORE
+            ),
+            "constantGridDpRank1StructuralPhaseDownbeatMargin": _round_feature(
+                downbeat_margin
+            ),
+            "constantGridDpRank1StructuralPhaseDownbeatMarginMin": (
+                RANK1_STRUCTURAL_PHASE_MIN_DOWNBEAT_MARGIN
+            ),
+            "constantGridDpRank1StructuralPhaseLowProbabilityDownbeatMarginMin": (
+                RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_DOWNBEAT_MARGIN
+            ),
+            "constantGridDpRank1StructuralPhaseDownbeatRank": downbeat_rank,
+            "constantGridDpRank1StructuralPhaseBpmDelta": _round_feature(bpm_delta),
+            "constantGridDpRank1StructuralPhaseMaxBpmDelta": (
+                RANK1_STRUCTURAL_PHASE_MAX_BPM_DELTA
+            ),
+            "constantGridDpRank1StructuralPhaseSameBarBeatOffsetMod4": (
+                same_bar_beat_offset_mod4
+            ),
+            "constantGridDpRank1StructuralPhaseLowProbabilityHighEvidence": (
+                low_probability_high_evidence
+            ),
+            "constantGridDpRank1StructuralPhaseVersion": RANK1_STRUCTURAL_PHASE_VERSION,
+        }
+    )
+    return {**rank1, "features": features}, {**next_meta, "selected": True, "reason": "selected"}
+
+
+def rank1_switch_diagnostic_features(
+    *,
+    rank1_legacy_weakness_switch: bool,
+    rank1_legacy_weakness_meta: dict[str, Any],
+    rank1_structural_phase_switch: bool,
+    rank1_structural_phase_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "constantGridDpRank1LockedLegacyWeaknessSwitch": rank1_legacy_weakness_switch,
+        "constantGridDpRank1LockedLegacyWeaknessReason": str(
+            rank1_legacy_weakness_meta.get("reason") or ""
+        ),
+        "constantGridDpRank1LockedLegacyWeaknessProbability": round(
+            _to_float(rank1_legacy_weakness_meta.get("probability")), 9
+        ),
+        "constantGridDpRank1LockedLegacyWeaknessCandidateRank": _to_int(
+            rank1_legacy_weakness_meta.get("candidateRank")
+        ),
+        "constantGridDpRank1LockedLegacyWeaknessThreshold": _to_float(
+            rank1_legacy_weakness_meta.get("probabilityThreshold"),
+            RANK1_LOCKED_LEGACY_WEAKNESS_PROBABILITY_THRESHOLD,
+        ),
+        "constantGridDpRank1LockedLegacyWeaknessLegacyScore": _to_float(
+            rank1_legacy_weakness_meta.get("legacyGridSolverScore")
+        ),
+        "constantGridDpRank1LockedLegacyWeaknessLegacyScoreMax": _to_float(
+            rank1_legacy_weakness_meta.get("legacyGridSolverScoreMax"),
+            RANK1_LOCKED_LEGACY_WEAKNESS_SCORE_MAX,
+        ),
+        "constantGridDpRank1LockedLegacyWeaknessPhaseDeltaAbsMs": _to_float(
+            rank1_legacy_weakness_meta.get("phaseDeltaAbsMs")
+        ),
+        "constantGridDpRank1LockedLegacyWeaknessMinPhaseDeltaMs": _to_float(
+            rank1_legacy_weakness_meta.get("minPhaseDeltaAbsMs"),
+            RANK1_LOCKED_LEGACY_WEAKNESS_MIN_PHASE_DELTA_MS,
+        ),
+        "constantGridDpRank1LockedLegacyWeaknessVersion": str(
+            rank1_legacy_weakness_meta.get("version") or ""
+        ),
+        "constantGridDpRank1StructuralPhaseSwitch": rank1_structural_phase_switch,
+        "constantGridDpRank1StructuralPhaseReason": str(
+            rank1_structural_phase_meta.get("reason") or ""
+        ),
+        "constantGridDpRank1StructuralPhaseProbability": round(
+            _to_float(rank1_structural_phase_meta.get("probability")), 9
+        ),
+        "constantGridDpRank1StructuralPhaseCandidateRank": _to_int(
+            rank1_structural_phase_meta.get("candidateRank")
+        ),
+        "constantGridDpRank1StructuralPhaseThreshold": _to_float(
+            rank1_structural_phase_meta.get("probabilityThreshold"),
+            RANK1_STRUCTURAL_PHASE_PROBABILITY_THRESHOLD,
+        ),
+        "constantGridDpRank1StructuralPhaseLowProbabilityThreshold": _to_float(
+            rank1_structural_phase_meta.get("lowProbabilityThreshold"),
+            RANK1_STRUCTURAL_PHASE_LOW_PROBABILITY_THRESHOLD,
+        ),
+        "constantGridDpRank1StructuralPhaseLegacyScore": _to_float(
+            rank1_structural_phase_meta.get("legacyGridSolverScore")
+        ),
+        "constantGridDpRank1StructuralPhaseLegacyScoreMax": _to_float(
+            rank1_structural_phase_meta.get("legacyGridSolverScoreMax"),
+            RANK1_STRUCTURAL_PHASE_LEGACY_SCORE_MAX,
+        ),
+        "constantGridDpRank1StructuralPhasePhaseDeltaAbsMs": _to_float(
+            rank1_structural_phase_meta.get("phaseDeltaAbsMs")
+        ),
+        "constantGridDpRank1StructuralPhaseMinPhaseDeltaMs": _to_float(
+            rank1_structural_phase_meta.get("minPhaseDeltaAbsMs"),
+            RANK1_STRUCTURAL_PHASE_MIN_PHASE_DELTA_MS,
+        ),
+        "constantGridDpRank1StructuralPhaseGridScore": _to_float(
+            rank1_structural_phase_meta.get("gridScore")
+        ),
+        "constantGridDpRank1StructuralPhaseGridScoreMin": _to_float(
+            rank1_structural_phase_meta.get("gridScoreMin"),
+            RANK1_STRUCTURAL_PHASE_MIN_GRID_SCORE,
+        ),
+        "constantGridDpRank1StructuralPhaseLowProbabilityGridScoreMin": _to_float(
+            rank1_structural_phase_meta.get("lowProbabilityGridScoreMin"),
+            RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_GRID_SCORE,
+        ),
+        "constantGridDpRank1StructuralPhaseDownbeatMargin": _to_float(
+            rank1_structural_phase_meta.get("downbeatMargin")
+        ),
+        "constantGridDpRank1StructuralPhaseDownbeatMarginMin": _to_float(
+            rank1_structural_phase_meta.get("downbeatMarginMin"),
+            RANK1_STRUCTURAL_PHASE_MIN_DOWNBEAT_MARGIN,
+        ),
+        "constantGridDpRank1StructuralPhaseLowProbabilityDownbeatMarginMin": _to_float(
+            rank1_structural_phase_meta.get("lowProbabilityDownbeatMarginMin"),
+            RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_DOWNBEAT_MARGIN,
+        ),
+        "constantGridDpRank1StructuralPhaseDownbeatRank": _to_int(
+            rank1_structural_phase_meta.get("downbeatRank")
+        ),
+        "constantGridDpRank1StructuralPhaseBpmDelta": _to_float(
+            rank1_structural_phase_meta.get("bpmDelta")
+        ),
+        "constantGridDpRank1StructuralPhaseMaxBpmDelta": _to_float(
+            rank1_structural_phase_meta.get("maxBpmDelta"),
+            RANK1_STRUCTURAL_PHASE_MAX_BPM_DELTA,
+        ),
+        "constantGridDpRank1StructuralPhaseSameBarBeatOffsetMod4": bool(
+            rank1_structural_phase_meta.get("sameBarBeatOffsetMod4")
+        ),
+        "constantGridDpRank1StructuralPhaseLowProbabilityHighEvidence": bool(
+            rank1_structural_phase_meta.get("lowProbabilityHighEvidence")
+        ),
+        "constantGridDpRank1StructuralPhaseVersion": str(
+            rank1_structural_phase_meta.get("version") or ""
+        ),
+    }
