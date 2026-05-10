@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.1.7",
+  "version": "1.1.8-rc.202605102052",
   "description": "Rapid Audio Organization Tool",
   "license": "GPL-2.0-or-later",
   "main": "./out/main/index.js",
@@ -73,8 +73,13 @@
         "to": "demucs/bootstrap",
         "filter": [
           "beat_this_runtime_constant_grid.py",
-          "benchmark_rkb_rekordbox_truth.py",
-          "rkb_*.py"
+          "rkb_beatgrid_candidate_lab.py",
+          "rkb_constant_grid_dp_selection.py",
+          "rkb_constant_grid_dp_solver.py",
+          "rkb_locked_phase_ranker.py",
+          "rkb_locked_phase_ranker_features.py",
+          "rkb_runtime_candidate_utils.py",
+          "rkb_runtime_grid_common.py"
         ]
       }
     ],

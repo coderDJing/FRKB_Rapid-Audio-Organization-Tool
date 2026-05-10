@@ -8,11 +8,12 @@ import numpy as np
 
 from beat_this_grid_solver import moving_average
 from rkb_beatgrid_candidate_lab import _sigmoid
-from rkb_onset_foot_phase_diagnostic import _candidate_onset_features
-from rkb_phase_ranker_diagnostic import _safe_float, _signal_profiles
-from rkb_phase_ranker_rising_edge_diagnostic import (
+from rkb_locked_phase_ranker_features import (
+    _candidate_onset_features,
     _candidate_rising_edge_features,
     _feature_vector_with_rising_edge,
+    _safe_float,
+    _signal_profiles,
 )
 
 LOCKED_RISING_EDGE_RANKER_VERSION = "rkb-phase-ranker-rising-edge-prod-locked-v1"

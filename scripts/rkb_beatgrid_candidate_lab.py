@@ -7,36 +7,17 @@ from typing import Any
 
 import numpy as np
 
-import benchmark_rkb_rekordbox_truth as benchmark
 from beat_this_full_logit_utils import (
     _find_best_logit_phase_ms,
     _score_frame_grid,
     _score_downbeat_bars,
 )
 from beat_this_grid_solver import moving_average
-from rkb_beatgrid_lab_common import (
-    DEFAULT_BASELINE,
-    DEFAULT_CANDIDATE_LAB_OUTPUT,
-    DEFAULT_FEATURE_CACHE_DIR,
-    atomic_write_json,
-    baseline_summary,
-    build_feature_index_map,
-    configure_utf8_stdio,
-    load_selected_truth_tracks,
-    normalize_lookup_key,
-    print_json,
-    read_feature_metadata,
-    resolve_feature_arrays_path,
-    resolve_feature_entry,
-    to_float,
-)
-from rkb_beatgrid_candidate_report import _summarize, build_candidate_track_report
-
-STRICT_TOLERANCE_MS = benchmark.STRICT_TOLERANCE_MS
-
+from rkb_runtime_candidate_utils import sigmoid_clip_range, to_float
 
 def _sigmoid(values: np.ndarray) -> np.ndarray:
-    clipped = np.clip(values.astype("float64", copy=False), -40.0, 40.0)
+    min_value, max_value = sigmoid_clip_range()
+    clipped = np.clip(values.astype("float64", copy=False), min_value, max_value)
     return 1.0 / (1.0 + np.exp(-clipped))
 def _clamp01(value: float) -> float:
     if not math.isfinite(value):
@@ -1005,7 +986,26 @@ def _build_grid_candidates(
 
 
 def main() -> int:
+    import benchmark_rkb_rekordbox_truth as benchmark
+    from rkb_beatgrid_candidate_report import _summarize, build_candidate_track_report
+    from rkb_beatgrid_lab_common import (
+        DEFAULT_BASELINE,
+        DEFAULT_CANDIDATE_LAB_OUTPUT,
+        DEFAULT_FEATURE_CACHE_DIR,
+        atomic_write_json,
+        baseline_summary,
+        build_feature_index_map,
+        configure_utf8_stdio,
+        load_selected_truth_tracks,
+        normalize_lookup_key,
+        print_json,
+        read_feature_metadata,
+        resolve_feature_arrays_path,
+        resolve_feature_entry,
+    )
+
     configure_utf8_stdio()
+    strict_tolerance_ms = benchmark.STRICT_TOLERANCE_MS
     parser = argparse.ArgumentParser(description="Run FRKB hybrid beatgrid candidate coverage lab")
     parser.add_argument("--truth", default=str(benchmark.DEFAULT_TRUTH))
     parser.add_argument("--audio-root", default=str(benchmark.DEFAULT_AUDIO_ROOT))
@@ -1075,7 +1075,7 @@ def main() -> int:
                         track=track,
                         metadata=metadata,
                         candidates=candidates,
-                        strict_tolerance_ms=STRICT_TOLERANCE_MS,
+                        strict_tolerance_ms=strict_tolerance_ms,
                     )
                 )
         except Exception as error:
@@ -1086,7 +1086,7 @@ def main() -> int:
         **_summarize(rows, errors),
         "truthPath": str(truth_path),
         "featureCacheDir": str(cache_dir),
-        "strictToleranceMs": STRICT_TOLERANCE_MS,
+        "strictToleranceMs": strict_tolerance_ms,
         "baseline": baseline_summary(Path(args.baseline)),
         "durationSec": round(time.time() - started_at, 3),
     }

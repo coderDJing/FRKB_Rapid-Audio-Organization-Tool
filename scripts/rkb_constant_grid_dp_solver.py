@@ -14,16 +14,6 @@ from rkb_beatgrid_candidate_lab import (
     _score_leading_edge_grid,
     _sigmoid,
 )
-from rkb_beatgrid_lab_common import (
-    DEFAULT_FEATURE_CACHE_DIR,
-    build_feature_index_map,
-    configure_utf8_stdio,
-    normalize_lookup_key,
-    print_json,
-    read_feature_metadata,
-    resolve_feature_arrays_path,
-    resolve_feature_entry,
-)
 from rkb_constant_grid_dp_selection import (
     PHASE_EVIDENCE_LEGACY_WEAKNESS_THRESHOLD,
     PHASE_EVIDENCE_SWITCH_THRESHOLD,
@@ -36,8 +26,11 @@ from rkb_constant_grid_dp_selection import (
     select_phase_evidence_candidate,
     snap_legacy_integer_bpm,
 )
-from rkb_hybrid_beatgrid_solver import _metadata_legacy_candidate, _window_summary
 from rkb_locked_phase_ranker import choose_locked_rising_edge_candidate
+from rkb_runtime_grid_common import (
+    metadata_legacy_candidate as _metadata_legacy_candidate,
+    window_summary as _window_summary,
+)
 
 DEFAULT_MIN_BPM = 70.0
 DEFAULT_MAX_BPM = 200.0
@@ -1014,6 +1007,13 @@ def solve_constant_grid_dp_from_cache(
     phase_step_ms: float = DEFAULT_PHASE_STEP_MS,
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
 ) -> dict[str, Any]:
+    from rkb_beatgrid_lab_common import (
+        build_feature_index_map,
+        read_feature_metadata,
+        resolve_feature_arrays_path,
+        resolve_feature_entry,
+    )
+
     index_map = build_feature_index_map(feature_cache_dir)
     entry = resolve_feature_entry(track=track, index_map=index_map)
     if entry is None:
@@ -1037,6 +1037,13 @@ def solve_constant_grid_dp_from_cache(
 
 
 def main() -> int:
+    from rkb_beatgrid_lab_common import (
+        DEFAULT_FEATURE_CACHE_DIR,
+        configure_utf8_stdio,
+        normalize_lookup_key,
+        print_json,
+    )
+
     configure_utf8_stdio()
     parser = argparse.ArgumentParser(description="Solve one cached track with constant-grid-dp")
     parser.add_argument("--feature-cache-dir", default=str(DEFAULT_FEATURE_CACHE_DIR))
