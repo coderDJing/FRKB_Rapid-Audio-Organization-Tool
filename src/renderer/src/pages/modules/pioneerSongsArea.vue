@@ -28,6 +28,7 @@ import {
 } from '@renderer/utils/rekordboxLibraryCache'
 import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
+import { createRepeatSingleClickDeselect } from '@renderer/pages/modules/songsArea/composables/repeatSingleClickDeselect'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import { buildRekordboxSourceChannel, type RekordboxSourceKind } from '@shared/rekordboxSources'
@@ -50,6 +51,13 @@ const originalTracks = shallowRef<IPioneerPlaylistTrack[]>([])
 const visibleSongs = ref<ISongInfo[]>([])
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
+const { handlePlainRowClickSelection, cancelPendingRepeatSingleClickDeselect } =
+  createRepeatSingleClickDeselect({
+    getSelectedKeys: () => selectedRowKeys.value,
+    setSelectedKeys: (keys) => {
+      selectedRowKeys.value = keys
+    }
+  })
 const lastLoggedSnapshot = ref('')
 const columnData = ref<ISongsAreaColumn[]>(
   buildSongsAreaDefaultColumns('default').map((column) =>
@@ -657,11 +665,11 @@ watch(
   }
 )
 
-const handleSongClick = (_event: MouseEvent, song: ISongInfo) => {
+const handleSongClick = (event: MouseEvent, song: ISongInfo) => {
   if (playlistMutationPending.value) return
   const key = song.mixtapeItemId || song.filePath
   if (!key) return
-  selectedRowKeys.value = [key]
+  handlePlainRowClickSelection(event, key)
 }
 
 const openCopyTargetDialog = (libraryName: PioneerTransferTarget) => {
@@ -684,6 +692,7 @@ const handlePreviewMoveRequest = (payload?: PreviewMoveRequestPayload) => {
 emitter.on('preview-transfer:open-dialog', handlePreviewMoveRequest)
 
 const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
+  cancelPendingRepeatSingleClickDeselect()
   if (playlistMutationPending.value) return
   const key = song.mixtapeItemId || song.filePath
   if (!key) return
@@ -769,6 +778,7 @@ const requestImmediateAnalysis = (song: ISongInfo) => {
 }
 
 const handleSongDblClick = (song: ISongInfo, event?: MouseEvent) => {
+  cancelPendingRepeatSingleClickDeselect()
   if (playlistMutationPending.value) return
   try {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })
@@ -907,6 +917,7 @@ const handleSelectSongListDialogCancel = () => {
 }
 
 onUnmounted(() => {
+  cancelPendingRepeatSingleClickDeselect()
   emitter.off('preview-transfer:open-dialog', handlePreviewMoveRequest)
 })
 

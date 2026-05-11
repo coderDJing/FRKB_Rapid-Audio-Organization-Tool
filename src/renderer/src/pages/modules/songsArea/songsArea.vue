@@ -270,7 +270,7 @@ const handleMetadataBatchUpdatedFromEvent = async (payload: {
 emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
 
 // 键盘与鼠标选择
-const { songClick } = useKeyboardSelection({
+const { songClick, cancelPendingRepeatSingleClickDeselect } = useKeyboardSelection({
   runtime,
   songsAreaState,
   externalViewportHeight,
@@ -495,6 +495,7 @@ const applyMetadataUpdate = async (
 }
 
 const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) => {
+  cancelPendingRepeatSingleClickDeselect()
   const result = await showAndHandleSongContextMenu(event, song)
   if (!result) return
 
@@ -557,6 +558,7 @@ const requestImmediateAnalysis = (song: ISongInfo) => {
 }
 
 const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
+  cancelPendingRepeatSingleClickDeselect()
   if (runtime.songDragSuppressClickUntilMs > Date.now()) return
   try {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })

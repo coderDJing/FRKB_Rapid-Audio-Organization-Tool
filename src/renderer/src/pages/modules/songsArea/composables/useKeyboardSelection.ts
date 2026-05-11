@@ -8,6 +8,7 @@ import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stor
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { createRepeatSingleClickDeselect } from './repeatSingleClickDeselect'
 
 type ClipboardOperation = 'copy' | 'cut'
 
@@ -59,6 +60,11 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   const setSelectedKeys = (next: string[]) => {
     songsAreaState.selectedSongFilePath = next
   }
+  const { handlePlainRowClickSelection, cancelPendingRepeatSingleClickDeselect } =
+    createRepeatSingleClickDeselect({
+      getSelectedKeys,
+      setSelectedKeys
+    })
   const resolveSelectedFilePathsForState = (state: ISongsAreaPaneRuntimeState, keys?: string[]) => {
     const selectedKeys = keys ?? state.selectedSongFilePath
     if (!isMixtapeViewForState(state)) return selectedKeys
@@ -95,6 +101,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     runtime.activeMenuUUID = ''
     const rowKey = getRowKey(song)
     if (event.ctrlKey) {
+      cancelPendingRepeatSingleClickDeselect()
       const index = getSelectedKeys().indexOf(rowKey)
       if (index !== -1) {
         songsAreaState.selectedSongFilePath.splice(index, 1)
@@ -102,6 +109,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
         songsAreaState.selectedSongFilePath.push(rowKey)
       }
     } else if (event.shiftKey) {
+      cancelPendingRepeatSingleClickDeselect()
       let lastClickSongFilePath: string | null = null
       if (getSelectedKeys().length) {
         lastClickSongFilePath = getSelectedKeys()[getSelectedKeys().length - 1]
@@ -127,7 +135,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
         }
       }
     } else {
-      setSelectedKeys([rowKey])
+      handlePlainRowClickSelection(event, rowKey)
     }
   }
 
@@ -544,6 +552,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
 
   onUnmounted(() => {
     emitter.off('waveform-preview:state', handleWaveformPreviewState)
+    cancelPendingRepeatSingleClickDeselect()
     windowHotkeyBinderCount = Math.max(0, windowHotkeyBinderCount - 1)
     if (windowHotkeyBinderCount > 0) return
     windowPreviewHotkeysLocked = false
@@ -559,6 +568,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   })
 
   return {
-    songClick
+    songClick,
+    cancelPendingRepeatSingleClickDeselect
   }
 }
