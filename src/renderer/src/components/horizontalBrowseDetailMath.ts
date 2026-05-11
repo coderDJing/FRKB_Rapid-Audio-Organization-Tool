@@ -5,23 +5,30 @@ import { HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO } from '@renderer/components/ho
 export const clampHorizontalBrowsePreviewStartByVisibleDuration = (
   value: number,
   duration: number,
-  visibleDuration: number
+  visibleDuration: number,
+  allowNegativeTimeline = false
 ) => {
   if (!duration || !visibleDuration) return 0
   const leadingPad = visibleDuration * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
   const trailingPad = visibleDuration * (1 - HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
-  return clampNumber(value, -leadingPad, Math.max(-leadingPad, duration - trailingPad))
+  const maxStart = Math.max(-leadingPad, duration - trailingPad)
+  if (allowNegativeTimeline) {
+    return Math.min(Number.isFinite(value) ? value : 0, maxStart)
+  }
+  return clampNumber(value, -leadingPad, maxStart)
 }
 
 export const resolveHorizontalBrowsePlaybackAlignedStart = (
   seconds: number,
   duration: number,
-  visibleDuration: number
+  visibleDuration: number,
+  allowNegativeTimeline = false
 ) =>
   clampHorizontalBrowsePreviewStartByVisibleDuration(
     seconds - visibleDuration * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
     duration,
-    visibleDuration
+    visibleDuration,
+    allowNegativeTimeline
   )
 
 export const resolveHorizontalBrowseTimePercent = (

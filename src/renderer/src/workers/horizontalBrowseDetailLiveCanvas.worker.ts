@@ -123,7 +123,7 @@ const clampPlaybackRangeStart = (value: number, duration: number, visibleDuratio
   if (!duration || !visibleDuration) return 0
   const leadingPad = visibleDuration * PLAYHEAD_RATIO
   const trailingPad = visibleDuration * (1 - PLAYHEAD_RATIO)
-  return clampNumber(value, -leadingPad, Math.max(-leadingPad, duration - trailingPad))
+  return Math.min(Number.isFinite(value) ? value : 0, Math.max(-leadingPad, duration - trailingPad))
 }
 
 const resolvePlaybackSeconds = (
@@ -136,7 +136,8 @@ const resolvePlaybackSeconds = (
   const playbackRate = Math.max(0, Number(request.playbackRate) || 1)
   const durationSec = Math.max(0, Number(request.playbackDurationSec) || 0)
   const seconds = baseSeconds + elapsedSec * playbackRate
-  return durationSec ? clampNumber(seconds, 0, durationSec) : Math.max(0, seconds)
+  if (!Number.isFinite(seconds)) return 0
+  return durationSec ? Math.min(seconds, durationSec) : seconds
 }
 
 const resolvePlaybackRangeStartSec = (
@@ -968,7 +969,7 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
   const current = playbackAnimation
   const token = current?.token ?? playbackAnimationToken + 1
   const nowMs = performance.now()
-  const incomingSeconds = Math.max(0, Number(request.playbackSeconds) || 0)
+  const incomingSeconds = Number(request.playbackSeconds) || 0
   const forceIncomingSeconds =
     current &&
     Math.floor(Number(request.playbackSyncRevision) || 0) !==

@@ -31,6 +31,25 @@ type PendingRenderSeekIntent = {
   startedAtMs: number
 }
 
+const TIMELINE_ZERO_EPSILON_SEC = 0.0001
+const normalizeTimelineSeconds = (seconds: number) => {
+  const numeric = Number(seconds)
+  return Number.isFinite(numeric) ? numeric : 0
+}
+
+const assignDeckRenderCurrentSeconds = (
+  deck: DeckKey,
+  seconds: number,
+  topDeckRenderCurrentSeconds: { value: number },
+  bottomDeckRenderCurrentSeconds: { value: number }
+) => {
+  if (deck === 'top') {
+    topDeckRenderCurrentSeconds.value = seconds
+    return
+  }
+  bottomDeckRenderCurrentSeconds.value = seconds
+}
+
 export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderSyncParams) => {
   const topDeckRenderCurrentSeconds = ref(0)
   const bottomDeckRenderCurrentSeconds = ref(0)
@@ -62,12 +81,13 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const durationSec = Math.max(0, Number(snapshot.durationSec) || 0)
     const playbackRate = Number(snapshot.playbackRate) || 1
-    const baseSec = Math.max(0, Number(deckRenderSyncBaseSec[deck]) || 0)
+    const baseSec = normalizeTimelineSeconds(deckRenderSyncBaseSec[deck])
     const baseAtMs = Math.max(0, Number(deckRenderSyncBaseAtMs[deck]) || 0)
-    const canEstimatePlayback = snapshot.playingAudible && baseAtMs > 0
+    const canEstimatePlayback =
+      baseAtMs > 0 && (snapshot.playingAudible || (snapshot.playing && baseSec < 0))
     const deltaSec = canEstimatePlayback ? Math.max(0, nowMs - baseAtMs) / 1000 : 0
     const nextSec = baseSec + deltaSec * Math.max(0.25, playbackRate)
-    return durationSec > 0 ? Math.min(durationSec, nextSec) : Math.max(0, nextSec)
+    return durationSec > 0 ? Math.min(durationSec, nextSec) : nextSec
   }
 
   const resolveDeckRenderCurrentSeconds = (deck: DeckKey) => estimateDeckRenderCurrentSeconds(deck)
@@ -109,22 +129,49 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     force: boolean
   ) => {
     const snapshot = params.resolveTransportDeckSnapshot(deck)
-    const snapshotSec = Math.max(0, Number(snapshot.renderCurrentSec) || 0)
+    const snapshotSec = normalizeTimelineSeconds(snapshot.renderCurrentSec)
     const estimatedSec = estimateDeckRenderCurrentSeconds(deck, snapshotAtMs)
     const renderEstimatedSec = estimateDeckRenderCurrentSeconds(deck, renderNowMs)
     const pendingIntent = pendingRenderSeekIntent[deck]
     if (pendingIntent) {
       const intentAgeMs = renderNowMs - pendingIntent.startedAtMs
+      const pendingPlaybackRate = Math.max(0.25, Number(snapshot.playbackRate) || 1)
+      const pendingEstimatedSec =
+        pendingIntent.seconds +
+        (snapshot.playing ? Math.max(0, intentAgeMs) / 1000 : 0) * pendingPlaybackRate
+      const nativeConfirmedNegativeIntent =
+        pendingIntent.seconds < -TIMELINE_ZERO_EPSILON_SEC &&
+        snapshotSec < -TIMELINE_ZERO_EPSILON_SEC
+      const shouldKeepNegativeIntent =
+        pendingIntent.seconds < -TIMELINE_ZERO_EPSILON_SEC &&
+        !nativeConfirmedNegativeIntent &&
+        pendingEstimatedSec < -TIMELINE_ZERO_EPSILON_SEC
+      if (shouldKeepNegativeIntent) {
+        pendingRenderSeekIntent[deck] = {
+          seconds: pendingEstimatedSec,
+          startedAtMs: renderNowMs
+        }
+        deckRenderSyncBaseSec[deck] = pendingEstimatedSec
+        deckRenderSyncBaseAtMs[deck] = renderNowMs
+        assignDeckRenderCurrentSeconds(
+          deck,
+          pendingEstimatedSec,
+          topDeckRenderCurrentSeconds,
+          bottomDeckRenderCurrentSeconds
+        )
+        return
+      }
       const intentConfirmed =
         Math.abs(snapshotSec - pendingIntent.seconds) <= RENDER_SYNC_PENDING_INTENT_EPSILON_SEC
       const intentExpired = intentAgeMs >= RENDER_SYNC_PENDING_INTENT_MAX_MS
       if (!force && !intentConfirmed && !intentExpired) {
         const nextSec = estimateDeckRenderCurrentSeconds(deck, renderNowMs)
-        if (deck === 'top') {
-          topDeckRenderCurrentSeconds.value = nextSec
-        } else {
-          bottomDeckRenderCurrentSeconds.value = nextSec
-        }
+        assignDeckRenderCurrentSeconds(
+          deck,
+          nextSec,
+          topDeckRenderCurrentSeconds,
+          bottomDeckRenderCurrentSeconds
+        )
         return
       }
       pendingRenderSeekIntent[deck] = null
@@ -173,11 +220,12 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const nextSec = shouldReanchor
       ? estimateDeckRenderCurrentSeconds(deck, renderNowMs)
       : renderEstimatedSec
-    if (deck === 'top') {
-      topDeckRenderCurrentSeconds.value = nextSec
-    } else {
-      bottomDeckRenderCurrentSeconds.value = nextSec
-    }
+    assignDeckRenderCurrentSeconds(
+      deck,
+      nextSec,
+      topDeckRenderCurrentSeconds,
+      bottomDeckRenderCurrentSeconds
+    )
   }
 
   const syncDeckRenderState = (
@@ -221,7 +269,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   // 那时 snapshot.renderCurrentSec 已经是目标秒，本函数的提交与之一致，不会造成回跳。
   const applyDeckRenderCurrentSeconds = (deck: DeckKey, seconds: number) => {
     const nowMs = performance.now()
-    const safeSeconds = Math.max(0, Number(seconds) || 0)
+    const safeSeconds = normalizeTimelineSeconds(seconds)
     pendingRenderSeekIntent[deck] = {
       seconds: safeSeconds,
       startedAtMs: nowMs

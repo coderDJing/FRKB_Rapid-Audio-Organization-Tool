@@ -33,6 +33,11 @@ export const useHorizontalBrowseTransportController = () => {
   const resolveTransportDeckSnapshot = (deck: DeckKey): HorizontalBrowseTransportDeckSnapshot =>
     deck === 'top' ? nativeTransport.state.top : nativeTransport.state.bottom
 
+  const normalizeTimelineSeconds = (seconds: number) => {
+    const numeric = Number(seconds)
+    return Number.isFinite(numeric) ? numeric : 0
+  }
+
   const resolveDeckCurrentSeconds = (deck: DeckKey) =>
     Number(resolveTransportDeckSnapshot(deck).currentSec) || 0
 
@@ -65,7 +70,7 @@ export const useHorizontalBrowseTransportController = () => {
   let stopSnapshotSubscription: (() => void) | null = null
 
   const notifyDeckSeekIntent = (deck: DeckKey, seconds: number) => {
-    const safeSeconds = Math.max(0, Number(seconds) || 0)
+    const safeSeconds = normalizeTimelineSeconds(seconds)
     deckSeekIntent[deck] = {
       seconds: safeSeconds,
       revision: deckSeekIntent[deck].revision + 1

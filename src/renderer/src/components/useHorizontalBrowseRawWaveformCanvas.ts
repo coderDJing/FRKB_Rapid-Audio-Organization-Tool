@@ -57,6 +57,7 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
   previewTimeBasisOffsetMs: Ref<number>
   dragging: Ref<boolean>
   rawStreamActive: Ref<boolean>
+  allowNegativeTimeline: () => boolean
   waveformLayout: () => HorizontalBrowseWaveformLayout
   waveformRenderStyle: () => HorizontalBrowseWaveformRenderStyle
 }
@@ -166,17 +167,22 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const duration = resolvePreviewDurationSec()
     const visibleDuration = resolveVisibleDurationSec()
     if (!duration || !visibleDuration) return 0
-    return clampNumber(
-      options.previewStartSec.value + visibleDuration * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
-      0,
-      duration
-    )
+    const anchorSec =
+      options.previewStartSec.value + visibleDuration * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
+    return options.allowNegativeTimeline()
+      ? Math.min(Number.isFinite(anchorSec) ? anchorSec : 0, duration)
+      : clampNumber(anchorSec, 0, duration)
   }
 
   const clampPreviewStart = (value: number) => {
     const duration = resolvePreviewDurationSec()
     const visibleDuration = resolveVisibleDurationSec()
-    return clampHorizontalBrowsePreviewStartByVisibleDuration(value, duration, visibleDuration)
+    return clampHorizontalBrowsePreviewStartByVisibleDuration(
+      value,
+      duration,
+      visibleDuration,
+      options.allowNegativeTimeline()
+    )
   }
 
   const resolveSnappedRenderStartSec = (visibleDuration: number) => {
@@ -193,7 +199,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     if (!options.playing.value || options.dragging.value) {
       return resolveSnappedRenderStartSec(visibleDuration)
     }
-    const playbackSeconds = Math.max(0, Number(options.currentSeconds()) || 0)
+    const playbackSeconds = Number(options.currentSeconds()) || 0
     return resolvePlaybackAlignedStart(playbackSeconds)
   }
 
@@ -203,7 +209,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     resolveHorizontalBrowsePlaybackAlignedStart(
       seconds,
       resolvePreviewDurationSec(),
-      resolveVisibleDurationSec()
+      resolveVisibleDurationSec(),
+      options.allowNegativeTimeline()
     )
 
   const setLastZoomAnchor = (
@@ -396,7 +403,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       loopRange: resolveWorkerLoopRange(),
       cueAccentColor: resolveCueAccentColor(),
       playbackActive: options.playing.value && !options.dragging.value,
-      playbackSeconds: Math.max(0, Number(options.currentSeconds()) || 0),
+      playbackSeconds: Number(options.currentSeconds()) || 0,
       playbackSyncRevision: Math.max(
         0,
         Math.floor(Number(options.playbackSyncRevision.value) || 0)

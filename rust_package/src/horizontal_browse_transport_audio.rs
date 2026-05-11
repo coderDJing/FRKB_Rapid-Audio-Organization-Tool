@@ -238,6 +238,22 @@ fn read_source_sample(
   left + (right - left) * frac
 }
 
+fn sample_silent_lead_in(target: &mut DeckState, output_sample_rate: f64) -> bool {
+  if !target.current_sec.is_finite() {
+    target.current_sec = 0.0;
+    return false;
+  }
+  if target.current_sec >= 0.0 {
+    return false;
+  }
+  target.current_sec += clamp_rate(target.playback_rate) / output_sample_rate.max(1.0);
+  target.last_observed_at_ms = -1.0;
+  if target.current_sec >= 0.0 {
+    reset_master_tempo_state(target);
+  }
+  true
+}
+
 pub(super) fn is_scrub_preview_rendering(target: &DeckState) -> bool {
   (target.scrub_preview.active && target.scrub_preview.rate.abs() >= SCRUB_MIN_RATE)
     || target.scrub_preview.level > 0.0001
@@ -428,15 +444,20 @@ fn sample_deck_scrub_preview(target: &mut DeckState, output_sample_rate: f64) ->
     return (0.0, 0.0);
   }
 
+  if target.scrub_preview.current_sec < 0.0 {
+    target.scrub_preview.current_sec +=
+      clamp_scrub_rate(target.scrub_preview.rate) / output_sample_rate;
+    return (0.0, 0.0);
+  }
+
   let frame_count = target.pcm_data.len() / target.channels as usize;
   if frame_count == 0 {
     return (0.0, 0.0);
   }
-  let audio_current_sec =
-    super::HorizontalBrowseTransportEngine::timeline_sec_to_audio_sec(
-      target,
-      target.scrub_preview.current_sec,
-    );
+  let audio_current_sec = super::HorizontalBrowseTransportEngine::timeline_sec_to_audio_sec(
+    target,
+    target.scrub_preview.current_sec,
+  );
   let source_frame =
     ((audio_current_sec - target.pcm_start_sec).max(0.0)) * target.sample_rate as f64;
   let base_index = source_frame.floor() as usize;
@@ -466,9 +487,9 @@ fn sample_deck_scrub_preview(target: &mut DeckState, output_sample_rate: f64) ->
   target.scrub_preview.current_sec += rate / output_sample_rate;
   target.scrub_preview.current_sec = if target.duration_sec.is_finite() && target.duration_sec > 0.0
   {
-    target.scrub_preview.current_sec.clamp(0.0, target.duration_sec)
+    target.scrub_preview.current_sec.min(target.duration_sec)
   } else {
-    target.scrub_preview.current_sec.max(0.0)
+    target.scrub_preview.current_sec
   };
 
   let gain = target.gain * target.scrub_preview.level;
@@ -547,6 +568,9 @@ pub(super) fn sample_deck(target: &mut DeckState, output_sample_rate: f64) -> (f
     || target.sample_rate == 0
     || target.channels == 0
   {
+    return (0.0, 0.0);
+  }
+  if sample_silent_lead_in(target, output_sample_rate) {
     return (0.0, 0.0);
   }
   if should_use_master_tempo(target) {

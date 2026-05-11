@@ -85,6 +85,60 @@ fn set_state_respects_shared_now_ms() {
 }
 
 #[test]
+fn negative_seek_survives_snapshot_and_advances_before_audio_start() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  engine.last_now_ms = 1000.0;
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("lead-in.mp3".to_string());
+    top.duration_sec = 20.0;
+    top.current_sec = 0.0;
+    top.last_observed_at_ms = 1000.0;
+    top.playback_rate = 1.0;
+    install_loaded_test_pcm(top, 20);
+  }
+
+  engine.seek(DeckId::Top, 1000.0, -0.75);
+  engine.set_playing(DeckId::Top, 1000.0, true);
+  let snapshot = engine.snapshot(1250.0);
+
+  assert!((snapshot.top.current_sec + 0.5).abs() < 0.0001);
+  assert!(!snapshot.top.playhead_loaded);
+  assert!(!snapshot.top.playing_audible);
+  assert!(snapshot.top.play_requested);
+}
+
+#[test]
+fn negative_playhead_outputs_silence_until_zero_then_audio() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  engine.output_sample_rate = 4;
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("lead-in.mp3".to_string());
+    top.loaded_file_path = top.file_path.clone();
+    top.duration_sec = 20.0;
+    top.current_sec = -0.5;
+    top.last_observed_at_ms = -1.0;
+    top.playing = true;
+    top.playback_rate = 1.0;
+    top.master_tempo_enabled = false;
+    top.sample_rate = 4;
+    top.channels = 1;
+    top.pcm_start_sec = 0.0;
+    top.pcm_data = Arc::new(vec![1.0; 16]);
+  }
+
+  let first = engine.sample_deck(DeckId::Top);
+  let second = engine.sample_deck(DeckId::Top);
+  let third = engine.sample_deck(DeckId::Top);
+
+  assert_eq!(first, (0.0, 0.0));
+  assert_eq!(second, (0.0, 0.0));
+  assert_eq!(third, (1.0, 1.0));
+  assert!((engine.deck(DeckId::Top).current_sec - 0.25).abs() < 0.0001);
+}
+
+#[test]
 fn audio_owned_current_sec_does_not_double_count_elapsed_time() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   engine.last_now_ms = 2000.0;

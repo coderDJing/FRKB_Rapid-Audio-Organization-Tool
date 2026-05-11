@@ -244,7 +244,7 @@ impl HorizontalBrowseTransportEngine {
 
   pub(super) fn estimate_current_sec(deck: &DeckState, now_ms: f64) -> f64 {
     let base = if deck.current_sec.is_finite() {
-      deck.current_sec.max(0.0)
+      deck.current_sec
     } else {
       0.0
     };
@@ -268,9 +268,9 @@ impl HorizontalBrowseTransportEngine {
     let delta_sec = ((now_ms - deck.last_observed_at_ms).max(0.0)) / 1000.0;
     let estimated = base + delta_sec * rate;
     if deck.duration_sec.is_finite() && deck.duration_sec > 0.0 {
-      estimated.clamp(0.0, deck.duration_sec)
+      estimated.min(deck.duration_sec)
     } else {
-      estimated.max(0.0)
+      estimated
     }
   }
 
@@ -805,7 +805,7 @@ impl HorizontalBrowseTransportEngine {
     self.mark_state_changed();
     self.last_now_ms = now_ms;
     self.sync_deck_to_now(deck, now_ms);
-    if playing {
+    if playing && Self::estimate_current_sec(self.deck(deck), now_ms) >= 0.0 {
       self.sync_loop_before_play(deck);
     }
     {
@@ -825,10 +825,12 @@ impl HorizontalBrowseTransportEngine {
     self.last_now_ms = now_ms;
     {
       let target = self.deck_mut(deck);
-      target.current_sec = if target.duration_sec.is_finite() && target.duration_sec > 0.0 {
-        current_sec.clamp(0.0, target.duration_sec)
+      target.current_sec = if !current_sec.is_finite() {
+        0.0
+      } else if target.duration_sec.is_finite() && target.duration_sec > 0.0 {
+        current_sec.min(target.duration_sec)
       } else {
-        current_sec.max(0.0)
+        current_sec
       };
       target.last_observed_at_ms = now_ms;
       target.metronome_state.next_beat_index = None;
@@ -850,13 +852,19 @@ impl HorizontalBrowseTransportEngine {
     self.last_now_ms = now_ms;
     let target = self.deck_mut(deck);
     let duration_sec = target.duration_sec;
-    target.scrub_preview.current_sec = if duration_sec.is_finite() && duration_sec > 0.0 {
-      current_sec.clamp(0.0, duration_sec)
+    target.scrub_preview.current_sec = if !current_sec.is_finite() {
+      0.0
+    } else if duration_sec.is_finite() && duration_sec > 0.0 {
+      current_sec.min(duration_sec)
     } else {
-      current_sec.max(0.0)
+      current_sec
     };
     target.scrub_preview.active = active;
-    target.scrub_preview.rate = if active && rate.is_finite() { rate } else { 0.0 };
+    target.scrub_preview.rate = if active && rate.is_finite() {
+      rate
+    } else {
+      0.0
+    };
   }
 
   pub(super) fn set_metronome(&mut self, deck: DeckId, enabled: bool, volume_level: u8) {

@@ -78,6 +78,7 @@ const props = defineProps<{
   maxZoom?: number
   waveformLayout?: HorizontalBrowseWaveformLayout
   waveformRenderStyle?: HorizontalBrowseWaveformRenderStyle
+  allowNegativeTimeline?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -235,6 +236,7 @@ const {
   previewTimeBasisOffsetMs,
   dragging,
   rawStreamActive,
+  allowNegativeTimeline: () => Boolean(props.allowNegativeTimeline),
   waveformLayout: resolveWaveformLayout,
   waveformRenderStyle: resolveWaveformRenderStyle
 })
@@ -304,8 +306,20 @@ const buildSongGridSignature = () =>
     normalizeGridSignatureFirstBeatMs(props.song?.timeBasisOffsetMs).toFixed(3)
   ].join('|')
 
+const normalizePreviewTimelineSeconds = (seconds: number) => {
+  const numeric = Number(seconds)
+  if (!Number.isFinite(numeric)) return 0
+  const duration = resolvePreviewDurationSec()
+  if (duration > 0) {
+    return props.allowNegativeTimeline
+      ? Math.min(numeric, duration)
+      : clampNumber(numeric, 0, duration)
+  }
+  return props.allowNegativeTimeline ? numeric : Math.max(0, numeric)
+}
+
 const applyPreviewPlaybackPosition = (seconds: number, scheduleFrame = true) => {
-  const safeSeconds = Math.max(0, Number(seconds) || 0)
+  const safeSeconds = normalizePreviewTimelineSeconds(seconds)
   const nextStartSec = resolvePlaybackAlignedStart(safeSeconds)
   const changed = Math.abs(nextStartSec - previewStartSec.value) > 0.0001
   if (changed) {
@@ -337,9 +351,7 @@ const resolvePlaybackPositionDiscontinuity = (
 
   const elapsedSec = Math.max(0, nowMs - previous.atMs) / 1000
   const expectedSeconds = previous.seconds + elapsedSec * previous.playbackRate
-  const duration = resolvePreviewDurationSec()
-  const boundedExpectedSeconds =
-    duration > 0 ? clampNumber(expectedSeconds, 0, duration) : Math.max(0, expectedSeconds)
+  const boundedExpectedSeconds = normalizePreviewTimelineSeconds(expectedSeconds)
   return (
     Math.abs(seconds - boundedExpectedSeconds) > HORIZONTAL_BROWSE_PLAYBACK_RESYNC_THRESHOLD_SEC
   )
@@ -846,7 +858,7 @@ watch(
     try {
       if (dragging.value) return
       const safeSongKey = String(songKey || '').trim()
-      const safeSeconds = Math.max(0, seconds)
+      const safeSeconds = normalizePreviewTimelineSeconds(seconds)
       maybeContinueRawWaveformStream()
       if (!safeSongKey) {
         lastPlaybackPositionSample = null
@@ -881,7 +893,7 @@ watch(
   ([revision, targetSeconds]) => {
     if (!revision) return
     if (!props.song?.filePath) return
-    const safeTargetSeconds = Math.max(0, targetSeconds)
+    const safeTargetSeconds = normalizePreviewTimelineSeconds(targetSeconds)
     restartRawWaveformStreamAt(safeTargetSeconds, false)
     applyPreviewPlaybackPosition(safeTargetSeconds, true)
   }

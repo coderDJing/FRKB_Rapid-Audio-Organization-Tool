@@ -50,6 +50,7 @@ const props = defineProps<{
   maxZoom?: number
   waveformLayout?: 'auto' | 'full'
   waveformRenderStyle?: 'columns' | 'raw-curve'
+  allowNegativeTimeline?: boolean
   deckHovered: boolean
   regionId: number
 }>()
@@ -115,6 +116,7 @@ defineExpose({
       :max-zoom="props.maxZoom"
       :waveform-layout="props.waveformLayout"
       :waveform-render-style="props.waveformRenderStyle"
+      :allow-negative-timeline="props.allowNegativeTimeline"
       :direction="props.direction"
       @toolbar-state-change="emit('toolbar-state-change', $event)"
       @zoom-change="emit('zoom-change', $event)"

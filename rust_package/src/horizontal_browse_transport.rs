@@ -275,13 +275,16 @@ impl HorizontalBrowseTransportEngine {
 
   fn has_loaded_segment_covering(&self, deck: DeckId, target_sec: f64) -> bool {
     let deck_state = self.deck(deck);
+    if !target_sec.is_finite() || target_sec < 0.0 {
+      return false;
+    }
     if deck_state.loaded_file_path.as_deref() != deck_state.file_path.as_deref() {
       return false;
     }
     if deck_state.pcm_data.is_empty() || deck_state.sample_rate == 0 || deck_state.channels == 0 {
       return false;
     }
-    let safe_target_sec = Self::timeline_sec_to_audio_sec(deck_state, target_sec.max(0.0));
+    let safe_target_sec = Self::timeline_sec_to_audio_sec(deck_state, target_sec);
     safe_target_sec + 0.0001 >= deck_state.pcm_start_sec
       && safe_target_sec < self.resolve_loaded_segment_end_sec(deck) - 0.0001
   }

@@ -223,6 +223,13 @@ export const useHorizontalBrowseDeckPlaybackController = (
       params.resolveDeckDurationSeconds(deck) || Number.MAX_SAFE_INTEGER
     )
 
+  const clampDeckTimelineSeconds = (deck: DeckKey, seconds: number) => {
+    const numeric = Number(seconds)
+    if (!Number.isFinite(numeric)) return 0
+    const duration = params.resolveDeckDurationSeconds(deck)
+    return duration > 0 ? Math.min(numeric, duration) : numeric
+  }
+
   const resolveSnapshotAnchorSec = (snapshot: HorizontalBrowseTransportDeckSnapshot) => {
     const renderCurrentSec = Number(snapshot.renderCurrentSec)
     if (Number.isFinite(renderCurrentSec)) return renderCurrentSec
@@ -428,7 +435,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     dragState.active = true
     dragState.wasPlaying = snapshot.playing
     dragState.syncEnabledBefore = snapshot.syncEnabled
-    dragState.anchorSec = clampDeckSeconds(deck, resolveSnapshotAnchorSec(snapshot))
+    dragState.anchorSec = clampDeckTimelineSeconds(deck, resolveSnapshotAnchorSec(snapshot))
     dragState.cueCommittedDuringDrag = false
     dragState.token += 1
 
@@ -484,7 +491,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
   ) => {
     const dragState = deckWaveformDragState[deck]
     if (!dragState.active) return
-    const anchorSec = clampDeckSeconds(deck, Number(payload.anchorSec) || 0)
+    const anchorSec = clampDeckTimelineSeconds(deck, Number(payload.anchorSec) || 0)
     dragState.anchorSec = anchorSec
     queueDeckScrubPreviewRequest(deck, {
       token: dragState.token,
@@ -511,7 +518,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     dragState.token += 1
 
     const token = dragState.token
-    const targetSec = clampDeckSeconds(deck, Number(payload.anchorSec) || 0)
+    const targetSec = clampDeckTimelineSeconds(deck, Number(payload.anchorSec) || 0)
     queueDeckScrubPreviewRequest(deck, {
       token,
       active: false,
@@ -522,6 +529,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     if (!payload?.committed) return
 
     const shouldAlignToLeader =
+      targetSec >= 0 &&
       shouldResume &&
       syncEnabledBefore &&
       !params.resolveTransportDeckSnapshot(deck).leader &&

@@ -972,6 +972,7 @@ onUnmounted(() => {
           "
           :waveform-layout="isEditMode ? 'full' : 'auto'"
           :waveform-render-style="isEditMode ? 'raw-curve' : 'columns'"
+          allow-negative-timeline
           direction="up"
           :deck-hovered="isDeckHovered('top')"
           :region-id="4"
@@ -1007,6 +1008,7 @@ onUnmounted(() => {
           :max-zoom="HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM"
           waveform-layout="auto"
           waveform-render-style="columns"
+          allow-negative-timeline
           direction="down"
           :deck-hovered="isDeckHovered('bottom')"
           :region-id="5"

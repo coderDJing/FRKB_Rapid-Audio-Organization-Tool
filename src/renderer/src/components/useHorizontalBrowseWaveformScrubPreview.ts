@@ -38,7 +38,7 @@ export const useHorizontalBrowseWaveformScrubPreview = (
 
   const emitPreview = (anchorSec: number, playbackRate: number) => {
     options.emitPreview({
-      anchorSec: Math.max(0, Number(anchorSec) || 0),
+      anchorSec: Number(anchorSec) || 0,
       playbackRate: normalizeScrubPreviewRate(playbackRate)
     })
   }
@@ -54,7 +54,7 @@ export const useHorizontalBrowseWaveformScrubPreview = (
   }
 
   const start = (anchorSec: number) => {
-    lastAnchorSec = Math.max(0, Number(anchorSec) || 0)
+    lastAnchorSec = Number(anchorSec) || 0
     lastMoveAt = performance.now()
     smoothedRate = 0
     emitPreview(lastAnchorSec, 0)
@@ -62,7 +62,7 @@ export const useHorizontalBrowseWaveformScrubPreview = (
   }
 
   const update = (anchorSec: number) => {
-    const safeAnchorSec = Math.max(0, Number(anchorSec) || 0)
+    const safeAnchorSec = Number(anchorSec) || 0
     const nowMs = performance.now()
     const elapsedSec = Math.max(0, nowMs - lastMoveAt) / 1000
     const rawRate =
