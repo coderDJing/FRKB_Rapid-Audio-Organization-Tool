@@ -194,7 +194,10 @@ function readCurrentArtists(db?: SqliteDatabase | null): CuratedArtistFavoriteEn
   }
 }
 
-function writeCurrentArtists(artists: CuratedArtistFavoriteEntry[], db?: SqliteDatabase | null): void {
+function writeCurrentArtists(
+  artists: CuratedArtistFavoriteEntry[],
+  db?: SqliteDatabase | null
+): void {
   const database = db || getDbForCurrentLibrary()
   if (!database) return
   setMetaValue(database, META_KEY, JSON.stringify(normalizeFavoriteEntries(artists)))

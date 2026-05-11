@@ -70,8 +70,8 @@ const parseDurationToSeconds = (input: unknown) => {
         @marker-click="props.handleHotCueClick(props.song, $event.sec)"
       />
       <bubbleBoxTrigger
-        tag="div"
         v-if="props.getWaveformPlaceholderText(props.song.filePath)"
+        tag="div"
         class="waveform-preview-placeholder"
         :title="props.getWaveformPlaceholderTitle(props.song.filePath)"
       >

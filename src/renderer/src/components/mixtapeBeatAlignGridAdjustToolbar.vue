@@ -360,9 +360,9 @@ onBeforeUnmount(() => {
       </bubbleBoxTrigger>
     </div>
     <bubbleBoxTrigger
+      v-if="showMemoryButton"
       wrapper-tag="span"
       tag="button"
-      v-if="showMemoryButton"
       class="grid-adjust-memory-btn"
       type="button"
       :disabled="disabled"
@@ -393,9 +393,9 @@ onBeforeUnmount(() => {
       />
     </div>
     <bubbleBoxTrigger
+      v-if="showTapButton"
       wrapper-tag="span"
       tag="button"
-      v-if="showTapButton"
       class="grid-adjust-tap-btn"
       type="button"
       :disabled="disabled"

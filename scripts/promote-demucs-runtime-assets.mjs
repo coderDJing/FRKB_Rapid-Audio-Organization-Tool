@@ -22,7 +22,9 @@ const inferChannelFromReleaseTag = (tag) =>
 
 const sourceRoot = path.resolve(getArgValue('--source-root', ''))
 const outputRoot = path.resolve(getArgValue('--output-root', 'dist/demucs-runtime-assets'))
-const sourceReleaseTag = normalizeText(getArgValue('--source-release-tag', 'demucs-runtime-assets-rc'))
+const sourceReleaseTag = normalizeText(
+  getArgValue('--source-release-tag', 'demucs-runtime-assets-rc')
+)
 const targetReleaseTag = normalizeText(getArgValue('--target-release-tag', 'demucs-runtime-assets'))
 const appVersion = normalizeText(getArgValue('--app-version', ''))
 
@@ -55,7 +57,8 @@ if (sourceAssets.length === 0) {
 }
 
 const sourceChannel =
-  normalizeText(sourceManifest?.channel).toLowerCase() || inferChannelFromReleaseTag(sourceReleaseTag)
+  normalizeText(sourceManifest?.channel).toLowerCase() ||
+  inferChannelFromReleaseTag(sourceReleaseTag)
 if (sourceChannel !== 'rc') {
   console.error(
     `[demucs-runtime-promote] Source manifest is not RC channel: ${sourceChannel || '<empty>'}`

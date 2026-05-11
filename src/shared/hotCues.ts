@@ -45,7 +45,7 @@ export const resolveSongHotCueDisplayLabel = (cue: ISongHotCue) =>
   normalizeCueText(cue?.label) || resolveSongHotCueLabel(cue?.slot ?? 0)
 
 export const resolveSongHotCueDisplayColor = (cue: ISongHotCue) =>
-  Boolean(cue?.isLoop)
+  cue?.isLoop
     ? REKORDBOX_LOOP_HOT_CUE_COLOR
     : normalizeCueColor(cue?.color) ||
       (normalizeCueSource(cue?.source) === 'rekordbox'

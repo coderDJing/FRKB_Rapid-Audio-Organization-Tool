@@ -129,7 +129,9 @@ const mergedAssets = Array.from(mergedAssetsByKey.values()).sort((a, b) => {
 
 const primaryManifest = manifests[0]?.manifest || {}
 const appVersion = appVersionArg || normalizeText(primaryManifest.appVersion)
-const appBaseVersion = appVersion ? toBaseVersion(appVersion) : normalizeText(primaryManifest.appBaseVersion)
+const appBaseVersion = appVersion
+  ? toBaseVersion(appVersion)
+  : normalizeText(primaryManifest.appBaseVersion)
 const channel =
   channelArg === 'rc' || channelArg === 'stable'
     ? channelArg

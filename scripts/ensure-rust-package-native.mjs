@@ -108,7 +108,8 @@ const hasFreshFile = (filePath) => {
   return fs.statSync(filePath).mtimeMs >= newestSourceMtimeMs
 }
 
-const resolveFreshBinarySource = () => binaryArtifactPaths.find((filePath) => hasFreshFile(filePath)) || ''
+const resolveFreshBinarySource = () =>
+  binaryArtifactPaths.find((filePath) => hasFreshFile(filePath)) || ''
 
 const isSyncedWithSource = (filePath, sourcePath) => {
   if (!sourcePath || !fs.existsSync(filePath) || !fs.existsSync(sourcePath)) return false

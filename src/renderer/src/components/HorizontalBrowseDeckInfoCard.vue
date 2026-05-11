@@ -175,8 +175,8 @@ onUnmounted(() => {
         <div v-else class="deck-info-card__cover-placeholder"></div>
       </div>
       <bubbleBoxTrigger
-        tag="button"
         v-if="props.song"
+        tag="button"
         type="button"
         class="deck-info-card__eject-btn"
         :title="t('common.eject')"

@@ -43,7 +43,7 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
   resolveDeckLoaded: (deck: DeckKey) => boolean
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
   resolveDeckCuePointRef: (deck: DeckKey) => Ref<number>
-  resolveDeckCuePlacementSec: (deck: DeckKey, anchorOverrideSec?: number | null) => number
+  resolveDeckCuePlacementSec: (deck: DeckKey) => number
 }
 
 export const useHorizontalBrowseDeckTransportInteractions = (

@@ -36,9 +36,8 @@ type DrawHorizontalBrowseDetailOverlayOptions = {
   themeVariant?: 'light' | 'dark'
 }
 
-const CUE_MARKER_WIDTH = 14
-const CUE_MARKER_HEIGHT = 10
-const CUE_MARKER_EDGE_OFFSET_PX = 4
+const CUE_MARKER_WIDTH = 10
+const CUE_MARKER_HEIGHT = 7
 const MEMORY_CUE_WIDTH = 10
 const MEMORY_CUE_HEIGHT = 7
 const HOT_CUE_LABEL_HEIGHT = 14
@@ -309,9 +308,7 @@ export const drawHorizontalBrowseDetailOverlay = (
   )
   if (cueCenterX !== null) {
     const cueTopY =
-      direction === 'up'
-        ? waveformTop + waveformHeight - CUE_MARKER_HEIGHT + CUE_MARKER_EDGE_OFFSET_PX
-        : waveformTop - CUE_MARKER_EDGE_OFFSET_PX
+      direction === 'up' ? waveformTop + waveformHeight - CUE_MARKER_HEIGHT : waveformTop
     drawCueTriangle(ctx, cueCenterX, cueTopY, direction, cueAccent, markerPalette.cueShadow)
   }
 

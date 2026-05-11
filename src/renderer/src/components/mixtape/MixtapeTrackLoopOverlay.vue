@@ -258,9 +258,9 @@ const resolveStatusMetaStyle = (tone: 'info' | 'error' | undefined): CSSProperti
       </span>
     </div>
     <bubbleBoxTrigger
-      tag="div"
       v-for="line in overlay.gridLines"
       :key="line.key"
+      tag="div"
       class="mixtape-track-loop__grid-line"
       :class="{ 'is-active': line.active }"
       :style="resolveGridLineStyle(line)"

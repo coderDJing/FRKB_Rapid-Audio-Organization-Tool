@@ -513,8 +513,8 @@ const handleIndexActionClick = () => {
           :max-width="220"
         />
         <bubbleBoxTrigger
-          tag="span"
           v-if="col.key !== 'index' && col.filterType"
+          tag="span"
           class="mask-icon filter-icon"
           :class="{ 'is-active': col.filterActive }"
           :style="filterIconMaskStyle"

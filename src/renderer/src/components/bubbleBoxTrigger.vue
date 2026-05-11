@@ -116,12 +116,12 @@ const resolvedWrapperStyle = computed(() => {
 </script>
 
 <template>
-  <component v-if="!wrapperTag" :is="tag" ref="anchorRef" v-bind="anchorAttrs">
+  <component :is="tag" v-if="!wrapperTag" ref="anchorRef" v-bind="anchorAttrs">
     <slot />
   </component>
   <component
-    v-else
     :is="wrapperTag"
+    v-else
     ref="wrapperRef"
     :class="wrapperClass"
     :style="resolvedWrapperStyle"

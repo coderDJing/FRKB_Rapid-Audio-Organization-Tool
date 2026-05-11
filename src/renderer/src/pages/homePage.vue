@@ -679,8 +679,8 @@ const drop = async (e: DragEvent) => {
             style="width: 100%; height: 100%"
           />
           <div
-            v-else
             v-for="item of runtime.libraryTree.children"
+            v-else
             v-show="librarySelected == item.dirName"
             style="width: 100%; height: 100%"
           >

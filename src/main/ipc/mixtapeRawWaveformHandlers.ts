@@ -697,7 +697,7 @@ export function registerMixtapeRawWaveformHandlers() {
                   mtimeMs: stat.mtimeMs
                 }
               )
-              needWaveformForShare = !Boolean(waveformCached)
+              needWaveformForShare = !waveformCached
             }
             const decoded = await decodeAudioShared(filePath, {
               analyzeKey: false,

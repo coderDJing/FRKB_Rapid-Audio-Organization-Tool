@@ -23,31 +23,31 @@ async function listWindowsRemovableDrives() {
   const script = [
     "$ErrorActionPreference = 'Stop'",
     "$usbLetters = New-Object 'System.Collections.Generic.HashSet[string]'",
-    "Get-CimInstance Win32_DiskDrive | Where-Object {",
+    'Get-CimInstance Win32_DiskDrive | Where-Object {',
     "  $_.InterfaceType -eq 'USB' -or ($_.PNPDeviceID -like 'USBSTOR*')",
-    "} | ForEach-Object {",
-    "  $disk = $_",
-    "  Get-CimAssociatedInstance -InputObject $disk -Association Win32_DiskDriveToDiskPartition -ErrorAction SilentlyContinue | ForEach-Object {",
-    "    $partition = $_",
-    "    Get-CimAssociatedInstance -InputObject $partition -Association Win32_LogicalDiskToPartition -ErrorAction SilentlyContinue | ForEach-Object {",
-    "      $id = [string]$_.DeviceID",
-    "      if ($id) { [void]$usbLetters.Add($id.ToUpperInvariant()) }",
+    '} | ForEach-Object {',
+    '  $disk = $_',
+    '  Get-CimAssociatedInstance -InputObject $disk -Association Win32_DiskDriveToDiskPartition -ErrorAction SilentlyContinue | ForEach-Object {',
+    '    $partition = $_',
+    '    Get-CimAssociatedInstance -InputObject $partition -Association Win32_LogicalDiskToPartition -ErrorAction SilentlyContinue | ForEach-Object {',
+    '      $id = [string]$_.DeviceID',
+    '      if ($id) { [void]$usbLetters.Add($id.ToUpperInvariant()) }',
     '    }',
     '  }',
     '}',
     '$rows = @()',
     'Get-CimInstance Win32_LogicalDisk | ForEach-Object {',
-    "  $id = [string]$_.DeviceID",
+    '  $id = [string]$_.DeviceID',
     '  if (-not $id) { return }',
     '  $driveType = [int]$_.DriveType',
     '  $isUsb = $usbLetters.Contains($id.ToUpperInvariant())',
-    "  $isRemovable = ($driveType -eq 2) -or $isUsb",
+    '  $isRemovable = ($driveType -eq 2) -or $isUsb',
     '  if (-not $isRemovable) { return }',
     '  $rows += [PSCustomObject]@{',
     '    deviceId = $id',
-    "    volumeName = [string]$_.VolumeName",
+    '    volumeName = [string]$_.VolumeName',
     '    driveType = $driveType',
-    "    fileSystem = [string]$_.FileSystem",
+    '    fileSystem = [string]$_.FileSystem',
     '    size = if ($_.Size) { [int64]$_.Size } else { 0 }',
     '    freeSpace = if ($_.FreeSpace) { [int64]$_.FreeSpace } else { 0 }',
     '    isUsb = $isUsb',
@@ -69,7 +69,9 @@ async function listCandidateRoots() {
     const rows = await listWindowsRemovableDrives()
     return rows
       .map((row) => ({
-        id: String(row.deviceId || '').trim().toUpperCase(),
+        id: String(row.deviceId || '')
+          .trim()
+          .toUpperCase(),
         name: String(row.volumeName || row.deviceId || '').trim(),
         path: normalizeDriveRoot(row.deviceId),
         fileSystem: String(row.fileSystem || '').trim(),
@@ -210,7 +212,9 @@ async function main() {
         (key) => !currentSongsAreaColumns.includes(key)
       )
       const entryIndices = tracks.map((track) => Number(track.entryIndex || 0))
-      const isAscending = entryIndices.every((value, index) => index === 0 || value >= entryIndices[index - 1])
+      const isAscending = entryIndices.every(
+        (value, index) => index === 0 || value >= entryIndices[index - 1]
+      )
 
       playlistInspection = {
         playlistId: firstPlaylist.id,

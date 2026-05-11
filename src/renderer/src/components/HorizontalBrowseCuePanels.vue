@@ -126,9 +126,9 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
       <div class="cue-panel__placeholder">
         <div v-if="panel.mode === 'hot-cue'" class="cue-panel__hotcue-grid">
           <bubbleBoxTrigger
-            tag="button"
             v-for="row in panel.hotCueRows"
             :key="`${panel.deck}-${row.slot}`"
+            tag="button"
             type="button"
             class="cue-panel__hotcue-row"
             :class="{ 'has-value': row.active }"
@@ -151,8 +151,8 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
               </span>
             </span>
             <bubbleBoxTrigger
-              tag="button"
               v-if="row.active"
+              tag="button"
               type="button"
               class="cue-panel__hotcue-delete"
               title="Delete Hot Cue"
@@ -166,9 +166,9 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
         </div>
         <div v-else class="cue-panel__memory-list">
           <bubbleBoxTrigger
-            tag="div"
             v-for="memoryCue in panel.memoryCueRows"
             :key="`${panel.deck}-${memoryCue.sec}`"
+            tag="div"
             class="cue-panel__memory-row"
             :style="{ '--memory-cue-row-color': memoryCue.color }"
             :title="memoryCue.title"

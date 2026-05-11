@@ -432,8 +432,8 @@ const openMixtapeHandleClick = () => {
           @click.stop
         >
           <bubbleBoxTrigger
-            tag="span"
             v-if="dirData.type === 'mixtapeList'"
+            tag="span"
             class="mixModeBadge"
             :class="{
               'is-eq': dirData.mixMode === 'eq',
@@ -445,8 +445,8 @@ const openMixtapeHandleClick = () => {
             <span>{{ resolveMixtapeModeTag(dirData.mixMode) }}</span>
           </bubbleBoxTrigger>
           <bubbleBoxTrigger
-            tag="button"
             v-if="dirData.type === 'mixtapeList'"
+            tag="button"
             type="button"
             class="recordButton"
             :class="{ isPlaying: isPlaying }"
@@ -460,8 +460,8 @@ const openMixtapeHandleClick = () => {
             {{ t('mixtape.recordButton') }}
           </bubbleBoxTrigger>
           <bubbleBoxTrigger
-            tag="span"
             v-if="showTrackCount"
+            tag="span"
             class="countBadge"
             :class="{ isPlaying: isPlaying }"
             :title="t('tracks.title')"

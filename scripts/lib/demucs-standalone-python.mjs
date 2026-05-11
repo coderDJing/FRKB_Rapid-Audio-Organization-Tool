@@ -25,7 +25,9 @@ const buildPortableRuntimeCopyOptions = () => ({
 const resolveStandaloneArchiveSpec = (platformKey) => {
   const targetTriple = DARWIN_TARGET_TRIPLE_BY_PLATFORM[platformKey]
   if (!targetTriple) {
-    throw new Error(`[demucs-runtime-ensure] Unsupported standalone Python platform: ${platformKey}`)
+    throw new Error(
+      `[demucs-runtime-ensure] Unsupported standalone Python platform: ${platformKey}`
+    )
   }
   const pythonVersion =
     String(process.env.FRKB_DEMUCS_STANDALONE_PYTHON_VERSION || '').trim() ||

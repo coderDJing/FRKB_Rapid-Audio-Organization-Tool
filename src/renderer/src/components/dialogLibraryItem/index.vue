@@ -71,7 +71,7 @@ const resolveMixtapeBadgeTitle = (mixMode?: string) => resolveMixtapeModeLabel(m
 const nameTextRef = ref<HTMLElement | null>(null)
 const nameTextHovered = ref(false)
 const onlyShowBubbleWhenOverflow = computed(
-  () => !Boolean(Reflect.get(runtime.setting, 'songListBubbleAlways'))
+  () => !Reflect.get(runtime.setting, 'songListBubbleAlways')
 )
 const createPlaylistMenuKey = 'library.createPlaylist'
 const createStemMixtapeMenuKey = 'library.createStemMixtape'
@@ -705,12 +705,12 @@ watch(
           </bubbleBoxTrigger>
         </span>
         <bubbleBoxTrigger
-          tag="span"
           v-if="
             dirData.type === 'songList' &&
             runtime.setting.showPlaylistTrackCount &&
             trackCount !== null
           "
+          tag="span"
           class="countBadge"
           :title="t('tracks.title')"
         >

@@ -557,8 +557,8 @@ onUnmounted(() => {
 <template>
   <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
     <div
-      class="content inner"
       v-dialog-drag="'.dialog-title'"
+      class="content inner"
       @contextmenu.stop.prevent="contextmenuEvent($event, 0, defaultPlaylistName)"
     >
       <div class="unselectable libraryTitle dialog-title dialog-header">

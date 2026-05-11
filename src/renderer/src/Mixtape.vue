@@ -245,9 +245,9 @@ const {
           <div class="mixtape-param-bar__title">{{ t('mixtape.mixPanelTitle') }}</div>
           <div class="mixtape-param-bar__tabs">
             <bubbleBoxTrigger
-              tag="button"
               v-for="item in mixParamOptions"
               :key="item.id"
+              tag="button"
               class="mixtape-param-bar__tab"
               :class="[
                 `mixtape-param-bar__tab--${item.id}`,
@@ -396,8 +396,8 @@ const {
               <div class="timeline-ruler-wrap">
                 <div class="timeline-ruler-stop-float">
                   <bubbleBoxTrigger
-                    tag="button"
                     v-if="transportPlaying || transportDecoding"
+                    tag="button"
                     class="timeline-stop-btn"
                     type="button"
                     :title="t('mixtape.stop')"
@@ -410,8 +410,8 @@ const {
                     </svg>
                   </bubbleBoxTrigger>
                   <bubbleBoxTrigger
-                    tag="button"
                     v-else
+                    tag="button"
                     class="timeline-stop-btn"
                     type="button"
                     :title="t('player.play')"
@@ -957,7 +957,6 @@ const {
       :auto-gain-dialog-songs="autoGainDialogSongs"
       :auto-gain-selected-row-keys="autoGainSelectedRowKeys"
       :auto-gain-column-menu-visible="autoGainColumnMenuVisible"
-      @update:auto-gain-column-menu-visible="autoGainColumnMenuVisible = $event"
       :auto-gain-column-menu-event="autoGainColumnMenuEvent"
       :auto-gain-header-translate="autoGainHeaderTranslate"
       :ascending-order="ascendingOrder"
@@ -968,6 +967,7 @@ const {
       :handle-auto-gain-header-context-menu="handleAutoGainHeaderContextMenu"
       :handle-auto-gain-toggle-column-visibility="handleAutoGainToggleColumnVisibility"
       :handle-auto-gain-song-click="handleAutoGainSongClick"
+      @update:auto-gain-column-menu-visible="autoGainColumnMenuVisible = $event"
       :handle-auto-gain-song-drag-start="handleAutoGainSongDragStart"
       :handle-auto-gain-select-loudest-reference-click="handleAutoGainSelectLoudestReferenceClick"
       :handle-auto-gain-select-quietest-reference-click="handleAutoGainSelectQuietestReferenceClick"

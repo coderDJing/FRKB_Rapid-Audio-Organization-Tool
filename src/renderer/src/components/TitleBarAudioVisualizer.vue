@@ -265,8 +265,8 @@ onBeforeUnmount(() => {
 
 <template>
   <bubbleBoxTrigger
-    tag="button"
     v-if="visible"
+    tag="button"
     type="button"
     class="title-audio-visualizer canNotDrag"
     :title="tooltip"

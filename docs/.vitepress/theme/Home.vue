@@ -388,9 +388,9 @@ const pageContent = computed(() => (isEn.value ? enContent : zhContent))
         </div>
         <div class="nav-right">
           <button
-            @click="toggleTheme"
             class="theme-toggle"
             :aria-label="isEn ? 'Toggle theme' : '切换主题'"
+            @click="toggleTheme"
           >
             <svg
               width="20"
@@ -473,7 +473,7 @@ const pageContent = computed(() => (isEn.value ? enContent : zhContent))
           </div>
 
           <!-- 其他平台按钮 -->
-          <a v-if="!isLoadingDownloads" href="#" @click="togglePlatform" class="toggle-platform">
+          <a v-if="!isLoadingDownloads" href="#" class="toggle-platform" @click="togglePlatform">
             {{ isEn ? 'Other Platforms' : '其他平台' }}
           </a>
         </div>
@@ -508,7 +508,7 @@ const pageContent = computed(() => (isEn.value ? enContent : zhContent))
           <p>{{ pageContent.featuresIntro.description }}</p>
         </div>
         <div class="grid">
-          <div class="card reveal is-visible" v-for="f in pageContent.features" :key="f.title">
+          <div v-for="f in pageContent.features" :key="f.title" class="card reveal is-visible">
             <h3>{{ f.title }}</h3>
             <p>{{ f.details }}</p>
           </div>
@@ -524,9 +524,9 @@ const pageContent = computed(() => (isEn.value ? enContent : zhContent))
         </div>
         <div class="workflow-grid">
           <div
-            class="card workflow-card reveal is-visible"
             v-for="item in pageContent.workflow"
             :key="item.step"
+            class="card workflow-card reveal is-visible"
           >
             <span class="workflow-step">{{ item.step }}</span>
             <h3>{{ item.title }}</h3>

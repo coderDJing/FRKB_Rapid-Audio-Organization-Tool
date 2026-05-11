@@ -54,7 +54,10 @@ const githubRepo = getArgValue(
   repoMatch?.[2] || 'FRKB_Rapid-Audio-Organization-Tool'
 )
 
-const toBaseVersion = (value) => String(value || '').trim().replace(/-.+$/, '')
+const toBaseVersion = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/-.+$/, '')
 
 const inferChannel = () => {
   if (explicitChannel === 'rc' || explicitChannel === 'stable') return explicitChannel
