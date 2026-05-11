@@ -65,6 +65,7 @@ const emit = defineEmits<{
     value: { value: number; anchorRatio: number; sourceDirection: 'up' | 'down' }
   ): void
   (event: 'drag-session-start'): void
+  (event: 'drag-session-preview', payload: { anchorSec: number; playbackRate: number }): void
   (event: 'drag-session-end', payload: { anchorSec: number; committed: boolean }): void
 }>()
 
@@ -118,6 +119,7 @@ defineExpose({
       @toolbar-state-change="emit('toolbar-state-change', $event)"
       @zoom-change="emit('zoom-change', $event)"
       @drag-session-start="emit('drag-session-start')"
+      @drag-session-preview="emit('drag-session-preview', $event)"
       @drag-session-end="emit('drag-session-end', $event)"
     />
   </div>

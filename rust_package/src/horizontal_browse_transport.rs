@@ -63,6 +63,7 @@ struct DeckState {
   loop_start_sec: f64,
   loop_end_sec: f64,
   master_tempo_state: horizontal_browse_transport_audio::DeckMasterTempoState,
+  scrub_preview: ScrubPreviewState,
 }
 
 struct MetronomeState {
@@ -70,6 +71,14 @@ struct MetronomeState {
   click_elapsed_samples: u32,
   click_total_samples: u32,
   oscillator_phase: f64,
+}
+
+#[derive(Clone, Copy)]
+struct ScrubPreviewState {
+  active: bool,
+  current_sec: f64,
+  rate: f64,
+  level: f32,
 }
 
 struct DecodeApplyBaseline {
@@ -129,6 +138,17 @@ impl Default for MetronomeState {
   }
 }
 
+impl Default for ScrubPreviewState {
+  fn default() -> Self {
+    Self {
+      active: false,
+      current_sec: 0.0,
+      rate: 0.0,
+      level: 0.0,
+    }
+  }
+}
+
 impl Default for DeckState {
   fn default() -> Self {
     Self {
@@ -164,6 +184,7 @@ impl Default for DeckState {
       loop_start_sec: 0.0,
       loop_end_sec: 0.0,
       master_tempo_state: horizontal_browse_transport_audio::DeckMasterTempoState::default(),
+      scrub_preview: ScrubPreviewState::default(),
     }
   }
 }
@@ -636,12 +657,17 @@ impl HorizontalBrowseTransportEngine {
     let output_sample_rate = self.output_sample_rate.max(1) as f64;
     let before_sec = self.deck(deck).current_sec;
     let was_playing = self.deck(deck).playing;
+    let scrub_rendering =
+      horizontal_browse_transport_audio::is_scrub_preview_rendering(self.deck(deck));
     let target = self.deck_mut(deck);
     let (deck_left, deck_right) =
       horizontal_browse_transport_audio::sample_deck(target, output_sample_rate);
     let after_sec = self.deck(deck).current_sec;
-    let metronome =
-      self.sample_metronome(deck, before_sec, after_sec, was_playing) * self.deck(deck).gain;
+    let metronome = if scrub_rendering {
+      0.0
+    } else {
+      self.sample_metronome(deck, before_sec, after_sec, was_playing) * self.deck(deck).gain
+    };
     (deck_left + metronome, deck_right + metronome)
   }
 

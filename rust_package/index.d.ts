@@ -15,6 +15,7 @@ export declare function horizontalBrowseTransportAlignToLeader(deck: string, now
 export declare function horizontalBrowseTransportSetLeader(deck?: string | undefined | null, nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetPlaying(deck: string, nowMs: number, playing: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSeek(deck: string, nowMs: number, currentSec: number): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetScrubPreview(deck: string, nowMs: number, active: boolean, currentSec: number, rate: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetMetronome(deck: string, enabled: boolean, volumeLevel: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportToggleLoop(deck: string, nowMs: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportStepLoopBeats(deck: string, nowMs: number, direction: number): HorizontalBrowseTransportSnapshot

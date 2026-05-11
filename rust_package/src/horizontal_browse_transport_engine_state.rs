@@ -723,6 +723,14 @@ impl HorizontalBrowseTransportEngine {
       target.playback_rate = Self::normalize_playback_rate(payload.playback_rate);
       target.master_tempo_enabled = payload.master_tempo_enabled;
       target.metronome_state.next_beat_index = None;
+      if file_changed || payload.playing {
+        target.scrub_preview.active = false;
+        target.scrub_preview.rate = 0.0;
+        if file_changed {
+          target.scrub_preview.current_sec = 0.0;
+          target.scrub_preview.level = 0.0;
+        }
+      }
     }
 
     self.sync_master_tempo_state_after_change(
@@ -803,6 +811,10 @@ impl HorizontalBrowseTransportEngine {
     {
       let target = self.deck_mut(deck);
       target.playing = playing;
+      if playing {
+        target.scrub_preview.active = false;
+        target.scrub_preview.rate = 0.0;
+      }
     }
     self.reset_and_prime_master_tempo_state(deck);
     self.refresh();
@@ -820,9 +832,31 @@ impl HorizontalBrowseTransportEngine {
       };
       target.last_observed_at_ms = now_ms;
       target.metronome_state.next_beat_index = None;
+      target.scrub_preview.active = false;
+      target.scrub_preview.rate = 0.0;
     }
     self.reset_and_prime_master_tempo_state(deck);
     self.refresh();
+  }
+
+  pub(super) fn set_scrub_preview(
+    &mut self,
+    deck: DeckId,
+    now_ms: f64,
+    active: bool,
+    current_sec: f64,
+    rate: f64,
+  ) {
+    self.last_now_ms = now_ms;
+    let target = self.deck_mut(deck);
+    let duration_sec = target.duration_sec;
+    target.scrub_preview.current_sec = if duration_sec.is_finite() && duration_sec > 0.0 {
+      current_sec.clamp(0.0, duration_sec)
+    } else {
+      current_sec.max(0.0)
+    };
+    target.scrub_preview.active = active;
+    target.scrub_preview.rate = if active && rate.is_finite() { rate } else { 0.0 };
   }
 
   pub(super) fn set_metronome(&mut self, deck: DeckId, enabled: bool, volume_level: u8) {

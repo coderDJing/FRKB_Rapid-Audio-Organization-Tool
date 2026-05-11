@@ -1,0 +1,94 @@
+import type { Ref } from 'vue'
+import { clampNumber } from '@renderer/components/MixtapeBeatAlignDialog.constants'
+
+export type HorizontalBrowseScrubPreviewPayload = {
+  anchorSec: number
+  playbackRate: number
+}
+
+type UseHorizontalBrowseWaveformScrubPreviewOptions = {
+  dragging: Ref<boolean>
+  resolveAnchorSec: () => number
+  emitPreview: (payload: HorizontalBrowseScrubPreviewPayload) => void
+}
+
+const SCRUB_IDLE_STOP_MS = 80
+const SCRUB_MIN_RATE = 0.04
+const SCRUB_MAX_RATE = 8
+const SCRUB_RATE_SMOOTHING = 0.35
+
+const normalizeScrubPreviewRate = (rate: number) => {
+  if (!Number.isFinite(rate) || Math.abs(rate) < SCRUB_MIN_RATE) return 0
+  return clampNumber(rate, -SCRUB_MAX_RATE, SCRUB_MAX_RATE)
+}
+
+export const useHorizontalBrowseWaveformScrubPreview = (
+  options: UseHorizontalBrowseWaveformScrubPreviewOptions
+) => {
+  let lastAnchorSec = 0
+  let lastMoveAt = 0
+  let smoothedRate = 0
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+
+  const clearIdleTimer = () => {
+    if (!idleTimer) return
+    clearTimeout(idleTimer)
+    idleTimer = null
+  }
+
+  const emitPreview = (anchorSec: number, playbackRate: number) => {
+    options.emitPreview({
+      anchorSec: Math.max(0, Number(anchorSec) || 0),
+      playbackRate: normalizeScrubPreviewRate(playbackRate)
+    })
+  }
+
+  const scheduleIdleStop = () => {
+    clearIdleTimer()
+    idleTimer = setTimeout(() => {
+      idleTimer = null
+      if (!options.dragging.value) return
+      smoothedRate = 0
+      emitPreview(options.resolveAnchorSec(), 0)
+    }, SCRUB_IDLE_STOP_MS)
+  }
+
+  const start = (anchorSec: number) => {
+    lastAnchorSec = Math.max(0, Number(anchorSec) || 0)
+    lastMoveAt = performance.now()
+    smoothedRate = 0
+    emitPreview(lastAnchorSec, 0)
+    scheduleIdleStop()
+  }
+
+  const update = (anchorSec: number) => {
+    const safeAnchorSec = Math.max(0, Number(anchorSec) || 0)
+    const nowMs = performance.now()
+    const elapsedSec = Math.max(0, nowMs - lastMoveAt) / 1000
+    const rawRate =
+      elapsedSec > 0.004
+        ? normalizeScrubPreviewRate((safeAnchorSec - lastAnchorSec) / elapsedSec)
+        : 0
+
+    smoothedRate =
+      rawRate === 0 || Math.sign(rawRate) !== Math.sign(smoothedRate)
+        ? rawRate
+        : smoothedRate * (1 - SCRUB_RATE_SMOOTHING) + rawRate * SCRUB_RATE_SMOOTHING
+
+    lastAnchorSec = safeAnchorSec
+    lastMoveAt = nowMs
+    emitPreview(safeAnchorSec, smoothedRate)
+    scheduleIdleStop()
+  }
+
+  const stop = () => {
+    clearIdleTimer()
+    smoothedRate = 0
+  }
+
+  return {
+    start,
+    update,
+    stop
+  }
+}

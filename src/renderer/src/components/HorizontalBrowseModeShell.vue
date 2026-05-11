@@ -419,6 +419,7 @@ const {
   handleDeckLoopStepUp,
   handleDeckLoopPlaybackTick,
   handleDeckRawWaveformDragStart,
+  handleDeckRawWaveformScrubPreview,
   handleDeckRawWaveformDragEnd,
   handleDeckPlayheadSeek,
   handleDeckBarJump,
@@ -966,6 +967,7 @@ onUnmounted(() => {
           @toolbar-state-change="handleToolbarStateChange('top', $event)"
           @zoom-change="handleDetailZoomChange"
           @drag-session-start="handleDeckRawWaveformDragStart('top')"
+          @drag-session-preview="handleDeckRawWaveformScrubPreview('top', $event)"
           @drag-session-end="handleDeckRawWaveformDragEnd('top', $event)"
         />
 
@@ -1000,6 +1002,7 @@ onUnmounted(() => {
           @toolbar-state-change="handleToolbarStateChange('bottom', $event)"
           @zoom-change="handleDetailZoomChange"
           @drag-session-start="handleDeckRawWaveformDragStart('bottom')"
+          @drag-session-preview="handleDeckRawWaveformScrubPreview('bottom', $event)"
           @drag-session-end="handleDeckRawWaveformDragEnd('bottom', $event)"
         />
       </section>

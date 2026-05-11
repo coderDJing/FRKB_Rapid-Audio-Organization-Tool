@@ -286,6 +286,13 @@ export declare function horizontalBrowseTransportSeek(
   nowMs: number,
   currentSec: number
 ): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetScrubPreview(
+  deck: string,
+  nowMs: number,
+  active: boolean,
+  currentSec: number,
+  rate: number
+): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetMetronome(
   deck: string,
   enabled: boolean,

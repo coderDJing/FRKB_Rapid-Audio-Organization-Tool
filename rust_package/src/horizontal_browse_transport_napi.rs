@@ -254,6 +254,22 @@ pub fn horizontal_browse_transport_seek(
 }
 
 #[napi]
+pub fn horizontal_browse_transport_set_scrub_preview(
+  deck: String,
+  now_ms: f64,
+  active: bool,
+  current_sec: f64,
+  rate: f64,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.observe_external_now_ms(now_ms);
+  let _ = engine_guard.ensure_output_stream();
+  engine_guard.set_scrub_preview(deck_id, now_ms, active, current_sec, rate);
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
 pub fn horizontal_browse_transport_set_metronome(
   deck: String,
   enabled: bool,

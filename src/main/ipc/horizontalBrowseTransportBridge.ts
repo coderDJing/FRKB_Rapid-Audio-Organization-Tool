@@ -61,6 +61,13 @@ type RustHorizontalBrowseTransportBinding = {
     nowMs: number,
     currentSec: number
   ) => HorizontalBrowseTransportSnapshot
+  horizontalBrowseTransportSetScrubPreview?: (
+    deck: HorizontalBrowseDeckKey,
+    nowMs: number,
+    active: boolean,
+    currentSec: number,
+    rate: number
+  ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSetMetronome?: (
     deck: HorizontalBrowseDeckKey,
     enabled: boolean,
@@ -162,6 +169,21 @@ export const horizontalBrowseTransportBridge = {
   },
   seek(deck: HorizontalBrowseDeckKey, nowMs: number, currentSec: number) {
     return requireFn('horizontalBrowseTransportSeek')(deck, nowMs, currentSec)
+  },
+  setScrubPreview(
+    deck: HorizontalBrowseDeckKey,
+    nowMs: number,
+    active: boolean,
+    currentSec: number,
+    rate: number
+  ) {
+    return requireFn('horizontalBrowseTransportSetScrubPreview')(
+      deck,
+      nowMs,
+      active,
+      currentSec,
+      rate
+    )
   },
   setMetronome(deck: HorizontalBrowseDeckKey, enabled: boolean, volumeLevel: number) {
     return requireFn('horizontalBrowseTransportSetMetronome')(deck, enabled, volumeLevel)

@@ -268,6 +268,22 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
+  const setScrubPreview = async (
+    deck: HorizontalBrowseDeckKey,
+    active: boolean,
+    currentSec: number,
+    rate: number
+  ) => {
+    return await invoke(
+      'horizontal-browse-transport:set-scrub-preview',
+      deck,
+      performance.now(),
+      Boolean(active),
+      Number(currentSec) || 0,
+      Number(rate) || 0
+    )
+  }
+
   const setMetronome = async (
     deck: HorizontalBrowseDeckKey,
     enabled: boolean,
@@ -377,6 +393,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     setLeader,
     setPlaying,
     seek,
+    setScrubPreview,
     setMetronome,
     toggleLoop,
     stepLoopBeats,

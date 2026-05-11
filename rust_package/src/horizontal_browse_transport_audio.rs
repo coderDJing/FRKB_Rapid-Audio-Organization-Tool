@@ -3,6 +3,9 @@ use std::ffi::c_void;
 
 const MIN_RATE: f64 = 0.25;
 const MAX_RATE: f64 = 4.0;
+const SCRUB_MIN_RATE: f64 = 0.04;
+const SCRUB_MAX_RATE: f64 = 8.0;
+const SCRUB_RAMP_SEC: f64 = 0.006;
 const MASTER_TEMPO_FEED_FRAMES: usize = 4096;
 const MASTER_TEMPO_PULL_FRAMES: usize = 4096;
 
@@ -119,6 +122,14 @@ fn clamp_rate(value: f64) -> f64 {
   }
 }
 
+fn clamp_scrub_rate(value: f64) -> f64 {
+  if value.is_finite() {
+    value.clamp(-SCRUB_MAX_RATE, SCRUB_MAX_RATE)
+  } else {
+    0.0
+  }
+}
+
 fn resolved_channels(target: &DeckState) -> usize {
   target.channels.max(1).min(2) as usize
 }
@@ -225,6 +236,11 @@ fn read_source_sample(
     .copied()
     .unwrap_or(left);
   left + (right - left) * frac
+}
+
+pub(super) fn is_scrub_preview_rendering(target: &DeckState) -> bool {
+  (target.scrub_preview.active && target.scrub_preview.rate.abs() >= SCRUB_MIN_RATE)
+    || target.scrub_preview.level > 0.0001
 }
 
 fn append_source_chunk(target: &mut DeckState, output_sample_rate: f64) -> bool {
@@ -387,6 +403,78 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
   (left * target.gain, right * target.gain)
 }
 
+fn sample_deck_scrub_preview(target: &mut DeckState, output_sample_rate: f64) -> (f32, f32) {
+  let output_sample_rate = output_sample_rate.max(1.0);
+  if target.pcm_data.is_empty() || target.sample_rate == 0 || target.channels == 0 {
+    target.scrub_preview.level = 0.0;
+    target.scrub_preview.rate = 0.0;
+    return (0.0, 0.0);
+  }
+
+  let target_level =
+    if target.scrub_preview.active && target.scrub_preview.rate.abs() >= SCRUB_MIN_RATE {
+      1.0
+    } else {
+      0.0
+    };
+  let step = (1.0 / (SCRUB_RAMP_SEC * output_sample_rate)) as f32;
+  if target.scrub_preview.level < target_level {
+    target.scrub_preview.level = (target.scrub_preview.level + step).min(target_level);
+  } else if target.scrub_preview.level > target_level {
+    target.scrub_preview.level = (target.scrub_preview.level - step).max(target_level);
+  }
+
+  if target.scrub_preview.level <= 0.0001 {
+    return (0.0, 0.0);
+  }
+
+  let frame_count = target.pcm_data.len() / target.channels as usize;
+  if frame_count == 0 {
+    return (0.0, 0.0);
+  }
+  let audio_current_sec =
+    super::HorizontalBrowseTransportEngine::timeline_sec_to_audio_sec(
+      target,
+      target.scrub_preview.current_sec,
+    );
+  let source_frame =
+    ((audio_current_sec - target.pcm_start_sec).max(0.0)) * target.sample_rate as f64;
+  let base_index = source_frame.floor() as usize;
+  if base_index >= frame_count {
+    target.scrub_preview.rate = 0.0;
+    return (0.0, 0.0);
+  }
+
+  let frac = (source_frame - base_index as f64) as f32;
+  let next_index = (base_index + 1).min(frame_count - 1);
+  let channels = target.channels as usize;
+  let pcm_data = target.pcm_data.as_ref().as_slice();
+  let read_sample = |frame_index: usize, channel: usize| -> f32 {
+    pcm_data
+      .get(frame_index * channels + channel.min(channels - 1))
+      .copied()
+      .unwrap_or(0.0)
+  };
+  let l0 = read_sample(base_index, 0);
+  let l1 = read_sample(next_index, 0);
+  let r0 = read_sample(base_index, if channels > 1 { 1 } else { 0 });
+  let r1 = read_sample(next_index, if channels > 1 { 1 } else { 0 });
+  let left = l0 + (l1 - l0) * frac;
+  let right = r0 + (r1 - r0) * frac;
+
+  let rate = clamp_scrub_rate(target.scrub_preview.rate);
+  target.scrub_preview.current_sec += rate / output_sample_rate;
+  target.scrub_preview.current_sec = if target.duration_sec.is_finite() && target.duration_sec > 0.0
+  {
+    target.scrub_preview.current_sec.clamp(0.0, target.duration_sec)
+  } else {
+    target.scrub_preview.current_sec.max(0.0)
+  };
+
+  let gain = target.gain * target.scrub_preview.level;
+  (left * gain, right * gain)
+}
+
 fn sample_deck_master_tempo(target: &mut DeckState, output_sample_rate: f64) -> (f32, f32) {
   if target.master_tempo_state.processor.is_none() {
     reset_master_tempo_state(target);
@@ -451,6 +539,9 @@ fn sample_deck_master_tempo(target: &mut DeckState, output_sample_rate: f64) -> 
 }
 
 pub(super) fn sample_deck(target: &mut DeckState, output_sample_rate: f64) -> (f32, f32) {
+  if is_scrub_preview_rendering(target) {
+    return sample_deck_scrub_preview(target, output_sample_rate);
+  }
   if !target.playing
     || target.pcm_data.is_empty()
     || target.sample_rate == 0

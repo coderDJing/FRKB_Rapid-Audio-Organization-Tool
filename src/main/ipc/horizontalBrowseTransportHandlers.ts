@@ -138,6 +138,27 @@ export function registerHorizontalBrowseTransportHandlers() {
   )
 
   ipcMain.handle(
+    'horizontal-browse-transport:set-scrub-preview',
+    async (
+      _event,
+      deck: HorizontalBrowseDeckKey,
+      nowMs: number,
+      active: boolean,
+      currentSec: number,
+      rate: number
+    ) => {
+      const snapshot = horizontalBrowseTransportBridge.setScrubPreview(
+        deck,
+        nowMs,
+        active,
+        currentSec,
+        rate
+      )
+      return snapshot
+    }
+  )
+
+  ipcMain.handle(
     'horizontal-browse-transport:set-metronome',
     async (_event, deck: HorizontalBrowseDeckKey, enabled: boolean, volumeLevel: number) => {
       const snapshot = horizontalBrowseTransportBridge.setMetronome(deck, enabled, volumeLevel)

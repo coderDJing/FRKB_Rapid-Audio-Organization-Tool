@@ -17,6 +17,12 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
   nativeTransport: {
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
+    setScrubPreview: (
+      deck: DeckKey,
+      active: boolean,
+      currentSec: number,
+      rate: number
+    ) => Promise<unknown>
     beatsync: (deck: DeckKey) => Promise<unknown>
     alignToLeader: (deck: DeckKey, targetSec?: number) => Promise<unknown>
     snapshot: (nowMs?: number) => Promise<unknown>
@@ -97,6 +103,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     deckPendingPlayOnLoad,
     isDeckWaveformDragging,
     handleDeckRawWaveformDragStart,
+    handleDeckRawWaveformScrubPreview,
     handleDeckRawWaveformDragEnd,
     handleDeckPlayheadSeek,
     handleDeckBarJump,
@@ -183,6 +190,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     handleDeckLoopStepUp,
     handleDeckLoopPlaybackTick,
     handleDeckRawWaveformDragStart,
+    handleDeckRawWaveformScrubPreview,
     handleDeckRawWaveformDragEnd,
     handleDeckPlayheadSeek,
     handleDeckBarJump,

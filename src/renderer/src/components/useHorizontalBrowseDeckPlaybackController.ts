@@ -21,6 +21,11 @@ export type DeckWaveformDragEndPayload = {
   committed: boolean
 }
 
+export type DeckWaveformScrubPreviewPayload = {
+  anchorSec: number
+  playbackRate: number
+}
+
 type DeckWaveformDragState = {
   active: boolean
   wasPlaying: boolean
@@ -36,12 +41,25 @@ type DeckSeekRequest = {
   alignToLeader: boolean
 }
 
+type DeckScrubPreviewRequest = {
+  token: number
+  active: boolean
+  anchorSec: number
+  playbackRate: number
+}
+
 type UseHorizontalBrowseDeckPlaybackControllerParams = {
   touchDeckInteraction: (deck: DeckKey) => void
   notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
   nativeTransport: {
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
+    setScrubPreview: (
+      deck: DeckKey,
+      active: boolean,
+      currentSec: number,
+      rate: number
+    ) => Promise<unknown>
     beatsync: (deck: DeckKey) => Promise<unknown>
     alignToLeader: (deck: DeckKey, targetSec?: number) => Promise<unknown>
     snapshot: (nowMs?: number) => Promise<unknown>
@@ -108,6 +126,14 @@ export const useHorizontalBrowseDeckPlaybackController = (
   const deckSeekResumeOnComplete: Record<DeckKey, boolean> = {
     top: false,
     bottom: false
+  }
+  const deckScrubPreviewInFlight: Record<DeckKey, boolean> = {
+    top: false,
+    bottom: false
+  }
+  const deckPendingScrubPreview: Record<DeckKey, DeckScrubPreviewRequest | null> = {
+    top: null,
+    bottom: null
   }
 
   const traceDeckAction = (deck: DeckKey, stage: string, payload?: Record<string, unknown>) => {
@@ -402,6 +428,55 @@ export const useHorizontalBrowseDeckPlaybackController = (
       .catch(() => {})
   }
 
+  const runLatestDeckScrubPreviewRequest = (deck: DeckKey) => {
+    if (deckScrubPreviewInFlight[deck]) return
+    const request = deckPendingScrubPreview[deck]
+    deckPendingScrubPreview[deck] = null
+    if (!request) return
+    if (
+      request.active &&
+      (!deckWaveformDragState[deck].active || deckWaveformDragState[deck].token !== request.token)
+    ) {
+      runLatestDeckScrubPreviewRequest(deck)
+      return
+    }
+
+    deckScrubPreviewInFlight[deck] = true
+    void params.nativeTransport
+      .setScrubPreview(deck, request.active, request.anchorSec, request.playbackRate)
+      .catch(() => {})
+      .finally(() => {
+        deckScrubPreviewInFlight[deck] = false
+        if (deckPendingScrubPreview[deck]) {
+          runLatestDeckScrubPreviewRequest(deck)
+        }
+      })
+  }
+
+  const queueDeckScrubPreviewRequest = (deck: DeckKey, request: DeckScrubPreviewRequest) => {
+    deckPendingScrubPreview[deck] = request
+    runLatestDeckScrubPreviewRequest(deck)
+  }
+
+  const handleDeckRawWaveformScrubPreview = (
+    deck: DeckKey,
+    payload: DeckWaveformScrubPreviewPayload
+  ) => {
+    const dragState = deckWaveformDragState[deck]
+    if (!dragState.active) return
+    const anchorSec = clampNumber(
+      Number(payload.anchorSec) || 0,
+      0,
+      params.resolveDeckDurationSeconds(deck) || Number.MAX_SAFE_INTEGER
+    )
+    queueDeckScrubPreviewRequest(deck, {
+      token: dragState.token,
+      active: true,
+      anchorSec,
+      playbackRate: Number(payload.playbackRate) || 0
+    })
+  }
+
   const handleDeckRawWaveformDragEnd = (deck: DeckKey, payload: DeckWaveformDragEndPayload) => {
     params.touchDeckInteraction(deck)
     const dragState = deckWaveformDragState[deck]
@@ -417,6 +492,12 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
     const token = dragState.token
     const targetSec = Math.max(0, Number(payload.anchorSec) || 0)
+    queueDeckScrubPreviewRequest(deck, {
+      token,
+      active: false,
+      anchorSec: targetSec,
+      playbackRate: 0
+    })
     if (!payload?.committed) return
 
     const shouldAlignToLeader =
@@ -622,6 +703,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     deckPendingPlayOnLoad,
     isDeckWaveformDragging: (deck: DeckKey) => deckWaveformDragState[deck].active,
     handleDeckRawWaveformDragStart,
+    handleDeckRawWaveformScrubPreview,
     handleDeckRawWaveformDragEnd,
     handleDeckPlayheadSeek,
     handleDeckBarJump,

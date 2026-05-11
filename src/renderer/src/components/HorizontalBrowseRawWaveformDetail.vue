@@ -27,6 +27,17 @@ import {
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
 import { useHorizontalBrowseRawWaveformStream } from '@renderer/components/useHorizontalBrowseRawWaveformStream'
 import {
+  useHorizontalBrowseWaveformScrubPreview,
+  type HorizontalBrowseScrubPreviewPayload
+} from '@renderer/components/useHorizontalBrowseWaveformScrubPreview'
+import type {
+  HorizontalBrowseDragSessionEndPayload,
+  HorizontalBrowseLoopRange,
+  HorizontalBrowseSharedZoomState,
+  HorizontalBrowseWaveformLayout,
+  HorizontalBrowseWaveformRenderStyle
+} from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
+import {
   resolveHorizontalBrowseWaveformTraceElapsedMs,
   sendHorizontalBrowseWaveformTrace
 } from '@renderer/components/horizontalBrowseWaveformTrace'
@@ -46,25 +57,6 @@ type HorizontalBrowseRawWaveformDetailExpose = {
   toggleMetronome: () => void
   cycleMetronomeVolume: () => void
 }
-
-type HorizontalBrowseSharedZoomState = {
-  value: number
-  anchorRatio: number
-  sourceDirection: 'up' | 'down' | null
-  revision: number
-}
-
-type HorizontalBrowseDragSessionEndPayload = {
-  anchorSec: number
-  committed: boolean
-}
-
-type HorizontalBrowseLoopRange = {
-  startSec: number
-  endSec: number
-}
-type HorizontalBrowseWaveformLayout = 'auto' | 'full'
-type HorizontalBrowseWaveformRenderStyle = 'columns' | 'raw-curve'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -95,6 +87,7 @@ const emit = defineEmits<{
     value: { value: number; anchorRatio: number; sourceDirection: 'up' | 'down' }
   ): void
   (event: 'drag-session-start'): void
+  (event: 'drag-session-preview', value: HorizontalBrowseScrubPreviewPayload): void
   (event: 'drag-session-end', value: HorizontalBrowseDragSessionEndPayload): void
 }>()
 
@@ -125,7 +118,6 @@ const previewMaxZoom = computed(() => {
 const deferredWaveformLoad = computed(
   () => Boolean(props.deferWaveformLoad) && !previewPlaying.value
 )
-
 const resolveWaveformLayout = () =>
   props.waveformLayout === 'full' ? 'full' : props.direction === 'up' ? 'top-half' : 'bottom-half'
 
@@ -245,6 +237,12 @@ const {
   rawStreamActive,
   waveformLayout: resolveWaveformLayout,
   waveformRenderStyle: resolveWaveformRenderStyle
+})
+
+const scrubPreview = useHorizontalBrowseWaveformScrubPreview({
+  dragging,
+  resolveAnchorSec: resolvePreviewAnchorSec,
+  emitPreview: (payload) => emit('drag-session-preview', payload)
 })
 
 const resolveGridShiftMs = (targetPx: number, minMs: number) => {
@@ -390,6 +388,7 @@ const stopDragging = (commitPlayhead = false) => {
   if (!dragging.value) return
   const finalAnchorSec = resolvePreviewAnchorSec()
   dragging.value = false
+  scrubPreview.stop()
   window.removeEventListener('mousemove', handleDragMove)
   window.removeEventListener('mouseup', handleWindowMouseUp)
   emit('drag-session-end', {
@@ -415,6 +414,7 @@ function handleDragMove(event: MouseEvent) {
   const anchorSec = resolvePreviewAnchorSec()
   setLastZoomAnchor(anchorSec, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
   maybeContinueRawWaveformStream(anchorSec)
+  scrubPreview.update(anchorSec)
   scheduleDraw()
 }
 
@@ -429,8 +429,10 @@ const handleMouseDown = (event: MouseEvent) => {
   dragging.value = true
   dragStartClientX = event.clientX
   dragStartSec = previewStartSec.value
+  const anchorSec = resolvePreviewAnchorSec()
   emit('drag-session-start')
-  maybeContinueRawWaveformStream(resolvePreviewAnchorSec())
+  scrubPreview.start(anchorSec)
+  maybeContinueRawWaveformStream(anchorSec)
   window.addEventListener('mousemove', handleDragMove, { passive: false })
   window.addEventListener('mouseup', handleWindowMouseUp, { passive: true })
   event.preventDefault()
