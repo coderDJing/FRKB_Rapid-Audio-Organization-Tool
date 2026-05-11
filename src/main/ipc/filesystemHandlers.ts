@@ -292,12 +292,7 @@ export function registerFilesystemHandlers() {
   ipcMain.on('layoutConfigChanged', (_e, layoutConfig) => {
     try {
       const parsed = JSON.parse(layoutConfig)
-      const nextLayoutConfig = mergeLayoutConfig(store.layoutConfig, {
-        libraryAreaWidth:
-          parsed && typeof parsed === 'object' && 'libraryAreaWidth' in parsed
-            ? (parsed as { libraryAreaWidth?: unknown }).libraryAreaWidth
-            : store.layoutConfig.libraryAreaWidth
-      })
+      const nextLayoutConfig = mergeLayoutConfig(store.layoutConfig, parsed)
       store.layoutConfig = nextLayoutConfig
       void persistLayoutConfig(nextLayoutConfig)
     } catch (error) {

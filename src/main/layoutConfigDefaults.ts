@@ -34,6 +34,7 @@ export const MAIN_WINDOW_MIN_HEIGHT = latestMainWindowSizeMigration.minHeight
 
 export const defaultLayoutConfig: ILayoutConfig = {
   libraryAreaWidth: 175,
+  songsAreaSplitLeftRatio: 0.5,
   isMaxMainWin: false,
   mainWindowWidth: MAIN_WINDOW_DEFAULT_WIDTH,
   mainWindowHeight: MAIN_WINDOW_DEFAULT_HEIGHT,

@@ -193,6 +193,7 @@ export const useRuntimeStore = defineStore('runtime', {
       activeMenuUUID: '',
       layoutConfig: {
         libraryAreaWidth: 200,
+        songsAreaSplitLeftRatio: 0.5,
         isMaxMainWin: false, //上次关闭前是否最大化
         mainWindowWidth: 1260, //上次关闭前窗口化时的宽
         mainWindowHeight: 720 //上次关闭前窗口化时的高

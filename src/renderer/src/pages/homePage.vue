@@ -28,6 +28,7 @@ import {
   exitSongsAreaSplit,
   getSongsAreaOppositePane
 } from '@renderer/utils/songsAreaSplit'
+import { useSongsAreaSplitDivider } from './homePage/useSongsAreaSplitDivider'
 const runtime = useRuntimeStore()
 let startX = 0
 let isResizing = false
@@ -40,6 +41,10 @@ const singlePaneHeaderRevealPending = ref(false)
 let singlePaneHeaderRevealTimer: ReturnType<typeof setTimeout> | null = null
 const suspendedSplitActivePane = ref<SplitSongsAreaPaneKey | ''>('')
 const suspendedSinglePaneState = ref<ISongsAreaPaneRuntimeState | null>(null)
+
+const persistRuntimeLayoutConfig = () => {
+  window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
+}
 
 // 计算 dragBar 的 left 样式
 const dragBarLeft = computed(() => {
@@ -99,7 +104,7 @@ function stopResize() {
   isHovered.value = false
   document.removeEventListener('mousemove', resize)
   document.removeEventListener('mouseup', stopResize)
-  window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
+  persistRuntimeLayoutConfig()
 }
 
 const triggerLibrarySwitchAnimation = (shouldSkip = false) => {
@@ -138,7 +143,7 @@ const adjustLibraryWidth = () => {
   // 如果当前宽度超过最大允许宽度，才进行调整
   if (runtime.layoutConfig.libraryAreaWidth > maxWidth) {
     runtime.layoutConfig.libraryAreaWidth = maxWidth
-    window.electron.ipcRenderer.send('layoutConfigChanged', JSON.stringify(runtime.layoutConfig))
+    persistRuntimeLayoutConfig()
   }
 }
 
@@ -358,6 +363,18 @@ const showSingleSongsAreaHeader = computed(
     !singlePaneHeaderRevealPending.value &&
     Boolean(runtime.songsAreaPanels.panes.single.songListUUID)
 )
+
+const {
+  splitSongsAreaRef,
+  splitSongsAreaStyle,
+  splitDividerHovered,
+  isSongsAreaSplitDividerResizing,
+  startSongsAreaSplitResize
+} = useSongsAreaSplitDivider({
+  runtime,
+  isSongsAreaSplit,
+  persistLayoutConfig: persistRuntimeLayoutConfig
+})
 
 watch(
   () => runtime.songsAreaPanels.panes.single.songListUUID,
@@ -696,12 +713,17 @@ const drop = async (e: DragEvent) => {
             v-if="isPioneerDeviceLibraryView"
             style="width: 100%; height: 100%; min-width: 0"
           />
-          <div v-else-if="isSongsAreaSplit" class="splitSongsArea">
+          <div
+            v-else-if="isSongsAreaSplit"
+            ref="splitSongsAreaRef"
+            class="splitSongsArea"
+            :style="splitSongsAreaStyle"
+          >
             <div
               v-for="pane in splitPaneKeys"
               :key="pane"
               class="splitSongsAreaPane"
-              :class="{ 'is-active': isSplitPaneActive(pane) }"
+              :class="[`splitSongsAreaPane--${pane}`, { 'is-active': isSplitPaneActive(pane) }]"
               @mousedown.capture="handleSplitPaneMouseDown(pane)"
             >
               <div class="splitSongsAreaPaneHeader">
@@ -732,6 +754,18 @@ const drop = async (e: DragEvent) => {
                 style="flex: 1; min-width: 0; min-height: 0"
               />
             </div>
+            <div
+              class="splitSongsAreaDivider"
+              :class="{
+                'is-hovered': splitDividerHovered,
+                'is-resizing': isSongsAreaSplitDividerResizing
+              }"
+              role="separator"
+              aria-orientation="vertical"
+              @mousedown.stop.prevent="startSongsAreaSplitResize"
+              @mouseenter="splitDividerHovered = true"
+              @mouseleave="splitDividerHovered = isSongsAreaSplitDividerResizing"
+            ></div>
           </div>
           <div v-else class="singleSongsAreaShell">
             <div v-if="showSingleSongsAreaHeader" class="splitSongsAreaPaneHeader">
@@ -822,6 +856,10 @@ const drop = async (e: DragEvent) => {
   height: 100%;
   min-width: 0;
   overflow: hidden;
+  position: relative;
+  --songs-area-split-left-width: 50%;
+  --songs-area-split-right-width: 50%;
+  --songs-area-split-divider-left: 50%;
 }
 
 .singleSongsAreaShell {
@@ -833,21 +871,67 @@ const drop = async (e: DragEvent) => {
 }
 
 .splitSongsAreaPane {
-  flex: 1 1 50%;
+  flex: 0 0 auto;
   min-width: 0;
+  box-sizing: border-box;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
   background: color-mix(in srgb, var(--bg) 97%, var(--font-color) 3%);
-
-  &:last-child {
-    border-right: 0;
-  }
 
   &.is-active {
     background: color-mix(in srgb, var(--bg) 92%, var(--main-color) 8%);
   }
+}
+
+.splitSongsAreaPane--left {
+  width: var(--songs-area-split-left-width);
+  flex-basis: var(--songs-area-split-left-width);
+  border-right: 1px solid var(--border);
+}
+
+.splitSongsAreaPane--right {
+  width: var(--songs-area-split-right-width);
+  flex-basis: var(--songs-area-split-right-width);
+}
+
+.splitSongsAreaDivider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--songs-area-split-divider-left);
+  width: 8px;
+  transform: translateX(-50%);
+  z-index: 10;
+  cursor: ew-resize;
+  background: transparent;
+  touch-action: none;
+}
+
+.splitSongsAreaDivider::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  height: 100%;
+  bottom: 0;
+  left: 50%;
+  width: 4px;
+  transform: translateX(-50%);
+  background-color: #0078d4;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.splitSongsAreaDivider.is-hovered::before,
+.splitSongsAreaDivider.is-resizing::before {
+  opacity: 1;
+}
+
+:global(body.songs-area-split-resizing),
+:global(body.songs-area-split-resizing *) {
+  cursor: ew-resize !important;
+  user-select: none !important;
 }
 
 .splitSongsAreaPaneHeader {

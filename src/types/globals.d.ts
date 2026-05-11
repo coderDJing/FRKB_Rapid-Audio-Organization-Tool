@@ -527,6 +527,7 @@ interface IMetadataAutoFillSummary {
 
 interface ILayoutConfig {
   libraryAreaWidth: number
+  songsAreaSplitLeftRatio: number
   isMaxMainWin: boolean
   mainWindowWidth: number
   mainWindowHeight: number

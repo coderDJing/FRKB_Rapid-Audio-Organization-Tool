@@ -30,6 +30,11 @@ const toNonNegativeInteger = (value: unknown, fallback: number) => {
   return parsed >= 0 ? parsed : fallback
 }
 
+const toRatio = (value: unknown, fallback: number) => {
+  const parsed = toFiniteNumber(value, fallback)
+  return Math.min(1, Math.max(0, parsed))
+}
+
 export function normalizeLayoutConfig(value: unknown): ILayoutConfig {
   const raw = isRecord(value) ? value : {}
   const merged = {
@@ -61,6 +66,10 @@ export function normalizeLayoutConfig(value: unknown): ILayoutConfig {
     libraryAreaWidth: Math.max(
       0,
       Math.round(toFiniteNumber(merged.libraryAreaWidth, defaultLayoutConfig.libraryAreaWidth))
+    ),
+    songsAreaSplitLeftRatio: toRatio(
+      merged.songsAreaSplitLeftRatio,
+      defaultLayoutConfig.songsAreaSplitLeftRatio
     ),
     isMaxMainWin: !!merged.isMaxMainWin,
     mainWindowWidth: Math.max(mainWindowWidth, MAIN_WINDOW_MIN_WIDTH),
