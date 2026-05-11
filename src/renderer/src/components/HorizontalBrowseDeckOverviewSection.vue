@@ -94,7 +94,7 @@ const isTop = props.position === 'top'
       class="overview__region drop-zone"
       :class="{
         'overview__region--deck-info': isTop ? regionId === 1 : regionId === 8,
-        'overview__region--muted': isTop ? regionId === 3 : regionId === 6,
+        'overview__region--muted': isTop ? regionId === 2 : regionId === 7,
         'overview__region--toolbar': isTop ? regionId === 3 : regionId === 6
       }"
       @dragenter.stop.prevent="emit('region-drag-enter', regionId, $event)"
@@ -204,6 +204,5 @@ const isTop = props.position === 'top'
 
 .overview__region--muted {
   padding: 0;
-  background: var(--shell-overview-waveform-bg);
 }
 </style>

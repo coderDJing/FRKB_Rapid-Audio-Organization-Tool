@@ -888,6 +888,8 @@ watch(
 #waveform {
   position: relative;
   min-height: 40px;
+  background: var(--waveform-bg);
+  overflow: hidden;
 }
 
 .songCover {

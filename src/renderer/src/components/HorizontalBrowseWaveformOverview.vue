@@ -759,6 +759,7 @@ onUnmounted(() => {
   min-height: 0;
   cursor: default;
   touch-action: none;
+  background: var(--shell-waveform-bg, var(--waveform-bg));
 }
 
 .overview-waveform__canvas {
@@ -781,14 +782,8 @@ onUnmounted(() => {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  width: 2px;
+  background: var(--shell-playhead-bg);
   pointer-events: none;
-}
-
-:global(.theme-light) .overview-waveform__playhead {
-  background: rgba(22, 22, 22, 0.92);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.24);
 }
 </style>

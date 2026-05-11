@@ -33,6 +33,7 @@ type DrawHorizontalBrowseDetailOverlayOptions = {
   cueAccentColor?: string
   timeBasisOffsetMs?: number
   xPixelScale?: number
+  themeVariant?: 'light' | 'dark'
 }
 
 const CUE_MARKER_WIDTH = 10
@@ -88,6 +89,19 @@ const resolveCueAccentColor = (override?: string) => {
   return cssValue || '#d98921'
 }
 
+const resolveDetailMarkerPalette = (themeVariant: 'light' | 'dark' = 'dark') =>
+  themeVariant === 'light'
+    ? {
+        cueShadow: 'rgba(255, 255, 255, 0.9)',
+        hotCueStroke: 'rgba(15, 23, 42, 0.16)',
+        hotCueText: '#ffffff'
+      }
+    : {
+        cueShadow: 'rgba(0, 0, 0, 0.88)',
+        hotCueStroke: 'rgba(18, 18, 18, 0.18)',
+        hotCueText: '#ffffff'
+      }
+
 const resolveMarkerCenterX = (
   seconds: number | undefined,
   rangeStartSec: number,
@@ -105,7 +119,8 @@ const drawCueTriangle = (
   centerX: number,
   topY: number,
   direction: HorizontalBrowseDirection,
-  fillColor: string
+  fillColor: string,
+  shadowColor: string
 ) => {
   const left = centerX - CUE_MARKER_WIDTH * 0.5
   const right = left + CUE_MARKER_WIDTH
@@ -122,7 +137,7 @@ const drawCueTriangle = (
     ctx.lineTo(centerX, bottom)
   }
   ctx.closePath()
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.88)'
+  ctx.fillStyle = shadowColor
   ctx.fill()
 
   const inset = 1
@@ -171,7 +186,9 @@ const drawHotCue = (
   centerX: number,
   topY: number,
   label: string,
-  color: string
+  color: string,
+  strokeColor: string,
+  textColor: string
 ) => {
   ctx.font = HOT_CUE_FONT
   ctx.textAlign = 'center'
@@ -188,10 +205,10 @@ const drawHotCue = (
   ctx.fillStyle = color
   ctx.fill()
   ctx.lineWidth = 1
-  ctx.strokeStyle = 'rgba(18, 18, 18, 0.18)'
+  ctx.strokeStyle = strokeColor
   ctx.stroke()
 
-  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = textColor
   ctx.fillText(text, centerX, topY + HOT_CUE_LABEL_HEIGHT * 0.5 + 0.5)
 }
 
@@ -260,12 +277,14 @@ export const drawHorizontalBrowseDetailOverlay = (
     loopRange,
     cueAccentColor,
     timeBasisOffsetMs,
-    xPixelScale
+    xPixelScale,
+    themeVariant
   } = options
   if (width <= 0 || height <= 0 || waveformHeight <= 0 || rangeDurationSec <= 0) return
 
   const waveformTop = overlayInsetPx
   const cueAccent = resolveCueAccentColor(cueAccentColor)
+  const markerPalette = resolveDetailMarkerPalette(themeVariant)
   const safeXPixelScale = resolvePixelScale(xPixelScale)
   drawLoopMask(
     ctx,
@@ -290,7 +309,7 @@ export const drawHorizontalBrowseDetailOverlay = (
   if (cueCenterX !== null) {
     const cueTopY =
       direction === 'up' ? waveformTop + waveformHeight - CUE_MARKER_HEIGHT : waveformTop
-    drawCueTriangle(ctx, cueCenterX, cueTopY, direction, cueAccent)
+    drawCueTriangle(ctx, cueCenterX, cueTopY, direction, cueAccent, markerPalette.cueShadow)
   }
 
   const memoryAnchor = direction === 'up' ? 'top' : 'bottom'
@@ -330,7 +349,9 @@ export const drawHorizontalBrowseDetailOverlay = (
       centerX,
       hotCueTopY,
       resolveSongHotCueDisplayLabel(marker),
-      resolveSongHotCueDisplayColor(marker)
+      resolveSongHotCueDisplayColor(marker),
+      markerPalette.hotCueStroke,
+      markerPalette.hotCueText
     )
   }
 }

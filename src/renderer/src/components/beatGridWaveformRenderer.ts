@@ -82,8 +82,8 @@ type BeatAlignWaveformPalette = {
 type BeatAlignCanvasContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
 const DARK_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
-  backgroundStart: '#0f1b2e',
-  backgroundEnd: '#0a1322',
+  backgroundStart: '#151515',
+  backgroundEnd: '#1c1c1c',
   backgroundStripe: 'rgba(255, 255, 255, 0.03)',
   barLine: '#8fd6ff',
   majorGrid: '#ffdf94',
@@ -93,8 +93,8 @@ const DARK_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
 }
 
 const LIGHT_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
-  backgroundStart: '#eef4fb',
-  backgroundEnd: '#dde7f4',
+  backgroundStart: '#d9dee6',
+  backgroundEnd: '#cfd6df',
   backgroundStripe: 'rgba(15, 23, 42, 0.03)',
   barLine: '#003f96',
   majorGrid: '#7c4300',

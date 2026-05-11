@@ -178,6 +178,7 @@ export function useWaveformPreview(params: {
   let drawRaf = 0
   let waveformWorker: Worker | null = null
   let drawAllVisiblePending = false
+  let themeClassObserver: MutationObserver | null = null
   const pendingDrawFilePaths = new Set<string>()
   const previewActive = ref(false)
   const previewFilePath = ref<string | null>(null)
@@ -255,6 +256,7 @@ export function useWaveformPreview(params: {
     const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
     const accent = computedStyle?.getPropertyValue('--accent') || ''
     const progressColor = accent.trim() || '#0078d4'
+    const backgroundColor = computedStyle?.getPropertyValue('--waveform-bg').trim() || '#d9dee6'
     const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
     const message: SongListWaveformWorkerIncoming = {
       type: 'render',
@@ -267,6 +269,7 @@ export function useWaveformPreview(params: {
         waveformStyle: normalizeSongListWaveformStyle(runtime.setting?.waveformStyle),
         isHalf: useHalfWaveform(),
         baseColor: computedStyle?.color || '#999999',
+        backgroundColor,
         progressColor,
         playedPercent
       }
@@ -507,9 +510,12 @@ export function useWaveformPreview(params: {
     const width = canvas.clientWidth || 1
     const height = canvas.clientHeight || 1
     resizeCanvas(canvas, ctx, width, height)
+    const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
+    const backgroundColor = computedStyle?.getPropertyValue('--waveform-bg').trim() || '#d9dee6'
+    ctx.fillStyle = backgroundColor
+    ctx.fillRect(0, 0, width, height)
     const data = dataMap.get(filePath) ?? null
     if (!data) return
-    const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
     const accent = computedStyle?.getPropertyValue('--accent') || ''
     const progressColor = accent.trim() || '#0078d4'
     const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
@@ -600,6 +606,23 @@ export function useWaveformPreview(params: {
         .map((filePath) => String(filePath || '').trim())
         .filter((filePath) => Boolean(filePath))
     )
+  }
+  const scheduleThemeDraw = () => {
+    if (!waveformVisible.value) return
+    nextTick(() => scheduleDraw())
+  }
+  const bindThemeClassObserver = () => {
+    if (themeClassObserver || typeof MutationObserver === 'undefined') return
+    if (typeof document === 'undefined') return
+    const targets = [document.documentElement, document.body].filter(Boolean)
+    if (!targets.length) return
+    themeClassObserver = new MutationObserver(scheduleThemeDraw)
+    for (const target of targets) {
+      themeClassObserver.observe(target, {
+        attributes: true,
+        attributeFilter: ['class']
+      })
+    }
   }
   const fetchWaveformBatch = async (filePaths: string[]) => {
     if (!filePaths.length) return
@@ -922,15 +945,25 @@ export function useWaveformPreview(params: {
       scheduleDraw()
     }
   )
+  watch(
+    () => runtime.setting?.themeMode,
+    () => {
+      scheduleThemeDraw()
+    },
+    { flush: 'post' }
+  )
   waveformUpdatedSubscribers.add(handleWaveformUpdated)
   pioneerPreviewWaveformItemSubscribers.add(handlePioneerPreviewWaveformItem)
   pioneerPreviewWaveformDoneSubscribers.add(handlePioneerPreviewWaveformDone)
+  bindThemeClassObserver()
   bindWaveformIpcListeners()
   emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:progress', handleWaveformPreviewProgress)
   onBeforeUnmount(() => {
     if (loadTimer) clearTimeout(loadTimer)
     if (drawRaf) cancelAnimationFrame(drawRaf)
+    themeClassObserver?.disconnect()
+    themeClassObserver = null
     drawAllVisiblePending = false
     pendingDrawFilePaths.clear()
     resetPioneerStreamState()

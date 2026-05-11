@@ -53,6 +53,7 @@ export type SongListWaveformWorkerIncoming =
         waveformStyle: WaveformStyle
         isHalf: boolean
         baseColor: string
+        backgroundColor: string
         progressColor: string
         playedPercent: number
       }

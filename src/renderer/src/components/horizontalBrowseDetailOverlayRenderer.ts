@@ -25,6 +25,7 @@ type HorizontalBrowseDetailOverlayRenderInput = {
   memoryCues?: ISongMemoryCue[] | null
   loopRange?: HorizontalBrowseLoopRange | null
   allowScrollReuse?: boolean
+  themeVariant?: 'light' | 'dark'
 }
 
 type CanvasMetrics = {
@@ -50,6 +51,15 @@ type FrameState = {
   memoryCueSignature: string
   loopStartSec: number | null
   loopEndSec: number | null
+  themeVariant: 'light' | 'dark'
+}
+
+const resolveCurrentThemeVariant = (): 'light' | 'dark' => {
+  if (typeof document === 'undefined') return 'dark'
+  return document.documentElement.classList.contains('theme-light') ||
+    document.body.classList.contains('theme-light')
+    ? 'light'
+    : 'dark'
 }
 
 const OVERLAY_SEGMENT_PADDING_PX = 64
@@ -130,7 +140,8 @@ const buildFrameState = (
   loopStartSec: input.loopRange ? Math.max(0, Number(input.loopRange.startSec) || 0) : null,
   loopEndSec: input.loopRange
     ? Math.max(0, Number(input.loopRange.endSec ?? input.loopRange.startSec) || 0)
-    : null
+    : null,
+  themeVariant: input.themeVariant || resolveCurrentThemeVariant()
 })
 
 const drawRange = (
@@ -156,6 +167,7 @@ const drawRange = (
     hotCues: input.hotCues,
     memoryCues: input.memoryCues,
     loopRange: input.loopRange,
+    themeVariant: input.themeVariant || resolveCurrentThemeVariant(),
     xPixelScale
   })
 }
@@ -211,7 +223,8 @@ export const createHorizontalBrowseDetailOverlayRenderer = () => {
       lastFrame.hotCueSignature === current.hotCueSignature &&
       lastFrame.memoryCueSignature === current.memoryCueSignature &&
       lastFrame.loopStartSec === current.loopStartSec &&
-      lastFrame.loopEndSec === current.loopEndSec
+      lastFrame.loopEndSec === current.loopEndSec &&
+      lastFrame.themeVariant === current.themeVariant
     )
   }
 

@@ -118,6 +118,16 @@ const editDetailZoomState = ref<SharedDetailZoomState>({
 })
 const horizontalBrowseViewMode = computed<HorizontalBrowseViewMode>(() => props.viewMode)
 const isEditMode = computed(() => horizontalBrowseViewMode.value === 'edit')
+const isLightTheme = computed(() => {
+  const mode = runtime.setting?.themeMode || 'system'
+  if (mode === 'light') return true
+  if (mode === 'dark') return false
+  if (typeof document === 'undefined') return false
+  return (
+    document.documentElement.classList.contains('theme-light') ||
+    document.body.classList.contains('theme-light')
+  )
+})
 const regionDragDepth = reactive<Record<number, number>>({
   1: 0,
   2: 0,
@@ -813,7 +823,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="horizontal-shell" :class="{ 'is-edit-mode': isEditMode }">
+  <div
+    class="horizontal-shell"
+    :class="{ 'is-edit-mode': isEditMode, 'is-light-theme': isLightTheme }"
+  >
     <div class="controls" :class="{ 'controls--edit': isEditMode }">
       <HorizontalBrowseEditDeckControls
         v-if="isEditMode"

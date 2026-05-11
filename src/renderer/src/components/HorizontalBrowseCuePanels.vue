@@ -318,7 +318,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
 }
 
 .cue-panel__memory-delete:hover {
-  color: #ffffff;
+  color: var(--text);
   opacity: 1;
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
@@ -379,8 +379,12 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
   width: 18px;
   height: 14px;
   border-radius: 3px;
-  background: color-mix(in srgb, var(--cue-slot-color, var(--accent)) 88%, #111111 12%);
-  color: #ffffff;
+  background: color-mix(
+    in srgb,
+    var(--cue-slot-color, var(--accent)) 88%,
+    var(--shell-cue-label-mix, #111111) 12%
+  );
+  color: var(--shell-cue-label-text, #ffffff);
   font-size: 9px;
   font-weight: 700;
   line-height: 14px;
@@ -470,7 +474,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
 }
 
 .cue-panel__hotcue-delete:hover {
-  color: #ffffff;
+  color: var(--text);
   opacity: 1;
   background: color-mix(in srgb, var(--cue-slot-color, var(--accent)) 18%, transparent);
 }
@@ -528,15 +532,15 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
 }
 
 .cue-panel__mode-btn:hover {
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: var(--shell-control-hover-border, var(--accent));
 }
 
 .cue-panel__mode-btn.is-active {
-  color: #ffffff;
-  border-color: rgba(42, 144, 255, 0.95);
-  background: linear-gradient(180deg, rgba(35, 137, 255, 0.96), rgba(0, 120, 212, 0.96));
+  color: var(--shell-active-control-text, #ffffff);
+  border-color: var(--shell-active-control-border, var(--accent));
+  background: var(--shell-active-control-bg, var(--accent));
   box-shadow:
-    0 0 0 1px rgba(12, 84, 156, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+    0 0 0 1px var(--shell-active-control-outline, transparent),
+    inset 0 1px 0 var(--shell-active-control-inset, transparent);
 }
 </style>

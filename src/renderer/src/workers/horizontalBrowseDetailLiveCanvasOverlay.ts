@@ -53,6 +53,9 @@ const applyCanvasScaleTransform = (
 
 const BAR_BEAT_INTERVAL = 32
 const BEAT4_INTERVAL = 4
+const BAR_GRID_LINE_WIDTH = 1.65
+const MAJOR_GRID_LINE_WIDTH = 1.25
+const MINOR_GRID_LINE_WIDTH = 1.05
 const GRID_LINE_VERTICAL_OVERSCAN = 2
 
 const normalizeBeatOffset = (value: number, interval: number) => {
@@ -64,14 +67,14 @@ const normalizeBeatOffset = (value: number, interval: number) => {
 const resolveGridPalette = (themeVariant: 'light' | 'dark') =>
   themeVariant === 'light'
     ? {
-        barLine: 'rgba(22, 22, 22, 0.82)',
-        majorGrid: 'rgba(22, 22, 22, 0.6)',
-        minorGrid: 'rgba(22, 22, 22, 0.38)'
+        barLine: 'rgba(15, 23, 42, 0.88)',
+        majorGrid: 'rgba(15, 23, 42, 0.56)',
+        minorGrid: 'rgba(15, 23, 42, 0.24)'
       }
     : {
-        barLine: 'rgba(255, 255, 255, 0.8)',
-        majorGrid: 'rgba(255, 255, 255, 0.58)',
-        minorGrid: 'rgba(255, 255, 255, 0.36)'
+        barLine: 'rgba(255, 255, 255, 0.86)',
+        majorGrid: 'rgba(255, 255, 255, 0.56)',
+        minorGrid: 'rgba(255, 255, 255, 0.24)'
       }
 
 const drawBeatGridOverlay = (
@@ -121,11 +124,11 @@ const drawBeatGridOverlay = (
     const modBar = ((shiftedIndex % BAR_BEAT_INTERVAL) + BAR_BEAT_INTERVAL) % BAR_BEAT_INTERVAL
     const mod4 = ((shiftedIndex % BEAT4_INTERVAL) + BEAT4_INTERVAL) % BEAT4_INTERVAL
     if (modBar === 0) {
-      drawVerticalLine(x, 2.3, palette.barLine)
+      drawVerticalLine(x, BAR_GRID_LINE_WIDTH, palette.barLine)
     } else if (mod4 === 0) {
-      drawVerticalLine(x, 1.7, palette.majorGrid)
+      drawVerticalLine(x, MAJOR_GRID_LINE_WIDTH, palette.majorGrid)
     } else {
-      drawVerticalLine(x, 1.15, palette.minorGrid)
+      drawVerticalLine(x, MINOR_GRID_LINE_WIDTH, palette.minorGrid)
     }
   }
 }
@@ -271,6 +274,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
       loopRange: request.loopRange,
       cueAccentColor: request.cueAccentColor,
       timeBasisOffsetMs: request.timeBasisOffsetMs,
+      themeVariant: request.themeVariant,
       xPixelScale
     })
   }

@@ -99,6 +99,7 @@ const parseDurationToSeconds = (input: unknown) => {
   position: relative;
   cursor: default;
   gap: 6px;
+  background: var(--waveform-bg);
 }
 
 .waveform-preview-stop-slot {
@@ -116,6 +117,8 @@ const parseDurationToSeconds = (input: unknown) => {
   height: 18px;
   flex: 1 1 auto;
   min-width: 0;
+  background: var(--waveform-bg);
+  overflow: visible;
 }
 
 .waveform-preview-canvas {
@@ -139,15 +142,15 @@ const parseDurationToSeconds = (input: unknown) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .waveform-preview-playhead {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: -6px;
+  bottom: -6px;
   width: 2px;
-  background: var(--accent);
+  background: var(--song-list-waveform-playhead, var(--accent));
   transform: translateX(-50%);
   pointer-events: none;
   z-index: 2;

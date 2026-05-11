@@ -122,5 +122,20 @@ defineExpose({
       @drag-session-preview="emit('drag-session-preview', $event)"
       @drag-session-end="emit('drag-session-end', $event)"
     />
+    <div v-show="!!props.song" class="detail-lane__playhead"></div>
   </div>
 </template>
+
+<style scoped lang="scss">
+.detail-lane__playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  background: var(--shell-playhead-bg);
+  pointer-events: none;
+  z-index: 6;
+}
+</style>

@@ -445,7 +445,7 @@ onUnmounted(() => {
 }
 
 .deck-info-action:hover {
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: var(--shell-control-hover-border, var(--accent));
 }
 
 .deck-info-action:disabled {
@@ -458,12 +458,12 @@ onUnmounted(() => {
 }
 
 .deck-info-action.is-active {
-  color: #ffffff;
-  border-color: rgba(42, 144, 255, 0.95);
-  background: linear-gradient(180deg, rgba(35, 137, 255, 0.96), rgba(0, 120, 212, 0.96));
+  color: var(--shell-active-control-text, #ffffff);
+  border-color: var(--shell-active-control-border, var(--accent));
+  background: var(--shell-active-control-bg, var(--accent));
   box-shadow:
-    0 0 0 1px rgba(12, 84, 156, 0.32),
-    inset 0 1px 0 rgba(255, 255, 255, 0.24);
+    0 0 0 1px var(--shell-active-control-outline, transparent),
+    inset 0 1px 0 var(--shell-active-control-inset, transparent);
 }
 
 .deck-info-action--master {

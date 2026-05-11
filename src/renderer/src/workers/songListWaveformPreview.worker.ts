@@ -58,6 +58,8 @@ const renderWaveform = (payload: RenderPayload) => {
   const height = Math.max(1, Math.floor(payload.height || 1))
   const pixelRatio = Math.max(1, Number(payload.pixelRatio) || 1)
   resizeCanvas(canvas, ctx, width, height, pixelRatio)
+  ctx.fillStyle = payload.backgroundColor || '#d9dee6'
+  ctx.fillRect(0, 0, width, height)
 
   const data = dataMap.get(payload.filePath) ?? null
   if (!data) return

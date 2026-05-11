@@ -1016,7 +1016,6 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       ref="overlayCanvasRef"
       class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay"
     ></canvas>
-    <div v-show="!!props.song" class="raw-detail-waveform__playhead"></div>
     <div
       v-if="previewBarLineHoverVisible"
       class="raw-detail-waveform__barline-glow"
@@ -1033,6 +1032,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   min-width: 0;
   min-height: 0;
   cursor: default;
+  background: var(--shell-waveform-bg, var(--waveform-bg));
 }
 
 .raw-detail-waveform--up {
@@ -1062,24 +1062,6 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   height: calc(100% + 24px);
   pointer-events: none;
   z-index: 3;
-}
-
-.raw-detail-waveform__playhead {
-  position: absolute;
-  top: -1px;
-  bottom: -1px;
-  left: 50%;
-  width: 1px;
-  transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
-  pointer-events: none;
-  z-index: 4;
-}
-
-:global(.theme-light) .raw-detail-waveform__playhead {
-  background: rgba(22, 22, 22, 0.92);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
 .raw-detail-waveform.is-bar-selecting {

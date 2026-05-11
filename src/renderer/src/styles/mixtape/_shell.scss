@@ -11,6 +11,7 @@
 
 .mixtape-shell {
   --mix-envelope-line-color: #ffffff;
+  --mixtape-drop-overlay-bg: rgba(0, 0, 0, 0.28);
   --mixtape-ruler-bg: linear-gradient(
     to right,
     rgba(255, 255, 255, 0.06),
@@ -50,14 +51,14 @@
     rgba(0, 0, 0, 0.14) 45%,
     rgba(0, 0, 0, 0.08) 100%
   );
-  --mixtape-preview-stage-bg: rgba(0, 0, 0, 0.16);
-  --mixtape-preview-lane-bg: rgba(255, 255, 255, 0.07);
+  --mixtape-preview-stage-bg: var(--waveform-bg);
+  --mixtape-preview-lane-bg: var(--waveform-bg-elev);
   --mixtape-preview-stem-base-bg: rgba(7, 11, 16, 0.98);
   --mixtape-preview-grid-line: rgba(255, 255, 255, 0.22);
   --mixtape-preview-legend-shadow: rgba(0, 0, 0, 0.4);
   --mixtape-preview-line-shadow: rgba(0, 0, 0, 0.75);
-  --mixtape-overview-stage-bg: rgba(0, 0, 0, 0.18);
-  --mixtape-overview-lane-bg: rgba(255, 255, 255, 0.08);
+  --mixtape-overview-stage-bg: var(--waveform-bg);
+  --mixtape-overview-lane-bg: var(--waveform-bg-elev);
   --mixtape-overview-viewport-scrim: rgba(0, 0, 0, 0.65);
   --mixtape-danger-soft-bg: rgba(193, 58, 58, 0.2);
   --mixtape-danger-soft-text: #ffd6d6;
@@ -85,6 +86,68 @@
   --mixtape-mask-dot-muted: rgba(255, 255, 255, 0.24);
   --mixtape-mask-separator: rgba(255, 255, 255, 0.12);
   --mixtape-mask-indeterminate-start: rgba(255, 255, 255, 0.18);
+  --mixtape-loop-status-bg: rgba(15, 16, 18, 0.76);
+  --mixtape-loop-status-border: rgba(255, 223, 120, 0.12);
+  --mixtape-loop-status-text: rgba(255, 245, 214, 0.94);
+  --mixtape-loop-status-muted: rgba(255, 245, 214, 0.72);
+  --mixtape-loop-status-error-border: rgba(255, 158, 128, 0.18);
+  --mixtape-loop-status-error-text: rgba(255, 228, 214, 0.96);
+  --mixtape-loop-status-error-muted: rgba(255, 228, 214, 0.72);
+  --mixtape-loop-shadow: rgba(0, 0, 0, 0.22);
+  --mixtape-loop-grid-bar: rgba(255, 232, 150, 0.54);
+  --mixtape-loop-grid-beat4: rgba(255, 223, 120, 0.42);
+  --mixtape-loop-grid-beat: rgba(255, 223, 120, 0.28);
+  --mixtape-loop-grid-hover-bg: rgba(255, 223, 120, 0.08);
+  --mixtape-loop-grid-hover-border: rgba(255, 223, 120, 0.12);
+  --mixtape-loop-grid-hover-ring: rgba(255, 223, 120, 0.18);
+  --mixtape-loop-grid-hover-glow: rgba(255, 223, 120, 0.38);
+  --mixtape-loop-label-bg: rgba(17, 14, 10, 0.92);
+  --mixtape-loop-label-text: rgba(255, 245, 214, 0.98);
+  --mixtape-loop-label-border: rgba(255, 244, 200, 0.14);
+  --mixtape-loop-source-bg: rgba(255, 214, 102, 0.18);
+  --mixtape-loop-repeat-strong: rgba(255, 218, 92, 0.18);
+  --mixtape-loop-repeat-soft: rgba(255, 218, 92, 0.07);
+  --mixtape-loop-selected-border: rgba(255, 236, 164, 0.3);
+  --mixtape-loop-selected-overlay: rgba(255, 223, 120, 0.04);
+  --mixtape-loop-boundary-line: rgba(255, 245, 198, 0.96);
+  --mixtape-loop-boundary-repeat: rgba(255, 223, 120, 0.94);
+  --mixtape-loop-boundary-shadow: rgba(255, 214, 98, 0.36);
+  --mixtape-loop-boundary-contrast: rgba(41, 28, 6, 0.28);
+  --mixtape-loop-controls-bg: rgba(17, 14, 10, 0.78);
+  --mixtape-loop-controls-border: rgba(255, 223, 120, 0.38);
+  --mixtape-loop-controls-inner: rgba(255, 244, 200, 0.08);
+  --mixtape-loop-button-bg: rgba(255, 223, 120, 0.18);
+  --mixtape-loop-button-hover-bg: rgba(255, 223, 120, 0.3);
+  --mixtape-loop-button-text: rgba(255, 245, 214, 0.96);
+  --mixtape-loop-empty-bg: rgba(17, 14, 10, 0.84);
+  --mixtape-loop-empty-text: rgba(255, 245, 214, 0.92);
+  --mixtape-loop-empty-border: rgba(255, 244, 200, 0.1);
+  --mixtape-loop-overview-source-bg: rgba(255, 214, 102, 0.58);
+  --mixtape-loop-overview-source-border: rgba(255, 244, 182, 0.46);
+  --mixtape-loop-overview-repeat-strong: rgba(255, 218, 92, 0.52);
+  --mixtape-loop-overview-repeat-soft: rgba(255, 218, 92, 0.14);
+  --mixtape-stem-placeholder-bg:
+    linear-gradient(180deg, rgba(18, 24, 33, 0.66), rgba(18, 24, 33, 0.48)), rgba(10, 14, 20, 0.16);
+  --mixtape-stem-placeholder-pending-bg:
+    linear-gradient(180deg, rgba(18, 30, 48, 0.66), rgba(18, 30, 48, 0.46)), rgba(12, 17, 24, 0.16);
+  --mixtape-stem-placeholder-running-bg:
+    linear-gradient(180deg, rgba(13, 41, 74, 0.68), rgba(12, 28, 50, 0.48)), rgba(12, 17, 24, 0.16);
+  --mixtape-stem-placeholder-failed-bg:
+    linear-gradient(180deg, rgba(74, 18, 24, 0.68), rgba(54, 12, 18, 0.5)), rgba(34, 10, 14, 0.16);
+  --mixtape-stem-placeholder-border: rgba(255, 255, 255, 0.12);
+  --mixtape-stem-placeholder-running-border: rgba(89, 168, 255, 0.26);
+  --mixtape-stem-placeholder-failed-border: rgba(235, 124, 124, 0.28);
+  --mixtape-stem-placeholder-shadow: rgba(0, 0, 0, 0.18);
+  --mixtape-stem-placeholder-pill-bg: rgba(255, 255, 255, 0.14);
+  --mixtape-stem-placeholder-text: rgba(255, 255, 255, 0.96);
+  --mixtape-stem-placeholder-muted: rgba(255, 255, 255, 0.82);
+  --mixtape-stem-placeholder-faint: rgba(255, 255, 255, 0.72);
+  --mixtape-stem-placeholder-rail: rgba(255, 255, 255, 0.12);
+  --mixtape-stem-placeholder-fill: rgba(255, 255, 255, 0.88);
+  --mixtape-stem-retry-border: rgba(255, 255, 255, 0.2);
+  --mixtape-stem-retry-bg: rgba(255, 255, 255, 0.12);
+  --mixtape-stem-retry-hover-bg: rgba(255, 255, 255, 0.2);
+  --mixtape-stem-retry-hover-border: rgba(255, 255, 255, 0.34);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -93,6 +156,7 @@
 
 .mixtape-shell.is-light-theme {
   --mix-envelope-line-color: #000000;
+  --mixtape-drop-overlay-bg: rgba(15, 23, 42, 0.18);
   --mixtape-ruler-bg: linear-gradient(
     to right,
     rgba(255, 255, 255, 0.92),
@@ -131,14 +195,14 @@
     rgba(255, 255, 255, 0.88) 0%,
     rgba(236, 242, 249, 0.94) 100%
   );
-  --mixtape-preview-stage-bg: rgba(15, 23, 42, 0.06);
-  --mixtape-preview-lane-bg: rgba(15, 23, 42, 0.05);
+  --mixtape-preview-stage-bg: var(--waveform-bg);
+  --mixtape-preview-lane-bg: var(--waveform-bg-elev);
   --mixtape-preview-stem-base-bg: rgba(236, 242, 249, 0.98);
   --mixtape-preview-grid-line: rgba(15, 23, 42, 0.14);
   --mixtape-preview-legend-shadow: rgba(15, 23, 42, 0.16);
   --mixtape-preview-line-shadow: rgba(255, 255, 255, 0.45);
-  --mixtape-overview-stage-bg: rgba(15, 23, 42, 0.06);
-  --mixtape-overview-lane-bg: rgba(15, 23, 42, 0.08);
+  --mixtape-overview-stage-bg: var(--waveform-bg);
+  --mixtape-overview-lane-bg: var(--waveform-bg-elev);
   --mixtape-overview-viewport-scrim: rgba(247, 249, 252, 0.46);
   --mixtape-danger-soft-bg: rgba(196, 59, 59, 0.12);
   --mixtape-danger-soft-text: #a12626;
@@ -166,6 +230,72 @@
   --mixtape-mask-dot-muted: rgba(15, 23, 42, 0.18);
   --mixtape-mask-separator: rgba(15, 23, 42, 0.1);
   --mixtape-mask-indeterminate-start: rgba(15, 23, 42, 0.12);
+  --mixtape-loop-status-bg: rgba(255, 255, 255, 0.9);
+  --mixtape-loop-status-border: rgba(176, 112, 0, 0.2);
+  --mixtape-loop-status-text: rgba(76, 55, 16, 0.94);
+  --mixtape-loop-status-muted: rgba(76, 55, 16, 0.68);
+  --mixtape-loop-status-error-border: rgba(196, 59, 59, 0.18);
+  --mixtape-loop-status-error-text: rgba(126, 34, 24, 0.94);
+  --mixtape-loop-status-error-muted: rgba(126, 34, 24, 0.68);
+  --mixtape-loop-shadow: rgba(15, 23, 42, 0.14);
+  --mixtape-loop-grid-bar: rgba(176, 112, 0, 0.72);
+  --mixtape-loop-grid-beat4: rgba(176, 112, 0, 0.52);
+  --mixtape-loop-grid-beat: rgba(176, 112, 0, 0.34);
+  --mixtape-loop-grid-hover-bg: rgba(176, 112, 0, 0.08);
+  --mixtape-loop-grid-hover-border: rgba(176, 112, 0, 0.16);
+  --mixtape-loop-grid-hover-ring: rgba(176, 112, 0, 0.14);
+  --mixtape-loop-grid-hover-glow: rgba(176, 112, 0, 0.24);
+  --mixtape-loop-label-bg: rgba(255, 255, 255, 0.96);
+  --mixtape-loop-label-text: rgba(76, 55, 16, 0.96);
+  --mixtape-loop-label-border: rgba(176, 112, 0, 0.16);
+  --mixtape-loop-source-bg: rgba(245, 158, 11, 0.16);
+  --mixtape-loop-repeat-strong: rgba(245, 158, 11, 0.2);
+  --mixtape-loop-repeat-soft: rgba(245, 158, 11, 0.07);
+  --mixtape-loop-selected-border: rgba(176, 112, 0, 0.24);
+  --mixtape-loop-selected-overlay: rgba(176, 112, 0, 0.04);
+  --mixtape-loop-boundary-line: rgba(132, 86, 6, 0.9);
+  --mixtape-loop-boundary-repeat: rgba(176, 112, 0, 0.82);
+  --mixtape-loop-boundary-shadow: rgba(176, 112, 0, 0.26);
+  --mixtape-loop-boundary-contrast: rgba(255, 255, 255, 0.72);
+  --mixtape-loop-controls-bg: rgba(255, 255, 255, 0.92);
+  --mixtape-loop-controls-border: rgba(176, 112, 0, 0.28);
+  --mixtape-loop-controls-inner: rgba(255, 255, 255, 0.68);
+  --mixtape-loop-button-bg: rgba(176, 112, 0, 0.12);
+  --mixtape-loop-button-hover-bg: rgba(176, 112, 0, 0.2);
+  --mixtape-loop-button-text: rgba(76, 55, 16, 0.96);
+  --mixtape-loop-empty-bg: rgba(255, 255, 255, 0.92);
+  --mixtape-loop-empty-text: rgba(76, 55, 16, 0.82);
+  --mixtape-loop-empty-border: rgba(176, 112, 0, 0.14);
+  --mixtape-loop-overview-source-bg: rgba(245, 158, 11, 0.42);
+  --mixtape-loop-overview-source-border: rgba(176, 112, 0, 0.28);
+  --mixtape-loop-overview-repeat-strong: rgba(245, 158, 11, 0.42);
+  --mixtape-loop-overview-repeat-soft: rgba(245, 158, 11, 0.12);
+  --mixtape-stem-placeholder-bg:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(238, 242, 247, 0.9)),
+    rgba(15, 23, 42, 0.04);
+  --mixtape-stem-placeholder-pending-bg:
+    linear-gradient(180deg, rgba(239, 246, 255, 0.94), rgba(226, 236, 249, 0.9)),
+    rgba(43, 102, 217, 0.04);
+  --mixtape-stem-placeholder-running-bg:
+    linear-gradient(180deg, rgba(225, 239, 255, 0.96), rgba(210, 228, 248, 0.92)),
+    rgba(43, 102, 217, 0.06);
+  --mixtape-stem-placeholder-failed-bg:
+    linear-gradient(180deg, rgba(255, 237, 237, 0.96), rgba(250, 224, 224, 0.92)),
+    rgba(196, 59, 59, 0.06);
+  --mixtape-stem-placeholder-border: rgba(15, 23, 42, 0.12);
+  --mixtape-stem-placeholder-running-border: rgba(43, 102, 217, 0.24);
+  --mixtape-stem-placeholder-failed-border: rgba(196, 59, 59, 0.24);
+  --mixtape-stem-placeholder-shadow: rgba(15, 23, 42, 0.12);
+  --mixtape-stem-placeholder-pill-bg: rgba(15, 23, 42, 0.08);
+  --mixtape-stem-placeholder-text: rgba(15, 23, 42, 0.9);
+  --mixtape-stem-placeholder-muted: rgba(15, 23, 42, 0.72);
+  --mixtape-stem-placeholder-faint: rgba(15, 23, 42, 0.62);
+  --mixtape-stem-placeholder-rail: rgba(15, 23, 42, 0.1);
+  --mixtape-stem-placeholder-fill: rgba(43, 102, 217, 0.72);
+  --mixtape-stem-retry-border: rgba(15, 23, 42, 0.16);
+  --mixtape-stem-retry-bg: rgba(255, 255, 255, 0.62);
+  --mixtape-stem-retry-hover-bg: rgba(43, 102, 217, 0.1);
+  --mixtape-stem-retry-hover-border: rgba(43, 102, 217, 0.28);
 }
 
 .mixtape-shell.is-dark-theme {
@@ -180,7 +310,7 @@
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--mixtape-drop-overlay-bg);
 }
 
 .mixtape-drop-overlay__panel {

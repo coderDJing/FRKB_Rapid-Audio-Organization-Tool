@@ -311,6 +311,8 @@ export function useWaveform(params: {
   canvasContainer.style.width = '100%'
   canvasContainer.style.height = `${waveformHeight}px`
   canvasContainer.style.pointerEvents = 'auto'
+  canvasContainer.style.background = 'var(--waveform-bg)'
+  canvasContainer.style.overflow = 'hidden'
 
   const baseCanvas = document.createElement('canvas')
   const progressCanvas = document.createElement('canvas')
