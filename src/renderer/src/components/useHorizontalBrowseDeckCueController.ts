@@ -38,7 +38,9 @@ type UseHorizontalBrowseDeckCueControllerParams = {
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
   resolveDeckCuePointRef: (deck: DeckKey) => Ref<number>
-  resolveDeckCuePlacementSec: (deck: DeckKey) => number
+  resolveDeckCuePlacementSec: (deck: DeckKey, anchorOverrideSec?: number | null) => number
+  resolveDeckWaveformDragAnchorSec: (deck: DeckKey) => number | null
+  commitDeckWaveformDragCuePlacement: (deck: DeckKey, cueSec: number) => boolean
 }
 
 const CUE_POINT_TRIGGER_EPSILON_SEC = 0.05
@@ -78,6 +80,7 @@ export const useHorizontalBrowseDeckCueController = (
   }
 
   const isDeckStoppedAtCuePoint = (deck: DeckKey) => {
+    if (params.resolveDeckWaveformDragAnchorSec(deck) !== null) return false
     if (params.resolveDeckPlaying(deck) || !params.resolveDeckSong(deck)) return false
     const cueSeconds = params.resolveDeckCuePointRef(deck).value
     return (
@@ -100,8 +103,13 @@ export const useHorizontalBrowseDeckCueController = (
   const handleDeckSetCueFromCurrentPosition = async (deck: DeckKey) => {
     params.touchDeckInteraction(deck)
     const cueRef = params.resolveDeckCuePointRef(deck)
-    const nextCuePoint = params.resolveDeckCuePlacementSec(deck)
+    const waveformDragAnchorSec = params.resolveDeckWaveformDragAnchorSec(deck)
+    const nextCuePoint = params.resolveDeckCuePlacementSec(deck, waveformDragAnchorSec)
     cueRef.value = nextCuePoint
+    if (waveformDragAnchorSec !== null) {
+      params.commitDeckWaveformDragCuePlacement(deck, nextCuePoint)
+      await params.nativeTransport.setPlaying(deck, false).catch(() => {})
+    }
     params.notifyDeckSeekIntent(deck, Math.max(0, Number(nextCuePoint) || 0))
     await params.nativeTransport.seek(deck, nextCuePoint)
     params.syncDeckRenderState({ force: deck })
@@ -218,6 +226,10 @@ export const useHorizontalBrowseDeckCueController = (
     suppressDeckCueClick[deck] = true
     event.preventDefault()
 
+    if (params.resolveDeckWaveformDragAnchorSec(deck) !== null) {
+      void handleDeckSetCueFromCurrentPosition(deck)
+      return
+    }
     if (params.resolveDeckPlaying(deck)) {
       void handleDeckBackCue(deck)
       return
@@ -241,6 +253,10 @@ export const useHorizontalBrowseDeckCueController = (
       suppressDeckCueClick[deck] = false
       return
     }
+    if (params.resolveDeckWaveformDragAnchorSec(deck) !== null) {
+      void handleDeckSetCueFromCurrentPosition(deck)
+      return
+    }
     if (params.resolveDeckPlaying(deck)) {
       void handleDeckBackCue(deck)
       return
@@ -251,6 +267,10 @@ export const useHorizontalBrowseDeckCueController = (
 
   const handleDeckCueHotkeyDown = (deck: DeckKey) => {
     params.touchDeckInteraction(deck)
+    if (params.resolveDeckWaveformDragAnchorSec(deck) !== null) {
+      void handleDeckSetCueFromCurrentPosition(deck)
+      return false
+    }
     if (params.resolveDeckPlaying(deck)) {
       void handleDeckBackCue(deck)
       return false

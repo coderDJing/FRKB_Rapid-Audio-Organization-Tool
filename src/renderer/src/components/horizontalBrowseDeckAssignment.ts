@@ -2,6 +2,7 @@ import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import { parseHorizontalBrowseDurationToSeconds } from '@renderer/components/horizontalBrowseShellState'
 import type { HorizontalBrowseDeckTransportStateOverride } from '@renderer/components/useHorizontalBrowseTransportMutations'
+import { resolveHorizontalBrowseDefaultCuePointSec } from '@renderer/components/horizontalBrowseDetailMath'
 import {
   isSameHorizontalBrowseSongFilePath,
   mergeHorizontalBrowseSongWithHotCues,
@@ -25,6 +26,8 @@ type CreateHorizontalBrowseDeckAssignerParams = {
   touchDeckInteraction: (deck: DeckKey) => void
   setDeckSong: (deck: DeckKey, song: ISongInfo | null) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
+  resolveDeckPlaying: (deck: DeckKey) => boolean
+  resolveDeckCurrentSeconds: (deck: DeckKey) => number
   shouldDeferDeckSongPriorityAnalysis: (deck: DeckKey) => boolean
   syncDeckDefaultCue: (deck: DeckKey, song: ISongInfo | null, force?: boolean) => void
   setDeckBeatGridToNative: (
@@ -140,10 +143,12 @@ export const createHorizontalBrowseDeckAssigner = (
     params.syncDeckDefaultCue(deck, initialSong, true)
 
     const nowMs = performance.now()
+    const initialDurationSec = parseHorizontalBrowseDurationToSeconds(initialSong.duration)
+    const initialCueSec = resolveHorizontalBrowseDefaultCuePointSec(initialSong, initialDurationSec)
     const initialCommit = params.commitDeckStateToNative(deck, {
-      currentSec: 0,
+      currentSec: initialCueSec,
       lastObservedAtMs: nowMs,
-      durationSec: parseHorizontalBrowseDurationToSeconds(initialSong.duration),
+      durationSec: initialDurationSec,
       playing: false,
       playbackRate: 1
     })
@@ -164,10 +169,23 @@ export const createHorizontalBrowseDeckAssigner = (
     }
 
     params.setDeckSong(deck, nextSong)
-    params.syncDeckDefaultCue(deck, nextSong)
+    const nextDurationSec = parseHorizontalBrowseDurationToSeconds(nextSong.duration)
+    const nextCueSec = resolveHorizontalBrowseDefaultCuePointSec(nextSong, nextDurationSec)
+    const canApplyHydratedCue =
+      !params.resolveDeckPlaying(deck) &&
+      Math.abs(params.resolveDeckCurrentSeconds(deck) - initialCueSec) <= 0.05
+    params.syncDeckDefaultCue(deck, nextSong, canApplyHydratedCue)
     const nativeGridPayload = buildNativeGridPayload(nextSong)
     if (nativeGridPayload) {
       await params.setDeckBeatGridToNative(deck, nativeGridPayload)
+    }
+    if (canApplyHydratedCue && Math.abs(nextCueSec - initialCueSec) > 0.0001) {
+      await params.commitDeckStateToNative(deck, {
+        currentSec: nextCueSec,
+        lastObservedAtMs: performance.now(),
+        durationSec: nextDurationSec,
+        playing: false
+      })
     }
     sendHorizontalBrowseInteractionTrace('assign-song:hydrated', {
       deck,

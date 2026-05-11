@@ -680,7 +680,11 @@ const loadWaveform = async () => {
     traceHorizontalWaveformLoad('stream:begin', { targetRate })
     beginRawWaveformStream(filePath, targetRate, currentToken)
     syncGridStateFromSong()
-    previewStartSec.value = resolvePlaybackAlignedStart(0)
+    const initialAnchorSec = Math.max(
+      0,
+      Number(props.currentSeconds) || Number(props.cueSeconds) || 0
+    )
+    previewStartSec.value = resolvePlaybackAlignedStart(initialAnchorSec)
     scheduleDraw()
   } catch {
     if (currentToken !== loadToken) return

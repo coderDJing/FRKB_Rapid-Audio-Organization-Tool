@@ -405,6 +405,8 @@ const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
   touchDeckInteraction,
   setDeckSong,
   resolveDeckSong,
+  resolveDeckPlaying,
+  resolveDeckCurrentSeconds,
   shouldDeferDeckSongPriorityAnalysis: (deck) => {
     const otherDeck = deck === 'top' ? 'bottom' : 'top'
     return resolveDeckPlaying(otherDeck) && !resolveDeckPlaying(deck)

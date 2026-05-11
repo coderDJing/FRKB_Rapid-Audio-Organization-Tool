@@ -32,6 +32,8 @@ type DeckWaveformDragState = {
   syncEnabledBefore: boolean
   token: number
   pausePromise: Promise<void> | null
+  anchorSec: number | null
+  cueCommittedDuringDrag: boolean
 }
 
 type DeckSeekRequest = {
@@ -97,7 +99,9 @@ const createDefaultDeckWaveformDragState = (): DeckWaveformDragState => ({
   wasPlaying: false,
   syncEnabledBefore: false,
   token: 0,
-  pausePromise: null
+  pausePromise: null,
+  anchorSec: null,
+  cueCommittedDuringDrag: false
 })
 
 export const useHorizontalBrowseDeckPlaybackController = (
@@ -211,6 +215,20 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
   const canDeckExecuteImmediateTransportAction = (deck: DeckKey) =>
     Boolean(String(params.resolveDeckSong(deck)?.filePath || '').trim())
+
+  const clampDeckSeconds = (deck: DeckKey, seconds: number) =>
+    clampNumber(
+      Number(seconds) || 0,
+      0,
+      params.resolveDeckDurationSeconds(deck) || Number.MAX_SAFE_INTEGER
+    )
+
+  const resolveSnapshotAnchorSec = (snapshot: HorizontalBrowseTransportDeckSnapshot) => {
+    const renderCurrentSec = Number(snapshot.renderCurrentSec)
+    if (Number.isFinite(renderCurrentSec)) return renderCurrentSec
+    const currentSec = Number(snapshot.currentSec)
+    return Number.isFinite(currentSec) ? currentSec : 0
+  }
 
   const isSyncedSeekTokenCurrent = (deck: DeckKey, token: number, source: string) =>
     source === 'detail-drag'
@@ -410,6 +428,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
     dragState.active = true
     dragState.wasPlaying = snapshot.playing
     dragState.syncEnabledBefore = snapshot.syncEnabled
+    dragState.anchorSec = clampDeckSeconds(deck, resolveSnapshotAnchorSec(snapshot))
+    dragState.cueCommittedDuringDrag = false
     dragState.token += 1
 
     if (!dragState.wasPlaying) return
@@ -464,11 +484,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
   ) => {
     const dragState = deckWaveformDragState[deck]
     if (!dragState.active) return
-    const anchorSec = clampNumber(
-      Number(payload.anchorSec) || 0,
-      0,
-      params.resolveDeckDurationSeconds(deck) || Number.MAX_SAFE_INTEGER
-    )
+    const anchorSec = clampDeckSeconds(deck, Number(payload.anchorSec) || 0)
+    dragState.anchorSec = anchorSec
     queueDeckScrubPreviewRequest(deck, {
       token: dragState.token,
       active: true,
@@ -483,21 +500,25 @@ export const useHorizontalBrowseDeckPlaybackController = (
     const shouldResume = dragState.wasPlaying
     const syncEnabledBefore = dragState.syncEnabledBefore
     const pausePromise = dragState.pausePromise
+    const cueCommittedDuringDrag = dragState.cueCommittedDuringDrag
 
     dragState.active = false
     dragState.wasPlaying = false
     dragState.syncEnabledBefore = false
     dragState.pausePromise = null
+    dragState.anchorSec = null
+    dragState.cueCommittedDuringDrag = false
     dragState.token += 1
 
     const token = dragState.token
-    const targetSec = Math.max(0, Number(payload.anchorSec) || 0)
+    const targetSec = clampDeckSeconds(deck, Number(payload.anchorSec) || 0)
     queueDeckScrubPreviewRequest(deck, {
       token,
       active: false,
       anchorSec: targetSec,
       playbackRate: 0
     })
+    if (cueCommittedDuringDrag) return
     if (!payload?.committed) return
 
     const shouldAlignToLeader =
@@ -606,6 +627,30 @@ export const useHorizontalBrowseDeckPlaybackController = (
     seekDeckToSeconds(deck, durationSeconds * safePercent, 'transport')
   }
 
+  const resolveDeckWaveformDragAnchorSec = (deck: DeckKey) => {
+    const dragState = deckWaveformDragState[deck]
+    if (!dragState.active) return null
+    const anchorSec = Number(dragState.anchorSec)
+    return Number.isFinite(anchorSec) ? anchorSec : null
+  }
+
+  const commitDeckWaveformDragCuePlacement = (deck: DeckKey, cueSec: number) => {
+    const dragState = deckWaveformDragState[deck]
+    if (!dragState.active) return false
+    const targetSec = clampDeckSeconds(deck, Number(cueSec) || 0)
+    dragState.anchorSec = targetSec
+    dragState.cueCommittedDuringDrag = true
+    dragState.wasPlaying = false
+    dragState.syncEnabledBefore = false
+    queueDeckScrubPreviewRequest(deck, {
+      token: dragState.token,
+      active: false,
+      anchorSec: targetSec,
+      playbackRate: 0
+    })
+    return true
+  }
+
   const handleDeckMemoryCueRecall = async (
     deck: DeckKey,
     cue: Pick<ISongMemoryCue, 'sec' | 'isLoop' | 'loopEndSec' | 'source'>
@@ -702,6 +747,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
   return {
     deckPendingPlayOnLoad,
     isDeckWaveformDragging: (deck: DeckKey) => deckWaveformDragState[deck].active,
+    resolveDeckWaveformDragAnchorSec,
+    commitDeckWaveformDragCuePlacement,
     handleDeckRawWaveformDragStart,
     handleDeckRawWaveformScrubPreview,
     handleDeckRawWaveformDragEnd,

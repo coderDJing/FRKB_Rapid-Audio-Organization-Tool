@@ -23,27 +23,30 @@ export const useHorizontalBrowseDeckQuantize = (params: UseHorizontalBrowseDeckQ
     bottom: true
   })
 
-  const resolveDeckAnchorSeconds = (deck: DeckKey) =>
-    params.resolveDeckPlaying(deck)
+  const resolveDeckAnchorSeconds = (deck: DeckKey, anchorOverrideSec?: number | null) => {
+    const overrideSec = Number(anchorOverrideSec)
+    if (Number.isFinite(overrideSec)) return overrideSec
+    return params.resolveDeckPlaying(deck)
       ? params.resolveDeckRenderCurrentSeconds(deck)
       : params.resolveDeckCurrentSeconds(deck)
+  }
 
-  const resolveDeckUnquantizedSec = (deck: DeckKey) => {
+  const resolveDeckUnquantizedSec = (deck: DeckKey, anchorOverrideSec?: number | null) => {
     const durationSec = params.resolveDeckDurationSeconds(deck)
-    const anchorSec = Number(resolveDeckAnchorSeconds(deck)) || 0
+    const anchorSec = Number(resolveDeckAnchorSeconds(deck, anchorOverrideSec)) || 0
     if (!Number.isFinite(durationSec) || durationSec <= 0) {
       return Math.max(0, Number(anchorSec.toFixed(3)))
     }
     return Number(clampNumber(anchorSec, 0, durationSec).toFixed(3))
   }
 
-  const resolveDeckCuePlacementSec = (deck: DeckKey) => {
+  const resolveDeckCuePlacementSec = (deck: DeckKey, anchorOverrideSec?: number | null) => {
     if (!deckQuantizeEnabled[deck]) {
-      return resolveDeckUnquantizedSec(deck)
+      return resolveDeckUnquantizedSec(deck, anchorOverrideSec)
     }
     const song = params.resolveDeckSong(deck)
     const gridBpm = params.resolveDeckGridBpm(deck)
-    const anchorSec = Number(resolveDeckAnchorSeconds(deck)) || 0
+    const anchorSec = Number(resolveDeckAnchorSeconds(deck, anchorOverrideSec)) || 0
     const durationSec = params.resolveDeckDurationSeconds(deck)
     const gridSong =
       song && Number.isFinite(gridBpm) && gridBpm > 0
@@ -55,12 +58,12 @@ export const useHorizontalBrowseDeckQuantize = (params: UseHorizontalBrowseDeckQ
     return params.resolveCuePointSec(gridSong, anchorSec, durationSec)
   }
 
-  const resolveDeckMarkerPlacementSec = (deck: DeckKey) => {
+  const resolveDeckMarkerPlacementSec = (deck: DeckKey, anchorOverrideSec?: number | null) => {
     if (!deckQuantizeEnabled[deck]) {
-      return resolveDeckUnquantizedSec(deck)
+      return resolveDeckUnquantizedSec(deck, anchorOverrideSec)
     }
     const song = params.resolveDeckSong(deck)
-    const anchorSec = resolveDeckAnchorSeconds(deck)
+    const anchorSec = resolveDeckAnchorSeconds(deck, anchorOverrideSec)
     const durationSec = params.resolveDeckDurationSeconds(deck)
     const gridBpm = params.resolveDeckGridBpm(deck)
     return resolveNearestHotCueGridSec({

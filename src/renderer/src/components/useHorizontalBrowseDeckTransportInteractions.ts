@@ -43,7 +43,7 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
   resolveDeckLoaded: (deck: DeckKey) => boolean
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
   resolveDeckCuePointRef: (deck: DeckKey) => Ref<number>
-  resolveDeckCuePlacementSec: (deck: DeckKey) => number
+  resolveDeckCuePlacementSec: (deck: DeckKey, anchorOverrideSec?: number | null) => number
 }
 
 export const useHorizontalBrowseDeckTransportInteractions = (
@@ -72,36 +72,10 @@ export const useHorizontalBrowseDeckTransportInteractions = (
   })
 
   const {
-    deckPendingCuePreviewOnLoad,
-    suppressDeckCueClick,
-    resolveDeckCuePreviewRuntimeState,
-    handleDeckBackCue,
-    handleDeckSetCueFromCurrentPosition,
-    stopAllDeckCuePreview,
-    handleWindowDeckCuePointerUp,
-    handleDeckCuePointerDown,
-    handleDeckCueClick,
-    handleDeckCueHotkeyDown,
-    handleDeckCueHotkeyUp,
-    maybeResumePendingCuePreview,
-    resetDeckCueInteractionState
-  } = useHorizontalBrowseDeckCueController({
-    touchDeckInteraction: params.touchDeckInteraction,
-    notifyDeckSeekIntent: params.notifyDeckSeekIntent,
-    nativeTransport: params.nativeTransport,
-    syncDeckRenderState: params.syncDeckRenderState,
-    resolveDeckSong: params.resolveDeckSong,
-    resolveDeckLoaded: params.resolveDeckLoaded,
-    resolveDeckPlaying: params.resolveDeckPlaying,
-    resolveDeckCurrentSeconds: params.resolveDeckCurrentSeconds,
-    resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot,
-    resolveDeckCuePointRef: params.resolveDeckCuePointRef,
-    resolveDeckCuePlacementSec: params.resolveDeckCuePlacementSec
-  })
-
-  const {
     deckPendingPlayOnLoad,
     isDeckWaveformDragging,
+    resolveDeckWaveformDragAnchorSec,
+    commitDeckWaveformDragCuePlacement,
     handleDeckRawWaveformDragStart,
     handleDeckRawWaveformScrubPreview,
     handleDeckRawWaveformDragEnd,
@@ -130,6 +104,36 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     isDeckLoopActive,
     syncDeckIntoLoopRangeBeforePlay,
     applyDeckStoredCueDefinition
+  })
+
+  const {
+    deckPendingCuePreviewOnLoad,
+    suppressDeckCueClick,
+    resolveDeckCuePreviewRuntimeState,
+    handleDeckBackCue,
+    handleDeckSetCueFromCurrentPosition,
+    stopAllDeckCuePreview,
+    handleWindowDeckCuePointerUp,
+    handleDeckCuePointerDown,
+    handleDeckCueClick,
+    handleDeckCueHotkeyDown,
+    handleDeckCueHotkeyUp,
+    maybeResumePendingCuePreview,
+    resetDeckCueInteractionState
+  } = useHorizontalBrowseDeckCueController({
+    touchDeckInteraction: params.touchDeckInteraction,
+    notifyDeckSeekIntent: params.notifyDeckSeekIntent,
+    nativeTransport: params.nativeTransport,
+    syncDeckRenderState: params.syncDeckRenderState,
+    resolveDeckSong: params.resolveDeckSong,
+    resolveDeckLoaded: params.resolveDeckLoaded,
+    resolveDeckPlaying: params.resolveDeckPlaying,
+    resolveDeckCurrentSeconds: params.resolveDeckCurrentSeconds,
+    resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot,
+    resolveDeckCuePointRef: params.resolveDeckCuePointRef,
+    resolveDeckCuePlacementSec: params.resolveDeckCuePlacementSec,
+    resolveDeckWaveformDragAnchorSec,
+    commitDeckWaveformDragCuePlacement
   })
 
   const handleDeckLoopToggle = (deck: DeckKey) => {
