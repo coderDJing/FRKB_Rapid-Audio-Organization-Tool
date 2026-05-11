@@ -83,7 +83,7 @@
 .timeline-viewport {
   position: relative;
   min-height: 100%;
-  background: var(--waveform-bg);
+  background: transparent;
 }
 
 .timeline-lanes {
@@ -177,7 +177,7 @@
   height: 100%;
   border: 1px dashed var(--border);
   border-radius: 0;
-  background: var(--waveform-bg-elev);
+  background: transparent;
   overflow: visible;
   position: relative;
 }
