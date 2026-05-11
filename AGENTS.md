@@ -71,3 +71,7 @@
 ## Configuration & Security Tips
 - Copy `env.example` to `.env` for local config; never commit secrets.
 - If updating `vendor/` binaries, ensure `electron-builder.yml` packaging paths stay in sync.
+
+## 按需脚本
+
+- **rekordbox样本预分拣**：`scripts/move_rekordbox_playlist_grid_diffs.py`，详细用法见 `drafts/rkb-rekordbox-playlist-diff-triage-script.md`。

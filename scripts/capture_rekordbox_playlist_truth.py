@@ -153,15 +153,20 @@ def _truth_track_from_rekordbox_track(track: dict[str, Any]) -> dict[str, Any]:
     bar_beat_offset = _to_int(track.get("gridBarBeatOffset"))
 
     if not file_name:
-        raise RuntimeError("track has no fileName")
+        print("错误：曲目缺少 fileName 字段，请检查 Rekordbox 数据库", file=sys.stderr)
+        sys.exit(1)
     if bpm is None or bpm <= 0:
-        raise RuntimeError(f"track has invalid gridBpm: {file_name}")
+        print(f"错误：曲目 \"{file_name}\" 的 gridBpm 无效（值为 {track.get('gridBpm')}），请在 Rekordbox 中重新分析该曲目", file=sys.stderr)
+        sys.exit(1)
     if first_beat_ms is None or first_beat_ms < 0:
-        raise RuntimeError(f"track has invalid gridFirstBeatMs: {file_name}")
+        print(f"错误：曲目 \"{file_name}\" 的 gridFirstBeatMs 无效（值为 {track.get('gridFirstBeatMs')}），请在 Rekordbox 中重新分析该曲目", file=sys.stderr)
+        sys.exit(1)
     if first_beat_label is None or first_beat_label < 1 or first_beat_label > 4:
-        raise RuntimeError(f"track has invalid gridFirstBeatLabel: {file_name}")
+        print(f"错误：曲目 \"{file_name}\" 的 gridFirstBeatLabel 无效（值为 {track.get('gridFirstBeatLabel')}），请在 Rekordbox 中重新分析该曲目", file=sys.stderr)
+        sys.exit(1)
     if bar_beat_offset is None:
-        raise RuntimeError(f"track has invalid gridBarBeatOffset: {file_name}")
+        print(f"错误：曲目 \"{file_name}\" 的 gridBarBeatOffset 无效，请在 Rekordbox 中重新分析该曲目", file=sys.stderr)
+        sys.exit(1)
 
     return {
         "fileName": file_name,
@@ -444,4 +449,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except RuntimeError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        raise SystemExit(1)

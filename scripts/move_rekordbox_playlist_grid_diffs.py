@@ -1033,4 +1033,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except RuntimeError as exc:
+        print(f"错误：{exc}", file=sys.stderr)
+        raise SystemExit(1)
