@@ -771,12 +771,15 @@ def _apply_existing_report(
     source_playlist_id = int(source.get("playlistId") or 0)
     if source_playlist_id <= 0:
         raise RuntimeError(f"report source playlist id is invalid: {report_path}")
-    dedupe_apply_result = _remove_duplicate_playlist_entries(
-        bridge_path,
-        db_path,
-        source_playlist_id=source_playlist_id,
-        dedupe_skipped=dedupe_skipped,
-    )
+    try:
+        dedupe_apply_result = _remove_duplicate_playlist_entries(
+            bridge_path,
+            db_path,
+            source_playlist_id=source_playlist_id,
+            dedupe_skipped=dedupe_skipped,
+        )
+    except RuntimeError:
+        dedupe_apply_result = {"applied": False, "removeResult": None, "skipped": True}
     difference_apply_result = _apply_playlist_updates(
         bridge_path,
         db_path,

@@ -1656,6 +1656,15 @@ def _resolve_playlist_entries_by_row_keys(entries: Any, row_keys: Any, playlist_
         if track_no > 0 and content_id > 0:
             entries_by_track_hint[(track_no, content_id)] = entry
 
+    entries_by_content_id: dict[int, Any] = {}
+    for entry in entries:
+        content_id = _parse_int(getattr(entry, "ContentID", 0), 0)
+        if content_id <= 0:
+            content = getattr(entry, "Content", None)
+            content_id = _parse_int(getattr(content, "ID", 0), 0)
+        if content_id > 0 and content_id not in entries_by_content_id:
+            entries_by_content_id[content_id] = entry
+
     resolved_entries = []
     resolved_entry_ids = set()
     for hint in entry_hints:
@@ -1671,6 +1680,8 @@ def _resolve_playlist_entries_by_row_keys(entries: Any, row_keys: Any, playlist_
             hinted_track_id = hint.get("trackId", 0)
             if hinted_track_no > 0 and hinted_track_id > 0:
                 entry = entries_by_track_hint.get((hinted_track_no, hinted_track_id))
+            if entry is None and hinted_track_id > 0:
+                entry = entries_by_content_id.get(hinted_track_id)
         if entry is None:
             continue
         entry_id = str(getattr(entry, "ID", "") or "").strip()
