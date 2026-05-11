@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import store from '../store'
 import { applyThemeFromSettings, broadcastSystemThemeIfNeeded } from '../bootstrap/settings'
 import {
@@ -36,6 +36,13 @@ export function registerSettingsHandlers(deps: Dependencies) {
     try {
       applyThemeFromSettings()
       broadcastSystemThemeIfNeeded()
+      // 向所有窗口广播设置变更，确保主题同步
+      const allWindows = BrowserWindow.getAllWindows()
+      for (const win of allWindows) {
+        try {
+          win.webContents.send('setting-changed', setting)
+        } catch {}
+      }
     } catch {}
 
     try {

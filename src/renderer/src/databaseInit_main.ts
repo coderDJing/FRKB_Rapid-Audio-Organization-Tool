@@ -55,6 +55,12 @@ async function initializeApp() {
       () => runtime.setting.themeMode,
       (mode: 'system' | 'light' | 'dark') => applyThemeClass(mode || 'system', getSystemDark())
     )
+    // 监听主进程广播的设置变更（主题切换时同步）
+    window.electron.ipcRenderer.on('setting-changed', (_e, newSetting) => {
+      if (newSetting && typeof newSetting === 'object') {
+        runtime.setting = newSetting
+      }
+    })
     prefersDarkMedia?.addEventListener?.('change', (e: MediaQueryListEvent) => {
       if ((runtime.setting.themeMode || 'system') === 'system') {
         applyThemeClass('system', !!e.matches)
