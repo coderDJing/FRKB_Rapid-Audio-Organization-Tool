@@ -609,6 +609,29 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     } catch {}
   }
 
+  const loadCurrentSongList = async (
+    songListUUID: string,
+    options?: { resetSelection?: boolean }
+  ) => {
+    if (options?.resetSelection) {
+      songsAreaState.selectedSongFilePath.length = 0
+    }
+    if (!songListUUID) {
+      songsAreaState.songInfoArr = []
+      songsAreaState.totalSongCount = 0
+      originalSongInfoArr.value = []
+      return
+    }
+    if (songListUUID === EXTERNAL_PLAYLIST_UUID) {
+      const songs = runtime.externalPlaylist.songs || []
+      originalSongInfoArr.value = markRaw([...songs])
+      applyFiltersAndSorting()
+      scheduleSweepCovers()
+      return
+    }
+    await openSongList()
+  }
+
   onMounted(() => {
     emitter.on('songsArea/optimistic-remove', onSongsOptimisticallyRemoved)
     emitter.on('songsArea/optimistic-restore', onSongsOptimisticallyRestored)
@@ -622,6 +645,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on('song-memory-cues-updated', onSongMemoryCuesUpdated)
     window.electron.ipcRenderer.on('importFinished', onImportFinished)
     window.electron.ipcRenderer.on('audio:convert:done', onAudioConvertDone)
+    void loadCurrentSongList(songsAreaState.songListUUID).catch(() => {})
   })
 
   onUnmounted(() => {
@@ -643,21 +667,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   watch(
     () => songsAreaState.songListUUID,
     async (newUUID) => {
-      songsAreaState.selectedSongFilePath.length = 0
-      if (newUUID) {
-        if (newUUID === EXTERNAL_PLAYLIST_UUID) {
-          const songs = runtime.externalPlaylist.songs || []
-          originalSongInfoArr.value = markRaw([...songs])
-          applyFiltersAndSorting()
-          scheduleSweepCovers()
-        } else {
-          await openSongList()
-        }
-      } else {
-        songsAreaState.songInfoArr = []
-        songsAreaState.totalSongCount = 0
-        originalSongInfoArr.value = []
-      }
+      await loadCurrentSongList(newUUID, { resetSelection: true })
     }
   )
 

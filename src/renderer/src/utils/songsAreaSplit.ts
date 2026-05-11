@@ -61,18 +61,6 @@ const syncPlayingSongListDataFromVisiblePane = (runtime: RuntimeStore) => {
 export const getSongsAreaOppositePane = (pane: SplitSongsAreaPaneKey): SplitSongsAreaPaneKey =>
   pane === 'left' ? 'right' : 'left'
 
-export const resolveOpenedSplitPaneBySongListUUID = (
-  runtime: RuntimeStore,
-  songListUUID: string
-): SplitSongsAreaPaneKey | null => {
-  for (const pane of ['left', 'right'] as const) {
-    if (runtime.songsAreaPanels.panes[pane].songListUUID === songListUUID) {
-      return pane
-    }
-  }
-  return null
-}
-
 export const activateSongsAreaPane = (runtime: RuntimeStore, pane: SongsAreaPaneKey) => {
   runtime.setSongsAreaActivePane(pane)
 }
@@ -112,14 +100,6 @@ export const showSongListInPane = (
       syncPlayingSongListDataFromVisiblePane(runtime)
       return
     }
-    if (panes[otherPane].songListUUID === songListUUID) {
-      const targetSnapshot = cloneSongsAreaPaneState(panes[pane])
-      runtime.assignSongsAreaPaneState(pane, panes[otherPane])
-      runtime.assignSongsAreaPaneState(otherPane, targetSnapshot)
-      runtime.setSongsAreaActivePane(pane)
-      syncPlayingSongListDataFromVisiblePane(runtime)
-      return
-    }
     replaceSongsAreaPaneSongList(runtime, pane, songListUUID)
     runtime.setSongsAreaActivePane(pane)
     syncPlayingSongListDataFromVisiblePane(runtime)
@@ -128,8 +108,7 @@ export const showSongListInPane = (
 
   const singleSnapshot = cloneSongsAreaPaneState(panes.single)
   const currentIsPlainSongList = isPlainSongListUUID(singleSnapshot.songListUUID)
-  const preserveSnapshot =
-    currentIsPlainSongList && singleSnapshot.songListUUID !== songListUUID ? singleSnapshot : null
+  const preserveSnapshot = currentIsPlainSongList ? singleSnapshot : null
   const paneSnapshot =
     currentIsPlainSongList && singleSnapshot.songListUUID === songListUUID
       ? singleSnapshot

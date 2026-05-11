@@ -21,9 +21,7 @@ import { useLibraryTrackCount } from './useLibraryTrackCount'
 import { useLibraryFilter } from './useLibraryFilter'
 import {
   activateSongsAreaPane,
-  closeSongsAreaSplitPane,
   replaceSongsAreaPaneSongList,
-  resolveOpenedSplitPaneBySongListUUID,
   resolveSongsAreaPaneForLibraryClick
 } from '@renderer/utils/songsAreaSplit'
 import type { IDir } from '../../../../types/globals'
@@ -202,12 +200,6 @@ const dirHandleClick = async () => {
   }
   if (isPlaylist.value) {
     if (runtime.songsAreaPanels.splitEnabled) {
-      const openedPane = resolveOpenedSplitPaneBySongListUUID(runtime, props.uuid)
-      if (openedPane) {
-        closeSongsAreaSplitPane(runtime, openedPane)
-        syncLibrarySelectionBySongListUUID(runtime.songsArea.songListUUID)
-        return
-      }
       const pane = resolveSongsAreaPaneForLibraryClick(runtime)
       replaceSongsAreaPaneSongList(runtime, pane, props.uuid)
       activateSongsAreaPane(runtime, pane)
