@@ -27,6 +27,7 @@ pnpm-debug.log*
 .idea
 .vscode
 .cursor
+.claude
 *.suo
 
 # VitePress
