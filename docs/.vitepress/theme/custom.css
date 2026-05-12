@@ -188,6 +188,8 @@ body {
   background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  padding-right: 0.1em; /* 防止斜体或特殊字符右侧被裁剪导致显示为黑色 */
+  margin-right: -0.1em;
 }
 
 .hero .subtitle {
@@ -272,7 +274,7 @@ body {
 }
 
 .hero-frame {
-  border-radius: var(--radius-xl);
+  border-radius: 0;
   overflow: hidden;
   border: 1px solid var(--glass-border);
   box-shadow: 0 50px 100px rgba(0, 0, 0, 0.4);
@@ -290,138 +292,257 @@ body {
   display: block;
 }
 
-/* Features Grid */
-.features {
-  padding: 160px 0;
+/* 滚动动画基础类 */
+.reveal {
+  opacity: 0;
+  transform: translateY(40px);
+  transition:
+    opacity 1s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
 }
 
-.features-header {
-  text-align: center;
-  margin-bottom: 100px;
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
 }
 
-.features-header h2 {
-  font-size: 56px;
+/* 延迟动画，用于交错显示 */
+.reveal:nth-child(2) {
+  transition-delay: 0.1s;
+}
+.reveal:nth-child(3) {
+  transition-delay: 0.2s;
+}
+.reveal:nth-child(4) {
+  transition-delay: 0.3s;
+}
+
+/* 视觉震撼区 (Visual Impacts) */
+.impacts-section {
+  padding: 120px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 160px;
+}
+
+.impact-block {
+  position: relative;
+}
+
+.impact-inner {
+  display: flex;
+  align-items: center;
+  gap: 80px;
+}
+
+.impact-block.reverse .impact-inner {
+  flex-direction: row-reverse;
+}
+
+.impact-text {
+  flex: 1;
+  max-width: 480px;
+}
+
+.impact-text h2 {
+  font-size: 48px;
   font-weight: 900;
   letter-spacing: -0.04em;
+  margin-bottom: 16px;
+  line-height: 1.1;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  padding-right: 0.1em; /* 防止斜体或特殊字符右侧被裁剪 */
+  margin-right: -0.1em;
 }
 
-.features-header p,
-.workflow-header p {
-  max-width: 760px;
-  margin: 20px auto 0;
-  color: var(--text-dim);
+.impact-text h3 {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 24px;
+}
+
+.impact-text p {
   font-size: 18px;
+  color: var(--text-dim);
   line-height: 1.7;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 32px;
+.impact-media {
+  flex: 1.5;
+  min-width: 0;
 }
 
-.card {
-  background: var(--surface);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-2xl);
-  padding: 40px;
-  transition: var(--transition);
-  display: flex;
-  flex-direction: column;
-}
-
-.card:hover {
-  transform: translateY(-12px);
-  border-color: rgba(59, 130, 246, 0.4);
-  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5);
-}
-
-.card h3 {
-  font-size: 24px;
-  font-weight: 800;
-  margin-bottom: 16px;
-  letter-spacing: -0.02em;
-}
-
-.card p {
-  color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1.6;
-  flex-grow: 1;
-}
-
-.workflow {
+/* 核心整理痛点区 (Core Features) */
+.core-features-section {
   padding: 160px 0;
+  background: var(--surface);
   border-top: 1px solid var(--glass-border);
+  border-bottom: 1px solid var(--glass-border);
 }
 
-.workflow-header {
-  text-align: center;
-  margin-bottom: 100px;
-}
-
-.workflow-header h2 {
-  font-size: 56px;
-  font-weight: 900;
-  letter-spacing: -0.04em;
-}
-
-.workflow-grid {
+.core-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 32px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 64px;
 }
 
-.workflow-card {
-  min-height: 240px;
-}
-
-.workflow-step {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 20px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border);
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-}
-
-.shot-container {
-  margin-top: 32px;
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  aspect-ratio: 16/10;
+.core-card {
+  padding: 48px;
   background: var(--bg);
   border: 1px solid var(--glass-border);
+  border-radius: var(--radius-2xl);
+  transition: var(--transition);
 }
 
-.shot {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.core-card:hover {
+  transform: translateY(-8px);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.4);
 }
 
-.placeholder-shot {
-  width: 100%;
-  height: 100%;
+.core-icon {
+  font-size: 48px;
+  font-weight: 900;
+  color: var(--glass-border);
+  margin-bottom: 32px;
+  font-family: monospace;
+}
+
+.core-card h3 {
+  font-size: 28px;
+  font-weight: 800;
+  margin-bottom: 16px;
+  color: var(--text);
+}
+
+.core-card p {
+  font-size: 17px;
+  color: var(--text-dim);
+  line-height: 1.7;
+}
+
+/* 极客特性便当盒 (Bento Grid) */
+.bento-section {
+  padding: 160px 0;
+}
+
+.bento-header {
+  text-align: center;
+  margin-bottom: 80px;
+}
+
+.bento-header h2 {
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  margin-bottom: 16px;
+}
+
+.bento-header p {
+  font-size: 20px;
+  color: var(--text-dim);
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  grid-auto-rows: minmax(220px, auto);
+  gap: 24px;
+}
+
+.bento-card {
+  background: var(--surface);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-xl);
+  padding: 40px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface);
-  color: var(--muted);
-  gap: 16px;
+  justify-content: flex-end;
+  transition: var(--transition);
+  overflow: hidden;
+  position: relative;
 }
 
-.placeholder-shot svg {
-  width: 48px;
-  height: 48px;
-  opacity: 0.3;
+.bento-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--gradient-primary);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.bento-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(var(--accent-rgb), 0.4);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.bento-card:hover::before {
+  opacity: 1;
+}
+
+.bento-card h3 {
+  font-size: 22px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  z-index: 1;
+}
+
+.bento-card p {
+  font-size: 15px;
+  color: var(--text-dim);
+  line-height: 1.6;
+  z-index: 1;
+}
+
+/* Bento 布局特殊跨列 (10个卡片，5列排版) */
+.bento-item-1 {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+.bento-item-2 {
+  grid-column: span 1;
+  grid-row: span 1;
+}
+.bento-item-3 {
+  grid-column: span 2;
+  grid-row: span 1;
+}
+.bento-item-4 {
+  grid-column: span 1;
+  grid-row: span 1;
+}
+.bento-item-5 {
+  grid-column: span 2;
+  grid-row: span 1;
+}
+.bento-item-6 {
+  grid-column: span 2;
+  grid-row: span 1;
+}
+.bento-item-7 {
+  grid-column: span 1;
+  grid-row: span 1;
+}
+.bento-item-8 {
+  grid-column: span 2;
+  grid-row: span 1;
+}
+.bento-item-9 {
+  grid-column: span 2;
+  grid-row: span 1;
+}
+.bento-item-10 {
+  grid-column: span 3;
+  grid-row: span 1;
 }
 
 /* Specs Section */
@@ -469,13 +590,51 @@ body {
   line-height: 1.8;
 }
 
-/* 响应式 */
+/* 响应式调整 */
 @media (max-width: 1024px) {
-  .grid {
+  .impact-inner {
+    flex-direction: column !important;
+    gap: 48px;
+  }
+  .impact-text {
+    max-width: 100%;
+    text-align: center;
+  }
+  .core-grid {
+    grid-template-columns: 1fr;
+  }
+  .bento-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  .workflow-grid {
-    grid-template-columns: repeat(2, 1fr);
+  .bento-item-1 {
+    grid-column: span 2;
+  }
+  .bento-item-2 {
+    grid-column: span 1;
+  }
+  .bento-item-3 {
+    grid-column: span 1;
+  }
+  .bento-item-4 {
+    grid-column: span 2;
+  }
+  .bento-item-5 {
+    grid-column: span 1;
+  }
+  .bento-item-6 {
+    grid-column: span 1;
+  }
+  .bento-item-7 {
+    grid-column: span 2;
+  }
+  .bento-item-8 {
+    grid-column: span 2;
+  }
+  .bento-item-9 {
+    grid-column: span 2;
+  }
+  .bento-item-10 {
+    grid-column: span 2;
   }
   .specs-grid {
     grid-template-columns: 1fr;
@@ -484,11 +643,28 @@ body {
 }
 
 @media (max-width: 768px) {
-  .grid {
+  .impacts-section {
+    padding: 80px 0;
+    gap: 80px;
+  }
+  .impact-text h2 {
+    font-size: 36px;
+  }
+  .bento-grid {
     grid-template-columns: 1fr;
   }
-  .workflow-grid {
-    grid-template-columns: 1fr;
+  .bento-item-1,
+  .bento-item-2,
+  .bento-item-3,
+  .bento-item-4,
+  .bento-item-5,
+  .bento-item-6,
+  .bento-item-7,
+  .bento-item-8,
+  .bento-item-9,
+  .bento-item-10 {
+    grid-column: span 1;
+    grid-row: span 1;
   }
   .hero h1 {
     font-size: 44px;
@@ -516,8 +692,7 @@ body {
     padding-top: 180px;
   }
   .hero .subtitle,
-  .features-header p,
-  .workflow-header p,
+  .bento-header p,
   .specs p,
   .specs li {
     font-size: 16px;

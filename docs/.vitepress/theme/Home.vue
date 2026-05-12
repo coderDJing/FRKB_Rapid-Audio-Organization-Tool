@@ -38,6 +38,9 @@ const handleMouseMove = (e) => {
   }
 }
 
+// 滚动侦测逻辑
+const observer = ref(null)
+
 onMounted(() => {
   // 初始化主题
   const savedTheme = localStorage.getItem('theme') || 'dark'
@@ -48,10 +51,38 @@ onMounted(() => {
   initDownloadButtons()
 
   window.addEventListener('mousemove', handleMouseMove)
+
+  // 设置 IntersectionObserver
+  observer.value = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible')
+          // 可选：如果希望动画只触发一次，可以取消观察
+          // observer.value.unobserve(entry.target)
+        }
+      })
+    },
+    {
+      root: null,
+      threshold: 0.15,
+      rootMargin: '0px 0px -50px 0px'
+    }
+  )
+
+  // 观察所有需要动画的元素
+  setTimeout(() => {
+    document.querySelectorAll('.reveal').forEach((el) => {
+      observer.value.observe(el)
+    })
+  }, 100)
 })
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
+  if (observer.value) {
+    observer.value.disconnect()
+  }
 })
 
 // 下载相关状态
@@ -125,111 +156,100 @@ const togglePlatform = (e) => {
 }
 
 const zhContent = {
-  nav: [
-    { label: '特性', href: '#features' },
-    { label: '工作流', href: '#workflow' }
-  ],
+  nav: [{ label: '特性', href: '#features' }],
   hero: {
-    titleTop: '符合人机工学的',
-    titleBottom: '开源音频快速整理工具',
+    titleTop: '终结混乱的',
+    titleBottom: 'DJ 音频工作站',
     subtitle:
-      '从内容感知去重、真实文件映射、波形试听，到双轨横推浏览、Rekordbox 库集成、Mixtape 自动录制、Stem 分轨、Pioneer U 盘库、全局搜歌与格式转换，一套桌面应用把音频整理和后续处理串起来。'
+      '不再需要在多个软件间疲于奔命。从指纹去重、波形试听、Rekordbox 库无缝集成，到 Mixtape 自动录制与 AI 分轨，FRKB 用极速的键盘操作，为你打造一站式、所见即所得的桌面音频整理引擎。'
   },
-  featuresIntro: {
-    title: '核心能力',
-    description: '整理、分析、试听、录制准备和导出都在同一套流程里，不需要来回换工具。'
-  },
-  features: [
+  impacts: [
+    {
+      id: 'dual-deck',
+      title: '双轨横推模式',
+      subtitle: '类 DJ 混音台的并排浏览与试听',
+      details:
+        '支持独立音量推子、交叉渐变、Hot Cue、Memory Cue、Loop、Quantize 和调性高亮。快速判断两首歌是否和谐匹配。',
+      image: '/assets/softwareScreenshot_cn.webp',
+      imageLight: '/assets/softwareScreenshot_cn_light.webp'
+    },
+    {
+      id: 'mixtape-stem',
+      title: 'Mixtape 自动录制与 Stem 分轨',
+      subtitle: '为演出准备完美的素材',
+      details:
+        '独立时间线工作台用于排录制、听效果、调参数并直接导出结果。支持跨窗口拖入与跨轨道拖拽定位。内置受管 Stem 运行时，把分轨准备接入主流程。',
+      image: '/assets/mixtapeScreenshot_cn.webp',
+      imageLight: '/assets/mixtapeScreenshot_cn_light.webp'
+    }
+  ],
+  coreFeatures: [
+    {
+      title: '单轨编辑与波形可视化',
+      details:
+        '支持 SoundCloud、细节、RGB 以及单轨编辑模式波形，配合区间播放和列表预览快速筛歌。精准定位高潮段落与鼓点能量。'
+    },
+    {
+      title: '内容感知去重与真实映射',
+      details:
+        '基于音频指纹技术，精准识别内容重复的文件。界面上的分组与目录即是真实的磁盘结构，同步生效，告别重复与混乱。'
+    },
+    {
+      title: 'Rekordbox & Pioneer 生态接入',
+      details:
+        '直接读取本机 Rekordbox 库与歌单，支持拖拽排序、Cue/Loop 读取和 XML 一次性导出。支持 Pioneer U 盘库直接读取与预览。'
+    },
     {
       title: '键盘优先的人机工学',
-      details: '大幅减少鼠标移动与点击，所有高频操作均可通过快捷键完成。'
-    },
-    {
-      title: '内容感知去重',
-      details: '基于音频指纹技术，精准识别内容重复的文件。'
-    },
-    {
-      title: '所见即所得的映射',
-      details: '界面上的分组与目录即是真实的磁盘结构，同步生效。'
-    },
-    {
-      title: '波形试听与筛歌',
       details:
-        '支持 SoundCloud、细节、RGB 以及单轨编辑模式波形，配合区间播放和列表预览快速筛歌。标题栏实时显示音频频谱，播放状态一目了然。'
-    },
+        '大幅减少鼠标移动与点击，所有高频操作均可通过快捷键完成，保护肩颈，让整理操作更加流畅和高效。'
+    }
+  ],
+  bentoFeaturesIntro: {
+    title: '极客特性',
+    description: '为高级用户准备的强大工具集。'
+  },
+  bentoFeatures: [
     {
-      title: 'BPM 与调性分析',
+      title: '智能节拍网格与分析',
       details: '精准分析曲目速度与调性，支持 Tap Tempo 手动修正。'
     },
     {
-      title: '元数据与封面',
+      title: '全能格式转换与元数据',
+      details: '支持标签整理、封面替换与 MusicBrainz 自动补齐。非 MP3 格式一键转换。'
+    },
+    {
+      title: '跨设备云同步',
+      details: '支持 SHA256 指纹双向云同步，精选表演者自动拆分联动，数据库轻量便携。'
+    },
+    {
+      title: '筛选库与精选库双层架构',
+      details: '专为 DJ 打造的双库分流体系，配合快捷键快速筛选，贴合真实的选曲与沉淀习惯。'
+    },
+    {
+      title: '安全的回收站机制',
       details:
-        '支持标签整理、封面替换与 MusicBrainz / AcoustID 自动补齐。非 MP3 格式可一键转换为 MP3。'
+        '所有的删除与去重操作均进入专属回收站，支持一键恢复到原歌单，让大批量整理毫无后顾之忧。'
     },
     {
-      title: '双轨横推模式',
-      details:
-        '类 DJ 混音台的双轨并排浏览界面，支持音量推子、交叉渐变、Hot Cue、Memory Cue、Loop、Quantize 和调性高亮。'
+      title: '智能批量重命名',
+      details: '支持按预设规则或自定义格式统一修改歌单内文件名，保持音乐库命名绝对一致性。'
     },
     {
-      title: 'Rekordbox 库集成',
-      details: '直接读取本机 Rekordbox 库与歌单，支持拖拽排序、Cue/Loop 读取和 XML 一次性导出。'
-    },
-    {
-      title: 'Mixtape 自动录制',
-      details:
-        '独立时间线工作台用于排录制、听效果、调参数并直接导出结果。支持跨窗口拖入与跨轨道拖拽定位。'
-    },
-    {
-      title: 'Stem 分轨运行时',
-      details: '支持按需下载、缓存和加速运行时，把分轨准备和导出接入主流程。'
-    },
-    {
-      title: 'Pioneer U 盘库',
-      details: '支持 Device Library 与 OneLibrary 浏览、歌单树、预览波形和只读预听。'
-    },
-    {
-      title: '全局搜歌与格式转换',
-      details:
-        '全局搜歌、定位反馈和独立格式转换工具都已收进桌面端入口。支持网易云网页搜索和相似歌曲双源查询。'
-    },
-    {
-      title: '精选表演者云同步',
-      details: '精选表演者自动拆分联动与云端同步，跨设备保持一致。'
+      title: '全局搜歌与双源发现',
+      details: '支持跨界面搜歌、网易云网页搜索和相似歌曲双源查询。'
     },
     {
       title: '闲时分析调度',
-      details: '后台分析统一走闲时调度与限流，尽量少抢前台操作资源。'
+      details: '后台分析统一走闲时调度与限流，保障前台操作绝对流畅。'
     },
     {
-      title: '云端同步与便携',
-      details: '支持 SHA256 指纹双向云同步，数据库轻量便携。'
-    }
-  ],
-  workflowIntro: {
-    title: '完整工作流',
-    description: '导入、判断、准备、输出一路顺下来，功能都是围着实际音频整理场景收拢的。'
-  },
-  workflow: [
-    {
-      step: '01',
-      title: '导入本地库或设备库',
-      details: '拖拽导入本地目录，或者直接读取 Pioneer U 盘库，把素材先拉进统一工作区。'
+      title: '代码开源与透明',
+      details: '核心代码完全开源，接受社区监督。架构清晰，欢迎开发者共同参与贡献。'
     },
     {
-      step: '02',
-      title: '搜歌、试听、分析',
-      details: '用全局搜歌、波形试听、BPM / 调性分析和快捷键，快速完成筛选与判断。'
-    },
-    {
-      step: '03',
-      title: '准备自动录制与分轨',
-      details: '在 Mixtape 时间线里调整包络与节拍，或运行 Stem 分轨把素材准备干净。'
-    },
-    {
-      step: '04',
-      title: '转换、导出并回写结果',
-      details: '格式转换、导出文件、移动歌单与目录映射都会稳稳落回真实文件系统。'
+      title: '无缝在线更新',
+      details: '内置自动更新机制，第一时间获取最新功能与修复，始终保持最佳工作状态。'
     }
   ],
   specs: {
@@ -242,118 +262,106 @@ const zhContent = {
 }
 
 const enContent = {
-  nav: [
-    { label: 'Features', href: '#features' },
-    { label: 'Workflow', href: '#workflow' }
-  ],
+  nav: [{ label: 'Features', href: '#features' }],
   hero: {
-    titleTop: 'Ergonomic',
-    titleBottom: 'Fast Audio Organization Tool',
+    titleTop: 'End the Chaos.',
+    titleBottom: 'The Ultimate DJ Audio Workspace.',
     subtitle:
-      'Content-aware dedup, true file mapping, waveform-driven preview, dual-deck browsing, Rekordbox library integration, Mixtape auto-recording, stem separation, Pioneer USB libraries, global search, and format conversion all live inside one desktop workflow.'
+      'Stop bouncing between apps. From fingerprint dedup, waveform preview, and seamless Rekordbox integration, to Mixtape auto-recording and AI stems. FRKB delivers an all-in-one, WYSIWYG desktop engine powered by lightning-fast keyboard ergonomics.'
   },
-  featuresIntro: {
-    title: 'Core Capabilities',
-    description:
-      'Organization, analysis, preview, recording prep, and export are all handled inside one consistent workflow.'
-  },
-  features: [
+  impacts: [
+    {
+      id: 'dual-deck',
+      title: 'Dual-Deck Browse Mode',
+      subtitle: 'DJ mixer-style side-by-side browsing',
+      details:
+        'Supports volume faders, crossfader, Hot Cue, Memory Cue, Loop, Quantize, and key highlighting. Quickly judge if two tracks match perfectly.',
+      image: '/assets/softwareScreenshot.webp',
+      imageLight: '/assets/softwareScreenshot_light.webp'
+    },
+    {
+      id: 'mixtape-stem',
+      title: 'Mixtape Auto-Recording & Stems',
+      subtitle: 'Prepare perfect materials for your set',
+      details:
+        'A dedicated timeline workspace for arranging, previewing, tweaking, and exporting mixes. Supports cross-window drag-in. Managed Stem runtime keeps track separation inside the app.',
+      image: '/assets/mixtapeScreenshot.webp',
+      imageLight: '/assets/mixtapeScreenshot_light.webp'
+    }
+  ],
+  coreFeatures: [
+    {
+      title: 'Waveform Edit & Visualization',
+      details:
+        'SoundCloud, detailed, RGB, and single-track editing waveforms with range playback. Precisely locate drops and drum energy.'
+    },
+    {
+      title: 'Content-Aware Dedup & Mapping',
+      details:
+        'Identify duplicates based on audio characteristics. UI groups and directories reflect the true disk structure. Say goodbye to duplicates and mess.'
+    },
+    {
+      title: 'Rekordbox & Pioneer Integration',
+      details:
+        'Directly read local Rekordbox libraries and playlists with drag-to-reorder, Cue/Loop reading, and one-click XML export. Browse Pioneer USB libraries directly.'
+    },
     {
       title: 'Keyboard-First Ergonomics',
-      details: 'Minimize mouse movement. All frequent operations are accessible via shortcuts.'
-    },
-    {
-      title: 'Content-Aware Dedup',
-      details: 'Identify duplicates based on audio characteristics.'
-    },
-    {
-      title: 'WYSIWYG Mapping',
-      details: 'UI groups and directories reflect the true disk structure.'
-    },
-    {
-      title: 'Waveform Preview',
       details:
-        'SoundCloud, detailed, RGB, and single-track editing waveforms with range playback keep screening fast. Title bar shows real-time audio spectrum.'
+        'Minimize mouse movement. All frequent operations are accessible via shortcuts, protecting your neck and making organization fluid.'
+    }
+  ],
+  bentoFeaturesIntro: {
+    title: 'Geek Features',
+    description: 'Powerful toolset for advanced users.'
+  },
+  bentoFeatures: [
+    {
+      title: 'Smart Beatgrid & Analysis',
+      details: 'Precise BPM and key analysis with Tap Tempo support.'
     },
     {
-      title: 'BPM & Key Analysis',
-      details: 'Precise analysis with Tap Tempo support.'
-    },
-    {
-      title: 'Metadata & Artwork',
+      title: 'Format Conversion & Metadata',
       details:
-        'Tag cleanup, cover replacement, and MusicBrainz / AcoustID assisted metadata filling. One-click non-MP3 to MP3 conversion.'
+        'Tag cleanup, cover replacement, and MusicBrainz assisted filling. One-click non-MP3 conversion.'
     },
     {
-      title: 'Dual-Deck Browse Mode',
+      title: 'Cross-Device Cloud Sync',
       details:
-        'DJ mixer-style side-by-side dual-track browsing with volume faders, crossfader, Hot Cue, Memory Cue, Loop, Quantize, and key highlighting.'
+        'SHA256-based fingerprint sync, curated artist split-linking, and portable library state.'
     },
     {
-      title: 'Rekordbox Library Integration',
+      title: 'Dual-Library Architecture',
       details:
-        'Directly read local Rekordbox libraries and playlists with drag-to-reorder, Cue/Loop reading, and one-click XML export.'
+        'Dedicated Screening and Curated libraries designed for DJs. Quickly route tracks with shortcuts.'
     },
     {
-      title: 'Mixtape Auto-Recording',
+      title: 'Safe Recycle Bin',
       details:
-        'A dedicated timeline workspace for arranging, previewing, tweaking, and exporting mixes. Supports cross-window drag-in and cross-track positioning.'
+        'All deletions and dedups go to a dedicated recycle bin with one-click restore. Organize with peace of mind.'
     },
     {
-      title: 'Managed Stem Runtime',
+      title: 'Smart Batch Rename',
       details:
-        'On-demand runtime downloads, caching, and acceleration keep stem prep inside the app.'
+        'Unify filenames across playlists using preset rules or custom formats for absolute consistency.'
     },
     {
-      title: 'Pioneer USB Libraries',
-      details:
-        'Browse Device Library and OneLibrary data with playlist trees, preview waveforms, and guarded preview.'
-    },
-    {
-      title: 'Global Search & Conversion',
-      details:
-        'Global search, locate feedback, and a standalone format conversion tool are built in. Includes NetEase Cloud search and dual-source similar track discovery.'
-    },
-    {
-      title: 'Curated Artist Cloud Sync',
-      details: 'Automatic curated artist split-linking with cloud sync across devices.'
+      title: 'Global Search & Discovery',
+      details: 'Global search, NetEase Cloud search, and dual-source similar track discovery.'
     },
     {
       title: 'Idle Analysis Scheduling',
-      details: 'Background analysis runs through unified idle scheduling and throttling.'
-    },
-    {
-      title: 'Cloud Sync & Portability',
-      details: 'SHA256-based fingerprint sync for secure backups and portable library state.'
-    }
-  ],
-  workflowIntro: {
-    title: 'Complete Workflow',
-    description:
-      'Import, decide, prepare, and export in one pass. The product is shaped around real audio-organization work.'
-  },
-  workflow: [
-    {
-      step: '01',
-      title: 'Import local or device libraries',
-      details: 'Drag in local folders or read Pioneer USB libraries inside the same workspace.'
-    },
-    {
-      step: '02',
-      title: 'Search, preview, analyze',
       details:
-        'Use global search, waveform preview, BPM/key analysis, and shortcuts to make decisions quickly.'
+        'Background analysis runs through unified idle scheduling to guarantee absolute UI fluidity.'
     },
     {
-      step: '03',
-      title: 'Prepare recording and stems',
-      details: 'Shape the Mixtape timeline or run stem separation before output.'
-    },
-    {
-      step: '04',
-      title: 'Convert, export, write back',
+      title: 'Open Source & Transparent',
       details:
-        'Format conversion, export, playlist movement, and file mapping all land back on the real file system.'
+        'Core code is fully open-source. Clear architecture welcomes community contributions.'
+    },
+    {
+      title: 'Seamless Auto-Updates',
+      details: 'Built-in update mechanism ensures you always have the latest features and fixes.'
     }
   ],
   specs: {
@@ -418,14 +426,14 @@ const pageContent = computed(() => (isEn.value ? enContent : zhContent))
     <!-- Hero Section -->
     <header class="hero">
       <div class="container hero-inner">
-        <h1 class="reveal is-visible">
+        <h1 class="reveal">
           {{ pageContent.hero.titleTop }}<br /><span>{{ pageContent.hero.titleBottom }}</span>
         </h1>
-        <p class="subtitle reveal is-visible">
+        <p class="subtitle reveal">
           {{ pageContent.hero.subtitle }}
         </p>
 
-        <div class="cta reveal is-visible">
+        <div class="cta reveal">
           <!-- 加载骨架屏 -->
           <div v-if="isLoadingDownloads" class="cta-skeleton">
             <div class="sk-btn"></div>
@@ -477,60 +485,74 @@ const pageContent = computed(() => (isEn.value ? enContent : zhContent))
             {{ isEn ? 'Other Platforms' : '其他平台' }}
           </a>
         </div>
-
-        <div class="hero-media reveal is-visible">
-          <div class="hero-frame">
-            <img
-              class="hero-img"
-              :src="
-                withBase(
-                  theme === 'light'
-                    ? isEn
-                      ? '/assets/softwareScreenshot_light.webp'
-                      : '/assets/softwareScreenshot_cn_light.webp'
-                    : isEn
-                      ? '/assets/softwareScreenshot.webp'
-                      : '/assets/softwareScreenshot_cn.webp'
-                )
-              "
-              alt="FRKB UI"
-            />
-          </div>
-        </div>
       </div>
     </header>
 
-    <!-- Features Section -->
-    <section id="features" class="features">
-      <div class="container">
-        <div class="features-header reveal is-visible">
-          <h2>{{ pageContent.featuresIntro.title }}</h2>
-          <p>{{ pageContent.featuresIntro.description }}</p>
-        </div>
-        <div class="grid">
-          <div v-for="f in pageContent.features" :key="f.title" class="card reveal is-visible">
-            <h3>{{ f.title }}</h3>
-            <p>{{ f.details }}</p>
+    <!-- 视觉震撼区 (Visual Impacts) -->
+    <section id="features" class="impacts-section">
+      <div
+        v-for="(impact, index) in pageContent.impacts"
+        :key="impact.id"
+        class="impact-block reveal"
+        :class="{ reverse: index % 2 !== 0 }"
+      >
+        <div class="container">
+          <div class="impact-inner">
+            <div class="impact-text">
+              <h2>{{ impact.title }}</h2>
+              <h3>{{ impact.subtitle }}</h3>
+              <p>{{ impact.details }}</p>
+            </div>
+            <div class="impact-media">
+              <div class="hero-frame">
+                <img
+                  class="hero-img"
+                  :src="withBase(theme === 'light' ? impact.imageLight : impact.image)"
+                  :alt="impact.title"
+                />
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="workflow" class="workflow">
+    <!-- 核心整理痛点区 (Core Features) -->
+    <section class="core-features-section">
       <div class="container">
-        <div class="workflow-header reveal is-visible">
-          <h2>{{ pageContent.workflowIntro.title }}</h2>
-          <p>{{ pageContent.workflowIntro.description }}</p>
-        </div>
-        <div class="workflow-grid">
+        <div class="core-grid">
           <div
-            v-for="item in pageContent.workflow"
-            :key="item.step"
-            class="card workflow-card reveal is-visible"
+            class="core-card reveal"
+            v-for="(feature, index) in pageContent.coreFeatures"
+            :key="index"
           >
-            <span class="workflow-step">{{ item.step }}</span>
-            <h3>{{ item.title }}</h3>
-            <p>{{ item.details }}</p>
+            <div class="core-icon">
+              <!-- 这里可以用简单的数字或SVG占位 -->
+              <span>0{{ index + 1 }}</span>
+            </div>
+            <h3>{{ feature.title }}</h3>
+            <p>{{ feature.details }}</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 极客特性便当盒 (Bento Grid) -->
+    <section class="bento-section">
+      <div class="container">
+        <div class="bento-header reveal">
+          <h2>{{ pageContent.bentoFeaturesIntro.title }}</h2>
+          <p>{{ pageContent.bentoFeaturesIntro.description }}</p>
+        </div>
+        <div class="bento-grid">
+          <div
+            class="bento-card reveal"
+            v-for="(bento, index) in pageContent.bentoFeatures"
+            :key="index"
+            :class="`bento-item-${index + 1}`"
+          >
+            <h3>{{ bento.title }}</h3>
+            <p>{{ bento.details }}</p>
           </div>
         </div>
       </div>

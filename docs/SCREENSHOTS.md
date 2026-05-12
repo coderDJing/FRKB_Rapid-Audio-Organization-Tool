@@ -2,17 +2,26 @@
 
 ## 当前状态
 
-网站仅保留首页主界面截图，功能区改为文字描述，不再使用功能截图。
+网站首页保留两组主要界面截图：双轨横推模式与 Mixtape 自动录制。
 
-## 必需截图（仅 4 张）
+## 必需截图（8 张）
+
+### 双轨横推模式
 
 | 语言 | 夜间模式 | 日间模式 |
 |------|---------|---------|
 | 中文 | `softwareScreenshot_cn.webp` | `softwareScreenshot_cn_light.webp` |
 | 英文 | `softwareScreenshot.webp` | `softwareScreenshot_light.webp` |
 
-**位置**: Hero 区域的主要软件界面截图  
-**用途**: 网站首页顶部展示
+### Mixtape 自动录制
+
+| 语言 | 夜间模式 | 日间模式 |
+|------|---------|---------|
+| 中文 | `mixtapeScreenshot_cn.webp` | `mixtapeScreenshot_cn_light.webp` |
+| 英文 | `mixtapeScreenshot.webp` | `mixtapeScreenshot_light.webp` |
+
+**位置**: 首页功能展示区
+**用途**: 对应功能区块展示
 
 ---
 
