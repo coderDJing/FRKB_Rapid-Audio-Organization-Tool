@@ -62,6 +62,12 @@ export function cancelKeyAnalysisBackground(pauseMs?: number) {
   queue.cancelBackgroundWork(pauseMs)
 }
 
+export async function cancelKeyAnalysisForPaths(filePaths: string[] | string) {
+  if (!queue) return
+  const list = Array.isArray(filePaths) ? filePaths : [filePaths]
+  await queue.cancelByPath(list)
+}
+
 export function getKeyAnalysisBackgroundStatus(): KeyAnalysisBackgroundStatus {
   if (!queue) {
     return {

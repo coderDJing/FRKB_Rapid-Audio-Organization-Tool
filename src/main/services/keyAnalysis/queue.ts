@@ -274,6 +274,53 @@ export class KeyAnalysisQueue {
     this.background.cancelBackgroundWork(pauseMs)
   }
 
+  async cancelByPath(filePaths: string[]) {
+    if (!Array.isArray(filePaths) || filePaths.length === 0) return
+    const normalizedPaths = new Set(
+      filePaths
+        .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
+        .map((filePath) => normalizePath(filePath))
+        .filter(Boolean)
+    )
+    if (normalizedPaths.size === 0) return
+
+    for (const normalizedPath of normalizedPaths) {
+      const pending = this.pendingByPath.get(normalizedPath)
+      if (pending) {
+        this.removePending(pending)
+      }
+      this.doneByPath.delete(normalizedPath)
+      this.failedByPath.delete(normalizedPath)
+      this.probeCache.delete(normalizedPath)
+    }
+
+    for (const [focusSlot, normalizedPath] of this.focusPathBySlot.entries()) {
+      if (normalizedPaths.has(normalizedPath)) {
+        this.focusPathBySlot.delete(focusSlot)
+      }
+    }
+
+    const terminations: Array<Promise<unknown>> = []
+    for (const [worker, jobId] of Array.from(this.busy.entries())) {
+      const job = this.inFlight.get(jobId)
+      if (!job || !normalizedPaths.has(job.normalizedPath)) continue
+      if (job.source === 'background') {
+        this.background.unmarkProcessing(job.jobId)
+      }
+      this.markExpectedWorkerTermination(worker, 'path-cancel')
+      terminations.push(
+        worker.terminate().catch(() => {
+          this.clearExpectedWorkerTermination(worker)
+        })
+      )
+    }
+
+    if (terminations.length > 0) {
+      await Promise.allSettled(terminations)
+      this.background.emitBackgroundStatus()
+    }
+  }
+
   private markExpectedWorkerTermination(worker: Worker, reason: string) {
     this.expectedWorkerTerminations.set(worker, reason)
   }
