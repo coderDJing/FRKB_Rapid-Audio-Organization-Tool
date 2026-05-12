@@ -11,11 +11,9 @@ import {
   isCuratedArtistSyncUnsupportedServer,
   syncCuratedArtistCloudSnapshot
 } from './curatedArtistCloudSync'
+import { resolveBaseUrl } from './serverDiscovery'
 
 const CLOUD_SYNC = {
-  BASE_URL: is.dev
-    ? process.env.CLOUD_SYNC_BASE_URL_DEV || 'http://localhost:3001'
-    : process.env.CLOUD_SYNC_BASE_URL_PROD || '',
   PREFIX: '/frkbapi/v1/fingerprint-sync',
   API_SECRET_KEY: process.env.CLOUD_SYNC_API_SECRET_KEY || ''
 }
@@ -110,10 +108,10 @@ function mapBackendErrorToI18nKey(payload: unknown): string {
   return 'cloudSync.errors.validationFailed'
 }
 
-async function validateUserKeyRequest(userKeyRaw: string) {
+async function validateUserKeyRequest(userKeyRaw: string, baseUrl: string) {
   const userKey = (userKeyRaw || '').trim()
   const requestBody = { userKey }
-  const res = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/validate-user-key`, {
+  const res = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/validate-user-key`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
@@ -147,11 +145,12 @@ ipcMain.handle('cloudSync/resetUserData', async (_e, payload: { notes?: string }
     if (!userKey) {
       return { success: false, message: 'cloudSync.notConfigured' }
     }
+    const baseUrl = await resolveBaseUrl()
     const body: { userKey: string; notes?: string } = { userKey }
     if (payload && typeof payload.notes === 'string' && payload.notes.trim()) {
       body.notes = payload.notes.trim()
     }
-    const res = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/reset`, {
+    const res = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/reset`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
@@ -175,7 +174,8 @@ ipcMain.handle('cloudSync/resetUserData', async (_e, payload: { notes?: string }
 ipcMain.handle('cloudSync/config/save', async (_e, payload: { userKey: string }) => {
   const userKey = (payload?.userKey || '').trim()
   try {
-    const json = await validateUserKeyRequest(userKey)
+    const baseUrl = await resolveBaseUrl()
+    const json = await validateUserKeyRequest(userKey, baseUrl)
     if (json?.success === true && json?.data?.isActive === true) {
       cloudSyncConfig.userKey = json?.data?.userKey || userKey
       store.settingConfig.cloudSyncUserKey = cloudSyncConfig.userKey
@@ -220,7 +220,8 @@ function calculateCollectionHashForSet(
 
 ipcMain.handle('cloudSync/testConnectivity', async (_e, payload: { userKey: string }) => {
   try {
-    const json = await validateUserKeyRequest(payload?.userKey || '')
+    const baseUrl = await resolveBaseUrl()
+    const json = await validateUserKeyRequest(payload?.userKey || '', baseUrl)
     if (json?.success === true && json?.data?.isActive === true) {
       const limitNum = Number(json?.limit)
       return {
@@ -312,6 +313,7 @@ ipcMain.handle('cloudSync/start', async () => {
     return 'rate_limited'
   }
   markSyncStarted()
+  const baseUrl = await resolveBaseUrl()
   if (!cloudSyncConfig.userKey) {
     if (is.dev) {
       cloudSyncConfig.userKey = DEV_DEFAULT_USER_KEY
@@ -373,7 +375,7 @@ ipcMain.handle('cloudSync/start', async () => {
 
     // 0) validate-user-key：在进入流程前快速校验 userKey 是否有效且启用
     try {
-      const valid = await validateUserKeyRequest(cloudSyncConfig.userKey)
+      const valid = await validateUserKeyRequest(cloudSyncConfig.userKey, baseUrl)
       if (!(valid?.success === true && valid?.data?.isActive === true)) {
         const errorCode = String(valid?.error || 'INVALID_USER_KEY').toUpperCase()
         const msg =
@@ -385,7 +387,7 @@ ipcMain.handle('cloudSync/start', async () => {
         // 仅错误场景记录日志（包含请求参数与返回结果）
         log.error('[cloudSync] /validate-user-key error', {
           request: {
-            url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/validate-user-key`,
+            url: `${baseUrl}${CLOUD_SYNC.PREFIX}/validate-user-key`,
             body: { userKey: cloudSyncConfig.userKey }
           },
           response: valid
@@ -397,7 +399,7 @@ ipcMain.handle('cloudSync/start', async () => {
     } catch (_e) {
       log.error('[cloudSync] /validate-user-key network error', {
         request: {
-          url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/validate-user-key`,
+          url: `${baseUrl}${CLOUD_SYNC.PREFIX}/validate-user-key`,
           body: { userKey: cloudSyncConfig.userKey }
         },
         error: _e
@@ -410,7 +412,7 @@ ipcMain.handle('cloudSync/start', async () => {
     // 1) /check（集合哈希：小写、升序、无分隔符；空数组等价于 sha256('')）
     const hash = calculateCollectionHashForSet(crypto, clientFingerprints)
     const mode = getFingerprintMode()
-    const checkRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`, {
+    const checkRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/check`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
@@ -427,7 +429,7 @@ ipcMain.handle('cloudSync/start', async () => {
     if (!checkJson?.success) {
       log.error('[cloudSync] /check error', {
         request: {
-          url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
+          url: `${baseUrl}${CLOUD_SYNC.PREFIX}/check`,
           body: { userKey: cloudSyncConfig.userKey, count: clientFingerprints.length, hash }
         },
         status: checkRes.status,
@@ -479,30 +481,27 @@ ipcMain.handle('cloudSync/start', async () => {
           return 'cancelled'
         }
         const batch = clientFingerprints.slice(i, i + batchSize)
-        const diffRes = await limitedFetch(
-          `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/bidirectional-diff`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              userKey: cloudSyncConfig.userKey,
-              clientFingerprints: batch,
-              batchIndex: Math.floor(i / batchSize),
-              batchSize,
-              mode
-            })
-          }
-        )
+        const diffRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/bidirectional-diff`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            userKey: cloudSyncConfig.userKey,
+            clientFingerprints: batch,
+            batchIndex: Math.floor(i / batchSize),
+            batchSize,
+            mode
+          })
+        })
         const diffJson = await diffRes.json()
         // 最新后端返回顶层字段
         const missingServer: string[] = diffJson?.serverMissingFingerprints
         if (!diffJson?.success) {
           log.error('[cloudSync] /bidirectional-diff error', {
             request: {
-              url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/bidirectional-diff`,
+              url: `${baseUrl}${CLOUD_SYNC.PREFIX}/bidirectional-diff`,
               body: {
                 userKey: cloudSyncConfig.userKey,
                 clientFingerprints: batch,
@@ -533,21 +532,18 @@ ipcMain.handle('cloudSync/start', async () => {
       const uploadList = Array.from(new Set(toAdd))
       // 3) analyze-diff
       const clientForAnalyze = clientFingerprints
-      const analyzeRes = await limitedFetch(
-        `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            userKey: cloudSyncConfig.userKey,
-            clientFingerprints: clientForAnalyze,
-            mode
-          })
-        }
-      )
+      const analyzeRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/analyze-diff`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          userKey: cloudSyncConfig.userKey,
+          clientFingerprints: clientForAnalyze,
+          mode
+        })
+      })
       const analyzeJson = await analyzeRes.json()
       // 最新后端返回顶层字段
       let diffSessionId: string = analyzeJson?.diffSessionId
@@ -557,7 +553,7 @@ ipcMain.handle('cloudSync/start', async () => {
       if (!analyzeJson?.success) {
         log.error('[cloudSync] /analyze-diff error', {
           request: {
-            url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
+            url: `${baseUrl}${CLOUD_SYNC.PREFIX}/analyze-diff`,
             body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze }
           },
           status: analyzeRes.status,
@@ -577,22 +573,19 @@ ipcMain.handle('cloudSync/start', async () => {
           sendState('cancelled')
           return 'cancelled'
         }
-        const pageRes = await limitedFetch(
-          `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              userKey: cloudSyncConfig.userKey,
-              diffSessionId,
-              pageIndex: page,
-              mode
-            })
-          }
-        )
+        const pageRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/pull-diff-page`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            userKey: cloudSyncConfig.userKey,
+            diffSessionId,
+            pageIndex: page,
+            mode
+          })
+        })
         const pageJson = await pageRes.json()
         // 最新后端返回顶层字段
         const missingArr: string[] = pageJson?.missingFingerprints
@@ -601,31 +594,28 @@ ipcMain.handle('cloudSync/start', async () => {
             page = -1
             log.error('[cloudSync] /pull-diff-page error: diff session expired', {
               request: {
-                url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
+                url: `${baseUrl}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
                 body: { userKey: cloudSyncConfig.userKey, diffSessionId, pageIndex: page }
               },
               status: pageRes.status,
               response: pageJson
             })
-            const retryAnalyze = await limitedFetch(
-              `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  userKey: cloudSyncConfig.userKey,
-                  clientFingerprints: clientForAnalyze
-                })
-              }
-            )
+            const retryAnalyze = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/analyze-diff`, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                userKey: cloudSyncConfig.userKey,
+                clientFingerprints: clientForAnalyze
+              })
+            })
             const retryAnalyzeJson = await retryAnalyze.json()
             if (!retryAnalyzeJson?.success) {
               log.error('[cloudSync] /analyze-diff retry error', {
                 request: {
-                  url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/analyze-diff`,
+                  url: `${baseUrl}${CLOUD_SYNC.PREFIX}/analyze-diff`,
                   body: { userKey: cloudSyncConfig.userKey, clientFingerprints: clientForAnalyze }
                 },
                 status: retryAnalyze.status,
@@ -640,7 +630,7 @@ ipcMain.handle('cloudSync/start', async () => {
           }
           log.error('[cloudSync] /pull-diff-page error', {
             request: {
-              url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
+              url: `${baseUrl}${CLOUD_SYNC.PREFIX}/pull-diff-page`,
               body: { userKey: cloudSyncConfig.userKey, diffSessionId, pageIndex: page }
             },
             status: pageRes.status,
@@ -687,7 +677,7 @@ ipcMain.handle('cloudSync/start', async () => {
       let committedCount = 0
       for (let i = 0; i < uploadList.length; i += batchSize) {
         const slice = uploadList.slice(i, i + batchSize)
-        const addRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/add`, {
+        const addRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/add`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
@@ -700,7 +690,7 @@ ipcMain.handle('cloudSync/start', async () => {
         if (!addJson?.success) {
           log.error('[cloudSync] /add error', {
             request: {
-              url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/add`,
+              url: `${baseUrl}${CLOUD_SYNC.PREFIX}/add`,
               body: { userKey: cloudSyncConfig.userKey, addFingerprints: slice }
             },
             status: addRes.status,
@@ -728,7 +718,7 @@ ipcMain.handle('cloudSync/start', async () => {
       sendProgress('finalizing', 93)
       const verifyHash = calculateCollectionHashForSet(crypto, mergedList)
       try {
-        const verifyRes = await limitedFetch(`${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`, {
+        const verifyRes = await limitedFetch(`${baseUrl}${CLOUD_SYNC.PREFIX}/check`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${CLOUD_SYNC.API_SECRET_KEY}`,
@@ -745,7 +735,7 @@ ipcMain.handle('cloudSync/start', async () => {
         if (!verifyJson?.success) {
           log.error('[cloudSync] /check verify error', {
             request: {
-              url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
+              url: `${baseUrl}${CLOUD_SYNC.PREFIX}/check`,
               body: {
                 userKey: cloudSyncConfig.userKey,
                 count: mergedList.length,
@@ -764,7 +754,7 @@ ipcMain.handle('cloudSync/start', async () => {
         // 错误需记录日志，但不影响主流程
         log.error('[cloudSync] /check verify network error', {
           request: {
-            url: `${CLOUD_SYNC.BASE_URL}${CLOUD_SYNC.PREFIX}/check`,
+            url: `${baseUrl}${CLOUD_SYNC.PREFIX}/check`,
             body: { userKey: cloudSyncConfig.userKey, count: mergedList.length, hash: verifyHash }
           },
           error: _e
@@ -778,7 +768,7 @@ ipcMain.handle('cloudSync/start', async () => {
     try {
       const curatedArtistResult = await syncCuratedArtistCloudSnapshot({
         config: {
-          baseUrl: CLOUD_SYNC.BASE_URL,
+          baseUrl: baseUrl,
           apiSecretKey: CLOUD_SYNC.API_SECRET_KEY,
           userKey: cloudSyncConfig.userKey
         },
@@ -811,7 +801,7 @@ ipcMain.handle('cloudSync/start', async () => {
         } else {
           log.error('[cloudSync] /curated-artist-sync error', {
             request: {
-              url: `${CLOUD_SYNC.BASE_URL}/frkbapi/v1/curated-artist-sync/sync`,
+              url: `${baseUrl}/frkbapi/v1/curated-artist-sync/sync`,
               body: {
                 userKey: cloudSyncConfig.userKey
               }
@@ -825,7 +815,7 @@ ipcMain.handle('cloudSync/start', async () => {
       } else {
         log.error('[cloudSync] /curated-artist-sync network error', {
           request: {
-            url: `${CLOUD_SYNC.BASE_URL}/frkbapi/v1/curated-artist-sync/sync`,
+            url: `${baseUrl}/frkbapi/v1/curated-artist-sync/sync`,
             body: {
               userKey: cloudSyncConfig.userKey
             }

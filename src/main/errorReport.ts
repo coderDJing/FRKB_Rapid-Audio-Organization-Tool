@@ -1,9 +1,9 @@
 import fs = require('fs-extra')
-import { is } from '@electron-toolkit/utils'
 import store from './store'
 import { clearLogFileSync, getLogPath, log } from './log'
 import { persistSettingConfig } from './settingsPersistence'
 import { fetchWithSystemProxy } from './fetchWithSystemProxy'
+import { resolveBaseUrl } from './serverDiscovery'
 
 // 正式阈值：累计运行 100 小时上报一次；失败后每 1 小时重试一次
 const USAGE_UPLOAD_THRESHOLD_MS = 100 * 60 * 60 * 1000
@@ -11,9 +11,6 @@ const RETRY_THRESHOLD_MS = 60 * 60 * 1000
 const TICK_MS = 5000
 
 const ERROR_API = {
-  BASE_URL: is.dev
-    ? process.env.CLOUD_SYNC_BASE_URL_DEV || 'http://localhost:3001'
-    : process.env.CLOUD_SYNC_BASE_URL_PROD || '',
   PATH: '/frkbapi/v1/error-report/upload',
   API_SECRET_KEY: process.env.CLOUD_SYNC_API_SECRET_KEY || ''
 }
@@ -43,7 +40,8 @@ async function readPendingLogText(): Promise<string> {
 
 async function uploadLogText(text: string): Promise<boolean> {
   try {
-    const res = await fetchWithSystemProxy(`${ERROR_API.BASE_URL}${ERROR_API.PATH}`, {
+    const baseUrl = await resolveBaseUrl()
+    const res = await fetchWithSystemProxy(`${baseUrl}${ERROR_API.PATH}`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${ERROR_API.API_SECRET_KEY}`,

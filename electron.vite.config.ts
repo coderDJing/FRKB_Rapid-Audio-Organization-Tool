@@ -69,6 +69,10 @@ export default defineConfig({
       'process.env.CLOUD_SYNC_BASE_URL_PROD': JSON.stringify(
         process.env.CLOUD_SYNC_BASE_URL_PROD || ''
       ),
+      'process.env.CLOUD_SYNC_DISCOVERY_URL': JSON.stringify(
+        process.env.CLOUD_SYNC_DISCOVERY_URL ||
+          'https://raw.githubusercontent.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/main/server.json'
+      ),
       'process.env.CLOUD_SYNC_API_SECRET_KEY': JSON.stringify(
         process.env.CLOUD_SYNC_API_SECRET_KEY || ''
       ),
@@ -88,6 +92,10 @@ export default defineConfig({
       ),
       'process.env.CLOUD_SYNC_BASE_URL_PROD': JSON.stringify(
         process.env.CLOUD_SYNC_BASE_URL_PROD || ''
+      ),
+      'process.env.CLOUD_SYNC_DISCOVERY_URL': JSON.stringify(
+        process.env.CLOUD_SYNC_DISCOVERY_URL ||
+          'https://raw.githubusercontent.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/main/server.json'
       ),
       'process.env.CLOUD_SYNC_API_SECRET_KEY': JSON.stringify(
         process.env.CLOUD_SYNC_API_SECRET_KEY || ''
