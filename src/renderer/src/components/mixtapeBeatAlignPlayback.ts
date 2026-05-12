@@ -9,12 +9,14 @@ type UseMixtapeBeatAlignPlaybackParams = {
   filePathRef: Ref<string>
   previewLoading: Ref<boolean>
   previewMixxxData: Ref<MixxxWaveformData | null>
+  previewPlaying?: Ref<boolean>
   previewStartSec: Ref<number>
   resolveVisibleDurationSec: () => number
   resolvePreviewDurationSec: () => number
   clampPreviewStart: (value: number) => number
   schedulePreviewDraw: () => void
   isViewportInteracting?: () => boolean
+  playheadRatio?: number
 }
 
 type DecodeForTransportResult = {
@@ -104,18 +106,25 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     filePathRef,
     previewLoading,
     previewMixxxData,
+    previewPlaying: previewPlayingParam,
     previewStartSec,
     resolveVisibleDurationSec,
     resolvePreviewDurationSec,
     clampPreviewStart,
     schedulePreviewDraw,
-    isViewportInteracting
+    isViewportInteracting,
+    playheadRatio
   } = params
 
-  const previewPlaying = ref(false)
+  const previewPlaying = previewPlayingParam ?? ref(false)
   const previewDecoding = ref(false)
+  const previewPlayheadRatio = clampNumber(
+    Number.isFinite(Number(playheadRatio)) ? Number(playheadRatio) : PREVIEW_PLAY_ANCHOR_RATIO,
+    0,
+    1
+  )
   const previewAnchorStyle = computed(() => ({
-    left: `${(PREVIEW_PLAY_ANCHOR_RATIO * 100).toFixed(4)}%`
+    left: `${(previewPlayheadRatio * 100).toFixed(4)}%`
   }))
   const canTogglePreviewPlayback = computed(() => {
     if (previewPlaying.value) return true
@@ -152,7 +161,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     const total = resolvePreviewDurationSec()
     const visible = resolveVisibleDurationSec()
     if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(visible) || visible <= 0) return
-    const nextStart = clampPreviewStart(anchorSec - visible * PREVIEW_PLAY_ANCHOR_RATIO)
+    const nextStart = clampPreviewStart(anchorSec - visible * previewPlayheadRatio)
     if (Math.abs(nextStart - previewStartSec.value) <= 0.0001) return
     previewStartSec.value = nextStart
     schedulePreviewDraw()
@@ -161,7 +170,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
   const resolveAnchorSecFromPreviewWindow = () => {
     const visible = resolveVisibleDurationSec()
     const baseStart = clampPreviewStart(previewStartSec.value)
-    return baseStart + Math.max(0, visible) * PREVIEW_PLAY_ANCHOR_RATIO
+    return baseStart + Math.max(0, visible) * previewPlayheadRatio
   }
 
   const clampPlaybackAnchorSec = (value: number, duration?: number) => {

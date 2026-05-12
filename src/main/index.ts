@@ -13,6 +13,7 @@ import './cloudSync'
 import errorReport from './errorReport'
 import { saveList } from './fingerprintStore'
 import mainWindow from './window/mainWindow'
+import mixtapeWindow from './window/mixtapeWindow'
 import databaseInitWindow from './window/databaseInitWindow'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
@@ -298,6 +299,7 @@ songGridEvents.on('grid-updated', (payload) => {
       mainWindow.instance.webContents.send('song-grid-updated', payload)
     } catch {}
   }
+  mixtapeWindow.broadcast?.('song-grid-updated', payload)
 })
 
 songHotCueEvents.on('hot-cues-updated', (payload) => {

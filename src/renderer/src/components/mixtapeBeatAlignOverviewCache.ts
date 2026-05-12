@@ -10,6 +10,7 @@ type BuildBeatAlignOverviewCacheParams = {
   maxRenderColumns: number
   waveformVerticalPadding: number
   leadingPadSec: number
+  trailingPadSec?: number
   timeBasisOffsetMs?: number
 }
 
@@ -24,6 +25,7 @@ export const rebuildBeatAlignOverviewCache = (
     maxRenderColumns,
     waveformVerticalPadding,
     leadingPadSec,
+    trailingPadSec,
     timeBasisOffsetMs
   } = params
   // 节拍对齐仅展示精细(raw)波形，raw 未就绪时不渲染概览波形
@@ -69,9 +71,12 @@ export const rebuildBeatAlignOverviewCache = (
 
   const duration = Number(mixxxData.duration) || 0
   const safeLeadingPadSec = Number.isFinite(leadingPadSec) && leadingPadSec > 0 ? leadingPadSec : 0
-  const virtualSpanSec = Math.max(0.0001, duration + safeLeadingPadSec)
+  const safeTrailingPadSec =
+    Number.isFinite(trailingPadSec) && Number(trailingPadSec) > 0 ? Number(trailingPadSec) : 0
+  const virtualSpanSec = Math.max(0.0001, duration + safeLeadingPadSec + safeTrailingPadSec)
   const leadingPadPx = (safeLeadingPadSec / virtualSpanSec) * renderWidth
-  const contentWidth = Math.max(1, renderWidth - leadingPadPx)
+  const trailingPadPx = (safeTrailingPadSec / virtualSpanSec) * renderWidth
+  const contentWidth = Math.max(1, renderWidth - leadingPadPx - trailingPadPx)
 
   const verticalPadding = Math.max(0, Math.min(Math.floor(height / 3), waveformVerticalPadding))
   const drawHeight = Math.max(1, height - verticalPadding * 2)

@@ -11,6 +11,7 @@ import {
   appendMixtapeItems,
   getMixtapeProjectMixMode,
   getMixtapeProjectStemConfig,
+  listMixtapeItems,
   listMixtapeItemsByItemIds,
   listMixtapeItemsByFilePath,
   listMixtapeFilePathsByItemIds,
@@ -49,7 +50,9 @@ import {
   reconcileMixtapeMissingFiles
 } from './mixtapeHandlers.shared'
 import {
+  isCompleteSharedSongGridDefinition,
   loadSharedSongGridDefinition,
+  loadSharedSongGridDefinitions,
   persistSharedSongGridDefinition,
   type SharedSongGridDefinition
 } from '../services/sharedSongGrid'
@@ -140,6 +143,35 @@ export function registerMixtapeHandlers() {
     }
   }
 
+  const hydrateMixtapeItemsGridFromShared = async (items: Array<{ filePath?: string }>) => {
+    const filePaths = Array.from(
+      new Set(
+        items
+          .map((item) => (typeof item?.filePath === 'string' ? item.filePath.trim() : ''))
+          .filter(Boolean)
+      )
+    )
+    if (!filePaths.length) return { updated: 0 }
+
+    const sharedGridMap = await loadSharedSongGridDefinitions(filePaths).catch(
+      (): Map<string, SharedSongGridDefinition> => new Map()
+    )
+    const entries: SharedSongGridDefinition[] = []
+    for (const filePath of filePaths) {
+      const sharedGrid = sharedGridMap.get(filePath)
+      if (!isCompleteSharedSongGridDefinition(sharedGrid)) continue
+      entries.push({
+        filePath,
+        bpm: sharedGrid.bpm,
+        firstBeatMs: sharedGrid.firstBeatMs,
+        barBeatOffset: sharedGrid.barBeatOffset,
+        timeBasisOffsetMs: sharedGrid.timeBasisOffsetMs,
+        beatGridAlgorithmVersion: sharedGrid.beatGridAlgorithmVersion
+      })
+    }
+    return upsertMixtapeItemGridByFilePath(entries)
+  }
+
   const broadcastMixtapeItemsRemoved = (
     sender: Electron.WebContents | null,
     payload: {
@@ -188,10 +220,12 @@ export function registerMixtapeHandlers() {
   ipcMain.handle('mixtape:list', async (_e, payload: { playlistId?: string }) => {
     const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
     const { items, recovery } = await reconcileMixtapeMissingFiles(playlistId)
+    const gridHydration = await hydrateMixtapeItemsGridFromShared(items)
+    const hydratedItems = gridHydration.updated > 0 ? listMixtapeItems(playlistId) : items
     const stemConfig = getMixtapeProjectStemConfig(playlistId)
     const stemSummary = summarizeMixtapeStemStatusByPlaylist(playlistId)
     return {
-      items,
+      items: hydratedItems,
       recovery,
       mixMode: stemConfig.mixMode,
       stemProfile: stemConfig.stemProfile,

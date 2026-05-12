@@ -1,8 +1,5 @@
 .dialog-body {
   --beat-align-frame-border: rgba(124, 166, 212, 0.3);
-  --beat-align-barline: rgba(0, 110, 220, 0.98);
-  --beat-align-barline-glow-primary: rgba(0, 110, 220, 0.95);
-  --beat-align-barline-glow-secondary: rgba(64, 158, 255, 0.58);
   --beat-align-anchor-line: rgba(255, 233, 141, 0.7);
   --beat-align-anchor-line-active: rgba(255, 227, 122, 0.94);
   --beat-align-anchor-shadow: rgba(0, 0, 0, 0.22);
@@ -42,9 +39,6 @@
 
 :global(.theme-light) .dialog-body {
   --beat-align-frame-border: rgba(54, 101, 177, 0.24);
-  --beat-align-barline: rgba(0, 110, 220, 0.9);
-  --beat-align-barline-glow-primary: rgba(0, 110, 220, 0.52);
-  --beat-align-barline-glow-secondary: rgba(43, 102, 217, 0.2);
   --beat-align-anchor-line: rgba(198, 138, 16, 0.56);
   --beat-align-anchor-line-active: rgba(198, 138, 16, 0.82);
   --beat-align-anchor-shadow: rgba(255, 255, 255, 0.46);
@@ -98,7 +92,7 @@
   height: 176px;
   border: 1px solid var(--beat-align-frame-border);
   border-radius: 6px;
-  background: var(--waveform-bg);
+  background: var(--shell-waveform-bg, var(--waveform-bg));
   cursor: grab;
   overflow: hidden;
 }
@@ -111,24 +105,37 @@
   cursor: crosshair;
 }
 
-.preview-canvas {
+.raw-detail-waveform__canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
-  display: block;
+  transform-origin: 0 0;
+  will-change: transform;
 }
 
-.preview-barline-glow {
+.raw-detail-waveform__canvas--grid {
+  pointer-events: none;
+}
+
+.raw-detail-waveform__canvas--overlay {
+  inset: -12px 0;
+  height: calc(100% + 24px);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.raw-detail-waveform__barline-glow {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 2px;
   margin-left: -1px;
-  background: var(--beat-align-barline);
-  box-shadow:
-    0 0 10px var(--beat-align-barline-glow-primary),
-    0 0 24px var(--beat-align-barline-glow-secondary);
+  background: rgba(255, 214, 92, 0.88);
+  box-shadow: 0 0 0 1px rgba(255, 214, 92, 0.2);
   pointer-events: none;
-  z-index: 3;
+  z-index: 5;
 }
 
 .preview-anchor-line {
@@ -210,6 +217,7 @@
   padding: 6px 10px;
   border-radius: 4px;
   pointer-events: none;
+  z-index: 6;
 }
 
 .preview-status.is-error {

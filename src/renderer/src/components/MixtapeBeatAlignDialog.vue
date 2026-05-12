@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { ISongInfo } from 'src/types/globals'
 import { t } from '@renderer/utils/translate'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
@@ -8,10 +9,16 @@ import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatA
 import MixtapeBeatAlignTopControls from '@renderer/components/mixtapeBeatAlignTopControls.vue'
 import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
 import { rebuildBeatAlignOverviewCache } from '@renderer/components/mixtapeBeatAlignOverviewCache'
-import { createBeatAlignPreviewRenderer } from '@renderer/components/mixtapeBeatAlignPreviewRenderer'
 import { useMixtapeBeatAlignPlayback } from '@renderer/components/mixtapeBeatAlignPlayback'
 import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
 import { pickRawDataByFile } from '@renderer/components/mixtapeBeatAlignRawWaveform'
+import {
+  HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
+  HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
+  HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR,
+  HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM
+} from '@renderer/components/horizontalBrowseWaveform.constants'
+import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
 import {
   OVERVIEW_MAX_RENDER_COLUMNS,
   OVERVIEW_WAVEFORM_VERTICAL_PADDING,
@@ -26,17 +33,12 @@ import {
   PREVIEW_BPM_TAP_RESET_MS,
   PREVIEW_GRID_SHIFT_LARGE_MS,
   PREVIEW_GRID_SHIFT_SMALL_MS,
-  PREVIEW_MAX_SAMPLES_PER_PIXEL,
-  PREVIEW_MAX_ZOOM,
-  PREVIEW_MIN_ZOOM,
-  PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL,
   PREVIEW_RAW_TARGET_RATE,
   PREVIEW_SHORTCUT_BEATS,
   PREVIEW_SHORTCUT_FALLBACK_BPM,
   PREVIEW_WARMUP_DELAY_MS,
   PREVIEW_WARMUP_EAGER_DELAY_MS,
   clampNumber,
-  clampPreviewStartByRange,
   formatPreviewBpm,
   isEditableEventTarget,
   normalizeBeatOffset,
@@ -44,11 +46,6 @@ import {
   normalizePreviewBpm,
   parsePreviewBpmInput,
   resolveOverviewViewportMetricsByRange,
-  resolvePreviewAnchorSecByRange,
-  resolvePreviewDurationSecByMixxx,
-  resolvePreviewLeadingPadSecByVisible,
-  resolvePreviewVirtualSpanSecByRange,
-  resolveVisibleDurationSecByZoom,
   resizePreviewCanvasByPixelRatio
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
@@ -94,25 +91,26 @@ const emit = defineEmits<{
 
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
-const previewWrapRef = ref<HTMLDivElement | null>(null)
-const previewCanvasRef = ref<HTMLCanvasElement | null>(null)
 const overviewWrapRef = ref<HTMLDivElement | null>(null)
 const overviewCanvasRef = ref<HTMLCanvasElement | null>(null)
 const previewLoading = ref(false)
 const previewError = ref('')
 const previewMixxxData = ref<MixxxWaveformData | null>(null)
 const overviewRawData = ref<RawWaveformData | null>(null)
-const previewZoom = ref(PREVIEW_MIN_ZOOM)
+const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const previewStartSec = ref(0)
 const previewDragging = ref(false)
+const previewPlaying = ref(false)
+const rawStreamActive = ref(false)
+const previewWaveformDeferred = ref(false)
 const overviewDragging = ref(false)
 const previewBarBeatOffset = ref(0)
 const previewFirstBeatMs = ref(0)
+const previewTimeBasisOffsetMs = ref(0)
 const previewBpm = ref(128)
 const previewBpmInput = ref('128.00')
 const bpmTapTimestamps = ref<number[]>([])
 
-let previewRaf = 0
 let overviewRaf = 0
 let previewDragStartClientX = 0
 let previewDragStartSec = 0
@@ -150,8 +148,6 @@ const createRawPlaceholderMixxxData = (rawData: RawWaveformData): MixxxWaveformD
     }
   }
 }
-
-const previewRenderer = createBeatAlignPreviewRenderer()
 
 const bpmDisplay = computed(() => {
   const bpmValue = Number(previewBpm.value)
@@ -270,27 +266,98 @@ const save = () => {
 const normalizedFilePath = computed(() => String(props.filePath || '').trim())
 syncPreviewBpmFromProps()
 
-const resolvePreviewDurationSec = () => resolvePreviewDurationSecByMixxx(previewMixxxData.value)
+const resolveBeatAlignFileName = () => {
+  const filePath = normalizedFilePath.value
+  const fileName = filePath.split(/[\\/]/).pop()?.trim()
+  return fileName || String(props.trackTitle || '').trim()
+}
 
-const resolveVisibleDurationSec = () =>
-  resolveVisibleDurationSecByZoom(resolvePreviewDurationSec(), Number(previewZoom.value))
+const beatAlignSong = computed<ISongInfo | null>(() => {
+  const filePath = normalizedFilePath.value
+  if (!filePath) return null
+  const duration = Math.max(
+    0,
+    Number(overviewRawData.value?.duration || previewMixxxData.value?.duration || 0)
+  )
+  return {
+    filePath,
+    fileName: resolveBeatAlignFileName(),
+    fileFormat: '',
+    cover: null,
+    title: String(props.trackTitle || '').trim() || undefined,
+    artist: undefined,
+    album: undefined,
+    duration: duration > 0 ? String(duration) : '',
+    genre: undefined,
+    label: undefined,
+    bitrate: undefined,
+    container: undefined,
+    key: String(props.trackKey || '').trim() || undefined,
+    bpm: Number(previewBpm.value) || 0,
+    firstBeatMs: Number(previewFirstBeatMs.value) || 0,
+    barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL),
+    timeBasisOffsetMs: Number(previewTimeBasisOffsetMs.value) || 0
+  }
+})
+
+const playbackSyncRevision = computed(() => 0)
+let resolveWaveformCurrentSeconds = () => 0
+
+const {
+  wrapRef: previewWrapRef,
+  waveformCanvasRef,
+  gridCanvasRef,
+  overlayCanvasRef,
+  resolvePreviewDurationSec,
+  resolveVisibleDurationSec,
+  resolvePreviewAnchorSec,
+  clampPreviewStart,
+  scheduleDraw: schedulePreviewDraw,
+  clearCanvas: clearPreviewCanvas,
+  invalidateWaveformTiles,
+  mountWaveformCanvasWorker,
+  resetGridRenderer,
+  resetRetainedWaveformData,
+  replaceLiveWaveformRaw,
+  dispose: disposeWaveformCanvas
+} = useHorizontalBrowseRawWaveformCanvas({
+  song: () => beatAlignSong.value,
+  direction: () => 'up',
+  deferWaveformLoad: previewWaveformDeferred,
+  cueSeconds: () => undefined,
+  hotCues: () => [],
+  memoryCues: () => [],
+  loopRange: () => null,
+  currentSeconds: () => resolveWaveformCurrentSeconds(),
+  playbackRate: () => 1,
+  playing: previewPlaying,
+  playbackSyncRevision,
+  rawData: overviewRawData,
+  mixxxData: previewMixxxData,
+  previewStartSec,
+  previewZoom,
+  previewBpm,
+  previewFirstBeatMs,
+  previewBarBeatOffset,
+  previewTimeBasisOffsetMs,
+  dragging: previewDragging,
+  rawStreamActive,
+  allowNegativeTimeline: () => false,
+  waveformLayout: () => 'full',
+  waveformRenderStyle: () => 'raw-curve'
+})
 
 const resolvePreviewLeadingPadSec = () =>
-  resolvePreviewLeadingPadSecByVisible(resolveVisibleDurationSec())
+  resolveVisibleDurationSec() * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
+
+const resolvePreviewTrailingPadSec = () =>
+  resolveVisibleDurationSec() * (1 - HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
 
 const resolvePreviewVirtualSpanSec = () =>
-  resolvePreviewVirtualSpanSecByRange(resolvePreviewDurationSec(), resolvePreviewLeadingPadSec())
-
-const clampPreviewStart = (value: number) =>
-  clampPreviewStartByRange(
-    value,
-    resolvePreviewDurationSec(),
-    resolveVisibleDurationSec(),
-    resolvePreviewLeadingPadSec()
+  Math.max(
+    0.0001,
+    resolvePreviewDurationSec() + resolvePreviewLeadingPadSec() + resolvePreviewTrailingPadSec()
   )
-
-const resolvePreviewAnchorSec = (startSec: number = previewStartSec.value) =>
-  resolvePreviewAnchorSecByRange(startSec, resolvePreviewDurationSec(), resolveVisibleDurationSec())
 
 const resolveOverviewViewportMetrics = () =>
   resolveOverviewViewportMetricsByRange({
@@ -310,41 +377,6 @@ const overviewViewportStyle = computed(() => {
     opacity: width > 0 ? '1' : '0'
   }
 })
-
-const drawPreviewCanvas = () => {
-  const canvas = previewCanvasRef.value
-  const wrap = previewWrapRef.value
-  if (!canvas || !wrap) return
-
-  const totalDuration = resolvePreviewDurationSec()
-  const visibleDuration = totalDuration > 0 ? resolveVisibleDurationSec() : 0
-  const safeDuration = Math.max(0.001, visibleDuration || totalDuration || 1)
-  const rangeStartSec = totalDuration > 0 ? clampPreviewStart(previewStartSec.value) : 0
-
-  if (totalDuration > 0) {
-    previewStartSec.value = rangeStartSec
-  } else {
-    previewStartSec.value = 0
-  }
-  const isPlaybackRendering = previewPlaying.value && !previewDragging.value
-  previewRenderer.draw({
-    canvas,
-    wrap,
-    bpm: Number(previewBpm.value) || 0,
-    firstBeatMs: Number(previewFirstBeatMs.value) || 0,
-    barBeatOffset: previewBarBeatOffset.value,
-    timeBasisOffsetMs: Math.max(0, Number(props.timeBasisOffsetMs) || 0),
-    rangeStartSec,
-    rangeDurationSec: safeDuration,
-    mixxxData: previewMixxxData.value,
-    rawData: overviewRawData.value,
-    maxSamplesPerPixel: isPlaybackRendering
-      ? PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL
-      : PREVIEW_MAX_SAMPLES_PER_PIXEL,
-    showDetailHighlights: !isPlaybackRendering,
-    showCenterLine: true
-  })
-}
 
 const drawOverviewCanvas = () => {
   const canvas = overviewCanvasRef.value
@@ -374,16 +406,7 @@ const drawOverviewCanvas = () => {
   }
 }
 
-const schedulePreviewDraw = () => {
-  if (previewRaf) return
-  previewRaf = requestAnimationFrame(() => {
-    previewRaf = 0
-    drawPreviewCanvas()
-  })
-}
-
 const {
-  previewPlaying,
   previewDecoding,
   previewAnchorStyle,
   canTogglePreviewPlayback,
@@ -401,13 +424,17 @@ const {
   filePathRef: normalizedFilePath,
   previewLoading,
   previewMixxxData,
+  previewPlaying,
   previewStartSec,
   resolveVisibleDurationSec,
   resolvePreviewDurationSec,
   clampPreviewStart,
   schedulePreviewDraw,
-  isViewportInteracting: () => previewDragging.value || overviewDragging.value
+  isViewportInteracting: () => previewDragging.value || overviewDragging.value,
+  playheadRatio: HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
 })
+
+resolveWaveformCurrentSeconds = getPreviewPlaybackSec
 
 const {
   metronomeEnabled,
@@ -521,6 +548,7 @@ const rebuildOverviewCache = () => {
     maxRenderColumns: OVERVIEW_MAX_RENDER_COLUMNS,
     waveformVerticalPadding: OVERVIEW_WAVEFORM_VERTICAL_PADDING,
     leadingPadSec: resolvePreviewLeadingPadSec(),
+    trailingPadSec: resolvePreviewTrailingPadSec(),
     timeBasisOffsetMs: Math.max(0, Number(props.timeBasisOffsetMs) || 0)
   })
 }
@@ -537,12 +565,16 @@ const scheduleOverviewRebuild = () => {
 const setPreviewZoom = (targetZoom: number, anchorRatio: number = 0.5) => {
   const total = resolvePreviewDurationSec()
   if (!total) return
-  const clampedZoom = Math.max(PREVIEW_MIN_ZOOM, Math.min(PREVIEW_MAX_ZOOM, targetZoom))
+  const clampedZoom = Math.max(
+    HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
+    Math.min(HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM, targetZoom)
+  )
   const beforeDuration = resolveVisibleDurationSec()
   const anchor = previewStartSec.value + beforeDuration * Math.max(0, Math.min(1, anchorRatio))
   previewZoom.value = clampedZoom
   const nextDuration = resolveVisibleDurationSec()
   previewStartSec.value = clampPreviewStart(anchor - nextDuration * anchorRatio)
+  resetGridRenderer()
   schedulePreviewDraw()
 }
 
@@ -554,7 +586,10 @@ const handlePreviewWheel = (event: WheelEvent) => {
 
   const rect = wrap.getBoundingClientRect()
   const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5
-  const factor = event.deltaY < 0 ? 1.15 : 1 / 1.15
+  const factor =
+    event.deltaY < 0
+      ? HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR
+      : 1 / HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR
   setPreviewZoom(previewZoom.value * factor, Math.max(0, Math.min(1, ratio)))
 }
 
@@ -572,7 +607,7 @@ const handlePreviewDragMove = (event: MouseEvent) => {
   const deltaSec = (deltaX / width) * visibleDuration
   previewStartSec.value = clampPreviewStart(previewDragStartSec - deltaSec)
 
-  const anchorSec = resolvePreviewAnchorSec(previewStartSec.value)
+  const anchorSec = resolvePreviewAnchorSec()
   const now = performance.now()
   if (previewDragScrubbing) {
     const dtSec = Math.max(0.001, (now - previewDragLastTs) / 1000)
@@ -608,7 +643,7 @@ const handlePreviewMouseDown = (event: MouseEvent) => {
   previewDragging.value = true
   previewDragStartClientX = event.clientX
   previewDragStartSec = previewStartSec.value
-  previewDragLastAnchorSec = resolvePreviewAnchorSec(previewDragStartSec)
+  previewDragLastAnchorSec = resolvePreviewAnchorSec()
   previewDragLastTs = performance.now()
   previewDragScrubbing = false
   if (previewPlaying.value) {
@@ -740,18 +775,23 @@ const loadPreviewWaveform = async (filePath: string) => {
   const requestSeq = ++previewLoadSequence
   clearPreviewWarmupTimer()
   stopPreviewPlayback({ syncPosition: false })
-  previewRenderer.reset()
+  invalidateWaveformTiles()
+  resetRetainedWaveformData()
+  resetGridRenderer()
+  replaceLiveWaveformRaw(null)
+  clearPreviewCanvas()
   previewLoading.value = false
   previewMixxxData.value = null
   overviewRawData.value = null
   previewError.value = ''
-  previewZoom.value = PREVIEW_MIN_ZOOM
+  previewZoom.value = HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
   previewStartSec.value = 0
   syncPreviewBpmFromProps()
   previewBarBeatOffset.value = normalizeBeatOffset(props.barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
   previewFirstBeatMs.value = Number.isFinite(Number(props.firstBeatMs))
     ? Number(props.firstBeatMs)
     : 0
+  previewTimeBasisOffsetMs.value = Math.max(0, Number(props.timeBasisOffsetMs) || 0)
   resetBarLinePicking()
   stopPreviewDragging()
   stopOverviewDragging()
@@ -780,6 +820,7 @@ const loadPreviewWaveform = async (filePath: string) => {
       ? createRawPlaceholderMixxxData(overviewRawData.value)
       : null
     if (overviewRawData.value) {
+      replaceLiveWaveformRaw(overviewRawData.value)
       previewStartSec.value = clampPreviewStart(-resolvePreviewLeadingPadSec())
     }
     if (!overviewRawData.value) {
@@ -870,8 +911,10 @@ watch(
 
 watch(
   () => props.timeBasisOffsetMs,
-  () => {
-    previewRenderer.reset()
+  (next) => {
+    previewTimeBasisOffsetMs.value = Math.max(0, Number(next) || 0)
+    invalidateWaveformTiles()
+    resetGridRenderer()
     schedulePreviewDraw()
     scheduleOverviewRebuild()
   }
@@ -892,6 +935,7 @@ watch(
 )
 
 onMounted(() => {
+  mountWaveformCanvasWorker()
   window.addEventListener('resize', handleWindowResize, { passive: true })
   window.addEventListener('keydown', handleWindowKeydown)
 })
@@ -901,11 +945,7 @@ onBeforeUnmount(() => {
   clearPreviewWarmupTimer()
   resetPreviewBpmTap()
   cleanupPreviewPlayback()
-  previewRenderer.dispose()
-  if (previewRaf) {
-    cancelAnimationFrame(previewRaf)
-    previewRaf = 0
-  }
+  disposeWaveformCanvas()
   if (overviewRaf) {
     cancelAnimationFrame(overviewRaf)
     overviewRaf = 0
@@ -953,17 +993,25 @@ onBeforeUnmount(() => {
         />
         <div
           ref="previewWrapRef"
-          class="preview-canvas-wrap"
+          class="preview-canvas-wrap raw-detail-waveform raw-detail-waveform--up"
           :class="{ 'is-dragging': previewDragging, 'is-bar-selecting': previewBarLinePicking }"
           @mousedown="handlePreviewMouseDown"
           @mousemove="handlePreviewMouseMoveForBarLinePicking"
           @mouseleave="handlePreviewMouseLeaveForBarLinePicking"
           @wheel.prevent="handlePreviewWheel"
         >
-          <canvas ref="previewCanvasRef" class="preview-canvas"></canvas>
+          <canvas ref="waveformCanvasRef" class="raw-detail-waveform__canvas"></canvas>
+          <canvas
+            ref="gridCanvasRef"
+            class="raw-detail-waveform__canvas raw-detail-waveform__canvas--grid"
+          ></canvas>
+          <canvas
+            ref="overlayCanvasRef"
+            class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay"
+          ></canvas>
           <div
             v-if="previewBarLineHoverVisible"
-            class="preview-barline-glow"
+            class="raw-detail-waveform__barline-glow"
             :style="previewBarLineGlowStyle"
           ></div>
           <div

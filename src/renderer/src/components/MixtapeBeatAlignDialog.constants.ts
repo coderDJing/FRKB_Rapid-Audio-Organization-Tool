@@ -129,19 +129,16 @@ export const resolveOverviewViewportMetricsByRange = (
   if (!params.durationSec || !params.visibleDurationSec || params.wrapWidth <= 0) {
     return { left: 0, width: 0, wrapWidth: 0 }
   }
-  const safeVisible = clampNumber(params.visibleDurationSec, 0.0001, params.durationSec)
+  const safeVisible = clampNumber(params.visibleDurationSec, 0.0001, params.virtualSpanSec)
   if (safeVisible >= params.virtualSpanSec) {
     return { left: 0, width: params.wrapWidth, wrapWidth: params.wrapWidth }
   }
   const rawWidth = (safeVisible / params.virtualSpanSec) * params.wrapWidth
   const width = clampNumber(rawWidth, OVERVIEW_VIEWPORT_MIN_WIDTH, params.wrapWidth)
   const maxLeftTime = Math.max(0, params.virtualSpanSec - safeVisible)
-  const safeStart = clampPreviewStartByRange(
-    params.startSec,
-    params.durationSec,
-    params.visibleDurationSec,
-    params.leadingPadSec
-  )
+  const minStart = -Math.max(0, params.leadingPadSec)
+  const maxStart = Math.max(minStart, params.virtualSpanSec - safeVisible - params.leadingPadSec)
+  const safeStart = clampNumber(params.startSec, minStart, maxStart)
   const leftTime = safeStart + params.leadingPadSec
   const startRatio = maxLeftTime > 0 ? leftTime / maxLeftTime : 0
   const maxLeft = Math.max(0, params.wrapWidth - width)
