@@ -1,5 +1,6 @@
 import os from 'node:os'
 import fs from 'node:fs'
+import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { log } from '../log'
 import { resolveMainWorkerPath } from '../workerPath'
@@ -9,10 +10,16 @@ import {
   updateMixtapeItemFilePathsById,
   type MixtapeItemRecord
 } from '../mixtapeDb'
+import { upsertMixtapeItemStemStateById, type MixtapeStemStatus } from '../mixtapeStemDb'
+import store from '../store'
+import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
 import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
 import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
-import { cleanupMixtapeWaveformCache } from '../services/mixtapeWaveformMaintenance'
+import {
+  cleanupMixtapeWaveformCache,
+  cleanupOrphanedMixtapeVaultFiles
+} from '../services/mixtapeWaveformMaintenance'
 import {
   isCompleteSharedSongGridDefinition,
   loadSharedSongGridDefinitions
@@ -503,6 +510,151 @@ const normalizeUniquePaths = (values: unknown[]): string[] => {
   )
 }
 
+type OriginPlaylistSnapshot =
+  | {
+      nodeType: 'songList'
+      rootPath: string
+    }
+  | {
+      nodeType: 'mixtapeList'
+      filePathKeys: Set<string>
+    }
+
+type OriginPlaylistResolver = {
+  canValidate: boolean
+  resolve: (playlistUuid: string) => OriginPlaylistSnapshot | null
+}
+
+type MixtapeItemInfoJson = Record<string, unknown>
+
+const READY_STEM_PATH_FIELDS = [
+  'stemVocalPath',
+  'stemInstPath',
+  'stemBassPath',
+  'stemDrumsPath'
+] as const
+
+const parseMixtapeItemInfoJson = (raw: unknown): MixtapeItemInfoJson => {
+  if (typeof raw !== 'string' || !raw.trim()) return {}
+  try {
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as MixtapeItemInfoJson)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+const normalizeInfoText = (value: unknown): string =>
+  typeof value === 'string' ? value.trim() : ''
+
+const normalizeStemStatus = (value: unknown): MixtapeStemStatus => {
+  if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+    return value
+  }
+  return 'ready'
+}
+
+const hasReadyStemAssetMismatch = (info: MixtapeItemInfoJson): boolean => {
+  if (normalizeStemStatus(info.stemStatus) !== 'ready') return false
+  const stemPaths = READY_STEM_PATH_FIELDS.map((field) => normalizeInfoText(info[field]))
+  if (!stemPaths.some(Boolean)) return false
+  return stemPaths.some((filePath) => !filePath || !fs.existsSync(filePath))
+}
+
+const normalizeFilePathKey = (value: unknown): string => {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (!text) return ''
+  const resolved = path.resolve(text)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+const isPathUnderRoot = (rootPath: string, filePath: string): boolean => {
+  const rootKey = normalizeFilePathKey(rootPath)
+  const fileKey = normalizeFilePathKey(filePath)
+  if (!rootKey || !fileKey) return false
+  return fileKey === rootKey || fileKey.startsWith(`${rootKey}${path.sep}`)
+}
+
+const buildLibraryNodePathMap = (nodes: LibraryNodeRow[]): Map<string, string> => {
+  const root = nodes.find((row) => row.parentUuid === null && row.nodeType === 'root')
+  if (!root) return new Map()
+
+  const childrenMap = new Map<string, LibraryNodeRow[]>()
+  for (const row of nodes) {
+    if (!row.parentUuid) continue
+    const list = childrenMap.get(row.parentUuid)
+    if (list) {
+      list.push(row)
+    } else {
+      childrenMap.set(row.parentUuid, [row])
+    }
+  }
+
+  const pathByUuid = new Map<string, string>([[root.uuid, root.dirName]])
+  const queue: LibraryNodeRow[] = [root]
+  for (let index = 0; index < queue.length; index += 1) {
+    const parent = queue[index]
+    const parentPath = pathByUuid.get(parent.uuid)
+    if (!parentPath) continue
+    const children = childrenMap.get(parent.uuid) || []
+    for (const child of children) {
+      if (pathByUuid.has(child.uuid)) continue
+      pathByUuid.set(child.uuid, path.join(parentPath, child.dirName))
+      queue.push(child)
+    }
+  }
+  return pathByUuid
+}
+
+const createOriginPlaylistResolver = (): OriginPlaylistResolver => {
+  const libraryRoot = store.databaseDir || ''
+  const nodes = loadLibraryNodes(libraryRoot) || []
+  const pathByUuid = buildLibraryNodePathMap(nodes)
+  const canValidate = !!libraryRoot && pathByUuid.size > 0
+  if (!canValidate) {
+    return {
+      canValidate: false,
+      resolve: () => null
+    }
+  }
+
+  const nodeByUuid = new Map(nodes.map((row) => [row.uuid, row]))
+  const snapshotCache = new Map<string, OriginPlaylistSnapshot | null>()
+
+  return {
+    canValidate: true,
+    resolve: (playlistUuid: string): OriginPlaylistSnapshot | null => {
+      const normalizedUuid = typeof playlistUuid === 'string' ? playlistUuid.trim() : ''
+      if (!normalizedUuid) return null
+      if (snapshotCache.has(normalizedUuid)) {
+        return snapshotCache.get(normalizedUuid) || null
+      }
+
+      const node = nodeByUuid.get(normalizedUuid)
+      let snapshot: OriginPlaylistSnapshot | null = null
+      if (node?.nodeType === 'songList') {
+        const relativePath = pathByUuid.get(normalizedUuid)
+        const rootPath = relativePath ? path.join(libraryRoot, relativePath) : ''
+        snapshot = rootPath ? { nodeType: 'songList', rootPath } : null
+      } else if (node?.nodeType === 'mixtapeList') {
+        snapshot = {
+          nodeType: 'mixtapeList',
+          filePathKeys: new Set(
+            listMixtapeItems(normalizedUuid)
+              .map((item) => normalizeFilePathKey(item.filePath))
+              .filter(Boolean)
+          )
+        }
+      }
+
+      snapshotCache.set(normalizedUuid, snapshot)
+      return snapshot
+    }
+  }
+}
+
 export const reconcileMixtapeMissingFiles = async (
   playlistId: string
 ): Promise<{ items: MixtapeItemRecord[]; recovery: MixtapeMissingRecovery }> => {
@@ -515,6 +667,17 @@ export const reconcileMixtapeMissingFiles = async (
   const updates: Array<{ id: string; filePath: string }> = []
   const stalePaths: string[] = []
   const removeIds: string[] = []
+  const stemStatePatches: Array<{
+    itemId: string
+    stemStatus: MixtapeStemStatus
+    stemError: null
+    stemReadyAt: null
+    stemVocalPath: null
+    stemInstPath: null
+    stemBassPath: null
+    stemDrumsPath: null
+  }> = []
+  const originPlaylistResolver = createOriginPlaylistResolver()
 
   for (const item of items) {
     const itemId = typeof item?.id === 'string' ? item.id.trim() : ''
@@ -526,6 +689,37 @@ export const reconcileMixtapeMissingFiles = async (
         stalePaths.push(filePath)
       }
       continue
+    }
+    const originPlaylistUuid =
+      typeof item?.originPlaylistUuid === 'string' ? item.originPlaylistUuid.trim() : ''
+    if (originPlaylistUuid && originPlaylistResolver.canValidate) {
+      const originSnapshot = originPlaylistResolver.resolve(originPlaylistUuid)
+      let existsInOrigin = false
+      if (originSnapshot?.nodeType === 'songList') {
+        existsInOrigin =
+          isPathUnderRoot(originSnapshot.rootPath, filePath) && fs.existsSync(filePath)
+      } else if (originSnapshot?.nodeType === 'mixtapeList') {
+        const filePathKey = normalizeFilePathKey(filePath)
+        existsInOrigin = !!filePathKey && originSnapshot.filePathKeys.has(filePathKey)
+      }
+      if (!existsInOrigin) {
+        removeIds.push(itemId)
+        emptyRecovery.removedPaths.push(filePath)
+        stalePaths.push(filePath)
+        continue
+      }
+    }
+    if (hasReadyStemAssetMismatch(parseMixtapeItemInfoJson(item.infoJson))) {
+      stemStatePatches.push({
+        itemId,
+        stemStatus: 'pending',
+        stemError: null,
+        stemReadyAt: null,
+        stemVocalPath: null,
+        stemInstPath: null,
+        stemBassPath: null,
+        stemDrumsPath: null
+      })
     }
     if (fs.existsSync(filePath)) continue
     const resolved = await resolveMissingMixtapeFilePath(filePath)
@@ -557,10 +751,15 @@ export const reconcileMixtapeMissingFiles = async (
   if (removeIds.length > 0) {
     removeMixtapeItemsById(playlistId, removeIds)
   }
-  if (stalePaths.length > 0) {
-    await cleanupMixtapeWaveformCache(normalizeUniquePaths(stalePaths))
+  if (stemStatePatches.length > 0) {
+    upsertMixtapeItemStemStateById(stemStatePatches)
   }
-  if (updates.length === 0 && removeIds.length === 0) {
+  if (stalePaths.length > 0) {
+    const uniqueStalePaths = normalizeUniquePaths(stalePaths)
+    await cleanupMixtapeWaveformCache(uniqueStalePaths)
+    await cleanupOrphanedMixtapeVaultFiles(uniqueStalePaths)
+  }
+  if (updates.length === 0 && removeIds.length === 0 && stemStatePatches.length === 0) {
     return { items, recovery: emptyRecovery }
   }
 

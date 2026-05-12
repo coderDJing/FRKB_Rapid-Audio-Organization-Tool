@@ -237,7 +237,7 @@
     "transportNoPlayableTracks": "没有可在时间轴播放的曲目",
     "transportTrackError": "轨道播放失败：{track}（{reason}）",
     "missingTracksRemovedTitle": "Mixtape 自动录制曲目已更新",
-    "missingTracksRemovedSummary": "有 {count} 首曲目在回收站和 Mixtape 自动录制保底目录中都未找到，已从 Mixtape 自动录制歌单与工程中移除。",
+    "missingTracksRemovedSummary": "有 {count} 首曲目已不在来源歌单中，或在回收站和 Mixtape 自动录制保底目录中都未找到，已从 Mixtape 自动录制歌单与工程中移除。",
     "missingTracksRemovedMore": "其余 {count} 首未在此处展示。",
     "deleteBlockedWindowOpen": "当前 Mixtape 自动录制窗口正在打开，无法删除该 Mixtape 自动录制歌单。",
     "deleteBlockedWindowOpenHint": "请先关闭该 Mixtape 自动录制窗口，再执行删除。"

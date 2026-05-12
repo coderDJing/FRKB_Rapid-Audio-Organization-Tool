@@ -228,12 +228,6 @@
   opacity: 0.68;
 }
 
-.timeline-transport-error {
-  padding: 4px 12px 0;
-  font-size: 11px;
-  color: var(--mixtape-error-soft);
-}
-
 .lane-track:hover {
   border-color: rgba(170, 170, 170, 0.95);
 }
@@ -248,6 +242,42 @@
 
 .lane-track.is-stem-failed:hover {
   border-color: rgba(219, 97, 97, 0.74);
+}
+
+.mixtape-transport-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: var(--z-dialog-raised);
+  width: min(360px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 11px 13px;
+  border: 1px solid var(--mixtape-mask-card-error-border);
+  border-radius: 8px;
+  background: var(--mixtape-mask-card-error-bg);
+  color: var(--text);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.mixtape-transport-toast__message {
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.mixtape-transport-toast-enter-active,
+.mixtape-transport-toast-leave-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.mixtape-transport-toast-enter-from,
+.mixtape-transport-toast-leave-to {
+  opacity: 0;
+  transform: translateY(8px);
 }
 
 .lane-track__envelope-svg {

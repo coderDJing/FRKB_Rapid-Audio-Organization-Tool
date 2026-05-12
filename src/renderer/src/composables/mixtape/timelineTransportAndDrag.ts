@@ -67,6 +67,7 @@ const MIX_ENVELOPE_PARAMS_4STEMS: MixtapeEnvelopeParamId[] = [
 const STEM_IDS_4STEMS: TransportStemId[] = ['vocal', 'inst', 'bass', 'drums']
 const MIXTAPE_SEGMENT_MUTE_GAIN = 0.0001
 const FOLLOW_PLAYHEAD_LOCK_RATIO = 1 / 3
+const MAX_SOURCE_CLOCK_DRIFT_SEC = 2
 
 type ValueRef<T> = Ref<T>
 type TimelineScrollHost = InstanceType<typeof OverlayScrollbarsComponent>
@@ -634,15 +635,20 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     return Number(entry.startSec) + localSec
   }
 
-  const resolveNodeRuntimeTimelineSec = (node: TrackGraphNode) => {
-    const playbackPositionSec = Number(node.source.resolvePlaybackPositionSec())
+  const resolveNodeRuntimeTimelineSec = (node: TrackGraphNode, timelineSec: number) => {
+    const sourcePositionSec = node.source.resolvePlaybackPositionSec()
+    if (sourcePositionSec === null) return null
+    const playbackPositionSec = Number(sourcePositionSec)
     if (!Number.isFinite(playbackPositionSec) || playbackPositionSec < 0) return null
     const rawTimelineSec = resolveEntryTimelineSecFromSourcePosition(
       node.entry,
       playbackPositionSec,
       node.source.startOffsetKind
     )
-    return Math.max(0, rawTimelineSec - resolveSourceLatencySec(node.source))
+    if (!Number.isFinite(rawTimelineSec)) return null
+    const runtimeTimelineSec = Math.max(0, rawTimelineSec - resolveSourceLatencySec(node.source))
+    if (Math.abs(runtimeTimelineSec - timelineSec) > MAX_SOURCE_CLOCK_DRIFT_SEC) return null
+    return runtimeTimelineSec
   }
 
   const resolveTransportAudibleTimelineSec = (
@@ -660,7 +666,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       }) ||
       null
     if (!masterNode) return timelineSec
-    return resolveNodeRuntimeTimelineSec(masterNode) ?? timelineSec
+    return resolveNodeRuntimeTimelineSec(masterNode, timelineSec) ?? timelineSec
   }
 
   const applyTransportMixParamsAtTimelineSec = (
@@ -801,6 +807,44 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       }
       return Boolean(entry.audioRef?.audioBuffer)
     })
+    const duration = entries.reduce(
+      (max, entry) => Math.max(max, entry.startSec + entry.duration),
+      0
+    )
+    transportDurationSec = duration
+    const minStartSec = entries.reduce(
+      (min, entry) => Math.min(min, Number(entry.startSec) || 0),
+      0
+    )
+    const startSec = clampNumber(rawStartSec, minStartSec, Math.max(minStartSec, duration))
+    const silentStemTrackCount = isStemMixMode()
+      ? Math.max(0, plan.missingStemAssetCount) + Math.max(0, plan.stemNotReadyCount)
+      : 0
+    transportError.value = ''
+
+    const hasPlayableTimelineRange = entries.length > 0 && duration > 0 && startSec < duration
+    if (!hasPlayableTimelineRange || playableEntries.length <= 0) {
+      playheadSec.value = startSec
+      playheadVisible.value = hasPlayableTimelineRange && playableEntries.length <= 0
+      transportPlaying.value = false
+      if (plan.decodeFailedCount > 0) {
+        transportError.value = t('mixtape.transportDecodeFailed', {
+          count: plan.decodeFailedCount
+        })
+      } else if (isStemMixMode() && silentStemTrackCount > 0) {
+        transportError.value = t('mixtape.transportStemNotReady', {
+          count: silentStemTrackCount
+        })
+      } else if (plan.missingDurationCount > 0) {
+        transportError.value = t('mixtape.transportMissingDuration', {
+          count: plan.missingDurationCount
+        })
+      } else {
+        transportError.value = t('mixtape.transportNoPlayableTracks')
+      }
+      return
+    }
+
     transportSoundTouchWorkletReady = false
     transportKeyLockWorkletReady = false
     transportSequencerWorkletReady = false
@@ -864,42 +908,6 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       return
     }
 
-    const duration = entries.reduce(
-      (max, entry) => Math.max(max, entry.startSec + entry.duration),
-      0
-    )
-    transportDurationSec = duration
-    const minStartSec = entries.reduce(
-      (min, entry) => Math.min(min, Number(entry.startSec) || 0),
-      0
-    )
-    const startSec = clampNumber(rawStartSec, minStartSec, Math.max(minStartSec, duration))
-    const silentStemTrackCount = isStemMixMode()
-      ? Math.max(0, plan.missingStemAssetCount) + Math.max(0, plan.stemNotReadyCount)
-      : 0
-    transportError.value = ''
-    if (!entries.length || duration <= 0 || startSec >= duration) {
-      playheadVisible.value = false
-      playheadSec.value = startSec
-      if (!entries.length) {
-        if (plan.decodeFailedCount > 0) {
-          transportError.value = t('mixtape.transportDecodeFailed', {
-            count: plan.decodeFailedCount
-          })
-        } else if (isStemMixMode() && silentStemTrackCount > 0) {
-          transportError.value = t('mixtape.transportStemNotReady', {
-            count: silentStemTrackCount
-          })
-        } else if (plan.missingDurationCount > 0) {
-          transportError.value = t('mixtape.transportMissingDuration', {
-            count: plan.missingDurationCount
-          })
-        } else {
-          transportError.value = t('mixtape.transportNoPlayableTracks')
-        }
-      }
-      return
-    }
     if (plan.decodeFailedCount > 0) {
       transportError.value = t('mixtape.transportPartialDecodeFailed', {
         count: plan.decodeFailedCount

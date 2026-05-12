@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import titleComponent from '@renderer/components/titleComponent.vue'
 import WindowVolumeDial from '@renderer/components/WindowVolumeDial.vue'
@@ -13,6 +13,27 @@ import { useMixtape } from '@renderer/composables/useMixtape'
 import { useMixtapePageUi } from '@renderer/composables/mixtape/useMixtapePageUi'
 
 const masterTempoLaneExpanded = ref(false)
+const transportToastVisible = ref(false)
+const transportToastMessage = ref('')
+let transportToastTimer: ReturnType<typeof setTimeout> | null = null
+
+const clearTransportToastTimer = () => {
+  if (!transportToastTimer) return
+  clearTimeout(transportToastTimer)
+  transportToastTimer = null
+}
+
+const showTransportToast = (message: string) => {
+  const text = String(message || '').trim()
+  if (!text) return
+  transportToastMessage.value = text
+  transportToastVisible.value = true
+  clearTransportToastTimer()
+  transportToastTimer = setTimeout(() => {
+    transportToastVisible.value = false
+    transportToastTimer = null
+  }, 4000)
+}
 
 const mixtape = useMixtape({
   layoutScaleDeps: [masterTempoLaneExpanded]
@@ -213,6 +234,17 @@ const {
 } = useMixtapePageUi({
   mixtape,
   masterTempoLaneExpanded
+})
+
+watch(transportError, (message) => {
+  const text = String(message || '').trim()
+  if (!text) return
+  showTransportToast(text)
+  transportError.value = ''
+})
+
+onBeforeUnmount(() => {
+  clearTransportToastTimer()
 })
 </script>
 
@@ -821,9 +853,6 @@ const {
                   </div>
                 </div>
               </div>
-              <div v-if="transportError" class="timeline-transport-error">
-                {{ transportError }}
-              </div>
               <div class="timeline-envelope-preview">
                 <div class="timeline-envelope-preview__legend">
                   <span
@@ -1002,6 +1031,16 @@ const {
           <div class="mixtape-drop-overlay__title">{{ mixtapeDropOverlayTitle }}</div>
           <div class="mixtape-drop-overlay__hint">{{ mixtapeDropOverlayHint }}</div>
         </div>
+      </div>
+    </Transition>
+    <Transition name="mixtape-transport-toast">
+      <div
+        v-if="transportToastVisible"
+        class="mixtape-transport-toast"
+        role="alert"
+        aria-live="assertive"
+      >
+        <div class="mixtape-transport-toast__message">{{ transportToastMessage }}</div>
       </div>
     </Transition>
   </div>

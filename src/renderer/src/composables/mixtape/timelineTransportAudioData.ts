@@ -579,73 +579,122 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
 
   const decodeAllTransportEntries = async (entries: TransportEntry[]): Promise<number> => {
     if (!entries.length) return 0
-    let failCount = 0
+    const failedTrackKeys = new Set<string>()
+    const markEntryDecodeFailed = (entry: Pick<TransportEntry, 'trackId' | 'filePath'>) => {
+      const key = String(entry.trackId || entry.filePath || '').trim()
+      if (key) failedTrackKeys.add(key)
+    }
     if (ctx.isStemMixMode()) {
-      const stemAudioByPath = new Map<string, TransportStemAudioRef>()
+      const stemAudioByPath = new Map<
+        string,
+        {
+          audio: TransportStemAudioRef
+          entries: Array<Pick<TransportEntry, 'trackId' | 'filePath'>>
+        }
+      >()
       for (const entry of entries) {
         for (const stemId of ctx.resolveStemIdsForMode()) {
           const stemAudio = entry.stemAudioById?.[stemId]
           if (!stemAudio) continue
           const filePath = String(stemAudio.filePath || '').trim()
-          if (!filePath || stemAudioByPath.has(filePath)) continue
-          stemAudioByPath.set(filePath, stemAudio)
+          if (!filePath) continue
+          const existing = stemAudioByPath.get(filePath)
+          if (existing) {
+            existing.entries.push(entry)
+          } else {
+            stemAudioByPath.set(filePath, {
+              audio: stemAudio,
+              entries: [entry]
+            })
+          }
         }
       }
-      const stemAudios = Array.from(stemAudioByPath.values())
+      const failedStemPaths = new Set<string>()
+      const stemAudioEntries = Array.from(stemAudioByPath.entries())
       await Promise.all(
-        stemAudios.map(async (stemAudio) => {
+        stemAudioEntries.map(async ([filePath, item]) => {
           try {
-            await ensureDecodedStemAudio(stemAudio)
+            await ensureDecodedStemAudio(item.audio)
           } catch (error) {
             console.error(
-              `[mixtape-transport] 解码失败 (${stemAudio.decodeMode}):`,
-              stemAudio.filePath,
+              `[mixtape-transport] 解码失败 (${item.audio.decodeMode}):`,
+              item.audio.filePath,
               error
             )
-            failCount += 1
+            failedStemPaths.add(filePath)
+            item.entries.forEach(markEntryDecodeFailed)
           }
         })
       )
       for (const entry of entries) {
+        const hasKnownFailedStem = ctx.resolveStemIdsForMode().some((stemId) => {
+          const filePath = String(entry.stemAudioById?.[stemId]?.filePath || '').trim()
+          return !!filePath && failedStemPaths.has(filePath)
+        })
+        if (hasKnownFailedStem) {
+          markEntryDecodeFailed(entry)
+          continue
+        }
         try {
           await ensureDecodedTransportEntry(entry)
         } catch (error) {
           console.error('[mixtape-transport] stem entry preprocess failed:', entry.filePath, error)
-          failCount += 1
+          markEntryDecodeFailed(entry)
         }
       }
-      return failCount
+      return failedTrackKeys.size
     }
-    const audioRefByPath = new Map<string, TransportAudioRef>()
+    const audioRefByPath = new Map<
+      string,
+      {
+        audio: TransportAudioRef
+        entries: Array<Pick<TransportEntry, 'trackId' | 'filePath'>>
+      }
+    >()
     for (const entry of entries) {
       const audioRef = entry.audioRef
       const filePath = String(audioRef?.filePath || '').trim()
-      if (!audioRef || !filePath || audioRefByPath.has(filePath)) continue
-      audioRefByPath.set(filePath, audioRef)
+      if (!audioRef || !filePath) continue
+      const existing = audioRefByPath.get(filePath)
+      if (existing) {
+        existing.entries.push(entry)
+      } else {
+        audioRefByPath.set(filePath, {
+          audio: audioRef,
+          entries: [entry]
+        })
+      }
     }
+    const failedAudioPaths = new Set<string>()
     await Promise.all(
-      Array.from(audioRefByPath.values()).map(async (audioRef) => {
+      Array.from(audioRefByPath.entries()).map(async ([filePath, item]) => {
         try {
-          await ensureDecodedAudioRef(audioRef)
+          await ensureDecodedAudioRef(item.audio)
         } catch (error) {
           console.error(
-            `[mixtape-transport] 解码失败 (${audioRef.decodeMode}):`,
-            audioRef.filePath,
+            `[mixtape-transport] 解码失败 (${item.audio.decodeMode}):`,
+            item.audio.filePath,
             error
           )
-          failCount += 1
+          failedAudioPaths.add(filePath)
+          item.entries.forEach(markEntryDecodeFailed)
         }
       })
     )
     for (const entry of entries) {
+      const filePath = String(entry.audioRef?.filePath || '').trim()
+      if (filePath && failedAudioPaths.has(filePath)) {
+        markEntryDecodeFailed(entry)
+        continue
+      }
       try {
         await ensureDecodedTransportEntry(entry)
       } catch (error) {
         console.error('[mixtape-transport] entry preprocess failed:', entry.filePath, error)
-        failCount += 1
+        markEntryDecodeFailed(entry)
       }
     }
-    return failCount
+    return failedTrackKeys.size
   }
 
   const collectUniqueTransportAudios = (entries: TransportEntry[]): PreloadAudioRef[] => {

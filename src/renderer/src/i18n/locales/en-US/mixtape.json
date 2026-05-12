@@ -237,7 +237,7 @@
     "transportNoPlayableTracks": "No playable tracks on timeline.",
     "transportTrackError": "Track playback failed: {track} ({reason})",
     "missingTracksRemovedTitle": "Mixtape Auto-Recording Tracks Updated",
-    "missingTracksRemovedSummary": "{count} track(s) were not found in both recycle bin and the Mixtape Auto-Recording vault, and have been removed from the Mixtape Auto-Recording playlist and project.",
+    "missingTracksRemovedSummary": "{count} track(s) no longer exist in their source playlist, or were not found in both recycle bin and the Mixtape Auto-Recording vault. They have been removed from the Mixtape Auto-Recording playlist and project.",
     "missingTracksRemovedMore": "{count} additional track(s) are not shown here.",
     "deleteBlockedWindowOpen": "This Mixtape Auto-Recording window is currently open, so the Mixtape Auto-Recording playlist cannot be deleted.",
     "deleteBlockedWindowOpenHint": "Please close the Mixtape Auto-Recording window first, then try deleting again."
