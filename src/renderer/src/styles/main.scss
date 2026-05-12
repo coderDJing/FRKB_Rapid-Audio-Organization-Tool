@@ -1,3 +1,8 @@
+/* 全局移除浏览器默认焦点轮廓（Electron 桌面应用无需网页级 Tab 导航指示） */
+:focus {
+  outline: none;
+}
+
 .unselectable {
   -webkit-user-select: none;
   /* Safari */
