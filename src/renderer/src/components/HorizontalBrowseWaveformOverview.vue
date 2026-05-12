@@ -56,7 +56,7 @@ type PioneerPreviewWaveformResponse = {
 type WaveformCacheChannel = 'waveform-cache:batch' | 'mixtape-waveform-cache:batch'
 
 const runtime = useRuntimeStore()
-const containerRef = ref<HTMLDivElement | null>(null)
+const trackRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const waveformData = ref<MixxxWaveformData | null>(null)
 const pioneerPreviewData = ref<IPioneerPreviewWaveformData | null>(null)
@@ -156,9 +156,9 @@ const scheduleSeek = (seconds: number, immediate = false) => {
 }
 
 const resolveSeekSecondsByClientX = (clientX: number) => {
-  const container = containerRef.value
-  if (!container || totalSeconds.value <= 0) return null
-  const rect = container.getBoundingClientRect()
+  const track = trackRef.value
+  if (!track || totalSeconds.value <= 0) return null
+  const rect = track.getBoundingClientRect()
   if (rect.width <= 0) return null
   const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
   return ratio * totalSeconds.value
@@ -557,12 +557,12 @@ const drawRgbWaveform = (
 }
 
 const drawWaveform = () => {
-  const container = containerRef.value
+  const track = trackRef.value
   const canvas = canvasRef.value
-  if (!container || !canvas) return
+  if (!track || !canvas) return
 
-  const width = Math.max(1, container.clientWidth)
-  const height = Math.max(1, container.clientHeight)
+  const width = Math.max(1, track.clientWidth)
+  const height = Math.max(1, track.clientHeight)
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
@@ -694,11 +694,11 @@ const handleSongWaveformUpdated = (_event: unknown, payload: { filePath?: string
 }
 
 onMounted(() => {
-  if (containerRef.value) {
+  if (trackRef.value) {
     resizeObserver = new ResizeObserver(() => {
       drawWaveform()
     })
-    resizeObserver.observe(containerRef.value)
+    resizeObserver.observe(trackRef.value)
   }
   window.electron.ipcRenderer.on('song-waveform-updated', handleSongWaveformUpdated)
   drawWaveform()
@@ -721,32 +721,33 @@ onUnmounted(() => {
 
 <template>
   <div
-    ref="containerRef"
     class="overview-waveform"
     :class="{ 'is-scrubbing': scrubbing }"
     @pointerdown.stop="handlePointerDown"
   >
-    <canvas ref="canvasRef" class="overview-waveform__canvas"></canvas>
-    <MemoryCueMarkersLayer
-      :memory-cues="props.memoryCues || []"
-      :visible-duration-sec="totalSeconds"
-      show-loop-range
-      :anchor="props.markerAnchor || 'top'"
-      size="compact"
-    />
-    <HotCueMarkersLayer
-      :hot-cues="props.hotCues || []"
-      :visible-duration-sec="totalSeconds"
-      show-loop-range
-      :anchor="props.markerAnchor || 'top'"
-      size="compact"
-    />
-    <div v-if="loopMaskStyle" class="overview-waveform__loop-mask" :style="loopMaskStyle"></div>
-    <div
-      v-if="playheadLeft !== null"
-      class="overview-waveform__playhead"
-      :style="{ left: playheadLeft }"
-    ></div>
+    <div ref="trackRef" class="overview-waveform__track">
+      <canvas ref="canvasRef" class="overview-waveform__canvas"></canvas>
+      <MemoryCueMarkersLayer
+        :memory-cues="props.memoryCues || []"
+        :visible-duration-sec="totalSeconds"
+        show-loop-range
+        :anchor="props.markerAnchor || 'top'"
+        size="compact"
+      />
+      <HotCueMarkersLayer
+        :hot-cues="props.hotCues || []"
+        :visible-duration-sec="totalSeconds"
+        show-loop-range
+        :anchor="props.markerAnchor || 'top'"
+        size="compact"
+      />
+      <div v-if="loopMaskStyle" class="overview-waveform__loop-mask" :style="loopMaskStyle"></div>
+      <div
+        v-if="playheadLeft !== null"
+        class="overview-waveform__playhead"
+        :style="{ left: playheadLeft }"
+      ></div>
+    </div>
   </div>
 </template>
 
@@ -757,9 +758,19 @@ onUnmounted(() => {
   height: 100%;
   min-width: 0;
   min-height: 0;
+  padding-inline: var(--overview-waveform-side-inset, 10px);
+  box-sizing: border-box;
   cursor: default;
   touch-action: none;
   background: var(--shell-waveform-bg, var(--waveform-bg));
+}
+
+.overview-waveform__track {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
 }
 
 .overview-waveform__canvas {
