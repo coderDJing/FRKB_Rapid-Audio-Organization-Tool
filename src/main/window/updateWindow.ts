@@ -25,6 +25,7 @@ let latestMacManualUpdateResult: ManualMacUpdateResult | null = null
 let manualMacDownloadPromise: Promise<ManualMacUpdateResult> | null = null
 let latestManualUpdateUrl = DEFAULT_MANUAL_UPDATE_URL
 let lastReleaseNotesRange: ReleaseNotesRangePayload | null = null
+let lastUpdateInfo: UpdateInfo | null = null
 
 type AutoUpdaterProvider = {
   resolveFiles?: (updateInfo: UpdateInfo) => ResolvedUpdateFileInfo[]
@@ -173,6 +174,7 @@ const registerAutoUpdaterListeners = () => {
     if (currentIsPrerelease !== remoteIsPrerelease) return
     setLatestManualUpdateVersion(info.version)
     lastReleaseNotesRange = null
+    lastUpdateInfo = info
     rememberMacManualUpdateAsset(info)
     sendToUpdateWindow('newVersion', info)
     void fetchReleaseNotesRange(app.getVersion(), info.version)
@@ -323,7 +325,7 @@ const handleOpenApplicationsFolder = () => {
   })
 }
 
-const createWindow = () => {
+const createWindow = (skipCheck = false) => {
   registerAutoUpdaterListeners()
   updateWindow = new BrowserWindow({
     resizable: true,
@@ -383,11 +385,16 @@ const createWindow = () => {
         ;(autoUpdater as AutoUpdaterWithExtras).channel = 'rc'
       }
     } catch {}
-    void autoUpdater.checkForUpdates().catch((error) => {
-      const payload = buildUpdateErrorPayload(error)
-      sendToUpdateWindow('isError', payload)
-      log.error('[updateWindow] checkForUpdates failed', payload, error)
-    })
+    if (skipCheck && lastUpdateInfo) {
+      sendToUpdateWindow('newVersion', lastUpdateInfo)
+      sendLastReleaseNotesRange()
+    } else {
+      void autoUpdater.checkForUpdates().catch((error) => {
+        const payload = buildUpdateErrorPayload(error)
+        sendToUpdateWindow('isError', payload)
+        log.error('[updateWindow] checkForUpdates failed', payload, error)
+      })
+    }
   })
   ipcMain.on('updateWindow-startDownload', handleStartDownload)
   ipcMain.on('updateWindow-toggle-close', handleToggleClose)

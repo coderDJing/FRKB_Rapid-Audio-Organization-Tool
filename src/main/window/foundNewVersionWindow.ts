@@ -32,7 +32,7 @@ const handleToggleMinimize = () => {
 
 const handleCheckForUpdates = () => {
   if (updateWindow.instance === null) {
-    updateWindow.createWindow()
+    updateWindow.createWindow(true)
   } else {
     if (updateWindow.instance.isMinimized()) {
       updateWindow.instance.restore()
