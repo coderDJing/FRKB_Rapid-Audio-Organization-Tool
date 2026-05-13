@@ -187,6 +187,23 @@ jobs:
       - name: Package (electron-builder, no publish)
         run: npx electron-builder --win --x64 --publish never
 
+      - name: Verify packaged native module (Windows)
+        shell: pwsh
+        run: |
+          $resourcesRoot = "dist/win-unpacked/resources"
+          $dllDir = Join-Path $resourcesRoot "ffmpeg/win32-x64/dll"
+          $nativeModule = "dist/win-unpacked/resources/app.asar.unpacked/node_modules/rust_package/index.win32-x64-msvc.node"
+
+          if (-not (Test-Path $dllDir)) {
+            throw "Packaged FFmpeg DLL directory not found: $dllDir"
+          }
+          if (-not (Test-Path $nativeModule)) {
+            throw "Packaged Rust native module not found: $nativeModule"
+          }
+
+          $env:PATH = "$dllDir;$env:PATH"
+          node -e "require('./dist/win-unpacked/resources/app.asar.unpacked/node_modules/rust_package'); console.log('Packaged Rust native module loaded.')"
+
       - name: Verify packaged Demucs resources (Windows)
         shell: pwsh
         run: |

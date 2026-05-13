@@ -3,12 +3,7 @@ import { IDir, md5 } from '../types/globals'
 import fs = require('fs-extra')
 import path = require('path')
 import os = require('os')
-import {
-  calculateAudioHashesWithProgress,
-  calculateFileHashesWithProgress,
-  type AudioFileResult,
-  ProcessProgress
-} from 'rust_package'
+import type { AudioFileResult, ProcessProgress } from 'rust_package'
 import { BrowserWindow, ipcMain, session } from 'electron'
 import {
   ensureLibraryTreeBaseline,
@@ -24,6 +19,28 @@ export { ensureEnglishCoreLibraries, getCoreFsDirName } from './coreLibraries'
 interface SongsAnalyseResult {
   songsAnalyseResult: md5[]
   errorSongsAnalyseResult: md5[]
+}
+
+type RustHashBinding = {
+  calculateAudioHashesWithProgress: (
+    songFilePaths: string[],
+    progressCallback: (err: Error | null, progress: ProcessProgress) => void
+  ) => Promise<AudioFileResult[]>
+  calculateFileHashesWithProgress: (
+    songFilePaths: string[],
+    progressCallback: (err: Error | null, progress: ProcessProgress) => void
+  ) => Promise<AudioFileResult[]>
+}
+
+function loadRustHashBinding(): RustHashBinding {
+  const binding = require('rust_package') as Partial<RustHashBinding>
+  if (
+    typeof binding.calculateAudioHashesWithProgress !== 'function' ||
+    typeof binding.calculateFileHashesWithProgress !== 'function'
+  ) {
+    throw new Error('rust_package hash functions unavailable')
+  }
+  return binding as RustHashBinding
 }
 
 export function mapRendererPathToFsPath(rendererPath: string): string {
@@ -49,6 +66,8 @@ export async function getSongsAnalyseResult(
   }
   // 根据 fingerprintMode 决定调用哪种分析器（暂时仅 PCM，稍后加入整文件哈希）
   const mode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
+  const { calculateAudioHashesWithProgress, calculateFileHashesWithProgress } =
+    loadRustHashBinding()
   let results: AudioFileResult[]
   if (mode === 'file') {
     results = await calculateFileHashesWithProgress(songFilePaths, progressCallback)
