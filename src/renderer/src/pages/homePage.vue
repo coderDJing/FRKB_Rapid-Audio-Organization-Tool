@@ -846,6 +846,8 @@ const drop = async (e: DragEvent) => {
 }
 
 .libraryPanel {
+  height: 100%;
+
   &.librarySwitching {
     animation: librarySwitchFade 220ms ease;
   }
