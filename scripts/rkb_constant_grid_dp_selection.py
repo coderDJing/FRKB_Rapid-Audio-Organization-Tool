@@ -18,6 +18,13 @@ RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_GRID_SCORE = 0.88
 RANK1_STRUCTURAL_PHASE_LOW_PROB_MIN_DOWNBEAT_MARGIN = 0.5
 RANK1_STRUCTURAL_PHASE_MAX_BPM_DELTA = 0.08
 RANK1_STRUCTURAL_PHASE_VERSION = "rank1-structural-phase-v2"
+HEAD_NEAR_ZERO_RANK_LIMIT = 8
+HEAD_NEAR_ZERO_SCORE_DELTA_MAX = 0.08
+HEAD_NEAR_ZERO_TARGET_MAX_MS = 8.0
+HEAD_NEAR_ZERO_TOP_MIN_FIRST_BEAT_MS = 90.0
+HEAD_NEAR_ZERO_MAX_BPM_DELTA = 0.5
+HEAD_NEAR_ZERO_LEGACY_WEAKNESS_MIN = 0.2
+HEAD_NEAR_ZERO_VERSION = "head-near-zero-v1"
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -43,6 +50,13 @@ def _clamp01(value: float) -> float:
 
 def _round_feature(value: float) -> float:
     return round(float(value), 6) if math.isfinite(float(value)) else 0.0
+
+
+def _candidate_source(candidate: dict[str, Any]) -> str:
+    tempo_source = str(candidate.get("tempoSource") or "tempo")
+    phase_source = str(candidate.get("phaseSource") or "phase")
+    bar_source = str(candidate.get("barSource") or "bar")
+    return f"constant-grid-dp:{tempo_source}:{phase_source}:{bar_source}"
 
 
 def _phase_delta_ms(candidate_phase_ms: float, selected_phase_ms: float, interval_ms: float) -> float:
@@ -447,6 +461,133 @@ def choose_rank1_structural_phase_candidate(
     return {**rank1, "features": features}, {**next_meta, "selected": True, "reason": "selected"}
 
 
+def choose_head_near_zero_candidate(
+    *,
+    candidates: list[dict[str, Any]],
+    selected_source: str,
+    legacy_candidate: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    meta: dict[str, Any] = {
+        "enabled": True,
+        "selected": False,
+        "reason": "not-evaluated",
+        "candidateRank": 0,
+        "rankLimit": HEAD_NEAR_ZERO_RANK_LIMIT,
+        "scoreDeltaFromTop": 0.0,
+        "scoreDeltaMax": HEAD_NEAR_ZERO_SCORE_DELTA_MAX,
+        "candidateFirstBeatMs": 0.0,
+        "targetMaxFirstBeatMs": HEAD_NEAR_ZERO_TARGET_MAX_MS,
+        "topFirstBeatMs": 0.0,
+        "topMinFirstBeatMs": HEAD_NEAR_ZERO_TOP_MIN_FIRST_BEAT_MS,
+        "bpmDelta": 999.0,
+        "maxBpmDelta": HEAD_NEAR_ZERO_MAX_BPM_DELTA,
+        "legacyWeaknessScore": 0.0,
+        "legacyWeaknessMin": HEAD_NEAR_ZERO_LEGACY_WEAKNESS_MIN,
+        "sameTopBarBeatOffsetMod4": False,
+        "candidateSource": "",
+        "version": HEAD_NEAR_ZERO_VERSION,
+    }
+    if "legacy" not in selected_source.lower():
+        return None, {**meta, "reason": "selected-source-not-legacy"}
+    if legacy_candidate is None:
+        return None, {**meta, "reason": "no-legacy-candidate"}
+    if not candidates:
+        return None, {**meta, "reason": "no-candidates"}
+
+    top = candidates[0]
+    top_score = _to_float(top.get("score"))
+    top_first_beat_ms = _to_float(top.get("firstBeatMs"))
+    top_bar_beat_offset_mod4 = _to_int(top.get("barBeatOffset")) % 4
+    legacy_bpm = _to_float(legacy_candidate.get("bpm"))
+    legacy_weakness = legacy_weakness_score(legacy_candidate)
+    base_meta = {
+        **meta,
+        "topFirstBeatMs": _round_feature(top_first_beat_ms),
+        "legacyWeaknessScore": legacy_weakness,
+    }
+    if legacy_weakness < HEAD_NEAR_ZERO_LEGACY_WEAKNESS_MIN:
+        return None, {**base_meta, "reason": "legacy-weakness-too-low"}
+    if top_first_beat_ms <= HEAD_NEAR_ZERO_TOP_MIN_FIRST_BEAT_MS:
+        return None, {**base_meta, "reason": "top-candidate-already-near-head"}
+
+    eligible: list[tuple[float, float, int, dict[str, Any], dict[str, Any]]] = []
+    for rank, candidate in enumerate(candidates[:HEAD_NEAR_ZERO_RANK_LIMIT], start=1):
+        candidate_source = _candidate_source(candidate)
+        if "window-beat-leading-edge" not in candidate_source:
+            continue
+        candidate_first_beat_ms = _to_float(candidate.get("firstBeatMs"))
+        if candidate_first_beat_ms > HEAD_NEAR_ZERO_TARGET_MAX_MS:
+            continue
+        candidate_score = _to_float(candidate.get("score"))
+        score_delta = top_score - candidate_score
+        if score_delta > HEAD_NEAR_ZERO_SCORE_DELTA_MAX:
+            continue
+        candidate_bpm = _to_float(candidate.get("bpm"))
+        bpm_delta = abs(candidate_bpm - legacy_bpm)
+        if bpm_delta > HEAD_NEAR_ZERO_MAX_BPM_DELTA:
+            continue
+        same_top_bar_beat_offset_mod4 = (
+            _to_int(candidate.get("barBeatOffset")) % 4
+        ) == top_bar_beat_offset_mod4
+        if not same_top_bar_beat_offset_mod4:
+            continue
+        candidate_meta = {
+            **base_meta,
+            "candidateRank": rank,
+            "scoreDeltaFromTop": _round_feature(score_delta),
+            "candidateFirstBeatMs": _round_feature(candidate_first_beat_ms),
+            "bpmDelta": _round_feature(bpm_delta),
+            "sameTopBarBeatOffsetMod4": same_top_bar_beat_offset_mod4,
+            "candidateSource": candidate_source,
+        }
+        eligible.append((candidate_first_beat_ms, -candidate_score, rank, candidate, candidate_meta))
+
+    if not eligible:
+        return None, {**base_meta, "reason": "no-eligible-head-candidate"}
+
+    eligible.sort(key=lambda item: (item[0], item[1], item[2]))
+    _, _, _, selected, selected_meta = eligible[0]
+    selected_features = selected.get("features") if isinstance(selected.get("features"), dict) else {}
+    features = dict(selected_features)
+    features.update(
+        {
+            "constantGridDpHeadNearZeroSwitch": True,
+            "constantGridDpHeadNearZeroCandidateRank": selected_meta["candidateRank"],
+            "constantGridDpHeadNearZeroRankLimit": HEAD_NEAR_ZERO_RANK_LIMIT,
+            "constantGridDpHeadNearZeroScoreDeltaFromTop": selected_meta[
+                "scoreDeltaFromTop"
+            ],
+            "constantGridDpHeadNearZeroScoreDeltaMax": HEAD_NEAR_ZERO_SCORE_DELTA_MAX,
+            "constantGridDpHeadNearZeroCandidateFirstBeatMs": selected_meta[
+                "candidateFirstBeatMs"
+            ],
+            "constantGridDpHeadNearZeroTargetMaxFirstBeatMs": (
+                HEAD_NEAR_ZERO_TARGET_MAX_MS
+            ),
+            "constantGridDpHeadNearZeroTopFirstBeatMs": selected_meta["topFirstBeatMs"],
+            "constantGridDpHeadNearZeroTopMinFirstBeatMs": (
+                HEAD_NEAR_ZERO_TOP_MIN_FIRST_BEAT_MS
+            ),
+            "constantGridDpHeadNearZeroBpmDelta": selected_meta["bpmDelta"],
+            "constantGridDpHeadNearZeroMaxBpmDelta": HEAD_NEAR_ZERO_MAX_BPM_DELTA,
+            "constantGridDpHeadNearZeroLegacyWeaknessScore": selected_meta[
+                "legacyWeaknessScore"
+            ],
+            "constantGridDpHeadNearZeroLegacyWeaknessMin": (
+                HEAD_NEAR_ZERO_LEGACY_WEAKNESS_MIN
+            ),
+            "constantGridDpHeadNearZeroSameTopBarBeatOffsetMod4": selected_meta[
+                "sameTopBarBeatOffsetMod4"
+            ],
+            "constantGridDpHeadNearZeroCandidateSource": selected_meta[
+                "candidateSource"
+            ],
+            "constantGridDpHeadNearZeroVersion": HEAD_NEAR_ZERO_VERSION,
+        }
+    )
+    return {**selected, "features": features}, {**selected_meta, "selected": True, "reason": "selected"}
+
+
 def rank1_switch_diagnostic_features(
     *,
     rank1_legacy_weakness_switch: bool,
@@ -559,4 +700,58 @@ def rank1_switch_diagnostic_features(
         "constantGridDpRank1StructuralPhaseVersion": str(
             rank1_structural_phase_meta.get("version") or ""
         ),
+    }
+
+
+def head_near_zero_switch_diagnostic_features(
+    *,
+    head_near_zero_switch: bool,
+    head_near_zero_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "constantGridDpHeadNearZeroSwitch": head_near_zero_switch,
+        "constantGridDpHeadNearZeroReason": str(head_near_zero_meta.get("reason") or ""),
+        "constantGridDpHeadNearZeroCandidateRank": _to_int(
+            head_near_zero_meta.get("candidateRank")
+        ),
+        "constantGridDpHeadNearZeroRankLimit": _to_int(
+            head_near_zero_meta.get("rankLimit"), HEAD_NEAR_ZERO_RANK_LIMIT
+        ),
+        "constantGridDpHeadNearZeroScoreDeltaFromTop": _to_float(
+            head_near_zero_meta.get("scoreDeltaFromTop")
+        ),
+        "constantGridDpHeadNearZeroScoreDeltaMax": _to_float(
+            head_near_zero_meta.get("scoreDeltaMax"), HEAD_NEAR_ZERO_SCORE_DELTA_MAX
+        ),
+        "constantGridDpHeadNearZeroCandidateFirstBeatMs": _to_float(
+            head_near_zero_meta.get("candidateFirstBeatMs")
+        ),
+        "constantGridDpHeadNearZeroTargetMaxFirstBeatMs": _to_float(
+            head_near_zero_meta.get("targetMaxFirstBeatMs"), HEAD_NEAR_ZERO_TARGET_MAX_MS
+        ),
+        "constantGridDpHeadNearZeroTopFirstBeatMs": _to_float(
+            head_near_zero_meta.get("topFirstBeatMs")
+        ),
+        "constantGridDpHeadNearZeroTopMinFirstBeatMs": _to_float(
+            head_near_zero_meta.get("topMinFirstBeatMs"), HEAD_NEAR_ZERO_TOP_MIN_FIRST_BEAT_MS
+        ),
+        "constantGridDpHeadNearZeroBpmDelta": _to_float(
+            head_near_zero_meta.get("bpmDelta")
+        ),
+        "constantGridDpHeadNearZeroMaxBpmDelta": _to_float(
+            head_near_zero_meta.get("maxBpmDelta"), HEAD_NEAR_ZERO_MAX_BPM_DELTA
+        ),
+        "constantGridDpHeadNearZeroLegacyWeaknessScore": _to_float(
+            head_near_zero_meta.get("legacyWeaknessScore")
+        ),
+        "constantGridDpHeadNearZeroLegacyWeaknessMin": _to_float(
+            head_near_zero_meta.get("legacyWeaknessMin"), HEAD_NEAR_ZERO_LEGACY_WEAKNESS_MIN
+        ),
+        "constantGridDpHeadNearZeroSameTopBarBeatOffsetMod4": bool(
+            head_near_zero_meta.get("sameTopBarBeatOffsetMod4")
+        ),
+        "constantGridDpHeadNearZeroCandidateSource": str(
+            head_near_zero_meta.get("candidateSource") or ""
+        ),
+        "constantGridDpHeadNearZeroVersion": str(head_near_zero_meta.get("version") or ""),
     }
