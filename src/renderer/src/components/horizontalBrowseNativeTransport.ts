@@ -5,12 +5,14 @@ import {
   createEmptyHorizontalBrowseTransportSnapshot,
   HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT,
   type HorizontalBrowseTransportBeatGridInput,
+  type HorizontalBrowseTransportBandState,
   type HorizontalBrowseDeckKey,
   type HorizontalBrowseTransportSnapshot,
   type HorizontalBrowseTransportVisualizerSnapshot
 } from '@shared/horizontalBrowseTransport'
 export type {
   HorizontalBrowseTransportBeatGridInput,
+  HorizontalBrowseTransportBandState,
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot,
   HorizontalBrowseTransportSnapshot,
@@ -242,6 +244,19 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
+  const setBandState = async (
+    deck: HorizontalBrowseDeckKey,
+    bands: HorizontalBrowseTransportBandState
+  ) => {
+    const snapshot = await invoke('horizontal-browse-transport:set-band-state', deck, {
+      high: bands.high !== false,
+      mid: bands.mid !== false,
+      low: bands.low !== false
+    })
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
   const setPlaying = async (deck: HorizontalBrowseDeckKey, playing: boolean) => {
     const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:native:set-playing:${deck}`)
     const snapshot = await invoke(
@@ -391,6 +406,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     alignToLeader,
     setSyncEnabled,
     setLeader,
+    setBandState,
     setPlaying,
     seek,
     setScrubPreview,

@@ -57,6 +57,7 @@ let settingConfig: ISettingConfig = {
   showTitleAudioVisualizer: true,
   mainWindowTitleAudioVisualizerMode: 'bars',
   mixtapeWindowTitleAudioVisualizerMode: 'bars',
+  horizontalBrowseFaderControlsExpanded: false,
   // 错误日志上报默认配置
   enableErrorReport: true,
   errorReportUsageMsSinceLastSuccess: 0,

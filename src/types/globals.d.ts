@@ -579,6 +579,8 @@ interface ISettingConfig {
   mainWindowTitleAudioVisualizerMode?: TitleAudioVisualizerMode
   // Mixtape 窗口标题栏音频可视化样式
   mixtapeWindowTitleAudioVisualizerMode?: TitleAudioVisualizerMode
+  // 双轨横推右侧控制竖条是否展开
+  horizontalBrowseFaderControlsExpanded?: boolean
   // 错误日志上报设置
   enableErrorReport: boolean
   errorReportUsageMsSinceLastSuccess: number

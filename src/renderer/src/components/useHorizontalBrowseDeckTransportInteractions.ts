@@ -44,6 +44,9 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
   resolveDeckCuePointRef: (deck: DeckKey) => Ref<number>
   resolveDeckCuePlacementSec: (deck: DeckKey) => number
+  resolveDualTransportSyncEnabled?: () => boolean
+  ensureDualTransportSync?: (sourceDeck?: DeckKey) => Promise<boolean>
+  deactivateDualTransportSync?: () => void
 }
 
 export const useHorizontalBrowseDeckTransportInteractions = (
@@ -103,7 +106,10 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot,
     isDeckLoopActive,
     syncDeckIntoLoopRangeBeforePlay,
-    applyDeckStoredCueDefinition
+    applyDeckStoredCueDefinition,
+    resolveDualTransportSyncEnabled: params.resolveDualTransportSyncEnabled,
+    ensureDualTransportSync: params.ensureDualTransportSync,
+    deactivateDualTransportSync: params.deactivateDualTransportSync
   })
 
   const {

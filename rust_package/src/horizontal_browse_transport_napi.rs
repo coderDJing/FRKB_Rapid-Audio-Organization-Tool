@@ -227,6 +227,17 @@ pub fn horizontal_browse_transport_set_leader(
 }
 
 #[napi]
+pub fn horizontal_browse_transport_set_band_state(
+  deck: String,
+  bands: HorizontalBrowseTransportBandState,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine = engine().lock();
+  engine.set_band_state(deck_id, bands);
+  Ok(engine.snapshot(engine.last_now_ms))
+}
+
+#[napi]
 pub fn horizontal_browse_transport_set_playing(
   deck: String,
   now_ms: f64,

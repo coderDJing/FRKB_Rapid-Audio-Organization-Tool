@@ -106,6 +106,11 @@ export interface HorizontalBrowseTransportBeatGridInput {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
 }
+export interface HorizontalBrowseTransportBandState {
+  high: boolean
+  mid: boolean
+  low: boolean
+}
 export interface HorizontalBrowseTransportDeckSnapshot {
   deck: string
   label: string
@@ -132,6 +137,7 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   loopStartBeatIndex?: number
   loopStartSec: number
   loopEndSec: number
+  bands: HorizontalBrowseTransportBandState
 }
 export interface HorizontalBrowseTransportOutputSnapshot {
   crossfaderValue: number
@@ -275,6 +281,10 @@ export declare function horizontalBrowseTransportAlignToLeader(
 export declare function horizontalBrowseTransportSetLeader(
   deck?: string | undefined | null,
   nowMs?: number | undefined | null
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetBandState(
+  deck: string,
+  bands: HorizontalBrowseTransportBandState
 ): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetPlaying(
   deck: string,

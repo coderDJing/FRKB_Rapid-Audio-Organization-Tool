@@ -45,6 +45,10 @@
   -webkit-user-select: none;
 }
 
+.horizontal-shell.is-fader-controls-expanded {
+  grid-template-columns: 108px minmax(0, 1fr);
+}
+
 .horizontal-shell.is-edit-mode {
   grid-template-columns: 84px minmax(0, 1fr);
 }
@@ -96,6 +100,15 @@
 
 .controls--edit {
   grid-template-rows: auto minmax(0, 1fr);
+}
+
+.horizontal-shell:not(.is-fader-controls-expanded) :deep(.deck-control-row),
+.controls--edit :deep(.deck-control-row) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+:deep(.deck-control-row .deck-controls) {
+  min-width: 0;
 }
 
 .deck-controls {
@@ -152,94 +165,6 @@
 .controls--edit :deep(.deck-button svg) {
   width: 16px;
   height: 16px;
-}
-
-.fader {
-  display: grid;
-  grid-template-columns: 6px 24px 6px;
-  justify-content: center;
-  align-items: stretch;
-  min-height: 0;
-  padding: 2px 0;
-  column-gap: 2px;
-  box-sizing: border-box;
-  touch-action: none;
-}
-
-.fader__scale {
-  position: relative;
-  min-height: 0;
-}
-
-.fader__scale-inner {
-  position: absolute;
-  inset: 0;
-}
-
-.fader__tick {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 4px;
-  height: 1px;
-  border-radius: 999px;
-  background: var(--shell-grid);
-  transform: translate(-50%, -50%);
-}
-
-.fader__tick.is-major {
-  width: 6px;
-  background: var(--shell-grid-major);
-}
-
-.fader__tick.is-center {
-  width: 6px;
-  height: 2px;
-  background: var(--text);
-}
-
-.fader__rail {
-  position: relative;
-  min-height: 0;
-}
-
-.fader__slot {
-  position: absolute;
-  top: var(--fader-travel-inset);
-  bottom: var(--fader-travel-inset);
-  left: 50%;
-  width: 2px;
-  transform: translateX(-50%);
-  border-radius: 999px;
-  background: var(--shell-grid-major);
-}
-
-.fader__thumb {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 26px;
-  height: 4px;
-  transform: translate(-50%, -50%);
-  border: 1px solid var(--shell-border);
-  border-radius: 999px;
-  background-color: var(--text);
-  transition:
-    top 0.08s ease,
-    border-color 0.18s ease,
-    background-color 0.18s ease,
-    box-shadow 0.18s ease;
-}
-
-.fader__thumb:hover,
-.fader.is-dragging .fader__thumb {
-  border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
-  background-color: color-mix(in srgb, var(--accent) 88%, var(--bg));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
-}
-
-.fader.is-dragging .fader__thumb {
-  transition: none;
 }
 
 .waveform-stack {

@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron'
 import type {
   HorizontalBrowseDeckKey,
+  HorizontalBrowseTransportBandState,
   HorizontalBrowseTransportDeckInput,
   HorizontalBrowseTransportStateInput
 } from '@shared/horizontalBrowseTransport'
@@ -114,6 +115,15 @@ export function registerHorizontalBrowseTransportHandlers() {
     'horizontal-browse-transport:set-leader',
     async (_event, deck?: HorizontalBrowseDeckKey | null, nowMs?: number) => {
       const snapshot = horizontalBrowseTransportBridge.setLeader(deck || undefined, nowMs)
+      broadcastHorizontalBrowseTransportSnapshot(snapshot)
+      return snapshot
+    }
+  )
+
+  ipcMain.handle(
+    'horizontal-browse-transport:set-band-state',
+    async (_event, deck: HorizontalBrowseDeckKey, bands: HorizontalBrowseTransportBandState) => {
+      const snapshot = horizontalBrowseTransportBridge.setBandState(deck, bands)
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }

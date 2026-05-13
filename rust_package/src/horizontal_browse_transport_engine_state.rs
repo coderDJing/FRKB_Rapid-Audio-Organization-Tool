@@ -496,6 +496,7 @@ impl HorizontalBrowseTransportEngine {
       loop_start_beat_index: deck_state.loop_start_beat_index,
       loop_start_sec: deck_state.loop_start_sec,
       loop_end_sec: deck_state.loop_end_sec,
+      bands: deck_state.band_state,
     }
   }
 
@@ -731,6 +732,9 @@ impl HorizontalBrowseTransportEngine {
           target.scrub_preview.level = 0.0;
         }
       }
+      if file_changed || position_changed {
+        horizontal_browse_transport_audio::reset_band_filter_state(target);
+      }
     }
 
     self.sync_master_tempo_state_after_change(
@@ -778,6 +782,17 @@ impl HorizontalBrowseTransportEngine {
     self.crossfader_value = Self::clamp_crossfader_value(crossfader_value);
     self.master_gain = Self::clamp_unit_gain(master_gain);
     self.refresh_output_gains();
+  }
+
+  pub(super) fn set_band_state(
+    &mut self,
+    deck: DeckId,
+    bands: HorizontalBrowseTransportBandState,
+  ) {
+    self.mark_state_changed();
+    let target = self.deck_mut(deck);
+    target.band_state = bands;
+    horizontal_browse_transport_audio::reset_band_filter_state(target);
   }
 
   pub(super) fn sync_loop_before_play(&mut self, deck: DeckId) {
@@ -836,6 +851,7 @@ impl HorizontalBrowseTransportEngine {
       target.metronome_state.next_beat_index = None;
       target.scrub_preview.active = false;
       target.scrub_preview.rate = 0.0;
+      horizontal_browse_transport_audio::reset_band_filter_state(target);
     }
     self.reset_and_prime_master_tempo_state(deck);
     self.refresh();
@@ -852,6 +868,8 @@ impl HorizontalBrowseTransportEngine {
     self.last_now_ms = now_ms;
     let target = self.deck_mut(deck);
     let duration_sec = target.duration_sec;
+    let previous_active = target.scrub_preview.active;
+    let previous_current_sec = target.scrub_preview.current_sec;
     target.scrub_preview.current_sec = if !current_sec.is_finite() {
       0.0
     } else if duration_sec.is_finite() && duration_sec > 0.0 {
@@ -865,6 +883,11 @@ impl HorizontalBrowseTransportEngine {
     } else {
       0.0
     };
+    if active
+      && (!previous_active || (target.scrub_preview.current_sec - previous_current_sec).abs() > 0.05)
+    {
+      horizontal_browse_transport_audio::reset_band_filter_state(target);
+    }
   }
 
   pub(super) fn set_metronome(&mut self, deck: DeckId, enabled: bool, volume_level: u8) {

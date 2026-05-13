@@ -63,6 +63,14 @@ pub struct HorizontalBrowseTransportStateInput {
 }
 
 #[napi(object)]
+#[derive(Clone, Copy)]
+pub struct HorizontalBrowseTransportBandState {
+  pub high: bool,
+  pub mid: bool,
+  pub low: bool,
+}
+
+#[napi(object)]
 pub struct HorizontalBrowseTransportDeckSnapshot {
   pub deck: String,
   pub label: String,
@@ -89,6 +97,7 @@ pub struct HorizontalBrowseTransportDeckSnapshot {
   pub loop_start_beat_index: Option<i32>,
   pub loop_start_sec: f64,
   pub loop_end_sec: f64,
+  pub bands: HorizontalBrowseTransportBandState,
 }
 
 #[napi(object)]

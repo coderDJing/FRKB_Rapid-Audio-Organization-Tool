@@ -2,6 +2,8 @@ export const HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT =
   'horizontal-browse-transport:snapshot-updated'
 
 export type HorizontalBrowseDeckKey = 'top' | 'bottom'
+export type HorizontalBrowseAudioBandKey = 'high' | 'mid' | 'low'
+export type HorizontalBrowseTransportBandState = Record<HorizontalBrowseAudioBandKey, boolean>
 
 export type HorizontalBrowseTransportDeckInput = {
   filePath?: string
@@ -58,6 +60,7 @@ export type HorizontalBrowseTransportDeckSnapshot = {
   loopStartBeatIndex?: number
   loopStartSec: number
   loopEndSec: number
+  bands: HorizontalBrowseTransportBandState
 }
 
 export type HorizontalBrowseTransportOutputSnapshot = {
@@ -108,7 +111,12 @@ export const createEmptyHorizontalBrowseTransportDeckSnapshot = (
   loopBeatValue: 8,
   loopStartBeatIndex: undefined,
   loopStartSec: 0,
-  loopEndSec: 0
+  loopEndSec: 0,
+  bands: {
+    high: true,
+    mid: true,
+    low: true
+  }
 })
 
 export const createEmptyHorizontalBrowseTransportSnapshot =

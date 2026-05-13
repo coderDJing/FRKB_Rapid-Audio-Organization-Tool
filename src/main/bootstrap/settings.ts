@@ -85,6 +85,7 @@ const defaultSettings = {
   showTitleAudioVisualizer: true,
   mainWindowTitleAudioVisualizerMode: 'bars' as const,
   mixtapeWindowTitleAudioVisualizerMode: 'bars' as const,
+  horizontalBrowseFaderControlsExpanded: false,
   persistSongFilters: false,
   enableCuratedArtistTracking: true,
   enableExplorerContextMenu: platform === 'win32',

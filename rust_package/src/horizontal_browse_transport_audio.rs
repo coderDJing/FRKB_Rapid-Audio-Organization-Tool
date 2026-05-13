@@ -8,6 +8,9 @@ const SCRUB_MAX_RATE: f64 = 8.0;
 const SCRUB_RAMP_SEC: f64 = 0.006;
 const MASTER_TEMPO_FEED_FRAMES: usize = 4096;
 const MASTER_TEMPO_PULL_FRAMES: usize = 4096;
+const BAND_LOW_SPLIT_HZ: f64 = 360.0;
+const BAND_HIGH_SPLIT_HZ: f64 = 2600.0;
+const BAND_REDUCED_GAIN: f32 = 0.12;
 
 const ST_SETTING_USE_QUICKSEEK: i32 = 2;
 
@@ -196,6 +199,71 @@ pub(super) fn clear_master_tempo_state(target: &mut DeckState) {
   target.master_tempo_state.output_offset = 0;
   target.master_tempo_state.staging_input.clear();
   target.master_tempo_state.flushed = false;
+}
+
+pub(super) fn reset_band_filter_state(target: &mut DeckState) {
+  target.band_filter_state = Default::default();
+}
+
+fn one_pole_alpha(cutoff_hz: f64, output_sample_rate: f64) -> f32 {
+  if !cutoff_hz.is_finite() || cutoff_hz <= 0.0 || output_sample_rate <= 0.0 {
+    return 1.0;
+  }
+  (1.0 - (-std::f64::consts::TAU * cutoff_hz / output_sample_rate).exp()).clamp(0.0, 1.0)
+    as f32
+}
+
+fn low_pass_sample(previous: &mut f32, input: f32, alpha: f32) -> f32 {
+  *previous += alpha * (input - *previous);
+  *previous
+}
+
+pub(super) fn apply_band_filter(
+  target: &mut DeckState,
+  left: f32,
+  right: f32,
+  output_sample_rate: f64,
+) -> (f32, f32) {
+  if !output_sample_rate.is_finite() || output_sample_rate <= 0.0 {
+    return (left, right);
+  }
+
+  if !target.band_filter_state.initialized {
+    target.band_filter_state.low_split.left = left;
+    target.band_filter_state.low_split.right = right;
+    target.band_filter_state.high_split.left = left;
+    target.band_filter_state.high_split.right = right;
+    target.band_filter_state.initialized = true;
+  }
+
+  let low_alpha = one_pole_alpha(BAND_LOW_SPLIT_HZ, output_sample_rate);
+  let high_alpha = one_pole_alpha(BAND_HIGH_SPLIT_HZ, output_sample_rate);
+  let low_left = low_pass_sample(&mut target.band_filter_state.low_split.left, left, low_alpha);
+  let low_right = low_pass_sample(&mut target.band_filter_state.low_split.right, right, low_alpha);
+  let low_mid_left =
+    low_pass_sample(&mut target.band_filter_state.high_split.left, left, high_alpha);
+  let low_mid_right =
+    low_pass_sample(&mut target.band_filter_state.high_split.right, right, high_alpha);
+  let mid_left = low_mid_left - low_left;
+  let mid_right = low_mid_right - low_right;
+  let high_left = left - low_mid_left;
+  let high_right = right - low_mid_right;
+
+  let low_gain = if target.band_state.low { 1.0 } else { 0.0 };
+  let mid_gain = if target.band_state.mid {
+    1.0
+  } else {
+    BAND_REDUCED_GAIN
+  };
+  let high_gain = if target.band_state.high {
+    1.0
+  } else {
+    BAND_REDUCED_GAIN
+  };
+  (
+    low_left * low_gain + mid_left * mid_gain + high_left * high_gain,
+    low_right * low_gain + mid_right * mid_gain + high_right * high_gain,
+  )
 }
 
 fn ensure_processor_configured(target: &mut DeckState, output_sample_rate: f64) {

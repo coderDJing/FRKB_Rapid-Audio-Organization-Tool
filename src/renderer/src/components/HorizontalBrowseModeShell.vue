@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
-import HorizontalBrowseDeckButtons from '@renderer/components/HorizontalBrowseDeckButtons.vue'
+import HorizontalBrowseDeckControlRow from '@renderer/components/HorizontalBrowseDeckControlRow.vue'
 import HorizontalBrowseDeckDetailLane from '@renderer/components/HorizontalBrowseDeckDetailLane.vue'
 import HorizontalBrowseEditDeckControls from '@renderer/components/HorizontalBrowseEditDeckControls.vue'
 import HorizontalBrowseDeckMoveDialog from '@renderer/components/HorizontalBrowseDeckMoveDialog.vue'
 import HorizontalBrowseDeckOverviewSection from '@renderer/components/HorizontalBrowseDeckOverviewSection.vue'
 import HorizontalBrowseCuePanels from '@renderer/components/HorizontalBrowseCuePanels.vue'
+import HorizontalBrowseFaderPanel from '@renderer/components/HorizontalBrowseFaderPanel.vue'
 import {
   HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
@@ -43,9 +44,9 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import emitter from '@renderer/utils/mitt'
 import { createHorizontalBrowseDeckAssigner } from '@renderer/components/horizontalBrowseDeckAssignment'
-import { useHorizontalBrowseOutput } from '@renderer/components/useHorizontalBrowseOutput'
 import { useHorizontalBrowseTransportController } from '@renderer/components/useHorizontalBrowseTransportController'
 import { useHorizontalBrowseTransportMutations } from '@renderer/components/useHorizontalBrowseTransportMutations'
+import { useHorizontalBrowseFaderControls } from '@renderer/components/useHorizontalBrowseFaderControls'
 
 type DeckKey = HorizontalBrowseDeckKey
 type HorizontalBrowseViewMode = 'dual' | 'edit'
@@ -67,7 +68,6 @@ type HorizontalBrowseDeckDetailLaneExpose = {
   toggleMetronome?: () => void
   cycleMetronomeVolume?: () => void
 }
-
 const props = withDefaults(
   defineProps<{
     viewMode?: HorizontalBrowseViewMode
@@ -76,7 +76,6 @@ const props = withDefaults(
     viewMode: 'dual'
   }
 )
-
 const createDefaultDeckToolbarState = () => ({
   disabled: true,
   bpmInputValue: '',
@@ -101,6 +100,7 @@ const topDeckCuePointSeconds = ref(0)
 const bottomDeckCuePointSeconds = ref(0)
 const topDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
 const bottomDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
+const faderPanelRef = ref<InstanceType<typeof HorizontalBrowseFaderPanel> | null>(null)
 const topDeckToolbarState = ref(createDefaultDeckToolbarState())
 const bottomDeckToolbarState = ref(createDefaultDeckToolbarState())
 const hoveredDeckKey = ref<DeckKey | null>(null)
@@ -262,20 +262,6 @@ const {
   stopRenderSyncLoop,
   notifyDeckSeekIntent
 } = useHorizontalBrowseTransportController()
-const {
-  faderRef,
-  faderRailRef,
-  faderTicks,
-  faderThumbStyle,
-  faderDragging,
-  syncCrossfaderValue,
-  handleFaderPointerDown,
-  handleFaderDoubleClick,
-  nudgeCrossfaderByKeyboard,
-  resetCrossfaderByKeyboard
-} = useHorizontalBrowseOutput({
-  nativeTransport
-})
 const topDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('top'))
 const bottomDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('bottom'))
 const resolveDeckCuePointRef = (deck: DeckKey) =>
@@ -401,6 +387,29 @@ const handleDeckMasterTempoToggle = (deck: DeckKey) => {
   void nativeTransport.setMasterTempoEnabled(deck, isDeckMasterTempoEnabled(deck))
 }
 
+const {
+  deckBandState,
+  faderControlsExpanded,
+  dualTransportSyncEnabled,
+  canUseDualTransportSync,
+  activateDualTransportSync,
+  deactivateDualTransportSync,
+  handleDualTransportSyncToggle,
+  handleDeckBandToggle
+} = useHorizontalBrowseFaderControls({
+  topDeckSong,
+  bottomDeckSong,
+  setting: runtime.setting,
+  deckSyncState,
+  nativeTransport,
+  commitDeckStatesToNative,
+  syncDeckRenderState,
+  resolveDeckSong,
+  resolveDeckPlaying,
+  resolveDeckCurrentSeconds,
+  resolveDeckDurationSeconds
+})
+
 const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
   touchDeckInteraction,
   setDeckSong,
@@ -463,7 +472,11 @@ const {
   resolveDeckLoaded,
   resolveTransportDeckSnapshot,
   resolveDeckCuePointRef,
-  resolveDeckCuePlacementSec
+  resolveDeckCuePlacementSec,
+  resolveDualTransportSyncEnabled: () =>
+    dualTransportSyncEnabled.value && canUseDualTransportSync.value,
+  ensureDualTransportSync: activateDualTransportSync,
+  deactivateDualTransportSync
 })
 
 const {
@@ -642,11 +655,11 @@ const resolveDeckToolbarState = (deck: DeckKey) =>
   )
 
 const handleCrossfaderNudgeByKeyboard = (direction: -1 | 1) => {
-  nudgeCrossfaderByKeyboard(direction)
+  faderPanelRef.value?.nudgeCrossfaderByKeyboard(direction)
 }
 
 const handleCrossfaderResetByKeyboard = () => {
-  resetCrossfaderByKeyboard()
+  faderPanelRef.value?.resetCrossfaderByKeyboard()
 }
 
 const handleDeckMoveToFilterHotkey = (deck: DeckKey) => {
@@ -687,7 +700,7 @@ useHorizontalBrowseHotkeys({
 
 const enterEditMode = async () => {
   stopAllDeckCuePreview()
-  syncCrossfaderValue(0)
+  faderPanelRef.value?.syncCrossfaderValue(0)
   if (resolveDeckPlaying('top')) {
     await nativeTransport.setPlaying('top', false)
   }
@@ -780,7 +793,7 @@ watch(
 onMounted(() => {
   startSnapshotSync()
   void nativeTransport.reset().finally(() => {
-    syncCrossfaderValue(0)
+    faderPanelRef.value?.syncCrossfaderValue(0)
   })
   startRenderSyncLoop(handleDeckLoopPlaybackTick)
   window.addEventListener('drop', handleGlobalDragFinish, true)
@@ -827,7 +840,11 @@ onUnmounted(() => {
 <template>
   <div
     class="horizontal-shell"
-    :class="{ 'is-edit-mode': isEditMode, 'is-light-theme': isLightTheme }"
+    :class="{
+      'is-edit-mode': isEditMode,
+      'is-light-theme': isLightTheme,
+      'is-fader-controls-expanded': faderControlsExpanded && !isEditMode
+    }"
   >
     <div class="controls" :class="{ 'controls--edit': isEditMode }">
       <HorizontalBrowseEditDeckControls
@@ -841,63 +858,45 @@ onUnmounted(() => {
         @jump-beats="jumpEditDeckByBeats"
       />
 
-      <HorizontalBrowseDeckButtons
+      <HorizontalBrowseDeckControlRow
+        deck="top"
         :playing="topDeckPlayButtonActive"
         :decoding="topDeckUiDecoding"
         :pending-play="deckPendingPlayOnLoad.top"
         :pending-cue="deckPendingCuePreviewOnLoad.top"
         :cue-active="topDeckCueActive"
+        :bands-visible="faderControlsExpanded && !isEditMode"
+        :bands="deckBandState.top"
         @cue-pointer-down="handleDeckCuePointerDown('top', $event)"
         @cue-click="handleDeckCueClick('top')"
         @play-toggle="handleDeckPlayPauseToggle('top')"
+        @toggle-band="handleDeckBandToggle"
       />
 
-      <div
+      <HorizontalBrowseFaderPanel
         v-if="!isEditMode"
-        ref="faderRef"
-        class="fader"
-        :class="{ 'is-dragging': faderDragging }"
-        @pointerdown="handleFaderPointerDown"
-        @dblclick.prevent="handleFaderDoubleClick"
-      >
-        <div class="fader__scale">
-          <div class="fader__scale-inner">
-            <span
-              v-for="tick in faderTicks"
-              :key="`left-${tick.id}`"
-              class="fader__tick"
-              :class="{ 'is-major': tick.major, 'is-center': tick.center }"
-              :style="{ top: tick.top }"
-            ></span>
-          </div>
-        </div>
-        <div ref="faderRailRef" class="fader__rail">
-          <div class="fader__slot"></div>
-          <div class="fader__thumb" :style="faderThumbStyle"></div>
-        </div>
-        <div class="fader__scale">
-          <div class="fader__scale-inner">
-            <span
-              v-for="tick in faderTicks"
-              :key="`right-${tick.id}`"
-              class="fader__tick"
-              :class="{ 'is-major': tick.major, 'is-center': tick.center }"
-              :style="{ top: tick.top }"
-            ></span>
-          </div>
-        </div>
-      </div>
+        v-model:expanded="faderControlsExpanded"
+        ref="faderPanelRef"
+        :native-transport="nativeTransport"
+        :transport-sync-enabled="dualTransportSyncEnabled"
+        :transport-sync-disabled="!canUseDualTransportSync"
+        @toggle-transport-sync="handleDualTransportSyncToggle"
+      />
 
-      <HorizontalBrowseDeckButtons
+      <HorizontalBrowseDeckControlRow
         v-if="!isEditMode"
+        deck="bottom"
         :playing="bottomDeckPlayButtonActive"
         :decoding="bottomDeckUiDecoding"
         :pending-play="deckPendingPlayOnLoad.bottom"
         :pending-cue="deckPendingCuePreviewOnLoad.bottom"
         :cue-active="bottomDeckCueActive"
+        :bands-visible="faderControlsExpanded"
+        :bands="deckBandState.bottom"
         @cue-pointer-down="handleDeckCuePointerDown('bottom', $event)"
         @cue-click="handleDeckCueClick('bottom')"
         @play-toggle="handleDeckPlayPauseToggle('bottom')"
+        @toggle-band="handleDeckBandToggle"
       />
     </div>
 

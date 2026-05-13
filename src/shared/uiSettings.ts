@@ -15,6 +15,7 @@ export const UI_SETTING_KEYS = [
   'showTitleAudioVisualizer',
   'mainWindowTitleAudioVisualizerMode',
   'mixtapeWindowTitleAudioVisualizerMode',
+  'horizontalBrowseFaderControlsExpanded',
   'showPlaylistTrackCount',
   'recentDialogSelectedSongListMaxCount',
   'songListBubbleAlways'

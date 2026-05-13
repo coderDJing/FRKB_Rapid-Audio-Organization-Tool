@@ -13,6 +13,7 @@ export declare function horizontalBrowseTransportSetSyncEnabled(deck: string, no
 export declare function horizontalBrowseTransportBeatsync(deck: string, nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportAlignToLeader(deck: string, nowMs?: number | undefined | null, targetSec?: number | undefined | null): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetLeader(deck?: string | undefined | null, nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetBandState(deck: string, bands: HorizontalBrowseTransportBandState): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetPlaying(deck: string, nowMs: number, playing: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSeek(deck: string, nowMs: number, currentSec: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetScrubPreview(deck: string, nowMs: number, active: boolean, currentSec: number, rate: number): HorizontalBrowseTransportSnapshot
@@ -46,6 +47,11 @@ export interface HorizontalBrowseTransportBeatGridInput {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
 }
+export interface HorizontalBrowseTransportBandState {
+  high: boolean
+  mid: boolean
+  low: boolean
+}
 export interface HorizontalBrowseTransportStateInput {
   nowMs?: number
   top: HorizontalBrowseTransportDeckInput
@@ -77,6 +83,7 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   loopStartBeatIndex?: number
   loopStartSec: number
   loopEndSec: number
+  bands: HorizontalBrowseTransportBandState
 }
 export interface HorizontalBrowseTransportOutputSnapshot {
   crossfaderValue: number

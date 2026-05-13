@@ -24,7 +24,8 @@ use horizontal_browse_transport_types::{
   parse_deck_id, BeatGridSnapshot, DeckDerivedState, DeckId, DecodeRequest,
 };
 pub use horizontal_browse_transport_types::{
-  HorizontalBrowseTransportBeatGridInput, HorizontalBrowseTransportDeckInput,
+  HorizontalBrowseTransportBandState, HorizontalBrowseTransportBeatGridInput,
+  HorizontalBrowseTransportDeckInput,
   HorizontalBrowseTransportDeckSnapshot, HorizontalBrowseTransportOutputSnapshot,
   HorizontalBrowseTransportSnapshot, HorizontalBrowseTransportStateInput,
   HorizontalBrowseTransportVisualizerSnapshot,
@@ -54,6 +55,8 @@ struct DeckState {
   sample_rate: u32,
   channels: u16,
   gain: f32,
+  band_state: HorizontalBrowseTransportBandState,
+  band_filter_state: DeckBandFilterState,
   metronome_enabled: bool,
   metronome_volume_level: u8,
   metronome_state: MetronomeState,
@@ -79,6 +82,19 @@ struct ScrubPreviewState {
   current_sec: f64,
   rate: f64,
   level: f32,
+}
+
+#[derive(Clone, Copy)]
+struct OnePoleLowPassState {
+  left: f32,
+  right: f32,
+}
+
+#[derive(Clone, Copy)]
+struct DeckBandFilterState {
+  low_split: OnePoleLowPassState,
+  high_split: OnePoleLowPassState,
+  initialized: bool,
 }
 
 struct DecodeApplyBaseline {
@@ -149,6 +165,35 @@ impl Default for ScrubPreviewState {
   }
 }
 
+impl Default for OnePoleLowPassState {
+  fn default() -> Self {
+    Self {
+      left: 0.0,
+      right: 0.0,
+    }
+  }
+}
+
+impl Default for DeckBandFilterState {
+  fn default() -> Self {
+    Self {
+      low_split: OnePoleLowPassState::default(),
+      high_split: OnePoleLowPassState::default(),
+      initialized: false,
+    }
+  }
+}
+
+impl Default for HorizontalBrowseTransportBandState {
+  fn default() -> Self {
+    Self {
+      high: true,
+      mid: true,
+      low: true,
+    }
+  }
+}
+
 impl Default for DeckState {
   fn default() -> Self {
     Self {
@@ -175,6 +220,8 @@ impl Default for DeckState {
       sample_rate: 0,
       channels: 0,
       gain: 1.0,
+      band_state: HorizontalBrowseTransportBandState::default(),
+      band_filter_state: DeckBandFilterState::default(),
       metronome_enabled: false,
       metronome_volume_level: 2,
       metronome_state: MetronomeState::default(),
@@ -372,6 +419,7 @@ impl HorizontalBrowseTransportEngine {
       target.sample_rate = 0;
       target.channels = 0;
       horizontal_browse_transport_audio::clear_master_tempo_state(target);
+      horizontal_browse_transport_audio::reset_band_filter_state(target);
       self.mark_state_changed();
       return None;
     }
@@ -396,6 +444,7 @@ impl HorizontalBrowseTransportEngine {
       target.sample_rate = 0;
       target.channels = 0;
       horizontal_browse_transport_audio::clear_master_tempo_state(target);
+      horizontal_browse_transport_audio::reset_band_filter_state(target);
     }
     self.mark_state_changed();
     Some(DecodeRequest {
@@ -512,6 +561,7 @@ impl HorizontalBrowseTransportEngine {
     if should_reset_master_tempo {
       horizontal_browse_transport_audio::reset_master_tempo_state(target);
       horizontal_browse_transport_audio::prime_master_tempo_state(target, output_sample_rate);
+      horizontal_browse_transport_audio::reset_band_filter_state(target);
     }
     self.mark_state_changed();
     true
@@ -662,9 +712,17 @@ impl HorizontalBrowseTransportEngine {
     let was_playing = self.deck(deck).playing;
     let scrub_rendering =
       horizontal_browse_transport_audio::is_scrub_preview_rendering(self.deck(deck));
-    let target = self.deck_mut(deck);
-    let (deck_left, deck_right) =
-      horizontal_browse_transport_audio::sample_deck(target, output_sample_rate);
+    let (deck_left, deck_right) = {
+      let target = self.deck_mut(deck);
+      let (raw_left, raw_right) =
+        horizontal_browse_transport_audio::sample_deck(target, output_sample_rate);
+      horizontal_browse_transport_audio::apply_band_filter(
+        target,
+        raw_left,
+        raw_right,
+        output_sample_rate,
+      )
+    };
     let after_sec = self.deck(deck).current_sec;
     let metronome = if scrub_rendering {
       0.0

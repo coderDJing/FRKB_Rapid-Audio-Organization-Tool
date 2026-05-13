@@ -1,5 +1,6 @@
 import type {
   HorizontalBrowseTransportBeatGridInput,
+  HorizontalBrowseTransportBandState,
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckInput,
   HorizontalBrowseTransportSnapshot,
@@ -50,6 +51,10 @@ type RustHorizontalBrowseTransportBinding = {
   horizontalBrowseTransportSetLeader?: (
     deck?: HorizontalBrowseDeckKey,
     nowMs?: number
+  ) => HorizontalBrowseTransportSnapshot
+  horizontalBrowseTransportSetBandState?: (
+    deck: HorizontalBrowseDeckKey,
+    bands: HorizontalBrowseTransportBandState
   ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSetPlaying?: (
     deck: HorizontalBrowseDeckKey,
@@ -163,6 +168,9 @@ export const horizontalBrowseTransportBridge = {
   },
   setLeader(deck?: HorizontalBrowseDeckKey, nowMs?: number) {
     return requireFn('horizontalBrowseTransportSetLeader')(deck, nowMs)
+  },
+  setBandState(deck: HorizontalBrowseDeckKey, bands: HorizontalBrowseTransportBandState) {
+    return requireFn('horizontalBrowseTransportSetBandState')(deck, bands)
   },
   setPlaying(deck: HorizontalBrowseDeckKey, nowMs: number, playing: boolean) {
     return requireFn('horizontalBrowseTransportSetPlaying')(deck, nowMs, playing)

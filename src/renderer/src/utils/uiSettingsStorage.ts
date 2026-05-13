@@ -49,6 +49,7 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
       case 'enablePlaybackRange':
       case 'autoScrollToCurrentSong':
       case 'showTitleAudioVisualizer':
+      case 'horizontalBrowseFaderControlsExpanded':
       case 'showPlaylistTrackCount':
       case 'songListBubbleAlways': {
         const v = normalizeBoolean(value)

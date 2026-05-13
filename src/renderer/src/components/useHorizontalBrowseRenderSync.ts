@@ -78,6 +78,8 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   let lastTransportSnapshotAt = 0
 
   const estimateDeckRenderCurrentSeconds = (deck: DeckKey, nowMs = performance.now()) => {
+    const pendingIntent = pendingRenderSeekIntent[deck]
+    if (pendingIntent) return pendingIntent.seconds
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const durationSec = Math.max(0, Number(snapshot.durationSec) || 0)
     const playbackRate = Number(snapshot.playbackRate) || 1
@@ -135,10 +137,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const pendingIntent = pendingRenderSeekIntent[deck]
     if (pendingIntent) {
       const intentAgeMs = renderNowMs - pendingIntent.startedAtMs
-      const pendingPlaybackRate = Math.max(0.25, Number(snapshot.playbackRate) || 1)
-      const pendingEstimatedSec =
-        pendingIntent.seconds +
-        (snapshot.playing ? Math.max(0, intentAgeMs) / 1000 : 0) * pendingPlaybackRate
+      const pendingEstimatedSec = pendingIntent.seconds
       const nativeConfirmedNegativeIntent =
         pendingIntent.seconds < -TIMELINE_ZERO_EPSILON_SEC &&
         snapshotSec < -TIMELINE_ZERO_EPSILON_SEC
@@ -257,8 +256,8 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   // 通过在 notifyDeckSeekIntent 里先调用本函数，把 baseSec=目标秒、baseAtMs=now、
   // topDeckRenderCurrentSeconds.value=目标秒 一起提交，相当于让所有依赖渲染时间的插值器
   // 立刻 teleport 到新位置：
-  //   * RAF tick: playing=true 时算出的 estimate = 目标秒 + 几 ms 漂移（几乎不可见）；
-  //     playing=false 后 estimate 就等于目标秒，稳稳停在目标位置。
+  //   * RAF tick: pending seek 确认前固定返回目标秒，避免联结模式下另一轨
+  //     先沿旧播放状态外推一小段再被 native seek 拉回。
   //   * currentSeconds watcher: 大波形收到新的 topDeckRenderCurrentSeconds 后会立刻把
   //     previewStartSec 推到目标秒对应的位置，不会再沿着旧位置继续外推。
   //   * drawWaveform: previewStartSec 经 watcher → applyPreviewPlaybackPosition 推到
