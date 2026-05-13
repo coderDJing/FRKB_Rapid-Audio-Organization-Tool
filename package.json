@@ -88,6 +88,9 @@
       "!drafts{,/**/*}",
       "!tmp{,/**/*}",
       "!grid-analysis-lab{,/**/*}",
+      "!rust_package/native/ffmpeg/darwin{,/**/*}",
+      "!rust_package/native/ffmpeg/darwin-arm64{,/**/*}",
+      "!rust_package/native/ffmpeg/darwin-x64{,/**/*}",
       "!rust_package/target{,/**/*}",
       "!node_modules/rust_package/target{,/**/*}"
     ],

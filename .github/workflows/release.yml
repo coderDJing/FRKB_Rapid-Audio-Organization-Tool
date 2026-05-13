@@ -581,6 +581,9 @@ jobs:
           npx --yes @napi-rs/cli@2.18.4 build --platform --release --target x86_64-apple-darwin
           npx --yes @napi-rs/cli@2.18.4 build --platform --release --target aarch64-apple-darwin
 
+      - name: Clean FFmpeg native build inputs (macOS)
+        run: rm -rf rust_package/native/ffmpeg/darwin-arm64 rust_package/native/ffmpeg/darwin-x64
+
       - name: Build (vite)
         env:
           CLOUD_SYNC_BASE_URL_PROD: ${{ secrets.CLOUD_SYNC_BASE_URL_PROD }}
