@@ -261,9 +261,7 @@ export function useMusicBrainzDialog(props: MusicBrainzDialogProps) {
         return t('metadata.musicbrainzAcoustIdClientMissing')
       case 'ACOUSTID_CLIENT_INVALID':
         return t('metadata.acoustidKeyInvalid')
-      case 'ACOUSTID_FPCALC_NOT_FOUND':
-      case 'ACOUSTID_FPCALC_FAILED':
-      case 'ACOUSTID_FPCALC_PARSE_ERROR':
+      case 'ACOUSTID_CHROMAPRINT_UNAVAILABLE':
         return t('metadata.musicbrainzAcoustIdToolMissing')
       case 'ACOUSTID_INVALID_PARAMS':
       case 'ACOUSTID_FILE_NOT_FOUND':

@@ -281,7 +281,7 @@ export async function autoFillTrackMetadata(
             const code = summarizeErrorMessage(err)
             if (
               code === 'ACOUSTID_CLIENT_MISSING' ||
-              code === 'ACOUSTID_FPCALC_NOT_FOUND' ||
+              code === 'ACOUSTID_CHROMAPRINT_UNAVAILABLE' ||
               code === 'ACOUSTID_CLIENT_INVALID'
             ) {
               fingerprintDisabledCode = code

@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
 import type { IMetadataAutoFillSummary, IMetadataAutoFillItemResult } from 'src/types/globals'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
@@ -12,15 +11,15 @@ const emits = defineEmits(['close'])
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const close = () => closeWithAnimation(() => emits('close'))
 
-const scrollbarOptions = {
-  scrollbars: { autoHide: 'leave' as const, autoHideDelay: 50, clickScroll: true },
-  overflow: { x: 'hidden', y: 'scroll' } as const
-}
-
 type SummaryChip = {
   label: string
   value: number | string
   danger?: boolean
+}
+
+type ResultLine = {
+  label?: string
+  value: string
 }
 
 const chips = computed((): SummaryChip[] => {
@@ -115,8 +114,29 @@ const reasonLabel = (item: IMetadataAutoFillItemResult) => {
   return translated
 }
 
-const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
-  item.status === 'error' || item.status === 'cancelled'
+const normalizeResultValue = (value?: string | number | null) => {
+  const text = String(value ?? '').trim()
+  return text || ''
+}
+
+const resultLines = (item: IMetadataAutoFillItemResult): ResultLine[] => {
+  if (item.status === 'applied' && item.updatedSongInfo) {
+    const info = item.updatedSongInfo
+    const lines = [
+      { label: t('metadata.title'), value: normalizeResultValue(info.title) },
+      { label: t('metadata.artist'), value: normalizeResultValue(info.artist) },
+      { label: t('metadata.album'), value: normalizeResultValue(info.album) },
+      { label: t('metadata.genre'), value: normalizeResultValue(info.genre) },
+      { label: t('metadata.label'), value: normalizeResultValue(info.label) }
+    ].filter((line) => line.value)
+
+    if (lines.length > 0) {
+      return lines
+    }
+  }
+
+  return [{ value: reasonLabel(item) }]
+}
 </script>
 
 <template>
@@ -125,7 +145,7 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
       <div class="dialog-title dialog-header">
         {{ t('metadata.autoFillSummaryTitle') }}
       </div>
-      <div class="content">
+      <div class="auto-summary-body">
         <div class="stats">
           <div class="section">
             <div class="section-title">{{ t('metadata.autoFillSummaryStatsTitle') }}</div>
@@ -145,34 +165,36 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
         <div class="list-container">
           <div class="list-header">{{ t('metadata.autoFillSummaryListHeader') }}</div>
           <div v-if="hasItems" class="list-wrapper">
-            <OverlayScrollbarsComponent
-              class="list-scroll"
-              :options="scrollbarOptions"
-              element="div"
-            >
-              <div class="list">
-                <div
-                  v-for="(item, index) in summary?.items"
-                  :key="`${item.filePath}-${index}`"
-                  class="item"
-                >
-                  <div class="item-title">
-                    <div class="name">{{ item.displayName || item.filePath }}</div>
-                    <div class="tags">
-                      <span class="tag" :class="statusClassMap[item.status]">
-                        {{ statusLabel(item.status) }}
-                      </span>
-                      <span v-if="item.status === 'applied'" class="tag tag-muted">
-                        {{ methodLabel(item.method) }}
-                      </span>
-                    </div>
+            <div class="list">
+              <div
+                v-for="(item, index) in summary?.items"
+                :key="`${item.filePath}-${index}`"
+                class="item"
+              >
+                <div class="item-main">
+                  <div class="name">{{ item.displayName || item.filePath }}</div>
+                  <div class="tags">
+                    <span class="tag" :class="statusClassMap[item.status]">
+                      {{ statusLabel(item.status) }}
+                    </span>
+                    <span v-if="item.status === 'applied'" class="tag tag-muted">
+                      {{ methodLabel(item.method) }}
+                    </span>
                   </div>
-                  <div v-if="shouldShowReason(item)" class="item-desc">
-                    <span>{{ reasonLabel(item) }}</span>
+                </div>
+                <div class="item-result">
+                  <div
+                    v-for="(line, lineIndex) in resultLines(item)"
+                    :key="`${line.label || 'reason'}-${lineIndex}`"
+                    class="result-line"
+                    :class="{ reason: !line.label }"
+                  >
+                    <span v-if="line.label" class="result-label">{{ line.label }}</span>
+                    <span class="result-value">{{ line.value }}</span>
                   </div>
                 </div>
               </div>
-            </OverlayScrollbarsComponent>
+            </div>
           </div>
           <div v-else class="empty">
             {{ t('metadata.autoFillSummaryEmpty') }}
@@ -188,20 +210,23 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
 
 <style scoped lang="scss">
 .inner {
-  width: 675px;
-  max-height: 80vh;
-  height: 80vh;
+  width: min(860px, calc(100vw - 56px));
+  max-height: min(84vh, 760px);
+  height: min(84vh, 760px);
   padding: 0;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 }
-.content {
+.auto-summary-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
   flex: 1;
   min-height: 0;
+  width: 100%;
   padding: 20px;
+  box-sizing: border-box;
 }
 .dialog-title {
   flex-shrink: 0;
@@ -211,11 +236,15 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
   flex-direction: column;
   gap: 12px;
   flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 .section {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .section-title {
   font-size: 13px;
@@ -224,12 +253,14 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
   letter-spacing: 0.2px;
 }
 .chips {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
   gap: 12px;
-  flex-wrap: wrap;
+  width: 100%;
+  box-sizing: border-box;
 }
 .chip {
-  min-width: 96px;
+  min-width: 0;
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -238,6 +269,7 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
   flex-direction: column;
   align-items: center;
   text-align: center;
+  box-sizing: border-box;
 }
 .chip .num {
   font-size: 18px;
@@ -249,6 +281,7 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
   font-size: 11px;
   color: var(--text-weak, var(--text-secondary, #888));
   margin-top: 4px;
+  line-height: 1.25;
 }
 .chip.danger .num {
   color: #ff6b6b;
@@ -258,9 +291,11 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+  box-sizing: border-box;
 }
 .list-header {
   padding: 10px 14px;
@@ -270,55 +305,64 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
   background: var(--bg-elev);
   font-weight: 600;
   flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 .list-wrapper {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-.list-scroll {
-  flex: 1;
-  min-height: 0;
   width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar) transparent;
+  box-sizing: border-box;
 }
-.list-wrapper :deep(.os-host) {
-  flex: 1;
-  min-height: 0;
-  height: 100%;
-  width: 100%;
+.list-wrapper::-webkit-scrollbar {
+  width: 6px;
 }
-.list-wrapper :deep(.os-content) {
-  min-height: 100%;
-  width: 100% !important;
+.list-wrapper::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: 6px;
 }
 
 .list {
-  min-width: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
 }
 .item {
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(260px, 1.1fr);
+  gap: 16px;
+  align-items: start;
+  width: 100%;
+  box-sizing: border-box;
 }
 .item:last-child {
   border-bottom: none;
 }
-.item-title {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
+.item-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .name {
   font-size: 13px;
   color: var(--text);
   font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .tags {
   display: flex;
   gap: 6px;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   align-items: center;
   flex-shrink: 0;
 }
@@ -353,13 +397,36 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
   border-color: var(--border);
   color: var(--text-secondary, #999);
 }
-.item-desc {
-  margin-top: 6px;
+.item-result {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  padding: 8px 10px;
+  border-left: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-elev) 88%, var(--bg));
+}
+.result-line {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
   font-size: 12px;
+  line-height: 1.35;
+}
+.result-line.reason {
+  grid-template-columns: minmax(0, 1fr);
+}
+.result-label {
   color: var(--text-secondary, #888);
+  white-space: nowrap;
+}
+.result-value {
+  min-width: 0;
+  color: var(--text);
   user-select: text;
   -webkit-user-select: text;
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .empty {
   flex: 1;
@@ -370,5 +437,25 @@ const shouldShowReason = (item: IMetadataAutoFillItemResult) =>
   color: var(--text-secondary, #888);
   padding: 20px;
   text-align: center;
+}
+
+@media (max-width: 760px) {
+  .inner {
+    width: calc(100vw - 32px);
+  }
+
+  .chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .item {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .item-result {
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
 }
 </style>

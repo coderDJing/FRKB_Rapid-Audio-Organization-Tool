@@ -3,15 +3,32 @@ import { is } from '@electron-toolkit/utils'
 import path = require('path')
 import fs = require('fs-extra')
 import { createHash } from 'crypto'
-import { spawn } from 'child_process'
 import { ProxyAgent } from 'undici'
 import { IMusicBrainzAcoustIdPayload, IMusicBrainzMatch } from '../../types/globals'
-import { ensureFpcalcExecutable, resolveBundledFpcalcPath } from '../chromaprint'
 import store from '../store'
 import { getSystemProxy } from '../utils'
 
+// 原生 Chromaprint（进程内调用，无子进程开销）
+let nativeChromaprintAvailable = false
+let generateChromaprintFingerprint:
+  | ((
+      filePath: string,
+      maxLengthSeconds?: number
+    ) => { fingerprint: string; duration: number; error?: string })
+  | undefined
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const rustPkg = require('rust_package') as Record<string, unknown>
+  if (typeof rustPkg.generateChromaprintFingerprint === 'function') {
+    generateChromaprintFingerprint =
+      rustPkg.generateChromaprintFingerprint as typeof generateChromaprintFingerprint
+    nativeChromaprintAvailable = true
+  }
+} catch {
+  nativeChromaprintAvailable = false
+}
+
 const MAX_ANALYSIS_SECONDS = 120
-const FPCALC_TIMEOUT = 45_000
 const LOOKUP_TIMEOUT = 12_000
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
 const CACHE_FILE_NAME = 'fingerprintCache.json'
@@ -177,70 +194,24 @@ async function buildCacheKey(filePath: string): Promise<{ key: string; size: num
   return { key: `${hash}:${stats.size}`, size: stats.size }
 }
 
-async function runFpcalc(
+async function generateFingerprint(
   filePath: string,
   maxLengthSeconds?: number
 ): Promise<{ fingerprint: string; duration: number }> {
-  const fpcalcPath = resolveBundledFpcalcPath()
-  if (!fpcalcPath || !(await fs.pathExists(fpcalcPath))) {
-    throw new Error('ACOUSTID_FPCALC_NOT_FOUND')
-  }
-  await ensureFpcalcExecutable(fpcalcPath)
-  const args = ['-json']
   const targetLength =
     maxLengthSeconds && maxLengthSeconds > 0 ? maxLengthSeconds : MAX_ANALYSIS_SECONDS
-  args.push('-length', String(targetLength))
-  args.push(filePath)
-  return new Promise((resolve, reject) => {
-    let stdout = ''
-    let stderr = ''
-    const child = spawn(fpcalcPath, args, { windowsHide: true })
-    const timer = setTimeout(() => {
-      try {
-        child.kill()
-      } catch {}
-      reject(new Error('ACOUSTID_TIMEOUT'))
-    }, FPCALC_TIMEOUT)
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString()
-    })
-    child.stderr.on('data', (chunk) => {
-      stderr += chunk.toString()
-    })
-    child.once('error', (err: unknown) => {
-      clearTimeout(timer)
-      const error = (err && typeof err === 'object' ? err : null) as ErrorLike | null
-      if (error?.code === 'ENOENT') {
-        reject(new Error('ACOUSTID_FPCALC_NOT_FOUND'))
-      } else {
-        reject(err instanceof Error ? err : new Error(String(err)))
-      }
-    })
-    child.once('close', (code) => {
-      clearTimeout(timer)
-      if (code !== 0) {
-        const error = stderr || `fpcalc exit ${code}`
-        reject(new Error(`ACOUSTID_FPCALC_FAILED:${error}`))
-        return
-      }
-      try {
-        const parsed = JSON.parse(stdout)
-        const fingerprint = parsed?.fingerprint
-        const duration = parsed?.duration
-        if (!fingerprint || typeof fingerprint !== 'string') {
-          reject(new Error('ACOUSTID_NO_FINGERPRINT'))
-          return
-        }
-        if (typeof duration !== 'number' || duration <= 0) {
-          reject(new Error('ACOUSTID_INVALID_DURATION'))
-          return
-        }
-        resolve({ fingerprint, duration })
-      } catch (err) {
-        reject(new Error('ACOUSTID_FPCALC_PARSE_ERROR'))
-      }
-    })
-  })
+
+  if (!nativeChromaprintAvailable || !generateChromaprintFingerprint) {
+    throw new Error('ACOUSTID_CHROMAPRINT_UNAVAILABLE')
+  }
+
+  const result = generateChromaprintFingerprint(filePath, targetLength)
+
+  if (result.error || !result.fingerprint || result.duration <= 0) {
+    throw new Error('ACOUSTID_NO_FINGERPRINT')
+  }
+
+  return { fingerprint: result.fingerprint, duration: result.duration }
 }
 
 interface QueueItem<T> {
@@ -480,7 +451,7 @@ async function ensureFingerprint(
   const { key } = await buildCacheKey(resolved)
   let entry = await readFingerprintCache(key)
   if (!entry || !entry.fingerprint) {
-    const result = await runFpcalc(resolved, payload.maxLengthSeconds)
+    const result = await generateFingerprint(resolved, payload.maxLengthSeconds)
     entry = {
       fingerprint: result.fingerprint,
       duration: result.duration,
@@ -496,7 +467,9 @@ async function fetchAcoustIdWithCache(
   cacheKey: string,
   entry: FingerprintCacheEntry
 ): Promise<AcoustIdLookupResponse> {
-  if (entry.acoustIdResults) return entry.acoustIdResults
+  if (entry.acoustIdResults) {
+    return entry.acoustIdResults
+  }
   const response = await lookupAcoustId(entry.fingerprint, entry.duration)
   if (response?.status === 'ok') {
     entry.acoustIdResults = response
