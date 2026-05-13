@@ -52,10 +52,6 @@ const createWindow = () => {
     } catch {}
   }
 
-  if (!app.isPackaged) {
-    whatsNewWindow.webContents.openDevTools()
-  }
-
   whatsNewWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }

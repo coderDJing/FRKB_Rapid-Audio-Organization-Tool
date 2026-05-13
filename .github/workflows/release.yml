@@ -652,8 +652,8 @@ jobs:
             fi
           else
             if [ "$PRERELEASE" = "true" ]; then
-              gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --prerelease --verify-tag
+              gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --prerelease --verify-tag --generate-notes
             else
-              gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --latest --verify-tag
+              gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --latest --verify-tag --generate-notes
             fi
           fi

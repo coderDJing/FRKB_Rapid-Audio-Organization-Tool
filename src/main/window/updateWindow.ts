@@ -12,14 +12,19 @@ import {
   downloadManualMacUpdate,
   pickManualMacUpdateAsset
 } from '../services/manualMacUpdate'
+import { fetchReleaseNotesRange } from '../services/releaseNotes'
+import type { ReleaseNotesRangePayload } from '../../shared/releaseNotes'
 const autoUpdater = electronUpdater.autoUpdater
 let updateWindow: BrowserWindow | null = null
-const MANUAL_UPDATE_URL =
-  'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest'
+const RELEASES_BASE_URL =
+  'https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases'
+const DEFAULT_MANUAL_UPDATE_URL = `${RELEASES_BASE_URL}/latest`
 let autoUpdaterListenersRegistered = false
 let latestMacManualUpdateAsset: ManualMacUpdateAsset | null = null
 let latestMacManualUpdateResult: ManualMacUpdateResult | null = null
 let manualMacDownloadPromise: Promise<ManualMacUpdateResult> | null = null
+let latestManualUpdateUrl = DEFAULT_MANUAL_UPDATE_URL
+let lastReleaseNotesRange: ReleaseNotesRangePayload | null = null
 
 type AutoUpdaterProvider = {
   resolveFiles?: (updateInfo: UpdateInfo) => ResolvedUpdateFileInfo[]
@@ -56,6 +61,18 @@ type UpdateDownloadedPayload = {
 const sendToUpdateWindow = (channel: string, payload?: unknown) => {
   if (!updateWindow || updateWindow.isDestroyed()) return
   updateWindow.webContents.send(channel, payload)
+}
+
+const sendLastReleaseNotesRange = () => {
+  if (!lastReleaseNotesRange) return
+  sendToUpdateWindow('releaseNotesRange', lastReleaseNotesRange)
+}
+
+const setLatestManualUpdateVersion = (version: string) => {
+  const safeVersion = typeof version === 'string' ? version.trim() : ''
+  latestManualUpdateUrl = safeVersion
+    ? `${RELEASES_BASE_URL}/tag/${encodeURIComponent(safeVersion)}`
+    : DEFAULT_MANUAL_UPDATE_URL
 }
 
 const resolveUpdateFiles = (updateInfo: UpdateInfo): ResolvedUpdateFileInfo[] => {
@@ -121,7 +138,7 @@ const buildUpdateErrorPayload = (error: unknown): UpdateErrorPayload => {
     return {
       kind: 'signature',
       message,
-      manualUrl: MANUAL_UPDATE_URL
+      manualUrl: latestManualUpdateUrl
     }
   }
 
@@ -134,14 +151,14 @@ const buildUpdateErrorPayload = (error: unknown): UpdateErrorPayload => {
     return {
       kind: 'install',
       message,
-      manualUrl: process.platform === 'darwin' ? MANUAL_UPDATE_URL : undefined
+      manualUrl: process.platform === 'darwin' ? latestManualUpdateUrl : undefined
     }
   }
 
   return {
     kind: 'unknown',
     message,
-    manualUrl: process.platform === 'darwin' ? MANUAL_UPDATE_URL : undefined
+    manualUrl: process.platform === 'darwin' ? latestManualUpdateUrl : undefined
   }
 }
 
@@ -154,8 +171,20 @@ const registerAutoUpdaterListeners = () => {
     const currentIsPrerelease = app.getVersion().includes('-')
     const remoteIsPrerelease = typeof info?.version === 'string' && info.version.includes('-')
     if (currentIsPrerelease !== remoteIsPrerelease) return
+    setLatestManualUpdateVersion(info.version)
+    lastReleaseNotesRange = null
     rememberMacManualUpdateAsset(info)
     sendToUpdateWindow('newVersion', info)
+    void fetchReleaseNotesRange(app.getVersion(), info.version)
+      .then((releaseNotes) => {
+        lastReleaseNotesRange = releaseNotes
+        sendToUpdateWindow('releaseNotesRange', releaseNotes)
+      })
+      .catch((error) => {
+        lastReleaseNotesRange = null
+        sendToUpdateWindow('releaseNotesRange', null)
+        log.error('[updateWindow] fetch release notes failed', error)
+      })
   })
 
   autoUpdater.on('update-not-available', (info) => {
@@ -193,7 +222,7 @@ const handleStartDownload = () => {
       const payload: UpdateErrorPayload = {
         kind: 'unknown',
         message: '没有找到可下载的新版本文件，请稍后重试。',
-        manualUrl: MANUAL_UPDATE_URL
+        manualUrl: latestManualUpdateUrl
       }
       sendToUpdateWindow('isError', payload)
       log.error('[updateWindow] missing mac manual update asset')
@@ -228,7 +257,7 @@ const handleStartDownload = () => {
       })
       .catch((error) => {
         const payload = buildUpdateErrorPayload(error)
-        payload.manualUrl = MANUAL_UPDATE_URL
+        payload.manualUrl = latestManualUpdateUrl
         sendToUpdateWindow('isError', payload)
         log.error('[updateWindow] manual mac update download failed', payload, error)
       })
@@ -254,7 +283,7 @@ const handleToggleMinimize = () => {
 }
 
 const handleOpenManualDownload = () => {
-  void shell.openExternal(MANUAL_UPDATE_URL)
+  void shell.openExternal(latestManualUpdateUrl)
 }
 
 const openDownloadedFilePath = (filePath: string) => {
@@ -297,9 +326,11 @@ const handleOpenApplicationsFolder = () => {
 const createWindow = () => {
   registerAutoUpdaterListeners()
   updateWindow = new BrowserWindow({
-    resizable: false,
-    width: 500,
-    height: 300,
+    resizable: true,
+    width: 700,
+    height: 560,
+    minWidth: 560,
+    minHeight: 420,
     frame: process.platform === 'darwin' ? true : false,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : undefined,
     transparent: false,
@@ -324,13 +355,13 @@ const createWindow = () => {
     } catch {}
   }
 
-  if (!app.isPackaged) {
-    updateWindow.webContents.openDevTools()
-  }
-
   updateWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  updateWindow.webContents.on('did-finish-load', () => {
+    sendLastReleaseNotesRange()
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {

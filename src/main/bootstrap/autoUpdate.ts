@@ -4,6 +4,7 @@ import updateWindow from '../window/updateWindow'
 import foundNewVersionWindow from '../window/foundNewVersionWindow'
 import store from '../store'
 import { log } from '../log'
+import { fetchReleaseNotesRange } from '../services/releaseNotes'
 
 type AutoUpdaterWithExtras = typeof electronUpdater.autoUpdater & {
   allowPrerelease?: boolean
@@ -46,7 +47,15 @@ export function setupAutoUpdate() {
       return
     }
     if (updateWindow.instance === null) {
-      foundNewVersionWindow.createWindow()
+      foundNewVersionWindow.open(info, null, true)
+      void fetchReleaseNotesRange(app.getVersion(), info.version)
+        .then((releaseNotes) => {
+          foundNewVersionWindow.updateReleaseNotes(releaseNotes)
+        })
+        .catch((error) => {
+          log.error('[autoUpdate] fetch release notes failed', error)
+          foundNewVersionWindow.updateReleaseNotes(null)
+        })
     }
   })
 }

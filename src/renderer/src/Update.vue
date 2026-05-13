@@ -2,10 +2,17 @@
 import chromeMiniimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
 import logoAsset from '@renderer/assets/logo.png?asset'
 import { computed, ref, watch } from 'vue'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
+import 'overlayscrollbars/overlayscrollbars.css'
 import { t } from '@renderer/utils/translate'
 import type { UpdateInfo } from 'electron-updater'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { formatWindowTitle } from '@renderer/utils/windowTitle'
+import type { ReleaseNotesRangePayload } from '@shared/releaseNotes'
+import {
+  buildReleaseNotesMarkdown,
+  renderMarkdownToHtml
+} from '@renderer/utils/releaseNotesMarkdown'
 const chromeMiniimize = chromeMiniimizeAsset
 const logo = logoAsset
 
@@ -67,10 +74,51 @@ let newVersionInfo = ref<UpdateInfo>({
   sha512: '',
   releaseDate: ''
 })
+const releaseNotesRange = ref<ReleaseNotesRangePayload | null>(null)
+const releaseNotesLoading = ref(false)
+const releaseNotesHtml = ref('')
+let releaseNotesRenderSeq = 0
+const overlayOptions = {
+  scrollbars: {
+    autoHide: 'leave' as const,
+    autoHideDelay: 50,
+    clickScroll: true
+  } as const,
+  overflow: {
+    x: 'hidden' as const,
+    y: 'scroll' as const
+  } as const
+}
+
+const updateReleaseNotesHtml = async (payload: ReleaseNotesRangePayload | null) => {
+  const seq = ++releaseNotesRenderSeq
+  if (!payload || payload.releases.length === 0) {
+    releaseNotesHtml.value = ''
+    return
+  }
+  const markdown = buildReleaseNotesMarkdown(payload, t('whatsNew.noChangelog'))
+  const html = await renderMarkdownToHtml(markdown)
+  if (seq === releaseNotesRenderSeq) {
+    releaseNotesHtml.value = html
+  }
+}
+
 window.electron.ipcRenderer.once('newVersion', (_event, versionInfo: UpdateInfo) => {
   newVersionInfo.value = versionInfo
+  releaseNotesRange.value = null
+  releaseNotesHtml.value = ''
+  releaseNotesLoading.value = true
   state.value = 'isNewVersion'
 })
+
+window.electron.ipcRenderer.on(
+  'releaseNotesRange',
+  (_event, payload: ReleaseNotesRangePayload | null) => {
+    releaseNotesLoading.value = false
+    releaseNotesRange.value = payload || null
+    void updateReleaseNotesHtml(releaseNotesRange.value)
+  }
+)
 
 window.electron.ipcRenderer.on('isError', (_event, payload?: UpdateErrorPayload) => {
   errorInfo.value = {
@@ -159,6 +207,18 @@ const isManualMacUpdate = computed(
 const startUpdateText = computed(() =>
   runtime.setting.platform === 'darwin' ? t('update.downloadUpdate') : t('update.startUpdate')
 )
+const releaseNotesChannelText = computed(() => {
+  if (releaseNotesRange.value?.channel === 'rc' || newVersionInfo.value.version.includes('-')) {
+    return t('update.rcChannel')
+  }
+  return t('update.stableChannel')
+})
+const releaseNotesRangeText = computed(() => {
+  const current = releaseNotesRange.value?.currentVersion
+  const latest = releaseNotesRange.value?.latestVersion || newVersionInfo.value.version
+  if (!current || !latest) return ''
+  return t('update.versionRange', { current, latest })
+})
 const downloadedText = computed(() =>
   isManualMacUpdate.value ? t('update.manualReadyTitle') : t('update.updateDownloaded')
 )
@@ -317,21 +377,38 @@ const openApplicationsFolder = () => {
         <div class="button" @click="openManualDownload()">{{ t('update.manualDownload') }}</div>
       </div>
     </div>
-    <div
-      v-else-if="state === 'isNewVersion'"
-      style="
-        flex-grow: 1;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        flex-direction: column;
-      "
-    >
-      <div>{{ t('update.newVersion') }} {{ newVersionInfo.version }}</div>
-      <div style="margin-top: 15px">
-        {{ t('update.releaseDate') }} {{ convertISOToCustomFormat(newVersionInfo.releaseDate) }}
-      </div>
-      <div style="margin-top: 20px; display: flex; justify-content: center">
+    <div v-else-if="state === 'isNewVersion'" class="update-state-content new-version-content">
+      <section class="new-version-summary">
+        <div class="channel-pill">{{ releaseNotesChannelText }}</div>
+        <div class="new-version-line">
+          {{ t('update.newVersion') }} {{ newVersionInfo.version }}
+        </div>
+        <div class="muted-line">
+          {{ t('update.releaseDate') }} {{ convertISOToCustomFormat(newVersionInfo.releaseDate) }}
+        </div>
+        <div v-if="releaseNotesRangeText" class="muted-line">{{ releaseNotesRangeText }}</div>
+      </section>
+      <section class="release-notes-panel">
+        <div class="release-notes-heading">{{ t('update.releaseNotesTitle') }}</div>
+        <div v-if="releaseNotesLoading" class="release-notes-status">
+          <div class="loading small-loading"></div>
+          <span>{{ t('update.releaseNotesLoading') }}</span>
+        </div>
+        <OverlayScrollbarsComponent
+          v-else-if="releaseNotesHtml"
+          class="release-notes-scroll"
+          :options="overlayOptions"
+          element="div"
+          defer
+        >
+          <!-- eslint-disable-next-line vue/no-v-html -->
+          <div class="markdown-body" v-html="releaseNotesHtml"></div>
+        </OverlayScrollbarsComponent>
+        <div v-else class="release-notes-status">
+          {{ t('update.releaseNotesEmpty') }}
+        </div>
+      </section>
+      <div class="new-version-actions">
         <div class="button" @click="startDownload()">{{ startUpdateText }}</div>
       </div>
     </div>
@@ -474,10 +551,17 @@ const openApplicationsFolder = () => {
 }
 
 #app {
+  --release-notes-code-bg: rgba(255, 255, 255, 0.08);
+  --release-notes-pre-bg: rgba(255, 255, 255, 0.06);
   color: var(--text);
   background-color: var(--bg);
   width: 100vw;
   height: 100vh;
+}
+
+.theme-light #app {
+  --release-notes-code-bg: rgba(15, 23, 42, 0.06);
+  --release-notes-pre-bg: rgba(15, 23, 42, 0.045);
 }
 
 body {
@@ -539,6 +623,133 @@ body {
   border-top-color: transparent;
   border-radius: 100%;
   animation: circle infinite 0.75s linear;
+}
+
+.small-loading {
+  width: 20px;
+  height: 20px;
+  border-width: 3px;
+}
+
+.update-state-content {
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.new-version-content {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 24px;
+  box-sizing: border-box;
+}
+
+.new-version-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.channel-pill {
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #ffffff;
+  background-color: var(--accent);
+}
+
+.new-version-line {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.muted-line {
+  font-size: 13px;
+  color: var(--text-weak);
+}
+
+.release-notes-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background-color: var(--bg-elev);
+}
+
+.release-notes-heading {
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.release-notes-scroll {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 14px;
+}
+
+.release-notes-status {
+  flex: 1;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-weak);
+  font-size: 13px;
+}
+
+.new-version-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.markdown-body {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  word-break: break-word;
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 1em 0 0.5em;
+    line-height: 1.25;
+  }
+
+  h2:first-child {
+    margin-top: 0;
+  }
+
+  p {
+    margin: 0.5em 0;
+  }
+
+  ul,
+  ol {
+    padding-left: 1.35em;
+    margin: 0.5em 0;
+  }
+
+  code {
+    background-color: var(--release-notes-code-bg);
+    padding: 0.12em 0.3em;
+    border-radius: 4px;
+  }
+
+  pre {
+    padding: 10px;
+    border-radius: 8px;
+    background-color: var(--release-notes-pre-bg);
+    overflow: auto;
+  }
 }
 
 @keyframes circle {
