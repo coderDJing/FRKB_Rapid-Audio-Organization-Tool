@@ -112,22 +112,63 @@ jobs:
           Remove-Item ffmpeg.zip -Force
           Remove-Item ffmpeg_unzip -Recurse -Force
 
-      - name: Prepare Chromaprint (Windows)
+      - name: Prepare FFmpeg native dependencies (Windows)
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $chromaprintVersion = '1.5.1'
-          $tag = "v$chromaprintVersion"
-          $url = "https://github.com/acoustid/chromaprint/releases/download/$tag/chromaprint-fpcalc-$chromaprintVersion-windows-x86_64.zip"
-          New-Item -ItemType Directory -Force -Path vendor/chromaprint/win32-x64 | Out-Null
-          Invoke-WebRequest -Uri $url -OutFile fpcalc.zip
-          Expand-Archive -Path fpcalc.zip -DestinationPath fpcalc_unzip -Force
-          $fpcalc = Get-ChildItem -Recurse -Filter fpcalc.exe fpcalc_unzip | Select-Object -First 1
-          if (-not $fpcalc) {
-            throw "fpcalc.exe not found in downloaded archive."
+          $headers = @{
+            'User-Agent' = 'FRKB-Release'
+            'Authorization' = "Bearer $env:GH_TOKEN"
+            'X-GitHub-Api-Version' = '2022-11-28'
           }
-          Copy-Item -Path $fpcalc.FullName -Destination vendor/chromaprint/win32-x64/fpcalc.exe -Force
-          Remove-Item fpcalc.zip -Force
-          Remove-Item fpcalc_unzip -Recurse -Force
+          $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest' -Headers $headers
+          $asset =
+            $release.assets |
+            Where-Object { $_.name -match '^ffmpeg-N-.*-win64-gpl-shared.*\.zip$' } |
+            Select-Object -First 1
+          if (-not $asset) {
+            $asset =
+              $release.assets |
+              Where-Object { $_.name -match '^ffmpeg-.*-win64-gpl-shared.*\.zip$' } |
+              Select-Object -First 1
+          }
+          if (-not $asset) {
+            throw 'win64 gpl shared ffmpeg asset not found in latest BtbN release.'
+          }
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile ffmpeg-shared.zip
+          Expand-Archive -Path ffmpeg-shared.zip -DestinationPath ffmpeg_shared_unzip -Force
+          $binDir = Get-ChildItem -Recurse -Directory ffmpeg_shared_unzip | Where-Object { $_.Name -eq 'bin' } | Select-Object -First 1
+          if (-not $binDir) {
+            throw "bin directory not found in shared ffmpeg archive."
+          }
+          $sharedRoot = $binDir.Parent.FullName
+          $includeDir = Join-Path $sharedRoot 'include'
+          $libDir = Join-Path $sharedRoot 'lib'
+          if (-not (Test-Path $includeDir)) {
+            throw "include directory not found in shared ffmpeg archive."
+          }
+          if (-not (Test-Path $libDir)) {
+            throw "lib directory not found in shared ffmpeg archive."
+          }
+          New-Item -ItemType Directory -Force -Path vendor/ffmpeg/win32-x64/dll | Out-Null
+          Get-ChildItem -Path $binDir.FullName -Filter "*.dll" | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination "vendor/ffmpeg/win32-x64/dll/$($_.Name)" -Force
+          }
+          $nativeFfmpegDir = 'rust_package/native/ffmpeg/win32-x64'
+          New-Item -ItemType Directory -Force -Path "$nativeFfmpegDir/include" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$nativeFfmpegDir/lib" | Out-Null
+          foreach ($dirName in @('libavcodec', 'libavformat', 'libavutil', 'libswresample')) {
+            Copy-Item -Path (Join-Path $includeDir $dirName) -Destination "$nativeFfmpegDir/include/" -Recurse -Force
+          }
+          foreach ($libName in @('avcodec.lib', 'avformat.lib', 'avutil.lib', 'swresample.lib')) {
+            Copy-Item -Path (Join-Path $libDir $libName) -Destination "$nativeFfmpegDir/lib/$libName" -Force
+          }
+          Remove-Item ffmpeg-shared.zip -Force
+          Remove-Item ffmpeg_shared_unzip -Recurse -Force
+          Write-Host "FFmpeg DLLs copied to vendor/ffmpeg/win32-x64/dll/"
+          Get-ChildItem vendor/ffmpeg/win32-x64/dll/ | ForEach-Object { Write-Host "  $($_.Name) ($([math]::Round($_.Length/1MB,1))MB)" }
+          Write-Host "FFmpeg native headers/libs copied to $nativeFfmpegDir"
 
       - name: Validate bundled media tools (Windows)
         run: node scripts/validate-bundled-media-tools.mjs --mode package --platform-key win32-x64
@@ -437,17 +478,39 @@ jobs:
           echo "Listing vendor/ffmpeg directory"
           find vendor/ffmpeg -maxdepth 2 -type f -exec ls -l {} \;
 
-      - name: Prepare Chromaprint (macOS universal)
+      - name: Extract FFmpeg static libs for native chromaprint (macOS)
         run: |
           set -euxo pipefail
-          CHROMAPRINT_VERSION="1.5.1"
-          TAG="v${CHROMAPRINT_VERSION}"
-          mkdir -p vendor/chromaprint/darwin
-          curl -L "https://github.com/acoustid/chromaprint/releases/download/${TAG}/chromaprint-fpcalc-${CHROMAPRINT_VERSION}-macos-universal.tar.gz" -o fpcalc-mac.tar.gz
-          tar -xzf fpcalc-mac.tar.gz
-          install -m 755 chromaprint-fpcalc-${CHROMAPRINT_VERSION}-macos-universal/fpcalc vendor/chromaprint/darwin/fpcalc
-          rm -rf fpcalc-mac.tar.gz chromaprint-fpcalc-${CHROMAPRINT_VERSION}-macos-universal
-          ls -l vendor/chromaprint/darwin
+          BREW_PREFIX="$(brew --prefix)"
+          FFMPEG_LIB_DIR="$BREW_PREFIX/lib"
+          FFMPEG_INCLUDE_DIR="$BREW_PREFIX/include"
+          DEST_DIR="rust_package/native/ffmpeg/darwin"
+
+          mkdir -p "$DEST_DIR/lib" "$DEST_DIR/include"
+
+          # 复制静态库
+          for lib in libavcodec libavformat libavutil libswresample; do
+            if [ -f "$FFMPEG_LIB_DIR/${lib}.a" ]; then
+              cp "$FFMPEG_LIB_DIR/${lib}.a" "$DEST_DIR/lib/"
+              echo "Copied ${lib}.a"
+            else
+              echo "WARNING: ${lib}.a not found at $FFMPEG_LIB_DIR/"
+            fi
+          done
+
+          # 复制头文件
+          for dir in libavcodec libavformat libavutil libswresample; do
+            if [ -d "$FFMPEG_INCLUDE_DIR/$dir" ]; then
+              cp -R "$FFMPEG_INCLUDE_DIR/$dir" "$DEST_DIR/include/"
+              echo "Copied $dir headers"
+            else
+              echo "WARNING: $dir headers not found at $FFMPEG_INCLUDE_DIR/"
+            fi
+          done
+
+          echo "=== Extracted FFmpeg dev files ==="
+          ls -lh "$DEST_DIR/lib/"
+          ls "$DEST_DIR/include/"
 
       - name: Validate bundled media tools (macOS)
         run: node scripts/validate-bundled-media-tools.mjs --mode package --platform-key darwin-universal

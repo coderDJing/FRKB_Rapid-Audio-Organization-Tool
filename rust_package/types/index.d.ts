@@ -32,6 +32,15 @@ export interface DecodeAudioResult {
   /** 错误描述（当解码失败时） */
   error?: string
 }
+/** Chromaprint 指纹结果 */
+export interface ChromaprintFingerprintResult {
+  /** base64 编码的 Chromaprint 指纹 */
+  fingerprint: string
+  /** 音频时长（秒） */
+  duration: number
+  /** 错误描述（失败时） */
+  error?: string
+}
 /** SoundTouch 处理结果 */
 export interface SoundTouchProcessResult {
   /** PCM 数据（Buffer，内部为 f32 小端序） */
@@ -190,6 +199,17 @@ export declare function calculateFileHashesWithProgress(
  * * 包含 PCM 数据和元数据的解码结果
  */
 export declare function decodeAudioFile(filePath: string): DecodeAudioResult
+/**
+ * 生成 Chromaprint 音频指纹（原生调用，无子进程开销）
+ *
+ * # 参数
+ * * `file_path` - 音频文件路径
+ * * `max_length_seconds` - 最大分析时长（秒），默认 120
+ */
+export declare function generateChromaprintFingerprint(
+  filePath: string,
+  maxLengthSeconds?: number
+): ChromaprintFingerprintResult
 /** 使用 SoundTouch 对交错 PCM 做不变调变速 */
 export declare function processSoundtouchPcm(
   pcmData: Buffer,

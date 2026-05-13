@@ -82,6 +82,8 @@ win:
       to: demucs/models
     - from: vendor/demucs/bootstrap
       to: demucs/bootstrap
+    - from: vendor/ffmpeg/win32-x64/dll
+      to: ffmpeg-dlls
   # requestedExecutionLevel: 'requireAdministrator'
 nsis:
   oneClick: false

@@ -53,3 +53,13 @@ __pycache__/
 
 # Local grid analysis lab
 grid-analysis-lab/
+
+# FFmpeg native binaries (downloaded at build time)
+rust_package/*.dll
+rust_package/native/ffmpeg/win32-x64/
+rust_package/native/ffmpeg/darwin/
+rust_package/native/ffmpeg/**/*.lib
+rust_package/native/ffmpeg/**/*.dll
+rust_package/native/ffmpeg/**/*.a
+rust_package/native/ffmpeg/**/*.dylib
+rust_package/native/ffmpeg/**/bin/

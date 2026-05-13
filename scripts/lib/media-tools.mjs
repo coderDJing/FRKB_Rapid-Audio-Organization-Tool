@@ -9,15 +9,11 @@ import {
 } from './demucs-runtime-support.mjs'
 
 const WINDOWS_FFMPEG_RELEASE_API = 'https://api.github.com/repos/BtbN/FFmpeg-Builds/releases/latest'
-const WINDOWS_CHROMAPRINT_VERSION = '1.5.1'
-const WINDOWS_CHROMAPRINT_ARCHIVE_NAME = `chromaprint-fpcalc-${WINDOWS_CHROMAPRINT_VERSION}-windows-x86_64.zip`
-const WINDOWS_CHROMAPRINT_DOWNLOAD_URL = `https://github.com/acoustid/chromaprint/releases/download/v${WINDOWS_CHROMAPRINT_VERSION}/${WINDOWS_CHROMAPRINT_ARCHIVE_NAME}`
 
 const WINDOWS_REQUIREMENTS = {
   exactPaths: [
     'ffmpeg/win32-x64/ffmpeg.exe',
-    'ffmpeg/win32-x64/ffprobe.exe',
-    'chromaprint/win32-x64/fpcalc.exe'
+    'ffmpeg/win32-x64/ffprobe.exe'
   ],
   alternativeGroups: []
 }
@@ -33,21 +29,12 @@ const MAC_DEV_REQUIREMENTS = {
         ['ffmpeg/darwin-arm64/ffmpeg', 'ffmpeg/darwin-arm64/ffprobe'],
         ['ffmpeg/darwin-x64/ffmpeg', 'ffmpeg/darwin-x64/ffprobe']
       ]
-    },
-    {
-      label: 'chromaprint fpcalc',
-      candidateSets: [
-        ['chromaprint/darwin/fpcalc'],
-        ['chromaprint/darwin-universal/fpcalc'],
-        ['chromaprint/darwin-arm64/fpcalc'],
-        ['chromaprint/darwin-x64/fpcalc']
-      ]
     }
   ]
 }
 
 const MAC_PACKAGE_REQUIREMENTS = {
-  exactPaths: ['ffmpeg/darwin/ffmpeg', 'ffmpeg/darwin/ffprobe', 'chromaprint/darwin/fpcalc'],
+  exactPaths: ['ffmpeg/darwin/ffmpeg', 'ffmpeg/darwin/ffprobe'],
   alternativeGroups: []
 }
 
@@ -346,35 +333,6 @@ const ensureWindowsFfmpeg = async (vendorRoot) => {
   return true
 }
 
-const ensureWindowsChromaprint = async (vendorRoot) => {
-  const targetDir = resolveVendorPath(vendorRoot, 'chromaprint/win32-x64')
-  const targetFpcalc = path.join(targetDir, 'fpcalc.exe')
-  if (fs.existsSync(targetFpcalc)) return false
-
-  const cacheDir = path.join(vendorRoot, '.downloads', 'media-tools', 'chromaprint')
-  const archivePath = path.join(cacheDir, WINDOWS_CHROMAPRINT_ARCHIVE_NAME)
-  const extractDir = path.join(cacheDir, `extract-${Date.now()}`)
-  await downloadFileIfMissing({
-    url: WINDOWS_CHROMAPRINT_DOWNLOAD_URL,
-    targetPath: archivePath,
-    label: `chromaprint ${WINDOWS_CHROMAPRINT_ARCHIVE_NAME}`
-  })
-  try {
-    await extractZipArchive({
-      archivePath,
-      targetDir: extractDir
-    })
-    const sourceFpcalc = findFileRecursive(extractDir, 'fpcalc.exe')
-    await copyFileFromExtractedArchive({
-      sourcePath: sourceFpcalc,
-      targetPath: targetFpcalc
-    })
-  } finally {
-    await fs.promises.rm(extractDir, { recursive: true, force: true }).catch(() => {})
-  }
-  return true
-}
-
 export const ensureBundledMediaTools = async ({ mode, platformKey, vendorRoot }) => {
   const initialResult = validateBundledMediaTools({
     mode,
@@ -391,7 +349,6 @@ export const ensureBundledMediaTools = async ({ mode, platformKey, vendorRoot })
   let changed = false
   if (platformKey === 'win32-x64') {
     changed = (await ensureWindowsFfmpeg(vendorRoot)) || changed
-    changed = (await ensureWindowsChromaprint(vendorRoot)) || changed
   }
 
   const finalResult = validateBundledMediaTools({

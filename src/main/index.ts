@@ -1,3 +1,5 @@
+// 必须在导入任何原生模块之前设置 FFmpeg DLL 路径（仅 Windows 生效）
+import './nativeModuleSetup'
 import 'dotenv/config'
 import { app, BrowserWindow, ipcMain, shell, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
@@ -38,7 +40,6 @@ import {
 } from './platform/windowsContextMenu'
 import { loadLayoutConfigSync } from './layoutConfig'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from './ffmpeg'
-import { resolveBundledFpcalcPath, ensureFpcalcExecutable } from './chromaprint'
 import { processExternalOpenQueue, queueExternalAudioFiles } from './services/externalOpenQueue'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerLibraryMaintenanceHandlers } from './ipc/libraryMaintenanceHandlers'
@@ -240,9 +241,6 @@ const platform = process.platform
 const ffmpegPath = resolveBundledFfmpegPath()
 process.env.FRKB_FFMPEG_PATH = ffmpegPath
 void ensureExecutableOnMac(ffmpegPath)
-const fpcalcPath = resolveBundledFpcalcPath()
-process.env.FRKB_FPCALC_PATH = fpcalcPath
-void ensureFpcalcExecutable(fpcalcPath)
 // 不再使用 Tray，改用应用菜单
 store.layoutConfig = loadLayoutConfigSync()
 loadInitialSettings({ getWindowsContextMenuStatus: hasWindowsContextMenu })

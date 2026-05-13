@@ -103,7 +103,7 @@
     "musicbrainzNetworkError": "网络连接异常，请稍后重试。",
     "musicbrainzGenericError": "拉取 MusicBrainz 数据失败。",
     "musicbrainzAcoustIdClientMissing": "未配置 AcoustID Client Key，请在设置中填写后再运行声纹匹配。",
-    "musicbrainzAcoustIdToolMissing": "未找到 fpcalc，可在 vendor/chromaprint 目录放入 Chromaprint 执行文件。",
+    "musicbrainzAcoustIdToolMissing": "原生 Chromaprint 模块不可用。",
     "musicbrainzAcoustIdFileMissing": "找不到音频文件，无法生成声纹。",
     "musicbrainzAcoustIdAnalysisFailed": "声纹解析失败，文件格式可能不受支持。",
     "musicbrainzAcoustIdTimeout": "声纹匹配超时，请稍后重试。",

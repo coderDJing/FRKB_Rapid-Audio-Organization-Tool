@@ -70,6 +70,104 @@ fn main() {
     .warnings(false)
     .compile("frkb_soundtouch");
 
+  // ===== Chromaprint =====
+  let chromaprint_root = manifest_dir.join("native/chromaprint");
+  let kissfft_cp_root = chromaprint_root.join("kissfft");
+
+  // Chromaprint core C++ sources
+  let mut cp_build = cc::Build::new();
+  cp_build
+    .cpp(true)
+    .include(&chromaprint_root)
+    .include(chromaprint_root.join("include"))
+    .include(&kissfft_cp_root)
+    .define("CHROMAPRINT_NODLL", None)
+    .define("USE_KISSFFT", Some("1"))
+    .define("HAVE_ROUND", Some("1"))
+    .define("HAVE_LRINTF", Some("1"))
+    .define("_USE_MATH_DEFINES", None)
+    .file(chromaprint_root.join("audio_processor.cpp"))
+    .file(chromaprint_root.join("chroma.cpp"))
+    .file(chromaprint_root.join("chroma_filter.cpp"))
+    .file(chromaprint_root.join("chroma_resampler.cpp"))
+    .file(chromaprint_root.join("chromaprint.cpp"))
+    .file(chromaprint_root.join("fft.cpp"))
+    .file(chromaprint_root.join("fft_lib_kissfft.cpp"))
+    .file(chromaprint_root.join("fingerprint_calculator.cpp"))
+    .file(chromaprint_root.join("fingerprint_compressor.cpp"))
+    .file(chromaprint_root.join("fingerprint_decompressor.cpp"))
+    .file(chromaprint_root.join("fingerprinter.cpp"))
+    .file(chromaprint_root.join("fingerprinter_configuration.cpp"))
+    .file(chromaprint_root.join("fingerprint_matcher.cpp"))
+    .file(chromaprint_root.join("image_builder.cpp"))
+    .file(chromaprint_root.join("silence_remover.cpp"))
+    .file(chromaprint_root.join("simhash.cpp"))
+    .file(chromaprint_root.join("spectrum.cpp"))
+    .file(chromaprint_root.join("utils/base64.cpp"))
+    .file(chromaprint_root.join("frkb_chromaprint_wrapper.cpp"))
+    .flag_if_supported("-std=c++14")
+    .flag_if_supported("/std:c++14")
+    .flag_if_supported("/EHsc")
+    .warnings(false)
+    .compile("frkb_chromaprint");
+
+  // Chromaprint's KissFFT (C, symbols renamed via kissfft_symbol_rename.h)
+  let mut cp_kissfft_build = cc::Build::new();
+  cp_kissfft_build
+    .include(&chromaprint_root)
+    .include(&kissfft_cp_root)
+    .define("_USE_MATH_DEFINES", None)
+    .file(kissfft_cp_root.join("kiss_fft.c"))
+    .file(kissfft_cp_root.join("tools/kiss_fftr.c"))
+    .warnings(false)
+    .compile("chromaprint_kissfft");
+
+  // ===== FFmpeg =====
+  let ffmpeg_root = manifest_dir.join("native/ffmpeg");
+  #[cfg(target_os = "windows")]
+  let ffmpeg_platform = ffmpeg_root.join("win32-x64");
+  #[cfg(target_os = "macos")]
+  let ffmpeg_platform = ffmpeg_root.join("darwin");
+
+  let ffmpeg_lib_dir = ffmpeg_platform.join("lib");
+  let ffmpeg_include_dir = ffmpeg_platform.join("include");
+  println!("cargo:rustc-link-search=native={}", ffmpeg_lib_dir.display());
+
+  // macOS: 静态链接 FFmpeg + 系统框架
+  // Windows: 动态链接 FFmpeg DLL
+  #[cfg(target_os = "macos")]
+  {
+    println!("cargo:rustc-link-lib=static=avcodec");
+    println!("cargo:rustc-link-lib=static=avformat");
+    println!("cargo:rustc-link-lib=static=avutil");
+    println!("cargo:rustc-link-lib=static=swresample");
+    // FFmpeg 依赖的 macOS 系统框架
+    println!("cargo:rustc-link-lib=framework=CoreFoundation");
+    println!("cargo:rustc-link-lib=framework=Security");
+    println!("cargo:rustc-link-lib=framework=AudioToolbox");
+    println!("cargo:rustc-link-lib=framework=VideoToolbox");
+    println!("cargo:rustc-link-lib=framework=CoreMedia");
+    println!("cargo:rustc-link-lib=framework=CoreVideo");
+    println!("cargo:rustc-link-lib=iconv");
+  }
+  #[cfg(target_os = "windows")]
+  {
+    println!("cargo:rustc-link-lib=avcodec");
+    println!("cargo:rustc-link-lib=avformat");
+    println!("cargo:rustc-link-lib=avutil");
+    println!("cargo:rustc-link-lib=swresample");
+  }
+
+  let chromaprint_include = chromaprint_root.join("include");
+  let mut ffmpeg_wrapper_build = cc::Build::new();
+  ffmpeg_wrapper_build
+    .include(&ffmpeg_include_dir)
+    .include(&chromaprint_include)
+    .file("native/ffmpeg/frkb_ffmpeg_decode_wrapper.c")
+    .define("_USE_MATH_DEFINES", None)
+    .warnings(false)
+    .compile("frkb_ffmpeg_decode");
+
   napi_build::setup();
 
   let dts_dir = manifest_dir.join("types");

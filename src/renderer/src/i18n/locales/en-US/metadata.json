@@ -103,7 +103,7 @@
     "musicbrainzNetworkError": "Network error. Please try again.",
     "musicbrainzGenericError": "Failed to load data from MusicBrainz.",
     "musicbrainzAcoustIdClientMissing": "AcoustID Client Key is missing. Please configure it in Settings before running fingerprint matching.",
-    "musicbrainzAcoustIdToolMissing": "fpcalc was not found. Place the Chromaprint binary under vendor/chromaprint.",
+    "musicbrainzAcoustIdToolMissing": "Native Chromaprint module is not available.",
     "musicbrainzAcoustIdFileMissing": "Audio file not found; cannot generate fingerprint.",
     "musicbrainzAcoustIdAnalysisFailed": "Fingerprint analysis failed; the format may be unsupported.",
     "musicbrainzAcoustIdTimeout": "Fingerprint match timed out. Please retry.",

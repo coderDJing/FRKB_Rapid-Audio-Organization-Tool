@@ -17,10 +17,6 @@
         "to": "ffmpeg"
       },
       {
-        "from": "vendor/chromaprint",
-        "to": "chromaprint"
-      },
-      {
         "from": "vendor/rekordbox-desktop-runtime",
         "to": "rekordboxDesktopRuntime"
       },
@@ -158,7 +154,7 @@
           "to": "demucs/bootstrap"
         }
       ],
-      "x64ArchFiles": "{Contents/Resources/{ffmpeg,chromaprint}/darwin/{ffmpeg,ffprobe,fpcalc},Contents/Resources/rekordboxDesktopRuntime/**/*}",
+      "x64ArchFiles": "{Contents/Resources/ffmpeg/darwin/{ffmpeg,ffprobe},Contents/Resources/rekordboxDesktopRuntime/**/*}",
       "artifactName": "${productName}-${version}-universal.${ext}"
     },
     "linux": {

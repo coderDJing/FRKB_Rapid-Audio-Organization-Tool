@@ -73,6 +73,7 @@ use ring::digest::{Context, SHA256};
 extern crate napi_derive;
 
 mod analysis_utils;
+mod chromaprint_native;
 mod horizontal_browse_transport;
 mod mixxx_waveform;
 mod pioneer_anlz_raw;
@@ -558,6 +559,88 @@ pub fn process_soundtouch_pcm(
       total_frames: 0,
       error: Some(message),
     }),
+  }
+}
+
+/// Chromaprint 指纹结果
+#[napi(object)]
+pub struct ChromaprintFingerprintResult {
+  /// base64 编码的 Chromaprint 指纹
+  pub fingerprint: String,
+  /// 音频时长（秒）
+  pub duration: f64,
+  /// 错误描述（失败时）
+  pub error: Option<String>,
+}
+
+/// 生成 Chromaprint 音频指纹（原生调用，无子进程开销）
+///
+/// # 参数
+/// * `file_path` - 音频文件路径
+/// * `max_length_seconds` - 最大分析时长（秒），默认 120
+#[napi]
+pub fn generate_chromaprint_fingerprint(
+  file_path: String,
+  max_length_seconds: Option<u32>,
+) -> ChromaprintFingerprintResult {
+  let path = Path::new(&file_path);
+  if !path.exists() {
+    return ChromaprintFingerprintResult {
+      fingerprint: String::new(),
+      duration: 0.0,
+      error: Some("文件不存在".to_string()),
+    };
+  }
+
+  let max_sec = max_length_seconds.unwrap_or(120);
+
+  // 优先尝试 FFmpeg libavcodec 直接解码 + Chromaprint 一体化（最快路径）
+  match chromaprint_native::generate_fingerprint_from_file(&file_path, max_sec) {
+    Ok(result) => ChromaprintFingerprintResult {
+      fingerprint: result.fingerprint,
+      duration: result.duration,
+      error: None,
+    },
+    Err(ffmpeg_err) => {
+      // 回退到 Symphonia 解码 + Chromaprint
+      match decode_with_symphonia(path) {
+        Ok(decode_result) => {
+          let pcm_f32: &[f32] = cast_slice(&decode_result.pcm_data);
+          let max_samples = if max_sec > 0 {
+            (((max_sec as f64) * decode_result.sample_rate as f64 * decode_result.channels as f64)
+              as usize)
+              .min(pcm_f32.len())
+          } else {
+            pcm_f32.len()
+          };
+          match chromaprint_native::generate_fingerprint_from_f32(
+            &pcm_f32[..max_samples],
+            decode_result.sample_rate,
+            decode_result.channels as u16,
+            0,
+          ) {
+            Ok(result) => ChromaprintFingerprintResult {
+              fingerprint: result.fingerprint,
+              duration: result.duration,
+              error: None,
+            },
+            Err(e) => ChromaprintFingerprintResult {
+              fingerprint: String::new(),
+              duration: 0.0,
+              error: Some(e),
+            },
+          }
+        }
+        Err(symphonia_err) => ChromaprintFingerprintResult {
+          fingerprint: String::new(),
+          duration: 0.0,
+          error: Some(format!(
+            "FFmpeg: {} | Symphonia: {}",
+            ffmpeg_err, symphonia_err
+          )),
+        },
+      }
+    }
   }
 }
 

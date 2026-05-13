@@ -16,6 +16,7 @@ const isReleaseBuild = mode === 'package' || args.includes('--release')
 const repoRoot = process.cwd()
 const rustPackageDir = path.resolve(repoRoot, 'rust_package')
 const cargoManifestPath = path.join(rustPackageDir, 'Cargo.toml')
+const dtsTemplatePath = path.join(rustPackageDir, 'index.d.ts.template')
 
 const walkFiles = (dirPath) => {
   if (!fs.existsSync(dirPath)) return []
@@ -88,6 +89,7 @@ if (!binaryConfig) {
 const profileDir = isReleaseBuild ? 'release' : 'debug'
 const sourceInputs = [
   cargoManifestPath,
+  dtsTemplatePath,
   path.join(rustPackageDir, 'build.rs'),
   ...walkFiles(path.join(rustPackageDir, 'src')),
   ...walkFiles(path.join(rustPackageDir, 'native'))
