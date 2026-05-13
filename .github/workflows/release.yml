@@ -478,85 +478,44 @@ jobs:
           echo "Listing vendor/ffmpeg directory"
           find vendor/ffmpeg -maxdepth 2 -type f -exec ls -l {} \;
 
-      - name: Extract FFmpeg static libs for native chromaprint (macOS arm64)
+      - name: Extract FFmpeg static libs for native chromaprint (macOS)
         run: |
           set -euxo pipefail
           BREW_PREFIX="$(brew --prefix)"
           FFMPEG_LIB_DIR="$BREW_PREFIX/lib"
           FFMPEG_INCLUDE_DIR="$BREW_PREFIX/include"
-          DEST_DIR="rust_package/native/ffmpeg/darwin-arm64"
 
-          mkdir -p "$DEST_DIR/lib" "$DEST_DIR/include"
+          # 头文件是平台无关的，放在通用目录
+          INCLUDE_DEST="rust_package/native/ffmpeg/darwin/include"
+          mkdir -p "$INCLUDE_DEST"
 
-          # 复制静态库
-          for lib in libavcodec libavformat libavutil libswresample; do
-            if [ -f "$FFMPEG_LIB_DIR/${lib}.a" ]; then
-              cp "$FFMPEG_LIB_DIR/${lib}.a" "$DEST_DIR/lib/"
-              echo "Copied ${lib}.a"
-            else
-              echo "WARNING: ${lib}.a not found at $FFMPEG_LIB_DIR/"
-            fi
-          done
+          # 静态库按架构分开
+          LIB_DEST="rust_package/native/ffmpeg/darwin/lib"
+          mkdir -p "$LIB_DEST"
 
-          # 复制头文件
+          # 复制头文件（平台无关）
           for dir in libavcodec libavformat libavutil libswresample; do
             if [ -d "$FFMPEG_INCLUDE_DIR/$dir" ]; then
-              cp -R "$FFMPEG_INCLUDE_DIR/$dir" "$DEST_DIR/include/"
+              cp -R "$FFMPEG_INCLUDE_DIR/$dir" "$INCLUDE_DEST/"
               echo "Copied $dir headers"
             else
               echo "WARNING: $dir headers not found at $FFMPEG_INCLUDE_DIR/"
             fi
           done
 
-          echo "=== Extracted FFmpeg dev files (arm64) ==="
-          ls -lh "$DEST_DIR/lib/"
-          ls "$DEST_DIR/include/"
-
-      - name: Install FFmpeg x86_64 for cross-compile
-        run: |
-          set -euxo pipefail
-          echo "Installing x86_64 ffmpeg via Homebrew (Rosetta)"
-          arch -x86_64 /bin/bash -c 'eval "$(/usr/local/bin/brew shellenv)" && brew update && brew install ffmpeg'
-
-      - name: Extract FFmpeg static libs for native chromaprint (macOS x86_64)
-        run: |
-          set -euxo pipefail
-          # x86_64 brew is at /usr/local on arm64 runner
-          X86_BREW_PREFIX="/usr/local"
-          if [ ! -d "$X86_BREW_PREFIX/lib" ]; then
-            echo "ERROR: x86_64 Homebrew prefix not found at $X86_BREW_PREFIX"
-            exit 1
-          fi
-
-          FFMPEG_LIB_DIR="$X86_BREW_PREFIX/lib"
-          FFMPEG_INCLUDE_DIR="$X86_BREW_PREFIX/include"
-          DEST_DIR="rust_package/native/ffmpeg/darwin-x86_64"
-
-          mkdir -p "$DEST_DIR/lib" "$DEST_DIR/include"
-
-          # 复制静态库
+          # 复制静态库（arm64架构）
           for lib in libavcodec libavformat libavutil libswresample; do
             if [ -f "$FFMPEG_LIB_DIR/${lib}.a" ]; then
-              cp "$FFMPEG_LIB_DIR/${lib}.a" "$DEST_DIR/lib/"
+              cp "$FFMPEG_LIB_DIR/${lib}.a" "$LIB_DEST/"
               echo "Copied ${lib}.a"
             else
               echo "WARNING: ${lib}.a not found at $FFMPEG_LIB_DIR/"
             fi
           done
 
-          # 复制头文件
-          for dir in libavcodec libavformat libavutil libswresample; do
-            if [ -d "$FFMPEG_INCLUDE_DIR/$dir" ]; then
-              cp -R "$FFMPEG_INCLUDE_DIR/$dir" "$DEST_DIR/include/"
-              echo "Copied $dir headers"
-            else
-              echo "WARNING: $dir headers not found at $FFMPEG_INCLUDE_DIR/"
-            fi
-          done
-
-          echo "=== Extracted FFmpeg dev files (x86_64) ==="
-          ls -lh "$DEST_DIR/lib/"
-          ls "$DEST_DIR/include/"
+          echo "=== Extracted FFmpeg dev files ==="
+          ls -lh "$LIB_DEST/"
+          ls "$INCLUDE_DEST/"
 
       - name: Validate bundled media tools (macOS)
         run: node scripts/validate-bundled-media-tools.mjs --mode package --platform-key darwin-universal
