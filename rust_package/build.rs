@@ -126,8 +126,10 @@ fn main() {
   let ffmpeg_root = manifest_dir.join("native/ffmpeg");
   #[cfg(target_os = "windows")]
   let ffmpeg_platform = ffmpeg_root.join("win32-x64");
-  #[cfg(target_os = "macos")]
-  let ffmpeg_platform = ffmpeg_root.join("darwin");
+  #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+  let ffmpeg_platform = ffmpeg_root.join("darwin-arm64");
+  #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+  let ffmpeg_platform = ffmpeg_root.join("darwin-x64");
 
   let ffmpeg_lib_dir = ffmpeg_platform.join("lib");
   let ffmpeg_include_dir = ffmpeg_platform.join("include");

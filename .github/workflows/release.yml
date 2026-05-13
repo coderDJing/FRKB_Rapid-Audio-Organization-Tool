@@ -478,44 +478,99 @@ jobs:
           echo "Listing vendor/ffmpeg directory"
           find vendor/ffmpeg -maxdepth 2 -type f -exec ls -l {} \;
 
-      - name: Extract FFmpeg static libs for native chromaprint (macOS)
+      - name: Prepare FFmpeg native dependencies (macOS)
         run: |
           set -euxo pipefail
-          BREW_PREFIX="$(brew --prefix)"
-          FFMPEG_LIB_DIR="$BREW_PREFIX/lib"
-          FFMPEG_INCLUDE_DIR="$BREW_PREFIX/include"
 
-          # 头文件是平台无关的，放在通用目录
-          INCLUDE_DEST="rust_package/native/ffmpeg/darwin/include"
-          mkdir -p "$INCLUDE_DEST"
+          copy_ffmpeg_dev_files() {
+            local source_prefix="$1"
+            local dest_dir="$2"
+            local lib_dir="$source_prefix/lib"
+            local include_dir="$source_prefix/include"
 
-          # 静态库按架构分开
-          LIB_DEST="rust_package/native/ffmpeg/darwin/lib"
-          mkdir -p "$LIB_DEST"
+            mkdir -p "$dest_dir/lib" "$dest_dir/include"
 
-          # 复制头文件（平台无关）
-          for dir in libavcodec libavformat libavutil libswresample; do
-            if [ -d "$FFMPEG_INCLUDE_DIR/$dir" ]; then
-              cp -R "$FFMPEG_INCLUDE_DIR/$dir" "$INCLUDE_DEST/"
-              echo "Copied $dir headers"
-            else
-              echo "WARNING: $dir headers not found at $FFMPEG_INCLUDE_DIR/"
+            for lib in libavcodec libavformat libavutil libswresample; do
+              if [ -f "$lib_dir/${lib}.a" ]; then
+                cp -L "$lib_dir/${lib}.a" "$dest_dir/lib/"
+                echo "Copied ${lib}.a from ${lib_dir}"
+              else
+                echo "ERROR: ${lib}.a not found at ${lib_dir}/"
+                exit 1
+              fi
+            done
+
+            for dir in libavcodec libavformat libavutil libswresample; do
+              if [ -d "$include_dir/$dir" ]; then
+                rm -rf "$dest_dir/include/$dir"
+                cp -RL "$include_dir/$dir" "$dest_dir/include/"
+                echo "Copied ${dir} headers from ${include_dir}"
+              else
+                echo "ERROR: ${dir} headers not found at ${include_dir}/"
+                exit 1
+              fi
+            done
+
+            if [ ! -f "$dest_dir/include/libavcodec/avcodec.h" ]; then
+              echo "ERROR: copied FFmpeg headers are incomplete at ${dest_dir}/include"
+              find "$dest_dir/include" -maxdepth 2 -type l -o -type f | head -n 40 || true
+              exit 1
             fi
-          done
 
-          # 复制静态库（arm64架构）
-          for lib in libavcodec libavformat libavutil libswresample; do
-            if [ -f "$FFMPEG_LIB_DIR/${lib}.a" ]; then
-              cp "$FFMPEG_LIB_DIR/${lib}.a" "$LIB_DEST/"
-              echo "Copied ${lib}.a"
-            else
-              echo "WARNING: ${lib}.a not found at $FFMPEG_LIB_DIR/"
-            fi
-          done
+            echo "=== FFmpeg native deps: ${dest_dir} ==="
+            file "$dest_dir/lib/libavcodec.a" || true
+            ls -lh "$dest_dir/lib/"
+            ls "$dest_dir/include/"
+          }
 
-          echo "=== Extracted FFmpeg dev files ==="
-          ls -lh "$LIB_DEST/"
-          ls "$INCLUDE_DEST/"
+          ARM64_BREW_PREFIX="$(brew --prefix)"
+          copy_ffmpeg_dev_files "$ARM64_BREW_PREFIX" "rust_package/native/ffmpeg/darwin-arm64"
+
+          X64_BOTTLE_TAG="$(python3 - <<'PY'
+          import json
+          import urllib.request
+
+          with urllib.request.urlopen("https://formulae.brew.sh/api/formula/ffmpeg.json", timeout=30) as response:
+              files = json.load(response)["bottle"]["stable"]["files"]
+
+          for tag in ("sequoia", "sonoma", "ventura", "monterey"):
+              if tag in files:
+                  print(tag)
+                  break
+          else:
+              raise SystemExit(f"No Intel macOS ffmpeg bottle tag found. Available tags: {', '.join(files)}")
+          PY
+          )"
+          echo "Using Intel Homebrew bottle tag: ${X64_BOTTLE_TAG}"
+
+          brew fetch --force --retry --bottle-tag="$X64_BOTTLE_TAG" ffmpeg
+          X64_BOTTLE_PATH="$(brew --cache --bottle-tag="$X64_BOTTLE_TAG" ffmpeg)"
+          X64_BOTTLE_ROOT="tmp/homebrew-ffmpeg-x64"
+          rm -rf "$X64_BOTTLE_ROOT"
+          mkdir -p "$X64_BOTTLE_ROOT"
+          tar -xzf "$X64_BOTTLE_PATH" -C "$X64_BOTTLE_ROOT"
+
+          X64_FFMPEG_PREFIX="$(
+            find "$X64_BOTTLE_ROOT" -type f -path '*/include/libavcodec/avcodec.h' -print -quit |
+              sed 's#/include/libavcodec/avcodec\.h$##'
+          )"
+          if [ -z "$X64_FFMPEG_PREFIX" ]; then
+            echo "ERROR: failed to locate extracted Intel ffmpeg dev files"
+            find "$X64_BOTTLE_ROOT" -maxdepth 4 -type f | head -n 80 || true
+            exit 1
+          fi
+          copy_ffmpeg_dev_files "$X64_FFMPEG_PREFIX" "rust_package/native/ffmpeg/darwin-x64"
+
+          if ! lipo -archs rust_package/native/ffmpeg/darwin-x64/lib/libavcodec.a | grep -q "x86_64"; then
+            echo "ERROR: Intel FFmpeg static lib is not x86_64"
+            lipo -archs rust_package/native/ffmpeg/darwin-x64/lib/libavcodec.a || true
+            exit 1
+          fi
+          if ! lipo -archs rust_package/native/ffmpeg/darwin-arm64/lib/libavcodec.a | grep -q "arm64"; then
+            echo "ERROR: arm64 FFmpeg static lib is not arm64"
+            lipo -archs rust_package/native/ffmpeg/darwin-arm64/lib/libavcodec.a || true
+            exit 1
+          fi
 
       - name: Validate bundled media tools (macOS)
         run: node scripts/validate-bundled-media-tools.mjs --mode package --platform-key darwin-universal
