@@ -11,7 +11,6 @@ type HorizontalBrowseOutputTransport = {
     }
   }
   setOutputState: (crossfaderValue: number, masterGain: number) => Promise<unknown>
-  visualizerSnapshot: () => Promise<{ timeDomainData?: unknown } | null | undefined>
 }
 
 type FaderTick = {

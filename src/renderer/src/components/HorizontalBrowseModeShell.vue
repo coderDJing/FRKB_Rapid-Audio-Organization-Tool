@@ -47,6 +47,7 @@ import { createHorizontalBrowseDeckAssigner } from '@renderer/components/horizon
 import { useHorizontalBrowseTransportController } from '@renderer/components/useHorizontalBrowseTransportController'
 import { useHorizontalBrowseTransportMutations } from '@renderer/components/useHorizontalBrowseTransportMutations'
 import { useHorizontalBrowseFaderControls } from '@renderer/components/useHorizontalBrowseFaderControls'
+import { useHorizontalBrowseVisualizer } from '@renderer/components/useHorizontalBrowseVisualizer'
 
 type DeckKey = HorizontalBrowseDeckKey
 type HorizontalBrowseViewMode = 'dual' | 'edit'
@@ -262,6 +263,9 @@ const {
   stopRenderSyncLoop,
   notifyDeckSeekIntent
 } = useHorizontalBrowseTransportController()
+
+useHorizontalBrowseVisualizer({ nativeTransport })
+
 const topDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('top'))
 const bottomDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('bottom'))
 const resolveDeckCuePointRef = (deck: DeckKey) =>
