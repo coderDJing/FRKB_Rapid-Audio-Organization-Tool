@@ -228,6 +228,10 @@ const analyzeTrackLoudnessByPath = async (params: {
   let doneCount = 0
   try {
     audioCtx = new AudioContext()
+    // 注册到全局列表，窗口关闭时可立即挂起所有 AudioContext
+    const w = window as any
+    if (!w.__FRKB_AUDIO_CONTEXTS__) w.__FRKB_AUDIO_CONTEXTS__ = []
+    w.__FRKB_AUDIO_CONTEXTS__.push(audioCtx)
     await runWithConcurrency(uniquePaths, 2, async (filePath) => {
       const buffer = await decodeAudioBuffer(audioCtx!, filePath)
       if (buffer) {

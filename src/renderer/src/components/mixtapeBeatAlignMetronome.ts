@@ -76,6 +76,10 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
     if (audioCtx && audioCtx.state !== 'closed') return audioCtx
     try {
       audioCtx = new AudioContext()
+      // 注册到全局列表，窗口关闭时可立即挂起所有 AudioContext
+      const w = window as any
+      if (!w.__FRKB_AUDIO_CONTEXTS__) w.__FRKB_AUDIO_CONTEXTS__ = []
+      w.__FRKB_AUDIO_CONTEXTS__.push(audioCtx)
       return audioCtx
     } catch {
       return null

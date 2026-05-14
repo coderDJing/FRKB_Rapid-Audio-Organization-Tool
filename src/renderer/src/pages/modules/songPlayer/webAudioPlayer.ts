@@ -764,10 +764,26 @@ export class WebAudioPlayer {
       return null
     }
     try {
-      return options ? new AudioContextCtor(options) : new AudioContextCtor()
+      const ctx = options ? new AudioContextCtor(options) : new AudioContextCtor()
+      // 注册到全局列表，窗口关闭时可立即挂起所有 AudioContext
+      const w = window as any
+      if (!w.__FRKB_AUDIO_CONTEXTS__) w.__FRKB_AUDIO_CONTEXTS__ = []
+      w.__FRKB_AUDIO_CONTEXTS__.push(ctx)
+      return ctx
     } catch {
       return null
     }
+  }
+
+  private unregisterAudioContext(ctx: AudioContext): void {
+    try {
+      const w = window as any
+      const list = w.__FRKB_AUDIO_CONTEXTS__ as AudioContext[] | undefined
+      if (list) {
+        const idx = list.indexOf(ctx)
+        if (idx >= 0) list.splice(idx, 1)
+      }
+    } catch {}
   }
 
   private ensureHtmlAnalysis(audio: AudioElementWithExtensions): void {
@@ -830,6 +846,7 @@ export class WebAudioPlayer {
       this.htmlOutputGainNode?.disconnect()
     } catch {}
     if (this.htmlAnalysisContext && this.htmlAnalysisContext.state !== 'closed') {
+      this.unregisterAudioContext(this.htmlAnalysisContext)
       try {
         void this.htmlAnalysisContext.close()
       } catch {}
@@ -886,6 +903,7 @@ export class WebAudioPlayer {
       this.pcmAnalyserNode?.disconnect()
     } catch {}
     if (this.pcmContext) {
+      this.unregisterAudioContext(this.pcmContext)
       try {
         void this.pcmContext.close()
       } catch {}

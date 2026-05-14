@@ -706,6 +706,27 @@ const handleContextMenuClickCapture = (event: MouseEvent) => {
   contextMenuClickThroughGuard.suppressClickIfNeeded(event)
 }
 
+// 窗口关闭时立即停止音频，避免关闭后还有残余播放
+const handleBeforeUnload = () => {
+  // 暂停页面上所有 <audio> 元素
+  document.querySelectorAll('audio').forEach((el) => {
+    try {
+      el.pause()
+    } catch {}
+  })
+  // 挂起所有 AudioContext，立即停止 WebAudio 输出
+  try {
+    const contexts = (window as any).__FRKB_AUDIO_CONTEXTS__ as AudioContext[] | undefined
+    if (contexts) {
+      for (const ctx of contexts) {
+        try {
+          void ctx.suspend()
+        } catch {}
+      }
+    }
+  } catch {}
+}
+
 const getLibrary = async () => {
   runtime.libraryTree = await window.electron.ipcRenderer.invoke('getLibrary')
   runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
@@ -844,6 +865,7 @@ onMounted(() => {
   window.addEventListener('click', handleContextMenuClickCapture, true)
   window.addEventListener('keydown', handleCtrlDoubleTapKeyDown, true)
   window.addEventListener('keyup', handleCtrlDoubleTapKeyUp, true)
+  window.addEventListener('beforeunload', handleBeforeUnload)
 
   window.electron.ipcRenderer.on('mixtape-items-removed', handleMixtapeItemsRemoved)
   window.electron.ipcRenderer.on('dev-songlist-trace:state', handleDevSongListTraceState)
@@ -869,6 +891,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('click', handleContextMenuClickCapture, true)
   window.removeEventListener('keydown', handleCtrlDoubleTapKeyDown, true)
   window.removeEventListener('keyup', handleCtrlDoubleTapKeyUp, true)
+  window.removeEventListener('beforeunload', handleBeforeUnload)
   window.electron.ipcRenderer.removeListener('mixtape-items-removed', handleMixtapeItemsRemoved)
   window.electron.ipcRenderer.removeListener(
     'dev-songlist-trace:state',
