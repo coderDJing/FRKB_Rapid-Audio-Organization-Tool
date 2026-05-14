@@ -37,15 +37,34 @@ const ENV_BEAT_THIS_EXTRA_DLL_DIRS = 'FRKB_BEAT_THIS_EXTRA_DLL_DIRS'
 const ENV_DEMUCS_ROOT = 'FRKB_DEMUCS_ROOT'
 const ENV_IGNORE_BUNDLED_DEMUCS_RUNTIME = 'FRKB_IGNORE_BUNDLED_DEMUCS_RUNTIME'
 const ENV_USER_DATA_DIR = 'FRKB_USER_DATA_DIR'
+const ENV_BEAT_THIS_RUNTIME_CACHE = 'FRKB_BEAT_THIS_RUNTIME_CACHE'
+const ENV_BEAT_THIS_STRICT_DEVICE_PROBE = 'FRKB_BEAT_THIS_STRICT_DEVICE_PROBE'
 const LOCAL_RUNTIME_DIR = 'grid-analysis-lab/beat-this-runtime'
 const DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH = 'beat-this-checkpoints/final0.ckpt'
 const BEAT_THIS_PROBE_TIMEOUT_MS = 30_000
 const BEAT_THIS_COMPATIBILITY_TIMEOUT_MS = 90_000
+const BEAT_THIS_RUNTIME_CACHE_FILE = 'beat-this-runtime-resolution.json'
+const BEAT_THIS_RUNTIME_CACHE_VERSION = 1
+const BEAT_THIS_RUNTIME_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 let cachedProjectRoot = ''
 let cachedResolvedRuntime: BeatThisResolvedRuntime | null | undefined
 const beatThisRuntimeProbeCache = new Map<string, BeatThisRuntimeProbeSnapshot>()
 const beatThisCompatibilityProbeCache = new Map<string, { ok: boolean; error: string }>()
+
+type RequestedBeatThisDevice =
+  | { selectedDevice: BeatThisComputeDevice; deviceArg: string }
+  | { selectedDevice: 'manual'; deviceArg: string }
+
+type CachedBeatThisResolvedRuntime = {
+  version: number
+  createdAt: number
+  command: string
+  args: string[]
+  runtimeDir?: string
+  selectedDevice: BeatThisResolvedRuntime['selectedDevice']
+  selectedDeviceArg: string
+}
 
 export const normalizeBeatThisFsPath = (value: string) => {
   const normalized = String(value || '').trim()
@@ -254,6 +273,12 @@ const resolveRuntimeBeatThisCheckpointPath = (runtimeDir: string) => {
   }
   return ''
 }
+
+const isEnabledEnvFlag = (value: string | undefined) =>
+  /^(1|true|yes|on)$/i.test(String(value || '').trim())
+
+const shouldRunBeatThisDeviceCompatibilityProbe = () =>
+  isEnabledEnvFlag(process.env[ENV_BEAT_THIS_STRICT_DEVICE_PROBE])
 
 const runtimeHasBeatThisPackage = (runtimeDir: string) => {
   const sitePackagesDir = resolveRuntimeSitePackagesDir(runtimeDir)
@@ -682,6 +707,172 @@ const parseRequestedBeatThisDevice = (value: string) => {
   return { selectedDevice: 'manual' as const, deviceArg: normalized }
 }
 
+const resolveBeatThisRuntimeCachePath = () => {
+  const configuredPath = normalizeBeatThisFsPath(process.env[ENV_BEAT_THIS_RUNTIME_CACHE] || '')
+  if (configuredPath) return configuredPath
+  const userDataDir = normalizeBeatThisFsPath(process.env[ENV_USER_DATA_DIR] || '')
+  if (!userDataDir) return ''
+  return path.join(userDataDir, BEAT_THIS_RUNTIME_CACHE_FILE)
+}
+
+const readBeatThisRuntimeCache = (): CachedBeatThisResolvedRuntime | null => {
+  const cachePath = resolveBeatThisRuntimeCachePath()
+  if (!cachePath || !fs.existsSync(cachePath)) return null
+  try {
+    const parsed = JSON.parse(
+      fs.readFileSync(cachePath, 'utf8')
+    ) as Partial<CachedBeatThisResolvedRuntime>
+    const createdAt = Number(parsed.createdAt)
+    if (parsed.version !== BEAT_THIS_RUNTIME_CACHE_VERSION) return null
+    if (
+      !Number.isFinite(createdAt) ||
+      Date.now() - createdAt > BEAT_THIS_RUNTIME_CACHE_MAX_AGE_MS
+    ) {
+      return null
+    }
+    const command = normalizeBeatThisFsPath(String(parsed.command || ''))
+    const args = Array.isArray(parsed.args) ? parsed.args.map((item) => String(item)) : []
+    const selectedDevice = parsed.selectedDevice
+    const selectedDeviceArg = String(parsed.selectedDeviceArg || '').trim()
+    if (!command || !selectedDeviceArg) return null
+    if (
+      selectedDevice !== 'directml' &&
+      selectedDevice !== 'cuda' &&
+      selectedDevice !== 'xpu' &&
+      selectedDevice !== 'mps' &&
+      selectedDevice !== 'cpu' &&
+      selectedDevice !== 'manual'
+    ) {
+      return null
+    }
+    return {
+      version: BEAT_THIS_RUNTIME_CACHE_VERSION,
+      createdAt,
+      command,
+      args,
+      runtimeDir: normalizeBeatThisFsPath(String(parsed.runtimeDir || '')) || undefined,
+      selectedDevice,
+      selectedDeviceArg
+    }
+  } catch {
+    return null
+  }
+}
+
+const removeBeatThisRuntimeCache = () => {
+  const cachePath = resolveBeatThisRuntimeCachePath()
+  if (!cachePath) return
+  try {
+    fs.rmSync(cachePath, { force: true })
+  } catch {}
+}
+
+const writeBeatThisRuntimeCache = (resolved: BeatThisResolvedRuntime) => {
+  const cachePath = resolveBeatThisRuntimeCachePath()
+  const command = normalizeBeatThisFsPath(resolved.candidate.command)
+  if (!cachePath || !path.isAbsolute(command) || !fs.existsSync(command)) return
+  const payload: CachedBeatThisResolvedRuntime = {
+    version: BEAT_THIS_RUNTIME_CACHE_VERSION,
+    createdAt: Date.now(),
+    command,
+    args: resolved.candidate.args.map((item) => String(item)),
+    runtimeDir: normalizeBeatThisFsPath(resolved.candidate.runtimeDir || '') || undefined,
+    selectedDevice: resolved.selectedDevice,
+    selectedDeviceArg: resolved.selectedDeviceArg
+  }
+  try {
+    fs.mkdirSync(path.dirname(cachePath), { recursive: true })
+    fs.writeFileSync(cachePath, JSON.stringify(payload), 'utf8')
+  } catch {}
+}
+
+const stringListEquals = (left: string[], right: string[]) => {
+  if (left.length !== right.length) return false
+  return left.every((item, index) => item === right[index])
+}
+
+const requestedDeviceMatchesCachedRuntime = (
+  cached: CachedBeatThisResolvedRuntime,
+  requestedDevice: RequestedBeatThisDevice | null
+) => {
+  if (!requestedDevice) return true
+  if (requestedDevice.selectedDevice !== cached.selectedDevice) return false
+  if (!requestedDevice.deviceArg) return true
+  return requestedDevice.deviceArg === cached.selectedDeviceArg
+}
+
+const findCachedRuntimeCandidate = (
+  cached: CachedBeatThisResolvedRuntime,
+  candidates: BeatThisPythonCommand[],
+  requestedDevice: RequestedBeatThisDevice | null
+): BeatThisPythonCommand | null => {
+  if (!requestedDeviceMatchesCachedRuntime(cached, requestedDevice)) return null
+  for (const candidate of candidates) {
+    const commandMatches =
+      normalizeBeatThisFsPath(candidate.command).toLowerCase() ===
+      normalizeBeatThisFsPath(cached.command).toLowerCase()
+    if (!commandMatches) continue
+    if (
+      !stringListEquals(
+        candidate.args.map((item) => String(item)),
+        cached.args
+      )
+    )
+      continue
+    const cachedRuntimeDir = normalizeBeatThisFsPath(cached.runtimeDir || '')
+    const candidateRuntimeDir = normalizeBeatThisFsPath(candidate.runtimeDir || '')
+    if (cachedRuntimeDir && candidateRuntimeDir !== cachedRuntimeDir) continue
+    if (path.isAbsolute(candidate.command) && !fs.existsSync(candidate.command)) continue
+    if (candidateRuntimeDir && !runtimeHasBeatThisPackage(candidateRuntimeDir)) continue
+    if (candidateRuntimeDir && !resolveRuntimeBeatThisCheckpointPath(candidateRuntimeDir)) continue
+    return candidate
+  }
+  return null
+}
+
+const restoreCachedBeatThisRuntime = (
+  candidates: BeatThisPythonCommand[],
+  requestedDevice: RequestedBeatThisDevice | null
+): BeatThisResolvedRuntime | null => {
+  const cached = readBeatThisRuntimeCache()
+  if (!cached) return null
+  const candidate = findCachedRuntimeCandidate(cached, candidates, requestedDevice)
+  if (!candidate) {
+    removeBeatThisRuntimeCache()
+    return null
+  }
+  return {
+    candidate,
+    selectedDevice: cached.selectedDevice,
+    selectedDeviceArg: cached.selectedDeviceArg
+  }
+}
+
+const getCandidateRuntimeLabel = (candidate: BeatThisPythonCommand) =>
+  `${candidate.runtimeKey || ''} ${path.basename(candidate.runtimeDir || '')}`.toLowerCase()
+
+const shouldProbeCandidateForDevice = (
+  candidate: BeatThisPythonCommand,
+  selectedDevice: BeatThisComputeDevice
+) => {
+  if (selectedDevice === 'cpu') return true
+  if (
+    candidate.source === 'env-python' ||
+    candidate.source === 'local-runtime' ||
+    candidate.source === 'dev-launcher'
+  ) {
+    return true
+  }
+
+  const label = getCandidateRuntimeLabel(candidate)
+  if (!label.trim()) return true
+  if (selectedDevice === 'directml') return label.includes('directml')
+  if (selectedDevice === 'cuda') return label.includes('cuda')
+  if (selectedDevice === 'xpu') return label.includes('xpu')
+  if (selectedDevice === 'mps') return label.includes('mps')
+  return true
+}
+
 export const resolveBeatThisRuntime = (): BeatThisResolvedRuntime | null => {
   if (cachedResolvedRuntime !== undefined) return cachedResolvedRuntime
 
@@ -691,17 +882,38 @@ export const resolveBeatThisRuntime = (): BeatThisResolvedRuntime | null => {
   }
 
   const requestedDevice = parseRequestedBeatThisDevice(process.env[ENV_BEAT_THIS_DEVICE] || '')
-  const runtimeProbes = candidates.map((candidate) => probeBeatThisRuntimeCandidate(candidate))
+  const cachedRuntime = restoreCachedBeatThisRuntime(candidates, requestedDevice)
+  if (cachedRuntime) {
+    cachedResolvedRuntime = cachedRuntime
+    return cachedResolvedRuntime
+  }
+
+  const runtimeProbes = new Map<BeatThisPythonCommand, BeatThisRuntimeProbeSnapshot>()
+  const getRuntimeProbe = (candidate: BeatThisPythonCommand) => {
+    const cached = runtimeProbes.get(candidate)
+    if (cached) return cached
+    const probe = probeBeatThisRuntimeCandidate(candidate)
+    runtimeProbes.set(candidate, probe)
+    return probe
+  }
+
+  const cacheAndReturn = (resolved: BeatThisResolvedRuntime) => {
+    cachedResolvedRuntime = resolved
+    writeBeatThisRuntimeCache(resolved)
+    return cachedResolvedRuntime
+  }
 
   const tryResolveDevice = (
     selectedDevice: BeatThisComputeDevice,
     deviceArgOverride = ''
   ): BeatThisResolvedRuntime | null => {
-    for (const probe of runtimeProbes) {
+    for (const candidate of candidates) {
+      if (!shouldProbeCandidateForDevice(candidate, selectedDevice)) continue
+      const probe = getRuntimeProbe(candidate)
       if (!probe.runtimeUsable) continue
       if (selectedDevice !== 'cpu' && !probe.devices.includes(selectedDevice)) continue
       const deviceArg = deviceArgOverride || probe.deviceArgs[selectedDevice] || selectedDevice
-      if (selectedDevice !== 'cpu') {
+      if (selectedDevice !== 'cpu' && shouldRunBeatThisDeviceCompatibilityProbe()) {
         const compatibility = probeBeatThisDeviceCompatibility(probe.candidate, deviceArg)
         if (!compatibility.ok) continue
       }
@@ -716,16 +928,15 @@ export const resolveBeatThisRuntime = (): BeatThisResolvedRuntime | null => {
 
   if (requestedDevice) {
     if (requestedDevice.selectedDevice === 'manual') {
-      const importableProbe = runtimeProbes.find((probe) => probe.runtimeUsable)
+      const importableProbe = candidates.map(getRuntimeProbe).find((probe) => probe.runtimeUsable)
       if (!importableProbe) {
         throw new Error(`Beat This! runtime not available for device ${requestedDevice.deviceArg}`)
       }
-      cachedResolvedRuntime = {
+      return cacheAndReturn({
         candidate: importableProbe.candidate,
         selectedDevice: 'manual',
         selectedDeviceArg: requestedDevice.deviceArg
-      }
-      return cachedResolvedRuntime
+      })
     }
 
     const forcedRuntime = tryResolveDevice(
@@ -737,26 +948,23 @@ export const resolveBeatThisRuntime = (): BeatThisResolvedRuntime | null => {
         `Beat This! device unavailable or incompatible: ${requestedDevice.deviceArg || requestedDevice.selectedDevice}`
       )
     }
-    cachedResolvedRuntime = forcedRuntime
-    return forcedRuntime
+    return cacheAndReturn(forcedRuntime)
   }
 
   for (const preferredDevice of resolveBeatThisPreferredDevices()) {
     const resolved = tryResolveDevice(preferredDevice)
     if (resolved) {
-      cachedResolvedRuntime = resolved
-      return resolved
+      return cacheAndReturn(resolved)
     }
   }
 
-  const importableProbe = runtimeProbes.find((probe) => probe.importOk)
+  const importableProbe = candidates.map(getRuntimeProbe).find((probe) => probe.importOk)
   if (importableProbe) {
-    cachedResolvedRuntime = {
+    return cacheAndReturn({
       candidate: importableProbe.candidate,
       selectedDevice: 'cpu',
       selectedDeviceArg: 'cpu'
-    }
-    return cachedResolvedRuntime
+    })
   }
 
   return null
@@ -779,4 +987,5 @@ export const resetBeatThisRuntimeResolution = () => {
   cachedResolvedRuntime = undefined
   beatThisRuntimeProbeCache.clear()
   beatThisCompatibilityProbeCache.clear()
+  removeBeatThisRuntimeCache()
 }

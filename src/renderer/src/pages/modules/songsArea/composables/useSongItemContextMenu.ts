@@ -88,7 +88,9 @@ export function useSongItemContextMenu(
   const resolveSelectedKeys = () => songsAreaState.selectedSongFilePath
   const resolveSelectedFilePaths = (keys?: string[]) => {
     const selectedKeys = keys ?? resolveSelectedKeys()
-    if (!isMixtapeView()) return selectedKeys
+    if (!isMixtapeView()) {
+      return selectedKeys.filter((p) => typeof p === 'string' && p.length > 0)
+    }
     const map = new Map<string, string>()
     for (const item of songsAreaState.songInfoArr) {
       if (item.mixtapeItemId) {
