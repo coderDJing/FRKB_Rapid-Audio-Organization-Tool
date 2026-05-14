@@ -324,6 +324,14 @@ keyAnalysisEvents.on('waveform-updated', (payload) => {
   }
 })
 
+keyAnalysisEvents.on('analysis-stage-update', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('key-analysis:stage-update', payload)
+    } catch {}
+  }
+})
+
 analysisRuntimeDownloadEvents.on('state', (payload) => {
   if (mainWindow.instance) {
     try {

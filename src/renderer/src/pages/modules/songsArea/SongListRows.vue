@@ -16,11 +16,15 @@ import { useVirtualRows } from './SongListRows/useVirtualRows'
 import { useSongRowEvents } from './SongListRows/useSongRowEvents'
 import { useCoverThumbnails } from './SongListRows/useCoverThumbnails'
 import { useKeyAnalysisQueue } from './SongListRows/useKeyAnalysisQueue'
+import { useRowAnalysisViewport } from './SongListRows/useRowAnalysisViewport'
+import { useKeyAnalysisProgress } from './composables/useKeyAnalysisProgress'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
 import { useSongRowHoverInteractions } from './SongListRows/useSongRowHoverInteractions'
 import { useSongRowDisplay } from './SongListRows/useSongRowDisplay'
 import { useWaveformPreview } from './SongListRows/useWaveformPreview'
+import CoverPreviewOverlay from './SongListRows/CoverPreviewOverlay.vue'
 import CuratedArtistCellContent from './SongListRows/CuratedArtistCellContent.vue'
+import RowAnalysisBar from './SongListRows/RowAnalysisBar.vue'
 import WaveformPreviewCell from './SongListRows/WaveformPreviewCell.vue'
 
 const props = defineProps({
@@ -369,6 +373,18 @@ const { coversTick, getCoverUrl, fetchCoverUrl, onImgError } = useCoverThumbnail
 
 useKeyAnalysisQueue({ visibleSongsWithIndex, songs: songsRef, enabled: enableKeyAnalysisQueueRef })
 
+const { listViewportWidth } = useRowAnalysisViewport({
+  rowsRoot,
+  viewportElement,
+  scrollHostElement: scrollHostElementRef
+})
+
+const { getAnalysisProgress, isSongNeedsAnalysis, hasAnyAnalysisProgress } = useKeyAnalysisProgress(
+  {
+    visibleSongsWithIndex
+  }
+)
+
 const {
   coverPreviewState,
   coverPreviewSize,
@@ -410,7 +426,9 @@ const {
   songListRootDir: songListRootDirRef,
   externalWaveformRootPath: externalWaveformRootPathRef,
   actualVisibleStartIndex: actualStartIndex,
-  actualVisibleEndIndex: actualEndIndex
+  actualVisibleEndIndex: actualEndIndex,
+  getAnalysisProgress,
+  isSongNeedsAnalysis
 })
 
 const handleWaveformClick = (song: ISongInfo, event: MouseEvent) => {
@@ -787,6 +805,12 @@ onUnmounted(() => {
                 />
               </div>
             </template>
+            <RowAnalysisBar
+              v-if="hasAnyAnalysisProgress"
+              :progress="getAnalysisProgress(item.song.filePath)"
+              :viewport-width="listViewportWidth"
+              :scroll-left="scrollLeft"
+            />
           </div>
         </div>
       </div>
@@ -811,28 +835,23 @@ onUnmounted(() => {
       @dragover.stop.prevent="handleBottomPadDragOver"
       @drop.stop.prevent="handleBottomPadDrop"
     ></div>
-    <div
-      v-if="coverPreviewState.active"
-      class="cover-preview-overlay"
-      :style="{
-        top: coverPreviewState.overlayTop + 'px',
-        left: coverPreviewState.overlayLeft + 'px',
-        width: coverPreviewState.overlayWidth + 'px',
-        height: coverPreviewSize + 'px'
-      }"
+    <CoverPreviewOverlay
+      :active="coverPreviewState.active"
+      :top="coverPreviewState.overlayTop"
+      :left="coverPreviewState.overlayLeft"
+      :width="coverPreviewState.overlayWidth"
+      :size="coverPreviewSize"
+      :image-url="previewedCoverUrl"
       @mousemove="handleCoverPreviewMouseMove"
       @mouseleave="closeCoverPreview"
-      @contextmenu.stop.prevent="
+      @contextmenu="
         (!props.readOnly || props.allowContextMenuWhenReadOnly) &&
         handleCoverPreviewContextmenu($event)
       "
-      @dblclick.stop.prevent="
+      @dblclick="
         (!props.readOnly || props.allowDblclickWhenReadOnly) && handleCoverPreviewDblclick($event)
       "
-    >
-      <img v-if="previewedCoverUrl" :src="previewedCoverUrl" alt="cover preview" decoding="async" />
-      <div v-else class="cover-skeleton expanded"></div>
-    </div>
+    />
   </teleport>
 </template>
 
@@ -895,7 +914,7 @@ onUnmounted(() => {
   --song-harmonic-match-color: color-mix(in srgb, #63a07f 78%, var(--text) 22%);
   display: flex;
   height: 30px; // Standard row height
-  contain: content;
+  contain: layout style;
   position: relative;
 
   &.lightBackground {
@@ -1053,30 +1072,6 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
 }
-.cover-skeleton.expanded {
-  background-color: var(--bg-elev);
-}
-
-.cover-preview-overlay {
-  position: fixed;
-  background-color: var(--bg-elev);
-  box-shadow:
-    0 0 0 2px var(--accent),
-    0 10px 30px rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: auto;
-  z-index: var(--z-content-overlay);
-  overflow: hidden;
-}
-.cover-preview-overlay img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
 .unselectable {
   -webkit-user-select: none;
   -moz-user-select: none;

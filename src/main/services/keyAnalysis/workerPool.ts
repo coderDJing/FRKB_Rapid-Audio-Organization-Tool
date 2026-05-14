@@ -101,6 +101,15 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     job.trace = trace
 
     deps.onJobProgress(worker, job, progress)
+
+    // 推送分析阶段到 renderer，用于 UI 进度显示
+    deps.events.emit('analysis-stage-update', {
+      filePath: job.filePath,
+      stage: progress.stage,
+      needsKey: job.needsKey,
+      needsBpm: job.needsBpm,
+      needsWaveform: job.needsWaveform
+    })
   }
 
   const collectJobResultErrors = (

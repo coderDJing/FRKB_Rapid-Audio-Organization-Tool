@@ -136,6 +136,8 @@ export function useWaveformPreview(params: {
   externalWaveformRootPath: Ref<string | undefined>
   actualVisibleStartIndex: Ref<number>
   actualVisibleEndIndex: Ref<number>
+  getAnalysisProgress?: (filePath: string) => number | null
+  isSongNeedsAnalysis?: (filePath: string) => boolean
 }) {
   const {
     visibleSongsWithIndex,
@@ -146,7 +148,9 @@ export function useWaveformPreview(params: {
     songListRootDir,
     externalWaveformRootPath,
     actualVisibleStartIndex,
-    actualVisibleEndIndex
+    actualVisibleEndIndex,
+    getAnalysisProgress,
+    isSongNeedsAnalysis
   } = params
   const runtime = useRuntimeStore()
   const waveformColumn = computed(() =>
@@ -445,6 +449,16 @@ export function useWaveformPreview(params: {
   }
   const getWaveformPlaceholderText = (filePath: string) => {
     placeholderVersion.value
+
+    // 分析进度状态优先级最高
+    if (getAnalysisProgress) {
+      const progress = getAnalysisProgress(filePath)
+      if (progress != null) return t('tracks.waveformAnalyzing')
+    }
+    if (isSongNeedsAnalysis && isSongNeedsAnalysis(filePath)) {
+      return t('tracks.waveformWaitingAnalysis')
+    }
+
     const state = placeholderStateMap.get(filePath)
     if (state === 'loading') return t('tracks.waveformPreviewLoading')
     if (state === 'unavailable') {
