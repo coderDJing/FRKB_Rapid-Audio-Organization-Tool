@@ -36,6 +36,32 @@ grid-analysis-lab/rkb-rekordbox-benchmark/blind-rekordbox-truth/
 FRKB pass/fail 是当前算法状态，只存在于 classification 和派生 benchmark 视图中。
 禁止再拆成 `sample truth` / `failure truth` 两份长期真值。
 
+## 1.1 算法调优硬闸门
+
+任何 beatgrid analyzer / solver / scorer 调优都必须先过这组闸门。过不了闸门的结果只能作为
+诊断材料，不能写成生产提升，也不能合入运行时决策。
+
+1. fresh sealed 只做一次性验收：跑之前必须锁死 production 规则、阈值、guard 和 scorer
+   配置；跑完只记录结果，禁止现场改阈值、删歌、挑样本、重训选择规则或把本批最高分配置包装成
+   泛化证明。
+2. sealed-eval 跑完立即失去 sealed 身份：后续只能作为普通回归/诊断数据；下一次泛化证明必须来自
+   另一批 fresh Rekordbox playlist 原样复验。
+3. current / blind / 已消耗 sealed 只能用于开发回归和归因：可以分析候选覆盖、phase 分布、
+   scorer 排名错误和失败簇，不能当 fresh proof，也不能反复扫阈值后只用同一批 pass 数证明变强。
+4. 调参只能在 train / tune 上做，holdout 只在阶段性验收时打开；如果某类音频在 train / tune
+   改善但 holdout 退化，按过拟合处理，回退该调参。
+5. 默认不接受新的 `pass -> fail`；任何 `pass -> fail` 都必须逐项解释清楚，证明它不是 analyzer
+   或 scorer 退化后，才允许继续讨论。
+6. scorer 只能使用通用音频信号特征和候选自洽特征；禁止读取或间接编码歌名、artist、路径、
+   playlist 来源、truth、benchmark 误差、pass/fail、失败类型标签、split 身份或逐曲规则。
+7. 失败样本只用于聚类、候选覆盖分析和泛化验证；禁止维护逐曲 offset、逐曲 phase、逐曲规则，
+   也禁止继续新增只服务当前失败清单的 `rescue` / `arbitration` 分支。
+8. topN、source、小模型、front-edge / leading-edge / onset-foot / rising-edge 等信号只能作为
+   诊断、特征发现或 locked hypothesis；没有新的 phase 语义证据和 fresh sealed 复验前，不能作为
+   独立 production selector、bonus、hard guard 或全局 phase shift。
+9. 主线优化目标是“多候选生成 + 统一 scorer”：先确认正确 grid 是否进入候选池，再解决 scorer
+   为什么没选中。继续堆小型 if、阈值补丁或来源优先级，不算算法进步。
+
 ## 2. 本地固定文件
 
 `grid-analysis-lab/rkb-rekordbox-benchmark/` 在本机只保留这些长期有用产物：
