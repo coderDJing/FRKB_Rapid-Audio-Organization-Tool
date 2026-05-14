@@ -59,6 +59,12 @@ type SharedDetailZoomState = {
   revision: number
 }
 type DeckCuePanelMode = 'memory' | 'hot-cue'
+
+const normalizePath = (value: string | null | undefined) =>
+  String(value || '')
+    .replace(/\//g, '\\')
+    .toLowerCase()
+
 type HorizontalBrowseDeckDetailLaneExpose = {
   toggleBarLinePicking?: () => void
   setBarLineAtPlayhead?: () => void
@@ -794,6 +800,18 @@ watch(
   { immediate: true }
 )
 
+const handleSongsRemoved = (payload: { listUUID?: string; paths?: string[] }) => {
+  const removedPaths = Array.isArray(payload?.paths) ? payload.paths : []
+  if (!removedPaths.length) return
+  const removedSet = new Set(removedPaths.map(normalizePath))
+  for (const deck of ['top', 'bottom'] as DeckKey[]) {
+    const songPath = resolveDeckSong(deck)?.filePath
+    if (songPath && removedSet.has(normalizePath(songPath))) {
+      void handleDeckEjectSong(deck)
+    }
+  }
+}
+
 onMounted(() => {
   startSnapshotSync()
   void nativeTransport.reset().finally(() => {
@@ -806,6 +824,7 @@ onMounted(() => {
   window.addEventListener('pointercancel', handleWindowDeckCuePointerUp)
   window.addEventListener('blur', stopAllDeckCuePreview)
   emitter.on('horizontalBrowse/load-song', handleExternalDeckSongLoad)
+  emitter.on('songsRemoved', handleSongsRemoved)
   window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.on('song-key-updated', handleSongKeyUpdated)
   window.electron.ipcRenderer.on('song-hot-cues-updated', handleSongHotCuesUpdated)
@@ -828,6 +847,7 @@ onUnmounted(() => {
   window.removeEventListener('blur', stopAllDeckCuePreview)
   disposeSongSync()
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
+  emitter.off('songsRemoved', handleSongsRemoved)
   window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)
   window.electron.ipcRenderer.removeListener('song-hot-cues-updated', handleSongHotCuesUpdated)
