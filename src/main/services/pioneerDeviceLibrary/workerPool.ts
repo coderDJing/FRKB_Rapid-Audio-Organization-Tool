@@ -74,7 +74,7 @@ class PioneerDeviceWorkerPool {
       job.resolve(payload.result)
     })
 
-    worker.on('error', (error) => {
+    worker.on('error', (error: Error) => {
       log.error('[pioneer-device-library] worker error', error)
       this.failAllPending(error)
       this.worker = null

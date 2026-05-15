@@ -370,7 +370,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       void handleWorkerMessage(worker, payload)
     })
 
-    worker.on('error', (error) => {
+    worker.on('error', (error: Error) => {
       handleWorkerFailure(worker, error)
     })
 

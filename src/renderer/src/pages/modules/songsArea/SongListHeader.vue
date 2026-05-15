@@ -519,7 +519,7 @@ const handleIndexActionClick = () => {
           :class="{ 'is-active': col.filterActive }"
           :style="filterIconMaskStyle"
           :title="getFilterTooltip(col)"
-          @click.stop="(e) => handleFilterIconClick(e, col)"
+          @click.stop="(e: MouseEvent) => handleFilterIconClick(e, col)"
         />
       </div>
       <Teleport to="body">

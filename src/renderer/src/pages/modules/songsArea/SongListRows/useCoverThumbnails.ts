@@ -104,7 +104,9 @@ export function useCoverThumbnails({
                 : Array.isArray(rawData)
                   ? new Uint8Array(rawData)
                   : new Uint8Array(rawData.data || [])
-            const blob = new Blob([raw.buffer], { type: resp.format || 'image/jpeg' })
+            const blob = new Blob([raw.buffer as ArrayBuffer], {
+              type: resp.format || 'image/jpeg'
+            })
             const url = URL.createObjectURL(blob)
             coverUrlCache.set(filePath, url)
             coversTick.value++
