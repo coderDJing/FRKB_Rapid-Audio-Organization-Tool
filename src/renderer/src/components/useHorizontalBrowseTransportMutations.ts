@@ -33,7 +33,7 @@ type UseHorizontalBrowseTransportMutationsParams = {
     setState: (payload: { top: LocalDeckState; bottom: LocalDeckState }) => Promise<unknown>
     setLeader: (deck?: DeckKey | null) => Promise<unknown>
     setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
-    alignToLeader: (deck: DeckKey, targetSec?: number) => Promise<unknown>
+    alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
     snapshot: (nowMs?: number) => Promise<unknown>
   }
   syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
@@ -96,10 +96,14 @@ export const useHorizontalBrowseTransportMutations = (
       params.syncDeckRenderState({ force: deck })
       return
     }
+    const otherDeck: DeckKey = deck === 'top' ? 'bottom' : 'top'
+    const otherSnapshot = params.resolveTransportDeckSnapshot(otherDeck)
+    const shouldSkipGridSnap = !snapshot.playing && otherSnapshot.playing
     const anchorSec = Number(snapshot.currentSec)
     await params.nativeTransport.alignToLeader(
       deck,
-      Number.isFinite(anchorSec) ? Math.max(0, anchorSec) : undefined
+      Number.isFinite(anchorSec) ? Math.max(0, anchorSec) : undefined,
+      shouldSkipGridSnap
     )
     params.syncDeckRenderState({ force: 'all' })
   }

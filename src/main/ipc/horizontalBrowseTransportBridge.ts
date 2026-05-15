@@ -46,7 +46,8 @@ type RustHorizontalBrowseTransportBinding = {
   horizontalBrowseTransportAlignToLeader?: (
     deck: HorizontalBrowseDeckKey,
     nowMs?: number,
-    targetSec?: number
+    targetSec?: number,
+    skipGridSnap?: boolean
   ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSetLeader?: (
     deck?: HorizontalBrowseDeckKey,
@@ -163,8 +164,13 @@ export const horizontalBrowseTransportBridge = {
   beatsync(deck: HorizontalBrowseDeckKey, nowMs?: number) {
     return requireFn('horizontalBrowseTransportBeatsync')(deck, nowMs)
   },
-  alignToLeader(deck: HorizontalBrowseDeckKey, nowMs?: number, targetSec?: number) {
-    return requireFn('horizontalBrowseTransportAlignToLeader')(deck, nowMs, targetSec)
+  alignToLeader(
+    deck: HorizontalBrowseDeckKey,
+    nowMs?: number,
+    targetSec?: number,
+    skipGridSnap?: boolean
+  ) {
+    return requireFn('horizontalBrowseTransportAlignToLeader')(deck, nowMs, targetSec, skipGridSnap)
   },
   setLeader(deck?: HorizontalBrowseDeckKey, nowMs?: number) {
     return requireFn('horizontalBrowseTransportSetLeader')(deck, nowMs)

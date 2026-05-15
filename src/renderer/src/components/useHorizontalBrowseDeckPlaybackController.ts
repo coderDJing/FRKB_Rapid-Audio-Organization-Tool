@@ -64,7 +64,7 @@ type UseHorizontalBrowseDeckPlaybackControllerParams = {
       rate: number
     ) => Promise<unknown>
     beatsync: (deck: DeckKey) => Promise<unknown>
-    alignToLeader: (deck: DeckKey, targetSec?: number) => Promise<unknown>
+    alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
     snapshot: (nowMs?: number) => Promise<unknown>
   }
   syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
@@ -149,8 +149,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
   const isDualTransportSyncActive = () =>
     Boolean(
       params.resolveDualTransportSyncEnabled?.() &&
-        params.resolveDeckSong('top') &&
-        params.resolveDeckSong('bottom')
+      params.resolveDeckSong('top') &&
+      params.resolveDeckSong('bottom')
     )
 
   const ensureDualTransportSync = async (sourceDeck: DeckKey) => {

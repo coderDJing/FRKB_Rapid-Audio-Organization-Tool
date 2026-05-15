@@ -104,8 +104,19 @@ export function registerHorizontalBrowseTransportHandlers() {
 
   ipcMain.handle(
     'horizontal-browse-transport:align-to-leader',
-    async (_event, deck: HorizontalBrowseDeckKey, nowMs?: number, targetSec?: number) => {
-      const snapshot = horizontalBrowseTransportBridge.alignToLeader(deck, nowMs, targetSec)
+    async (
+      _event,
+      deck: HorizontalBrowseDeckKey,
+      nowMs?: number,
+      targetSec?: number,
+      skipGridSnap?: boolean
+    ) => {
+      const snapshot = horizontalBrowseTransportBridge.alignToLeader(
+        deck,
+        nowMs,
+        targetSec,
+        skipGridSnap
+      )
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }

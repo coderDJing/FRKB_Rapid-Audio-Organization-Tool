@@ -1003,7 +1003,7 @@ impl HorizontalBrowseTransportEngine {
     self.refresh_sync_state(false);
   }
 
-  pub(super) fn align_to_leader(&mut self, deck: DeckId, target_sec: Option<f64>) {
+  pub(super) fn align_to_leader(&mut self, deck: DeckId, target_sec: Option<f64>, skip_grid_snap: bool) {
     self.mark_state_changed();
     let Some(leader) = self.resolve_leader_candidate(deck) else {
       return;
@@ -1032,28 +1032,35 @@ impl HorizontalBrowseTransportEngine {
       self.original_beat_grid(leader),
       self.original_beat_grid(deck),
     ) {
-      let leader_current_sec = Self::estimate_current_sec(self.deck(leader), now_ms);
-      let anchor_sec = target_sec
-        .filter(|value| value.is_finite())
-        .unwrap_or_else(|| Self::estimate_current_sec(self.deck(deck), now_ms));
-      let target_duration_sec = self.deck(deck).duration_sec.max(0.0);
-      let target_sec = Self::nearest_valid_sec_with_grid_offset(
-        anchor_sec.max(0.0),
-        leader_current_sec,
-        leader_visual_grid,
-        target_visual_grid,
-        0.0,
-        target_duration_sec,
-      );
-      let target = self.deck_mut(deck);
-      target.current_sec = if target.duration_sec.is_finite() && target.duration_sec > 0.0 {
-        target_sec.clamp(0.0, target.duration_sec)
+      let snapped_sec = if !skip_grid_snap {
+        let leader_current_sec = Self::estimate_current_sec(self.deck(leader), now_ms);
+        let anchor_sec = target_sec
+          .filter(|value| value.is_finite())
+          .unwrap_or_else(|| Self::estimate_current_sec(self.deck(deck), now_ms));
+        let target_duration_sec = self.deck(deck).duration_sec.max(0.0);
+        let raw = Self::nearest_valid_sec_with_grid_offset(
+          anchor_sec.max(0.0),
+          leader_current_sec,
+          leader_visual_grid,
+          target_visual_grid,
+          0.0,
+          target_duration_sec,
+        );
+        Some(if self.deck(deck).duration_sec.is_finite() && self.deck(deck).duration_sec > 0.0 {
+          raw.clamp(0.0, self.deck(deck).duration_sec)
+        } else {
+          raw.max(0.0)
+        })
       } else {
-        target_sec.max(0.0)
+        None
       };
-      target.last_observed_at_ms = now_ms;
+      let target = self.deck_mut(deck);
       target.playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
+      target.last_observed_at_ms = now_ms;
       target.metronome_state.next_beat_index = None;
+      if let Some(sec) = snapped_sec {
+        target.current_sec = sec;
+      }
       self.reset_and_prime_master_tempo_state(deck);
     }
 

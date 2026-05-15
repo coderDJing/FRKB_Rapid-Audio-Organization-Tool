@@ -20,7 +20,7 @@ type UseHorizontalBrowseFaderControlsParams = {
     setBandState: (deck: DeckKey, bands: HorizontalBrowseTransportBandState) => Promise<unknown>
     setLeader: (deck?: DeckKey | null) => Promise<unknown>
     setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
-    alignToLeader: (deck: DeckKey, targetSec?: number) => Promise<unknown>
+    alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
   }
   commitDeckStatesToNative: () => Promise<unknown>

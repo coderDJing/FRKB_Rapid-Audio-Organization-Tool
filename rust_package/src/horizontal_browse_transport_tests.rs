@@ -413,7 +413,7 @@ fn align_to_leader_uses_requested_anchor_for_nearest_visible_grid_line() {
 
   engine.set_leader(Some(DeckId::Top));
   let requested_target_sec = 2.757;
-  engine.align_to_leader(DeckId::Bottom, Some(requested_target_sec));
+  engine.align_to_leader(DeckId::Bottom, Some(requested_target_sec), false);
 
   let follower_grid = engine.original_beat_grid(DeckId::Bottom).unwrap();
   let leader_offset = visual_grid_offset_sec(&engine, DeckId::Top);
@@ -569,7 +569,7 @@ fn align_to_leader_snaps_requested_deck_to_nearest_leader_beat_grid_line() {
   engine.set_leader(Some(DeckId::Top));
   let leader_before = engine.deck(DeckId::Top).current_sec;
   let requested_target_sec = 142.867;
-  engine.align_to_leader(DeckId::Bottom, Some(requested_target_sec));
+  engine.align_to_leader(DeckId::Bottom, Some(requested_target_sec), false);
 
   let follower_grid = engine.original_beat_grid(DeckId::Bottom).unwrap();
   let leader_offset = visual_grid_offset_sec(&engine, DeckId::Top);
@@ -579,6 +579,53 @@ fn align_to_leader_snaps_requested_deck_to_nearest_leader_beat_grid_line() {
   assert!((engine.deck(DeckId::Top).current_sec - leader_before).abs() < 0.0001);
   assert!((leader_offset - follower_offset).abs() < 0.0001);
   assert!(nearest_delta_sec <= follower_grid.beat_sec * 0.5 + 0.0001);
+}
+
+#[test]
+fn align_to_leader_skip_grid_snap_preserves_position_and_sets_rate() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  engine.last_now_ms = 1000.0;
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("leader.mp3".to_string());
+    top.loaded_file_path = Some("leader.mp3".to_string());
+    top.bpm = Some(140.0);
+    top.first_beat_ms = Some(20.0);
+    top.bar_beat_offset = Some(8.0);
+    top.duration_sec = 240.0;
+    top.current_sec = 15.36;
+    top.last_observed_at_ms = 1000.0;
+    top.playing = true;
+    top.playback_rate = 1.0;
+    install_loaded_test_pcm(top, 240);
+  }
+  {
+    let bottom = engine.deck_mut(DeckId::Bottom);
+    bottom.file_path = Some("follower.mp3".to_string());
+    bottom.loaded_file_path = Some("follower.mp3".to_string());
+    bottom.bpm = Some(70.0);
+    bottom.first_beat_ms = Some(110.0);
+    bottom.bar_beat_offset = Some(0.0);
+    bottom.duration_sec = 382.0;
+    bottom.current_sec = 142.867;
+    bottom.last_observed_at_ms = 1000.0;
+    bottom.playing = false;
+    bottom.playback_rate = 1.0;
+    install_loaded_test_pcm(bottom, 382);
+  }
+
+  engine.set_leader(Some(DeckId::Top));
+  let position_before = engine.deck(DeckId::Bottom).current_sec;
+  engine.align_to_leader(DeckId::Bottom, Some(position_before), true);
+
+  let snap = engine.snapshot(1000.0);
+  assert!((engine.deck(DeckId::Bottom).current_sec - position_before).abs() < 0.0001);
+  assert!(snap.bottom.sync_enabled, "sync should be enabled");
+  assert!(
+    (snap.bottom.playback_rate - 1.0).abs() < 0.001,
+    "expected playback_rate ~1.0 (BPM already matched via multiplier), got {}",
+    snap.bottom.playback_rate
+  );
 }
 
 #[test]

@@ -24,7 +24,7 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
       rate: number
     ) => Promise<unknown>
     beatsync: (deck: DeckKey) => Promise<unknown>
-    alignToLeader: (deck: DeckKey, targetSec?: number) => Promise<unknown>
+    alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
     snapshot: (nowMs?: number) => Promise<unknown>
     setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
     toggleLoop: (deck: DeckKey) => Promise<unknown>

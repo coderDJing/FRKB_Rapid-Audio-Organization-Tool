@@ -199,13 +199,14 @@ pub fn horizontal_browse_transport_align_to_leader(
   deck: String,
   now_ms: Option<f64>,
   target_sec: Option<f64>,
+  skip_grid_snap: Option<bool>,
 ) -> napi::Result<HorizontalBrowseTransportSnapshot> {
   let deck_id = parse_deck_id(&deck)?;
   let mut engine_guard = engine().lock();
   if let Some(next_now_ms) = now_ms {
     engine_guard.observe_external_now_ms(next_now_ms);
   }
-  engine_guard.align_to_leader(deck_id, target_sec);
+  engine_guard.align_to_leader(deck_id, target_sec, skip_grid_snap.unwrap_or(false));
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 

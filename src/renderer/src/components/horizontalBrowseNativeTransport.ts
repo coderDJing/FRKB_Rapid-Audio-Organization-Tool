@@ -212,12 +212,17 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
-  const alignToLeader = async (deck: HorizontalBrowseDeckKey, targetSec?: number) => {
+  const alignToLeader = async (
+    deck: HorizontalBrowseDeckKey,
+    targetSec?: number,
+    skipGridSnap?: boolean
+  ) => {
     const snapshot = await invoke(
       'horizontal-browse-transport:align-to-leader',
       deck,
       performance.now(),
-      Number.isFinite(Number(targetSec)) ? Math.max(0, Number(targetSec)) : undefined
+      Number.isFinite(Number(targetSec)) ? Math.max(0, Number(targetSec)) : undefined,
+      skipGridSnap
     )
     applySnapshot(snapshot)
     return snapshot
