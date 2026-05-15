@@ -420,5 +420,8 @@ export default {
   get instance() {
     return updateWindow
   },
-  createWindow
+  createWindow,
+  setLastUpdateInfo: (info: UpdateInfo) => {
+    lastUpdateInfo = info
+  }
 }

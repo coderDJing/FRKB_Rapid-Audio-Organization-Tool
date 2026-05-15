@@ -46,6 +46,7 @@ export function setupAutoUpdate() {
     if (currentIsPrerelease !== remoteIsPrerelease) {
       return
     }
+    updateWindow.setLastUpdateInfo(info)
     if (updateWindow.instance === null) {
       foundNewVersionWindow.open(info, null, true)
       void fetchReleaseNotesRange(app.getVersion(), info.version)
