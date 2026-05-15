@@ -38,6 +38,7 @@ export default defineConfig({
           )
         },
         output: {
+          format: 'cjs',
           entryFileNames: (chunk) => {
             if (chunk.name === 'audioDecodeWorker') {
               return 'workers/audioDecodeWorker.js'
@@ -106,9 +107,7 @@ export default defineConfig({
     server: rendererServer,
     css: {
       preprocessorOptions: {
-        scss: {
-          api: 'modern-compiler'
-        }
+        scss: {}
       }
     },
     resolve: {

@@ -460,7 +460,7 @@ const buildRawWaveformStreamed = async (
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     })
-    let remainder = Buffer.alloc(0)
+    let remainder: Buffer<ArrayBufferLike> = Buffer.alloc(0)
     let stderrText = ''
 
     child.stdout.on('data', (chunk: Buffer) => {

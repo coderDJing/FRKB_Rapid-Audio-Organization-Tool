@@ -307,7 +307,7 @@ class AudioDecodeWorkerPool {
       job.resolve(payload.result as DecodeAudioResult)
     })
 
-    worker.on('error', (error) => {
+    worker.on('error', (error: Error) => {
       this.handleWorkerFailure(worker, error)
     })
 
