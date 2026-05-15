@@ -53,6 +53,7 @@ type TimelineTransportResolversContext = {
   rulerRef: ValueRef<HTMLElement | null>
   playheadSec: ValueRef<number>
   playheadVisible: ValueRef<boolean>
+  transportPlaying: ValueRef<boolean>
   transportPreloadDone: ValueRef<number>
   transportPreloadTotal: ValueRef<number>
   transportDurationSecRef: ValueRef<number>
@@ -84,6 +85,7 @@ export const createTimelineTransportResolversModule = (ctx: TimelineTransportRes
     rulerRef,
     playheadSec,
     playheadVisible,
+    transportPlaying,
     transportPreloadDone,
     transportPreloadTotal,
     transportDurationSecRef,
@@ -146,7 +148,7 @@ export const createTimelineTransportResolversModule = (ctx: TimelineTransportRes
       0,
       100
     )}%`,
-    opacity: playheadVisible.value ? '1' : '0'
+    opacity: playheadVisible.value ? (transportPlaying.value ? '1' : '0.45') : '0'
   }))
 
   const playheadViewportX = computed(() => {
@@ -168,7 +170,12 @@ export const createTimelineTransportResolversModule = (ctx: TimelineTransportRes
 
   const playheadViewportStyle = computed(() => ({
     left: `${snapViewportX(playheadViewportX.value)}px`,
-    opacity: playheadVisible.value && playheadViewportVisible.value ? '1' : '0'
+    opacity:
+      playheadVisible.value && playheadViewportVisible.value
+        ? transportPlaying.value
+          ? '1'
+          : '0.45'
+        : '0'
   }))
 
   const rulerPlayheadStyle = computed(() => {
@@ -177,7 +184,12 @@ export const createTimelineTransportResolversModule = (ctx: TimelineTransportRes
     const rulerWidth = Math.max(1, Number(rulerRef?.value?.clientWidth || 0))
     return {
       left: `${snapViewportX(rulerX)}px`,
-      opacity: playheadVisible.value && rulerX >= 0 && rulerX <= rulerWidth ? '1' : '0'
+      opacity:
+        playheadVisible.value && rulerX >= 0 && rulerX <= rulerWidth
+          ? transportPlaying.value
+            ? '1'
+            : '0.45'
+          : '0'
     }
   })
 

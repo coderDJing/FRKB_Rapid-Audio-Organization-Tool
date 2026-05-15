@@ -124,7 +124,11 @@ defineExpose({
       @drag-session-preview="emit('drag-session-preview', $event)"
       @drag-session-end="emit('drag-session-end', $event)"
     />
-    <div v-show="!!props.song" class="detail-lane__playhead"></div>
+    <div
+      v-show="!!props.song"
+      class="detail-lane__playhead"
+      :class="{ 'is-paused': !props.playing }"
+    ></div>
   </div>
 </template>
 
@@ -134,10 +138,14 @@ defineExpose({
   top: 0;
   bottom: 0;
   left: 50%;
-  width: 3px;
+  width: 2px;
   transform: translateX(-50%);
   background: var(--shell-playhead-bg);
   pointer-events: none;
   z-index: 6;
+}
+
+.detail-lane__playhead.is-paused {
+  opacity: 0.7;
 }
 </style>

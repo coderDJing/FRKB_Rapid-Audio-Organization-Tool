@@ -277,6 +277,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     rulerRef,
     playheadSec,
     playheadVisible,
+    transportPlaying,
     transportPreloadDone,
     transportPreloadTotal,
     transportDurationSecRef,
@@ -468,7 +469,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   const finishTransportPlayback = () => {
     const total = resolveTransportDuration()
     stopTransport()
-    playheadVisible.value = false
+    // 暂停时保持播放中线可见
     playheadSec.value = total
   }
 
@@ -484,7 +485,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
 
   const handleTransportStop = () => {
     stopTransport()
-    playheadVisible.value = false
+    // 暂停时保持播放中线可见，只在真正停止时隐藏
   }
 
   const resolveTransportRestartSec = () => {
@@ -993,7 +994,7 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       syncTimelineScrollByPlayhead(audibleCurrent)
       if (current >= transportDurationSec) {
         stopTransport()
-        playheadVisible.value = false
+        // 播放结束时保持播放中线可见
         playheadSec.value = transportDurationSec
         return
       }
