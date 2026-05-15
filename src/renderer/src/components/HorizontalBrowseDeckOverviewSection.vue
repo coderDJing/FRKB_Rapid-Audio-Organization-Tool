@@ -46,6 +46,7 @@ const props = defineProps<{
   readOnlySource: boolean
   quantizeEnabled: boolean
   masterTempoEnabled: boolean
+  hideSyncControls?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -111,6 +112,7 @@ const isTop = props.position === 'top'
         :key-highlighted="props.keyHighlighted"
         :current-seconds="props.currentSeconds"
         :duration-seconds="props.durationSeconds"
+        :hide-sync-controls="props.hideSyncControls"
         @trigger-beat-sync="emit('trigger-beat-sync')"
         @toggle-master="emit('toggle-master')"
         @eject-song="emit('eject-song')"

@@ -15,6 +15,7 @@ const props = defineProps<{
   keyHighlighted: boolean
   currentSeconds?: number
   durationSeconds?: number
+  hideSyncControls?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -214,7 +215,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="deck-info-card__actions">
+    <div v-if="!props.hideSyncControls" class="deck-info-card__actions">
       <button
         type="button"
         class="deck-info-action"

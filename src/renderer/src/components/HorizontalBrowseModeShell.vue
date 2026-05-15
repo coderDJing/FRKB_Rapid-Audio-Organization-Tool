@@ -944,6 +944,7 @@ onUnmounted(() => {
         :read-only-source="isDeckSongReadOnly('top')"
         :quantize-enabled="deckQuantizeEnabled.top"
         :master-tempo-enabled="isDeckMasterTempoEnabled('top')"
+        :hide-sync-controls="isEditMode"
         @region-drag-enter="handleRegionDragEnter"
         @region-drag-over="handleRegionDragOver"
         @region-drag-leave="handleRegionDragLeave"
