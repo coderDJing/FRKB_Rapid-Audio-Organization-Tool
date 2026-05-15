@@ -1,6 +1,6 @@
 import { execFile, execFileSync } from 'child_process'
-import zhCNLocale from '../../renderer/src/i18n/locales/zh-CN.json'
-import enUSLocale from '../../renderer/src/i18n/locales/en-US.json'
+import zhCNSettingsLocale from '../../renderer/src/i18n/locales/zh-CN/settings.json'
+import enUSSettingsLocale from '../../renderer/src/i18n/locales/en-US/settings.json'
 import store from '../store'
 import { log } from '../log'
 import { persistSettingConfig } from '../settingsPersistence'
@@ -56,8 +56,8 @@ const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
 
 const tContextMenu = (key: string): string => {
   const messages: Record<'zh-CN' | 'en-US', Record<string, unknown>> = {
-    'zh-CN': zhCNLocale as Record<string, unknown>,
-    'en-US': enUSLocale as Record<string, unknown>
+    'zh-CN': zhCNSettingsLocale as Record<string, unknown>,
+    'en-US': enUSSettingsLocale as Record<string, unknown>
   }
   const localeId = getCurrentLocaleId()
   const parts = key.split('.')
@@ -104,7 +104,10 @@ export async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
   const signature = buildContextMenuSignature()
   if (!signature) return
   const stored = String(store.settingConfig.windowsContextMenuSignature || '')
-  if (stored === signature) return
+  // 检测翻译是否失败（返回原始 key），如果是则强制更新
+  const label = tContextMenu('settings.explorerContextMenuLabel')
+  const translationFailed = label === 'settings.explorerContextMenuLabel'
+  if (stored === signature && !translationFailed) return
   await ensureWindowsContextMenu()
   store.settingConfig.windowsContextMenuSignature = signature
   await persistSettingConfig()
