@@ -192,3 +192,13 @@ body {
 .topToolbarSettingButton:hover .topToolbarSettingIcon {
   opacity: 1;
 }
+
+.topToolbarTime {
+  font-size: 12px;
+  color: var(--text-weak);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  user-select: none;
+  margin-left: 2px;
+  margin-right: 2px;
+}

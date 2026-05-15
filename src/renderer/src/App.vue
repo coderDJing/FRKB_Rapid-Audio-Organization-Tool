@@ -131,6 +131,14 @@ const topToolbarSettingIconStyle = computed(() => ({
   '--top-toolbar-setting-icon-mask': `url("${settingIconAsset}")`
 }))
 const mainWindowVolume = ref(readWindowVolume(MAIN_WINDOW_VOLUME_STORAGE_KEY))
+const formatCurrentTime = () => {
+  const now = new Date()
+  const hours = now.getHours().toString().padStart(2, '0')
+  const minutes = now.getMinutes().toString().padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+const currentTime = ref(formatCurrentTime())
+let currentTimeTimer: ReturnType<typeof setInterval> | null = null
 const currentMainWindowBrowseModeLabel = computed(() => {
   const currentMode =
     mainWindowBrowseModeOptions.find((item) => item.value === runtime.mainWindowBrowseMode) ||
@@ -733,6 +741,9 @@ const getLibrary = async () => {
 }
 getLibrary()
 onMounted(() => {
+  currentTimeTimer = setInterval(() => {
+    currentTime.value = formatCurrentTime()
+  }, 1000)
   songSearchWarmupTimer = setTimeout(() => {
     songSearchWarmupTimer = null
     void window.electron.ipcRenderer.invoke('song-search:warmup').catch(() => {})
@@ -881,6 +892,10 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (currentTimeTimer) {
+    clearInterval(currentTimeTimer)
+    currentTimeTimer = null
+  }
   if (songSearchWarmupTimer) {
     clearTimeout(songSearchWarmupTimer)
     songSearchWarmupTimer = null
@@ -1006,6 +1021,7 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
         >
           <span class="topToolbarSettingIcon"></span>
         </bubbleBoxTrigger>
+        <span class="topToolbarTime">{{ currentTime }}</span>
       </div>
     </div>
     <div v-if="showHorizontalModeShell" :style="horizontalModeShellStyle">
