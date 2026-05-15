@@ -3,7 +3,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { log } from '../../log'
 import { findSongListRoot } from '../../services/cacheMaintenance'
-import { enqueueKeyAnalysis, enqueueKeyAnalysisImmediate } from '../../services/keyAnalysisQueue'
+import { enqueueKeyAnalysis } from '../../services/keyAnalysisQueue'
 import {
   isCompleteSharedSongGridDefinition,
   loadSharedSongGridDefinition
@@ -40,6 +40,12 @@ const clonePcmData = (pcmData: unknown): Float32Array => {
   return new Float32Array(0)
 }
 
+const enqueuePlaybackGridAnalysis = (filePath: string) => {
+  enqueueKeyAnalysis(filePath, 'medium', {
+    source: 'foreground'
+  })
+}
+
 export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | null) {
   const handleDecode =
     (eventName: 'readSongFile' | 'readNextSongFile', successEvent: string, errorEvent: string) =>
@@ -48,11 +54,7 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         const sharedGrid = await loadSharedSongGridDefinition(filePath).catch(() => null)
         const needsGridAnalysis = !isCompleteSharedSongGridDefinition(sharedGrid)
         if (needsGridAnalysis) {
-          if (eventName === 'readSongFile') {
-            enqueueKeyAnalysisImmediate(filePath)
-          } else {
-            enqueueKeyAnalysis(filePath, 'high')
-          }
+          enqueuePlaybackGridAnalysis(filePath)
         }
         let stat: { size: number; mtimeMs: number } | null = null
         try {

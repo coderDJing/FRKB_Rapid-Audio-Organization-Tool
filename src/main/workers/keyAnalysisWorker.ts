@@ -2,6 +2,7 @@ import { parentPort } from 'node:worker_threads'
 import childProcess from 'node:child_process'
 import type { MixxxWaveformData } from '../waveformCache'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
+import { buildAnalysisChildEnv, lowerAnalysisProcessPriority } from './analysisRuntimeTuning'
 
 type KeyJob = {
   jobId: number
@@ -158,9 +159,11 @@ const decodeBeatGridPcmForFile = async (filePath: string): Promise<DecodedBeatGr
       ],
       {
         windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: buildAnalysisChildEnv(process.env)
       }
     )
+    lowerAnalysisProcessPriority(child)
 
     child.stdout.on('data', (chunk: Buffer | string) => {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))

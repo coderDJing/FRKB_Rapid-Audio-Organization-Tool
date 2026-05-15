@@ -7,6 +7,7 @@ import {
   resolveBeatThisProjectRoot,
   resolveBeatThisRuntime
 } from './beatThisRuntime'
+import { lowerAnalysisProcessPriority } from './analysisRuntimeTuning'
 
 type BeatThisAnalyzeResult = {
   bpm: number
@@ -310,6 +311,7 @@ const ensureBridgeProcess = async () => {
       env: buildBeatThisChildEnv(pythonCommand)
     }
   )
+  lowerAnalysisProcessPriority(child)
 
   bridgeChild = child
   registerCleanupHooks()

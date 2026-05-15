@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import childProcess from 'node:child_process'
+import { buildAnalysisChildEnv } from './analysisRuntimeTuning'
 
 export type BeatThisPythonCommand = {
   command: string
@@ -436,7 +437,7 @@ const joinEnvPathList = (values: string[]) =>
 export const buildBeatThisChildEnv = (candidate: BeatThisPythonCommand): NodeJS.ProcessEnv => {
   const checkpointPath = resolveRuntimeBeatThisCheckpointPath(candidate.runtimeDir || '')
   return {
-    ...process.env,
+    ...buildAnalysisChildEnv(process.env),
     PYTHONUTF8: '1',
     PYTHONIOENCODING: 'utf-8',
     [ENV_BEAT_THIS_EXTRA_SITE_DIRS]: joinEnvPathList(candidate.extraSiteDirs || []),

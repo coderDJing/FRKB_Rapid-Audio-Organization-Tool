@@ -1,9 +1,9 @@
-import os from 'node:os'
 import { EventEmitter } from 'node:events'
 import { KeyAnalysisQueue } from './keyAnalysis/queue'
 import type { KeyAnalysisBackgroundStatus, KeyAnalysisPriority } from './keyAnalysis/types'
 
-const workerCount = Math.max(1, Math.min(2, os.cpus().length))
+// 分析是 CPU 重活，保持单路执行，给播放解码留调度余量。
+const workerCount = 1
 export const keyAnalysisEvents = new EventEmitter()
 let queue: KeyAnalysisQueue | null = null
 
@@ -44,13 +44,6 @@ export function enqueueKeyAnalysisList(
 
 export function replaceVisibleKeyAnalysisList(filePaths: string[]) {
   getQueue().replaceVisibleList(filePaths)
-}
-
-export function enqueueKeyAnalysisImmediate(
-  filePath: string,
-  options: { fastAnalysis?: boolean; focusSlot?: string } = {}
-) {
-  getQueue().enqueue(filePath, 'high', { urgent: true, ...options })
 }
 
 export function startKeyAnalysisBackground() {
