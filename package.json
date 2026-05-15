@@ -157,7 +157,7 @@
           "to": "demucs/bootstrap"
         }
       ],
-      "x64ArchFiles": "{Contents/Resources/ffmpeg/darwin/{ffmpeg,ffprobe},Contents/Resources/rekordboxDesktopRuntime/**/*}",
+      "x64ArchFiles": "{Contents/Resources/ffmpeg/darwin/{ffmpeg,ffprobe},Contents/Resources/rekordboxDesktopRuntime/**/*,Contents/Resources/app.asar.unpacked/node_modules/@parcel/watcher-darwin-arm64/**/*}",
       "artifactName": "${productName}-${version}-universal.${ext}"
     },
     "linux": {
