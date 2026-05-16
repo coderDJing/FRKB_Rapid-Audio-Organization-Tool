@@ -3,7 +3,7 @@ import type { ResolvedUpdateFileInfo, UpdateInfo } from 'electron-updater'
 import { once } from 'events'
 import { Readable } from 'stream'
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
-import { ProxyAgent } from 'undici'
+import { ProxyAgent, fetch as undiciFetch } from 'undici'
 import fs = require('fs-extra')
 import path = require('path')
 import { getSystemProxy } from '../utils'
@@ -98,7 +98,8 @@ const fetchManualUpdateAsset = async (url: string, init?: RequestInit) => {
   if (manualUpdateProxyDispatcher) {
     requestInit.dispatcher = manualUpdateProxyDispatcher
   }
-  return await fetch(url, requestInit)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return await undiciFetch(url as any, requestInit as any)
 }
 
 export const pickManualMacUpdateAsset = (

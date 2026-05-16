@@ -1,4 +1,4 @@
-import { ProxyAgent } from 'undici'
+import { ProxyAgent, fetch as undiciFetch } from 'undici'
 import { getSystemProxy } from './utils'
 
 type FetchInput = Parameters<typeof fetch>[0]
@@ -25,5 +25,6 @@ export async function fetchWithSystemProxy(input: FetchInput, init?: FetchInit) 
   if (systemProxyDispatcher) {
     requestInit.dispatcher = systemProxyDispatcher
   }
-  return await fetch(input, requestInit)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (await undiciFetch(input as any, requestInit as any)) as unknown as Response
 }

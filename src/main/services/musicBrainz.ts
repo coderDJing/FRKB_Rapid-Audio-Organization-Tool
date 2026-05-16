@@ -7,7 +7,7 @@ import {
   IMusicBrainzSuggestionParams,
   IMusicBrainzSuggestionResult
 } from '../../types/globals'
-import { ProxyAgent } from 'undici'
+import { ProxyAgent, fetch as undiciFetch } from 'undici'
 import { log } from '../log'
 import { getSystemProxy } from '../utils'
 
@@ -253,7 +253,8 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
           signal: controller.signal
         }
         if (proxyDispatcher) init.dispatcher = proxyDispatcher
-        const res = await fetch(url, init)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const res = await undiciFetch(url as any, init as any)
         if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
         if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
         if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
@@ -305,7 +306,8 @@ async function requestBuffer(
           signal: controller.signal
         }
         if (proxyDispatcher) init.dispatcher = proxyDispatcher
-        const res = await fetch(url, init)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const res = await undiciFetch(url as any, init as any)
         if (res.status === 404) return null
         if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
         if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
