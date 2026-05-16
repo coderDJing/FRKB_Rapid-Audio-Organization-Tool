@@ -611,6 +611,7 @@ jobs:
       - name: Package macOS (universal, no publish)
         env:
           DEBUG: electron-builder
+          ELECTRON_MIRROR: https://github.com/electron/electron/releases/download/
         run: npx electron-builder --mac --universal --publish never
 
       - name: Verify packaged Demucs resources (macOS)
