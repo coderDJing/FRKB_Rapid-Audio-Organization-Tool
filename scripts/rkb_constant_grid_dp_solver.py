@@ -18,12 +18,14 @@ from rkb_constant_grid_dp_selection import (
     PHASE_EVIDENCE_LEGACY_WEAKNESS_THRESHOLD,
     PHASE_EVIDENCE_SWITCH_THRESHOLD,
     choose_rank1_locked_legacy_weakness_candidate,
+    choose_rank1_negative_legacy_score_candidate,
     choose_rank1_structural_phase_candidate,
     choose_head_near_zero_candidate,
     confidence_from_selected,
     head_near_zero_switch_diagnostic_features,
     legacy_weakness_score,
     passes_conservative_switch_guard,
+    rank1_negative_legacy_score_diagnostic_features,
     rank1_switch_diagnostic_features,
     select_phase_evidence_candidate,
     snap_legacy_integer_bpm,
@@ -40,7 +42,7 @@ DEFAULT_TEMPO_STEP_BPM = 0.5
 DEFAULT_TEMPO_LIMIT = 24
 DEFAULT_PHASE_STEP_MS = 2.0
 DEFAULT_MAX_CANDIDATES = 640
-SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-head-near-zero-v1"
+SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-negative-legacy-score-v1-head-near-zero-v1"
 PHASE_PATH_TARGET_OFFSETS_MS = (8.0, 10.0, 12.0)
 
 
@@ -874,7 +876,10 @@ def solve_constant_grid_dp(
         selected = rank1_structural_phase_selected
         use_new = True
     previous_switch_selected = bool(
-        locked_ranker_switch or rank1_legacy_weakness_switch or rank1_structural_phase_switch or use_new
+        locked_ranker_switch
+        or rank1_legacy_weakness_switch
+        or rank1_structural_phase_switch
+        or use_new
     )
     if previous_switch_selected:
         head_near_zero_selected, head_near_zero_meta = None, {"reason": "previous-switch-selected"}
@@ -887,6 +892,31 @@ def solve_constant_grid_dp(
     head_near_zero_switch = bool(not previous_switch_selected and head_near_zero_selected is not None)
     if head_near_zero_switch:
         selected = head_near_zero_selected
+        use_new = True
+    rank1_negative_legacy_score_selected, rank1_negative_legacy_score_meta = (
+        choose_rank1_negative_legacy_score_candidate(
+            candidates=candidates,
+            selected_source=baseline_selected_source,
+            legacy_candidate=legacy_candidate,
+        )
+    )
+    rank1_negative_legacy_score_switch = bool(
+        not previous_switch_selected
+        and not head_near_zero_switch
+        and rank1_negative_legacy_score_selected is not None
+    )
+    if (
+        not rank1_negative_legacy_score_switch
+        and (previous_switch_selected or head_near_zero_switch)
+        and rank1_negative_legacy_score_selected is not None
+    ):
+        rank1_negative_legacy_score_meta = {
+            **rank1_negative_legacy_score_meta,
+            "selected": False,
+            "reason": "previous-switch-selected",
+        }
+    if rank1_negative_legacy_score_switch:
+        selected = rank1_negative_legacy_score_selected
         use_new = True
     integer_bpm_snap_meta: dict[str, Any] = {
         "snapped": False,
@@ -918,6 +948,8 @@ def solve_constant_grid_dp(
         guard = "constant-grid-dp-rank1-locked-legacy-weakness-switch"
     elif rank1_structural_phase_switch:
         guard = "constant-grid-dp-rank1-structural-phase-switch"
+    elif rank1_negative_legacy_score_switch:
+        guard = "constant-grid-dp-rank1-negative-legacy-score-switch"
     elif head_near_zero_switch:
         guard = "constant-grid-dp-head-near-zero-switch"
     elif confidence_level == "high" and use_new:
@@ -941,6 +973,8 @@ def solve_constant_grid_dp(
         if rank1_legacy_weakness_switch
         else _to_float(rank1_structural_phase_meta.get("probability"))
         if rank1_structural_phase_switch
+        else _to_float(rank1_negative_legacy_score_meta.get("gridScore"))
+        if rank1_negative_legacy_score_switch
         else selected_score
         if head_near_zero_switch
         else confidence if use_new else _to_float(selected.get("score"))
@@ -1010,6 +1044,10 @@ def solve_constant_grid_dp(
                 rank1_legacy_weakness_meta=rank1_legacy_weakness_meta,
                 rank1_structural_phase_switch=rank1_structural_phase_switch,
                 rank1_structural_phase_meta=rank1_structural_phase_meta,
+            ),
+            **rank1_negative_legacy_score_diagnostic_features(
+                rank1_negative_legacy_score_switch=rank1_negative_legacy_score_switch,
+                rank1_negative_legacy_score_meta=rank1_negative_legacy_score_meta,
             ),
             **head_near_zero_switch_diagnostic_features(
                 head_near_zero_switch=head_near_zero_switch,

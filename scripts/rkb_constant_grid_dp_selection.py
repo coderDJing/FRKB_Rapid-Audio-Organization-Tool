@@ -25,6 +25,12 @@ HEAD_NEAR_ZERO_TOP_MIN_FIRST_BEAT_MS = 90.0
 HEAD_NEAR_ZERO_MAX_BPM_DELTA = 0.5
 HEAD_NEAR_ZERO_LEGACY_WEAKNESS_MIN = 0.2
 HEAD_NEAR_ZERO_VERSION = "head-near-zero-v1"
+RANK1_NEGATIVE_LEGACY_SCORE_MIN_GRID_SCORE = 0.85
+RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_PATH_SCORE = 0.8
+RANK1_NEGATIVE_LEGACY_SCORE_MAX_LEGACY_SCORE = 0.0
+RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_DELTA_MS = 5.0
+RANK1_NEGATIVE_LEGACY_SCORE_MAX_BPM_DELTA = 0.08
+RANK1_NEGATIVE_LEGACY_SCORE_VERSION = "rank1-negative-legacy-score-v1"
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -588,6 +594,145 @@ def choose_head_near_zero_candidate(
     return {**selected, "features": features}, {**selected_meta, "selected": True, "reason": "selected"}
 
 
+def choose_rank1_negative_legacy_score_candidate(
+    *,
+    candidates: list[dict[str, Any]],
+    selected_source: str,
+    legacy_candidate: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    meta: dict[str, Any] = {
+        "enabled": True,
+        "selected": False,
+        "reason": "not-evaluated",
+        "candidateRank": 1,
+        "gridScore": 0.0,
+        "gridScoreMin": RANK1_NEGATIVE_LEGACY_SCORE_MIN_GRID_SCORE,
+        "phasePathScore": 0.0,
+        "phasePathScoreMin": RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_PATH_SCORE,
+        "legacyGridSolverScore": 999.0,
+        "legacyGridSolverScoreMax": RANK1_NEGATIVE_LEGACY_SCORE_MAX_LEGACY_SCORE,
+        "phaseDeltaAbsMs": 0.0,
+        "minPhaseDeltaAbsMs": RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_DELTA_MS,
+        "bpmDelta": 999.0,
+        "maxBpmDelta": RANK1_NEGATIVE_LEGACY_SCORE_MAX_BPM_DELTA,
+        "sameBarBeatOffsetMod4": False,
+        "downbeatRank": 0,
+        "version": RANK1_NEGATIVE_LEGACY_SCORE_VERSION,
+    }
+    if "legacy" not in selected_source.lower():
+        return None, {**meta, "reason": "selected-source-not-legacy"}
+    if legacy_candidate is None:
+        return None, {**meta, "reason": "no-legacy-candidate"}
+    if not candidates:
+        return None, {**meta, "reason": "no-candidates"}
+
+    legacy_features = (
+        legacy_candidate.get("features") if isinstance(legacy_candidate.get("features"), dict) else {}
+    )
+    rank1 = candidates[0]
+    rank1_features = rank1.get("features") if isinstance(rank1.get("features"), dict) else {}
+    required_rank1_feature_keys = ("phasePathScore", "downbeatRank")
+    missing_rank1_feature_keys = [
+        key for key in required_rank1_feature_keys if key not in rank1_features
+    ]
+    required_candidate_keys = ("score", "bpm", "firstBeatMs", "barBeatOffset")
+    missing_candidate_keys = [key for key in required_candidate_keys if key not in rank1]
+    missing_legacy_keys = [
+        key for key in ("bpm", "firstBeatMs", "barBeatOffset") if key not in legacy_candidate
+    ]
+    if "legacyGridSolverScore" not in legacy_features:
+        return None, {**meta, "reason": "missing-legacy-score"}
+    if missing_rank1_feature_keys:
+        return None, {**meta, "reason": "missing-rank1-feature"}
+    if missing_candidate_keys:
+        return None, {**meta, "reason": "missing-rank1-field"}
+    if missing_legacy_keys:
+        return None, {**meta, "reason": "missing-legacy-field"}
+    legacy_score = _to_float(legacy_features.get("legacyGridSolverScore"), 999.0)
+    grid_score = _to_float(rank1.get("score"))
+    phase_path_score = _to_float(rank1_features.get("phasePathScore"))
+    downbeat_rank = _to_int(rank1_features.get("downbeatRank"))
+    rank1_bpm = _to_float(rank1.get("bpm"))
+    legacy_bpm = _to_float(legacy_candidate.get("bpm"))
+    bpm_delta = abs(rank1_bpm - legacy_bpm)
+    interval_ms = 60000.0 / rank1_bpm if rank1_bpm > 0.0 else 0.0
+    phase_delta_abs_ms = abs(
+        _phase_delta_ms(
+            _to_float(rank1.get("firstBeatMs")),
+            _to_float(legacy_candidate.get("firstBeatMs")),
+            interval_ms,
+        )
+    )
+    same_bar_beat_offset_mod4 = (_to_int(rank1.get("barBeatOffset")) % 4) == (
+        _to_int(legacy_candidate.get("barBeatOffset")) % 4
+    )
+    next_meta = {
+        **meta,
+        "gridScore": _round_feature(grid_score),
+        "phasePathScore": _round_feature(phase_path_score),
+        "legacyGridSolverScore": _round_feature(legacy_score),
+        "phaseDeltaAbsMs": _round_feature(phase_delta_abs_ms),
+        "bpmDelta": _round_feature(bpm_delta),
+        "sameBarBeatOffsetMod4": same_bar_beat_offset_mod4,
+        "downbeatRank": downbeat_rank,
+    }
+    if legacy_score > RANK1_NEGATIVE_LEGACY_SCORE_MAX_LEGACY_SCORE:
+        return None, {**next_meta, "reason": "legacy-score-not-negative"}
+    if grid_score < RANK1_NEGATIVE_LEGACY_SCORE_MIN_GRID_SCORE:
+        return None, {**next_meta, "reason": "grid-score-too-low"}
+    if phase_path_score < RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_PATH_SCORE:
+        return None, {**next_meta, "reason": "phase-path-score-too-low"}
+    if phase_delta_abs_ms <= RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_DELTA_MS:
+        return None, {**next_meta, "reason": "phase-delta-not-material"}
+    if bpm_delta > RANK1_NEGATIVE_LEGACY_SCORE_MAX_BPM_DELTA:
+        return None, {**next_meta, "reason": "bpm-delta-too-large"}
+    if not same_bar_beat_offset_mod4:
+        return None, {**next_meta, "reason": "bar-offset-mod4-mismatch"}
+    if downbeat_rank != 0:
+        return None, {**next_meta, "reason": "downbeat-rank-not-zero"}
+
+    features = dict(rank1_features)
+    features.update(
+        {
+            "constantGridDpRank1NegativeLegacyScoreSwitch": True,
+            "constantGridDpRank1NegativeLegacyScoreGridScore": _round_feature(grid_score),
+            "constantGridDpRank1NegativeLegacyScoreGridScoreMin": (
+                RANK1_NEGATIVE_LEGACY_SCORE_MIN_GRID_SCORE
+            ),
+            "constantGridDpRank1NegativeLegacyScorePhasePathScore": _round_feature(
+                phase_path_score
+            ),
+            "constantGridDpRank1NegativeLegacyScorePhasePathScoreMin": (
+                RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_PATH_SCORE
+            ),
+            "constantGridDpRank1NegativeLegacyScoreLegacyScore": _round_feature(
+                legacy_score
+            ),
+            "constantGridDpRank1NegativeLegacyScoreLegacyScoreMax": (
+                RANK1_NEGATIVE_LEGACY_SCORE_MAX_LEGACY_SCORE
+            ),
+            "constantGridDpRank1NegativeLegacyScorePhaseDeltaAbsMs": (
+                _round_feature(phase_delta_abs_ms)
+            ),
+            "constantGridDpRank1NegativeLegacyScoreMinPhaseDeltaMs": (
+                RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_DELTA_MS
+            ),
+            "constantGridDpRank1NegativeLegacyScoreBpmDelta": _round_feature(bpm_delta),
+            "constantGridDpRank1NegativeLegacyScoreMaxBpmDelta": (
+                RANK1_NEGATIVE_LEGACY_SCORE_MAX_BPM_DELTA
+            ),
+            "constantGridDpRank1NegativeLegacyScoreSameBarBeatOffsetMod4": (
+                same_bar_beat_offset_mod4
+            ),
+            "constantGridDpRank1NegativeLegacyScoreDownbeatRank": downbeat_rank,
+            "constantGridDpRank1NegativeLegacyScoreVersion": (
+                RANK1_NEGATIVE_LEGACY_SCORE_VERSION
+            ),
+        }
+    )
+    return {**rank1, "features": features}, {**next_meta, "selected": True, "reason": "selected"}
+
+
 def rank1_switch_diagnostic_features(
     *,
     rank1_legacy_weakness_switch: bool,
@@ -699,6 +844,66 @@ def rank1_switch_diagnostic_features(
         ),
         "constantGridDpRank1StructuralPhaseVersion": str(
             rank1_structural_phase_meta.get("version") or ""
+        ),
+    }
+
+
+def rank1_negative_legacy_score_diagnostic_features(
+    *,
+    rank1_negative_legacy_score_switch: bool,
+    rank1_negative_legacy_score_meta: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "constantGridDpRank1NegativeLegacyScoreSwitch": rank1_negative_legacy_score_switch,
+        "constantGridDpRank1NegativeLegacyScoreReason": str(
+            rank1_negative_legacy_score_meta.get("reason") or ""
+        ),
+        "constantGridDpRank1NegativeLegacyScoreCandidateRank": _to_int(
+            rank1_negative_legacy_score_meta.get("candidateRank")
+        ),
+        "constantGridDpRank1NegativeLegacyScoreGridScore": _to_float(
+            rank1_negative_legacy_score_meta.get("gridScore")
+        ),
+        "constantGridDpRank1NegativeLegacyScoreGridScoreMin": _to_float(
+            rank1_negative_legacy_score_meta.get("gridScoreMin"),
+            RANK1_NEGATIVE_LEGACY_SCORE_MIN_GRID_SCORE,
+        ),
+        "constantGridDpRank1NegativeLegacyScorePhasePathScore": _to_float(
+            rank1_negative_legacy_score_meta.get("phasePathScore")
+        ),
+        "constantGridDpRank1NegativeLegacyScorePhasePathScoreMin": _to_float(
+            rank1_negative_legacy_score_meta.get("phasePathScoreMin"),
+            RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_PATH_SCORE,
+        ),
+        "constantGridDpRank1NegativeLegacyScoreLegacyScore": _to_float(
+            rank1_negative_legacy_score_meta.get("legacyGridSolverScore")
+        ),
+        "constantGridDpRank1NegativeLegacyScoreLegacyScoreMax": _to_float(
+            rank1_negative_legacy_score_meta.get("legacyGridSolverScoreMax"),
+            RANK1_NEGATIVE_LEGACY_SCORE_MAX_LEGACY_SCORE,
+        ),
+        "constantGridDpRank1NegativeLegacyScorePhaseDeltaAbsMs": _to_float(
+            rank1_negative_legacy_score_meta.get("phaseDeltaAbsMs")
+        ),
+        "constantGridDpRank1NegativeLegacyScoreMinPhaseDeltaMs": _to_float(
+            rank1_negative_legacy_score_meta.get("minPhaseDeltaAbsMs"),
+            RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_DELTA_MS,
+        ),
+        "constantGridDpRank1NegativeLegacyScoreBpmDelta": _to_float(
+            rank1_negative_legacy_score_meta.get("bpmDelta")
+        ),
+        "constantGridDpRank1NegativeLegacyScoreMaxBpmDelta": _to_float(
+            rank1_negative_legacy_score_meta.get("maxBpmDelta"),
+            RANK1_NEGATIVE_LEGACY_SCORE_MAX_BPM_DELTA,
+        ),
+        "constantGridDpRank1NegativeLegacyScoreSameBarBeatOffsetMod4": bool(
+            rank1_negative_legacy_score_meta.get("sameBarBeatOffsetMod4")
+        ),
+        "constantGridDpRank1NegativeLegacyScoreDownbeatRank": _to_int(
+            rank1_negative_legacy_score_meta.get("downbeatRank")
+        ),
+        "constantGridDpRank1NegativeLegacyScoreVersion": str(
+            rank1_negative_legacy_score_meta.get("version") or ""
         ),
     }
 
