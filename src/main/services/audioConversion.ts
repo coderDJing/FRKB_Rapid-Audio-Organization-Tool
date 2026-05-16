@@ -58,6 +58,7 @@ type StartPayload = {
 }
 
 const jobIdToChildren = new Map<string, child_process.ChildProcess>()
+const cancelledJobIds = new Set<string>()
 
 const getStringComment = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim()) return value
@@ -382,7 +383,10 @@ export async function startAudioConversion(
         titleKey: 'audio.convert',
         now: 0,
         total: files.length,
-        isInitial: files.length === 0
+        isInitial: files.length === 0,
+        cancelable: true,
+        cancelChannel: 'audio:convert:cancel',
+        cancelPayload: jobId
       })
     }
   } catch {}
@@ -410,6 +414,7 @@ export async function startAudioConversion(
   }
 
   const tasks: Array<() => Promise<void>> = files.map((src) => async () => {
+    if (cancelledJobIds.has(jobId)) return
     let lastFfmpegArgs: string[] = []
     let lastFfmpegStderr = ''
     let tmpPaths: string[] = []
@@ -619,8 +624,10 @@ export async function startAudioConversion(
           }
         }
       } catch (err) {
-        failed += 1
-        pushError(src, err, lastFfmpegStderr, lastFfmpegArgs)
+        if (!cancelledJobIds.has(jobId)) {
+          failed += 1
+          pushError(src, err, lastFfmpegStderr, lastFfmpegArgs)
+        }
         await Promise.all(
           tmpPaths.map(async (tmpPath) => {
             try {
@@ -644,8 +651,10 @@ export async function startAudioConversion(
 
       if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })
     } catch (e) {
-      failed += 1
-      pushError(src, e, lastFfmpegStderr, lastFfmpegArgs)
+      if (!cancelledJobIds.has(jobId)) {
+        failed += 1
+        pushError(src, e, lastFfmpegStderr, lastFfmpegArgs)
+      }
       // 清理临时文件
       for (const tmpPath of tmpPaths) {
         try {
@@ -665,10 +674,16 @@ export async function startAudioConversion(
           titleKey: 'audio.convert',
           now: done,
           total,
-          isInitial: done === 0
+          isInitial: done === 0,
+          cancelable: true,
+          cancelChannel: 'audio:convert:cancel',
+          cancelPayload: jobId
         })
     }
   })
+
+  const wasCancelled = cancelledJobIds.has(jobId)
+  cancelledJobIds.delete(jobId)
 
   if (success > 0 || backupCount > 0) {
     const compactResult = await compactSongListTrackNumbersByFilePaths([
@@ -699,7 +714,9 @@ export async function startAudioConversion(
         renamed,
         backupCount,
         fingerprintAddedCount,
-        durationMs: Date.now() - startedAt
+        durationMs: Date.now() - startedAt,
+        cancelledCount: wasCancelled ? files.length - success - failed - skipped : 0,
+        cancelled: wasCancelled
       },
       errors
     })
@@ -709,11 +726,11 @@ export async function startAudioConversion(
   return { jobId }
 }
 
-export function cancelAudioConversion(jobId: string) {
+export function cancelAudioConversion(mainWindow: BrowserWindow | null, jobId: string) {
+  cancelledJobIds.add(jobId)
   const child = jobIdToChildren.get(jobId)
   if (child) {
     try {
-      // 优先尝试发送 'q' 结束
       child.stdin?.write('q')
     } catch {}
     try {

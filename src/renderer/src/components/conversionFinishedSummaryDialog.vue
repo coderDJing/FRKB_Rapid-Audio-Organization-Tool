@@ -13,6 +13,8 @@ const props = defineProps<{
     backupCount: number
     fingerprintAddedCount: number
     durationMs?: number
+    cancelled?: boolean
+    cancelledCount?: number
   } | null
   errors?: Array<{
     filePath: string
@@ -58,6 +60,10 @@ const getFileName = (filePath?: string) => {
                 <div class="num">{{ summary?.failed || 0 }}</div>
                 <div class="cap">{{ t('convert.failed') }}</div>
               </div>
+              <div v-if="summary?.cancelled" class="chip warn">
+                <div class="num">{{ summary?.cancelledCount || 0 }}</div>
+                <div class="cap">{{ t('convert.userCancelled') }}</div>
+              </div>
               <div class="chip">
                 <div class="num">{{ formatDurationSec(summary?.durationMs) }}</div>
                 <div class="cap">{{ t('cloudSync.duration') }} ({{ t('player.seconds') }})</div>
@@ -65,7 +71,7 @@ const getFileName = (filePath?: string) => {
             </div>
           </div>
           <div class="section">
-            <div class="section-title">{{ t('import.overview') }}</div>
+            <div class="section-title">{{ t('convert.outputDetails') }}</div>
             <div class="chips">
               <div class="chip">
                 <div class="num">{{ summary?.renamed || 0 }}</div>
@@ -163,6 +169,12 @@ const getFileName = (filePath?: string) => {
 }
 .chip.success .num {
   color: #9fe870;
+}
+.chip.warn .num {
+  color: #ff9800;
+}
+.chip.warn .cap {
+  color: #ff9800;
 }
 .error-list {
   display: flex;

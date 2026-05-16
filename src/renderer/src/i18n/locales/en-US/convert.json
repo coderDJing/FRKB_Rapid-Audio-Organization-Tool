@@ -25,6 +25,8 @@
     "replaced": "Replaced original",
     "noNonMp3Files": "No non-MP3 files are available to convert, or MP3 copies already exist",
     "errorDetails": "Failure details",
+    "userCancelled": "Cancelled",
+    "outputDetails": "Output details",
     "backupCount": ""
   }
 }

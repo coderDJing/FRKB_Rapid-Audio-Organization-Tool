@@ -11,8 +11,8 @@ export function registerAudioConversionHandlers(getWindow: () => BrowserWindow |
     return await startAudioConversion(getWindow(), payload)
   })
 
-  ipcMain.on('audio:convert:cancel', (_e, jobId: string) => {
-    cancelAudioConversion(jobId)
+  ipcMain.handle('audio:convert:cancel', (_e, jobId: string) => {
+    cancelAudioConversion(getWindow(), jobId)
   })
 
   ipcMain.handle('audio:convert:list-target-formats', async () => {
