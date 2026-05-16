@@ -9,6 +9,8 @@ use napi::bindgen_prelude::*;
 mod horizontal_browse_transport_audio;
 #[path = "horizontal_browse_transport_engine_state.rs"]
 mod horizontal_browse_transport_engine_state;
+#[path = "horizontal_browse_transport_grid_sync.rs"]
+mod horizontal_browse_transport_grid_sync;
 #[path = "horizontal_browse_transport_napi.rs"]
 mod horizontal_browse_transport_napi;
 #[path = "horizontal_browse_transport_runtime.rs"]

@@ -8,6 +8,7 @@ type SharedSongGridPayload = {
   firstBeatMs?: number
   barBeatOffset?: number
   timeBasisOffsetMs?: number
+  beatGridSource?: ISongInfo['beatGridSource']
 } | null
 
 export const isSameHorizontalBrowseSongFilePath = (left: unknown, right: unknown) => {
@@ -85,6 +86,13 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
     nextSong.timeBasisOffsetMs !== payload.timeBasisOffsetMs
   ) {
     nextSong.timeBasisOffsetMs = payload.timeBasisOffsetMs
+    touched = true
+  }
+  if (
+    (payload.beatGridSource === 'manual' || payload.beatGridSource === 'analysis') &&
+    nextSong.beatGridSource !== payload.beatGridSource
+  ) {
+    nextSong.beatGridSource = payload.beatGridSource
     touched = true
   }
   return touched ? nextSong : song

@@ -54,6 +54,7 @@ import {
   loadSharedSongGridDefinition,
   loadSharedSongGridDefinitions,
   persistSharedSongGridDefinition,
+  shouldKeepManualSharedSongGridDefinition,
   type SharedSongGridDefinition
 } from '../services/sharedSongGrid'
 import { emitSongGridUpdated } from '../services/songGridEvents'
@@ -116,22 +117,42 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
 
 export function registerMixtapeHandlers() {
-  const persistAndBroadcastSharedGridBatch = async (
-    entries: SharedSongGridDefinition[]
+  const resolveWritableSharedGridEntries = async (
+    entries: SharedSongGridDefinition[],
+    beatGridSource: SharedSongGridDefinition['beatGridSource'] = 'analysis'
+  ): Promise<SharedSongGridDefinition[]> => {
+    const normalizedEntries = entries
+      .filter(
+        (item) =>
+          typeof item?.filePath === 'string' &&
+          item.filePath.trim().length > 0 &&
+          (item.bpm !== undefined ||
+            item.firstBeatMs !== undefined ||
+            item.barBeatOffset !== undefined ||
+            item.timeBasisOffsetMs !== undefined ||
+            item.beatGridAlgorithmVersion !== undefined)
+      )
+      .map((item) => ({ ...item, beatGridSource }))
+    if (!normalizedEntries.length) return []
+    const writableEntries: SharedSongGridDefinition[] = []
+    for (const item of normalizedEntries) {
+      if (beatGridSource === 'analysis') {
+        const current = await loadSharedSongGridDefinition(item.filePath).catch(
+          (): SharedSongGridDefinition | null => null
+        )
+        if (shouldKeepManualSharedSongGridDefinition(current, item)) continue
+      }
+      writableEntries.push(item)
+    }
+    return writableEntries
+  }
+
+  const persistAndBroadcastSharedGridEntries = async (
+    writableEntries: SharedSongGridDefinition[]
   ): Promise<void> => {
-    const normalizedEntries = entries.filter(
-      (item) =>
-        typeof item?.filePath === 'string' &&
-        item.filePath.trim().length > 0 &&
-        (item.bpm !== undefined ||
-          item.firstBeatMs !== undefined ||
-          item.barBeatOffset !== undefined ||
-          item.timeBasisOffsetMs !== undefined ||
-          item.beatGridAlgorithmVersion !== undefined)
-    )
-    if (!normalizedEntries.length) return
+    if (!writableEntries.length) return
     const results = await Promise.allSettled(
-      normalizedEntries.map((item) => persistSharedSongGridDefinition(item))
+      writableEntries.map((item) => persistSharedSongGridDefinition(item))
     )
     for (let index = 0; index < results.length; index += 1) {
       const result = results[index]
@@ -139,8 +160,16 @@ export function registerMixtapeHandlers() {
         emitSongGridUpdated(result.value)
         continue
       }
-      emitSongGridUpdated(normalizedEntries[index])
+      emitSongGridUpdated(writableEntries[index])
     }
+  }
+
+  const persistAndBroadcastSharedGridBatch = async (
+    entries: SharedSongGridDefinition[],
+    beatGridSource: SharedSongGridDefinition['beatGridSource'] = 'analysis'
+  ): Promise<void> => {
+    const writableEntries = await resolveWritableSharedGridEntries(entries, beatGridSource)
+    await persistAndBroadcastSharedGridEntries(writableEntries)
   }
 
   const hydrateMixtapeItemsGridFromShared = async (items: Array<{ filePath?: string }>) => {
@@ -672,10 +701,9 @@ export function registerMixtapeHandlers() {
         if (bpmAnalyzeFilePaths.length > 0) {
           // 预分析 BPM（后台，不阻塞返回）
           void analyzeMixtapeBpmBatchShared(bpmAnalyzeFilePaths)
-            .then((bpmResult) => {
+            .then(async (bpmResult) => {
               if (bpmResult.results.length > 0) {
-                upsertMixtapeItemGridByFilePath(bpmResult.results)
-                void persistAndBroadcastSharedGridBatch(
+                const writableGridResults = await resolveWritableSharedGridEntries(
                   bpmResult.results.map((item) => ({
                     filePath: item.filePath,
                     bpm: item.bpm,
@@ -685,9 +713,12 @@ export function registerMixtapeHandlers() {
                     beatGridAlgorithmVersion: item.beatGridAlgorithmVersion
                   }))
                 )
+                if (!writableGridResults.length) return
+                upsertMixtapeItemGridByFilePath(writableGridResults)
+                void persistAndBroadcastSharedGridEntries(writableGridResults)
                 try {
                   mixtapeWindow.broadcast?.('mixtape-bpm-batch-ready', {
-                    results: bpmResult.results
+                    results: writableGridResults
                   })
                 } catch {}
               }
@@ -744,9 +775,9 @@ export function registerMixtapeHandlers() {
     const input = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     try {
       const result = await analyzeMixtapeBpmBatchShared(input)
+      let writableGridResults: SharedSongGridDefinition[] = []
       if (result.results.length > 0) {
-        upsertMixtapeItemGridByFilePath(result.results)
-        await persistAndBroadcastSharedGridBatch(
+        writableGridResults = await resolveWritableSharedGridEntries(
           result.results.map((item) => ({
             filePath: item.filePath,
             bpm: item.bpm,
@@ -756,8 +787,12 @@ export function registerMixtapeHandlers() {
             beatGridAlgorithmVersion: item.beatGridAlgorithmVersion
           }))
         )
+        if (writableGridResults.length > 0) {
+          upsertMixtapeItemGridByFilePath(writableGridResults)
+          await persistAndBroadcastSharedGridEntries(writableGridResults)
+        }
       }
-      return result
+      return result.results.length > 0 ? { ...result, results: writableGridResults } : result
     } catch (error) {
       log.error('[mixtape] BPM analyze invoke failed', {
         requested: input.length,
@@ -839,15 +874,18 @@ export function registerMixtapeHandlers() {
           beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
         }
       ])
-      await persistAndBroadcastSharedGridBatch([
-        {
-          filePath,
-          barBeatOffset: hasOffset ? rawOffset : undefined,
-          firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
-          bpm: hasBpm ? rawBpm : undefined,
-          beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
-        }
-      ])
+      await persistAndBroadcastSharedGridBatch(
+        [
+          {
+            filePath,
+            barBeatOffset: hasOffset ? rawOffset : undefined,
+            firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
+            bpm: hasBpm ? rawBpm : undefined,
+            beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
+          }
+        ],
+        'manual'
+      )
       return result
     }
   )

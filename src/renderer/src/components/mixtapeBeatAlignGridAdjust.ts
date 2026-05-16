@@ -18,8 +18,13 @@ type UseMixtapeBeatAlignGridAdjustParams = {
   clampPreviewStart: (value: number) => number
   getPreviewPlaybackSec: () => number
   schedulePreviewDraw: () => void
+  applyPlaybackPhaseCompensation?: (deltaMs: number) => void
   barBeatInterval: number
   barLineHitRadiusPx: number
+}
+
+type GridShiftOptions = {
+  preservePlaybackPhase?: boolean
 }
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -172,7 +177,7 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
     params.schedulePreviewDraw()
   }
 
-  const handleGridShift = (delta: number) => {
+  const handleGridShift = (delta: number, options: GridShiftOptions = {}) => {
     if (!canAdjustGrid.value) return
     const bpmValue = Number(params.bpm.value)
     if (!Number.isFinite(bpmValue) || bpmValue <= 0) return
@@ -181,6 +186,9 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
     const cycleMs = beatMs * Math.max(1, Math.floor(params.barBeatInterval || 32))
     const nextFirstBeatMs = Number(params.previewFirstBeatMs.value) + Number(delta)
     params.previewFirstBeatMs.value = wrapMsInCycle(nextFirstBeatMs, cycleMs)
+    if (options.preservePlaybackPhase === true) {
+      params.applyPlaybackPhaseCompensation?.(delta)
+    }
     params.schedulePreviewDraw()
   }
 

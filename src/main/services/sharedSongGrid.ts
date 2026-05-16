@@ -15,6 +15,7 @@ type SharedGridInfo = Partial<ISongInfo> & {
   firstBeatMs?: unknown
   barBeatOffset?: unknown
   timeBasisOffsetMs?: unknown
+  beatGridSource?: unknown
   beatThisWindowCount?: unknown
   beatGridAlgorithmVersion?: unknown
 }
@@ -25,6 +26,7 @@ export type SharedSongGridDefinition = {
   firstBeatMs?: number
   barBeatOffset?: number
   timeBasisOffsetMs?: number
+  beatGridSource?: 'manual' | 'analysis'
   beatThisWindowCount?: number
   beatGridAlgorithmVersion?: number
 }
@@ -63,6 +65,9 @@ const normalizeTimeBasisOffsetMs = (value: unknown): number | undefined => {
   return Number(numeric.toFixed(3))
 }
 
+const normalizeBeatGridSource = (value: unknown): 'manual' | 'analysis' | undefined =>
+  value === 'manual' || value === 'analysis' ? value : undefined
+
 const normalizeBeatThisWindowCount = (value: unknown): number | undefined => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric <= 0) return undefined
@@ -79,6 +84,38 @@ const hasSharedGridValue = (
     value.timeBasisOffsetMs !== undefined ||
     value.beatThisWindowCount !== undefined ||
     value.beatGridAlgorithmVersion !== undefined)
+
+const differsWhenNextValueIsPresent = <T>(
+  current: unknown,
+  next: unknown,
+  normalize: (value: unknown) => T | undefined
+) => {
+  const nextValue = normalize(next)
+  if (nextValue === undefined) return false
+  return normalize(current) !== nextValue
+}
+
+export const shouldKeepManualSharedSongGridDefinition = (
+  current: SharedSongGridDefinition | null | undefined,
+  next: SharedSongGridDefinition | null | undefined
+) => {
+  if (current?.beatGridSource !== 'manual' || !next) return false
+  if (next.beatGridSource === 'analysis') return true
+  return (
+    differsWhenNextValueIsPresent(current.bpm, next.bpm, normalizeBpm) ||
+    differsWhenNextValueIsPresent(current.firstBeatMs, next.firstBeatMs, normalizeFirstBeatMs) ||
+    differsWhenNextValueIsPresent(
+      current.barBeatOffset,
+      next.barBeatOffset,
+      normalizeBarBeatOffset
+    ) ||
+    differsWhenNextValueIsPresent(
+      current.timeBasisOffsetMs,
+      next.timeBasisOffsetMs,
+      normalizeTimeBasisOffsetMs
+    )
+  )
+}
 
 const parseInfoJson = (value: unknown): SharedGridInfo | null => {
   if (typeof value !== 'string' || !value.trim()) return null
@@ -101,6 +138,7 @@ const extractSharedGridFromInfo = (
   const firstBeatMs = normalizeFirstBeatMs(info.firstBeatMs)
   const barBeatOffset = normalizeBarBeatOffset(info.barBeatOffset)
   const timeBasisOffsetMs = normalizeTimeBasisOffsetMs(info.timeBasisOffsetMs)
+  const beatGridSource = normalizeBeatGridSource(info.beatGridSource)
   const beatThisWindowCount = normalizeBeatThisWindowCount(info.beatThisWindowCount)
   const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(info.beatGridAlgorithmVersion)
   if (
@@ -119,6 +157,7 @@ const extractSharedGridFromInfo = (
     firstBeatMs,
     barBeatOffset,
     timeBasisOffsetMs,
+    beatGridSource,
     beatThisWindowCount,
     beatGridAlgorithmVersion
   }
@@ -136,6 +175,7 @@ const mergeSharedGridDefinition = (
     firstBeatMs: next.firstBeatMs ?? base.firstBeatMs,
     barBeatOffset: next.barBeatOffset ?? base.barBeatOffset,
     timeBasisOffsetMs: next.timeBasisOffsetMs ?? base.timeBasisOffsetMs,
+    beatGridSource: next.beatGridSource ?? base.beatGridSource,
     beatThisWindowCount: next.beatThisWindowCount ?? base.beatThisWindowCount,
     beatGridAlgorithmVersion: next.beatGridAlgorithmVersion ?? base.beatGridAlgorithmVersion
   }
@@ -211,6 +251,7 @@ export async function persistSharedSongGridDefinition(
   const firstBeatMs = normalizeFirstBeatMs(input?.firstBeatMs)
   const barBeatOffset = normalizeBarBeatOffset(input?.barBeatOffset)
   const timeBasisOffsetMs = normalizeTimeBasisOffsetMs(input?.timeBasisOffsetMs)
+  const beatGridSource = normalizeBeatGridSource(input?.beatGridSource)
   const beatThisWindowCount = normalizeBeatThisWindowCount(input?.beatThisWindowCount)
   const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
     input?.beatGridAlgorithmVersion
@@ -264,6 +305,9 @@ export async function persistSharedSongGridDefinition(
   }
   if (timeBasisOffsetMs !== undefined) {
     normalizedInfo.timeBasisOffsetMs = timeBasisOffsetMs
+  }
+  if (beatGridSource !== undefined) {
+    normalizedInfo.beatGridSource = beatGridSource
   }
   if (beatThisWindowCount !== undefined) {
     normalizedInfo.beatThisWindowCount = beatThisWindowCount

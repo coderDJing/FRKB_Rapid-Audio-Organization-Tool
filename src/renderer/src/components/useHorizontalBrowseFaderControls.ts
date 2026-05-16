@@ -61,8 +61,10 @@ export const useHorizontalBrowseFaderControls = (
   const deactivateDualTransportSync = () => {
     if (!dualTransportSyncEnabled.value) return
     dualTransportSyncEnabled.value = false
-    void params.nativeTransport.setSyncEnabled('top', false).catch(() => undefined)
-    void params.nativeTransport.setSyncEnabled('bottom', false).catch(() => undefined)
+    void Promise.allSettled([
+      params.nativeTransport.setSyncEnabled('top', false),
+      params.nativeTransport.setSyncEnabled('bottom', false)
+    ])
   }
 
   const resolveDualTransportLeader = (sourceDeck?: DeckKey): DeckKey => {
@@ -86,7 +88,8 @@ export const useHorizontalBrowseFaderControls = (
     await params.nativeTransport.setLeader(leader)
     await params.nativeTransport.setSyncEnabled('top', true)
     await params.nativeTransport.setSyncEnabled('bottom', true)
-    await params.nativeTransport.alignToLeader(follower, params.resolveDeckCurrentSeconds(follower))
+    const alignTargetSec = params.resolveDeckCurrentSeconds(follower)
+    await params.nativeTransport.alignToLeader(follower, alignTargetSec)
     if (topWasPlaying || bottomWasPlaying) {
       if (!topWasPlaying) {
         await params.nativeTransport.setPlaying('top', true)

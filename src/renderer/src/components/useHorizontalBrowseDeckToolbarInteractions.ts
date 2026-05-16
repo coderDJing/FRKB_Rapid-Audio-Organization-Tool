@@ -4,17 +4,20 @@ import {
   parsePreviewBpmInput
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
-import type { HorizontalBrowseGridToolbarState } from '@renderer/components/useHorizontalBrowseGridToolbar'
+import type {
+  HorizontalBrowseGridShiftOptions,
+  HorizontalBrowseGridToolbarState
+} from '@renderer/components/useHorizontalBrowseGridToolbar'
 
 type HorizontalBrowseDeckToolbarState = HorizontalBrowseGridToolbarState
 
 type HorizontalBrowseDetailExpose = {
   toggleBarLinePicking?: () => void
   setBarLineAtPlayhead?: () => void
-  shiftGridLargeLeft?: () => void
-  shiftGridSmallLeft?: () => void
-  shiftGridSmallRight?: () => void
-  shiftGridLargeRight?: () => void
+  shiftGridLargeLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridSmallLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridSmallRight?: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridLargeRight?: (options?: HorizontalBrowseGridShiftOptions) => void
   toggleMetronome?: () => void
   cycleMetronomeVolume?: () => void
 }
@@ -27,6 +30,7 @@ type UseHorizontalBrowseDeckToolbarInteractionsParams = {
   touchDeckInteraction: (deck: HorizontalBrowseDeckKey) => void
   resolveDetailRef: (deck: HorizontalBrowseDeckKey) => HorizontalBrowseDetailExpose | null
   resolveDeckToolbarBpmInputValue: (deck: HorizontalBrowseDeckKey) => string
+  shouldPreserveGridShiftPhase: (deck: HorizontalBrowseDeckKey) => boolean
   setDeckTargetBpm: (deck: HorizontalBrowseDeckKey, targetBpm: number) => Promise<unknown>
 }
 
@@ -35,6 +39,11 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
 ) => {
   const resolveToolbarStateRef = (deck: HorizontalBrowseDeckKey) =>
     deck === 'top' ? params.topDeckToolbarState : params.bottomDeckToolbarState
+
+  const resolveGridShiftOptions = (
+    deck: HorizontalBrowseDeckKey
+  ): HorizontalBrowseGridShiftOptions =>
+    params.shouldPreserveGridShiftPhase(deck) ? { preservePlaybackPhase: true } : {}
 
   const handleToolbarStateChange = (
     deck: HorizontalBrowseDeckKey,
@@ -62,22 +71,22 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
 
   const handleDeckGridShiftLargeLeft = (deck: HorizontalBrowseDeckKey) => {
     params.touchDeckInteraction(deck)
-    params.resolveDetailRef(deck)?.shiftGridLargeLeft?.()
+    params.resolveDetailRef(deck)?.shiftGridLargeLeft?.(resolveGridShiftOptions(deck))
   }
 
   const handleDeckGridShiftSmallLeft = (deck: HorizontalBrowseDeckKey) => {
     params.touchDeckInteraction(deck)
-    params.resolveDetailRef(deck)?.shiftGridSmallLeft?.()
+    params.resolveDetailRef(deck)?.shiftGridSmallLeft?.(resolveGridShiftOptions(deck))
   }
 
   const handleDeckGridShiftSmallRight = (deck: HorizontalBrowseDeckKey) => {
     params.touchDeckInteraction(deck)
-    params.resolveDetailRef(deck)?.shiftGridSmallRight?.()
+    params.resolveDetailRef(deck)?.shiftGridSmallRight?.(resolveGridShiftOptions(deck))
   }
 
   const handleDeckGridShiftLargeRight = (deck: HorizontalBrowseDeckKey) => {
     params.touchDeckInteraction(deck)
-    params.resolveDetailRef(deck)?.shiftGridLargeRight?.()
+    params.resolveDetailRef(deck)?.shiftGridLargeRight?.(resolveGridShiftOptions(deck))
   }
 
   const handleDeckMetronomeToggle = (deck: HorizontalBrowseDeckKey) => {

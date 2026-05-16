@@ -633,6 +633,7 @@ impl HorizontalBrowseTransportEngine {
     bar_beat_offset: Option<f64>,
     time_basis_offset_ms: Option<f64>,
   ) {
+    let sync_reference = self.resolve_grid_change_sync_reference(deck);
     self.mark_state_changed();
     {
       let target = self.deck_mut(deck);
@@ -654,7 +655,12 @@ impl HorizontalBrowseTransportEngine {
       }
       target.metronome_state.next_beat_index = None;
     }
-    self.relax_sync_lock_after_grid_change(deck);
+    let kept_full_sync = sync_reference
+      .map(|reference| self.apply_grid_change_sync_compensation(deck, reference))
+      .unwrap_or(false);
+    if !kept_full_sync {
+      self.relax_sync_lock_after_grid_change(deck);
+    }
     self.refresh_sync_state(false);
     self.sync_loop_range_for_deck(DeckId::Top);
     self.sync_loop_range_for_deck(DeckId::Bottom);

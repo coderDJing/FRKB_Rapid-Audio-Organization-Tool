@@ -34,6 +34,7 @@ import { useHorizontalBrowseDeckSongs } from '@renderer/components/useHorizontal
 import { useHorizontalBrowseHotkeys } from '@renderer/components/useHorizontalBrowseHotkeys'
 import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
 import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/components/useHorizontalBrowseDeckToolbarInteractions'
+import type { HorizontalBrowseGridShiftOptions } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import { useHorizontalBrowseDeckTransportInteractions } from '@renderer/components/useHorizontalBrowseDeckTransportInteractions'
 import { useHorizontalBrowseEditDeckNavigation } from '@renderer/components/useHorizontalBrowseEditDeckNavigation'
 import { useHorizontalBrowseDeckHotCues } from '@renderer/components/useHorizontalBrowseDeckHotCues'
@@ -68,10 +69,10 @@ const normalizePath = (value: string | null | undefined) =>
 type HorizontalBrowseDeckDetailLaneExpose = {
   toggleBarLinePicking?: () => void
   setBarLineAtPlayhead?: () => void
-  shiftGridLargeLeft?: () => void
-  shiftGridSmallLeft?: () => void
-  shiftGridSmallRight?: () => void
-  shiftGridLargeRight?: () => void
+  shiftGridLargeLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridSmallLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridSmallRight?: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridLargeRight?: (options?: HorizontalBrowseGridShiftOptions) => void
   toggleMetronome?: () => void
   cycleMetronomeVolume?: () => void
 }
@@ -594,6 +595,11 @@ const handleDetailZoomChange = (payload: {
   handleSharedDetailZoomChange(payload)
 }
 
+const shouldPreserveGridShiftPhase = (deck: DeckKey) => {
+  const snapshot = resolveTransportDeckSnapshot(deck)
+  return snapshot.syncEnabled && snapshot.syncLock === 'full'
+}
+
 const {
   handleToolbarStateChange,
   handleDeckBarLinePickingToggle,
@@ -614,6 +620,7 @@ const {
   touchDeckInteraction,
   resolveDetailRef,
   resolveDeckToolbarBpmInputValue,
+  shouldPreserveGridShiftPhase,
   setDeckTargetBpm
 })
 

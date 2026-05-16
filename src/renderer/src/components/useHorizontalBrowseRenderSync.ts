@@ -14,6 +14,9 @@ export type HorizontalBrowseRenderSyncOptions = {
 
 type UseHorizontalBrowseRenderSyncParams = {
   nativeTransport: {
+    state?: {
+      stateRevision?: number
+    }
     snapshot: (nowMs?: number) => Promise<unknown>
   }
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
@@ -23,6 +26,7 @@ type UseHorizontalBrowseRenderSyncParams = {
 const TRANSPORT_SNAPSHOT_FALLBACK_INTERVAL_IDLE_MS = 1000
 const TRANSPORT_SNAPSHOT_FALLBACK_INTERVAL_PLAYING_MS = 4000
 const RENDER_SYNC_REANCHOR_DRIFT_SEC = 0.35
+const RENDER_SYNC_FULL_SYNC_PHASE_REANCHOR_SEC = 0.002
 const RENDER_SYNC_PENDING_INTENT_EPSILON_SEC = 0.05
 const RENDER_SYNC_PENDING_INTENT_MAX_MS = 1500
 
@@ -68,6 +72,10 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     top: '',
     bottom: ''
   })
+  const deckRenderStateRevision = reactive<Record<DeckKey, number>>({
+    top: 0,
+    bottom: 0
+  })
   const pendingRenderSeekIntent = reactive<Record<DeckKey, PendingRenderSeekIntent | null>>({
     top: null,
     bottom: null
@@ -109,6 +117,11 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       Number(snapshot.loopStartSec || 0).toFixed(6),
       Number(snapshot.loopEndSec || 0).toFixed(6)
     ].join('|')
+
+  const resolveTransportStateRevision = () => {
+    const revision = Number(params.nativeTransport.state?.stateRevision)
+    return Number.isFinite(revision) ? Math.max(0, Math.floor(revision)) : 0
+  }
 
   const resolveForcedDecks = (target?: HorizontalBrowseRenderSyncTarget) => {
     if (!target) return new Set<DeckKey>()
@@ -178,6 +191,12 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const signature = buildDeckRenderSnapshotSignature(snapshot)
     const previousSignature = deckRenderSnapshotSignature[deck]
     const signatureChanged = previousSignature !== signature
+    const transportStateRevision = resolveTransportStateRevision()
+    const previousStateRevision = deckRenderStateRevision[deck]
+    const stateRevisionChanged =
+      transportStateRevision > 0 &&
+      previousStateRevision > 0 &&
+      transportStateRevision !== previousStateRevision
     const playbackSnapshotAuthoritative = !snapshot.playing || snapshot.playingAudible
     const previousBaseAtMs = deckRenderSyncBaseAtMs[deck]
     const stalePlayingSnapshot =
@@ -195,15 +214,23 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       return
     }
     const driftSec = Math.abs(snapshotSec - estimatedSec)
+    const fullSyncPhaseChanged =
+      stateRevisionChanged &&
+      snapshot.syncEnabled &&
+      snapshot.syncLock === 'full' &&
+      playbackSnapshotAuthoritative &&
+      driftSec >= RENDER_SYNC_FULL_SYNC_PHASE_REANCHOR_SEC
     const shouldReanchor =
       force ||
       !previousSignature ||
       !snapshot.playing ||
       signatureChanged ||
+      fullSyncPhaseChanged ||
       (playbackSnapshotAuthoritative && driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)
     const shouldBumpPlaybackRevision =
       shouldReanchor &&
       (force ||
+        fullSyncPhaseChanged ||
         (snapshot.playing &&
           (!previousSignature || signatureChanged || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)))
 
@@ -215,6 +242,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       }
     }
     deckRenderSnapshotSignature[deck] = signature
+    deckRenderStateRevision[deck] = transportStateRevision
 
     const nextSec = shouldReanchor
       ? estimateDeckRenderCurrentSeconds(deck, renderNowMs)

@@ -22,6 +22,7 @@ type SharedSongGridPayload = {
   firstBeatMs?: number
   barBeatOffset?: number
   timeBasisOffsetMs?: number
+  beatGridSource?: ISongInfo['beatGridSource']
 } | null
 
 type UseHorizontalBrowseDeckSongSyncParams = {
@@ -82,7 +83,6 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
   const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) => {
     const nativeGridPayload = buildNativeGridPayload(payload)
     const nativeUpdates: Promise<unknown>[] = []
-    let touched = false
     const topSong = params.topDeckSong.value
     if (topSong) {
       if (patchDeckSongSharedGrid(topSong, payload)) {
@@ -91,7 +91,6 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
         if (nativeGridPayload) {
           nativeUpdates.push(params.setDeckBeatGridToNative('top', nativeGridPayload))
         }
-        touched = true
       }
     }
 
@@ -103,14 +102,12 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
         if (nativeGridPayload) {
           nativeUpdates.push(params.setDeckBeatGridToNative('bottom', nativeGridPayload))
         }
-        touched = true
       }
     }
 
-    if (!touched || nativeUpdates.length === 0) {
-      return
+    if (nativeUpdates.length > 0) {
+      void Promise.allSettled(nativeUpdates)
     }
-    void Promise.allSettled(nativeUpdates)
   }
 
   const handleSongKeyUpdated = (

@@ -42,6 +42,7 @@ type FrameState = {
   waveformRenderStyle: 'columns' | 'raw-curve'
   preferRawPeaksOnly: boolean
   themeVariant: 'light' | 'dark'
+  playbackSyncRevision: number
 }
 
 type PlaybackAnimationState = {
@@ -80,25 +81,20 @@ let playbackAnimation: PlaybackAnimationState | null = null
 let playbackAnimationToken = 0
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
 let playbackRaf = 0
-
 const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => {
   const scope = self as typeof globalThis & {
     postMessage: (payload: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => void
   }
   scope.postMessage(message)
 }
-
 const resetFrameState = () => {
   lastFrame = null
   lastWaveformScrollShiftScaledPx = null
 }
-
 const bumpLiveRawRevision = () => {
   liveRawRevision += 1
 }
-
 const resolveWorkerAnimationFrameScope = () => self as WorkerAnimationFrameScope
-
 const clearPlaybackFrameSchedule = () => {
   if (playbackTimer) {
     clearTimeout(playbackTimer)
@@ -430,7 +426,8 @@ const buildFrameState = (
   waveformLayout: request.waveformLayout,
   waveformRenderStyle: request.waveformRenderStyle,
   preferRawPeaksOnly: request.preferRawPeaksOnly,
-  themeVariant: request.themeVariant
+  themeVariant: request.themeVariant,
+  playbackSyncRevision: Math.max(0, Math.floor(Number(request.playbackSyncRevision) || 0))
 })
 
 const createMixxxData = (rawData: RawWaveformData | null): MixxxWaveformData | null =>
@@ -555,7 +552,8 @@ const canReusePreviousFrame = (
     lastFrame.waveformLayout === current.waveformLayout &&
     lastFrame.waveformRenderStyle === current.waveformRenderStyle &&
     lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly &&
-    lastFrame.themeVariant === current.themeVariant
+    lastFrame.themeVariant === current.themeVariant &&
+    lastFrame.playbackSyncRevision === current.playbackSyncRevision
   )
 }
 
@@ -583,7 +581,8 @@ const canReuseDirtySegment = (
     lastFrame.waveformLayout === current.waveformLayout &&
     lastFrame.waveformRenderStyle === current.waveformRenderStyle &&
     lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly &&
-    lastFrame.themeVariant === current.themeVariant
+    lastFrame.themeVariant === current.themeVariant &&
+    lastFrame.playbackSyncRevision === current.playbackSyncRevision
   )
 }
 

@@ -27,6 +27,10 @@ export type HorizontalBrowseGridToolbarState = {
   canAdjustMetronomeVolume: boolean
 }
 
+export type HorizontalBrowseGridShiftOptions = {
+  preservePlaybackPhase?: boolean
+}
+
 type UseHorizontalBrowseGridToolbarParams = {
   canAdjustGrid: Ref<boolean>
   previewLoading: Ref<boolean>
@@ -54,7 +58,7 @@ type UseHorizontalBrowseGridToolbarParams = {
   resetBarLinePicking: () => void
   handleBarLinePickingToggle: () => void
   handleSetBarLineAtPlayhead: () => void
-  handleGridShift: (deltaMs: number) => void
+  handleGridShift: (deltaMs: number, options?: HorizontalBrowseGridShiftOptions) => void
   handleMetronomeToggle: () => void
   handleMetronomeVolumeCycle: () => void
 }
@@ -157,8 +161,8 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     params.schedulePersistGridDefinition()
   }
 
-  const shiftGrid = (deltaMs: number) => {
-    params.handleGridShift(deltaMs)
+  const shiftGrid = (deltaMs: number, options?: HorizontalBrowseGridShiftOptions) => {
+    params.handleGridShift(deltaMs, options)
     emitToolbarState()
     params.schedulePersistGridDefinition()
   }

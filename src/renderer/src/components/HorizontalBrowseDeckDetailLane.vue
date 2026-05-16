@@ -2,7 +2,10 @@
 import { ref } from 'vue'
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import HorizontalBrowseRawWaveformDetail from '@renderer/components/HorizontalBrowseRawWaveformDetail.vue'
-import type { HorizontalBrowseGridToolbarState } from '@renderer/components/useHorizontalBrowseGridToolbar'
+import type {
+  HorizontalBrowseGridShiftOptions,
+  HorizontalBrowseGridToolbarState
+} from '@renderer/components/useHorizontalBrowseGridToolbar'
 
 type HorizontalBrowseSharedZoomState = {
   value: number
@@ -19,10 +22,10 @@ type HorizontalBrowseLoopRange = {
 type HorizontalBrowseRawWaveformDetailExpose = {
   toggleBarLinePicking: () => void
   setBarLineAtPlayhead: () => void
-  shiftGridSmallLeft: () => void
-  shiftGridLargeLeft: () => void
-  shiftGridSmallRight: () => void
-  shiftGridLargeRight: () => void
+  shiftGridSmallLeft: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridLargeLeft: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridSmallRight: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridLargeRight: (options?: HorizontalBrowseGridShiftOptions) => void
   updateBpmInput: (value: string) => void
   blurBpmInput: () => void
   tapBpm: () => void
@@ -75,10 +78,14 @@ const detailRef = ref<HorizontalBrowseRawWaveformDetailExpose | null>(null)
 defineExpose({
   toggleBarLinePicking: () => detailRef.value?.toggleBarLinePicking?.(),
   setBarLineAtPlayhead: () => detailRef.value?.setBarLineAtPlayhead?.(),
-  shiftGridLargeLeft: () => detailRef.value?.shiftGridLargeLeft?.(),
-  shiftGridSmallLeft: () => detailRef.value?.shiftGridSmallLeft?.(),
-  shiftGridSmallRight: () => detailRef.value?.shiftGridSmallRight?.(),
-  shiftGridLargeRight: () => detailRef.value?.shiftGridLargeRight?.(),
+  shiftGridLargeLeft: (options?: HorizontalBrowseGridShiftOptions) =>
+    detailRef.value?.shiftGridLargeLeft?.(options),
+  shiftGridSmallLeft: (options?: HorizontalBrowseGridShiftOptions) =>
+    detailRef.value?.shiftGridSmallLeft?.(options),
+  shiftGridSmallRight: (options?: HorizontalBrowseGridShiftOptions) =>
+    detailRef.value?.shiftGridSmallRight?.(options),
+  shiftGridLargeRight: (options?: HorizontalBrowseGridShiftOptions) =>
+    detailRef.value?.shiftGridLargeRight?.(options),
   updateBpmInput: (value: string) => detailRef.value?.updateBpmInput?.(value),
   blurBpmInput: () => detailRef.value?.blurBpmInput?.(),
   tapBpm: () => detailRef.value?.tapBpm?.(),

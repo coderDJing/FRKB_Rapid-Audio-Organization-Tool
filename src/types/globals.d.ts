@@ -46,6 +46,7 @@ interface ISongInfo {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  beatGridSource?: 'manual' | 'analysis'
   playlistTrackNumber?: number
   timeBasisOffsetMs?: number
   beatThisEstimatedDrift128Ms?: number

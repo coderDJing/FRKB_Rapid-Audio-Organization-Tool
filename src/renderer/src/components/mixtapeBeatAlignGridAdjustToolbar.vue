@@ -53,14 +53,14 @@ type ShiftEventName =
   | 'shift-right-large'
 
 const HOLD_START_DELAY_MS = 1000
-const HOLD_INTERVAL_MS = 250
+const HOLD_REPEAT_INTERVAL_MS = 300
 const BPM_DRAG_THRESHOLD_PX = 4
 const BPM_DRAG_BPM_PER_SCREEN = 40
 
 let holdStartTimer: ReturnType<typeof setTimeout> | null = null
 let holdRepeatTimer: ReturnType<typeof setInterval> | null = null
 let holdEventName: ShiftEventName | null = null
-let suppressNextClick = false
+let suppressNextClickFor: ShiftEventName | null = null
 let bpmDragPointerId: number | null = null
 let bpmDragStartY = 0
 let bpmDragStartValue = 0
@@ -68,7 +68,7 @@ let bpmDragActive = false
 let bpmDragInputTarget: HTMLInputElement | null = null
 let bodyUserSelectBeforeBpmDrag = ''
 
-const clearShiftHold = () => {
+const clearShiftHoldTimers = () => {
   if (holdStartTimer) {
     clearTimeout(holdStartTimer)
     holdStartTimer = null
@@ -97,30 +97,47 @@ const emitShift = (eventName: ShiftEventName) => {
   emit('shift-right-large')
 }
 
-const handleShiftPointerDown = (eventName: ShiftEventName) => {
-  if (props.disabled) return
-  clearShiftHold()
+const handleShiftPointerDown = (eventName: ShiftEventName, event?: PointerEvent) => {
+  if (props.disabled || (event && event.button !== 0)) return
+  clearShiftHoldTimers()
+  suppressNextClickFor = null
   holdEventName = eventName
-  suppressNextClick = false
   holdStartTimer = setTimeout(() => {
     if (!holdEventName || props.disabled) return
-    suppressNextClick = true
+    suppressNextClickFor = holdEventName
     emitShift(holdEventName)
     holdRepeatTimer = setInterval(() => {
       if (!holdEventName || props.disabled) return
       emitShift(holdEventName)
-    }, HOLD_INTERVAL_MS)
+    }, HOLD_REPEAT_INTERVAL_MS)
   }, HOLD_START_DELAY_MS)
 }
 
-const handleShiftPointerEnd = () => {
-  clearShiftHold()
+const handleShiftPointerUp = (eventName: ShiftEventName) => {
+  const shouldSuppressNextClick = holdRepeatTimer !== null && suppressNextClickFor === eventName
+  clearShiftHoldTimers()
+  suppressNextClickFor = shouldSuppressNextClick ? eventName : null
+}
+
+const handleShiftPointerCancel = () => {
+  clearShiftHoldTimers()
+  suppressNextClickFor = null
+}
+
+const handleShiftBlur = () => {
+  clearShiftHoldTimers()
+  suppressNextClickFor = null
+}
+
+const handleShiftLostPointerCapture = () => {
+  clearShiftHoldTimers()
+  suppressNextClickFor = null
 }
 
 const handleShiftClick = (eventName: ShiftEventName) => {
   if (props.disabled) return
-  if (suppressNextClick) {
-    suppressNextClick = false
+  if (suppressNextClickFor === eventName) {
+    suppressNextClickFor = null
     return
   }
   emitShift(eventName)
@@ -256,7 +273,8 @@ const handleBpmPointerDown = (event: PointerEvent) => {
 }
 
 onBeforeUnmount(() => {
-  clearShiftHold()
+  clearShiftHoldTimers()
+  suppressNextClickFor = null
   clearBpmDrag()
 })
 </script>
@@ -273,11 +291,12 @@ onBeforeUnmount(() => {
         :title="t('mixtape.gridAdjustShiftLeftLarge')"
         :aria-label="t('mixtape.gridAdjustShiftLeftLarge')"
         @click="handleShiftClick('shift-left-large')"
-        @pointerdown="handleShiftPointerDown('shift-left-large')"
-        @pointerup="handleShiftPointerEnd"
-        @pointercancel="handleShiftPointerEnd"
-        @pointerleave="handleShiftPointerEnd"
-        @lostpointercapture="handleShiftPointerEnd"
+        @pointerdown="handleShiftPointerDown('shift-left-large', $event)"
+        @pointerup="handleShiftPointerUp('shift-left-large')"
+        @pointercancel="handleShiftPointerCancel"
+        @pointerleave="handleShiftPointerCancel"
+        @blur="handleShiftBlur"
+        @lostpointercapture="handleShiftLostPointerCapture"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="M11.5 3.5 7.8 8l3.7 4.5"></path>
@@ -293,11 +312,12 @@ onBeforeUnmount(() => {
         :title="t('mixtape.gridAdjustShiftLeftSmall')"
         :aria-label="t('mixtape.gridAdjustShiftLeftSmall')"
         @click="handleShiftClick('shift-left-small')"
-        @pointerdown="handleShiftPointerDown('shift-left-small')"
-        @pointerup="handleShiftPointerEnd"
-        @pointercancel="handleShiftPointerEnd"
-        @pointerleave="handleShiftPointerEnd"
-        @lostpointercapture="handleShiftPointerEnd"
+        @pointerdown="handleShiftPointerDown('shift-left-small', $event)"
+        @pointerup="handleShiftPointerUp('shift-left-small')"
+        @pointercancel="handleShiftPointerCancel"
+        @pointerleave="handleShiftPointerCancel"
+        @blur="handleShiftBlur"
+        @lostpointercapture="handleShiftLostPointerCapture"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="M10.5 3.5 6 8l4.5 4.5"></path>
@@ -328,11 +348,12 @@ onBeforeUnmount(() => {
         :title="t('mixtape.gridAdjustShiftRightSmall')"
         :aria-label="t('mixtape.gridAdjustShiftRightSmall')"
         @click="handleShiftClick('shift-right-small')"
-        @pointerdown="handleShiftPointerDown('shift-right-small')"
-        @pointerup="handleShiftPointerEnd"
-        @pointercancel="handleShiftPointerEnd"
-        @pointerleave="handleShiftPointerEnd"
-        @lostpointercapture="handleShiftPointerEnd"
+        @pointerdown="handleShiftPointerDown('shift-right-small', $event)"
+        @pointerup="handleShiftPointerUp('shift-right-small')"
+        @pointercancel="handleShiftPointerCancel"
+        @pointerleave="handleShiftPointerCancel"
+        @blur="handleShiftBlur"
+        @lostpointercapture="handleShiftLostPointerCapture"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
@@ -347,11 +368,12 @@ onBeforeUnmount(() => {
         :title="t('mixtape.gridAdjustShiftRightLarge')"
         :aria-label="t('mixtape.gridAdjustShiftRightLarge')"
         @click="handleShiftClick('shift-right-large')"
-        @pointerdown="handleShiftPointerDown('shift-right-large')"
-        @pointerup="handleShiftPointerEnd"
-        @pointercancel="handleShiftPointerEnd"
-        @pointerleave="handleShiftPointerEnd"
-        @lostpointercapture="handleShiftPointerEnd"
+        @pointerdown="handleShiftPointerDown('shift-right-large', $event)"
+        @pointerup="handleShiftPointerUp('shift-right-large')"
+        @pointercancel="handleShiftPointerCancel"
+        @pointerleave="handleShiftPointerCancel"
+        @blur="handleShiftBlur"
+        @lostpointercapture="handleShiftLostPointerCapture"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="m4.5 3.5 3.7 4.5-3.7 4.5"></path>

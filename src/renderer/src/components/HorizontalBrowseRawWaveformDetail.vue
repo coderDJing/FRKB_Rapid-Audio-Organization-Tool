@@ -12,6 +12,7 @@ import {
 } from '@renderer/components/horizontalBrowseWaveform.constants'
 import {
   useHorizontalBrowseGridToolbar,
+  type HorizontalBrowseGridShiftOptions,
   type HorizontalBrowseGridToolbarState
 } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
@@ -47,10 +48,10 @@ import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontal
 type HorizontalBrowseRawWaveformDetailExpose = {
   toggleBarLinePicking: () => void
   setBarLineAtPlayhead: () => void
-  shiftGridSmallLeft: () => void
-  shiftGridLargeLeft: () => void
-  shiftGridSmallRight: () => void
-  shiftGridLargeRight: () => void
+  shiftGridSmallLeft: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridLargeLeft: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridSmallRight: (options?: HorizontalBrowseGridShiftOptions) => void
+  shiftGridLargeRight: (options?: HorizontalBrowseGridShiftOptions) => void
   updateBpmInput: (value: string) => void
   blurBpmInput: () => void
   tapBpm: () => void
@@ -107,6 +108,7 @@ const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const rawStreamActive = ref(false)
 const previewPlaying = ref(false)
+const localGridShiftPhaseOffsetSec = ref(0)
 const playbackSyncRevision = computed(() =>
   Math.max(0, Math.floor(Number(props.playbackSyncRevision) || 0))
 )
@@ -124,6 +126,9 @@ const resolveWaveformLayout = () =>
 
 const resolveWaveformRenderStyle = () =>
   props.waveformRenderStyle === 'raw-curve' ? 'raw-curve' : 'columns'
+
+const resolveWaveformCurrentSeconds = () =>
+  (Number(props.currentSeconds) || 0) + localGridShiftPhaseOffsetSec.value
 
 const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS = 4
 const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS = 10
@@ -222,7 +227,7 @@ const {
   hotCues: () => props.hotCues,
   memoryCues: () => props.memoryCues,
   loopRange: () => props.loopRange,
-  currentSeconds: () => props.currentSeconds,
+  currentSeconds: resolveWaveformCurrentSeconds,
   playbackRate: () => props.playbackRate,
   playing: previewPlaying,
   playbackSyncRevision,
@@ -240,6 +245,17 @@ const {
   waveformLayout: resolveWaveformLayout,
   waveformRenderStyle: resolveWaveformRenderStyle
 })
+
+const applyLocalGridShiftPhaseCompensation = (deltaMs: number) => {
+  const deltaSec = Number(deltaMs) / 1000
+  if (!Number.isFinite(deltaSec) || Math.abs(deltaSec) <= 0) return
+  localGridShiftPhaseOffsetSec.value += deltaSec
+  if (!previewPlaying.value || dragging.value) {
+    const compensatedSeconds = resolveWaveformCurrentSeconds()
+    previewStartSec.value = resolvePlaybackAlignedStart(compensatedSeconds)
+    setLastZoomAnchor(compensatedSeconds, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
+  }
+}
 
 const scrubPreview = useHorizontalBrowseWaveformScrubPreview({
   dragging,
@@ -375,16 +391,18 @@ const persistGridDefinition = async () => {
   const filePath = String(props.song?.filePath || '').trim()
   if (!filePath) return
   pendingLocalGridSignature = buildPreviewGridSignature()
+  const firstBeatMs = Number(previewFirstBeatMs.value)
+  const payload = {
+    filePath,
+    bpm: Number(previewBpm.value) || 0,
+    firstBeatMs: Number.isFinite(firstBeatMs) ? firstBeatMs : 0,
+    barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL)
+  }
   try {
-    await window.electron.ipcRenderer.invoke('mixtape:update-grid-definition', {
-      filePath,
-      bpm: Number(previewBpm.value) || 0,
-      firstBeatMs: Number.isFinite(Number(previewFirstBeatMs.value))
-        ? Number(previewFirstBeatMs.value)
-        : 0,
-      barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL)
-    })
-  } catch {}
+    await window.electron.ipcRenderer.invoke('mixtape:update-grid-definition', payload)
+  } catch (error) {
+    console.error('[horizontal-browse] persist grid definition failed', error)
+  }
 }
 
 const schedulePersistGridDefinition = () => {
@@ -536,6 +554,7 @@ const {
   clampPreviewStart,
   getPreviewPlaybackSec: resolvePreviewAnchorSec,
   schedulePreviewDraw: scheduleGridOverlayDraw,
+  applyPlaybackPhaseCompensation: applyLocalGridShiftPhaseCompensation,
   barBeatInterval: PREVIEW_BAR_BEAT_INTERVAL,
   barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX
 })
@@ -870,6 +889,9 @@ watch(
       const previousSongKey = String(previousValue?.[2] || '').trim()
       const previousSyncRevision = Math.max(0, Math.floor(Number(previousValue?.[3]) || 0))
       const playbackSyncChanged = syncRevision !== previousSyncRevision
+      if (playbackSyncChanged || safeSongKey !== previousSongKey) {
+        localGridShiftPhaseOffsetSec.value = 0
+      }
       const shouldScheduleFrame =
         !playing ||
         dragging.value ||
@@ -970,33 +992,37 @@ onUnmounted(() => {
 defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   toggleBarLinePicking,
   setBarLineAtPlayhead,
-  shiftGridSmallLeft: () =>
+  shiftGridSmallLeft: (options) =>
     shiftGrid(
       -resolveGridShiftMs(
         HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX,
         HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS
-      )
+      ),
+      options
     ),
-  shiftGridLargeLeft: () =>
+  shiftGridLargeLeft: (options) =>
     shiftGrid(
       -resolveGridShiftMs(
         HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX,
         HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS
-      )
+      ),
+      options
     ),
-  shiftGridSmallRight: () =>
+  shiftGridSmallRight: (options) =>
     shiftGrid(
       resolveGridShiftMs(
         HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX,
         HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS
-      )
+      ),
+      options
     ),
-  shiftGridLargeRight: () =>
+  shiftGridLargeRight: (options) =>
     shiftGrid(
       resolveGridShiftMs(
         HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX,
         HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS
-      )
+      ),
+      options
     ),
   updateBpmInput: handlePreviewBpmInputUpdate,
   blurBpmInput: handlePreviewBpmInputBlur,

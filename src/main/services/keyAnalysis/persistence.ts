@@ -8,7 +8,10 @@ import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import { log } from '../../log'
 import type { ISongInfo } from '../../../types/globals'
 import type { MixxxWaveformData } from '../../waveformCache'
-import { persistSharedSongGridDefinition } from '../sharedSongGrid'
+import {
+  persistSharedSongGridDefinition,
+  shouldKeepManualSharedSongGridDefinition
+} from '../sharedSongGrid'
 import { emitSongGridUpdated } from '../songGridEvents'
 import { isRcVersion } from '../../../shared/windowScreenshotFeature'
 import { getBeatThisRuntimeAvailabilitySnapshot } from '../../workers/beatThisRuntime'
@@ -117,6 +120,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       beatThisEstimatedDrift128Ms?: number | null
       beatThisWindowCount?: number | null
       beatGridAlgorithmVersion?: number | null
+      beatGridSource?: ISongInfo['beatGridSource']
     },
     stat?: { size: number; mtimeMs: number }
   ) => {
@@ -177,6 +181,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       } else {
         info.beatGridAlgorithmVersion = payload.beatGridAlgorithmVersion
       }
+    }
+    if (payload.beatGridSource !== undefined) {
+      info.beatGridSource = payload.beatGridSource
     }
     await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
       size: fileStat.size,
@@ -283,6 +290,55 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           normalizedTimeBasisOffsetMs ?? 0
         )
       }
+      const listRoot = await findSongListRoot(path.dirname(filePath))
+      const existingSongCacheEntry = listRoot
+        ? await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
+        : null
+      const existingSharedGrid = existingSongCacheEntry?.info
+      if (
+        existingSharedGrid &&
+        shouldKeepManualSharedSongGridDefinition(existingSharedGrid, {
+          filePath,
+          bpm: normalizedBpm,
+          firstBeatMs: normalizedFirstBeatMs,
+          barBeatOffset: normalizedBarBeatOffset,
+          timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
+          beatGridSource: 'analysis'
+        })
+      ) {
+        const existing = deps.doneByPath.get(normalizedPath)
+        deps.doneByPath.set(normalizedPath, {
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          keyText: existing?.keyText,
+          bpm: existingSharedGrid.bpm ?? normalizedBpm,
+          firstBeatMs:
+            existingSharedGrid.firstBeatMs ?? existing?.firstBeatMs ?? normalizedFirstBeatMs,
+          barBeatOffset:
+            existingSharedGrid.barBeatOffset ?? existing?.barBeatOffset ?? normalizedBarBeatOffset,
+          timeBasisOffsetMs:
+            existingSharedGrid.timeBasisOffsetMs ??
+            existing?.timeBasisOffsetMs ??
+            normalizedTimeBasisOffsetMs,
+          beatThisEstimatedDrift128Ms:
+            normalizedBeatThisEstimatedDrift128Ms ?? existing?.beatThisEstimatedDrift128Ms,
+          beatThisWindowCount: normalizedBeatThisWindowCount ?? existing?.beatThisWindowCount,
+          beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+          hasWaveform: existing?.hasWaveform
+        })
+        deps.events.emit('bpm-updated', {
+          filePath,
+          bpm: existingSharedGrid.bpm ?? normalizedBpm,
+          firstBeatMs: existingSharedGrid.firstBeatMs,
+          barBeatOffset: existingSharedGrid.barBeatOffset,
+          timeBasisOffsetMs: existingSharedGrid.timeBasisOffsetMs,
+          beatThisEstimatedDrift128Ms: normalizedBeatThisEstimatedDrift128Ms ?? null,
+          beatThisWindowCount: normalizedBeatThisWindowCount ?? null,
+          beatGridAlgorithmVersion:
+            existingSharedGrid.beatGridAlgorithmVersion ?? normalizedBeatGridAlgorithmVersion
+        })
+        return
+      }
       const existing = deps.doneByPath.get(normalizedPath)
       deps.doneByPath.set(normalizedPath, {
         size: stat.size,
@@ -306,13 +362,13 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         barBeatOffset: normalizedBarBeatOffset,
         timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
         beatThisWindowCount: normalizedBeatThisWindowCount,
-        beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion
+        beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+        beatGridSource: 'analysis'
       })
       if (sharedGrid) {
         emitSongGridUpdated(sharedGrid)
       }
 
-      const listRoot = await findSongListRoot(path.dirname(filePath))
       if (listRoot) {
         await ensureSongCacheEntry(
           listRoot,
@@ -324,7 +380,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
             beatThisEstimatedDrift128Ms: normalizedBeatThisEstimatedDrift128Ms ?? null,
             beatThisWindowCount: normalizedBeatThisWindowCount ?? null,
-            beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion
+            beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+            beatGridSource: 'analysis'
           },
           { size: stat.size, mtimeMs: stat.mtimeMs }
         )
@@ -378,7 +435,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         barBeatOffset: normalizedBarBeatOffset,
         timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
         beatThisWindowCount: normalizedBeatThisWindowCount,
-        beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion
+        beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+        beatGridSource: 'analysis'
       })
       deps.events.emit('bpm-updated', payload)
       log.error('[闲时分析] persistBpm 失败，已写入内存兜底', {
