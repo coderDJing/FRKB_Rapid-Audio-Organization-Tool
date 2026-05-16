@@ -612,7 +612,7 @@ jobs:
         env:
           DEBUG: electron-builder
         run: |
-          sed -i '/^electron_mirror=/d' .npmrc
+          sed -i.bak '/^electron_mirror=/d' .npmrc && rm -f .npmrc.bak
           npx electron-builder --mac --universal --publish never
 
       - name: Verify packaged Demucs resources (macOS)
