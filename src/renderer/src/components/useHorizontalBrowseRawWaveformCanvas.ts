@@ -270,7 +270,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     suppressNextPlaybackScrollReuse = false
   }
 
-  const clearStreamDrawScheduling = () => {
+  const cancelStreamDrawFrameScheduling = () => {
     if (streamDrawTimer) {
       clearTimeout(streamDrawTimer)
       streamDrawTimer = null
@@ -279,6 +279,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       cancelAnimationFrame(streamDrawRaf)
       streamDrawRaf = 0
     }
+  }
+
+  const clearStreamDrawScheduling = () => {
+    cancelStreamDrawFrameScheduling()
     clearRawStreamDirtyRange()
   }
 
@@ -802,7 +806,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     streamDrawRaf = 0
     const dirtyStartSec = pendingRawStreamDirtyStartSec
     const dirtyEndSec = pendingRawStreamDirtyEndSec
-    clearRawStreamDirtyRange()
     nextAllowedStreamDrawAt =
       performance.now() +
       (resolveDeferredVisualProtection()
@@ -819,12 +822,14 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       !waveformCanvasRef.value ||
       !wrapRef.value
     ) {
+      clearRawStreamDirtyRange()
       scheduleDraw()
       return
     }
 
     const duration = resolvePreviewDurationSec()
     if (!duration) {
+      clearRawStreamDirtyRange()
       scheduleDraw()
       return
     }
@@ -836,6 +841,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       return
     }
 
+    clearRawStreamDirtyRange()
     const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
     const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
@@ -857,18 +863,11 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     finishTiming()
   }
 
-  const scheduleRawStreamDirtyDraw = (dirtyStartSec: number, dirtyEndSec: number) => {
-    const safeStartSec = Math.max(0, Math.min(dirtyStartSec, dirtyEndSec))
-    const safeEndSec = Math.max(safeStartSec, dirtyEndSec)
-    pendingRawStreamDirtyStartSec =
-      pendingRawStreamDirtyStartSec === null
-        ? safeStartSec
-        : Math.min(pendingRawStreamDirtyStartSec, safeStartSec)
-    pendingRawStreamDirtyEndSec =
-      pendingRawStreamDirtyEndSec === null
-        ? safeEndSec
-        : Math.max(pendingRawStreamDirtyEndSec, safeEndSec)
+  const hasPendingRawStreamDirtyRange = () =>
+    pendingRawStreamDirtyStartSec !== null && pendingRawStreamDirtyEndSec !== null
 
+  const schedulePendingRawStreamDirtyDraw = () => {
+    if (!hasPendingRawStreamDirtyRange()) return
     if (drawRaf || streamDrawRaf || streamDrawTimer) return
     const now = performance.now()
     const delayMs = Math.max(0, nextAllowedStreamDrawAt - now)
@@ -888,12 +887,28 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     }, delayMs)
   }
 
+  const scheduleRawStreamDirtyDraw = (dirtyStartSec: number, dirtyEndSec: number) => {
+    const safeStartSec = Math.max(0, Math.min(dirtyStartSec, dirtyEndSec))
+    const safeEndSec = Math.max(safeStartSec, dirtyEndSec)
+    pendingRawStreamDirtyStartSec =
+      pendingRawStreamDirtyStartSec === null
+        ? safeStartSec
+        : Math.min(pendingRawStreamDirtyStartSec, safeStartSec)
+    pendingRawStreamDirtyEndSec =
+      pendingRawStreamDirtyEndSec === null
+        ? safeEndSec
+        : Math.max(pendingRawStreamDirtyEndSec, safeEndSec)
+
+    schedulePendingRawStreamDirtyDraw()
+  }
+
   const scheduleDraw = () => {
-    clearStreamDrawScheduling()
+    cancelStreamDrawFrameScheduling()
     if (drawRaf) return
     drawRaf = requestAnimationFrame(() => {
       drawRaf = 0
       drawWaveform()
+      schedulePendingRawStreamDirtyDraw()
     })
   }
 
