@@ -500,7 +500,7 @@ impl HorizontalBrowseTransportEngine {
     }
   }
 
-  fn relax_sync_lock_after_grid_change(&mut self, updated_deck: DeckId) {
+  pub(super) fn relax_sync_lock_after_grid_change(&mut self, updated_deck: DeckId) {
     let leader = self.leader;
     for deck in [DeckId::Top, DeckId::Bottom] {
       let index = Self::deck_index(deck);
@@ -516,7 +516,7 @@ impl HorizontalBrowseTransportEngine {
     }
   }
 
-  fn refresh_sync_state(&mut self, allow_phase_alignment: bool) {
+  pub(super) fn refresh_sync_state(&mut self, allow_phase_alignment: bool) {
     self.auto_select_leader_from_playback();
     self.update_multipliers();
     self.recompute_distances();
@@ -623,47 +623,6 @@ impl HorizontalBrowseTransportEngine {
 
   pub(super) fn refresh(&mut self) {
     self.refresh_sync_state(true);
-  }
-
-  pub(super) fn set_beat_grid(
-    &mut self,
-    deck: DeckId,
-    bpm: Option<f64>,
-    first_beat_ms: Option<f64>,
-    bar_beat_offset: Option<f64>,
-    time_basis_offset_ms: Option<f64>,
-  ) {
-    let sync_reference = self.resolve_grid_change_sync_reference(deck);
-    self.mark_state_changed();
-    {
-      let target = self.deck_mut(deck);
-      if let Some(next_bpm) = bpm.filter(|value| value.is_finite() && *value > 0.0) {
-        target.bpm = Some(next_bpm);
-      }
-      if let Some(next_first_beat_ms) =
-        first_beat_ms.filter(|value| value.is_finite() && *value >= 0.0)
-      {
-        target.first_beat_ms = Some(next_first_beat_ms);
-      }
-      if let Some(next_bar_beat_offset) = bar_beat_offset.filter(|value| value.is_finite()) {
-        target.bar_beat_offset = Some(Self::normalize_bar_beat_offset(next_bar_beat_offset));
-      }
-      if let Some(next_time_basis_offset_ms) =
-        time_basis_offset_ms.filter(|value| value.is_finite() && *value >= 0.0)
-      {
-        target.time_basis_offset_ms = Some(next_time_basis_offset_ms);
-      }
-      target.metronome_state.next_beat_index = None;
-    }
-    let kept_full_sync = sync_reference
-      .map(|reference| self.apply_grid_change_sync_compensation(deck, reference))
-      .unwrap_or(false);
-    if !kept_full_sync {
-      self.relax_sync_lock_after_grid_change(deck);
-    }
-    self.refresh_sync_state(false);
-    self.sync_loop_range_for_deck(DeckId::Top);
-    self.sync_loop_range_for_deck(DeckId::Bottom);
   }
 
   pub(super) fn sync_deck_to_now(&mut self, deck: DeckId, now_ms: f64) {
