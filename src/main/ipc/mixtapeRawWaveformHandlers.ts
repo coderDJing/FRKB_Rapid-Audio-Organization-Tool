@@ -6,6 +6,7 @@ import { resolveMainWorkerPath } from '../workerPath'
 import { findSongListRoot } from '../services/cacheMaintenance'
 import store from '../store'
 import { mapRendererPathToFsPath } from '../utils'
+import { log } from '../log'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { MixxxWaveformData } from '../waveformCache'
 import type { MixtapeRawWaveformData } from '../libraryCacheDb/mixtapeRawWaveformCache'
@@ -85,6 +86,10 @@ export function registerMixtapeRawWaveformHandlers() {
   const cachedRawWaveformContinuations = new Map<string, CachedRawWaveformContinuation>()
   const liveRawWaveformContinuations = new Map<string, LiveRawWaveformContinuation>()
   let nextRawWaveformStreamJobId = 0
+
+  const traceRawWaveformStream = (stage: string, payload?: Record<string, unknown>) => {
+    log.info(`[hb-raw-stream] ${stage}`, payload || {})
+  }
 
   const isHigherPriorityRawWaveformStreamRequest = (
     candidate: RawWaveformStreamRequest,
@@ -216,6 +221,16 @@ export function registerMixtapeRawWaveformHandlers() {
       buffer.subarray(startFrame * 4, (startFrame + frames) * 4)
 
     if (sender.isDestroyed()) return
+    traceRawWaveformStream('cache:bootstrap', {
+      requestId,
+      filePath,
+      startSec: Math.max(0, Number(params.startSec) || 0),
+      startFrameOffset,
+      bootstrapFrames,
+      totalFrames,
+      rate,
+      priorityHint
+    })
     try {
       sender.send('mixtape-waveform-raw:stream-chunk', {
         requestId,
@@ -254,11 +269,22 @@ export function registerMixtapeRawWaveformHandlers() {
         chunkCount,
         sending: false
       })
+      traceRawWaveformStream('cache:continuation-ready', {
+        requestId,
+        nextStartFrame: bootstrapFrames,
+        totalFrames,
+        followupFramesPerChunk
+      })
       return
     }
 
     if (sender.isDestroyed()) return
     try {
+      traceRawWaveformStream('cache:done', {
+        requestId,
+        totalFrames,
+        chunkCount
+      })
       sender.send('mixtape-waveform-raw:stream-done', {
         requestId,
         filePath,
@@ -297,6 +323,14 @@ export function registerMixtapeRawWaveformHandlers() {
         return
       }
       try {
+        traceRawWaveformStream('cache:continue-chunk', {
+          requestId: continuation.requestId,
+          startFrame,
+          frames,
+          totalFrames: continuation.totalFrames,
+          nextStartFrame: continuation.nextStartFrame,
+          chunkCount: continuation.chunkCount
+        })
         continuation.sender.send('mixtape-waveform-raw:stream-chunk', {
           requestId: continuation.requestId,
           filePath: continuation.filePath,
@@ -342,6 +376,11 @@ export function registerMixtapeRawWaveformHandlers() {
 
       if (!continuation.sender.isDestroyed()) {
         try {
+          traceRawWaveformStream('cache:continue-done', {
+            requestId: continuation.requestId,
+            totalFrames: continuation.totalFrames,
+            chunkCount: continuation.chunkCount
+          })
           continuation.sender.send('mixtape-waveform-raw:stream-done', {
             requestId: continuation.requestId,
             filePath: continuation.filePath,
@@ -467,6 +506,17 @@ export function registerMixtapeRawWaveformHandlers() {
       nextRequest.firstChunkAt = undefined
       nextRequest.chunkCount = 0
       const jobId = ++nextRawWaveformStreamJobId
+      traceRawWaveformStream('live:start', {
+        requestId: nextRequest.requestId,
+        jobId,
+        deckKey: nextRequest.deckKey,
+        filePath: nextRequest.filePath,
+        startSec: nextRequest.startSec,
+        expectedDurationSec: nextRequest.expectedDurationSec,
+        bootstrapDurationSec: nextRequest.bootstrapDurationSec,
+        priorityHint: nextRequest.priorityHint,
+        protectsPlayback: nextRequest.protectsPlayback
+      })
 
       const finishRawWaveformStreamRequest = (payloadDone: Record<string, unknown>) => {
         const activeRequest = rawWaveformStreamRequests.get(nextRequest.requestId)
@@ -510,6 +560,14 @@ export function registerMixtapeRawWaveformHandlers() {
             nextRequest.firstChunkAt = Date.now()
             if (!nextRequest.sender.isDestroyed()) {
               try {
+                traceRawWaveformStream('live:first-chunk', {
+                  requestId: nextRequest.requestId,
+                  jobId,
+                  startFrame: bufferedChunk.startFrame,
+                  frames: bufferedChunk.frames,
+                  totalFrames: bufferedChunk.totalFrames,
+                  firstChunkDelayMs: Math.max(0, nextRequest.firstChunkAt - nextRequest.enqueuedAt)
+                })
                 nextRequest.sender.send('mixtape-waveform-raw:stream-chunk', {
                   requestId: nextRequest.requestId,
                   filePath: nextRequest.filePath,
@@ -548,6 +606,12 @@ export function registerMixtapeRawWaveformHandlers() {
               message.result.rawWaveformData
             ).catch(() => {})
           }
+          traceRawWaveformStream('live:done', {
+            requestId: nextRequest.requestId,
+            jobId,
+            chunkCount: nextRequest.chunkCount,
+            totalFrames: Number(message.result.rawWaveformData.frames) || 0
+          })
           finishRawWaveformStreamRequest({
             streamed: true,
             fromCache: false,
@@ -561,6 +625,11 @@ export function registerMixtapeRawWaveformHandlers() {
         }
 
         if (message?.error) {
+          traceRawWaveformStream('live:error', {
+            requestId: nextRequest.requestId,
+            jobId,
+            error: String(message.error)
+          })
           finishRawWaveformStreamRequest({ error: String(message.error) })
         }
       })
@@ -568,6 +637,11 @@ export function registerMixtapeRawWaveformHandlers() {
       worker.once('error', (error) => {
         const activeRequest = rawWaveformStreamRequests.get(nextRequest.requestId)
         if (!activeRequest || activeRequest.worker !== worker) return
+        traceRawWaveformStream('live:worker-error', {
+          requestId: nextRequest.requestId,
+          jobId,
+          error: error instanceof Error ? error.message : String(error || 'unknown error')
+        })
         finishRawWaveformStreamRequest({
           error: error instanceof Error ? error.message : String(error || 'unknown error')
         })
@@ -577,6 +651,11 @@ export function registerMixtapeRawWaveformHandlers() {
         const activeRequest = rawWaveformStreamRequests.get(nextRequest.requestId)
         if (!activeRequest || activeRequest.worker !== worker) return
         if (code === 0) return
+        traceRawWaveformStream('live:worker-exit', {
+          requestId: nextRequest.requestId,
+          jobId,
+          code
+        })
         finishRawWaveformStreamRequest({ error: `stream worker exited with code ${code}` })
       })
 
@@ -776,6 +855,19 @@ export function registerMixtapeRawWaveformHandlers() {
       const deckKey = resolveRawWaveformStreamDeckKey(payload?.deckKey, requestId)
       const protectsPlayback = payload?.protectsPlayback === true
       const forceLiveDecode = payload?.forceLiveDecode === true
+      traceRawWaveformStream('stream:request', {
+        requestId,
+        filePath,
+        deckKey,
+        startSec,
+        songDurationSec,
+        chunkFrames,
+        expectedDurationSec,
+        bootstrapDurationSec,
+        priorityHint,
+        protectsPlayback,
+        forceLiveDecode
+      })
       let listRoot = resolveRendererListRoot(payload?.listRoot)
       if (!listRoot) {
         listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
@@ -787,6 +879,14 @@ export function registerMixtapeRawWaveformHandlers() {
           mtimeMs: stat.mtimeMs
         })
         if (isRawWaveformRateSufficient(cached, targetRate)) {
+          traceRawWaveformStream('stream:cache-hit', {
+            requestId,
+            filePath,
+            startSec,
+            targetRate,
+            cachedRate: Number(cached?.rate) || 0,
+            cachedFrames: Number(cached?.frames) || 0
+          })
           void sendCachedRawWaveformStream({
             sender: event.sender,
             requestId,
@@ -801,6 +901,15 @@ export function registerMixtapeRawWaveformHandlers() {
         }
       }
 
+      traceRawWaveformStream('stream:queue-live', {
+        requestId,
+        filePath,
+        deckKey,
+        startSec,
+        targetRate,
+        hasListRoot: Boolean(listRoot),
+        hasStat: Boolean(stat)
+      })
       rawWaveformStreamRequests.set(requestId, {
         requestId,
         filePath,
@@ -836,6 +945,12 @@ export function registerMixtapeRawWaveformHandlers() {
       if (!request) return
       request.priorityHint = resolveRawWaveformStreamPriorityHint(payload?.priorityHint)
       request.protectsPlayback = payload?.protectsPlayback === true
+      traceRawWaveformStream('stream:update-priority', {
+        requestId,
+        priorityHint: request.priorityHint,
+        protectsPlayback: request.protectsPlayback,
+        active: Boolean(request.worker)
+      })
       if (!request.worker) {
         request.enqueuedAt = Date.now()
       }
@@ -846,6 +961,12 @@ export function registerMixtapeRawWaveformHandlers() {
   ipcMain.on('mixtape-waveform-raw:continue-stream', (_event, payload: { requestId?: string }) => {
     const requestId = String(payload?.requestId || '').trim()
     if (!requestId) return
+    traceRawWaveformStream('stream:continue-request', {
+      requestId,
+      hasCachedContinuation: cachedRawWaveformContinuations.has(requestId),
+      hasLiveContinuation: liveRawWaveformContinuations.has(requestId),
+      hasRequest: rawWaveformStreamRequests.has(requestId)
+    })
     void continueCachedRawWaveformStream(requestId)
     void continueLiveRawWaveformStream(requestId)
   })
@@ -853,6 +974,12 @@ export function registerMixtapeRawWaveformHandlers() {
   ipcMain.on('mixtape-waveform-raw:cancel-stream', (_event, payload: { requestId?: string }) => {
     const requestId = String(payload?.requestId || '').trim()
     if (!requestId) return
+    traceRawWaveformStream('stream:cancel-request', {
+      requestId,
+      hasCachedContinuation: cachedRawWaveformContinuations.has(requestId),
+      hasLiveContinuation: liveRawWaveformContinuations.has(requestId),
+      hasRequest: rawWaveformStreamRequests.has(requestId)
+    })
     clearRawWaveformStreamRequest(requestId)
     drainRawWaveformStreamQueue()
   })

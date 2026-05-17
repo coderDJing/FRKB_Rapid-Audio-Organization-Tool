@@ -325,12 +325,35 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     >['payload']
   ) => {
     if (payload.renderToken !== liveCanvasRenderToken) return
+    const wasDisplayReady = displayReady.value
     displayStartSec.value = payload.rangeStartSec
     if (!payload.ready) {
       displayReady.value = false
+      sendHorizontalBrowseWaveformTrace('render-result', 'worker:not-ready', {
+        deck: options.direction(),
+        filePath: String(options.song()?.filePath || '').trim(),
+        renderToken: payload.renderToken,
+        rangeStartSec: payload.rangeStartSec,
+        rangeDurationSec: payload.rangeDurationSec,
+        rawStreamActive: options.rawStreamActive.value,
+        hasRawData: Boolean(options.rawData.value),
+        rawStartSec: options.rawData.value ? Number(options.rawData.value.startSec) || 0 : 0,
+        rawEndSec: resolveRawDataCoveredEndSec(options.rawData.value),
+        loadedFrames: Math.max(0, Number(options.rawData.value?.loadedFrames) || 0)
+      })
       return
     }
     displayReady.value = true
+    if (!wasDisplayReady) {
+      sendHorizontalBrowseWaveformTrace('render-result', 'worker:ready-transition', {
+        deck: options.direction(),
+        filePath: String(options.song()?.filePath || '').trim(),
+        renderToken: payload.renderToken,
+        rangeStartSec: payload.rangeStartSec,
+        rangeDurationSec: payload.rangeDurationSec,
+        rawStreamActive: options.rawStreamActive.value
+      })
+    }
   }
 
   const applyLiveCanvasPresentationOffset = (offsetPx: number) => {
