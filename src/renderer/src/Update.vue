@@ -63,6 +63,7 @@ watch(
 
 let latestVersion = ref('')
 window.electron.ipcRenderer.once('isLatestVersion', (_event, version) => {
+  console.log('[Update.vue] received isLatestVersion', version, 'current state:', state.value)
   latestVersion.value = version
   state.value = 'isLatest'
 })
@@ -104,6 +105,12 @@ const updateReleaseNotesHtml = async (payload: ReleaseNotesRangePayload | null) 
 }
 
 window.electron.ipcRenderer.once('newVersion', (_event, versionInfo: UpdateInfo) => {
+  console.log(
+    '[Update.vue] received newVersion',
+    versionInfo?.version,
+    'current state:',
+    state.value
+  )
   newVersionInfo.value = versionInfo
   releaseNotesRange.value = null
   releaseNotesHtml.value = ''

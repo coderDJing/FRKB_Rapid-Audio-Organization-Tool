@@ -31,9 +31,15 @@ const handleToggleMinimize = () => {
 }
 
 const handleCheckForUpdates = () => {
+  console.log(
+    '[foundNewVersionWindow] handleCheckForUpdates, updateWindow.instance:',
+    updateWindow.instance
+  )
   if (updateWindow.instance === null) {
+    console.log('[foundNewVersionWindow] creating updateWindow with skipCheck=true')
     updateWindow.createWindow(true)
   } else {
+    console.log('[foundNewVersionWindow] focusing existing updateWindow')
     if (updateWindow.instance.isMinimized()) {
       updateWindow.instance.restore()
     }

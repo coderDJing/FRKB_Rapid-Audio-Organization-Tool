@@ -44,8 +44,13 @@ export function setupAutoUpdate() {
     const remoteIsPrerelease = typeof info?.version === 'string' && info.version.includes('-')
 
     if (currentIsPrerelease !== remoteIsPrerelease) {
+      console.log('[autoUpdate] update-available skipped: prerelease mismatch', {
+        currentIsPrerelease,
+        remoteIsPrerelease
+      })
       return
     }
+    console.log('[autoUpdate] update-available: setting lastUpdateInfo for version', info.version)
     updateWindow.setLastUpdateInfo(info)
     if (updateWindow.instance === null) {
       foundNewVersionWindow.open(info, null, true)

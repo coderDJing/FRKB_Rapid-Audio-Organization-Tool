@@ -385,16 +385,29 @@ const createWindow = (skipCheck = false) => {
         ;(autoUpdater as AutoUpdaterWithExtras).channel = 'rc'
       }
     } catch {}
-    if (skipCheck && lastUpdateInfo) {
-      sendToUpdateWindow('newVersion', lastUpdateInfo)
-      sendLastReleaseNotesRange()
-    } else {
-      void autoUpdater.checkForUpdates().catch((error) => {
-        const payload = buildUpdateErrorPayload(error)
-        sendToUpdateWindow('isError', payload)
-        log.error('[updateWindow] checkForUpdates failed', payload, error)
-      })
+    log.info('[updateWindow] ready-to-show', {
+      skipCheck,
+      hasLastUpdateInfo: !!lastUpdateInfo,
+      lastUpdateInfoVersion: lastUpdateInfo?.version
+    })
+    if (skipCheck) {
+      if (lastUpdateInfo) {
+        log.info('[updateWindow] skipCheck path: sending cached newVersion', lastUpdateInfo.version)
+        sendToUpdateWindow('newVersion', lastUpdateInfo)
+        sendLastReleaseNotesRange()
+      } else {
+        log.warn(
+          '[updateWindow] skipCheck=true but lastUpdateInfo is null, retrying checkForUpdates'
+        )
+      }
+      // skipCheck 模式下无论如何都不重新检查，避免跳回检查更新界面
+      return
     }
+    void autoUpdater.checkForUpdates().catch((error) => {
+      const payload = buildUpdateErrorPayload(error)
+      sendToUpdateWindow('isError', payload)
+      log.error('[updateWindow] checkForUpdates failed', payload, error)
+    })
   })
   ipcMain.on('updateWindow-startDownload', handleStartDownload)
   ipcMain.on('updateWindow-toggle-close', handleToggleClose)
