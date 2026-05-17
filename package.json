@@ -1,10 +1,6 @@
 {
   "name": "frkb",
-<<<<<<< HEAD
-  "version": "1.2.0-rc.202605172350",
-=======
-  "version": "1.2.0-rc.202605180016",
->>>>>>> e029b4e6 (fix(update): 修复从发现新版本弹窗点击更新时仍跳转检查更新的问题)
+  "version": "1.2.0-rc.202605180027",
   "description": "Rapid Audio Organization Tool",
   "license": "GPL-2.0-or-later",
   "main": "./out/main/index.js",
