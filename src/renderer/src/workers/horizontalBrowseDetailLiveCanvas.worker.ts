@@ -61,7 +61,6 @@ const clampNumber = (value: number, min: number, max: number) => Math.max(min, M
 const PLAYHEAD_RATIO = 0.5
 const PLAYBACK_RENDER_INTERVAL_MS = 16
 const PLAYBACK_SYNC_TOLERANCE_SEC = 0.02
-
 let canvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
 const overlayRenderer = createHorizontalBrowseDetailLiveCanvasOverlayRenderer()
@@ -926,7 +925,8 @@ const processRender = (
 }
 
 const buildPlaybackRenderRequest = (
-  animation: PlaybackAnimationState
+  animation: PlaybackAnimationState,
+  allowScrollReuse = true
 ): HorizontalBrowseDetailLiveCanvasRenderRequest => {
   const playbackSeconds = resolvePlaybackSeconds(
     animation.request,
@@ -936,8 +936,8 @@ const buildPlaybackRenderRequest = (
   return {
     ...animation.request,
     playbackSeconds,
-    allowScrollReuse: true,
-    phaseAwareScrollReuse: true,
+    allowScrollReuse,
+    phaseAwareScrollReuse: allowScrollReuse,
     rangeStartSec: resolvePlaybackRangeStartSec(animation.request, playbackSeconds),
     dirtyStartSec: undefined,
     dirtyEndSec: undefined
@@ -998,7 +998,7 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
     baseSeconds,
     startedAtMs: nowMs
   }
-  processRender(buildPlaybackRenderRequest(playbackAnimation))
+  processRender(buildPlaybackRenderRequest(playbackAnimation, request.allowScrollReuse !== false))
   if (playbackAnimation?.token === token && !playbackTimer) {
     schedulePlaybackRender(token)
   }

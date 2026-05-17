@@ -129,6 +129,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       source,
       String(payload?.mixxxSource ?? ''),
       String(payload?.effectiveRawCoverage ?? ''),
+      String(payload?.allowScrollReuse ?? ''),
       String(payload?.holdingFrame ?? '')
     ].join('|')
     if (lastRenderTraceSignature === signature) return
@@ -730,6 +731,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           effectiveRawCoverage,
           rawDataRefStable,
           allowPartialViewportPaint,
+          allowScrollReuse: allowPlaybackScrollReuse,
           holdingFrame: false
         })
         const finishTiming = startHorizontalBrowseUserTiming(
@@ -776,6 +778,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       traceHorizontalWaveformRender('worker-live', {
         mixxxSource: effectiveMixxxSelection.source,
         effectiveRawCoverage,
+        allowScrollReuse: allowPlaybackScrollReuse,
         holdingFrame: false
       })
       const finishTiming = startHorizontalBrowseUserTiming(
@@ -845,7 +848,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
     const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
-    traceHorizontalWaveformRender('stream-dirty')
+    traceHorizontalWaveformRender('stream-dirty', {
+      dirtyStartSec,
+      dirtyEndSec,
+      renderStartSec,
+      visibleDuration
+    })
     const finishTiming = startHorizontalBrowseUserTiming(
       `frkb:hb:canvas:stream-dirty:${options.direction()}`
     )
