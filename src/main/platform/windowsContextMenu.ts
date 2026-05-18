@@ -28,6 +28,11 @@ const getNormalizedExtensions = (): string[] => {
     .filter(Boolean)
   const unique = Array.from(new Set(normalized.map((ext) => ext.toLowerCase())))
   unique.sort()
+  if (unique.length === 0) {
+    log.warn('getNormalizedExtensions: 没有找到有效的音频扩展名', {
+      audioExt: store.settingConfig.audioExt
+    })
+  }
   return unique
 }
 
@@ -73,8 +78,15 @@ export async function ensureWindowsContextMenu(): Promise<void> {
   if (process.platform !== 'win32') return
   const displayName = tContextMenu('settings.explorerContextMenuLabel')
   const command = `"${process.execPath.replace(/"/g, '\\"')}" "%1"`
+  const extensions = getNormalizedExtensions()
   const shellPaths = getWindowsContextMenuPaths()
   const commandPaths = getWindowsContextMenuCommandPaths()
+  log.info('开始注册 Windows 右键菜单', {
+    extensions,
+    shellPathsCount: shellPaths.length,
+    displayName,
+    command
+  })
   await removeLegacyWindowsContextMenu()
   for (let i = 0; i < shellPaths.length; i++) {
     const shellPath = shellPaths[i]
@@ -83,6 +95,7 @@ export async function ensureWindowsContextMenu(): Promise<void> {
       await runRegCommand(['add', shellPath, '/ve', '/d', displayName, '/f'])
       await runRegCommand(['add', shellPath, '/v', 'Icon', '/d', process.execPath, '/f'])
       await runRegCommand(['add', commandPath, '/ve', '/d', command, '/f'])
+      log.info('注册右键菜单成功', { path: shellPath })
     } catch (error) {
       log.error('注册 Windows 右键菜单失败', { path: shellPath, error })
     }
@@ -107,7 +120,10 @@ export async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
   // 检测翻译是否失败（返回原始 key），如果是则强制更新
   const label = tContextMenu('settings.explorerContextMenuLabel')
   const translationFailed = label === 'settings.explorerContextMenuLabel'
-  if (stored === signature && !translationFailed) return
+  // 检查注册表项是否真的存在，如果不存在则强制重新注册
+  const registryExists = hasWindowsContextMenu()
+  if (stored === signature && !translationFailed && registryExists) return
+  log.info('确保 Windows 右键菜单', { stored, signature, translationFailed, registryExists })
   await ensureWindowsContextMenu()
   store.settingConfig.windowsContextMenuSignature = signature
   await persistSettingConfig()
@@ -116,9 +132,11 @@ export async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
 export async function removeWindowsContextMenu(): Promise<void> {
   if (process.platform !== 'win32') return
   const shellPaths = getWindowsContextMenuPaths()
+  log.info('开始删除 Windows 右键菜单', { shellPathsCount: shellPaths.length })
   for (const shellPath of shellPaths) {
     try {
       await runRegCommand(['delete', shellPath, '/f'])
+      log.info('删除右键菜单成功', { path: shellPath })
     } catch (error) {
       log.error('删除 Windows 右键菜单失败', { path: shellPath, error })
     }
