@@ -15,6 +15,7 @@ import {
   loadPioneerPreviewWaveformsByDrivePath,
   streamPioneerPreviewWaveformsByDrivePath
 } from '../services/pioneerDeviceLibrary/waveform'
+import { preparePioneerUsbPlaylistAnalysis } from '../services/pioneerDeviceLibrary/playlistAnalysis'
 
 export function registerPioneerDeviceLibraryHandlers() {
   const mimeFromExt = (ext: string) =>
@@ -51,6 +52,22 @@ export function registerPioneerDeviceLibraryHandlers() {
     'pioneer-device-library:load-playlist-tracks',
     async (_event, rootPath: string, playlistId: number, libraryType?: PioneerLibraryKind) => {
       return await loadPioneerPlaylistTracksByDrivePath(rootPath, playlistId, libraryType)
+    }
+  )
+
+  ipcMain.handle(
+    'pioneer-device-library:prepare-playlist-analysis',
+    async (
+      _event,
+      payload: {
+        rootPath?: string
+        tracks?: Array<{ filePath?: string }>
+      }
+    ) => {
+      return await preparePioneerUsbPlaylistAnalysis({
+        rootPath: String(payload?.rootPath || '').trim(),
+        tracks: Array.isArray(payload?.tracks) ? payload.tracks : []
+      })
     }
   )
 

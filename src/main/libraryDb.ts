@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 23
+const SCHEMA_VERSION = 24
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
@@ -554,6 +554,41 @@ function createDatabase(dbPath: string): SqliteDatabase {
         PRIMARY KEY (list_root, analyze_path)
       );
       CREATE INDEX IF NOT EXISTS idx_pioneer_preview_waveform_cache_root ON pioneer_preview_waveform_cache(list_root);
+    `)
+  }
+  if (userVersion < 24) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS external_analysis_devices (
+        source_kind TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        root_path TEXT,
+        last_seen_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (source_kind, source_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_external_analysis_devices_seen ON external_analysis_devices(last_seen_at_ms);
+
+      CREATE TABLE IF NOT EXISTS external_analysis_cache (
+        source_kind TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        relative_path TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        mtime_ms REAL NOT NULL,
+        info_json TEXT NOT NULL,
+        waveform_version INTEGER,
+        waveform_sample_rate INTEGER,
+        waveform_step REAL,
+        waveform_duration REAL,
+        waveform_frames INTEGER,
+        waveform_data BLOB,
+        last_seen_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (source_kind, source_id, relative_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_external_analysis_cache_source ON external_analysis_cache(source_kind, source_id);
+      CREATE INDEX IF NOT EXISTS idx_external_analysis_cache_file ON external_analysis_cache(file_path);
+      CREATE INDEX IF NOT EXISTS idx_external_analysis_cache_seen ON external_analysis_cache(last_seen_at_ms);
     `)
   }
   if (userVersion < SCHEMA_VERSION) {

@@ -2,6 +2,7 @@ const tseslint = require('@electron-toolkit/eslint-config-ts')
 const prettier = require('@electron-toolkit/eslint-config-prettier')
 const vue = require('eslint-plugin-vue')
 const tsParser = require('@typescript-eslint/parser')
+const vueParser = require('vue-eslint-parser')
 
 module.exports = [
   {
@@ -31,6 +32,7 @@ module.exports = [
   {
     files: ['**/*.vue'],
     languageOptions: {
+      parser: vueParser,
       parserOptions: {
         parser: tsParser
       }

@@ -11,6 +11,7 @@ import type {
   PioneerLibraryKind,
   PioneerRemovableDriveInfo
 } from './types'
+import { ensurePioneerUsbIdentity } from './usbIdentity'
 
 const execFileAsync = promisify(execFile)
 
@@ -758,8 +759,13 @@ export async function listPioneerRemovableDrives(): Promise<PioneerRemovableDriv
   for (const baseRow of baseRows) {
     try {
       const pioneer = await probePioneerDeviceLibraryRoot(baseRow.path)
+      const identity =
+        pioneer.libraryTypes.length > 0 ? await ensurePioneerUsbIdentity(baseRow.path) : null
       results.push({
         ...baseRow,
+        frkbUsbUuid: identity?.uuid || undefined,
+        frkbUsbIdFilePath: identity?.filePath || undefined,
+        frkbUsbIdPersisted: identity?.persisted,
         isPioneerDeviceLibrary: pioneer.libraryTypes.length > 0,
         supportedLibraryTypes: pioneer.libraryTypes,
         pioneer

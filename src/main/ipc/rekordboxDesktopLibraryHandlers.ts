@@ -31,6 +31,7 @@ import {
   copyTracksToRekordboxDesktopStorage
 } from '../services/rekordboxDesktopLibrary/storage'
 import { buildPioneerPlaylistTree } from '../services/pioneerDeviceLibrary/tree'
+import { prepareRekordboxExternalPlaylistAnalysis } from '../services/pioneerDeviceLibrary/playlistAnalysis'
 import type {
   RekordboxDesktopCreateEmptyPlaylistRequest,
   RekordboxDesktopCreateEmptyPlaylistResponse,
@@ -96,6 +97,25 @@ export function registerRekordboxDesktopLibraryHandlers() {
         trackTotal: loaded.trackTotal,
         tracks: loaded.tracks
       }
+    }
+  )
+
+  ipcMain.handle(
+    'rekordbox-desktop-library:prepare-playlist-analysis',
+    async (
+      _event,
+      payload: {
+        sourceId?: string
+        rootPath?: string
+        tracks?: Array<{ filePath?: string }>
+      }
+    ) => {
+      return await prepareRekordboxExternalPlaylistAnalysis({
+        sourceKind: 'rekordbox-desktop',
+        sourceId: String(payload?.sourceId || '').trim(),
+        rootPath: String(payload?.rootPath || '').trim(),
+        tracks: Array.isArray(payload?.tracks) ? payload.tracks : []
+      })
     }
   )
 

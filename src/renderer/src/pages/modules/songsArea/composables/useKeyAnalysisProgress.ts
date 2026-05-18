@@ -233,8 +233,9 @@ const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => {
 
 export function useKeyAnalysisProgress(params: {
   visibleSongsWithIndex: Ref<Array<{ song: ISongInfo; idx: number }>>
+  isAnalysisCompleteOverride?: (filePath: string) => boolean
 }) {
-  const { visibleSongsWithIndex } = params
+  const { visibleSongsWithIndex, isAnalysisCompleteOverride } = params
 
   const getAnalysisProgress = (filePath: string): number | null => {
     // 触发响应式依赖
@@ -246,7 +247,9 @@ export function useKeyAnalysisProgress(params: {
     for (const item of visibleSongsWithIndex.value || []) {
       const songPath = normalizePath(item?.song?.filePath || '')
       if (songPath === normalized) {
-        return hasCompleteKeyAnalysis(item.song) ? null : 0
+        return hasCompleteKeyAnalysis(item.song) || isAnalysisCompleteOverride?.(filePath)
+          ? null
+          : 0
       }
     }
     return null
@@ -260,7 +263,7 @@ export function useKeyAnalysisProgress(params: {
     for (const item of visibleSongsWithIndex.value || []) {
       const songPath = normalizePath(item?.song?.filePath || '')
       if (songPath === normalized) {
-        return !hasCompleteKeyAnalysis(item.song)
+        return !hasCompleteKeyAnalysis(item.song) && !isAnalysisCompleteOverride?.(filePath)
       }
     }
     return false
@@ -273,7 +276,12 @@ export function useKeyAnalysisProgress(params: {
     if (progressMap.value.size > 0) return true
     // 或者有任何可见歌曲需要分析
     for (const item of visibleSongsWithIndex.value || []) {
-      if (!hasCompleteKeyAnalysis(item.song)) return true
+      if (
+        !hasCompleteKeyAnalysis(item.song) &&
+        !isAnalysisCompleteOverride?.(item.song?.filePath || '')
+      ) {
+        return true
+      }
     }
     return false
   })

@@ -1,14 +1,7 @@
 ﻿<script setup lang="ts">
-import {
-  PropType,
-  computed,
-  markRaw,
-  onUnmounted,
-  ref as vRef,
-  toRef,
-  type ComponentPublicInstance
-} from 'vue'
-import { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
+import { PropType, computed, markRaw, onUnmounted, ref as vRef, toRef } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
+import type { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -104,6 +97,11 @@ const props = defineProps({
     type: Boolean,
     default: true
   },
+  analysisCompleteFilePaths: {
+    type: Array as PropType<string[]>,
+    default: () => []
+  },
+  allowSongDragWhenReadOnly: { type: Boolean, default: false },
   allowContextMenuWhenReadOnly: { type: Boolean, default: false },
   allowDblclickWhenReadOnly: { type: Boolean, default: false },
   allowWaveformPreviewWhenReadOnly: { type: Boolean, default: false },
@@ -161,6 +159,9 @@ const isMixtapeList = computed(() => props.reorderMode === 'mixtape')
 const isPlaylistReorder = computed(() => props.reorderMode === 'playlist')
 const isInternalReorderEnabled = computed(
   () => props.reorderMode === 'mixtape' || props.reorderMode === 'playlist'
+)
+const canStartSongDrag = computed(
+  () => !props.readOnly || isInternalReorderEnabled.value || props.allowSongDragWhenReadOnly
 )
 const shouldDisplayPlaylistTrackNumber = computed(() => {
   const rootDir = String(props.songListRootDir || '').replace(/\\/g, '/')
@@ -381,7 +382,18 @@ const { listViewportWidth } = useRowAnalysisViewport({
 
 const { getAnalysisProgress, isSongNeedsAnalysis, hasAnyAnalysisProgress } = useKeyAnalysisProgress(
   {
-    visibleSongsWithIndex
+    visibleSongsWithIndex,
+    isAnalysisCompleteOverride: (filePath) => {
+      const normalized = String(filePath || '')
+        .replace(/\//g, '\\')
+        .toLowerCase()
+      return props.analysisCompleteFilePaths.some(
+        (item) =>
+          String(item || '')
+            .replace(/\//g, '\\')
+            .toLowerCase() === normalized
+      )
+    }
   }
 )
 
@@ -614,7 +626,7 @@ const handleRowDrop = (event: DragEvent, item: { song: ISongInfo; idx: number })
 }
 
 const handleRowDragEnd = (event: DragEvent) => {
-  if (props.readOnly && !isInternalReorderEnabled.value) return
+  if (!canStartSongDrag.value) return
   draggingItemIds.value = []
   draggingSourceListUUID.value = ''
   clearDragHover()
@@ -624,7 +636,7 @@ const handleRowDragEnd = (event: DragEvent) => {
 }
 
 const handleRowDragStart = (event: DragEvent, item: { song: ISongInfo }) => {
-  if (props.readOnly && !isInternalReorderEnabled.value) return
+  if (!canStartSongDrag.value) return
   if (isInternalReorderEnabled.value) {
     const rowKey = getRowKey(item.song)
     const selectedKeys = (props.selectedSongFilePaths || []).filter(Boolean)
@@ -698,11 +710,9 @@ onUnmounted(() => {
           }"
           :data-filepath="item.song.filePath"
           :data-rowkey="getRowKey(item.song)"
-          :draggable="!props.readOnly || isInternalReorderEnabled"
-          @dragstart.stop="
-            (!props.readOnly || isInternalReorderEnabled) && handleRowDragStart($event, item)
-          "
-          @dragend.stop="(!props.readOnly || isInternalReorderEnabled) && handleRowDragEnd($event)"
+          :draggable="canStartSongDrag"
+          @dragstart.stop="canStartSongDrag && handleRowDragStart($event, item)"
+          @dragend.stop="canStartSongDrag && handleRowDragEnd($event)"
           @dragover="isInternalReorderEnabled && handleRowDragOver($event, item)"
           @drop="isInternalReorderEnabled && handleRowDrop($event, item)"
         >

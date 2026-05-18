@@ -26,6 +26,9 @@ export type PioneerRemovableDriveInfo = {
   driveTypeLabel: string
   isUsb: boolean
   isRemovable: boolean
+  frkbUsbUuid?: string
+  frkbUsbIdFilePath?: string
+  frkbUsbIdPersisted?: boolean
   isPioneerDeviceLibrary: boolean
   supportedLibraryTypes: PioneerLibraryKind[]
   pioneer: PioneerDeviceLibraryProbe

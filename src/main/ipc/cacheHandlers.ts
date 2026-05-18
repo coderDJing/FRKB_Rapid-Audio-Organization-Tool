@@ -101,7 +101,37 @@ export function registerCacheHandlers() {
           listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
         }
         if (!listRoot) {
-          items.push({ filePath, data: null })
+          const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
+          if (!externalContext) {
+            try {
+              const fsStat = await fs.stat(filePath)
+              const data = await LibraryCacheDb.loadExternalAnalysisWaveformCacheDataByFilePath(
+                filePath,
+                {
+                  size: fsStat.size,
+                  mtimeMs: fsStat.mtimeMs
+                }
+              )
+              items.push({ filePath, data: data ?? null })
+            } catch {
+              items.push({ filePath, data: null })
+            }
+            continue
+          }
+          try {
+            const fsStat = await fs.stat(filePath)
+            const data = await LibraryCacheDb.loadExternalAnalysisWaveformCacheData(
+              externalContext,
+              {
+                size: fsStat.size,
+                mtimeMs: fsStat.mtimeMs
+              }
+            )
+            items.push({ filePath, data: data ?? null })
+          } catch {
+            await LibraryCacheDb.removeExternalAnalysisCacheEntry(externalContext)
+            items.push({ filePath, data: null })
+          }
           continue
         }
         try {

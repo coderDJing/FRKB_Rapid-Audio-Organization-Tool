@@ -63,9 +63,28 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         } catch {}
 
         const listRoot = await findSongListRoot(path.dirname(filePath))
+        const externalContext = listRoot
+          ? null
+          : LibraryCacheDb.resolveExternalAnalysisContext(filePath)
         let cachedWaveform: MixxxWaveformData | null = null
         if (stat && listRoot) {
           const cached = await LibraryCacheDb.loadWaveformCacheData(listRoot, filePath, stat)
+          if (cached) {
+            cachedWaveform = cached
+          }
+        } else if (stat && externalContext) {
+          const cached = await LibraryCacheDb.loadExternalAnalysisWaveformCacheData(
+            externalContext,
+            stat
+          )
+          if (cached) {
+            cachedWaveform = cached
+          }
+        } else if (stat) {
+          const cached = await LibraryCacheDb.loadExternalAnalysisWaveformCacheDataByFilePath(
+            filePath,
+            stat
+          )
           if (cached) {
             cachedWaveform = cached
           }
@@ -92,6 +111,12 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           await LibraryCacheDb.upsertWaveformCacheEntry(
             listRoot,
             filePath,
+            { size: stat.size, mtimeMs: stat.mtimeMs },
+            mixxxWaveformData
+          )
+        } else if (!cachedWaveform && mixxxWaveformData && externalContext && stat) {
+          await LibraryCacheDb.upsertExternalAnalysisWaveformCacheEntry(
+            externalContext,
             { size: stat.size, mtimeMs: stat.mtimeMs },
             mixxxWaveformData
           )

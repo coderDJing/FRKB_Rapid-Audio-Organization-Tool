@@ -53,6 +53,7 @@ export type KeyAnalysisJobTrace = {
 
 export type KeyAnalysisPrepareDetails = {
   listRootResolved: boolean
+  externalCacheResolved?: boolean
   doneEntryHit: boolean
   songCacheHit: boolean
   waveformCacheHit: boolean

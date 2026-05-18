@@ -64,6 +64,20 @@ export async function loadSharedSongHotCueDefinition(
       resolved,
       extractSharedHotCuesFromInfo(normalizedPath, entry?.info || null)
     )
+  } else {
+    let stat: { size: number; mtimeMs: number } | null = null
+    try {
+      const fsStat = await fs.stat(normalizedPath)
+      stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+    } catch {}
+    const entry = await LibraryCacheDb.loadExternalAnalysisCacheEntryByFilePath(
+      normalizedPath,
+      stat
+    )
+    resolved = mergeSharedHotCueDefinition(
+      resolved,
+      extractSharedHotCuesFromInfo(normalizedPath, entry?.info || null)
+    )
   }
 
   const mixtapeItems = listMixtapeItemsByFilePath(normalizedPath)
@@ -87,6 +101,27 @@ export async function persistSharedSongHotCueDefinition(
 
   const songListRoot = await findSongListRoot(path.dirname(normalizedPath))
   if (!songListRoot) {
+    const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(normalizedPath)
+    if (externalContext) {
+      let stat: { size: number; mtimeMs: number } | null = null
+      try {
+        const fsStat = await fs.stat(normalizedPath)
+        stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+      } catch {
+        return loadSharedSongHotCueDefinition(normalizedPath)
+      }
+      const existingEntry = await LibraryCacheDb.loadExternalAnalysisCacheEntry(
+        externalContext,
+        stat
+      )
+      const nextInfo = existingEntry?.info
+        ? { ...existingEntry.info }
+        : buildLiteSongInfo(normalizedPath)
+      const normalizedInfo = applyLiteDefaults(nextInfo, normalizedPath)
+      normalizedInfo.hotCues = hotCues
+      normalizedInfo.analysisOnly = true
+      await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, normalizedInfo)
+    }
     return {
       filePath: normalizedPath,
       hotCues

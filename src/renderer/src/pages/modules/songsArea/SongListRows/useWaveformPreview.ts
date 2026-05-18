@@ -449,20 +449,26 @@ export function useWaveformPreview(params: {
   }
   const getWaveformPlaceholderText = (filePath: string) => {
     placeholderVersion.value
+    const song = resolveVisibleSongByFilePath(filePath)
 
-    // 分析进度状态优先级最高
-    if (getAnalysisProgress) {
-      const progress = getAnalysisProgress(filePath)
-      if (progress != null) return t('tracks.waveformAnalyzing')
-    }
-    if (isSongNeedsAnalysis && isSongNeedsAnalysis(filePath)) {
-      return t('tracks.waveformWaitingAnalysis')
+    if (
+      !resolveSongExternalWaveformSource(song, {
+        rootPath: resolveExternalRootPath(),
+        sourceKind: runtime.pioneerDeviceLibrary.selectedSourceKind || undefined
+      })
+    ) {
+      if (getAnalysisProgress) {
+        const progress = getAnalysisProgress(filePath)
+        if (progress != null) return t('tracks.waveformAnalyzing')
+      }
+      if (isSongNeedsAnalysis && isSongNeedsAnalysis(filePath)) {
+        return t('tracks.waveformWaitingAnalysis')
+      }
     }
 
     const state = placeholderStateMap.get(filePath)
     if (state === 'loading') return t('tracks.waveformPreviewLoading')
     if (state === 'unavailable') {
-      const song = resolveVisibleSongByFilePath(filePath)
       if (song?.externalSourceKind === 'desktop') {
         return t('rekordboxDesktop.analysisRequired')
       }

@@ -42,6 +42,8 @@ const DIRTY_DATA_SQL_TABLES = [
   'cover_index',
   'waveform_cache',
   'pioneer_preview_waveform_cache',
+  'external_analysis_devices',
+  'external_analysis_cache',
   'mixtape_items',
   'mixtape_projects',
   'mixtape_stem_assets',

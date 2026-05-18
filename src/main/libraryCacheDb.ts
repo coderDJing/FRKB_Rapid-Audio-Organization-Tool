@@ -70,6 +70,28 @@ export {
 } from './libraryCacheDb/pioneerPreviewWaveformCache'
 
 export {
+  registerExternalAnalysisContext,
+  resolveExternalAnalysisContext,
+  unregisterExternalAnalysisContexts,
+  touchExternalAnalysisDevice,
+  pruneStaleExternalAnalysisDevices,
+  pruneStaleExternalAnalysisCacheEntries,
+  loadExternalAnalysisCacheEntry,
+  loadExternalAnalysisCacheEntryByFilePath,
+  touchExternalAnalysisCacheEntrySeen,
+  upsertExternalAnalysisCacheEntry,
+  loadExternalAnalysisWaveformCacheData,
+  loadExternalAnalysisWaveformCacheDataByFilePath,
+  upsertExternalAnalysisWaveformCacheEntry,
+  removeExternalAnalysisWaveformCacheEntry,
+  removeExternalAnalysisCacheEntry,
+  clearExternalAnalysisCacheForSource,
+  type ExternalAnalysisContext,
+  type ExternalAnalysisSourceKind,
+  type ExternalAnalysisCacheEntry
+} from './libraryCacheDb/externalAnalysisCache'
+
+export {
   renameCacheRoot,
   pruneCachesByRoots,
   migrateCacheKeysToRelativeIfNeeded,

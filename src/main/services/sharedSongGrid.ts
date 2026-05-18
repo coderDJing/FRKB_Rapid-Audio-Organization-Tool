@@ -195,6 +195,20 @@ export async function loadSharedSongGridDefinition(
       resolved,
       extractSharedGridFromInfo(normalizedPath, entry?.info || null)
     )
+  } else {
+    let stat: { size: number; mtimeMs: number } | null = null
+    try {
+      const fsStat = await fs.stat(normalizedPath)
+      stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+    } catch {}
+    const entry = await LibraryCacheDb.loadExternalAnalysisCacheEntryByFilePath(
+      normalizedPath,
+      stat
+    )
+    resolved = mergeSharedGridDefinition(
+      resolved,
+      extractSharedGridFromInfo(normalizedPath, entry?.info || null)
+    )
   }
 
   const mixtapeItems = listMixtapeItemsByFilePath(normalizedPath)
@@ -269,15 +283,42 @@ export async function persistSharedSongGridDefinition(
 
   const songListRoot = await findSongListRoot(path.dirname(normalizedPath))
   if (!songListRoot) {
-    return {
-      filePath: normalizedPath,
-      bpm,
-      firstBeatMs,
-      barBeatOffset,
-      timeBasisOffsetMs,
-      beatThisWindowCount,
-      beatGridAlgorithmVersion
+    const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(normalizedPath)
+    if (!externalContext) {
+      return {
+        filePath: normalizedPath,
+        bpm,
+        firstBeatMs,
+        barBeatOffset,
+        timeBasisOffsetMs,
+        beatThisWindowCount,
+        beatGridAlgorithmVersion
+      }
     }
+    let stat: { size: number; mtimeMs: number } | null = null
+    try {
+      const fsStat = await fs.stat(normalizedPath)
+      stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+    } catch {
+      return loadSharedSongGridDefinition(normalizedPath)
+    }
+    const existingEntry = await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, stat)
+    const nextInfo = existingEntry?.info
+      ? { ...existingEntry.info }
+      : buildLiteSongInfo(normalizedPath)
+    const normalizedInfo = applyLiteDefaults(nextInfo, normalizedPath)
+    if (bpm !== undefined) normalizedInfo.bpm = bpm
+    if (firstBeatMs !== undefined) normalizedInfo.firstBeatMs = firstBeatMs
+    if (barBeatOffset !== undefined) normalizedInfo.barBeatOffset = barBeatOffset
+    if (timeBasisOffsetMs !== undefined) normalizedInfo.timeBasisOffsetMs = timeBasisOffsetMs
+    if (beatGridSource !== undefined) normalizedInfo.beatGridSource = beatGridSource
+    if (beatThisWindowCount !== undefined) normalizedInfo.beatThisWindowCount = beatThisWindowCount
+    if (beatGridAlgorithmVersion !== undefined) {
+      normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
+    }
+    normalizedInfo.analysisOnly = true
+    await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, normalizedInfo)
+    return extractSharedGridFromInfo(normalizedPath, normalizedInfo)
   }
 
   let stat: { size: number; mtimeMs: number } | null = null

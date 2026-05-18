@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { KeyAnalysisQueue } from './keyAnalysis/queue'
 import type { KeyAnalysisBackgroundStatus, KeyAnalysisPriority } from './keyAnalysis/types'
+import * as LibraryCacheDb from '../libraryCacheDb'
 
 // 分析是 CPU 重活，保持单路执行，给播放解码留调度余量。
 const workerCount = 1
@@ -84,6 +85,7 @@ export function invalidateKeyAnalysisCache(filePaths: string[] | string) {
   if (!queue) return
   const list = Array.isArray(filePaths) ? filePaths : [filePaths]
   queue.invalidateDoneByPath(list)
+  LibraryCacheDb.unregisterExternalAnalysisContexts(list)
 }
 
 export function remapKeyAnalysisTrackedPath(fromPath: string, toPath: string) {

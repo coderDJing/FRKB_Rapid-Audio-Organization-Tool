@@ -31,8 +31,11 @@ import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/comp
 import { createRepeatSingleClickDeselect } from '@renderer/pages/modules/songsArea/composables/repeatSingleClickDeselect'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
-import { buildRekordboxSourceChannel, type RekordboxSourceKind } from '@shared/rekordboxSources'
+import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import { usePioneerDesktopPlaylistActions } from './pioneerSongsArea/usePioneerDesktopPlaylistActions'
+import { usePioneerExternalPlaylistAnalysis } from './pioneerSongsArea/usePioneerExternalPlaylistAnalysis'
+import { usePioneerSongDrag } from './pioneerSongsArea/usePioneerSongDrag'
+import type { RekordboxSourceKind } from '@shared/rekordboxSources'
 import type {
   IMenu,
   IPioneerPlaylistTrack,
@@ -66,12 +69,6 @@ const columnData = ref<ISongsAreaColumn[]>(
 )
 const selectSongListDialogVisible = ref(false)
 const selectSongListDialogTargetLibraryName = ref<PioneerTransferTarget | ''>('')
-type PreviewMoveRequestPayload = {
-  song?: ISongInfo | null
-  sourceLibraryName?: string
-  sourceSongListUUID?: string
-  targetLibraryName?: PioneerTransferTarget
-}
 let playlistTracksRequestToken = 0
 
 const ascendingOrder = ascendingOrderAsset
@@ -97,6 +94,7 @@ const selectedSourceRootPath = computed(
 const selectedLibraryType = computed(
   () => runtime.pioneerDeviceLibrary.selectedLibraryType || 'deviceLibrary'
 )
+
 const selectedPlaylistNode = computed(() => {
   const targetId = selectedPlaylistId.value
   if (!targetId) return null
@@ -486,6 +484,14 @@ const handleColumnClick = (column: ISongsAreaColumn) => {
 const isCurrentPlaylistLoadTarget = (sourceCacheKey: string, playlistId: number) =>
   selectedSourceCacheKey.value === sourceCacheKey && selectedPlaylistId.value === playlistId
 
+const { frkbAnalyzedFilePaths, resetFrkbAnalyzedFilePaths, prepareExternalPlaylistAnalysis } =
+  usePioneerExternalPlaylistAnalysis({
+    sourceKind: selectedSourceKind,
+    sourceKey: selectedSourceKey,
+    visibleSongs,
+    isCurrentPlaylistLoadTarget
+  })
+
 const fetchPlaylistTracks = async (params: {
   sourceCacheKey: string
   playlistId: number
@@ -532,6 +538,7 @@ const fetchPlaylistTracks = async (params: {
 
     originalTracks.value = tracks
     applyFiltersAndSorting('fetch-playlist-tracks-success')
+    void prepareExternalPlaylistAnalysis({ sourceCacheKey, playlistId, rootPath, tracks })
   } catch (error) {
     if (!isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
     if (requestToken !== playlistTracksRequestToken) return
@@ -569,6 +576,7 @@ const loadPlaylistTracks = async () => {
     originalTracks.value = []
     visibleSongs.value = []
     selectedRowKeys.value = []
+    resetFrkbAnalyzedFilePaths()
     emitPioneerSongsAreaLog('load-playlist-tracks-reset-empty-selection', {
       sourceCacheKey,
       rootPath,
@@ -578,6 +586,7 @@ const loadPlaylistTracks = async () => {
   }
 
   selectedRowKeys.value = []
+  resetFrkbAnalyzedFilePaths()
 
   const cachedTracks = getCachedRekordboxPlaylistTracks(sourceCacheKey, playlistId)
   emitPioneerSongsAreaLog('load-playlist-tracks-enter', {
@@ -589,6 +598,12 @@ const loadPlaylistTracks = async () => {
     originalTracks.value = cachedTracks.tracks
     applyFiltersAndSorting('load-playlist-tracks-cache-hit')
     loading.value = false
+    void prepareExternalPlaylistAnalysis({
+      sourceCacheKey,
+      playlistId,
+      rootPath,
+      tracks: cachedTracks.tracks
+    })
   } else {
     loading.value = true
     originalTracks.value = []
@@ -676,10 +691,12 @@ const openCopyTargetDialog = (libraryName: PioneerTransferTarget) => {
   selectSongListDialogTargetLibraryName.value = libraryName
   selectSongListDialogVisible.value = true
 }
-const handlePreviewMoveRequest = (payload?: PreviewMoveRequestPayload) => {
+const handlePreviewMoveRequest = (
+  payload?: Record<string, unknown> & { song?: ISongInfo | null }
+) => {
   if (String(payload?.sourceLibraryName || '').trim() !== 'PioneerDeviceLibrary') return
   if (String(payload?.sourceSongListUUID || '').trim() !== currentPlaybackListKey.value) return
-  const targetLibraryName = payload?.targetLibraryName
+  const targetLibraryName = payload?.targetLibraryName as PioneerTransferTarget | undefined
   const song = payload?.song
   if (!song?.filePath || !targetLibraryName) return
   const rowKey = song.mixtapeItemId || song.filePath
@@ -776,6 +793,13 @@ const requestImmediateAnalysis = (song: ISongInfo) => {
     })
   } catch {}
 }
+
+const { handleSongDragStart, handleSongDragEnd } = usePioneerSongDrag({
+  selectedRowKeys,
+  visibleSongs,
+  currentPlaybackListKey,
+  resolveSelectedTracks
+})
 
 const handleSongDblClick = (song: ISongInfo, event?: MouseEvent) => {
   cancelPendingRepeatSingleClickDeselect()
@@ -1029,12 +1053,16 @@ watch(
         :allow-context-menu-when-read-only="true"
         :allow-dblclick-when-read-only="true"
         :allow-waveform-preview-when-read-only="true"
+        :allow-song-drag-when-read-only="true"
+        :analysis-complete-file-paths="frkbAnalyzedFilePaths"
         :reorder-mode="canReorderDesktopTracks ? 'playlist' : 'none'"
         :enable-cover-thumbnails="true"
         :enable-key-analysis-queue="false"
         @song-click="handleSongClick"
         @song-contextmenu="handleSongContextMenu"
         @song-dblclick="handleSongDblClick"
+        @song-dragstart="handleSongDragStart"
+        @song-dragend="handleSongDragEnd"
         @playlist-reorder="handlePlaylistReorder"
       />
     </OverlayScrollbarsComponent>

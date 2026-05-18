@@ -92,6 +92,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
 
   const buildPrepareDetails = (params: {
     listRootResolved: boolean
+    externalCacheResolved?: boolean
     doneEntryHit: boolean
     songCacheHit: boolean
     waveformCacheHit: boolean
@@ -100,6 +101,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     needsWaveform: boolean
   }) => ({
     listRootResolved: params.listRootResolved,
+    externalCacheResolved: params.externalCacheResolved === true,
     doneEntryHit: params.doneEntryHit,
     songCacheHit: params.songCacheHit,
     waveformCacheHit: params.waveformCacheHit,
@@ -222,6 +224,20 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             { size: stat.size, mtimeMs: stat.mtimeMs }
           )
         }
+      } else {
+        const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
+        if (externalContext) {
+          const cached = await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, {
+            size: stat.size,
+            mtimeMs: stat.mtimeMs
+          })
+          await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, {
+            ...(cached?.info || buildLiteSongInfo(filePath)),
+            filePath,
+            key: keyText,
+            analysisOnly: true
+          })
+        }
       }
 
       const payload: KeyAnalysisResult = { filePath, keyText }
@@ -291,9 +307,17 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         )
       }
       const listRoot = await findSongListRoot(path.dirname(filePath))
+      const externalContext = listRoot
+        ? null
+        : LibraryCacheDb.resolveExternalAnalysisContext(filePath)
       const existingSongCacheEntry = listRoot
         ? await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
-        : null
+        : externalContext
+          ? await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, {
+              size: stat.size,
+              mtimeMs: stat.mtimeMs
+            })
+          : null
       const existingSharedGrid = existingSongCacheEntry?.info
       if (
         existingSharedGrid &&
@@ -355,16 +379,18 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         hasWaveform: existing?.hasWaveform
       })
 
-      const sharedGrid = await persistSharedSongGridDefinition({
-        filePath,
-        bpm: normalizedBpm,
-        firstBeatMs: normalizedFirstBeatMs,
-        barBeatOffset: normalizedBarBeatOffset,
-        timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
-        beatThisWindowCount: normalizedBeatThisWindowCount,
-        beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
-        beatGridSource: 'analysis'
-      })
+      const sharedGrid = listRoot
+        ? await persistSharedSongGridDefinition({
+            filePath,
+            bpm: normalizedBpm,
+            firstBeatMs: normalizedFirstBeatMs,
+            barBeatOffset: normalizedBarBeatOffset,
+            timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
+            beatThisWindowCount: normalizedBeatThisWindowCount,
+            beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+            beatGridSource: 'analysis'
+          })
+        : null
       if (sharedGrid) {
         emitSongGridUpdated(sharedGrid)
       }
@@ -385,6 +411,24 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           },
           { size: stat.size, mtimeMs: stat.mtimeMs }
         )
+      } else if (externalContext) {
+        const cached = await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, {
+          size: stat.size,
+          mtimeMs: stat.mtimeMs
+        })
+        await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, {
+          ...(cached?.info || buildLiteSongInfo(filePath)),
+          filePath,
+          bpm: normalizedBpm,
+          firstBeatMs: normalizedFirstBeatMs,
+          barBeatOffset: normalizedBarBeatOffset,
+          timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
+          beatThisEstimatedDrift128Ms: normalizedBeatThisEstimatedDrift128Ms,
+          beatThisWindowCount: normalizedBeatThisWindowCount,
+          beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+          beatGridSource: 'analysis',
+          analysisOnly: true
+        })
       }
 
       const payload: BpmAnalysisResult = {
@@ -483,6 +527,26 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           { size: stat.size, mtimeMs: stat.mtimeMs },
           waveformData
         )
+      } else {
+        const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
+        if (externalContext) {
+          const cached = await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, {
+            size: stat.size,
+            mtimeMs: stat.mtimeMs
+          })
+          if (!cached) {
+            await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, {
+              ...buildLiteSongInfo(filePath),
+              filePath,
+              analysisOnly: true
+            })
+          }
+          await LibraryCacheDb.upsertExternalAnalysisWaveformCacheEntry(
+            externalContext,
+            { size: stat.size, mtimeMs: stat.mtimeMs },
+            waveformData
+          )
+        }
       }
     } catch (error) {
       if (isMissingFileError(error)) {
@@ -513,6 +577,11 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       if (listRoot) {
         await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+      } else {
+        const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
+        if (externalContext) {
+          await LibraryCacheDb.removeExternalAnalysisCacheEntry(externalContext)
+        }
       }
     } catch {}
   }
@@ -526,6 +595,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     const filePath = job.filePath
     let stat: { size: number; mtimeMs: number }
     let listRootResolved = false
+    let externalCacheResolved = false
     let doneEntryHit = false
     let songCacheHit = false
     let waveformCacheHit = false
@@ -536,6 +606,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       job.prepareReason = 'skip-missing-file'
       job.prepareDetails = buildPrepareDetails({
         listRootResolved,
+        externalCacheResolved,
         doneEntryHit,
         songCacheHit,
         waveformCacheHit,
@@ -584,6 +655,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         job.prepareReason = 'skip-done-cache-complete'
         job.prepareDetails = buildPrepareDetails({
           listRootResolved,
+          externalCacheResolved,
           doneEntryHit,
           songCacheHit,
           waveformCacheHit,
@@ -676,6 +748,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           job.prepareReason = 'skip-db-cache-complete'
           job.prepareDetails = buildPrepareDetails({
             listRootResolved,
+            externalCacheResolved,
             doneEntryHit,
             songCacheHit,
             waveformCacheHit,
@@ -687,7 +760,93 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         }
       }
     } else {
-      needsWaveform = false
+      const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
+      if (externalContext) {
+        externalCacheResolved = true
+        const cached = await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, stat)
+        if (cached) {
+          songCacheHit = true
+          const cachedKey = cached.info?.key
+          const cachedBpm = cached.info?.bpm
+          const cachedFirstBeatMs = cached.info?.firstBeatMs
+          const cachedBarBeatOffset = cached.info?.barBeatOffset
+          const cachedBeatThisEstimatedDrift128Ms = normalizeBeatThisEstimatedDrift128Ms(
+            cached.info?.beatThisEstimatedDrift128Ms
+          )
+          const cachedBeatThisWindowCount = normalizeBeatThisWindowCount(
+            cached.info?.beatThisWindowCount
+          )
+          const cachedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
+            cached.info?.beatGridAlgorithmVersion
+          )
+          const hasKey = isValidKeyText(cachedKey)
+          const hasBpm = isValidBpm(cachedBpm)
+          const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)
+          const hasBarBeatOffset = isValidBarBeatOffset(cachedBarBeatOffset)
+          const hasBeatThisWindowCount = cachedBeatThisWindowCount !== undefined
+          const hasCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(cached.info)
+          if (hasKey || hasBpm || hasFirstBeatMs || hasBarBeatOffset || cached.hasWaveform) {
+            deps.doneByPath.set(job.normalizedPath, {
+              size: stat.size,
+              mtimeMs: stat.mtimeMs,
+              keyText: hasKey ? cachedKey : undefined,
+              bpm: hasBpm ? cachedBpm : undefined,
+              firstBeatMs: hasFirstBeatMs ? cachedFirstBeatMs : undefined,
+              barBeatOffset: hasBarBeatOffset
+                ? normalizeBarBeatOffset(cachedBarBeatOffset)
+                : undefined,
+              timeBasisOffsetMs: normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs),
+              beatThisEstimatedDrift128Ms: cachedBeatThisEstimatedDrift128Ms,
+              beatThisWindowCount: cachedBeatThisWindowCount,
+              beatGridAlgorithmVersion: cachedBeatGridAlgorithmVersion,
+              hasWaveform: cached.hasWaveform
+            })
+          }
+          if (needsKey && hasKey) {
+            needsKey = false
+          }
+          if (
+            needsBpm &&
+            hasBpm &&
+            hasFirstBeatMs &&
+            hasBarBeatOffset &&
+            hasCurrentBeatGridAlgorithm &&
+            (!requireBeatThisDebugMetrics || hasBeatThisWindowCount)
+          ) {
+            needsBpm = false
+          }
+          if (cached.hasWaveform) {
+            waveformCacheHit = true
+            needsWaveform = false
+          }
+          if (!needsKey && !needsBpm && !needsWaveform) {
+            job.needsKey = false
+            job.needsBpm = false
+            job.needsWaveform = false
+            job.prepareReason = 'skip-external-cache-complete'
+            job.prepareDetails = buildPrepareDetails({
+              listRootResolved,
+              externalCacheResolved,
+              doneEntryHit,
+              songCacheHit,
+              waveformCacheHit,
+              needsKey,
+              needsBpm,
+              needsWaveform
+            })
+            deps.events.emit('analysis-stage-update', {
+              filePath: job.filePath,
+              stage: 'job-done',
+              needsKey: false,
+              needsBpm: false,
+              needsWaveform: false
+            })
+            return false
+          }
+        }
+      } else {
+        needsWaveform = false
+      }
     }
 
     if (!needsKey && !needsBpm && !needsWaveform) {
@@ -697,6 +856,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       job.prepareReason = 'skip-special-grid-complete'
       job.prepareDetails = buildPrepareDetails({
         listRootResolved,
+        externalCacheResolved,
         doneEntryHit,
         songCacheHit,
         waveformCacheHit,
@@ -720,6 +880,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     job.prepareReason = 'ready-analysis'
     job.prepareDetails = buildPrepareDetails({
       listRootResolved,
+      externalCacheResolved,
       doneEntryHit,
       songCacheHit,
       waveformCacheHit,
