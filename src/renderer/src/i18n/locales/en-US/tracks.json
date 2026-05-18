@@ -24,6 +24,7 @@
     "exportToFolder": "Export to folder",
     "deleteAfterExport": "Delete after export",
     "exportCopyOnlyHint": "This source is read-only. Export is copy-only and will not delete source files.",
+    "exportPathNotExist": "Path does not exist, please select again",
     "readOnlySourceDeleteNotAllowed": "The current playback source is read-only. Deleting source files is not allowed.",
     "confirmDelete": "Permanently delete?",
     "confirmDeleteSelected": "Permanently delete selected?",

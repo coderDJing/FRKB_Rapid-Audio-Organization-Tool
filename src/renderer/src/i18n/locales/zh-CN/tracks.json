@@ -24,6 +24,7 @@
     "exportToFolder": "导出到文件夹",
     "deleteAfterExport": "导出后删除曲目",
     "exportCopyOnlyHint": "当前来源为只读媒体，导出仅支持复制，不会删除源文件。",
+    "exportPathNotExist": "路径不存在，请重新选择",
     "readOnlySourceDeleteNotAllowed": "当前播放来源为只读媒体，不支持删除源文件。",
     "confirmDelete": "确认彻底删除吗？",
     "confirmDeleteSelected": "确定彻底删除选中的曲目吗",

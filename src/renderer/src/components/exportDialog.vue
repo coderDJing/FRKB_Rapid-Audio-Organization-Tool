@@ -42,6 +42,7 @@ const flashBorder = (flashAreaName: string) => {
   }, 500) // 每次闪烁间隔 500 毫秒
 }
 const folderPathVal = ref('') //文件夹路径
+const pathNotExist = ref(false)
 let clickChooseDirFlag = false
 const clickChooseDir = async () => {
   if (clickChooseDirFlag) {
@@ -55,36 +56,57 @@ const clickChooseDir = async () => {
   }
 }
 const deleteSongsAfterExport = ref(false)
-let localStorageData = localStorage.getItem('exportDialog')
+const localStorageKey = 'exportDialog'
+let localStorageData = localStorage.getItem(localStorageKey)
 if (localStorageData === null) {
   localStorage.setItem(
-    'exportDialog',
+    localStorageKey,
     JSON.stringify({
-      deleteSongsAfterExport: true
+      deleteSongsAfterExport: true,
+      folderPathVal: ''
     })
   )
   deleteSongsAfterExport.value = true
 } else {
-  const parsedLocalStorageData = JSON.parse(localStorageData) as { deleteSongsAfterExport: boolean }
+  const parsedLocalStorageData = JSON.parse(localStorageData) as {
+    deleteSongsAfterExport: boolean
+    folderPathVal?: string
+  }
   deleteSongsAfterExport.value = parsedLocalStorageData.deleteSongsAfterExport
+  if (parsedLocalStorageData.folderPathVal) {
+    folderPathVal.value = parsedLocalStorageData.folderPathVal
+  }
 }
 if (props.forceCopyOnly) {
   deleteSongsAfterExport.value = false
 }
 
-const confirm = () => {
+const saveLocalStorage = () => {
+  localStorage.setItem(
+    localStorageKey,
+    JSON.stringify({
+      deleteSongsAfterExport: props.forceCopyOnly ? false : deleteSongsAfterExport.value,
+      folderPathVal: folderPathVal.value
+    })
+  )
+}
+
+const confirm = async () => {
   if (folderPathVal.value === '') {
     if (!flashArea.value) {
       flashBorder('folderPathVal')
     }
     return
   }
-  localStorage.setItem(
-    'exportDialog',
-    JSON.stringify({
-      deleteSongsAfterExport: props.forceCopyOnly ? false : deleteSongsAfterExport.value
-    })
-  )
+  const exists = await window.electron.ipcRenderer.invoke('check-path-exists', folderPathVal.value)
+  if (!exists) {
+    pathNotExist.value = true
+    setTimeout(() => {
+      pathNotExist.value = false
+    }, 3000)
+    return
+  }
+  saveLocalStorage()
   closeWithAnimation(() => {
     props.confirmCallback({
       folderPathVal: folderPathVal.value,
@@ -94,12 +116,7 @@ const confirm = () => {
 }
 
 const cancel = () => {
-  localStorage.setItem(
-    'exportDialog',
-    JSON.stringify({
-      deleteSongsAfterExport: props.forceCopyOnly ? false : deleteSongsAfterExport.value
-    })
-  )
+  saveLocalStorage()
   closeWithAnimation(() => {
     props.cancelCallback()
   })
@@ -154,6 +171,9 @@ onUnmounted(() => {
             >
               {{ folderPathVal }}
             </bubbleBoxTrigger>
+            <div v-if="pathNotExist" class="pathNotExistHint">
+              {{ t('tracks.exportPathNotExist') }}
+            </div>
           </div>
         </div>
         <div v-if="!props.forceCopyOnly" style="display: flex">
@@ -205,5 +225,12 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--text-weak);
   line-height: 1.5;
+}
+
+.pathNotExistHint {
+  font-size: 12px;
+  color: var(--error, #f56c6c);
+  margin-top: 4px;
+  line-height: 1.4;
 }
 </style>
