@@ -113,6 +113,7 @@ import numpy as np
 import soxr
 import torch
 
+import beat_this.inference as _beat_this_inference
 from beat_this.inference import Audio2Beats, split_predict_aggregate
 from beat_this.preprocessing import LogMelSpect
 from beat_this_grid_solver import (
@@ -154,6 +155,45 @@ from beat_this_runtime_constant_grid import (
     try_solve_runtime_constant_grid_dp as _try_solve_runtime_constant_grid_dp,
 )
 from beat_this_window_selection import select_anchor_window_result as _select_anchor_window_result
+
+_ORIGINAL_BEAT_THIS_LOAD_MODEL = _beat_this_inference.load_model
+
+
+def _is_directml_device(device: Any) -> bool:
+    normalized = str(device or "").strip().lower()
+    return normalized == "directml" or normalized.startswith("privateuseone")
+
+
+def _resolve_directml_device(device: Any) -> str:
+    normalized = str(device or "").strip()
+    if not _is_directml_device(normalized):
+        return normalized
+
+    try:
+        import torch_directml
+    except Exception as error:
+        raise RuntimeError(f"DirectML device requested but torch_directml is unavailable: {error}") from error
+
+    if normalized.lower() == "directml":
+        directml_device = torch_directml.device()
+        if not directml_device:
+            raise RuntimeError("DirectML device requested but no torch_directml device is available")
+        return str(directml_device)
+    return normalized
+
+
+def _load_model_with_directml_cpu_checkpoint(
+    checkpoint_path: str | None = "final0",
+    device: str | torch.device = "cpu",
+) -> torch.nn.Module:
+    resolved_device = _resolve_directml_device(device)
+    if _is_directml_device(resolved_device):
+        model = _ORIGINAL_BEAT_THIS_LOAD_MODEL(checkpoint_path, "cpu")
+        return model.to(resolved_device).eval()
+    return _ORIGINAL_BEAT_THIS_LOAD_MODEL(checkpoint_path, resolved_device)
+
+
+_beat_this_inference.load_model = _load_model_with_directml_cpu_checkpoint
 
 
 def _emit(payload: dict[str, Any]) -> None:

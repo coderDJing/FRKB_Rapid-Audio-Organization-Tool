@@ -6,6 +6,7 @@ import type {
   HorizontalBrowseGridShiftOptions,
   HorizontalBrowseGridToolbarState
 } from '@renderer/components/useHorizontalBrowseGridToolbar'
+import type { HorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
 
 type HorizontalBrowseSharedZoomState = {
   value: number
@@ -17,20 +18,6 @@ type HorizontalBrowseSharedZoomState = {
 type HorizontalBrowseLoopRange = {
   startSec: number
   endSec: number
-}
-
-type HorizontalBrowseRawWaveformDetailExpose = {
-  toggleBarLinePicking: () => void
-  setBarLineAtPlayhead: () => void
-  shiftGridSmallLeft: (options?: HorizontalBrowseGridShiftOptions) => void
-  shiftGridLargeLeft: (options?: HorizontalBrowseGridShiftOptions) => void
-  shiftGridSmallRight: (options?: HorizontalBrowseGridShiftOptions) => void
-  shiftGridLargeRight: (options?: HorizontalBrowseGridShiftOptions) => void
-  updateBpmInput: (value: string) => void
-  blurBpmInput: () => void
-  tapBpm: () => void
-  toggleMetronome: () => void
-  cycleMetronomeVolume: () => void
 }
 
 const props = defineProps<{
@@ -75,7 +62,7 @@ const emit = defineEmits<{
 
 const detailRef = ref<HorizontalBrowseRawWaveformDetailExpose | null>(null)
 
-defineExpose({
+defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   toggleBarLinePicking: () => detailRef.value?.toggleBarLinePicking?.(),
   setBarLineAtPlayhead: () => detailRef.value?.setBarLineAtPlayhead?.(),
   shiftGridLargeLeft: (options?: HorizontalBrowseGridShiftOptions) =>

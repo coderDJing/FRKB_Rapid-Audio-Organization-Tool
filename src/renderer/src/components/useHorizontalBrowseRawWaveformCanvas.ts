@@ -60,6 +60,7 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
   allowNegativeTimeline: () => boolean
   waveformLayout: () => HorizontalBrowseWaveformLayout
   waveformRenderStyle: () => HorizontalBrowseWaveformRenderStyle
+  phaseAwareScrollReuse?: () => boolean
 }
 
 const RAW_STREAM_REDRAW_INTERVAL_MS = 80
@@ -392,7 +393,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       showBackground: false,
       showBeatGrid: Number(options.previewBpm.value) > 0,
       allowScrollReuse: payload.allowScrollReuse,
-      phaseAwareScrollReuse: payload.allowScrollReuse,
+      phaseAwareScrollReuse: payload.allowScrollReuse && options.phaseAwareScrollReuse?.() === true,
       waveformLayout: resolveWaveformLayout(),
       waveformRenderStyle: options.waveformRenderStyle(),
       preferRawPeaksOnly: payload.preferRawPeaksOnly,

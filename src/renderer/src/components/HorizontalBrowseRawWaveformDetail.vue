@@ -12,7 +12,6 @@ import {
 } from '@renderer/components/horizontalBrowseWaveform.constants'
 import {
   useHorizontalBrowseGridToolbar,
-  type HorizontalBrowseGridShiftOptions,
   type HorizontalBrowseGridToolbarState
 } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
@@ -34,6 +33,7 @@ import {
 import type {
   HorizontalBrowseDragSessionEndPayload,
   HorizontalBrowseLoopRange,
+  HorizontalBrowseRawWaveformDetailExpose,
   HorizontalBrowseSharedZoomState,
   HorizontalBrowseWaveformLayout,
   HorizontalBrowseWaveformRenderStyle
@@ -42,22 +42,9 @@ import {
   resolveHorizontalBrowseWaveformTraceElapsedMs,
   sendHorizontalBrowseWaveformTrace
 } from '@renderer/components/horizontalBrowseWaveformTrace'
+import { buildHorizontalBrowseRawWaveformGridSignature } from '@renderer/components/horizontalBrowseRawWaveformGridSignature'
 import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/components/horizontalBrowseInteractionTimeline'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
-
-type HorizontalBrowseRawWaveformDetailExpose = {
-  toggleBarLinePicking: () => void
-  setBarLineAtPlayhead: () => void
-  shiftGridSmallLeft: (options?: HorizontalBrowseGridShiftOptions) => void
-  shiftGridLargeLeft: (options?: HorizontalBrowseGridShiftOptions) => void
-  shiftGridSmallRight: (options?: HorizontalBrowseGridShiftOptions) => void
-  shiftGridLargeRight: (options?: HorizontalBrowseGridShiftOptions) => void
-  updateBpmInput: (value: string) => void
-  blurBpmInput: () => void
-  tapBpm: () => void
-  toggleMetronome: () => void
-  cycleMetronomeVolume: () => void
-}
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -243,7 +230,8 @@ const {
   rawStreamActive,
   allowNegativeTimeline: () => Boolean(props.allowNegativeTimeline),
   waveformLayout: resolveWaveformLayout,
-  waveformRenderStyle: resolveWaveformRenderStyle
+  waveformRenderStyle: resolveWaveformRenderStyle,
+  phaseAwareScrollReuse: () => Math.abs(localGridShiftPhaseOffsetSec.value) > 0.000001
 })
 
 const applyLocalGridShiftPhaseCompensation = (deltaMs: number) => {
@@ -291,36 +279,21 @@ const clearBpmTapResetTimer = () => {
   bpmTapResetTimer = null
 }
 
-const normalizeGridSignatureBpm = (value: unknown) => {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric) || numeric <= 0) return 0
-  return normalizePreviewBpm(numeric)
-}
-
-const normalizeGridSignatureFirstBeatMs = (value: unknown) => {
-  const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return 0
-  return Number(numeric.toFixed(3))
-}
-
-const normalizeGridSignatureBarBeatOffset = (value: unknown) =>
-  normalizeBeatOffset(Number(value) || 0, PREVIEW_BAR_BEAT_INTERVAL)
-
 const buildPreviewGridSignature = () =>
-  [
-    normalizeGridSignatureBpm(previewBpm.value).toFixed(6),
-    normalizeGridSignatureFirstBeatMs(previewFirstBeatMs.value).toFixed(3),
-    normalizeGridSignatureBarBeatOffset(previewBarBeatOffset.value),
-    normalizeGridSignatureFirstBeatMs(previewTimeBasisOffsetMs.value).toFixed(3)
-  ].join('|')
+  buildHorizontalBrowseRawWaveformGridSignature({
+    bpm: previewBpm.value,
+    firstBeatMs: previewFirstBeatMs.value,
+    barBeatOffset: previewBarBeatOffset.value,
+    timeBasisOffsetMs: previewTimeBasisOffsetMs.value
+  })
 
 const buildSongGridSignature = () =>
-  [
-    normalizeGridSignatureBpm(props.song?.bpm).toFixed(6),
-    normalizeGridSignatureFirstBeatMs(props.song?.firstBeatMs).toFixed(3),
-    normalizeGridSignatureBarBeatOffset(props.song?.barBeatOffset),
-    normalizeGridSignatureFirstBeatMs(props.song?.timeBasisOffsetMs).toFixed(3)
-  ].join('|')
+  buildHorizontalBrowseRawWaveformGridSignature({
+    bpm: props.song?.bpm,
+    firstBeatMs: props.song?.firstBeatMs,
+    barBeatOffset: props.song?.barBeatOffset,
+    timeBasisOffsetMs: props.song?.timeBasisOffsetMs
+  })
 
 const normalizePreviewTimelineSeconds = (seconds: number) => {
   const numeric = Number(seconds)

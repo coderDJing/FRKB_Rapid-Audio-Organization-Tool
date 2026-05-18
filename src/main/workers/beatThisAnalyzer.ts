@@ -4,6 +4,7 @@ import childProcess, { type ChildProcessWithoutNullStreams } from 'node:child_pr
 import {
   buildBeatThisChildEnv,
   normalizeBeatThisFsPath,
+  resetBeatThisRuntimeResolution,
   resolveBeatThisProjectRoot,
   resolveBeatThisRuntime
 } from './beatThisRuntime'
@@ -78,6 +79,7 @@ let bridgeNextRequestId = 0
 let bridgeRequestQueue: Promise<unknown> = Promise.resolve()
 const bridgePendingRequests = new Map<string, PendingRequest>()
 let cleanupHooksRegistered = false
+let bridgeStartupFailedAfterSpawn = false
 
 const resolveBridgeScriptPath = () => {
   if (cachedBridgePath) return cachedBridgePath
@@ -191,10 +193,17 @@ const rejectAllPendingRequests = (error: Error) => {
   bridgePendingRequests.clear()
 }
 
-const resetBridgeProcessState = (error?: Error) => {
+const resetBridgeProcessState = (
+  error?: Error,
+  options: { resetRuntimeResolution?: boolean } = {}
+) => {
   bridgeChild = null
   bridgeStdoutBuffer = ''
   bridgeStderrBuffer = ''
+  if (options.resetRuntimeResolution) {
+    bridgeStartupFailedAfterSpawn = true
+    resetBeatThisRuntimeResolution()
+  }
   if (bridgeReadyResolve || bridgeReadyReject) {
     settleBridgeReady(error || new Error('Beat This! bridge terminated before ready'))
   }
@@ -283,7 +292,7 @@ const handleBridgeStdoutChunk = (chunk: Buffer | string) => {
   }
 }
 
-const ensureBridgeProcess = async () => {
+const startBridgeProcess = async () => {
   if (bridgeChild && bridgeReadyPromise) {
     await bridgeReadyPromise
     return bridgeChild
@@ -328,23 +337,40 @@ const ensureBridgeProcess = async () => {
     }
   })
   child.once('error', (error) => {
+    if (bridgeChild !== child) return
     const startupError = new Error(
       `Beat This! bridge process failed: ${error instanceof Error ? error.message : String(error)}`
     )
-    resetBridgeProcessState(startupError)
+    resetBridgeProcessState(startupError, { resetRuntimeResolution: true })
   })
   child.once('exit', (code, signal) => {
+    if (bridgeChild !== child) return
     const stderrTail = bridgeStderrBuffer.trim()
     const exitError = new Error(
       `Beat This! bridge exited unexpectedly (code=${String(code ?? '')}, signal=${String(signal ?? '')})${
         stderrTail ? ` stderr=${stderrTail}` : ''
       }`
     )
-    resetBridgeProcessState(exitError)
+    resetBridgeProcessState(exitError, { resetRuntimeResolution: true })
   })
 
   await bridgeReadyPromise
   return child
+}
+
+const ensureBridgeProcess = async () => {
+  if (bridgeChild && bridgeReadyPromise) {
+    await bridgeReadyPromise
+    return bridgeChild
+  }
+
+  try {
+    return await startBridgeProcess()
+  } catch (error) {
+    if (!bridgeStartupFailedAfterSpawn) throw error
+    bridgeStartupFailedAfterSpawn = false
+    return await startBridgeProcess()
+  }
 }
 
 export const preloadBeatThisAnalyzer = async () => {

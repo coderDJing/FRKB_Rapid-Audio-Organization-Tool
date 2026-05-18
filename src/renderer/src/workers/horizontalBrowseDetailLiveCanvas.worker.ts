@@ -4,6 +4,7 @@ import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWave
 import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRenderer'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import { createHorizontalBrowseDetailLiveCanvasOverlayRenderer } from './horizontalBrowseDetailLiveCanvasOverlay'
+import { canPreserveHorizontalBrowseWaveformAfterRenderMiss } from './horizontalBrowseDetailLiveCanvasRenderGuards'
 import type {
   HorizontalBrowseDetailLiveCanvasRawMeta,
   HorizontalBrowseDetailLiveCanvasRenderRequest,
@@ -826,31 +827,6 @@ const renderTimelineFallback = () => {
   clearWaveformPixels()
 }
 
-const canPreserveWaveformAfterRenderMiss = (
-  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
-  state: FrameState,
-  previousFrame: FrameState | null
-) => {
-  if (request.playbackActive !== true || !previousFrame || !state.rawData) return false
-  return (
-    previousFrame.width === state.width &&
-    previousFrame.height === state.height &&
-    previousFrame.bpm === state.bpm &&
-    previousFrame.barBeatOffset === state.barBeatOffset &&
-    previousFrame.timeBasisOffsetMs === state.timeBasisOffsetMs &&
-    previousFrame.rangeDurationSec === state.rangeDurationSec &&
-    previousFrame.rawData === state.rawData &&
-    previousFrame.showDetailHighlights === state.showDetailHighlights &&
-    previousFrame.showCenterLine === state.showCenterLine &&
-    previousFrame.showBackground === state.showBackground &&
-    previousFrame.showBeatGrid === state.showBeatGrid &&
-    previousFrame.waveformLayout === state.waveformLayout &&
-    previousFrame.waveformRenderStyle === state.waveformRenderStyle &&
-    previousFrame.preferRawPeaksOnly === state.preferRawPeaksOnly &&
-    previousFrame.themeVariant === state.themeVariant
-  )
-}
-
 const resolvePresentationOffsetCssPx = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
   metrics: CanvasMetrics,
@@ -880,7 +856,7 @@ const processRender = (
     !!metrics &&
     !!renderState &&
     !ready &&
-    canPreserveWaveformAfterRenderMiss(request, renderState, previousFrame)
+    canPreserveHorizontalBrowseWaveformAfterRenderMiss(request, renderState, previousFrame)
   if (preserved) {
     lastFrame = previousFrame
     lastWaveformScrollShiftScaledPx = null
@@ -937,7 +913,7 @@ const buildPlaybackRenderRequest = (
     ...animation.request,
     playbackSeconds,
     allowScrollReuse,
-    phaseAwareScrollReuse: allowScrollReuse,
+    phaseAwareScrollReuse: allowScrollReuse && animation.request.phaseAwareScrollReuse === true,
     rangeStartSec: resolvePlaybackRangeStartSec(animation.request, playbackSeconds),
     dirtyStartSec: undefined,
     dirtyEndSec: undefined

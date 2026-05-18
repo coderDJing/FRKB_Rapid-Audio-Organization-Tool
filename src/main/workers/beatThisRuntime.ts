@@ -45,8 +45,7 @@ const DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH = 'beat-this-checkpoints/final0
 const BEAT_THIS_PROBE_TIMEOUT_MS = 30_000
 const BEAT_THIS_COMPATIBILITY_TIMEOUT_MS = 90_000
 const BEAT_THIS_RUNTIME_CACHE_FILE = 'beat-this-runtime-resolution.json'
-const BEAT_THIS_RUNTIME_CACHE_VERSION = 1
-const BEAT_THIS_RUNTIME_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const BEAT_THIS_RUNTIME_CACHE_VERSION = 2
 
 let cachedProjectRoot = ''
 let cachedResolvedRuntime: BeatThisResolvedRuntime | null | undefined
@@ -280,6 +279,9 @@ const isEnabledEnvFlag = (value: string | undefined) =>
 
 const shouldRunBeatThisDeviceCompatibilityProbe = () =>
   isEnabledEnvFlag(process.env[ENV_BEAT_THIS_STRICT_DEVICE_PROBE])
+
+const shouldProbeBeatThisDeviceCompatibility = (device: BeatThisComputeDevice) =>
+  device === 'directml' || shouldRunBeatThisDeviceCompatibilityProbe()
 
 const runtimeHasBeatThisPackage = (runtimeDir: string) => {
   const sitePackagesDir = resolveRuntimeSitePackagesDir(runtimeDir)
@@ -649,12 +651,35 @@ const probeBeatThisDeviceCompatibility = (candidate: BeatThisPythonCommand, devi
   const compatibilityCode = [
     buildBeatThisBootstrapCode(),
     'import json',
+    'import os',
     'import numpy as np',
     'import torch',
-    'from beat_this.inference import Audio2Beats, split_predict_aggregate',
+    'import beat_this.inference as beat_this_inference',
     'from beat_this.preprocessing import LogMelSpect',
     `device = ${JSON.stringify(deviceArg)}`,
-    'predictor = Audio2Beats(checkpoint_path=None, device=device, dbn=False)',
+    `checkpoint_path = str(os.environ.get(${JSON.stringify(ENV_BEAT_THIS_CHECKPOINT)}, "") or "").strip() or None`,
+    'original_load_model = beat_this_inference.load_model',
+    'def is_directml_device(value):',
+    '    normalized = str(value or "").strip().lower()',
+    '    return normalized == "directml" or normalized.startswith("privateuseone")',
+    'def resolve_directml_device(value):',
+    '    normalized = str(value or "").strip()',
+    '    if not is_directml_device(normalized):',
+    '        return normalized',
+    '    import torch_directml',
+    '    if normalized.lower() == "directml":',
+    '        return str(torch_directml.device())',
+    '    return normalized',
+    'device = resolve_directml_device(device)',
+    'def load_model_with_directml_cpu_checkpoint(checkpoint_path="final0", model_device="cpu"):',
+    '    resolved_device = resolve_directml_device(model_device)',
+    '    if is_directml_device(resolved_device):',
+    '        return original_load_model(checkpoint_path, "cpu").to(resolved_device).eval()',
+    '    return original_load_model(checkpoint_path, resolved_device)',
+    'beat_this_inference.load_model = load_model_with_directml_cpu_checkpoint',
+    'Audio2Beats = beat_this_inference.Audio2Beats',
+    'split_predict_aggregate = beat_this_inference.split_predict_aggregate',
+    'predictor = Audio2Beats(checkpoint_path=checkpoint_path, device=device, dbn=False)',
     "signal = np.zeros(22050, dtype='float32')",
     "if str(device).strip().lower() == 'cpu':",
     '    beats, downbeats = predictor(signal, 22050)',
@@ -725,10 +750,7 @@ const readBeatThisRuntimeCache = (): CachedBeatThisResolvedRuntime | null => {
     ) as Partial<CachedBeatThisResolvedRuntime>
     const createdAt = Number(parsed.createdAt)
     if (parsed.version !== BEAT_THIS_RUNTIME_CACHE_VERSION) return null
-    if (
-      !Number.isFinite(createdAt) ||
-      Date.now() - createdAt > BEAT_THIS_RUNTIME_CACHE_MAX_AGE_MS
-    ) {
+    if (!Number.isFinite(createdAt) || createdAt <= 0) {
       return null
     }
     const command = normalizeBeatThisFsPath(String(parsed.command || ''))
@@ -914,7 +936,7 @@ export const resolveBeatThisRuntime = (): BeatThisResolvedRuntime | null => {
       if (!probe.runtimeUsable) continue
       if (selectedDevice !== 'cpu' && !probe.devices.includes(selectedDevice)) continue
       const deviceArg = deviceArgOverride || probe.deviceArgs[selectedDevice] || selectedDevice
-      if (selectedDevice !== 'cpu' && shouldRunBeatThisDeviceCompatibilityProbe()) {
+      if (selectedDevice !== 'cpu' && shouldProbeBeatThisDeviceCompatibility(selectedDevice)) {
         const compatibility = probeBeatThisDeviceCompatibility(probe.candidate, deviceArg)
         if (!compatibility.ok) continue
       }
