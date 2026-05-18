@@ -38,7 +38,7 @@ const toggleClose = () => {
   window.electron.ipcRenderer.send('updateWindow-toggle-close')
 }
 
-let state = ref('isRequesting')
+const state = ref('isRequesting')
 const errorInfo = ref<Required<UpdateErrorPayload>>({
   kind: 'network',
   message: '',
@@ -61,14 +61,13 @@ watch(
   { immediate: true }
 )
 
-let latestVersion = ref('')
+const latestVersion = ref('')
 window.electron.ipcRenderer.once('isLatestVersion', (_event, version) => {
-  console.log('[Update.vue] received isLatestVersion', version, 'current state:', state.value)
   latestVersion.value = version
   state.value = 'isLatest'
 })
 
-let newVersionInfo = ref<UpdateInfo>({
+const newVersionInfo = ref<UpdateInfo>({
   version: '',
   files: [],
   path: '',
@@ -104,13 +103,7 @@ const updateReleaseNotesHtml = async (payload: ReleaseNotesRangePayload | null) 
   }
 }
 
-window.electron.ipcRenderer.once('newVersion', (_event, versionInfo: UpdateInfo) => {
-  console.log(
-    '[Update.vue] received newVersion',
-    versionInfo?.version,
-    'current state:',
-    state.value
-  )
+window.electron.ipcRenderer.on('newVersion', (_event, versionInfo: UpdateInfo) => {
   newVersionInfo.value = versionInfo
   releaseNotesRange.value = null
   releaseNotesHtml.value = ''
@@ -151,7 +144,7 @@ const startDownload = () => {
   window.electron.ipcRenderer.send('updateWindow-startDownload')
   state.value = 'isUpdateProgress'
 }
-let progress = ref({
+const progress = ref({
   percent: 0,
   bytesPerSecond: 0,
   transferredBytes: 0,

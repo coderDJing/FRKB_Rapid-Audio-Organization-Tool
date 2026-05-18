@@ -120,8 +120,8 @@ const toggleClose = async () => {
   }
   window.electron.ipcRenderer.send('foundNewVersionWindow-toggle-close')
 }
-const checkNow = async () => {
-  await window.electron.ipcRenderer.invoke('foundNewVersionWindow-checkForUpdates')
+const startUpdate = async () => {
+  await window.electron.ipcRenderer.invoke('foundNewVersionWindow-startUpdate')
   window.electron.ipcRenderer.send('foundNewVersionWindow-toggle-close')
 }
 </script>
@@ -202,7 +202,7 @@ const checkNow = async () => {
         <span>{{ t('update.doNotCheckFor7Days') }}</span>
       </label>
       <div class="footer-actions">
-        <div class="button footer-button" @click="checkNow()">
+        <div class="button footer-button" @click="startUpdate()">
           {{ t('update.startUpdate') }}
         </div>
         <div class="button footer-button" @click="toggleClose()">

@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import updateWindow from './updateWindow.js'
+import { log } from '../log'
 import type { UpdateInfo } from 'electron-updater'
 import type { ReleaseNotesRangePayload } from '../../shared/releaseNotes'
 import path = require('path')
@@ -30,20 +31,21 @@ const handleToggleMinimize = () => {
   foundNewVersionWindow?.minimize()
 }
 
-const handleCheckForUpdates = () => {
-  console.log(
-    '[foundNewVersionWindow] handleCheckForUpdates, updateWindow.instance:',
-    updateWindow.instance
-  )
+const handleStartUpdate = () => {
+  log.info('[foundNewVersionWindow] start update requested', {
+    hasUpdateWindow: updateWindow.instance !== null
+  })
   if (updateWindow.instance === null) {
-    console.log('[foundNewVersionWindow] creating updateWindow with skipCheck=true')
-    updateWindow.createWindow(true)
+    updateWindow.createWindow({
+      skipCheck: true,
+      startDownload: true
+    })
   } else {
-    console.log('[foundNewVersionWindow] focusing existing updateWindow')
     if (updateWindow.instance.isMinimized()) {
       updateWindow.instance.restore()
     }
     updateWindow.instance.focus()
+    updateWindow.startCachedDownload()
   }
 }
 
@@ -96,12 +98,12 @@ const createWindow = () => {
 
   ipcMain.on('foundNewVersionWindow-toggle-close', handleToggleClose)
   ipcMain.on('foundNewVersionWindow-toggle-minimize', handleToggleMinimize)
-  ipcMain.handle('foundNewVersionWindow-checkForUpdates', handleCheckForUpdates)
+  ipcMain.handle('foundNewVersionWindow-startUpdate', handleStartUpdate)
 
   foundNewVersionWindow.on('closed', () => {
     ipcMain.removeListener('foundNewVersionWindow-toggle-close', handleToggleClose)
     ipcMain.removeListener('foundNewVersionWindow-toggle-minimize', handleToggleMinimize)
-    ipcMain.removeHandler('foundNewVersionWindow-checkForUpdates')
+    ipcMain.removeHandler('foundNewVersionWindow-startUpdate')
     foundNewVersionWindow = null
   })
 }

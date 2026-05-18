@@ -25,7 +25,9 @@ let latestMacManualUpdateResult: ManualMacUpdateResult | null = null
 let manualMacDownloadPromise: Promise<ManualMacUpdateResult> | null = null
 let latestManualUpdateUrl = DEFAULT_MANUAL_UPDATE_URL
 let lastReleaseNotesRange: ReleaseNotesRangePayload | null = null
+let lastReleaseNotesRangeSettled = false
 let lastUpdateInfo: UpdateInfo | null = null
+let autoDownloadInProgress = false
 
 type AutoUpdaterProvider = {
   resolveFiles?: (updateInfo: UpdateInfo) => ResolvedUpdateFileInfo[]
@@ -59,14 +61,42 @@ type UpdateDownloadedPayload = {
   downloadDir?: string
 }
 
+type CreateUpdateWindowOptions =
+  | boolean
+  | {
+      skipCheck?: boolean
+      startDownload?: boolean
+    }
+
+const normalizeCreateOptions = (
+  options: CreateUpdateWindowOptions
+): { skipCheck: boolean; startDownload: boolean } => {
+  if (typeof options === 'boolean') {
+    return {
+      skipCheck: options,
+      startDownload: false
+    }
+  }
+  return {
+    skipCheck: options.skipCheck === true,
+    startDownload: options.startDownload === true
+  }
+}
+
 const sendToUpdateWindow = (channel: string, payload?: unknown) => {
   if (!updateWindow || updateWindow.isDestroyed()) return
   updateWindow.webContents.send(channel, payload)
 }
 
 const sendLastReleaseNotesRange = () => {
-  if (!lastReleaseNotesRange) return
+  if (!lastReleaseNotesRangeSettled) return
   sendToUpdateWindow('releaseNotesRange', lastReleaseNotesRange)
+}
+
+const setLastReleaseNotesRange = (releaseNotes: ReleaseNotesRangePayload | null) => {
+  lastReleaseNotesRange = releaseNotes
+  lastReleaseNotesRangeSettled = true
+  sendLastReleaseNotesRange()
 }
 
 const setLatestManualUpdateVersion = (version: string) => {
@@ -111,6 +141,21 @@ const rememberMacManualUpdateAsset = (updateInfo: UpdateInfo) => {
       files: updateInfo?.files
     })
   }
+}
+
+const setCachedUpdateInfo = (info: UpdateInfo) => {
+  setLatestManualUpdateVersion(info.version)
+  lastReleaseNotesRange = null
+  lastReleaseNotesRangeSettled = false
+  lastUpdateInfo = info
+  rememberMacManualUpdateAsset(info)
+  log.info('[updateWindow] cached update info', {
+    currentVersion: app.getVersion(),
+    latestVersion: info.version,
+    platform: process.platform,
+    hasMacManualUpdateAsset:
+      process.platform === 'darwin' ? !!latestMacManualUpdateAsset : undefined
+  })
 }
 
 const buildUpdateErrorPayload = (error: unknown): UpdateErrorPayload => {
@@ -172,19 +217,14 @@ const registerAutoUpdaterListeners = () => {
     const currentIsPrerelease = app.getVersion().includes('-')
     const remoteIsPrerelease = typeof info?.version === 'string' && info.version.includes('-')
     if (currentIsPrerelease !== remoteIsPrerelease) return
-    setLatestManualUpdateVersion(info.version)
-    lastReleaseNotesRange = null
-    lastUpdateInfo = info
-    rememberMacManualUpdateAsset(info)
+    setCachedUpdateInfo(info)
     sendToUpdateWindow('newVersion', info)
     void fetchReleaseNotesRange(app.getVersion(), info.version)
       .then((releaseNotes) => {
-        lastReleaseNotesRange = releaseNotes
-        sendToUpdateWindow('releaseNotesRange', releaseNotes)
+        setLastReleaseNotesRange(releaseNotes)
       })
       .catch((error) => {
-        lastReleaseNotesRange = null
-        sendToUpdateWindow('releaseNotesRange', null)
+        setLastReleaseNotesRange(null)
         log.error('[updateWindow] fetch release notes failed', error)
       })
   })
@@ -202,6 +242,7 @@ const registerAutoUpdaterListeners = () => {
   })
 
   autoUpdater.on('error', (err) => {
+    autoDownloadInProgress = false
     const payload = buildUpdateErrorPayload(err)
     sendToUpdateWindow('isError', payload)
     log.error('autoUpdater error', payload, err)
@@ -212,6 +253,10 @@ const registerAutoUpdaterListeners = () => {
   })
 
   autoUpdater.on('update-downloaded', () => {
+    autoDownloadInProgress = false
+    log.info('[updateWindow] update downloaded', {
+      latestVersion: lastUpdateInfo?.version
+    })
     sendToUpdateWindow('updateDownloaded', {
       mode: 'auto'
     } satisfies UpdateDownloadedPayload)
@@ -232,6 +277,12 @@ const handleStartDownload = () => {
     }
 
     if (manualMacDownloadPromise) return
+
+    log.info('[updateWindow] start manual mac update download', {
+      latestVersion: lastUpdateInfo?.version,
+      fileName: latestMacManualUpdateAsset.fileName,
+      totalBytes: latestMacManualUpdateAsset.totalBytes
+    })
 
     sendToUpdateWindow('updateProgress', {
       percent: 0,
@@ -269,12 +320,28 @@ const handleStartDownload = () => {
     return
   }
 
+  if (autoDownloadInProgress) return
+  autoDownloadInProgress = true
+  log.info('[updateWindow] start auto update download', {
+    latestVersion: lastUpdateInfo?.version,
+    hasLastUpdateInfo: !!lastUpdateInfo
+  })
+  sendToUpdateWindow('updateProgress', {
+    percent: 0,
+    bytesPerSecond: 0,
+    transferredBytes: 0,
+    totalBytes: 0,
+    fileName: ''
+  })
   void autoUpdater.downloadUpdate().catch((error) => {
+    autoDownloadInProgress = false
     const payload = buildUpdateErrorPayload(error)
     sendToUpdateWindow('isError', payload)
     log.error('[updateWindow] downloadUpdate failed', payload, error)
   })
 }
+
+const isDownloadInProgress = () => autoDownloadInProgress || !!manualMacDownloadPromise
 
 const handleToggleClose = () => {
   updateWindow?.close()
@@ -325,7 +392,21 @@ const handleOpenApplicationsFolder = () => {
   })
 }
 
-const createWindow = (skipCheck = false) => {
+const startCachedDownload = () => {
+  log.info('[updateWindow] start cached download requested', {
+    latestVersion: lastUpdateInfo?.version,
+    hasLastUpdateInfo: !!lastUpdateInfo,
+    isDownloadInProgress: isDownloadInProgress()
+  })
+  if (!isDownloadInProgress() && lastUpdateInfo) {
+    sendToUpdateWindow('newVersion', lastUpdateInfo)
+    sendLastReleaseNotesRange()
+  }
+  handleStartDownload()
+}
+
+const createWindow = (options: CreateUpdateWindowOptions = false) => {
+  const { skipCheck, startDownload } = normalizeCreateOptions(options)
   registerAutoUpdaterListeners()
   updateWindow = new BrowserWindow({
     resizable: true,
@@ -387,18 +468,24 @@ const createWindow = (skipCheck = false) => {
     } catch {}
     log.info('[updateWindow] ready-to-show', {
       skipCheck,
+      startDownload,
       hasLastUpdateInfo: !!lastUpdateInfo,
-      lastUpdateInfoVersion: lastUpdateInfo?.version
+      lastUpdateInfoVersion: lastUpdateInfo?.version,
+      hasReleaseNotesRange: lastReleaseNotesRangeSettled
     })
     if (skipCheck) {
       if (lastUpdateInfo) {
-        log.info('[updateWindow] skipCheck path: sending cached newVersion', lastUpdateInfo.version)
         sendToUpdateWindow('newVersion', lastUpdateInfo)
         sendLastReleaseNotesRange()
+        if (startDownload) {
+          handleStartDownload()
+        }
       } else {
-        log.warn(
-          '[updateWindow] skipCheck=true but lastUpdateInfo is null, retrying checkForUpdates'
-        )
+        log.error('[updateWindow] skipCheck without cached update info')
+        sendToUpdateWindow('isError', {
+          kind: 'unknown',
+          message: '没有可用的新版本信息，请重新检查更新。'
+        } satisfies UpdateErrorPayload)
       }
       // skipCheck 模式下无论如何都不重新检查，避免跳回检查更新界面
       return
@@ -435,6 +522,8 @@ export default {
   },
   createWindow,
   setLastUpdateInfo: (info: UpdateInfo) => {
-    lastUpdateInfo = info
-  }
+    setCachedUpdateInfo(info)
+  },
+  setLastReleaseNotesRange,
+  startCachedDownload
 }

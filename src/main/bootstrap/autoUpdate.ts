@@ -44,23 +44,25 @@ export function setupAutoUpdate() {
     const remoteIsPrerelease = typeof info?.version === 'string' && info.version.includes('-')
 
     if (currentIsPrerelease !== remoteIsPrerelease) {
-      console.log('[autoUpdate] update-available skipped: prerelease mismatch', {
-        currentIsPrerelease,
-        remoteIsPrerelease
-      })
       return
     }
-    console.log('[autoUpdate] update-available: setting lastUpdateInfo for version', info.version)
+    log.info('[autoUpdate] update available', {
+      currentVersion: app.getVersion(),
+      latestVersion: info.version,
+      hasUpdateWindow: updateWindow.instance !== null
+    })
     updateWindow.setLastUpdateInfo(info)
     if (updateWindow.instance === null) {
       foundNewVersionWindow.open(info, null, true)
       void fetchReleaseNotesRange(app.getVersion(), info.version)
         .then((releaseNotes) => {
           foundNewVersionWindow.updateReleaseNotes(releaseNotes)
+          updateWindow.setLastReleaseNotesRange(releaseNotes)
         })
         .catch((error) => {
           log.error('[autoUpdate] fetch release notes failed', error)
           foundNewVersionWindow.updateReleaseNotes(null)
+          updateWindow.setLastReleaseNotesRange(null)
         })
     }
   })
