@@ -555,7 +555,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="dialog unselectable" :class="{ 'dialog-visible': dialogVisible }">
+  <div
+    class="dialog unselectable rekordboxDesktopTargetDialog"
+    :class="{ 'dialog-visible': dialogVisible }"
+  >
     <div
       v-dialog-drag="'.dialog-title'"
       class="content inner"
