@@ -224,19 +224,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     }
     const elapsedMs = rawStreamStartedAt > 0 ? performance.now() - rawStreamStartedAt : 0
     if (elapsedMs < HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_TIMEOUT_MS) return false
-    if (rawStreamInitialRetryCount >= HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_MAX_RETRIES) {
-      traceHorizontalRawStream('raw-stream:watchdog:initial-stall:max-retries', {
-        viewportAnchorSec,
-        elapsedMs: Number(elapsedMs.toFixed(1)),
-        retryCount: rawStreamInitialRetryCount
-      })
-      return false
-    }
-    traceHorizontalRawStream('raw-stream:watchdog:initial-stall:restart', {
-      viewportAnchorSec,
-      elapsedMs: Number(elapsedMs.toFixed(1)),
-      retryCount: rawStreamInitialRetryCount
-    })
+    if (rawStreamInitialRetryCount >= HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_MAX_RETRIES) return false
     return restartRawWaveformStreamAt(viewportAnchorSec, false, {
       forceRestart: true,
       forceLiveDecode: true,
@@ -250,10 +238,6 @@ export const useHorizontalBrowseRawWaveformStream = (
     const elapsedMs =
       rawStreamContinueStartedAt > 0 ? performance.now() - rawStreamContinueStartedAt : 0
     if (elapsedMs < HORIZONTAL_BROWSE_RAW_CONTINUE_TIMEOUT_MS) return false
-    traceHorizontalRawStream('raw-stream:watchdog:continue-stall', {
-      elapsedMs: Number(elapsedMs.toFixed(1)),
-      chunkCount: rawStreamChunkCount
-    })
     rawStreamContinuePending = false
     rawStreamContinueStartedAt = 0
     return true
@@ -299,17 +283,7 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const continueRawWaveformStream = (requestId: string) => {
     if (!requestId) return false
-    if (rawStreamContinuePending) {
-      traceHorizontalRawStream('raw-stream:continue:skip-pending', {
-        requestId,
-        pendingMs: resolveHorizontalBrowseWaveformTraceElapsedMs(rawStreamContinueStartedAt)
-      })
-      return false
-    }
-    traceHorizontalRawStream('raw-stream:continue:request', {
-      requestId,
-      chunkCount: rawStreamChunkCount
-    })
+    if (rawStreamContinuePending) return false
     rawStreamContinuePending = true
     rawStreamContinueStartedAt = performance.now()
     window.electron.ipcRenderer.send('mixtape-waveform-raw:continue-stream', { requestId })
@@ -932,14 +906,6 @@ export const useHorizontalBrowseRawWaveformStream = (
       visibleDurationSec * HORIZONTAL_BROWSE_RAW_VIEWPORT_RESTART_GAP_FACTOR
     )
     if (visibleStartSec + restartGapSec < loadedStartSec || visibleStartSec > loadedEndSec) {
-      traceHorizontalRawStream('raw-stream:viewport:restart-gap', {
-        viewportAnchorSec,
-        loadedStartSec,
-        loadedEndSec,
-        visibleStartSec,
-        visibleEndSec,
-        restartGapSec
-      })
       restartRawWaveformStreamAt(viewportAnchorSec, false)
       return
     }
@@ -950,14 +916,6 @@ export const useHorizontalBrowseRawWaveformStream = (
     if (loadedEndSec >= desiredLoadedEndSec) {
       return
     }
-    traceHorizontalRawStream('raw-stream:viewport:continue-needed', {
-      viewportAnchorSec,
-      loadedEndSec,
-      desiredLoadedEndSec,
-      visibleStartSec,
-      visibleEndSec,
-      playing: options.playing()
-    })
     continueRawWaveformStream(rawStreamRequestId)
   }
 

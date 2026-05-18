@@ -129,7 +129,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       source,
       String(payload?.mixxxSource ?? ''),
       String(payload?.effectiveRawCoverage ?? ''),
-      String(payload?.allowScrollReuse ?? ''),
       String(payload?.holdingFrame ?? '')
     ].join('|')
     if (lastRenderTraceSignature === signature) return
@@ -330,35 +329,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     >['payload']
   ) => {
     if (payload.renderToken !== liveCanvasRenderToken) return
-    const wasDisplayReady = displayReady.value
     displayStartSec.value = payload.rangeStartSec
     if (!payload.ready) {
       displayReady.value = false
-      sendHorizontalBrowseWaveformTrace('render-result', 'worker:not-ready', {
-        deck: options.direction(),
-        filePath: String(options.song()?.filePath || '').trim(),
-        renderToken: payload.renderToken,
-        rangeStartSec: payload.rangeStartSec,
-        rangeDurationSec: payload.rangeDurationSec,
-        rawStreamActive: options.rawStreamActive.value,
-        hasRawData: Boolean(options.rawData.value),
-        rawStartSec: options.rawData.value ? Number(options.rawData.value.startSec) || 0 : 0,
-        rawEndSec: resolveRawDataCoveredEndSec(options.rawData.value),
-        loadedFrames: Math.max(0, Number(options.rawData.value?.loadedFrames) || 0)
-      })
       return
     }
     displayReady.value = true
-    if (!wasDisplayReady) {
-      sendHorizontalBrowseWaveformTrace('render-result', 'worker:ready-transition', {
-        deck: options.direction(),
-        filePath: String(options.song()?.filePath || '').trim(),
-        renderToken: payload.renderToken,
-        rangeStartSec: payload.rangeStartSec,
-        rangeDurationSec: payload.rangeDurationSec,
-        rawStreamActive: options.rawStreamActive.value
-      })
-    }
   }
 
   const applyLiveCanvasPresentationOffset = (offsetPx: number) => {
@@ -731,7 +707,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           effectiveRawCoverage,
           rawDataRefStable,
           allowPartialViewportPaint,
-          allowScrollReuse: allowPlaybackScrollReuse,
           holdingFrame: false
         })
         const finishTiming = startHorizontalBrowseUserTiming(
@@ -778,7 +753,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       traceHorizontalWaveformRender('worker-live', {
         mixxxSource: effectiveMixxxSelection.source,
         effectiveRawCoverage,
-        allowScrollReuse: allowPlaybackScrollReuse,
         holdingFrame: false
       })
       const finishTiming = startHorizontalBrowseUserTiming(
@@ -848,12 +822,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
     const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
-    traceHorizontalWaveformRender('stream-dirty', {
-      dirtyStartSec,
-      dirtyEndSec,
-      renderStartSec,
-      visibleDuration
-    })
+    traceHorizontalWaveformRender('stream-dirty')
     const finishTiming = startHorizontalBrowseUserTiming(
       `frkb:hb:canvas:stream-dirty:${options.direction()}`
     )
