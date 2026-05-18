@@ -219,6 +219,10 @@ if (!gotTheLock) {
 } else {
   if (!devInstanceLock) {
     app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
+      log.info('second-instance 事件触发', {
+        commandLine: _commandLine,
+        workingDirectory: _workingDirectory
+      })
       queueExternalAudioFiles(_commandLine)
       void ensurePrimaryWindowVisible()
     })
