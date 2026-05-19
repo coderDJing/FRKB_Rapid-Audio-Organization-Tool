@@ -24,8 +24,10 @@ export const useHorizontalBrowseDeckQuantize = (params: UseHorizontalBrowseDeckQ
   })
 
   const resolveDeckAnchorSeconds = (deck: DeckKey, anchorOverrideSec?: number | null) => {
-    const overrideSec = Number(anchorOverrideSec)
-    if (Number.isFinite(overrideSec)) return overrideSec
+    if (anchorOverrideSec != null) {
+      const overrideSec = Number(anchorOverrideSec)
+      if (Number.isFinite(overrideSec)) return overrideSec
+    }
     return params.resolveDeckPlaying(deck)
       ? params.resolveDeckRenderCurrentSeconds(deck)
       : params.resolveDeckCurrentSeconds(deck)

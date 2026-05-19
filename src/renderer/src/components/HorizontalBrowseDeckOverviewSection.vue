@@ -124,7 +124,7 @@ const isTop = props.position === 'top'
         :duration-seconds="props.durationSeconds"
         :hot-cues="props.hotCues"
         :memory-cues="props.memoryCues"
-        :marker-anchor="isTop ? 'top' : 'bottom'"
+        marker-anchor="top"
         :loop-range="props.loopRange"
         @seek="emit('seek', $event)"
       />
