@@ -46,11 +46,6 @@ export function setupAutoUpdate() {
     if (currentIsPrerelease !== remoteIsPrerelease) {
       return
     }
-    log.info('[autoUpdate] update available', {
-      currentVersion: app.getVersion(),
-      latestVersion: info.version,
-      hasUpdateWindow: updateWindow.instance !== null
-    })
     updateWindow.setLastUpdateInfo(info)
     if (updateWindow.instance === null) {
       foundNewVersionWindow.open(info, null, true)

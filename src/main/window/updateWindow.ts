@@ -149,13 +149,6 @@ const setCachedUpdateInfo = (info: UpdateInfo) => {
   lastReleaseNotesRangeSettled = false
   lastUpdateInfo = info
   rememberMacManualUpdateAsset(info)
-  log.info('[updateWindow] cached update info', {
-    currentVersion: app.getVersion(),
-    latestVersion: info.version,
-    platform: process.platform,
-    hasMacManualUpdateAsset:
-      process.platform === 'darwin' ? !!latestMacManualUpdateAsset : undefined
-  })
 }
 
 const buildUpdateErrorPayload = (error: unknown): UpdateErrorPayload => {
@@ -278,12 +271,6 @@ const handleStartDownload = () => {
 
     if (manualMacDownloadPromise) return
 
-    log.info('[updateWindow] start manual mac update download', {
-      latestVersion: lastUpdateInfo?.version,
-      fileName: latestMacManualUpdateAsset.fileName,
-      totalBytes: latestMacManualUpdateAsset.totalBytes
-    })
-
     sendToUpdateWindow('updateProgress', {
       percent: 0,
       bytesPerSecond: 0,
@@ -322,10 +309,6 @@ const handleStartDownload = () => {
 
   if (autoDownloadInProgress) return
   autoDownloadInProgress = true
-  log.info('[updateWindow] start auto update download', {
-    latestVersion: lastUpdateInfo?.version,
-    hasLastUpdateInfo: !!lastUpdateInfo
-  })
   sendToUpdateWindow('updateProgress', {
     percent: 0,
     bytesPerSecond: 0,
@@ -393,11 +376,6 @@ const handleOpenApplicationsFolder = () => {
 }
 
 const startCachedDownload = () => {
-  log.info('[updateWindow] start cached download requested', {
-    latestVersion: lastUpdateInfo?.version,
-    hasLastUpdateInfo: !!lastUpdateInfo,
-    isDownloadInProgress: isDownloadInProgress()
-  })
   if (!isDownloadInProgress() && lastUpdateInfo) {
     sendToUpdateWindow('newVersion', lastUpdateInfo)
     sendLastReleaseNotesRange()
@@ -466,13 +444,6 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
         ;(autoUpdater as AutoUpdaterWithExtras).channel = 'rc'
       }
     } catch {}
-    log.info('[updateWindow] ready-to-show', {
-      skipCheck,
-      startDownload,
-      hasLastUpdateInfo: !!lastUpdateInfo,
-      lastUpdateInfoVersion: lastUpdateInfo?.version,
-      hasReleaseNotesRange: lastReleaseNotesRangeSettled
-    })
     if (skipCheck) {
       if (lastUpdateInfo) {
         sendToUpdateWindow('newVersion', lastUpdateInfo)

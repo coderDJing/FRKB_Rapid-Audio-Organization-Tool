@@ -2,7 +2,6 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import updateWindow from './updateWindow.js'
-import { log } from '../log'
 import type { UpdateInfo } from 'electron-updater'
 import type { ReleaseNotesRangePayload } from '../../shared/releaseNotes'
 import path = require('path')
@@ -32,9 +31,6 @@ const handleToggleMinimize = () => {
 }
 
 const handleStartUpdate = () => {
-  log.info('[foundNewVersionWindow] start update requested', {
-    hasUpdateWindow: updateWindow.instance !== null
-  })
   if (updateWindow.instance === null) {
     updateWindow.createWindow({
       skipCheck: true,
