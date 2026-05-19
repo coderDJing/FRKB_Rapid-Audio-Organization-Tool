@@ -92,6 +92,10 @@ import {
 import globalSongSearchEngine from './services/globalSongSearch'
 import { registerBackgroundForegroundBusyProvider } from './services/backgroundIdleGate'
 import { acquireDevSingleInstanceLock, configureDevRuntime } from './devInstance'
+import {
+  startDevExternalOpenHandoffWatcher,
+  writeDevExternalOpenHandoff
+} from './services/devExternalOpenHandoff'
 
 const devRuntime = configureDevRuntime(is.dev, process.platform, log)
 configureLogTransports()
@@ -210,19 +214,24 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 if (!gotTheLock) {
+  let handedOffExternalOpen = false
+  if (is.dev && devInstanceLock && devRuntime?.userDataDir) {
+    handedOffExternalOpen = writeDevExternalOpenHandoff(
+      devRuntime.userDataDir,
+      process.argv.slice(1)
+    )
+  }
   if (is.dev && devInstanceLock) {
     console.error(
-      `[frkb-dev] 实例 ${devRuntime?.instanceId || 'default'} 已被占用（pid=${devInstanceLock.ownerPid || 'unknown'}，lock=${devInstanceLock.lockFilePath}）。请先关闭已有 dev 进程，或修改 .env 里的 FRKB_DEV_INSTANCE / FRKB_DEV_USER_DATA_DIR。`
+      handedOffExternalOpen
+        ? `[frkb-dev] 实例 ${devRuntime?.instanceId || 'default'} 已在运行，已把外部打开文件投递给主实例（pid=${devInstanceLock.ownerPid || 'unknown'}）。`
+        : `[frkb-dev] 实例 ${devRuntime?.instanceId || 'default'} 已被占用（pid=${devInstanceLock.ownerPid || 'unknown'}，lock=${devInstanceLock.lockFilePath}）。请先关闭已有 dev 进程，或修改 .env 里的 FRKB_DEV_INSTANCE / FRKB_DEV_USER_DATA_DIR。`
     )
   }
   app.quit()
 } else {
   if (!devInstanceLock) {
     app.on('second-instance', (_event, _commandLine, _workingDirectory) => {
-      log.info('second-instance 事件触发', {
-        commandLine: _commandLine,
-        workingDirectory: _workingDirectory
-      })
       queueExternalAudioFiles(_commandLine)
       void ensurePrimaryWindowVisible()
     })
@@ -248,6 +257,9 @@ void ensureExecutableOnMac(ffmpegPath)
 // 不再使用 Tray，改用应用菜单
 store.layoutConfig = loadLayoutConfigSync()
 loadInitialSettings({ getWindowsContextMenuStatus: hasWindowsContextMenu })
+if (is.dev && devInstanceLock?.isPrimaryInstance && devRuntime?.userDataDir) {
+  startDevExternalOpenHandoffWatcher(devRuntime.userDataDir)
+}
 maybeClearLogAfterUpgrade()
 errorReport.setup()
 registerWhatsNewHandlers()

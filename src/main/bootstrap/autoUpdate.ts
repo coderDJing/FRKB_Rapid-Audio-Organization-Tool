@@ -14,6 +14,7 @@ type AutoUpdaterWithExtras = typeof electronUpdater.autoUpdater & {
 export function setupAutoUpdate() {
   const autoUpdater = electronUpdater.autoUpdater as AutoUpdaterWithExtras
   autoUpdater.autoDownload = false
+  autoUpdater.logger = null
   const versionString = app.getVersion()
   const isPrerelease = versionString.includes('-')
 

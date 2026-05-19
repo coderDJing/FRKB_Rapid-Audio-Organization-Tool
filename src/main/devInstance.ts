@@ -31,6 +31,16 @@ type DevLockFile = {
 const DEV_INSTANCE_ENV = 'FRKB_DEV_INSTANCE'
 const DEV_USER_DATA_ENV = 'FRKB_DEV_USER_DATA_DIR'
 const DEV_DATABASE_ENV = 'FRKB_DEV_DATABASE_URL'
+const DEV_SERVER_PORT_ENV = 'FRKB_DEV_SERVER_PORT'
+const ELECTRON_RENDERER_URL_ENV = 'ELECTRON_RENDERER_URL'
+
+const DEV_CLI_ENV_OVERRIDES: Array<{ arg: string; env: string }> = [
+  { arg: '--frkb-dev-instance', env: DEV_INSTANCE_ENV },
+  { arg: '--frkb-dev-user-data-dir', env: DEV_USER_DATA_ENV },
+  { arg: '--frkb-dev-database-url', env: DEV_DATABASE_ENV },
+  { arg: '--frkb-dev-server-port', env: DEV_SERVER_PORT_ENV },
+  { arg: '--frkb-electron-renderer-url', env: ELECTRON_RENDERER_URL_ENV }
+]
 
 const sanitizeInstanceId = (value: string): string =>
   value
@@ -49,6 +59,29 @@ const normalizeDirectoryOverride = (value: string): string => {
 const parsePositiveInteger = (value: unknown): number => {
   const parsed = Number(value || 0)
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 0
+}
+
+const readCliOptionValue = (args: string[], name: string): string => {
+  for (let i = 0; i < args.length; i++) {
+    const arg = String(args[i] || '')
+    if (arg === name) {
+      return String(args[i + 1] || '').trim()
+    }
+    if (arg.startsWith(`${name}=`)) {
+      return arg.slice(name.length + 1).trim()
+    }
+  }
+  return ''
+}
+
+const applyDevCliEnvironmentOverrides = () => {
+  const args = process.argv.slice(1)
+  for (const item of DEV_CLI_ENV_OVERRIDES) {
+    const value = readCliOptionValue(args, item.arg)
+    if (value) {
+      process.env[item.env] = value
+    }
+  }
 }
 
 const readLockFile = (lockFilePath: string): DevLockFile => {
@@ -142,6 +175,7 @@ export const configureDevRuntime = (
   log: LoggerLike
 ): DevRuntimeConfig | null => {
   if (!isDev) return null
+  applyDevCliEnvironmentOverrides()
 
   const instanceId = getDevInstanceId()
   const configuredUserDataDir = normalizeDirectoryOverride(

@@ -393,8 +393,12 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     payload: {
       filePath?: string
       bpm?: number
+      firstBeatMs?: number
+      barBeatOffset?: number
+      timeBasisOffsetMs?: number
       beatThisEstimatedDrift128Ms?: number | null
       beatThisWindowCount?: number | null
+      beatGridAlgorithmVersion?: number | null
     }
   ) => {
     const filePath = payload?.filePath
@@ -409,12 +413,51 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       payload,
       'beatThisWindowCount'
     )
+    const hasFirstBeatMs =
+      typeof payload?.firstBeatMs === 'number' && Number.isFinite(payload.firstBeatMs)
+    const hasBarBeatOffset =
+      typeof payload?.barBeatOffset === 'number' && Number.isFinite(payload.barBeatOffset)
+    const hasTimeBasisOffsetMs =
+      typeof payload?.timeBasisOffsetMs === 'number' && Number.isFinite(payload.timeBasisOffsetMs)
+    const rawBeatGridAlgorithmVersion = payload?.beatGridAlgorithmVersion
+    const nextBeatGridAlgorithmVersion =
+      typeof rawBeatGridAlgorithmVersion === 'number' &&
+      Number.isFinite(rawBeatGridAlgorithmVersion)
+        ? rawBeatGridAlgorithmVersion
+        : undefined
 
     const applyBpmPatch = (song: ISongInfo): ISongInfo => {
       let touched = false
       const nextSong: ISongInfo = song.bpm === bpmValue ? song : { ...song, bpm: bpmValue }
       if (nextSong !== song) {
         touched = true
+      }
+      if (hasFirstBeatMs && nextSong.firstBeatMs !== payload.firstBeatMs) {
+        if (!touched) {
+          touched = true
+        }
+        nextSong.firstBeatMs = payload.firstBeatMs
+      }
+      if (hasBarBeatOffset && nextSong.barBeatOffset !== payload.barBeatOffset) {
+        if (!touched) {
+          touched = true
+        }
+        nextSong.barBeatOffset = payload.barBeatOffset
+      }
+      if (hasTimeBasisOffsetMs && nextSong.timeBasisOffsetMs !== payload.timeBasisOffsetMs) {
+        if (!touched) {
+          touched = true
+        }
+        nextSong.timeBasisOffsetMs = payload.timeBasisOffsetMs
+      }
+      if (
+        nextBeatGridAlgorithmVersion !== undefined &&
+        nextSong.beatGridAlgorithmVersion !== nextBeatGridAlgorithmVersion
+      ) {
+        if (!touched) {
+          touched = true
+        }
+        nextSong.beatGridAlgorithmVersion = nextBeatGridAlgorithmVersion
       }
       if (hasBeatThisEstimatedDrift128Ms) {
         const nextValue =
@@ -449,8 +492,12 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       scheduleApplyIfNeeded(
         [
           'bpm',
+          hasFirstBeatMs ? 'firstBeatMs' : '',
+          hasBarBeatOffset ? 'barBeatOffset' : '',
+          hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : '',
           hasBeatThisEstimatedDrift128Ms ? 'beatThisEstimatedDrift128Ms' : '',
-          hasBeatThisWindowCount ? 'beatThisWindowCount' : ''
+          hasBeatThisWindowCount ? 'beatThisWindowCount' : '',
+          nextBeatGridAlgorithmVersion !== undefined ? 'beatGridAlgorithmVersion' : ''
         ].filter(Boolean)
       )
     }

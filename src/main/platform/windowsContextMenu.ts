@@ -1,4 +1,5 @@
 import { execFile, execFileSync } from 'child_process'
+import { app } from 'electron'
 import zhCNSettingsLocale from '../../renderer/src/i18n/locales/zh-CN/settings.json'
 import enUSSettingsLocale from '../../renderer/src/i18n/locales/en-US/settings.json'
 import store from '../store'
@@ -16,6 +17,51 @@ const runRegCommand = (args: string[]): Promise<void> => {
   })
 }
 
+const quoteCommandArgument = (value: string): string =>
+  `"${String(value || '').replace(/"/g, '\\"')}"`
+
+const appendCommandArgument = (args: string[], value: string): void => {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return
+  args.push(quoteCommandArgument(trimmed))
+}
+
+const appendDevEnvArgument = (args: string[], name: string, value: unknown): void => {
+  const normalized = String(value || '').trim()
+  if (!normalized) return
+  appendCommandArgument(args, `${name}=${normalized}`)
+}
+
+const resolveDevElectronAppPath = (): string => {
+  if (app.isPackaged) return ''
+  try {
+    const appPath = app.getAppPath()
+    return appPath ? appPath : ''
+  } catch {
+    return ''
+  }
+}
+
+const appendDevContextMenuArgs = (args: string[]): void => {
+  if (app.isPackaged) return
+  appendDevEnvArgument(args, '--frkb-dev-instance', process.env.FRKB_DEV_INSTANCE)
+  appendDevEnvArgument(args, '--frkb-dev-user-data-dir', process.env.FRKB_DEV_USER_DATA_DIR)
+  appendDevEnvArgument(args, '--frkb-dev-database-url', process.env.FRKB_DEV_DATABASE_URL)
+  appendDevEnvArgument(args, '--frkb-dev-server-port', process.env.FRKB_DEV_SERVER_PORT)
+  appendDevEnvArgument(args, '--frkb-electron-renderer-url', process.env.ELECTRON_RENDERER_URL)
+}
+
+const buildWindowsContextMenuCommand = (): string => {
+  const args = [quoteCommandArgument(process.execPath)]
+  const devAppPath = resolveDevElectronAppPath()
+  if (devAppPath) {
+    args.push(quoteCommandArgument(devAppPath))
+    appendDevContextMenuArgs(args)
+  }
+  args.push('"%1"')
+  return args.join(' ')
+}
+
 const getNormalizedExtensions = (): string[] => {
   if (process.platform !== 'win32') return []
   const extensions = Array.isArray(store.settingConfig.audioExt) ? store.settingConfig.audioExt : []
@@ -28,11 +74,6 @@ const getNormalizedExtensions = (): string[] => {
     .filter(Boolean)
   const unique = Array.from(new Set(normalized.map((ext) => ext.toLowerCase())))
   unique.sort()
-  if (unique.length === 0) {
-    log.warn('getNormalizedExtensions: 没有找到有效的音频扩展名', {
-      audioExt: store.settingConfig.audioExt
-    })
-  }
   return unique
 }
 
@@ -44,6 +85,29 @@ const getWindowsContextMenuPaths = (): string[] => {
 
 const getWindowsContextMenuCommandPaths = (): string[] => {
   return getWindowsContextMenuPaths().map((p) => `${p}\\command`)
+}
+
+const readWindowsRegistryDefaultValue = (regPath: string): string => {
+  try {
+    const stdout = execFileSync('reg', ['query', regPath, '/ve'], {
+      encoding: 'utf8',
+      windowsHide: true
+    })
+    for (const line of String(stdout || '').split(/\r?\n/)) {
+      const markerIndex = line.indexOf('REG_SZ')
+      if (markerIndex === -1) continue
+      return line.slice(markerIndex + 'REG_SZ'.length).trim()
+    }
+  } catch {}
+  return ''
+}
+
+const hasExpectedWindowsContextMenuCommand = (expectedCommand: string): boolean => {
+  const commandPaths = getWindowsContextMenuCommandPaths()
+  if (commandPaths.length === 0) return false
+  return commandPaths.every(
+    (commandPath) => readWindowsRegistryDefaultValue(commandPath) === expectedCommand
+  )
 }
 
 const removeLegacyWindowsContextMenu = async (): Promise<void> => {
@@ -77,16 +141,9 @@ const tContextMenu = (key: string): string => {
 export async function ensureWindowsContextMenu(): Promise<void> {
   if (process.platform !== 'win32') return
   const displayName = tContextMenu('settings.explorerContextMenuLabel')
-  const command = `"${process.execPath.replace(/"/g, '\\"')}" "%1"`
-  const extensions = getNormalizedExtensions()
+  const command = buildWindowsContextMenuCommand()
   const shellPaths = getWindowsContextMenuPaths()
   const commandPaths = getWindowsContextMenuCommandPaths()
-  log.info('开始注册 Windows 右键菜单', {
-    extensions,
-    shellPathsCount: shellPaths.length,
-    displayName,
-    command
-  })
   await removeLegacyWindowsContextMenu()
   for (let i = 0; i < shellPaths.length; i++) {
     const shellPath = shellPaths[i]
@@ -95,7 +152,6 @@ export async function ensureWindowsContextMenu(): Promise<void> {
       await runRegCommand(['add', shellPath, '/ve', '/d', displayName, '/f'])
       await runRegCommand(['add', shellPath, '/v', 'Icon', '/d', process.execPath, '/f'])
       await runRegCommand(['add', commandPath, '/ve', '/d', command, '/f'])
-      log.info('注册右键菜单成功', { path: shellPath })
     } catch (error) {
       log.error('注册 Windows 右键菜单失败', { path: shellPath, error })
     }
@@ -105,6 +161,7 @@ export async function ensureWindowsContextMenu(): Promise<void> {
 const buildContextMenuSignature = (): string => {
   if (process.platform !== 'win32') return ''
   const payload = {
+    command: buildWindowsContextMenuCommand(),
     execPath: process.execPath || '',
     exts: getNormalizedExtensions(),
     label: tContextMenu('settings.explorerContextMenuLabel')
@@ -122,8 +179,10 @@ export async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
   const translationFailed = label === 'settings.explorerContextMenuLabel'
   // 检查注册表项是否真的存在，如果不存在则强制重新注册
   const registryExists = hasWindowsContextMenu()
-  if (stored === signature && !translationFailed && registryExists) return
-  log.info('确保 Windows 右键菜单', { stored, signature, translationFailed, registryExists })
+  const expectedCommand = buildWindowsContextMenuCommand()
+  const registryCommandMatches =
+    registryExists && hasExpectedWindowsContextMenuCommand(expectedCommand)
+  if (stored === signature && !translationFailed && registryCommandMatches) return
   await ensureWindowsContextMenu()
   store.settingConfig.windowsContextMenuSignature = signature
   await persistSettingConfig()
@@ -132,11 +191,9 @@ export async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
 export async function removeWindowsContextMenu(): Promise<void> {
   if (process.platform !== 'win32') return
   const shellPaths = getWindowsContextMenuPaths()
-  log.info('开始删除 Windows 右键菜单', { shellPathsCount: shellPaths.length })
   for (const shellPath of shellPaths) {
     try {
       await runRegCommand(['delete', shellPath, '/f'])
-      log.info('删除右键菜单成功', { path: shellPath })
     } catch (error) {
       log.error('删除 Windows 右键菜单失败', { path: shellPath, error })
     }

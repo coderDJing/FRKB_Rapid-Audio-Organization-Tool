@@ -34,18 +34,9 @@ export const isSupportedAudioPath = (filePath: string): boolean => {
     const audioExtSet = getAudioExtSet()
     const extSupported = audioExtSet.has(ext)
     if (!extSupported) {
-      log.info('isSupportedAudioPath: 扩展名不支持', {
-        filePath,
-        ext,
-        supportedExts: Array.from(audioExtSet)
-      })
       return false
     }
-    const exists = fs.pathExistsSync(filePath)
-    if (!exists) {
-      log.warn('isSupportedAudioPath: 文件不存在', { filePath })
-    }
-    return exists
+    return fs.pathExistsSync(filePath)
   } catch (error) {
     log.error('isSupportedAudioPath: 检查失败', { filePath, error })
     return false
@@ -59,11 +50,6 @@ function collectSupportedAudioPaths(paths: string[]): string[] {
     const normalized = path.resolve(String(raw).replace(/^"+|"+$/g, ''))
     const supported = isSupportedAudioPath(normalized)
     if (!supported) {
-      log.info('collectSupportedAudioPaths: 路径不支持', {
-        raw,
-        normalized,
-        ext: path.extname(normalized)
-      })
       continue
     }
     const key = normalizeExternalPathKey(normalized)
@@ -88,9 +74,7 @@ async function sendExternalOpenPayload(payload: ExternalOpenPayload): Promise<vo
 }
 
 export function queueExternalAudioFiles(paths: string[]): void {
-  log.info('queueExternalAudioFiles 收到路径', { paths, count: paths?.length })
   const accepted = collectSupportedAudioPaths(paths)
-  log.info('queueExternalAudioPaths 过滤结果', { accepted, count: accepted.length })
   if (accepted.length === 0) return
   externalOpenQueue.push(...accepted)
   void processExternalOpenQueue()
@@ -98,15 +82,12 @@ export function queueExternalAudioFiles(paths: string[]): void {
 
 export async function processExternalOpenQueue(): Promise<void> {
   if (processingExternalOpen) {
-    log.info('processExternalOpenQueue: 正在处理中，跳过')
     return
   }
   if (!externalOpenQueue.length) {
-    log.info('processExternalOpenQueue: 队列为空')
     return
   }
   if (!mainWindow.instance) {
-    log.info('processExternalOpenQueue: 主窗口不存在')
     return
   }
   processingExternalOpen = true
@@ -120,10 +101,8 @@ export async function processExternalOpenQueue(): Promise<void> {
       if (!isSupportedAudioPath(candidate)) continue
       batch.push(candidate)
     }
-    log.info('processExternalOpenQueue: 准备发送', { batch, count: batch.length })
     if (batch.length > 0) {
       await sendExternalOpenPayload({ paths: batch })
-      log.info('processExternalOpenQueue: 发送成功')
     }
   } catch (error) {
     log.error('处理外部音频打开队列失败', error)
