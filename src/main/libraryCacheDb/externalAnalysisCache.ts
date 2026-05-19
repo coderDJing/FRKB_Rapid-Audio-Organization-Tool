@@ -13,7 +13,7 @@ const EXTERNAL_ANALYSIS_DEVICE_TABLE = 'external_analysis_devices'
 const EXTERNAL_ANALYSIS_CACHE_TABLE = 'external_analysis_cache'
 const EXTERNAL_ANALYSIS_CACHE_TTL_MS = 90 * 24 * 60 * 60 * 1000
 
-export type ExternalAnalysisSourceKind = 'rekordbox-usb' | 'rekordbox-desktop'
+export type ExternalAnalysisSourceKind = 'rekordbox-usb' | 'rekordbox-desktop' | 'external-playback'
 
 export type ExternalAnalysisContext = {
   sourceKind: ExternalAnalysisSourceKind
@@ -78,10 +78,12 @@ const normalizeSourceId = (value: unknown) =>
     .toLowerCase()
 
 const normalizeSourceKind = (value: unknown): ExternalAnalysisSourceKind | '' =>
-  value === 'rekordbox-usb' || value === 'rekordbox-desktop' ? value : ''
+  value === 'rekordbox-usb' || value === 'rekordbox-desktop' || value === 'external-playback'
+    ? value
+    : ''
 
 const toExternalSongSourceKind = (value: ExternalAnalysisSourceKind) =>
-  value === 'rekordbox-desktop' ? 'desktop' : 'usb'
+  value === 'rekordbox-desktop' ? 'desktop' : value === 'rekordbox-usb' ? 'usb' : null
 
 const toNumber = (value: unknown): number | null => {
   const numeric = Number(value)
@@ -414,10 +416,14 @@ export async function upsertExternalAnalysisCacheEntry(
   if (!Number.isFinite(stat?.size) || !Number.isFinite(stat?.mtimeMs)) return false
   try {
     const now = Date.now()
+    const externalSourceKind =
+      info.externalSourceKind || toExternalSongSourceKind(normalized.sourceKind)
     const normalizedInfo = {
       ...info,
-      filePath: normalized.filePath,
-      externalSourceKind: info.externalSourceKind || toExternalSongSourceKind(normalized.sourceKind)
+      filePath: normalized.filePath
+    }
+    if (externalSourceKind) {
+      normalizedInfo.externalSourceKind = externalSourceKind
     }
     db.prepare(
       `INSERT INTO ${EXTERNAL_ANALYSIS_CACHE_TABLE}

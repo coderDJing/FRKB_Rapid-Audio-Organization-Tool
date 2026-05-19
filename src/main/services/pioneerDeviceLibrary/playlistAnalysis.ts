@@ -4,13 +4,18 @@ import { enqueueKeyAnalysisList } from '../keyAnalysisQueue'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import { shouldAcceptBeatGridCacheVersion } from '../beatGridAlgorithmVersion'
+import { findSongListRoot } from '../cacheMaintenance'
 import { ensurePioneerUsbIdentity } from './usbIdentity'
 import type { ISongInfo } from '../../../types/globals'
 import type { ExternalAnalysisSourceKind } from '../../libraryCacheDb'
 
+const EXTERNAL_PLAYBACK_SOURCE_ID = 'local'
+
 type PioneerPlaylistAnalysisTrack = {
   filePath?: unknown
 }
+
+type RekordboxExternalAnalysisSourceKind = Exclude<ExternalAnalysisSourceKind, 'external-playback'>
 
 export type PioneerPlaylistAnalysisPrepareResult = {
   sourceKind: ExternalAnalysisSourceKind | ''
@@ -88,6 +93,14 @@ const resolveAnalysisSource = async (params: {
       usbIdPersisted: identity.persisted
     }
   }
+  if (params.sourceKind === 'external-playback') {
+    return {
+      sourceKind: params.sourceKind,
+      sourceId: String(params?.sourceId || '').trim() || EXTERNAL_PLAYBACK_SOURCE_ID,
+      usbUuid: '',
+      usbIdPersisted: false
+    }
+  }
 
   const sourceId =
     String(params?.sourceId || '').trim() ||
@@ -100,7 +113,7 @@ const resolveAnalysisSource = async (params: {
   }
 }
 
-export async function prepareRekordboxExternalPlaylistAnalysis(params: {
+async function prepareExternalSourcePlaylistAnalysis(params: {
   sourceKind: ExternalAnalysisSourceKind
   sourceId?: string
   rootPath: string
@@ -126,7 +139,7 @@ export async function prepareRekordboxExternalPlaylistAnalysis(params: {
     missingFilePaths: [],
     staleFilePaths: []
   }
-  if (!rootPath || !source.sourceId) return result
+  if ((source.sourceKind !== 'external-playback' && !rootPath) || !source.sourceId) return result
 
   await LibraryCacheDb.touchExternalAnalysisDevice(source.sourceKind, source.sourceId, rootPath)
   await LibraryCacheDb.pruneStaleExternalAnalysisDevices()
@@ -140,6 +153,10 @@ export async function prepareRekordboxExternalPlaylistAnalysis(params: {
   for (const track of tracks) {
     const filePath = String(track?.filePath || '').trim()
     if (!filePath) continue
+    if (source.sourceKind === 'external-playback') {
+      const songListRoot = await findSongListRoot(path.dirname(filePath))
+      if (songListRoot) continue
+    }
     const relativePath = buildExternalAnalysisRelativePath(source.sourceKind, rootPath, filePath)
     if (!relativePath) continue
     const context = LibraryCacheDb.registerExternalAnalysisContext({
@@ -197,6 +214,15 @@ export async function prepareRekordboxExternalPlaylistAnalysis(params: {
   return result
 }
 
+export async function prepareRekordboxExternalPlaylistAnalysis(params: {
+  sourceKind: RekordboxExternalAnalysisSourceKind
+  sourceId?: string
+  rootPath: string
+  tracks: PioneerPlaylistAnalysisTrack[]
+}): Promise<PioneerPlaylistAnalysisPrepareResult> {
+  return prepareExternalSourcePlaylistAnalysis(params)
+}
+
 export async function preparePioneerUsbPlaylistAnalysis(params: {
   rootPath: string
   tracks: PioneerPlaylistAnalysisTrack[]
@@ -204,6 +230,17 @@ export async function preparePioneerUsbPlaylistAnalysis(params: {
   return prepareRekordboxExternalPlaylistAnalysis({
     sourceKind: 'rekordbox-usb',
     rootPath: params.rootPath,
+    tracks: params.tracks
+  })
+}
+
+export async function prepareExternalPlaybackPlaylistAnalysis(params: {
+  tracks: PioneerPlaylistAnalysisTrack[]
+}): Promise<PioneerPlaylistAnalysisPrepareResult> {
+  return prepareExternalSourcePlaylistAnalysis({
+    sourceKind: 'external-playback',
+    sourceId: EXTERNAL_PLAYBACK_SOURCE_ID,
+    rootPath: '',
     tracks: params.tracks
   })
 }

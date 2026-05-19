@@ -27,6 +27,7 @@ import {
   compactSongListTrackNumbersByFilePaths,
   setSongListTrackNumbersByOrder
 } from '../services/playlistTrackNumbers'
+import { prepareExternalPlaybackPlaylistAnalysis } from '../services/pioneerDeviceLibrary/playlistAnalysis'
 import type {
   IBatchRenameExecutionRequestItem,
   IBatchRenameTemplateSegment,
@@ -226,7 +227,15 @@ export function registerPlaylistHandlers() {
       if (!filtered.length) {
         return { scanData: [], songListUUID: EXTERNAL_PLAYLIST_UUID }
       }
-      return await runSongListScan(filtered, EXTERNAL_PLAYLIST_UUID)
+      const result = await runSongListScan(filtered, EXTERNAL_PLAYLIST_UUID)
+      try {
+        await prepareExternalPlaybackPlaylistAnalysis({
+          tracks: Array.isArray(result?.scanData) ? result.scanData : []
+        })
+      } catch (prepareError) {
+        log.error('externalPlaylist:prepare-analysis failed', prepareError)
+      }
+      return result
     } catch (error) {
       log.error('externalPlaylist:scan failed', error)
       return { scanData: [], songListUUID: EXTERNAL_PLAYLIST_UUID }
