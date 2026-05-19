@@ -102,7 +102,7 @@ export const useHorizontalBrowseTransportMutations = (
     const anchorSec = Number(snapshot.currentSec)
     await params.nativeTransport.alignToLeader(
       deck,
-      Number.isFinite(anchorSec) ? Math.max(0, anchorSec) : undefined,
+      Number.isFinite(anchorSec) ? anchorSec : undefined,
       shouldSkipGridSnap
     )
     params.syncDeckRenderState({ force: 'all' })

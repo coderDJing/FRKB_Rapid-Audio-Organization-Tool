@@ -221,7 +221,7 @@ export const createHorizontalBrowseNativeTransport = () => {
       'horizontal-browse-transport:align-to-leader',
       deck,
       performance.now(),
-      Number.isFinite(Number(targetSec)) ? Math.max(0, Number(targetSec)) : undefined,
+      Number.isFinite(Number(targetSec)) ? Number(targetSec) : undefined,
       skipGridSnap
     )
     applySnapshot(snapshot)

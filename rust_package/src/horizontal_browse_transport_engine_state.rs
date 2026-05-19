@@ -406,6 +406,8 @@ impl HorizontalBrowseTransportEngine {
     leader_current_sec: f64,
     leader_grid: BeatGridSnapshot,
     target_grid: BeatGridSnapshot,
+    leader_playback_rate: f64,
+    target_playback_rate: f64,
     min_sec: f64,
     max_sec: f64,
   ) -> f64 {
@@ -413,19 +415,33 @@ impl HorizontalBrowseTransportEngine {
       return anchor_sec.clamp(min_sec, max_sec);
     }
     let leader_offset_sec = Self::nearest_grid_offset_sec(leader_grid, leader_current_sec);
+    let leader_rate = Self::normalize_playback_rate(leader_playback_rate);
+    let target_rate = Self::normalize_playback_rate(target_playback_rate);
+    let target_offset_sec = leader_offset_sec * target_rate / leader_rate;
     let min_index =
-      ((min_sec - leader_offset_sec - target_grid.first_beat_sec) / target_grid.beat_sec).ceil();
+      ((min_sec - target_offset_sec - target_grid.first_beat_sec) / target_grid.beat_sec).ceil();
     let max_index =
-      ((max_sec - leader_offset_sec - target_grid.first_beat_sec) / target_grid.beat_sec).floor();
+      ((max_sec - target_offset_sec - target_grid.first_beat_sec) / target_grid.beat_sec).floor();
     if min_index > max_index {
       return anchor_sec.clamp(min_sec, max_sec);
     }
-    let anchor_index = ((anchor_sec - leader_offset_sec - target_grid.first_beat_sec)
+    let anchor_index = ((anchor_sec - target_offset_sec - target_grid.first_beat_sec)
       / target_grid.beat_sec)
       .round()
       .clamp(min_index, max_index);
-    (target_grid.first_beat_sec + anchor_index * target_grid.beat_sec + leader_offset_sec)
+    (target_grid.first_beat_sec + anchor_index * target_grid.beat_sec + target_offset_sec)
       .clamp(min_sec, max_sec)
+  }
+
+  fn alignment_min_sec_for_anchor(anchor_sec: f64, target_grid: BeatGridSnapshot) -> f64 {
+    if !anchor_sec.is_finite() || anchor_sec >= 0.0 {
+      return 0.0;
+    }
+    if target_grid.beat_sec.is_finite() && target_grid.beat_sec > 0.0 {
+      anchor_sec - target_grid.beat_sec
+    } else {
+      anchor_sec
+    }
   }
 
   pub(super) fn snapshot(&self, now_ms: f64) -> HorizontalBrowseTransportSnapshot {
@@ -550,9 +566,6 @@ impl HorizontalBrowseTransportEngine {
       let Some(leader_grid) = self.beat_grid(leader) else {
         return;
       };
-      let Some(leader_visual_grid) = self.original_beat_grid(leader) else {
-        return;
-      };
       let leader_current_sec = Self::estimate_current_sec(self.deck(leader), now_ms);
       let leader_target_beat_distance =
         (leader_current_sec - leader_grid.first_beat_sec) / leader_grid.beat_sec;
@@ -571,9 +584,6 @@ impl HorizontalBrowseTransportEngine {
         if self.beat_grid(deck).is_none() {
           continue;
         }
-        let Some(target_visual_grid) = self.original_beat_grid(deck) else {
-          continue;
-        };
         let target_current_sec = Self::estimate_current_sec(self.deck(deck), now_ms);
         self.target_beat_distance[deck_index] = leader_target_beat_distance;
 
@@ -603,12 +613,17 @@ impl HorizontalBrowseTransportEngine {
           && self.quantize_enabled[deck_index]
           && self.is_playing_audible_at(deck, now_ms)
         {
+          let Some(target_visual_grid) = self.beat_grid(deck) else {
+            continue;
+          };
           let target_duration_sec = self.deck(deck).duration_sec.max(0.0);
           let aligned_sec = Self::nearest_valid_sec_with_grid_offset(
             target_current_sec,
             leader_current_sec,
-            leader_visual_grid,
+            leader_grid,
             target_visual_grid,
+            self.deck(leader).playback_rate,
+            self.deck(deck).playback_rate,
             0.0,
             target_duration_sec,
           );
@@ -943,32 +958,39 @@ impl HorizontalBrowseTransportEngine {
     self.bpm_multiplier[leader_index] = 1.0;
     let leader_effective_bpm = self.effective_bpm_for_deck(leader);
     self.bpm_multiplier[deck_index] = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
-    if let (Some(target_grid), Some(leader_visual_grid), Some(target_visual_grid)) = (
-      self.beat_grid(deck),
-      self.original_beat_grid(leader),
-      self.original_beat_grid(deck),
-    ) {
+    if let (Some(target_grid), Some(leader_visual_grid)) =
+      (self.beat_grid(deck), self.beat_grid(leader))
+    {
       let leader_current_sec = Self::estimate_current_sec(self.deck(leader), now_ms);
       let target_current_sec = Self::estimate_current_sec(self.deck(deck), now_ms);
       let target_duration_sec = self.deck(deck).duration_sec.max(0.0);
+      let min_sec = Self::alignment_min_sec_for_anchor(target_current_sec, target_grid);
+      let target_playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
       let target_sec = Self::nearest_valid_sec_with_grid_offset(
         target_current_sec,
         leader_current_sec,
         leader_visual_grid,
-        target_visual_grid,
-        0.0,
+        target_grid,
+        self.deck(leader).playback_rate,
+        target_playback_rate,
+        min_sec,
         target_duration_sec,
       );
       let target = self.deck_mut(deck);
-      target.current_sec = target_sec.clamp(0.0, target.duration_sec.max(0.0));
+      target.current_sec = target_sec;
       target.last_observed_at_ms = now_ms;
-      self.deck_mut(deck).playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
+      self.deck_mut(deck).playback_rate = target_playback_rate;
       self.reset_and_prime_master_tempo_state(deck);
     }
     self.refresh_sync_state(false);
   }
 
-  pub(super) fn align_to_leader(&mut self, deck: DeckId, target_sec: Option<f64>, skip_grid_snap: bool) {
+  pub(super) fn align_to_leader(
+    &mut self,
+    deck: DeckId,
+    target_sec: Option<f64>,
+    skip_grid_snap: bool,
+  ) {
     self.mark_state_changed();
     let Some(leader) = self.resolve_leader_candidate(deck) else {
       return;
@@ -992,35 +1014,32 @@ impl HorizontalBrowseTransportEngine {
     let leader_effective_bpm = self.effective_bpm_for_deck(leader);
     self.bpm_multiplier[deck_index] = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
 
-    if let (Some(target_grid), Some(leader_visual_grid), Some(target_visual_grid)) = (
-      self.beat_grid(deck),
-      self.original_beat_grid(leader),
-      self.original_beat_grid(deck),
-    ) {
+    if let (Some(target_grid), Some(leader_visual_grid)) =
+      (self.beat_grid(deck), self.beat_grid(leader))
+    {
+      let target_playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
       let snapped_sec = if !skip_grid_snap {
         let leader_current_sec = Self::estimate_current_sec(self.deck(leader), now_ms);
         let anchor_sec = target_sec
           .filter(|value| value.is_finite())
           .unwrap_or_else(|| Self::estimate_current_sec(self.deck(deck), now_ms));
         let target_duration_sec = self.deck(deck).duration_sec.max(0.0);
-        let raw = Self::nearest_valid_sec_with_grid_offset(
-          anchor_sec.max(0.0),
+        let min_sec = Self::alignment_min_sec_for_anchor(anchor_sec, target_grid);
+        Some(Self::nearest_valid_sec_with_grid_offset(
+          anchor_sec,
           leader_current_sec,
           leader_visual_grid,
-          target_visual_grid,
-          0.0,
+          target_grid,
+          self.deck(leader).playback_rate,
+          target_playback_rate,
+          min_sec,
           target_duration_sec,
-        );
-        Some(if self.deck(deck).duration_sec.is_finite() && self.deck(deck).duration_sec > 0.0 {
-          raw.clamp(0.0, self.deck(deck).duration_sec)
-        } else {
-          raw.max(0.0)
-        })
+        ))
       } else {
         None
       };
       let target = self.deck_mut(deck);
-      target.playback_rate = (leader_effective_bpm / target_grid.bpm).clamp(0.25, 4.0);
+      target.playback_rate = target_playback_rate;
       target.last_observed_at_ms = now_ms;
       target.metronome_state.next_beat_index = None;
       if let Some(sec) = snapped_sec {

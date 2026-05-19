@@ -368,6 +368,15 @@ impl HorizontalBrowseTransportEngine {
     self.has_loaded_segment_covering(deck, current_sec)
   }
 
+  fn is_negative_silent_lead_in_ready(&self, deck: DeckId, now_ms: f64) -> bool {
+    let deck_state = self.deck(deck);
+    if !deck_state.playing {
+      return false;
+    }
+    let current_sec = Self::estimate_current_sec(deck_state, now_ms);
+    current_sec.is_finite() && current_sec < 0.0 && self.has_loaded_segment_covering(deck, 0.0)
+  }
+
   fn is_sync_ready(&self, deck: DeckId, now_ms: f64) -> bool {
     if !self.is_loaded(deck) {
       return false;
@@ -375,7 +384,7 @@ impl HorizontalBrowseTransportEngine {
     if !self.deck(deck).playing {
       return true;
     }
-    self.is_playing_audible_at(deck, now_ms)
+    self.is_playing_audible_at(deck, now_ms) || self.is_negative_silent_lead_in_ready(deck, now_ms)
   }
 
   fn auto_select_leader_from_playback(&mut self) {

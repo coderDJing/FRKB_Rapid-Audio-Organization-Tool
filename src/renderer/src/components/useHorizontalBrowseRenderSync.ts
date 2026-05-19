@@ -68,7 +68,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     top: 0,
     bottom: 0
   })
-  const deckRenderSnapshotSignature = reactive<Record<DeckKey, string>>({
+  const deckRenderTimelineSignature = reactive<Record<DeckKey, string>>({
     top: '',
     bottom: ''
   })
@@ -102,15 +102,12 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
 
   const resolveDeckRenderCurrentSeconds = (deck: DeckKey) => estimateDeckRenderCurrentSeconds(deck)
 
-  const buildDeckRenderSnapshotSignature = (snapshot: HorizontalBrowseTransportDeckSnapshot) =>
+  // 只有时间线坐标会变的字段才能触发渲染重锚；解码/可听状态变化不能打断负时间外推。
+  const buildDeckRenderTimelineSignature = (snapshot: HorizontalBrowseTransportDeckSnapshot) =>
     [
       snapshot.label || '',
       snapshot.loaded ? 1 : 0,
-      snapshot.fullyDecoded ? 1 : 0,
-      snapshot.fullDecoding ? 1 : 0,
-      snapshot.decoding ? 1 : 0,
       snapshot.playing ? 1 : 0,
-      snapshot.playingAudible ? 1 : 0,
       Number(snapshot.durationSec || 0).toFixed(3),
       Number(snapshot.playbackRate || 1).toFixed(6),
       snapshot.loopActive ? 1 : 0,
@@ -188,8 +185,8 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       }
       pendingRenderSeekIntent[deck] = null
     }
-    const signature = buildDeckRenderSnapshotSignature(snapshot)
-    const previousSignature = deckRenderSnapshotSignature[deck]
+    const signature = buildDeckRenderTimelineSignature(snapshot)
+    const previousSignature = deckRenderTimelineSignature[deck]
     const signatureChanged = previousSignature !== signature
     const transportStateRevision = resolveTransportStateRevision()
     const previousStateRevision = deckRenderStateRevision[deck]
@@ -241,7 +238,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
         bumpDeckPlaybackSyncRevision(deck)
       }
     }
-    deckRenderSnapshotSignature[deck] = signature
+    deckRenderTimelineSignature[deck] = signature
     deckRenderStateRevision[deck] = transportStateRevision
 
     const nextSec = shouldReanchor
