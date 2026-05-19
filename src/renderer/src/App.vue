@@ -846,6 +846,7 @@ onMounted(() => {
       console.error('[external-open] failed to prepare playlist', error)
     }
   })
+  window.electron.ipcRenderer.send('external-open:renderer-ready')
   window.electron.ipcRenderer.on('file-op-interrupted', async (_e, payload) => {
     try {
       fileOpDialogVisible.value = true

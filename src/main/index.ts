@@ -40,7 +40,12 @@ import {
 } from './platform/windowsContextMenu'
 import { loadLayoutConfigSync } from './layoutConfig'
 import { resolveBundledFfmpegPath, ensureExecutableOnMac } from './ffmpeg'
-import { processExternalOpenQueue, queueExternalAudioFiles } from './services/externalOpenQueue'
+import {
+  markExternalOpenRendererNotReady,
+  markExternalOpenRendererReady,
+  processExternalOpenQueue,
+  queueExternalAudioFiles
+} from './services/externalOpenQueue'
 import { registerSettingsHandlers } from './ipc/settingsHandlers'
 import { registerLibraryMaintenanceHandlers } from './ipc/libraryMaintenanceHandlers'
 import { registerPlaylistHandlers } from './ipc/playlistHandlers'
@@ -152,10 +157,31 @@ const focusWindowIfPossible = (target: BrowserWindow | null): boolean => {
   return true
 }
 
+let externalOpenLifecycleWebContentsId: number | null = null
+
+const attachExternalOpenRendererLifecycle = (): void => {
+  const target = mainWindow.instance
+  if (!target || target.isDestroyed()) return
+  const wc = target.webContents
+  if (!wc || wc.isDestroyed()) return
+  if (externalOpenLifecycleWebContentsId === wc.id) return
+  externalOpenLifecycleWebContentsId = wc.id
+  markExternalOpenRendererNotReady()
+  wc.on('did-start-loading', () => {
+    markExternalOpenRendererNotReady()
+  })
+  wc.on('destroyed', () => {
+    if (externalOpenLifecycleWebContentsId !== wc.id) return
+    externalOpenLifecycleWebContentsId = null
+    markExternalOpenRendererNotReady()
+  })
+}
+
 const ensurePrimaryWindowVisible = async (): Promise<void> => {
   if (focusWindowIfPossible(databaseInitWindow.instance)) return
   if (focusWindowIfPossible(mainWindow.instance)) return
   await prepareAndOpenMainWindow()
+  attachExternalOpenRendererLifecycle()
   await processExternalOpenQueue()
 }
 
@@ -290,6 +316,10 @@ registerHorizontalBrowseTransportHandlers()
 registerHotCueHandlers()
 registerMemoryCueHandlers()
 registerDevSongListTraceHandlers()
+
+ipcMain.on('external-open:renderer-ready', (event) => {
+  markExternalOpenRendererReady(event.sender)
+})
 
 keyAnalysisEvents.on('key-updated', (payload) => {
   if (mainWindow.instance) {
@@ -523,6 +553,7 @@ app.whenReady().then(async () => {
   }
   // 数据库准备与主窗口：统一调用幂等流程
   await prepareAndOpenMainWindow()
+  attachExternalOpenRendererLifecycle()
   startBackgroundOrchestrator()
   startKeyAnalysisBackground()
   startMixtapeWaveformHiresBackground()
