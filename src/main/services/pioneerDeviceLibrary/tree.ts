@@ -24,6 +24,8 @@ type RustPioneerPlaylistTreeNode = {
   isSmartPlaylist?: boolean
   is_smart_playlist?: boolean
   order: number
+  sortOrder?: number
+  sort_order?: number
 }
 
 type RustPioneerPlaylistTreeDump = {
@@ -115,7 +117,8 @@ const normalizePioneerPlaylistTreeDump = (
     name: String(node?.name || '').trim(),
     isFolder: Boolean(node?.isFolder ?? node?.is_folder),
     isSmartPlaylist: Boolean(node?.isSmartPlaylist ?? node?.is_smart_playlist),
-    order: Number(node?.order) || 0
+    order: Number(node?.order) || 0,
+    sortOrder: Number(node?.sortOrder ?? node?.sort_order) || 0
   }))
 
   return {
@@ -232,6 +235,7 @@ export function buildPioneerPlaylistTree(
           isFolder: Boolean(node.isFolder),
           isSmartPlaylist: Boolean(node.isSmartPlaylist),
           order: Number(node.order) || 0,
+          sortOrder: Number(node.sortOrder) || 0,
           children: [] as IPioneerPlaylistTreeNode[]
         }))
     : []
@@ -253,10 +257,7 @@ export function buildPioneerPlaylistTree(
   }
 
   const sortRecursive = (items: IPioneerPlaylistTreeNode[]) => {
-    items.sort((left, right) => {
-      if (left.isFolder !== right.isFolder) return left.isFolder ? -1 : 1
-      return left.order - right.order
-    })
+    items.sort((left, right) => left.sortOrder - right.sortOrder)
     for (const item of items) {
       if (Array.isArray(item.children) && item.children.length > 0) {
         sortRecursive(item.children)

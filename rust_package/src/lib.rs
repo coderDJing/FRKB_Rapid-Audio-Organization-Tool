@@ -205,6 +205,8 @@ pub struct PioneerPlaylistTreeNodeRecord {
   pub is_folder: bool,
   /// 读取顺序，用于前端稳定排序
   pub order: u32,
+  /// Rekordbox 排序字段
+  pub sort_order: u32,
 }
 
 /// Pioneer 播放列表树读取结果
@@ -1063,6 +1065,10 @@ pub fn dump_pioneer_export_debug(
   }
 }
 
+fn extract_sort_order_from_debug(debug: &str) -> u32 {
+  extract_plain_u32_field(debug, "sort_order: ").unwrap_or(0)
+}
+
 #[napi]
 pub fn read_pioneer_playlist_tree(export_pdb_path: String) -> PioneerPlaylistTreeDump {
   fn build_empty(path: String, error: impl Into<String>) -> PioneerPlaylistTreeDump {
@@ -1135,6 +1141,8 @@ pub fn read_pioneer_playlist_tree(export_pdb_path: String) -> PioneerPlaylistTre
               .into_string()
               .unwrap_or_else(|_| format!("{:?}", node.name));
             let is_folder = node.is_folder();
+            let debug_output = format!("{:?}", node);
+            let sort_order = extract_sort_order_from_debug(&debug_output);
             if is_folder {
               folder_total += 1;
             } else {
@@ -1146,6 +1154,7 @@ pub fn read_pioneer_playlist_tree(export_pdb_path: String) -> PioneerPlaylistTre
               name,
               is_folder,
               order,
+              sort_order,
             });
             order += 1;
           }

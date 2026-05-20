@@ -13,13 +13,15 @@ const normalizeTreeNode = (
   const id = Number(node?.id) || 0
   const name = String(node?.name || '').trim()
   if (!id || !name) return null
+  const order = Number(node?.order) || 0
   return {
     id,
     parentId: Number(node?.parentId) || 0,
     name,
     isFolder: Boolean(node?.isFolder),
     isSmartPlaylist: Boolean(node?.isSmartPlaylist),
-    order: Number(node?.order) || 0
+    order,
+    sortOrder: order
   }
 }
 

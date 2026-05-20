@@ -155,6 +155,7 @@ interface IPioneerPlaylistTreeNode {
   isFolder: boolean
   isSmartPlaylist?: boolean
   order: number
+  sortOrder: number
   children?: IPioneerPlaylistTreeNode[]
 }
 

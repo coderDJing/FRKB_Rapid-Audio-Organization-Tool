@@ -40,6 +40,7 @@ export type PioneerPlaylistNodeRecord = {
   name: string
   isFolder: boolean
   order: number
+  sortOrder: number
 }
 
 export type PioneerPlaylistTrackRecordRaw = {

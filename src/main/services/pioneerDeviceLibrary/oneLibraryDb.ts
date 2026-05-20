@@ -138,12 +138,14 @@ export function readOneLibraryPlaylistTree(databasePath: string): PioneerPlaylis
 
     const nodes: PioneerPlaylistNodeRecord[] = rows.map((row, index) => {
       const attribute = toSafeNumber(row?.attribute)
+      const order = toSafeNumber(row?.order) || index
       return {
         id: toSafeNumber(row?.id),
         parentId: toSafeNumber(row?.parentId),
         name: toSafeText(row?.name),
         isFolder: attribute === 1,
-        order: toSafeNumber(row?.order) || index
+        order,
+        sortOrder: order
       }
     })
 
