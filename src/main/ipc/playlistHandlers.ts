@@ -10,7 +10,7 @@ import { scanSongListOffMainThread } from '../services/songListScanWorker'
 import {
   collectFilesWithExtensions,
   getSongsAnalyseResult,
-  mapRendererPathToFsPath,
+  resolveLibraryPath,
   runWithConcurrency
 } from '../utils'
 import { isSupportedAudioPath } from '../services/externalOpenQueue'
@@ -76,12 +76,10 @@ export function registerPlaylistHandlers() {
     'scanSongList',
     async (_e, songListPath: string | string[], songListUUID: string) => {
       if (typeof songListPath === 'string') {
-        const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
+        const scanPath = resolveLibraryPath(songListPath).absPath
         return await runSongListScan(scanPath, songListUUID)
       } else {
-        const scanPaths = songListPath.map((p) =>
-          path.join(store.databaseDir, mapRendererPathToFsPath(p))
-        )
+        const scanPaths = songListPath.map((p) => resolveLibraryPath(p).absPath)
         return await runSongListScan(scanPaths, songListUUID)
       }
     }
@@ -100,10 +98,7 @@ export function registerPlaylistHandlers() {
       if (orderedFilePaths.length === 0) {
         throw new Error('缺少排序后的曲目列表')
       }
-      const absolutePlaylistPath = path.join(
-        store.databaseDir,
-        mapRendererPathToFsPath(songListPath)
-      )
+      const absolutePlaylistPath = resolveLibraryPath(songListPath).absPath
       const result = await setSongListTrackNumbersByOrder({
         listRoot: absolutePlaylistPath,
         orderedFilePaths
@@ -121,10 +116,7 @@ export function registerPlaylistHandlers() {
     async (_e, payload: CompactSongListTrackNumbersPayload) => {
       const songListPath = String(payload?.songListPath || '').trim()
       if (songListPath) {
-        const absolutePlaylistPath = path.join(
-          store.databaseDir,
-          mapRendererPathToFsPath(songListPath)
-        )
+        const absolutePlaylistPath = resolveLibraryPath(songListPath).absPath
         const result = await compactSongListTrackNumbers(absolutePlaylistPath)
         markGlobalSongSearchDirty('songList:compact-track-numbers')
         return {
@@ -185,10 +177,8 @@ export function registerPlaylistHandlers() {
             continue
           }
           const scanPath = Array.isArray(rawSongListPath)
-            ? rawSongListPath.map((item) =>
-                path.join(store.databaseDir, mapRendererPathToFsPath(item))
-              )
-            : path.join(store.databaseDir, mapRendererPathToFsPath(String(rawSongListPath || '')))
+            ? rawSongListPath.map((item) => resolveLibraryPath(item).absPath)
+            : resolveLibraryPath(String(rawSongListPath || '')).absPath
           const result = await runSongListScan(scanPath, songListUUID)
           const songFiles = Array.isArray(result?.scanData)
             ? result.scanData.map((item) => item.filePath).filter((item): item is string => !!item)
@@ -244,7 +234,7 @@ export function registerPlaylistHandlers() {
 
   ipcMain.handle('getSongListTrackCount', async (_e, songListPath: string) => {
     try {
-      const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(songListPath))
+      const scanPath = resolveLibraryPath(songListPath).absPath
       const files = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
       return Array.isArray(files) ? files.length : 0
     } catch {
@@ -355,7 +345,7 @@ export function registerPlaylistHandlers() {
       try {
         const startedAt = Date.now()
         const mode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
-        const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(rendererPath))
+        const scanPath = resolveLibraryPath(rendererPath).absPath
 
         const summaryBase = {
           scannedCount: 0,

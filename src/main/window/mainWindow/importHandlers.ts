@@ -7,7 +7,8 @@ import {
   collectFilesWithExtensions,
   getCoreFsDirName,
   getSongsAnalyseResult,
-  mapRendererPathToFsPath,
+  resolveLibraryChildPath,
+  resolveLibraryPath,
   runWithConcurrency,
   waitForUserDecision,
   moveOrCopyItemWithCheckIsExist
@@ -138,11 +139,12 @@ export function registerImportHandlers(
       toBeDealSongs = songFileUrls
     }
 
+    const targetSongList = resolveLibraryPath(formData.songListPath)
     const tasks: Array<() => Promise<FileTaskResult>> = []
     const fingerprintsToAdd: string[] = []
     const isCuratedTarget = (() => {
       const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/')
-      const targetPath = normalizeRelativePath(mapRendererPathToFsPath(formData.songListPath))
+      const targetPath = normalizeRelativePath(targetSongList.mappedPath)
       const curatedRoot = normalizeRelativePath(
         path.join('library', getCoreFsDirName('CuratedLibrary'))
       )
@@ -152,7 +154,7 @@ export function registerImportHandlers(
       const sourceFilePath = isMd5Item(item) ? item.file_path : item
       const matchResult = sourceFilePath.match(/[^\\/]+$/)
       const filename = matchResult ? matchResult[0] : 'unknown_file'
-      const targetPath = path.join(store.databaseDir, formData.songListPath, filename)
+      const targetPath = resolveLibraryChildPath(targetSongList.absPath, filename)
       const sha = isMd5Item(item) ? item.sha256_Hash : undefined
       tasks.push(async () => {
         const finalPath = await moveOrCopyItemWithCheckIsExist(
@@ -233,7 +235,7 @@ export function registerImportHandlers(
     const importedPaths = results
       .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
       .map((item) => item.trim())
-    const targetSongListRoot = path.join(store.databaseDir, formData.songListPath)
+    const targetSongListRoot = targetSongList.absPath
     if (importedPaths.length > 0 && isSupportedPlaylistTrackNumberListRoot(targetSongListRoot)) {
       await appendSongListTrackNumbers({
         listRoot: targetSongListRoot,

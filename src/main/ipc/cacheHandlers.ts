@@ -6,8 +6,7 @@ import {
   clearTrackCache as svcClearTrackCache,
   findSongListRoot
 } from '../services/cacheMaintenance'
-import store from '../store'
-import { getLibrary, mapRendererPathToFsPath } from '../utils'
+import { getLibrary, resolveLibraryPath } from '../utils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { MixxxWaveformData } from '../waveformCache'
 import type { StemWaveformDataLite } from '../stemWaveformCache'
@@ -90,9 +89,8 @@ export function registerCacheHandlers() {
         if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
         if (path.isAbsolute(input)) {
           resolvedListRoot = input
-        } else if (store.databaseDir) {
-          const mapped = mapRendererPathToFsPath(input)
-          resolvedListRoot = path.join(store.databaseDir, mapped)
+        } else {
+          resolvedListRoot = resolveLibraryPath(input).absPath
         }
       }
       for (const filePath of normalizedPaths) {
@@ -177,9 +175,8 @@ export function registerCacheHandlers() {
         if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
         if (path.isAbsolute(input)) {
           resolvedListRoot = input
-        } else if (store.databaseDir) {
-          const mapped = mapRendererPathToFsPath(input)
-          resolvedListRoot = path.join(store.databaseDir, mapped)
+        } else {
+          resolvedListRoot = resolveLibraryPath(input).absPath
         }
       }
       for (const filePath of normalizedPaths) {
@@ -330,15 +327,18 @@ export function registerCacheHandlers() {
       if (normalizedPaths.length === 0) return
       const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
       let resolvedListRoot = ''
-      if (listRootRaw) {
-        let input = listRootRaw
-        if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
-        if (path.isAbsolute(input)) {
-          resolvedListRoot = input
-        } else if (store.databaseDir) {
-          const mapped = mapRendererPathToFsPath(input)
-          resolvedListRoot = path.join(store.databaseDir, mapped)
+      try {
+        if (listRootRaw) {
+          let input = listRootRaw
+          if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
+          if (path.isAbsolute(input)) {
+            resolvedListRoot = input
+          } else {
+            resolvedListRoot = resolveLibraryPath(input).absPath
+          }
         }
+      } catch {
+        return
       }
       queueMixtapeWaveforms(normalizedPaths, resolvedListRoot || undefined)
     }

@@ -5,7 +5,7 @@ import store from '../store'
 import mainWindow from '../window/mainWindow'
 import {
   getCoreFsDirName,
-  mapRendererPathToFsPath,
+  resolveLibraryPath,
   runWithConcurrency,
   waitForUserDecision
 } from '../utils'
@@ -190,6 +190,10 @@ export function registerLibraryMaintenanceHandlers() {
       payload && !Array.isArray(payload) && payload.songListPath
         ? normalizeRendererPlaylistPath(payload.songListPath)
         : null
+    const sourceSongListRoot =
+      payload && !Array.isArray(payload) && payload.songListPath
+        ? resolveLibraryPath(payload.songListPath).absPath
+        : ''
     const sourceType =
       payload && !Array.isArray(payload) && payload.sourceType ? payload.sourceType : null
     const uniquePaths = Array.from(new Set(filePaths.filter(Boolean)))
@@ -262,14 +266,9 @@ export function registerLibraryMaintenanceHandlers() {
           !(item instanceof Error) && isRecycleBinMoveResult(item)
       )
       .map((item) => item.srcPath)
-    const songListPath =
-      payload && !Array.isArray(payload)
-        ? normalizeRendererPlaylistPath(payload.songListPath || '')
-        : ''
     if (removedPaths.length > 0) {
       let compacted = false
-      if (songListPath) {
-        const sourceSongListRoot = path.join(store.databaseDir, songListPath)
+      if (sourceSongListRoot) {
         if (isSupportedPlaylistTrackNumberListRoot(sourceSongListRoot)) {
           await compactSongListTrackNumbers(sourceSongListRoot)
           compacted = true
@@ -544,10 +543,9 @@ export function registerLibraryMaintenanceHandlers() {
 
   ipcMain.handle('dirPathExists', async (_e, targetPath: string) => {
     try {
-      const mapped = mapRendererPathToFsPath(targetPath)
-      const absPath = path.join(store.databaseDir, mapped)
+      const { mappedPath, absPath } = resolveLibraryPath(targetPath)
       if (!(await fs.pathExists(absPath))) return false
-      const node = findLibraryNodeByPath(mapped)
+      const node = findLibraryNodeByPath(mappedPath)
       const validTypes = ['root', 'library', 'dir', 'songList', 'mixtapeList']
       return !!(node && validTypes.includes(node.nodeType))
     } catch {

@@ -2,7 +2,7 @@ import fs from 'fs-extra'
 import path from 'path'
 import { getLogPath, log } from '../../log'
 import store from '../../store'
-import { mapRendererPathToFsPath } from '../../utils'
+import { resolveLibraryPath } from '../../utils'
 import { readTrackMetadata } from '../metadataEditor'
 import { scanSongListOffMainThread } from '../songListScanWorker'
 import { loadSharedSongHotCueDefinition } from '../sharedSongHotCues'
@@ -222,7 +222,7 @@ const resolvePlaylistTracks = async (
     }
   }
 
-  const absolutePlaylistPath = path.join(store.databaseDir, mapRendererPathToFsPath(rendererPath))
+  const absolutePlaylistPath = resolveLibraryPath(rendererPath).absPath
   const result = await scanSongListOffMainThread({
     scanPath: absolutePlaylistPath,
     audioExt: store.settingConfig.audioExt,

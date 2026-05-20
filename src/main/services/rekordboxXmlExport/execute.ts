@@ -2,7 +2,7 @@ import path from 'path'
 import fs from 'fs-extra'
 import store from '../../store'
 import { getLogPath, log } from '../../log'
-import { mapRendererPathToFsPath } from '../../utils'
+import { resolveLibraryPath } from '../../utils'
 import { markGlobalSongSearchDirty } from '../globalSongSearch'
 import { compactSongListTrackNumbersByFilePaths } from '../playlistTrackNumbers'
 import { readTrackMetadata } from '../metadataEditor'
@@ -125,7 +125,7 @@ const resolvePlaylistTracks = async (request: RekordboxXmlExportRequest) => {
       message: '缺少歌单路径。'
     }
   }
-  const absolutePlaylistPath = path.join(store.databaseDir, mapRendererPathToFsPath(rendererPath))
+  const absolutePlaylistPath = resolveLibraryPath(rendererPath).absPath
   const result = await scanSongListOffMainThread({
     scanPath: absolutePlaylistPath,
     audioExt: store.settingConfig.audioExt,

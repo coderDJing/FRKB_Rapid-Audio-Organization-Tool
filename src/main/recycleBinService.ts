@@ -1,7 +1,7 @@
 import path = require('path')
 import fs = require('fs-extra')
 import store from './store'
-import { getCoreFsDirName, mapRendererPathToFsPath } from './utils'
+import { getCoreFsDirName, mapRendererPathToFsPath, resolveLibraryPath } from './utils'
 import { log } from './log'
 import {
   listRecycleBinRecords,
@@ -109,7 +109,12 @@ export function normalizeRendererPlaylistPath(rendererPath: string): string | nu
   const libraryRoot = getLibraryRootAbs()
   if (!libraryRoot) return null
   const mapped = mapRendererPathToFsPath(rendererPath)
-  const absPath = path.isAbsolute(mapped) ? mapped : path.join(store.databaseDir, mapped)
+  let absPath = ''
+  try {
+    absPath = path.isAbsolute(mapped) ? mapped : resolveLibraryPath(rendererPath).absPath
+  } catch {
+    return null
+  }
   const rel = path.relative(libraryRoot, absPath)
   if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return null
   return rel

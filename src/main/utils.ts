@@ -53,6 +53,74 @@ export function mapRendererPathToFsPath(rendererPath: string): string {
   return p
 }
 
+export type LibraryPathResolution = {
+  mappedPath: string
+  absPath: string
+}
+
+export type ResolveLibraryPathOptions = {
+  allowRoot?: boolean
+}
+
+const getDatabaseRootForLibraryPath = () => {
+  const databaseRoot = String(store.databaseDir || '')
+  if (!databaseRoot) {
+    throw new Error('library database root is not configured')
+  }
+  return path.resolve(databaseRoot)
+}
+
+const isPathInsideRoot = (rootDir: string, targetPath: string, allowRoot: boolean) => {
+  const relative = path.relative(rootDir, targetPath)
+  if (!relative) return allowRoot
+  return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)
+}
+
+export function resolveLibraryPath(
+  rendererPath: string,
+  options: ResolveLibraryPathOptions = {}
+): LibraryPathResolution {
+  const rootDir = getDatabaseRootForLibraryPath()
+  const mappedInput = mapRendererPathToFsPath(String(rendererPath || ''))
+  if (!mappedInput) {
+    throw new Error('library path is empty')
+  }
+  if (path.isAbsolute(mappedInput)) {
+    throw new Error('library path must be relative')
+  }
+
+  const absPath = path.resolve(rootDir, mappedInput)
+  if (!isPathInsideRoot(rootDir, absPath, !!options.allowRoot)) {
+    throw new Error('library path is outside database root')
+  }
+
+  return {
+    mappedPath: path.relative(rootDir, absPath) || '.',
+    absPath
+  }
+}
+
+export function resolveLibraryChildPath(parentAbsPath: string, childName: string): string {
+  const rootDir = getDatabaseRootForLibraryPath()
+  const parentPath = path.resolve(parentAbsPath)
+  const name = String(childName || '')
+  if (!name) {
+    throw new Error('library child path is empty')
+  }
+  if (path.isAbsolute(name) || name.includes('/') || name.includes('\\')) {
+    throw new Error('library child path must be a direct child name')
+  }
+  if (!isPathInsideRoot(rootDir, parentPath, true)) {
+    throw new Error('library parent path is outside database root')
+  }
+
+  const absPath = path.resolve(parentPath, name)
+  if (!isPathInsideRoot(parentPath, absPath, false) || !isPathInsideRoot(rootDir, absPath, false)) {
+    throw new Error('library child path is outside database root')
+  }
+  return absPath
+}
+
 // 指纹比较与阈值逻辑已移除（当前仅使用音频内容哈希判重）
 
 export async function getSongsAnalyseResult(

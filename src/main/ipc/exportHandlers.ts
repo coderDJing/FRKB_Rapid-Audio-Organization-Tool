@@ -5,8 +5,9 @@ import store from '../store'
 import {
   collectFilesWithExtensions,
   getCoreFsDirName,
-  mapRendererPathToFsPath,
   moveOrCopyItemWithCheckIsExist,
+  resolveLibraryChildPath,
+  resolveLibraryPath,
   runWithConcurrency,
   waitForUserDecision,
   getCurrentTimeYYYYMMDDHHMMSSSSS
@@ -79,9 +80,9 @@ export function registerExportHandlers() {
   ipcMain.handle(
     'exportSongListToDir',
     async (_e, folderPathVal, deleteSongsAfterExport, dirPath) => {
-      const scanPath = path.join(store.databaseDir, mapRendererPathToFsPath(dirPath))
+      const { absPath: scanPath } = resolveLibraryPath(dirPath)
       const songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
-      const folderName = dirPath.split('/')[dirPath.split('/').length - 1]
+      const folderName = path.basename(scanPath)
       const targetPath = await findUniqueFolder(path.join(folderPathVal, folderName))
       await fs.ensureDir(targetPath)
       const tasks: Array<() => Promise<string>> = []
@@ -230,17 +231,18 @@ export function registerExportHandlers() {
   ipcMain.handle('moveSongsToDir', async (_e, srcs, dest, options: MoveSongsToDirOptions = {}) => {
     const isMove = options?.mode !== 'copy'
     const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/')
-    const targetDir = normalizeRelativePath(mapRendererPathToFsPath(dest))
+    const target = resolveLibraryPath(dest)
+    const targetDir = normalizeRelativePath(target.mappedPath)
     const curatedRoot = normalizeRelativePath(
       path.join('library', getCoreFsDirName('CuratedLibrary'))
     )
     const isCuratedTarget = targetDir === curatedRoot || targetDir.startsWith(`${curatedRoot}/`)
-    const targetListRoot = path.join(store.databaseDir, mapRendererPathToFsPath(dest))
+    const targetListRoot = target.absPath
     const tasks: Array<() => Promise<string>> = []
     for (const src of srcs) {
-      const matches = src.match(/[^\\]+$/)
-      if (Array.isArray(matches) && matches.length > 0) {
-        const targetPath = path.join(store.databaseDir, mapRendererPathToFsPath(dest), matches[0])
+      const filename = path.basename(String(src || ''))
+      if (filename) {
+        const targetPath = resolveLibraryChildPath(target.absPath, filename)
         tasks.push(async () => {
           const movedPath = await moveOrCopyItemWithCheckIsExist(src, targetPath, isMove)
           if (isMove) {

@@ -4,8 +4,7 @@ import path from 'node:path'
 import { Worker } from 'node:worker_threads'
 import { resolveMainWorkerPath } from '../workerPath'
 import { findSongListRoot } from '../services/cacheMaintenance'
-import store from '../store'
-import { mapRendererPathToFsPath } from '../utils'
+import { resolveLibraryPath } from '../utils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { MixxxWaveformData } from '../waveformCache'
 import type { MixtapeRawWaveformData } from '../libraryCacheDb/mixtapeRawWaveformCache'
@@ -60,9 +59,7 @@ const resolveRendererListRoot = (value: unknown) => {
   let input = listRootRaw
   if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
   if (path.isAbsolute(input)) return input
-  if (!store.databaseDir) return ''
-  const mapped = mapRendererPathToFsPath(input)
-  return path.join(store.databaseDir, mapped)
+  return resolveLibraryPath(input).absPath
 }
 
 const isRawWaveformRateSufficient = (

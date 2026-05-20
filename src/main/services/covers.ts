@@ -1,7 +1,6 @@
 import path = require('path')
 import fs = require('fs-extra')
-import { mapRendererPathToFsPath, operateHiddenFile } from '../utils'
-import store from '../store'
+import { operateHiddenFile, resolveLibraryPath } from '../utils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 
 const toNodeBuffer = (value: unknown): Buffer | null => {
@@ -78,8 +77,7 @@ export async function getSongCoverThumb(
       if (path.isAbsolute(input)) {
         resolvedRoot = input
       } else {
-        const mapped = mapRendererPathToFsPath(input)
-        resolvedRoot = path.join(store.databaseDir, mapped)
+        resolvedRoot = resolveLibraryPath(input).absPath
       }
     }
     let useDiskCache = !!(
@@ -173,8 +171,7 @@ export async function sweepSongListCovers(
     if (!listRootDir || typeof listRootDir !== 'string') return { removed: 0 }
     let input = listRootDir
     if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
-    const mapped = path.isAbsolute(input) ? input : mapRendererPathToFsPath(input)
-    const resolvedRoot = path.isAbsolute(mapped) ? mapped : path.join(store.databaseDir, mapped)
+    const resolvedRoot = path.isAbsolute(input) ? input : resolveLibraryPath(input).absPath
     const coversDir = path.join(resolvedRoot, '.frkb_covers')
     if (!(await fs.pathExists(coversDir))) return { removed: 0 }
 

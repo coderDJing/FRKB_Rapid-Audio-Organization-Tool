@@ -5,7 +5,8 @@ import store from '../../store'
 import { log } from '../../log'
 import {
   collectFilesWithExtensions,
-  mapRendererPathToFsPath,
+  resolveLibraryPath,
+  resolveLibraryChildPath,
   getCoreFsDirName,
   runWithConcurrency,
   waitForUserDecision
@@ -92,8 +93,12 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
   }
 
   ipcMain.on('openFileExplorer', (_e, targetPath) => {
-    const mapped = mapRendererPathToFsPath(String(targetPath || ''))
-    shell.openPath(path.join(store.databaseDir, mapped))
+    try {
+      const target = resolveLibraryPath(String(targetPath || ''))
+      void shell.openPath(target.absPath)
+    } catch (error) {
+      log.error('openFileExplorer failed:', error)
+    }
   })
 
   ipcMain.on('show-item-in-folder', (_e, filePath: string) => {
@@ -101,8 +106,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
   })
 
   ipcMain.handle('emptyDir', async (_e, targetPath: string) => {
-    const mappedPath = mapRendererPathToFsPath(targetPath)
-    const absPath = path.join(store.databaseDir, mappedPath)
+    const { absPath } = resolveLibraryPath(targetPath)
     const audioExts = store.settingConfig.audioExt
     const songFileUrls = await collectFilesWithExtensions(absPath, audioExts)
     const originalPlaylistPath = normalizeRendererPlaylistPath(targetPath)
@@ -318,8 +322,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       for (const item of operateArray) {
         let operationStatus = 'processed'
         if (item.type === 'create') {
-          const mappedPath = mapRendererPathToFsPath(item.path)
-          const createPath = path.join(store.databaseDir, mappedPath)
+          const { mappedPath, absPath: createPath } = resolveLibraryPath(item.path)
           await fs.ensureDir(path.dirname(createPath))
           await fs.ensureDir(createPath)
           const parentNode = findLibraryNodeByPath(path.dirname(mappedPath))
@@ -337,12 +340,19 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
           updateLibraryNodeOrder(item.uuid, item.order ?? null)
           operationStatus = 'reordered'
         } else if (item.type === 'rename') {
-          const mappedOldPath = mapRendererPathToFsPath(item.path)
-          const mappedNewPath = item.newPath
-            ? mapRendererPathToFsPath(item.newPath)
-            : path.join(path.dirname(mappedOldPath), item.newName || '')
-          const oldFullPath = path.join(store.databaseDir, mappedOldPath)
-          const newFullPath = path.join(store.databaseDir, mappedNewPath)
+          const oldTarget = resolveLibraryPath(item.path)
+          const newTarget = item.newPath
+            ? resolveLibraryPath(item.newPath)
+            : {
+                mappedPath: path.join(path.dirname(oldTarget.mappedPath), item.newName || ''),
+                absPath: resolveLibraryChildPath(
+                  path.dirname(oldTarget.absPath),
+                  item.newName || ''
+                )
+              }
+          const mappedNewPath = newTarget.mappedPath
+          const oldFullPath = oldTarget.absPath
+          const newFullPath = newTarget.absPath
           if (await fs.pathExists(oldFullPath)) {
             await fs.rename(oldFullPath, newFullPath)
             updateLibraryNodeName(item.uuid, path.basename(mappedNewPath))
@@ -367,8 +377,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
           })
           const mixtapeFilePaths =
             item.nodeType === 'mixtapeList' ? listMixtapeFilePathsByPlaylist(item.uuid) : []
-          const mappedPath = mapRendererPathToFsPath(item.path)
-          const dirPath = path.join(store.databaseDir, mappedPath)
+          const { absPath: dirPath } = resolveLibraryPath(item.path)
           const isEmpty = await isDirectoryEffectivelyEmpty(dirPath, store.settingConfig.audioExt)
           if (isEmpty) {
             await fs.remove(dirPath)
@@ -477,24 +486,24 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         } else if (item.type === 'permanentlyDelete') {
           const mixtapeFilePaths =
             item.nodeType === 'mixtapeList' ? listMixtapeFilePathsByPlaylist(item.uuid) : []
-          const mappedPath = mapRendererPathToFsPath(item.path)
-          await fs.remove(path.join(store.databaseDir, mappedPath))
+          const { absPath } = resolveLibraryPath(item.path)
+          await fs.remove(absPath)
           removeLibraryNode(item.uuid)
           operationStatus = 'permanently_deleted'
           if (item.nodeType === 'mixtapeList') {
             await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
           }
         } else if (item.type === 'move') {
-          const mappedOldPath = mapRendererPathToFsPath(item.path)
-          const mappedNewPath = mapRendererPathToFsPath(item.newPath as string)
-          const srcFullPath = path.join(store.databaseDir, mappedOldPath)
-          const destFullPath = path.join(store.databaseDir, mappedNewPath)
+          const oldTarget = resolveLibraryPath(item.path)
+          const newTarget = resolveLibraryPath(item.newPath as string)
+          const srcFullPath = oldTarget.absPath
+          const destFullPath = newTarget.absPath
           if (await fs.pathExists(srcFullPath)) {
             await fs.ensureDir(path.dirname(destFullPath))
             await fs.move(srcFullPath, destFullPath, { overwrite: true })
-            const parentNode = findLibraryNodeByPath(path.dirname(mappedNewPath))
+            const parentNode = findLibraryNodeByPath(path.dirname(newTarget.mappedPath))
             if (parentNode) {
-              moveLibraryNode(item.uuid, parentNode.uuid, path.basename(mappedNewPath))
+              moveLibraryNode(item.uuid, parentNode.uuid, path.basename(newTarget.mappedPath))
               if (item.order !== undefined) {
                 updateLibraryNodeOrder(item.uuid, item.order)
               }
