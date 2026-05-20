@@ -238,6 +238,7 @@
     "audio-decode": "^3.10.1",
     "better-sqlite3": "^12.10.0",
     "better-sqlite3-multiple-ciphers": "^12.9.0",
+    "dompurify": "^3.4.5",
     "dotenv": "^17.4.2",
     "electron-log": "^5.4.4",
     "electron-updater": "^6.8.3",

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { marked } from 'marked'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import chromeMinimizeAsset from '@renderer/assets/chrome-minimize.svg?asset'
 import logoAsset from '@renderer/assets/logo.png?asset'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { formatWindowTitle } from '@renderer/utils/windowTitle'
+import { renderMarkdownToHtml } from '@renderer/utils/releaseNotesMarkdown'
 const chromeMinimize = chromeMinimizeAsset
 const logo = logoAsset
 
@@ -51,21 +51,10 @@ const acknowledge = () => {
 window.electron.ipcRenderer.on('whatsNew-data', async (_event, payload: ReleasePayload) => {
   release.value = payload
   const rawBody = typeof payload?.body === 'string' ? payload.body : ''
-  if (!rawBody) {
+  try {
+    bodyHtml.value = rawBody ? await renderMarkdownToHtml(rawBody) : ''
+  } catch {
     bodyHtml.value = ''
-  } else {
-    const parsed = marked.parse(rawBody)
-    if (typeof parsed === 'string') {
-      bodyHtml.value = parsed
-    } else {
-      parsed
-        .then((html) => {
-          bodyHtml.value = html
-        })
-        .catch(() => {
-          bodyHtml.value = rawBody
-        })
-    }
   }
   loading.value = false
 })

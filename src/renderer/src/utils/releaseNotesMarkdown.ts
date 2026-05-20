@@ -1,5 +1,64 @@
 import { marked } from 'marked'
+import DOMPurify from 'dompurify'
 import type { ReleaseNotesRangePayload } from '@shared/releaseNotes'
+
+const RELEASE_NOTES_ALLOWED_TAGS = [
+  'a',
+  'blockquote',
+  'br',
+  'code',
+  'del',
+  'em',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'hr',
+  'img',
+  'li',
+  'ol',
+  'p',
+  'pre',
+  'strong',
+  'table',
+  'tbody',
+  'td',
+  'th',
+  'thead',
+  'tr',
+  'ul'
+]
+
+const RELEASE_NOTES_ALLOWED_ATTR = [
+  'align',
+  'alt',
+  'class',
+  'colspan',
+  'height',
+  'href',
+  'rel',
+  'rowspan',
+  'src',
+  'target',
+  'title',
+  'width'
+]
+
+let sanitizerHookInstalled = false
+
+const ensureSanitizerHooks = () => {
+  if (sanitizerHookInstalled) return
+  sanitizerHookInstalled = true
+  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    const element = node as Element
+    if (element.tagName?.toLowerCase() !== 'a') return
+    if (!element.getAttribute('href')) return
+    element.setAttribute('target', '_blank')
+    element.setAttribute('rel', 'noopener noreferrer')
+  })
+}
 
 const formatReleaseDate = (publishedAt: string): string => {
   if (!publishedAt) return ''
@@ -30,5 +89,13 @@ export const buildReleaseNotesMarkdown = (
 export const renderMarkdownToHtml = async (markdown: string): Promise<string> => {
   if (!markdown) return ''
   const parsed = marked.parse(markdown)
-  return typeof parsed === 'string' ? parsed : await parsed
+  const html = typeof parsed === 'string' ? parsed : await parsed
+  ensureSanitizerHooks()
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: RELEASE_NOTES_ALLOWED_TAGS,
+    ALLOWED_ATTR: RELEASE_NOTES_ALLOWED_ATTR,
+    ALLOW_ARIA_ATTR: false,
+    ALLOW_DATA_ATTR: false,
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|[#/]|\.{0,2}\/)/i
+  })
 }
