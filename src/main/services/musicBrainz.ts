@@ -7,7 +7,12 @@ import {
   IMusicBrainzSuggestionParams,
   IMusicBrainzSuggestionResult
 } from '../../types/globals'
-import { ProxyAgent, fetch as undiciFetch } from 'undici'
+import {
+  ProxyAgent,
+  fetch as undiciFetch,
+  type HeadersInit as UndiciHeadersInit,
+  type RequestInit as UndiciRequestInit
+} from 'undici'
 import { log } from '../log'
 import { getSystemProxy } from '../utils'
 
@@ -25,7 +30,7 @@ let proxyDispatcher: ProxyAgent | undefined
 let proxyInitialized = false
 
 type JsonObject = Record<string, unknown>
-type RequestInitWithDispatcher = RequestInit & { dispatcher?: ProxyAgent }
+type RequestInitWithDispatcher = UndiciRequestInit
 type ErrorLike = {
   message?: unknown
   code?: unknown
@@ -215,7 +220,7 @@ function getUserAgent() {
   return `FRKB/${version} (https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/)`
 }
 
-function mergeHeaders(extra?: HeadersInit): HeadersInit {
+function mergeHeaders(extra?: UndiciHeadersInit): UndiciHeadersInit {
   const base: Record<string, string> = {
     'User-Agent': getUserAgent()
   }
@@ -233,7 +238,11 @@ function mergeHeaders(extra?: HeadersInit): HeadersInit {
   return base
 }
 
-async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: number): Promise<T> {
+async function requestJson<T>(
+  url: string,
+  headers?: UndiciHeadersInit,
+  timeoutMs?: number
+): Promise<T> {
   await ensureProxyInitialized()
   const attempt = () =>
     scheduleRequest(async () => {
@@ -253,8 +262,7 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
           signal: controller.signal
         }
         if (proxyDispatcher) init.dispatcher = proxyDispatcher
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const res = await undiciFetch(url as any, init as any)
+        const res = await undiciFetch(url, init)
         if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
         if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')
         if (!res.ok) throw new Error(`MUSICBRAINZ_HTTP_${res.status}`)
@@ -284,7 +292,7 @@ async function requestJson<T>(url: string, headers?: HeadersInit, timeoutMs?: nu
 
 async function requestBuffer(
   url: string,
-  headers?: HeadersInit,
+  headers?: UndiciHeadersInit,
   timeoutMs?: number
 ): Promise<{
   mime: string
@@ -306,8 +314,7 @@ async function requestBuffer(
           signal: controller.signal
         }
         if (proxyDispatcher) init.dispatcher = proxyDispatcher
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const res = await undiciFetch(url as any, init as any)
+        const res = await undiciFetch(url, init)
         if (res.status === 404) return null
         if (res.status === 429) throw new Error('MUSICBRAINZ_RATE_LIMITED')
         if (res.status === 503) throw new Error('MUSICBRAINZ_UNAVAILABLE')

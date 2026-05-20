@@ -1,5 +1,5 @@
 import { app } from 'electron'
-import { ProxyAgent, fetch as undiciFetch } from 'undici'
+import { ProxyAgent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from 'undici'
 import {
   ISimilarTrackItem,
   ISimilarTrackSource,
@@ -21,7 +21,7 @@ const REQUEST_TIMEOUT = 12_000
 const DEFAULT_LIMIT = 50
 
 type JsonObject = Record<string, unknown>
-type RequestInitWithDispatcher = RequestInit & { dispatcher?: ProxyAgent }
+type RequestInitWithDispatcher = UndiciRequestInit
 type ErrorLike = {
   message?: unknown
   code?: unknown
@@ -85,8 +85,7 @@ async function requestJson<T>(url: string): Promise<T> {
       signal: controller.signal
     }
     if (proxyDispatcher) init.dispatcher = proxyDispatcher
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const res = await undiciFetch(url as any, init as any)
+    const res = await undiciFetch(url, init)
     if (res.status === 429) throw new Error('SIMILAR_TRACKS_RATE_LIMITED')
     if (res.status === 503) throw new Error('SIMILAR_TRACKS_UNAVAILABLE')
     if (!res.ok) throw new Error(`SIMILAR_TRACKS_HTTP_${res.status}`)

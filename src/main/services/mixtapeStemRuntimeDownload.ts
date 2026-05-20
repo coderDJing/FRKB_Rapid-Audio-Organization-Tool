@@ -3,7 +3,12 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { app } from 'electron'
-import { ProxyAgent, fetch as undiciFetch } from 'undici'
+import {
+  ProxyAgent,
+  fetch as undiciFetch,
+  type RequestInit as UndiciRequestInit,
+  type Response as UndiciResponse
+} from 'undici'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
 import {
   resolveBundledDemucsPlatformRootCandidates,
@@ -241,16 +246,18 @@ const ensureRuntimeDownloadProxyInitialized = async () => {
   }
 }
 
-const fetchRuntimeAsset = async (url: string, init?: RequestInit): Promise<Response> => {
+const fetchRuntimeAsset = async (
+  url: string,
+  init?: UndiciRequestInit
+): Promise<UndiciResponse> => {
   await ensureRuntimeDownloadProxyInitialized()
-  const requestInit: RequestInit & { dispatcher?: ProxyAgent } = {
+  const requestInit: UndiciRequestInit = {
     ...init
   }
   if (runtimeDownloadProxyDispatcher) {
     requestInit.dispatcher = runtimeDownloadProxyDispatcher
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (await undiciFetch(url as any, requestInit as any)) as unknown as Response
+  return await undiciFetch(url, requestInit)
 }
 
 const fileExists = async (targetPath: string) => {

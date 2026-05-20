@@ -766,9 +766,8 @@ export class WebAudioPlayer {
     try {
       const ctx = options ? new AudioContextCtor(options) : new AudioContextCtor()
       // 注册到全局列表，窗口关闭时可立即挂起所有 AudioContext
-      const w = window as any
-      if (!w.__FRKB_AUDIO_CONTEXTS__) w.__FRKB_AUDIO_CONTEXTS__ = []
-      w.__FRKB_AUDIO_CONTEXTS__.push(ctx)
+      const contexts = (window.__FRKB_AUDIO_CONTEXTS__ ??= [])
+      contexts.push(ctx)
       return ctx
     } catch {
       return null
@@ -777,8 +776,7 @@ export class WebAudioPlayer {
 
   private unregisterAudioContext(ctx: AudioContext): void {
     try {
-      const w = window as any
-      const list = w.__FRKB_AUDIO_CONTEXTS__ as AudioContext[] | undefined
+      const list = window.__FRKB_AUDIO_CONTEXTS__
       if (list) {
         const idx = list.indexOf(ctx)
         if (idx >= 0) list.splice(idx, 1)

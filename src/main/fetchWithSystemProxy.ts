@@ -3,6 +3,8 @@ import { getSystemProxy } from './utils'
 
 type FetchInput = Parameters<typeof fetch>[0]
 type FetchInit = Parameters<typeof fetch>[1]
+type UndiciFetchInput = Parameters<typeof undiciFetch>[0]
+type UndiciFetchInit = Parameters<typeof undiciFetch>[1]
 type ProxyFetchInit = FetchInit & { dispatcher?: ProxyAgent }
 
 let systemProxyDispatcher: ProxyAgent | undefined
@@ -25,6 +27,8 @@ export async function fetchWithSystemProxy(input: FetchInput, init?: FetchInit) 
   if (systemProxyDispatcher) {
     requestInit.dispatcher = systemProxyDispatcher
   }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (await undiciFetch(input as any, requestInit as any)) as unknown as Response
+  return (await undiciFetch(
+    input as unknown as UndiciFetchInput,
+    requestInit as unknown as UndiciFetchInit
+  )) as unknown as Response
 }

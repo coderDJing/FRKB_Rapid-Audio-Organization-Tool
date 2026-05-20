@@ -3,6 +3,7 @@ import path from 'node:path'
 import { once } from 'node:events'
 import { Readable } from 'node:stream'
 import type { ReadableStream as NodeReadableStream } from 'node:stream/web'
+import type { RequestInit as UndiciRequestInit, Response as UndiciResponse } from 'undici'
 import { resolveInstalledDemucsPlatformRootPath } from '../demucs'
 import { createStemError, normalizeText, runProcess } from './mixtapeStemSeparationShared'
 import type {
@@ -13,7 +14,7 @@ import type {
 type RuntimeInstallProgress = Partial<MixtapeStemRuntimeDownloadState>
 
 type RuntimeInstallDeps = {
-  fetchRuntimeAsset: (url: string, init?: RequestInit) => Promise<Response>
+  fetchRuntimeAsset: (url: string, init?: UndiciRequestInit) => Promise<UndiciResponse>
   computeFileSha256: (filePath: string) => Promise<string>
   resolveRuntimeDownloadCacheDir: () => string
   resolveRuntimeInstalledVersionPath: (runtimeDir: string) => string

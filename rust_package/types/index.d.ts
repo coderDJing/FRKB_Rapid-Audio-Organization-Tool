@@ -180,14 +180,14 @@ export declare function calculateAudioHashes(filePaths: Array<string>): Array<Au
 /** 带进度回调的异步音频处理 */
 export declare function calculateAudioHashesWithProgress(
   filePaths: Array<string>,
-  callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null
+  callback?: (err: Error | null, arg: ProcessProgress) => void
 ): Promise<Array<AudioFileResult>>
 /** 计算整文件 SHA256（不解码，速度快；与 PCM 内容哈希互不兼容） */
 export declare function calculateFileHashes(filePaths: Array<string>): Array<AudioFileResult>
 /** 计算整文件 SHA256（带进度） */
 export declare function calculateFileHashesWithProgress(
   filePaths: Array<string>,
-  callback?: (err: Error | null, arg: ProcessProgress) => any | undefined | null
+  callback?: (err: Error | null, arg: ProcessProgress) => void
 ): Promise<Array<AudioFileResult>>
 /**
  * 解码音频文件为 PCM Float32Array

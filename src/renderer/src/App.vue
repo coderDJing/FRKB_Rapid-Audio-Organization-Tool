@@ -725,7 +725,7 @@ const handleBeforeUnload = () => {
   })
   // 挂起所有 AudioContext，立即停止 WebAudio 输出
   try {
-    const contexts = (window as any).__FRKB_AUDIO_CONTEXTS__ as AudioContext[] | undefined
+    const contexts = window.__FRKB_AUDIO_CONTEXTS__
     if (contexts) {
       for (const ctx of contexts) {
         try {

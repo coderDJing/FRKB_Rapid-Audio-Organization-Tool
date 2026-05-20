@@ -178,9 +178,8 @@ export function useWaveformPreviewPlayer() {
     try {
       pcmContext = sampleRate ? new AudioContextCtor({ sampleRate }) : new AudioContextCtor()
       // 注册到全局列表，窗口关闭时可立即挂起所有 AudioContext
-      const w = window as any
-      if (!w.__FRKB_AUDIO_CONTEXTS__) w.__FRKB_AUDIO_CONTEXTS__ = []
-      w.__FRKB_AUDIO_CONTEXTS__.push(pcmContext)
+      const contexts = (window.__FRKB_AUDIO_CONTEXTS__ ??= [])
+      contexts.push(pcmContext)
     } catch {
       pcmContext = null
       return null

@@ -3,7 +3,7 @@ import { is } from '@electron-toolkit/utils'
 import path = require('path')
 import fs = require('fs-extra')
 import { createHash } from 'crypto'
-import { ProxyAgent, fetch as undiciFetch } from 'undici'
+import { ProxyAgent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from 'undici'
 import { IMusicBrainzAcoustIdPayload, IMusicBrainzMatch } from '../../types/globals'
 import store from '../store'
 import { getSystemProxy } from '../utils'
@@ -17,7 +17,6 @@ let generateChromaprintFingerprint:
     ) => { fingerprint: string; duration: number; error?: string })
   | undefined
 try {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const rustPkg = require('rust_package') as Record<string, unknown>
   if (typeof rustPkg.generateChromaprintFingerprint === 'function') {
     generateChromaprintFingerprint =
@@ -42,7 +41,7 @@ const LOOKUP_META = 'recordings releasegroups releases tracks'
 let proxyDispatcher: ProxyAgent | undefined
 let proxyInitialized = false
 
-type RequestInitWithDispatcher = RequestInit & { dispatcher?: ProxyAgent }
+type RequestInitWithDispatcher = UndiciRequestInit
 type ErrorLike = {
   code?: unknown
   message?: unknown
@@ -328,8 +327,7 @@ async function lookupAcoustId(
         signal: controller.signal
       }
       if (proxyDispatcher) init.dispatcher = proxyDispatcher
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const res = await undiciFetch(LOOKUP_URL as any, init as any)
+      const res = await undiciFetch(LOOKUP_URL, init)
       if (res.status === 429) throw new Error('ACOUSTID_RATE_LIMITED')
       if (res.status === 401 || res.status === 403) throw new Error('ACOUSTID_CLIENT_INVALID')
       if (!res.ok) throw new Error(`ACOUSTID_HTTP_${res.status}`)
@@ -537,7 +535,7 @@ export async function validateAcoustIdClientKeyValue(clientKey: string): Promise
       signal: controller.signal
     }
     if (proxyDispatcher) init.dispatcher = proxyDispatcher
-    const res = await fetch(LOOKUP_URL, init)
+    const res = await undiciFetch(LOOKUP_URL, init)
     if (res.status === 429) throw new Error('ACOUSTID_RATE_LIMITED')
     if (res.status === 401 || res.status === 403) throw new Error('ACOUSTID_CLIENT_INVALID')
     if (!res.ok) throw new Error(`ACOUSTID_HTTP_${res.status}`)
