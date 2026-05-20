@@ -148,16 +148,6 @@ const resolvePlaybackRangeStartSec = (
   )
 }
 
-const applyCanvasScaleTransform = (
-  targetCtx: OffscreenCanvasRenderingContext2D,
-  scaleX: number,
-  scaleY: number
-) => {
-  targetCtx.setTransform(1, 0, 0, 1, 0, 0)
-  targetCtx.imageSmoothingEnabled = false
-  targetCtx.setTransform(scaleX, 0, 0, scaleY, 0, 0)
-}
-
 const ensureCanvasMetrics = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest
 ): CanvasMetrics | null => {
@@ -171,7 +161,8 @@ const ensureCanvasMetrics = (
   if (canvas.height !== metrics.scaledHeight) {
     canvas.height = metrics.scaledHeight
   }
-  applyCanvasScaleTransform(ctx, metrics.scaleX, metrics.scaleY)
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.imageSmoothingEnabled = false
   return {
     ...metrics,
     resized: previousWidth !== metrics.scaledWidth || previousHeight !== metrics.scaledHeight
@@ -466,30 +457,33 @@ const drawRange = (
 const renderSegmentToScratch = (
   metrics: CanvasMetrics,
   state: FrameState,
-  segmentX: number,
-  segmentWidth: number
+  segmentScaledX: number,
+  segmentScaledWidth: number
 ) => {
-  const safeSegmentX = clampNumber(Math.floor(segmentX), 0, Math.max(0, metrics.cssWidth - 1))
-  const safeSegmentWidth = clampNumber(
-    Math.ceil(segmentWidth),
-    1,
-    Math.max(1, metrics.cssWidth - safeSegmentX)
+  const safeSegmentX = clampNumber(
+    Math.floor(segmentScaledX),
+    0,
+    Math.max(0, metrics.scaledWidth - 1)
   )
-  const scaledSegmentWidth = Math.max(1, Math.ceil(safeSegmentWidth * metrics.scaleX))
-  const segment = ensureSegmentScratch(scaledSegmentWidth, metrics.scaledHeight)
+  const safeSegmentWidth = clampNumber(
+    Math.ceil(segmentScaledWidth),
+    1,
+    Math.max(1, metrics.scaledWidth - safeSegmentX)
+  )
+  const segment = ensureSegmentScratch(safeSegmentWidth, metrics.scaledHeight)
   if (!segment) return false
 
   const segmentStartSec =
-    state.rangeStartSec + (safeSegmentX / metrics.cssWidth) * state.rangeDurationSec
-  const segmentDurationSec = (safeSegmentWidth / metrics.cssWidth) * state.rangeDurationSec
+    state.rangeStartSec + (safeSegmentX / metrics.scaledWidth) * state.rangeDurationSec
+  const segmentDurationSec = (safeSegmentWidth / metrics.scaledWidth) * state.rangeDurationSec
 
   segment.ctx.setTransform(1, 0, 0, 1, 0, 0)
   segment.ctx.clearRect(0, 0, segment.canvas.width, segment.canvas.height)
-  applyCanvasScaleTransform(segment.ctx, metrics.scaleX, metrics.scaleY)
+  segment.ctx.imageSmoothingEnabled = false
   const rendered = drawRange(
     segment.ctx,
     safeSegmentWidth,
-    metrics.cssHeight,
+    metrics.scaledHeight,
     segmentStartSec,
     segmentDurationSec,
     state
@@ -498,33 +492,44 @@ const renderSegmentToScratch = (
 
   return {
     canvas: segment.canvas,
-    scaledSegmentWidth,
     safeSegmentX,
     safeSegmentWidth
   }
+}
+
+const copySegmentToCanvas = (
+  targetCtx: OffscreenCanvasRenderingContext2D,
+  metrics: CanvasMetrics,
+  segment: Exclude<ReturnType<typeof renderSegmentToScratch>, false>
+) => {
+  const destX = clampNumber(segment.safeSegmentX, 0, Math.max(0, metrics.scaledWidth - 1))
+  const copyWidth = Math.max(1, Math.min(segment.safeSegmentWidth, metrics.scaledWidth - destX))
+  targetCtx.setTransform(1, 0, 0, 1, 0, 0)
+  targetCtx.imageSmoothingEnabled = false
+  targetCtx.clearRect(destX, 0, copyWidth, metrics.scaledHeight)
+  targetCtx.drawImage(
+    segment.canvas,
+    0,
+    0,
+    copyWidth,
+    metrics.scaledHeight,
+    destX,
+    0,
+    copyWidth,
+    metrics.scaledHeight
+  )
 }
 
 const drawSegment = (
   targetCtx: OffscreenCanvasRenderingContext2D,
   metrics: CanvasMetrics,
   state: FrameState,
-  segmentX: number,
-  segmentWidth: number
+  segmentScaledX: number,
+  segmentScaledWidth: number
 ) => {
-  const segment = renderSegmentToScratch(metrics, state, segmentX, segmentWidth)
+  const segment = renderSegmentToScratch(metrics, state, segmentScaledX, segmentScaledWidth)
   if (!segment) return false
-  targetCtx.clearRect(segment.safeSegmentX, 0, segment.safeSegmentWidth, metrics.cssHeight)
-  targetCtx.drawImage(
-    segment.canvas,
-    0,
-    0,
-    segment.scaledSegmentWidth,
-    metrics.scaledHeight,
-    segment.safeSegmentX,
-    0,
-    segment.safeSegmentWidth,
-    metrics.cssHeight
-  )
+  copySegmentToCanvas(targetCtx, metrics, segment)
   return true
 }
 
@@ -664,15 +669,20 @@ const renderFullFrame = (
           scratch.ctx.drawImage(canvas, 0, 0)
         }
 
-        const absShiftCssPx = absShiftScaledPx / metrics.scaleX
+        const segmentPaddingScaledPx = Math.max(2, Math.ceil(metrics.scaleX * 2))
         let segment: ReturnType<typeof renderSegmentToScratch> | false = false
         if (shiftScaledPx > 0) {
-          const keepCssWidth = Math.max(0, metrics.cssWidth - absShiftCssPx)
-          const segmentX = Math.max(0, Math.floor(keepCssWidth) - 2)
-          const segmentWidth = Math.max(1, metrics.cssWidth - segmentX)
+          const segmentX = Math.max(
+            0,
+            metrics.scaledWidth - absShiftScaledPx - segmentPaddingScaledPx
+          )
+          const segmentWidth = Math.max(1, metrics.scaledWidth - segmentX)
           segment = renderSegmentToScratch(metrics, state, segmentX, segmentWidth)
         } else {
-          const segmentWidth = Math.max(1, Math.min(metrics.cssWidth, Math.ceil(absShiftCssPx) + 2))
+          const segmentWidth = Math.max(
+            1,
+            Math.min(metrics.scaledWidth, absShiftScaledPx + segmentPaddingScaledPx)
+          )
           segment = renderSegmentToScratch(metrics, state, 0, segmentWidth)
         }
         if (segment) {
@@ -709,18 +719,7 @@ const renderFullFrame = (
             }
           }
 
-          applyCanvasScaleTransform(ctx, metrics.scaleX, metrics.scaleY)
-          ctx.drawImage(
-            segment.canvas,
-            0,
-            0,
-            segment.scaledSegmentWidth,
-            metrics.scaledHeight,
-            segment.safeSegmentX,
-            0,
-            segment.safeSegmentWidth,
-            metrics.cssHeight
-          )
+          copySegmentToCanvas(ctx, metrics, segment)
           reused = true
         }
         if (reused) {
@@ -734,12 +733,12 @@ const renderFullFrame = (
     const fullFrame = ensureSegmentScratch(metrics.scaledWidth, metrics.scaledHeight)
     if (fullFrame) {
       fullFrame.ctx.setTransform(1, 0, 0, 1, 0, 0)
+      fullFrame.ctx.imageSmoothingEnabled = false
       fullFrame.ctx.clearRect(0, 0, fullFrame.canvas.width, fullFrame.canvas.height)
-      applyCanvasScaleTransform(fullFrame.ctx, metrics.scaleX, metrics.scaleY)
       reused = drawRange(
         fullFrame.ctx,
-        metrics.cssWidth,
-        metrics.cssHeight,
+        metrics.scaledWidth,
+        metrics.scaledHeight,
         state.rangeStartSec,
         state.rangeDurationSec,
         state
@@ -749,7 +748,6 @@ const renderFullFrame = (
         ctx.imageSmoothingEnabled = false
         ctx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
         ctx.drawImage(fullFrame.canvas, 0, 0)
-        applyCanvasScaleTransform(ctx, metrics.scaleX, metrics.scaleY)
       }
     }
   }
@@ -799,15 +797,17 @@ const renderDirtyRange = (
     return true
   }
 
-  const pxPerSec = metrics.cssWidth / Math.max(0.0001, state.rangeDurationSec)
-  const paddingPx = 2
+  const pxPerSec = metrics.scaledWidth / Math.max(0.0001, state.rangeDurationSec)
+  const paddingPx = Math.max(2, Math.ceil(metrics.scaleX * 2))
   const dirtyStartPx =
-    ((clampedStartSec - viewStartSec) / Math.max(0.0001, state.rangeDurationSec)) * metrics.cssWidth
+    ((clampedStartSec - viewStartSec) / Math.max(0.0001, state.rangeDurationSec)) *
+    metrics.scaledWidth
   const dirtyEndPx =
-    ((clampedEndSec - viewStartSec) / Math.max(0.0001, state.rangeDurationSec)) * metrics.cssWidth
+    ((clampedEndSec - viewStartSec) / Math.max(0.0001, state.rangeDurationSec)) *
+    metrics.scaledWidth
   const segmentX = Math.max(0, Math.floor(dirtyStartPx - paddingPx))
   const segmentEndX = Math.min(
-    metrics.cssWidth,
+    metrics.scaledWidth,
     Math.ceil(dirtyEndPx + paddingPx + Math.max(1, pxPerSec))
   )
   const segmentWidth = Math.max(1, segmentEndX - segmentX)
@@ -826,15 +826,6 @@ const renderTimelineFallback = () => {
   if (!ctx) return
   clearWaveformPixels()
 }
-
-const resolvePresentationOffsetCssPx = (
-  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
-  metrics: CanvasMetrics,
-  state: FrameState
-) =>
-  request.playbackActive === true && state.rangeDurationSec > 0
-    ? ((state.rangeStartSec - request.rangeStartSec) / state.rangeDurationSec) * metrics.cssWidth
-    : 0
 
 const processRender = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
@@ -882,7 +873,7 @@ const processRender = (
       type: 'presentation',
       payload: {
         renderToken: request.renderToken,
-        offsetCssPx: resolvePresentationOffsetCssPx(request, metrics, renderState)
+        offsetCssPx: 0
       }
     })
   }

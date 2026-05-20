@@ -46,6 +46,7 @@ export const useHorizontalBrowseRawWaveformStream = (
   let rawChunkProcessTimer: ReturnType<typeof setTimeout> | null = null
   let rawChunkProcessRaf = 0
   let rawStreamFirstVisibleReadyLogged = false
+  let rawStreamVisibleCoverageRedrawn = false
   let rawStreamBootstrapDurationSec = 0
   let rawStreamContinuePending = false
   let rawStreamInitialRetryCount = 0
@@ -196,6 +197,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     pendingRawStreamChunks.length = 0
     pendingRawStreamDonePayload = null
     rawStreamFirstVisibleReadyLogged = false
+    rawStreamVisibleCoverageRedrawn = false
     if (rawChunkProcessTimer) {
       clearTimeout(rawChunkProcessTimer)
       rawChunkProcessTimer = null
@@ -315,6 +317,7 @@ export const useHorizontalBrowseRawWaveformStream = (
   ) => {
     clearQueuedRawStreamPayloads()
     cancelRawWaveformStream()
+    options.resetRawStreamDrawState()
     rawStreamStartSec = Math.max(0, Number(startSec) || 0)
     rawStreamRequestId = `horizontal-raw-${options.direction()}-${Date.now()}-${requestToken}`
     options.rawStreamActive.value = true
@@ -393,7 +396,9 @@ export const useHorizontalBrowseRawWaveformStream = (
     const current = options.rawData.value
     const rate = Math.max(0, Number(current?.rate) || 0)
     const loadedFrames = Math.max(0, Number(current?.loadedFrames ?? current?.frames) || 0)
-    const rawStartSec = Math.max(0, Number(current?.startSec) || rawStreamStartSec)
+    const currentStartSec = Number(current?.startSec)
+    const rawStartSec =
+      current && Number.isFinite(currentStartSec) ? Math.max(0, currentStartSec) : rawStreamStartSec
     const loadedStartSec = resolveAudioRangeStartSecToTimelineSec(rawStartSec)
     const loadedEndSec =
       rate > 0 ? resolveAudioSecToTimelineSec(rawStartSec + loadedFrames / rate) : loadedStartSec
@@ -670,6 +675,21 @@ export const useHorizontalBrowseRawWaveformStream = (
         options.scheduleDraw()
       }
       options.scheduleRawStreamDirtyDraw(dirtyStartSec, dirtyEndSec)
+    }
+
+    const anchorSec = Math.max(
+      0,
+      Number(options.playing() ? options.currentSeconds() : options.viewportAnchorSec()) || 0
+    )
+    if (!rawStreamVisibleCoverageRedrawn && isCurrentRawCoveringVisibleRange(anchorSec)) {
+      rawStreamVisibleCoverageRedrawn = true
+      traceHorizontalRawStream('raw-stream:visible-coverage-redraw', {
+        anchorSec,
+        loadedFrames: target.loadedFrames,
+        dirtyStartSec,
+        dirtyEndSec
+      })
+      options.scheduleRawStreamCoverageDraw()
     }
 
     return work.appliedFrames >= work.chunkFrames

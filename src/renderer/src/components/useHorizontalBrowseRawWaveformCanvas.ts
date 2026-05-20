@@ -88,6 +88,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let retainedRawData: RawWaveformData | null = null
   let retainedMixxxData: MixxxWaveformData | null = null
   let holdPreviousWaveformFrame = false
+  let forceNextRawStreamCoverageFullDraw = false
   // 从"空白/冻结"恢复的第一帧先整帧落位，紧接着再禁一次 scroll reuse，
   // 避免首帧 full redraw 和下一帧 reuse 紧挨着出现，肉眼看到抽两下。
   let suppressNextPlaybackScrollReuse = false
@@ -102,6 +103,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   //     "波形消失只剩网格线"bug。这种情况下我们必须等 rawData 覆盖充分再画。
   // 通过它把上面两种情形区分开：引用稳定时宽松允许绘制，引用刚变化时严格等覆盖。
   let lastStreamRenderedRawData: RawWaveformData | null = null
+  let lastDrawPlaybackActive = false
 
   // displayStartSec 代表最近一帧 worker 已处理的可视区起点。grid / cue / hotcue 现在由
   // worker overlay 独立渲染，即使 displayReady=false，也会跟随当前 range 立即更新。
@@ -246,6 +248,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     retainedMixxxData = null
     holdPreviousWaveformFrame = false
     suppressNextPlaybackScrollReuse = false
+    lastDrawPlaybackActive = false
     lastStreamRenderedRawData = null
     applyLiveCanvasPresentationOffset(0)
     // 外部重置 retained（例如切歌、loadWaveform）会清掉 canvas 上所有可用像素。
@@ -255,6 +258,14 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const holdCurrentWaveformFrame = () => {
     holdPreviousWaveformFrame = true
     suppressNextPlaybackScrollReuse = false
+  }
+
+  const resetRawStreamDrawState = () => {
+    lastStreamRenderedRawData = null
+    suppressNextPlaybackScrollReuse = true
+    forceNextRawStreamCoverageFullDraw = true
+    clearRawStreamDirtyRange()
+    cancelStreamDrawFrameScheduling()
   }
 
   const cancelStreamDrawFrameScheduling = () => {
@@ -508,9 +519,17 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
     const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
     const wasDisplayReady = displayReady.value
+    const forceRawStreamCoverageFullDraw = forceNextRawStreamCoverageFullDraw
+    forceNextRawStreamCoverageFullDraw = false
     const playbackStreamReuse = options.playing.value && !options.dragging.value
+    const playbackStartedThisDraw = playbackStreamReuse && !lastDrawPlaybackActive
+    lastDrawPlaybackActive = playbackStreamReuse
     const allowPlaybackScrollReuse =
-      playbackStreamReuse && wasDisplayReady && !suppressNextPlaybackScrollReuse
+      playbackStreamReuse &&
+      wasDisplayReady &&
+      !suppressNextPlaybackScrollReuse &&
+      !forceRawStreamCoverageFullDraw &&
+      !playbackStartedThisDraw
     const streamMaxSamplesPerPixel = PREVIEW_MAX_SAMPLES_PER_PIXEL
     const currentFilePath = String(options.song()?.filePath || '').trim()
     const activeMixxxSelection = resolveActiveMixxxSelection()
@@ -694,6 +713,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           effectiveRawCoverage,
           rawDataRefStable,
           allowPartialViewportPaint,
+          forceRawStreamCoverageFullDraw,
+          playbackStartedThisDraw,
           holdingFrame: false
         })
         const finishTiming = startHorizontalBrowseUserTiming(
@@ -866,6 +887,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     schedulePendingRawStreamDirtyDraw()
   }
 
+  const scheduleRawStreamCoverageDraw = () => {
+    forceNextRawStreamCoverageFullDraw = true
+    clearRawStreamDirtyRange()
+    scheduleDraw()
+  }
+
   const scheduleDraw = () => {
     cancelStreamDrawFrameScheduling()
     if (drawRaf) return
@@ -935,6 +962,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     resolveSnappedRenderStartSec,
     resolvePlaybackAlignedStart,
     scheduleRawStreamDirtyDraw,
+    scheduleRawStreamCoverageDraw,
+    resetRawStreamDrawState,
     clearStreamDrawScheduling,
     clearCanvas,
     invalidateWaveformTiles,

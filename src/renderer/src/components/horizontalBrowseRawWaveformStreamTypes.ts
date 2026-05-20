@@ -88,6 +88,8 @@ export type UseHorizontalBrowseRawWaveformStreamOptions = {
   mixxxData: Ref<MixxxWaveformData | null>
   clearStreamDrawScheduling: () => void
   scheduleRawStreamDirtyDraw: (dirtyStartSec: number, dirtyEndSec: number) => void
+  scheduleRawStreamCoverageDraw: () => void
+  resetRawStreamDrawState: () => void
   scheduleDraw: () => void
   holdCurrentWaveformFrame: () => void
   storeRawWaveform: (filePath: string, data: RawWaveformData) => void
