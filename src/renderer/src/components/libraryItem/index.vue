@@ -3,7 +3,7 @@ import { ref, computed, watch, shallowRef } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
-import { type LibrarySelection, useRuntimeStore } from '@renderer/stores/runtime'
+import { useRuntimeStore } from '@renderer/stores/runtime'
 import listIconAsset from '@renderer/assets/listIcon.svg?asset'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import confirm from '@renderer/components/confirmDialog'
@@ -45,27 +45,6 @@ const props = defineProps({
   }
 })
 const runtime = useRuntimeStore()
-const normalizeLibraryPath = (value: string) => (value || '').replace(/\\/g, '/')
-const syncLibrarySelectionBySongListUUID = (uuid: string) => {
-  const dirPath = normalizeLibraryPath(libraryUtils.findDirPathByUuid(uuid))
-  let nextLibrary: LibrarySelection | '' = ''
-  if (dirPath === 'library/FilterLibrary' || dirPath.startsWith('library/FilterLibrary/')) {
-    nextLibrary = 'FilterLibrary'
-  } else if (
-    dirPath === 'library/CuratedLibrary' ||
-    dirPath.startsWith('library/CuratedLibrary/')
-  ) {
-    nextLibrary = 'CuratedLibrary'
-  } else if (
-    dirPath === 'library/MixtapeLibrary' ||
-    dirPath.startsWith('library/MixtapeLibrary/')
-  ) {
-    nextLibrary = 'MixtapeLibrary'
-  }
-  if (nextLibrary && runtime.libraryAreaSelected !== nextLibrary) {
-    runtime.libraryAreaSelected = nextLibrary
-  }
-}
 const hasWarnedAcoustId = ref(false)
 const hasAcoustIdKey = async () => {
   if (hasConfiguredAcoustIdClientKey(runtime.setting)) return true

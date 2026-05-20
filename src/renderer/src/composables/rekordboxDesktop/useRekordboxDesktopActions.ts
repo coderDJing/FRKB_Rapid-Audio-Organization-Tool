@@ -153,11 +153,7 @@ export function useRekordboxDesktopActions(
     })
   }
 
-  const openCreatePlaylistDialog = async (
-    parentId = 0,
-    defaultValue = '',
-    defaultPlaylistName = ''
-  ) => {
+  const openCreatePlaylistDialog = async (parentId = 0, defaultValue = '') => {
     await openRekordboxDesktopCreateNodeDialog({
       dialogTitle: t('rekordboxDesktop.createPlaylistDialogTitle'),
       placeholder: t('rekordboxDesktop.playlistNamePlaceholder'),
@@ -246,8 +242,7 @@ export function useRekordboxDesktopActions(
     if (result.menuName === 'library.createPlaylist') {
       await openCreatePlaylistDialog(
         parentId,
-        parentId <= 0 ? String(playlistSearch.value || '').trim() || defaultPlaylistName : '',
-        defaultPlaylistName
+        parentId <= 0 ? String(playlistSearch.value || '').trim() || defaultPlaylistName : ''
       )
       return
     }

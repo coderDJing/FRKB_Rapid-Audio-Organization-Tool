@@ -12,7 +12,7 @@ export function registerAudioConversionHandlers(getWindow: () => BrowserWindow |
   })
 
   ipcMain.handle('audio:convert:cancel', (_e, jobId: string) => {
-    cancelAudioConversion(getWindow(), jobId)
+    cancelAudioConversion(jobId)
   })
 
   ipcMain.handle('audio:convert:list-target-formats', async () => {

@@ -300,20 +300,15 @@ const loadTree = async (preferredPlaylistId = Number(runtime.dialogSelectedSongL
   }
 }
 
-const {
-  showFailureDialog,
-  openCreatePlaylistDialog,
-  openCreateFolderDialog,
-  contextmenuEvent,
-  handleNodeContextmenu
-} = useRekordboxDesktopActions(
-  dialogWriting,
-  playlistSearch,
-  selectedArea,
-  expandedFolderIds,
-  loadTree,
-  runWithDialogWriting
-)
+const { showFailureDialog, openCreatePlaylistDialog, contextmenuEvent, handleNodeContextmenu } =
+  useRekordboxDesktopActions(
+    dialogWriting,
+    playlistSearch,
+    selectedArea,
+    expandedFolderIds,
+    loadTree,
+    runWithDialogWriting
+  )
 
 const {
   dragSourceId,
@@ -338,7 +333,7 @@ const createNow = async () => {
   if (dialogWriting.value) return
   const playlistName = String(playlistSearch.value || '').trim()
   if (!playlistName) return
-  await openCreatePlaylistDialog(0, playlistName, props.defaultPlaylistName)
+  await openCreatePlaylistDialog(0, playlistName)
 }
 
 const clearSearch = () => {
@@ -437,11 +432,7 @@ const handleSearchEnter = async () => {
       .includes(normalizeKeyword(playlistSearch.value))
   )
   if (!firstRecent && !firstAll) {
-    await openCreatePlaylistDialog(
-      0,
-      String(playlistSearch.value || '').trim(),
-      props.defaultPlaylistName
-    )
+    await openCreatePlaylistDialog(0, String(playlistSearch.value || '').trim())
     searchInputRef.value?.blur()
     return
   }

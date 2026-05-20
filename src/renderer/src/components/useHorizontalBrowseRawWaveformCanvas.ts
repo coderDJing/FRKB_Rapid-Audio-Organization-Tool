@@ -75,8 +75,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const gridCanvasRef = ref<HTMLCanvasElement | null>(null)
   const overlayCanvasRef = ref<HTMLCanvasElement | null>(null)
 
-  let lastZoomAnchorSec = 0
-  let lastZoomAnchorRatio = HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
   let drawRaf = 0
   let streamDrawRaf = 0
   let streamDrawTimer: ReturnType<typeof setTimeout> | null = null
@@ -213,18 +211,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       resolveVisibleDurationSec(),
       options.allowNegativeTimeline()
     )
-
-  const setLastZoomAnchor = (
-    anchorSec: number,
-    anchorRatio = HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
-  ) => {
-    lastZoomAnchorSec = Number.isFinite(anchorSec) ? anchorSec : 0
-    lastZoomAnchorRatio = clampNumber(anchorRatio, 0, 1)
-  }
-
-  const resetLastZoomAnchor = () => {
-    setLastZoomAnchor(0, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
-  }
 
   const clearRawStreamDirtyRange = () => {
     pendingRawStreamDirtyStartSec = null
@@ -964,8 +950,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     replaceLiveWaveformRaw,
     updateLiveWaveformRawMeta,
     storeRawWaveform,
-    setLastZoomAnchor,
-    resetLastZoomAnchor,
     displayStartSec,
     displayReady,
     dispose

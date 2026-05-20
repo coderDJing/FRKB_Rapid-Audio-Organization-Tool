@@ -1,22 +1,15 @@
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import { BPM_DISPLAY_DECIMALS, BPM_INTERNAL_DECIMALS, formatBpmDisplay } from '@renderer/utils/bpm'
+import { BPM_INTERNAL_DECIMALS, formatBpmDisplay } from '@renderer/utils/bpm'
 import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
-export const PREVIEW_MIN_ZOOM = 50
-export const PREVIEW_MAX_ZOOM = 100
-export const PREVIEW_HIRES_TARGET_RATE = 4000
 export const PREVIEW_RAW_TARGET_RATE = 4800
 export const PREVIEW_WARMUP_DELAY_MS = 600
 export const PREVIEW_WARMUP_EAGER_DELAY_MS = 0
 export const OVERVIEW_MAX_RENDER_COLUMNS = 960
-export const OVERVIEW_IS_HALF_WAVEFORM = false
 export const OVERVIEW_WAVEFORM_VERTICAL_PADDING = 8
 export const PREVIEW_MAX_SAMPLES_PER_PIXEL = 180
-export const PREVIEW_PLAY_MAX_SAMPLES_PER_PIXEL = 20
 export const PREVIEW_PLAY_ANCHOR_RATIO = 1 / 3
 export const PREVIEW_SHORTCUT_FALLBACK_BPM = 128
 export const PREVIEW_BPM_INTERNAL_DECIMALS = BPM_INTERNAL_DECIMALS
-export const PREVIEW_BPM_DISPLAY_DECIMALS = BPM_DISPLAY_DECIMALS
 export const PREVIEW_BPM_STEP = 0.01
 export const PREVIEW_BPM_MIN = 1
 export const PREVIEW_BPM_MAX = 300
@@ -64,54 +57,6 @@ export const parsePreviewBpmInput = (value: string) => {
   const numeric = Number(normalized)
   if (!Number.isFinite(numeric) || numeric <= 0) return null
   return normalizePreviewBpm(numeric)
-}
-
-export const resolvePreviewDurationSecByMixxx = (mixxxData: MixxxWaveformData | null) => {
-  const duration = Number(mixxxData?.duration || 0)
-  if (Number.isFinite(duration) && duration > 0) return duration
-  return 0
-}
-
-export const resolveVisibleDurationSecByZoom = (durationSec: number, zoomValue: number) => {
-  if (!durationSec) return 0
-  const safeZoom = Number.isFinite(zoomValue) && zoomValue > 0 ? zoomValue : PREVIEW_MIN_ZOOM
-  return durationSec / safeZoom
-}
-
-export const resolvePreviewLeadingPadSecByVisible = (visibleDurationSec: number) => {
-  if (!Number.isFinite(visibleDurationSec) || visibleDurationSec <= 0) return 0
-  return visibleDurationSec * PREVIEW_PLAY_ANCHOR_RATIO
-}
-
-export const resolvePreviewVirtualSpanSecByRange = (durationSec: number, leadingPadSec: number) =>
-  Math.max(0.0001, durationSec + leadingPadSec)
-
-export const clampPreviewStartByRange = (
-  value: number,
-  durationSec: number,
-  visibleDurationSec: number,
-  leadingPadSec: number
-) => {
-  if (!durationSec || !visibleDurationSec) return 0
-  const minStart = -leadingPadSec
-  const maxStart = Math.max(0, durationSec - visibleDurationSec)
-  return Math.max(minStart, Math.min(maxStart, value))
-}
-
-export const resolvePreviewAnchorSecByRange = (
-  startSec: number,
-  durationSec: number,
-  visibleDurationSec: number
-) => {
-  if (!durationSec || !visibleDurationSec) return 0
-  const leadingPadSec = resolvePreviewLeadingPadSecByVisible(visibleDurationSec)
-  const safeStart = clampPreviewStartByRange(
-    startSec,
-    durationSec,
-    visibleDurationSec,
-    leadingPadSec
-  )
-  return clampNumber(safeStart + visibleDurationSec * PREVIEW_PLAY_ANCHOR_RATIO, 0, durationSec)
 }
 
 type ResolveOverviewViewportMetricsParams = {

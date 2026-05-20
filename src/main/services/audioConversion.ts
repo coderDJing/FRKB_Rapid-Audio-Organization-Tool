@@ -726,7 +726,7 @@ export async function startAudioConversion(
   return { jobId }
 }
 
-export function cancelAudioConversion(mainWindow: BrowserWindow | null, jobId: string) {
+export function cancelAudioConversion(jobId: string) {
   cancelledJobIds.add(jobId)
   const child = jobIdToChildren.get(jobId)
   if (child) {

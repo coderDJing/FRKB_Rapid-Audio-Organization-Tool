@@ -149,8 +149,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
   const isDualTransportSyncActive = () =>
     Boolean(
       params.resolveDualTransportSyncEnabled?.() &&
-      params.resolveDeckSong('top') &&
-      params.resolveDeckSong('bottom')
+        params.resolveDeckSong('top') &&
+        params.resolveDeckSong('bottom')
     )
 
   const ensureDualTransportSync = async (sourceDeck: DeckKey) => {
@@ -233,13 +233,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
   const canDeckExecuteImmediateTransportAction = (deck: DeckKey) =>
     Boolean(String(params.resolveDeckSong(deck)?.filePath || '').trim())
-
-  const clampDeckSeconds = (deck: DeckKey, seconds: number) =>
-    clampNumber(
-      Number(seconds) || 0,
-      0,
-      params.resolveDeckDurationSeconds(deck) || Number.MAX_SAFE_INTEGER
-    )
 
   const clampDeckTimelineSeconds = (deck: DeckKey, seconds: number) => {
     const numeric = Number(seconds)

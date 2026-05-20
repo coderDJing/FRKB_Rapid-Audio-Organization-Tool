@@ -203,8 +203,6 @@ const {
   replaceLiveWaveformRaw,
   updateLiveWaveformRawMeta,
   storeRawWaveform,
-  setLastZoomAnchor,
-  resetLastZoomAnchor,
   dispose: disposeWaveformCanvas
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => props.song,
@@ -241,7 +239,6 @@ const applyLocalGridShiftPhaseCompensation = (deltaMs: number) => {
   if (!previewPlaying.value || dragging.value) {
     const compensatedSeconds = resolveWaveformCurrentSeconds()
     previewStartSec.value = resolvePlaybackAlignedStart(compensatedSeconds)
-    setLastZoomAnchor(compensatedSeconds, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
   }
 }
 
@@ -314,7 +311,6 @@ const applyPreviewPlaybackPosition = (seconds: number, scheduleFrame = true) => 
   if (changed) {
     previewStartSec.value = nextStartSec
   }
-  setLastZoomAnchor(safeSeconds, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
   if (scheduleFrame) {
     scheduleDraw()
   }
@@ -415,7 +411,6 @@ function handleDragMove(event: MouseEvent) {
   const deltaSec = (deltaX / Math.max(1, wrap.clientWidth)) * visibleDuration
   previewStartSec.value = clampPreviewStart(dragStartSec - deltaSec)
   const anchorSec = resolvePreviewAnchorSec()
-  setLastZoomAnchor(anchorSec, HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
   maybeContinueRawWaveformStream(anchorSec)
   scrubPreview.update(anchorSec)
   scheduleDraw()
@@ -462,7 +457,6 @@ const handleWheel = (event: WheelEvent) => {
   )
   if (Math.abs(nextZoom - previewZoom.value) <= 0.000001) return
 
-  setLastZoomAnchor(anchorSec, ratio)
   previewZoom.value = nextZoom
   const nextVisible = resolveVisibleDurationSec()
   previewStartSec.value = clampPreviewStart(anchorSec - nextVisible * ratio)
@@ -664,7 +658,6 @@ const loadWaveform = async () => {
   resetRetainedWaveformData()
   resetGridRenderer()
   clearCanvas()
-  resetLastZoomAnchor()
 
   const filePath = String(currentSong?.filePath || '').trim()
   if (!filePath) {
@@ -808,7 +801,6 @@ watch(
       1
     )
     const anchorSec = previewStartSec.value + resolveVisibleDurationSec() * anchorRatio
-    setLastZoomAnchor(anchorSec, anchorRatio)
     previewZoom.value = nextZoom
     const nextVisible = resolveVisibleDurationSec()
     previewStartSec.value = clampPreviewStart(anchorSec - nextVisible * anchorRatio)

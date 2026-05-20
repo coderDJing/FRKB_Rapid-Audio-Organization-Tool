@@ -1,16 +1,9 @@
-import type { HorizontalBrowseWaveformThemeVariant } from '@renderer/workers/horizontalBrowseDetailWaveform.types'
+export type HorizontalBrowseWaveformThemeVariant = 'light' | 'dark'
 
 export const normalizeHorizontalBrowsePathKey = (value: unknown) =>
   String(value || '')
     .trim()
     .toLowerCase()
-
-export const disposeHorizontalBrowseWaveformBitmap = (bitmap: ImageBitmap | null | undefined) => {
-  if (!bitmap) return
-  try {
-    bitmap.close()
-  } catch {}
-}
 
 export const resolveHorizontalBrowseWaveformThemeVariant =
   (): HorizontalBrowseWaveformThemeVariant => {
@@ -21,28 +14,3 @@ export const resolveHorizontalBrowseWaveformThemeVariant =
     }
     return 'dark'
   }
-
-export const buildHorizontalBrowseWaveformTileCacheKey = (params: {
-  filePath: string
-  waveformLayout: 'top-half' | 'bottom-half'
-  themeVariant: HorizontalBrowseWaveformThemeVariant
-  zoom: number
-  timeScale: number
-  cssWidth: number
-  cssHeight: number
-  pixelRatio: number
-  tileIndex: number
-  timeBasisOffsetMs?: number
-}) =>
-  [
-    normalizeHorizontalBrowsePathKey(params.filePath),
-    params.waveformLayout,
-    params.themeVariant,
-    Number(params.zoom || 0).toFixed(6),
-    Number(params.timeScale || 1).toFixed(6),
-    Math.max(1, Math.floor(params.cssWidth)),
-    Math.max(1, Math.floor(params.cssHeight)),
-    Number(params.pixelRatio || 1).toFixed(3),
-    params.tileIndex,
-    Number(params.timeBasisOffsetMs || 0).toFixed(3)
-  ].join('|')

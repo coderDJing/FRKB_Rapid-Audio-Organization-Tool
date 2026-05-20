@@ -1,4 +1,3 @@
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type { HorizontalBrowseDetailLiveCanvasRawChunk } from '@renderer/workers/horizontalBrowseDetailLiveCanvas.types'
 import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
