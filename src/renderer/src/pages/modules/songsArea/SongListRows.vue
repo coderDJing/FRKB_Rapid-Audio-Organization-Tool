@@ -163,20 +163,23 @@ const isInternalReorderEnabled = computed(
 const canStartSongDrag = computed(
   () => !props.readOnly || isInternalReorderEnabled.value || props.allowSongDragWhenReadOnly
 )
-const shouldDisplayPlaylistTrackNumber = computed(() => {
+const isNormalLibraryContext = computed(() => {
   const rootDir = String(props.songListRootDir || '').replace(/\\/g, '/')
   return (
     rootDir === 'library/FilterLibrary' ||
     rootDir.startsWith('library/FilterLibrary/') ||
     rootDir === 'library/CuratedLibrary' ||
-    rootDir.startsWith('library/CuratedLibrary/')
+    rootDir.startsWith('library/CuratedLibrary/') ||
+    rootDir.startsWith('library/PioneerDeviceLibrary')
   )
 })
+const shouldDisplayPlaylistTrackNumber = isNormalLibraryContext
 const canPreviewWaveform = computed(() => !props.readOnly || props.allowWaveformPreviewWhenReadOnly)
 
 const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
 const coverCellRefMap = markRaw(new Map<string, HTMLElement | null>())
-const getRowKey = (song: ISongInfo) => song.mixtapeItemId || song.filePath
+const getRowKey = (song: ISongInfo) =>
+  !isNormalLibraryContext.value && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
 const getCellKey = (song: ISongInfo, colKey: string) => `${getRowKey(song)}__${colKey}`
 const getIndexCellValue = (song: ISongInfo, index: number) => {
   if (typeof song.mixOrder === 'number' && song.mixOrder > 0) return song.mixOrder
@@ -696,7 +699,7 @@ onUnmounted(() => {
       <div :style="{ position: 'absolute', top: offsetTopPx + 'px', left: 0, right: 0 }">
         <div
           v-for="item in visibleSongsWithIndex"
-          :key="item.song.mixtapeItemId || item.song.filePath"
+          :key="getRowKey(item.song)"
           class="song-row-item unselectable"
           :class="{
             'drag-over-before':

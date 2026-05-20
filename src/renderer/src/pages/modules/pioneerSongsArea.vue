@@ -28,7 +28,8 @@ import {
 } from '@renderer/utils/rekordboxLibraryCache'
 import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
-import { createRepeatSingleClickDeselect } from '@renderer/pages/modules/songsArea/composables/repeatSingleClickDeselect'
+import { useKeyboardSelection } from '@renderer/pages/modules/songsArea/composables/useKeyboardSelection'
+import type { ISongsAreaPaneRuntimeState } from '@renderer/stores/runtime'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
@@ -54,13 +55,6 @@ const originalTracks = shallowRef<IPioneerPlaylistTrack[]>([])
 const visibleSongs = ref<ISongInfo[]>([])
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
-const { handlePlainRowClickSelection, cancelPendingRepeatSingleClickDeselect } =
-  createRepeatSingleClickDeselect({
-    getSelectedKeys: () => selectedRowKeys.value,
-    setSelectedKeys: (keys) => {
-      selectedRowKeys.value = keys
-    }
-  })
 const lastLoggedSnapshot = ref('')
 const columnData = ref<ISongsAreaColumn[]>(
   buildSongsAreaDefaultColumns('default').map((column) =>
@@ -75,6 +69,40 @@ const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
 const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
 useWaveformPreviewPlayer()
+
+const pioneerSongsAreaState = {
+  get songListUUID() {
+    return currentPlaybackListKey?.value || ''
+  },
+  get songInfoArr() {
+    return visibleSongs.value
+  },
+  get totalSongCount() {
+    return visibleSongs.value.length
+  },
+  get selectedSongFilePath() {
+    return selectedRowKeys.value
+  },
+  set selectedSongFilePath(v: string[]) {
+    selectedRowKeys.value = v
+  },
+  get scrollTop() {
+    return 0
+  },
+  set scrollTop(_: number) {},
+  get scrollLeft() {
+    return 0
+  },
+  set scrollLeft(_: number) {},
+  columnCacheByMode: {}
+} as unknown as ISongsAreaPaneRuntimeState
+const { songClick, cancelPendingRepeatSingleClickDeselect } = useKeyboardSelection({
+  runtime,
+  songsAreaState: pioneerSongsAreaState,
+  externalViewportHeight,
+  readOnly: true
+})
+const selectedRowKeysForTemplate = computed(() => [...selectedRowKeys.value])
 
 const selectedSourceKey = computed(() => runtime.pioneerDeviceLibrary.selectedSourceKey || '')
 const selectedSourceKind = computed<IRekordboxSourceKind | ''>(
@@ -680,11 +708,17 @@ watch(
   }
 )
 
+watch(
+  selectedRowKeys,
+  (keys) => {
+    runtime.pioneerSelectedRowKeys = [...keys]
+  },
+  { deep: true }
+)
+
 const handleSongClick = (event: MouseEvent, song: ISongInfo) => {
   if (playlistMutationPending.value) return
-  const key = song.mixtapeItemId || song.filePath
-  if (!key) return
-  handlePlainRowClickSelection(event, key)
+  songClick(event, song)
 }
 
 const openCopyTargetDialog = (libraryName: PioneerTransferTarget) => {
@@ -1034,7 +1068,7 @@ watch(
       <SongListRows
         :songs="visibleSongs"
         :visible-columns="visibleColumns"
-        :selected-song-file-paths="selectedRowKeys"
+        :selected-song-file-paths="selectedRowKeysForTemplate"
         :playing-song-file-path="playingSongFilePathForRows"
         :playing-song-file-paths="playingSongFilePathsForRows"
         :flash-row-key="''"
@@ -1056,6 +1090,7 @@ watch(
         :allow-song-drag-when-read-only="true"
         :analysis-complete-file-paths="frkbAnalyzedFilePaths"
         :reorder-mode="canReorderDesktopTracks ? 'playlist' : 'none'"
+        song-list-root-dir="library/PioneerDeviceLibrary"
         :enable-cover-thumbnails="true"
         :enable-key-analysis-queue="false"
         @song-click="handleSongClick"

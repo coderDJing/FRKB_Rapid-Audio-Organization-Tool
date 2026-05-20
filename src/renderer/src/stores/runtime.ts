@@ -169,6 +169,7 @@ interface Runtime {
     lastLibrarySelection: Exclude<LibrarySelection, 'ExternalPlaylist'>
   }
   pioneerDeviceLibrary: IRekordboxLibraryBrowserState
+  pioneerSelectedRowKeys: string[]
   confirmShow: boolean
   hotkeysScopesHeap: string[]
   curatedArtistFavorites: ICuratedArtistFavorite[]
@@ -295,6 +296,7 @@ export const useRuntimeStore = defineStore('runtime', {
         loading: false,
         treeNodes: []
       },
+      pioneerSelectedRowKeys: [],
       confirmShow: false, //是否有确认框正在显示
       hotkeysScopesHeap: [], //hotkeys-js的scope组成的堆栈，始终setScope数组的最后一项
       curatedArtistFavorites: [],

@@ -14,8 +14,11 @@ const runtime = useRuntimeStore()
 
 const currentLocale = computed(() => i18n.global.locale.value)
 const totalDurationLabel = computed(() => t('bottomInfo.totalDurationLabel'))
-const selectedSongCount = computed(
-  () => runtime.songsArea.selectedSongFilePath.filter(Boolean).length
+const isPioneerView = computed(() => runtime.libraryAreaSelected === 'PioneerDeviceLibrary')
+const selectedSongCount = computed(() =>
+  isPioneerView.value
+    ? runtime.pioneerSelectedRowKeys.filter(Boolean).length
+    : runtime.songsArea.selectedSongFilePath.filter(Boolean).length
 )
 const selectedSongsText = computed(() =>
   t('bottomInfo.selectedSongs', { count: selectedSongCount.value })
@@ -606,12 +609,18 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
     </TransitionGroup>
     <div
       v-if="
-        showTotalRow && runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length > 0
+        showTotalRow &&
+        ((isPioneerView && runtime.pioneerSelectedRowKeys.length > 0) ||
+          (!isPioneerView &&
+            runtime.songsArea.songListUUID &&
+            runtime.songsArea.songInfoArr.length > 0))
       "
       class="total-row"
     >
       <div v-if="selectedSongCount > 0" class="selected-count-text">{{ selectedSongsText }}</div>
-      <div class="total-text">{{ totalDurationLabel }}{{ playlistTotalDaysHoursSeconds }}</div>
+      <div v-if="!isPioneerView" class="total-text">
+        {{ totalDurationLabel }}{{ playlistTotalDaysHoursSeconds }}
+      </div>
     </div>
   </div>
 </template>
