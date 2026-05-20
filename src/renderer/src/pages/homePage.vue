@@ -294,12 +294,8 @@ watch(
     if (val === 'ExternalPlaylist') {
       if (runtime.songsAreaPanels.splitEnabled) {
         suspendSplitForSpecialLibrary()
-      } else {
-        suspendSinglePaneForSpecialLibrary()
       }
-      if (runtime.songsArea.songListUUID !== EXTERNAL_PLAYLIST_UUID) {
-        runtime.songsArea.songListUUID = EXTERNAL_PLAYLIST_UUID
-      }
+      runtime.songsArea.songListUUID = EXTERNAL_PLAYLIST_UUID
     } else if (val === 'RecycleBin') {
       if (runtime.songsAreaPanels.splitEnabled) {
         suspendSplitForSpecialLibrary()
@@ -315,6 +311,17 @@ watch(
         return
       }
       if (restoreSinglePaneAfterSpecialLibraryIfNeeded()) {
+        triggerLibrarySwitchAnimation(oldVal === undefined)
+        return
+      }
+      // 从 ExternalPlaylist/RecycleBin 切换时，用 lastSongListUUIDByLibrary 恢复歌单
+      if (oldVal === 'ExternalPlaylist' || oldVal === 'RecycleBin') {
+        const savedUUID = runtime.lastSongListUUIDByLibrary[val] || ''
+        if (savedUUID) {
+          runtime.songsArea.songListUUID = savedUUID
+        } else {
+          runtime.clearSongsAreaPaneState('single')
+        }
         triggerLibrarySwitchAnimation(oldVal === undefined)
         return
       }
