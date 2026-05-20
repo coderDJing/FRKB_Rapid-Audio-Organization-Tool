@@ -20,6 +20,7 @@ import cloudSyncSyncDialog from './components/cloudSyncSyncDialog.vue'
 import FileOpInterruptedDialog from './components/fileOpInterruptedDialog.vue'
 import emitter from './utils/mitt'
 import { replaceExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
+import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import HorizontalBrowseModeShell from '@renderer/components/HorizontalBrowseModeShell.vue'
@@ -839,7 +840,16 @@ onMounted(() => {
       const rawPaths = Array.isArray(payload?.paths) ? payload.paths : []
       const songs = await replaceExternalPlaylistFromPaths(rawPaths)
       if (songs.length) {
-        emitter.emit('external-open/play', { songs, startIndex: 0 })
+        if (
+          runtime.mainWindowBrowseMode === 'horizontal' ||
+          runtime.mainWindowBrowseMode === 'edit'
+        ) {
+          runtime.playingData.playingSongListUUID = EXTERNAL_PLAYLIST_UUID
+          runtime.playingData.playingSongListData = songs
+          emitter.emit('horizontalBrowse/load-song', { deck: 'top', song: songs[0] })
+        } else {
+          emitter.emit('external-open/play', { songs, startIndex: 0 })
+        }
       }
       markSongSearchDirty('external-open-imported')
     } catch (error) {
