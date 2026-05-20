@@ -592,13 +592,14 @@ impl HorizontalBrowseTransportEngine {
       .map(|value| value.trim())
       .unwrap_or("");
     let full_decode_request_id = current_state.full_decode_request_id;
+    let decode_request_id = current_state.decode_request_id;
     if current_file_path != file_path {
       return;
     }
     let target = self.deck_mut(deck);
     if fully_decoded && full_decode_request_id == request_id {
       target.pending_full_decode_file_path = None;
-    } else if !fully_decoded {
+    } else if !fully_decoded && decode_request_id == request_id {
       target.pending_decode_file_path = None;
     }
     self.mark_state_changed();

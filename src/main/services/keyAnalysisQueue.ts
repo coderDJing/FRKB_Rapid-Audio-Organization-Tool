@@ -22,6 +22,7 @@ export function enqueueKeyAnalysis(
     urgent?: boolean
     source?: 'foreground' | 'background'
     fastAnalysis?: boolean
+    focusSlot?: string
     preemptible?: boolean
     category?: 'visible'
   } = {}
@@ -36,6 +37,7 @@ export function enqueueKeyAnalysisList(
     urgent?: boolean
     source?: 'foreground' | 'background'
     fastAnalysis?: boolean
+    focusSlot?: string
     preemptible?: boolean
     category?: 'visible'
   } = {}

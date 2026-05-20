@@ -84,7 +84,26 @@ export function registerMixtapeRawWaveformHandlers() {
   const rawWaveformStreamRequests = new Map<string, RawWaveformStreamRequest>()
   const cachedRawWaveformContinuations = new Map<string, CachedRawWaveformContinuation>()
   const liveRawWaveformContinuations = new Map<string, LiveRawWaveformContinuation>()
+  const openRawWaveformStreamRequestIds = new Set<string>()
+  const rawWaveformStreamSenderCleanups = new Map<
+    string,
+    { sender: Electron.WebContents; listener: () => void }
+  >()
   let nextRawWaveformStreamJobId = 0
+
+  const detachRawWaveformStreamSenderCleanup = (requestId: string) => {
+    const cleanup = rawWaveformStreamSenderCleanups.get(requestId)
+    if (!cleanup) return
+    rawWaveformStreamSenderCleanups.delete(requestId)
+    try {
+      cleanup.sender.removeListener('destroyed', cleanup.listener)
+    } catch {}
+  }
+
+  const closeRawWaveformStreamOpenState = (requestId: string) => {
+    openRawWaveformStreamRequestIds.delete(requestId)
+    detachRawWaveformStreamSenderCleanup(requestId)
+  }
 
   const isHigherPriorityRawWaveformStreamRequest = (
     candidate: RawWaveformStreamRequest,
@@ -165,6 +184,9 @@ export function registerMixtapeRawWaveformHandlers() {
     requestId: string,
     options: { keepQueued?: boolean } = {}
   ) => {
+    if (!options.keepQueued) {
+      closeRawWaveformStreamOpenState(requestId)
+    }
     cachedRawWaveformContinuations.delete(requestId)
     liveRawWaveformContinuations.delete(requestId)
     const request = rawWaveformStreamRequests.get(requestId)
@@ -178,6 +200,23 @@ export function registerMixtapeRawWaveformHandlers() {
       rawWaveformStreamRequests.delete(requestId)
     }
     teardownRawWaveformStreamWorker(worker)
+  }
+
+  const attachRawWaveformStreamSenderCleanup = (
+    requestId: string,
+    sender: Electron.WebContents
+  ) => {
+    detachRawWaveformStreamSenderCleanup(requestId)
+    if (sender.isDestroyed()) {
+      return false
+    }
+    const listener = () => {
+      clearRawWaveformStreamRequest(requestId)
+      drainRawWaveformStreamQueue()
+    }
+    sender.once('destroyed', listener)
+    rawWaveformStreamSenderCleanups.set(requestId, { sender, listener })
+    return true
   }
 
   const sendCachedRawWaveformStream = async (params: {
@@ -200,7 +239,10 @@ export function registerMixtapeRawWaveformHandlers() {
       Math.min(fullFrames, Math.floor(Math.max(0, Number(params.startSec) || 0) * rate))
     )
     const totalFrames = Math.max(0, fullFrames - startFrameOffset)
-    if (!totalFrames) return
+    if (!totalFrames) {
+      closeRawWaveformStreamOpenState(requestId)
+      return
+    }
     const requestedBootstrapFrames = requestedBootstrapDurationSec
       ? Math.ceil(requestedBootstrapDurationSec * rate)
       : 0
@@ -215,7 +257,10 @@ export function registerMixtapeRawWaveformHandlers() {
     const sliceBuffer = (buffer: Buffer, startFrame: number, frames: number) =>
       buffer.subarray(startFrame * 4, (startFrame + frames) * 4)
 
-    if (sender.isDestroyed()) return
+    if (!openRawWaveformStreamRequestIds.has(requestId) || sender.isDestroyed()) {
+      closeRawWaveformStreamOpenState(requestId)
+      return
+    }
     try {
       sender.send('mixtape-waveform-raw:stream-chunk', {
         requestId,
@@ -233,11 +278,16 @@ export function registerMixtapeRawWaveformHandlers() {
         maxRight: sliceBuffer(cached.maxRight, startFrameOffset, bootstrapFrames)
       })
     } catch {
+      closeRawWaveformStreamOpenState(requestId)
       return
     }
     chunkCount += 1
 
     if (bootstrapFrames < totalFrames) {
+      if (!openRawWaveformStreamRequestIds.has(requestId) || sender.isDestroyed()) {
+        closeRawWaveformStreamOpenState(requestId)
+        return
+      }
       cachedRawWaveformContinuations.set(requestId, {
         sender,
         requestId,
@@ -257,7 +307,10 @@ export function registerMixtapeRawWaveformHandlers() {
       return
     }
 
-    if (sender.isDestroyed()) return
+    if (!openRawWaveformStreamRequestIds.has(requestId) || sender.isDestroyed()) {
+      closeRawWaveformStreamOpenState(requestId)
+      return
+    }
     try {
       sender.send('mixtape-waveform-raw:stream-done', {
         requestId,
@@ -269,6 +322,7 @@ export function registerMixtapeRawWaveformHandlers() {
         totalFrames
       })
     } catch {}
+    closeRawWaveformStreamOpenState(requestId)
   }
 
   const continueCachedRawWaveformStream = async (requestId: string) => {
@@ -285,6 +339,7 @@ export function registerMixtapeRawWaveformHandlers() {
     try {
       if (continuation.sender.isDestroyed()) {
         cachedRawWaveformContinuations.delete(requestId)
+        closeRawWaveformStreamOpenState(requestId)
         return
       }
       const startFrame = continuation.nextStartFrame
@@ -294,6 +349,7 @@ export function registerMixtapeRawWaveformHandlers() {
       )
       if (frames <= 0) {
         cachedRawWaveformContinuations.delete(requestId)
+        closeRawWaveformStreamOpenState(requestId)
         return
       }
       try {
@@ -330,6 +386,7 @@ export function registerMixtapeRawWaveformHandlers() {
         })
       } catch {
         cachedRawWaveformContinuations.delete(requestId)
+        closeRawWaveformStreamOpenState(requestId)
         return
       }
       continuation.chunkCount += 1
@@ -356,6 +413,7 @@ export function registerMixtapeRawWaveformHandlers() {
     } finally {
       if (continuation.nextStartFrame >= continuation.totalFrames) {
         cachedRawWaveformContinuations.delete(requestId)
+        closeRawWaveformStreamOpenState(requestId)
       } else {
         continuation.sending = false
       }
@@ -398,6 +456,7 @@ export function registerMixtapeRawWaveformHandlers() {
       if (!nextChunk) break
       if (!sendLiveRawWaveformChunk(continuation, nextChunk)) {
         liveRawWaveformContinuations.delete(requestId)
+        closeRawWaveformStreamOpenState(requestId)
         return
       }
       continuation.continueCredits -= 1
@@ -405,6 +464,7 @@ export function registerMixtapeRawWaveformHandlers() {
     if (continuation.queue.length > 0 || !continuation.donePayload) return
     if (continuation.sender.isDestroyed()) {
       liveRawWaveformContinuations.delete(requestId)
+      closeRawWaveformStreamOpenState(requestId)
       return
     }
     try {
@@ -415,6 +475,7 @@ export function registerMixtapeRawWaveformHandlers() {
       })
     } catch {}
     liveRawWaveformContinuations.delete(requestId)
+    closeRawWaveformStreamOpenState(requestId)
   }
 
   const createLiveRawWaveformContinuation = (request: RawWaveformStreamRequest) =>
@@ -485,6 +546,9 @@ export function registerMixtapeRawWaveformHandlers() {
               ...payloadDone
             })
           } catch {}
+          closeRawWaveformStreamOpenState(nextRequest.requestId)
+        } else {
+          closeRawWaveformStreamOpenState(nextRequest.requestId)
         }
         drainRawWaveformStreamQueue()
       }
@@ -765,62 +829,76 @@ export function registerMixtapeRawWaveformHandlers() {
       if (!requestId || !filePath) return
 
       clearRawWaveformStreamRequest(requestId)
-
-      const targetRate = resolveRequestedRawRate(payload?.targetRate)
-      const startSec = Math.max(0, Number(payload?.startSec) || 0)
-      const songDurationSec = Math.max(0, Number(payload?.songDurationSec) || 0)
-      const chunkFrames = Math.max(2048, Math.floor(Number(payload?.chunkFrames) || 16384))
-      const expectedDurationSec = Math.max(0, Number(payload?.expectedDurationSec) || 0)
-      const bootstrapDurationSec = Math.max(0, Number(payload?.bootstrapDurationSec) || 0)
-      const priorityHint = resolveRawWaveformStreamPriorityHint(payload?.priorityHint)
-      const deckKey = resolveRawWaveformStreamDeckKey(payload?.deckKey, requestId)
-      const protectsPlayback = payload?.protectsPlayback === true
-      const forceLiveDecode = payload?.forceLiveDecode === true
-      let listRoot = resolveRendererListRoot(payload?.listRoot)
-      if (!listRoot) {
-        listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
+      openRawWaveformStreamRequestIds.add(requestId)
+      if (!attachRawWaveformStreamSenderCleanup(requestId, event.sender)) {
+        closeRawWaveformStreamOpenState(requestId)
+        return
       }
-      const stat = await fs.stat(filePath).catch(() => null)
-      if (!forceLiveDecode && listRoot && stat) {
-        const cached = await LibraryCacheDb.loadMixtapeRawWaveformCacheData(listRoot, filePath, {
-          size: stat.size,
-          mtimeMs: stat.mtimeMs
-        })
-        if (isRawWaveformRateSufficient(cached, targetRate)) {
-          void sendCachedRawWaveformStream({
-            sender: event.sender,
-            requestId,
-            filePath,
-            cached: cached as MixtapeRawWaveformData,
-            startSec,
-            chunkFrames,
-            bootstrapDurationSec,
-            priorityHint
-          })
-          return
+
+      try {
+        const targetRate = resolveRequestedRawRate(payload?.targetRate)
+        const startSec = Math.max(0, Number(payload?.startSec) || 0)
+        const songDurationSec = Math.max(0, Number(payload?.songDurationSec) || 0)
+        const chunkFrames = Math.max(2048, Math.floor(Number(payload?.chunkFrames) || 16384))
+        const expectedDurationSec = Math.max(0, Number(payload?.expectedDurationSec) || 0)
+        const bootstrapDurationSec = Math.max(0, Number(payload?.bootstrapDurationSec) || 0)
+        const priorityHint = resolveRawWaveformStreamPriorityHint(payload?.priorityHint)
+        const deckKey = resolveRawWaveformStreamDeckKey(payload?.deckKey, requestId)
+        const protectsPlayback = payload?.protectsPlayback === true
+        const forceLiveDecode = payload?.forceLiveDecode === true
+        let listRoot = resolveRendererListRoot(payload?.listRoot)
+        if (!listRoot) {
+          listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
         }
-      }
+        const stat = await fs.stat(filePath).catch(() => null)
+        if (!openRawWaveformStreamRequestIds.has(requestId)) return
+        if (!forceLiveDecode && listRoot && stat) {
+          const cached = await LibraryCacheDb.loadMixtapeRawWaveformCacheData(listRoot, filePath, {
+            size: stat.size,
+            mtimeMs: stat.mtimeMs
+          })
+          if (isRawWaveformRateSufficient(cached, targetRate)) {
+            void sendCachedRawWaveformStream({
+              sender: event.sender,
+              requestId,
+              filePath,
+              cached: cached as MixtapeRawWaveformData,
+              startSec,
+              chunkFrames,
+              bootstrapDurationSec,
+              priorityHint
+            })
+            return
+          }
+        }
 
-      rawWaveformStreamRequests.set(requestId, {
-        requestId,
-        filePath,
-        deckKey,
-        sender: event.sender,
-        listRoot,
-        stat: stat ? { size: stat.size, mtimeMs: stat.mtimeMs } : null,
-        targetRate,
-        startSec,
-        songDurationSec,
-        chunkFrames,
-        expectedDurationSec,
-        bootstrapDurationSec,
-        priorityHint,
-        protectsPlayback,
-        forceLiveDecode,
-        enqueuedAt: Date.now(),
-        chunkCount: 0
-      })
-      rebalanceRawWaveformStreamQueue()
+        if (!openRawWaveformStreamRequestIds.has(requestId)) return
+        rawWaveformStreamRequests.set(requestId, {
+          requestId,
+          filePath,
+          deckKey,
+          sender: event.sender,
+          listRoot,
+          stat: stat ? { size: stat.size, mtimeMs: stat.mtimeMs } : null,
+          targetRate,
+          startSec,
+          songDurationSec,
+          chunkFrames,
+          expectedDurationSec,
+          bootstrapDurationSec,
+          priorityHint,
+          protectsPlayback,
+          forceLiveDecode,
+          enqueuedAt: Date.now(),
+          chunkCount: 0
+        })
+        rebalanceRawWaveformStreamQueue()
+      } catch {
+        closeRawWaveformStreamOpenState(requestId)
+        cachedRawWaveformContinuations.delete(requestId)
+        liveRawWaveformContinuations.delete(requestId)
+        rawWaveformStreamRequests.delete(requestId)
+      }
     }
   )
 

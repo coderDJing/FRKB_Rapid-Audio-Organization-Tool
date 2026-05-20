@@ -1965,11 +1965,28 @@ pub(crate) fn ffmpeg_decode_to_i16_with_window(
   parse_wav_s16le(&output.stdout)
 }
 
+#[allow(dead_code)]
 pub(crate) fn ffmpeg_decode_transport_raw_pipe(
   path: &Path,
   start_sec: Option<f64>,
   max_duration_sec: Option<f64>,
 ) -> StdResult<FfmpegTransportPcmData, String> {
+  ffmpeg_decode_transport_raw_pipe_cancellable(path, start_sec, max_duration_sec, || false)?
+    .ok_or_else(|| "FFmpeg 解码已取消".to_string())
+}
+
+pub(crate) fn ffmpeg_decode_transport_raw_pipe_cancellable<F>(
+  path: &Path,
+  start_sec: Option<f64>,
+  max_duration_sec: Option<f64>,
+  should_cancel: F,
+) -> StdResult<Option<FfmpegTransportPcmData>, String>
+where
+  F: Fn() -> bool,
+{
+  if should_cancel() {
+    return Ok(None);
+  }
   let ffmpeg_path = get_ffmpeg_path()?;
   let mut command = Command::new(ffmpeg_path);
   configure_transport_ffmpeg_process(&mut command);
@@ -2020,13 +2037,6 @@ pub(crate) fn ffmpeg_decode_transport_raw_pipe(
     .take()
     .ok_or_else(|| "FFmpeg stderr pipe 创建失败".to_string())?;
 
-  let stdout_reader = std::thread::spawn(move || {
-    let mut bytes = Vec::new();
-    stdout
-      .read_to_end(&mut bytes)
-      .map(|_| bytes)
-      .map_err(|err| format!("读取 FFmpeg PCM 输出失败: {}", err))
-  });
   let stderr_reader = std::thread::spawn(move || {
     let mut bytes = Vec::new();
     stderr
@@ -2035,12 +2045,38 @@ pub(crate) fn ffmpeg_decode_transport_raw_pipe(
       .map_err(|err| format!("读取 FFmpeg 错误输出失败: {}", err))
   });
 
+  let mut samples_f32 = Vec::new();
+  let mut pending_byte: Option<u8> = None;
+  let mut read_buffer = vec![0u8; 256 * 1024];
+  loop {
+    if should_cancel() {
+      let _ = child.kill();
+      let _ = child.wait();
+      let _ = stderr_reader.join();
+      return Ok(None);
+    }
+    let bytes_read = match stdout.read(&mut read_buffer) {
+      Ok(bytes_read) => bytes_read,
+      Err(err) => {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = stderr_reader.join();
+        return Err(format!("读取 FFmpeg PCM 输出失败: {}", err));
+      }
+    };
+    if bytes_read == 0 {
+      break;
+    }
+    append_raw_s16le_to_f32(
+      &read_buffer[..bytes_read],
+      &mut pending_byte,
+      &mut samples_f32,
+    );
+  }
+
   let status = child
     .wait()
     .map_err(|err| format!("等待 FFmpeg 结束失败: {}", err))?;
-  let stdout_bytes = stdout_reader
-    .join()
-    .map_err(|_| "读取 FFmpeg PCM 输出线程崩溃".to_string())??;
   let stderr_bytes = stderr_reader
     .join()
     .map_err(|_| "读取 FFmpeg 错误输出线程崩溃".to_string())??;
@@ -2055,13 +2091,46 @@ pub(crate) fn ffmpeg_decode_transport_raw_pipe(
     };
   }
 
-  parse_raw_s16le_to_f32(
-    stdout_bytes,
-    TRANSPORT_FFMPEG_SAMPLE_RATE,
-    TRANSPORT_FFMPEG_CHANNELS,
-  )
+  if pending_byte.is_some() {
+    return Err("FFmpeg raw PCM 输出长度不是 16bit 对齐".to_string());
+  }
+
+  Ok(Some(FfmpegTransportPcmData {
+    samples_f32,
+    sample_rate: TRANSPORT_FFMPEG_SAMPLE_RATE,
+    channels: TRANSPORT_FFMPEG_CHANNELS,
+  }))
 }
 
+fn append_raw_s16le_to_f32(
+  bytes: &[u8],
+  pending_byte: &mut Option<u8>,
+  samples_f32: &mut Vec<f32>,
+) {
+  let mut offset = 0;
+  if let Some(first) = pending_byte.take() {
+    if let Some(second) = bytes.first() {
+      let sample = i16::from_le_bytes([first, *second]);
+      samples_f32.push(sample as f32 / 32768.0);
+      offset = 1;
+    } else {
+      *pending_byte = Some(first);
+      return;
+    }
+  }
+
+  let mut chunks = bytes[offset..].chunks_exact(2);
+  for chunk in &mut chunks {
+    let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
+    samples_f32.push(sample as f32 / 32768.0);
+  }
+  let remainder = chunks.remainder();
+  if let Some(remainder_byte) = remainder.first() {
+    *pending_byte = Some(*remainder_byte);
+  }
+}
+
+#[cfg(test)]
 fn parse_raw_s16le_to_f32(
   bytes: Vec<u8>,
   sample_rate: u32,
@@ -2078,10 +2147,8 @@ fn parse_raw_s16le_to_f32(
   }
 
   let mut samples_f32 = Vec::with_capacity(bytes.len() / 2);
-  for chunk in bytes.chunks_exact(2) {
-    let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
-    samples_f32.push(sample as f32 / 32768.0);
-  }
+  let mut pending_byte = None;
+  append_raw_s16le_to_f32(&bytes, &mut pending_byte, &mut samples_f32);
   Ok(FfmpegTransportPcmData {
     samples_f32,
     sample_rate,
@@ -2116,6 +2183,21 @@ mod ffmpeg_pcm_tests {
     let error = parse_raw_s16le_to_f32(vec![0x00], 44_100, 2).unwrap_err();
 
     assert!(error.contains("16bit"));
+  }
+
+  #[test]
+  fn append_raw_s16le_to_f32_handles_split_samples() {
+    let mut pending_byte = None;
+    let mut samples = Vec::new();
+
+    append_raw_s16le_to_f32(&[0xff], &mut pending_byte, &mut samples);
+    assert_eq!(samples.len(), 0);
+    assert_eq!(pending_byte, Some(0xff));
+
+    append_raw_s16le_to_f32(&[0x7f, 0x00, 0x80], &mut pending_byte, &mut samples);
+    assert_eq!(pending_byte, None);
+    assert!((samples[0] - (i16::MAX as f32 / 32768.0)).abs() < f32::EPSILON);
+    assert_eq!(samples[1], -1.0);
   }
 }
 

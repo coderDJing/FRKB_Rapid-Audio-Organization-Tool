@@ -53,6 +53,8 @@ export type DecodeAudioOptions = {
   fileStat?: { size: number; mtimeMs: number } | null
   traceLabel?: string
   priority?: DecodeAudioPriority
+  queueKey?: string
+  replaceQueued?: boolean
 }
 
 type WorkerJob = {
@@ -64,6 +66,8 @@ type WorkerJob = {
   needRawWaveform: boolean
   rawTargetRate?: number
   priority: DecodeAudioPriority
+  queueKey?: string
+  replaceQueued: boolean
   resolve: (result: DecodeAudioResult) => void
   reject: (error: Error) => void
 }
@@ -96,17 +100,40 @@ type CoreKeyResolution = {
 const CORE_CACHE_TTL_MS = 90_000
 const CORE_CACHE_MAX_BYTES = 256 * 1024 * 1024
 const CORE_CACHE_MAX_ENTRIES = 4
+const DECODE_QUEUE_MAX_PENDING = 64
 
 const coreCache = new Map<string, CoreCacheEntry>()
 let coreCacheBytes = 0
 const coreInflight = new Map<string, Promise<DecodeAudioResult>>()
 const DECODE_PRIORITY_ORDER: DecodeAudioPriority[] = ['high', 'normal', 'low']
 
+class DecodeJobSupersededError extends Error {
+  constructor() {
+    super('Decode request superseded')
+    this.name = 'DecodeJobSupersededError'
+  }
+}
+
+class DecodeQueueOverflowError extends Error {
+  constructor() {
+    super('Decode queue overflow')
+    this.name = 'DecodeQueueOverflowError'
+  }
+}
+
 const nowMs = () => Date.now()
+
+const isDecodeQueueControlError = (error: unknown) =>
+  error instanceof DecodeJobSupersededError || error instanceof DecodeQueueOverflowError
 
 const normalizeDecodePriority = (value: unknown): DecodeAudioPriority => {
   if (value === 'high' || value === 'low' || value === 'normal') return value
   return 'normal'
+}
+
+const normalizeDecodeQueueKey = (value: unknown) => {
+  if (typeof value !== 'string') return ''
+  return value.trim().toLowerCase()
 }
 
 const normalizeDecodeMetrics = (
@@ -272,11 +299,17 @@ class AudioDecodeWorkerPool {
         needRawWaveform: Boolean(options.needRawWaveform),
         rawTargetRate: options.rawTargetRate,
         priority: normalizeDecodePriority(options.priority),
+        queueKey: normalizeDecodeQueueKey(options.queueKey),
+        replaceQueued: options.replaceQueued === true,
         resolve,
         reject
       }
+      if (job.replaceQueued && job.queueKey) {
+        this.rejectQueuedJobsByKey(job.queueKey)
+      }
       this.pending.set(jobId, job)
       this.queueByPriority[job.priority].push(job)
+      this.pruneQueuedJobsForLimit(job.jobId)
       this.drain()
     })
   }
@@ -319,6 +352,50 @@ class AudioDecodeWorkerPool {
 
     this.idle.push(worker)
     return worker
+  }
+
+  private rejectQueuedJobsByKey(queueKey: string) {
+    for (const priority of DECODE_PRIORITY_ORDER) {
+      const queue = this.queueByPriority[priority]
+      for (let index = queue.length - 1; index >= 0; index -= 1) {
+        const job = queue[index]
+        if (!job || job.queueKey !== queueKey) continue
+        queue.splice(index, 1)
+        this.pending.delete(job.jobId)
+        job.reject(new DecodeJobSupersededError())
+      }
+    }
+  }
+
+  private countQueuedJobs() {
+    return DECODE_PRIORITY_ORDER.reduce(
+      (count, priority) => count + this.queueByPriority[priority].length,
+      0
+    )
+  }
+
+  private shiftOverflowCandidate(protectedJobId: number): WorkerJob | null {
+    for (const priority of [...DECODE_PRIORITY_ORDER].reverse()) {
+      const queue = this.queueByPriority[priority]
+      const index = queue.findIndex((job) => job.jobId !== protectedJobId)
+      if (index === -1) continue
+      const [job] = queue.splice(index, 1)
+      return job || null
+    }
+    for (const priority of [...DECODE_PRIORITY_ORDER].reverse()) {
+      const job = this.queueByPriority[priority].shift()
+      if (job) return job
+    }
+    return null
+  }
+
+  private pruneQueuedJobsForLimit(protectedJobId: number) {
+    while (this.countQueuedJobs() > DECODE_QUEUE_MAX_PENDING) {
+      const job = this.shiftOverflowCandidate(protectedJobId)
+      if (!job) return
+      this.pending.delete(job.jobId)
+      job.reject(new DecodeQueueOverflowError())
+    }
   }
 
   private handleWorkerFailure(worker: Worker, error: Error) {
@@ -483,7 +560,7 @@ export async function decodeAudioShared(
   } catch (error) {
     const isExpectedMixtapeMissingFile =
       traceLabel.startsWith('mixtape-') && isMissingFileDecodeError(error)
-    if (!isExpectedMixtapeMissingFile) {
+    if (!isExpectedMixtapeMissingFile && !isDecodeQueueControlError(error)) {
       log.error('[decode-pool] decode failed', {
         label: traceLabel,
         filePath: normalized,

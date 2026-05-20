@@ -23,7 +23,8 @@ export function registerKeyAnalysisHandlers() {
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       if (!filePath) return
       enqueueKeyAnalysis(filePath, 'medium', {
-        source: 'foreground'
+        source: 'foreground',
+        focusSlot: payload?.focusSlot
       })
     }
   )
