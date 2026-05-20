@@ -51,7 +51,7 @@ let sanitizerHookInstalled = false
 const ensureSanitizerHooks = () => {
   if (sanitizerHookInstalled) return
   sanitizerHookInstalled = true
-  DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+  DOMPurify.addHook('afterSanitizeAttributes', (node: Element) => {
     const element = node as Element
     if (element.tagName?.toLowerCase() !== 'a') return
     if (!element.getAttribute('href')) return

@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.2.0-rc.202605200926",
+  "version": "1.2.0-rc.202605201431",
   "description": "Rapid Audio Organization Tool",
   "license": "GPL-2.0-or-later",
   "main": "./out/main/index.js",
@@ -265,6 +265,7 @@
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@intlify/unplugin-vue-i18n": "^11.2.0",
     "@rushstack/eslint-patch": "^1.16.1",
+    "@types/dompurify": "^3.0.5",
     "@types/fs-extra": "^11.0.4",
     "@types/node": "^25.8.0",
     "@vitejs/plugin-vue": "^6.0.7",
