@@ -55,8 +55,12 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
 
   const isMixtapeViewForState = (state: ISongsAreaPaneRuntimeState) =>
     libraryUtils.getLibraryTreeByUUID(state.songListUUID)?.type === 'mixtapeList'
+  const isPioneerSourceState = (state: ISongsAreaPaneRuntimeState) =>
+    /^(desktop|usb):/.test(String(state.songListUUID || '').trim())
   const getRowKeyForState = (state: ISongsAreaPaneRuntimeState, song: ISongInfo) =>
-    isMixtapeViewForState(state) && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
+    (isMixtapeViewForState(state) || isPioneerSourceState(state)) && song.mixtapeItemId
+      ? song.mixtapeItemId
+      : song.filePath
   const getRowKey = (song: ISongInfo) => getRowKeyForState(songsAreaState, song)
   const getSelectedKeys = () => songsAreaState.selectedSongFilePath
   const setSelectedKeys = (next: string[]) => {
@@ -69,7 +73,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     })
   const resolveSelectedFilePathsForState = (state: ISongsAreaPaneRuntimeState, keys?: string[]) => {
     const selectedKeys = keys ?? state.selectedSongFilePath
-    if (!isMixtapeViewForState(state)) return selectedKeys
+    if (!isMixtapeViewForState(state) && !isPioneerSourceState(state)) return selectedKeys
     const map = new Map<string, string>()
     for (const item of state.songInfoArr) {
       if (item.mixtapeItemId) {

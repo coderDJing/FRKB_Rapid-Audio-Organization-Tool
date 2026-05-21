@@ -169,17 +169,24 @@ const isNormalLibraryContext = computed(() => {
     rootDir === 'library/FilterLibrary' ||
     rootDir.startsWith('library/FilterLibrary/') ||
     rootDir === 'library/CuratedLibrary' ||
-    rootDir.startsWith('library/CuratedLibrary/') ||
-    rootDir.startsWith('library/PioneerDeviceLibrary')
+    rootDir.startsWith('library/CuratedLibrary/')
   )
 })
-const shouldDisplayPlaylistTrackNumber = isNormalLibraryContext
+const isPioneerLibraryContext = computed(() =>
+  String(props.songListRootDir || '')
+    .replace(/\\/g, '/')
+    .startsWith('library/PioneerDeviceLibrary')
+)
+const shouldDisplayPlaylistTrackNumber = computed(
+  () => isNormalLibraryContext.value || isPioneerLibraryContext.value
+)
 const canPreviewWaveform = computed(() => !props.readOnly || props.allowWaveformPreviewWhenReadOnly)
 
 const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
 const coverCellRefMap = markRaw(new Map<string, HTMLElement | null>())
 const getRowKey = (song: ISongInfo) =>
-  (!isNormalLibraryContext.value || isPlaylistReorder.value) && song.mixtapeItemId
+  (isPioneerLibraryContext.value || !isNormalLibraryContext.value || isPlaylistReorder.value) &&
+  song.mixtapeItemId
     ? song.mixtapeItemId
     : song.filePath
 const getCellKey = (song: ISongInfo, colKey: string) => `${getRowKey(song)}__${colKey}`
@@ -939,7 +946,7 @@ onUnmounted(() => {
     background-color: var(--bg);
   }
   &.selectedSong {
-    background-color: rgba(0, 120, 212, 0.2);
+    background-color: color-mix(in srgb, var(--accent) 24%, var(--bg-elev));
   }
   &.selectedSong::before {
     content: '';

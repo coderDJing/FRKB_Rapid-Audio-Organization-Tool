@@ -51,6 +51,9 @@ type PioneerTransferTarget = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrar
 
 const runtime = useRuntimeStore()
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
+const handleOverlayClick = (e: MouseEvent) => {
+  if (e.button === 0) selectedRowKeys.value = []
+}
 const originalTracks = shallowRef<IPioneerPlaylistTrack[]>([])
 const visibleSongs = ref<ISongInfo[]>([])
 const loading = ref(false)
@@ -1048,7 +1051,7 @@ watch(
       }"
       element="div"
       style="height: 100%; width: 100%; position: relative"
-      @click="selectedRowKeys = []"
+      @click="handleOverlayClick"
     >
       <SongListHeader
         :columns="columnData"

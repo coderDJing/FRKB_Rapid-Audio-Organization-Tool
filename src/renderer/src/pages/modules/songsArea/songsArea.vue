@@ -92,6 +92,9 @@ const resolveCoreLibraryNameBySongListUUID = (uuid: string) => {
   return ''
 }
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
+const handleOverlayClick = (e: MouseEvent) => {
+  if (e.button === 0) songsAreaState.selectedSongFilePath.length = 0
+}
 const isMixtapeListView = computed(
   () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
 )
@@ -916,7 +919,7 @@ const emptyHintText = computed(() => {
           }"
           element="div"
           style="height: 100%; width: 100%; position: relative"
-          @click="songsAreaState.selectedSongFilePath.length = 0"
+          @click="handleOverlayClick"
         >
           <SongListHeader
             :columns="columnData"
