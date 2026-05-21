@@ -179,7 +179,9 @@ const canPreviewWaveform = computed(() => !props.readOnly || props.allowWaveform
 const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
 const coverCellRefMap = markRaw(new Map<string, HTMLElement | null>())
 const getRowKey = (song: ISongInfo) =>
-  !isNormalLibraryContext.value && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
+  (!isNormalLibraryContext.value || isPlaylistReorder.value) && song.mixtapeItemId
+    ? song.mixtapeItemId
+    : song.filePath
 const getCellKey = (song: ISongInfo, colKey: string) => `${getRowKey(song)}__${colKey}`
 const getIndexCellValue = (song: ISongInfo, index: number) => {
   if (typeof song.mixOrder === 'number' && song.mixOrder > 0) return song.mixOrder
