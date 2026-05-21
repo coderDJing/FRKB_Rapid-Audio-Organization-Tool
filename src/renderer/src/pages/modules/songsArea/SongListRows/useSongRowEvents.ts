@@ -27,10 +27,11 @@ export function useSongRowEvents({
   }
 
   const onRowsClick = (e: MouseEvent) => {
-    e.stopPropagation()
-    if (shouldSuppressPointerAction?.(e)) return
     const song = getSongFromTarget(e.target)
-    if (song) emitSongClick(e, song)
+    if (song) {
+      e.stopPropagation()
+      if (!shouldSuppressPointerAction?.(e)) emitSongClick(e, song)
+    }
   }
 
   const onRowsContextmenu = (e: MouseEvent) => {
