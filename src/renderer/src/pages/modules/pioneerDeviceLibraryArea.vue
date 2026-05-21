@@ -16,12 +16,13 @@ import {
 } from '@renderer/utils/rekordboxLibraryCache'
 import { t } from '@renderer/utils/translate'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
-import type { IPioneerPlaylistTreeNode } from '../../../../types/globals'
+import type { IPioneerPlaylistTreeNode, IPioneerPlaylistTrack } from '../../../../types/globals'
 import type {
   RekordboxDesktopCreateEmptyPlaylistResponse,
   RekordboxDesktopCreateFolderResponse,
   RekordboxDesktopDeletePlaylistResponse,
   RekordboxDesktopMovePlaylistResponse,
+  RekordboxDesktopRemovePlaylistTracksResponse,
   RekordboxDesktopRenamePlaylistResponse
 } from '@shared/rekordboxDesktopPlaylist'
 
@@ -604,7 +605,10 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
     return
   }
 
-  const menuArr = [[{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }]]
+  const menuArr = [
+    [{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }],
+    [{ menuName: 'pioneer.cleanMissingFiles' }]
+  ]
   const result = await rightClickMenu({ menuArr, clickEvent: event })
   if (result === 'cancel') return
   if (result.menuName === renameMenuKey) {
@@ -613,7 +617,72 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
   }
   if (result.menuName === deletePlaylistMenuKey) {
     await confirmDeleteNode(node)
+    return
   }
+  if (result.menuName === 'pioneer.cleanMissingFiles') {
+    await cleanMissingFilesFromPlaylist(node)
+  }
+}
+
+const cleanMissingFilesFromPlaylist = async (node: IPioneerPlaylistTreeNode) => {
+  if (!isDesktopSource.value || dialogWriting.value) return
+  const playlistId = Number(node.id) || 0
+  if (playlistId <= 0) return
+
+  await runWithDialogWriting(async () => {
+    try {
+      const loadResult = (await window.electron.ipcRenderer.invoke(
+        buildRekordboxSourceChannel('desktop', 'load-playlist-tracks'),
+        playlistId
+      )) as { tracks?: IPioneerPlaylistTrack[] }
+
+      const tracks = Array.isArray(loadResult?.tracks) ? loadResult.tracks : []
+      const missingTracks = tracks.filter((t) => t.fileMissing)
+
+      if (!missingTracks.length) {
+        await confirm({
+          title: t('pioneer.cleanMissingFilesFinished'),
+          content: [t('pioneer.cleanMissingFilesNone')],
+          confirmShow: false
+        })
+        return
+      }
+
+      const confirmResult = await confirm({
+        title: t('pioneer.cleanMissingFilesConfirmTitle'),
+        content: [t('pioneer.cleanMissingFilesConfirm', { count: missingTracks.length })]
+      })
+      if (confirmResult !== 'confirm') return
+      if (!(await ensureRekordboxDesktopWriteAvailable('edit'))) return
+
+      const rowKeys = missingTracks.map((t) => String(t.rowKey || '').trim()).filter(Boolean)
+
+      const response = (await window.electron.ipcRenderer.invoke(
+        buildRekordboxSourceChannel('desktop', 'remove-playlist-tracks'),
+        { playlistId, rowKeys }
+      )) as RekordboxDesktopRemovePlaylistTracksResponse
+
+      if (!response.ok) {
+        await showFailureDialog(response.summary.errorMessage, response.summary.logPath)
+        return
+      }
+
+      clearRekordboxSourceCachesByKind('desktop')
+      await refreshDesktopTree(playlistId)
+
+      await confirm({
+        title: t('pioneer.cleanMissingFilesFinished'),
+        content: [t('pioneer.cleanMissingFilesRemovedCount', { count: rowKeys.length })],
+        confirmShow: false
+      })
+    } catch (error: unknown) {
+      await confirm({
+        title: t('common.error'),
+        content: [error instanceof Error ? error.message : String(error)],
+        confirmShow: false
+      })
+    }
+  })
 }
 
 const resetDragState = () => {

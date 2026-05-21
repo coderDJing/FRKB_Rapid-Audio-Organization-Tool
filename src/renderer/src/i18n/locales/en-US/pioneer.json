@@ -11,6 +11,21 @@
     "copyToMixtapeFailed": "Failed to copy tracks into the Mixtape vault.",
     "copyTracksFailed": "Failed to copy tracks.",
     "deviceLibraryLabel": "Device Library",
-    "oneLibraryLabel": "OneLibrary"
+    "oneLibraryLabel": "OneLibrary",
+    "cleanMissingFiles": "Clean Tracks with Missing Files",
+    "cleanMissingFilesConfirmTitle": "Clean Unavailable Track Records",
+    "cleanMissingFilesConfirm": "This will remove {count} track record(s) whose original audio files cannot be found from the current Rekordbox playlist. It will not delete audio files from disk. To restore them later, add the tracks back to the playlist.",
+    "cleanMissingFilesFinished": "Unavailable Records Cleaned",
+    "cleanMissingFilesRemovedCount": "Removed {count} unavailable track record(s) from the playlist.",
+    "cleanMissingFilesNone": "This playlist has no tracks with missing files.",
+    "fileMissingHint": "Audio File Not Found",
+    "fileMissingHintDetail": "The {count} selected track(s) no longer have audio files at their saved paths, so there is nothing to process for this action.",
+    "fileMissingHintAction": "Put the files back at their original paths and try again. If these are stale records in the Rekordbox desktop library, you can also clean them from the playlist tree.",
+    "fileMissingSingleDetail": "This track's audio file is no longer at its saved path, so it cannot be played right now.",
+    "fileMissingSingleAction": "After putting the file back at the saved path, double-click again to recheck it.",
+    "fileMissingTrackName": "Track: {name}",
+    "fileMissingPathListTitle": "Missing path:",
+    "fileMissingPathUnavailable": "This record does not have a file path that can be checked.",
+    "fileMissingPathMore": "{count} more path(s) are not shown."
   }
 }

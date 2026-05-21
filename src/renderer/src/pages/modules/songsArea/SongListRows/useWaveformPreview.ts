@@ -450,6 +450,7 @@ export function useWaveformPreview(params: {
   const getWaveformPlaceholderText = (filePath: string) => {
     placeholderVersion.value
     const song = resolveVisibleSongByFilePath(filePath)
+    if (song?.fileMissing) return ''
 
     if (
       !resolveSongExternalWaveformSource(song, {

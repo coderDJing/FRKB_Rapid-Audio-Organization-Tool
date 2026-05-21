@@ -1,8 +1,9 @@
 import type { IPioneerPlaylistTrack } from '../../../types/globals'
 import { enrichPioneerTracksWithCueData } from '../pioneerDeviceLibrary/cues'
+import { markMissingFiles } from '../fileExistenceCheck'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
+import { buildRekordboxDesktopFailureSummary, logRekordboxDesktopFailure } from './failure'
 import { runRekordboxDesktopHelper } from './helper'
-import { getLogPath, log } from '../../log'
 import type {
   RekordboxDesktopHelperError,
   RekordboxDesktopHelperReorderPlaylistTracksPayload,
@@ -94,6 +95,7 @@ export async function loadRekordboxDesktopPlaylistTracks(
     : []
 
   const tracksWithCues = await enrichPioneerTracksWithCueData(probe.sourceRootPath, tracks)
+  await markMissingFiles(tracksWithCues)
 
   return {
     probe,
@@ -123,18 +125,15 @@ const buildTracksFailureResponse = (
   errorMessage: string,
   details?: Record<string, unknown>
 ): RekordboxDesktopRemovePlaylistTracksResponse | RekordboxDesktopReorderPlaylistTracksResponse => {
-  log.error(`[rekordbox-desktop-playlist] ${action} playlist tracks failed`, {
+  logRekordboxDesktopFailure(
+    `[rekordbox-desktop-playlist] ${action} playlist tracks failed`,
     errorCode,
     errorMessage,
-    ...details
-  })
+    details
+  )
   return {
     ok: false,
-    summary: {
-      errorCode,
-      errorMessage,
-      logPath: getLogPath()
-    }
+    summary: buildRekordboxDesktopFailureSummary(errorCode, errorMessage)
   }
 }
 

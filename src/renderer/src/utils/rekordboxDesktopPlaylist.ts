@@ -312,10 +312,6 @@ export const openRekordboxDesktopPlaylistForSelectedTracks = async (params: {
     return null
   }
 
-  if (!(await ensureRekordboxDesktopWriteAvailable('open'))) {
-    return null
-  }
-
   const target = await openTargetDialog({
     title: t('rekordboxDesktop.dialogTitleTracks'),
     defaultPlaylistName: buildDefaultSelectedTracksPlaylistName(),
@@ -384,10 +380,6 @@ export const openRekordboxDesktopPlaylistForPlaylist = async (params: {
   playlistName: string
   deletePayload?: RekordboxDesktopDeletePayload
 }): Promise<RekordboxDesktopPlaylistWriteResult | null> => {
-  if (!(await ensureRekordboxDesktopWriteAvailable('open'))) {
-    return null
-  }
-
   const defaultPlaylistName =
     String(params.playlistName || '').trim() || buildDefaultSelectedTracksPlaylistName()
   const target = await openTargetDialog({

@@ -11,6 +11,21 @@
     "copyToMixtapeFailed": "复制到混音库失败。",
     "copyTracksFailed": "复制曲目失败。",
     "deviceLibraryLabel": "Device Library",
-    "oneLibraryLabel": "OneLibrary"
+    "oneLibraryLabel": "OneLibrary",
+    "cleanMissingFiles": "清理找不到文件的曲目",
+    "cleanMissingFilesConfirmTitle": "确认清理失效记录",
+    "cleanMissingFilesConfirm": "这会从当前 Rekordbox 歌单里移除 {count} 条找不到原文件的曲目记录，不会删除磁盘上的音频文件。清理后如需恢复，需要重新把曲目加入歌单。",
+    "cleanMissingFilesFinished": "已清理失效记录",
+    "cleanMissingFilesRemovedCount": "已从歌单移除 {count} 条找不到文件的曲目记录。",
+    "cleanMissingFilesNone": "当前歌单里没有找不到文件的曲目。",
+    "fileMissingHint": "找不到音频文件",
+    "fileMissingHintDetail": "选中的 {count} 首曲目都找不到原文件，本次操作没有可处理的音频。",
+    "fileMissingHintAction": "可以先把文件放回原路径后重试；如果这些是 Rekordbox 本机库里的失效记录，也可以在左侧歌单上清理掉。",
+    "fileMissingSingleDetail": "这首曲目的原文件不在原路径，暂时不能播放。",
+    "fileMissingSingleAction": "把文件放回原路径后，再次双击会重新检测。",
+    "fileMissingTrackName": "曲目：{name}",
+    "fileMissingPathListTitle": "找不到的路径：",
+    "fileMissingPathUnavailable": "这条记录没有保存可检测的文件路径。",
+    "fileMissingPathMore": "还有 {count} 条路径未显示。"
   }
 }

@@ -66,6 +66,7 @@ const columnData = ref<ISongsAreaColumn[]>(
 )
 const selectSongListDialogVisible = ref(false)
 const selectSongListDialogTargetLibraryName = ref<PioneerTransferTarget | ''>('')
+const selectSongListDialogTrackKeys = ref<string[]>([])
 let playlistTracksRequestToken = 0
 
 const ascendingOrder = ascendingOrderAsset
@@ -277,7 +278,8 @@ const toSongInfo = (track: IPioneerPlaylistTrack): ISongInfo => ({
   pioneerAnalyzePath: selectedSourceKind.value === 'usb' ? track.analyzePath || null : null,
   pioneerDeviceRootPath:
     selectedSourceKind.value === 'usb' ? selectedSourceRootPath.value || null : null,
-  mixtapeItemId: track.rowKey
+  mixtapeItemId: track.rowKey,
+  fileMissing: track.fileMissing ?? false
 })
 
 const normalizePath = (value: string) =>
@@ -285,17 +287,22 @@ const normalizePath = (value: string) =>
     .replace(/\//g, '\\')
     .toLowerCase()
 
+const resolveTrackKey = (song: ISongInfo) => song.mixtapeItemId || song.filePath
+
+const resolveSelectedTracksByKeys = (keys: string[]) => {
+  if (!keys.length) return []
+  const selectedKeySet = new Set(keys)
+  return visibleSongs.value.filter((song) => selectedKeySet.has(resolveTrackKey(song)))
+}
+
 const resolveSelectedTracks = (fallback?: ISongInfo) => {
   const selectedKeys = selectedRowKeys.value.length
     ? [...selectedRowKeys.value]
     : fallback
-      ? [fallback.mixtapeItemId || fallback.filePath]
+      ? [resolveTrackKey(fallback)]
       : []
   if (!selectedKeys.length) return []
-  const selectedKeySet = new Set(selectedKeys)
-  const tracks = visibleSongs.value.filter((song) =>
-    selectedKeySet.has(song.mixtapeItemId || song.filePath)
-  )
+  const tracks = resolveSelectedTracksByKeys(selectedKeys)
   if (tracks.length > 0) return tracks
   return fallback ? [fallback] : []
 }
@@ -345,6 +352,68 @@ const showErrorDialog = async (message: string) => {
     content: [message || t('common.unknownError')],
     confirmShow: false
   })
+}
+
+const showFileMissingHint = async (missingTracks: ISongInfo[]) => {
+  const paths = missingTracks.map((item) => item.filePath).filter(Boolean)
+  const content = [
+    t('pioneer.fileMissingHintDetail', { count: missingTracks.length }),
+    t('pioneer.fileMissingHintAction'),
+    paths.length ? t('pioneer.fileMissingPathListTitle') : t('pioneer.fileMissingPathUnavailable'),
+    ...paths.slice(0, 10),
+    ...(paths.length > 10 ? [t('pioneer.fileMissingPathMore', { count: paths.length - 10 })] : [])
+  ]
+  await confirm({
+    title: t('pioneer.fileMissingHint'),
+    content,
+    confirmShow: false,
+    innerWidth: 620,
+    innerHeight: 0,
+    textAlign: 'left',
+    canCopyText: paths.length > 0
+  })
+}
+
+const resolveExistingOperationTracks = async (tracks: ISongInfo[]) => {
+  const missingPathSet = new Set(
+    tracks.filter((item) => item.fileMissing || !item.filePath).map((item) => item.filePath)
+  )
+  const pathsToCheck = Array.from(
+    new Set(
+      tracks.filter((item) => !item.fileMissing && item.filePath).map((item) => item.filePath)
+    )
+  )
+
+  if (pathsToCheck.length) {
+    const existenceMap = (await window.electron.ipcRenderer.invoke(
+      'check-paths-exist',
+      pathsToCheck
+    )) as Record<string, boolean>
+    for (const filePath of pathsToCheck) {
+      if (existenceMap[filePath] === false) {
+        missingPathSet.add(filePath)
+      }
+    }
+  }
+
+  if (missingPathSet.size > 0) {
+    originalTracks.value = originalTracks.value.map((track) =>
+      missingPathSet.has(track.filePath) ? { ...track, fileMissing: true } : track
+    )
+    applyFiltersAndSorting('fileMissing-changed')
+  }
+
+  const updatedTracks = tracks.map((track) =>
+    missingPathSet.has(track.filePath) ? { ...track, fileMissing: true } : track
+  )
+  const missingTracks = updatedTracks.filter((track) => track.fileMissing || !track.filePath)
+  const existingTracks = updatedTracks.filter((track) => !track.fileMissing && track.filePath)
+
+  return {
+    updatedTracks,
+    missingTracks,
+    existingTracks
+  }
 }
 
 const sortArrayByProperty = <T extends object>(
@@ -467,6 +536,15 @@ const applyFiltersAndSorting = (reason = 'unspecified') => {
   }
 
   visibleSongs.value = filtered
+
+  // 当前播放列表即为当前视图时，同步播放列表快照（保持排序一致）
+  if (
+    currentPlaybackListKey.value &&
+    runtime.playingData.playingSongListUUID === currentPlaybackListKey.value
+  ) {
+    runtime.playingData.playingSongListData = [...visibleSongs.value]
+  }
+
   emitPioneerSongsAreaLog('apply-filters-and-sorting', {
     reason,
     beforeCount,
@@ -724,7 +802,8 @@ const handleSongClick = (event: MouseEvent, song: ISongInfo) => {
   songClick(event, song)
 }
 
-const openCopyTargetDialog = (libraryName: PioneerTransferTarget) => {
+const openCopyTargetDialog = (libraryName: PioneerTransferTarget, tracks: ISongInfo[] = []) => {
+  selectSongListDialogTrackKeys.value = tracks.map(resolveTrackKey).filter(Boolean)
   selectSongListDialogTargetLibraryName.value = libraryName
   selectSongListDialogVisible.value = true
 }
@@ -745,6 +824,31 @@ const handlePreviewMoveRequest = (
 }
 emitter.on('preview-transfer:open-dialog', handlePreviewMoveRequest)
 
+// 播放器标记文件缺失时，同步更新原始数据使 UI 立即变色
+const handleSongFileMissing = (payload: { listUUID?: string; filePath?: string }) => {
+  if (!payload?.filePath) return
+  if (currentPlaybackListKey.value && payload.listUUID === currentPlaybackListKey.value) {
+    const missingPath = payload.filePath
+    originalTracks.value = originalTracks.value.map((track) =>
+      track.filePath === missingPath ? { ...track, fileMissing: true } : track
+    )
+    applyFiltersAndSorting('fileMissing-changed')
+  }
+}
+emitter.on('songFileMissing', handleSongFileMissing)
+
+const handleSongFileRestored = (payload: { listUUID?: string; filePath?: string }) => {
+  if (!payload?.filePath) return
+  if (currentPlaybackListKey.value && payload.listUUID === currentPlaybackListKey.value) {
+    const restoredPath = payload.filePath
+    originalTracks.value = originalTracks.value.map((track) =>
+      track.filePath === restoredPath ? { ...track, fileMissing: false } : track
+    )
+    applyFiltersAndSorting('fileRestored-changed')
+  }
+}
+emitter.on('songFileRestored', handleSongFileRestored)
+
 const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
   cancelPendingRepeatSingleClickDeselect()
   if (playlistMutationPending.value) return
@@ -763,31 +867,52 @@ const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
   const selectedTracks = resolveSelectedTracks(song)
   if (!selectedTracks.length) return
 
+  const { updatedTracks, missingTracks, existingTracks } =
+    await resolveExistingOperationTracks(selectedTracks)
+  const showSelectedMissingHint = async () => showFileMissingHint(missingTracks)
+
   switch (result.menuName) {
     case 'rekordboxDesktop.removeTracksFromPlaylistAction':
-      await removeTracksFromDesktopPlaylist(
-        selectedTracks,
-        canRemoveTracksFromDesktopPlaylist.value
-      )
+      await removeTracksFromDesktopPlaylist(updatedTracks, canRemoveTracksFromDesktopPlaylist.value)
       return
     case 'library.copyToCurated':
-      openCopyTargetDialog('CuratedLibrary')
+      if (!existingTracks.length) {
+        await showSelectedMissingHint()
+        return
+      }
+      openCopyTargetDialog('CuratedLibrary', existingTracks)
       return
     case 'library.copyToFilter':
-      openCopyTargetDialog('FilterLibrary')
+      if (!existingTracks.length) {
+        await showSelectedMissingHint()
+        return
+      }
+      openCopyTargetDialog('FilterLibrary', existingTracks)
       return
     case 'library.addToMixtapeByCopy':
-      openCopyTargetDialog('MixtapeLibrary')
+      if (!existingTracks.length) {
+        await showSelectedMissingHint()
+        return
+      }
+      openCopyTargetDialog('MixtapeLibrary', existingTracks)
       return
     case 'fingerprints.analyzeAndAdd':
+      if (!existingTracks.length) {
+        await showSelectedMissingHint()
+        return
+      }
       await analyzeFingerprintsForPaths(
-        selectedTracks.map((item) => item.filePath),
+        existingTracks.map((item) => item.filePath),
         {
           origin: 'selection'
         }
       )
       return
     case 'tracks.exportTracksCopyOnly': {
+      if (!existingTracks.length) {
+        await showSelectedMissingHint()
+        return
+      }
       const exportResult = await exportDialog({
         title: 'tracks.title',
         forceCopyOnly: true
@@ -797,12 +922,16 @@ const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
         'exportSongsToDir',
         exportResult.folderPathVal,
         false,
-        JSON.parse(JSON.stringify(selectedTracks))
+        JSON.parse(JSON.stringify(existingTracks))
       )
       return
     }
     case 'tracks.showInFileExplorer':
-      window.electron.ipcRenderer.send('show-item-in-folder', selectedTracks[0]?.filePath)
+      if (updatedTracks[0]?.fileMissing) {
+        await showSelectedMissingHint()
+      } else {
+        window.electron.ipcRenderer.send('show-item-in-folder', updatedTracks[0]?.filePath)
+      }
       return
   }
 }
@@ -838,8 +967,41 @@ const { handleSongDragStart, handleSongDragEnd } = usePioneerSongDrag({
   resolveSelectedTracks
 })
 
-const handleSongDblClick = (song: ISongInfo, event?: MouseEvent) => {
+const handleSongDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   cancelPendingRepeatSingleClickDeselect()
+  if (!song.fileMissing && song.filePath) {
+    const exists = await window.electron.ipcRenderer.invoke('check-path-exists', song.filePath)
+    if (!exists) {
+      const missingPath = song.filePath
+      originalTracks.value = originalTracks.value.map((track) =>
+        track.filePath === missingPath ? { ...track, fileMissing: true } : track
+      )
+      applyFiltersAndSorting('fileMissing-changed')
+      song.fileMissing = true
+    }
+  }
+  if (song.fileMissing) {
+    const songName = String(song.title || song.fileName || '').trim()
+    const content = [
+      t('pioneer.fileMissingSingleDetail'),
+      ...(songName ? [t('pioneer.fileMissingTrackName', { name: songName })] : []),
+      song.filePath
+        ? t('pioneer.fileMissingPathListTitle')
+        : t('pioneer.fileMissingPathUnavailable'),
+      ...(song.filePath ? [song.filePath] : []),
+      t('pioneer.fileMissingSingleAction')
+    ]
+    await confirm({
+      title: t('pioneer.fileMissingHint'),
+      content,
+      confirmShow: false,
+      innerWidth: 620,
+      innerHeight: 0,
+      textAlign: 'left',
+      canCopyText: Boolean(song.filePath)
+    })
+    return
+  }
   if (playlistMutationPending.value) return
   try {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })
@@ -889,10 +1051,21 @@ const handleSongDblClick = (song: ISongInfo, event?: MouseEvent) => {
 
 const handleSelectSongListDialogConfirm = async (targetSongListUUID: string) => {
   const targetLibraryName = selectSongListDialogTargetLibraryName.value
+  const selectedTrackKeys = [...selectSongListDialogTrackKeys.value]
   selectSongListDialogVisible.value = false
   selectSongListDialogTargetLibraryName.value = ''
-  const selectedTracks = resolveSelectedTracks()
-  if (!selectedTracks.length || !targetLibraryName) return
+  selectSongListDialogTrackKeys.value = []
+  const rawSelectedTracks = selectedTrackKeys.length
+    ? resolveSelectedTracksByKeys(selectedTrackKeys)
+    : resolveSelectedTracks()
+  if (!rawSelectedTracks.length || !targetLibraryName) return
+
+  const { missingTracks, existingTracks: selectedTracks } =
+    await resolveExistingOperationTracks(rawSelectedTracks)
+  if (!selectedTracks.length) {
+    await showFileMissingHint(missingTracks)
+    return
+  }
 
   try {
     if (targetLibraryName === 'MixtapeLibrary') {
@@ -975,11 +1148,14 @@ const handleSelectSongListDialogConfirm = async (targetSongListUUID: string) => 
 const handleSelectSongListDialogCancel = () => {
   selectSongListDialogVisible.value = false
   selectSongListDialogTargetLibraryName.value = ''
+  selectSongListDialogTrackKeys.value = []
 }
 
 onUnmounted(() => {
   cancelPendingRepeatSingleClickDeselect()
   emitter.off('preview-transfer:open-dialog', handlePreviewMoveRequest)
+  emitter.off('songFileMissing', handleSongFileMissing)
+  emitter.off('songFileRestored', handleSongFileRestored)
 })
 
 const placeholderText = computed(() => {

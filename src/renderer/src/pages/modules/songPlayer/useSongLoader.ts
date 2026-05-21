@@ -133,6 +133,57 @@ export function useSongLoader(params: {
     const localFilePath = filePath
 
     try {
+      // 只有路径明确不存在时，才标记文件缺失并自动跳下一首
+      const songIndex = runtime.playingData.playingSongListData.findIndex(
+        (item) => item.filePath === localFilePath
+      )
+      if (songIndex !== -1) {
+        const fileExists = await window.electron.ipcRenderer
+          .invoke('check-path-exists', localFilePath)
+          .catch(() => true)
+        if (fileExists === false) {
+          runtime.playingData.playingSongListData[songIndex] = {
+            ...runtime.playingData.playingSongListData[songIndex],
+            fileMissing: true
+          }
+          // 通知 UI 更新原始数据中的 fileMissing 状态
+          emitter.emit('songFileMissing', {
+            listUUID: runtime.playingData.playingSongListUUID,
+            filePath: localFilePath
+          })
+          // 尝试找到下一首非缺失的曲目（先向后，再向前）
+          const songList = runtime.playingData.playingSongListData
+          let nextSongData: (typeof songList)[number] | null = null
+          for (let i = songIndex + 1; i < songList.length; i++) {
+            if (!songList[i].fileMissing) {
+              nextSongData = songList[i]
+              break
+            }
+          }
+          if (!nextSongData) {
+            for (let i = songIndex - 1; i >= 0; i--) {
+              if (!songList[i].fileMissing) {
+                nextSongData = songList[i]
+                break
+              }
+            }
+          }
+          if (nextSongData) {
+            runtime.playingData.playingSong = nextSongData
+            errorDialogShowing = false
+            requestLoadSong(nextSongData.filePath)
+          } else {
+            runtime.playingData.playingSong = null
+            runtime.isSwitchingSong = false
+            if (audioPlayer.value) {
+              ignoreNextEmptyError.value = true
+              audioPlayer.value.empty()
+            }
+          }
+          return
+        }
+      }
+
       if (audioPlayer.value && audioPlayer.value.isPlaying()) {
         audioPlayer.value.pause()
       }

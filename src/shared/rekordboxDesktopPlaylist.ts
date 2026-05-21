@@ -74,7 +74,7 @@ export type RekordboxDesktopPlaylistSuccessSummary = {
 export type RekordboxDesktopPlaylistFailureSummary = {
   errorCode: string
   errorMessage: string
-  logPath: string
+  logPath?: string
 }
 
 export type RekordboxDesktopPlaylistResponse =

@@ -1,6 +1,5 @@
 import fs from 'fs-extra'
 import path from 'path'
-import { getLogPath, log } from '../../log'
 import store from '../../store'
 import { resolveLibraryPath } from '../../utils'
 import { readTrackMetadata } from '../metadataEditor'
@@ -11,6 +10,7 @@ import { normalizeSongHotCues } from '../../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
 import { sortByPlaylistTrackNumber } from '../../../shared/playlistTrackOrder'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
+import { buildRekordboxDesktopFailureSummary, logRekordboxDesktopFailure } from './failure'
 import { runRekordboxDesktopHelper } from './helper'
 import type {
   RekordboxDesktopHelperCreatePlaylistPayload,
@@ -76,18 +76,15 @@ const buildFailureResponse = (
   errorMessage: string,
   details?: Record<string, unknown>
 ): RekordboxDesktopPlaylistResponse => {
-  log.error('[rekordbox-desktop-playlist] write failed', {
+  logRekordboxDesktopFailure(
+    '[rekordbox-desktop-playlist] write failed',
     errorCode,
     errorMessage,
-    ...details
-  })
+    details
+  )
   return {
     ok: false,
-    summary: {
-      errorCode,
-      errorMessage,
-      logPath: getLogPath()
-    }
+    summary: buildRekordboxDesktopFailureSummary(errorCode, errorMessage)
   }
 }
 

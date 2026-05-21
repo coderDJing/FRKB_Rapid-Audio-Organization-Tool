@@ -742,7 +742,10 @@ onUnmounted(() => {
                 flashRowToken > 0 &&
                 flashRowToken % 2 === 1,
               globalSearchFlashB:
-                flashRowKey === getRowKey(item.song) && flashRowToken > 0 && flashRowToken % 2 === 0
+                flashRowKey === getRowKey(item.song) &&
+                flashRowToken > 0 &&
+                flashRowToken % 2 === 0,
+              fileMissing: item.song.fileMissing
             }"
             :style="{ 'min-width': `var(--songs-total-width, ${totalWidth}px)` }"
           >
@@ -828,7 +831,7 @@ onUnmounted(() => {
               </div>
             </template>
             <RowAnalysisBar
-              v-if="hasAnyAnalysisProgress"
+              v-if="hasAnyAnalysisProgress && !item.song.fileMissing"
               :progress="getAnalysisProgress(item.song.filePath)"
               :viewport-width="listViewportWidth"
               :scroll-left="scrollLeft"
@@ -961,6 +964,9 @@ onUnmounted(() => {
   &.playingSong {
     color: var(--accent) !important;
     font-weight: bold;
+  }
+  &.fileMissing {
+    color: var(--song-list-file-missing);
   }
   &.globalSearchFlashA,
   &.globalSearchFlashB {

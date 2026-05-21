@@ -683,6 +683,7 @@ watch(
       runtime.playingData.playingSongListUUID = ''
       bpm.value = ''
     } else if (newSong?.filePath !== oldSong?.filePath) {
+      if (newSong?.fileMissing) return
       const newPath = newSong.filePath
       setCoverByIPC(newPath)
       requestLoadSong(newPath)

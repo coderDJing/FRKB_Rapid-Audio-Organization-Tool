@@ -1,7 +1,7 @@
 import fs from 'fs-extra'
 import path from 'path'
-import { getLogPath, log } from '../../log'
 import { moveOrCopyItemWithCheckIsExist } from '../../utils'
+import { buildRekordboxDesktopFailureSummary, logRekordboxDesktopFailure } from './failure'
 import type {
   RekordboxDesktopCopyTracksToStorageRequest,
   RekordboxDesktopCopyTracksToStorageResponse,
@@ -27,18 +27,15 @@ const buildFailureResponse = (
   errorMessage: string,
   details?: Record<string, unknown>
 ): RekordboxDesktopCopyTracksToStorageResponse => {
-  log.error('[rekordbox-desktop-playlist] copy tracks to storage failed', {
+  logRekordboxDesktopFailure(
+    '[rekordbox-desktop-playlist] copy tracks to storage failed',
     errorCode,
     errorMessage,
-    ...details
-  })
+    details
+  )
   return {
     ok: false,
-    summary: {
-      errorCode,
-      errorMessage,
-      logPath: getLogPath()
-    }
+    summary: buildRekordboxDesktopFailureSummary(errorCode, errorMessage)
   }
 }
 

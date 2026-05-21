@@ -273,21 +273,71 @@ export function usePlayerControlsLogic({
     audioPlayer.value?.skip(runtime.setting.fastBackwardTime, true)
   }
 
-  const nextSong = () => {
+  const markSongMissingAndNotify = (filePath: string) => {
+    const idx = runtime.playingData.playingSongListData.findIndex((s) => s.filePath === filePath)
+    if (idx !== -1) {
+      runtime.playingData.playingSongListData[idx] = {
+        ...runtime.playingData.playingSongListData[idx],
+        fileMissing: true
+      }
+      emitter.emit('songFileMissing', {
+        listUUID: runtime.playingData.playingSongListUUID,
+        filePath
+      })
+    }
+  }
+
+  const restoreSongIfFileReturns = (filePath: string) => {
+    const idx = runtime.playingData.playingSongListData.findIndex((s) => s.filePath === filePath)
+    if (idx !== -1 && runtime.playingData.playingSongListData[idx].fileMissing) {
+      runtime.playingData.playingSongListData[idx] = {
+        ...runtime.playingData.playingSongListData[idx],
+        fileMissing: false
+      }
+      emitter.emit('songFileRestored', {
+        listUUID: runtime.playingData.playingSongListUUID,
+        filePath
+      })
+    }
+  }
+
+  const findNextPlayableSong = async (
+    startIndex: number,
+    direction: 1 | -1
+  ): Promise<ISongInfo | null> => {
+    const songList = runtime.playingData.playingSongListData
+    for (let i = startIndex + direction; i >= 0 && i < songList.length; i += direction) {
+      const song = songList[i]
+      const exists = await window.electron.ipcRenderer.invoke('check-path-exists', song.filePath)
+      if (exists) {
+        if (song.fileMissing) restoreSongIfFileReturns(song.filePath)
+        return song
+      }
+      if (!song.fileMissing) markSongMissingAndNotify(song.filePath)
+    }
+    return null
+  }
+
+  const nextSong = async () => {
     // 切歌开始，标记未就绪，阻止快进再次触发
     runtime.playerReady = false
     runtime.isSwitchingSong = true
     if (!runtime.playingData.playingSong) return
-    const currentIndex = runtime.playingData.playingSongListData.findIndex(
+    const songList = runtime.playingData.playingSongListData
+    const currentIndex = songList.findIndex(
       (item) => item.filePath === runtime.playingData.playingSong?.filePath
     )
-    if (currentIndex === -1 || currentIndex >= runtime.playingData.playingSongListData.length - 1) {
+    if (currentIndex === -1 || currentIndex >= songList.length - 1) {
+      runtime.playerReady = true
+      runtime.isSwitchingSong = false
       return
     }
-    // 向后寻找下一个可播放曲目
-    let nextIndex = currentIndex + 1
-    let nextSongData = runtime.playingData.playingSongListData[nextIndex]
-    if (!nextSongData) return
+    const nextSongData = await findNextPlayableSong(currentIndex, 1)
+    if (!nextSongData) {
+      runtime.playerReady = true
+      runtime.isSwitchingSong = false
+      return
+    }
     const nextSongFilePath = nextSongData.filePath
     // 每次切换歌曲时，强制清空播放器实例
     if (audioPlayer.value) {
@@ -304,27 +354,29 @@ export function usePlayerControlsLogic({
     requestLoadSong(nextSongFilePath)
   }
 
-  const previousSong = () => {
+  const previousSong = async () => {
     // 切歌开始，标记未就绪，阻止快进再次触发
     runtime.playerReady = false
     runtime.isSwitchingSong = true
     if (!runtime.playingData.playingSong) return
 
-    const currentIndex = runtime.playingData.playingSongListData.findIndex(
+    const songList = runtime.playingData.playingSongListData
+    const currentIndex = songList.findIndex(
       (item) => item.filePath === runtime.playingData.playingSong?.filePath
     )
     if (currentIndex <= 0) {
       // 如果是第一首，或者找不到，则不执行任何操作
+      runtime.playerReady = true
+      runtime.isSwitchingSong = false
       return
     }
 
-    // 向前寻找上一个可播放曲目
-    let prevIndex = currentIndex - 1
-    let prevCandidate: ISongInfo | null = null
-    if (prevIndex >= 0) {
-      prevCandidate = runtime.playingData.playingSongListData[prevIndex]
+    const prevCandidate = await findNextPlayableSong(currentIndex, -1)
+    if (!prevCandidate) {
+      runtime.playerReady = true
+      runtime.isSwitchingSong = false
+      return
     }
-    if (!prevCandidate) return
 
     const prevSongFilePath = prevCandidate.filePath
     // 每次切换歌曲时，强制清空播放器实例

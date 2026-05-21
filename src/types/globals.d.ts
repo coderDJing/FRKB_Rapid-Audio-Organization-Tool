@@ -67,6 +67,7 @@ interface ISongInfo {
   deletedAtMs?: number
   originalPlaylistPath?: string | null
   recycleBinSourceType?: string | null
+  fileMissing?: boolean
 }
 
 export interface ISongHotCue {
@@ -211,6 +212,7 @@ interface IPioneerPlaylistTrack {
   coverPath?: string
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
+  fileMissing?: boolean
 }
 
 interface IMusicBrainzSearchPayload {

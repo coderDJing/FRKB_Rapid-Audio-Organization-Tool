@@ -1,5 +1,5 @@
-import { getLogPath, log } from '../../log'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
+import { buildRekordboxDesktopFailureSummary, logRekordboxDesktopFailure } from './failure'
 import { runRekordboxDesktopHelper } from './helper'
 import type {
   RekordboxDesktopHelperError,
@@ -28,18 +28,15 @@ const buildFailureResponse = (
   errorMessage: string,
   details?: Record<string, unknown>
 ): RekordboxDesktopMovePlaylistResponse => {
-  log.error('[rekordbox-desktop-playlist] move playlist failed', {
+  logRekordboxDesktopFailure(
+    '[rekordbox-desktop-playlist] move playlist failed',
     errorCode,
     errorMessage,
-    ...details
-  })
+    details
+  )
   return {
     ok: false,
-    summary: {
-      errorCode,
-      errorMessage,
-      logPath: getLogPath()
-    }
+    summary: buildRekordboxDesktopFailureSummary(errorCode, errorMessage)
   }
 }
 

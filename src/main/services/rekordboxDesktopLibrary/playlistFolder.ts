@@ -1,5 +1,5 @@
-import { getLogPath, log } from '../../log'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
+import { buildRekordboxDesktopFailureSummary, logRekordboxDesktopFailure } from './failure'
 import { runRekordboxDesktopHelper } from './helper'
 import type {
   RekordboxDesktopHelperCreateEmptyPlaylistPayload,
@@ -10,7 +10,8 @@ import type {
   RekordboxDesktopCreateEmptyPlaylistRequest,
   RekordboxDesktopCreateEmptyPlaylistResponse,
   RekordboxDesktopCreateFolderRequest,
-  RekordboxDesktopCreateFolderResponse
+  RekordboxDesktopCreateFolderResponse,
+  RekordboxDesktopPlaylistFailureSummary
 } from '../../../shared/rekordboxDesktopPlaylist'
 
 const sanitizeFolderName = (value: unknown) =>
@@ -37,24 +38,17 @@ const buildFailureResponse = (
   details?: Record<string, unknown>
 ): {
   ok: false
-  summary: {
-    errorCode: string
-    errorMessage: string
-    logPath: string
-  }
+  summary: RekordboxDesktopPlaylistFailureSummary
 } => {
-  log.error('[rekordbox-desktop-playlist] create folder failed', {
+  logRekordboxDesktopFailure(
+    '[rekordbox-desktop-playlist] create folder failed',
     errorCode,
     errorMessage,
-    ...details
-  })
+    details
+  )
   return {
     ok: false,
-    summary: {
-      errorCode,
-      errorMessage,
-      logPath: getLogPath()
-    }
+    summary: buildRekordboxDesktopFailureSummary(errorCode, errorMessage)
   }
 }
 

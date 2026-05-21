@@ -3,7 +3,7 @@ import { t } from '@renderer/utils/translate'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import type { RekordboxDesktopWriteAvailability } from '@shared/rekordboxDesktopPlaylist'
 
-type WriteAvailabilityBlockContext = 'open' | 'write' | 'create' | 'move' | 'edit'
+type WriteAvailabilityBlockContext = 'write' | 'create' | 'move' | 'edit'
 
 const probeWriteAvailability = async (): Promise<RekordboxDesktopWriteAvailability | null> => {
   try {
@@ -35,9 +35,7 @@ const buildBlockedContent = (
     }
   }
 
-  if (context === 'open') {
-    content.push(t('rekordboxDesktop.writeCheckOpenHint'))
-  } else if (context === 'create') {
+  if (context === 'create') {
     content.push(t('rekordboxDesktop.writeCheckCreateHint'))
   } else if (context === 'move') {
     content.push(t('rekordboxDesktop.writeCheckMoveHint'))

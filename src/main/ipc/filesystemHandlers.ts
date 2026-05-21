@@ -50,6 +50,20 @@ export function registerFilesystemHandlers() {
     }
   })
 
+  ipcMain.handle('check-paths-exist', async (_event, paths: string[]) => {
+    const results: Record<string, boolean> = {}
+    await Promise.all(
+      paths.map(async (p) => {
+        try {
+          results[p] = await fs.pathExists(p)
+        } catch {
+          results[p] = false
+        }
+      })
+    )
+    return results
+  })
+
   ipcMain.handle('select-audio-files', async () => {
     const configuredExts = Array.isArray(store.settingConfig?.audioExt)
       ? store.settingConfig.audioExt
