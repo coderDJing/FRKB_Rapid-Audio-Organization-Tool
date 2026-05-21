@@ -51,6 +51,7 @@ onMounted(() => {
   initDownloadButtons()
 
   window.addEventListener('mousemove', handleMouseMove)
+  window.addEventListener('keydown', handleKeydown)
 
   // 设置 IntersectionObserver
   observer.value = new IntersectionObserver(
@@ -80,6 +81,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
+  window.removeEventListener('keydown', handleKeydown)
   if (observer.value) {
     observer.value.disconnect()
   }
@@ -374,6 +376,28 @@ const enContent = {
 }
 
 const pageContent = computed(() => (isEn.value ? enContent : zhContent))
+
+// 图片放大查看
+const lightboxSrc = ref('')
+const lightboxAlt = ref('')
+
+const openLightbox = (src, alt) => {
+  lightboxSrc.value = src
+  lightboxAlt.value = alt || ''
+  document.body.style.overflow = 'hidden'
+}
+
+const closeLightbox = () => {
+  lightboxSrc.value = ''
+  lightboxAlt.value = ''
+  document.body.style.overflow = ''
+}
+
+const handleKeydown = (e) => {
+  if (e.key === 'Escape' && lightboxSrc.value) {
+    closeLightbox()
+  }
+}
 </script>
 
 <template>
@@ -504,12 +528,35 @@ const pageContent = computed(() => (isEn.value ? enContent : zhContent))
               <p>{{ impact.details }}</p>
             </div>
             <div class="impact-media">
-              <div class="hero-frame">
+              <div
+                class="hero-frame"
+                @click="
+                  openLightbox(
+                    withBase(theme === 'light' ? impact.imageLight : impact.image),
+                    impact.title
+                  )
+                "
+              >
                 <img
                   class="hero-img"
                   :src="withBase(theme === 'light' ? impact.imageLight : impact.image)"
                   :alt="impact.title"
                 />
+                <div class="zoom-hint">
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="M21 21l-4.35-4.35M11 8v6M8 11h6" />
+                  </svg>
+                </div>
               </div>
             </div>
           </div>
@@ -581,6 +628,29 @@ const pageContent = computed(() => (isEn.value ? enContent : zhContent))
         <small>© 2026 FRKB Project. Crafted for Excellence.</small>
       </div>
     </footer>
+
+    <!-- 图片放大 Lightbox -->
+    <Teleport to="body">
+      <Transition name="lightbox">
+        <div v-if="lightboxSrc" class="lightbox-overlay" @click="closeLightbox">
+          <button class="lightbox-close" @click.stop="closeLightbox" aria-label="Close">
+            <svg
+              width="28"
+              height="28"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M18 6L6 18M6 6l12 12" />
+            </svg>
+          </button>
+          <img class="lightbox-img" :src="lightboxSrc" :alt="lightboxAlt" @click.stop />
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -612,5 +682,118 @@ const pageContent = computed(() => (isEn.value ? enContent : zhContent))
   text-align: center;
   border-top: 1px solid var(--glass-border);
   color: var(--muted);
+}
+
+/* 图片放大查看样式 */
+.hero-frame {
+  cursor: zoom-in;
+  position: relative;
+}
+
+.zoom-hint {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.hero-frame:hover .zoom-hint {
+  opacity: 1;
+}
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+  padding: 40px;
+}
+
+.lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  cursor: default;
+  object-fit: contain;
+}
+
+.lightbox-close {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Lightbox 过渡动画 */
+.lightbox-enter-active,
+.lightbox-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.lightbox-enter-from,
+.lightbox-leave-to {
+  opacity: 0;
+}
+
+.lightbox-enter-active .lightbox-img {
+  animation: lightbox-zoom-in 0.3s ease;
+}
+
+.lightbox-leave-active .lightbox-img {
+  animation: lightbox-zoom-out 0.2s ease;
+}
+
+@keyframes lightbox-zoom-in {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes lightbox-zoom-out {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.9);
+    opacity: 0;
+  }
 }
 </style>
