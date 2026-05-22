@@ -32,10 +32,6 @@ const props = defineProps({
   clickEvent: {
     type: Object as PropType<MouseEvent | null>,
     default: null
-  },
-  scrollHostElement: {
-    type: Object as PropType<HTMLElement | null | undefined>,
-    default: null
   }
 })
 
@@ -81,28 +77,12 @@ const updateMenuPosition = async () => {
     menuHeight: menuRef.value.offsetHeight
   })
 
-  if (props.scrollHostElement) {
-    const hostRect = props.scrollHostElement.getBoundingClientRect()
-    positionLeft.value = x - hostRect.left
-    positionTop.value = Math.max(0, y - hostRect.top)
-    return
-  }
-
   positionLeft.value = x
   positionTop.value = y
 }
 
 watch(
   () => props.clickEvent,
-  () => {
-    if (props.modelValue) {
-      void updateMenuPosition()
-    }
-  }
-)
-
-watch(
-  () => props.scrollHostElement,
   () => {
     if (props.modelValue) {
       void updateMenuPosition()
@@ -126,29 +106,31 @@ onUnmounted(() => {
 })
 </script>
 <template>
-  <div
-    v-if="props.modelValue"
-    ref="menuRef"
-    data-frkb-context-menu="true"
-    class="menu unselectable"
-    :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
-    @click.stop="() => {}"
-  >
-    <div v-for="item of props.columnData" class="menuGroup">
-      <div class="menuButton" @click="menuButtonClick(item)" @contextmenu="menuButtonClick(item)">
-        <div class="menuButtonIcon">
-          <img v-if="item.show" :src="tickIcon" style="width: 16px" class="theme-icon" />
-        </div>
-        <div class="menuButtonLabel">
-          <span>{{ t(item.columnName) }}</span>
+  <Teleport to="body">
+    <div
+      v-if="props.modelValue"
+      ref="menuRef"
+      data-frkb-context-menu="true"
+      class="menu unselectable"
+      :style="{ top: positionTop + 'px', left: positionLeft + 'px' }"
+      @click.stop="() => {}"
+    >
+      <div v-for="item of props.columnData" class="menuGroup">
+        <div class="menuButton" @click="menuButtonClick(item)" @contextmenu="menuButtonClick(item)">
+          <div class="menuButtonIcon">
+            <img v-if="item.show" :src="tickIcon" style="width: 16px" class="theme-icon" />
+          </div>
+          <div class="menuButtonLabel">
+            <span>{{ t(item.columnName) }}</span>
+          </div>
         </div>
       </div>
     </div>
-  </div>
+  </Teleport>
 </template>
 <style lang="scss" scoped>
 .menu {
-  position: absolute;
+  position: fixed;
   background-color: var(--bg-elev);
   border: 1px solid var(--border);
   font-size: 14px;
@@ -169,6 +151,7 @@ onUnmounted(() => {
       padding: 5px 20px;
       border-radius: 5px;
       white-space: nowrap;
+      color: var(--text);
 
       &:hover {
         background-color: var(--accent);

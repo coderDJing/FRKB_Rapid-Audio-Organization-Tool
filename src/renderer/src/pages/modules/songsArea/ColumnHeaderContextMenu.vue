@@ -12,10 +12,6 @@ const props = defineProps({
   columns: {
     type: Array as PropType<ISongsAreaColumn[]>,
     required: true
-  },
-  scrollHostElement: {
-    type: Object as PropType<HTMLElement | null | undefined>,
-    default: null
   }
 })
 
@@ -44,7 +40,6 @@ const onMenuVModelUpdate = (value: boolean) => {
   <SongAreaColRightClickMenu
     :model-value="internalShow"
     :click-event="targetEvent"
-    :scroll-host-element="scrollHostElement"
     :column-data="columns"
     @update:model-value="onMenuVModelUpdate"
     @col-menu-handle-click="handleMenuItemClick"

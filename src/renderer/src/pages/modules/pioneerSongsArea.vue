@@ -33,6 +33,7 @@ import {
   shouldRefreshRekordboxPlaylistTracks
 } from '@renderer/utils/rekordboxLibraryCache'
 import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
+import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHeaderContextMenu.vue'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useKeyboardSelection } from '@renderer/pages/modules/songsArea/composables/useKeyboardSelection'
 import type { ISongsAreaPaneRuntimeState } from '@renderer/stores/runtime'
@@ -610,6 +611,26 @@ const handleColumnsUpdate = (nextColumns: ISongsAreaColumn[]) => {
   columnData.value = nextColumns
   applyFiltersAndSorting('columns-updated')
   selectedRowKeys.value = []
+}
+
+// --- 列头右键菜单 ---
+const colRightClickMenuShow = ref(false)
+const triggeringColContextEvent = ref<MouseEvent | null>(null)
+const contextmenuEvent = (event: MouseEvent) => {
+  triggeringColContextEvent.value = event
+  colRightClickMenuShow.value = true
+}
+
+const handleToggleColumnVisibility = (columnKey: string) => {
+  const columnIndex = columnData.value.findIndex((col) => col.key === columnKey)
+  if (columnIndex !== -1) {
+    columnData.value = columnData.value.map((col, index) => {
+      if (index === columnIndex) {
+        return { ...col, show: !col.show }
+      }
+      return col
+    })
+  }
 }
 
 const handleColumnClick = (column: ISongsAreaColumn) => {
@@ -1357,7 +1378,7 @@ watch(
         :index-action-disabled="playlistMutationPending || loading"
         @update:columns="handleColumnsUpdate"
         @column-click="handleColumnClick"
-        @header-contextmenu.stop.prevent
+        @header-contextmenu="contextmenuEvent"
         @index-action-click="handleRenumberTracksByVisibleOrder"
       />
 
@@ -1397,6 +1418,12 @@ watch(
         @playlist-reorder="handlePlaylistReorder"
       />
     </OverlayScrollbarsComponent>
+    <ColumnHeaderContextMenu
+      v-model="colRightClickMenuShow"
+      :target-event="triggeringColContextEvent"
+      :columns="columnData"
+      @toggle-column-visibility="handleToggleColumnVisibility"
+    />
     <RekordboxDesktopWritingOverlay v-if="playlistMutationPending" />
     <Teleport to="body">
       <selectSongListDialog

@@ -1016,7 +1016,6 @@ const emptyHintText = computed(() => {
       v-model="colRightClickMenuShow"
       :target-event="triggeringColContextEvent"
       :columns="columnData"
-      :scroll-host-element="songsAreaRef?.osInstance()?.elements().host"
       @toggle-column-visibility="handleToggleColumnVisibility"
     />
     <Teleport to="body">
