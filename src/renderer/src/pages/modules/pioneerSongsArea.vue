@@ -19,6 +19,12 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
+import { openRekordboxDesktopPlaylistForSelectedTracks } from '@renderer/utils/rekordboxDesktopPlaylist'
+import {
+  buildNeteaseSearchQuery,
+  normalizeNeteaseSearchText,
+  openNeteaseSearch
+} from '@renderer/utils/neteaseSearch'
 import {
   buildRekordboxSourceCacheKey,
   getCachedRekordboxPlaylistTracks,
@@ -93,11 +99,15 @@ const pioneerSongsAreaState = {
   get scrollTop() {
     return 0
   },
-  set scrollTop(_: number) {},
+  set scrollTop(value: number) {
+    void value
+  },
   get scrollLeft() {
     return 0
   },
-  set scrollLeft(_: number) {},
+  set scrollLeft(value: number) {
+    void value
+  },
   columnCacheByMode: {}
 } as unknown as ISongsAreaPaneRuntimeState
 const { songClick, cancelPendingRepeatSingleClickDeselect } = useKeyboardSelection({
@@ -243,13 +253,27 @@ const pioneerSongMenuArr = computed<IMenu[][]>(() => {
     groups.push([{ menuName: 'rekordboxDesktop.removeTracksFromPlaylistAction' }])
   }
   groups.push([{ menuName: 'tracks.exportTracksCopyOnly' }])
+  groups.push([{ menuName: 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks' }])
   groups.push([
     { menuName: 'library.copyToFilter' },
     { menuName: 'library.copyToCurated' },
     { menuName: 'library.addToMixtapeByCopy' }
   ])
   groups.push([{ menuName: 'tracks.showInFileExplorer' }])
+  groups.push([
+    {
+      menuName: 'tracks.neteaseSearch',
+      children: [
+        { menuName: 'tracks.neteaseSearchTitleArtist' },
+        { menuName: 'tracks.neteaseSearchTitle' },
+        { menuName: 'tracks.neteaseSearchArtist' },
+        { menuName: 'tracks.neteaseSearchAlbum' }
+      ]
+    }
+  ])
+  groups.push([{ menuName: 'similarTracks.menu' }])
   groups.push([{ menuName: 'fingerprints.analyzeAndAdd' }])
+  groups.push([{ menuName: 'tracks.clearTrackCache' }])
   return groups
 })
 
@@ -350,6 +374,14 @@ const showErrorDialog = async (message: string) => {
   await confirm({
     title: t('common.error'),
     content: [message || t('common.unknownError')],
+    confirmShow: false
+  })
+}
+
+const confirmTaskBusy = async () => {
+  await confirm({
+    title: t('dialog.hint'),
+    content: [t('import.waitForTask')],
     confirmShow: false
   })
 }
@@ -870,6 +902,18 @@ const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
   const { updatedTracks, missingTracks, existingTracks } =
     await resolveExistingOperationTracks(selectedTracks)
   const showSelectedMissingHint = async () => showFileMissingHint(missingTracks)
+  const showNeteaseSearchEmptyHint = async (messageKey: string) => {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t(messageKey)],
+      confirmShow: false
+    })
+  }
+  const openSongNeteaseSearch = async (query: string) => {
+    if (!openNeteaseSearch(query)) {
+      await showNeteaseSearchEmptyHint('tracks.neteaseSearchEmpty')
+    }
+  }
 
   switch (result.menuName) {
     case 'rekordboxDesktop.removeTracksFromPlaylistAction':
@@ -908,6 +952,42 @@ const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
         }
       )
       return
+    case 'tracks.clearTrackCache':
+      if (!existingTracks.length) {
+        await showSelectedMissingHint()
+        return
+      }
+      await window.electron.ipcRenderer.invoke(
+        'track:cache:clear:batch',
+        existingTracks.map((item) => item.filePath)
+      )
+      return
+    case 'similarTracks.menu': {
+      const { default: openSimilarTracksDialog } =
+        await import('@renderer/components/similarTracksDialog')
+      await openSimilarTracksDialog(song)
+      return
+    }
+    case 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks':
+      if (runtime.isProgressing) {
+        await confirmTaskBusy()
+        return
+      }
+      if (!existingTracks.length) {
+        await showSelectedMissingHint()
+        return
+      }
+      runtime.isProgressing = true
+      try {
+        await openRekordboxDesktopPlaylistForSelectedTracks({
+          tracks: existingTracks,
+          songListUUID: currentPlaybackListKey.value,
+          forceKeepSourceTracks: true
+        })
+      } finally {
+        runtime.isProgressing = false
+      }
+      return
     case 'tracks.exportTracksCopyOnly': {
       if (!existingTracks.length) {
         await showSelectedMissingHint()
@@ -933,6 +1013,43 @@ const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
         window.electron.ipcRenderer.send('show-item-in-folder', updatedTracks[0]?.filePath)
       }
       return
+    case 'tracks.neteaseSearchTitle': {
+      const title = normalizeNeteaseSearchText(song.title)
+      if (!title) {
+        await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleEmpty')
+        return
+      }
+      await openSongNeteaseSearch(title)
+      return
+    }
+    case 'tracks.neteaseSearchArtist': {
+      const artist = normalizeNeteaseSearchText(song.artist)
+      if (!artist) {
+        await showNeteaseSearchEmptyHint('tracks.neteaseSearchArtistEmpty')
+        return
+      }
+      await openSongNeteaseSearch(artist)
+      return
+    }
+    case 'tracks.neteaseSearchAlbum': {
+      const album = normalizeNeteaseSearchText(song.album)
+      if (!album) {
+        await showNeteaseSearchEmptyHint('tracks.neteaseSearchAlbumEmpty')
+        return
+      }
+      await openSongNeteaseSearch(album)
+      return
+    }
+    case 'tracks.neteaseSearchTitleArtist': {
+      const title = normalizeNeteaseSearchText(song.title)
+      const artist = normalizeNeteaseSearchText(song.artist)
+      if (!title && !artist) {
+        await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleArtistEmpty')
+        return
+      }
+      await openSongNeteaseSearch(buildNeteaseSearchQuery(title, artist))
+      return
+    }
   }
 }
 

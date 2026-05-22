@@ -247,7 +247,7 @@ const flashBorder = (name: string) => {
   }, 500)
 }
 
-const syncRuntimeDesktopTree = (result: LoadTreeResult, preferredPlaylistId = 0) => {
+const syncRuntimeDesktopTree = (result: LoadTreeResult) => {
   const sourceKey = String(
     result.sourceKey || runtime.pioneerDeviceLibrary.selectedSourceKey || ''
   ).trim()
@@ -262,12 +262,9 @@ const syncRuntimeDesktopTree = (result: LoadTreeResult, preferredPlaylistId = 0)
     rootPath,
     libraryType: 'masterDb'
   })
-  setCachedRekordboxSourceTree(sourceCacheKey, rawTreeNodes.value, {
-    selectedPlaylistId: preferredPlaylistId
-  })
+  setCachedRekordboxSourceTree(sourceCacheKey, rawTreeNodes.value)
   if (runtime.pioneerDeviceLibrary.selectedSourceKind !== 'desktop') return
   runtime.pioneerDeviceLibrary.treeNodes = rawTreeNodes.value
-  runtime.pioneerDeviceLibrary.selectedPlaylistId = preferredPlaylistId
 }
 
 const loadTree = async (preferredPlaylistId = Number(runtime.dialogSelectedSongListUUID) || 0) => {
@@ -289,7 +286,7 @@ const loadTree = async (preferredPlaylistId = Number(runtime.dialogSelectedSongL
     if (nextSelectedId > 0 && !selectedArea.value) {
       selectedArea.value = 'tree'
     }
-    syncRuntimeDesktopTree(result, nextSelectedId)
+    syncRuntimeDesktopTree(result)
   } catch (error) {
     loadError.value =
       error instanceof Error ? error.message : String(error || t('common.unknownError'))
