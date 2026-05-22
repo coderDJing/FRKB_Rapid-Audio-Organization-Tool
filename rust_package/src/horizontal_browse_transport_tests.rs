@@ -184,6 +184,95 @@ fn negative_playhead_outputs_silence_until_zero_then_audio() {
 }
 
 #[test]
+fn fully_decoded_pcm_tail_stops_at_real_audio_end() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  engine.output_sample_rate = 4;
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("tail.mp3".to_string());
+    top.loaded_file_path = top.file_path.clone();
+    top.fully_decoded_file_path = top.file_path.clone();
+    top.duration_sec = 3.0;
+    top.current_sec = 2.5;
+    top.last_observed_at_ms = -1.0;
+    top.playing = true;
+    top.playback_rate = 1.0;
+    top.master_tempo_enabled = false;
+    top.sample_rate = 4;
+    top.channels = 1;
+    top.pcm_start_sec = 0.0;
+    top.pcm_data = Arc::new(vec![0.0; 10]);
+  }
+
+  let sample = engine.sample_deck(DeckId::Top);
+  let snapshot = engine.snapshot(1000.0);
+
+  assert_eq!(sample, (0.0, 0.0));
+  assert!(!engine.deck(DeckId::Top).playing);
+  assert!((engine.deck(DeckId::Top).current_sec - 2.5).abs() < 0.0001);
+  assert!(!snapshot.top.playing);
+  assert!(!snapshot.top.play_requested);
+  assert!((snapshot.top.current_sec - 2.5).abs() < 0.0001);
+  assert!((snapshot.top.duration_sec - 3.0).abs() < 0.0001);
+}
+
+#[test]
+fn partial_pcm_tail_does_not_stop_while_full_decode_is_pending() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  engine.output_sample_rate = 4;
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("partial.mp3".to_string());
+    top.loaded_file_path = top.file_path.clone();
+    top.pending_full_decode_file_path = top.file_path.clone();
+    top.duration_sec = 3.0;
+    top.current_sec = 2.5;
+    top.last_observed_at_ms = -1.0;
+    top.playing = true;
+    top.playback_rate = 1.0;
+    top.master_tempo_enabled = false;
+    top.sample_rate = 4;
+    top.channels = 1;
+    top.pcm_start_sec = 0.0;
+    top.pcm_data = Arc::new(vec![0.0; 10]);
+  }
+
+  let sample = engine.sample_deck(DeckId::Top);
+
+  assert_eq!(sample, (0.0, 0.0));
+  assert!(engine.deck(DeckId::Top).playing);
+  assert!((engine.deck(DeckId::Top).current_sec - 2.5).abs() < 0.0001);
+}
+
+#[test]
+fn full_pcm_tail_clamps_snapshot_estimate_before_audio_callback_stops() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("tail-snapshot.mp3".to_string());
+    top.loaded_file_path = top.file_path.clone();
+    top.fully_decoded_file_path = top.file_path.clone();
+    top.duration_sec = 3.0;
+    top.current_sec = 2.4;
+    top.last_observed_at_ms = 1000.0;
+    top.playing = true;
+    top.playback_rate = 1.0;
+    top.sample_rate = 4;
+    top.channels = 1;
+    top.pcm_start_sec = 0.0;
+    top.pcm_data = Arc::new(vec![0.0; 10]);
+  }
+
+  let snapshot = engine.snapshot(2000.0);
+
+  assert!(engine.deck(DeckId::Top).playing);
+  assert!((snapshot.top.current_sec - 2.5).abs() < 0.0001);
+  assert!((snapshot.top.duration_sec - 3.0).abs() < 0.0001);
+  assert!((snapshot.top.effective_duration_sec - 2.5).abs() < 0.0001);
+  assert!(!snapshot.top.playing_audible);
+}
+
+#[test]
 fn audio_owned_current_sec_does_not_double_count_elapsed_time() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   engine.last_now_ms = 2000.0;

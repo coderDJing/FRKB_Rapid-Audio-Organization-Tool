@@ -26,6 +26,54 @@ impl HorizontalBrowseTransportEngine {
     (audio_sec + Self::deck_time_basis_offset_sec(deck_state)).max(0.0)
   }
 
+  fn normalized_path(value: &Option<String>) -> &str {
+    value.as_deref().map(str::trim).unwrap_or("")
+  }
+
+  fn has_full_track_pcm_state(deck_state: &DeckState) -> bool {
+    let file_path = Self::normalized_path(&deck_state.file_path);
+    !file_path.is_empty()
+      && Self::normalized_path(&deck_state.loaded_file_path) == file_path
+      && Self::normalized_path(&deck_state.fully_decoded_file_path) == file_path
+      && deck_state.pcm_start_sec <= 0.0001
+      && !deck_state.pcm_data.is_empty()
+      && deck_state.sample_rate > 0
+      && deck_state.channels > 0
+  }
+
+  fn decoded_pcm_end_timeline_sec(deck_state: &DeckState) -> Option<f64> {
+    if deck_state.sample_rate == 0 || deck_state.channels == 0 {
+      return None;
+    }
+    let frame_count = deck_state.pcm_data.len() / deck_state.channels as usize;
+    if frame_count == 0 {
+      return None;
+    }
+    let audio_end_sec =
+      deck_state.pcm_start_sec + frame_count as f64 / deck_state.sample_rate as f64;
+    let timeline_end_sec = Self::audio_sec_to_timeline_sec(deck_state, audio_end_sec);
+    timeline_end_sec.is_finite().then_some(timeline_end_sec)
+  }
+
+  fn effective_track_end_sec(deck_state: &DeckState) -> Option<f64> {
+    let duration_sec = if deck_state.duration_sec.is_finite() && deck_state.duration_sec > 0.0 {
+      Some(deck_state.duration_sec)
+    } else {
+      None
+    };
+    let decoded_end_sec = if Self::has_full_track_pcm_state(deck_state) {
+      Self::decoded_pcm_end_timeline_sec(deck_state)
+    } else {
+      None
+    };
+    match (duration_sec, decoded_end_sec) {
+      (Some(duration), Some(decoded_end)) => Some(duration.min(decoded_end)),
+      (Some(duration), None) => Some(duration),
+      (None, Some(decoded_end)) => Some(decoded_end),
+      (None, None) => None,
+    }
+  }
+
   pub(super) fn original_beat_grid(&self, deck: DeckId) -> Option<BeatGridSnapshot> {
     let deck_state = self.deck(deck);
     let bpm = deck_state.bpm?;
@@ -267,8 +315,8 @@ impl HorizontalBrowseTransportEngine {
     };
     let delta_sec = ((now_ms - deck.last_observed_at_ms).max(0.0)) / 1000.0;
     let estimated = base + delta_sec * rate;
-    if deck.duration_sec.is_finite() && deck.duration_sec > 0.0 {
-      estimated.min(deck.duration_sec)
+    if let Some(end_sec) = Self::effective_track_end_sec(deck) {
+      estimated.min(end_sec)
     } else {
       estimated
     }
@@ -475,6 +523,8 @@ impl HorizontalBrowseTransportEngine {
     let derived = self.derive_state(deck, now_ms);
     let playhead_loaded = self.has_loaded_segment_covering(deck, derived.estimated_current_sec);
     let full_decoding = deck_state.pending_full_decode_file_path.is_some();
+    let effective_duration_sec =
+      Self::effective_track_end_sec(deck_state).unwrap_or(deck_state.duration_sec);
     HorizontalBrowseTransportDeckSnapshot {
       deck: deck.as_str().to_string(),
       label: deck_state
@@ -499,6 +549,7 @@ impl HorizontalBrowseTransportEngine {
       playing: deck_state.playing,
       current_sec: derived.estimated_current_sec,
       duration_sec: deck_state.duration_sec,
+      effective_duration_sec,
       playback_rate: deck_state.playback_rate,
       master_tempo_enabled: deck_state.master_tempo_enabled,
       bpm: deck_state.bpm.unwrap_or(0.0),

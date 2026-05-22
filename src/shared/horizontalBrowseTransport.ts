@@ -47,6 +47,7 @@ export type HorizontalBrowseTransportDeckSnapshot = {
   playing: boolean
   currentSec: number
   durationSec: number
+  effectiveDurationSec: number
   playbackRate: number
   masterTempoEnabled: boolean
   bpm: number
@@ -107,6 +108,7 @@ export const createEmptyHorizontalBrowseTransportDeckSnapshot = (
   playheadLoaded: false,
   currentSec: 0,
   durationSec: 0,
+  effectiveDurationSec: 0,
   loaded: false,
   fullyDecoded: false,
   decoding: false,

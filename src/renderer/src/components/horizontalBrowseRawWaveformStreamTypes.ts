@@ -117,6 +117,7 @@ export const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_MIN_SEC = 4
 export const HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_TIMEOUT_MS = 1500
 export const HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_MAX_RETRIES = 1
 export const HORIZONTAL_BROWSE_RAW_CONTINUE_TIMEOUT_MS = 1200
+export const HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC = 0.75
 
 export const toFloat32Array = (value: unknown) => {
   if (value instanceof Float32Array) return value

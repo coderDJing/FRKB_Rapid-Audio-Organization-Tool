@@ -84,6 +84,7 @@ pub struct HorizontalBrowseTransportDeckSnapshot {
   pub playing: bool,
   pub current_sec: f64,
   pub duration_sec: f64,
+  pub effective_duration_sec: f64,
   pub playback_rate: f64,
   pub master_tempo_enabled: bool,
   pub bpm: f64,

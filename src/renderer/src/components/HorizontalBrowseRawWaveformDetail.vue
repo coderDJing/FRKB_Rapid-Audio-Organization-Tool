@@ -26,6 +26,7 @@ import {
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
 import { useHorizontalBrowseRawWaveformStream } from '@renderer/components/useHorizontalBrowseRawWaveformStream'
+import { HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC } from '@renderer/components/horizontalBrowseRawWaveformStreamTypes'
 import {
   useHorizontalBrowseWaveformScrubPreview,
   type HorizontalBrowseScrubPreviewPayload
@@ -38,12 +39,7 @@ import type {
   HorizontalBrowseWaveformLayout,
   HorizontalBrowseWaveformRenderStyle
 } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
-import {
-  resolveHorizontalBrowseWaveformTraceElapsedMs,
-  sendHorizontalBrowseWaveformTrace
-} from '@renderer/components/horizontalBrowseWaveformTrace'
 import { buildHorizontalBrowseRawWaveformGridSignature } from '@renderer/components/horizontalBrowseRawWaveformGridSignature'
-import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/components/horizontalBrowseInteractionTimeline'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 
 const props = defineProps<{
@@ -115,7 +111,9 @@ const resolveWaveformRenderStyle = () =>
   props.waveformRenderStyle === 'raw-curve' ? 'raw-curve' : 'columns'
 
 const resolveWaveformCurrentSeconds = () =>
-  (Number(props.currentSeconds) || 0) + localGridShiftPhaseOffsetSec.value
+  normalizePreviewTimelineSeconds(
+    (Number(props.currentSeconds) || 0) + localGridShiftPhaseOffsetSec.value
+  )
 
 const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS = 4
 const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS = 10
@@ -132,7 +130,6 @@ let dragStartClientX = 0
 let dragStartSec = 0
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
-let loadStartedAt = 0
 let pendingLocalGridSignature = ''
 let lastPlaybackPositionSample: {
   songKey: string
@@ -141,19 +138,6 @@ let lastPlaybackPositionSample: {
   playbackRate: number
   playing: boolean
 } | null = null
-
-const traceHorizontalWaveformLoad = (stage: string, payload?: Record<string, unknown>) => {
-  const filePath = String(props.song?.filePath || '').trim()
-  const deck = props.direction === 'up' ? 'top' : 'bottom'
-  sendHorizontalBrowseWaveformTrace('detail', stage, {
-    deck: props.direction,
-    filePath,
-    loadToken,
-    elapsedMs: resolveHorizontalBrowseWaveformTraceElapsedMs(loadStartedAt),
-    sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, filePath),
-    ...payload
-  })
-}
 
 const resolveDisplayGridBpm = () =>
   Number.isFinite(Number(props.song?.bpm)) && Number(props.song?.bpm) > 0
@@ -294,10 +278,44 @@ const buildSongGridSignature = () =>
     timeBasisOffsetMs: props.song?.timeBasisOffsetMs
   })
 
-const normalizePreviewTimelineSeconds = (seconds: number) => {
+function resolveRawTimelineEndSec() {
+  const current = rawData.value
+  if (!current) return null
+  const rate = Math.max(0, Number(current.rate) || 0)
+  const totalFrames = Math.max(0, Math.floor(Number(current.frames) || 0))
+  const loadedFrames = Math.max(0, Math.floor(Number(current.loadedFrames ?? totalFrames) || 0))
+  const rawStartSec = Math.max(0, Number(current.startSec) || 0)
+  const durationSec = Math.max(0, Number(current.duration) || 0)
+  if (rawStartSec > 0.0001 || rate <= 0 || totalFrames <= 0 || loadedFrames < totalFrames) {
+    return null
+  }
+  const rawEndSec =
+    rawStartSec +
+    totalFrames / rate +
+    Math.max(0, Number(previewTimeBasisOffsetMs.value) || 0) / 1000
+  const tailGapSec = durationSec - rawEndSec
+  if (
+    durationSec > 0 &&
+    rawEndSec > 0 &&
+    tailGapSec >= 0 &&
+    tailGapSec <= HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC
+  ) {
+    return rawEndSec
+  }
+  return null
+}
+
+function resolveEffectiveTimelineEndSec() {
+  const durationSec = resolvePreviewDurationSec()
+  const rawEndSec = resolveRawTimelineEndSec()
+  if (rawEndSec === null) return durationSec
+  return durationSec > 0 ? Math.min(durationSec, rawEndSec) : rawEndSec
+}
+
+function normalizePreviewTimelineSeconds(seconds: number) {
   const numeric = Number(seconds)
   if (!Number.isFinite(numeric)) return 0
-  const duration = resolvePreviewDurationSec()
+  const duration = resolveEffectiveTimelineEndSec()
   if (duration > 0) {
     return props.allowNegativeTimeline
       ? Math.min(numeric, duration)
@@ -621,7 +639,7 @@ const {
     ),
   timeBasisOffsetMs: () => Number(previewTimeBasisOffsetMs.value) || 0,
   playing: () => previewPlaying.value,
-  currentSeconds: () => props.currentSeconds,
+  currentSeconds: resolveWaveformCurrentSeconds,
   viewportAnchorSec: resolvePreviewAnchorSec,
   visibleDurationSec: resolveVisibleDurationSec,
   previewLoading,
@@ -647,7 +665,6 @@ mountRawWaveformStream()
 const loadWaveform = async () => {
   const currentSong = props.song
   const currentToken = ++loadToken
-  loadStartedAt = performance.now()
   pendingLocalGridSignature = ''
 
   clearPersistTimer()
@@ -665,7 +682,6 @@ const loadWaveform = async () => {
 
   const filePath = String(currentSong?.filePath || '').trim()
   if (!filePath) {
-    traceHorizontalWaveformLoad('load:no-file')
     syncGridStateFromSong()
     return
   }
@@ -673,19 +689,12 @@ const loadWaveform = async () => {
   try {
     previewLoading.value = true
     const targetRate = resolveWaveformTargetRate(!!props.deferWaveformLoad)
-    traceHorizontalWaveformLoad('load:start', {
-      targetRate,
-      deferred: Boolean(props.deferWaveformLoad),
-      priorityHint: Number(props.rawLoadPriorityHint) || 0
-    })
-    traceHorizontalWaveformLoad('stream:begin', { targetRate })
     beginRawWaveformStream(filePath, targetRate, currentToken)
     syncGridStateFromSong()
     previewStartSec.value = resolvePlaybackAlignedStart(0)
     scheduleDraw()
   } catch {
     if (currentToken !== loadToken) return
-    traceHorizontalWaveformLoad('load:error')
     previewLoading.value = false
     rawStreamActive.value = false
     rawData.value = null
@@ -820,8 +829,10 @@ watch(
   (playing) => {
     previewPlaying.value = playing
     if (!playing) {
+      const anchorSec = resolveWaveformCurrentSeconds()
+      applyPreviewPlaybackPosition(anchorSec, false)
       flushDeferredRawWaveformStore()
-      maybeContinueRawWaveformStream(resolvePreviewAnchorSec())
+      maybeContinueRawWaveformStream(anchorSec)
     }
   },
   { immediate: true }
@@ -843,7 +854,7 @@ watch(
       if (dragging.value) return
       const safeSongKey = String(songKey || '').trim()
       const safeSeconds = normalizePreviewTimelineSeconds(seconds)
-      maybeContinueRawWaveformStream()
+      maybeContinueRawWaveformStream(safeSeconds)
       if (!safeSongKey) {
         lastPlaybackPositionSample = null
         applyPreviewPlaybackPosition(0)

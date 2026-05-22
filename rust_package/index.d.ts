@@ -73,6 +73,7 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   playing: boolean
   currentSec: number
   durationSec: number
+  effectiveDurationSec: number
   playbackRate: number
   masterTempoEnabled: boolean
   bpm: number

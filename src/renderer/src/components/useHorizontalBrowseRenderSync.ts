@@ -41,6 +41,12 @@ const normalizeTimelineSeconds = (seconds: number) => {
   return Number.isFinite(numeric) ? numeric : 0
 }
 
+const resolveDeckRenderLimitSec = (snapshot: HorizontalBrowseTransportDeckSnapshot) => {
+  const effectiveDurationSec = Math.max(0, Number(snapshot.effectiveDurationSec) || 0)
+  if (effectiveDurationSec > 0) return effectiveDurationSec
+  return Math.max(0, Number(snapshot.durationSec) || 0)
+}
+
 const assignDeckRenderCurrentSeconds = (
   deck: DeckKey,
   seconds: number,
@@ -89,7 +95,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const pendingIntent = pendingRenderSeekIntent[deck]
     if (pendingIntent) return pendingIntent.seconds
     const snapshot = params.resolveTransportDeckSnapshot(deck)
-    const durationSec = Math.max(0, Number(snapshot.durationSec) || 0)
+    const renderLimitSec = resolveDeckRenderLimitSec(snapshot)
     const playbackRate = Number(snapshot.playbackRate) || 1
     const baseSec = normalizeTimelineSeconds(deckRenderSyncBaseSec[deck])
     const baseAtMs = Math.max(0, Number(deckRenderSyncBaseAtMs[deck]) || 0)
@@ -97,7 +103,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       baseAtMs > 0 && (snapshot.playingAudible || (snapshot.playing && baseSec < 0))
     const deltaSec = canEstimatePlayback ? Math.max(0, nowMs - baseAtMs) / 1000 : 0
     const nextSec = baseSec + deltaSec * Math.max(0.25, playbackRate)
-    return durationSec > 0 ? Math.min(durationSec, nextSec) : nextSec
+    return renderLimitSec > 0 ? Math.min(renderLimitSec, nextSec) : nextSec
   }
 
   const resolveDeckRenderCurrentSeconds = (deck: DeckKey) => estimateDeckRenderCurrentSeconds(deck)
@@ -109,6 +115,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       snapshot.loaded ? 1 : 0,
       snapshot.playing ? 1 : 0,
       Number(snapshot.durationSec || 0).toFixed(3),
+      Number(snapshot.effectiveDurationSec || 0).toFixed(3),
       Number(snapshot.playbackRate || 1).toFixed(6),
       snapshot.loopActive ? 1 : 0,
       Number(snapshot.loopStartSec || 0).toFixed(6),
@@ -293,7 +300,11 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   // 那时 snapshot.renderCurrentSec 已经是目标秒，本函数的提交与之一致，不会造成回跳。
   const applyDeckRenderCurrentSeconds = (deck: DeckKey, seconds: number) => {
     const nowMs = performance.now()
-    const safeSeconds = normalizeTimelineSeconds(seconds)
+    const snapshot = params.resolveTransportDeckSnapshot(deck)
+    const renderLimitSec = resolveDeckRenderLimitSec(snapshot)
+    const normalizedSeconds = normalizeTimelineSeconds(seconds)
+    const safeSeconds =
+      renderLimitSec > 0 ? Math.min(normalizedSeconds, renderLimitSec) : normalizedSeconds
     pendingRenderSeekIntent[deck] = {
       seconds: safeSeconds,
       startedAtMs: nowMs

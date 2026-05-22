@@ -201,6 +201,69 @@ pub(super) fn clear_master_tempo_state(target: &mut DeckState) {
   target.master_tempo_state.flushed = false;
 }
 
+fn normalized_path(value: &Option<String>) -> &str {
+  value.as_deref().map(str::trim).unwrap_or("")
+}
+
+fn has_full_track_pcm(target: &DeckState) -> bool {
+  let file_path = normalized_path(&target.file_path);
+  !file_path.is_empty()
+    && normalized_path(&target.loaded_file_path) == file_path
+    && normalized_path(&target.fully_decoded_file_path) == file_path
+    && target.pcm_start_sec <= 0.0001
+    && !target.pcm_data.is_empty()
+    && target.sample_rate > 0
+    && target.channels > 0
+}
+
+fn decoded_pcm_frame_count(target: &DeckState) -> Option<usize> {
+  if target.sample_rate == 0 || target.channels == 0 {
+    return None;
+  }
+  let frame_count = target.pcm_data.len() / target.channels as usize;
+  if frame_count == 0 {
+    return None;
+  }
+  Some(frame_count)
+}
+
+fn decoded_pcm_end_timeline_sec(target: &DeckState) -> Option<f64> {
+  let frame_count = decoded_pcm_frame_count(target)?;
+  let audio_end_sec = target.pcm_start_sec + frame_count as f64 / target.sample_rate as f64;
+  let timeline_end_sec =
+    super::HorizontalBrowseTransportEngine::audio_sec_to_timeline_sec(target, audio_end_sec);
+  timeline_end_sec.is_finite().then_some(timeline_end_sec)
+}
+
+fn master_tempo_source_exhausted(target: &DeckState) -> bool {
+  let Some(frame_count) = decoded_pcm_frame_count(target) else {
+    return false;
+  };
+  target.master_tempo_state.flushed
+    && target.master_tempo_state.source_frame_cursor + 0.0001 >= frame_count as f64
+}
+
+fn finish_deck_at_decoded_pcm_end(target: &mut DeckState) -> bool {
+  if !has_full_track_pcm(target) {
+    return false;
+  }
+  let Some(decoded_end_sec) = decoded_pcm_end_timeline_sec(target) else {
+    return false;
+  };
+  let stop_sec = if target.duration_sec.is_finite() && target.duration_sec > 0.0 {
+    decoded_end_sec.min(target.duration_sec)
+  } else {
+    decoded_end_sec
+  };
+  target.current_sec = stop_sec;
+  target.last_observed_at_ms = -1.0;
+  target.playing = false;
+  target.scrub_preview.active = false;
+  target.scrub_preview.rate = 0.0;
+  clear_master_tempo_state(target);
+  true
+}
+
 pub(super) fn reset_band_filter_state(target: &mut DeckState) {
   target.band_filter_state = Default::default();
 }
@@ -450,6 +513,7 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
     ((audio_current_sec - target.pcm_start_sec).max(0.0)) * target.sample_rate as f64;
   let base_index = source_frame.floor() as usize;
   if base_index >= frame_count {
+    finish_deck_at_decoded_pcm_end(target);
     return (0.0, 0.0);
   }
   let frac = (source_frame - base_index as f64) as f32;
@@ -479,6 +543,11 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
   {
     target.current_sec = target.loop_start_sec;
     reset_master_tempo_state(target);
+  }
+  if let Some(decoded_end_sec) = decoded_pcm_end_timeline_sec(target) {
+    if target.current_sec >= decoded_end_sec && finish_deck_at_decoded_pcm_end(target) {
+      return (left * target.gain, right * target.gain);
+    }
   }
   if target.duration_sec.is_finite() && target.current_sec >= target.duration_sec {
     target.current_sec = target.duration_sec;
@@ -575,6 +644,9 @@ fn sample_deck_master_tempo(target: &mut DeckState, output_sample_rate: f64) -> 
     - target.master_tempo_state.output_offset)
     / channels;
   if available_frames == 0 {
+    if master_tempo_source_exhausted(target) {
+      finish_deck_at_decoded_pcm_end(target);
+    }
     return (0.0, 0.0);
   }
 

@@ -16,11 +16,11 @@ import {
   PREVIEW_MAX_SAMPLES_PER_PIXEL,
   clampNumber
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
-import { sendHorizontalBrowseWaveformTrace } from '@renderer/components/horizontalBrowseWaveformTrace'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import { isRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformData'
 import { resolveHorizontalBrowseWaveformThemeVariant } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
 import { createHorizontalBrowseDetailLiveCanvasBridge } from '@renderer/components/horizontalBrowseDetailLiveCanvasBridge'
+import { HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC } from '@renderer/components/horizontalBrowseRawWaveformStreamTypes'
 import { normalizeSongHotCues } from '@shared/hotCues'
 import { normalizeSongMemoryCues } from '@shared/memoryCues'
 import type {
@@ -81,7 +81,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let nextAllowedStreamDrawAt = 0
   let pendingRawStreamDirtyStartSec: number | null = null
   let pendingRawStreamDirtyEndSec: number | null = null
-  let lastRenderTraceSignature = ''
   let liveCanvasRenderToken = 0
   let liveCanvasAttached = false
   let retainedWaveformFilePath = ''
@@ -121,29 +120,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     onRendered: (payload) => handleLiveCanvasRendered(payload),
     onPresentation: (payload) => handleLiveCanvasPresentation(payload)
   })
-
-  const traceHorizontalWaveformRender = (source: string, payload?: Record<string, unknown>) => {
-    const filePath = String(options.song()?.filePath || '').trim()
-    const signature = [
-      options.direction(),
-      filePath,
-      source,
-      String(payload?.mixxxSource ?? ''),
-      String(payload?.effectiveRawCoverage ?? ''),
-      String(payload?.holdingFrame ?? '')
-    ].join('|')
-    if (lastRenderTraceSignature === signature) return
-    lastRenderTraceSignature = signature
-    sendHorizontalBrowseWaveformTrace('render', source, {
-      deck: options.direction(),
-      filePath,
-      rawStreamActive: options.rawStreamActive.value,
-      dragging: options.dragging.value,
-      hasRawData: Boolean(options.rawData.value),
-      hasMixxxData: Boolean(options.mixxxData.value),
-      ...payload
-    })
-  }
 
   const resolvePreviewTimeScale = () => Math.max(0.25, Number(options.playbackRate()) || 1)
 
@@ -411,7 +387,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         Math.floor(Number(options.playbackSyncRevision.value) || 0)
       ),
       playbackRate: Math.max(0.25, Number(options.playbackRate()) || 1),
-      playbackDurationSec: resolvePreviewDurationSec(),
+      playbackDurationSec: resolvePlaybackDurationSecForRender(payload.rawData),
       dirtyStartSec: payload.dirtyStartSec,
       dirtyEndSec: payload.dirtyEndSec
     })
@@ -442,6 +418,39 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     return startSec + loadedFrames / rate
   }
 
+  const resolveRawDataEffectiveEndSec = (rawData: RawWaveformData | null) => {
+    if (!rawData) return Number.POSITIVE_INFINITY
+    const songDurationSec = Math.max(0, Number(rawData.duration) || 0)
+    const rawStartSec = Math.max(0, Number(rawData.startSec) || 0)
+    const totalFrames = Math.max(0, Math.floor(Number(rawData.frames) || 0))
+    const loadedFrames = Math.max(0, Math.floor(Number(rawData.loadedFrames ?? totalFrames) || 0))
+    const rawEndSec = resolveRawDataCoveredEndSec(rawData)
+    const tailGapSec = songDurationSec - rawEndSec
+    if (
+      rawStartSec <= 0.0001 &&
+      totalFrames > 0 &&
+      loadedFrames >= totalFrames &&
+      songDurationSec > 0 &&
+      rawEndSec > 0 &&
+      tailGapSec >= 0 &&
+      tailGapSec <= HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC
+    ) {
+      return rawEndSec
+    }
+    return songDurationSec > 0 ? songDurationSec : Number.POSITIVE_INFINITY
+  }
+
+  const resolvePlaybackDurationSecForRender = (rawData: RawWaveformData | null) => {
+    const previewDurationSec = resolvePreviewDurationSec()
+    const effectiveEndSec = resolveRawDataEffectiveEndSec(rawData)
+    if (Number.isFinite(effectiveEndSec) && effectiveEndSec > 0) {
+      return previewDurationSec > 0
+        ? Math.min(previewDurationSec, effectiveEndSec)
+        : effectiveEndSec
+    }
+    return previewDurationSec
+  }
+
   const isRawDataCoveringRange = (
     rawData: RawWaveformData | null,
     rangeStartSec: number,
@@ -457,8 +466,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     // 覆盖判定只需要关心 rawData **实际可产出像素的音频区间**（与歌曲时长的交集），否则会
     // 在播放开头 / 结尾那 leadingPad / trailingPad 秒里永远被判为 coverage=false，
     // stream 分支拒绝绘制，出现"点击播放后波形过几秒才跟上"的症状。
-    const songDurationSec = Math.max(0, Number(rawData.duration) || 0)
-    const audioEndSec = songDurationSec > 0 ? songDurationSec : Number.POSITIVE_INFINITY
+    const audioEndSec = resolveRawDataEffectiveEndSec(rawData)
     const audibleStartSec = Math.max(rangeStartSec, 0)
     const audibleEndSec = Math.min(rangeEndSec, audioEndSec)
     if (audibleEndSec <= audibleStartSec) {
@@ -509,7 +517,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
     const duration = resolvePreviewDurationSec()
     if (!duration) {
-      traceHorizontalWaveformRender('none')
       clearCanvas()
       displayReady.value = false
       return
@@ -643,11 +650,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     // hold 的释放时机同样也只放在成功渲染分支，不在这里投机性重置。
 
     if (!effectiveMixxxData && !drawableRawData) {
-      traceHorizontalWaveformRender('empty', {
-        mixxxSource: effectiveMixxxSelection.source,
-        effectiveRawCoverage,
-        holdingFrame: holdPreviousWaveformFrame
-      })
       lastStreamRenderedRawData = null
       // 完全无高清波形可画：只清波形层；时间线 overlay 仍按当前 range 渲染。
       displayReady.value = false
@@ -681,20 +683,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         Boolean(drawableRawData) &&
         (effectiveRawCoverage || rawDataRefStable || allowPartialViewportPaint)
       if (!canDrawStream) {
-        traceHorizontalWaveformRender(
-          holdPreviousWaveformFrame ? 'stream-hold' : 'stream-await-raw',
-          {
-            mixxxSource: effectiveMixxxSelection.source,
-            effectiveRawCoverage,
-            rawDataRefStable,
-            allowPartialViewportPaint,
-            holdingFrame: holdPreviousWaveformFrame,
-            renderStartSec,
-            visibleDuration,
-            rawStartSec: effectiveRawData ? Number(effectiveRawData.startSec) || 0 : 0,
-            rawEndSec: resolveRawDataCoveredEndSec(effectiveRawData)
-          }
-        )
         lastStreamRenderedRawData = null
         displayReady.value = false
         queueLiveWaveformRender({
@@ -708,15 +696,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       } else {
         holdPreviousWaveformFrame = false
         const shouldSuppressNextPlaybackScrollReuse = playbackStreamReuse && !wasDisplayReady
-        traceHorizontalWaveformRender('stream-live', {
-          mixxxSource: effectiveMixxxSelection.source,
-          effectiveRawCoverage,
-          rawDataRefStable,
-          allowPartialViewportPaint,
-          forceRawStreamCoverageFullDraw,
-          playbackStartedThisDraw,
-          holdingFrame: false
-        })
         const finishTiming = startHorizontalBrowseUserTiming(
           `frkb:hb:canvas:stream-live:${options.direction()}`
         )
@@ -736,15 +715,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         finishTiming()
       }
     } else if (!drawableRawData && !canRenderWithoutRawCoverage) {
-      traceHorizontalWaveformRender('await-detail-raw', {
-        mixxxSource: effectiveMixxxSelection.source,
-        effectiveRawCoverage,
-        holdingFrame: holdPreviousWaveformFrame,
-        renderStartSec,
-        visibleDuration,
-        rawStartSec: effectiveRawData ? Number(effectiveRawData.startSec) || 0 : 0,
-        rawEndSec: resolveRawDataCoveredEndSec(effectiveRawData)
-      })
       lastStreamRenderedRawData = null
       displayReady.value = false
       queueLiveWaveformRender({
@@ -758,11 +728,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     } else {
       holdPreviousWaveformFrame = false
       const shouldSuppressNextPlaybackScrollReuse = playbackStreamReuse && !wasDisplayReady
-      traceHorizontalWaveformRender('worker-live', {
-        mixxxSource: effectiveMixxxSelection.source,
-        effectiveRawCoverage,
-        holdingFrame: false
-      })
       const finishTiming = startHorizontalBrowseUserTiming(
         `frkb:hb:canvas:worker-live:${options.direction()}`
       )
@@ -830,7 +795,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
     const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
-    traceHorizontalWaveformRender('stream-dirty')
     const finishTiming = startHorizontalBrowseUserTiming(
       `frkb:hb:canvas:stream-dirty:${options.direction()}`
     )
