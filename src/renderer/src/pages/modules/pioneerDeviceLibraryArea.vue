@@ -16,6 +16,20 @@ import {
 } from '@renderer/utils/rekordboxLibraryCache'
 import { t } from '@renderer/utils/translate'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
+import { copyPioneerNodeToLibrary } from '@renderer/composables/rekordboxDesktop/usePioneerCopyToLibrary'
+import {
+  calculateDragApproach,
+  cloneTreeNodes,
+  countNodeDescendants,
+  findNodeById,
+  findNodeLocation,
+  isDescendantNode,
+  isMovableTreeNode,
+  isPlayablePlaylistNode,
+  moveTreeNode,
+  normalizeKeyword,
+  sanitizeNodeName
+} from '@renderer/composables/rekordboxDesktop/useRekordboxTreeUtils'
 import type { IPioneerPlaylistTreeNode, IPioneerPlaylistTrack } from '../../../../types/globals'
 import type {
   RekordboxDesktopCreateEmptyPlaylistResponse,
@@ -31,6 +45,7 @@ const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 const playlistSearch = ref('')
 const expandedFolderIds = ref<Set<number>>(new Set())
 const dialogWriting = ref(false)
+const localLibraryCopying = ref(false)
 const dragSourceId = ref<number | null>(null)
 const dragTarget = ref<{
   nodeId: number
@@ -38,6 +53,11 @@ const dragTarget = ref<{
 } | null>(null)
 const isDesktopSource = computed(
   () => runtime.pioneerDeviceLibrary.selectedSourceKind === 'desktop'
+)
+const isCopyableSource = computed(
+  () =>
+    runtime.pioneerDeviceLibrary.selectedSourceKind === 'desktop' ||
+    runtime.pioneerDeviceLibrary.selectedSourceKind === 'usb'
 )
 const renameMenuKey = 'common.rename'
 const deleteFolderMenuKey = 'rekordboxDesktop.deleteFolderAction'
@@ -51,190 +71,21 @@ const title = computed(() => {
 })
 const originalTreeNodes = computed(() => runtime.pioneerDeviceLibrary.treeNodes || [])
 
-const normalizeKeyword = (value: string) =>
-  String(value || '')
-    .trim()
-    .toLowerCase()
-
-const sanitizeNodeName = (value: string) =>
-  String(value || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-
-const calculateDragApproach = (offsetY: number, isFolder: boolean): 'top' | 'center' | 'bottom' => {
-  if (!isFolder) {
-    return offsetY <= 12 ? 'top' : 'bottom'
-  }
-  if (offsetY <= 8) return 'top'
-  if (offsetY < 16) return 'center'
-  return 'bottom'
-}
-
-const findNodeById = (
-  nodes: IPioneerPlaylistTreeNode[],
-  nodeId: number
-): IPioneerPlaylistTreeNode | null => {
-  const walk = (items: IPioneerPlaylistTreeNode[]): IPioneerPlaylistTreeNode | null => {
-    for (const item of items) {
-      if (item.id === nodeId) return item
-      const children = Array.isArray(item.children) ? item.children : []
-      const matched = walk(children)
-      if (matched) return matched
-    }
-    return null
-  }
-  return walk(nodes)
-}
-
-const countNodeDescendants = (node: IPioneerPlaylistTreeNode) => {
-  const summary = {
-    folderCount: 0,
-    playlistCount: 0
-  }
-
-  const walk = (items: IPioneerPlaylistTreeNode[]) => {
-    for (const item of items) {
-      if (item.isFolder) {
-        summary.folderCount += 1
-        if (Array.isArray(item.children) && item.children.length > 0) {
-          walk(item.children)
-        }
-        continue
-      }
-      if (!item.isSmartPlaylist) {
-        summary.playlistCount += 1
-      }
-    }
-  }
-
-  walk(Array.isArray(node.children) ? node.children : [])
-  return summary
-}
-
-const cloneTreeNodes = (nodes: IPioneerPlaylistTreeNode[]) =>
-  JSON.parse(JSON.stringify(nodes)) as IPioneerPlaylistTreeNode[]
-
-const findNodeLocation = (
-  nodes: IPioneerPlaylistTreeNode[],
-  nodeId: number,
-  parentId = 0
-): {
-  node: IPioneerPlaylistTreeNode
-  siblings: IPioneerPlaylistTreeNode[]
-  index: number
-  parentId: number
-} | null => {
-  for (let index = 0; index < nodes.length; index++) {
-    const node = nodes[index]
-    if (node.id === nodeId) {
-      return {
-        node,
-        siblings: nodes,
-        index,
-        parentId
-      }
-    }
-    const children = Array.isArray(node.children) ? node.children : []
-    const matched = findNodeLocation(children, nodeId, node.id)
-    if (matched) return matched
-  }
-  return null
-}
-
-const isDescendantNode = (
-  nodes: IPioneerPlaylistTreeNode[],
-  sourceId: number,
-  targetId: number
-): boolean => {
-  const source = findNodeById(nodes, sourceId)
-  if (!source || !Array.isArray(source.children) || source.children.length === 0) return false
-  const walk = (items: IPioneerPlaylistTreeNode[]): boolean => {
-    for (const item of items) {
-      if (item.id === targetId) return true
-      if (Array.isArray(item.children) && item.children.length > 0 && walk(item.children)) {
-        return true
-      }
-    }
-    return false
-  }
-  return walk(source.children)
-}
-
-const reorderTreeNodes = (nodes: IPioneerPlaylistTreeNode[]) => {
-  nodes.forEach((node, index) => {
-    node.order = index + 1
-    if (Array.isArray(node.children) && node.children.length > 0) {
-      reorderTreeNodes(node.children)
-    }
-  })
-}
-
-const moveTreeNode = (
-  nodes: IPioneerPlaylistTreeNode[],
-  sourceId: number,
-  targetId: number,
-  approach: 'top' | 'center' | 'bottom'
-): {
-  nodes: IPioneerPlaylistTreeNode[]
-  playlistId: number
-  parentId: number
-  seq: number
-} | null => {
-  const nextNodes = cloneTreeNodes(nodes)
-  const sourceBeforeMove = findNodeLocation(nextNodes, sourceId)
-  if (!sourceBeforeMove) return null
-
-  const originalParentId = sourceBeforeMove.parentId
-  const originalSeq = sourceBeforeMove.index + 1
-  const [movedNode] = sourceBeforeMove.siblings.splice(sourceBeforeMove.index, 1)
-  if (!movedNode) return null
-
-  if (approach === 'center') {
-    const folderTarget = findNodeById(nextNodes, targetId)
-    if (!folderTarget || !folderTarget.isFolder) return null
-    folderTarget.children = Array.isArray(folderTarget.children) ? folderTarget.children : []
-    movedNode.parentId = folderTarget.id
-    folderTarget.children.unshift(movedNode)
-  } else {
-    const targetAfterRemoval = findNodeLocation(nextNodes, targetId)
-    if (!targetAfterRemoval) return null
-    const nextParentId = targetAfterRemoval.parentId
-    const nextSeq = targetAfterRemoval.index + (approach === 'bottom' ? 2 : 1)
-    movedNode.parentId = nextParentId
-    targetAfterRemoval.siblings.splice(nextSeq - 1, 0, movedNode)
-  }
-
-  reorderTreeNodes(nextNodes)
-  const movedAfter = findNodeLocation(nextNodes, sourceId)
-  if (!movedAfter) return null
-
-  const finalParentId = movedAfter.parentId
-  const finalSeq = movedAfter.index + 1
-  if (finalParentId === originalParentId && finalSeq === originalSeq) {
-    return null
-  }
-
-  return {
-    nodes: nextNodes,
-    playlistId: sourceId,
-    parentId: finalParentId,
-    seq: finalSeq
-  }
-}
-
-const isPlayablePlaylistNode = (
-  node: IPioneerPlaylistTreeNode | null | undefined
-): node is IPioneerPlaylistTreeNode => Boolean(node && !node.isFolder && !node.isSmartPlaylist)
-
-const isMovableTreeNode = (node: IPioneerPlaylistTreeNode | null | undefined) =>
-  Boolean(node && !node.isSmartPlaylist)
-
 const runWithDialogWriting = async <T,>(task: () => Promise<T>): Promise<T> => {
   dialogWriting.value = true
   try {
     return await task()
   } finally {
     dialogWriting.value = false
+  }
+}
+
+const runWithLocalLibraryCopying = async <T,>(task: () => Promise<T>): Promise<T> => {
+  localLibraryCopying.value = true
+  try {
+    return await task()
+  } finally {
+    localLibraryCopying.value = false
   }
 }
 
@@ -578,11 +429,51 @@ const contextmenuEvent = async (event: MouseEvent) => {
   }
 }
 
+const copyPlaylistToLibrary = async (
+  node: IPioneerPlaylistTreeNode,
+  targetLibrary: 'FilterLibrary' | 'CuratedLibrary'
+) => {
+  const sourceKind = runtime.pioneerDeviceLibrary.selectedSourceKind
+  if (sourceKind !== 'desktop' && sourceKind !== 'usb') return
+  await copyPioneerNodeToLibrary({
+    node,
+    sourceKind,
+    sourceRootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
+    sourceLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType || '',
+    targetLibrary,
+    runtime,
+    runWithCopyBusy: runWithLocalLibraryCopying,
+    isBusy: () => dialogWriting.value || localLibraryCopying.value
+  })
+}
+
+const handleCopyOnlyContextMenu = async (event: MouseEvent, node: IPioneerPlaylistTreeNode) => {
+  const result = await rightClickMenu({
+    menuArr: [[{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }]],
+    clickEvent: event
+  })
+  if (result === 'cancel') return
+  if (result.menuName === 'pioneer.copyToFilter') {
+    await copyPlaylistToLibrary(node, 'FilterLibrary')
+    return
+  }
+  if (result.menuName === 'pioneer.copyToCurated') {
+    await copyPlaylistToLibrary(node, 'CuratedLibrary')
+  }
+}
+
 const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTreeNode) => {
-  if (!isDesktopSource.value || dialogWriting.value || node.isSmartPlaylist) return
+  if (dialogWriting.value || localLibraryCopying.value || node.isSmartPlaylist) return
+  if (!isDesktopSource.value) {
+    if (!isCopyableSource.value) return
+    await handleCopyOnlyContextMenu(event, node)
+    return
+  }
+
   if (node.isFolder) {
     const menuArr = [
       [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
+      [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
       [{ menuName: renameMenuKey }, { menuName: deleteFolderMenuKey }]
     ]
     const result = await rightClickMenu({ menuArr, clickEvent: event })
@@ -593,6 +484,14 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
     }
     if (result.menuName === 'library.createFolder') {
       await openCreateFolderDialog(Number(node.id) || 0)
+      return
+    }
+    if (result.menuName === 'pioneer.copyToFilter') {
+      await copyPlaylistToLibrary(node, 'FilterLibrary')
+      return
+    }
+    if (result.menuName === 'pioneer.copyToCurated') {
+      await copyPlaylistToLibrary(node, 'CuratedLibrary')
       return
     }
     if (result.menuName === renameMenuKey) {
@@ -606,11 +505,20 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
   }
 
   const menuArr = [
+    [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
     [{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }],
     [{ menuName: 'pioneer.cleanMissingFiles' }]
   ]
   const result = await rightClickMenu({ menuArr, clickEvent: event })
   if (result === 'cancel') return
+  if (result.menuName === 'pioneer.copyToFilter') {
+    await copyPlaylistToLibrary(node, 'FilterLibrary')
+    return
+  }
+  if (result.menuName === 'pioneer.copyToCurated') {
+    await copyPlaylistToLibrary(node, 'CuratedLibrary')
+    return
+  }
   if (result.menuName === renameMenuKey) {
     await openRenameNodeDialog(node)
     return
@@ -943,6 +851,9 @@ watch(
             :filter-text="playlistSearch"
             :interaction-disabled="dialogWriting"
             :draggable-nodes="isDesktopSource && !normalizeKeyword(playlistSearch)"
+            :contextmenu-enabled="
+              isCopyableSource && !localLibraryCopying && !normalizeKeyword(playlistSearch)
+            "
             :drag-target-node-id="dragTarget?.nodeId || undefined"
             :drag-target-approach="dragTarget?.approach || ''"
             :drag-source-id="dragSourceId || undefined"

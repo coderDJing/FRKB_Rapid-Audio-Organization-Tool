@@ -26,6 +26,16 @@
     "fileMissingTrackName": "Track: {name}",
     "fileMissingPathListTitle": "Missing path:",
     "fileMissingPathUnavailable": "This record does not have a file path that can be checked.",
-    "fileMissingPathMore": "{count} more path(s) are not shown."
+    "fileMissingPathMore": "{count} more path(s) are not shown.",
+    "copyToFilter": "Copy to Filter Library",
+    "copyToCurated": "Copy to Curated Library",
+    "copyToLibraryTitle": "Copy to Library",
+    "copySinglePlaylistConfirm": "Copy \"{name}\" to {target}.",
+    "copyFolderToLibraryConfirm": "Copy \"{name}\" to {target} with its folder hierarchy, {count} playlist(s) in total.",
+    "copyToLibraryFinished": "Copy Complete",
+    "copyToLibrarySuccessCount": "Successfully copied {count} playlist(s).",
+    "copyToLibraryFailedCount": "Failed to copy {count} playlist(s).",
+    "copyCueDefinitionsIncomplete": "Some track cue points were not written to the local cache. The audio files were copied.",
+    "noPlaylistsToCopy": "No playlists to copy."
   }
 }

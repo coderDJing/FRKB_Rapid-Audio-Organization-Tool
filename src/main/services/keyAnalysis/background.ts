@@ -232,6 +232,14 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       if (row.nodeType !== 'songList') continue
       const rel = pathByUuid.get(row.uuid)
       if (!rel) continue
+      const normalizedRel = rel.replace(/\\/g, '/').toLowerCase()
+      if (
+        normalizedRel.startsWith('library/mixtapelibrary/') ||
+        normalizedRel.startsWith('library/recyclebin/') ||
+        normalizedRel.startsWith('library/recordinglibrary/')
+      ) {
+        continue
+      }
       roots.push(path.join(rootDir, rel))
     }
     return roots

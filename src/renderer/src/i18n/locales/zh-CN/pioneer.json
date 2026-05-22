@@ -26,6 +26,16 @@
     "fileMissingTrackName": "曲目：{name}",
     "fileMissingPathListTitle": "找不到的路径：",
     "fileMissingPathUnavailable": "这条记录没有保存可检测的文件路径。",
-    "fileMissingPathMore": "还有 {count} 条路径未显示。"
+    "fileMissingPathMore": "还有 {count} 条路径未显示。",
+    "copyToFilter": "复制到筛选库",
+    "copyToCurated": "复制到精选库",
+    "copyToLibraryTitle": "复制到库",
+    "copySinglePlaylistConfirm": "将 \"{name}\" 复制到{target}。",
+    "copyFolderToLibraryConfirm": "将 \"{name}\" 按原文件夹层级复制到{target}，共 {count} 个歌单。",
+    "copyToLibraryFinished": "复制完成",
+    "copyToLibrarySuccessCount": "成功复制 {count} 个歌单。",
+    "copyToLibraryFailedCount": "复制失败 {count} 个歌单。",
+    "copyCueDefinitionsIncomplete": "有些曲目的 cue 点没有写入本地缓存，音频文件已复制。",
+    "noPlaylistsToCopy": "没有可复制的歌单。"
   }
 }

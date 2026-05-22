@@ -1,13 +1,28 @@
-import type { ISongInfo } from 'src/types/globals'
+import type { ISongHotCue, ISongMemoryCue } from 'src/types/globals'
 
-type SongCueCopyEntry = {
+export type SongCueSource = {
+  hotCues?: ISongHotCue[]
+  memoryCues?: ISongMemoryCue[]
+}
+
+export type SongCueCopyEntry = {
   targetFilePath?: string | null
-  sourceSong?: ISongInfo | null
+  sourceSong?: SongCueSource | null
+}
+
+export type SongCueCopySummary = {
+  targetCount: number
+  hotCueTargetCount: number
+  memoryCueTargetCount: number
+  hotCueUpdated: number
+  memoryCueUpdated: number
 }
 
 const normalizeFilePath = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
 
-export const copySongCueDefinitionsToTargets = async (entries: SongCueCopyEntry[]) => {
+export const copySongCueDefinitionsToTargets = async (
+  entries: SongCueCopyEntry[]
+): Promise<SongCueCopySummary> => {
   const normalizedEntries = (Array.isArray(entries) ? entries : [])
     .map((entry) => {
       const filePath = normalizeFilePath(entry?.targetFilePath)
@@ -29,13 +44,30 @@ export const copySongCueDefinitionsToTargets = async (entries: SongCueCopyEntry[
         entry
       ): entry is {
         filePath: string
-        hotCues: NonNullable<ISongInfo['hotCues']>
-        memoryCues: NonNullable<ISongInfo['memoryCues']>
+        hotCues: ISongHotCue[]
+        memoryCues: ISongMemoryCue[]
       } => Boolean(entry)
     )
 
-  if (normalizedEntries.length === 0) return
-  await window.electron.ipcRenderer.invoke('song:copy-cue-definitions-by-file-path', {
-    entries: normalizedEntries
-  })
+  const baseSummary: SongCueCopySummary = {
+    targetCount: normalizedEntries.length,
+    hotCueTargetCount: normalizedEntries.filter((entry) => entry.hotCues.length > 0).length,
+    memoryCueTargetCount: normalizedEntries.filter((entry) => entry.memoryCues.length > 0).length,
+    hotCueUpdated: 0,
+    memoryCueUpdated: 0
+  }
+
+  if (normalizedEntries.length === 0) return baseSummary
+  const result = (await window.electron.ipcRenderer.invoke(
+    'song:copy-cue-definitions-by-file-path',
+    {
+      entries: normalizedEntries
+    }
+  )) as Partial<Pick<SongCueCopySummary, 'hotCueUpdated' | 'memoryCueUpdated'>> | undefined
+
+  return {
+    ...baseSummary,
+    hotCueUpdated: Number(result?.hotCueUpdated) || 0,
+    memoryCueUpdated: Number(result?.memoryCueUpdated) || 0
+  }
 }

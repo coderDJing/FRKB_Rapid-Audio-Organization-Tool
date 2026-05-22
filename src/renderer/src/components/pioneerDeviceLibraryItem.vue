@@ -35,6 +35,10 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  contextmenuEnabled: {
+    type: Boolean,
+    default: false
+  },
   dragTargetNodeId: {
     type: Number,
     default: null
@@ -93,7 +97,7 @@ const handleClick = () => {
 }
 
 const handleContextmenu = (event: MouseEvent) => {
-  if (props.interactionDisabled || !props.draggableNodes || props.node.isSmartPlaylist) return
+  if (props.interactionDisabled || !props.contextmenuEnabled || props.node.isSmartPlaylist) return
   emit('contextmenuNode', event, props.node)
 }
 
@@ -208,6 +212,7 @@ const handleChildDragEnd = (event: DragEvent, node: IPioneerPlaylistTreeNode) =>
           :filter-text="filterText"
           :interaction-disabled="interactionDisabled"
           :draggable-nodes="draggableNodes"
+          :contextmenu-enabled="contextmenuEnabled"
           :drag-target-node-id="dragTargetNodeId"
           :drag-target-approach="dragTargetApproach"
           :drag-source-id="dragSourceId"
