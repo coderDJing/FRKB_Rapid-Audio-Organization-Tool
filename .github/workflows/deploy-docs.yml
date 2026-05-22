@@ -11,7 +11,7 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - '.github/workflows/deploy-docs.yml'
-  
+
   # 允许手动触发
   workflow_dispatch:
 
@@ -30,6 +30,7 @@ concurrency:
 jobs:
   # 构建任务
   build:
+    if: "${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore(release): 发布 ') }}"
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -37,21 +38,24 @@ jobs:
         with:
           fetch-depth: 0 # 如果未启用 lastUpdated，则不需要
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 20
-
-      - name: Setup pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@9 --activate
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --prefer-offline
 
       - name: Build with VitePress
         run: pnpm run docs:build

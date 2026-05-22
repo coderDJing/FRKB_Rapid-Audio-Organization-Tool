@@ -2,11 +2,37 @@ extern crate napi_build;
 
 use std::env;
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
+
+fn emit_rerun_if_changed_recursive(path: &Path) {
+  if path.is_file() {
+    println!("cargo:rerun-if-changed={}", path.display());
+    return;
+  }
+
+  let Ok(entries) = fs::read_dir(path) else {
+    return;
+  };
+
+  for entry in entries.flatten() {
+    let path = entry.path();
+    if path.is_dir() {
+      emit_rerun_if_changed_recursive(&path);
+    } else {
+      println!("cargo:rerun-if-changed={}", path.display());
+    }
+  }
+}
 
 fn main() {
   let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
   let qm_root = manifest_dir.join("native/qm");
+  println!(
+    "cargo:rerun-if-changed={}",
+    manifest_dir.join("build.rs").display()
+  );
+  emit_rerun_if_changed_recursive(&qm_root);
 
   let mut cpp_build = cc::Build::new();
   cpp_build
@@ -43,6 +69,7 @@ fn main() {
 
   let soundtouch_root = manifest_dir.join("native/soundtouch");
   let soundtouch_source_root = soundtouch_root.join("source");
+  emit_rerun_if_changed_recursive(&soundtouch_root);
   let mut soundtouch_build = cc::Build::new();
   soundtouch_build
     .cpp(true)
@@ -73,6 +100,7 @@ fn main() {
   // ===== Chromaprint =====
   let chromaprint_root = manifest_dir.join("native/chromaprint");
   let kissfft_cp_root = chromaprint_root.join("kissfft");
+  emit_rerun_if_changed_recursive(&chromaprint_root);
 
   // Chromaprint core C++ sources
   let mut cp_build = cc::Build::new();
@@ -130,10 +158,22 @@ fn main() {
   let ffmpeg_platform = ffmpeg_root.join("darwin-arm64");
   #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
   let ffmpeg_platform = ffmpeg_root.join("darwin-x64");
+  println!(
+    "cargo:rerun-if-changed={}",
+    ffmpeg_root.join("frkb_ffmpeg_decode_wrapper.c").display()
+  );
+  println!(
+    "cargo:rerun-if-changed={}",
+    ffmpeg_root.join("frkb_ffmpeg_decode_wrapper.h").display()
+  );
+  emit_rerun_if_changed_recursive(&ffmpeg_platform);
 
   let ffmpeg_lib_dir = ffmpeg_platform.join("lib");
   let ffmpeg_include_dir = ffmpeg_platform.join("include");
-  println!("cargo:rustc-link-search=native={}", ffmpeg_lib_dir.display());
+  println!(
+    "cargo:rustc-link-search=native={}",
+    ffmpeg_lib_dir.display()
+  );
 
   // macOS: 静态链接 FFmpeg + 系统框架
   // Windows: 动态链接 FFmpeg DLL

@@ -9,21 +9,49 @@ permissions:
   contents: write
 
 jobs:
+  typecheck:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile=false --prefer-offline --ignore-scripts
+
+      - name: Typecheck (vue-tsc)
+        run: npx vue-tsc --noEmit
+
   build_win:
     runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 20
-
-      - name: Setup PNPM
-        run: |
-          corepack enable
-          corepack prepare pnpm@9 --activate
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Restore Demucs models cache (Windows)
         uses: actions/cache@v5
@@ -57,8 +85,29 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      - name: Restore Cargo cache (Windows)
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust_package/target
+          key: cargo-${{ runner.os }}-x86_64-pc-windows-msvc-${{ hashFiles('rust_package/Cargo.lock', 'rust_package/Cargo.toml', 'rust_package/build.rs', 'rust_package/src/**', 'rust_package/native/qm/**', 'rust_package/native/soundtouch/**', 'rust_package/native/chromaprint/**', 'rust_package/native/ffmpeg/frkb_ffmpeg_decode_wrapper.*') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-x86_64-pc-windows-msvc-
+
+      - name: Restore Electron builder cache (Windows)
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('package.json', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile=false --prefer-offline
 
       - name: Ensure Demucs models (Windows)
         run: node scripts/ensure-demucs-runtime.mjs --models-only --ci
@@ -68,9 +117,6 @@ jobs:
 
       - name: Validate Rekordbox Desktop runtime (Windows)
         run: pnpm run rekordbox:runtime:validate -- --platform-key win32-x64
-
-      - name: Typecheck (vue-tsc)
-        run: npx vue-tsc --noEmit
 
       - name: Prepare FFmpeg (Windows)
         shell: pwsh
@@ -309,15 +355,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 20
-
-      - name: Setup PNPM
-        run: |
-          corepack enable
-          corepack prepare pnpm@9 --activate
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Restore Rekordbox runtime cache (macOS arm64)
         uses: actions/cache@v5
@@ -345,8 +394,29 @@ jobs:
       - name: Ensure Rust targets
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
 
+      - name: Restore Cargo cache (macOS)
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust_package/target
+          key: cargo-${{ runner.os }}-universal-${{ hashFiles('rust_package/Cargo.lock', 'rust_package/Cargo.toml', 'rust_package/build.rs', 'rust_package/src/**', 'rust_package/native/qm/**', 'rust_package/native/soundtouch/**', 'rust_package/native/chromaprint/**', 'rust_package/native/ffmpeg/frkb_ffmpeg_decode_wrapper.*') }}
+          restore-keys: |
+            cargo-${{ runner.os }}-universal-
+
+      - name: Restore Electron builder cache (macOS)
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-builder-${{ runner.os }}-${{ hashFiles('package.json', 'pnpm-lock.yaml') }}
+          restore-keys: |
+            electron-builder-${{ runner.os }}-
+
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile=false --prefer-offline
 
       - name: Ensure Demucs models (macOS)
         run: node scripts/ensure-demucs-runtime.mjs --models-only --ci
@@ -369,9 +439,6 @@ jobs:
 
       - name: Validate Rekordbox Desktop runtime (macOS universal)
         run: pnpm run rekordbox:runtime:validate:mac-universal
-
-      - name: Typecheck (vue-tsc)
-        run: npx vue-tsc --noEmit
 
       - name: Prepare FFmpeg (macOS both arch)
         run: |
@@ -684,7 +751,7 @@ jobs:
             dist/*.zip
 
   release:
-    needs: [build_win, build_mac]
+    needs: [typecheck, build_win, build_mac]
     runs-on: ubuntu-latest
     steps:
       - name: Download Windows artifacts
