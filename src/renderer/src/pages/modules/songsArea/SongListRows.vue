@@ -461,12 +461,20 @@ const {
   isSongNeedsAnalysis
 })
 
-const handleWaveformClick = (song: ISongInfo, event: MouseEvent) => {
+const handleWaveformClick = async (song: ISongInfo, event: MouseEvent) => {
   if (shouldSuppressPointerAction(event)) return
   if (!canPreviewWaveform.value) return
   if (event.button !== 0) return
   const filePath = song?.filePath
   if (!filePath) return
+  if (song.fileMissing) return
+  if (isPioneerLibraryContext.value) {
+    const exists = await window.electron.ipcRenderer.invoke('check-path-exists', filePath)
+    if (!exists) {
+      song.fileMissing = true
+      return
+    }
+  }
   const percent = getWaveformClickPercent(filePath, event.clientX)
   requestWaveformPreview(song, percent)
 }
