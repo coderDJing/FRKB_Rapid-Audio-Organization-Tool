@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import hotkeys from 'hotkeys-js'
 import { onMounted, onUnmounted, computed } from 'vue'
+import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import utils from '../utils/utils'
 import { v4 as uuidV4 } from 'uuid'
@@ -86,6 +87,18 @@ const cancelLabel = computed(() =>
   props.cancelText && props.cancelText.trim() !== '' ? props.cancelText : t('common.cancel')
 )
 
+const confirmDialogScrollOptions = {
+  scrollbars: {
+    autoHide: 'leave' as const,
+    autoHideDelay: 50,
+    clickScroll: true
+  },
+  overflow: {
+    x: 'hidden' as const,
+    y: 'scroll' as const
+  }
+}
+
 onMounted(() => {
   hotkeys('E,Enter', uuid, () => {
     if (props.confirmShow) {
@@ -119,18 +132,23 @@ onUnmounted(() => {
       <div class="dialog-title dialog-header">
         <span>{{ props.title }}</span>
       </div>
-      <div
-        style="padding: 10px 20px 20px; overflow-y: auto; flex: 1 1 auto"
-        :class="{ selectable: canCopyText }"
+      <OverlayScrollbarsComponent
+        class="confirm-dialog__scroll-shell"
+        element="div"
+        :options="confirmDialogScrollOptions"
+        defer
       >
-        <div
-          v-for="item of props.content"
-          style="margin-top: 10px"
-          :style="'text-align:' + textAlign"
-        >
-          <span>{{ item }}</span>
+        <div class="confirm-dialog__scroll-content" :class="{ selectable: canCopyText }">
+          <div
+            v-for="(item, index) of props.content"
+            :key="index"
+            class="confirm-dialog__scroll-line"
+            :style="'text-align:' + textAlign"
+          >
+            <span>{{ item }}</span>
+          </div>
         </div>
-      </div>
+      </OverlayScrollbarsComponent>
       <div v-if="confirmShow" class="dialog-footer">
         <div class="button confirm-dialog__button" @click="confirm()">{{ confirmLabel }} (E)</div>
         <div class="button confirm-dialog__button" @click="cancel()">{{ cancelLabel }} (Esc)</div>
@@ -147,6 +165,20 @@ onUnmounted(() => {
 .dialog-footer {
   justify-content: center;
   flex-wrap: wrap;
+}
+
+.confirm-dialog__scroll-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.confirm-dialog__scroll-content {
+  padding: 10px 20px 20px;
+  box-sizing: border-box;
+}
+
+.confirm-dialog__scroll-line {
+  margin-top: 10px;
 }
 
 .confirm-dialog__button {

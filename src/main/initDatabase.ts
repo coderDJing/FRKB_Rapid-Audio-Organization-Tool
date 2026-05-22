@@ -56,18 +56,21 @@ export async function initDatabaseStructure(
   // 核心库目录改为英文命名，兼容旧库将在读取时尝试从中文重命名为英文
   const filterLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('FilterLibrary'))
   const curatedLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('CuratedLibrary'))
-  const mixtapeLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('MixtapeLibrary'))
   const recycleBinPath = path.join(dirPath, 'library', getCoreFsDirName('RecycleBin'))
+  const recordingLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('RecordingLibrary'))
+  const mixtapeLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('MixtapeLibrary'))
   await fs.ensureDir(filterLibraryPath)
   await fs.ensureDir(curatedLibraryPath)
-  await fs.ensureDir(mixtapeLibraryPath)
   await fs.ensureDir(recycleBinPath)
+  await fs.ensureDir(recordingLibraryPath)
+  await fs.ensureDir(mixtapeLibraryPath)
 
   await ensureLibraryTreeBaseline(dirPath, {
     coreDirNames: {
       FilterLibrary: getCoreFsDirName('FilterLibrary'),
       CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
       MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
+      RecordingLibrary: getCoreFsDirName('RecordingLibrary'),
       RecycleBin: getCoreFsDirName('RecycleBin')
     }
   })

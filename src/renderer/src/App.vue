@@ -29,6 +29,7 @@ import { useAnalysisRuntimeDownload } from '@renderer/composables/useAnalysisRun
 import settingDialog from '@renderer/components/settingDialog.vue'
 import settingIconAsset from '@renderer/assets/setting.svg?asset'
 import WindowVolumeDial from '@renderer/components/WindowVolumeDial.vue'
+import TopToolbarRecordingButton from '@renderer/components/TopToolbarRecordingButton.vue'
 import {
   MAIN_WINDOW_VOLUME_CHANGED_EVENT,
   MAIN_WINDOW_VOLUME_SET_EVENT,
@@ -45,7 +46,6 @@ const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
 type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
 const normalizeMainWindowBrowseMode = (value: unknown): MainWindowBrowseMode =>
   value === 'horizontal' || value === 'edit' ? value : 'browser'
-// 运行期平台展示优先取持久化设置，避免依赖不稳定的 userAgent
 {
   const p = runtime.setting?.platform
   runtime.platform = p === 'darwin' ? 'Mac' : p === 'win32' ? 'Windows' : 'Unknown'
@@ -496,7 +496,6 @@ const handleDevSongListTraceError = async (
 }
 
 const openDialog = async (item: string) => {
-  // 兼容旧的中文菜单文案，统一映射到 i18n key
   if (item === '关于') item = 'menu.about'
   if (item === '第三方许可') item = 'menu.thirdPartyNotices'
   if (item === '访问 GitHub') item = 'menu.visitGithub'
@@ -715,15 +714,12 @@ const handleContextMenuClickCapture = (event: MouseEvent) => {
   contextMenuClickThroughGuard.suppressClickIfNeeded(event)
 }
 
-// 窗口关闭时立即停止音频，避免关闭后还有残余播放
 const handleBeforeUnload = () => {
-  // 暂停页面上所有 <audio> 元素
   document.querySelectorAll('audio').forEach((el) => {
     try {
       el.pause()
     } catch {}
   })
-  // 挂起所有 AudioContext，立即停止 WebAudio 输出
   try {
     const contexts = window.__FRKB_AUDIO_CONTEXTS__
     if (contexts) {
@@ -777,7 +773,6 @@ onMounted(() => {
     runtime.activeMenuUUID = ''
     closeMainWindowBrowseModeMenu()
   })
-  // F2/Enter 重命名快捷键：Windows 用 F2，Mac 用 Enter
   const triggerRename = () => {
     try {
       if (runtime.selectSongListDialogShow) {
@@ -802,7 +797,6 @@ onMounted(() => {
       return false
     })
   }
-  // 初始化全局窗口快捷键作用域
   utils.setHotkeysScpoe('windowGlobal')
   window.electron.ipcRenderer.on('openDialogFromTray', async (_e, key: string) => {
     await openDialog(key)
@@ -963,56 +957,59 @@ window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
       </titleComponent>
     </div>
     <div :style="mainWindowTopGapStyle" class="mainWindowTopGap">
-      <div ref="mainWindowBrowseModeMenuRef" class="topToolbarModeDropdown">
-        <bubbleBoxTrigger
-          tag="button"
-          class="topToolbarModeButton"
-          :class="{ 'is-open': mainWindowBrowseModeMenuOpen }"
-          :title="currentMainWindowBrowseModeLabel"
-          :aria-expanded="mainWindowBrowseModeMenuOpen ? 'true' : 'false'"
-          aria-haspopup="menu"
-          type="button"
-          @click.stop="toggleMainWindowBrowseModeMenu"
-        >
-          <span class="topToolbarModeButtonLabel">{{ currentMainWindowBrowseModeLabel }}</span>
-          <svg
-            class="topToolbarModeButtonCaret"
-            viewBox="0 0 10 10"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <path
-              d="M2 3.25 5 6.25 8 3.25"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.4"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
-          </svg>
-        </bubbleBoxTrigger>
-        <div
-          v-if="mainWindowBrowseModeMenuOpen"
-          class="topToolbarModeMenu"
-          role="menu"
-          @click.stop="() => {}"
-        >
-          <button
-            v-for="item in mainWindowBrowseModeOptions"
-            :key="item.value"
-            class="topToolbarModeOption"
-            :class="{ 'is-active': runtime.mainWindowBrowseMode === item.value }"
+      <div class="topToolbarLeftActions">
+        <div ref="mainWindowBrowseModeMenuRef" class="topToolbarModeDropdown">
+          <bubbleBoxTrigger
+            tag="button"
+            class="topToolbarModeButton"
+            :class="{ 'is-open': mainWindowBrowseModeMenuOpen }"
+            :title="currentMainWindowBrowseModeLabel"
+            :aria-expanded="mainWindowBrowseModeMenuOpen ? 'true' : 'false'"
+            aria-haspopup="menu"
             type="button"
-            role="menuitemradio"
-            :aria-checked="runtime.mainWindowBrowseMode === item.value ? 'true' : 'false'"
-            @click="void selectMainWindowBrowseMode(item.value)"
+            @click.stop="toggleMainWindowBrowseModeMenu"
           >
-            <span class="topToolbarModeOptionCheck">{{
-              runtime.mainWindowBrowseMode === item.value ? '✓' : ''
-            }}</span>
-            <span class="topToolbarModeOptionLabel">{{ t(item.labelKey) }}</span>
-          </button>
+            <span class="topToolbarModeButtonLabel">{{ currentMainWindowBrowseModeLabel }}</span>
+            <svg
+              class="topToolbarModeButtonCaret"
+              viewBox="0 0 10 10"
+              aria-hidden="true"
+              focusable="false"
+            >
+              <path
+                d="M2 3.25 5 6.25 8 3.25"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </bubbleBoxTrigger>
+          <div
+            v-if="mainWindowBrowseModeMenuOpen"
+            class="topToolbarModeMenu"
+            role="menu"
+            @click.stop="() => {}"
+          >
+            <button
+              v-for="item in mainWindowBrowseModeOptions"
+              :key="item.value"
+              class="topToolbarModeOption"
+              :class="{ 'is-active': runtime.mainWindowBrowseMode === item.value }"
+              type="button"
+              role="menuitemradio"
+              :aria-checked="runtime.mainWindowBrowseMode === item.value ? 'true' : 'false'"
+              @click="void selectMainWindowBrowseMode(item.value)"
+            >
+              <span class="topToolbarModeOptionCheck">{{
+                runtime.mainWindowBrowseMode === item.value ? '✓' : ''
+              }}</span>
+              <span class="topToolbarModeOptionLabel">{{ t(item.labelKey) }}</span>
+            </button>
+          </div>
         </div>
+        <TopToolbarRecordingButton />
       </div>
       <div class="topToolbarActions">
         <WindowVolumeDial

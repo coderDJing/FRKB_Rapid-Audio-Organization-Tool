@@ -27,6 +27,13 @@ body {
   flex: 0 0 auto;
 }
 
+.topToolbarLeftActions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .topToolbarModeButton {
   min-width: 128px;
   height: 24px;
@@ -190,6 +197,83 @@ body {
 }
 
 .topToolbarSettingButton:hover .topToolbarSettingIcon {
+  opacity: 1;
+}
+
+.topToolbarRecordButton {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-weak);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.topToolbarRecordButton:hover {
+  color: var(--text);
+  opacity: 1;
+}
+
+.topToolbarRecordButton:active {
+  transform: translateY(1px);
+}
+
+.topToolbarRecordButton.is-idle {
+  color: var(--text-weak);
+}
+
+.topToolbarRecordButton.is-armed {
+  color: #d49a14;
+}
+
+.topToolbarRecordButton.is-armed:hover {
+  color: #b7791f;
+}
+
+.topToolbarRecordButton.is-recording {
+  color: #e74c3c;
+}
+
+.topToolbarRecordButton.is-recording:hover {
+  color: #c0392b;
+}
+
+.topToolbarRecordButton.is-error {
+  color: #ff6b6b;
+}
+
+.topToolbarRecordButton.is-busy {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.topToolbarRecordIcon {
+  width: 20px;
+  height: 20px;
+  display: inline-block;
+  background-color: currentColor;
+  opacity: 0.82;
+  mask-image: var(--top-toolbar-record-icon-mask);
+  mask-repeat: no-repeat;
+  mask-position: center;
+  mask-size: contain;
+  -webkit-mask-image: var(--top-toolbar-record-icon-mask);
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  -webkit-mask-size: contain;
+}
+
+.topToolbarRecordButton:hover .topToolbarRecordIcon {
   opacity: 1;
 }
 

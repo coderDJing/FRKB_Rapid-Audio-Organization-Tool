@@ -24,6 +24,9 @@ export declare function horizontalBrowseTransportSetLoopFromRange(deck: string, 
 export declare function horizontalBrowseTransportClearLoop(deck: string): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetGain(deck: string, gain: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetOutputState(crossfaderValue: number, masterGain: number): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportStartRecording(filePath: string): HorizontalBrowseTransportRecordingStatus
+export declare function horizontalBrowseTransportStopRecording(): HorizontalBrowseTransportRecordingStatus
+export declare function horizontalBrowseTransportRecordingSnapshot(): HorizontalBrowseTransportRecordingStatus
 export declare function horizontalBrowseTransportSnapshot(nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportVisualizerSnapshot(): HorizontalBrowseTransportVisualizerSnapshot
 export interface HorizontalBrowseTransportDeckInput {
@@ -101,6 +104,15 @@ export interface HorizontalBrowseTransportSnapshot {
 }
 export interface HorizontalBrowseTransportVisualizerSnapshot {
   timeDomainData: Array<number>
+}
+export interface HorizontalBrowseTransportRecordingStatus {
+  state: string
+  filePath?: string
+  sampleRate: number
+  channels: number
+  recordedFrames: number
+  recorded: boolean
+  error?: string
 }
 export interface MixxxWaveformBand {
   left: Buffer

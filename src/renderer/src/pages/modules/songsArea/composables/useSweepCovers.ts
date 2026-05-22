@@ -1,5 +1,6 @@
 import libraryUtils from '@renderer/utils/libraryUtils'
 import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
+import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 
 interface UseSweepCoversParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -16,7 +17,10 @@ export function useSweepCovers(params: UseSweepCoversParams) {
     }
     sweepTimer = setTimeout(() => {
       try {
-        const listRootDir = libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
+        const listRootDir =
+          songsAreaState.songListUUID === RECORDING_LIBRARY_UUID
+            ? 'library/RecordingLibrary'
+            : libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
         const currentPaths = songsAreaState.songInfoArr.map((s) => s.filePath)
         window.electron.ipcRenderer.invoke('sweepSongListCovers', listRootDir, currentPaths)
       } catch {}

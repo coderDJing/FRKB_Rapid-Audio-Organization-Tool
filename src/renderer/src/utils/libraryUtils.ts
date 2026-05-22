@@ -172,6 +172,7 @@ export const buildDisplayPathByUuid = (targetUuid: string): string => {
       if (
         seg === 'FilterLibrary' ||
         seg === 'CuratedLibrary' ||
+        seg === 'RecordingLibrary' ||
         seg === 'MixtapeLibrary' ||
         seg === 'RecycleBin'
       ) {

@@ -3,6 +3,7 @@ import type {
   HorizontalBrowseTransportBandState,
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckInput,
+  HorizontalBrowseTransportRecordingStatus,
   HorizontalBrowseTransportSnapshot,
   HorizontalBrowseTransportStateInput,
   HorizontalBrowseTransportVisualizerSnapshot
@@ -106,6 +107,11 @@ type RustHorizontalBrowseTransportBinding = {
   ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSnapshot?: (nowMs?: number) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportVisualizerSnapshot?: () => HorizontalBrowseTransportVisualizerSnapshot
+  horizontalBrowseTransportStartRecording?: (
+    filePath: string
+  ) => HorizontalBrowseTransportRecordingStatus
+  horizontalBrowseTransportStopRecording?: () => HorizontalBrowseTransportRecordingStatus
+  horizontalBrowseTransportRecordingSnapshot?: () => HorizontalBrowseTransportRecordingStatus
 }
 
 let cachedBinding: RustHorizontalBrowseTransportBinding | null = null
@@ -225,5 +231,14 @@ export const horizontalBrowseTransportBridge = {
   },
   visualizerSnapshot() {
     return requireFn('horizontalBrowseTransportVisualizerSnapshot')()
+  },
+  startRecording(filePath: string) {
+    return requireFn('horizontalBrowseTransportStartRecording')(filePath)
+  },
+  stopRecording() {
+    return requireFn('horizontalBrowseTransportStopRecording')()
+  },
+  recordingSnapshot() {
+    return requireFn('horizontalBrowseTransportRecordingSnapshot')()
   }
 }

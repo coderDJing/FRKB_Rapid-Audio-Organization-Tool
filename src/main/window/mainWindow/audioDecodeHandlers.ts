@@ -12,6 +12,7 @@ import { decodeAudioShared } from '../../services/audioDecodePool'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../../services/songInfoLite'
 import type { MixxxWaveformData } from '../../waveformCache'
+import { isInRecordingLibraryAbsPath } from '../../recordingLibraryService'
 
 const clonePcmData = (pcmData: unknown): Float32Array => {
   if (!pcmData) {
@@ -52,7 +53,8 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
     async (_e: Electron.IpcMainEvent, filePath: string, requestId: string) => {
       try {
         const sharedGrid = await loadSharedSongGridDefinition(filePath).catch(() => null)
-        const needsGridAnalysis = !isCompleteSharedSongGridDefinition(sharedGrid)
+        const needsGridAnalysis =
+          !isInRecordingLibraryAbsPath(filePath) && !isCompleteSharedSongGridDefinition(sharedGrid)
         if (needsGridAnalysis) {
           enqueuePlaybackGridAnalysis(filePath)
         }

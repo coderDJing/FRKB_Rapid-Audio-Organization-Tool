@@ -13,11 +13,16 @@ mod horizontal_browse_transport_engine_state;
 mod horizontal_browse_transport_grid_sync;
 #[path = "horizontal_browse_transport_napi.rs"]
 mod horizontal_browse_transport_napi;
+#[path = "horizontal_browse_transport_recording.rs"]
+mod horizontal_browse_transport_recording;
 #[path = "horizontal_browse_transport_runtime.rs"]
 mod horizontal_browse_transport_runtime;
 #[path = "horizontal_browse_transport_types.rs"]
 mod horizontal_browse_transport_types;
+#[path = "horizontal_browse_transport_visualizer.rs"]
+mod horizontal_browse_transport_visualizer;
 pub use horizontal_browse_transport_napi::*;
+pub use horizontal_browse_transport_recording::HorizontalBrowseTransportRecordingStatus;
 use horizontal_browse_transport_runtime::{
   engine, execute_decode_request_sync, native_now_ms, next_snapshot_sequence,
   schedule_decode_request,
@@ -27,10 +32,9 @@ use horizontal_browse_transport_types::{
 };
 pub use horizontal_browse_transport_types::{
   HorizontalBrowseTransportBandState, HorizontalBrowseTransportBeatGridInput,
-  HorizontalBrowseTransportDeckInput,
-  HorizontalBrowseTransportDeckSnapshot, HorizontalBrowseTransportOutputSnapshot,
-  HorizontalBrowseTransportSnapshot, HorizontalBrowseTransportStateInput,
-  HorizontalBrowseTransportVisualizerSnapshot,
+  HorizontalBrowseTransportDeckInput, HorizontalBrowseTransportDeckSnapshot,
+  HorizontalBrowseTransportOutputSnapshot, HorizontalBrowseTransportSnapshot,
+  HorizontalBrowseTransportStateInput, HorizontalBrowseTransportVisualizerSnapshot,
 };
 
 struct DeckState {
@@ -259,6 +263,7 @@ struct HorizontalBrowseTransportEngine {
   visualizer_ring: Vec<f32>,
   visualizer_write_index: usize,
   visualizer_filled: bool,
+  recording: horizontal_browse_transport_recording::RecordingController,
 }
 
 static OUTPUT_THREAD_STARTED: OnceLock<()> = OnceLock::new();
@@ -286,6 +291,7 @@ impl Default for HorizontalBrowseTransportEngine {
       visualizer_ring: vec![0.0; HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT],
       visualizer_write_index: 0,
       visualizer_filled: false,
+      recording: horizontal_browse_transport_recording::RecordingController::default(),
     }
   }
 }
@@ -715,6 +721,9 @@ impl HorizontalBrowseTransportEngine {
     let clamped_left = left.clamp(-1.0, 1.0);
     let clamped_right = right.clamp(-1.0, 1.0);
     self.push_visualizer_sample((clamped_left + clamped_right) * 0.5);
+    self
+      .recording
+      .capture_frame(self.output_sample_rate.max(1), clamped_left, clamped_right);
     (clamped_left, clamped_right)
   }
 
@@ -896,53 +905,20 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn push_visualizer_sample(&mut self, sample: f32) {
-    if self.visualizer_ring.len() != HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT {
-      self.visualizer_ring = vec![0.0; HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT];
-      self.visualizer_write_index = 0;
-      self.visualizer_filled = false;
-    }
-    if self.visualizer_ring.is_empty() {
-      return;
-    }
-    self.visualizer_ring[self.visualizer_write_index] = sample.clamp(-1.0, 1.0);
-    self.visualizer_write_index =
-      (self.visualizer_write_index + 1) % HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT;
-    if self.visualizer_write_index == 0 {
-      self.visualizer_filled = true;
-    }
+    horizontal_browse_transport_visualizer::push_visualizer_sample(
+      &mut self.visualizer_ring,
+      &mut self.visualizer_write_index,
+      &mut self.visualizer_filled,
+      sample,
+    );
   }
 
   fn visualizer_snapshot(&self) -> HorizontalBrowseTransportVisualizerSnapshot {
-    let sample_count = HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT;
-    if self.visualizer_ring.len() != sample_count {
-      return HorizontalBrowseTransportVisualizerSnapshot {
-        time_domain_data: vec![128; sample_count],
-      };
-    }
-    let available = if self.visualizer_filled {
-      sample_count
-    } else {
-      self.visualizer_write_index.min(sample_count)
-    };
-    let mut time_domain_data = Vec::with_capacity(sample_count);
-    for _ in available..sample_count {
-      time_domain_data.push(128);
-    }
-    if available == 0 {
-      return HorizontalBrowseTransportVisualizerSnapshot { time_domain_data };
-    }
-    let start_index = if self.visualizer_filled {
-      self.visualizer_write_index
-    } else {
-      0
-    };
-    for offset in 0..available {
-      let index = (start_index + offset) % sample_count;
-      let sample = self.visualizer_ring.get(index).copied().unwrap_or(0.0);
-      let encoded = ((sample.clamp(-1.0, 1.0) * 0.5 + 0.5) * 255.0).round() as i32;
-      time_domain_data.push(encoded.clamp(0, 255) as u8);
-    }
-    HorizontalBrowseTransportVisualizerSnapshot { time_domain_data }
+    horizontal_browse_transport_visualizer::visualizer_snapshot(
+      &self.visualizer_ring,
+      self.visualizer_write_index,
+      self.visualizer_filled,
+    )
   }
 
   fn deck(&self, deck: DeckId) -> &DeckState {

@@ -270,6 +270,7 @@ export async function ensureLibraryTreeBaseline(
       FilterLibrary: string
       CuratedLibrary: string
       MixtapeLibrary: string
+      RecordingLibrary: string
       RecycleBin: string
     }
   } = {}
@@ -287,11 +288,13 @@ export async function ensureLibraryTreeBaseline(
       FilterLibrary: 'FilterLibrary',
       CuratedLibrary: 'CuratedLibrary',
       MixtapeLibrary: 'MixtapeLibrary',
+      RecordingLibrary: 'RecordingLibrary',
       RecycleBin: 'RecycleBin'
     }
     const filterUuid = uuidV4()
     const curatedUuid = uuidV4()
     const mixtapeUuid = uuidV4()
+    const recordingUuid = uuidV4()
     const recycleUuid = uuidV4()
     const insert = db.prepare(
       'INSERT INTO library_nodes (uuid, parent_uuid, dir_name, node_type, sort_order) VALUES (?, ?, ?, ?, ?)'
@@ -300,7 +303,8 @@ export async function ensureLibraryTreeBaseline(
       insert.run(filterUuid, root.uuid, coreNames.FilterLibrary, 'library', 1)
       insert.run(curatedUuid, root.uuid, coreNames.CuratedLibrary, 'library', 2)
       insert.run(mixtapeUuid, root.uuid, coreNames.MixtapeLibrary, 'library', 3)
-      insert.run(recycleUuid, root.uuid, coreNames.RecycleBin, 'library', 4)
+      insert.run(recordingUuid, root.uuid, coreNames.RecordingLibrary, 'library', 4)
+      insert.run(recycleUuid, root.uuid, coreNames.RecycleBin, 'library', 5)
     })
     run()
     setLibraryTreeMigrationDone(db, true)
@@ -332,6 +336,7 @@ export async function syncLibraryTreeFromDisk(
       FilterLibrary: string
       CuratedLibrary: string
       MixtapeLibrary: string
+      RecordingLibrary: string
       RecycleBin: string
     }
     audioExtensions?: string[]
@@ -385,19 +390,22 @@ export async function syncLibraryTreeFromDisk(
     FilterLibrary: 'FilterLibrary',
     CuratedLibrary: 'CuratedLibrary',
     MixtapeLibrary: 'MixtapeLibrary',
+    RecordingLibrary: 'RecordingLibrary',
     RecycleBin: 'RecycleBin'
   }
   const coreOrderMap = new Map<string, number>([
     [coreNames.FilterLibrary, 1],
     [coreNames.CuratedLibrary, 2],
     [coreNames.MixtapeLibrary, 3],
-    [coreNames.RecycleBin, 4]
+    [coreNames.RecordingLibrary, 4],
+    [coreNames.RecycleBin, 5]
   ])
   const coreNameList = Array.from(
     new Set([
       coreNames.FilterLibrary,
       coreNames.CuratedLibrary,
       coreNames.MixtapeLibrary,
+      coreNames.RecordingLibrary,
       coreNames.RecycleBin
     ])
   ).filter((name) => name && String(name).trim().length > 0)

@@ -185,6 +185,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
       FilterLibrary: getCoreFsDirName('FilterLibrary'),
       CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
       MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
+      RecordingLibrary: getCoreFsDirName('RecordingLibrary'),
       RecycleBin: getCoreFsDirName('RecycleBin')
     }
   })
@@ -194,6 +195,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
         FilterLibrary: getCoreFsDirName('FilterLibrary'),
         CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
         MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
+        RecordingLibrary: getCoreFsDirName('RecordingLibrary'),
         RecycleBin: getCoreFsDirName('RecycleBin')
       },
       audioExtensions: store.settingConfig?.audioExt
@@ -209,8 +211,9 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
   const fsToRenderer = new Map<string, string>([
     [getCoreFsDirName('FilterLibrary'), 'FilterLibrary'],
     [getCoreFsDirName('CuratedLibrary'), 'CuratedLibrary'],
-    [getCoreFsDirName('MixtapeLibrary'), 'MixtapeLibrary'],
-    [getCoreFsDirName('RecycleBin'), 'RecycleBin']
+    [getCoreFsDirName('RecycleBin'), 'RecycleBin'],
+    [getCoreFsDirName('RecordingLibrary'), 'RecordingLibrary'],
+    [getCoreFsDirName('MixtapeLibrary'), 'MixtapeLibrary']
   ])
 
   const nodeMap = new Map<string, IDir>()

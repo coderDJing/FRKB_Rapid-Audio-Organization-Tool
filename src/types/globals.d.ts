@@ -695,7 +695,13 @@ interface ISongsAreaColumn {
 }
 
 type Icon = {
-  name: 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin' | 'ExternalPlaylist'
+  name:
+    | 'FilterLibrary'
+    | 'CuratedLibrary'
+    | 'RecordingLibrary'
+    | 'MixtapeLibrary'
+    | 'RecycleBin'
+    | 'ExternalPlaylist'
   grey: string
   white: string
   src: string

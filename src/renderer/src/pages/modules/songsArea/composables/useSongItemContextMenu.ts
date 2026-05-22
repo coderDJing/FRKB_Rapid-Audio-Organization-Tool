@@ -21,6 +21,7 @@ import choiceDialog from '@renderer/components/choiceDialog'
 import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import {
   resolveLibraryTransferActionLabelKey,
   resolveLibraryTransferActionModeForSongList
@@ -70,6 +71,14 @@ type OptimisticRestoreItem = {
   song: ISongInfo
   index: number
 }
+
+const RECORDING_LIBRARY_ANALYSIS_MENU_NAMES = new Set([
+  'tracks.neteaseSearch',
+  'similarTracks.menu',
+  'metadata.autoFillMenu',
+  'fingerprints.analyzeAndAdd',
+  'tracks.clearTrackCache'
+])
 
 export function useSongItemContextMenu(
   // runtimeStore: ReturnType<typeof useRuntimeStore>, // Passed implicitly via direct import for now
@@ -257,6 +266,12 @@ export function useSongItemContextMenu(
     [{ menuName: 'tracks.editMetadata' }],
     [{ menuName: 'tracks.clearTrackCache' }]
   ]
+  const withoutRecordingAnalysisMenus = (groups: IMenu[][]): IMenu[][] =>
+    groups
+      .map((group) =>
+        group.filter((item) => !RECORDING_LIBRARY_ANALYSIS_MENU_NAMES.has(item.menuName))
+      )
+      .filter((group) => group.length > 0)
   const menuArr: Ref<IMenu[][]> = ref(createDefaultMenuArr())
 
   const showAndHandleSongContextMenu = async (
@@ -271,6 +286,7 @@ export function useSongItemContextMenu(
     | null
   > => {
     const isRecycleBinView = songsAreaState.songListUUID === RECYCLE_BIN_UUID
+    const isRecordingLibraryView = songsAreaState.songListUUID === RECORDING_LIBRARY_UUID
     const isExternalView = songsAreaState.songListUUID === EXTERNAL_PLAYLIST_UUID
     const matchedCuratedArtists = resolveCuratedArtistMatches(song)
     const matchedCuratedArtist = matchedCuratedArtists[0] || ''
@@ -283,7 +299,10 @@ export function useSongItemContextMenu(
       : isRecycleBinView
         ? createRecycleMenuArr()
         : createDefaultMenuArr()
-    menuArr.value = buildMenuArr(baseMenuArr, matchedCuratedArtists)
+    menuArr.value = buildMenuArr(
+      isRecordingLibraryView ? withoutRecordingAnalysisMenus(baseMenuArr) : baseMenuArr,
+      matchedCuratedArtists
+    )
     const result = await rightClickMenu({
       menuArr: menuArr.value,
       clickEvent: event
@@ -450,9 +469,8 @@ export function useSongItemContextMenu(
         return null
       }
       case 'tracks.editMetadata': {
-        const { default: openEditMetadataDialog } = await import(
-          '@renderer/components/editMetadataDialog'
-        )
+        const { default: openEditMetadataDialog } =
+          await import('@renderer/components/editMetadataDialog')
         const dialogResult = await openEditMetadataDialog({
           filePath: song.filePath
         })
@@ -501,9 +519,8 @@ export function useSongItemContextMenu(
           }
           return null
         }
-        const { default: openAutoSummary } = await import(
-          '@renderer/components/autoMetadataSummaryDialog'
-        )
+        const { default: openAutoSummary } =
+          await import('@renderer/components/autoMetadataSummaryDialog')
         await openAutoSummary(summary)
         const updates =
           summary.items
@@ -534,9 +551,8 @@ export function useSongItemContextMenu(
         return null
       }
       case 'similarTracks.menu': {
-        const { default: openSimilarTracksDialog } = await import(
-          '@renderer/components/similarTracksDialog'
-        )
+        const { default: openSimilarTracksDialog } =
+          await import('@renderer/components/similarTracksDialog')
         await openSimilarTracksDialog(song)
         return null
       }

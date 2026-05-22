@@ -696,7 +696,10 @@ export function useWaveformPreview(params: {
         for (const filePath of toQueue) {
           queuedMissing.add(filePath)
         }
-        window.electron.ipcRenderer.send('key-analysis:queue-visible', { filePaths: toQueue })
+        window.electron.ipcRenderer.send('key-analysis:queue-visible', {
+          filePaths: toQueue,
+          waveformOnly: sourceLibraryName.value === 'RecordingLibrary'
+        })
       }
     }
     scheduleDrawForFilePaths(filePaths)

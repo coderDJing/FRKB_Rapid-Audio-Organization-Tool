@@ -5,11 +5,15 @@ import type {
   HorizontalBrowseTransportDeckInput,
   HorizontalBrowseTransportStateInput
 } from '@shared/horizontalBrowseTransport'
+import { RECORDING_LIBRARY_CHANGED_EVENT } from '@shared/recordingLibrary'
 import { horizontalBrowseTransportBridge } from './horizontalBrowseTransportBridge'
 import {
   broadcastHorizontalBrowseTransportSnapshot,
   startHorizontalBrowseTransportSnapshotBroadcaster
 } from './horizontalBrowseTransportSnapshotBroadcaster'
+import mainWindow from '../window/mainWindow'
+import { createRecordingOutputPath } from '../recordingLibraryService'
+import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 
 export function registerHorizontalBrowseTransportHandlers() {
   startHorizontalBrowseTransportSnapshotBroadcaster(() =>
@@ -248,5 +252,23 @@ export function registerHorizontalBrowseTransportHandlers() {
 
   ipcMain.handle('horizontal-browse-transport:visualizer-snapshot', async () =>
     horizontalBrowseTransportBridge.visualizerSnapshot()
+  )
+
+  ipcMain.handle('horizontal-browse-transport:recording-start', async () => {
+    const outputPath = await createRecordingOutputPath()
+    return horizontalBrowseTransportBridge.startRecording(outputPath)
+  })
+
+  ipcMain.handle('horizontal-browse-transport:recording-stop', async () => {
+    const status = horizontalBrowseTransportBridge.stopRecording()
+    if (status.recorded) {
+      markGlobalSongSearchDirty('recording-library')
+      mainWindow.instance?.webContents.send(RECORDING_LIBRARY_CHANGED_EVENT, status)
+    }
+    return status
+  })
+
+  ipcMain.handle('horizontal-browse-transport:recording-snapshot', async () =>
+    horizontalBrowseTransportBridge.recordingSnapshot()
   )
 }

@@ -38,6 +38,8 @@ type KeyAnalysisWorkerPoolDeps = {
       source?: 'foreground' | 'background'
       fastAnalysis?: boolean
       preemptible?: boolean
+      category?: 'visible'
+      waveformOnly?: boolean
     }
   ) => void
   onJobProgress: (worker: Worker, job: KeyAnalysisJob, progress: KeyAnalysisProgress) => void
@@ -70,7 +72,9 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       {
         source: preemptionKind === 'background-resume' ? 'background' : job.source,
         fastAnalysis: job.fastAnalysis,
-        preemptible: job.preemptible
+        preemptible: job.preemptible,
+        category: job.category,
+        waveformOnly: job.waveformOnly
       }
     )
   }

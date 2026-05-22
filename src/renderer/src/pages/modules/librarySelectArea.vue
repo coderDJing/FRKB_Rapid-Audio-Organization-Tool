@@ -3,6 +3,7 @@ import listIconAsset from '@renderer/assets/list.svg?asset'
 import likeIconAsset from '@renderer/assets/like.svg?asset'
 import trashIconAsset from '@renderer/assets/trash.svg?asset'
 import mixtapeIconAsset from '@renderer/assets/mixtape.svg?asset'
+import recordIconAsset from '@renderer/assets/record.svg?asset'
 import usbDriveIconAsset from '@renderer/assets/usbDrive.svg?asset'
 import rekordboxDesktopIconAsset from '@renderer/assets/rekordboxDesktop.svg?asset'
 import {
@@ -37,6 +38,7 @@ import {
 } from '@renderer/utils/audioConvertActions'
 import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { RECORDING_LIBRARY_CHANGED_EVENT, RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { useRekordboxSourceIcons } from './librarySelectArea/useRekordboxSourceIcons'
 const emit = defineEmits(['librarySelectedChange'])
@@ -68,6 +70,15 @@ const externalIcon: Icon = {
   src: tempListIconAsset,
   showAlt: false,
   i18nKey: 'library.externalPlaylist'
+}
+
+const recordingIcon: Icon = {
+  name: 'RecordingLibrary',
+  grey: recordIconAsset,
+  white: recordIconAsset,
+  src: recordIconAsset,
+  showAlt: false,
+  i18nKey: 'library.recordingLibrary'
 }
 
 const baseIcons: Icon[] = [
@@ -107,7 +118,13 @@ const baseIcons: Icon[] = [
 ]
 
 const iconArr = ref<Icon[]>([...baseIcons])
-const coreIconNameSet = new Set(['FilterLibrary', 'CuratedLibrary', 'MixtapeLibrary', 'RecycleBin'])
+const coreIconNameSet = new Set([
+  'FilterLibrary',
+  'CuratedLibrary',
+  'MixtapeLibrary',
+  'RecordingLibrary',
+  'RecycleBin'
+])
 const coreIconArr = computed(() => iconArr.value.filter((item) => coreIconNameSet.has(item.name)))
 const dynamicIconArr = computed(() =>
   iconArr.value.filter((item) => !coreIconNameSet.has(item.name))
@@ -203,6 +220,7 @@ const isPlayingLibraryIcon = (item: Icon) => {
   if (!playingUuid) return false
   if (item.name === 'ExternalPlaylist') return playingUuid === EXTERNAL_PLAYLIST_UUID
   if (item.name === 'RecycleBin' && playingUuid === RECYCLE_BIN_UUID) return true
+  if (item.name === 'RecordingLibrary' && playingUuid === RECORDING_LIBRARY_UUID) return true
   const libraryNode = findLibraryNode(item.name)
   if (!libraryNode) return false
   const uuids = libraryUtils.getAllUuids(libraryNode)
@@ -303,9 +321,8 @@ const handleAutoFillForLibrary = async (libraryName: string) => {
     }
     return
   }
-  const { default: openAutoSummary } = await import(
-    '@renderer/components/autoMetadataSummaryDialog'
-  )
+  const { default: openAutoSummary } =
+    await import('@renderer/components/autoMetadataSummaryDialog')
   await openAutoSummary(summary)
   const updates =
     summary.items
@@ -496,6 +513,48 @@ const iconDragEnter = (event: DragEvent, item: Icon) => {
   libraryHandleClick(item)
 }
 
+const syncRecordingLibraryIcon = async (explicitHasRecordings?: boolean) => {
+  const nextHasRecordings =
+    typeof explicitHasRecordings === 'boolean'
+      ? explicitHasRecordings
+      : Boolean(await window.electron.ipcRenderer.invoke('recordingLibrary:has-recordings'))
+  const exists = iconArr.value.find((icon) => icon.name === 'RecordingLibrary')
+  if (nextHasRecordings && !exists) {
+    recordingIcon.src = recordingIcon.grey
+    const mixtapeIndex = iconArr.value.findIndex((icon) => icon.name === 'MixtapeLibrary')
+    const recycleIndex = iconArr.value.findIndex((icon) => icon.name === 'RecycleBin')
+    if (mixtapeIndex >= 0) {
+      iconArr.value.splice(mixtapeIndex + 1, 0, recordingIcon)
+    } else if (recycleIndex >= 0) {
+      iconArr.value.splice(recycleIndex, 0, recordingIcon)
+    } else {
+      iconArr.value.push(recordingIcon)
+    }
+    if (runtime.libraryAreaSelected === 'RecordingLibrary') {
+      updateSelectedIcon(recordingIcon)
+    }
+    return
+  }
+  if (!nextHasRecordings && exists) {
+    iconArr.value = iconArr.value.filter((icon) => icon.name !== 'RecordingLibrary')
+    if (runtime.libraryAreaSelected === 'RecordingLibrary') {
+      runtime.libraryAreaSelected = 'FilterLibrary'
+    }
+  }
+}
+
+const handleRecordingLibraryChanged = (
+  eventOrPayload?: unknown,
+  maybePayload?: { hasRecordings?: boolean }
+) => {
+  const payload =
+    maybePayload ||
+    (eventOrPayload && typeof eventOrPayload === 'object'
+      ? (eventOrPayload as { hasRecordings?: boolean })
+      : undefined)
+  void syncRecordingLibraryIcon(payload?.hasRecordings)
+}
+
 watch(
   () => runtime.externalPlaylist.songs.length,
   (len) => {
@@ -517,6 +576,20 @@ watch(
   },
   { immediate: true }
 )
+
+onMounted(() => {
+  window.electron.ipcRenderer.on(RECORDING_LIBRARY_CHANGED_EVENT, handleRecordingLibraryChanged)
+  emitter.on(RECORDING_LIBRARY_CHANGED_EVENT, handleRecordingLibraryChanged)
+  void syncRecordingLibraryIcon()
+})
+
+onUnmounted(() => {
+  window.electron.ipcRenderer.removeListener(
+    RECORDING_LIBRARY_CHANGED_EVENT,
+    handleRecordingLibraryChanged
+  )
+  emitter.off(RECORDING_LIBRARY_CHANGED_EVENT, handleRecordingLibraryChanged)
+})
 
 watch(
   () => runtime.libraryAreaSelected,

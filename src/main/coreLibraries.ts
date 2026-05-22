@@ -1,12 +1,18 @@
 import fs = require('fs-extra')
 import path = require('path')
 
-export type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
+export type CoreLibraryName =
+  | 'FilterLibrary'
+  | 'CuratedLibrary'
+  | 'MixtapeLibrary'
+  | 'RecordingLibrary'
+  | 'RecycleBin'
 
 const CORE_EN_TO_CN: Record<CoreLibraryName, string> = {
   FilterLibrary: '筛选库',
   CuratedLibrary: '精选库',
   MixtapeLibrary: '混音库',
+  RecordingLibrary: '录音库',
   RecycleBin: '回收站'
 }
 
@@ -17,6 +23,7 @@ const coreEnToFsName: Record<CoreLibraryName, string> = {
   FilterLibrary: 'FilterLibrary',
   CuratedLibrary: 'CuratedLibrary',
   MixtapeLibrary: 'MixtapeLibrary',
+  RecordingLibrary: 'RecordingLibrary',
   RecycleBin: 'RecycleBin'
 }
 

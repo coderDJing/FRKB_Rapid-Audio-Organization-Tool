@@ -2,6 +2,7 @@
   "library": {
     "filter": "Filter",
     "curated": "Curated",
+    "recordingLibrary": "Recordings",
     "mixtapeLibrary": "Mixtape Auto-Recording",
     "rekordboxDesktopLibrary": "Rekordbox Desktop Library",
     "externalPlaylist": "External tracks",

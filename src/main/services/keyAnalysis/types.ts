@@ -80,6 +80,7 @@ export type KeyAnalysisJob = {
   source: KeyAnalysisSource
   preemptible?: boolean
   category?: 'visible'
+  waveformOnly?: boolean
   focusSlots?: string[]
   needsKey?: boolean
   needsBpm?: boolean

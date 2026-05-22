@@ -162,6 +162,15 @@ export interface HorizontalBrowseTransportSnapshot {
   bottom: HorizontalBrowseTransportDeckSnapshot
   output: HorizontalBrowseTransportOutputSnapshot
 }
+export interface HorizontalBrowseTransportRecordingStatus {
+  state: string
+  filePath?: string
+  sampleRate: number
+  channels: number
+  recordedFrames: number
+  recorded: boolean
+  error?: string
+}
 export interface HorizontalBrowseTransportStateInput {
   nowMs?: number
   top: HorizontalBrowseTransportDeckInput
@@ -353,6 +362,11 @@ export declare function horizontalBrowseTransportSetOutputState(
   crossfaderValue: number,
   masterGain: number
 ): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportStartRecording(
+  filePath: string
+): HorizontalBrowseTransportRecordingStatus
+export declare function horizontalBrowseTransportStopRecording(): HorizontalBrowseTransportRecordingStatus
+export declare function horizontalBrowseTransportRecordingSnapshot(): HorizontalBrowseTransportRecordingStatus
 export declare function horizontalBrowseTransportSnapshot(
   nowMs?: number
 ): HorizontalBrowseTransportSnapshot

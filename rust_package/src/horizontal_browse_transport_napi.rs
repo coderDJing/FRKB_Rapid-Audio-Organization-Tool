@@ -365,6 +365,28 @@ pub fn horizontal_browse_transport_set_output_state(
 }
 
 #[napi]
+pub fn horizontal_browse_transport_start_recording(
+  file_path: String,
+) -> napi::Result<HorizontalBrowseTransportRecordingStatus> {
+  let mut engine_guard = engine().lock();
+  let _ = engine_guard.ensure_output_stream();
+  engine_guard.recording.start(file_path)
+}
+
+#[napi]
+pub fn horizontal_browse_transport_stop_recording() -> HorizontalBrowseTransportRecordingStatus {
+  let mut engine_guard = engine().lock();
+  engine_guard.recording.stop()
+}
+
+#[napi]
+pub fn horizontal_browse_transport_recording_snapshot() -> HorizontalBrowseTransportRecordingStatus
+{
+  let engine_guard = engine().lock();
+  engine_guard.recording.snapshot()
+}
+
+#[napi]
 pub fn horizontal_browse_transport_snapshot(
   now_ms: Option<f64>,
 ) -> HorizontalBrowseTransportSnapshot {

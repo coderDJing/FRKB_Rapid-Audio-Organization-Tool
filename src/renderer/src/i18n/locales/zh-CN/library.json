@@ -2,6 +2,7 @@
   "library": {
     "filter": "筛选库",
     "curated": "精选库",
+    "recordingLibrary": "录音库",
     "mixtapeLibrary": "Mixtape 自动录制",
     "rekordboxDesktopLibrary": "Rekordbox 本机库",
     "externalPlaylist": "外部曲目",

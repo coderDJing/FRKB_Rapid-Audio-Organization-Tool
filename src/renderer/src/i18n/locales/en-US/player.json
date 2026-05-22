@@ -54,6 +54,20 @@
     "audioErrorNetwork": "MEDIA_ERR_NETWORK - Network error",
     "audioErrorDecode": "MEDIA_ERR_DECODE - Decode failed",
     "audioErrorSourceNotSupported": "MEDIA_ERR_SRC_NOT_SUPPORTED - Unsupported source or format",
-    "audioErrorUnknownWithCode": "Unknown error (code: {code})"
+    "audioErrorUnknownWithCode": "Unknown error (code: {code})",
+    "startRecording": "Start Recording",
+    "stopRecording": "Stop Recording",
+    "recordingArmed": "Waiting for audio, click to stop",
+    "recordingBusy": "Recording is busy",
+    "recordingError": "Recording failed",
+    "recordingSavedTitle": "Recording Saved",
+    "recordingSavedToLibrary": "Added to: Recording Library",
+    "recordingSavedFile": "File: {name}",
+    "recordingSavedFormat": "Format: WAV / 32-bit Float / {channels} channels / {sampleRate}",
+    "recordingSavedDuration": "Duration: {duration}",
+    "recordingSavedQuality": "Quality: High-quality uncompressed WAV; sample rate follows the current output device",
+    "recordingSavedPath": "Path: {path}",
+    "recordingUnknownFile": "Untitled recording",
+    "recordingUnknownSampleRate": "Unknown sample rate"
   }
 }

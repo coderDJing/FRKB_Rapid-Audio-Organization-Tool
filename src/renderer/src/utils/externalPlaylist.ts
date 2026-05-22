@@ -73,7 +73,8 @@ const applyExternalSongs = (mode: ExternalPlaylistMode, songs: ISongInfo[]) => {
       currentSelection === 'FilterLibrary' ||
       currentSelection === 'CuratedLibrary' ||
       currentSelection === 'MixtapeLibrary' ||
-      currentSelection === 'RecycleBin'
+      currentSelection === 'RecycleBin' ||
+      currentSelection === 'RecordingLibrary'
         ? (currentSelection as typeof runtime.externalPlaylist.lastLibrarySelection)
         : 'FilterLibrary'
     runtime.libraryAreaSelected = 'ExternalPlaylist'

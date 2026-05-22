@@ -21,6 +21,7 @@ import { t } from '@renderer/utils/translate'
 import { appendExternalPlaylistFromPaths } from '@renderer/utils/externalPlaylist'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import emitter from '@renderer/utils/mitt'
 import {
@@ -187,6 +188,7 @@ const resolveLibrarySelectionBySongListUUID = (uuid: string): LibrarySelection |
   if (!uuid) return ''
   if (uuid === EXTERNAL_PLAYLIST_UUID) return 'ExternalPlaylist'
   if (uuid === RECYCLE_BIN_UUID) return 'RecycleBin'
+  if (uuid === RECORDING_LIBRARY_UUID) return 'RecordingLibrary'
   const dirPath = normalizeLibraryPath(libraryUtils.findDirPathByUuid(uuid))
   if (dirPath === 'library/FilterLibrary' || dirPath.startsWith('library/FilterLibrary/')) {
     return 'FilterLibrary'
@@ -211,6 +213,8 @@ const resolveLibraryLabel = (libraryName: LibrarySelection | '') => {
       return t('library.externalPlaylist')
     case 'RecycleBin':
       return t('recycleBin.recycleBin')
+    case 'RecordingLibrary':
+      return t('library.recordingLibrary')
     default:
       return ''
   }
@@ -280,7 +284,14 @@ const restoreSinglePaneAfterSpecialLibraryIfNeeded = () => {
 watch(
   () => runtime.songsArea.songListUUID,
   (uuid) => {
-    if (!uuid || uuid === EXTERNAL_PLAYLIST_UUID || uuid === RECYCLE_BIN_UUID) return
+    if (
+      !uuid ||
+      uuid === EXTERNAL_PLAYLIST_UUID ||
+      uuid === RECYCLE_BIN_UUID ||
+      uuid === RECORDING_LIBRARY_UUID
+    ) {
+      return
+    }
     const currentLibrary = runtime.libraryAreaSelected
     if (!isCoreLibraryName(currentLibrary)) return
     if (!isPlaylistUnderLibrary(uuid, currentLibrary)) return
@@ -296,14 +307,15 @@ watch(
         suspendSplitForSpecialLibrary()
       }
       runtime.songsArea.songListUUID = EXTERNAL_PLAYLIST_UUID
-    } else if (val === 'RecycleBin') {
+    } else if (val === 'RecycleBin' || val === 'RecordingLibrary') {
       if (runtime.songsAreaPanels.splitEnabled) {
         suspendSplitForSpecialLibrary()
       } else {
         suspendSinglePaneForSpecialLibrary()
       }
-      if (runtime.songsArea.songListUUID !== RECYCLE_BIN_UUID) {
-        runtime.songsArea.songListUUID = RECYCLE_BIN_UUID
+      const specialListUUID = val === 'RecycleBin' ? RECYCLE_BIN_UUID : RECORDING_LIBRARY_UUID
+      if (runtime.songsArea.songListUUID !== specialListUUID) {
+        runtime.songsArea.songListUUID = specialListUUID
       }
     } else if (isCoreLibraryName(val)) {
       if (restoreSplitAfterSpecialLibraryIfNeeded()) {
@@ -314,8 +326,12 @@ watch(
         triggerLibrarySwitchAnimation(oldVal === undefined)
         return
       }
-      // 从 ExternalPlaylist/RecycleBin 切换时，用 lastSongListUUIDByLibrary 恢复歌单
-      if (oldVal === 'ExternalPlaylist' || oldVal === 'RecycleBin') {
+      // 从 ExternalPlaylist/RecycleBin/RecordingLibrary 切换时，用 lastSongListUUIDByLibrary 恢复歌单
+      if (
+        oldVal === 'ExternalPlaylist' ||
+        oldVal === 'RecycleBin' ||
+        oldVal === 'RecordingLibrary'
+      ) {
         const savedUUID = runtime.lastSongListUUIDByLibrary[val] || ''
         if (savedUUID) {
           runtime.songsArea.songListUUID = savedUUID
@@ -346,11 +362,14 @@ const librarySelectedChange = (item: { name: string }) => {
 let dragOverSongsArea = ref(false)
 const isExternalPlaylistView = computed(() => runtime.libraryAreaSelected === 'ExternalPlaylist')
 const isRecycleBinView = computed(() => runtime.libraryAreaSelected === 'RecycleBin')
+const isRecordingLibraryView = computed(() => runtime.libraryAreaSelected === 'RecordingLibrary')
 const isMixtapeLibraryView = computed(() => runtime.libraryAreaSelected === 'MixtapeLibrary')
 const isPioneerDeviceLibraryView = computed(
   () => runtime.libraryAreaSelected === 'PioneerDeviceLibrary'
 )
-const isLibraryPanelHidden = computed(() => isExternalPlaylistView.value || isRecycleBinView.value)
+const isLibraryPanelHidden = computed(
+  () => isExternalPlaylistView.value || isRecycleBinView.value || isRecordingLibraryView.value
+)
 const showMainSongPlayer = computed(
   () => runtime.mainWindowBrowseMode === 'browser' && Boolean(runtime.playingData.playingSong)
 )
@@ -479,7 +498,7 @@ const dragover = (e: DragEvent) => {
     return
   }
 
-  if (isRecycleBinView.value) {
+  if (isRecycleBinView.value || isRecordingLibraryView.value) {
     e.dataTransfer.dropEffect = 'none'
     dragOverSongsArea.value = false
     return
@@ -522,7 +541,7 @@ const dragleave = (e: DragEvent) => {
     return
   }
 
-  if (isRecycleBinView.value) {
+  if (isRecycleBinView.value || isRecordingLibraryView.value) {
     dragOverSongsArea.value = false
     return
   }
@@ -563,7 +582,7 @@ const drop = async (e: DragEvent) => {
     return
   }
 
-  if (isRecycleBinView.value) {
+  if (isRecycleBinView.value || isRecordingLibraryView.value) {
     dragOverSongsArea.value = false
     return
   }

@@ -25,6 +25,7 @@ export function enqueueKeyAnalysis(
     focusSlot?: string
     preemptible?: boolean
     category?: 'visible'
+    waveformOnly?: boolean
   } = {}
 ) {
   getQueue().enqueue(filePath, priority, options)
@@ -40,13 +41,17 @@ export function enqueueKeyAnalysisList(
     focusSlot?: string
     preemptible?: boolean
     category?: 'visible'
+    waveformOnly?: boolean
   } = {}
 ) {
   getQueue().enqueueList(filePaths, priority, options)
 }
 
-export function replaceVisibleKeyAnalysisList(filePaths: string[]) {
-  getQueue().replaceVisibleList(filePaths)
+export function replaceVisibleKeyAnalysisList(
+  filePaths: string[],
+  options: { waveformOnly?: boolean } = {}
+) {
+  getQueue().replaceVisibleList(filePaths, options)
 }
 
 export function startKeyAnalysisBackground() {

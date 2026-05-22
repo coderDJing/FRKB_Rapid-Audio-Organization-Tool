@@ -141,7 +141,9 @@ const sourceSongListUUIDRef = toRef(props, 'sourceSongListUUID')
 const sourcePaneKeyRef = toRef(props, 'sourcePaneKey')
 const sourceLibraryNameRef = toRef(props, 'sourceLibraryName')
 const enableCoverThumbnailsRef = toRef(props, 'enableCoverThumbnails')
-const enableKeyAnalysisQueueRef = toRef(props, 'enableKeyAnalysisQueue')
+const enableKeyAnalysisQueueRef = computed(
+  () => props.enableKeyAnalysisQueue && props.sourceLibraryName !== 'RecordingLibrary'
+)
 const visibleColumnsRef = toRef(props, 'visibleColumns')
 const runtime = useRuntimeStore()
 const playingSongRowKeySet = computed(
@@ -396,6 +398,7 @@ const { getAnalysisProgress, isSongNeedsAnalysis, hasAnyAnalysisProgress } = use
   {
     visibleSongsWithIndex,
     isAnalysisCompleteOverride: (filePath) => {
+      if (sourceLibraryNameRef.value === 'RecordingLibrary') return true
       const normalized = String(filePath || '')
         .replace(/\//g, '\\')
         .toLowerCase()
@@ -407,6 +410,9 @@ const { getAnalysisProgress, isSongNeedsAnalysis, hasAnyAnalysisProgress } = use
       )
     }
   }
+)
+const showAnalysisProgressBar = computed(
+  () => sourceLibraryNameRef.value !== 'RecordingLibrary' && hasAnyAnalysisProgress.value
 )
 
 const {
@@ -831,7 +837,7 @@ onUnmounted(() => {
               </div>
             </template>
             <RowAnalysisBar
-              v-if="hasAnyAnalysisProgress && !item.song.fileMissing"
+              v-if="showAnalysisProgressBar && !item.song.fileMissing"
               :progress="getAnalysisProgress(item.song.filePath)"
               :viewport-width="listViewportWidth"
               :scroll-left="scrollLeft"

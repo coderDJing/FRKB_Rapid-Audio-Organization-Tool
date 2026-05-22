@@ -252,7 +252,13 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     for (const libraryEntry of libraryEntries) {
       if (!libraryEntry.isDirectory()) continue
       if (libraryEntry.name.startsWith('.')) continue
-      if (libraryEntry.name === 'MixtapeLibrary' || libraryEntry.name === 'RecycleBin') continue
+      if (
+        libraryEntry.name === 'MixtapeLibrary' ||
+        libraryEntry.name === 'RecycleBin' ||
+        libraryEntry.name === 'RecordingLibrary'
+      ) {
+        continue
+      }
       const libraryDir = path.join(libraryRoot, libraryEntry.name)
       let songListEntries: nodeFs.Dirent[] = []
       try {

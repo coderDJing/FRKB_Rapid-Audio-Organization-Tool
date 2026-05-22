@@ -27,9 +27,18 @@ import {
 } from '../recycleBinDb'
 import { scanSongList as svcScanSongList } from '../services/scanSongs'
 import { RECYCLE_BIN_UUID } from '../../shared/recycleBin'
+import {
+  RECORDING_LIBRARY_CHANGED_EVENT,
+  RECORDING_LIBRARY_UUID
+} from '../../shared/recordingLibrary'
 import { getLibraryDb, type SqliteDatabase } from '../libraryDb'
 import { getLibraryStemCacheRootAbs } from '../services/libraryStemAssetStorage'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
+import {
+  getRecordingLibraryRootAbs,
+  hasRecordings,
+  isInRecordingLibraryAbsPath
+} from '../recordingLibraryService'
 import {
   appendSongListTrackNumbers,
   compactSongListTrackNumbers,
@@ -280,6 +289,11 @@ export function registerLibraryMaintenanceHandlers() {
       if (compacted) {
         markGlobalSongSearchDirty('delSongs')
       }
+      if (removedPaths.some((item) => isInRecordingLibraryAbsPath(item))) {
+        mainWindow.instance?.webContents.send(RECORDING_LIBRARY_CHANGED_EVENT, {
+          hasRecordings: await hasRecordings()
+        })
+      }
     }
     return {
       total: tasks.length,
@@ -444,6 +458,21 @@ export function registerLibraryMaintenanceHandlers() {
       }
     })
     return { scanData: merged, songListUUID: RECYCLE_BIN_UUID }
+  })
+
+  ipcMain.handle('recordingLibrary:list', async () => {
+    const recordingRoot = getRecordingLibraryRootAbs()
+    if (!recordingRoot || !(await fs.pathExists(recordingRoot))) {
+      return { scanData: [], songListUUID: RECORDING_LIBRARY_UUID }
+    }
+    const { scanData } = await svcScanSongList(recordingRoot, ['.wav'], RECORDING_LIBRARY_UUID, {
+      enablePostScanTasks: false
+    })
+    return { scanData, songListUUID: RECORDING_LIBRARY_UUID }
+  })
+
+  ipcMain.handle('recordingLibrary:has-recordings', async () => {
+    return await hasRecordings()
   })
 
   ipcMain.handle('recycleBin:restore', async (_e, payload: { filePaths?: string[] } | string[]) => {

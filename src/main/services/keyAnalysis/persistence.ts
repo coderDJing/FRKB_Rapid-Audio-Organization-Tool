@@ -849,11 +849,18 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       }
     }
 
+    if (job.waveformOnly) {
+      needsKey = false
+      needsBpm = false
+    }
+
     if (!needsKey && !needsBpm && !needsWaveform) {
       job.needsKey = false
       job.needsBpm = false
       job.needsWaveform = false
-      job.prepareReason = 'skip-special-grid-complete'
+      job.prepareReason = job.waveformOnly
+        ? 'skip-waveform-cache-complete'
+        : 'skip-special-grid-complete'
       job.prepareDetails = buildPrepareDetails({
         listRootResolved,
         externalCacheResolved,

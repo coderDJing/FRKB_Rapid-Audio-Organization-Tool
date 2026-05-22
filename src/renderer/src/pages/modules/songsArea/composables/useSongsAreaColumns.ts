@@ -4,6 +4,7 @@ import { MIN_WIDTH_BY_KEY } from '../minWidth'
 import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
 import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
 import { isRcVersion } from '@shared/windowScreenshotFeature'
@@ -17,17 +18,19 @@ interface UseSongsAreaColumnsParams {
   shouldPersistToLocalStorage: () => boolean
 }
 
-export type SongsAreaColumnMode = 'default' | 'recycle' | 'mixtape'
+export type SongsAreaColumnMode = 'default' | 'recycle' | 'recording' | 'mixtape'
 
 const INIT_EXTRA_WIDTH = 40
 export const SONGS_AREA_DEFAULT_STORAGE_KEY = 'songColumnData'
 export const SONGS_AREA_RECYCLE_STORAGE_KEY = 'recycleBinColumnData'
+export const SONGS_AREA_RECORDING_STORAGE_KEY = 'recordingLibraryColumnData'
 export const SONGS_AREA_MIXTAPE_STORAGE_KEY = 'mixtapeColumnData'
 
 export const buildSongsAreaBaseColumns = (
   mode: SongsAreaColumnMode
 ): Omit<ISongsAreaColumn, 'width'>[] => {
   const isRecycleBin = mode === 'recycle'
+  const isRecording = mode === 'recording'
   const isMixtape = mode === 'mixtape'
   const showBeatThisDebugColumn =
     !isMixtape && (process.env.NODE_ENV === 'development' || isRcVersion(String(pkg.version || '')))
@@ -46,6 +49,43 @@ export const buildSongsAreaBaseColumns = (
       show: true,
       order: 'desc'
     })
+  }
+  if (isRecording) {
+    columns.push(
+      { columnName: 'columns.waveformPreview', key: 'waveformPreview', show: true },
+      {
+        columnName: 'columns.title',
+        key: 'title',
+        show: true,
+        filterType: 'text'
+      },
+      {
+        columnName: 'columns.duration',
+        key: 'duration',
+        show: true,
+        filterType: 'duration'
+      },
+      { columnName: 'columns.bitrate', key: 'bitrate', show: true },
+      {
+        columnName: 'columns.fileFormat',
+        key: 'fileFormat',
+        show: true,
+        filterType: 'text'
+      },
+      {
+        columnName: 'columns.format',
+        key: 'container',
+        show: true,
+        filterType: 'text'
+      },
+      {
+        columnName: 'columns.fileName',
+        key: 'fileName',
+        show: true,
+        filterType: 'text'
+      }
+    )
+    return columns
   }
   columns.push(
     { columnName: 'columns.cover', key: 'cover', show: true },
@@ -172,11 +212,15 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   }
 
   const isRecycleBinView = computed(() => songsAreaState.songListUUID === RECYCLE_BIN_UUID)
+  const isRecordingLibraryView = computed(
+    () => songsAreaState.songListUUID === RECORDING_LIBRARY_UUID
+  )
   const isMixtapeView = computed(
     () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
   )
   const columnMode = computed<SongsAreaColumnMode>(() => {
     if (isRecycleBinView.value) return 'recycle'
+    if (isRecordingLibraryView.value) return 'recording'
     if (isMixtapeView.value) return 'mixtape'
     return 'default'
   })
@@ -197,9 +241,11 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     const storageKey =
       mode === 'recycle'
         ? SONGS_AREA_RECYCLE_STORAGE_KEY
-        : mode === 'mixtape'
-          ? SONGS_AREA_MIXTAPE_STORAGE_KEY
-          : SONGS_AREA_DEFAULT_STORAGE_KEY
+        : mode === 'recording'
+          ? SONGS_AREA_RECORDING_STORAGE_KEY
+          : mode === 'mixtape'
+            ? SONGS_AREA_MIXTAPE_STORAGE_KEY
+            : SONGS_AREA_DEFAULT_STORAGE_KEY
     const defaultColumns = buildSongsAreaDefaultColumns(mode)
     const savedData = localStorage.getItem(storageKey)
     let finalColumns: ISongsAreaColumn[]
@@ -386,9 +432,11 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     const storageKey =
       columnMode.value === 'recycle'
         ? SONGS_AREA_RECYCLE_STORAGE_KEY
-        : columnMode.value === 'mixtape'
-          ? SONGS_AREA_MIXTAPE_STORAGE_KEY
-          : SONGS_AREA_DEFAULT_STORAGE_KEY
+        : columnMode.value === 'recording'
+          ? SONGS_AREA_RECORDING_STORAGE_KEY
+          : columnMode.value === 'mixtape'
+            ? SONGS_AREA_MIXTAPE_STORAGE_KEY
+            : SONGS_AREA_DEFAULT_STORAGE_KEY
     localStorage.setItem(storageKey, JSON.stringify(columnData.value))
   }
 

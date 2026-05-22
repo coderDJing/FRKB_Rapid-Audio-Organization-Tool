@@ -84,6 +84,18 @@ export type HorizontalBrowseTransportVisualizerSnapshot = {
   timeDomainData: number[]
 }
 
+export type HorizontalBrowseRecordingState = 'idle' | 'armed' | 'recording' | 'error'
+
+export type HorizontalBrowseTransportRecordingStatus = {
+  state: HorizontalBrowseRecordingState
+  filePath?: string
+  sampleRate: number
+  channels: number
+  recordedFrames: number
+  recorded: boolean
+  error?: string
+}
+
 export const createEmptyHorizontalBrowseTransportDeckSnapshot = (
   deck: HorizontalBrowseDeckKey
 ): HorizontalBrowseTransportDeckSnapshot => ({

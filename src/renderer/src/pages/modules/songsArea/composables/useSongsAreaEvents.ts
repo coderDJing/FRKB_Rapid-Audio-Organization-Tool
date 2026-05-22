@@ -4,6 +4,7 @@ import type { ShallowRef } from 'vue'
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from '../../../../../../types/globals'
 import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { RECORDING_LIBRARY_CHANGED_EVENT, RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -679,6 +680,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     await openSongList()
   }
 
+  const onRecordingLibraryChanged = () => {
+    if (songsAreaState.songListUUID !== RECORDING_LIBRARY_UUID) return
+    void openSongList().catch(() => {})
+  }
+
   onMounted(() => {
     emitter.on('songsArea/optimistic-remove', onSongsOptimisticallyRemoved)
     emitter.on('songsArea/optimistic-restore', onSongsOptimisticallyRestored)
@@ -692,6 +698,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on('song-memory-cues-updated', onSongMemoryCuesUpdated)
     window.electron.ipcRenderer.on('importFinished', onImportFinished)
     window.electron.ipcRenderer.on('audio:convert:done', onAudioConvertDone)
+    window.electron.ipcRenderer.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
+    emitter.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
     void loadCurrentSongList(songsAreaState.songListUUID).catch(() => {})
   })
 
@@ -708,6 +716,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.removeListener('song-memory-cues-updated', onSongMemoryCuesUpdated)
     window.electron.ipcRenderer.removeListener('importFinished', onImportFinished)
     window.electron.ipcRenderer.removeListener('audio:convert:done', onAudioConvertDone)
+    window.electron.ipcRenderer.removeListener(
+      RECORDING_LIBRARY_CHANGED_EVENT,
+      onRecordingLibraryChanged
+    )
+    emitter.off(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
   })
 
   // 切换歌单时刷新列表

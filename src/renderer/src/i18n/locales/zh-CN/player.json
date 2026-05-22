@@ -54,6 +54,20 @@
     "audioErrorNetwork": "MEDIA_ERR_NETWORK - 网络错误",
     "audioErrorDecode": "MEDIA_ERR_DECODE - 解码失败",
     "audioErrorSourceNotSupported": "MEDIA_ERR_SRC_NOT_SUPPORTED - 不支持的格式或源",
-    "audioErrorUnknownWithCode": "未知错误 (code: {code})"
+    "audioErrorUnknownWithCode": "未知错误 (code: {code})",
+    "startRecording": "开始录制",
+    "stopRecording": "停止录制",
+    "recordingArmed": "等待声音信号，点击停止",
+    "recordingBusy": "录制处理中",
+    "recordingError": "录制出错",
+    "recordingSavedTitle": "录音已保存",
+    "recordingSavedToLibrary": "已加入：录音库",
+    "recordingSavedFile": "文件：{name}",
+    "recordingSavedFormat": "格式：WAV / 32-bit Float / {channels} 声道 / {sampleRate}",
+    "recordingSavedDuration": "时长：{duration}",
+    "recordingSavedQuality": "质量：高音质非压缩 WAV，采样率跟随当前输出设备",
+    "recordingSavedPath": "路径：{path}",
+    "recordingUnknownFile": "未命名录音",
+    "recordingUnknownSampleRate": "未知采样率"
   }
 }

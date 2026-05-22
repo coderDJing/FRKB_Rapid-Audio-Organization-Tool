@@ -137,6 +137,18 @@ export class KeyAnalysisQueue {
     this.background.startBackgroundSweep()
   }
 
+  private applyWaveformOnlyOption(job: KeyAnalysisJob, waveformOnly?: boolean) {
+    if (waveformOnly !== true) {
+      if (waveformOnly === false || job.waveformOnly) {
+        job.waveformOnly = false
+      }
+      return
+    }
+    if (job.waveformOnly === true) {
+      job.waveformOnly = true
+    }
+  }
+
   enqueue(
     filePath: string,
     priority: KeyAnalysisPriority,
@@ -147,6 +159,7 @@ export class KeyAnalysisQueue {
       focusSlot?: string
       preemptible?: boolean
       category?: 'visible'
+      waveformOnly?: boolean
     } = {}
   ) {
     if (!filePath) return
@@ -181,6 +194,7 @@ export class KeyAnalysisQueue {
         if (options.category !== undefined) {
           existing.category = options.category
         }
+        this.applyWaveformOnlyOption(existing, options.waveformOnly)
         this.addFocusSlotToJob(existing, focusSlot)
         this.addPending(existing, options.urgent)
       } else {
@@ -190,6 +204,7 @@ export class KeyAnalysisQueue {
         if (options.category !== undefined) {
           existing.category = options.category
         }
+        this.applyWaveformOnlyOption(existing, options.waveformOnly)
         this.addFocusSlotToJob(existing, focusSlot)
       }
       if (options.urgent && existing.priority === 'high') {
@@ -207,7 +222,8 @@ export class KeyAnalysisQueue {
       fastAnalysis: options.fastAnalysis ?? false,
       source,
       preemptible: options.preemptible === true,
-      category: options.category
+      category: options.category,
+      waveformOnly: options.waveformOnly === true
     }
     this.addFocusSlotToJob(job, focusSlot)
     this.addPending(job, options.urgent)
@@ -227,6 +243,7 @@ export class KeyAnalysisQueue {
       focusSlot?: string
       preemptible?: boolean
       category?: 'visible'
+      waveformOnly?: boolean
     } = {}
   ) {
     if (!Array.isArray(filePaths) || filePaths.length === 0) return
@@ -235,7 +252,7 @@ export class KeyAnalysisQueue {
     }
   }
 
-  replaceVisibleList(filePaths: string[]) {
+  replaceVisibleList(filePaths: string[], options: { waveformOnly?: boolean } = {}) {
     const normalizedIncoming = Array.from(
       new Set(
         (Array.isArray(filePaths) ? filePaths : [])
@@ -256,7 +273,8 @@ export class KeyAnalysisQueue {
     this.enqueueList(filePaths, 'low', {
       source: 'foreground',
       preemptible: true,
-      category: 'visible'
+      category: 'visible',
+      waveformOnly: options.waveformOnly === true
     })
   }
 

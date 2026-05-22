@@ -31,8 +31,10 @@ async function findSongListRoot(startDir: string): Promise<string | null> {
   const rootDir = store.databaseDir
   if (rootDir) {
     const recycleRoot = path.join(rootDir, mapRendererPathToFsPath('library/RecycleBin'))
+    const recordingRoot = path.join(rootDir, mapRendererPathToFsPath('library/RecordingLibrary'))
     const normalizedStart = normalizePath(startDir)
     const normalizedRecycle = normalizePath(recycleRoot)
+    const normalizedRecording = normalizePath(recordingRoot)
     if (
       normalizedStart &&
       normalizedRecycle &&
@@ -40,6 +42,14 @@ async function findSongListRoot(startDir: string): Promise<string | null> {
         normalizedStart.startsWith(normalizedRecycle + path.sep))
     ) {
       return recycleRoot
+    }
+    if (
+      normalizedStart &&
+      normalizedRecording &&
+      (normalizedStart === normalizedRecording ||
+        normalizedStart.startsWith(normalizedRecording + path.sep))
+    ) {
+      return recordingRoot
     }
   }
   return await findSongListRootByPath(startDir)
@@ -351,6 +361,7 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
       keepRoots.add(path.join(rootDir, rel))
     }
     keepRoots.add(path.join(rootDir, mapRendererPathToFsPath('library/RecycleBin')))
+    keepRoots.add(path.join(rootDir, mapRendererPathToFsPath('library/RecordingLibrary')))
     return await LibraryCacheDb.pruneCachesByRoots(keepRoots)
   } catch {
     return {

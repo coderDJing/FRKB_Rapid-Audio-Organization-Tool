@@ -9,6 +9,7 @@ import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { areSongHotCuesEqual } from '@shared/hotCues'
 import { areSongMemoryCuesEqual } from '@shared/memoryCues'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { t } from '@renderer/utils/translate'
 
 interface UseSongsLoaderParams {
@@ -479,6 +480,27 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       try {
         const { scanData, songListUUID } =
           await window.electron.ipcRenderer.invoke('recycleBin:list')
+        if (songListUUID !== songsAreaState.songListUUID) return
+        originalSongInfoArr.value = markRaw(scanData)
+        applyFiltersAndSorting()
+        syncSelectedKeysAfterReload(scanData, songListUUID)
+        syncPlayingStateAfterReload(scanData, songListUUID)
+        lastAppliedSongListUUID = songListUUID
+      } finally {
+        isRequesting.value = false
+        clearTimeout(loadingSetTimeout)
+        loadingShow.value = false
+      }
+      return
+    }
+    if (songsAreaState.songListUUID === RECORDING_LIBRARY_UUID) {
+      loadingShow.value = false
+      const loadingSetTimeout = setTimeout(() => {
+        loadingShow.value = true
+      }, 100)
+      try {
+        const { scanData, songListUUID } =
+          await window.electron.ipcRenderer.invoke('recordingLibrary:list')
         if (songListUUID !== songsAreaState.songListUUID) return
         originalSongInfoArr.value = markRaw(scanData)
         applyFiltersAndSorting()

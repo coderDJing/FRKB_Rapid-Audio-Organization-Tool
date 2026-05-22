@@ -11,6 +11,7 @@ import {
 export type LibrarySelection =
   | 'FilterLibrary'
   | 'CuratedLibrary'
+  | 'RecordingLibrary'
   | 'MixtapeLibrary'
   | 'RecycleBin'
   | 'ExternalPlaylist'
@@ -19,7 +20,7 @@ export type LibrarySelection =
 type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
 export type SongsAreaPaneKey = 'single' | 'left' | 'right'
 export type SplitSongsAreaPaneKey = 'left' | 'right'
-export type SongsAreaColumnMode = 'default' | 'recycle' | 'mixtape'
+export type SongsAreaColumnMode = 'default' | 'recycle' | 'recording' | 'mixtape'
 
 export interface ISongsAreaState {
   songListUUID: string
@@ -65,7 +66,7 @@ const assignSongsAreaState = (
   const nextCache: ISongsAreaPaneRuntimeState['columnCacheByMode'] = {}
   const sourceCache = source?.columnCacheByMode
   if (sourceCache && typeof sourceCache === 'object') {
-    for (const key of ['default', 'recycle', 'mixtape'] as const) {
+    for (const key of ['default', 'recycle', 'recording', 'mixtape'] as const) {
       const cached = sourceCache[key]
       if (Array.isArray(cached)) {
         nextCache[key] = cached.map((item) => ({ ...item }))

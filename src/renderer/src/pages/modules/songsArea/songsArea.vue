@@ -18,6 +18,7 @@ import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 import { ISongInfo } from '../../../../../types/globals'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
+import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { activateSongsAreaPane } from '@renderer/utils/songsAreaSplit'
 import type { MoveSongsLibraryName } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
 
@@ -114,7 +115,11 @@ const resolveSelectedFilePaths = (keys?: string[]) => {
     .filter((p) => typeof p === 'string' && p.length > 0)
 }
 const songListRootDir = computed(() =>
-  isMixtapeListView.value ? '' : libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
+  songsAreaState.songListUUID === RECORDING_LIBRARY_UUID
+    ? 'library/RecordingLibrary'
+    : isMixtapeListView.value
+      ? ''
+      : libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
 )
 // 使用 shallowRef 承载原始列表，避免不必要的深层响应式开销
 const originalSongInfoArr = shallowRef<ISongInfo[]>([])
@@ -865,14 +870,18 @@ const shouldShowEmptyState = computed(() => {
 // 空状态相关计算
 const hasActiveFilter = computed(() => columnData.value.some((c) => !!c.filterActive))
 const isRecycleBinView = computed(() => songsAreaState.songListUUID === RECYCLE_BIN_UUID)
+const isRecordingLibraryView = computed(
+  () => songsAreaState.songListUUID === RECORDING_LIBRARY_UUID
+)
 const emptyTitleText = computed(() => {
   if (hasActiveFilter.value) return t('filters.noResults')
   if (isRecycleBinView.value) return t('recycleBin.noDeletionRecords')
+  if (isRecordingLibraryView.value) return t('tracks.noTracks')
   return t('tracks.noTracks')
 })
 const emptyHintText = computed(() => {
   if (hasActiveFilter.value) return t('filters.noResultsHint')
-  if (isRecycleBinView.value) return ''
+  if (isRecycleBinView.value || isRecordingLibraryView.value) return ''
   return t('tracks.noTracksHint')
 })
 // 派生状态结束

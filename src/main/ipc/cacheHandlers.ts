@@ -16,6 +16,7 @@ import { ensureMixtapeStemWaveformBundle } from '../services/mixtapeStemWaveform
 import { registerMixtapeRawWaveformHandlers } from './mixtapeRawWaveformHandlers'
 import mainWindow from '../window/mainWindow'
 import { invalidateKeyAnalysisCache, enqueueKeyAnalysisList } from '../services/keyAnalysisQueue'
+import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 
 export function registerCacheHandlers() {
   registerMixtapeRawWaveformHandlers()
@@ -54,7 +55,10 @@ export function registerCacheHandlers() {
     }
 
     invalidateKeyAnalysisCache(files)
-    enqueueKeyAnalysisList(files, 'high')
+    const analysisFiles = files.filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
+    if (analysisFiles.length > 0) {
+      enqueueKeyAnalysisList(analysisFiles, 'high')
+    }
 
     sendProgress(files.length, true)
     return { cleared }
