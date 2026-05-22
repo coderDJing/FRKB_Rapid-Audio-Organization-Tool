@@ -73,8 +73,7 @@ type HorizontalBrowseDeckDetailLaneExpose = {
   shiftGridSmallLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridSmallRight?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridLargeRight?: (options?: HorizontalBrowseGridShiftOptions) => void
-  toggleMetronome?: () => void
-  cycleMetronomeVolume?: () => void
+  cycleMetronomeState?: () => void
 }
 const props = withDefaults(
   defineProps<{
@@ -93,8 +92,7 @@ const createDefaultDeckToolbarState = () => ({
   barLinePicking: false,
   metronomeEnabled: false,
   metronomeVolumeLevel: 2 as 1 | 2 | 3,
-  canToggleMetronome: false,
-  canAdjustMetronomeVolume: false
+  canToggleMetronome: false
 })
 
 const runtime = useRuntimeStore()
@@ -608,8 +606,7 @@ const {
   handleDeckGridShiftSmallLeft,
   handleDeckGridShiftSmallRight,
   handleDeckGridShiftLargeRight,
-  handleDeckMetronomeToggle,
-  handleDeckMetronomeVolumeCycle,
+  handleDeckMetronomeStateCycle,
   handleDeckBpmInputUpdate,
   handleDeckBpmInputBlur
 } = useHorizontalBrowseDeckToolbarInteractions({
@@ -969,8 +966,7 @@ onUnmounted(() => {
         @blur-bpm-input="handleDeckBpmInputBlur('top')"
         @memory-cue="void handleDeckMemoryCueCreate('top')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
-        @toggle-metronome="handleDeckMetronomeToggle('top')"
-        @cycle-metronome-volume="handleDeckMetronomeVolumeCycle('top')"
+        @cycle-metronome-state="handleDeckMetronomeStateCycle('top')"
         @loop-step-down="handleDeckLoopStepDown('top')"
         @loop-step-up="handleDeckLoopStepUp('top')"
         @toggle-loop="handleDeckLoopToggle('top')"
@@ -1094,8 +1090,7 @@ onUnmounted(() => {
         @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
         @memory-cue="void handleDeckMemoryCueCreate('bottom')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
-        @toggle-metronome="handleDeckMetronomeToggle('bottom')"
-        @cycle-metronome-volume="handleDeckMetronomeVolumeCycle('bottom')"
+        @cycle-metronome-state="handleDeckMetronomeStateCycle('bottom')"
         @loop-step-down="handleDeckLoopStepDown('bottom')"
         @loop-step-up="handleDeckLoopStepUp('bottom')"
         @toggle-loop="handleDeckLoopToggle('bottom')"

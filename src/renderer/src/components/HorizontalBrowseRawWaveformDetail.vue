@@ -550,8 +550,7 @@ const {
   metronomeEnabled,
   metronomeVolumeLevel,
   metronomeSupported,
-  setMetronomeEnabled,
-  setMetronomeVolumeLevel
+  cycleMetronomeState: cycleMetronomeRuntimeState
 } = useMixtapeBeatAlignMetronome({
   dialogVisible: detailVisible,
   previewPlaying,
@@ -565,7 +564,6 @@ const {
 })
 
 const canToggleMetronome = computed(() => canAdjustGrid.value && metronomeSupported.value)
-const canAdjustMetronomeVolume = computed(() => canToggleMetronome.value)
 
 const {
   emitToolbarState,
@@ -576,8 +574,7 @@ const {
   toggleBarLinePicking,
   setBarLineAtPlayhead,
   shiftGrid,
-  toggleMetronome,
-  cycleMetronomeVolume
+  cycleMetronomeState
 } = useHorizontalBrowseGridToolbar({
   canAdjustGrid,
   previewLoading,
@@ -591,7 +588,6 @@ const {
   metronomeEnabled,
   metronomeVolumeLevel,
   canToggleMetronome,
-  canAdjustMetronomeVolume,
   emitToolbarStateChange: (value) => emit('toolbar-state-change', value),
   resolveDisplayGridBpm,
   resolveSongFirstBeatMs: () => Number(props.song?.firstBeatMs) || 0,
@@ -606,12 +602,7 @@ const {
   handleBarLinePickingToggle,
   handleSetBarLineAtPlayhead,
   handleGridShift,
-  handleMetronomeToggle: () => setMetronomeEnabled(!metronomeEnabled.value),
-  handleMetronomeVolumeCycle: () => {
-    const currentLevel = Number(metronomeVolumeLevel.value)
-    const nextLevel = currentLevel >= 3 ? 1 : ((currentLevel + 1) as 1 | 2 | 3)
-    setMetronomeVolumeLevel(nextLevel)
-  }
+  handleMetronomeStateCycle: cycleMetronomeRuntimeState
 })
 
 const {
@@ -920,13 +911,7 @@ watch(
 )
 
 watch(
-  () =>
-    [
-      metronomeEnabled.value,
-      metronomeVolumeLevel.value,
-      canToggleMetronome.value,
-      canAdjustMetronomeVolume.value
-    ] as const,
+  () => [metronomeEnabled.value, metronomeVolumeLevel.value, canToggleMetronome.value] as const,
   () => {
     emitToolbarState()
   }
@@ -1007,8 +992,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   updateBpmInput: handlePreviewBpmInputUpdate,
   blurBpmInput: handlePreviewBpmInputBlur,
   tapBpm: handlePreviewBpmTap,
-  toggleMetronome,
-  cycleMetronomeVolume
+  cycleMetronomeState
 })
 </script>
 

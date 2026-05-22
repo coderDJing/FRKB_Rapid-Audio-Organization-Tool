@@ -24,7 +24,6 @@ export type HorizontalBrowseGridToolbarState = {
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
-  canAdjustMetronomeVolume: boolean
 }
 
 export type HorizontalBrowseGridShiftOptions = {
@@ -44,7 +43,6 @@ type UseHorizontalBrowseGridToolbarParams = {
   metronomeEnabled: Ref<boolean>
   metronomeVolumeLevel: Ref<1 | 2 | 3>
   canToggleMetronome: Ref<boolean>
-  canAdjustMetronomeVolume: Ref<boolean>
   emitToolbarStateChange: (value: HorizontalBrowseGridToolbarState) => void
   resolveDisplayGridBpm: () => number
   resolveSongFirstBeatMs: () => number
@@ -59,8 +57,7 @@ type UseHorizontalBrowseGridToolbarParams = {
   handleBarLinePickingToggle: () => void
   handleSetBarLineAtPlayhead: () => void
   handleGridShift: (deltaMs: number, options?: HorizontalBrowseGridShiftOptions) => void
-  handleMetronomeToggle: () => void
-  handleMetronomeVolumeCycle: () => void
+  handleMetronomeStateCycle: () => void
 }
 
 export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridToolbarParams) => {
@@ -74,8 +71,7 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
       barLinePicking: params.previewBarLinePicking.value,
       metronomeEnabled: params.metronomeEnabled.value,
       metronomeVolumeLevel: params.metronomeVolumeLevel.value,
-      canToggleMetronome: params.canToggleMetronome.value,
-      canAdjustMetronomeVolume: params.canAdjustMetronomeVolume.value
+      canToggleMetronome: params.canToggleMetronome.value
     })
   }
 
@@ -167,15 +163,9 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     params.schedulePersistGridDefinition()
   }
 
-  const toggleMetronome = () => {
+  const cycleMetronomeState = () => {
     if (!params.canToggleMetronome.value) return
-    params.handleMetronomeToggle()
-    emitToolbarState()
-  }
-
-  const cycleMetronomeVolume = () => {
-    if (!params.canAdjustMetronomeVolume.value) return
-    params.handleMetronomeVolumeCycle()
+    params.handleMetronomeStateCycle()
     emitToolbarState()
   }
 
@@ -188,7 +178,6 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     toggleBarLinePicking,
     setBarLineAtPlayhead,
     shiftGrid,
-    toggleMetronome,
-    cycleMetronomeVolume
+    cycleMetronomeState
   }
 }

@@ -436,19 +436,14 @@ const {
 
 resolveWaveformCurrentSeconds = getPreviewPlaybackSec
 
-const {
-  metronomeEnabled,
-  metronomeVolumeLevel,
-  metronomeSupported,
-  setMetronomeEnabled,
-  setMetronomeVolumeLevel
-} = useMixtapeBeatAlignMetronome({
-  dialogVisible,
-  previewPlaying,
-  bpm: computed(() => Number(previewBpm.value) || 0),
-  firstBeatMs: computed(() => Number(previewFirstBeatMs.value) || 0),
-  resolveAnchorSec: () => getPreviewPlaybackSec()
-})
+const { metronomeEnabled, metronomeVolumeLevel, metronomeSupported, cycleMetronomeState } =
+  useMixtapeBeatAlignMetronome({
+    dialogVisible,
+    previewPlaying,
+    bpm: computed(() => Number(previewBpm.value) || 0),
+    firstBeatMs: computed(() => Number(previewFirstBeatMs.value) || 0),
+    resolveAnchorSec: () => getPreviewPlaybackSec()
+  })
 
 const canToggleMetronome = computed(() => {
   if (previewLoading.value) return false
@@ -456,24 +451,15 @@ const canToggleMetronome = computed(() => {
   return metronomeSupported.value
 })
 
-const canAdjustMetronomeVolume = computed(() => canToggleMetronome.value)
-
 const canStopPreviewPlayback = computed(() => {
   if (previewPlaying.value) return true
   if (previewLoading.value) return false
   return !!previewMixxxData.value
 })
 
-const handleMetronomeToggle = () => {
+const handleMetronomeStateCycle = () => {
   if (!canToggleMetronome.value) return
-  setMetronomeEnabled(!metronomeEnabled.value)
-}
-
-const handleMetronomeVolumeCycle = () => {
-  if (!canAdjustMetronomeVolume.value) return
-  const currentLevel = Number(metronomeVolumeLevel.value)
-  const nextLevel = currentLevel >= 3 ? 1 : ((currentLevel + 1) as 1 | 2 | 3)
-  setMetronomeVolumeLevel(nextLevel)
+  cycleMetronomeState()
 }
 
 const handlePreviewStopToStart = () => {
@@ -984,12 +970,10 @@ onBeforeUnmount(() => {
           :metronome-enabled="metronomeEnabled"
           :metronome-volume-level="metronomeVolumeLevel"
           :can-toggle-metronome="canToggleMetronome"
-          :can-adjust-metronome-volume="canAdjustMetronomeVolume"
           @toggle-playback="handlePreviewPlaybackToggle"
           @stop-to-start="handlePreviewStopToStart"
           @toggle-barline-pick="handleBarLinePickingToggle"
-          @toggle-metronome="handleMetronomeToggle"
-          @cycle-metronome-volume="handleMetronomeVolumeCycle"
+          @cycle-metronome-state="handleMetronomeStateCycle"
         />
         <div
           ref="previewWrapRef"

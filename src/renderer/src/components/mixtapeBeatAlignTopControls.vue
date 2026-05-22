@@ -39,10 +39,6 @@ defineProps({
   canToggleMetronome: {
     type: Boolean,
     default: false
-  },
-  canAdjustMetronomeVolume: {
-    type: Boolean,
-    default: false
   }
 })
 
@@ -50,8 +46,7 @@ const emit = defineEmits<{
   (event: 'toggle-playback'): void
   (event: 'stop-to-start'): void
   (event: 'toggle-barline-pick'): void
-  (event: 'toggle-metronome'): void
-  (event: 'cycle-metronome-volume'): void
+  (event: 'cycle-metronome-state'): void
 }>()
 </script>
 
@@ -128,9 +123,7 @@ const emit = defineEmits<{
         :metronome-enabled="metronomeEnabled"
         :metronome-volume-level="metronomeVolumeLevel"
         :can-toggle-metronome="canToggleMetronome"
-        :can-adjust-metronome-volume="canAdjustMetronomeVolume"
-        @toggle-metronome="emit('toggle-metronome')"
-        @cycle-metronome-volume="emit('cycle-metronome-volume')"
+        @cycle-metronome-state="emit('cycle-metronome-state')"
       />
     </div>
   </div>

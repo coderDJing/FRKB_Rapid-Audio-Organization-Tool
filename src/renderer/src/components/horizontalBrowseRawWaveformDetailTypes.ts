@@ -30,6 +30,5 @@ export type HorizontalBrowseRawWaveformDetailExpose = {
   updateBpmInput: (value: string) => void
   blurBpmInput: () => void
   tapBpm: () => void
-  toggleMetronome: () => void
-  cycleMetronomeVolume: () => void
+  cycleMetronomeState: () => void
 }

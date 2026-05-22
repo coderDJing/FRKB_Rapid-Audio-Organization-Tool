@@ -1,5 +1,7 @@
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue'
 
+export type MetronomeVolumeLevel = 1 | 2 | 3
+
 type UseMixtapeBeatAlignMetronomeParams = {
   dialogVisible: Readonly<Ref<boolean>>
   previewPlaying: Readonly<Ref<boolean>>
@@ -8,7 +10,7 @@ type UseMixtapeBeatAlignMetronomeParams = {
   playbackRate?: Readonly<Ref<number>>
   resetKey?: Readonly<Ref<unknown>>
   outputMode?: 'internal' | 'external'
-  syncExternalState?: (state: { enabled: boolean; volumeLevel: 1 | 2 | 3 }) => void
+  syncExternalState?: (state: { enabled: boolean; volumeLevel: MetronomeVolumeLevel }) => void
   resolveAnchorSec: () => number
 }
 
@@ -19,8 +21,8 @@ type BeatClock = {
 
 const TICK_FREQUENCY_HZ = 1560
 const TICK_END_FREQUENCY_HZ = 1320
-const TICK_GAIN_LEVELS = [0.17, 0.32, 0.96] as const
-const DEFAULT_METRONOME_VOLUME_LEVEL: 1 | 2 | 3 = 2
+const TICK_GAIN_LEVELS = [0.42, 0.68, 0.96] as const
+const DEFAULT_METRONOME_VOLUME_LEVEL: MetronomeVolumeLevel = 2
 const TICK_ATTACK_SEC = 0.002
 const TICK_DURATION_SEC = 0.045
 const TICK_GAP_SEC = 0.01
@@ -31,10 +33,31 @@ const ANCHOR_JUMP_GRACE_SEC = 0.08
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const isFinitePositive = (value: number) => Number.isFinite(value) && value > 0
+const normalizeMetronomeVolumeLevel = (level: unknown): MetronomeVolumeLevel => {
+  const numeric = Math.round(Number(level) || DEFAULT_METRONOME_VOLUME_LEVEL)
+  const clamped = clampNumber(numeric, 1, TICK_GAIN_LEVELS.length)
+  if (clamped <= 1) return 1
+  if (clamped >= 3) return 3
+  return 2
+}
+
+export const resolveNextMetronomeCycleState = (
+  enabled: boolean,
+  volumeLevel: unknown
+): { enabled: boolean; volumeLevel: MetronomeVolumeLevel } => {
+  if (!enabled) {
+    return { enabled: true, volumeLevel: 1 }
+  }
+  const currentLevel = normalizeMetronomeVolumeLevel(volumeLevel)
+  if (currentLevel >= 3) {
+    return { enabled: false, volumeLevel: 1 }
+  }
+  return { enabled: true, volumeLevel: (currentLevel + 1) as MetronomeVolumeLevel }
+}
 
 export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronomeParams) => {
   const metronomeEnabled = ref(false)
-  const metronomeVolumeLevel = ref<1 | 2 | 3>(DEFAULT_METRONOME_VOLUME_LEVEL)
+  const metronomeVolumeLevel = ref<MetronomeVolumeLevel>(DEFAULT_METRONOME_VOLUME_LEVEL)
   const metronomeSupported = computed(() => {
     const bpmValue = Number(params.bpm.value)
     return isFinitePositive(bpmValue)
@@ -227,18 +250,23 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
     syncExternalMetronomeState(next)
   }
 
-  const toggleMetronome = () => {
-    setMetronomeEnabled(!metronomeEnabled.value)
+  const setMetronomeVolumeLevel = (level: number) => {
+    metronomeVolumeLevel.value = normalizeMetronomeVolumeLevel(level)
+    syncExternalMetronomeState()
   }
 
-  const setMetronomeVolumeLevel = (level: number) => {
-    const clamped = clampNumber(
-      Number(level) || DEFAULT_METRONOME_VOLUME_LEVEL,
-      1,
-      TICK_GAIN_LEVELS.length
+  const cycleMetronomeState = () => {
+    const nextState = resolveNextMetronomeCycleState(
+      metronomeEnabled.value,
+      metronomeVolumeLevel.value
     )
-    metronomeVolumeLevel.value = clamped as 1 | 2 | 3
-    syncExternalMetronomeState()
+    if (!nextState.enabled) {
+      setMetronomeEnabled(false)
+      setMetronomeVolumeLevel(nextState.volumeLevel)
+      return
+    }
+    setMetronomeVolumeLevel(nextState.volumeLevel)
+    setMetronomeEnabled(true)
   }
 
   const cleanupMetronome = () => {
@@ -307,7 +335,7 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
     metronomeEnabled,
     metronomeVolumeLevel,
     metronomeSupported,
-    toggleMetronome,
+    cycleMetronomeState,
     setMetronomeVolumeLevel,
     setMetronomeEnabled,
     cleanupMetronome

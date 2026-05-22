@@ -186,6 +186,8 @@
     "metronome": "节拍器",
     "metronomeOn": "节拍器已开启",
     "metronomeOff": "节拍器已关闭",
+    "metronomeStateOff": "关",
+    "metronomeCycleHint": "点击循环：关 / 1档 / 2档 / 3档",
     "metronomeVolumeLevel": "节拍器音量档位：{level}/3",
     "metronomeVolumeLow": "低",
     "metronomeVolumeMid": "中",

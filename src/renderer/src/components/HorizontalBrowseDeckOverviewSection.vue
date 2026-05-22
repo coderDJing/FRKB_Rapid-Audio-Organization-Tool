@@ -16,7 +16,6 @@ type DeckToolbarState = {
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
-  canAdjustMetronomeVolume: boolean
   loopBeatLabel: string
   loopActive: boolean
   loopDisabled: boolean
@@ -73,8 +72,7 @@ const emit = defineEmits<{
   (event: 'toggle-master-tempo'): void
   (event: 'reset-tempo'): void
   (event: 'toggle-quantize'): void
-  (event: 'toggle-metronome'): void
-  (event: 'cycle-metronome-volume'): void
+  (event: 'cycle-metronome-state'): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
 }>()
 
@@ -146,7 +144,6 @@ const isTop = props.position === 'top'
         :metronome-enabled="props.toolbarState.metronomeEnabled"
         :metronome-volume-level="props.toolbarState.metronomeVolumeLevel"
         :can-toggle-metronome="props.toolbarState.canToggleMetronome"
-        :can-adjust-metronome-volume="props.toolbarState.canAdjustMetronomeVolume"
         @set-bar-line="emit('set-bar-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"
@@ -162,8 +159,7 @@ const isTop = props.position === 'top'
         @toggle-master-tempo="emit('toggle-master-tempo')"
         @reset-tempo="emit('reset-tempo')"
         @toggle-quantize="emit('toggle-quantize')"
-        @toggle-metronome="emit('toggle-metronome')"
-        @cycle-metronome-volume="emit('cycle-metronome-volume')"
+        @cycle-metronome-state="emit('cycle-metronome-state')"
         @select-move-target="emit('select-move-target', $event)"
       />
     </div>

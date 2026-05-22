@@ -18,8 +18,7 @@ type HorizontalBrowseDetailExpose = {
   shiftGridSmallLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridSmallRight?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridLargeRight?: (options?: HorizontalBrowseGridShiftOptions) => void
-  toggleMetronome?: () => void
-  cycleMetronomeVolume?: () => void
+  cycleMetronomeState?: () => void
 }
 
 type UseHorizontalBrowseDeckToolbarInteractionsParams = {
@@ -89,14 +88,9 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     params.resolveDetailRef(deck)?.shiftGridLargeRight?.(resolveGridShiftOptions(deck))
   }
 
-  const handleDeckMetronomeToggle = (deck: HorizontalBrowseDeckKey) => {
+  const handleDeckMetronomeStateCycle = (deck: HorizontalBrowseDeckKey) => {
     params.touchDeckInteraction(deck)
-    params.resolveDetailRef(deck)?.toggleMetronome?.()
-  }
-
-  const handleDeckMetronomeVolumeCycle = (deck: HorizontalBrowseDeckKey) => {
-    params.touchDeckInteraction(deck)
-    params.resolveDetailRef(deck)?.cycleMetronomeVolume?.()
+    params.resolveDetailRef(deck)?.cycleMetronomeState?.()
   }
 
   const handleDeckBpmInputUpdate = (deck: HorizontalBrowseDeckKey, value: string) => {
@@ -149,8 +143,7 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     handleDeckGridShiftSmallLeft,
     handleDeckGridShiftSmallRight,
     handleDeckGridShiftLargeRight,
-    handleDeckMetronomeToggle,
-    handleDeckMetronomeVolumeCycle,
+    handleDeckMetronomeStateCycle,
     handleDeckBpmInputUpdate,
     handleDeckBpmInputBlur
   }

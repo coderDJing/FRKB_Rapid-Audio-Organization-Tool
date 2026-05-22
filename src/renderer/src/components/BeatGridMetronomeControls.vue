@@ -15,25 +15,32 @@ const props = defineProps({
   canToggleMetronome: {
     type: Boolean,
     default: false
-  },
-  canAdjustMetronomeVolume: {
-    type: Boolean,
-    default: false
   }
 })
 
 const emit = defineEmits<{
-  (event: 'toggle-metronome'): void
-  (event: 'cycle-metronome-volume'): void
+  (event: 'cycle-metronome-state'): void
 }>()
 
-const metronomeTitle = computed(() =>
-  props.metronomeEnabled ? t('mixtape.metronomeOn') : t('mixtape.metronomeOff')
+const normalizedMetronomeVolumeLevel = computed(() => {
+  const numeric = Math.round(Number(props.metronomeVolumeLevel) || 1)
+  if (numeric <= 1) return 1
+  if (numeric >= 3) return 3
+  return 2
+})
+
+const metronomeStateLabel = computed(() =>
+  props.metronomeEnabled
+    ? `${normalizedMetronomeVolumeLevel.value}/3`
+    : t('mixtape.metronomeStateOff')
 )
 
-const metronomeVolumeTitle = computed(() =>
-  t('mixtape.metronomeVolumeLevel', { level: props.metronomeVolumeLevel })
-)
+const metronomeTitle = computed(() => {
+  const stateTitle = props.metronomeEnabled
+    ? t('mixtape.metronomeVolumeLevel', { level: normalizedMetronomeVolumeLevel.value })
+    : t('mixtape.metronomeOff')
+  return `${stateTitle} · ${t('mixtape.metronomeCycleHint')}`
+})
 </script>
 
 <template>
@@ -41,32 +48,21 @@ const metronomeVolumeTitle = computed(() =>
     <bubbleBoxTrigger
       wrapper-tag="span"
       tag="button"
-      class="waveform-action-btn"
+      class="metronome-cycle-btn"
       type="button"
       :class="{ 'is-active': metronomeEnabled }"
       :disabled="!canToggleMetronome"
       :title="metronomeTitle"
       :aria-label="metronomeTitle"
-      @click="emit('toggle-metronome')"
+      @click="emit('cycle-metronome-state')"
     >
       <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
         <path d="M4.5 2h7l-1.2 11h-4.6L4.5 2Z"></path>
         <path d="M8 5.3v3.8"></path>
         <circle cx="8" cy="10.9" r="1.1"></circle>
       </svg>
-      <span>{{ t('mixtape.metronome') }}</span>
-    </bubbleBoxTrigger>
-    <bubbleBoxTrigger
-      wrapper-tag="span"
-      tag="button"
-      class="metronome-volume-btn"
-      type="button"
-      :disabled="!canAdjustMetronomeVolume"
-      :title="metronomeVolumeTitle"
-      :aria-label="metronomeVolumeTitle"
-      @click="emit('cycle-metronome-volume')"
-    >
-      {{ metronomeVolumeLevel }}/3
+      <span class="metronome-cycle-btn__label">{{ t('mixtape.metronome') }}</span>
+      <span class="metronome-cycle-btn__state">{{ metronomeStateLabel }}</span>
     </bubbleBoxTrigger>
   </div>
 </template>
@@ -79,8 +75,7 @@ const metronomeVolumeTitle = computed(() =>
   min-width: 0;
 }
 
-.waveform-action-btn,
-.metronome-volume-btn {
+.metronome-cycle-btn {
   &:focus {
     outline: none;
   }
@@ -91,9 +86,10 @@ const metronomeVolumeTitle = computed(() =>
   }
 }
 
-.waveform-action-btn {
+.metronome-cycle-btn {
   height: 22px;
-  padding: 0 9px;
+  min-width: 86px;
+  padding: 0 8px;
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--bg-elev);
@@ -105,7 +101,7 @@ const metronomeVolumeTitle = computed(() =>
   cursor: pointer;
 }
 
-.waveform-action-btn svg {
+.metronome-cycle-btn svg {
   width: 14px;
   height: 14px;
   display: block;
@@ -116,44 +112,36 @@ const metronomeVolumeTitle = computed(() =>
   stroke-linejoin: round;
 }
 
-.waveform-action-btn svg path:first-child {
+.metronome-cycle-btn svg path:first-child {
   fill: currentColor;
   stroke: none;
   opacity: 0.18;
 }
 
-.waveform-action-btn:hover:not(:disabled) {
+.metronome-cycle-btn:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--hover);
 }
 
-.waveform-action-btn:disabled,
-.metronome-volume-btn:disabled {
+.metronome-cycle-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.waveform-action-btn.is-active {
+.metronome-cycle-btn.is-active {
   border-color: rgba(145, 205, 255, 0.95);
   box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
   background: rgba(145, 205, 255, 0.12);
 }
 
-.metronome-volume-btn {
-  height: 22px;
-  min-width: 42px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--bg-elev);
-  color: var(--text);
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
+.metronome-cycle-btn__label,
+.metronome-cycle-btn__state {
+  white-space: nowrap;
 }
 
-.metronome-volume-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--hover);
+.metronome-cycle-btn__state {
+  min-width: 22px;
+  text-align: center;
+  font-weight: 600;
 }
 </style>

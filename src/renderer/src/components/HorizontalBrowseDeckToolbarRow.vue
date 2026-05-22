@@ -23,7 +23,6 @@ const props = defineProps<{
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
-  canAdjustMetronomeVolume: boolean
 }>()
 
 const emit = defineEmits<{
@@ -42,8 +41,7 @@ const emit = defineEmits<{
   (event: 'toggle-master-tempo'): void
   (event: 'reset-tempo'): void
   (event: 'toggle-quantize'): void
-  (event: 'toggle-metronome'): void
-  (event: 'cycle-metronome-volume'): void
+  (event: 'cycle-metronome-state'): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
 }>()
 </script>
@@ -131,9 +129,7 @@ const emit = defineEmits<{
           :metronome-enabled="props.metronomeEnabled"
           :metronome-volume-level="props.metronomeVolumeLevel"
           :can-toggle-metronome="props.canToggleMetronome"
-          :can-adjust-metronome-volume="props.canAdjustMetronomeVolume"
-          @toggle-metronome="emit('toggle-metronome')"
-          @cycle-metronome-volume="emit('cycle-metronome-volume')"
+          @cycle-metronome-state="emit('cycle-metronome-state')"
         />
       </div>
     </div>

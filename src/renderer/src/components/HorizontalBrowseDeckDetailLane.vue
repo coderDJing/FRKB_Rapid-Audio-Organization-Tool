@@ -76,8 +76,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   updateBpmInput: (value: string) => detailRef.value?.updateBpmInput?.(value),
   blurBpmInput: () => detailRef.value?.blurBpmInput?.(),
   tapBpm: () => detailRef.value?.tapBpm?.(),
-  toggleMetronome: () => detailRef.value?.toggleMetronome?.(),
-  cycleMetronomeVolume: () => detailRef.value?.cycleMetronomeVolume?.()
+  cycleMetronomeState: () => detailRef.value?.cycleMetronomeState?.()
 })
 </script>
 
