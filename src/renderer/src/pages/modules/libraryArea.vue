@@ -376,38 +376,34 @@ const drop = async (e: DragEvent) => {
         style="height: 100%; width: 100%"
         defer
       >
-        <template v-for="item of displayedChildren" :key="item.uuid">
-          <libraryItem
-            v-if="!(runtime.selectSongListDialogShow && !item.dirName)"
-            :uuid="item.uuid"
-            :library-name="libraryData.dirName"
-            :filter-text="playlistSearch"
-          />
-        </template>
-        <div
-          style="
-            flex-grow: 1;
-            min-height: 30px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-          "
-          :class="{ borderTop: dragApproach == 'top' }"
-          @dragover.stop.prevent="dragover"
-          @dragenter.stop.prevent="dragenter"
-          @drop.stop="drop"
-          @dragleave.stop="dragleave"
-        >
-          <span
-            v-show="showHint && runtime.layoutConfig.libraryAreaWidth !== 0"
-            style="font-size: 12px; color: var(--text-weak); position: absolute; bottom: 50vh"
+        <div class="libraryTreeDropSurface">
+          <template v-for="item of displayedChildren" :key="item.uuid">
+            <libraryItem
+              v-if="!(runtime.selectSongListDialogShow && !item.dirName)"
+              :uuid="item.uuid"
+              :library-name="libraryData.dirName"
+              :filter-text="playlistSearch"
+            />
+          </template>
+          <div
+            class="libraryDropSpace"
+            :class="{ borderTop: dragApproach == 'top' }"
+            @dragover.stop.prevent="dragover"
+            @dragenter.stop.prevent="dragenter"
+            @drop.stop="drop"
+            @dragleave.stop="dragleave"
           >
-            {{
-              runtime.libraryAreaSelected === 'RecycleBin'
-                ? t('recycleBin.noDeletionRecords')
-                : t('library.rightClickToCreate')
-            }}
-          </span>
+            <span
+              v-show="showHint && runtime.layoutConfig.libraryAreaWidth !== 0"
+              class="libraryStatusText"
+            >
+              {{
+                runtime.libraryAreaSelected === 'RecycleBin'
+                  ? t('recycleBin.noDeletionRecords')
+                  : t('library.rightClickToCreate')
+              }}
+            </span>
+          </div>
         </div>
       </OverlayScrollbarsComponent>
     </div>
@@ -416,6 +412,28 @@ const drop = async (e: DragEvent) => {
 <style lang="scss" scoped>
 .borderTop {
   box-shadow: inset 0 1px 0 0 var(--accent);
+}
+
+.libraryTreeDropSurface {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.libraryDropSpace {
+  flex: 1 1 auto;
+  min-height: 30px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.libraryStatusText {
+  font-size: 12px;
+  color: var(--text-weak);
+  position: absolute;
+  bottom: 50vh;
 }
 
 .libraryArea {

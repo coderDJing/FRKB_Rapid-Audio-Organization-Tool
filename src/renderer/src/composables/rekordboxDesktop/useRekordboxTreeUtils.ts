@@ -1,6 +1,13 @@
 import type { IDir, IPioneerPlaylistTreeNode } from '../../../../types/globals'
 
 type PseudoSongList = IDir
+export type TreeDragApproach = 'top' | 'center' | 'bottom'
+export type MoveTreeNodeResult = {
+  nodes: IPioneerPlaylistTreeNode[]
+  playlistId: number
+  parentId: number
+  seq: number
+}
 
 export const normalizeKeyword = (value: string) =>
   String(value || '')
@@ -12,10 +19,7 @@ export const sanitizeNodeName = (value: string) =>
     .trim()
     .replace(/\s+/g, ' ')
 
-export const calculateDragApproach = (
-  offsetY: number,
-  isFolder: boolean
-): 'top' | 'center' | 'bottom' => {
+export const calculateDragApproach = (offsetY: number, isFolder: boolean): TreeDragApproach => {
   if (!isFolder) {
     return offsetY <= 12 ? 'top' : 'bottom'
   }
@@ -133,13 +137,8 @@ export const moveTreeNode = (
   nodes: IPioneerPlaylistTreeNode[],
   sourceId: number,
   targetId: number,
-  approach: 'top' | 'center' | 'bottom'
-): {
-  nodes: IPioneerPlaylistTreeNode[]
-  playlistId: number
-  parentId: number
-  seq: number
-} | null => {
+  approach: TreeDragApproach
+): MoveTreeNodeResult | null => {
   const nextNodes = cloneTreeNodes(nodes)
   const sourceBeforeMove = findNodeLocation(nextNodes, sourceId)
   const targetBeforeMove = findNodeLocation(nextNodes, targetId)
@@ -172,6 +171,41 @@ export const moveTreeNode = (
   }
 
   reorderTreeNodes(nextNodes)
+  const movedAfter = findNodeLocation(nextNodes, sourceId)
+  if (!movedAfter) return null
+
+  const finalParentId = movedAfter.parentId
+  const finalSeq = movedAfter.index + 1
+  if (finalParentId === originalParentId && finalSeq === originalSeq) {
+    return null
+  }
+
+  return {
+    nodes: nextNodes,
+    playlistId: sourceId,
+    parentId: finalParentId,
+    seq: finalSeq
+  }
+}
+
+export const moveTreeNodeToRootEnd = (
+  nodes: IPioneerPlaylistTreeNode[],
+  sourceId: number
+): MoveTreeNodeResult | null => {
+  const nextNodes = cloneTreeNodes(nodes)
+  const sourceBeforeMove = findNodeLocation(nextNodes, sourceId)
+  if (!sourceBeforeMove) return null
+
+  const originalParentId = sourceBeforeMove.parentId
+  const originalSeq = sourceBeforeMove.index + 1
+
+  const [movedNode] = sourceBeforeMove.siblings.splice(sourceBeforeMove.index, 1)
+  if (!movedNode) return null
+
+  movedNode.parentId = 0
+  nextNodes.push(movedNode)
+  reorderTreeNodes(nextNodes)
+
   const movedAfter = findNodeLocation(nextNodes, sourceId)
   if (!movedAfter) return null
 

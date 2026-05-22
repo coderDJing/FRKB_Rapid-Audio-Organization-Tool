@@ -17,16 +17,11 @@ import {
 import { t } from '@renderer/utils/translate'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import { copyPioneerNodeToLibrary } from '@renderer/composables/rekordboxDesktop/usePioneerCopyToLibrary'
+import { usePioneerDeviceTreeDrag } from '@renderer/composables/rekordboxDesktop/usePioneerDeviceTreeDrag'
 import {
-  calculateDragApproach,
-  cloneTreeNodes,
   countNodeDescendants,
   findNodeById,
-  findNodeLocation,
-  isDescendantNode,
-  isMovableTreeNode,
   isPlayablePlaylistNode,
-  moveTreeNode,
   normalizeKeyword,
   sanitizeNodeName
 } from '@renderer/composables/rekordboxDesktop/useRekordboxTreeUtils'
@@ -35,7 +30,6 @@ import type {
   RekordboxDesktopCreateEmptyPlaylistResponse,
   RekordboxDesktopCreateFolderResponse,
   RekordboxDesktopDeletePlaylistResponse,
-  RekordboxDesktopMovePlaylistResponse,
   RekordboxDesktopRemovePlaylistTracksResponse,
   RekordboxDesktopRenamePlaylistResponse
 } from '@shared/rekordboxDesktopPlaylist'
@@ -46,11 +40,6 @@ const playlistSearch = ref('')
 const expandedFolderIds = ref<Set<number>>(new Set())
 const dialogWriting = ref(false)
 const localLibraryCopying = ref(false)
-const dragSourceId = ref<number | null>(null)
-const dragTarget = ref<{
-  nodeId: number
-  approach: '' | 'top' | 'center' | 'bottom'
-} | null>(null)
 const isDesktopSource = computed(
   () => runtime.pioneerDeviceLibrary.selectedSourceKind === 'desktop'
 )
@@ -394,7 +383,34 @@ const confirmDeleteNode = async (node: IPioneerPlaylistTreeNode) => {
   await deleteNode(node)
 }
 
+const {
+  dragSourceId,
+  dragTarget,
+  shouldSuppressClick,
+  handleDragStartNode,
+  handleDragOverNode,
+  handleDragEnterNode,
+  handleDragLeaveNode,
+  handleDragEndNode,
+  handleDragOverRootEnd,
+  handleDragEnterRootEnd,
+  handleDragLeaveRootEnd,
+  handleDropNode,
+  handleDropRootEnd
+} = usePioneerDeviceTreeDrag(
+  originalTreeNodes,
+  isDesktopSource,
+  dialogWriting,
+  playlistSearch,
+  syncRuntimeDesktopTree,
+  refreshDesktopTree,
+  showFailureDialog,
+  runWithDialogWriting,
+  () => Number(runtime.pioneerDeviceLibrary.selectedPlaylistId) || 0
+)
+
 const toggleFolder = (node: IPioneerPlaylistTreeNode) => {
+  if (shouldSuppressClick()) return
   if (dialogWriting.value) return
   if (!node.isFolder) return
   const next = new Set(expandedFolderIds.value)
@@ -404,6 +420,7 @@ const toggleFolder = (node: IPioneerPlaylistTreeNode) => {
 }
 
 const selectPlaylist = (node: IPioneerPlaylistTreeNode) => {
+  if (shouldSuppressClick()) return
   if (dialogWriting.value || node.isFolder || node.isSmartPlaylist) return
   runtime.pioneerDeviceLibrary.selectedPlaylistId =
     runtime.pioneerDeviceLibrary.selectedPlaylistId === node.id ? 0 : node.id
@@ -593,131 +610,6 @@ const cleanMissingFilesFromPlaylist = async (node: IPioneerPlaylistTreeNode) => 
   })
 }
 
-const resetDragState = () => {
-  dragSourceId.value = null
-  dragTarget.value = null
-}
-
-const handleDragStartNode = (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
-  if (
-    !isDesktopSource.value ||
-    dialogWriting.value ||
-    !isMovableTreeNode(node) ||
-    normalizeKeyword(playlistSearch.value)
-  ) {
-    event.preventDefault()
-    return
-  }
-  dragSourceId.value = node.id
-  dragTarget.value = null
-  if (event.dataTransfer) {
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', String(node.id))
-  }
-}
-
-const updateDragTarget = (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
-  if (!isDesktopSource.value || dialogWriting.value) {
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
-    dragTarget.value = null
-    return
-  }
-  if (!event.dataTransfer || dragSourceId.value === null) return
-  if (!isMovableTreeNode(node) || normalizeKeyword(playlistSearch.value)) {
-    event.dataTransfer.dropEffect = 'none'
-    dragTarget.value = null
-    return
-  }
-  if (node.id === dragSourceId.value) {
-    event.dataTransfer.dropEffect = 'none'
-    dragTarget.value = null
-    return
-  }
-  if (isDescendantNode(originalTreeNodes.value, dragSourceId.value, node.id)) {
-    event.dataTransfer.dropEffect = 'none'
-    dragTarget.value = null
-    return
-  }
-  const approach = calculateDragApproach(event.offsetY, node.isFolder)
-  if (approach === 'center' && !node.isFolder) {
-    event.dataTransfer.dropEffect = 'none'
-    dragTarget.value = null
-    return
-  }
-  event.dataTransfer.dropEffect = 'move'
-  dragTarget.value = {
-    nodeId: node.id,
-    approach
-  }
-}
-
-const handleDragOverNode = (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
-  updateDragTarget(event, node)
-}
-
-const handleDragEnterNode = (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
-  updateDragTarget(event, node)
-}
-
-const handleDragLeaveNode = (_event: DragEvent, node: IPioneerPlaylistTreeNode) => {
-  if (dialogWriting.value) return
-  if (dragTarget.value?.nodeId === node.id) {
-    dragTarget.value = null
-  }
-}
-
-const handleDragEndNode = () => {
-  if (dialogWriting.value) return
-  resetDragState()
-}
-
-const handleDropNode = async (_event: DragEvent, node: IPioneerPlaylistTreeNode) => {
-  if (!isDesktopSource.value || dialogWriting.value) {
-    resetDragState()
-    return
-  }
-  if (dragSourceId.value === null || !dragTarget.value) {
-    resetDragState()
-    return
-  }
-
-  const sourceId = dragSourceId.value
-  const targetState = { ...dragTarget.value }
-  resetDragState()
-  if (!targetState.approach) return
-
-  const moved = moveTreeNode(originalTreeNodes.value, sourceId, node.id, targetState.approach)
-  if (!moved) return
-
-  const previousTree = cloneTreeNodes(originalTreeNodes.value)
-  syncRuntimeDesktopTree(moved.nodes, sourceId)
-
-  await runWithDialogWriting(async () => {
-    if (!(await ensureRekordboxDesktopWriteAvailable('move'))) {
-      syncRuntimeDesktopTree(previousTree, sourceId)
-      return
-    }
-
-    const response = (await window.electron.ipcRenderer.invoke(
-      buildRekordboxSourceChannel('desktop', 'move-playlist'),
-      {
-        playlistId: moved.playlistId,
-        parentId: moved.parentId,
-        seq: moved.seq
-      }
-    )) as RekordboxDesktopMovePlaylistResponse
-
-    if (!response.ok) {
-      syncRuntimeDesktopTree(previousTree, sourceId)
-      await showFailureDialog(response.summary.errorMessage, response.summary.logPath)
-      return
-    }
-
-    clearRekordboxSourceCachesByKind('desktop')
-    await refreshDesktopTree(sourceId)
-  })
-}
-
 const lastTreeSignature = ref('')
 const buildTreeSignature = (nodes: IPioneerPlaylistTreeNode[]) =>
   nodes.map((node) => `${node.id}:${node.order}:${node.children?.length || 0}`).join('|')
@@ -843,52 +735,55 @@ watch(
         style="height: 100%; width: 100%"
         defer
       >
-        <template v-for="item of visibleTreeNodes" :key="`${item.id}:${item.order}`">
-          <pioneerDeviceLibraryItem
-            :node="item"
-            :depth="0"
-            :expanded-ids="expandedFolderIds"
-            :filter-text="playlistSearch"
-            :interaction-disabled="dialogWriting"
-            :draggable-nodes="isDesktopSource && !normalizeKeyword(playlistSearch)"
-            :contextmenu-enabled="
-              isCopyableSource && !localLibraryCopying && !normalizeKeyword(playlistSearch)
-            "
-            :drag-target-node-id="dragTarget?.nodeId || undefined"
-            :drag-target-approach="dragTarget?.approach || ''"
-            :drag-source-id="dragSourceId || undefined"
-            @toggle-folder="toggleFolder"
-            @select-playlist="selectPlaylist"
-            @contextmenu-node="handleNodeContextmenu"
-            @dragstart-node="handleDragStartNode"
-            @dragover-node="handleDragOverNode"
-            @dragenter-node="handleDragEnterNode"
-            @dragleave-node="handleDragLeaveNode"
-            @drop-node="handleDropNode"
-            @dragend-node="handleDragEndNode"
-          />
-        </template>
-
         <div
-          style="
-            flex-grow: 1;
-            min-height: 30px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-          "
+          class="libraryTreeDropSurface"
+          @dragover.prevent="handleDragOverRootEnd"
+          @dragenter.prevent="handleDragEnterRootEnd"
+          @dragleave="handleDragLeaveRootEnd"
+          @drop.prevent="handleDropRootEnd"
         >
-          <span
-            v-show="
-              (showHint ||
-                (playlistSearch && !visibleTreeNodes.length) ||
-                runtime.pioneerDeviceLibrary.loading) &&
-              runtime.layoutConfig.libraryAreaWidth !== 0
-            "
-            style="font-size: 12px; color: var(--text-weak); position: absolute; bottom: 50vh"
+          <template v-for="item of visibleTreeNodes" :key="`${item.id}:${item.order}`">
+            <pioneerDeviceLibraryItem
+              :node="item"
+              :depth="0"
+              :expanded-ids="expandedFolderIds"
+              :filter-text="playlistSearch"
+              :interaction-disabled="dialogWriting"
+              :draggable-nodes="isDesktopSource && !normalizeKeyword(playlistSearch)"
+              :contextmenu-enabled="
+                isCopyableSource && !localLibraryCopying && !normalizeKeyword(playlistSearch)
+              "
+              :drag-target-node-id="dragTarget?.nodeId || undefined"
+              :drag-target-approach="dragTarget?.approach || ''"
+              :drag-source-id="dragSourceId || undefined"
+              @toggle-folder="toggleFolder"
+              @select-playlist="selectPlaylist"
+              @contextmenu-node="handleNodeContextmenu"
+              @dragstart-node="handleDragStartNode"
+              @dragover-node="handleDragOverNode"
+              @dragenter-node="handleDragEnterNode"
+              @dragleave-node="handleDragLeaveNode"
+              @drop-node="handleDropNode"
+              @dragend-node="handleDragEndNode"
+            />
+          </template>
+
+          <div
+            class="libraryDropSpace"
+            :class="{ 'libraryDropSpace--active': dragTarget?.placement === 'root-end' }"
           >
-            {{ statusText }}
-          </span>
+            <span
+              v-show="
+                (showHint ||
+                  (playlistSearch && !visibleTreeNodes.length) ||
+                  runtime.pioneerDeviceLibrary.loading) &&
+                runtime.layoutConfig.libraryAreaWidth !== 0
+              "
+              class="libraryStatusText"
+            >
+              {{ statusText }}
+            </span>
+          </div>
         </div>
       </OverlayScrollbarsComponent>
     </div>
@@ -908,6 +803,32 @@ watch(
   width: 100%;
   display: flex;
   flex-direction: column;
+}
+
+.libraryTreeDropSurface {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.libraryDropSpace {
+  flex: 1 1 auto;
+  min-height: 30px;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.libraryDropSpace--active {
+  box-shadow: inset 0 1px 0 0 var(--accent);
+}
+
+.libraryStatusText {
+  font-size: 12px;
+  color: var(--text-weak);
+  position: absolute;
+  bottom: 50vh;
 }
 
 .content {

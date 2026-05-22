@@ -315,7 +315,11 @@ const {
   handleDragEnterNode,
   handleDragLeaveNode,
   handleDragEndNode,
-  handleDropNode
+  handleDragOverRootEnd,
+  handleDragEnterRootEnd,
+  handleDragLeaveRootEnd,
+  handleDropNode,
+  handleDropRootEnd
 } = useRekordboxTreeDrag(
   rawTreeNodes,
   dialogWriting,
@@ -703,7 +707,13 @@ onUnmounted(() => {
                     <span>{{ t('library.allPlaylists') }}</span>
                   </div>
                 </div>
-                <div class="sectionBody">
+                <div
+                  class="sectionBody sectionBody--allDrop"
+                  @dragover.prevent="handleDragOverRootEnd"
+                  @dragenter.prevent="handleDragEnterRootEnd"
+                  @dragleave="handleDragLeaveRootEnd"
+                  @drop.prevent="handleDropRootEnd"
+                >
                   <template v-for="item of visibleTreeNodes" :key="`${item.id}`">
                     <RekordboxDesktopTargetTreeItem
                       :node="item"
@@ -737,6 +747,7 @@ onUnmounted(() => {
                   <div
                     v-if="!loading && visibleTreeNodes.length > 0"
                     class="libraryDropSpace"
+                    :class="{ 'libraryDropSpace--active': dragTarget?.placement === 'root-end' }"
                   ></div>
                 </div>
               </div>

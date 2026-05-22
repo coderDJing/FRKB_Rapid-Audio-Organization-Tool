@@ -290,11 +290,11 @@ const handleChildDragEnd = (event: DragEvent, node: IPioneerPlaylistTreeNode) =>
 }
 
 .borderTop {
-  border-top: 1px solid var(--accent);
+  box-shadow: inset 0 1px 0 0 var(--accent);
 }
 
 .borderBottom {
-  border-bottom: 1px solid var(--accent);
+  box-shadow: inset 0 -1px 0 0 var(--accent);
 }
 
 .borderCenter {

@@ -1,6 +1,5 @@
 import { ref } from 'vue'
 import type { IPioneerPlaylistTreeNode } from '../../../../types/globals'
-import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ensureRekordboxDesktopWriteAvailable } from '@renderer/utils/rekordboxDesktopWriteAvailability'
 import { clearRekordboxSourceCachesByKind } from '@renderer/utils/rekordboxLibraryCache'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
@@ -13,43 +12,68 @@ import {
   isMovableTreeNode,
   moveTreeNode,
   moveTreeNodeToRootEnd,
+  normalizeKeyword,
   type MoveTreeNodeResult,
   type TreeDragApproach
 } from './useRekordboxTreeUtils'
 
+type BoolRef = { readonly value: boolean }
+type StringRef = { readonly value: string }
+type TreeRef = { readonly value: IPioneerPlaylistTreeNode[] }
+type SyncTreeFn = (nodes: IPioneerPlaylistTreeNode[], preferredPlaylistId?: number) => void
+type RefreshTreeFn = (preferredPlaylistId?: number) => Promise<void>
 type ShowFailureFn = (message: string, logPath?: string) => Promise<void>
-type LoadTreeFn = (preferredPlaylistId?: number) => Promise<void>
 type RunWritingFn = <T>(task: () => Promise<T>) => Promise<T>
+type GetPreferredPlaylistIdFn = () => number
 
-export function useRekordboxTreeDrag(
-  rawTreeNodes: { value: IPioneerPlaylistTreeNode[] },
-  dialogWriting: { value: boolean },
-  selectedArea: { value: 'recent' | 'tree' | '' },
-  searchKeyword: { value: string },
+export function usePioneerDeviceTreeDrag(
+  originalTreeNodes: TreeRef,
+  isDesktopSource: BoolRef,
+  dialogWriting: BoolRef,
+  playlistSearch: StringRef,
+  syncRuntimeDesktopTree: SyncTreeFn,
+  refreshDesktopTree: RefreshTreeFn,
   showFailureDialog: ShowFailureFn,
-  loadTree: LoadTreeFn,
-  runWithDialogWriting: RunWritingFn
+  runWithDialogWriting: RunWritingFn,
+  getPreferredPlaylistId: GetPreferredPlaylistIdFn
 ) {
-  const runtime = useRuntimeStore()
   const dragSourceId = ref<number | null>(null)
   const dragTarget = ref<{
     nodeId: number | null
     approach: '' | TreeDragApproach
     placement?: 'node' | 'root-end'
   } | null>(null)
+  const suppressClickUntilMs = ref(0)
 
   const resetDragState = () => {
     dragSourceId.value = null
     dragTarget.value = null
   }
 
+  const suppressClickAfterDrag = () => {
+    suppressClickUntilMs.value = Date.now() + 450
+  }
+
+  const shouldSuppressClick = () => suppressClickUntilMs.value > Date.now()
+
+  const setUnavailableDrop = (event: DragEvent) => {
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
+    dragTarget.value = null
+  }
+
   const handleDragStartNode = (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
-    if (dialogWriting.value || !isMovableTreeNode(node) || searchKeyword.value) {
+    if (
+      !isDesktopSource.value ||
+      dialogWriting.value ||
+      !isMovableTreeNode(node) ||
+      normalizeKeyword(playlistSearch.value)
+    ) {
       event.preventDefault()
       return
     }
     dragSourceId.value = node.id
     dragTarget.value = null
+    suppressClickAfterDrag()
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'move'
       event.dataTransfer.setData('text/plain', String(node.id))
@@ -57,31 +81,25 @@ export function useRekordboxTreeDrag(
   }
 
   const updateDragTarget = (event: DragEvent, node: IPioneerPlaylistTreeNode) => {
-    if (dialogWriting.value) {
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
-      dragTarget.value = null
+    if (!isDesktopSource.value || dialogWriting.value) {
+      setUnavailableDrop(event)
       return
     }
     if (!event.dataTransfer || dragSourceId.value === null) return
-    if (!isMovableTreeNode(node) || searchKeyword.value) {
-      event.dataTransfer.dropEffect = 'none'
-      dragTarget.value = null
+    if (!isMovableTreeNode(node) || normalizeKeyword(playlistSearch.value)) {
+      setUnavailableDrop(event)
       return
     }
-    if (node.id === dragSourceId.value) {
-      event.dataTransfer.dropEffect = 'none'
-      dragTarget.value = null
-      return
-    }
-    if (isDescendantNode(rawTreeNodes.value, dragSourceId.value, node.id)) {
-      event.dataTransfer.dropEffect = 'none'
-      dragTarget.value = null
+    if (
+      node.id === dragSourceId.value ||
+      isDescendantNode(originalTreeNodes.value, dragSourceId.value, node.id)
+    ) {
+      setUnavailableDrop(event)
       return
     }
     const approach = calculateDragApproach(event.offsetY, node.isFolder)
     if (approach === 'center' && !node.isFolder) {
-      event.dataTransfer.dropEffect = 'none'
-      dragTarget.value = null
+      setUnavailableDrop(event)
       return
     }
     event.dataTransfer.dropEffect = 'move'
@@ -93,16 +111,14 @@ export function useRekordboxTreeDrag(
   }
 
   const updateRootEndDragTarget = (event: DragEvent) => {
-    if (dialogWriting.value) {
-      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none'
-      dragTarget.value = null
+    if (!isDesktopSource.value || dialogWriting.value) {
+      setUnavailableDrop(event)
       return
     }
     if (!event.dataTransfer || dragSourceId.value === null) return
-    const sourceNode = findNodeById(rawTreeNodes.value, dragSourceId.value)
-    if (!isMovableTreeNode(sourceNode) || searchKeyword.value) {
-      event.dataTransfer.dropEffect = 'none'
-      dragTarget.value = null
+    const sourceNode = findNodeById(originalTreeNodes.value, dragSourceId.value)
+    if (!isMovableTreeNode(sourceNode) || normalizeKeyword(playlistSearch.value)) {
+      setUnavailableDrop(event)
       return
     }
     event.dataTransfer.dropEffect = 'move'
@@ -114,14 +130,13 @@ export function useRekordboxTreeDrag(
   }
 
   const persistMovedTree = async (sourceId: number, moved: MoveTreeNodeResult) => {
-    const previousTree = cloneTreeNodes(rawTreeNodes.value)
-    rawTreeNodes.value = moved.nodes
-    selectedArea.value = 'tree'
-    runtime.dialogSelectedSongListUUID = String(sourceId)
+    const previousTree = cloneTreeNodes(originalTreeNodes.value)
+    const preferredPlaylistId = getPreferredPlaylistId()
+    syncRuntimeDesktopTree(moved.nodes, preferredPlaylistId)
 
     await runWithDialogWriting(async () => {
       if (!(await ensureRekordboxDesktopWriteAvailable('move'))) {
-        rawTreeNodes.value = previousTree
+        syncRuntimeDesktopTree(previousTree, preferredPlaylistId)
         return
       }
 
@@ -135,13 +150,13 @@ export function useRekordboxTreeDrag(
       )) as RekordboxDesktopMovePlaylistResponse
 
       if (!response.ok) {
-        rawTreeNodes.value = previousTree
+        syncRuntimeDesktopTree(previousTree, preferredPlaylistId)
         await showFailureDialog(response.summary.errorMessage, response.summary.logPath)
         return
       }
 
       clearRekordboxSourceCachesByKind('desktop')
-      await loadTree(sourceId)
+      await refreshDesktopTree(preferredPlaylistId)
     })
   }
 
@@ -162,6 +177,7 @@ export function useRekordboxTreeDrag(
 
   const handleDragEndNode = () => {
     if (dialogWriting.value) return
+    suppressClickAfterDrag()
     resetDragState()
   }
 
@@ -181,39 +197,46 @@ export function useRekordboxTreeDrag(
   }
 
   const handleDropNode = async (_event: DragEvent, node: IPioneerPlaylistTreeNode) => {
-    if (dialogWriting.value) {
+    if (!isDesktopSource.value || dialogWriting.value) {
+      suppressClickAfterDrag()
       resetDragState()
       return
     }
     if (dragSourceId.value === null || !dragTarget.value) {
+      suppressClickAfterDrag()
       resetDragState()
       return
     }
+
     const sourceId = dragSourceId.value
     const targetState = { ...dragTarget.value }
+    suppressClickAfterDrag()
     resetDragState()
     if (!targetState.approach) return
 
-    const moved = moveTreeNode(rawTreeNodes.value, sourceId, node.id, targetState.approach)
+    const moved = moveTreeNode(originalTreeNodes.value, sourceId, node.id, targetState.approach)
     if (!moved) return
 
     await persistMovedTree(sourceId, moved)
   }
 
   const handleDropRootEnd = async () => {
-    if (dialogWriting.value) {
+    if (!isDesktopSource.value || dialogWriting.value) {
+      suppressClickAfterDrag()
       resetDragState()
       return
     }
     if (dragSourceId.value === null || dragTarget.value?.placement !== 'root-end') {
+      suppressClickAfterDrag()
       resetDragState()
       return
     }
 
     const sourceId = dragSourceId.value
+    suppressClickAfterDrag()
     resetDragState()
 
-    const moved = moveTreeNodeToRootEnd(rawTreeNodes.value, sourceId)
+    const moved = moveTreeNodeToRootEnd(originalTreeNodes.value, sourceId)
     if (!moved) return
 
     await persistMovedTree(sourceId, moved)
@@ -223,6 +246,7 @@ export function useRekordboxTreeDrag(
     dragSourceId,
     dragTarget,
     resetDragState,
+    shouldSuppressClick,
     handleDragStartNode,
     handleDragOverNode,
     handleDragEnterNode,
