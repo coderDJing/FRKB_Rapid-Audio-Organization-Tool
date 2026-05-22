@@ -118,13 +118,7 @@ const baseIcons: Icon[] = [
 ]
 
 const iconArr = ref<Icon[]>([...baseIcons])
-const coreIconNameSet = new Set([
-  'FilterLibrary',
-  'CuratedLibrary',
-  'MixtapeLibrary',
-  'RecordingLibrary',
-  'RecycleBin'
-])
+const coreIconNameSet = new Set(['FilterLibrary', 'CuratedLibrary', 'MixtapeLibrary', 'RecycleBin'])
 const coreIconArr = computed(() => iconArr.value.filter((item) => coreIconNameSet.has(item.name)))
 const dynamicIconArr = computed(() =>
   iconArr.value.filter((item) => !coreIconNameSet.has(item.name))
@@ -842,6 +836,10 @@ watch(
     flex: 1 1 auto;
     min-height: 0;
     position: relative;
+  }
+
+  .librarySelectAreaDynamic--with-divider {
+    min-height: 45px;
   }
 
   .librarySelectAreaDynamic--with-divider::before {
