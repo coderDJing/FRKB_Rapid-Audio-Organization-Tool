@@ -174,11 +174,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         partialResult.firstBeatMs,
         partialResult.barBeatOffset,
         partialResult.timeBasisOffsetMs,
-        {
-          firstBeatCoordinate: 'audio',
-          beatThisEstimatedDrift128Ms: partialResult.beatThisEstimatedDrift128Ms,
-          beatThisWindowCount: partialResult.beatThisWindowCount
-        }
+        { firstBeatCoordinate: 'audio' }
       )
       bpmPersisted = true
     }
@@ -349,11 +345,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           payloadResult.firstBeatMs,
           payloadResult.barBeatOffset,
           payloadResult.timeBasisOffsetMs,
-          {
-            firstBeatCoordinate: 'audio',
-            beatThisEstimatedDrift128Ms: payloadResult.beatThisEstimatedDrift128Ms,
-            beatThisWindowCount: payloadResult.beatThisWindowCount
-          }
+          { firstBeatCoordinate: 'audio' }
         )
       }
     }

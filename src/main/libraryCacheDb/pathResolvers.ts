@@ -7,6 +7,16 @@ export function toNumber(value: unknown): number | null {
   return Number.isFinite(num) ? num : null
 }
 
+export function stripBeatThisDebugInfo<T extends object>(info: T): T {
+  const mutable = info as T & {
+    beatThisEstimatedDrift128Ms?: unknown
+    beatThisWindowCount?: unknown
+  }
+  delete mutable.beatThisEstimatedDrift128Ms
+  delete mutable.beatThisWindowCount
+  return info
+}
+
 export function normalizeRoot(value: unknown): string {
   let normalized = path.normalize(String(value || ''))
   normalized = normalized.replace(/[\\/]+$/, '')
@@ -175,6 +185,7 @@ export function normalizeInfoJsonFilePath(raw: unknown, absFilePath: string): st
     const info = JSON.parse(String(raw)) as ISongInfo
     if (info && typeof info === 'object') {
       info.filePath = absFilePath
+      stripBeatThisDebugInfo(info)
       return JSON.stringify(info)
     }
   } catch {}

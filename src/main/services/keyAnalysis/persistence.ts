@@ -1,9 +1,9 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { EventEmitter } from 'node:events'
-import { app } from 'electron'
 import { findSongListRoot } from '../cacheMaintenance'
 import * as LibraryCacheDb from '../../libraryCacheDb'
+import { stripBeatThisDebugInfo } from '../../libraryCacheDb/pathResolvers'
 import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import { log } from '../../log'
 import type { ISongInfo } from '../../../types/globals'
@@ -13,7 +13,6 @@ import {
   shouldKeepManualSharedSongGridDefinition
 } from '../sharedSongGrid'
 import { emitSongGridUpdated } from '../songGridEvents'
-import { isRcVersion } from '../../../shared/windowScreenshotFeature'
 import { getBeatThisRuntimeAvailabilitySnapshot } from '../../workers/beatThisRuntime'
 import {
   resolveAudioFirstBeatTimelineMs,
@@ -69,27 +68,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     return Number(numeric.toFixed(3))
   }
 
-  const normalizeBeatThisEstimatedDrift128Ms = (value: unknown) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric < 0) return undefined
-    return Number(numeric.toFixed(3))
-  }
-
-  const normalizeBeatThisWindowCount = (value: unknown) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric) || numeric <= 0) return undefined
-    return Math.max(1, Math.floor(numeric))
-  }
-
-  const shouldBackfillBeatThisDebugMetrics = () => {
-    if (process.env.NODE_ENV === 'development') return true
-    try {
-      return isRcVersion(app.getVersion())
-    } catch {
-      return false
-    }
-  }
-
   const buildPrepareDetails = (params: {
     listRootResolved: boolean
     externalCacheResolved?: boolean
@@ -119,8 +97,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       firstBeatMs?: number
       barBeatOffset?: number
       timeBasisOffsetMs?: number
-      beatThisEstimatedDrift128Ms?: number | null
-      beatThisWindowCount?: number | null
       beatGridAlgorithmVersion?: number | null
       beatGridSource?: ISongInfo['beatGridSource']
     },
@@ -144,6 +120,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       info = buildLiteSongInfo(filePath)
     }
     info = applyLiteDefaults(info, filePath)
+    stripBeatThisDebugInfo(info)
     const markAnalysisOnly = !entry || Boolean(entry.info?.analysisOnly)
     if (markAnalysisOnly) {
       info.analysisOnly = true
@@ -162,20 +139,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     }
     if (payload.timeBasisOffsetMs !== undefined) {
       info.timeBasisOffsetMs = payload.timeBasisOffsetMs
-    }
-    if (Object.prototype.hasOwnProperty.call(payload, 'beatThisEstimatedDrift128Ms')) {
-      if (payload.beatThisEstimatedDrift128Ms === null) {
-        delete info.beatThisEstimatedDrift128Ms
-      } else {
-        info.beatThisEstimatedDrift128Ms = payload.beatThisEstimatedDrift128Ms
-      }
-    }
-    if (Object.prototype.hasOwnProperty.call(payload, 'beatThisWindowCount')) {
-      if (payload.beatThisWindowCount === null) {
-        delete info.beatThisWindowCount
-      } else {
-        info.beatThisWindowCount = payload.beatThisWindowCount
-      }
     }
     if (Object.prototype.hasOwnProperty.call(payload, 'beatGridAlgorithmVersion')) {
       if (payload.beatGridAlgorithmVersion === null) {
@@ -207,8 +170,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         firstBeatMs: existing?.firstBeatMs,
         barBeatOffset: existing?.barBeatOffset,
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
-        beatThisEstimatedDrift128Ms: existing?.beatThisEstimatedDrift128Ms,
-        beatThisWindowCount: existing?.beatThisWindowCount,
         beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
@@ -231,12 +192,16 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             size: stat.size,
             mtimeMs: stat.mtimeMs
           })
-          await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, {
-            ...(cached?.info || buildLiteSongInfo(filePath)),
-            filePath,
-            key: keyText,
-            analysisOnly: true
-          })
+          await LibraryCacheDb.upsertExternalAnalysisCacheEntry(
+            externalContext,
+            stat,
+            stripBeatThisDebugInfo({
+              ...(cached?.info || buildLiteSongInfo(filePath)),
+              filePath,
+              key: keyText,
+              analysisOnly: true
+            })
+          )
         }
       }
 
@@ -275,8 +240,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     timeBasisOffsetMs?: number,
     options?: {
       firstBeatCoordinate?: 'audio' | 'timeline'
-      beatThisEstimatedDrift128Ms?: number
-      beatThisWindowCount?: number
     }
   ) => {
     const normalizedPath = normalizePath(filePath)
@@ -285,10 +248,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       ? Number(firstBeatMs.toFixed(3))
       : undefined
     const normalizedBarBeatOffset = normalizeBarBeatOffset(barBeatOffset)
-    const normalizedBeatThisEstimatedDrift128Ms = normalizeBeatThisEstimatedDrift128Ms(
-      options?.beatThisEstimatedDrift128Ms
-    )
-    const normalizedBeatThisWindowCount = normalizeBeatThisWindowCount(options?.beatThisWindowCount)
     const normalizedBeatGridAlgorithmVersion = CURRENT_BEAT_GRID_ALGORITHM_VERSION
     const firstBeatCoordinate = options?.firstBeatCoordinate || 'timeline'
     let normalizedTimeBasisOffsetMs = normalizeTimeBasisOffsetMs(timeBasisOffsetMs)
@@ -344,20 +303,33 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             existingSharedGrid.timeBasisOffsetMs ??
             existing?.timeBasisOffsetMs ??
             normalizedTimeBasisOffsetMs,
-          beatThisEstimatedDrift128Ms:
-            normalizedBeatThisEstimatedDrift128Ms ?? existing?.beatThisEstimatedDrift128Ms,
-          beatThisWindowCount: normalizedBeatThisWindowCount ?? existing?.beatThisWindowCount,
           beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
           hasWaveform: existing?.hasWaveform
         })
+        const nextInfo = applyLiteDefaults(
+          existingSongCacheEntry?.info
+            ? { ...existingSongCacheEntry.info }
+            : buildLiteSongInfo(filePath),
+          filePath
+        )
+        nextInfo.beatGridSource = 'manual'
+        stripBeatThisDebugInfo(nextInfo)
+        nextInfo.beatGridAlgorithmVersion = normalizedBeatGridAlgorithmVersion
+        if (listRoot) {
+          await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            info: nextInfo
+          })
+        } else if (externalContext) {
+          await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, nextInfo)
+        }
         deps.events.emit('bpm-updated', {
           filePath,
           bpm: existingSharedGrid.bpm ?? normalizedBpm,
           firstBeatMs: existingSharedGrid.firstBeatMs,
           barBeatOffset: existingSharedGrid.barBeatOffset,
           timeBasisOffsetMs: existingSharedGrid.timeBasisOffsetMs,
-          beatThisEstimatedDrift128Ms: normalizedBeatThisEstimatedDrift128Ms ?? null,
-          beatThisWindowCount: normalizedBeatThisWindowCount ?? null,
           beatGridAlgorithmVersion:
             existingSharedGrid.beatGridAlgorithmVersion ?? normalizedBeatGridAlgorithmVersion
         })
@@ -372,9 +344,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         firstBeatMs: normalizedFirstBeatMs ?? existing?.firstBeatMs,
         barBeatOffset: normalizedBarBeatOffset ?? existing?.barBeatOffset,
         timeBasisOffsetMs: normalizedTimeBasisOffsetMs ?? existing?.timeBasisOffsetMs,
-        beatThisEstimatedDrift128Ms:
-          normalizedBeatThisEstimatedDrift128Ms ?? existing?.beatThisEstimatedDrift128Ms,
-        beatThisWindowCount: normalizedBeatThisWindowCount ?? existing?.beatThisWindowCount,
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
@@ -386,7 +355,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             firstBeatMs: normalizedFirstBeatMs,
             barBeatOffset: normalizedBarBeatOffset,
             timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
-            beatThisWindowCount: normalizedBeatThisWindowCount,
             beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
             beatGridSource: 'analysis'
           })
@@ -404,8 +372,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             firstBeatMs: normalizedFirstBeatMs,
             barBeatOffset: normalizedBarBeatOffset,
             timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
-            beatThisEstimatedDrift128Ms: normalizedBeatThisEstimatedDrift128Ms ?? null,
-            beatThisWindowCount: normalizedBeatThisWindowCount ?? null,
             beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
             beatGridSource: 'analysis'
           },
@@ -416,19 +382,21 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           size: stat.size,
           mtimeMs: stat.mtimeMs
         })
-        await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, {
-          ...(cached?.info || buildLiteSongInfo(filePath)),
-          filePath,
-          bpm: normalizedBpm,
-          firstBeatMs: normalizedFirstBeatMs,
-          barBeatOffset: normalizedBarBeatOffset,
-          timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
-          beatThisEstimatedDrift128Ms: normalizedBeatThisEstimatedDrift128Ms,
-          beatThisWindowCount: normalizedBeatThisWindowCount,
-          beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
-          beatGridSource: 'analysis',
-          analysisOnly: true
-        })
+        await LibraryCacheDb.upsertExternalAnalysisCacheEntry(
+          externalContext,
+          stat,
+          stripBeatThisDebugInfo({
+            ...(cached?.info || buildLiteSongInfo(filePath)),
+            filePath,
+            bpm: normalizedBpm,
+            firstBeatMs: normalizedFirstBeatMs,
+            barBeatOffset: normalizedBarBeatOffset,
+            timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
+            beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+            beatGridSource: 'analysis',
+            analysisOnly: true
+          })
+        )
       }
 
       const payload: BpmAnalysisResult = {
@@ -437,8 +405,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         firstBeatMs: normalizedFirstBeatMs,
         barBeatOffset: normalizedBarBeatOffset,
         timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
-        beatThisEstimatedDrift128Ms: normalizedBeatThisEstimatedDrift128Ms ?? null,
-        beatThisWindowCount: normalizedBeatThisWindowCount ?? null,
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion
       }
       deps.events.emit('bpm-updated', payload)
@@ -456,9 +422,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         firstBeatMs: normalizedFirstBeatMs ?? existing?.firstBeatMs,
         barBeatOffset: normalizedBarBeatOffset ?? existing?.barBeatOffset,
         timeBasisOffsetMs: normalizedTimeBasisOffsetMs ?? existing?.timeBasisOffsetMs,
-        beatThisEstimatedDrift128Ms:
-          normalizedBeatThisEstimatedDrift128Ms ?? existing?.beatThisEstimatedDrift128Ms,
-        beatThisWindowCount: normalizedBeatThisWindowCount ?? existing?.beatThisWindowCount,
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
@@ -468,8 +431,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         firstBeatMs: normalizedFirstBeatMs,
         barBeatOffset: normalizedBarBeatOffset,
         timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
-        beatThisEstimatedDrift128Ms: normalizedBeatThisEstimatedDrift128Ms ?? null,
-        beatThisWindowCount: normalizedBeatThisWindowCount ?? null,
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion
       }
       emitSongGridUpdated({
@@ -478,7 +439,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         firstBeatMs: normalizedFirstBeatMs,
         barBeatOffset: normalizedBarBeatOffset,
         timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
-        beatThisWindowCount: normalizedBeatThisWindowCount,
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
         beatGridSource: 'analysis'
       })
@@ -504,8 +464,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         firstBeatMs: existing?.firstBeatMs,
         barBeatOffset: existing?.barBeatOffset,
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
-        beatThisEstimatedDrift128Ms: existing?.beatThisEstimatedDrift128Ms,
-        beatThisWindowCount: existing?.beatThisWindowCount,
         beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
         hasWaveform: true
       })
@@ -623,15 +581,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     let needsKey = true
     let needsBpm = true
     let needsWaveform = true
-    const requireBeatThisDebugMetrics = shouldBackfillBeatThisDebugMetrics()
     const done = deps.doneByPath.get(job.normalizedPath)
     if (done && done.size === stat.size && Math.abs(done.mtimeMs - stat.mtimeMs) < 1) {
       doneEntryHit = true
       const hasDoneBpm = isValidBpm(done.bpm)
       const hasDoneFirstBeatMs = isValidFirstBeatMs(done.firstBeatMs)
       const hasDoneBarBeatOffset = isValidBarBeatOffset(done.barBeatOffset)
-      const hasDoneBeatThisWindowCount =
-        normalizeBeatThisWindowCount(done.beatThisWindowCount) !== undefined
       const hasDoneCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(done)
       if (isValidKeyText(done.keyText)) {
         needsKey = false
@@ -640,8 +595,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         hasDoneBpm &&
         hasDoneFirstBeatMs &&
         hasDoneBarBeatOffset &&
-        hasDoneCurrentBeatGridAlgorithm &&
-        (!requireBeatThisDebugMetrics || hasDoneBeatThisWindowCount)
+        hasDoneCurrentBeatGridAlgorithm
       ) {
         needsBpm = false
       }
@@ -677,12 +631,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         const cachedBpm = cached.info?.bpm
         const cachedFirstBeatMs = cached.info?.firstBeatMs
         const cachedBarBeatOffset = cached.info?.barBeatOffset
-        const cachedBeatThisEstimatedDrift128Ms = normalizeBeatThisEstimatedDrift128Ms(
-          cached.info?.beatThisEstimatedDrift128Ms
-        )
-        const cachedBeatThisWindowCount = normalizeBeatThisWindowCount(
-          cached.info?.beatThisWindowCount
-        )
         const cachedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
           cached.info?.beatGridAlgorithmVersion
         )
@@ -690,7 +638,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         const hasBpm = isValidBpm(cachedBpm)
         const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)
         const hasBarBeatOffset = isValidBarBeatOffset(cachedBarBeatOffset)
-        const hasBeatThisWindowCount = cachedBeatThisWindowCount !== undefined
         const hasCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(cached.info)
         if (hasKey || hasBpm || hasFirstBeatMs || hasBarBeatOffset) {
           deps.doneByPath.set(job.normalizedPath, {
@@ -703,8 +650,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
               ? normalizeBarBeatOffset(cachedBarBeatOffset)
               : undefined,
             timeBasisOffsetMs: normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs),
-            beatThisEstimatedDrift128Ms: cachedBeatThisEstimatedDrift128Ms,
-            beatThisWindowCount: cachedBeatThisWindowCount,
             beatGridAlgorithmVersion: cachedBeatGridAlgorithmVersion,
             hasWaveform: done?.hasWaveform
           })
@@ -717,8 +662,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           hasBpm &&
           hasFirstBeatMs &&
           hasBarBeatOffset &&
-          hasCurrentBeatGridAlgorithm &&
-          (!requireBeatThisDebugMetrics || hasBeatThisWindowCount)
+          hasCurrentBeatGridAlgorithm
         ) {
           needsBpm = false
         }
@@ -734,8 +678,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             firstBeatMs: existingDone?.firstBeatMs,
             barBeatOffset: existingDone?.barBeatOffset,
             timeBasisOffsetMs: existingDone?.timeBasisOffsetMs,
-            beatThisEstimatedDrift128Ms: existingDone?.beatThisEstimatedDrift128Ms,
-            beatThisWindowCount: existingDone?.beatThisWindowCount,
             beatGridAlgorithmVersion: existingDone?.beatGridAlgorithmVersion,
             hasWaveform: true
           })
@@ -770,12 +712,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           const cachedBpm = cached.info?.bpm
           const cachedFirstBeatMs = cached.info?.firstBeatMs
           const cachedBarBeatOffset = cached.info?.barBeatOffset
-          const cachedBeatThisEstimatedDrift128Ms = normalizeBeatThisEstimatedDrift128Ms(
-            cached.info?.beatThisEstimatedDrift128Ms
-          )
-          const cachedBeatThisWindowCount = normalizeBeatThisWindowCount(
-            cached.info?.beatThisWindowCount
-          )
           const cachedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
             cached.info?.beatGridAlgorithmVersion
           )
@@ -783,7 +719,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           const hasBpm = isValidBpm(cachedBpm)
           const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)
           const hasBarBeatOffset = isValidBarBeatOffset(cachedBarBeatOffset)
-          const hasBeatThisWindowCount = cachedBeatThisWindowCount !== undefined
           const hasCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(cached.info)
           if (hasKey || hasBpm || hasFirstBeatMs || hasBarBeatOffset || cached.hasWaveform) {
             deps.doneByPath.set(job.normalizedPath, {
@@ -796,8 +731,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
                 ? normalizeBarBeatOffset(cachedBarBeatOffset)
                 : undefined,
               timeBasisOffsetMs: normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs),
-              beatThisEstimatedDrift128Ms: cachedBeatThisEstimatedDrift128Ms,
-              beatThisWindowCount: cachedBeatThisWindowCount,
               beatGridAlgorithmVersion: cachedBeatGridAlgorithmVersion,
               hasWaveform: cached.hasWaveform
             })
@@ -810,8 +743,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             hasBpm &&
             hasFirstBeatMs &&
             hasBarBeatOffset &&
-            hasCurrentBeatGridAlgorithm &&
-            (!requireBeatThisDebugMetrics || hasBeatThisWindowCount)
+            hasCurrentBeatGridAlgorithm
           ) {
             needsBpm = false
           }

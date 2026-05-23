@@ -128,8 +128,6 @@ export type BpmAnalysisResult = {
   firstBeatMs?: number
   barBeatOffset?: number
   timeBasisOffsetMs?: number
-  beatThisEstimatedDrift128Ms?: number | null
-  beatThisWindowCount?: number | null
   beatGridAlgorithmVersion?: number | null
 }
 
@@ -141,8 +139,6 @@ export type DoneEntry = {
   firstBeatMs?: number
   barBeatOffset?: number
   timeBasisOffsetMs?: number
-  beatThisEstimatedDrift128Ms?: number
-  beatThisWindowCount?: number
   beatGridAlgorithmVersion?: number
   hasWaveform?: boolean
 }
@@ -162,8 +158,6 @@ export type KeyAnalysisWorkerPartialResult = {
   firstBeatMs?: number
   barBeatOffset?: number
   timeBasisOffsetMs?: number
-  beatThisEstimatedDrift128Ms?: number
-  beatThisWindowCount?: number
   bpmError?: string
 }
 

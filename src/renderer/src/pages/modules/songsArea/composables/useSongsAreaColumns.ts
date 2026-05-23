@@ -7,9 +7,7 @@ import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
 import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
-import { isRcVersion } from '@shared/windowScreenshotFeature'
 import libraryUtils from '@renderer/utils/libraryUtils'
-import pkg from '../../../../../../../package.json'
 
 interface UseSongsAreaColumnsParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -32,8 +30,6 @@ export const buildSongsAreaBaseColumns = (
   const isRecycleBin = mode === 'recycle'
   const isRecording = mode === 'recording'
   const isMixtape = mode === 'mixtape'
-  const showBeatThisDebugColumn =
-    !isMixtape && (process.env.NODE_ENV === 'development' || isRcVersion(String(pkg.version || '')))
   const columns: Omit<ISongsAreaColumn, 'width'>[] = [
     {
       columnName: isMixtape ? 'columns.mixOrder' : 'columns.index',
@@ -131,15 +127,6 @@ export const buildSongsAreaBaseColumns = (
       show: true,
       filterType: isMixtape ? undefined : 'bpm'
     },
-    ...(showBeatThisDebugColumn
-      ? [
-          {
-            columnName: 'columns.beatThisEstimatedDrift128',
-            key: 'beatThisEstimatedDrift128Ms',
-            show: true
-          }
-        ]
-      : []),
     {
       columnName: 'columns.key',
       key: 'key',
@@ -362,18 +349,6 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     property: keyof T,
     order: 'asc' | 'desc' = 'asc'
   ): T[] {
-    if (property === 'beatThisEstimatedDrift128Ms') {
-      return [...array].sort((a, b) => {
-        const valueA = Number(a[property])
-        const valueB = Number(b[property])
-        const validA = Number.isFinite(valueA)
-        const validB = Number.isFinite(valueB)
-        if (!validA && !validB) return 0
-        if (!validA) return 1
-        if (!validB) return -1
-        return order === 'asc' ? valueA - valueB : valueB - valueA
-      })
-    }
     const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
     return [...array].sort((a, b) => {
       const valueA = String(a[property] || '')
@@ -586,9 +561,6 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       if (col.order) {
         if (col.key === 'index') return fieldSet.has('playlistTrackNumber')
         if (col.key === 'key') return fieldSet.has('key')
-        if (col.key === 'beatThisEstimatedDrift128Ms') {
-          return fieldSet.has('beatThisEstimatedDrift128Ms') || fieldSet.has('beatThisWindowCount')
-        }
         return fieldSet.has(String(col.key || ''))
       }
       if (!col.filterActive) return false

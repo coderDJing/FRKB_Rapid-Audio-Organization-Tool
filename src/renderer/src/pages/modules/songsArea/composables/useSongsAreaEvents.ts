@@ -397,8 +397,6 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       firstBeatMs?: number
       barBeatOffset?: number
       timeBasisOffsetMs?: number
-      beatThisEstimatedDrift128Ms?: number | null
-      beatThisWindowCount?: number | null
       beatGridAlgorithmVersion?: number | null
     }
   ) => {
@@ -406,14 +404,6 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     const bpmValue = payload?.bpm
     if (!filePath || typeof bpmValue !== 'number' || !Number.isFinite(bpmValue)) return
     const normalizedTargetPath = normalizePath(filePath)
-    const hasBeatThisEstimatedDrift128Ms = Object.prototype.hasOwnProperty.call(
-      payload,
-      'beatThisEstimatedDrift128Ms'
-    )
-    const hasBeatThisWindowCount = Object.prototype.hasOwnProperty.call(
-      payload,
-      'beatThisWindowCount'
-    )
     const hasFirstBeatMs =
       typeof payload?.firstBeatMs === 'number' && Number.isFinite(payload.firstBeatMs)
     const hasBarBeatOffset =
@@ -460,32 +450,6 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
         }
         nextSong.beatGridAlgorithmVersion = nextBeatGridAlgorithmVersion
       }
-      if (hasBeatThisEstimatedDrift128Ms) {
-        const nextValue =
-          typeof payload?.beatThisEstimatedDrift128Ms === 'number' &&
-          Number.isFinite(payload.beatThisEstimatedDrift128Ms)
-            ? payload.beatThisEstimatedDrift128Ms
-            : undefined
-        if (nextSong.beatThisEstimatedDrift128Ms !== nextValue) {
-          if (!touched) {
-            touched = true
-          }
-          nextSong.beatThisEstimatedDrift128Ms = nextValue
-        }
-      }
-      if (hasBeatThisWindowCount) {
-        const nextValue =
-          typeof payload?.beatThisWindowCount === 'number' &&
-          Number.isFinite(payload.beatThisWindowCount)
-            ? payload.beatThisWindowCount
-            : undefined
-        if (nextSong.beatThisWindowCount !== nextValue) {
-          if (!touched) {
-            touched = true
-          }
-          nextSong.beatThisWindowCount = nextValue
-        }
-      }
       return touched ? nextSong : song
     }
 
@@ -496,8 +460,6 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
           hasFirstBeatMs ? 'firstBeatMs' : '',
           hasBarBeatOffset ? 'barBeatOffset' : '',
           hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : '',
-          hasBeatThisEstimatedDrift128Ms ? 'beatThisEstimatedDrift128Ms' : '',
-          hasBeatThisWindowCount ? 'beatThisWindowCount' : '',
           nextBeatGridAlgorithmVersion !== undefined ? 'beatGridAlgorithmVersion' : ''
         ].filter(Boolean)
       )

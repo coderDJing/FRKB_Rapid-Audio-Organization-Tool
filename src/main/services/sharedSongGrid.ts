@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { ISongInfo } from '../../types/globals'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import { stripBeatThisDebugInfo } from '../libraryCacheDb/pathResolvers'
 import { listMixtapeItemsByFilePath } from '../mixtapeDb'
 import { findSongListRoot } from './cacheMaintenance'
 import { applyLiteDefaults, buildLiteSongInfo } from './songInfoLite'
@@ -27,8 +28,11 @@ export type SharedSongGridDefinition = {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   beatGridSource?: 'manual' | 'analysis'
-  beatThisWindowCount?: number
   beatGridAlgorithmVersion?: number
+}
+
+type SharedSongGridInternalDefinition = SharedSongGridDefinition & {
+  beatThisWindowCount?: number
 }
 
 export const isCompleteSharedSongGridDefinition = (
@@ -74,9 +78,17 @@ const normalizeBeatThisWindowCount = (value: unknown): number | undefined => {
   return Math.max(1, Math.floor(numeric))
 }
 
+const toPublicSharedGridDefinition = (
+  value: SharedSongGridInternalDefinition
+): SharedSongGridDefinition => {
+  const publicDefinition: SharedSongGridDefinition = { ...value }
+  delete (publicDefinition as SharedSongGridInternalDefinition).beatThisWindowCount
+  return publicDefinition
+}
+
 const hasSharedGridValue = (
-  value: SharedSongGridDefinition | null
-): value is SharedSongGridDefinition =>
+  value: SharedSongGridInternalDefinition | null
+): value is SharedSongGridInternalDefinition =>
   !!value &&
   (value.bpm !== undefined ||
     value.firstBeatMs !== undefined ||
@@ -132,7 +144,7 @@ const parseInfoJson = (value: unknown): SharedGridInfo | null => {
 const extractSharedGridFromInfo = (
   filePath: string,
   info: SharedGridInfo | null | undefined
-): SharedSongGridDefinition | null => {
+): SharedSongGridInternalDefinition | null => {
   if (!info) return null
   const bpm = normalizeBpm(info.bpm)
   const firstBeatMs = normalizeFirstBeatMs(info.firstBeatMs)
@@ -164,9 +176,9 @@ const extractSharedGridFromInfo = (
 }
 
 const mergeSharedGridDefinition = (
-  base: SharedSongGridDefinition | null,
-  next: SharedSongGridDefinition | null
-): SharedSongGridDefinition | null => {
+  base: SharedSongGridInternalDefinition | null,
+  next: SharedSongGridInternalDefinition | null
+): SharedSongGridInternalDefinition | null => {
   if (!base) return next
   if (!next) return base
   return {
@@ -187,7 +199,7 @@ export async function loadSharedSongGridDefinition(
   const normalizedPath = typeof filePath === 'string' ? filePath.trim() : ''
   if (!normalizedPath) return null
 
-  let resolved: SharedSongGridDefinition | null = null
+  let resolved: SharedSongGridInternalDefinition | null = null
   const songListRoot = await findSongListRoot(path.dirname(normalizedPath))
   if (songListRoot) {
     const entry = await LibraryCacheDb.loadSongCacheEntry(songListRoot, normalizedPath)
@@ -226,9 +238,10 @@ export async function loadSharedSongGridDefinition(
     }
   }
 
-  return hasSharedGridValue(resolved) && shouldAcceptBeatGridCacheVersion(resolved)
-    ? resolved
-    : null
+  if (!hasSharedGridValue(resolved) || !shouldAcceptBeatGridCacheVersion(resolved)) {
+    return null
+  }
+  return toPublicSharedGridDefinition(resolved)
 }
 
 export async function loadSharedSongGridDefinitions(filePaths: string[]) {
@@ -266,7 +279,6 @@ export async function persistSharedSongGridDefinition(
   const barBeatOffset = normalizeBarBeatOffset(input?.barBeatOffset)
   const timeBasisOffsetMs = normalizeTimeBasisOffsetMs(input?.timeBasisOffsetMs)
   const beatGridSource = normalizeBeatGridSource(input?.beatGridSource)
-  const beatThisWindowCount = normalizeBeatThisWindowCount(input?.beatThisWindowCount)
   const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
     input?.beatGridAlgorithmVersion
   )
@@ -275,7 +287,6 @@ export async function persistSharedSongGridDefinition(
     firstBeatMs === undefined &&
     barBeatOffset === undefined &&
     timeBasisOffsetMs === undefined &&
-    beatThisWindowCount === undefined &&
     beatGridAlgorithmVersion === undefined
   ) {
     return null
@@ -291,7 +302,6 @@ export async function persistSharedSongGridDefinition(
         firstBeatMs,
         barBeatOffset,
         timeBasisOffsetMs,
-        beatThisWindowCount,
         beatGridAlgorithmVersion
       }
     }
@@ -312,10 +322,10 @@ export async function persistSharedSongGridDefinition(
     if (barBeatOffset !== undefined) normalizedInfo.barBeatOffset = barBeatOffset
     if (timeBasisOffsetMs !== undefined) normalizedInfo.timeBasisOffsetMs = timeBasisOffsetMs
     if (beatGridSource !== undefined) normalizedInfo.beatGridSource = beatGridSource
-    if (beatThisWindowCount !== undefined) normalizedInfo.beatThisWindowCount = beatThisWindowCount
     if (beatGridAlgorithmVersion !== undefined) {
       normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
     }
+    stripBeatThisDebugInfo(normalizedInfo)
     normalizedInfo.analysisOnly = true
     await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, normalizedInfo)
     return extractSharedGridFromInfo(normalizedPath, normalizedInfo)
@@ -350,12 +360,10 @@ export async function persistSharedSongGridDefinition(
   if (beatGridSource !== undefined) {
     normalizedInfo.beatGridSource = beatGridSource
   }
-  if (beatThisWindowCount !== undefined) {
-    normalizedInfo.beatThisWindowCount = beatThisWindowCount
-  }
   if (beatGridAlgorithmVersion !== undefined) {
     normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
   }
+  stripBeatThisDebugInfo(normalizedInfo)
 
   await LibraryCacheDb.upsertSongCacheEntry(songListRoot, normalizedPath, {
     size: stat.size,

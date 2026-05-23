@@ -24,8 +24,53 @@ const hasFirstBeatMs = (value: unknown): boolean =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0
 const hasBarBeatOffset = (value: unknown): boolean =>
   typeof value === 'number' && Number.isFinite(value)
+const hasFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value)
+const hasPositiveInteger = (value: unknown): value is number =>
+  hasFiniteNumber(value) && Math.floor(value) === value && value > 0
 const hasCompleteGrid = (info: Pick<ISongInfo, 'bpm' | 'firstBeatMs' | 'barBeatOffset'>) =>
   hasBpm(info.bpm) && hasFirstBeatMs(info.firstBeatMs) && hasBarBeatOffset(info.barBeatOffset)
+
+const preserveCachedKeyAndBpm = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
+  if (!cachedInfo) return
+  if (!hasKey(target.key) && hasKey(cachedInfo.key)) {
+    target.key = cachedInfo.key as string
+  }
+  if (!hasBpm(target.bpm) && hasBpm(cachedInfo.bpm)) {
+    target.bpm = cachedInfo.bpm as number
+  }
+}
+
+const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
+  if (!cachedInfo) return
+  if (!hasFirstBeatMs(target.firstBeatMs) && hasFirstBeatMs(cachedInfo.firstBeatMs)) {
+    target.firstBeatMs = cachedInfo.firstBeatMs
+  }
+  if (!hasBarBeatOffset(target.barBeatOffset) && hasBarBeatOffset(cachedInfo.barBeatOffset)) {
+    target.barBeatOffset = cachedInfo.barBeatOffset
+  }
+  if (!hasFiniteNumber(target.timeBasisOffsetMs) && hasFiniteNumber(cachedInfo.timeBasisOffsetMs)) {
+    target.timeBasisOffsetMs = cachedInfo.timeBasisOffsetMs
+  }
+  if (
+    !hasPositiveInteger(target.beatGridAlgorithmVersion) &&
+    hasPositiveInteger(cachedInfo.beatGridAlgorithmVersion)
+  ) {
+    target.beatGridAlgorithmVersion = cachedInfo.beatGridAlgorithmVersion
+  }
+  if (
+    target.beatGridSource !== 'manual' &&
+    target.beatGridSource !== 'analysis' &&
+    (cachedInfo.beatGridSource === 'manual' || cachedInfo.beatGridSource === 'analysis')
+  ) {
+    target.beatGridSource = cachedInfo.beatGridSource
+  }
+}
+
+const preserveCachedAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
+  preserveCachedKeyAndBpm(target, cachedInfo)
+  preserveCachedGridAnalysisFields(target, cachedInfo)
+}
 
 export const scheduleSongListPostScanTasks = async (
   scanPath: string | string[],
@@ -179,13 +224,13 @@ export async function scanSongList(
   }
   const cachedInfos: ISongInfo[] = []
   const filesToParse: string[] = []
-  const analysisOnlyByPath = new Map<string, { key?: string; bpm?: number }>()
+  const analysisOnlyByPath = new Map<string, ISongInfo>()
   const isAnalysisOnly = (info?: ISongInfo | null): boolean => Boolean(info?.analysisOnly)
   for (const it of filesStatList) {
     const c = cacheMap.get(it.key)
     if (c && c.size === it.size && Math.abs(c.mtimeMs - it.mtimeMs) < 1) {
       if (isAnalysisOnly(c.info)) {
-        analysisOnlyByPath.set(it.key, { key: c.info.key, bpm: c.info.bpm })
+        analysisOnlyByPath.set(it.key, c.info)
         filesToParse.push(it.file)
       } else {
         cachedInfos.push(enrichSongInfo({ ...c.info, filePath: it.file }))
@@ -246,7 +291,7 @@ export async function scanSongList(
       if (refreshed?.info) {
         cacheMap.set(st.key, refreshed)
         if (refreshed.info.analysisOnly) {
-          analysisOnlyByPath.set(st.key, { key: refreshed.info.key, bpm: refreshed.info.bpm })
+          analysisOnlyByPath.set(st.key, refreshed.info)
         }
       }
     }
@@ -350,29 +395,9 @@ export async function scanSongList(
     for (const info of parsedInfos) {
       const cached = analysisOnlyByPath.get(normalizePathKey(info.filePath))
       if (!cached) continue
-      if (!hasKey(info.key) && hasKey(cached.key)) {
-        info.key = cached.key as string
-      }
-      if (!hasBpm(info.bpm) && hasBpm(cached.bpm)) {
-        info.bpm = cached.bpm as number
-      }
+      preserveCachedAnalysisFields(info, cached)
       const cachedInfo = cacheMap.get(normalizePathKey(info.filePath))?.info
       if (cachedInfo) {
-        if (!hasFirstBeatMs(info.firstBeatMs) && hasFirstBeatMs(cachedInfo.firstBeatMs)) {
-          info.firstBeatMs = cachedInfo.firstBeatMs
-        }
-        if (!hasBarBeatOffset(info.barBeatOffset) && hasBarBeatOffset(cachedInfo.barBeatOffset)) {
-          info.barBeatOffset = cachedInfo.barBeatOffset
-        }
-        if (
-          !(
-            typeof info.timeBasisOffsetMs === 'number' && Number.isFinite(info.timeBasisOffsetMs)
-          ) &&
-          typeof cachedInfo.timeBasisOffsetMs === 'number' &&
-          Number.isFinite(cachedInfo.timeBasisOffsetMs)
-        ) {
-          info.timeBasisOffsetMs = cachedInfo.timeBasisOffsetMs
-        }
         if (!Array.isArray(info.hotCues) || info.hotCues.length === 0) {
           info.hotCues = normalizeSongHotCues(cachedInfo.hotCues)
         }
@@ -459,11 +484,11 @@ export async function scanSongList(
         const nextInfo = { ...info }
         const cached = cacheMap.get(st.key)
         if (cached?.info) {
-          if (!hasKey(nextInfo.key) && hasKey(cached.info.key)) {
-            nextInfo.key = cached.info.key as string
-          }
-          if (!hasBpm(nextInfo.bpm) && hasBpm(cached.info.bpm)) {
-            nextInfo.bpm = cached.info.bpm as number
+          preserveCachedKeyAndBpm(nextInfo, cached.info)
+          const cachedStatMatches =
+            cached.size === st.size && Math.abs(cached.mtimeMs - st.mtimeMs) < 1
+          if (cachedStatMatches) {
+            preserveCachedGridAnalysisFields(nextInfo, cached.info)
           }
           if (nextInfo.analysisOnly === undefined && cached.info.analysisOnly) {
             nextInfo.analysisOnly = true

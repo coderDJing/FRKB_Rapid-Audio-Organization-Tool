@@ -11,7 +11,8 @@ import {
   resolveAbsoluteListRoot,
   resolveAbsoluteFilePath,
   normalizeInfoJsonFilePath,
-  normalizeRoot
+  normalizeRoot,
+  stripBeatThisDebugInfo
 } from './pathResolvers'
 import type { SqliteDatabase } from '../libraryDb'
 
@@ -91,6 +92,7 @@ function mergeInfoJson(
     next.analysisOnly = base?.analysisOnly
   }
   next.filePath = absFilePath
+  stripBeatThisDebugInfo(next)
   const changed =
     beforeKey !== next.key || beforeBpm !== next.bpm || beforeAnalysisOnly !== next.analysisOnly
   return { json: JSON.stringify(next), changed }

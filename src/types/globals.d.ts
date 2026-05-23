@@ -49,8 +49,6 @@ interface ISongInfo {
   beatGridSource?: 'manual' | 'analysis'
   playlistTrackNumber?: number
   timeBasisOffsetMs?: number
-  beatThisEstimatedDrift128Ms?: number
-  beatThisWindowCount?: number
   beatGridAlgorithmVersion?: number
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]

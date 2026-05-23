@@ -73,7 +73,6 @@ type MixtapeAnalysisCopyField =
   | 'firstBeatMs'
   | 'barBeatOffset'
   | 'timeBasisOffsetMs'
-  | 'beatThisWindowCount'
   | 'beatGridAlgorithmVersion'
   | 'key'
   | 'originalKey'
@@ -92,7 +91,6 @@ type MixtapeAnalysisInfo = Record<string, unknown> & {
   firstBeatMs?: number
   barBeatOffset?: number
   timeBasisOffsetMs?: number
-  beatThisWindowCount?: number
   beatGridAlgorithmVersion?: number
   key?: string
   originalKey?: string
@@ -520,7 +518,6 @@ export function registerMixtapeHandlers() {
         'firstBeatMs',
         'barBeatOffset',
         'timeBasisOffsetMs',
-        'beatThisWindowCount',
         'beatGridAlgorithmVersion',
         'key',
         'originalKey',

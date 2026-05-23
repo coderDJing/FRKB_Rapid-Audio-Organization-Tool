@@ -8,6 +8,7 @@ import {
   type MixxxWaveformData
 } from '../waveformCache'
 import type { ISongInfo } from '../../types/globals'
+import { stripBeatThisDebugInfo } from './pathResolvers'
 
 const EXTERNAL_ANALYSIS_DEVICE_TABLE = 'external_analysis_devices'
 const EXTERNAL_ANALYSIS_CACHE_TABLE = 'external_analysis_cache'
@@ -425,6 +426,7 @@ export async function upsertExternalAnalysisCacheEntry(
     if (externalSourceKind) {
       normalizedInfo.externalSourceKind = externalSourceKind
     }
+    stripBeatThisDebugInfo(normalizedInfo)
     db.prepare(
       `INSERT INTO ${EXTERNAL_ANALYSIS_CACHE_TABLE}
        (source_kind, source_id, relative_path, file_path, size, mtime_ms, info_json,
