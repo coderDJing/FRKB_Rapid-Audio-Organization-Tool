@@ -205,6 +205,10 @@ const emit = defineEmits<{
   min-width: 0;
 }
 
+.overview__toolbar-main :deep(.grid-adjust-bpm-input) {
+  width: 52px;
+}
+
 .overview__toolbar-group {
   display: inline-flex;
   align-items: center;
