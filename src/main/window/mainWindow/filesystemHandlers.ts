@@ -106,53 +106,105 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
   })
 
   ipcMain.handle('emptyDir', async (_e, targetPath: string) => {
-    const { absPath } = resolveLibraryPath(targetPath)
-    const audioExts = store.settingConfig.audioExt
-    const songFileUrls = await collectFilesWithExtensions(absPath, audioExts)
-    const originalPlaylistPath = normalizeRendererPlaylistPath(targetPath)
-    const compactTrackNumbersIfSupported = async () => {
-      if (!isSupportedPlaylistTrackNumberListRoot(absPath)) return
-      await compactSongListTrackNumbers(absPath)
-      markGlobalSongSearchDirty('emptyDir')
-    }
+    const progressId = createProgressId('playlist_empty')
+    sendProgress({
+      id: progressId,
+      titleKey: 'library.deleteProgressScanning',
+      now: 0,
+      total: 0,
+      isInitial: true,
+      noProgress: true
+    })
 
-    if (songFileUrls.length === 0) {
+    try {
+      const { absPath } = resolveLibraryPath(targetPath)
+      const audioExts = store.settingConfig.audioExt
+      const songFileUrls = await collectFilesWithExtensions(absPath, audioExts)
+      const originalPlaylistPath = normalizeRendererPlaylistPath(targetPath)
+      const compactTrackNumbersIfSupported = async () => {
+        if (!isSupportedPlaylistTrackNumberListRoot(absPath)) return
+        await compactSongListTrackNumbers(absPath)
+        markGlobalSongSearchDirty('emptyDir')
+      }
+
+      if (songFileUrls.length === 0) {
+        await removeNonAudioEntries(absPath, audioExts)
+        await compactTrackNumbersIfSupported()
+        sendProgress({
+          id: progressId,
+          titleKey: 'library.deleteProgressFinished',
+          now: 1,
+          total: 1
+        })
+        return { total: 0, success: 0, failed: 0, skipped: 0, hasENOSPC: false }
+      }
+      const tasks: Array<() => Promise<RecycleBinMoveResult>> = songFileUrls.map((srcPath) => {
+        return async () => {
+          const result = await moveFileToRecycleBin(srcPath, {
+            originalPlaylistPath
+          })
+          if (result.status === 'failed') {
+            throw new Error(result.error || 'move to recycle bin failed')
+          }
+          return result
+        }
+      })
+      const batchId = `emptyDir_${Date.now()}`
+      sendProgress({
+        id: progressId,
+        titleKey: 'library.deleteProgressRemoving',
+        now: 0,
+        total: tasks.length,
+        noProgress: false
+      })
+      const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
+        concurrency: FILE_BATCH_CONCURRENCY,
+        stopOnENOSPC: true,
+        yieldEvery: FILE_BATCH_YIELD_EVERY,
+        onProgress: (done: number, total: number) => {
+          sendProgress({
+            id: progressId,
+            titleKey: 'library.deleteProgressRemoving',
+            now: done,
+            total,
+            noProgress: false
+          })
+        },
+        onInterrupted: async (payload) =>
+          waitForUserDecision(getWindow(), batchId, 'emptyDir', payload)
+      })
       await removeNonAudioEntries(absPath, audioExts)
       await compactTrackNumbersIfSupported()
-      return
-    }
-    const tasks: Array<() => Promise<RecycleBinMoveResult>> = songFileUrls.map((srcPath) => {
-      return async () => {
-        const result = await moveFileToRecycleBin(srcPath, {
-          originalPlaylistPath
+      const targetWindow = getWindow()
+      if (targetWindow && hasENOSPC) {
+        targetWindow.webContents.send('file-batch-summary', {
+          context: 'emptyDir',
+          total: tasks.length,
+          success,
+          failed,
+          hasENOSPC,
+          skipped,
+          errorSamples: []
         })
-        if (result.status === 'failed') {
-          throw new Error(result.error || 'move to recycle bin failed')
-        }
-        return result
       }
-    })
-    const batchId = `emptyDir_${Date.now()}`
-    const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
-      concurrency: FILE_BATCH_CONCURRENCY,
-      stopOnENOSPC: true,
-      yieldEvery: FILE_BATCH_YIELD_EVERY,
-      onInterrupted: async (payload) =>
-        waitForUserDecision(getWindow(), batchId, 'emptyDir', payload)
-    })
-    await removeNonAudioEntries(absPath, audioExts)
-    await compactTrackNumbersIfSupported()
-    const targetWindow = getWindow()
-    if (targetWindow && hasENOSPC) {
-      targetWindow.webContents.send('file-batch-summary', {
-        context: 'emptyDir',
-        total: tasks.length,
-        success,
-        failed,
-        hasENOSPC,
-        skipped,
-        errorSamples: []
+      sendProgress({
+        id: progressId,
+        titleKey:
+          failed === 0 && skipped === 0
+            ? 'library.deleteProgressFinished'
+            : 'library.deleteProgressFailed',
+        now: 1,
+        total: 1
       })
+      return { total: tasks.length, success, failed, skipped, hasENOSPC }
+    } catch (error) {
+      sendProgress({
+        id: progressId,
+        titleKey: 'library.deleteProgressFailed',
+        now: 1,
+        total: 1
+      })
+      throw error
     }
   })
 

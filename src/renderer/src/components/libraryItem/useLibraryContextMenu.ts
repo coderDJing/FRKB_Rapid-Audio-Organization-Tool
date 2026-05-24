@@ -298,25 +298,34 @@ export function useLibraryContextMenu({
         break
       }
       case 'playlist.emptyPlaylist': {
+        if (runtime.isProgressing) {
+          await confirmTaskBusy()
+          return
+        }
         const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-        await window.electron.ipcRenderer.invoke('emptyDir', dirPath)
-        if (getDirData()?.type === 'songList' && runtime.setting.showPlaylistTrackCount) {
-          trackCount.value = 0
-        }
+        runtime.isProgressing = true
         try {
-          emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
-        } catch {}
-        for (const pane of ['single', 'left', 'right'] as const) {
-          const paneState = runtime.songsAreaPanels.panes[pane]
-          if (paneState.songListUUID === props.uuid) {
-            paneState.selectedSongFilePath.length = 0
-            paneState.songInfoArr = []
-            paneState.totalSongCount = 0
+          await window.electron.ipcRenderer.invoke('emptyDir', dirPath)
+          if (getDirData()?.type === 'songList' && runtime.setting.showPlaylistTrackCount) {
+            trackCount.value = 0
           }
-        }
-        if (runtime.playingData.playingSongListUUID === props.uuid) {
-          runtime.playingData.playingSongListData = []
-          runtime.playingData.playingSong = null
+          try {
+            emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
+          } catch {}
+          for (const pane of ['single', 'left', 'right'] as const) {
+            const paneState = runtime.songsAreaPanels.panes[pane]
+            if (paneState.songListUUID === props.uuid) {
+              paneState.selectedSongFilePath.length = 0
+              paneState.songInfoArr = []
+              paneState.totalSongCount = 0
+            }
+          }
+          if (runtime.playingData.playingSongListUUID === props.uuid) {
+            runtime.playingData.playingSongListData = []
+            runtime.playingData.playingSong = null
+          }
+        } finally {
+          runtime.isProgressing = false
         }
         break
       }
@@ -508,9 +517,8 @@ export function useLibraryContextMenu({
           }
           return
         }
-        const { default: openAutoSummary } = await import(
-          '@renderer/components/autoMetadataSummaryDialog'
-        )
+        const { default: openAutoSummary } =
+          await import('@renderer/components/autoMetadataSummaryDialog')
         await openAutoSummary(summary)
         const updates =
           summary.items
@@ -562,9 +570,8 @@ export function useLibraryContextMenu({
           })
           return
         }
-        const { default: openPlaylistBatchRenameDialog } = await import(
-          '@renderer/components/playlistBatchRename'
-        )
+        const { default: openPlaylistBatchRenameDialog } =
+          await import('@renderer/components/playlistBatchRename')
         await openPlaylistBatchRenameDialog({
           title: t('batchRename.dialogTitle'),
           songLists
