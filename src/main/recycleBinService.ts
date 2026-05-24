@@ -46,9 +46,10 @@ export type RecycleBinRestoreResult = {
 }
 
 type RecordLookup = { record: RecycleBinRecord | null; recordKey: string | null }
-type ErrorLike = { message?: unknown }
+type ErrorLike = { code?: unknown; message?: unknown }
 
 const MIXTAPE_VAULT_DIR_NAME = '.mixtape_vault'
+const UNIQUE_MOVE_MAX_ATTEMPTS = 64
 
 export type MixtapeMissingResolveSource = 'recycle_bin' | 'mixtape_vault'
 
@@ -183,6 +184,41 @@ const getErrorMessage = (error: unknown): string => {
   if (error instanceof Error) return error.message
   const maybeError = error && typeof error === 'object' ? (error as ErrorLike) : null
   return String(maybeError?.message || error || '')
+}
+
+function isDestinationAlreadyExistsError(error: unknown): boolean {
+  const maybeError = error && typeof error === 'object' ? (error as ErrorLike) : null
+  const code = String(maybeError?.code || '').toUpperCase()
+  if (code === 'EEXIST') return true
+  return /dest already exists/i.test(getErrorMessage(error))
+}
+
+async function moveFileToUniqueDestination(
+  srcPath: string,
+  destDir: string,
+  desiredName: string
+): Promise<string> {
+  const sanitizedName =
+    path.basename((desiredName || path.basename(srcPath)).trim()) || path.basename(srcPath)
+  const directDestPath = path.join(destDir, sanitizedName)
+  if (normalizePathForCompare(srcPath) === normalizePathForCompare(directDestPath)) {
+    return directDestPath
+  }
+
+  for (let attempt = 0; attempt < UNIQUE_MOVE_MAX_ATTEMPTS; attempt += 1) {
+    const targetName = await resolveUniqueFileName(destDir, sanitizedName)
+    const destPath = path.join(destDir, targetName)
+    try {
+      await fs.move(srcPath, destPath, { overwrite: false })
+      return destPath
+    } catch (error) {
+      if (!isDestinationAlreadyExistsError(error) || !(await fs.pathExists(srcPath))) {
+        throw error
+      }
+    }
+  }
+
+  throw new Error('unable to allocate unique destination path')
 }
 
 function syncMixtapeFilePathReference(fromPath: string, toPath: string): number {
@@ -353,12 +389,7 @@ async function moveReferencedMixtapeFileToVault(
   const desiredNameRaw =
     (preferredName || path.basename(sourcePath)).trim() || path.basename(sourcePath)
   const desiredName = path.basename(desiredNameRaw)
-  const finalName = await resolveUniqueFileName(vaultRoot, desiredName)
-  const destPath = path.join(vaultRoot, finalName)
-  if (normalizePathForCompare(sourcePath) === normalizePathForCompare(destPath)) {
-    return { moved: true, destPath }
-  }
-  await fs.move(sourcePath, destPath)
+  const destPath = await moveFileToUniqueDestination(sourcePath, vaultRoot, desiredName)
   try {
     invalidateKeyAnalysisCache([sourcePath, destPath])
   } catch {}
@@ -382,9 +413,7 @@ export async function moveFileToRecycleBin(
     }
     await fs.ensureDir(recycleRoot)
     const originalFileName = options.originalFileName || path.basename(srcPath)
-    const targetName = await resolveUniqueFileName(recycleRoot, originalFileName)
-    const destPath = path.join(recycleRoot, targetName)
-    await fs.move(srcPath, destPath)
+    const destPath = await moveFileToUniqueDestination(srcPath, recycleRoot, originalFileName)
     try {
       await transferTrackCaches({
         fromRoot: sourceListRoot,
@@ -447,9 +476,7 @@ export async function restoreRecycleBinFile(filePath: string): Promise<RecycleBi
       return { status: 'missing_playlist', srcPath, playlistPath: playlistRel }
     }
     const desiredName = record.originalFileName || path.basename(srcPath)
-    const finalName = await resolveUniqueFileName(destDir, desiredName)
-    const destPath = path.join(destDir, finalName)
-    await fs.move(srcPath, destPath)
+    const destPath = await moveFileToUniqueDestination(srcPath, destDir, desiredName)
     try {
       await transferTrackCaches({
         fromRoot: recycleRoot,
