@@ -41,9 +41,11 @@ const clonePcmData = (pcmData: unknown): Float32Array => {
   return new Float32Array(0)
 }
 
-const enqueuePlaybackGridAnalysis = (filePath: string) => {
-  enqueueKeyAnalysis(filePath, 'medium', {
-    source: 'foreground'
+const enqueuePlaybackGridAnalysis = (filePath: string, focusSlot?: string) => {
+  enqueueKeyAnalysis(filePath, focusSlot ? 'high' : 'medium', {
+    urgent: Boolean(focusSlot),
+    source: 'foreground',
+    focusSlot
   })
 }
 
@@ -56,7 +58,10 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         const needsGridAnalysis =
           !isInRecordingLibraryAbsPath(filePath) && !isCompleteSharedSongGridDefinition(sharedGrid)
         if (needsGridAnalysis) {
-          enqueuePlaybackGridAnalysis(filePath)
+          enqueuePlaybackGridAnalysis(
+            filePath,
+            eventName === 'readSongFile' ? 'main-player' : undefined
+          )
         }
         let stat: { size: number; mtimeMs: number } | null = null
         try {

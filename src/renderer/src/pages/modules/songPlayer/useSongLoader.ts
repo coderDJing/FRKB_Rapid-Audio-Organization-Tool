@@ -522,7 +522,10 @@ export function useSongLoader(params: {
             if (requestId !== currentLoadRequestId.value) return
             if (runtime.playingData.playingSong?.filePath !== filePath) return
             tracePlayerWaveform('loader', 'formal-cache:queue-generation', filePath)
-            window.electron.ipcRenderer.send('key-analysis:queue-playing', { filePath })
+            window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+              filePath,
+              focusSlot: 'main-player'
+            })
             startRawWaveformStream(filePath, requestId)
           })()
         }

@@ -12,6 +12,7 @@ import {
   type KeyAnalysisJob,
   type KeyAnalysisPreemptionKind,
   type KeyAnalysisProgress,
+  type KeyAnalysisQueueCategory,
   type KeyAnalysisPriority,
   type WorkerPayload
 } from './types'
@@ -38,7 +39,7 @@ type KeyAnalysisWorkerPoolDeps = {
       source?: 'foreground' | 'background'
       fastAnalysis?: boolean
       preemptible?: boolean
-      category?: 'visible'
+      category?: KeyAnalysisQueueCategory
       waveformOnly?: boolean
     }
   ) => void

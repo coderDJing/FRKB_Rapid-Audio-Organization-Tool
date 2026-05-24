@@ -698,6 +698,7 @@ export function useWaveformPreview(params: {
         }
         window.electron.ipcRenderer.send('key-analysis:queue-visible', {
           filePaths: toQueue,
+          scope: 'waveform-preview',
           waveformOnly: sourceLibraryName.value === 'RecordingLibrary'
         })
       }

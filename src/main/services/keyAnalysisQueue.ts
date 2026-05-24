@@ -1,6 +1,10 @@
 import { EventEmitter } from 'node:events'
 import { KeyAnalysisQueue } from './keyAnalysis/queue'
-import type { KeyAnalysisBackgroundStatus, KeyAnalysisPriority } from './keyAnalysis/types'
+import type {
+  KeyAnalysisBackgroundStatus,
+  KeyAnalysisPriority,
+  KeyAnalysisQueueCategory
+} from './keyAnalysis/types'
 import * as LibraryCacheDb from '../libraryCacheDb'
 
 // 分析是 CPU 重活，保持单路执行，给播放解码留调度余量。
@@ -24,7 +28,7 @@ export function enqueueKeyAnalysis(
     fastAnalysis?: boolean
     focusSlot?: string
     preemptible?: boolean
-    category?: 'visible'
+    category?: KeyAnalysisQueueCategory
     waveformOnly?: boolean
   } = {}
 ) {
@@ -40,7 +44,7 @@ export function enqueueKeyAnalysisList(
     fastAnalysis?: boolean
     focusSlot?: string
     preemptible?: boolean
-    category?: 'visible'
+    category?: KeyAnalysisQueueCategory
     waveformOnly?: boolean
   } = {}
 ) {

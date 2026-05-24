@@ -1,6 +1,5 @@
 ﻿<script setup lang="ts">
-import { PropType, computed, markRaw, onUnmounted, ref as vRef, toRef } from 'vue'
-import type { ComponentPublicInstance } from 'vue'
+import { PropType, computed, onUnmounted, ref as vRef, toRef } from 'vue'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../types/globals'
 import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
@@ -13,7 +12,9 @@ import { useRowAnalysisViewport } from './SongListRows/useRowAnalysisViewport'
 import { useKeyAnalysisProgress } from './composables/useKeyAnalysisProgress'
 import { useCoverPreview } from './SongListRows/useCoverPreview'
 import { useSongRowHoverInteractions } from './SongListRows/useSongRowHoverInteractions'
+import { useSongRowIdentity } from './SongListRows/useSongRowIdentity'
 import { useSongRowDisplay } from './SongListRows/useSongRowDisplay'
+import { useSongRowRefs } from './SongListRows/useSongRowRefs'
 import { useWaveformPreview } from './SongListRows/useWaveformPreview'
 import CoverPreviewOverlay from './SongListRows/CoverPreviewOverlay.vue'
 import CuratedArtistCellContent from './SongListRows/CuratedArtistCellContent.vue'
@@ -137,6 +138,7 @@ const externalScrollTopRef = toRef(props, 'externalScrollTop')
 const externalViewportHeightRef = toRef(props, 'externalViewportHeight')
 const songListRootDirRef = toRef(props, 'songListRootDir')
 const externalWaveformRootPathRef = toRef(props, 'externalWaveformRootPath')
+const reorderModeRef = toRef(props, 'reorderMode')
 const sourceSongListUUIDRef = toRef(props, 'sourceSongListUUID')
 const sourcePaneKeyRef = toRef(props, 'sourcePaneKey')
 const sourceLibraryNameRef = toRef(props, 'sourceLibraryName')
@@ -158,69 +160,25 @@ const playingSongRowKeySet = computed(
     )
 )
 const isMixtapeList = computed(() => props.reorderMode === 'mixtape')
-const isPlaylistReorder = computed(() => props.reorderMode === 'playlist')
 const isInternalReorderEnabled = computed(
   () => props.reorderMode === 'mixtape' || props.reorderMode === 'playlist'
 )
 const canStartSongDrag = computed(
   () => !props.readOnly || isInternalReorderEnabled.value || props.allowSongDragWhenReadOnly
 )
-const isNormalLibraryContext = computed(() => {
-  const rootDir = String(props.songListRootDir || '').replace(/\\/g, '/')
-  return (
-    rootDir === 'library/FilterLibrary' ||
-    rootDir.startsWith('library/FilterLibrary/') ||
-    rootDir === 'library/CuratedLibrary' ||
-    rootDir.startsWith('library/CuratedLibrary/')
-  )
-})
-const isPioneerLibraryContext = computed(() =>
-  String(props.songListRootDir || '')
-    .replace(/\\/g, '/')
-    .startsWith('library/PioneerDeviceLibrary')
-)
-const shouldDisplayPlaylistTrackNumber = computed(
-  () => isNormalLibraryContext.value || isPioneerLibraryContext.value
-)
 const canPreviewWaveform = computed(() => !props.readOnly || props.allowWaveformPreviewWhenReadOnly)
-
-const cellRefMap = markRaw({} as Record<string, HTMLElement | null>)
-const coverCellRefMap = markRaw(new Map<string, HTMLElement | null>())
-const getRowKey = (song: ISongInfo) =>
-  (isPioneerLibraryContext.value || !isNormalLibraryContext.value || isPlaylistReorder.value) &&
-  song.mixtapeItemId
-    ? song.mixtapeItemId
-    : song.filePath
-const getCellKey = (song: ISongInfo, colKey: string) => `${getRowKey(song)}__${colKey}`
-const getIndexCellValue = (song: ISongInfo, index: number) => {
-  if (typeof song.mixOrder === 'number' && song.mixOrder > 0) return song.mixOrder
-  if (
-    shouldDisplayPlaylistTrackNumber.value &&
-    typeof song.playlistTrackNumber === 'number' &&
-    song.playlistTrackNumber > 0
-  ) {
-    return song.playlistTrackNumber
-  }
-  return index + 1
-}
-const resolveHTMLElement = (el: Element | ComponentPublicInstance | null) => {
-  if (el && typeof (el as ComponentPublicInstance).$el !== 'undefined') {
-    return ((el as ComponentPublicInstance).$el || null) as Element | null
-  }
-  return el as Element | null
-}
-const setCellRef = (key: string, el: Element | ComponentPublicInstance | null) => {
-  const dom = resolveHTMLElement(el) as HTMLElement | null
-  cellRefMap[key] = dom
-}
-const setCoverCellRef = (filePath: string, el: Element | ComponentPublicInstance | null) => {
-  const dom = resolveHTMLElement(el) as HTMLElement | null
-  if (dom) {
-    coverCellRefMap.set(filePath, dom)
-  } else {
-    coverCellRefMap.delete(filePath)
-  }
-}
+const {
+  isPlaylistReorder,
+  isNormalLibraryContext,
+  isPioneerLibraryContext,
+  getRowKey,
+  getCellKey,
+  getIndexCellValue
+} = useSongRowIdentity({
+  songListRootDir: songListRootDirRef,
+  reorderMode: reorderModeRef
+})
+const { cellRefMap, coverCellRefMap, setCellRef, setCoverCellRef } = useSongRowRefs()
 
 const hoveredCellKey = vRef<string | null>(null)
 const onlyWhenOverflowComputed = computed(() => true)
@@ -386,7 +344,16 @@ const { coversTick, getCoverUrl, fetchCoverUrl, onImgError } = useCoverThumbnail
   enabled: enableCoverThumbnailsRef
 })
 
-useKeyAnalysisQueue({ visibleSongsWithIndex, songs: songsRef, enabled: enableKeyAnalysisQueueRef })
+const keyAnalysisQueueKey = computed(
+  () => `${props.sourceLibraryName}:${props.sourcePaneKey}:${props.sourceSongListUUID}`
+)
+
+useKeyAnalysisQueue({
+  visibleSongsWithIndex,
+  songs: songsRef,
+  enabled: enableKeyAnalysisQueueRef,
+  queueKey: keyAnalysisQueueKey
+})
 
 const { listViewportWidth } = useRowAnalysisViewport({
   rowsRoot,

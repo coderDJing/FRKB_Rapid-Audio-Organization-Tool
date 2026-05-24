@@ -2,6 +2,7 @@ import { ipcMain } from 'electron'
 import {
   cancelKeyAnalysisBackground,
   enqueueKeyAnalysis,
+  enqueueKeyAnalysisList,
   replaceVisibleKeyAnalysisList,
   getKeyAnalysisBackgroundStatus
 } from '../services/keyAnalysisQueue'
@@ -10,12 +11,22 @@ import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 type VisibleQueuePayload = {
   filePaths?: string[]
   waveformOnly?: boolean
+  scope?: 'list' | 'waveform-preview'
 }
 
 export function registerKeyAnalysisHandlers() {
   ipcMain.on('key-analysis:queue-visible', (_e, payload: VisibleQueuePayload) => {
     const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     const normalized = paths.filter((p) => typeof p === 'string' && p.trim().length > 0)
+    if (payload?.scope === 'waveform-preview') {
+      enqueueKeyAnalysisList(normalized, 'low', {
+        source: 'foreground',
+        preemptible: true,
+        category: 'waveform-preview',
+        waveformOnly: payload?.waveformOnly === true
+      })
+      return
+    }
     replaceVisibleKeyAnalysisList(normalized, {
       waveformOnly: payload?.waveformOnly === true
     })
@@ -27,7 +38,8 @@ export function registerKeyAnalysisHandlers() {
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       if (!filePath) return
       if (isInRecordingLibraryAbsPath(filePath)) return
-      enqueueKeyAnalysis(filePath, 'medium', {
+      enqueueKeyAnalysis(filePath, 'high', {
+        urgent: true,
         source: 'foreground',
         focusSlot: payload?.focusSlot
       })

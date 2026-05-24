@@ -6,6 +6,7 @@ interface UseKeyAnalysisQueueOptions {
   visibleSongsWithIndex: Ref<Array<{ song: ISongInfo; idx: number }>>
   songs?: Ref<ISongInfo[]>
   enabled?: Ref<boolean>
+  queueKey?: Ref<string>
 }
 
 const CURRENT_LIST_QUEUE_LIMIT = 400
@@ -28,7 +29,8 @@ const hasCompleteKeyAnalysis = (song: ISongInfo | undefined) => {
 export function useKeyAnalysisQueue({
   visibleSongsWithIndex,
   songs,
-  enabled
+  enabled,
+  queueKey
 }: UseKeyAnalysisQueueOptions) {
   let timer: ReturnType<typeof setTimeout> | null = null
   let lastSignature = ''
@@ -62,10 +64,13 @@ export function useKeyAnalysisQueue({
   const flush = () => {
     if (!isEnabled()) return
     const paths = buildForegroundPayload()
-    const signature = paths.join('|')
+    const signature = `${queueKey?.value || ''}::${paths.join('|')}`
     if (signature === lastSignature) return
     lastSignature = signature
-    window.electron.ipcRenderer.send('key-analysis:queue-visible', { filePaths: paths })
+    window.electron.ipcRenderer.send('key-analysis:queue-visible', {
+      filePaths: paths,
+      scope: 'list'
+    })
   }
 
   const schedule = () => {
@@ -77,7 +82,7 @@ export function useKeyAnalysisQueue({
   }
 
   const stopWatch = watch(
-    () => buildForegroundPayload().join('|'),
+    () => `${queueKey?.value || ''}::${buildForegroundPayload().join('|')}`,
     () => {
       if (!isEnabled()) return
       schedule()
@@ -88,5 +93,10 @@ export function useKeyAnalysisQueue({
   onUnmounted(() => {
     if (timer) clearTimeout(timer)
     stopWatch()
+    if (!isEnabled()) return
+    window.electron.ipcRenderer.send('key-analysis:queue-visible', {
+      filePaths: [],
+      scope: 'list'
+    })
   })
 }

@@ -33,6 +33,7 @@ import {
   type KeyAnalysisPreemptionKind,
   type KeyAnalysisPriority,
   type KeyAnalysisProgress,
+  type KeyAnalysisQueueCategory,
   type KeyAnalysisSource
 } from './types'
 
@@ -149,6 +150,12 @@ export class KeyAnalysisQueue {
     }
   }
 
+  private applyQueueCategory(job: KeyAnalysisJob, category?: KeyAnalysisQueueCategory) {
+    if (!category) return
+    if (job.category === 'visible' && category === 'waveform-preview') return
+    job.category = category
+  }
+
   enqueue(
     filePath: string,
     priority: KeyAnalysisPriority,
@@ -158,7 +165,7 @@ export class KeyAnalysisQueue {
       fastAnalysis?: boolean
       focusSlot?: string
       preemptible?: boolean
-      category?: 'visible'
+      category?: KeyAnalysisQueueCategory
       waveformOnly?: boolean
     } = {}
   ) {
@@ -191,9 +198,7 @@ export class KeyAnalysisQueue {
         if (options.preemptible !== undefined) {
           existing.preemptible = options.preemptible
         }
-        if (options.category !== undefined) {
-          existing.category = options.category
-        }
+        this.applyQueueCategory(existing, options.category)
         this.applyWaveformOnlyOption(existing, options.waveformOnly)
         this.addFocusSlotToJob(existing, focusSlot)
         this.addPending(existing, options.urgent)
@@ -201,9 +206,7 @@ export class KeyAnalysisQueue {
         if (options.preemptible !== undefined) {
           existing.preemptible = options.preemptible
         }
-        if (options.category !== undefined) {
-          existing.category = options.category
-        }
+        this.applyQueueCategory(existing, options.category)
         this.applyWaveformOnlyOption(existing, options.waveformOnly)
         this.addFocusSlotToJob(existing, focusSlot)
       }
@@ -242,7 +245,7 @@ export class KeyAnalysisQueue {
       fastAnalysis?: boolean
       focusSlot?: string
       preemptible?: boolean
-      category?: 'visible'
+      category?: KeyAnalysisQueueCategory
       waveformOnly?: boolean
     } = {}
   ) {
@@ -253,20 +256,9 @@ export class KeyAnalysisQueue {
   }
 
   replaceVisibleList(filePaths: string[], options: { waveformOnly?: boolean } = {}) {
-    const normalizedIncoming = Array.from(
-      new Set(
-        (Array.isArray(filePaths) ? filePaths : [])
-          .filter((filePath) => typeof filePath === 'string')
-          .map((filePath) => filePath.trim())
-          .filter(Boolean)
-          .map((filePath) => normalizePath(filePath))
-      )
-    )
-    const keepSet = new Set(normalizedIncoming)
-
     for (const job of Array.from(this.pendingByPath.values())) {
       if (job.category !== 'visible') continue
-      if (keepSet.has(job.normalizedPath)) continue
+      if (this.hasActiveFocusSlot(job)) continue
       this.removePending(job)
     }
 
@@ -276,6 +268,7 @@ export class KeyAnalysisQueue {
       category: 'visible',
       waveformOnly: options.waveformOnly === true
     })
+    this.drain()
   }
 
   cancelBackgroundWork(pauseMs?: number) {
@@ -396,15 +389,6 @@ export class KeyAnalysisQueue {
     return Array.isArray(job.focusSlots) && job.focusSlots.length > 0
   }
 
-  private findWorkerByJobId(jobId: number): Worker | null {
-    for (const [worker, activeJobId] of this.busy.entries()) {
-      if (activeJobId === jobId) {
-        return worker
-      }
-    }
-    return null
-  }
-
   private releaseFocusSlotFromPreviousAssignment(focusSlot: string, nextNormalizedPath: string) {
     const previousNormalizedPath = this.focusPathBySlot.get(focusSlot)
     if (!previousNormalizedPath || previousNormalizedPath === nextNormalizedPath) {
@@ -420,15 +404,6 @@ export class KeyAnalysisQueue {
       if (!this.hasActiveFocusSlot(previousJob)) {
         if (this.pendingByPath.get(previousNormalizedPath) === previousJob) {
           this.removePending(previousJob)
-        } else {
-          const worker = this.findWorkerByJobId(previousJob.jobId)
-          if (worker) {
-            this.preemptedJobs.set(previousJob.jobId, 'focus-superseded')
-            this.markExpectedWorkerTermination(worker, 'focus-superseded')
-            void worker.terminate().catch(() => {
-              this.clearExpectedWorkerTermination(worker)
-            })
-          }
         }
       }
     }

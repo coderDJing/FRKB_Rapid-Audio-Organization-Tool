@@ -4,6 +4,7 @@ import type { MixxxWaveformData } from '../../waveformCache'
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
+export type KeyAnalysisQueueCategory = 'visible' | 'waveform-preview'
 export type KeyAnalysisProgressStage =
   | 'job-received'
   | 'decode-start'
@@ -79,7 +80,7 @@ export type KeyAnalysisJob = {
   fastAnalysis: boolean
   source: KeyAnalysisSource
   preemptible?: boolean
-  category?: 'visible'
+  category?: KeyAnalysisQueueCategory
   waveformOnly?: boolean
   focusSlots?: string[]
   needsKey?: boolean
