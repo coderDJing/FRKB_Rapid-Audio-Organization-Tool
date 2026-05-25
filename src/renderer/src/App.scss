@@ -277,6 +277,22 @@ body {
   opacity: 1;
 }
 
+.topToolbarRecordingArea {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.topToolbarRecordDuration {
+  font-size: 12px;
+  color: #e74c3c;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  user-select: none;
+  min-width: 72px;
+  text-align: left;
+}
+
 .topToolbarTime {
   font-size: 12px;
   color: var(--text-weak);

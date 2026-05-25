@@ -23,6 +23,9 @@ const emptyStatus = (): HorizontalBrowseTransportRecordingStatus => ({
 const recordingStatus = ref<HorizontalBrowseTransportRecordingStatus>(emptyStatus())
 const busy = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let durationRafId = 0
+let lastPollFrames = 0
+let lastPollTimestamp = 0
 
 const isHorizontalMode = computed(() => runtime.mainWindowBrowseMode === 'horizontal')
 const hasRecordingSession = computed(
@@ -41,6 +44,8 @@ const recordButtonClasses = computed(() => ({
   'is-error': recordingStatus.value.state === 'error',
   'is-busy': busy.value
 }))
+const currentRecordingDuration = ref('')
+
 const topToolbarRecordIconStyle = {
   '--top-toolbar-record-icon-mask': `url("${recordIconAsset}")`
 }
@@ -80,16 +85,21 @@ const resolveRecordingFileName = (filePath: string | undefined) => {
 
 const padDurationPart = (value: number) => String(value).padStart(2, '0')
 
-const formatRecordingDuration = (seconds: number) => {
-  if (!Number.isFinite(seconds) || seconds <= 0) return '00:00'
-  const totalSeconds = Math.max(0, Math.round(seconds))
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const restSeconds = totalSeconds % 60
+const formatRecordingDuration = (seconds: number, showMs = false) => {
+  if (!Number.isFinite(seconds) || seconds <= 0) return showMs ? '00:00.00' : '00:00'
+  const totalMs = Math.max(0, Math.round(seconds * 1000))
+  const hours = Math.floor(totalMs / 3600000)
+  const minutes = Math.floor((totalMs % 3600000) / 60000)
+  const restSeconds = Math.floor((totalMs % 60000) / 1000)
+  const ms = totalMs % 1000
   if (hours > 0) {
-    return `${hours}:${padDurationPart(minutes)}:${padDurationPart(restSeconds)}`
+    return showMs
+      ? `${hours}:${padDurationPart(minutes)}:${padDurationPart(restSeconds)}.${padDurationPart(Math.floor(ms / 10))}`
+      : `${hours}:${padDurationPart(minutes)}:${padDurationPart(restSeconds)}`
   }
-  return `${padDurationPart(minutes)}:${padDurationPart(restSeconds)}`
+  return showMs
+    ? `${padDurationPart(minutes)}:${padDurationPart(restSeconds)}.${padDurationPart(Math.floor(ms / 10))}`
+    : `${padDurationPart(minutes)}:${padDurationPart(restSeconds)}`
 }
 
 const buildRecordingSavedContent = (status: HorizontalBrowseTransportRecordingStatus) => {
@@ -103,7 +113,7 @@ const buildRecordingSavedContent = (status: HorizontalBrowseTransportRecordingSt
     t('player.recordingSavedFile', { name: resolveRecordingFileName(status.filePath) }),
     t('player.recordingSavedFormat', { channels, sampleRate: sampleRateText }),
     t('player.recordingSavedDuration', {
-      duration: formatRecordingDuration(durationSeconds)
+      duration: formatRecordingDuration(durationSeconds, true)
     }),
     t('player.recordingSavedQuality'),
     t('player.recordingSavedPath', { path: status.filePath || '' })
@@ -127,6 +137,10 @@ const refreshRecordingSnapshot = async () => {
     'horizontal-browse-transport:recording-snapshot'
   )
   recordingStatus.value = normalizeStatus(status)
+  if (status.state === 'recording') {
+    lastPollFrames = Number(status.recordedFrames) || 0
+    lastPollTimestamp = Date.now()
+  }
 }
 
 const startPolling = () => {
@@ -143,12 +157,37 @@ const stopPolling = () => {
   pollTimer = null
 }
 
+const updateDuration = () => {
+  durationRafId = requestAnimationFrame(updateDuration)
+  if (recordingStatus.value.state !== 'recording') return
+  const sampleRate = recordingStatus.value.sampleRate
+  if (sampleRate > 0 && lastPollTimestamp > 0) {
+    const elapsedSincePoll = (Date.now() - lastPollTimestamp) / 1000
+    const estimatedFrames = lastPollFrames + elapsedSincePoll * sampleRate
+    currentRecordingDuration.value = formatRecordingDuration(estimatedFrames / sampleRate, true)
+  }
+}
+
+const startDurationTimer = () => {
+  if (durationRafId) return
+  durationRafId = requestAnimationFrame(updateDuration)
+}
+
+const stopDurationTimer = () => {
+  if (!durationRafId) return
+  cancelAnimationFrame(durationRafId)
+  durationRafId = 0
+}
+
 const startRecording = async () => {
   const status = await window.electron.ipcRenderer.invoke(
     'horizontal-browse-transport:recording-start'
   )
   recordingStatus.value = normalizeStatus(status)
+  lastPollFrames = Number(status.recordedFrames) || 0
+  lastPollTimestamp = Date.now()
   startPolling()
+  startDurationTimer()
 }
 
 const stopRecording = async () => {
@@ -157,6 +196,9 @@ const stopRecording = async () => {
   )
   const nextStatus = normalizeStatus(status)
   recordingStatus.value = nextStatus
+  lastPollFrames = 0
+  lastPollTimestamp = 0
+  stopDurationTimer()
   if (nextStatus.recorded) {
     emitter.emit(RECORDING_LIBRARY_CHANGED_EVENT, { hasRecordings: true })
     showRecordingSavedDialog(nextStatus)
@@ -203,12 +245,23 @@ watch(
     if (mode === 'horizontal') {
       void refreshRecordingSnapshot().catch(() => {})
       startPolling()
+      startDurationTimer()
       return
     }
     if (hasRecordingSession.value) {
       void stopRecording().catch(() => {})
     } else {
       stopPolling()
+      stopDurationTimer()
+    }
+  }
+)
+
+watch(
+  () => recordingStatus.value.state,
+  (state) => {
+    if (state !== 'recording') {
+      currentRecordingDuration.value = ''
     }
   }
 )
@@ -218,11 +271,13 @@ onMounted(() => {
   if (isHorizontalMode.value) {
     void refreshRecordingSnapshot().catch(() => {})
     startPolling()
+    startDurationTimer()
   }
 })
 
 onBeforeUnmount(() => {
   stopPolling()
+  stopDurationTimer()
   window.electron.ipcRenderer.removeListener(
     RECORDING_LIBRARY_CHANGED_EVENT,
     handleRecordingLibraryChanged
@@ -231,19 +286,23 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <bubbleBoxTrigger
-    v-if="isHorizontalMode"
-    tag="button"
-    class="topToolbarRecordButton"
-    :class="recordButtonClasses"
-    :style="topToolbarRecordIconStyle"
-    :title="tooltipText"
-    :aria-label="tooltipText"
-    :aria-pressed="isRecordActive ? 'true' : 'false'"
-    :aria-disabled="busy ? 'true' : 'false'"
-    type="button"
-    @click="toggleRecording"
-  >
-    <span class="topToolbarRecordIcon"></span>
-  </bubbleBoxTrigger>
+  <div v-if="isHorizontalMode" class="topToolbarRecordingArea">
+    <bubbleBoxTrigger
+      tag="button"
+      class="topToolbarRecordButton"
+      :class="recordButtonClasses"
+      :style="topToolbarRecordIconStyle"
+      :title="tooltipText"
+      :aria-label="tooltipText"
+      :aria-pressed="isRecordActive ? 'true' : 'false'"
+      :aria-disabled="busy ? 'true' : 'false'"
+      type="button"
+      @click="toggleRecording"
+    >
+      <span class="topToolbarRecordIcon"></span>
+    </bubbleBoxTrigger>
+    <span v-if="currentRecordingDuration" class="topToolbarRecordDuration">
+      {{ currentRecordingDuration }}
+    </span>
+  </div>
 </template>
