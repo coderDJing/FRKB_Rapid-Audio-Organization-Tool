@@ -949,6 +949,17 @@ onUnmounted(() => {
   &.fileMissing {
     color: var(--song-list-file-missing);
   }
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 1px;
+    background: var(--border);
+    pointer-events: none;
+    z-index: 0;
+  }
   &.globalSearchFlashA,
   &.globalSearchFlashB {
     animation-duration: 320ms;

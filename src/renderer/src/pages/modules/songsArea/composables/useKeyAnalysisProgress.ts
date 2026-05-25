@@ -79,6 +79,16 @@ const computePercent = (
   }
 }
 
+const isDisplayableProgressEntry = (
+  entry?: {
+    stage: AnalysisStage
+    displayPercent: number
+  } | null
+): entry is {
+  stage: AnalysisStage
+  displayPercent: number
+} => Boolean(entry && entry.stage !== 'job-received' && entry.displayPercent > 0)
+
 // 阶段内平滑过渡：估算每个阶段的持续时间（ms）
 const PHASE_DURATION_MS = {
   decode: 3000,
@@ -242,23 +252,15 @@ export function useKeyAnalysisProgress(params: {
     progressVersion.value
     const normalized = normalizePath(filePath)
     const entry = progressMap.value.get(normalized)
-    if (entry) return Math.round(entry.displayPercent)
-    // 没有活跃进度但歌需要分析 → 返回 0（等待分析）
-    for (const item of visibleSongsWithIndex.value || []) {
-      const songPath = normalizePath(item?.song?.filePath || '')
-      if (songPath === normalized) {
-        return hasCompleteKeyAnalysis(item.song) || isAnalysisCompleteOverride?.(filePath)
-          ? null
-          : 0
-      }
-    }
+    if (isDisplayableProgressEntry(entry)) return Math.round(entry.displayPercent)
     return null
   }
 
   const isSongNeedsAnalysis = (filePath: string): boolean => {
     const normalized = normalizePath(filePath)
-    // 如果有活跃的分析进度，说明正在分析（不是"等待"）
-    if (progressMap.value.has(normalized)) return false
+    const entry = progressMap.value.get(normalized)
+    // 有真实进度就说明正在分析，不再算"待分析"
+    if (isDisplayableProgressEntry(entry)) return false
     // 检查可见歌曲列表中是否有这首歌且需要分析
     for (const item of visibleSongsWithIndex.value || []) {
       const songPath = normalizePath(item?.song?.filePath || '')
@@ -272,16 +274,8 @@ export function useKeyAnalysisProgress(params: {
   const hasAnyAnalysisProgress = computed(() => {
     // 触发响应式依赖
     progressVersion.value
-    // 有任何歌曲正在分析中
-    if (progressMap.value.size > 0) return true
-    // 或者有任何可见歌曲需要分析
-    for (const item of visibleSongsWithIndex.value || []) {
-      if (
-        !hasCompleteKeyAnalysis(item.song) &&
-        !isAnalysisCompleteOverride?.(item.song?.filePath || '')
-      ) {
-        return true
-      }
+    for (const entry of progressMap.value.values()) {
+      if (isDisplayableProgressEntry(entry)) return true
     }
     return false
   })
