@@ -12,6 +12,7 @@ import {
   normalizePlaylistTrackNumber,
   sortSongsByPlaylistTrackNumber
 } from './playlistTrackNumbers'
+import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
@@ -86,6 +87,7 @@ export const scheduleSongListPostScanTasks = async (
   if (!cacheRoot || scanData.length === 0) return
 
   const pendingKeys = scanData
+    .filter((info) => !isInRecordingLibraryAbsPath(info.filePath))
     .filter((info) => !hasKey(info.key) || !hasCompleteGrid(info))
     .map((info) => info.filePath)
     .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)

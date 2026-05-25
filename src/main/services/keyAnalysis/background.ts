@@ -5,6 +5,7 @@ import type { EventEmitter } from 'node:events'
 import { sweepSongListCovers } from '../covers'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { getLibraryDb } from '../../libraryDb'
+import { isInRecordingLibraryAbsPath } from '../../recordingLibraryService'
 import {
   loadLibraryNodes,
   pruneMissingLibraryNodes,
@@ -453,6 +454,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       if (!listRoot) continue
       const absFilePath = LibraryCacheDb.resolveCacheFilePath(listRoot, filePath)
       if (!absFilePath) continue
+      if (isInRecordingLibraryAbsPath(absFilePath)) continue
       const size = Number(row?.size)
       const mtimeMs = Number(row?.mtime_ms)
       let hasWaveform = false
