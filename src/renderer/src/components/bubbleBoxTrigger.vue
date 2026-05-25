@@ -52,7 +52,7 @@ const props = defineProps({
   },
   interactive: {
     type: Boolean,
-    default: true
+    default: false
   },
   followMouse: {
     type: Boolean,

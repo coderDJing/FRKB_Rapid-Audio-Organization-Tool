@@ -50,10 +50,10 @@ const props = defineProps({
     type: Number,
     default: 280
   },
-  // 是否允许气泡拦截鼠标事件（默认允许）
+  // 是否允许气泡拦截鼠标事件（普通提示默认不拦截；截断文本气泡会保留可移入行为）
   interactive: {
     type: Boolean,
-    default: true
+    default: false
   },
   // 是否跟随鼠标移动定位（默认不跟随，只锚定到触发元素）
   followMouse: {
@@ -98,6 +98,8 @@ const hasDefaultSlot = computed(() => {
     return false
   }
 })
+
+const effectiveInteractive = computed(() => props.interactive || props.onlyWhenOverflow)
 
 function clearTimers() {
   if (hoverTimer.value) {
@@ -322,8 +324,8 @@ onUnmounted(() => {
           left: leftPx + 'px',
           maxWidth: maxWidth + 'px',
           zIndex: zIndex,
-          pointerEvents: interactive ? 'auto' : 'none',
-          userSelect: interactive ? 'text' : 'none'
+          pointerEvents: effectiveInteractive ? 'auto' : 'none',
+          userSelect: effectiveInteractive ? 'text' : 'none'
         }"
         @mouseenter="onBubbleMouseEnter"
         @mouseleave="onBubbleMouseLeave"
