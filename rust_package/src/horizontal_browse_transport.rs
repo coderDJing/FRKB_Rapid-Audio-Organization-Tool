@@ -7,6 +7,8 @@ use napi::bindgen_prelude::*;
 
 #[path = "horizontal_browse_transport_audio.rs"]
 mod horizontal_browse_transport_audio;
+#[path = "horizontal_browse_transport_auto_gain.rs"]
+mod horizontal_browse_transport_auto_gain;
 #[path = "horizontal_browse_transport_engine_state.rs"]
 mod horizontal_browse_transport_engine_state;
 #[path = "horizontal_browse_transport_grid_sync.rs"]
@@ -17,10 +19,13 @@ mod horizontal_browse_transport_napi;
 mod horizontal_browse_transport_recording;
 #[path = "horizontal_browse_transport_runtime.rs"]
 mod horizontal_browse_transport_runtime;
+#[path = "horizontal_browse_transport_snapshot.rs"]
+mod horizontal_browse_transport_snapshot;
 #[path = "horizontal_browse_transport_types.rs"]
 mod horizontal_browse_transport_types;
 #[path = "horizontal_browse_transport_visualizer.rs"]
 mod horizontal_browse_transport_visualizer;
+use horizontal_browse_transport_auto_gain::{DeckAutoGainState, LoudnessAnalysis};
 pub use horizontal_browse_transport_napi::*;
 pub use horizontal_browse_transport_recording::HorizontalBrowseTransportRecordingStatus;
 use horizontal_browse_transport_runtime::{
@@ -60,7 +65,10 @@ struct DeckState {
   pcm_start_sec: f64,
   sample_rate: u32,
   channels: u16,
+  loudness_analysis: Option<LoudnessAnalysis>,
+  loudness_failed: bool,
   gain: f32,
+  auto_gain: DeckAutoGainState,
   band_state: HorizontalBrowseTransportBandState,
   band_filter_state: DeckBandFilterState,
   metronome_enabled: bool,
@@ -225,7 +233,10 @@ impl Default for DeckState {
       pcm_start_sec: 0.0,
       sample_rate: 0,
       channels: 0,
+      loudness_analysis: None,
+      loudness_failed: false,
       gain: 1.0,
+      auto_gain: DeckAutoGainState::default(),
       band_state: HorizontalBrowseTransportBandState::default(),
       band_filter_state: DeckBandFilterState::default(),
       metronome_enabled: false,
@@ -729,6 +740,8 @@ impl HorizontalBrowseTransportEngine {
 
   fn sample_deck(&mut self, deck: DeckId) -> (f32, f32) {
     let output_sample_rate = self.output_sample_rate.max(1) as f64;
+    self.advance_auto_gain(deck, output_sample_rate);
+    self.refresh_output_gains();
     let before_sec = self.deck(deck).current_sec;
     let was_playing = self.deck(deck).playing;
     let scrub_rendering =
@@ -1006,12 +1019,16 @@ impl HorizontalBrowseTransportEngine {
   fn refresh_output_gains(&mut self) {
     let (top_crossfader_gain, bottom_crossfader_gain) =
       Self::resolve_crossfader_volumes(self.crossfader_value);
-    let top_gain =
-      self.trim_gain[Self::deck_index(DeckId::Top)] * self.master_gain * top_crossfader_gain;
-    let bottom_gain =
-      self.trim_gain[Self::deck_index(DeckId::Bottom)] * self.master_gain * bottom_crossfader_gain;
-    self.top.gain = top_gain.clamp(0.0, 1.0);
-    self.bottom.gain = bottom_gain.clamp(0.0, 1.0);
+    let top_trim = self.trim_gain[Self::deck_index(DeckId::Top)];
+    let bottom_trim = self.trim_gain[Self::deck_index(DeckId::Bottom)];
+    self.top.gain =
+      (top_trim * self.top.auto_gain.current_linear * self.master_gain * top_crossfader_gain)
+        .max(0.0);
+    self.bottom.gain = (bottom_trim
+      * self.bottom.auto_gain.current_linear
+      * self.master_gain
+      * bottom_crossfader_gain)
+      .max(0.0);
   }
 
   fn is_loaded(&self, deck: DeckId) -> bool {
@@ -1073,6 +1090,9 @@ fn prepare_decoded_audio(
   }
 }
 
+#[cfg(test)]
+#[path = "horizontal_browse_transport_auto_gain_tests.rs"]
+mod horizontal_browse_transport_auto_gain_tests;
 #[cfg(test)]
 #[path = "horizontal_browse_transport_tests.rs"]
 mod horizontal_browse_transport_tests;

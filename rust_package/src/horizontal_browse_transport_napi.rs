@@ -16,12 +16,17 @@ pub fn horizontal_browse_transport_set_deck_state(
   let mut engine_guard = engine().lock();
   engine_guard.observe_external_now_ms(now_ms.unwrap_or(payload.last_observed_at_ms));
   let apply_now_ms = engine_guard.last_now_ms;
+  let file_changed = engine_guard.deck_file_will_change(deck_id, &payload.file_path);
   engine_guard.apply_external_deck_state(deck_id, apply_now_ms, payload);
+  if file_changed {
+    engine_guard.reset_deck_auto_gain_for_file_change(deck_id);
+  }
   engine_guard.mark_state_changed();
   let decode_request = engine_guard.prepare_decode_request(deck_id);
   let full_decode_request = engine_guard.prepare_full_decode_request(deck_id);
   let _ = engine_guard.ensure_output_stream();
   engine_guard.refresh();
+  engine_guard.refresh_auto_gain();
   drop(engine_guard);
   if let Some(request) = decode_request {
     if deck_playing {
@@ -52,8 +57,17 @@ pub fn horizontal_browse_transport_set_state(
   let mut engine_guard = engine().lock();
   engine_guard.observe_external_now_ms(now_ms);
   let apply_now_ms = engine_guard.last_now_ms;
+  let top_file_changed = engine_guard.deck_file_will_change(DeckId::Top, &payload.top.file_path);
+  let bottom_file_changed =
+    engine_guard.deck_file_will_change(DeckId::Bottom, &payload.bottom.file_path);
   engine_guard.apply_external_deck_state(DeckId::Top, apply_now_ms, payload.top);
   engine_guard.apply_external_deck_state(DeckId::Bottom, apply_now_ms, payload.bottom);
+  if top_file_changed {
+    engine_guard.reset_deck_auto_gain_for_file_change(DeckId::Top);
+  }
+  if bottom_file_changed {
+    engine_guard.reset_deck_auto_gain_for_file_change(DeckId::Bottom);
+  }
   engine_guard.mark_state_changed();
   let top_decode_request = engine_guard.prepare_decode_request(DeckId::Top);
   let bottom_decode_request = engine_guard.prepare_decode_request(DeckId::Bottom);
@@ -61,6 +75,7 @@ pub fn horizontal_browse_transport_set_state(
   let bottom_full_decode_request = engine_guard.prepare_full_decode_request(DeckId::Bottom);
   let _ = engine_guard.ensure_output_stream();
   engine_guard.refresh();
+  engine_guard.refresh_auto_gain();
   drop(engine_guard);
   if let Some(request) = top_decode_request {
     if top_playing {
@@ -177,6 +192,7 @@ pub fn horizontal_browse_transport_set_sync_enabled(
     engine.observe_external_now_ms(next_now_ms);
   }
   engine.set_sync_enabled(deck_id, enabled);
+  engine.refresh_auto_gain();
   Ok(engine.snapshot(engine.last_now_ms))
 }
 
@@ -191,6 +207,7 @@ pub fn horizontal_browse_transport_beatsync(
     engine.observe_external_now_ms(next_now_ms);
   }
   engine.beatsync(deck_id);
+  engine.refresh_auto_gain();
   Ok(engine.snapshot(engine.last_now_ms))
 }
 
@@ -207,6 +224,7 @@ pub fn horizontal_browse_transport_align_to_leader(
     engine_guard.observe_external_now_ms(next_now_ms);
   }
   engine_guard.align_to_leader(deck_id, target_sec, skip_grid_snap.unwrap_or(false));
+  engine_guard.refresh_auto_gain();
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
@@ -224,6 +242,7 @@ pub fn horizontal_browse_transport_set_leader(
     engine.observe_external_now_ms(next_now_ms);
   }
   engine.set_leader(next_leader);
+  engine.refresh_auto_gain();
   Ok(engine.snapshot(engine.last_now_ms))
 }
 
@@ -249,6 +268,7 @@ pub fn horizontal_browse_transport_set_playing(
   engine_guard.observe_external_now_ms(now_ms);
   let _ = engine_guard.ensure_output_stream();
   engine_guard.set_playing(deck_id, now_ms, playing);
+  engine_guard.refresh_auto_gain();
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 
@@ -351,6 +371,17 @@ pub fn horizontal_browse_transport_set_gain(
   engine.trim_gain[HorizontalBrowseTransportEngine::deck_index(deck_id)] =
     HorizontalBrowseTransportEngine::clamp_unit_gain(gain);
   engine.refresh_output_gains();
+  Ok(engine.snapshot(engine.last_now_ms))
+}
+
+#[napi]
+pub fn horizontal_browse_transport_set_auto_gain_enabled(
+  deck: String,
+  enabled: bool,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine = engine().lock();
+  engine.set_auto_gain_enabled(deck_id, enabled);
   Ok(engine.snapshot(engine.last_now_ms))
 }
 

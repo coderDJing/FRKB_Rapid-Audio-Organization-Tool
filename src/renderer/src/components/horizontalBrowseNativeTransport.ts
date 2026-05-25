@@ -325,6 +325,16 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
+  const setAutoGainEnabled = async (deck: HorizontalBrowseDeckKey, enabled: boolean) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:set-auto-gain-enabled',
+      deck,
+      enabled
+    )
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
   const toggleLoop = async (deck: HorizontalBrowseDeckKey) => {
     const snapshot = await invoke(
       'horizontal-browse-transport:toggle-loop',
@@ -421,6 +431,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     setLoopFromRange,
     clearLoop,
     setGain,
+    setAutoGainEnabled,
     setOutputState,
     snapshot,
     visualizerSnapshot,

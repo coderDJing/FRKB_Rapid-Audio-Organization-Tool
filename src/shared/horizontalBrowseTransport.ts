@@ -62,6 +62,9 @@ export type HorizontalBrowseTransportDeckSnapshot = {
   loopStartSec: number
   loopEndSec: number
   bands: HorizontalBrowseTransportBandState
+  autoGainEnabled: boolean
+  autoGainStatus: 'off' | 'active' | 'master' | 'pending' | 'unavailable'
+  autoGainValue: number
 }
 
 export type HorizontalBrowseTransportOutputSnapshot = {
@@ -130,7 +133,10 @@ export const createEmptyHorizontalBrowseTransportDeckSnapshot = (
     high: true,
     mid: true,
     low: true
-  }
+  },
+  autoGainEnabled: true,
+  autoGainStatus: 'pending',
+  autoGainValue: 1
 })
 
 export const createEmptyHorizontalBrowseTransportSnapshot =

@@ -55,7 +55,7 @@ impl HorizontalBrowseTransportEngine {
     timeline_end_sec.is_finite().then_some(timeline_end_sec)
   }
 
-  fn effective_track_end_sec(deck_state: &DeckState) -> Option<f64> {
+  pub(super) fn effective_track_end_sec(deck_state: &DeckState) -> Option<f64> {
     let duration_sec = if deck_state.duration_sec.is_finite() && deck_state.duration_sec > 0.0 {
       Some(deck_state.duration_sec)
     } else {
@@ -492,81 +492,6 @@ impl HorizontalBrowseTransportEngine {
     }
   }
 
-  pub(super) fn snapshot(&self, now_ms: f64) -> HorizontalBrowseTransportSnapshot {
-    let top = self.deck_snapshot(DeckId::Top, now_ms);
-    let bottom = self.deck_snapshot(DeckId::Bottom, now_ms);
-    HorizontalBrowseTransportSnapshot {
-      snapshot_sequence: next_snapshot_sequence(),
-      state_revision: self.state_revision as f64,
-      leader_deck: self.leader.map(|deck| deck.as_str().to_string()),
-      top,
-      bottom,
-      output: self.output_snapshot(),
-    }
-  }
-
-  pub(super) fn output_snapshot(&self) -> HorizontalBrowseTransportOutputSnapshot {
-    HorizontalBrowseTransportOutputSnapshot {
-      crossfader_value: self.crossfader_value as f64,
-      master_gain: self.master_gain as f64,
-      top_deck_gain: self.top.gain as f64,
-      bottom_deck_gain: self.bottom.gain as f64,
-    }
-  }
-
-  pub(super) fn deck_snapshot(
-    &self,
-    deck: DeckId,
-    now_ms: f64,
-  ) -> HorizontalBrowseTransportDeckSnapshot {
-    let deck_state = self.deck(deck);
-    let derived = self.derive_state(deck, now_ms);
-    let playhead_loaded = self.has_loaded_segment_covering(deck, derived.estimated_current_sec);
-    let full_decoding = deck_state.pending_full_decode_file_path.is_some();
-    let effective_duration_sec =
-      Self::effective_track_end_sec(deck_state).unwrap_or(deck_state.duration_sec);
-    HorizontalBrowseTransportDeckSnapshot {
-      deck: deck.as_str().to_string(),
-      label: deck_state
-        .title
-        .as_ref()
-        .filter(|value| !value.trim().is_empty())
-        .cloned()
-        .unwrap_or_else(|| {
-          deck_state
-            .file_path
-            .as_ref()
-            .and_then(|path| path.split(['/', '\\']).last().map(|s| s.to_string()))
-            .unwrap_or_default()
-        }),
-      loaded: self.is_loaded(deck),
-      fully_decoded: self.is_fully_decoded(deck),
-      decoding: deck_state.pending_decode_file_path.is_some() || full_decoding,
-      full_decoding,
-      play_requested: deck_state.playing,
-      playing_audible: derived.playing_audible,
-      playhead_loaded,
-      playing: deck_state.playing,
-      current_sec: derived.estimated_current_sec,
-      duration_sec: deck_state.duration_sec,
-      effective_duration_sec,
-      playback_rate: deck_state.playback_rate,
-      master_tempo_enabled: deck_state.master_tempo_enabled,
-      bpm: deck_state.bpm.unwrap_or(0.0),
-      effective_bpm: derived.effective_bpm,
-      render_current_sec: derived.render_current_sec,
-      sync_enabled: self.sync_enabled[Self::deck_index(deck)],
-      sync_lock: self.sync_lock[Self::deck_index(deck)].to_string(),
-      leader: self.leader == Some(deck),
-      loop_active: deck_state.loop_active,
-      loop_beat_value: deck_state.loop_beat_value,
-      loop_start_beat_index: deck_state.loop_start_beat_index,
-      loop_start_sec: deck_state.loop_start_sec,
-      loop_end_sec: deck_state.loop_end_sec,
-      bands: deck_state.band_state,
-    }
-  }
-
   pub(super) fn relax_sync_lock_after_grid_change(&mut self, updated_deck: DeckId) {
     let leader = self.leader;
     for deck in [DeckId::Top, DeckId::Bottom] {
@@ -815,11 +740,7 @@ impl HorizontalBrowseTransportEngine {
     self.refresh_output_gains();
   }
 
-  pub(super) fn set_band_state(
-    &mut self,
-    deck: DeckId,
-    bands: HorizontalBrowseTransportBandState,
-  ) {
+  pub(super) fn set_band_state(&mut self, deck: DeckId, bands: HorizontalBrowseTransportBandState) {
     self.mark_state_changed();
     let target = self.deck_mut(deck);
     target.band_state = bands;
@@ -915,7 +836,8 @@ impl HorizontalBrowseTransportEngine {
       0.0
     };
     if active
-      && (!previous_active || (target.scrub_preview.current_sec - previous_current_sec).abs() > 0.05)
+      && (!previous_active
+        || (target.scrub_preview.current_sec - previous_current_sec).abs() > 0.05)
     {
       horizontal_browse_transport_audio::reset_band_filter_state(target);
     }

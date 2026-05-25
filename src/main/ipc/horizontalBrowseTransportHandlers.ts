@@ -238,6 +238,15 @@ export function registerHorizontalBrowseTransportHandlers() {
   )
 
   ipcMain.handle(
+    'horizontal-browse-transport:set-auto-gain-enabled',
+    async (_event, deck: HorizontalBrowseDeckKey, enabled: boolean) => {
+      const snapshot = horizontalBrowseTransportBridge.setAutoGainEnabled(deck, enabled)
+      broadcastHorizontalBrowseTransportSnapshot(snapshot)
+      return snapshot
+    }
+  )
+
+  ipcMain.handle(
     'horizontal-browse-transport:set-output-state',
     async (_event, crossfaderValue: number, masterGain: number) => {
       const snapshot = horizontalBrowseTransportBridge.setOutputState(crossfaderValue, masterGain)

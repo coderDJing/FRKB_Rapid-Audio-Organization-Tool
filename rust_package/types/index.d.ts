@@ -148,6 +148,9 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   loopStartSec: number
   loopEndSec: number
   bands: HorizontalBrowseTransportBandState
+  autoGainEnabled: boolean
+  autoGainStatus: string
+  autoGainValue: number
 }
 export interface HorizontalBrowseTransportOutputSnapshot {
   crossfaderValue: number
@@ -358,6 +361,10 @@ export declare function horizontalBrowseTransportClearLoop(
 export declare function horizontalBrowseTransportSetGain(
   deck: string,
   gain: number
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetAutoGainEnabled(
+  deck: string,
+  enabled: boolean
 ): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetOutputState(
   crossfaderValue: number,

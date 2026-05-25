@@ -99,6 +99,15 @@ fn is_decode_request_current(request: &DecodeRequest) -> bool {
 fn finish_decode_request(request: DecodeRequest, decoded: DecodeRequestAudioResult) {
   match decoded {
     DecodeRequestAudioResult::Decoded(samples, sample_rate, channels) => {
+      let loudness_analysis = if request.is_full_decode {
+        super::horizontal_browse_transport_auto_gain::analyze_loudness(
+          &samples,
+          sample_rate,
+          channels,
+        )
+      } else {
+        None
+      };
       let apply_baseline = {
         let engine_guard = engine().lock();
         engine_guard.capture_decode_apply_baseline(
@@ -128,7 +137,15 @@ fn finish_decode_request(request: DecodeRequest, decoded: DecodeRequestAudioResu
           prepared,
           request.is_full_decode,
         ) {
+          if request.is_full_decode {
+            engine_guard.set_deck_loudness_result(
+              request.deck,
+              &request.file_path,
+              loudness_analysis,
+            );
+          }
           engine_guard.refresh();
+          engine_guard.refresh_auto_gain();
           if request.is_full_decode {
             None
           } else {
@@ -151,6 +168,11 @@ fn finish_decode_request(request: DecodeRequest, decoded: DecodeRequestAudioResu
         request.is_full_decode,
       );
       engine_guard.refresh();
+      if request.is_full_decode {
+        engine_guard.set_deck_loudness_result(request.deck, &request.file_path, None);
+      } else {
+        engine_guard.refresh_auto_gain();
+      }
     }
     DecodeRequestAudioResult::Cancelled => {}
   }

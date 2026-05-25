@@ -101,6 +101,10 @@ type RustHorizontalBrowseTransportBinding = {
     deck: HorizontalBrowseDeckKey,
     gain: number
   ) => HorizontalBrowseTransportSnapshot
+  horizontalBrowseTransportSetAutoGainEnabled?: (
+    deck: HorizontalBrowseDeckKey,
+    enabled: boolean
+  ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSetOutputState?: (
     crossfaderValue: number,
     masterGain: number
@@ -222,6 +226,9 @@ export const horizontalBrowseTransportBridge = {
   },
   setGain(deck: HorizontalBrowseDeckKey, gain: number) {
     return requireFn('horizontalBrowseTransportSetGain')(deck, gain)
+  },
+  setAutoGainEnabled(deck: HorizontalBrowseDeckKey, enabled: boolean) {
+    return requireFn('horizontalBrowseTransportSetAutoGainEnabled')(deck, enabled)
   },
   setOutputState(crossfaderValue: number, masterGain: number) {
     return requireFn('horizontalBrowseTransportSetOutputState')(crossfaderValue, masterGain)

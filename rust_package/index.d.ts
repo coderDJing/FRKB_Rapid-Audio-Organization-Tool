@@ -23,6 +23,7 @@ export declare function horizontalBrowseTransportStepLoopBeats(deck: string, now
 export declare function horizontalBrowseTransportSetLoopFromRange(deck: string, startSec: number, endSec: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportClearLoop(deck: string): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetGain(deck: string, gain: number): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetAutoGainEnabled(deck: string, enabled: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetOutputState(crossfaderValue: number, masterGain: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportStartRecording(filePath: string): HorizontalBrowseTransportRecordingStatus
 export declare function horizontalBrowseTransportStopRecording(): HorizontalBrowseTransportRecordingStatus
@@ -88,6 +89,9 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   loopStartSec: number
   loopEndSec: number
   bands: HorizontalBrowseTransportBandState
+  autoGainEnabled: boolean
+  autoGainStatus: string
+  autoGainValue: number
 }
 export interface HorizontalBrowseTransportOutputSnapshot {
   crossfaderValue: number
