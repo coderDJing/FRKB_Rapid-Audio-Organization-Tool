@@ -31,6 +31,10 @@ const props = defineProps({
   showMemoryButton: {
     type: Boolean,
     default: false
+  },
+  showLargeShiftButtons: {
+    type: Boolean,
+    default: true
   }
 })
 
@@ -283,6 +287,7 @@ onBeforeUnmount(() => {
   <div class="grid-adjust-toolbar">
     <div class="grid-adjust-toolbar__group grid-adjust-toolbar__group--icons">
       <bubbleBoxTrigger
+        v-if="showLargeShiftButtons"
         wrapper-tag="span"
         tag="button"
         class="grid-adjust-icon-btn"
@@ -360,6 +365,7 @@ onBeforeUnmount(() => {
         </svg>
       </bubbleBoxTrigger>
       <bubbleBoxTrigger
+        v-if="showLargeShiftButtons"
         wrapper-tag="span"
         tag="button"
         class="grid-adjust-icon-btn"

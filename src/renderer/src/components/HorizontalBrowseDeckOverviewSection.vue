@@ -46,6 +46,7 @@ const props = defineProps<{
   quantizeEnabled: boolean
   masterTempoEnabled: boolean
   hideSyncControls?: boolean
+  showLargeShiftButtons?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -144,6 +145,7 @@ const isTop = props.position === 'top'
         :metronome-enabled="props.toolbarState.metronomeEnabled"
         :metronome-volume-level="props.toolbarState.metronomeVolumeLevel"
         :can-toggle-metronome="props.toolbarState.canToggleMetronome"
+        :show-large-shift-buttons="props.showLargeShiftButtons"
         @set-bar-line="emit('set-bar-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"

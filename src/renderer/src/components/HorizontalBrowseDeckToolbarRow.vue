@@ -23,6 +23,7 @@ const props = defineProps<{
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
+  showLargeShiftButtons?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -57,6 +58,7 @@ const emit = defineEmits<{
         :bpm-max="props.bpmMax"
         :show-tap-button="false"
         show-memory-button
+        :show-large-shift-buttons="props.showLargeShiftButtons"
         @set-bar-line="emit('set-bar-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"

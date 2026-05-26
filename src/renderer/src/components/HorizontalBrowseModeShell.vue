@@ -949,6 +949,7 @@ onUnmounted(() => {
         :quantize-enabled="deckQuantizeEnabled.top"
         :master-tempo-enabled="isDeckMasterTempoEnabled('top')"
         :hide-sync-controls="isEditMode"
+        :show-large-shift-buttons="isEditMode"
         @region-drag-enter="handleRegionDragEnter"
         @region-drag-over="handleRegionDragOver"
         @region-drag-leave="handleRegionDragLeave"
