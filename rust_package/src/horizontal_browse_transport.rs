@@ -722,23 +722,31 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn mix_output_frame(&mut self) -> (f32, f32) {
-    let mut left = 0.0_f32;
-    let mut right = 0.0_f32;
+    let mut playback_left = 0.0_f32;
+    let mut playback_right = 0.0_f32;
+    let mut record_left = 0.0_f32;
+    let mut record_right = 0.0_f32;
     for deck in [DeckId::Top, DeckId::Bottom] {
-      let (l, r) = self.sample_deck(deck);
-      left += l;
-      right += r;
+      let ((dl, dr), metronome) = self.sample_deck(deck);
+      playback_left += dl + metronome;
+      playback_right += dr + metronome;
+      record_left += dl;
+      record_right += dr;
     }
-    let clamped_left = left.clamp(-1.0, 1.0);
-    let clamped_right = right.clamp(-1.0, 1.0);
-    self.push_visualizer_sample((clamped_left + clamped_right) * 0.5);
-    self
-      .recording
-      .capture_frame(self.output_sample_rate.max(1), clamped_left, clamped_right);
-    (clamped_left, clamped_right)
+    let clamped_playback_left = playback_left.clamp(-1.0, 1.0);
+    let clamped_playback_right = playback_right.clamp(-1.0, 1.0);
+    let clamped_record_left = record_left.clamp(-1.0, 1.0);
+    let clamped_record_right = record_right.clamp(-1.0, 1.0);
+    self.push_visualizer_sample((clamped_playback_left + clamped_playback_right) * 0.5);
+    self.recording.capture_frame(
+      self.output_sample_rate.max(1),
+      clamped_record_left,
+      clamped_record_right,
+    );
+    (clamped_playback_left, clamped_playback_right)
   }
 
-  fn sample_deck(&mut self, deck: DeckId) -> (f32, f32) {
+  fn sample_deck(&mut self, deck: DeckId) -> ((f32, f32), f32) {
     let output_sample_rate = self.output_sample_rate.max(1) as f64;
     self.advance_auto_gain(deck, output_sample_rate);
     self.refresh_output_gains();
@@ -763,7 +771,7 @@ impl HorizontalBrowseTransportEngine {
     } else {
       self.sample_metronome(deck, before_sec, after_sec, was_playing) * self.deck(deck).gain
     };
-    (deck_left + metronome, deck_right + metronome)
+    ((deck_left, deck_right), metronome)
   }
 
   fn resolve_next_metronome_beat_index(current_sec: f64, grid: BeatGridSnapshot) -> i64 {

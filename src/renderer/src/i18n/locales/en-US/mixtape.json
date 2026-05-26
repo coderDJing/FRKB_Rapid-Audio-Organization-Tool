@@ -188,6 +188,7 @@
     "metronomeOff": "Metronome disabled",
     "metronomeStateOff": "Off",
     "metronomeCycleHint": "Click to cycle: Off / 1 / 2 / 3",
+    "metronomeNotRecorded": "Metronome will not be recorded",
     "metronomeVolumeLevel": "Metronome volume level: {level}/3",
     "metronomeVolumeLow": "Low",
     "metronomeVolumeMid": "Mid",

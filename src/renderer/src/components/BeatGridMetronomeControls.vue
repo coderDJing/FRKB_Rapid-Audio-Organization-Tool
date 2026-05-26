@@ -39,7 +39,7 @@ const metronomeTitle = computed(() => {
   const stateTitle = props.metronomeEnabled
     ? t('mixtape.metronomeVolumeLevel', { level: normalizedMetronomeVolumeLevel.value })
     : t('mixtape.metronomeOff')
-  return `${stateTitle} · ${t('mixtape.metronomeCycleHint')}`
+  return `${stateTitle} · ${t('mixtape.metronomeCycleHint')} · ${t('mixtape.metronomeNotRecorded')}`
 })
 </script>
 

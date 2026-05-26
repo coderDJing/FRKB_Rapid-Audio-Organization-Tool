@@ -173,9 +173,9 @@ fn negative_playhead_outputs_silence_until_zero_then_audio() {
     top.pcm_data = Arc::new(vec![1.0; 16]);
   }
 
-  let first = engine.sample_deck(DeckId::Top);
-  let second = engine.sample_deck(DeckId::Top);
-  let third = engine.sample_deck(DeckId::Top);
+  let (first, _) = engine.sample_deck(DeckId::Top);
+  let (second, _) = engine.sample_deck(DeckId::Top);
+  let (third, _) = engine.sample_deck(DeckId::Top);
 
   assert_eq!(first, (0.0, 0.0));
   assert_eq!(second, (0.0, 0.0));
@@ -204,7 +204,7 @@ fn fully_decoded_pcm_tail_stops_at_real_audio_end() {
     top.pcm_data = Arc::new(vec![0.0; 10]);
   }
 
-  let sample = engine.sample_deck(DeckId::Top);
+  let (sample, _) = engine.sample_deck(DeckId::Top);
   let snapshot = engine.snapshot(1000.0);
 
   assert_eq!(sample, (0.0, 0.0));
@@ -237,7 +237,7 @@ fn partial_pcm_tail_does_not_stop_while_full_decode_is_pending() {
     top.pcm_data = Arc::new(vec![0.0; 10]);
   }
 
-  let sample = engine.sample_deck(DeckId::Top);
+  let (sample, _) = engine.sample_deck(DeckId::Top);
 
   assert_eq!(sample, (0.0, 0.0));
   assert!(engine.deck(DeckId::Top).playing);
