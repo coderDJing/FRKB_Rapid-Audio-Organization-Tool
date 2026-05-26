@@ -532,7 +532,7 @@ onBeforeUnmount(() => {
 .grid-adjust-bpm-input {
   appearance: textfield;
   -moz-appearance: textfield;
-  width: 62px;
+  width: 50px;
   height: 22px;
   padding: 0 6px;
   border: 1px solid var(--border);

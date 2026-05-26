@@ -208,7 +208,7 @@ const emit = defineEmits<{
 }
 
 .overview__toolbar-main :deep(.grid-adjust-bpm-input) {
-  width: 52px;
+  width: 44px;
 }
 
 .overview__toolbar-group {
