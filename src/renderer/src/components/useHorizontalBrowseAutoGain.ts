@@ -30,7 +30,9 @@ const resolveDeckSnapshot = (
 const resolveAutoGainTitle = (snapshot: HorizontalBrowseTransportDeckSnapshot) => {
   if (!snapshot.autoGainEnabled || snapshot.autoGainStatus === 'off') return '自动增益已关闭'
   if (snapshot.autoGainStatus === 'master') return '自动增益已开启：当前轨道是 Master'
-  if (snapshot.autoGainStatus === 'pending') return '正在分析响度并对齐 Master'
+  if (snapshot.autoGainStatus === 'pending') {
+    return snapshot.loaded ? '正在分析响度并对齐 Master' : '自动增益已开启：等待加载音频'
+  }
   if (snapshot.autoGainStatus === 'unavailable') return '自动增益暂不可用'
   return '自动增益已开启：已对齐当前 Master'
 }
