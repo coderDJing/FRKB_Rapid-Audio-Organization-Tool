@@ -60,6 +60,19 @@ export function registerHorizontalBrowseTransportHandlers() {
   )
 
   ipcMain.handle(
+    'horizontal-browse-transport:set-tempo-nudge-playback-rate',
+    async (_event, deck: HorizontalBrowseDeckKey, nowMs: number, playbackRate: number) => {
+      const snapshot = horizontalBrowseTransportBridge.setTempoNudgePlaybackRate(
+        deck,
+        nowMs,
+        playbackRate
+      )
+      broadcastHorizontalBrowseTransportSnapshot(snapshot)
+      return snapshot
+    }
+  )
+
+  ipcMain.handle(
     'horizontal-browse-transport:set-master-tempo-enabled',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number, enabled: boolean) => {
       const snapshot = horizontalBrowseTransportBridge.setMasterTempoEnabled(deck, nowMs, enabled)

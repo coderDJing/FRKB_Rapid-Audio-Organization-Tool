@@ -4,6 +4,7 @@ import HorizontalBrowseDeckInfoCard from '@renderer/components/HorizontalBrowseD
 import HorizontalBrowseWaveformOverview from '@renderer/components/HorizontalBrowseWaveformOverview.vue'
 import HorizontalBrowseDeckToolbarRow from '@renderer/components/HorizontalBrowseDeckToolbarRow.vue'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
+import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/components/useHorizontalBrowseDeckTempoNudge'
 import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/components/useHorizontalBrowseDeckMove'
 
 type DeckToolbarState = {
@@ -45,6 +46,8 @@ const props = defineProps<{
   readOnlySource: boolean
   quantizeEnabled: boolean
   masterTempoEnabled: boolean
+  tempoNudgeActiveDirection?: HorizontalBrowseTempoNudgeDirection | null
+  showTempoNudge?: boolean
   hideSyncControls?: boolean
   showLargeShiftButtons?: boolean
 }>()
@@ -74,6 +77,8 @@ const emit = defineEmits<{
   (event: 'reset-tempo'): void
   (event: 'toggle-quantize'): void
   (event: 'cycle-metronome-state'): void
+  (event: 'tempo-nudge-start', direction: HorizontalBrowseTempoNudgeDirection): void
+  (event: 'tempo-nudge-end', direction: HorizontalBrowseTempoNudgeDirection): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
 }>()
 
@@ -142,6 +147,8 @@ const isTop = props.position === 'top'
         :read-only-source="props.readOnlySource"
         :quantize-enabled="props.quantizeEnabled"
         :master-tempo-enabled="props.masterTempoEnabled"
+        :tempo-nudge-active-direction="props.tempoNudgeActiveDirection"
+        :show-tempo-nudge="props.showTempoNudge"
         :metronome-enabled="props.toolbarState.metronomeEnabled"
         :metronome-volume-level="props.toolbarState.metronomeVolumeLevel"
         :can-toggle-metronome="props.toolbarState.canToggleMetronome"
@@ -162,6 +169,8 @@ const isTop = props.position === 'top'
         @reset-tempo="emit('reset-tempo')"
         @toggle-quantize="emit('toggle-quantize')"
         @cycle-metronome-state="emit('cycle-metronome-state')"
+        @tempo-nudge-start="emit('tempo-nudge-start', $event)"
+        @tempo-nudge-end="emit('tempo-nudge-end', $event)"
         @select-move-target="emit('select-move-target', $event)"
       />
     </div>

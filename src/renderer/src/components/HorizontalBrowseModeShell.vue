@@ -33,6 +33,7 @@ import { useHorizontalBrowseDeckMove } from '@renderer/components/useHorizontalB
 import { useHorizontalBrowseDeckSongs } from '@renderer/components/useHorizontalBrowseDeckSongs'
 import { useHorizontalBrowseHotkeys } from '@renderer/components/useHorizontalBrowseHotkeys'
 import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
+import { useHorizontalBrowseDeckTempoNudge } from '@renderer/components/useHorizontalBrowseDeckTempoNudge'
 import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/components/useHorizontalBrowseDeckToolbarInteractions'
 import type { HorizontalBrowseGridShiftOptions } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import { useHorizontalBrowseDeckTransportInteractions } from '@renderer/components/useHorizontalBrowseDeckTransportInteractions'
@@ -259,7 +260,6 @@ const {
   resolveDeckPlaying,
   resolveDeckLoaded,
   resolveDeckDecoding,
-  resolveDeckPlaybackRate,
   resolveDeckRenderCurrentSeconds,
   syncDeckRenderState,
   startSnapshotSync,
@@ -353,6 +353,20 @@ const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
 
 let resolveDeckMasterTempoEnabledForTransport: (deck: DeckKey) => boolean = () => true
 
+const {
+  resolveDeckPlaybackRateForTransport,
+  resolveDeckTempoNudgeDirection,
+  startDeckTempoNudge,
+  stopDeckTempoNudge,
+  stopAllDeckTempoNudge
+} = useHorizontalBrowseDeckTempoNudge({
+  touchDeckInteraction,
+  nativeTransport,
+  syncDeckRenderState,
+  resolveDeckSong,
+  resolveTransportDeckSnapshot
+})
+
 const { commitDeckStateToNative, commitDeckStatesToNative, toggleDeckMaster, triggerDeckBeatSync } =
   useHorizontalBrowseTransportMutations({
     touchDeckInteraction,
@@ -362,7 +376,7 @@ const { commitDeckStateToNative, commitDeckStatesToNative, toggleDeckMaster, tri
     resolveDeckCurrentSeconds,
     resolveDeckDurationSeconds,
     resolveDeckPlaying,
-    resolveDeckPlaybackRate,
+    resolveDeckPlaybackRate: resolveDeckPlaybackRateForTransport,
     resolveDeckMasterTempoEnabled: (deck) => resolveDeckMasterTempoEnabledForTransport(deck),
     resolveTransportDeckSnapshot
   })
@@ -837,6 +851,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopAllDeckCuePreview()
+  stopAllDeckTempoNudge()
   stopSnapshotSync()
   void nativeTransport.reset().catch((error) => {
     console.error('[horizontal-browse] reset transport failed on exit', error)
@@ -948,6 +963,8 @@ onUnmounted(() => {
         :read-only-source="isDeckSongReadOnly('top')"
         :quantize-enabled="deckQuantizeEnabled.top"
         :master-tempo-enabled="isDeckMasterTempoEnabled('top')"
+        :tempo-nudge-active-direction="resolveDeckTempoNudgeDirection('top')"
+        :show-tempo-nudge="!isEditMode"
         :hide-sync-controls="isEditMode"
         :show-large-shift-buttons="isEditMode"
         @region-drag-enter="handleRegionDragEnter"
@@ -974,6 +991,8 @@ onUnmounted(() => {
         @toggle-master-tempo="handleDeckMasterTempoToggle('top')"
         @reset-tempo="resetDeckTempo('top')"
         @toggle-quantize="handleDeckQuantizeToggle('top')"
+        @tempo-nudge-start="startDeckTempoNudge('top', $event)"
+        @tempo-nudge-end="stopDeckTempoNudge('top', $event)"
         @select-move-target="openDeckMoveDialog('top', $event)"
       />
 
@@ -985,6 +1004,7 @@ onUnmounted(() => {
           :current-seconds="topDeckRenderCurrentSeconds"
           :playing="topDeckUiPlaying"
           :playback-rate="topDeckPlaybackRate"
+          :visual-playback-rate="resolveDeckPlaybackRateForTransport('top')"
           :playback-sync-revision="topDeckPlaybackSyncRevision"
           :grid-bpm="topDeckGridBpm"
           :loop-range="resolveDeckLoopRange('top')"
@@ -1023,6 +1043,7 @@ onUnmounted(() => {
           :current-seconds="bottomDeckRenderCurrentSeconds"
           :playing="bottomDeckUiPlaying"
           :playback-rate="bottomDeckPlaybackRate"
+          :visual-playback-rate="resolveDeckPlaybackRateForTransport('bottom')"
           :playback-sync-revision="bottomDeckPlaybackSyncRevision"
           :grid-bpm="bottomDeckGridBpm"
           :loop-range="resolveDeckLoopRange('bottom')"
@@ -1074,6 +1095,8 @@ onUnmounted(() => {
         :read-only-source="isDeckSongReadOnly('bottom')"
         :quantize-enabled="deckQuantizeEnabled.bottom"
         :master-tempo-enabled="isDeckMasterTempoEnabled('bottom')"
+        :tempo-nudge-active-direction="resolveDeckTempoNudgeDirection('bottom')"
+        :show-tempo-nudge="!isEditMode"
         @region-drag-enter="handleRegionDragEnter"
         @region-drag-over="handleRegionDragOver"
         @region-drag-leave="handleRegionDragLeave"
@@ -1098,6 +1121,8 @@ onUnmounted(() => {
         @toggle-master-tempo="handleDeckMasterTempoToggle('bottom')"
         @reset-tempo="resetDeckTempo('bottom')"
         @toggle-quantize="handleDeckQuantizeToggle('bottom')"
+        @tempo-nudge-start="startDeckTempoNudge('bottom', $event)"
+        @tempo-nudge-end="stopDeckTempoNudge('bottom', $event)"
         @select-move-target="openDeckMoveDialog('bottom', $event)"
       />
       <HorizontalBrowseCuePanels

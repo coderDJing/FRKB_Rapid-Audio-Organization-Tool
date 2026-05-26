@@ -49,6 +49,7 @@ const props = defineProps<{
   currentSeconds?: number
   playing?: boolean
   playbackRate?: number
+  visualPlaybackRate?: number
   playbackSyncRevision?: number
   gridBpm?: number
   loopRange?: HorizontalBrowseLoopRange | null
@@ -200,6 +201,7 @@ const {
   loopRange: () => props.loopRange,
   currentSeconds: resolveWaveformCurrentSeconds,
   playbackRate: () => props.playbackRate,
+  visualPlaybackRate: () => props.visualPlaybackRate,
   playing: previewPlaying,
   playbackSyncRevision,
   rawData,

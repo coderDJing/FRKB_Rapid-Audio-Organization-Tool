@@ -181,6 +181,17 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
+  const setTempoNudgePlaybackRate = async (deck: HorizontalBrowseDeckKey, playbackRate: number) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:set-tempo-nudge-playback-rate',
+      deck,
+      performance.now(),
+      Number(playbackRate) || 1
+    )
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
   const setMasterTempoEnabled = async (deck: HorizontalBrowseDeckKey, enabled: boolean) => {
     const snapshot = await invoke(
       'horizontal-browse-transport:set-master-tempo-enabled',
@@ -415,6 +426,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     setDeckState,
     setState,
     setPlaybackRate,
+    setTempoNudgePlaybackRate,
     setMasterTempoEnabled,
     setBeatGrid,
     beatsync,

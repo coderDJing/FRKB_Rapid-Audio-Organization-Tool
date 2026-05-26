@@ -25,6 +25,11 @@ type RustHorizontalBrowseTransportBinding = {
     nowMs: number,
     playbackRate: number
   ) => HorizontalBrowseTransportSnapshot
+  horizontalBrowseTransportSetTempoNudgePlaybackRate?: (
+    deck: HorizontalBrowseDeckKey,
+    nowMs: number,
+    playbackRate: number
+  ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSetMasterTempoEnabled?: (
     deck: HorizontalBrowseDeckKey,
     nowMs: number,
@@ -157,6 +162,13 @@ export const horizontalBrowseTransportBridge = {
   },
   setPlaybackRate(deck: HorizontalBrowseDeckKey, nowMs: number, playbackRate: number) {
     return requireFn('horizontalBrowseTransportSetPlaybackRate')(deck, nowMs, playbackRate)
+  },
+  setTempoNudgePlaybackRate(deck: HorizontalBrowseDeckKey, nowMs: number, playbackRate: number) {
+    return requireFn('horizontalBrowseTransportSetTempoNudgePlaybackRate')(
+      deck,
+      nowMs,
+      playbackRate
+    )
   },
   setMasterTempoEnabled(deck: HorizontalBrowseDeckKey, nowMs: number, enabled: boolean) {
     return requireFn('horizontalBrowseTransportSetMasterTempoEnabled')(deck, nowMs, enabled)

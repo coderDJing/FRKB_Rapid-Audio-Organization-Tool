@@ -5,6 +5,7 @@ import HorizontalBrowseDeckMoveButton from '@renderer/components/HorizontalBrows
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/components/useHorizontalBrowseDeckMove'
 import { t } from '@renderer/utils/translate'
+import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/components/useHorizontalBrowseDeckTempoNudge'
 
 const props = defineProps<{
   disabled: boolean
@@ -23,6 +24,8 @@ const props = defineProps<{
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
+  tempoNudgeActiveDirection?: HorizontalBrowseTempoNudgeDirection | null
+  showTempoNudge?: boolean
   showLargeShiftButtons?: boolean
 }>()
 
@@ -43,8 +46,51 @@ const emit = defineEmits<{
   (event: 'reset-tempo'): void
   (event: 'toggle-quantize'): void
   (event: 'cycle-metronome-state'): void
+  (event: 'tempo-nudge-start', direction: HorizontalBrowseTempoNudgeDirection): void
+  (event: 'tempo-nudge-end', direction: HorizontalBrowseTempoNudgeDirection): void
   (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
 }>()
+
+const captureTempoNudgePointer = (event: PointerEvent) => {
+  const target = event.currentTarget as HTMLElement | null
+  target?.setPointerCapture?.(event.pointerId)
+}
+
+const releaseTempoNudgePointer = (event: PointerEvent) => {
+  const target = event.currentTarget as HTMLElement | null
+  if (target?.hasPointerCapture?.(event.pointerId)) {
+    target.releasePointerCapture?.(event.pointerId)
+  }
+}
+
+const handleTempoNudgePointerDown = (
+  direction: HorizontalBrowseTempoNudgeDirection,
+  event: PointerEvent
+) => {
+  if (!props.songPresent || event.button !== 0) return
+  captureTempoNudgePointer(event)
+  emit('tempo-nudge-start', direction)
+}
+
+const handleTempoNudgePointerEnd = (
+  direction: HorizontalBrowseTempoNudgeDirection,
+  event: PointerEvent
+) => {
+  releaseTempoNudgePointer(event)
+  emit('tempo-nudge-end', direction)
+}
+
+const handleTempoNudgeKeyDown = (
+  direction: HorizontalBrowseTempoNudgeDirection,
+  event: KeyboardEvent
+) => {
+  if (!props.songPresent || event.repeat) return
+  emit('tempo-nudge-start', direction)
+}
+
+const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) => {
+  emit('tempo-nudge-end', direction)
+}
 </script>
 
 <template>
@@ -133,6 +179,59 @@ const emit = defineEmits<{
           :can-toggle-metronome="props.canToggleMetronome"
           @cycle-metronome-state="emit('cycle-metronome-state')"
         />
+      </div>
+      <div
+        v-if="props.showTempoNudge !== false"
+        class="overview__toolbar-group overview__tempo-nudge-control"
+        role="group"
+        aria-label="临时速度调整"
+      >
+        <bubbleBoxTrigger
+          wrapper-tag="span"
+          tag="button"
+          type="button"
+          class="overview__tempo-nudge-btn"
+          :class="{ 'is-active': props.tempoNudgeActiveDirection === 'fast' }"
+          :disabled="!props.songPresent"
+          title="按住临时加速"
+          aria-label="按住临时加速"
+          @pointerdown="handleTempoNudgePointerDown('fast', $event)"
+          @pointerup="handleTempoNudgePointerEnd('fast', $event)"
+          @pointercancel="handleTempoNudgePointerEnd('fast', $event)"
+          @lostpointercapture="emit('tempo-nudge-end', 'fast')"
+          @blur="emit('tempo-nudge-end', 'fast')"
+          @keydown.space.prevent="handleTempoNudgeKeyDown('fast', $event)"
+          @keyup.space.prevent="handleTempoNudgeKeyUp('fast')"
+          @keydown.enter.prevent="handleTempoNudgeKeyDown('fast', $event)"
+          @keyup.enter.prevent="handleTempoNudgeKeyUp('fast')"
+        >
+          <svg viewBox="0 0 18 16" aria-hidden="true" focusable="false">
+            <path d="M14.5 8H3.5l4.8-4.5"></path>
+          </svg>
+        </bubbleBoxTrigger>
+        <bubbleBoxTrigger
+          wrapper-tag="span"
+          tag="button"
+          type="button"
+          class="overview__tempo-nudge-btn"
+          :class="{ 'is-active': props.tempoNudgeActiveDirection === 'slow' }"
+          :disabled="!props.songPresent"
+          title="按住临时减速"
+          aria-label="按住临时减速"
+          @pointerdown="handleTempoNudgePointerDown('slow', $event)"
+          @pointerup="handleTempoNudgePointerEnd('slow', $event)"
+          @pointercancel="handleTempoNudgePointerEnd('slow', $event)"
+          @lostpointercapture="emit('tempo-nudge-end', 'slow')"
+          @blur="emit('tempo-nudge-end', 'slow')"
+          @keydown.space.prevent="handleTempoNudgeKeyDown('slow', $event)"
+          @keyup.space.prevent="handleTempoNudgeKeyUp('slow')"
+          @keydown.enter.prevent="handleTempoNudgeKeyDown('slow', $event)"
+          @keyup.enter.prevent="handleTempoNudgeKeyUp('slow')"
+        >
+          <svg viewBox="0 0 18 16" aria-hidden="true" focusable="false">
+            <path d="M3.5 8h11l-4.8-4.5"></path>
+          </svg>
+        </bubbleBoxTrigger>
       </div>
     </div>
     <div class="overview__toolbar-actions">
@@ -225,6 +324,70 @@ const emit = defineEmits<{
 
 .overview__toolbar-group--actions {
   gap: 6px;
+}
+
+.overview__tempo-nudge-control {
+  gap: 4px;
+}
+
+.overview__tempo-nudge-btn {
+  width: 28px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-elev);
+  color: var(--text);
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  transition:
+    border-color 0.14s ease,
+    background-color 0.14s ease,
+    color 0.14s ease,
+    box-shadow 0.14s ease;
+}
+
+.overview__tempo-nudge-btn:focus {
+  outline: none;
+}
+
+.overview__tempo-nudge-btn:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.overview__tempo-nudge-btn svg {
+  width: 16px;
+  height: 14px;
+  display: block;
+  transform: translateY(2px);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.overview__tempo-nudge-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
+.overview__tempo-nudge-btn.is-active {
+  color: var(--shell-active-control-text, #ffffff);
+  border-color: var(--shell-active-control-border, var(--accent));
+  background: var(--shell-active-control-bg, var(--accent));
+  box-shadow:
+    0 0 0 1px var(--shell-active-control-outline, transparent),
+    inset 0 1px 0 var(--shell-active-control-inset, transparent);
+}
+
+.overview__tempo-nudge-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .overview__loop-control {

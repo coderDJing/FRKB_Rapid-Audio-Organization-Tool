@@ -366,6 +366,43 @@ fn master_tempo_and_rate_commands_preserve_audio_owned_playhead() {
 }
 
 #[test]
+fn tempo_nudge_rate_keeps_sync_tempo_only_without_phase_alignment() {
+  let mut engine = setup_full_sync_grid_shift_engine();
+  let expected_current =
+    HorizontalBrowseTransportEngine::estimate_current_sec(engine.deck(DeckId::Bottom), 1200.0);
+
+  engine.set_tempo_nudge_playback_rate(DeckId::Bottom, 1200.0, 0.98);
+  let snapshot = engine.snapshot(1200.0);
+
+  assert!(snapshot.bottom.sync_enabled);
+  assert_eq!(snapshot.bottom.sync_lock, "tempo-only");
+  assert!((engine.deck(DeckId::Bottom).playback_rate - 0.98).abs() < 0.0001);
+  assert!((engine.deck(DeckId::Bottom).current_sec - expected_current).abs() < 0.0001);
+
+  engine.set_tempo_nudge_playback_rate(DeckId::Bottom, 1300.0, 1.0);
+  let restored_snapshot = engine.snapshot(1300.0);
+
+  assert_eq!(restored_snapshot.bottom.sync_lock, "tempo-only");
+  assert!((engine.deck(DeckId::Bottom).playback_rate - 1.0).abs() < 0.0001);
+}
+
+#[test]
+fn tempo_nudge_leader_does_not_drag_follower_rate() {
+  let mut engine = setup_full_sync_grid_shift_engine();
+  engine.set_sync_enabled(DeckId::Top, true);
+  let follower_rate_before = engine.deck(DeckId::Bottom).playback_rate;
+
+  engine.set_tempo_nudge_playback_rate(DeckId::Top, 1200.0, 1.02);
+  let snapshot = engine.snapshot(1200.0);
+
+  assert!(snapshot.top.sync_enabled);
+  assert_eq!(snapshot.top.sync_lock, "tempo-only");
+  assert_eq!(snapshot.bottom.sync_lock, "full");
+  assert!((engine.deck(DeckId::Top).playback_rate - 1.02).abs() < 0.0001);
+  assert!((engine.deck(DeckId::Bottom).playback_rate - follower_rate_before).abs() < 0.0001);
+}
+
+#[test]
 fn playing_audible_requires_loaded_segment_covering_playhead() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   {

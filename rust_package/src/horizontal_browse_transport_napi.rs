@@ -115,6 +115,19 @@ pub fn horizontal_browse_transport_set_playback_rate(
 }
 
 #[napi]
+pub fn horizontal_browse_transport_set_tempo_nudge_playback_rate(
+  deck: String,
+  now_ms: f64,
+  playback_rate: f64,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.observe_external_now_ms(now_ms);
+  engine_guard.set_tempo_nudge_playback_rate(deck_id, now_ms, playback_rate);
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
 pub fn horizontal_browse_transport_set_master_tempo_enabled(
   deck: String,
   now_ms: f64,

@@ -714,6 +714,29 @@ impl HorizontalBrowseTransportEngine {
     self.refresh_sync_state(false);
   }
 
+  pub(super) fn set_tempo_nudge_playback_rate(
+    &mut self,
+    deck: DeckId,
+    now_ms: f64,
+    playback_rate: f64,
+  ) {
+    self.mark_state_changed();
+    self.last_now_ms = now_ms;
+    self.sync_deck_to_now(deck, now_ms);
+    let was_master_tempo_active =
+      horizontal_browse_transport_audio::should_use_master_tempo(self.deck(deck));
+    {
+      let target = self.deck_mut(deck);
+      target.playback_rate = Self::normalize_playback_rate(playback_rate);
+    }
+    let deck_index = Self::deck_index(deck);
+    if self.sync_enabled[deck_index] && self.sync_lock[deck_index] != "off" {
+      self.set_sync_lock(deck, "tempo-only");
+    }
+    self.sync_master_tempo_state_after_change(deck, was_master_tempo_active, false);
+    self.recompute_distances();
+  }
+
   pub(super) fn set_master_tempo_enabled(&mut self, deck: DeckId, now_ms: f64, enabled: bool) {
     self.mark_state_changed();
     self.last_now_ms = now_ms;

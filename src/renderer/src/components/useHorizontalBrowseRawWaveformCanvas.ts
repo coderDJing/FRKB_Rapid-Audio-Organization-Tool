@@ -45,6 +45,7 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
   loopRange: () => { startSec: number; endSec: number } | null | undefined
   currentSeconds: () => number | undefined
   playbackRate: () => number | undefined
+  visualPlaybackRate?: () => number | undefined
   playing: Ref<boolean>
   playbackSyncRevision: Readonly<Ref<number>>
   rawData: Ref<RawWaveformData | null>
@@ -121,7 +122,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     onPresentation: (payload) => handleLiveCanvasPresentation(payload)
   })
 
-  const resolvePreviewTimeScale = () => Math.max(0.25, Number(options.playbackRate()) || 1)
+  const resolvePreviewTimeScale = () =>
+    Math.max(0.25, Number(options.visualPlaybackRate?.() ?? options.playbackRate()) || 1)
 
   const resolvePreviewDurationSec = () => {
     const duration = Number(

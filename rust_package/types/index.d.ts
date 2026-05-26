@@ -287,6 +287,11 @@ export declare function horizontalBrowseTransportSetPlaybackRate(
   nowMs: number,
   playbackRate: number
 ): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetTempoNudgePlaybackRate(
+  deck: string,
+  nowMs: number,
+  playbackRate: number
+): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetMasterTempoEnabled(
   deck: string,
   nowMs: number,
