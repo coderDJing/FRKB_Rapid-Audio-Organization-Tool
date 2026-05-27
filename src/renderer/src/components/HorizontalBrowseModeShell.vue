@@ -61,6 +61,9 @@ type SharedDetailZoomState = {
   revision: number
 }
 type DeckCuePanelMode = 'memory' | 'hot-cue'
+const EDIT_MODE_BPM_INPUT_TITLE = '网格 BPM：修改分析结果和网格线，不改变播放速度'
+const DUAL_MODE_BPM_INPUT_TITLE = '目标 BPM：临时改变播放速度，不修改网格线'
+const EDIT_MODE_TAP_BPM_TITLE = 'Tap：按节拍连续点击，实时修改网格 BPM，不改变播放速度'
 
 const normalizePath = (value: string | null | undefined) =>
   String(value || '')
@@ -74,6 +77,9 @@ type HorizontalBrowseDeckDetailLaneExpose = {
   shiftGridSmallLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridSmallRight?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridLargeRight?: (options?: HorizontalBrowseGridShiftOptions) => void
+  updateBpmInput?: (value: string) => void
+  blurBpmInput?: () => void
+  tapBpm?: () => void
   cycleMetronomeState?: () => void
 }
 const props = withDefaults(
@@ -90,6 +96,10 @@ const createDefaultDeckToolbarState = () => ({
   bpmStep: 0.01,
   bpmMin: 1,
   bpmMax: 300,
+  bpmInputTitle: '',
+  bpmInputFirst: false,
+  showTapButton: false,
+  tapBpmTitle: '',
   barLinePicking: false,
   metronomeEnabled: false,
   metronomeVolumeLevel: 2 as 1 | 2 | 3,
@@ -338,6 +348,17 @@ const resolveDeckMarkerPlacementSeconds = (deck: DeckKey) =>
 const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   const toolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
   if (deckTempoInputDirty[deck]) {
+    return toolbarState.bpmInputValue
+  }
+  if (isEditMode.value) {
+    const songBpm = Number(resolveDeckSong(deck)?.bpm)
+    if (Number.isFinite(songBpm) && songBpm > 0) {
+      return formatPreviewBpm(songBpm)
+    }
+    const baseGridBpm = Number(resolveDeckGridBpm(deck))
+    if (Number.isFinite(baseGridBpm) && baseGridBpm > 0) {
+      return formatPreviewBpm(baseGridBpm)
+    }
     return toolbarState.bpmInputValue
   }
   const effectiveBpm = Number(resolveTransportDeckSnapshot(deck).effectiveBpm)
@@ -621,6 +642,7 @@ const {
   handleDeckGridShiftSmallRight,
   handleDeckGridShiftLargeRight,
   handleDeckMetronomeStateCycle,
+  handleDeckBpmTap,
   handleDeckBpmInputUpdate,
   handleDeckBpmInputBlur
 } = useHorizontalBrowseDeckToolbarInteractions({
@@ -632,6 +654,7 @@ const {
   resolveDetailRef,
   resolveDeckToolbarBpmInputValue,
   shouldPreserveGridShiftPhase,
+  shouldCommitBpmInputAsGridEdit: (deck) => isEditMode.value && deck === 'top',
   setDeckTargetBpm
 })
 
@@ -678,7 +701,11 @@ const resolveDeckToolbarState = (deck: DeckKey) =>
     {
       loopBeatLabel: resolveDeckLoopBeatLabel(deck),
       loopActive: isDeckLoopActive(deck),
-      loopDisabled: resolveDeckLoopDisabled(deck)
+      loopDisabled: resolveDeckLoopDisabled(deck),
+      bpmInputTitle: isEditMode.value ? EDIT_MODE_BPM_INPUT_TITLE : DUAL_MODE_BPM_INPUT_TITLE,
+      bpmInputFirst: isEditMode.value,
+      showTapButton: isEditMode.value,
+      tapBpmTitle: isEditMode.value ? EDIT_MODE_TAP_BPM_TITLE : ''
     }
   )
 
@@ -982,6 +1009,7 @@ onUnmounted(() => {
         @shift-right-large="handleDeckGridShiftLargeRight('top')"
         @update-bpm-input="handleDeckBpmInputUpdate('top', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('top')"
+        @tap-bpm="handleDeckBpmTap('top')"
         @memory-cue="void handleDeckMemoryCueCreate('top')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
         @cycle-metronome-state="handleDeckMetronomeStateCycle('top')"
@@ -1112,6 +1140,7 @@ onUnmounted(() => {
         @shift-right-large="handleDeckGridShiftLargeRight('bottom')"
         @update-bpm-input="handleDeckBpmInputUpdate('bottom', $event)"
         @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
+        @tap-bpm="handleDeckBpmTap('bottom')"
         @memory-cue="void handleDeckMemoryCueCreate('bottom')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
         @cycle-metronome-state="handleDeckMetronomeStateCycle('bottom')"

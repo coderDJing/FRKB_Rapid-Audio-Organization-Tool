@@ -13,6 +13,10 @@ const props = defineProps<{
   bpmStep: number
   bpmMin: number
   bpmMax: number
+  bpmInputTitle?: string
+  bpmInputFirst?: boolean
+  showTapButton?: boolean
+  tapBpmTitle?: string
   barLinePicking: boolean
   loopBeatLabel: string
   loopActive: boolean
@@ -37,6 +41,7 @@ const emit = defineEmits<{
   (event: 'shift-right-large'): void
   (event: 'update-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
+  (event: 'tap-bpm'): void
   (event: 'memory-cue'): void
   (event: 'toggle-bar-line-picking'): void
   (event: 'loop-step-down'): void
@@ -102,7 +107,10 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
         :bpm-step="props.bpmStep"
         :bpm-min="props.bpmMin"
         :bpm-max="props.bpmMax"
-        :show-tap-button="false"
+        :bpm-input-title="props.bpmInputTitle"
+        :bpm-input-first="props.bpmInputFirst"
+        :show-tap-button="props.showTapButton === true"
+        :tap-bpm-title="props.tapBpmTitle"
         show-memory-button
         :show-large-shift-buttons="props.showLargeShiftButtons"
         @set-bar-line="emit('set-bar-line')"
@@ -112,6 +120,7 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
         @shift-right-large="emit('shift-right-large')"
         @update-bpm-input="emit('update-bpm-input', $event)"
         @blur-bpm-input="emit('blur-bpm-input')"
+        @tap-bpm="emit('tap-bpm')"
         @memory-cue="emit('memory-cue')"
       />
       <div class="overview__toolbar-group overview__loop-control">

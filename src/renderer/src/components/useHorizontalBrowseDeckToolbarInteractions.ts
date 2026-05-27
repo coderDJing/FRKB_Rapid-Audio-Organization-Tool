@@ -18,6 +18,9 @@ type HorizontalBrowseDetailExpose = {
   shiftGridSmallLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridSmallRight?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridLargeRight?: (options?: HorizontalBrowseGridShiftOptions) => void
+  updateBpmInput?: (value: string) => void
+  blurBpmInput?: () => void
+  tapBpm?: () => void
   cycleMetronomeState?: () => void
 }
 
@@ -30,6 +33,7 @@ type UseHorizontalBrowseDeckToolbarInteractionsParams = {
   resolveDetailRef: (deck: HorizontalBrowseDeckKey) => HorizontalBrowseDetailExpose | null
   resolveDeckToolbarBpmInputValue: (deck: HorizontalBrowseDeckKey) => string
   shouldPreserveGridShiftPhase: (deck: HorizontalBrowseDeckKey) => boolean
+  shouldCommitBpmInputAsGridEdit: (deck: HorizontalBrowseDeckKey) => boolean
   setDeckTargetBpm: (deck: HorizontalBrowseDeckKey, targetBpm: number) => Promise<unknown>
 }
 
@@ -93,6 +97,12 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     params.resolveDetailRef(deck)?.cycleMetronomeState?.()
   }
 
+  const handleDeckBpmTap = (deck: HorizontalBrowseDeckKey) => {
+    params.touchDeckInteraction(deck)
+    if (!params.shouldCommitBpmInputAsGridEdit(deck)) return
+    params.resolveDetailRef(deck)?.tapBpm?.()
+  }
+
   const handleDeckBpmInputUpdate = (deck: HorizontalBrowseDeckKey, value: string) => {
     params.touchDeckInteraction(deck)
     const toolbarStateRef = resolveToolbarStateRef(deck)
@@ -118,12 +128,36 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
 
     const token = params.deckTempoCommitToken[deck] + 1
     params.deckTempoCommitToken[deck] = token
+    const formattedBpm = formatPreviewBpm(parsed)
     toolbarStateRef.value = {
       ...nextToolbarState,
-      bpmInputValue: formatPreviewBpm(parsed)
+      bpmInputValue: formattedBpm
     }
 
-    // 横推 BPM 输入只在失焦时提交，输入过程中只维护草稿值。
+    if (params.shouldCommitBpmInputAsGridEdit(deck)) {
+      const detail = params.resolveDetailRef(deck)
+      if (detail?.updateBpmInput && detail?.blurBpmInput) {
+        detail.updateBpmInput(formattedBpm)
+        detail.blurBpmInput()
+        params.deckTempoInputDirty[deck] = false
+        const latestToolbarState = resolveToolbarStateRef(deck).value
+        resolveToolbarStateRef(deck).value = {
+          ...latestToolbarState,
+          bpmInputValue: formattedBpm
+        }
+        return
+      }
+
+      params.deckTempoInputDirty[deck] = false
+      const latestToolbarState = resolveToolbarStateRef(deck).value
+      resolveToolbarStateRef(deck).value = {
+        ...latestToolbarState,
+        bpmInputValue: params.resolveDeckToolbarBpmInputValue(deck)
+      }
+      return
+    }
+
+    // 双轨 BPM 输入只在失焦时提交，输入过程中只维护草稿值。
     void params.setDeckTargetBpm(deck, parsed).finally(() => {
       if (params.deckTempoCommitToken[deck] !== token) return
       params.deckTempoInputDirty[deck] = false
@@ -144,6 +178,7 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     handleDeckGridShiftSmallRight,
     handleDeckGridShiftLargeRight,
     handleDeckMetronomeStateCycle,
+    handleDeckBpmTap,
     handleDeckBpmInputUpdate,
     handleDeckBpmInputBlur
   }

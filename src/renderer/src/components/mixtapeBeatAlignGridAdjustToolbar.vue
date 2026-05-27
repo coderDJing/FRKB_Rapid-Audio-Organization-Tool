@@ -24,6 +24,18 @@ const props = defineProps({
     type: Number,
     default: 300
   },
+  bpmInputTitle: {
+    type: String,
+    default: ''
+  },
+  bpmInputFirst: {
+    type: Boolean,
+    default: false
+  },
+  tapBpmTitle: {
+    type: String,
+    default: ''
+  },
   showTapButton: {
     type: Boolean,
     default: true
@@ -284,7 +296,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="grid-adjust-toolbar">
+  <div class="grid-adjust-toolbar" :class="{ 'grid-adjust-toolbar--bpm-first': bpmInputFirst }">
     <div class="grid-adjust-toolbar__group grid-adjust-toolbar__group--icons">
       <bubbleBoxTrigger
         v-if="showLargeShiftButtons"
@@ -412,8 +424,8 @@ onBeforeUnmount(() => {
         :max="bpmMax"
         :disabled="disabled"
         :value="bpmInputValue"
-        :title="t('mixtape.bpm')"
-        :aria-label="t('mixtape.bpm')"
+        :title="bpmInputTitle || t('mixtape.bpm')"
+        :aria-label="bpmInputTitle || t('mixtape.bpm')"
         @pointerdown="handleBpmPointerDown"
         @input="handleBpmInput"
         @blur="emit('blur-bpm-input')"
@@ -423,12 +435,13 @@ onBeforeUnmount(() => {
     <bubbleBoxTrigger
       v-if="showTapButton"
       wrapper-tag="span"
+      wrapper-class="grid-adjust-toolbar__tap-anchor"
       tag="button"
       class="grid-adjust-tap-btn"
       type="button"
       :disabled="disabled"
-      :title="t('mixtape.gridAdjustTapBpm')"
-      :aria-label="t('mixtape.gridAdjustTapBpm')"
+      :title="tapBpmTitle || t('mixtape.gridAdjustTapBpm')"
+      :aria-label="tapBpmTitle || t('mixtape.gridAdjustTapBpm')"
       @click="emit('tap-bpm')"
     >
       Tap
@@ -456,6 +469,14 @@ onBeforeUnmount(() => {
 
 .grid-adjust-toolbar__group--icons {
   gap: 6px;
+}
+
+.grid-adjust-toolbar--bpm-first .grid-adjust-toolbar__group--input {
+  order: -2;
+}
+
+.grid-adjust-toolbar--bpm-first .grid-adjust-toolbar__tap-anchor {
+  order: -1;
 }
 
 .grid-adjust-icon-btn {

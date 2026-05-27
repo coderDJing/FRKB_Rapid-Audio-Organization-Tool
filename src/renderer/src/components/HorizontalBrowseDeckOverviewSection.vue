@@ -13,6 +13,10 @@ type DeckToolbarState = {
   bpmStep: number
   bpmMin: number
   bpmMax: number
+  bpmInputTitle?: string
+  bpmInputFirst?: boolean
+  showTapButton?: boolean
+  tapBpmTitle?: string
   barLinePicking: boolean
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
@@ -68,6 +72,7 @@ const emit = defineEmits<{
   (event: 'shift-right-large'): void
   (event: 'update-bpm-input', value: string): void
   (event: 'blur-bpm-input'): void
+  (event: 'tap-bpm'): void
   (event: 'memory-cue'): void
   (event: 'toggle-bar-line-picking'): void
   (event: 'loop-step-down'): void
@@ -139,6 +144,10 @@ const isTop = props.position === 'top'
         :bpm-step="props.toolbarState.bpmStep"
         :bpm-min="props.toolbarState.bpmMin"
         :bpm-max="props.toolbarState.bpmMax"
+        :bpm-input-title="props.toolbarState.bpmInputTitle"
+        :bpm-input-first="props.toolbarState.bpmInputFirst"
+        :show-tap-button="props.toolbarState.showTapButton"
+        :tap-bpm-title="props.toolbarState.tapBpmTitle"
         :bar-line-picking="props.toolbarState.barLinePicking"
         :loop-beat-label="props.toolbarState.loopBeatLabel"
         :loop-active="props.toolbarState.loopActive"
@@ -160,6 +169,7 @@ const isTop = props.position === 'top'
         @shift-right-large="emit('shift-right-large')"
         @update-bpm-input="emit('update-bpm-input', $event)"
         @blur-bpm-input="emit('blur-bpm-input')"
+        @tap-bpm="emit('tap-bpm')"
         @memory-cue="emit('memory-cue')"
         @toggle-bar-line-picking="emit('toggle-bar-line-picking')"
         @loop-step-down="emit('loop-step-down')"
