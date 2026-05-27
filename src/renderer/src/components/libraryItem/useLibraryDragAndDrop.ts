@@ -202,7 +202,10 @@ export function useLibraryDragAndDrop({
       suppressNextLibraryClick()
       dragState.dragApproach = ''
       if (movedSongPaths.length > 0) {
-        emitter.emit('songsMovedByDrag', movedSongPaths)
+        emitter.emit('songsMovedByDrag', {
+          paths: movedSongPaths,
+          preservePlaybackForRemovedPaths: true
+        })
       }
       return
     }

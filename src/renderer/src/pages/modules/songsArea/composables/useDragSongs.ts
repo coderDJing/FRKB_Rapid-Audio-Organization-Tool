@@ -66,6 +66,8 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
           .filter(Boolean)
       )
     )
+  const normalizePath = (p: string | undefined | null) =>
+    (p || '').replace(/\//g, '\\').toLowerCase()
 
   const resolveSourceSongsAreaState = (sourceSongListUUID: string) => {
     if (songsAreaState.songListUUID === sourceSongListUUID) return songsAreaState
@@ -320,14 +322,38 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
         emitter.emit('playlistContentChanged', { uuids: affected })
       } catch {}
 
+      const normalizedMovedPlaybackSet = new Set(orderedSongFilePaths.map((p) => normalizePath(p)))
+      if (
+        runtime.playingData.playingSongListUUID === sourceSongListUUID &&
+        runtime.playingData.playingSong?.filePath &&
+        normalizedMovedPlaybackSet.has(normalizePath(runtime.playingData.playingSong.filePath))
+      ) {
+        const playbackList = [...runtime.playingData.playingSongListData]
+        const currentIndex = playbackList.findIndex(
+          (song) =>
+            normalizePath(song.filePath) ===
+            normalizePath(runtime.playingData.playingSong?.filePath)
+        )
+        const nextList = playbackList.filter(
+          (song) => !normalizedMovedPlaybackSet.has(normalizePath(song.filePath))
+        )
+        runtime.playingData.playingSongListData = nextList
+        runtime.playingData.playingSong =
+          currentIndex >= 0 && nextList.length > 0
+            ? nextList[Math.min(currentIndex, nextList.length - 1)] || null
+            : null
+        if (!runtime.playingData.playingSong) {
+          runtime.playingData.playingSongListUUID = ''
+        }
+      }
+
       // 广播：源歌单移除这些歌曲，确保当前视图（若显示源歌单或其筛选结果）能及时剔除并重建
       try {
-        const normalizePath = (p: string | undefined | null) =>
-          (p || '').replace(/\//g, '\\').toLowerCase()
         const normalized = orderedSongFilePaths.map((p) => normalizePath(p))
         emitter.emit('songsRemoved', {
           listUUID: sourceSongListUUID,
-          paths: normalized
+          paths: normalized,
+          preservePlaybackForRemovedPaths: true
         })
       } catch {}
 

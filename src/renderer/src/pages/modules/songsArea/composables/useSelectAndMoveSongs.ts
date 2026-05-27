@@ -16,6 +16,10 @@ interface UseSelectAndMoveSongsParams {
   songsAreaState: ISongsAreaPaneRuntimeState
 }
 
+type MoveSongsConfirmOptions = {
+  preservePlaybackForRemovedPaths?: boolean
+}
+
 export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
   const { songsAreaState } = params
   const normalizeUniqueStrings = (values: unknown[]): string[] =>
@@ -89,7 +93,10 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
    * Moves selected songs to the chosen directory and updates the store.
    * @param targetSongListUUID - The UUID of the target song list.
    */
-  const handleMoveSongsConfirm = async (targetSongListUUID: string) => {
+  const handleMoveSongsConfirm = async (
+    targetSongListUUID: string,
+    options: MoveSongsConfirmOptions = {}
+  ) => {
     isDialogVisible.value = false
     if (targetSongListUUID === songsAreaState.songListUUID) {
       // Moving to the same list, do nothing.
@@ -243,7 +250,8 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
     // 通知全局，保证 songsArea 与其他视图收到统一的移除事件
     emitter.emit('songsRemoved', {
       listUUID: songsAreaState.songListUUID,
-      paths: selectedPaths
+      paths: selectedPaths,
+      preservePlaybackForRemovedPaths: options.preservePlaybackForRemovedPaths
     })
 
     // 同步通知源/目标歌单数量刷新

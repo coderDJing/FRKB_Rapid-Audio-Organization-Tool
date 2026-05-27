@@ -180,7 +180,12 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     scheduleSweepCovers()
   }
 
-  const onSongsRemoved = (payload: { listUUID?: string; paths?: string[]; itemIds?: string[] }) => {
+  const onSongsRemoved = (payload: {
+    listUUID?: string
+    paths?: string[]
+    itemIds?: string[]
+    preservePlaybackForRemovedPaths?: boolean
+  }) => {
     const listUUID = payload?.listUUID
     const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
     const currentListUUID = songsAreaState.songListUUID
@@ -239,6 +244,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
       runtime.playingData.playingSongListData = songsAreaState.songInfoArr
       if (
+        !payload?.preservePlaybackForRemovedPaths &&
         runtime.playingData.playingSong &&
         normalizedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
       ) {
@@ -253,10 +259,13 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     scheduleSweepCovers()
   }
 
-  const onSongsMovedByDrag = (movedSongPaths: string[]) => {
+  const onSongsMovedByDrag = (
+    payload: string[] | { paths?: string[]; preservePlaybackForRemovedPaths?: boolean }
+  ) => {
     if (libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList') {
       return
     }
+    const movedSongPaths = Array.isArray(payload) ? payload : payload?.paths || []
     if (!Array.isArray(movedSongPaths) || movedSongPaths.length === 0) return
     const normalizedMovedSet = new Set(
       movedSongPaths.map((path) => normalizePath(path)).filter(Boolean)
@@ -271,6 +280,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
       runtime.playingData.playingSongListData = songsAreaState.songInfoArr
       if (
+        !(Array.isArray(payload) ? false : payload?.preservePlaybackForRemovedPaths) &&
         runtime.playingData.playingSong &&
         normalizedMovedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
       ) {

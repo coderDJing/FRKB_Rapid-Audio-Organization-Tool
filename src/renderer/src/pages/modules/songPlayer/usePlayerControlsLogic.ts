@@ -171,6 +171,22 @@ export function usePlayerControlsLogic({
     runtime.playingData.playingSong = payload.song
     requestLoadSong(payload.song.filePath)
   }
+  const switchPlaybackToSong = (payload: {
+    listUUID: string
+    listData: ISongInfo[]
+    song: ISongInfo
+  }) => {
+    try {
+      emitter.emit('waveform-preview:stop', { reason: 'switch' })
+    } catch {}
+    runtime.playerReady = false
+    runtime.isSwitchingSong = true
+    isInternalSongChange.value = true
+    runtime.playingData.playingSongListUUID = payload.listUUID
+    runtime.playingData.playingSongListData = payload.listData
+    runtime.playingData.playingSong = payload.song
+    requestLoadSong(payload.song.filePath)
+  }
   const clearPlayerStateForDelete = () => {
     try {
       emitter.emit('waveform-preview:stop', { reason: 'switch' })
@@ -417,6 +433,7 @@ export function usePlayerControlsLogic({
       const playbackAfterDelete = resolvePlaybackAfterRemovingSong(filePathToDelete)
       let shouldFinalizeDestroyedPlayerState = false
       let shouldRestorePlaybackAfterFailure = false
+      let deleteSucceeded = false
 
       try {
         // 检查是否在回收站
@@ -449,7 +466,15 @@ export function usePlayerControlsLogic({
         const optimisticRestoreItems = buildSongsAreaOptimisticRestoreItems(currentSongListUUID, [
           filePathToDelete
         ])
-        clearPlayerStateForDelete()
+        if (playbackAfterDelete.nextSong?.filePath) {
+          switchPlaybackToSong({
+            listUUID: currentSongListUUID,
+            listData: playbackAfterDelete.nextList,
+            song: playbackAfterDelete.nextSong
+          })
+        } else {
+          clearPlayerStateForDelete()
+        }
         shouldRestorePlaybackAfterFailure = true
         emitter.emit('songsArea/optimistic-remove', {
           listUUID: currentSongListUUID,
@@ -508,6 +533,7 @@ export function usePlayerControlsLogic({
               restoredFailed: failedRestoreItems.length > 0
             })
           }
+          deleteSucceeded = Number(deleteSummary.success || 0) > 0
         } catch {
           if (optimisticRestoreItems.length > 0) {
             emitter.emit('songsArea/optimistic-restore', {
@@ -526,17 +552,14 @@ export function usePlayerControlsLogic({
           return
         }
 
-        if (playbackAfterDelete.nextSong?.filePath) {
-          isInternalSongChange.value = true
-          runtime.playingData.playingSongListUUID = currentSongListUUID
-          runtime.playingData.playingSongListData = playbackAfterDelete.nextList
-          runtime.playingData.playingSong = playbackAfterDelete.nextSong
-          requestLoadSong(playbackAfterDelete.nextSong.filePath)
-          shouldRestorePlaybackAfterFailure = false
-        } else {
-          shouldFinalizeDestroyedPlayerState = true
-          shouldRestorePlaybackAfterFailure = false
+        if (!deleteSucceeded) {
+          return
         }
+
+        if (!playbackAfterDelete.nextSong?.filePath) {
+          shouldFinalizeDestroyedPlayerState = true
+        }
+        shouldRestorePlaybackAfterFailure = false
 
         // 广播删除，保证当前 songsArea 若显示同一歌单可同步移除
         const listUuidAtDeleteStart = currentSongListUUID
@@ -716,7 +739,7 @@ export function usePlayerControlsLogic({
         return
       }
 
-      const currentList = runtime.playingData.playingSongListData
+      const currentList = [...runtime.playingData.playingSongListData]
       const currentIndex = currentList.findIndex((song) => song.filePath === filePathToMove)
 
       if (currentIndex === -1) {
@@ -727,25 +750,13 @@ export function usePlayerControlsLogic({
         return
       }
 
-      // 停止播放并清空播放器
-      if (audioPlayer.value) {
-        if (audioPlayer.value.isPlaying()) {
-          audioPlayer.value.pause()
-        }
-        ignoreNextEmptyError.value = true
-        audioPlayer.value.empty()
-      }
-      waveformShow.value = false
-      bpm.value = '' // 清空 BPM
-
-      // 从当前播放列表中移除歌曲
-      currentList.splice(currentIndex, 1)
+      const nextList = currentList.filter((_, index) => index !== currentIndex)
 
       // 确定下一首要播放的歌曲
       let nextPlayingSong: ISongInfo | null = null
-      if (currentList.length > 0) {
-        const nextIndex = Math.min(currentIndex, currentList.length - 1)
-        nextPlayingSong = currentList[nextIndex]
+      if (nextList.length > 0) {
+        const nextIndex = Math.min(currentIndex, nextList.length - 1)
+        nextPlayingSong = nextList[nextIndex]
       }
 
       // 先执行移动操作，因为这可能会影响状态或触发其他事件
@@ -766,14 +777,25 @@ export function usePlayerControlsLogic({
 
       // 先切到下一首，再广播移除事件，避免全局 songsRemoved 监听把当前播放上下文误清空。
       if (nextPlayingSong) {
-        isInternalSongChange.value = true
-        runtime.playingData.playingSongListUUID = sourceListUuid
-        runtime.playingData.playingSong = nextPlayingSong
-        requestLoadSong(nextPlayingSong.filePath)
+        switchPlaybackToSong({
+          listUUID: sourceListUuid,
+          listData: nextList,
+          song: nextPlayingSong
+        })
       } else {
+        if (audioPlayer.value) {
+          if (audioPlayer.value.isPlaying()) {
+            audioPlayer.value.pause()
+          }
+          ignoreNextEmptyError.value = true
+          audioPlayer.value.empty()
+        }
+        waveformShow.value = false
+        bpm.value = ''
         isInternalSongChange.value = true
         runtime.playingData.playingSong = null
         runtime.playingData.playingSongListUUID = '' // 清空播放列表 UUID
+        runtime.playingData.playingSongListData = []
       }
 
       // 广播源/目标歌单变化

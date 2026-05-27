@@ -788,6 +788,11 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   const isMixtapeTarget =
     targetNode?.type === 'mixtapeList' ||
     selectSongListDialogTargetLibraryName.value === 'MixtapeLibrary'
+  const removesFromSource =
+    sourceActionMode === 'move' &&
+    !isMixtapeSource &&
+    !isMixtapeTarget &&
+    targetSongListUuid !== currentListUuid
 
   if (pathsEffectivelyMoved.length === 0) {
     // 无有效移动项时，直接走 composable 默认逻辑
@@ -820,29 +825,26 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     return remaining[Math.min(currentIndex, remaining.length - 1)] || null
   }
   const nextPlayingSong =
-    sourceActionMode === 'move' && runtime.playingData.playingSongListUUID === currentListUuid
+    removesFromSource && runtime.playingData.playingSongListUUID === currentListUuid
       ? resolveNextPlayingSong(playingListSnapshot, pathsEffectivelyMoved)
       : null
 
   // 调用 composable 执行移动操作，并处理对话框关闭与选中清理
-  await handleMoveSongsConfirm(targetSongListUuid)
+  await handleMoveSongsConfirm(targetSongListUuid, {
+    preservePlaybackForRemovedPaths: Boolean(nextPlayingSong?.filePath)
+  })
   if (
-    sourceActionMode === 'move' &&
+    removesFromSource &&
     activePreviewFilePath.value &&
     pathsEffectivelyMoved.includes(activePreviewFilePath.value)
   ) {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })
   }
-  if (sourceActionMode === 'move' && runtime.playingData.playingSongListUUID === currentListUuid) {
+  if (removesFromSource && runtime.playingData.playingSongListUUID === currentListUuid) {
     runtime.playingData.playingSongListData = [...songsAreaState.songInfoArr]
     runtime.playingData.playingSong = nextPlayingSong
   }
-  if (
-    sourceActionMode === 'copy' ||
-    isMixtapeSource ||
-    isMixtapeTarget ||
-    targetSongListUuid === currentListUuid
-  ) {
+  if (!removesFromSource) {
     return
   }
   // 非 Mixtape 目标时，从当前列表中同步移除已移动项
