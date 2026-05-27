@@ -518,12 +518,14 @@ const openDialog = async (item: string) => {
   if (item === 'menu.horizontalBrowseMode') {
     const canEnterHorizontalMode = await ensureAnalysisRuntimeForHorizontalMode()
     if (!canEnterHorizontalMode) return
+    syncPlayingDataToTopDeck()
     runtime.mainWindowBrowseMode = 'horizontal'
     return
   }
   if (item === 'menu.editBrowseMode') {
     const canEnterHorizontalMode = await ensureAnalysisRuntimeForHorizontalMode()
     if (!canEnterHorizontalMode) return
+    syncPlayingDataToTopDeck()
     runtime.mainWindowBrowseMode = 'edit'
     return
   }
@@ -637,6 +639,19 @@ const handleGlobalSongSearchLocate = async (item: GlobalSongSearchItem) => {
 const handleGlobalSongSearchPlay = async (item: GlobalSongSearchItem) => {
   activeDialog.value = ''
   await focusSongFromGlobalSearch(item, true)
+}
+
+const syncPlayingDataToTopDeck = () => {
+  const { playingSong, playingSongListUUID, playingSongListData } = runtime.playingData
+  if (playingSong) {
+    runtime.horizontalBrowseDecks.topSong = { ...playingSong }
+  }
+  if (playingSongListUUID) {
+    runtime.horizontalBrowseDecks.topSongListUUID = playingSongListUUID
+  }
+  if (playingSongListData.length > 0) {
+    runtime.horizontalBrowseDecks.topSongListData = playingSongListData.map((song) => ({ ...song }))
+  }
 }
 
 const closeMainWindowBrowseModeMenu = () => {

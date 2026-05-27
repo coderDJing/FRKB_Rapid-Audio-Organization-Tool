@@ -775,6 +775,29 @@ watch(
   { immediate: true }
 )
 
+const syncDeckDataToPlayingData = () => {
+  const leaderDeck = deckSyncState.leaderDeck
+  const sourceDeck = leaderDeck === 'bottom' ? 'bottom' : 'top'
+  const song = resolveDeckSong(sourceDeck)
+  if (!song) return
+
+  runtime.playingData.playingSong = { ...song }
+  const songListUUID =
+    sourceDeck === 'top'
+      ? runtime.horizontalBrowseDecks.topSongListUUID
+      : runtime.horizontalBrowseDecks.bottomSongListUUID
+  const songListData =
+    sourceDeck === 'top'
+      ? runtime.horizontalBrowseDecks.topSongListData
+      : runtime.horizontalBrowseDecks.bottomSongListData
+  if (songListUUID) {
+    runtime.playingData.playingSongListUUID = songListUUID
+  }
+  if (songListData.length > 0) {
+    runtime.playingData.playingSongListData = songListData.map((s) => ({ ...s }))
+  }
+}
+
 const { handleSongsRemoved } = useHorizontalBrowseSongsRemoved({
   resolveDeckSong,
   handleDeckEjectSong
@@ -824,6 +847,7 @@ onUnmounted(() => {
     'song-memory-cues-updated',
     handleSongMemoryCuesUpdated
   )
+  syncDeckDataToPlayingData()
   runtime.horizontalBrowseDecks.topSong = null
   runtime.horizontalBrowseDecks.bottomSong = null
   runtime.horizontalBrowseDecks.leaderDeck = null
