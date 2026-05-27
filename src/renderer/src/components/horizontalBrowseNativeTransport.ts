@@ -273,6 +273,16 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
+  const setCueMonitorEnabled = async (deck: HorizontalBrowseDeckKey, enabled: boolean) => {
+    const snapshot = await invoke(
+      'horizontal-browse-transport:set-cue-monitor-enabled',
+      deck,
+      enabled
+    )
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
   const setPlaying = async (deck: HorizontalBrowseDeckKey, playing: boolean) => {
     const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:native:set-playing:${deck}`)
     const snapshot = await invoke(
@@ -434,6 +444,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     setSyncEnabled,
     setLeader,
     setBandState,
+    setCueMonitorEnabled,
     setPlaying,
     seek,
     setScrubPreview,

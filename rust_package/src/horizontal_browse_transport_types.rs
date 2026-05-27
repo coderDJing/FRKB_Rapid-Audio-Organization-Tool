@@ -99,6 +99,7 @@ pub struct HorizontalBrowseTransportDeckSnapshot {
   pub loop_start_sec: f64,
   pub loop_end_sec: f64,
   pub bands: HorizontalBrowseTransportBandState,
+  pub cue_monitor_enabled: bool,
   pub auto_gain_enabled: bool,
   pub auto_gain_status: String,
   pub auto_gain_value: f64,

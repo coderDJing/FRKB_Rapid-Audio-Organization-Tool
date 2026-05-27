@@ -13,6 +13,8 @@ const props = defineProps<{
   cueActive: boolean
   bandsVisible: boolean
   bands: HorizontalBrowseTransportBandState
+  songPresent: boolean
+  cueMonitorEnabled: boolean
 }>()
 
 const emit = defineEmits<{
@@ -24,6 +26,7 @@ const emit = defineEmits<{
     deck: HorizontalBrowseDeckKey,
     band: keyof HorizontalBrowseTransportBandState
   ): void
+  (event: 'toggle-cue-monitor', deck: HorizontalBrowseDeckKey): void
 }>()
 
 const handleToggleBand = (
@@ -50,7 +53,10 @@ const handleToggleBand = (
       v-if="props.bandsVisible"
       :deck="props.deck"
       :bands="props.bands"
+      :cue-monitor-enabled="props.cueMonitorEnabled"
+      :cue-monitor-disabled="!props.songPresent"
       @toggle-band="handleToggleBand"
+      @toggle-cue-monitor="emit('toggle-cue-monitor', $event)"
     />
   </div>
 </template>

@@ -62,6 +62,7 @@ export type HorizontalBrowseTransportDeckSnapshot = {
   loopStartSec: number
   loopEndSec: number
   bands: HorizontalBrowseTransportBandState
+  cueMonitorEnabled: boolean
   autoGainEnabled: boolean
   autoGainStatus: 'off' | 'active' | 'master' | 'pending' | 'unavailable'
   autoGainValue: number
@@ -134,6 +135,7 @@ export const createEmptyHorizontalBrowseTransportDeckSnapshot = (
     mid: true,
     low: true
   },
+  cueMonitorEnabled: false,
   autoGainEnabled: true,
   autoGainStatus: 'pending',
   autoGainValue: 1

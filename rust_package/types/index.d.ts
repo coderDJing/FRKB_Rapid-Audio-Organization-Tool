@@ -148,6 +148,7 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   loopStartSec: number
   loopEndSec: number
   bands: HorizontalBrowseTransportBandState
+  cueMonitorEnabled: boolean
   autoGainEnabled: boolean
   autoGainStatus: string
   autoGainValue: number
@@ -323,6 +324,10 @@ export declare function horizontalBrowseTransportSetLeader(
 export declare function horizontalBrowseTransportSetBandState(
   deck: string,
   bands: HorizontalBrowseTransportBandState
+): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetCueMonitorEnabled(
+  deck: string,
+  enabled: boolean
 ): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetPlaying(
   deck: string,

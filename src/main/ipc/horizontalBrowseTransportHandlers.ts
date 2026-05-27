@@ -158,6 +158,15 @@ export function registerHorizontalBrowseTransportHandlers() {
   )
 
   ipcMain.handle(
+    'horizontal-browse-transport:set-cue-monitor-enabled',
+    async (_event, deck: HorizontalBrowseDeckKey, enabled: boolean) => {
+      const snapshot = horizontalBrowseTransportBridge.setCueMonitorEnabled(deck, enabled)
+      broadcastHorizontalBrowseTransportSnapshot(snapshot)
+      return snapshot
+    }
+  )
+
+  ipcMain.handle(
     'horizontal-browse-transport:set-playing',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number, playing: boolean) => {
       const snapshot = horizontalBrowseTransportBridge.setPlaying(deck, nowMs, playing)

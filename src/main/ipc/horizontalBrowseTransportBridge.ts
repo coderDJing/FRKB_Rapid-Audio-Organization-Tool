@@ -63,6 +63,10 @@ type RustHorizontalBrowseTransportBinding = {
     deck: HorizontalBrowseDeckKey,
     bands: HorizontalBrowseTransportBandState
   ) => HorizontalBrowseTransportSnapshot
+  horizontalBrowseTransportSetCueMonitorEnabled?: (
+    deck: HorizontalBrowseDeckKey,
+    enabled: boolean
+  ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSetPlaying?: (
     deck: HorizontalBrowseDeckKey,
     nowMs: number,
@@ -199,6 +203,9 @@ export const horizontalBrowseTransportBridge = {
   },
   setBandState(deck: HorizontalBrowseDeckKey, bands: HorizontalBrowseTransportBandState) {
     return requireFn('horizontalBrowseTransportSetBandState')(deck, bands)
+  },
+  setCueMonitorEnabled(deck: HorizontalBrowseDeckKey, enabled: boolean) {
+    return requireFn('horizontalBrowseTransportSetCueMonitorEnabled')(deck, enabled)
   },
   setPlaying(deck: HorizontalBrowseDeckKey, nowMs: number, playing: boolean) {
     return requireFn('horizontalBrowseTransportSetPlaying')(deck, nowMs, playing)

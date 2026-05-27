@@ -13,6 +13,8 @@ mod horizontal_browse_transport_auto_gain;
 mod horizontal_browse_transport_engine_state;
 #[path = "horizontal_browse_transport_grid_sync.rs"]
 mod horizontal_browse_transport_grid_sync;
+#[path = "horizontal_browse_transport_mix.rs"]
+mod horizontal_browse_transport_mix;
 #[path = "horizontal_browse_transport_napi.rs"]
 mod horizontal_browse_transport_napi;
 #[path = "horizontal_browse_transport_recording.rs"]
@@ -68,6 +70,8 @@ struct DeckState {
   loudness_analysis: Option<LoudnessAnalysis>,
   loudness_failed: bool,
   gain: f32,
+  cue_monitor_enabled: bool,
+  cue_monitor_gain: f32,
   auto_gain: DeckAutoGainState,
   band_state: HorizontalBrowseTransportBandState,
   band_filter_state: DeckBandFilterState,
@@ -236,6 +240,8 @@ impl Default for DeckState {
       loudness_analysis: None,
       loudness_failed: false,
       gain: 1.0,
+      cue_monitor_enabled: false,
+      cue_monitor_gain: 0.0,
       auto_gain: DeckAutoGainState::default(),
       band_state: HorizontalBrowseTransportBandState::default(),
       band_filter_state: DeckBandFilterState::default(),
@@ -727,11 +733,11 @@ impl HorizontalBrowseTransportEngine {
     let mut record_left = 0.0_f32;
     let mut record_right = 0.0_f32;
     for deck in [DeckId::Top, DeckId::Bottom] {
-      let ((dl, dr), metronome) = self.sample_deck(deck);
-      playback_left += dl + metronome;
-      playback_right += dr + metronome;
-      record_left += dl;
-      record_right += dr;
+      let deck_output = self.sample_deck_mix(deck);
+      playback_left += deck_output.program.0 + deck_output.monitor.0 + deck_output.metronome;
+      playback_right += deck_output.program.1 + deck_output.monitor.1 + deck_output.metronome;
+      record_left += deck_output.program.0;
+      record_right += deck_output.program.1;
     }
     let clamped_playback_left = playback_left.clamp(-1.0, 1.0);
     let clamped_playback_right = playback_right.clamp(-1.0, 1.0);
@@ -744,34 +750,6 @@ impl HorizontalBrowseTransportEngine {
       clamped_record_right,
     );
     (clamped_playback_left, clamped_playback_right)
-  }
-
-  fn sample_deck(&mut self, deck: DeckId) -> ((f32, f32), f32) {
-    let output_sample_rate = self.output_sample_rate.max(1) as f64;
-    self.advance_auto_gain(deck, output_sample_rate);
-    self.refresh_output_gains();
-    let before_sec = self.deck(deck).current_sec;
-    let was_playing = self.deck(deck).playing;
-    let scrub_rendering =
-      horizontal_browse_transport_audio::is_scrub_preview_rendering(self.deck(deck));
-    let (deck_left, deck_right) = {
-      let target = self.deck_mut(deck);
-      let (raw_left, raw_right) =
-        horizontal_browse_transport_audio::sample_deck(target, output_sample_rate);
-      horizontal_browse_transport_audio::apply_band_filter(
-        target,
-        raw_left,
-        raw_right,
-        output_sample_rate,
-      )
-    };
-    let after_sec = self.deck(deck).current_sec;
-    let metronome = if scrub_rendering {
-      0.0
-    } else {
-      self.sample_metronome(deck, before_sec, after_sec, was_playing) * self.deck(deck).gain
-    };
-    ((deck_left, deck_right), metronome)
   }
 
   fn resolve_next_metronome_beat_index(current_sec: f64, grid: BeatGridSnapshot) -> i64 {
@@ -1032,11 +1010,21 @@ impl HorizontalBrowseTransportEngine {
     self.top.gain =
       (top_trim * self.top.auto_gain.current_linear * self.master_gain * top_crossfader_gain)
         .max(0.0);
+    self.top.cue_monitor_gain = if self.top.cue_monitor_enabled {
+      (top_trim * self.top.auto_gain.current_linear * self.master_gain).max(0.0)
+    } else {
+      0.0
+    };
     self.bottom.gain = (bottom_trim
       * self.bottom.auto_gain.current_linear
       * self.master_gain
       * bottom_crossfader_gain)
       .max(0.0);
+    self.bottom.cue_monitor_gain = if self.bottom.cue_monitor_enabled {
+      (bottom_trim * self.bottom.auto_gain.current_linear * self.master_gain).max(0.0)
+    } else {
+      0.0
+    };
   }
 
   fn is_loaded(&self, deck: DeckId) -> bool {
@@ -1101,6 +1089,9 @@ fn prepare_decoded_audio(
 #[cfg(test)]
 #[path = "horizontal_browse_transport_auto_gain_tests.rs"]
 mod horizontal_browse_transport_auto_gain_tests;
+#[cfg(test)]
+#[path = "horizontal_browse_transport_cue_monitor_tests.rs"]
+mod horizontal_browse_transport_cue_monitor_tests;
 #[cfg(test)]
 #[path = "horizontal_browse_transport_tests.rs"]
 mod horizontal_browse_transport_tests;

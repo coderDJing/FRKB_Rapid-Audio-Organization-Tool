@@ -9,10 +9,13 @@ type HorizontalBrowseBandState = Record<HorizontalBrowseBandKey, boolean>
 const props = defineProps<{
   deck: HorizontalBrowseDeckKey
   bands: HorizontalBrowseBandState
+  cueMonitorEnabled: boolean
+  cueMonitorDisabled: boolean
 }>()
 
 const emit = defineEmits<{
   (event: 'toggle-band', deck: HorizontalBrowseDeckKey, band: HorizontalBrowseBandKey): void
+  (event: 'toggle-cue-monitor', deck: HorizontalBrowseDeckKey): void
 }>()
 
 const bandLabels: Record<HorizontalBrowseBandKey, string> = {
@@ -27,7 +30,7 @@ const { autoGainEnabled, autoGainStatus, autoGainTitle, toggleAutoGain } =
 </script>
 
 <template>
-  <div class="deck-band-controls">
+  <div class="deck-band-controls" :class="`deck-band-controls--${props.deck}`">
     <bubbleBoxTrigger
       wrapper-tag="span"
       tag="button"
@@ -60,6 +63,21 @@ const { autoGainEnabled, autoGainStatus, autoGainTitle, toggleAutoGain } =
     >
       {{ bandLabels[band] }}
     </button>
+    <bubbleBoxTrigger
+      wrapper-tag="span"
+      wrapper-class="deck-band-controls__cue-monitor-wrap"
+      tag="button"
+      class="deck-band-controls__button deck-band-controls__button--cue-monitor"
+      :class="{ 'is-active': props.cueMonitorEnabled }"
+      type="button"
+      :disabled="props.cueMonitorDisabled"
+      title="监听该轨"
+      :aria-pressed="props.cueMonitorEnabled"
+      :aria-label="props.cueMonitorEnabled ? '关闭该轨监听' : '开启该轨监听'"
+      @click.stop="emit('toggle-cue-monitor', props.deck)"
+    >
+      CUE
+    </bubbleBoxTrigger>
   </div>
 </template>
 
@@ -67,17 +85,27 @@ const { autoGainEnabled, autoGainStatus, autoGainTitle, toggleAutoGain } =
 .deck-band-controls {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   align-items: center;
   justify-content: center;
+  align-self: stretch;
   min-width: 0;
+  min-height: 0;
   box-sizing: border-box;
-  padding: 0 5px 0 2px;
+  padding: 6px 5px 6px 2px;
+}
+
+.deck-band-controls--top {
+  justify-content: flex-end;
+}
+
+.deck-band-controls--bottom {
+  justify-content: flex-start;
 }
 
 .deck-band-controls__button {
   width: 32px;
-  height: 17px;
+  height: 14px;
   padding: 0;
   border: 1px solid var(--shell-border);
   border-radius: 4px;
@@ -85,6 +113,7 @@ const { autoGainEnabled, autoGainStatus, autoGainTitle, toggleAutoGain } =
   color: var(--text-weak);
   font-size: 9px;
   font-weight: 600;
+  line-height: 1;
   box-sizing: border-box;
   cursor: pointer;
   display: inline-flex;
@@ -93,13 +122,33 @@ const { autoGainEnabled, autoGainStatus, autoGainTitle, toggleAutoGain } =
   transition: all 0.1s ease;
 }
 
-.deck-band-controls__button:hover {
+.deck-band-controls__button:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--text-weak) 42%, var(--shell-border));
   color: var(--text);
 }
 
+.deck-band-controls__button:disabled {
+  opacity: 0.44;
+  cursor: not-allowed;
+}
+
 .deck-band-controls__button--auto-gain {
   font-size: 7px;
+}
+
+.deck-band-controls__cue-monitor-wrap {
+  margin-top: 7px;
+  position: relative;
+}
+
+.deck-band-controls__cue-monitor-wrap::before {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: 6px;
+  right: 6px;
+  height: 1px;
+  background: color-mix(in srgb, var(--shell-border) 74%, transparent);
 }
 
 .deck-band-controls__button--auto-gain.is-active:not(.is-unavailable) {
@@ -128,11 +177,28 @@ const { autoGainEnabled, autoGainStatus, autoGainTitle, toggleAutoGain } =
   --band-color: #ef4444; /* Red */
 }
 
+.deck-band-controls__button--cue-monitor {
+  width: 30px;
+  height: 14px;
+  border-radius: 999px;
+  border-color: var(--shell-border);
+  background: color-mix(in srgb, var(--shell-panel) 82%, var(--bg-elev));
+  color: var(--text);
+  font-size: 8px;
+  letter-spacing: 0;
+}
+
 .deck-band-controls__button.is-active {
   border-color: color-mix(in srgb, var(--band-color) 70%, transparent);
   background: color-mix(in srgb, var(--band-color) 15%, transparent);
   color: color-mix(in srgb, var(--band-color) 90%, #fff);
   box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 15%, transparent);
+}
+
+.deck-band-controls__button--cue-monitor.is-active {
+  border-color: color-mix(in srgb, var(--shell-cue-accent, #d98921) 78%, transparent);
+  background: color-mix(in srgb, var(--shell-cue-accent, #d98921) 13%, transparent);
+  color: color-mix(in srgb, var(--shell-cue-accent, #d98921) 92%, #fff);
 }
 
 @keyframes deck-auto-gain-pulse {

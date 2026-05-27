@@ -73,6 +73,7 @@ impl HorizontalBrowseTransportEngine {
       loop_start_sec: deck_state.loop_start_sec,
       loop_end_sec: deck_state.loop_end_sec,
       bands: deck_state.band_state,
+      cue_monitor_enabled: deck_state.cue_monitor_enabled,
       auto_gain_enabled: deck_state.auto_gain.enabled,
       auto_gain_status: deck_state.auto_gain.status.to_string(),
       auto_gain_value: deck_state.auto_gain.target_linear as f64,

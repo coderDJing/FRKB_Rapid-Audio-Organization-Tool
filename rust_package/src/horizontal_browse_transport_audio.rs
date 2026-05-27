@@ -546,14 +546,14 @@ fn sample_deck_rate(target: &mut DeckState, output_sample_rate: f64) -> (f32, f3
   }
   if let Some(decoded_end_sec) = decoded_pcm_end_timeline_sec(target) {
     if target.current_sec >= decoded_end_sec && finish_deck_at_decoded_pcm_end(target) {
-      return (left * target.gain, right * target.gain);
+      return (left, right);
     }
   }
   if target.duration_sec.is_finite() && target.current_sec >= target.duration_sec {
     target.current_sec = target.duration_sec;
     target.playing = false;
   }
-  (left * target.gain, right * target.gain)
+  (left, right)
 }
 
 fn sample_deck_scrub_preview(target: &mut DeckState, output_sample_rate: f64) -> (f32, f32) {
@@ -629,7 +629,7 @@ fn sample_deck_scrub_preview(target: &mut DeckState, output_sample_rate: f64) ->
     target.scrub_preview.current_sec
   };
 
-  let gain = target.gain * target.scrub_preview.level;
+  let gain = target.scrub_preview.level;
   (left * gain, right * gain)
 }
 
@@ -696,7 +696,7 @@ fn sample_deck_master_tempo(target: &mut DeckState, output_sample_rate: f64) -> 
     target.playing = false;
   }
 
-  (left * target.gain, right * target.gain)
+  (left, right)
 }
 
 pub(super) fn sample_deck(target: &mut DeckState, output_sample_rate: f64) -> (f32, f32) {

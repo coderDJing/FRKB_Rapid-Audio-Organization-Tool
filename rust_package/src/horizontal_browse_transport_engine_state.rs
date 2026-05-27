@@ -679,6 +679,10 @@ impl HorizontalBrowseTransportEngine {
       target.playing = payload.playing;
       target.playback_rate = Self::normalize_playback_rate(payload.playback_rate);
       target.master_tempo_enabled = payload.master_tempo_enabled;
+      if next_file_path.is_empty() {
+        target.cue_monitor_enabled = false;
+        target.cue_monitor_gain = 0.0;
+      }
       target.metronome_state.next_beat_index = None;
       if file_changed || payload.playing {
         target.scrub_preview.active = false;
@@ -768,6 +772,13 @@ impl HorizontalBrowseTransportEngine {
     let target = self.deck_mut(deck);
     target.band_state = bands;
     horizontal_browse_transport_audio::reset_band_filter_state(target);
+  }
+
+  pub(super) fn set_cue_monitor_enabled(&mut self, deck: DeckId, enabled: bool) {
+    self.mark_state_changed();
+    let target = self.deck_mut(deck);
+    target.cue_monitor_enabled = enabled && !Self::normalized_path(&target.file_path).is_empty();
+    self.refresh_output_gains();
   }
 
   pub(super) fn sync_loop_before_play(&mut self, deck: DeckId) {

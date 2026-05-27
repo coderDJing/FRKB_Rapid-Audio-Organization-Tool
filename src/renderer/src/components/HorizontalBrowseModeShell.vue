@@ -55,6 +55,7 @@ import {
 } from '@renderer/components/useHorizontalBrowseDeckSourceState'
 import { useHorizontalBrowseDeckDrop } from '@renderer/components/useHorizontalBrowseDeckDrop'
 import { useHorizontalBrowseDeckInteractionState } from '@renderer/components/useHorizontalBrowseDeckInteractionState'
+import { useHorizontalBrowseSongsRemoved } from '@renderer/components/useHorizontalBrowseSongsRemoved'
 
 type DeckKey = HorizontalBrowseDeckKey
 type HorizontalBrowseViewMode = 'dual' | 'edit'
@@ -69,11 +70,6 @@ type DeckCuePanelMode = 'memory' | 'hot-cue'
 const EDIT_MODE_BPM_INPUT_TITLE = '网格 BPM：修改分析结果和网格线，不改变播放速度'
 const DUAL_MODE_BPM_INPUT_TITLE = '目标 BPM：临时改变播放速度，不修改网格线'
 const EDIT_MODE_TAP_BPM_TITLE = 'Tap：按节拍连续点击，实时修改网格 BPM，不改变播放速度'
-
-const normalizePath = (value: string | null | undefined) =>
-  String(value || '')
-    .replace(/\//g, '\\')
-    .toLowerCase()
 
 type HorizontalBrowseDeckDetailLaneExpose = {
   toggleBarLinePicking?: () => void
@@ -125,7 +121,6 @@ const bottomDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
 const faderPanelRef = ref<InstanceType<typeof HorizontalBrowseFaderPanel> | null>(null)
 const topDeckToolbarState = ref(createDefaultDeckToolbarState())
 const bottomDeckToolbarState = ref(createDefaultDeckToolbarState())
-const hoveredDeckKey = ref<DeckKey | null>(null)
 const sharedDetailZoomState = ref<SharedDetailZoomState>({
   value: HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
   anchorRatio: 0.5,
@@ -374,13 +369,16 @@ const handleDeckMasterTempoToggle = (deck: DeckKey) => {
 
 const {
   deckBandState,
+  deckCueMonitorState,
   faderControlsExpanded,
   dualTransportSyncEnabled,
   canUseDualTransportSync,
   activateDualTransportSync,
   deactivateDualTransportSync,
   handleDualTransportSyncToggle,
-  handleDeckBandToggle
+  handleDeckBandToggle,
+  handleDeckCueMonitorToggle,
+  clearAllDeckCueMonitor
 } = useHorizontalBrowseFaderControls({
   topDeckSong,
   bottomDeckSong,
@@ -724,6 +722,7 @@ const enterEditMode = async () => {
 
 watch(isEditMode, (editMode) => {
   if (!editMode) return
+  clearAllDeckCueMonitor()
   void enterEditMode().catch((error) => {
     console.error('[horizontal-browse] enter edit mode failed', error)
   })
@@ -762,17 +761,10 @@ watch(
   { immediate: true }
 )
 
-const handleSongsRemoved = (payload: { listUUID?: string; paths?: string[] }) => {
-  const removedPaths = Array.isArray(payload?.paths) ? payload.paths : []
-  if (!removedPaths.length) return
-  const removedSet = new Set(removedPaths.map(normalizePath))
-  for (const deck of ['top', 'bottom'] as DeckKey[]) {
-    const songPath = resolveDeckSong(deck)?.filePath
-    if (songPath && removedSet.has(normalizePath(songPath))) {
-      void handleDeckEjectSong(deck)
-    }
-  }
-}
+const { handleSongsRemoved } = useHorizontalBrowseSongsRemoved({
+  resolveDeckSong,
+  handleDeckEjectSong
+})
 
 onMounted(() => {
   startSnapshotSync()
@@ -855,10 +847,13 @@ onUnmounted(() => {
         :cue-active="topDeckCueActive"
         :bands-visible="faderControlsExpanded && !isEditMode"
         :bands="deckBandState.top"
+        :song-present="!!topDeckSong"
+        :cue-monitor-enabled="deckCueMonitorState.top"
         @cue-pointer-down="handleDeckCuePointerDown('top', $event)"
         @cue-click="handleDeckCueClick('top')"
         @play-toggle="handleDeckPlayPauseToggle('top')"
         @toggle-band="handleDeckBandToggle"
+        @toggle-cue-monitor="handleDeckCueMonitorToggle"
       />
 
       <HorizontalBrowseFaderPanel
@@ -881,10 +876,13 @@ onUnmounted(() => {
         :cue-active="bottomDeckCueActive"
         :bands-visible="faderControlsExpanded"
         :bands="deckBandState.bottom"
+        :song-present="!!bottomDeckSong"
+        :cue-monitor-enabled="deckCueMonitorState.bottom"
         @cue-pointer-down="handleDeckCuePointerDown('bottom', $event)"
         @cue-click="handleDeckCueClick('bottom')"
         @play-toggle="handleDeckPlayPauseToggle('bottom')"
         @toggle-band="handleDeckBandToggle"
+        @toggle-cue-monitor="handleDeckCueMonitorToggle"
       />
     </div>
 

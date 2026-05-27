@@ -271,6 +271,17 @@ pub fn horizontal_browse_transport_set_band_state(
 }
 
 #[napi]
+pub fn horizontal_browse_transport_set_cue_monitor_enabled(
+  deck: String,
+  enabled: bool,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine = engine().lock();
+  engine.set_cue_monitor_enabled(deck_id, enabled);
+  Ok(engine.snapshot(engine.last_now_ms))
+}
+
+#[napi]
 pub fn horizontal_browse_transport_set_playing(
   deck: String,
   now_ms: f64,

@@ -15,6 +15,7 @@ export declare function horizontalBrowseTransportBeatsync(deck: string, nowMs?: 
 export declare function horizontalBrowseTransportAlignToLeader(deck: string, nowMs?: number | undefined | null, targetSec?: number | undefined | null, skipGridSnap?: boolean | undefined | null): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetLeader(deck?: string | undefined | null, nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetBandState(deck: string, bands: HorizontalBrowseTransportBandState): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportSetCueMonitorEnabled(deck: string, enabled: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetPlaying(deck: string, nowMs: number, playing: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSeek(deck: string, nowMs: number, currentSec: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetScrubPreview(deck: string, nowMs: number, active: boolean, currentSec: number, rate: number): HorizontalBrowseTransportSnapshot
@@ -90,6 +91,7 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   loopStartSec: number
   loopEndSec: number
   bands: HorizontalBrowseTransportBandState
+  cueMonitorEnabled: boolean
   autoGainEnabled: boolean
   autoGainStatus: string
   autoGainValue: number

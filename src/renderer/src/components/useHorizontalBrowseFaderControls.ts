@@ -18,6 +18,7 @@ type UseHorizontalBrowseFaderControlsParams = {
   }
   nativeTransport: {
     setBandState: (deck: DeckKey, bands: HorizontalBrowseTransportBandState) => Promise<unknown>
+    setCueMonitorEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
     setLeader: (deck?: DeckKey | null) => Promise<unknown>
     setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
     alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
@@ -43,6 +44,10 @@ export const useHorizontalBrowseFaderControls = (
   const deckBandState = reactive<Record<DeckKey, HorizontalBrowseTransportBandState>>({
     top: createDefaultBandState(),
     bottom: createDefaultBandState()
+  })
+  const deckCueMonitorState = reactive<Record<DeckKey, boolean>>({
+    top: false,
+    bottom: false
   })
   const faderControlsExpanded = ref(Boolean(params.setting.horizontalBrowseFaderControlsExpanded))
   const dualTransportSyncEnabled = ref(false)
@@ -122,10 +127,50 @@ export const useHorizontalBrowseFaderControls = (
     })
   }
 
+  const setDeckCueMonitorEnabled = (deck: DeckKey, enabled: boolean, revertOnFailure = true) => {
+    const nextValue = Boolean(enabled && params.resolveDeckSong(deck))
+    const previousValue = deckCueMonitorState[deck]
+    deckCueMonitorState[deck] = nextValue
+    void params.nativeTransport.setCueMonitorEnabled(deck, nextValue).catch(() => {
+      if (revertOnFailure) {
+        deckCueMonitorState[deck] = previousValue
+      }
+    })
+  }
+
+  const handleDeckCueMonitorToggle = (deck: DeckKey) => {
+    if (!params.resolveDeckSong(deck)) return
+    setDeckCueMonitorEnabled(deck, !deckCueMonitorState[deck])
+  }
+
+  const clearDeckCueMonitor = (deck: DeckKey) => {
+    if (!deckCueMonitorState[deck]) return
+    setDeckCueMonitorEnabled(deck, false, false)
+  }
+
+  const clearAllDeckCueMonitor = () => {
+    clearDeckCueMonitor('top')
+    clearDeckCueMonitor('bottom')
+  }
+
   watch(canUseDualTransportSync, (canUse) => {
     if (canUse) return
     deactivateDualTransportSync()
   })
+
+  watch(
+    () => params.resolveDeckSong('top'),
+    (song) => {
+      if (!song) clearDeckCueMonitor('top')
+    }
+  )
+
+  watch(
+    () => params.resolveDeckSong('bottom'),
+    (song) => {
+      if (!song) clearDeckCueMonitor('bottom')
+    }
+  )
 
   watch(
     () =>
@@ -151,12 +196,15 @@ export const useHorizontalBrowseFaderControls = (
 
   return {
     deckBandState,
+    deckCueMonitorState,
     faderControlsExpanded,
     dualTransportSyncEnabled,
     canUseDualTransportSync,
     activateDualTransportSync,
     deactivateDualTransportSync,
     handleDualTransportSyncToggle,
-    handleDeckBandToggle
+    handleDeckBandToggle,
+    handleDeckCueMonitorToggle,
+    clearAllDeckCueMonitor
   }
 }
