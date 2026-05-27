@@ -1,128 +1,180 @@
 <p align="center">
-  <img width="100px" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/build/icon.png?raw=true" alt="GitHub Readme Stats" />
+  <img width="100px" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/build/icon.png?raw=true" alt="FRKB" />
   <h2 align="center">FRKB</h2>
   <p align="center">Rapid Audio Organization Tool</p>
 </p>
 
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases/latest)
 [![GitHub license](https://img.shields.io/github/license/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/LICENSE)
-[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/master)
-[![GitHub last commit](https://img.shields.io/github/last-commit/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/master)
+[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/main)
+[![GitHub last commit](https://img.shields.io/github/last-commit/coderDJing/FRKB_Rapid-Audio-Organization-Tool)](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/commits/main)
 [![Windows](https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white)](https://www.microsoft.com/windows)
 [![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://www.apple.com/macos)
-
 
 <p align="center">
   <a href="/README.md">English</a>
   ·
-  <a href="/readme/README_CN.md">简体中文</a>
+  <a href="/readme/README_CN.md">Simplified Chinese</a>
 </p>
 
 ## FRKB
+
 <p align="center">
   <img alt="FRKB in action" src="https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/blob/main/screenshot/softwareScreenshot.png?raw=true">
 </p>
 
-### How to Use
-1. Download from the website or the [Releases](https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases):
+## What It Is
+
+**FRKB** is a desktop audio workflow tool for DJs and music collectors who need to organize, preview, analyze, and prepare large track libraries quickly. It combines real file-based library management, waveform browsing, fingerprint deduplication, Rekordbox and Pioneer library access, dual-deck auditioning, recording, metadata cleanup, conversion, and Mixtape preparation in one Windows/macOS app.
+
+FRKB is built around a simple rule: the structure you see in the app should match the actual music files on disk. It is not just a reference manager. When you organize, move, export, deduplicate, or restore tracks, the file system stays aligned with your library.
+
+## Download
+
+1. Download FRKB from the website or GitHub Releases.
    - Website: https://coderDJing.github.io/FRKB_Rapid-Audio-Organization-Tool/
-   - Or go to Releases and pick your platform (Windows/macOS)
-2. Run the installer to install on your computer.
-3. Launch FRKB from the desktop shortcut.
+   - Releases: https://github.com/coderDJing/FRKB_Rapid-Audio-Organization-Tool/releases
+2. Pick the Windows or macOS installer.
+3. Install and launch FRKB from the desktop shortcut or application launcher.
 
-### Project Background
-As a DJ, I frequently need to organize large numbers of music files. However, existing audio file management software often falls short. Many require excessive mouse operations, leading to shoulder and neck pain. Others have poorly designed shortcuts that do not conform to ergonomic principles. Additionally, some only manage file references, leaving the actual file manager cluttered and disorganized. Furthermore, I often end up downloading duplicate songs, which wastes time during the selection process. Therefore, I decided to develop a more user-friendly software solution to address these issues.The ultimate goal of this project is to incorporate AI models that will learn users' classification behavior patterns and automatically categorize songs into libraries, which will save me God knows how much time.
-
-### Introduction
-**FRKB** is a cross-platform desktop audio workflow tool designed for audio professionals such as DJs. It combines rapid library organization, fingerprint deduplication, waveform-driven preview, auto-recording, stem separation, Pioneer USB library support, Rekordbox library integration, dual-deck browsing, global search, and standalone conversion in one desktop app for Windows and macOS.
-
-### System Requirements
+## System Requirements
 
 - Windows 10 or later (x64)
 - macOS 12 or later
 
-### Core Features
-- **Portable**: Easily transfer the database to mobile devices for on-the-go use.
-- **Song Deduplication**: Identify and exclude duplicate tracks using content fingerprints (content hash / file hash modes; content hash ignores cover art, title, artist, etc.), with prompts during import to keep your library clean and efficient.
-- **Playlist Fingerprint Deduplication**: One-click analysis on a playlist and move duplicates to the recycle bin.
-- **Ergonomic Shortcuts**: Ergonomically designed shortcuts that allow most operations to be performed with the left hand, making the organization process smoother and more efficient.
-- **Global Shortcuts**: Playback controls even when minimized, plus a customizable focus/minimize toggle shortcut.
-- **Selectable Playback Range**: Often, you only need to listen to a specific part of an audio track for screening. This feature allows you to set a start and end point for playback.
-- **Output Device Selection**: Choose a specific output device or follow the system default.
-- **Direct File Management**: When adding tracks, FRKB directly manages the audio files themselves, ensuring that the organization results are immediately reflected in the computer's folders, achieving a "what you see is what you get" effect.
-- **Filter/Curated Dual-Library Flow**: Fast triage and layered organization that matches DJ workflows.
-- **Drag-and-Drop Import & Move**: Drag files/folders to import, drag tracks between playlists, and hold Ctrl/Option to drag out copies to Explorer/Finder.
-- **External Track Playback**: Open external audio files for temporary playback without importing them.
-- **Track Export**: Export to a folder and optionally delete tracks after export.
-- **Multiple Waveform Visualizations**: Offers SoundCloud-style waveform, fine-grained waveform, RGB three-band energy view, and single-track editing waveform to spot drops and phrasing instantly. The single-track editing mode supports detailed waveform inspection and marker placement.
-- **Waveform Preview Column**: Shows cached waveform previews directly in the song list for fast scanning.
-- **Title Bar Audio Visualization**: Real-time audio spectrum display in the main window title bar, allowing you to monitor playback status and audio energy changes without switching windows.
-- **BPM Analysis & Tap Tempo**: Displays BPM information. Left-click the BPM to tap tempo (calculated to 1 decimal place). When the BPM is manually tapped, it is highlighted in `#0078d4`. Right-click to restore the system-analyzed BPM. Tooltip: "Tap beat (LMB) / Reset (RMB)".
-- **Key Analysis & Display**: Supports Classic (C#m) and Camelot (1A/1B) display styles.
-- **Recycle Bin**: Safely recover deleted tracks and restore them to their original playlists.
-- **Cloud Sync (fingerprints)**: Bidirectional sync of local track fingerprints (SHA256) with the cloud, including diff analysis, paginated pulls, and batched uploads, with quota and rate limiting (up to 10 sync starts within 5 minutes). Entry: system tray → Cloud Sync.
-- **Curated Artist Cloud Sync**: Curated artist data supports automatic split-linking when tracks contain multiple artists, with intelligent detection and separation. All curated artist information syncs across devices via cloud, maintaining a consistent curated artist list everywhere.
-- **Internationalization (i18n)**: Built-in Chinese (`zh-CN`) and English (`en-US`) language packs.
-- **Save Cover Image**: Right-click the enlarged cover to save the image locally.
-- **Metadata Editing & Online Fill**: Edit tags and cover art with MusicBrainz criteria search and AcoustID fingerprint matching, plus batch auto-fill for track info.
-- **Song Filtering**: Filter by title, artist, album, duration, format, BPM, and more, with optional persistence after restart.
-- **Wide Format Playback & Conversion**: Built-in FFmpeg pipeline plays instantly, supports standalone conversion workflows, and batch-converts 20+ mainstream and pro audio formats. For non-MP3 audio files, right-click menu provides one-click conversion to MP3 format, automatically skipping existing copies to avoid redundant processing.
-- **Mixtape Timeline Editing**: Dedicated auto-recording workspace with a dual-track timeline, beat-grid editing, first-downbeat analysis, metronome tools, preview sync, gain/BPM envelopes, mute segments, undo support, and timeline-accurate export. Supports dragging tracks from the main window directly into the timeline and cross-track drag positioning for quick DJ Set arrangement.
-- **Stem Runtime & Separation**: Stem mode, managed runtimes, separation cache management, ONNX fast separation, DirectML/XPU acceleration, and on-demand runtime downloads for auto-recording workflows.
-- **Pioneer USB Library Support**: Read more Pioneer USB library variants, including legacy Device Library and OneLibrary entries, with preview waveform caching, multi-drive recognition, playback, and guarded operations.
-- **Rekordbox Library Integration**: Directly read local Rekordbox database and playlists without manual XML export. Browse Rekordbox playlists within FRKB, drag-to-reorder tracks, read Cue points and Loop information, with one-click XML export for syncing with other Pioneer devices. Filter and curated libraries support real sequence numbering, maintaining consistent sorting logic with Rekordbox.
-- **Dual-Deck Browse Mode**: Provides a DJ mixer-style side-by-side dual-track browsing interface, with each side displaying a track's waveform and control panel. Supports independent volume faders and a crossfader for quick volume balance adjustment between two tracks. Each deck supports Hot Cue (hot markers), Memory Cue (memory markers), Loop (loop segments) control, along with Quantize toggle and beat-grid metronome. Dual-deck mode automatically highlights key information for easy harmonic matching assessment between tracks.
-- **Global Track Search**: Search songs across the app and jump back to the matching location with clearer and more stable locate feedback.
-- **NetEase Cloud Search**: Right-click menu to directly search the current track on NetEase Cloud Music web, convenient for finding comments, lyrics, and similar recommendations without manually copying song names.
-- **Similar Tracks Query**: Dual-source similar track discovery that simultaneously queries two data sources for songs with matching vibes, helping quickly find same-genre music and expand your selection range.
-- **Batch Playlist Rename**: Batch rename tracks within a playlist using preset rules or custom formats, useful for organizing tracks collected from different sources while maintaining naming consistency.
-- **Selection Count Display**: Real-time display of selected track count at the bottom of the song list, convenient for confirming selection range before batch operations and avoiding mistakes.
-- **Playlist Name Hover**: When playlist names are truncated due to length, hovering the mouse displays the full name without adjusting window width or entering edit mode.
-- **Idle Background Scheduling**: Unified idle-task scheduling and throttling keep background analysis predictable while reducing contention with foreground work.
+FRKB does not provide an official Linux release.
 
-  | Format | Scan/Playback | Conversion |
-  | ------ | ------------- | ---------- |
-  | `MP3`  | ✅             | ✅          |
-  | `WAV`  | ✅             | ✅          |
-  | `FLAC` | ✅             | ✅          |
-  | `AIF`  | ✅             | ✅          |
-  | `AIFF` | ✅             | ✅          |
-  | `OGG`  | ✅             | ✅          |
-  | `OPUS` | ✅             | ✅          |
-  | `AAC`  | ✅             | ✅          |
-  | `M4A`  | ✅             | ✅          |
-  | `MP4`  | ✅             | ✅          |
-  | `WMA`  | ✅             | ✅          |
-  | `AC3`  | ✅             | ✅          |
-  | `DTS`  | ✅             | ✅          |
-  | `MKA`  | ✅             | ✅          |
-  | `WEBM` | ✅             | ✅          |
-  | `APE`  | ✅             | ✅          |
-  | `TAK`  | ✅             | ✅          |
-  | `TTA`  | ✅             | ✅          |
-  | `WV`   | ✅             | ✅          |
+## Feature Overview
 
-### Contributions
-Contributions of all kinds are welcome! Whether reporting issues, suggesting features, or contributing code, feel free to open an issue or submit a pull request.
+### Library Organization
 
-### License
-FRKB follows the GNU General Public License v2.0 or later (GPL-2.0-or-later).
+- **Real file management**: FRKB manages the audio files themselves, so playlists and library folders stay reflected on disk.
+- **Filter and Curated libraries**: A two-stage DJ workflow for fast triage and long-term selection.
+- **Drag-and-drop import and movement**: Import files or folders, move tracks between playlists, and drag copies out to Explorer/Finder with Ctrl/Option.
+- **Safe recycle bin**: Deleted tracks and deduplicated items go to FRKB's recycle bin and can be restored to their original playlists.
+- **Playlist cleanup tools**: Clear playlists with visible progress, batch rename playlist tracks, clean missing external-library records, and keep selection counts visible before bulk operations.
+- **Portable library state**: Library data can be moved with the music collection for use across devices.
 
-# Development
+### Deduplication, Analysis, And Metadata
 
-### Compile Rust
+- **Song deduplication**: Detect duplicate tracks by content hash or whole-file hash. Content hash mode ignores metadata differences such as cover art, title, and artist.
+- **Playlist fingerprint deduplication**: Analyze a playlist and move duplicates to the recycle bin in one workflow.
+- **BPM and beat-grid analysis**: Analyze tempo and grid placement, tap BPM manually, restore system-analyzed BPM, and work with stricter grid candidate rules for difficult tracks.
+- **Key analysis**: Display musical key in Classic notation such as `C#m` or Camelot notation such as `1A/1B`.
+- **Visible analysis progress**: Track-level analysis status is surfaced in the song list instead of leaving background work invisible.
+- **External-source analysis cache**: Rekordbox, Pioneer USB, and ordinary external tracks can reuse cached analysis data instead of repeatedly reprocessing the same files.
+- **Metadata editing and online fill**: Edit tags and cover art, search MusicBrainz, use AcoustID/Chromaprint matching, and batch-fill metadata.
+- **Native Chromaprint fingerprinting**: AcoustID fingerprint generation runs through the native module for lower overhead during metadata matching.
+
+### Playback And Waveforms
+
+- **Wide format playback**: Built-in media tooling supports common and professional audio formats without sending files through another app first.
+- **Selectable playback range**: Start and stop playback within a chosen section when only part of a track needs to be checked.
+- **Output device selection**: Play through a selected audio device or follow the system default.
+- **Multiple waveform styles**: SoundCloud-style waveform, detailed waveform, RGB energy view, list waveform previews, and single-track editing waveforms.
+- **Large waveform browsing**: Dual-track and edit-mode waveforms support precise seeking, cue placement, grid inspection, and smooth redraw during playback.
+- **Title-bar audio visualization**: Monitor playback energy from the title bar without giving up screen space.
+- **File association and external playback**: Open supported audio files from the system and audition them temporarily without importing them into the library.
+- **Global shortcuts**: Control playback while the window is minimized, with configurable show/hide behavior.
+
+### Dual-Deck Browse Mode
+
+- **Side-by-side auditioning**: Browse two tracks at once in a DJ mixer-style interface.
+- **Deck controls**: Each deck has transport controls, waveform display, Hot Cue, Memory Cue, Loop, Quantize, and beat-grid tools.
+- **Mixer controls**: Use independent deck volume faders, channel controls, and a crossfader to judge transitions quickly.
+- **Beat Sync and Master behavior**: Sync tempo and grid behavior between decks while keeping visible waveform scale stable.
+- **Tempo nudge**: Temporarily push a deck faster or slower with hold controls, then return cleanly to the base tempo.
+- **Auto Gain**: Match deck loudness against the current master so A/B comparisons are not distorted by level differences.
+- **Cue monitoring**: Monitor cue output per deck while preparing comparisons.
+- **Recording**: Record the dual-deck output to high-quality WAV and save it directly into the Recording Library.
+- **Monitor-only metronome**: Use the beat-grid metronome while listening without printing the metronome into recorded audio.
+
+### Recording Library
+
+- **Dedicated recording area**: Recordings are stored in a separate Recording Library instead of being mixed into the normal organization flow.
+- **High-quality WAV output**: Recordings are saved as uncompressed WAV with the current output device sample rate.
+- **Live duration display**: The recording control shows millisecond-level duration while recording.
+- **Post-recording summary**: After stopping, FRKB shows the saved file name, format, duration, and path.
+- **Analysis isolation**: Recording-library files are excluded from normal background analysis candidates so fresh recordings do not steal resources from library work.
+
+### Rekordbox And Pioneer Library Integration
+
+- **Local Rekordbox database browsing**: Read Rekordbox playlists directly without manually exporting XML first.
+- **Cue and Loop support**: Read Hot Cues, Memory Cues, and Loop data from Rekordbox/Pioneer sources and preserve them when copying into local FRKB libraries.
+- **Rekordbox playlist operations**: Browse playlists, reorder tracks, create or move playlist nodes where supported, and export XML for Pioneer workflows.
+- **Pioneer USB support**: Read Device Library and OneLibrary USB structures, including playlist trees, waveform previews, multi-drive identity, and track playback.
+- **External-library context menus**: Use familiar right-click actions on Rekordbox and Pioneer rows, including copying to Filter or Curated libraries.
+- **Keyboard multi-selection**: Select multiple songs in Rekordbox/Pioneer lists with keyboard-style range selection.
+- **Missing-file handling**: Missing source files are clearly marked, blocked from playback, and can be cleaned from Rekordbox playlist records when appropriate.
+
+### Mixtape And Stem Workflow
+
+- **Mixtape timeline workspace**: Arrange tracks on a timeline, preview transitions, edit beat alignment, and export a timeline-accurate result.
+- **Cross-window track drag-in**: Drag songs from the main library directly into the Mixtape workspace.
+- **Beat alignment tools**: Adjust grids, preview alignment, use metronome tools, and keep timeline playback aligned with edited grid data.
+- **Gain, BPM, mute, and loop controls**: Shape the mix with timeline controls, envelopes, mute sections, loop overlays, and undo support.
+- **Stem preparation**: Managed Stem runtime, separation cache management, ONNX fast separation, and DirectML/XPU acceleration support auto-recording and mix preparation workflows.
+
+### Export, Conversion, And Formats
+
+- **Track export**: Export selected tracks to a folder and optionally delete the source entries after export.
+- **Persistent export destination**: Export dialogs remember the last destination and validate that it still exists.
+- **Standalone conversion**: Convert audio files without first importing them into the main library.
+- **Batch conversion with cancel**: Long conversion jobs show progress, can be canceled, and summarize completed, skipped, failed, and canceled items.
+- **One-click MP3 conversion**: Convert non-MP3 tracks from the context menu while skipping existing converted copies.
+
+| Format | Scan/Playback | Conversion |
+| ------ | ------------- | ---------- |
+| `MP3`  | Yes           | Yes        |
+| `WAV`  | Yes           | Yes        |
+| `FLAC` | Yes           | Yes        |
+| `AIF`  | Yes           | Yes        |
+| `AIFF` | Yes           | Yes        |
+| `OGG`  | Yes           | Yes        |
+| `OPUS` | Yes           | Yes        |
+| `AAC`  | Yes           | Yes        |
+| `M4A`  | Yes           | Yes        |
+| `MP4`  | Yes           | Yes        |
+| `WMA`  | Yes           | Yes        |
+| `AC3`  | Yes           | Yes        |
+| `DTS`  | Yes           | Yes        |
+| `MKA`  | Yes           | Yes        |
+| `WEBM` | Yes           | Yes        |
+| `APE`  | Yes           | Yes        |
+| `TAK`  | Yes           | Yes        |
+| `TTA`  | Yes           | Yes        |
+| `WV`   | Yes           | Yes        |
+
+### Search, Discovery, And Sync
+
+- **Global track search**: Search across the app and jump back to the matching location.
+- **Song filtering**: Filter by title, artist, album, duration, format, BPM, and more, with optional persistence after restart.
+- **NetEase Cloud search**: Search the selected track on NetEase Cloud Music from the context menu.
+- **Similar tracks query**: Query multiple sources for tracks with a similar vibe.
+- **Cloud fingerprint sync**: Sync local SHA256 fingerprints with the FRKB cloud backend, including diff analysis, paginated pulls, batched uploads, quotas, and rate limiting.
+- **Curated artist sync**: Split and link multi-artist tracks and sync curated artist data across devices.
+- **Internationalization**: Built-in Simplified Chinese and English language packs.
+
+## Project Background
+
+As a DJ, I need to organize large batches of music files quickly. Many existing tools either require too much mouse work, use shortcuts that are not comfortable for long sessions, or only organize references while leaving the actual folders messy. FRKB exists to make library work faster, more physical, and less fragile: sort the music, hear the music, move the real files, and keep the structure usable outside the app.
+
+The long-term goal is to let AI models learn classification behavior and help route tracks automatically.
+
+## Development
+
+### Install Dependencies
+
+```bash
+pnpm install
+```
+
+### Compile Rust Native Module
 
 ```bash
 pnpm add -g @napi-rs/cli
 cd ./rust_package
 napi build --platform --release
-```
-
-### Installing Dependencies
-
-```bash
-cd ..
-pnpm install
 ```
 
 ### Development Mode
@@ -131,19 +183,28 @@ pnpm install
 pnpm run dev
 ```
 
-### Building
+### Build
 
 ```bash
-# For windows
-$ pnpm build:win
+# Windows
+pnpm run build:win
 
-# For macOS
-$ pnpm build:mac
-
+# macOS
+pnpm run build:mac
 ```
 
-# Backlog
+## Contribution
+
+Issues, feature suggestions, and pull requests are welcome.
+
+## License
+
+FRKB is licensed under GNU General Public License v2.0 or later (GPL-2.0-or-later).
+
+## Backlog
+
 <a href="./backlog.md">backlog.md</a>
 
-### Cloud Sync Backend Project
-- `FRKB-API` (cloud sync server): [https://github.com/coderDJing/FRKB-API](https://github.com/coderDJing/FRKB-API)
+## Cloud Sync Backend
+
+- `FRKB-API`: [https://github.com/coderDJing/FRKB-API](https://github.com/coderDJing/FRKB-API)
