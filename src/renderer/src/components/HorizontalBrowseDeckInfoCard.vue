@@ -483,18 +483,33 @@ onUnmounted(() => {
   box-shadow: none;
 }
 
-.deck-info-action.is-blinking {
-  animation: deck-info-action-sync-blink 0.85s steps(2, end) infinite;
+.deck-info-action.is-active.is-blinking {
+  animation: deck-info-action-sync-flash 1s steps(1, end) infinite;
 }
 
-@keyframes deck-info-action-sync-blink {
+@keyframes deck-info-action-sync-flash {
   0%,
-  100% {
-    opacity: 1;
+  49.99% {
+    color: var(--shell-active-control-text, #ffffff);
+    border-color: var(--shell-active-control-border, var(--accent));
+    background: var(--shell-active-control-bg, var(--accent));
+    box-shadow:
+      0 0 0 1px var(--shell-active-control-outline, transparent),
+      inset 0 1px 0 var(--shell-active-control-inset, transparent);
   }
 
-  50% {
-    opacity: 0.38;
+  50%,
+  100% {
+    color: var(--text-weak);
+    border-color: var(--border);
+    background: transparent;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deck-info-action.is-active.is-blinking {
+    animation: none;
   }
 }
 </style>
