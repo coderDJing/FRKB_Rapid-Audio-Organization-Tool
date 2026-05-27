@@ -10,6 +10,8 @@ import {
   resolveAnalysisRuntimeDownloadText,
   resolveAnalysisRuntimeDownloadTitle
 } from '@renderer/utils/analysisRuntimeDownloadUi'
+import { hasCompleteKeyAnalysis } from '@renderer/pages/modules/songsArea/composables/useKeyAnalysisProgress'
+import type { ISongInfo } from 'src/types/globals'
 const runtime = useRuntimeStore()
 
 const currentLocale = computed(() => i18n.global.locale.value)
@@ -23,6 +25,28 @@ const selectedSongCount = computed(() =>
 const selectedSongsText = computed(() =>
   t('bottomInfo.selectedSongs', { count: selectedSongCount.value })
 )
+const countPendingAnalysis = (songInfoArr: ISongInfo[]): number => {
+  let count = 0
+  for (const song of songInfoArr) {
+    if (!hasCompleteKeyAnalysis(song)) count++
+  }
+  return count
+}
+const pendingAnalysisCount = computed(() =>
+  isPioneerView.value ? 0 : countPendingAnalysis(runtime.songsArea?.songInfoArr || [])
+)
+const pendingAnalysisText = computed(() =>
+  t('bottomInfo.pendingAnalysis', { count: pendingAnalysisCount.value })
+)
+const splitLeftPendingCount = computed(() =>
+  countPendingAnalysis(runtime.songsAreaPanels.panes.left.songInfoArr)
+)
+const splitRightPendingCount = computed(() =>
+  countPendingAnalysis(runtime.songsAreaPanels.panes.right.songInfoArr)
+)
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v)
 
 function formatDurationUnit(unit: 'day' | 'hour' | 'minute' | 'second', count: number): string {
   const pluralKey = count === 1 ? 'one' : 'other'
@@ -331,9 +355,15 @@ const syncKeyAnalysisBackgroundStatus = async () => {
 }
 void syncKeyAnalysisBackgroundStatus()
 
-window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) => {
-  if (arg1 && typeof arg1 === 'object') {
-    if (applyProgressPayload(arg1)) return
+const handleProgressSet = (
+  _event: unknown,
+  arg1: unknown,
+  arg2: unknown,
+  arg3: unknown,
+  arg4: unknown
+) => {
+  if (isRecord(arg1)) {
+    if (applyProgressPayload(arg1 as unknown as ProgressPayload)) return
   }
   // 兼容旧签名
   const titleKey = arg1
@@ -341,7 +371,8 @@ window.electron.ipcRenderer.on('progressSet', (_event, arg1, arg2, arg3, arg4) =
   const total = arg3
   const noNumFlag = arg4
   upsertTask(String(titleKey), Number(nowNum) || 0, Number(total) || 0, !!noNumFlag)
-})
+}
+window.electron.ipcRenderer.on('progressSet', handleProgressSet)
 
 watch(hasAnyVisibleTask, (visible) => {
   if (visible) {
@@ -420,65 +451,77 @@ onMounted(() => {
   document.addEventListener('click', handleDocumentClick)
 })
 
-onBeforeUnmount(() => {
-  document.removeEventListener('click', handleDocumentClick)
-  clearBackgroundHideTimer()
-  for (const frameId of progressTransitionRestoreFrames.values()) {
-    cancelAnimationFrame(frameId)
+const handleImportFinished = async (
+  _event: unknown,
+  _songListUUID: unknown,
+  importSummary: unknown,
+  progressId?: string
+) => {
+  runtime.isProgressing = false
+  runtime.importingSongListUUID = ''
+  // 有 progressId 则按 id 清理；否则清理整组 import
+  if (progressId) {
+    tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
+  } else {
+    tasks.value = tasks.value.filter((t) => t.id !== 'import')
   }
-  progressTransitionRestoreFrames.clear()
-})
-window.electron.ipcRenderer.on(
-  'importFinished',
-  async (_event, _songListUUID, importSummary, progressId?: string) => {
-    runtime.isProgressing = false
-    runtime.importingSongListUUID = ''
-    // 有 progressId 则按 id 清理；否则清理整组 import
-    if (progressId) {
-      tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
-    } else {
-      tasks.value = tasks.value.filter((t) => t.id !== 'import')
-    }
-    const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
-      .default
-    await openImportSummary(importSummary)
+  const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
+    .default
+  if (isRecord(importSummary)) {
+    await openImportSummary(
+      importSummary as unknown as import('@renderer/components/importFinishedSummaryDialog').ImportSummary
+    )
   }
-)
+}
+window.electron.ipcRenderer.on('importFinished', handleImportFinished)
 
-window.electron.ipcRenderer.on(
-  'addSongFingerprintFinished',
-  async (_event, fingerprintSummary, progressId?: string) => {
-    runtime.isProgressing = false
-    // 清理导入/指纹相关进度行
-    if (progressId) {
-      tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
-    } else {
-      tasks.value = tasks.value.filter((t) => t.id !== 'import')
-    }
-    const openFingerprintSummary = (
-      await import('@renderer/components/addSongFingerprintFinishedDialog')
-    ).default
-    await openFingerprintSummary(fingerprintSummary)
+const handleAddSongFingerprintFinished = async (
+  _event: unknown,
+  fingerprintSummary: unknown,
+  progressId?: string
+) => {
+  runtime.isProgressing = false
+  // 清理导入/指纹相关进度行
+  if (progressId) {
+    tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
+  } else {
+    tasks.value = tasks.value.filter((t) => t.id !== 'import')
   }
-)
+  const openFingerprintSummary = (
+    await import('@renderer/components/addSongFingerprintFinishedDialog')
+  ).default
+  if (isRecord(fingerprintSummary)) {
+    await openFingerprintSummary(
+      fingerprintSummary as unknown as import('@renderer/components/addSongFingerprintFinishedDialog').FingerprintSummary
+    )
+  }
+}
+window.electron.ipcRenderer.on('addSongFingerprintFinished', handleAddSongFingerprintFinished)
 
+const handleFingerprintsAddExistingFinished = async (
+  _event: unknown,
+  summary: unknown,
+  progressId?: string
+) => {
+  runtime.isProgressing = false
+  if (progressId) {
+    tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
+  } else {
+    tasks.value = tasks.value.filter((t) => t.id !== 'import')
+  }
+  const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
+    .default
+  if (isRecord(summary)) {
+    await openImportSummary(
+      summary as unknown as import('@renderer/components/importFinishedSummaryDialog').ImportSummary
+    )
+  }
+}
 window.electron.ipcRenderer.on(
   'fingerprints:addExistingFinished',
-  async (_event, summary, progressId?: string) => {
-    runtime.isProgressing = false
-    if (progressId) {
-      tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
-    } else {
-      tasks.value = tasks.value.filter((t) => t.id !== 'import')
-    }
-    const openImportSummary = (await import('@renderer/components/importFinishedSummaryDialog'))
-      .default
-    if (summary) {
-      await openImportSummary(summary)
-    }
-  }
+  handleFingerprintsAddExistingFinished
 )
-window.electron.ipcRenderer.on('noAudioFileWasScanned', async (_event, progressId?: string) => {
+const handleNoAudioFileWasScanned = async (_event: unknown, progressId?: string) => {
   runtime.isProgressing = false
   runtime.importingSongListUUID = ''
   if (progressId) tasks.value = tasks.value.filter((t) => t.id !== String(progressId))
@@ -490,10 +533,14 @@ window.electron.ipcRenderer.on('noAudioFileWasScanned', async (_event, progressI
     innerWidth: 400,
     confirmShow: false
   })
-})
+}
+window.electron.ipcRenderer.on('noAudioFileWasScanned', handleNoAudioFileWasScanned)
 
 // 音频转换完成摘要弹窗（简要）
-window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
+const handleAudioConvertDone = async (
+  _e: unknown,
+  payload: { jobId?: string; summary?: unknown; errors?: unknown[] }
+) => {
   // 清理转换进度行
   const doneId = String(payload?.jobId || '')
   const scheduleRemoval = (id: string) => {
@@ -515,6 +562,30 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   }
   const openSummary = (await import('@renderer/components/conversionFinishedSummaryDialog')).default
   await openSummary(payload?.summary || null, payload?.errors || [])
+}
+window.electron.ipcRenderer.on('audio:convert:done', handleAudioConvertDone)
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleDocumentClick)
+  clearBackgroundHideTimer()
+  for (const frameId of progressTransitionRestoreFrames.values()) {
+    cancelAnimationFrame(frameId)
+  }
+  progressTransitionRestoreFrames.clear()
+
+  // 清理 IPC 监听器
+  window.electron?.ipcRenderer?.removeListener('progressSet', handleProgressSet)
+  window.electron?.ipcRenderer?.removeListener('importFinished', handleImportFinished)
+  window.electron?.ipcRenderer?.removeListener(
+    'addSongFingerprintFinished',
+    handleAddSongFingerprintFinished
+  )
+  window.electron?.ipcRenderer?.removeListener(
+    'fingerprints:addExistingFinished',
+    handleFingerprintsAddExistingFinished
+  )
+  window.electron?.ipcRenderer?.removeListener('noAudioFileWasScanned', handleNoAudioFileWasScanned)
+  window.electron?.ipcRenderer?.removeListener('audio:convert:done', handleAudioConvertDone)
 })
 </script>
 <template>
@@ -618,6 +689,19 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
       class="total-row"
     >
       <div v-if="selectedSongCount > 0" class="selected-count-text">{{ selectedSongsText }}</div>
+      <template v-if="runtime.songsAreaPanels.splitEnabled">
+        <div v-if="splitLeftPendingCount > 0" class="selected-count-text">
+          {{ t('bottomInfo.pendingAnalysisLeft', { count: splitLeftPendingCount }) }}
+        </div>
+        <div v-if="splitRightPendingCount > 0" class="selected-count-text">
+          {{ t('bottomInfo.pendingAnalysisRight', { count: splitRightPendingCount }) }}
+        </div>
+      </template>
+      <template v-else>
+        <div v-if="pendingAnalysisCount > 0" class="selected-count-text">
+          {{ pendingAnalysisText }}
+        </div>
+      </template>
       <div v-if="!isPioneerView" class="total-text">
         {{ totalDurationLabel }}{{ playlistTotalDaysHoursSeconds }}
       </div>
@@ -1015,7 +1099,6 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   display: flex;
   justify-content: flex-end;
   align-items: center;
-  gap: 12px;
   min-height: 20px;
   padding: 0 8px;
 }
@@ -1027,6 +1110,13 @@ window.electron.ipcRenderer.on('audio:convert:done', async (_e, payload) => {
   margin-bottom: 2px;
   user-select: none;
   -webkit-user-select: none;
+}
+.total-row > .selected-count-text + .selected-count-text::before,
+.total-row > .selected-count-text + .total-text::before,
+.total-row > .total-text + .selected-count-text::before {
+  content: '|';
+  margin-right: 12px;
+  opacity: 0.4;
 }
 
 .progress-fade-enter-from,

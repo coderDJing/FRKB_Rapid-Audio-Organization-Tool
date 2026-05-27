@@ -226,7 +226,7 @@ const bindIpcListener = () => {
 }
 bindIpcListener()
 
-const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => {
+export const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => {
   if (!song) return false
   const keyText = typeof song.key === 'string' ? song.key.trim() : ''
   const bpm = Number(song.bpm)

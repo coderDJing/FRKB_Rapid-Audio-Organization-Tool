@@ -2,6 +2,9 @@
   "bottomInfo": {
     "totalDurationLabel": "Total duration: ",
     "selectedSongs": "{count} selected",
+    "pendingAnalysis": "{count} pending analysis",
+    "pendingAnalysisLeft": "L: {count} pending",
+    "pendingAnalysisRight": "R: {count} pending",
     "durationUnits": {
       "day": {
         "one": "{count} day",
