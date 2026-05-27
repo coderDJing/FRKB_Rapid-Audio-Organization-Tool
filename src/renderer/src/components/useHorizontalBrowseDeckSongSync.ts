@@ -14,6 +14,8 @@ type DeckKey = HorizontalBrowseDeckKey
 type HorizontalBrowseLoadSongPayload = {
   deck?: DeckKey
   song?: ISongInfo | null
+  sourceSongListUUID?: string
+  sourceSongListData?: ISongInfo[]
 }
 
 type SharedSongGridPayload = {
@@ -35,7 +37,11 @@ type UseHorizontalBrowseDeckSongSyncParams = {
     deck: DeckKey,
     payload: HorizontalBrowseTransportBeatGridInput
   ) => Promise<unknown>
-  assignSongToDeck: (deck: DeckKey, song: ISongInfo) => Promise<void>
+  assignSongToDeck: (
+    deck: DeckKey,
+    song: ISongInfo,
+    sourceOptions?: { sourceSongListUUID?: string; sourceSongListData?: ISongInfo[] }
+  ) => Promise<void>
 }
 
 export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckSongSyncParams) => {
@@ -77,7 +83,16 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     const deck = payload?.deck
     const song = payload?.song
     if (!deck || !song) return
-    void params.assignSongToDeck(deck, { ...song })
+    void params.assignSongToDeck(
+      deck,
+      { ...song },
+      {
+        sourceSongListUUID: String(payload.sourceSongListUUID || '').trim(),
+        sourceSongListData: Array.isArray(payload.sourceSongListData)
+          ? payload.sourceSongListData
+          : []
+      }
+    )
   }
 
   const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) => {

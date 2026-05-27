@@ -41,6 +41,7 @@ import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_CHANGED_EVENT, RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { useRekordboxSourceIcons } from './librarySelectArea/useRekordboxSourceIcons'
+import { resolveActivePlaybackSongListUUIDs } from '@renderer/utils/playbackSongListSources'
 const emit = defineEmits(['librarySelectedChange'])
 
 type HoverableIcon = {
@@ -209,16 +210,18 @@ const getIconMaskStyle = (item: HoverableIcon) => ({
   '--icon-mask': `url("${item.src}")`
 })
 
+const activePlaybackSongListUUIDs = computed(() => resolveActivePlaybackSongListUUIDs(runtime))
+
 const isPlayingLibraryIcon = (item: Icon) => {
-  const playingUuid = runtime.playingData.playingSongListUUID
-  if (!playingUuid) return false
-  if (item.name === 'ExternalPlaylist') return playingUuid === EXTERNAL_PLAYLIST_UUID
-  if (item.name === 'RecycleBin' && playingUuid === RECYCLE_BIN_UUID) return true
-  if (item.name === 'RecordingLibrary' && playingUuid === RECORDING_LIBRARY_UUID) return true
+  const playingUuids = activePlaybackSongListUUIDs.value
+  if (playingUuids.length === 0) return false
+  if (item.name === 'ExternalPlaylist') return playingUuids.includes(EXTERNAL_PLAYLIST_UUID)
+  if (item.name === 'RecycleBin') return playingUuids.includes(RECYCLE_BIN_UUID)
+  if (item.name === 'RecordingLibrary') return playingUuids.includes(RECORDING_LIBRARY_UUID)
   const libraryNode = findLibraryNode(item.name)
   if (!libraryNode) return false
   const uuids = libraryUtils.getAllUuids(libraryNode)
-  return uuids.includes(playingUuid)
+  return playingUuids.some((playingUuid) => uuids.includes(playingUuid))
 }
 
 const findLibraryNode = (libraryName: string): IDir | undefined => {

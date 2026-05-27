@@ -19,6 +19,7 @@ import { useLibraryContextMenu } from './useLibraryContextMenu'
 import { useLibraryDragAndDrop } from './useLibraryDragAndDrop'
 import { useLibraryTrackCount } from './useLibraryTrackCount'
 import { useLibraryFilter } from './useLibraryFilter'
+import { resolveActivePlaybackSongListUUIDs } from '@renderer/utils/playbackSongListSources'
 import {
   activateSongsAreaPane,
   replaceSongsAreaPaneSongList,
@@ -221,28 +222,17 @@ watch(
   { deep: false }
 )
 
-let isPlaying = ref(false)
-watch(
-  () => [runtime.playingData.playingSongListUUID, runtime.libraryTree],
-  () => {
-    if (!runtime.playingData.playingSongListUUID) {
-      isPlaying.value = false
-      return
-    }
-    let libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
-    if (libraryTree === null) {
-      isPlaying.value = false
-      return
-    }
-    let uuids = libraryUtils.getAllUuids(libraryTree)
-    if (uuids.indexOf(runtime.playingData.playingSongListUUID) != -1) {
-      isPlaying.value = true
-    } else {
-      isPlaying.value = false
-    }
-  },
-  { immediate: true }
-)
+const activePlaybackSongListUUIDs = computed(() => {
+  return resolveActivePlaybackSongListUUIDs(runtime)
+})
+
+const isPlaying = computed(() => {
+  if (activePlaybackSongListUUIDs.value.length === 0) return false
+  const libraryTree = libraryUtils.getLibraryTreeByUUID(props.uuid)
+  if (libraryTree === null) return false
+  const uuids = libraryUtils.getAllUuids(libraryTree)
+  return activePlaybackSongListUUIDs.value.some((uuid) => uuids.includes(uuid))
+})
 
 const isOpenedInSongsArea = computed(() => {
   if (runtime.songsAreaPanels.splitEnabled) {

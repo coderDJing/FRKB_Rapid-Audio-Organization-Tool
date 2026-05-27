@@ -579,8 +579,9 @@ const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   if (runtime.mainWindowBrowseMode !== 'browser') {
     const deck =
       runtime.mainWindowBrowseMode === 'edit' ? 'top' : event?.shiftKey ? 'bottom' : 'top'
+    const sourceSongListData = songsAreaState.songInfoArr.map((item) => ({ ...item }))
     runtime.playingData.playingSongListUUID = songsAreaState.songListUUID
-    runtime.playingData.playingSongListData = [...songsAreaState.songInfoArr]
+    runtime.playingData.playingSongListData = sourceSongListData
     beginHorizontalBrowseDeckInteraction(deck, String(normalizedSong.filePath || '').trim())
     sendHorizontalBrowseInteractionTrace('song-dblclick', {
       source: 'songsArea',
@@ -589,7 +590,9 @@ const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
     })
     emitter.emit('horizontalBrowse/load-song', {
       deck,
-      song: normalizedSong
+      song: normalizedSong,
+      sourceSongListUUID: songsAreaState.songListUUID,
+      sourceSongListData
     })
     return
   }

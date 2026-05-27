@@ -20,7 +20,6 @@ import {
   resolveHorizontalBrowseDeckSyncUiEnabled,
   resolveHorizontalBrowseDeckSyncUiLock
 } from '@renderer/components/horizontalBrowseShellState'
-import { buildHorizontalBrowseSongSnapshot } from '@renderer/components/horizontalBrowseShellSongs'
 import { formatPreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import {
@@ -50,6 +49,12 @@ import { useHorizontalBrowseTransportController } from '@renderer/components/use
 import { useHorizontalBrowseTransportMutations } from '@renderer/components/useHorizontalBrowseTransportMutations'
 import { useHorizontalBrowseFaderControls } from '@renderer/components/useHorizontalBrowseFaderControls'
 import { useHorizontalBrowseVisualizer } from '@renderer/components/useHorizontalBrowseVisualizer'
+import {
+  useHorizontalBrowseDeckSourceState,
+  type HorizontalBrowseDeckSongSourceOptions
+} from '@renderer/components/useHorizontalBrowseDeckSourceState'
+import { useHorizontalBrowseDeckDrop } from '@renderer/components/useHorizontalBrowseDeckDrop'
+import { useHorizontalBrowseDeckInteractionState } from '@renderer/components/useHorizontalBrowseDeckInteractionState'
 
 type DeckKey = HorizontalBrowseDeckKey
 type HorizontalBrowseViewMode = 'dual' | 'edit'
@@ -145,16 +150,15 @@ const isLightTheme = computed(() => {
     document.body.classList.contains('theme-light')
   )
 })
-const regionDragDepth = reactive<Record<number, number>>({
-  1: 0,
-  2: 0,
-  3: 0,
-  4: 0,
-  5: 0,
-  6: 0,
-  7: 0,
-  8: 0
-})
+
+const {
+  resolveSongsAreaStateBySongListUUID,
+  resolveSongListSnapshot,
+  resolveDeckSongSourceOptions,
+  setDeckSongListSource,
+  clearDeckSongListSource,
+  clearAllDeckSongListSources
+} = useHorizontalBrowseDeckSourceState()
 
 const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
   deckTempoInputDirty[deck] = false
@@ -166,6 +170,9 @@ const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
     }
   }
   setDeckSongState(deck, song)
+  if (!song) {
+    clearDeckSongListSource(deck)
+  }
 }
 
 const topOverviewRegions = [1, 2, 3]
@@ -182,78 +189,12 @@ const deckTempoCommitToken = reactive<Record<DeckKey, number>>({
   top: 0,
   bottom: 0
 })
-const deckInteractionOrder = reactive<Record<DeckKey, number>>({
-  top: 0,
-  bottom: 0
-})
-const deckRecentInteraction = reactive<Record<DeckKey, boolean>>({
-  top: false,
-  bottom: false
-})
-const DECK_RECENT_INTERACTION_WINDOW_MS = 4000
-let nextDeckInteractionOrder = 0
-let topDeckRecentInteractionTimer: ReturnType<typeof setTimeout> | null = null
-let bottomDeckRecentInteractionTimer: ReturnType<typeof setTimeout> | null = null
-
-const clearDeckRecentInteractionTimer = (deck: DeckKey) => {
-  const currentTimer =
-    deck === 'top' ? topDeckRecentInteractionTimer : bottomDeckRecentInteractionTimer
-  if (!currentTimer) return
-  clearTimeout(currentTimer)
-  if (deck === 'top') {
-    topDeckRecentInteractionTimer = null
-    return
-  }
-  bottomDeckRecentInteractionTimer = null
-}
-
-const touchDeckInteraction = (deck: DeckKey) => {
-  const interactionOrder = ++nextDeckInteractionOrder
-  deckInteractionOrder[deck] = interactionOrder
-  deckRecentInteraction[deck] = true
-  clearDeckRecentInteractionTimer(deck)
-  const timer = setTimeout(() => {
-    if (deckInteractionOrder[deck] !== interactionOrder) return
-    deckRecentInteraction[deck] = false
-    if (deck === 'top') {
-      topDeckRecentInteractionTimer = null
-      return
-    }
-    bottomDeckRecentInteractionTimer = null
-  }, DECK_RECENT_INTERACTION_WINDOW_MS)
-  if (deck === 'top') {
-    topDeckRecentInteractionTimer = timer
-    return
-  }
-  bottomDeckRecentInteractionTimer = timer
-}
-
-const resetRegionDragState = () => {
-  hoveredDeckKey.value = null
-  for (const key of Object.keys(regionDragDepth)) {
-    regionDragDepth[Number(key)] = 0
-  }
-}
-
-const isSongDrag = (event: DragEvent) =>
-  Boolean(event.dataTransfer?.types?.includes('application/x-song-drag'))
-
-const resolveDeckByRegion = (regionId: number): DeckKey => (regionId <= 4 ? 'top' : 'bottom')
-
-const resolveDraggedSong = () => {
-  const filePath = String(runtime.draggingSongFilePaths?.[0] || '').trim()
-  if (!filePath) return null
-
-  const currentSong =
-    runtime.songsArea.songInfoArr.find((song) => song.filePath === filePath) ||
-    runtime.playingData.playingSongListData.find((song) => song.filePath === filePath)
-
-  if (currentSong) {
-    return { ...currentSong }
-  }
-
-  return buildHorizontalBrowseSongSnapshot(filePath)
-}
+const {
+  deckInteractionOrder,
+  deckRecentInteraction,
+  touchDeckInteraction,
+  clearDeckRecentInteractionTimer
+} = useHorizontalBrowseDeckInteractionState()
 
 const {
   nativeTransport,
@@ -454,7 +395,7 @@ const {
   resolveDeckDurationSeconds
 })
 
-const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
+const { assignSongToDeck: assignSongToDeckBase } = createHorizontalBrowseDeckAssigner({
   touchDeckInteraction,
   setDeckSong,
   resolveDeckSong,
@@ -468,6 +409,15 @@ const { assignSongToDeck } = createHorizontalBrowseDeckAssigner({
   setDeckBeatGridToNative: nativeTransport.setBeatGrid,
   commitDeckStateToNative
 })
+
+const assignSongToDeck = async (
+  deck: DeckKey,
+  song: ISongInfo,
+  sourceOptions?: HorizontalBrowseDeckSongSourceOptions
+) => {
+  setDeckSongListSource(deck, resolveDeckSongSourceOptions(sourceOptions))
+  await assignSongToDeckBase(deck, song)
+}
 
 const {
   deckPendingPlayOnLoad,
@@ -779,51 +729,18 @@ watch(isEditMode, (editMode) => {
   })
 })
 
-const resolveDeckDragDepth = (deck: DeckKey) => {
-  if (deck === 'top') {
-    return regionDragDepth[1] + regionDragDepth[2] + regionDragDepth[3] + regionDragDepth[4]
-  }
-  return regionDragDepth[5] + regionDragDepth[6] + regionDragDepth[7] + regionDragDepth[8]
-}
-
-const handleRegionDragEnter = (regionId: number, event: DragEvent) => {
-  if (!isSongDrag(event)) return
-  regionDragDepth[regionId] += 1
-  hoveredDeckKey.value = resolveDeckByRegion(regionId)
-}
-
-const handleRegionDragOver = (regionId: number, event: DragEvent) => {
-  if (!isSongDrag(event)) return
-  if (event.dataTransfer) {
-    event.dataTransfer.dropEffect = 'copy'
-  }
-  hoveredDeckKey.value = resolveDeckByRegion(regionId)
-}
-
-const handleRegionDragLeave = (regionId: number, event: DragEvent) => {
-  if (!isSongDrag(event)) return
-  regionDragDepth[regionId] = Math.max(0, regionDragDepth[regionId] - 1)
-  const deck = resolveDeckByRegion(regionId)
-  requestAnimationFrame(() => {
-    if (resolveDeckDragDepth(deck) === 0 && hoveredDeckKey.value === deck) {
-      hoveredDeckKey.value = null
-    }
-  })
-}
-
-const handleRegionDrop = (regionId: number, event: DragEvent) => {
-  if (!isSongDrag(event)) return
-  const song = resolveDraggedSong()
-  resetRegionDragState()
-  if (!song) return
-  void assignSongToDeck(resolveDeckByRegion(regionId), song)
-}
-
-const isDeckHovered = (deck: DeckKey) => hoveredDeckKey.value === deck
-
-const handleGlobalDragFinish = () => {
-  resetRegionDragState()
-}
+const {
+  isDeckHovered,
+  handleRegionDragEnter,
+  handleRegionDragOver,
+  handleRegionDragLeave,
+  handleRegionDrop,
+  handleGlobalDragFinish
+} = useHorizontalBrowseDeckDrop({
+  resolveSongsAreaStateBySongListUUID,
+  resolveSongListSnapshot,
+  assignSongToDeck
+})
 
 const { disposeSongSync, handleExternalDeckSongLoad, handleSongGridUpdated, handleSongKeyUpdated } =
   useHorizontalBrowseDeckSongSync({
@@ -904,6 +821,7 @@ onUnmounted(() => {
   runtime.horizontalBrowseDecks.topSong = null
   runtime.horizontalBrowseDecks.bottomSong = null
   runtime.horizontalBrowseDecks.leaderDeck = null
+  clearAllDeckSongListSources()
 })
 </script>
 
