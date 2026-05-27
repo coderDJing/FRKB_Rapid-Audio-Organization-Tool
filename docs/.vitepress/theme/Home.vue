@@ -185,6 +185,10 @@ const zhContent = {
       imageLight: '/assets/mixtapeScreenshot_cn_light.webp'
     }
   ],
+  coreFeaturesIntro: {
+    title: '围绕真实整理流程',
+    description: '从入库、试听、外部库到编排，常用能力都贴着 DJ 的实际工作路径展开。'
+  },
   coreFeatures: [
     {
       title: '单轨编辑与波形可视化',
@@ -295,6 +299,11 @@ const enContent = {
       imageLight: '/assets/mixtapeScreenshot_light.webp'
     }
   ],
+  coreFeaturesIntro: {
+    title: 'Built Around Real Workflows',
+    description:
+      'From importing and auditioning to external libraries and mix preparation, common tools stay close to the way DJs actually work.'
+  },
   coreFeatures: [
     {
       title: 'Waveform Edit & Visualization',
@@ -578,6 +587,10 @@ const handleKeydown = (e) => {
     <!-- 核心整理痛点区 (Core Features) -->
     <section class="core-features-section">
       <div class="container">
+        <div class="core-header reveal">
+          <h2>{{ pageContent.coreFeaturesIntro.title }}</h2>
+          <p>{{ pageContent.coreFeaturesIntro.description }}</p>
+        </div>
         <div class="core-grid">
           <div
             class="core-card reveal"

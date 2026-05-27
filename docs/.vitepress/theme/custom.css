@@ -15,6 +15,8 @@
   --radius-2xl: 32px;
   --radius-xl: 24px;
   --radius-lg: 12px;
+  --section-y: clamp(88px, 9vw, 132px);
+  --section-gap: clamp(64px, 7vw, 112px);
   --transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -113,7 +115,7 @@ html {
 }
 
 .container {
-  max-width: 1280px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 0 40px;
 }
@@ -209,14 +211,14 @@ html {
 
 /* Hero */
 .hero {
-  padding: 200px 0 100px;
+  padding: 188px 0 88px;
   text-align: center;
 }
 
 .hero h1 {
   font-size: clamp(44px, 8vw, 96px);
   font-weight: 900;
-  letter-spacing: -0.06em;
+  letter-spacing: 0;
   line-height: 0.96;
   margin-bottom: 32px;
   background: linear-gradient(to bottom, var(--text) 50%, var(--text-dim));
@@ -236,7 +238,7 @@ html {
 .hero .subtitle {
   font-size: 22px;
   color: var(--text-dim);
-  max-width: 700px;
+  max-width: 760px;
   margin: 0 auto 64px;
   line-height: 1.5;
 }
@@ -331,6 +333,7 @@ html {
 .hero-img {
   width: 100%;
   display: block;
+  background: var(--surface);
 }
 
 /* 滚动动画基础类 */
@@ -361,10 +364,10 @@ html {
 
 /* 视觉震撼区 (Visual Impacts) */
 .impacts-section {
-  padding: 120px 0;
+  padding: var(--section-y) 0;
   display: flex;
   flex-direction: column;
-  gap: 160px;
+  gap: var(--section-gap);
 }
 
 .impact-block {
@@ -372,24 +375,32 @@ html {
 }
 
 .impact-inner {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(280px, 0.78fr) minmax(0, 1.22fr);
   align-items: center;
-  gap: 80px;
+  gap: clamp(40px, 6vw, 80px);
 }
 
 .impact-block.reverse .impact-inner {
-  flex-direction: row-reverse;
+  grid-template-columns: minmax(0, 1.22fr) minmax(280px, 0.78fr);
+}
+
+.impact-block.reverse .impact-text {
+  order: 2;
+}
+
+.impact-block.reverse .impact-media {
+  order: 1;
 }
 
 .impact-text {
-  flex: 1;
   max-width: 480px;
 }
 
 .impact-text h2 {
   font-size: 48px;
   font-weight: 900;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
   margin-bottom: 16px;
   line-height: 1.1;
   background: var(--gradient-primary);
@@ -413,29 +424,59 @@ html {
 }
 
 .impact-media {
-  flex: 1.5;
   min-width: 0;
+}
+
+.impact-media .hero-frame {
+  aspect-ratio: 3842 / 2078;
+  border-radius: var(--radius-lg);
+}
+
+.impact-media .hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 /* 核心整理痛点区 (Core Features) */
 .core-features-section {
-  padding: 160px 0;
+  padding: var(--section-y) 0;
   background: var(--surface);
   border-top: 1px solid var(--glass-border);
   border-bottom: 1px solid var(--glass-border);
 }
 
+.core-header {
+  text-align: center;
+  max-width: 720px;
+  margin: 0 auto 56px;
+}
+
+.core-header h2 {
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: 0;
+  margin-bottom: 16px;
+}
+
+.core-header p {
+  font-size: 20px;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
 .core-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 64px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
 }
 
 .core-card {
-  padding: 48px;
+  min-height: 232px;
+  padding: 34px;
   background: var(--bg);
   border: 1px solid var(--glass-border);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius-xl);
   transition: var(--transition);
 }
 
@@ -446,40 +487,40 @@ html {
 }
 
 .core-icon {
-  font-size: 48px;
+  font-size: 34px;
   font-weight: 900;
   color: var(--glass-border);
-  margin-bottom: 32px;
+  margin-bottom: 28px;
   font-family: monospace;
 }
 
 .core-card h3 {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 800;
   margin-bottom: 16px;
   color: var(--text);
 }
 
 .core-card p {
-  font-size: 17px;
+  font-size: 16px;
   color: var(--text-dim);
   line-height: 1.7;
 }
 
 /* 极客特性便当盒 (Bento Grid) */
 .bento-section {
-  padding: 160px 0;
+  padding: var(--section-y) 0;
 }
 
 .bento-header {
   text-align: center;
-  margin-bottom: 80px;
+  margin-bottom: 56px;
 }
 
 .bento-header h2 {
   font-size: 48px;
   font-weight: 900;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
   margin-bottom: 16px;
 }
 
@@ -490,19 +531,22 @@ html {
 
 .bento-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  grid-auto-rows: minmax(220px, auto);
-  gap: 24px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-auto-rows: minmax(172px, auto);
+  grid-auto-flow: dense;
+  gap: 18px;
 }
 
 .bento-card {
+  grid-column: span 4;
   background: var(--surface);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xl);
-  padding: 40px;
+  padding: 30px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: space-between;
+  min-height: 172px;
   transition: var(--transition);
   overflow: hidden;
   position: relative;
@@ -531,9 +575,9 @@ html {
 }
 
 .bento-card h3 {
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 800;
-  margin-bottom: 12px;
+  margin: 0 0 14px;
   z-index: 1;
 }
 
@@ -541,54 +585,18 @@ html {
   font-size: 15px;
   color: var(--text-dim);
   line-height: 1.6;
+  margin: 0;
   z-index: 1;
 }
 
-/* Bento 布局特殊跨列 (10个卡片，5列排版) */
+/* Bento 布局：12 栅格自适应，避免功能项增减时出现孤立小卡片 */
 .bento-item-1 {
-  grid-column: span 2;
   grid-row: span 2;
-}
-.bento-item-2 {
-  grid-column: span 1;
-  grid-row: span 1;
-}
-.bento-item-3 {
-  grid-column: span 2;
-  grid-row: span 1;
-}
-.bento-item-4 {
-  grid-column: span 1;
-  grid-row: span 1;
-}
-.bento-item-5 {
-  grid-column: span 2;
-  grid-row: span 1;
-}
-.bento-item-6 {
-  grid-column: span 2;
-  grid-row: span 1;
-}
-.bento-item-7 {
-  grid-column: span 1;
-  grid-row: span 1;
-}
-.bento-item-8 {
-  grid-column: span 2;
-  grid-row: span 1;
-}
-.bento-item-9 {
-  grid-column: span 2;
-  grid-row: span 1;
-}
-.bento-item-10 {
-  grid-column: span 3;
-  grid-row: span 1;
 }
 
 /* Specs Section */
 .specs {
-  padding: 160px 0;
+  padding: var(--section-y) 0;
   background: var(--bg);
   border-top: 1px solid var(--glass-border);
 }
@@ -603,7 +611,7 @@ html {
   font-size: 32px;
   font-weight: 800;
   margin-bottom: 32px;
-  letter-spacing: -0.02em;
+  letter-spacing: 0;
 }
 
 .specs ul {
@@ -634,8 +642,12 @@ html {
 /* 响应式调整 */
 @media (max-width: 1024px) {
   .impact-inner {
-    flex-direction: column !important;
+    grid-template-columns: 1fr !important;
     gap: 48px;
+  }
+  .impact-block.reverse .impact-text,
+  .impact-block.reverse .impact-media {
+    order: initial;
   }
   .impact-text {
     max-width: 100%;
@@ -645,37 +657,14 @@ html {
     grid-template-columns: 1fr;
   }
   .bento-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+  .bento-card {
+    grid-column: span 3;
   }
   .bento-item-1 {
-    grid-column: span 2;
-  }
-  .bento-item-2 {
-    grid-column: span 1;
-  }
-  .bento-item-3 {
-    grid-column: span 1;
-  }
-  .bento-item-4 {
-    grid-column: span 2;
-  }
-  .bento-item-5 {
-    grid-column: span 1;
-  }
-  .bento-item-6 {
-    grid-column: span 1;
-  }
-  .bento-item-7 {
-    grid-column: span 2;
-  }
-  .bento-item-8 {
-    grid-column: span 2;
-  }
-  .bento-item-9 {
-    grid-column: span 2;
-  }
-  .bento-item-10 {
-    grid-column: span 2;
+    grid-column: span 6;
+    grid-row: span 1;
   }
   .specs-grid {
     grid-template-columns: 1fr;
@@ -691,21 +680,30 @@ html {
   .impact-text h2 {
     font-size: 36px;
   }
+  .core-header {
+    margin-bottom: 36px;
+  }
+  .core-header h2,
+  .bento-header h2 {
+    font-size: 34px;
+  }
+  .core-header p {
+    font-size: 16px;
+  }
   .bento-grid {
     grid-template-columns: 1fr;
   }
-  .bento-item-1,
-  .bento-item-2,
-  .bento-item-3,
-  .bento-item-4,
-  .bento-item-5,
-  .bento-item-6,
-  .bento-item-7,
-  .bento-item-8,
-  .bento-item-9,
-  .bento-item-10 {
+  .bento-card,
+  .bento-item-1 {
     grid-column: span 1;
     grid-row: span 1;
+  }
+  .container {
+    padding: 0 20px;
+  }
+  .core-card,
+  .bento-card {
+    padding: 24px;
   }
   .hero h1 {
     font-size: 44px;
@@ -715,22 +713,32 @@ html {
     top: 12px;
   }
   .nav-inner {
-    flex-wrap: wrap;
-    height: auto;
-    padding: 16px 20px;
-    gap: 16px;
+    flex-wrap: nowrap;
+    height: 58px;
+    padding: 0 14px;
+    gap: 10px;
   }
   .nav-left {
-    margin-left: 0;
-    width: 100%;
-    gap: 20px;
-    flex-wrap: wrap;
+    margin-left: 8px;
+    width: auto;
+    gap: 12px;
+    flex-wrap: nowrap;
+  }
+  .nav-left a {
+    font-size: 13px;
   }
   .nav-right {
-    margin-left: 0;
+    margin-left: auto;
+    gap: 8px;
+  }
+  .theme-toggle {
+    padding: 6px;
+  }
+  .lang-toggle {
+    padding: 5px 10px;
   }
   .hero {
-    padding-top: 180px;
+    padding-top: 132px;
   }
   .hero .subtitle,
   .bento-header p,
