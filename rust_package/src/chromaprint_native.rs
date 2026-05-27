@@ -77,17 +77,16 @@ pub fn generate_fingerprint_from_i16(
     return Err("fingerprint pointer is null".to_string());
   }
 
-  let fingerprint = unsafe { CStr::from_ptr(fp_ptr) }
-    .to_str()
-    .map_err(|e| format!("invalid UTF-8: {}", e))?
-    .to_string();
+  let result = match unsafe { CStr::from_ptr(fp_ptr) }.to_str() {
+    Ok(s) => Ok(ChromaprintResult {
+      fingerprint: s.to_string(),
+      duration,
+    }),
+    Err(e) => Err(format!("invalid UTF-8: {}", e)),
+  };
 
   unsafe { frkb_chromaprint_free_string(fp_ptr) };
-
-  Ok(ChromaprintResult {
-    fingerprint,
-    duration,
-  })
+  result
 }
 
 pub fn generate_fingerprint_from_f32(
@@ -136,17 +135,16 @@ pub fn generate_fingerprint_from_file(
     return Err("fingerprint pointer is null".to_string());
   }
 
-  let fingerprint = unsafe { CStr::from_ptr(fp_ptr) }
-    .to_str()
-    .map_err(|e| format!("invalid UTF-8: {}", e))?
-    .to_string();
+  let result = match unsafe { CStr::from_ptr(fp_ptr) }.to_str() {
+    Ok(s) => Ok(ChromaprintResult {
+      fingerprint: s.to_string(),
+      duration,
+    }),
+    Err(e) => Err(format!("invalid UTF-8: {}", e)),
+  };
 
   unsafe { frkb_chromaprint_free_string(fp_ptr) };
-
-  Ok(ChromaprintResult {
-    fingerprint,
-    duration,
-  })
+  result
 }
 
 /// Decode a file to i16 PCM using FFmpeg libavcodec.
@@ -180,6 +178,14 @@ pub fn decode_file_to_i16(
 
   if samples_ptr.is_null() {
     return Err("samples pointer is null".to_string());
+  }
+
+  if num_samples <= 0 || num_channels <= 0 {
+    unsafe { frkb_ffmpeg_free_buffer(samples_ptr as *mut c_void) };
+    return Err(format!(
+      "invalid decode output: num_samples={}, num_channels={}",
+      num_samples, num_channels
+    ));
   }
 
   let total = (num_samples as usize) * (num_channels as usize);

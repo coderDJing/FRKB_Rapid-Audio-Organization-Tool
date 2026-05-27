@@ -1053,7 +1053,6 @@ export function useWaveform(params: {
   )
 
   onMounted(() => {
-    attachEventListeners()
     if (animationFrameId === null) {
       animationFrameId = requestAnimationFrame(animate)
     }

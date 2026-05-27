@@ -9,8 +9,10 @@ const setHotkeysScpoe = (scope: string) => {
 const delHotkeysScope = (scope: string) => {
   const runtime = useRuntimeStore()
   hotkeys.deleteScope(scope)
-  runtime.hotkeysScopesHeap.splice(runtime.hotkeysScopesHeap.indexOf(scope), 1)
-  hotkeys.setScope(runtime.hotkeysScopesHeap[runtime.hotkeysScopesHeap.length - 1])
+  const idx = runtime.hotkeysScopesHeap.indexOf(scope)
+  if (idx >= 0) runtime.hotkeysScopesHeap.splice(idx, 1)
+  const fallback = runtime.hotkeysScopesHeap[runtime.hotkeysScopesHeap.length - 1]
+  if (fallback) hotkeys.setScope(fallback)
 }
 
 export function getCurrentTimeDirName() {

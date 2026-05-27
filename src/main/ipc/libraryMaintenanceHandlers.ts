@@ -311,10 +311,7 @@ export function registerLibraryMaintenanceHandlers() {
       _e,
       payload: { filePaths: string[]; songListPath?: string; sourceType?: string } | string[]
     ) => {
-      const summary = await executeDelSongs(payload)
-      if (summary.failed > 0) {
-        throw new Error('delSongs failed')
-      }
+      await executeDelSongs(payload)
     }
   )
 

@@ -55,6 +55,15 @@ type DecodePayload = {
   mixxxWaveformData?: MixxxWaveformData | null
 }
 
+type DeleteSongsSummary = {
+  removedPaths?: unknown
+}
+
+const resolveRemovedPaths = (summary: DeleteSongsSummary | null | undefined) =>
+  Array.isArray(summary?.removedPaths)
+    ? summary.removedPaths.filter((item): item is string => typeof item === 'string')
+    : []
+
 const PLAYER_RAW_WAVEFORM_TARGET_RATE = 4800
 const PLAYER_RAW_WAVEFORM_CHUNK_FRAMES = 32768
 const PLAYER_RAW_WAVEFORM_PRIORITY_HINT = 1000
@@ -208,13 +217,12 @@ export function useSongLoader(params: {
         const currentListUUID = runtime.playingData.playingSongListUUID
         const isRecycleBinView = currentListUUID === RECYCLE_BIN_UUID
         const isExternalView = currentListUUID === EXTERNAL_PLAYLIST_UUID
-        let removedPathsForEvent = [localFilePath]
+        let removedPathsForEvent: string[] = []
         if (isRecycleBinView) {
-          const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
+          const summary = (await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
             localFilePath
-          ])
-          const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
-          removedPathsForEvent = removedPaths
+          ])) as DeleteSongsSummary | null
+          removedPathsForEvent = resolveRemovedPaths(summary)
         } else {
           const payload = isExternalView
             ? { filePaths: [localFilePath], sourceType: 'external' }
@@ -222,8 +230,14 @@ export function useSongLoader(params: {
                 const songListPath = libraryUtils.findDirPathByUuid(currentListUUID)
                 return songListPath ? { filePaths: [localFilePath], songListPath } : [localFilePath]
               })()
-          window.electron.ipcRenderer.send('delSongs', payload)
+          const summary = (await window.electron.ipcRenderer.invoke(
+            'delSongsAwaitable',
+            payload
+          )) as DeleteSongsSummary | null
+          removedPathsForEvent = resolveRemovedPaths(summary)
         }
+        if (removedPathsForEvent.length === 0) return
+
         const errorIndex = runtime.playingData.playingSongListData.findIndex(
           (item) => item.filePath === localFilePath
         )

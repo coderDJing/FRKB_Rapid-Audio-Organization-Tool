@@ -110,6 +110,8 @@ const handlePreviousSong = () => {
 }
 
 onUnmounted(() => {
+  clearInterval(fastForwardInterval)
+  clearInterval(fastBackwardInterval)
   document.removeEventListener('mouseup', handleFastForwardMouseup)
   document.removeEventListener('mouseup', handleFastBackwardMouseup)
 })

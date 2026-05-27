@@ -278,6 +278,7 @@ class AudioDecodeWorkerPool {
   }
   private pending = new Map<number, WorkerJob>()
   private busy = new Map<Worker, number>()
+  private failedWorkers = new WeakSet<Worker>()
   private nextJobId = 0
 
   constructor(workerCount: number) {
@@ -399,6 +400,9 @@ class AudioDecodeWorkerPool {
   }
 
   private handleWorkerFailure(worker: Worker, error: Error) {
+    if (this.failedWorkers.has(worker)) return
+    this.failedWorkers.add(worker)
+
     const jobId = this.busy.get(worker)
     if (jobId) {
       const job = this.pending.get(jobId)
@@ -411,6 +415,7 @@ class AudioDecodeWorkerPool {
 
     this.workers = this.workers.filter((item) => item !== worker)
     this.idle = this.idle.filter((item) => item !== worker)
+    void worker.terminate().catch(() => {})
 
     const replacement = this.createWorker()
     this.workers.push(replacement)

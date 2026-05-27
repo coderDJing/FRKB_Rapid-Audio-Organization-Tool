@@ -565,10 +565,6 @@ export async function startAudioConversion(
             lastFfmpegStderr = stderrData
             reject(err)
           })
-          child.on('error', (err) => {
-            lastFfmpegStderr = stderrData
-            reject(err)
-          })
           child.on('exit', (code) => {
             if (code === 0) {
               resolve()

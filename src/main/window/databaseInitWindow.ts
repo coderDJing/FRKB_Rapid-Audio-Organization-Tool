@@ -25,6 +25,11 @@ const getFingerprintMode = (): 'pcm' | 'file' =>
   store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
 
 const createWindow = ({ needErrorHint = false } = {}) => {
+  if (databaseInitWindow && !databaseInitWindow.isDestroyed()) {
+    if (databaseInitWindow.isMinimized()) databaseInitWindow.restore()
+    databaseInitWindow.focus()
+    return
+  }
   databaseInitWindow = new BrowserWindow({
     resizable: false,
     width: 640,
@@ -149,7 +154,7 @@ const createWindow = ({ needErrorHint = false } = {}) => {
     }
   )
   databaseInitWindow.on('closed', () => {
-    ipcMain.removeHandler('databaseInitWindow-toggle-close')
+    ipcMain.removeAllListeners('databaseInitWindow-toggle-close')
     ipcMain.removeHandler('databaseInitWindow-InitDataBase')
     databaseInitWindow = null
   })

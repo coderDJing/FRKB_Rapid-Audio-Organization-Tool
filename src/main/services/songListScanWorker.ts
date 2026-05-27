@@ -24,6 +24,7 @@ export const scanSongListOffMainThread = (request: WorkerRequest): Promise<ScanS
     let settled = false
     const cleanup = () => {
       worker.removeAllListeners()
+      void worker.terminate()
     }
     const finishResolve = (value: ScanSongListResult) => {
       if (settled) return

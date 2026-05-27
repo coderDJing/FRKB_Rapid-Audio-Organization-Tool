@@ -19,7 +19,10 @@ type PioneerCoverResponse = {
   dataUrl?: string
 }
 
-type QueueTask = (() => void) & { __fp?: string }
+type QueueTask = (() => void) & {
+  __fp?: string
+  __resolve?: (value: string | null) => void
+}
 
 export function useCoverThumbnails({
   songs,
@@ -35,7 +38,22 @@ export function useCoverThumbnails({
   const pendingQueue: QueueTask[] = []
   const coversTick = ref(0)
   let running = 0
+  let disposed = false
   const MAX_CONCURRENCY = 12
+
+  const revokeCoverUrl = (url: string | null | undefined) => {
+    if (url && url.startsWith('blob:')) URL.revokeObjectURL(url)
+  }
+
+  const cacheCoverUrl = (filePath: string, url: string | null) => {
+    if (disposed) {
+      revokeCoverUrl(url)
+      return false
+    }
+    coverUrlCache.set(filePath, url)
+    coversTick.value++
+    return true
+  }
 
   const resolveSongs = () => songs.value ?? []
   const resolveRootDir = () => (songListRootDir ? songListRootDir.value : undefined)
@@ -44,6 +62,7 @@ export function useCoverThumbnails({
     resolveSongs().find((song) => String(song?.filePath || '').trim() === filePath) || null
 
   function pump() {
+    if (disposed) return
     while (running < MAX_CONCURRENCY && pendingQueue.length > 0) {
       const task = pendingQueue.shift()
       if (!task) continue
@@ -53,8 +72,9 @@ export function useCoverThumbnails({
   }
 
   function onImgError(filePath: string) {
-    coverUrlCache.set(filePath, null)
-    coversTick.value++
+    if (disposed) return
+    revokeCoverUrl(coverUrlCache.get(filePath))
+    cacheCoverUrl(filePath, null)
   }
 
   function getCoverUrl(filePath: string): string | null | undefined {
@@ -62,7 +82,7 @@ export function useCoverThumbnails({
   }
 
   function fetchCoverUrl(filePath: string): Promise<string | null> {
-    if (!isEnabled()) return Promise.resolve(null)
+    if (disposed || !isEnabled()) return Promise.resolve(null)
     if (!filePath) return Promise.resolve(null)
     const cached = coverUrlCache.get(filePath)
     if (cached !== undefined) return Promise.resolve(cached)
@@ -90,10 +110,12 @@ export function useCoverThumbnails({
                 resolveRootDir()
               )) as PioneerCoverResponse | null)
 
+          if (disposed) {
+            resolve(null)
+            return
+          }
           if (resp && resp.dataUrl) {
-            coverUrlCache.set(filePath, resp.dataUrl)
-            coversTick.value++
-            resolve(resp.dataUrl)
+            resolve(cacheCoverUrl(filePath, resp.dataUrl) ? resp.dataUrl : null)
             return
           }
           if (resp && resp.data) {
@@ -108,27 +130,24 @@ export function useCoverThumbnails({
               type: resp.format || 'image/jpeg'
             })
             const url = URL.createObjectURL(blob)
-            coverUrlCache.set(filePath, url)
-            coversTick.value++
-            resolve(url)
+            resolve(cacheCoverUrl(filePath, url) ? url : null)
             return
           }
-          coverUrlCache.set(filePath, null)
-          coversTick.value++
+          cacheCoverUrl(filePath, null)
           resolve(null)
         } catch {
-          coverUrlCache.set(filePath, null)
-          coversTick.value++
+          cacheCoverUrl(filePath, null)
           resolve(null)
         } finally {
           inflight.delete(filePath)
-          running--
+          running = Math.max(0, running - 1)
           pump()
         }
       }
 
       if (!pendingQueue.some((fn) => fn?.__fp === filePath)) {
         run.__fp = filePath
+        run.__resolve = resolve
         pendingQueue.push(run)
       }
       pump()
@@ -144,18 +163,22 @@ export function useCoverThumbnails({
       const task = pendingQueue[i]
       if (task?.__fp === filePath) {
         pendingQueue.splice(i, 1)
+        task.__resolve?.(null)
       }
     }
   }
 
   function handleSongMetadataUpdated(payload: { filePath?: string; oldFilePath?: string }) {
+    if (disposed) return
     const newPath = payload?.filePath
     if (payload?.oldFilePath) {
+      revokeCoverUrl(coverUrlCache.get(payload.oldFilePath))
       coverUrlCache.delete(payload.oldFilePath)
       inflight.delete(payload.oldFilePath)
       clearPendingByPath(payload.oldFilePath)
     }
     if (!newPath) return
+    revokeCoverUrl(coverUrlCache.get(newPath))
     coverUrlCache.delete(newPath)
     inflight.delete(newPath)
     clearPendingByPath(newPath)
@@ -164,7 +187,7 @@ export function useCoverThumbnails({
   }
 
   function primePrefetchWindow() {
-    if (!isEnabled()) return
+    if (disposed || !isEnabled()) return
     const arr = resolveSongs()
     const start = Math.max(0, startIndex.value - visibleCount.value)
     const end = Math.min(arr.length, endIndex.value + visibleCount.value)
@@ -199,9 +222,12 @@ export function useCoverThumbnails({
   })
 
   onUnmounted(() => {
+    disposed = true
     emitter.off('songMetadataUpdated', handleSongMetadataUpdated)
     stopVisibleWatch()
     stopRangeWatch()
+    for (const url of coverUrlCache.values()) revokeCoverUrl(url)
+    for (const task of pendingQueue) task.__resolve?.(null)
     coverUrlCache.clear()
     inflight.clear()
     pendingQueue.length = 0

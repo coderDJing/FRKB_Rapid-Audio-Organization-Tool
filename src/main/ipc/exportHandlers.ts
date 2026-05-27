@@ -87,9 +87,9 @@ export function registerExportHandlers() {
       await fs.ensureDir(targetPath)
       const tasks: Array<() => Promise<string>> = []
       for (const item of songFileUrls) {
-        const matches = item.match(/[^\\]+$/)
-        if (Array.isArray(matches) && matches.length > 0) {
-          const dest = path.join(targetPath, matches[0])
+        const fileName = path.basename(item)
+        if (fileName) {
+          const dest = path.join(targetPath, fileName)
           tasks.push(() => moveOrCopyItemWithCheckIsExist(item, dest, deleteSongsAfterExport))
         }
       }
@@ -158,9 +158,9 @@ export function registerExportHandlers() {
   ipcMain.handle('exportSongsToDir', async (_e, folderPathVal, deleteSongsAfterExport, songs) => {
     const tasks: Array<() => Promise<string>> = []
     for (const item of songs) {
-      const matches = item.filePath.match(/[^\\]+$/)
-      if (Array.isArray(matches) && matches.length > 0) {
-        const targetPath = path.join(folderPathVal, matches[0])
+      const fileName = path.basename(item.filePath)
+      if (fileName) {
+        const targetPath = path.join(folderPathVal, fileName)
         tasks.push(() =>
           moveOrCopyItemWithCheckIsExist(item.filePath, targetPath, deleteSongsAfterExport)
         )

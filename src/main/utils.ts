@@ -365,7 +365,7 @@ export async function moveOrCopyItemWithCheckIsExist(
     let baseName = path.basename(targetPath, path.extname(targetPath))
     let extension = path.extname(targetPath)
     let directory = path.dirname(targetPath)
-    let newFileName = `${baseName} (${counter})${extension}`
+    let newFileName = `${baseName}(${counter})${extension}`
     while (await fs.pathExists(path.join(directory, newFileName))) {
       counter++
       newFileName = `${baseName}(${counter})${extension}`
