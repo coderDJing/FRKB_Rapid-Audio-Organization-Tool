@@ -25,6 +25,7 @@ const props = defineProps<{
   sharedZoomState: HorizontalBrowseSharedZoomState
   currentSeconds: number
   playing: boolean
+  playbackActive: boolean
   playbackRate: number
   visualPlaybackRate?: number
   playbackSyncRevision: number
@@ -96,6 +97,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       :shared-zoom-state="props.sharedZoomState"
       :current-seconds="props.currentSeconds"
       :playing="props.playing"
+      :playback-active="props.playbackActive"
       :playback-rate="props.playbackRate"
       :visual-playback-rate="props.visualPlaybackRate"
       :playback-sync-revision="props.playbackSyncRevision"

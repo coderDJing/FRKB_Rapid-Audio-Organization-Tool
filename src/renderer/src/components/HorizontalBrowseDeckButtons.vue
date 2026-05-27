@@ -37,6 +37,7 @@ const emit = defineEmits<{
         'is-pending': props.pendingPlay,
         'is-decoding': props.decoding
       }"
+      :aria-busy="props.pendingPlay ? 'true' : undefined"
       @click="emit('play-toggle')"
     >
       <svg v-if="props.playing" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
@@ -103,6 +104,15 @@ const emit = defineEmits<{
   box-shadow: inset 0 0 0 1px rgba(122, 194, 145, 0.08);
 }
 
+.deck-button--play.is-pending {
+  cursor: wait;
+  animation: deck-play-pending-pulse 0.72s ease-in-out infinite;
+}
+
+.deck-button--play.is-pending svg {
+  animation: deck-play-pending-icon 0.72s ease-in-out infinite;
+}
+
 .deck-button.is-pending {
   border-color: color-mix(in srgb, var(--accent) 48%, var(--shell-border, var(--border)));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
@@ -127,6 +137,47 @@ const emit = defineEmits<{
   width: 14px;
   height: 14px;
   fill: currentColor;
+}
+
+@keyframes deck-play-pending-pulse {
+  0%,
+  100% {
+    border-color: color-mix(
+      in srgb,
+      var(--shell-play, #9fd6b3) 42%,
+      var(--shell-border, var(--border))
+    );
+    background: color-mix(in srgb, var(--shell-play, #9fd6b3) 8%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--shell-play, #9fd6b3) 12%, transparent);
+  }
+
+  50% {
+    border-color: color-mix(
+      in srgb,
+      var(--shell-play, #9fd6b3) 78%,
+      var(--shell-border, var(--border))
+    );
+    background: color-mix(in srgb, var(--shell-play, #9fd6b3) 18%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--shell-play, #9fd6b3) 28%, transparent);
+  }
+}
+
+@keyframes deck-play-pending-icon {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deck-button--play.is-pending,
+  .deck-button--play.is-pending svg {
+    animation: none;
+  }
 }
 
 @media (max-width: 1080px) {

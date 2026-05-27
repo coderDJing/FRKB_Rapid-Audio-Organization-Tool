@@ -48,6 +48,7 @@ const props = defineProps<{
   sharedZoomState?: HorizontalBrowseSharedZoomState
   currentSeconds?: number
   playing?: boolean
+  playbackActive?: boolean
   playbackRate?: number
   visualPlaybackRate?: number
   playbackSyncRevision?: number
@@ -96,6 +97,7 @@ const localGridShiftPhaseOffsetSec = ref(0)
 const playbackSyncRevision = computed(() =>
   Math.max(0, Math.floor(Number(props.playbackSyncRevision) || 0))
 )
+const waveformPlaybackActive = computed(() => Boolean(props.playbackActive ?? props.playing))
 const previewMaxZoom = computed(() => {
   const value = Number(props.maxZoom)
   return Number.isFinite(value) && value > HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
@@ -818,7 +820,7 @@ watch(
 )
 
 watch(
-  () => !!props.playing,
+  () => waveformPlaybackActive.value,
   (playing) => {
     previewPlaying.value = playing
     if (!playing) {
@@ -835,7 +837,7 @@ watch(
   () =>
     [
       Number(props.currentSeconds) || 0,
-      !!props.playing,
+      waveformPlaybackActive.value,
       props.song?.filePath ?? '',
       playbackSyncRevision.value
     ] as const,
@@ -1037,6 +1039,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   min-height: 0;
   cursor: default;
   background: var(--shell-waveform-bg, var(--waveform-bg));
+  overflow: hidden;
 }
 
 .raw-detail-waveform--up {
@@ -1053,6 +1056,9 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   display: block;
   width: 100%;
   height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .raw-detail-waveform__canvas:not(.raw-detail-waveform__canvas--overlay) {

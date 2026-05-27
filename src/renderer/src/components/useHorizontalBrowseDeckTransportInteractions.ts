@@ -10,6 +10,7 @@ import { useHorizontalBrowseDeckPlaybackController } from '@renderer/components/
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 
 type DeckKey = HorizontalBrowseDeckKey
+const PLAYHEAD_READY_NEGATIVE_EPSILON_SEC = 0.0001
 
 type UseHorizontalBrowseDeckTransportInteractionsParams = {
   touchDeckInteraction: (deck: DeckKey) => void
@@ -151,11 +152,29 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     })()
   }
 
+  const resolveDeckPlayheadReady = (deck: DeckKey) => {
+    const snapshot = params.resolveTransportDeckSnapshot(deck)
+    if (snapshot.playheadLoaded || snapshot.playingAudible) return true
+    const currentSec = Number(snapshot.currentSec) || 0
+    const renderCurrentSec = Number(snapshot.renderCurrentSec) || 0
+    return (
+      params.resolveDeckLoaded(deck) &&
+      (currentSec < -PLAYHEAD_READY_NEGATIVE_EPSILON_SEC ||
+        renderCurrentSec < -PLAYHEAD_READY_NEGATIVE_EPSILON_SEC)
+    )
+  }
+
   watch(
-    () => [params.resolveDeckLoaded('top'), params.resolveDeckLoaded('bottom')] as const,
-    ([topLoaded, bottomLoaded]) => {
-      maybeResumePendingPlay('top', topLoaded)
-      maybeResumePendingPlay('bottom', bottomLoaded)
+    () =>
+      [
+        resolveDeckPlayheadReady('top'),
+        resolveDeckPlayheadReady('bottom'),
+        params.resolveDeckLoaded('top'),
+        params.resolveDeckLoaded('bottom')
+      ] as const,
+    ([topPlayheadReady, bottomPlayheadReady, topLoaded, bottomLoaded]) => {
+      maybeResumePendingPlay('top', topPlayheadReady)
+      maybeResumePendingPlay('bottom', bottomPlayheadReady)
       maybeResumePendingCuePreview('top', topLoaded)
       maybeResumePendingCuePreview('bottom', bottomLoaded)
     }
@@ -171,16 +190,12 @@ export const useHorizontalBrowseDeckTransportInteractions = (
       if (topFilePath !== previousTopFilePath) {
         void deactivateDeckLoop('top')
         resetDeckCueInteractionState('top')
-        if (!topFilePath) {
-          deckPendingPlayOnLoad.top = false
-        }
+        deckPendingPlayOnLoad.top = false
       }
       if (bottomFilePath !== previousBottomFilePath) {
         void deactivateDeckLoop('bottom')
         resetDeckCueInteractionState('bottom')
-        if (!bottomFilePath) {
-          deckPendingPlayOnLoad.bottom = false
-        }
+        deckPendingPlayOnLoad.bottom = false
       }
     }
   )

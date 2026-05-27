@@ -20,6 +20,7 @@ import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontal
 import { isRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformData'
 import { resolveHorizontalBrowseWaveformThemeVariant } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
 import { createHorizontalBrowseDetailLiveCanvasBridge } from '@renderer/components/horizontalBrowseDetailLiveCanvasBridge'
+import { HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX } from '@renderer/components/horizontalBrowseDetailOverlayCanvas'
 import { HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC } from '@renderer/components/horizontalBrowseRawWaveformStreamTypes'
 import { normalizeSongHotCues } from '@shared/hotCues'
 import { normalizeSongMemoryCues } from '@shared/memoryCues'
@@ -67,6 +68,13 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
 const RAW_STREAM_REDRAW_INTERVAL_MS = 80
 const DEFERRED_RAW_STREAM_REDRAW_INTERVAL_MS = 160
 const DEFAULT_CUE_ACCENT_COLOR = '#d98921'
+
+const resolvePixelSnappedCssSize = (value: number, pixelRatio: number) => {
+  const safePixelRatio = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return 1
+  return Math.max(1, Math.ceil(numeric * safePixelRatio) / safePixelRatio)
+}
 
 export const useHorizontalBrowseRawWaveformCanvas = (
   options: UseHorizontalBrowseRawWaveformCanvasOptions
@@ -349,13 +357,42 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   }) => {
     const wrap = wrapRef.value
     if (!wrap || !ensureLiveCanvasMounted()) return false
+    const wrapRect = wrap.getBoundingClientRect()
+    const pixelRatio = window.devicePixelRatio || 1
+    const wrapWidth = Math.max(1, wrapRect.width || wrap.clientWidth || 0)
+    const wrapHeight = Math.max(1, wrapRect.height || wrap.clientHeight || 0)
+    const width = resolvePixelSnappedCssSize(wrapWidth, pixelRatio)
+    const height = resolvePixelSnappedCssSize(wrapHeight, pixelRatio)
+    const setCanvasGeometry = (
+      canvas: HTMLCanvasElement | null,
+      left: number,
+      top: number,
+      canvasWidth: number,
+      canvasHeight: number
+    ) => {
+      if (!canvas) return
+      canvas.style.left = `${left}px`
+      canvas.style.top = `${top}px`
+      canvas.style.right = 'auto'
+      canvas.style.bottom = 'auto'
+      canvas.style.width = `${canvasWidth}px`
+      canvas.style.height = `${canvasHeight}px`
+    }
+    setCanvasGeometry(waveformCanvasRef.value, 0, 0, width, height)
+    setCanvasGeometry(
+      overlayCanvasRef.value,
+      0,
+      -HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX,
+      width,
+      height + HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX * 2
+    )
     const renderToken = liveCanvasRenderToken + 1
     liveCanvasRenderToken = renderToken
     liveCanvasBridge.render({
       renderToken,
-      width: Math.max(1, Math.floor(wrap.clientWidth)),
-      height: Math.max(1, Math.floor(wrap.clientHeight)),
-      pixelRatio: window.devicePixelRatio || 1,
+      width,
+      height,
+      pixelRatio,
       bpm: Number(options.previewBpm.value) || 0,
       firstBeatMs: Number(options.previewFirstBeatMs.value) || 0,
       barBeatOffset: Number(options.previewBarBeatOffset.value) || 0,
@@ -533,7 +570,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const playbackStreamReuse = options.playing.value && !options.dragging.value
     const playbackStartedThisDraw = playbackStreamReuse && !lastDrawPlaybackActive
     lastDrawPlaybackActive = playbackStreamReuse
-    const allowPlaybackScrollReuse =
+    const canReusePlaybackScroll =
       playbackStreamReuse &&
       wasDisplayReady &&
       !suppressNextPlaybackScrollReuse &&
@@ -619,6 +656,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       renderStartSec,
       visibleDuration
     )
+    const smoothPlaybackFullRedraw = playbackStreamReuse && effectiveRawCoverage
+    const allowPlaybackScrollReuse = canReusePlaybackScroll && !smoothPlaybackFullRedraw
     const effectiveRawIntersection = isRawDataIntersectingRange(
       effectiveRawData,
       renderStartSec,
@@ -683,7 +722,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         (options.dragging.value || !options.playing.value || !wasDisplayReady)
       const canDrawStream =
         Boolean(drawableRawData) &&
-        (effectiveRawCoverage || rawDataRefStable || allowPartialViewportPaint)
+        (effectiveRawCoverage ||
+          (allowPlaybackScrollReuse && rawDataRefStable) ||
+          allowPartialViewportPaint)
       if (!canDrawStream) {
         lastStreamRenderedRawData = null
         displayReady.value = false

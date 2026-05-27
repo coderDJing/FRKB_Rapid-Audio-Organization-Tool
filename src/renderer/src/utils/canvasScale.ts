@@ -8,6 +8,10 @@ export type CanvasScaleMetrics = {
   scaleY: number
 }
 
+type CanvasScaleOptions = {
+  preserveFractionalCssSize?: boolean
+}
+
 type CanvasLike = {
   width: number
   height: number
@@ -18,13 +22,21 @@ const clampPixelRatio = (value: number) => {
   return value
 }
 
+const normalizeCssSize = (value: number, preserveFractionalCssSize = false) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric) || numeric <= 0) return 1
+  if (!preserveFractionalCssSize) return Math.max(1, Math.floor(numeric))
+  return Math.max(1, Math.round(numeric * 1000) / 1000)
+}
+
 export const resolveCanvasScaleMetrics = (
   width: number,
   height: number,
-  pixelRatio: number
+  pixelRatio: number,
+  options?: CanvasScaleOptions
 ): CanvasScaleMetrics => {
-  const cssWidth = Math.max(1, Math.floor(Number(width) || 0))
-  const cssHeight = Math.max(1, Math.floor(Number(height) || 0))
+  const cssWidth = normalizeCssSize(width, options?.preserveFractionalCssSize === true)
+  const cssHeight = normalizeCssSize(height, options?.preserveFractionalCssSize === true)
   const safePixelRatio = clampPixelRatio(pixelRatio)
   const scaledWidth = Math.max(1, Math.round(cssWidth * safePixelRatio))
   const scaledHeight = Math.max(1, Math.round(cssHeight * safePixelRatio))

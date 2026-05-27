@@ -228,6 +228,20 @@ const resolveDeckDurationSeconds = (deck: DeckKey) =>
   )
 const topDeckUiPlaying = computed(() => resolveDeckPlaying('top'))
 const bottomDeckUiPlaying = computed(() => resolveDeckPlaying('bottom'))
+const HORIZONTAL_BROWSE_NEGATIVE_PLAYBACK_EPSILON_SEC = 0.0001
+const resolveDeckWaveformPlaybackActive = (deck: DeckKey) => {
+  const snapshot = resolveTransportDeckSnapshot(deck)
+  if (!snapshot.playing) return false
+  if (snapshot.playingAudible || snapshot.playheadLoaded) return true
+  const renderCurrentSec =
+    deck === 'top' ? topDeckRenderCurrentSeconds.value : bottomDeckRenderCurrentSeconds.value
+  return (
+    Number(snapshot.renderCurrentSec) < -HORIZONTAL_BROWSE_NEGATIVE_PLAYBACK_EPSILON_SEC ||
+    renderCurrentSec < -HORIZONTAL_BROWSE_NEGATIVE_PLAYBACK_EPSILON_SEC
+  )
+}
+const topDeckWaveformPlaybackActive = computed(() => resolveDeckWaveformPlaybackActive('top'))
+const bottomDeckWaveformPlaybackActive = computed(() => resolveDeckWaveformPlaybackActive('bottom'))
 const topDeckCueActive = computed(
   () => resolveDeckCuePreviewRuntimeState('top').active || deckPendingCuePreviewOnLoad.top
 )
@@ -947,6 +961,7 @@ onUnmounted(() => {
           :shared-zoom-state="isEditMode ? editDetailZoomState : sharedDetailZoomState"
           :current-seconds="topDeckRenderCurrentSeconds"
           :playing="topDeckUiPlaying"
+          :playback-active="topDeckWaveformPlaybackActive"
           :playback-rate="topDeckPlaybackRate"
           :visual-playback-rate="resolveDeckPlaybackRateForTransport('top')"
           :playback-sync-revision="topDeckPlaybackSyncRevision"
@@ -986,6 +1001,7 @@ onUnmounted(() => {
           :shared-zoom-state="sharedDetailZoomState"
           :current-seconds="bottomDeckRenderCurrentSeconds"
           :playing="bottomDeckUiPlaying"
+          :playback-active="bottomDeckWaveformPlaybackActive"
           :playback-rate="bottomDeckPlaybackRate"
           :visual-playback-rate="resolveDeckPlaybackRateForTransport('bottom')"
           :playback-sync-revision="bottomDeckPlaybackSyncRevision"

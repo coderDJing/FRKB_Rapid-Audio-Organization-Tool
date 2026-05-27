@@ -152,7 +152,9 @@ const ensureCanvasMetrics = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest
 ): CanvasMetrics | null => {
   if (!canvas || !ctx) return null
-  const metrics = resolveCanvasScaleMetrics(request.width, request.height, request.pixelRatio)
+  const metrics = resolveCanvasScaleMetrics(request.width, request.height, request.pixelRatio, {
+    preserveFractionalCssSize: true
+  })
   const previousWidth = canvas.width
   const previousHeight = canvas.height
   if (canvas.width !== metrics.scaledWidth) {
@@ -454,6 +456,37 @@ const drawRange = (
     themeVariant: state.themeVariant
   })
 
+const canCommitBlankRawSegment = (
+  state: FrameState,
+  rangeStartSec: number,
+  rangeDurationSec: number
+) => {
+  const rawData = state.rawData
+  if (!rawData || rangeDurationSec <= 0) return false
+  const frames = Math.max(
+    0,
+    Math.min(
+      Math.floor(Number(rawData.frames) || 0),
+      rawData.minLeft.length,
+      rawData.maxLeft.length,
+      rawData.minRight.length,
+      rawData.maxRight.length
+    )
+  )
+  const rate = Number(rawData.rate)
+  if (!frames || !Number.isFinite(rate) || rate <= 0) return false
+  const loadedFrames = Math.max(
+    0,
+    Math.min(Math.floor(Number(rawData.loadedFrames ?? frames) || 0), frames)
+  )
+  if (!loadedFrames) return false
+  const timeBasisOffsetSec = Math.max(0, Number(state.timeBasisOffsetMs) || 0) / 1000
+  const rawStartSec = Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec
+  const rawEndSec = rawStartSec + loadedFrames / rate
+  const rangeEndSec = rangeStartSec + rangeDurationSec
+  return rangeEndSec > rawStartSec && rangeStartSec < rawEndSec
+}
+
 const renderSegmentToScratch = (
   metrics: CanvasMetrics,
   state: FrameState,
@@ -488,7 +521,9 @@ const renderSegmentToScratch = (
     segmentDurationSec,
     state
   )
-  if (!rendered || !segment.canvas) return false
+  const blankSegment =
+    !rendered && canCommitBlankRawSegment(state, segmentStartSec, segmentDurationSec)
+  if ((!rendered && !blankSegment) || !segment.canvas) return false
 
   return {
     canvas: segment.canvas,
@@ -827,6 +862,26 @@ const renderTimelineFallback = () => {
   clearWaveformPixels()
 }
 
+const resolveRawPresentationOffsetCssPx = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  metrics: CanvasMetrics,
+  state: FrameState
+) =>
+  request.playbackActive === true && state.rangeDurationSec > 0
+    ? ((state.rangeStartSec - request.rangeStartSec) / state.rangeDurationSec) * metrics.cssWidth
+    : 0
+
+const resolvePresentationOffsetCssPx = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  metrics: CanvasMetrics,
+  state: FrameState
+) => {
+  const rawOffsetCssPx = resolveRawPresentationOffsetCssPx(request, metrics, state)
+  const scaledOffsetPx = rawOffsetCssPx * metrics.pixelRatio
+  if (!Number.isFinite(scaledOffsetPx) || Math.abs(scaledOffsetPx) < 1) return 0
+  return Math.trunc(scaledOffsetPx) / metrics.pixelRatio
+}
+
 const processRender = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
   notifyMain = true
@@ -873,7 +928,7 @@ const processRender = (
       type: 'presentation',
       payload: {
         renderToken: request.renderToken,
-        offsetCssPx: 0
+        offsetCssPx: resolvePresentationOffsetCssPx(request, metrics, renderState)
       }
     })
   }
@@ -893,7 +948,7 @@ const processRender = (
 
 const buildPlaybackRenderRequest = (
   animation: PlaybackAnimationState,
-  allowScrollReuse = true
+  allowScrollReuse = animation.request.allowScrollReuse !== false
 ): HorizontalBrowseDetailLiveCanvasRenderRequest => {
   const playbackSeconds = resolvePlaybackSeconds(
     animation.request,

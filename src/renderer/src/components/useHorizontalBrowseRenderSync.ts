@@ -235,8 +235,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       shouldReanchor &&
       (force ||
         fullSyncPhaseChanged ||
-        (snapshot.playing &&
-          (!previousSignature || signatureChanged || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)))
+        (snapshot.playing && (!previousSignature || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)))
 
     if (shouldReanchor) {
       deckRenderSyncBaseSec[deck] = snapshotSec
