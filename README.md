@@ -14,7 +14,7 @@
 <p align="center">
   <a href="/README.md">English</a>
   ·
-  <a href="/readme/README_CN.md">Simplified Chinese</a>
+  <a href="/readme/README_CN.md">简体中文</a>
 </p>
 
 ## FRKB
@@ -158,8 +158,6 @@ FRKB does not provide an official Linux release.
 ## Project Background
 
 As a DJ, I need to organize large batches of music files quickly. Many existing tools either require too much mouse work, use shortcuts that are not comfortable for long sessions, or only organize references while leaving the actual folders messy. FRKB exists to make library work faster, more physical, and less fragile: sort the music, hear the music, move the real files, and keep the structure usable outside the app.
-
-The long-term goal is to let AI models learn classification behavior and help route tracks automatically.
 
 ## Development
 

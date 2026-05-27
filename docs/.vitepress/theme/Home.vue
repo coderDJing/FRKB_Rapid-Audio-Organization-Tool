@@ -163,7 +163,7 @@ const zhContent = {
     titleTop: '终结混乱的',
     titleBottom: 'DJ 音频工作站',
     subtitle:
-      '不再需要在多个软件间疲于奔命。从指纹去重、波形试听、Rekordbox 库无缝集成，到 Mixtape 自动录制与 AI 分轨，FRKB 用极速的键盘操作，为你打造一站式、所见即所得的桌面音频整理引擎。'
+      '不再需要在多个软件间疲于奔命。从指纹去重、波形试听、Rekordbox 库集成，到双轨横推、录音库与 Mixtape Stem 工作流，FRKB 用键盘优先的操作方式，为你打造一站式、所见即所得的桌面音频整理引擎。'
   },
   impacts: [
     {
@@ -171,7 +171,7 @@ const zhContent = {
       title: '双轨横推模式',
       subtitle: '类 DJ 混音台的并排浏览与试听',
       details:
-        '支持独立音量推子、交叉渐变、Hot Cue、Memory Cue、Loop、Quantize 和调性高亮。快速判断两首歌是否和谐匹配。',
+        '支持独立音量推子、交叉渐变、Hot Cue、Memory Cue、Loop、Quantize、Beat Sync、自动增益、CUE 监听和双轨录音。快速判断两首歌是否适合衔接。',
       image: '/assets/softwareScreenshot_cn.webp',
       imageLight: '/assets/softwareScreenshot_cn_light.webp'
     },
@@ -214,7 +214,7 @@ const zhContent = {
   bentoFeatures: [
     {
       title: '智能节拍网格与分析',
-      details: '精准分析曲目速度与调性，支持 Tap Tempo 手动修正。'
+      details: '分析曲目速度、调性与节拍网格，支持 Tap Tempo 手动修正和列表内分析进度展示。'
     },
     {
       title: '全能格式转换与元数据',
@@ -223,6 +223,10 @@ const zhContent = {
     {
       title: '跨设备云同步',
       details: '支持 SHA256 指纹双向云同步，精选表演者自动拆分联动，数据库轻量便携。'
+    },
+    {
+      title: '录音库与双轨录音',
+      details: '双轨输出可录制为高质量 WAV，录音进入独立录音库，录制时显示毫秒级时长。'
     },
     {
       title: '筛选库与精选库双层架构',
@@ -242,16 +246,16 @@ const zhContent = {
       details: '支持跨界面搜歌、网易云网页搜索和相似歌曲双源查询。'
     },
     {
+      title: '外部库分析缓存',
+      details: 'Rekordbox、Pioneer U 盘和普通外部文件可复用分析结果，减少重复分析等待。'
+    },
+    {
       title: '闲时分析调度',
       details: '后台分析统一走闲时调度与限流，保障前台操作绝对流畅。'
     },
     {
       title: '代码开源与透明',
       details: '核心代码完全开源，接受社区监督。架构清晰，欢迎开发者共同参与贡献。'
-    },
-    {
-      title: '无缝在线更新',
-      details: '内置自动更新机制，第一时间获取最新功能与修复，始终保持最佳工作状态。'
     }
   ],
   specs: {
@@ -269,7 +273,7 @@ const enContent = {
     titleTop: 'End the Chaos.',
     titleBottom: 'The Ultimate DJ Audio Workspace.',
     subtitle:
-      'Stop bouncing between apps. From fingerprint dedup, waveform preview, and seamless Rekordbox integration, to Mixtape auto-recording and AI stems. FRKB delivers an all-in-one, WYSIWYG desktop engine powered by lightning-fast keyboard ergonomics.'
+      'Stop bouncing between apps. From fingerprint dedup, waveform preview, and Rekordbox integration, to dual-deck browsing, the Recording Library, and Mixtape Stem workflows. FRKB delivers an all-in-one, WYSIWYG desktop engine built around keyboard-first control.'
   },
   impacts: [
     {
@@ -277,7 +281,7 @@ const enContent = {
       title: 'Dual-Deck Browse Mode',
       subtitle: 'DJ mixer-style side-by-side browsing',
       details:
-        'Supports volume faders, crossfader, Hot Cue, Memory Cue, Loop, Quantize, and key highlighting. Quickly judge if two tracks match perfectly.',
+        'Supports volume faders, crossfader, Hot Cue, Memory Cue, Loop, Quantize, Beat Sync, Auto Gain, Cue monitoring, and dual-deck recording. Quickly judge how two tracks work together.',
       image: '/assets/softwareScreenshot.webp',
       imageLight: '/assets/softwareScreenshot_light.webp'
     },
@@ -320,7 +324,8 @@ const enContent = {
   bentoFeatures: [
     {
       title: 'Smart Beatgrid & Analysis',
-      details: 'Precise BPM and key analysis with Tap Tempo support.'
+      details:
+        'BPM, key, and beat-grid analysis with Tap Tempo support and visible per-track analysis progress.'
     },
     {
       title: 'Format Conversion & Metadata',
@@ -331,6 +336,11 @@ const enContent = {
       title: 'Cross-Device Cloud Sync',
       details:
         'SHA256-based fingerprint sync, curated artist split-linking, and portable library state.'
+    },
+    {
+      title: 'Recording Library',
+      details:
+        'Record dual-deck output as high-quality WAV, keep recordings in a dedicated library, and see millisecond-level duration while recording.'
     },
     {
       title: 'Dual-Library Architecture',
@@ -352,6 +362,11 @@ const enContent = {
       details: 'Global search, NetEase Cloud search, and dual-source similar track discovery.'
     },
     {
+      title: 'External Analysis Cache',
+      details:
+        'Reuse analysis results for Rekordbox, Pioneer USB, and ordinary external files to avoid repeated waiting.'
+    },
+    {
       title: 'Idle Analysis Scheduling',
       details:
         'Background analysis runs through unified idle scheduling to guarantee absolute UI fluidity.'
@@ -360,10 +375,6 @@ const enContent = {
       title: 'Open Source & Transparent',
       details:
         'Core code is fully open-source. Clear architecture welcomes community contributions.'
-    },
-    {
-      title: 'Seamless Auto-Updates',
-      details: 'Built-in update mechanism ensures you always have the latest features and fixes.'
     }
   ],
   specs: {
