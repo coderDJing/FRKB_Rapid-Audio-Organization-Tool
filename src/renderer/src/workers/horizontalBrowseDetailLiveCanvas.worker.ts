@@ -4,9 +4,9 @@ import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWave
 import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRenderer'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import { createHorizontalBrowseDetailLiveCanvasOverlayRenderer } from './horizontalBrowseDetailLiveCanvasOverlay'
+import { createHorizontalBrowseDetailLiveCanvasRawStore } from './horizontalBrowseDetailLiveCanvasRawStore'
 import { canPreserveHorizontalBrowseWaveformAfterRenderMiss } from './horizontalBrowseDetailLiveCanvasRenderGuards'
 import type {
-  HorizontalBrowseDetailLiveCanvasRawMeta,
   HorizontalBrowseDetailLiveCanvasRenderRequest,
   HorizontalBrowseDetailLiveCanvasWorkerIncoming,
   HorizontalBrowseDetailLiveCanvasWorkerOutgoing
@@ -51,6 +51,7 @@ type PlaybackAnimationState = {
   request: HorizontalBrowseDetailLiveCanvasRenderRequest
   baseSeconds: number
   startedAtMs: number
+  lastRenderedAtMs: number
 }
 
 type WorkerAnimationFrameScope = typeof globalThis & {
@@ -61,14 +62,12 @@ type WorkerAnimationFrameScope = typeof globalThis & {
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const PLAYHEAD_RATIO = 0.5
 const PLAYBACK_RENDER_INTERVAL_MS = 16
+const PLAYBACK_RENDER_FALLBACK_TIMEOUT_MS = 48
+const PLAYBACK_SCROLL_REUSE_MAX_FRAME_GAP_MS = 120
 const PLAYBACK_SYNC_TOLERANCE_SEC = 0.02
 let canvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
 const overlayRenderer = createHorizontalBrowseDetailLiveCanvasOverlayRenderer()
-let liveRawData: RawWaveformData | null = null
-let retainedRawData: RawWaveformData | null = null
-let liveRawRevision = 0
-let retainedRawRevision = 0
 let lastFrame: FrameState | null = null
 let lastWaveformScrollShiftScaledPx: number | null = null
 let scrollScratchCanvas: OffscreenCanvas | null = null
@@ -81,6 +80,7 @@ let playbackAnimation: PlaybackAnimationState | null = null
 let playbackAnimationToken = 0
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
 let playbackRaf = 0
+const COLUMN_SMOOTH_OVERSCAN_SCALED_PX = 2
 const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => {
   const scope = self as typeof globalThis & {
     postMessage: (payload: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => void
@@ -91,9 +91,7 @@ const resetFrameState = () => {
   lastFrame = null
   lastWaveformScrollShiftScaledPx = null
 }
-const bumpLiveRawRevision = () => {
-  liveRawRevision += 1
-}
+const rawStore = createHorizontalBrowseDetailLiveCanvasRawStore(resetFrameState)
 const resolveWorkerAnimationFrameScope = () => self as WorkerAnimationFrameScope
 const clearPlaybackFrameSchedule = () => {
   if (playbackTimer) {
@@ -106,6 +104,22 @@ const clearPlaybackFrameSchedule = () => {
       scope.cancelAnimationFrame(playbackRaf)
     }
     playbackRaf = 0
+  }
+}
+
+const consumePlaybackFrameSchedule = () => {
+  const raf = playbackRaf
+  const timer = playbackTimer
+  playbackRaf = 0
+  playbackTimer = null
+  if (timer) {
+    clearTimeout(timer)
+  }
+  if (raf) {
+    const scope = resolveWorkerAnimationFrameScope()
+    if (typeof scope.cancelAnimationFrame === 'function') {
+      scope.cancelAnimationFrame(raf)
+    }
   }
 }
 
@@ -215,185 +229,12 @@ const ensureSegmentScratch = (scaledWidth: number, scaledHeight: number) => {
   return scratch
 }
 
-const createEmptyRawData = (meta: HorizontalBrowseDetailLiveCanvasRawMeta): RawWaveformData => {
-  const frames = Math.max(0, Math.floor(Number(meta.frames) || 0))
-  return {
-    duration: Math.max(0, Number(meta.duration) || 0),
-    sampleRate: Math.max(0, Number(meta.sampleRate) || 0),
-    rate: Math.max(0, Number(meta.rate) || 0),
-    frames,
-    startSec: Math.max(0, Number(meta.startSec) || 0),
-    loadedFrames: Math.max(0, Math.floor(Number(meta.loadedFrames) || 0)),
-    minLeft: new Float32Array(frames),
-    maxLeft: new Float32Array(frames),
-    minRight: new Float32Array(frames),
-    maxRight: new Float32Array(frames)
-  }
-}
-
-const hasSameRawMeta = (current: RawWaveformData, meta: HorizontalBrowseDetailLiveCanvasRawMeta) =>
-  current.sampleRate === meta.sampleRate &&
-  current.rate === meta.rate &&
-  Math.abs((current.startSec ?? 0) - meta.startSec) <= 0.0001 &&
-  Math.abs(current.duration - meta.duration) <= 0.0001
-
-const growRawArray = (source: Float32Array, frames: number) => {
-  const target = new Float32Array(frames)
-  target.set(source.subarray(0, Math.min(source.length, frames)))
-  return target
-}
-
-const ensureLiveRawCapacity = (
-  meta: HorizontalBrowseDetailLiveCanvasRawMeta,
-  retainCurrent = false
-) => {
-  const frames = Math.max(0, Math.floor(Number(meta.frames) || 0))
-  if (!frames) return
-
-  if (!liveRawData || !hasSameRawMeta(liveRawData, meta)) {
-    if (retainCurrent && liveRawData) {
-      retainedRawData = liveRawData
-      retainedRawRevision = liveRawRevision
-    }
-    liveRawData = createEmptyRawData({ ...meta, frames })
-    bumpLiveRawRevision()
-    resetFrameState()
-    return
-  }
-
-  if (liveRawData.frames >= frames) {
-    if (typeof meta.loadedFrames === 'number') {
-      const nextLoadedFrames = Math.max(
-        Number(liveRawData.loadedFrames) || 0,
-        Math.floor(meta.loadedFrames)
-      )
-      if (nextLoadedFrames !== liveRawData.loadedFrames) {
-        liveRawData.loadedFrames = nextLoadedFrames
-        bumpLiveRawRevision()
-      }
-    }
-    return
-  }
-
-  liveRawData = {
-    duration: Math.max(liveRawData.duration, meta.duration),
-    sampleRate: meta.sampleRate,
-    rate: meta.rate,
-    frames,
-    startSec: meta.startSec,
-    loadedFrames: liveRawData.loadedFrames,
-    minLeft: growRawArray(liveRawData.minLeft, frames),
-    maxLeft: growRawArray(liveRawData.maxLeft, frames),
-    minRight: growRawArray(liveRawData.minRight, frames),
-    maxRight: growRawArray(liveRawData.maxRight, frames)
-  }
-  bumpLiveRawRevision()
-  resetFrameState()
-}
-
-const replaceLiveRawData = (rawData: RawWaveformData | null) => {
-  liveRawData = rawData
-    ? {
-        duration: Math.max(0, Number(rawData.duration) || 0),
-        sampleRate: Math.max(0, Number(rawData.sampleRate) || 0),
-        rate: Math.max(0, Number(rawData.rate) || 0),
-        frames: Math.max(0, Number(rawData.frames) || 0),
-        startSec: Math.max(0, Number(rawData.startSec) || 0),
-        loadedFrames: Math.max(0, Number(rawData.loadedFrames ?? rawData.frames) || 0),
-        minLeft: rawData.minLeft,
-        maxLeft: rawData.maxLeft,
-        minRight: rawData.minRight,
-        maxRight: rawData.maxRight
-      }
-    : null
-  retainedRawData = null
-  retainedRawRevision = 0
-  bumpLiveRawRevision()
-  resetFrameState()
-}
-
-const updateLiveRawMeta = (meta: Partial<HorizontalBrowseDetailLiveCanvasRawMeta>) => {
-  if (!liveRawData) return
-  let changed = false
-  if (typeof meta.duration === 'number' && meta.duration > 0) {
-    changed = changed || liveRawData.duration !== meta.duration
-    liveRawData.duration = meta.duration
-  }
-  if (typeof meta.startSec === 'number') {
-    changed = changed || Math.abs((liveRawData.startSec ?? 0) - meta.startSec) > 0.0001
-    liveRawData.startSec = Math.max(0, meta.startSec)
-  }
-  if (typeof meta.frames === 'number' && meta.frames > 0) {
-    const nextFrames = Math.min(Math.floor(meta.frames), liveRawData.minLeft.length)
-    changed = changed || liveRawData.frames !== nextFrames
-    liveRawData.frames = nextFrames
-  }
-  if (typeof meta.loadedFrames === 'number') {
-    const nextLoadedFrames = Math.min(
-      Math.floor(meta.loadedFrames),
-      liveRawData.frames,
-      liveRawData.minLeft.length
-    )
-    changed = changed || liveRawData.loadedFrames !== nextLoadedFrames
-    liveRawData.loadedFrames = nextLoadedFrames
-  }
-  if (changed) {
-    bumpLiveRawRevision()
-  }
-}
-
-const applyLiveRawChunk = (
-  payload: Extract<
-    HorizontalBrowseDetailLiveCanvasWorkerIncoming,
-    { type: 'applyRawChunk' }
-  >['payload']
-) => {
-  ensureLiveRawCapacity(
-    {
-      duration: payload.duration,
-      sampleRate: payload.sampleRate,
-      rate: payload.rate,
-      frames: payload.frames,
-      startSec: payload.startSec,
-      loadedFrames: payload.loadedFrames
-    },
-    true
-  )
-  if (!liveRawData) return
-
-  const startFrame = Math.max(0, Math.floor(Number(payload.startFrame) || 0))
-  const chunkFrames = Math.max(0, Math.floor(Number(payload.chunkFrames) || 0))
-  const copyFrames = Math.min(
-    chunkFrames,
-    payload.minLeft.length,
-    payload.maxLeft.length,
-    payload.minRight.length,
-    payload.maxRight.length,
-    Math.max(0, liveRawData.minLeft.length - startFrame)
-  )
-  if (!copyFrames) return
-
-  liveRawData.minLeft.set(payload.minLeft.subarray(0, copyFrames), startFrame)
-  liveRawData.maxLeft.set(payload.maxLeft.subarray(0, copyFrames), startFrame)
-  liveRawData.minRight.set(payload.minRight.subarray(0, copyFrames), startFrame)
-  liveRawData.maxRight.set(payload.maxRight.subarray(0, copyFrames), startFrame)
-  liveRawData.loadedFrames = Math.max(
-    Number(liveRawData.loadedFrames) || 0,
-    Math.min(liveRawData.frames, startFrame + copyFrames, Math.floor(payload.loadedFrames || 0))
-  )
-  bumpLiveRawRevision()
-}
-
 const resolveRawForRender = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
-  if (request.rawSlot === 'live') return liveRawData
-  if (request.rawSlot === 'retained') return retainedRawData
-  return null
+  return rawStore.resolveForRender(request.rawSlot)
 }
 
 const resolveRawRevisionForRender = (rawData: RawWaveformData | null) => {
-  if (rawData && rawData === liveRawData) return liveRawRevision
-  if (rawData && rawData === retainedRawData) return retainedRawRevision
-  return 0
+  return rawStore.resolveRevisionForRender(rawData)
 }
 
 const buildFrameState = (
@@ -453,6 +294,7 @@ const drawRange = (
     waveformLayout: state.waveformLayout,
     waveformRenderStyle: state.waveformRenderStyle,
     preferRawPeaksOnly: state.preferRawPeaksOnly,
+    smoothColumns: state.waveformRenderStyle === 'columns' && state.waveformLayout !== 'full',
     themeVariant: state.themeVariant
   })
 
@@ -493,6 +335,10 @@ const renderSegmentToScratch = (
   segmentScaledX: number,
   segmentScaledWidth: number
 ) => {
+  const smoothingOverscanScaledPx =
+    state.waveformRenderStyle === 'columns' && state.waveformLayout !== 'full'
+      ? COLUMN_SMOOTH_OVERSCAN_SCALED_PX
+      : 0
   const safeSegmentX = clampNumber(
     Math.floor(segmentScaledX),
     0,
@@ -503,19 +349,31 @@ const renderSegmentToScratch = (
     1,
     Math.max(1, metrics.scaledWidth - safeSegmentX)
   )
-  const segment = ensureSegmentScratch(safeSegmentWidth, metrics.scaledHeight)
+  const drawSegmentX = clampNumber(
+    safeSegmentX - smoothingOverscanScaledPx,
+    0,
+    Math.max(0, metrics.scaledWidth - 1)
+  )
+  const drawSegmentEndX = clampNumber(
+    safeSegmentX + safeSegmentWidth + smoothingOverscanScaledPx,
+    drawSegmentX + 1,
+    metrics.scaledWidth
+  )
+  const drawSegmentWidth = Math.max(1, drawSegmentEndX - drawSegmentX)
+  const sourceX = safeSegmentX - drawSegmentX
+  const segment = ensureSegmentScratch(drawSegmentWidth, metrics.scaledHeight)
   if (!segment) return false
 
   const segmentStartSec =
-    state.rangeStartSec + (safeSegmentX / metrics.scaledWidth) * state.rangeDurationSec
-  const segmentDurationSec = (safeSegmentWidth / metrics.scaledWidth) * state.rangeDurationSec
+    state.rangeStartSec + (drawSegmentX / metrics.scaledWidth) * state.rangeDurationSec
+  const segmentDurationSec = (drawSegmentWidth / metrics.scaledWidth) * state.rangeDurationSec
 
   segment.ctx.setTransform(1, 0, 0, 1, 0, 0)
   segment.ctx.clearRect(0, 0, segment.canvas.width, segment.canvas.height)
   segment.ctx.imageSmoothingEnabled = false
   const rendered = drawRange(
     segment.ctx,
-    safeSegmentWidth,
+    drawSegmentWidth,
     metrics.scaledHeight,
     segmentStartSec,
     segmentDurationSec,
@@ -528,7 +386,8 @@ const renderSegmentToScratch = (
   return {
     canvas: segment.canvas,
     safeSegmentX,
-    safeSegmentWidth
+    safeSegmentWidth,
+    sourceX
   }
 }
 
@@ -544,7 +403,7 @@ const copySegmentToCanvas = (
   targetCtx.clearRect(destX, 0, copyWidth, metrics.scaledHeight)
   targetCtx.drawImage(
     segment.canvas,
-    0,
+    segment.sourceX,
     0,
     copyWidth,
     metrics.scaledHeight,
@@ -641,6 +500,28 @@ const clearCanvasPixels = () => {
   overlayRenderer.clear()
 }
 
+const shouldUseStableColumnGrid = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  state: FrameState
+) =>
+  request.playbackActive === true &&
+  state.waveformRenderStyle === 'columns' &&
+  state.waveformLayout !== 'full'
+
+const resolveStableColumnRangeStartSec = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  metrics: CanvasMetrics,
+  state: FrameState,
+  phaseShiftSec = 0
+) => {
+  if (!shouldUseStableColumnGrid(request, state)) return state.rangeStartSec
+  const scaledPxPerSec = metrics.scaledWidth / Math.max(0.0001, state.rangeDurationSec)
+  return (
+    Math.round((state.rangeStartSec - phaseShiftSec) * scaledPxPerSec) / scaledPxPerSec +
+    phaseShiftSec
+  )
+}
+
 const renderFullFrame = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
   metrics: CanvasMetrics,
@@ -666,10 +547,7 @@ const renderFullFrame = (
       0.000001
   ) {
     state.rangeStartSec = lastFrame.rangeStartSec + resolvePhaseShiftSec(lastFrame)
-    if (state.rawData && state.rawData === liveRawData) {
-      retainedRawData = liveRawData
-      retainedRawRevision = liveRawRevision
-    }
+    rawStore.promoteLiveToRetainedIfSame(state.rawData)
     lastFrame = resolveReusedFrameState()
     return true
   }
@@ -681,8 +559,15 @@ const renderFullFrame = (
     lastFrame
   ) {
     const phaseShiftSec = resolvePhaseShiftSec(lastFrame)
+    const quantizedRangeStartSec = resolveStableColumnRangeStartSec(
+      request,
+      metrics,
+      state,
+      phaseShiftSec
+    )
     const requestedShiftScaledPx =
-      ((state.rangeStartSec - lastFrame.rangeStartSec - phaseShiftSec) / state.rangeDurationSec) *
+      ((quantizedRangeStartSec - lastFrame.rangeStartSec - phaseShiftSec) /
+        state.rangeDurationSec) *
       metrics.scaledWidth
     const shiftScaledPx = Math.round(requestedShiftScaledPx)
     const absShiftScaledPx = Math.abs(shiftScaledPx)
@@ -691,10 +576,7 @@ const renderFullFrame = (
       lastWaveformScrollShiftScaledPx = 0
       reused = true
     } else if (absShiftScaledPx < metrics.scaledWidth) {
-      state.rangeStartSec =
-        lastFrame.rangeStartSec +
-        phaseShiftSec +
-        (shiftScaledPx / metrics.scaledWidth) * state.rangeDurationSec
+      state.rangeStartSec = quantizedRangeStartSec
       const scratch = ensureScrollScratch(metrics.scaledWidth, metrics.scaledHeight)
       if (scratch) {
         scratch.ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -765,6 +647,7 @@ const renderFullFrame = (
   }
 
   if (!reused) {
+    state.rangeStartSec = resolveStableColumnRangeStartSec(request, metrics, state)
     const fullFrame = ensureSegmentScratch(metrics.scaledWidth, metrics.scaledHeight)
     if (fullFrame) {
       fullFrame.ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -791,10 +674,7 @@ const renderFullFrame = (
     return false
   }
 
-  if (state.rawData && state.rawData === liveRawData) {
-    retainedRawData = liveRawData
-    retainedRawRevision = liveRawRevision
-  }
+  rawStore.promoteLiveToRetainedIfSame(state.rawData)
   lastFrame = lastWaveformScrollShiftScaledPx === null ? state : resolveReusedFrameState()
   return true
 }
@@ -848,10 +728,7 @@ const renderDirtyRange = (
   const segmentWidth = Math.max(1, segmentEndX - segmentX)
   const rendered = drawSegment(ctx, metrics, state, segmentX, segmentWidth)
   if (rendered) {
-    if (state.rawData && state.rawData === liveRawData) {
-      retainedRawData = liveRawData
-      retainedRawRevision = liveRawRevision
-    }
+    rawStore.promoteLiveToRetainedIfSame(state.rawData)
     lastFrame = state
   }
   return rendered
@@ -860,26 +737,6 @@ const renderDirtyRange = (
 const renderTimelineFallback = () => {
   if (!ctx) return
   clearWaveformPixels()
-}
-
-const resolveRawPresentationOffsetCssPx = (
-  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
-  metrics: CanvasMetrics,
-  state: FrameState
-) =>
-  request.playbackActive === true && state.rangeDurationSec > 0
-    ? ((state.rangeStartSec - request.rangeStartSec) / state.rangeDurationSec) * metrics.cssWidth
-    : 0
-
-const resolvePresentationOffsetCssPx = (
-  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
-  metrics: CanvasMetrics,
-  state: FrameState
-) => {
-  const rawOffsetCssPx = resolveRawPresentationOffsetCssPx(request, metrics, state)
-  const scaledOffsetPx = rawOffsetCssPx * metrics.pixelRatio
-  if (!Number.isFinite(scaledOffsetPx) || Math.abs(scaledOffsetPx) < 1) return 0
-  return Math.trunc(scaledOffsetPx) / metrics.pixelRatio
 }
 
 const processRender = (
@@ -928,7 +785,7 @@ const processRender = (
       type: 'presentation',
       payload: {
         renderToken: request.renderToken,
-        offsetCssPx: resolvePresentationOffsetCssPx(request, metrics, renderState)
+        offsetCssPx: 0
       }
     })
   }
@@ -948,12 +805,14 @@ const processRender = (
 
 const buildPlaybackRenderRequest = (
   animation: PlaybackAnimationState,
-  allowScrollReuse = animation.request.allowScrollReuse !== false
+  allowScrollReuse = animation.request.allowScrollReuse !== false,
+  nowMs = performance.now()
 ): HorizontalBrowseDetailLiveCanvasRenderRequest => {
   const playbackSeconds = resolvePlaybackSeconds(
     animation.request,
     animation.baseSeconds,
-    animation.startedAtMs
+    animation.startedAtMs,
+    nowMs
   )
   return {
     ...animation.request,
@@ -969,11 +828,16 @@ const buildPlaybackRenderRequest = (
 const schedulePlaybackRender = (token: number) => {
   clearPlaybackFrameSchedule()
   const renderFrame = () => {
-    playbackRaf = 0
-    playbackTimer = null
+    consumePlaybackFrameSchedule()
     const animation = playbackAnimation
     if (!animation || animation.token !== token || token !== playbackAnimationToken) return
-    processRender(buildPlaybackRenderRequest(animation), false)
+    const nowMs = performance.now()
+    const frameGapMs = Math.max(0, nowMs - animation.lastRenderedAtMs)
+    const allowScrollReuse =
+      animation.request.allowScrollReuse !== false &&
+      frameGapMs <= PLAYBACK_SCROLL_REUSE_MAX_FRAME_GAP_MS
+    processRender(buildPlaybackRenderRequest(animation, allowScrollReuse, nowMs), false)
+    animation.lastRenderedAtMs = nowMs
     if (playbackAnimation?.token === token && token === playbackAnimationToken) {
       schedulePlaybackRender(token)
     }
@@ -981,9 +845,11 @@ const schedulePlaybackRender = (token: number) => {
   const scope = resolveWorkerAnimationFrameScope()
   if (typeof scope.requestAnimationFrame === 'function') {
     playbackRaf = scope.requestAnimationFrame(renderFrame)
-    return
   }
-  playbackTimer = setTimeout(renderFrame, PLAYBACK_RENDER_INTERVAL_MS)
+  playbackTimer = setTimeout(
+    renderFrame,
+    playbackRaf ? PLAYBACK_RENDER_FALLBACK_TIMEOUT_MS : PLAYBACK_RENDER_INTERVAL_MS
+  )
 }
 
 const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
@@ -1018,9 +884,12 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
     token,
     request,
     baseSeconds,
-    startedAtMs: nowMs
+    startedAtMs: nowMs,
+    lastRenderedAtMs: nowMs
   }
-  processRender(buildPlaybackRenderRequest(playbackAnimation, request.allowScrollReuse !== false))
+  processRender(
+    buildPlaybackRenderRequest(playbackAnimation, request.allowScrollReuse !== false, nowMs)
+  )
   if (playbackAnimation?.token === token && !playbackTimer) {
     schedulePlaybackRender(token)
   }
@@ -1083,36 +952,33 @@ self.onmessage = (event: MessageEvent<HorizontalBrowseDetailLiveCanvasWorkerInco
   }
 
   if (message.type === 'clearRaw') {
-    liveRawData = null
-    retainedRawData = null
-    liveRawRevision = 0
-    retainedRawRevision = 0
+    rawStore.clear()
     clearCanvasPixels()
     return
   }
 
   if (message.type === 'resetRaw') {
-    ensureLiveRawCapacity(message.payload, message.payload.retainCurrent === true)
+    rawStore.ensureCapacity(message.payload, message.payload.retainCurrent === true)
     return
   }
 
   if (message.type === 'ensureRawCapacity') {
-    ensureLiveRawCapacity(message.payload)
+    rawStore.ensureCapacity(message.payload)
     return
   }
 
   if (message.type === 'applyRawChunk') {
-    applyLiveRawChunk(message.payload)
+    rawStore.applyChunk(message.payload)
     return
   }
 
   if (message.type === 'replaceRaw') {
-    replaceLiveRawData(message.payload.data)
+    rawStore.replace(message.payload.data)
     return
   }
 
   if (message.type === 'updateRawMeta') {
-    updateLiveRawMeta(message.payload)
+    rawStore.updateMeta(message.payload)
     return
   }
 

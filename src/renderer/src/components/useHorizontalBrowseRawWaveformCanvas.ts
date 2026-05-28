@@ -236,7 +236,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     suppressNextPlaybackScrollReuse = false
     lastDrawPlaybackActive = false
     lastStreamRenderedRawData = null
-    applyLiveCanvasPresentationOffset(0)
+    clearLiveCanvasPresentationOffset()
     // 外部重置 retained（例如切歌、loadWaveform）会清掉 canvas 上所有可用像素。
     displayReady.value = false
   }
@@ -273,7 +273,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const clearCanvas = () => {
     liveCanvasRenderToken += 1
     liveCanvasBridge.clear()
-    applyLiveCanvasPresentationOffset(0)
+    clearLiveCanvasPresentationOffset()
     for (const canvas of [gridCanvasRef.value]) {
       if (!canvas) continue
       const ctx = canvas.getContext('2d')
@@ -321,16 +321,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     displayReady.value = true
   }
 
-  const applyLiveCanvasPresentationOffset = (offsetPx: number) => {
-    const transform =
-      Math.abs(offsetPx) <= 0.0001 ? '' : `translate3d(${offsetPx.toFixed(3)}px, 0, 0)`
+  const clearLiveCanvasPresentationOffset = () => {
     for (const canvas of [waveformCanvasRef.value, overlayCanvasRef.value]) {
       if (!canvas) continue
-      if (transform) {
-        canvas.style.transform = transform
-      } else {
-        canvas.style.removeProperty('transform')
-      }
+      canvas.style.removeProperty('transform')
     }
   }
 
@@ -341,8 +335,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     >['payload']
   ) => {
     if (payload.renderToken !== liveCanvasRenderToken) return
-    const offsetPx = Number(payload.offsetCssPx) || 0
-    applyLiveCanvasPresentationOffset(offsetPx)
+    clearLiveCanvasPresentationOffset()
   }
 
   const queueLiveWaveformRender = (payload: {
@@ -358,6 +351,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const wrap = wrapRef.value
     if (!wrap || !ensureLiveCanvasMounted()) return false
     const wrapRect = wrap.getBoundingClientRect()
+    const waveformLayout = resolveWaveformLayout()
+    const waveformRenderStyle = options.waveformRenderStyle()
     const pixelRatio = window.devicePixelRatio || 1
     const wrapWidth = Math.max(1, wrapRect.width || wrap.clientWidth || 0)
     const wrapHeight = Math.max(1, wrapRect.height || wrap.clientHeight || 0)
@@ -406,8 +401,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       showBeatGrid: Number(options.previewBpm.value) > 0,
       allowScrollReuse: payload.allowScrollReuse,
       phaseAwareScrollReuse: payload.allowScrollReuse && options.phaseAwareScrollReuse?.() === true,
-      waveformLayout: resolveWaveformLayout(),
-      waveformRenderStyle: options.waveformRenderStyle(),
+      waveformLayout,
+      waveformRenderStyle,
       preferRawPeaksOnly: payload.preferRawPeaksOnly,
       themeVariant: resolveHorizontalBrowseWaveformThemeVariant(),
       rawSlot: resolveRawSlotForRender(payload.rawData),
@@ -656,8 +651,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       renderStartSec,
       visibleDuration
     )
-    const smoothPlaybackFullRedraw = playbackStreamReuse && effectiveRawCoverage
-    const allowPlaybackScrollReuse = canReusePlaybackScroll && !smoothPlaybackFullRedraw
+    const allowPlaybackScrollReuse = canReusePlaybackScroll
     const effectiveRawIntersection = isRawDataIntersectingRange(
       effectiveRawData,
       renderStartSec,

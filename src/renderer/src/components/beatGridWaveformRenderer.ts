@@ -22,6 +22,7 @@ type DrawWaveformOptions = {
   waveformRenderStyle?: WaveformRenderStyle
   themeVariant?: 'light' | 'dark'
   preferRawPeaksOnly?: boolean
+  smoothColumns?: boolean
 }
 
 type WaveformColumn = {
@@ -46,6 +47,9 @@ const MAJOR_GRID_LINE_WIDTH = 1.5
 const MINOR_GRID_LINE_WIDTH = 1.15
 const GRID_LINE_VERTICAL_OVERSCAN = 2
 const HALF_WAVEFORM_AMPLITUDE_RATIO = 0.8
+const COLUMN_SMOOTH_FAR_WEIGHT = 0.12
+const COLUMN_SMOOTH_NEAR_WEIGHT = 0.22
+const COLUMN_SMOOTH_CENTER_WEIGHT = 0.32
 const RAW_CURVE_VERTICAL_SCALE = 0.82
 const RAW_FFT_MIN_SIZE = 128
 const RAW_FFT_MAX_SIZE = 512
@@ -468,6 +472,38 @@ const resolveRawFftRgbColor = (
   }
 }
 
+const resolveRawColumnByTimeRange = (
+  rawData: RawWaveformData,
+  rawFrames: number,
+  rawRate: number,
+  rawStartSec: number,
+  startTime: number,
+  endTime: number,
+  maxSamplesPerPixel: number | undefined,
+  preferRawPeaksOnly: boolean
+): WaveformColumn | null => {
+  const rawDuration = rawFrames / rawRate
+  const safeRawDuration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0
+  const rawEndSec = rawStartSec + safeRawDuration
+  if (!safeRawDuration || endTime <= rawStartSec || startTime >= rawEndSec) return null
+  const rawLocalStartTime = clamp(startTime - rawStartSec, 0, safeRawDuration)
+  const rawLocalEndTime = clamp(endTime - rawStartSec, rawLocalStartTime, safeRawDuration)
+  if (rawLocalEndTime <= rawLocalStartTime) return null
+  const rawStartFrame = clamp(Math.floor(rawLocalStartTime * rawRate), 0, rawFrames - 1)
+  const rawEndFrame = clamp(Math.ceil(rawLocalEndTime * rawRate), rawStartFrame, rawFrames - 1)
+  const rawPeaks = resolveRawPeaksByRange(rawData, rawStartFrame, rawEndFrame, maxSamplesPerPixel)
+  if (rawPeaks.ampTop <= 0 && rawPeaks.ampBottom <= 0) return null
+  const color = preferRawPeaksOnly
+    ? { r: 235, g: 242, b: 248 }
+    : resolveRawFftRgbColor(rawData, rawStartFrame, rawEndFrame, maxSamplesPerPixel)
+  if (!color) return null
+  return {
+    ampTop: rawPeaks.ampTop,
+    ampBottom: rawPeaks.ampBottom,
+    color
+  }
+}
+
 const buildWaveformColumns = (
   width: number,
   mixxxData: MixxxWaveformData,
@@ -476,7 +512,8 @@ const buildWaveformColumns = (
   rangeDurationSec: number,
   maxSamplesPerPixel?: number,
   timeBasisOffsetMs?: number,
-  preferRawPeaksOnly = false
+  preferRawPeaksOnly = false,
+  smoothColumns = false
 ): WaveformColumn[] => {
   const low = mixxxData.bands.low
   const mid = mixxxData.bands.mid
@@ -509,6 +546,64 @@ const buildWaveformColumns = (
   const rawRate = hasRaw ? Number(rawData.rate) : 0
   const timeBasisOffsetSec = Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
   const rawStartSec = hasRaw ? Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec : 0
+  const rawColumnDurationSec = rangeDurationSec / Math.max(1, width)
+  const rawTimelineColumnCache = new Map<number, WaveformColumn | null>()
+  const resolveRawTimelineColumn = (timelineColumnIndex: number) => {
+    if (!hasRaw || !rawData || rawFrames <= 0 || rawRate <= 0 || rawColumnDurationSec <= 0) {
+      return null
+    }
+    if (rawTimelineColumnCache.has(timelineColumnIndex)) {
+      return rawTimelineColumnCache.get(timelineColumnIndex) ?? null
+    }
+    const startTime = timelineColumnIndex * rawColumnDurationSec
+    const column = resolveRawColumnByTimeRange(
+      rawData,
+      rawFrames,
+      rawRate,
+      rawStartSec,
+      startTime,
+      startTime + rawColumnDurationSec,
+      maxSamplesPerPixel,
+      preferRawPeaksOnly
+    )
+    rawTimelineColumnCache.set(timelineColumnIndex, column)
+    return column
+  }
+  const resolveSmoothedRawTimelineColumn = (timelineColumnIndex: number): WaveformColumn | null => {
+    let ampTop = 0
+    let ampBottom = 0
+    let r = 0
+    let g = 0
+    let b = 0
+    let colorWeight = 0
+    const addColumn = (offset: number, weight: number) => {
+      const column = resolveRawTimelineColumn(timelineColumnIndex + offset)
+      ampTop += (column?.ampTop ?? 0) * weight
+      ampBottom += (column?.ampBottom ?? 0) * weight
+      if (!column) return
+      r += column.color.r * weight
+      g += column.color.g * weight
+      b += column.color.b * weight
+      colorWeight += weight
+    }
+
+    addColumn(-2, COLUMN_SMOOTH_FAR_WEIGHT)
+    addColumn(-1, COLUMN_SMOOTH_NEAR_WEIGHT)
+    addColumn(0, COLUMN_SMOOTH_CENTER_WEIGHT)
+    addColumn(1, COLUMN_SMOOTH_NEAR_WEIGHT)
+    addColumn(2, COLUMN_SMOOTH_FAR_WEIGHT)
+    if (ampTop <= 0 && ampBottom <= 0) return null
+    if (colorWeight <= 0) return null
+    return {
+      ampTop: clamp(ampTop, 0, 1),
+      ampBottom: clamp(ampBottom, 0, 1),
+      color: {
+        r: toColorChannel(r / colorWeight),
+        g: toColorChannel(g / colorWeight),
+        b: toColorChannel(b / colorWeight)
+      }
+    }
+  }
 
   for (let x = 0; x < width; x += 1) {
     const startTime = rangeStartSec + (x / width) * rangeDurationSec
@@ -542,31 +637,19 @@ const buildWaveformColumns = (
         : 1
 
     if (hasRaw && rawData && rawFrames > 0 && rawRate > 0) {
-      const rawDuration = rawFrames / rawRate
-      const safeRawDuration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0
-      const rawEndSec = rawStartSec + safeRawDuration
-      if (endTime <= rawStartSec || startTime >= rawEndSec) continue
-      const rawLocalStartTime = clamp(startTime - rawStartSec, 0, safeRawDuration)
-      const rawLocalEndTime = clamp(endTime - rawStartSec, rawLocalStartTime, safeRawDuration)
-      if (rawLocalEndTime <= rawLocalStartTime) continue
-      const rawStartFrame = clamp(Math.floor(rawLocalStartTime * rawRate), 0, rawFrames - 1)
-      const rawEndFrame = clamp(Math.ceil(rawLocalEndTime * rawRate), rawStartFrame, rawFrames - 1)
-      const rawPeaks = resolveRawPeaksByRange(
-        rawData,
-        rawStartFrame,
-        rawEndFrame,
-        maxSamplesPerPixel
-      )
-      if (rawPeaks.ampTop <= 0 && rawPeaks.ampBottom <= 0) continue
-      const color = preferRawPeaksOnly
-        ? { r: 235, g: 242, b: 248 }
-        : resolveRawFftRgbColor(rawData, rawStartFrame, rawEndFrame, maxSamplesPerPixel)
-      if (!color) continue
-      columns[x] = {
-        ampTop: rawPeaks.ampTop,
-        ampBottom: rawPeaks.ampBottom,
-        color
-      }
+      const column = smoothColumns
+        ? resolveSmoothedRawTimelineColumn(Math.round(startTime / rawColumnDurationSec))
+        : resolveRawColumnByTimeRange(
+            rawData,
+            rawFrames,
+            rawRate,
+            rawStartSec,
+            startTime,
+            endTime,
+            maxSamplesPerPixel,
+            preferRawPeaksOnly
+          )
+      if (column) columns[x] = column
       continue
     }
 
@@ -671,8 +754,10 @@ const drawWaveformColumns = (
     const column = columns[x]
     if (!column) continue
     const { r, g, b } = column.color
-    const topHeight = Math.max(1, Math.round(column.ampTop * ampScale))
-    const bottomHeight = Math.max(1, Math.round(column.ampBottom * ampScale))
+    const ampTop = column.ampTop
+    const ampBottom = column.ampBottom
+    const topHeight = Math.max(1, Math.round(ampTop * ampScale))
+    const bottomHeight = Math.max(1, Math.round(ampBottom * ampScale))
     const singleHeight = Math.max(topHeight, bottomHeight)
     let y = centerY - topHeight
     let h = topHeight + bottomHeight
@@ -695,7 +780,7 @@ const drawWaveformColumns = (
       const topHighlight = Math.max(0, y)
       const bottomHighlight = Math.min(height - 1, y + h - 1)
       ctx.fillStyle = `rgba(${palette.detailHighlightBase}, ${
-        0.14 + Math.max(column.ampTop, column.ampBottom) * 0.3
+        0.14 + Math.max(ampTop, ampBottom) * 0.3
       })`
 
       if (waveformLayout === 'top-half') {
@@ -846,7 +931,8 @@ export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawW
     waveformRenderStyle,
     themeVariant,
     timeBasisOffsetMs,
-    preferRawPeaksOnly
+    preferRawPeaksOnly,
+    smoothColumns
   } = options
   if (width <= 0 || height <= 0) return false
   const palette = resolveWaveformPalette(ctx, themeVariant)
@@ -879,7 +965,8 @@ export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawW
     rangeDurationSec,
     maxSamplesPerPixel,
     timeBasisOffsetMs,
-    preferRawPeaksOnly
+    preferRawPeaksOnly,
+    smoothColumns
   )
   const hasColumns = columns.some(Boolean)
   const resolvedWaveformLayout = waveformLayout || 'full'
