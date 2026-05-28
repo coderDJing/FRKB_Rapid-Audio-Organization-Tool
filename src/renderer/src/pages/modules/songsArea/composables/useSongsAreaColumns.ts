@@ -6,6 +6,7 @@ import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
+import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
@@ -270,6 +271,9 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
                   : undefined,
                 filterNumber: runtime.setting.persistSongFilters
                   ? (savedCol as ISongsAreaColumn).filterNumber
+                  : undefined,
+                filterCuratedOnly: runtime.setting.persistSongFilters
+                  ? (savedCol as ISongsAreaColumn).filterCuratedOnly
                   : undefined
               }
               return mergedCol
@@ -426,20 +430,32 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
         const excludeKeywords = parseExcludeKeywords(col.filterExcludeValue)
         const hasInclude = keyword.trim().length > 0
         const hasExclude = excludeKeywords.length > 0
-        if (!hasInclude && !hasExclude) continue
+        const hasCuratedOnly = !!col.filterCuratedOnly
+        if (!hasInclude && !hasExclude && !hasCuratedOnly) continue
         const isKeyColumn = col.key === 'key'
         const isOriginalPlaylist = col.key === 'originalPlaylistPath'
         const keyStyle = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
-        filtered = filtered.filter((song) => {
-          const rawValue = isOriginalPlaylist
-            ? getOriginalPlaylistDisplay(song)
-            : String(getSongField(song, col.key) ?? '')
-          const displayValue = isKeyColumn ? getKeyDisplayText(rawValue, keyStyle) : rawValue
-          const value = displayValue.toLowerCase()
-          if (hasInclude && !value.includes(keyword)) return false
-          if (hasExclude && excludeKeywords.some((kw) => value.includes(kw))) return false
-          return true
-        })
+        if (hasInclude || hasExclude) {
+          filtered = filtered.filter((song) => {
+            const rawValue = isOriginalPlaylist
+              ? getOriginalPlaylistDisplay(song)
+              : String(getSongField(song, col.key) ?? '')
+            const displayValue = isKeyColumn ? getKeyDisplayText(rawValue, keyStyle) : rawValue
+            const value = displayValue.toLowerCase()
+            if (hasInclude && !value.includes(keyword)) return false
+            if (hasExclude && excludeKeywords.some((kw) => value.includes(kw))) return false
+            return true
+          })
+        }
+        if (hasCuratedOnly && col.key === 'artist') {
+          const curatedNames = new Set(
+            (runtime.curatedArtistFavorites || []).map((a) => normalizeArtistName(a.name))
+          )
+          filtered = filtered.filter((song) => {
+            const artistNames = splitArtistNames(song.artist)
+            return artistNames.some((name) => curatedNames.has(normalizeArtistName(name)))
+          })
+        }
       } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {
         const target = parseDurationToSeconds(col.filterDuration)
         filtered = filtered.filter((song) => {
@@ -576,6 +592,10 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     persistColumnData()
     applyFiltersAndSorting()
     songsAreaState.selectedSongFilePath.length = 0
+
+    if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
+      runtime.playingData.playingSongListData = songsAreaState.songInfoArr
+    }
   }
 
   watch(

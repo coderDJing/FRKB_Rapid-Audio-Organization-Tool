@@ -16,7 +16,7 @@ const filterIconMaskStyle = {
 type VDraggableBinding = [list: ISongsAreaColumn[], options?: UseDraggableOptions<ISongsAreaColumn>]
 type FilterDialogType = 'text' | 'duration' | 'bpm'
 type FilterDialogPayload =
-  | { type: 'text'; text: string; excludeText: string }
+  | { type: 'text'; text: string; excludeText: string; curatedOnly: boolean }
   | { type: 'duration'; op: 'eq' | 'gte' | 'lte'; duration: string }
   | { type: 'bpm'; op: 'eq' | 'gte' | 'lte'; value: string }
 
@@ -262,6 +262,7 @@ const tempExcludeText = ref<string>('')
 const tempOp = ref<'eq' | 'gte' | 'lte'>('gte')
 const tempDuration = ref<string>('00:00')
 const tempNumber = ref<string>('')
+const tempCuratedOnly = ref<boolean>(false)
 
 // 打开筛选弹窗
 function handleFilterIconClick(e: MouseEvent, col: ISongsAreaColumn) {
@@ -270,6 +271,7 @@ function handleFilterIconClick(e: MouseEvent, col: ISongsAreaColumn) {
   if (col.filterType === 'text') {
     tempText.value = col.filterValue || ''
     tempExcludeText.value = col.filterExcludeValue || ''
+    tempCuratedOnly.value = col.filterCuratedOnly || false
   } else if (col.filterType === 'duration') {
     tempOp.value = col.filterOp || 'gte'
     tempDuration.value = col.filterDuration || '00:00'
@@ -324,7 +326,8 @@ function applyFilterConfirm(target: ISongsAreaColumn) {
       const excludeKeywords = parseExcludeKeywords(excludeText)
       next.filterValue = includeText || undefined
       next.filterExcludeValue = excludeKeywords.length > 0 ? excludeText : undefined
-      next.filterActive = !!includeText || excludeKeywords.length > 0
+      next.filterCuratedOnly = tempCuratedOnly.value || undefined
+      next.filterActive = !!includeText || excludeKeywords.length > 0 || tempCuratedOnly.value
       next.filterOp = undefined
       next.filterDuration = undefined
       next.filterNumber = undefined
@@ -357,6 +360,7 @@ function clearFilter(target: ISongsAreaColumn) {
       filterActive: false,
       filterValue: undefined,
       filterExcludeValue: undefined,
+      filterCuratedOnly: undefined,
       filterOp: undefined,
       filterDuration: undefined,
       filterNumber: undefined
@@ -377,8 +381,11 @@ function getFilterTooltip(col: ISongsAreaColumn): string {
     if (excludeKeywords.length > 0) {
       parts.push(`${props.t('filters.excludeKeyword')}: "${excludeKeywords.join(', ')}"`)
     }
+    if (col.filterCuratedOnly) parts.push(props.t('filters.onlyCuratedArtists'))
     if (parts.length === 0) return ''
-    return `${props.t('filters.filterByText')}: ${parts.join(' / ')}`
+    const hasTextFilter = !!includeText || excludeKeywords.length > 0
+    const prefix = hasTextFilter ? props.t('filters.filterByText') : ''
+    return prefix ? `${prefix}: ${parts.join(' / ')}` : parts.join(' / ')
   }
   if (col.filterType === 'duration') {
     const op =
@@ -531,11 +538,14 @@ const handleIndexActionClick = () => {
           :init-op="tempOp"
           :init-duration="tempDuration"
           :init-number="tempNumber"
+          :show-curated-only="col.key === 'artist'"
+          :init-curated-only="tempCuratedOnly"
           @confirm="
             (payload: FilterDialogPayload) => {
               if (payload.type === 'text') {
                 tempText = payload.text
                 tempExcludeText = payload.excludeText
+                tempCuratedOnly = payload.curatedOnly
               } else if (payload.type === 'duration') {
                 tempOp = payload.op
                 tempDuration = payload.duration

@@ -690,6 +690,8 @@ interface ISongsAreaColumn {
   filterDuration?: string
   // BPM 筛选：目标数值（支持小数）
   filterNumber?: string
+  // 仅查看精选过的表演者（仅 artist 列使用）
+  filterCuratedOnly?: boolean
 }
 
 type Icon = {

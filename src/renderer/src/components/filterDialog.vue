@@ -5,6 +5,7 @@ import { v4 as uuidV4 } from 'uuid'
 import { t } from '@renderer/utils/translate'
 import utils from '@renderer/utils/utils'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 
 type Op = 'eq' | 'gte' | 'lte'
 
@@ -15,13 +16,15 @@ const props = defineProps<{
   initOp?: Op
   initDuration?: string
   initNumber?: string
+  showCuratedOnly?: boolean
+  initCuratedOnly?: boolean
 }>()
 
 const emits = defineEmits<{
   (
     e: 'confirm',
     payload:
-      | { type: 'text'; text: string; excludeText: string }
+      | { type: 'text'; text: string; excludeText: string; curatedOnly: boolean }
       | { type: 'duration'; op: Op; duration: string }
       | { type: 'bpm'; op: Op; value: string }
   ): void
@@ -36,6 +39,7 @@ const excludeText = ref(props.initExcludeText || '')
 const op = ref<Op>(props.initOp || 'gte')
 const duration = ref(props.initDuration || '00:00')
 const numberValue = ref(props.initNumber || '')
+const curatedOnly = ref(props.initCuratedOnly || false)
 
 watch(
   () => [
@@ -44,6 +48,7 @@ watch(
     props.initOp,
     props.initDuration,
     props.initNumber,
+    props.initCuratedOnly,
     props.type
   ],
   () => {
@@ -52,6 +57,7 @@ watch(
     op.value = props.initOp || 'gte'
     duration.value = props.initDuration || '00:00'
     numberValue.value = props.initNumber || ''
+    curatedOnly.value = props.initCuratedOnly || false
   }
 )
 
@@ -85,7 +91,8 @@ const handleConfirm = () => {
       ? ({
           type: 'text',
           text: text.value.trim(),
-          excludeText: excludeText.value.trim()
+          excludeText: excludeText.value.trim(),
+          curatedOnly: curatedOnly.value
         } as const)
       : props.type === 'duration'
         ? ({ type: 'duration', op: op.value, duration: normalizeMmSs(duration.value) } as const)
@@ -162,6 +169,13 @@ onUnmounted(() => {
               style="width: 100%"
               @keydown.enter.prevent.stop="handleConfirm"
             />
+          </div>
+          <div
+            v-if="showCuratedOnly"
+            style="margin-top: 10px; display: inline-flex; align-items: center; gap: 8px"
+          >
+            <singleCheckbox v-model="curatedOnly" />
+            <span class="checkbox-text">{{ t('filters.onlyCuratedArtists') }}</span>
           </div>
         </template>
         <template v-else-if="props.type === 'duration'">
@@ -263,6 +277,11 @@ onUnmounted(() => {
 .filter-label {
   font-size: 12px;
   color: var(--text-weak);
+}
+.checkbox-text {
+  font-size: 13px;
+  color: var(--text);
+  user-select: none;
 }
 .radio-group {
   display: flex;
