@@ -719,8 +719,9 @@ async function syncMixtapePathReferencesAfterDirChange(
       }
     })
     await runWithConcurrency(tasks, { concurrency: 8, stopOnENOSPC: false })
-  } catch (error) {
-    void error
+  } catch {
+    // 移动文件本身已经完成；这里同步的是 mixtape 引用缓存，失败不应打断文件操作。
+    // 上层没有可展示的恢复动作，避免把可忽略的缓存同步失败写入 log.txt。
   }
 }
 

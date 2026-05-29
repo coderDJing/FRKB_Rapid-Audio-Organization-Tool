@@ -16,6 +16,7 @@ const ERROR_API = {
 }
 
 let timer: NodeJS.Timeout | null = null
+let tickInFlight = false
 
 function getLogFilePath() {
   return getLogPath()
@@ -61,10 +62,12 @@ async function uploadLogText(text: string): Promise<boolean> {
   }
 }
 
-function persistSettings() {
-  persistSettingConfig().catch((e) => {
+async function persistSettings() {
+  try {
+    await persistSettingConfig()
+  } catch (e) {
     log.error('[errorReport] 持久化设置失败', e)
-  })
+  }
 }
 
 async function tryUploadOnce(trigger: 'auto' | 'manual'): Promise<boolean> {
@@ -74,7 +77,7 @@ async function tryUploadOnce(trigger: 'auto' | 'manual'): Promise<boolean> {
     // 日志为空：自动触发时重置累计时长，避免每个 tick 都重复尝试
     if (trigger === 'auto') {
       setting.errorReportUsageMsSinceLastSuccess = 0
-      persistSettings()
+      await persistSettings()
     }
     return false
   }
@@ -83,42 +86,48 @@ async function tryUploadOnce(trigger: 'auto' | 'manual'): Promise<boolean> {
     setting.errorReportUsageMsSinceLastSuccess = 0
     setting.errorReportRetryMsSinceLastFailure = -1
     clearLogFileSync()
-    persistSettings()
+    await persistSettings()
     return true
   }
   // 失败进入重试窗口
   setting.errorReportRetryMsSinceLastFailure = 0
-  persistSettings()
+  await persistSettings()
   return false
 }
 
 async function onTick() {
-  const setting = store.settingConfig
-  if (!setting.enableErrorReport) return
+  if (tickInFlight) return
+  tickInFlight = true
+  try {
+    const setting = store.settingConfig
+    if (!setting.enableErrorReport) return
 
-  // 初始化字段
-  if (typeof setting.errorReportUsageMsSinceLastSuccess !== 'number') {
-    setting.errorReportUsageMsSinceLastSuccess = 0
-  }
-  if (typeof setting.errorReportRetryMsSinceLastFailure !== 'number') {
-    setting.errorReportRetryMsSinceLastFailure = -1
-  }
+    // 初始化字段
+    if (typeof setting.errorReportUsageMsSinceLastSuccess !== 'number') {
+      setting.errorReportUsageMsSinceLastSuccess = 0
+    }
+    if (typeof setting.errorReportRetryMsSinceLastFailure !== 'number') {
+      setting.errorReportRetryMsSinceLastFailure = -1
+    }
 
-  // 累计运行时长
-  setting.errorReportUsageMsSinceLastSuccess += TICK_MS
+    // 累计运行时长
+    setting.errorReportUsageMsSinceLastSuccess += TICK_MS
 
-  // 若失败重试窗口开启，则累计重试计时
-  if (setting.errorReportRetryMsSinceLastFailure >= 0) {
-    setting.errorReportRetryMsSinceLastFailure += TICK_MS
-    if (setting.errorReportRetryMsSinceLastFailure >= RETRY_THRESHOLD_MS) {
+    // 若失败重试窗口开启，则累计重试计时
+    if (setting.errorReportRetryMsSinceLastFailure >= 0) {
+      setting.errorReportRetryMsSinceLastFailure += TICK_MS
+      if (setting.errorReportRetryMsSinceLastFailure >= RETRY_THRESHOLD_MS) {
+        await tryUploadOnce('auto')
+      }
+      return
+    }
+
+    // 正常阈值触发
+    if (setting.errorReportUsageMsSinceLastSuccess >= USAGE_UPLOAD_THRESHOLD_MS) {
       await tryUploadOnce('auto')
     }
-    return
-  }
-
-  // 正常阈值触发
-  if (setting.errorReportUsageMsSinceLastSuccess >= USAGE_UPLOAD_THRESHOLD_MS) {
-    await tryUploadOnce('auto')
+  } finally {
+    tickInFlight = false
   }
 }
 

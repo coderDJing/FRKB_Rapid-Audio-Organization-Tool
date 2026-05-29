@@ -230,8 +230,9 @@ class PersistentXpuStemWorkerSlot {
           continue
         }
         this.settleInflight(message)
-      } catch (error) {
-        void error
+      } catch {
+        // stdout 只承载 worker JSON 协议；第三方库偶发输出不是业务错误。
+        // 真失败会通过 error 响应、stderr 或进程退出上抛，这里不能写入 log.txt 噪音。
       }
     }
   }

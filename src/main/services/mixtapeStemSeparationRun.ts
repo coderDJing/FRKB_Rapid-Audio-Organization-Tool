@@ -442,8 +442,9 @@ export const runStemSeparation = async (params: {
       inputDir: bootstrapInputDir
     })
     waveformBootstrapReady = fs.existsSync(resolveDemucsBootstrapPath())
-  } catch (error) {
-    void error
+  } catch {
+    // waveform bootstrap 是性能优化路径；失败后会走常规 Demucs 分离。
+    // 这里不是最终错误，避免把可恢复降级写入 log.txt 干扰错误上报。
   }
 
   const demucsModelCandidates = resolveDemucsModelCandidates({
@@ -573,7 +574,9 @@ export const runStemSeparation = async (params: {
                 onStderrChunk: handleStderrChunk
               })
               return
-            } catch (error) {
+            } catch {
+              // XPU 常驻 worker 只是加速路径；失败后仍会尝试普通 bootstrap。
+              // 最终不可恢复错误会由外层设备/模型重试链路抛出，这里保持静默。
               await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
               await fs.promises.mkdir(rawOutputRoot, { recursive: true })
             }
@@ -632,7 +635,9 @@ export const runStemSeparation = async (params: {
                 : null,
             etaSec: 0
           })
-        } catch (error) {
+        } catch {
+          // no-split 只是短音频优化路径；失败后立即回到 split 模式。
+          // split 再失败时外层会抛出真实错误，不在这里提前污染 log.txt。
           await runDeviceInference(true)
           emitProgress({
             percent: 100,
