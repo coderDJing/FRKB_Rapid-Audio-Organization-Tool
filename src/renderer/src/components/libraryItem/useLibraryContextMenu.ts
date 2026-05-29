@@ -68,6 +68,51 @@ export function useLibraryContextMenu({
   const getDirData = () => dirDataRef.value
   const getFatherDirData = () => fatherDirDataRef.value
 
+  const getOperateUuids = (): string[] => {
+    if (runtime.selectedPlaylistIds.includes(props.uuid)) {
+      return runtime.selectedPlaylistIds
+    }
+    return [props.uuid]
+  }
+
+  const collectSongListUuids = (uuids: string[]): string[] => {
+    const seen = new Set<string>()
+    const result: string[] = []
+    const traverse = (node: IDir) => {
+      if (node.type === 'songList') {
+        if (!seen.has(node.uuid)) {
+          seen.add(node.uuid)
+          result.push(node.uuid)
+        }
+      }
+      if (Array.isArray(node.children)) {
+        node.children.forEach((child) => traverse(child))
+      }
+    }
+    for (const uuid of uuids) {
+      const node = libraryUtils.getLibraryTreeByUUID(uuid)
+      if (!node) continue
+      traverse(node)
+    }
+    return result
+  }
+
+  const scanSongListsForFiles = async (uuids: string[]): Promise<string[]> => {
+    const files: string[] = []
+    for (const uuid of uuids) {
+      const dirPath = libraryUtils.findDirPathByUuid(uuid)
+      const scan = (await window.electron.ipcRenderer.invoke(
+        'scanSongList',
+        dirPath,
+        uuid
+      )) as ScanSongListResult | null
+      if (Array.isArray(scan?.scanData)) {
+        files.push(...scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item))
+      }
+    }
+    return files
+  }
+
   const rightClickMenuShow = ref(false)
   const buildMenuArr = (): IMenu[][] => {
     const dirData = getDirData()
@@ -200,6 +245,74 @@ export function useLibraryContextMenu({
     }
   }
 
+  const deleteDirs = async (uuids: string[]) => {
+    if (runtime.isProgressing) {
+      await confirmTaskBusy()
+      return
+    }
+    // 过滤掉祖先也在删除列表中的 UUID，避免父子节点重复处理
+    const uuidSet = new Set(uuids)
+    uuids = uuids.filter((uuid) => {
+      let parent = libraryUtils.getFatherLibraryTreeByUUID(uuid)
+      while (parent) {
+        if (uuidSet.has(parent.uuid)) return false
+        parent = libraryUtils.getFatherLibraryTreeByUUID(parent.uuid)
+      }
+      return true
+    })
+    for (const uuid of uuids) {
+      const node = libraryUtils.getLibraryTreeByUUID(uuid)
+      if (!node) continue
+      if (node.type === 'mixtapeList') {
+        const allowed = await libraryUtils.ensureMixtapeDeleteAllowed(uuid)
+        if (!allowed) return
+      }
+    }
+    runtime.isProgressing = true
+    try {
+      for (const uuid of uuids) {
+        const node = libraryUtils.getLibraryTreeByUUID(uuid)
+        if (!node) continue
+        const childUuids = libraryUtils.getAllUuids(node)
+        for (const pane of ['single', 'left', 'right'] as const) {
+          if (childUuids.includes(runtime.songsAreaPanels.panes[pane].songListUUID)) {
+            runtime.clearSongsAreaPaneState(pane)
+          }
+        }
+        if (childUuids.includes(runtime.playingData.playingSongListUUID)) {
+          runtime.playingData.playingSongListUUID = ''
+          runtime.playingData.playingSongListData = []
+          runtime.playingData.playingSong = null
+        }
+      }
+
+      const entries: Array<{ parent: IDir; index: number; order?: number }> = []
+      for (const uuid of uuids) {
+        const parent = libraryUtils.getFatherLibraryTreeByUUID(uuid)
+        if (!parent?.children) continue
+        const index = parent.children.findIndex((c) => c.uuid === uuid)
+        if (index !== -1) {
+          entries.push({ parent, index, order: parent.children[index].order })
+        }
+      }
+
+      entries.sort((a, b) => b.index - a.index)
+      for (const { parent, index, order } of entries) {
+        if (order !== undefined) {
+          for (const sibling of parent.children!) {
+            if (sibling.order !== undefined && sibling.order > order) {
+              sibling.order--
+            }
+          }
+        }
+        parent.children!.splice(index, 1)
+      }
+      await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    } finally {
+      runtime.isProgressing = false
+    }
+  }
+
   const confirmTaskBusy = async () => {
     await confirm({
       title: t('dialog.hint'),
@@ -294,7 +407,12 @@ export function useLibraryContextMenu({
       }
       case 'common.delete':
       case 'playlist.deletePlaylist': {
-        await deleteDir()
+        const operateUuids = getOperateUuids()
+        if (operateUuids.length === 1) {
+          await deleteDir()
+        } else {
+          await deleteDirs(operateUuids)
+        }
         break
       }
       case 'playlist.emptyPlaylist': {
@@ -302,28 +420,29 @@ export function useLibraryContextMenu({
           await confirmTaskBusy()
           return
         }
-        const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
+        const operateUuids = collectSongListUuids(getOperateUuids())
+        if (!operateUuids.length) break
         runtime.isProgressing = true
         try {
-          await window.electron.ipcRenderer.invoke('emptyDir', dirPath)
-          if (getDirData()?.type === 'songList' && runtime.setting.showPlaylistTrackCount) {
-            trackCount.value = 0
-          }
-          try {
-            emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
-          } catch {}
-          for (const pane of ['single', 'left', 'right'] as const) {
-            const paneState = runtime.songsAreaPanels.panes[pane]
-            if (paneState.songListUUID === props.uuid) {
-              paneState.selectedSongFilePath.length = 0
-              paneState.songInfoArr = []
-              paneState.totalSongCount = 0
+          for (const uuid of operateUuids) {
+            const dirPath = libraryUtils.findDirPathByUuid(uuid)
+            await window.electron.ipcRenderer.invoke('emptyDir', dirPath)
+            for (const pane of ['single', 'left', 'right'] as const) {
+              const paneState = runtime.songsAreaPanels.panes[pane]
+              if (paneState.songListUUID === uuid) {
+                paneState.selectedSongFilePath.length = 0
+                paneState.songInfoArr = []
+                paneState.totalSongCount = 0
+              }
+            }
+            if (runtime.playingData.playingSongListUUID === uuid) {
+              runtime.playingData.playingSongListData = []
+              runtime.playingData.playingSong = null
             }
           }
-          if (runtime.playingData.playingSongListUUID === props.uuid) {
-            runtime.playingData.playingSongListData = []
-            runtime.playingData.playingSong = null
-          }
+          try {
+            emitter.emit('playlistContentChanged', { uuids: operateUuids })
+          } catch {}
         } finally {
           runtime.isProgressing = false
         }
@@ -352,19 +471,22 @@ export function useLibraryContextMenu({
         }
         const dialogResult = await exportDialog({ title: 'tracks.title' })
         if (dialogResult !== 'cancel') {
-          const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-          await window.electron.ipcRenderer.invoke(
-            'exportSongListToDir',
-            dialogResult.folderPathVal,
-            dialogResult.deleteSongsAfterExport,
-            dirPath
-          )
-          if (dialogResult.deleteSongsAfterExport) {
-            clearSongsAreaPaneBySongListUUID(runtime, props.uuid)
-            if (runtime.playingData.playingSongListUUID === props.uuid) {
-              runtime.playingData.playingSongListUUID = ''
-              runtime.playingData.playingSongListData = []
-              runtime.playingData.playingSong = null
+          const operateUuids = collectSongListUuids(getOperateUuids())
+          for (const uuid of operateUuids) {
+            const dirPath = libraryUtils.findDirPathByUuid(uuid)
+            await window.electron.ipcRenderer.invoke(
+              'exportSongListToDir',
+              dialogResult.folderPathVal,
+              dialogResult.deleteSongsAfterExport,
+              dirPath
+            )
+            if (dialogResult.deleteSongsAfterExport) {
+              clearSongsAreaPaneBySongListUUID(runtime, uuid)
+              if (runtime.playingData.playingSongListUUID === uuid) {
+                runtime.playingData.playingSongListUUID = ''
+                runtime.playingData.playingSongListData = []
+                runtime.playingData.playingSong = null
+              }
             }
           }
         }
@@ -467,22 +589,16 @@ export function useLibraryContextMenu({
         break
       }
       case 'tracks.showInFileExplorer': {
-        window.electron.ipcRenderer.send(
-          'openFileExplorer',
-          libraryUtils.findDirPathByUuid(props.uuid)
-        )
+        const operateUuids = getOperateUuids()
+        for (const uuid of operateUuids) {
+          window.electron.ipcRenderer.send('openFileExplorer', libraryUtils.findDirPathByUuid(uuid))
+        }
         break
       }
       case 'metadata.autoFillMenu': {
-        const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-        const scan = (await window.electron.ipcRenderer.invoke(
-          'scanSongList',
-          dirPath,
-          props.uuid
-        )) as ScanSongListResult | null
-        const files: string[] = Array.isArray(scan?.scanData)
-          ? scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item)
-          : []
+        const operateUuids = collectSongListUuids(getOperateUuids())
+        if (!operateUuids.length) break
+        const files = await scanSongListsForFiles(operateUuids)
         if (!files.length) {
           await confirm({
             title: t('dialog.hint'),
@@ -532,15 +648,9 @@ export function useLibraryContextMenu({
             emitter.emit('metadataBatchUpdated', { updates })
           } catch {}
         }
-        if (
-          (['single', 'left', 'right'] as const).some(
-            (pane) => runtime.songsAreaPanels.panes[pane].songListUUID === props.uuid
-          )
-        ) {
-          try {
-            emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
-          } catch {}
-        }
+        try {
+          emitter.emit('playlistContentChanged', { uuids: operateUuids })
+        } catch {}
         break
       }
       case 'playlist.batchRename': {
@@ -548,20 +658,30 @@ export function useLibraryContextMenu({
           await confirmTaskBusy()
           return
         }
-        const rootNode = libraryUtils.getLibraryTreeByUUID(props.uuid)
-        if (!rootNode) {
-          return
+        const operateUuids = getOperateUuids()
+        const seen = new Set<string>()
+        const songLists: Array<{ uuid: string; path: string; name: string }> = []
+        for (const uuid of operateUuids) {
+          const node = libraryUtils.getLibraryTreeByUUID(uuid)
+          if (!node) continue
+          if (node.type === 'songList') {
+            if (!seen.has(node.uuid)) {
+              seen.add(node.uuid)
+              songLists.push({
+                uuid: node.uuid,
+                path: libraryUtils.findDirPathByUuid(node.uuid),
+                name: node.dirName
+              })
+            }
+          } else {
+            for (const target of collectSongListTargets(node)) {
+              if (!seen.has(target.uuid)) {
+                seen.add(target.uuid)
+                songLists.push(target)
+              }
+            }
+          }
         }
-        const songLists =
-          rootNode.type === 'songList'
-            ? [
-                {
-                  uuid: rootNode.uuid,
-                  path: libraryUtils.findDirPathByUuid(rootNode.uuid),
-                  name: rootNode.dirName
-                }
-              ]
-            : collectSongListTargets(rootNode)
         if (!songLists.length) {
           await confirm({
             title: t('dialog.hint'),
@@ -580,13 +700,12 @@ export function useLibraryContextMenu({
       }
       case 'tracks.convertFormat': {
         try {
-          const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-          const files = await collectFilesForAudioConvert([
-            {
-              songListPath: dirPath,
-              songListUUID: props.uuid
-            }
-          ])
+          const operateUuids = collectSongListUuids(getOperateUuids())
+          const songLists = operateUuids.map((uuid) => ({
+            songListPath: libraryUtils.findDirPathByUuid(uuid),
+            songListUUID: uuid
+          }))
+          const files = await collectFilesForAudioConvert(songLists)
           await startAudioConvertFromFiles({
             files,
             allowedSourceExts: runtime.setting.audioExt,
@@ -597,13 +716,12 @@ export function useLibraryContextMenu({
       }
       case 'tracks.convertNonMp3ToMp3': {
         try {
-          const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-          const files = await collectFilesForAudioConvert([
-            {
-              songListPath: dirPath,
-              songListUUID: props.uuid
-            }
-          ])
+          const operateUuids = collectSongListUuids(getOperateUuids())
+          const songLists = operateUuids.map((uuid) => ({
+            songListPath: libraryUtils.findDirPathByUuid(uuid),
+            songListUUID: uuid
+          }))
+          const files = await collectFilesForAudioConvert(songLists)
           const result = await startAudioConvertFromFiles({
             files,
             allowedSourceExts: runtime.setting.audioExt,
@@ -624,15 +742,9 @@ export function useLibraryContextMenu({
         break
       }
       case 'fingerprints.analyzeAndAdd': {
-        const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-        const scan = (await window.electron.ipcRenderer.invoke(
-          'scanSongList',
-          dirPath,
-          props.uuid
-        )) as ScanSongListResult | null
-        const files: string[] = Array.isArray(scan?.scanData)
-          ? scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item)
-          : []
+        const operateUuids = collectSongListUuids(getOperateUuids())
+        if (!operateUuids.length) break
+        const files = await scanSongListsForFiles(operateUuids)
         if (!files.length) {
           await confirm({
             title: t('dialog.hint'),
@@ -656,46 +768,54 @@ export function useLibraryContextMenu({
         if (confirmResult !== 'confirm') {
           return
         }
+        const operateUuids = collectSongListUuids(getOperateUuids())
+        if (!operateUuids.length) break
         runtime.isProgressing = true
-        const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
-        const progressId = `playlist_dedup_${Date.now()}`
         const normalizePath = (p: string | undefined | null) =>
           (p || '').replace(/\//g, '\\').toLowerCase()
         try {
-          const summary = (await window.electron.ipcRenderer.invoke(
-            'deduplicateSongListByFingerprint',
-            {
-              songListPath,
-              progressId
+          let totalRemoved = 0
+          let totalScanned = 0
+          let totalAnalyzeFailed = 0
+          let fingerprintMode: string | undefined
+          for (const uuid of operateUuids) {
+            const songListPath = libraryUtils.findDirPathByUuid(uuid)
+            const progressId = `playlist_dedup_${Date.now()}_${uuid}`
+            const summary = (await window.electron.ipcRenderer.invoke(
+              'deduplicateSongListByFingerprint',
+              {
+                songListPath,
+                progressId
+              }
+            )) as PlaylistDedupSummary
+            const removedRaw: string[] = Array.isArray(summary?.removedFilePaths)
+              ? summary.removedFilePaths.filter(Boolean)
+              : []
+            const removedNormalized = removedRaw.map((p) => normalizePath(p)).filter(Boolean)
+            if (removedNormalized.length > 0) {
+              emitter.emit('songsRemoved', { listUUID: uuid, paths: removedNormalized })
             }
-          )) as PlaylistDedupSummary
-          const removedRaw: string[] = Array.isArray(summary?.removedFilePaths)
-            ? summary.removedFilePaths.filter(Boolean)
-            : []
-          const removedNormalized = removedRaw.map((p) => normalizePath(p)).filter(Boolean)
-          if (removedNormalized.length > 0) {
-            emitter.emit('songsRemoved', { listUUID: props.uuid, paths: removedNormalized })
+            try {
+              emitter.emit('playlistContentChanged', { uuids: [uuid] })
+            } catch {}
+            totalRemoved += removedRaw.length
+            totalScanned += summary?.scannedCount || 0
+            totalAnalyzeFailed += summary?.analyzeFailedCount || 0
+            if (summary?.fingerprintMode) {
+              fingerprintMode = summary.fingerprintMode
+            }
           }
-          try {
-            emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
-          } catch {}
           const modeLabel =
-            summary?.fingerprintMode === 'file'
-              ? t('fingerprints.modeFile')
-              : t('fingerprints.modePCM')
+            fingerprintMode === 'file' ? t('fingerprints.modeFile') : t('fingerprints.modePCM')
           const feedbackLines = [
-            t('playlist.deduplicateRemovedCount', { n: removedRaw.length }),
+            t('playlist.deduplicateRemovedCount', { n: totalRemoved }),
             t('playlist.deduplicateModeUsed', { mode: modeLabel })
           ]
-          if (summary?.analyzeFailedCount) {
-            feedbackLines.push(
-              t('import.analysisFailedCount', { count: summary.analyzeFailedCount })
-            )
+          if (totalAnalyzeFailed) {
+            feedbackLines.push(t('import.analysisFailedCount', { count: totalAnalyzeFailed }))
           }
-          if (summary?.scannedCount !== undefined) {
-            feedbackLines.unshift(
-              t('playlist.deduplicateScannedCount', { n: summary.scannedCount || 0 })
-            )
+          if (totalScanned) {
+            feedbackLines.unshift(t('playlist.deduplicateScannedCount', { n: totalScanned }))
           }
           await confirm({
             title: t('playlist.deduplicateFinished'),
@@ -741,15 +861,8 @@ export function useLibraryContextMenu({
           await confirmTaskBusy()
           return
         }
-        const dirPath = libraryUtils.findDirPathByUuid(props.uuid)
-        const scan = (await window.electron.ipcRenderer.invoke(
-          'scanSongList',
-          dirPath,
-          props.uuid
-        )) as ScanSongListResult | null
-        const files: string[] = Array.isArray(scan?.scanData)
-          ? scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item)
-          : []
+        const operateUuids = collectSongListUuids(getOperateUuids())
+        const files = await scanSongListsForFiles(operateUuids)
         if (!files.length) {
           await confirm({
             title: t('dialog.hint'),
@@ -765,7 +878,7 @@ export function useLibraryContextMenu({
           runtime.isProgressing = false
         }
         try {
-          emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
+          emitter.emit('playlistContentChanged', { uuids: operateUuids })
         } catch {}
         break
       }

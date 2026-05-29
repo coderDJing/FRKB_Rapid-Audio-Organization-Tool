@@ -296,9 +296,20 @@ const drop = async (e: DragEvent) => {
     runtime.dragItemData = null
   }
 }
+
+const handleContentClick = () => {
+  runtime.focusArea = 'library'
+  runtime.selectedPlaylistIds = []
+  // 清空歌曲列表选中状态
+  runtime.songsArea.selectedSongFilePath.length = 0
+  if (runtime.songsAreaPanels.splitEnabled) {
+    runtime.songsAreaPanels.panes.left.selectedSongFilePath.length = 0
+    runtime.songsAreaPanels.panes.right.selectedSongFilePath.length = 0
+  }
+}
 </script>
 <template>
-  <div class="content" @contextmenu.stop="contextmenuEvent">
+  <div class="content" @contextmenu.stop="contextmenuEvent" @click="handleContentClick">
     <div class="unselectable libraryTitle">
       <span>{{ libraryTitleText }}</span>
       <!-- todo还有个导出整个库的按钮 -->

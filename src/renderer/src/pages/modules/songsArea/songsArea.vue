@@ -94,7 +94,12 @@ const resolveCoreLibraryNameBySongListUUID = (uuid: string) => {
 }
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
 const handleOverlayClick = (e: MouseEvent) => {
-  if (e.button === 0) songsAreaState.selectedSongFilePath.length = 0
+  if (e.button === 0) {
+    runtime.focusArea = 'songsArea'
+    songsAreaState.selectedSongFilePath.length = 0
+    // 清空歌单列表选中状态
+    runtime.selectedPlaylistIds = []
+  }
 }
 const isMixtapeListView = computed(
   () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'

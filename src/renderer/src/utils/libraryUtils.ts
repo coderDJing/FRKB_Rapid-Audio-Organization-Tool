@@ -250,6 +250,23 @@ export function getAllUuids(data: IDir) {
   return uuids
 }
 
+export function collectSelectableLibraryUuids(data: IDir, includeRoot = true) {
+  const uuids: string[] = []
+  function traverse(node: IDir, isRoot: boolean) {
+    if (
+      (!isRoot || includeRoot) &&
+      (node.type === 'songList' || node.type === 'mixtapeList' || node.type === 'dir')
+    ) {
+      uuids.push(node.uuid)
+    }
+    if (node.children && node.children.length > 0) {
+      node.children.forEach((child) => traverse(child, false))
+    }
+  }
+  traverse(data, true)
+  return uuids
+}
+
 // 更新播放状态
 export function updatePlayingState(itemData: IDir): void {
   try {
@@ -283,6 +300,7 @@ export const libraryUtils = {
   isDragItemInDirChildren,
   getDepthByUuid,
   getAllUuids,
+  collectSelectableLibraryUuids,
   diffLibraryTreeExecuteFileOperation,
   ensureMixtapeDeleteAllowed,
   updatePlayingState

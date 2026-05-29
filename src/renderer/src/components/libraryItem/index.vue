@@ -159,11 +159,64 @@ const { shouldShow } = useLibraryFilter({
   dirChildShow
 })
 
-const dirHandleClick = async () => {
+const dirHandleClick = async (event: MouseEvent) => {
   const currentDirData = dirDataRef.value
   if (!currentDirData) return
   if (runtime.songDragSuppressClickUntilMs > Date.now()) return
   runtime.activeMenuUUID = ''
+  runtime.focusArea = 'library'
+  // 清空歌曲列表选中状态
+  runtime.songsArea.selectedSongFilePath.length = 0
+  if (runtime.songsAreaPanels.splitEnabled) {
+    runtime.songsAreaPanels.panes.left.selectedSongFilePath.length = 0
+    runtime.songsAreaPanels.panes.right.selectedSongFilePath.length = 0
+  }
+
+  // 获取当前节点及其所有子项的 UUID
+  const selfAndChildIds = libraryUtils.getAllUuids(currentDirData)
+  const isFolder = !isPlaylist.value
+
+  // 处理多选逻辑
+  if (event.ctrlKey || event.metaKey) {
+    // Ctrl+Click: 切换选中状态（文件夹包含子项），不打开歌单
+    const isCurrentlySelected = runtime.selectedPlaylistIds.includes(props.uuid)
+    if (isCurrentlySelected) {
+      // 取消选中：移除自身及所有子项
+      const childIdSet = new Set(selfAndChildIds)
+      runtime.selectedPlaylistIds = runtime.selectedPlaylistIds.filter((id) => !childIdSet.has(id))
+    } else {
+      // 选中：添加自身及所有子项（去重）
+      const merged = new Set([...runtime.selectedPlaylistIds, ...selfAndChildIds])
+      runtime.selectedPlaylistIds = [...merged]
+    }
+    return
+  } else if (event.shiftKey && runtime.selectedPlaylistIds.length > 0) {
+    // Shift+Click: 范围选中（从最后一个选中的到当前），不打开歌单
+    const currentLibrary = (runtime.libraryTree.children || []).find(
+      (lib) => lib.dirName === runtime.libraryAreaSelected
+    )
+    const allPlaylists = currentLibrary
+      ? libraryUtils.collectSelectableLibraryUuids(currentLibrary, false)
+      : []
+    const lastSelectedId = runtime.selectedPlaylistIds[runtime.selectedPlaylistIds.length - 1]
+    const lastIndex = allPlaylists.indexOf(lastSelectedId)
+    const currentIndex = allPlaylists.indexOf(props.uuid)
+    if (lastIndex !== -1 && currentIndex !== -1) {
+      const start = Math.min(lastIndex, currentIndex)
+      const end = Math.max(lastIndex, currentIndex)
+      const rangeIds = allPlaylists.slice(start, end + 1)
+      // 合并现有选中和范围选中
+      const merged = new Set([...runtime.selectedPlaylistIds, ...rangeIds])
+      runtime.selectedPlaylistIds = [...merged]
+    }
+    return
+  } else if (isFolder) {
+    // 普通单击文件夹: 只展开/折叠，不选中
+    runtime.selectedPlaylistIds = []
+  } else {
+    // 普通单击歌单: 选中当前歌单
+    runtime.selectedPlaylistIds = [props.uuid]
+  }
   const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
   const isSongListPathExist = await window.electron.ipcRenderer.invoke(
     'dirPathExists',
@@ -308,10 +361,11 @@ const openMixtapeHandleClick = () => {
       borderTop: dragApproach == 'top',
       borderBottom: dragApproach == 'bottom',
       borderCenter: dragApproach == 'center',
-      selectedDir: isOpenedInSongsArea
+      selectedDir: isOpenedInSongsArea && !runtime.selectedPlaylistIds.includes(props.uuid),
+      selectedLibrary: runtime.selectedPlaylistIds.includes(props.uuid)
     }"
     @contextmenu.stop="contextmenuEvent"
-    @click.stop="dirHandleClick()"
+    @click.stop="dirHandleClick($event)"
     @dragover.stop.prevent="dragover"
     @dragstart.stop="dragstart"
     @dragenter.stop.prevent="dragenter"
@@ -662,6 +716,14 @@ const openMixtapeHandleClick = () => {
 
   &:hover {
     background-color: var(--hover) !important;
+  }
+}
+
+.selectedLibrary {
+  background-color: color-mix(in srgb, var(--accent) 24%, var(--bg-elev));
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--accent) 30%, var(--bg-elev)) !important;
   }
 }
 

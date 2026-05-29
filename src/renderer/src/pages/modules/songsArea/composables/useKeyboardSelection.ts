@@ -105,6 +105,9 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       return
     }
     runtime.activeMenuUUID = ''
+    runtime.focusArea = 'songsArea'
+    // 清空歌单列表选中状态
+    runtime.selectedPlaylistIds = []
     const rowKey = getRowKey(song)
     if (event.ctrlKey) {
       cancelPendingRepeatSingleClickDeselect()
@@ -503,10 +506,28 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     if (!shouldBindWindowHotkeys) return
     hotkeys('ctrl+a, command+a', 'windowGlobal', () => {
       if (windowPreviewHotkeysLocked) return false
-      songsAreaState.selectedSongFilePath.length = 0
-      for (const item of songsAreaState.songInfoArr) {
-        songsAreaState.selectedSongFilePath.push(getRowKeyForState(songsAreaState, item))
+
+      if (runtime.focusArea === 'library') {
+        const currentLibrary = (runtime.libraryTree.children || []).find(
+          (lib) => lib.dirName === runtime.libraryAreaSelected
+        )
+        runtime.selectedPlaylistIds = currentLibrary
+          ? libraryUtils.collectSelectableLibraryUuids(currentLibrary, false)
+          : []
+        return false
       }
+
+      if (runtime.focusArea === 'songsArea') {
+        const activeState = runtime.songsAreaPanels.splitEnabled
+          ? runtime.songsAreaPanels.panes[runtime.songsAreaPanels.activePane]
+          : songsAreaState
+        activeState.selectedSongFilePath.length = 0
+        for (const item of activeState.songInfoArr) {
+          activeState.selectedSongFilePath.push(getRowKeyForState(activeState, item))
+        }
+        return false
+      }
+
       return false
     })
     if (!readOnly) {

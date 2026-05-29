@@ -185,6 +185,10 @@ interface Runtime {
   isSwitchingSong: boolean
   // 正在创建中的歌单 UUID（用于 UI 微动效）
   creatingSongListUUID: string
+  // 最后点击的区域，用于决定 Ctrl+A 的行为
+  focusArea: 'none' | 'library' | 'songsArea'
+  // 歌单列表多选状态
+  selectedPlaylistIds: string[]
 }
 export const useRuntimeStore = defineStore('runtime', {
   state: (): Runtime => {
@@ -372,7 +376,9 @@ export const useRuntimeStore = defineStore('runtime', {
         pendingWhatsNewForVersion: ''
       }, //设置
       playerReady: false,
-      isSwitchingSong: false
+      isSwitchingSong: false,
+      focusArea: 'none',
+      selectedPlaylistIds: []
     }
   },
   actions: {
