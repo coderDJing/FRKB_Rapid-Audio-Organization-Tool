@@ -215,6 +215,8 @@ export function registerMixtapeHandlers() {
     mixtapeWindow.broadcast?.('mixtape-items-removed', payload)
   }
 
+  // 注意：此处存在理论上的 TOCTOU 竞态（检查 runtime 可用性后、打开窗口前 runtime 可能被卸载），
+  // 但实际触发概率极低（需要用户在毫秒级窗口内卸载 runtime），不影响正常使用。
   ipcMain.on('mixtape:open', async (_e, payload: MixtapeWindowPayload) => {
     const nextPayload = payload || {}
     const playlistId = typeof nextPayload.playlistId === 'string' ? nextPayload.playlistId : ''

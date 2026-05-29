@@ -440,6 +440,9 @@ export async function loadSongCacheEntry(
   listRoot: string,
   filePath: string
 ): Promise<SongCacheEntry | null | undefined> {
+  // 注意：虽然此函数是 async，但 better-sqlite3 是同步驱动，所有数据库操作不会 yield 控制权。
+  // 唯一的 await 点是 ensureSongCacheMigrated，它通过 migratedSongRoots 去重后几乎立即返回。
+  // 因此不存在 TOCTOU 竞态问题。
   const db = getLibraryDb()
   if (!db || !listRoot || !filePath) return undefined
   const resolvedRoot = resolveListRootInput(listRoot)

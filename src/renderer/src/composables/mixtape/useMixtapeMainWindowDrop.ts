@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from 'vue'
+import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import {
   MIXTAPE_DRAG_SESSION_MIME,
   MIXTAPE_DRAG_SESSION_TEXT_PREFIX,
@@ -262,6 +262,10 @@ export const useMixtapeMainWindowDrop = ({
       dropBusy.value = false
     }
   }
+
+  onBeforeUnmount(() => {
+    clearNoticeTimer()
+  })
 
   const mixtapeDropOverlayVisible = computed(
     () => dropActive.value || dropBusy.value || !!noticeTitleKey.value

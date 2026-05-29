@@ -621,6 +621,13 @@ export async function syncLibraryTreeFromDisk(
   let removed = 0
   let updated = 0
 
+  // 先写标记文件，再提交数据库事务。
+  // 如果标记文件写入成功但事务失败（极端情况），磁盘上会有多余的 .frkb.uuid 文件，
+  // 但下次同步会自我修正，不会导致数据丢失或损坏。
+  for (const item of markerWrites) {
+    await writeUuidMarker(item.absPath, item.uuid)
+  }
+
   try {
     const insertStmt = db.prepare(
       'INSERT INTO library_nodes (uuid, parent_uuid, dir_name, node_type, sort_order) VALUES (?, ?, ?, ?, ?)'
@@ -656,10 +663,6 @@ export async function syncLibraryTreeFromDisk(
     run()
   } catch (error) {
     log.error('[sqlite] library tree sync failed', error)
-  }
-
-  for (const item of markerWrites) {
-    await writeUuidMarker(item.absPath, item.uuid)
   }
 
   return { added, removed, updated }

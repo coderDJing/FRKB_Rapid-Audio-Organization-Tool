@@ -137,6 +137,22 @@ const resolveLogPath = () => {
   return path.join(resolveDevProjectRoot(), 'log.txt')
 }
 
+const LOG_MAX_SIZE_BYTES = 10 * 1024 * 1024 // 10MB
+const LOG_TRIM_TARGET_BYTES = 5 * 1024 * 1024 // 超限时删除前 5MB
+
+const trimLogFileIfNeeded = (filePath: string) => {
+  try {
+    const stat = fs.statSync(filePath)
+    if (!stat || stat.size <= LOG_MAX_SIZE_BYTES) return
+    const content = fs.readFileSync(filePath, 'utf8')
+    const trimFrom = content.length - LOG_TRIM_TARGET_BYTES
+    if (trimFrom <= 0) return
+    const newlineIndex = content.indexOf('\n', trimFrom)
+    const trimmed = newlineIndex >= 0 ? content.slice(newlineIndex + 1) : content.slice(trimFrom)
+    fs.writeFileSync(filePath, trimmed, 'utf8')
+  } catch {}
+}
+
 const appendFormattedLogSync = (level: LogLevel, text: string) => {
   const normalizedText = String(text || '').trim()
   if (!normalizedText) return
@@ -152,6 +168,7 @@ const appendFormattedLogSync = (level: LogLevel, text: string) => {
   try {
     const filePath = getLogPath()
     fs.ensureFileSync(filePath)
+    trimLogFileIfNeeded(filePath)
     fs.appendFileSync(filePath, `${lines.join('\n')}\n`, 'utf8')
   } catch (error) {
     safeConsoleWrite('error', ['[log] 写入日志失败', error])

@@ -98,13 +98,15 @@ const normalizeAnalysisRuntimePreferredInfo = (value: unknown): AnalysisRuntimeP
   }
 }
 
+// 模块级 mutex，防止多个 composable 实例同时弹出提示
+let analysisRuntimePromptBusy = false
+
 export const useAnalysisRuntimeDownload = (options: {
   runtime: ReturnType<typeof useRuntimeStore>
   t: TranslateFn
   confirmDialog: ConfirmDialogFn
   appVersion: string
 }) => {
-  let analysisRuntimePromptBusy = false
   let analysisRuntimeDownloadProgressHintAt = 0
   const normalizedAppVersion = String(options.appVersion || '').trim()
 

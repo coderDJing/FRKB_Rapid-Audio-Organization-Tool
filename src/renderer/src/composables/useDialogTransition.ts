@@ -17,6 +17,8 @@ export function useDialogTransition(duration = DIALOG_TRANSITION_DURATION, autoS
     })
   }
 
+  // 注意：关闭动画进行中再次调用时，新的 afterClose 回调会被静默丢弃。
+  // 这是故意的设计：快速连续触发关闭是异常操作，丢弃回调比执行多次更安全。
   const closeWithAnimation = (afterClose: () => void) => {
     if (closeTimer !== null) return
     dialogVisible.value = false

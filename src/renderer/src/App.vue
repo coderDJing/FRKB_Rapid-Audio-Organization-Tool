@@ -44,6 +44,41 @@ const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
 const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
 type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
+type RuntimeLayoutConfig = typeof runtime.layoutConfig
+type RuntimeLibraryTree = typeof runtime.libraryTree
+
+const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === 'object'
+
+const isRuntimeLayoutConfig = (value: unknown): value is RuntimeLayoutConfig => {
+  if (!isPlainRecord(value)) return false
+  return (
+    typeof value.libraryAreaWidth === 'number' &&
+    typeof value.songsAreaSplitLeftRatio === 'number' &&
+    typeof value.isMaxMainWin === 'boolean' &&
+    typeof value.mainWindowWidth === 'number' &&
+    typeof value.mainWindowHeight === 'number'
+  )
+}
+
+const isRuntimeLibraryTree = (value: unknown): value is RuntimeLibraryTree => {
+  if (!isPlainRecord(value)) return false
+  return (
+    typeof value.uuid === 'string' &&
+    (value.type === 'root' ||
+      value.type === 'library' ||
+      value.type === 'dir' ||
+      value.type === 'songList' ||
+      value.type === 'mixtapeList') &&
+    typeof value.dirName === 'string'
+  )
+}
+
+function handleLayoutConfigReaded(_event: unknown, layoutConfig: unknown) {
+  if (!isRuntimeLayoutConfig(layoutConfig)) return
+  runtime.layoutConfig = layoutConfig
+}
+
 const normalizeMainWindowBrowseMode = (value: unknown): MainWindowBrowseMode =>
   value === 'horizontal' || value === 'edit' ? value : 'browser'
 {
@@ -74,9 +109,7 @@ watch(
   },
   { immediate: true }
 )
-window.electron.ipcRenderer.on('layoutConfigReaded', (_event, layoutConfig) => {
-  runtime.layoutConfig = layoutConfig
-})
+window.electron.ipcRenderer.on('layoutConfigReaded', handleLayoutConfigReaded)
 const activeDialog = ref('')
 const fileOpDialogVisible = ref(false)
 const fileOpContext = ref('')
@@ -752,6 +785,110 @@ const getLibrary = async () => {
   runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
 }
 getLibrary()
+
+// IPC 监听器处理函数
+const handleOpenDialogFromTray = async (_e: unknown, key: string) => {
+  await openDialog(key)
+}
+const handleOpenGlobalSongSearch = async () => {
+  await openDialog('menu.globalSongSearch')
+}
+const handleTrayAction = async (_e: unknown, action: string) => {
+  if (action === 'import-new-filter') {
+    await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
+    return
+  }
+  if (action === 'import-new-curated') {
+    await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
+    return
+  }
+  if (action === 'exit') {
+    if (runtime.isProgressing === true) {
+      await confirm({
+        title: t('common.exit'),
+        content: [t('import.waitForTask')],
+        confirmShow: false
+      })
+      return
+    }
+    window.electron.ipcRenderer.send('toggle-close')
+    return
+  }
+}
+const handleExternalOpenImported = async (_e: unknown, payload: { paths?: string[] }) => {
+  try {
+    const rawPaths = Array.isArray(payload?.paths) ? payload.paths : []
+    const songs = await replaceExternalPlaylistFromPaths(rawPaths)
+    if (songs.length) {
+      if (
+        runtime.mainWindowBrowseMode === 'horizontal' ||
+        runtime.mainWindowBrowseMode === 'edit'
+      ) {
+        runtime.playingData.playingSongListUUID = EXTERNAL_PLAYLIST_UUID
+        runtime.playingData.playingSongListData = songs
+        emitter.emit('horizontalBrowse/load-song', { deck: 'top', song: songs[0] })
+      } else {
+        emitter.emit('external-open/play', { songs, startIndex: 0 })
+      }
+    }
+    markSongSearchDirty('external-open-imported')
+  } catch (error) {
+    console.error('[external-open] failed to prepare playlist', error)
+  }
+}
+const handleFileOpInterrupted = async (
+  _e: unknown,
+  payload: {
+    context?: string
+    successSoFar?: number
+    failedSoFar?: number
+    running?: number
+    pending?: number
+    batchId?: string
+  }
+) => {
+  try {
+    fileOpDialogVisible.value = true
+    fileOpContext.value = payload?.context || ''
+    fileOpSuccessSoFar.value = payload?.successSoFar || 0
+    fileOpFailedSoFar.value = payload?.failedSoFar || 0
+    fileOpDone.value = fileOpSuccessSoFar.value + fileOpFailedSoFar.value
+    fileOpRunning.value = payload?.running || 0
+    fileOpPending.value = payload?.pending || 0
+    fileOpBatchId.value = payload?.batchId || ''
+  } catch (_err) {}
+}
+const handleLibraryTreeUpdated = async (_e: unknown, tree: unknown) => {
+  try {
+    if (isRuntimeLibraryTree(tree)) {
+      runtime.libraryTree = tree
+      runtime.oldLibraryTree = JSON.parse(JSON.stringify(tree))
+      markSongSearchDirty('library-tree-updated')
+      return
+    }
+    await getLibrary()
+    markSongSearchDirty('library-tree-reloaded')
+  } catch (_err) {}
+}
+const handleOpenDialogFromChild = (e: Event) => {
+  const detail = (e as CustomEvent<string>).detail
+  if (typeof detail === 'string') {
+    openDialog(detail)
+  }
+}
+const handleCloudSyncState = (_e: unknown, state: string) => {
+  if (state === 'syncing') runtime.isProgressing = true
+  if (state === 'success' || state === 'failed' || state === 'cancelled')
+    runtime.isProgressing = false
+}
+const handleMainWindowBlur = async () => {
+  runtime.activeMenuUUID = ''
+  closeMainWindowBrowseModeMenu()
+}
+const handleAnalysisRuntimeDownloadStateWrapper = (_e: unknown, payload: unknown) => {
+  void handleAnalysisRuntimeDownloadState(payload)
+}
+
 onMounted(() => {
   currentTimeTimer = setInterval(() => {
     currentTime.value = formatCurrentTime()
@@ -813,83 +950,17 @@ onMounted(() => {
     })
   }
   utils.setHotkeysScpoe('windowGlobal')
-  window.electron.ipcRenderer.on('openDialogFromTray', async (_e, key: string) => {
-    await openDialog(key)
-  })
-  window.electron.ipcRenderer.on('analysis-runtime-download-state', (_e, payload) => {
-    void handleAnalysisRuntimeDownloadState(payload)
-  })
-  window.electron.ipcRenderer.on('open-global-song-search', async () => {
-    await openDialog('menu.globalSongSearch')
-  })
-  window.electron.ipcRenderer.on('tray-action', async (_e, action: string) => {
-    if (action === 'import-new-filter') {
-      await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
-      return
-    }
-    if (action === 'import-new-curated') {
-      await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
-      return
-    }
-    if (action === 'exit') {
-      if (runtime.isProgressing === true) {
-        await confirm({
-          title: t('common.exit'),
-          content: [t('import.waitForTask')],
-          confirmShow: false
-        })
-        return
-      }
-      window.electron.ipcRenderer.send('toggle-close')
-      return
-    }
-  })
-  window.electron.ipcRenderer.on('external-open/imported', async (_e, payload) => {
-    try {
-      const rawPaths = Array.isArray(payload?.paths) ? payload.paths : []
-      const songs = await replaceExternalPlaylistFromPaths(rawPaths)
-      if (songs.length) {
-        if (
-          runtime.mainWindowBrowseMode === 'horizontal' ||
-          runtime.mainWindowBrowseMode === 'edit'
-        ) {
-          runtime.playingData.playingSongListUUID = EXTERNAL_PLAYLIST_UUID
-          runtime.playingData.playingSongListData = songs
-          emitter.emit('horizontalBrowse/load-song', { deck: 'top', song: songs[0] })
-        } else {
-          emitter.emit('external-open/play', { songs, startIndex: 0 })
-        }
-      }
-      markSongSearchDirty('external-open-imported')
-    } catch (error) {
-      console.error('[external-open] failed to prepare playlist', error)
-    }
-  })
+  window.electron.ipcRenderer.on('openDialogFromTray', handleOpenDialogFromTray)
+  window.electron.ipcRenderer.on(
+    'analysis-runtime-download-state',
+    handleAnalysisRuntimeDownloadStateWrapper
+  )
+  window.electron.ipcRenderer.on('open-global-song-search', handleOpenGlobalSongSearch)
+  window.electron.ipcRenderer.on('tray-action', handleTrayAction)
+  window.electron.ipcRenderer.on('external-open/imported', handleExternalOpenImported)
   window.electron.ipcRenderer.send('external-open:renderer-ready')
-  window.electron.ipcRenderer.on('file-op-interrupted', async (_e, payload) => {
-    try {
-      fileOpDialogVisible.value = true
-      fileOpContext.value = payload?.context || ''
-      fileOpSuccessSoFar.value = payload?.successSoFar || 0
-      fileOpFailedSoFar.value = payload?.failedSoFar || 0
-      fileOpDone.value = fileOpSuccessSoFar.value + fileOpFailedSoFar.value
-      fileOpRunning.value = payload?.running || 0
-      fileOpPending.value = payload?.pending || 0
-      fileOpBatchId.value = payload?.batchId || ''
-    } catch (_err) {}
-  })
-  window.electron.ipcRenderer.on('library-tree-updated', async (_e, tree) => {
-    try {
-      if (tree) {
-        runtime.libraryTree = tree
-        runtime.oldLibraryTree = JSON.parse(JSON.stringify(tree))
-        markSongSearchDirty('library-tree-updated')
-        return
-      }
-      await getLibrary()
-      markSongSearchDirty('library-tree-reloaded')
-    } catch (_err) {}
-  })
+  window.electron.ipcRenderer.on('file-op-interrupted', handleFileOpInterrupted)
+  window.electron.ipcRenderer.on('library-tree-updated', handleLibraryTreeUpdated)
 
   window.addEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.addEventListener('pointerdown', handleMainWindowBrowseModeMenuPointerDown, true)
@@ -905,6 +976,9 @@ onMounted(() => {
   emitter.on('songsRemoved', handleSongsRemovedForGlobalSearch)
   emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
   emitter.on('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
+  window.addEventListener('openDialogFromChild', handleOpenDialogFromChild)
+  window.electron.ipcRenderer.on('cloudSync/state', handleCloudSyncState)
+  window.electron.ipcRenderer.on('mainWindowBlur', handleMainWindowBlur)
   void (async () => {
     await refreshAnalysisRuntimeStatus()
     await promptAnalysisRuntimeDownload('startup')
@@ -927,6 +1001,16 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleCtrlDoubleTapKeyDown, true)
   window.removeEventListener('keyup', handleCtrlDoubleTapKeyUp, true)
   window.removeEventListener('beforeunload', handleBeforeUnload)
+  window.electron.ipcRenderer.removeListener('openDialogFromTray', handleOpenDialogFromTray)
+  window.electron.ipcRenderer.removeListener('open-global-song-search', handleOpenGlobalSongSearch)
+  window.electron.ipcRenderer.removeListener('tray-action', handleTrayAction)
+  window.electron.ipcRenderer.removeListener('external-open/imported', handleExternalOpenImported)
+  window.electron.ipcRenderer.removeListener('file-op-interrupted', handleFileOpInterrupted)
+  window.electron.ipcRenderer.removeListener('library-tree-updated', handleLibraryTreeUpdated)
+  window.removeEventListener('openDialogFromChild', handleOpenDialogFromChild)
+  window.electron.ipcRenderer.removeListener('cloudSync/state', handleCloudSyncState)
+  window.electron.ipcRenderer.removeListener('mainWindowBlur', handleMainWindowBlur)
+  window.electron.ipcRenderer.removeListener('layoutConfigReaded', handleLayoutConfigReaded)
   window.electron.ipcRenderer.removeListener('mixtape-items-removed', handleMixtapeItemsRemoved)
   window.electron.ipcRenderer.removeListener(
     'dev-songlist-trace:state',
@@ -940,27 +1024,15 @@ onBeforeUnmount(() => {
     'dev-songlist-trace:error',
     handleDevSongListTraceError
   )
-  window.electron.ipcRenderer.removeAllListeners('analysis-runtime-download-state')
+  window.electron.ipcRenderer.removeListener(
+    'analysis-runtime-download-state',
+    handleAnalysisRuntimeDownloadStateWrapper
+  )
   emitter.off('songsRemoved', handleSongsRemovedForGlobalSearch)
   emitter.off('metadataBatchUpdated', handleMetadataBatchUpdatedForGlobalSearch)
   emitter.off('songMetadataUpdated', handleSongMetadataUpdatedForGlobalSearch)
   contextMenuClickThroughGuard.clear()
 }) // 清理全局事件监听与跨组件订阅
-window.addEventListener('openDialogFromChild', (e: Event) => {
-  const detail = (e as CustomEvent<string>).detail
-  if (typeof detail === 'string') {
-    openDialog(detail)
-  }
-}) // 响应子窗口发起的对话框打开请求
-window.electron.ipcRenderer.on('cloudSync/state', (_e, state) => {
-  if (state === 'syncing') runtime.isProgressing = true
-  if (state === 'success' || state === 'failed' || state === 'cancelled')
-    runtime.isProgressing = false
-})
-window.electron.ipcRenderer.on('mainWindowBlur', async (_event) => {
-  runtime.activeMenuUUID = ''
-  closeMainWindowBrowseModeMenu()
-})
 </script>
 <template>
   <div style="height: 100%; max-height: 100%; width: 100%; display: flex; flex-direction: column">

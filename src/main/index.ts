@@ -158,6 +158,18 @@ const focusWindowIfPossible = (target: BrowserWindow | null): boolean => {
 }
 
 let externalOpenLifecycleWebContentsId: number | null = null
+let externalOpenLifecycleWebContents: Electron.WebContents | null = null
+
+const handleExternalOpenDidStartLoading = () => {
+  markExternalOpenRendererNotReady()
+}
+const handleExternalOpenDestroyed = () => {
+  if (externalOpenLifecycleWebContentsId !== null) {
+    externalOpenLifecycleWebContentsId = null
+    externalOpenLifecycleWebContents = null
+  }
+  markExternalOpenRendererNotReady()
+}
 
 const attachExternalOpenRendererLifecycle = (): void => {
   const target = mainWindow.instance
@@ -165,16 +177,19 @@ const attachExternalOpenRendererLifecycle = (): void => {
   const wc = target.webContents
   if (!wc || wc.isDestroyed()) return
   if (externalOpenLifecycleWebContentsId === wc.id) return
+  // 移除旧 webContents 上的监听器
+  if (externalOpenLifecycleWebContents && !externalOpenLifecycleWebContents.isDestroyed()) {
+    externalOpenLifecycleWebContents.removeListener(
+      'did-start-loading',
+      handleExternalOpenDidStartLoading
+    )
+    externalOpenLifecycleWebContents.removeListener('destroyed', handleExternalOpenDestroyed)
+  }
   externalOpenLifecycleWebContentsId = wc.id
+  externalOpenLifecycleWebContents = wc
   markExternalOpenRendererNotReady()
-  wc.on('did-start-loading', () => {
-    markExternalOpenRendererNotReady()
-  })
-  wc.on('destroyed', () => {
-    if (externalOpenLifecycleWebContentsId !== wc.id) return
-    externalOpenLifecycleWebContentsId = null
-    markExternalOpenRendererNotReady()
-  })
+  wc.on('did-start-loading', handleExternalOpenDidStartLoading)
+  wc.on('destroyed', handleExternalOpenDestroyed)
 }
 
 const ensurePrimaryWindowVisible = async (): Promise<void> => {
@@ -628,6 +643,8 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', async () => {
+  // removeAllListeners 在 app.quit() 前调用是安全的，因为项目中没有
+  // before-quit 处理器会调用 event.preventDefault() 阻止退出。
   ipcMain.removeAllListeners()
   stopHorizontalBrowseTransportSnapshotBroadcaster()
   stopBackgroundOrchestrator()
@@ -690,8 +707,15 @@ ipcMain.on('outputLog', (_event, logMsg) => {
   log[normalized.level](normalized.text)
 })
 
-ipcMain.on('openLocalBrowser', (_event, url) => {
-  shell.openExternal(url)
+ipcMain.on('openLocalBrowser', (_event, url: string) => {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+      shell.openExternal(url)
+    }
+  } catch {
+    // url 格式无效，忽略
+  }
 })
 
 ipcMain.on('openLog', async () => {

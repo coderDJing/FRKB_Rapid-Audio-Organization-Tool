@@ -856,6 +856,9 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     contextMenuClickThroughGuard.suppressClickIfNeeded(event)
   }
 
+  // immediate: true 会在 setup 阶段触发，早于 onMounted 中的 IPC 监听器注册。
+  // 这是安全的：loadMixtapeItems() 是主动加载，不依赖 IPC 事件；
+  // IPC 监听器用于后续状态更新（BPM、stem 等），注册稍晚不影响初始加载。
   watch(
     () => payload.value.playlistId,
     (nextPlaylistId, prevPlaylistId) => {

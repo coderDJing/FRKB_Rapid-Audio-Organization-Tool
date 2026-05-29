@@ -14,6 +14,7 @@ import type { SqliteDatabase } from './libraryDb'
 
 const TABLE = 'mixtape_items'
 const PROJECT_TABLE = 'mixtape_projects'
+const IN_CLAUSE_CHUNK_SIZE = 300 // SQLite SQLITE_MAX_VARIABLE_NUMBER 默认为 999，留安全余量
 
 export type MixtapeMixMode = 'eq' | 'stem'
 export type MixtapeStemMode = typeof FIXED_MIXTAPE_STEM_MODE
@@ -40,6 +41,14 @@ export type MixtapeItemRecord = {
   originPathSnapshot?: string | null
   infoJson?: string | null
   createdAtMs: number
+}
+
+function compareMixtapeItemRecordOrder(a: MixtapeItemRecord, b: MixtapeItemRecord): number {
+  const mixOrderDiff = a.mixOrder - b.mixOrder
+  if (mixOrderDiff !== 0) return mixOrderDiff
+  const createdAtDiff = a.createdAtMs - b.createdAtMs
+  if (createdAtDiff !== 0) return createdAtDiff
+  return a.id.localeCompare(b.id)
 }
 
 export type MixtapeAppendItem = {
@@ -96,7 +105,8 @@ function resolveFilePathWhereClause(): string {
   return process.platform === 'win32' ? 'LOWER(file_path) = LOWER(?)' : 'file_path = ?'
 }
 
-function normalizeMixtapeOrder(db: SqliteDatabase, playlistUuid: string) {
+// 在已有事务中执行重排序（不开新事务）
+function normalizeMixtapeOrderInTx(db: SqliteDatabase, playlistUuid: string) {
   const rows = db
     .prepare<{
       id: string
@@ -106,10 +116,14 @@ function normalizeMixtapeOrder(db: SqliteDatabase, playlistUuid: string) {
     .all(playlistUuid)
   if (!rows || rows.length === 0) return
   const update = db.prepare(`UPDATE ${TABLE} SET mix_order = ? WHERE id = ?`)
+  rows.forEach((row, idx) => {
+    update.run(idx + 1, row.id)
+  })
+}
+
+function normalizeMixtapeOrder(db: SqliteDatabase, playlistUuid: string) {
   const tx = db.transaction(() => {
-    rows.forEach((row, idx) => {
-      update.run(idx + 1, row.id)
-    })
+    normalizeMixtapeOrderInTx(db, playlistUuid)
   })
   tx()
 }
@@ -329,9 +343,11 @@ export function removeMixtapeItemsByFilePath(
         const info = del.run(playlistUuid, filePath)
         removed += Number(info?.changes || 0)
       }
+      if (removed > 0) {
+        normalizeMixtapeOrderInTx(db, playlistUuid)
+      }
     })
     tx()
-    normalizeMixtapeOrder(db, playlistUuid)
     return { removed }
   } catch (error) {
     log.error('[sqlite] mixtape remove failed', error)
@@ -355,9 +371,11 @@ export function removeMixtapeItemsById(
         const info = del.run(playlistUuid, id)
         removed += Number(info?.changes || 0)
       }
+      if (removed > 0) {
+        normalizeMixtapeOrderInTx(db, playlistUuid)
+      }
     })
     tx()
-    normalizeMixtapeOrder(db, playlistUuid)
     return { removed }
   } catch (error) {
     log.error('[sqlite] mixtape remove by id failed', error)
@@ -425,11 +443,19 @@ export function listMixtapeFilePathsByItemIds(playlistUuid: string, itemIds: str
   const db = getLibraryDb()
   if (!db) return []
   try {
-    const placeholders = normalizedIds.map(() => '?').join(',')
-    const rows = db
-      .prepare(`SELECT file_path FROM ${TABLE} WHERE playlist_uuid = ? AND id IN (${placeholders})`)
-      .all(playlistUuid, ...normalizedIds)
-    return normalizeUniqueStrings(rows.map((row: { file_path: string }) => row.file_path))
+    const results: string[] = []
+    for (let offset = 0; offset < normalizedIds.length; offset += IN_CLAUSE_CHUNK_SIZE) {
+      const chunk = normalizedIds.slice(offset, offset + IN_CLAUSE_CHUNK_SIZE)
+      if (chunk.length === 0) continue
+      const placeholders = chunk.map(() => '?').join(',')
+      const rows = db
+        .prepare(
+          `SELECT file_path FROM ${TABLE} WHERE playlist_uuid = ? AND id IN (${placeholders})`
+        )
+        .all(playlistUuid, ...chunk)
+      results.push(...rows.map((row: { file_path: string }) => row.file_path))
+    }
+    return normalizeUniqueStrings(results)
   } catch (error) {
     log.error('[sqlite] mixtape list file paths by id failed', error)
     return []
@@ -445,16 +471,22 @@ export function listMixtapeItemsByItemIds(
   const db = getLibraryDb()
   if (!db) return []
   try {
-    const placeholders = normalizedIds.map(() => '?').join(',')
-    const rows = db
-      .prepare(
-        `SELECT id, playlist_uuid, file_path, mix_order, origin_playlist_uuid, origin_path_snapshot, info_json, created_at_ms
-         FROM ${TABLE}
-         WHERE playlist_uuid = ? AND id IN (${placeholders})
-         ORDER BY mix_order ASC, created_at_ms ASC, id ASC`
-      )
-      .all(playlistUuid, ...normalizedIds)
-    return rows.map(toRecord).filter(Boolean) as MixtapeItemRecord[]
+    const results: MixtapeItemRecord[] = []
+    for (let offset = 0; offset < normalizedIds.length; offset += IN_CLAUSE_CHUNK_SIZE) {
+      const chunk = normalizedIds.slice(offset, offset + IN_CLAUSE_CHUNK_SIZE)
+      if (chunk.length === 0) continue
+      const placeholders = chunk.map(() => '?').join(',')
+      const rows = db
+        .prepare(
+          `SELECT id, playlist_uuid, file_path, mix_order, origin_playlist_uuid, origin_path_snapshot, info_json, created_at_ms
+           FROM ${TABLE}
+           WHERE playlist_uuid = ? AND id IN (${placeholders})
+           ORDER BY mix_order ASC, created_at_ms ASC, id ASC`
+        )
+        .all(playlistUuid, ...chunk)
+      results.push(...(rows.map(toRecord).filter(Boolean) as MixtapeItemRecord[]))
+    }
+    return results.sort(compareMixtapeItemRecordOrder)
   } catch (error) {
     log.error('[sqlite] mixtape list by ids failed', error)
     return []
@@ -467,11 +499,17 @@ export function listMixtapeFilePathsInUse(filePaths: string[]): string[] {
   const db = getLibraryDb()
   if (!db) return []
   try {
-    const placeholders = normalizedPaths.map(() => '?').join(',')
-    const rows = db
-      .prepare(`SELECT DISTINCT file_path FROM ${TABLE} WHERE file_path IN (${placeholders})`)
-      .all(...normalizedPaths)
-    return normalizeUniqueStrings(rows.map((row: { file_path: string }) => row.file_path))
+    const results: string[] = []
+    for (let offset = 0; offset < normalizedPaths.length; offset += IN_CLAUSE_CHUNK_SIZE) {
+      const chunk = normalizedPaths.slice(offset, offset + IN_CLAUSE_CHUNK_SIZE)
+      if (chunk.length === 0) continue
+      const placeholders = chunk.map(() => '?').join(',')
+      const rows = db
+        .prepare(`SELECT DISTINCT file_path FROM ${TABLE} WHERE file_path IN (${placeholders})`)
+        .all(...chunk)
+      results.push(...rows.map((row: { file_path: string }) => row.file_path))
+    }
+    return normalizeUniqueStrings(results)
   } catch (error) {
     log.error('[sqlite] mixtape list file paths in use failed', error)
     return []
@@ -554,14 +592,17 @@ export function updateMixtapeItemFilePathsById(entries: MixtapeFilePathUpdate[])
   const db = getLibraryDb()
   if (!db) return { updated: 0, playlistUuids: [] }
   try {
-    const rows = db
-      .prepare(
-        `SELECT id, playlist_uuid FROM ${TABLE} WHERE id IN (${normalizedEntries.map(() => '?').join(',')})`
-      )
-      .all(...normalizedEntries.map((item) => item.id)) as Array<{
-      id: string
-      playlist_uuid: string
-    }>
+    const allIds = normalizedEntries.map((item) => item.id)
+    const rows: Array<{ id: string; playlist_uuid: string }> = []
+    for (let offset = 0; offset < allIds.length; offset += IN_CLAUSE_CHUNK_SIZE) {
+      const chunk = allIds.slice(offset, offset + IN_CLAUSE_CHUNK_SIZE)
+      if (chunk.length === 0) continue
+      const placeholders = chunk.map(() => '?').join(',')
+      const chunkRows = db
+        .prepare(`SELECT id, playlist_uuid FROM ${TABLE} WHERE id IN (${placeholders})`)
+        .all(...chunk) as Array<{ id: string; playlist_uuid: string }>
+      rows.push(...chunkRows)
+    }
     if (!rows.length) return { updated: 0, playlistUuids: [] }
     const existingIds = new Set(rows.map((row) => String(row.id)))
     const playlistUuids = Array.from(new Set(rows.map((row) => String(row.playlist_uuid))))

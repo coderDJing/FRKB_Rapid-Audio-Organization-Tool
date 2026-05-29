@@ -129,6 +129,9 @@ const runDemucsSeparate = async (params: {
   })
 }
 
+// 注意：此函数将整个音频文件解码到内存，对于大文件（如 10 分钟立体声）可能占用 ~200MB。
+// 这是当前设计的选择：stem 分离需要完整 PCM 数据，且用户通常不会同时处理多个大文件。
+// 如需优化，可考虑流式解码 + 写入，但会增加代码复杂度。
 const prepareDemucsWaveformBootstrapInput = async (params: {
   filePath: string
   inputDir: string

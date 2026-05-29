@@ -378,6 +378,8 @@ class PersistentXpuStemWorkerSlot {
       this.stopWorker('warmup-failed')
       throw error
     }
+    // 注意：releaseReservation() 和 sendRequest() 之间没有 await，
+    // 在 Node.js 单线程模型中不会被暂停，不存在竞态问题。
     this.releaseReservation()
     try {
       await this.sendRequest(

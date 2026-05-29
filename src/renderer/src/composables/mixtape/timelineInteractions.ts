@@ -214,6 +214,7 @@ export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContex
 
   const startTimelineScrollSampler = () => {
     if (typeof requestAnimationFrame === 'undefined') return
+    if (timelineScrollRaf !== 0) return
     const tick = () => {
       syncTimelineScrollState()
       timelineScrollRaf = requestAnimationFrame(tick)

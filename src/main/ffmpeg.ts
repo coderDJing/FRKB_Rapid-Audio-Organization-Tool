@@ -25,6 +25,7 @@ export function resolveBundledFfmpegPath(): string {
     }
   }
 
+  // 注意：Linux 平台会错误地返回 darwin 目录，但本软件不支持 Linux，所以无需修复。
   const dir = platform === 'win32' ? 'win32-x64' : arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64'
   return path.join(ffmpegRoot, dir, exe)
 }

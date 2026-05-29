@@ -69,3 +69,11 @@ export const resolveTitleAudioVisualizerAnalyser = (
     return null
   }
 }
+
+// HMR 清理：防止热更新后引用已销毁的音频节点
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    sourceStackByTarget.mainWindow = []
+    sourceStackByTarget.mixtapeWindow = []
+  })
+}

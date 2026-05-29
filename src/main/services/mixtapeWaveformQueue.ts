@@ -103,6 +103,8 @@ const computeMixtapeWaveform = async (filePath: string, listRoot?: string) => {
 
 export function queueMixtapeWaveforms(filePaths: string[], listRoot?: string) {
   if (!Array.isArray(filePaths) || filePaths.length === 0) return
+  // 并发控制由底层 AudioDecodeWorkerPool 的 worker 数量限制（2-10个）提供，
+  // 超出的任务会在队列中等待，不会同时执行，无需在此处额外限制。
   for (const filePath of filePaths) {
     void computeMixtapeWaveform(filePath, listRoot)
   }

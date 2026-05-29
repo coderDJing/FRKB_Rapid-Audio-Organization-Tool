@@ -230,6 +230,9 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       selectSongListDialogShow: false, //全局是否有歌单选择器正在展示
       dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID
+      // 注意：songsArea 和 songsAreaPanels.panes.single 共享同一个对象引用。
+      // 单面板模式下修改 songsArea 会自动反映到 panes.single，反之亦然。
+      // 必须使用 setSongsAreaActivePane action 切换，不要直接赋值 runtime.songsArea = { ... }。
       songsArea: singleSongsArea,
       songsAreaPanels: {
         splitEnabled: false,

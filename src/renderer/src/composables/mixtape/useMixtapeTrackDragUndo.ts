@@ -1,4 +1,4 @@
-import type { Ref } from 'vue'
+import { onBeforeUnmount, type Ref } from 'vue'
 import {
   buildTrackTimingUndoSnapshot,
   isTrackTimingSnapshotSame,
@@ -18,6 +18,15 @@ export const useMixtapeTrackDragUndo = ({
   handleTrackDragStart,
   pushExternalUndoStep
 }: UseMixtapeTrackDragUndoOptions) => {
+  let pendingMouseUpHandler: ((e: MouseEvent) => void) | null = null
+
+  onBeforeUnmount(() => {
+    if (pendingMouseUpHandler) {
+      window.removeEventListener('mouseup', pendingMouseUpHandler)
+      pendingMouseUpHandler = null
+    }
+  })
+
   return (item: TimelineTrackLayout, event: MouseEvent) => {
     const targetTrackId = item?.track?.id || ''
     const fallbackStartSec = Number(item?.startSec) || 0
@@ -37,38 +46,41 @@ export const useMixtapeTrackDragUndo = ({
     )
     handleTrackDragStart(item, event)
     if (!beforeSnapshot) return
-    window.addEventListener(
-      'mouseup',
-      () => {
-        const latestTrack = tracks.value.find((track) => track.id === targetTrackId) || null
-        if (!latestTrack) return
-        const afterSnapshot = buildTrackTimingUndoSnapshot(
-          latestTrack,
-          fallbackStartSec,
-          fallbackLaneIndex
-        )
-        const afterSnapshotById = new Map(
-          tracks.value.map((track, index) => [
-            track.id,
-            track.id === targetTrackId
-              ? afterSnapshot
-              : buildTrackTimingUndoSnapshot(
-                  track,
-                  Number(track.startSec) || 0,
-                  Number.isFinite(Number(track.laneIndex))
-                    ? Number(track.laneIndex)
-                    : index % LANE_COUNT
-                )
-          ])
-        )
-        const changedSnapshots = beforeSnapshots.filter((snapshot) => {
-          const nextSnapshot = afterSnapshotById.get(snapshot.trackId) || null
-          return !isTrackTimingSnapshotSame(snapshot, nextSnapshot)
-        })
-        if (!changedSnapshots.length) return
-        pushExternalUndoStep(() => restoreTrackTimingUndoSnapshots(tracks, changedSnapshots))
-      },
-      { once: true }
-    )
+    // 清理之前的残留监听器
+    if (pendingMouseUpHandler) {
+      window.removeEventListener('mouseup', pendingMouseUpHandler)
+    }
+    const handler = () => {
+      pendingMouseUpHandler = null
+      const latestTrack = tracks.value.find((track) => track.id === targetTrackId) || null
+      if (!latestTrack) return
+      const afterSnapshot = buildTrackTimingUndoSnapshot(
+        latestTrack,
+        fallbackStartSec,
+        fallbackLaneIndex
+      )
+      const afterSnapshotById = new Map(
+        tracks.value.map((track, index) => [
+          track.id,
+          track.id === targetTrackId
+            ? afterSnapshot
+            : buildTrackTimingUndoSnapshot(
+                track,
+                Number(track.startSec) || 0,
+                Number.isFinite(Number(track.laneIndex))
+                  ? Number(track.laneIndex)
+                  : index % LANE_COUNT
+              )
+        ])
+      )
+      const changedSnapshots = beforeSnapshots.filter((snapshot) => {
+        const nextSnapshot = afterSnapshotById.get(snapshot.trackId) || null
+        return !isTrackTimingSnapshotSame(snapshot, nextSnapshot)
+      })
+      if (!changedSnapshots.length) return
+      pushExternalUndoStep(() => restoreTrackTimingUndoSnapshots(tracks, changedSnapshots))
+    }
+    pendingMouseUpHandler = handler
+    window.addEventListener('mouseup', handler, { once: true })
   }
 }

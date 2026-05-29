@@ -81,7 +81,7 @@ export function decodeMixxxWaveformData(
 
   let offset = 0
   const readArray = () => {
-    const slice = payload.subarray(offset, offset + meta.frames)
+    const slice = Buffer.from(payload.subarray(offset, offset + meta.frames))
     offset += meta.frames
     return slice
   }
