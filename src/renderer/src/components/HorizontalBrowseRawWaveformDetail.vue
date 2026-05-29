@@ -187,6 +187,7 @@ const {
   holdCurrentWaveformFrame,
   resetRetainedWaveformData,
   resetLiveWaveformRaw,
+  stopLiveWaveformPlayback,
   ensureLiveWaveformRawCapacity,
   applyLiveWaveformRawChunk,
   replaceLiveWaveformRaw,
@@ -887,6 +888,7 @@ watch(
     if (!revision) return
     if (!props.song?.filePath) return
     const safeTargetSeconds = normalizePreviewTimelineSeconds(targetSeconds)
+    stopLiveWaveformPlayback()
     restartRawWaveformStreamAt(safeTargetSeconds, false)
     applyPreviewPlaybackPosition(safeTargetSeconds, true)
   }
@@ -1013,7 +1015,10 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
     @mouseleave="handlePreviewMouseLeaveForBarLinePicking"
     @wheel.prevent.stop="handleWheel"
   >
-    <canvas ref="waveformCanvasRef" class="raw-detail-waveform__canvas"></canvas>
+    <canvas
+      ref="waveformCanvasRef"
+      class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform"
+    ></canvas>
     <canvas
       ref="gridCanvasRef"
       class="raw-detail-waveform__canvas raw-detail-waveform__canvas--grid"
@@ -1061,7 +1066,8 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   backface-visibility: hidden;
 }
 
-.raw-detail-waveform__canvas:not(.raw-detail-waveform__canvas--overlay) {
+.raw-detail-waveform__canvas--waveform,
+.raw-detail-waveform__canvas--grid {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }

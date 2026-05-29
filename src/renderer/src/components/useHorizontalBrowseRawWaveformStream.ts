@@ -63,7 +63,7 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const resolveMaxChunkCopyFrames = (bootstrapCopyFrames: number) =>
     options.playing()
-      ? HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES
+      ? Math.max(HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES, bootstrapCopyFrames)
       : Math.max(resolveChunkCopySliceFrames(), bootstrapCopyFrames)
 
   const shouldKeepMainThreadRawArrays = () => true

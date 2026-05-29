@@ -80,6 +80,7 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
     }
     if (message?.type === 'presentation') {
       options.onPresentation(message.payload)
+      return
     }
   }
 
@@ -145,6 +146,10 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
     postMessage({ type: 'clearRaw' })
   }
 
+  const stopPlayback = () => {
+    postMessage({ type: 'stopPlayback' })
+  }
+
   const resetRaw = (meta: HorizontalBrowseDetailLiveCanvasRawMeta, retainCurrent = true) => {
     postMessage({ type: 'resetRaw', payload: { ...meta, retainCurrent } })
   }
@@ -206,6 +211,7 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
     mount,
     clear,
     clearRaw,
+    stopPlayback,
     resetRaw,
     ensureRawCapacity,
     applyRawChunk,

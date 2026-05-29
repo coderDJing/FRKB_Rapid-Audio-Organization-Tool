@@ -67,6 +67,8 @@ type UseHorizontalBrowseRawWaveformCanvasOptions = {
 
 const RAW_STREAM_REDRAW_INTERVAL_MS = 80
 const DEFERRED_RAW_STREAM_REDRAW_INTERVAL_MS = 160
+const PLAYBACK_DIRTY_PATCH_MAX_VISIBLE_RATIO = 0.25
+const PLAYBACK_RAW_SETTLE_HOLD_MS = 360
 const DEFAULT_CUE_ACCENT_COLOR = '#d98921'
 
 const resolvePixelSnappedCssSize = (value: number, pixelRatio: number) => {
@@ -112,18 +114,14 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   // 通过它把上面两种情形区分开：引用稳定时宽松允许绘制，引用刚变化时严格等覆盖。
   let lastStreamRenderedRawData: RawWaveformData | null = null
   let lastDrawPlaybackActive = false
-
   // displayStartSec 代表最近一帧 worker 已处理的可视区起点。grid / cue / hotcue 现在由
   // worker overlay 独立渲染，即使 displayReady=false，也会跟随当前 range 立即更新。
-  // 它和 previewStartSec / renderStartSec 的关系：
-  //   * renderStartSec：由 previewStartSec 在本帧决定的"理想显示位置"（随 playback tick 推进、
-  //     随 seek 立即跳）。
-  //   * displayStartSec：由 worker 回报的当前 range 起点。
-  //   * displayReady：高清波形层是否真的画出了这一帧。
-  // 这样 seek 后允许波形短暂黑屏，但 grid / cue / hotcue / playhead 不被波形加载状态绑架。
   const displayStartSec = ref(0)
   // displayReady 只表示高清波形层是否已经画到当前 range；时间线 overlay 不依赖它。
   const displayReady = ref(false)
+  let lastQueuedPlaybackSyncRevision = -1
+  let playbackRawSettleUntilMs = 0
+  let lastQueuedPlaybackRawSlot: 'live' | 'retained' | null = null
 
   const liveCanvasBridge = createHorizontalBrowseDetailLiveCanvasBridge({
     onRendered: (payload) => handleLiveCanvasRendered(payload),
@@ -208,6 +206,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const resolveDeferredVisualProtection = () =>
     options.deferWaveformLoad.value && !options.playing.value
 
+  const isPlaybackDirtyPatchRedundant = () =>
+    options.playing.value && !options.dragging.value && displayReady.value
+
   const resolveCueAccentColor = () => {
     const value = getComputedStyle(document.documentElement)
       .getPropertyValue('--shell-cue-accent')
@@ -236,6 +237,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     suppressNextPlaybackScrollReuse = false
     lastDrawPlaybackActive = false
     lastStreamRenderedRawData = null
+    playbackRawSettleUntilMs = 0
+    lastQueuedPlaybackRawSlot = null
     clearLiveCanvasPresentationOffset()
     // 外部重置 retained（例如切歌、loadWaveform）会清掉 canvas 上所有可用像素。
     displayReady.value = false
@@ -250,6 +253,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     lastStreamRenderedRawData = null
     suppressNextPlaybackScrollReuse = true
     forceNextRawStreamCoverageFullDraw = true
+    playbackRawSettleUntilMs = 0
+    lastQueuedPlaybackRawSlot = null
     clearRawStreamDirtyRange()
     cancelStreamDrawFrameScheduling()
   }
@@ -381,8 +386,45 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       width,
       height + HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX * 2
     )
-    const renderToken = liveCanvasRenderToken + 1
-    liveCanvasRenderToken = renderToken
+    const isPlaybackDirtyPatch =
+      options.playing.value &&
+      !options.dragging.value &&
+      (typeof payload.dirtyStartSec === 'number' || typeof payload.dirtyEndSec === 'number') &&
+      liveCanvasRenderToken > 0
+    const rawSlot = resolveRawSlotForRender(payload.rawData)
+    const playbackSyncRevision = Math.max(
+      0,
+      Math.floor(Number(options.playbackSyncRevision.value) || 0)
+    )
+    const nowMs = performance.now()
+    const playbackActive = options.playing.value && !options.dragging.value
+    const playbackSyncChanged =
+      playbackActive && playbackSyncRevision !== lastQueuedPlaybackSyncRevision
+    const allowScrollReuse = payload.allowScrollReuse && !playbackSyncChanged
+    if (playbackSyncChanged) {
+      playbackRawSettleUntilMs = nowMs + PLAYBACK_RAW_SETTLE_HOLD_MS
+      lastQueuedPlaybackRawSlot = null
+      liveCanvasBridge.stopPlayback()
+    }
+    if (!playbackActive) {
+      playbackRawSettleUntilMs = 0
+      lastQueuedPlaybackRawSlot = null
+    }
+    lastQueuedPlaybackSyncRevision = playbackSyncRevision
+    if (
+      playbackActive &&
+      !isPlaybackDirtyPatch &&
+      rawSlot &&
+      lastQueuedPlaybackRawSlot === rawSlot &&
+      displayReady.value &&
+      nowMs < playbackRawSettleUntilMs
+    ) {
+      return false
+    }
+    const renderToken = isPlaybackDirtyPatch ? liveCanvasRenderToken : liveCanvasRenderToken + 1
+    if (!isPlaybackDirtyPatch) {
+      liveCanvasRenderToken = renderToken
+    }
     liveCanvasBridge.render({
       renderToken,
       width,
@@ -399,13 +441,13 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       showCenterLine: false,
       showBackground: false,
       showBeatGrid: Number(options.previewBpm.value) > 0,
-      allowScrollReuse: payload.allowScrollReuse,
-      phaseAwareScrollReuse: payload.allowScrollReuse && options.phaseAwareScrollReuse?.() === true,
+      allowScrollReuse,
+      phaseAwareScrollReuse: allowScrollReuse && options.phaseAwareScrollReuse?.() === true,
       waveformLayout,
       waveformRenderStyle,
       preferRawPeaksOnly: payload.preferRawPeaksOnly,
       themeVariant: resolveHorizontalBrowseWaveformThemeVariant(),
-      rawSlot: resolveRawSlotForRender(payload.rawData),
+      rawSlot,
       direction: options.direction(),
       cueSeconds: Number.isFinite(Number(options.cueSeconds()))
         ? Number(options.cueSeconds())
@@ -414,17 +456,15 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       memoryCues: normalizeSongMemoryCues(options.memoryCues()),
       loopRange: resolveWorkerLoopRange(),
       cueAccentColor: resolveCueAccentColor(),
-      playbackActive: options.playing.value && !options.dragging.value,
+      playbackActive,
       playbackSeconds: Number(options.currentSeconds()) || 0,
-      playbackSyncRevision: Math.max(
-        0,
-        Math.floor(Number(options.playbackSyncRevision.value) || 0)
-      ),
+      playbackSyncRevision,
       playbackRate: Math.max(0.25, Number(options.playbackRate()) || 1),
       playbackDurationSec: resolvePlaybackDurationSecForRender(payload.rawData),
       dirtyStartSec: payload.dirtyStartSec,
       dirtyEndSec: payload.dirtyEndSec
     })
+    lastQueuedPlaybackRawSlot = playbackActive ? rawSlot : null
     return true
   }
 
@@ -455,13 +495,11 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const resolveRawDataEffectiveEndSec = (rawData: RawWaveformData | null) => {
     if (!rawData) return Number.POSITIVE_INFINITY
     const songDurationSec = Math.max(0, Number(rawData.duration) || 0)
-    const rawStartSec = Math.max(0, Number(rawData.startSec) || 0)
     const totalFrames = Math.max(0, Math.floor(Number(rawData.frames) || 0))
     const loadedFrames = Math.max(0, Math.floor(Number(rawData.loadedFrames ?? totalFrames) || 0))
     const rawEndSec = resolveRawDataCoveredEndSec(rawData)
     const tailGapSec = songDurationSec - rawEndSec
     if (
-      rawStartSec <= 0.0001 &&
       totalFrames > 0 &&
       loadedFrames >= totalFrames &&
       songDurationSec > 0 &&
@@ -662,27 +700,14 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       effectiveMixxxSelection.source === 'live' || effectiveMixxxSelection.source === 'retained'
 
     const commitRetainedFromDrawn = () => {
-      // 只在"这一帧真的用 drawableRawData 画出来了"之后更新 retained，且只写实际画的那个引用。
-      // 这样 live 被 ensureRawWaveformCapacity 换成新对象、但新对象还没填够数据的窗口期里，
-      // retained 会继续保留"上一帧画成功的那个可用引用"，下一帧可以无缝回落到它，
-      // 避免 canvas 因为 live 换 ref / 覆盖不足而冻结或清空。
       if (!currentFilePath) return
       if (!drawableRawData) return
       retainedWaveformFilePath = currentFilePath
       retainedRawData = drawableRawData
-      // retainedMixxxData 仅在本帧 mixxxData 源是 live 时同步，避免把 placeholder / retained 再写回 retained。
       if (activeMixxxSelection.source === 'live' && activeMixxxSelection.data) {
         retainedMixxxData = activeMixxxSelection.data
       }
     }
-
-    // 注意：retainedRawData / retainedMixxxData 不在这里无条件地从 options.rawData.value 抓快照。
-    // seek 刚重启 stream 时 live 会被 ensureRawWaveformCapacity 换成一个尚未覆盖可视区的
-    // 新对象；如果这时就把 retained 更新成它，下一帧就没有"还能画的旧数据"可退回了。
-    // 所以只在真正成功绘制了一帧（stream-live / stream-fallback / tile-cache）之后，
-    // 用那一帧实际画的 rawData（drawableRawData，即 live 或保持的 retained）去更新 retained，
-    // 让"已被画过的那个引用"始终是下次过渡期的回落对象。
-    // hold 的释放时机同样也只放在成功渲染分支，不在这里投机性重置。
 
     if (!effectiveMixxxData && !drawableRawData) {
       lastStreamRenderedRawData = null
@@ -704,15 +729,16 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       //     worker 走 scroll reuse：复用当前 canvas 像素 +
       //     只重绘右边缘 shift 出来的一小段。即使 rawData 末尾几帧数据还没填入，右边缘最多
       //     短暂画成平线，左边旧波形像素会被保留——波形主体跟 playback 同步滚动。
-      //   * allowPartialViewportPaint=true：拖动/暂停/首屏时允许用当前已到达的 partial rawData
+      //   * allowPartialViewportPaint=true：拖动/暂停时允许用当前已到达的 partial rawData
       //     先画出可见部分，未加载出来的列保持黑；后续 chunk 再通过 dirty draw 补齐。
-      //   * 以上都不满足（rawData 新换 ref 且尚未覆盖可视区）：draw 会走 clearRect+drawRange，
-      //     用稀疏数据整屏重画，导致大片空白。seek 允许这样黑屏，但 overlay 必须继续更新。
+      //   * 以上都不满足（rawData 新换 ref 且尚未覆盖可视区）：先清波形层并等覆盖充分，
+      //     避免把上一位置的波形暂留到 seek 后的新位置。
       const rawDataRefStable =
         drawableRawData != null && drawableRawData === lastStreamRenderedRawData
       const allowPartialViewportPaint =
         Boolean(drawableRawData) &&
         !holdPreviousWaveformFrame &&
+        !playbackStreamReuse &&
         (options.dragging.value || !options.playing.value || !wasDisplayReady)
       const canDrawStream =
         Boolean(drawableRawData) &&
@@ -828,10 +854,32 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       return
     }
 
-    clearRawStreamDirtyRange()
+    if (isPlaybackDirtyPatchRedundant()) {
+      clearRawStreamDirtyRange()
+      return
+    }
+
     const visibleDuration = Math.max(0.001, resolveVisibleDurationSec() || duration || 0.001)
     options.previewStartSec.value = clampPreviewStart(options.previewStartSec.value)
     const renderStartSec = resolvePlaybackDrivenRenderStartSec(visibleDuration)
+    const playbackStreamReuse = options.playing.value && !options.dragging.value
+    const dirtyViewStartSec = Math.max(dirtyStartSec, renderStartSec)
+    const dirtyViewEndSec = Math.min(dirtyEndSec, renderStartSec + visibleDuration)
+    if (dirtyViewEndSec <= dirtyViewStartSec) {
+      clearRawStreamDirtyRange()
+      return
+    }
+    const maxPlaybackDirtyDurationSec = playbackStreamReuse
+      ? Math.max(0.5, visibleDuration * PLAYBACK_DIRTY_PATCH_MAX_VISIBLE_RATIO)
+      : Infinity
+    const patchStartSec = dirtyViewStartSec
+    const patchEndSec = Math.min(dirtyViewEndSec, patchStartSec + maxPlaybackDirtyDurationSec)
+    if (patchEndSec < dirtyEndSec - 0.0001) {
+      pendingRawStreamDirtyStartSec = patchEndSec
+      pendingRawStreamDirtyEndSec = dirtyEndSec
+    } else {
+      clearRawStreamDirtyRange()
+    }
     const finishTiming = startHorizontalBrowseUserTiming(
       `frkb:hb:canvas:stream-dirty:${options.direction()}`
     )
@@ -843,9 +891,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
       allowScrollReuse: true,
       preferRawPeaksOnly: false,
-      dirtyStartSec,
-      dirtyEndSec
+      dirtyStartSec: patchStartSec,
+      dirtyEndSec: patchEndSec
     })
+    schedulePendingRawStreamDirtyDraw()
     finishTiming()
   }
 
@@ -876,6 +925,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const scheduleRawStreamDirtyDraw = (dirtyStartSec: number, dirtyEndSec: number) => {
     const safeStartSec = Math.max(0, Math.min(dirtyStartSec, dirtyEndSec))
     const safeEndSec = Math.max(safeStartSec, dirtyEndSec)
+    if (isPlaybackDirtyPatchRedundant()) {
+      clearRawStreamDirtyRange()
+      return
+    }
     pendingRawStreamDirtyStartSec =
       pendingRawStreamDirtyStartSec === null
         ? safeStartSec
@@ -935,6 +988,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     liveCanvasBridge.replaceRaw(data)
   }
 
+  const stopLiveWaveformPlayback = () => {
+    liveCanvasBridge.stopPlayback()
+  }
+
   const updateLiveWaveformRawMeta = (meta: Partial<HorizontalBrowseDetailLiveCanvasRawMeta>) => {
     liveCanvasBridge.updateRawMeta(meta)
   }
@@ -975,6 +1032,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     holdCurrentWaveformFrame,
     resetRetainedWaveformData,
     resetLiveWaveformRaw,
+    stopLiveWaveformPlayback,
     ensureLiveWaveformRawCapacity,
     applyLiveWaveformRawChunk,
     replaceLiveWaveformRaw,

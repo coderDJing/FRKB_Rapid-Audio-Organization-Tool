@@ -8,6 +8,7 @@ type RenderMissFrameState = {
   firstBeatMs: number
   barBeatOffset: number
   timeBasisOffsetMs: number
+  rangeStartSec: number
   rangeDurationSec: number
   rawData: RawWaveformData | null
   showDetailHighlights: boolean
@@ -18,7 +19,12 @@ type RenderMissFrameState = {
   waveformRenderStyle: 'columns' | 'raw-curve'
   preferRawPeaksOnly: boolean
   themeVariant: 'light' | 'dark'
+  playbackSyncRevision: number
 }
+
+const PLAYBACK_SYNC_TOLERANCE_SEC = 0.02
+const MISSING_RAW_FRAME_PRESERVE_MAX_DELTA_SEC = 0.35
+const MISSING_RAW_FRAME_PRESERVE_MAX_VISIBLE_RATIO = 0.035
 
 export const canPreserveHorizontalBrowseWaveformAfterRenderMiss = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
@@ -43,5 +49,38 @@ export const canPreserveHorizontalBrowseWaveformAfterRenderMiss = (
     previousFrame.waveformRenderStyle === state.waveformRenderStyle &&
     previousFrame.preferRawPeaksOnly === state.preferRawPeaksOnly &&
     previousFrame.themeVariant === state.themeVariant
+  )
+}
+
+export const canPreservePlaybackFrameOnMissingRaw = (
+  state: RenderMissFrameState,
+  previousFrame: RenderMissFrameState | null
+) => {
+  if (!previousFrame || state.rawData) return false
+  const maxRangeDeltaSec = Math.min(
+    MISSING_RAW_FRAME_PRESERVE_MAX_DELTA_SEC,
+    Math.max(
+      PLAYBACK_SYNC_TOLERANCE_SEC,
+      state.rangeDurationSec * MISSING_RAW_FRAME_PRESERVE_MAX_VISIBLE_RATIO
+    )
+  )
+  return (
+    previousFrame.width === state.width &&
+    previousFrame.height === state.height &&
+    previousFrame.bpm === state.bpm &&
+    previousFrame.firstBeatMs === state.firstBeatMs &&
+    previousFrame.barBeatOffset === state.barBeatOffset &&
+    previousFrame.timeBasisOffsetMs === state.timeBasisOffsetMs &&
+    previousFrame.rangeDurationSec === state.rangeDurationSec &&
+    Math.abs(previousFrame.rangeStartSec - state.rangeStartSec) <= maxRangeDeltaSec &&
+    previousFrame.showDetailHighlights === state.showDetailHighlights &&
+    previousFrame.showCenterLine === state.showCenterLine &&
+    previousFrame.showBackground === state.showBackground &&
+    previousFrame.showBeatGrid === state.showBeatGrid &&
+    previousFrame.waveformLayout === state.waveformLayout &&
+    previousFrame.waveformRenderStyle === state.waveformRenderStyle &&
+    previousFrame.preferRawPeaksOnly === state.preferRawPeaksOnly &&
+    previousFrame.themeVariant === state.themeVariant &&
+    previousFrame.playbackSyncRevision === state.playbackSyncRevision
   )
 }

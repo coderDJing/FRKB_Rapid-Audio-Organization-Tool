@@ -152,6 +152,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const estimatedSec = estimateDeckRenderCurrentSeconds(deck, snapshotAtMs)
     const renderEstimatedSec = estimateDeckRenderCurrentSeconds(deck, renderNowMs)
     const pendingIntent = pendingRenderSeekIntent[deck]
+    let confirmedPendingIntent = false
     if (pendingIntent) {
       const intentAgeMs = renderNowMs - pendingIntent.startedAtMs
       const pendingEstimatedSec = pendingIntent.seconds
@@ -191,6 +192,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
         return
       }
       pendingRenderSeekIntent[deck] = null
+      confirmedPendingIntent = intentConfirmed
     }
     const signature = buildDeckRenderTimelineSignature(snapshot)
     const previousSignature = deckRenderTimelineSignature[deck]
@@ -233,6 +235,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       (playbackSnapshotAuthoritative && driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)
     const shouldBumpPlaybackRevision =
       shouldReanchor &&
+      !confirmedPendingIntent &&
       (force ||
         fullSyncPhaseChanged ||
         (snapshot.playing && (!previousSignature || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)))

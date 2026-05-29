@@ -81,6 +81,9 @@ export type HorizontalBrowseDetailLiveCanvasWorkerIncoming =
       type: 'clearRaw'
     }
   | {
+      type: 'stopPlayback'
+    }
+  | {
       type: 'resetRaw'
       payload: HorizontalBrowseDetailLiveCanvasRawMeta & {
         retainCurrent?: boolean

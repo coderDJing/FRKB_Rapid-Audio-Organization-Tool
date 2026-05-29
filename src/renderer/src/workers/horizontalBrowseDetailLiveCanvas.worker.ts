@@ -5,13 +5,15 @@ import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRende
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import { createHorizontalBrowseDetailLiveCanvasOverlayRenderer } from './horizontalBrowseDetailLiveCanvasOverlay'
 import { createHorizontalBrowseDetailLiveCanvasRawStore } from './horizontalBrowseDetailLiveCanvasRawStore'
-import { canPreserveHorizontalBrowseWaveformAfterRenderMiss } from './horizontalBrowseDetailLiveCanvasRenderGuards'
+import {
+  canPreserveHorizontalBrowseWaveformAfterRenderMiss,
+  canPreservePlaybackFrameOnMissingRaw
+} from './horizontalBrowseDetailLiveCanvasRenderGuards'
 import type {
   HorizontalBrowseDetailLiveCanvasRenderRequest,
   HorizontalBrowseDetailLiveCanvasWorkerIncoming,
   HorizontalBrowseDetailLiveCanvasWorkerOutgoing
 } from './horizontalBrowseDetailLiveCanvas.types'
-
 type CanvasMetrics = {
   cssWidth: number
   cssHeight: number
@@ -22,7 +24,6 @@ type CanvasMetrics = {
   scaleY: number
   resized: boolean
 }
-
 type FrameState = {
   width: number
   height: number
@@ -45,15 +46,14 @@ type FrameState = {
   themeVariant: 'light' | 'dark'
   playbackSyncRevision: number
 }
-
 type PlaybackAnimationState = {
   token: number
   request: HorizontalBrowseDetailLiveCanvasRenderRequest
   baseSeconds: number
   startedAtMs: number
   lastRenderedAtMs: number
+  scrollReuseSuppressedFrames: number
 }
-
 type WorkerAnimationFrameScope = typeof globalThis & {
   requestAnimationFrame?: (callback: FrameRequestCallback) => number
   cancelAnimationFrame?: (handle: number) => void
@@ -63,8 +63,9 @@ const clampNumber = (value: number, min: number, max: number) => Math.max(min, M
 const PLAYHEAD_RATIO = 0.5
 const PLAYBACK_RENDER_INTERVAL_MS = 16
 const PLAYBACK_RENDER_FALLBACK_TIMEOUT_MS = 48
-const PLAYBACK_SCROLL_REUSE_MAX_FRAME_GAP_MS = 120
-const PLAYBACK_SYNC_TOLERANCE_SEC = 0.02
+const PLAYBACK_SCROLL_REUSE_MAX_FRAME_GAP_MS = 28
+const PLAYBACK_CLOCK_REANCHOR_MIN_FRAME_GAP_MS = 120
+const PLAYBACK_SCROLL_REUSE_RECOVERY_FRAMES = 2
 let canvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
 const overlayRenderer = createHorizontalBrowseDetailLiveCanvasOverlayRenderer()
@@ -91,7 +92,10 @@ const resetFrameState = () => {
   lastFrame = null
   lastWaveformScrollShiftScaledPx = null
 }
-const rawStore = createHorizontalBrowseDetailLiveCanvasRawStore(resetFrameState)
+const invalidateRawFrameReuse = () => {
+  lastWaveformScrollShiftScaledPx = null
+}
+const rawStore = createHorizontalBrowseDetailLiveCanvasRawStore(invalidateRawFrameReuse)
 const resolveWorkerAnimationFrameScope = () => self as WorkerAnimationFrameScope
 const clearPlaybackFrameSchedule = () => {
   if (playbackTimer) {
@@ -127,6 +131,15 @@ const stopPlaybackAnimation = () => {
   playbackAnimationToken += 1
   playbackAnimation = null
   clearPlaybackFrameSchedule()
+}
+
+const stopPlaybackAnimationAndPendingRender = () => {
+  stopPlaybackAnimation()
+  pendingRender = null
+  if (renderTimer) {
+    clearTimeout(renderTimer)
+    renderTimer = null
+  }
 }
 
 const clampPlaybackRangeStart = (value: number, duration: number, visibleDuration: number) => {
@@ -559,17 +572,21 @@ const renderFullFrame = (
     lastFrame
   ) {
     const phaseShiftSec = resolvePhaseShiftSec(lastFrame)
-    const quantizedRangeStartSec = resolveStableColumnRangeStartSec(
+    const requestedRangeStartSec = resolveStableColumnRangeStartSec(
       request,
       metrics,
       state,
       phaseShiftSec
     )
     const requestedShiftScaledPx =
-      ((quantizedRangeStartSec - lastFrame.rangeStartSec - phaseShiftSec) /
+      ((requestedRangeStartSec - lastFrame.rangeStartSec - phaseShiftSec) /
         state.rangeDurationSec) *
       metrics.scaledWidth
     const shiftScaledPx = Math.round(requestedShiftScaledPx)
+    const quantizedRangeStartSec =
+      lastFrame.rangeStartSec +
+      phaseShiftSec +
+      (shiftScaledPx / metrics.scaledWidth) * state.rangeDurationSec
     const absShiftScaledPx = Math.abs(shiftScaledPx)
     if (absShiftScaledPx === 0) {
       state.rangeStartSec = lastFrame.rangeStartSec + phaseShiftSec
@@ -697,10 +714,19 @@ const renderDirtyRange = (
     return renderFullFrame(request, metrics, state)
   }
 
+  return patchDirtySegmentInCurrentFrame(request, metrics, state)
+}
+
+const patchDirtySegmentInCurrentFrame = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  metrics: CanvasMetrics,
+  state: FrameState
+) => {
+  if (!ctx) return false
   const dirtyStartSec = Number(request.dirtyStartSec)
   const dirtyEndSec = Number(request.dirtyEndSec)
   if (!Number.isFinite(dirtyStartSec) || !Number.isFinite(dirtyEndSec)) {
-    return renderFullFrame(request, metrics, state)
+    return false
   }
 
   const viewStartSec = state.rangeStartSec
@@ -739,6 +765,9 @@ const renderTimelineFallback = () => {
   clearWaveformPixels()
 }
 
+const isDirtyRenderRequest = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) =>
+  typeof request.dirtyStartSec === 'number' || typeof request.dirtyEndSec === 'number'
+
 const processRender = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
   notifyMain = true
@@ -748,32 +777,49 @@ const processRender = (
   const state = metrics ? buildFrameState(request, metrics, rawData) : null
   const renderState = state as FrameState | null
   const previousFrame = lastFrame
+  const isDirtyRender = isDirtyRenderRequest(request)
   const ready =
     !!metrics &&
     !!rawData &&
-    (typeof request.dirtyStartSec === 'number' || typeof request.dirtyEndSec === 'number'
+    (isDirtyRender
       ? renderDirtyRange(request, metrics, renderState as FrameState)
       : renderFullFrame(request, metrics, renderState as FrameState))
 
-  const preserved =
+  const holdMissingPlaybackRaw =
     !!metrics &&
     !!renderState &&
     !ready &&
-    canPreserveHorizontalBrowseWaveformAfterRenderMiss(request, renderState, previousFrame)
+    request.playbackActive === true &&
+    !rawData &&
+    canPreservePlaybackFrameOnMissingRaw(renderState, previousFrame)
+  const preserved =
+    holdMissingPlaybackRaw ||
+    (!!metrics &&
+      !!renderState &&
+      !ready &&
+      canPreserveHorizontalBrowseWaveformAfterRenderMiss(request, renderState, previousFrame))
   if (preserved) {
     lastFrame = previousFrame
     lastWaveformScrollShiftScaledPx = null
-  } else if (metrics && renderState && !ready) {
+  } else if (metrics && renderState && !ready && !holdMissingPlaybackRaw) {
     renderTimelineFallback()
   }
-
+  // committed range 是本次实际留在 canvas 上的波形坐标；preserved 帧必须回报旧帧坐标。
+  const committedRangeStartSec =
+    preserved && previousFrame
+      ? previousFrame.rangeStartSec
+      : (renderState?.rangeStartSec ?? request.rangeStartSec)
+  const committedRangeDurationSec =
+    preserved && previousFrame
+      ? previousFrame.rangeDurationSec
+      : (renderState?.rangeDurationSec ?? request.rangeDurationSec)
   if (
     metrics &&
     renderState &&
     !overlayRenderer.render(
       request,
-      renderState.rangeStartSec,
-      renderState.rangeDurationSec,
+      committedRangeStartSec,
+      committedRangeDurationSec,
       lastWaveformScrollShiftScaledPx
     )
   ) {
@@ -795,9 +841,9 @@ const processRender = (
       type: 'rendered',
       payload: {
         renderToken: request.renderToken,
-        rangeStartSec: renderState?.rangeStartSec ?? request.rangeStartSec,
-        rangeDurationSec: renderState?.rangeDurationSec ?? request.rangeDurationSec,
-        ready: ready || preserved
+        rangeStartSec: committedRangeStartSec,
+        rangeDurationSec: committedRangeDurationSec,
+        ready: ready || (preserved && !holdMissingPlaybackRaw)
       }
     })
   }
@@ -833,9 +879,22 @@ const schedulePlaybackRender = (token: number) => {
     if (!animation || animation.token !== token || token !== playbackAnimationToken) return
     const nowMs = performance.now()
     const frameGapMs = Math.max(0, nowMs - animation.lastRenderedAtMs)
+    const frameGapTooLong = frameGapMs > PLAYBACK_SCROLL_REUSE_MAX_FRAME_GAP_MS
+    const scrollReuseSuppressed = animation.scrollReuseSuppressedFrames > 0
+    if (scrollReuseSuppressed) animation.scrollReuseSuppressedFrames -= 1
+    if (frameGapMs > PLAYBACK_CLOCK_REANCHOR_MIN_FRAME_GAP_MS) {
+      animation.baseSeconds = resolvePlaybackSeconds(
+        animation.request,
+        animation.baseSeconds,
+        animation.startedAtMs,
+        animation.lastRenderedAtMs
+      )
+      animation.startedAtMs = nowMs
+    }
+    if (frameGapTooLong)
+      animation.scrollReuseSuppressedFrames = PLAYBACK_SCROLL_REUSE_RECOVERY_FRAMES
     const allowScrollReuse =
-      animation.request.allowScrollReuse !== false &&
-      frameGapMs <= PLAYBACK_SCROLL_REUSE_MAX_FRAME_GAP_MS
+      !scrollReuseSuppressed && !frameGapTooLong && animation.request.allowScrollReuse !== false
     processRender(buildPlaybackRenderRequest(animation, allowScrollReuse, nowMs), false)
     animation.lastRenderedAtMs = nowMs
     if (playbackAnimation?.token === token && token === playbackAnimationToken) {
@@ -854,13 +913,14 @@ const schedulePlaybackRender = (token: number) => {
 
 const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
   const current = playbackAnimation
-  const token = current?.token ?? playbackAnimationToken + 1
   const nowMs = performance.now()
   const incomingSeconds = Number(request.playbackSeconds) || 0
   const forceIncomingSeconds =
     current &&
     Math.floor(Number(request.playbackSyncRevision) || 0) !==
       Math.floor(Number(current.request.playbackSyncRevision) || 0)
+  const shouldRestartSchedule = !current || forceIncomingSeconds
+  const token = shouldRestartSchedule || !current ? playbackAnimationToken + 1 : current.token
   const baseSeconds = current
     ? (() => {
         if (forceIncomingSeconds) {
@@ -872,23 +932,36 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
           current.startedAtMs,
           nowMs
         )
-        return Math.abs(predictedSeconds - incomingSeconds) <= PLAYBACK_SYNC_TOLERANCE_SEC
-          ? predictedSeconds
-          : incomingSeconds
+        return predictedSeconds
       })()
     : incomingSeconds
-  if (!current) {
+  const currentSuppressedFrames =
+    current && !forceIncomingSeconds ? current.scrollReuseSuppressedFrames : 0
+  const shouldWarmUpScrollReuse =
+    request.playbackActive === true &&
+    request.allowScrollReuse === false &&
+    request.rawSlot !== null
+  const scrollReuseSuppressedFrames = shouldWarmUpScrollReuse
+    ? Math.max(currentSuppressedFrames, PLAYBACK_SCROLL_REUSE_RECOVERY_FRAMES)
+    : currentSuppressedFrames
+  const animationRequest = shouldWarmUpScrollReuse
+    ? { ...request, allowScrollReuse: true }
+    : request
+  if (shouldRestartSchedule) {
     playbackAnimationToken = token
   }
+  clearPlaybackFrameSchedule()
   playbackAnimation = {
     token,
-    request,
+    request: animationRequest,
     baseSeconds,
     startedAtMs: nowMs,
-    lastRenderedAtMs: nowMs
+    lastRenderedAtMs: nowMs,
+    scrollReuseSuppressedFrames
   }
   processRender(
-    buildPlaybackRenderRequest(playbackAnimation, request.allowScrollReuse !== false, nowMs)
+    buildPlaybackRenderRequest(playbackAnimation, request.allowScrollReuse !== false, nowMs),
+    true
   )
   if (playbackAnimation?.token === token && !playbackTimer) {
     schedulePlaybackRender(token)
@@ -896,8 +969,7 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
 }
 
 const processRenderRequest = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
-  const isDirtyRender =
-    typeof request.dirtyStartSec === 'number' || typeof request.dirtyEndSec === 'number'
+  const isDirtyRender = isDirtyRenderRequest(request)
   const shouldAnimatePlayback = request.playbackActive === true && !isDirtyRender
 
   if (shouldAnimatePlayback) {
@@ -954,6 +1026,11 @@ self.onmessage = (event: MessageEvent<HorizontalBrowseDetailLiveCanvasWorkerInco
   if (message.type === 'clearRaw') {
     rawStore.clear()
     clearCanvasPixels()
+    return
+  }
+
+  if (message.type === 'stopPlayback') {
+    stopPlaybackAnimationAndPendingRender()
     return
   }
 

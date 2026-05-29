@@ -81,6 +81,7 @@ let lastSeekEmitAt = 0
 let lastSeekEmitSeconds: number | null = null
 const SEEK_EMIT_DUPLICATE_WINDOW_MS = 350
 const SEEK_EMIT_DUPLICATE_EPSILON_SEC = 0.05
+const SEEK_EMIT_DUPLICATE_EPSILON_PX = 2
 
 const parseDurationToSeconds = (input: unknown) => {
   const raw = String(input || '').trim()
@@ -123,6 +124,17 @@ const loopMaskStyle = computed(() => {
   }
 })
 
+const resolveSeekDuplicateEpsilonSec = () => {
+  const track = trackRef.value
+  if (!track || totalSeconds.value <= 0) return SEEK_EMIT_DUPLICATE_EPSILON_SEC
+  const rect = track.getBoundingClientRect()
+  if (rect.width <= 0) return SEEK_EMIT_DUPLICATE_EPSILON_SEC
+  return Math.max(
+    SEEK_EMIT_DUPLICATE_EPSILON_SEC,
+    (totalSeconds.value / rect.width) * SEEK_EMIT_DUPLICATE_EPSILON_PX
+  )
+}
+
 const flushPendingSeek = () => {
   seekRaf = 0
   if (pendingSeekSeconds === null) return
@@ -132,7 +144,7 @@ const flushPendingSeek = () => {
   if (
     lastSeekEmitSeconds !== null &&
     now - lastSeekEmitAt <= SEEK_EMIT_DUPLICATE_WINDOW_MS &&
-    Math.abs(lastSeekEmitSeconds - nextSeconds) <= SEEK_EMIT_DUPLICATE_EPSILON_SEC
+    Math.abs(lastSeekEmitSeconds - nextSeconds) <= resolveSeekDuplicateEpsilonSec()
   ) {
     return
   }
