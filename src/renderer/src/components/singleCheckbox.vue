@@ -1,14 +1,20 @@
 <script setup lang="ts">
 import { v4 as uuidV4 } from 'uuid'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const uuid = uuidV4()
 const props = defineProps({
   modelValue: {
     type: Boolean || undefined,
     required: true
+  },
+  id: {
+    type: String,
+    default: null
   }
 })
+
+const inputId = computed(() => props.id || 'checkBoxInput' + uuid)
 
 const value = ref(props.modelValue)
 const emits = defineEmits(['update:modelValue', 'change'])
@@ -34,16 +40,16 @@ function handleChange() {
   <div class="checkBoxContainer">
     <div class="checkBox">
       <input
-        :id="'checkBoxInput' + uuid"
+        :id="inputId"
         v-model="value"
         class="sure"
         type="checkbox"
         :value="true"
         @change="handleChange"
       />
-      <label class="box" :for="'checkBoxInput' + uuid"></label>
+      <label class="box" :for="inputId"></label>
     </div>
-    <label class="text" :for="'checkBoxInput' + uuid">
+    <label class="text" :for="inputId">
       <slot />
     </label>
   </div>

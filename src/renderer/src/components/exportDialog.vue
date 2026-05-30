@@ -178,10 +178,15 @@ onUnmounted(() => {
         </div>
         <div v-if="!props.forceCopyOnly" style="display: flex">
           <div class="formLabel" style="text-align: right">
-            <span>{{ t('tracks.deleteAfterExport') }}：</span>
+            <label for="export-checkbox-deleteAfterExport" style="user-select: none"
+              >{{ t('tracks.deleteAfterExport') }}：</label
+            >
           </div>
           <div style="flex: 1; width: 21px; height: 21px; display: flex; align-items: center">
-            <singleCheckbox v-model="deleteSongsAfterExport" />
+            <singleCheckbox
+              id="export-checkbox-deleteAfterExport"
+              v-model="deleteSongsAfterExport"
+            />
           </div>
         </div>
         <div v-else class="copyOnlyHint">

@@ -296,14 +296,28 @@ onUnmounted(() => {
           />
         </div>
 
-        <div style="margin-top: 20px">{{ t('library.deleteAfterImport') }}：</div>
+        <div style="margin-top: 20px">
+          <label for="import-checkbox-deleteAfterImport" style="user-select: none"
+            >{{ t('library.deleteAfterImport') }}：</label
+          >
+        </div>
         <div style="margin-top: 10px">
-          <singleCheckbox v-model="settingData.isDeleteSourceFile" />
+          <singleCheckbox
+            id="import-checkbox-deleteAfterImport"
+            v-model="settingData.isDeleteSourceFile"
+          />
         </div>
 
-        <div style="margin-top: 20px">{{ t('library.addToFingerprintLibrary') }}：</div>
+        <div style="margin-top: 20px">
+          <label for="import-checkbox-addToFingerprintLibrary" style="user-select: none"
+            >{{ t('library.addToFingerprintLibrary') }}：</label
+          >
+        </div>
         <div style="margin-top: 10px; display: inline-flex; align-items: center; gap: 6px">
-          <singleCheckbox v-model="settingData.isPushSongFingerprintLibrary" />
+          <singleCheckbox
+            id="import-checkbox-addToFingerprintLibrary"
+            v-model="settingData.isPushSongFingerprintLibrary"
+          />
           <img
             ref="hint2Ref"
             :src="hintIcon"

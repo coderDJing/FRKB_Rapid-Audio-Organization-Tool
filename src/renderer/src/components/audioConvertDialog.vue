@@ -452,7 +452,9 @@ const cancel = () => {
           </div>
 
           <div style="margin-top: 20px">
-            {{ t('convert.preserveMetadata') }}：
+            <label for="convert-checkbox-preserveMetadata" style="user-select: none"
+              >{{ t('convert.preserveMetadata') }}：</label
+            >
             <img
               ref="metadataHintRef"
               :src="hintIcon"
@@ -463,12 +465,19 @@ const cancel = () => {
             <bubbleBox :dom="metadataHintRef || undefined" :title="metadataHint" :max-width="240" />
           </div>
           <div style="margin-top: 10px">
-            <singleCheckbox v-model="preserveMetadataModel" />
+            <singleCheckbox
+              id="convert-checkbox-preserveMetadata"
+              v-model="preserveMetadataModel"
+            />
           </div>
 
-          <div style="margin-top: 20px">{{ t('convert.addFingerprint') }}：</div>
+          <div style="margin-top: 20px">
+            <label for="convert-checkbox-addFingerprint" style="user-select: none"
+              >{{ t('convert.addFingerprint') }}：</label
+            >
+          </div>
           <div style="margin-top: 10px">
-            <singleCheckbox v-model="addFingerprintModel" />
+            <singleCheckbox id="convert-checkbox-addFingerprint" v-model="addFingerprintModel" />
           </div>
         </div>
       </OverlayScrollbarsComponent>

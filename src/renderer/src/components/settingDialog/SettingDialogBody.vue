@@ -177,14 +177,23 @@ const rekordboxDesktopTrackStorageDirText = computed(
               </bubbleBoxTrigger>
             </div>
 
-            <div class="setting-block">{{ t('player.autoPlayNext') }}：</div>
-            <div class="setting-control">
-              <singleCheckbox v-model="runtime.setting.autoPlayNextSong" @change="setSetting()" />
-            </div>
-
-            <div class="setting-block">{{ t('player.autoCenterSong') }}：</div>
+            <label class="setting-block" for="setting-checkbox-autoPlayNext"
+              >{{ t('player.autoPlayNext') }}：</label
+            >
             <div class="setting-control">
               <singleCheckbox
+                id="setting-checkbox-autoPlayNext"
+                v-model="runtime.setting.autoPlayNextSong"
+                @change="setSetting()"
+              />
+            </div>
+
+            <label class="setting-block" for="setting-checkbox-autoCenterSong"
+              >{{ t('player.autoCenterSong') }}：</label
+            >
+            <div class="setting-control">
+              <singleCheckbox
+                id="setting-checkbox-autoCenterSong"
                 v-model="runtime.setting.autoScrollToCurrentSong"
                 @change="setSetting()"
               />
@@ -212,17 +221,23 @@ const rekordboxDesktopTrackStorageDirText = computed(
           <div class="settings-section">
             <div class="section-title">{{ t('settings.layout.sectionPlaybackTitle') }}</div>
 
-            <div class="setting-block">{{ t('player.enablePlaybackRange') }}：</div>
+            <label class="setting-block" for="setting-checkbox-enablePlaybackRange"
+              >{{ t('player.enablePlaybackRange') }}：</label
+            >
             <div class="setting-control">
               <singleCheckbox
+                id="setting-checkbox-enablePlaybackRange"
                 v-model="runtime.setting.enablePlaybackRange"
                 @change="setSetting()"
               />
             </div>
 
-            <div class="setting-block">{{ t('player.hideControlsShowWaveform') }}：</div>
+            <label class="setting-block" for="setting-checkbox-hideControlsShowWaveform"
+              >{{ t('player.hideControlsShowWaveform') }}：</label
+            >
             <div class="setting-control">
               <singleCheckbox
+                id="setting-checkbox-hideControlsShowWaveform"
                 v-model="runtime.setting.hiddenPlayControlArea"
                 @change="setSetting()"
               />
@@ -258,14 +273,26 @@ const rekordboxDesktopTrackStorageDirText = computed(
               />
             </div>
 
-            <div class="setting-block">{{ t('player.showTitleAudioVisualizer') }}：</div>
+            <label class="setting-block" for="setting-checkbox-showTitleAudioVisualizer"
+              >{{ t('player.showTitleAudioVisualizer') }}：</label
+            >
             <div class="setting-control">
-              <singleCheckbox v-model="showTitleAudioVisualizerModel" @change="setSetting()" />
+              <singleCheckbox
+                id="setting-checkbox-showTitleAudioVisualizer"
+                v-model="showTitleAudioVisualizerModel"
+                @change="setSetting()"
+              />
             </div>
 
-            <div class="setting-block">{{ t('player.showIdleAnalysisStatus') }}：</div>
+            <label class="setting-block" for="setting-checkbox-showIdleAnalysisStatus"
+              >{{ t('player.showIdleAnalysisStatus') }}：</label
+            >
             <div class="setting-control">
-              <singleCheckbox v-model="showIdleAnalysisStatusModel" @change="setSetting" />
+              <singleCheckbox
+                id="setting-checkbox-showIdleAnalysisStatus"
+                v-model="showIdleAnalysisStatusModel"
+                @change="setSetting"
+              />
             </div>
 
             <div class="setting-block">{{ t('shortcuts.playerGlobalShortcuts') }}：</div>
@@ -392,9 +419,15 @@ const rekordboxDesktopTrackStorageDirText = computed(
               <div class="setting-hint">{{ t('metadata.acoustidSettingRateHint') }}</div>
             </div>
 
-            <div class="setting-block">{{ t('metadata.autoFillSkipCompleted') }}：</div>
+            <label class="setting-block" for="setting-checkbox-autoFillSkipCompleted"
+              >{{ t('metadata.autoFillSkipCompleted') }}：</label
+            >
             <div class="setting-control">
-              <singleCheckbox v-model="autoFillSkipCompletedModel" @change="setSetting()" />
+              <singleCheckbox
+                id="setting-checkbox-autoFillSkipCompleted"
+                v-model="autoFillSkipCompletedModel"
+                @change="setSetting()"
+              />
               <div class="setting-hint">{{ t('metadata.autoFillSkipCompletedHint') }}</div>
             </div>
 
@@ -436,8 +469,14 @@ const rekordboxDesktopTrackStorageDirText = computed(
               <div class="formatList">
                 <template v-for="fmt in allFormats" :key="fmt">
                   <div class="formatItem">
-                    <span>.{{ fmt }}</span>
-                    <singleCheckbox v-model="audioExt[fmt]" @change="extChange()" />
+                    <label :for="'setting-checkbox-ext-' + fmt" style="user-select: none"
+                      >.{{ fmt }}</label
+                    >
+                    <singleCheckbox
+                      :id="'setting-checkbox-ext-' + fmt"
+                      v-model="audioExt[fmt]"
+                      @change="extChange()"
+                    />
                   </div>
                 </template>
               </div>
@@ -447,14 +486,23 @@ const rekordboxDesktopTrackStorageDirText = computed(
           <div class="settings-section">
             <div class="section-title">{{ t('settings.layout.sectionLibraryTitle') }}</div>
 
-            <div class="setting-block">{{ t('filters.persistFiltersAfterRestart') }}：</div>
-            <div class="setting-control">
-              <singleCheckbox v-model="runtime.setting.persistSongFilters" @change="setSetting()" />
-            </div>
-
-            <div class="setting-block">{{ t('settings.curatedArtistTracking.title') }}：</div>
+            <label class="setting-block" for="setting-checkbox-persistFiltersAfterRestart"
+              >{{ t('filters.persistFiltersAfterRestart') }}：</label
+            >
             <div class="setting-control">
               <singleCheckbox
+                id="setting-checkbox-persistFiltersAfterRestart"
+                v-model="runtime.setting.persistSongFilters"
+                @change="setSetting()"
+              />
+            </div>
+
+            <label class="setting-block" for="setting-checkbox-curatedArtistTracking"
+              >{{ t('settings.curatedArtistTracking.title') }}：</label
+            >
+            <div class="setting-control">
+              <singleCheckbox
+                id="setting-checkbox-curatedArtistTracking"
                 v-model="runtime.setting.enableCuratedArtistTracking"
                 @change="setSetting()"
               />
@@ -482,18 +530,27 @@ const rekordboxDesktopTrackStorageDirText = computed(
               </div>
             </div>
 
-            <div class="setting-block">{{ t('settings.showPlaylistTrackCount') }}：</div>
+            <label class="setting-block" for="setting-checkbox-showPlaylistTrackCount"
+              >{{ t('settings.showPlaylistTrackCount') }}：</label
+            >
             <div class="setting-control">
               <singleCheckbox
+                id="setting-checkbox-showPlaylistTrackCount"
                 v-model="runtime.setting.showPlaylistTrackCount"
                 @change="setSetting()"
               />
             </div>
 
             <template v-if="isWindowsPlatform">
-              <div class="setting-block">{{ t('settings.enableExplorerContextMenu') }}：</div>
+              <label class="setting-block" for="setting-checkbox-enableExplorerContextMenu"
+                >{{ t('settings.enableExplorerContextMenu') }}：</label
+              >
               <div class="setting-control">
-                <singleCheckbox v-model="enableExplorerContextMenuModel" @change="setSetting()" />
+                <singleCheckbox
+                  id="setting-checkbox-enableExplorerContextMenu"
+                  v-model="enableExplorerContextMenuModel"
+                  @change="setSetting()"
+                />
               </div>
             </template>
 
@@ -559,9 +616,15 @@ const rekordboxDesktopTrackStorageDirText = computed(
           <div class="settings-section settings-section--danger">
             <div class="section-title">{{ t('settings.layout.sectionSafetyTitle') }}</div>
 
-            <div class="setting-block">{{ t('errorReport.enable') }}：</div>
+            <label class="setting-block" for="setting-checkbox-enableErrorReport"
+              >{{ t('errorReport.enable') }}：</label
+            >
             <div class="setting-control">
-              <singleCheckbox v-model="runtime.setting.enableErrorReport" @change="setSetting()" />
+              <singleCheckbox
+                id="setting-checkbox-enableErrorReport"
+                v-model="runtime.setting.enableErrorReport"
+                @change="setSetting()"
+              />
               <div class="setting-hint">{{ t('errorReport.hint') }}</div>
             </div>
 
@@ -684,6 +747,11 @@ const rekordboxDesktopTrackStorageDirText = computed(
 
 .setting-block {
   margin-top: 20px;
+}
+
+label.setting-block {
+  display: block;
+  user-select: none;
 }
 
 .setting-control {

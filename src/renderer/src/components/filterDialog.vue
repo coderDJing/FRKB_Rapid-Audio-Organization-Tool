@@ -172,10 +172,12 @@ onUnmounted(() => {
           </div>
           <div
             v-if="showCuratedOnly"
-            style="margin-top: 10px; display: inline-flex; align-items: center; gap: 8px"
+            style="margin-top: 10px; display: inline-flex; align-items: center; gap: 4px"
           >
-            <singleCheckbox v-model="curatedOnly" />
-            <span class="checkbox-text">{{ t('filters.onlyCuratedArtists') }}</span>
+            <singleCheckbox id="filter-checkbox-curatedOnly" v-model="curatedOnly" />
+            <label class="checkbox-text" for="filter-checkbox-curatedOnly">{{
+              t('filters.onlyCuratedArtists')
+            }}</label>
           </div>
         </template>
         <template v-else-if="props.type === 'duration'">
