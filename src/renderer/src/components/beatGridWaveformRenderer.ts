@@ -47,9 +47,12 @@ const MAJOR_GRID_LINE_WIDTH = 1.5
 const MINOR_GRID_LINE_WIDTH = 1.15
 const GRID_LINE_VERTICAL_OVERSCAN = 2
 const HALF_WAVEFORM_AMPLITUDE_RATIO = 0.8
-const COLUMN_SMOOTH_FAR_WEIGHT = 0.12
-const COLUMN_SMOOTH_NEAR_WEIGHT = 0.22
-const COLUMN_SMOOTH_CENTER_WEIGHT = 0.32
+const COLUMN_DECAY_SMOOTH_PREV2_WEIGHT = 0.12
+const COLUMN_DECAY_SMOOTH_PREV1_WEIGHT = 0.26
+const COLUMN_DECAY_SMOOTH_CURRENT_WEIGHT = 0.62
+const COLUMN_ATTACK_MIN_AMP = 0.06
+const COLUMN_ATTACK_MIN_RISE = 0.04
+const COLUMN_ATTACK_RELATIVE_RISE = 0.65
 const RAW_CURVE_VERTICAL_SCALE = 0.82
 const RAW_FFT_MIN_SIZE = 128
 const RAW_FFT_MAX_SIZE = 512
@@ -109,6 +112,17 @@ const LIGHT_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const toColorChannel = (value: number) => clamp(Math.round(value), 0, 255)
+const resolveColumnEnergy = (column: WaveformColumn | null | undefined) =>
+  column ? Math.max(column.ampTop, column.ampBottom) : 0
+
+const isColumnAttack = (column: WaveformColumn | null, previousColumn: WaveformColumn | null) => {
+  const energy = resolveColumnEnergy(column)
+  if (energy < COLUMN_ATTACK_MIN_AMP) return false
+  const previousEnergy = resolveColumnEnergy(previousColumn)
+  const rise = energy - previousEnergy
+  return rise >= Math.max(COLUMN_ATTACK_MIN_RISE, previousEnergy * COLUMN_ATTACK_RELATIVE_RISE)
+}
+
 const normalizeBeatOffset = (value: number, interval: number) => {
   const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
   const numeric = Number(value)
@@ -570,37 +584,40 @@ const buildWaveformColumns = (
     return column
   }
   const resolveSmoothedRawTimelineColumn = (timelineColumnIndex: number): WaveformColumn | null => {
+    const currentColumn = resolveRawTimelineColumn(timelineColumnIndex)
+    if (!currentColumn) return null
+    const previousColumn = resolveRawTimelineColumn(timelineColumnIndex - 1)
+    if (isColumnAttack(currentColumn, previousColumn)) {
+      return currentColumn
+    }
+
     let ampTop = 0
     let ampBottom = 0
     let r = 0
     let g = 0
     let b = 0
-    let colorWeight = 0
-    const addColumn = (offset: number, weight: number) => {
-      const column = resolveRawTimelineColumn(timelineColumnIndex + offset)
-      ampTop += (column?.ampTop ?? 0) * weight
-      ampBottom += (column?.ampBottom ?? 0) * weight
+    let totalWeight = 0
+    const addColumn = (column: WaveformColumn | null, weight: number) => {
       if (!column) return
+      ampTop += column.ampTop * weight
+      ampBottom += column.ampBottom * weight
       r += column.color.r * weight
       g += column.color.g * weight
       b += column.color.b * weight
-      colorWeight += weight
+      totalWeight += weight
     }
 
-    addColumn(-2, COLUMN_SMOOTH_FAR_WEIGHT)
-    addColumn(-1, COLUMN_SMOOTH_NEAR_WEIGHT)
-    addColumn(0, COLUMN_SMOOTH_CENTER_WEIGHT)
-    addColumn(1, COLUMN_SMOOTH_NEAR_WEIGHT)
-    addColumn(2, COLUMN_SMOOTH_FAR_WEIGHT)
-    if (ampTop <= 0 && ampBottom <= 0) return null
-    if (colorWeight <= 0) return null
+    addColumn(resolveRawTimelineColumn(timelineColumnIndex - 2), COLUMN_DECAY_SMOOTH_PREV2_WEIGHT)
+    addColumn(previousColumn, COLUMN_DECAY_SMOOTH_PREV1_WEIGHT)
+    addColumn(currentColumn, COLUMN_DECAY_SMOOTH_CURRENT_WEIGHT)
+    if (totalWeight <= 0 || (ampTop <= 0 && ampBottom <= 0)) return null
     return {
-      ampTop: clamp(ampTop, 0, 1),
-      ampBottom: clamp(ampBottom, 0, 1),
+      ampTop: clamp(ampTop / totalWeight, 0, 1),
+      ampBottom: clamp(ampBottom / totalWeight, 0, 1),
       color: {
-        r: toColorChannel(r / colorWeight),
-        g: toColorChannel(g / colorWeight),
-        b: toColorChannel(b / colorWeight)
+        r: toColorChannel(r / totalWeight),
+        g: toColorChannel(g / totalWeight),
+        b: toColorChannel(b / totalWeight)
       }
     }
   }
