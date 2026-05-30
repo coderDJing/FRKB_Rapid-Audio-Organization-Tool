@@ -1044,7 +1044,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   min-height: 0;
   cursor: default;
   background: var(--shell-waveform-bg, var(--waveform-bg));
-  overflow: hidden;
+  overflow: visible;
 }
 
 .raw-detail-waveform--up {
@@ -1075,7 +1075,6 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
 .raw-detail-waveform__canvas--grid {
   pointer-events: none;
 }
-
 .raw-detail-waveform__canvas--overlay {
   inset: -12px 0;
   height: calc(100% + 24px);
