@@ -20,6 +20,10 @@ type RawWaveformData = {
   maxLeft: Buffer
   minRight: Buffer
   maxRight: Buffer
+  meanLeft: Buffer
+  meanRight: Buffer
+  rmsLeft: Buffer
+  rmsRight: Buffer
 }
 
 type DecodeResultPayload = {
@@ -98,6 +102,10 @@ const computeRawWaveform = (
   const maxLeftValues = new Float32Array(expectedFrames)
   const minRightValues = new Float32Array(expectedFrames)
   const maxRightValues = new Float32Array(expectedFrames)
+  const meanLeftValues = new Float32Array(expectedFrames)
+  const meanRightValues = new Float32Array(expectedFrames)
+  const rmsLeftValues = new Float32Array(expectedFrames)
+  const rmsRightValues = new Float32Array(expectedFrames)
 
   let outIndex = 0
   let position = 0
@@ -106,6 +114,11 @@ const computeRawWaveform = (
   let currentMaxLeft = -1
   let currentMinRight = 1
   let currentMaxRight = -1
+  let currentSumLeft = 0
+  let currentSumRight = 0
+  let currentSumSqLeft = 0
+  let currentSumSqRight = 0
+  let currentSampleCount = 0
 
   const pcm = new Float32Array(pcmData.buffer, pcmData.byteOffset, totalSamples)
   const channelCount = Math.max(1, channels)
@@ -118,17 +131,33 @@ const computeRawWaveform = (
     if (leftSample > currentMaxLeft) currentMaxLeft = leftSample
     if (rightSample < currentMinRight) currentMinRight = rightSample
     if (rightSample > currentMaxRight) currentMaxRight = rightSample
+    currentSumLeft += leftSample
+    currentSumRight += rightSample
+    currentSumSqLeft += leftSample * leftSample
+    currentSumSqRight += rightSample * rightSample
+    currentSampleCount += 1
     position += 1
     if (position >= nextStore) {
       minLeftValues[outIndex] = currentMinLeft
       maxLeftValues[outIndex] = currentMaxLeft
       minRightValues[outIndex] = currentMinRight
       maxRightValues[outIndex] = currentMaxRight
+      meanLeftValues[outIndex] = currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
+      meanRightValues[outIndex] = currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
+      rmsLeftValues[outIndex] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
+      rmsRightValues[outIndex] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
       outIndex += 1
       currentMinLeft = 1
       currentMaxLeft = -1
       currentMinRight = 1
       currentMaxRight = -1
+      currentSumLeft = 0
+      currentSumRight = 0
+      currentSumSqLeft = 0
+      currentSumSqRight = 0
+      currentSampleCount = 0
       nextStore += step
       if (outIndex >= expectedFrames) break
     }
@@ -140,6 +169,12 @@ const computeRawWaveform = (
       maxLeftValues[i] = currentMaxLeft === -1 ? 0 : currentMaxLeft
       minRightValues[i] = currentMinRight === 1 ? 0 : currentMinRight
       maxRightValues[i] = currentMaxRight === -1 ? 0 : currentMaxRight
+      meanLeftValues[i] = currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
+      meanRightValues[i] = currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
+      rmsLeftValues[i] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
+      rmsRightValues[i] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
     }
   }
 
@@ -159,6 +194,22 @@ const computeRawWaveform = (
       maxRightValues.buffer,
       maxRightValues.byteOffset,
       maxRightValues.byteLength
+    ),
+    meanLeft: Buffer.from(
+      meanLeftValues.buffer,
+      meanLeftValues.byteOffset,
+      meanLeftValues.byteLength
+    ),
+    meanRight: Buffer.from(
+      meanRightValues.buffer,
+      meanRightValues.byteOffset,
+      meanRightValues.byteLength
+    ),
+    rmsLeft: Buffer.from(rmsLeftValues.buffer, rmsLeftValues.byteOffset, rmsLeftValues.byteLength),
+    rmsRight: Buffer.from(
+      rmsRightValues.buffer,
+      rmsRightValues.byteOffset,
+      rmsRightValues.byteLength
     )
   }
 }

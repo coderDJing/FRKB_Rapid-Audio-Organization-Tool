@@ -19,6 +19,10 @@ type HorizontalBrowseRawWaveformPayload = {
   maxLeft?: unknown
   minRight?: unknown
   maxRight?: unknown
+  meanLeft?: unknown
+  meanRight?: unknown
+  rmsLeft?: unknown
+  rmsRight?: unknown
 }
 
 export type HorizontalBrowseRawWaveformStreamChunkPayload = {
@@ -35,6 +39,10 @@ export type HorizontalBrowseRawWaveformStreamChunkPayload = {
   maxLeft?: unknown
   minRight?: unknown
   maxRight?: unknown
+  meanLeft?: unknown
+  meanRight?: unknown
+  rmsLeft?: unknown
+  rmsRight?: unknown
 }
 
 export type HorizontalBrowseRawWaveformStreamDonePayload = {
@@ -50,6 +58,7 @@ export type HorizontalBrowseRawWaveformStreamDonePayload = {
 }
 
 export type RawWaveformStreamStartOptions = {
+  bootstrapAnchorSec?: number
   bootstrapDurationSec?: number
   forceLiveDecode?: boolean
   initialRetryCount?: number
@@ -68,6 +77,10 @@ export type PendingRawStreamChunkWork = {
   maxLeft: Float32Array
   minRight: Float32Array
   maxRight: Float32Array
+  meanLeft?: Float32Array
+  meanRight?: Float32Array
+  rmsLeft?: Float32Array
+  rmsRight?: Float32Array
   appliedFrames: number
 }
 
@@ -111,8 +124,8 @@ export const HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR = 2
 export const HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR = 0.25
 export const HORIZONTAL_BROWSE_RAW_VIEWPORT_RESTART_GAP_FACTOR = 0.75
 export const HORIZONTAL_BROWSE_RAW_VISIBLE_REDRAW_LEAD_FACTOR = 0.25
-export const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR = 1
-export const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_OVERSCAN_FACTOR = 2
+export const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR = 0.55
+export const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_OVERSCAN_FACTOR = 1.25
 export const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_MIN_SEC = 4
 export const HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_TIMEOUT_MS = 1500
 export const HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_MAX_RETRIES = 1
@@ -145,9 +158,15 @@ export const normalizeRawWaveformData = (value: unknown): RawWaveformData | null
   const maxLeft = toFloat32Array(payload.maxLeft)
   const minRight = toFloat32Array(payload.minRight)
   const maxRight = toFloat32Array(payload.maxRight)
+  const meanLeft = toFloat32Array(payload.meanLeft)
+  const meanRight = toFloat32Array(payload.meanRight)
+  const rmsLeft = toFloat32Array(payload.rmsLeft)
+  const rmsRight = toFloat32Array(payload.rmsRight)
   if (!frames || !duration || !sampleRate || !rate) return null
+  const hasRms = rmsLeft.length >= frames && rmsRight.length >= frames
+  const hasMean = meanLeft.length >= frames && meanRight.length >= frames
 
-  return {
+  const normalized: RawWaveformData = {
     duration,
     sampleRate,
     rate,
@@ -159,4 +178,13 @@ export const normalizeRawWaveformData = (value: unknown): RawWaveformData | null
     minRight: new Float32Array(minRight),
     maxRight: new Float32Array(maxRight)
   }
+  if (hasRms) {
+    normalized.rmsLeft = new Float32Array(rmsLeft.subarray(0, frames))
+    normalized.rmsRight = new Float32Array(rmsRight.subarray(0, frames))
+  }
+  if (hasMean) {
+    normalized.meanLeft = new Float32Array(meanLeft.subarray(0, frames))
+    normalized.meanRight = new Float32Array(meanRight.subarray(0, frames))
+  }
+  return normalized
 }

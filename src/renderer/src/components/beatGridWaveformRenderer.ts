@@ -1,6 +1,17 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { isRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformData'
+import {
+  resolveRawEnergyAttackAmp,
+  resolveRawEnergyProfileByRange,
+  type RawEnergyShapeParams
+} from '@renderer/components/beatGridRawWaveformEnvelope'
+import { resolveRawFftBandProfile } from '@renderer/components/beatGridRawWaveformColor'
+import {
+  resolveRekordboxRgbHeightAmp,
+  type WaveformFrequencyRatios,
+  type WaveformRgbColor
+} from '@renderer/components/beatGridRawWaveformShape'
 
 type DrawWaveformOptions = {
   width: number
@@ -28,11 +39,11 @@ type DrawWaveformOptions = {
 type WaveformColumn = {
   ampTop: number
   ampBottom: number
-  color: {
-    r: number
-    g: number
-    b: number
-  }
+  rawEnergyBase?: number
+  rawEnergyPeak?: number
+  rawEnergyShape?: RawEnergyShapeParams
+  frequencyRatios?: WaveformFrequencyRatios
+  color: WaveformRgbColor
 }
 
 type WaveformRenderStyle = 'columns' | 'raw-curve'
@@ -47,32 +58,19 @@ const MAJOR_GRID_LINE_WIDTH = 1.5
 const MINOR_GRID_LINE_WIDTH = 1.15
 const GRID_LINE_VERTICAL_OVERSCAN = 2
 const HALF_WAVEFORM_AMPLITUDE_RATIO = 0.8
-const COLUMN_DECAY_SMOOTH_PREV2_WEIGHT = 0.12
-const COLUMN_DECAY_SMOOTH_PREV1_WEIGHT = 0.26
-const COLUMN_DECAY_SMOOTH_CURRENT_WEIGHT = 0.62
+const REKORDBOX_RGB_DETAIL_RATE = 150
+const COLUMN_DECAY_SMOOTH_PREV2_WEIGHT = 0.04
+const COLUMN_DECAY_SMOOTH_PREV1_WEIGHT = 0.16
+const COLUMN_DECAY_SMOOTH_CURRENT_WEIGHT = 0.8
+const COLUMN_TAIL_RELEASE = 0.42
 const COLUMN_ATTACK_MIN_AMP = 0.06
 const COLUMN_ATTACK_MIN_RISE = 0.04
 const COLUMN_ATTACK_RELATIVE_RISE = 0.65
 const RAW_CURVE_VERTICAL_SCALE = 0.82
-const RAW_FFT_MIN_SIZE = 128
-const RAW_FFT_MAX_SIZE = 512
-const RAW_FFT_LOW_RATIO = 0.18
-const RAW_FFT_MID_RATIO = 0.62
-const RAW_FFT_ENERGY_EPSILON = 1e-9
 const MIXXX_RGB_COMPONENTS = {
   low: { r: 1, g: 0, b: 0 },
   mid: { r: 0, g: 1, b: 0 },
   high: { r: 0, g: 0, b: 1 }
-}
-const rawMonoSampleCache = new WeakMap<RawWaveformData, Float32Array>()
-
-type RawFftScratch = {
-  real: Float64Array
-  imag: Float64Array
-  hann: Float64Array
-  bitRev: Uint32Array
-  cosTable: Float64Array
-  sinTable: Float64Array
 }
 
 type BeatAlignWaveformPalette = {
@@ -261,113 +259,6 @@ const isValidRawWaveformData = (data: RawWaveformData | null): data is RawWavefo
   return frames > 0
 }
 
-const rawFftScratchCache = new Map<number, RawFftScratch>()
-
-const nextPowerOfTwo = (value: number) => {
-  let target = Math.max(2, Math.floor(value))
-  target -= 1
-  target |= target >> 1
-  target |= target >> 2
-  target |= target >> 4
-  target |= target >> 8
-  target |= target >> 16
-  target += 1
-  return target
-}
-
-const resolveRawFftSize = (span: number, maxSamplesPerPixel?: number) => {
-  const sampleCap = Number(maxSamplesPerPixel)
-  const preferredSpan =
-    Number.isFinite(sampleCap) && sampleCap > 0
-      ? Math.max(span, Math.floor(sampleCap) * 2)
-      : Math.max(span, RAW_FFT_MIN_SIZE)
-  const safe = clamp(preferredSpan, RAW_FFT_MIN_SIZE, RAW_FFT_MAX_SIZE)
-  return nextPowerOfTwo(safe)
-}
-
-const resolveBitReverseIndex = (value: number, bitCount: number) => {
-  let source = value
-  let reversed = 0
-  for (let bit = 0; bit < bitCount; bit += 1) {
-    reversed = (reversed << 1) | (source & 1)
-    source >>= 1
-  }
-  return reversed
-}
-
-const createRawFftScratch = (size: number): RawFftScratch => {
-  const safeSize = nextPowerOfTwo(Math.max(2, size))
-  const half = safeSize >> 1
-  const bitCount = Math.round(Math.log2(safeSize))
-  const bitRev = new Uint32Array(safeSize)
-  for (let i = 0; i < safeSize; i += 1) {
-    bitRev[i] = resolveBitReverseIndex(i, bitCount)
-  }
-  const hann = new Float64Array(safeSize)
-  if (safeSize === 1) {
-    hann[0] = 1
-  } else {
-    for (let i = 0; i < safeSize; i += 1) {
-      hann[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (safeSize - 1)))
-    }
-  }
-  const cosTable = new Float64Array(half)
-  const sinTable = new Float64Array(half)
-  for (let i = 0; i < half; i += 1) {
-    const angle = (-2 * Math.PI * i) / safeSize
-    cosTable[i] = Math.cos(angle)
-    sinTable[i] = Math.sin(angle)
-  }
-  return {
-    real: new Float64Array(safeSize),
-    imag: new Float64Array(safeSize),
-    hann,
-    bitRev,
-    cosTable,
-    sinTable
-  }
-}
-
-const resolveRawFftScratch = (size: number) => {
-  const safeSize = nextPowerOfTwo(Math.max(2, size))
-  const cached = rawFftScratchCache.get(safeSize)
-  if (cached) return cached
-  const created = createRawFftScratch(safeSize)
-  rawFftScratchCache.set(safeSize, created)
-  return created
-}
-
-const resolveRawMonoSamples = (rawData: RawWaveformData) => {
-  const loadedFrames = Math.max(
-    0,
-    Math.min(
-      Math.floor(Number(rawData.loadedFrames ?? rawData.frames) || 0),
-      Math.floor(Number(rawData.frames) || 0)
-    )
-  )
-  const cached = rawMonoSampleCache.get(rawData)
-  if (cached && cached.length === loadedFrames) return cached
-
-  const frames = Math.max(
-    0,
-    Math.min(
-      loadedFrames,
-      rawData.minLeft.length,
-      rawData.maxLeft.length,
-      rawData.minRight.length,
-      rawData.maxRight.length
-    )
-  )
-  const monoSamples = new Float32Array(frames)
-  const { minLeft, maxLeft, minRight, maxRight } = rawData
-  for (let index = 0; index < frames; index += 1) {
-    monoSamples[index] =
-      (minLeft[index] + maxLeft[index] + minRight[index] + maxRight[index]) * 0.25
-  }
-  rawMonoSampleCache.set(rawData, monoSamples)
-  return monoSamples
-}
-
 const resolveRawPeaksByRange = (
   rawData: RawWaveformData,
   startFrame: number,
@@ -406,86 +297,6 @@ const resolveRawPeaksByRange = (
   }
 }
 
-const resolveRawFftRgbColor = (
-  rawData: RawWaveformData,
-  startFrame: number,
-  endFrame: number,
-  maxSamplesPerPixel?: number
-) => {
-  const span = Math.max(1, endFrame - startFrame + 1)
-  const fftSize = resolveRawFftSize(span, maxSamplesPerPixel)
-  const scratch = resolveRawFftScratch(fftSize)
-  const { real, imag, hann, bitRev, cosTable, sinTable } = scratch
-  const monoSamples = resolveRawMonoSamples(rawData)
-  real.fill(0)
-  imag.fill(0)
-
-  const center = Math.floor((startFrame + endFrame) * 0.5)
-  const half = fftSize >> 1
-  for (let i = 0; i < fftSize; i += 1) {
-    const frame = center - half + i
-    const sample = frame >= 0 && frame < monoSamples.length ? monoSamples[frame] : 0
-    const dest = bitRev[i]
-    real[dest] = sample * hann[i]
-  }
-
-  for (let size = 2; size <= fftSize; size <<= 1) {
-    const halfSize = size >> 1
-    const tableStep = fftSize / size
-    for (let offset = 0; offset < fftSize; offset += size) {
-      for (let i = 0; i < halfSize; i += 1) {
-        const tableIndex = i * tableStep
-        const cos = cosTable[tableIndex]
-        const sin = sinTable[tableIndex]
-        const left = offset + i
-        const right = left + halfSize
-        const tr = real[right] * cos - imag[right] * sin
-        const ti = real[right] * sin + imag[right] * cos
-        const ur = real[left]
-        const ui = imag[left]
-        real[left] = ur + tr
-        imag[left] = ui + ti
-        real[right] = ur - tr
-        imag[right] = ui - ti
-      }
-    }
-  }
-
-  const sampleRate = Math.max(1, Number(rawData.rate) || 1)
-  const nyquist = sampleRate * 0.5
-  const lowUpperHz = Math.max(80, nyquist * RAW_FFT_LOW_RATIO)
-  const midUpperHz = Math.max(lowUpperHz + 60, nyquist * RAW_FFT_MID_RATIO)
-  const binCount = fftSize >> 1
-  let lowEnergy = 0
-  let midEnergy = 0
-  let highEnergy = 0
-  for (let bin = 1; bin < binCount; bin += 1) {
-    const frequency = (bin * sampleRate) / fftSize
-    if (!Number.isFinite(frequency) || frequency <= 0) continue
-    const magnitudeSq = real[bin] * real[bin] + imag[bin] * imag[bin]
-    if (!Number.isFinite(magnitudeSq) || magnitudeSq <= 0) continue
-    if (frequency <= lowUpperHz) {
-      lowEnergy += magnitudeSq
-    } else if (frequency <= midUpperHz) {
-      midEnergy += magnitudeSq
-    } else {
-      highEnergy += magnitudeSq
-    }
-  }
-
-  const totalEnergy = lowEnergy + midEnergy + highEnergy
-  if (!Number.isFinite(totalEnergy) || totalEnergy <= RAW_FFT_ENERGY_EPSILON) return null
-  const low = Math.sqrt(Math.max(0, lowEnergy))
-  const mid = Math.sqrt(Math.max(0, midEnergy))
-  const high = Math.sqrt(Math.max(0, highEnergy))
-  const maxEnergy = Math.max(low, mid, high, RAW_FFT_ENERGY_EPSILON)
-  return {
-    r: toColorChannel((low / maxEnergy) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
-    g: toColorChannel((mid / maxEnergy) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
-    b: toColorChannel((high / maxEnergy) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE)
-  }
-}
-
 const resolveRawColumnByTimeRange = (
   rawData: RawWaveformData,
   rawFrames: number,
@@ -494,7 +305,8 @@ const resolveRawColumnByTimeRange = (
   startTime: number,
   endTime: number,
   maxSamplesPerPixel: number | undefined,
-  preferRawPeaksOnly: boolean
+  preferRawPeaksOnly: boolean,
+  useRawEnergyEnvelope: boolean
 ): WaveformColumn | null => {
   const rawDuration = rawFrames / rawRate
   const safeRawDuration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 0
@@ -505,15 +317,33 @@ const resolveRawColumnByTimeRange = (
   if (rawLocalEndTime <= rawLocalStartTime) return null
   const rawStartFrame = clamp(Math.floor(rawLocalStartTime * rawRate), 0, rawFrames - 1)
   const rawEndFrame = clamp(Math.ceil(rawLocalEndTime * rawRate), rawStartFrame, rawFrames - 1)
-  const rawPeaks = resolveRawPeaksByRange(rawData, rawStartFrame, rawEndFrame, maxSamplesPerPixel)
-  if (rawPeaks.ampTop <= 0 && rawPeaks.ampBottom <= 0) return null
+  const rawEnergyProfile = useRawEnergyEnvelope
+    ? resolveRawEnergyProfileByRange(rawData, rawStartFrame, rawEndFrame, maxSamplesPerPixel)
+    : null
+  const rawAmps = rawEnergyProfile
+    ? rawEnergyProfile
+    : resolveRawPeaksByRange(rawData, rawStartFrame, rawEndFrame, maxSamplesPerPixel)
+  if (rawAmps.ampTop <= 0 && rawAmps.ampBottom <= 0) return null
+  const rawFftProfile = preferRawPeaksOnly
+    ? null
+    : resolveRawFftBandProfile(
+        rawData,
+        rawStartFrame,
+        rawEndFrame,
+        maxSamplesPerPixel,
+        useRawEnergyEnvelope
+      )
   const color = preferRawPeaksOnly
     ? { r: 235, g: 242, b: 248 }
-    : resolveRawFftRgbColor(rawData, rawStartFrame, rawEndFrame, maxSamplesPerPixel)
+    : rawFftProfile?.color
   if (!color) return null
   return {
-    ampTop: rawPeaks.ampTop,
-    ampBottom: rawPeaks.ampBottom,
+    ampTop: rawAmps.ampTop,
+    ampBottom: rawAmps.ampBottom,
+    rawEnergyBase: rawEnergyProfile?.base,
+    rawEnergyPeak: rawEnergyProfile?.peak,
+    rawEnergyShape: rawEnergyProfile?.shape,
+    frequencyRatios: rawFftProfile?.bands,
     color
   }
 }
@@ -527,7 +357,8 @@ const buildWaveformColumns = (
   maxSamplesPerPixel?: number,
   timeBasisOffsetMs?: number,
   preferRawPeaksOnly = false,
-  smoothColumns = false
+  smoothColumns = false,
+  useRawEnergyEnvelope = false
 ): WaveformColumn[] => {
   const low = mixxxData.bands.low
   const mid = mixxxData.bands.mid
@@ -561,24 +392,35 @@ const buildWaveformColumns = (
   const timeBasisOffsetSec = Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
   const rawStartSec = hasRaw ? Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec : 0
   const rawColumnDurationSec = rangeDurationSec / Math.max(1, width)
+  const rawDetailColumnDurationSec = Math.max(
+    rawColumnDurationSec,
+    1 / REKORDBOX_RGB_DETAIL_RATE
+  )
   const rawTimelineColumnCache = new Map<number, WaveformColumn | null>()
   const resolveRawTimelineColumn = (timelineColumnIndex: number) => {
-    if (!hasRaw || !rawData || rawFrames <= 0 || rawRate <= 0 || rawColumnDurationSec <= 0) {
+    if (
+      !hasRaw ||
+      !rawData ||
+      rawFrames <= 0 ||
+      rawRate <= 0 ||
+      rawDetailColumnDurationSec <= 0
+    ) {
       return null
     }
     if (rawTimelineColumnCache.has(timelineColumnIndex)) {
       return rawTimelineColumnCache.get(timelineColumnIndex) ?? null
     }
-    const startTime = timelineColumnIndex * rawColumnDurationSec
+    const startTime = timelineColumnIndex * rawDetailColumnDurationSec
     const column = resolveRawColumnByTimeRange(
       rawData,
       rawFrames,
       rawRate,
       rawStartSec,
       startTime,
-      startTime + rawColumnDurationSec,
+      startTime + rawDetailColumnDurationSec,
       maxSamplesPerPixel,
-      preferRawPeaksOnly
+      preferRawPeaksOnly,
+      useRawEnergyEnvelope
     )
     rawTimelineColumnCache.set(timelineColumnIndex, column)
     return column
@@ -587,8 +429,24 @@ const buildWaveformColumns = (
     const currentColumn = resolveRawTimelineColumn(timelineColumnIndex)
     if (!currentColumn) return null
     const previousColumn = resolveRawTimelineColumn(timelineColumnIndex - 1)
-    if (isColumnAttack(currentColumn, previousColumn)) {
-      return currentColumn
+    let shapedCurrentColumn = currentColumn
+    if (useRawEnergyEnvelope) {
+      const attackAmp = resolveRawEnergyAttackAmp(
+        currentColumn.rawEnergyBase,
+        currentColumn.rawEnergyPeak,
+        previousColumn?.rawEnergyBase,
+        currentColumn.rawEnergyShape
+      )
+      if (typeof attackAmp === 'number' && attackAmp > currentColumn.ampTop) {
+        shapedCurrentColumn = {
+          ...currentColumn,
+          ampTop: attackAmp,
+          ampBottom: attackAmp
+        }
+      }
+    }
+    if (isColumnAttack(shapedCurrentColumn, previousColumn)) {
+      return shapedCurrentColumn
     }
 
     let ampTop = 0
@@ -596,6 +454,9 @@ const buildWaveformColumns = (
     let r = 0
     let g = 0
     let b = 0
+    let lowRatio = 0
+    let midRatio = 0
+    let highRatio = 0
     let totalWeight = 0
     const addColumn = (column: WaveformColumn | null, weight: number) => {
       if (!column) return
@@ -604,12 +465,15 @@ const buildWaveformColumns = (
       r += column.color.r * weight
       g += column.color.g * weight
       b += column.color.b * weight
+      lowRatio += (column.frequencyRatios?.low ?? 0) * weight
+      midRatio += (column.frequencyRatios?.mid ?? 0) * weight
+      highRatio += (column.frequencyRatios?.high ?? 0) * weight
       totalWeight += weight
     }
 
     addColumn(resolveRawTimelineColumn(timelineColumnIndex - 2), COLUMN_DECAY_SMOOTH_PREV2_WEIGHT)
     addColumn(previousColumn, COLUMN_DECAY_SMOOTH_PREV1_WEIGHT)
-    addColumn(currentColumn, COLUMN_DECAY_SMOOTH_CURRENT_WEIGHT)
+    addColumn(shapedCurrentColumn, COLUMN_DECAY_SMOOTH_CURRENT_WEIGHT)
     if (totalWeight <= 0 || (ampTop <= 0 && ampBottom <= 0)) return null
     return {
       ampTop: clamp(ampTop / totalWeight, 0, 1),
@@ -618,8 +482,52 @@ const buildWaveformColumns = (
         r: toColorChannel(r / totalWeight),
         g: toColorChannel(g / totalWeight),
         b: toColorChannel(b / totalWeight)
-      }
+      },
+      frequencyRatios:
+        lowRatio > 0 || midRatio > 0 || highRatio > 0
+          ? {
+              low: clamp(lowRatio / totalWeight, 0, 1),
+              mid: clamp(midRatio / totalWeight, 0, 1),
+              high: clamp(highRatio / totalWeight, 0, 1)
+            }
+          : undefined
     }
+  }
+  const applyRawEnergyColumnPostShape = (
+    column: WaveformColumn,
+    previousColumn: WaveformColumn | null
+  ) => {
+    const heightShapedColumn =
+      useRawEnergyEnvelope && column.frequencyRatios
+        ? {
+            ...column,
+            ampTop: resolveRekordboxRgbHeightAmp(column.ampTop, column.frequencyRatios),
+            ampBottom: resolveRekordboxRgbHeightAmp(column.ampBottom, column.frequencyRatios)
+          }
+        : column
+    if (
+      !useRawEnergyEnvelope ||
+      !previousColumn ||
+      isColumnAttack(heightShapedColumn, previousColumn)
+    ) {
+      return heightShapedColumn
+    }
+    const previousEnergy = resolveColumnEnergy(previousColumn)
+    if (previousEnergy <= 0) return heightShapedColumn
+    const releasedAmp = previousEnergy * COLUMN_TAIL_RELEASE
+    if (releasedAmp <= Math.max(heightShapedColumn.ampTop, heightShapedColumn.ampBottom)) {
+      return heightShapedColumn
+    }
+    return {
+      ...heightShapedColumn,
+      ampTop: clamp(Math.max(heightShapedColumn.ampTop, releasedAmp), 0, 1),
+      ampBottom: clamp(Math.max(heightShapedColumn.ampBottom, releasedAmp), 0, 1)
+    }
+  }
+
+  const setRawColumn = (x: number, column: WaveformColumn | null) => {
+    if (!column) return
+    columns[x] = applyRawEnergyColumnPostShape(column, columns[x - 1] ?? null)
   }
 
   for (let x = 0; x < width; x += 1) {
@@ -654,9 +562,14 @@ const buildWaveformColumns = (
         : 1
 
     if (hasRaw && rawData && rawFrames > 0 && rawRate > 0) {
-      const column = smoothColumns
-        ? resolveSmoothedRawTimelineColumn(Math.round(startTime / rawColumnDurationSec))
-        : resolveRawColumnByTimeRange(
+      const rawTimelineColumnIndex = Math.floor(startTime / rawDetailColumnDurationSec)
+      let column: WaveformColumn | null = null
+      if (smoothColumns) {
+        column = resolveSmoothedRawTimelineColumn(rawTimelineColumnIndex)
+      } else if (useRawEnergyEnvelope) {
+        column =
+          resolveRawTimelineColumn(rawTimelineColumnIndex) ??
+          resolveRawColumnByTimeRange(
             rawData,
             rawFrames,
             rawRate,
@@ -664,9 +577,23 @@ const buildWaveformColumns = (
             startTime,
             endTime,
             maxSamplesPerPixel,
-            preferRawPeaksOnly
+            preferRawPeaksOnly,
+            useRawEnergyEnvelope
           )
-      if (column) columns[x] = column
+      } else {
+        column = resolveRawColumnByTimeRange(
+          rawData,
+          rawFrames,
+          rawRate,
+          rawStartSec,
+          startTime,
+          endTime,
+          maxSamplesPerPixel,
+          preferRawPeaksOnly,
+          useRawEnergyEnvelope
+        )
+      }
+      setRawColumn(x, column)
       continue
     }
 
@@ -744,6 +671,35 @@ const buildWaveformColumns = (
   return columns
 }
 
+const resolveColumnRect = (
+  height: number,
+  centerY: number,
+  ampScale: number,
+  waveformLayout: WaveformLayout,
+  ampTop: number,
+  ampBottom: number
+) => {
+  const topHeight = Math.max(1, Math.round(ampTop * ampScale))
+  const bottomHeight = Math.max(1, Math.round(ampBottom * ampScale))
+  const singleHeight = Math.max(topHeight, bottomHeight)
+  if (waveformLayout === 'top-half') {
+    return {
+      y: Math.max(0, height - singleHeight),
+      h: singleHeight
+    }
+  }
+  if (waveformLayout === 'bottom-half') {
+    return {
+      y: 0,
+      h: singleHeight
+    }
+  }
+  return {
+    y: centerY - topHeight,
+    h: topHeight + bottomHeight
+  }
+}
+
 const drawWaveformColumns = (
   ctx: BeatAlignCanvasContext,
   width: number,
@@ -770,32 +726,15 @@ const drawWaveformColumns = (
   for (let x = 0; x < width; x += 1) {
     const column = columns[x]
     if (!column) continue
-    const { r, g, b } = column.color
     const ampTop = column.ampTop
     const ampBottom = column.ampBottom
-    const topHeight = Math.max(1, Math.round(ampTop * ampScale))
-    const bottomHeight = Math.max(1, Math.round(ampBottom * ampScale))
-    const singleHeight = Math.max(topHeight, bottomHeight)
-    let y = centerY - topHeight
-    let h = topHeight + bottomHeight
-
-    ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
-
-    if (waveformLayout === 'top-half') {
-      y = Math.max(0, height - singleHeight)
-      h = singleHeight
-      ctx.fillRect(x, y, 1, h)
-    } else if (waveformLayout === 'bottom-half') {
-      y = 0
-      h = singleHeight
-      ctx.fillRect(x, y, 1, h)
-    } else {
-      ctx.fillRect(x, y, 1, h)
-    }
+    const rect = resolveColumnRect(height, centerY, ampScale, waveformLayout, ampTop, ampBottom)
+    ctx.fillStyle = `rgb(${column.color.r}, ${column.color.g}, ${column.color.b})`
+    ctx.fillRect(x, rect.y, 1, rect.h)
 
     if (showDetailHighlights) {
-      const topHighlight = Math.max(0, y)
-      const bottomHighlight = Math.min(height - 1, y + h - 1)
+      const topHighlight = Math.max(0, rect.y)
+      const bottomHighlight = Math.min(height - 1, rect.y + rect.h - 1)
       ctx.fillStyle = `rgba(${palette.detailHighlightBase}, ${
         0.14 + Math.max(ampTop, ampBottom) * 0.3
       })`
@@ -953,6 +892,7 @@ export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawW
   } = options
   if (width <= 0 || height <= 0) return false
   const palette = resolveWaveformPalette(ctx, themeVariant)
+  const resolvedWaveformLayout = waveformLayout || 'full'
 
   if (showBackground !== false) {
     drawBackground(ctx, width, height, palette)
@@ -983,10 +923,10 @@ export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawW
     maxSamplesPerPixel,
     timeBasisOffsetMs,
     preferRawPeaksOnly,
-    smoothColumns
+    smoothColumns,
+    waveformRenderStyle === 'columns'
   )
   const hasColumns = columns.some(Boolean)
-  const resolvedWaveformLayout = waveformLayout || 'full'
 
   if (
     waveformRenderStyle === 'raw-curve' &&

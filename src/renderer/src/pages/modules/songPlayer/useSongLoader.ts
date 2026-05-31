@@ -36,6 +36,10 @@ type RawWaveformStreamChunkPayload = {
   maxLeft?: unknown
   minRight?: unknown
   maxRight?: unknown
+  meanLeft?: unknown
+  meanRight?: unknown
+  rmsLeft?: unknown
+  rmsRight?: unknown
 }
 
 type RawWaveformStreamDonePayload = {
@@ -95,9 +99,13 @@ const normalizeRawWaveformData = (value: unknown): RawWaveformData | null => {
   const maxLeft = toFloat32Array((payload as RawWaveformData).maxLeft)
   const minRight = toFloat32Array((payload as RawWaveformData).minRight)
   const maxRight = toFloat32Array((payload as RawWaveformData).maxRight)
+  const meanLeft = toFloat32Array((payload as RawWaveformData).meanLeft)
+  const meanRight = toFloat32Array((payload as RawWaveformData).meanRight)
+  const rmsLeft = toFloat32Array((payload as RawWaveformData).rmsLeft)
+  const rmsRight = toFloat32Array((payload as RawWaveformData).rmsRight)
   if (!frames || !duration || !sampleRate || !rate) return null
 
-  return {
+  const normalized: RawWaveformData = {
     duration,
     sampleRate,
     rate,
@@ -108,6 +116,16 @@ const normalizeRawWaveformData = (value: unknown): RawWaveformData | null => {
     minRight: new Float32Array(minRight),
     maxRight: new Float32Array(maxRight)
   }
+  if (rmsLeft.length >= frames && rmsRight.length >= frames) {
+    normalized.rmsLeft = new Float32Array(rmsLeft.subarray(0, frames))
+    normalized.rmsRight = new Float32Array(rmsRight.subarray(0, frames))
+  }
+  if (meanLeft.length >= frames && meanRight.length >= frames) {
+    normalized.meanLeft = new Float32Array(meanLeft.subarray(0, frames))
+    normalized.meanRight = new Float32Array(meanRight.subarray(0, frames))
+  }
+
+  return normalized
 }
 
 export function useSongLoader(params: {
@@ -346,7 +364,7 @@ export function useSongLoader(params: {
       return target
     }
 
-    return {
+    const grown: RawWaveformData = {
       duration: Math.max(current.duration, meta.duration),
       sampleRate: meta.sampleRate,
       rate: meta.rate,
@@ -357,6 +375,16 @@ export function useSongLoader(params: {
       minRight: grow(current.minRight),
       maxRight: grow(current.maxRight)
     }
+    if (current.meanLeft && current.meanRight) {
+      grown.meanLeft = grow(current.meanLeft)
+      grown.meanRight = grow(current.meanRight)
+    }
+    if (current.rmsLeft && current.rmsRight) {
+      grown.rmsLeft = grow(current.rmsLeft)
+      grown.rmsRight = grow(current.rmsRight)
+    }
+
+    return grown
   }
 
   const startRawWaveformStream = (filePath: string, requestId: number) => {
@@ -617,6 +645,10 @@ export function useSongLoader(params: {
     const maxLeftChunk = toFloat32Array(payload?.maxLeft)
     const minRightChunk = toFloat32Array(payload?.minRight)
     const maxRightChunk = toFloat32Array(payload?.maxRight)
+    const meanLeftChunk = toFloat32Array(payload?.meanLeft)
+    const meanRightChunk = toFloat32Array(payload?.meanRight)
+    const rmsLeftChunk = toFloat32Array(payload?.rmsLeft)
+    const rmsRightChunk = toFloat32Array(payload?.rmsRight)
     const chunkFrames = Math.min(
       frames,
       minLeftChunk.length,
@@ -630,6 +662,32 @@ export function useSongLoader(params: {
     target.maxLeft.set(maxLeftChunk.subarray(0, chunkFrames), startFrame)
     target.minRight.set(minRightChunk.subarray(0, chunkFrames), startFrame)
     target.maxRight.set(maxRightChunk.subarray(0, chunkFrames), startFrame)
+    if (meanLeftChunk.length >= chunkFrames && meanRightChunk.length >= chunkFrames) {
+      if (!target.meanLeft || target.meanLeft.length < target.frames) {
+        target.meanLeft = new Float32Array(target.frames)
+      }
+      if (!target.meanRight || target.meanRight.length < target.frames) {
+        target.meanRight = new Float32Array(target.frames)
+      }
+      target.meanLeft.set(meanLeftChunk.subarray(0, chunkFrames), startFrame)
+      target.meanRight.set(meanRightChunk.subarray(0, chunkFrames), startFrame)
+    } else {
+      target.meanLeft = undefined
+      target.meanRight = undefined
+    }
+    if (rmsLeftChunk.length >= chunkFrames && rmsRightChunk.length >= chunkFrames) {
+      if (!target.rmsLeft || target.rmsLeft.length < target.frames) {
+        target.rmsLeft = new Float32Array(target.frames)
+      }
+      if (!target.rmsRight || target.rmsRight.length < target.frames) {
+        target.rmsRight = new Float32Array(target.frames)
+      }
+      target.rmsLeft.set(rmsLeftChunk.subarray(0, chunkFrames), startFrame)
+      target.rmsRight.set(rmsRightChunk.subarray(0, chunkFrames), startFrame)
+    } else {
+      target.rmsLeft = undefined
+      target.rmsRight = undefined
+    }
     const loadedFrames = Math.max(startFrame + chunkFrames, Number(target.loadedFrames) || 0)
     rawWaveformData.value = {
       ...target,

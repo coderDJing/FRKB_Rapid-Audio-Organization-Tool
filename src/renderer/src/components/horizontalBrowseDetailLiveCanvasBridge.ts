@@ -33,7 +33,11 @@ const cloneRawWaveformData = (value: RawWaveformData): RawWaveformData => ({
   minLeft: new Float32Array(value.minLeft),
   maxLeft: new Float32Array(value.maxLeft),
   minRight: new Float32Array(value.minRight),
-  maxRight: new Float32Array(value.maxRight)
+  maxRight: new Float32Array(value.maxRight),
+  meanLeft: value.meanLeft ? new Float32Array(value.meanLeft) : undefined,
+  meanRight: value.meanRight ? new Float32Array(value.meanRight) : undefined,
+  rmsLeft: value.rmsLeft ? new Float32Array(value.rmsLeft) : undefined,
+  rmsRight: value.rmsRight ? new Float32Array(value.rmsRight) : undefined
 })
 
 const collectTransferableBuffers = (arrays: Float32Array[]) => {
@@ -61,7 +65,11 @@ const cloneRawChunk = (
   minLeft: new Float32Array(value.minLeft),
   maxLeft: new Float32Array(value.maxLeft),
   minRight: new Float32Array(value.minRight),
-  maxRight: new Float32Array(value.maxRight)
+  maxRight: new Float32Array(value.maxRight),
+  meanLeft: value.meanLeft ? new Float32Array(value.meanLeft) : undefined,
+  meanRight: value.meanRight ? new Float32Array(value.meanRight) : undefined,
+  rmsLeft: value.rmsLeft ? new Float32Array(value.rmsLeft) : undefined,
+  rmsRight: value.rmsRight ? new Float32Array(value.rmsRight) : undefined
 })
 
 export const createHorizontalBrowseDetailLiveCanvasBridge = (
@@ -169,7 +177,9 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
         payload.minLeft,
         payload.maxLeft,
         payload.minRight,
-        payload.maxRight
+        payload.maxRight,
+        ...(payload.meanLeft && payload.meanRight ? [payload.meanLeft, payload.meanRight] : []),
+        ...(payload.rmsLeft && payload.rmsRight ? [payload.rmsLeft, payload.rmsRight] : [])
       ])
     )
   }
@@ -188,7 +198,9 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
             cloned.minLeft,
             cloned.maxLeft,
             cloned.minRight,
-            cloned.maxRight
+            cloned.maxRight,
+            ...(cloned.meanLeft && cloned.meanRight ? [cloned.meanLeft, cloned.meanRight] : []),
+            ...(cloned.rmsLeft && cloned.rmsRight ? [cloned.rmsLeft, cloned.rmsRight] : [])
           ])
         : undefined
     )

@@ -842,6 +842,10 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     const maxLeft = decodeRawFloatArray(payload.maxLeft ?? payload.max)
     const minRight = decodeRawFloatArray(payload.minRight ?? payload.min)
     const maxRight = decodeRawFloatArray(payload.maxRight ?? payload.max)
+    const meanLeft = decodeRawFloatArray(payload.meanLeft)
+    const meanRight = decodeRawFloatArray(payload.meanRight)
+    const rmsLeft = decodeRawFloatArray(payload.rmsLeft)
+    const rmsRight = decodeRawFloatArray(payload.rmsRight)
     if (!minLeft || !maxLeft || !minRight || !maxRight) return null
 
     const frames = Math.max(
@@ -855,7 +859,7 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
       )
     )
 
-    return {
+    const normalized: RawWaveformData = {
       duration: Number(payload.duration) || 0,
       sampleRate: Number(payload.sampleRate) || 0,
       rate: Number(payload.rate) || 0,
@@ -865,6 +869,16 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
       minRight,
       maxRight
     }
+    if (meanLeft && meanRight && meanLeft.length >= frames && meanRight.length >= frames) {
+      normalized.meanLeft = meanLeft
+      normalized.meanRight = meanRight
+    }
+    if (rmsLeft && rmsRight && rmsLeft.length >= frames && rmsRight.length >= frames) {
+      normalized.rmsLeft = rmsLeft
+      normalized.rmsRight = rmsRight
+    }
+
+    return normalized
   }
 
   const resolveRawWaveformLevel = (

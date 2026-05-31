@@ -16,6 +16,10 @@ export type MixtapeRawWaveformStreamWorkerPayload = {
     maxLeft?: Uint8Array | Buffer
     minRight?: Uint8Array | Buffer
     maxRight?: Uint8Array | Buffer
+    meanLeft?: Uint8Array | Buffer
+    meanRight?: Uint8Array | Buffer
+    rmsLeft?: Uint8Array | Buffer
+    rmsRight?: Uint8Array | Buffer
   }
   result?: {
     rawWaveformData?: MixtapeRawWaveformData
@@ -74,6 +78,10 @@ export type LiveRawWaveformBufferedChunk = {
   maxLeft: Uint8Array | Buffer
   minRight: Uint8Array | Buffer
   maxRight: Uint8Array | Buffer
+  meanLeft: Uint8Array | Buffer
+  meanRight: Uint8Array | Buffer
+  rmsLeft: Uint8Array | Buffer
+  rmsRight: Uint8Array | Buffer
 }
 
 export type LiveRawWaveformContinuation = {

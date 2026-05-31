@@ -9,6 +9,7 @@ type MixtapeRawWaveformJob = {
   songDurationSec?: number
   streamChunks?: boolean
   chunkFrames?: number
+  initialChunkFrames?: number
   expectedDurationSec?: number
 }
 
@@ -21,6 +22,10 @@ type RawWaveformData = {
   maxLeft: Buffer
   minRight: Buffer
   maxRight: Buffer
+  meanLeft: Buffer
+  meanRight: Buffer
+  rmsLeft: Buffer
+  rmsRight: Buffer
 }
 
 type MixtapeRawWaveformResult = {
@@ -39,6 +44,10 @@ type MixtapeRawWaveformProgressPayload = {
   maxLeft: Buffer
   minRight: Buffer
   maxRight: Buffer
+  meanLeft: Buffer
+  meanRight: Buffer
+  rmsLeft: Buffer
+  rmsRight: Buffer
 }
 
 type MixtapeRawWaveformResponse = {
@@ -95,6 +104,7 @@ const createRawWaveformAccumulator = (params: {
   songDurationSec?: number
   streamChunks?: boolean
   chunkFrames?: number
+  initialChunkFrames?: number
   onChunk?: (payload: MixtapeRawWaveformProgressPayload) => void
 }) => {
   const sampleRate = Math.max(1, params.sampleRate)
@@ -117,11 +127,24 @@ const createRawWaveformAccumulator = (params: {
   const streamChunkFrames = shouldStream
     ? Math.max(1024, Math.floor(Number(params.chunkFrames) || 16384))
     : 0
+  const initialStreamChunkFrames = shouldStream
+    ? Math.max(
+        512,
+        Math.min(
+          streamChunkFrames,
+          Math.floor(Number(params.initialChunkFrames) || streamChunkFrames)
+        )
+      )
+    : 0
 
   let minLeftValues = new Float32Array(estimatedFrames)
   let maxLeftValues = new Float32Array(estimatedFrames)
   let minRightValues = new Float32Array(estimatedFrames)
   let maxRightValues = new Float32Array(estimatedFrames)
+  let meanLeftValues = new Float32Array(estimatedFrames)
+  let meanRightValues = new Float32Array(estimatedFrames)
+  let rmsLeftValues = new Float32Array(estimatedFrames)
+  let rmsRightValues = new Float32Array(estimatedFrames)
   let outIndex = 0
   let position = 0
   let nextStore = step
@@ -129,8 +152,17 @@ const createRawWaveformAccumulator = (params: {
   let currentMaxLeft = -1
   let currentMinRight = 1
   let currentMaxRight = -1
+  let currentSumLeft = 0
+  let currentSumRight = 0
+  let currentSumSqLeft = 0
+  let currentSumSqRight = 0
+  let currentSampleCount = 0
   let nextChunkStartFrame = 0
   let totalInputFrames = 0
+  let emittedChunkCount = 0
+
+  const resolveStreamChunkThreshold = () =>
+    emittedChunkCount > 0 ? streamChunkFrames : initialStreamChunkFrames
 
   const ensureCapacity = (requiredFrames: number) => {
     if (requiredFrames <= minLeftValues.length) return
@@ -144,6 +176,10 @@ const createRawWaveformAccumulator = (params: {
     maxLeftValues = grow(maxLeftValues)
     minRightValues = grow(minRightValues)
     maxRightValues = grow(maxRightValues)
+    meanLeftValues = grow(meanLeftValues)
+    meanRightValues = grow(meanRightValues)
+    rmsLeftValues = grow(rmsLeftValues)
+    rmsRightValues = grow(rmsRightValues)
   }
 
   const emitChunk = (endExclusiveFrame: number) => {
@@ -179,8 +215,29 @@ const createRawWaveformAccumulator = (params: {
         maxRightValues.buffer,
         maxRightValues.byteOffset + nextChunkStartFrame * 4,
         frames * 4
+      ),
+      meanLeft: Buffer.from(
+        meanLeftValues.buffer,
+        meanLeftValues.byteOffset + nextChunkStartFrame * 4,
+        frames * 4
+      ),
+      meanRight: Buffer.from(
+        meanRightValues.buffer,
+        meanRightValues.byteOffset + nextChunkStartFrame * 4,
+        frames * 4
+      ),
+      rmsLeft: Buffer.from(
+        rmsLeftValues.buffer,
+        rmsLeftValues.byteOffset + nextChunkStartFrame * 4,
+        frames * 4
+      ),
+      rmsRight: Buffer.from(
+        rmsRightValues.buffer,
+        rmsRightValues.byteOffset + nextChunkStartFrame * 4,
+        frames * 4
       )
     })
+    emittedChunkCount += 1
     nextChunkStartFrame = endExclusiveFrame
   }
 
@@ -193,6 +250,11 @@ const createRawWaveformAccumulator = (params: {
       if (leftSample > currentMaxLeft) currentMaxLeft = leftSample
       if (rightSample < currentMinRight) currentMinRight = rightSample
       if (rightSample > currentMaxRight) currentMaxRight = rightSample
+      currentSumLeft += leftSample
+      currentSumRight += rightSample
+      currentSumSqLeft += leftSample * leftSample
+      currentSumSqRight += rightSample * rightSample
+      currentSampleCount += 1
       position += 1
       totalInputFrames += 1
       if (position >= nextStore) {
@@ -201,13 +263,25 @@ const createRawWaveformAccumulator = (params: {
         maxLeftValues[outIndex] = currentMaxLeft
         minRightValues[outIndex] = currentMinRight
         maxRightValues[outIndex] = currentMaxRight
+        meanLeftValues[outIndex] = currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
+        meanRightValues[outIndex] =
+          currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
+        rmsLeftValues[outIndex] =
+          currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
+        rmsRightValues[outIndex] =
+          currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
         outIndex += 1
         currentMinLeft = 1
         currentMaxLeft = -1
         currentMinRight = 1
         currentMaxRight = -1
+        currentSumLeft = 0
+        currentSumRight = 0
+        currentSumSqLeft = 0
+        currentSumSqRight = 0
+        currentSampleCount = 0
         nextStore += step
-        if (shouldStream && outIndex - nextChunkStartFrame >= streamChunkFrames) {
+        if (shouldStream && outIndex - nextChunkStartFrame >= resolveStreamChunkThreshold()) {
           emitChunk(outIndex)
         }
       }
@@ -226,6 +300,12 @@ const createRawWaveformAccumulator = (params: {
       maxLeftValues[outIndex] = currentMaxLeft === -1 ? 0 : currentMaxLeft
       minRightValues[outIndex] = currentMinRight === 1 ? 0 : currentMinRight
       maxRightValues[outIndex] = currentMaxRight === -1 ? 0 : currentMaxRight
+      meanLeftValues[outIndex] = currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
+      meanRightValues[outIndex] = currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
+      rmsLeftValues[outIndex] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
+      rmsRightValues[outIndex] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
       outIndex += 1
     }
     if (shouldStream) {
@@ -236,6 +316,10 @@ const createRawWaveformAccumulator = (params: {
     const finalMaxLeft = maxLeftValues.subarray(0, outIndex)
     const finalMinRight = minRightValues.subarray(0, outIndex)
     const finalMaxRight = maxRightValues.subarray(0, outIndex)
+    const finalMeanLeft = meanLeftValues.subarray(0, outIndex)
+    const finalMeanRight = meanRightValues.subarray(0, outIndex)
+    const finalRmsLeft = rmsLeftValues.subarray(0, outIndex)
+    const finalRmsRight = rmsRightValues.subarray(0, outIndex)
 
     return {
       duration:
@@ -254,6 +338,22 @@ const createRawWaveformAccumulator = (params: {
         finalMaxRight.buffer,
         finalMaxRight.byteOffset,
         finalMaxRight.byteLength
+      ),
+      meanLeft: Buffer.from(
+        finalMeanLeft.buffer,
+        finalMeanLeft.byteOffset,
+        finalMeanLeft.byteLength
+      ),
+      meanRight: Buffer.from(
+        finalMeanRight.buffer,
+        finalMeanRight.byteOffset,
+        finalMeanRight.byteLength
+      ),
+      rmsLeft: Buffer.from(finalRmsLeft.buffer, finalRmsLeft.byteOffset, finalRmsLeft.byteLength),
+      rmsRight: Buffer.from(
+        finalRmsRight.buffer,
+        finalRmsRight.byteOffset,
+        finalRmsRight.byteLength
       )
     }
   }
@@ -285,6 +385,10 @@ const computeRawWaveform = (
   const maxLeftValues = new Float32Array(expectedFrames)
   const minRightValues = new Float32Array(expectedFrames)
   const maxRightValues = new Float32Array(expectedFrames)
+  const meanLeftValues = new Float32Array(expectedFrames)
+  const meanRightValues = new Float32Array(expectedFrames)
+  const rmsLeftValues = new Float32Array(expectedFrames)
+  const rmsRightValues = new Float32Array(expectedFrames)
 
   let outIndex = 0
   let position = 0
@@ -293,6 +397,11 @@ const computeRawWaveform = (
   let currentMaxLeft = -1
   let currentMinRight = 1
   let currentMaxRight = -1
+  let currentSumLeft = 0
+  let currentSumRight = 0
+  let currentSumSqLeft = 0
+  let currentSumSqRight = 0
+  let currentSampleCount = 0
 
   const pcm = new Float32Array(pcmData.buffer, pcmData.byteOffset, totalSamples)
   const channelCount = Math.max(1, channels)
@@ -309,6 +418,10 @@ const computeRawWaveform = (
     const maxLeftChunk = maxLeftValues.subarray(nextChunkStartFrame, endExclusiveFrame)
     const minRightChunk = minRightValues.subarray(nextChunkStartFrame, endExclusiveFrame)
     const maxRightChunk = maxRightValues.subarray(nextChunkStartFrame, endExclusiveFrame)
+    const meanLeftChunk = meanLeftValues.subarray(nextChunkStartFrame, endExclusiveFrame)
+    const meanRightChunk = meanRightValues.subarray(nextChunkStartFrame, endExclusiveFrame)
+    const rmsLeftChunk = rmsLeftValues.subarray(nextChunkStartFrame, endExclusiveFrame)
+    const rmsRightChunk = rmsRightValues.subarray(nextChunkStartFrame, endExclusiveFrame)
     options.onChunk?.({
       type: 'chunk',
       startFrame: nextChunkStartFrame,
@@ -328,6 +441,22 @@ const computeRawWaveform = (
         maxRightChunk.buffer,
         maxRightChunk.byteOffset,
         maxRightChunk.byteLength
+      ),
+      meanLeft: Buffer.from(
+        meanLeftChunk.buffer,
+        meanLeftChunk.byteOffset,
+        meanLeftChunk.byteLength
+      ),
+      meanRight: Buffer.from(
+        meanRightChunk.buffer,
+        meanRightChunk.byteOffset,
+        meanRightChunk.byteLength
+      ),
+      rmsLeft: Buffer.from(rmsLeftChunk.buffer, rmsLeftChunk.byteOffset, rmsLeftChunk.byteLength),
+      rmsRight: Buffer.from(
+        rmsRightChunk.buffer,
+        rmsRightChunk.byteOffset,
+        rmsRightChunk.byteLength
       )
     })
     nextChunkStartFrame = endExclusiveFrame
@@ -341,17 +470,33 @@ const computeRawWaveform = (
     if (leftSample > currentMaxLeft) currentMaxLeft = leftSample
     if (rightSample < currentMinRight) currentMinRight = rightSample
     if (rightSample > currentMaxRight) currentMaxRight = rightSample
+    currentSumLeft += leftSample
+    currentSumRight += rightSample
+    currentSumSqLeft += leftSample * leftSample
+    currentSumSqRight += rightSample * rightSample
+    currentSampleCount += 1
     position += 1
     if (position >= nextStore) {
       minLeftValues[outIndex] = currentMinLeft
       maxLeftValues[outIndex] = currentMaxLeft
       minRightValues[outIndex] = currentMinRight
       maxRightValues[outIndex] = currentMaxRight
+      meanLeftValues[outIndex] = currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
+      meanRightValues[outIndex] = currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
+      rmsLeftValues[outIndex] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
+      rmsRightValues[outIndex] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
       outIndex += 1
       currentMinLeft = 1
       currentMaxLeft = -1
       currentMinRight = 1
       currentMaxRight = -1
+      currentSumLeft = 0
+      currentSumRight = 0
+      currentSumSqLeft = 0
+      currentSumSqRight = 0
+      currentSampleCount = 0
       nextStore += step
       if (shouldStream && outIndex - nextChunkStartFrame >= streamChunkFrames) {
         emitChunk(outIndex)
@@ -366,6 +511,12 @@ const computeRawWaveform = (
       maxLeftValues[i] = currentMaxLeft === -1 ? 0 : currentMaxLeft
       minRightValues[i] = currentMinRight === 1 ? 0 : currentMinRight
       maxRightValues[i] = currentMaxRight === -1 ? 0 : currentMaxRight
+      meanLeftValues[i] = currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
+      meanRightValues[i] = currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
+      rmsLeftValues[i] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
+      rmsRightValues[i] =
+        currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
     }
   }
 
@@ -389,6 +540,22 @@ const computeRawWaveform = (
       maxRightValues.buffer,
       maxRightValues.byteOffset,
       maxRightValues.byteLength
+    ),
+    meanLeft: Buffer.from(
+      meanLeftValues.buffer,
+      meanLeftValues.byteOffset,
+      meanLeftValues.byteLength
+    ),
+    meanRight: Buffer.from(
+      meanRightValues.buffer,
+      meanRightValues.byteOffset,
+      meanRightValues.byteLength
+    ),
+    rmsLeft: Buffer.from(rmsLeftValues.buffer, rmsLeftValues.byteOffset, rmsLeftValues.byteLength),
+    rmsRight: Buffer.from(
+      rmsRightValues.buffer,
+      rmsRightValues.byteOffset,
+      rmsRightValues.byteLength
     )
   }
 }
@@ -419,6 +586,7 @@ const buildRawWaveformStreamed = async (
     songDurationSec?: number
     expectedDurationSec?: number
     chunkFrames?: number
+    initialChunkFrames?: number
     onChunk?: (payload: MixtapeRawWaveformProgressPayload) => void
   }
 ) => {
@@ -452,6 +620,7 @@ const buildRawWaveformStreamed = async (
     expectedDurationSec: options.expectedDurationSec,
     streamChunks: true,
     chunkFrames: options.chunkFrames,
+    initialChunkFrames: options.initialChunkFrames,
     onChunk: options.onChunk
   })
 
@@ -513,6 +682,7 @@ parentPort?.on('message', async (job: MixtapeRawWaveformJob) => {
         songDurationSec: Number(job.songDurationSec) || 0,
         expectedDurationSec: Number(job.expectedDurationSec) || 0,
         chunkFrames: job.chunkFrames,
+        initialChunkFrames: job.initialChunkFrames,
         onChunk: (progress) => {
           parentPort?.postMessage({
             jobId: response.jobId,

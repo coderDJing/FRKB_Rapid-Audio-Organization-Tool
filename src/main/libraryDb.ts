@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 24
+const SCHEMA_VERSION = 26
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
@@ -189,6 +189,10 @@ function createDatabase(dbPath: string): SqliteDatabase {
         max_left BLOB NOT NULL,
         min_right BLOB NOT NULL,
         max_right BLOB NOT NULL,
+        mean_left BLOB,
+        mean_right BLOB,
+        rms_left BLOB,
+        rms_right BLOB,
         PRIMARY KEY (list_root, file_path)
       );
       CREATE INDEX IF NOT EXISTS idx_mixtape_raw_waveform_cache_root ON mixtape_raw_waveform_cache(list_root);
@@ -631,6 +635,24 @@ function createDatabase(dbPath: string): SqliteDatabase {
     CREATE INDEX IF NOT EXISTS idx_external_analysis_cache_file ON external_analysis_cache(file_path);
     CREATE INDEX IF NOT EXISTS idx_external_analysis_cache_seen ON external_analysis_cache(last_seen_at_ms);
   `)
+  if (userVersion < 25 && hasTable(instance, 'mixtape_raw_waveform_cache')) {
+    const columns = listTableColumns(instance, 'mixtape_raw_waveform_cache')
+    if (!columns.has('rms_left')) {
+      instance.exec('ALTER TABLE mixtape_raw_waveform_cache ADD COLUMN rms_left BLOB;')
+    }
+    if (!columns.has('rms_right')) {
+      instance.exec('ALTER TABLE mixtape_raw_waveform_cache ADD COLUMN rms_right BLOB;')
+    }
+  }
+  if (userVersion < 26 && hasTable(instance, 'mixtape_raw_waveform_cache')) {
+    const columns = listTableColumns(instance, 'mixtape_raw_waveform_cache')
+    if (!columns.has('mean_left')) {
+      instance.exec('ALTER TABLE mixtape_raw_waveform_cache ADD COLUMN mean_left BLOB;')
+    }
+    if (!columns.has('mean_right')) {
+      instance.exec('ALTER TABLE mixtape_raw_waveform_cache ADD COLUMN mean_right BLOB;')
+    }
+  }
   if (userVersion < SCHEMA_VERSION) {
     instance.pragma('user_version = ' + SCHEMA_VERSION)
   }

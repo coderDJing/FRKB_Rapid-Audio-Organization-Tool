@@ -32,6 +32,10 @@ type RawWaveformPayload = {
   max?: unknown
   minRight?: unknown
   maxRight?: unknown
+  meanLeft?: unknown
+  meanRight?: unknown
+  rmsLeft?: unknown
+  rmsRight?: unknown
   frames?: unknown
   duration?: unknown
   sampleRate?: unknown
@@ -48,6 +52,10 @@ const decodeRawWaveformData = (payload: unknown): RawWaveformData | null => {
   const maxLeft = decodeRawFloatArray(source.maxLeft ?? source.max)
   const minRight = decodeRawFloatArray(source.minRight ?? source.min)
   const maxRight = decodeRawFloatArray(source.maxRight ?? source.max)
+  const meanLeft = decodeRawFloatArray(source.meanLeft)
+  const meanRight = decodeRawFloatArray(source.meanRight)
+  const rmsLeft = decodeRawFloatArray(source.rmsLeft)
+  const rmsRight = decodeRawFloatArray(source.rmsRight)
   if (!minLeft || !maxLeft || !minRight || !maxRight) return null
 
   const frames = Math.max(
@@ -61,7 +69,7 @@ const decodeRawWaveformData = (payload: unknown): RawWaveformData | null => {
     )
   )
 
-  return {
+  const normalized: RawWaveformData = {
     duration: Number(source.duration) || 0,
     sampleRate: Number(source.sampleRate) || 0,
     rate: Number(source.rate) || 0,
@@ -71,6 +79,16 @@ const decodeRawWaveformData = (payload: unknown): RawWaveformData | null => {
     minRight,
     maxRight
   }
+  if (rmsLeft && rmsRight && rmsLeft.length >= frames && rmsRight.length >= frames) {
+    normalized.rmsLeft = rmsLeft
+    normalized.rmsRight = rmsRight
+  }
+  if (meanLeft && meanRight && meanLeft.length >= frames && meanRight.length >= frames) {
+    normalized.meanLeft = meanLeft
+    normalized.meanRight = meanRight
+  }
+
+  return normalized
 }
 
 export const pickRawDataByFile = (

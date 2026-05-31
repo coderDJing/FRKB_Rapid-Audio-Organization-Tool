@@ -88,7 +88,11 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
       minLeft: growRawArray(liveRawData.minLeft, frames),
       maxLeft: growRawArray(liveRawData.maxLeft, frames),
       minRight: growRawArray(liveRawData.minRight, frames),
-      maxRight: growRawArray(liveRawData.maxRight, frames)
+      maxRight: growRawArray(liveRawData.maxRight, frames),
+      meanLeft: liveRawData.meanLeft ? growRawArray(liveRawData.meanLeft, frames) : undefined,
+      meanRight: liveRawData.meanRight ? growRawArray(liveRawData.meanRight, frames) : undefined,
+      rmsLeft: liveRawData.rmsLeft ? growRawArray(liveRawData.rmsLeft, frames) : undefined,
+      rmsRight: liveRawData.rmsRight ? growRawArray(liveRawData.rmsRight, frames) : undefined
     }
     bumpLiveRawRevision()
     invalidateFrameState()
@@ -106,7 +110,11 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
           minLeft: rawData.minLeft,
           maxLeft: rawData.maxLeft,
           minRight: rawData.minRight,
-          maxRight: rawData.maxRight
+          maxRight: rawData.maxRight,
+          meanLeft: rawData.meanLeft,
+          meanRight: rawData.meanRight,
+          rmsLeft: rawData.rmsLeft,
+          rmsRight: rawData.rmsRight
         }
       : null
     retainedRawData = null
@@ -175,6 +183,42 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
     liveRawData.maxLeft.set(payload.maxLeft.subarray(0, copyFrames), startFrame)
     liveRawData.minRight.set(payload.minRight.subarray(0, copyFrames), startFrame)
     liveRawData.maxRight.set(payload.maxRight.subarray(0, copyFrames), startFrame)
+    if (
+      payload.meanLeft &&
+      payload.meanRight &&
+      payload.meanLeft.length >= copyFrames &&
+      payload.meanRight.length >= copyFrames
+    ) {
+      if (!liveRawData.meanLeft || liveRawData.meanLeft.length < liveRawData.frames) {
+        liveRawData.meanLeft = new Float32Array(liveRawData.frames)
+      }
+      if (!liveRawData.meanRight || liveRawData.meanRight.length < liveRawData.frames) {
+        liveRawData.meanRight = new Float32Array(liveRawData.frames)
+      }
+      liveRawData.meanLeft.set(payload.meanLeft.subarray(0, copyFrames), startFrame)
+      liveRawData.meanRight.set(payload.meanRight.subarray(0, copyFrames), startFrame)
+    } else {
+      liveRawData.meanLeft = undefined
+      liveRawData.meanRight = undefined
+    }
+    if (
+      payload.rmsLeft &&
+      payload.rmsRight &&
+      payload.rmsLeft.length >= copyFrames &&
+      payload.rmsRight.length >= copyFrames
+    ) {
+      if (!liveRawData.rmsLeft || liveRawData.rmsLeft.length < liveRawData.frames) {
+        liveRawData.rmsLeft = new Float32Array(liveRawData.frames)
+      }
+      if (!liveRawData.rmsRight || liveRawData.rmsRight.length < liveRawData.frames) {
+        liveRawData.rmsRight = new Float32Array(liveRawData.frames)
+      }
+      liveRawData.rmsLeft.set(payload.rmsLeft.subarray(0, copyFrames), startFrame)
+      liveRawData.rmsRight.set(payload.rmsRight.subarray(0, copyFrames), startFrame)
+    } else {
+      liveRawData.rmsLeft = undefined
+      liveRawData.rmsRight = undefined
+    }
     liveRawData.loadedFrames = Math.max(
       Number(liveRawData.loadedFrames) || 0,
       Math.min(liveRawData.frames, startFrame + copyFrames, Math.floor(payload.loadedFrames || 0))

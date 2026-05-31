@@ -103,6 +103,10 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       const maxLeft = new Float32Array(nextFrames)
       const minRight = new Float32Array(nextFrames)
       const maxRight = new Float32Array(nextFrames)
+      const meanLeft = current.meanLeft ? new Float32Array(nextFrames) : undefined
+      const meanRight = current.meanRight ? new Float32Array(nextFrames) : undefined
+      const rmsLeft = current.rmsLeft ? new Float32Array(nextFrames) : undefined
+      const rmsRight = current.rmsRight ? new Float32Array(nextFrames) : undefined
       for (let i = 0; i < nextFrames; i += 1) {
         const i0 = i * 2
         const i1 = Math.min(current.frames - 1, i0 + 1)
@@ -110,6 +114,22 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         maxLeft[i] = Math.max(current.maxLeft[i0] ?? 0, current.maxLeft[i1] ?? 0)
         minRight[i] = Math.min(current.minRight[i0] ?? 0, current.minRight[i1] ?? 0)
         maxRight[i] = Math.max(current.maxRight[i0] ?? 0, current.maxRight[i1] ?? 0)
+        if (meanLeft && current.meanLeft) {
+          meanLeft[i] = ((current.meanLeft[i0] ?? 0) + (current.meanLeft[i1] ?? 0)) / 2
+        }
+        if (meanRight && current.meanRight) {
+          meanRight[i] = ((current.meanRight[i0] ?? 0) + (current.meanRight[i1] ?? 0)) / 2
+        }
+        if (rmsLeft && current.rmsLeft) {
+          const left0 = current.rmsLeft[i0] ?? 0
+          const left1 = current.rmsLeft[i1] ?? 0
+          rmsLeft[i] = Math.sqrt((left0 * left0 + left1 * left1) / 2)
+        }
+        if (rmsRight && current.rmsRight) {
+          const right0 = current.rmsRight[i0] ?? 0
+          const right1 = current.rmsRight[i1] ?? 0
+          rmsRight[i] = Math.sqrt((right0 * right0 + right1 * right1) / 2)
+        }
       }
       const next: RawWaveformLevel = {
         duration: current.duration,
@@ -120,6 +140,10 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
         maxLeft,
         minRight,
         maxRight,
+        meanLeft,
+        meanRight,
+        rmsLeft,
+        rmsRight,
         factor: current.factor * 2
       }
       levels.push(next)

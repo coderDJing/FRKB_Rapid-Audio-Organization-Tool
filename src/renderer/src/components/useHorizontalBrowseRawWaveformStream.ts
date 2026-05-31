@@ -45,6 +45,7 @@ export const useHorizontalBrowseRawWaveformStream = (
   let rawStreamFirstVisibleDrawScheduled = false
   let rawStreamVisibleCoverageRedrawn = false
   let rawStreamBootstrapDurationSec = 0
+  let rawStreamBootstrapAnchorSec: number | null = null
   let rawStreamContinuePending = false
   let rawStreamInitialRetryCount = 0
   let rawStreamContinueStartedAt = 0
@@ -167,7 +168,11 @@ export const useHorizontalBrowseRawWaveformStream = (
       minLeft: grow(current.minLeft),
       maxLeft: grow(current.maxLeft),
       minRight: grow(current.minRight),
-      maxRight: grow(current.maxRight)
+      maxRight: grow(current.maxRight),
+      meanLeft: current.meanLeft ? grow(current.meanLeft) : undefined,
+      meanRight: current.meanRight ? grow(current.meanRight) : undefined,
+      rmsLeft: current.rmsLeft ? grow(current.rmsLeft) : undefined,
+      rmsRight: current.rmsRight ? grow(current.rmsRight) : undefined
     }
     options.mixxxData.value = createRawPlaceholderMixxxData(options.rawData.value)
     options.ensureLiveWaveformRawCapacity({
@@ -286,6 +291,12 @@ export const useHorizontalBrowseRawWaveformStream = (
         0
     )
 
+  const resolveCurrentViewportAnchorSec = () =>
+    Math.max(
+      0,
+      Number(options.playing() ? options.currentSeconds() : options.viewportAnchorSec()) || 0
+    )
+
   const resolveRawWaveformBootstrapStartSec = (targetSec: number) => {
     const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
     return Math.max(
@@ -315,6 +326,10 @@ export const useHorizontalBrowseRawWaveformStream = (
     rawStreamInitialRetryCount = Math.max(
       0,
       Math.floor(Number(startOptions.initialRetryCount) || 0)
+    )
+    rawStreamBootstrapAnchorSec = Math.max(
+      0,
+      Number(startOptions.bootstrapAnchorSec ?? resolveCurrentViewportAnchorSec()) || 0
     )
     const bootstrapDurationSec = Math.max(
       0,
@@ -471,6 +486,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     }
     beginRawWaveformStream(filePath, resolveWaveformTargetRate(false), Date.now(), targetStartSec, {
       bootstrapDurationSec: startOptions.bootstrapDurationSec ?? resolveSeekBootstrapDurationSec(),
+      bootstrapAnchorSec: targetSec,
       forceLiveDecode: startOptions.forceLiveDecode,
       initialRetryCount: startOptions.initialRetryCount
     })
@@ -488,14 +504,13 @@ export const useHorizontalBrowseRawWaveformStream = (
     return dirtyEndSec >= viewStartSec && dirtyStartSec <= viewEndSec + redrawLeadSec
   }
 
-  const resolvePlaybackBootstrapTargetLoadedFrames = (rate: number, startSec: number) => {
-    if (!options.playing()) return 0
+  const resolveInitialViewportBootstrapTargetLoadedFrames = (rate: number, startSec: number) => {
     if (rawStreamFirstVisibleDrawScheduled) return 0
-    // 播放已经开始但首屏还没真正画出来时，优先把"当前可视窗口右半边"需要的 raw 数据
-    // 一次性补齐，避免 2048 帧一刀地零碎写入，导致首帧在 await/live 之间来回切几次。
-    const currentSec = Math.max(0, Number(options.currentSeconds()) || 0)
-    const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
-    const desiredLoadedEndSec = currentSec + visibleDurationSec * 0.5
+    // 首屏还没真正画出来时，优先把当前可视窗口需要的 raw 数据一次性补齐。
+    // 否则 seek 后会先灌入可视区左侧的预读数据，再按小切片慢慢推进到屏幕内。
+    const anchorSec = rawStreamBootstrapAnchorSec ?? resolveCurrentViewportAnchorSec()
+    const { visibleEndSec } = resolveVisibleTimelineRange(anchorSec)
+    const desiredLoadedEndSec = visibleEndSec
     const desiredLoadedEndAudioSec = resolveTimelineSecToAudioSec(desiredLoadedEndSec)
     return Math.max(0, Math.ceil(Math.max(0, desiredLoadedEndAudioSec - startSec) * rate))
   }
@@ -516,6 +531,10 @@ export const useHorizontalBrowseRawWaveformStream = (
     const maxLeft = toFloat32Array(payload.maxLeft)
     const minRight = toFloat32Array(payload.minRight)
     const maxRight = toFloat32Array(payload.maxRight)
+    const meanLeft = toFloat32Array(payload.meanLeft)
+    const meanRight = toFloat32Array(payload.meanRight)
+    const rmsLeft = toFloat32Array(payload.rmsLeft)
+    const rmsRight = toFloat32Array(payload.rmsRight)
     const chunkFrames = Math.min(
       frames,
       minLeft.length,
@@ -538,6 +557,10 @@ export const useHorizontalBrowseRawWaveformStream = (
       maxLeft,
       minRight,
       maxRight,
+      meanLeft: meanLeft.length >= chunkFrames ? meanLeft : undefined,
+      meanRight: meanRight.length >= chunkFrames ? meanRight : undefined,
+      rmsLeft: rmsLeft.length >= chunkFrames ? rmsLeft : undefined,
+      rmsRight: rmsRight.length >= chunkFrames ? rmsRight : undefined,
       appliedFrames: 0
     }
   }
@@ -568,7 +591,7 @@ export const useHorizontalBrowseRawWaveformStream = (
   }
 
   const processPendingRawStreamChunkWork = (work: PendingRawStreamChunkWork) => {
-    ensureRawWaveformCapacity(Math.max(work.totalFrames, work.startFrame + work.chunkFrames), {
+    ensureRawWaveformCapacity(work.startFrame + work.chunkFrames, {
       duration: work.duration,
       sampleRate: work.sampleRate,
       rate: work.rate,
@@ -581,16 +604,19 @@ export const useHorizontalBrowseRawWaveformStream = (
     const remainingFrames = work.chunkFrames - work.appliedFrames
     if (remainingFrames <= 0) return true
 
-    const playbackBootstrapTargetLoadedFrames = Math.min(
+    const initialViewportBootstrapTargetLoadedFrames = Math.min(
       work.totalFrames,
-      resolvePlaybackBootstrapTargetLoadedFrames(work.rate, work.startSec)
+      resolveInitialViewportBootstrapTargetLoadedFrames(work.rate, work.startSec)
     )
     const keepMainThreadRawArrays = shouldKeepMainThreadRawArrays()
     const loadedFrames = Math.max(
       Math.max(0, Number(target.loadedFrames) || 0),
       work.startFrame + work.appliedFrames
     )
-    const bootstrapCopyFrames = Math.max(0, playbackBootstrapTargetLoadedFrames - loadedFrames)
+    const bootstrapCopyFrames = Math.max(
+      0,
+      initialViewportBootstrapTargetLoadedFrames - loadedFrames
+    )
     const copyFrames = Math.min(
       remainingFrames,
       keepMainThreadRawArrays ? resolveMaxChunkCopyFrames(bootstrapCopyFrames) : remainingFrames
@@ -606,6 +632,32 @@ export const useHorizontalBrowseRawWaveformStream = (
       target.maxLeft.set(work.maxLeft.subarray(sourceStart, sourceEnd), targetStart)
       target.minRight.set(work.minRight.subarray(sourceStart, sourceEnd), targetStart)
       target.maxRight.set(work.maxRight.subarray(sourceStart, sourceEnd), targetStart)
+      if (work.meanLeft && work.meanRight) {
+        if (!target.meanLeft || target.meanLeft.length < target.minLeft.length) {
+          target.meanLeft = new Float32Array(target.minLeft.length)
+        }
+        if (!target.meanRight || target.meanRight.length < target.minRight.length) {
+          target.meanRight = new Float32Array(target.minRight.length)
+        }
+        target.meanLeft.set(work.meanLeft.subarray(sourceStart, sourceEnd), targetStart)
+        target.meanRight.set(work.meanRight.subarray(sourceStart, sourceEnd), targetStart)
+      } else {
+        target.meanLeft = undefined
+        target.meanRight = undefined
+      }
+      if (work.rmsLeft && work.rmsRight) {
+        if (!target.rmsLeft || target.rmsLeft.length < target.minLeft.length) {
+          target.rmsLeft = new Float32Array(target.minLeft.length)
+        }
+        if (!target.rmsRight || target.rmsRight.length < target.minRight.length) {
+          target.rmsRight = new Float32Array(target.minRight.length)
+        }
+        target.rmsLeft.set(work.rmsLeft.subarray(sourceStart, sourceEnd), targetStart)
+        target.rmsRight.set(work.rmsRight.subarray(sourceStart, sourceEnd), targetStart)
+      } else {
+        target.rmsLeft = undefined
+        target.rmsRight = undefined
+      }
     }
     work.appliedFrames = sourceEnd
     target.loadedFrames = Math.max(Number(target.loadedFrames) || 0, targetStart + copyFrames)
@@ -621,7 +673,11 @@ export const useHorizontalBrowseRawWaveformStream = (
       minLeft: work.minLeft.subarray(sourceStart, sourceEnd),
       maxLeft: work.maxLeft.subarray(sourceStart, sourceEnd),
       minRight: work.minRight.subarray(sourceStart, sourceEnd),
-      maxRight: work.maxRight.subarray(sourceStart, sourceEnd)
+      maxRight: work.maxRight.subarray(sourceStart, sourceEnd),
+      meanLeft: work.meanLeft?.subarray(sourceStart, sourceEnd),
+      meanRight: work.meanRight?.subarray(sourceStart, sourceEnd),
+      rmsLeft: work.rmsLeft?.subarray(sourceStart, sourceEnd),
+      rmsRight: work.rmsRight?.subarray(sourceStart, sourceEnd)
     }
     options.applyLiveWaveformRawChunk(liveChunk, !keepMainThreadRawArrays)
 

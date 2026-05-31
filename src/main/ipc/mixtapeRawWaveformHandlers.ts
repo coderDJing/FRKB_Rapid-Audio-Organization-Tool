@@ -77,6 +77,30 @@ const isRawWaveformRateSufficient = (
   return cachedRate >= requiredRate
 }
 
+const MIN_RAW_WAVEFORM_INITIAL_CHUNK_FRAMES = 512
+const RAW_WAVEFORM_DEFAULT_INITIAL_CHUNK_FRAMES = 4096
+
+const resolveRawWaveformInitialChunkFrames = (params: {
+  totalFrames?: number
+  rate: number
+  chunkFrames: number
+  bootstrapDurationSec: number
+}) => {
+  const totalFrames = Math.max(0, Math.floor(Number(params.totalFrames) || 0))
+  const rate = Math.max(1, Number(params.rate) || 1)
+  const chunkFrames = Math.max(256, Math.floor(Number(params.chunkFrames) || 0))
+  const bootstrapFrames = Math.ceil(Math.max(0, Number(params.bootstrapDurationSec) || 0) * rate)
+  const desiredFrames =
+    bootstrapFrames > 0
+      ? bootstrapFrames
+      : Math.min(chunkFrames, RAW_WAVEFORM_DEFAULT_INITIAL_CHUNK_FRAMES)
+  const boundedFrames = Math.min(
+    chunkFrames,
+    Math.max(MIN_RAW_WAVEFORM_INITIAL_CHUNK_FRAMES, desiredFrames)
+  )
+  return totalFrames > 0 ? Math.min(totalFrames, boundedFrames) : boundedFrames
+}
+
 export function registerMixtapeRawWaveformHandlers() {
   const rawWaveformStreamRequests = new Map<string, RawWaveformStreamRequest>()
   const cachedRawWaveformContinuations = new Map<string, CachedRawWaveformContinuation>()
@@ -240,13 +264,12 @@ export function registerMixtapeRawWaveformHandlers() {
       closeRawWaveformStreamOpenState(requestId)
       return
     }
-    const requestedBootstrapFrames = requestedBootstrapDurationSec
-      ? Math.ceil(requestedBootstrapDurationSec * rate)
-      : 0
-    const bootstrapFrames = Math.min(
+    const bootstrapFrames = resolveRawWaveformInitialChunkFrames({
       totalFrames,
-      Math.max(requestedChunkFrames, requestedBootstrapFrames)
-    )
+      rate,
+      chunkFrames: requestedChunkFrames,
+      bootstrapDurationSec: requestedBootstrapDurationSec
+    })
     const followupFramesPerChunk = Math.max(4096, requestedChunkFrames)
     const startedAt = Date.now()
     let chunkCount = 0
@@ -272,7 +295,11 @@ export function registerMixtapeRawWaveformHandlers() {
         minLeft: sliceBuffer(cached.minLeft, startFrameOffset, bootstrapFrames),
         maxLeft: sliceBuffer(cached.maxLeft, startFrameOffset, bootstrapFrames),
         minRight: sliceBuffer(cached.minRight, startFrameOffset, bootstrapFrames),
-        maxRight: sliceBuffer(cached.maxRight, startFrameOffset, bootstrapFrames)
+        maxRight: sliceBuffer(cached.maxRight, startFrameOffset, bootstrapFrames),
+        meanLeft: sliceBuffer(cached.meanLeft, startFrameOffset, bootstrapFrames),
+        meanRight: sliceBuffer(cached.meanRight, startFrameOffset, bootstrapFrames),
+        rmsLeft: sliceBuffer(cached.rmsLeft, startFrameOffset, bootstrapFrames),
+        rmsRight: sliceBuffer(cached.rmsRight, startFrameOffset, bootstrapFrames)
       })
     } catch {
       closeRawWaveformStreamOpenState(requestId)
@@ -379,6 +406,26 @@ export function registerMixtapeRawWaveformHandlers() {
             continuation.cached.maxRight,
             continuation.startFrameOffset + startFrame,
             frames
+          ),
+          meanLeft: sliceBuffer(
+            continuation.cached.meanLeft,
+            continuation.startFrameOffset + startFrame,
+            frames
+          ),
+          meanRight: sliceBuffer(
+            continuation.cached.meanRight,
+            continuation.startFrameOffset + startFrame,
+            frames
+          ),
+          rmsLeft: sliceBuffer(
+            continuation.cached.rmsLeft,
+            continuation.startFrameOffset + startFrame,
+            frames
+          ),
+          rmsRight: sliceBuffer(
+            continuation.cached.rmsRight,
+            continuation.startFrameOffset + startFrame,
+            frames
           )
         })
       } catch {
@@ -436,7 +483,11 @@ export function registerMixtapeRawWaveformHandlers() {
         minLeft: chunk.minLeft,
         maxLeft: chunk.maxLeft,
         minRight: chunk.minRight,
-        maxRight: chunk.maxRight
+        maxRight: chunk.maxRight,
+        meanLeft: chunk.meanLeft,
+        meanRight: chunk.meanRight,
+        rmsLeft: chunk.rmsLeft,
+        rmsRight: chunk.rmsRight
       })
       continuation.chunkCount += 1
       return true
@@ -565,7 +616,11 @@ export function registerMixtapeRawWaveformHandlers() {
             minLeft: progress.minLeft || Buffer.alloc(0),
             maxLeft: progress.maxLeft || Buffer.alloc(0),
             minRight: progress.minRight || Buffer.alloc(0),
-            maxRight: progress.maxRight || Buffer.alloc(0)
+            maxRight: progress.maxRight || Buffer.alloc(0),
+            meanLeft: progress.meanLeft || Buffer.alloc(0),
+            meanRight: progress.meanRight || Buffer.alloc(0),
+            rmsLeft: progress.rmsLeft || Buffer.alloc(0),
+            rmsRight: progress.rmsRight || Buffer.alloc(0)
           }
           if (nextRequest.firstChunkAt === undefined) {
             nextRequest.firstChunkAt = Date.now()
@@ -584,7 +639,11 @@ export function registerMixtapeRawWaveformHandlers() {
                   minLeft: bufferedChunk.minLeft,
                   maxLeft: bufferedChunk.maxLeft,
                   minRight: bufferedChunk.minRight,
-                  maxRight: bufferedChunk.maxRight
+                  maxRight: bufferedChunk.maxRight,
+                  meanLeft: bufferedChunk.meanLeft,
+                  meanRight: bufferedChunk.meanRight,
+                  rmsLeft: bufferedChunk.rmsLeft,
+                  rmsRight: bufferedChunk.rmsRight
                 })
               } catch {}
             }
@@ -649,6 +708,11 @@ export function registerMixtapeRawWaveformHandlers() {
         songDurationSec: nextRequest.songDurationSec,
         streamChunks: true,
         chunkFrames: nextRequest.chunkFrames,
+        initialChunkFrames: resolveRawWaveformInitialChunkFrames({
+          rate: Math.max(1, Number(nextRequest.targetRate) || 1),
+          chunkFrames: nextRequest.chunkFrames,
+          bootstrapDurationSec: nextRequest.bootstrapDurationSec
+        }),
         expectedDurationSec: nextRequest.expectedDurationSec
       })
     }

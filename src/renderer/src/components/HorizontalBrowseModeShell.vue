@@ -34,7 +34,6 @@ import { useHorizontalBrowseHotkeys } from '@renderer/components/useHorizontalBr
 import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
 import { useHorizontalBrowseDeckTempoNudge } from '@renderer/components/useHorizontalBrowseDeckTempoNudge'
 import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/components/useHorizontalBrowseDeckToolbarInteractions'
-import type { HorizontalBrowseGridShiftOptions } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import { useHorizontalBrowseDeckTransportInteractions } from '@renderer/components/useHorizontalBrowseDeckTransportInteractions'
 import { useHorizontalBrowseEditDeckNavigation } from '@renderer/components/useHorizontalBrowseEditDeckNavigation'
 import { useHorizontalBrowseDeckHotCues } from '@renderer/components/useHorizontalBrowseDeckHotCues'
@@ -56,33 +55,19 @@ import {
 import { useHorizontalBrowseDeckDrop } from '@renderer/components/useHorizontalBrowseDeckDrop'
 import { useHorizontalBrowseDeckInteractionState } from '@renderer/components/useHorizontalBrowseDeckInteractionState'
 import { useHorizontalBrowseSongsRemoved } from '@renderer/components/useHorizontalBrowseSongsRemoved'
+import {
+  createDefaultDeckToolbarState,
+  createDefaultSharedDetailZoomState,
+  DUAL_MODE_BPM_INPUT_TITLE,
+  EDIT_MODE_BPM_INPUT_TITLE,
+  EDIT_MODE_TAP_BPM_TITLE,
+  type DeckCuePanelMode,
+  type HorizontalBrowseDeckDetailLaneExpose,
+  type HorizontalBrowseViewMode,
+  type SharedDetailZoomState
+} from '@renderer/components/horizontalBrowseModeShellTypes'
 
 type DeckKey = HorizontalBrowseDeckKey
-type HorizontalBrowseViewMode = 'dual' | 'edit'
-
-type SharedDetailZoomState = {
-  value: number
-  anchorRatio: number
-  sourceDirection: 'up' | 'down' | null
-  revision: number
-}
-type DeckCuePanelMode = 'memory' | 'hot-cue'
-const EDIT_MODE_BPM_INPUT_TITLE = '网格 BPM：修改分析结果和网格线，不改变播放速度'
-const DUAL_MODE_BPM_INPUT_TITLE = '目标 BPM：临时改变播放速度，不修改网格线'
-const EDIT_MODE_TAP_BPM_TITLE = 'Tap：按节拍连续点击，实时修改网格 BPM，不改变播放速度'
-
-type HorizontalBrowseDeckDetailLaneExpose = {
-  toggleBarLinePicking?: () => void
-  setBarLineAtPlayhead?: () => void
-  shiftGridLargeLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
-  shiftGridSmallLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
-  shiftGridSmallRight?: (options?: HorizontalBrowseGridShiftOptions) => void
-  shiftGridLargeRight?: (options?: HorizontalBrowseGridShiftOptions) => void
-  updateBpmInput?: (value: string) => void
-  blurBpmInput?: () => void
-  tapBpm?: () => void
-  cycleMetronomeState?: () => void
-}
 const props = withDefaults(
   defineProps<{
     viewMode?: HorizontalBrowseViewMode
@@ -91,22 +76,6 @@ const props = withDefaults(
     viewMode: 'dual'
   }
 )
-const createDefaultDeckToolbarState = () => ({
-  disabled: true,
-  bpmInputValue: '',
-  bpmStep: 0.01,
-  bpmMin: 1,
-  bpmMax: 300,
-  bpmInputTitle: '',
-  bpmInputFirst: false,
-  showTapButton: false,
-  tapBpmTitle: '',
-  barLinePicking: false,
-  metronomeEnabled: false,
-  metronomeVolumeLevel: 2 as 1 | 2 | 3,
-  canToggleMetronome: false
-})
-
 const runtime = useRuntimeStore()
 const {
   topDeckSong,
@@ -121,18 +90,12 @@ const bottomDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
 const faderPanelRef = ref<InstanceType<typeof HorizontalBrowseFaderPanel> | null>(null)
 const topDeckToolbarState = ref(createDefaultDeckToolbarState())
 const bottomDeckToolbarState = ref(createDefaultDeckToolbarState())
-const sharedDetailZoomState = ref<SharedDetailZoomState>({
-  value: HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
-  anchorRatio: 0.5,
-  sourceDirection: null,
-  revision: 0
-})
-const editDetailZoomState = ref<SharedDetailZoomState>({
-  value: HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
-  anchorRatio: 0.5,
-  sourceDirection: null,
-  revision: 0
-})
+const sharedDetailZoomState = ref<SharedDetailZoomState>(
+  createDefaultSharedDetailZoomState(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
+)
+const editDetailZoomState = ref<SharedDetailZoomState>(
+  createDefaultSharedDetailZoomState(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
+)
 const horizontalBrowseViewMode = computed<HorizontalBrowseViewMode>(() => props.viewMode)
 const isEditMode = computed(() => horizontalBrowseViewMode.value === 'edit')
 const isLightTheme = computed(() => {
@@ -1002,7 +965,7 @@ onUnmounted(() => {
             isEditMode ? HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM : HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
           "
           :waveform-layout="isEditMode ? 'full' : 'auto'"
-          :waveform-render-style="isEditMode ? 'raw-curve' : 'columns'"
+          waveform-render-style="columns"
           allow-negative-timeline
           direction="up"
           :deck-hovered="isDeckHovered('top')"

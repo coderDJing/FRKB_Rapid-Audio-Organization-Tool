@@ -15,6 +15,10 @@ export type SharedRawWaveformData = {
   maxLeft: Buffer
   minRight: Buffer
   maxRight: Buffer
+  meanLeft: Buffer
+  meanRight: Buffer
+  rmsLeft: Buffer
+  rmsRight: Buffer
 }
 
 export type DecodeAudioMetrics = {

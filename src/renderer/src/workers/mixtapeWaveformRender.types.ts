@@ -23,6 +23,10 @@ export type RawWaveformData = {
   maxLeft: Float32Array
   minRight: Float32Array
   maxRight: Float32Array
+  meanLeft?: Float32Array
+  meanRight?: Float32Array
+  rmsLeft?: Float32Array
+  rmsRight?: Float32Array
 }
 
 export type RawWaveformLevel = RawWaveformData & {

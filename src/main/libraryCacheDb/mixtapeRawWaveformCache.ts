@@ -27,10 +27,14 @@ export type MixtapeRawWaveformData = {
   maxLeft: Buffer
   minRight: Buffer
   maxRight: Buffer
+  meanLeft: Buffer
+  meanRight: Buffer
+  rmsLeft: Buffer
+  rmsRight: Buffer
 }
 
 const MIXTAPE_RAW_WAVEFORM_TABLE = 'mixtape_raw_waveform_cache'
-const MIXTAPE_RAW_WAVEFORM_CACHE_VERSION = 1
+const MIXTAPE_RAW_WAVEFORM_CACHE_VERSION = 3
 
 function normalizeRawWaveformMeta(
   row: Record<string, unknown> | null | undefined
@@ -89,7 +93,7 @@ export async function loadMixtapeRawWaveformCacheData(
   try {
     let row = db
       .prepare(
-        `SELECT size, mtime_ms, version, sample_rate, rate, duration, frames, min_left, max_left, min_right, max_right FROM ${MIXTAPE_RAW_WAVEFORM_TABLE} WHERE list_root = ? AND file_path = ?`
+        `SELECT size, mtime_ms, version, sample_rate, rate, duration, frames, min_left, max_left, min_right, max_right, mean_left, mean_right, rms_left, rms_right FROM ${MIXTAPE_RAW_WAVEFORM_TABLE} WHERE list_root = ? AND file_path = ?`
       )
       .get(listRootKey, fileKey)
     let hitListRoot = listRootKey
@@ -98,7 +102,7 @@ export async function loadMixtapeRawWaveformCacheData(
     if (!row && fileKeyRaw) {
       row = db
         .prepare(
-          `SELECT size, mtime_ms, version, sample_rate, rate, duration, frames, min_left, max_left, min_right, max_right FROM ${MIXTAPE_RAW_WAVEFORM_TABLE} WHERE list_root = ? AND file_path = ?`
+          `SELECT size, mtime_ms, version, sample_rate, rate, duration, frames, min_left, max_left, min_right, max_right, mean_left, mean_right, rms_left, rms_right FROM ${MIXTAPE_RAW_WAVEFORM_TABLE} WHERE list_root = ? AND file_path = ?`
         )
         .get(listRootKey, fileKeyRaw)
       if (row) {
@@ -110,7 +114,7 @@ export async function loadMixtapeRawWaveformCacheData(
     if (!row && legacyListRoot && legacyFilePath) {
       row = db
         .prepare(
-          `SELECT size, mtime_ms, version, sample_rate, rate, duration, frames, min_left, max_left, min_right, max_right FROM ${MIXTAPE_RAW_WAVEFORM_TABLE} WHERE list_root = ? AND file_path = ?`
+          `SELECT size, mtime_ms, version, sample_rate, rate, duration, frames, min_left, max_left, min_right, max_right, mean_left, mean_right, rms_left, rms_right FROM ${MIXTAPE_RAW_WAVEFORM_TABLE} WHERE list_root = ? AND file_path = ?`
         )
         .get(legacyListRoot, legacyFilePath)
       if (row) {
@@ -136,7 +140,20 @@ export async function loadMixtapeRawWaveformCacheData(
     const maxLeft = normalizeBlob(row.max_left)
     const minRight = normalizeBlob(row.min_right)
     const maxRight = normalizeBlob(row.max_right)
-    if (!minLeft || !maxLeft || !minRight || !maxRight) {
+    const meanLeft = normalizeBlob(row.mean_left)
+    const meanRight = normalizeBlob(row.mean_right)
+    const rmsLeft = normalizeBlob(row.rms_left)
+    const rmsRight = normalizeBlob(row.rms_right)
+    if (
+      !minLeft ||
+      !maxLeft ||
+      !minRight ||
+      !maxRight ||
+      !meanLeft ||
+      !meanRight ||
+      !rmsLeft ||
+      !rmsRight
+    ) {
       await removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
       return null
     }
@@ -162,7 +179,11 @@ export async function loadMixtapeRawWaveformCacheData(
             minLeft,
             maxLeft,
             minRight,
-            maxRight
+            maxRight,
+            meanLeft,
+            meanRight,
+            rmsLeft,
+            rmsRight
           })
         }
       } catch {}
@@ -176,7 +197,11 @@ export async function loadMixtapeRawWaveformCacheData(
       minLeft,
       maxLeft,
       minRight,
-      maxRight
+      maxRight,
+      meanLeft,
+      meanRight,
+      rmsLeft,
+      rmsRight
     }
   } catch (error) {
     log.error('[sqlite] mixtape raw waveform cache load failed', error)
@@ -212,11 +237,26 @@ export async function upsertMixtapeRawWaveformCacheEntry(
   const maxLeft = normalizeBlob(data.maxLeft)
   const minRight = normalizeBlob(data.minRight)
   const maxRight = normalizeBlob(data.maxRight)
-  if (!minLeft || !maxLeft || !minRight || !maxRight) return false
+  const meanLeft = normalizeBlob(data.meanLeft)
+  const meanRight = normalizeBlob(data.meanRight)
+  const rmsLeft = normalizeBlob(data.rmsLeft)
+  const rmsRight = normalizeBlob(data.rmsRight)
+  if (
+    !minLeft ||
+    !maxLeft ||
+    !minRight ||
+    !maxRight ||
+    !meanLeft ||
+    !meanRight ||
+    !rmsLeft ||
+    !rmsRight
+  ) {
+    return false
+  }
 
   try {
     db.prepare(
-      `INSERT INTO ${MIXTAPE_RAW_WAVEFORM_TABLE} (list_root, file_path, size, mtime_ms, version, sample_rate, rate, duration, frames, min_left, max_left, min_right, max_right) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(list_root, file_path) DO UPDATE SET size = excluded.size, mtime_ms = excluded.mtime_ms, version = excluded.version, sample_rate = excluded.sample_rate, rate = excluded.rate, duration = excluded.duration, frames = excluded.frames, min_left = excluded.min_left, max_left = excluded.max_left, min_right = excluded.min_right, max_right = excluded.max_right`
+      `INSERT INTO ${MIXTAPE_RAW_WAVEFORM_TABLE} (list_root, file_path, size, mtime_ms, version, sample_rate, rate, duration, frames, min_left, max_left, min_right, max_right, mean_left, mean_right, rms_left, rms_right) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(list_root, file_path) DO UPDATE SET size = excluded.size, mtime_ms = excluded.mtime_ms, version = excluded.version, sample_rate = excluded.sample_rate, rate = excluded.rate, duration = excluded.duration, frames = excluded.frames, min_left = excluded.min_left, max_left = excluded.max_left, min_right = excluded.min_right, max_right = excluded.max_right, mean_left = excluded.mean_left, mean_right = excluded.mean_right, rms_left = excluded.rms_left, rms_right = excluded.rms_right`
     ).run(
       listRootKey,
       resolvedFile.key,
@@ -230,7 +270,11 @@ export async function upsertMixtapeRawWaveformCacheEntry(
       minLeft,
       maxLeft,
       minRight,
-      maxRight
+      maxRight,
+      meanLeft,
+      meanRight,
+      rmsLeft,
+      rmsRight
     )
     if (resolvedFile.keyRaw && resolvedFile.keyRaw !== resolvedFile.key) {
       db.prepare(
