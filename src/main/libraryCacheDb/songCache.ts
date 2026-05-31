@@ -723,6 +723,32 @@ export async function updateSongCacheBpm(
   }
 }
 
+/**
+ * 清除歌曲的分析数据（BPM、Key、节拍网格等），用于重新分析。
+ * 保留用户数据：playlistTrackNumber（序号）、hotCues、memoryCues、mixOrder 等。
+ */
+export async function clearSongCacheAnalysisFields(
+  listRoot: string,
+  filePath: string
+): Promise<boolean> {
+  try {
+    const entry = await loadSongCacheEntry(listRoot, filePath)
+    if (!entry) return false
+    // 清除分析数据（重新分析会重新生成）
+    delete entry.info.key
+    delete entry.info.bpm
+    delete entry.info.firstBeatMs
+    delete entry.info.barBeatOffset
+    delete entry.info.beatGridSource
+    delete entry.info.beatGridAlgorithmVersion
+    delete entry.info.timeBasisOffsetMs
+    return await upsertSongCacheEntry(listRoot, filePath, entry)
+  } catch (error) {
+    log.error('[sqlite] song cache analysis fields clear failed', error)
+    return false
+  }
+}
+
 export async function replaceSongCache(
   listRoot: string,
   entries: Map<string, SongCacheEntry>

@@ -7,6 +7,7 @@ export {
   loadSongCacheEntry,
   updateSongCacheKey,
   updateSongCacheBpm,
+  clearSongCacheAnalysisFields,
   replaceSongCache,
   upsertSongCacheEntry,
   clearSongCache,

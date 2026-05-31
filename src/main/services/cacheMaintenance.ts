@@ -290,7 +290,8 @@ export async function clearTrackCache(filePath: string) {
   try {
     const cacheRoot = await findMixtapeCacheRoot(path.dirname(filePath))
     if (cacheRoot) {
-      await LibraryCacheDb.removeSongCacheEntry(cacheRoot, filePath)
+      // 只清除分析相关字段，保留 playlistTrackNumber 等用户数据
+      await LibraryCacheDb.clearSongCacheAnalysisFields(cacheRoot, filePath)
       await LibraryCacheDb.removeWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(cacheRoot, filePath)
