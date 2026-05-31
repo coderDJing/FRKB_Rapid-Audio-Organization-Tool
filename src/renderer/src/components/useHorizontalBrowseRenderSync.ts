@@ -191,6 +191,24 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
         )
         return
       }
+      // intent 过期但 native snapshot 仍未确认到目标位置（连续快速 seek 时 snapshot 滞后）：
+      // 不要 reanchor 回滞后的 snapshotSec（那会让渲染位置一次性回退到旧位置，造成抽动），
+      // 而是把渲染基准锚定到 intent 目标值继续。后续 snapshot 一旦真正到位会通过正常 reanchor 修正。
+      if (!force && intentExpired && !intentConfirmed) {
+        const expiredIntentSec = pendingIntent.seconds
+        pendingRenderSeekIntent[deck] = null
+        deckRenderSyncBaseSec[deck] = expiredIntentSec
+        deckRenderSyncBaseAtMs[deck] = renderNowMs
+        deckRenderTimelineSignature[deck] = buildDeckRenderTimelineSignature(snapshot)
+        deckRenderStateRevision[deck] = resolveTransportStateRevision()
+        assignDeckRenderCurrentSeconds(
+          deck,
+          expiredIntentSec,
+          topDeckRenderCurrentSeconds,
+          bottomDeckRenderCurrentSeconds
+        )
+        return
+      }
       pendingRenderSeekIntent[deck] = null
       confirmedPendingIntent = intentConfirmed
     }
