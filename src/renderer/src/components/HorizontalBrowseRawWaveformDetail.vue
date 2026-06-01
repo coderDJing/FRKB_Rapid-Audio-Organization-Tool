@@ -27,6 +27,7 @@ import {
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
 import { useHorizontalBrowseRawWaveformStream } from '@renderer/components/useHorizontalBrowseRawWaveformStream'
 import { HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC } from '@renderer/components/horizontalBrowseRawWaveformStreamTypes'
+import { resolveHorizontalBrowseEffectiveTimelineEndSec } from '@renderer/components/horizontalBrowseRawWaveformTimeline'
 import {
   useHorizontalBrowseWaveformScrubPreview,
   type HorizontalBrowseScrubPreviewPayload
@@ -51,6 +52,7 @@ const props = defineProps<{
   playbackActive?: boolean
   playbackRate?: number
   visualPlaybackRate?: number
+  waveformGain?: number
   playbackSyncRevision?: number
   gridBpm?: number
   loopRange?: HorizontalBrowseLoopRange | null
@@ -206,6 +208,7 @@ const {
   currentSeconds: resolveWaveformCurrentSeconds,
   playbackRate: () => props.playbackRate,
   visualPlaybackRate: () => props.visualPlaybackRate,
+  waveformGain: () => props.waveformGain,
   playing: previewPlaying,
   playbackSyncRevision,
   rawData,
@@ -223,7 +226,6 @@ const {
   waveformRenderStyle: resolveWaveformRenderStyle,
   phaseAwareScrollReuse: () => Math.abs(localGridShiftPhaseOffsetSec.value) > 0.000001
 })
-
 const applyLocalGridShiftPhaseCompensation = (deltaMs: number) => {
   const deltaSec = Number(deltaMs) / 1000
   if (!Number.isFinite(deltaSec) || Math.abs(deltaSec) <= 0) return
@@ -233,13 +235,11 @@ const applyLocalGridShiftPhaseCompensation = (deltaMs: number) => {
     previewStartSec.value = resolvePlaybackAlignedStart(compensatedSeconds)
   }
 }
-
 const scrubPreview = useHorizontalBrowseWaveformScrubPreview({
   dragging,
   resolveAnchorSec: resolvePreviewAnchorSec,
   emitPreview: (payload) => emit('drag-session-preview', payload)
 })
-
 const resolveGridShiftMs = (targetPx: number, minMs: number) => {
   const visibleDurationMs = Math.max(1, resolveVisibleDurationSec() * 1000)
   const wrapWidth = Math.max(1, Number(wrapRef.value?.clientWidth || 0))
@@ -284,38 +284,13 @@ const buildSongGridSignature = () =>
     timeBasisOffsetMs: props.song?.timeBasisOffsetMs
   })
 
-function resolveRawTimelineEndSec() {
-  const current = rawData.value
-  if (!current) return null
-  const rate = Math.max(0, Number(current.rate) || 0)
-  const totalFrames = Math.max(0, Math.floor(Number(current.frames) || 0))
-  const loadedFrames = Math.max(0, Math.floor(Number(current.loadedFrames ?? totalFrames) || 0))
-  const rawStartSec = Math.max(0, Number(current.startSec) || 0)
-  const durationSec = Math.max(0, Number(current.duration) || 0)
-  if (rawStartSec > 0.0001 || rate <= 0 || totalFrames <= 0 || loadedFrames < totalFrames) {
-    return null
-  }
-  const rawEndSec =
-    rawStartSec +
-    totalFrames / rate +
-    Math.max(0, Number(previewTimeBasisOffsetMs.value) || 0) / 1000
-  const tailGapSec = durationSec - rawEndSec
-  if (
-    durationSec > 0 &&
-    rawEndSec > 0 &&
-    tailGapSec >= 0 &&
-    tailGapSec <= HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC
-  ) {
-    return rawEndSec
-  }
-  return null
-}
-
 function resolveEffectiveTimelineEndSec() {
-  const durationSec = resolvePreviewDurationSec()
-  const rawEndSec = resolveRawTimelineEndSec()
-  if (rawEndSec === null) return durationSec
-  return durationSec > 0 ? Math.min(durationSec, rawEndSec) : rawEndSec
+  return resolveHorizontalBrowseEffectiveTimelineEndSec({
+    rawData: rawData.value,
+    durationSec: resolvePreviewDurationSec(),
+    timeBasisOffsetMs: previewTimeBasisOffsetMs.value,
+    tailToleranceSec: HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC
+  })
 }
 
 function normalizePreviewTimelineSeconds(seconds: number) {
@@ -359,7 +334,6 @@ const resolvePlaybackPositionDiscontinuity = (
   }
 
   if (!playing || !previous?.playing || previous.songKey !== songKey) return false
-
   const elapsedSec = Math.max(0, nowMs - previous.atMs) / 1000
   const expectedSeconds = previous.seconds + elapsedSec * previous.playbackRate
   const boundedExpectedSeconds = normalizePreviewTimelineSeconds(expectedSeconds)
@@ -773,6 +747,18 @@ watch(
   () => {
     invalidateWaveformTiles()
     resetGridRenderer()
+    scheduleDraw()
+  }
+)
+
+watch(
+  () => {
+    const numeric = Number(props.waveformGain)
+    if (!Number.isFinite(numeric)) return 1
+    return clampNumber(numeric, 0, 16)
+  },
+  () => {
+    invalidateWaveformTiles()
     scheduleDraw()
   }
 )

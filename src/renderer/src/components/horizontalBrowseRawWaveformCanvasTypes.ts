@@ -18,6 +18,7 @@ export type UseHorizontalBrowseRawWaveformCanvasOptions = {
   currentSeconds: () => number | undefined
   playbackRate: () => number | undefined
   visualPlaybackRate?: () => number | undefined
+  waveformGain?: () => number | undefined
   playing: Ref<boolean>
   playbackSyncRevision: Readonly<Ref<number>>
   rawData: Ref<RawWaveformData | null>

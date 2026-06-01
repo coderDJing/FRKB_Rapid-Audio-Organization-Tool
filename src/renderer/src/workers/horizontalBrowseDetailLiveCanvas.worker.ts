@@ -34,6 +34,11 @@ import type {
 } from './horizontalBrowseDetailLiveCanvas.types'
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+const normalizeWaveformGain = (value: number) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 1
+  return clampNumber(numeric, 0, 16)
+}
 let canvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
 const overlayRenderer = createHorizontalBrowseDetailLiveCanvasOverlayRenderer()
@@ -211,6 +216,7 @@ const buildFrameState = (
   waveformRenderStyle: request.waveformRenderStyle,
   preferRawPeaksOnly: request.preferRawPeaksOnly,
   themeVariant: request.themeVariant,
+  waveformGain: normalizeWaveformGain(request.waveformGain),
   playbackSyncRevision: Math.max(0, Math.floor(Number(request.playbackSyncRevision) || 0))
 })
 
@@ -245,7 +251,8 @@ const drawRange = (
     waveformRenderStyle: state.waveformRenderStyle,
     preferRawPeaksOnly: state.preferRawPeaksOnly,
     smoothColumns: state.waveformRenderStyle === 'columns' && state.waveformLayout !== 'full',
-    themeVariant: state.themeVariant
+    themeVariant: state.themeVariant,
+    waveformGain: state.waveformGain
   })
 
 const canCommitBlankRawSegment = (
@@ -402,6 +409,7 @@ const canReusePreviousFrame = (
     lastFrame.waveformRenderStyle === current.waveformRenderStyle &&
     lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly &&
     lastFrame.themeVariant === current.themeVariant &&
+    lastFrame.waveformGain === current.waveformGain &&
     lastFrame.playbackSyncRevision === current.playbackSyncRevision
   )
 }
@@ -431,6 +439,7 @@ const canReuseDirtySegment = (
     lastFrame.waveformRenderStyle === current.waveformRenderStyle &&
     lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly &&
     lastFrame.themeVariant === current.themeVariant &&
+    lastFrame.waveformGain === current.waveformGain &&
     lastFrame.playbackSyncRevision === current.playbackSyncRevision
   )
 }
@@ -911,7 +920,9 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
     current.request.rangeDurationSec === request.rangeDurationSec &&
     current.request.waveformLayout === request.waveformLayout &&
     current.request.waveformRenderStyle === request.waveformRenderStyle &&
-    current.request.themeVariant === request.themeVariant
+    current.request.themeVariant === request.themeVariant &&
+    normalizeWaveformGain(current.request.waveformGain) ===
+      normalizeWaveformGain(request.waveformGain)
   if (canContinueCurrentAnimation) {
     current.request = animationRequest
     current.scrollReuseSuppressedFrames = scrollReuseSuppressedFrames

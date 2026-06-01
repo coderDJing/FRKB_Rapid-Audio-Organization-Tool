@@ -17,15 +17,9 @@ export type RawEnergyShapeParams = {
   attackWeight: number
 }
 
-type RawEnergyScaleCacheEntry = {
-  loadedFrames: number
-  scale: number
-}
-
-const RAW_ENERGY_SCALE_PERCENTILE = 0.9999
-const RAW_ENERGY_SCALE_SAMPLE_CAP = 65536
-const RAW_ENERGY_MIN_SCALE = 0.04
-const RAW_ENERGY_EPSILON = 1e-6
+// Raw buffers are normalized PCM amplitudes; 1.0 is the fixed 0 dBFS visual reference.
+const RAW_ENERGY_FIXED_REFERENCE_AMPLITUDE = 1
+const RAW_ENERGY_FIXED_VISUAL_GAIN = 1
 const RAW_ENERGY_PEAK_BLEND_WEIGHT = 0.55
 const RAW_ENERGY_OUTPUT_GAMMA = 1.74
 const RAW_ENERGY_GATE = 0.02
@@ -37,10 +31,14 @@ const RAW_ENERGY_FULL_TRACK_PEAK_BLEND_WEIGHT = 1
 const RAW_ENERGY_FULL_TRACK_OUTPUT_GAMMA = 1.5
 const RAW_ENERGY_FULL_TRACK_ATTACK_WEIGHT = 0
 
-const rawEnergyScaleCache = new WeakMap<RawWaveformData, RawEnergyScaleCacheEntry>()
-
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const lerp = (start: number, end: number, ratio: number) => start + (end - start) * ratio
+const normalizeWaveformGain = (value?: number) => {
+  if (typeof value === 'undefined') return 1
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return 1
+  return clamp(numeric, 0, 16)
+}
 
 const resolveLoadedFrames = (rawData: RawWaveformData) =>
   Math.max(
@@ -74,25 +72,6 @@ const resolveFrameEnergy = (rawData: RawWaveformData, frame: number) => {
   return Math.sqrt(
     (minLeft * minLeft + maxLeft * maxLeft + minRight * minRight + maxRight * maxRight) / 4
   )
-}
-
-const resolveRawEnergyScale = (rawData: RawWaveformData) => {
-  const loadedFrames = resolveLoadedFrames(rawData)
-  const cached = rawEnergyScaleCache.get(rawData)
-  if (cached && cached.loadedFrames === loadedFrames) return cached.scale
-
-  const values: number[] = []
-  const step = Math.max(1, Math.floor(loadedFrames / RAW_ENERGY_SCALE_SAMPLE_CAP))
-  for (let frame = 0; frame < loadedFrames; frame += step) {
-    const energy = resolveFrameEnergy(rawData, frame)
-    if (energy > RAW_ENERGY_EPSILON) values.push(energy)
-  }
-  values.sort((a, b) => a - b)
-  const index = Math.floor((values.length - 1) * RAW_ENERGY_SCALE_PERCENTILE)
-  const percentile = index >= 0 ? values[index] || 0 : 0
-  const scale = clamp(percentile || 1, RAW_ENERGY_MIN_SCALE, 1)
-  rawEnergyScaleCache.set(rawData, { loadedFrames, scale })
-  return scale
 }
 
 const resolveRawEnergyShapeParams = (rawData: RawWaveformData): RawEnergyShapeParams => {
@@ -147,17 +126,15 @@ export const resolveRawEnergyAttackAmp = (
     return null
   }
   const attackWeight = shapeParams?.attackWeight ?? RAW_ENERGY_ATTACK_WEIGHT
-  return shapeEnergyAmp(
-    base * (1 - attackWeight) + peak * attackWeight,
-    shapeParams?.outputGamma
-  )
+  return shapeEnergyAmp(base * (1 - attackWeight) + peak * attackWeight, shapeParams?.outputGamma)
 }
 
 export const resolveRawEnergyProfileByRange = (
   rawData: RawWaveformData,
   startFrame: number,
   endFrame: number,
-  maxSamplesPerPixel?: number
+  maxSamplesPerPixel?: number,
+  waveformGain?: number
 ): RawEnergyProfile => {
   const span = endFrame - startFrame + 1
   const sampleCap = Number(maxSamplesPerPixel)
@@ -181,7 +158,9 @@ export const resolveRawEnergyProfileByRange = (
   }
   if (lastFrame !== endFrame) addFrame(endFrame)
 
-  const scale = resolveRawEnergyScale(rawData)
+  const scale =
+    RAW_ENERGY_FIXED_REFERENCE_AMPLITUDE /
+    Math.max(0.000001, RAW_ENERGY_FIXED_VISUAL_GAIN * normalizeWaveformGain(waveformGain))
   const shapeParams = resolveRawEnergyShapeParams(rawData)
   const mean = count > 0 ? clamp(sum / count / scale, 0, 1) : 0
   const normalizedPeak = clamp(peak / scale, 0, 1)
@@ -195,6 +174,7 @@ export const resolveRawEnergyByRange = (
   rawData: RawWaveformData,
   startFrame: number,
   endFrame: number,
-  maxSamplesPerPixel?: number
+  maxSamplesPerPixel?: number,
+  waveformGain?: number
 ): RawWaveformAmps =>
-  resolveRawEnergyProfileByRange(rawData, startFrame, endFrame, maxSamplesPerPixel)
+  resolveRawEnergyProfileByRange(rawData, startFrame, endFrame, maxSamplesPerPixel, waveformGain)

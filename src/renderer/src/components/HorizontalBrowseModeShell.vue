@@ -18,7 +18,8 @@ import {
   resolveHorizontalBrowseDeckDurationSeconds,
   resolveHorizontalBrowseDeckGridBpm,
   resolveHorizontalBrowseDeckSyncUiEnabled,
-  resolveHorizontalBrowseDeckSyncUiLock
+  resolveHorizontalBrowseDeckSyncUiLock,
+  resolveHorizontalBrowseDeckWaveformGain
 } from '@renderer/components/horizontalBrowseShellState'
 import { formatPreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
@@ -177,9 +178,7 @@ const {
   stopRenderSyncLoop,
   notifyDeckSeekIntent
 } = useHorizontalBrowseTransportController()
-
 useHorizontalBrowseVisualizer({ nativeTransport })
-
 const topDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('top'))
 const bottomDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('bottom'))
 const resolveDeckCuePointRef = (deck: DeckKey) =>
@@ -205,6 +204,8 @@ const resolveDeckWaveformPlaybackActive = (deck: DeckKey) => {
 }
 const topDeckWaveformPlaybackActive = computed(() => resolveDeckWaveformPlaybackActive('top'))
 const bottomDeckWaveformPlaybackActive = computed(() => resolveDeckWaveformPlaybackActive('bottom'))
+const resolveDeckWaveformGain = (deck: DeckKey) =>
+  resolveHorizontalBrowseDeckWaveformGain(resolveTransportDeckSnapshot(deck))
 const topDeckCueActive = computed(
   () => resolveDeckCuePreviewRuntimeState('top').active || deckPendingCuePreviewOnLoad.top
 )
@@ -284,7 +285,6 @@ const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   }
   return toolbarState.bpmInputValue
 }
-
 let resolveDeckMasterTempoEnabledForTransport: (deck: DeckKey) => boolean = () => true
 
 const {
@@ -327,7 +327,6 @@ const {
   getDeckSong: resolveDeckSong,
   setDeckSong
 })
-
 const { isDeckMasterTempoEnabled, toggleDeckMasterTempo, setDeckTargetBpm, resetDeckTempo } =
   useHorizontalBrowseDeckTempoControls({
     resolveDeckSong,
@@ -335,7 +334,6 @@ const { isDeckMasterTempoEnabled, toggleDeckMasterTempo, setDeckTargetBpm, reset
     resolveTransportDeckSnapshot,
     nativeTransport
   })
-
 resolveDeckMasterTempoEnabledForTransport = isDeckMasterTempoEnabled
 
 const handleDeckMasterTempoToggle = (deck: DeckKey) => {
@@ -951,6 +949,7 @@ onUnmounted(() => {
           :playback-active="topDeckWaveformPlaybackActive"
           :playback-rate="topDeckPlaybackRate"
           :visual-playback-rate="resolveDeckPlaybackRateForTransport('top')"
+          :waveform-gain="resolveDeckWaveformGain('top')"
           :playback-sync-revision="topDeckPlaybackSyncRevision"
           :grid-bpm="topDeckGridBpm"
           :loop-range="resolveDeckLoopRange('top')"
@@ -991,6 +990,7 @@ onUnmounted(() => {
           :playback-active="bottomDeckWaveformPlaybackActive"
           :playback-rate="bottomDeckPlaybackRate"
           :visual-playback-rate="resolveDeckPlaybackRateForTransport('bottom')"
+          :waveform-gain="resolveDeckWaveformGain('bottom')"
           :playback-sync-revision="bottomDeckPlaybackSyncRevision"
           :grid-bpm="bottomDeckGridBpm"
           :loop-range="resolveDeckLoopRange('bottom')"

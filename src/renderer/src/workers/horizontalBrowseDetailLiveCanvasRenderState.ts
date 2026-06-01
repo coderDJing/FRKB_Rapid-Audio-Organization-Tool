@@ -32,6 +32,7 @@ export type FrameState = {
   waveformRenderStyle: 'columns' | 'raw-curve'
   preferRawPeaksOnly: boolean
   themeVariant: 'light' | 'dark'
+  waveformGain: number
   playbackSyncRevision: number
 }
 

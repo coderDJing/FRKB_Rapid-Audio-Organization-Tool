@@ -88,6 +88,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const resolvePreviewTimeScale = () =>
     Math.max(0.25, Number(options.visualPlaybackRate?.() ?? options.playbackRate()) || 1)
 
+  const resolveWaveformGain = () => {
+    const numeric = Number(options.waveformGain?.() ?? 1)
+    if (!Number.isFinite(numeric)) return 1
+    return clampNumber(numeric, 0, 16)
+  }
+
   const resolvePreviewDurationSec = () => {
     const duration = Number(
       options.rawData.value?.duration ||
@@ -443,6 +449,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       playbackSyncRevision,
       playbackRate: Math.max(0.25, Number(options.playbackRate()) || 1),
       playbackDurationSec: resolvePlaybackDurationSecForRender(payload.rawData),
+      waveformGain: resolveWaveformGain(),
       dirtyStartSec: payload.dirtyStartSec,
       dirtyEndSec: payload.dirtyEndSec
     })

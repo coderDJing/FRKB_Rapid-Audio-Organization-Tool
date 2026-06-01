@@ -54,6 +54,17 @@ export const resolveHorizontalBrowseDeckSyncUiLock = (
   return cuePreviewActive && cuePreviewSyncEnabledBefore ? cuePreviewSyncLockBefore : syncLock
 }
 
+export const resolveHorizontalBrowseDeckWaveformGain = (snapshot: {
+  autoGainEnabled: boolean
+  autoGainStatus: string
+  autoGainValue: number
+}) => {
+  if (!snapshot.autoGainEnabled) return 1
+  if (snapshot.autoGainStatus !== 'active' && snapshot.autoGainStatus !== 'master') return 1
+  const value = Number(snapshot.autoGainValue)
+  return Number.isFinite(value) ? Math.max(0, Math.min(16, value)) : 1
+}
+
 export const buildHorizontalBrowseDeckToolbarState = (
   toolbarState: {
     disabled: boolean

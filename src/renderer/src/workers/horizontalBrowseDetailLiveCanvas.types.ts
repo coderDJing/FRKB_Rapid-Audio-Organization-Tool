@@ -66,6 +66,7 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   playbackSyncRevision: number
   playbackRate: number
   playbackDurationSec: number
+  waveformGain: number
   dirtyStartSec?: number
   dirtyEndSec?: number
 }

@@ -28,6 +28,7 @@ const props = defineProps<{
   playbackActive: boolean
   playbackRate: number
   visualPlaybackRate?: number
+  waveformGain?: number
   playbackSyncRevision: number
   gridBpm: number
   loopRange: HorizontalBrowseLoopRange | null
@@ -100,6 +101,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       :playback-active="props.playbackActive"
       :playback-rate="props.playbackRate"
       :visual-playback-rate="props.visualPlaybackRate"
+      :waveform-gain="props.waveformGain"
       :playback-sync-revision="props.playbackSyncRevision"
       :grid-bpm="props.gridBpm"
       :loop-range="props.loopRange"
