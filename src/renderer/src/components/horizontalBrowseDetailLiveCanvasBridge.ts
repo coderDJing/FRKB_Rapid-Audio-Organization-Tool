@@ -158,8 +158,15 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
     postMessage({ type: 'stopPlayback' })
   }
 
-  const resetRaw = (meta: HorizontalBrowseDetailLiveCanvasRawMeta, retainCurrent = true) => {
-    postMessage({ type: 'resetRaw', payload: { ...meta, retainCurrent } })
+  const resetRaw = (
+    meta: HorizontalBrowseDetailLiveCanvasRawMeta,
+    retainCurrent = true,
+    preferRetainedPlaybackRaw = false
+  ) => {
+    postMessage({
+      type: 'resetRaw',
+      payload: { ...meta, retainCurrent, preferRetainedPlaybackRaw }
+    })
   }
 
   const ensureRawCapacity = (meta: HorizontalBrowseDetailLiveCanvasRawMeta) => {

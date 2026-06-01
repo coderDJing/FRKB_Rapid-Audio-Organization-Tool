@@ -54,7 +54,8 @@ let playbackAnimation: PlaybackAnimationState | null = null
 let playbackAnimationToken = 0
 let playbackTimer: ReturnType<typeof setTimeout> | null = null
 let playbackRaf = 0
-let playbackInitialFullRenderLeadMs = PLAYBACK_INITIAL_FULL_RENDER_LEAD_DEFAULT_MS
+let playbackInitialFullRenderLeadMs = PLAYBACK_INITIAL_FULL_RENDER_LEAD_DEFAULT_MS,
+  preferRetainedPlaybackRaw = false
 const COLUMN_SMOOTH_OVERSCAN_SCALED_PX = 2
 const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => {
   const scope = self as typeof globalThis & {
@@ -185,9 +186,16 @@ const ensureSegmentScratch = (scaledWidth: number, scaledHeight: number) => {
 }
 
 const resolveRawForRender = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
+  if (
+    preferRetainedPlaybackRaw &&
+    request.playbackActive === true &&
+    request.rawSlot === 'live' &&
+    request.allowScrollReuse !== false
+  ) {
+    return rawStore.resolveForRender('retained') ?? rawStore.resolveForRender('live')
+  }
   return rawStore.resolveForRender(request.rawSlot)
 }
-
 const resolveRawRevisionForRender = (rawData: RawWaveformData | null) => {
   return rawStore.resolveRevisionForRender(rawData)
 }
@@ -730,6 +738,15 @@ const processRender = (
     (isDirtyRender
       ? renderDirtyRange(request, metrics, renderState as FrameState)
       : renderFullFrame(request, metrics, renderState as FrameState))
+  if (
+    ready &&
+    request.playbackActive === true &&
+    request.rawSlot === 'live' &&
+    request.allowScrollReuse === false &&
+    rawData === rawStore.resolveForRender('live')
+  ) {
+    preferRetainedPlaybackRaw = false
+  }
 
   const holdMissingPlaybackRaw =
     !!metrics &&
@@ -795,7 +812,7 @@ const processRender = (
         renderToken: request.renderToken,
         rangeStartSec: committedRangeStartSec,
         rangeDurationSec: committedRangeDurationSec,
-        ready: ready || (preserved && !holdMissingPlaybackRaw)
+        ready: ready || preserved
       }
     })
   }
@@ -1033,11 +1050,13 @@ self.onmessage = (event: MessageEvent<HorizontalBrowseDetailLiveCanvasWorkerInco
   }
 
   if (message.type === 'clear') {
+    preferRetainedPlaybackRaw = false
     clearCanvasPixels()
     return
   }
 
   if (message.type === 'clearRaw') {
+    preferRetainedPlaybackRaw = false
     rawStore.clear()
     clearCanvasPixels()
     return
@@ -1049,6 +1068,7 @@ self.onmessage = (event: MessageEvent<HorizontalBrowseDetailLiveCanvasWorkerInco
   }
 
   if (message.type === 'resetRaw') {
+    preferRetainedPlaybackRaw = message.payload.preferRetainedPlaybackRaw === true
     rawStore.ensureCapacity(message.payload, message.payload.retainCurrent === true)
     return
   }
@@ -1064,6 +1084,7 @@ self.onmessage = (event: MessageEvent<HorizontalBrowseDetailLiveCanvasWorkerInco
   }
 
   if (message.type === 'replaceRaw') {
+    preferRetainedPlaybackRaw = false
     rawStore.replace(message.payload.data)
     return
   }

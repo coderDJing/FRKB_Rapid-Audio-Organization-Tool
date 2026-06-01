@@ -237,7 +237,8 @@ export const useHorizontalBrowseRawWaveformStream = (
       forceRestart: true,
       forceLiveDecode: true,
       initialRetryCount: rawStreamInitialRetryCount + 1,
-      bootstrapDurationSec: resolveSeekBootstrapDurationSec()
+      bootstrapDurationSec: resolveSeekBootstrapDurationSec(),
+      preserveDisplay: canPreservePlaybackDisplayForStreamRestart(viewportAnchorSec)
     })
   }
 
@@ -328,9 +329,10 @@ export const useHorizontalBrowseRawWaveformStream = (
     startSec = 0,
     startOptions: RawWaveformStreamStartOptions = {}
   ) => {
+    const preserveDisplay = startOptions.preserveDisplay === true
     clearQueuedRawStreamPayloads()
     cancelRawWaveformStream()
-    options.resetRawStreamDrawState()
+    options.resetRawStreamDrawState({ preserveDisplay })
     rawStreamStartSec = Math.max(0, Number(startSec) || 0)
     rawStreamRequestId = `horizontal-raw-${options.direction()}-${Date.now()}-${requestToken}`
     options.rawStreamActive.value = true
@@ -476,6 +478,13 @@ export const useHorizontalBrowseRawWaveformStream = (
     return visibleStartSec >= loadedStartSec && coverageEndSec <= loadedEndSec
   }
 
+  const canPreservePlaybackDisplayForStreamRestart = (anchorSec: number) => {
+    if (!options.playing() || !options.rawData.value) return false
+    const { loadedStartSec, loadedEndSec } = resolveLoadedTimelineRange()
+    const { visibleStartSec, visibleEndSec } = resolveVisibleTimelineRange(anchorSec)
+    return visibleEndSec > loadedStartSec && visibleStartSec < loadedEndSec
+  }
+
   const resolveActiveInitialStreamTimelineRange = () => {
     if (!rawStreamRequestId || !options.rawStreamActive.value || rawStreamChunkCount > 0) {
       return null
@@ -518,6 +527,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     beginRawWaveformStream(filePath, resolveWaveformTargetRate(false), Date.now(), targetStartSec, {
       bootstrapDurationSec: startOptions.bootstrapDurationSec ?? resolveSeekBootstrapDurationSec(),
       bootstrapAnchorSec: targetSec,
+      preserveDisplay: startOptions.preserveDisplay === true,
       forceLiveDecode,
       initialRetryCount: startOptions.initialRetryCount
     })
@@ -953,11 +963,15 @@ export const useHorizontalBrowseRawWaveformStream = (
       ) {
         return
       }
-      restartRawWaveformStreamAt(viewportAnchorSec, false)
+      restartRawWaveformStreamAt(viewportAnchorSec, false, {
+        preserveDisplay: canPreservePlaybackDisplayForStreamRestart(viewportAnchorSec)
+      })
       return
     }
     if (!rawStreamRequestId || !options.rawStreamActive.value || !options.rawData.value) {
-      restartRawWaveformStreamAt(viewportAnchorSec, false)
+      restartRawWaveformStreamAt(viewportAnchorSec, false, {
+        preserveDisplay: canPreservePlaybackDisplayForStreamRestart(viewportAnchorSec)
+      })
       return
     }
 
@@ -974,7 +988,9 @@ export const useHorizontalBrowseRawWaveformStream = (
       visibleDurationSec * HORIZONTAL_BROWSE_RAW_VIEWPORT_RESTART_GAP_FACTOR
     )
     if (visibleStartSec + restartGapSec < loadedStartSec || visibleStartSec > loadedEndSec) {
-      restartRawWaveformStreamAt(viewportAnchorSec, false)
+      restartRawWaveformStreamAt(viewportAnchorSec, false, {
+        preserveDisplay: canPreservePlaybackDisplayForStreamRestart(viewportAnchorSec)
+      })
       return
     }
 

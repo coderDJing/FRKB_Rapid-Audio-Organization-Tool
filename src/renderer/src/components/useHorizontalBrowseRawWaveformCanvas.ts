@@ -79,11 +79,20 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let playbackRawSettleUntilMs = 0
   let lastQueuedPlaybackRawSlot: 'live' | 'retained' | null = null
   let lastQueuedMissingPlaybackRawSyncRevision = -1
+  // 播放续流只补 raw 数据，不应触发 seek/load 那种黑屏重建。
+  let preservePlaybackDisplayUntilRawReady = false
 
   const liveCanvasBridge = createHorizontalBrowseDetailLiveCanvasBridge({
     onRendered: (payload) => handleLiveCanvasRendered(payload),
     onPresentation: (payload) => handleLiveCanvasPresentation(payload)
   })
+
+  const setDisplayReady = (ready: boolean) => {
+    if (!ready) {
+      preservePlaybackDisplayUntilRawReady = false
+    }
+    displayReady.value = ready
+  }
 
   const resolvePreviewTimeScale = () =>
     Math.max(0.25, Number(options.visualPlaybackRate?.() ?? options.playbackRate()) || 1)
@@ -209,7 +218,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     lastQueuedMissingPlaybackRawSyncRevision = -1
     clearLiveCanvasPresentationOffset()
     // 外部重置 retained（例如切歌、loadWaveform）会清掉 canvas 上所有可用像素。
-    displayReady.value = false
+    setDisplayReady(false)
   }
 
   const holdCurrentWaveformFrame = () => {
@@ -217,16 +226,24 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     suppressNextPlaybackScrollReuse = false
   }
 
-  const resetRawStreamDrawState = () => {
-    liveCanvasRenderToken += 1
-    displayReady.value = false
-    lastStreamRenderedRawData = null
-    suppressNextPlaybackScrollReuse = true
-    forceNextRawStreamCoverageFullDraw = true
+  const resetRawStreamDrawState = (resetOptions: { preserveDisplay?: boolean } = {}) => {
+    const preserveDisplay = resetOptions.preserveDisplay === true && displayReady.value
+    if (preserveDisplay) {
+      preservePlaybackDisplayUntilRawReady = true
+    } else {
+      preservePlaybackDisplayUntilRawReady = false
+      liveCanvasRenderToken += 1
+      setDisplayReady(false)
+      liveCanvasBridge.clear()
+    }
+    if (!preserveDisplay) {
+      lastStreamRenderedRawData = null
+      suppressNextPlaybackScrollReuse = true
+      forceNextRawStreamCoverageFullDraw = true
+    }
     playbackRawSettleUntilMs = 0
     lastQueuedPlaybackRawSlot = null
     lastQueuedMissingPlaybackRawSyncRevision = -1
-    liveCanvasBridge.clear()
     clearRawStreamDirtyRange()
     cancelStreamDrawFrameScheduling()
   }
@@ -293,10 +310,11 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     if (payload.renderToken !== liveCanvasRenderToken) return
     displayStartSec.value = payload.rangeStartSec
     if (!payload.ready) {
-      displayReady.value = false
+      setDisplayReady(false)
       return
     }
-    displayReady.value = true
+    preservePlaybackDisplayUntilRawReady = false
+    setDisplayReady(true)
   }
 
   const clearLiveCanvasPresentationOffset = () => {
@@ -529,7 +547,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const duration = resolvePreviewDurationSec()
     if (!duration) {
       clearCanvas()
-      displayReady.value = false
+      setDisplayReady(false)
       return
     }
 
@@ -629,6 +647,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const drawableRawData = effectiveRawIntersection ? effectiveRawData : null
     const canRenderWithoutRawCoverage =
       effectiveMixxxSelection.source === 'live' || effectiveMixxxSelection.source === 'retained'
+    const shouldPreservePlaybackDisplay =
+      preservePlaybackDisplayUntilRawReady && playbackStreamReuse && wasDisplayReady
 
     const commitRetainedFromDrawn = () => {
       if (!currentFilePath) return
@@ -641,9 +661,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     }
 
     if (!effectiveMixxxData && !drawableRawData) {
+      if (shouldPreservePlaybackDisplay) return
       lastStreamRenderedRawData = null
       // 完全无高清波形可画：只清波形层；时间线 overlay 仍按当前 range 渲染。
-      displayReady.value = false
+      setDisplayReady(false)
       queueLiveWaveformRender({
         rangeStartSec: renderStartSec,
         rangeDurationSec: visibleDuration,
@@ -667,8 +688,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           (allowPlaybackScrollReuse && rawDataRefStable) ||
           allowPartialViewportPaint)
       if (!canDrawStream) {
+        if (shouldPreservePlaybackDisplay) return
         lastStreamRenderedRawData = null
-        displayReady.value = false
+        setDisplayReady(false)
         queueLiveWaveformRender({
           rangeStartSec: renderStartSec,
           rangeDurationSec: visibleDuration,
@@ -698,8 +720,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         finishTiming()
       }
     } else if (!drawableRawData && !canRenderWithoutRawCoverage) {
+      if (shouldPreservePlaybackDisplay) return
       lastStreamRenderedRawData = null
-      displayReady.value = false
+      setDisplayReady(false)
       queueLiveWaveformRender({
         rangeStartSec: renderStartSec,
         rangeDurationSec: visibleDuration,
@@ -843,6 +866,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const scheduleRawStreamDirtyDraw = (dirtyStartSec: number, dirtyEndSec: number) => {
     const safeStartSec = Math.max(0, Math.min(dirtyStartSec, dirtyEndSec))
     const safeEndSec = Math.max(safeStartSec, dirtyEndSec)
+    if (preservePlaybackDisplayUntilRawReady && options.playing.value && !options.dragging.value) {
+      return
+    }
     if (isPlaybackDirtyPatchRedundant()) {
       clearRawStreamDirtyRange()
       return
@@ -888,7 +914,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   }
 
   const resetLiveWaveformRaw = (meta: HorizontalBrowseDetailLiveCanvasRawMeta) => {
-    liveCanvasBridge.resetRaw(meta)
+    liveCanvasBridge.resetRaw(meta, true, preservePlaybackDisplayUntilRawReady)
   }
 
   const ensureLiveWaveformRawCapacity = (meta: HorizontalBrowseDetailLiveCanvasRawMeta) => {

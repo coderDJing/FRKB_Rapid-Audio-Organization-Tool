@@ -92,6 +92,7 @@ export type HorizontalBrowseDetailLiveCanvasWorkerIncoming =
       type: 'resetRaw'
       payload: HorizontalBrowseDetailLiveCanvasRawMeta & {
         retainCurrent?: boolean
+        preferRetainedPlaybackRaw?: boolean
       }
     }
   | {

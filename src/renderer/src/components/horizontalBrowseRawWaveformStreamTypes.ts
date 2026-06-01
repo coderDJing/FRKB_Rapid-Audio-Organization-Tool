@@ -62,6 +62,7 @@ export type RawWaveformStreamStartOptions = {
   bootstrapDurationSec?: number
   forceLiveDecode?: boolean
   initialRetryCount?: number
+  preserveDisplay?: boolean
 }
 
 export type PendingRawStreamChunkWork = {
@@ -102,7 +103,7 @@ export type UseHorizontalBrowseRawWaveformStreamOptions = {
   clearStreamDrawScheduling: () => void
   scheduleRawStreamDirtyDraw: (dirtyStartSec: number, dirtyEndSec: number) => void
   scheduleRawStreamCoverageDraw: () => void
-  resetRawStreamDrawState: () => void
+  resetRawStreamDrawState: (options?: { preserveDisplay?: boolean }) => void
   scheduleDraw: () => void
   holdCurrentWaveformFrame: () => void
   storeRawWaveform: (filePath: string, data: RawWaveformData) => void
