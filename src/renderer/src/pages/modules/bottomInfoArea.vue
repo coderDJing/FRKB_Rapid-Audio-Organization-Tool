@@ -25,6 +25,10 @@ const selectedSongCount = computed(() =>
 const selectedSongsText = computed(() =>
   t('bottomInfo.selectedSongs', { count: selectedSongCount.value })
 )
+const normalizeAnalysisPath = (value: string) =>
+  String(value || '')
+    .replace(/\//g, '\\')
+    .toLowerCase()
 const countPendingAnalysis = (songInfoArr: ISongInfo[]): number => {
   let count = 0
   for (const song of songInfoArr) {
@@ -35,14 +39,45 @@ const countPendingAnalysis = (songInfoArr: ISongInfo[]): number => {
 const pendingAnalysisCount = computed(() =>
   isPioneerView.value ? 0 : countPendingAnalysis(runtime.songsArea?.songInfoArr || [])
 )
-const pendingAnalysisText = computed(() =>
-  t('bottomInfo.pendingAnalysis', { count: pendingAnalysisCount.value })
+const manualPendingAnalysisCount = computed(
+  () =>
+    new Set(
+      runtime.manualKeyAnalysisPendingFilePaths
+        .map((filePath) => normalizeAnalysisPath(filePath))
+        .filter(Boolean)
+    ).size
+)
+const pioneerPendingAnalysisCount = computed(() =>
+  Math.max(0, Number(runtime.pioneerDeviceLibrary.pendingAnalysisCount) || 0)
 )
 const splitLeftPendingCount = computed(() =>
   countPendingAnalysis(runtime.songsAreaPanels.panes.left.songInfoArr)
 )
 const splitRightPendingCount = computed(() =>
   countPendingAnalysis(runtime.songsAreaPanels.panes.right.songInfoArr)
+)
+const hasTotalRowContent = computed(() => {
+  if (manualPendingAnalysisCount.value > 0) return true
+  if (isPioneerView.value) {
+    return selectedSongCount.value > 0 || pioneerPendingAnalysisCount.value > 0
+  }
+  if (runtime.songsAreaPanels.splitEnabled) {
+    return (
+      runtime.songsAreaPanels.panes.left.songInfoArr.length > 0 ||
+      runtime.songsAreaPanels.panes.right.songInfoArr.length > 0
+    )
+  }
+  return Boolean(runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length > 0)
+})
+const displayPendingAnalysisCount = computed(() =>
+  manualPendingAnalysisCount.value > 0
+    ? manualPendingAnalysisCount.value
+    : pendingAnalysisCount.value
+)
+const displayPioneerPendingAnalysisCount = computed(() =>
+  manualPendingAnalysisCount.value > 0
+    ? manualPendingAnalysisCount.value
+    : pioneerPendingAnalysisCount.value
 )
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -447,6 +482,34 @@ const handleDocumentClick = () => {
   }
 }
 
+const handleKeyAnalysisStageUpdate = (
+  _event: unknown,
+  payload?: { filePath?: string; stage?: string }
+) => {
+  const stage = String(payload?.stage || '')
+  if (stage !== 'job-done' && stage !== 'job-error') return
+  const normalizedDonePath = normalizeAnalysisPath(String(payload?.filePath || ''))
+  if (!normalizedDonePath) return
+  const nextPending = runtime.manualKeyAnalysisPendingFilePaths.filter(
+    (filePath) => normalizeAnalysisPath(filePath) !== normalizedDonePath
+  )
+  if (nextPending.length !== runtime.manualKeyAnalysisPendingFilePaths.length) {
+    runtime.manualKeyAnalysisPendingFilePaths = nextPending
+  }
+}
+window.electron.ipcRenderer.on('key-analysis:stage-update', handleKeyAnalysisStageUpdate)
+
+const handleManualKeyAnalysisBatchStart = (_event: unknown, payload?: { filePaths?: string[] }) => {
+  const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
+  if (!filePaths.length) return
+  const nextPending = new Set(runtime.manualKeyAnalysisPendingFilePaths)
+  for (const filePath of filePaths) {
+    if (normalizeAnalysisPath(filePath)) nextPending.add(filePath)
+  }
+  runtime.manualKeyAnalysisPendingFilePaths = Array.from(nextPending)
+}
+window.electron.ipcRenderer.on('key-analysis:manual-batch-start', handleManualKeyAnalysisBatchStart)
+
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick)
 })
@@ -586,6 +649,14 @@ onBeforeUnmount(() => {
   )
   window.electron?.ipcRenderer?.removeListener('noAudioFileWasScanned', handleNoAudioFileWasScanned)
   window.electron?.ipcRenderer?.removeListener('audio:convert:done', handleAudioConvertDone)
+  window.electron?.ipcRenderer?.removeListener(
+    'key-analysis:stage-update',
+    handleKeyAnalysisStageUpdate
+  )
+  window.electron?.ipcRenderer?.removeListener(
+    'key-analysis:manual-batch-start',
+    handleManualKeyAnalysisBatchStart
+  )
 })
 </script>
 <template>
@@ -678,18 +749,13 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </TransitionGroup>
-    <div
-      v-if="
-        showTotalRow &&
-        ((isPioneerView && runtime.pioneerSelectedRowKeys.length > 0) ||
-          (!isPioneerView &&
-            runtime.songsArea.songListUUID &&
-            runtime.songsArea.songInfoArr.length > 0))
-      "
-      class="total-row"
-    >
+    <div v-if="showTotalRow && hasTotalRowContent" class="total-row">
       <div v-if="selectedSongCount > 0" class="selected-count-text">{{ selectedSongsText }}</div>
-      <template v-if="runtime.songsAreaPanels.splitEnabled">
+      <template
+        v-if="
+          !isPioneerView && runtime.songsAreaPanels.splitEnabled && manualPendingAnalysisCount <= 0
+        "
+      >
         <div v-if="splitLeftPendingCount > 0" class="selected-count-text">
           {{ t('bottomInfo.pendingAnalysisLeft', { count: splitLeftPendingCount }) }}
         </div>
@@ -697,9 +763,14 @@ onBeforeUnmount(() => {
           {{ t('bottomInfo.pendingAnalysisRight', { count: splitRightPendingCount }) }}
         </div>
       </template>
+      <template v-else-if="isPioneerView">
+        <div v-if="displayPioneerPendingAnalysisCount > 0" class="selected-count-text">
+          {{ t('bottomInfo.pendingAnalysis', { count: displayPioneerPendingAnalysisCount }) }}
+        </div>
+      </template>
       <template v-else>
-        <div v-if="pendingAnalysisCount > 0" class="selected-count-text">
-          {{ pendingAnalysisText }}
+        <div v-if="displayPendingAnalysisCount > 0" class="selected-count-text">
+          {{ t('bottomInfo.pendingAnalysis', { count: displayPendingAnalysisCount }) }}
         </div>
       </template>
       <div v-if="!isPioneerView" class="total-text">
@@ -904,79 +975,6 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-.progress-bar {
-  position: absolute;
-  top: 7px;
-  left: 0;
-  height: 5px;
-  background: linear-gradient(90deg, var(--task-progress-start), var(--task-progress-end));
-  background-size: 200% 100%;
-  animation: slideBg 3s linear infinite;
-  border-radius: 3px;
-  overflow: hidden;
-  will-change: background-position, width;
-  transition: width 0.2s ease;
-}
-
-.progress-bar::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: repeating-linear-gradient(
-    45deg,
-    var(--task-progress-stripe-strong) 0 8px,
-    var(--task-progress-stripe-soft) 8px 16px
-  );
-  mix-blend-mode: overlay;
-  animation: moveStripes 2s linear infinite;
-  will-change: background-position;
-}
-
-.progress-bar::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0) 0%,
-    var(--task-progress-shine) 50%,
-    rgba(255, 255, 255, 0) 100%
-  );
-  transform: translateX(-100%);
-  animation: shine 3.6s ease-in-out infinite;
-  will-change: transform;
-}
-
-@keyframes slideBg {
-  0% {
-    background-position: 0 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-@keyframes moveStripes {
-  0% {
-    background-position: 0 0;
-  }
-  100% {
-    background-position: 100px 0;
-  }
-}
-
-@keyframes shine {
-  0% {
-    transform: translateX(-100%);
-  }
-  50% {
-    transform: translateX(0);
-  }
-  100% {
-    transform: translateX(100%);
-  }
-}
-
 .bottom-info-area {
   --task-progress-start: #3a7afe;
   --task-progress-end: #4da3ff;
@@ -1076,63 +1074,5 @@ onBeforeUnmount(() => {
   min-height: 28px;
   height: auto;
 }
-
-.task-btn {
-  border: 1px solid var(--divider);
-  background: transparent;
-  color: var(--text);
-  border-radius: 4px;
-  padding: 0 8px;
-  height: 18px;
-  line-height: 16px;
-  box-sizing: border-box;
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.task-btn:hover {
-  background: var(--hover);
-  border-color: var(--text-weak);
-}
-.total-row {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  min-height: 20px;
-  padding: 0 8px;
-}
-.selected-count-text,
-.total-text {
-  font-size: 11px;
-  color: var(--text-weak);
-  white-space: nowrap;
-  margin-bottom: 2px;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.total-row > .selected-count-text + .selected-count-text::before,
-.total-row > .selected-count-text + .total-text::before,
-.total-row > .total-text + .selected-count-text::before {
-  content: '|';
-  margin-right: 12px;
-  opacity: 0.4;
-}
-
-.progress-fade-enter-from,
-.progress-fade-leave-to {
-  opacity: 0;
-  transform: translateY(6px);
-}
-
-.progress-fade-leave-active {
-  position: relative;
-}
-
-.progress-fade-enter-active,
-.progress-fade-leave-active {
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
 </style>
+<style lang="scss" scoped src="./bottomInfoAreaFooter.scss"></style>

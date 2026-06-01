@@ -549,13 +549,6 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
     )
     return
   }
-
-  if (result.action === 'trackCacheCleared') {
-    const selectionBeforeReload = [...songsAreaState.selectedSongFilePath]
-    await openSongList()
-    songsAreaState.selectedSongFilePath = selectionBeforeReload.filter(Boolean)
-    return
-  }
 }
 
 const requestImmediateAnalysis = (song: ISongInfo) => {

@@ -141,6 +141,8 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     selectedLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType,
     selectedPlaylistId: runtime.pioneerDeviceLibrary.selectedPlaylistId,
     loading: runtime.pioneerDeviceLibrary.loading,
+    visibleSongCount: runtime.pioneerDeviceLibrary.visibleSongCount,
+    pendingAnalysisCount: runtime.pioneerDeviceLibrary.pendingAnalysisCount,
     treeNodes: Array.isArray(runtime.pioneerDeviceLibrary.treeNodes)
       ? [...runtime.pioneerDeviceLibrary.treeNodes]
       : []
@@ -154,6 +156,8 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     runtime.pioneerDeviceLibrary.selectedLibraryType = snapshot.selectedLibraryType
     runtime.pioneerDeviceLibrary.selectedPlaylistId = snapshot.selectedPlaylistId
     runtime.pioneerDeviceLibrary.loading = snapshot.loading
+    runtime.pioneerDeviceLibrary.visibleSongCount = snapshot.visibleSongCount
+    runtime.pioneerDeviceLibrary.pendingAnalysisCount = snapshot.pendingAnalysisCount
     runtime.pioneerDeviceLibrary.treeNodes = Array.isArray(snapshot.treeNodes)
       ? [...snapshot.treeNodes]
       : []
@@ -167,6 +171,8 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     runtime.pioneerDeviceLibrary.selectedLibraryType = ''
     runtime.pioneerDeviceLibrary.selectedPlaylistId = 0
     runtime.pioneerDeviceLibrary.loading = false
+    runtime.pioneerDeviceLibrary.visibleSongCount = 0
+    runtime.pioneerDeviceLibrary.pendingAnalysisCount = 0
     runtime.pioneerDeviceLibrary.treeNodes = []
   }
 

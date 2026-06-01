@@ -42,6 +42,7 @@ type WaveformCacheEntry =
 type WaveformPlaceholderState = 'loading' | 'unavailable' | 'ready'
 const PIONEER_WAVEFORM_EAGER_COUNT = 8
 type WaveformUpdatedPayload = { filePath?: string }
+type ManualKeyAnalysisBatchStartPayload = { filePaths?: string[] }
 type PioneerPreviewWaveformItemPayload = {
   requestId?: string
   analyzePath?: string
@@ -175,6 +176,7 @@ export function useWaveformPreview(params: {
   const placeholderReasonMap = markRaw(new Map<string, string>())
   const minMaxCache = markRaw(new Map<string, SongListWaveformMinMaxCacheEntry>())
   const rgbMetricsCache = markRaw(new Map<string, SongListWaveformRgbMetricsCacheEntry>())
+  const waveformDataVersionMap = markRaw(new Map<string, number>())
   const inflight = new Set<string>()
   const queuedMissing = new Set<string>()
   const MAX_CACHE_ENTRIES = 200
@@ -243,6 +245,8 @@ export function useWaveformPreview(params: {
           }
     worker.postMessage(payload)
   }
+  const getWaveformDataVersion = (filePath: string) =>
+    waveformDataVersionMap.get(normalizePath(filePath)) ?? 0
   const renderWaveformWithWorker = (filePath: string) => {
     if (!canUseAsyncWaveformWorker) return
     const worker = ensureWaveformWorker()
@@ -339,6 +343,18 @@ export function useWaveformPreview(params: {
       )?.song || null
     )
   }
+  const collectKnownFilePathsByNormalizedPaths = (normalizedPaths: Set<string>) =>
+    Array.from(
+      new Set([
+        ...getVisiblePaths(),
+        ...dataMap.keys(),
+        ...canvasMap.keys(),
+        ...inflight,
+        ...queuedMissing
+      ])
+    )
+      .map((filePath) => String(filePath || '').trim())
+      .filter((filePath) => filePath && normalizedPaths.has(normalizePath(filePath)))
   const buildPioneerStreamRequestId = () =>
     `pioneer-waveform:${Date.now()}:${Math.random().toString(36).slice(2)}`
   const resetPioneerStreamState = () => {
@@ -481,6 +497,26 @@ export function useWaveformPreview(params: {
     placeholderVersion.value
     if (placeholderStateMap.get(filePath) !== 'unavailable') return ''
     return placeholderReasonMap.get(filePath) || ''
+  }
+  const clearWaveformDataForFilePath = (filePath: string) => {
+    if (!filePath) return
+    const normalizedPath = normalizePath(filePath)
+    if (normalizedPath) {
+      waveformDataVersionMap.set(normalizedPath, getWaveformDataVersion(filePath) + 1)
+    }
+    dataMap.delete(filePath)
+    minMaxCache.delete(filePath)
+    rgbMetricsCache.delete(filePath)
+    queuedMissing.delete(filePath)
+    inflight.delete(filePath)
+    syncWaveformDataToWorker(filePath, null)
+    if (canUseAsyncWaveformWorker) {
+      ensureWaveformWorker()?.postMessage({
+        type: 'clearCanvas',
+        payload: { canvasId: filePath }
+      } satisfies SongListWaveformWorkerIncoming)
+    }
+    setWaveformPlaceholderLoading(filePath)
   }
   const storeWaveformData = (filePath: string, data: WaveformCacheEntry) => {
     if (!filePath) return
@@ -647,6 +683,9 @@ export function useWaveformPreview(params: {
   }
   const fetchWaveformBatch = async (filePaths: string[]) => {
     if (!filePaths.length) return
+    const requestVersions = new Map(
+      filePaths.map((filePath) => [filePath, getWaveformDataVersion(filePath)])
+    )
     for (const filePath of filePaths) {
       inflight.add(filePath)
       setWaveformPlaceholderLoading(filePath)
@@ -672,6 +711,10 @@ export function useWaveformPreview(params: {
     const itemMap = new Map(items.map((item) => [item.filePath, item.data ?? null]))
     const missing: string[] = []
     for (const filePath of filePaths) {
+      if (getWaveformDataVersion(filePath) !== (requestVersions.get(filePath) ?? 0)) {
+        inflight.delete(filePath)
+        continue
+      }
       const data = itemMap.has(filePath) ? itemMap.get(filePath) : null
       storeWaveformData(
         filePath,
@@ -812,17 +855,33 @@ export function useWaveformPreview(params: {
     ) {
       return
     }
-    setWaveformPlaceholderLoading(visibleFilePath)
-    dataMap.delete(visibleFilePath)
-    minMaxCache.delete(visibleFilePath)
-    rgbMetricsCache.delete(visibleFilePath)
-    syncWaveformDataToWorker(visibleFilePath, null)
-    ensureWaveformWorker()?.postMessage({
-      type: 'clearCanvas',
-      payload: { canvasId: visibleFilePath }
-    } satisfies SongListWaveformWorkerIncoming)
-    queuedMissing.delete(visibleFilePath)
+    clearWaveformDataForFilePath(visibleFilePath)
     void fetchWaveformBatch([visibleFilePath])
+  }
+  const handleManualKeyAnalysisBatchStart = (
+    _event: unknown,
+    payload?: ManualKeyAnalysisBatchStartPayload
+  ) => {
+    const normalizedPaths = new Set(
+      (Array.isArray(payload?.filePaths) ? payload.filePaths : [])
+        .map((filePath) => normalizePath(filePath))
+        .filter(Boolean)
+    )
+    if (!normalizedPaths.size) return
+    const affectedFilePaths = collectKnownFilePathsByNormalizedPaths(normalizedPaths).filter(
+      (filePath) => {
+        const song = resolveVisibleSongByFilePath(filePath)
+        return !resolveSongExternalWaveformSource(song, {
+          rootPath: resolveExternalRootPath(),
+          sourceKind: runtime.pioneerDeviceLibrary.selectedSourceKind || undefined
+        })
+      }
+    )
+    if (!affectedFilePaths.length) return
+    for (const filePath of affectedFilePaths) {
+      clearWaveformDataForFilePath(filePath)
+    }
+    scheduleDrawForFilePaths(affectedFilePaths)
   }
   const handlePioneerPreviewWaveformItem: PioneerPreviewWaveformItemHandler = (_event, payload) => {
     const requestId = String(payload?.requestId || '').trim()
@@ -982,6 +1041,12 @@ export function useWaveformPreview(params: {
   pioneerPreviewWaveformDoneSubscribers.add(handlePioneerPreviewWaveformDone)
   bindThemeClassObserver()
   bindWaveformIpcListeners()
+  if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
+    window.electron.ipcRenderer.on(
+      'key-analysis:manual-batch-start',
+      handleManualKeyAnalysisBatchStart
+    )
+  }
   emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:progress', handleWaveformPreviewProgress)
   onBeforeUnmount(() => {
@@ -1001,6 +1066,12 @@ export function useWaveformPreview(params: {
     pioneerPreviewWaveformItemSubscribers.delete(handlePioneerPreviewWaveformItem)
     pioneerPreviewWaveformDoneSubscribers.delete(handlePioneerPreviewWaveformDone)
     unbindWaveformIpcListenersIfIdle()
+    if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
+      window.electron.ipcRenderer.removeListener(
+        'key-analysis:manual-batch-start',
+        handleManualKeyAnalysisBatchStart
+      )
+    }
     emitter.off('waveform-preview:state', handleWaveformPreviewState)
     emitter.off('waveform-preview:progress', handleWaveformPreviewProgress)
   })

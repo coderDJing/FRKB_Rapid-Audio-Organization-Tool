@@ -172,6 +172,8 @@ interface IRekordboxLibraryBrowserState {
   selectedLibraryType: RekordboxSourceLibraryType | ''
   selectedPlaylistId: number
   loading: boolean
+  visibleSongCount: number
+  pendingAnalysisCount: number
   treeNodes: IPioneerPlaylistTreeNode[]
 }
 

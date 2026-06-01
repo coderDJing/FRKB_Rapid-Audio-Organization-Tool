@@ -56,10 +56,6 @@ export interface MetadataBatchUpdatedAction {
   updates: Array<{ song: ISongInfo; oldFilePath?: string }>
 }
 
-export interface TrackCacheClearedAction {
-  action: 'trackCacheCleared'
-}
-
 type DeleteSummary = {
   total?: number
   success?: number
@@ -282,7 +278,6 @@ export function useSongItemContextMenu(
     | SongsRemovedAction
     | MetadataUpdatedAction
     | MetadataBatchUpdatedAction
-    | TrackCacheClearedAction
     | null
   > => {
     const isRecycleBinView = songsAreaState.songListUUID === RECYCLE_BIN_UUID
@@ -1053,7 +1048,7 @@ export function useSongItemContextMenu(
       case 'tracks.clearTrackCache': {
         const files = resolveSelectedFilePaths()
         await window.electron.ipcRenderer.invoke('track:cache:clear:batch', files)
-        return { action: 'trackCacheCleared' }
+        break
       }
     }
     return null // Default return if no dialog action

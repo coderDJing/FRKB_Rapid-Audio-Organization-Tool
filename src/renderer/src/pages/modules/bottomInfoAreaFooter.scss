@@ -1,0 +1,139 @@
+.total-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 8px;
+}
+
+.selected-count-text,
+.total-text {
+  font-size: 11px;
+  color: var(--text-weak);
+  white-space: nowrap;
+  margin-bottom: 2px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.total-row > .selected-count-text + .selected-count-text::before,
+.total-row > .selected-count-text + .total-text::before,
+.total-row > .total-text + .selected-count-text::before {
+  content: '|';
+  display: inline-block;
+  margin: 0 10px;
+  opacity: 0.4;
+}
+
+.task-btn {
+  border: 1px solid var(--divider);
+  background: transparent;
+  color: var(--text);
+  border-radius: 4px;
+  padding: 0 8px;
+  height: 18px;
+  line-height: 16px;
+  box-sizing: border-box;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.task-btn:hover {
+  background: var(--hover);
+  border-color: var(--text-weak);
+}
+
+.progress-bar {
+  position: absolute;
+  top: 7px;
+  left: 0;
+  height: 5px;
+  background: linear-gradient(90deg, var(--task-progress-start), var(--task-progress-end));
+  background-size: 200% 100%;
+  animation: slideBg 3s linear infinite;
+  border-radius: 3px;
+  overflow: hidden;
+  will-change: background-position, width;
+  transition: width 0.2s ease;
+}
+
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--task-progress-stripe-strong) 0 8px,
+    var(--task-progress-stripe-soft) 8px 16px
+  );
+  mix-blend-mode: overlay;
+  animation: moveStripes 2s linear infinite;
+  will-change: background-position;
+}
+
+.progress-bar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    var(--task-progress-shine) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: shine 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes slideBg {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes moveStripes {
+  0% {
+    background-position: 0 0;
+  }
+
+  100% {
+    background-position: 100px 0;
+  }
+}
+
+@keyframes shine {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  50% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.progress-fade-enter-from,
+.progress-fade-leave-to {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.progress-fade-leave-active {
+  position: relative;
+}
+
+.progress-fade-enter-active,
+.progress-fade-leave-active {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}

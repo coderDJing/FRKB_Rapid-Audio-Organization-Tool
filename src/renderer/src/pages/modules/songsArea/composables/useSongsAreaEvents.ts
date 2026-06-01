@@ -375,6 +375,63 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     return true
   }
 
+  const clearAnalysisFields = (song: ISongInfo): ISongInfo => {
+    if (
+      song.key === undefined &&
+      song.bpm === undefined &&
+      song.firstBeatMs === undefined &&
+      song.barBeatOffset === undefined &&
+      song.beatGridSource === undefined &&
+      song.beatGridAlgorithmVersion === undefined &&
+      song.timeBasisOffsetMs === undefined
+    ) {
+      return song
+    }
+    const nextSong = { ...song }
+    delete nextSong.key
+    delete nextSong.bpm
+    delete nextSong.firstBeatMs
+    delete nextSong.barBeatOffset
+    delete nextSong.beatGridSource
+    delete nextSong.beatGridAlgorithmVersion
+    delete nextSong.timeBasisOffsetMs
+    return nextSong
+  }
+
+  const onManualKeyAnalysisBatchStart = (_event: unknown, payload?: { filePaths?: string[] }) => {
+    const normalizedPaths = new Set(
+      (Array.isArray(payload?.filePaths) ? payload.filePaths : [])
+        .map((filePath) => normalizePath(filePath))
+        .filter(Boolean)
+    )
+    if (!normalizedPaths.size) return
+    let touchedOriginal = false
+    let touchedVisible = false
+    for (const normalizedPath of normalizedPaths) {
+      touchedOriginal =
+        patchOriginalSongByPath(normalizedPath, clearAnalysisFields) || touchedOriginal
+      touchedVisible =
+        patchSongsAreaSongByPath(normalizedPath, clearAnalysisFields) || touchedVisible
+      patchPlayingSongByPath(normalizedPath, clearAnalysisFields)
+      patchPlayingSongListByPath(normalizedPath, clearAnalysisFields)
+      patchExternalPlaylistSongByPath(normalizedPath, clearAnalysisFields)
+    }
+    if (touchedOriginal) {
+      scheduleApplyIfNeeded([
+        'key',
+        'bpm',
+        'firstBeatMs',
+        'barBeatOffset',
+        'beatGridSource',
+        'beatGridAlgorithmVersion',
+        'timeBasisOffsetMs'
+      ])
+    }
+    if (touchedVisible && runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
+      runtime.playingData.playingSongListData = songsAreaState.songInfoArr
+    }
+  }
+
   const onSongKeyUpdated = (_e: unknown, payload: { filePath?: string; keyText?: string }) => {
     const filePath = payload?.filePath
     const keyText = payload?.keyText
@@ -668,6 +725,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on('song-grid-updated', onSongGridUpdated)
     window.electron.ipcRenderer.on('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.on('song-memory-cues-updated', onSongMemoryCuesUpdated)
+    window.electron.ipcRenderer.on('key-analysis:manual-batch-start', onManualKeyAnalysisBatchStart)
     window.electron.ipcRenderer.on('importFinished', onImportFinished)
     window.electron.ipcRenderer.on('audio:convert:done', onAudioConvertDone)
     window.electron.ipcRenderer.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
@@ -686,6 +744,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.removeListener('song-grid-updated', onSongGridUpdated)
     window.electron.ipcRenderer.removeListener('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.removeListener('song-memory-cues-updated', onSongMemoryCuesUpdated)
+    window.electron.ipcRenderer.removeListener(
+      'key-analysis:manual-batch-start',
+      onManualKeyAnalysisBatchStart
+    )
     window.electron.ipcRenderer.removeListener('importFinished', onImportFinished)
     window.electron.ipcRenderer.removeListener('audio:convert:done', onAudioConvertDone)
     window.electron.ipcRenderer.removeListener(

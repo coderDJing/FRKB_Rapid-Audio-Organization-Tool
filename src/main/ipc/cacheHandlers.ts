@@ -57,6 +57,9 @@ export function registerCacheHandlers() {
     invalidateKeyAnalysisCache(files)
     const analysisFiles = files.filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
     if (analysisFiles.length > 0) {
+      mainWindow.instance?.webContents.send('key-analysis:manual-batch-start', {
+        filePaths: analysisFiles
+      })
       enqueueKeyAnalysisList(analysisFiles, 'high')
     }
 

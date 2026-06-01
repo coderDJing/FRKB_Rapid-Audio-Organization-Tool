@@ -175,6 +175,7 @@ interface Runtime {
   }
   pioneerDeviceLibrary: IRekordboxLibraryBrowserState
   pioneerSelectedRowKeys: string[]
+  manualKeyAnalysisPendingFilePaths: string[]
   confirmShow: boolean
   hotkeysScopesHeap: string[]
   curatedArtistFavorites: ICuratedArtistFavorite[]
@@ -310,9 +311,12 @@ export const useRuntimeStore = defineStore('runtime', {
         selectedLibraryType: '',
         selectedPlaylistId: 0,
         loading: false,
+        visibleSongCount: 0,
+        pendingAnalysisCount: 0,
         treeNodes: []
       },
       pioneerSelectedRowKeys: [],
+      manualKeyAnalysisPendingFilePaths: [],
       confirmShow: false, //是否有确认框正在显示
       hotkeysScopesHeap: [], //hotkeys-js的scope组成的堆栈，始终setScope数组的最后一项
       curatedArtistFavorites: [],

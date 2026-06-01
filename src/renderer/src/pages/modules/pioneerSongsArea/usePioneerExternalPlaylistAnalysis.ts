@@ -1,4 +1,6 @@
-import { onUnmounted, ref, type ComputedRef, type Ref } from 'vue'
+import { computed, onUnmounted, ref, watch, type ComputedRef, type Ref } from 'vue'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { hasCompleteKeyAnalysis } from '@renderer/pages/modules/songsArea/composables/useKeyAnalysisProgress'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import type {
   IPioneerPlaylistTrack,
@@ -30,7 +32,31 @@ const normalizePath = (value: string) =>
 export const usePioneerExternalPlaylistAnalysis = (
   params: UsePioneerExternalPlaylistAnalysisParams
 ) => {
+  const runtime = useRuntimeStore()
   const frkbAnalyzedFilePaths = ref<string[]>([])
+  const frkbAnalyzedPathSet = computed(
+    () => new Set(frkbAnalyzedFilePaths.value.map((filePath) => normalizePath(filePath)))
+  )
+  const pendingAnalysisCount = computed(() => {
+    let count = 0
+    const analyzedPathSet = frkbAnalyzedPathSet.value
+    for (const song of params.visibleSongs.value) {
+      const filePath = normalizePath(song.filePath)
+      if (!filePath) continue
+      if (hasCompleteKeyAnalysis(song) || analyzedPathSet.has(filePath)) continue
+      count++
+    }
+    return count
+  })
+
+  watch(
+    () => [params.visibleSongs.value.length, pendingAnalysisCount.value] as const,
+    ([visibleSongCount, nextPendingAnalysisCount]) => {
+      runtime.pioneerDeviceLibrary.visibleSongCount = visibleSongCount
+      runtime.pioneerDeviceLibrary.pendingAnalysisCount = nextPendingAnalysisCount
+    },
+    { immediate: true }
+  )
 
   const markFrkbAnalyzed = (filePaths: string[] | string) => {
     const list = Array.isArray(filePaths) ? filePaths : [filePaths]
@@ -116,6 +142,8 @@ export const usePioneerExternalPlaylistAnalysis = (
   }
 
   onUnmounted(() => {
+    runtime.pioneerDeviceLibrary.visibleSongCount = 0
+    runtime.pioneerDeviceLibrary.pendingAnalysisCount = 0
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
       window.electron.ipcRenderer.removeListener(
         'key-analysis:stage-update',
