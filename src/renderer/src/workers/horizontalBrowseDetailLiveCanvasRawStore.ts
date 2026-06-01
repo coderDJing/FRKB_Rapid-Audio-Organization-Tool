@@ -78,22 +78,27 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
       return
     }
 
-    liveRawData = {
-      duration: Math.max(liveRawData.duration, meta.duration),
-      sampleRate: meta.sampleRate,
-      rate: meta.rate,
-      frames,
-      startSec: meta.startSec,
-      loadedFrames: liveRawData.loadedFrames,
-      minLeft: growRawArray(liveRawData.minLeft, frames),
-      maxLeft: growRawArray(liveRawData.maxLeft, frames),
-      minRight: growRawArray(liveRawData.minRight, frames),
-      maxRight: growRawArray(liveRawData.maxRight, frames),
-      meanLeft: liveRawData.meanLeft ? growRawArray(liveRawData.meanLeft, frames) : undefined,
-      meanRight: liveRawData.meanRight ? growRawArray(liveRawData.meanRight, frames) : undefined,
-      rmsLeft: liveRawData.rmsLeft ? growRawArray(liveRawData.rmsLeft, frames) : undefined,
-      rmsRight: liveRawData.rmsRight ? growRawArray(liveRawData.rmsRight, frames) : undefined
-    }
+    liveRawData.duration = Math.max(liveRawData.duration, meta.duration)
+    liveRawData.sampleRate = meta.sampleRate
+    liveRawData.rate = meta.rate
+    liveRawData.frames = frames
+    liveRawData.startSec = meta.startSec
+    liveRawData.minLeft = growRawArray(liveRawData.minLeft, frames)
+    liveRawData.maxLeft = growRawArray(liveRawData.maxLeft, frames)
+    liveRawData.minRight = growRawArray(liveRawData.minRight, frames)
+    liveRawData.maxRight = growRawArray(liveRawData.maxRight, frames)
+    liveRawData.meanLeft = liveRawData.meanLeft
+      ? growRawArray(liveRawData.meanLeft, frames)
+      : undefined
+    liveRawData.meanRight = liveRawData.meanRight
+      ? growRawArray(liveRawData.meanRight, frames)
+      : undefined
+    liveRawData.rmsLeft = liveRawData.rmsLeft
+      ? growRawArray(liveRawData.rmsLeft, frames)
+      : undefined
+    liveRawData.rmsRight = liveRawData.rmsRight
+      ? growRawArray(liveRawData.rmsRight, frames)
+      : undefined
     bumpLiveRawRevision()
     invalidateFrameState()
   }

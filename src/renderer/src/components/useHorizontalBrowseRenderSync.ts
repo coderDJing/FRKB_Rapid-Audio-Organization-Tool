@@ -29,6 +29,7 @@ const RENDER_SYNC_REANCHOR_DRIFT_SEC = 0.35
 const RENDER_SYNC_FULL_SYNC_PHASE_REANCHOR_SEC = 0.002
 const RENDER_SYNC_PENDING_INTENT_EPSILON_SEC = 0.05
 const RENDER_SYNC_PENDING_INTENT_MAX_MS = 1500
+const RENDER_SYNC_RECENT_INTENT_CONFIRM_MS = 1000
 
 type PendingRenderSeekIntent = {
   seconds: number
@@ -83,6 +84,10 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     bottom: 0
   })
   const pendingRenderSeekIntent = reactive<Record<DeckKey, PendingRenderSeekIntent | null>>({
+    top: null,
+    bottom: null
+  })
+  const recentRenderSeekIntent = reactive<Record<DeckKey, PendingRenderSeekIntent | null>>({
     top: null,
     bottom: null
   })
@@ -238,6 +243,16 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
       return
     }
     const driftSec = Math.abs(snapshotSec - estimatedSec)
+    const recentIntent = recentRenderSeekIntent[deck]
+    const recentIntentAgeMs = recentIntent
+      ? Math.max(0, renderNowMs - recentIntent.startedAtMs)
+      : Number.POSITIVE_INFINITY
+    const forceConfirmsRecentIntent =
+      force &&
+      !confirmedPendingIntent &&
+      !!recentIntent &&
+      recentIntentAgeMs <= RENDER_SYNC_RECENT_INTENT_CONFIRM_MS &&
+      Math.abs(snapshotSec - recentIntent.seconds) <= RENDER_SYNC_PENDING_INTENT_EPSILON_SEC
     const fullSyncPhaseChanged =
       stateRevisionChanged &&
       snapshot.syncEnabled &&
@@ -254,6 +269,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const shouldBumpPlaybackRevision =
       shouldReanchor &&
       !confirmedPendingIntent &&
+      !forceConfirmsRecentIntent &&
       (force ||
         fullSyncPhaseChanged ||
         (snapshot.playing && (!previousSignature || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC)))
@@ -326,6 +342,10 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const safeSeconds =
       renderLimitSec > 0 ? Math.min(normalizedSeconds, renderLimitSec) : normalizedSeconds
     pendingRenderSeekIntent[deck] = {
+      seconds: safeSeconds,
+      startedAtMs: nowMs
+    }
+    recentRenderSeekIntent[deck] = {
       seconds: safeSeconds,
       startedAtMs: nowMs
     }

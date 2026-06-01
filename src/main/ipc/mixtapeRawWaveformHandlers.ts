@@ -20,6 +20,10 @@ import {
   type MixtapeRawWaveformStreamWorkerPayload,
   type RawWaveformStreamRequest
 } from './mixtapeRawWaveformStreamTypes'
+import {
+  resolveRawWaveformInitialBurstFrames,
+  resolveRawWaveformInitialChunkFrames
+} from './mixtapeRawWaveformStreamSizing'
 
 const resolveRequestedRawRate = (value: unknown) => {
   const parsed = Number(value)
@@ -33,11 +37,16 @@ const resolveMixtapeRawWaveformWorkerPath = () =>
 const teardownRawWaveformStreamWorker = (worker?: Worker) => {
   if (!worker) return
   try {
-    worker.removeAllListeners()
+    worker.postMessage({ type: 'cancel' })
   } catch {}
   try {
-    void worker.terminate()
+    worker.removeAllListeners()
   } catch {}
+  setTimeout(() => {
+    try {
+      void worker.terminate()
+    } catch {}
+  }, 80)
 }
 
 const resolveRawWaveformStreamPriorityHint = (value: unknown) => {
@@ -75,30 +84,6 @@ const isRawWaveformRateSufficient = (
     Number.isFinite(sampleRate) && sampleRate > 0 ? sampleRate : requestedRate
   const requiredRate = Math.max(1, Math.min(requestedRate, cappedSampleRate))
   return cachedRate >= requiredRate
-}
-
-const MIN_RAW_WAVEFORM_INITIAL_CHUNK_FRAMES = 512
-const RAW_WAVEFORM_DEFAULT_INITIAL_CHUNK_FRAMES = 4096
-
-const resolveRawWaveformInitialChunkFrames = (params: {
-  totalFrames?: number
-  rate: number
-  chunkFrames: number
-  bootstrapDurationSec: number
-}) => {
-  const totalFrames = Math.max(0, Math.floor(Number(params.totalFrames) || 0))
-  const rate = Math.max(1, Number(params.rate) || 1)
-  const chunkFrames = Math.max(256, Math.floor(Number(params.chunkFrames) || 0))
-  const bootstrapFrames = Math.ceil(Math.max(0, Number(params.bootstrapDurationSec) || 0) * rate)
-  const desiredFrames =
-    bootstrapFrames > 0
-      ? bootstrapFrames
-      : Math.min(chunkFrames, RAW_WAVEFORM_DEFAULT_INITIAL_CHUNK_FRAMES)
-  const boundedFrames = Math.min(
-    chunkFrames,
-    Math.max(MIN_RAW_WAVEFORM_INITIAL_CHUNK_FRAMES, desiredFrames)
-  )
-  return totalFrames > 0 ? Math.min(totalFrames, boundedFrames) : boundedFrames
 }
 
 export function registerMixtapeRawWaveformHandlers() {
@@ -249,6 +234,7 @@ export function registerMixtapeRawWaveformHandlers() {
     chunkFrames: number
     bootstrapDurationSec: number
     priorityHint: number
+    protectsPlayback: boolean
   }) => {
     const { sender, requestId, filePath, cached, priorityHint } = params
     const fullFrames = Math.max(0, Number(cached.frames) || 0)
@@ -264,11 +250,12 @@ export function registerMixtapeRawWaveformHandlers() {
       closeRawWaveformStreamOpenState(requestId)
       return
     }
-    const bootstrapFrames = resolveRawWaveformInitialChunkFrames({
+    const initialBurstFrames = resolveRawWaveformInitialBurstFrames({
       totalFrames,
       rate,
       chunkFrames: requestedChunkFrames,
-      bootstrapDurationSec: requestedBootstrapDurationSec
+      bootstrapDurationSec: requestedBootstrapDurationSec,
+      protectsPlayback: params.protectsPlayback
     })
     const followupFramesPerChunk = Math.max(4096, requestedChunkFrames)
     const startedAt = Date.now()
@@ -281,33 +268,46 @@ export function registerMixtapeRawWaveformHandlers() {
       closeRawWaveformStreamOpenState(requestId)
       return
     }
-    try {
+    const sendChunk = (startFrame: number, frames: number) => {
       sender.send('mixtape-waveform-raw:stream-chunk', {
         requestId,
         filePath,
-        startFrame: 0,
-        frames: bootstrapFrames,
+        startFrame,
+        frames,
         totalFrames,
         duration: Number(cached.duration) || 0,
         startSec: Math.max(0, Number(params.startSec) || 0),
         sampleRate: Number(cached.sampleRate) || 0,
         rate: Number(cached.rate) || 0,
-        minLeft: sliceBuffer(cached.minLeft, startFrameOffset, bootstrapFrames),
-        maxLeft: sliceBuffer(cached.maxLeft, startFrameOffset, bootstrapFrames),
-        minRight: sliceBuffer(cached.minRight, startFrameOffset, bootstrapFrames),
-        maxRight: sliceBuffer(cached.maxRight, startFrameOffset, bootstrapFrames),
-        meanLeft: sliceBuffer(cached.meanLeft, startFrameOffset, bootstrapFrames),
-        meanRight: sliceBuffer(cached.meanRight, startFrameOffset, bootstrapFrames),
-        rmsLeft: sliceBuffer(cached.rmsLeft, startFrameOffset, bootstrapFrames),
-        rmsRight: sliceBuffer(cached.rmsRight, startFrameOffset, bootstrapFrames)
+        minLeft: sliceBuffer(cached.minLeft, startFrameOffset + startFrame, frames),
+        maxLeft: sliceBuffer(cached.maxLeft, startFrameOffset + startFrame, frames),
+        minRight: sliceBuffer(cached.minRight, startFrameOffset + startFrame, frames),
+        maxRight: sliceBuffer(cached.maxRight, startFrameOffset + startFrame, frames),
+        meanLeft: sliceBuffer(cached.meanLeft, startFrameOffset + startFrame, frames),
+        meanRight: sliceBuffer(cached.meanRight, startFrameOffset + startFrame, frames),
+        rmsLeft: sliceBuffer(cached.rmsLeft, startFrameOffset + startFrame, frames),
+        rmsRight: sliceBuffer(cached.rmsRight, startFrameOffset + startFrame, frames)
       })
+      chunkCount += 1
+    }
+
+    let nextStartFrame = 0
+    try {
+      while (nextStartFrame < initialBurstFrames) {
+        if (!openRawWaveformStreamRequestIds.has(requestId) || sender.isDestroyed()) {
+          closeRawWaveformStreamOpenState(requestId)
+          return
+        }
+        const frames = Math.min(requestedChunkFrames, initialBurstFrames - nextStartFrame)
+        sendChunk(nextStartFrame, frames)
+        nextStartFrame += frames
+      }
     } catch {
       closeRawWaveformStreamOpenState(requestId)
       return
     }
-    chunkCount += 1
 
-    if (bootstrapFrames < totalFrames) {
+    if (nextStartFrame < totalFrames) {
       if (!openRawWaveformStreamRequestIds.has(requestId) || sender.isDestroyed()) {
         closeRawWaveformStreamOpenState(requestId)
         return
@@ -320,7 +320,7 @@ export function registerMixtapeRawWaveformHandlers() {
         startFrameOffset,
         songDurationSec: Number(cached.duration) || 0,
         cached,
-        nextStartFrame: bootstrapFrames,
+        nextStartFrame,
         followupFramesPerChunk,
         totalFrames,
         priorityHint,
@@ -655,12 +655,27 @@ export function registerMixtapeRawWaveformHandlers() {
           if (!continuation) return
           continuation.priorityHint = nextRequest.priorityHint
           continuation.queue.push(bufferedChunk)
+          const initialBurstFrames = resolveRawWaveformInitialBurstFrames({
+            totalFrames: bufferedChunk.totalFrames,
+            rate: bufferedChunk.rate,
+            chunkFrames: nextRequest.chunkFrames,
+            bootstrapDurationSec: nextRequest.bootstrapDurationSec,
+            protectsPlayback: nextRequest.protectsPlayback
+          })
+          if (bufferedChunk.startFrame < initialBurstFrames) {
+            continuation.continueCredits += 1
+          }
           flushLiveRawWaveformContinuation(nextRequest.requestId)
           return
         }
 
         if (message?.result?.rawWaveformData) {
-          if (nextRequest.startSec <= 0.0001 && nextRequest.listRoot && nextRequest.stat) {
+          if (
+            !nextRequest.protectsPlayback &&
+            nextRequest.startSec <= 0.0001 &&
+            nextRequest.listRoot &&
+            nextRequest.stat
+          ) {
             await LibraryCacheDb.upsertMixtapeRawWaveformCacheEntry(
               nextRequest.listRoot,
               nextRequest.filePath,
@@ -907,13 +922,21 @@ export function registerMixtapeRawWaveformHandlers() {
         const deckKey = resolveRawWaveformStreamDeckKey(payload?.deckKey, requestId)
         const protectsPlayback = payload?.protectsPlayback === true
         const forceLiveDecode = payload?.forceLiveDecode === true
-        let listRoot = resolveRendererListRoot(payload?.listRoot)
-        if (!listRoot) {
-          listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
+        const shouldUseRawCache = !protectsPlayback && !forceLiveDecode
+        const shouldStoreRawCache = !protectsPlayback && startSec <= 0.0001
+        const shouldResolveRawCacheTarget = shouldUseRawCache || shouldStoreRawCache
+        let listRoot = ''
+        let stat: { size: number; mtimeMs: number } | null = null
+        if (shouldResolveRawCacheTarget) {
+          listRoot = resolveRendererListRoot(payload?.listRoot)
+          if (!listRoot) {
+            listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
+          }
+          const fileStat = await fs.stat(filePath).catch(() => null)
+          stat = fileStat ? { size: fileStat.size, mtimeMs: fileStat.mtimeMs } : null
         }
-        const stat = await fs.stat(filePath).catch(() => null)
         if (!openRawWaveformStreamRequestIds.has(requestId)) return
-        if (!forceLiveDecode && listRoot && stat) {
+        if (shouldUseRawCache && listRoot && stat) {
           const cached = await LibraryCacheDb.loadMixtapeRawWaveformCacheData(listRoot, filePath, {
             size: stat.size,
             mtimeMs: stat.mtimeMs
@@ -927,7 +950,8 @@ export function registerMixtapeRawWaveformHandlers() {
               startSec,
               chunkFrames,
               bootstrapDurationSec,
-              priorityHint
+              priorityHint,
+              protectsPlayback
             })
             return
           }
@@ -940,7 +964,7 @@ export function registerMixtapeRawWaveformHandlers() {
           deckKey,
           sender: event.sender,
           listRoot,
-          stat: stat ? { size: stat.size, mtimeMs: stat.mtimeMs } : null,
+          stat,
           targetRate,
           startSec,
           songDurationSec,

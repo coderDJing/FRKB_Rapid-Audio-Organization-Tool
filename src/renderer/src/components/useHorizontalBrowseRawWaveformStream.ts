@@ -13,6 +13,8 @@ import {
   HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_MAX_RETRIES,
   HORIZONTAL_BROWSE_RAW_INITIAL_CHUNK_TIMEOUT_MS,
   HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES,
+  HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICES_PER_FLUSH,
+  HORIZONTAL_BROWSE_RAW_PLAYING_WAVEFORM_CHUNK_FRAMES,
   HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR,
   HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_MIN_SEC,
   HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_OVERSCAN_FACTOR,
@@ -41,7 +43,9 @@ export const useHorizontalBrowseRawWaveformStream = (
   let pendingRawStreamDonePayload: HorizontalBrowseRawWaveformStreamDonePayload | null = null
   const pendingRawStreamChunks: PendingRawStreamChunkWork[] = []
   let rawChunkProcessTimer: ReturnType<typeof setTimeout> | null = null
-  let rawChunkProcessRaf = 0
+  let rawChunkProcessChannel: MessageChannel | null = null
+  let rawChunkProcessChannelPending = false
+  let rawChunkProcessScheduleToken = 0
   let rawStreamFirstVisibleDrawScheduled = false
   let rawStreamVisibleCoverageRedrawn = false
   let rawStreamBootstrapDurationSec = 0
@@ -50,6 +54,7 @@ export const useHorizontalBrowseRawWaveformStream = (
   let rawStreamInitialRetryCount = 0
   let rawStreamContinueStartedAt = 0
   let rawStreamWatchdogTimer: ReturnType<typeof setTimeout> | null = null
+  let rawStreamKeepMainThreadRawArrays = true
 
   const resolveRawLoadPriorityHint = () =>
     Math.max(0, Math.floor(Number(options.rawLoadPriorityHint()) || 0))
@@ -62,14 +67,20 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const resolveChunkCopySliceFrames = () => HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES
 
+  const resolveMaxChunkCopySlicesPerFlush = () =>
+    options.playing() ? HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICES_PER_FLUSH : Infinity
+
   const resolveMaxChunkCopyFrames = (bootstrapCopyFrames: number) =>
     options.playing()
-      ? Math.max(HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES, bootstrapCopyFrames)
+      ? HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES
       : Math.max(resolveChunkCopySliceFrames(), bootstrapCopyFrames)
 
-  const shouldKeepMainThreadRawArrays = () => true
+  const shouldKeepMainThreadRawArrays = () => rawStreamKeepMainThreadRawArrays
 
-  const resolveStreamChunkFrames = () => HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES
+  const resolveStreamChunkFrames = () =>
+    options.playing()
+      ? HORIZONTAL_BROWSE_RAW_PLAYING_WAVEFORM_CHUNK_FRAMES
+      : HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES
 
   const resolveWaveformTargetRate = (_deferred: boolean) => PREVIEW_RAW_TARGET_RATE
 
@@ -158,23 +169,20 @@ export const useHorizontalBrowseRawWaveformStream = (
       return target
     }
 
-    options.rawData.value = {
-      duration: Math.max(current.duration, meta.duration),
-      sampleRate: meta.sampleRate,
-      rate: meta.rate,
-      frames: grownFrames,
-      startSec: meta.startSec,
-      loadedFrames: current.loadedFrames,
-      minLeft: grow(current.minLeft),
-      maxLeft: grow(current.maxLeft),
-      minRight: grow(current.minRight),
-      maxRight: grow(current.maxRight),
-      meanLeft: current.meanLeft ? grow(current.meanLeft) : undefined,
-      meanRight: current.meanRight ? grow(current.meanRight) : undefined,
-      rmsLeft: current.rmsLeft ? grow(current.rmsLeft) : undefined,
-      rmsRight: current.rmsRight ? grow(current.rmsRight) : undefined
-    }
-    options.mixxxData.value = createRawPlaceholderMixxxData(options.rawData.value)
+    current.duration = Math.max(current.duration, meta.duration)
+    current.sampleRate = meta.sampleRate
+    current.rate = meta.rate
+    current.frames = grownFrames
+    current.startSec = meta.startSec
+    current.minLeft = grow(current.minLeft)
+    current.maxLeft = grow(current.maxLeft)
+    current.minRight = grow(current.minRight)
+    current.maxRight = grow(current.maxRight)
+    current.meanLeft = current.meanLeft ? grow(current.meanLeft) : undefined
+    current.meanRight = current.meanRight ? grow(current.meanRight) : undefined
+    current.rmsLeft = current.rmsLeft ? grow(current.rmsLeft) : undefined
+    current.rmsRight = current.rmsRight ? grow(current.rmsRight) : undefined
+    options.mixxxData.value = createRawPlaceholderMixxxData(current)
     options.ensureLiveWaveformRawCapacity({
       duration: Math.max(current.duration, meta.duration),
       sampleRate: meta.sampleRate,
@@ -194,10 +202,17 @@ export const useHorizontalBrowseRawWaveformStream = (
       clearTimeout(rawChunkProcessTimer)
       rawChunkProcessTimer = null
     }
-    if (rawChunkProcessRaf) {
-      cancelAnimationFrame(rawChunkProcessRaf)
-      rawChunkProcessRaf = 0
-    }
+    rawChunkProcessScheduleToken += 1
+    rawChunkProcessChannelPending = false
+  }
+
+  const closeRawChunkProcessChannel = () => {
+    if (!rawChunkProcessChannel) return
+    rawChunkProcessChannel.port1.onmessage = null
+    rawChunkProcessChannel.port1.close()
+    rawChunkProcessChannel.port2.close()
+    rawChunkProcessChannel = null
+    rawChunkProcessChannelPending = false
   }
 
   const clearPendingRawWaveformStore = () => {
@@ -267,6 +282,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     rawStreamRequestId = ''
     rawStreamContinuePending = false
     rawStreamContinueStartedAt = 0
+    rawStreamKeepMainThreadRawArrays = true
     options.rawStreamActive.value = false
     options.clearStreamDrawScheduling()
     clearQueuedRawStreamPayloads()
@@ -336,8 +352,21 @@ export const useHorizontalBrowseRawWaveformStream = (
       Number(startOptions.bootstrapDurationSec ?? options.bootstrapDurationSec()) || 0
     )
     rawStreamBootstrapDurationSec = bootstrapDurationSec
+    const protectsPlayback = resolveProtectsPlayback()
+    rawStreamKeepMainThreadRawArrays = !protectsPlayback
     const songDurationSec = resolveSongDurationSec()
     const remainingDurationSec = Math.max(0, songDurationSec - rawStreamStartSec)
+    const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
+    const playbackDecodeWindowSec = Math.max(
+      bootstrapDurationSec,
+      visibleDurationSec *
+        (HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR +
+          HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR)
+    )
+    const streamExpectedDurationSec = protectsPlayback
+      ? Math.min(remainingDurationSec, playbackDecodeWindowSec)
+      : remainingDurationSec
+    const streamChunkFrames = resolveStreamChunkFrames()
     window.electron.ipcRenderer.send('mixtape-waveform-raw:stream', {
       requestId: rawStreamRequestId,
       filePath,
@@ -347,8 +376,8 @@ export const useHorizontalBrowseRawWaveformStream = (
       targetRate,
       startSec: rawStreamStartSec,
       songDurationSec,
-      chunkFrames: resolveStreamChunkFrames(),
-      expectedDurationSec: remainingDurationSec,
+      chunkFrames: streamChunkFrames,
+      expectedDurationSec: streamExpectedDurationSec,
       bootstrapDurationSec,
       forceLiveDecode: startOptions.forceLiveDecode === true
     })
@@ -484,10 +513,12 @@ export const useHorizontalBrowseRawWaveformStream = (
     if (holdFrame) {
       options.holdCurrentWaveformFrame()
     }
+    const forceLiveDecode =
+      startOptions.forceLiveDecode === true || (options.playing() && targetStartSec > 0.0001)
     beginRawWaveformStream(filePath, resolveWaveformTargetRate(false), Date.now(), targetStartSec, {
       bootstrapDurationSec: startOptions.bootstrapDurationSec ?? resolveSeekBootstrapDurationSec(),
       bootstrapAnchorSec: targetSec,
-      forceLiveDecode: startOptions.forceLiveDecode,
+      forceLiveDecode,
       initialRetryCount: startOptions.initialRetryCount
     })
     return true
@@ -727,7 +758,6 @@ export const useHorizontalBrowseRawWaveformStream = (
     ) {
       return
     }
-
     rawStreamRequestId = ''
     rawStreamContinuePending = false
     rawStreamContinueStartedAt = 0
@@ -793,9 +823,10 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const flushQueuedRawStreamPayloads = () => {
     rawChunkProcessTimer = null
-    rawChunkProcessRaf = 0
+    rawChunkProcessChannelPending = false
     const startedAt = performance.now()
     let processedWorkCount = 0
+    const maxProcessedWorkCount = resolveMaxChunkCopySlicesPerFlush()
     while (pendingRawStreamChunks.length > 0) {
       const nextWork = pendingRawStreamChunks[0]
       if (!nextWork) break
@@ -805,7 +836,7 @@ export const useHorizontalBrowseRawWaveformStream = (
         pendingRawStreamChunks.shift()
         finalizePendingRawStreamChunkWork(nextWork)
       }
-      if (options.playing() && processedWorkCount >= 1) {
+      if (processedWorkCount >= maxProcessedWorkCount) {
         break
       }
       if (performance.now() - startedAt >= resolveChunkProcessBudgetMs()) {
@@ -827,12 +858,24 @@ export const useHorizontalBrowseRawWaveformStream = (
   }
 
   const scheduleQueuedRawStreamPayloadFlush = () => {
-    if (rawChunkProcessTimer || rawChunkProcessRaf) return
+    if (rawChunkProcessTimer || rawChunkProcessChannelPending) return
+    const scheduleToken = rawChunkProcessScheduleToken
+    if (typeof MessageChannel !== 'undefined') {
+      if (!rawChunkProcessChannel) {
+        rawChunkProcessChannel = new MessageChannel()
+        rawChunkProcessChannel.port1.onmessage = (event) => {
+          if (Number(event.data) !== rawChunkProcessScheduleToken) return
+          flushQueuedRawStreamPayloads()
+        }
+      }
+      rawChunkProcessChannelPending = true
+      rawChunkProcessChannel.port2.postMessage(scheduleToken)
+      return
+    }
     rawChunkProcessTimer = setTimeout(() => {
       rawChunkProcessTimer = null
-      rawChunkProcessRaf = requestAnimationFrame(() => {
-        flushQueuedRawStreamPayloads()
-      })
+      if (scheduleToken !== rawChunkProcessScheduleToken) return
+      flushQueuedRawStreamPayloads()
     }, 0)
   }
 
@@ -863,7 +906,11 @@ export const useHorizontalBrowseRawWaveformStream = (
     ) {
       return
     }
-    if (pendingRawStreamChunks.length > 0 || rawChunkProcessTimer || rawChunkProcessRaf) {
+    if (
+      pendingRawStreamChunks.length > 0 ||
+      rawChunkProcessTimer ||
+      rawChunkProcessChannelPending
+    ) {
       pendingRawStreamDonePayload = payload || null
       scheduleQueuedRawStreamPayloadFlush()
       return
@@ -952,6 +999,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     cancelRawWaveformStream()
     clearRawStreamWatchdog()
     clearQueuedRawStreamPayloads()
+    closeRawChunkProcessChannel()
     clearPendingRawWaveformStore()
     window.electron.ipcRenderer.removeListener(
       'mixtape-waveform-raw:stream-chunk',

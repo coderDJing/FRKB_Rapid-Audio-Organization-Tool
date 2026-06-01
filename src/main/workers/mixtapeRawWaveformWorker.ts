@@ -3,6 +3,7 @@ import childProcess from 'node:child_process'
 
 type MixtapeRawWaveformJob = {
   jobId: number
+  type?: 'cancel'
   filePath: string
   targetRate: number
   startSec?: number
@@ -73,6 +74,15 @@ const loadRust = () => {
 
 const STREAM_SAMPLE_RATE = 44100
 const STREAM_CHANNELS = 2
+let activeFfmpegChild: childProcess.ChildProcess | null = null
+
+const cancelActiveFfmpegChild = () => {
+  const child = activeFfmpegChild
+  if (!child) return
+  try {
+    if (!child.killed) child.kill('SIGKILL')
+  } catch {}
+}
 
 const toFloat32ArrayFromBuffer = (input: Buffer): Float32Array => {
   if (!input || input.length < 4) return new Float32Array(0)
@@ -592,12 +602,15 @@ const buildRawWaveformStreamed = async (
 ) => {
   const ffmpegPath = resolveBundledFfmpegPath()
   const startSec = Math.max(0, Number(options.startSec) || 0)
+  const expectedDurationSec = Math.max(0, Number(options.expectedDurationSec) || 0)
   const args = [
+    '-nostdin',
     '-v',
     'error',
     ...(startSec > 0 ? ['-ss', String(startSec)] : []),
     '-i',
     filePath,
+    ...(expectedDurationSec > 0 ? ['-t', String(expectedDurationSec)] : []),
     '-map',
     '0:a:0',
     '-vn',
@@ -629,6 +642,7 @@ const buildRawWaveformStreamed = async (
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe']
     })
+    activeFfmpegChild = child
     let remainder: Buffer<ArrayBufferLike> = Buffer.alloc(0)
     let stderrText = ''
 
@@ -651,10 +665,12 @@ const buildRawWaveformStreamed = async (
     })
 
     child.once('error', (error) => {
+      if (activeFfmpegChild === child) activeFfmpegChild = null
       reject(error)
     })
 
     child.once('exit', (code) => {
+      if (activeFfmpegChild === child) activeFfmpegChild = null
       if (code === 0) {
         resolve()
         return
@@ -667,6 +683,11 @@ const buildRawWaveformStreamed = async (
 }
 
 parentPort?.on('message', async (job: MixtapeRawWaveformJob) => {
+  if (job?.type === 'cancel') {
+    cancelActiveFfmpegChild()
+    return
+  }
+
   const response: MixtapeRawWaveformResponse = {
     jobId: job?.jobId ?? 0,
     filePath: job?.filePath ?? ''

@@ -193,6 +193,7 @@ const {
   replaceLiveWaveformRaw,
   updateLiveWaveformRawMeta,
   storeRawWaveform,
+  displayReady,
   dispose: disposeWaveformCanvas
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => props.song,
@@ -1008,7 +1009,11 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
     :class="[
       'raw-detail-waveform',
       `raw-detail-waveform--${props.direction}`,
-      { 'is-dragging': dragging, 'is-bar-selecting': previewBarLinePicking }
+      {
+        'is-dragging': dragging,
+        'is-bar-selecting': previewBarLinePicking,
+        'is-waveform-ready': displayReady
+      }
     ]"
     @mousedown.stop="handleMouseDown"
     @mousemove="handlePreviewMouseMoveForBarLinePicking"
@@ -1070,6 +1075,15 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
 .raw-detail-waveform__canvas--grid {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+}
+
+.raw-detail-waveform__canvas--waveform {
+  opacity: 0;
+  transition: opacity 120ms linear;
+}
+
+.raw-detail-waveform.is-waveform-ready .raw-detail-waveform__canvas--waveform {
+  opacity: 1;
 }
 
 .raw-detail-waveform__canvas--grid {

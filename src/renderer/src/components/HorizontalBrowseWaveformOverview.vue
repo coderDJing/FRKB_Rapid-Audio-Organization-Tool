@@ -135,6 +135,10 @@ const resolveSeekDuplicateEpsilonSec = () => {
   )
 }
 
+const isDuplicateSeekSeconds = (seconds: number) =>
+  lastSeekEmitSeconds !== null &&
+  Math.abs(lastSeekEmitSeconds - seconds) <= resolveSeekDuplicateEpsilonSec()
+
 const flushPendingSeek = () => {
   seekRaf = 0
   if (pendingSeekSeconds === null) return
@@ -142,9 +146,8 @@ const flushPendingSeek = () => {
   pendingSeekSeconds = null
   const now = performance.now()
   if (
-    lastSeekEmitSeconds !== null &&
-    now - lastSeekEmitAt <= SEEK_EMIT_DUPLICATE_WINDOW_MS &&
-    Math.abs(lastSeekEmitSeconds - nextSeconds) <= resolveSeekDuplicateEpsilonSec()
+    isDuplicateSeekSeconds(nextSeconds) &&
+    now - lastSeekEmitAt <= SEEK_EMIT_DUPLICATE_WINDOW_MS
   ) {
     return
   }
@@ -193,7 +196,9 @@ const stopScrubbing = () => {
 
 const handlePointerUp = (event: PointerEvent) => {
   const seconds = resolveSeekSecondsByClientX(event.clientX)
-  if (seconds !== null) scheduleSeek(seconds, true)
+  if (seconds !== null && !isDuplicateSeekSeconds(seconds)) {
+    scheduleSeek(seconds, true)
+  }
   stopScrubbing()
 }
 
