@@ -64,6 +64,7 @@ export type RawWaveformStreamStartOptions = {
   forceLiveDecode?: boolean
   initialRetryCount?: number
   preserveDisplay?: boolean
+  preferFastInitialCoverage?: boolean
 }
 
 export type PendingRawStreamChunkWork = {
@@ -120,6 +121,9 @@ export type UseHorizontalBrowseRawWaveformStreamOptions = {
 
 export const HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES = 32768
 export const HORIZONTAL_BROWSE_RAW_PLAYING_WAVEFORM_CHUNK_FRAMES = 8192
+export const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_CHUNK_FRAMES = 65536
+export const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_MAX_CHUNK_FRAMES = 131072
+export const HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_CHUNK_OVERSCAN_FACTOR = 1.12
 export const HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS = 4
 export const HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES = 2048
 export const HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES = 4096

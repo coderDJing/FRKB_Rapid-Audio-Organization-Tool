@@ -77,7 +77,7 @@ export const createHorizontalBrowseWaveformSeekTransition = (
     targetStartSec = null
     queuedRender = null
     clearTimer()
-    const fadeInMs = Math.max(0, Number(options.fadeInMs) || 140)
+    const fadeInMs = Math.max(0, Number(options.fadeInMs) || 100)
     applyOpacity(1, fadeInMs)
     timer = setTimeout(() => {
       timer = null

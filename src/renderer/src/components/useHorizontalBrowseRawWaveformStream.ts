@@ -23,7 +23,10 @@ import {
   HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES,
   HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICES_PER_FLUSH,
   HORIZONTAL_BROWSE_RAW_PLAYING_WAVEFORM_CHUNK_FRAMES,
+  HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_CHUNK_FRAMES,
+  HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_CHUNK_OVERSCAN_FACTOR,
   HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_LEAD_FACTOR,
+  HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_MAX_CHUNK_FRAMES,
   HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_MIN_SEC,
   HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_OVERSCAN_FACTOR,
   HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR,
@@ -62,6 +65,7 @@ export const useHorizontalBrowseRawWaveformStream = (
   let rawStreamContinueStartedAt = 0
   let rawStreamWatchdogTimer: ReturnType<typeof setTimeout> | null = null
   let rawStreamKeepMainThreadRawArrays = true
+  let rawStreamFastInitialCoverage = false
 
   const resolveRawLoadPriorityHint = () =>
     Math.max(0, Math.floor(Number(options.rawLoadPriorityHint()) || 0))
@@ -74,6 +78,9 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const resolveChunkCopySliceFrames = () => HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES
 
+  const isFastInitialCoverageActive = () =>
+    rawStreamFastInitialCoverage && !rawStreamVisibleCoverageRedrawn
+
   const resolveMaxChunkCopySlicesPerFlush = () =>
     options.playing() ? HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICES_PER_FLUSH : Infinity
 
@@ -84,10 +91,24 @@ export const useHorizontalBrowseRawWaveformStream = (
 
   const shouldKeepMainThreadRawArrays = () => rawStreamKeepMainThreadRawArrays
 
+  const resolveSeekBootstrapChunkFrames = () => {
+    const visibleDurationSec = Math.max(0.001, Number(options.visibleDurationSec()) || 0.001)
+    const targetRate = Math.max(1, Math.floor(Number(resolveWaveformTargetRate(false)) || 1))
+    const targetFrames = Math.ceil(
+      visibleDurationSec * targetRate * HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_CHUNK_OVERSCAN_FACTOR
+    )
+    return Math.min(
+      HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_MAX_CHUNK_FRAMES,
+      Math.max(HORIZONTAL_BROWSE_RAW_SEEK_BOOTSTRAP_CHUNK_FRAMES, targetFrames)
+    )
+  }
+
   const resolveStreamChunkFrames = () =>
-    options.playing()
-      ? HORIZONTAL_BROWSE_RAW_PLAYING_WAVEFORM_CHUNK_FRAMES
-      : HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES
+    isFastInitialCoverageActive()
+      ? resolveSeekBootstrapChunkFrames()
+      : options.playing()
+        ? HORIZONTAL_BROWSE_RAW_PLAYING_WAVEFORM_CHUNK_FRAMES
+        : HORIZONTAL_BROWSE_RAW_WAVEFORM_CHUNK_FRAMES
 
   const resolveWaveformTargetRate = (_deferred: boolean) => PREVIEW_RAW_TARGET_RATE
 
@@ -218,6 +239,7 @@ export const useHorizontalBrowseRawWaveformStream = (
       forceLiveDecode: true,
       initialRetryCount: rawStreamInitialRetryCount + 1,
       bootstrapDurationSec: resolveSeekBootstrapDurationSec(),
+      preferFastInitialCoverage: rawStreamFastInitialCoverage,
       preserveDisplay: canPreservePlaybackDisplayForStreamRestart(viewportAnchorSec)
     })
   }
@@ -263,6 +285,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     rawStreamRequestId = ''
     rawStreamContinuePending = false
     rawStreamContinueStartedAt = 0
+    rawStreamFastInitialCoverage = false
     rawStreamKeepMainThreadRawArrays = true
     options.rawStreamActive.value = false
     options.clearStreamDrawScheduling()
@@ -342,6 +365,7 @@ export const useHorizontalBrowseRawWaveformStream = (
     if (!appendToCurrent) {
       options.resetRawStreamDrawState({ preserveDisplay })
     }
+    rawStreamFastInitialCoverage = startOptions.preferFastInitialCoverage === true
     rawStreamStartSec = Math.max(0, Number(startSec) || 0)
     rawStreamRequestId = `horizontal-raw-${options.direction()}-${Date.now()}-${requestToken}`
     options.rawStreamActive.value = true
@@ -734,6 +758,7 @@ export const useHorizontalBrowseRawWaveformStream = (
 
     if (!rawStreamVisibleCoverageRedrawn && isCurrentRawCoveringVisibleRange(anchorSec)) {
       rawStreamVisibleCoverageRedrawn = true
+      rawStreamFastInitialCoverage = false
       options.scheduleRawStreamCoverageDraw()
     }
 

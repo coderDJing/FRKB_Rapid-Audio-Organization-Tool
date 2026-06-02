@@ -876,7 +876,10 @@ watch(
     if (!props.song?.filePath) return
     const safeTargetSeconds = normalizePreviewTimelineSeconds(targetSeconds)
     beginSeekWaveformTransition(safeTargetSeconds)
-    restartRawWaveformStreamAt(safeTargetSeconds, true, { preserveDisplay: true })
+    restartRawWaveformStreamAt(safeTargetSeconds, true, {
+      preserveDisplay: true,
+      preferFastInitialCoverage: true
+    })
     applyPreviewPlaybackPosition(safeTargetSeconds, true)
   }
 )
@@ -1037,15 +1040,12 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   background: var(--shell-waveform-bg, var(--waveform-bg));
   overflow: visible;
 }
-
 .raw-detail-waveform--up {
   margin-top: auto;
 }
-
 .raw-detail-waveform--down {
   margin-bottom: auto;
 }
-
 .raw-detail-waveform__canvas {
   position: absolute;
   inset: 0;
@@ -1065,7 +1065,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
 
 .raw-detail-waveform__canvas--waveform {
   opacity: 0;
-  transition: opacity 120ms linear;
+  transition: opacity 100ms linear;
 }
 
 .raw-detail-waveform.is-waveform-ready .raw-detail-waveform__canvas--waveform {
