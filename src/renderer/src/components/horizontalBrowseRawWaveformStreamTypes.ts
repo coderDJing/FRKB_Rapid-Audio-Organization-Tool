@@ -58,6 +58,7 @@ export type HorizontalBrowseRawWaveformStreamDonePayload = {
 }
 
 export type RawWaveformStreamStartOptions = {
+  appendToCurrent?: boolean
   bootstrapAnchorSec?: number
   bootstrapDurationSec?: number
   forceLiveDecode?: boolean
@@ -123,6 +124,8 @@ export const HORIZONTAL_BROWSE_RAW_CHUNK_PROCESS_BUDGET_MS = 4
 export const HORIZONTAL_BROWSE_RAW_CHUNK_COPY_SLICE_FRAMES = 2048
 export const HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICE_FRAMES = 4096
 export const HORIZONTAL_BROWSE_RAW_PLAYING_COPY_SLICES_PER_FLUSH = 4
+export const HORIZONTAL_BROWSE_RAW_PLAYING_APPEND_OVERLAP_SEC = 0.25
+export const HORIZONTAL_BROWSE_RAW_PLAYING_WINDOW_TRAILING_FACTOR = 1.25
 export const HORIZONTAL_BROWSE_RAW_CONTINUE_LOOKAHEAD_FACTOR = 2
 export const HORIZONTAL_BROWSE_RAW_VIEWPORT_OVERSCAN_FACTOR = 0.25
 export const HORIZONTAL_BROWSE_RAW_VIEWPORT_RESTART_GAP_FACTOR = 0.75

@@ -187,9 +187,9 @@ const {
   scheduleGridOverlayDraw,
   resetGridRenderer,
   holdCurrentWaveformFrame,
+  beginSeekWaveformTransition,
   resetRetainedWaveformData,
   resetLiveWaveformRaw,
-  stopLiveWaveformPlayback,
   ensureLiveWaveformRawCapacity,
   applyLiveWaveformRawChunk,
   replaceLiveWaveformRaw,
@@ -875,8 +875,8 @@ watch(
     if (!revision) return
     if (!props.song?.filePath) return
     const safeTargetSeconds = normalizePreviewTimelineSeconds(targetSeconds)
-    stopLiveWaveformPlayback()
-    restartRawWaveformStreamAt(safeTargetSeconds, false)
+    beginSeekWaveformTransition(safeTargetSeconds)
+    restartRawWaveformStreamAt(safeTargetSeconds, true, { preserveDisplay: true })
     applyPreviewPlaybackPosition(safeTargetSeconds, true)
   }
 )

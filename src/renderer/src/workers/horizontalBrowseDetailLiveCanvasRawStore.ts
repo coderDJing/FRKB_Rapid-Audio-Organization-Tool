@@ -1,4 +1,9 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import {
+  ensureRawWaveformWindowCapacity,
+  isRawWaveformWindowFormatCompatible,
+  trimRawWaveformWindowStart
+} from '@renderer/components/horizontalBrowseRawWaveformRollingBuffer'
 import type {
   HorizontalBrowseDetailLiveCanvasRawMeta,
   HorizontalBrowseDetailLiveCanvasRenderRequest,
@@ -26,18 +31,6 @@ const createEmptyRawData = (meta: HorizontalBrowseDetailLiveCanvasRawMeta): RawW
   }
 }
 
-const hasSameRawMeta = (current: RawWaveformData, meta: HorizontalBrowseDetailLiveCanvasRawMeta) =>
-  current.sampleRate === meta.sampleRate &&
-  current.rate === meta.rate &&
-  Math.abs((current.startSec ?? 0) - meta.startSec) <= 0.0001 &&
-  Math.abs(current.duration - meta.duration) <= 0.0001
-
-const growRawArray = (source: Float32Array, frames: number) => {
-  const target = new Float32Array(frames)
-  target.set(source.subarray(0, Math.min(source.length, frames)))
-  return target
-}
-
 export const createHorizontalBrowseDetailLiveCanvasRawStore = (
   invalidateFrameState: () => void
 ) => {
@@ -53,7 +46,10 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
     const frames = Math.max(0, Math.floor(Number(meta.frames) || 0))
     if (!frames) return
 
-    if (!liveRawData || !hasSameRawMeta(liveRawData, meta)) {
+    const compatibleFormat = isRawWaveformWindowFormatCompatible(liveRawData, meta)
+    const currentStartSec = Math.max(0, Number(liveRawData?.startSec) || 0)
+    const nextStartSec = Math.max(0, Number(meta.startSec) || 0)
+    if (!liveRawData || !compatibleFormat || nextStartSec < currentStartSec - 0.0001) {
       if (retainCurrent && liveRawData) {
         retainedRawData = liveRawData
         retainedRawRevision = liveRawRevision
@@ -62,6 +58,14 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
       bumpLiveRawRevision()
       invalidateFrameState()
       return
+    }
+
+    if (nextStartSec > currentStartSec + 0.0001) {
+      const droppedFrames = trimRawWaveformWindowStart(liveRawData, nextStartSec)
+      if (droppedFrames > 0) {
+        bumpLiveRawRevision()
+        invalidateFrameState()
+      }
     }
 
     if (liveRawData.frames >= frames) {
@@ -78,29 +82,16 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
       return
     }
 
+    const grew = ensureRawWaveformWindowCapacity(liveRawData, frames, true)
     liveRawData.duration = Math.max(liveRawData.duration, meta.duration)
     liveRawData.sampleRate = meta.sampleRate
     liveRawData.rate = meta.rate
     liveRawData.frames = frames
-    liveRawData.startSec = meta.startSec
-    liveRawData.minLeft = growRawArray(liveRawData.minLeft, frames)
-    liveRawData.maxLeft = growRawArray(liveRawData.maxLeft, frames)
-    liveRawData.minRight = growRawArray(liveRawData.minRight, frames)
-    liveRawData.maxRight = growRawArray(liveRawData.maxRight, frames)
-    liveRawData.meanLeft = liveRawData.meanLeft
-      ? growRawArray(liveRawData.meanLeft, frames)
-      : undefined
-    liveRawData.meanRight = liveRawData.meanRight
-      ? growRawArray(liveRawData.meanRight, frames)
-      : undefined
-    liveRawData.rmsLeft = liveRawData.rmsLeft
-      ? growRawArray(liveRawData.rmsLeft, frames)
-      : undefined
-    liveRawData.rmsRight = liveRawData.rmsRight
-      ? growRawArray(liveRawData.rmsRight, frames)
-      : undefined
-    bumpLiveRawRevision()
-    invalidateFrameState()
+    liveRawData.startSec = Math.max(0, Number(liveRawData.startSec) || nextStartSec)
+    if (grew) {
+      bumpLiveRawRevision()
+      invalidateFrameState()
+    }
   }
 
   const replace = (rawData: RawWaveformData | null) => {
@@ -136,8 +127,14 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
       liveRawData.duration = meta.duration
     }
     if (typeof meta.startSec === 'number') {
-      changed = changed || Math.abs((liveRawData.startSec ?? 0) - meta.startSec) > 0.0001
-      liveRawData.startSec = Math.max(0, meta.startSec)
+      const currentStartSec = Math.max(0, Number(liveRawData.startSec) || 0)
+      const nextStartSec = Math.max(0, meta.startSec)
+      if (nextStartSec > currentStartSec + 0.0001) {
+        changed = trimRawWaveformWindowStart(liveRawData, nextStartSec) > 0 || changed
+      } else if (Math.abs(currentStartSec - nextStartSec) > 0.0001) {
+        changed = true
+        liveRawData.startSec = nextStartSec
+      }
     }
     if (typeof meta.frames === 'number' && meta.frames > 0) {
       const nextFrames = Math.min(Math.floor(meta.frames), liveRawData.minLeft.length)
