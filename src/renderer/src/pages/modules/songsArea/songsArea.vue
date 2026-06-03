@@ -129,6 +129,27 @@ const songListRootDir = computed(() =>
 // 使用 shallowRef 承载原始列表，避免不必要的深层响应式开销
 const originalSongInfoArr = shallowRef<ISongInfo[]>([])
 
+// 切换歌单离开动画期间保留旧数据，避免动画播放空内容
+const leaveData = shallowRef<ISongInfo[] | null>(null)
+const displaySongs = computed(() => leaveData.value ?? songsAreaState.songInfoArr)
+const handleListLeave = (el: Element, done: () => void) => {
+  let finished = false
+  const finish = () => {
+    if (finished) return
+    finished = true
+    leaveData.value = null
+    done()
+  }
+  el.addEventListener(
+    'transitionend',
+    (e) => {
+      if (e.target === el) finish()
+    },
+    { once: true }
+  )
+  setTimeout(finish, 200)
+}
+
 // 父级滚动采样
 const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
 
@@ -332,6 +353,16 @@ const {
 onMounted(() => {
   schedulePaneScrollRestore()
 })
+
+// 切换歌单时快照旧数据，用于离开动画期间保持渲染
+watch(
+  () => songsAreaState.songListUUID,
+  (_newUUID, _oldUUID) => {
+    if (_oldUUID && songsAreaState.songInfoArr.length > 0) {
+      leaveData.value = [...songsAreaState.songInfoArr]
+    }
+  }
+)
 
 // songsArea 相关事件
 useSongsAreaEvents({
@@ -951,36 +982,41 @@ const emptyHintText = computed(() => {
           />
 
           <!-- 使用 SongListRows 组件渲染歌曲列表 -->
-          <SongListRows
-            v-if="songsAreaState.songInfoArr.length > 0"
-            :key="songsAreaState.songListUUID"
-            :songs="songsAreaState.songInfoArr"
-            :visible-columns="columnDataArr"
-            :selected-song-file-paths="songsAreaState.selectedSongFilePath"
-            :playing-song-file-path="playingSongFilePathForRows"
-            :playing-song-file-paths="playingSongFilePathsForRows"
-            :flash-row-key="globalSearchFlashRowKey"
-            :flash-row-token="globalSearchFlashToken"
-            :harmonic-reference-key="harmonicReferenceKeyForRows"
-            :total-width="totalColumnsWidth"
-            :source-library-name="runtime.libraryAreaSelected"
-            :source-song-list-u-u-i-d="songsAreaState.songListUUID"
-            :source-pane-key="props.pane"
-            :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
-            :external-scroll-top="externalScrollTop"
-            :external-viewport-height="externalViewportHeight"
-            :song-list-root-dir="songListRootDir"
-            :reorder-mode="
-              isMixtapeListView ? 'mixtape' : canReorderPlaylistTracks ? 'playlist' : 'none'
-            "
-            @song-click="songClick"
-            @song-contextmenu="handleSongContextMenuEvent"
-            @song-dblclick="songDblClick"
-            @song-dragstart="handleSongDragStart"
-            @song-dragend="handleSongDragEnd"
-            @mixtape-reorder="handleMixtapeReorder"
-            @playlist-reorder="handlePlaylistReorder"
-          />
+          <Transition name="songs-area-list-switch" mode="out-in" @leave="handleListLeave">
+            <div :key="songsAreaState.songListUUID" class="songs-area-list-viewport">
+              <Transition name="songs-area-list-switch">
+                <SongListRows
+                  v-if="displaySongs.length > 0"
+                  :songs="displaySongs"
+                  :visible-columns="columnDataArr"
+                  :selected-song-file-paths="songsAreaState.selectedSongFilePath"
+                  :playing-song-file-path="playingSongFilePathForRows"
+                  :playing-song-file-paths="playingSongFilePathsForRows"
+                  :flash-row-key="globalSearchFlashRowKey"
+                  :flash-row-token="globalSearchFlashToken"
+                  :harmonic-reference-key="harmonicReferenceKeyForRows"
+                  :total-width="totalColumnsWidth"
+                  :source-library-name="runtime.libraryAreaSelected"
+                  :source-song-list-u-u-i-d="songsAreaState.songListUUID"
+                  :source-pane-key="props.pane"
+                  :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
+                  :external-scroll-top="externalScrollTop"
+                  :external-viewport-height="externalViewportHeight"
+                  :song-list-root-dir="songListRootDir"
+                  :reorder-mode="
+                    isMixtapeListView ? 'mixtape' : canReorderPlaylistTracks ? 'playlist' : 'none'
+                  "
+                  @song-click="songClick"
+                  @song-contextmenu="handleSongContextMenuEvent"
+                  @song-dblclick="songDblClick"
+                  @song-dragstart="handleSongDragStart"
+                  @song-dragend="handleSongDragEnd"
+                  @mixtape-reorder="handleMixtapeReorder"
+                  @playlist-reorder="handlePlaylistReorder"
+                />
+              </Transition>
+            </div>
+          </Transition>
         </OverlayScrollbarsComponent>
 
         <bubbleBoxTrigger

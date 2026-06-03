@@ -158,6 +158,20 @@
   height: 100%;
 }
 
+.songs-area-list-viewport {
+  width: 100%;
+  height: 100%;
+}
+
+.songs-area-list-switch-enter-active,
+.songs-area-list-switch-leave-active {
+  transition: opacity 0.12s ease;
+}
+.songs-area-list-switch-enter-from,
+.songs-area-list-switch-leave-to {
+  opacity: 0;
+}
+
 .songs-area-switch-enter-active,
 .songs-area-switch-leave-active {
   transition:
