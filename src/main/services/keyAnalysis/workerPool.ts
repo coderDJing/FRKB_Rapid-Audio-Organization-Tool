@@ -352,7 +352,11 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     }
 
     if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {
-      await deps.persistence.persistWaveform(job.filePath, payloadResult.mixxxWaveformData)
+      await deps.persistence.persistWaveform(
+        job.filePath,
+        payloadResult.mixxxWaveformData,
+        payloadResult.compactVisualWaveformData ?? null
+      )
       deps.events.emit('waveform-updated', { filePath: job.filePath })
     }
 

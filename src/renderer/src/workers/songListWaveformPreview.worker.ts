@@ -1,4 +1,5 @@
 import {
+  drawSongListCompactVisualWaveform,
   drawSongListMixxxWaveform,
   drawSongListPioneerPreviewWaveform,
   type SongListWaveformMinMaxCacheEntry,
@@ -74,6 +75,15 @@ const renderWaveform = (payload: RenderPayload) => {
       playedPercent,
       payload.progressColor
     )
+    return
+  }
+
+  if (data.kind === 'compactVisual') {
+    drawSongListCompactVisualWaveform(ctx, width, height, data.data, {
+      isHalf: payload.isHalf,
+      progressColor: payload.progressColor,
+      playedPercent
+    })
     return
   }
 

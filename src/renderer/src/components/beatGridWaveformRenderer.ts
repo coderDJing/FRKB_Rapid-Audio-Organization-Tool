@@ -342,16 +342,15 @@ const resolveRawColumnByTimeRange = (
     ampBottom: clamp((rawPeaks?.ampBottom ?? 0) * waveformGain, 0, 1)
   }
   if (rawAmps.ampTop <= 0 && rawAmps.ampBottom <= 0) return null
-  const rawFftProfile = preferRawPeaksOnly
-    ? null
-    : resolveRawFftBandProfile(
-        rawData,
-        rawStartFrame,
-        rawEndFrame,
-        maxSamplesPerPixel,
-        useRawEnergyEnvelope
-      )
-  const color = preferRawPeaksOnly ? { r: 235, g: 242, b: 248 } : rawFftProfile?.color
+  const rawColorUsesEnergyShape = preferRawPeaksOnly ? false : useRawEnergyEnvelope
+  const rawFftProfile = resolveRawFftBandProfile(
+    rawData,
+    rawStartFrame,
+    rawEndFrame,
+    maxSamplesPerPixel,
+    rawColorUsesEnergyShape
+  )
+  const color = rawFftProfile?.color
   if (!color) return null
   return {
     ampTop: rawAmps.ampTop,
@@ -410,6 +409,9 @@ const buildWaveformColumns = (
   const rawStartSec = hasRaw ? Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec : 0
   const rawColumnDurationSec = rangeDurationSec / Math.max(1, width)
   const safeWaveformGain = normalizeWaveformGain(waveformGain)
+  const rawPeaksOnly = preferRawPeaksOnly === true
+  const shouldSmoothRawColumns = smoothColumns && !rawPeaksOnly
+  const shouldUseRawEnergyEnvelope = useRawEnergyEnvelope && !rawPeaksOnly
   const rawDetailColumnDurationSec = Math.max(rawColumnDurationSec, 1 / REKORDBOX_RGB_DETAIL_RATE)
   const rawTimelineColumnCache = new Map<number, WaveformColumn | null>()
   const resolveRawTimelineColumn = (timelineColumnIndex: number) => {
@@ -428,8 +430,8 @@ const buildWaveformColumns = (
       startTime,
       startTime + rawDetailColumnDurationSec,
       maxSamplesPerPixel,
-      preferRawPeaksOnly,
-      useRawEnergyEnvelope,
+      rawPeaksOnly,
+      shouldUseRawEnergyEnvelope,
       safeWaveformGain
     )
     rawTimelineColumnCache.set(timelineColumnIndex, column)
@@ -440,7 +442,7 @@ const buildWaveformColumns = (
     if (!currentColumn) return null
     const previousColumn = resolveRawTimelineColumn(timelineColumnIndex - 1)
     let shapedCurrentColumn = currentColumn
-    if (useRawEnergyEnvelope) {
+    if (shouldUseRawEnergyEnvelope) {
       const attackAmp = resolveRawEnergyAttackAmp(
         currentColumn.rawEnergyBase,
         currentColumn.rawEnergyPeak,
@@ -508,7 +510,7 @@ const buildWaveformColumns = (
     previousColumn: WaveformColumn | null
   ) => {
     const heightShapedColumn =
-      useRawEnergyEnvelope && column.frequencyRatios
+      shouldUseRawEnergyEnvelope && column.frequencyRatios
         ? {
             ...column,
             ampTop: resolveRekordboxRgbHeightAmp(column.ampTop, column.frequencyRatios),
@@ -516,7 +518,7 @@ const buildWaveformColumns = (
           }
         : column
     if (
-      !useRawEnergyEnvelope ||
+      !shouldUseRawEnergyEnvelope ||
       !previousColumn ||
       isColumnAttack(heightShapedColumn, previousColumn)
     ) {
@@ -574,9 +576,9 @@ const buildWaveformColumns = (
     if (hasRaw && rawData && rawFrames > 0 && rawRate > 0) {
       const rawTimelineColumnIndex = Math.floor(startTime / rawDetailColumnDurationSec)
       let column: WaveformColumn | null = null
-      if (smoothColumns) {
+      if (shouldSmoothRawColumns) {
         column = resolveSmoothedRawTimelineColumn(rawTimelineColumnIndex)
-      } else if (useRawEnergyEnvelope) {
+      } else if (shouldUseRawEnergyEnvelope) {
         column =
           resolveRawTimelineColumn(rawTimelineColumnIndex) ??
           resolveRawColumnByTimeRange(
@@ -587,8 +589,8 @@ const buildWaveformColumns = (
             startTime,
             endTime,
             maxSamplesPerPixel,
-            preferRawPeaksOnly,
-            useRawEnergyEnvelope,
+            rawPeaksOnly,
+            shouldUseRawEnergyEnvelope,
             safeWaveformGain
           )
       } else {
@@ -600,8 +602,8 @@ const buildWaveformColumns = (
           startTime,
           endTime,
           maxSamplesPerPixel,
-          preferRawPeaksOnly,
-          useRawEnergyEnvelope,
+          rawPeaksOnly,
+          shouldUseRawEnergyEnvelope,
           safeWaveformGain
         )
       }

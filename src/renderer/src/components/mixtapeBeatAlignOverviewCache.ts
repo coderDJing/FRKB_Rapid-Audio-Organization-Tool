@@ -1,13 +1,17 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRenderer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
+import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
 
 type BuildBeatAlignOverviewCacheParams = {
   wrap: HTMLDivElement | null
   cacheCanvas: HTMLCanvasElement | null
   mixxxData: MixxxWaveformData | null
   rawData: RawWaveformData | null
+  compactData?: CompactVisualWaveformData | null
   maxRenderColumns: number
+  maxSamplesPerPixel: number
   waveformVerticalPadding: number
   leadingPadSec: number
   trailingPadSec?: number
@@ -22,32 +26,35 @@ export const rebuildBeatAlignOverviewCache = (
     cacheCanvas,
     mixxxData,
     rawData,
+    compactData,
     maxRenderColumns,
+    maxSamplesPerPixel,
     waveformVerticalPadding,
     leadingPadSec,
     trailingPadSec,
     timeBasisOffsetMs
   } = params
-  // 节拍对齐仅展示精细(raw)波形，raw 未就绪时不渲染概览波形
-  if (!wrap || !mixxxData || !rawData) return null
+  if (!wrap || (!compactData && (!mixxxData || !rawData))) return null
 
-  const low = mixxxData.bands?.low
-  const mid = mixxxData.bands?.mid
-  const high = mixxxData.bands?.high
-  const all = mixxxData.bands?.all
-  if (!low || !mid || !high || !all) return cacheCanvas
+  if (!compactData && mixxxData) {
+    const low = mixxxData.bands?.low
+    const mid = mixxxData.bands?.mid
+    const high = mixxxData.bands?.high
+    const all = mixxxData.bands?.all
+    if (!low || !mid || !high || !all) return cacheCanvas
 
-  const frameCount = Math.min(
-    low.left.length,
-    low.right.length,
-    mid.left.length,
-    mid.right.length,
-    high.left.length,
-    high.right.length,
-    all.left.length,
-    all.right.length
-  )
-  if (!frameCount) return cacheCanvas
+    const frameCount = Math.min(
+      low.left.length,
+      low.right.length,
+      mid.left.length,
+      mid.right.length,
+      high.left.length,
+      high.right.length,
+      all.left.length,
+      all.right.length
+    )
+    if (!frameCount) return cacheCanvas
+  }
 
   const width = Math.max(1, Math.floor(wrap.clientWidth))
   const height = Math.max(1, Math.floor(wrap.clientHeight))
@@ -69,7 +76,7 @@ export const rebuildBeatAlignOverviewCache = (
   cacheCtx.clearRect(0, 0, renderPixelWidth, renderPixelHeight)
   cacheCtx.scale(dpr, dpr)
 
-  const duration = Number(mixxxData.duration) || 0
+  const duration = Number(compactData?.duration || mixxxData?.duration || rawData?.duration) || 0
   const safeLeadingPadSec = Number.isFinite(leadingPadSec) && leadingPadSec > 0 ? leadingPadSec : 0
   const safeTrailingPadSec =
     Number.isFinite(trailingPadSec) && Number(trailingPadSec) > 0 ? Number(trailingPadSec) : 0
@@ -82,22 +89,37 @@ export const rebuildBeatAlignOverviewCache = (
   const drawHeight = Math.max(1, height - verticalPadding * 2)
   cacheCtx.save()
   cacheCtx.translate(leadingPadPx, verticalPadding)
-  drawBeatGridWaveform(cacheCtx, {
-    width: Math.max(1, Math.floor(contentWidth)),
-    height: drawHeight,
-    bpm: 0,
-    firstBeatMs: 0,
-    barBeatOffset: 0,
-    timeBasisOffsetMs,
-    rangeStartSec: 0,
-    rangeDurationSec: Math.max(0.0001, duration),
-    mixxxData,
-    rawData,
-    showBackground: false,
-    maxSamplesPerPixel: 120,
-    showDetailHighlights: false,
-    showCenterLine: false
-  })
+  if (compactData) {
+    drawCompactVisualWaveform(cacheCtx, {
+      width: Math.max(1, Math.floor(contentWidth)),
+      height: drawHeight,
+      data: compactData,
+      timeBasisOffsetMs,
+      rangeStartSec: 0,
+      rangeDurationSec: Math.max(0.0001, duration),
+      showDetailHighlights: false,
+      showCenterLine: false,
+      waveformLayout: 'full'
+    })
+  } else {
+    drawBeatGridWaveform(cacheCtx, {
+      width: Math.max(1, Math.floor(contentWidth)),
+      height: drawHeight,
+      bpm: 0,
+      firstBeatMs: 0,
+      barBeatOffset: 0,
+      timeBasisOffsetMs,
+      rangeStartSec: 0,
+      rangeDurationSec: Math.max(0.0001, duration),
+      mixxxData,
+      rawData,
+      showBackground: false,
+      maxSamplesPerPixel,
+      showDetailHighlights: false,
+      showCenterLine: false,
+      waveformRenderStyle: 'raw-curve'
+    })
+  }
   cacheCtx.restore()
 
   return nextCanvas

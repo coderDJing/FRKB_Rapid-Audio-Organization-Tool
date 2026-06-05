@@ -11,7 +11,11 @@ import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatA
 import { rebuildBeatAlignOverviewCache } from '@renderer/components/mixtapeBeatAlignOverviewCache'
 import { useMixtapeBeatAlignPlayback } from '@renderer/components/mixtapeBeatAlignPlayback'
 import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
-import { pickRawDataByFile } from '@renderer/components/mixtapeBeatAlignRawWaveform'
+import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
+import {
+  compactVisualWaveformToRawData,
+  loadCompactVisualWaveformData
+} from '@renderer/components/horizontalBrowseCompactVisualWaveform'
 import {
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
@@ -33,7 +37,7 @@ import {
   PREVIEW_BPM_TAP_RESET_MS,
   PREVIEW_GRID_SHIFT_LARGE_MS,
   PREVIEW_GRID_SHIFT_SMALL_MS,
-  PREVIEW_RAW_TARGET_RATE,
+  PREVIEW_MAX_SAMPLES_PER_PIXEL,
   PREVIEW_SHORTCUT_BEATS,
   PREVIEW_SHORTCUT_FALLBACK_BPM,
   PREVIEW_WARMUP_DELAY_MS,
@@ -49,6 +53,7 @@ import {
   resizePreviewCanvasByPixelRatio
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
 
 const props = defineProps({
   trackTitle: {
@@ -97,6 +102,7 @@ const previewLoading = ref(false)
 const previewError = ref('')
 const previewMixxxData = ref<MixxxWaveformData | null>(null)
 const overviewRawData = ref<RawWaveformData | null>(null)
+const overviewCompactData = ref<CompactVisualWaveformData | null>(null)
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const previewStartSec = ref(0)
 const previewDragging = ref(false)
@@ -126,28 +132,6 @@ let overviewCacheCanvas: HTMLCanvasElement | null = null
 let previewLoadSequence = 0
 let previewWarmupTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
-
-const createRawPlaceholderMixxxData = (rawData: RawWaveformData): MixxxWaveformData => {
-  const low = 128
-  const mid = 188
-  const high = 232
-  const all = 220
-  const single = (value: number) => new Uint8Array([value])
-  return {
-    duration: Math.max(0, Number(rawData.duration) || 0),
-    sampleRate: Math.max(1, Number(rawData.sampleRate) || 1),
-    step: Math.max(
-      1,
-      Math.floor((Number(rawData.sampleRate) || 1) / Math.max(1, Number(rawData.rate) || 1))
-    ),
-    bands: {
-      low: { left: single(low), right: single(low) },
-      mid: { left: single(mid), right: single(mid) },
-      high: { left: single(high), right: single(high) },
-      all: { left: single(all), right: single(all) }
-    }
-  }
-}
 
 const bpmDisplay = computed(() => {
   const bpmValue = Number(previewBpm.value)
@@ -531,7 +515,9 @@ const rebuildOverviewCache = () => {
     cacheCanvas: overviewCacheCanvas,
     mixxxData: previewMixxxData.value,
     rawData: overviewRawData.value,
+    compactData: overviewCompactData.value,
     maxRenderColumns: OVERVIEW_MAX_RENDER_COLUMNS,
+    maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
     waveformVerticalPadding: OVERVIEW_WAVEFORM_VERTICAL_PADDING,
     leadingPadSec: resolvePreviewLeadingPadSec(),
     trailingPadSec: resolvePreviewTrailingPadSec(),
@@ -769,6 +755,7 @@ const loadPreviewWaveform = async (filePath: string) => {
   previewLoading.value = false
   previewMixxxData.value = null
   overviewRawData.value = null
+  overviewCompactData.value = null
   previewError.value = ''
   previewZoom.value = HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
   previewStartSec.value = 0
@@ -793,15 +780,10 @@ const loadPreviewWaveform = async (filePath: string) => {
   // 对话框一打开即开始预解码，避免用户首次点击播放时才触发解码等待
   schedulePreviewWarmup(normalized, requestSeq, PREVIEW_WARMUP_EAGER_DELAY_MS)
   try {
-    const fileKey = normalizePathKey(normalized)
-    const rawResult = await window.electron.ipcRenderer
-      .invoke('mixtape-waveform-raw:batch', {
-        filePaths: [normalized],
-        targetRate: PREVIEW_RAW_TARGET_RATE
-      })
-      .catch(() => null)
+    const compact = await loadCompactVisualWaveformData(normalized).catch(() => null)
     if (requestSeq !== previewLoadSequence) return
-    overviewRawData.value = pickRawDataByFile(rawResult, fileKey, normalizePathKey)
+    overviewCompactData.value = compact
+    overviewRawData.value = compact ? compactVisualWaveformToRawData(compact) : null
     previewMixxxData.value = overviewRawData.value
       ? createRawPlaceholderMixxxData(overviewRawData.value)
       : null

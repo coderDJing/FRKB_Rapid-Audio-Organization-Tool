@@ -37,10 +37,19 @@ const cloneRawWaveformData = (value: RawWaveformData): RawWaveformData => ({
   meanLeft: value.meanLeft ? new Float32Array(value.meanLeft) : undefined,
   meanRight: value.meanRight ? new Float32Array(value.meanRight) : undefined,
   rmsLeft: value.rmsLeft ? new Float32Array(value.rmsLeft) : undefined,
-  rmsRight: value.rmsRight ? new Float32Array(value.rmsRight) : undefined
+  rmsRight: value.rmsRight ? new Float32Array(value.rmsRight) : undefined,
+  compactColorIndex: value.compactColorIndex ? new Uint8Array(value.compactColorIndex) : undefined,
+  compactColorLow: value.compactColorLow ? new Uint8Array(value.compactColorLow) : undefined,
+  compactColorMid: value.compactColorMid ? new Uint8Array(value.compactColorMid) : undefined,
+  compactColorHigh: value.compactColorHigh ? new Uint8Array(value.compactColorHigh) : undefined,
+  compactColorRed: value.compactColorRed ? new Uint8Array(value.compactColorRed) : undefined,
+  compactColorGreen: value.compactColorGreen ? new Uint8Array(value.compactColorGreen) : undefined,
+  compactColorBlue: value.compactColorBlue ? new Uint8Array(value.compactColorBlue) : undefined,
+  compactColorRateDivisor: value.compactColorRateDivisor,
+  compactColorStartFrame: value.compactColorStartFrame
 })
 
-const collectTransferableBuffers = (arrays: Float32Array[]) => {
+const collectTransferableBuffers = (arrays: Array<Float32Array | Uint8Array>) => {
   const buffers = new Set<ArrayBuffer>()
   for (const array of arrays) {
     const buffer = array.buffer
@@ -207,7 +216,14 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
             cloned.minRight,
             cloned.maxRight,
             ...(cloned.meanLeft && cloned.meanRight ? [cloned.meanLeft, cloned.meanRight] : []),
-            ...(cloned.rmsLeft && cloned.rmsRight ? [cloned.rmsLeft, cloned.rmsRight] : [])
+            ...(cloned.rmsLeft && cloned.rmsRight ? [cloned.rmsLeft, cloned.rmsRight] : []),
+            ...(cloned.compactColorIndex ? [cloned.compactColorIndex] : []),
+            ...(cloned.compactColorLow ? [cloned.compactColorLow] : []),
+            ...(cloned.compactColorMid ? [cloned.compactColorMid] : []),
+            ...(cloned.compactColorHigh ? [cloned.compactColorHigh] : []),
+            ...(cloned.compactColorRed ? [cloned.compactColorRed] : []),
+            ...(cloned.compactColorGreen ? [cloned.compactColorGreen] : []),
+            ...(cloned.compactColorBlue ? [cloned.compactColorBlue] : [])
           ])
         : undefined
     )

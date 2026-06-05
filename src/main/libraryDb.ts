@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 26
+const SCHEMA_VERSION = 29
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
@@ -653,6 +653,94 @@ function createDatabase(dbPath: string): SqliteDatabase {
       instance.exec('ALTER TABLE mixtape_raw_waveform_cache ADD COLUMN mean_right BLOB;')
     }
   }
+  if (userVersion < 27) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS compact_visual_waveform_cache (
+        list_root TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        mtime_ms REAL NOT NULL,
+        cache_version INTEGER NOT NULL,
+        parameter_version INTEGER NOT NULL,
+        duration REAL NOT NULL,
+        detail_rate INTEGER NOT NULL,
+        overview_rate INTEGER NOT NULL,
+        frame_count INTEGER NOT NULL,
+        payload BLOB NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (list_root, file_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_compact_visual_waveform_cache_root
+        ON compact_visual_waveform_cache(list_root);
+    `)
+  }
+  if (userVersion < 29) {
+    instance.transaction(() => {
+      instance.exec(`
+        DROP TABLE IF EXISTS compact_visual_waveform_cache_chunks;
+        DROP TABLE IF EXISTS compact_visual_waveform_cache_v29;
+        CREATE TABLE IF NOT EXISTS compact_visual_waveform_cache (
+          list_root TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          size INTEGER NOT NULL,
+          mtime_ms REAL NOT NULL,
+          cache_version INTEGER NOT NULL,
+          parameter_version INTEGER NOT NULL,
+          duration REAL NOT NULL,
+          detail_rate INTEGER NOT NULL,
+          overview_rate INTEGER NOT NULL,
+          frame_count INTEGER NOT NULL,
+          payload BLOB NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          PRIMARY KEY (list_root, file_path)
+        );
+        CREATE TABLE compact_visual_waveform_cache_v29 (
+          list_root TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          size INTEGER NOT NULL,
+          mtime_ms REAL NOT NULL,
+          cache_version INTEGER NOT NULL,
+          parameter_version INTEGER NOT NULL,
+          duration REAL NOT NULL,
+          detail_rate INTEGER NOT NULL,
+          overview_rate INTEGER NOT NULL,
+          frame_count INTEGER NOT NULL,
+          payload BLOB NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          PRIMARY KEY (list_root, file_path)
+        );
+        INSERT OR REPLACE INTO compact_visual_waveform_cache_v29 (
+          list_root, file_path, size, mtime_ms, cache_version, parameter_version, duration,
+          detail_rate, overview_rate, frame_count, payload, updated_at_ms
+        )
+        SELECT
+          list_root, file_path, size, mtime_ms, cache_version, parameter_version, duration,
+          detail_rate, overview_rate, frame_count, payload, updated_at_ms
+        FROM compact_visual_waveform_cache;
+        DROP TABLE compact_visual_waveform_cache;
+        ALTER TABLE compact_visual_waveform_cache_v29 RENAME TO compact_visual_waveform_cache;
+      `)
+    })()
+  }
+  instance.exec(`
+    CREATE TABLE IF NOT EXISTS compact_visual_waveform_cache (
+      list_root TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      mtime_ms REAL NOT NULL,
+      cache_version INTEGER NOT NULL,
+      parameter_version INTEGER NOT NULL,
+      duration REAL NOT NULL,
+      detail_rate INTEGER NOT NULL,
+      overview_rate INTEGER NOT NULL,
+      frame_count INTEGER NOT NULL,
+      payload BLOB NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      PRIMARY KEY (list_root, file_path)
+    );
+    CREATE INDEX IF NOT EXISTS idx_compact_visual_waveform_cache_root
+      ON compact_visual_waveform_cache(list_root);
+  `)
   if (userVersion < SCHEMA_VERSION) {
     instance.pragma('user_version = ' + SCHEMA_VERSION)
   }

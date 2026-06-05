@@ -8,16 +8,16 @@ import type { SongsAreaPaneKey } from '@renderer/stores/runtime'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import emitter from '@renderer/utils/mitt'
 import {
-  getRekordboxPreviewWaveformDoneEventChannel,
-  getRekordboxPreviewWaveformItemEventChannel,
   getRekordboxPreviewWaveformStreamChannel,
   resolveSongExternalWaveformSource
 } from '@renderer/utils/rekordboxExternalSource'
 import { t } from '@renderer/utils/translate'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { CompactVisualWaveformPreviewData } from '@shared/compactVisualWaveform'
 import type { RekordboxSourceKind } from '@shared/rekordboxSources'
 import { createSongListWaveformPreviewWorker } from '@renderer/workers/songListWaveformPreview.workerClient'
 import {
+  drawSongListCompactVisualWaveform,
   drawSongListMixxxWaveform,
   drawSongListPioneerPreviewWaveform,
   normalizeSongListWaveformStyle,
@@ -28,6 +28,16 @@ import type {
   SongListWaveformWorkerData,
   SongListWaveformWorkerIncoming
 } from '@renderer/workers/songListWaveformPreview.types'
+import {
+  subscribeManualKeyAnalysisBatchStart,
+  subscribePioneerPreviewWaveformDone,
+  subscribePioneerPreviewWaveformItem,
+  subscribeWaveformUpdated,
+  type ManualKeyAnalysisBatchStartPayload,
+  type PioneerPreviewWaveformDoneHandler,
+  type PioneerPreviewWaveformItemHandler,
+  type WaveformUpdatedHandler
+} from './waveformPreviewIpcSubscriptions'
 type VisibleSongItem = { song: ISongInfo; idx: number }
 type WaveformCacheEntry =
   | {
@@ -38,94 +48,13 @@ type WaveformCacheEntry =
       kind: 'pioneer'
       data: IPioneerPreviewWaveformData
     }
+  | {
+      kind: 'compactVisual'
+      data: CompactVisualWaveformPreviewData
+    }
   | null
 type WaveformPlaceholderState = 'loading' | 'unavailable' | 'ready'
 const PIONEER_WAVEFORM_EAGER_COUNT = 8
-type WaveformUpdatedPayload = { filePath?: string }
-type ManualKeyAnalysisBatchStartPayload = { filePaths?: string[] }
-type PioneerPreviewWaveformItemPayload = {
-  requestId?: string
-  analyzePath?: string
-  data?: IPioneerPreviewWaveformData | null
-  error?: string
-}
-type PioneerPreviewWaveformDonePayload = {
-  requestId?: string
-  error?: string
-}
-type WaveformUpdatedHandler = (_event: unknown, payload: WaveformUpdatedPayload) => void
-type PioneerPreviewWaveformItemHandler = (
-  _event: unknown,
-  payload: PioneerPreviewWaveformItemPayload
-) => void
-type PioneerPreviewWaveformDoneHandler = (
-  _event: unknown,
-  payload: PioneerPreviewWaveformDonePayload
-) => void
-const waveformUpdatedSubscribers = new Set<WaveformUpdatedHandler>()
-const pioneerPreviewWaveformItemSubscribers = new Set<PioneerPreviewWaveformItemHandler>()
-const pioneerPreviewWaveformDoneSubscribers = new Set<PioneerPreviewWaveformDoneHandler>()
-let waveformIpcListenersBound = false
-const globalHandleWaveformUpdated = (_event: unknown, payload: WaveformUpdatedPayload) => {
-  for (const handler of waveformUpdatedSubscribers) {
-    handler(_event, payload)
-  }
-}
-const globalHandlePioneerPreviewWaveformItem = (
-  _event: unknown,
-  payload: PioneerPreviewWaveformItemPayload
-) => {
-  for (const handler of pioneerPreviewWaveformItemSubscribers) {
-    handler(_event, payload)
-  }
-}
-const globalHandlePioneerPreviewWaveformDone = (
-  _event: unknown,
-  payload: PioneerPreviewWaveformDonePayload
-) => {
-  for (const handler of pioneerPreviewWaveformDoneSubscribers) {
-    handler(_event, payload)
-  }
-}
-const bindWaveformIpcListeners = () => {
-  if (waveformIpcListenersBound) return
-  if (typeof window === 'undefined' || !window.electron?.ipcRenderer) return
-  window.electron.ipcRenderer.on('song-waveform-updated', globalHandleWaveformUpdated)
-  for (const sourceKind of ['usb', 'desktop'] as const) {
-    window.electron.ipcRenderer.on(
-      getRekordboxPreviewWaveformItemEventChannel(sourceKind),
-      globalHandlePioneerPreviewWaveformItem
-    )
-    window.electron.ipcRenderer.on(
-      getRekordboxPreviewWaveformDoneEventChannel(sourceKind),
-      globalHandlePioneerPreviewWaveformDone
-    )
-  }
-  waveformIpcListenersBound = true
-}
-const unbindWaveformIpcListenersIfIdle = () => {
-  if (!waveformIpcListenersBound) return
-  if (
-    waveformUpdatedSubscribers.size > 0 ||
-    pioneerPreviewWaveformItemSubscribers.size > 0 ||
-    pioneerPreviewWaveformDoneSubscribers.size > 0
-  ) {
-    return
-  }
-  if (typeof window === 'undefined' || !window.electron?.ipcRenderer) return
-  window.electron.ipcRenderer.removeListener('song-waveform-updated', globalHandleWaveformUpdated)
-  for (const sourceKind of ['usb', 'desktop'] as const) {
-    window.electron.ipcRenderer.removeListener(
-      getRekordboxPreviewWaveformItemEventChannel(sourceKind),
-      globalHandlePioneerPreviewWaveformItem
-    )
-    window.electron.ipcRenderer.removeListener(
-      getRekordboxPreviewWaveformDoneEventChannel(sourceKind),
-      globalHandlePioneerPreviewWaveformDone
-    )
-  }
-  waveformIpcListenersBound = false
-}
 const clamp01 = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0)
 export function useWaveformPreview(params: {
   visibleSongsWithIndex: Ref<VisibleSongItem[]>
@@ -218,6 +147,12 @@ export function useWaveformPreview(params: {
     if (data.kind === 'pioneer') {
       return {
         kind: 'pioneer',
+        data: data.data
+      }
+    }
+    if (data.kind === 'compactVisual') {
+      return {
+        kind: 'compactVisual',
         data: data.data
       }
     }
@@ -587,6 +522,14 @@ export function useWaveformPreview(params: {
       )
       return
     }
+    if (data.kind === 'compactVisual') {
+      drawSongListCompactVisualWaveform(ctx, width, height, data.data, {
+        isHalf: useHalfWaveform(),
+        progressColor,
+        playedPercent
+      })
+      return
+    }
     drawSongListMixxxWaveform(ctx, width, height, filePath, data.data, {
       waveformStyle: runtime.setting?.waveformStyle,
       isHalf: useHalfWaveform(),
@@ -691,10 +634,11 @@ export function useWaveformPreview(params: {
       setWaveformPlaceholderLoading(filePath)
     }
     const listRoot = (songListRootDir.value || '').trim()
-    let response: { items?: Array<{ filePath: string; data: MixxxWaveformData | null }> } | null =
-      null
+    let response: {
+      items?: Array<{ filePath: string; data: CompactVisualWaveformPreviewData | null }>
+    } | null = null
     try {
-      response = await window.electron.ipcRenderer.invoke('waveform-cache:batch', {
+      response = await window.electron.ipcRenderer.invoke('compact-visual-waveform-cache:batch', {
         listRoot,
         filePaths
       })
@@ -720,7 +664,7 @@ export function useWaveformPreview(params: {
         filePath,
         data
           ? {
-              kind: 'mixxx',
+              kind: 'compactVisual',
               data
             }
           : null
@@ -1036,17 +980,17 @@ export function useWaveformPreview(params: {
     },
     { flush: 'post' }
   )
-  waveformUpdatedSubscribers.add(handleWaveformUpdated)
-  pioneerPreviewWaveformItemSubscribers.add(handlePioneerPreviewWaveformItem)
-  pioneerPreviewWaveformDoneSubscribers.add(handlePioneerPreviewWaveformDone)
+  const unsubscribeWaveformUpdated = subscribeWaveformUpdated(handleWaveformUpdated)
+  const unsubscribePioneerPreviewWaveformItem = subscribePioneerPreviewWaveformItem(
+    handlePioneerPreviewWaveformItem
+  )
+  const unsubscribePioneerPreviewWaveformDone = subscribePioneerPreviewWaveformDone(
+    handlePioneerPreviewWaveformDone
+  )
+  const unsubscribeManualKeyAnalysisBatchStart = subscribeManualKeyAnalysisBatchStart(
+    handleManualKeyAnalysisBatchStart
+  )
   bindThemeClassObserver()
-  bindWaveformIpcListeners()
-  if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
-    window.electron.ipcRenderer.on(
-      'key-analysis:manual-batch-start',
-      handleManualKeyAnalysisBatchStart
-    )
-  }
   emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:progress', handleWaveformPreviewProgress)
   onBeforeUnmount(() => {
@@ -1062,16 +1006,10 @@ export function useWaveformPreview(params: {
       waveformWorker = null
     }
     workerCanvasMap.clear()
-    waveformUpdatedSubscribers.delete(handleWaveformUpdated)
-    pioneerPreviewWaveformItemSubscribers.delete(handlePioneerPreviewWaveformItem)
-    pioneerPreviewWaveformDoneSubscribers.delete(handlePioneerPreviewWaveformDone)
-    unbindWaveformIpcListenersIfIdle()
-    if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
-      window.electron.ipcRenderer.removeListener(
-        'key-analysis:manual-batch-start',
-        handleManualKeyAnalysisBatchStart
-      )
-    }
+    unsubscribeWaveformUpdated()
+    unsubscribePioneerPreviewWaveformItem()
+    unsubscribePioneerPreviewWaveformDone()
+    unsubscribeManualKeyAnalysisBatchStart()
     emitter.off('waveform-preview:state', handleWaveformPreviewState)
     emitter.off('waveform-preview:progress', handleWaveformPreviewProgress)
   })

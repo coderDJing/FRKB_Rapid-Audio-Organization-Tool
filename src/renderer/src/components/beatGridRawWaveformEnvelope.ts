@@ -74,16 +74,9 @@ const resolveFrameEnergy = (rawData: RawWaveformData, frame: number) => {
   )
 }
 
-const resolveRawEnergyShapeParams = (rawData: RawWaveformData): RawEnergyShapeParams => {
-  const loadedFrames = resolveLoadedFrames(rawData)
-  const rate = Number(rawData.rate) || 0
-  const rawDurationSec = Number(rawData.duration)
-  const durationSec =
-    Number.isFinite(rawDurationSec) && rawDurationSec > 0
-      ? rawDurationSec
-      : rate > 0
-        ? loadedFrames / rate
-        : 0
+export const resolveRawEnergyShapeParamsByDuration = (
+  durationSec: number
+): RawEnergyShapeParams => {
   const fullTrackRatio = clamp(
     (durationSec - RAW_ENERGY_FULL_TRACK_START_SEC) /
       (RAW_ENERGY_FULL_TRACK_TARGET_SEC - RAW_ENERGY_FULL_TRACK_START_SEC),
@@ -105,7 +98,20 @@ const resolveRawEnergyShapeParams = (rawData: RawWaveformData): RawEnergyShapePa
   }
 }
 
-const shapeEnergyAmp = (value: number, outputGamma = RAW_ENERGY_OUTPUT_GAMMA) => {
+const resolveRawEnergyShapeParams = (rawData: RawWaveformData): RawEnergyShapeParams => {
+  const loadedFrames = resolveLoadedFrames(rawData)
+  const rate = Number(rawData.rate) || 0
+  const rawDurationSec = Number(rawData.duration)
+  const durationSec =
+    Number.isFinite(rawDurationSec) && rawDurationSec > 0
+      ? rawDurationSec
+      : rate > 0
+        ? loadedFrames / rate
+        : 0
+  return resolveRawEnergyShapeParamsByDuration(durationSec)
+}
+
+export const shapeRawEnergyAmpValue = (value: number, outputGamma = RAW_ENERGY_OUTPUT_GAMMA) => {
   const amp = value > 0 ? Math.pow(clamp(value, 0, 1), outputGamma) : 0
   return amp < RAW_ENERGY_GATE ? 0 : amp
 }
@@ -126,7 +132,10 @@ export const resolveRawEnergyAttackAmp = (
     return null
   }
   const attackWeight = shapeParams?.attackWeight ?? RAW_ENERGY_ATTACK_WEIGHT
-  return shapeEnergyAmp(base * (1 - attackWeight) + peak * attackWeight, shapeParams?.outputGamma)
+  return shapeRawEnergyAmpValue(
+    base * (1 - attackWeight) + peak * attackWeight,
+    shapeParams?.outputGamma
+  )
 }
 
 export const resolveRawEnergyProfileByRange = (
@@ -166,7 +175,7 @@ export const resolveRawEnergyProfileByRange = (
   const normalizedPeak = clamp(peak / scale, 0, 1)
   const base =
     mean * (1 - shapeParams.peakBlendWeight) + normalizedPeak * shapeParams.peakBlendWeight
-  const amp = shapeEnergyAmp(base, shapeParams.outputGamma)
+  const amp = shapeRawEnergyAmpValue(base, shapeParams.outputGamma)
   return { ampTop: amp, ampBottom: amp, base, peak: normalizedPeak, shape: shapeParams }
 }
 

@@ -1,8 +1,15 @@
 import { parentPort } from 'node:worker_threads'
 import childProcess from 'node:child_process'
 import type { MixxxWaveformData } from '../waveformCache'
+import {
+  buildCompactVisualWaveformFromMixxx,
+  COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
+  resolveCompactVisualWaveformDetailRate,
+  type CompactVisualWaveformData
+} from '../../shared/compactVisualWaveform'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 import { buildAnalysisChildEnv, lowerAnalysisProcessPriority } from './analysisRuntimeTuning'
+import { computeRawWaveform } from './rawWaveformBuilder'
 
 type KeyJob = {
   jobId: number
@@ -21,6 +28,7 @@ type KeyResultPayload = {
   barBeatOffset?: number
   bpmError?: string
   mixxxWaveformData?: MixxxWaveformData | null
+  compactVisualWaveformData?: CompactVisualWaveformData | null
 }
 
 type KeyProgressPayload = {
@@ -47,7 +55,7 @@ type KeyProgressPayload = {
   needsBpm?: boolean
   needsWaveform?: boolean
   detail?: string
-  partialResult?: Omit<KeyResultPayload, 'mixxxWaveformData'>
+  partialResult?: Omit<KeyResultPayload, 'mixxxWaveformData' | 'compactVisualWaveformData'>
 }
 
 type KeyResponse = {
@@ -107,6 +115,12 @@ const loadRust = () => {
       pcmData: Buffer,
       sampleRate: number,
       channels: number
+    ) => MixxxWaveformData
+    computeMixxxWaveformWithRate?: (
+      pcmData: Buffer,
+      sampleRate: number,
+      channels: number,
+      targetRate: number
     ) => MixxxWaveformData
   }
   return binding
@@ -354,18 +368,42 @@ const analyzeKeyForFileInternal = async (
     })
   }
 
-  if (needsWaveform && typeof resolveRustBinding().computeMixxxWaveform === 'function') {
+  if (
+    needsWaveform &&
+    (typeof resolveRustBinding().computeMixxxWaveformWithRate === 'function' ||
+      typeof resolveRustBinding().computeMixxxWaveform === 'function')
+  ) {
     if (!decoded) {
       throw new Error('Rust PCM decode missing for waveform analysis')
     }
     reportProgress({ stage: 'waveform-start' })
     const waveformStartAt = Date.now()
     try {
-      result.mixxxWaveformData = resolveRustBinding().computeMixxxWaveform!(
+      const durationSec =
+        Number(decoded.sampleRate) > 0 ? Number(decoded.totalFrames || 0) / decoded.sampleRate : 0
+      const targetRate = resolveCompactVisualWaveformDetailRate(durationSec)
+      result.mixxxWaveformData =
+        typeof resolveRustBinding().computeMixxxWaveformWithRate === 'function'
+          ? resolveRustBinding().computeMixxxWaveformWithRate!(
+              decoded.pcmData,
+              decoded.sampleRate,
+              decoded.channels,
+              targetRate
+            )
+          : resolveRustBinding().computeMixxxWaveform!(
+              decoded.pcmData,
+              decoded.sampleRate,
+              decoded.channels
+            )
+      const rawWaveformData = computeRawWaveform(
         decoded.pcmData,
         decoded.sampleRate,
-        decoded.channels
+        decoded.channels,
+        COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE
       )
+      result.compactVisualWaveformData = result.mixxxWaveformData
+        ? buildCompactVisualWaveformFromMixxx(result.mixxxWaveformData, rawWaveformData)
+        : null
       reportProgress({
         stage: 'waveform-done',
         waveformMs: Date.now() - waveformStartAt,

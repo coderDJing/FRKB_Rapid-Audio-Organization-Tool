@@ -50,6 +50,7 @@ const DIRTY_DATA_SQL_TABLES = [
   'song_cache',
   'cover_index',
   'waveform_cache',
+  'compact_visual_waveform_cache',
   'pioneer_preview_waveform_cache',
   'external_analysis_devices',
   'external_analysis_cache',

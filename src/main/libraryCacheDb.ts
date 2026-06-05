@@ -36,6 +36,16 @@ export {
 } from './libraryCacheDb/waveformCache'
 
 export {
+  loadCompactVisualWaveformCacheData,
+  hasCompactVisualWaveformCacheEntryByMeta,
+  upsertCompactVisualWaveformCacheEntry,
+  updateCompactVisualWaveformCacheStat,
+  moveCompactVisualWaveformCacheEntry,
+  removeCompactVisualWaveformCacheEntry,
+  migrateCompactVisualWaveformCacheRows
+} from './libraryCacheDb/compactVisualWaveformCache'
+
+export {
   loadMixtapeWaveformCacheData,
   upsertMixtapeWaveformCacheEntry,
   removeMixtapeWaveformCacheEntry,

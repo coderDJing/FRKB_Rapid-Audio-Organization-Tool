@@ -4,6 +4,8 @@ import type {
   RGBWaveformBandKey,
   WaveformStyle
 } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { CompactVisualWaveformPreviewData } from '@shared/compactVisualWaveform'
+import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
 
 export type SongListWaveformCanvasContext =
   | CanvasRenderingContext2D
@@ -368,6 +370,38 @@ const drawSongListRgbWaveform = (
     const yTop = isHalf ? height - rectHeight : centerY - amplitudeTop
     ctx.fillStyle = `rgb(${r}, ${g}, ${b})`
     ctx.fillRect(x, yTop, 1, rectHeight)
+  }
+}
+
+export const drawSongListCompactVisualWaveform = (
+  ctx: SongListWaveformCanvasContext,
+  width: number,
+  height: number,
+  waveformData: CompactVisualWaveformPreviewData,
+  options: {
+    isHalf: boolean
+    progressColor: string
+    playedPercent: number
+  }
+) => {
+  drawCompactVisualWaveform(ctx, {
+    width: Math.max(1, Math.floor(width)),
+    height: Math.max(1, Math.floor(height)),
+    data: waveformData,
+    rangeStartSec: 0,
+    rangeDurationSec: Math.max(0.0001, Number(waveformData.duration) || 0),
+    showDetailHighlights: false,
+    showCenterLine: false,
+    waveformLayout: options.isHalf ? 'top-half' : 'full'
+  })
+  const clampedPlayed = clamp01(options.playedPercent)
+  if (clampedPlayed > 0 && clampedPlayed < 1) {
+    ctx.save()
+    ctx.globalCompositeOperation = 'source-atop'
+    ctx.globalAlpha = 0.22
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(width * clampedPlayed, 0, width * (1 - clampedPlayed), height)
+    ctx.restore()
   }
 }
 

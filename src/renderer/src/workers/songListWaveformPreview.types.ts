@@ -3,6 +3,7 @@ import type {
   MixxxWaveformData,
   WaveformStyle
 } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { CompactVisualWaveformPreviewData } from '@shared/compactVisualWaveform'
 
 export type SongListWaveformWorkerData =
   | {
@@ -12,6 +13,10 @@ export type SongListWaveformWorkerData =
   | {
       kind: 'pioneer'
       data: IPioneerPreviewWaveformData
+    }
+  | {
+      kind: 'compactVisual'
+      data: CompactVisualWaveformPreviewData
     }
   | null
 

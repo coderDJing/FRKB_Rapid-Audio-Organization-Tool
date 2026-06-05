@@ -19,6 +19,9 @@ import type {
   RGBWaveformBandKey,
   WaveformStyle
 } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
+import { loadCompactVisualWaveformData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
+import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -59,6 +62,7 @@ const runtime = useRuntimeStore()
 const trackRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
 const waveformData = ref<MixxxWaveformData | null>(null)
+const compactVisualData = ref<CompactVisualWaveformData | null>(null)
 const pioneerPreviewData = ref<IPioneerPreviewWaveformData | null>(null)
 const scrubbing = ref(false)
 
@@ -590,6 +594,20 @@ const drawWaveform = () => {
     return
   }
 
+  if (compactVisualData.value) {
+    drawCompactVisualWaveform(ctx, {
+      width,
+      height,
+      data: compactVisualData.value,
+      rangeStartSec: 0,
+      rangeDurationSec: Math.max(0.0001, Number(compactVisualData.value.duration) || 0),
+      showDetailHighlights: false,
+      showCenterLine: false,
+      waveformLayout: useHalfWaveform() ? 'top-half' : 'full'
+    })
+    return
+  }
+
   if (!waveformData.value) return
 
   const style = getWaveformStyle()
@@ -628,11 +646,20 @@ const loadWaveform = async () => {
   const currentSong = props.song
   const currentToken = ++loadToken
   waveformData.value = null
+  compactVisualData.value = null
   pioneerPreviewData.value = null
   clearCanvas()
 
   const filePath = String(currentSong?.filePath || '').trim()
   if (!filePath) return
+
+  const compact = await loadCompactVisualWaveformData(filePath).catch(() => null)
+  if (currentToken !== loadToken) return
+  if (compact) {
+    compactVisualData.value = compact
+    drawWaveform()
+    return
+  }
 
   const externalWaveformSource = resolveSongExternalWaveformSource(currentSong, {
     rootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
@@ -706,7 +733,6 @@ const handleSongWaveformUpdated = (_event: unknown, payload: { filePath?: string
   const currentSongFilePath = String(props.song?.filePath || '').trim()
   if (!filePath || !currentSongFilePath) return
   if (!isSameHorizontalBrowseSongFilePath(filePath, currentSongFilePath)) return
-  if (waveformData.value || pioneerPreviewData.value) return
   void loadWaveform()
 }
 

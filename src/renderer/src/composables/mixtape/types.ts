@@ -188,6 +188,15 @@ export type RawWaveformData = {
   meanRight?: Float32Array
   rmsLeft?: Float32Array
   rmsRight?: Float32Array
+  compactColorIndex?: Uint8Array
+  compactColorLow?: Uint8Array
+  compactColorMid?: Uint8Array
+  compactColorHigh?: Uint8Array
+  compactColorRed?: Uint8Array
+  compactColorGreen?: Uint8Array
+  compactColorBlue?: Uint8Array
+  compactColorRateDivisor?: number
+  compactColorStartFrame?: number
 }
 
 export type RawWaveformLevel = RawWaveformData & {

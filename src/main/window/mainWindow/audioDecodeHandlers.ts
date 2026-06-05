@@ -13,6 +13,12 @@ import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../../services/songInfoLite'
 import type { MixxxWaveformData } from '../../waveformCache'
 import { isInRecordingLibraryAbsPath } from '../../recordingLibraryService'
+import {
+  buildCompactVisualWaveformFromMixxx,
+  COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
+  COMPACT_VISUAL_WAVEFORM_MAX_DETAIL_RATE,
+  compactVisualWaveformToMixxxOverview
+} from '../../../shared/compactVisualWaveform'
 
 const clonePcmData = (pcmData: unknown): Float32Array => {
   if (!pcmData) {
@@ -75,9 +81,18 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           : LibraryCacheDb.resolveExternalAnalysisContext(filePath)
         let cachedWaveform: MixxxWaveformData | null = null
         if (stat && listRoot) {
-          const cached = await LibraryCacheDb.loadWaveformCacheData(listRoot, filePath, stat)
-          if (cached) {
-            cachedWaveform = cached
+          const compact = await LibraryCacheDb.loadCompactVisualWaveformCacheData(
+            listRoot,
+            filePath,
+            stat
+          )
+          if (compact) {
+            await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+            cachedWaveform = compactVisualWaveformToMixxxOverview(
+              compact
+            ) as MixxxWaveformData | null
+          } else {
+            await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
           }
         } else if (stat && externalContext) {
           const cached = await LibraryCacheDb.loadExternalAnalysisWaveformCacheData(
@@ -97,9 +112,13 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           }
         }
 
+        const shouldBuildCompactVisualWaveform = !cachedWaveform && Boolean(listRoot)
         const result = await decodeAudioShared(filePath, {
           analyzeKey: false,
           needWaveform: !cachedWaveform,
+          waveformTargetRate: COMPACT_VISUAL_WAVEFORM_MAX_DETAIL_RATE,
+          needRawWaveform: shouldBuildCompactVisualWaveform,
+          rawTargetRate: COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
           fileStat: stat,
           traceLabel: eventName,
           priority: 'high'
@@ -115,12 +134,20 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
               info
             })
           }
-          await LibraryCacheDb.upsertWaveformCacheEntry(
-            listRoot,
-            filePath,
-            { size: stat.size, mtimeMs: stat.mtimeMs },
-            mixxxWaveformData
-          )
+          const compact = result.rawWaveformData
+            ? buildCompactVisualWaveformFromMixxx(mixxxWaveformData, result.rawWaveformData)
+            : null
+          if (compact) {
+            await LibraryCacheDb.upsertCompactVisualWaveformCacheEntry(
+              listRoot,
+              filePath,
+              { size: stat.size, mtimeMs: stat.mtimeMs },
+              compact
+            )
+          } else {
+            await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+            await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+          }
         } else if (!cachedWaveform && mixxxWaveformData && externalContext && stat) {
           await LibraryCacheDb.upsertExternalAnalysisWaveformCacheEntry(
             externalContext,

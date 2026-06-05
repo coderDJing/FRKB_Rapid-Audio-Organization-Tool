@@ -459,7 +459,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const mtimeMs = Number(row?.mtime_ms)
       let hasWaveform = false
       if (Number.isFinite(size) && Number.isFinite(mtimeMs)) {
-        hasWaveform = await LibraryCacheDb.hasWaveformCacheEntryByMeta(
+        hasWaveform = await LibraryCacheDb.hasCompactVisualWaveformCacheEntryByMeta(
           listRoot,
           absFilePath,
           size,
@@ -527,15 +527,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           if (deps.pendingByPath.has(normalizedPath) || deps.activeByPath.has(normalizedPath)) {
             continue
           }
-          const done = deps.doneByPath.get(normalizedPath)
-          if (
-            done &&
-            done.hasWaveform === true &&
-            isValidKeyText(done.keyText) &&
-            isValidBpm(done.bpm)
-          ) {
-            continue
-          }
           const cached = await LibraryCacheDb.loadSongCacheEntry(current.listRoot, filePath)
           if (cached === undefined) continue
           const cachedKey = cached?.info?.key
@@ -544,7 +535,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           const hasBpm = isValidBpm(cachedBpm)
           let hasWaveform = false
           if (cached && Number.isFinite(cached.size) && Number.isFinite(cached.mtimeMs)) {
-            hasWaveform = await LibraryCacheDb.hasWaveformCacheEntryByMeta(
+            hasWaveform = await LibraryCacheDb.hasCompactVisualWaveformCacheEntryByMeta(
               current.listRoot,
               filePath,
               cached.size,
@@ -620,6 +611,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       if (fileExists) continue
       await LibraryCacheDb.removeSongCacheEntry(listRoot, absFilePath)
       await LibraryCacheDb.removeWaveformCacheEntry(listRoot, absFilePath)
+      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, absFilePath)
       await deps.persistence.removeCoverCacheForMissingTrack(listRoot, absFilePath)
       deps.doneByPath.delete(normalizePath(absFilePath))
       removed += 1

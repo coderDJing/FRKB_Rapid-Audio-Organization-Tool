@@ -8,6 +8,7 @@ import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import { log } from '../../log'
 import type { ISongInfo } from '../../../types/globals'
 import type { MixxxWaveformData } from '../../waveformCache'
+import type { CompactVisualWaveformData } from '../../../shared/compactVisualWaveform'
 import {
   persistSharedSongGridDefinition,
   shouldKeepManualSharedSongGridDefinition
@@ -451,11 +452,16 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     }
   }
 
-  const persistWaveform = async (filePath: string, waveformData: MixxxWaveformData) => {
+  const persistWaveform = async (
+    filePath: string,
+    waveformData: MixxxWaveformData,
+    compactVisualWaveformData?: CompactVisualWaveformData | null
+  ) => {
     const normalizedPath = normalizePath(filePath)
     try {
       const stat = await fs.stat(filePath)
       const existing = deps.doneByPath.get(normalizedPath)
+      const listRoot = await findSongListRoot(path.dirname(filePath))
       deps.doneByPath.set(normalizedPath, {
         size: stat.size,
         mtimeMs: stat.mtimeMs,
@@ -465,10 +471,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         barBeatOffset: existing?.barBeatOffset,
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
         beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
-        hasWaveform: true
+        hasWaveform: listRoot ? Boolean(compactVisualWaveformData) : true
       })
 
-      const listRoot = await findSongListRoot(path.dirname(filePath))
       if (listRoot) {
         const cached = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
         if (!cached) {
@@ -479,12 +484,17 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             { size: stat.size, mtimeMs: stat.mtimeMs }
           )
         }
-        await LibraryCacheDb.upsertWaveformCacheEntry(
-          listRoot,
-          filePath,
-          { size: stat.size, mtimeMs: stat.mtimeMs },
-          waveformData
-        )
+        if (compactVisualWaveformData) {
+          await LibraryCacheDb.upsertCompactVisualWaveformCacheEntry(
+            listRoot,
+            filePath,
+            { size: stat.size, mtimeMs: stat.mtimeMs },
+            compactVisualWaveformData
+          )
+        } else {
+          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        }
       } else {
         const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
         if (externalContext) {
@@ -535,6 +545,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       if (listRoot) {
         await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
       } else {
         const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
         if (externalContext) {
@@ -599,9 +610,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       ) {
         needsBpm = false
       }
-      if (done.hasWaveform) {
-        needsWaveform = false
-      }
       if (!needsKey && !needsBpm && !needsWaveform) {
         job.needsKey = false
         job.needsBpm = false
@@ -651,7 +659,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
               : undefined,
             timeBasisOffsetMs: normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs),
             beatGridAlgorithmVersion: cachedBeatGridAlgorithmVersion,
-            hasWaveform: done?.hasWaveform
+            hasWaveform: false
           })
         }
         if (needsKey && hasKey) {
@@ -666,7 +674,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         ) {
           needsBpm = false
         }
-        const hasWaveform = await LibraryCacheDb.hasWaveformCacheEntry(listRoot, filePath, stat)
+        const hasWaveform = await LibraryCacheDb.hasCompactVisualWaveformCacheEntryByMeta(
+          listRoot,
+          filePath,
+          stat.size,
+          stat.mtimeMs
+        )
         if (hasWaveform) {
           waveformCacheHit = true
           const existingDone = deps.doneByPath.get(job.normalizedPath)

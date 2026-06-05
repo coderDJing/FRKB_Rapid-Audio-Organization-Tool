@@ -28,6 +28,7 @@ import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHo
 import { useHorizontalBrowseRawWaveformStream } from '@renderer/components/useHorizontalBrowseRawWaveformStream'
 import { HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC } from '@renderer/components/horizontalBrowseRawWaveformStreamTypes'
 import { resolveHorizontalBrowseEffectiveTimelineEndSec } from '@renderer/components/horizontalBrowseRawWaveformTimeline'
+import { useHorizontalBrowseCompactVisualWaveformStrip } from '@renderer/components/useHorizontalBrowseCompactVisualWaveformStrip'
 import {
   useHorizontalBrowseWaveformScrubPreview,
   type HorizontalBrowseScrubPreviewPayload
@@ -94,6 +95,7 @@ const previewBpmInput = ref('')
 const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const rawStreamActive = ref(false)
+const compactVisualWaveformActive = ref(false)
 const previewPlaying = ref(false)
 const localGridShiftPhaseOffsetSec = ref(0)
 const playbackSyncRevision = computed(() =>
@@ -187,7 +189,6 @@ const {
   scheduleGridOverlayDraw,
   resetGridRenderer,
   holdCurrentWaveformFrame,
-  beginSeekWaveformTransition,
   resetRetainedWaveformData,
   resetLiveWaveformRaw,
   ensureLiveWaveformRawCapacity,
@@ -411,7 +412,7 @@ function handleDragMove(event: MouseEvent) {
   const deltaSec = (deltaX / Math.max(1, wrap.clientWidth)) * visibleDuration
   previewStartSec.value = clampPreviewStart(dragStartSec - deltaSec)
   const anchorSec = resolvePreviewAnchorSec()
-  maybeContinueRawWaveformStream(anchorSec)
+  maybeContinueWaveformSource(anchorSec)
   scrubPreview.update(anchorSec)
   scheduleDraw()
 }
@@ -430,7 +431,7 @@ const handleMouseDown = (event: MouseEvent) => {
   const anchorSec = resolvePreviewAnchorSec()
   emit('drag-session-start')
   scrubPreview.start(anchorSec)
-  maybeContinueRawWaveformStream(anchorSec)
+  maybeContinueWaveformSource(anchorSec)
   window.addEventListener('mousemove', handleDragMove, { passive: false })
   window.addEventListener('mouseup', handleWindowMouseUp, { passive: true })
   event.preventDefault()
@@ -465,7 +466,7 @@ const handleWheel = (event: WheelEvent) => {
     anchorRatio: ratio,
     sourceDirection: props.direction
   })
-  maybeContinueRawWaveformStream(resolvePreviewAnchorSec())
+  maybeContinueWaveformSource(resolvePreviewAnchorSec())
   scheduleDraw()
 }
 
@@ -492,6 +493,8 @@ const syncNativeMetronomeState = (state: { enabled: boolean; volumeLevel: 1 | 2 
     })
 }
 const detailVisible = computed(() => true)
+const shouldUseCompactVisualWaveform = () =>
+  resolveWaveformRenderStyle() === 'columns' && resolveWaveformLayout() !== 'full'
 
 const {
   previewBarLinePicking,
@@ -633,6 +636,34 @@ const {
 
 mountRawWaveformStream()
 
+const {
+  requestCompactVisualWaveformStrip,
+  maybeContinueCompactVisualWaveformStrip,
+  resetCompactVisualWaveformStrip,
+  disposeCompactVisualWaveformStrip
+} = useHorizontalBrowseCompactVisualWaveformStrip({
+  song: () => props.song,
+  active: compactVisualWaveformActive,
+  rawData,
+  mixxxData,
+  previewLoading,
+  previewZoom,
+  resolveVisibleDurationSec,
+  resolvePreviewAnchorSec,
+  clampPreviewStart,
+  replaceLiveWaveformRaw,
+  resetPlaybackRenderState: () => resetRawStreamDrawState({ preserveDisplay: true }),
+  scheduleDraw
+})
+
+const maybeContinueWaveformSource = (anchorSec?: number) => {
+  if (compactVisualWaveformActive.value) {
+    maybeContinueCompactVisualWaveformStrip(anchorSec)
+    return
+  }
+  maybeContinueRawWaveformStream(anchorSec)
+}
+
 const loadWaveform = async () => {
   const currentSong = props.song
   const currentToken = ++loadToken
@@ -641,11 +672,14 @@ const loadWaveform = async () => {
   clearPersistTimer()
   clearStreamDrawScheduling()
   cancelRawWaveformStream()
+  resetCompactVisualWaveformStrip()
   invalidateWaveformTiles()
   previewLoading.value = false
   rawStreamActive.value = false
+  compactVisualWaveformActive.value = false
   rawData.value = null
   mixxxData.value = null
+  replaceLiveWaveformRaw(null)
   previewStartSec.value = 0
   resetRetainedWaveformData()
   resetGridRenderer()
@@ -659,17 +693,28 @@ const loadWaveform = async () => {
 
   try {
     previewLoading.value = true
+    syncGridStateFromSong()
+    previewStartSec.value = resolvePlaybackAlignedStart(resolveWaveformCurrentSeconds())
+    if (shouldUseCompactVisualWaveform()) {
+      compactVisualWaveformActive.value = true
+      await requestCompactVisualWaveformStrip(resolveWaveformCurrentSeconds(), {
+        force: true,
+        clearIfOutside: true
+      })
+      if (currentToken !== loadToken) return
+      return
+    }
     const targetRate = resolveWaveformTargetRate(!!props.deferWaveformLoad)
     beginRawWaveformStream(filePath, targetRate, currentToken)
-    syncGridStateFromSong()
-    previewStartSec.value = resolvePlaybackAlignedStart(0)
     scheduleDraw()
   } catch {
     if (currentToken !== loadToken) return
     previewLoading.value = false
     rawStreamActive.value = false
+    compactVisualWaveformActive.value = shouldUseCompactVisualWaveform()
     rawData.value = null
     mixxxData.value = null
+    replaceLiveWaveformRaw(null)
     resetGridRenderer()
     clearCanvas()
     syncGridStateFromSong()
@@ -768,6 +813,7 @@ watch(
   (deferred, previous) => {
     if (!previous || deferred) return
     if (!props.song?.filePath) return
+    if (compactVisualWaveformActive.value) return
     const currentRate = Number(rawData.value?.rate) || 0
     if (rawData.value && currentRate >= resolveWaveformTargetRate(false)) return
     void loadWaveform()
@@ -801,7 +847,7 @@ watch(
     const nextVisible = resolveVisibleDurationSec()
     previewStartSec.value = clampPreviewStart(anchorSec - nextVisible * anchorRatio)
     resetGridRenderer()
-    maybeContinueRawWaveformStream(resolvePreviewAnchorSec())
+    maybeContinueWaveformSource(resolvePreviewAnchorSec())
     scheduleDraw()
   },
   { immediate: true }
@@ -811,11 +857,17 @@ watch(
   () => waveformPlaybackActive.value,
   (playing) => {
     previewPlaying.value = playing
+    if (playing) {
+      const anchorSec = resolveWaveformCurrentSeconds()
+      applyPreviewPlaybackPosition(anchorSec, true)
+      maybeContinueWaveformSource(anchorSec)
+      return
+    }
     if (!playing) {
       const anchorSec = resolveWaveformCurrentSeconds()
       applyPreviewPlaybackPosition(anchorSec, false)
       flushDeferredRawWaveformStore()
-      maybeContinueRawWaveformStream(anchorSec)
+      maybeContinueWaveformSource(anchorSec)
     }
   },
   { immediate: true }
@@ -837,7 +889,7 @@ watch(
       if (dragging.value) return
       const safeSongKey = String(songKey || '').trim()
       const safeSeconds = normalizePreviewTimelineSeconds(seconds)
-      maybeContinueRawWaveformStream(safeSeconds)
+      maybeContinueWaveformSource(safeSeconds)
       if (!safeSongKey) {
         lastPlaybackPositionSample = null
         applyPreviewPlaybackPosition(0)
@@ -856,6 +908,7 @@ watch(
         localGridShiftPhaseOffsetSec.value = 0
       }
       const shouldScheduleFrame =
+        (compactVisualWaveformActive.value && playing) ||
         !playing ||
         dragging.value ||
         playing !== previousPlaying ||
@@ -875,11 +928,12 @@ watch(
     if (!revision) return
     if (!props.song?.filePath) return
     const safeTargetSeconds = normalizePreviewTimelineSeconds(targetSeconds)
-    beginSeekWaveformTransition(safeTargetSeconds)
-    restartRawWaveformStreamAt(safeTargetSeconds, true, {
-      preserveDisplay: true,
-      preferFastInitialCoverage: true
-    })
+    if (!compactVisualWaveformActive.value) {
+      restartRawWaveformStreamAt(safeTargetSeconds, true, {
+        preserveDisplay: true,
+        preferFastInitialCoverage: true
+      })
+    }
     applyPreviewPlaybackPosition(safeTargetSeconds, true)
   }
 )
@@ -938,12 +992,14 @@ onMounted(() => {
 
 onUnmounted(() => {
   loadToken += 1
+  resetCompactVisualWaveformStrip()
   clearPersistTimer()
   clearBpmTapResetTimer()
   clearStreamDrawScheduling()
   stopDragging()
   disposeRawWaveformStream()
   disposeWaveformCanvas()
+  disposeCompactVisualWaveformStrip()
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
@@ -1029,72 +1085,4 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   </div>
 </template>
 
-<style scoped lang="scss">
-.raw-detail-waveform {
-  position: relative;
-  width: 100%;
-  height: 84%;
-  min-width: 0;
-  min-height: 0;
-  cursor: default;
-  background: var(--shell-waveform-bg, var(--waveform-bg));
-  overflow: visible;
-}
-.raw-detail-waveform--up {
-  margin-top: auto;
-}
-.raw-detail-waveform--down {
-  margin-bottom: auto;
-}
-.raw-detail-waveform__canvas {
-  position: absolute;
-  inset: 0;
-  display: block;
-  width: 100%;
-  height: 100%;
-  transform-origin: 0 0;
-  will-change: transform;
-  backface-visibility: hidden;
-}
-
-.raw-detail-waveform__canvas--waveform,
-.raw-detail-waveform__canvas--grid {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
-}
-
-.raw-detail-waveform__canvas--waveform {
-  opacity: 0;
-  transition: opacity 100ms linear;
-}
-
-.raw-detail-waveform.is-waveform-ready .raw-detail-waveform__canvas--waveform {
-  opacity: 1;
-}
-
-.raw-detail-waveform__canvas--grid {
-  pointer-events: none;
-}
-.raw-detail-waveform__canvas--overlay {
-  inset: -12px 0;
-  height: calc(100% + 24px);
-  pointer-events: none;
-  z-index: 3;
-}
-
-.raw-detail-waveform.is-bar-selecting {
-  cursor: crosshair;
-}
-
-.raw-detail-waveform__barline-glow {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -1px;
-  background: rgba(255, 214, 92, 0.88);
-  box-shadow: 0 0 0 1px rgba(255, 214, 92, 0.2);
-  pointer-events: none;
-  z-index: 5;
-}
-</style>
+<style scoped lang="scss" src="./HorizontalBrowseRawWaveformDetail.scss"></style>

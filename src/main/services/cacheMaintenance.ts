@@ -150,17 +150,26 @@ export async function updateSongCacheEntry(
       size: stat.size,
       mtimeMs: stat.mtimeMs
     })
+    await LibraryCacheDb.updateCompactVisualWaveformCacheStat(songListRoot, filePath, {
+      size: stat.size,
+      mtimeMs: stat.mtimeMs
+    })
 
     if (oldFilePath && oldFilePath !== filePath) {
-      const moved = await LibraryCacheDb.moveWaveformCacheEntry(
+      const compactMoved = await LibraryCacheDb.moveCompactVisualWaveformCacheEntry(
         songListRoot,
         oldFilePath,
         filePath,
         { size: stat.size, mtimeMs: stat.mtimeMs }
       )
-      if (!moved) {
+      if (compactMoved) {
         await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, oldFilePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, filePath)
+      } else {
+        await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, oldFilePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, filePath)
       }
+      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(songListRoot, oldFilePath)
     }
   } catch {}
 }
@@ -218,15 +227,33 @@ export async function transferTrackCaches(params: {
   } catch {}
 
   if (!stat) return
+  let compactTransferred = false
   try {
-    const waveform = await LibraryCacheDb.loadWaveformCacheData(fromRoot, fromPath, stat)
-    if (waveform) {
-      const updated = await LibraryCacheDb.upsertWaveformCacheEntry(toRoot, toPath, stat, waveform)
+    const compact = await LibraryCacheDb.loadCompactVisualWaveformCacheData(
+      fromRoot,
+      fromPath,
+      stat
+    )
+    if (compact) {
+      const updated = await LibraryCacheDb.upsertCompactVisualWaveformCacheEntry(
+        toRoot,
+        toPath,
+        stat,
+        compact
+      )
       if (updated) {
+        compactTransferred = true
+        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(fromRoot, fromPath)
         await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
+        await LibraryCacheDb.removeWaveformCacheEntry(toRoot, toPath)
       }
     }
   } catch {}
+
+  if (!compactTransferred) {
+    await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
+    await LibraryCacheDb.removeWaveformCacheEntry(toRoot, toPath)
+  }
 
   try {
     const cover = await LibraryCacheDb.loadCoverIndexEntry(fromRoot, fromPath)
@@ -293,6 +320,7 @@ export async function clearTrackCache(filePath: string) {
       // 只清除分析相关字段，保留 playlistTrackNumber 等用户数据
       await LibraryCacheDb.clearSongCacheAnalysisFields(cacheRoot, filePath)
       await LibraryCacheDb.removeWaveformCacheEntry(cacheRoot, filePath)
+      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeWaveformHiresCacheEntry(cacheRoot, filePath)
@@ -327,6 +355,7 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
   songCacheRemoved: number
   coverIndexRemoved: number
   waveformCacheRemoved: number
+  compactVisualWaveformCacheRemoved: number
   mixtapeWaveformCacheRemoved: number
   mixtapeRawWaveformCacheRemoved: number
   mixtapeWaveformHiresCacheRemoved: number
@@ -339,6 +368,7 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
         songCacheRemoved: 0,
         coverIndexRemoved: 0,
         waveformCacheRemoved: 0,
+        compactVisualWaveformCacheRemoved: 0,
         mixtapeWaveformCacheRemoved: 0,
         mixtapeRawWaveformCacheRemoved: 0,
         mixtapeWaveformHiresCacheRemoved: 0,
@@ -369,6 +399,7 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
       songCacheRemoved: 0,
       coverIndexRemoved: 0,
       waveformCacheRemoved: 0,
+      compactVisualWaveformCacheRemoved: 0,
       mixtapeWaveformCacheRemoved: 0,
       mixtapeRawWaveformCacheRemoved: 0,
       mixtapeWaveformHiresCacheRemoved: 0,

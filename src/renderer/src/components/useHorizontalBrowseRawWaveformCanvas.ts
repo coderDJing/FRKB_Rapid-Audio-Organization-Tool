@@ -21,7 +21,6 @@ import { resolveHorizontalBrowseWaveformThemeVariant } from '@renderer/component
 import { createHorizontalBrowseDetailLiveCanvasBridge } from '@renderer/components/horizontalBrowseDetailLiveCanvasBridge'
 import { HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX } from '@renderer/components/horizontalBrowseDetailOverlayCanvas'
 import { resolvePixelSnappedCssSize } from '@renderer/components/horizontalBrowseCanvasGeometry'
-import { createHorizontalBrowseWaveformSeekTransition } from '@renderer/components/horizontalBrowseWaveformSeekTransition'
 import {
   isHorizontalBrowseRawDataCoveringRange,
   isHorizontalBrowseRawDataIntersectingRange,
@@ -29,6 +28,7 @@ import {
 } from '@renderer/components/horizontalBrowseRawWaveformCoverage'
 import type {
   HorizontalBrowseWaveformLayout,
+  HorizontalBrowseWaveformRenderStyle,
   UseHorizontalBrowseRawWaveformCanvasOptions
 } from '@renderer/components/horizontalBrowseRawWaveformCanvasTypes'
 import { normalizeSongHotCues } from '@shared/hotCues'
@@ -37,15 +37,43 @@ import type {
   HorizontalBrowseDetailLiveCanvasLoopRange,
   HorizontalBrowseDetailLiveCanvasRawChunk,
   HorizontalBrowseDetailLiveCanvasRawMeta,
-  HorizontalBrowseDetailLiveCanvasRawSlot,
   HorizontalBrowseDetailLiveCanvasWorkerOutgoing
 } from '@renderer/workers/horizontalBrowseDetailLiveCanvas.types'
+
+type LiveCanvasRenderedPayload = Extract<
+  HorizontalBrowseDetailLiveCanvasWorkerOutgoing,
+  { type: 'rendered' }
+>['payload']
+type LiveCanvasPresentationPayload = Extract<
+  HorizontalBrowseDetailLiveCanvasWorkerOutgoing,
+  { type: 'presentation' }
+>['payload']
 
 const RAW_STREAM_REDRAW_INTERVAL_MS = 80
 const DEFERRED_RAW_STREAM_REDRAW_INTERVAL_MS = 160
 const PLAYBACK_DIRTY_PATCH_MAX_VISIBLE_RATIO = 0.25
 const PLAYBACK_RAW_SETTLE_HOLD_MS = 360
 const DEFAULT_CUE_ACCENT_COLOR = '#d98921'
+const ATTACK_SAFE_RAW_PEAK_MAX_SEC_PER_RENDER_PIXEL = 0.002
+
+const shouldUseAttackSafeRawPeaks = (
+  rangeDurationSec: number,
+  cssWidth: number,
+  pixelRatio: number,
+  waveformRenderStyle: HorizontalBrowseWaveformRenderStyle
+) => {
+  if (waveformRenderStyle !== 'columns') return false
+  const safeRangeDurationSec = Number(rangeDurationSec)
+  if (!Number.isFinite(safeRangeDurationSec) || safeRangeDurationSec <= 0) return false
+  const safePixelRatio = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1
+  const renderPixels = Math.max(1, Math.floor(Math.max(1, cssWidth) * safePixelRatio))
+  const secondsPerRenderPixel = safeRangeDurationSec / renderPixels
+  return (
+    Number.isFinite(secondsPerRenderPixel) &&
+    secondsPerRenderPixel > 0 &&
+    secondsPerRenderPixel <= ATTACK_SAFE_RAW_PEAK_MAX_SEC_PER_RENDER_PIXEL
+  )
+}
 
 export const useHorizontalBrowseRawWaveformCanvas = (
   options: UseHorizontalBrowseRawWaveformCanvasOptions
@@ -168,11 +196,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       options.allowNegativeTimeline()
     )
 
-  const seekWaveformTransition = createHorizontalBrowseWaveformSeekTransition({
-    waveformCanvas: () => waveformCanvasRef.value,
-    resolveTargetStartSec: resolvePlaybackAlignedStart
-  })
-
   const clearRawStreamDirtyRange = () => {
     pendingRawStreamDirtyStartSec = null
     pendingRawStreamDirtyEndSec = null
@@ -211,7 +234,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const resetRetainedWaveformData = () => {
     liveCanvasRenderToken += 1
-    seekWaveformTransition.cancel()
     liveCanvasBridge.clearRaw()
     retainedWaveformFilePath = ''
     retainedRawData = null
@@ -235,7 +257,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const resetRawStreamDrawState = (resetOptions: { preserveDisplay?: boolean } = {}) => {
     const preserveDisplay = resetOptions.preserveDisplay === true && displayReady.value
-    seekWaveformTransition.clearQueuedRender()
     if (preserveDisplay) {
       preservePlaybackDisplayUntilRawReady = true
     } else {
@@ -274,7 +295,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const clearCanvas = () => {
     liveCanvasRenderToken += 1
-    seekWaveformTransition.cancel()
     liveCanvasBridge.clear()
     clearLiveCanvasPresentationOffset()
     for (const canvas of [gridCanvasRef.value]) {
@@ -301,21 +321,14 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     return liveCanvasAttached
   }
 
-  const resolveRawSlotForRender = (
-    rawData: RawWaveformData | null
-  ): HorizontalBrowseDetailLiveCanvasRawSlot | null => {
+  const resolveRawSlotForRender = (rawData: RawWaveformData | null) => {
     if (!rawData) return null
     if (rawData === options.rawData.value) return 'live'
     if (rawData === retainedRawData) return 'retained'
     return 'live'
   }
 
-  const handleLiveCanvasRendered = (
-    payload: Extract<
-      HorizontalBrowseDetailLiveCanvasWorkerOutgoing,
-      { type: 'rendered' }
-    >['payload']
-  ) => {
+  const handleLiveCanvasRendered = (payload: LiveCanvasRenderedPayload) => {
     if (payload.renderToken !== liveCanvasRenderToken) return
     displayStartSec.value = payload.rangeStartSec
     if (!payload.ready) {
@@ -324,23 +337,13 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     }
     preservePlaybackDisplayUntilRawReady = false
     setDisplayReady(true)
-    seekWaveformTransition.finishIfReady(
-      payload.renderToken,
-      payload.rangeStartSec,
-      payload.rangeDurationSec
-    )
   }
 
   const clearLiveCanvasPresentationOffset = () => {
     waveformCanvasRef.value?.style.removeProperty('transform')
   }
 
-  const handleLiveCanvasPresentation = (
-    payload: Extract<
-      HorizontalBrowseDetailLiveCanvasWorkerOutgoing,
-      { type: 'presentation' }
-    >['payload']
-  ) => {
+  const handleLiveCanvasPresentation = (payload: LiveCanvasPresentationPayload) => {
     if (payload.renderToken !== liveCanvasRenderToken) return
     const canvas = waveformCanvasRef.value
     if (!canvas) return
@@ -406,6 +409,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       0,
       Math.floor(Number(options.playbackSyncRevision.value) || 0)
     )
+    const preferRawPeaksOnly =
+      payload.preferRawPeaksOnly ||
+      shouldUseAttackSafeRawPeaks(payload.rangeDurationSec, width, pixelRatio, waveformRenderStyle)
     const nowMs = performance.now()
     const playbackActive = options.playing.value && !options.dragging.value
     const playbackSyncChanged =
@@ -466,7 +472,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       phaseAwareScrollReuse: allowScrollReuse && options.phaseAwareScrollReuse?.() === true,
       waveformLayout,
       waveformRenderStyle,
-      preferRawPeaksOnly: payload.preferRawPeaksOnly,
+      preferRawPeaksOnly,
       themeVariant: resolveHorizontalBrowseWaveformThemeVariant(),
       rawSlot,
       direction: options.direction(),
@@ -486,17 +492,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       dirtyStartSec: payload.dirtyStartSec,
       dirtyEndSec: payload.dirtyEndSec
     })
-    if (!isPlaybackDirtyPatch && seekWaveformTransition.isActive()) {
-      if (payload.completeSeekTransition && rawSlot) {
-        seekWaveformTransition.markFullRenderQueued(
-          renderToken,
-          payload.rangeStartSec,
-          payload.rangeDurationSec
-        )
-      } else {
-        seekWaveformTransition.clearQueuedRender()
-      }
-    }
     if (playbackRawRecovering) {
       playbackRawSettleUntilMs = Math.max(
         playbackRawSettleUntilMs,
@@ -557,7 +552,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const invalidateWaveformTiles = () => {
     liveCanvasRenderToken += 1
-    seekWaveformTransition.clearQueuedRender()
     liveCanvasBridge.clear()
   }
 
@@ -688,21 +682,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       }
     }
 
-    const queueSeekOverlayContinuityRender = () => {
-      if (!seekWaveformTransition.isActive() || !playbackStreamReuse) return
-      queueLiveWaveformRender({
-        rangeStartSec: renderStartSec,
-        rangeDurationSec: visibleDuration,
-        rawData: null,
-        maxSamplesPerPixel: streamMaxSamplesPerPixel,
-        allowScrollReuse: false,
-        preferRawPeaksOnly: false
-      })
-    }
-
     if (!effectiveMixxxData && !drawableRawData) {
       if (shouldPreservePlaybackDisplay || shouldHoldPlaybackFrame) {
-        queueSeekOverlayContinuityRender()
         return
       }
       lastStreamRenderedRawData = null
@@ -732,7 +713,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           allowPartialViewportPaint)
       if (!canDrawStream) {
         if (shouldPreservePlaybackDisplay || shouldHoldPlaybackFrame) {
-          queueSeekOverlayContinuityRender()
           return
         }
         lastStreamRenderedRawData = null
@@ -991,7 +971,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const dispose = () => {
     clearStreamDrawScheduling()
-    seekWaveformTransition.dispose()
     resetRetainedWaveformData()
     liveCanvasAttached = false
     if (drawRaf) {
@@ -1015,7 +994,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     resolvePlaybackAlignedStart,
     scheduleRawStreamDirtyDraw,
     scheduleRawStreamCoverageDraw,
-    beginSeekWaveformTransition: seekWaveformTransition.begin,
     resetRawStreamDrawState,
     clearStreamDrawScheduling,
     clearCanvas,

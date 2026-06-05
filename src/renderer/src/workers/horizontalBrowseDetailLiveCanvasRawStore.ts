@@ -110,7 +110,16 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
           meanLeft: rawData.meanLeft,
           meanRight: rawData.meanRight,
           rmsLeft: rawData.rmsLeft,
-          rmsRight: rawData.rmsRight
+          rmsRight: rawData.rmsRight,
+          compactColorIndex: rawData.compactColorIndex,
+          compactColorLow: rawData.compactColorLow,
+          compactColorMid: rawData.compactColorMid,
+          compactColorHigh: rawData.compactColorHigh,
+          compactColorRed: rawData.compactColorRed,
+          compactColorGreen: rawData.compactColorGreen,
+          compactColorBlue: rawData.compactColorBlue,
+          compactColorRateDivisor: rawData.compactColorRateDivisor,
+          compactColorStartFrame: rawData.compactColorStartFrame
         }
       : null
     retainedRawData = null
