@@ -459,7 +459,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const mtimeMs = Number(row?.mtime_ms)
       let hasWaveform = false
       if (Number.isFinite(size) && Number.isFinite(mtimeMs)) {
-        hasWaveform = await LibraryCacheDb.hasCompactVisualWaveformCacheEntryByMeta(
+        hasWaveform = await LibraryCacheDb.hasUnifiedDisplayWaveformCacheEntryByMeta(
           listRoot,
           absFilePath,
           size,
@@ -535,7 +535,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           const hasBpm = isValidBpm(cachedBpm)
           let hasWaveform = false
           if (cached && Number.isFinite(cached.size) && Number.isFinite(cached.mtimeMs)) {
-            hasWaveform = await LibraryCacheDb.hasCompactVisualWaveformCacheEntryByMeta(
+            hasWaveform = await LibraryCacheDb.hasUnifiedDisplayWaveformCacheEntryByMeta(
               current.listRoot,
               filePath,
               cached.size,
@@ -612,6 +612,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       await LibraryCacheDb.removeSongCacheEntry(listRoot, absFilePath)
       await LibraryCacheDb.removeWaveformCacheEntry(listRoot, absFilePath)
       await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, absFilePath)
+      await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, absFilePath)
       await deps.persistence.removeCoverCacheForMissingTrack(listRoot, absFilePath)
       deps.doneByPath.delete(normalizePath(absFilePath))
       removed += 1

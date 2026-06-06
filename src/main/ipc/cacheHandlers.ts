@@ -32,6 +32,12 @@ export function registerCacheHandlers() {
     return parsed
   }
 
+  const clearLegacyLargeWaveformCaches = async (listRoot: string, filePath: string) => {
+    await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+    await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+    await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
+  }
+
   ipcMain.handle('track:cache:clear:batch', async (_e, filePaths: string[]) => {
     const files = Array.isArray(filePaths)
       ? filePaths.filter((p) => typeof p === 'string' && p.trim())
@@ -75,6 +81,60 @@ export function registerCacheHandlers() {
   ipcMain.handle('getLibrary', async () => {
     return await getLibrary()
   })
+
+  ipcMain.handle(
+    'unified-display-waveform-cache:load',
+    async (
+      _e,
+      payload: {
+        listRoot?: string
+        filePath?: string
+      }
+    ) => {
+      const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+      if (!filePath) return { status: 'missing' as const, data: null }
+      let listRoot = ''
+      const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
+      if (listRootRaw) {
+        try {
+          let input = listRootRaw
+          if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
+          listRoot = path.isAbsolute(input) ? input : resolveLibraryPath(input).absPath
+        } catch {
+          listRoot = ''
+        }
+      }
+      if (!listRoot) {
+        listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
+      }
+      if (!listRoot) return { status: 'missing' as const, data: null }
+      try {
+        const fsStat = await fs.stat(filePath)
+        const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+        const data = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
+          listRoot,
+          filePath,
+          stat
+        )
+        if (data) {
+          await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
+          return { status: 'ready' as const, data }
+        }
+        await clearLegacyLargeWaveformCaches(listRoot, filePath)
+        enqueueKeyAnalysisList([filePath], 'medium', {
+          source: 'foreground',
+          preemptible: true,
+          category: 'waveform-preview',
+          waveformOnly: isInRecordingLibraryAbsPath(filePath)
+        })
+        return { status: 'missing' as const, data: null }
+      } catch {
+        await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
+        await clearLegacyLargeWaveformCaches(listRoot, filePath)
+        return { status: 'missing' as const, data: null }
+      }
+    }
+  )
 
   ipcMain.handle(
     'compact-visual-waveform-cache:load',

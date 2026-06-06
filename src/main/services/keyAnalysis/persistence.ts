@@ -9,6 +9,7 @@ import { log } from '../../log'
 import type { ISongInfo } from '../../../types/globals'
 import type { MixxxWaveformData } from '../../waveformCache'
 import type { CompactVisualWaveformData } from '../../../shared/compactVisualWaveform'
+import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
 import {
   persistSharedSongGridDefinition,
   shouldKeepManualSharedSongGridDefinition
@@ -455,7 +456,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
   const persistWaveform = async (
     filePath: string,
     waveformData: MixxxWaveformData,
-    compactVisualWaveformData?: CompactVisualWaveformData | null
+    compactVisualWaveformData?: CompactVisualWaveformData | null,
+    unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
   ) => {
     const normalizedPath = normalizePath(filePath)
     try {
@@ -471,7 +473,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         barBeatOffset: existing?.barBeatOffset,
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
         beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
-        hasWaveform: listRoot ? Boolean(compactVisualWaveformData) : true
+        hasWaveform: listRoot ? Boolean(unifiedDisplayWaveformData) : true
       })
 
       if (listRoot) {
@@ -494,6 +496,18 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         } else {
           await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
           await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        }
+        if (unifiedDisplayWaveformData) {
+          await LibraryCacheDb.upsertUnifiedDisplayWaveformCacheEntry(
+            listRoot,
+            filePath,
+            { size: stat.size, mtimeMs: stat.mtimeMs },
+            unifiedDisplayWaveformData
+          )
+          await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
+          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        } else {
+          await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
         }
       } else {
         const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
@@ -546,6 +560,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
       } else {
         const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
         if (externalContext) {
@@ -674,7 +689,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         ) {
           needsBpm = false
         }
-        const hasWaveform = await LibraryCacheDb.hasCompactVisualWaveformCacheEntryByMeta(
+        const hasWaveform = await LibraryCacheDb.hasUnifiedDisplayWaveformCacheEntryByMeta(
           listRoot,
           filePath,
           stat.size,

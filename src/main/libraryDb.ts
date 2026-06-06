@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 29
+const SCHEMA_VERSION = 30
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
@@ -740,6 +740,46 @@ function createDatabase(dbPath: string): SqliteDatabase {
     );
     CREATE INDEX IF NOT EXISTS idx_compact_visual_waveform_cache_root
       ON compact_visual_waveform_cache(list_root);
+  `)
+  if (userVersion < 30) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS unified_display_waveform_cache (
+        list_root TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        mtime_ms REAL NOT NULL,
+        cache_version INTEGER NOT NULL,
+        parameter_version INTEGER NOT NULL,
+        duration REAL NOT NULL,
+        detail_rate INTEGER NOT NULL,
+        overview_rate INTEGER NOT NULL,
+        frame_count INTEGER NOT NULL,
+        payload BLOB NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (list_root, file_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_unified_display_waveform_cache_root
+        ON unified_display_waveform_cache(list_root);
+    `)
+  }
+  instance.exec(`
+    CREATE TABLE IF NOT EXISTS unified_display_waveform_cache (
+      list_root TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      mtime_ms REAL NOT NULL,
+      cache_version INTEGER NOT NULL,
+      parameter_version INTEGER NOT NULL,
+      duration REAL NOT NULL,
+      detail_rate INTEGER NOT NULL,
+      overview_rate INTEGER NOT NULL,
+      frame_count INTEGER NOT NULL,
+      payload BLOB NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      PRIMARY KEY (list_root, file_path)
+    );
+    CREATE INDEX IF NOT EXISTS idx_unified_display_waveform_cache_root
+      ON unified_display_waveform_cache(list_root);
   `)
   if (userVersion < SCHEMA_VERSION) {
     instance.pragma('user_version = ' + SCHEMA_VERSION)

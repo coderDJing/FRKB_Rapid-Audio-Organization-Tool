@@ -7,8 +7,20 @@ import {
 import type {
   HorizontalBrowseDetailLiveCanvasRawMeta,
   HorizontalBrowseDetailLiveCanvasRenderRequest,
-  HorizontalBrowseDetailLiveCanvasWorkerIncoming
+  HorizontalBrowseDetailLiveCanvasWorkerIncoming,
+  HorizontalBrowseDetailLiveCanvasWorkerOutgoing
 } from './horizontalBrowseDetailLiveCanvas.types'
+
+const RAW_STORE_START_EPSILON_SEC = 0.0001
+const postRawStoreDebug = (
+  event: string,
+  details?: Record<string, number | string | boolean | null>
+) => {
+  const scope = self as typeof globalThis & {
+    postMessage: (payload: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => void
+  }
+  scope.postMessage({ type: 'debug', payload: { event, details } })
+}
 
 type RawChunkPayload = Extract<
   HorizontalBrowseDetailLiveCanvasWorkerIncoming,
@@ -41,6 +53,25 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
   const bumpLiveRawRevision = () => {
     liveRawRevision += 1
   }
+  const resetLiveRawData = (
+    meta: HorizontalBrowseDetailLiveCanvasRawMeta,
+    frames: number,
+    retainCurrent: boolean
+  ) => {
+    postRawStoreDebug('raw-store-reset-window', {
+      startSec: meta.startSec,
+      frames,
+      loadedFrames: meta.loadedFrames ?? null,
+      retainCurrent
+    })
+    if (retainCurrent && liveRawData) {
+      retainedRawData = liveRawData
+      retainedRawRevision = liveRawRevision
+    }
+    liveRawData = createEmptyRawData({ ...meta, frames })
+    bumpLiveRawRevision()
+    invalidateFrameState()
+  }
 
   const ensureCapacity = (meta: HorizontalBrowseDetailLiveCanvasRawMeta, retainCurrent = false) => {
     const frames = Math.max(0, Math.floor(Number(meta.frames) || 0))
@@ -49,20 +80,35 @@ export const createHorizontalBrowseDetailLiveCanvasRawStore = (
     const compatibleFormat = isRawWaveformWindowFormatCompatible(liveRawData, meta)
     const currentStartSec = Math.max(0, Number(liveRawData?.startSec) || 0)
     const nextStartSec = Math.max(0, Number(meta.startSec) || 0)
-    if (!liveRawData || !compatibleFormat || nextStartSec < currentStartSec - 0.0001) {
-      if (retainCurrent && liveRawData) {
-        retainedRawData = liveRawData
-        retainedRawRevision = liveRawRevision
-      }
-      liveRawData = createEmptyRawData({ ...meta, frames })
-      bumpLiveRawRevision()
-      invalidateFrameState()
+    if (
+      !liveRawData ||
+      !compatibleFormat ||
+      nextStartSec < currentStartSec - RAW_STORE_START_EPSILON_SEC
+    ) {
+      resetLiveRawData(meta, frames, retainCurrent)
       return
     }
 
-    if (nextStartSec > currentStartSec + 0.0001) {
+    if (nextStartSec > currentStartSec + RAW_STORE_START_EPSILON_SEC) {
       const droppedFrames = trimRawWaveformWindowStart(liveRawData, nextStartSec)
+      const trimmedStartSec = Math.max(0, Number(liveRawData.startSec) || 0)
+      if (trimmedStartSec < nextStartSec - RAW_STORE_START_EPSILON_SEC) {
+        postRawStoreDebug('raw-store-trim-rebuild', {
+          currentStartSec,
+          nextStartSec,
+          trimmedStartSec,
+          droppedFrames
+        })
+        resetLiveRawData(meta, frames, retainCurrent)
+        return
+      }
       if (droppedFrames > 0) {
+        postRawStoreDebug('raw-store-trim-window', {
+          currentStartSec,
+          nextStartSec,
+          trimmedStartSec,
+          droppedFrames
+        })
         bumpLiveRawRevision()
         invalidateFrameState()
       }

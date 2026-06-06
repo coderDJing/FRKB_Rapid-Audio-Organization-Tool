@@ -4,9 +4,13 @@ import type { MixxxWaveformData } from '../waveformCache'
 import {
   buildCompactVisualWaveformFromMixxx,
   COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
-  resolveCompactVisualWaveformDetailRate,
   type CompactVisualWaveformData
 } from '../../shared/compactVisualWaveform'
+import {
+  buildUnifiedDisplayWaveformDetailFromMixxx,
+  UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE,
+  type UnifiedDisplayWaveformDetailData
+} from '../../shared/unifiedDisplayWaveform'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 import { buildAnalysisChildEnv, lowerAnalysisProcessPriority } from './analysisRuntimeTuning'
 import { computeRawWaveform } from './rawWaveformBuilder'
@@ -29,6 +33,7 @@ type KeyResultPayload = {
   bpmError?: string
   mixxxWaveformData?: MixxxWaveformData | null
   compactVisualWaveformData?: CompactVisualWaveformData | null
+  unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
 }
 
 type KeyProgressPayload = {
@@ -55,7 +60,10 @@ type KeyProgressPayload = {
   needsBpm?: boolean
   needsWaveform?: boolean
   detail?: string
-  partialResult?: Omit<KeyResultPayload, 'mixxxWaveformData' | 'compactVisualWaveformData'>
+  partialResult?: Omit<
+    KeyResultPayload,
+    'mixxxWaveformData' | 'compactVisualWaveformData' | 'unifiedDisplayWaveformData'
+  >
 }
 
 type KeyResponse = {
@@ -379,9 +387,7 @@ const analyzeKeyForFileInternal = async (
     reportProgress({ stage: 'waveform-start' })
     const waveformStartAt = Date.now()
     try {
-      const durationSec =
-        Number(decoded.sampleRate) > 0 ? Number(decoded.totalFrames || 0) / decoded.sampleRate : 0
-      const targetRate = resolveCompactVisualWaveformDetailRate(durationSec)
+      const targetRate = UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE
       result.mixxxWaveformData =
         typeof resolveRustBinding().computeMixxxWaveformWithRate === 'function'
           ? resolveRustBinding().computeMixxxWaveformWithRate!(
@@ -403,6 +409,9 @@ const analyzeKeyForFileInternal = async (
       )
       result.compactVisualWaveformData = result.mixxxWaveformData
         ? buildCompactVisualWaveformFromMixxx(result.mixxxWaveformData, rawWaveformData)
+        : null
+      result.unifiedDisplayWaveformData = result.mixxxWaveformData
+        ? buildUnifiedDisplayWaveformDetailFromMixxx(result.mixxxWaveformData, rawWaveformData)
         : null
       reportProgress({
         stage: 'waveform-done',

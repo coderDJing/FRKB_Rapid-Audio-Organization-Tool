@@ -411,6 +411,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     )
     const preferRawPeaksOnly =
       payload.preferRawPeaksOnly ||
+      (waveformLayout === 'full' && waveformRenderStyle === 'columns') ||
       shouldUseAttackSafeRawPeaks(payload.rangeDurationSec, width, pixelRatio, waveformRenderStyle)
     const nowMs = performance.now()
     const playbackActive = options.playing.value && !options.dragging.value
@@ -668,8 +669,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const drawableRawData = effectiveRawIntersection ? effectiveRawData : null
     const canRenderWithoutRawCoverage =
       effectiveMixxxSelection.source === 'live' || effectiveMixxxSelection.source === 'retained'
-    const shouldPreservePlaybackDisplay =
-      preservePlaybackDisplayUntilRawReady && playbackStreamReuse && wasDisplayReady
+    const shouldPreserveDisplay = preservePlaybackDisplayUntilRawReady && wasDisplayReady
     const shouldHoldPlaybackFrame = playbackStreamReuse && wasDisplayReady
 
     const commitRetainedFromDrawn = () => {
@@ -683,7 +683,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     }
 
     if (!effectiveMixxxData && !drawableRawData) {
-      if (shouldPreservePlaybackDisplay || shouldHoldPlaybackFrame) {
+      if (shouldPreserveDisplay || shouldHoldPlaybackFrame) {
         return
       }
       lastStreamRenderedRawData = null
@@ -712,7 +712,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           (allowPlaybackScrollReuse && rawDataRefStable) ||
           allowPartialViewportPaint)
       if (!canDrawStream) {
-        if (shouldPreservePlaybackDisplay || shouldHoldPlaybackFrame) {
+        if (shouldPreserveDisplay || shouldHoldPlaybackFrame) {
           return
         }
         lastStreamRenderedRawData = null
@@ -747,7 +747,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         finishTiming()
       }
     } else if (!drawableRawData && !canRenderWithoutRawCoverage) {
-      if (shouldPreservePlaybackDisplay) return
+      if (shouldPreserveDisplay) return
       lastStreamRenderedRawData = null
       setDisplayReady(false)
       queueLiveWaveformRender({
@@ -894,7 +894,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const scheduleRawStreamDirtyDraw = (dirtyStartSec: number, dirtyEndSec: number) => {
     const safeStartSec = Math.max(0, Math.min(dirtyStartSec, dirtyEndSec))
     const safeEndSec = Math.max(safeStartSec, dirtyEndSec)
-    if (preservePlaybackDisplayUntilRawReady && options.playing.value && !options.dragging.value) {
+    if (preservePlaybackDisplayUntilRawReady) {
       scheduleDraw()
       return
     }

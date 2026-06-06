@@ -61,6 +61,7 @@ const emit = defineEmits<{
   (event: 'drag-session-start'): void
   (event: 'drag-session-preview', payload: { anchorSec: number; playbackRate: number }): void
   (event: 'drag-session-end', payload: { anchorSec: number; committed: boolean }): void
+  (event: 'edit-waveform-loading-change', value: boolean): void
 }>()
 
 const detailRef = ref<HorizontalBrowseRawWaveformDetailExpose | null>(null)
@@ -122,6 +123,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       @drag-session-start="emit('drag-session-start')"
       @drag-session-preview="emit('drag-session-preview', $event)"
       @drag-session-end="emit('drag-session-end', $event)"
+      @edit-waveform-loading-change="emit('edit-waveform-loading-change', $event)"
     />
     <div
       v-show="!!props.song"

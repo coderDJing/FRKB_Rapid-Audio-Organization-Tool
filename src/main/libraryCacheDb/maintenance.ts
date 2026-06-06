@@ -19,6 +19,7 @@ import { ensureSongCacheMigrated, migrateSongCacheRows } from './songCache'
 import { ensureCoverIndexMigrated, migrateCoverIndexRows } from './coverIndex'
 import { migrateWaveformCacheRows } from './waveformCache'
 import { migrateCompactVisualWaveformCacheRows } from './compactVisualWaveformCache'
+import { migrateUnifiedDisplayWaveformCacheRows } from './unifiedDisplayWaveformCache'
 
 const CACHE_KEY_MIGRATION_META_KEY_V2 = 'cache_key_relative_migrated_v2'
 let cacheKeyMigrationScheduled = false
@@ -31,6 +32,7 @@ export async function renameCacheRoot(
   coverIndexUpdated: number
   waveformCacheUpdated: number
   compactVisualWaveformCacheUpdated: number
+  unifiedDisplayWaveformCacheUpdated: number
   mixtapeWaveformCacheUpdated: number
   mixtapeRawWaveformCacheUpdated: number
   mixtapeWaveformHiresCacheUpdated: number
@@ -43,6 +45,7 @@ export async function renameCacheRoot(
       coverIndexUpdated: 0,
       waveformCacheUpdated: 0,
       compactVisualWaveformCacheUpdated: 0,
+      unifiedDisplayWaveformCacheUpdated: 0,
       mixtapeWaveformCacheUpdated: 0,
       mixtapeRawWaveformCacheUpdated: 0,
       mixtapeWaveformHiresCacheUpdated: 0,
@@ -57,6 +60,7 @@ export async function renameCacheRoot(
       coverIndexUpdated: 0,
       waveformCacheUpdated: 0,
       compactVisualWaveformCacheUpdated: 0,
+      unifiedDisplayWaveformCacheUpdated: 0,
       mixtapeWaveformCacheUpdated: 0,
       mixtapeRawWaveformCacheUpdated: 0,
       mixtapeWaveformHiresCacheUpdated: 0,
@@ -71,6 +75,7 @@ export async function renameCacheRoot(
       coverIndexUpdated: 0,
       waveformCacheUpdated: 0,
       compactVisualWaveformCacheUpdated: 0,
+      unifiedDisplayWaveformCacheUpdated: 0,
       mixtapeWaveformCacheUpdated: 0,
       mixtapeRawWaveformCacheUpdated: 0,
       mixtapeWaveformHiresCacheUpdated: 0,
@@ -85,6 +90,7 @@ export async function renameCacheRoot(
       coverIndexUpdated: 0,
       waveformCacheUpdated: 0,
       compactVisualWaveformCacheUpdated: 0,
+      unifiedDisplayWaveformCacheUpdated: 0,
       mixtapeWaveformCacheUpdated: 0,
       mixtapeRawWaveformCacheUpdated: 0,
       mixtapeWaveformHiresCacheUpdated: 0,
@@ -97,6 +103,7 @@ export async function renameCacheRoot(
   let coverIndexUpdated = 0
   let waveformCacheUpdated = 0
   let compactVisualWaveformCacheUpdated = 0
+  let unifiedDisplayWaveformCacheUpdated = 0
   let mixtapeWaveformCacheUpdated = 0
   let mixtapeRawWaveformCacheUpdated = 0
   let mixtapeWaveformHiresCacheUpdated = 0
@@ -121,6 +128,12 @@ export async function renameCacheRoot(
     )
     const updateCompactVisualWaveform = db.prepare(
       'UPDATE compact_visual_waveform_cache SET list_root = ?, file_path = ? WHERE list_root = ? AND file_path = ?'
+    )
+    const deleteUnifiedDisplayWaveform = db.prepare(
+      'DELETE FROM unified_display_waveform_cache WHERE list_root = ? AND file_path = ?'
+    )
+    const updateUnifiedDisplayWaveform = db.prepare(
+      'UPDATE unified_display_waveform_cache SET list_root = ?, file_path = ? WHERE list_root = ? AND file_path = ?'
     )
     const deleteMixtapeWaveform = db.prepare(
       'DELETE FROM mixtape_waveform_cache WHERE list_root = ? AND file_path = ?'
@@ -160,6 +173,9 @@ export async function renameCacheRoot(
           .all(rootKey)
         const compactVisualWaveformRows = db
           .prepare('SELECT file_path FROM compact_visual_waveform_cache WHERE list_root = ?')
+          .all(rootKey)
+        const unifiedDisplayWaveformRows = db
+          .prepare('SELECT file_path FROM unified_display_waveform_cache WHERE list_root = ?')
           .all(rootKey)
         const mixtapeWaveformRows = db
           .prepare('SELECT file_path FROM mixtape_waveform_cache WHERE list_root = ?')
@@ -252,6 +268,26 @@ export async function renameCacheRoot(
           compactVisualWaveformCacheUpdated += result?.changes ? Number(result.changes) : 0
           deleteWaveform.run(newKey, newFileKey)
           deleteWaveform.run(rootKey, filePath)
+        }
+
+        for (const row of unifiedDisplayWaveformRows || []) {
+          const filePath = row?.file_path ? String(row.file_path) : ''
+          if (!filePath) continue
+          let newFileKey = filePath
+          if (path.isAbsolute(filePath)) {
+            if (oldAbs && isUnderPath(oldAbs, filePath)) {
+              newFileKey = normalizeRoot(path.relative(oldAbs, filePath))
+            } else {
+              newFileKey = normalizeRoot(filePath)
+            }
+          } else {
+            newFileKey = normalizeRoot(filePath)
+          }
+          deleteUnifiedDisplayWaveform.run(newKey, newFileKey)
+          const result = updateUnifiedDisplayWaveform.run(newKey, newFileKey, rootKey, filePath)
+          unifiedDisplayWaveformCacheUpdated += result?.changes ? Number(result.changes) : 0
+          deleteMixtapeRawWaveform.run(newKey, newFileKey)
+          deleteMixtapeRawWaveform.run(rootKey, filePath)
         }
 
         for (const row of mixtapeWaveformRows || []) {
@@ -379,6 +415,7 @@ export async function renameCacheRoot(
     coverIndexUpdated,
     waveformCacheUpdated,
     compactVisualWaveformCacheUpdated,
+    unifiedDisplayWaveformCacheUpdated,
     mixtapeWaveformCacheUpdated,
     mixtapeRawWaveformCacheUpdated,
     mixtapeWaveformHiresCacheUpdated,
@@ -391,6 +428,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
   coverIndexRemoved: number
   waveformCacheRemoved: number
   compactVisualWaveformCacheRemoved: number
+  unifiedDisplayWaveformCacheRemoved: number
   mixtapeWaveformCacheRemoved: number
   mixtapeRawWaveformCacheRemoved: number
   mixtapeWaveformHiresCacheRemoved: number
@@ -403,6 +441,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
       coverIndexRemoved: 0,
       waveformCacheRemoved: 0,
       compactVisualWaveformCacheRemoved: 0,
+      unifiedDisplayWaveformCacheRemoved: 0,
       mixtapeWaveformCacheRemoved: 0,
       mixtapeRawWaveformCacheRemoved: 0,
       mixtapeWaveformHiresCacheRemoved: 0,
@@ -431,6 +470,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
         | 'cover_index'
         | 'waveform_cache'
         | 'compact_visual_waveform_cache'
+        | 'unified_display_waveform_cache'
         | 'mixtape_waveform_cache'
         | 'mixtape_raw_waveform_cache'
         | 'mixtape_waveform_hires_cache'
@@ -463,6 +503,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
     const coverIndexRemoved = pruneTable('cover_index')
     const waveformCacheRemoved = pruneTable('waveform_cache')
     const compactVisualWaveformCacheRemoved = pruneTable('compact_visual_waveform_cache')
+    const unifiedDisplayWaveformCacheRemoved = pruneTable('unified_display_waveform_cache')
     const mixtapeWaveformCacheRemoved = pruneTable('mixtape_waveform_cache')
     const mixtapeRawWaveformCacheRemoved = pruneTable('mixtape_raw_waveform_cache')
     const mixtapeWaveformHiresCacheRemoved = pruneTable('mixtape_waveform_hires_cache')
@@ -472,6 +513,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
       coverIndexRemoved,
       waveformCacheRemoved,
       compactVisualWaveformCacheRemoved,
+      unifiedDisplayWaveformCacheRemoved,
       mixtapeWaveformCacheRemoved,
       mixtapeRawWaveformCacheRemoved,
       mixtapeWaveformHiresCacheRemoved,
@@ -484,6 +526,7 @@ export async function pruneCachesByRoots(keepRoots: Iterable<string> | null | un
       coverIndexRemoved: 0,
       waveformCacheRemoved: 0,
       compactVisualWaveformCacheRemoved: 0,
+      unifiedDisplayWaveformCacheRemoved: 0,
       mixtapeWaveformCacheRemoved: 0,
       mixtapeRawWaveformCacheRemoved: 0,
       mixtapeWaveformHiresCacheRemoved: 0,
@@ -500,6 +543,7 @@ function collectMigratableCacheRoots(db: SqliteDatabase, baseRoot: string): Set<
     | 'cover_index'
     | 'waveform_cache'
     | 'compact_visual_waveform_cache'
+    | 'unified_display_waveform_cache'
     | 'mixtape_waveform_cache'
     | 'mixtape_raw_waveform_cache'
     | 'mixtape_waveform_hires_cache'
@@ -509,6 +553,7 @@ function collectMigratableCacheRoots(db: SqliteDatabase, baseRoot: string): Set<
     'cover_index',
     'waveform_cache',
     'compact_visual_waveform_cache',
+    'unified_display_waveform_cache',
     'mixtape_waveform_cache',
     'mixtape_raw_waveform_cache',
     'mixtape_waveform_hires_cache',
@@ -551,6 +596,7 @@ export async function migrateCacheKeysToRelativeIfNeeded(): Promise<void> {
       migrateCoverIndexRows(db, root, newKey, root)
       migrateWaveformCacheRows(db, root, newKey, root)
       migrateCompactVisualWaveformCacheRows(db, root, newKey, root)
+      migrateUnifiedDisplayWaveformCacheRows(db, root, newKey, root)
     }
     const remaining = collectMigratableCacheRoots(db, baseRoot)
     if (remaining.size === 0) {

@@ -2,6 +2,7 @@ import type { Ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import type { HorizontalBrowseRawWaveformStreamMode } from '@renderer/components/horizontalBrowseEditDetailRawWaveform'
 import type {
   HorizontalBrowseDetailLiveCanvasRawChunk,
   HorizontalBrowseDetailLiveCanvasRawMeta
@@ -93,6 +94,8 @@ export type UseHorizontalBrowseRawWaveformStreamOptions = {
   deferWaveformLoad: () => boolean
   rawLoadPriorityHint: () => number | undefined
   bootstrapDurationSec: () => number | undefined
+  rawTargetRate?: () => number | undefined
+  rawStreamMode?: () => HorizontalBrowseRawWaveformStreamMode | undefined
   timeBasisOffsetMs: () => number
   playing: () => boolean
   currentSeconds: () => number | undefined

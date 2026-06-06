@@ -36,13 +36,14 @@ import {
 import type {
   HorizontalBrowseDragSessionEndPayload,
   HorizontalBrowseLoopRange,
-  HorizontalBrowseRawWaveformDetailExpose,
   HorizontalBrowseSharedZoomState,
   HorizontalBrowseWaveformLayout,
   HorizontalBrowseWaveformRenderStyle
 } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
 import { buildHorizontalBrowseRawWaveformGridSignature } from '@renderer/components/horizontalBrowseRawWaveformGridSignature'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
+import { resolveHorizontalBrowseRawWaveformStreamParams } from '@renderer/components/horizontalBrowseEditDetailRawWaveform'
+import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailExpose'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -79,6 +80,7 @@ const emit = defineEmits<{
   (event: 'drag-session-start'): void
   (event: 'drag-session-preview', value: HorizontalBrowseScrubPreviewPayload): void
   (event: 'drag-session-end', value: HorizontalBrowseDragSessionEndPayload): void
+  (event: 'edit-waveform-loading-change', value: boolean): void
 }>()
 
 const runtime = useRuntimeStore()
@@ -122,12 +124,6 @@ const resolveWaveformCurrentSeconds = () =>
     (Number(props.currentSeconds) || 0) + localGridShiftPhaseOffsetSec.value
   )
 
-const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS = 4
-const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS = 10
-const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX = 1
-const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX = 2.5
-const HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN = 8
-const HORIZONTAL_BROWSE_DEFERRED_BOOTSTRAP_OVERSCAN = 1.5
 const HORIZONTAL_BROWSE_PLAYBACK_RESYNC_THRESHOLD_SEC = 0.04
 const HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON = 0.0005
 
@@ -137,6 +133,7 @@ let dragStartClientX = 0
 let dragStartSec = 0
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
+let dragWaveformRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let pendingLocalGridSignature = ''
 let lastPlaybackPositionSample: {
   songKey: string
@@ -241,13 +238,6 @@ const scrubPreview = useHorizontalBrowseWaveformScrubPreview({
   resolveAnchorSec: resolvePreviewAnchorSec,
   emitPreview: (payload) => emit('drag-session-preview', payload)
 })
-const resolveGridShiftMs = (targetPx: number, minMs: number) => {
-  const visibleDurationMs = Math.max(1, resolveVisibleDurationSec() * 1000)
-  const wrapWidth = Math.max(1, Number(wrapRef.value?.clientWidth || 0))
-  const msPerPixel = visibleDurationMs / wrapWidth
-  return Math.max(minMs, Math.round(msPerPixel * targetPx))
-}
-
 const normalizeSharedZoom = (value: unknown) => {
   const numeric =
     typeof value === 'object' && value !== null && 'value' in value
@@ -267,6 +257,12 @@ const clearBpmTapResetTimer = () => {
   if (!bpmTapResetTimer) return
   clearTimeout(bpmTapResetTimer)
   bpmTapResetTimer = null
+}
+
+const clearDragWaveformRefreshTimer = () => {
+  if (!dragWaveformRefreshTimer) return
+  clearTimeout(dragWaveformRefreshTimer)
+  dragWaveformRefreshTimer = null
 }
 
 const buildPreviewGridSignature = () =>
@@ -384,10 +380,11 @@ const schedulePersistGridDefinition = () => {
   }, 120)
 }
 
-const stopDragging = (commitPlayhead = false) => {
+const stopDragging = (commitPlayhead = false, refreshWaveform = true) => {
   if (!dragging.value) return
   const finalAnchorSec = resolvePreviewAnchorSec()
   dragging.value = false
+  clearDragWaveformRefreshTimer()
   scrubPreview.stop()
   window.removeEventListener('mousemove', handleDragMove)
   window.removeEventListener('mouseup', handleWindowMouseUp)
@@ -395,6 +392,21 @@ const stopDragging = (commitPlayhead = false) => {
     anchorSec: finalAnchorSec,
     committed: commitPlayhead && Boolean(props.song)
   })
+  if (refreshWaveform) {
+    maybeContinueWaveformSource(finalAnchorSec)
+  }
+}
+
+const requestWaveformSourceForDrag = (anchorSec: number) => {
+  if (resolveRawWaveformStreamMode() !== 'edit-window') {
+    maybeContinueWaveformSource(anchorSec)
+    return
+  }
+  clearDragWaveformRefreshTimer()
+  dragWaveformRefreshTimer = setTimeout(() => {
+    dragWaveformRefreshTimer = null
+    maybeContinueWaveformSource(anchorSec)
+  }, 160)
 }
 
 const handleWindowMouseUp = (event: MouseEvent) => {
@@ -412,7 +424,7 @@ function handleDragMove(event: MouseEvent) {
   const deltaSec = (deltaX / Math.max(1, wrap.clientWidth)) * visibleDuration
   previewStartSec.value = clampPreviewStart(dragStartSec - deltaSec)
   const anchorSec = resolvePreviewAnchorSec()
-  maybeContinueWaveformSource(anchorSec)
+  requestWaveformSourceForDrag(anchorSec)
   scrubPreview.update(anchorSec)
   scheduleDraw()
 }
@@ -493,8 +505,24 @@ const syncNativeMetronomeState = (state: { enabled: boolean; volumeLevel: 1 | 2 
     })
 }
 const detailVisible = computed(() => true)
-const shouldUseCompactVisualWaveform = () =>
-  resolveWaveformRenderStyle() === 'columns' && resolveWaveformLayout() !== 'full'
+const shouldUseCompactVisualWaveform = () => true
+const resolveRawWaveformStreamParams = () =>
+  resolveHorizontalBrowseRawWaveformStreamParams({
+    layout: resolveWaveformLayout(),
+    visibleDurationSec: resolveVisibleDurationSec(),
+    durationSec: resolvePreviewDurationSec(),
+    deferred: deferredWaveformLoad.value
+  })
+const resolveRawWaveformTargetRate = () => resolveRawWaveformStreamParams().targetRate
+const resolveRawWaveformStreamMode = () => resolveRawWaveformStreamParams().mode
+const resolveRawWaveformBootstrapDurationSec = () =>
+  resolveRawWaveformStreamParams().bootstrapDurationSec
+
+watch(
+  () => [previewLoading.value, resolveRawWaveformStreamMode()] as const,
+  ([loading, mode]) => emit('edit-waveform-loading-change', mode === 'edit-window' && loading),
+  { immediate: true }
+)
 
 const {
   previewBarLinePicking,
@@ -603,14 +631,9 @@ const {
   direction: () => props.direction,
   deferWaveformLoad: () => deferredWaveformLoad.value,
   rawLoadPriorityHint: () => props.rawLoadPriorityHint,
-  bootstrapDurationSec: () =>
-    Math.max(
-      deferredWaveformLoad.value ? 1.5 : 4,
-      resolveVisibleDurationSec() *
-        (deferredWaveformLoad.value
-          ? HORIZONTAL_BROWSE_DEFERRED_BOOTSTRAP_OVERSCAN
-          : HORIZONTAL_BROWSE_BOOTSTRAP_OVERSCAN)
-    ),
+  bootstrapDurationSec: resolveRawWaveformBootstrapDurationSec,
+  rawTargetRate: resolveRawWaveformTargetRate,
+  rawStreamMode: resolveRawWaveformStreamMode,
   timeBasisOffsetMs: () => Number(previewTimeBasisOffsetMs.value) || 0,
   playing: () => previewPlaying.value,
   currentSeconds: resolveWaveformCurrentSeconds,
@@ -727,6 +750,14 @@ watch(
     void loadWaveform()
   },
   { immediate: true }
+)
+
+watch(
+  () => [resolveWaveformLayout(), resolveWaveformRenderStyle()] as const,
+  ([layout, renderStyle], previous) => {
+    if (previous && layout === previous[0] && renderStyle === previous[1]) return
+    void loadWaveform()
+  }
 )
 
 watch(
@@ -995,8 +1026,9 @@ onUnmounted(() => {
   resetCompactVisualWaveformStrip()
   clearPersistTimer()
   clearBpmTapResetTimer()
+  clearDragWaveformRefreshTimer()
   clearStreamDrawScheduling()
-  stopDragging()
+  stopDragging(false, false)
   disposeRawWaveformStream()
   disposeWaveformCanvas()
   disposeCompactVisualWaveformStrip()
@@ -1006,46 +1038,19 @@ onUnmounted(() => {
   }
 })
 
-defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
-  toggleBarLinePicking,
-  setBarLineAtPlayhead,
-  shiftGridSmallLeft: (options) =>
-    shiftGrid(
-      -resolveGridShiftMs(
-        HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX,
-        HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS
-      ),
-      options
-    ),
-  shiftGridLargeLeft: (options) =>
-    shiftGrid(
-      -resolveGridShiftMs(
-        HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX,
-        HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS
-      ),
-      options
-    ),
-  shiftGridSmallRight: (options) =>
-    shiftGrid(
-      resolveGridShiftMs(
-        HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX,
-        HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS
-      ),
-      options
-    ),
-  shiftGridLargeRight: (options) =>
-    shiftGrid(
-      resolveGridShiftMs(
-        HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX,
-        HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS
-      ),
-      options
-    ),
-  updateBpmInput: handlePreviewBpmInputUpdate,
-  blurBpmInput: handlePreviewBpmInputBlur,
-  tapBpm: handlePreviewBpmTap,
-  cycleMetronomeState
-})
+defineExpose(
+  createHorizontalBrowseRawWaveformDetailExpose({
+    toggleBarLinePicking,
+    setBarLineAtPlayhead,
+    shiftGrid,
+    updateBpmInput: handlePreviewBpmInputUpdate,
+    blurBpmInput: handlePreviewBpmInputBlur,
+    tapBpm: handlePreviewBpmTap,
+    cycleMetronomeState,
+    resolveVisibleDurationSec,
+    resolveWrapWidth: () => Number(wrapRef.value?.clientWidth || 0)
+  })
+)
 </script>
 
 <template>
@@ -1057,7 +1062,8 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       {
         'is-dragging': dragging,
         'is-bar-selecting': previewBarLinePicking,
-        'is-waveform-ready': displayReady
+        'is-waveform-ready': displayReady,
+        'is-loading': previewLoading && resolveRawWaveformStreamMode() === 'edit-window'
       }
     ]"
     @mousedown.stop="handleMouseDown"

@@ -1,4 +1,7 @@
-import { compactVisualWaveformToRawData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
+import {
+  compactVisualWaveformToRawData,
+  unifiedDisplayWaveformToRawData
+} from '@renderer/components/horizontalBrowseCompactVisualWaveform'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type {
   HorizontalBrowseCompactVisualWaveformWorkerIncoming,
@@ -54,6 +57,7 @@ const postWorkerMessage = (
 const buildRawData = (
   data: HorizontalBrowseCompactVisualWaveformWorkerIncoming['payload']['data']
 ) => {
+  if ('height' in data) return unifiedDisplayWaveformToRawData(data)
   return compactVisualWaveformToRawData(data)
 }
 

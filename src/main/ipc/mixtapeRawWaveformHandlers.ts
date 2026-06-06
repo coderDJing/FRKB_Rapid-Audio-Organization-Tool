@@ -507,7 +507,9 @@ export function registerMixtapeRawWaveformHandlers() {
         closeRawWaveformStreamOpenState(requestId)
         return
       }
-      continuation.continueCredits -= 1
+      if (!continuation.autoContinue) {
+        continuation.continueCredits -= 1
+      }
     }
     if (continuation.queue.length > 0 || !continuation.donePayload) return
     if (continuation.sender.isDestroyed()) {
@@ -536,7 +538,8 @@ export function registerMixtapeRawWaveformHandlers() {
       startedAt: request.streamStartedAt || Date.now(),
       chunkCount: request.chunkCount,
       queue: [],
-      continueCredits: 0,
+      continueCredits: request.autoContinue ? Number.POSITIVE_INFINITY : 0,
+      autoContinue: request.autoContinue,
       donePayload: null
     }) satisfies LiveRawWaveformContinuation
 
@@ -553,6 +556,10 @@ export function registerMixtapeRawWaveformHandlers() {
   const continueLiveRawWaveformStream = async (requestId: string) => {
     const continuation = resolveLiveRawWaveformContinuation(requestId)
     if (!continuation) return
+    if (continuation.autoContinue) {
+      flushLiveRawWaveformContinuation(requestId)
+      return
+    }
     continuation.continueCredits = Math.min(
       MAX_LIVE_RAW_WAVEFORM_CONTINUE_CREDITS,
       continuation.continueCredits + 1
@@ -728,7 +735,9 @@ export function registerMixtapeRawWaveformHandlers() {
           chunkFrames: nextRequest.chunkFrames,
           bootstrapDurationSec: nextRequest.bootstrapDurationSec
         }),
-        expectedDurationSec: nextRequest.expectedDurationSec
+        expectedDurationSec: nextRequest.expectedDurationSec,
+        peaksOnly: nextRequest.peaksOnly,
+        metadataOnlyResult: nextRequest.metadataOnlyResult
       })
     }
   }
@@ -898,6 +907,8 @@ export function registerMixtapeRawWaveformHandlers() {
         deckKey?: string
         protectsPlayback?: boolean
         forceLiveDecode?: boolean
+        autoContinue?: boolean
+        peaksOnly?: boolean
       }
     ) => {
       const requestId = String(payload?.requestId || '').trim()
@@ -922,8 +933,11 @@ export function registerMixtapeRawWaveformHandlers() {
         const deckKey = resolveRawWaveformStreamDeckKey(payload?.deckKey, requestId)
         const protectsPlayback = payload?.protectsPlayback === true
         const forceLiveDecode = payload?.forceLiveDecode === true
+        const autoContinue = payload?.autoContinue === true
+        const peaksOnly = payload?.peaksOnly === true
         const shouldUseRawCache = !protectsPlayback && !forceLiveDecode
-        const shouldStoreRawCache = !protectsPlayback && startSec <= 0.0001
+        const shouldStoreRawCache = !protectsPlayback && !forceLiveDecode && startSec <= 0.0001
+        const metadataOnlyResult = !shouldStoreRawCache
         const shouldResolveRawCacheTarget = shouldUseRawCache || shouldStoreRawCache
         let listRoot = ''
         let stat: { size: number; mtimeMs: number } | null = null
@@ -974,6 +988,9 @@ export function registerMixtapeRawWaveformHandlers() {
           priorityHint,
           protectsPlayback,
           forceLiveDecode,
+          autoContinue,
+          peaksOnly,
+          metadataOnlyResult,
           enqueuedAt: Date.now(),
           chunkCount: 0
         })

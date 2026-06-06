@@ -43,6 +43,9 @@ export type RawWaveformStreamRequest = {
   priorityHint: number
   protectsPlayback: boolean
   forceLiveDecode: boolean
+  autoContinue: boolean
+  peaksOnly: boolean
+  metadataOnlyResult: boolean
   enqueuedAt: number
   worker?: Worker
   streamStartedAt?: number
@@ -94,6 +97,7 @@ export type LiveRawWaveformContinuation = {
   chunkCount: number
   queue: LiveRawWaveformBufferedChunk[]
   continueCredits: number
+  autoContinue: boolean
   donePayload: Record<string, unknown> | null
 }
 

@@ -133,7 +133,6 @@ const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
     clearDeckSongListSource(deck)
   }
 }
-
 const topOverviewRegions = [1, 2, 3]
 const bottomOverviewRegions = [6, 7, 8]
 const deckCuePanelMode = reactive<Record<DeckKey, DeckCuePanelMode>>({
@@ -154,7 +153,6 @@ const {
   touchDeckInteraction,
   clearDeckRecentInteractionTimer
 } = useHorizontalBrowseDeckInteractionState()
-
 const {
   nativeTransport,
   deckSyncState,
@@ -286,7 +284,6 @@ const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
   return toolbarState.bpmInputValue
 }
 let resolveDeckMasterTempoEnabledForTransport: (deck: DeckKey) => boolean = () => true
-
 const {
   resolveDeckPlaybackRateForTransport,
   resolveDeckTempoNudgeDirection,
@@ -314,7 +311,6 @@ const { commitDeckStateToNative, commitDeckStatesToNative, toggleDeckMaster, tri
     resolveDeckMasterTempoEnabled: (deck) => resolveDeckMasterTempoEnabledForTransport(deck),
     resolveTransportDeckSnapshot
   })
-
 const {
   selectSongListDialogVisible,
   selectSongListDialogTargetLibraryName,
@@ -335,7 +331,6 @@ const { isDeckMasterTempoEnabled, toggleDeckMasterTempo, setDeckTargetBpm, reset
     nativeTransport
   })
 resolveDeckMasterTempoEnabledForTransport = isDeckMasterTempoEnabled
-
 const handleDeckMasterTempoToggle = (deck: DeckKey) => {
   touchDeckInteraction(deck)
   toggleDeckMasterTempo(deck)
@@ -367,7 +362,6 @@ const {
   resolveDeckCurrentSeconds,
   resolveDeckDurationSeconds
 })
-
 const { assignSongToDeck: assignSongToDeckBase } = createHorizontalBrowseDeckAssigner({
   touchDeckInteraction,
   setDeckSong,
@@ -679,9 +673,7 @@ useHorizontalBrowseHotkeys({
 const enterEditMode = async () => {
   stopAllDeckCuePreview()
   faderPanelRef.value?.syncCrossfaderValue(0)
-  if (resolveDeckPlaying('top')) {
-    await nativeTransport.setPlaying('top', false)
-  }
+  if (resolveDeckPlaying('top')) await nativeTransport.setPlaying('top', false)
   setDeckSong('bottom', null)
   await commitDeckStateToNative('bottom', {
     currentSec: 0,
@@ -689,12 +681,19 @@ const enterEditMode = async () => {
     playing: false,
     playbackRate: 1
   })
-  if (deckSyncState.leaderDeck === 'bottom') {
+  if (deckSyncState.leaderDeck === 'bottom')
     await nativeTransport.setLeader(resolveDeckSong('top') ? 'top' : null)
-  }
   syncDeckRenderState({ force: 'all' })
 }
-
+const handleEditWaveformLoadingChange = (loading: boolean) => {
+  if (!loading || !isEditMode.value || !resolveDeckPlaying('top')) return
+  void nativeTransport
+    .setPlaying('top', false)
+    .catch((error) =>
+      console.error('[horizontal-browse] pause edit waveform loading failed', error)
+    )
+    .finally(() => syncDeckRenderState({ force: 'top' }))
+}
 watch(isEditMode, (editMode) => {
   if (!editMode) return
   clearAllDeckCueMonitor()
@@ -702,7 +701,6 @@ watch(isEditMode, (editMode) => {
     console.error('[horizontal-browse] enter edit mode failed', error)
   })
 })
-
 const {
   isDeckHovered,
   handleRegionDragEnter,
@@ -964,7 +962,7 @@ onUnmounted(() => {
             isEditMode ? HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM : HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
           "
           :waveform-layout="isEditMode ? 'full' : 'auto'"
-          waveform-render-style="columns"
+          :waveform-render-style="isEditMode ? 'raw-curve' : 'columns'"
           allow-negative-timeline
           direction="up"
           :deck-hovered="isDeckHovered('top')"
@@ -978,8 +976,8 @@ onUnmounted(() => {
           @drag-session-start="handleDeckRawWaveformDragStart('top')"
           @drag-session-preview="handleDeckRawWaveformScrubPreview('top', $event)"
           @drag-session-end="handleDeckRawWaveformDragEnd('top', $event)"
+          @edit-waveform-loading-change="handleEditWaveformLoadingChange"
         />
-
         <HorizontalBrowseDeckDetailLane
           v-if="!isEditMode"
           ref="bottomDetailRef"

@@ -3,7 +3,9 @@ import type { ISongInfo } from 'src/types/globals'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO } from '@renderer/components/horizontalBrowseWaveform.constants'
-import { loadCompactVisualWaveformData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
+import { loadUnifiedDisplayWaveformData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
+import { isSameHorizontalBrowseSongFilePath } from '@renderer/components/horizontalBrowseShellSongs'
+import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
 import { createHorizontalBrowseCompactVisualWaveformWorker } from '@renderer/workers/horizontalBrowseCompactVisualWaveform.workerClient'
 import type {
   HorizontalBrowseCompactVisualWaveformWorkerIncoming,
@@ -106,7 +108,7 @@ export const useHorizontalBrowseCompactVisualWaveformStrip = (
       clearWaveformShape()
       options.scheduleDraw()
     }
-    const data = await loadCompactVisualWaveformData(filePath)
+    const data = await loadUnifiedDisplayWaveformData(filePath)
     if (buildToken !== token || !options.active.value) return
     if (!data) {
       requestKey = ''
@@ -129,7 +131,7 @@ export const useHorizontalBrowseCompactVisualWaveformStrip = (
       if (message.payload.data) {
         options.resetPlaybackRenderState()
         options.rawData.value = message.payload.data
-        options.mixxxData.value = null
+        options.mixxxData.value = createRawPlaceholderMixxxData(message.payload.data)
         options.replaceLiveWaveformRaw(message.payload.data)
       } else {
         clearWaveformShape()
@@ -157,6 +159,22 @@ export const useHorizontalBrowseCompactVisualWaveformStrip = (
     })
   })
 
+  const handleSongWaveformUpdated = (_event: unknown, payload?: { filePath?: string }) => {
+    const currentFilePath = String(options.song()?.filePath || '').trim()
+    const updatedFilePath = String(payload?.filePath || '').trim()
+    if (
+      !currentFilePath ||
+      !updatedFilePath ||
+      !isSameHorizontalBrowseSongFilePath(currentFilePath, updatedFilePath) ||
+      !options.active.value
+    ) {
+      return
+    }
+    void request(options.resolvePreviewAnchorSec(), { force: true, clearIfOutside: false })
+  }
+
+  window.electron.ipcRenderer.on('song-waveform-updated', handleSongWaveformUpdated)
+
   return {
     clearCompactWaveformShape: clearWaveformShape,
     requestCompactVisualWaveformStrip: request,
@@ -171,6 +189,7 @@ export const useHorizontalBrowseCompactVisualWaveformStrip = (
       token += 1
       requestKey = ''
       worker.removeEventListener('message', handleWorkerMessage)
+      window.electron.ipcRenderer.removeListener('song-waveform-updated', handleSongWaveformUpdated)
       worker.terminate()
     }
   }

@@ -1,0 +1,142 @@
+import { buildRawWaveformColorProfile, type RawWaveformColorSource } from './rawWaveformColor'
+
+export const UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION = 1
+export const UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION = 1
+export const UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE = 1200
+export const UNIFIED_DISPLAY_WAVEFORM_OVERVIEW_RATE = 32
+export const UNIFIED_DISPLAY_WAVEFORM_BODY_RATE_DIVISOR = 4
+
+export type UnifiedDisplayWaveformDetailData = {
+  version: number
+  parameterVersion: number
+  duration: number
+  sampleRate: number
+  detailRate: number
+  overviewRate: number
+  bodyRateDivisor: number
+  height: Uint8Array
+  attack: Uint8Array
+  colorIndex: Uint8Array
+  body: Uint8Array
+  overviewHeight: Uint8Array
+}
+
+export type UnifiedDisplayWaveformBuildSourceBand = {
+  left: Uint8Array
+  right: Uint8Array
+  peakLeft?: Uint8Array
+  peakRight?: Uint8Array
+}
+
+export type UnifiedDisplayWaveformBuildSource = {
+  duration: number
+  sampleRate: number
+  bands: {
+    all: UnifiedDisplayWaveformBuildSourceBand
+  }
+}
+
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+const toByte = (value: number) => clamp(Math.round(value), 0, 255)
+
+const resolveFrame = (sourceFrames: number, targetIndex: number, targetFrames: number) => {
+  if (sourceFrames <= 1 || targetFrames <= 1) return 0
+  return clamp(Math.floor((targetIndex / targetFrames) * sourceFrames), 0, sourceFrames - 1)
+}
+
+const resolveBandPeak = (
+  band: UnifiedDisplayWaveformBuildSourceBand,
+  frame: number,
+  side: 'left' | 'right'
+) => {
+  const body = side === 'left' ? band.left[frame] : band.right[frame]
+  const peak = side === 'left' ? band.peakLeft?.[frame] : band.peakRight?.[frame]
+  return Math.max(Number(body) || 0, Number(peak) || 0)
+}
+
+const resolveAttackByte = (height: number, previousHeight: number, previousSmooth: number) => {
+  const directRise = Math.max(0, height - previousHeight)
+  const smoothRise = Math.max(0, height - previousSmooth)
+  return toByte(directRise * 1.35 + smoothRise * 1.8)
+}
+
+export const buildUnifiedDisplayWaveformDetailFromMixxx = (
+  source: UnifiedDisplayWaveformBuildSource,
+  rawColorSource: RawWaveformColorSource
+): UnifiedDisplayWaveformDetailData | null => {
+  const duration = Math.max(0, Number(source?.duration) || 0)
+  const sampleRate = Math.max(0, Number(source?.sampleRate) || 0)
+  const sourceFrames = Math.min(
+    source?.bands?.all?.left?.length || 0,
+    source?.bands?.all?.right?.length || 0
+  )
+  if (!duration || !sampleRate || sourceFrames <= 0) return null
+
+  const detailRate = UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE
+  const detailFrames = Math.max(1, Math.ceil(duration * detailRate))
+  const overviewFrames = Math.max(1, Math.ceil(duration * UNIFIED_DISPLAY_WAVEFORM_OVERVIEW_RATE))
+  const height = new Uint8Array(detailFrames)
+  const attack = new Uint8Array(detailFrames)
+  const body = new Uint8Array(
+    Math.max(1, Math.ceil(detailFrames / UNIFIED_DISPLAY_WAVEFORM_BODY_RATE_DIVISOR))
+  )
+  const overviewHeight = new Uint8Array(overviewFrames)
+  const colorProfile = buildRawWaveformColorProfile(rawColorSource, detailFrames, detailRate, 1)
+  const colorIndex = colorProfile?.colorIndex?.length
+    ? colorProfile.colorIndex
+    : new Uint8Array(detailFrames).fill(3)
+
+  let previousHeight = 0
+  let previousSmooth = 0
+  for (let index = 0; index < detailFrames; index += 1) {
+    const sourceFrame = resolveFrame(sourceFrames, index, detailFrames)
+    const peak = Math.max(
+      resolveBandPeak(source.bands.all, sourceFrame, 'left'),
+      resolveBandPeak(source.bands.all, sourceFrame, 'right')
+    )
+    const currentHeight = toByte(peak)
+    height[index] = currentHeight
+    attack[index] = resolveAttackByte(currentHeight, previousHeight, previousSmooth)
+    previousSmooth = previousSmooth * 0.82 + currentHeight * 0.18
+    previousHeight = currentHeight
+  }
+
+  for (let index = 0; index < body.length; index += 1) {
+    const start = index * UNIFIED_DISPLAY_WAVEFORM_BODY_RATE_DIVISOR
+    const end = Math.min(detailFrames, start + UNIFIED_DISPLAY_WAVEFORM_BODY_RATE_DIVISOR)
+    let peak = 0
+    let sum = 0
+    for (let frame = start; frame < end; frame += 1) {
+      const value = height[frame] || 0
+      peak = Math.max(peak, value)
+      sum += value
+    }
+    const mean = sum / Math.max(1, end - start)
+    body[index] = toByte(mean * 0.7 + peak * 0.3)
+  }
+
+  for (let index = 0; index < overviewFrames; index += 1) {
+    const start = Math.floor((index / overviewFrames) * detailFrames)
+    const end = Math.max(start + 1, Math.ceil(((index + 1) / overviewFrames) * detailFrames))
+    let peak = 0
+    for (let frame = start; frame < Math.min(detailFrames, end); frame += 1) {
+      peak = Math.max(peak, height[frame] || 0)
+    }
+    overviewHeight[index] = peak
+  }
+
+  return {
+    version: UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION,
+    parameterVersion: UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION,
+    duration,
+    sampleRate,
+    detailRate,
+    overviewRate: UNIFIED_DISPLAY_WAVEFORM_OVERVIEW_RATE,
+    bodyRateDivisor: UNIFIED_DISPLAY_WAVEFORM_BODY_RATE_DIVISOR,
+    height,
+    attack,
+    colorIndex,
+    body,
+    overviewHeight
+  }
+}

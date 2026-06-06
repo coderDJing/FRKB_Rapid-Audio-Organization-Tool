@@ -12,6 +12,8 @@ type MixtapeRawWaveformJob = {
   chunkFrames?: number
   initialChunkFrames?: number
   expectedDurationSec?: number
+  peaksOnly?: boolean
+  metadataOnlyResult?: boolean
 }
 
 type RawWaveformData = {
@@ -115,6 +117,8 @@ const createRawWaveformAccumulator = (params: {
   streamChunks?: boolean
   chunkFrames?: number
   initialChunkFrames?: number
+  peaksOnly?: boolean
+  metadataOnlyResult?: boolean
   onChunk?: (payload: MixtapeRawWaveformProgressPayload) => void
 }) => {
   const sampleRate = Math.max(1, params.sampleRate)
@@ -134,6 +138,8 @@ const createRawWaveformAccumulator = (params: {
       ? Number(params.songDurationSec)
       : 0
   const shouldStream = params.streamChunks === true && typeof params.onChunk === 'function'
+  const peaksOnly = params.peaksOnly === true
+  const metadataOnlyResult = params.metadataOnlyResult === true
   const streamChunkFrames = shouldStream
     ? Math.max(1024, Math.floor(Number(params.chunkFrames) || 16384))
     : 0
@@ -151,10 +157,10 @@ const createRawWaveformAccumulator = (params: {
   let maxLeftValues = new Float32Array(estimatedFrames)
   let minRightValues = new Float32Array(estimatedFrames)
   let maxRightValues = new Float32Array(estimatedFrames)
-  let meanLeftValues = new Float32Array(estimatedFrames)
-  let meanRightValues = new Float32Array(estimatedFrames)
-  let rmsLeftValues = new Float32Array(estimatedFrames)
-  let rmsRightValues = new Float32Array(estimatedFrames)
+  let meanLeftValues = peaksOnly ? null : new Float32Array(estimatedFrames)
+  let meanRightValues = peaksOnly ? null : new Float32Array(estimatedFrames)
+  let rmsLeftValues = peaksOnly ? null : new Float32Array(estimatedFrames)
+  let rmsRightValues = peaksOnly ? null : new Float32Array(estimatedFrames)
   let outIndex = 0
   let position = 0
   let nextStore = step
@@ -186,11 +192,16 @@ const createRawWaveformAccumulator = (params: {
     maxLeftValues = grow(maxLeftValues)
     minRightValues = grow(minRightValues)
     maxRightValues = grow(maxRightValues)
-    meanLeftValues = grow(meanLeftValues)
-    meanRightValues = grow(meanRightValues)
-    rmsLeftValues = grow(rmsLeftValues)
-    rmsRightValues = grow(rmsRightValues)
+    meanLeftValues = meanLeftValues ? grow(meanLeftValues) : null
+    meanRightValues = meanRightValues ? grow(meanRightValues) : null
+    rmsLeftValues = rmsLeftValues ? grow(rmsLeftValues) : null
+    rmsRightValues = rmsRightValues ? grow(rmsRightValues) : null
   }
+
+  const sliceBuffer = (values: Float32Array | null, startFrame: number, frames: number) =>
+    values
+      ? Buffer.from(values.buffer, values.byteOffset + startFrame * 4, frames * 4)
+      : Buffer.alloc(0)
 
   const emitChunk = (endExclusiveFrame: number) => {
     if (!shouldStream || endExclusiveFrame <= nextChunkStartFrame) return
@@ -226,26 +237,10 @@ const createRawWaveformAccumulator = (params: {
         maxRightValues.byteOffset + nextChunkStartFrame * 4,
         frames * 4
       ),
-      meanLeft: Buffer.from(
-        meanLeftValues.buffer,
-        meanLeftValues.byteOffset + nextChunkStartFrame * 4,
-        frames * 4
-      ),
-      meanRight: Buffer.from(
-        meanRightValues.buffer,
-        meanRightValues.byteOffset + nextChunkStartFrame * 4,
-        frames * 4
-      ),
-      rmsLeft: Buffer.from(
-        rmsLeftValues.buffer,
-        rmsLeftValues.byteOffset + nextChunkStartFrame * 4,
-        frames * 4
-      ),
-      rmsRight: Buffer.from(
-        rmsRightValues.buffer,
-        rmsRightValues.byteOffset + nextChunkStartFrame * 4,
-        frames * 4
-      )
+      meanLeft: sliceBuffer(meanLeftValues, nextChunkStartFrame, frames),
+      meanRight: sliceBuffer(meanRightValues, nextChunkStartFrame, frames),
+      rmsLeft: sliceBuffer(rmsLeftValues, nextChunkStartFrame, frames),
+      rmsRight: sliceBuffer(rmsRightValues, nextChunkStartFrame, frames)
     })
     emittedChunkCount += 1
     nextChunkStartFrame = endExclusiveFrame
@@ -260,10 +255,12 @@ const createRawWaveformAccumulator = (params: {
       if (leftSample > currentMaxLeft) currentMaxLeft = leftSample
       if (rightSample < currentMinRight) currentMinRight = rightSample
       if (rightSample > currentMaxRight) currentMaxRight = rightSample
-      currentSumLeft += leftSample
-      currentSumRight += rightSample
-      currentSumSqLeft += leftSample * leftSample
-      currentSumSqRight += rightSample * rightSample
+      if (!peaksOnly) {
+        currentSumLeft += leftSample
+        currentSumRight += rightSample
+        currentSumSqLeft += leftSample * leftSample
+        currentSumSqRight += rightSample * rightSample
+      }
       currentSampleCount += 1
       position += 1
       totalInputFrames += 1
@@ -273,13 +270,16 @@ const createRawWaveformAccumulator = (params: {
         maxLeftValues[outIndex] = currentMaxLeft
         minRightValues[outIndex] = currentMinRight
         maxRightValues[outIndex] = currentMaxRight
-        meanLeftValues[outIndex] = currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
-        meanRightValues[outIndex] =
-          currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
-        rmsLeftValues[outIndex] =
-          currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
-        rmsRightValues[outIndex] =
-          currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
+        if (meanLeftValues && meanRightValues && rmsLeftValues && rmsRightValues) {
+          meanLeftValues[outIndex] =
+            currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
+          meanRightValues[outIndex] =
+            currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
+          rmsLeftValues[outIndex] =
+            currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
+          rmsRightValues[outIndex] =
+            currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
+        }
         outIndex += 1
         currentMinLeft = 1
         currentMaxLeft = -1
@@ -310,30 +310,52 @@ const createRawWaveformAccumulator = (params: {
       maxLeftValues[outIndex] = currentMaxLeft === -1 ? 0 : currentMaxLeft
       minRightValues[outIndex] = currentMinRight === 1 ? 0 : currentMinRight
       maxRightValues[outIndex] = currentMaxRight === -1 ? 0 : currentMaxRight
-      meanLeftValues[outIndex] = currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
-      meanRightValues[outIndex] = currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
-      rmsLeftValues[outIndex] =
-        currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
-      rmsRightValues[outIndex] =
-        currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
+      if (meanLeftValues && meanRightValues && rmsLeftValues && rmsRightValues) {
+        meanLeftValues[outIndex] = currentSampleCount > 0 ? currentSumLeft / currentSampleCount : 0
+        meanRightValues[outIndex] =
+          currentSampleCount > 0 ? currentSumRight / currentSampleCount : 0
+        rmsLeftValues[outIndex] =
+          currentSampleCount > 0 ? Math.sqrt(currentSumSqLeft / currentSampleCount) : 0
+        rmsRightValues[outIndex] =
+          currentSampleCount > 0 ? Math.sqrt(currentSumSqRight / currentSampleCount) : 0
+      }
       outIndex += 1
     }
     if (shouldStream) {
       emitChunk(outIndex)
     }
 
+    const duration =
+      songDurationSec > 0 ? songDurationSec : sampleRate > 0 ? totalInputFrames / sampleRate : 0
+    if (metadataOnlyResult) {
+      const empty = Buffer.alloc(0)
+      return {
+        duration,
+        sampleRate,
+        rate,
+        frames: outIndex,
+        minLeft: empty,
+        maxLeft: empty,
+        minRight: empty,
+        maxRight: empty,
+        meanLeft: empty,
+        meanRight: empty,
+        rmsLeft: empty,
+        rmsRight: empty
+      }
+    }
+
     const finalMinLeft = minLeftValues.subarray(0, outIndex)
     const finalMaxLeft = maxLeftValues.subarray(0, outIndex)
     const finalMinRight = minRightValues.subarray(0, outIndex)
     const finalMaxRight = maxRightValues.subarray(0, outIndex)
-    const finalMeanLeft = meanLeftValues.subarray(0, outIndex)
-    const finalMeanRight = meanRightValues.subarray(0, outIndex)
-    const finalRmsLeft = rmsLeftValues.subarray(0, outIndex)
-    const finalRmsRight = rmsRightValues.subarray(0, outIndex)
+    const finalMeanLeft = meanLeftValues?.subarray(0, outIndex) ?? null
+    const finalMeanRight = meanRightValues?.subarray(0, outIndex) ?? null
+    const finalRmsLeft = rmsLeftValues?.subarray(0, outIndex) ?? null
+    const finalRmsRight = rmsRightValues?.subarray(0, outIndex) ?? null
 
     return {
-      duration:
-        songDurationSec > 0 ? songDurationSec : sampleRate > 0 ? totalInputFrames / sampleRate : 0,
+      duration,
       sampleRate,
       rate,
       frames: outIndex,
@@ -349,22 +371,10 @@ const createRawWaveformAccumulator = (params: {
         finalMaxRight.byteOffset,
         finalMaxRight.byteLength
       ),
-      meanLeft: Buffer.from(
-        finalMeanLeft.buffer,
-        finalMeanLeft.byteOffset,
-        finalMeanLeft.byteLength
-      ),
-      meanRight: Buffer.from(
-        finalMeanRight.buffer,
-        finalMeanRight.byteOffset,
-        finalMeanRight.byteLength
-      ),
-      rmsLeft: Buffer.from(finalRmsLeft.buffer, finalRmsLeft.byteOffset, finalRmsLeft.byteLength),
-      rmsRight: Buffer.from(
-        finalRmsRight.buffer,
-        finalRmsRight.byteOffset,
-        finalRmsRight.byteLength
-      )
+      meanLeft: sliceBuffer(finalMeanLeft, 0, outIndex),
+      meanRight: sliceBuffer(finalMeanRight, 0, outIndex),
+      rmsLeft: sliceBuffer(finalRmsLeft, 0, outIndex),
+      rmsRight: sliceBuffer(finalRmsRight, 0, outIndex)
     }
   }
 
@@ -597,6 +607,8 @@ const buildRawWaveformStreamed = async (
     expectedDurationSec?: number
     chunkFrames?: number
     initialChunkFrames?: number
+    peaksOnly?: boolean
+    metadataOnlyResult?: boolean
     onChunk?: (payload: MixtapeRawWaveformProgressPayload) => void
   }
 ) => {
@@ -634,6 +646,8 @@ const buildRawWaveformStreamed = async (
     streamChunks: true,
     chunkFrames: options.chunkFrames,
     initialChunkFrames: options.initialChunkFrames,
+    peaksOnly: options.peaksOnly,
+    metadataOnlyResult: options.metadataOnlyResult,
     onChunk: options.onChunk
   })
 
@@ -704,6 +718,8 @@ parentPort?.on('message', async (job: MixtapeRawWaveformJob) => {
         expectedDurationSec: Number(job.expectedDurationSec) || 0,
         chunkFrames: job.chunkFrames,
         initialChunkFrames: job.initialChunkFrames,
+        peaksOnly: job.peaksOnly === true,
+        metadataOnlyResult: job.metadataOnlyResult === true,
         onChunk: (progress) => {
           parentPort?.postMessage({
             jobId: response.jobId,

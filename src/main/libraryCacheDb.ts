@@ -46,6 +46,16 @@ export {
 } from './libraryCacheDb/compactVisualWaveformCache'
 
 export {
+  loadUnifiedDisplayWaveformCacheData,
+  hasUnifiedDisplayWaveformCacheEntryByMeta,
+  upsertUnifiedDisplayWaveformCacheEntry,
+  updateUnifiedDisplayWaveformCacheStat,
+  moveUnifiedDisplayWaveformCacheEntry,
+  removeUnifiedDisplayWaveformCacheEntry,
+  migrateUnifiedDisplayWaveformCacheRows
+} from './libraryCacheDb/unifiedDisplayWaveformCache'
+
+export {
   loadMixtapeWaveformCacheData,
   upsertMixtapeWaveformCacheEntry,
   removeMixtapeWaveformCacheEntry,

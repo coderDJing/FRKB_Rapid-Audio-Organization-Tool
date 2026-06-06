@@ -68,6 +68,7 @@ const COLUMN_ATTACK_MIN_AMP = 0.06
 const COLUMN_ATTACK_MIN_RISE = 0.04
 const COLUMN_ATTACK_RELATIVE_RISE = 0.65
 const RAW_CURVE_VERTICAL_SCALE = 0.82
+const RAW_PEAKS_ONLY_FALLBACK_COLOR: WaveformRgbColor = { r: 235, g: 242, b: 248 }
 const MIXXX_RGB_COMPONENTS = {
   low: { r: 1, g: 0, b: 0 },
   mid: { r: 0, g: 1, b: 0 },
@@ -350,7 +351,7 @@ const resolveRawColumnByTimeRange = (
     maxSamplesPerPixel,
     rawColorUsesEnergyShape
   )
-  const color = rawFftProfile?.color
+  const color = rawFftProfile?.color ?? (preferRawPeaksOnly ? RAW_PEAKS_ONLY_FALLBACK_COLOR : null)
   if (!color) return null
   return {
     ampTop: rawAmps.ampTop,
@@ -804,6 +805,43 @@ const resolveRawCurvePeaksByRange = (
   }
 }
 
+const resolveRawCurveMeanByRange = (
+  rawData: RawWaveformData,
+  startFrame: number,
+  endFrame: number,
+  maxSamplesPerPixel?: number
+) => {
+  if (
+    !rawData.meanLeft ||
+    !rawData.meanRight ||
+    rawData.meanLeft.length <= endFrame ||
+    rawData.meanRight.length <= endFrame
+  ) {
+    return null
+  }
+  const span = endFrame - startFrame + 1
+  const sampleCap = Number(maxSamplesPerPixel)
+  const step =
+    Number.isFinite(sampleCap) && sampleCap > 0
+      ? Math.max(1, Math.floor(span / Math.max(1, Math.floor(sampleCap))))
+      : 1
+  let sum = 0
+  let count = 0
+  let lastFrame = startFrame
+  const applyFrame = (frame: number) => {
+    sum += ((rawData.meanLeft?.[frame] || 0) + (rawData.meanRight?.[frame] || 0)) * 0.5
+    count += 1
+  }
+  for (let frame = startFrame; frame <= endFrame; frame += step) {
+    applyFrame(frame)
+    lastFrame = frame
+  }
+  if (lastFrame !== endFrame) {
+    applyFrame(endFrame)
+  }
+  return clamp(count > 0 ? sum / count : 0, -1, 1)
+}
+
 const drawRawCurveWaveform = (
   ctx: BeatAlignCanvasContext,
   width: number,
@@ -859,24 +897,38 @@ const drawRawCurveWaveform = (
     const localEnd = clamp(endTime - rawStartSec, localStart, rawEndSec - rawStartSec)
     const startFrame = clamp(Math.floor(localStart * rawRate), 0, rawFrames - 1)
     const endFrame = clamp(Math.ceil(localEnd * rawRate), startFrame, rawFrames - 1)
-    const peaks = resolveRawCurvePeaksByRange(rawData, startFrame, endFrame, maxSamplesPerPixel)
     const color = columns[x]?.color || { r: 235, g: 242, b: 248 }
-    const firstY = resolveY(peaks.max * waveformGain)
-    const secondY = resolveY(peaks.min * waveformGain)
-    const firstX = x + 0.25
-    const secondX = x + 0.75
+    const meanValue = resolveRawCurveMeanByRange(rawData, startFrame, endFrame, maxSamplesPerPixel)
     ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
     ctx.beginPath()
-    if (hasDrawn) {
-      ctx.moveTo(previousX, previousY)
-      ctx.lineTo(firstX, firstY)
+    if (meanValue !== null) {
+      const nextX = x + 0.5
+      const nextY = resolveY(meanValue * waveformGain)
+      if (hasDrawn) {
+        ctx.moveTo(previousX, previousY)
+        ctx.lineTo(nextX, nextY)
+      } else {
+        ctx.moveTo(nextX, nextY)
+      }
+      previousX = nextX
+      previousY = nextY
     } else {
-      ctx.moveTo(firstX, firstY)
+      const peaks = resolveRawCurvePeaksByRange(rawData, startFrame, endFrame, maxSamplesPerPixel)
+      const firstY = resolveY(peaks.max * waveformGain)
+      const secondY = resolveY(peaks.min * waveformGain)
+      const firstX = x + 0.25
+      const secondX = x + 0.75
+      if (hasDrawn) {
+        ctx.moveTo(previousX, previousY)
+        ctx.lineTo(firstX, firstY)
+      } else {
+        ctx.moveTo(firstX, firstY)
+      }
+      ctx.lineTo(secondX, secondY)
+      previousX = secondX
+      previousY = secondY
     }
-    ctx.lineTo(secondX, secondY)
     ctx.stroke()
-    previousX = secondX
-    previousY = secondY
     hasDrawn = true
   }
   return hasDrawn

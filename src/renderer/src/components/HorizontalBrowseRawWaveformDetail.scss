@@ -43,6 +43,23 @@
   opacity: 1;
 }
 
+.raw-detail-waveform.is-loading::after {
+  content: '加载波形...';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg-elev) 86%, transparent);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
 .raw-detail-waveform__canvas--grid {
   pointer-events: none;
 }
