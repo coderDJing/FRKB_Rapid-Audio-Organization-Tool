@@ -962,7 +962,7 @@ onUnmounted(() => {
             isEditMode ? HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM : HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
           "
           :waveform-layout="isEditMode ? 'full' : 'auto'"
-          :waveform-render-style="isEditMode ? 'raw-curve' : 'columns'"
+          waveform-render-style="raw-curve"
           allow-negative-timeline
           direction="up"
           :deck-hovered="isDeckHovered('top')"
@@ -1001,7 +1001,7 @@ onUnmounted(() => {
           :seek-revision="deckSeekIntent.bottom.revision"
           :max-zoom="HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM"
           waveform-layout="auto"
-          waveform-render-style="columns"
+          waveform-render-style="raw-curve"
           allow-negative-timeline
           direction="down"
           :deck-hovered="isDeckHovered('bottom')"

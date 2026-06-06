@@ -12,6 +12,7 @@ import {
   type WaveformFrequencyRatios,
   type WaveformRgbColor
 } from '@renderer/components/beatGridRawWaveformShape'
+import { drawRawCurveWaveform } from '@renderer/components/beatGridRawCurveWaveformRenderer'
 
 type DrawWaveformOptions = {
   width: number
@@ -67,7 +68,6 @@ const COLUMN_TAIL_RELEASE = 0.42
 const COLUMN_ATTACK_MIN_AMP = 0.06
 const COLUMN_ATTACK_MIN_RISE = 0.04
 const COLUMN_ATTACK_RELATIVE_RISE = 0.65
-const RAW_CURVE_VERTICAL_SCALE = 0.82
 const RAW_PEAKS_ONLY_FALLBACK_COLOR: WaveformRgbColor = { r: 235, g: 242, b: 248 }
 const MIXXX_RGB_COMPONENTS = {
   low: { r: 1, g: 0, b: 0 },
@@ -771,169 +771,6 @@ const drawWaveformColumns = (
   }
 }
 
-const resolveRawCurvePeaksByRange = (
-  rawData: RawWaveformData,
-  startFrame: number,
-  endFrame: number,
-  maxSamplesPerPixel?: number
-) => {
-  const span = endFrame - startFrame + 1
-  const sampleCap = Number(maxSamplesPerPixel)
-  const step =
-    Number.isFinite(sampleCap) && sampleCap > 0
-      ? Math.max(1, Math.floor(span / Math.max(1, Math.floor(sampleCap))))
-      : 1
-  let minPeak = 1
-  let maxPeak = -1
-  let lastFrame = startFrame
-  const applyFrame = (frame: number) => {
-    const minValue = ((rawData.minLeft[frame] || 0) + (rawData.minRight[frame] || 0)) * 0.5
-    const maxValue = ((rawData.maxLeft[frame] || 0) + (rawData.maxRight[frame] || 0)) * 0.5
-    if (minValue < minPeak) minPeak = minValue
-    if (maxValue > maxPeak) maxPeak = maxValue
-  }
-  for (let frame = startFrame; frame <= endFrame; frame += step) {
-    applyFrame(frame)
-    lastFrame = frame
-  }
-  if (lastFrame !== endFrame) {
-    applyFrame(endFrame)
-  }
-  return {
-    min: clamp(minPeak === 1 ? 0 : minPeak, -1, 1),
-    max: clamp(maxPeak === -1 ? 0 : maxPeak, -1, 1)
-  }
-}
-
-const resolveRawCurveMeanByRange = (
-  rawData: RawWaveformData,
-  startFrame: number,
-  endFrame: number,
-  maxSamplesPerPixel?: number
-) => {
-  if (
-    !rawData.meanLeft ||
-    !rawData.meanRight ||
-    rawData.meanLeft.length <= endFrame ||
-    rawData.meanRight.length <= endFrame
-  ) {
-    return null
-  }
-  const span = endFrame - startFrame + 1
-  const sampleCap = Number(maxSamplesPerPixel)
-  const step =
-    Number.isFinite(sampleCap) && sampleCap > 0
-      ? Math.max(1, Math.floor(span / Math.max(1, Math.floor(sampleCap))))
-      : 1
-  let sum = 0
-  let count = 0
-  let lastFrame = startFrame
-  const applyFrame = (frame: number) => {
-    sum += ((rawData.meanLeft?.[frame] || 0) + (rawData.meanRight?.[frame] || 0)) * 0.5
-    count += 1
-  }
-  for (let frame = startFrame; frame <= endFrame; frame += step) {
-    applyFrame(frame)
-    lastFrame = frame
-  }
-  if (lastFrame !== endFrame) {
-    applyFrame(endFrame)
-  }
-  return clamp(count > 0 ? sum / count : 0, -1, 1)
-}
-
-const drawRawCurveWaveform = (
-  ctx: BeatAlignCanvasContext,
-  width: number,
-  height: number,
-  columns: WaveformColumn[],
-  rawData: RawWaveformData | null,
-  rangeStartSec: number,
-  rangeDurationSec: number,
-  maxSamplesPerPixel: number | undefined,
-  timeBasisOffsetMs: number | undefined,
-  waveformLayout: WaveformLayout,
-  waveformGain: number
-) => {
-  if (!isValidRawWaveformData(rawData) || rangeDurationSec <= 0) return false
-  const rawFrames = Math.max(
-    1,
-    Math.min(
-      Math.floor(Number(rawData.loadedFrames ?? rawData.frames) || 0),
-      Math.floor(Number(rawData.frames) || 0)
-    )
-  )
-  const rawRate = Math.max(1, Number(rawData.rate) || 1)
-  const rawStartSec =
-    Math.max(0, Number(rawData.startSec) || 0) + Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
-  const rawEndSec = rawStartSec + rawFrames / rawRate
-  const visibleStartSec = Math.max(rangeStartSec, rawStartSec)
-  const visibleEndSec = Math.min(rangeStartSec + rangeDurationSec, rawEndSec)
-  if (visibleEndSec <= visibleStartSec) return false
-
-  const centerY = height * 0.5
-  const fullScale = Math.max(1, centerY - 1)
-  const halfScale = Math.max(1, height - 2)
-  const resolveY = (value: number) => {
-    const safeValue = clamp(value, -1, 1) * RAW_CURVE_VERTICAL_SCALE
-    if (waveformLayout === 'top-half') return height - 1 - (safeValue + 1) * 0.5 * halfScale
-    if (waveformLayout === 'bottom-half') return 1 + (safeValue + 1) * 0.5 * halfScale
-    return centerY - safeValue * fullScale
-  }
-
-  ctx.imageSmoothingEnabled = true
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.lineWidth = 1.35
-
-  let hasDrawn = false
-  let previousX = 0
-  let previousY = 0
-  for (let x = 0; x < width; x += 1) {
-    const startTime = rangeStartSec + (x / width) * rangeDurationSec
-    const endTime = rangeStartSec + ((x + 1) / width) * rangeDurationSec
-    if (endTime <= rawStartSec || startTime >= rawEndSec) continue
-    const localStart = clamp(startTime - rawStartSec, 0, rawEndSec - rawStartSec)
-    const localEnd = clamp(endTime - rawStartSec, localStart, rawEndSec - rawStartSec)
-    const startFrame = clamp(Math.floor(localStart * rawRate), 0, rawFrames - 1)
-    const endFrame = clamp(Math.ceil(localEnd * rawRate), startFrame, rawFrames - 1)
-    const color = columns[x]?.color || { r: 235, g: 242, b: 248 }
-    const meanValue = resolveRawCurveMeanByRange(rawData, startFrame, endFrame, maxSamplesPerPixel)
-    ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
-    ctx.beginPath()
-    if (meanValue !== null) {
-      const nextX = x + 0.5
-      const nextY = resolveY(meanValue * waveformGain)
-      if (hasDrawn) {
-        ctx.moveTo(previousX, previousY)
-        ctx.lineTo(nextX, nextY)
-      } else {
-        ctx.moveTo(nextX, nextY)
-      }
-      previousX = nextX
-      previousY = nextY
-    } else {
-      const peaks = resolveRawCurvePeaksByRange(rawData, startFrame, endFrame, maxSamplesPerPixel)
-      const firstY = resolveY(peaks.max * waveformGain)
-      const secondY = resolveY(peaks.min * waveformGain)
-      const firstX = x + 0.25
-      const secondX = x + 0.75
-      if (hasDrawn) {
-        ctx.moveTo(previousX, previousY)
-        ctx.lineTo(firstX, firstY)
-      } else {
-        ctx.moveTo(firstX, firstY)
-      }
-      ctx.lineTo(secondX, secondY)
-      previousX = secondX
-      previousY = secondY
-    }
-    ctx.stroke()
-    hasDrawn = true
-  }
-  return hasDrawn
-}
-
 export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawWaveformOptions) => {
   const {
     width,
@@ -999,19 +836,19 @@ export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawW
 
   if (
     waveformRenderStyle === 'raw-curve' &&
-    drawRawCurveWaveform(
+    drawRawCurveWaveform({
       ctx,
       width,
       height,
       columns,
-      rawData || null,
+      rawData: rawData || null,
       rangeStartSec,
       rangeDurationSec,
       maxSamplesPerPixel,
       timeBasisOffsetMs,
-      resolvedWaveformLayout,
-      normalizeWaveformGain(waveformGain)
-    )
+      waveformLayout: resolvedWaveformLayout,
+      waveformGain: normalizeWaveformGain(waveformGain)
+    })
   ) {
     if (showBeatGrid !== false) {
       drawBeatGrid(
