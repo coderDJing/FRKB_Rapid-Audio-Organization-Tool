@@ -18,6 +18,7 @@ type UnifiedDisplayWaveformLoadResponse = {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+const WAVEFORM_TRACE_TWO_PI = Math.PI * 2
 
 const toUint8Array = (value: unknown) => {
   if (value instanceof Uint8Array) return new Uint8Array(value)
@@ -91,15 +92,69 @@ export const normalizeCompactVisualWaveformData = (
 
 const resolveColorFrequency = (colorIndex: number, rate: number) => {
   const nyquistLimit = Math.max(8, rate * 0.45)
-  if (colorIndex === 0) return Math.min(36, nyquistLimit)
-  if (colorIndex === 1) return Math.min(120, nyquistLimit)
-  if (colorIndex === 2) return Math.min(220, nyquistLimit)
-  return Math.min(76, nyquistLimit)
+  if (colorIndex === 0) return Math.min(72, nyquistLimit)
+  if (colorIndex === 1) return Math.min(176, nyquistLimit)
+  if (colorIndex === 2) return Math.min(280, nyquistLimit)
+  return Math.min(120, nyquistLimit)
 }
 
 const readClampedByte = (values: Uint8Array, index: number, fallback: number) => {
   if (!values.length) return fallback
   return values[clamp(Math.floor(index), 0, values.length - 1)] ?? fallback
+}
+
+const writeBalancedSignedTrace = (
+  meanLeft: Float32Array,
+  meanRight: Float32Array,
+  amplitudes: Float32Array,
+  colors: Uint8Array,
+  rate: number
+) => {
+  const frames = Math.min(meanLeft.length, meanRight.length, amplitudes.length, colors.length)
+  const phases = new Float32Array(frames)
+  const cycleIndexes = new Uint32Array(frames)
+  const cycleAmplitudes: number[] = []
+  const cyclePositivePeaks: number[] = []
+  const cycleNegativePeaks: number[] = []
+  let phase = 0
+  let cycleIndex = 0
+  const safeRate = Math.max(1, Number(rate) || 1)
+  for (let index = 0; index < frames; index += 1) {
+    phases[index] = phase
+    cycleIndexes[index] = cycleIndex
+    const amplitude = clamp(amplitudes[index] || 0, 0, 1)
+    cycleAmplitudes[cycleIndex] = Math.max(cycleAmplitudes[cycleIndex] || 0, amplitude)
+    const frequency = resolveColorFrequency(colors[index] || 3, safeRate)
+    const nextPhase = phase + (WAVEFORM_TRACE_TWO_PI * frequency) / safeRate
+    const completedCycles = Math.floor(nextPhase / WAVEFORM_TRACE_TWO_PI)
+    if (completedCycles > 0) {
+      cycleIndex += completedCycles
+      phase = nextPhase - completedCycles * WAVEFORM_TRACE_TWO_PI
+    } else {
+      phase = nextPhase
+    }
+  }
+
+  for (let index = 0; index < frames; index += 1) {
+    const baseSample = Math.sin(phases[index])
+    const cycle = cycleIndexes[index]
+    if (baseSample >= 0) {
+      cyclePositivePeaks[cycle] = Math.max(cyclePositivePeaks[cycle] || 0, baseSample)
+    } else {
+      cycleNegativePeaks[cycle] = Math.max(cycleNegativePeaks[cycle] || 0, -baseSample)
+    }
+  }
+
+  for (let index = 0; index < frames; index += 1) {
+    const cycle = cycleIndexes[index]
+    const amplitude = cycleAmplitudes[cycle] || 0
+    const baseSample = Math.sin(phases[index])
+    const peak = baseSample >= 0 ? cyclePositivePeaks[cycle] || 0 : cycleNegativePeaks[cycle] || 0
+    const waveformSample =
+      peak > 0.000001 ? (baseSample / peak) * amplitude : baseSample * amplitude
+    meanLeft[index] = waveformSample
+    meanRight[index] = waveformSample
+  }
 }
 
 export const compactVisualWaveformToRawData = (
@@ -116,7 +171,8 @@ export const compactVisualWaveformToRawData = (
   const meanRight = new Float32Array(frames)
   const rmsLeft = new Float32Array(frames)
   const rmsRight = new Float32Array(frames)
-  let phase = 0
+  const traceAmplitudes = new Float32Array(frames)
+  const traceColors = new Uint8Array(frames)
   for (let index = 0; index < frames; index += 1) {
     const top = clamp((normalized.detailPeakTop[index] || 0) / 255, 0, 1)
     const bottom = clamp((normalized.detailPeakBottom[index] || 0) / 255, 0, 1)
@@ -132,18 +188,17 @@ export const compactVisualWaveformToRawData = (
     )
     const bodyAmp = clamp(body / 255, 0, 1)
     const rms = clamp(Math.max(bodyAmp, (top + bottom) * 0.32), 0, 1)
-    const waveformSample = Math.sin(phase) * rms * 0.82
-    phase +=
-      (Math.PI * 2 * resolveColorFrequency(color, normalized.detailRate)) / normalized.detailRate
+    const peakAmp = Math.max(top, bottom)
     minLeft[index] = -top
     maxLeft[index] = top
     minRight[index] = -bottom
     maxRight[index] = bottom
-    meanLeft[index] = waveformSample
-    meanRight[index] = waveformSample
     rmsLeft[index] = rms
     rmsRight[index] = rms
+    traceAmplitudes[index] = clamp(Math.max(bodyAmp * 0.86, peakAmp * 0.94), 0, 1)
+    traceColors[index] = color
   }
+  writeBalancedSignedTrace(meanLeft, meanRight, traceAmplitudes, traceColors, normalized.detailRate)
   return {
     duration: normalized.duration,
     sampleRate: normalized.sampleRate,
@@ -230,13 +285,14 @@ export const unifiedDisplayWaveformToRawData = (
   const meanRight = new Float32Array(frames)
   const rmsLeft = new Float32Array(frames)
   const rmsRight = new Float32Array(frames)
+  const traceAmplitudes = new Float32Array(frames)
+  const traceColors = new Uint8Array(frames)
   const colorLow = new Uint8Array(frames)
   const colorMid = new Uint8Array(frames)
   const colorHigh = new Uint8Array(frames)
   const colorRed = new Uint8Array(frames)
   const colorGreen = new Uint8Array(frames)
   const colorBlue = new Uint8Array(frames)
-  let phase = 0
   for (let index = 0; index < frames; index += 1) {
     const height = clamp((normalized.height[index] || 0) / 255, 0, 1)
     const attack = clamp((normalized.attack[index] || 0) / 255, 0, 1)
@@ -248,19 +304,16 @@ export const unifiedDisplayWaveformToRawData = (
     const color = readClampedByte(normalized.colorIndex, index, 3)
     const bodyAmp = clamp(body / 255, 0, 1)
     const rms = clamp(Math.max(bodyAmp, height * 0.42, attack * 0.72), 0, 1)
-    const waveformSample = Math.sin(phase) * rms * (0.72 + attack * 0.16)
     const bands = resolveUnifiedColorBands(color)
     const rgb = resolveRekordboxLikeRawColor(bands.low, bands.mid, bands.high)
-    phase +=
-      (Math.PI * 2 * resolveColorFrequency(color, normalized.detailRate)) / normalized.detailRate
     minLeft[index] = -height
     maxLeft[index] = height
     minRight[index] = -height
     maxRight[index] = height
-    meanLeft[index] = waveformSample
-    meanRight[index] = waveformSample
     rmsLeft[index] = rms
     rmsRight[index] = rms
+    traceAmplitudes[index] = clamp(Math.max(bodyAmp * 0.86, height * 0.94, attack * 0.68), 0, 1)
+    traceColors[index] = color
     colorLow[index] = Math.round(bands.low * 255)
     colorMid[index] = Math.round(bands.mid * 255)
     colorHigh[index] = Math.round(bands.high * 255)
@@ -268,6 +321,7 @@ export const unifiedDisplayWaveformToRawData = (
     colorGreen[index] = rgb.g
     colorBlue[index] = rgb.b
   }
+  writeBalancedSignedTrace(meanLeft, meanRight, traceAmplitudes, traceColors, normalized.detailRate)
   return {
     duration: normalized.duration,
     sampleRate: normalized.sampleRate,

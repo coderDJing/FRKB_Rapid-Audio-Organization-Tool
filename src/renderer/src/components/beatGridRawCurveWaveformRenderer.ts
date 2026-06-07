@@ -23,7 +23,13 @@ type DrawRawCurveWaveformOptions = {
   waveformGain: number
 }
 
-const RAW_CURVE_VERTICAL_SCALE = 0.82
+type RawCurveTracePoint = {
+  frame: number
+  x: number
+  value: number
+}
+
+const RAW_CURVE_VERTICAL_SCALE = 0.92
 const RAW_CURVE_FALLBACK_COLOR: WaveformRgbColor = { r: 235, g: 242, b: 248 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -71,18 +77,59 @@ const resolveRawCurvePeaksByRange = (
   }
 }
 
-const resolveRawCurveMeanByRange = (
+const resolveRawCurveMeanValueByFrame = (rawData: RawWaveformData, frame: number) =>
+  ((rawData.meanLeft?.[frame] || 0) + (rawData.meanRight?.[frame] || 0)) * 0.5
+
+const hasRawCurveMeanRange = (rawData: RawWaveformData, endFrame: number) =>
+  Boolean(
+    rawData.meanLeft &&
+    rawData.meanRight &&
+    rawData.meanLeft.length > endFrame &&
+    rawData.meanRight.length > endFrame
+  )
+
+const resolveRawCurveTraceX = (
+  frame: number,
+  rawStartSec: number,
+  rawRate: number,
+  rangeStartSec: number,
+  rangeDurationSec: number,
+  width: number
+) => {
+  const frameSec = rawStartSec + frame / rawRate
+  return ((frameSec - rangeStartSec) / rangeDurationSec) * width
+}
+
+const pushRawCurveTracePoint = (
+  points: RawCurveTracePoint[],
+  rawData: RawWaveformData,
+  frame: number,
+  rawStartSec: number,
+  rawRate: number,
+  rangeStartSec: number,
+  rangeDurationSec: number,
+  width: number
+) => {
+  if (points.some((point) => point.frame === frame)) return
+  points.push({
+    frame,
+    x: resolveRawCurveTraceX(frame, rawStartSec, rawRate, rangeStartSec, rangeDurationSec, width),
+    value: clamp(resolveRawCurveMeanValueByFrame(rawData, frame), -1, 1)
+  })
+}
+
+const resolveRawCurveTracePointsByRange = (
   rawData: RawWaveformData,
   startFrame: number,
   endFrame: number,
+  rawStartSec: number,
+  rawRate: number,
+  rangeStartSec: number,
+  rangeDurationSec: number,
+  width: number,
   maxSamplesPerPixel?: number
 ) => {
-  if (
-    !rawData.meanLeft ||
-    !rawData.meanRight ||
-    rawData.meanLeft.length <= endFrame ||
-    rawData.meanRight.length <= endFrame
-  ) {
+  if (!hasRawCurveMeanRange(rawData, endFrame)) {
     return null
   }
   const span = endFrame - startFrame + 1
@@ -91,19 +138,69 @@ const resolveRawCurveMeanByRange = (
     Number.isFinite(sampleCap) && sampleCap > 0
       ? Math.max(1, Math.floor(span / Math.max(1, Math.floor(sampleCap))))
       : 1
-  let sum = 0
-  let count = 0
+  let minFrame = startFrame
+  let maxFrame = startFrame
+  let minValue = 1
+  let maxValue = -1
   let lastFrame = startFrame
   const applyFrame = (frame: number) => {
-    sum += ((rawData.meanLeft?.[frame] || 0) + (rawData.meanRight?.[frame] || 0)) * 0.5
-    count += 1
+    const value = resolveRawCurveMeanValueByFrame(rawData, frame)
+    if (value < minValue) {
+      minValue = value
+      minFrame = frame
+    }
+    if (value > maxValue) {
+      maxValue = value
+      maxFrame = frame
+    }
   }
   for (let frame = startFrame; frame <= endFrame; frame += step) {
     applyFrame(frame)
     lastFrame = frame
   }
   if (lastFrame !== endFrame) applyFrame(endFrame)
-  return clamp(count > 0 ? sum / count : 0, -1, 1)
+  const points: RawCurveTracePoint[] = []
+  pushRawCurveTracePoint(
+    points,
+    rawData,
+    startFrame,
+    rawStartSec,
+    rawRate,
+    rangeStartSec,
+    rangeDurationSec,
+    width
+  )
+  pushRawCurveTracePoint(
+    points,
+    rawData,
+    minFrame,
+    rawStartSec,
+    rawRate,
+    rangeStartSec,
+    rangeDurationSec,
+    width
+  )
+  pushRawCurveTracePoint(
+    points,
+    rawData,
+    maxFrame,
+    rawStartSec,
+    rawRate,
+    rangeStartSec,
+    rangeDurationSec,
+    width
+  )
+  pushRawCurveTracePoint(
+    points,
+    rawData,
+    endFrame,
+    rawStartSec,
+    rawRate,
+    rangeStartSec,
+    rangeDurationSec,
+    width
+  )
+  return points.sort((a, b) => a.frame - b.frame)
 }
 
 const clipValueSegment = (
@@ -211,7 +308,7 @@ export const drawRawCurveWaveform = (options: DrawRawCurveWaveformOptions) => {
   ctx.imageSmoothingEnabled = true
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
-  ctx.lineWidth = 1.35
+  ctx.lineWidth = 1.5
 
   let hasDrawn = false
   let previousMeanX = 0
@@ -226,38 +323,58 @@ export const drawRawCurveWaveform = (options: DrawRawCurveWaveformOptions) => {
     const startFrame = clamp(Math.floor(localStart * rawRate), 0, rawFrames - 1)
     const endFrame = clamp(Math.ceil(localEnd * rawRate), startFrame, rawFrames - 1)
     const color = columns[x]?.color || RAW_CURVE_FALLBACK_COLOR
-    const meanValue = resolveRawCurveMeanByRange(rawData, startFrame, endFrame, maxSamplesPerPixel)
+    const tracePoints = resolveRawCurveTracePointsByRange(
+      rawData,
+      startFrame,
+      endFrame,
+      rawStartSec,
+      rawRate,
+      rangeStartSec,
+      rangeDurationSec,
+      width,
+      maxSamplesPerPixel
+    )
     ctx.strokeStyle = `rgb(${color.r}, ${color.g}, ${color.b})`
     ctx.beginPath()
-    if (meanValue !== null) {
-      const nextX = x + 0.5
-      const nextValue = clamp(meanValue * waveformGain, -1, 1)
-      const drawn =
-        hasPreviousMean &&
-        drawMeanSegment(
-          ctx,
-          waveformLayout,
-          resolveY,
-          previousMeanX,
-          previousMeanValue,
-          nextX,
-          nextValue
-        )
-      previousMeanX = nextX
-      previousMeanValue = nextValue
-      hasPreviousMean = true
-      if (!drawn) continue
+    if (tracePoints !== null) {
+      let hasSegmentDrawn = false
+      for (const point of tracePoints) {
+        const nextX = point.x
+        const nextValue = clamp(point.value * waveformGain, -1, 1)
+        const drawn =
+          hasPreviousMean &&
+          drawMeanSegment(
+            ctx,
+            waveformLayout,
+            resolveY,
+            previousMeanX,
+            previousMeanValue,
+            nextX,
+            nextValue
+          )
+        previousMeanX = nextX
+        previousMeanValue = nextValue
+        hasPreviousMean = true
+        hasSegmentDrawn = hasSegmentDrawn || drawn
+      }
+      if (!hasSegmentDrawn) continue
     } else {
       const peaks = resolveRawCurvePeaksByRange(rawData, startFrame, endFrame, maxSamplesPerPixel)
-      const firstY = resolveY(peaks.max * waveformGain)
-      const secondY = resolveY(peaks.min * waveformGain)
       const firstX = x + 0.25
       const secondX = x + 0.75
-      ctx.moveTo(firstX, firstY)
-      ctx.lineTo(secondX, secondY)
+      const drawn = drawMeanSegment(
+        ctx,
+        waveformLayout,
+        resolveY,
+        firstX,
+        peaks.max * waveformGain,
+        secondX,
+        peaks.min * waveformGain
+      )
       previousMeanX = secondX
       previousMeanValue = peaks.min
       hasPreviousMean = false
+      if (!drawn) continue
     }
     ctx.stroke()
     hasDrawn = true
