@@ -7,11 +7,6 @@ import {
 import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
 import { resolveRekordboxLikeRawColor } from '@shared/rawWaveformColor'
 
-type CompactVisualWaveformLoadResponse = {
-  status?: 'ready' | 'missing'
-  data?: CompactVisualWaveformData | null
-}
-
 type UnifiedDisplayWaveformLoadResponse = {
   status?: 'ready' | 'missing'
   data?: UnifiedDisplayWaveformDetailData | null
@@ -19,6 +14,11 @@ type UnifiedDisplayWaveformLoadResponse = {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const WAVEFORM_TRACE_TWO_PI = Math.PI * 2
+const WAVEFORM_TRACE_ATTACK_LOCK_PHASE = Math.PI * 0.5
+const WAVEFORM_TRACE_ATTACK_LOCK_THRESHOLD = 0.16
+const WAVEFORM_TRACE_ATTACK_LOCK_MIN_AMPLITUDE = 0.08
+const WAVEFORM_TRACE_ATTACK_LOCK_MIN_RISE = 0.05
+const WAVEFORM_TRACE_ATTACK_LOCK_COOLDOWN_SEC = 0.012
 
 const toUint8Array = (value: unknown) => {
   if (value instanceof Uint8Array) return new Uint8Array(value)
@@ -28,66 +28,6 @@ const toUint8Array = (value: unknown) => {
     return new Uint8Array(view.buffer, view.byteOffset, view.byteLength)
   }
   return new Uint8Array(0)
-}
-
-export const normalizeCompactVisualWaveformData = (
-  value: unknown
-): CompactVisualWaveformData | null => {
-  const payload =
-    value && typeof value === 'object' && !Array.isArray(value)
-      ? (value as CompactVisualWaveformData)
-      : null
-  if (!payload) return null
-  const detailPeakTop = toUint8Array(payload.detailPeakTop)
-  const detailPeakBottom = toUint8Array(payload.detailPeakBottom)
-  const detailBody = toUint8Array(payload.detailBody)
-  const colorIndex = toUint8Array(payload.colorIndex)
-  const colorLow = toUint8Array(payload.colorLow)
-  const colorMid = toUint8Array(payload.colorMid)
-  const colorHigh = toUint8Array(payload.colorHigh)
-  const colorRed = toUint8Array(payload.colorRed)
-  const colorGreen = toUint8Array(payload.colorGreen)
-  const colorBlue = toUint8Array(payload.colorBlue)
-  const overviewTop = toUint8Array(payload.overviewTop)
-  const overviewBottom = toUint8Array(payload.overviewBottom)
-  const frames = Math.min(detailPeakTop.length, detailPeakBottom.length)
-  const duration = Math.max(0, Number(payload.duration) || 0)
-  const detailRate = Math.max(0, Number(payload.detailRate) || 0)
-  const sampleRate = Math.max(0, Number(payload.sampleRate) || 0)
-  if (
-    !frames ||
-    !duration ||
-    !detailRate ||
-    !sampleRate ||
-    !colorIndex.length ||
-    !colorRed.length ||
-    !colorGreen.length ||
-    !colorBlue.length
-  ) {
-    return null
-  }
-  return {
-    version: Math.max(0, Number(payload.version) || 0),
-    parameterVersion: Math.max(0, Number(payload.parameterVersion) || 0),
-    duration,
-    sampleRate,
-    detailRate,
-    overviewRate: Math.max(0, Number(payload.overviewRate) || 0),
-    bodyRateDivisor: Math.max(1, Number(payload.bodyRateDivisor) || 1),
-    colorRateDivisor: Math.max(1, Number(payload.colorRateDivisor) || 1),
-    detailPeakTop,
-    detailPeakBottom,
-    detailBody,
-    colorIndex,
-    colorLow,
-    colorMid,
-    colorHigh,
-    colorRed,
-    colorGreen,
-    colorBlue,
-    overviewTop,
-    overviewBottom
-  }
 }
 
 const resolveColorFrequency = (colorIndex: number, rate: number) => {
@@ -108,7 +48,8 @@ const writeBalancedSignedTrace = (
   meanRight: Float32Array,
   amplitudes: Float32Array,
   colors: Uint8Array,
-  rate: number
+  rate: number,
+  attacks?: Float32Array
 ) => {
   const frames = Math.min(meanLeft.length, meanRight.length, amplitudes.length, colors.length)
   const phases = new Float32Array(frames)
@@ -119,10 +60,38 @@ const writeBalancedSignedTrace = (
   let phase = 0
   let cycleIndex = 0
   const safeRate = Math.max(1, Number(rate) || 1)
+  const lockCooldownFrames = Math.max(
+    2,
+    Math.round(safeRate * WAVEFORM_TRACE_ATTACK_LOCK_COOLDOWN_SEC)
+  )
+  let lastPhaseLockFrame = -lockCooldownFrames
+  let previousAmplitude = 0
+  let previousAttack = 0
   for (let index = 0; index < frames; index += 1) {
+    const amplitude = clamp(amplitudes[index] || 0, 0, 1)
+    const attack = attacks ? clamp(attacks[index] || 0, 0, 1) : 0
+    const attackRise = attack - previousAttack
+    const amplitudeRise = amplitude - previousAmplitude
+    const attackLeadingEdge =
+      attack >= WAVEFORM_TRACE_ATTACK_LOCK_THRESHOLD &&
+      (attackRise >= WAVEFORM_TRACE_ATTACK_LOCK_MIN_RISE ||
+        (previousAttack < WAVEFORM_TRACE_ATTACK_LOCK_THRESHOLD * 0.65 &&
+          attack >= WAVEFORM_TRACE_ATTACK_LOCK_THRESHOLD * 1.5))
+    const strongAmplitudeRise =
+      attack >= WAVEFORM_TRACE_ATTACK_LOCK_THRESHOLD * 0.5 &&
+      amplitudeRise >= WAVEFORM_TRACE_ATTACK_LOCK_MIN_RISE
+    if (
+      amplitude >= WAVEFORM_TRACE_ATTACK_LOCK_MIN_AMPLITUDE &&
+      index - lastPhaseLockFrame >= lockCooldownFrames &&
+      (attackLeadingEdge || strongAmplitudeRise)
+    ) {
+      if (index > 0) cycleIndex += 1
+      phase = WAVEFORM_TRACE_ATTACK_LOCK_PHASE
+      lastPhaseLockFrame = index
+    }
+
     phases[index] = phase
     cycleIndexes[index] = cycleIndex
-    const amplitude = clamp(amplitudes[index] || 0, 0, 1)
     cycleAmplitudes[cycleIndex] = Math.max(cycleAmplitudes[cycleIndex] || 0, amplitude)
     const frequency = resolveColorFrequency(colors[index] || 3, safeRate)
     const nextPhase = phase + (WAVEFORM_TRACE_TWO_PI * frequency) / safeRate
@@ -133,6 +102,8 @@ const writeBalancedSignedTrace = (
     } else {
       phase = nextPhase
     }
+    previousAmplitude = amplitude
+    previousAttack = attack
   }
 
   for (let index = 0; index < frames; index += 1) {
@@ -154,75 +125,6 @@ const writeBalancedSignedTrace = (
       peak > 0.000001 ? (baseSample / peak) * amplitude : baseSample * amplitude
     meanLeft[index] = waveformSample
     meanRight[index] = waveformSample
-  }
-}
-
-export const compactVisualWaveformToRawData = (
-  data: CompactVisualWaveformData
-): RawWaveformData | null => {
-  const normalized = normalizeCompactVisualWaveformData(data)
-  if (!normalized) return null
-  const frames = Math.min(normalized.detailPeakTop.length, normalized.detailPeakBottom.length)
-  const minLeft = new Float32Array(frames)
-  const maxLeft = new Float32Array(frames)
-  const minRight = new Float32Array(frames)
-  const maxRight = new Float32Array(frames)
-  const meanLeft = new Float32Array(frames)
-  const meanRight = new Float32Array(frames)
-  const rmsLeft = new Float32Array(frames)
-  const rmsRight = new Float32Array(frames)
-  const traceAmplitudes = new Float32Array(frames)
-  const traceColors = new Uint8Array(frames)
-  for (let index = 0; index < frames; index += 1) {
-    const top = clamp((normalized.detailPeakTop[index] || 0) / 255, 0, 1)
-    const bottom = clamp((normalized.detailPeakBottom[index] || 0) / 255, 0, 1)
-    const body = readClampedByte(
-      normalized.detailBody,
-      Math.floor(index / normalized.bodyRateDivisor),
-      Math.round(Math.max(top, bottom) * 255)
-    )
-    const color = readClampedByte(
-      normalized.colorIndex,
-      Math.floor(index / normalized.colorRateDivisor),
-      3
-    )
-    const bodyAmp = clamp(body / 255, 0, 1)
-    const rms = clamp(Math.max(bodyAmp, (top + bottom) * 0.32), 0, 1)
-    const peakAmp = Math.max(top, bottom)
-    minLeft[index] = -top
-    maxLeft[index] = top
-    minRight[index] = -bottom
-    maxRight[index] = bottom
-    rmsLeft[index] = rms
-    rmsRight[index] = rms
-    traceAmplitudes[index] = clamp(Math.max(bodyAmp * 0.86, peakAmp * 0.94), 0, 1)
-    traceColors[index] = color
-  }
-  writeBalancedSignedTrace(meanLeft, meanRight, traceAmplitudes, traceColors, normalized.detailRate)
-  return {
-    duration: normalized.duration,
-    sampleRate: normalized.sampleRate,
-    rate: normalized.detailRate,
-    frames,
-    startSec: 0,
-    loadedFrames: frames,
-    minLeft,
-    maxLeft,
-    minRight,
-    maxRight,
-    meanLeft,
-    meanRight,
-    rmsLeft,
-    rmsRight,
-    compactColorIndex: normalized.colorIndex,
-    compactColorLow: normalized.colorLow,
-    compactColorMid: normalized.colorMid,
-    compactColorHigh: normalized.colorHigh,
-    compactColorRed: normalized.colorRed,
-    compactColorGreen: normalized.colorGreen,
-    compactColorBlue: normalized.colorBlue,
-    compactColorRateDivisor: normalized.colorRateDivisor,
-    compactColorStartFrame: 0
   }
 }
 
@@ -286,6 +188,7 @@ export const unifiedDisplayWaveformToRawData = (
   const rmsLeft = new Float32Array(frames)
   const rmsRight = new Float32Array(frames)
   const traceAmplitudes = new Float32Array(frames)
+  const traceAttacks = new Float32Array(frames)
   const traceColors = new Uint8Array(frames)
   const colorLow = new Uint8Array(frames)
   const colorMid = new Uint8Array(frames)
@@ -313,6 +216,7 @@ export const unifiedDisplayWaveformToRawData = (
     rmsLeft[index] = rms
     rmsRight[index] = rms
     traceAmplitudes[index] = clamp(Math.max(bodyAmp * 0.86, height * 0.94, attack * 0.68), 0, 1)
+    traceAttacks[index] = attack
     traceColors[index] = color
     colorLow[index] = Math.round(bands.low * 255)
     colorMid[index] = Math.round(bands.mid * 255)
@@ -321,7 +225,14 @@ export const unifiedDisplayWaveformToRawData = (
     colorGreen[index] = rgb.g
     colorBlue[index] = rgb.b
   }
-  writeBalancedSignedTrace(meanLeft, meanRight, traceAmplitudes, traceColors, normalized.detailRate)
+  writeBalancedSignedTrace(
+    meanLeft,
+    meanRight,
+    traceAmplitudes,
+    traceColors,
+    normalized.detailRate,
+    traceAttacks
+  )
   return {
     duration: normalized.duration,
     sampleRate: normalized.sampleRate,
@@ -413,18 +324,6 @@ export const unifiedDisplayWaveformToCompactVisualOverviewData = (
     overviewTop: new Uint8Array(sourceHeight),
     overviewBottom: new Uint8Array(sourceHeight)
   }
-}
-
-export const loadCompactVisualWaveformData = async (
-  filePath: string,
-  listRoot?: string
-): Promise<CompactVisualWaveformData | null> => {
-  const response = (await window.electron.ipcRenderer.invoke('compact-visual-waveform-cache:load', {
-    filePath,
-    listRoot
-  })) as CompactVisualWaveformLoadResponse | null
-  if (response?.status !== 'ready') return null
-  return normalizeCompactVisualWaveformData(response.data)
 }
 
 export const loadUnifiedDisplayWaveformData = async (

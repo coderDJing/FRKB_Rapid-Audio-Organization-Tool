@@ -1,11 +1,7 @@
 import { parentPort } from 'node:worker_threads'
 import childProcess from 'node:child_process'
 import type { MixxxWaveformData } from '../waveformCache'
-import {
-  buildCompactVisualWaveformFromMixxx,
-  COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
-  type CompactVisualWaveformData
-} from '../../shared/compactVisualWaveform'
+import { COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE } from '../../shared/compactVisualWaveform'
 import {
   buildUnifiedDisplayWaveformDetailFromMixxx,
   UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE,
@@ -32,7 +28,6 @@ type KeyResultPayload = {
   barBeatOffset?: number
   bpmError?: string
   mixxxWaveformData?: MixxxWaveformData | null
-  compactVisualWaveformData?: CompactVisualWaveformData | null
   unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
 }
 
@@ -60,10 +55,7 @@ type KeyProgressPayload = {
   needsBpm?: boolean
   needsWaveform?: boolean
   detail?: string
-  partialResult?: Omit<
-    KeyResultPayload,
-    'mixxxWaveformData' | 'compactVisualWaveformData' | 'unifiedDisplayWaveformData'
-  >
+  partialResult?: Omit<KeyResultPayload, 'mixxxWaveformData' | 'unifiedDisplayWaveformData'>
 }
 
 type KeyResponse = {
@@ -407,9 +399,6 @@ const analyzeKeyForFileInternal = async (
         decoded.channels,
         COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE
       )
-      result.compactVisualWaveformData = result.mixxxWaveformData
-        ? buildCompactVisualWaveformFromMixxx(result.mixxxWaveformData, rawWaveformData)
-        : null
       result.unifiedDisplayWaveformData = result.mixxxWaveformData
         ? buildUnifiedDisplayWaveformDetailFromMixxx(result.mixxxWaveformData, rawWaveformData)
         : null

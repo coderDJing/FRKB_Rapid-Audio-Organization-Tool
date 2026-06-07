@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 30
+const SCHEMA_VERSION = 31
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
@@ -781,6 +781,12 @@ function createDatabase(dbPath: string): SqliteDatabase {
     CREATE INDEX IF NOT EXISTS idx_unified_display_waveform_cache_root
       ON unified_display_waveform_cache(list_root);
   `)
+  if (userVersion < 31) {
+    instance.exec(`
+      DELETE FROM waveform_cache;
+      DELETE FROM compact_visual_waveform_cache;
+    `)
+  }
   if (userVersion < SCHEMA_VERSION) {
     instance.pragma('user_version = ' + SCHEMA_VERSION)
   }

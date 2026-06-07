@@ -8,7 +8,6 @@ import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import { log } from '../../log'
 import type { ISongInfo } from '../../../types/globals'
 import type { MixxxWaveformData } from '../../waveformCache'
-import type { CompactVisualWaveformData } from '../../../shared/compactVisualWaveform'
 import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
 import {
   persistSharedSongGridDefinition,
@@ -456,7 +455,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
   const persistWaveform = async (
     filePath: string,
     waveformData: MixxxWaveformData,
-    compactVisualWaveformData?: CompactVisualWaveformData | null,
     unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
   ) => {
     const normalizedPath = normalizePath(filePath)
@@ -486,17 +484,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             { size: stat.size, mtimeMs: stat.mtimeMs }
           )
         }
-        if (compactVisualWaveformData) {
-          await LibraryCacheDb.upsertCompactVisualWaveformCacheEntry(
-            listRoot,
-            filePath,
-            { size: stat.size, mtimeMs: stat.mtimeMs },
-            compactVisualWaveformData
-          )
-        } else {
-          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-        }
+        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         if (unifiedDisplayWaveformData) {
           await LibraryCacheDb.upsertUnifiedDisplayWaveformCacheEntry(
             listRoot,

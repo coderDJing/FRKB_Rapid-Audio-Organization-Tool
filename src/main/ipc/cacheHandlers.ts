@@ -18,9 +18,10 @@ import mainWindow from '../window/mainWindow'
 import { invalidateKeyAnalysisCache, enqueueKeyAnalysisList } from '../services/keyAnalysisQueue'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 import {
-  compactVisualWaveformToMixxxOverview,
   compactVisualWaveformToPreviewData,
-  type CompactVisualWaveformPreviewData
+  type CompactVisualWaveformPreviewData,
+  unifiedDisplayWaveformToCompactVisualOverviewData,
+  unifiedDisplayWaveformToMixxxOverview
 } from '../../shared/compactVisualWaveform'
 
 export function registerCacheHandlers() {
@@ -117,6 +118,7 @@ export function registerCacheHandlers() {
           stat
         )
         if (data) {
+          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
           await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
           return { status: 'ready' as const, data }
         }
@@ -165,15 +167,18 @@ export function registerCacheHandlers() {
       try {
         const fsStat = await fs.stat(filePath)
         const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
-        const data = await LibraryCacheDb.loadCompactVisualWaveformCacheData(
+        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+        const unified = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
           listRoot,
           filePath,
           stat
         )
+        const data = unified ? unifiedDisplayWaveformToCompactVisualOverviewData(unified) : null
         if (data) {
           await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
           return { status: 'ready' as const, data }
         }
+        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         enqueueKeyAnalysisList([filePath], 'medium', {
           source: 'foreground',
           preemptible: true,
@@ -183,6 +188,7 @@ export function registerCacheHandlers() {
         return { status: 'missing' as const, data: null }
       } catch {
         await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         return { status: 'missing' as const, data: null }
       }
     }
@@ -232,11 +238,15 @@ export function registerCacheHandlers() {
         try {
           const fsStat = await fs.stat(filePath)
           const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
-          const compact = await LibraryCacheDb.loadCompactVisualWaveformCacheData(
+          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+          const unified = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
             listRoot,
             filePath,
             stat
           )
+          const compact = unified
+            ? unifiedDisplayWaveformToCompactVisualOverviewData(unified)
+            : null
           if (compact) {
             await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
             items.push({ filePath, data: compactVisualWaveformToPreviewData(compact) })
@@ -333,17 +343,16 @@ export function registerCacheHandlers() {
         try {
           const fsStat = await fs.stat(filePath)
           const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
-          const compact = await LibraryCacheDb.loadCompactVisualWaveformCacheData(
+          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+          const unified = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
             listRoot,
             filePath,
             stat
           )
-          if (compact) {
+          const waveform = unified ? unifiedDisplayWaveformToMixxxOverview(unified) : null
+          if (waveform) {
             await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-            items.push({
-              filePath,
-              data: compactVisualWaveformToMixxxOverview(compact) as MixxxWaveformData | null
-            })
+            items.push({ filePath, data: waveform as MixxxWaveformData | null })
             continue
           }
           await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)

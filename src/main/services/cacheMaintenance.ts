@@ -150,30 +150,17 @@ export async function updateSongCacheEntry(
       size: stat.size,
       mtimeMs: stat.mtimeMs
     })
-    await LibraryCacheDb.updateCompactVisualWaveformCacheStat(songListRoot, filePath, {
-      size: stat.size,
-      mtimeMs: stat.mtimeMs
-    })
+    await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(songListRoot, filePath)
     await LibraryCacheDb.updateUnifiedDisplayWaveformCacheStat(songListRoot, filePath, {
       size: stat.size,
       mtimeMs: stat.mtimeMs
     })
 
     if (oldFilePath && oldFilePath !== filePath) {
-      const compactMoved = await LibraryCacheDb.moveCompactVisualWaveformCacheEntry(
-        songListRoot,
-        oldFilePath,
-        filePath,
-        { size: stat.size, mtimeMs: stat.mtimeMs }
-      )
-      if (compactMoved) {
-        await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, oldFilePath)
-        await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, filePath)
-      } else {
-        await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, oldFilePath)
-        await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, filePath)
-      }
       await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(songListRoot, oldFilePath)
+      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(songListRoot, filePath)
+      await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, oldFilePath)
+      await LibraryCacheDb.removeWaveformCacheEntry(songListRoot, filePath)
       await LibraryCacheDb.moveUnifiedDisplayWaveformCacheEntry(
         songListRoot,
         oldFilePath,
@@ -260,33 +247,10 @@ export async function transferTrackCaches(params: {
       }
     }
   } catch {}
-  let compactTransferred = false
-  try {
-    const compact = await LibraryCacheDb.loadCompactVisualWaveformCacheData(
-      fromRoot,
-      fromPath,
-      stat
-    )
-    if (compact) {
-      const updated = await LibraryCacheDb.upsertCompactVisualWaveformCacheEntry(
-        toRoot,
-        toPath,
-        stat,
-        compact
-      )
-      if (updated) {
-        compactTransferred = true
-        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(fromRoot, fromPath)
-        await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
-        await LibraryCacheDb.removeWaveformCacheEntry(toRoot, toPath)
-      }
-    }
-  } catch {}
-
-  if (!compactTransferred) {
-    await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
-    await LibraryCacheDb.removeWaveformCacheEntry(toRoot, toPath)
-  }
+  await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(fromRoot, fromPath)
+  await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(toRoot, toPath)
+  await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
+  await LibraryCacheDb.removeWaveformCacheEntry(toRoot, toPath)
 
   try {
     const cover = await LibraryCacheDb.loadCoverIndexEntry(fromRoot, fromPath)

@@ -18,7 +18,6 @@ import {
 import { ensureSongCacheMigrated, migrateSongCacheRows } from './songCache'
 import { ensureCoverIndexMigrated, migrateCoverIndexRows } from './coverIndex'
 import { migrateWaveformCacheRows } from './waveformCache'
-import { migrateCompactVisualWaveformCacheRows } from './compactVisualWaveformCache'
 import { migrateUnifiedDisplayWaveformCacheRows } from './unifiedDisplayWaveformCache'
 
 const CACHE_KEY_MIGRATION_META_KEY_V2 = 'cache_key_relative_migrated_v2'
@@ -125,9 +124,6 @@ export async function renameCacheRoot(
     )
     const deleteCompactVisualWaveform = db.prepare(
       'DELETE FROM compact_visual_waveform_cache WHERE list_root = ? AND file_path = ?'
-    )
-    const updateCompactVisualWaveform = db.prepare(
-      'UPDATE compact_visual_waveform_cache SET list_root = ?, file_path = ? WHERE list_root = ? AND file_path = ?'
     )
     const deleteUnifiedDisplayWaveform = db.prepare(
       'DELETE FROM unified_display_waveform_cache WHERE list_root = ? AND file_path = ?'
@@ -263,9 +259,10 @@ export async function renameCacheRoot(
           } else {
             newFileKey = normalizeRoot(filePath)
           }
-          deleteCompactVisualWaveform.run(newKey, newFileKey)
-          const result = updateCompactVisualWaveform.run(newKey, newFileKey, rootKey, filePath)
-          compactVisualWaveformCacheUpdated += result?.changes ? Number(result.changes) : 0
+          const oldResult = deleteCompactVisualWaveform.run(rootKey, filePath)
+          const newResult = deleteCompactVisualWaveform.run(newKey, newFileKey)
+          compactVisualWaveformCacheUpdated += oldResult?.changes ? Number(oldResult.changes) : 0
+          compactVisualWaveformCacheUpdated += newResult?.changes ? Number(newResult.changes) : 0
           deleteWaveform.run(newKey, newFileKey)
           deleteWaveform.run(rootKey, filePath)
         }
@@ -595,7 +592,7 @@ export async function migrateCacheKeysToRelativeIfNeeded(): Promise<void> {
       migrateSongCacheRows(db, root, newKey, root)
       migrateCoverIndexRows(db, root, newKey, root)
       migrateWaveformCacheRows(db, root, newKey, root)
-      migrateCompactVisualWaveformCacheRows(db, root, newKey, root)
+      db.prepare('DELETE FROM compact_visual_waveform_cache WHERE list_root = ?').run(root)
       migrateUnifiedDisplayWaveformCacheRows(db, root, newKey, root)
     }
     const remaining = collectMigratableCacheRoots(db, baseRoot)

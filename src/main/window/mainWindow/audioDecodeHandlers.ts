@@ -14,11 +14,13 @@ import { applyLiteDefaults, buildLiteSongInfo } from '../../services/songInfoLit
 import type { MixxxWaveformData } from '../../waveformCache'
 import { isInRecordingLibraryAbsPath } from '../../recordingLibraryService'
 import {
-  buildCompactVisualWaveformFromMixxx,
   COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
-  COMPACT_VISUAL_WAVEFORM_MAX_DETAIL_RATE,
-  compactVisualWaveformToMixxxOverview
+  unifiedDisplayWaveformToMixxxOverview
 } from '../../../shared/compactVisualWaveform'
+import {
+  buildUnifiedDisplayWaveformDetailFromMixxx,
+  UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE
+} from '../../../shared/unifiedDisplayWaveform'
 
 const clonePcmData = (pcmData: unknown): Float32Array => {
   if (!pcmData) {
@@ -81,16 +83,16 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           : LibraryCacheDb.resolveExternalAnalysisContext(filePath)
         let cachedWaveform: MixxxWaveformData | null = null
         if (stat && listRoot) {
-          const compact = await LibraryCacheDb.loadCompactVisualWaveformCacheData(
+          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+          const unified = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
             listRoot,
             filePath,
             stat
           )
-          if (compact) {
+          const waveform = unified ? unifiedDisplayWaveformToMixxxOverview(unified) : null
+          if (waveform) {
             await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-            cachedWaveform = compactVisualWaveformToMixxxOverview(
-              compact
-            ) as MixxxWaveformData | null
+            cachedWaveform = waveform as MixxxWaveformData | null
           } else {
             await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
           }
@@ -112,12 +114,12 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           }
         }
 
-        const shouldBuildCompactVisualWaveform = !cachedWaveform && Boolean(listRoot)
+        const shouldBuildUnifiedDisplayWaveform = !cachedWaveform && Boolean(listRoot)
         const result = await decodeAudioShared(filePath, {
           analyzeKey: false,
           needWaveform: !cachedWaveform,
-          waveformTargetRate: COMPACT_VISUAL_WAVEFORM_MAX_DETAIL_RATE,
-          needRawWaveform: shouldBuildCompactVisualWaveform,
+          waveformTargetRate: UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE,
+          needRawWaveform: shouldBuildUnifiedDisplayWaveform,
           rawTargetRate: COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
           fileStat: stat,
           traceLabel: eventName,
@@ -134,19 +136,20 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
               info
             })
           }
-          const compact = result.rawWaveformData
-            ? buildCompactVisualWaveformFromMixxx(mixxxWaveformData, result.rawWaveformData)
+          const unified = result.rawWaveformData
+            ? buildUnifiedDisplayWaveformDetailFromMixxx(mixxxWaveformData, result.rawWaveformData)
             : null
-          if (compact) {
-            await LibraryCacheDb.upsertCompactVisualWaveformCacheEntry(
+          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+          if (unified) {
+            await LibraryCacheDb.upsertUnifiedDisplayWaveformCacheEntry(
               listRoot,
               filePath,
               { size: stat.size, mtimeMs: stat.mtimeMs },
-              compact
+              unified
             )
           } else {
-            await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-            await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+            await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
           }
         } else if (!cachedWaveform && mixxxWaveformData && externalContext && stat) {
           await LibraryCacheDb.upsertExternalAnalysisWaveformCacheEntry(

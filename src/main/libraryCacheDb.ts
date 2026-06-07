@@ -35,15 +35,7 @@ export {
   clearWaveformCache
 } from './libraryCacheDb/waveformCache'
 
-export {
-  loadCompactVisualWaveformCacheData,
-  hasCompactVisualWaveformCacheEntryByMeta,
-  upsertCompactVisualWaveformCacheEntry,
-  updateCompactVisualWaveformCacheStat,
-  moveCompactVisualWaveformCacheEntry,
-  removeCompactVisualWaveformCacheEntry,
-  migrateCompactVisualWaveformCacheRows
-} from './libraryCacheDb/compactVisualWaveformCache'
+export { removeCompactVisualWaveformCacheEntry } from './libraryCacheDb/compactVisualWaveformCache'
 
 export {
   loadUnifiedDisplayWaveformCacheData,

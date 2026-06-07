@@ -13,8 +13,9 @@ import { useMixtapeBeatAlignPlayback } from '@renderer/components/mixtapeBeatAli
 import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
 import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
 import {
-  compactVisualWaveformToRawData,
-  loadCompactVisualWaveformData
+  loadUnifiedDisplayWaveformData,
+  unifiedDisplayWaveformToCompactVisualOverviewData,
+  unifiedDisplayWaveformToRawData
 } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
 import {
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
@@ -780,10 +781,12 @@ const loadPreviewWaveform = async (filePath: string) => {
   // 对话框一打开即开始预解码，避免用户首次点击播放时才触发解码等待
   schedulePreviewWarmup(normalized, requestSeq, PREVIEW_WARMUP_EAGER_DELAY_MS)
   try {
-    const compact = await loadCompactVisualWaveformData(normalized).catch(() => null)
+    const unified = await loadUnifiedDisplayWaveformData(normalized).catch(() => null)
     if (requestSeq !== previewLoadSequence) return
-    overviewCompactData.value = compact
-    overviewRawData.value = compact ? compactVisualWaveformToRawData(compact) : null
+    overviewCompactData.value = unified
+      ? unifiedDisplayWaveformToCompactVisualOverviewData(unified)
+      : null
+    overviewRawData.value = unified ? unifiedDisplayWaveformToRawData(unified) : null
     previewMixxxData.value = overviewRawData.value
       ? createRawPlaceholderMixxxData(overviewRawData.value)
       : null

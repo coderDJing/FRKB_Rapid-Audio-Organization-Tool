@@ -1,7 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { MixxxWaveformData } from '../../waveformCache'
-import type { CompactVisualWaveformData } from '../../../shared/compactVisualWaveform'
 import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
@@ -166,7 +165,6 @@ export type KeyAnalysisWorkerPartialResult = {
 
 export type KeyAnalysisWorkerResult = KeyAnalysisWorkerPartialResult & {
   mixxxWaveformData?: MixxxWaveformData | null
-  compactVisualWaveformData?: CompactVisualWaveformData | null
   unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
 }
 
