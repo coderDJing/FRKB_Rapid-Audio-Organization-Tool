@@ -1048,7 +1048,7 @@ defineExpose(
     tapBpm: handlePreviewBpmTap,
     cycleMetronomeState,
     resolveVisibleDurationSec,
-    resolveWrapWidth: () => Number(wrapRef.value?.clientWidth || 0)
+    resolveWrapWidth: () => Number(wrapRef.value?.getBoundingClientRect().width || 0)
   })
 )
 </script>

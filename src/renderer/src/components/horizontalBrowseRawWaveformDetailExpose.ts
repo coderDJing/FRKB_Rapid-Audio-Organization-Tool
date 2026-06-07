@@ -1,10 +1,8 @@
 import type { HorizontalBrowseGridShiftOptions } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import type { HorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
 
-const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS = 4
-const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS = 10
-const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX = 1
-const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX = 2.5
+const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX = 1
+const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX = 2.5
 
 type CreateHorizontalBrowseRawWaveformDetailExposeParams = {
   toggleBarLinePicking: () => void
@@ -23,46 +21,29 @@ const resolveGridShiftMs = (
     CreateHorizontalBrowseRawWaveformDetailExposeParams,
     'resolveVisibleDurationSec' | 'resolveWrapWidth'
   >,
-  targetPx: number,
-  minMs: number
+  targetCssPx: number
 ) => {
   const visibleDurationMs = Math.max(1, params.resolveVisibleDurationSec() * 1000)
   const wrapWidth = Math.max(1, Number(params.resolveWrapWidth()) || 0)
   const msPerPixel = visibleDurationMs / wrapWidth
-  return Math.max(minMs, Math.round(msPerPixel * targetPx))
+  return msPerPixel * targetCssPx
 }
 
 export const createHorizontalBrowseRawWaveformDetailExpose = (
   params: CreateHorizontalBrowseRawWaveformDetailExposeParams
 ): HorizontalBrowseRawWaveformDetailExpose => {
-  const shiftBy = (targetPx: number, minMs: number, direction: 1 | -1) => {
-    const deltaMs = resolveGridShiftMs(params, targetPx, minMs) * direction
+  const shiftBy = (targetCssPx: number, direction: 1 | -1) => {
+    const deltaMs = resolveGridShiftMs(params, targetCssPx) * direction
     return (options?: HorizontalBrowseGridShiftOptions) => params.shiftGrid(deltaMs, options)
   }
 
   return {
     toggleBarLinePicking: params.toggleBarLinePicking,
     setBarLineAtPlayhead: params.setBarLineAtPlayhead,
-    shiftGridSmallLeft: shiftBy(
-      HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX,
-      HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS,
-      -1
-    ),
-    shiftGridLargeLeft: shiftBy(
-      HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX,
-      HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS,
-      -1
-    ),
-    shiftGridSmallRight: shiftBy(
-      HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_PX,
-      HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_MIN_MS,
-      1
-    ),
-    shiftGridLargeRight: shiftBy(
-      HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_PX,
-      HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_MIN_MS,
-      1
-    ),
+    shiftGridSmallLeft: shiftBy(HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX, -1),
+    shiftGridLargeLeft: shiftBy(HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX, -1),
+    shiftGridSmallRight: shiftBy(HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX, 1),
+    shiftGridLargeRight: shiftBy(HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX, 1),
     updateBpmInput: params.updateBpmInput,
     blurBpmInput: params.blurBpmInput,
     tapBpm: params.tapBpm,
