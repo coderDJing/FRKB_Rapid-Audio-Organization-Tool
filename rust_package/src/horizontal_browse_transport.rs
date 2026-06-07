@@ -361,6 +361,25 @@ impl HorizontalBrowseTransportEngine {
       && safe_target_sec < self.resolve_loaded_segment_end_sec(deck) - 0.0001
   }
 
+  fn resolve_startup_decode_target_sec(&self, deck: DeckId) -> f64 {
+    let deck_state = self.deck(deck);
+    let current_sec = Self::estimate_current_sec(deck_state, self.last_now_ms);
+    if current_sec.is_finite() {
+      current_sec.max(0.0)
+    } else {
+      0.0
+    }
+  }
+
+  fn resolve_startup_decode_start_sec(&self, deck: DeckId, target_timeline_sec: f64) -> f64 {
+    let deck_state = self.deck(deck);
+    let target_audio_sec = Self::timeline_sec_to_audio_sec(deck_state, target_timeline_sec);
+    if deck_state.duration_sec.is_finite() && deck_state.duration_sec > 0.0 {
+      return target_audio_sec.min((deck_state.duration_sec - 0.001).max(0.0));
+    }
+    target_audio_sec
+  }
+
   fn is_fully_decoded(&self, deck: DeckId) -> bool {
     let deck_state = self.deck(deck);
     let file_path = deck_state
@@ -457,7 +476,9 @@ impl HorizontalBrowseTransportEngine {
       self.mark_state_changed();
       return None;
     }
-    if self.has_loaded_segment_covering(deck, 0.0) {
+    let startup_target_sec = self.resolve_startup_decode_target_sec(deck);
+    let startup_start_sec = self.resolve_startup_decode_start_sec(deck, startup_target_sec);
+    if self.has_loaded_segment_covering(deck, startup_target_sec) {
       return None;
     }
     if self.deck(deck).pending_decode_file_path.as_deref() == Some(file_path.as_str()) {
@@ -485,7 +506,7 @@ impl HorizontalBrowseTransportEngine {
       deck,
       file_path,
       request_id,
-      start_sec: 0.0,
+      start_sec: startup_start_sec,
       max_duration_sec: Some(HORIZONTAL_BROWSE_STARTUP_DECODE_SEC),
       is_full_decode: false,
     })

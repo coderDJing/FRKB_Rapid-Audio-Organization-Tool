@@ -388,6 +388,7 @@ const assignSongToDeck = async (
 
 const {
   deckPendingPlayOnLoad,
+  deckPendingPlayVisible,
   deckPendingCuePreviewOnLoad,
   suppressDeckCueClick,
   isDeckWaveformDragging,
@@ -839,7 +840,7 @@ onUnmounted(() => {
         deck="top"
         :playing="topDeckPlayButtonActive"
         :decoding="topDeckUiDecoding"
-        :pending-play="deckPendingPlayOnLoad.top"
+        :pending-play="deckPendingPlayVisible.top"
         :pending-cue="deckPendingCuePreviewOnLoad.top"
         :cue-active="topDeckCueActive"
         :bands-visible="faderControlsExpanded && !isEditMode"
@@ -868,7 +869,7 @@ onUnmounted(() => {
         deck="bottom"
         :playing="bottomDeckPlayButtonActive"
         :decoding="bottomDeckUiDecoding"
-        :pending-play="deckPendingPlayOnLoad.bottom"
+        :pending-play="deckPendingPlayVisible.bottom"
         :pending-cue="deckPendingCuePreviewOnLoad.bottom"
         :cue-active="bottomDeckCueActive"
         :bands-visible="faderControlsExpanded"

@@ -190,6 +190,17 @@ pub fn horizontal_browse_transport_set_beat_grid(
     next_bar_beat_offset,
     next_time_basis_offset_ms,
   );
+  let deck_playing = engine_guard.deck(deck_id).playing;
+  let decode_request = engine_guard.prepare_decode_request(deck_id);
+  drop(engine_guard);
+  if let Some(request) = decode_request {
+    if deck_playing {
+      execute_decode_request_sync(request);
+    } else {
+      schedule_decode_request(request);
+    }
+  }
+  let engine_guard = engine().lock();
   Ok(engine_guard.snapshot(engine_guard.last_now_ms))
 }
 

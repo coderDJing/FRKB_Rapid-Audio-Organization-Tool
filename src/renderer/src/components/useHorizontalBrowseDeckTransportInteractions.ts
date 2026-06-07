@@ -77,6 +77,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
 
   const {
     deckPendingPlayOnLoad,
+    deckPendingPlayVisible,
     isDeckWaveformDragging,
     resolveDeckWaveformDragAnchorSec,
     commitDeckWaveformDragCuePlacement,
@@ -202,6 +203,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
 
   return {
     deckPendingPlayOnLoad,
+    deckPendingPlayVisible,
     deckPendingCuePreviewOnLoad,
     suppressDeckCueClick,
     isDeckWaveformDragging,

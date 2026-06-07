@@ -1,4 +1,4 @@
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type {
   HorizontalBrowseDeckKey,
@@ -100,6 +100,8 @@ const clampNumber = (value: number, min: number, max: number) => Math.max(min, M
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 const resolveOtherDeck = (deck: DeckKey): DeckKey => (deck === 'top' ? 'bottom' : 'top')
 
+const PENDING_PLAY_VISIBLE_DELAY_MS = 250
+
 const createDefaultDeckWaveformDragState = (): DeckWaveformDragState => ({
   active: false,
   wasPlaying: false,
@@ -122,6 +124,14 @@ export const useHorizontalBrowseDeckPlaybackController = (
     top: false,
     bottom: false
   })
+  const deckPendingPlayVisible = reactive<Record<DeckKey, boolean>>({
+    top: false,
+    bottom: false
+  })
+  const deckPendingPlayVisibleTimers: Record<DeckKey, number | null> = {
+    top: null,
+    bottom: null
+  }
   const deckSeekActionToken: Record<DeckKey, number> = {
     top: 0,
     bottom: 0
@@ -167,6 +177,34 @@ export const useHorizontalBrowseDeckPlaybackController = (
       ...payload
     })
   }
+
+  const clearPendingPlayVisibleTimer = (deck: DeckKey) => {
+    const timer = deckPendingPlayVisibleTimers[deck]
+    if (timer !== null) {
+      window.clearTimeout(timer)
+      deckPendingPlayVisibleTimers[deck] = null
+    }
+  }
+
+  const syncPendingPlayVisible = (deck: DeckKey, pending: boolean) => {
+    clearPendingPlayVisibleTimer(deck)
+    if (!pending) {
+      deckPendingPlayVisible[deck] = false
+      return
+    }
+    deckPendingPlayVisibleTimers[deck] = window.setTimeout(() => {
+      deckPendingPlayVisibleTimers[deck] = null
+      deckPendingPlayVisible[deck] = deckPendingPlayOnLoad[deck]
+    }, PENDING_PLAY_VISIBLE_DELAY_MS)
+  }
+
+  watch(
+    () => [deckPendingPlayOnLoad.top, deckPendingPlayOnLoad.bottom] as const,
+    ([topPending, bottomPending]) => {
+      syncPendingPlayVisible('top', topPending)
+      syncPendingPlayVisible('bottom', bottomPending)
+    }
+  )
 
   const buildDeckBeatDiagnostics = (deck: DeckKey) => {
     const snapshot = params.resolveTransportDeckSnapshot(deck)
@@ -1026,6 +1064,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
   return {
     deckPendingPlayOnLoad,
+    deckPendingPlayVisible,
     isDeckWaveformDragging: (deck: DeckKey) => deckWaveformDragState[deck].active,
     resolveDeckWaveformDragAnchorSec,
     commitDeckWaveformDragCuePlacement,

@@ -1376,6 +1376,112 @@ fn prepare_full_decode_request_waits_until_bootstrap_segment_is_loaded() {
 }
 
 #[test]
+fn startup_decode_covers_current_playhead_when_cue_is_after_startup_block() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("late-cue.mp3".to_string());
+    top.duration_sec = 60.0;
+    top.current_sec = 12.5;
+  }
+
+  let bootstrap = engine.prepare_decode_request(DeckId::Top);
+
+  assert!(bootstrap.is_some());
+  let bootstrap = bootstrap.unwrap();
+  assert!(!bootstrap.is_full_decode);
+  assert!((bootstrap.start_sec - 12.5).abs() < 0.0001);
+  assert_eq!(
+    bootstrap.max_duration_sec,
+    Some(HORIZONTAL_BROWSE_STARTUP_DECODE_SEC)
+  );
+}
+
+#[test]
+fn startup_decode_refills_current_playhead_after_time_basis_offset_changes() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("offset-hydrated.mp3".to_string());
+    top.loaded_file_path = Some("offset-hydrated.mp3".to_string());
+    top.pending_full_decode_file_path = Some("offset-hydrated.mp3".to_string());
+    top.duration_sec = 60.0;
+    top.current_sec = 0.033;
+    top.time_basis_offset_ms = Some(25.0);
+    top.sample_rate = 1000;
+    top.channels = 1;
+    top.pcm_start_sec = 0.033;
+    top.pcm_data = Arc::new(vec![0.0; 10_000]);
+  }
+
+  let bootstrap = engine.prepare_decode_request(DeckId::Top);
+
+  assert!(bootstrap.is_some());
+  let bootstrap = bootstrap.unwrap();
+  assert!(!bootstrap.is_full_decode);
+  assert!((bootstrap.start_sec - 0.008).abs() < 0.0001);
+  assert_eq!(
+    engine
+      .deck(DeckId::Top)
+      .pending_full_decode_file_path
+      .as_deref(),
+    Some("offset-hydrated.mp3")
+  );
+
+  let prepared =
+    prepare_decoded_audio(None, vec![0.0; 10_000], 1000, 1, bootstrap.start_sec, false);
+  assert!(engine.apply_prepared_decoded_audio(
+    DeckId::Top,
+    "offset-hydrated.mp3",
+    bootstrap.request_id,
+    prepared,
+    false
+  ));
+
+  let snapshot = engine.snapshot(0.0);
+  assert!(snapshot.top.playhead_loaded);
+  assert_eq!(
+    engine
+      .deck(DeckId::Top)
+      .pending_full_decode_file_path
+      .as_deref(),
+    Some("offset-hydrated.mp3")
+  );
+}
+
+#[test]
+fn startup_decode_can_fill_current_playhead_while_full_decode_is_pending() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("full-pending.mp3".to_string());
+    top.loaded_file_path = Some("full-pending.mp3".to_string());
+    top.pending_full_decode_file_path = Some("full-pending.mp3".to_string());
+    top.duration_sec = 60.0;
+    top.current_sec = 42.0;
+    top.sample_rate = 4;
+    top.channels = 1;
+    top.pcm_start_sec = 0.0;
+    top.pcm_data = Arc::new(vec![0.0; HORIZONTAL_BROWSE_STARTUP_DECODE_SEC as usize * 4]);
+  }
+
+  let bootstrap = engine.prepare_decode_request(DeckId::Top);
+
+  assert!(bootstrap.is_some());
+  let bootstrap = bootstrap.unwrap();
+  assert!(!bootstrap.is_full_decode);
+  assert!((bootstrap.start_sec - 42.0).abs() < 0.0001);
+  assert_eq!(engine.deck(DeckId::Top).decode_request_id, 1);
+  assert_eq!(
+    engine
+      .deck(DeckId::Top)
+      .pending_full_decode_file_path
+      .as_deref(),
+    Some("full-pending.mp3")
+  );
+}
+
+#[test]
 fn seek_outside_startup_block_does_not_request_stream_decode() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   {
