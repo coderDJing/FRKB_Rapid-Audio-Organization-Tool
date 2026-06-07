@@ -101,6 +101,12 @@ const readPayload = (compressed: Buffer) => {
     heightLength?: number
     attackLength?: number
     colorIndexLength?: number
+    colorLowLength?: number
+    colorMidLength?: number
+    colorHighLength?: number
+    colorRedLength?: number
+    colorGreenLength?: number
+    colorBlueLength?: number
     bodyLength?: number
     overviewHeightLength?: number
   }
@@ -121,11 +127,19 @@ export function encodeUnifiedDisplayWaveformCacheData(
   if (!data || data.version !== UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION) return null
   if (data.parameterVersion !== UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION) return null
   if (!data.height?.length || !data.attack?.length || !data.colorIndex?.length) return null
+  if (!data.colorLow?.length || !data.colorMid?.length || !data.colorHigh?.length) return null
+  if (!data.colorRed?.length || !data.colorGreen?.length || !data.colorBlue?.length) return null
   if (!data.body?.length || !data.overviewHeight?.length) return null
   const payload = Buffer.concat([
     Buffer.from(data.height),
     Buffer.from(data.attack),
     Buffer.from(data.colorIndex),
+    Buffer.from(data.colorLow),
+    Buffer.from(data.colorMid),
+    Buffer.from(data.colorHigh),
+    Buffer.from(data.colorRed),
+    Buffer.from(data.colorGreen),
+    Buffer.from(data.colorBlue),
     Buffer.from(data.body),
     Buffer.from(data.overviewHeight)
   ])
@@ -135,6 +149,12 @@ export function encodeUnifiedDisplayWaveformCacheData(
     heightLength: data.height.length,
     attackLength: data.attack.length,
     colorIndexLength: data.colorIndex.length,
+    colorLowLength: data.colorLow.length,
+    colorMidLength: data.colorMid.length,
+    colorHighLength: data.colorHigh.length,
+    colorRedLength: data.colorRed.length,
+    colorGreenLength: data.colorGreen.length,
+    colorBlueLength: data.colorBlue.length,
     bodyLength: data.body.length,
     overviewHeightLength: data.overviewHeight.length
   })
@@ -156,9 +176,29 @@ export function decodeUnifiedDisplayWaveformCacheData(
   const height = decoded.readBytes(decoded.header.heightLength)
   const attack = decoded.readBytes(decoded.header.attackLength)
   const colorIndex = decoded.readBytes(decoded.header.colorIndexLength)
+  const colorLow = decoded.readBytes(decoded.header.colorLowLength)
+  const colorMid = decoded.readBytes(decoded.header.colorMidLength)
+  const colorHigh = decoded.readBytes(decoded.header.colorHighLength)
+  const colorRed = decoded.readBytes(decoded.header.colorRedLength)
+  const colorGreen = decoded.readBytes(decoded.header.colorGreenLength)
+  const colorBlue = decoded.readBytes(decoded.header.colorBlueLength)
   const body = decoded.readBytes(decoded.header.bodyLength)
   const overviewHeight = decoded.readBytes(decoded.header.overviewHeightLength)
-  if (!height || !attack || !colorIndex || !body || !overviewHeight) return null
+  if (
+    !height ||
+    !attack ||
+    !colorIndex ||
+    !colorLow ||
+    !colorMid ||
+    !colorHigh ||
+    !colorRed ||
+    !colorGreen ||
+    !colorBlue ||
+    !body ||
+    !overviewHeight
+  ) {
+    return null
+  }
   return {
     version: meta.cacheVersion,
     parameterVersion: meta.parameterVersion,
@@ -170,6 +210,12 @@ export function decodeUnifiedDisplayWaveformCacheData(
     height,
     attack,
     colorIndex,
+    colorLow,
+    colorMid,
+    colorHigh,
+    colorRed,
+    colorGreen,
+    colorBlue,
     body,
     overviewHeight
   }

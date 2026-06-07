@@ -5,7 +5,6 @@ import {
   type CompactVisualWaveformData
 } from '@shared/compactVisualWaveform'
 import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
-import { resolveRekordboxLikeRawColor } from '@shared/rawWaveformColor'
 
 type UnifiedDisplayWaveformLoadResponse = {
   status?: 'ready' | 'missing'
@@ -139,9 +138,25 @@ export const normalizeUnifiedDisplayWaveformData = (
   const height = toUint8Array(payload.height)
   const attack = toUint8Array(payload.attack)
   const colorIndex = toUint8Array(payload.colorIndex)
+  const colorLow = toUint8Array(payload.colorLow)
+  const colorMid = toUint8Array(payload.colorMid)
+  const colorHigh = toUint8Array(payload.colorHigh)
+  const colorRed = toUint8Array(payload.colorRed)
+  const colorGreen = toUint8Array(payload.colorGreen)
+  const colorBlue = toUint8Array(payload.colorBlue)
   const body = toUint8Array(payload.body)
   const overviewHeight = toUint8Array(payload.overviewHeight)
-  const frames = Math.min(height.length, attack.length, colorIndex.length)
+  const frames = Math.min(
+    height.length,
+    attack.length,
+    colorIndex.length,
+    colorLow.length,
+    colorMid.length,
+    colorHigh.length,
+    colorRed.length,
+    colorGreen.length,
+    colorBlue.length
+  )
   const duration = Math.max(0, Number(payload.duration) || 0)
   const detailRate = Math.max(0, Number(payload.detailRate) || 0)
   const sampleRate = Math.max(0, Number(payload.sampleRate) || 0)
@@ -157,16 +172,15 @@ export const normalizeUnifiedDisplayWaveformData = (
     height,
     attack,
     colorIndex,
+    colorLow,
+    colorMid,
+    colorHigh,
+    colorRed,
+    colorGreen,
+    colorBlue,
     body,
     overviewHeight
   }
-}
-
-const resolveUnifiedColorBands = (colorIndex: number) => {
-  if (colorIndex === 0) return { low: 1, mid: 0.32, high: 0.16 }
-  if (colorIndex === 1) return { low: 0.24, mid: 1, high: 0.42 }
-  if (colorIndex === 2) return { low: 0.16, mid: 0.46, high: 1 }
-  return { low: 0.52, mid: 0.68, high: 0.78 }
 }
 
 export const unifiedDisplayWaveformToRawData = (
@@ -177,7 +191,13 @@ export const unifiedDisplayWaveformToRawData = (
   const frames = Math.min(
     normalized.height.length,
     normalized.attack.length,
-    normalized.colorIndex.length
+    normalized.colorIndex.length,
+    normalized.colorLow.length,
+    normalized.colorMid.length,
+    normalized.colorHigh.length,
+    normalized.colorRed.length,
+    normalized.colorGreen.length,
+    normalized.colorBlue.length
   )
   const minLeft = new Float32Array(frames)
   const maxLeft = new Float32Array(frames)
@@ -207,8 +227,6 @@ export const unifiedDisplayWaveformToRawData = (
     const color = readClampedByte(normalized.colorIndex, index, 3)
     const bodyAmp = clamp(body / 255, 0, 1)
     const rms = clamp(Math.max(bodyAmp, height * 0.42, attack * 0.72), 0, 1)
-    const bands = resolveUnifiedColorBands(color)
-    const rgb = resolveRekordboxLikeRawColor(bands.low, bands.mid, bands.high)
     minLeft[index] = -height
     maxLeft[index] = height
     minRight[index] = -height
@@ -218,12 +236,12 @@ export const unifiedDisplayWaveformToRawData = (
     traceAmplitudes[index] = clamp(Math.max(bodyAmp * 0.86, height * 0.94, attack * 0.68), 0, 1)
     traceAttacks[index] = attack
     traceColors[index] = color
-    colorLow[index] = Math.round(bands.low * 255)
-    colorMid[index] = Math.round(bands.mid * 255)
-    colorHigh[index] = Math.round(bands.high * 255)
-    colorRed[index] = rgb.r
-    colorGreen[index] = rgb.g
-    colorBlue[index] = rgb.b
+    colorLow[index] = readClampedByte(normalized.colorLow, index, 0)
+    colorMid[index] = readClampedByte(normalized.colorMid, index, 0)
+    colorHigh[index] = readClampedByte(normalized.colorHigh, index, 0)
+    colorRed[index] = readClampedByte(normalized.colorRed, index, 235)
+    colorGreen[index] = readClampedByte(normalized.colorGreen, index, 242)
+    colorBlue[index] = readClampedByte(normalized.colorBlue, index, 248)
   }
   writeBalancedSignedTrace(
     meanLeft,
@@ -286,15 +304,13 @@ export const unifiedDisplayWaveformToCompactVisualOverviewData = (
     const sourceColorFrame =
       frames <= 1 ? 0 : Math.floor((index / frames) * Math.max(1, normalized.colorIndex.length))
     const color = readClampedByte(normalized.colorIndex, sourceColorFrame, 3)
-    const bands = resolveUnifiedColorBands(color)
-    const rgb = resolveRekordboxLikeRawColor(bands.low, bands.mid, bands.high)
     colorIndex[index] = color
-    colorLow[index] = Math.round(bands.low * 255)
-    colorMid[index] = Math.round(bands.mid * 255)
-    colorHigh[index] = Math.round(bands.high * 255)
-    colorRed[index] = rgb.r
-    colorGreen[index] = rgb.g
-    colorBlue[index] = rgb.b
+    colorLow[index] = readClampedByte(normalized.colorLow, sourceColorFrame, 0)
+    colorMid[index] = readClampedByte(normalized.colorMid, sourceColorFrame, 0)
+    colorHigh[index] = readClampedByte(normalized.colorHigh, sourceColorFrame, 0)
+    colorRed[index] = readClampedByte(normalized.colorRed, sourceColorFrame, 235)
+    colorGreen[index] = readClampedByte(normalized.colorGreen, sourceColorFrame, 242)
+    colorBlue[index] = readClampedByte(normalized.colorBlue, sourceColorFrame, 248)
   }
 
   const overviewRate = Math.max(

@@ -1,7 +1,7 @@
 import { buildRawWaveformColorProfile, type RawWaveformColorSource } from './rawWaveformColor'
 
 export const UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION = 1
-export const UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION = 1
+export const UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION = 2
 export const UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE = 1200
 export const UNIFIED_DISPLAY_WAVEFORM_OVERVIEW_RATE = 32
 export const UNIFIED_DISPLAY_WAVEFORM_BODY_RATE_DIVISOR = 4
@@ -17,6 +17,12 @@ export type UnifiedDisplayWaveformDetailData = {
   height: Uint8Array
   attack: Uint8Array
   colorIndex: Uint8Array
+  colorLow: Uint8Array
+  colorMid: Uint8Array
+  colorHigh: Uint8Array
+  colorRed: Uint8Array
+  colorGreen: Uint8Array
+  colorBlue: Uint8Array
   body: Uint8Array
   overviewHeight: Uint8Array
 }
@@ -85,6 +91,24 @@ export const buildUnifiedDisplayWaveformDetailFromMixxx = (
   const colorIndex = colorProfile?.colorIndex?.length
     ? colorProfile.colorIndex
     : new Uint8Array(detailFrames).fill(3)
+  const colorLow = colorProfile?.colorLow?.length
+    ? colorProfile.colorLow
+    : new Uint8Array(detailFrames)
+  const colorMid = colorProfile?.colorMid?.length
+    ? colorProfile.colorMid
+    : new Uint8Array(detailFrames)
+  const colorHigh = colorProfile?.colorHigh?.length
+    ? colorProfile.colorHigh
+    : new Uint8Array(detailFrames)
+  const colorRed = colorProfile?.colorRed?.length
+    ? colorProfile.colorRed
+    : new Uint8Array(detailFrames).fill(235)
+  const colorGreen = colorProfile?.colorGreen?.length
+    ? colorProfile.colorGreen
+    : new Uint8Array(detailFrames).fill(242)
+  const colorBlue = colorProfile?.colorBlue?.length
+    ? colorProfile.colorBlue
+    : new Uint8Array(detailFrames).fill(248)
 
   let previousHeight = 0
   let previousSmooth = 0
@@ -136,6 +160,12 @@ export const buildUnifiedDisplayWaveformDetailFromMixxx = (
     height,
     attack,
     colorIndex,
+    colorLow,
+    colorMid,
+    colorHigh,
+    colorRed,
+    colorGreen,
+    colorBlue,
     body,
     overviewHeight
   }

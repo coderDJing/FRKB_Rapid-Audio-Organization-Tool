@@ -47,7 +47,6 @@ export type CompactVisualWaveformMixxxData = {
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
-const toByte = (value: number) => clamp(Math.round(value), 0, 255)
 
 export const compactVisualWaveformToPreviewData = (
   data: CompactVisualWaveformData
@@ -55,6 +54,9 @@ export const compactVisualWaveformToPreviewData = (
   const detailFrames = Math.min(data.detailPeakTop?.length || 0, data.detailPeakBottom?.length || 0)
   const colorFrames = Math.min(
     data.colorIndex?.length || 0,
+    data.colorLow?.length || 0,
+    data.colorMid?.length || 0,
+    data.colorHigh?.length || 0,
     data.colorRed?.length || 0,
     data.colorGreen?.length || 0,
     data.colorBlue?.length || 0
@@ -63,13 +65,6 @@ export const compactVisualWaveformToPreviewData = (
     return null
   }
   return data
-}
-
-const resolveUnifiedColorBands = (colorIndex: number) => {
-  if (colorIndex === 0) return { low: 1, mid: 0.32, high: 0.16 }
-  if (colorIndex === 1) return { low: 0.24, mid: 1, high: 0.42 }
-  if (colorIndex === 2) return { low: 0.16, mid: 0.46, high: 1 }
-  return { low: 0.52, mid: 0.68, high: 0.78 }
 }
 
 export const unifiedDisplayWaveformToCompactVisualOverviewData = (
@@ -95,15 +90,14 @@ export const unifiedDisplayWaveformToCompactVisualOverviewData = (
     const sourceColorFrame =
       frames <= 1 ? 0 : Math.floor((index / frames) * Math.max(1, data.colorIndex.length))
     const color = data.colorIndex[clamp(sourceColorFrame, 0, data.colorIndex.length - 1)] ?? 3
-    const bands = resolveUnifiedColorBands(color)
-    const rgb = resolveRekordboxLikeRawColor(bands.low, bands.mid, bands.high)
+    const colorFrame = clamp(sourceColorFrame, 0, data.colorIndex.length - 1)
     colorIndex[index] = color
-    colorLow[index] = toByte(bands.low * 255)
-    colorMid[index] = toByte(bands.mid * 255)
-    colorHigh[index] = toByte(bands.high * 255)
-    colorRed[index] = rgb.r
-    colorGreen[index] = rgb.g
-    colorBlue[index] = rgb.b
+    colorLow[index] = data.colorLow[colorFrame] ?? 0
+    colorMid[index] = data.colorMid[colorFrame] ?? 0
+    colorHigh[index] = data.colorHigh[colorFrame] ?? 0
+    colorRed[index] = data.colorRed[colorFrame] ?? 235
+    colorGreen[index] = data.colorGreen[colorFrame] ?? 242
+    colorBlue[index] = data.colorBlue[colorFrame] ?? 248
   }
 
   const overviewRate = Math.max(
