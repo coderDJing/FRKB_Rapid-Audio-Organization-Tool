@@ -86,45 +86,17 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
 ) => {
   const worker = createHorizontalBrowseDetailLiveCanvasWorker()
   let attached = false
-  let lastRenderedReady: boolean | null = null
-  const writeWorkerDebugLog = (
-    event: string,
-    details?: Record<string, number | string | boolean | null>
-  ) => {
-    const detailText = details ? ` ${JSON.stringify(details)}` : ''
-    window.electron?.ipcRenderer?.send?.('outputLog', {
-      level: 'info',
-      scope: 'main-window',
-      source: 'hb-live-canvas-worker',
-      message: `[HB-WAVEFORM] ${event}${detailText}`
-    })
-  }
 
   const handleWorkerMessage = (
     event: MessageEvent<HorizontalBrowseDetailLiveCanvasWorkerOutgoing>
   ) => {
     const message = event.data
     if (message?.type === 'rendered') {
-      if (message.payload.ready !== lastRenderedReady || !message.payload.ready) {
-        writeWorkerDebugLog(
-          message.payload.ready ? 'worker-rendered-ready' : 'worker-render-miss',
-          {
-            renderToken: message.payload.renderToken,
-            rangeStartSec: message.payload.rangeStartSec,
-            rangeDurationSec: message.payload.rangeDurationSec
-          }
-        )
-      }
-      lastRenderedReady = message.payload.ready
       options.onRendered(message.payload)
       return
     }
     if (message?.type === 'presentation') {
       options.onPresentation(message.payload)
-      return
-    }
-    if (message?.type === 'debug') {
-      writeWorkerDebugLog(message.payload.event, message.payload.details)
       return
     }
   }

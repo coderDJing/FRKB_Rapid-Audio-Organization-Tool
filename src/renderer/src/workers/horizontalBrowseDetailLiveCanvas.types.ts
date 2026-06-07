@@ -135,10 +135,3 @@ export type HorizontalBrowseDetailLiveCanvasWorkerOutgoing =
         offsetCssPx: number
       }
     }
-  | {
-      type: 'debug'
-      payload: {
-        event: string
-        details?: Record<string, number | string | boolean | null>
-      }
-    }

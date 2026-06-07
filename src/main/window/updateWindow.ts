@@ -247,9 +247,6 @@ const registerAutoUpdaterListeners = () => {
 
   autoUpdater.on('update-downloaded', () => {
     autoDownloadInProgress = false
-    log.info('[updateWindow] update downloaded', {
-      latestVersion: lastUpdateInfo?.version
-    })
     sendToUpdateWindow('updateDownloaded', {
       mode: 'auto'
     } satisfies UpdateDownloadedPayload)

@@ -1,6 +1,5 @@
 import { is } from '@electron-toolkit/utils'
 import { fetchWithSystemProxy } from './fetchWithSystemProxy'
-import { log } from './log'
 
 const DISCOVERY_URL = process.env.CLOUD_SYNC_DISCOVERY_URL || ''
 const CACHE_TTL_MS = 10 * 60 * 1000 // 10 分钟
@@ -34,21 +33,17 @@ export async function resolveBaseUrl(): Promise<string> {
       headers: { Accept: 'application/json' }
     })
     if (!res.ok) {
-      log.warn('[serverDiscovery] discovery request failed', { status: res.status })
       return fallback()
     }
     const json = await res.json()
     const discovered = typeof json?.baseUrl === 'string' ? json.baseUrl.trim() : ''
     if (!discovered) {
-      log.warn('[serverDiscovery] discovery response missing baseUrl', { json })
       return fallback()
     }
     cachedBaseUrl = discovered
     cacheExpiresAt = now + CACHE_TTL_MS
-    log.info('[serverDiscovery] resolved base url from discovery', { baseUrl: discovered })
     return discovered
-  } catch (e) {
-    log.warn('[serverDiscovery] discovery request error, using default', { error: e })
+  } catch {
     return fallback()
   }
 }
