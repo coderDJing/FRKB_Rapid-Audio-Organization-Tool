@@ -32,10 +32,11 @@ const resolveGridShiftMs = (
 export const createHorizontalBrowseRawWaveformDetailExpose = (
   params: CreateHorizontalBrowseRawWaveformDetailExposeParams
 ): HorizontalBrowseRawWaveformDetailExpose => {
-  const shiftBy = (targetCssPx: number, direction: 1 | -1) => {
-    const deltaMs = resolveGridShiftMs(params, targetCssPx) * direction
-    return (options?: HorizontalBrowseGridShiftOptions) => params.shiftGrid(deltaMs, options)
-  }
+  const shiftBy =
+    (targetCssPx: number, direction: 1 | -1) => (options?: HorizontalBrowseGridShiftOptions) => {
+      const deltaMs = resolveGridShiftMs(params, targetCssPx) * direction
+      params.shiftGrid(deltaMs, options)
+    }
 
   return {
     toggleBarLinePicking: params.toggleBarLinePicking,
