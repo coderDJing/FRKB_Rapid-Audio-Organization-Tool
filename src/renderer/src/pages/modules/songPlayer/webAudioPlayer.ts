@@ -1,5 +1,6 @@
 import mitt from 'mitt'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
+import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
 import { t } from '@renderer/utils/translate'
 import { configureTitleAudioVisualizerAnalyser } from '@renderer/composables/titleAudioVisualizerBridge'
 import {
@@ -16,12 +17,12 @@ import type {
   AudioElementWithExtensions,
   PcmLoadPayload,
   WebAudioPlayerEvents,
-  WindowWithAudioContext,
-  MixxxWaveformData
+  WindowWithAudioContext
 } from './webAudioPlayer.shared'
 
 export { canPlayHtmlAudio, toPreviewUrl } from './webAudioPlayer.shared'
 export type {
+  CompactVisualWaveformData,
   MixxxWaveformData,
   MixxxWaveformBand,
   MixxxWaveformBandKey,
@@ -34,7 +35,7 @@ export type {
 
 export class WebAudioPlayer {
   public audioBuffer: AudioBuffer | null = null
-  public mixxxWaveformData: MixxxWaveformData | null = null
+  public compactVisualWaveformData: CompactVisualWaveformData | null = null
   public pioneerPreviewWaveformData: IPioneerPreviewWaveformData | null = null
   private emitter = mitt<WebAudioPlayerEvents>()
   private isPlayingFlag = false
@@ -46,7 +47,6 @@ export class WebAudioPlayer {
   private currentOutputDeviceId: string = ''
   private activeFilePath: string | null = null
   private activeSrc = ''
-  private mixxxWaveformFilePath: string | null = null
   private suppressPauseEvent = false
   private ignoreNextEmptySourceError = false
   private mode: 'none' | 'html' | 'pcm' = 'none'
@@ -148,7 +148,7 @@ export class WebAudioPlayer {
     this.pendingSeekTime = null
     this.pendingPlay = false
     this.metadataReady = false
-    this.releaseMixxxWaveformData()
+    this.releaseCompactVisualWaveformData()
     this.releasePioneerPreviewWaveformData()
 
     const audio = this.createAudioElement()
@@ -197,7 +197,7 @@ export class WebAudioPlayer {
     this.pendingSeekTime = null
     this.pendingPlay = false
     this.metadataReady = false
-    this.releaseMixxxWaveformData()
+    this.releaseCompactVisualWaveformData()
     this.releasePioneerPreviewWaveformData()
 
     const context = this.ensurePcmContext(sampleRate)
@@ -231,8 +231,8 @@ export class WebAudioPlayer {
     this.activeFilePath = filePath || this.activeFilePath
     this.activeSrc = ''
 
-    if (payload?.mixxxWaveformData !== undefined) {
-      this.setMixxxWaveformData(payload.mixxxWaveformData ?? null, filePath || undefined)
+    if (payload?.compactVisualWaveformData !== undefined) {
+      this.setCompactVisualWaveformData(payload.compactVisualWaveformData ?? null)
     }
 
     this.handleMetadataReady()
@@ -409,7 +409,7 @@ export class WebAudioPlayer {
     this.pcmStartTime = 0
     this.pendingSeekTime = null
     this.metadataReady = false
-    this.releaseMixxxWaveformData()
+    this.releaseCompactVisualWaveformData()
     this.releasePioneerPreviewWaveformData()
     this.activeFilePath = null
     this.activeSrc = ''
@@ -433,17 +433,14 @@ export class WebAudioPlayer {
     }
   }
 
-  setMixxxWaveformData(data: MixxxWaveformData | null, filePath?: string | null): void {
+  setCompactVisualWaveformData(data: CompactVisualWaveformData | null): void {
     if (!data) {
-      this.releaseMixxxWaveformData()
+      this.releaseCompactVisualWaveformData()
       return
     }
     this.releasePioneerPreviewWaveformData()
-    this.mixxxWaveformData = data
-    if (filePath) {
-      this.mixxxWaveformFilePath = filePath
-    }
-    this.emit('mixxxwaveformready')
+    this.compactVisualWaveformData = data
+    this.emit('waveformready')
   }
 
   setPioneerPreviewWaveformData(data: IPioneerPreviewWaveformData | null): void {
@@ -451,16 +448,13 @@ export class WebAudioPlayer {
       this.releasePioneerPreviewWaveformData()
       return
     }
-    this.releaseMixxxWaveformData()
+    this.releaseCompactVisualWaveformData()
     this.pioneerPreviewWaveformData = data
-    this.emit('mixxxwaveformready')
+    this.emit('waveformready')
   }
 
-  private releaseMixxxWaveformData(): void {
-    if (this.mixxxWaveformFilePath) {
-      this.mixxxWaveformFilePath = null
-    }
-    this.mixxxWaveformData = null
+  private releaseCompactVisualWaveformData(): void {
+    this.compactVisualWaveformData = null
   }
 
   private releasePioneerPreviewWaveformData(): void {

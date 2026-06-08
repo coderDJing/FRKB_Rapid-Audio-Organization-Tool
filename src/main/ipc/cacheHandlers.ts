@@ -20,9 +20,13 @@ import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 import {
   compactVisualWaveformToPreviewData,
   type CompactVisualWaveformPreviewData,
-  unifiedDisplayWaveformToCompactVisualOverviewData,
-  unifiedDisplayWaveformToMixxxOverview
+  unifiedDisplayWaveformToCompactVisualOverviewData
 } from '../../shared/compactVisualWaveform'
+
+type PlayerWaveformCacheItem = {
+  filePath: string
+  data: CompactVisualWaveformPreviewData | null
+}
 
 export function registerCacheHandlers() {
   registerMixtapeRawWaveformHandlers()
@@ -286,10 +290,10 @@ export function registerCacheHandlers() {
         (filePath) => typeof filePath === 'string' && filePath.trim().length > 0
       )
       if (normalizedPaths.length === 0) {
-        return { items: [] as Array<{ filePath: string; data: MixxxWaveformData | null }> }
+        return { items: [] as PlayerWaveformCacheItem[] }
       }
 
-      const items: Array<{ filePath: string; data: MixxxWaveformData | null }> = []
+      const items: PlayerWaveformCacheItem[] = []
       const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
       let resolvedListRoot = ''
       if (listRootRaw) {
@@ -307,37 +311,7 @@ export function registerCacheHandlers() {
           listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
         }
         if (!listRoot) {
-          const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
-          if (!externalContext) {
-            try {
-              const fsStat = await fs.stat(filePath)
-              const data = await LibraryCacheDb.loadExternalAnalysisWaveformCacheDataByFilePath(
-                filePath,
-                {
-                  size: fsStat.size,
-                  mtimeMs: fsStat.mtimeMs
-                }
-              )
-              items.push({ filePath, data: data ?? null })
-            } catch {
-              items.push({ filePath, data: null })
-            }
-            continue
-          }
-          try {
-            const fsStat = await fs.stat(filePath)
-            const data = await LibraryCacheDb.loadExternalAnalysisWaveformCacheData(
-              externalContext,
-              {
-                size: fsStat.size,
-                mtimeMs: fsStat.mtimeMs
-              }
-            )
-            items.push({ filePath, data: data ?? null })
-          } catch {
-            await LibraryCacheDb.removeExternalAnalysisCacheEntry(externalContext)
-            items.push({ filePath, data: null })
-          }
+          items.push({ filePath, data: null })
           continue
         }
         try {
@@ -349,10 +323,12 @@ export function registerCacheHandlers() {
             filePath,
             stat
           )
-          const waveform = unified ? unifiedDisplayWaveformToMixxxOverview(unified) : null
-          if (waveform) {
+          const compact = unified
+            ? unifiedDisplayWaveformToCompactVisualOverviewData(unified)
+            : null
+          if (compact) {
             await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-            items.push({ filePath, data: waveform as MixxxWaveformData | null })
+            items.push({ filePath, data: compact })
             continue
           }
           await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)

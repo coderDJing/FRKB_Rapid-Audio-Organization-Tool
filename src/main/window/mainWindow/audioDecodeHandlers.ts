@@ -11,11 +11,11 @@ import {
 import { decodeAudioShared } from '../../services/audioDecodePool'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../../services/songInfoLite'
-import type { MixxxWaveformData } from '../../waveformCache'
 import { isInRecordingLibraryAbsPath } from '../../recordingLibraryService'
 import {
   COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
-  unifiedDisplayWaveformToMixxxOverview
+  type CompactVisualWaveformPreviewData,
+  unifiedDisplayWaveformToCompactVisualOverviewData
 } from '../../../shared/compactVisualWaveform'
 import {
   buildUnifiedDisplayWaveformDetailFromMixxx,
@@ -78,10 +78,7 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         } catch {}
 
         const listRoot = await findSongListRoot(path.dirname(filePath))
-        const externalContext = listRoot
-          ? null
-          : LibraryCacheDb.resolveExternalAnalysisContext(filePath)
-        let cachedWaveform: MixxxWaveformData | null = null
+        let compactVisualWaveformData: CompactVisualWaveformPreviewData | null = null
         if (stat && listRoot) {
           await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
           const unified = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
@@ -89,35 +86,21 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
             filePath,
             stat
           )
-          const waveform = unified ? unifiedDisplayWaveformToMixxxOverview(unified) : null
-          if (waveform) {
+          const compact = unified
+            ? unifiedDisplayWaveformToCompactVisualOverviewData(unified)
+            : null
+          if (compact) {
             await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-            cachedWaveform = waveform as MixxxWaveformData | null
+            compactVisualWaveformData = compact
           } else {
             await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
           }
-        } else if (stat && externalContext) {
-          const cached = await LibraryCacheDb.loadExternalAnalysisWaveformCacheData(
-            externalContext,
-            stat
-          )
-          if (cached) {
-            cachedWaveform = cached
-          }
-        } else if (stat) {
-          const cached = await LibraryCacheDb.loadExternalAnalysisWaveformCacheDataByFilePath(
-            filePath,
-            stat
-          )
-          if (cached) {
-            cachedWaveform = cached
-          }
         }
 
-        const shouldBuildUnifiedDisplayWaveform = !cachedWaveform && Boolean(listRoot)
+        const shouldBuildUnifiedDisplayWaveform = !compactVisualWaveformData && Boolean(listRoot)
         const result = await decodeAudioShared(filePath, {
           analyzeKey: false,
-          needWaveform: !cachedWaveform,
+          needWaveform: shouldBuildUnifiedDisplayWaveform,
           waveformTargetRate: UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE,
           needRawWaveform: shouldBuildUnifiedDisplayWaveform,
           rawTargetRate: COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
@@ -125,8 +108,7 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           traceLabel: eventName,
           priority: 'high'
         })
-        const mixxxWaveformData = cachedWaveform ?? result.mixxxWaveformData ?? null
-        if (!cachedWaveform && mixxxWaveformData && listRoot && stat) {
+        if (shouldBuildUnifiedDisplayWaveform && result.mixxxWaveformData && listRoot && stat) {
           const cachedEntry = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
           if (!cachedEntry) {
             const info = applyLiteDefaults(buildLiteSongInfo(filePath), filePath)
@@ -137,7 +119,13 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
             })
           }
           const unified = result.rawWaveformData
-            ? buildUnifiedDisplayWaveformDetailFromMixxx(mixxxWaveformData, result.rawWaveformData)
+            ? buildUnifiedDisplayWaveformDetailFromMixxx(
+                result.mixxxWaveformData,
+                result.rawWaveformData
+              )
+            : null
+          compactVisualWaveformData = unified
+            ? unifiedDisplayWaveformToCompactVisualOverviewData(unified)
             : null
           await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
           await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
@@ -151,19 +139,13 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           } else {
             await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
           }
-        } else if (!cachedWaveform && mixxxWaveformData && externalContext && stat) {
-          await LibraryCacheDb.upsertExternalAnalysisWaveformCacheEntry(
-            externalContext,
-            { size: stat.size, mtimeMs: stat.mtimeMs },
-            mixxxWaveformData
-          )
         }
         const payload = {
           pcmData: clonePcmData(result.pcmData),
           sampleRate: result.sampleRate,
           channels: result.channels,
           totalFrames: result.totalFrames,
-          mixxxWaveformData
+          compactVisualWaveformData
         }
         getWindow()?.webContents.send(successEvent, payload, filePath, requestId)
       } catch (error) {

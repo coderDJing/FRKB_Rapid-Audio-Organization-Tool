@@ -7,16 +7,20 @@ import {
   getRekordboxPreviewWaveformRequestChannel,
   resolveSongExternalWaveformSource
 } from '@renderer/utils/rekordboxExternalSource'
-import { WebAudioPlayer, type MixxxWaveformData, canPlayHtmlAudio } from './webAudioPlayer'
+import { WebAudioPlayer, canPlayHtmlAudio } from './webAudioPlayer'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
 import { resolvePlayerWaveformTraceElapsedMs, sendPlayerWaveformTrace } from './playerWaveformTrace'
 
 type WaveformCacheResponse = {
-  items?: Array<{ filePath: string; data: MixxxWaveformData | null }>
+  items?: Array<{
+    filePath: string
+    data: CompactVisualWaveformData | null
+  }>
 }
 
 type PioneerPreviewWaveformResponse = {
@@ -56,7 +60,7 @@ type DecodePayload = {
   sampleRate: number
   channels: number
   totalFrames: number
-  mixxxWaveformData?: MixxxWaveformData | null
+  compactVisualWaveformData?: CompactVisualWaveformData | null
 }
 
 type DeleteSongsSummary = {
@@ -423,20 +427,20 @@ export function useSongLoader(params: {
     if (runtime.playingData.playingSong?.filePath !== filePath) return false
 
     const item = response?.items?.find((entry) => entry.filePath === filePath)
-    const data = item?.data ?? null
+    const compactVisualWaveformData = item?.data ?? null
     const playerInstance = audioPlayer.value
     if (!playerInstance) return false
-    if (!data) {
+    if (!compactVisualWaveformData) {
       tracePlayerWaveform('loader', 'formal-cache:miss', filePath)
       return false
     }
     cancelRawWaveformStream()
     rawWaveformData.value = null
-    playerInstance.setMixxxWaveformData(data, filePath)
+    playerInstance.setCompactVisualWaveformData(compactVisualWaveformData)
     tracePlayerWaveform('loader', 'formal-cache:hit', filePath, {
-      duration: Number(data.duration || 0),
-      sampleRate: Number(data.sampleRate || 0),
-      step: Number(data.step || 0)
+      duration: Number(compactVisualWaveformData.duration || 0),
+      sampleRate: Number(compactVisualWaveformData.sampleRate || 0),
+      detailRate: Number(compactVisualWaveformData.detailRate || 0)
     })
     return true
   }
@@ -543,7 +547,7 @@ export function useSongLoader(params: {
       hasExternalWaveformSource: Boolean(externalWaveformSource)
     })
     try {
-      playerInstance.setMixxxWaveformData(null, filePath)
+      playerInstance.setCompactVisualWaveformData(null)
       if (useHtmlPlayback) {
         playerInstance.loadFile(filePath)
 
@@ -776,14 +780,14 @@ export function useSongLoader(params: {
         sampleRate: payload?.sampleRate ?? 0,
         channels: payload?.channels ?? 1,
         totalFrames: payload?.totalFrames ?? 0,
-        mixxxWaveformData: payload?.mixxxWaveformData ?? null,
+        compactVisualWaveformData: payload?.compactVisualWaveformData ?? null,
         filePath
       })
       tracePlayerWaveform('loader', 'pcm-decode:ready', filePath, {
         sampleRate: Number(payload?.sampleRate || 0),
         channels: Number(payload?.channels || 0),
         totalFrames: Number(payload?.totalFrames || 0),
-        hasFormalWaveform: Boolean(payload?.mixxxWaveformData)
+        hasFormalWaveform: Boolean(payload?.compactVisualWaveformData)
       })
       startPlaybackWhenReady(playerInstance, filePath, requestNumber)
     } catch (error: unknown) {

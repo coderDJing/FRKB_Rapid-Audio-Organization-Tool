@@ -1,4 +1,7 @@
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
+import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
+
+export type { CompactVisualWaveformData }
 
 export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
 export type MixxxWaveformBandKey = RGBWaveformBandKey | 'all'
@@ -24,7 +27,7 @@ export type PcmLoadPayload = {
   sampleRate: number
   channels: number
   totalFrames: number
-  mixxxWaveformData?: MixxxWaveformData | null
+  compactVisualWaveformData?: CompactVisualWaveformData | null
   filePath?: string | null
 }
 
@@ -42,7 +45,7 @@ export type WebAudioPlayerEvents = {
   timeupdate: number
   decode: number
   error: unknown
-  mixxxwaveformready: undefined
+  waveformready: undefined
 } & Record<string, unknown>
 
 export type ErrorLike = {
@@ -184,4 +187,4 @@ export const normalizePcmData = (pcmData: unknown): Float32Array => {
   return new Float32Array(0)
 }
 
-export type PreviewWaveformData = MixxxWaveformData | IPioneerPreviewWaveformData
+export type PreviewWaveformData = CompactVisualWaveformData | IPioneerPreviewWaveformData

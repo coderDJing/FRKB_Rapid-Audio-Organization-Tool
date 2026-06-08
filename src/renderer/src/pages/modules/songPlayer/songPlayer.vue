@@ -310,7 +310,7 @@ const { ignoreNextEmptyError, requestLoadSong, handleSongLoadError } = useSongLo
 watch(
   () => [
     Boolean(audioPlayer.value?.pioneerPreviewWaveformData),
-    Boolean(audioPlayer.value?.mixxxWaveformData),
+    Boolean(audioPlayer.value?.compactVisualWaveformData),
     rawWaveformData.value?.loadedFrames ?? 0,
     rawWaveformData.value?.frames ?? 0,
     runtime.setting?.waveformStyle
@@ -318,8 +318,8 @@ watch(
   () => {
     const source = audioPlayer.value?.pioneerPreviewWaveformData
       ? 'pioneer-preview'
-      : audioPlayer.value?.mixxxWaveformData
-        ? 'formal-mixxx'
+      : audioPlayer.value?.compactVisualWaveformData
+        ? 'formal-compact'
         : rawWaveformData.value
           ? 'raw-stream'
           : 'none'
