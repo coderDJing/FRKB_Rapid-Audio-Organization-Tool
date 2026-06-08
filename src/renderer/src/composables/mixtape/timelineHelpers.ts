@@ -5,7 +5,6 @@ import {
   GRID_BEAT4_LINE_WIDTH,
   GRID_BEAT_LINE_WIDTH,
   LANE_COUNT,
-  MIXXX_MAX_RGB_ENERGY,
   MIXTAPE_BASE_TRACK_LANE_HEIGHT,
   MIXTAPE_WAVEFORM_HEIGHT_SCALE,
   MIN_TRACK_WIDTH,
@@ -37,7 +36,7 @@ import {
   MIXTAPE_GAIN_KNOB_MIN_DB
 } from '@renderer/composables/mixtape/gainEnvelope'
 import { resolveRawWaveformLevel as resolveRawWaveformLevelByMap } from '@renderer/composables/mixtape/waveformPyramid'
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
 import type {
   MinMaxSample,
   MixtapeMixMode,
@@ -68,6 +67,14 @@ type WaveformCacheEntry = {
   used: number
 }
 
+type TimelineGridLineLevel = 'bar' | 'beat4' | 'beat'
+
+type TimelineGridLineStyle = {
+  haloColor: string
+  coreColor: string
+  haloExtraWidth: number
+}
+
 type TimelineHelpersContext = {
   zoom: ValueRef<number>
   renderZoom: ValueRef<number>
@@ -78,13 +85,13 @@ type TimelineHelpersContext = {
   libraryUtils: {
     findDirPathByUuid: (uuid: string) => string
   }
-  waveformDataMap: Map<string, StemWaveformData | MixxxWaveformData | null>
+  waveformDataMap: Map<string, StemWaveformData | UnifiedDisplayWaveformDetailData | null>
   rawWaveformDataMap: Map<string, RawWaveformData | null>
   waveformInflight: Set<string>
   rawWaveformInflight: Set<string>
   waveformMinMaxCache: Map<
     string,
-    { source: StemWaveformData | MixxxWaveformData; samples: MinMaxSample[] }
+    { source: StemWaveformData | UnifiedDisplayWaveformDetailData; samples: MinMaxSample[] }
   >
   rawWaveformPyramidMap: Map<string, RawWaveformLevel[]>
   timelineLayoutCache: Map<number, TimelineLayoutSnapshot>
@@ -254,7 +261,9 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
 
   const renderPxPerSec = computed(() => resolveRenderPxPerSec(normalizedRenderZoom.value))
 
-  const useRawWaveform = computed(() => normalizedZoom.value >= RAW_WAVEFORM_MIN_ZOOM)
+  const useRawWaveform = computed(
+    () => isStemMixMode() && normalizedZoom.value >= RAW_WAVEFORM_MIN_ZOOM
+  )
 
   const parseDurationToSeconds = (input: string) => {
     if (!input) return 0
@@ -526,6 +535,74 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     return tiles
   }
 
+  const isLightTheme = () => {
+    if (typeof document === 'undefined') return false
+    const htmlEl = document.documentElement
+    const bodyEl = document.body
+    return (
+      Boolean(htmlEl?.classList.contains('theme-light')) ||
+      Boolean(bodyEl?.classList.contains('theme-light'))
+    )
+  }
+
+  const resolveGridLineStyle = (level: TimelineGridLineLevel): TimelineGridLineStyle => {
+    const light = isLightTheme()
+    if (level === 'bar') {
+      return light
+        ? {
+            haloColor: 'rgba(255, 255, 255, 0.72)',
+            coreColor: 'rgba(15, 23, 42, 0.68)',
+            haloExtraWidth: 2.4
+          }
+        : {
+            haloColor: 'rgba(0, 0, 0, 0.62)',
+            coreColor: 'rgba(245, 247, 250, 0.84)',
+            haloExtraWidth: 2.4
+          }
+    }
+    if (level === 'beat4') {
+      return light
+        ? {
+            haloColor: 'rgba(255, 255, 255, 0.5)',
+            coreColor: 'rgba(15, 23, 42, 0.42)',
+            haloExtraWidth: 1.6
+          }
+        : {
+            haloColor: 'rgba(0, 0, 0, 0.44)',
+            coreColor: 'rgba(226, 232, 240, 0.5)',
+            haloExtraWidth: 1.6
+          }
+    }
+    return light
+      ? {
+          haloColor: 'rgba(255, 255, 255, 0.34)',
+          coreColor: 'rgba(15, 23, 42, 0.24)',
+          haloExtraWidth: 1
+        }
+      : {
+          haloColor: 'rgba(0, 0, 0, 0.3)',
+          coreColor: 'rgba(226, 232, 240, 0.28)',
+          haloExtraWidth: 1
+        }
+  }
+
+  const drawNeutralGridLine = (
+    context: CanvasRenderingContext2D,
+    x: number,
+    width: number,
+    height: number,
+    level: TimelineGridLineLevel
+  ) => {
+    const coreWidth = Math.max(1, width)
+    const style = resolveGridLineStyle(level)
+    const haloWidth = Math.max(coreWidth, coreWidth + style.haloExtraWidth)
+    const centerX = x + coreWidth / 2
+    context.fillStyle = style.haloColor
+    context.fillRect(centerX - haloWidth / 2, 0, haloWidth, height)
+    context.fillStyle = style.coreColor
+    context.fillRect(centerX - coreWidth / 2, 0, coreWidth, height)
+  }
+
   const drawTrackGridLines = (
     context: CanvasRenderingContext2D,
     width: number,
@@ -561,27 +638,16 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
         pxPerSec: safeRenderPxPerSec
       })
       if (rawX < startX - 64 || rawX > endX + 64) continue
+      const level: TimelineGridLineLevel =
+        line.level === 'bar' || line.level === 'beat4' ? line.level : 'beat'
       const lineWidth =
-        line.level === 'bar'
+        level === 'bar'
           ? barWidth
-          : line.level === 'beat4'
+          : level === 'beat4'
             ? GRID_BEAT4_LINE_WIDTH
             : GRID_BEAT_LINE_WIDTH
       const x = rawX - startX - lineWidth / 2
-
-      if (line.level === 'bar') {
-        context.globalAlpha = 0.95
-        context.fillStyle = 'rgba(0, 110, 220, 0.98)'
-        context.fillRect(x, 0, lineWidth, height)
-      } else if (line.level === 'beat4') {
-        context.globalAlpha = 0.85
-        context.fillStyle = 'rgba(120, 200, 255, 0.98)'
-        context.fillRect(x, 0, lineWidth, height)
-      } else {
-        context.globalAlpha = 0.8
-        context.fillStyle = 'rgba(180, 225, 255, 0.95)'
-        context.fillRect(x, 0, lineWidth, height)
-      }
+      drawNeutralGridLine(context, x, lineWidth, height, level)
     }
     context.restore()
   }
@@ -709,35 +775,14 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     return samples
   }
 
-  const buildMinMaxDataFromMixxxWaveform = (waveformData: MixxxWaveformData): MinMaxSample[] => {
-    const low = waveformData.bands.low
-    const mid = waveformData.bands.mid
-    const high = waveformData.bands.high
-    const frameCount = Math.min(
-      low.left.length,
-      low.right.length,
-      mid.left.length,
-      mid.right.length,
-      high.left.length,
-      high.right.length
-    )
-    if (!frameCount) return []
-
+  const buildMinMaxDataFromUnifiedWaveform = (
+    waveformData: UnifiedDisplayWaveformDetailData
+  ): MinMaxSample[] => {
+    const frameCount = waveformData.height?.length || 0
     const samples = new Array<MinMaxSample>(frameCount)
     for (let i = 0; i < frameCount; i += 1) {
-      const lowLeft = low.peakLeft ? low.peakLeft[i] : low.left[i]
-      const lowRight = low.peakRight ? low.peakRight[i] : low.right[i]
-      const midLeft = mid.peakLeft ? mid.peakLeft[i] : mid.left[i]
-      const midRight = mid.peakRight ? mid.peakRight[i] : mid.right[i]
-      const highLeft = high.peakLeft ? high.peakLeft[i] : high.left[i]
-      const highRight = high.peakRight ? high.peakRight[i] : high.right[i]
-      const leftEnergy = Math.sqrt(lowLeft * lowLeft + midLeft * midLeft + highLeft * highLeft)
-      const rightEnergy = Math.sqrt(
-        lowRight * lowRight + midRight * midRight + highRight * highRight
-      )
-      const leftAmp = Math.min(1, leftEnergy / MIXXX_MAX_RGB_ENERGY)
-      const rightAmp = Math.min(1, rightEnergy / MIXXX_MAX_RGB_ENERGY)
-      samples[i] = { min: -rightAmp, max: leftAmp }
+      const amp = Math.min(1, Math.max(0, (waveformData.height[i] || 0) / 255))
+      samples[i] = { min: -amp, max: amp }
     }
     return samples
   }
@@ -755,56 +800,46 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     )
   }
 
-  const isValidMixxxWaveformData = (data: unknown): data is MixxxWaveformData => {
+  const isValidUnifiedWaveformData = (data: unknown): data is UnifiedDisplayWaveformDetailData => {
     if (!data || typeof data !== 'object') return false
-    const bands = (data as MixxxWaveformData).bands
-    const low = bands?.low
-    const mid = bands?.mid
-    const high = bands?.high
-    const all = bands?.all
-    if (!low || !mid || !high || !all) return false
-    const frameCount =
-      low.left?.length || low.right?.length || low.peakLeft?.length || low.peakRight?.length || 0
+    const waveformData = data as UnifiedDisplayWaveformDetailData
+    const frameCount = waveformData.height?.length || 0
     if (!frameCount) return false
-    const isMatch = (arr?: Uint8Array) => (arr ? arr.length === frameCount : true)
+    const isMatch = (arr?: Uint8Array) => Boolean(arr && arr.length === frameCount)
     return (
-      isMatch(low.left) &&
-      isMatch(low.right) &&
-      isMatch(low.peakLeft) &&
-      isMatch(low.peakRight) &&
-      isMatch(mid.left) &&
-      isMatch(mid.right) &&
-      isMatch(mid.peakLeft) &&
-      isMatch(mid.peakRight) &&
-      isMatch(high.left) &&
-      isMatch(high.right) &&
-      isMatch(high.peakLeft) &&
-      isMatch(high.peakRight) &&
-      isMatch(all.left) &&
-      isMatch(all.right) &&
-      isMatch(all.peakLeft) &&
-      isMatch(all.peakRight)
+      Number(waveformData.duration) > 0 &&
+      Number(waveformData.sampleRate) > 0 &&
+      Number(waveformData.detailRate) > 0 &&
+      isMatch(waveformData.attack) &&
+      isMatch(waveformData.colorIndex) &&
+      isMatch(waveformData.colorLow) &&
+      isMatch(waveformData.colorMid) &&
+      isMatch(waveformData.colorHigh) &&
+      isMatch(waveformData.colorRed) &&
+      isMatch(waveformData.colorGreen) &&
+      isMatch(waveformData.colorBlue) &&
+      Boolean(waveformData.body?.length)
     )
   }
 
   const isValidWaveformData = (
-    data: StemWaveformData | MixxxWaveformData | null
-  ): data is StemWaveformData | MixxxWaveformData => {
+    data: StemWaveformData | UnifiedDisplayWaveformDetailData | null
+  ): data is StemWaveformData | UnifiedDisplayWaveformDetailData => {
     if (!data) return false
     if (isValidStemWaveformData(data)) return true
-    if (isValidMixxxWaveformData(data)) return true
+    if (isValidUnifiedWaveformData(data)) return true
     return false
   }
 
   const getMinMaxSamples = (
     filePath: string,
-    data: StemWaveformData | MixxxWaveformData
+    data: StemWaveformData | UnifiedDisplayWaveformDetailData
   ): MinMaxSample[] => {
     const cached = waveformMinMaxCache.get(filePath)
     if (cached && cached.source === data) return cached.samples
     const samples = isValidStemWaveformData(data)
       ? buildMinMaxDataFromStemWaveform(data)
-      : buildMinMaxDataFromMixxxWaveform(data)
+      : buildMinMaxDataFromUnifiedWaveform(data)
     waveformMinMaxCache.set(filePath, { source: data, samples })
     return samples
   }

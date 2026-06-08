@@ -53,10 +53,16 @@ const applyCanvasScaleTransform = (
 
 const BAR_BEAT_INTERVAL = 32
 const BEAT4_INTERVAL = 4
-const BAR_GRID_LINE_WIDTH = 1.65
-const MAJOR_GRID_LINE_WIDTH = 1.25
-const MINOR_GRID_LINE_WIDTH = 1.05
+const BAR_GRID_LINE_WIDTH = 2.05
+const MAJOR_GRID_LINE_WIDTH = 1.85
+const MINOR_GRID_LINE_WIDTH = 1.45
 const GRID_LINE_VERTICAL_OVERSCAN = 2
+
+type GridLineStyle = {
+  core: string
+  halo: string
+  haloExtraWidth: number
+}
 
 const normalizeBeatOffset = (value: number, interval: number) => {
   if (!Number.isFinite(value) || interval <= 0) return 0
@@ -67,14 +73,38 @@ const normalizeBeatOffset = (value: number, interval: number) => {
 const resolveGridPalette = (themeVariant: 'light' | 'dark') =>
   themeVariant === 'light'
     ? {
-        barLine: 'rgba(15, 23, 42, 0.88)',
-        majorGrid: 'rgba(15, 23, 42, 0.56)',
-        minorGrid: 'rgba(15, 23, 42, 0.24)'
+        barLine: {
+          core: 'rgba(8, 13, 23, 0.84)',
+          halo: 'rgba(255, 255, 255, 0.56)',
+          haloExtraWidth: 1.25
+        },
+        majorGrid: {
+          core: 'rgba(8, 13, 23, 0.78)',
+          halo: 'rgba(255, 255, 255, 0.52)',
+          haloExtraWidth: 1.15
+        },
+        minorGrid: {
+          core: 'rgba(8, 13, 23, 0.58)',
+          halo: 'rgba(255, 255, 255, 0.38)',
+          haloExtraWidth: 0.85
+        }
       }
     : {
-        barLine: 'rgba(255, 255, 255, 0.86)',
-        majorGrid: 'rgba(255, 255, 255, 0.56)',
-        minorGrid: 'rgba(255, 255, 255, 0.24)'
+        barLine: {
+          core: 'rgba(255, 255, 255, 0.9)',
+          halo: 'rgba(0, 0, 0, 0.36)',
+          haloExtraWidth: 1.25
+        },
+        majorGrid: {
+          core: 'rgba(255, 255, 255, 0.84)',
+          halo: 'rgba(0, 0, 0, 0.4)',
+          haloExtraWidth: 1.15
+        },
+        minorGrid: {
+          core: 'rgba(255, 255, 255, 0.68)',
+          halo: 'rgba(0, 0, 0, 0.32)',
+          haloExtraWidth: 0.85
+        }
       }
 
 const drawBeatGridOverlay = (
@@ -99,7 +129,7 @@ const drawBeatGridOverlay = (
   const rangeEndSec = rangeStartSec + rangeDurationSec
   const startIndex = Math.floor((rangeStartSec - firstBeatSec) / beatSec) - 2
   const endIndex = Math.ceil((rangeEndSec - firstBeatSec) / beatSec) + 2
-  const drawVerticalLine = (x: number, lineWidth: number, color: string) => {
+  const drawVerticalLineLayer = (x: number, lineWidth: number, color: string) => {
     const safeWidth = Math.max(1, lineWidth)
     const halfWidth = safeWidth * 0.5
     if (x < -halfWidth || x > width + halfWidth) return
@@ -113,6 +143,11 @@ const drawBeatGridOverlay = (
       right - left,
       waveformHeight + GRID_LINE_VERTICAL_OVERSCAN * 2
     )
+  }
+
+  const drawVerticalLine = (x: number, lineWidth: number, style: GridLineStyle) => {
+    drawVerticalLineLayer(x, lineWidth + style.haloExtraWidth, style.halo)
+    drawVerticalLineLayer(x, lineWidth, style.core)
   }
 
   for (let i = startIndex; i <= endIndex; i += 1) {

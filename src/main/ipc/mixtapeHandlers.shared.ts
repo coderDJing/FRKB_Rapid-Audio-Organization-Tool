@@ -5,6 +5,7 @@ import { Worker } from 'node:worker_threads'
 import { log } from '../log'
 import { resolveMainWorkerPath } from '../workerPath'
 import {
+  getMixtapeProjectMixMode,
   listMixtapeItems,
   removeMixtapeItemsById,
   updateMixtapeItemFilePathsById,
@@ -13,9 +14,8 @@ import {
 import { upsertMixtapeItemStemStateById, type MixtapeStemStatus } from '../mixtapeStemDb'
 import store from '../store'
 import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
-import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
-import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
+import { queueUnifiedDisplayWaveforms } from '../services/unifiedDisplayWaveformQueue'
 import {
   cleanupMixtapeWaveformCache,
   cleanupOrphanedMixtapeVaultFiles
@@ -663,6 +663,7 @@ export const reconcileMixtapeMissingFiles = async (
 
   const items = listMixtapeItems(playlistId)
   if (!items.length) return { items, recovery: emptyRecovery }
+  const mixMode = getMixtapeProjectMixMode(playlistId)
 
   const updates: Array<{ id: string; filePath: string }> = []
   const stalePaths: string[] = []
@@ -743,9 +744,12 @@ export const reconcileMixtapeMissingFiles = async (
     updateMixtapeItemFilePathsById(updates)
     const resolvedPaths = normalizeUniquePaths(updates.map((item) => item.filePath))
     if (resolvedPaths.length > 0) {
-      queueMixtapeWaveforms(resolvedPaths)
-      queueMixtapeRawWaveforms(resolvedPaths)
-      queueMixtapeWaveformHires(resolvedPaths)
+      if (mixMode === 'eq') {
+        queueUnifiedDisplayWaveforms(resolvedPaths)
+      }
+      if (mixMode === 'stem') {
+        queueMixtapeRawWaveforms(resolvedPaths)
+      }
     }
   }
   if (removeIds.length > 0) {

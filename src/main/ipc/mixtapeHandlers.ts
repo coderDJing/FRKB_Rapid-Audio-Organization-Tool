@@ -32,9 +32,8 @@ import {
 } from '../mixtapeDb'
 import { summarizeMixtapeStemStatusByPlaylist } from '../mixtapeStemDb'
 import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
-import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { queueMixtapeRawWaveforms } from '../services/mixtapeRawWaveformQueue'
-import { queueMixtapeWaveformHires } from '../services/mixtapeWaveformHiresQueue'
+import { queueUnifiedDisplayWaveforms } from '../services/unifiedDisplayWaveformQueue'
 import {
   cleanupMixtapeWaveformCache,
   cleanupOrphanedMixtapeVaultFiles
@@ -678,9 +677,12 @@ export function registerMixtapeHandlers() {
       const result = appendMixtapeItems(playlistId, normalizedItems)
       const filePaths = Array.from(filePathSet)
       if (filePaths.length > 0) {
-        queueMixtapeWaveforms(filePaths)
-        queueMixtapeRawWaveforms(filePaths)
-        queueMixtapeWaveformHires(filePaths)
+        if (targetPlaylistMixMode === 'eq') {
+          queueUnifiedDisplayWaveforms(filePaths)
+        }
+        if (targetPlaylistMixMode === 'stem') {
+          queueMixtapeRawWaveforms(filePaths)
+        }
         const stemEnqueueFilePaths = Array.from(stemEnqueueFilePathSet)
         if (stemEnqueueFilePaths.length > 0) {
           void enqueueMixtapeStemJobs({

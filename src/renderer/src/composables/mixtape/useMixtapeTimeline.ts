@@ -33,9 +33,10 @@ import type {
   TimelineRenderPayload,
   WaveformPreRenderTask
 } from '@renderer/composables/mixtape/types'
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
 import { buildRawWaveformPyramid } from '@renderer/composables/mixtape/waveformPyramid'
-import { drawMixxxRgbWaveform, drawStemWaveform } from '@renderer/composables/mixtape/waveformDraw'
+import { drawStemWaveform } from '@renderer/composables/mixtape/waveformDraw'
+import { drawUnifiedTimelineWaveform } from '@renderer/composables/mixtape/timelineUnifiedWaveform'
 import { createTimelineRenderAndLoadModule } from '@renderer/composables/mixtape/timelineRenderAndLoad'
 import { createTimelineInteractionsModule } from '@renderer/composables/mixtape/timelineInteractions'
 import { createTimelineHelpersModule } from '@renderer/composables/mixtape/timelineHelpers'
@@ -115,9 +116,14 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     canvas: null as HTMLCanvasElement | null,
     ctx: null as CanvasRenderingContext2D | null
   }
-  const waveformDataMap = markRaw(new Map<string, StemWaveformData | MixxxWaveformData | null>())
+  const waveformDataMap = markRaw(
+    new Map<string, StemWaveformData | UnifiedDisplayWaveformDetailData | null>()
+  )
   const waveformMinMaxCache = markRaw(
-    new Map<string, { source: StemWaveformData | MixxxWaveformData; samples: MinMaxSample[] }>()
+    new Map<
+      string,
+      { source: StemWaveformData | UnifiedDisplayWaveformDetailData; samples: MinMaxSample[] }
+    >()
   )
   const timelineLayoutCache = markRaw(new Map<number, TimelineLayoutSnapshot>())
   const timelineLayoutVersion = ref(0)
@@ -339,7 +345,12 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
           const raw = rawWaveformDataMap.get(filePath)
           const isSummary = renderZoomValue <= MIXTAPE_SUMMARY_ZOOM + 0.0001
           if (!data && !raw && !isSummary) continue
-          if (renderZoomValue >= RAW_WAVEFORM_MIN_ZOOM && !raw && !isSummary) {
+          if (
+            useRawWaveform.value &&
+            renderZoomValue >= RAW_WAVEFORM_MIN_ZOOM &&
+            !raw &&
+            !isSummary
+          ) {
             continue
           }
           const subLane = resolveWaveformSubLaneMetrics(
@@ -479,7 +490,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
           const raw = rawWaveformDataMap.get(filePath)
           const isSummary = level <= MIXTAPE_SUMMARY_ZOOM + 0.0001
           if (!data && !raw && !isSummary) continue
-          if (level >= RAW_WAVEFORM_MIN_ZOOM && !raw && !isSummary) {
+          if (useRawWaveform.value && level >= RAW_WAVEFORM_MIN_ZOOM && !raw && !isSummary) {
             continue
           }
           const subLane = resolveWaveformSubLaneMetrics(
@@ -854,7 +865,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     WAVEFORM_BATCH_SIZE,
     RAW_WAVEFORM_BATCH_SIZE,
     MIXTAPE_WAVEFORM_SUPERSAMPLE,
-    drawMixxxRgbWaveform,
+    drawUnifiedTimelineWaveform,
     drawStemWaveform,
     useRawWaveform,
     waveformVersion,

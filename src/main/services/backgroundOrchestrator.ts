@@ -1,10 +1,7 @@
 import { log } from '../log'
 import { getBackgroundIdleSnapshot } from './backgroundIdleGate'
 
-export type BackgroundTaskCategory =
-  | 'key-analysis'
-  | 'mixtape-stem-resume'
-  | 'mixtape-waveform-hires'
+export type BackgroundTaskCategory = 'key-analysis' | 'mixtape-stem-resume'
 
 type BackgroundTaskRequest = {
   category: BackgroundTaskCategory
@@ -21,7 +18,6 @@ type BackgroundTaskRunningState = {
 
 const CATEGORY_PRIORITY: Record<BackgroundTaskCategory, number> = {
   'mixtape-stem-resume': 400,
-  'mixtape-waveform-hires': 350,
   'key-analysis': 300
 }
 

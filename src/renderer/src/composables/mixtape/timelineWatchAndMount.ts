@@ -1,6 +1,5 @@
 import { nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import { LANE_COUNT, normalizeMixtapeLaneIndex } from '@renderer/composables/mixtape/constants'
 import type {
   MixtapeMixMode,
@@ -9,6 +8,7 @@ import type {
   RawWaveformData,
   StemWaveformData
 } from '@renderer/composables/mixtape/types'
+import type { TimelineWaveformData } from '@renderer/composables/mixtape/timelineRenderAndLoadTypes'
 
 type ValueRef<T> = {
   value: T
@@ -40,7 +40,7 @@ type TimelineWatchAndMountContext = {
   handleWaveformWorkerMessage: (event: MessageEvent) => void
   pushStemWaveformToWorker: (filePath: string, data: StemWaveformData | null) => void
   pushRawWaveformToWorker: (filePath: string, data: RawWaveformData | null) => void
-  waveformDataMap: Map<string, StemWaveformData | MixxxWaveformData | null>
+  waveformDataMap: Map<string, TimelineWaveformData | null>
   rawWaveformDataMap: Map<string, RawWaveformData | null>
   timelineScrollRef: ValueRef<TimelineScrollHost>
   setTimelineWheelTarget: (target: HTMLElement | null) => void
@@ -274,6 +274,7 @@ export const createTimelineWatchAndMountModule = (ctx: TimelineWatchAndMountCont
     }
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
       window.electron.ipcRenderer.on('mixtape-waveform-updated', handleWaveformUpdated)
+      window.electron.ipcRenderer.on('song-waveform-updated', handleWaveformUpdated)
     }
   })
 

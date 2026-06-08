@@ -1,6 +1,7 @@
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { MIXTAPE_WAVEFORM_HEIGHT_SCALE } from '@renderer/composables/mixtape/constants'
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
+import { normalizeUnifiedDisplayWaveformData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
 import type {
   MinMaxSample,
   MixtapeMixMode,
@@ -83,13 +84,8 @@ type TimelineRenderAndLoadContext = {
     laneCount: number
   ) => { offset: number; height: number }
   useHalfWaveform: () => boolean
-  isValidWaveformData: (
-    data: StemWaveformData | MixxxWaveformData | null
-  ) => data is StemWaveformData | MixxxWaveformData
-  waveformMinMaxCache: Map<
-    string,
-    { source: StemWaveformData | MixxxWaveformData; samples: MinMaxSample[] }
-  >
+  isValidWaveformData: (data: TimelineWaveformData | null) => data is TimelineWaveformData
+  waveformMinMaxCache: Map<string, { source: TimelineWaveformData; samples: MinMaxSample[] }>
   waveformScratch: {
     canvas: HTMLCanvasElement | null
     ctx: CanvasRenderingContext2D | null
@@ -118,7 +114,7 @@ type TimelineRenderAndLoadContext = {
   resolveTrackWaveformFilePaths: (track: MixtapeTrack) => string[]
   resolveWaveformListRoot: (track: MixtapeTrack) => string
   tracks: ValueRef<MixtapeTrack[]>
-  waveformDataMap: Map<string, StemWaveformData | MixxxWaveformData | null>
+  waveformDataMap: Map<string, TimelineWaveformData | null>
   rawWaveformDataMap: Map<string, RawWaveformData | null>
   waveformInflight: Set<string>
   waveformQueuedMissing: Set<string>
@@ -161,7 +157,15 @@ type TimelineRenderAndLoadContext = {
   MIXTAPE_WAVEFORM_SUPERSAMPLE: number
   scheduleFullPreRender: () => void
   scheduleWorkerPreRender: () => void
-  drawMixxxRgbWaveform: (...args: unknown[]) => void
+  drawUnifiedTimelineWaveform: (params: {
+    ctx: CanvasRenderingContext2D
+    width: number
+    height: number
+    data: UnifiedDisplayWaveformDetailData
+    startTime: number
+    endTime: number
+    isHalf: boolean
+  }) => boolean
   drawStemWaveform: (...args: unknown[]) => void
   useRawWaveform: ValueRef<boolean>
 }
@@ -235,7 +239,7 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
     WAVEFORM_BATCH_SIZE,
     RAW_WAVEFORM_BATCH_SIZE,
     MIXTAPE_WAVEFORM_SUPERSAMPLE,
-    drawMixxxRgbWaveform,
+    drawUnifiedTimelineWaveform,
     drawStemWaveform,
     useRawWaveform,
     waveformVersion
@@ -245,8 +249,10 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
   const ENABLE_STEM_PREVIEW_WAVEFORM = true
   const isStemWaveformData = (value: unknown): value is StemWaveformData =>
     Boolean(value && typeof value === 'object' && (value as StemWaveformData).all)
-  const isMixxxWaveformData = (value: unknown): value is MixxxWaveformData =>
-    Boolean(value && typeof value === 'object' && (value as MixxxWaveformData).bands)
+  const isUnifiedWaveformData = (value: unknown): value is UnifiedDisplayWaveformDetailData =>
+    Boolean(
+      value && typeof value === 'object' && (value as UnifiedDisplayWaveformDetailData).height
+    )
 
   const resolveTrackContentTop = () => {
     const root = timelineViewport?.value || null
@@ -468,21 +474,8 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
       const all = data.all
       return Math.min(all.left.length, all.right.length)
     }
-    if (!stemMode && isMixxxWaveformData(data)) {
-      const low = data.bands.low
-      const mid = data.bands.mid
-      const high = data.bands.high
-      const all = data.bands.all
-      return Math.min(
-        low.left.length,
-        low.right.length,
-        mid.left.length,
-        mid.right.length,
-        high.left.length,
-        high.right.length,
-        all.left.length,
-        all.right.length
-      )
+    if (!stemMode && isUnifiedWaveformData(data)) {
+      return data.height.length
     }
     return 0
   }
@@ -509,7 +502,9 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
         ? clampZoomValue(options.renderZoomValue)
         : normalizedRenderZoom.value
     const rawData =
-      zoomValue >= RAW_WAVEFORM_MIN_ZOOM ? rawWaveformDataMap.get(waveformFilePath) || null : null
+      useRawWaveform.value && zoomValue >= RAW_WAVEFORM_MIN_ZOOM
+        ? rawWaveformDataMap.get(waveformFilePath) || null
+        : null
     const frameCount = resolveWaveformFrameCount(data, isStemMixMode())
     const tempoSnapshot = serializeTrackRuntimeTempoSnapshot(
       buildTrackRuntimeTempoSnapshot({
@@ -590,7 +585,7 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
 
     const stemMode = isStemMixMode()
     const stemData = stemMode && isStemWaveformData(data) ? data : null
-    const mixxxData = !stemMode && isMixxxWaveformData(data) ? data : null
+    const unifiedData = !stemMode && isUnifiedWaveformData(data) ? data : null
     const baseDurationSeconds = Math.max(
       0,
       Number(render.tempoSnapshot.baseDurationSec || render.durationSeconds) || 0
@@ -669,19 +664,8 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
         })
         return
       }
-      const frameCount = mixxxData
-        ? Math.min(
-            mixxxData.bands.low.left.length,
-            mixxxData.bands.low.right.length,
-            mixxxData.bands.mid.left.length,
-            mixxxData.bands.mid.right.length,
-            mixxxData.bands.high.left.length,
-            mixxxData.bands.high.right.length,
-            mixxxData.bands.all.left.length,
-            mixxxData.bands.all.right.length
-          )
-        : 0
-      if (!mixxxData || frameCount <= 0) {
+      const frameCount = unifiedData?.height?.length || 0
+      if (!unifiedData || frameCount <= 0) {
         targetCtx.strokeStyle = 'rgba(128, 128, 128, 0.3)'
         targetCtx.setLineDash([4, 4])
         const midY = height / 2
@@ -692,20 +676,14 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
         targetCtx.setLineDash([])
         return
       }
-      const startFrame =
-        baseDurationSeconds > 0
-          ? Math.floor((section.baseStartSec / Math.max(0.0001, baseDurationSeconds)) * frameCount)
-          : 0
-      const endFrame =
-        baseDurationSeconds > 0
-          ? Math.ceil((section.baseEndSec / Math.max(0.0001, baseDurationSeconds)) * frameCount)
-          : frameCount
-      drawMixxxRgbWaveform(targetCtx, targetWidth, height, mixxxData, useHalfWaveform(), {
-        startFrame,
-        endFrame,
+      drawUnifiedTimelineWaveform({
+        ctx: targetCtx,
+        width: targetWidth,
+        height,
+        data: unifiedData,
         startTime,
         endTime,
-        raw: resolvedRaw
+        isHalf: useHalfWaveform()
       })
     }
 
@@ -852,49 +830,6 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
     }
   }
 
-  const decodeMixxxBand = (value: unknown) => {
-    if (!value || typeof value !== 'object') return null
-    const source = value as Record<string, unknown>
-    const left = decodeUint8Array(source.left)
-    const right = decodeUint8Array(source.right)
-    const peakLeft = decodeUint8Array(source.peakLeft) || left
-    const peakRight = decodeUint8Array(source.peakRight) || right
-    if (!left || !right || !peakLeft || !peakRight) return null
-    const frameCount = Math.min(left.length, right.length, peakLeft.length, peakRight.length)
-    if (!frameCount) return null
-    return {
-      left: left.subarray(0, frameCount),
-      right: right.subarray(0, frameCount),
-      peakLeft: peakLeft.subarray(0, frameCount),
-      peakRight: peakRight.subarray(0, frameCount)
-    }
-  }
-
-  const decodeMixxxWaveformData = (payload: unknown): MixxxWaveformData | null => {
-    if (!payload || typeof payload !== 'object') return null
-    const source = payload as Record<string, unknown>
-    const bands =
-      source.bands && typeof source.bands === 'object'
-        ? (source.bands as Record<string, unknown>)
-        : source
-    const low = decodeMixxxBand(bands?.low)
-    const mid = decodeMixxxBand(bands?.mid)
-    const high = decodeMixxxBand(bands?.high)
-    const all = decodeMixxxBand(bands?.all)
-    if (!low || !mid || !high || !all) return null
-    return {
-      duration: Number(source.duration) || 0,
-      sampleRate: Number(source.sampleRate) || 0,
-      step: Number(source.step) || 0,
-      bands: {
-        low,
-        mid,
-        high,
-        all
-      }
-    }
-  }
-
   const storeWaveformData = (filePath: string, data: TimelineWaveformData | null) => {
     if (!filePath) return
     const normalized = isValidWaveformData(data) ? data : null
@@ -918,12 +853,13 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
 
   const fetchWaveformBatch = async (filePaths: string[], listRoot?: string) => {
     if (!filePaths.length) return
+    if (isStemMixMode()) return
     for (const filePath of filePaths) {
       waveformInflight.add(filePath)
     }
     let response: { items?: Array<{ filePath: string; data: unknown }> } | null = null
     try {
-      response = await window.electron.ipcRenderer.invoke('mixtape-waveform-cache:batch', {
+      response = await window.electron.ipcRenderer.invoke('unified-display-waveform-cache:batch', {
         filePaths,
         listRoot
       })
@@ -938,12 +874,8 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
       return
     }
 
-    const stemModeAtRequest = isStemMixMode()
-    const decodeWaveformData = stemModeAtRequest
-      ? (payload: unknown) => decodeStemWaveformData(payload)
-      : (payload: unknown) => decodeMixxxWaveformData(payload)
     const itemMap = new Map(
-      items.map((item) => [item.filePath, decodeWaveformData(item.data) ?? null])
+      items.map((item) => [item.filePath, normalizeUnifiedDisplayWaveformData(item.data) ?? null])
     )
     const missing: string[] = []
     for (const filePath of filePaths) {
@@ -963,9 +895,10 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
         for (const filePath of toQueue) {
           waveformQueuedMissing.add(filePath)
         }
-        window.electron.ipcRenderer.send('mixtape-waveform:queue-visible', {
+        window.electron.ipcRenderer.send('key-analysis:queue-visible', {
           filePaths: toQueue,
-          listRoot
+          waveformOnly: true,
+          scope: 'waveform-preview'
         })
       }
     }

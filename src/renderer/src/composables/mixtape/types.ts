@@ -1,4 +1,4 @@
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 
 export type StemWaveformBand = {
@@ -217,7 +217,7 @@ export type WaveformRenderContext = {
   sourceDurationSeconds: number
   durationSeconds: number
   tempoSnapshot: SerializedTrackTempoSnapshot
-  data: StemWaveformData | MixxxWaveformData | null
+  data: StemWaveformData | UnifiedDisplayWaveformDetailData | null
   frameCount: number
   rawData: RawWaveformData | null
   renderZoom: number

@@ -62,13 +62,6 @@ export {
 } from './libraryCacheDb/mixtapeRawWaveformCache'
 
 export {
-  loadMixtapeWaveformHiresCacheData,
-  upsertMixtapeWaveformHiresCacheEntry,
-  removeMixtapeWaveformHiresCacheEntry,
-  clearMixtapeWaveformHiresCache
-} from './libraryCacheDb/mixtapeWaveformHiresCache'
-
-export {
   loadMixtapeStemWaveformCacheData,
   upsertMixtapeStemWaveformCacheEntry,
   removeMixtapeStemWaveformCacheEntry,

@@ -1,4 +1,4 @@
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
 import type { StemWaveformData } from '@renderer/composables/mixtape/types'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 
@@ -16,4 +16,4 @@ export type StemWaveformBatchRequestItem = {
   }
 }
 
-export type TimelineWaveformData = StemWaveformData | MixxxWaveformData
+export type TimelineWaveformData = StemWaveformData | UnifiedDisplayWaveformDetailData

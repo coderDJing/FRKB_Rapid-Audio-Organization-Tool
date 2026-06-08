@@ -6,7 +6,7 @@ import type {
   StemWaveformData,
   TimelineTrackLayout
 } from '@renderer/composables/mixtape/types'
-import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { TimelineWaveformData } from '@renderer/composables/mixtape/timelineRenderAndLoadTypes'
 
 type RawWaveformBatchTarget = {
   filePath: string
@@ -16,8 +16,6 @@ type RawWaveformBatchTarget = {
 type ValueRef<T> = {
   value: T
 }
-
-type TimelineWaveformData = StemWaveformData | MixxxWaveformData
 
 type StemWaveformBundleRequestItem = {
   listRoot?: string

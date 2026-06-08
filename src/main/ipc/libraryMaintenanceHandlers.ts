@@ -61,7 +61,6 @@ const DIRTY_DATA_SQL_TABLES = [
   'library_stem_assets',
   'mixtape_waveform_cache',
   'mixtape_raw_waveform_cache',
-  'mixtape_waveform_hires_cache',
   'mixtape_stem_waveform_cache'
 ] as const
 

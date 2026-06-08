@@ -202,6 +202,7 @@ export const setupTimelineVisualScaleLifecycle = (ctx: TimelineVisualScaleLifecy
           'mixtape-waveform-updated',
           handleWaveformUpdated
         )
+        window.electron.ipcRenderer.removeListener('song-waveform-updated', handleWaveformUpdated)
       }
     } catch {}
     if (waveformLoadTimerRef.value) {

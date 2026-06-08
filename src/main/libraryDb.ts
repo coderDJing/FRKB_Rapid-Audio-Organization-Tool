@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 31
+const SCHEMA_VERSION = 32
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
@@ -200,21 +200,6 @@ function createDatabase(dbPath: string): SqliteDatabase {
   }
   if (userVersion < 10) {
     instance.exec(`
-      CREATE TABLE IF NOT EXISTS mixtape_waveform_hires_cache (
-        list_root TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        target_rate INTEGER NOT NULL,
-        size INTEGER NOT NULL,
-        mtime_ms INTEGER NOT NULL,
-        version INTEGER NOT NULL,
-        sample_rate INTEGER NOT NULL,
-        step REAL NOT NULL,
-        duration REAL NOT NULL,
-        frames INTEGER NOT NULL,
-        data BLOB NOT NULL,
-        PRIMARY KEY (list_root, file_path, target_rate)
-      );
-      CREATE INDEX IF NOT EXISTS idx_mixtape_waveform_hires_cache_root ON mixtape_waveform_hires_cache(list_root);
       DROP TABLE IF EXISTS mixtape_transcode_cache;
     `)
   }
@@ -785,6 +770,11 @@ function createDatabase(dbPath: string): SqliteDatabase {
     instance.exec(`
       DELETE FROM waveform_cache;
       DELETE FROM compact_visual_waveform_cache;
+    `)
+  }
+  if (userVersion < 32) {
+    instance.exec(`
+      DROP TABLE IF EXISTS mixtape_waveform_hires_cache;
     `)
   }
   if (userVersion < SCHEMA_VERSION) {

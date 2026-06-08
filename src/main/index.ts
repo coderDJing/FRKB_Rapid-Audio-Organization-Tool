@@ -81,10 +81,6 @@ import {
 import { songGridEvents } from './services/songGridEvents'
 import { songHotCueEvents } from './services/songHotCueEvents'
 import { songMemoryCueEvents } from './services/songMemoryCueEvents'
-import {
-  isMixtapeWaveformHiresQueueBusy,
-  startMixtapeWaveformHiresBackground
-} from './services/mixtapeWaveformHiresQueue'
 import { analysisRuntimeDownloadEvents } from './services/analysisRuntimeDownload'
 import { startMixtapeStemBackgroundResume } from './services/mixtapeStemBackgroundResume'
 import { isMixtapeStemQueueBusy } from './services/mixtapeStemQueue'
@@ -429,11 +425,7 @@ registerBackgroundForegroundBusyProvider('key-analysis-foreground', () =>
 )
 registerBackgroundForegroundBusyProvider(
   'mixtape-prewarm',
-  () =>
-    isMixtapeStemQueueBusy() ||
-    isMixtapeWaveformQueueBusy() ||
-    isMixtapeRawWaveformQueueBusy() ||
-    isMixtapeWaveformHiresQueueBusy()
+  () => isMixtapeStemQueueBusy() || isMixtapeWaveformQueueBusy() || isMixtapeRawWaveformQueueBusy()
 )
 
 if (is.dev && platform === 'win32' && devDatabase) {
@@ -571,7 +563,6 @@ app.whenReady().then(async () => {
   attachExternalOpenRendererLifecycle()
   startBackgroundOrchestrator()
   startKeyAnalysisBackground()
-  startMixtapeWaveformHiresBackground()
   startMixtapeStemBackgroundResume()
   void globalSongSearchEngine.warmup().catch(() => {})
   LibraryCacheDb.scheduleCacheKeyMigration()

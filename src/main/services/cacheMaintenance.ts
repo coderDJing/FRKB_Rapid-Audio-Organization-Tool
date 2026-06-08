@@ -321,7 +321,6 @@ export async function clearTrackCache(filePath: string) {
       await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(cacheRoot, filePath)
-      await LibraryCacheDb.removeMixtapeWaveformHiresCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeStemWaveformCacheByFilePath(cacheRoot, filePath)
     }
 
@@ -357,7 +356,6 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
   unifiedDisplayWaveformCacheRemoved: number
   mixtapeWaveformCacheRemoved: number
   mixtapeRawWaveformCacheRemoved: number
-  mixtapeWaveformHiresCacheRemoved: number
   mixtapeStemWaveformCacheRemoved: number
 }> {
   try {
@@ -371,7 +369,6 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
         unifiedDisplayWaveformCacheRemoved: 0,
         mixtapeWaveformCacheRemoved: 0,
         mixtapeRawWaveformCacheRemoved: 0,
-        mixtapeWaveformHiresCacheRemoved: 0,
         mixtapeStemWaveformCacheRemoved: 0
       }
     }
@@ -403,7 +400,6 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
       unifiedDisplayWaveformCacheRemoved: 0,
       mixtapeWaveformCacheRemoved: 0,
       mixtapeRawWaveformCacheRemoved: 0,
-      mixtapeWaveformHiresCacheRemoved: 0,
       mixtapeStemWaveformCacheRemoved: 0
     }
   }

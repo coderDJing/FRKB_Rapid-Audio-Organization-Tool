@@ -55,12 +55,6 @@ export const WAVEFORM_TILE_WIDTH = 1200
 export const RENDER_X_BUFFER_PX = WAVEFORM_TILE_WIDTH
 export const WAVEFORM_BATCH_SIZE = 6
 export const RAW_WAVEFORM_BATCH_SIZE = 3
-export const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
-export const MIXXX_RGB_COMPONENTS = {
-  low: { r: 1, g: 0, b: 0 },
-  mid: { r: 0, g: 1, b: 0 },
-  high: { r: 0, g: 0, b: 1 }
-}
 
 export const resolveTimelineGridBarWidth = (zoomValue: number) => {
   const safeZoom = Number.isFinite(zoomValue) ? zoomValue : 1

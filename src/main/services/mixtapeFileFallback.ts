@@ -30,7 +30,7 @@ const pathExists = async (filePath: string): Promise<boolean> => {
 
 export const resolveMixtapeFilePathWithFallback = async (
   filePath: string,
-  _context: 'waveform' | 'raw-waveform' | 'hires-waveform'
+  _context: 'waveform' | 'raw-waveform'
 ): Promise<MixtapeFallbackResult | null> => {
   const normalized = typeof filePath === 'string' ? filePath.trim() : ''
   if (!normalized) return null
