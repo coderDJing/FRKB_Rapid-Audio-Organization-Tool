@@ -4,9 +4,7 @@ import type { HorizontalBrowseDetailLiveCanvasRenderRequest } from './horizontal
 type RenderMissFrameState = {
   width: number
   height: number
-  bpm: number
   firstBeatMs: number
-  barBeatOffset: number
   timeBasisOffsetMs: number
   rangeStartSec: number
   rangeDurationSec: number
@@ -14,7 +12,6 @@ type RenderMissFrameState = {
   showDetailHighlights: boolean
   showCenterLine: boolean
   showBackground: boolean
-  showBeatGrid: boolean
   waveformLayout: 'full' | 'top-half' | 'bottom-half'
   waveformRenderStyle: 'columns' | 'raw-curve'
   preferRawPeaksOnly: boolean
@@ -35,16 +32,13 @@ export const canPreserveHorizontalBrowseWaveformAfterRenderMiss = (
   return (
     previousFrame.width === state.width &&
     previousFrame.height === state.height &&
-    previousFrame.bpm === state.bpm &&
     (request.phaseAwareScrollReuse === true || previousFrame.firstBeatMs === state.firstBeatMs) &&
-    previousFrame.barBeatOffset === state.barBeatOffset &&
     previousFrame.timeBasisOffsetMs === state.timeBasisOffsetMs &&
     previousFrame.rangeDurationSec === state.rangeDurationSec &&
     previousFrame.rawData === state.rawData &&
     previousFrame.showDetailHighlights === state.showDetailHighlights &&
     previousFrame.showCenterLine === state.showCenterLine &&
     previousFrame.showBackground === state.showBackground &&
-    previousFrame.showBeatGrid === state.showBeatGrid &&
     previousFrame.waveformLayout === state.waveformLayout &&
     previousFrame.waveformRenderStyle === state.waveformRenderStyle &&
     previousFrame.preferRawPeaksOnly === state.preferRawPeaksOnly &&
@@ -67,16 +61,13 @@ export const canPreservePlaybackFrameOnMissingRaw = (
   return (
     previousFrame.width === state.width &&
     previousFrame.height === state.height &&
-    previousFrame.bpm === state.bpm &&
     previousFrame.firstBeatMs === state.firstBeatMs &&
-    previousFrame.barBeatOffset === state.barBeatOffset &&
     previousFrame.timeBasisOffsetMs === state.timeBasisOffsetMs &&
     previousFrame.rangeDurationSec === state.rangeDurationSec &&
     Math.abs(previousFrame.rangeStartSec - state.rangeStartSec) <= maxRangeDeltaSec &&
     previousFrame.showDetailHighlights === state.showDetailHighlights &&
     previousFrame.showCenterLine === state.showCenterLine &&
     previousFrame.showBackground === state.showBackground &&
-    previousFrame.showBeatGrid === state.showBeatGrid &&
     previousFrame.waveformLayout === state.waveformLayout &&
     previousFrame.waveformRenderStyle === state.waveformRenderStyle &&
     previousFrame.preferRawPeaksOnly === state.preferRawPeaksOnly &&

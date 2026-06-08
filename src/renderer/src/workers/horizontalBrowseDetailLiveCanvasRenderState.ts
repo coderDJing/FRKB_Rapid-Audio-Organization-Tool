@@ -15,9 +15,7 @@ export type CanvasMetrics = {
 export type FrameState = {
   width: number
   height: number
-  bpm: number
   firstBeatMs: number
-  barBeatOffset: number
   timeBasisOffsetMs: number
   rangeStartSec: number
   rangeDurationSec: number
@@ -27,7 +25,6 @@ export type FrameState = {
   showDetailHighlights: boolean
   showCenterLine: boolean
   showBackground: boolean
-  showBeatGrid: boolean
   waveformLayout: 'full' | 'top-half' | 'bottom-half'
   waveformRenderStyle: 'columns' | 'raw-curve'
   preferRawPeaksOnly: boolean

@@ -1,5 +1,5 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRenderer'
+import { drawRgbWaveform } from '@renderer/components/rgbWaveformRenderer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
 import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
@@ -102,12 +102,9 @@ export const rebuildBeatAlignOverviewCache = (
       waveformLayout: 'full'
     })
   } else {
-    drawBeatGridWaveform(cacheCtx, {
+    drawRgbWaveform(cacheCtx, {
       width: Math.max(1, Math.floor(contentWidth)),
       height: drawHeight,
-      bpm: 0,
-      firstBeatMs: 0,
-      barBeatOffset: 0,
       timeBasisOffsetMs,
       rangeStartSec: 0,
       rangeDurationSec: Math.max(0.0001, duration),

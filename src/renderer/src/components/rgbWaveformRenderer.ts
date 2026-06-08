@@ -18,9 +18,6 @@ import { drawRawCurveWaveform } from '@renderer/components/beatGridRawCurveWavef
 type DrawWaveformOptions = {
   width: number
   height: number
-  bpm: number
-  firstBeatMs: number
-  barBeatOffset?: number
   timeBasisOffsetMs?: number
   rangeStartSec: number
   rangeDurationSec: number
@@ -30,7 +27,6 @@ type DrawWaveformOptions = {
   maxSamplesPerPixel?: number
   showDetailHighlights?: boolean
   showCenterLine?: boolean
-  showBeatGrid?: boolean
   waveformLayout?: 'full' | 'top-half' | 'bottom-half'
   waveformRenderStyle?: WaveformRenderStyle
   themeVariant?: 'light' | 'dark'
@@ -54,12 +50,6 @@ type WaveformLayout = 'full' | 'top-half' | 'bottom-half'
 
 const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
 const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
-const BAR_BEAT_INTERVAL = 32
-const BEAT4_INTERVAL = 4
-const BAR_GRID_LINE_WIDTH = 2.4
-const MAJOR_GRID_LINE_WIDTH = 1.5
-const MINOR_GRID_LINE_WIDTH = 1.15
-const GRID_LINE_VERTICAL_OVERSCAN = 2
 const HALF_WAVEFORM_AMPLITUDE_RATIO = 0.8
 const REKORDBOX_RGB_DETAIL_RATE = 150
 const COLUMN_DECAY_SMOOTH_PREV2_WEIGHT = 0.04
@@ -76,37 +66,28 @@ const MIXXX_RGB_COMPONENTS = {
   high: { r: 0, g: 0, b: 1 }
 }
 
-type BeatAlignWaveformPalette = {
+type WaveformPalette = {
   backgroundStart: string
   backgroundEnd: string
   backgroundStripe: string
-  barLine: string
-  majorGrid: string
-  minorGrid: string
   detailHighlightBase: string
   centerLine: string
 }
 
-type BeatAlignCanvasContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+type WaveformCanvasContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
-const DARK_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
+const DARK_WAVEFORM_PALETTE: WaveformPalette = {
   backgroundStart: '#151515',
   backgroundEnd: '#1c1c1c',
   backgroundStripe: 'rgba(255, 255, 255, 0.03)',
-  barLine: '#8fd6ff',
-  majorGrid: '#ffdf94',
-  minorGrid: '#ffffff',
   detailHighlightBase: '255, 255, 255',
   centerLine: 'rgba(210, 236, 255, 0.28)'
 }
 
-const LIGHT_WAVEFORM_PALETTE: BeatAlignWaveformPalette = {
+const LIGHT_WAVEFORM_PALETTE: WaveformPalette = {
   backgroundStart: '#d9dee6',
   backgroundEnd: '#cfd6df',
   backgroundStripe: 'rgba(15, 23, 42, 0.03)',
-  barLine: '#003f96',
-  majorGrid: '#7c4300',
-  minorGrid: '#202b3a',
   detailHighlightBase: '15, 23, 42',
   centerLine: 'rgba(43, 102, 217, 0.18)'
 }
@@ -130,17 +111,10 @@ const isColumnAttack = (column: WaveformColumn | null, previousColumn: WaveformC
   return rise >= Math.max(COLUMN_ATTACK_MIN_RISE, previousEnergy * COLUMN_ATTACK_RELATIVE_RISE)
 }
 
-const normalizeBeatOffset = (value: number, interval: number) => {
-  const safeInterval = Math.max(1, Math.floor(Number(interval) || 1))
-  const numeric = Number(value)
-  const rounded = Number.isFinite(numeric) ? Math.round(numeric) : 0
-  return ((rounded % safeInterval) + safeInterval) % safeInterval
-}
-
 const resolveWaveformPalette = (
-  ctx: BeatAlignCanvasContext,
+  ctx: WaveformCanvasContext,
   themeVariant?: 'light' | 'dark'
-): BeatAlignWaveformPalette => {
+): WaveformPalette => {
   if (themeVariant === 'light') return LIGHT_WAVEFORM_PALETTE
   if (themeVariant === 'dark') return DARK_WAVEFORM_PALETTE
   const canvas = ctx.canvas as HTMLCanvasElement | OffscreenCanvas | undefined
@@ -153,10 +127,10 @@ const resolveWaveformPalette = (
 }
 
 const drawBackground = (
-  ctx: BeatAlignCanvasContext,
+  ctx: WaveformCanvasContext,
   width: number,
   height: number,
-  palette: BeatAlignWaveformPalette
+  palette: WaveformPalette
 ) => {
   const gradient = ctx.createLinearGradient(0, 0, 0, height)
   gradient.addColorStop(0, palette.backgroundStart)
@@ -167,67 +141,6 @@ const drawBackground = (
   ctx.fillStyle = palette.backgroundStripe
   for (let y = 0; y < height; y += 4) {
     ctx.fillRect(0, y, width, 1)
-  }
-}
-
-const drawBeatGrid = (
-  ctx: BeatAlignCanvasContext,
-  width: number,
-  height: number,
-  bpm: number,
-  firstBeatMs: number,
-  barBeatOffset: number,
-  rangeStartSec: number,
-  rangeDurationSec: number,
-  palette: BeatAlignWaveformPalette
-) => {
-  if (!Number.isFinite(bpm) || bpm <= 0 || rangeDurationSec <= 0) return
-  const beatSec = 60 / bpm
-  if (!Number.isFinite(beatSec) || beatSec <= 0) return
-
-  const drawVerticalLine = (x: number, lineWidth: number, color: string) => {
-    const safeWidth = Math.max(1, lineWidth)
-    const halfWidth = safeWidth * 0.5
-    if (x < -halfWidth || x > width + halfWidth) return
-    // 网格线必须跟着波形做连续位移，不能再把 x 强行 round 到整 CSS 像素。
-    // 否则波形已经亚像素平滑滚动了，grid 还在 1px 台阶上跳，视觉上就像两层速度不一样。
-    const rawLeft = x - halfWidth
-    const rawRight = rawLeft + safeWidth
-    const left = Math.max(0, rawLeft)
-    const right = Math.min(width, rawRight)
-    if (right <= left) return
-    ctx.fillStyle = color
-    ctx.fillRect(
-      left,
-      -GRID_LINE_VERTICAL_OVERSCAN,
-      right - left,
-      height + GRID_LINE_VERTICAL_OVERSCAN * 2
-    )
-  }
-
-  const firstBeatSec = (Number(firstBeatMs) || 0) / 1000
-  const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, BAR_BEAT_INTERVAL)
-  const rangeEndSec = rangeStartSec + rangeDurationSec
-  const startIndex = Math.floor((rangeStartSec - firstBeatSec) / beatSec) - 2
-  const endIndex = Math.ceil((rangeEndSec - firstBeatSec) / beatSec) + 2
-
-  for (let i = startIndex; i <= endIndex; i += 1) {
-    const beatTime = firstBeatSec + i * beatSec
-    if (beatTime < 0) continue
-    if (beatTime < rangeStartSec - beatSec || beatTime > rangeEndSec + beatSec) continue
-    const x = ((beatTime - rangeStartSec) / rangeDurationSec) * width
-    const shiftedIndex = i - normalizedBarOffset
-    const modBar = ((shiftedIndex % BAR_BEAT_INTERVAL) + BAR_BEAT_INTERVAL) % BAR_BEAT_INTERVAL
-    const mod4 = ((shiftedIndex % BEAT4_INTERVAL) + BEAT4_INTERVAL) % BEAT4_INTERVAL
-    if (modBar === 0) {
-      drawVerticalLine(x, BAR_GRID_LINE_WIDTH, palette.barLine)
-      continue
-    }
-    if (mod4 === 0) {
-      drawVerticalLine(x, MAJOR_GRID_LINE_WIDTH, palette.majorGrid)
-      continue
-    }
-    drawVerticalLine(x, MINOR_GRID_LINE_WIDTH, palette.minorGrid)
   }
 }
 
@@ -719,14 +632,14 @@ const resolveColumnRect = (
 }
 
 const drawWaveformColumns = (
-  ctx: BeatAlignCanvasContext,
+  ctx: WaveformCanvasContext,
   width: number,
   height: number,
   columns: WaveformColumn[],
   options?: {
     showDetailHighlights?: boolean
     showCenterLine?: boolean
-    palette?: BeatAlignWaveformPalette
+    palette?: WaveformPalette
     waveformLayout?: WaveformLayout
   }
 ) => {
@@ -774,13 +687,10 @@ const drawWaveformColumns = (
   }
 }
 
-export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawWaveformOptions) => {
+export const drawRgbWaveform = (ctx: WaveformCanvasContext, options: DrawWaveformOptions) => {
   const {
     width,
     height,
-    bpm,
-    firstBeatMs,
-    barBeatOffset,
     rangeStartSec,
     rangeDurationSec,
     mixxxData,
@@ -789,7 +699,6 @@ export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawW
     maxSamplesPerPixel,
     showDetailHighlights,
     showCenterLine,
-    showBeatGrid,
     waveformLayout,
     waveformRenderStyle,
     themeVariant,
@@ -806,22 +715,7 @@ export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawW
     drawBackground(ctx, width, height, palette)
   }
 
-  if (!isValidMixxxWaveformData(mixxxData)) {
-    if (showBeatGrid !== false) {
-      drawBeatGrid(
-        ctx,
-        width,
-        height,
-        bpm,
-        firstBeatMs,
-        Number(barBeatOffset) || 0,
-        rangeStartSec,
-        rangeDurationSec,
-        palette
-      )
-    }
-    return false
-  }
+  if (!isValidMixxxWaveformData(mixxxData)) return false
   const columns = buildWaveformColumns(
     width,
     mixxxData,
@@ -853,38 +747,10 @@ export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawW
       waveformGain: normalizeWaveformGain(waveformGain)
     })
   ) {
-    if (showBeatGrid !== false) {
-      drawBeatGrid(
-        ctx,
-        width,
-        height,
-        bpm,
-        firstBeatMs,
-        Number(barBeatOffset) || 0,
-        rangeStartSec,
-        rangeDurationSec,
-        palette
-      )
-    }
     return true
   }
 
-  if (!hasColumns) {
-    if (showBeatGrid !== false) {
-      drawBeatGrid(
-        ctx,
-        width,
-        height,
-        bpm,
-        firstBeatMs,
-        Number(barBeatOffset) || 0,
-        rangeStartSec,
-        rangeDurationSec,
-        palette
-      )
-    }
-    return false
-  }
+  if (!hasColumns) return false
 
   drawWaveformColumns(ctx, width, height, columns, {
     showDetailHighlights,
@@ -893,18 +759,5 @@ export const drawBeatGridWaveform = (ctx: BeatAlignCanvasContext, options: DrawW
     waveformLayout: resolvedWaveformLayout
   })
 
-  if (showBeatGrid !== false) {
-    drawBeatGrid(
-      ctx,
-      width,
-      height,
-      bpm,
-      firstBeatMs,
-      Number(barBeatOffset) || 0,
-      rangeStartSec,
-      rangeDurationSec,
-      palette
-    )
-  }
   return true
 }

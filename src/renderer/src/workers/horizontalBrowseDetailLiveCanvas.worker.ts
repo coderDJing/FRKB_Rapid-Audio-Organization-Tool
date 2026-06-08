@@ -1,7 +1,7 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
-import { drawBeatGridWaveform } from '@renderer/components/beatGridWaveformRenderer'
+import { drawRgbWaveform } from '@renderer/components/rgbWaveformRenderer'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import { createHorizontalBrowseDetailLiveCanvasOverlayRenderer } from './horizontalBrowseDetailLiveCanvasOverlay'
 import { createHorizontalBrowseDetailLiveCanvasRawStore } from './horizontalBrowseDetailLiveCanvasRawStore'
@@ -207,9 +207,7 @@ const buildFrameState = (
 ): FrameState => ({
   width: metrics.cssWidth,
   height: metrics.cssHeight,
-  bpm: Number(request.bpm) || 0,
   firstBeatMs: Number(request.firstBeatMs) || 0,
-  barBeatOffset: Number(request.barBeatOffset) || 0,
   timeBasisOffsetMs: Number(request.timeBasisOffsetMs) || 0,
   rangeStartSec: Number.isFinite(request.rangeStartSec) ? request.rangeStartSec : 0,
   rangeDurationSec: Math.max(0.0001, Number(request.rangeDurationSec) || 0.0001),
@@ -219,7 +217,6 @@ const buildFrameState = (
   showDetailHighlights: request.showDetailHighlights,
   showCenterLine: request.showCenterLine,
   showBackground: request.showBackground,
-  showBeatGrid: false,
   waveformLayout: request.waveformLayout,
   waveformRenderStyle: request.waveformRenderStyle,
   preferRawPeaksOnly: request.preferRawPeaksOnly,
@@ -239,19 +236,15 @@ const drawRange = (
   rangeDurationSec: number,
   state: FrameState
 ) =>
-  drawBeatGridWaveform(targetCtx, {
+  drawRgbWaveform(targetCtx, {
     width,
     height,
-    bpm: state.bpm,
-    firstBeatMs: state.firstBeatMs,
-    barBeatOffset: state.barBeatOffset,
     timeBasisOffsetMs: state.timeBasisOffsetMs,
     rangeStartSec,
     rangeDurationSec,
     mixxxData: createMixxxData(state.rawData),
     rawData: state.rawData,
     showBackground: state.showBackground,
-    showBeatGrid: state.showBeatGrid,
     maxSamplesPerPixel: state.maxSamplesPerPixel,
     showDetailHighlights: state.showDetailHighlights,
     showCenterLine: state.showCenterLine,
@@ -402,9 +395,7 @@ const canReusePreviousFrame = (
   return (
     lastFrame.width === current.width &&
     lastFrame.height === current.height &&
-    lastFrame.bpm === current.bpm &&
     (ignoreFirstBeatMs || lastFrame.firstBeatMs === current.firstBeatMs) &&
-    lastFrame.barBeatOffset === current.barBeatOffset &&
     lastFrame.timeBasisOffsetMs === current.timeBasisOffsetMs &&
     lastFrame.rangeDurationSec === current.rangeDurationSec &&
     lastFrame.rawData === current.rawData &&
@@ -412,7 +403,6 @@ const canReusePreviousFrame = (
     lastFrame.showDetailHighlights === current.showDetailHighlights &&
     lastFrame.showCenterLine === current.showCenterLine &&
     lastFrame.showBackground === current.showBackground &&
-    lastFrame.showBeatGrid === current.showBeatGrid &&
     lastFrame.waveformLayout === current.waveformLayout &&
     lastFrame.waveformRenderStyle === current.waveformRenderStyle &&
     lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly &&
@@ -431,9 +421,7 @@ const canReuseDirtySegment = (
   return (
     lastFrame.width === current.width &&
     lastFrame.height === current.height &&
-    lastFrame.bpm === current.bpm &&
     lastFrame.firstBeatMs === current.firstBeatMs &&
-    lastFrame.barBeatOffset === current.barBeatOffset &&
     lastFrame.timeBasisOffsetMs === current.timeBasisOffsetMs &&
     lastFrame.rangeStartSec === current.rangeStartSec &&
     lastFrame.rangeDurationSec === current.rangeDurationSec &&
@@ -442,7 +430,6 @@ const canReuseDirtySegment = (
     lastFrame.showDetailHighlights === current.showDetailHighlights &&
     lastFrame.showCenterLine === current.showCenterLine &&
     lastFrame.showBackground === current.showBackground &&
-    lastFrame.showBeatGrid === current.showBeatGrid &&
     lastFrame.waveformLayout === current.waveformLayout &&
     lastFrame.waveformRenderStyle === current.waveformRenderStyle &&
     lastFrame.preferRawPeaksOnly === current.preferRawPeaksOnly &&
