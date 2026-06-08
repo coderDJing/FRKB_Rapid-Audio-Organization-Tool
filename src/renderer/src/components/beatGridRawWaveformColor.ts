@@ -4,6 +4,7 @@ import {
   type RawFftBandProfile,
   type RawWaveformRgbColor
 } from '@shared/rawWaveformColor'
+import { resolveSaturatedWaveformColor } from '@shared/waveformDisplayColor'
 
 export type { RawFftBandProfile, RawWaveformRgbColor }
 
@@ -79,12 +80,19 @@ export const resolveRawFftBandProfile = (
   endFrame: number,
   maxSamplesPerPixel?: number,
   useRekordboxLikeColor = false
-): RawFftBandProfile | null =>
-  resolveCompactColorBandProfile(rawData, startFrame, endFrame) ??
-  resolveSharedRawFftBandProfile(
-    rawData,
-    startFrame,
-    endFrame,
-    maxSamplesPerPixel,
-    useRekordboxLikeColor
-  )
+): RawFftBandProfile | null => {
+  const profile =
+    resolveCompactColorBandProfile(rawData, startFrame, endFrame) ??
+    resolveSharedRawFftBandProfile(
+      rawData,
+      startFrame,
+      endFrame,
+      maxSamplesPerPixel,
+      useRekordboxLikeColor
+    )
+  if (!profile) return null
+  return {
+    bands: profile.bands,
+    color: resolveSaturatedWaveformColor(profile.color)
+  }
+}

@@ -69,7 +69,6 @@ const defaultSettings = {
   enableWindowScreenshotShortcut: true,
   playerGlobalShortcuts: { ...defaultPlayerGlobalShortcuts },
   hiddenPlayControlArea: false,
-  waveformStyle: 'RGB' as 'SoundCloud' | 'Fine' | 'RGB',
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
   showIdleAnalysisStatus: false,
@@ -154,18 +153,10 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
     mergedSettings.playerGlobalShortcuts
   )
 
-  const rawWaveformStyle = mergedSettings.waveformStyle as string | undefined
-  const normalizedWaveformStyle =
-    rawWaveformStyle === 'RekordboxMini' || rawWaveformStyle === 'Mixxx' ? 'RGB' : rawWaveformStyle
+  delete (mergedSettings as Record<string, unknown>).waveformStyle
 
   const finalSettings: ExtendedSettingConfig = {
     ...mergedSettings,
-    waveformStyle:
-      normalizedWaveformStyle === 'SoundCloud' ||
-      normalizedWaveformStyle === 'Fine' ||
-      normalizedWaveformStyle === 'RGB'
-        ? normalizedWaveformStyle
-        : 'RGB',
     waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half',
     keyDisplayStyle: mergedSettings.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
   }

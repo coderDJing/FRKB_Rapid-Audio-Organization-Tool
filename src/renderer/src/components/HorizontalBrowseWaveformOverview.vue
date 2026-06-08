@@ -15,6 +15,7 @@ import {
   resolveSongExternalWaveformSource
 } from '@renderer/utils/rekordboxExternalSource'
 import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
+import { formatSaturatedWaveformRgb } from '@shared/waveformDisplayColor'
 import {
   loadUnifiedDisplayWaveformData,
   unifiedDisplayWaveformToCompactVisualOverviewData
@@ -262,13 +263,21 @@ const drawPioneerPreviewWaveform = (
 
     if (backHeight > 0) {
       const backPixelHeight = Math.max(1, backHeight * scaleY)
-      ctx.fillStyle = `rgb(${selected.backColorR || 0}, ${selected.backColorG || 0}, ${selected.backColorB || 0})`
+      ctx.fillStyle = formatSaturatedWaveformRgb({
+        r: selected.backColorR || 0,
+        g: selected.backColorG || 0,
+        b: selected.backColorB || 0
+      })
       ctx.fillRect(x, height - backPixelHeight, drawWidth, backPixelHeight)
     }
 
     if (frontHeight > 0) {
       const frontPixelHeight = Math.max(1, frontHeight * scaleY)
-      ctx.fillStyle = `rgb(${selected.frontColorR || 0}, ${selected.frontColorG || 0}, ${selected.frontColorB || 0})`
+      ctx.fillStyle = formatSaturatedWaveformRgb({
+        r: selected.frontColorR || 0,
+        g: selected.frontColorG || 0,
+        b: selected.frontColorB || 0
+      })
       ctx.fillRect(x, height - frontPixelHeight, drawWidth, frontPixelHeight)
     }
   }

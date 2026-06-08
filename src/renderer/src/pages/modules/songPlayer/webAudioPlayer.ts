@@ -29,7 +29,6 @@ export type {
   PcmLoadPayload,
   RGBWaveformBandKey,
   SeekedEventPayload,
-  WaveformStyle,
   WebAudioPlayerEvents
 } from './webAudioPlayer.shared'
 

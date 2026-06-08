@@ -1,4 +1,5 @@
 import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
+import { resolveSaturatedWaveformColor } from '@shared/waveformDisplayColor'
 import {
   resolveRawEnergyShapeParamsByDuration,
   shapeRawEnergyAmpValue
@@ -151,6 +152,19 @@ const resolveCompactColorProfile = (
   const maxBand = Math.max(low, mid, high)
   const maxColor = Math.max(red, green, blue)
   if (maxBand <= 0 && maxColor <= 0) return null
+  const color =
+    maxColor > 0
+      ? resolveSaturatedWaveformColor({
+          r: toColorChannel(red),
+          g: toColorChannel(green),
+          b: toColorChannel(blue)
+        })
+      : {
+          r: 235,
+          g: 242,
+          b: 248
+        }
+
   return {
     frequencyRatios:
       maxBand > 0
@@ -160,18 +174,7 @@ const resolveCompactColorProfile = (
             high: clamp01(high / maxBand)
           }
         : undefined,
-    color:
-      maxColor > 0
-        ? {
-            r: toColorChannel(red),
-            g: toColorChannel(green),
-            b: toColorChannel(blue)
-          }
-        : {
-            r: 235,
-            g: 242,
-            b: 248
-          }
+    color
   }
 }
 

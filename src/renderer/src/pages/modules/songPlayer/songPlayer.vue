@@ -41,7 +41,6 @@ import {
   unregisterTitleAudioVisualizerSource,
   type TitleAudioVisualizerSource
 } from '@renderer/composables/titleAudioVisualizerBridge'
-import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { sendPlayerWaveformTrace } from './playerWaveformTrace'
 const musicIcon = musicIconAsset
 type WaveformPreviewStatePayload = {
@@ -77,7 +76,6 @@ const titleAudioVisualizerSource: TitleAudioVisualizerSource = {
 
 // 预加载
 const audioPlayer = shallowRef<WebAudioPlayer | null>(null)
-const rawWaveformData = shallowRef<RawWaveformData | null>(null)
 const AUDIO_FOLLOW_SYSTEM_ID = ''
 let pendingAudioOutputDeviceId = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
 const waveformShow = ref(false)
@@ -301,7 +299,6 @@ const bpm = ref<number | string>('')
 const { ignoreNextEmptyError, requestLoadSong, handleSongLoadError } = useSongLoader({
   runtime,
   audioPlayer,
-  rawWaveformData,
   bpm,
   waveformShow,
   setCoverByIPC
@@ -310,26 +307,18 @@ const { ignoreNextEmptyError, requestLoadSong, handleSongLoadError } = useSongLo
 watch(
   () => [
     Boolean(audioPlayer.value?.pioneerPreviewWaveformData),
-    Boolean(audioPlayer.value?.compactVisualWaveformData),
-    rawWaveformData.value?.loadedFrames ?? 0,
-    rawWaveformData.value?.frames ?? 0,
-    runtime.setting?.waveformStyle
+    Boolean(audioPlayer.value?.compactVisualWaveformData)
   ],
   () => {
     const source = audioPlayer.value?.pioneerPreviewWaveformData
       ? 'pioneer-preview'
       : audioPlayer.value?.compactVisualWaveformData
         ? 'formal-compact'
-        : rawWaveformData.value
-          ? 'raw-stream'
-          : 'none'
+        : 'none'
     if (source === lastPlayerWaveformRenderSource) return
     lastPlayerWaveformRenderSource = source
     sendPlayerWaveformTrace('render', source, {
-      filePath: runtime.playingData.playingSong?.filePath || '',
-      style: runtime.setting?.waveformStyle,
-      loadedFrames: rawWaveformData.value?.loadedFrames ?? 0,
-      totalFrames: rawWaveformData.value?.frames ?? 0
+      filePath: runtime.playingData.playingSong?.filePath || ''
     })
   },
   { immediate: true }
@@ -376,7 +365,6 @@ onMounted(() => {
   useWaveform({
     waveformEl: waveform,
     audioPlayer,
-    rawWaveformData,
     runtime,
     updateParentWaveformWidth,
     onNextSong: () => playerActions.nextSong(),

@@ -1,6 +1,11 @@
 import { watch, toRaw } from 'vue'
 import type { ISettingConfig } from 'src/types/globals'
-import { UI_SETTING_KEYS, type UiSettingKey } from '../../../shared/uiSettings'
+import {
+  LEGACY_UI_SETTING_KEYS,
+  STRIPPED_UI_SETTING_KEYS,
+  UI_SETTING_KEYS,
+  type UiSettingKey
+} from '../../../shared/uiSettings'
 
 const STORAGE_KEY = 'frkb_ui_settings_v1'
 const MIGRATION_KEY = 'frkb_ui_settings_migrated_v1'
@@ -18,6 +23,9 @@ const getStorage = (): Storage | null => {
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
+
+const hasLegacyUiSetting = (input: Record<string, unknown>) =>
+  LEGACY_UI_SETTING_KEYS.some((key) => key in input)
 
 const normalizeBoolean = (value: unknown): boolean | undefined => {
   if (typeof value === 'boolean') return value
@@ -54,13 +62,6 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
       case 'songListBubbleAlways': {
         const v = normalizeBoolean(value)
         if (v !== undefined) output[key] = v
-        break
-      }
-      case 'waveformStyle': {
-        const normalized = value === 'Mixxx' || value === 'RekordboxMini' ? 'RGB' : value
-        if (normalized === 'SoundCloud' || normalized === 'Fine' || normalized === 'RGB') {
-          output[key] = normalized
-        }
         break
       }
       case 'waveformMode':
@@ -110,7 +111,13 @@ export const readUiSettings = (): UiSettings => {
   try {
     const parsed = JSON.parse(raw)
     if (!isPlainObject(parsed)) return {}
-    return sanitizeUiSettings(parsed)
+    const sanitized = sanitizeUiSettings(parsed)
+    if (hasLegacyUiSetting(parsed)) {
+      try {
+        storage.setItem(STORAGE_KEY, JSON.stringify(sanitized))
+      } catch {}
+    }
+    return sanitized
   } catch {
     return {}
   }
@@ -156,7 +163,7 @@ const toPlainSetting = <T>(value: T): T => {
 export const stripUiSettings = (setting: ISettingConfig): ISettingConfig => {
   const raw = toRaw(setting) as unknown as Record<string, unknown>
   const next = { ...raw } as Record<string, unknown>
-  for (const key of UI_SETTING_KEYS) {
+  for (const key of STRIPPED_UI_SETTING_KEYS) {
     if (key in next) delete next[key]
   }
   return next as unknown as ISettingConfig

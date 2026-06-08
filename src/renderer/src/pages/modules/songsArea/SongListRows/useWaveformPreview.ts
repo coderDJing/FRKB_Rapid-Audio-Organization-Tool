@@ -20,8 +20,6 @@ import {
   drawSongListCompactVisualWaveform,
   drawSongListMixxxWaveform,
   drawSongListPioneerPreviewWaveform,
-  normalizeSongListWaveformStyle,
-  type SongListWaveformMinMaxCacheEntry,
   type SongListWaveformRgbMetricsCacheEntry
 } from '@renderer/workers/songListWaveformPreview.shared'
 import type {
@@ -103,7 +101,6 @@ export function useWaveformPreview(params: {
   const dataMap = markRaw(new Map<string, WaveformCacheEntry>())
   const placeholderStateMap = markRaw(new Map<string, WaveformPlaceholderState>())
   const placeholderReasonMap = markRaw(new Map<string, string>())
-  const minMaxCache = markRaw(new Map<string, SongListWaveformMinMaxCacheEntry>())
   const rgbMetricsCache = markRaw(new Map<string, SongListWaveformRgbMetricsCacheEntry>())
   const waveformDataVersionMap = markRaw(new Map<string, number>())
   const inflight = new Set<string>()
@@ -209,9 +206,7 @@ export function useWaveformPreview(params: {
         width: canvas.clientWidth || 1,
         height: canvas.clientHeight || 1,
         pixelRatio: window.devicePixelRatio || 1,
-        waveformStyle: normalizeSongListWaveformStyle(runtime.setting?.waveformStyle),
         isHalf: useHalfWaveform(),
-        baseColor: computedStyle?.color || '#999999',
         backgroundColor,
         progressColor,
         playedPercent
@@ -440,7 +435,6 @@ export function useWaveformPreview(params: {
       waveformDataVersionMap.set(normalizedPath, getWaveformDataVersion(filePath) + 1)
     }
     dataMap.delete(filePath)
-    minMaxCache.delete(filePath)
     rgbMetricsCache.delete(filePath)
     queuedMissing.delete(filePath)
     inflight.delete(filePath)
@@ -464,7 +458,6 @@ export function useWaveformPreview(params: {
       const oldest = dataMap.keys().next().value
       if (oldest) {
         dataMap.delete(oldest)
-        minMaxCache.delete(oldest)
         rgbMetricsCache.delete(oldest)
         queuedMissing.delete(oldest)
         placeholderStateMap.delete(oldest)
@@ -531,12 +524,8 @@ export function useWaveformPreview(params: {
       return
     }
     drawSongListMixxxWaveform(ctx, width, height, filePath, data.data, {
-      waveformStyle: runtime.setting?.waveformStyle,
       isHalf: useHalfWaveform(),
-      baseColor: computedStyle?.color || '#999999',
-      progressColor,
       playedPercent,
-      minMaxCache,
       rgbMetricsCache
     })
   }
@@ -942,7 +931,6 @@ export function useWaveformPreview(params: {
       }
       dataMap.clear()
       inflight.clear()
-      minMaxCache.clear()
       rgbMetricsCache.clear()
       queuedMissing.clear()
       placeholderStateMap.clear()
@@ -954,13 +942,6 @@ export function useWaveformPreview(params: {
   )
   watch(
     () => waveformColumnWidth.value,
-    () => {
-      if (!waveformVisible.value) return
-      scheduleDraw()
-    }
-  )
-  watch(
-    () => runtime.setting?.waveformStyle,
     () => {
       if (!waveformVisible.value) return
       scheduleDraw()

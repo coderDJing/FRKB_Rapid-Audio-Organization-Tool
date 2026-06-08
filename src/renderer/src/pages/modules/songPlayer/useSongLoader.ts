@@ -12,7 +12,6 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
-import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
 import { resolvePlayerWaveformTraceElapsedMs, sendPlayerWaveformTrace } from './playerWaveformTrace'
 
@@ -25,34 +24,6 @@ type WaveformCacheResponse = {
 
 type PioneerPreviewWaveformResponse = {
   items?: Array<{ analyzePath: string; data: IPioneerPreviewWaveformData | null }>
-}
-
-type RawWaveformStreamChunkPayload = {
-  requestId?: string
-  filePath?: string
-  startFrame?: number
-  frames?: number
-  totalFrames?: number
-  duration?: number
-  sampleRate?: number
-  rate?: number
-  minLeft?: unknown
-  maxLeft?: unknown
-  minRight?: unknown
-  maxRight?: unknown
-  meanLeft?: unknown
-  meanRight?: unknown
-  rmsLeft?: unknown
-  rmsRight?: unknown
-}
-
-type RawWaveformStreamDonePayload = {
-  requestId?: string
-  filePath?: string
-  data?: unknown
-  duration?: unknown
-  totalFrames?: unknown
-  error?: string
 }
 
 type DecodePayload = {
@@ -72,84 +43,21 @@ const resolveRemovedPaths = (summary: DeleteSongsSummary | null | undefined) =>
     ? summary.removedPaths.filter((item): item is string => typeof item === 'string')
     : []
 
-const PLAYER_RAW_WAVEFORM_TARGET_RATE = 4800
-const PLAYER_RAW_WAVEFORM_CHUNK_FRAMES = 32768
-const PLAYER_RAW_WAVEFORM_PRIORITY_HINT = 1000
-
-const normalizeSongPathKey = (value: unknown) =>
-  String(value || '')
-    .trim()
-    .toLowerCase()
-
-const toFloat32Array = (value: unknown) => {
-  if (value instanceof Float32Array) return value
-  if (value instanceof ArrayBuffer) return new Float32Array(value)
-  if (ArrayBuffer.isView(value)) {
-    const view = value as ArrayBufferView
-    return new Float32Array(view.buffer, view.byteOffset, Math.floor(view.byteLength / 4))
-  }
-  return new Float32Array(0)
-}
-
-const normalizeRawWaveformData = (value: unknown): RawWaveformData | null => {
-  const payload = value && typeof value === 'object' && !Array.isArray(value) ? value : null
-  if (!payload) return null
-
-  const frames = Math.max(0, Number((payload as RawWaveformData).frames) || 0)
-  const duration = Math.max(0, Number((payload as RawWaveformData).duration) || 0)
-  const sampleRate = Math.max(0, Number((payload as RawWaveformData).sampleRate) || 0)
-  const rate = Math.max(0, Number((payload as RawWaveformData).rate) || 0)
-  const minLeft = toFloat32Array((payload as RawWaveformData).minLeft)
-  const maxLeft = toFloat32Array((payload as RawWaveformData).maxLeft)
-  const minRight = toFloat32Array((payload as RawWaveformData).minRight)
-  const maxRight = toFloat32Array((payload as RawWaveformData).maxRight)
-  const meanLeft = toFloat32Array((payload as RawWaveformData).meanLeft)
-  const meanRight = toFloat32Array((payload as RawWaveformData).meanRight)
-  const rmsLeft = toFloat32Array((payload as RawWaveformData).rmsLeft)
-  const rmsRight = toFloat32Array((payload as RawWaveformData).rmsRight)
-  if (!frames || !duration || !sampleRate || !rate) return null
-
-  const normalized: RawWaveformData = {
-    duration,
-    sampleRate,
-    rate,
-    frames,
-    loadedFrames: frames,
-    minLeft: new Float32Array(minLeft),
-    maxLeft: new Float32Array(maxLeft),
-    minRight: new Float32Array(minRight),
-    maxRight: new Float32Array(maxRight)
-  }
-  if (rmsLeft.length >= frames && rmsRight.length >= frames) {
-    normalized.rmsLeft = new Float32Array(rmsLeft.subarray(0, frames))
-    normalized.rmsRight = new Float32Array(rmsRight.subarray(0, frames))
-  }
-  if (meanLeft.length >= frames && meanRight.length >= frames) {
-    normalized.meanLeft = new Float32Array(meanLeft.subarray(0, frames))
-    normalized.meanRight = new Float32Array(meanRight.subarray(0, frames))
-  }
-
-  return normalized
-}
-
 export function useSongLoader(params: {
   runtime: ReturnType<typeof useRuntimeStore>
   audioPlayer: ReturnType<typeof shallowRef<WebAudioPlayer | null>>
-  rawWaveformData: { value: RawWaveformData | null }
   bpm: { value: number | string }
   waveformShow: { value: boolean }
   setCoverByIPC: (filePath: string) => void
 }) {
-  const { runtime, audioPlayer, rawWaveformData, bpm, waveformShow, setCoverByIPC } = params
+  const { runtime, audioPlayer, bpm, waveformShow, setCoverByIPC } = params
   const isAbortError = (error: unknown) =>
     error instanceof Error ? error.name === 'AbortError' : false
 
   const currentLoadRequestId = ref(0)
   const isLoadingBlob = ref(false)
   const ignoreNextEmptyError = ref(false)
-  let rawWaveformStreamRequestId = ''
   let waveformTraceStartedAt = 0
-  let rawWaveformChunkCount = 0
 
   let errorDialogShowing = false
   const handleSongLoadError = async (
@@ -218,8 +126,6 @@ export function useSongLoader(params: {
       if (audioPlayer.value && audioPlayer.value.isPlaying()) {
         audioPlayer.value.pause()
       }
-      cancelRawWaveformStream()
-      rawWaveformData.value = null
       waveformShow.value = false
       bpm.value = 'N/A'
 
@@ -322,96 +228,6 @@ export function useSongLoader(params: {
     })
   }
 
-  const cancelRawWaveformStream = () => {
-    const requestId = rawWaveformStreamRequestId
-    rawWaveformStreamRequestId = ''
-    if (!requestId) return
-    tracePlayerWaveform('loader', 'raw-stream:cancel', undefined, { streamRequestId: requestId })
-    window.electron.ipcRenderer.send('mixtape-waveform-raw:cancel-stream', { requestId })
-  }
-
-  const ensureRawWaveformCapacity = (
-    requiredFrames: number,
-    meta: { duration: number; sampleRate: number; rate: number }
-  ) => {
-    const nextFrames = Math.max(0, Math.floor(requiredFrames))
-    if (!nextFrames) return null
-
-    const current = rawWaveformData.value
-    if (!current) {
-      return {
-        duration: meta.duration,
-        sampleRate: meta.sampleRate,
-        rate: meta.rate,
-        frames: nextFrames,
-        loadedFrames: 0,
-        minLeft: new Float32Array(nextFrames),
-        maxLeft: new Float32Array(nextFrames),
-        minRight: new Float32Array(nextFrames),
-        maxRight: new Float32Array(nextFrames)
-      }
-    }
-
-    if (
-      current.frames >= nextFrames &&
-      current.sampleRate === meta.sampleRate &&
-      current.rate === meta.rate &&
-      Math.abs(current.duration - meta.duration) <= 0.0001
-    ) {
-      return current
-    }
-
-    const grownFrames = Math.max(current.frames, nextFrames)
-    const grow = (source: Float32Array) => {
-      const target = new Float32Array(grownFrames)
-      target.set(source.subarray(0, Math.min(source.length, grownFrames)))
-      return target
-    }
-
-    const grown: RawWaveformData = {
-      duration: Math.max(current.duration, meta.duration),
-      sampleRate: meta.sampleRate,
-      rate: meta.rate,
-      frames: grownFrames,
-      loadedFrames: current.loadedFrames,
-      minLeft: grow(current.minLeft),
-      maxLeft: grow(current.maxLeft),
-      minRight: grow(current.minRight),
-      maxRight: grow(current.maxRight)
-    }
-    if (current.meanLeft && current.meanRight) {
-      grown.meanLeft = grow(current.meanLeft)
-      grown.meanRight = grow(current.meanRight)
-    }
-    if (current.rmsLeft && current.rmsRight) {
-      grown.rmsLeft = grow(current.rmsLeft)
-      grown.rmsRight = grow(current.rmsRight)
-    }
-
-    return grown
-  }
-
-  const startRawWaveformStream = (filePath: string, requestId: number) => {
-    if (requestId !== currentLoadRequestId.value) return
-    if (runtime.playingData.playingSong?.filePath !== filePath) return
-    cancelRawWaveformStream()
-    rawWaveformData.value = null
-    rawWaveformChunkCount = 0
-    rawWaveformStreamRequestId = `player-raw-waveform-${requestId}-${Date.now()}`
-    tracePlayerWaveform('loader', 'raw-stream:start', filePath, {
-      streamRequestId: rawWaveformStreamRequestId,
-      targetRate: PLAYER_RAW_WAVEFORM_TARGET_RATE,
-      chunkFrames: PLAYER_RAW_WAVEFORM_CHUNK_FRAMES
-    })
-    window.electron.ipcRenderer.send('mixtape-waveform-raw:stream', {
-      requestId: rawWaveformStreamRequestId,
-      filePath,
-      targetRate: PLAYER_RAW_WAVEFORM_TARGET_RATE,
-      chunkFrames: PLAYER_RAW_WAVEFORM_CHUNK_FRAMES,
-      priorityHint: PLAYER_RAW_WAVEFORM_PRIORITY_HINT
-    })
-  }
-
   const fetchWaveformCache = async (filePath: string, requestId: number) => {
     let response: WaveformCacheResponse | null = null
     tracePlayerWaveform('loader', 'formal-cache:query-start', filePath)
@@ -434,8 +250,6 @@ export function useSongLoader(params: {
       tracePlayerWaveform('loader', 'formal-cache:miss', filePath)
       return false
     }
-    cancelRawWaveformStream()
-    rawWaveformData.value = null
     playerInstance.setCompactVisualWaveformData(compactVisualWaveformData)
     tracePlayerWaveform('loader', 'formal-cache:hit', filePath, {
       duration: Number(compactVisualWaveformData.duration || 0),
@@ -470,8 +284,6 @@ export function useSongLoader(params: {
     const data = item?.data ?? null
     const playerInstance = audioPlayer.value
     if (!playerInstance) return
-    cancelRawWaveformStream()
-    rawWaveformData.value = null
     playerInstance.setPioneerPreviewWaveformData(data)
     tracePlayerWaveform(
       'loader',
@@ -530,8 +342,6 @@ export function useSongLoader(params: {
     setCoverByIPC(filePath)
     waveformShow.value = true
     resolveBpmValue()
-    cancelRawWaveformStream()
-    rawWaveformData.value = null
     playerInstance.setPioneerPreviewWaveformData(null)
 
     isLoadingBlob.value = true
@@ -572,7 +382,6 @@ export function useSongLoader(params: {
               filePath,
               focusSlot: 'main-player'
             })
-            startRawWaveformStream(filePath, requestId)
           })()
         }
       } else {
@@ -591,8 +400,6 @@ export function useSongLoader(params: {
     const normalized = typeof filePath === 'string' ? filePath.trim() : ''
     if (!normalized) return
 
-    cancelRawWaveformStream()
-    rawWaveformData.value = null
     isLoadingBlob.value = false
     if (audioPlayer.value) {
       if (audioPlayer.value.isPlaying()) audioPlayer.value.pause()
@@ -605,7 +412,6 @@ export function useSongLoader(params: {
     const newRequestId = currentLoadRequestId.value + 1
     currentLoadRequestId.value = newRequestId
     waveformTraceStartedAt = performance.now()
-    rawWaveformChunkCount = 0
     tracePlayerWaveform('loader', 'request-load', normalized)
     void handleLoadSong(normalized, newRequestId)
   }
@@ -616,146 +422,6 @@ export function useSongLoader(params: {
     if (runtime.playingData.playingSong?.filePath !== filePath) return
     tracePlayerWaveform('loader', 'formal-cache:updated-event', filePath)
     void fetchWaveformCache(filePath, currentLoadRequestId.value)
-  }
-
-  const handleRawWaveformStreamChunk = (
-    _event: unknown,
-    payload?: RawWaveformStreamChunkPayload
-  ) => {
-    if (String(payload?.requestId || '') !== rawWaveformStreamRequestId) return
-    if (
-      normalizeSongPathKey(payload?.filePath) !==
-      normalizeSongPathKey(runtime.playingData.playingSong?.filePath)
-    ) {
-      return
-    }
-
-    const totalFrames = Math.max(0, Number(payload?.totalFrames) || 0)
-    const duration = Math.max(0, Number(payload?.duration) || 0)
-    const sampleRate = Math.max(0, Number(payload?.sampleRate) || 0)
-    const rate = Math.max(0, Number(payload?.rate) || 0)
-    const startFrame = Math.max(0, Number(payload?.startFrame) || 0)
-    const frames = Math.max(0, Number(payload?.frames) || 0)
-    if (!totalFrames || !duration || !sampleRate || !rate || !frames) return
-
-    const target = ensureRawWaveformCapacity(Math.max(totalFrames, startFrame + frames), {
-      duration,
-      sampleRate,
-      rate
-    })
-    if (!target) return
-
-    const minLeftChunk = toFloat32Array(payload?.minLeft)
-    const maxLeftChunk = toFloat32Array(payload?.maxLeft)
-    const minRightChunk = toFloat32Array(payload?.minRight)
-    const maxRightChunk = toFloat32Array(payload?.maxRight)
-    const meanLeftChunk = toFloat32Array(payload?.meanLeft)
-    const meanRightChunk = toFloat32Array(payload?.meanRight)
-    const rmsLeftChunk = toFloat32Array(payload?.rmsLeft)
-    const rmsRightChunk = toFloat32Array(payload?.rmsRight)
-    const chunkFrames = Math.min(
-      frames,
-      minLeftChunk.length,
-      maxLeftChunk.length,
-      minRightChunk.length,
-      maxRightChunk.length
-    )
-    if (!chunkFrames || startFrame + chunkFrames > target.minLeft.length) return
-
-    target.minLeft.set(minLeftChunk.subarray(0, chunkFrames), startFrame)
-    target.maxLeft.set(maxLeftChunk.subarray(0, chunkFrames), startFrame)
-    target.minRight.set(minRightChunk.subarray(0, chunkFrames), startFrame)
-    target.maxRight.set(maxRightChunk.subarray(0, chunkFrames), startFrame)
-    if (meanLeftChunk.length >= chunkFrames && meanRightChunk.length >= chunkFrames) {
-      if (!target.meanLeft || target.meanLeft.length < target.frames) {
-        target.meanLeft = new Float32Array(target.frames)
-      }
-      if (!target.meanRight || target.meanRight.length < target.frames) {
-        target.meanRight = new Float32Array(target.frames)
-      }
-      target.meanLeft.set(meanLeftChunk.subarray(0, chunkFrames), startFrame)
-      target.meanRight.set(meanRightChunk.subarray(0, chunkFrames), startFrame)
-    } else {
-      target.meanLeft = undefined
-      target.meanRight = undefined
-    }
-    if (rmsLeftChunk.length >= chunkFrames && rmsRightChunk.length >= chunkFrames) {
-      if (!target.rmsLeft || target.rmsLeft.length < target.frames) {
-        target.rmsLeft = new Float32Array(target.frames)
-      }
-      if (!target.rmsRight || target.rmsRight.length < target.frames) {
-        target.rmsRight = new Float32Array(target.frames)
-      }
-      target.rmsLeft.set(rmsLeftChunk.subarray(0, chunkFrames), startFrame)
-      target.rmsRight.set(rmsRightChunk.subarray(0, chunkFrames), startFrame)
-    } else {
-      target.rmsLeft = undefined
-      target.rmsRight = undefined
-    }
-    const loadedFrames = Math.max(startFrame + chunkFrames, Number(target.loadedFrames) || 0)
-    rawWaveformData.value = {
-      ...target,
-      duration,
-      sampleRate,
-      rate,
-      frames: target.frames,
-      loadedFrames
-    }
-    rawWaveformChunkCount += 1
-    if (rawWaveformChunkCount === 1) {
-      tracePlayerWaveform('loader', 'raw-stream:first-chunk', String(payload?.filePath || ''), {
-        streamRequestId: rawWaveformStreamRequestId,
-        startFrame,
-        frames: chunkFrames,
-        totalFrames,
-        loadedFrames
-      })
-    }
-  }
-
-  const handleRawWaveformStreamDone = (_event: unknown, payload?: RawWaveformStreamDonePayload) => {
-    if (String(payload?.requestId || '') !== rawWaveformStreamRequestId) return
-    if (
-      normalizeSongPathKey(payload?.filePath) !==
-      normalizeSongPathKey(runtime.playingData.playingSong?.filePath)
-    ) {
-      return
-    }
-
-    rawWaveformStreamRequestId = ''
-    const normalized = normalizeRawWaveformData(payload?.data)
-    if (normalized) {
-      rawWaveformData.value = normalized
-      tracePlayerWaveform('loader', 'raw-stream:done', String(payload?.filePath || ''), {
-        streamRequestId: String(payload?.requestId || ''),
-        error: payload?.error,
-        totalFrames: normalized.frames,
-        loadedFrames: normalized.loadedFrames ?? normalized.frames
-      })
-      return
-    }
-
-    if (!rawWaveformData.value) return
-    const duration = Math.max(0, Number(payload?.duration) || 0)
-    const totalFrames = Math.max(0, Number(payload?.totalFrames) || 0)
-    rawWaveformData.value = {
-      ...rawWaveformData.value,
-      duration: duration > 0 ? duration : rawWaveformData.value.duration,
-      loadedFrames:
-        totalFrames > 0
-          ? totalFrames
-          : (rawWaveformData.value.loadedFrames ?? rawWaveformData.value.frames),
-      frames:
-        totalFrames > 0 && totalFrames <= rawWaveformData.value.frames
-          ? totalFrames
-          : rawWaveformData.value.frames
-    }
-    tracePlayerWaveform('loader', 'raw-stream:done', String(payload?.filePath || ''), {
-      streamRequestId: String(payload?.requestId || ''),
-      error: payload?.error,
-      totalFrames: rawWaveformData.value.frames,
-      loadedFrames: rawWaveformData.value.loadedFrames ?? rawWaveformData.value.frames
-    })
   }
 
   const handleReadedSongFile = (
@@ -773,8 +439,6 @@ export function useSongLoader(params: {
     if (!playerInstance) return
 
     try {
-      cancelRawWaveformStream()
-      rawWaveformData.value = null
       playerInstance.loadPCM({
         pcmData: payload?.pcmData ?? new Float32Array(0),
         sampleRate: payload?.sampleRate ?? 0,
@@ -813,22 +477,11 @@ export function useSongLoader(params: {
   }
 
   window.electron.ipcRenderer.on('song-waveform-updated', handleWaveformUpdated)
-  window.electron.ipcRenderer.on('mixtape-waveform-raw:stream-chunk', handleRawWaveformStreamChunk)
-  window.electron.ipcRenderer.on('mixtape-waveform-raw:stream-done', handleRawWaveformStreamDone)
   window.electron.ipcRenderer.on('readedSongFile', handleReadedSongFile)
   window.electron.ipcRenderer.on('readSongFileError', handleReadSongFileError)
 
   onBeforeUnmount(() => {
-    cancelRawWaveformStream()
     window.electron.ipcRenderer.removeListener('song-waveform-updated', handleWaveformUpdated)
-    window.electron.ipcRenderer.removeListener(
-      'mixtape-waveform-raw:stream-chunk',
-      handleRawWaveformStreamChunk
-    )
-    window.electron.ipcRenderer.removeListener(
-      'mixtape-waveform-raw:stream-done',
-      handleRawWaveformStreamDone
-    )
     window.electron.ipcRenderer.removeListener('readedSongFile', handleReadedSongFile)
     window.electron.ipcRenderer.removeListener('readSongFileError', handleReadSongFileError)
   })

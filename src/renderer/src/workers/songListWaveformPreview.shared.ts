@@ -1,20 +1,18 @@
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import type {
   MixxxWaveformData,
-  RGBWaveformBandKey,
-  WaveformStyle
+  RGBWaveformBandKey
 } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { CompactVisualWaveformPreviewData } from '@shared/compactVisualWaveform'
+import {
+  formatSaturatedWaveformRgb,
+  resolveSaturatedWaveformColor
+} from '@shared/waveformDisplayColor'
 import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
 
 export type SongListWaveformCanvasContext =
   | CanvasRenderingContext2D
   | OffscreenCanvasRenderingContext2D
-
-type MinMaxSample = {
-  min: number
-  max: number
-}
 
 type MixxxColumnMetrics = {
   amplitudeLeft: number
@@ -23,20 +21,12 @@ type MixxxColumnMetrics = {
   progressColor: { r: number; g: number; b: number }
 }
 
-export type SongListWaveformMinMaxCacheEntry = {
-  source: MixxxWaveformData
-  samples: MinMaxSample[]
-}
-
 export type SongListWaveformRgbMetricsCacheEntry = {
   source: MixxxWaveformData
   columnCount: number
   metrics: MixxxColumnMetrics[]
 }
 
-const WAVEFORM_STYLE_SOUND_CLOUD: WaveformStyle = 'SoundCloud'
-const WAVEFORM_STYLE_FINE: WaveformStyle = 'Fine'
-const WAVEFORM_STYLE_RGB: WaveformStyle = 'RGB'
 const MIXXX_MAX_RGB_ENERGY = Math.sqrt(255 * 255 * 3)
 const MIXXX_RGB_BRIGHTNESS_SCALE = 0.95
 const MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE = 0.6
@@ -48,65 +38,6 @@ const MIXXX_RGB_COMPONENTS: Record<RGBWaveformBandKey, { r: number; g: number; b
 
 const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
 const clamp01 = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0)
-
-export const normalizeSongListWaveformStyle = (
-  style?: WaveformStyle | 'RekordboxMini' | 'Mixxx'
-): WaveformStyle => {
-  if (style === 'RekordboxMini' || style === 'Mixxx') return WAVEFORM_STYLE_RGB
-  if (
-    style === WAVEFORM_STYLE_RGB ||
-    style === WAVEFORM_STYLE_FINE ||
-    style === WAVEFORM_STYLE_SOUND_CLOUD
-  ) {
-    return style
-  }
-  return WAVEFORM_STYLE_RGB
-}
-
-const buildMinMaxDataFromMixxx = (waveformData: MixxxWaveformData): MinMaxSample[] => {
-  const low = waveformData.bands.low
-  const mid = waveformData.bands.mid
-  const high = waveformData.bands.high
-  const frameCount = Math.min(
-    low.left.length,
-    low.right.length,
-    mid.left.length,
-    mid.right.length,
-    high.left.length,
-    high.right.length
-  )
-  if (!frameCount) return []
-  const data = new Array<MinMaxSample>(frameCount)
-  for (let i = 0; i < frameCount; i++) {
-    const lowLeft = low.peakLeft ? low.peakLeft[i] : low.left[i]
-    const lowRight = low.peakRight ? low.peakRight[i] : low.right[i]
-    const midLeft = mid.peakLeft ? mid.peakLeft[i] : mid.left[i]
-    const midRight = mid.peakRight ? mid.peakRight[i] : mid.right[i]
-    const highLeft = high.peakLeft ? high.peakLeft[i] : high.left[i]
-    const highRight = high.peakRight ? high.peakRight[i] : high.right[i]
-    const leftEnergy = Math.sqrt(lowLeft * lowLeft + midLeft * midLeft + highLeft * highLeft)
-    const rightEnergy = Math.sqrt(lowRight * lowRight + midRight * midRight + highRight * highRight)
-    const leftAmplitude = Math.min(1, leftEnergy / MIXXX_MAX_RGB_ENERGY)
-    const rightAmplitude = Math.min(1, rightEnergy / MIXXX_MAX_RGB_ENERGY)
-    data[i] = {
-      min: -rightAmplitude,
-      max: leftAmplitude
-    }
-  }
-  return data
-}
-
-const getSongListWaveformMinMaxSamples = (
-  filePath: string,
-  data: MixxxWaveformData,
-  minMaxCache: Map<string, SongListWaveformMinMaxCacheEntry>
-): MinMaxSample[] => {
-  const cached = minMaxCache.get(filePath)
-  if (cached && cached.source === data) return cached.samples
-  const samples = buildMinMaxDataFromMixxx(data)
-  minMaxCache.set(filePath, { source: data, samples })
-  return samples
-}
 
 const computeSongListMixxxColumnMetrics = (
   filePath: string,
@@ -191,19 +122,19 @@ const computeSongListMixxxColumnMetrics = (
     const maxColor = Math.max(red, green, blue)
     const color =
       maxColor > 0
-        ? {
+        ? resolveSaturatedWaveformColor({
             r: toColorChannel((red / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
             g: toColorChannel((green / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
             b: toColorChannel((blue / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE)
-          }
+          })
         : { r: 0, g: 0, b: 0 }
     const progressColor =
       maxColor > 0
-        ? {
+        ? resolveSaturatedWaveformColor({
             r: toColorChannel((red / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE),
             g: toColorChannel((green / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE),
             b: toColorChannel((blue / maxColor) * 255 * MIXXX_RGB_PROGRESS_BRIGHTNESS_SCALE)
-          }
+          })
         : { r: 0, g: 0, b: 0 }
     const amplitudeLeft = Math.min(1, Math.sqrt(maxAllLeft) / MIXXX_MAX_RGB_ENERGY)
     const amplitudeRight = Math.min(1, Math.sqrt(maxAllRight) / MIXXX_MAX_RGB_ENERGY)
@@ -258,12 +189,20 @@ export const drawSongListPioneerPreviewWaveform = (
     const x = Math.min(width - drawWidth, index * spacing)
     if (backHeight > 0) {
       const backPixelHeight = Math.max(1, backHeight * scaleY)
-      ctx.fillStyle = `rgb(${selected.backColorR || 0}, ${selected.backColorG || 0}, ${selected.backColorB || 0})`
+      ctx.fillStyle = formatSaturatedWaveformRgb({
+        r: selected.backColorR || 0,
+        g: selected.backColorG || 0,
+        b: selected.backColorB || 0
+      })
       ctx.fillRect(x, height - backPixelHeight, drawWidth, backPixelHeight)
     }
     if (frontHeight > 0) {
       const frontPixelHeight = Math.max(1, frontHeight * scaleY)
-      ctx.fillStyle = `rgb(${selected.frontColorR || 0}, ${selected.frontColorG || 0}, ${selected.frontColorB || 0})`
+      ctx.fillStyle = formatSaturatedWaveformRgb({
+        r: selected.frontColorR || 0,
+        g: selected.frontColorG || 0,
+        b: selected.frontColorB || 0
+      })
       ctx.fillRect(x, height - frontPixelHeight, drawWidth, frontPixelHeight)
     }
   }
@@ -275,64 +214,6 @@ export const drawSongListPioneerPreviewWaveform = (
   ctx.fillStyle = progressColor
   ctx.fillRect(0, 0, width * clampedPlayed, height)
   ctx.restore()
-}
-
-const drawSongListMinMaxWaveform = (
-  ctx: SongListWaveformCanvasContext,
-  width: number,
-  height: number,
-  samples: MinMaxSample[],
-  style: WaveformStyle,
-  isHalf: boolean,
-  baseColor: string,
-  progressColor: string,
-  playedPercent: number
-) => {
-  if (!samples.length || width <= 0 || height <= 0) return
-  const barWidth = style === WAVEFORM_STYLE_SOUND_CLOUD ? 2 : 1
-  const gap = style === WAVEFORM_STYLE_SOUND_CLOUD ? 1 : 0
-  const columnCount = Math.max(1, Math.floor(width / (barWidth + gap)))
-  const totalBars = samples.length
-  const samplesPerColumn = totalBars / columnCount
-  const spacing = width / columnCount
-  const drawWidth = Math.max(0.5, Math.min(barWidth, spacing))
-  const offset = spacing > drawWidth ? (spacing - drawWidth) / 2 : 0
-  const midY = height / 2
-  const baselineY = isHalf ? height : midY
-  const scaleY = isHalf ? baselineY : midY
-  const rects: Array<{ x: number; y: number; width: number; height: number }> = []
-  for (let index = 0; index < columnCount; index++) {
-    const start = Math.floor(index * samplesPerColumn)
-    const end = Math.min(totalBars, Math.max(start + 1, Math.floor((index + 1) * samplesPerColumn)))
-    let peak = 0
-    for (let i = start; i < end; i++) {
-      const { min, max } = samples[i]
-      const amplitude = Math.max(Math.abs(min), Math.abs(max))
-      if (amplitude > peak) peak = amplitude
-    }
-    const amplitudePx = Math.max(1, peak * scaleY)
-    const rectHeight = isHalf ? Math.max(1, amplitudePx) : Math.max(1, amplitudePx * 2)
-    const y = isHalf ? baselineY - rectHeight : baselineY - amplitudePx
-    const x = Math.max(0, Math.min(width - drawWidth, index * spacing + offset))
-    rects.push({ x, y, width: drawWidth, height: rectHeight })
-  }
-  const paintRects = (fillStyle: string) => {
-    ctx.fillStyle = fillStyle || '#999999'
-    for (const rect of rects) {
-      ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
-    }
-  }
-  paintRects(baseColor)
-  const clampedPlayed = clamp01(playedPercent)
-  if (clampedPlayed > 0) {
-    const playedWidth = width * clampedPlayed
-    ctx.save()
-    ctx.beginPath()
-    ctx.rect(0, 0, playedWidth, height)
-    ctx.clip()
-    paintRects(progressColor)
-    ctx.restore()
-  }
 }
 
 const drawSongListRgbWaveform = (
@@ -412,39 +293,19 @@ export const drawSongListMixxxWaveform = (
   filePath: string,
   waveformData: MixxxWaveformData,
   options: {
-    waveformStyle?: WaveformStyle | 'RekordboxMini' | 'Mixxx'
     isHalf: boolean
-    baseColor: string
-    progressColor: string
     playedPercent: number
-    minMaxCache: Map<string, SongListWaveformMinMaxCacheEntry>
     rgbMetricsCache: Map<string, SongListWaveformRgbMetricsCacheEntry>
   }
 ) => {
-  const style = normalizeSongListWaveformStyle(options.waveformStyle)
-  if (style === WAVEFORM_STYLE_RGB) {
-    drawSongListRgbWaveform(
-      ctx,
-      width,
-      height,
-      filePath,
-      waveformData,
-      options.isHalf,
-      options.playedPercent,
-      options.rgbMetricsCache
-    )
-    return
-  }
-  const samples = getSongListWaveformMinMaxSamples(filePath, waveformData, options.minMaxCache)
-  drawSongListMinMaxWaveform(
+  drawSongListRgbWaveform(
     ctx,
     width,
     height,
-    samples,
-    style,
+    filePath,
+    waveformData,
     options.isHalf,
-    options.baseColor,
-    options.progressColor,
-    options.playedPercent
+    options.playedPercent,
+    options.rgbMetricsCache
   )
 }

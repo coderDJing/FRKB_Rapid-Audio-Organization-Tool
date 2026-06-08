@@ -35,7 +35,6 @@ const {
   audioOutputSupported,
   themeModeOptions,
   languageOptions,
-  waveformStyleOptions,
   waveformModeOptions,
   keyDisplayStyleOptions,
   audioOutputSelectOptions,
@@ -240,16 +239,6 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 id="setting-checkbox-hideControlsShowWaveform"
                 v-model="runtime.setting.hiddenPlayControlArea"
                 @change="setSetting()"
-              />
-            </div>
-
-            <div class="setting-block">{{ t('player.waveformStyle') }}：</div>
-            <div class="setting-control">
-              <BaseSelect
-                v-model="runtime.setting.waveformStyle"
-                :options="waveformStyleOptions"
-                :width="220"
-                @change="setSetting"
               />
             </div>
 

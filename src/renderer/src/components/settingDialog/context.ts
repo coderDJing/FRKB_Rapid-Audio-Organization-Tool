@@ -47,7 +47,6 @@ export type SettingDialogContext = {
   audioOutputSupported: ComputedRef<boolean>
   themeModeOptions: ComputedRef<SettingDialogOption[]>
   languageOptions: ComputedRef<SettingDialogOption[]>
-  waveformStyleOptions: ComputedRef<SettingDialogOption[]>
   waveformModeOptions: ComputedRef<SettingDialogOption[]>
   keyDisplayStyleOptions: ComputedRef<SettingDialogOption[]>
   audioOutputSelectOptions: ComputedRef<SettingDialogOption[]>

@@ -111,12 +111,6 @@ const languageOptions = computed<SettingDialogOption[]>(() => [
 
 const translateMaybeKey = (message: unknown) => t(String(message || ''))
 
-const waveformStyleOptions = computed<SettingDialogOption[]>(() => [
-  { label: t('player.waveformStyleRGB'), value: 'RGB' },
-  { label: t('player.waveformStyleSoundCloud'), value: 'SoundCloud' },
-  { label: t('player.waveformStyleFine'), value: 'Fine' }
-])
-
 const waveformModeOptions = computed<SettingDialogOption[]>(() => [
   { label: t('player.waveformModeHalf'), value: 'half' },
   { label: t('player.waveformModeFull'), value: 'full' }
@@ -751,7 +745,6 @@ const settingDialogContext: SettingDialogContext = {
   audioOutputSupported,
   themeModeOptions,
   languageOptions,
-  waveformStyleOptions,
   waveformModeOptions,
   keyDisplayStyleOptions,
   audioOutputSelectOptions,

@@ -2,19 +2,16 @@ import { onMounted, onUnmounted, watch, type Ref } from 'vue'
 import {
   WebAudioPlayer,
   type SeekedEventPayload,
-  type WaveformStyle,
   type WebAudioPlayerEvents
 } from './webAudioPlayer'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
-import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import { drawBufferedRawWaveform } from './waveformRawRenderer'
+import { formatSaturatedWaveformRgb } from '@shared/waveformDisplayColor'
 import { drawPlayerCompactVisualWaveform } from './playerCompactVisualWaveformRenderer'
 
 export function useWaveform(params: {
   waveformEl: Ref<HTMLDivElement | null>
   audioPlayer: Ref<WebAudioPlayer | null>
-  rawWaveformData: Ref<RawWaveformData | null>
   runtime: ReturnType<typeof useRuntimeStore>
   updateParentWaveformWidth: () => void
   onNextSong: () => void
@@ -24,7 +21,6 @@ export function useWaveform(params: {
   const {
     waveformEl,
     audioPlayer,
-    rawWaveformData,
     runtime,
     updateParentWaveformWidth,
     onNextSong,
@@ -33,101 +29,9 @@ export function useWaveform(params: {
   } = params
 
   const waveformHeight = 40
-  const barWidth = 2
-  const barGap = 1
   const cursorWidth = 1
-  const WAVEFORM_STYLE_SOUND_CLOUD: WaveformStyle = 'SoundCloud'
-  const WAVEFORM_STYLE_FINE: WaveformStyle = 'Fine'
-  const WAVEFORM_STYLE_RGB: WaveformStyle = 'RGB'
-  const normalizeWaveformStyle = (
-    style?: WaveformStyle | 'RekordboxMini' | 'Mixxx'
-  ): WaveformStyle => {
-    if (style === 'RekordboxMini' || style === 'Mixxx') return WAVEFORM_STYLE_RGB
-    if (
-      style === WAVEFORM_STYLE_RGB ||
-      style === WAVEFORM_STYLE_FINE ||
-      style === WAVEFORM_STYLE_SOUND_CLOUD
-    ) {
-      return style
-    }
-    return WAVEFORM_STYLE_RGB
-  }
-
-  type MinMaxSample = {
-    min: number
-    max: number
-  }
-
-  const getWaveformStyle = (): WaveformStyle => {
-    return normalizeWaveformStyle(runtime.setting?.waveformStyle)
-  }
 
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
-
-  const drawFineWaveform = (width: number, height: number) => {
-    if (!soundCloudMinMaxData) {
-      clearCanvases()
-      return
-    }
-
-    const totalBars = soundCloudMinMaxData.length
-    if (!totalBars) {
-      clearCanvases()
-      return
-    }
-
-    if (!baseCtx || !progressCtx) throw new Error('canvas context is null')
-
-    const pixelRatio = window.devicePixelRatio || 1
-    resizeCanvas(baseCanvas, baseCtx, width, height, pixelRatio)
-    resizeCanvas(progressCanvas, progressCtx, width, height, pixelRatio)
-
-    const spacing = width / totalBars
-    const gap = Math.min(barGap, spacing * 0.25)
-    let drawWidth = spacing - gap
-    drawWidth = Math.min(barWidth, drawWidth)
-    if (drawWidth <= 0) {
-      drawWidth = spacing || 1
-    }
-    drawWidth = Math.max(0.2, Math.min(drawWidth, spacing))
-    const offset = spacing > drawWidth ? (spacing - drawWidth) / 2 : 0
-
-    const midY = height / 2
-    const isHalf = useHalfWaveform()
-    const baselineY = isHalf ? height : midY
-    const scaleY = isHalf ? baselineY : midY
-
-    const baseGradient = baseCtx.createLinearGradient(0, 0, 0, height)
-    baseGradient.addColorStop(0, '#cccccc')
-    baseGradient.addColorStop(1, '#cccccc')
-
-    const progressGradient = progressCtx.createLinearGradient(0, 0, 0, height)
-    progressGradient.addColorStop(0, '#0078d4')
-    progressGradient.addColorStop(1, '#0078d4')
-
-    baseCtx.fillStyle = baseGradient
-    progressCtx.fillStyle = progressGradient
-
-    for (let index = 0; index < totalBars; index++) {
-      const { min, max } = soundCloudMinMaxData[index]
-      const x = index * spacing + offset
-      const clampedX = Math.max(0, Math.min(width - drawWidth, x))
-
-      if (isHalf) {
-        const amplitude = Math.max(Math.abs(min), Math.abs(max))
-        const rectHeight = Math.max(1, amplitude * scaleY)
-        const y = baselineY - rectHeight
-        baseCtx.fillRect(clampedX, y, drawWidth, rectHeight)
-        progressCtx.fillRect(clampedX, y, drawWidth, rectHeight)
-      } else {
-        const barMin = midY + min * midY
-        const barMax = midY + max * midY
-        const rectHeight = Math.max(1, barMax - barMin)
-        baseCtx.fillRect(clampedX, barMin, drawWidth, rectHeight)
-        progressCtx.fillRect(clampedX, barMin, drawWidth, rectHeight)
-      }
-    }
-  }
 
   const canvasContainer = document.createElement('div')
   canvasContainer.style.position = 'relative'
@@ -196,7 +100,6 @@ export function useWaveform(params: {
 
   let animationFrameId: number | null = null
   let audioBuffer: AudioBuffer | null = null
-  let soundCloudMinMaxData: MinMaxSample[] | null = null
   let hoverEl: HTMLElement | null = null
   let isPointerDown = false
   type AudioEventName = keyof WebAudioPlayerEvents
@@ -317,82 +220,6 @@ export function useWaveform(params: {
     progressCtx.clearRect(0, 0, progressCanvas.width, progressCanvas.height)
   }
 
-  const drawSoundCloudWaveform = (width: number, height: number) => {
-    if (!soundCloudMinMaxData) {
-      clearCanvases()
-      return
-    }
-
-    const totalBars = soundCloudMinMaxData.length
-    if (!totalBars) {
-      clearCanvases()
-      return
-    }
-
-    const pixelRatio = window.devicePixelRatio || 1
-    resizeCanvas(baseCanvas, baseCtx, width, height, pixelRatio)
-    resizeCanvas(progressCanvas, progressCtx, width, height, pixelRatio)
-
-    const targetBarWidth = barWidth
-    const targetGap = barGap
-    const columnCount = Math.max(1, Math.floor(width / (targetBarWidth + targetGap)))
-    const samplesPerColumn = totalBars / columnCount
-
-    const spacing = width / columnCount
-    const gap = Math.min(targetGap, spacing * 0.25)
-    let drawWidth = Math.min(targetBarWidth, spacing - gap)
-    if (drawWidth <= 0) {
-      drawWidth = spacing || 1
-    }
-    drawWidth = Math.max(0.2, Math.min(drawWidth, spacing))
-    const offset = spacing > drawWidth ? (spacing - drawWidth) / 2 : 0
-
-    const midY = height / 2
-    const isHalf = useHalfWaveform()
-    const baselineY = isHalf ? height : midY
-    const scaleY = isHalf ? baselineY * 0.98 : midY * 0.96
-
-    const baseGradient = baseCtx.createLinearGradient(0, 0, 0, height)
-    baseGradient.addColorStop(0, '#cccccc')
-    baseGradient.addColorStop(1, '#cccccc')
-
-    const progressGradient = progressCtx.createLinearGradient(0, 0, 0, height)
-    progressGradient.addColorStop(0, '#0078d4')
-    progressGradient.addColorStop(1, '#0078d4')
-
-    baseCtx.fillStyle = baseGradient
-    progressCtx.fillStyle = progressGradient
-
-    for (let index = 0; index < columnCount; index++) {
-      const start = Math.floor(index * samplesPerColumn)
-      const end = Math.min(
-        totalBars,
-        Math.max(start + 1, Math.floor((index + 1) * samplesPerColumn))
-      )
-      let peak = 0
-      let sum = 0
-      let count = 0
-
-      for (let i = start; i < end; i++) {
-        const { min, max } = soundCloudMinMaxData[i]
-        const amplitude = Math.max(Math.abs(min), Math.abs(max))
-        if (amplitude > peak) peak = amplitude
-        sum += amplitude
-        count++
-      }
-
-      const average = count ? sum / count : 0
-      let amplitude = peak * 0.7 + average * 0.3
-      amplitude = Math.max(0, Math.min(1, amplitude))
-      const amplitudePx = Math.min(scaleY, Math.max(1, amplitude * scaleY))
-      const rectHeight = Math.max(1, isHalf ? amplitudePx : amplitudePx * 2)
-      const y = isHalf ? baselineY - rectHeight : midY - amplitudePx
-      const x = Math.max(0, Math.min(width - drawWidth, index * spacing + offset))
-      baseCtx.fillRect(x, y, drawWidth, rectHeight)
-      progressCtx.fillRect(x, y, drawWidth, rectHeight)
-    }
-  }
-
   const drawPioneerPreviewWaveform = (
     width: number,
     height: number,
@@ -444,13 +271,21 @@ export function useWaveform(params: {
 
         if (backHeight > 0) {
           const backPixelHeight = Math.max(1, backHeight * scaleY)
-          ctx.fillStyle = `rgb(${selected.backColorR || 0}, ${selected.backColorG || 0}, ${selected.backColorB || 0})`
+          ctx.fillStyle = formatSaturatedWaveformRgb({
+            r: selected.backColorR || 0,
+            g: selected.backColorG || 0,
+            b: selected.backColorB || 0
+          })
           ctx.fillRect(x, height - backPixelHeight, drawWidth, backPixelHeight)
         }
 
         if (frontHeight > 0) {
           const frontPixelHeight = Math.max(1, frontHeight * scaleY)
-          ctx.fillStyle = `rgb(${selected.frontColorR || 0}, ${selected.frontColorG || 0}, ${selected.frontColorB || 0})`
+          ctx.fillStyle = formatSaturatedWaveformRgb({
+            r: selected.frontColorR || 0,
+            g: selected.frontColorG || 0,
+            b: selected.frontColorB || 0
+          })
           ctx.fillRect(x, height - frontPixelHeight, drawWidth, frontPixelHeight)
         }
       }
@@ -477,9 +312,8 @@ export function useWaveform(params: {
     const player = audioPlayer.value
     const pioneerPreviewData = player.pioneerPreviewWaveformData ?? null
     const compactVisualData = player.compactVisualWaveformData ?? null
-    const rawData = rawWaveformData.value
 
-    const duration = player?.getDuration?.() ?? audioBuffer?.duration ?? rawData?.duration ?? 0
+    const duration = player?.getDuration?.() ?? audioBuffer?.duration ?? 0
     const currentTime = player?.getCurrentTime?.() ?? 0
     const progress = duration > 0 ? currentTime / duration : 0
     updateProgressVisual(progress)
@@ -509,73 +343,7 @@ export function useWaveform(params: {
       return
     }
 
-    const style = getWaveformStyle()
-    if (style === WAVEFORM_STYLE_FINE) {
-      if (rawData) {
-        drawBufferedRawWaveform({
-          waveformData: rawData,
-          width,
-          height,
-          style,
-          useHalfWaveform: useHalfWaveform(),
-          baseCanvas,
-          progressCanvas,
-          baseCtx,
-          progressCtx,
-          pixelRatio: window.devicePixelRatio || 1,
-          barWidth,
-          barGap,
-          resizeCanvas
-        })
-        return
-      }
-      drawFineWaveform(width, height)
-      return
-    }
-
-    if (style === WAVEFORM_STYLE_RGB) {
-      if (rawData) {
-        drawBufferedRawWaveform({
-          waveformData: rawData,
-          width,
-          height,
-          style,
-          useHalfWaveform: useHalfWaveform(),
-          baseCanvas,
-          progressCanvas,
-          baseCtx,
-          progressCtx,
-          pixelRatio: window.devicePixelRatio || 1,
-          barWidth,
-          barGap,
-          resizeCanvas
-        })
-        return
-      }
-      clearCanvases()
-      return
-    }
-
-    if (rawData) {
-      drawBufferedRawWaveform({
-        waveformData: rawData,
-        width,
-        height,
-        style,
-        useHalfWaveform: useHalfWaveform(),
-        baseCanvas,
-        progressCanvas,
-        baseCtx,
-        progressCtx,
-        pixelRatio: window.devicePixelRatio || 1,
-        barWidth,
-        barGap,
-        resizeCanvas
-      })
-      return
-    }
-
-    drawSoundCloudWaveform(width, height)
+    clearCanvases()
   }
 
   let ro: ResizeObserver | null = null
@@ -585,10 +353,8 @@ export function useWaveform(params: {
     const player = audioPlayer.value
     const pioneerPreviewData = player.pioneerPreviewWaveformData ?? null
     const compactVisualData = player.compactVisualWaveformData ?? null
-    const rawData = rawWaveformData.value
-    if (!pioneerPreviewData && !compactVisualData && !rawData) {
+    if (!pioneerPreviewData && !compactVisualData) {
       audioBuffer = null
-      soundCloudMinMaxData = null
       clearCanvases()
       updateProgressVisual(0)
       syncHoverOverlay(0)
@@ -597,14 +363,12 @@ export function useWaveform(params: {
 
     if (pioneerPreviewData) {
       audioBuffer = null
-      soundCloudMinMaxData = null
       drawWaveform(true)
       return
     }
 
     const buffer = player.audioBuffer ?? null
     audioBuffer = buffer
-    soundCloudMinMaxData = null
     drawWaveform(true)
   }
 
@@ -770,21 +534,7 @@ export function useWaveform(params: {
   )
 
   watch(
-    () => runtime.setting?.waveformStyle,
-    () => {
-      updateWaveform()
-    }
-  )
-
-  watch(
     () => runtime.setting?.waveformMode,
-    () => {
-      updateWaveform()
-    }
-  )
-
-  watch(
-    () => rawWaveformData.value,
     () => {
       updateWaveform()
     }

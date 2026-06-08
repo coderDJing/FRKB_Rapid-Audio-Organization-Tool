@@ -562,7 +562,6 @@ interface ISettingConfig {
   playerGlobalShortcuts: IPlayerGlobalShortcuts
   nextCheckUpdateTime: string
   hiddenPlayControlArea: boolean
-  waveformStyle?: 'SoundCloud' | 'Fine' | 'RGB'
   waveformMode?: 'half' | 'full'
   keyDisplayStyle?: 'Classic' | 'Camelot'
   // 是否显示闲时分析状态（默认不显示）

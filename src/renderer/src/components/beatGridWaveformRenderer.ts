@@ -1,6 +1,7 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { isRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformData'
+import { resolveSaturatedWaveformColor } from '@shared/waveformDisplayColor'
 import {
   resolveRawEnergyAttackAmp,
   resolveRawEnergyProfileByRange,
@@ -492,9 +493,11 @@ const buildWaveformColumns = (
       ampTop: clamp(ampTop / totalWeight, 0, 1),
       ampBottom: clamp(ampBottom / totalWeight, 0, 1),
       color: {
-        r: toColorChannel(r / totalWeight),
-        g: toColorChannel(g / totalWeight),
-        b: toColorChannel(b / totalWeight)
+        ...resolveSaturatedWaveformColor({
+          r: toColorChannel(r / totalWeight),
+          g: toColorChannel(g / totalWeight),
+          b: toColorChannel(b / totalWeight)
+        })
       },
       frequencyRatios:
         lowRatio > 0 || midRatio > 0 || highRatio > 0
@@ -675,11 +678,11 @@ const buildWaveformColumns = (
     columns[x] = {
       ampTop: clamp(ampTop * safeWaveformGain, 0, 1),
       ampBottom: clamp(ampBottom * safeWaveformGain, 0, 1),
-      color: {
+      color: resolveSaturatedWaveformColor({
         r: toColorChannel((red / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
         g: toColorChannel((green / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE),
         b: toColorChannel((blue / maxColor) * 255 * MIXXX_RGB_BRIGHTNESS_SCALE)
-      }
+      })
     }
   }
 

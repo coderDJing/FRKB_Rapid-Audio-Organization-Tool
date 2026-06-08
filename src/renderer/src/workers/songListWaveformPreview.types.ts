@@ -1,8 +1,5 @@
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
-import type {
-  MixxxWaveformData,
-  WaveformStyle
-} from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { CompactVisualWaveformPreviewData } from '@shared/compactVisualWaveform'
 
 export type SongListWaveformWorkerData =
@@ -55,9 +52,7 @@ export type SongListWaveformWorkerIncoming =
         width: number
         height: number
         pixelRatio: number
-        waveformStyle: WaveformStyle
         isHalf: boolean
-        baseColor: string
         backgroundColor: string
         progressColor: string
         playedPercent: number

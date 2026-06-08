@@ -74,9 +74,6 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime
   if (runtime.setting.audioOutputDeviceId === undefined) {
     runtime.setting.audioOutputDeviceId = AUDIO_OUTPUT_FOLLOW_SYSTEM_ID
   }
-  if (runtime.setting.waveformStyle === undefined) {
-    runtime.setting.waveformStyle = 'RGB'
-  }
   if (runtime.setting.waveformMode === undefined) {
     runtime.setting.waveformMode = 'half'
   }

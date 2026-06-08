@@ -6,8 +6,6 @@ export type { CompactVisualWaveformData }
 export type RGBWaveformBandKey = 'low' | 'mid' | 'high'
 export type MixxxWaveformBandKey = RGBWaveformBandKey | 'all'
 
-export type WaveformStyle = 'SoundCloud' | 'Fine' | 'RGB'
-
 export type MixxxWaveformBand = {
   left: Uint8Array
   right: Uint8Array

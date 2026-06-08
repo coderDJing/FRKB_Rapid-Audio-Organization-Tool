@@ -2,7 +2,6 @@ import {
   drawSongListCompactVisualWaveform,
   drawSongListMixxxWaveform,
   drawSongListPioneerPreviewWaveform,
-  type SongListWaveformMinMaxCacheEntry,
   type SongListWaveformRgbMetricsCacheEntry
 } from './songListWaveformPreview.shared'
 import type {
@@ -15,7 +14,6 @@ type RenderPayload = Extract<SongListWaveformWorkerIncoming, { type: 'render' }>
 const canvasMap = new Map<string, OffscreenCanvas>()
 const ctxMap = new Map<string, OffscreenCanvasRenderingContext2D>()
 const dataMap = new Map<string, SongListWaveformWorkerData>()
-const minMaxCache = new Map<string, SongListWaveformMinMaxCacheEntry>()
 const rgbMetricsCache = new Map<string, SongListWaveformRgbMetricsCacheEntry>()
 const pendingRenderByCanvasId = new Map<string, RenderPayload>()
 let renderTimer: ReturnType<typeof setTimeout> | null = null
@@ -88,12 +86,8 @@ const renderWaveform = (payload: RenderPayload) => {
   }
 
   drawSongListMixxxWaveform(ctx, width, height, payload.filePath, data.data, {
-    waveformStyle: payload.waveformStyle,
     isHalf: payload.isHalf,
-    baseColor: payload.baseColor,
-    progressColor: payload.progressColor,
     playedPercent,
-    minMaxCache,
     rgbMetricsCache
   })
 }
@@ -140,12 +134,10 @@ self.onmessage = (event: MessageEvent<SongListWaveformWorkerIncoming>) => {
     const data = message.payload?.data ?? null
     if (!data) {
       dataMap.delete(filePath)
-      minMaxCache.delete(filePath)
       rgbMetricsCache.delete(filePath)
       return
     }
     dataMap.set(filePath, data)
-    minMaxCache.delete(filePath)
     rgbMetricsCache.delete(filePath)
     return
   }
@@ -154,7 +146,6 @@ self.onmessage = (event: MessageEvent<SongListWaveformWorkerIncoming>) => {
     const filePath = String(message.payload?.filePath || '').trim()
     if (!filePath) return
     dataMap.delete(filePath)
-    minMaxCache.delete(filePath)
     rgbMetricsCache.delete(filePath)
     return
   }
