@@ -435,6 +435,7 @@ const {
   resolveTransportDeckSnapshot,
   resolveDeckCuePointRef,
   resolveDeckCuePlacementSec,
+  resolveBrowseViewMode: () => horizontalBrowseViewMode.value,
   resolveDualTransportSyncEnabled: () =>
     dualTransportSyncEnabled.value && canUseDualTransportSync.value,
   ensureDualTransportSync: activateDualTransportSync,

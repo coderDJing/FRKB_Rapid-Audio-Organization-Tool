@@ -132,6 +132,9 @@ export interface HorizontalBrowseTransportDeckSnapshot {
   playheadLoaded: boolean
   playing: boolean
   currentSec: number
+  audioCurrentSec: number
+  loadedSegmentStartSec: number
+  loadedSegmentEndSec: number
   durationSec: number
   effectiveDurationSec: number
   playbackRate: number

@@ -10,6 +10,7 @@ import { useHorizontalBrowseDeckPlaybackController } from '@renderer/components/
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 
 type DeckKey = HorizontalBrowseDeckKey
+type HorizontalBrowsePendingPlayViewMode = 'dual' | 'edit' | 'unknown'
 const PLAYHEAD_READY_NEGATIVE_EPSILON_SEC = 0.0001
 
 type UseHorizontalBrowseDeckTransportInteractionsParams = {
@@ -48,6 +49,7 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
   resolveDualTransportSyncEnabled?: () => boolean
   ensureDualTransportSync?: (sourceDeck?: DeckKey) => Promise<boolean>
   deactivateDualTransportSync?: () => void
+  resolveBrowseViewMode?: () => HorizontalBrowsePendingPlayViewMode
 }
 
 export const useHorizontalBrowseDeckTransportInteractions = (
@@ -111,7 +113,8 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     applyDeckStoredCueDefinition,
     resolveDualTransportSyncEnabled: params.resolveDualTransportSyncEnabled,
     ensureDualTransportSync: params.ensureDualTransportSync,
-    deactivateDualTransportSync: params.deactivateDualTransportSync
+    deactivateDualTransportSync: params.deactivateDualTransportSync,
+    resolveBrowseViewMode: params.resolveBrowseViewMode
   })
 
   const {

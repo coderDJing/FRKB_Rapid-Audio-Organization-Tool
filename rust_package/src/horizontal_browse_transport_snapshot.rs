@@ -30,6 +30,17 @@ impl HorizontalBrowseTransportEngine {
   ) -> HorizontalBrowseTransportDeckSnapshot {
     let deck_state = self.deck(deck);
     let derived = self.derive_state(deck, now_ms);
+    let audio_current_sec =
+      Self::timeline_sec_to_audio_sec(deck_state, derived.estimated_current_sec);
+    let loaded = self.is_loaded(deck);
+    let (loaded_segment_start_sec, loaded_segment_end_sec) = if loaded {
+      (
+        deck_state.pcm_start_sec,
+        self.resolve_loaded_segment_end_sec(deck),
+      )
+    } else {
+      (0.0, 0.0)
+    };
     let playhead_loaded = self.has_loaded_segment_covering(deck, derived.estimated_current_sec);
     let full_decoding = deck_state.pending_full_decode_file_path.is_some();
     let effective_duration_sec =
@@ -48,7 +59,7 @@ impl HorizontalBrowseTransportEngine {
             .and_then(|path| path.split(['/', '\\']).last().map(|s| s.to_string()))
             .unwrap_or_default()
         }),
-      loaded: self.is_loaded(deck),
+      loaded,
       fully_decoded: self.is_fully_decoded(deck),
       decoding: deck_state.pending_decode_file_path.is_some() || full_decoding,
       full_decoding,
@@ -57,6 +68,9 @@ impl HorizontalBrowseTransportEngine {
       playhead_loaded,
       playing: deck_state.playing,
       current_sec: derived.estimated_current_sec,
+      audio_current_sec,
+      loaded_segment_start_sec,
+      loaded_segment_end_sec,
       duration_sec: deck_state.duration_sec,
       effective_duration_sec,
       playback_rate: deck_state.playback_rate,

@@ -1,4 +1,4 @@
-import { reactive, watch } from 'vue'
+import { onScopeDispose, reactive, watch } from 'vue'
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type {
   HorizontalBrowseDeckKey,
@@ -13,43 +13,20 @@ import type { HorizontalBrowseLoopRange } from '@renderer/components/useHorizont
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import { resolveSongCueTimelineDefinition } from '@shared/songCueTimeBasis'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
+import {
+  createHorizontalBrowsePendingPlayDiagnostics,
+  type HorizontalBrowsePendingPlayViewMode
+} from '@renderer/components/horizontalBrowsePendingPlayDiagnostics'
+import {
+  createDefaultDeckWaveformDragState,
+  type DeckScrubPreviewRequest,
+  type DeckSeekRequest,
+  type DeckWaveformDragEndPayload,
+  type DeckWaveformDragState,
+  type DeckWaveformScrubPreviewPayload
+} from '@renderer/components/horizontalBrowseDeckPlaybackState'
 
 type DeckKey = HorizontalBrowseDeckKey
-
-export type DeckWaveformDragEndPayload = {
-  anchorSec: number
-  committed: boolean
-}
-
-export type DeckWaveformScrubPreviewPayload = {
-  anchorSec: number
-  playbackRate: number
-}
-
-type DeckWaveformDragState = {
-  active: boolean
-  wasPlaying: boolean
-  syncEnabledBefore: boolean
-  token: number
-  pausePromise: Promise<void> | null
-  startAnchorSec: number
-  anchorSec: number
-  cueCommittedDuringDrag: boolean
-}
-
-type DeckSeekRequest = {
-  token: number
-  seconds: number
-  source: string
-  alignToLeader: boolean
-}
-
-type DeckScrubPreviewRequest = {
-  token: number
-  active: boolean
-  anchorSec: number
-  playbackRate: number
-}
 
 type UseHorizontalBrowseDeckPlaybackControllerParams = {
   touchDeckInteraction: (deck: DeckKey) => void
@@ -85,6 +62,7 @@ type UseHorizontalBrowseDeckPlaybackControllerParams = {
   resolveDualTransportSyncEnabled?: () => boolean
   ensureDualTransportSync?: (sourceDeck?: DeckKey) => Promise<boolean>
   deactivateDualTransportSync?: () => void
+  resolveBrowseViewMode?: () => HorizontalBrowsePendingPlayViewMode
 }
 
 const BAR_JUMP_BEATS = 4
@@ -101,17 +79,6 @@ const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve,
 const resolveOtherDeck = (deck: DeckKey): DeckKey => (deck === 'top' ? 'bottom' : 'top')
 
 const PENDING_PLAY_VISIBLE_DELAY_MS = 250
-
-const createDefaultDeckWaveformDragState = (): DeckWaveformDragState => ({
-  active: false,
-  wasPlaying: false,
-  syncEnabledBefore: false,
-  token: 0,
-  pausePromise: null,
-  startAnchorSec: 0,
-  anchorSec: 0,
-  cueCommittedDuringDrag: false
-})
 
 export const useHorizontalBrowseDeckPlaybackController = (
   params: UseHorizontalBrowseDeckPlaybackControllerParams
@@ -198,14 +165,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
     }, PENDING_PLAY_VISIBLE_DELAY_MS)
   }
 
-  watch(
-    () => [deckPendingPlayOnLoad.top, deckPendingPlayOnLoad.bottom] as const,
-    ([topPending, bottomPending]) => {
-      syncPendingPlayVisible('top', topPending)
-      syncPendingPlayVisible('bottom', bottomPending)
-    }
-  )
-
   const buildDeckBeatDiagnostics = (deck: DeckKey) => {
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const song = params.resolveDeckSong(deck)
@@ -284,6 +243,31 @@ export const useHorizontalBrowseDeckPlaybackController = (
         renderCurrentSec < -PLAYHEAD_READY_NEGATIVE_EPSILON_SEC)
     )
   }
+
+  const pendingPlayDiagnostics = createHorizontalBrowsePendingPlayDiagnostics({
+    resolveDeckSong: params.resolveDeckSong,
+    resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot,
+    resolveDeckPendingPlay: (deck) => deckPendingPlayOnLoad[deck],
+    isDeckPlayheadReady,
+    resolveDualTransportSyncActive: isDualTransportSyncActive,
+    resolveBrowseViewMode: params.resolveBrowseViewMode
+  })
+
+  watch(
+    () => [deckPendingPlayOnLoad.top, deckPendingPlayOnLoad.bottom] as const,
+    ([topPending, bottomPending]) => {
+      syncPendingPlayVisible('top', topPending)
+      syncPendingPlayVisible('bottom', bottomPending)
+      pendingPlayDiagnostics.sync('top', topPending)
+      pendingPlayDiagnostics.sync('bottom', bottomPending)
+    }
+  )
+
+  onScopeDispose(() => {
+    clearPendingPlayVisibleTimer('top')
+    clearPendingPlayVisibleTimer('bottom')
+    pendingPlayDiagnostics.dispose()
+  })
 
   const clampDeckTimelineSeconds = (deck: DeckKey, seconds: number) => {
     const numeric = Number(seconds)
