@@ -12,7 +12,6 @@
   --glass-bg: rgba(0, 0, 0, 0.7);
   --glass-border: rgba(255, 255, 255, 0.08);
   --nav-bg: rgba(0, 0, 0, 0.7);
-  --radius-2xl: 32px;
   --radius-xl: 24px;
   --radius-lg: 12px;
   --section-y: clamp(88px, 9vw, 132px);

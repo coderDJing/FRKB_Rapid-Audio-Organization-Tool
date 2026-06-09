@@ -20,8 +20,6 @@
   --mixtape-ruler-inactive-bg: rgba(255, 255, 255, 0.1);
   --mixtape-control-chip-bg: rgba(0, 0, 0, 0.22);
   --mixtape-control-chip-bg-strong: rgba(255, 255, 255, 0.08);
-  --mixtape-control-chip-muted-bg: rgba(255, 255, 255, 0.06);
-  --mixtape-control-chip-muted-text: rgba(255, 255, 255, 0.72);
   --mixtape-panel-border-soft: rgba(255, 255, 255, 0.08);
   --mixtape-panel-gradient-soft: linear-gradient(
     180deg,
@@ -30,7 +28,6 @@
   );
   --mixtape-surface-soft: rgba(0, 0, 0, 0.16);
   --mixtape-surface-soft-strong: rgba(0, 0, 0, 0.25);
-  --mixtape-surface-lane: rgba(255, 255, 255, 0.07);
   --mixtape-surface-overlay: rgba(30, 30, 30, 0.65);
   --mixtape-surface-overlay-border: rgba(255, 255, 255, 0.12);
   --mixtape-surface-overlay-shadow: rgba(0, 0, 0, 0.2);
@@ -59,7 +56,6 @@
   --mixtape-preview-line-shadow: rgba(0, 0, 0, 0.75);
   --mixtape-overview-stage-bg: var(--waveform-bg);
   --mixtape-overview-lane-bg: var(--waveform-bg-elev);
-  --mixtape-overview-viewport-scrim: rgba(0, 0, 0, 0.65);
   --mixtape-danger-soft-bg: rgba(193, 58, 58, 0.2);
   --mixtape-danger-soft-text: #ffd6d6;
   --mixtape-error-soft: #f08989;
@@ -75,7 +71,6 @@
   --mixtape-mask-card-error-border: rgba(255, 120, 120, 0.25);
   --mixtape-mask-rail: rgba(255, 255, 255, 0.12);
   --mixtape-mask-surface: rgba(255, 255, 255, 0.04);
-  --mixtape-mask-surface-strong: rgba(255, 255, 255, 0.12);
   --mixtape-mask-surface-line: rgba(255, 255, 255, 0.03);
   --mixtape-mask-pill-border: rgba(255, 255, 255, 0.08);
   --mixtape-mask-text: rgba(255, 255, 255, 0.88);
@@ -165,8 +160,6 @@
   --mixtape-ruler-inactive-bg: rgba(15, 23, 42, 0.08);
   --mixtape-control-chip-bg: rgba(255, 255, 255, 0.78);
   --mixtape-control-chip-bg-strong: rgba(15, 23, 42, 0.08);
-  --mixtape-control-chip-muted-bg: rgba(15, 23, 42, 0.08);
-  --mixtape-control-chip-muted-text: rgba(15, 23, 42, 0.72);
   --mixtape-panel-border-soft: rgba(15, 23, 42, 0.08);
   --mixtape-panel-gradient-soft: linear-gradient(
     180deg,
@@ -175,7 +168,6 @@
   );
   --mixtape-surface-soft: rgba(15, 23, 42, 0.06);
   --mixtape-surface-soft-strong: rgba(15, 23, 42, 0.08);
-  --mixtape-surface-lane: rgba(15, 23, 42, 0.05);
   --mixtape-surface-overlay: rgba(255, 255, 255, 0.9);
   --mixtape-surface-overlay-border: rgba(15, 23, 42, 0.1);
   --mixtape-surface-overlay-shadow: rgba(15, 23, 42, 0.12);
@@ -203,7 +195,6 @@
   --mixtape-preview-line-shadow: rgba(255, 255, 255, 0.45);
   --mixtape-overview-stage-bg: var(--waveform-bg);
   --mixtape-overview-lane-bg: var(--waveform-bg-elev);
-  --mixtape-overview-viewport-scrim: rgba(247, 249, 252, 0.46);
   --mixtape-danger-soft-bg: rgba(196, 59, 59, 0.12);
   --mixtape-danger-soft-text: #a12626;
   --mixtape-error-soft: #b42318;
@@ -219,7 +210,6 @@
   --mixtape-mask-card-error-border: rgba(190, 17, 0, 0.24);
   --mixtape-mask-rail: rgba(15, 23, 42, 0.1);
   --mixtape-mask-surface: rgba(15, 23, 42, 0.05);
-  --mixtape-mask-surface-strong: rgba(15, 23, 42, 0.12);
   --mixtape-mask-surface-line: rgba(15, 23, 42, 0.04);
   --mixtape-mask-pill-border: rgba(15, 23, 42, 0.1);
   --mixtape-mask-text: rgba(15, 23, 42, 0.9);

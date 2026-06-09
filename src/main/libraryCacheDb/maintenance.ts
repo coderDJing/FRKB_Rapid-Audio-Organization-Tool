@@ -519,7 +519,7 @@ function collectMigratableCacheRoots(db: SqliteDatabase, baseRoot: string): Set<
   return targets
 }
 
-export async function migrateCacheKeysToRelativeIfNeeded(): Promise<void> {
+async function migrateCacheKeysToRelativeIfNeeded(): Promise<void> {
   const db = getLibraryDb()
   if (!db) return
   try {

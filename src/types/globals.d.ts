@@ -20,8 +20,6 @@ type md5 = {
   error?: string
 }
 
-// 指纹相关类型已移除（当前仅使用音频内容哈希判重）
-
 declare global {
   interface Window {
     electron: ElectronAPI

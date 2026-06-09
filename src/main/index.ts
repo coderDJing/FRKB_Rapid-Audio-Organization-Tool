@@ -642,7 +642,6 @@ app.on('window-all-closed', async () => {
   app.quit()
 })
 
-// 语言字典将不再通过主进程下发，渲染进程使用 vue-i18n 自行管理
 ipcMain.on('outputLog', (_event, logMsg) => {
   const normalizeLevelFromText = (text: string): LogLevel => {
     const normalized = String(text || '').toLowerCase()

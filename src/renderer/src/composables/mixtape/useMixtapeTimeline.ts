@@ -252,8 +252,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     preRenderState
   })
 
-  // single-canvas renderer no longer uses per-tile DOM canvases
-
   const renderWaveformTileToCache = (task: WaveformPreRenderTask) => {
     const { ctx: render, tile, cacheKey } = task
     const width = Math.max(1, Math.floor(tile.width))

@@ -446,8 +446,6 @@ onUnmounted(() => {
 })
 // 上述列处理、加载、事件与封面清理均由 composable 提供
 
-// 已移除残留 perfLog
-
 // songClick 宸茬敱 useKeyboardSelection 鎻愪緵
 
 const applyMetadataUpdate = async (

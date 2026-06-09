@@ -2,7 +2,6 @@ import path = require('path')
 import { getLibraryDb } from '../libraryDb'
 import { log } from '../log'
 import {
-  decodeMixxxWaveformData,
   encodeMixxxWaveformData,
   MIXXX_WAVEFORM_CACHE_VERSION,
   type MixxxWaveformData
@@ -530,69 +529,7 @@ export async function upsertExternalAnalysisWaveformCacheEntry(
   }
 }
 
-export async function loadExternalAnalysisWaveformCacheData(
-  context: Partial<ExternalAnalysisContext> | null | undefined,
-  stat: { size: number; mtimeMs: number }
-): Promise<MixxxWaveformData | null | undefined> {
-  const db = getLibraryDb()
-  const normalized = normalizeContext(context)
-  if (!db || !normalized) return undefined
-  try {
-    const row = db
-      .prepare<ExternalAnalysisCacheRow>(
-        `SELECT size, mtime_ms, waveform_version, waveform_sample_rate, waveform_step,
-                waveform_duration, waveform_frames, waveform_data
-         FROM ${EXTERNAL_ANALYSIS_CACHE_TABLE}
-         WHERE source_kind = ? AND source_id = ? AND relative_path = ?`
-      )
-      .get(normalized.sourceKind, normalized.sourceId, normalized.relativePath)
-    if (!row || row.waveform_data === undefined || row.waveform_data === null) return null
-    const size = toNumber(row.size)
-    const mtimeMs = toNumber(row.mtime_ms)
-    const version = toNumber(row.waveform_version)
-    const sampleRate = toNumber(row.waveform_sample_rate)
-    const step = toNumber(row.waveform_step)
-    const duration = toNumber(row.waveform_duration)
-    const frames = toNumber(row.waveform_frames)
-    if (
-      size === null ||
-      mtimeMs === null ||
-      version !== MIXXX_WAVEFORM_CACHE_VERSION ||
-      sampleRate === null ||
-      step === null ||
-      duration === null ||
-      frames === null ||
-      frames <= 0
-    ) {
-      await removeExternalAnalysisWaveformCacheEntry(normalized)
-      return null
-    }
-    if (size !== stat.size || Math.abs(mtimeMs - stat.mtimeMs) > 1) {
-      await removeExternalAnalysisCacheEntry(normalized)
-      return null
-    }
-    const payload = Buffer.isBuffer(row.waveform_data)
-      ? row.waveform_data
-      : row.waveform_data instanceof Uint8Array
-        ? Buffer.from(row.waveform_data)
-        : null
-    if (!payload) {
-      await removeExternalAnalysisWaveformCacheEntry(normalized)
-      return null
-    }
-    const decoded = decodeMixxxWaveformData({ sampleRate, step, duration, frames }, payload)
-    if (!decoded) {
-      await removeExternalAnalysisWaveformCacheEntry(normalized)
-      return null
-    }
-    return decoded
-  } catch (error) {
-    log.error('[sqlite] external analysis waveform cache load failed', error)
-    return undefined
-  }
-}
-
-export async function removeExternalAnalysisWaveformCacheEntry(
+async function removeExternalAnalysisWaveformCacheEntry(
   context: Partial<ExternalAnalysisContext> | null | undefined
 ) {
   const db = getLibraryDb()

@@ -121,7 +121,7 @@ const readPayload = (compressed: Buffer) => {
   return { header, readBytes }
 }
 
-export function encodeUnifiedDisplayWaveformCacheData(
+function encodeUnifiedDisplayWaveformCacheData(
   data: UnifiedDisplayWaveformDetailData
 ): Buffer | null {
   if (!data || data.version !== UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION) return null
@@ -160,7 +160,7 @@ export function encodeUnifiedDisplayWaveformCacheData(
   })
 }
 
-export function decodeUnifiedDisplayWaveformCacheData(
+function decodeUnifiedDisplayWaveformCacheData(
   meta: UnifiedDisplayWaveformMeta,
   payload: Buffer
 ): UnifiedDisplayWaveformDetailData | null {

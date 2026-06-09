@@ -11,7 +11,6 @@ module.exports = [
       'dist',
       'out',
       '.gitignore',
-      '.eslintrc.cjs',
       'build/**',
       'docs/.vitepress/cache/**',
       'docs/.vitepress/dist/**',

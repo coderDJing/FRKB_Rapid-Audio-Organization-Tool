@@ -162,7 +162,7 @@ export async function upsertMixtapeStemWaveformCacheEntry(
   }
 }
 
-export async function removeMixtapeStemWaveformCacheEntry(key: CacheKey): Promise<boolean> {
+async function removeMixtapeStemWaveformCacheEntry(key: CacheKey): Promise<boolean> {
   const db = getLibraryDb()
   if (!db) return false
   const resolvedKey = resolveNormalizedKey(key)

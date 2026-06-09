@@ -47,7 +47,6 @@ fn configure_hidden_process(command: &mut Command) {
   use std::os::windows::process::CommandExt;
   command.creation_flags(CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS);
 }
-
 #[cfg(not(windows))]
 fn configure_hidden_process(_command: &mut Command) {}
 
@@ -97,8 +96,6 @@ pub struct ProcessProgress {
   pub processed: i32,
   pub total: i32,
 }
-
-// 声纹比对类型已移除
 
 /// 音频文件处理结果
 #[napi(object)]
@@ -449,8 +446,6 @@ pub async fn calculate_file_hashes_with_progress(
 
   Ok(Arc::try_unwrap(results).unwrap().into_inner())
 }
-
-// compare_fingerprints 已移除
 
 /// 解码音频文件为 PCM Float32Array
 ///
@@ -2499,8 +2494,6 @@ fn calculate_file_hash_for_file(path: &str) -> AudioFileResult {
   result
 }
 
-// 文件级 SHA256 计算已移除（仅保留基于 PCM 的哈希）
-
 fn extract_audio_features(
   mut format: Box<dyn FormatReader>,
   result: &mut AudioFileResult,
@@ -2522,8 +2515,6 @@ fn extract_audio_features(
   // 已精简：不再导出 duration/quality_label
 
   let mut decoder = build_decoder(&codec_params)?;
-  // 声纹路径已移除
-
   // 延迟创建 SampleBuffer，确保与首个解码帧的 spec 严格一致
   let mut sample_buffer: Option<SampleBuffer<i16>> = None;
   let mut current_spec: Option<SignalSpec> = None;
@@ -2571,15 +2562,11 @@ fn extract_audio_features(
 
   // 已精简：不再导出时长/位深
 
-  // 声纹计算已移除
-
   // 基于 PCM 内容的哈希，实现“跳过元数据”的唯一值
   result.sha256_hash = hex::encode(pcm_hasher.finish());
 
   Ok(())
 }
-
-// 指纹相关帮助函数已移除
 
 fn find_decode_track(format: &mut Box<dyn FormatReader>) -> napi::Result<&Track> {
   format
@@ -2618,5 +2605,3 @@ fn next_packet(
     return Some(packet);
   }
 }
-
-// 已移除质量标签/码率估算逻辑
