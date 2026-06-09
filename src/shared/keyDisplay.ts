@@ -1,4 +1,4 @@
-export type KeyDisplayStyle = 'Classic' | 'Camelot'
+type KeyDisplayStyle = 'Classic' | 'Camelot'
 
 const KEY_TO_CAMELOT: Record<string, string> = {
   C: '8B',

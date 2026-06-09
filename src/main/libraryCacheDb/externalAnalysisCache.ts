@@ -529,31 +529,6 @@ export async function upsertExternalAnalysisWaveformCacheEntry(
   }
 }
 
-async function removeExternalAnalysisWaveformCacheEntry(
-  context: Partial<ExternalAnalysisContext> | null | undefined
-) {
-  const db = getLibraryDb()
-  const normalized = normalizeContext(context)
-  if (!db || !normalized) return false
-  try {
-    db.prepare(
-      `UPDATE ${EXTERNAL_ANALYSIS_CACHE_TABLE}
-       SET waveform_version = NULL,
-           waveform_sample_rate = NULL,
-           waveform_step = NULL,
-           waveform_duration = NULL,
-           waveform_frames = NULL,
-           waveform_data = NULL,
-           updated_at_ms = ?
-       WHERE source_kind = ? AND source_id = ? AND relative_path = ?`
-    ).run(Date.now(), normalized.sourceKind, normalized.sourceId, normalized.relativePath)
-    return true
-  } catch (error) {
-    log.error('[sqlite] external analysis waveform cache delete failed', error)
-    return false
-  }
-}
-
 export async function removeExternalAnalysisCacheEntry(
   context: Partial<ExternalAnalysisContext> | null | undefined
 ) {

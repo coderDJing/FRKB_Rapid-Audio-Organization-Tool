@@ -97,13 +97,13 @@ export type RekordboxDesktopCreateEmptyPlaylistRequest = {
   parentId?: number
 }
 
-export type RekordboxDesktopCreateEmptyPlaylistSuccessSummary = {
+type RekordboxDesktopCreateEmptyPlaylistSuccessSummary = {
   playlistId: number
   playlistName: string
   parentId: number
 }
 
-export type RekordboxDesktopCreateFolderSuccessSummary = {
+type RekordboxDesktopCreateFolderSuccessSummary = {
   folderId: number
   folderName: string
   parentId: number
@@ -244,7 +244,7 @@ export type RekordboxDesktopCopyTracksToStorageRequest = {
   tracks: RekordboxDesktopPlaylistTrackInput[]
 }
 
-export type RekordboxDesktopCopyTracksToStorageSuccessSummary = {
+type RekordboxDesktopCopyTracksToStorageSuccessSummary = {
   targetRootDir: string
   trackCount: number
   sourceFilePaths: string[]

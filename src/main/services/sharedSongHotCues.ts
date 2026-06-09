@@ -11,7 +11,7 @@ type SharedHotCueInfo = Partial<ISongInfo> & {
   hotCues?: unknown
 }
 
-export type SharedSongHotCueDefinition = {
+type SharedSongHotCueDefinition = {
   filePath: string
   hotCues: ISongHotCue[]
 }

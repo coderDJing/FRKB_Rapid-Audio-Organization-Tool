@@ -56,7 +56,7 @@ export type RekordboxXmlExportSuccessSummary = {
   exportedFilePaths: string[]
 }
 
-export type RekordboxXmlExportFailureSummary = {
+type RekordboxXmlExportFailureSummary = {
   errorCode: string
   errorMessage: string
   rolledBack: boolean

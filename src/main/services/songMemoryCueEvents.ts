@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import type { ISongMemoryCue } from '../../types/globals'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
 
-export type SongMemoryCuesUpdatedPayload = {
+type SongMemoryCuesUpdatedPayload = {
   filePath: string
   memoryCues: ISongMemoryCue[]
 }

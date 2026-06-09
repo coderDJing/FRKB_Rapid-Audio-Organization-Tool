@@ -4,7 +4,6 @@ import {
   BPM_MIN_VALUE,
   BPM_POINT_SEC_EPSILON,
   clampTrackTempoNumber,
-  normalizeTrackBpmEnvelopePoints,
   normalizeTrackBpmValue,
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'

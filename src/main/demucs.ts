@@ -60,7 +60,7 @@ const resolveExistingBundledDemucsSubPath = (segments: string[]): string => {
   return candidates[0] || path.join(resolveDefaultBundledDemucsRootPath(), ...segments)
 }
 
-export function resolveBundledDemucsRootPath(): string {
+function resolveBundledDemucsRootPath(): string {
   return resolveBundledDemucsRootCandidates()[0] || resolveDefaultBundledDemucsRootPath()
 }
 

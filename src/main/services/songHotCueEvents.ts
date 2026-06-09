@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import type { ISongHotCue } from '../../types/globals'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 
-export type SongHotCuesUpdatedPayload = {
+type SongHotCuesUpdatedPayload = {
   filePath: string
   hotCues: ISongHotCue[]
 }

@@ -11,7 +11,7 @@ type SharedMemoryCueInfo = Partial<ISongInfo> & {
   memoryCues?: unknown
 }
 
-export type SharedSongMemoryCueDefinition = {
+type SharedSongMemoryCueDefinition = {
   filePath: string
   memoryCues: ISongMemoryCue[]
 }

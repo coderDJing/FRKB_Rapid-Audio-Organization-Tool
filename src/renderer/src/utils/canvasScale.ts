@@ -1,4 +1,4 @@
-export type CanvasScaleMetrics = {
+type CanvasScaleMetrics = {
   cssWidth: number
   cssHeight: number
   pixelRatio: number

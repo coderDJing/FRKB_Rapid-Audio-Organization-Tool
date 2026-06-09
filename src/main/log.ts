@@ -248,7 +248,7 @@ export async function openLogFile(): Promise<void> {
   }
 }
 
-export type ExpectedErrorRule = {
+type ExpectedErrorRule = {
   code?: string
   messageIncludes?: RegExp
 }
