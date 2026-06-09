@@ -6,8 +6,6 @@ import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue
 import SongListRows from '@renderer/pages/modules/songsArea/SongListRows.vue'
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
-import rightClickMenu from '@renderer/components/rightClickMenu'
-import exportDialog from '@renderer/components/exportDialog'
 import confirm from '@renderer/components/confirmDialog'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import RekordboxDesktopWritingOverlay from '@renderer/components/RekordboxDesktopWritingOverlay.vue'
@@ -15,37 +13,28 @@ import emitter from '@renderer/utils/mitt'
 import { sendHorizontalBrowseInteractionTrace } from '@renderer/components/horizontalBrowseInteractionTrace'
 import { beginHorizontalBrowseDeckInteraction } from '@renderer/components/horizontalBrowseInteractionTimeline'
 import { t } from '@renderer/utils/translate'
-import libraryUtils from '@renderer/utils/libraryUtils'
-import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
-import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
-import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
-import { openRekordboxDesktopPlaylistForSelectedTracks } from '@renderer/utils/rekordboxDesktopPlaylist'
-import {
-  buildNeteaseSearchQuery,
-  normalizeNeteaseSearchText,
-  openNeteaseSearch
-} from '@renderer/utils/neteaseSearch'
 import {
   buildRekordboxSourceCacheKey,
-  getCachedRekordboxPlaylistTracks,
-  rememberRekordboxSourceSelectedPlaylist,
-  setCachedRekordboxPlaylistTracks,
-  shouldRefreshRekordboxPlaylistTracks
+  rememberRekordboxSourceSelectedPlaylist
 } from '@renderer/utils/rekordboxLibraryCache'
 import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/composables/useSongsAreaColumns'
 import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHeaderContextMenu.vue'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useKeyboardSelection } from '@renderer/pages/modules/songsArea/composables/useKeyboardSelection'
 import type { ISongsAreaPaneRuntimeState } from '@renderer/stores/runtime'
-import { getKeyDisplayText, getKeySortText } from '@shared/keyDisplay'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
-import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import { usePioneerDesktopPlaylistActions } from './pioneerSongsArea/usePioneerDesktopPlaylistActions'
 import { usePioneerExternalPlaylistAnalysis } from './pioneerSongsArea/usePioneerExternalPlaylistAnalysis'
+import { usePioneerPlaylistTracks } from './pioneerSongsArea/usePioneerPlaylistTracks'
 import { usePioneerSongDrag } from './pioneerSongsArea/usePioneerSongDrag'
-import type { RekordboxSourceKind } from '@shared/rekordboxSources'
+import { usePioneerSongContextMenu } from './pioneerSongsArea/usePioneerSongContextMenu'
+import { usePioneerSongsPlaceholder } from './pioneerSongsArea/usePioneerSongsPlaceholder'
+import { usePioneerSongsProjection } from './pioneerSongsArea/usePioneerSongsProjection'
+import {
+  usePioneerTrackCopyDialog,
+  type PioneerTransferTarget
+} from './pioneerSongsArea/usePioneerTrackCopyDialog'
 import type {
-  IMenu,
   IPioneerPlaylistTrack,
   IPioneerPlaylistTreeNode,
   IRekordboxSourceKind,
@@ -54,7 +43,6 @@ import type {
 } from '../../../../types/globals'
 
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
-type PioneerTransferTarget = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 
 const runtime = useRuntimeStore()
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
@@ -65,16 +53,11 @@ const originalTracks = shallowRef<IPioneerPlaylistTrack[]>([])
 const visibleSongs = ref<ISongInfo[]>([])
 const loading = ref(false)
 const selectedRowKeys = ref<string[]>([])
-const lastLoggedSnapshot = ref('')
 const columnData = ref<ISongsAreaColumn[]>(
   buildSongsAreaDefaultColumns('default').map((column) =>
     column.key === 'index' ? { ...column, width: Math.max(column.width, 74) } : column
   )
 )
-const selectSongListDialogVisible = ref(false)
-const selectSongListDialogTargetLibraryName = ref<PioneerTransferTarget | ''>('')
-const selectSongListDialogTrackKeys = ref<string[]>([])
-let playlistTracksRequestToken = 0
 
 const ascendingOrder = ascendingOrderAsset
 const descendingOrder = descendingOrderAsset
@@ -216,7 +199,38 @@ const originPathSnapshot = computed(() => {
 
 const emitPioneerSongsAreaLog = (_event: string, _payload?: Record<string, unknown>) => {}
 
-const getSongField = (song: ISongInfo, key: string): unknown => song[key as keyof ISongInfo]
+const {
+  applyFiltersAndSorting,
+  buildSongSnapshot,
+  normalizePath,
+  resolveSelectedTracks,
+  resolveSelectedTracksByKeys,
+  resolveTrackKey
+} = usePioneerSongsProjection({
+  originalTracks,
+  visibleSongs,
+  columnData,
+  selectedRowKeys,
+  selectedSourceRootPath,
+  selectedSourceKind,
+  getKeyDisplayStyle: () => runtime.setting.keyDisplayStyle || '',
+  getCurrentPlaybackListKey: () => currentPlaybackListKey.value,
+  getPlayingSongListUUID: () => runtime.playingData.playingSongListUUID,
+  setPlayingSongListData: (songs) => {
+    runtime.playingData.playingSongListData = songs
+  },
+  emitPioneerSongsAreaLog
+})
+
+const { placeholderText } = usePioneerSongsPlaceholder({
+  loading,
+  isDesktopSource,
+  selectedPlaylistId,
+  originalTracks,
+  visibleSongs,
+  columnData,
+  emitPioneerSongsAreaLog
+})
 
 const canRemoveTracksFromDesktopPlaylist = computed(
   () =>
@@ -247,145 +261,6 @@ const canRenumberDesktopTracks = computed(
     Boolean(sortedTrackColumn.value) &&
     sortedTrackColumn.value?.key !== 'index'
 )
-
-const pioneerSongMenuArr = computed<IMenu[][]>(() => {
-  const groups: IMenu[][] = []
-  if (canRemoveTracksFromDesktopPlaylist.value) {
-    groups.push([{ menuName: 'rekordboxDesktop.removeTracksFromPlaylistAction' }])
-  }
-  groups.push([{ menuName: 'tracks.exportTracksCopyOnly' }])
-  groups.push([{ menuName: 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks' }])
-  groups.push([
-    { menuName: 'library.copyToFilter' },
-    { menuName: 'library.copyToCurated' },
-    { menuName: 'library.addToMixtapeByCopy' }
-  ])
-  groups.push([{ menuName: 'tracks.showInFileExplorer' }])
-  groups.push([
-    {
-      menuName: 'tracks.neteaseSearch',
-      children: [
-        { menuName: 'tracks.neteaseSearchTitleArtist' },
-        { menuName: 'tracks.neteaseSearchTitle' },
-        { menuName: 'tracks.neteaseSearchArtist' },
-        { menuName: 'tracks.neteaseSearchAlbum' }
-      ]
-    }
-  ])
-  groups.push([{ menuName: 'similarTracks.menu' }])
-  groups.push([{ menuName: 'fingerprints.analyzeAndAdd' }])
-  groups.push([{ menuName: 'tracks.clearTrackCache' }])
-  return groups
-})
-
-const toSongInfo = (track: IPioneerPlaylistTrack): ISongInfo => ({
-  filePath: track.filePath,
-  fileName: track.fileName,
-  fileFormat: track.fileFormat,
-  cover: null,
-  title: track.title,
-  artist: track.artist || undefined,
-  album: track.album || undefined,
-  duration: track.duration,
-  genre: track.genre || undefined,
-  label: track.label || undefined,
-  bitrate: track.bitrate,
-  container: track.container || undefined,
-  key: track.key,
-  bpm: track.bpm,
-  hotCues: Array.isArray(track.hotCues) ? track.hotCues.map((cue) => ({ ...cue })) : [],
-  memoryCues: Array.isArray(track.memoryCues) ? track.memoryCues.map((cue) => ({ ...cue })) : [],
-  mixOrder: track.entryIndex,
-  externalAnalyzePath: track.analyzePath || null,
-  externalWaveformRootPath: selectedSourceRootPath.value || null,
-  externalSourceKind: (selectedSourceKind.value || 'usb') as RekordboxSourceKind,
-  pioneerCoverPath: track.coverPath || null,
-  pioneerAnalyzePath: selectedSourceKind.value === 'usb' ? track.analyzePath || null : null,
-  pioneerDeviceRootPath:
-    selectedSourceKind.value === 'usb' ? selectedSourceRootPath.value || null : null,
-  mixtapeItemId: track.rowKey,
-  fileMissing: track.fileMissing ?? false
-})
-
-const normalizePath = (value: string) =>
-  String(value || '')
-    .replace(/\//g, '\\')
-    .toLowerCase()
-
-const resolveTrackKey = (song: ISongInfo) => song.mixtapeItemId || song.filePath
-
-const resolveSelectedTracksByKeys = (keys: string[]) => {
-  if (!keys.length) return []
-  const selectedKeySet = new Set(keys)
-  return visibleSongs.value.filter((song) => selectedKeySet.has(resolveTrackKey(song)))
-}
-
-const resolveSelectedTracks = (fallback?: ISongInfo) => {
-  const selectedKeys = selectedRowKeys.value.length
-    ? [...selectedRowKeys.value]
-    : fallback
-      ? [resolveTrackKey(fallback)]
-      : []
-  if (!selectedKeys.length) return []
-  const tracks = resolveSelectedTracksByKeys(selectedKeys)
-  if (tracks.length > 0) return tracks
-  return fallback ? [fallback] : []
-}
-
-const resolveFileNameAndFormat = (filePath: string) => {
-  const baseName =
-    String(filePath || '')
-      .split(/[/\\]/)
-      .pop() || ''
-  const parts = baseName.split('.')
-  const ext = parts.length > 1 ? parts.pop() || '' : ''
-  return {
-    fileName: baseName,
-    fileFormat: ext ? ext.toUpperCase() : ''
-  }
-}
-
-const buildSongSnapshot = (filePath: string, song: ISongInfo) => {
-  const meta = resolveFileNameAndFormat(filePath)
-  return {
-    filePath,
-    fileName: meta.fileName,
-    fileFormat: song.fileFormat || meta.fileFormat,
-    cover: null,
-    title: song.title ?? meta.fileName,
-    artist: song.artist,
-    album: song.album,
-    duration: song.duration ?? '',
-    genre: song.genre,
-    label: song.label,
-    bitrate: song.bitrate,
-    container: song.container,
-    key: song.key,
-    originalKey: song.key,
-    bpm: song.bpm,
-    originalBpm: song.bpm,
-    firstBeatMs: song.firstBeatMs,
-    barBeatOffset: song.barBeatOffset,
-    hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
-    memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
-  }
-}
-
-const showErrorDialog = async (message: string) => {
-  await confirm({
-    title: t('common.error'),
-    content: [message || t('common.unknownError')],
-    confirmShow: false
-  })
-}
-
-const confirmTaskBusy = async () => {
-  await confirm({
-    title: t('dialog.hint'),
-    content: [t('import.waitForTask')],
-    confirmShow: false
-  })
-}
 
 const showFileMissingHint = async (missingTracks: ISongInfo[]) => {
   const paths = missingTracks.map((item) => item.filePath).filter(Boolean)
@@ -449,163 +324,22 @@ const resolveExistingOperationTracks = async (tracks: ISongInfo[]) => {
   }
 }
 
-const sortArrayByProperty = <T extends object>(
-  array: T[],
-  property: keyof T,
-  order: 'asc' | 'desc'
-) => {
-  const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
-  return [...array].sort((a, b) => {
-    const valueA = String(a[property] || '')
-    const valueB = String(b[property] || '')
-    return order === 'asc' ? collator.compare(valueA, valueB) : collator.compare(valueB, valueA)
-  })
-}
-
-const parseDurationToSeconds = (mmss: string): number => {
-  if (!mmss || typeof mmss !== 'string') return NaN
-  const parts = mmss.split(':')
-  if (parts.length !== 2) return NaN
-  const minutes = Number(parts[0])
-  const seconds = Number(parts[1])
-  if (Number.isNaN(minutes) || Number.isNaN(seconds)) return NaN
-  return minutes * 60 + seconds
-}
-
-const parseNumberInput = (input: unknown): number => {
-  if (input === null || input === undefined) return NaN
-  if (typeof input === 'number') return Number.isFinite(input) ? input : NaN
-  const raw = String(input || '').trim()
-  if (!raw) return NaN
-  const cleaned = raw.replace(/[^0-9.]/g, '')
-  if (!cleaned) return NaN
-  const parts = cleaned.split('.')
-  const normalized = parts.length > 1 ? `${parts[0]}.${parts.slice(1).join('')}` : parts[0]
-  const value = Number(normalized)
-  return Number.isFinite(value) ? value : NaN
-}
-
-const parseComparableBpm = (input: unknown): number | null => {
-  const numeric = parseNumberInput(input)
-  if (Number.isNaN(numeric)) return null
-  return normalizeBpmDisplayScaled(numeric)
-}
-
-const parseExcludeKeywords = (input: unknown): string[] => {
-  if (input === null || input === undefined) return []
-  const raw = String(input)
-  if (!raw.trim()) return []
-  return raw
-    .split(/[,\n;\r，；、|]+/g)
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean)
-}
-
-const applyFiltersAndSorting = (reason = 'unspecified') => {
-  let filtered = originalTracks.value.map((track) => toSongInfo(track))
-  const beforeCount = filtered.length
-  for (const col of columnData.value) {
-    if (!col.filterActive) continue
-    if (col.filterType === 'text' && col.key) {
-      const keyword = String(col.filterValue || '').toLowerCase()
-      const excludeKeywords = parseExcludeKeywords(col.filterExcludeValue)
-      const hasInclude = keyword.trim().length > 0
-      const hasExclude = excludeKeywords.length > 0
-      if (!hasInclude && !hasExclude) continue
-      const isKeyColumn = col.key === 'key'
-      const keyStyle = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
-      filtered = filtered.filter((song) => {
-        const rawValue = String(getSongField(song, col.key) ?? '')
-        const displayValue = isKeyColumn ? getKeyDisplayText(rawValue, keyStyle) : rawValue
-        const value = displayValue.toLowerCase()
-        if (hasInclude && !value.includes(keyword)) return false
-        if (hasExclude && excludeKeywords.some((item) => value.includes(item))) return false
-        return true
-      })
-    } else if (col.filterType === 'duration' && col.filterOp && col.filterDuration) {
-      const target = parseDurationToSeconds(col.filterDuration)
-      filtered = filtered.filter((song) => {
-        const duration = parseDurationToSeconds(String(song.duration ?? ''))
-        if (Number.isNaN(duration) || Number.isNaN(target)) return false
-        if (col.filterOp === 'eq') return duration === target
-        if (col.filterOp === 'gte') return duration >= target
-        if (col.filterOp === 'lte') return duration <= target
-        return true
-      })
-    } else if (col.filterType === 'bpm' && col.filterOp && col.filterNumber) {
-      const target = parseComparableBpm(col.filterNumber)
-      filtered = filtered.filter((song) => {
-        const bpm = parseComparableBpm(song.bpm)
-        if (bpm === null || target === null) return false
-        if (col.filterOp === 'eq') return bpm === target
-        if (col.filterOp === 'gte') return bpm >= target
-        if (col.filterOp === 'lte') return bpm <= target
-        return true
-      })
-    }
-  }
-
-  const sortedCol = columnData.value.find((col) => col.order)
-  if (sortedCol) {
-    if (sortedCol.key === 'index') {
-      filtered = [...filtered].sort((a, b) => {
-        const valueA = Number(a.mixOrder) || 0
-        const valueB = Number(b.mixOrder) || 0
-        return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
-      })
-    } else if (sortedCol.key === 'key') {
-      const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
-      const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
-      filtered = [...filtered].sort((a, b) => {
-        const valueA = getKeySortText(String(a.key || ''), style)
-        const valueB = getKeySortText(String(b.key || ''), style)
-        return sortedCol.order === 'asc'
-          ? collator.compare(valueA, valueB)
-          : collator.compare(valueB, valueA)
-      })
-    } else {
-      filtered = sortArrayByProperty(filtered, sortedCol.key as keyof ISongInfo, sortedCol.order!)
-    }
-  }
-
-  visibleSongs.value = filtered
-
-  // 当前播放列表即为当前视图时，同步播放列表快照（保持排序一致）
-  if (
-    currentPlaybackListKey.value &&
-    runtime.playingData.playingSongListUUID === currentPlaybackListKey.value
-  ) {
-    runtime.playingData.playingSongListData = [...visibleSongs.value]
-  }
-
-  emitPioneerSongsAreaLog('apply-filters-and-sorting', {
-    reason,
-    beforeCount,
-    afterCount: filtered.length,
-    selectedRowCount: selectedRowKeys.value.length,
-    filters: columnData.value
-      .filter((col) => !!col.filterActive)
-      .map((col) => ({
-        key: col.key,
-        filterType: col.filterType || '',
-        filterOp: col.filterOp || '',
-        filterValue: col.filterValue || '',
-        filterExcludeValue: col.filterExcludeValue || '',
-        filterDuration: col.filterDuration || '',
-        filterNumber: col.filterNumber || ''
-      })),
-    firstOriginalTracks: originalTracks.value.slice(0, 5).map((track) => ({
-      rowKey: track.rowKey,
-      title: track.title,
-      filePath: track.filePath
-    })),
-    firstVisibleSongs: filtered.slice(0, 5).map((song) => ({
-      rowKey: song.mixtapeItemId || song.filePath,
-      title: song.title,
-      filePath: song.filePath
-    }))
-  })
-}
+const {
+  selectSongListDialogVisible,
+  selectSongListDialogTargetLibraryName,
+  openCopyTargetDialog,
+  handleSelectSongListDialogConfirm,
+  handleSelectSongListDialogCancel
+} = usePioneerTrackCopyDialog({
+  resolveTrackKey,
+  resolveSelectedTracksByKeys,
+  resolveSelectedTracks,
+  resolveExistingOperationTracks,
+  showFileMissingHint,
+  normalizePath,
+  buildSongSnapshot,
+  originPathSnapshot
+})
 
 const handleColumnsUpdate = (nextColumns: ISongsAreaColumn[]) => {
   columnData.value = nextColumns
@@ -654,142 +388,22 @@ const { frkbAnalyzedFilePaths, resetFrkbAnalyzedFilePaths, prepareExternalPlayli
     isCurrentPlaylistLoadTarget
   })
 
-const fetchPlaylistTracks = async (params: {
-  sourceCacheKey: string
-  playlistId: number
-  sourceKind: IRekordboxSourceKind
-  rootPath: string
-  libraryType: string
-  hasCachedTracks: boolean
-}) => {
-  const requestToken = ++playlistTracksRequestToken
-  const { sourceCacheKey, playlistId, sourceKind, rootPath, libraryType, hasCachedTracks } = params
-
-  try {
-    emitPioneerSongsAreaLog('fetch-playlist-tracks-start', {
-      requestToken,
-      hasCachedTracks,
-      sourceCacheKey
-    })
-    const result =
-      sourceKind === 'desktop'
-        ? await window.electron.ipcRenderer.invoke(
-            buildRekordboxSourceChannel('desktop', 'load-playlist-tracks'),
-            playlistId
-          )
-        : await window.electron.ipcRenderer.invoke(
-            buildRekordboxSourceChannel('usb', 'load-playlist-tracks'),
-            rootPath,
-            playlistId,
-            libraryType
-          )
-    const tracks = Array.isArray(result?.tracks) ? result.tracks : []
-    setCachedRekordboxPlaylistTracks(sourceCacheKey, playlistId, tracks)
-    emitPioneerSongsAreaLog('fetch-playlist-tracks-success', {
-      requestToken,
-      returnedTrackCount: tracks.length,
-      firstTracks: tracks.slice(0, 5).map((track: IPioneerPlaylistTrack) => ({
-        rowKey: track.rowKey,
-        title: track.title,
-        filePath: track.filePath
-      }))
-    })
-
-    if (!isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
-    if (requestToken !== playlistTracksRequestToken) return
-
-    originalTracks.value = tracks
-    applyFiltersAndSorting('fetch-playlist-tracks-success')
-    void prepareExternalPlaylistAnalysis({ sourceCacheKey, playlistId, rootPath, tracks })
-  } catch (error) {
-    if (!isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId)) return
-    if (requestToken !== playlistTracksRequestToken) return
-
-    console.error('[pioneerSongsArea] load playlist tracks failed', error)
-    emitPioneerSongsAreaLog('fetch-playlist-tracks-failed', {
-      requestToken,
-      hasCachedTracks,
-      error
-    })
-    if (!hasCachedTracks) {
-      originalTracks.value = []
-      visibleSongs.value = []
-    }
-  } finally {
-    if (
-      isCurrentPlaylistLoadTarget(sourceCacheKey, playlistId) &&
-      requestToken === playlistTracksRequestToken
-    ) {
-      loading.value = false
-    }
-  }
-}
-
-const loadPlaylistTracks = async () => {
-  const sourceCacheKey = selectedSourceCacheKey.value
-  const playlistId = selectedPlaylistId.value
-  const sourceKind = selectedSourceKind.value || 'usb'
-  const rootPath = selectedSourceRootPath.value
-  const libraryType = selectedLibraryType.value
-
-  if (!rootPath || !playlistId || !sourceCacheKey) {
-    playlistTracksRequestToken += 1
-    loading.value = false
-    originalTracks.value = []
-    visibleSongs.value = []
-    selectedRowKeys.value = []
-    resetFrkbAnalyzedFilePaths()
-    emitPioneerSongsAreaLog('load-playlist-tracks-reset-empty-selection', {
-      sourceCacheKey,
-      rootPath,
-      playlistId
-    })
-    return
-  }
-
-  selectedRowKeys.value = []
-  resetFrkbAnalyzedFilePaths()
-
-  const cachedTracks = getCachedRekordboxPlaylistTracks(sourceCacheKey, playlistId)
-  emitPioneerSongsAreaLog('load-playlist-tracks-enter', {
-    sourceCacheKey,
-    hasCachedTracks: Boolean(cachedTracks),
-    cachedTrackCount: cachedTracks?.tracks?.length || 0
-  })
-  if (cachedTracks) {
-    originalTracks.value = cachedTracks.tracks
-    applyFiltersAndSorting('load-playlist-tracks-cache-hit')
-    loading.value = false
-    void prepareExternalPlaylistAnalysis({
-      sourceCacheKey,
-      playlistId,
-      rootPath,
-      tracks: cachedTracks.tracks
-    })
-  } else {
-    loading.value = true
-    originalTracks.value = []
-    visibleSongs.value = []
-  }
-
-  if (cachedTracks && !shouldRefreshRekordboxPlaylistTracks(sourceCacheKey, playlistId)) {
-    return
-  }
-
-  const task = fetchPlaylistTracks({
-    sourceCacheKey,
-    playlistId,
-    sourceKind,
-    rootPath,
-    libraryType,
-    hasCachedTracks: Boolean(cachedTracks)
-  })
-  if (!cachedTracks) {
-    await task
-  } else {
-    void task
-  }
-}
+const { loadPlaylistTracks } = usePioneerPlaylistTracks({
+  selectedSourceCacheKey,
+  selectedPlaylistId,
+  selectedSourceKind,
+  selectedSourceRootPath,
+  selectedLibraryType,
+  originalTracks,
+  visibleSongs,
+  loading,
+  selectedRowKeys,
+  resetFrkbAnalyzedFilePaths,
+  prepareExternalPlaylistAnalysis,
+  applyFiltersAndSorting,
+  isCurrentPlaylistLoadTarget,
+  emitPioneerSongsAreaLog
+})
 
 const {
   playlistMutationPending,
@@ -804,6 +418,20 @@ const {
   visibleSongs,
   selectedRowKeys,
   loadPlaylistTracks
+})
+
+const { handleSongContextMenu } = usePioneerSongContextMenu({
+  runtime,
+  selectedRowKeys,
+  playlistMutationPending,
+  canRemoveTracksFromDesktopPlaylist,
+  currentPlaybackListKey,
+  cancelPendingRepeatSingleClickDeselect,
+  resolveSelectedTracks,
+  resolveExistingOperationTracks,
+  showFileMissingHint,
+  openCopyTargetDialog,
+  removeTracksFromDesktopPlaylist
 })
 
 watch(
@@ -855,11 +483,6 @@ const handleSongClick = (event: MouseEvent, song: ISongInfo) => {
   songClick(event, song)
 }
 
-const openCopyTargetDialog = (libraryName: PioneerTransferTarget, tracks: ISongInfo[] = []) => {
-  selectSongListDialogTrackKeys.value = tracks.map(resolveTrackKey).filter(Boolean)
-  selectSongListDialogTargetLibraryName.value = libraryName
-  selectSongListDialogVisible.value = true
-}
 const handlePreviewMoveRequest = (
   payload?: Record<string, unknown> & { song?: ISongInfo | null }
 ) => {
@@ -901,178 +524,6 @@ const handleSongFileRestored = (payload: { listUUID?: string; filePath?: string 
   }
 }
 emitter.on('songFileRestored', handleSongFileRestored)
-
-const handleSongContextMenu = async (event: MouseEvent, song: ISongInfo) => {
-  cancelPendingRepeatSingleClickDeselect()
-  if (playlistMutationPending.value) return
-  const key = song.mixtapeItemId || song.filePath
-  if (!key) return
-  if (!selectedRowKeys.value.includes(key)) {
-    selectedRowKeys.value = [key]
-  }
-
-  const result = await rightClickMenu({
-    menuArr: pioneerSongMenuArr.value,
-    clickEvent: event
-  })
-  if (result === 'cancel') return
-
-  const selectedTracks = resolveSelectedTracks(song)
-  if (!selectedTracks.length) return
-
-  const { updatedTracks, missingTracks, existingTracks } =
-    await resolveExistingOperationTracks(selectedTracks)
-  const showSelectedMissingHint = async () => showFileMissingHint(missingTracks)
-  const showNeteaseSearchEmptyHint = async (messageKey: string) => {
-    await confirm({
-      title: t('dialog.hint'),
-      content: [t(messageKey)],
-      confirmShow: false
-    })
-  }
-  const openSongNeteaseSearch = async (query: string) => {
-    if (!openNeteaseSearch(query)) {
-      await showNeteaseSearchEmptyHint('tracks.neteaseSearchEmpty')
-    }
-  }
-
-  switch (result.menuName) {
-    case 'rekordboxDesktop.removeTracksFromPlaylistAction':
-      await removeTracksFromDesktopPlaylist(updatedTracks, canRemoveTracksFromDesktopPlaylist.value)
-      return
-    case 'library.copyToCurated':
-      if (!existingTracks.length) {
-        await showSelectedMissingHint()
-        return
-      }
-      openCopyTargetDialog('CuratedLibrary', existingTracks)
-      return
-    case 'library.copyToFilter':
-      if (!existingTracks.length) {
-        await showSelectedMissingHint()
-        return
-      }
-      openCopyTargetDialog('FilterLibrary', existingTracks)
-      return
-    case 'library.addToMixtapeByCopy':
-      if (!existingTracks.length) {
-        await showSelectedMissingHint()
-        return
-      }
-      openCopyTargetDialog('MixtapeLibrary', existingTracks)
-      return
-    case 'fingerprints.analyzeAndAdd':
-      if (!existingTracks.length) {
-        await showSelectedMissingHint()
-        return
-      }
-      await analyzeFingerprintsForPaths(
-        existingTracks.map((item) => item.filePath),
-        {
-          origin: 'selection'
-        }
-      )
-      return
-    case 'tracks.clearTrackCache':
-      if (!existingTracks.length) {
-        await showSelectedMissingHint()
-        return
-      }
-      await window.electron.ipcRenderer.invoke(
-        'track:cache:clear:batch',
-        existingTracks.map((item) => item.filePath)
-      )
-      return
-    case 'similarTracks.menu': {
-      const { default: openSimilarTracksDialog } =
-        await import('@renderer/components/similarTracksDialog')
-      await openSimilarTracksDialog(song)
-      return
-    }
-    case 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks':
-      if (runtime.isProgressing) {
-        await confirmTaskBusy()
-        return
-      }
-      if (!existingTracks.length) {
-        await showSelectedMissingHint()
-        return
-      }
-      runtime.isProgressing = true
-      try {
-        await openRekordboxDesktopPlaylistForSelectedTracks({
-          tracks: existingTracks,
-          songListUUID: currentPlaybackListKey.value,
-          forceKeepSourceTracks: true
-        })
-      } finally {
-        runtime.isProgressing = false
-      }
-      return
-    case 'tracks.exportTracksCopyOnly': {
-      if (!existingTracks.length) {
-        await showSelectedMissingHint()
-        return
-      }
-      const exportResult = await exportDialog({
-        title: 'tracks.title',
-        forceCopyOnly: true
-      })
-      if (exportResult === 'cancel') return
-      await window.electron.ipcRenderer.invoke(
-        'exportSongsToDir',
-        exportResult.folderPathVal,
-        false,
-        JSON.parse(JSON.stringify(existingTracks))
-      )
-      return
-    }
-    case 'tracks.showInFileExplorer':
-      if (updatedTracks[0]?.fileMissing) {
-        await showSelectedMissingHint()
-      } else {
-        window.electron.ipcRenderer.send('show-item-in-folder', updatedTracks[0]?.filePath)
-      }
-      return
-    case 'tracks.neteaseSearchTitle': {
-      const title = normalizeNeteaseSearchText(song.title)
-      if (!title) {
-        await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleEmpty')
-        return
-      }
-      await openSongNeteaseSearch(title)
-      return
-    }
-    case 'tracks.neteaseSearchArtist': {
-      const artist = normalizeNeteaseSearchText(song.artist)
-      if (!artist) {
-        await showNeteaseSearchEmptyHint('tracks.neteaseSearchArtistEmpty')
-        return
-      }
-      await openSongNeteaseSearch(artist)
-      return
-    }
-    case 'tracks.neteaseSearchAlbum': {
-      const album = normalizeNeteaseSearchText(song.album)
-      if (!album) {
-        await showNeteaseSearchEmptyHint('tracks.neteaseSearchAlbumEmpty')
-        return
-      }
-      await openSongNeteaseSearch(album)
-      return
-    }
-    case 'tracks.neteaseSearchTitleArtist': {
-      const title = normalizeNeteaseSearchText(song.title)
-      const artist = normalizeNeteaseSearchText(song.artist)
-      if (!title && !artist) {
-        await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleArtistEmpty')
-        return
-      }
-      await openSongNeteaseSearch(buildNeteaseSearchQuery(title, artist))
-      return
-    }
-  }
-}
 
 const handlePlaylistReorder = async (payload: { sourceItemIds: string[]; targetIndex: number }) => {
   await reorderTracksInDesktopPlaylist(
@@ -1187,161 +638,12 @@ const handleSongDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   runtime.playingData.playingSong = normalizedSong
 }
 
-const handleSelectSongListDialogConfirm = async (targetSongListUUID: string) => {
-  const targetLibraryName = selectSongListDialogTargetLibraryName.value
-  const selectedTrackKeys = [...selectSongListDialogTrackKeys.value]
-  selectSongListDialogVisible.value = false
-  selectSongListDialogTargetLibraryName.value = ''
-  selectSongListDialogTrackKeys.value = []
-  const rawSelectedTracks = selectedTrackKeys.length
-    ? resolveSelectedTracksByKeys(selectedTrackKeys)
-    : resolveSelectedTracks()
-  if (!rawSelectedTracks.length || !targetLibraryName) return
-
-  const { missingTracks, existingTracks: selectedTracks } =
-    await resolveExistingOperationTracks(rawSelectedTracks)
-  if (!selectedTracks.length) {
-    await showFileMissingHint(missingTracks)
-    return
-  }
-
-  try {
-    if (targetLibraryName === 'MixtapeLibrary') {
-      const copiedTracks = (await window.electron.ipcRenderer.invoke(
-        'mixtape:copy-files-to-vault',
-        {
-          filePaths: selectedTracks.map((item) => item.filePath)
-        }
-      )) as Array<{ sourcePath: string; targetPath: string }>
-
-      const copiedPathMap = new Map(
-        copiedTracks.map((item) => [normalizePath(item.sourcePath), item.targetPath])
-      )
-      const items = selectedTracks
-        .map((track) => {
-          const copiedPath = copiedPathMap.get(normalizePath(track.filePath))
-          if (!copiedPath) return null
-          return {
-            filePath: copiedPath,
-            originPathSnapshot: originPathSnapshot.value,
-            info: buildSongSnapshot(copiedPath, track)
-          }
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null)
-
-      if (!items.length) {
-        throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
-      }
-
-      await window.electron.ipcRenderer.invoke('mixtape:append', {
-        playlistId: targetSongListUUID,
-        items
-      })
-      emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
-      emitter.emit('songsArea/clipboardHint', {
-        message: t('mixtape.addedToMixtape', { count: items.length })
-      })
-      return
-    }
-
-    const targetDirPath = libraryUtils.findDirPathByUuid(targetSongListUUID)
-    if (!targetDirPath) {
-      await showErrorDialog(t('library.notExistOnDisk'))
-      return
-    }
-    const copiedPaths = (await window.electron.ipcRenderer.invoke(
-      'moveSongsToDir',
-      selectedTracks.map((item) => item.filePath),
-      targetDirPath,
-      {
-        mode: 'copy',
-        curatedArtistNames: selectedTracks.map((item) => item.artist || '')
-      }
-    )) as string[]
-    await copySongCueDefinitionsToTargets(
-      copiedPaths.map((targetFilePath, index) => ({
-        targetFilePath,
-        sourceSong: selectedTracks[index]
-      }))
-    )
-    emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
-  } catch (error: unknown) {
-    const messageCode = error instanceof Error ? error.message : String(error || '')
-    if (messageCode === 'MIXTAPE_VAULT_UNAVAILABLE') {
-      await showErrorDialog(t('pioneer.mixtapeVaultUnavailable'))
-      return
-    }
-    if (messageCode === 'MIXTAPE_COPY_TO_VAULT_FAILED') {
-      await showErrorDialog(t('pioneer.copyToMixtapeFailed'))
-      return
-    }
-    if (messageCode === 'copySongsToDir failed') {
-      await showErrorDialog(t('pioneer.copyTracksFailed'))
-      return
-    }
-    await showErrorDialog(messageCode || t('common.unknownError'))
-  }
-}
-
-const handleSelectSongListDialogCancel = () => {
-  selectSongListDialogVisible.value = false
-  selectSongListDialogTargetLibraryName.value = ''
-  selectSongListDialogTrackKeys.value = []
-}
-
 onUnmounted(() => {
   cancelPendingRepeatSingleClickDeselect()
   emitter.off('preview-transfer:open-dialog', handlePreviewMoveRequest)
   emitter.off('songFileMissing', handleSongFileMissing)
   emitter.off('songFileRestored', handleSongFileRestored)
 })
-
-const placeholderText = computed(() => {
-  if (loading.value) {
-    return isDesktopSource.value
-      ? t('rekordboxDesktop.loadingPlaylistTracks')
-      : t('pioneer.loadingPlaylistTracks')
-  }
-  if (!selectedPlaylistId.value) {
-    return isDesktopSource.value
-      ? t('rekordboxDesktop.selectPlaylistPrompt')
-      : t('pioneer.selectPlaylistPrompt')
-  }
-  if (!visibleSongs.value.length) {
-    return isDesktopSource.value ? t('rekordboxDesktop.emptyPlaylist') : t('pioneer.emptyPlaylist')
-  }
-  return ''
-})
-
-watch(
-  () => placeholderText.value,
-  (value) => {
-    const snapshot = JSON.stringify({
-      placeholderText: value,
-      loading: loading.value,
-      selectedPlaylistId: selectedPlaylistId.value,
-      originalTrackCount: originalTracks.value.length,
-      visibleSongCount: visibleSongs.value.length,
-      activeFilters: columnData.value.filter((col) => !!col.filterActive).map((col) => col.key)
-    })
-    if (snapshot === lastLoggedSnapshot.value) return
-    lastLoggedSnapshot.value = snapshot
-    emitPioneerSongsAreaLog('placeholder-text-changed', {
-      placeholderText: value,
-      firstOriginalTracks: originalTracks.value.slice(0, 5).map((track) => ({
-        rowKey: track.rowKey,
-        title: track.title,
-        filePath: track.filePath
-      })),
-      firstVisibleSongs: visibleSongs.value.slice(0, 5).map((song) => ({
-        rowKey: song.mixtapeItemId || song.filePath,
-        title: song.title,
-        filePath: song.filePath
-      }))
-    })
-  },
-  { immediate: true }
-)
 </script>
 
 <template>
