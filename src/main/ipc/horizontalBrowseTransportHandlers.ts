@@ -3,6 +3,7 @@ import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportBandState,
   HorizontalBrowseTransportDeckInput,
+  HorizontalBrowseTransportSnapshot,
   HorizontalBrowseTransportStateInput
 } from '@shared/horizontalBrowseTransport'
 import { RECORDING_LIBRARY_CHANGED_EVENT } from '@shared/recordingLibrary'
@@ -13,7 +14,60 @@ import {
 } from './horizontalBrowseTransportSnapshotBroadcaster'
 import mainWindow from '../window/mainWindow'
 import { createRecordingOutputPath } from '../recordingLibraryService'
+import { log } from '../log'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
+
+const PREPARE_PLAYHEAD_SLOW_LOG_THRESHOLD_MS = 500
+
+const normalizeTimingNumber = (value: unknown, fractionDigits = 3) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  return Number(numeric.toFixed(fractionDigits))
+}
+
+const buildPreparePlayheadDeckSnapshot = (
+  snapshot: HorizontalBrowseTransportSnapshot,
+  deck: HorizontalBrowseDeckKey
+) => {
+  const deckSnapshot = snapshot[deck]
+  return {
+    label: deckSnapshot.label,
+    loaded: deckSnapshot.loaded,
+    decoding: deckSnapshot.decoding,
+    fullDecoding: deckSnapshot.fullDecoding,
+    fullyDecoded: deckSnapshot.fullyDecoded,
+    playheadLoaded: deckSnapshot.playheadLoaded,
+    playRequested: deckSnapshot.playRequested,
+    playing: deckSnapshot.playing,
+    playingAudible: deckSnapshot.playingAudible,
+    currentSec: normalizeTimingNumber(deckSnapshot.currentSec),
+    audioCurrentSec: normalizeTimingNumber(deckSnapshot.audioCurrentSec),
+    renderCurrentSec: normalizeTimingNumber(deckSnapshot.renderCurrentSec),
+    loadedSegmentStartSec: normalizeTimingNumber(deckSnapshot.loadedSegmentStartSec),
+    loadedSegmentEndSec: normalizeTimingNumber(deckSnapshot.loadedSegmentEndSec),
+    durationSec: normalizeTimingNumber(deckSnapshot.durationSec),
+    effectiveDurationSec: normalizeTimingNumber(deckSnapshot.effectiveDurationSec)
+  }
+}
+
+const logSlowPreparePlayhead = (
+  deck: HorizontalBrowseDeckKey,
+  startedAtMs: number,
+  beforeSnapshot: HorizontalBrowseTransportSnapshot,
+  afterSnapshot: HorizontalBrowseTransportSnapshot
+) => {
+  const elapsedMs = performance.now() - startedAtMs
+  if (elapsedMs < PREPARE_PLAYHEAD_SLOW_LOG_THRESHOLD_MS) return
+  log.warn(
+    `[HB-TRANSPORT-DECODE] prepare-playhead-slow ${JSON.stringify({
+      deck,
+      elapsedMs: normalizeTimingNumber(elapsedMs, 1),
+      thresholdMs: PREPARE_PLAYHEAD_SLOW_LOG_THRESHOLD_MS,
+      before: buildPreparePlayheadDeckSnapshot(beforeSnapshot, deck),
+      after: buildPreparePlayheadDeckSnapshot(afterSnapshot, deck)
+    })}`
+  )
+}
 
 export function registerHorizontalBrowseTransportHandlers() {
   startHorizontalBrowseTransportSnapshotBroadcaster(() =>
@@ -178,7 +232,10 @@ export function registerHorizontalBrowseTransportHandlers() {
   ipcMain.handle(
     'horizontal-browse-transport:prepare-playhead',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number) => {
+      const startedAtMs = performance.now()
+      const beforeSnapshot = horizontalBrowseTransportBridge.snapshot(nowMs)
       const snapshot = horizontalBrowseTransportBridge.preparePlayhead(deck, nowMs)
+      logSlowPreparePlayhead(deck, startedAtMs, beforeSnapshot, snapshot)
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }
