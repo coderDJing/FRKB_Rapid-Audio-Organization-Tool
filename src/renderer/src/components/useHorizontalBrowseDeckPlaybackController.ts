@@ -33,6 +33,7 @@ type UseHorizontalBrowseDeckPlaybackControllerParams = {
   notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
   nativeTransport: {
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
+    preparePlayhead: (deck: DeckKey) => Promise<unknown>
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
     setScrubPreview: (
       deck: DeckKey,
@@ -242,6 +243,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
       (currentSec < -PLAYHEAD_READY_NEGATIVE_EPSILON_SEC ||
         renderCurrentSec < -PLAYHEAD_READY_NEGATIVE_EPSILON_SEC)
     )
+  }
+
+  const prepareDeckPlayheadIfNeeded = async (deck: DeckKey) => {
+    if (isDeckPlayheadReady(deck) || !canDeckExecuteImmediateTransportAction(deck)) return
+    await params.nativeTransport.preparePlayhead(deck).catch(() => undefined)
   }
 
   const pendingPlayDiagnostics = createHorizontalBrowsePendingPlayDiagnostics({
@@ -933,6 +939,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
             deckPendingPlayOnLoad[deck] = true
             deckPendingPlayOnLoad[otherDeck] = true
             await params.commitDeckStatesToNative()
+            await prepareDeckPlayheadIfNeeded(deck)
+            await prepareDeckPlayheadIfNeeded(otherDeck)
             await params.nativeTransport.snapshot(performance.now()).catch(() => undefined)
             params.syncDeckRenderState({ force: 'all' })
             if (!isDeckPlayheadReady(deck) || !isDeckPlayheadReady(otherDeck)) {
@@ -985,6 +993,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
           }
           deckPendingPlayOnLoad[deck] = true
           await params.commitDeckStatesToNative()
+          await prepareDeckPlayheadIfNeeded(deck)
           await params.nativeTransport.snapshot(performance.now()).catch(() => undefined)
           params.syncDeckRenderState({ force: deck })
           if (!isDeckPlayheadReady(deck)) {

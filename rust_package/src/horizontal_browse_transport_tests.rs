@@ -1398,6 +1398,54 @@ fn startup_decode_covers_current_playhead_when_cue_is_after_startup_block() {
 }
 
 #[test]
+fn prepare_playhead_decode_request_replaces_pending_startup_decode() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("playhead.mp3".to_string());
+    top.duration_sec = 60.0;
+    top.current_sec = 0.16;
+    top.time_basis_offset_ms = Some(25.0);
+  }
+
+  let pending = engine.prepare_decode_request(DeckId::Top).unwrap();
+  assert_eq!(pending.request_id, 1);
+  assert!(engine.prepare_decode_request(DeckId::Top).is_none());
+
+  let playhead = engine.prepare_playhead_decode_request(DeckId::Top).unwrap();
+  assert_eq!(playhead.request_id, 2);
+  assert!(!playhead.is_full_decode);
+  assert!((playhead.start_sec - 0.135).abs() < 0.0001);
+  assert_eq!(
+    engine.deck(DeckId::Top).pending_decode_file_path.as_deref(),
+    Some("playhead.mp3")
+  );
+
+  let stale = prepare_decoded_audio(None, vec![0.0; 40], 4, 1, pending.start_sec, false);
+  assert!(!engine.apply_prepared_decoded_audio(
+    DeckId::Top,
+    "playhead.mp3",
+    pending.request_id,
+    stale,
+    false
+  ));
+
+  let prepared = prepare_decoded_audio(None, vec![0.0; 40], 4, 1, playhead.start_sec, false);
+  assert!(engine.apply_prepared_decoded_audio(
+    DeckId::Top,
+    "playhead.mp3",
+    playhead.request_id,
+    prepared,
+    false
+  ));
+
+  let snapshot = engine.snapshot(0.0);
+  assert!(snapshot.top.loaded);
+  assert!(snapshot.top.playhead_loaded);
+  assert!(!snapshot.top.decoding);
+}
+
+#[test]
 fn startup_decode_refills_current_playhead_after_time_basis_offset_changes() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   {

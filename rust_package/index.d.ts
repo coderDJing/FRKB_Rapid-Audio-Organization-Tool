@@ -17,6 +17,7 @@ export declare function horizontalBrowseTransportSetLeader(deck?: string | undef
 export declare function horizontalBrowseTransportSetBandState(deck: string, bands: HorizontalBrowseTransportBandState): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetCueMonitorEnabled(deck: string, enabled: boolean): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetPlaying(deck: string, nowMs: number, playing: boolean): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportPreparePlayhead(deck: string, nowMs: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSeek(deck: string, nowMs: number, currentSec: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetScrubPreview(deck: string, nowMs: number, active: boolean, currentSec: number, rate: number): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSetMetronome(deck: string, enabled: boolean, volumeLevel: number): HorizontalBrowseTransportSnapshot

@@ -308,6 +308,26 @@ pub fn horizontal_browse_transport_set_playing(
 }
 
 #[napi]
+pub fn horizontal_browse_transport_prepare_playhead(
+  deck: String,
+  now_ms: f64,
+) -> napi::Result<HorizontalBrowseTransportSnapshot> {
+  let deck_id = parse_deck_id(&deck)?;
+  let mut engine_guard = engine().lock();
+  engine_guard.observe_external_now_ms(now_ms);
+  let _ = engine_guard.ensure_output_stream();
+  let decode_request = engine_guard.prepare_playhead_decode_request(deck_id);
+  engine_guard.refresh();
+  engine_guard.refresh_auto_gain();
+  drop(engine_guard);
+  if let Some(request) = decode_request {
+    execute_decode_request_sync(request);
+  }
+  let engine_guard = engine().lock();
+  Ok(engine_guard.snapshot(engine_guard.last_now_ms))
+}
+
+#[napi]
 pub fn horizontal_browse_transport_seek(
   deck: String,
   now_ms: f64,

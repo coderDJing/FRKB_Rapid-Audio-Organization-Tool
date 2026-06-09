@@ -337,6 +337,10 @@ export declare function horizontalBrowseTransportSetPlaying(
   nowMs: number,
   playing: boolean
 ): HorizontalBrowseTransportSnapshot
+export declare function horizontalBrowseTransportPreparePlayhead(
+  deck: string,
+  nowMs: number
+): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportSeek(
   deck: string,
   nowMs: number,

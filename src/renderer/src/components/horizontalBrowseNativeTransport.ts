@@ -296,6 +296,18 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
+  const preparePlayhead = async (deck: HorizontalBrowseDeckKey) => {
+    const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:native:prepare-playhead:${deck}`)
+    const snapshot = await invoke(
+      'horizontal-browse-transport:prepare-playhead',
+      deck,
+      performance.now()
+    )
+    finishTiming()
+    applySnapshot(snapshot)
+    return snapshot
+  }
+
   const seek = async (deck: HorizontalBrowseDeckKey, currentSec: number) => {
     const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:native:seek:${deck}`)
     const snapshot = await invoke(
@@ -446,6 +458,7 @@ export const createHorizontalBrowseNativeTransport = () => {
     setBandState,
     setCueMonitorEnabled,
     setPlaying,
+    preparePlayhead,
     seek,
     setScrubPreview,
     setMetronome,

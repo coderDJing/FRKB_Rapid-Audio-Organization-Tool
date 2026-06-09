@@ -176,6 +176,15 @@ export function registerHorizontalBrowseTransportHandlers() {
   )
 
   ipcMain.handle(
+    'horizontal-browse-transport:prepare-playhead',
+    async (_event, deck: HorizontalBrowseDeckKey, nowMs: number) => {
+      const snapshot = horizontalBrowseTransportBridge.preparePlayhead(deck, nowMs)
+      broadcastHorizontalBrowseTransportSnapshot(snapshot)
+      return snapshot
+    }
+  )
+
+  ipcMain.handle(
     'horizontal-browse-transport:seek',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number, currentSec: number) => {
       const snapshot = horizontalBrowseTransportBridge.seek(deck, nowMs, currentSec)

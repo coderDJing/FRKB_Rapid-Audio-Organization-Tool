@@ -18,6 +18,7 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
   notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
   nativeTransport: {
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
+    preparePlayhead: (deck: DeckKey) => Promise<unknown>
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
     setScrubPreview: (
       deck: DeckKey,

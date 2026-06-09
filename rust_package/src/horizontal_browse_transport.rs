@@ -455,6 +455,18 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn prepare_decode_request(&mut self, deck: DeckId) -> Option<DecodeRequest> {
+    self.prepare_decode_request_inner(deck, false)
+  }
+
+  fn prepare_playhead_decode_request(&mut self, deck: DeckId) -> Option<DecodeRequest> {
+    self.prepare_decode_request_inner(deck, true)
+  }
+
+  fn prepare_decode_request_inner(
+    &mut self,
+    deck: DeckId,
+    replace_pending: bool,
+  ) -> Option<DecodeRequest> {
     let file_path = self
       .deck(deck)
       .file_path
@@ -481,7 +493,9 @@ impl HorizontalBrowseTransportEngine {
     if self.has_loaded_segment_covering(deck, startup_target_sec) {
       return None;
     }
-    if self.deck(deck).pending_decode_file_path.as_deref() == Some(file_path.as_str()) {
+    if !replace_pending
+      && self.deck(deck).pending_decode_file_path.as_deref() == Some(file_path.as_str())
+    {
       return None;
     }
     let should_reset_loaded_audio =

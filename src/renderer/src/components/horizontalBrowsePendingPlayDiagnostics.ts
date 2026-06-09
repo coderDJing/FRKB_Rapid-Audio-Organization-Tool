@@ -11,7 +11,9 @@ export type HorizontalBrowsePendingPlayViewMode = 'dual' | 'edit' | 'unknown'
 type PendingPlayDiagnosticState = {
   startedAtMs: number
   timer: number | null
+  extendedTimer: number | null
   emitted: boolean
+  extendedEmitted: boolean
   startSnapshot: Record<string, unknown> | null
 }
 
@@ -25,13 +27,16 @@ type HorizontalBrowsePendingPlayDiagnosticsParams = {
 }
 
 export const HORIZONTAL_BROWSE_PENDING_PLAY_DIAGNOSTIC_THRESHOLD_MS = 500
+export const HORIZONTAL_BROWSE_PENDING_PLAY_EXTENDED_DIAGNOSTIC_MS = 5000
 
 const resolveOtherDeck = (deck: DeckKey): DeckKey => (deck === 'top' ? 'bottom' : 'top')
 
 const createDefaultPendingPlayDiagnosticState = (): PendingPlayDiagnosticState => ({
   startedAtMs: 0,
   timer: null,
+  extendedTimer: null,
   emitted: false,
+  extendedEmitted: false,
   startSnapshot: null
 })
 
@@ -39,6 +44,51 @@ const normalizeDiagnosticNumber = (value: unknown, fractionDigits = 3) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return null
   return Number(numeric.toFixed(fractionDigits))
+}
+
+const resolvePlayheadCoverage = (snapshot: HorizontalBrowseTransportDeckSnapshot) => {
+  if (snapshot.playheadLoaded) {
+    return {
+      state: 'covered',
+      gapSec: 0
+    }
+  }
+  if (!snapshot.loaded) {
+    return {
+      state: 'not-loaded',
+      gapSec: null
+    }
+  }
+  const audioCurrentSec = Number(snapshot.audioCurrentSec)
+  const loadedSegmentStartSec = Number(snapshot.loadedSegmentStartSec)
+  const loadedSegmentEndSec = Number(snapshot.loadedSegmentEndSec)
+  if (
+    !Number.isFinite(audioCurrentSec) ||
+    !Number.isFinite(loadedSegmentStartSec) ||
+    !Number.isFinite(loadedSegmentEndSec) ||
+    loadedSegmentEndSec <= loadedSegmentStartSec
+  ) {
+    return {
+      state: 'invalid-loaded-segment',
+      gapSec: null
+    }
+  }
+  if (audioCurrentSec < loadedSegmentStartSec) {
+    return {
+      state: 'before-loaded-segment',
+      gapSec: normalizeDiagnosticNumber(loadedSegmentStartSec - audioCurrentSec)
+    }
+  }
+  if (audioCurrentSec >= loadedSegmentEndSec) {
+    return {
+      state: 'after-loaded-segment',
+      gapSec: normalizeDiagnosticNumber(audioCurrentSec - loadedSegmentEndSec)
+    }
+  }
+  return {
+    state: 'inside-loaded-segment-but-unready',
+    gapSec: null
+  }
 }
 
 export const createHorizontalBrowsePendingPlayDiagnostics = (
@@ -55,17 +105,34 @@ export const createHorizontalBrowsePendingPlayDiagnostics = (
       window.clearTimeout(timer)
       deckPendingPlayDiagnostics[deck].timer = null
     }
+    const extendedTimer = deckPendingPlayDiagnostics[deck].extendedTimer
+    if (extendedTimer !== null) {
+      window.clearTimeout(extendedTimer)
+      deckPendingPlayDiagnostics[deck].extendedTimer = null
+    }
   }
 
   const buildDeckSnapshot = (deck: DeckKey): Record<string, unknown> => {
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const song = params.resolveDeckSong(deck)
+    const resolvedReady = params.isDeckPlayheadReady(deck)
+    const playheadCoverage = resolvePlayheadCoverage(snapshot)
+    const blockers = [
+      String(song?.filePath || '').trim() ? null : 'no-file',
+      resolvedReady ? null : 'playhead-not-ready',
+      snapshot.loaded ? null : 'deck-not-loaded',
+      snapshot.decoding ? 'decode-pending' : null,
+      snapshot.fullDecoding ? 'full-decode-pending' : null,
+      snapshot.playheadLoaded ? null : `coverage:${playheadCoverage.state}`,
+      snapshot.playRequested && !snapshot.playingAudible ? 'play-requested-not-audible' : null
+    ].filter((value): value is string => typeof value === 'string')
     return {
       deck,
       filePath: String(song?.filePath || '').trim(),
       label: snapshot.label,
       pendingPlay: params.resolveDeckPendingPlay(deck),
-      resolvedReady: params.isDeckPlayheadReady(deck),
+      resolvedReady,
+      blockers,
       loaded: snapshot.loaded,
       fullyDecoded: snapshot.fullyDecoded,
       decoding: snapshot.decoding,
@@ -79,6 +146,7 @@ export const createHorizontalBrowsePendingPlayDiagnostics = (
       audioCurrentSec: normalizeDiagnosticNumber(snapshot.audioCurrentSec),
       loadedSegmentStartSec: normalizeDiagnosticNumber(snapshot.loadedSegmentStartSec),
       loadedSegmentEndSec: normalizeDiagnosticNumber(snapshot.loadedSegmentEndSec),
+      playheadCoverage,
       durationSec: normalizeDiagnosticNumber(snapshot.durationSec),
       effectiveDurationSec: normalizeDiagnosticNumber(snapshot.effectiveDurationSec),
       playbackRate: normalizeDiagnosticNumber(snapshot.playbackRate, 5),
@@ -92,7 +160,7 @@ export const createHorizontalBrowsePendingPlayDiagnostics = (
   }
 
   const emitDiagnostic = (
-    event: 'threshold' | 'cleared',
+    event: 'threshold' | 'extended' | 'cleared',
     deck: DeckKey,
     state: PendingPlayDiagnosticState,
     elapsedMs: number
@@ -105,8 +173,15 @@ export const createHorizontalBrowsePendingPlayDiagnostics = (
         deck,
         elapsedMs: normalizeDiagnosticNumber(elapsedMs, 1),
         thresholdMs: HORIZONTAL_BROWSE_PENDING_PLAY_DIAGNOSTIC_THRESHOLD_MS,
+        extendedMs: HORIZONTAL_BROWSE_PENDING_PLAY_EXTENDED_DIAGNOSTIC_MS,
         pendingTop: params.resolveDeckPendingPlay('top'),
         pendingBottom: params.resolveDeckPendingPlay('bottom'),
+        readyTop: params.isDeckPlayheadReady('top'),
+        readyBottom: params.isDeckPlayheadReady('bottom'),
+        blockedDecks: (['top', 'bottom'] as DeckKey[]).filter(
+          (candidate) =>
+            params.resolveDeckPendingPlay(candidate) && !params.isDeckPlayheadReady(candidate)
+        ),
         dualSyncActive: params.resolveDualTransportSyncActive(),
         start: state.startSnapshot,
         current: buildDeckSnapshot(deck),
@@ -129,7 +204,7 @@ export const createHorizontalBrowsePendingPlayDiagnostics = (
   const sync = (deck: DeckKey, pending: boolean) => {
     const state = deckPendingPlayDiagnostics[deck]
     if (!pending) {
-      if (state.startedAtMs > 0 && state.emitted) {
+      if (state.startedAtMs > 0 && (state.emitted || state.extendedEmitted)) {
         emitDiagnostic('cleared', deck, state, performance.now() - state.startedAtMs)
       }
       reset(deck)
@@ -153,6 +228,19 @@ export const createHorizontalBrowsePendingPlayDiagnostics = (
       state.emitted = true
       emitDiagnostic('threshold', deck, state, performance.now() - state.startedAtMs)
     }, delayMs)
+
+    if (state.extendedEmitted || state.extendedTimer !== null) return
+    const extendedDelayMs = Math.max(
+      0,
+      HORIZONTAL_BROWSE_PENDING_PLAY_EXTENDED_DIAGNOSTIC_MS -
+        (performance.now() - state.startedAtMs)
+    )
+    state.extendedTimer = window.setTimeout(() => {
+      state.extendedTimer = null
+      if (!params.resolveDeckPendingPlay(deck) || state.extendedEmitted) return
+      state.extendedEmitted = true
+      emitDiagnostic('extended', deck, state, performance.now() - state.startedAtMs)
+    }, extendedDelayMs)
   }
 
   const dispose = () => {
