@@ -2,10 +2,10 @@
 /**
  * 扫描项目中行数超过阈值的文本代码文件
  * 默认：阈值 1000 行；后缀 .ts,.tsx,.js,.jsx,.vue,.css,.scss,.json,.md
- * 默认排除目录：node_modules, dist, out, .git
+ * 默认排除目录：node_modules, dist, out, .git, grid-analysis-lab
  *
  * 用法示例：
- *   node scripts/find-long-files.mjs --gt 1000 --ext .ts,.tsx,.js,.jsx,.vue --root . --exclude node_modules,dist,out,.git
+ *   node scripts/find-long-files.mjs --gt 1000 --ext .ts,.tsx,.js,.jsx,.vue --root . --exclude node_modules,dist,out,.git,grid-analysis-lab
  */
 
 import fs from 'node:fs'
@@ -30,7 +30,17 @@ function parseArgs(argv) {
     root: '.',
     gt: 1200,
     ext: ['.ts', '.tsx', '.js', '.jsx', '.vue', '.css', '.scss', '.json', '.md'],
-    exclude: ['node_modules', 'dist', 'out', '.git', '.vitepress', 'vendor', '.codex_tmp', 'package-lock.json'],
+    exclude: [
+      'node_modules',
+      'dist',
+      'out',
+      '.git',
+      '.vitepress',
+      'vendor',
+      '.codex_tmp',
+      'package-lock.json',
+      'grid-analysis-lab'
+    ],
     json: false
   }
   for (let i = 2; i < argv.length; i++) {
