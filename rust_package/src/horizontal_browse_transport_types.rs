@@ -131,6 +131,37 @@ pub struct HorizontalBrowseTransportVisualizerSnapshot {
   pub time_domain_data: Vec<u8>,
 }
 
+#[napi(object)]
+#[derive(Clone)]
+pub struct HorizontalBrowseTransportDecodeDiagnostic {
+  pub operation: String,
+  pub status: String,
+  pub deck: String,
+  pub file_path: String,
+  pub request_id: f64,
+  pub full_decode: bool,
+  pub start_sec: f64,
+  pub max_duration_sec: Option<f64>,
+  pub queue_wait_ms: Option<f64>,
+  pub total_ms: f64,
+  pub ffmpeg_total_ms: Option<f64>,
+  pub ffmpeg_spawn_ms: Option<f64>,
+  pub ffmpeg_first_byte_ms: Option<f64>,
+  pub ffmpeg_read_ms: Option<f64>,
+  pub ffmpeg_convert_ms: Option<f64>,
+  pub ffmpeg_wait_ms: Option<f64>,
+  pub ffmpeg_stderr_join_ms: Option<f64>,
+  pub ffmpeg_stdout_bytes: Option<f64>,
+  pub ffmpeg_read_iterations: Option<f64>,
+  pub prepare_ms: Option<f64>,
+  pub apply_ms: Option<f64>,
+  pub loudness_ms: Option<f64>,
+  pub sample_count: f64,
+  pub frame_count: f64,
+  pub sample_rate: f64,
+  pub channels: f64,
+}
+
 pub(super) struct DecodeRequest {
   pub(super) deck: DeckId,
   pub(super) file_path: String,
@@ -138,6 +169,7 @@ pub(super) struct DecodeRequest {
   pub(super) start_sec: f64,
   pub(super) max_duration_sec: Option<f64>,
   pub(super) is_full_decode: bool,
+  pub(super) queued_at_ms: Option<f64>,
 }
 
 #[derive(Clone, Copy)]

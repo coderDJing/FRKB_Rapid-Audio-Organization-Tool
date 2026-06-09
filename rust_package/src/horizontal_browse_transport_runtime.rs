@@ -5,9 +5,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex as StdMutex, OnceLock};
 
 const ASYNC_DECODE_WORKER_COUNT: usize = 2;
+const STARTUP_DECODE_DIAGNOSTIC_THRESHOLD_MS: f64 = 500.0;
+const FULL_DECODE_DIAGNOSTIC_THRESHOLD_MS: f64 = 5000.0;
+const MAX_DECODE_DIAGNOSTICS: usize = 64;
 
 enum DecodeRequestAudioResult {
-  Decoded(Vec<f32>, u32, u16),
+  Decoded {
+    samples: Vec<f32>,
+    sample_rate: u32,
+    channels: u16,
+    ffmpeg_metrics: FfmpegTransportDecodeMetrics,
+  },
   Failed,
   Cancelled,
 }
@@ -71,10 +79,23 @@ impl AsyncDecodeQueue {
         continue;
       };
       if !is_decode_request_current(&request) {
+        record_decode_request_status(
+          &request,
+          "async",
+          "stale-before-decode",
+          request
+            .queued_at_ms
+            .map(|queued_at| (native_now_ms() - queued_at).max(0.0)),
+          0.0,
+        );
         continue;
       }
+      let started_at_ms = native_now_ms();
+      let queue_wait_ms = request
+        .queued_at_ms
+        .map(|queued_at| (started_at_ms - queued_at).max(0.0));
       let decoded = decode_request_audio(&request);
-      finish_decode_request(request, decoded);
+      finish_decode_request(request, decoded, "async", queue_wait_ms, started_at_ms);
     }
   }
 }
@@ -96,15 +117,132 @@ fn is_decode_request_current(request: &DecodeRequest) -> bool {
     .is_some()
 }
 
-fn finish_decode_request(request: DecodeRequest, decoded: DecodeRequestAudioResult) {
+fn decode_diagnostics() -> &'static StdMutex<VecDeque<HorizontalBrowseTransportDecodeDiagnostic>> {
+  static DECODE_DIAGNOSTICS: OnceLock<
+    StdMutex<VecDeque<HorizontalBrowseTransportDecodeDiagnostic>>,
+  > = OnceLock::new();
+  DECODE_DIAGNOSTICS.get_or_init(|| StdMutex::new(VecDeque::new()))
+}
+
+pub(super) fn drain_decode_diagnostics() -> Vec<HorizontalBrowseTransportDecodeDiagnostic> {
+  let mut diagnostics = decode_diagnostics()
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+  diagnostics.drain(..).collect()
+}
+
+fn should_record_decode_diagnostic(diagnostic: &HorizontalBrowseTransportDecodeDiagnostic) -> bool {
+  let threshold_ms = if diagnostic.full_decode {
+    FULL_DECODE_DIAGNOSTIC_THRESHOLD_MS
+  } else {
+    STARTUP_DECODE_DIAGNOSTIC_THRESHOLD_MS
+  };
+  let max_elapsed_ms = diagnostic
+    .queue_wait_ms
+    .unwrap_or(0.0)
+    .max(diagnostic.total_ms)
+    .max(diagnostic.ffmpeg_total_ms.unwrap_or(0.0));
+  max_elapsed_ms >= threshold_ms
+}
+
+fn push_decode_diagnostic(diagnostic: HorizontalBrowseTransportDecodeDiagnostic) {
+  if !should_record_decode_diagnostic(&diagnostic) {
+    return;
+  }
+  let mut diagnostics = decode_diagnostics()
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+  while diagnostics.len() >= MAX_DECODE_DIAGNOSTICS {
+    diagnostics.pop_front();
+  }
+  diagnostics.push_back(diagnostic);
+}
+
+fn empty_decode_diagnostic(
+  request: &DecodeRequest,
+  operation: &str,
+  status: &str,
+  queue_wait_ms: Option<f64>,
+  total_ms: f64,
+) -> HorizontalBrowseTransportDecodeDiagnostic {
+  HorizontalBrowseTransportDecodeDiagnostic {
+    operation: operation.to_string(),
+    status: status.to_string(),
+    deck: request.deck.as_str().to_string(),
+    file_path: request.file_path.clone(),
+    request_id: request.request_id as f64,
+    full_decode: request.is_full_decode,
+    start_sec: request.start_sec,
+    max_duration_sec: request.max_duration_sec,
+    queue_wait_ms,
+    total_ms,
+    ffmpeg_total_ms: None,
+    ffmpeg_spawn_ms: None,
+    ffmpeg_first_byte_ms: None,
+    ffmpeg_read_ms: None,
+    ffmpeg_convert_ms: None,
+    ffmpeg_wait_ms: None,
+    ffmpeg_stderr_join_ms: None,
+    ffmpeg_stdout_bytes: None,
+    ffmpeg_read_iterations: None,
+    prepare_ms: None,
+    apply_ms: None,
+    loudness_ms: None,
+    sample_count: 0.0,
+    frame_count: 0.0,
+    sample_rate: 0.0,
+    channels: 0.0,
+  }
+}
+
+fn record_decode_request_status(
+  request: &DecodeRequest,
+  operation: &str,
+  status: &str,
+  queue_wait_ms: Option<f64>,
+  total_ms: f64,
+) {
+  push_decode_diagnostic(empty_decode_diagnostic(
+    request,
+    operation,
+    status,
+    queue_wait_ms,
+    total_ms,
+  ));
+}
+
+fn finish_decode_request(
+  request: DecodeRequest,
+  decoded: DecodeRequestAudioResult,
+  operation: &str,
+  queue_wait_ms: Option<f64>,
+  started_at_ms: f64,
+) {
   match decoded {
-    DecodeRequestAudioResult::Decoded(samples, sample_rate, channels) => {
+    DecodeRequestAudioResult::Decoded {
+      samples,
+      sample_rate,
+      channels,
+      ffmpeg_metrics,
+    } => {
+      let sample_count = samples.len() as f64;
+      let frame_count = if channels > 0 {
+        samples.len() as f64 / channels as f64
+      } else {
+        0.0
+      };
+      let loudness_started_at_ms = native_now_ms();
       let loudness_analysis = if request.is_full_decode {
         super::horizontal_browse_transport_auto_gain::analyze_loudness(
           &samples,
           sample_rate,
           channels,
         )
+      } else {
+        None
+      };
+      let loudness_ms = if request.is_full_decode {
+        Some((native_now_ms() - loudness_started_at_ms).max(0.0))
       } else {
         None
       };
@@ -118,8 +256,16 @@ fn finish_decode_request(request: DecodeRequest, decoded: DecodeRequestAudioResu
         )
       };
       let Some(apply_baseline) = apply_baseline else {
+        record_decode_request_status(
+          &request,
+          operation,
+          "stale-before-prepare",
+          queue_wait_ms,
+          (native_now_ms() - started_at_ms).max(0.0),
+        );
         return;
       };
+      let prepare_started_at_ms = native_now_ms();
       let prepared = prepare_decoded_audio(
         Some(apply_baseline),
         samples,
@@ -128,7 +274,9 @@ fn finish_decode_request(request: DecodeRequest, decoded: DecodeRequestAudioResu
         request.start_sec,
         request.is_full_decode,
       );
-      let full_decode_request = {
+      let prepare_ms = (native_now_ms() - prepare_started_at_ms).max(0.0);
+      let apply_started_at_ms = native_now_ms();
+      let (applied, full_decode_request) = {
         let mut engine_guard = engine().lock();
         if engine_guard.apply_prepared_decoded_audio(
           request.deck,
@@ -147,14 +295,43 @@ fn finish_decode_request(request: DecodeRequest, decoded: DecodeRequestAudioResu
           engine_guard.refresh();
           engine_guard.refresh_auto_gain();
           if request.is_full_decode {
-            None
+            (true, None)
           } else {
-            engine_guard.prepare_full_decode_request(request.deck)
+            (true, engine_guard.prepare_full_decode_request(request.deck))
           }
         } else {
-          None
+          (false, None)
         }
       };
+      let apply_ms = (native_now_ms() - apply_started_at_ms).max(0.0);
+      push_decode_diagnostic(HorizontalBrowseTransportDecodeDiagnostic {
+        operation: operation.to_string(),
+        status: if applied { "decoded" } else { "apply-stale" }.to_string(),
+        deck: request.deck.as_str().to_string(),
+        file_path: request.file_path.clone(),
+        request_id: request.request_id as f64,
+        full_decode: request.is_full_decode,
+        start_sec: request.start_sec,
+        max_duration_sec: request.max_duration_sec,
+        queue_wait_ms,
+        total_ms: (native_now_ms() - started_at_ms).max(0.0),
+        ffmpeg_total_ms: Some(ffmpeg_metrics.total_ms),
+        ffmpeg_spawn_ms: Some(ffmpeg_metrics.spawn_ms),
+        ffmpeg_first_byte_ms: ffmpeg_metrics.first_byte_ms,
+        ffmpeg_read_ms: Some(ffmpeg_metrics.read_ms),
+        ffmpeg_convert_ms: Some(ffmpeg_metrics.convert_ms),
+        ffmpeg_wait_ms: Some(ffmpeg_metrics.wait_ms),
+        ffmpeg_stderr_join_ms: Some(ffmpeg_metrics.stderr_join_ms),
+        ffmpeg_stdout_bytes: Some(ffmpeg_metrics.stdout_bytes),
+        ffmpeg_read_iterations: Some(ffmpeg_metrics.read_iterations),
+        prepare_ms: Some(prepare_ms),
+        apply_ms: Some(apply_ms),
+        loudness_ms,
+        sample_count,
+        frame_count,
+        sample_rate: sample_rate as f64,
+        channels: channels as f64,
+      });
       if let Some(request) = full_decode_request {
         schedule_decode_request(request);
       }
@@ -173,8 +350,23 @@ fn finish_decode_request(request: DecodeRequest, decoded: DecodeRequestAudioResu
       } else {
         engine_guard.refresh_auto_gain();
       }
+      record_decode_request_status(
+        &request,
+        operation,
+        "failed",
+        queue_wait_ms,
+        (native_now_ms() - started_at_ms).max(0.0),
+      );
     }
-    DecodeRequestAudioResult::Cancelled => {}
+    DecodeRequestAudioResult::Cancelled => {
+      record_decode_request_status(
+        &request,
+        operation,
+        "cancelled",
+        queue_wait_ms,
+        (native_now_ms() - started_at_ms).max(0.0),
+      );
+    }
   }
 }
 
@@ -189,18 +381,25 @@ fn decode_transport_audio_file(
       !is_decode_request_current(request)
     });
   match decoded {
-    Ok(Some(ffmpeg_pcm)) if ffmpeg_pcm.channels > 0 => DecodeRequestAudioResult::Decoded(
-      ffmpeg_pcm.samples_f32,
-      ffmpeg_pcm.sample_rate,
-      ffmpeg_pcm.channels,
-    ),
-    Ok(Some(_)) => DecodeRequestAudioResult::Failed,
+    Ok(Some(ffmpeg_pcm)) => {
+      if ffmpeg_pcm.channels > 0 {
+        DecodeRequestAudioResult::Decoded {
+          samples: ffmpeg_pcm.samples_f32,
+          sample_rate: ffmpeg_pcm.sample_rate,
+          channels: ffmpeg_pcm.channels,
+          ffmpeg_metrics: ffmpeg_pcm.metrics,
+        }
+      } else {
+        DecodeRequestAudioResult::Failed
+      }
+    }
     Ok(None) => DecodeRequestAudioResult::Cancelled,
     Err(_) => DecodeRequestAudioResult::Failed,
   }
 }
 
-pub(super) fn schedule_decode_request(request: DecodeRequest) {
+pub(super) fn schedule_decode_request(mut request: DecodeRequest) {
+  request.queued_at_ms = Some(native_now_ms());
   async_decode_queue().enqueue(request);
 }
 
@@ -222,11 +421,13 @@ fn decode_request_audio(request: &DecodeRequest) -> DecodeRequestAudioResult {
 }
 
 pub(super) fn execute_decode_request_sync(request: DecodeRequest) {
+  let started_at_ms = native_now_ms();
   if !is_decode_request_current(&request) {
+    record_decode_request_status(&request, "sync", "stale-before-decode", None, 0.0);
     return;
   }
   let decoded = decode_request_audio(&request);
-  finish_decode_request(request, decoded);
+  finish_decode_request(request, decoded, "sync", None, started_at_ms);
 }
 
 static HORIZONTAL_BROWSE_TRANSPORT: OnceLock<Mutex<HorizontalBrowseTransportEngine>> =

@@ -27,12 +27,13 @@ mod horizontal_browse_transport_snapshot;
 mod horizontal_browse_transport_types;
 #[path = "horizontal_browse_transport_visualizer.rs"]
 mod horizontal_browse_transport_visualizer;
+use crate::FfmpegTransportDecodeMetrics;
 use horizontal_browse_transport_auto_gain::{DeckAutoGainState, LoudnessAnalysis};
 pub use horizontal_browse_transport_napi::*;
 pub use horizontal_browse_transport_recording::HorizontalBrowseTransportRecordingStatus;
 use horizontal_browse_transport_runtime::{
-  engine, execute_decode_request_sync, native_now_ms, next_snapshot_sequence,
-  schedule_decode_request,
+  drain_decode_diagnostics, engine, execute_decode_request_sync, native_now_ms,
+  next_snapshot_sequence, schedule_decode_request,
 };
 use horizontal_browse_transport_types::{
   parse_deck_id, BeatGridSnapshot, DeckDerivedState, DeckId, DecodeRequest,
@@ -40,8 +41,9 @@ use horizontal_browse_transport_types::{
 pub use horizontal_browse_transport_types::{
   HorizontalBrowseTransportBandState, HorizontalBrowseTransportBeatGridInput,
   HorizontalBrowseTransportDeckInput, HorizontalBrowseTransportDeckSnapshot,
-  HorizontalBrowseTransportOutputSnapshot, HorizontalBrowseTransportSnapshot,
-  HorizontalBrowseTransportStateInput, HorizontalBrowseTransportVisualizerSnapshot,
+  HorizontalBrowseTransportDecodeDiagnostic, HorizontalBrowseTransportOutputSnapshot,
+  HorizontalBrowseTransportSnapshot, HorizontalBrowseTransportStateInput,
+  HorizontalBrowseTransportVisualizerSnapshot,
 };
 
 struct DeckState {
@@ -523,6 +525,7 @@ impl HorizontalBrowseTransportEngine {
       start_sec: startup_start_sec,
       max_duration_sec: Some(HORIZONTAL_BROWSE_STARTUP_DECODE_SEC),
       is_full_decode: false,
+      queued_at_ms: None,
     })
   }
 
@@ -554,6 +557,7 @@ impl HorizontalBrowseTransportEngine {
       start_sec: 0.0,
       max_duration_sec: None,
       is_full_decode: true,
+      queued_at_ms: None,
     })
   }
 

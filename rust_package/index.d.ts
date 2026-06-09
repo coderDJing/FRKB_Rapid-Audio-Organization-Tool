@@ -33,6 +33,7 @@ export declare function horizontalBrowseTransportStopRecording(): HorizontalBrow
 export declare function horizontalBrowseTransportRecordingSnapshot(): HorizontalBrowseTransportRecordingStatus
 export declare function horizontalBrowseTransportSnapshot(nowMs?: number | undefined | null): HorizontalBrowseTransportSnapshot
 export declare function horizontalBrowseTransportVisualizerSnapshot(): HorizontalBrowseTransportVisualizerSnapshot
+export declare function horizontalBrowseTransportDrainDecodeDiagnostics(): Array<HorizontalBrowseTransportDecodeDiagnostic>
 export interface HorizontalBrowseTransportDeckInput {
   filePath?: string
   title?: string
@@ -116,6 +117,34 @@ export interface HorizontalBrowseTransportSnapshot {
 }
 export interface HorizontalBrowseTransportVisualizerSnapshot {
   timeDomainData: Array<number>
+}
+export interface HorizontalBrowseTransportDecodeDiagnostic {
+  operation: string
+  status: string
+  deck: string
+  filePath: string
+  requestId: number
+  fullDecode: boolean
+  startSec: number
+  maxDurationSec?: number
+  queueWaitMs?: number
+  totalMs: number
+  ffmpegTotalMs?: number
+  ffmpegSpawnMs?: number
+  ffmpegFirstByteMs?: number
+  ffmpegReadMs?: number
+  ffmpegConvertMs?: number
+  ffmpegWaitMs?: number
+  ffmpegStderrJoinMs?: number
+  ffmpegStdoutBytes?: number
+  ffmpegReadIterations?: number
+  prepareMs?: number
+  applyMs?: number
+  loudnessMs?: number
+  sampleCount: number
+  frameCount: number
+  sampleRate: number
+  channels: number
 }
 export interface HorizontalBrowseTransportRecordingStatus {
   state: string

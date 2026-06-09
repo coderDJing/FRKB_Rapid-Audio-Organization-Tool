@@ -1,8 +1,10 @@
 import { ipcMain } from 'electron'
+import { performance } from 'node:perf_hooks'
 import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportBandState,
   HorizontalBrowseTransportDeckInput,
+  HorizontalBrowseTransportDeckSnapshot,
   HorizontalBrowseTransportSnapshot,
   HorizontalBrowseTransportStateInput
 } from '@shared/horizontalBrowseTransport'
@@ -17,62 +19,111 @@ import { createRecordingOutputPath } from '../recordingLibraryService'
 import { log } from '../log'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 
-const PREPARE_PLAYHEAD_SLOW_LOG_THRESHOLD_MS = 500
+const SLOW_TRANSPORT_OPERATION_LOG_THRESHOLD_MS = 500
 
-const normalizeTimingNumber = (value: unknown, fractionDigits = 3) => {
+const normalizeDiagnosticNumber = (value: unknown, fractionDigits = 3) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return null
   return Number(numeric.toFixed(fractionDigits))
 }
 
-const buildPreparePlayheadDeckSnapshot = (
-  snapshot: HorizontalBrowseTransportSnapshot,
+const resolveSnapshotDeck = (
+  snapshot: HorizontalBrowseTransportSnapshot | null | undefined,
+  deck: HorizontalBrowseDeckKey
+): HorizontalBrowseTransportDeckSnapshot | null => {
+  if (!snapshot) return null
+  return deck === 'top' ? snapshot.top : snapshot.bottom
+}
+
+const buildDeckDiagnosticSnapshot = (
+  snapshot: HorizontalBrowseTransportSnapshot | null | undefined,
   deck: HorizontalBrowseDeckKey
 ) => {
-  const deckSnapshot = snapshot[deck]
+  const deckSnapshot = resolveSnapshotDeck(snapshot, deck)
+  if (!deckSnapshot) return null
   return {
+    deck,
     label: deckSnapshot.label,
     loaded: deckSnapshot.loaded,
+    fullyDecoded: deckSnapshot.fullyDecoded,
     decoding: deckSnapshot.decoding,
     fullDecoding: deckSnapshot.fullDecoding,
-    fullyDecoded: deckSnapshot.fullyDecoded,
-    playheadLoaded: deckSnapshot.playheadLoaded,
     playRequested: deckSnapshot.playRequested,
-    playing: deckSnapshot.playing,
     playingAudible: deckSnapshot.playingAudible,
-    currentSec: normalizeTimingNumber(deckSnapshot.currentSec),
-    audioCurrentSec: normalizeTimingNumber(deckSnapshot.audioCurrentSec),
-    renderCurrentSec: normalizeTimingNumber(deckSnapshot.renderCurrentSec),
-    loadedSegmentStartSec: normalizeTimingNumber(deckSnapshot.loadedSegmentStartSec),
-    loadedSegmentEndSec: normalizeTimingNumber(deckSnapshot.loadedSegmentEndSec),
-    durationSec: normalizeTimingNumber(deckSnapshot.durationSec),
-    effectiveDurationSec: normalizeTimingNumber(deckSnapshot.effectiveDurationSec)
+    playheadLoaded: deckSnapshot.playheadLoaded,
+    playing: deckSnapshot.playing,
+    currentSec: normalizeDiagnosticNumber(deckSnapshot.currentSec),
+    renderCurrentSec: normalizeDiagnosticNumber(deckSnapshot.renderCurrentSec),
+    audioCurrentSec: normalizeDiagnosticNumber(deckSnapshot.audioCurrentSec),
+    loadedSegmentStartSec: normalizeDiagnosticNumber(deckSnapshot.loadedSegmentStartSec),
+    loadedSegmentEndSec: normalizeDiagnosticNumber(deckSnapshot.loadedSegmentEndSec),
+    durationSec: normalizeDiagnosticNumber(deckSnapshot.durationSec),
+    effectiveDurationSec: normalizeDiagnosticNumber(deckSnapshot.effectiveDurationSec),
+    playbackRate: normalizeDiagnosticNumber(deckSnapshot.playbackRate, 5),
+    syncEnabled: deckSnapshot.syncEnabled,
+    syncLock: deckSnapshot.syncLock
+  }
+}
+
+const buildDeckInputDiagnosticSnapshot = (payload: HorizontalBrowseTransportDeckInput) => ({
+  filePath: String(payload.filePath || '').trim(),
+  title: String(payload.title || '').trim(),
+  durationSec: normalizeDiagnosticNumber(payload.durationSec),
+  currentSec: normalizeDiagnosticNumber(payload.currentSec),
+  lastObservedAtMs: normalizeDiagnosticNumber(payload.lastObservedAtMs),
+  playing: Boolean(payload.playing),
+  playbackRate: normalizeDiagnosticNumber(payload.playbackRate, 5),
+  bpm: normalizeDiagnosticNumber(payload.bpm),
+  timeBasisOffsetMs: normalizeDiagnosticNumber(payload.timeBasisOffsetMs)
+})
+
+const logSlowTransportOperation = (
+  operation: string,
+  elapsedMs: number,
+  payload: Record<string, unknown>
+) => {
+  if (elapsedMs < SLOW_TRANSPORT_OPERATION_LOG_THRESHOLD_MS) return
+  log.warn(
+    `[HB-TRANSPORT-SLOW] ${operation} ${JSON.stringify({
+      operation,
+      elapsedMs: normalizeDiagnosticNumber(elapsedMs, 1),
+      thresholdMs: SLOW_TRANSPORT_OPERATION_LOG_THRESHOLD_MS,
+      ...payload
+    })}`
+  )
+}
+
+const flushTransportDecodeDiagnostics = () => {
+  const diagnostics = horizontalBrowseTransportBridge.drainDecodeDiagnostics()
+  for (const diagnostic of diagnostics) {
+    log.warn(`[HB-TRANSPORT-DECODE-SLOW] ${diagnostic.operation} ${JSON.stringify(diagnostic)}`)
   }
 }
 
 const logSlowPreparePlayhead = (
   deck: HorizontalBrowseDeckKey,
-  startedAtMs: number,
+  elapsedMs: number,
   beforeSnapshot: HorizontalBrowseTransportSnapshot,
   afterSnapshot: HorizontalBrowseTransportSnapshot
 ) => {
-  const elapsedMs = performance.now() - startedAtMs
-  if (elapsedMs < PREPARE_PLAYHEAD_SLOW_LOG_THRESHOLD_MS) return
+  if (elapsedMs < SLOW_TRANSPORT_OPERATION_LOG_THRESHOLD_MS) return
   log.warn(
     `[HB-TRANSPORT-DECODE] prepare-playhead-slow ${JSON.stringify({
       deck,
-      elapsedMs: normalizeTimingNumber(elapsedMs, 1),
-      thresholdMs: PREPARE_PLAYHEAD_SLOW_LOG_THRESHOLD_MS,
-      before: buildPreparePlayheadDeckSnapshot(beforeSnapshot, deck),
-      after: buildPreparePlayheadDeckSnapshot(afterSnapshot, deck)
+      elapsedMs: normalizeDiagnosticNumber(elapsedMs, 1),
+      thresholdMs: SLOW_TRANSPORT_OPERATION_LOG_THRESHOLD_MS,
+      before: buildDeckDiagnosticSnapshot(beforeSnapshot, deck),
+      after: buildDeckDiagnosticSnapshot(afterSnapshot, deck)
     })}`
   )
 }
 
 export function registerHorizontalBrowseTransportHandlers() {
-  startHorizontalBrowseTransportSnapshotBroadcaster(() =>
-    horizontalBrowseTransportBridge.snapshot()
-  )
+  startHorizontalBrowseTransportSnapshotBroadcaster(() => {
+    const snapshot = horizontalBrowseTransportBridge.snapshot()
+    flushTransportDecodeDiagnostics()
+    return snapshot
+  })
 
   ipcMain.handle('horizontal-browse-transport:reset', async () => {
     await horizontalBrowseTransportBridge.reset()
@@ -89,7 +140,17 @@ export function registerHorizontalBrowseTransportHandlers() {
       nowMs: number | undefined,
       payload: HorizontalBrowseTransportDeckInput
     ) => {
+      const before = horizontalBrowseTransportBridge.snapshot()
+      const startedAt = performance.now()
       const snapshot = horizontalBrowseTransportBridge.setDeckState(deck, nowMs, payload)
+      const elapsedMs = performance.now() - startedAt
+      logSlowTransportOperation('set-deck-state', elapsedMs, {
+        deck,
+        input: buildDeckInputDiagnosticSnapshot(payload),
+        before: buildDeckDiagnosticSnapshot(before, deck),
+        after: buildDeckDiagnosticSnapshot(snapshot, deck)
+      })
+      flushTransportDecodeDiagnostics()
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }
@@ -98,7 +159,25 @@ export function registerHorizontalBrowseTransportHandlers() {
   ipcMain.handle(
     'horizontal-browse-transport:set-state',
     async (_event, payload: HorizontalBrowseTransportStateInput) => {
+      const before = horizontalBrowseTransportBridge.snapshot()
+      const startedAt = performance.now()
       const snapshot = horizontalBrowseTransportBridge.setState(payload)
+      const elapsedMs = performance.now() - startedAt
+      logSlowTransportOperation('set-state', elapsedMs, {
+        input: {
+          top: buildDeckInputDiagnosticSnapshot(payload.top),
+          bottom: buildDeckInputDiagnosticSnapshot(payload.bottom)
+        },
+        before: {
+          top: buildDeckDiagnosticSnapshot(before, 'top'),
+          bottom: buildDeckDiagnosticSnapshot(before, 'bottom')
+        },
+        after: {
+          top: buildDeckDiagnosticSnapshot(snapshot, 'top'),
+          bottom: buildDeckDiagnosticSnapshot(snapshot, 'bottom')
+        }
+      })
+      flushTransportDecodeDiagnostics()
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }
@@ -232,10 +311,27 @@ export function registerHorizontalBrowseTransportHandlers() {
   ipcMain.handle(
     'horizontal-browse-transport:prepare-playhead',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number) => {
-      const startedAtMs = performance.now()
-      const beforeSnapshot = horizontalBrowseTransportBridge.snapshot(nowMs)
+      const before = horizontalBrowseTransportBridge.snapshot(nowMs)
+      const beforeDeck = resolveSnapshotDeck(before, deck)
+      const startedAt = performance.now()
       const snapshot = horizontalBrowseTransportBridge.preparePlayhead(deck, nowMs)
-      logSlowPreparePlayhead(deck, startedAtMs, beforeSnapshot, snapshot)
+      const elapsedMs = performance.now() - startedAt
+      const afterDeck = resolveSnapshotDeck(snapshot, deck)
+      logSlowPreparePlayhead(deck, elapsedMs, before, snapshot)
+      logSlowTransportOperation('prepare-playhead', elapsedMs, {
+        deck,
+        before: buildDeckDiagnosticSnapshot(before, deck),
+        after: buildDeckDiagnosticSnapshot(snapshot, deck),
+        hadPendingStartupAtStart: Boolean(
+          beforeDeck?.decoding && !beforeDeck.loaded && !beforeDeck.playheadLoaded
+        ),
+        hadLoadedButUncoveredAtStart: Boolean(beforeDeck?.loaded && !beforeDeck.playheadLoaded),
+        becamePlayheadLoaded: Boolean(!beforeDeck?.playheadLoaded && afterDeck?.playheadLoaded),
+        loadedSegmentExpanded: Boolean(
+          Number(afterDeck?.loadedSegmentEndSec || 0) > Number(beforeDeck?.loadedSegmentEndSec || 0)
+        )
+      })
+      flushTransportDecodeDiagnostics()
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }

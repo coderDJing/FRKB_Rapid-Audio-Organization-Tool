@@ -489,3 +489,9 @@ pub fn horizontal_browse_transport_visualizer_snapshot(
   let engine = engine().lock();
   engine.visualizer_snapshot()
 }
+
+#[napi]
+pub fn horizontal_browse_transport_drain_decode_diagnostics(
+) -> Vec<HorizontalBrowseTransportDecodeDiagnostic> {
+  drain_decode_diagnostics()
+}

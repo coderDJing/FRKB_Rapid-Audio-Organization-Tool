@@ -399,5 +399,34 @@ export interface HorizontalBrowseTransportVisualizerSnapshot {
   timeDomainData: number[]
 }
 export declare function horizontalBrowseTransportVisualizerSnapshot(): HorizontalBrowseTransportVisualizerSnapshot
+export interface HorizontalBrowseTransportDecodeDiagnostic {
+  operation: string
+  status: string
+  deck: string
+  filePath: string
+  requestId: number
+  fullDecode: boolean
+  startSec: number
+  maxDurationSec?: number
+  queueWaitMs?: number
+  totalMs: number
+  ffmpegTotalMs?: number
+  ffmpegSpawnMs?: number
+  ffmpegFirstByteMs?: number
+  ffmpegReadMs?: number
+  ffmpegConvertMs?: number
+  ffmpegWaitMs?: number
+  ffmpegStderrJoinMs?: number
+  ffmpegStdoutBytes?: number
+  ffmpegReadIterations?: number
+  prepareMs?: number
+  applyMs?: number
+  loudnessMs?: number
+  sampleCount: number
+  frameCount: number
+  sampleRate: number
+  channels: number
+}
+export declare function horizontalBrowseTransportDrainDecodeDiagnostics(): HorizontalBrowseTransportDecodeDiagnostic[]
 
 export {}

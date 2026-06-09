@@ -10,6 +10,35 @@ import type {
 } from '@shared/horizontalBrowseTransport'
 import { log } from '../log'
 
+export type HorizontalBrowseTransportDecodeDiagnostic = {
+  operation: string
+  status: string
+  deck: string
+  filePath: string
+  requestId: number
+  fullDecode: boolean
+  startSec: number
+  maxDurationSec?: number
+  queueWaitMs?: number
+  totalMs: number
+  ffmpegTotalMs?: number
+  ffmpegSpawnMs?: number
+  ffmpegFirstByteMs?: number
+  ffmpegReadMs?: number
+  ffmpegConvertMs?: number
+  ffmpegWaitMs?: number
+  ffmpegStderrJoinMs?: number
+  ffmpegStdoutBytes?: number
+  ffmpegReadIterations?: number
+  prepareMs?: number
+  applyMs?: number
+  loudnessMs?: number
+  sampleCount: number
+  frameCount: number
+  sampleRate: number
+  channels: number
+}
+
 type RustHorizontalBrowseTransportBinding = {
   horizontalBrowseTransportReset?: () => void
   horizontalBrowseTransportSetDeckState?: (
@@ -124,6 +153,7 @@ type RustHorizontalBrowseTransportBinding = {
   ) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportSnapshot?: (nowMs?: number) => HorizontalBrowseTransportSnapshot
   horizontalBrowseTransportVisualizerSnapshot?: () => HorizontalBrowseTransportVisualizerSnapshot
+  horizontalBrowseTransportDrainDecodeDiagnostics?: () => HorizontalBrowseTransportDecodeDiagnostic[]
   horizontalBrowseTransportStartRecording?: (
     filePath: string
   ) => HorizontalBrowseTransportRecordingStatus
@@ -264,6 +294,12 @@ export const horizontalBrowseTransportBridge = {
   },
   visualizerSnapshot() {
     return requireFn('horizontalBrowseTransportVisualizerSnapshot')()
+  },
+  drainDecodeDiagnostics() {
+    const fn = resolveBinding().horizontalBrowseTransportDrainDecodeDiagnostics
+    if (typeof fn !== 'function') return []
+    const diagnostics = fn()
+    return Array.isArray(diagnostics) ? diagnostics : []
   },
   startRecording(filePath: string) {
     return requireFn('horizontalBrowseTransportStartRecording')(filePath)

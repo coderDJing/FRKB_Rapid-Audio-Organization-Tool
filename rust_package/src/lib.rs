@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::result::Result as StdResult;
 use std::sync::Arc;
+use std::time::Instant;
 
 // 并行处理
 use num_cpus;
@@ -1923,10 +1924,28 @@ pub(crate) struct FfmpegTransportPcmData {
   pub(crate) samples_f32: Vec<f32>,
   pub(crate) sample_rate: u32,
   pub(crate) channels: u16,
+  pub(crate) metrics: FfmpegTransportDecodeMetrics,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct FfmpegTransportDecodeMetrics {
+  pub(crate) total_ms: f64,
+  pub(crate) spawn_ms: f64,
+  pub(crate) first_byte_ms: Option<f64>,
+  pub(crate) read_ms: f64,
+  pub(crate) convert_ms: f64,
+  pub(crate) wait_ms: f64,
+  pub(crate) stderr_join_ms: f64,
+  pub(crate) stdout_bytes: f64,
+  pub(crate) read_iterations: f64,
 }
 
 const TRANSPORT_FFMPEG_SAMPLE_RATE: u32 = 44_100;
 const TRANSPORT_FFMPEG_CHANNELS: u16 = 2;
+
+fn elapsed_ms(started_at: Instant) -> f64 {
+  started_at.elapsed().as_secs_f64() * 1000.0
+}
 
 fn ffmpeg_decode_to_i16(path: &Path) -> StdResult<FfmpegPcmData, String> {
   ffmpeg_decode_to_i16_with_window(path, None, None)
@@ -1983,6 +2002,7 @@ pub(crate) fn ffmpeg_decode_transport_raw_pipe_cancellable<F>(
 where
   F: Fn() -> bool,
 {
+  let total_started_at = Instant::now();
   if should_cancel() {
     return Ok(None);
   }
@@ -2023,9 +2043,11 @@ where
     .stdout(Stdio::piped())
     .stderr(Stdio::piped());
 
+  let spawn_started_at = Instant::now();
   let mut child = command
     .spawn()
     .map_err(|e| format!("调用 FFmpeg 失败: {}", e))?;
+  let spawn_ms = elapsed_ms(spawn_started_at);
 
   let mut stdout = child
     .stdout
@@ -2047,6 +2069,11 @@ where
   let mut samples_f32 = Vec::new();
   let mut pending_byte: Option<u8> = None;
   let mut read_buffer = vec![0u8; 256 * 1024];
+  let mut first_byte_ms: Option<f64> = None;
+  let mut read_ms = 0.0;
+  let mut convert_ms = 0.0;
+  let mut stdout_bytes = 0.0;
+  let mut read_iterations = 0.0;
   loop {
     if should_cancel() {
       let _ = child.kill();
@@ -2054,6 +2081,7 @@ where
       let _ = stderr_reader.join();
       return Ok(None);
     }
+    let read_started_at = Instant::now();
     let bytes_read = match stdout.read(&mut read_buffer) {
       Ok(bytes_read) => bytes_read,
       Err(err) => {
@@ -2063,22 +2091,34 @@ where
         return Err(format!("读取 FFmpeg PCM 输出失败: {}", err));
       }
     };
+    read_ms += elapsed_ms(read_started_at);
     if bytes_read == 0 {
       break;
     }
+    if first_byte_ms.is_none() {
+      first_byte_ms = Some(elapsed_ms(total_started_at));
+    }
+    stdout_bytes += bytes_read as f64;
+    read_iterations += 1.0;
+    let convert_started_at = Instant::now();
     append_raw_s16le_to_f32(
       &read_buffer[..bytes_read],
       &mut pending_byte,
       &mut samples_f32,
     );
+    convert_ms += elapsed_ms(convert_started_at);
   }
 
+  let wait_started_at = Instant::now();
   let status = child
     .wait()
     .map_err(|err| format!("等待 FFmpeg 结束失败: {}", err))?;
+  let wait_ms = elapsed_ms(wait_started_at);
+  let stderr_join_started_at = Instant::now();
   let stderr_bytes = stderr_reader
     .join()
     .map_err(|_| "读取 FFmpeg 错误输出线程崩溃".to_string())??;
+  let stderr_join_ms = elapsed_ms(stderr_join_started_at);
 
   if !status.success() {
     let stderr = String::from_utf8_lossy(&stderr_bytes);
@@ -2098,6 +2138,17 @@ where
     samples_f32,
     sample_rate: TRANSPORT_FFMPEG_SAMPLE_RATE,
     channels: TRANSPORT_FFMPEG_CHANNELS,
+    metrics: FfmpegTransportDecodeMetrics {
+      total_ms: elapsed_ms(total_started_at),
+      spawn_ms,
+      first_byte_ms,
+      read_ms,
+      convert_ms,
+      wait_ms,
+      stderr_join_ms,
+      stdout_bytes,
+      read_iterations,
+    },
   }))
 }
 
@@ -2152,6 +2203,7 @@ fn parse_raw_s16le_to_f32(
     samples_f32,
     sample_rate,
     channels,
+    metrics: FfmpegTransportDecodeMetrics::default(),
   })
 }
 
