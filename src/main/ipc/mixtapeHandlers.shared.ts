@@ -30,6 +30,7 @@ import {
 } from '../services/audioTimeBasisOffset'
 import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
 import { resolveMissingMixtapeFilePath } from '../recycleBinService'
+import { getBeatThisRuntimeAvailabilitySnapshot } from '../workers/beatThisRuntime'
 
 const resolveKeyAnalysisWorkerPath = () => resolveMainWorkerPath(__dirname, 'keyAnalysisWorker.js')
 
@@ -115,6 +116,16 @@ const analyzeMixtapeBpmBatch = async (
       results: [],
       unresolved: [] as string[],
       unresolvedDetails: [] as Array<{ filePath: string; reason: string }>
+    }
+  }
+  if (getBeatThisRuntimeAvailabilitySnapshot() === false) {
+    return {
+      results: [],
+      unresolved: unique,
+      unresolvedDetails: unique.map((filePath) => ({
+        filePath,
+        reason: 'analysis runtime unavailable'
+      }))
     }
   }
 

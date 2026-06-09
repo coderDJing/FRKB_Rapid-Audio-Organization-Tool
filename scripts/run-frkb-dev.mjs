@@ -102,6 +102,7 @@ if (rendererPort) {
 if (noRuntime) {
   env.FRKB_SKIP_DEMUCS_RUNTIME_ENSURE = '1'
   env.FRKB_IGNORE_BUNDLED_DEMUCS_RUNTIME = '1'
+  env.FRKB_IGNORE_DEV_BEAT_THIS_RUNTIME = '1'
 }
 
 if (rendererPort && !(await isRendererPortAvailable(rendererPort))) {
@@ -189,7 +190,7 @@ if (devInstanceId || env.FRKB_DEV_USER_DATA_DIR || env.FRKB_DEV_DATABASE_URL || 
   if (env.FRKB_DEV_USER_DATA_DIR) segments.push(`userData=${env.FRKB_DEV_USER_DATA_DIR}`)
   if (env.FRKB_DEV_DATABASE_URL) segments.push(`database=${env.FRKB_DEV_DATABASE_URL}`)
   if (rendererPort) segments.push(`rendererPort=${rendererPort}`)
-  if (noRuntime) segments.push('analysisRuntime=disabled')
+  if (noRuntime) segments.push('analysisRuntime=not-installed-simulation')
   console.log(segments.join(' '))
 }
 const child = spawn(process.execPath, [electronViteCliPath, 'dev', ...forwardedArgs], {

@@ -100,6 +100,7 @@ import {
 
 const devRuntime = configureDevRuntime(is.dev, process.platform, log)
 configureLogTransports()
+process.env.FRKB_APP_PACKAGED = app.isPackaged ? '1' : '0'
 
 try {
   const resolvedUserDataDir = app.getPath('userData')

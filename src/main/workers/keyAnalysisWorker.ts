@@ -9,6 +9,7 @@ import {
   type UnifiedDisplayWaveformDetailData
 } from '../../shared/unifiedDisplayWaveform'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
+import { getBeatThisRuntimeAvailabilitySnapshot } from './beatThisRuntime'
 import { buildAnalysisChildEnv, lowerAnalysisProcessPriority } from './analysisRuntimeTuning'
 import { computeRawWaveform } from './rawWaveformBuilder'
 
@@ -312,7 +313,7 @@ const analyzeKeyForFileInternal = async (
 ): Promise<KeyResultPayload> => {
   const result: KeyResultPayload = {}
   const needsKey = Boolean(options.needsKey)
-  const needsBpm = Boolean(options.needsBpm)
+  const needsBpm = Boolean(options.needsBpm) && getBeatThisRuntimeAvailabilitySnapshot() !== false
   const needsWaveform = Boolean(options.needsWaveform)
   const useFfmpegWaveformDecode = needsWaveform && shouldUseFfmpegWaveformDecode(filePath)
   const useFfmpegPrimaryDecode = needsKey && useFfmpegWaveformDecode
@@ -332,9 +333,9 @@ const analyzeKeyForFileInternal = async (
   if (needsRustDecode || useFfmpegPrimaryDecode || needsBpm) {
     reportProgress({
       stage: 'decode-start',
-      needsKey: options.needsKey,
-      needsBpm: options.needsBpm,
-      needsWaveform: options.needsWaveform
+      needsKey,
+      needsBpm,
+      needsWaveform
     })
     const decodeStartAt = Date.now()
     if (useFfmpegPrimaryDecode) {

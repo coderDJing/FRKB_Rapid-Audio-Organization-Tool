@@ -148,6 +148,7 @@ const enableKeyAnalysisQueueRef = computed(
 )
 const visibleColumnsRef = toRef(props, 'visibleColumns')
 const runtime = useRuntimeStore()
+const requiresRuntimeAnalysis = computed(() => runtime.analysisRuntime.available === true)
 const playingSongRowKeySet = computed(
   () =>
     new Set(
@@ -346,7 +347,8 @@ useKeyAnalysisQueue({
   visibleSongsWithIndex,
   songs: songsRef,
   enabled: enableKeyAnalysisQueueRef,
-  queueKey: keyAnalysisQueueKey
+  queueKey: keyAnalysisQueueKey,
+  requiresRuntimeAnalysis
 })
 
 const { listViewportWidth } = useRowAnalysisViewport({
@@ -358,6 +360,7 @@ const { listViewportWidth } = useRowAnalysisViewport({
 const { getAnalysisProgress, isSongNeedsAnalysis, hasAnyAnalysisProgress } = useKeyAnalysisProgress(
   {
     visibleSongsWithIndex,
+    requiresRuntimeAnalysis,
     isAnalysisCompleteOverride: (filePath) => {
       if (sourceLibraryNameRef.value === 'RecordingLibrary') return true
       const normalized = String(filePath || '')

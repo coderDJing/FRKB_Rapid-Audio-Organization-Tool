@@ -7,41 +7,45 @@ interface UseKeyAnalysisQueueOptions {
   songs?: Ref<ISongInfo[]>
   enabled?: Ref<boolean>
   queueKey?: Ref<string>
+  requiresRuntimeAnalysis?: Ref<boolean>
 }
 
 const CURRENT_LIST_QUEUE_LIMIT = 400
 
-const hasCompleteKeyAnalysis = (song: ISongInfo | undefined) => {
+const hasRequiredKeyAnalysis = (song: ISongInfo | undefined, requiresRuntimeAnalysis: boolean) => {
   if (!song) return false
   const keyText = typeof song.key === 'string' ? song.key.trim() : ''
+  if (!keyText) return false
+  if (!requiresRuntimeAnalysis) return true
   const bpm = Number(song.bpm)
   const firstBeatMs = Number(song.firstBeatMs)
   const barBeatOffset = Number(song.barBeatOffset)
-  const hasCoreAnalysis =
-    keyText.length > 0 &&
+  return (
     Number.isFinite(bpm) &&
     bpm > 0 &&
     Number.isFinite(firstBeatMs) &&
     Number.isFinite(barBeatOffset)
-  return hasCoreAnalysis
+  )
 }
 
 export function useKeyAnalysisQueue({
   visibleSongsWithIndex,
   songs,
   enabled,
-  queueKey
+  queueKey,
+  requiresRuntimeAnalysis
 }: UseKeyAnalysisQueueOptions) {
   let timer: ReturnType<typeof setTimeout> | null = null
   let lastSignature = ''
   const isEnabled = () => (enabled ? enabled.value !== false : true)
+  const shouldRequireRuntimeAnalysis = () => requiresRuntimeAnalysis?.value === true
 
   const appendPendingSongPath = (
     paths: string[],
     seen: Set<string>,
     song: ISongInfo | undefined
   ) => {
-    if (!song || hasCompleteKeyAnalysis(song)) return
+    if (!song || hasRequiredKeyAnalysis(song, shouldRequireRuntimeAnalysis())) return
     const filePath = typeof song.filePath === 'string' ? song.filePath.trim() : ''
     if (!filePath || seen.has(filePath)) return
     seen.add(filePath)
@@ -64,7 +68,7 @@ export function useKeyAnalysisQueue({
   const flush = () => {
     if (!isEnabled()) return
     const paths = buildForegroundPayload()
-    const signature = `${queueKey?.value || ''}::${paths.join('|')}`
+    const signature = `${queueKey?.value || ''}:${shouldRequireRuntimeAnalysis() ? 'runtime' : 'lite'}::${paths.join('|')}`
     if (signature === lastSignature) return
     lastSignature = signature
     window.electron.ipcRenderer.send('key-analysis:queue-visible', {
@@ -82,7 +86,8 @@ export function useKeyAnalysisQueue({
   }
 
   const stopWatch = watch(
-    () => `${queueKey?.value || ''}::${buildForegroundPayload().join('|')}`,
+    () =>
+      `${queueKey?.value || ''}:${shouldRequireRuntimeAnalysis() ? 'runtime' : 'lite'}::${buildForegroundPayload().join('|')}`,
     () => {
       if (!isEnabled()) return
       schedule()

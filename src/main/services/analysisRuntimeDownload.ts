@@ -20,8 +20,13 @@ export const getPreferredAnalysisRuntimeDownloadInfo =
 export const getAnalysisRuntimeDownloadState = (): AnalysisRuntimeDownloadState =>
   getStemRuntimeDownloadState()
 
-export const downloadPreferredAnalysisRuntime = async (): Promise<boolean> =>
-  await downloadPreferredStemRuntime()
+export const downloadPreferredAnalysisRuntime = async (): Promise<boolean> => {
+  const downloaded = await downloadPreferredStemRuntime()
+  if (downloaded) {
+    resetBeatThisRuntimeResolution()
+  }
+  return downloaded
+}
 
 export const isAnalysisRuntimeAvailable = async (): Promise<boolean> => {
   const preferred = await getPreferredAnalysisRuntimeDownloadInfo()

@@ -35,8 +35,10 @@ const ENV_BEAT_THIS_DEVICE = 'FRKB_BEAT_THIS_DEVICE'
 const ENV_BEAT_THIS_CHECKPOINT = 'FRKB_BEAT_THIS_CHECKPOINT'
 const ENV_BEAT_THIS_EXTRA_SITE_DIRS = 'FRKB_BEAT_THIS_EXTRA_SITE_DIRS'
 const ENV_BEAT_THIS_EXTRA_DLL_DIRS = 'FRKB_BEAT_THIS_EXTRA_DLL_DIRS'
+const ENV_APP_PACKAGED = 'FRKB_APP_PACKAGED'
 const ENV_DEMUCS_ROOT = 'FRKB_DEMUCS_ROOT'
 const ENV_IGNORE_BUNDLED_DEMUCS_RUNTIME = 'FRKB_IGNORE_BUNDLED_DEMUCS_RUNTIME'
+const ENV_IGNORE_DEV_BEAT_THIS_RUNTIME = 'FRKB_IGNORE_DEV_BEAT_THIS_RUNTIME'
 const ENV_USER_DATA_DIR = 'FRKB_USER_DATA_DIR'
 const ENV_BEAT_THIS_RUNTIME_CACHE = 'FRKB_BEAT_THIS_RUNTIME_CACHE'
 const ENV_BEAT_THIS_STRICT_DEVICE_PROBE = 'FRKB_BEAT_THIS_STRICT_DEVICE_PROBE'
@@ -129,6 +131,23 @@ const shouldIgnoreBundledDemucsRuntime = () => {
     .toLowerCase()
   return raw === '1' || raw === 'true'
 }
+
+const isPackagedAppRuntime = () => {
+  const raw = String(process.env[ENV_APP_PACKAGED] || '')
+    .trim()
+    .toLowerCase()
+  return raw === '1' || raw === 'true'
+}
+
+const shouldIgnoreDevBeatThisRuntime = () => {
+  const raw = String(process.env[ENV_IGNORE_DEV_BEAT_THIS_RUNTIME] || '')
+    .trim()
+    .toLowerCase()
+  return raw === '1' || raw === 'true'
+}
+
+const shouldUsePackagedBeatThisRuntimeSources = () =>
+  isPackagedAppRuntime() || shouldIgnoreDevBeatThisRuntime()
 
 const resolveInstalledDemucsPlatformRoot = () => {
   const userDataDir = normalizeBeatThisFsPath(process.env[ENV_USER_DATA_DIR] || '')
@@ -290,7 +309,10 @@ const runtimeHasBeatThisPackage = (runtimeDir: string) => {
 }
 
 const resolveBeatThisSupportRuntimeDir = () => {
-  const candidates: string[] = [path.join(resolveBeatThisProjectRoot(), LOCAL_RUNTIME_DIR)]
+  const candidates: string[] = []
+  if (!shouldUsePackagedBeatThisRuntimeSources()) {
+    candidates.push(path.join(resolveBeatThisProjectRoot(), LOCAL_RUNTIME_DIR))
+  }
   for (const platformRoot of resolveDemucsPlatformRoots()) {
     for (const runtimeKey of resolveRuntimeDirNameCandidates()) {
       candidates.push(path.join(platformRoot, runtimeKey))
@@ -376,19 +398,21 @@ const resolvePythonCommandCandidates = (): BeatThisPythonCommand[] => {
     )
   }
 
-  const localRuntimeDir = path.join(resolveBeatThisProjectRoot(), LOCAL_RUNTIME_DIR)
-  for (const pythonPath of resolveRuntimePythonCandidatesFromDir(localRuntimeDir)) {
-    if (!pythonPath || !fs.existsSync(pythonPath)) continue
-    pushCandidate(
-      withBeatThisSupportPaths({
-        command: pythonPath,
-        args: [],
-        source: 'local-runtime',
-        runtimeKey: 'beat-this-runtime',
-        runtimeDir: localRuntimeDir
-      })
-    )
-    break
+  if (!shouldUsePackagedBeatThisRuntimeSources()) {
+    const localRuntimeDir = path.join(resolveBeatThisProjectRoot(), LOCAL_RUNTIME_DIR)
+    for (const pythonPath of resolveRuntimePythonCandidatesFromDir(localRuntimeDir)) {
+      if (!pythonPath || !fs.existsSync(pythonPath)) continue
+      pushCandidate(
+        withBeatThisSupportPaths({
+          command: pythonPath,
+          args: [],
+          source: 'local-runtime',
+          runtimeKey: 'beat-this-runtime',
+          runtimeDir: localRuntimeDir
+        })
+      )
+      break
+    }
   }
 
   for (const candidate of resolveBundledRuntimeCandidates()) {
@@ -423,12 +447,25 @@ const resolvePythonCommandCandidates = (): BeatThisPythonCommand[] => {
           }
         ]
 
-  for (const candidate of devCandidates) {
-    pushCandidate(candidate)
+  if (!shouldUsePackagedBeatThisRuntimeSources()) {
+    for (const candidate of devCandidates) {
+      pushCandidate(candidate)
+    }
   }
 
   return candidates
 }
+
+const hasPackagedBeatThisRuntimeCandidate = () =>
+  resolvePythonCommandCandidates().some((candidate) => {
+    if (candidate.source === 'dev-launcher') return false
+    if (candidate.source === 'env-python') return true
+    const runtimeDir = normalizeBeatThisFsPath(candidate.runtimeDir || '')
+    if (!runtimeDir) return false
+    return (
+      runtimeHasBeatThisPackage(runtimeDir) && !!resolveRuntimeBeatThisCheckpointPath(runtimeDir)
+    )
+  })
 
 const joinEnvPathList = (values: string[]) =>
   values
@@ -901,7 +938,8 @@ export const resolveBeatThisRuntime = (): BeatThisResolvedRuntime | null => {
 
   const candidates = resolvePythonCommandCandidates()
   if (candidates.length === 0) {
-    return null
+    cachedResolvedRuntime = null
+    return cachedResolvedRuntime
   }
 
   const requestedDevice = parseRequestedBeatThisDevice(process.env[ENV_BEAT_THIS_DEVICE] || '')
@@ -990,10 +1028,14 @@ export const resolveBeatThisRuntime = (): BeatThisResolvedRuntime | null => {
     })
   }
 
-  return null
+  cachedResolvedRuntime = null
+  return cachedResolvedRuntime
 }
 
 export const getBeatThisRuntimeAvailabilitySnapshot = (): boolean | null => {
+  if (shouldUsePackagedBeatThisRuntimeSources() && cachedResolvedRuntime === undefined) {
+    return hasPackagedBeatThisRuntimeCandidate() ? null : false
+  }
   if (cachedResolvedRuntime === undefined) return null
   return cachedResolvedRuntime !== null
 }

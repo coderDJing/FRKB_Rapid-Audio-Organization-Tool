@@ -229,11 +229,11 @@ bindIpcListener()
 export const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => {
   if (!song) return false
   const keyText = typeof song.key === 'string' ? song.key.trim() : ''
+  if (!keyText) return false
   const bpm = Number(song.bpm)
   const firstBeatMs = Number(song.firstBeatMs)
   const barBeatOffset = Number(song.barBeatOffset)
   return (
-    keyText.length > 0 &&
     Number.isFinite(bpm) &&
     bpm > 0 &&
     Number.isFinite(firstBeatMs) &&
@@ -244,8 +244,15 @@ export const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => 
 export function useKeyAnalysisProgress(params: {
   visibleSongsWithIndex: Ref<Array<{ song: ISongInfo; idx: number }>>
   isAnalysisCompleteOverride?: (filePath: string) => boolean
+  requiresRuntimeAnalysis?: Ref<boolean>
 }) {
-  const { visibleSongsWithIndex, isAnalysisCompleteOverride } = params
+  const { visibleSongsWithIndex, isAnalysisCompleteOverride, requiresRuntimeAnalysis } = params
+
+  const hasRequiredAnalysis = (song: ISongInfo | undefined) => {
+    if (!song) return false
+    if (requiresRuntimeAnalysis?.value === true) return hasCompleteKeyAnalysis(song)
+    return typeof song.key === 'string' && song.key.trim().length > 0
+  }
 
   const getAnalysisProgress = (filePath: string): number | null => {
     // 触发响应式依赖
@@ -265,7 +272,7 @@ export function useKeyAnalysisProgress(params: {
     for (const item of visibleSongsWithIndex.value || []) {
       const songPath = normalizePath(item?.song?.filePath || '')
       if (songPath === normalized) {
-        return !hasCompleteKeyAnalysis(item.song) && !isAnalysisCompleteOverride?.(filePath)
+        return !hasRequiredAnalysis(item.song) && !isAnalysisCompleteOverride?.(filePath)
       }
     }
     return false
