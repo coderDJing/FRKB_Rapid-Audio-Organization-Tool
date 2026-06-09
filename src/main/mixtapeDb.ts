@@ -121,13 +121,6 @@ function normalizeMixtapeOrderInTx(db: SqliteDatabase, playlistUuid: string) {
   })
 }
 
-function normalizeMixtapeOrder(db: SqliteDatabase, playlistUuid: string) {
-  const tx = db.transaction(() => {
-    normalizeMixtapeOrderInTx(db, playlistUuid)
-  })
-  tx()
-}
-
 export function getMixtapeProjectMixMode(playlistUuid: string): MixtapeMixMode {
   return getMixtapeProjectStemConfig(playlistUuid).mixMode
 }
@@ -620,76 +613,6 @@ export function updateMixtapeItemFilePathsById(entries: MixtapeFilePathUpdate[])
   } catch (error) {
     log.error('[sqlite] mixtape update file paths by id failed', error)
     return { updated: 0, playlistUuids: [] }
-  }
-}
-
-export function upsertMixtapeItemBpmByFilePath(
-  entries: Array<{ filePath: string; bpm: number; firstBeatMs?: number }>
-): { updated: number } {
-  if (!Array.isArray(entries) || entries.length === 0) return { updated: 0 }
-  const db = getLibraryDb()
-  if (!db) return { updated: 0 }
-
-  const analysisMap = new Map<string, { bpm: number; firstBeatMs: number }>()
-  for (const item of entries) {
-    const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
-    const bpm = Number(item?.bpm)
-    if (!filePath || !Number.isFinite(bpm) || bpm <= 0) continue
-    const firstBeatMs = Number(item?.firstBeatMs)
-    const normalizedFirstBeatMs = Number.isFinite(firstBeatMs) ? Number(firstBeatMs.toFixed(3)) : 0
-    analysisMap.set(filePath, {
-      bpm: Number(bpm.toFixed(6)),
-      firstBeatMs: normalizedFirstBeatMs
-    })
-  }
-  const filePaths = Array.from(analysisMap.keys())
-  if (filePaths.length === 0) return { updated: 0 }
-
-  try {
-    let updated = 0
-    const updateStmt = db.prepare(`UPDATE ${TABLE} SET info_json = ? WHERE id = ?`)
-    const tx = db.transaction(() => {
-      const CHUNK_SIZE = 300
-      for (let offset = 0; offset < filePaths.length; offset += CHUNK_SIZE) {
-        const chunk = filePaths.slice(offset, offset + CHUNK_SIZE)
-        if (chunk.length === 0) continue
-        const placeholders = chunk.map(() => '?').join(',')
-        const rows = db
-          .prepare(
-            `SELECT id, file_path, info_json FROM ${TABLE} WHERE file_path IN (${placeholders})`
-          )
-          .all(...chunk) as Array<{ id: string; file_path: string; info_json?: string | null }>
-        for (const row of rows) {
-          const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
-          const nextAnalysis = analysisMap.get(filePath)
-          if (!nextAnalysis) continue
-          const info = parseMixtapeItemInfoJson(row?.info_json)
-          const currentBpm = Number(info.bpm)
-          const currentFirstBeatMs = Number(info.firstBeatMs)
-          const normalizedCurrentBpm = Number.isFinite(currentBpm)
-            ? Number(currentBpm.toFixed(6))
-            : NaN
-          const normalizedCurrentFirstBeatMs = Number.isFinite(currentFirstBeatMs)
-            ? Number(currentFirstBeatMs.toFixed(3))
-            : 0
-          if (
-            normalizedCurrentBpm === nextAnalysis.bpm &&
-            normalizedCurrentFirstBeatMs === nextAnalysis.firstBeatMs
-          ) {
-            continue
-          }
-          info.bpm = nextAnalysis.bpm
-          info.firstBeatMs = nextAnalysis.firstBeatMs
-          updateStmt.run(JSON.stringify(info), row.id)
-          updated += 1
-        }
-      }
-    })
-    tx()
-    return { updated }
-  } catch (error) {
-    log.error('[sqlite] mixtape bpm upsert failed', error)
-    return { updated: 0 }
   }
 }
 

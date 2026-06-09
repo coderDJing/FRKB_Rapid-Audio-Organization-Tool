@@ -77,7 +77,6 @@ const RECORDING_LIBRARY_ANALYSIS_MENU_NAMES = new Set([
 ])
 
 export function useSongItemContextMenu(
-  // runtimeStore: ReturnType<typeof useRuntimeStore>, // Passed implicitly via direct import for now
   songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null>, // For scrolling
   songsAreaState: ISongsAreaPaneRuntimeState
 ) {

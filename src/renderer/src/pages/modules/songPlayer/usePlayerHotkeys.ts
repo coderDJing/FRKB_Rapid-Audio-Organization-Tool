@@ -30,7 +30,6 @@ interface PlayerActions {
 interface PlayerState {
   waveformShow: Ref<boolean>
   selectSongListDialogShow: Ref<boolean>
-  // showDelConfirm: Ref<boolean> // 这个状态由 hotkey 内部管理似乎更合适
   confirmShow: Readonly<Ref<boolean>> // 从 runtime store 获取，设为只读
   songsAreaSelectedCount: Readonly<Ref<number>> // 从 runtime store 获取
   activeMenuUUID: { value: string } // 从 runtime store 获取，允许修改
@@ -339,7 +338,4 @@ export function usePlayerHotkeys(
     cleanupHotkeys()
     emitter.off('waveform-preview:state', handleWaveformPreviewState)
   })
-
-  // 返回内部状态或方法（如果需要的话）
-  // return { internalShowDelConfirm }
 }

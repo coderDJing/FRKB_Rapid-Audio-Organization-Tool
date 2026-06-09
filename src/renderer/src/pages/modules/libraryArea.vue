@@ -312,7 +312,6 @@ const handleContentClick = () => {
   <div class="content" @contextmenu.stop="contextmenuEvent" @click="handleContentClick">
     <div class="unselectable libraryTitle">
       <span>{{ libraryTitleText }}</span>
-      <!-- todo还有个导出整个库的按钮 -->
       <div style="display: flex; justify-content: center; align-items: center">
         <div ref="collapseButtonRef" class="collapseButton" @click="collapseButtonHandleClick()">
           <svg

@@ -117,14 +117,3 @@ export const appendExternalPlaylistFromPaths = async (paths: string[]): Promise<
   applyExternalSongs(runtime.externalPlaylist.songs.length ? 'append' : 'replace', merged)
   return songs
 }
-
-export const notifyExternalPlaylistChanged = (mode: ExternalPlaylistMode = 'replace') => {
-  const runtime = useRuntimeStore()
-  if (!runtime.externalPlaylist.songs.length) return
-  refreshSongsAreaIfActive(mode, runtime.externalPlaylist.songs)
-  syncPlayingQueueIfNeeded(runtime.externalPlaylist.songs)
-}
-
-export const clearExternalPlaylist = () => {
-  applyExternalSongs('replace', [])
-}

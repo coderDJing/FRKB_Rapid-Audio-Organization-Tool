@@ -1,12 +1,5 @@
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 
-type BeatAlignWaveformResponse = {
-  items?: Array<{
-    filePath?: unknown
-    data?: unknown
-  }>
-}
-
 export const isValidMixxxWaveformData = (
   data: MixxxWaveformData | null
 ): data is MixxxWaveformData => {
@@ -68,15 +61,4 @@ export const isRawPlaceholderMixxxData = (data: MixxxWaveformData | null | undef
   if (resolveMixxxWaveformFrameCount(safeData) !== 1) return false
   const bands = [safeData.bands.low, safeData.bands.mid, safeData.bands.high, safeData.bands.all]
   return bands.every((band) => !band.peakLeft && !band.peakRight)
-}
-
-export const pickMixxxDataByFile = (
-  response: BeatAlignWaveformResponse | null | undefined,
-  fileKey: string,
-  normalizePathKey: (value: unknown) => string
-): MixxxWaveformData | null => {
-  const items = Array.isArray(response?.items) ? response.items : []
-  const item = items.find((entry) => normalizePathKey(entry?.filePath) === fileKey)
-  const data = (item?.data ?? null) as MixxxWaveformData | null
-  return isValidMixxxWaveformData(data) ? data : null
 }

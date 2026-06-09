@@ -79,8 +79,6 @@ function handleKeyDown(event: KeyboardEvent) {
     if (event.ctrlKey) modifiers.push('Ctrl')
     if (event.altKey) modifiers.push('Alt')
     if (event.shiftKey) modifiers.push('Shift')
-  } else if (runtime.platform === 'Mac') {
-    //todo
   }
   shortcutValue.value = modifiers.join('+') + (modifiers.length ? '+' : '') + key.toUpperCase()
 }

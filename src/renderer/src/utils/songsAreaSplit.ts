@@ -132,13 +132,6 @@ export const exitSongsAreaSplit = (runtime: RuntimeStore, paneToKeep: SplitSongs
   syncPlayingSongListDataFromVisiblePane(runtime)
 }
 
-export const closeSongsAreaSplitPane = (
-  runtime: RuntimeStore,
-  paneToClose: SplitSongsAreaPaneKey
-) => {
-  exitSongsAreaSplit(runtime, getSongsAreaOppositePane(paneToClose))
-}
-
 export const resolveSongsAreaPaneForLibraryClick = (runtime: RuntimeStore): SongsAreaPaneKey => {
   if (!runtime.songsAreaPanels.splitEnabled) return 'single'
   const activePane = runtime.songsAreaPanels.activePane

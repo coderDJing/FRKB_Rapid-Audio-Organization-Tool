@@ -178,12 +178,3 @@ export const resolveRawEnergyProfileByRange = (
   const amp = shapeRawEnergyAmpValue(base, shapeParams.outputGamma)
   return { ampTop: amp, ampBottom: amp, base, peak: normalizedPeak, shape: shapeParams }
 }
-
-export const resolveRawEnergyByRange = (
-  rawData: RawWaveformData,
-  startFrame: number,
-  endFrame: number,
-  maxSamplesPerPixel?: number,
-  waveformGain?: number
-): RawWaveformAmps =>
-  resolveRawEnergyProfileByRange(rawData, startFrame, endFrame, maxSamplesPerPixel, waveformGain)

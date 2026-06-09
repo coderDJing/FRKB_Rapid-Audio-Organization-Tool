@@ -35,6 +35,3 @@ export const resolveLibraryTransferActionLabelKey = (
   }
   return actionMode === 'copy' ? 'library.copyToCurated' : 'library.moveToCurated'
 }
-
-export const isCopyTransferActionMode = (actionMode: LibraryTransferActionMode) =>
-  actionMode === 'copy'
