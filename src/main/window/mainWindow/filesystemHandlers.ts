@@ -356,6 +356,84 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
 
   ipcMain.handle('operateFileSystemChange', async (_e, operateArray: FileSystemOperation[]) => {
     const results: Array<{ uuid: string; status: string }> = []
+    const deleteProgressItems = operateArray.filter((item) => item.type === 'delete')
+    const deleteProgressBatch =
+      deleteProgressItems.length > 1
+        ? {
+            id: createProgressId('library_delete_batch'),
+            total: deleteProgressItems.length,
+            completed: 0,
+            failed: false,
+            started: false,
+            finalized: false
+          }
+        : null
+    const sendDeleteProgress = (
+      progressId: string,
+      payload: {
+        titleKey: string
+        now: number
+        total: number
+        isInitial?: boolean
+        noProgress?: boolean
+      }
+    ) => {
+      if (!deleteProgressBatch) {
+        sendProgress({ id: progressId, ...payload })
+        return
+      }
+      if (
+        payload.titleKey === 'library.deleteProgressFinished' ||
+        payload.titleKey === 'library.deleteProgressFailed'
+      ) {
+        return
+      }
+      deleteProgressBatch.started = true
+      sendProgress({
+        id: deleteProgressBatch.id,
+        titleKey: payload.titleKey,
+        now: deleteProgressBatch.completed,
+        total: deleteProgressBatch.total,
+        isInitial: !!payload.isInitial && deleteProgressBatch.completed === 0,
+        noProgress: false
+      })
+    }
+    const completeDeleteProgressItem = (operationStatus: string) => {
+      if (!deleteProgressBatch) return
+      deleteProgressBatch.completed = Math.min(
+        deleteProgressBatch.total,
+        deleteProgressBatch.completed + 1
+      )
+      if (operationStatus.includes('failed')) {
+        deleteProgressBatch.failed = true
+      }
+      const isDone = deleteProgressBatch.completed >= deleteProgressBatch.total
+      sendProgress({
+        id: deleteProgressBatch.id,
+        titleKey: isDone
+          ? deleteProgressBatch.failed
+            ? 'library.deleteProgressFailed'
+            : 'library.deleteProgressFinished'
+          : 'library.deleteProgressRemoving',
+        now: deleteProgressBatch.completed,
+        total: deleteProgressBatch.total,
+        noProgress: false
+      })
+      if (isDone) {
+        deleteProgressBatch.finalized = true
+      }
+    }
+    const failDeleteProgressBatch = () => {
+      if (!deleteProgressBatch?.started || deleteProgressBatch.finalized) return
+      deleteProgressBatch.finalized = true
+      sendProgress({
+        id: deleteProgressBatch.id,
+        titleKey: 'library.deleteProgressFailed',
+        now: deleteProgressBatch.completed,
+        total: deleteProgressBatch.total,
+        noProgress: false
+      })
+    }
     for (const item of operateArray) {
       const shouldCheckMixtapeWindow =
         item.nodeType === 'mixtapeList' &&
@@ -418,9 +496,9 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             operationStatus = 'rename_failed_source_not_found'
           }
         } else if (item.type === 'delete') {
-          const progressId = createProgressId(`library_delete_${item.uuid}`)
-          sendProgress({
-            id: progressId,
+          const progressId =
+            deleteProgressBatch?.id || createProgressId(`library_delete_${item.uuid}`)
+          sendDeleteProgress(progressId, {
             titleKey: 'library.deleteProgressScanning',
             now: 0,
             total: 0,
@@ -438,8 +516,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             if (item.nodeType === 'mixtapeList') {
               await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
             }
-            sendProgress({
-              id: progressId,
+            sendDeleteProgress(progressId, {
               titleKey: 'library.deleteProgressFinished',
               now: 1,
               total: 1
@@ -457,8 +534,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                   return result
                 }
               )
-              sendProgress({
-                id: progressId,
+              sendDeleteProgress(progressId, {
                 titleKey: 'library.deleteProgressRemoving',
                 now: 0,
                 total: tasks.length,
@@ -472,8 +548,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                   stopOnENOSPC: true,
                   yieldEvery: FILE_BATCH_YIELD_EVERY,
                   onProgress: (done: number, total: number) => {
-                    sendProgress({
-                      id: progressId,
+                    sendDeleteProgress(progressId, {
                       titleKey: 'library.deleteProgressRemoving',
                       now: done,
                       total,
@@ -505,8 +580,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                 }
               }
               operationStatus = allAudioMoved ? 'recycled' : 'recycle_failed'
-              sendProgress({
-                id: progressId,
+              sendDeleteProgress(progressId, {
                 titleKey: allAudioMoved
                   ? 'library.deleteProgressFinished'
                   : 'library.deleteProgressFailed',
@@ -525,8 +599,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                 })
               }
             } catch (moveError) {
-              sendProgress({
-                id: progressId,
+              sendDeleteProgress(progressId, {
                 titleKey: 'library.deleteProgressFailed',
                 now: 1,
                 total: 1
@@ -535,6 +608,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
               operationStatus = 'recycle_failed'
             }
           }
+          completeDeleteProgressItem(operationStatus)
         } else if (item.type === 'permanentlyDelete') {
           const mixtapeFilePaths =
             item.nodeType === 'mixtapeList' ? listMixtapeFilePathsByPlaylist(item.uuid) : []
@@ -582,6 +656,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       }
       return { success: true, details: results }
     } catch (error) {
+      failDeleteProgressBatch()
       log.error('operateFileSystemChange error:', error)
       return { success: false, error: (error as Error).message, details: results }
     }
