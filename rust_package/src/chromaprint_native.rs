@@ -1,5 +1,5 @@
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int};
 
 extern "C" {
   fn frkb_chromaprint_generate(
@@ -14,23 +14,12 @@ extern "C" {
 
   fn frkb_chromaprint_free_string(ptr: *mut c_char);
 
-  fn frkb_ffmpeg_decode_to_i16(
-    file_path: *const c_char,
-    max_duration_sec: c_int,
-    samples_out: *mut *mut i16,
-    num_samples_out: *mut c_int,
-    sample_rate_out: *mut c_int,
-    num_channels_out: *mut c_int,
-  ) -> c_int;
-
   fn frkb_ffmpeg_chromaprint_generate(
     file_path: *const c_char,
     max_duration_sec: c_int,
     fingerprint_out: *mut *mut c_char,
     duration_out: *mut c_double,
   ) -> c_int;
-
-  fn frkb_ffmpeg_free_buffer(ptr: *mut c_void);
 }
 
 pub struct ChromaprintResult {
@@ -145,52 +134,4 @@ pub fn generate_fingerprint_from_file(
 
   unsafe { frkb_chromaprint_free_string(fp_ptr) };
   result
-}
-
-/// Decode a file to i16 PCM using FFmpeg libavcodec.
-/// Returns (samples_i16, sample_rate, num_channels).
-#[allow(dead_code)]
-pub fn decode_file_to_i16(
-  file_path: &str,
-  max_duration_sec: u32,
-) -> Result<(Vec<i16>, u32, u16), String> {
-  let c_path = CString::new(file_path).map_err(|_| "invalid file path".to_string())?;
-
-  let mut samples_ptr: *mut i16 = std::ptr::null_mut();
-  let mut num_samples: c_int = 0;
-  let mut sample_rate: c_int = 0;
-  let mut num_channels: c_int = 0;
-
-  let rc = unsafe {
-    frkb_ffmpeg_decode_to_i16(
-      c_path.as_ptr(),
-      max_duration_sec as c_int,
-      &mut samples_ptr,
-      &mut num_samples,
-      &mut sample_rate,
-      &mut num_channels,
-    )
-  };
-
-  if rc != 0 {
-    return Err(format!("frkb_ffmpeg_decode_to_i16 failed with code {}", rc));
-  }
-
-  if samples_ptr.is_null() {
-    return Err("samples pointer is null".to_string());
-  }
-
-  if num_samples <= 0 || num_channels <= 0 {
-    unsafe { frkb_ffmpeg_free_buffer(samples_ptr as *mut c_void) };
-    return Err(format!(
-      "invalid decode output: num_samples={}, num_channels={}",
-      num_samples, num_channels
-    ));
-  }
-
-  let total = (num_samples as usize) * (num_channels as usize);
-  let samples = unsafe { std::slice::from_raw_parts(samples_ptr, total) }.to_vec();
-  unsafe { frkb_ffmpeg_free_buffer(samples_ptr as *mut c_void) };
-
-  Ok((samples, sample_rate as u32, num_channels as u16))
 }

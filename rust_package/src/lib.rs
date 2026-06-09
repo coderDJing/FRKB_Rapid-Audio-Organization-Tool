@@ -1974,16 +1974,6 @@ pub(crate) fn ffmpeg_decode_to_i16_with_window(
   parse_wav_s16le(&output.stdout)
 }
 
-#[allow(dead_code)]
-pub(crate) fn ffmpeg_decode_transport_raw_pipe(
-  path: &Path,
-  start_sec: Option<f64>,
-  max_duration_sec: Option<f64>,
-) -> StdResult<FfmpegTransportPcmData, String> {
-  ffmpeg_decode_transport_raw_pipe_cancellable(path, start_sec, max_duration_sec, || false)?
-    .ok_or_else(|| "FFmpeg 解码已取消".to_string())
-}
-
 pub(crate) fn ffmpeg_decode_transport_raw_pipe_cancellable<F>(
   path: &Path,
   start_sec: Option<f64>,

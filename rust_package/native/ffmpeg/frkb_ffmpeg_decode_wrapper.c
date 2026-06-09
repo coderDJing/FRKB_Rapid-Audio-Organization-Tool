@@ -1,7 +1,7 @@
 /**
  * FRKB FFmpeg decode wrapper.
  * Decodes audio files using libavcodec/libavformat/libswresample.
- * Provides both raw PCM output and direct Chromaprint fingerprint generation.
+ * Provides direct Chromaprint fingerprint generation.
  */
 
 #include "frkb_ffmpeg_decode_wrapper.h"
@@ -16,6 +16,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 /* Error codes */
 #define FRKB_ERR_OPEN_INPUT     1
@@ -29,9 +30,6 @@
 /* Target output format: interleaved s16, stereo */
 #define TARGET_SAMPLE_FMT AV_SAMPLE_FMT_S16
 #define TARGET_CHANNELS   2
-
-/* PCM buffer growth strategy */
-#define INITIAL_PCM_CAPACITY  (44100 * 2 * 30)  /* ~30s stereo 16-bit */
 
 /**
  * Decode context holding all FFmpeg and output state.
@@ -105,137 +103,7 @@ static int decode_ctx_init(DecodeContext *ctx, const char *file_path) {
     return 0;
 }
 
-/**
- * Decode all frames and collect interleaved i16 PCM into a growing buffer.
- * Returns 0 on success.
- */
-static int decode_all_to_pcm(DecodeContext *ctx,
-                              int16_t **pcm_out, int *num_samples_out,
-                              int max_duration_sec) {
-    int capacity = INITIAL_PCM_CAPACITY;
-    int16_t *pcm = (int16_t *)malloc(capacity * sizeof(int16_t));
-    if (!pcm) return FRKB_ERR_ALLOC;
-    int total_samples = 0;  /* total interleaved samples */
-
-    int64_t max_samples = 0;
-    if (max_duration_sec > 0) {
-        max_samples = (int64_t)ctx->out_sample_rate * ctx->out_channels * max_duration_sec;
-    }
-
-    AVPacket *pkt = av_packet_alloc();
-    AVFrame  *frame = av_frame_alloc();
-    if (!pkt || !frame) { free(pcm); return FRKB_ERR_ALLOC; }
-
-    int ret = 0;
-    while (av_read_frame(ctx->fmt_ctx, pkt) >= 0) {
-        if (pkt->stream_index != ctx->audio_stream_idx) {
-            av_packet_unref(pkt);
-            continue;
-        }
-
-        ret = avcodec_send_packet(ctx->dec_ctx, pkt);
-        av_packet_unref(pkt);
-        if (ret < 0) break;
-
-        while ((ret = avcodec_receive_frame(ctx->dec_ctx, frame)) == 0) {
-            int out_count = swr_get_out_samples(ctx->swr_ctx, frame->nb_samples);
-            if (out_count < 0) out_count = frame->nb_samples * 2; /* safe upper bound */
-
-            int needed = total_samples + out_count * ctx->out_channels;
-            if (needed > capacity) {
-                capacity = needed * 2;
-                int16_t *new_pcm = (int16_t *)realloc(pcm, capacity * sizeof(int16_t));
-                if (!new_pcm) { free(pcm); av_frame_free(&frame); av_packet_free(&pkt); return FRKB_ERR_ALLOC; }
-                pcm = new_pcm;
-            }
-
-            int16_t *dst = pcm + total_samples;
-            uint8_t *out_data[1] = { (uint8_t *)dst };
-            int converted = swr_convert(ctx->swr_ctx,
-                out_data, out_count,
-                (const uint8_t **)frame->extended_data, frame->nb_samples);
-
-            if (converted > 0) {
-                total_samples += converted * ctx->out_channels;
-            }
-
-            if (max_samples > 0 && total_samples >= (int)max_samples) {
-                total_samples = (int)max_samples;
-                goto done;
-            }
-        }
-
-        if (ret != AVERROR(EAGAIN)) break;
-    }
-
-    /* Flush decoder */
-    avcodec_send_packet(ctx->dec_ctx, NULL);
-    while (avcodec_receive_frame(ctx->dec_ctx, frame) == 0) {
-        int out_count = frame->nb_samples * 2;
-        int needed = total_samples + out_count * ctx->out_channels;
-        if (needed > capacity) {
-            capacity = needed * 2;
-            int16_t *new_pcm = (int16_t *)realloc(pcm, capacity * sizeof(int16_t));
-            if (!new_pcm) { free(pcm); av_frame_free(&frame); av_packet_free(&pkt); return FRKB_ERR_ALLOC; }
-            pcm = new_pcm;
-        }
-        int16_t *dst = pcm + total_samples;
-        uint8_t *out_data_flush[1] = { (uint8_t *)dst };
-        int converted = swr_convert(ctx->swr_ctx,
-            out_data_flush, out_count,
-            (const uint8_t **)frame->extended_data, frame->nb_samples);
-        if (converted > 0) {
-            total_samples += converted * ctx->out_channels;
-        }
-        if (max_samples > 0 && total_samples >= (int)max_samples) {
-            total_samples = (int)max_samples;
-            break;
-        }
-    }
-
-done:
-    av_frame_free(&frame);
-    av_packet_free(&pkt);
-
-    *pcm_out = pcm;
-    *num_samples_out = total_samples / ctx->out_channels;
-    return 0;
-}
-
 /* ===================== Public API ===================== */
-
-int frkb_ffmpeg_decode_to_i16(
-    const char *file_path,
-    int max_duration_sec,
-    int16_t **samples_out,
-    int *num_samples_out,
-    int *sample_rate_out,
-    int *num_channels_out)
-{
-    if (!file_path || !samples_out || !num_samples_out || !sample_rate_out || !num_channels_out) {
-        return FRKB_ERR_ALLOC;
-    }
-
-    DecodeContext ctx;
-    int ret = decode_ctx_init(&ctx, file_path);
-    if (ret != 0) return ret;
-
-    int16_t *pcm = NULL;
-    int num_samples = 0;
-    ret = decode_all_to_pcm(&ctx, &pcm, &num_samples, max_duration_sec);
-    if (ret != 0) {
-        decode_ctx_free(&ctx);
-        return ret;
-    }
-
-    *samples_out = pcm;
-    *num_samples_out = num_samples;
-    *sample_rate_out = ctx.out_sample_rate;
-    *num_channels_out = ctx.out_channels;
-
-    decode_ctx_free(&ctx);
-    return 0;
-}
 
 int frkb_ffmpeg_chromaprint_generate(
     const char *file_path,
@@ -375,8 +243,4 @@ finish:
     chromaprint_free(cp_ctx);
     decode_ctx_free(&ctx);
     return ret;
-}
-
-void frkb_ffmpeg_free_buffer(void *ptr) {
-    free(ptr);
 }
