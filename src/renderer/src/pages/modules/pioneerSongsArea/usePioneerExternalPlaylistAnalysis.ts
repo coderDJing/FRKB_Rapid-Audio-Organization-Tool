@@ -1,6 +1,9 @@
 import { computed, onUnmounted, ref, watch, type ComputedRef, type Ref } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
-import { hasCompleteKeyAnalysis } from '@renderer/pages/modules/songsArea/composables/useKeyAnalysisProgress'
+import {
+  hasCompleteKeyAnalysis,
+  hasDisplayableAnalysisProgressForSongs
+} from '@renderer/pages/modules/songsArea/composables/useKeyAnalysisProgress'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import type {
   IPioneerPlaylistTrack,
@@ -48,12 +51,21 @@ export const usePioneerExternalPlaylistAnalysis = (
     }
     return count
   })
+  const visibleAnalysisProgressCount = computed(() =>
+    hasDisplayableAnalysisProgressForSongs(params.visibleSongs.value) ? 1 : 0
+  )
 
   watch(
-    () => [params.visibleSongs.value.length, pendingAnalysisCount.value] as const,
-    ([visibleSongCount, nextPendingAnalysisCount]) => {
+    () =>
+      [
+        params.visibleSongs.value.length,
+        pendingAnalysisCount.value,
+        visibleAnalysisProgressCount.value
+      ] as const,
+    ([visibleSongCount, nextPendingAnalysisCount, nextVisibleAnalysisProgressCount]) => {
       runtime.pioneerDeviceLibrary.visibleSongCount = visibleSongCount
       runtime.pioneerDeviceLibrary.pendingAnalysisCount = nextPendingAnalysisCount
+      runtime.pioneerDeviceLibrary.visibleAnalysisProgressCount = nextVisibleAnalysisProgressCount
     },
     { immediate: true }
   )
@@ -144,6 +156,7 @@ export const usePioneerExternalPlaylistAnalysis = (
   onUnmounted(() => {
     runtime.pioneerDeviceLibrary.visibleSongCount = 0
     runtime.pioneerDeviceLibrary.pendingAnalysisCount = 0
+    runtime.pioneerDeviceLibrary.visibleAnalysisProgressCount = 0
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
       window.electron.ipcRenderer.removeListener(
         'key-analysis:stage-update',

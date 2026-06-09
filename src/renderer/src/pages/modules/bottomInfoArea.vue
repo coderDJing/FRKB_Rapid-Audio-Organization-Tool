@@ -11,6 +11,7 @@ import {
   resolveAnalysisRuntimeDownloadTitle
 } from '@renderer/utils/analysisRuntimeDownloadUi'
 import { hasCompleteKeyAnalysis } from '@renderer/pages/modules/songsArea/composables/useKeyAnalysisProgress'
+import { useBottomInfoVisibleAnalysisProgress } from './bottomInfoAreaVisibleAnalysis'
 import type { ISongInfo } from 'src/types/globals'
 const runtime = useRuntimeStore()
 
@@ -79,6 +80,7 @@ const displayPioneerPendingAnalysisCount = computed(() =>
     ? manualPendingAnalysisCount.value
     : pioneerPendingAnalysisCount.value
 )
+const visibleSongsHaveAnalysisProgress = useBottomInfoVisibleAnalysisProgress()
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -283,8 +285,11 @@ const applyProgressPayload = (payload: ProgressPayload) => {
   const hasProgressMeta = 'noProgress' in payload
   const noProgress = !!payload.noProgress
 
-  // 如果是后台分析任务且设置为不显示，则忽略
-  if (id === backgroundTaskId && !runtime.setting?.showIdleAnalysisStatus) {
+  // 当前列表已有可见行内进度时，闲时提示会误导用户。
+  if (
+    id === backgroundTaskId &&
+    (!runtime.setting?.showIdleAnalysisStatus || visibleSongsHaveAnalysisProgress.value)
+  ) {
     return true
   }
 
@@ -367,6 +372,10 @@ const applyProgressPayload = (payload: ProgressPayload) => {
 const syncKeyAnalysisBackgroundStatus = async () => {
   try {
     const status = await window.electron.ipcRenderer.invoke('key-analysis:background-status')
+    if (visibleSongsHaveAnalysisProgress.value) {
+      dismissBackgroundTaskNow()
+      return
+    }
     if (status?.active) {
       applyProgressPayload({
         id: backgroundTaskId,
@@ -427,6 +436,16 @@ watch(
     }
   }
 )
+
+watch(visibleSongsHaveAnalysisProgress, (hasVisibleProgress) => {
+  if (hasVisibleProgress) {
+    dismissBackgroundTaskNow()
+    return
+  }
+  if (runtime.setting?.showIdleAnalysisStatus === true) {
+    void syncKeyAnalysisBackgroundStatus()
+  }
+})
 
 const handleAfterLeave = () => {
   if (!hasAnyVisibleTask.value) {

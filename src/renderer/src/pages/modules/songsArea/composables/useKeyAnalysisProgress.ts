@@ -241,6 +241,16 @@ export const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => 
   )
 }
 
+export const hasDisplayableAnalysisProgressForSongs = (songs: ISongInfo[]): boolean => {
+  progressVersion.value
+  for (const song of songs) {
+    const normalized = normalizePath(song?.filePath || '')
+    if (!normalized) continue
+    if (isDisplayableProgressEntry(progressMap.value.get(normalized))) return true
+  }
+  return false
+}
+
 export function useKeyAnalysisProgress(params: {
   visibleSongsWithIndex: Ref<Array<{ song: ISongInfo; idx: number }>>
   isAnalysisCompleteOverride?: (filePath: string) => boolean

@@ -143,6 +143,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     loading: runtime.pioneerDeviceLibrary.loading,
     visibleSongCount: runtime.pioneerDeviceLibrary.visibleSongCount,
     pendingAnalysisCount: runtime.pioneerDeviceLibrary.pendingAnalysisCount,
+    visibleAnalysisProgressCount: runtime.pioneerDeviceLibrary.visibleAnalysisProgressCount,
     treeNodes: Array.isArray(runtime.pioneerDeviceLibrary.treeNodes)
       ? [...runtime.pioneerDeviceLibrary.treeNodes]
       : []
@@ -158,6 +159,8 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     runtime.pioneerDeviceLibrary.loading = snapshot.loading
     runtime.pioneerDeviceLibrary.visibleSongCount = snapshot.visibleSongCount
     runtime.pioneerDeviceLibrary.pendingAnalysisCount = snapshot.pendingAnalysisCount
+    runtime.pioneerDeviceLibrary.visibleAnalysisProgressCount =
+      snapshot.visibleAnalysisProgressCount
     runtime.pioneerDeviceLibrary.treeNodes = Array.isArray(snapshot.treeNodes)
       ? [...snapshot.treeNodes]
       : []
@@ -173,6 +176,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     runtime.pioneerDeviceLibrary.loading = false
     runtime.pioneerDeviceLibrary.visibleSongCount = 0
     runtime.pioneerDeviceLibrary.pendingAnalysisCount = 0
+    runtime.pioneerDeviceLibrary.visibleAnalysisProgressCount = 0
     runtime.pioneerDeviceLibrary.treeNodes = []
   }
 
