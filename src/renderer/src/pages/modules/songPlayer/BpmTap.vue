@@ -121,32 +121,47 @@ const resetManual = () => {
   <div
     v-show="waveformShow"
     ref="bpmDomRef"
-    class="unselectable"
-    :style="{
-      width: 'auto',
-      minWidth: '80px',
-      padding: '0 6px',
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      fontSize: '16px',
-      fontWeight: 'bold',
-      // 手动 BPM 高亮为主题色
-      color: isManual ? '#0078d4' : undefined
-    }"
+    class="unselectable bpm-tap"
+    :class="{ 'is-manual': isManual }"
     @click.left="handleLeftClick"
     @contextmenu="handleRightClick"
   >
-    {{ displayValue }}
+    <span class="bpm-tap__value">{{ displayValue }}</span>
   </div>
   <bubbleBox
     v-if="!isTapActive"
     :dom="bpmDomRef || undefined"
-    title="BPM"
+    :title="displayValue ? `BPM ${displayValue}` : 'BPM'"
     :shortcut="t('player.tapBeat')"
     :max-width="250"
     :interactive="false"
   />
 </template>
 
-<style scoped></style>
+<style scoped>
+.bpm-tap {
+  flex: 0 0 112px;
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-size: 16px;
+  font-weight: bold;
+}
+
+.bpm-tap.is-manual {
+  color: #0078d4;
+}
+
+.bpm-tap__value {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

@@ -108,81 +108,53 @@ onUnmounted(() => {
 
 <style scoped>
 .manual-handle {
+  --range-handle-outline: rgba(0, 0, 0, 0.68);
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 14px;
+  width: 20px;
   transform: translateX(-50%);
   cursor: ew-resize;
   z-index: 12;
-  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.35));
-  transition: filter 0.15s ease;
+  transition: opacity 0.15s ease;
 }
 
 .handle-line {
   position: absolute;
   left: 50%;
-  top: 7px;
-  bottom: 7px;
+  top: 0;
+  bottom: 0;
   width: 2px;
   background: currentColor;
-  border-radius: 1px;
-  opacity: 0.85;
+  border-radius: 0;
+  opacity: 1;
   transform: translateX(-50%);
+  box-shadow: 0 0 0 1px var(--range-handle-outline);
   pointer-events: none;
-}
-
-.manual-handle::before,
-.manual-handle::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  width: 8px;
-  height: 8px;
-  background: currentColor;
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  opacity: 0.92;
-  transform: translateX(-50%);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.45),
-    0 2px 4px rgba(0, 0, 0, 0.25);
   transition:
-    transform 0.15s ease,
-    opacity 0.15s ease;
-  pointer-events: none;
-}
-
-.manual-handle::before {
-  top: -1px;
-}
-
-.manual-handle::after {
-  bottom: -1px;
-  transform: translateX(-50%) rotate(180deg);
-}
-
-.end-handle {
-  color: #6f6bff;
+    opacity 0.15s ease,
+    width 0.15s ease;
 }
 
 .start-handle {
-  color: #f5a524;
+  color: #ffb020;
 }
 
-.manual-handle:hover::before,
-.manual-handle.dragging::before {
+.end-handle {
+  color: #7c7aff;
+}
+
+.manual-handle:hover .handle-line,
+.manual-handle.dragging .handle-line {
+  width: 3px;
   opacity: 1;
-  transform: translateX(-50%) scale(1.05);
 }
 
-.manual-handle:hover::after,
-.manual-handle.dragging::after {
-  opacity: 1;
-  transform: translateX(-50%) rotate(180deg) scale(1.05);
+:global(.theme-light) .manual-handle {
+  --range-handle-outline: rgba(255, 255, 255, 0.82);
 }
 
-.manual-handle:hover,
-.manual-handle.dragging {
-  filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.45));
+:global(.theme-dark) .manual-handle {
+  --range-handle-outline: rgba(0, 0, 0, 0.78);
 }
 </style>
