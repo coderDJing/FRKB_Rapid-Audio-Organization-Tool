@@ -169,8 +169,3 @@ export async function saveLibrarySettingsFromConfig(): Promise<void> {
     persistSongFilters: persist !== null ? persist : undefined
   })
 }
-
-export default {
-  syncLibrarySettingsFromDb,
-  saveLibrarySettingsFromConfig
-}

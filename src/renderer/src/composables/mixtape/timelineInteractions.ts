@@ -50,7 +50,6 @@ type TimelineInteractionsContext = {
   scheduleTimelineDraw: () => void
   scheduleWaveformLoad: () => void
   scheduleFullPreRender: () => void
-  markTimelineInteracting: () => void
 }
 
 export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContext) => {
@@ -83,8 +82,7 @@ export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContex
     renderPxPerSec,
     scheduleTimelineDraw,
     scheduleWaveformLoad,
-    scheduleFullPreRender,
-    markTimelineInteracting
+    scheduleFullPreRender
   } = ctx
 
   let timelineScrollRaf = 0
@@ -205,7 +203,6 @@ export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContex
     }
     if (changed) {
       if (movedScroll || widthChanged || scrollWidthChanged) {
-        markTimelineInteracting()
         scheduleWaveformLoad()
       }
       scheduleTimelineDraw()
@@ -259,7 +256,6 @@ export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContex
 
   const flushPendingWheelZoom = () => {
     if (!wheelZoomDelta) return
-    markTimelineInteracting()
     const delta = wheelZoomDelta
     wheelZoomDelta = 0
     const viewport = resolveTimelineViewportEl()
@@ -385,7 +381,6 @@ export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContex
 
   const handleTimelinePanMove = (event: MouseEvent) => {
     if (!isTimelinePanning.value) return
-    markTimelineInteracting()
     const viewport =
       (timelineScrollRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined) ||
       null
@@ -404,7 +399,6 @@ export const createTimelineInteractionsModule = (ctx: TimelineInteractionsContex
 
   const handleTimelinePanEnd = () => {
     if (!isTimelinePanning.value) return
-    markTimelineInteracting()
     isTimelinePanning.value = false
     timelinePanLockHorizontal = false
     window.removeEventListener('mousemove', handleTimelinePanMove as EventListener)

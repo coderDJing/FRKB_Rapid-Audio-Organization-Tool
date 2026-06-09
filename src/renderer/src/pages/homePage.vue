@@ -1063,7 +1063,6 @@ const drop = async (e: DragEvent) => {
 .dragBar.dragBarHovered::before {
   opacity: 1;
   /* 透明度变为 1 */
-  /* width: 4px;  不再需要修改宽度 */
 }
 
 .songsAreaDragHoverBorder {

@@ -121,11 +121,3 @@ export function deleteRecycleBinRecords(filePaths: string[]): number {
     return 0
   }
 }
-
-export default {
-  listRecycleBinRecords,
-  getRecycleBinRecord,
-  upsertRecycleBinRecord,
-  deleteRecycleBinRecord,
-  deleteRecycleBinRecords
-}

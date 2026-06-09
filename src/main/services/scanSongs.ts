@@ -539,7 +539,3 @@ export async function scanSongList(
     }
   }
 }
-
-export default {
-  scanSongList
-}

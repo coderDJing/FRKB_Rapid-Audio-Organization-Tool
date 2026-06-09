@@ -531,7 +531,3 @@ export async function ensureLegacyMigration(
 
   return true
 }
-
-export default {
-  ensureLegacyMigration
-}

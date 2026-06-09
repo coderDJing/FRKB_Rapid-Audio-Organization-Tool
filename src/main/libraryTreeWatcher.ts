@@ -82,8 +82,3 @@ export function stopLibraryTreeWatcher(): void {
   } catch {}
   watcher = null
 }
-
-export default {
-  startLibraryTreeWatcher,
-  stopLibraryTreeWatcher
-}

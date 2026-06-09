@@ -539,9 +539,3 @@ export async function updateTrackMetadata(
     } catch {}
   }
 }
-
-export default {
-  readTrackMetadata,
-  readTrackSongInfo,
-  updateTrackMetadata
-}

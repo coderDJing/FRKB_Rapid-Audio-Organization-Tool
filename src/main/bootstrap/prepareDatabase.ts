@@ -59,7 +59,3 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     databaseInitWindow.createWindow({ needErrorHint: true })
   }
 }
-
-export default {
-  prepareAndOpenMainWindow
-}

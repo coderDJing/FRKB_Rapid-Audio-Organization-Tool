@@ -241,9 +241,3 @@ export async function sweepSongListCovers(
     return { removed: 0 }
   }
 }
-
-export default {
-  getSongCover,
-  getSongCoverThumb,
-  sweepSongListCovers
-}

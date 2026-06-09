@@ -243,9 +243,6 @@ ipcMain.handle('cloudSync/testConnectivity', async (_e, payload: { userKey: stri
   }
 })
 
-// 仅获取当前 userKey 的配额上限（通过 /check 读取 limit 字段），不进入同步流程
-// 不再需要独立的 fetchLimit，后端已在 validate-user-key 返回 limit
-
 ipcMain.handle('cloudSync/start', async () => {
   // 频控：限制 5 分钟内最多 10 次同步启动
   // 在接近上限时（第 9 次或第 10 次）给出友好提示并告知下一次安全操作时间

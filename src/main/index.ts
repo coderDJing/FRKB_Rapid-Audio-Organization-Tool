@@ -291,7 +291,6 @@ const platform = process.platform
 const ffmpegPath = resolveBundledFfmpegPath()
 process.env.FRKB_FFMPEG_PATH = ffmpegPath
 void ensureExecutableOnMac(ffmpegPath)
-// 不再使用 Tray，改用应用菜单
 store.layoutConfig = loadLayoutConfigSync()
 loadInitialSettings({ getWindowsContextMenuStatus: hasWindowsContextMenu })
 if (is.dev && devInstanceLock?.isPrimaryInstance && devRuntime?.userDataDir) {

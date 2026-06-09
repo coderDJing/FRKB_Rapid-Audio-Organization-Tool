@@ -273,9 +273,3 @@ export const rebuildMacMenusForCurrentFocus = () => {
     }
   } catch {}
 }
-
-export default {
-  setupMacMenus,
-  rebuildMacMenusForCurrentFocus,
-  setMacMainWindowBrowseMode
-}

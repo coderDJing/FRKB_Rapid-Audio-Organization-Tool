@@ -606,7 +606,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
   })
   const {
     handleBpmBatchReady,
-    clearBpmAnalysisFailedTimer,
     dismissBpmAnalysisFailure,
     retryBpmAnalysis,
     loadMixtapeItems,
@@ -956,7 +955,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       clearTimeout(playlistUpdateTimer)
       playlistUpdateTimer = null
     }
-    clearBpmAnalysisFailedTimer()
     contextMenuClickThroughGuard.clear()
   })
   return {

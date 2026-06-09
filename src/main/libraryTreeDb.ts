@@ -973,32 +973,3 @@ export async function findSongListRootByPath(
   if (!lastSongList) return null
   return path.join(libRoot, ...lastSongList)
 }
-
-export default {
-  isLibraryTreeMigrationDone,
-  isLibraryTreeMigrationInProgress,
-  setLibraryTreeMigrationDone,
-  setLibraryTreeMigrationInProgress,
-  isLibraryTreeArchiveDone,
-  setLibraryTreeArchiveDone,
-  countLibraryNodes,
-  needsLibraryTreeMigration,
-  needsLibraryTreeArchive,
-  migrateLegacyLibraryTree,
-  archiveLegacyDescriptionFiles,
-  archiveLegacyDescriptionFilesByRoot,
-  ensureLibraryTreeBaseline,
-  syncLibraryTreeFromDisk,
-  pruneMissingLibraryNodes,
-  loadLibraryNodes,
-  findLibraryNodeByUuid,
-  findLibraryNodeByPath,
-  insertLibraryNode,
-  updateLibraryNodeOrder,
-  updateLibraryNodeName,
-  updateLibraryNodeType,
-  moveLibraryNode,
-  removeLibraryNode,
-  removeLibraryNodesByParentUuid,
-  findSongListRootByPath
-}

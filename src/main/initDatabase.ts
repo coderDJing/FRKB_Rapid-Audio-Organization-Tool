@@ -155,5 +155,3 @@ export async function initDatabaseStructure(
     }
   }
 }
-
-export default { initDatabaseStructure }

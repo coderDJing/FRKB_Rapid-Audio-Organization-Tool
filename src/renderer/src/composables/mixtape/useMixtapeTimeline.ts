@@ -609,8 +609,6 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     postWaveformWorkerMessage({ type: 'cancelPreRender' })
   }
 
-  const markTimelineInteracting = () => {}
-
   const {
     isTrackDragging,
     transportPlaying,
@@ -914,8 +912,7 @@ export const useMixtapeTimeline = (options: UseMixtapeTimelineOptions) => {
     renderPxPerSec,
     scheduleTimelineDraw,
     scheduleWaveformLoad,
-    scheduleFullPreRender,
-    markTimelineInteracting
+    scheduleFullPreRender
   })
 
   createTimelineWatchAndMountModule({

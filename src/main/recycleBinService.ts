@@ -587,16 +587,3 @@ export async function permanentlyDeleteFile(filePath: string): Promise<boolean> 
   }
   return true
 }
-
-export default {
-  getRecycleBinRootAbs,
-  getMixtapeVaultRootAbs,
-  toLibraryRelativePath,
-  normalizeRendererPlaylistPath,
-  resolveOriginalPlaylistPathForFile,
-  resolveMissingMixtapeFilePath,
-  isInRecycleBinAbsPath,
-  moveFileToRecycleBin,
-  restoreRecycleBinFile,
-  permanentlyDeleteFile
-}

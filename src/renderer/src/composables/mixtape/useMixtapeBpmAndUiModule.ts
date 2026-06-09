@@ -477,10 +477,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
     scheduleTimelineDraw()
   }
 
-  const clearBpmAnalysisFailedTimer = () => {}
-
   const dismissBpmAnalysisFailure = () => {
-    clearBpmAnalysisFailedTimer()
     bpmAnalysisFailed.value = false
     bpmAnalysisFailedCount.value = 0
     bpmAnalysisFailedReason.value = ''
@@ -517,7 +514,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
 
     const token = (bpmAnalysisToken += 1)
     let allResolved = false
-    clearBpmAnalysisFailedTimer()
     bpmAnalysisActive.value = true
     bpmAnalysisFailed.value = false
     bpmAnalysisFailedCount.value = 0
@@ -1072,12 +1068,10 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
   const resetBpmAnalysisSession = () => {
     bpmAnalysisToken = 0
     lastBpmAnalysisKey = ''
-    clearBpmAnalysisFailedTimer()
   }
 
   return {
     handleBpmBatchReady,
-    clearBpmAnalysisFailedTimer,
     dismissBpmAnalysisFailure,
     retryBpmAnalysis,
     requestMixtapeBpmAnalysis,
