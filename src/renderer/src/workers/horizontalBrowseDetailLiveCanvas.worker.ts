@@ -14,6 +14,8 @@ import {
   PLAYBACK_SCROLL_REUSE_MAX_FRAME_GAP_MS,
   PLAYBACK_SCROLL_REUSE_RECOVERY_FRAMES,
   clampPlaybackRenderLeadMs,
+  hasPlaybackRenderClock,
+  resolvePlaybackRenderClockStartedAtMs,
   resolvePlaybackRangeStartSec,
   resolvePlaybackSeconds
 } from './horizontalBrowseDetailLiveCanvasPlayback'
@@ -847,7 +849,10 @@ const schedulePlaybackRender = (token: number) => {
     const frameGapTooLong = frameGapMs > PLAYBACK_SCROLL_REUSE_MAX_FRAME_GAP_MS
     const scrollReuseSuppressed = animation.scrollReuseSuppressedFrames > 0
     if (scrollReuseSuppressed) animation.scrollReuseSuppressedFrames -= 1
-    if (frameGapMs > PLAYBACK_CLOCK_REANCHOR_MIN_FRAME_GAP_MS) {
+    if (
+      frameGapMs > PLAYBACK_CLOCK_REANCHOR_MIN_FRAME_GAP_MS &&
+      !hasPlaybackRenderClock(animation.request)
+    ) {
       animation.baseSeconds = resolvePlaybackSeconds(
         animation.request,
         animation.baseSeconds,
@@ -880,6 +885,8 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
   const current = playbackAnimation
   const nowMs = performance.now()
   const incomingSeconds = Number(request.playbackSeconds) || 0
+  const requestUsesRenderClock = hasPlaybackRenderClock(request)
+  const incomingStartedAtMs = resolvePlaybackRenderClockStartedAtMs(request, nowMs)
   const forceIncomingSeconds =
     current &&
     Math.floor(Number(request.playbackSyncRevision) || 0) !==
@@ -888,7 +895,7 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
   const token = shouldRestartSchedule || !current ? playbackAnimationToken + 1 : current.token
   const baseSeconds = current
     ? (() => {
-        if (forceIncomingSeconds) {
+        if (forceIncomingSeconds || requestUsesRenderClock) {
           return incomingSeconds
         }
         const predictedSeconds = resolvePlaybackSeconds(
@@ -929,6 +936,10 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
       normalizeWaveformGain(request.waveformGain)
   if (canContinueCurrentAnimation) {
     current.request = animationRequest
+    if (requestUsesRenderClock) {
+      current.baseSeconds = baseSeconds
+      current.startedAtMs = incomingStartedAtMs
+    }
     current.scrollReuseSuppressedFrames = scrollReuseSuppressedFrames
     const continuedRenderRequest = buildPlaybackRenderRequest(
       current,
@@ -956,12 +967,12 @@ const activatePlaybackAnimation = (request: HorizontalBrowseDetailLiveCanvasRend
     token,
     request: animationRequest,
     baseSeconds,
-    startedAtMs: nowMs,
+    startedAtMs: requestUsesRenderClock ? incomingStartedAtMs : nowMs,
     lastRenderedAtMs: nowMs,
     scrollReuseSuppressedFrames
   }
   const shouldPredictInitialFullRender =
-    request.rawSlot !== null && request.allowScrollReuse === false
+    !requestUsesRenderClock && request.rawSlot !== null && request.allowScrollReuse === false
   const initialRenderLeadMs = shouldPredictInitialFullRender
     ? clampPlaybackRenderLeadMs(playbackInitialFullRenderLeadMs)
     : 0

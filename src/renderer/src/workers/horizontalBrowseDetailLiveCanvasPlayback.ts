@@ -15,6 +15,26 @@ export const clampPlaybackRenderLeadMs = (value: number) => {
   return Math.max(0, Math.min(PLAYBACK_INITIAL_FULL_RENDER_LEAD_MAX_MS, safeValue))
 }
 
+const resolveWorkerPerformanceTimeOrigin = () => {
+  if (typeof performance === 'undefined') return Date.now()
+  const timeOrigin = Number(performance.timeOrigin)
+  return Number.isFinite(timeOrigin) ? timeOrigin : Date.now() - performance.now()
+}
+
+export const hasPlaybackRenderClock = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
+  const epochMs = Number(request.playbackRenderClockEpochMs)
+  return Number.isFinite(epochMs) && epochMs > 0
+}
+
+export const resolvePlaybackRenderClockStartedAtMs = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  fallbackMs: number
+) => {
+  const epochMs = Number(request.playbackRenderClockEpochMs)
+  if (!Number.isFinite(epochMs) || epochMs <= 0) return fallbackMs
+  return epochMs - resolveWorkerPerformanceTimeOrigin()
+}
+
 export const clampPlaybackRangeStart = (
   value: number,
   duration: number,

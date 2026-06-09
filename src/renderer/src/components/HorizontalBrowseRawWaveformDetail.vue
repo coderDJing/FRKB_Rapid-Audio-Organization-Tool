@@ -188,6 +188,7 @@ const {
   holdCurrentWaveformFrame,
   resetRetainedWaveformData,
   resetLiveWaveformRaw,
+  stopLiveWaveformPlayback,
   ensureLiveWaveformRawCapacity,
   applyLiveWaveformRawChunk,
   replaceLiveWaveformRaw,
@@ -886,7 +887,7 @@ watch(
 
 watch(
   () => waveformPlaybackActive.value,
-  (playing) => {
+  (playing, previousPlaying) => {
     previewPlaying.value = playing
     if (playing) {
       const anchorSec = resolveWaveformCurrentSeconds()
@@ -896,12 +897,15 @@ watch(
     }
     if (!playing) {
       const anchorSec = resolveWaveformCurrentSeconds()
-      applyPreviewPlaybackPosition(anchorSec, false)
+      if (previousPlaying === true) {
+        stopLiveWaveformPlayback()
+      }
+      applyPreviewPlaybackPosition(anchorSec, true)
       flushDeferredRawWaveformStore()
       maybeContinueWaveformSource(anchorSec)
     }
   },
-  { immediate: true }
+  { immediate: true, flush: 'sync' }
 )
 
 watch(

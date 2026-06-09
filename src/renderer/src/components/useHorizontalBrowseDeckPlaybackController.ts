@@ -949,9 +949,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
           return
         }
 
-        await params.nativeTransport.setPlaying(deck, false)
-        await params.nativeTransport.setPlaying(otherDeck, false)
-        params.syncDeckRenderState({ force: 'all' })
+        await Promise.all([
+          params.nativeTransport.setPlaying(deck, false),
+          params.nativeTransport.setPlaying(otherDeck, false)
+        ])
+        params.syncDeckRenderState({ force: 'all', forceRevision: true })
       } finally {
         finishTiming()
       }
@@ -1012,7 +1014,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
             )
           })
         }
-        params.syncDeckRenderState({ force: deck })
+        params.syncDeckRenderState({ force: deck, forceRevision: !nextPlaying })
       } finally {
         finishTiming()
       }

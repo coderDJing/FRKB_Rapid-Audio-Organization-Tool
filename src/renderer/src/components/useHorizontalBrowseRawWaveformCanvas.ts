@@ -33,6 +33,7 @@ import type {
 } from '@renderer/components/horizontalBrowseRawWaveformCanvasTypes'
 import { normalizeSongHotCues } from '@shared/hotCues'
 import { normalizeSongMemoryCues } from '@shared/memoryCues'
+import { resolveHorizontalBrowseLinkedGridVisualPhase } from '@renderer/components/horizontalBrowseLinkedGridVisualPhase'
 import type {
   HorizontalBrowseDetailLiveCanvasLoopRange,
   HorizontalBrowseDetailLiveCanvasRawChunk,
@@ -420,6 +421,27 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const playbackRawRecovering =
       playbackActive && !isPlaybackDirtyPatch && !!rawSlot && !displayReady.value
     const allowScrollReuse = payload.allowScrollReuse && !playbackSyncChanged
+    const renderBpm = Number(options.previewBpm.value) || 0
+    const renderFirstBeatMs = Number(options.previewFirstBeatMs.value) || 0
+    const renderBarBeatOffset = Number(options.previewBarBeatOffset.value) || 0
+    const renderTimeBasisOffsetMs = Number(options.previewTimeBasisOffsetMs.value) || 0
+    const playbackRate = Math.max(0.25, Number(options.playbackRate()) || 1)
+    const sourcePlaybackSeconds = Number(options.currentSeconds()) || 0
+    const visualGridPhase = resolveHorizontalBrowseLinkedGridVisualPhase({
+      direction: options.direction(),
+      active: waveformLayout !== 'full',
+      clockActive: playbackActive,
+      bpm: renderBpm,
+      firstBeatMs: renderFirstBeatMs,
+      barBeatOffset: renderBarBeatOffset,
+      currentSec: sourcePlaybackSeconds,
+      playbackRate
+    })
+    const playbackSeconds = visualGridPhase.playbackSeconds
+    const renderRangeStartSec =
+      playbackActive || visualGridPhase.linked
+        ? resolvePlaybackAlignedStart(playbackSeconds)
+        : payload.rangeStartSec
     if (playbackSyncChanged) {
       playbackRawSettleUntilMs = nowMs + PLAYBACK_RAW_SETTLE_HOLD_MS
       lastQueuedPlaybackRawSlot = null
@@ -429,6 +451,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       playbackRawSettleUntilMs = 0
       lastQueuedPlaybackRawSlot = null
       lastQueuedMissingPlaybackRawSyncRevision = -1
+      liveCanvasBridge.stopPlayback()
+      clearLiveCanvasPresentationOffset()
     }
     lastQueuedPlaybackSyncRevision = playbackSyncRevision
     if (playbackActive && !isPlaybackDirtyPatch && !rawSlot && !displayReady.value) {
@@ -458,11 +482,11 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       width,
       height,
       pixelRatio,
-      bpm: Number(options.previewBpm.value) || 0,
-      firstBeatMs: Number(options.previewFirstBeatMs.value) || 0,
-      barBeatOffset: Number(options.previewBarBeatOffset.value) || 0,
-      timeBasisOffsetMs: Number(options.previewTimeBasisOffsetMs.value) || 0,
-      rangeStartSec: payload.rangeStartSec,
+      bpm: renderBpm,
+      firstBeatMs: renderFirstBeatMs,
+      barBeatOffset: visualGridPhase.barBeatOffset,
+      timeBasisOffsetMs: renderTimeBasisOffsetMs,
+      rangeStartSec: renderRangeStartSec,
       rangeDurationSec: payload.rangeDurationSec,
       maxSamplesPerPixel: payload.maxSamplesPerPixel,
       showDetailHighlights: false,
@@ -485,9 +509,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       loopRange: resolveWorkerLoopRange(),
       cueAccentColor: resolveCueAccentColor(),
       playbackActive,
-      playbackSeconds: Number(options.currentSeconds()) || 0,
+      playbackSeconds,
       playbackSyncRevision,
-      playbackRate: Math.max(0.25, Number(options.playbackRate()) || 1),
+      playbackRate,
+      playbackRenderClockEpochMs: visualGridPhase.playbackRenderClockEpochMs,
       playbackDurationSec: resolvePlaybackDurationSecForRender(payload.rawData),
       waveformGain: resolveWaveformGain(),
       dirtyStartSec: payload.dirtyStartSec,
@@ -963,6 +988,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const stopLiveWaveformPlayback = () => {
     liveCanvasBridge.stopPlayback()
+    clearLiveCanvasPresentationOffset()
   }
 
   const updateLiveWaveformRawMeta = (meta: Partial<HorizontalBrowseDetailLiveCanvasRawMeta>) => {
