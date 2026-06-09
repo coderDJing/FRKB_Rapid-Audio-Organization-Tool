@@ -1,4 +1,4 @@
-const MIXXX_WAVEFORM_CACHE_VERSION = 2
+const MIXXX_WAVEFORM_CACHE_VERSION = 3
 const MIXXX_MIXTAPE_WAVEFORM_CACHE_VERSION = 2
 const MIXXX_WAVEFORM_BANDS = ['low', 'mid', 'high', 'all'] as const
 

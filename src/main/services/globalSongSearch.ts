@@ -9,6 +9,8 @@ import { log } from '../log'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
 import { normalizePlaylistTrackNumber } from './playlistTrackNumbers'
+import { shouldAcceptBeatGridCacheVersion } from './beatGridAlgorithmVersion'
+import { shouldAcceptKeyAnalysisCacheVersion } from './keyAnalysisAlgorithmVersion'
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 
@@ -286,18 +288,29 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     typeof rawInfo?.bitrate === 'number' && Number.isFinite(rawInfo.bitrate)
       ? rawInfo.bitrate
       : undefined
+  const hasCurrentKeyAnalysis = shouldAcceptKeyAnalysisCacheVersion(rawInfo)
   const key =
-    typeof rawInfo?.key === 'string' && rawInfo.key.trim().length > 0 ? rawInfo.key : undefined
-  const bpm =
-    typeof rawInfo?.bpm === 'number' && Number.isFinite(rawInfo.bpm) ? rawInfo.bpm : undefined
-  const firstBeatMs =
-    typeof rawInfo?.firstBeatMs === 'number' && Number.isFinite(rawInfo.firstBeatMs)
-      ? rawInfo.firstBeatMs
+    hasCurrentKeyAnalysis && typeof rawInfo?.key === 'string' && rawInfo.key.trim().length > 0
+      ? rawInfo.key
       : undefined
-  const barBeatOffset =
-    typeof rawInfo?.barBeatOffset === 'number' && Number.isFinite(rawInfo.barBeatOffset)
-      ? rawInfo.barBeatOffset
-      : undefined
+  const keyAnalysisAlgorithmVersion = hasCurrentKeyAnalysis
+    ? rawInfo?.keyAnalysisAlgorithmVersion
+    : undefined
+  const hasCurrentBeatGrid =
+    typeof rawInfo?.bpm === 'number' &&
+    Number.isFinite(rawInfo.bpm) &&
+    typeof rawInfo?.firstBeatMs === 'number' &&
+    Number.isFinite(rawInfo.firstBeatMs) &&
+    typeof rawInfo?.barBeatOffset === 'number' &&
+    Number.isFinite(rawInfo.barBeatOffset) &&
+    shouldAcceptBeatGridCacheVersion(rawInfo)
+  const bpm = hasCurrentBeatGrid ? rawInfo?.bpm : undefined
+  const firstBeatMs = hasCurrentBeatGrid ? rawInfo?.firstBeatMs : undefined
+  const barBeatOffset = hasCurrentBeatGrid ? rawInfo?.barBeatOffset : undefined
+  const beatGridAlgorithmVersion = hasCurrentBeatGrid
+    ? rawInfo?.beatGridAlgorithmVersion
+    : undefined
+  const beatGridSource = hasCurrentBeatGrid ? rawInfo?.beatGridSource : undefined
   const playlistTrackNumber = normalizePlaylistTrackNumber(rawInfo?.playlistTrackNumber)
 
   return {
@@ -314,9 +327,12 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     bitrate,
     container,
     key,
+    keyAnalysisAlgorithmVersion,
     bpm,
     firstBeatMs,
     barBeatOffset,
+    beatGridAlgorithmVersion,
+    beatGridSource,
     playlistTrackNumber,
     hotCues: normalizeSongHotCues(rawInfo?.hotCues),
     memoryCues: normalizeSongMemoryCues(rawInfo?.memoryCues),

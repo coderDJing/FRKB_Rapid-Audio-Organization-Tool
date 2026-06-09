@@ -112,6 +112,7 @@ export const shouldKeepManualSharedSongGridDefinition = (
   next: SharedSongGridDefinition | null | undefined
 ) => {
   if (current?.beatGridSource !== 'manual' || !next) return false
+  if (!shouldAcceptBeatGridCacheVersion(current)) return false
   if (next.beatGridSource === 'analysis') return true
   return (
     differsWhenNextValueIsPresent(current.bpm, next.bpm, normalizeBpm) ||

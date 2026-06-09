@@ -137,6 +137,7 @@ export type DoneEntry = {
   size: number
   mtimeMs: number
   keyText?: string
+  keyAnalysisAlgorithmVersion?: number
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number

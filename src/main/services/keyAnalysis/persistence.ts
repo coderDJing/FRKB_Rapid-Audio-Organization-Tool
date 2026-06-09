@@ -25,6 +25,11 @@ import {
   shouldAcceptBeatGridCacheVersion
 } from '../beatGridAlgorithmVersion'
 import {
+  CURRENT_KEY_ANALYSIS_ALGORITHM_VERSION,
+  normalizeKeyAnalysisAlgorithmVersion,
+  shouldAcceptKeyAnalysisCacheVersion
+} from '../keyAnalysisAlgorithmVersion'
+import {
   isValidBpm,
   isValidBarBeatOffset,
   isValidFirstBeatMs,
@@ -94,6 +99,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     filePath: string,
     payload: {
       keyText?: string
+      keyAnalysisAlgorithmVersion?: number
       bpm?: number
       firstBeatMs?: number
       barBeatOffset?: number
@@ -128,6 +134,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     }
     if (payload.keyText) {
       info.key = payload.keyText
+    }
+    if (payload.keyAnalysisAlgorithmVersion !== undefined) {
+      info.keyAnalysisAlgorithmVersion = payload.keyAnalysisAlgorithmVersion
     }
     if (payload.bpm !== undefined) {
       info.bpm = payload.bpm
@@ -167,6 +176,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         size: stat.size,
         mtimeMs: stat.mtimeMs,
         keyText,
+        keyAnalysisAlgorithmVersion: CURRENT_KEY_ANALYSIS_ALGORITHM_VERSION,
         bpm: existing?.bpm,
         firstBeatMs: existing?.firstBeatMs,
         barBeatOffset: existing?.barBeatOffset,
@@ -177,12 +187,20 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
 
       const listRoot = await findSongListRoot(path.dirname(filePath))
       if (listRoot) {
-        const updated = await LibraryCacheDb.updateSongCacheKey(listRoot, filePath, keyText)
+        const updated = await LibraryCacheDb.updateSongCacheKey(
+          listRoot,
+          filePath,
+          keyText,
+          CURRENT_KEY_ANALYSIS_ALGORITHM_VERSION
+        )
         if (!updated) {
           await ensureSongCacheEntry(
             listRoot,
             filePath,
-            { keyText },
+            {
+              keyText,
+              keyAnalysisAlgorithmVersion: CURRENT_KEY_ANALYSIS_ALGORITHM_VERSION
+            },
             { size: stat.size, mtimeMs: stat.mtimeMs }
           )
         }
@@ -200,6 +218,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
               ...(cached?.info || buildLiteSongInfo(filePath)),
               filePath,
               key: keyText,
+              keyAnalysisAlgorithmVersion: CURRENT_KEY_ANALYSIS_ALGORITHM_VERSION,
               analysisOnly: true
             })
           )
@@ -218,10 +237,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         size: 0,
         mtimeMs: 0,
         keyText,
+        keyAnalysisAlgorithmVersion: CURRENT_KEY_ANALYSIS_ALGORITHM_VERSION,
         bpm: existing?.bpm,
         firstBeatMs: existing?.firstBeatMs,
         barBeatOffset: existing?.barBeatOffset,
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
+        beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
       const payload: KeyAnalysisResult = { filePath, keyText }
@@ -295,6 +316,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           size: stat.size,
           mtimeMs: stat.mtimeMs,
           keyText: existing?.keyText,
+          keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
           bpm: existingSharedGrid.bpm ?? normalizedBpm,
           firstBeatMs:
             existingSharedGrid.firstBeatMs ?? existing?.firstBeatMs ?? normalizedFirstBeatMs,
@@ -341,6 +363,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         size: stat.size,
         mtimeMs: stat.mtimeMs,
         keyText: existing?.keyText,
+        keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
         bpm: normalizedBpm,
         firstBeatMs: normalizedFirstBeatMs ?? existing?.firstBeatMs,
         barBeatOffset: normalizedBarBeatOffset ?? existing?.barBeatOffset,
@@ -419,6 +442,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         size: 0,
         mtimeMs: 0,
         keyText: existing?.keyText,
+        keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
         bpm: normalizedBpm,
         firstBeatMs: normalizedFirstBeatMs ?? existing?.firstBeatMs,
         barBeatOffset: normalizedBarBeatOffset ?? existing?.barBeatOffset,
@@ -466,6 +490,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         size: stat.size,
         mtimeMs: stat.mtimeMs,
         keyText: existing?.keyText,
+        keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
         bpm: existing?.bpm,
         firstBeatMs: existing?.firstBeatMs,
         barBeatOffset: existing?.barBeatOffset,
@@ -529,6 +554,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         size: 0,
         mtimeMs: 0,
         keyText: existing?.keyText,
+        keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
         bpm: existing?.bpm,
         firstBeatMs: existing?.firstBeatMs,
         barBeatOffset: existing?.barBeatOffset,
@@ -602,8 +628,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       const hasDoneBpm = isValidBpm(done.bpm)
       const hasDoneFirstBeatMs = isValidFirstBeatMs(done.firstBeatMs)
       const hasDoneBarBeatOffset = isValidBarBeatOffset(done.barBeatOffset)
+      const hasDoneCurrentKeyAlgorithm = shouldAcceptKeyAnalysisCacheVersion(done)
       const hasDoneCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(done)
-      if (isValidKeyText(done.keyText)) {
+      if (isValidKeyText(done.keyText) && hasDoneCurrentKeyAlgorithm) {
         needsKey = false
       }
       if (
@@ -646,23 +673,34 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         const cachedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
           cached.info?.beatGridAlgorithmVersion
         )
-        const hasKey = isValidKeyText(cachedKey)
+        const cachedKeyAnalysisAlgorithmVersion = normalizeKeyAnalysisAlgorithmVersion(
+          cached.info?.keyAnalysisAlgorithmVersion
+        )
+        const hasCurrentKeyAnalysisAlgorithm = shouldAcceptKeyAnalysisCacheVersion(cached.info)
+        const hasKey = isValidKeyText(cachedKey) && hasCurrentKeyAnalysisAlgorithm
         const hasBpm = isValidBpm(cachedBpm)
         const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)
         const hasBarBeatOffset = isValidBarBeatOffset(cachedBarBeatOffset)
         const hasCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(cached.info)
-        if (hasKey || hasBpm || hasFirstBeatMs || hasBarBeatOffset) {
+        const hasCompleteCurrentGrid =
+          hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm
+        if (hasKey || hasCompleteCurrentGrid) {
           deps.doneByPath.set(job.normalizedPath, {
             size: stat.size,
             mtimeMs: stat.mtimeMs,
             keyText: hasKey ? cachedKey : undefined,
-            bpm: hasBpm ? cachedBpm : undefined,
-            firstBeatMs: hasFirstBeatMs ? cachedFirstBeatMs : undefined,
-            barBeatOffset: hasBarBeatOffset
+            keyAnalysisAlgorithmVersion: hasKey ? cachedKeyAnalysisAlgorithmVersion : undefined,
+            bpm: hasCompleteCurrentGrid ? cachedBpm : undefined,
+            firstBeatMs: hasCompleteCurrentGrid ? cachedFirstBeatMs : undefined,
+            barBeatOffset: hasCompleteCurrentGrid
               ? normalizeBarBeatOffset(cachedBarBeatOffset)
               : undefined,
-            timeBasisOffsetMs: normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs),
-            beatGridAlgorithmVersion: cachedBeatGridAlgorithmVersion,
+            timeBasisOffsetMs: hasCompleteCurrentGrid
+              ? normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs)
+              : undefined,
+            beatGridAlgorithmVersion: hasCompleteCurrentGrid
+              ? cachedBeatGridAlgorithmVersion
+              : undefined,
             hasWaveform: false
           })
         }
@@ -691,6 +729,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             size: stat.size,
             mtimeMs: stat.mtimeMs,
             keyText: existingDone?.keyText,
+            keyAnalysisAlgorithmVersion: existingDone?.keyAnalysisAlgorithmVersion,
             bpm: existingDone?.bpm,
             firstBeatMs: existingDone?.firstBeatMs,
             barBeatOffset: existingDone?.barBeatOffset,
@@ -732,23 +771,34 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           const cachedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
             cached.info?.beatGridAlgorithmVersion
           )
-          const hasKey = isValidKeyText(cachedKey)
+          const cachedKeyAnalysisAlgorithmVersion = normalizeKeyAnalysisAlgorithmVersion(
+            cached.info?.keyAnalysisAlgorithmVersion
+          )
+          const hasCurrentKeyAnalysisAlgorithm = shouldAcceptKeyAnalysisCacheVersion(cached.info)
+          const hasKey = isValidKeyText(cachedKey) && hasCurrentKeyAnalysisAlgorithm
           const hasBpm = isValidBpm(cachedBpm)
           const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)
           const hasBarBeatOffset = isValidBarBeatOffset(cachedBarBeatOffset)
           const hasCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(cached.info)
-          if (hasKey || hasBpm || hasFirstBeatMs || hasBarBeatOffset || cached.hasWaveform) {
+          const hasCompleteCurrentGrid =
+            hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm
+          if (hasKey || hasCompleteCurrentGrid || cached.hasWaveform) {
             deps.doneByPath.set(job.normalizedPath, {
               size: stat.size,
               mtimeMs: stat.mtimeMs,
               keyText: hasKey ? cachedKey : undefined,
-              bpm: hasBpm ? cachedBpm : undefined,
-              firstBeatMs: hasFirstBeatMs ? cachedFirstBeatMs : undefined,
-              barBeatOffset: hasBarBeatOffset
+              keyAnalysisAlgorithmVersion: hasKey ? cachedKeyAnalysisAlgorithmVersion : undefined,
+              bpm: hasCompleteCurrentGrid ? cachedBpm : undefined,
+              firstBeatMs: hasCompleteCurrentGrid ? cachedFirstBeatMs : undefined,
+              barBeatOffset: hasCompleteCurrentGrid
                 ? normalizeBarBeatOffset(cachedBarBeatOffset)
                 : undefined,
-              timeBasisOffsetMs: normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs),
-              beatGridAlgorithmVersion: cachedBeatGridAlgorithmVersion,
+              timeBasisOffsetMs: hasCompleteCurrentGrid
+                ? normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs)
+                : undefined,
+              beatGridAlgorithmVersion: hasCompleteCurrentGrid
+                ? cachedBeatGridAlgorithmVersion
+                : undefined,
               hasWaveform: cached.hasWaveform
             })
           }

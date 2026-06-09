@@ -43,6 +43,7 @@ interface ISongInfo {
   bitrate: number | undefined
   container: string | undefined
   key?: string
+  keyAnalysisAlgorithmVersion?: number
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number

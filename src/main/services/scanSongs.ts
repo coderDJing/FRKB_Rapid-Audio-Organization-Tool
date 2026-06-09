@@ -7,6 +7,8 @@ import { readWavRiffInfoWindows } from './wavRiffInfo'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
+import { shouldAcceptBeatGridCacheVersion } from './beatGridAlgorithmVersion'
+import { shouldAcceptKeyAnalysisCacheVersion } from './keyAnalysisAlgorithmVersion'
 import {
   ensurePlaylistTrackNumbers,
   normalizePlaylistTrackNumber,
@@ -29,21 +31,52 @@ const hasFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 const hasPositiveInteger = (value: unknown): value is number =>
   hasFiniteNumber(value) && Math.floor(value) === value && value > 0
-const hasCompleteGrid = (info: Pick<ISongInfo, 'bpm' | 'firstBeatMs' | 'barBeatOffset'>) =>
-  hasBpm(info.bpm) && hasFirstBeatMs(info.firstBeatMs) && hasBarBeatOffset(info.barBeatOffset)
+type CachedKeyInfo = Pick<ISongInfo, 'key' | 'keyAnalysisAlgorithmVersion'>
+type CachedGridInfo = Pick<
+  ISongInfo,
+  'bpm' | 'firstBeatMs' | 'barBeatOffset' | 'beatGridAlgorithmVersion' | 'beatGridSource'
+> & {
+  beatThisWindowCount?: unknown
+}
+const hasCurrentKeyAnalysis = (info: CachedKeyInfo | null | undefined) =>
+  hasKey(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
+const hasCompleteGrid = (info: CachedGridInfo | null | undefined) =>
+  hasBpm(info?.bpm) &&
+  hasFirstBeatMs(info?.firstBeatMs) &&
+  hasBarBeatOffset(info?.barBeatOffset) &&
+  shouldAcceptBeatGridCacheVersion(info)
+
+const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
+  const next = { ...info }
+  if (!hasCurrentKeyAnalysis(next)) {
+    delete next.key
+    delete next.keyAnalysisAlgorithmVersion
+  }
+  if (!hasCompleteGrid(next)) {
+    delete next.bpm
+    delete next.firstBeatMs
+    delete next.barBeatOffset
+    delete next.timeBasisOffsetMs
+    delete next.beatGridSource
+    delete next.beatGridAlgorithmVersion
+  }
+  return next
+}
 
 const preserveCachedKeyAndBpm = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
   if (!cachedInfo) return
-  if (!hasKey(target.key) && hasKey(cachedInfo.key)) {
+  if (!hasCurrentKeyAnalysis(target) && hasCurrentKeyAnalysis(cachedInfo)) {
     target.key = cachedInfo.key as string
+    target.keyAnalysisAlgorithmVersion = cachedInfo.keyAnalysisAlgorithmVersion
   }
-  if (!hasBpm(target.bpm) && hasBpm(cachedInfo.bpm)) {
+  if (!hasCompleteGrid(target) && hasCompleteGrid(cachedInfo)) {
     target.bpm = cachedInfo.bpm as number
   }
 }
 
 const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
   if (!cachedInfo) return
+  if (!hasCompleteGrid(cachedInfo)) return
   if (!hasFirstBeatMs(target.firstBeatMs) && hasFirstBeatMs(cachedInfo.firstBeatMs)) {
     target.firstBeatMs = cachedInfo.firstBeatMs
   }
@@ -88,7 +121,7 @@ export const scheduleSongListPostScanTasks = async (
 
   const pendingKeys = scanData
     .filter((info) => !isInRecordingLibraryAbsPath(info.filePath))
-    .filter((info) => !hasKey(info.key) || !hasCompleteGrid(info))
+    .filter((info) => !hasCurrentKeyAnalysis(info) || !hasCompleteGrid(info))
     .map((info) => info.filePath)
     .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
   if (pendingKeys.length > 0) {
@@ -235,7 +268,9 @@ export async function scanSongList(
         analysisOnlyByPath.set(it.key, c.info)
         filesToParse.push(it.file)
       } else {
-        cachedInfos.push(enrichSongInfo({ ...c.info, filePath: it.file }))
+        cachedInfos.push(
+          enrichSongInfo(discardStaleAnalysisFields({ ...c.info, filePath: it.file }))
+        )
       }
     } else {
       filesToParse.push(it.file)
@@ -287,7 +322,7 @@ export async function scanSongList(
     for (const st of filesStatList) {
       const entry = cacheMap.get(st.key)
       if (!entry || !entry.info) continue
-      const missingKeyGrid = !hasKey(entry.info.key) || !hasCompleteGrid(entry.info)
+      const missingKeyGrid = !hasCurrentKeyAnalysis(entry.info) || !hasCompleteGrid(entry.info)
       if (!missingKeyGrid) continue
       const refreshed = await LibraryCacheDb.loadSongCacheEntry(cacheRoot, st.file)
       if (refreshed?.info) {
@@ -410,6 +445,7 @@ export async function scanSongList(
     }
   }
   songInfoArr = [...cachedInfos, ...parsedInfos]
+  songInfoArr = songInfoArr.map(discardStaleAnalysisFields)
 
   for (const info of songInfoArr) {
     const cachedInfo = cacheMap.get(normalizePathKey(info.filePath))?.info

@@ -690,13 +690,23 @@ export async function loadSongCacheEntry(
 export async function updateSongCacheKey(
   listRoot: string,
   filePath: string,
-  keyText: string
+  keyText: string,
+  keyAnalysisAlgorithmVersion?: number
 ): Promise<boolean> {
   try {
     const entry = await loadSongCacheEntry(listRoot, filePath)
     if (!entry) return false
-    if (entry.info.key === keyText) return true
+    if (
+      entry.info.key === keyText &&
+      (keyAnalysisAlgorithmVersion === undefined ||
+        entry.info.keyAnalysisAlgorithmVersion === keyAnalysisAlgorithmVersion)
+    ) {
+      return true
+    }
     entry.info.key = keyText
+    if (keyAnalysisAlgorithmVersion !== undefined) {
+      entry.info.keyAnalysisAlgorithmVersion = keyAnalysisAlgorithmVersion
+    }
     return await upsertSongCacheEntry(listRoot, filePath, entry)
   } catch (error) {
     log.error('[sqlite] song cache key update failed', error)
@@ -736,6 +746,7 @@ export async function clearSongCacheAnalysisFields(
     if (!entry) return false
     // 清除分析数据（重新分析会重新生成）
     delete entry.info.key
+    delete entry.info.keyAnalysisAlgorithmVersion
     delete entry.info.bpm
     delete entry.info.firstBeatMs
     delete entry.info.barBeatOffset

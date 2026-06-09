@@ -1,4 +1,4 @@
-export const CURRENT_BEAT_GRID_ALGORITHM_VERSION = 8
+export const CURRENT_BEAT_GRID_ALGORITHM_VERSION = 9
 
 export type BeatGridCacheVersionInfo = {
   beatThisWindowCount?: unknown
@@ -24,10 +24,9 @@ export const isVersionedBeatGridCache = (info: BeatGridCacheVersionInfo | null |
 export const shouldAcceptBeatGridCacheVersion = (
   info: BeatGridCacheVersionInfo | null | undefined
 ) => {
-  if (info?.beatGridSource === 'manual') return true
   const version = normalizeBeatGridAlgorithmVersion(info?.beatGridAlgorithmVersion)
   if (version !== undefined) {
     return version >= CURRENT_BEAT_GRID_ALGORITHM_VERSION
   }
-  return !isVersionedBeatGridCache(info)
+  return false
 }

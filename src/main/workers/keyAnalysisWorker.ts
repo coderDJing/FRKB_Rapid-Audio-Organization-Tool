@@ -1,5 +1,6 @@
 import { parentPort } from 'node:worker_threads'
 import childProcess from 'node:child_process'
+import path from 'node:path'
 import type { MixxxWaveformData } from '../waveformCache'
 import { COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE } from '../../shared/compactVisualWaveform'
 import {
@@ -73,13 +74,20 @@ const BEAT_GRID_ANALYSIS_MAX_SCAN_SEC = 120
 
 type RustBinding = ReturnType<typeof loadRust>
 
-type DecodedBeatGridPcm = {
+type DecodedAudioPcm = {
   pcmData: Buffer
   sampleRate: number
   channels: number
   totalFrames: number
+  decoderBackend?: string
+  error?: string
+}
+
+type DecodedBeatGridPcm = DecodedAudioPcm & {
   decoderBackend: string
 }
+
+type DecodedWaveformPcm = DecodedBeatGridPcm
 
 let cachedRustBinding: RustBinding | null = null
 
@@ -138,6 +146,82 @@ const resolveBeatGridFfmpegPath = () => {
     throw new Error('FRKB_FFMPEG_PATH not configured for beat grid decode')
   }
   return ffmpegPath
+}
+
+const shouldUseFfmpegWaveformDecode = (filePath: string) => {
+  const ext = path.extname(filePath || '').toLowerCase()
+  return ext === '.mp3'
+}
+
+const decodeWaveformPcmWithFfmpeg = async (filePath: string): Promise<DecodedWaveformPcm> => {
+  const ffmpegPath = resolveBeatGridFfmpegPath()
+  const channels = BEAT_GRID_ANALYSIS_CHANNELS
+  const sampleRate = BEAT_GRID_ANALYSIS_SAMPLE_RATE
+  const chunks: Buffer[] = []
+  let stderrText = ''
+
+  await new Promise<void>((resolve, reject) => {
+    const child = childProcess.spawn(
+      ffmpegPath,
+      [
+        '-v',
+        'error',
+        '-threads',
+        '1',
+        '-i',
+        filePath,
+        '-f',
+        'f32le',
+        '-acodec',
+        'pcm_f32le',
+        '-ac',
+        String(channels),
+        '-ar',
+        String(sampleRate),
+        'pipe:1'
+      ],
+      {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: buildAnalysisChildEnv(process.env)
+      }
+    )
+    lowerAnalysisProcessPriority(child)
+
+    child.stdout.on('data', (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    })
+    child.stderr.on('data', (chunk: Buffer | string) => {
+      stderrText += chunk.toString()
+      if (stderrText.length > 4000) {
+        stderrText = stderrText.slice(-4000)
+      }
+    })
+    child.once('error', (error) => reject(error))
+    child.once('exit', (code) => {
+      if (code === 0) {
+        resolve()
+        return
+      }
+      reject(new Error(stderrText.trim() || `FFmpeg exited with code ${code}`))
+    })
+  })
+
+  const pcmData = Buffer.concat(chunks)
+  const frameByteSize = channels * 4
+  const usableByteLength = pcmData.byteLength - (pcmData.byteLength % frameByteSize)
+  if (usableByteLength <= 0) {
+    throw new Error('FFmpeg decoded empty PCM for waveform')
+  }
+  const normalizedPcmData =
+    usableByteLength === pcmData.byteLength ? pcmData : pcmData.subarray(0, usableByteLength)
+  return {
+    pcmData: normalizedPcmData,
+    sampleRate,
+    channels,
+    totalFrames: usableByteLength / frameByteSize,
+    decoderBackend: 'ffmpeg-waveform'
+  }
 }
 
 const decodeBeatGridPcmForFile = async (filePath: string): Promise<DecodedBeatGridPcm> => {
@@ -230,10 +314,14 @@ const analyzeKeyForFileInternal = async (
   const needsKey = Boolean(options.needsKey)
   const needsBpm = Boolean(options.needsBpm)
   const needsWaveform = Boolean(options.needsWaveform)
-  const needsRustDecode = needsKey || needsWaveform
+  const useFfmpegWaveformDecode = needsWaveform && shouldUseFfmpegWaveformDecode(filePath)
+  const useFfmpegPrimaryDecode = needsKey && useFfmpegWaveformDecode
+  const needsRustDecode =
+    (needsKey && !useFfmpegPrimaryDecode) || (needsWaveform && !useFfmpegWaveformDecode)
   let rust: RustBinding | null = null
-  let decoded: ReturnType<RustBinding['decodeAudioFile']> | null = null
+  let decoded: DecodedAudioPcm | null = null
   let beatGridDecoded: DecodedBeatGridPcm | null = null
+  let reusableFfmpegWaveformDecoded: DecodedWaveformPcm | null = null
   const resolveRustBinding = () => {
     if (!rust) {
       rust = getRustBinding()
@@ -241,7 +329,7 @@ const analyzeKeyForFileInternal = async (
     return rust
   }
 
-  if (needsRustDecode || needsBpm) {
+  if (needsRustDecode || useFfmpegPrimaryDecode || needsBpm) {
     reportProgress({
       stage: 'decode-start',
       needsKey: options.needsKey,
@@ -249,11 +337,15 @@ const analyzeKeyForFileInternal = async (
       needsWaveform: options.needsWaveform
     })
     const decodeStartAt = Date.now()
-    if (needsRustDecode) {
-      decoded = resolveRustBinding().decodeAudioFile(filePath)
-      if (decoded.error) {
-        throw new Error(decoded.error)
+    if (useFfmpegPrimaryDecode) {
+      reusableFfmpegWaveformDecoded = await decodeWaveformPcmWithFfmpeg(filePath)
+      decoded = reusableFfmpegWaveformDecoded
+    } else if (needsRustDecode) {
+      const rustDecoded = resolveRustBinding().decodeAudioFile(filePath)
+      if (rustDecoded.error) {
+        throw new Error(rustDecoded.error)
       }
+      decoded = rustDecoded
     } else {
       beatGridDecoded = await decodeBeatGridPcmForFile(filePath)
     }
@@ -374,29 +466,43 @@ const analyzeKeyForFileInternal = async (
       typeof resolveRustBinding().computeMixxxWaveform === 'function')
   ) {
     if (!decoded) {
-      throw new Error('Rust PCM decode missing for waveform analysis')
+      if (!useFfmpegWaveformDecode) {
+        throw new Error('Rust PCM decode missing for waveform analysis')
+      }
     }
     reportProgress({ stage: 'waveform-start' })
     const waveformStartAt = Date.now()
     try {
       const targetRate = UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE
+      let waveformDecoded: DecodedWaveformPcm | DecodedAudioPcm
+      if (useFfmpegWaveformDecode) {
+        if (reusableFfmpegWaveformDecoded) {
+          waveformDecoded = reusableFfmpegWaveformDecoded
+        } else {
+          const ffmpegWaveformDecoded = await decodeWaveformPcmWithFfmpeg(filePath)
+          reusableFfmpegWaveformDecoded = ffmpegWaveformDecoded
+          waveformDecoded = ffmpegWaveformDecoded
+        }
+      } else {
+        waveformDecoded = decoded as DecodedAudioPcm
+      }
       result.mixxxWaveformData =
         typeof resolveRustBinding().computeMixxxWaveformWithRate === 'function'
           ? resolveRustBinding().computeMixxxWaveformWithRate!(
-              decoded.pcmData,
-              decoded.sampleRate,
-              decoded.channels,
+              waveformDecoded.pcmData,
+              waveformDecoded.sampleRate,
+              waveformDecoded.channels,
               targetRate
             )
           : resolveRustBinding().computeMixxxWaveform!(
-              decoded.pcmData,
-              decoded.sampleRate,
-              decoded.channels
+              waveformDecoded.pcmData,
+              waveformDecoded.sampleRate,
+              waveformDecoded.channels
             )
       const rawWaveformData = computeRawWaveform(
-        decoded.pcmData,
-        decoded.sampleRate,
-        decoded.channels,
+        waveformDecoded.pcmData,
+        waveformDecoded.sampleRate,
+        waveformDecoded.channels,
         COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE
       )
       result.unifiedDisplayWaveformData = result.mixxxWaveformData
@@ -405,7 +511,9 @@ const analyzeKeyForFileInternal = async (
       reportProgress({
         stage: 'waveform-done',
         waveformMs: Date.now() - waveformStartAt,
-        detail: 'waveform-ok'
+        detail: String(waveformDecoded.decoderBackend || '').startsWith('ffmpeg-')
+          ? 'waveform-ok:ffmpeg'
+          : 'waveform-ok'
       })
     } catch {
       result.mixxxWaveformData = null

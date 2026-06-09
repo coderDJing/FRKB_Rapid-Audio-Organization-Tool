@@ -15,6 +15,8 @@ import { log } from '../../log'
 import { requestBackgroundTaskExecution } from '../backgroundOrchestrator'
 import { getBackgroundIdleSnapshot } from '../backgroundIdleGate'
 import store from '../../store'
+import { shouldAcceptBeatGridCacheVersion } from '../beatGridAlgorithmVersion'
+import { shouldAcceptKeyAnalysisCacheVersion } from '../keyAnalysisAlgorithmVersion'
 import type { KeyAnalysisPersistence } from './persistence'
 import {
   BACKGROUND_BATCH_SIZE,
@@ -29,7 +31,9 @@ import {
   BACKGROUND_LIBRARY_TREE_CLEANUP_INTERVAL_MS,
   BACKGROUND_SCAN_COOLDOWN_MS,
   BACKGROUND_SCAN_ROW_LIMIT,
+  isValidBarBeatOffset,
   isValidBpm,
+  isValidFirstBeatMs,
   isValidKeyText,
   normalizePath,
   type BackgroundDirItem,
@@ -40,6 +44,17 @@ import {
   type KeyAnalysisPriority,
   type KeyAnalysisSource
 } from './types'
+
+type CachedAnalysisInfo = {
+  key?: unknown
+  keyAnalysisAlgorithmVersion?: unknown
+  bpm?: unknown
+  firstBeatMs?: unknown
+  barBeatOffset?: unknown
+  beatThisWindowCount?: unknown
+  beatGridAlgorithmVersion?: unknown
+  beatGridSource?: unknown
+}
 
 type KeyAnalysisBackgroundDeps = {
   events: EventEmitter
@@ -78,6 +93,15 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   let lastLibraryTreeCleanupAt = 0
   let lastCoverCleanupAt = 0
   let coverCleanupRootIndex = 0
+
+  const hasCurrentKeyAnalysis = (info: CachedAnalysisInfo | null | undefined) =>
+    isValidKeyText(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
+
+  const hasCurrentBeatGridAnalysis = (info: CachedAnalysisInfo | null | undefined) =>
+    isValidBpm(info?.bpm) &&
+    isValidFirstBeatMs(info?.firstBeatMs) &&
+    isValidBarBeatOffset(info?.barBeatOffset) &&
+    shouldAcceptBeatGridCacheVersion(info)
 
   const getBackgroundStatus = (): KeyAnalysisBackgroundStatus => {
     const pending = deps.getPendingBackgroundCount()
@@ -442,14 +466,14 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       lastRowId = rowId
       const filePath = typeof row?.file_path === 'string' ? row.file_path.trim() : ''
       if (!filePath) continue
-      let info: { key?: unknown; bpm?: unknown } | null = null
+      let info: CachedAnalysisInfo | null = null
       try {
-        info = JSON.parse(String(row?.info_json || '{}')) as { key?: unknown; bpm?: unknown }
+        info = JSON.parse(String(row?.info_json || '{}')) as CachedAnalysisInfo
       } catch {
         info = null
       }
-      const hasKey = isValidKeyText(info?.key)
-      const hasBpm = isValidBpm(info?.bpm)
+      const hasKey = hasCurrentKeyAnalysis(info)
+      const hasBpm = hasCurrentBeatGridAnalysis(info)
       const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
       if (!listRoot) continue
       const absFilePath = LibraryCacheDb.resolveCacheFilePath(listRoot, filePath)
@@ -529,10 +553,8 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           }
           const cached = await LibraryCacheDb.loadSongCacheEntry(current.listRoot, filePath)
           if (cached === undefined) continue
-          const cachedKey = cached?.info?.key
-          const cachedBpm = cached?.info?.bpm
-          const hasKey = isValidKeyText(cachedKey)
-          const hasBpm = isValidBpm(cachedBpm)
+          const hasKey = hasCurrentKeyAnalysis(cached?.info)
+          const hasBpm = hasCurrentBeatGridAnalysis(cached?.info)
           let hasWaveform = false
           if (cached && Number.isFinite(cached.size) && Number.isFinite(cached.mtimeMs)) {
             hasWaveform = await LibraryCacheDb.hasUnifiedDisplayWaveformCacheEntryByMeta(

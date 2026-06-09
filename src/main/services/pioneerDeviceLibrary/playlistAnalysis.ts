@@ -4,6 +4,7 @@ import { enqueueKeyAnalysisList } from '../keyAnalysisQueue'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import { shouldAcceptBeatGridCacheVersion } from '../beatGridAlgorithmVersion'
+import { shouldAcceptKeyAnalysisCacheVersion } from '../keyAnalysisAlgorithmVersion'
 import { findSongListRoot } from '../cacheMaintenance'
 import { ensurePioneerUsbIdentity } from './usbIdentity'
 import type { ISongInfo } from '../../../types/globals'
@@ -64,6 +65,7 @@ const hasCompleteFrkbAnalysis = (info: Partial<ISongInfo> | null | undefined) =>
   const barBeatOffset = Number(info.barBeatOffset)
   return (
     keyText.length > 0 &&
+    shouldAcceptKeyAnalysisCacheVersion(info) &&
     Number.isFinite(bpm) &&
     bpm > 0 &&
     Number.isFinite(firstBeatMs) &&
