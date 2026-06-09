@@ -1,6 +1,6 @@
 import type { ISongMemoryCue } from '../types/globals'
 
-export const REKORDBOX_DEFAULT_MEMORY_CUE_COLOR = '#df4d4d'
+const REKORDBOX_DEFAULT_MEMORY_CUE_COLOR = '#df4d4d'
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const MEMORY_CUE_EPSILON_SEC = 0.0001

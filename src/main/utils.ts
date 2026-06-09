@@ -121,8 +121,6 @@ export function resolveLibraryChildPath(parentAbsPath: string, childName: string
   return absPath
 }
 
-// 指纹比较与阈值逻辑已移除（当前仅使用音频内容哈希判重）
-
 export async function getSongsAnalyseResult(
   songFilePaths: string[],
   processFunc: Function
@@ -149,7 +147,6 @@ export async function getSongsAnalyseResult(
     const common: md5 = {
       sha256_Hash: item.sha256Hash,
       file_path: item.filePath,
-      // 仅保留必要字段
       error: item.error
     }
 
@@ -157,15 +154,6 @@ export async function getSongsAnalyseResult(
       errorSongsAnalyseResult.push(common)
       continue
     }
-
-    // 1. SHA256 直接判重复
-    if (store.songFingerprintList.includes(common.sha256_Hash)) {
-      // 指纹重复标记仅用于命中检查，不再额外写回字段
-    }
-
-    // 指纹 hash 与相似度判定分支已移除
-
-    // 重复标记字段已移除（仅保留布尔含义于外层流程）
 
     songsAnalyseResult.push(common)
   }

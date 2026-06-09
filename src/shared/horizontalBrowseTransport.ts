@@ -104,7 +104,7 @@ export type HorizontalBrowseTransportRecordingStatus = {
   error?: string
 }
 
-export const createEmptyHorizontalBrowseTransportDeckSnapshot = (
+const createEmptyHorizontalBrowseTransportDeckSnapshot = (
   deck: HorizontalBrowseDeckKey
 ): HorizontalBrowseTransportDeckSnapshot => ({
   deck,

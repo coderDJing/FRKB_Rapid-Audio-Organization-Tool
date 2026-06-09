@@ -3,8 +3,8 @@ import { buildRawWaveformColorProfile, type RawWaveformColorSource } from './raw
 export const UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION = 1
 export const UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION = 2
 export const UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE = 1200
-export const UNIFIED_DISPLAY_WAVEFORM_OVERVIEW_RATE = 32
-export const UNIFIED_DISPLAY_WAVEFORM_BODY_RATE_DIVISOR = 4
+const UNIFIED_DISPLAY_WAVEFORM_OVERVIEW_RATE = 32
+const UNIFIED_DISPLAY_WAVEFORM_BODY_RATE_DIVISOR = 4
 
 export type UnifiedDisplayWaveformDetailData = {
   version: number
@@ -27,14 +27,14 @@ export type UnifiedDisplayWaveformDetailData = {
   overviewHeight: Uint8Array
 }
 
-export type UnifiedDisplayWaveformBuildSourceBand = {
+type UnifiedDisplayWaveformBuildSourceBand = {
   left: Uint8Array
   right: Uint8Array
   peakLeft?: Uint8Array
   peakRight?: Uint8Array
 }
 
-export type UnifiedDisplayWaveformBuildSource = {
+type UnifiedDisplayWaveformBuildSource = {
   duration: number
   sampleRate: number
   bands: {

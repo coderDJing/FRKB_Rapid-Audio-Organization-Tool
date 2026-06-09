@@ -51,14 +51,14 @@ function compareMixtapeItemRecordOrder(a: MixtapeItemRecord, b: MixtapeItemRecor
   return a.id.localeCompare(b.id)
 }
 
-export type MixtapeAppendItem = {
+type MixtapeAppendItem = {
   filePath: string
   originPlaylistUuid?: string | null
   originPathSnapshot?: string | null
   info?: Record<string, unknown> | null
 }
 
-export type MixtapeFilePathUpdate = {
+type MixtapeFilePathUpdate = {
   id: string
   filePath: string
 }

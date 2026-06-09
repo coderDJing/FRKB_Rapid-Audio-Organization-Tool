@@ -1,4 +1,4 @@
-export type WaveformDisplayRgbColor = {
+type WaveformDisplayRgbColor = {
   r: number
   g: number
   b: number

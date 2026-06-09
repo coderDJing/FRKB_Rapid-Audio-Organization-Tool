@@ -27,8 +27,8 @@ const latestMainWindowSizeMigration = MAIN_WINDOW_SIZE_MIGRATIONS[
   minHeight: 600
 }
 
-export const MAIN_WINDOW_DEFAULT_WIDTH = latestMainWindowSizeMigration.minWidth
-export const MAIN_WINDOW_DEFAULT_HEIGHT = latestMainWindowSizeMigration.minHeight
+const MAIN_WINDOW_DEFAULT_WIDTH = latestMainWindowSizeMigration.minWidth
+const MAIN_WINDOW_DEFAULT_HEIGHT = latestMainWindowSizeMigration.minHeight
 export const MAIN_WINDOW_MIN_WIDTH = latestMainWindowSizeMigration.minWidth
 export const MAIN_WINDOW_MIN_HEIGHT = latestMainWindowSizeMigration.minHeight
 

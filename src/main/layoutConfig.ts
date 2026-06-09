@@ -10,8 +10,6 @@ import {
 } from './layoutConfigDefaults'
 
 export {
-  MAIN_WINDOW_DEFAULT_HEIGHT,
-  MAIN_WINDOW_DEFAULT_WIDTH,
   MAIN_WINDOW_MIN_HEIGHT,
   MAIN_WINDOW_MIN_WIDTH,
   defaultLayoutConfig

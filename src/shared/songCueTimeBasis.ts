@@ -23,8 +23,7 @@ const resolveTimeBasisOffsetSec = (timeBasisOffsetMs: unknown) => {
   return Number.isFinite(offsetMs) && offsetMs > 0 ? offsetMs / 1000 : 0
 }
 
-export const isRekordboxAudioCueSource = (source: unknown) =>
-  normalizeCueSource(source) === 'rekordbox'
+const isRekordboxAudioCueSource = (source: unknown) => normalizeCueSource(source) === 'rekordbox'
 
 export const resolveSongCueTimelineSec = (
   seconds: unknown,

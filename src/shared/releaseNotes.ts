@@ -33,7 +33,7 @@ export const normalizeReleaseVersion = (version: string): string =>
 export const resolveReleaseNotesChannel = (version: string): ReleaseNotesChannel =>
   normalizeReleaseVersion(version).includes('-') ? 'rc' : 'stable'
 
-export const isRcReleaseVersion = (version: string): boolean =>
+const isRcReleaseVersion = (version: string): boolean =>
   /-rc(?:[.-]|$)/i.test(normalizeReleaseVersion(version))
 
 const parseReleaseVersion = (version: string): ParsedReleaseVersion | null => {

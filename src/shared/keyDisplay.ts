@@ -48,12 +48,12 @@ const normalizeKeyText = (keyText: string): string => {
   return `${root}${accidental}${minor}`
 }
 
-export const mapKeyToCamelot = (keyText: string): string => {
+const mapKeyToCamelot = (keyText: string): string => {
   const normalized = normalizeKeyText(keyText)
   return KEY_TO_CAMELOT[normalized] || normalized
 }
 
-export const normalizeCamelotKey = (keyText: string): string => {
+const normalizeCamelotKey = (keyText: string): string => {
   const camelot = mapKeyToCamelot(keyText)
   const match = camelot.match(CAMELOT_KEY_PATTERN)
   if (!match) return ''

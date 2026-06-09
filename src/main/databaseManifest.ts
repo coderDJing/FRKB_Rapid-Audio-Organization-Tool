@@ -3,7 +3,7 @@ import path = require('path')
 import { v4 as uuidV4 } from 'uuid'
 
 export const MANIFEST_FILE_NAME = 'FRKB.database.frkbdb'
-export const CURRENT_MANIFEST_VERSION = 2
+const CURRENT_MANIFEST_VERSION = 2
 
 export interface FrkbManifest {
   type: 'frkb_root'
@@ -18,7 +18,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
-export function getManifestPath(dirPath: string): string {
+function getManifestPath(dirPath: string): string {
   return path.join(dirPath, MANIFEST_FILE_NAME)
 }
 
@@ -30,7 +30,7 @@ export async function readManifestFile(filePath: string): Promise<FrkbManifest> 
   return data as FrkbManifest
 }
 
-export function isValidManifest(obj: unknown): obj is FrkbManifest {
+function isValidManifest(obj: unknown): obj is FrkbManifest {
   return (
     isRecord(obj) &&
     obj.type === 'frkb_root' &&
@@ -62,7 +62,7 @@ function parseVersion(version: string): ParsedVersion | null {
   }
 }
 
-export function compareVersions(a: string, b: string): number | null {
+function compareVersions(a: string, b: string): number | null {
   const pa = parseVersion(a)
   const pb = parseVersion(b)
   if (!pa || !pb) return null
@@ -81,7 +81,7 @@ export function compareVersions(a: string, b: string): number | null {
   return 0
 }
 
-export function isVersionAtLeast(current: string, minimum: string): boolean {
+function isVersionAtLeast(current: string, minimum: string): boolean {
   const cmp = compareVersions(current, minimum)
   if (cmp === null) return true
   return cmp >= 0

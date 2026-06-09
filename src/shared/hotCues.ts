@@ -12,8 +12,8 @@ export const HOT_CUE_SLOT_COLORS = [
   '#27ae60',
   '#56ccf2'
 ] as const
-export const REKORDBOX_DEFAULT_HOT_CUE_COLOR = '#30d26e'
-export const REKORDBOX_LOOP_HOT_CUE_COLOR = '#f2994a'
+const REKORDBOX_DEFAULT_HOT_CUE_COLOR = '#30d26e'
+const REKORDBOX_LOOP_HOT_CUE_COLOR = '#f2994a'
 
 const HOT_CUE_EPSILON_SEC = 0.0001
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -37,7 +37,7 @@ const normalizeCueOrder = (value: unknown) => {
 export const resolveSongHotCueLabel = (slot: number) =>
   HOT_CUE_SLOT_LABELS[clampNumber(Math.floor(Number(slot) || 0), 0, HOT_CUE_SLOT_COUNT - 1)] || ''
 
-export const resolveSongHotCueColor = (slot: number) =>
+const resolveSongHotCueColor = (slot: number) =>
   HOT_CUE_SLOT_COLORS[clampNumber(Math.floor(Number(slot) || 0), 0, HOT_CUE_SLOT_COUNT - 1)] ||
   HOT_CUE_SLOT_COLORS[0]
 
