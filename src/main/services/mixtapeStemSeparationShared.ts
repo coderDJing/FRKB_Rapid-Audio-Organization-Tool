@@ -20,21 +20,12 @@ import {
   type MixtapeStemStatus,
   upsertMixtapeItemStemStateById
 } from '../mixtapeStemDb'
-import {
-  computeLibraryStemSourceSignature,
-  resolveLibraryStemCacheDir,
-  toSafeStemPathSegment
-} from './libraryStemAssetStorage'
+import { resolveLibraryStemCacheDir } from './libraryStemAssetStorage'
 
-export const STEM_GPU_JOB_CONCURRENCY_MIN = 1
-export const STEM_GPU_JOB_CONCURRENCY_MAX = 3
-export const STEM_GPU_JOB_CONCURRENCY_DIRECTML_MAX = 3
 export const STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_2 = 16
 export const STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_3 = 24
 export const STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_2 = 5
 export const STEM_FREE_MEMORY_GB_FOR_GPU_CONCURRENCY_3 = 8
-export const STEM_CPU_JOB_CONCURRENCY_MAX = 4
-export const STEM_CPU_JOB_CORE_DIVISOR = 2
 export const STEM_PROCESS_TIMEOUT_MS = 60 * 60 * 1000
 export const STEM_PROCESS_TIMEOUT_MAX_MS = 2 * 60 * 60 * 1000
 export const STEM_CPU_PROCESS_TIMEOUT_CAP_MS = 8 * 60 * 1000
@@ -61,7 +52,6 @@ export const DEMUCS_PROFILE_OPTIONS: Record<
 }
 export const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_PROFILE)
 export const DEFAULT_STEM_VERSION = 'demucs-waveform-builtin-20260313-stem-v2'
-export const STEM_CACHE_DIR_NAME = 'stems'
 
 export type MixtapeStemQueueTarget = {
   playlistId: string
@@ -172,7 +162,6 @@ export const inFlightJobMap = new Map<string, MixtapeStemQueueJob>()
 export let activeWorkers = 0
 export let stemDeviceProbeSnapshot: MixtapeStemDeviceProbeSnapshot | null = null
 export let stemDeviceProbePromise: Promise<MixtapeStemDeviceProbeSnapshot> | null = null
-export let stemQueueConcurrencySnapshot = 0
 export const cpuSlowHintNotifiedPlaylistIdSet = new Set<string>()
 
 export const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
@@ -187,18 +176,6 @@ export const normalizeText = (value: unknown, maxLen = 2000): string => {
 export const normalizeNumberOrNull = (value: unknown): number | null => {
   const parsed = Number(value)
   if (!Number.isFinite(parsed)) return null
-  return parsed
-}
-
-export const normalizeNonNegativeInt = (value: unknown): number => {
-  const parsed = Math.floor(Number(value))
-  if (!Number.isFinite(parsed) || parsed < 0) return 0
-  return parsed
-}
-
-export const normalizePositiveTimestamp = (value: unknown): number => {
-  const parsed = Math.floor(Number(value))
-  if (!Number.isFinite(parsed) || parsed <= 0) return 0
   return parsed
 }
 
@@ -506,13 +483,6 @@ export const createStemError = (code: string, message: string): Error & { code: 
   error.code = code
   return error
 }
-
-export const toSafePathSegment = (value: string, fallback = 'default') => {
-  return toSafeStemPathSegment(value, fallback)
-}
-
-export const buildStemSourceHash = async (filePath: string): Promise<string> =>
-  await computeLibraryStemSourceSignature(filePath)
 
 export const resolveStemCacheDir = async (params: {
   filePath: string

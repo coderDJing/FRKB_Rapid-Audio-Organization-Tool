@@ -83,12 +83,6 @@ export const registerBackgroundForegroundBusyProvider = (
   foregroundBusyProviderMap.set(normalizedName, provider)
 }
 
-export const unregisterBackgroundForegroundBusyProvider = (providerName: string) => {
-  const normalizedName = String(providerName || '').trim()
-  if (!normalizedName) return
-  if (!foregroundBusyProviderMap.delete(normalizedName)) return
-}
-
 export const getBackgroundIdleSnapshot = (): BackgroundIdleSnapshot => {
   const idleThresholdSec = resolveIdleThresholdSec()
   const deepIdleThresholdSec = resolveDeepIdleThresholdSec()

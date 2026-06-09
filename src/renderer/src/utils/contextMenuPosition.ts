@@ -50,7 +50,7 @@ const resolveTopDragInsetFrom = (elements: Element[]) => {
   return maxBottom
 }
 
-export const resolveTopDragSafeInset = (): number => {
+const resolveTopDragSafeInset = (): number => {
   if (typeof window === 'undefined' || typeof document === 'undefined') return 0
 
   const now = Date.now()

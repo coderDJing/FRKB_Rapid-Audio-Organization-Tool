@@ -33,7 +33,6 @@ export const MIXTAPE_ENVELOPE_PARAMS_STEM: MixtapeEnvelopeParamId[] = [
   'drums',
   'volume'
 ]
-export const MIXTAPE_ENVELOPE_PARAMS: MixtapeEnvelopeParamId[] = MIXTAPE_ENVELOPE_PARAMS_STEM
 export const MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM = {
   gain: 'gainEnvelope',
   high: 'highEnvelope',
@@ -264,28 +263,6 @@ export const sampleGainEnvelopeAtSec = (
   sec: number,
   fallbackGain: number = 1
 ) => sampleMixEnvelopeAtSec('gain', points, sec, fallbackGain)
-
-export const buildGainEnvelopePolyline = (params: {
-  points?: MixtapeGainPoint[]
-  durationSec: number
-  sampleCount: number
-  minDb: number
-  maxDb: number
-}) => {
-  const { points, durationSec, sampleCount, minDb, maxDb } = params
-  const safeCount = Math.max(2, Math.floor(sampleCount))
-  const safeDuration = Math.max(0, Number(durationSec) || 0)
-  const segments: string[] = []
-  for (let i = 0; i < safeCount; i += 1) {
-    const ratio = safeCount > 1 ? i / (safeCount - 1) : 0
-    const sec = safeDuration * ratio
-    const gain = sampleGainEnvelopeAtSec(points, sec, 1)
-    const y = mapGainToEnvelopeYPercent(gain, minDb, maxDb).toFixed(3)
-    const x = (ratio * 100).toFixed(3)
-    segments.push(`${x},${y}`)
-  }
-  return segments.join(' ')
-}
 
 export const mapGainToEnvelopeYPercent = (gain: number, minDb: number, maxDb: number) => {
   const span = Math.max(0.0001, maxDb - minDb)

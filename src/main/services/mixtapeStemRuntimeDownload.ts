@@ -303,7 +303,7 @@ export const getStemRuntimeDownloadState = (): MixtapeStemRuntimeDownloadState =
   ...runtimeDownloadState
 })
 
-export const resetStemRuntimeDownloadState = () => {
+const resetStemRuntimeDownloadState = () => {
   runtimeEnsurePromiseByProfile.clear()
   runtimeManifestPromise = null
   runtimeManifestLastError = ''

@@ -1,7 +1,5 @@
 export type MixtapeStemProfile = 'quality'
 
-export const MIXTAPE_STEM_PROFILES: MixtapeStemProfile[] = ['quality']
-
 export const DEFAULT_MIXTAPE_STEM_PROFILE: MixtapeStemProfile = 'quality'
 export const DEFAULT_MIXTAPE_STEM_QUALITY_MODEL = 'htdemucs'
 export const DEFAULT_MIXTAPE_STEM_BASE_MODEL = DEFAULT_MIXTAPE_STEM_QUALITY_MODEL

@@ -993,14 +993,6 @@ export const resolveBeatThisRuntime = (): BeatThisResolvedRuntime | null => {
   return null
 }
 
-export const isBeatThisRuntimeAvailableLocally = (): boolean => {
-  try {
-    return resolveBeatThisRuntime() !== null
-  } catch {
-    return false
-  }
-}
-
 export const getBeatThisRuntimeAvailabilitySnapshot = (): boolean | null => {
   if (cachedResolvedRuntime === undefined) return null
   return cachedResolvedRuntime !== null

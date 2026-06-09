@@ -766,21 +766,6 @@ export async function pruneMissingLibraryNodes(dbRoot?: string): Promise<number>
   }
 }
 
-export function findLibraryNodeByUuid(uuid: string, dbRoot?: string): LibraryNodeRow | null {
-  const db = getDb(dbRoot)
-  if (!db || !uuid) return null
-  try {
-    const row = db
-      .prepare(
-        'SELECT uuid, parent_uuid, dir_name, node_type, sort_order FROM library_nodes WHERE uuid = ?'
-      )
-      .get(uuid)
-    return toNodeRow(row)
-  } catch {
-    return null
-  }
-}
-
 export function findLibraryNodeByPath(relPath: string, dbRoot?: string): LibraryNodeRow | null {
   const db = getDb(dbRoot)
   if (!db || !relPath) return null
@@ -861,22 +846,6 @@ export function updateLibraryNodeName(uuid: string, dirName: string, dbRoot?: st
     return true
   } catch (error) {
     log.error('[sqlite] library node rename failed', error)
-    return false
-  }
-}
-
-export function updateLibraryNodeType(
-  uuid: string,
-  nodeType: LibraryNodeType,
-  dbRoot?: string
-): boolean {
-  const db = getDb(dbRoot)
-  if (!db || !uuid) return false
-  try {
-    db.prepare('UPDATE library_nodes SET node_type = ? WHERE uuid = ?').run(nodeType, uuid)
-    return true
-  } catch (error) {
-    log.error('[sqlite] library node type update failed', error)
     return false
   }
 }

@@ -15,7 +15,6 @@ export type MixtapeProjectMode = {
   stemProfile: MixtapeStemProfile
 }
 
-export const DEFAULT_MIXTAPE_STEM_MODE: MixtapeStemMode = FIXED_MIXTAPE_STEM_MODE
 export const DEFAULT_MIXTAPE_MIX_MODE: MixtapeMixMode = 'stem'
 
 const pendingProjectModeByPlaylistId = new Map<string, MixtapeProjectMode>()
@@ -116,42 +115,5 @@ export async function persistMixtapeProjectMode(
       confirmShow: false
     })
     return false
-  }
-}
-
-export async function getMixtapeProjectMode(playlistId: string): Promise<MixtapeProjectMode> {
-  const normalizedPlaylistId = typeof playlistId === 'string' ? playlistId.trim() : ''
-  if (!normalizedPlaylistId) {
-    return {
-      mixMode: DEFAULT_MIXTAPE_MIX_MODE,
-      stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
-    }
-  }
-  try {
-    const mixModeResult = await window.electron.ipcRenderer.invoke('mixtape:project:get-mix-mode', {
-      playlistId: normalizedPlaylistId
-    })
-    const stemProfileResult = await window.electron.ipcRenderer.invoke(
-      'mixtape:project:get-stem-profile',
-      {
-        playlistId: normalizedPlaylistId
-      }
-    )
-    return {
-      mixMode: normalizeMixtapeMixMode(mixModeResult?.mixMode),
-      stemProfile: normalizeMixtapeStemProfile(
-        stemProfileResult?.stemProfile,
-        DEFAULT_MIXTAPE_STEM_PROFILE
-      )
-    }
-  } catch (error) {
-    console.error('[mixtape] read project mode failed', {
-      playlistId: normalizedPlaylistId,
-      error
-    })
-    return {
-      mixMode: DEFAULT_MIXTAPE_MIX_MODE,
-      stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
-    }
   }
 }

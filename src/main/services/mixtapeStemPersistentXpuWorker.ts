@@ -494,12 +494,6 @@ class PersistentXpuStemWorkerManager {
     const slot = await this.reserveSlot(signature)
     await slot.runInference(params, signature)
   }
-
-  stopAll(reason: string) {
-    for (const slot of this.slots) {
-      slot.stopWorker(reason)
-    }
-  }
 }
 
 const manager = new PersistentXpuStemWorkerManager()
@@ -508,8 +502,4 @@ export const runPersistentXpuStemInference = async (
   params: RunPersistentXpuStemInferenceParams
 ) => {
   await manager.runInference(params)
-}
-
-export const stopPersistentXpuStemWorker = (reason: string) => {
-  manager.stopAll(reason)
 }

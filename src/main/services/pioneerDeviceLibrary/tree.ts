@@ -1,5 +1,4 @@
 import path from 'node:path'
-import { log } from '../../log'
 import { enrichPioneerTracksWithCueData } from './cues'
 import { markMissingFiles } from '../fileExistenceCheck'
 import { probePioneerDeviceLibraryRoot } from './deviceDetection'
@@ -268,17 +267,6 @@ export function buildPioneerPlaylistTree(
 
   sortRecursive(roots)
   return roots
-}
-
-export async function debugWritePioneerPlaylistTreeLog(
-  rootPath: string,
-  libraryType: PioneerLibraryKind = 'deviceLibrary'
-): Promise<void> {
-  try {
-    await loadPioneerPlaylistTreeByDrivePath(rootPath, libraryType)
-  } catch (error) {
-    log.error('[pioneer-device-library] playlist tree load failed', { rootPath, error })
-  }
 }
 
 const formatDuration = (durationSec: number) => {

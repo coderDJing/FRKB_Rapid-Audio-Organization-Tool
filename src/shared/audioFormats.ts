@@ -43,21 +43,3 @@ export const ENCODER_REQUIREMENTS: Record<SupportedAudioFormat, string[]> = {
   tta: ['tta'],
   wv: ['wavpack']
 }
-
-export const METADATA_PRESERVABLE_FORMATS: SupportedAudioFormat[] = [
-  'mp3',
-  'flac',
-  'wav',
-  'aif',
-  'aiff',
-  'ogg',
-  'opus',
-  'aac',
-  'm4a',
-  'mp4',
-  'wma',
-  'dts',
-  'mka',
-  'webm',
-  'wv'
-]

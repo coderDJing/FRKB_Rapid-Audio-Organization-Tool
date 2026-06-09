@@ -1,10 +1,4 @@
-import {
-  BPM_MIN_VALUE,
-  BPM_POINT_SEC_EPSILON,
-  resolveTrackBpmEnvelopeBaseValue,
-  resolveTrackBpmEnvelopeClampRange
-} from '@renderer/composables/mixtape/trackTempoModel'
-import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
+import { BPM_MIN_VALUE, BPM_POINT_SEC_EPSILON } from '@renderer/composables/mixtape/trackTempoModel'
 
 const BPM_VISUAL_MIN_Y_PERCENT = 75
 
@@ -44,40 +38,4 @@ export const mapTrackBpmYPercentToValue = (
   }
   const ratio = (safeY - 50) / Math.max(BPM_POINT_SEC_EPSILON, BPM_VISUAL_MIN_Y_PERCENT - 50)
   return Math.max(BPM_MIN_VALUE, Math.round(safeBase - (safeBase - safeMin) * ratio))
-}
-
-export const resolveTrackBpmEnvelopeVisualRange = (params: {
-  track: MixtapeTrack
-  tracks: MixtapeTrack[]
-  resolveDurationSec: (track: MixtapeTrack) => number
-}) => {
-  const baseBpm = resolveTrackBpmEnvelopeBaseValue(params.track)
-  const clampRange = resolveTrackBpmEnvelopeClampRange(baseBpm)
-  return {
-    minBpm: clampRange.minBpm,
-    maxBpm: clampRange.maxBpm
-  }
-}
-
-export const buildTrackBpmEnvelopePolylineByControlPoints = (params: {
-  points: MixtapeBpmPoint[]
-  durationSec: number
-  baseBpm: number
-  minBpm: number
-  maxBpm: number
-}) => {
-  const safeDuration = Math.max(0, Number(params.durationSec) || 0)
-  if (!safeDuration || params.points.length < 2) return ''
-  return params.points
-    .map((point) => {
-      const x = (clampNumber(point.sec / safeDuration, 0, 1) * 100).toFixed(6)
-      const y = mapTrackBpmToYPercent(
-        point.bpm,
-        params.baseBpm,
-        params.minBpm,
-        params.maxBpm
-      ).toFixed(3)
-      return `${x},${y}`
-    })
-    .join(' ')
 }

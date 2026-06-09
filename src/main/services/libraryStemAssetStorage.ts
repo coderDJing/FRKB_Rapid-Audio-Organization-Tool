@@ -47,18 +47,6 @@ export function isUnderPath(parentPath: string, targetPath: string): boolean {
   return target === parent || target.startsWith(parent + path.sep)
 }
 
-export function isPathInLibrary(filePath: string): boolean {
-  const libraryRoot = getLibraryRootAbs()
-  if (!libraryRoot) return false
-  return isUnderPath(libraryRoot, filePath)
-}
-
-export function isPathInMixtapeVault(filePath: string): boolean {
-  const vaultRoot = getMixtapeVaultRootAbs()
-  if (!vaultRoot) return false
-  return isUnderPath(vaultRoot, filePath)
-}
-
 const hashFileSha256 = async (filePath: string): Promise<string> =>
   await new Promise((resolve, reject) => {
     const hash = crypto.createHash('sha256')

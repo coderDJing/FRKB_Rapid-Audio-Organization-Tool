@@ -1,17 +1,10 @@
 import {
   normalizeBeatOffset,
-  resolveBeatSecByBpm,
-  resolveTempoRatioByBpm
+  resolveBeatSecByBpm
 } from '@renderer/composables/mixtape/beatSyncModel'
-import {
-  buildProjectedMasterGridTempoPoints,
-  mapMixtapeMasterGridTimelineSec,
-  sampleMixtapeMasterGridBpmAtSec
-} from '@renderer/composables/mixtape/mixtapeMasterGrid'
-import { resolveTrackTimelineDurationFromSource } from '@renderer/composables/mixtape/trackTimeMapCore'
+import { sampleMixtapeMasterGridBpmAtSec } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
   clampTrackTempoNumber,
-  BPM_MIN_VALUE,
   BPM_POINT_SEC_EPSILON,
   buildFlatTrackBpmEnvelope,
   normalizeTrackBpmValue,
@@ -168,103 +161,6 @@ export const sampleMixtapeGlobalBpmAtSec = (
   sec: number,
   fallbackBpm: number
 ) => sampleMixtapeMasterGridBpmAtSec(points, sec, fallbackBpm)
-
-export const mapMixtapeGlobalTimelineSec = (params: {
-  fromPoints: MixtapeBpmPoint[]
-  toPoints: MixtapeBpmPoint[]
-  sec: number
-  fromFallbackBpm: number
-  toFallbackBpm: number
-}) => mapMixtapeMasterGridTimelineSec(params)
-
-const resolveProjectedTrackDurationFallback = (params: {
-  startBpm: number
-  sourceDurationSec: number
-  originalBpm: number
-}) => {
-  const startBpm = Number(params.startBpm)
-  const sourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
-  const originalBpm = Number(params.originalBpm)
-  if (!sourceDurationSec) return 0
-  if (!Number.isFinite(startBpm) || startBpm <= 0) return sourceDurationSec
-  if (!Number.isFinite(originalBpm) || originalBpm <= 0) return sourceDurationSec
-  const ratio = resolveTempoRatioByBpm(startBpm, originalBpm)
-  if (!Number.isFinite(ratio) || ratio <= BPM_POINT_SEC_EPSILON) return sourceDurationSec
-  return sourceDurationSec / ratio
-}
-
-const buildProjectedTrackEnvelopePoints = (params: {
-  points: MixtapeBpmPoint[]
-  trackStartSec: number
-  durationSec: number
-  fallbackBpm: number
-}) => buildProjectedMasterGridTempoPoints(params)
-
-export const projectMixtapeGlobalBpmEnvelopeToTrack = (params: {
-  track: MixtapeTrack
-  globalPoints: MixtapeBpmPoint[]
-  sourceDurationSec: number
-  originalBpm: number
-  fallbackBpm: number
-}) => {
-  const sourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
-  if (sourceDurationSec <= BPM_POINT_SEC_EPSILON || params.globalPoints.length < 2) {
-    const flatDuration = sourceDurationSec
-    return {
-      bpmAtStart: Math.max(BPM_MIN_VALUE, Number(params.fallbackBpm) || 128),
-      durationSec: flatDuration,
-      points: buildFlatTrackBpmEnvelope(flatDuration, params.fallbackBpm)
-    }
-  }
-
-  const trackStartSec = resolveTrackStartSec(params.track)
-  const originalBpm =
-    Number.isFinite(Number(params.originalBpm)) && Number(params.originalBpm) > 0
-      ? Number(params.originalBpm)
-      : Number(params.fallbackBpm) || 128
-  const fallbackBpm = Math.max(BPM_MIN_VALUE, Number(params.fallbackBpm) || 128)
-  const bpmAtStart = sampleMixtapeGlobalBpmAtSec(params.globalPoints, trackStartSec, fallbackBpm)
-
-  let durationSec = resolveProjectedTrackDurationFallback({
-    startBpm: bpmAtStart,
-    sourceDurationSec,
-    originalBpm
-  })
-
-  for (let index = 0; index < 8; index += 1) {
-    const rawPoints = buildProjectedTrackEnvelopePoints({
-      points: params.globalPoints,
-      trackStartSec,
-      durationSec,
-      fallbackBpm
-    })
-    const nextDuration = resolveTrackTimelineDurationFromSource({
-      rawPoints,
-      sourceDurationSec,
-      originalBpm,
-      fallbackBpm,
-      fallbackDurationSec: durationSec
-    })
-    if (Math.abs(nextDuration - durationSec) <= 0.0005) {
-      durationSec = nextDuration
-      break
-    }
-    durationSec = nextDuration
-  }
-
-  const projectedPoints = buildProjectedTrackEnvelopePoints({
-    points: params.globalPoints,
-    trackStartSec,
-    durationSec,
-    fallbackBpm
-  })
-
-  return {
-    bpmAtStart,
-    durationSec,
-    points: normalizeTrackBpmEnvelopePoints(projectedPoints, durationSec, bpmAtStart)
-  }
-}
 
 export const applyMixtapeGlobalTempoTargetsToTracks = (
   tracks: MixtapeTrack[],

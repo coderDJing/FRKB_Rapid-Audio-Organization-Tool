@@ -1,5 +1,4 @@
 import type {
-  MixtapeMuteSegment,
   MixtapeTrackLoopSegment,
   SerializedVisibleGridLine
 } from '@renderer/composables/mixtape/types'
@@ -349,46 +348,6 @@ export const expandVisibleGridLinesByTrackLoop = (
       Math.abs(previous.sec - line.sec) > LOOP_SEC_EPSILON ||
       previous.level !== line.level ||
       Math.abs(previous.sourceSec - line.sourceSec) > LOOP_SEC_EPSILON
-    )
-  })
-}
-
-export const expandMuteSegmentsByTrackLoop = (
-  baseSegments: MixtapeMuteSegment[] | undefined,
-  baseDurationSec: number,
-  value: unknown
-) => {
-  const segments = Array.isArray(baseSegments) ? baseSegments : []
-  const sections = buildMixtapeTrackLoopSections(baseDurationSec, value)
-  if (!segments.length) return []
-  const expanded: MixtapeMuteSegment[] = []
-  for (const segment of segments) {
-    const startSec = Number(segment?.startSec)
-    const endSec = Number(segment?.endSec)
-    if (
-      !Number.isFinite(startSec) ||
-      !Number.isFinite(endSec) ||
-      endSec - startSec <= LOOP_SEC_EPSILON
-    ) {
-      continue
-    }
-    for (const section of sections) {
-      const overlapStartSec = Math.max(section.baseStartSec, startSec)
-      const overlapEndSec = Math.min(section.baseEndSec, endSec)
-      if (overlapEndSec - overlapStartSec <= LOOP_SEC_EPSILON) continue
-      expanded.push({
-        startSec: roundSec(section.displayStartSec + (overlapStartSec - section.baseStartSec)),
-        endSec: roundSec(section.displayStartSec + (overlapEndSec - section.baseStartSec))
-      })
-    }
-  }
-  expanded.sort((left, right) => left.startSec - right.startSec)
-  return expanded.filter((segment, index) => {
-    const previous = expanded[index - 1]
-    if (!previous) return true
-    return (
-      Math.abs(previous.startSec - segment.startSec) > LOOP_SEC_EPSILON ||
-      Math.abs(previous.endSec - segment.endSec) > LOOP_SEC_EPSILON
     )
   })
 }

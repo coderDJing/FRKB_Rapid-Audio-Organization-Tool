@@ -6,7 +6,6 @@ import {
   clampTrackTempoNumber,
   normalizeTrackBpmEnvelopePoints,
   normalizeTrackBpmValue,
-  resolveTrackBpmEnvelopeClampRange,
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'
 import type { MixtapeBpmPoint, MixtapeTrackLoopSegment } from '@renderer/composables/mixtape/types'
@@ -66,37 +65,6 @@ const resolveVisibleGridVisibility = (zoom: number) => ({
   showBeat4: zoom >= GRID_BEAT4_LINE_ZOOM,
   showBeat: zoom >= GRID_BEAT_LINE_ZOOM
 })
-
-const resolveNearestGridSec = (params: {
-  targetSec: number
-  minSec: number
-  maxSec: number
-  baseSec: number
-  stepSec: number
-}) => {
-  const targetSec = Number(params.targetSec)
-  const minSec = Number(params.minSec)
-  const maxSec = Number(params.maxSec)
-  const baseSec = Number(params.baseSec)
-  const stepSec = Number(params.stepSec)
-  if (
-    !Number.isFinite(targetSec) ||
-    !Number.isFinite(minSec) ||
-    !Number.isFinite(maxSec) ||
-    !Number.isFinite(baseSec) ||
-    !Number.isFinite(stepSec) ||
-    stepSec <= BPM_POINT_SEC_EPSILON ||
-    maxSec < minSec
-  ) {
-    return null
-  }
-  const minIndex = Math.ceil((minSec - baseSec) / stepSec)
-  const maxIndex = Math.floor((maxSec - baseSec) / stepSec)
-  if (minIndex > maxIndex) return null
-  const approxIndex = Math.round((targetSec - baseSec) / stepSec)
-  const snappedIndex = clampTrackTempoNumber(approxIndex, minIndex, maxIndex)
-  return roundTrackTempoSec(baseSec + snappedIndex * stepSec)
-}
 
 export const sampleTrackBpmEnvelopeAtSec = (
   points: MixtapeBpmPoint[],
@@ -674,87 +642,6 @@ export const resolveTrackLocalSecAtSourceTime = (params: {
   return roundTrackTempoSec((leftSec + rightSec) / 2)
 }
 
-export const snapTrackSourceSecToBeatGrid = (params: {
-  sourceSec: number
-  sourceDurationSec: number
-  firstBeatSourceSec: number
-  beatSourceSec: number
-  barBeatOffset?: number
-  zoom?: number
-  minSourceSec?: number
-  maxSourceSec?: number
-}) => {
-  const safeSourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
-  const beatSourceSec = Number(params.beatSourceSec)
-  const firstBeatSourceSec = Number(params.firstBeatSourceSec)
-  const minSourceSec = clampTrackTempoNumber(
-    Number(params.minSourceSec) || 0,
-    0,
-    safeSourceDurationSec
-  )
-  const maxSourceSec = clampTrackTempoNumber(
-    Number.isFinite(Number(params.maxSourceSec))
-      ? Number(params.maxSourceSec)
-      : safeSourceDurationSec,
-    minSourceSec,
-    safeSourceDurationSec
-  )
-  const safeSourceSec = clampTrackTempoNumber(
-    Number(params.sourceSec) || 0,
-    minSourceSec,
-    maxSourceSec
-  )
-  if (!Number.isFinite(beatSourceSec) || beatSourceSec <= BPM_POINT_SEC_EPSILON)
-    return safeSourceSec
-  if (!Number.isFinite(firstBeatSourceSec)) return safeSourceSec
-  const barOffset = normalizeBeatOffset(params.barBeatOffset, 32)
-  const barBaseSec = firstBeatSourceSec + barOffset * beatSourceSec
-  const visibility = resolveVisibleGridVisibility(Number(params.zoom) || 0)
-  const candidates: number[] = []
-  if (visibility.showBar) {
-    const barSec = resolveNearestGridSec({
-      targetSec: safeSourceSec,
-      minSec: minSourceSec,
-      maxSec: maxSourceSec,
-      baseSec: barBaseSec,
-      stepSec: beatSourceSec * 32
-    })
-    if (typeof barSec === 'number') candidates.push(barSec)
-  }
-  if (visibility.showBeat4) {
-    const beat4Sec = resolveNearestGridSec({
-      targetSec: safeSourceSec,
-      minSec: minSourceSec,
-      maxSec: maxSourceSec,
-      baseSec: barBaseSec,
-      stepSec: beatSourceSec * 4
-    })
-    if (typeof beat4Sec === 'number') candidates.push(beat4Sec)
-  }
-  if (visibility.showBeat) {
-    const beatSec = resolveNearestGridSec({
-      targetSec: safeSourceSec,
-      minSec: minSourceSec,
-      maxSec: maxSourceSec,
-      baseSec: firstBeatSourceSec,
-      stepSec: beatSourceSec
-    })
-    if (typeof beatSec === 'number') candidates.push(beatSec)
-  }
-  if (!candidates.length) return safeSourceSec
-  let nearest = candidates[0]
-  let minDiff = Math.abs(nearest - safeSourceSec)
-  for (let index = 1; index < candidates.length; index += 1) {
-    const candidate = candidates[index]
-    const diff = Math.abs(candidate - safeSourceSec)
-    if (diff < minDiff) {
-      nearest = candidate
-      minDiff = diff
-    }
-  }
-  return roundTrackTempoSec(nearest)
-}
-
 export const resolveTrackBpmEnvelopeRenderablePoints = (params: {
   points: MixtapeBpmPoint[]
   durationSec: number
@@ -806,101 +693,6 @@ export const resolveTrackBpmEnvelopeRenderablePoints = (params: {
       })
     }
   })
-}
-
-export const resolveTrackBpmEnvelopeSourceAnchors = (params: {
-  points: MixtapeBpmPoint[]
-  durationSec: number
-  sourceDurationSec: number
-  originalBpm: number
-  fallbackBpm: number
-}) => {
-  const safeSourceDuration = Math.max(0, Number(params.sourceDurationSec) || 0)
-  if (safeSourceDuration <= BPM_POINT_SEC_EPSILON) {
-    return params.points.map((point) =>
-      clampTrackTempoNumber(Number(point.sec) || 0, 0, Math.max(0, Number(params.durationSec) || 0))
-    )
-  }
-  const tempoRatioIntegralCache = buildTempoRatioIntegralCache({
-    points: params.points,
-    durationSec: params.durationSec,
-    originalBpm: params.originalBpm,
-    fallbackBpm: params.fallbackBpm
-  })
-  return params.points.map((point) =>
-    roundTrackTempoSec(
-      resolveTrackSourceTimeAtLocalSec({
-        points: params.points,
-        localSec: Number(point.sec) || 0,
-        durationSec: params.durationSec,
-        sourceDurationSec: safeSourceDuration,
-        originalBpm: params.originalBpm,
-        fallbackBpm: params.fallbackBpm,
-        integralCache: tempoRatioIntegralCache
-      })
-    )
-  )
-}
-
-export const rebuildTrackBpmEnvelopePointsFromSourceAnchors = (params: {
-  sourceAnchorsSec: number[]
-  bpms: number[]
-  sourceDurationSec: number
-  originalBpm: number
-  fallbackBpm: number
-}) => {
-  const safeSourceDuration = Math.max(0, Number(params.sourceDurationSec) || 0)
-  const fallbackBpm = normalizeTrackBpmValue(params.fallbackBpm) ?? 128
-  const originalBpm = normalizeTrackBpmValue(params.originalBpm) ?? fallbackBpm
-  const clampRange = resolveTrackBpmEnvelopeClampRange(fallbackBpm)
-  if (
-    !Array.isArray(params.sourceAnchorsSec) ||
-    !Array.isArray(params.bpms) ||
-    params.sourceAnchorsSec.length < 2 ||
-    params.sourceAnchorsSec.length !== params.bpms.length
-  ) {
-    return normalizeTrackBpmEnvelopePoints([], safeSourceDuration, fallbackBpm)
-  }
-  const points: MixtapeBpmPoint[] = []
-  let localSec = 0
-  for (let index = 0; index < params.bpms.length; index += 1) {
-    const sourceAnchorSec = clampTrackTempoNumber(
-      Number(params.sourceAnchorsSec[index]) || 0,
-      0,
-      safeSourceDuration
-    )
-    const bpm = clampTrackTempoNumber(
-      Number(params.bpms[index]) || fallbackBpm,
-      clampRange.minBpm,
-      clampRange.maxBpm
-    )
-    if (!points.length) {
-      points.push({
-        sec: 0,
-        bpm,
-        sourceSec: 0
-      })
-      continue
-    }
-    const prevSourceAnchorSec = clampTrackTempoNumber(
-      Number(params.sourceAnchorsSec[index - 1]) || 0,
-      0,
-      safeSourceDuration
-    )
-    const prevBpm = points[points.length - 1]?.bpm ?? bpm
-    const deltaSourceSec = Math.max(0, sourceAnchorSec - prevSourceAnchorSec)
-    const avgRatio =
-      (clampTrackTempoNumber(prevBpm / originalBpm, 0.25, 4) +
-        clampTrackTempoNumber(bpm / originalBpm, 0.25, 4)) /
-      2
-    localSec += deltaSourceSec / Math.max(BPM_POINT_SEC_EPSILON, avgRatio)
-    points.push({
-      sec: roundTrackTempoSec(localSec),
-      bpm,
-      sourceSec: roundTrackTempoSec(sourceAnchorSec)
-    })
-  }
-  return normalizeTrackBpmEnvelopePoints(points, roundTrackTempoSec(localSec), fallbackBpm)
 }
 
 const buildTrackBeatPositionsFromSourceGrid = (params: {
@@ -1020,27 +812,3 @@ export const buildTrackVisibleGridLines = (params: {
   }
   return lines
 }
-
-export const resolveNearestTrackVisibleGridLine = (params: {
-  timeMap: TrackTimeMap
-  localSec: number
-  zoom: number
-  minLocalSec?: number
-  maxLocalSec?: number
-}) =>
-  params.timeMap.resolveNearestGridLine(params.localSec, params.zoom, {
-    minLocalSec: params.minLocalSec,
-    maxLocalSec: params.maxLocalSec
-  })
-
-export const snapTrackLocalSecToBeatGrid = (params: {
-  timeMap: TrackTimeMap
-  localSec: number
-  zoom: number
-  minLocalSec?: number
-  maxLocalSec?: number
-}) =>
-  params.timeMap.snapLocalSec(params.localSec, params.zoom, {
-    minLocalSec: params.minLocalSec,
-    maxLocalSec: params.maxLocalSec
-  })

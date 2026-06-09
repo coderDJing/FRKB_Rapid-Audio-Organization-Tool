@@ -64,16 +64,6 @@ const resolveCompactColorBandProfile = (
   }
 }
 
-export const resolveRawFftRgbColor = (
-  rawData: RawWaveformData,
-  startFrame: number,
-  endFrame: number,
-  maxSamplesPerPixel?: number,
-  useRekordboxLikeColor = false
-): RawWaveformRgbColor | null =>
-  resolveRawFftBandProfile(rawData, startFrame, endFrame, maxSamplesPerPixel, useRekordboxLikeColor)
-    ?.color ?? null
-
 export const resolveRawFftBandProfile = (
   rawData: RawWaveformData,
   startFrame: number,

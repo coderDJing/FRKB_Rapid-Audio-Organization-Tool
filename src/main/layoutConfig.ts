@@ -105,9 +105,3 @@ export async function persistLayoutConfig(config: unknown): Promise<ILayoutConfi
   await fs.outputJson(url.layoutConfigFileUrl, finalConfig)
   return finalConfig
 }
-
-export function persistLayoutConfigSync(config: unknown): ILayoutConfig {
-  const finalConfig = normalizeLayoutConfig(config)
-  fs.outputJsonSync(url.layoutConfigFileUrl, finalConfig)
-  return finalConfig
-}

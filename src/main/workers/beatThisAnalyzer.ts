@@ -373,18 +373,6 @@ const ensureBridgeProcess = async () => {
   }
 }
 
-export const preloadBeatThisAnalyzer = async () => {
-  await ensureBridgeProcess()
-}
-
-export const disposeBeatThisAnalyzer = () => {
-  if (!bridgeChild) return
-  try {
-    bridgeChild.kill()
-  } catch {}
-  resetBridgeProcessState(new Error('Beat This! bridge disposed'))
-}
-
 const writeToBridge = async (child: ChildProcessWithoutNullStreams, chunk: Buffer | string) => {
   await new Promise<void>((resolve, reject) => {
     const handleError = (error: Error) => {

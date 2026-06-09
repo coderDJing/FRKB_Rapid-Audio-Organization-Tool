@@ -22,17 +22,7 @@ export const i18n = createI18n({
   fallbackWarn: process.env.NODE_ENV === 'development'
 })
 
-// 获取当前语言
-export function getCurrentLocale(): SupportedLocale {
-  return i18n.global.locale.value as SupportedLocale
-}
-
 // 切换语言
 export function setLocale(locale: SupportedLocale) {
   i18n.global.locale.value = locale
-}
-
-// 获取翻译函数
-export function useTranslation() {
-  return i18n.global
 }

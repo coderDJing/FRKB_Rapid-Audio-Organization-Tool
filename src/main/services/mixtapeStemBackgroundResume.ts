@@ -146,12 +146,6 @@ const collectBackgroundResumeGroups = (
     .filter((group) => group.filePaths.length > 0)
 }
 
-const clearBackgroundResumeTimer = () => {
-  if (!backgroundResumeTimer) return
-  clearTimeout(backgroundResumeTimer)
-  backgroundResumeTimer = null
-}
-
 const scheduleNextBackgroundResumeScan = (delayMs = STEM_BACKGROUND_SCAN_INTERVAL_MS) => {
   if (!backgroundResumeEnabled) return
   if (backgroundResumeTimer) return
@@ -198,9 +192,4 @@ export function startMixtapeStemBackgroundResume(): void {
   if (backgroundResumeEnabled) return
   backgroundResumeEnabled = true
   scheduleNextBackgroundResumeScan(STEM_BACKGROUND_INITIAL_DELAY_MS)
-}
-
-export function stopMixtapeStemBackgroundResume(): void {
-  backgroundResumeEnabled = false
-  clearBackgroundResumeTimer()
 }

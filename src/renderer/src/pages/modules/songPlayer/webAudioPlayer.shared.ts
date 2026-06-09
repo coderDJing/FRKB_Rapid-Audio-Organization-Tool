@@ -1,4 +1,3 @@
-import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
 
 export type { CompactVisualWaveformData }
@@ -184,5 +183,3 @@ export const normalizePcmData = (pcmData: unknown): Float32Array => {
   }
   return new Float32Array(0)
 }
-
-export type PreviewWaveformData = CompactVisualWaveformData | IPioneerPreviewWaveformData

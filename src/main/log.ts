@@ -231,11 +231,6 @@ export function clearLogFileSync(): void {
   }
 }
 
-export function appendPlainLogLineSync(text: string, level: LogLevel = 'info'): void {
-  ensureLogConfigured()
-  appendFormattedLogSync(level, String(text || ''))
-}
-
 export async function openLogFile(): Promise<void> {
   const logPath = getLogPath()
   try {

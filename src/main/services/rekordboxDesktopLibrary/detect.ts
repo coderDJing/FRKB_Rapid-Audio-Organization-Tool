@@ -128,10 +128,6 @@ const normalizeProbe = (
   }
 }
 
-export function clearRekordboxDesktopLibraryProbeCache() {
-  probeCache = null
-}
-
 export async function probeRekordboxDesktopLibrary(
   forceRefresh = false
 ): Promise<RekordboxDesktopLibraryProbe> {

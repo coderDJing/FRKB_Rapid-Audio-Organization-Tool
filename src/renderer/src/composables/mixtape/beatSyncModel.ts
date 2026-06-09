@@ -161,6 +161,3 @@ export const resolveSyncPlaybackRateWithDiagnostics = (
     phasePull
   }
 }
-
-export const resolveSyncPlaybackRate = (params: SyncPlaybackRateParams) =>
-  resolveSyncPlaybackRateWithDiagnostics(params).rate

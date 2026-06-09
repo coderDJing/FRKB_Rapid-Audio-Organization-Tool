@@ -19,12 +19,12 @@ const normalizeComparePath = (value: string) => {
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
-export const isSupportedRekordboxXmlExportLibrary = (
+const isSupportedRekordboxXmlExportLibrary = (
   value: string
 ): value is RekordboxXmlExportSourceLibraryName =>
   SUPPORTED_SOURCE_LIBRARIES.has(value as RekordboxXmlExportSourceLibraryName)
 
-export const isPathInside = (targetPath: string, basePath: string) => {
+const isPathInside = (targetPath: string, basePath: string) => {
   const normalizedTarget = normalizeComparePath(targetPath)
   const normalizedBase = normalizeComparePath(basePath)
   if (normalizedTarget === normalizedBase) return true

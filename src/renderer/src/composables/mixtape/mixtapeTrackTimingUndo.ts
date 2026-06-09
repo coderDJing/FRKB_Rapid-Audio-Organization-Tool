@@ -119,8 +119,3 @@ export const restoreTrackTimingUndoSnapshots = (
   }
   return true
 }
-
-export const restoreTrackTimingUndoSnapshot = (
-  tracks: Ref<MixtapeTrack[]>,
-  snapshot: TrackTimingUndoSnapshot
-) => restoreTrackTimingUndoSnapshots(tracks, [snapshot])

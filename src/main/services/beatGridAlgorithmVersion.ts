@@ -18,9 +18,6 @@ const normalizeBeatThisWindowCount = (value: unknown) => {
   return Math.max(1, Math.floor(numeric))
 }
 
-export const hasCurrentBeatGridAlgorithmVersion = (value: unknown) =>
-  (normalizeBeatGridAlgorithmVersion(value) ?? 0) >= CURRENT_BEAT_GRID_ALGORITHM_VERSION
-
 export const isVersionedBeatGridCache = (info: BeatGridCacheVersionInfo | null | undefined) =>
   normalizeBeatThisWindowCount(info?.beatThisWindowCount) !== undefined
 
