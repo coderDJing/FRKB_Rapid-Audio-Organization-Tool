@@ -6,10 +6,8 @@
 
 // ===== 导入依赖 =====
 // 基础功能
-// use std::cmp::{max, min}; // 声纹比对已移除
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::convert::TryInto;
 use std::fs::File;
 use std::io::Read;
 use std::panic::{catch_unwind, AssertUnwindSafe};

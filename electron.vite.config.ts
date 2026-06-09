@@ -31,7 +31,6 @@ export default defineConfig({
             __dirname,
             'src/main/workers/pioneerDeviceLibraryWorker.ts'
           ),
-          mixtapeWaveformWorker: resolve(__dirname, 'src/main/workers/mixtapeWaveformWorker.ts'),
           mixtapeRawWaveformWorker: resolve(
             __dirname,
             'src/main/workers/mixtapeRawWaveformWorker.ts'
@@ -51,9 +50,6 @@ export default defineConfig({
             }
             if (chunk.name === 'pioneerDeviceLibraryWorker') {
               return 'workers/pioneerDeviceLibraryWorker.js'
-            }
-            if (chunk.name === 'mixtapeWaveformWorker') {
-              return 'workers/mixtapeWaveformWorker.js'
             }
             if (chunk.name === 'mixtapeRawWaveformWorker') {
               return 'workers/mixtapeRawWaveformWorker.js'

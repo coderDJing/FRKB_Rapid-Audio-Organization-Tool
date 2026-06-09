@@ -195,17 +195,6 @@ body,
   background-color: var(--bg);
 }
 
-.disableButton {
-  height: 25px;
-  line-height: 25px;
-  padding: 0 10px;
-  border-radius: 5px;
-  background-color: var(--bg-elev);
-  font-size: 14px;
-  cursor: not-allowed;
-  color: var(--text-weak);
-}
-
 .button {
   height: 25px;
   line-height: 25px;

@@ -258,13 +258,7 @@ export const sampleMixEnvelopeAtSec = (
   return clampNumber(sampled, config.minGain, config.maxGain)
 }
 
-export const sampleGainEnvelopeAtSec = (
-  points: MixtapeGainPoint[] | undefined,
-  sec: number,
-  fallbackGain: number = 1
-) => sampleMixEnvelopeAtSec('gain', points, sec, fallbackGain)
-
-export const mapGainToEnvelopeYPercent = (gain: number, minDb: number, maxDb: number) => {
+const mapGainToEnvelopeYPercent = (gain: number, minDb: number, maxDb: number) => {
   const span = Math.max(0.0001, maxDb - minDb)
   const minAbs = Math.max(0.0001, Math.abs(minDb))
   const maxAbs = Math.max(0.0001, Math.abs(maxDb))

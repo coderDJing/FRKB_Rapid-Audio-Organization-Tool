@@ -22,7 +22,6 @@
     "manifestUnavailableHint": "无法获取分析运行时下载清单，通常是网络连接、GitHub 访问或代理配置异常导致。",
     "downloadFailedHint": "分析运行时下载失败，当前无法使用 BPM/网格分析、双轨横推与 Stem 分离。",
     "downloadErrorHint": "错误详情：{error}",
-    "horizontalBlockedHint": "未安装分析运行时，暂不可进入双轨横推模式。请先下载可用的运行时组件。",
-    "helpButtonHint": "下载后可启用 BPM/网格分析、双轨横推与 Stem 分离。"
+    "horizontalBlockedHint": "未安装分析运行时，暂不可进入双轨横推模式。请先下载可用的运行时组件。"
   }
 }

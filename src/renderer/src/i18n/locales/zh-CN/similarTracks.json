@@ -28,11 +28,6 @@
     "errorAcoustIdMissing": "音频识别未启用：请先在设置中填写声纹匹配 Key。",
     "errorNetwork": "外部服务连接失败，请稍后重试。",
     "errorTimeout": "外部服务响应超时，请稍后重试。",
-    "errorRateLimited": "外部服务请求过于频繁，请稍后重试。",
-    "lastfmSettingTitle": "Last.fm 相似歌曲",
-    "lastfmSettingDesc1": "发布版会优先使用应用内置 Key 请求 Last.fm 相似歌曲。",
-    "lastfmSettingDesc2": "可选。填写自己的 API Key 后会优先使用你的 Key；未内置 Key 的构建也可在这里启用 Last.fm。",
-    "lastfmSettingPlaceholder": "自定义 Last.fm API Key（可选）",
-    "lastfmSettingOpenLink": "申请 API Key"
+    "errorRateLimited": "外部服务请求过于频繁，请稍后重试。"
   }
 }

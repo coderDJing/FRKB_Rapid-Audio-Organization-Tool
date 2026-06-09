@@ -274,8 +274,6 @@ function createDatabase(dbPath: string): SqliteDatabase {
       CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
     `)
   }
-  if (userVersion < 15) {
-  }
   if (userVersion < 16) {
     try {
       instance.exec(

@@ -146,23 +146,3 @@ export async function upsertPioneerPreviewWaveformCacheEntry(
     return false
   }
 }
-
-export async function clearPioneerPreviewWaveformCache(rootPath?: string): Promise<boolean> {
-  const db = getLibraryDb()
-  if (!db) return false
-  try {
-    if (rootPath) {
-      const listRootKey = normalizeRootKey(rootPath)
-      if (!listRootKey) return false
-      db.prepare(`DELETE FROM ${PIONEER_PREVIEW_WAVEFORM_CACHE_TABLE} WHERE list_root = ?`).run(
-        listRootKey
-      )
-    } else {
-      db.prepare(`DELETE FROM ${PIONEER_PREVIEW_WAVEFORM_CACHE_TABLE}`).run()
-    }
-    return true
-  } catch (error) {
-    log.error('[sqlite] pioneer preview waveform cache clear failed', error)
-    return false
-  }
-}

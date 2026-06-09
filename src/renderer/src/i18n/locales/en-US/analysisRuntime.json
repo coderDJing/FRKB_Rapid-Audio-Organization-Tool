@@ -22,7 +22,6 @@
     "manifestUnavailableHint": "Unable to fetch the analysis runtime manifest. This is usually caused by network, GitHub access, or proxy configuration issues.",
     "downloadFailedHint": "Failed to download the analysis runtime. BPM/grid analysis, dual-track horizontal browse, and stem separation are unavailable right now.",
     "downloadErrorHint": "Details: {error}",
-    "horizontalBlockedHint": "Dual-track horizontal browse is unavailable until the analysis runtime is installed.",
-    "helpButtonHint": "Download this runtime to enable BPM/grid analysis, dual-track horizontal browse, and stem separation."
+    "horizontalBlockedHint": "Dual-track horizontal browse is unavailable until the analysis runtime is installed."
   }
 }

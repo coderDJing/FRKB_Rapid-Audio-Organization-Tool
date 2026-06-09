@@ -714,25 +714,6 @@ export async function updateSongCacheKey(
   }
 }
 
-export async function updateSongCacheBpm(
-  listRoot: string,
-  filePath: string,
-  bpm: number
-): Promise<boolean> {
-  const normalizedBpm = Number.isFinite(bpm) ? Number(bpm.toFixed(6)) : null
-  if (normalizedBpm === null) return false
-  try {
-    const entry = await loadSongCacheEntry(listRoot, filePath)
-    if (!entry) return false
-    if (entry.info.bpm === normalizedBpm) return true
-    entry.info.bpm = normalizedBpm
-    return await upsertSongCacheEntry(listRoot, filePath, entry)
-  } catch (error) {
-    log.error('[sqlite] song cache bpm update failed', error)
-    return false
-  }
-}
-
 /**
  * 清除歌曲的分析数据（BPM、Key、节拍网格等），用于重新分析。
  * 保留用户数据：playlistTrackNumber（序号）、hotCues、memoryCues、mixOrder 等。
@@ -848,28 +829,6 @@ export async function upsertSongCacheEntry(
     return true
   } catch (error) {
     log.error('[sqlite] song cache upsert failed', error)
-    return false
-  }
-}
-
-export async function clearSongCache(listRoot: string): Promise<boolean> {
-  const db = getLibraryDb()
-  if (!db || !listRoot) return false
-  const resolvedRoot = resolveListRootInput(listRoot)
-  if (!resolvedRoot) return false
-  const listRootKey = resolvedRoot.key
-  const legacyListRoot =
-    resolvedRoot.legacyAbs && resolvedRoot.legacyAbs !== listRootKey
-      ? resolvedRoot.legacyAbs
-      : undefined
-  try {
-    db.prepare('DELETE FROM song_cache WHERE list_root = ?').run(listRootKey)
-    if (legacyListRoot) {
-      db.prepare('DELETE FROM song_cache WHERE list_root = ?').run(legacyListRoot)
-    }
-    return true
-  } catch (error) {
-    log.error('[sqlite] song cache clear failed', error)
     return false
   }
 }

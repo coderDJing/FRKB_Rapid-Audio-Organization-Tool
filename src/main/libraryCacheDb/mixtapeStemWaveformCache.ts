@@ -208,19 +208,3 @@ export async function removeMixtapeStemWaveformCacheByFilePath(
     return false
   }
 }
-
-export async function clearMixtapeStemWaveformCache(listRoot: string): Promise<boolean> {
-  const db = getLibraryDb()
-  if (!db) return false
-  const resolvedRoot = resolveListRootInput(listRoot)
-  if (!resolvedRoot) return false
-  try {
-    db.prepare(`DELETE FROM ${MIXTAPE_STEM_WAVEFORM_TABLE} WHERE list_root = ?`).run(
-      resolvedRoot.key
-    )
-    return true
-  } catch (error) {
-    log.error('[sqlite] mixtape stem waveform cache clear failed', error)
-    return false
-  }
-}

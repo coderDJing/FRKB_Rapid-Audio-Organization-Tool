@@ -26,7 +26,6 @@
     "noNonMp3Files": "没有可转换的非 MP3 音频文件，或 MP3 副本已存在",
     "errorDetails": "失败详情",
     "userCancelled": "已取消",
-    "outputDetails": "输出详情",
-    "backupCount": ""
+    "outputDetails": "输出详情"
   }
 }

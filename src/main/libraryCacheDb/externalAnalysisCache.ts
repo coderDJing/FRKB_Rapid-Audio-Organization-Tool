@@ -592,47 +592,6 @@ export async function loadExternalAnalysisWaveformCacheData(
   }
 }
 
-export async function loadExternalAnalysisWaveformCacheDataByFilePath(
-  filePath: string,
-  stat: { size: number; mtimeMs: number }
-): Promise<MixxxWaveformData | null | undefined> {
-  const context = resolveExternalAnalysisContext(filePath)
-  if (context) {
-    return loadExternalAnalysisWaveformCacheData(context, stat)
-  }
-
-  const db = getLibraryDb()
-  const normalizedFilePath = String(filePath || '').trim()
-  if (!db || !normalizedFilePath) return undefined
-  try {
-    const row = db
-      .prepare<ExternalAnalysisCacheRow>(
-        `SELECT source_kind, source_id, relative_path, file_path, size, mtime_ms, info_json,
-                waveform_version, waveform_sample_rate, waveform_step, waveform_duration,
-                waveform_frames, waveform_data, last_seen_at_ms, updated_at_ms
-         FROM ${EXTERNAL_ANALYSIS_CACHE_TABLE}
-         WHERE file_path = ?
-         ORDER BY updated_at_ms DESC
-         LIMIT 1`
-      )
-      .get(normalizedFilePath)
-    const entry = rowToEntry(row)
-    if (!entry || !isSameStat(entry, stat)) return null
-    const restored = registerExternalAnalysisContext({
-      sourceKind: entry.sourceKind,
-      sourceId: entry.sourceId,
-      rootPath: '',
-      relativePath: entry.relativePath,
-      filePath: normalizedFilePath
-    })
-    if (!restored) return null
-    return loadExternalAnalysisWaveformCacheData(restored, stat)
-  } catch (error) {
-    log.error('[sqlite] external analysis waveform cache load by file failed', error)
-    return undefined
-  }
-}
-
 export async function removeExternalAnalysisWaveformCacheEntry(
   context: Partial<ExternalAnalysisContext> | null | undefined
 ) {
@@ -673,25 +632,6 @@ export async function removeExternalAnalysisCacheEntry(
     return true
   } catch (error) {
     log.error('[sqlite] external analysis cache delete failed', error)
-    return false
-  }
-}
-
-export async function clearExternalAnalysisCacheForSource(
-  sourceKind: ExternalAnalysisSourceKind,
-  sourceId: string
-) {
-  const db = getLibraryDb()
-  const normalizedKind = normalizeSourceKind(sourceKind)
-  const normalizedId = normalizeSourceId(sourceId)
-  if (!db || !normalizedKind || !normalizedId) return false
-  try {
-    db.prepare(
-      `DELETE FROM ${EXTERNAL_ANALYSIS_CACHE_TABLE} WHERE source_kind = ? AND source_id = ?`
-    ).run(normalizedKind, normalizedId)
-    return true
-  } catch (error) {
-    log.error('[sqlite] external analysis cache source clear failed', error)
     return false
   }
 }

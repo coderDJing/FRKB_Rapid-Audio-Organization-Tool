@@ -324,27 +324,3 @@ export async function removeMixtapeRawWaveformCacheEntry(
     return false
   }
 }
-
-export async function clearMixtapeRawWaveformCache(listRoot: string): Promise<boolean> {
-  const db = getLibraryDb()
-  if (!db || !listRoot) return false
-  const resolvedRoot = resolveListRootInput(listRoot)
-  if (!resolvedRoot) return false
-  const listRootKey = resolvedRoot.key
-  const legacyListRoot =
-    resolvedRoot.legacyAbs && resolvedRoot.legacyAbs !== listRootKey
-      ? resolvedRoot.legacyAbs
-      : undefined
-  try {
-    db.prepare(`DELETE FROM ${MIXTAPE_RAW_WAVEFORM_TABLE} WHERE list_root = ?`).run(listRootKey)
-    if (legacyListRoot) {
-      db.prepare(`DELETE FROM ${MIXTAPE_RAW_WAVEFORM_TABLE} WHERE list_root = ?`).run(
-        legacyListRoot
-      )
-    }
-    return true
-  } catch (error) {
-    log.error('[sqlite] mixtape raw waveform cache clear failed', error)
-    return false
-  }
-}

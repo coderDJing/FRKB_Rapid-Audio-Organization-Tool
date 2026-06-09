@@ -272,28 +272,6 @@ export const createMixtapeMasterGrid = (params: {
   }
 }
 
-export const mapMixtapeMasterGridTimelineSec = (params: {
-  fromPoints: MixtapeBpmPoint[]
-  toPoints: MixtapeBpmPoint[]
-  sec: number
-  fromFallbackBpm: number
-  toFallbackBpm: number
-  fromPhaseOffsetSec?: number
-  toPhaseOffsetSec?: number
-}) => {
-  const fromGrid = createMixtapeMasterGrid({
-    points: params.fromPoints,
-    fallbackBpm: params.fromFallbackBpm,
-    phaseOffsetSec: params.fromPhaseOffsetSec
-  })
-  const toGrid = createMixtapeMasterGrid({
-    points: params.toPoints,
-    fallbackBpm: params.toFallbackBpm,
-    phaseOffsetSec: params.toPhaseOffsetSec
-  })
-  return toGrid.mapBeatsToSec(fromGrid.mapSecToBeats(Number(params.sec) || 0))
-}
-
 export const buildProjectedMasterGridTempoPoints = (params: {
   points: MixtapeBpmPoint[]
   trackStartSec: number

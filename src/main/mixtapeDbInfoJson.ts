@@ -368,24 +368,6 @@ export function upsertMixtapeItemLoopSegmentsById(
   }
 }
 
-export function upsertMixtapeItemLoopSegmentById(
-  entries: Array<{
-    itemId: string
-    loopSegment?: {
-      startSec?: number
-      endSec?: number
-      repeatCount?: number
-    } | null
-  }>
-): { updated: number } {
-  return upsertMixtapeItemLoopSegmentsById(
-    entries.map((item) => ({
-      itemId: item.itemId,
-      loopSegments: item.loopSegment ? [item.loopSegment] : []
-    }))
-  )
-}
-
 export function upsertMixtapeItemStartSecById(
   entries: Array<{
     itemId: string
