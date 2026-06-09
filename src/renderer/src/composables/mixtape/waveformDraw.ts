@@ -17,8 +17,6 @@ const STEM_WAVEFORM_COLORS: Record<MixtapeWaveformStemId, StemWaveformColor> = {
 const STEM_WAVEFORM_MAIN_ALPHA = 0.96
 const STEM_WAVEFORM_RAW_ALPHA = 1
 
-const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
-
 export const resolveStemWaveformColor = (stemId?: MixtapeWaveformStemId): StemWaveformColor => {
   if (!stemId) return STEM_WAVEFORM_COLORS.inst
   return STEM_WAVEFORM_COLORS[stemId] || STEM_WAVEFORM_COLORS.inst

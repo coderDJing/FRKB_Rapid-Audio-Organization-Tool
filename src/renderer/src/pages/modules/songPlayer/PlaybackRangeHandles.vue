@@ -17,9 +17,6 @@ const emit = defineEmits<{
   (e: 'dragEnd'): void
 }>()
 
-const startHandleRef = ref<HTMLDivElement | null>(null)
-const endHandleRef = ref<HTMLDivElement | null>(null)
-
 const isDraggingStart = ref(false)
 const isDraggingEnd = ref(false)
 const dragStartX = ref(0)
@@ -91,7 +88,6 @@ onUnmounted(() => {
 <template>
   <div
     v-show="waveformShow && enablePlaybackRange"
-    ref="startHandleRef"
     class="manual-handle start-handle"
     :class="{ dragging: isDraggingStart }"
     :style="{ left: startHandleLeftPercent + '%' }"
@@ -101,7 +97,6 @@ onUnmounted(() => {
   </div>
   <div
     v-show="waveformShow && enablePlaybackRange"
-    ref="endHandleRef"
     class="manual-handle end-handle"
     :class="{ dragging: isDraggingEnd }"
     :style="{ left: endHandleLeftPercent + '%' }"

@@ -129,7 +129,7 @@ export function usePioneerDeviceTreeDrag(
     }
   }
 
-  const persistMovedTree = async (sourceId: number, moved: MoveTreeNodeResult) => {
+  const persistMovedTree = async (moved: MoveTreeNodeResult) => {
     const previousTree = cloneTreeNodes(originalTreeNodes.value)
     const preferredPlaylistId = getPreferredPlaylistId()
     syncRuntimeDesktopTree(moved.nodes, preferredPlaylistId)
@@ -217,7 +217,7 @@ export function usePioneerDeviceTreeDrag(
     const moved = moveTreeNode(originalTreeNodes.value, sourceId, node.id, targetState.approach)
     if (!moved) return
 
-    await persistMovedTree(sourceId, moved)
+    await persistMovedTree(moved)
   }
 
   const handleDropRootEnd = async () => {
@@ -239,7 +239,7 @@ export function usePioneerDeviceTreeDrag(
     const moved = moveTreeNodeToRootEnd(originalTreeNodes.value, sourceId)
     if (!moved) return
 
-    await persistMovedTree(sourceId, moved)
+    await persistMovedTree(moved)
   }
 
   return {

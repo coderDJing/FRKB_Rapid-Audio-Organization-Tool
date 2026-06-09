@@ -167,17 +167,11 @@ const canStartSongDrag = computed(
   () => !props.readOnly || isInternalReorderEnabled.value || props.allowSongDragWhenReadOnly
 )
 const canPreviewWaveform = computed(() => !props.readOnly || props.allowWaveformPreviewWhenReadOnly)
-const {
-  isPlaylistReorder,
-  isNormalLibraryContext,
-  isPioneerLibraryContext,
-  getRowKey,
-  getCellKey,
-  getIndexCellValue
-} = useSongRowIdentity({
-  songListRootDir: songListRootDirRef,
-  reorderMode: reorderModeRef
-})
+const { isPlaylistReorder, isPioneerLibraryContext, getRowKey, getCellKey, getIndexCellValue } =
+  useSongRowIdentity({
+    songListRootDir: songListRootDirRef,
+    reorderMode: reorderModeRef
+  })
 const { cellRefMap, coverCellRefMap, setCellRef, setCoverCellRef } = useSongRowRefs()
 
 const hoveredCellKey = vRef<string | null>(null)

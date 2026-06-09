@@ -23,7 +23,6 @@ const {
   currentPath,
   selectedItems,
   searchQuery,
-  searchInputRef,
   isLoading,
   filteredTree,
   selectedCount,
@@ -37,7 +36,6 @@ const {
   confirm,
   cancel,
   modalRef,
-  selectedListRef,
   formatFileSize,
   getItemIcon,
   navigateUp,
@@ -72,7 +70,6 @@ const getSelectedItemIcon = (item: SelectedItem) =>
         </div>
         <div class="path-search">
           <input
-            ref="searchInputRef"
             v-model="searchQuery"
             type="text"
             :placeholder="t('fileSelector.searchPlaceholder')"
@@ -169,7 +166,6 @@ const getSelectedItemIcon = (item: SelectedItem) =>
 
           <OverlayScrollbarsComponent
             v-if="selectedCount > 0"
-            ref="selectedListRef"
             :options="scrollbarOptions"
             element="div"
             class="selected-list"

@@ -387,7 +387,6 @@ const assignSongToDeck = async (
 }
 
 const {
-  deckPendingPlayOnLoad,
   deckPendingPlayVisible,
   deckPendingCuePreviewOnLoad,
   suppressDeckCueClick,

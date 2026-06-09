@@ -122,14 +122,12 @@ export function useCustomFileSelector(
   const searchQuery = ref('')
   const isLoading = ref(false)
   const expandedPaths = ref<Set<string>>(new Set())
-  const searchInputRef = ref<HTMLInputElement>()
   const selectedItemRefs = ref<Map<string, FileSystemItem>>(new Map())
   const selectionModifiers = ref<SelectionModifiers>({ shift: false, ctrlOrMeta: false })
   const lastActiveIndex = ref<number | null>(null)
   const anchorIndex = ref<number | null>(null)
   const modalRef = ref<HTMLDivElement | null>(null)
   const fileListRef = ref<HTMLElement | null>(null)
-  const selectedListRef = ref<HTMLElement | null>(null)
 
   let directorySelectionTimer: ReturnType<typeof setTimeout> | null = null
   let pendingDirectorySelection: {
@@ -778,7 +776,6 @@ export function useCustomFileSelector(
     selectedItems,
     searchQuery,
     isLoading,
-    searchInputRef,
     filteredTree,
     selectedCount,
     selectedFilesCount,
@@ -792,7 +789,6 @@ export function useCustomFileSelector(
     cancel,
     modalRef,
     fileListRef,
-    selectedListRef,
     formatFileSize,
     getItemIcon,
     navigateUp,
