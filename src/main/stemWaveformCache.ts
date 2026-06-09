@@ -1,6 +1,6 @@
 import type { MixtapeStemMode } from './mixtapeDb'
 import type { MixxxWaveformBand } from './waveformCache'
-import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
+import { normalizeMixtapeStemMode } from '../shared/mixtapeStemMode'
 
 export const STEM_WAVEFORM_CACHE_VERSION = 2
 
@@ -36,8 +36,6 @@ type EncodedStemWaveformContainer = {
 
 const STEM_IDS_4: StemWaveformStemId[] = ['vocal', 'inst', 'bass', 'drums']
 
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
-
 const resolveStemIds = (_stemMode: MixtapeStemMode): StemWaveformStemId[] => STEM_IDS_4
 
 const normalizeStemId = (value: unknown): StemWaveformStemId | null => {
@@ -51,7 +49,7 @@ const normalizeStemId = (value: unknown): StemWaveformStemId | null => {
 export function encodeStemWaveformData(
   data: StemWaveformData
 ): { metaJson: string; payload: Buffer } | null {
-  const stemMode = normalizeStemMode(data?.stemMode)
+  const stemMode = normalizeMixtapeStemMode(data?.stemMode)
   const stemIds = resolveStemIds(stemMode)
   const encodedMeta: EncodedStemWaveformMeta[] = []
   const encodedBuffers: Buffer[] = []
@@ -112,7 +110,7 @@ export function decodeStemWaveformData(metaJson: string, payload: Buffer): StemW
     return null
   }
   if (!parsed || Number(parsed.version) !== STEM_WAVEFORM_CACHE_VERSION) return null
-  const stemMode = normalizeStemMode(parsed.stemMode)
+  const stemMode = normalizeMixtapeStemMode(parsed.stemMode)
   const requiredStemIds = resolveStemIds(stemMode)
   const stemMap: Partial<Record<StemWaveformStemId, StemWaveformDataLite>> = {}
 

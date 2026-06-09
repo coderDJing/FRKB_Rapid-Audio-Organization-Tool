@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { MixtapeStemMode } from '../mixtapeDb'
-import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
+import { normalizeMixtapeStemMode } from '../../shared/mixtapeStemMode'
 import { log } from '../log'
 import type { MixxxWaveformData } from '../waveformCache'
 import type { StemWaveformDataLite, StemWaveformStemId } from '../stemWaveformCache'
@@ -64,8 +64,6 @@ const normalizeText = (value: unknown, maxLen = 128): string => {
   if (!trimmed) return ''
   return trimmed.length <= maxLen ? trimmed : trimmed.slice(0, maxLen)
 }
-
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
 const normalizeFilePath = (value: unknown): string => normalizeText(value, 4000)
 
@@ -208,7 +206,7 @@ const buildBundleStems = async (
 
 const buildPrewarmKey = (params: EnsureMixtapeStemWaveformBundleParams): string => {
   const sourceFilePath = normalizePathKey(normalizeFilePath(params.sourceFilePath))
-  const stemMode = normalizeStemMode(params.stemMode)
+  const stemMode = normalizeMixtapeStemMode(params.stemMode)
   const model = normalizeStemModel(params.stemModel)
   const stemVersion = normalizeStemVersion(params.stemVersion)
   const targetRate = normalizeTargetRate(params.targetRate)
@@ -221,7 +219,7 @@ export async function ensureMixtapeStemWaveformBundle(
   if (!ENABLE_STEM_PREVIEW_WAVEFORM) return null
   const sourceFilePath = normalizeFilePath(params?.sourceFilePath)
   if (!sourceFilePath) return null
-  const stemMode = normalizeStemMode(params?.stemMode)
+  const stemMode = normalizeMixtapeStemMode(params?.stemMode)
   const stemModel = normalizeStemModel(params?.stemModel)
   const stemVersion = normalizeStemVersion(params?.stemVersion)
   const targetRate = normalizeTargetRate(params?.targetRate)
@@ -309,7 +307,7 @@ export function prewarmMixtapeStemWaveformBundle(
     .catch((error) => {
       log.error('[mixtape-stem-waveform] prewarm failed', {
         sourceFilePath: normalizeFilePath(params?.sourceFilePath),
-        stemMode: normalizeStemMode(params?.stemMode),
+        stemMode: normalizeMixtapeStemMode(params?.stemMode),
         error
       })
     })

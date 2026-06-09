@@ -1,6 +1,6 @@
 import fs from 'node:fs'
 import type { MixtapeStemMode } from '../mixtapeDb'
-import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
+import { normalizeMixtapeStemMode } from '../../shared/mixtapeStemMode'
 import { getLibraryDb, isSqliteRow } from '../libraryDb'
 import { log } from '../log'
 import { resolveMixtapeStemStatusFromInfo } from '../mixtapeStemDb'
@@ -34,8 +34,6 @@ const normalizeText = (value: unknown, maxLen = 2000): string => {
 const normalizeFilePath = (value: unknown): string => normalizeText(value, 4000)
 
 const normalizePlaylistId = (value: unknown): string => normalizeText(value, 80)
-
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
 const parseTrackInfoJson = (raw: unknown): Record<string, unknown> => {
   if (typeof raw !== 'string' || !raw.trim()) return {}
@@ -115,7 +113,7 @@ const collectBackgroundResumeGroups = (
     }
 
     const info = parseTrackInfoJson(row?.info_json)
-    const stemMode = normalizeStemMode(row?.stem_mode)
+    const stemMode = normalizeMixtapeStemMode(row?.stem_mode)
     const model = normalizeText(info?.stemModel, 128) || undefined
     const stemVersion = normalizeText(info?.stemVersion, 128) || undefined
     const groupKey = `${playlistId}::${stemMode}::${model || ''}::${stemVersion || ''}`

@@ -6,11 +6,9 @@ export {
   loadSongCache,
   loadSongCacheEntry,
   updateSongCacheKey,
-  updateSongCacheBpm,
   clearSongCacheAnalysisFields,
   replaceSongCache,
   upsertSongCacheEntry,
-  clearSongCache,
   removeSongCacheEntry
 } from './libraryCacheDb/songCache'
 
@@ -20,20 +18,10 @@ export {
   removeCoverIndexEntry,
   loadCoverIndexEntries,
   removeCoverIndexEntries,
-  clearCoverIndex,
   countCoverIndexByHash
 } from './libraryCacheDb/coverIndex'
 
-export {
-  loadWaveformCacheData,
-  hasWaveformCacheEntry,
-  hasWaveformCacheEntryByMeta,
-  upsertWaveformCacheEntry,
-  moveWaveformCacheEntry,
-  updateWaveformCacheStat,
-  removeWaveformCacheEntry,
-  clearWaveformCache
-} from './libraryCacheDb/waveformCache'
+export { updateWaveformCacheStat, removeWaveformCacheEntry } from './libraryCacheDb/waveformCache'
 
 export { removeCompactVisualWaveformCacheEntry } from './libraryCacheDb/compactVisualWaveformCache'
 
@@ -43,36 +31,30 @@ export {
   upsertUnifiedDisplayWaveformCacheEntry,
   updateUnifiedDisplayWaveformCacheStat,
   moveUnifiedDisplayWaveformCacheEntry,
-  removeUnifiedDisplayWaveformCacheEntry,
-  migrateUnifiedDisplayWaveformCacheRows
+  removeUnifiedDisplayWaveformCacheEntry
 } from './libraryCacheDb/unifiedDisplayWaveformCache'
 
 export {
   loadMixtapeWaveformCacheData,
   upsertMixtapeWaveformCacheEntry,
-  removeMixtapeWaveformCacheEntry,
-  clearMixtapeWaveformCache
+  removeMixtapeWaveformCacheEntry
 } from './libraryCacheDb/mixtapeWaveformCache'
 
 export {
   loadMixtapeRawWaveformCacheData,
   upsertMixtapeRawWaveformCacheEntry,
-  removeMixtapeRawWaveformCacheEntry,
-  clearMixtapeRawWaveformCache
+  removeMixtapeRawWaveformCacheEntry
 } from './libraryCacheDb/mixtapeRawWaveformCache'
 
 export {
   loadMixtapeStemWaveformCacheData,
   upsertMixtapeStemWaveformCacheEntry,
-  removeMixtapeStemWaveformCacheEntry,
-  removeMixtapeStemWaveformCacheByFilePath,
-  clearMixtapeStemWaveformCache
+  removeMixtapeStemWaveformCacheByFilePath
 } from './libraryCacheDb/mixtapeStemWaveformCache'
 
 export {
   loadPioneerPreviewWaveformCacheEntry,
-  upsertPioneerPreviewWaveformCacheEntry,
-  clearPioneerPreviewWaveformCache
+  upsertPioneerPreviewWaveformCacheEntry
 } from './libraryCacheDb/pioneerPreviewWaveformCache'
 
 export {
@@ -86,12 +68,8 @@ export {
   loadExternalAnalysisCacheEntryByFilePath,
   touchExternalAnalysisCacheEntrySeen,
   upsertExternalAnalysisCacheEntry,
-  loadExternalAnalysisWaveformCacheData,
-  loadExternalAnalysisWaveformCacheDataByFilePath,
   upsertExternalAnalysisWaveformCacheEntry,
-  removeExternalAnalysisWaveformCacheEntry,
   removeExternalAnalysisCacheEntry,
-  clearExternalAnalysisCacheForSource,
   type ExternalAnalysisContext,
   type ExternalAnalysisSourceKind,
   type ExternalAnalysisCacheEntry
@@ -100,7 +78,6 @@ export {
 export {
   renameCacheRoot,
   pruneCachesByRoots,
-  migrateCacheKeysToRelativeIfNeeded,
   scheduleCacheKeyMigration,
   migrateLegacyCachesInLibrary,
   scanLegacyCacheRoots

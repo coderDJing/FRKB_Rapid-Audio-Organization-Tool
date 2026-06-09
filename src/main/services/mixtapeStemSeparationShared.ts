@@ -2,24 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import childProcess from 'node:child_process'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
-import mixtapeWindow from '../window/mixtapeWindow'
 import type { MixtapeStemMode } from '../mixtapeDb'
-import { listMixtapeItems } from '../mixtapeDb'
 import {
   DEFAULT_MIXTAPE_STEM_PROFILE,
   normalizeMixtapeStemProfile,
-  parseMixtapeStemModel,
-  resolveMixtapeStemModelByProfile,
   type MixtapeStemProfile
 } from '../../shared/mixtapeStemProfiles'
-import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
-import { prewarmMixtapeStemWaveformBundle } from './mixtapeStemWaveformService'
-import {
-  getMixtapeStemAsset,
-  summarizeMixtapeStemStatusByPlaylist,
-  type MixtapeStemStatus,
-  upsertMixtapeItemStemStateById
-} from '../mixtapeStemDb'
 import { resolveLibraryStemCacheDir } from './libraryStemAssetStorage'
 
 export const STEM_SYSTEM_MEMORY_GB_FOR_GPU_CONCURRENCY_2 = 16
@@ -50,24 +38,6 @@ export const DEMUCS_PROFILE_OPTIONS: Record<
     segmentSec: '11'
   }
 }
-export const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_PROFILE)
-export const DEFAULT_STEM_VERSION = 'demucs-waveform-builtin-20260313-stem-v2'
-
-export type MixtapeStemQueueTarget = {
-  playlistId: string
-  itemIds: string[]
-}
-
-export type MixtapeStemQueueJob = {
-  key: string
-  filePath: string
-  stemMode: MixtapeStemMode
-  model: string
-  stemVersion: string
-  listRoot: string
-  targets: Map<string, Set<string>>
-}
-
 export type MixtapeStemSeparationResult = {
   vocalPath?: string | null
   instPath?: string | null
@@ -128,44 +98,6 @@ export const resolveStemProcessTimeoutMs = (params: {
   return Math.max(timeoutMinMs, Math.min(timeoutCapMs, durationBasedMs))
 }
 
-export type MixtapeStemEnqueueParams = {
-  playlistId: string
-  filePaths: string[]
-  stemMode: MixtapeStemMode
-  force?: boolean
-  profile?: MixtapeStemProfile
-  model?: string
-  stemVersion?: string
-}
-
-export type MixtapeStemRetryParams = {
-  playlistId: string
-  stemMode: MixtapeStemMode
-  itemIds?: string[]
-  filePaths?: string[]
-  profile?: MixtapeStemProfile
-  model?: string
-  stemVersion?: string
-}
-
-export type MixtapeStemEnqueueResult = {
-  total: number
-  queued: number
-  merged: number
-  readyFromCache: number
-  skipped: number
-}
-
-export const pendingQueue: MixtapeStemQueueJob[] = []
-export const pendingJobMap = new Map<string, MixtapeStemQueueJob>()
-export const inFlightJobMap = new Map<string, MixtapeStemQueueJob>()
-export let activeWorkers = 0
-export let stemDeviceProbeSnapshot: MixtapeStemDeviceProbeSnapshot | null = null
-export let stemDeviceProbePromise: Promise<MixtapeStemDeviceProbeSnapshot> | null = null
-export const cpuSlowHintNotifiedPlaylistIdSet = new Set<string>()
-
-export const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
-
 export const normalizeText = (value: unknown, maxLen = 2000): string => {
   if (typeof value !== 'string') return ''
   const trimmed = value.trim()
@@ -179,7 +111,7 @@ export const normalizeNumberOrNull = (value: unknown): number | null => {
   return parsed
 }
 
-export const toDemucsSegmentSecArg = (value: number): string => {
+const toDemucsSegmentSecArg = (value: number): string => {
   const parsed = Number(value)
   const safeValue = Number.isFinite(parsed) && parsed > 0 ? parsed : 7
   const rounded = Math.max(1, Math.round(safeValue * 10) / 10)
@@ -201,282 +133,10 @@ export const resolveDemucsSegmentSec = (params: {
 
 export const normalizeFilePath = (value: unknown): string => normalizeText(value, 4000)
 
-export const normalizePlaylistId = (value: unknown): string => normalizeText(value, 80)
-
 export const normalizeStemProfile = (
   value: unknown,
   fallback: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
 ): MixtapeStemProfile => normalizeMixtapeStemProfile(normalizeText(value, 24), fallback)
-
-export const normalizeModel = (
-  value: unknown,
-  fallbackProfile: MixtapeStemProfile = DEFAULT_MIXTAPE_STEM_PROFILE
-): string => {
-  const parsed = parseMixtapeStemModel(normalizeText(value, 128), fallbackProfile)
-  return normalizeText(parsed.requestedModel, 128) || DEFAULT_STEM_MODEL
-}
-
-export const normalizeStemVersion = (value: unknown, _model?: string): string => {
-  const normalized = normalizeText(value, 128)
-  if (!normalized) return DEFAULT_STEM_VERSION
-  return normalized
-}
-
-export const normalizePathKey = (value: string): string => {
-  const normalized = normalizeFilePath(value)
-  if (!normalized) return ''
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
-}
-
-export const buildJobKey = (params: {
-  listRoot: string
-  filePath: string
-  stemMode: MixtapeStemMode
-  model: string
-}) => {
-  const rootKey = normalizePathKey(params.listRoot)
-  const fileKey = normalizePathKey(params.filePath)
-  return `${rootKey}::${fileKey}::${params.stemMode}::${params.model}`
-}
-
-export const notifyStemStatusUpdated = (params: {
-  playlistId: string
-  itemIds: string[]
-  stemStatus: MixtapeStemStatus
-  filePath?: string
-  errorCode?: string | null
-  errorMessage?: string | null
-}) => {
-  const playlistId = normalizePlaylistId(params.playlistId)
-  if (!playlistId) return
-  try {
-    mixtapeWindow.broadcast?.('mixtape-stem-status-updated', {
-      playlistId,
-      itemIds: params.itemIds,
-      stemStatus: params.stemStatus,
-      filePath: normalizeFilePath(params.filePath),
-      errorCode: normalizeText(params.errorCode, 80) || null,
-      errorMessage: normalizeText(params.errorMessage, 1200) || null,
-      stemSummary: summarizeMixtapeStemStatusByPlaylist(playlistId)
-    })
-  } catch {}
-}
-
-export const notifyStemCpuSlowHint = (params: {
-  playlistId: string
-  filePath?: string
-  model?: string
-  reasonCode?: MixtapeStemCpuFallbackReasonCode
-  reasonDetail?: string
-}) => {
-  const playlistId = normalizePlaylistId(params.playlistId)
-  if (!playlistId) return
-  if (cpuSlowHintNotifiedPlaylistIdSet.has(playlistId)) return
-  cpuSlowHintNotifiedPlaylistIdSet.add(playlistId)
-  try {
-    mixtapeWindow.broadcast?.('mixtape-stem-cpu-slow-hint', {
-      playlistId,
-      filePath: normalizeFilePath(params.filePath),
-      model: normalizeText(params.model, 128) || null,
-      reasonCode:
-        params.reasonCode === 'gpu_unavailable' ||
-        params.reasonCode === 'gpu_failed' ||
-        params.reasonCode === 'gpu_backend_missing'
-          ? params.reasonCode
-          : null,
-      reasonDetail: normalizeText(params.reasonDetail, 600) || null
-    })
-  } catch {}
-}
-
-export const notifyStemRuntimeProgress = (params: {
-  playlistId: string
-  itemIds: string[]
-  filePath?: string
-  model?: string
-  device: MixtapeStemComputeDevice
-  percent: number
-  processedSec: number | null
-  totalSec: number | null
-  etaSec: number | null
-}) => {
-  const playlistId = normalizePlaylistId(params.playlistId)
-  if (!playlistId) return
-  const itemIds = Array.from(
-    new Set((params.itemIds || []).map((itemId) => normalizeText(itemId, 80)).filter(Boolean))
-  )
-  if (!itemIds.length) return
-  const percent = Math.max(0, Math.min(100, Math.round(Number(params.percent) || 0)))
-  try {
-    mixtapeWindow.broadcast?.('mixtape-stem-runtime-progress', {
-      playlistId,
-      itemIds,
-      filePath: normalizeFilePath(params.filePath),
-      model: normalizeText(params.model, 128) || null,
-      device: params.device,
-      percent,
-      processedSec: normalizeNumberOrNull(params.processedSec),
-      totalSec: normalizeNumberOrNull(params.totalSec),
-      etaSec: normalizeNumberOrNull(params.etaSec),
-      updatedAt: Date.now()
-    })
-  } catch {}
-}
-
-export const collectTargetsForFilePaths = (playlistId: string, filePaths: string[]) => {
-  const normalizedPlaylistId = normalizePlaylistId(playlistId)
-  if (!normalizedPlaylistId) return new Map<string, { filePath: string; itemIds: string[] }>()
-  const requestedPathMap = new Map<string, string>()
-  for (const item of filePaths) {
-    const normalizedPath = normalizeFilePath(item)
-    const pathKey = normalizePathKey(normalizedPath)
-    if (!normalizedPath || !pathKey || requestedPathMap.has(pathKey)) continue
-    requestedPathMap.set(pathKey, normalizedPath)
-  }
-  if (!requestedPathMap.size) return new Map<string, { filePath: string; itemIds: string[] }>()
-  const matched = new Map<string, { filePath: string; itemIds: string[] }>()
-  const items = listMixtapeItems(normalizedPlaylistId)
-  for (const item of items) {
-    const itemId = normalizeText(item?.id, 80)
-    const filePath = normalizeFilePath(item?.filePath)
-    const pathKey = normalizePathKey(filePath)
-    if (!itemId || !filePath || !pathKey || !requestedPathMap.has(pathKey)) continue
-    const existing = matched.get(pathKey)
-    if (existing) {
-      existing.itemIds.push(itemId)
-      continue
-    }
-    matched.set(pathKey, {
-      filePath,
-      itemIds: [itemId]
-    })
-  }
-  return matched
-}
-
-export const upsertItemStemStatus = (
-  targets: MixtapeStemQueueTarget[],
-  status: MixtapeStemStatus,
-  extra?: {
-    stemError?: string | null
-    stemReadyAt?: number | null
-    stemModel?: string | null
-    stemVersion?: string | null
-    stemVocalPath?: string | null
-    stemInstPath?: string | null
-    stemBassPath?: string | null
-    stemDrumsPath?: string | null
-    filePath?: string
-    errorCode?: string | null
-  }
-) => {
-  for (const target of targets) {
-    const itemIds = Array.from(
-      new Set(target.itemIds.map((itemId) => normalizeText(itemId, 80)).filter(Boolean))
-    )
-    if (!itemIds.length) continue
-    upsertMixtapeItemStemStateById(
-      itemIds.map((itemId) => ({
-        itemId,
-        stemStatus: status,
-        stemError: Object.prototype.hasOwnProperty.call(extra || {}, 'stemError')
-          ? extra?.stemError || null
-          : undefined,
-        stemReadyAt: Object.prototype.hasOwnProperty.call(extra || {}, 'stemReadyAt')
-          ? (extra?.stemReadyAt ?? null)
-          : undefined,
-        stemModel: Object.prototype.hasOwnProperty.call(extra || {}, 'stemModel')
-          ? extra?.stemModel || null
-          : undefined,
-        stemVersion: Object.prototype.hasOwnProperty.call(extra || {}, 'stemVersion')
-          ? extra?.stemVersion || null
-          : undefined,
-        stemVocalPath: Object.prototype.hasOwnProperty.call(extra || {}, 'stemVocalPath')
-          ? extra?.stemVocalPath || null
-          : undefined,
-        stemInstPath: Object.prototype.hasOwnProperty.call(extra || {}, 'stemInstPath')
-          ? extra?.stemInstPath || null
-          : undefined,
-        stemBassPath: Object.prototype.hasOwnProperty.call(extra || {}, 'stemBassPath')
-          ? extra?.stemBassPath || null
-          : undefined,
-        stemDrumsPath: Object.prototype.hasOwnProperty.call(extra || {}, 'stemDrumsPath')
-          ? extra?.stemDrumsPath || null
-          : undefined
-      }))
-    )
-    notifyStemStatusUpdated({
-      playlistId: target.playlistId,
-      itemIds,
-      stemStatus: status,
-      filePath: extra?.filePath,
-      errorCode: extra?.errorCode || null,
-      errorMessage: extra?.stemError || null
-    })
-  }
-}
-
-export const buildQueueTargets = (job: MixtapeStemQueueJob): MixtapeStemQueueTarget[] => {
-  const targets: MixtapeStemQueueTarget[] = []
-  for (const [playlistId, itemIds] of job.targets.entries()) {
-    targets.push({
-      playlistId,
-      itemIds: Array.from(itemIds)
-    })
-  }
-  return targets
-}
-
-export const resolveAssetRequiredPaths = (
-  _stemMode: MixtapeStemMode,
-  result: MixtapeStemSeparationResult
-): string[] => {
-  return [result.vocalPath, result.instPath, result.bassPath, result.drumsPath]
-    .map((item) => normalizeFilePath(item))
-    .filter(Boolean)
-}
-
-export const hasReadyStemAssets = (
-  stemMode: MixtapeStemMode,
-  asset: ReturnType<typeof getMixtapeStemAsset> | null
-): boolean => {
-  if (!asset) return false
-  if (asset.status !== 'ready') return false
-  const requiredPaths = resolveAssetRequiredPaths(stemMode, {
-    vocalPath: asset.vocalPath,
-    instPath: asset.instPath,
-    bassPath: asset.bassPath,
-    drumsPath: asset.drumsPath
-  })
-  if (!requiredPaths.length) return false
-  return requiredPaths.every((filePath) => fs.existsSync(filePath))
-}
-
-export const prewarmStemWaveformBundleFromPaths = (params: {
-  listRoot: string
-  sourceFilePath: string
-  stemMode: MixtapeStemMode
-  stemModel: string
-  stemVersion: string
-  vocalPath?: string | null
-  instPath?: string | null
-  bassPath?: string | null
-  drumsPath?: string | null
-}) => {
-  prewarmMixtapeStemWaveformBundle({
-    listRoot: params.listRoot,
-    sourceFilePath: params.sourceFilePath,
-    stemMode: params.stemMode,
-    stemModel: params.stemModel,
-    stemVersion: params.stemVersion,
-    stemPaths: {
-      vocalPath: params.vocalPath || null,
-      instPath: params.instPath || null,
-      bassPath: params.bassPath || null,
-      drumsPath: params.drumsPath || null
-    }
-  })
-}
 
 export const createStemError = (code: string, message: string): Error & { code: string } => {
   const error = new Error(message) as Error & { code: string }

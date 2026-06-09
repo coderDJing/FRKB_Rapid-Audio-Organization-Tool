@@ -2,7 +2,7 @@ import { getLibraryDb } from './libraryDb'
 import { isSqliteRow } from './libraryDb'
 import { log } from './log'
 import type { MixtapeStemMode } from './mixtapeDb'
-import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
+import { normalizeMixtapeStemMode } from '../shared/mixtapeStemMode'
 
 const ITEM_TABLE = 'mixtape_items'
 const STEM_ASSET_TABLE = 'library_stem_assets'
@@ -73,8 +73,6 @@ const DEFAULT_STEM_SUMMARY: MixtapeStemSummary = {
   failed: 0
 }
 
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
-
 const normalizeStemStatus = (
   value: unknown,
   fallback: MixtapeStemStatus = 'pending'
@@ -126,7 +124,7 @@ const toAssetRecord = (row: unknown): MixtapeStemAssetRecord | null => {
     libraryRoot,
     sourceSignature,
     filePath,
-    stemMode: normalizeStemMode(row?.stem_mode),
+    stemMode: normalizeMixtapeStemMode(row?.stem_mode),
     model,
     status: normalizeStemStatus(row?.status, 'pending'),
     vocalPath: normalizeFilePath(row?.vocal_path) || null,
@@ -151,7 +149,7 @@ export function upsertMixtapeStemAsset(input: MixtapeStemAssetUpsertInput): { up
   const libraryRoot = normalizeText(input?.libraryRoot, 2000)
   const sourceSignature = normalizeSourceSignature(input?.sourceSignature)
   const filePath = normalizeFilePath(input?.filePath)
-  const stemMode = normalizeStemMode(input?.stemMode)
+  const stemMode = normalizeMixtapeStemMode(input?.stemMode)
   const model = normalizeText(input?.model, 128)
   const status = normalizeStemStatus(input?.status, 'pending')
   if (!libraryRoot || !sourceSignature || !filePath || !model) return { updated: 0 }
@@ -215,7 +213,7 @@ export function getMixtapeStemAsset(params: {
 }): MixtapeStemAssetRecord | null {
   const libraryRoot = normalizeText(params?.libraryRoot, 2000)
   const sourceSignature = normalizeSourceSignature(params?.sourceSignature)
-  const stemMode = normalizeStemMode(params?.stemMode)
+  const stemMode = normalizeMixtapeStemMode(params?.stemMode)
   const model = normalizeText(params?.model, 128)
   if (!libraryRoot || !sourceSignature || !model) return null
   const db = getLibraryDb()

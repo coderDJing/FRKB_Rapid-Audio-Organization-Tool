@@ -885,7 +885,6 @@ export {
   upsertMixtapeItemMixEnvelopeById,
   upsertMixtapeItemGainEnvelopeById,
   upsertMixtapeItemLoopSegmentsById,
-  upsertMixtapeItemLoopSegmentById,
   upsertMixtapeItemVolumeMuteSegmentsById,
   upsertMixtapeItemStartSecById
 } from './mixtapeDbInfoJson'

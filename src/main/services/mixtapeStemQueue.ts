@@ -14,7 +14,7 @@ import {
   resolveMixtapeStemModelByProfile,
   type MixtapeStemProfile
 } from '../../shared/mixtapeStemProfiles'
-import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
+import { normalizeMixtapeStemMode } from '../../shared/mixtapeStemMode'
 import { prewarmMixtapeStemWaveformBundle } from './mixtapeStemWaveformService'
 import {
   getMixtapeStemAsset,
@@ -104,8 +104,6 @@ const inFlightJobMap = new Map<string, MixtapeStemQueueJob>()
 let activeWorkers = 0
 let stemQueueProbeWarmupPromise: Promise<void> | null = null
 const cpuSlowHintNotifiedPlaylistIdSet = new Set<string>()
-
-const normalizeStemMode = (_value: unknown): MixtapeStemMode => FIXED_MIXTAPE_STEM_MODE
 
 const normalizeText = (value: unknown, maxLen = 2000): string => {
   if (typeof value !== 'string') return ''
@@ -785,7 +783,7 @@ export async function enqueueMixtapeStemJobs(
   params: MixtapeStemEnqueueParams
 ): Promise<MixtapeStemEnqueueResult> {
   const playlistId = normalizePlaylistId(params?.playlistId)
-  const stemMode = normalizeStemMode(params?.stemMode)
+  const stemMode = normalizeMixtapeStemMode(params?.stemMode)
   const force = !!params?.force
   const profile = normalizeStemProfile(params?.profile, DEFAULT_MIXTAPE_STEM_PROFILE)
   const model = normalizeModel(params?.model, profile)
@@ -968,7 +966,7 @@ export function isMixtapeStemQueueBusy(): boolean {
 
 export async function retryMixtapeStemJobs(params: MixtapeStemRetryParams) {
   const playlistId = normalizePlaylistId(params?.playlistId)
-  const stemMode = normalizeStemMode(params?.stemMode)
+  const stemMode = normalizeMixtapeStemMode(params?.stemMode)
   if (!playlistId) {
     return {
       total: 0,
