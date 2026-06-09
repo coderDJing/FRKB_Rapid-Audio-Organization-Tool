@@ -118,6 +118,7 @@ const parseDurationToSeconds = (input: unknown) => {
   flex: 1 1 auto;
   min-width: 0;
   background: var(--waveform-bg);
+  isolation: isolate;
   overflow: visible;
 }
 
@@ -147,13 +148,31 @@ const parseDurationToSeconds = (input: unknown) => {
 
 .waveform-preview-playhead {
   position: absolute;
-  top: -6px;
-  bottom: -6px;
-  width: 2px;
-  background: var(--song-list-waveform-playhead, var(--accent));
+  top: -4px;
+  bottom: -4px;
+  width: 7px;
+  background: transparent;
   transform: translateX(-50%);
   pointer-events: none;
   z-index: 2;
+  opacity: 1;
+}
+
+.waveform-preview-playhead::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 18%,
+    var(--waveform-playhead-veil, rgba(248, 250, 252, 0.18)) 35%,
+    var(--waveform-playhead-needle, rgba(248, 250, 252, 0.98)) 50%,
+    var(--waveform-playhead-veil, rgba(248, 250, 252, 0.18)) 65%,
+    transparent 82%,
+    transparent 100%
+  );
 }
 
 .waveform-preview-stop {

@@ -71,7 +71,11 @@ body,
   --bg-elev: #1f1f1f;
   --waveform-bg: #151515;
   --waveform-bg-elev: #1c1c1c;
+  --waveform-playhead-needle: rgba(248, 250, 252, 0.98);
+  --waveform-playhead-veil: rgba(248, 250, 252, 0.18);
   --song-list-waveform-playhead: rgba(255, 255, 255, 0.96);
+  --song-list-waveform-playhead-needle: var(--waveform-playhead-needle);
+  --song-list-waveform-playhead-veil: var(--waveform-playhead-veil);
   --song-list-file-missing: #c9887a;
   --text: #cccccc;
   --text-weak: #a8abb2;
@@ -90,7 +94,11 @@ body,
   --bg-elev: #ffffff;
   --waveform-bg: #d9dee6;
   --waveform-bg-elev: #cfd6df;
+  --waveform-playhead-needle: rgba(15, 23, 42, 0.92);
+  --waveform-playhead-veil: rgba(15, 23, 42, 0.12);
   --song-list-waveform-playhead: rgba(15, 23, 42, 0.96);
+  --song-list-waveform-playhead-needle: var(--waveform-playhead-needle);
+  --song-list-waveform-playhead-veil: var(--waveform-playhead-veil);
   --song-list-file-missing: #a34736;
   --text: #1f1f1f;
   --text-weak: #3c3c3c;

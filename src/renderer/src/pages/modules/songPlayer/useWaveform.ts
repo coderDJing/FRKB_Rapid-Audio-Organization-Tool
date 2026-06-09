@@ -9,6 +9,17 @@ import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import { formatSaturatedWaveformRgb } from '@shared/waveformDisplayColor'
 import { drawPlayerCompactVisualWaveform } from './playerCompactVisualWaveformRenderer'
 
+const WAVEFORM_PLAYHEAD_NEEDLE_BACKGROUND = [
+  'linear-gradient(90deg,',
+  'transparent 0,',
+  'transparent 18%,',
+  'var(--waveform-playhead-veil, rgba(248, 250, 252, 0.18)) 35%,',
+  'var(--waveform-playhead-needle, rgba(248, 250, 252, 0.98)) 50%,',
+  'var(--waveform-playhead-veil, rgba(248, 250, 252, 0.18)) 65%,',
+  'transparent 82%,',
+  'transparent 100%)'
+].join(' ')
+
 export function useWaveform(params: {
   waveformEl: Ref<HTMLDivElement | null>
   audioPlayer: Ref<WebAudioPlayer | null>
@@ -29,7 +40,7 @@ export function useWaveform(params: {
   } = params
 
   const waveformHeight = 40
-  const cursorWidth = 1
+  const cursorWidth = 9
 
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
 
@@ -40,11 +51,13 @@ export function useWaveform(params: {
   canvasContainer.style.pointerEvents = 'auto'
   canvasContainer.style.background = 'var(--waveform-bg)'
   canvasContainer.style.overflow = 'hidden'
+  canvasContainer.style.isolation = 'isolate'
 
   const baseCanvas = document.createElement('canvas')
   const progressCanvas = document.createElement('canvas')
   const progressWrapper = document.createElement('div')
   const cursorEl = document.createElement('div')
+  const cursorNeedleEl = document.createElement('div')
   const interactionLayer = document.createElement('div')
 
   baseCanvas.style.position = 'absolute'
@@ -74,10 +87,17 @@ export function useWaveform(params: {
   cursorEl.style.left = '0'
   cursorEl.style.height = '100%'
   cursorEl.style.width = `${cursorWidth}px`
-  cursorEl.style.background = '#0078d4'
+  cursorEl.style.background = 'transparent'
   cursorEl.style.zIndex = '3'
   cursorEl.style.pointerEvents = 'none'
   cursorEl.style.transform = 'translateX(-50%)'
+  cursorEl.style.opacity = '1'
+
+  cursorNeedleEl.style.position = 'absolute'
+  cursorNeedleEl.style.inset = '0'
+  cursorNeedleEl.style.borderRadius = '999px'
+  cursorNeedleEl.style.background = WAVEFORM_PLAYHEAD_NEEDLE_BACKGROUND
+  cursorNeedleEl.style.pointerEvents = 'none'
 
   interactionLayer.style.position = 'absolute'
   interactionLayer.style.top = '0'
@@ -95,6 +115,7 @@ export function useWaveform(params: {
   canvasContainer.appendChild(baseCanvas)
   progressWrapper.appendChild(progressCanvas)
   canvasContainer.appendChild(progressWrapper)
+  cursorEl.appendChild(cursorNeedleEl)
   canvasContainer.appendChild(cursorEl)
   canvasContainer.appendChild(interactionLayer)
 
@@ -505,6 +526,9 @@ export function useWaveform(params: {
         }
         if (!cursorEl.parentNode) {
           canvasContainer.appendChild(cursorEl)
+        }
+        if (!cursorNeedleEl.parentNode) {
+          cursorEl.appendChild(cursorNeedleEl)
         }
         if (!interactionLayer.parentNode) {
           canvasContainer.appendChild(interactionLayer)
