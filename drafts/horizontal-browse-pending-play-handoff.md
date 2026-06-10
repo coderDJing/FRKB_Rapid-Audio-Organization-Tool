@@ -12,13 +12,13 @@
 
 ## 当前结论
 
-已确认的根因方向：
+已确认/高置信的根因方向：
 
 - 播放按钮长时间闪烁不是按钮 CSS/动画问题。
 - 不是双轨同步互等；已复现日志里 `dualSyncActive:false`，bottom 轨为空。
-- 不是在等整首歌 full decode 完成；pending 清除时仍可看到 `full-decode-pending`。
-- 慢点在播放点击路径触发 `prepare-playhead` 时，同步解当前播放头附近 10 秒 bootstrap PCM。
-- 当点播放时已经有后台 startup decode 在路上但还未覆盖播放头，会出现 `hadPendingStartupAtStart:true`，随后 `prepare-playhead` 同步接管并卡住主进程。
+- 核心门槛仍是 `playheadLoaded` / playhead coverage，不能为了消除按钮闪烁削弱 readiness 判断。
+- 已有证据显示一种慢路径：点播放时已有后台 startup decode 在路上但还未覆盖播放头，随后播放点击路径触发 `prepare-playhead` 同步解当前播放头附近 10 秒 bootstrap PCM。
+- 仍需复验：当前候选改动是否已经消除所有 2-4 秒 pending-play；如果再次复现，要继续按本文日志链路排查，不要直接认定同一根因。
 
 已抓到的当前项目实例证据：
 
@@ -45,6 +45,34 @@ loadedSegmentExpanded: true
 ```
 
 这说明按钮忙碌时间基本等于 `prepare-playhead` 同步耗时。
+
+补充：2026-06-10 在其他实例贴出的日志里，也复现了同类窗口：
+
+```text
+[HB-PENDING-PLAY] threshold elapsedMs: 512.5
+start/current:
+  loaded=false
+  decoding=true
+  fullDecoding=false
+  playheadLoaded=false
+  currentSec=17.951
+  loadedSegmentStartSec=0
+  loadedSegmentEndSec=0
+  blockers=["playhead-not-ready","deck-not-loaded","decode-pending","coverage:not-loaded"]
+
+[HB-PENDING-PLAY] cleared elapsedMs: 3509.5
+current:
+  loaded=true
+  fullyDecoded=true
+  fullDecoding=false
+  playheadLoaded=true
+  loadedSegmentStartSec=0
+  loadedSegmentEndSec=240.041
+```
+
+这条日志没有 `[HB-TRANSPORT-SLOW]` / `[HB-TRANSPORT-DECODE-SLOW]`，所以只能确认 pending 卡在 playhead coverage，不能直接拆出 FFmpeg spawn/read/first-byte 阶段。关键点是：点击时同一首歌已有 startup decode 在路上，播放头 17.951s 还没被 PCM 覆盖，直到 3.5s 后整首或足够片段应用完才清除 pending。
+
+当前候选改动：Rust transport 现在会记录 pending startup decode 的窗口（start/max duration）。`preparePlayhead` 如果发现同文件已有 pending startup decode 且该窗口覆盖当前播放头，就不再作废它并同步重解；只有播放头已经移出该 pending 窗口时，才替换为新的 playhead decode。这个改动保留 `playheadLoaded` 真实门槛，目标是避免点击播放把已经在路上的有效 startup decode 取消后再卡主进程同步解码。它已通过单元测试和类型检查，但还需要真实复现链路复验；再次出现长 pending 时继续按下面规则抓日志。
 
 ## 已加诊断
 
@@ -128,6 +156,13 @@ rg -n "\[HB-PENDING-PLAY\]|\[HB-TRANSPORT-SLOW\]|\[HB-TRANSPORT-DECODE-SLOW\]" "
 - 直接从贴出的日志里找上述三个前缀。
 - 如果缺少 `[HB-TRANSPORT-DECODE-SLOW]`，说明那个实例可能还没有包含最新诊断，或者没有重启到新 native/runtime。
 
+如果再次复现时已经包含当前候选改动：
+
+- 先确认日志里是否还有 `[HB-TRANSPORT-SLOW] prepare-playhead`，以及它的 `elapsedMs` 是否仍接近 `[HB-PENDING-PLAY] cleared.elapsedMs`。
+- 如果没有慢 `prepare-playhead`，不要继续沿着同步重解猜；改看 async decode 队列、full decode 应用、snapshot 广播、renderer pending 状态是否延迟清除。
+- 如果有 `[HB-TRANSPORT-DECODE-SLOW] sync`，继续按 FFmpeg 阶段字段拆解。
+- 如果只有 `[HB-PENDING-PLAY]`，只能说明卡在 `playheadLoaded=false`，需要先补齐或确认该实例是否带有主进程/Rust 慢日志。
+
 ## 判读规则
 
 ### 1. 判断是不是同一个事件
@@ -193,7 +228,7 @@ node -e "const rp=require('./rust_package'); console.log(typeof rp.horizontalBro
 验证备注：
 
 - `npx vue-tsc --noEmit` 只出现 npm 配置警告。
-- Rust transport 相关测试 49 个通过。
+- Rust transport 相关测试 50 个通过。
 - `cargo test` 过程中会输出 NAPI host runtime 探测警告，但退出码为 0。
 - `electron-vite build` 通过。
 
@@ -203,7 +238,8 @@ node -e "const rp=require('./rust_package'); console.log(typeof rp.horizontalBro
 
 优先候选：
 
-1. 避免播放点击路径同步硬等 startup decode，改成 async ready 后自动续播。
-2. 让载入歌曲后的 startup segment 预热更可靠，并复用已有片段。
-3. 如果 `[HB-TRANSPORT-DECODE-SLOW]` 证明 `ffmpegSpawnMs` 占比很高，再讨论 FFmpeg 常驻/worker pool。
-4. 如果主要是 `ffmpegFirstByteMs` 或 `ffmpegReadMs`，常驻 FFmpeg 未必能解决根因，应考虑 seek/解码/文件 IO 策略。
+1. 复验当前“复用已有 pending startup decode 窗口”的候选改动；如果仍复现，再看新的慢日志分布。
+2. 避免播放点击路径同步硬等 startup decode，改成 async ready 后自动续播。
+3. 让载入歌曲后的 startup segment 预热更可靠，并复用已有片段。
+4. 如果 `[HB-TRANSPORT-DECODE-SLOW]` 证明 `ffmpegSpawnMs` 占比很高，再讨论 FFmpeg 常驻/worker pool。
+5. 如果主要是 `ffmpegFirstByteMs` 或 `ffmpegReadMs`，常驻 FFmpeg 未必能解决根因，应考虑 seek/解码/文件 IO 策略。
