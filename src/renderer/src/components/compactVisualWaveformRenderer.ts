@@ -276,8 +276,12 @@ export const drawCompactVisualWaveform = (
   const rangeDurationSec = Math.max(0.0001, Number(options.rangeDurationSec) || 0)
   if (!data || width <= 0 || height <= 0 || rangeDurationSec <= 0) return false
   const detailFrames = resolveDetailFrames(data)
-  const detailRate = Math.max(1, Number(data.detailRate) || 1)
   const duration = Math.max(0, Number(data.duration) || 0)
+  const rawDetailRate = Number(data.detailRate)
+  const detailRate =
+    Number.isFinite(rawDetailRate) && rawDetailRate > 0
+      ? rawDetailRate
+      : detailFrames / Math.max(0.0001, duration)
   if (!detailFrames || !duration) return false
 
   const dataStartSec = resolveDataStartSec(data, options.timeBasisOffsetMs)

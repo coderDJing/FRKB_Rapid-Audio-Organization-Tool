@@ -9,6 +9,7 @@ import { log } from '../../log'
 import type { ISongInfo } from '../../../types/globals'
 import type { MixxxWaveformData } from '../../waveformCache'
 import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
+import { buildWaveformSurfaceCacheDataFromUnifiedDisplay } from '../../../shared/waveformSurfaceCache'
 import {
   persistSharedSongGridDefinition,
   shouldKeepManualSharedSongGridDefinition
@@ -486,6 +487,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       const stat = await fs.stat(filePath)
       const existing = deps.doneByPath.get(normalizedPath)
       const listRoot = await findSongListRoot(path.dirname(filePath))
+      const surfaceData = buildWaveformSurfaceCacheDataFromUnifiedDisplay(
+        unifiedDisplayWaveformData
+      )
       deps.doneByPath.set(normalizedPath, {
         size: stat.size,
         mtimeMs: stat.mtimeMs,
@@ -496,7 +500,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         barBeatOffset: existing?.barBeatOffset,
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
         beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
-        hasWaveform: listRoot ? Boolean(unifiedDisplayWaveformData) : true
+        hasWaveform: listRoot ? Boolean(surfaceData) : true
       })
 
       if (listRoot) {
@@ -511,17 +515,24 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         }
         await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-        if (unifiedDisplayWaveformData) {
+        if (unifiedDisplayWaveformData && surfaceData) {
           await LibraryCacheDb.upsertUnifiedDisplayWaveformCacheEntry(
             listRoot,
             filePath,
             { size: stat.size, mtimeMs: stat.mtimeMs },
             unifiedDisplayWaveformData
           )
+          await LibraryCacheDb.upsertWaveformSurfaceCacheEntry(
+            listRoot,
+            filePath,
+            { size: stat.size, mtimeMs: stat.mtimeMs },
+            surfaceData
+          )
           await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
           await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         } else {
           await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
+          await LibraryCacheDb.removeWaveformSurfaceCacheEntry(listRoot, filePath)
         }
       } else {
         const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
@@ -576,6 +587,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
         await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
         await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeWaveformSurfaceCacheEntry(listRoot, filePath)
       } else {
         const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
         if (externalContext) {
@@ -716,7 +728,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         ) {
           needsBpm = false
         }
-        const hasWaveform = await LibraryCacheDb.hasUnifiedDisplayWaveformCacheEntryByMeta(
+        const hasWaveform = await LibraryCacheDb.hasWaveformSurfaceCacheEntryByMeta(
           listRoot,
           filePath,
           stat.size,

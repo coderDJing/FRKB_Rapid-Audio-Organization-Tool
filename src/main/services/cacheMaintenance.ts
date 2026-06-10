@@ -155,6 +155,10 @@ export async function updateSongCacheEntry(
       size: stat.size,
       mtimeMs: stat.mtimeMs
     })
+    await LibraryCacheDb.updateWaveformSurfaceCacheStat(songListRoot, filePath, {
+      size: stat.size,
+      mtimeMs: stat.mtimeMs
+    })
 
     if (oldFilePath && oldFilePath !== filePath) {
       await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(songListRoot, oldFilePath)
@@ -170,6 +174,10 @@ export async function updateSongCacheEntry(
           mtimeMs: stat.mtimeMs
         }
       )
+      await LibraryCacheDb.moveWaveformSurfaceCacheEntry(songListRoot, oldFilePath, filePath, {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs
+      })
     }
   } catch {}
 }
@@ -247,6 +255,27 @@ export async function transferTrackCaches(params: {
       }
     }
   } catch {}
+  try {
+    const listPreview = await LibraryCacheDb.loadWaveformListPreviewCacheData(
+      fromRoot,
+      fromPath,
+      stat
+    )
+    const globalOverview = await LibraryCacheDb.loadWaveformGlobalOverviewCacheData(
+      fromRoot,
+      fromPath,
+      stat
+    )
+    if (listPreview && globalOverview) {
+      const updated = await LibraryCacheDb.upsertWaveformSurfaceCacheEntry(toRoot, toPath, stat, {
+        listPreview,
+        globalOverview
+      })
+      if (updated) {
+        await LibraryCacheDb.removeWaveformSurfaceCacheEntry(fromRoot, fromPath)
+      }
+    }
+  } catch {}
   await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(fromRoot, fromPath)
   await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(toRoot, toPath)
   await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
@@ -319,6 +348,7 @@ export async function clearTrackCache(filePath: string) {
       await LibraryCacheDb.removeWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(cacheRoot, filePath)
+      await LibraryCacheDb.removeWaveformSurfaceCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(cacheRoot, filePath)
       await LibraryCacheDb.removeMixtapeStemWaveformCacheByFilePath(cacheRoot, filePath)
@@ -354,6 +384,7 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
   waveformCacheRemoved: number
   compactVisualWaveformCacheRemoved: number
   unifiedDisplayWaveformCacheRemoved: number
+  waveformSurfaceCacheRemoved: number
   mixtapeWaveformCacheRemoved: number
   mixtapeRawWaveformCacheRemoved: number
   mixtapeStemWaveformCacheRemoved: number
@@ -367,6 +398,7 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
         waveformCacheRemoved: 0,
         compactVisualWaveformCacheRemoved: 0,
         unifiedDisplayWaveformCacheRemoved: 0,
+        waveformSurfaceCacheRemoved: 0,
         mixtapeWaveformCacheRemoved: 0,
         mixtapeRawWaveformCacheRemoved: 0,
         mixtapeStemWaveformCacheRemoved: 0
@@ -398,6 +430,7 @@ export async function pruneOrphanedSongListCaches(dbRoot?: string): Promise<{
       waveformCacheRemoved: 0,
       compactVisualWaveformCacheRemoved: 0,
       unifiedDisplayWaveformCacheRemoved: 0,
+      waveformSurfaceCacheRemoved: 0,
       mixtapeWaveformCacheRemoved: 0,
       mixtapeRawWaveformCacheRemoved: 0,
       mixtapeStemWaveformCacheRemoved: 0

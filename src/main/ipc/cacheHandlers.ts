@@ -15,16 +15,15 @@ import { registerMixtapeRawWaveformHandlers } from './mixtapeRawWaveformHandlers
 import mainWindow from '../window/mainWindow'
 import { invalidateKeyAnalysisCache, enqueueKeyAnalysisList } from '../services/keyAnalysisQueue'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
-import {
-  compactVisualWaveformToPreviewData,
-  type CompactVisualWaveformPreviewData,
-  unifiedDisplayWaveformToCompactVisualOverviewData
-} from '../../shared/compactVisualWaveform'
 import type { UnifiedDisplayWaveformDetailData } from '../../shared/unifiedDisplayWaveform'
+import type {
+  WaveformGlobalOverviewData,
+  WaveformListPreviewData
+} from '../../shared/waveformSurfaceCache'
 
 type PlayerWaveformCacheItem = {
   filePath: string
-  data: CompactVisualWaveformPreviewData | null
+  data: WaveformGlobalOverviewData | null
 }
 
 export function registerCacheHandlers() {
@@ -34,6 +33,86 @@ export function registerCacheHandlers() {
     await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
     await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
     await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
+  }
+
+  const resolvePayloadListRoot = async (listRootRaw: string, filePath: string) => {
+    let listRoot = ''
+    if (listRootRaw) {
+      try {
+        let input = listRootRaw
+        if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
+        listRoot = path.isAbsolute(input) ? input : resolveLibraryPath(input).absPath
+      } catch {
+        listRoot = ''
+      }
+    }
+    if (!listRoot) {
+      listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
+    }
+    return listRoot
+  }
+
+  const queueSurfaceAnalysis = (filePath: string, priority: 'low' | 'medium') => {
+    enqueueKeyAnalysisList([filePath], priority, {
+      source: 'foreground',
+      preemptible: true,
+      category: 'waveform-preview',
+      waveformOnly: isInRecordingLibraryAbsPath(filePath)
+    })
+  }
+
+  const loadListPreviewSurface = async (
+    filePath: string,
+    listRootRaw: string,
+    priority: 'low' | 'medium'
+  ): Promise<WaveformListPreviewData | null> => {
+    const listRoot = await resolvePayloadListRoot(listRootRaw, filePath)
+    if (!listRoot) return null
+    try {
+      const fsStat = await fs.stat(filePath)
+      const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+      const data = await LibraryCacheDb.loadWaveformListPreviewCacheData(listRoot, filePath, stat)
+      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+      if (data) return data
+      queueSurfaceAnalysis(filePath, priority)
+      return null
+    } catch {
+      await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeWaveformSurfaceCacheEntry(listRoot, filePath)
+      return null
+    }
+  }
+
+  const loadGlobalOverviewSurface = async (
+    filePath: string,
+    listRootRaw: string,
+    priority: 'low' | 'medium'
+  ): Promise<WaveformGlobalOverviewData | null> => {
+    const listRoot = await resolvePayloadListRoot(listRootRaw, filePath)
+    if (!listRoot) return null
+    try {
+      const fsStat = await fs.stat(filePath)
+      const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+      const data = await LibraryCacheDb.loadWaveformGlobalOverviewCacheData(
+        listRoot,
+        filePath,
+        stat
+      )
+      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+      if (data) return data
+      queueSurfaceAnalysis(filePath, priority)
+      return null
+    } catch {
+      await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+      await LibraryCacheDb.removeWaveformSurfaceCacheEntry(listRoot, filePath)
+      return null
+    }
   }
 
   ipcMain.handle('track:cache:clear:batch', async (_e, filePaths: string[]) => {
@@ -208,212 +287,106 @@ export function registerCacheHandlers() {
     }
   )
 
+  const handleGlobalOverviewLoad = async (payload: { listRoot?: string; filePath?: string }) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+    if (!filePath) return { status: 'missing' as const, data: null }
+    const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
+    const data = await loadGlobalOverviewSurface(filePath, listRootRaw, 'medium')
+    return data ? { status: 'ready' as const, data } : { status: 'missing' as const, data: null }
+  }
+
+  const handleListPreviewBatch = async (payload: { listRoot?: string; filePaths?: string[] }) => {
+    const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
+    const normalizedPaths = filePaths.filter(
+      (filePath) => typeof filePath === 'string' && filePath.trim().length > 0
+    )
+    if (normalizedPaths.length === 0) {
+      return { items: [] as Array<{ filePath: string; data: WaveformListPreviewData | null }> }
+    }
+    const items: Array<{ filePath: string; data: WaveformListPreviewData | null }> = []
+    const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
+    for (const filePath of normalizedPaths) {
+      items.push({
+        filePath,
+        data: await loadListPreviewSurface(filePath, listRootRaw, 'low')
+      })
+    }
+    return { items }
+  }
+
+  const handleGlobalOverviewBatch = async (payload: {
+    listRoot?: string
+    filePaths?: string[]
+  }) => {
+    const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
+    const normalizedPaths = filePaths.filter(
+      (filePath) => typeof filePath === 'string' && filePath.trim().length > 0
+    )
+    if (normalizedPaths.length === 0) {
+      return { items: [] as PlayerWaveformCacheItem[] }
+    }
+    const items: PlayerWaveformCacheItem[] = []
+    const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
+    for (const filePath of normalizedPaths) {
+      items.push({
+        filePath,
+        data: await loadGlobalOverviewSurface(filePath, listRootRaw, 'low')
+      })
+    }
+    return { items }
+  }
+
   ipcMain.handle(
-    'compact-visual-waveform-cache:load',
-    async (
-      _e,
-      payload: {
-        listRoot?: string
-        filePath?: string
-      }
-    ) => {
+    'waveform-list-preview-cache:load',
+    async (_e, payload: { listRoot?: string; filePath?: string }) => {
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       if (!filePath) return { status: 'missing' as const, data: null }
-      let listRoot = ''
       const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
-      if (listRootRaw) {
-        try {
-          let input = listRootRaw
-          if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
-          listRoot = path.isAbsolute(input) ? input : resolveLibraryPath(input).absPath
-        } catch {
-          listRoot = ''
-        }
-      }
-      if (!listRoot) {
-        listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
-      }
-      if (!listRoot) return { status: 'missing' as const, data: null }
-      try {
-        const fsStat = await fs.stat(filePath)
-        const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
-        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-        const unified = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
-          listRoot,
-          filePath,
-          stat
-        )
-        const data = unified ? unifiedDisplayWaveformToCompactVisualOverviewData(unified) : null
-        if (data) {
-          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-          return { status: 'ready' as const, data }
-        }
-        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-        enqueueKeyAnalysisList([filePath], 'medium', {
-          source: 'foreground',
-          preemptible: true,
-          category: 'waveform-preview',
-          waveformOnly: isInRecordingLibraryAbsPath(filePath)
-        })
-        return { status: 'missing' as const, data: null }
-      } catch {
-        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-        return { status: 'missing' as const, data: null }
-      }
+      const data = await loadListPreviewSurface(filePath, listRootRaw, 'medium')
+      return data ? { status: 'ready' as const, data } : { status: 'missing' as const, data: null }
+    }
+  )
+
+  ipcMain.handle(
+    'waveform-list-preview-cache:batch',
+    async (_e, payload: { listRoot?: string; filePaths?: string[] }) => {
+      return await handleListPreviewBatch(payload)
+    }
+  )
+
+  ipcMain.handle(
+    'waveform-global-overview-cache:load',
+    async (_e, payload: { listRoot?: string; filePath?: string }) => {
+      return await handleGlobalOverviewLoad(payload)
+    }
+  )
+
+  ipcMain.handle(
+    'waveform-global-overview-cache:batch',
+    async (_e, payload: { listRoot?: string; filePaths?: string[] }) => {
+      return await handleGlobalOverviewBatch(payload)
+    }
+  )
+
+  // Legacy IPC names kept as compatibility shells; keep these on surface-cache reads only.
+  ipcMain.handle(
+    'compact-visual-waveform-cache:load',
+    async (_e, payload: { listRoot?: string; filePath?: string }) => {
+      return await handleGlobalOverviewLoad(payload)
     }
   )
 
   ipcMain.handle(
     'compact-visual-waveform-cache:batch',
-    async (
-      _e,
-      payload: {
-        listRoot?: string
-        filePaths?: string[]
-      }
-    ) => {
-      const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
-      const normalizedPaths = filePaths.filter(
-        (filePath) => typeof filePath === 'string' && filePath.trim().length > 0
-      )
-      if (normalizedPaths.length === 0) {
-        return {
-          items: [] as Array<{ filePath: string; data: CompactVisualWaveformPreviewData | null }>
-        }
-      }
-
-      const items: Array<{ filePath: string; data: CompactVisualWaveformPreviewData | null }> = []
-      const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
-      let resolvedListRoot = ''
-      if (listRootRaw) {
-        try {
-          let input = listRootRaw
-          if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
-          resolvedListRoot = path.isAbsolute(input) ? input : resolveLibraryPath(input).absPath
-        } catch {
-          resolvedListRoot = ''
-        }
-      }
-
-      for (const filePath of normalizedPaths) {
-        let listRoot = resolvedListRoot
-        if (!listRoot) {
-          listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
-        }
-        if (!listRoot) {
-          items.push({ filePath, data: null })
-          continue
-        }
-        try {
-          const fsStat = await fs.stat(filePath)
-          const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
-          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-          const unified = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
-            listRoot,
-            filePath,
-            stat
-          )
-          const compact = unified
-            ? unifiedDisplayWaveformToCompactVisualOverviewData(unified)
-            : null
-          if (compact) {
-            await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-            items.push({ filePath, data: compactVisualWaveformToPreviewData(compact) })
-            continue
-          }
-          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-          enqueueKeyAnalysisList([filePath], 'low', {
-            source: 'foreground',
-            preemptible: true,
-            category: 'waveform-preview',
-            waveformOnly: isInRecordingLibraryAbsPath(filePath)
-          })
-          items.push({ filePath, data: null })
-        } catch {
-          await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
-          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-          items.push({ filePath, data: null })
-        }
-      }
-
-      return { items }
+    async (_e, payload: { listRoot?: string; filePaths?: string[] }) => {
+      return await handleListPreviewBatch(payload)
     }
   )
 
   ipcMain.handle(
     'waveform-cache:batch',
-    async (
-      _e,
-      payload: {
-        listRoot?: string
-        filePaths?: string[]
-      }
-    ) => {
-      const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
-      const normalizedPaths = filePaths.filter(
-        (filePath) => typeof filePath === 'string' && filePath.trim().length > 0
-      )
-      if (normalizedPaths.length === 0) {
-        return { items: [] as PlayerWaveformCacheItem[] }
-      }
-
-      const items: PlayerWaveformCacheItem[] = []
-      const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
-      let resolvedListRoot = ''
-      if (listRootRaw) {
-        let input = listRootRaw
-        if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
-        if (path.isAbsolute(input)) {
-          resolvedListRoot = input
-        } else {
-          resolvedListRoot = resolveLibraryPath(input).absPath
-        }
-      }
-      for (const filePath of normalizedPaths) {
-        let listRoot = resolvedListRoot
-        if (!listRoot) {
-          listRoot = (await findSongListRoot(path.dirname(filePath))) || ''
-        }
-        if (!listRoot) {
-          items.push({ filePath, data: null })
-          continue
-        }
-        try {
-          const fsStat = await fs.stat(filePath)
-          const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
-          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-          const unified = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
-            listRoot,
-            filePath,
-            stat
-          )
-          const compact = unified
-            ? unifiedDisplayWaveformToCompactVisualOverviewData(unified)
-            : null
-          if (compact) {
-            await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-            items.push({ filePath, data: compact })
-            continue
-          }
-          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-          enqueueKeyAnalysisList([filePath], 'low', {
-            source: 'foreground',
-            preemptible: true,
-            category: 'waveform-preview',
-            waveformOnly: isInRecordingLibraryAbsPath(filePath)
-          })
-          items.push({ filePath, data: null })
-        } catch {
-          await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
-          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-          await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-          items.push({ filePath, data: null })
-        }
-      }
-
-      return { items }
+    async (_e, payload: { listRoot?: string; filePaths?: string[] }) => {
+      return await handleGlobalOverviewBatch(payload)
     }
   )
 

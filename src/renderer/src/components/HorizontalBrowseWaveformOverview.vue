@@ -14,12 +14,9 @@ import {
   getRekordboxPreviewWaveformRequestChannel,
   resolveSongExternalWaveformSource
 } from '@renderer/utils/rekordboxExternalSource'
-import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
+import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 import { formatSaturatedWaveformRgb } from '@shared/waveformDisplayColor'
-import {
-  loadUnifiedDisplayWaveformData,
-  unifiedDisplayWaveformToCompactVisualOverviewData
-} from '@renderer/components/horizontalBrowseCompactVisualWaveform'
+import { loadWaveformGlobalOverviewData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
 import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
 
 const props = defineProps<{
@@ -43,7 +40,7 @@ type PioneerPreviewWaveformResponse = {
 const runtime = useRuntimeStore()
 const trackRef = ref<HTMLDivElement | null>(null)
 const canvasRef = ref<HTMLCanvasElement | null>(null)
-const compactVisualData = ref<CompactVisualWaveformData | null>(null)
+const compactVisualData = ref<WaveformGlobalOverviewData | null>(null)
 const pioneerPreviewData = ref<IPioneerPreviewWaveformData | null>(null)
 const scrubbing = ref(false)
 
@@ -327,13 +324,10 @@ const loadWaveform = async () => {
   const filePath = String(currentSong?.filePath || '').trim()
   if (!filePath) return
 
-  const unified = await loadUnifiedDisplayWaveformData(filePath).catch(() => null)
+  const globalOverview = await loadWaveformGlobalOverviewData(filePath).catch(() => null)
   if (currentToken !== loadToken) return
-  const unifiedOverview = unified
-    ? unifiedDisplayWaveformToCompactVisualOverviewData(unified)
-    : null
-  if (unifiedOverview) {
-    compactVisualData.value = unifiedOverview
+  if (globalOverview) {
+    compactVisualData.value = globalOverview
     drawWaveform()
     return
   }

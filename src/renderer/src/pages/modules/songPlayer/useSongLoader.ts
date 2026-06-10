@@ -12,13 +12,13 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
-import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
+import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 import { resolvePlayerWaveformTraceElapsedMs, sendPlayerWaveformTrace } from './playerWaveformTrace'
 
 type WaveformCacheResponse = {
   items?: Array<{
     filePath: string
-    data: CompactVisualWaveformData | null
+    data: WaveformGlobalOverviewData | null
   }>
 }
 
@@ -31,7 +31,7 @@ type DecodePayload = {
   sampleRate: number
   channels: number
   totalFrames: number
-  compactVisualWaveformData?: CompactVisualWaveformData | null
+  compactVisualWaveformData?: WaveformGlobalOverviewData | null
 }
 
 type DeleteSongsSummary = {
@@ -232,7 +232,7 @@ export function useSongLoader(params: {
     let response: WaveformCacheResponse | null = null
     tracePlayerWaveform('loader', 'formal-cache:query-start', filePath)
     try {
-      response = await window.electron.ipcRenderer.invoke('waveform-cache:batch', {
+      response = await window.electron.ipcRenderer.invoke('waveform-global-overview-cache:batch', {
         filePaths: [filePath]
       })
     } catch {

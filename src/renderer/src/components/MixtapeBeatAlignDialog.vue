@@ -14,7 +14,7 @@ import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAl
 import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
 import {
   loadUnifiedDisplayWaveformData,
-  unifiedDisplayWaveformToCompactVisualOverviewData,
+  loadWaveformGlobalOverviewData,
   unifiedDisplayWaveformToRawData
 } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
 import {
@@ -38,7 +38,6 @@ import {
   PREVIEW_BPM_TAP_RESET_MS,
   PREVIEW_GRID_SHIFT_LARGE_MS,
   PREVIEW_GRID_SHIFT_SMALL_MS,
-  PREVIEW_MAX_SAMPLES_PER_PIXEL,
   PREVIEW_SHORTCUT_BEATS,
   PREVIEW_SHORTCUT_FALLBACK_BPM,
   PREVIEW_WARMUP_DELAY_MS,
@@ -54,7 +53,7 @@ import {
   resizePreviewCanvasByPixelRatio
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import type { CompactVisualWaveformData } from '@shared/compactVisualWaveform'
+import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 
 const props = defineProps({
   trackTitle: {
@@ -103,7 +102,7 @@ const previewLoading = ref(false)
 const previewError = ref('')
 const previewMixxxData = ref<MixxxWaveformData | null>(null)
 const overviewRawData = ref<RawWaveformData | null>(null)
-const overviewCompactData = ref<CompactVisualWaveformData | null>(null)
+const overviewCompactData = ref<WaveformGlobalOverviewData | null>(null)
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const previewStartSec = ref(0)
 const previewDragging = ref(false)
@@ -514,11 +513,8 @@ const rebuildOverviewCache = () => {
   overviewCacheCanvas = rebuildBeatAlignOverviewCache({
     wrap: overviewWrapRef.value,
     cacheCanvas: overviewCacheCanvas,
-    mixxxData: previewMixxxData.value,
-    rawData: overviewRawData.value,
     compactData: overviewCompactData.value,
     maxRenderColumns: OVERVIEW_MAX_RENDER_COLUMNS,
-    maxSamplesPerPixel: PREVIEW_MAX_SAMPLES_PER_PIXEL,
     waveformVerticalPadding: OVERVIEW_WAVEFORM_VERTICAL_PADDING,
     leadingPadSec: resolvePreviewLeadingPadSec(),
     trailingPadSec: resolvePreviewTrailingPadSec(),
@@ -781,11 +777,13 @@ const loadPreviewWaveform = async (filePath: string) => {
   // 对话框一打开即开始预解码，避免用户首次点击播放时才触发解码等待
   schedulePreviewWarmup(normalized, requestSeq, PREVIEW_WARMUP_EAGER_DELAY_MS)
   try {
+    const globalOverview = await loadWaveformGlobalOverviewData(normalized).catch(() => null)
+    if (requestSeq !== previewLoadSequence) return
+    overviewCompactData.value = globalOverview
+    scheduleOverviewRebuild()
+
     const unified = await loadUnifiedDisplayWaveformData(normalized).catch(() => null)
     if (requestSeq !== previewLoadSequence) return
-    overviewCompactData.value = unified
-      ? unifiedDisplayWaveformToCompactVisualOverviewData(unified)
-      : null
     overviewRawData.value = unified ? unifiedDisplayWaveformToRawData(unified) : null
     previewMixxxData.value = overviewRawData.value
       ? createRawPlaceholderMixxxData(overviewRawData.value)
@@ -812,6 +810,13 @@ const loadPreviewWaveform = async (filePath: string) => {
 const handleWindowResize = () => {
   schedulePreviewDraw()
   scheduleOverviewRebuild()
+}
+
+const handleSongWaveformUpdated = (_event: unknown, payload?: { filePath?: string }) => {
+  const updatedPath = normalizePathKey(payload?.filePath)
+  const currentPath = normalizePathKey(props.filePath)
+  if (!updatedPath || !currentPath || updatedPath !== currentPath) return
+  void loadPreviewWaveform(props.filePath)
 }
 
 const handleWindowKeydown = (event: KeyboardEvent) => {
@@ -907,6 +912,7 @@ watch(
 
 onMounted(() => {
   mountWaveformCanvasWorker()
+  window.electron.ipcRenderer.on('song-waveform-updated', handleSongWaveformUpdated)
   window.addEventListener('resize', handleWindowResize, { passive: true })
   window.addEventListener('keydown', handleWindowKeydown)
 })
@@ -925,6 +931,7 @@ onBeforeUnmount(() => {
   resetBarLinePicking()
   stopPreviewDragging()
   stopOverviewDragging()
+  window.electron.ipcRenderer.removeListener('song-waveform-updated', handleSongWaveformUpdated)
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('keydown', handleWindowKeydown)
 })

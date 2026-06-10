@@ -13,7 +13,7 @@ import {
 } from '@renderer/utils/rekordboxExternalSource'
 import { t } from '@renderer/utils/translate'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import type { CompactVisualWaveformPreviewData } from '@shared/compactVisualWaveform'
+import type { WaveformListPreviewData } from '@shared/waveformSurfaceCache'
 import type { RekordboxSourceKind } from '@shared/rekordboxSources'
 import { createSongListWaveformPreviewWorker } from '@renderer/workers/songListWaveformPreview.workerClient'
 import {
@@ -48,7 +48,7 @@ type WaveformCacheEntry =
     }
   | {
       kind: 'compactVisual'
-      data: CompactVisualWaveformPreviewData
+      data: WaveformListPreviewData
     }
   | null
 type WaveformPlaceholderState = 'loading' | 'unavailable' | 'ready'
@@ -573,11 +573,11 @@ export function useWaveformPreview(params: {
         drawAllVisiblePending = false
         pendingDrawFilePaths.clear()
         drawVisible()
-        return
+      } else {
+        const targetsToDraw = Array.from(pendingDrawFilePaths)
+        pendingDrawFilePaths.clear()
+        drawTargets(targetsToDraw)
       }
-      const targetsToDraw = Array.from(pendingDrawFilePaths)
-      pendingDrawFilePaths.clear()
-      drawTargets(targetsToDraw)
     })
   }
   const scheduleVisibleDraw = () => {
@@ -624,10 +624,10 @@ export function useWaveformPreview(params: {
     }
     const listRoot = (songListRootDir.value || '').trim()
     let response: {
-      items?: Array<{ filePath: string; data: CompactVisualWaveformPreviewData | null }>
+      items?: Array<{ filePath: string; data: WaveformListPreviewData | null }>
     } | null = null
     try {
-      response = await window.electron.ipcRenderer.invoke('compact-visual-waveform-cache:batch', {
+      response = await window.electron.ipcRenderer.invoke('waveform-list-preview-cache:batch', {
         listRoot,
         filePaths
       })
@@ -672,11 +672,6 @@ export function useWaveformPreview(params: {
         for (const filePath of toQueue) {
           queuedMissing.add(filePath)
         }
-        window.electron.ipcRenderer.send('key-analysis:queue-visible', {
-          filePaths: toQueue,
-          scope: 'waveform-preview',
-          waveformOnly: sourceLibraryName.value === 'RecordingLibrary'
-        })
       }
     }
     scheduleDrawForFilePaths(filePaths)

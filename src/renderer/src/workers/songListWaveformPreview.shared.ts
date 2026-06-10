@@ -3,7 +3,7 @@ import type {
   MixxxWaveformData,
   RGBWaveformBandKey
 } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import type { CompactVisualWaveformPreviewData } from '@shared/compactVisualWaveform'
+import type { WaveformListPreviewData } from '@shared/waveformSurfaceCache'
 import {
   formatSaturatedWaveformRgb,
   resolveSaturatedWaveformColor
@@ -258,7 +258,7 @@ export const drawSongListCompactVisualWaveform = (
   ctx: SongListWaveformCanvasContext,
   width: number,
   height: number,
-  waveformData: CompactVisualWaveformPreviewData,
+  waveformData: WaveformListPreviewData,
   options: {
     isHalf: boolean
     progressColor: string

@@ -35,6 +35,16 @@ export {
 } from './libraryCacheDb/unifiedDisplayWaveformCache'
 
 export {
+  loadWaveformListPreviewCacheData,
+  loadWaveformGlobalOverviewCacheData,
+  hasWaveformSurfaceCacheEntryByMeta,
+  upsertWaveformSurfaceCacheEntry,
+  updateWaveformSurfaceCacheStat,
+  moveWaveformSurfaceCacheEntry,
+  removeWaveformSurfaceCacheEntry
+} from './libraryCacheDb/waveformSurfaceCache'
+
+export {
   loadMixtapeWaveformCacheData,
   upsertMixtapeWaveformCacheEntry,
   removeMixtapeWaveformCacheEntry

@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 32
+const SCHEMA_VERSION = 33
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
@@ -775,6 +775,50 @@ function createDatabase(dbPath: string): SqliteDatabase {
       DROP TABLE IF EXISTS mixtape_waveform_hires_cache;
     `)
   }
+  if (userVersion < 33) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS waveform_surface_cache (
+        list_root TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        mtime_ms REAL NOT NULL,
+        cache_version INTEGER NOT NULL,
+        list_preview_parameter_version INTEGER NOT NULL,
+        global_overview_parameter_version INTEGER NOT NULL,
+        duration REAL NOT NULL,
+        sample_rate INTEGER NOT NULL,
+        list_preview_frame_count INTEGER NOT NULL,
+        global_overview_frame_count INTEGER NOT NULL,
+        list_preview_payload BLOB NOT NULL,
+        global_overview_payload BLOB NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY (list_root, file_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_waveform_surface_cache_root
+        ON waveform_surface_cache(list_root);
+    `)
+  }
+  instance.exec(`
+    CREATE TABLE IF NOT EXISTS waveform_surface_cache (
+      list_root TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      mtime_ms REAL NOT NULL,
+      cache_version INTEGER NOT NULL,
+      list_preview_parameter_version INTEGER NOT NULL,
+      global_overview_parameter_version INTEGER NOT NULL,
+      duration REAL NOT NULL,
+      sample_rate INTEGER NOT NULL,
+      list_preview_frame_count INTEGER NOT NULL,
+      global_overview_frame_count INTEGER NOT NULL,
+      list_preview_payload BLOB NOT NULL,
+      global_overview_payload BLOB NOT NULL,
+      updated_at_ms INTEGER NOT NULL,
+      PRIMARY KEY (list_root, file_path)
+    );
+    CREATE INDEX IF NOT EXISTS idx_waveform_surface_cache_root
+      ON waveform_surface_cache(list_root);
+  `)
   if (userVersion < SCHEMA_VERSION) {
     instance.pragma('user_version = ' + SCHEMA_VERSION)
   }

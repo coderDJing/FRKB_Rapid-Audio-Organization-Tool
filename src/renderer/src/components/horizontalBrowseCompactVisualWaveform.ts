@@ -5,10 +5,19 @@ import {
   type CompactVisualWaveformData
 } from '@shared/compactVisualWaveform'
 import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
+import {
+  normalizeWaveformSurfaceData,
+  type WaveformGlobalOverviewData
+} from '@shared/waveformSurfaceCache'
 
 type UnifiedDisplayWaveformLoadResponse = {
   status?: 'ready' | 'missing'
   data?: UnifiedDisplayWaveformDetailData | null
+}
+
+type WaveformGlobalOverviewLoadResponse = {
+  status?: 'ready' | 'missing'
+  data?: WaveformGlobalOverviewData | null
 }
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -355,4 +364,19 @@ export const loadUnifiedDisplayWaveformData = async (
   )) as UnifiedDisplayWaveformLoadResponse | null
   if (response?.status !== 'ready') return null
   return normalizeUnifiedDisplayWaveformData(response.data)
+}
+
+export const loadWaveformGlobalOverviewData = async (
+  filePath: string,
+  listRoot?: string
+): Promise<WaveformGlobalOverviewData | null> => {
+  const response = (await window.electron.ipcRenderer.invoke(
+    'waveform-global-overview-cache:load',
+    {
+      filePath,
+      listRoot
+    }
+  )) as WaveformGlobalOverviewLoadResponse | null
+  if (response?.status !== 'ready') return null
+  return normalizeWaveformSurfaceData<WaveformGlobalOverviewData>(response.data, 'globalOverview')
 }

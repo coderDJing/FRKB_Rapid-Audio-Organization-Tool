@@ -88,6 +88,7 @@ const parseDurationToSeconds = (input: unknown) => {
 
 <style lang="scss" scoped>
 .cell-waveform {
+  --waveform-preview-height: 24px;
   height: 100%;
   box-sizing: border-box;
   border-right: 1px solid var(--border);
@@ -104,7 +105,7 @@ const parseDurationToSeconds = (input: unknown) => {
 
 .waveform-preview-stop-slot {
   width: 18px;
-  height: 18px;
+  height: var(--waveform-preview-height);
   flex: 0 0 18px;
   display: inline-flex;
   align-items: center;
@@ -114,7 +115,7 @@ const parseDurationToSeconds = (input: unknown) => {
 .waveform-preview-shell {
   position: relative;
   width: 100%;
-  height: 18px;
+  height: var(--waveform-preview-height);
   flex: 1 1 auto;
   min-width: 0;
   background: var(--waveform-bg);
@@ -124,7 +125,7 @@ const parseDurationToSeconds = (input: unknown) => {
 
 .waveform-preview-canvas {
   width: 100%;
-  height: 18px;
+  height: var(--waveform-preview-height);
   display: block;
   color: var(--text-weak);
   pointer-events: none;
@@ -148,8 +149,8 @@ const parseDurationToSeconds = (input: unknown) => {
 
 .waveform-preview-playhead {
   position: absolute;
-  top: -4px;
-  bottom: -4px;
+  top: -3px;
+  bottom: -3px;
   width: 7px;
   background: transparent;
   transform: translateX(-50%);
