@@ -40,6 +40,12 @@ type CreateHorizontalBrowseDeckAssignerParams = {
   ) => Promise<unknown>
 }
 
+export type HorizontalBrowseDeckAssignTransportOptions = {
+  initialCurrentSec?: number
+  waitForHydration?: boolean
+  applyHydratedCue?: boolean
+}
+
 export const createHorizontalBrowseDeckAssigner = (
   params: CreateHorizontalBrowseDeckAssignerParams
 ) => {
@@ -127,7 +133,11 @@ export const createHorizontalBrowseDeckAssigner = (
     }
   }
 
-  const assignSongToDeck = async (deck: DeckKey, song: ISongInfo) => {
+  const assignSongToDeck = async (
+    deck: DeckKey,
+    song: ISongInfo,
+    options?: HorizontalBrowseDeckAssignTransportOptions
+  ) => {
     const startedAt = performance.now()
     const filePath = String(song.filePath || '').trim()
     sendHorizontalBrowseInteractionTrace('assign-song:start', {
@@ -145,8 +155,17 @@ export const createHorizontalBrowseDeckAssigner = (
     const nowMs = performance.now()
     const initialDurationSec = parseHorizontalBrowseDurationToSeconds(initialSong.duration)
     const initialCueSec = resolveHorizontalBrowseDefaultCuePointSec(initialSong, initialDurationSec)
+    const hasInitialCurrentSec =
+      typeof options?.initialCurrentSec === 'number' && Number.isFinite(options.initialCurrentSec)
+    const initialCurrentSec =
+      hasInitialCurrentSec && initialDurationSec > 0
+        ? Math.min(Math.max(0, Number(options.initialCurrentSec)), initialDurationSec)
+        : hasInitialCurrentSec
+          ? Math.max(0, Number(options.initialCurrentSec))
+          : initialCueSec
+    const applyHydratedCue = options?.applyHydratedCue ?? !hasInitialCurrentSec
     const initialCommit = params.commitDeckStateToNative(deck, {
-      currentSec: initialCueSec,
+      currentSec: initialCurrentSec,
       lastObservedAtMs: nowMs,
       durationSec: initialDurationSec,
       playing: false,
@@ -162,43 +181,57 @@ export const createHorizontalBrowseDeckAssigner = (
       sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, initialFilePath)
     })
 
-    const nextSong = await hydration
-    const nextFilePath = String(nextSong.filePath || '').trim()
-    if (!isSameHorizontalBrowseSongFilePath(params.resolveDeckSong(deck)?.filePath, nextFilePath)) {
+    const finishHydration = async () => {
+      const nextSong = await hydration
+      const nextFilePath = String(nextSong.filePath || '').trim()
+      if (
+        !isSameHorizontalBrowseSongFilePath(params.resolveDeckSong(deck)?.filePath, nextFilePath)
+      ) {
+        return
+      }
+
+      params.setDeckSong(deck, nextSong)
+      const nextDurationSec = parseHorizontalBrowseDurationToSeconds(nextSong.duration)
+      const nextCueSec = resolveHorizontalBrowseDefaultCuePointSec(nextSong, nextDurationSec)
+      const canApplyHydratedCue =
+        applyHydratedCue &&
+        !params.resolveDeckPlaying(deck) &&
+        Math.abs(params.resolveDeckCurrentSeconds(deck) - initialCurrentSec) <= 0.05
+      params.syncDeckDefaultCue(deck, nextSong, canApplyHydratedCue)
+      const nativeGridPayload = buildNativeGridPayload(nextSong)
+      if (nativeGridPayload) {
+        await params.setDeckBeatGridToNative(deck, nativeGridPayload)
+      }
+      if (canApplyHydratedCue && Math.abs(nextCueSec - initialCurrentSec) > 0.0001) {
+        await params.commitDeckStateToNative(deck, {
+          currentSec: nextCueSec,
+          lastObservedAtMs: performance.now(),
+          durationSec: nextDurationSec,
+          playing: false
+        })
+      }
+      sendHorizontalBrowseInteractionTrace('assign-song:hydrated', {
+        deck,
+        filePath: nextFilePath,
+        elapsedMs: Number((performance.now() - startedAt).toFixed(1)),
+        sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, nextFilePath)
+      })
+      sendHorizontalBrowseInteractionTrace('assign-song:done', {
+        deck,
+        filePath: nextFilePath,
+        elapsedMs: Number((performance.now() - startedAt).toFixed(1)),
+        sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, nextFilePath)
+      })
+    }
+
+    if (options?.waitForHydration === false) {
+      void finishHydration().catch((error) => {
+        console.error('[horizontal-browse] assign song hydration failed', error)
+      })
       return
     }
 
-    params.setDeckSong(deck, nextSong)
-    const nextDurationSec = parseHorizontalBrowseDurationToSeconds(nextSong.duration)
-    const nextCueSec = resolveHorizontalBrowseDefaultCuePointSec(nextSong, nextDurationSec)
-    const canApplyHydratedCue =
-      !params.resolveDeckPlaying(deck) &&
-      Math.abs(params.resolveDeckCurrentSeconds(deck) - initialCueSec) <= 0.05
-    params.syncDeckDefaultCue(deck, nextSong, canApplyHydratedCue)
-    const nativeGridPayload = buildNativeGridPayload(nextSong)
-    if (nativeGridPayload) {
-      await params.setDeckBeatGridToNative(deck, nativeGridPayload)
-    }
-    if (canApplyHydratedCue && Math.abs(nextCueSec - initialCueSec) > 0.0001) {
-      await params.commitDeckStateToNative(deck, {
-        currentSec: nextCueSec,
-        lastObservedAtMs: performance.now(),
-        durationSec: nextDurationSec,
-        playing: false
-      })
-    }
-    sendHorizontalBrowseInteractionTrace('assign-song:hydrated', {
-      deck,
-      filePath: nextFilePath,
-      elapsedMs: Number((performance.now() - startedAt).toFixed(1)),
-      sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, nextFilePath)
-    })
-    sendHorizontalBrowseInteractionTrace('assign-song:done', {
-      deck,
-      filePath: nextFilePath,
-      elapsedMs: Number((performance.now() - startedAt).toFixed(1)),
-      sinceDblclickMs: resolveHorizontalBrowseInteractionElapsedMs(deck, nextFilePath)
-    })
+    await finishHydration()
   }
 
   return {

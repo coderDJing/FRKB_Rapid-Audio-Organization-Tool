@@ -39,13 +39,15 @@ import {
   writeWindowVolume
 } from '@renderer/utils/windowVolume'
 import { formatWindowTitle } from '@renderer/utils/windowTitle'
+import type { MainWindowBrowseMode } from '@renderer/utils/mainWindowPlaybackHandoff'
+import { useMainWindowPlaybackHandoff } from '@renderer/composables/useMainWindowPlaybackHandoff'
 
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
 const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
-type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
 type RuntimeLayoutConfig = typeof runtime.layoutConfig
 type RuntimeLibraryTree = typeof runtime.libraryTree
+const { stageMainWindowPlaybackHandoff } = useMainWindowPlaybackHandoff(runtime)
 
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object'
@@ -545,12 +547,14 @@ const openDialog = async (item: string) => {
   if (item === '全局搜歌') item = 'menu.globalSongSearch'
 
   if (item === 'menu.fullBrowseMode') {
+    await stageMainWindowPlaybackHandoff('browser')
     runtime.mainWindowBrowseMode = 'browser'
     return
   }
   if (item === 'menu.horizontalBrowseMode') {
     const canEnterHorizontalMode = await ensureAnalysisRuntimeForHorizontalMode()
     if (!canEnterHorizontalMode) return
+    await stageMainWindowPlaybackHandoff('horizontal')
     syncPlayingDataToTopDeck()
     runtime.mainWindowBrowseMode = 'horizontal'
     return
@@ -558,6 +562,7 @@ const openDialog = async (item: string) => {
   if (item === 'menu.editBrowseMode') {
     const canEnterHorizontalMode = await ensureAnalysisRuntimeForHorizontalMode()
     if (!canEnterHorizontalMode) return
+    await stageMainWindowPlaybackHandoff('edit')
     syncPlayingDataToTopDeck()
     runtime.mainWindowBrowseMode = 'edit'
     return

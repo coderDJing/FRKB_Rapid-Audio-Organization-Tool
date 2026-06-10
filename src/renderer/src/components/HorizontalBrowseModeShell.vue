@@ -45,6 +45,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import emitter from '@renderer/utils/mitt'
 import { createHorizontalBrowseDeckAssigner } from '@renderer/components/horizontalBrowseDeckAssignment'
+import type { HorizontalBrowseDeckAssignTransportOptions } from '@renderer/components/horizontalBrowseDeckAssignment'
 import { useHorizontalBrowseTransportController } from '@renderer/components/useHorizontalBrowseTransportController'
 import { useHorizontalBrowseTransportMutations } from '@renderer/components/useHorizontalBrowseTransportMutations'
 import { useHorizontalBrowseFaderControls } from '@renderer/components/useHorizontalBrowseFaderControls'
@@ -67,6 +68,8 @@ import {
   type HorizontalBrowseViewMode,
   type SharedDetailZoomState
 } from '@renderer/components/horizontalBrowseModeShellTypes'
+import { useHorizontalBrowseModePlaybackHandoff } from '@renderer/components/useHorizontalBrowseModePlaybackHandoff'
+import { MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT } from '@renderer/utils/mainWindowPlaybackHandoff'
 
 type DeckKey = HorizontalBrowseDeckKey
 const props = withDefaults(
@@ -289,7 +292,8 @@ const {
   resolveDeckTempoNudgeDirection,
   startDeckTempoNudge,
   stopDeckTempoNudge,
-  stopAllDeckTempoNudge
+  stopAllDeckTempoNudge,
+  resetAllDeckTempoNudgePlaybackRates
 } = useHorizontalBrowseDeckTempoNudge({
   touchDeckInteraction,
   nativeTransport,
@@ -380,10 +384,11 @@ const { assignSongToDeck: assignSongToDeckBase } = createHorizontalBrowseDeckAss
 const assignSongToDeck = async (
   deck: DeckKey,
   song: ISongInfo,
-  sourceOptions?: HorizontalBrowseDeckSongSourceOptions
+  sourceOptions?: HorizontalBrowseDeckSongSourceOptions,
+  transportOptions?: HorizontalBrowseDeckAssignTransportOptions
 ) => {
   setDeckSongListSource(deck, resolveDeckSongSourceOptions(sourceOptions))
-  await assignSongToDeckBase(deck, song)
+  await assignSongToDeckBase(deck, song, transportOptions)
 }
 
 const {
@@ -671,37 +676,6 @@ useHorizontalBrowseHotkeys({
   onResetCrossfader: handleCrossfaderResetByKeyboard
 })
 
-const enterEditMode = async () => {
-  stopAllDeckCuePreview()
-  faderPanelRef.value?.syncCrossfaderValue(0)
-  if (resolveDeckPlaying('top')) await nativeTransport.setPlaying('top', false)
-  setDeckSong('bottom', null)
-  await commitDeckStateToNative('bottom', {
-    currentSec: 0,
-    durationSec: 0,
-    playing: false,
-    playbackRate: 1
-  })
-  if (deckSyncState.leaderDeck === 'bottom')
-    await nativeTransport.setLeader(resolveDeckSong('top') ? 'top' : null)
-  syncDeckRenderState({ force: 'all' })
-}
-const handleEditWaveformLoadingChange = (loading: boolean) => {
-  if (!loading || !isEditMode.value || !resolveDeckPlaying('top')) return
-  void nativeTransport
-    .setPlaying('top', false)
-    .catch((error) =>
-      console.error('[horizontal-browse] pause edit waveform loading failed', error)
-    )
-    .finally(() => syncDeckRenderState({ force: 'top' }))
-}
-watch(isEditMode, (editMode) => {
-  if (!editMode) return
-  clearAllDeckCueMonitor()
-  void enterEditMode().catch((error) => {
-    console.error('[horizontal-browse] enter edit mode failed', error)
-  })
-})
 const {
   isDeckHovered,
   handleRegionDragEnter,
@@ -735,28 +709,35 @@ watch(
   { immediate: true }
 )
 
-const syncDeckDataToPlayingData = () => {
-  const leaderDeck = deckSyncState.leaderDeck
-  const sourceDeck = leaderDeck === 'bottom' ? 'bottom' : 'top'
-  const song = resolveDeckSong(sourceDeck)
-  if (!song) return
-
-  runtime.playingData.playingSong = { ...song }
-  const songListUUID =
-    sourceDeck === 'top'
-      ? runtime.horizontalBrowseDecks.topSongListUUID
-      : runtime.horizontalBrowseDecks.bottomSongListUUID
-  const songListData =
-    sourceDeck === 'top'
-      ? runtime.horizontalBrowseDecks.topSongListData
-      : runtime.horizontalBrowseDecks.bottomSongListData
-  if (songListUUID) {
-    runtime.playingData.playingSongListUUID = songListUUID
-  }
-  if (songListData.length > 0) {
-    runtime.playingData.playingSongListData = songListData.map((s) => ({ ...s }))
-  }
-}
+const {
+  handleEditWaveformLoadingChange,
+  handleMainWindowPlaybackSnapshotRequest,
+  markPlaybackHandoffReady,
+  clearPlaybackHandoffRuntimeState,
+  syncDeckDataToPlayingData
+} = useHorizontalBrowseModePlaybackHandoff({
+  runtime,
+  horizontalBrowseViewMode,
+  deckSyncState,
+  faderPanelRef,
+  clearAllDeckCueMonitor,
+  stopAllDeckCuePreview,
+  resetAllDeckTempoNudgePlaybackRates,
+  deactivateDualTransportSync,
+  nativeTransport,
+  resolveDeckSong,
+  resolveDeckPlaying,
+  resolveDeckCurrentSeconds,
+  resolveDeckRenderCurrentSeconds,
+  resolveDeckDurationSeconds,
+  resolveTransportDeckSnapshot,
+  setDeckSong,
+  assignSongToDeck,
+  notifyDeckSeekIntent,
+  commitDeckStateToNative,
+  syncDeckRenderState,
+  handleDeckPlayPauseToggle
+})
 
 const { handleSongsRemoved } = useHorizontalBrowseSongsRemoved({
   resolveDeckSong,
@@ -767,6 +748,7 @@ onMounted(() => {
   startSnapshotSync()
   void nativeTransport.reset().finally(() => {
     faderPanelRef.value?.syncCrossfaderValue(0)
+    markPlaybackHandoffReady()
   })
   startRenderSyncLoop(handleDeckLoopPlaybackTick)
   window.addEventListener('drop', handleGlobalDragFinish, true)
@@ -774,6 +756,7 @@ onMounted(() => {
   window.addEventListener('pointerup', handleWindowDeckCuePointerUp)
   window.addEventListener('pointercancel', handleWindowDeckCuePointerUp)
   window.addEventListener('blur', stopAllDeckCuePreview)
+  emitter.on(MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT, handleMainWindowPlaybackSnapshotRequest)
   emitter.on('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   emitter.on('songsRemoved', handleSongsRemoved)
   window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
@@ -785,6 +768,7 @@ onMounted(() => {
 onUnmounted(() => {
   stopAllDeckCuePreview()
   stopAllDeckTempoNudge()
+  clearPlaybackHandoffRuntimeState()
   stopSnapshotSync()
   void nativeTransport.reset().catch((error) => {
     console.error('[horizontal-browse] reset transport failed on exit', error)
@@ -798,6 +782,7 @@ onUnmounted(() => {
   window.removeEventListener('pointercancel', handleWindowDeckCuePointerUp)
   window.removeEventListener('blur', stopAllDeckCuePreview)
   disposeSongSync()
+  emitter.off(MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT, handleMainWindowPlaybackSnapshotRequest)
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   emitter.off('songsRemoved', handleSongsRemoved)
   window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)

@@ -20,6 +20,8 @@ impl HorizontalBrowseTransportEngine {
       master_gain: self.master_gain as f64,
       top_deck_gain: self.top.gain as f64,
       bottom_deck_gain: self.bottom.gain as f64,
+      sample_rate: self.output_sample_rate as f64,
+      channels: self.output_channels as f64,
     }
   }
 

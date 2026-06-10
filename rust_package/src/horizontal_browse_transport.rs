@@ -323,6 +323,14 @@ impl Default for HorizontalBrowseTransportEngine {
 }
 
 impl HorizontalBrowseTransportEngine {
+  fn reset_preserving_output_config(&mut self) {
+    let output_sample_rate = self.output_sample_rate.max(1);
+    let output_channels = self.output_channels.max(1);
+    *self = Self::default();
+    self.output_sample_rate = output_sample_rate;
+    self.output_channels = output_channels;
+  }
+
   fn mark_state_changed(&mut self) {
     self.state_revision = self.state_revision.wrapping_add(1);
     if self.state_revision == 0 {

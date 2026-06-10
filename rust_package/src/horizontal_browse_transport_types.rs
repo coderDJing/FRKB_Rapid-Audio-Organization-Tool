@@ -114,6 +114,8 @@ pub struct HorizontalBrowseTransportOutputSnapshot {
   pub master_gain: f64,
   pub top_deck_gain: f64,
   pub bottom_deck_gain: f64,
+  pub sample_rate: f64,
+  pub channels: f64,
 }
 
 #[napi(object)]

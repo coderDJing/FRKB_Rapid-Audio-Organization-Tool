@@ -8,6 +8,10 @@ import {
   ISongInfo,
   ISongsAreaColumn
 } from 'src/types/globals'
+import type {
+  MainWindowBrowseMode,
+  MainWindowPlaybackHandoff
+} from '@renderer/utils/mainWindowPlaybackHandoff'
 export type LibrarySelection =
   | 'FilterLibrary'
   | 'CuratedLibrary'
@@ -17,7 +21,6 @@ export type LibrarySelection =
   | 'ExternalPlaylist'
   | 'PioneerDeviceLibrary'
 
-type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
 export type SongsAreaPaneKey = 'single' | 'left' | 'right'
 export type SplitSongsAreaPaneKey = 'left' | 'right'
 export type SongsAreaColumnMode = 'default' | 'recycle' | 'recording' | 'mixtape'
@@ -160,6 +163,7 @@ interface Runtime {
     playingSongListUUID: string
     playingSongListData: ISongInfo[]
   }
+  mainWindowPlaybackHandoff: MainWindowPlaybackHandoff | null
   horizontalBrowseDecks: {
     topSong: null | ISongInfo
     bottomSong: null | ISongInfo
@@ -290,6 +294,7 @@ export const useRuntimeStore = defineStore('runtime', {
         playingSongListUUID: '', //正在播放的歌单的UUID
         playingSongListData: [] //正在播放的歌单的曲目数组
       },
+      mainWindowPlaybackHandoff: null,
       horizontalBrowseDecks: {
         topSong: null,
         bottomSong: null,

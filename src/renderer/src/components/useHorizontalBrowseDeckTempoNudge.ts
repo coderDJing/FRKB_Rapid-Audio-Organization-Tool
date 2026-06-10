@@ -117,6 +117,32 @@ export const useHorizontalBrowseDeckTempoNudge = (
     stopDeckTempoNudge('bottom')
   }
 
+  const resetDeckTempoNudgePlaybackRate = async (deck: DeckKey, playbackRate = 1) => {
+    const restorePlaybackRate = clampPlaybackRate(normalizePlaybackRate(playbackRate))
+    activeTempoNudge[deck] = null
+    pendingRestorePlaybackRate[deck] = restorePlaybackRate
+    operationQueue[deck] = operationQueue[deck]
+      .catch(() => {})
+      .then(async () => {
+        await params.nativeTransport.setTempoNudgePlaybackRate(deck, restorePlaybackRate)
+        params.syncDeckRenderState({ force: deck })
+        if (!activeTempoNudge[deck] && pendingRestorePlaybackRate[deck] === restorePlaybackRate) {
+          pendingRestorePlaybackRate[deck] = null
+        }
+      })
+      .catch((error) => {
+        console.error('[horizontal-browse-tempo-nudge] reset playback rate failed', error)
+      })
+    await operationQueue[deck]
+  }
+
+  const resetAllDeckTempoNudgePlaybackRates = async (playbackRate = 1) => {
+    await Promise.all([
+      resetDeckTempoNudgePlaybackRate('top', playbackRate),
+      resetDeckTempoNudgePlaybackRate('bottom', playbackRate)
+    ])
+  }
+
   const handleWindowBlur = () => {
     stopAllDeckTempoNudge()
   }
@@ -149,6 +175,7 @@ export const useHorizontalBrowseDeckTempoNudge = (
     resolveDeckTempoNudgeDirection,
     startDeckTempoNudge,
     stopDeckTempoNudge,
-    stopAllDeckTempoNudge
+    stopAllDeckTempoNudge,
+    resetAllDeckTempoNudgePlaybackRates
   }
 }

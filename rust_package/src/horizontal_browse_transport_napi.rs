@@ -2,7 +2,7 @@ use super::*;
 
 #[napi]
 pub fn horizontal_browse_transport_reset() {
-  *engine().lock() = HorizontalBrowseTransportEngine::default();
+  engine().lock().reset_preserving_output_config();
 }
 
 #[napi]

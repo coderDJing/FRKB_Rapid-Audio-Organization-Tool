@@ -76,6 +76,8 @@ type HorizontalBrowseTransportOutputSnapshot = {
   masterGain: number
   topDeckGain: number
   bottomDeckGain: number
+  sampleRate: number
+  channels: number
 }
 
 export type HorizontalBrowseTransportSnapshot = {
@@ -159,6 +161,8 @@ export const createEmptyHorizontalBrowseTransportSnapshot =
       crossfaderValue: 0,
       masterGain: 1,
       topDeckGain: 1,
-      bottomDeckGain: 1
+      bottomDeckGain: 1,
+      sampleRate: 44100,
+      channels: 2
     }
   })

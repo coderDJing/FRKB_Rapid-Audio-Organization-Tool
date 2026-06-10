@@ -10,6 +10,23 @@ fn install_loaded_test_pcm(deck: &mut DeckState, seconds: usize) {
   deck.pcm_data = Arc::new(vec![0.0; seconds.saturating_mul(4).max(1)]);
 }
 
+#[test]
+fn reset_preserves_output_stream_format() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  engine.output_sample_rate = 48_000;
+  engine.output_channels = 6;
+  engine.top.file_path = Some("loaded.mp3".to_string());
+  engine.top.current_sec = 12.0;
+  engine.top.playing = true;
+
+  engine.reset_preserving_output_config();
+
+  assert_eq!(engine.output_sample_rate, 48_000);
+  assert_eq!(engine.output_channels, 6);
+  assert!(engine.top.file_path.is_none());
+  assert!(!engine.top.playing);
+}
+
 fn adjusted_grid_offset_sec(engine: &HorizontalBrowseTransportEngine, deck: DeckId) -> f64 {
   let grid = engine.beat_grid(deck).unwrap();
   HorizontalBrowseTransportEngine::nearest_grid_offset_sec(grid, engine.deck(deck).current_sec)

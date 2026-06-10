@@ -14,6 +14,7 @@ import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 import { resolvePlayerWaveformTraceElapsedMs, sendPlayerWaveformTrace } from './playerWaveformTrace'
+import { normalizePlaybackHandoffSeconds } from '@renderer/utils/mainWindowPlaybackHandoff'
 
 type WaveformCacheResponse = {
   items?: Array<{
@@ -58,6 +59,22 @@ export function useSongLoader(params: {
   const isLoadingBlob = ref(false)
   const ignoreNextEmptyError = ref(false)
   let waveformTraceStartedAt = 0
+
+  const resolveBrowserPlaybackHandoff = (filePath: string, durationSec: number) => {
+    const handoff = runtime.mainWindowPlaybackHandoff
+    if (!handoff || handoff.targetMode !== 'browser') return null
+    if (String(handoff.song?.filePath || '').trim() !== filePath) return null
+    return {
+      id: handoff.id,
+      currentSec: normalizePlaybackHandoffSeconds(handoff.currentSec, durationSec),
+      shouldPlay: handoff.shouldPlay
+    }
+  }
+
+  const clearBrowserPlaybackHandoff = (handoffId: number) => {
+    if (runtime.mainWindowPlaybackHandoff?.id !== handoffId) return
+    runtime.mainWindowPlaybackHandoff = null
+  }
 
   let errorDialogShowing = false
   const handleSongLoadError = async (
@@ -305,8 +322,9 @@ export function useSongLoader(params: {
       if (requestId !== currentLoadRequestId.value) return
       if (runtime.playingData.playingSong?.filePath !== filePath) return
       const duration = playerInstance.getDuration()
-      let startTime = 0
-      if (runtime.setting.enablePlaybackRange && duration > 0) {
+      const handoff = resolveBrowserPlaybackHandoff(filePath, duration)
+      let startTime = handoff?.currentSec ?? 0
+      if (!handoff && runtime.setting.enablePlaybackRange && duration > 0) {
         const startPercent = runtime.setting.startPlayPercent ?? 0
         const startValue =
           typeof startPercent === 'number' ? startPercent : parseFloat(String(startPercent))
@@ -314,12 +332,19 @@ export function useSongLoader(params: {
         startTime = (duration * Math.min(Math.max(safePercent, 0), 100)) / 100
       }
       try {
+        if (handoff && !handoff.shouldPlay) {
+          playerInstance.seek(startTime)
+          runtime.playerReady = true
+          runtime.isSwitchingSong = false
+          return
+        }
         playerInstance.play(startTime)
       } catch (playError: unknown) {
         if (!isAbortError(playError)) {
           void handleSongLoadError(filePath, false)
         }
       } finally {
+        if (handoff) clearBrowserPlaybackHandoff(handoff.id)
         isLoadingBlob.value = false
       }
     }

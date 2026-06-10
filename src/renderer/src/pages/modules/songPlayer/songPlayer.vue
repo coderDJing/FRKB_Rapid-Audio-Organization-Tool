@@ -42,6 +42,14 @@ import {
   type TitleAudioVisualizerSource
 } from '@renderer/composables/titleAudioVisualizerBridge'
 import { sendPlayerWaveformTrace } from './playerWaveformTrace'
+import {
+  MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT,
+  clonePlaybackHandoffSong,
+  clonePlaybackHandoffSongList,
+  isMainWindowPlaybackSnapshotRequest,
+  normalizePlaybackHandoffSeconds,
+  type MainWindowPlaybackSnapshot
+} from '@renderer/utils/mainWindowPlaybackHandoff'
 const musicIcon = musicIconAsset
 type WaveformPreviewStatePayload = {
   active?: boolean
@@ -95,6 +103,28 @@ const rangeStopTolerance = 0.05
 let manualSeekActive = false
 let manualSeekResetTimer: number | null = null
 let teardownPlayerEvents: (() => void) | null = null
+
+const buildBrowserPlaybackSnapshot = (): MainWindowPlaybackSnapshot | null => {
+  const song = runtime.playingData.playingSong
+  if (!song) return null
+  const player = audioPlayer.value
+  const durationSec = Number(player?.getDuration?.())
+  return {
+    sourceMode: 'browser',
+    song: clonePlaybackHandoffSong(song),
+    songListUUID: String(runtime.playingData.playingSongListUUID || '').trim(),
+    songListData: clonePlaybackHandoffSongList(runtime.playingData.playingSongListData),
+    currentSec: normalizePlaybackHandoffSeconds(player?.getCurrentTime?.() ?? 0, durationSec),
+    shouldPlay: Boolean(player?.isPlaying?.())
+  }
+}
+
+const handleMainWindowPlaybackSnapshotRequest = (payload: unknown) => {
+  if (!isMainWindowPlaybackSnapshotRequest(payload)) return
+  if (payload.sourceMode !== 'browser') return
+  if (runtime.mainWindowBrowseMode !== 'browser') return
+  payload.respond(buildBrowserPlaybackSnapshot())
+}
 
 const clearManualSeekTimer = () => {
   if (manualSeekResetTimer !== null) {
@@ -358,6 +388,7 @@ onMounted(() => {
   registerTitleAudioVisualizerSource('mainWindow', titleAudioVisualizerSource)
   emitter.on('player/replay-current-song', handleReplayRequest)
   emitter.on('external-open/play', handleExternalOpenPlay)
+  emitter.on(MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT, handleMainWindowPlaybackSnapshotRequest)
   emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:pause-main', handleWaveformPreviewPauseMain)
   emitter.on('waveform-preview:resume-main', handleWaveformPreviewResumeMain)
@@ -638,6 +669,7 @@ onUnmounted(() => {
   window.removeEventListener('resize', updateParentWaveformWidth)
   emitter.off('player/replay-current-song', handleReplayRequest)
   emitter.off('external-open/play', handleExternalOpenPlay)
+  emitter.off(MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT, handleMainWindowPlaybackSnapshotRequest)
   emitter.off('waveform-preview:state', handleWaveformPreviewState)
   emitter.off('waveform-preview:pause-main', handleWaveformPreviewPauseMain)
   emitter.off('waveform-preview:resume-main', handleWaveformPreviewResumeMain)
