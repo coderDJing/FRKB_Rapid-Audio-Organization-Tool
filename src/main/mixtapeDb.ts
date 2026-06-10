@@ -27,7 +27,7 @@ function normalizeMixtapeMixMode(value: unknown): MixtapeMixMode {
   return value === 'eq' ? 'eq' : 'stem'
 }
 
-export type MixtapeProjectStemConfig = {
+type MixtapeProjectStemConfig = {
   mixMode: MixtapeMixMode
   stemProfile: MixtapeStemProfile
 }

@@ -2,7 +2,7 @@ import { SoundTouchNode } from '@soundtouchjs/audio-worklet'
 import soundTouchProcessorUrl from '@soundtouchjs/audio-worklet/processor?url'
 import type { TransportPlaybackSequence } from '@renderer/composables/mixtape/timelineTransportPlaybackSequence'
 
-export type TransportPlaybackRateControl = {
+type TransportPlaybackRateControl = {
   value: number
   setTargetAtTime: (value: number, startTime: number, timeConstant: number) => void
 }
@@ -94,7 +94,7 @@ const resolveSoundTouchAutoWindowMs = (tempo: number, kind: 'sequence' | 'seek')
   )
 }
 
-export const estimateTransportSoundTouchLatencySec = (sampleRate: number, playbackRate: number) => {
+const estimateTransportSoundTouchLatencySec = (sampleRate: number, playbackRate: number) => {
   const safeSampleRate = Math.max(1, Number(sampleRate) || 44100)
   const safeTempo = clampNumber(Number(playbackRate) || 1, 0.25, 4)
   let overlapFrames = (safeSampleRate * SOUNDTOUCH_OVERLAP_MS) / 1000

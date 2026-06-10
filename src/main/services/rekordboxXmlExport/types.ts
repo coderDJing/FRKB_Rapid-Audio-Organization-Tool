@@ -64,7 +64,7 @@ export type RekordboxXmlExportAppliedOperation = {
   outputPath: string
 }
 
-export type RekordboxXmlExportProgressPayload = {
+type RekordboxXmlExportProgressPayload = {
   id: string
   titleKey: string
   now: number
@@ -76,7 +76,7 @@ export type RekordboxXmlExportProgressPayload = {
   cancelPayload?: unknown
 }
 
-export type RekordboxXmlExportProgressReporter = (
+type RekordboxXmlExportProgressReporter = (
   payload: RekordboxXmlExportProgressPayload
 ) => void | Promise<void>
 

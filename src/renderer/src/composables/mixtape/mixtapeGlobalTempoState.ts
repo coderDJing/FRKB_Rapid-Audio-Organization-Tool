@@ -8,7 +8,7 @@ export type MixtapeGlobalTempoSource = 'empty' | 'persisted' | 'generated' | 'us
 
 export const mixtapeGlobalTempoPlaylistId = ref('')
 export const mixtapeGlobalTempoEnvelope = ref<MixtapeBpmPoint[]>([])
-export const mixtapeGlobalTempoDurationSec = ref(0)
+const mixtapeGlobalTempoDurationSec = ref(0)
 export const mixtapeGlobalTempoPhaseOffsetSec = ref(0)
 export const mixtapeGlobalTempoSource = ref<MixtapeGlobalTempoSource>('empty')
 

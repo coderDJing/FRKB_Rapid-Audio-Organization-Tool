@@ -8,7 +8,7 @@ const PIONEER_PREVIEW_WAVEFORM_CACHE_VERSION = 1
 
 type PioneerPreviewWaveformCacheStatus = 'ready' | 'missing'
 
-export type PioneerPreviewWaveformCacheEntry = {
+type PioneerPreviewWaveformCacheEntry = {
   signature: string
   status: PioneerPreviewWaveformCacheStatus
   previewFilePath?: string

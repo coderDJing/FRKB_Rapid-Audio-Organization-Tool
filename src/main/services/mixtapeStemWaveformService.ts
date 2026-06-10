@@ -36,7 +36,7 @@ type ResolvedStemItem = {
   stat: { size: number; mtimeMs: number }
 }
 
-export type MixtapeStemWaveformBundleResult = {
+type MixtapeStemWaveformBundleResult = {
   sourceFilePath: string
   listRoot: string
   stemMode: MixtapeStemMode

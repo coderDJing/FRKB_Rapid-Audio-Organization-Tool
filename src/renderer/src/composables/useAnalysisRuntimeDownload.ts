@@ -11,8 +11,8 @@ import {
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 type ConfirmDialogFn = typeof import('@renderer/components/confirmDialog').default
 
-export type AnalysisRuntimePromptSource = 'startup' | 'help' | 'horizontal'
-export type AnalysisRuntimePromptResult = 'ready' | 'started' | 'blocked'
+type AnalysisRuntimePromptSource = 'startup' | 'help' | 'horizontal'
+type AnalysisRuntimePromptResult = 'ready' | 'started' | 'blocked'
 
 type AnalysisRuntimeDownloadStatus =
   | 'idle'

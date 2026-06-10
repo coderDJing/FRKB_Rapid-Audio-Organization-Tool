@@ -41,7 +41,7 @@ const normalizeMetronomeVolumeLevel = (level: unknown): MetronomeVolumeLevel => 
   return 2
 }
 
-export const resolveNextMetronomeCycleState = (
+const resolveNextMetronomeCycleState = (
   enabled: boolean,
   volumeLevel: unknown
 ): { enabled: boolean; volumeLevel: MetronomeVolumeLevel } => {

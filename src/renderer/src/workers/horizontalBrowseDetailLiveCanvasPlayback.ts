@@ -8,7 +8,7 @@ export const PLAYBACK_SCROLL_REUSE_MAX_FRAME_GAP_MS = PLAYBACK_RENDER_FALLBACK_T
 export const PLAYBACK_CLOCK_REANCHOR_MIN_FRAME_GAP_MS = 120
 export const PLAYBACK_SCROLL_REUSE_RECOVERY_FRAMES = 0
 export const PLAYBACK_INITIAL_FULL_RENDER_LEAD_DEFAULT_MS = 30
-export const PLAYBACK_INITIAL_FULL_RENDER_LEAD_MAX_MS = 48
+const PLAYBACK_INITIAL_FULL_RENDER_LEAD_MAX_MS = 48
 
 export const clampPlaybackRenderLeadMs = (value: number) => {
   const safeValue = Number.isFinite(value) ? value : PLAYBACK_INITIAL_FULL_RENDER_LEAD_DEFAULT_MS
@@ -35,7 +35,7 @@ export const resolvePlaybackRenderClockStartedAtMs = (
   return epochMs - resolveWorkerPerformanceTimeOrigin()
 }
 
-export const clampPlaybackRangeStart = (
+const clampPlaybackRangeStart = (
   value: number,
   duration: number,
   visibleDuration: number

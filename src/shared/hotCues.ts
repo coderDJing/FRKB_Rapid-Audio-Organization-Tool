@@ -1,8 +1,8 @@
 import type { ISongHotCue } from '../types/globals'
 
 export const HOT_CUE_SLOT_COUNT = 8
-export const HOT_CUE_SLOT_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as const
-export const HOT_CUE_SLOT_COLORS = [
+const HOT_CUE_SLOT_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as const
+const HOT_CUE_SLOT_COLORS = [
   '#20c997',
   '#2f80ed',
   '#9b51e0',

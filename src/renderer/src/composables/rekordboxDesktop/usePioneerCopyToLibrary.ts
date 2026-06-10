@@ -17,7 +17,7 @@ import type {
   IPioneerPlaylistTreeNode
 } from '../../../../types/globals'
 
-export type PioneerCopyTargetLibrary = 'FilterLibrary' | 'CuratedLibrary'
+type PioneerCopyTargetLibrary = 'FilterLibrary' | 'CuratedLibrary'
 
 type RuntimeStore = ReturnType<typeof useRuntimeStore>
 type RunWithCopyBusy = <T>(task: () => Promise<T>) => Promise<T>

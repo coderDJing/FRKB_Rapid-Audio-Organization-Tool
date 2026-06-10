@@ -35,7 +35,7 @@ export const clampNumber = (value: number, min: number, max: number) =>
 export const resolveVolumeMuteSegmentKey = (segment: MixtapeMuteSegment) =>
   `${Number(segment.startSec).toFixed(4)}:${Number(segment.endSec).toFixed(4)}`
 
-export const resolveVolumeMuteStepBeats = (zoom: number) => {
+const resolveVolumeMuteStepBeats = (zoom: number) => {
   if (zoom >= GRID_BEAT_LINE_ZOOM) return 1
   if (zoom >= GRID_BEAT4_LINE_ZOOM) return 4
   return 32

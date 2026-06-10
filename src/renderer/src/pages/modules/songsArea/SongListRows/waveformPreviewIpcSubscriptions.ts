@@ -6,19 +6,19 @@ import {
 
 export type WaveformUpdatedPayload = { filePath?: string }
 export type ManualKeyAnalysisBatchStartPayload = { filePaths?: string[] }
-export type PioneerPreviewWaveformItemPayload = {
+type PioneerPreviewWaveformItemPayload = {
   requestId?: string
   analyzePath?: string
   data?: IPioneerPreviewWaveformData | null
   error?: string
 }
-export type PioneerPreviewWaveformDonePayload = {
+type PioneerPreviewWaveformDonePayload = {
   requestId?: string
   error?: string
 }
 
 export type WaveformUpdatedHandler = (_event: unknown, payload: WaveformUpdatedPayload) => void
-export type ManualKeyAnalysisBatchStartHandler = (
+type ManualKeyAnalysisBatchStartHandler = (
   _event: unknown,
   payload?: ManualKeyAnalysisBatchStartPayload
 ) => void

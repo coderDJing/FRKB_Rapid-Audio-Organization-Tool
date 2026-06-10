@@ -10,7 +10,7 @@ import {
 } from '@shared/waveformDisplayColor'
 import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
 
-export type SongListWaveformCanvasContext =
+type SongListWaveformCanvasContext =
   | CanvasRenderingContext2D
   | OffscreenCanvasRenderingContext2D
 

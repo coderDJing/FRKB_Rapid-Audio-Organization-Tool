@@ -45,7 +45,7 @@ export type TrackStemPreviewRow = {
   muteSegments: MixSegmentMask[]
 }
 
-export type TrackEnvelopePreviewLegendItem = {
+type TrackEnvelopePreviewLegendItem = {
   key: string
   label: string
   color: string

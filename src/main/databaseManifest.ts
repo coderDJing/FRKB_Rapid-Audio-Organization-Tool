@@ -5,7 +5,7 @@ import { v4 as uuidV4 } from 'uuid'
 export const MANIFEST_FILE_NAME = 'FRKB.database.frkbdb'
 const CURRENT_MANIFEST_VERSION = 2
 
-export interface FrkbManifest {
+interface FrkbManifest {
   type: 'frkb_root'
   version: number
   uuid: string

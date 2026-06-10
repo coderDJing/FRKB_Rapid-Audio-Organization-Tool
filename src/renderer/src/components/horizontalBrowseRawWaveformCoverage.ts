@@ -16,7 +16,7 @@ const resolveRawDataCoverageStartSec = (
   return resolveRawDataStartSec(rawData, timeBasisOffsetSec)
 }
 
-export const resolveHorizontalBrowseRawDataCoveredEndSec = (
+const resolveHorizontalBrowseRawDataCoveredEndSec = (
   rawData: RawWaveformData | null,
   timeBasisOffsetSec: number
 ) => {
@@ -28,7 +28,7 @@ export const resolveHorizontalBrowseRawDataCoveredEndSec = (
   return startSec + loadedFrames / rate
 }
 
-export const resolveHorizontalBrowseRawDataEffectiveEndSec = (
+const resolveHorizontalBrowseRawDataEffectiveEndSec = (
   rawData: RawWaveformData | null,
   timeBasisOffsetSec: number
 ) => {

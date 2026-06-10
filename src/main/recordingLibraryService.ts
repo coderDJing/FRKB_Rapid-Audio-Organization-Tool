@@ -21,7 +21,7 @@ export function isInRecordingLibraryAbsPath(absPath: string): boolean {
   return rel === '' || (!!rel && !rel.startsWith('..') && !path.isAbsolute(rel))
 }
 
-export async function ensureRecordingLibraryRoot(): Promise<string> {
+async function ensureRecordingLibraryRoot(): Promise<string> {
   const root = getRecordingLibraryRootAbs()
   if (!root) {
     throw new Error('database directory is not ready')
@@ -44,7 +44,7 @@ export async function createRecordingOutputPath(now = new Date()): Promise<strin
   return candidate
 }
 
-export async function listRecordingFiles(): Promise<string[]> {
+async function listRecordingFiles(): Promise<string[]> {
   const root = getRecordingLibraryRootAbs()
   if (!root || !(await fs.pathExists(root))) return []
   let entries: fs.Dirent[] = []

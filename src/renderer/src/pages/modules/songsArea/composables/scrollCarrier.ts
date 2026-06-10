@@ -1,4 +1,4 @@
-export interface SongsAreaScrollCarrierInfo {
+interface SongsAreaScrollCarrierInfo {
   carrier: HTMLElement | null
   host: HTMLElement | null
   viewport: HTMLElement | null

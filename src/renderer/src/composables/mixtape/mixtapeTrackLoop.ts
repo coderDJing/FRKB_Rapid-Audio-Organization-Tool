@@ -5,7 +5,7 @@ import type {
 
 const LOOP_SEC_EPSILON = 0.0001
 
-export type MixtapeTrackLoopSectionKind = 'head' | 'loop-source' | 'loop-repeat' | 'tail'
+type MixtapeTrackLoopSectionKind = 'head' | 'loop-source' | 'loop-repeat' | 'tail'
 
 export type MixtapeTrackLoopSection = {
   key: string
@@ -57,7 +57,7 @@ const normalizeSingleLoopSegment = (
   }
 }
 
-export const buildMixtapeTrackLoopSegmentKey = (segment: { startSec: number; endSec: number }) =>
+const buildMixtapeTrackLoopSegmentKey = (segment: { startSec: number; endSec: number }) =>
   `${Math.round(segment.startSec * 1000)}:${Math.round(segment.endSec * 1000)}`
 
 export const normalizeMixtapeTrackLoopSegments = (
@@ -105,12 +105,12 @@ export const buildMixtapeTrackLoopSignature = (value: unknown) => {
     .join('|')
 }
 
-export const resolveMixtapeTrackLoopLength = (value: MixtapeTrackLoopSegment | undefined) => {
+const resolveMixtapeTrackLoopLength = (value: MixtapeTrackLoopSegment | undefined) => {
   if (!value) return 0
   return Math.max(0, Number((value.endSec - value.startSec).toFixed(4)) || 0)
 }
 
-export const resolveMixtapeTrackLoopExtraDuration = (value: unknown) => {
+const resolveMixtapeTrackLoopExtraDuration = (value: unknown) => {
   const loops = normalizeMixtapeTrackLoopSegments(value)
   return loops.reduce((sum, loop) => {
     const loopLength = resolveMixtapeTrackLoopLength(loop)

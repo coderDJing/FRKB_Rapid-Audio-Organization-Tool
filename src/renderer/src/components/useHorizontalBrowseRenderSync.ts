@@ -9,7 +9,7 @@ import {
 } from '@renderer/components/horizontalBrowseLinkedGridVisualPhase'
 
 type DeckKey = HorizontalBrowseDeckKey
-export type HorizontalBrowseRenderSyncTarget = DeckKey | DeckKey[] | 'all'
+type HorizontalBrowseRenderSyncTarget = DeckKey | DeckKey[] | 'all'
 export type HorizontalBrowseRenderSyncOptions = {
   nowMs?: number
   snapshotAtMs?: number

@@ -20,9 +20,9 @@ import { invalidateKeyAnalysisCache } from './services/keyAnalysisQueue'
 import { listMixtapeItemsByFilePath, replaceMixtapeFilePath } from './mixtapeDb'
 import { replaceMixtapeStemAssetFilePath } from './mixtapeStemDb'
 
-export type RecycleBinSourceType = 'external' | 'import_dedup' | 'unknown'
+type RecycleBinSourceType = 'external' | 'import_dedup' | 'unknown'
 
-export type RecycleBinMoveOptions = {
+type RecycleBinMoveOptions = {
   originalPlaylistPath?: string | null
   sourceType?: RecycleBinSourceType | string | null
   deletedAtMs?: number
@@ -37,7 +37,7 @@ export type RecycleBinMoveResult = {
   error?: string
 }
 
-export type RecycleBinRestoreResult = {
+type RecycleBinRestoreResult = {
   status: 'restored' | 'missing_playlist' | 'missing_record' | 'missing_file' | 'failed'
   srcPath: string
   destPath?: string
@@ -53,7 +53,7 @@ const UNIQUE_MOVE_MAX_ATTEMPTS = 64
 
 export type MixtapeMissingResolveSource = 'recycle_bin' | 'mixtape_vault'
 
-export type MixtapeMissingResolveResult = {
+type MixtapeMissingResolveResult = {
   resolvedPath: string
   source: MixtapeMissingResolveSource
 }
@@ -121,7 +121,7 @@ export function normalizeRendererPlaylistPath(rendererPath: string): string | nu
   return rel
 }
 
-export async function resolveOriginalPlaylistPathForFile(filePath: string): Promise<string | null> {
+async function resolveOriginalPlaylistPathForFile(filePath: string): Promise<string | null> {
   const libraryRoot = getLibraryRootAbs()
   if (!libraryRoot || !filePath) return null
   try {

@@ -6,7 +6,7 @@ import emitter from '@renderer/utils/mitt'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import { buildMixtapeDragSessionItem } from '@renderer/utils/mixtapeDragSession'
 
-export interface DragSongData {
+interface DragSongData {
   songFilePaths: string[]
   sourceLibraryName: string
   sourceSongListUUID: string

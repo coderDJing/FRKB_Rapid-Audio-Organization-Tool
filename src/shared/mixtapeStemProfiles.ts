@@ -1,12 +1,12 @@
 export type MixtapeStemProfile = 'quality'
 
 export const DEFAULT_MIXTAPE_STEM_PROFILE: MixtapeStemProfile = 'quality'
-export const DEFAULT_MIXTAPE_STEM_QUALITY_MODEL = 'htdemucs'
+const DEFAULT_MIXTAPE_STEM_QUALITY_MODEL = 'htdemucs'
 export const DEFAULT_MIXTAPE_STEM_BASE_MODEL = DEFAULT_MIXTAPE_STEM_QUALITY_MODEL
 
 const STEM_MODEL_PROFILE_SEPARATOR = '@'
 
-export type ParsedMixtapeStemModel = {
+type ParsedMixtapeStemModel = {
   requestedModel: string
   demucsModel: string
   profile: MixtapeStemProfile

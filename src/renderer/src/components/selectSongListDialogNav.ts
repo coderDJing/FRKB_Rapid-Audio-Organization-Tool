@@ -1,6 +1,6 @@
 import type { IDir } from 'src/types/globals'
 
-export type DialogNavArea = 'recent' | 'tree'
+type DialogNavArea = 'recent' | 'tree'
 export type DialogNavItem = { uuid: string; area: DialogNavArea }
 const RECENT_DIALOG_SELECTED_SONGLIST_KEY_PREFIX = 'recentDialogSelectedSongListUUID'
 

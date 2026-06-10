@@ -16,7 +16,7 @@ type SyncPlaybackRateParams = {
   maxPhasePull?: number
 }
 
-export type SyncPlaybackRateDiagnostics = {
+type SyncPlaybackRateDiagnostics = {
   rate: number
   baseRate: number
   tempoScale: number
@@ -26,8 +26,8 @@ export type SyncPlaybackRateDiagnostics = {
   phasePull: number
 }
 
-export const BEAT_SYNC_MIN_RATE = 0.25
-export const BEAT_SYNC_MAX_RATE = 4
+const BEAT_SYNC_MIN_RATE = 0.25
+const BEAT_SYNC_MAX_RATE = 4
 
 export const clampNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value))
@@ -71,7 +71,7 @@ export const resolveGridAnchorSec = (params: GridAnchorParams) => {
   return Number(params.startSec) + Number(params.firstBeatSec || 0) + barOffset * beatSec
 }
 
-export const wrapPhaseDiffSec = (diffSec: number, beatSec: number) => {
+const wrapPhaseDiffSec = (diffSec: number, beatSec: number) => {
   const period = Number(beatSec)
   if (!Number.isFinite(period) || period <= 0) return 0
   let wrapped = diffSec % period
@@ -80,7 +80,7 @@ export const wrapPhaseDiffSec = (diffSec: number, beatSec: number) => {
   return wrapped
 }
 
-export const resolvePhaseSecAtTime = (timelineSec: number, anchorSec: number, beatSec: number) => {
+const resolvePhaseSecAtTime = (timelineSec: number, anchorSec: number, beatSec: number) => {
   const period = Number(beatSec)
   if (!Number.isFinite(period) || period <= 0) return 0
   const raw = (timelineSec - anchorSec) % period

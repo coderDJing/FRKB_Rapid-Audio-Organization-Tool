@@ -10,7 +10,7 @@ import type {
 } from '@shared/horizontalBrowseTransport'
 import { log } from '../log'
 
-export type HorizontalBrowseTransportDecodeDiagnostic = {
+type HorizontalBrowseTransportDecodeDiagnostic = {
   operation: string
   status: string
   deck: string

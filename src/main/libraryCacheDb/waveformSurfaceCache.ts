@@ -128,7 +128,7 @@ const getSurfaceArrays = (data: WaveformSurfaceData): Uint8Array[] => [
   data.overviewBottom
 ]
 
-export function encodeWaveformSurfacePayload(data: WaveformSurfaceData): Buffer | null {
+function encodeWaveformSurfacePayload(data: WaveformSurfaceData): Buffer | null {
   if (!data || data.version !== WAVEFORM_SURFACE_CACHE_VERSION) return null
   if (data.parameterVersion !== getSurfaceParameterVersion(data.surfaceKind)) return null
   const arrays = getSurfaceArrays(data)
@@ -138,7 +138,7 @@ export function encodeWaveformSurfacePayload(data: WaveformSurfaceData): Buffer 
   return Buffer.concat(arrays.map((value) => Buffer.from(value)))
 }
 
-export function decodeWaveformSurfacePayload(
+function decodeWaveformSurfacePayload(
   meta: WaveformSurfaceMeta,
   kind: WaveformSurfaceKind,
   payload: Buffer

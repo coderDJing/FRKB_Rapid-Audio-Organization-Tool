@@ -7,7 +7,7 @@ import { log } from '../../log'
 const USB_ID_FILE_NAME = '.frkb-usb-id.json'
 const USB_ID_VERSION = 1
 
-export type PioneerUsbIdentity = {
+type PioneerUsbIdentity = {
   uuid: string
   filePath: string
   created: boolean
@@ -94,4 +94,3 @@ export async function ensurePioneerUsbIdentity(rootPath: string): Promise<Pionee
   }
 }
 
-export { USB_ID_FILE_NAME }

@@ -9,7 +9,7 @@ const SCHEMA_VERSION = 33
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
 export type SqliteDatabase = InstanceType<SqliteDatabaseCtor>
-export type SqliteRow = Record<string, unknown>
+type SqliteRow = Record<string, unknown>
 
 export function isSqliteRow(value: unknown): value is SqliteRow {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -854,7 +854,7 @@ export function getLibraryDb(): SqliteDatabase | null {
   return initLibraryDb(dir)
 }
 
-export function closeLibraryDb(): void {
+function closeLibraryDb(): void {
   if (db) {
     try {
       db.close()

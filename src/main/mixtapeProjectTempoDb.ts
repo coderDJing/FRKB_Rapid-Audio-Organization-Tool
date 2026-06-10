@@ -7,7 +7,7 @@ const DEFAULT_PROJECT_STEM_MODE = '4stems'
 const DEFAULT_PROJECT_STEM_PROFILE = 'quality'
 const SAME_SEC_EPSILON = 0.0001
 
-export type MixtapeProjectBpmPoint = {
+type MixtapeProjectBpmPoint = {
   sec: number
   bpm: number
 }

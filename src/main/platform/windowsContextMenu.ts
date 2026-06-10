@@ -138,7 +138,7 @@ const tContextMenu = (key: string): string => {
   return typeof current === 'string' ? current : key
 }
 
-export async function ensureWindowsContextMenu(): Promise<void> {
+async function ensureWindowsContextMenu(): Promise<void> {
   if (process.platform !== 'win32') return
   const displayName = tContextMenu('settings.explorerContextMenuLabel')
   const command = buildWindowsContextMenuCommand()
@@ -169,7 +169,7 @@ const buildContextMenuSignature = (): string => {
   return JSON.stringify(payload)
 }
 
-export async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
+async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
   if (process.platform !== 'win32') return
   const signature = buildContextMenuSignature()
   if (!signature) return

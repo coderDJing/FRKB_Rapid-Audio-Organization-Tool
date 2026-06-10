@@ -1,4 +1,4 @@
-export const MIXTAPE_TRACK_UI_SCALE = 1.5
+const MIXTAPE_TRACK_UI_SCALE = 1.5
 export const MIXTAPE_BASE_TRACK_LANE_HEIGHT = Math.round(
   Math.max(28, 36) * 4 * MIXTAPE_TRACK_UI_SCALE
 )

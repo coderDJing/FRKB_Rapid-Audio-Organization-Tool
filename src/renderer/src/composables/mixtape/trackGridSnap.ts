@@ -1,6 +1,6 @@
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
-export const findNearestSortedGridValues = (values: number[], target: number) => {
+const findNearestSortedGridValues = (values: number[], target: number) => {
   if (!values.length) return [] as number[]
   let left = 0
   let right = values.length - 1

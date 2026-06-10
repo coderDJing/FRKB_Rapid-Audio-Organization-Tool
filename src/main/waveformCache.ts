@@ -15,7 +15,7 @@ export type MixxxWaveformData = {
   step: number
   bands: Record<(typeof MIXXX_WAVEFORM_BANDS)[number], MixxxWaveformBand>
 }
-export function getMixxxWaveformByteLength(frames: number): number {
+function getMixxxWaveformByteLength(frames: number): number {
   return frames * 16
 }
 

@@ -8,7 +8,7 @@ import type { StemRuntimeProgressEntry } from '@renderer/composables/mixtape/use
 
 type TranslateFn = (key: string, payload?: Record<string, unknown>) => string
 
-export type TrackStemPlaceholderState = {
+type TrackStemPlaceholderState = {
   kind: 'pending' | 'running' | 'failed'
   label: string
   detail: string

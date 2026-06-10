@@ -26,8 +26,8 @@ type HorizontalBrowsePendingPlayDiagnosticsParams = {
   resolveBrowseViewMode?: () => HorizontalBrowsePendingPlayViewMode
 }
 
-export const HORIZONTAL_BROWSE_PENDING_PLAY_DIAGNOSTIC_THRESHOLD_MS = 500
-export const HORIZONTAL_BROWSE_PENDING_PLAY_EXTENDED_DIAGNOSTIC_MS = 5000
+const HORIZONTAL_BROWSE_PENDING_PLAY_DIAGNOSTIC_THRESHOLD_MS = 500
+const HORIZONTAL_BROWSE_PENDING_PLAY_EXTENDED_DIAGNOSTIC_MS = 5000
 
 const resolveOtherDeck = (deck: DeckKey): DeckKey => (deck === 'top' ? 'bottom' : 'top')
 

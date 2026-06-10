@@ -18,7 +18,7 @@ type PioneerPlaylistAnalysisTrack = {
 
 type RekordboxExternalAnalysisSourceKind = Exclude<ExternalAnalysisSourceKind, 'external-playback'>
 
-export type PioneerPlaylistAnalysisPrepareResult = {
+type PioneerPlaylistAnalysisPrepareResult = {
   sourceKind: ExternalAnalysisSourceKind | ''
   sourceId: string
   usbUuid: string

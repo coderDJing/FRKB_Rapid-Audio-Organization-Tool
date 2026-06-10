@@ -18,13 +18,13 @@ export type RekordboxXmlExportTrackInput = {
   memoryCues?: ISongMemoryCue[]
 }
 
-export type RekordboxXmlExportSelectedTracksSource = {
+type RekordboxXmlExportSelectedTracksSource = {
   kind: 'selected-tracks'
   songListUUID: string
   tracks: RekordboxXmlExportTrackInput[]
 }
 
-export type RekordboxXmlExportPlaylistSource = {
+type RekordboxXmlExportPlaylistSource = {
   kind: 'playlist'
   songListUUID: string
   songListPath: string

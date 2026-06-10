@@ -7,7 +7,7 @@ type ForegroundBusyProvider = () => boolean
 
 type BackgroundIdleProfile = 'active' | 'idle' | 'deep-idle'
 
-export type BackgroundIdleSnapshot = {
+type BackgroundIdleSnapshot = {
   systemIdleSeconds: number
   systemIdleState: SystemIdleState
   systemIdleEnough: boolean

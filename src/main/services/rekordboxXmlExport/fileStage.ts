@@ -26,7 +26,7 @@ export const resolveUniqueDirectoryPath = async (targetRootDir: string, director
   }
 }
 
-export const resolveUniqueFilePath = async (targetDirPath: string, fileName: string) => {
+const resolveUniqueFilePath = async (targetDirPath: string, fileName: string) => {
   const ext = path.extname(fileName)
   const baseName = sanitizePathSegment(path.basename(fileName, ext), 'track')
   const normalizedExt = ext || ''

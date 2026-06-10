@@ -11,7 +11,7 @@ import crypto = require('crypto')
 const META_KEY = 'curated_artist_library_v1'
 const FINGERPRINT_REGEX = /^[a-f0-9]{64}$/i
 
-export type CuratedArtistFavoriteEntry = {
+type CuratedArtistFavoriteEntry = {
   name: string
   count: number
   fingerprints: string[]

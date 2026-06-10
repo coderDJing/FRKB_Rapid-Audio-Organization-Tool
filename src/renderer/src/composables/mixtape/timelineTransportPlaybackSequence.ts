@@ -3,7 +3,7 @@ import type { MixtapeTrackLoopSegment } from '@renderer/composables/mixtape/type
 
 const PLAYBACK_SEQUENCE_EPSILON_SEC = 1e-6
 
-export type TransportPlaybackSequenceSegment = {
+type TransportPlaybackSequenceSegment = {
   key: string
   localStartSec: number
   localEndSec: number

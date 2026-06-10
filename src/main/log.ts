@@ -213,7 +213,7 @@ export function configureLogTransports(): void {
   }
 }
 
-export function ensureLogConfigured(): void {
+function ensureLogConfigured(): void {
   if (logConfigured) return
   configureLogTransports()
 }

@@ -21,7 +21,7 @@ export type ManualMacUpdateAsset = {
   totalBytes: number
 }
 
-export type ManualMacUpdateProgress = {
+type ManualMacUpdateProgress = {
   percent: number
   bytesPerSecond: number
   transferredBytes: number

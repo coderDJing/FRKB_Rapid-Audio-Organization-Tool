@@ -1,4 +1,4 @@
-export const DEFAULT_WINDOW_VOLUME = 0.8
+const DEFAULT_WINDOW_VOLUME = 0.8
 export const MAIN_WINDOW_VOLUME_STORAGE_KEY = 'frkb_main_window_volume'
 export const MIXTAPE_WINDOW_VOLUME_STORAGE_KEY = 'frkb_mixtape_window_volume'
 export const MAIN_WINDOW_VOLUME_SET_EVENT = 'main-window-volume:set'

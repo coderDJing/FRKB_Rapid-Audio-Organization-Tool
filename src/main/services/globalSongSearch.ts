@@ -54,7 +54,7 @@ type PlaylistMeta = {
   libraryName: CoreLibraryName
 }
 
-export type GlobalSongSearchResultItem = {
+type GlobalSongSearchResultItem = {
   id: string
   filePath: string
   fileName: string
@@ -74,14 +74,14 @@ export type GlobalSongSearchResultItem = {
   score: number
 }
 
-export type GlobalSongSearchQueryResult = {
+type GlobalSongSearchQueryResult = {
   items: GlobalSongSearchResultItem[]
   tookMs: number
   indexedCount: number
   snapshotAt: number
 }
 
-export type PlaylistFastLoadResult = {
+type PlaylistFastLoadResult = {
   hit: boolean
   items: ISongInfo[]
   tookMs: number

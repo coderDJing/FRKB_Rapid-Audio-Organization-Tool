@@ -33,7 +33,7 @@ const toRatio = (value: unknown, fallback: number) => {
   return Math.min(1, Math.max(0, parsed))
 }
 
-export function normalizeLayoutConfig(value: unknown): ILayoutConfig {
+function normalizeLayoutConfig(value: unknown): ILayoutConfig {
   const raw = isRecord(value) ? value : {}
   const merged = {
     ...defaultLayoutConfig,

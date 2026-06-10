@@ -11,7 +11,7 @@ export type MixtapeStemStatus = 'pending' | 'running' | 'ready' | 'failed'
 
 export type MixtapeStemSummary = Record<MixtapeStemStatus, number>
 
-export type MixtapeStemAssetRecord = {
+type MixtapeStemAssetRecord = {
   libraryRoot: string
   sourceSignature: string
   filePath: string

@@ -1,6 +1,6 @@
 import type { ISongHotCue, ISongMemoryCue } from 'src/types/globals'
 
-export type SongCueSource = {
+type SongCueSource = {
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
 }

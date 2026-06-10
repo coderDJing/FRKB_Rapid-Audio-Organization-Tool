@@ -44,12 +44,12 @@ const isSameFormatAsTarget = (filePath: string, targetFormat: SupportedAudioForm
   return ext === `.${targetFormat}`
 }
 
-export const filterFilesByTargetFormat = (files: string[], targetFormat: SupportedAudioFormat) =>
+const filterFilesByTargetFormat = (files: string[], targetFormat: SupportedAudioFormat) =>
   Array.from(new Set(files.map((item) => String(item || '').trim()).filter(Boolean))).filter(
     (filePath) => !isSameFormatAsTarget(filePath, targetFormat)
   )
 
-export const collectSourceExts = (files: string[], allowedSourceExts: string[]) => {
+const collectSourceExts = (files: string[], allowedSourceExts: string[]) => {
   const allowedExtSet = new Set(allowedSourceExts.map((item) => String(item || '').toLowerCase()))
   return Array.from(
     new Set(

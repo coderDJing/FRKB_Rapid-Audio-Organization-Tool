@@ -1,13 +1,13 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type { WaveformRgbColor } from '@renderer/components/beatGridRawWaveformShape'
 
-export type RawCurveWaveformColumn = {
+type RawCurveWaveformColumn = {
   color: WaveformRgbColor
 }
 
-export type RawCurveWaveformLayout = 'full' | 'top-half' | 'bottom-half'
+type RawCurveWaveformLayout = 'full' | 'top-half' | 'bottom-half'
 
-export type RawCurveCanvasContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
+type RawCurveCanvasContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
 type DrawRawCurveWaveformOptions = {
   ctx: RawCurveCanvasContext

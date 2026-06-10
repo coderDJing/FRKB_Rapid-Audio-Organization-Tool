@@ -98,7 +98,7 @@ const resolveFallbackTimelineDuration = (track: MixtapeTrack, sourceDurationSec:
   return sourceDurationSec / ratio
 }
 
-export const buildTrackTimeMapSignature = (snapshot: TrackRuntimeTempoSnapshot) =>
+const buildTrackTimeMapSignature = (snapshot: TrackRuntimeTempoSnapshot) =>
   snapshot.timeMapInput.mappingMode === 'masterGrid'
     ? [
         'masterGrid',

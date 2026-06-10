@@ -70,7 +70,7 @@ export async function computeLibraryStemSourceSignature(filePath: string): Promi
   }
 }
 
-export function toSafeStemPathSegment(value: string, fallback = 'default'): string {
+function toSafeStemPathSegment(value: string, fallback = 'default'): string {
   const cleaned = normalizeText(value, 128)
     .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '-')
     .trim()

@@ -20,12 +20,12 @@ interface UseSongsAreaColumnsParams {
 export type SongsAreaColumnMode = 'default' | 'recycle' | 'recording' | 'mixtape'
 
 const INIT_EXTRA_WIDTH = 40
-export const SONGS_AREA_DEFAULT_STORAGE_KEY = 'songColumnData'
-export const SONGS_AREA_RECYCLE_STORAGE_KEY = 'recycleBinColumnData'
-export const SONGS_AREA_RECORDING_STORAGE_KEY = 'recordingLibraryColumnData'
+const SONGS_AREA_DEFAULT_STORAGE_KEY = 'songColumnData'
+const SONGS_AREA_RECYCLE_STORAGE_KEY = 'recycleBinColumnData'
+const SONGS_AREA_RECORDING_STORAGE_KEY = 'recordingLibraryColumnData'
 export const SONGS_AREA_MIXTAPE_STORAGE_KEY = 'mixtapeColumnData'
 
-export const buildSongsAreaBaseColumns = (
+const buildSongsAreaBaseColumns = (
   mode: SongsAreaColumnMode
 ): Omit<ISongsAreaColumn, 'width'>[] => {
   const isRecycleBin = mode === 'recycle'

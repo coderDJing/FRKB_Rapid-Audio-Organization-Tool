@@ -394,7 +394,7 @@ const writeToBridge = async (child: ChildProcessWithoutNullStreams, chunk: Buffe
   })
 }
 
-export const analyzeBeatGridWithBeatThisFromPcm = async (params: {
+const analyzeBeatGridWithBeatThisFromPcm = async (params: {
   pcmData: Buffer
   sampleRate: number
   channels: number

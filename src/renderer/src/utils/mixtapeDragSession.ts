@@ -21,7 +21,7 @@ const resolveFileNameAndFormat = (filePath: string) => {
   }
 }
 
-export const buildMixtapeSongSnapshot = (
+const buildMixtapeSongSnapshot = (
   filePath: string,
   song?: ISongInfo | null
 ): Record<string, unknown> => {

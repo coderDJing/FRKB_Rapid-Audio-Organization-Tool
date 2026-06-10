@@ -7,7 +7,7 @@ import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mix
 import type { TransportPlayableSource } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 import type { SerializedTrackTempoSnapshot } from '@renderer/composables/mixtape/types'
 
-export type TransportSyncEntry = {
+type TransportSyncEntry = {
   trackId: string
   startSec: number
   sourceDuration?: number
@@ -45,7 +45,7 @@ type ApplyTransportSyncParams = {
   collectDiagnostics?: boolean
 }
 
-export type TransportSyncDiagnostic = {
+type TransportSyncDiagnostic = {
   trackId: string
   master: boolean
   bpm: number
@@ -67,7 +67,7 @@ export type TransportSyncDiagnostic = {
   transientWindowMs: number | null
 }
 
-export type ApplyTransportSyncResult = {
+type ApplyTransportSyncResult = {
   masterTrackId: string
   activeTrackCount: number
   diagnostics: TransportSyncDiagnostic[]

@@ -79,7 +79,7 @@ export type PreRenderPayload = {
   tasks: RenderTilePayload[]
 }
 
-export type RenderFrameTrack = {
+type RenderFrameTrack = {
   id: string
   filePath: string
   waveformFilePath?: string

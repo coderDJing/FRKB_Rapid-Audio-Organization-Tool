@@ -3,7 +3,7 @@ import path from 'node:path'
 import childProcess from 'node:child_process'
 import { buildAnalysisChildEnv } from './analysisRuntimeTuning'
 
-export type BeatThisPythonCommand = {
+type BeatThisPythonCommand = {
   command: string
   args: string[]
   source: 'env-python' | 'local-runtime' | 'demucs-runtime' | 'dev-launcher'
@@ -13,7 +13,7 @@ export type BeatThisPythonCommand = {
   extraDllDirs: string[]
 }
 
-export type BeatThisComputeDevice = 'directml' | 'cuda' | 'xpu' | 'mps' | 'cpu'
+type BeatThisComputeDevice = 'directml' | 'cuda' | 'xpu' | 'mps' | 'cpu'
 
 type BeatThisRuntimeProbeSnapshot = {
   candidate: BeatThisPythonCommand
@@ -24,7 +24,7 @@ type BeatThisRuntimeProbeSnapshot = {
   probeError: string
 }
 
-export type BeatThisResolvedRuntime = {
+type BeatThisResolvedRuntime = {
   candidate: BeatThisPythonCommand
   selectedDevice: BeatThisComputeDevice | 'manual'
   selectedDeviceArg: string

@@ -9,7 +9,7 @@ import {
 } from './mixtapeStemRuntimeDownload'
 import { resetBeatThisRuntimeResolution } from '../workers/beatThisRuntime'
 
-export type AnalysisRuntimeDownloadInfo = MixtapeStemRuntimeDownloadInfo
+type AnalysisRuntimeDownloadInfo = MixtapeStemRuntimeDownloadInfo
 export type AnalysisRuntimeDownloadState = MixtapeStemRuntimeDownloadState
 
 export const analysisRuntimeDownloadEvents = stemRuntimeDownloadEvents

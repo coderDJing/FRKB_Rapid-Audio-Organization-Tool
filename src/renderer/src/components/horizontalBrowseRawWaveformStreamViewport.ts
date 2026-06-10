@@ -1,7 +1,7 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC } from '@renderer/components/horizontalBrowseRawWaveformStreamTypes'
 
-export type HorizontalBrowseRawLoadedTimelineRange = {
+type HorizontalBrowseRawLoadedTimelineRange = {
   rate: number
   loadedFrames: number
   loadedStartSec: number

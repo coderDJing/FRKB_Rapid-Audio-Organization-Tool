@@ -25,7 +25,7 @@ type MixtapeMasterGridIntegralCache = {
   segments: MixtapeMasterGridIntegralSegment[]
 }
 
-export type MixtapeMasterGridLine = {
+type MixtapeMasterGridLine = {
   sec: number
   beat: number
   level: 'bar' | 'beat4' | 'beat'
@@ -38,7 +38,7 @@ type MixtapeMasterGridRange = {
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 
-export const normalizeMixtapeMasterGridPhaseOffsetSec = (value: unknown) => {
+const normalizeMixtapeMasterGridPhaseOffsetSec = (value: unknown) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric) || numeric < 0) return 0
   return roundTrackTempoSec(numeric)

@@ -21,7 +21,7 @@ export type SharedRawWaveformData = {
   rmsRight: Buffer
 }
 
-export type DecodeAudioMetrics = {
+type DecodeAudioMetrics = {
   decodeMs: number
   waveformMs: number
   rawMs: number

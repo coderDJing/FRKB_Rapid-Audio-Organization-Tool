@@ -1,9 +1,9 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type { ISongHotCue, ISongMemoryCue } from 'src/types/globals'
 
-export type HorizontalBrowseDetailLiveCanvasRawSlot = 'live' | 'retained'
-export type HorizontalBrowseDetailLiveCanvasDirection = 'up' | 'down'
-export type HorizontalBrowseDetailLiveCanvasWaveformRenderStyle = 'columns' | 'raw-curve'
+type HorizontalBrowseDetailLiveCanvasRawSlot = 'live' | 'retained'
+type HorizontalBrowseDetailLiveCanvasDirection = 'up' | 'down'
+type HorizontalBrowseDetailLiveCanvasWaveformRenderStyle = 'columns' | 'raw-curve'
 
 export type HorizontalBrowseDetailLiveCanvasLoopRange = {
   startSec: number

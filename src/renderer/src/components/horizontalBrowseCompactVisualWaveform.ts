@@ -287,7 +287,7 @@ export const unifiedDisplayWaveformToRawData = (
   }
 }
 
-export const unifiedDisplayWaveformToCompactVisualOverviewData = (
+const unifiedDisplayWaveformToCompactVisualOverviewData = (
   data: UnifiedDisplayWaveformDetailData
 ): CompactVisualWaveformData | null => {
   const normalized = normalizeUnifiedDisplayWaveformData(data)

@@ -29,13 +29,13 @@ export type RekordboxDesktopWriteAvailability = {
   checkedAt: number
 }
 
-export type RekordboxDesktopPlaylistSelectedTracksSource = {
+type RekordboxDesktopPlaylistSelectedTracksSource = {
   kind: 'selected-tracks'
   songListUUID: string
   tracks: RekordboxDesktopPlaylistTrackInput[]
 }
 
-export type RekordboxDesktopPlaylistSource = {
+type RekordboxDesktopPlaylistSource = {
   kind: 'playlist'
   songListUUID: string
   songListPath: string
@@ -135,7 +135,7 @@ export type RekordboxDesktopMovePlaylistRequest = {
   seq: number
 }
 
-export type RekordboxDesktopMovePlaylistSuccessSummary = {
+type RekordboxDesktopMovePlaylistSuccessSummary = {
   playlistId: number
   parentId: number
   seq: number
@@ -156,7 +156,7 @@ export type RekordboxDesktopRenamePlaylistRequest = {
   name: string
 }
 
-export type RekordboxDesktopRenamePlaylistSuccessSummary = {
+type RekordboxDesktopRenamePlaylistSuccessSummary = {
   playlistId: number
   playlistName: string
   parentId: number
@@ -177,7 +177,7 @@ export type RekordboxDesktopDeletePlaylistRequest = {
   playlistId: number
 }
 
-export type RekordboxDesktopDeletePlaylistSuccessSummary = {
+type RekordboxDesktopDeletePlaylistSuccessSummary = {
   playlistId: number
   parentId: number
   isFolder: boolean
@@ -199,7 +199,7 @@ export type RekordboxDesktopRemovePlaylistTracksRequest = {
   rowKeys: string[]
 }
 
-export type RekordboxDesktopRemovePlaylistTracksSuccessSummary = {
+type RekordboxDesktopRemovePlaylistTracksSuccessSummary = {
   playlistId: number
   requestedCount: number
   removedCount: number
@@ -222,7 +222,7 @@ export type RekordboxDesktopReorderPlaylistTracksRequest = {
   targetIndex: number
 }
 
-export type RekordboxDesktopReorderPlaylistTracksSuccessSummary = {
+type RekordboxDesktopReorderPlaylistTracksSuccessSummary = {
   playlistId: number
   requestedCount: number
   movedCount: number

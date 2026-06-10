@@ -123,7 +123,7 @@ export const readUiSettings = (): UiSettings => {
   }
 }
 
-export const writeUiSettings = (next: Record<string, unknown>): void => {
+const writeUiSettings = (next: Record<string, unknown>): void => {
   const storage = getStorage()
   if (!storage) return
   const existing = readUiSettings()
@@ -134,7 +134,7 @@ export const writeUiSettings = (next: Record<string, unknown>): void => {
   } catch {}
 }
 
-export const pickUiSettings = (setting: Record<string, unknown>): UiSettings => {
+const pickUiSettings = (setting: Record<string, unknown>): UiSettings => {
   const raw: Record<string, unknown> = {}
   if (!setting || typeof setting !== 'object') return {}
   for (const key of UI_SETTING_KEYS) {

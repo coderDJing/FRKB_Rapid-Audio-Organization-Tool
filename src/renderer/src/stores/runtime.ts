@@ -25,7 +25,7 @@ export type SongsAreaPaneKey = 'single' | 'left' | 'right'
 export type SplitSongsAreaPaneKey = 'left' | 'right'
 export type SongsAreaColumnMode = 'default' | 'recycle' | 'recording' | 'mixtape'
 
-export interface ISongsAreaState {
+interface ISongsAreaState {
   songListUUID: string
   songInfoArr: ISongInfo[]
   totalSongCount: number

@@ -6,7 +6,7 @@ import type {
   MixtapeMuteSegment
 } from '@renderer/composables/mixtape/types'
 
-export const STEM_SEGMENT_MUTE_GAIN = 0.0001
+const STEM_SEGMENT_MUTE_GAIN = 0.0001
 export const STEM_SEGMENT_ACTIVE_GAIN = 1
 export const STEM_SEGMENT_MUTE_THRESHOLD = 0.5
 

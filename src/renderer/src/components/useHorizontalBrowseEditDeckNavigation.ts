@@ -5,7 +5,7 @@ import { beginHorizontalBrowseDeckInteraction } from '@renderer/components/horiz
 import { useRuntimeStore } from '@renderer/stores/runtime'
 
 type DeckKey = HorizontalBrowseDeckKey
-export type HorizontalBrowseEditBeatStep = 4 | 8 | 16 | 32 | 128
+type HorizontalBrowseEditBeatStep = 4 | 8 | 16 | 32 | 128
 
 type UseHorizontalBrowseEditDeckNavigationParams = {
   topDeckSong: Ref<ISongInfo | null>

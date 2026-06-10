@@ -166,7 +166,7 @@ const removeLockFileIfOwned = (lockFilePath: string) => {
   } catch {}
 }
 
-export const getDevInstanceId = (): string =>
+const getDevInstanceId = (): string =>
   sanitizeInstanceId(String(process.env[DEV_INSTANCE_ENV] || ''))
 
 export const configureDevRuntime = (

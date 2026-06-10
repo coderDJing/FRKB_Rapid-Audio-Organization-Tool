@@ -12,7 +12,7 @@ type ResolvedExternalWaveformSource = {
   rootPath: string
 }
 
-export const normalizeRekordboxSourceKind = (value: unknown): RekordboxSourceKind | null => {
+const normalizeRekordboxSourceKind = (value: unknown): RekordboxSourceKind | null => {
   return value === 'desktop' || value === 'usb' ? value : null
 }
 

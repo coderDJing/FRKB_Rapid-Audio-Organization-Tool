@@ -28,7 +28,7 @@ type RekordboxDesktopDeletePayload = {
   sourceType?: string
 }
 
-export type RekordboxDesktopPlaylistWriteResult = RekordboxDesktopPlaylistSuccessSummary & {
+type RekordboxDesktopPlaylistWriteResult = RekordboxDesktopPlaylistSuccessSummary & {
   removedSourceFilePaths?: string[]
 }
 

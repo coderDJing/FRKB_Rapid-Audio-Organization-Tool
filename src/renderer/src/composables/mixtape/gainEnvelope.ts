@@ -11,7 +11,7 @@ type GainPointLike = {
 
 export const MIXTAPE_GAIN_KNOB_MIN_DB = -26
 export const MIXTAPE_GAIN_KNOB_MAX_DB = 12
-export const MIXTAPE_VOLUME_ENVELOPE_MAX_GAIN = 1
+const MIXTAPE_VOLUME_ENVELOPE_MAX_GAIN = 1
 export const MIXTAPE_STEM_SEGMENT_PARAMS: MixtapeEnvelopeParamId[] = [
   'vocal',
   'inst',

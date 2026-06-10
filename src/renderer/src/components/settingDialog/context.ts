@@ -8,7 +8,7 @@ import type {
   WritableComputedRef
 } from 'vue'
 
-export type SettingDialogRuntimeSetting = ISettingConfig & {
+type SettingDialogRuntimeSetting = ISettingConfig & {
   songListBubbleAlways?: boolean
 }
 

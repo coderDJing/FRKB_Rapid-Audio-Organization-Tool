@@ -1,7 +1,7 @@
 import { i18n } from '@renderer/i18n'
 
 // 核心库中文名 -> i18n key 的集中映射
-export const LIBRARY_NAME_TO_I18N_KEY: Record<string, string> = {
+const LIBRARY_NAME_TO_I18N_KEY: Record<string, string> = {
   FilterLibrary: 'library.filter',
   CuratedLibrary: 'library.curated',
   RecordingLibrary: 'library.recordingLibrary',

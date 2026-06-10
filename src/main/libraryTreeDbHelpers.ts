@@ -102,7 +102,7 @@ export function getPathDepth(relPath: string): number {
   return splitPath(relPath).length
 }
 
-export function isNodeType(value: unknown): value is LibraryNodeType {
+function isNodeType(value: unknown): value is LibraryNodeType {
   return (
     value === 'root' ||
     value === 'library' ||

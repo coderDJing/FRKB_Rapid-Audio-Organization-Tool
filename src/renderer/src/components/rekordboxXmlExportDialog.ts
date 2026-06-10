@@ -3,7 +3,7 @@ import { attachAppContext } from '@renderer/utils/appContext'
 import rekordboxXmlExportDialog from './rekordboxXmlExportDialog.vue'
 import type { RekordboxXmlExportMode } from '@shared/rekordboxXmlExport'
 
-export type RekordboxXmlExportDialogResult =
+type RekordboxXmlExportDialogResult =
   | 'cancel'
   | {
       targetRootDir: string

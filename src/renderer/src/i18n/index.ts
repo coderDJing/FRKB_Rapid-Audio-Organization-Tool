@@ -3,7 +3,7 @@ import zhCN from './locales/zh-CN/index'
 import enUS from './locales/en-US/index'
 
 // 支持的语言列表
-export const SUPPORTED_LOCALES = ['zh-CN', 'en-US'] as const
+const SUPPORTED_LOCALES = ['zh-CN', 'en-US'] as const
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number]
 const messages = {
   'zh-CN': zhCN,

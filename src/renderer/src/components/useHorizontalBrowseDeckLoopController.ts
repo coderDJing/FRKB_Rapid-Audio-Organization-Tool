@@ -16,7 +16,7 @@ export type HorizontalBrowseLoopRange = {
   beatValue: number
 }
 
-export type HorizontalBrowseStoredCueDefinition = Pick<
+type HorizontalBrowseStoredCueDefinition = Pick<
   ISongMemoryCue,
   'sec' | 'isLoop' | 'loopEndSec' | 'source'
 >

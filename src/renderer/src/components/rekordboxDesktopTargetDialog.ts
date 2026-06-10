@@ -3,7 +3,7 @@ import { attachAppContext } from '@renderer/utils/appContext'
 import RekordboxDesktopTargetDialog from './rekordboxDesktopTargetDialog.vue'
 import type { RekordboxDesktopPlaylistWriteTarget } from '@shared/rekordboxDesktopPlaylist'
 
-export type RekordboxDesktopTargetDialogResult =
+type RekordboxDesktopTargetDialogResult =
   | 'cancel'
   | {
       target: RekordboxDesktopPlaylistWriteTarget

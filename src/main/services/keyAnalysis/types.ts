@@ -6,7 +6,7 @@ import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDi
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
 export type KeyAnalysisQueueCategory = 'visible' | 'waveform-preview'
-export type KeyAnalysisProgressStage =
+type KeyAnalysisProgressStage =
   | 'job-received'
   | 'decode-start'
   | 'decode-done'
@@ -35,7 +35,7 @@ export type KeyAnalysisProgress = {
   partialResult?: KeyAnalysisWorkerPartialResult
 }
 
-export type KeyAnalysisJobTrace = {
+type KeyAnalysisJobTrace = {
   lastStage?: KeyAnalysisProgressStage
   lastUpdateAt?: number
   elapsedMs?: number
@@ -53,7 +53,7 @@ export type KeyAnalysisJobTrace = {
   partialBpmPersisted?: boolean
 }
 
-export type KeyAnalysisPrepareDetails = {
+type KeyAnalysisPrepareDetails = {
   listRootResolved: boolean
   externalCacheResolved?: boolean
   doneEntryHit: boolean
@@ -154,7 +154,7 @@ export type WorkerPayload = {
   error?: string
 }
 
-export type KeyAnalysisWorkerPartialResult = {
+type KeyAnalysisWorkerPartialResult = {
   keyText?: string
   keyError?: string
   bpm?: number
@@ -164,7 +164,7 @@ export type KeyAnalysisWorkerPartialResult = {
   bpmError?: string
 }
 
-export type KeyAnalysisWorkerResult = KeyAnalysisWorkerPartialResult & {
+type KeyAnalysisWorkerResult = KeyAnalysisWorkerPartialResult & {
   mixxxWaveformData?: MixxxWaveformData | null
   unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
 }

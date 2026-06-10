@@ -78,7 +78,7 @@ export const countNodeDescendants = (node: IPioneerPlaylistTreeNode) => {
 export const cloneTreeNodes = (nodes: IPioneerPlaylistTreeNode[]) =>
   JSON.parse(JSON.stringify(nodes)) as IPioneerPlaylistTreeNode[]
 
-export const findNodeLocation = (
+const findNodeLocation = (
   nodes: IPioneerPlaylistTreeNode[],
   nodeId: number,
   parentId = 0

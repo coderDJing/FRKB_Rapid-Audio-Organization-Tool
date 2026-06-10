@@ -69,7 +69,7 @@ type ErrorWithCode = Error & {
   code?: string
 }
 
-export type MixtapeStemEnqueueParams = {
+type MixtapeStemEnqueueParams = {
   playlistId: string
   filePaths: string[]
   stemMode: MixtapeStemMode
@@ -80,7 +80,7 @@ export type MixtapeStemEnqueueParams = {
   source?: MixtapeStemEnqueueSource
 }
 
-export type MixtapeStemRetryParams = {
+type MixtapeStemRetryParams = {
   playlistId: string
   stemMode: MixtapeStemMode
   itemIds?: string[]
@@ -90,7 +90,7 @@ export type MixtapeStemRetryParams = {
   stemVersion?: string
 }
 
-export type MixtapeStemEnqueueResult = {
+type MixtapeStemEnqueueResult = {
   total: number
   queued: number
   merged: number

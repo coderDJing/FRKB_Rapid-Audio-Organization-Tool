@@ -33,25 +33,25 @@ import {
 } from '@renderer/utils/neteaseSearch'
 
 // Type for the return value when a dialog needs to be opened by the parent
-export interface OpenDialogAction {
+interface OpenDialogAction {
   action: 'openSelectSongListDialog'
   libraryName: 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 }
 
 // 新增：用于表示歌曲被右键菜单操作移除的返回类型
-export interface SongsRemovedAction {
+interface SongsRemovedAction {
   action: 'songsRemoved'
   paths?: string[]
   itemIds?: string[]
 }
 
-export interface MetadataUpdatedAction {
+interface MetadataUpdatedAction {
   action: 'metadataUpdated'
   song: ISongInfo
   oldFilePath?: string
 }
 
-export interface MetadataBatchUpdatedAction {
+interface MetadataBatchUpdatedAction {
   action: 'metadataBatchUpdated'
   updates: Array<{ song: ISongInfo; oldFilePath?: string }>
 }
