@@ -14,15 +14,19 @@ scripts/move_rekordbox_playlist_grid_diffs.py
 
 - 源 Rekordbox 歌单：`test`
 - 目标 Rekordbox 歌单：`needReview`
-- 当前样本去重基准：`grid-analysis-lab/rkb-rekordbox-benchmark/rekordbox-current-truth.json`
 - 当前算法对比阈值：沿用 benchmark 脚本里的 `STRICT_TOLERANCE_MS`
 - 默认是 dry-run，只写报告，不修改 Rekordbox
 
-## Upan 非整数 BPM 前置筛查
+## Upan 源头清理
 
-如果本轮样本源来自 Rekordbox `Upan` 歌单，先把 UI BPM 列已经显示为非整数的曲目移到
-`upanNonIntegerBpm` 人工筛查歌单，再继续从 `Upan` 抽样到 `test`。这一步使用 bridge 的
-`bpm` 字段，贴近 Rekordbox UI BPM 列；`gridBpm` 只写入报告辅助核对，不参与筛选。
+如果本轮样本源来自 Rekordbox `Upan` 歌单，第一步先运行源头清理脚本，再继续从
+`Upan` 抽样到 `test`。脚本固定按下面顺序执行：
+
+1. 去重：和 current truth 重复的曲目直接从 `Upan` 移除，一首不留；只在 `Upan` 内部重复、
+   且不命中 current truth 的曲目，保留第一条 playlist entry，移除后续多余项。
+2. 非整数 BPM 分流：对去重后剩余曲目检查 bridge 的 `bpm` 字段，也就是贴近 Rekordbox UI
+   BPM 列的值；UI BPM 非整数的曲目移动到 `upanNonIntegerBpm` 人工筛查歌单。`gridBpm`
+   只写入报告辅助核对，不参与筛选。
 
 先跑 dry-run：
 
@@ -31,7 +35,8 @@ scripts/move_rekordbox_playlist_grid_diffs.py
   "scripts/move_upan_non_integer_bpm_tracks.py"
 ```
 
-确认报告里的 `nonIntegerBpmTrackCount` 和预览明细没问题后，再写回：
+确认报告里的 `duplicateRemovalTrackCount`、`nonIntegerBpmTrackCount` 和预览明细没问题后，
+再写回：
 
 ```powershell
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" `
@@ -39,18 +44,18 @@ scripts/move_rekordbox_playlist_grid_diffs.py
   --apply
 ```
 
-`--apply` 会创建或复用 `upanNonIntegerBpm`，把非整数 UI BPM 曲目追加到该歌单，再从
-`Upan` 移除这些 playlist 条目。它不删除音频文件，也不处理 BPM 缺失/无效曲目。
+`--apply` 会先从 `Upan` 直接移除重复 playlist 条目，再创建或复用 `upanNonIntegerBpm`，
+把非整数 UI BPM 曲目追加到该歌单并从 `Upan` 移除。它不删除音频文件，也不处理 BPM
+缺失/无效曲目。
 
 ## 适用场景
 
 适合处理这种情况：
 
 1. Rekordbox 里有一个待筛选歌单。
-2. 歌单里可能混入重复曲目，或已经存在于当前主样本 truth 的曲目。
-3. 需要先从这个 Rekordbox 源歌单里移除重复项。
-4. 再用当前 FRKB beatgrid 算法逐首对比 Rekordbox 网格。
-5. 一致的保留在源歌单，不一致的移动到 review 歌单。
+2. 源头去重和非整数 UI BPM 分流已经提前完成。
+3. 需要用当前 FRKB beatgrid 算法逐首对比 Rekordbox 网格。
+4. 一致的保留在源歌单，不一致的移动到 review 歌单。
 
 它不负责把新样本合入 `rekordbox-current-truth.json`，也不负责刷新 current benchmark /
 classification。那些仍然属于主 truth workflow。
@@ -69,12 +74,8 @@ classification。那些仍然属于主 truth workflow。
 
 dry-run 会生成 JSON 报告，重点看：
 
-- `summary.dedupe.skippedCount`：准备从源歌单移除的重复条目数。
-- `summary.dedupe.selfDuplicateCount`：源歌单内部重复数。
-- `summary.dedupe.currentSampleDuplicateCount`：已存在于当前主 truth 的重复数。
 - `summary.differenceTrackCount`：当前算法与 Rekordbox 不一致的曲目数。
 - `differences[]`：准备移动到目标 review 歌单的曲目明细。
-- `dedupe.skipped[]`：准备从源歌单移除的重复条目明细。
 
 dry-run 不会创建 `needReview`，也不会改动 Rekordbox 歌单。
 
@@ -94,13 +95,12 @@ Rekordbox 数据库可写。
 
 `--apply` 的写回顺序固定：
 
-1. 先从源 Rekordbox 歌单移除 dedupe 命中的重复条目。
-2. 再对去重后剩余曲目跑当前算法分析。
-3. 如果目标歌单不存在，创建目标歌单。
-4. 把不一致曲目追加到目标歌单。
-5. 从源歌单移除这些不一致曲目。
+1. 对源歌单曲目跑当前算法分析。
+2. 如果目标歌单不存在，创建目标歌单。
+3. 把不一致曲目追加到目标歌单。
+4. 从源歌单移除这些不一致曲目。
 
-所以执行完成后，源歌单只应该留下“非重复且当前算法与 Rekordbox 一致”的曲目。
+所以执行完成后，源歌单只应该留下“当前算法与 Rekordbox 一致”的曲目。
 
 ## 从报告写回
 
@@ -114,29 +114,23 @@ Rekordbox 数据库可写。
   --apply
 ```
 
-这条路径同样会先按报告里的 `dedupe.skipped[]` 移除源歌单重复条目，再按
-`differences[]` 写入目标歌单并从源歌单移除。
+这条路径只按报告里的 `differences[]` 写入目标歌单并从源歌单移除，不重新分析音频，
+也不做去重。
 
 ## 常用参数
 
 - `--source-playlist`：源 Rekordbox 歌单名，默认 `test`。
 - `--target-playlist`：不一致曲目的目标 Rekordbox 歌单名，默认 `needReview`。
-- `--current-truth`：当前样本去重基准，默认 `rekordbox-current-truth.json`。
 - `--audio-root`：分析音频搜索根目录；多个目录用分号分隔。
 - `--only`：按文件名 / 标题 / 艺人做子串过滤，可重复传入。
 - `--limit`：限制本次最多处理多少首，用于小批量验证。
 - `--copy-only`：只把不一致曲目追加到目标歌单，不从源歌单移除。
-- `--include-duplicates`：关闭默认去重移除逻辑，把重复曲目也纳入分析。
 
-## 去重口径
+## 去重位置
 
-默认去重分两层：
-
-1. 源歌单自去重：按 `trackId`、`fileName`、`title + artist + BPM` 保守匹配，保留第一条。
-2. 当前样本去重：和 `--current-truth` 指向的主 truth 比对，按 `fileName` 以及
-   `title + artist + BPM` 保守匹配。
-
-去重命中的条目不参与算法分析。带 `--apply` 时，它们会先从源 Rekordbox 歌单移除。
+去重已经前移到 `scripts/move_upan_non_integer_bpm_tracks.py`。这个差异分拣脚本不再读取
+`rekordbox-current-truth.json` 做去重，也不再处理源歌单内部重复项，避免每次分拣重复扫描。
+如果源歌单来自 `Upan`，先完成 Upan 源头清理，再运行本脚本。
 
 ## 注意事项
 

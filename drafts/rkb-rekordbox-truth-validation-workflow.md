@@ -442,9 +442,10 @@ blind 与 sealed 是数据集隔离边界，不是 current 分类目录。禁止
 
 新增样本必须走完整闭环：
 
-1. 如果本轮源歌单是 `Upan`，先运行 `scripts/move_upan_non_integer_bpm_tracks.py`，把 UI BPM
-   列显示为非整数的曲目移动到 `upanNonIntegerBpm` 人工筛查歌单；该脚本默认 dry-run，确认后
-   加 `--apply` 写回，不删除音频文件。
+1. 如果本轮源歌单是 `Upan`，先运行 `scripts/move_upan_non_integer_bpm_tracks.py` 做源头清理；
+   该脚本默认 dry-run，确认后加 `--apply` 写回，不删除音频文件。清理顺序固定为：先从
+   `Upan` 直接移除 current truth 重复曲目和源歌单内部重复多余项，再把剩余曲目里 UI BPM
+   列显示为非整数的曲目移动到 `upanNonIntegerBpm` 人工筛查歌单。
 2. 把新歌加入 Rekordbox `test` playlist，让 Rekordbox 完成分析。
 3. 人工删除 Rekordbox 自己也失败、不可信、或音频缺失的曲目。
 4. 从 Rekordbox `test` 读取曲目源路径，把主 truth 里没有的新音频复制到 `new`。

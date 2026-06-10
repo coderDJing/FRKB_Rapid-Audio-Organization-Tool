@@ -79,4 +79,4 @@
 - **rekordbox样本预分拣**：`scripts/move_rekordbox_playlist_grid_diffs.py`，详细用法见 `drafts/rkb-rekordbox-playlist-diff-triage-script.md`。
   - Python 环境：`vendor/demucs/win32-x64/runtime-cpu/python.exe`（含 torch、soxr、beat_this 等 ML 依赖）。Rekordbox bridge 子进程会自动使用 `vendor/rekordbox-desktop-runtime/win32-x64/python/python.exe`。
   - 执行流程：先跑 dry-run，如果 `errorTrackCount == 0`，直接加 `--apply` 再跑一次，不需要问用户确认。dry-run 本身就是确认步骤。
-- **Upan 非整数 BPM 筛查**：`scripts/move_upan_non_integer_bpm_tracks.py`，全量扫描 `Upan` 的 Rekordbox UI BPM（bridge `bpm` 字段），默认 dry-run；确认后加 `--apply` 将非整数 BPM 曲目移动到 `upanNonIntegerBpm`。
+- **Upan 源头清理**：`scripts/move_upan_non_integer_bpm_tracks.py`，默认 dry-run；确认后加 `--apply`。固定顺序：先从 `Upan` 直接移除 current truth 重复曲目和源歌单内部重复多余项，再将剩余曲目里 UI BPM（bridge `bpm` 字段）非整数的移动到 `upanNonIntegerBpm`。

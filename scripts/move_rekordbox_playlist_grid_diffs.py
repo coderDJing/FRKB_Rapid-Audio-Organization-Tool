@@ -10,12 +10,7 @@ from typing import Any
 import benchmark_rkb_rekordbox_truth as benchmark
 from capture_rekordbox_playlist_truth import (
     DEFAULT_BRIDGE,
-    DUPLICATE_BPM_TOLERANCE,
     _bridge_payload,
-    _current_truth_duplicate_match,
-    _duplicate_bpm,
-    _duplicate_metadata_key,
-    _load_current_truth_duplicate_index,
     _run_bridge,
     _truth_track_from_rekordbox_track,
 )
@@ -33,7 +28,6 @@ DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "rekordbox-test-need-review-latest.json"
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
 DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
 DEFAULT_PREDICTION_CACHE_DIR = BENCHMARK_OUTPUT_DIR / "beatthis-prediction-cache"
-DEFAULT_CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
 DEFAULT_SOURCE_PLAYLIST = "test"
 DEFAULT_TARGET_PLAYLIST = "needReview"
 
@@ -159,178 +153,6 @@ def _prepare_truth_track(
     }
 
 
-def _duplicate_skip_item(
-    raw_track: dict[str, Any],
-    *,
-    reason: str,
-    matched_track: dict[str, Any] | None = None,
-    duplicate_match: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    item: dict[str, Any] = {
-        "fileName": str(raw_track.get("fileName") or "").strip(),
-        "filePath": str(raw_track.get("filePath") or "").strip(),
-        "title": str(raw_track.get("title") or "").strip(),
-        "artist": str(raw_track.get("artist") or "").strip(),
-        "sourceRowKey": str(raw_track.get("rowKey") or "").strip(),
-        "sourceTrackId": raw_track.get("trackId"),
-        "sourceEntryIndex": raw_track.get("entryIndex"),
-        "reason": reason,
-    }
-    if matched_track is not None:
-        item["matchedFileName"] = str(matched_track.get("fileName") or "").strip()
-        item["matchedTrackId"] = matched_track.get("trackId")
-        item["matchedEntryIndex"] = matched_track.get("entryIndex")
-    if duplicate_match is not None:
-        item.update(duplicate_match)
-    return item
-
-
-def _empty_source_duplicate_index() -> dict[str, Any]:
-    return {
-        "trackIds": {},
-        "fileNames": {},
-        "metadata": {},
-    }
-
-
-def _register_source_unique_track(index: dict[str, Any], track: dict[str, Any]) -> None:
-    track_id = _to_int(track.get("trackId"))
-    if track_id is not None and track_id > 0:
-        index["trackIds"][track_id] = track
-
-    file_key = _normalize_key(track.get("fileName"))
-    if file_key:
-        index["fileNames"][file_key] = track
-
-    metadata_key = _duplicate_metadata_key(track)
-    bpm = _duplicate_bpm(track)
-    if metadata_key is not None and bpm is not None:
-        index["metadata"].setdefault(metadata_key, []).append(track)
-
-
-def _source_duplicate_match(
-    track: dict[str, Any],
-    index: dict[str, Any],
-) -> dict[str, Any] | None:
-    track_id = _to_int(track.get("trackId"))
-    if track_id is not None and track_id > 0:
-        matched = index["trackIds"].get(track_id)
-        if isinstance(matched, dict):
-            return {
-                "reason": "duplicate-in-source-playlist-track-id",
-                "matchedTrack": matched,
-            }
-
-    file_key = _normalize_key(track.get("fileName"))
-    if file_key:
-        matched = index["fileNames"].get(file_key)
-        if isinstance(matched, dict):
-            return {
-                "reason": "duplicate-in-source-playlist-file-name",
-                "matchedTrack": matched,
-            }
-
-    metadata_key = _duplicate_metadata_key(track)
-    bpm = _duplicate_bpm(track)
-    if metadata_key is None or bpm is None:
-        return None
-
-    candidates = index["metadata"].get(metadata_key)
-    if not isinstance(candidates, list):
-        return None
-    for matched in candidates:
-        if not isinstance(matched, dict):
-            continue
-        matched_bpm = _duplicate_bpm(matched)
-        if matched_bpm is None:
-            continue
-        if abs(bpm - matched_bpm) <= DUPLICATE_BPM_TOLERANCE:
-            return {
-                "reason": "duplicate-in-source-playlist-metadata",
-                "matchedTrack": matched,
-            }
-    return None
-
-
-def _dedupe_source_tracks(
-    raw_tracks: list[dict[str, Any]],
-    *,
-    current_truth_path: Path,
-    include_duplicates: bool,
-) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    if include_duplicates:
-        return raw_tracks, {
-            "enabled": False,
-            "currentTruthPath": str(current_truth_path),
-            "currentTruthTrackCount": 0,
-            "inputTrackCount": len(raw_tracks),
-            "selectedTrackCount": len(raw_tracks),
-            "skippedCount": 0,
-            "selfDuplicateCount": 0,
-            "currentSampleDuplicateCount": 0,
-            "reasonCounts": {},
-            "skipped": [],
-        }
-
-    current_truth_index = _load_current_truth_duplicate_index(current_truth_path)
-    source_index = _empty_source_duplicate_index()
-    source_unique_tracks: list[dict[str, Any]] = []
-    selected: list[dict[str, Any]] = []
-    skipped: list[dict[str, Any]] = []
-    reason_counts: dict[str, int] = {}
-    self_duplicate_count = 0
-    current_sample_duplicate_count = 0
-
-    for raw_track in raw_tracks:
-        source_match = _source_duplicate_match(raw_track, source_index)
-        if source_match is not None:
-            reason = str(source_match.get("reason") or "duplicate-in-source-playlist")
-            reason_counts[reason] = reason_counts.get(reason, 0) + 1
-            self_duplicate_count += 1
-            matched_track = source_match.get("matchedTrack")
-            skipped.append(
-                _duplicate_skip_item(
-                    raw_track,
-                    reason=reason,
-                    matched_track=matched_track if isinstance(matched_track, dict) else None,
-                )
-            )
-            continue
-
-        _register_source_unique_track(source_index, raw_track)
-        source_unique_tracks.append(raw_track)
-
-    for raw_track in source_unique_tracks:
-        current_match = _current_truth_duplicate_match(raw_track, current_truth_index)
-        if current_match is not None:
-            reason = str(current_match.get("reason") or "already-in-current-truth")
-            reason_counts[reason] = reason_counts.get(reason, 0) + 1
-            current_sample_duplicate_count += 1
-            skipped.append(
-                _duplicate_skip_item(
-                    raw_track,
-                    reason=reason,
-                    duplicate_match=current_match,
-                )
-            )
-            continue
-
-        selected.append(raw_track)
-
-    return selected, {
-        "enabled": True,
-        "currentTruthPath": str(current_truth_path),
-        "currentTruthTrackCount": int(current_truth_index.get("trackCount") or 0),
-        "inputTrackCount": len(raw_tracks),
-        "selectedTrackCount": len(selected),
-        "skippedCount": len(skipped),
-        "selfDuplicateCount": self_duplicate_count,
-        "currentSampleDuplicateCount": current_sample_duplicate_count,
-        "reasonCounts": reason_counts,
-        "skipped": skipped,
-    }
-
-
 def _load_source_truth_tracks(
     bridge_path: Path,
     source_playlist: str,
@@ -340,9 +162,7 @@ def _load_source_truth_tracks(
     ffprobe_path: Path,
     only_filters: list[str],
     limit: int,
-    current_truth_path: Path,
-    include_duplicates: bool,
-) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     node = _resolve_playlist_node(bridge_path, source_playlist, db_path, required=True)
     if node is None:
         raise RuntimeError(f"playlist not found: {source_playlist}")
@@ -378,31 +198,18 @@ def _load_source_truth_tracks(
     if not selected_raw_tracks:
         raise RuntimeError(f"no tracks selected from playlist: {source_playlist}")
 
-    deduped_tracks, dedupe_summary = _dedupe_source_tracks(
-        selected_raw_tracks,
-        current_truth_path=current_truth_path,
-        include_duplicates=include_duplicates,
-    )
-    if not deduped_tracks:
-        raise RuntimeError(
-            f"no tracks left after dedupe from playlist: {source_playlist}; "
-            f"skipped {dedupe_summary.get('skippedCount')} duplicate tracks"
-        )
-
     selected = [
         _prepare_truth_track(raw_track, audio_roots=audio_roots, ffprobe_path=ffprobe_path)
-        for raw_track in deduped_tracks
+        for raw_track in selected_raw_tracks
     ]
 
     return {
         "playlistId": playlist_id,
         "playlistName": str(payload.get("playlistName") or source_playlist).strip(),
         "trackTotal": len(raw_tracks),
-        "preDedupeSelectedTrackCount": len(selected_raw_tracks),
         "selectedTrackCount": len(selected),
-        "dedupeSkippedCount": int(dedupe_summary.get("skippedCount") or 0),
         "probe": payload.get("probe") if isinstance(payload.get("probe"), dict) else {},
-    }, selected, dedupe_summary
+    }, selected
 
 
 def _load_legacy_analyzer(device: str) -> dict[str, Any]:
@@ -605,17 +412,6 @@ def _validate_move_payload(
         raise RuntimeError(f"cannot move tracks without source rowKey: {preview}")
 
 
-def _validate_remove_payload(items: list[dict[str, Any]], *, label: str) -> None:
-    missing_row_keys = [
-        str(item.get("fileName") or "")
-        for item in items
-        if not str(item.get("sourceRowKey") or "").strip()
-    ]
-    if missing_row_keys:
-        preview = ", ".join(missing_row_keys[:8])
-        raise RuntimeError(f"cannot remove {label} without source rowKey: {preview}")
-
-
 def _source_row_keys(items: list[dict[str, Any]]) -> list[str]:
     row_keys: list[str] = []
     seen: set[str] = set()
@@ -633,36 +429,6 @@ def _probe_writable_database(bridge_path: Path, db_path: str) -> None:
     if write_status.get("writable") is False:
         message = str(write_status.get("errorMessage") or "Rekordbox database is not writable")
         raise RuntimeError(message)
-
-
-def _remove_duplicate_playlist_entries(
-    bridge_path: Path,
-    db_path: str,
-    *,
-    source_playlist_id: int,
-    dedupe_skipped: list[dict[str, Any]],
-) -> dict[str, Any]:
-    if not dedupe_skipped:
-        return {
-            "applied": True,
-            "removeResult": None,
-        }
-
-    _validate_remove_payload(dedupe_skipped, label="duplicate playlist tracks")
-    _probe_writable_database(bridge_path, db_path)
-    remove_result = _run_bridge(
-        bridge_path,
-        "remove-playlist-tracks",
-        {
-            **_bridge_payload(db_path),
-            "playlistId": source_playlist_id,
-            "rowKeys": _source_row_keys(dedupe_skipped),
-        },
-    )
-    return {
-        "applied": True,
-        "removeResult": remove_result,
-    }
 
 
 def _apply_playlist_updates(
@@ -734,24 +500,19 @@ def _apply_playlist_updates(
 
 def _load_report_for_apply(
     report_path: Path,
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise RuntimeError(f"report is invalid: {report_path}")
     summary = payload.get("summary")
     differences = payload.get("differences")
-    dedupe = payload.get("dedupe")
     if not isinstance(summary, dict):
         raise RuntimeError(f"report has no summary: {report_path}")
     if not isinstance(differences, list):
         raise RuntimeError(f"report has no differences array: {report_path}")
-    dedupe_skipped = dedupe.get("skipped") if isinstance(dedupe, dict) else []
     return (
         summary,
         [item for item in differences if isinstance(item, dict)],
-        [item for item in dedupe_skipped if isinstance(item, dict)]
-        if isinstance(dedupe_skipped, list)
-        else [],
     )
 
 
@@ -764,22 +525,13 @@ def _apply_existing_report(
     target_parent_id: int,
     copy_only: bool,
 ) -> dict[str, Any]:
-    summary, differences, dedupe_skipped = _load_report_for_apply(report_path)
+    summary, differences = _load_report_for_apply(report_path)
     source = summary.get("sourcePlaylist")
     if not isinstance(source, dict):
         raise RuntimeError(f"report has no sourcePlaylist summary: {report_path}")
     source_playlist_id = int(source.get("playlistId") or 0)
     if source_playlist_id <= 0:
         raise RuntimeError(f"report source playlist id is invalid: {report_path}")
-    try:
-        dedupe_apply_result = _remove_duplicate_playlist_entries(
-            bridge_path,
-            db_path,
-            source_playlist_id=source_playlist_id,
-            dedupe_skipped=dedupe_skipped,
-        )
-    except RuntimeError:
-        dedupe_apply_result = {"applied": False, "removeResult": None, "skipped": True}
     difference_apply_result = _apply_playlist_updates(
         bridge_path,
         db_path,
@@ -789,10 +541,7 @@ def _apply_existing_report(
         differences=differences,
         copy_only=copy_only,
     )
-    return {
-        **difference_apply_result,
-        "dedupeApplyResult": dedupe_apply_result,
-    }
+    return difference_apply_result
 
 
 def _build_summary(
@@ -802,7 +551,6 @@ def _build_summary(
     rows: list[dict[str, Any]],
     errors: list[dict[str, Any]],
     differences: list[dict[str, Any]],
-    dedupe: dict[str, Any],
     dry_run: bool,
     copy_only: bool,
     device: str,
@@ -820,9 +568,7 @@ def _build_summary(
             "playlistId": source.get("playlistId"),
             "playlistName": source.get("playlistName"),
             "trackTotal": source.get("trackTotal"),
-            "preDedupeSelectedTrackCount": source.get("preDedupeSelectedTrackCount"),
             "selectedTrackCount": source.get("selectedTrackCount"),
-            "dedupeSkippedCount": source.get("dedupeSkippedCount"),
         },
         "targetPlaylistName": target_playlist,
         "mode": "dry-run" if dry_run else ("copy" if copy_only else "move"),
@@ -832,19 +578,6 @@ def _build_summary(
         "differenceTrackCount": len(differences),
         "passTrackCount": max(0, len(rows) - (len(differences) - len(errors))),
         "differenceCategoryCounts": category_counts,
-        "dedupe": {
-            "enabled": bool(dedupe.get("enabled")),
-            "currentTruthPath": dedupe.get("currentTruthPath"),
-            "currentTruthTrackCount": dedupe.get("currentTruthTrackCount"),
-            "inputTrackCount": dedupe.get("inputTrackCount"),
-            "selectedTrackCount": dedupe.get("selectedTrackCount"),
-            "skippedCount": dedupe.get("skippedCount"),
-            "selfDuplicateCount": dedupe.get("selfDuplicateCount"),
-            "currentSampleDuplicateCount": dedupe.get("currentSampleDuplicateCount"),
-            "reasonCounts": dedupe.get("reasonCounts")
-            if isinstance(dedupe.get("reasonCounts"), dict)
-            else {},
-        },
         "device": device,
         "predictionCache": {
             "enabled": prediction_cache_dir is not None,
@@ -866,7 +599,6 @@ def main() -> int:
     parser.add_argument("--bridge", default=str(DEFAULT_BRIDGE))
     parser.add_argument("--db-path", default="")
     parser.add_argument("--audio-root", default=str(FRKB_BENCHMARK_CURRENT_AUDIO_ROOT))
-    parser.add_argument("--current-truth", default=str(DEFAULT_CURRENT_TRUTH))
     parser.add_argument("--ffmpeg", default=str(DEFAULT_FFMPEG))
     parser.add_argument("--ffprobe", default=str(DEFAULT_FFPROBE))
     parser.add_argument("--prediction-cache-dir", default=str(DEFAULT_PREDICTION_CACHE_DIR))
@@ -895,20 +627,11 @@ def main() -> int:
         action="store_true",
         help="Append differences to target playlist but keep them in the source playlist.",
     )
-    parser.add_argument(
-        "--include-duplicates",
-        action="store_true",
-        help=(
-            "Analyze duplicates too. By default source-playlist duplicates and tracks already "
-            "present in current truth are removed from the source playlist on --apply before analysis."
-        ),
-    )
     args = parser.parse_args()
 
     bridge_path = Path(args.bridge)
     ffmpeg_path = Path(args.ffmpeg)
     ffprobe_path = Path(args.ffprobe)
-    current_truth_path = Path(args.current_truth)
     output_path = Path(args.output)
     from_report_path = Path(str(args.from_report or "")) if str(args.from_report or "").strip() else None
     audio_roots = benchmark._parse_audio_roots(str(args.audio_root or ""))
@@ -939,7 +662,7 @@ def main() -> int:
     if not ffprobe_path.exists():
         raise SystemExit(f"ffprobe not found: {ffprobe_path}")
     started_at = time.time()
-    source, truth_tracks, dedupe_summary = _load_source_truth_tracks(
+    source, truth_tracks = _load_source_truth_tracks(
         bridge_path,
         str(args.source_playlist or DEFAULT_SOURCE_PLAYLIST),
         str(args.db_path or ""),
@@ -947,21 +670,8 @@ def main() -> int:
         ffprobe_path=ffprobe_path,
         only_filters=only_filters,
         limit=int(args.limit or 0),
-        current_truth_path=current_truth_path,
-        include_duplicates=bool(args.include_duplicates),
     )
     dry_run = not bool(args.apply)
-    dedupe_skipped = (
-        dedupe_summary.get("skipped") if isinstance(dedupe_summary.get("skipped"), list) else []
-    )
-    dedupe_apply_result: dict[str, Any] | None = None
-    if not dry_run:
-        dedupe_apply_result = _remove_duplicate_playlist_entries(
-            bridge_path,
-            str(args.db_path or ""),
-            source_playlist_id=int(source["playlistId"]),
-            dedupe_skipped=dedupe_skipped,
-        )
 
     rows, errors, cache_stats = _analyze_playlist_tracks(
         truth_tracks,
@@ -981,10 +691,7 @@ def main() -> int:
             differences=differences,
             copy_only=bool(args.copy_only),
         )
-        apply_result = {
-            **difference_apply_result,
-            "dedupeApplyResult": dedupe_apply_result,
-        }
+        apply_result = difference_apply_result
 
     summary = _build_summary(
         source=source,
@@ -992,7 +699,6 @@ def main() -> int:
         rows=rows,
         errors=errors,
         differences=differences,
-        dedupe=dedupe_summary,
         dry_run=dry_run,
         copy_only=bool(args.copy_only),
         device=device,
@@ -1005,7 +711,6 @@ def main() -> int:
             **summary,
             "applyResult": apply_result,
         },
-        "dedupe": dedupe_summary,
         "differences": differences,
         "rows": rows,
         "errors": errors,
@@ -1021,9 +726,6 @@ def main() -> int:
                 "strictToleranceMs": summary["strictToleranceMs"],
                 "differenceTrackCount": summary["differenceTrackCount"],
                 "errorTrackCount": summary["errorTrackCount"],
-                "dedupeSkippedCount": summary["dedupe"]["skippedCount"],
-                "selfDuplicateCount": summary["dedupe"]["selfDuplicateCount"],
-                "currentSampleDuplicateCount": summary["dedupe"]["currentSampleDuplicateCount"],
                 "output": str(output_path),
                 "applyResult": apply_result,
             },
