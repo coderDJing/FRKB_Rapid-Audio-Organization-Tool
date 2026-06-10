@@ -62,7 +62,7 @@ const interleaveAudioBuffer = (buffer: AudioBuffer) => {
 const soundTouchBufferCache = new Map<string, AudioBuffer>()
 const soundTouchInflight = new Map<string, Promise<AudioBuffer>>()
 
-export const buildMixtapeSoundTouchCacheKey = (
+const buildMixtapeSoundTouchCacheKey = (
   filePath: string,
   buffer: AudioBuffer,
   tempoRatio: number

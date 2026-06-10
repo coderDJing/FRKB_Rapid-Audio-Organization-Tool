@@ -36,7 +36,7 @@ fn linear_to_db(value: f32) -> f64 {
 fn loudness_analysis_uses_channel_energy_without_phase_cancellation() {
   let samples = [0.5_f32, -0.5, 0.5, -0.5];
   let analysis =
-    horizontal_browse_transport_auto_gain::analyze_loudness(&samples, 44_100, 2).unwrap();
+    horizontal_browse_transport_auto_gain::analyze_loudness(&samples, 2).unwrap();
 
   assert!((analysis.integrated_db - -6.020599913279624).abs() < 0.0001);
   assert!((analysis.peak_db - -6.020599913279624).abs() < 0.0001);

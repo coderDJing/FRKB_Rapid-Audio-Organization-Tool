@@ -17,7 +17,7 @@ export function formatDeletedAtMs(value?: number | null): string {
   return `${year}-${month}-${day} ${hour}:${minute}:${second}`
 }
 
-export function getRecycleBinSourceLabel(sourceType?: string | null): string {
+function getRecycleBinSourceLabel(sourceType?: string | null): string {
   if (sourceType === 'external' || sourceType === 'import_dedup') {
     return t('recycleBin.externalSource')
   }

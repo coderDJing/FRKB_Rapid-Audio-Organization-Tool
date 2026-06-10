@@ -235,7 +235,6 @@ fn finish_decode_request(
       let loudness_analysis = if request.is_full_decode {
         super::horizontal_browse_transport_auto_gain::analyze_loudness(
           &samples,
-          sample_rate,
           channels,
         )
       } else {

@@ -2519,7 +2519,6 @@ fn extract_audio_features(
   let mut sample_buffer: Option<SampleBuffer<i16>> = None;
   let mut current_spec: Option<SignalSpec> = None;
 
-  let mut _total_frames: u64 = 0;
   // 基于解码后的 PCM 样本计算内容哈希
   let mut pcm_hasher = Context::new(&SHA256);
 
@@ -2552,8 +2551,6 @@ fn extract_audio_features(
         // 将解码后的 i16 PCM 样本（交错）追加到哈希器
         let samples_i16: &[i16] = sbuf.samples();
         pcm_hasher.update(cast_slice(samples_i16));
-
-        _total_frames += frame_count as u64;
       }
       Err(SymphoniaError::IoError(_)) | Err(SymphoniaError::DecodeError(_)) => continue,
       Err(_) => break,

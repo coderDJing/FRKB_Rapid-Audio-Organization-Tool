@@ -40,7 +40,6 @@ impl Default for DeckAutoGainState {
 
 pub(super) fn analyze_loudness(
   samples: &[f32],
-  _sample_rate: u32,
   channels: u16,
 ) -> Option<LoudnessAnalysis> {
   let channel_count = channels.max(1) as usize;

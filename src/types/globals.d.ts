@@ -177,8 +177,6 @@ interface IRekordboxLibraryBrowserState {
   treeNodes: IPioneerPlaylistTreeNode[]
 }
 
-type IPioneerDeviceLibraryState = IRekordboxLibraryBrowserState
-
 interface IPioneerPlaylistTrack {
   rowKey: string
   playlistId: number
@@ -736,7 +734,6 @@ export {
   IRekordboxLibraryBrowserState,
   IPioneerDeviceLibraryKind,
   IPioneerPlaylistTreeNode,
-  IPioneerDeviceLibraryState,
   IPioneerPlaylistTrack,
   ITrackMetadataUpdatePayload,
   IMetadataAutoFillRequest,
