@@ -442,17 +442,20 @@ blind 与 sealed 是数据集隔离边界，不是 current 分类目录。禁止
 
 新增样本必须走完整闭环：
 
-1. 把新歌加入 Rekordbox `test` playlist，让 Rekordbox 完成分析。
-2. 人工删除 Rekordbox 自己也失败、不可信、或音频缺失的曲目。
-3. 从 Rekordbox `test` 读取曲目源路径，把主 truth 里没有的新音频复制到 `new`。
-4. 抓取 Rekordbox truth 到 `intake-current-truth.json`；已在主 truth 里的重复样本默认跳过，不进入 intake。
+1. 如果本轮源歌单是 `Upan`，先运行 `scripts/move_upan_non_integer_bpm_tracks.py`，把 UI BPM
+   列显示为非整数的曲目移动到 `upanNonIntegerBpm` 人工筛查歌单；该脚本默认 dry-run，确认后
+   加 `--apply` 写回，不删除音频文件。
+2. 把新歌加入 Rekordbox `test` playlist，让 Rekordbox 完成分析。
+3. 人工删除 Rekordbox 自己也失败、不可信、或音频缺失的曲目。
+4. 从 Rekordbox `test` 读取曲目源路径，把主 truth 里没有的新音频复制到 `new`。
+5. 抓取 Rekordbox truth 到 `intake-current-truth.json`；已在主 truth 里的重复样本默认跳过，不进入 intake。
    重复判定至少包含 `fileName`，以及保守的 `title + artist + BPM` 元数据匹配。
-5. 确认 `intake-current-truth.json` 与 `new` 目录音频一一对应。
-6. 把 intake 合入 `rekordbox-current-truth.json`，同时清空 intake。
-7. 跑 `current` benchmark，生成 `frkb-current-latest.json`。
-8. 生成 `frkb-classification-current.json` 和三个派生视图。
-9. 按 classification 同步音频目录：`pass -> sample`，其他 -> `grid-failures-current`。
-10. 清理 Rekordbox `test` 中已处理曲目。
+6. 确认 `intake-current-truth.json` 与 `new` 目录音频一一对应。
+7. 把 intake 合入 `rekordbox-current-truth.json`，同时清空 intake。
+8. 跑 `current` benchmark，生成 `frkb-current-latest.json`。
+9. 生成 `frkb-classification-current.json` 和三个派生视图。
+10. 按 classification 同步音频目录：`pass -> sample`，其他 -> `grid-failures-current`。
+11. 清理 Rekordbox `test` 中已处理曲目。
 
 truth 入库后，后续算法优化只更新 classification 和派生视图，不再搬 truth。
 

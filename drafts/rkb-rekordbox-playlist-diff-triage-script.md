@@ -18,6 +18,30 @@ scripts/move_rekordbox_playlist_grid_diffs.py
 - 当前算法对比阈值：沿用 benchmark 脚本里的 `STRICT_TOLERANCE_MS`
 - 默认是 dry-run，只写报告，不修改 Rekordbox
 
+## Upan 非整数 BPM 前置筛查
+
+如果本轮样本源来自 Rekordbox `Upan` 歌单，先把 UI BPM 列已经显示为非整数的曲目移到
+`upanNonIntegerBpm` 人工筛查歌单，再继续从 `Upan` 抽样到 `test`。这一步使用 bridge 的
+`bpm` 字段，贴近 Rekordbox UI BPM 列；`gridBpm` 只写入报告辅助核对，不参与筛选。
+
+先跑 dry-run：
+
+```powershell
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" `
+  "scripts/move_upan_non_integer_bpm_tracks.py"
+```
+
+确认报告里的 `nonIntegerBpmTrackCount` 和预览明细没问题后，再写回：
+
+```powershell
+& "vendor/demucs/win32-x64/runtime-cpu/python.exe" `
+  "scripts/move_upan_non_integer_bpm_tracks.py" `
+  --apply
+```
+
+`--apply` 会创建或复用 `upanNonIntegerBpm`，把非整数 UI BPM 曲目追加到该歌单，再从
+`Upan` 移除这些 playlist 条目。它不删除音频文件，也不处理 BPM 缺失/无效曲目。
+
 ## 适用场景
 
 适合处理这种情况：
