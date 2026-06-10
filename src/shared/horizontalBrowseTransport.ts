@@ -2,7 +2,7 @@ export const HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT =
   'horizontal-browse-transport:snapshot-updated'
 
 export type HorizontalBrowseDeckKey = 'top' | 'bottom'
-export type HorizontalBrowseAudioBandKey = 'high' | 'mid' | 'low'
+type HorizontalBrowseAudioBandKey = 'high' | 'mid' | 'low'
 export type HorizontalBrowseTransportBandState = Record<HorizontalBrowseAudioBandKey, boolean>
 
 export type HorizontalBrowseTransportDeckInput = {
@@ -71,7 +71,7 @@ export type HorizontalBrowseTransportDeckSnapshot = {
   autoGainValue: number
 }
 
-export type HorizontalBrowseTransportOutputSnapshot = {
+type HorizontalBrowseTransportOutputSnapshot = {
   crossfaderValue: number
   masterGain: number
   topDeckGain: number
@@ -92,7 +92,7 @@ export type HorizontalBrowseTransportVisualizerSnapshot = {
   timeDomainData: number[]
 }
 
-export type HorizontalBrowseRecordingState = 'idle' | 'armed' | 'recording' | 'error'
+type HorizontalBrowseRecordingState = 'idle' | 'armed' | 'recording' | 'error'
 
 export type HorizontalBrowseTransportRecordingStatus = {
   state: HorizontalBrowseRecordingState

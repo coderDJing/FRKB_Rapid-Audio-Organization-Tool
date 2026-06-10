@@ -5,7 +5,7 @@ import { log } from '../log'
 type SystemIdleState = 'active' | 'idle' | 'locked' | 'unknown'
 type ForegroundBusyProvider = () => boolean
 
-export type BackgroundIdleProfile = 'active' | 'idle' | 'deep-idle'
+type BackgroundIdleProfile = 'active' | 'idle' | 'deep-idle'
 
 export type BackgroundIdleSnapshot = {
   systemIdleSeconds: number
@@ -18,8 +18,8 @@ export type BackgroundIdleSnapshot = {
   deepIdleThresholdSec: number
 }
 
-export const SYSTEM_IDLE_THRESHOLD_SEC = 120
-export const SYSTEM_DEEP_IDLE_THRESHOLD_SEC = 300
+const SYSTEM_IDLE_THRESHOLD_SEC = 120
+const SYSTEM_DEEP_IDLE_THRESHOLD_SEC = 300
 const DEV_SYSTEM_IDLE_THRESHOLD_SEC = 20
 const DEV_SYSTEM_DEEP_IDLE_THRESHOLD_SEC = 30
 

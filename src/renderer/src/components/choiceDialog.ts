@@ -2,7 +2,7 @@ import { createVNode, render } from 'vue'
 import ChoiceDialog from './choiceDialog.vue'
 import { attachAppContext } from '@renderer/utils/appContext'
 
-export interface ChoiceOption {
+interface ChoiceOption {
   key: string
   label: string
 }

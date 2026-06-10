@@ -1,4 +1,4 @@
-export type RawWaveformColorArray = Float32Array | Uint8Array | ArrayBuffer | ArrayLike<number>
+type RawWaveformColorArray = Float32Array | Uint8Array | ArrayBuffer | ArrayLike<number>
 
 export type RawWaveformColorSource = {
   rate: number
@@ -18,7 +18,7 @@ export type RawWaveformRgbColor = {
   b: number
 }
 
-export type RawFftBandAmps = {
+type RawFftBandAmps = {
   low: number
   mid: number
   high: number
@@ -262,7 +262,7 @@ const applyRekordboxLikeRawColorChannel = (
       255
   )
 
-export const resolveRekordboxLikeRawColor = (
+const resolveRekordboxLikeRawColor = (
   lowRatio: number,
   midRatio: number,
   highRatio: number

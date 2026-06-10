@@ -10,19 +10,19 @@ const MAX_TEMPO_RATIO = 4
 const MIN_GAIN = 0.0001
 const MAX_GAIN = 4
 
-export type MixtapeOutputFormat = 'wav' | 'mp3'
+type MixtapeOutputFormat = 'wav' | 'mp3'
 
-export type MixtapeOutputEnvelopePoint = {
+type MixtapeOutputEnvelopePoint = {
   sec?: number
   gain?: number
 }
 
-export type MixtapeOutputMuteSegment = {
+type MixtapeOutputMuteSegment = {
   startSec?: number
   endSec?: number
 }
 
-export type MixtapeOutputTrackInput = {
+type MixtapeOutputTrackInput = {
   id?: string
   mixOrder?: number
   filePath?: string
@@ -54,7 +54,7 @@ export type MixtapeOutputProgressPayload = {
   percent: number
 }
 
-export type MixtapeOutputResult = {
+type MixtapeOutputResult = {
   outputPath: string
   trackCount: number
 }

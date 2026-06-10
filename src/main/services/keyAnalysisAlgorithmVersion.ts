@@ -1,6 +1,6 @@
 export const CURRENT_KEY_ANALYSIS_ALGORITHM_VERSION = 1
 
-export type KeyAnalysisCacheVersionInfo = {
+type KeyAnalysisCacheVersionInfo = {
   keyAnalysisAlgorithmVersion?: unknown
 }
 

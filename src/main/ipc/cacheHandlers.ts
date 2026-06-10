@@ -368,28 +368,6 @@ export function registerCacheHandlers() {
     }
   )
 
-  // Legacy IPC names kept as compatibility shells; keep these on surface-cache reads only.
-  ipcMain.handle(
-    'compact-visual-waveform-cache:load',
-    async (_e, payload: { listRoot?: string; filePath?: string }) => {
-      return await handleGlobalOverviewLoad(payload)
-    }
-  )
-
-  ipcMain.handle(
-    'compact-visual-waveform-cache:batch',
-    async (_e, payload: { listRoot?: string; filePaths?: string[] }) => {
-      return await handleListPreviewBatch(payload)
-    }
-  )
-
-  ipcMain.handle(
-    'waveform-cache:batch',
-    async (_e, payload: { listRoot?: string; filePaths?: string[] }) => {
-      return await handleGlobalOverviewBatch(payload)
-    }
-  )
-
   ipcMain.handle(
     'mixtape-stem-waveform-cache:batch',
     async (

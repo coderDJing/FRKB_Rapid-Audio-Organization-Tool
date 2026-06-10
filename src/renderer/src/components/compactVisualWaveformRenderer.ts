@@ -10,11 +10,11 @@ import {
   type WaveformRgbColor
 } from '@renderer/components/beatGridRawWaveformShape'
 
-export type CompactVisualWaveformCanvasContext =
+type CompactVisualWaveformCanvasContext =
   | CanvasRenderingContext2D
   | OffscreenCanvasRenderingContext2D
 
-export type CompactVisualWaveformRenderable = CompactVisualWaveformData
+type CompactVisualWaveformRenderable = CompactVisualWaveformData
 
 type CompactVisualWaveformLayout = 'full' | 'top-half' | 'bottom-half'
 

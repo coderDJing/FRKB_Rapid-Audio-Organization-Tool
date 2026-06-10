@@ -43,15 +43,15 @@ export function setLibraryTreeMigrationInProgress(db: SqliteDatabase, inProgress
   setMetaValue(db, TREE_MIGRATION_IN_PROGRESS_KEY, inProgress ? '1' : '0')
 }
 
-export function isLibraryTreeArchiveDone(db: SqliteDatabase): boolean {
+function isLibraryTreeArchiveDone(db: SqliteDatabase): boolean {
   return getMetaValue(db, TREE_ARCHIVE_DONE_KEY) === '1'
 }
 
-export function setLibraryTreeArchiveDone(db: SqliteDatabase, done: boolean): void {
+function setLibraryTreeArchiveDone(db: SqliteDatabase, done: boolean): void {
   setMetaValue(db, TREE_ARCHIVE_DONE_KEY, done ? '1' : '0')
 }
 
-export function countLibraryNodes(db: SqliteDatabase): number {
+function countLibraryNodes(db: SqliteDatabase): number {
   try {
     const row = db
       .prepare<{ count?: number | string }>('SELECT COUNT(1) as count FROM library_nodes')

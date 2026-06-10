@@ -124,7 +124,7 @@ export const isDescendantNode = (
   return walk(source.children)
 }
 
-export const reorderTreeNodes = (nodes: IPioneerPlaylistTreeNode[]) => {
+const reorderTreeNodes = (nodes: IPioneerPlaylistTreeNode[]) => {
   nodes.forEach((node, index) => {
     node.order = index + 1
     if (Array.isArray(node.children) && node.children.length > 0) {

@@ -34,7 +34,7 @@ import { getBeatThisRuntimeAvailabilitySnapshot } from '../workers/beatThisRunti
 
 const resolveKeyAnalysisWorkerPath = () => resolveMainWorkerPath(__dirname, 'keyAnalysisWorker.js')
 
-export type MixtapeBpmAnalyzeResult = {
+type MixtapeBpmAnalyzeResult = {
   results: Array<{
     filePath: string
     bpm: number
@@ -47,7 +47,7 @@ export type MixtapeBpmAnalyzeResult = {
   unresolvedDetails: Array<{ filePath: string; reason: string }>
 }
 
-export type MixtapeMissingRecovery = {
+type MixtapeMissingRecovery = {
   recovered: Array<{
     itemId: string
     fromPath: string

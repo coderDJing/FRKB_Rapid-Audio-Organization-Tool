@@ -263,7 +263,7 @@ const expectedErrorRules: ExpectedErrorRule[] = [
   { messageIncludes: /no space left on device/i }
 ]
 
-export function isExpectedError(error: unknown): boolean {
+function isExpectedError(error: unknown): boolean {
   try {
     const err = (error && typeof error === 'object' ? error : null) as ErrorLike | null
     const code = String(err?.code || '').toUpperCase()

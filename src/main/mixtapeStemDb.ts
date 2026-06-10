@@ -28,7 +28,7 @@ export type MixtapeStemAssetRecord = {
   updatedAtMs: number
 }
 
-export type MixtapeStemAssetUpsertInput = {
+type MixtapeStemAssetUpsertInput = {
   libraryRoot: string
   sourceSignature: string
   filePath: string
@@ -43,7 +43,7 @@ export type MixtapeStemAssetUpsertInput = {
   errorMessage?: string | null
 }
 
-export type MixtapeItemStemStatePatch = {
+type MixtapeItemStemStatePatch = {
   itemId: string
   stemStatus?: MixtapeStemStatus
   stemError?: string | null
@@ -56,7 +56,7 @@ export type MixtapeItemStemStatePatch = {
   stemDrumsPath?: string | null
 }
 
-export type MixtapeTrackStemStatusRecord = {
+type MixtapeTrackStemStatusRecord = {
   itemId: string
   filePath: string
   stemStatus: MixtapeStemStatus

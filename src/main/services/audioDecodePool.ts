@@ -33,7 +33,7 @@ export type DecodeAudioMetrics = {
   cacheStore?: 'stored' | 'skipped-no-key' | 'skipped-empty-pcm' | 'skipped-invalid-pcm'
 }
 
-export type DecodeAudioResult = {
+type DecodeAudioResult = {
   pcmData: Buffer
   sampleRate: number
   channels: number
@@ -46,9 +46,9 @@ export type DecodeAudioResult = {
   metrics?: DecodeAudioMetrics
 }
 
-export type DecodeAudioPriority = 'high' | 'normal' | 'low'
+type DecodeAudioPriority = 'high' | 'normal' | 'low'
 
-export type DecodeAudioOptions = {
+type DecodeAudioOptions = {
   analyzeKey?: boolean
   needWaveform?: boolean
   waveformTargetRate?: number

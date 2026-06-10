@@ -35,7 +35,7 @@ export const isValidMixxxWaveformData = (
   )
 }
 
-export const resolveMixxxWaveformFrameCount = (data: MixxxWaveformData | null | undefined) => {
+const resolveMixxxWaveformFrameCount = (data: MixxxWaveformData | null | undefined) => {
   if (!data) return 0
   const low = data.bands?.low
   const mid = data.bands?.mid

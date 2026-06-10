@@ -45,7 +45,7 @@ type WorkerPreviewWaveformItem = {
   dump?: RustPioneerPreviewWaveformDump | null
 }
 
-export type PioneerPreviewWaveformLoadItem = {
+type PioneerPreviewWaveformLoadItem = {
   analyzePath: string
   data: IPioneerPreviewWaveformData | null
   error?: string
