@@ -77,4 +77,5 @@
 ## 按需脚本
 
 - **rekordbox样本预分拣**：`scripts/move_rekordbox_playlist_grid_diffs.py`，详细用法见 `drafts/rkb-rekordbox-playlist-diff-triage-script.md`。
+  - Python 环境：`vendor/demucs/win32-x64/runtime-cpu/python.exe`（含 torch、soxr、beat_this 等 ML 依赖）。Rekordbox bridge 子进程会自动使用 `vendor/rekordbox-desktop-runtime/win32-x64/python/python.exe`。
   - 执行流程：先跑 dry-run，如果 `errorTrackCount == 0`，直接加 `--apply` 再跑一次，不需要问用户确认。dry-run 本身就是确认步骤。
