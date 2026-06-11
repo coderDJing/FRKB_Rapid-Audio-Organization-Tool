@@ -13,7 +13,11 @@ import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { ensureMixtapeStemWaveformBundle } from '../services/mixtapeStemWaveformService'
 import { registerMixtapeRawWaveformHandlers } from './mixtapeRawWaveformHandlers'
 import mainWindow from '../window/mainWindow'
-import { invalidateKeyAnalysisCache, enqueueKeyAnalysisList } from '../services/keyAnalysisQueue'
+import {
+  enqueueKeyAnalysisList,
+  enqueueManualKeyAnalysisBatch,
+  invalidateKeyAnalysisCache
+} from '../services/keyAnalysisQueue'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 import type { UnifiedDisplayWaveformDetailData } from '../../shared/unifiedDisplayWaveform'
 import type {
@@ -145,14 +149,13 @@ export function registerCacheHandlers() {
     invalidateKeyAnalysisCache(files)
     const analysisFiles = files.filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
     if (analysisFiles.length > 0) {
-      mainWindow.instance?.webContents.send('key-analysis:manual-batch-start', {
-        filePaths: analysisFiles
+      enqueueManualKeyAnalysisBatch(analysisFiles, {
+        titleKey: 'tracks.reanalyzingTracks'
       })
-      enqueueKeyAnalysisList(analysisFiles, 'high')
     }
 
     sendProgress(files.length, true)
-    return { cleared }
+    return { cleared, queued: analysisFiles.length }
   })
 
   ipcMain.handle('getLibrary', async () => {

@@ -5,7 +5,7 @@ import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDi
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
-export type KeyAnalysisQueueCategory = 'visible' | 'waveform-preview'
+export type KeyAnalysisQueueCategory = 'visible' | 'waveform-preview' | 'manual-batch'
 type KeyAnalysisProgressStage =
   | 'job-received'
   | 'decode-start'
@@ -84,6 +84,7 @@ export type KeyAnalysisJob = {
   category?: KeyAnalysisQueueCategory
   waveformOnly?: boolean
   focusSlots?: string[]
+  manualBatchIds?: string[]
   needsKey?: boolean
   needsBpm?: boolean
   needsWaveform?: boolean

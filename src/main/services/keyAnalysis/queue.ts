@@ -1,13 +1,10 @@
 import type { EventEmitter } from 'node:events'
 import type { Worker } from 'node:worker_threads'
-import { execFile } from 'node:child_process'
-import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { promisify } from 'node:util'
 import { createKeyAnalysisBackground, type KeyAnalysisBackground } from './background'
 import { createKeyAnalysisPersistence, type KeyAnalysisPersistence } from './persistence'
 import { createKeyAnalysisWorkerPool, type KeyAnalysisWorkerPool } from './workerPool'
-import { resolveBundledFfmpegPath } from '../../ffmpeg'
+import { probeAudioFile } from './audioProbe'
 import { log } from '../../log'
 import {
   BACKGROUND_MAX_INFLIGHT,
@@ -20,7 +17,6 @@ import {
   KEY_ANALYSIS_JOB_TIMEOUT_MS,
   KEY_ANALYSIS_STAGE_TIMEOUT_MAX_MS,
   KEY_ANALYSIS_TIMEOUT_PROBE_MIN_FILE_SIZE_BYTES,
-  KEY_ANALYSIS_TIMEOUT_PROBE_TIMEOUT_MS,
   KEY_ANALYSIS_TIMEOUT_PROBE_TTL_MS,
   KEY_ANALYSIS_WAVEFORM_STAGE_TIMEOUT_MS,
   normalizePath,
@@ -37,7 +33,17 @@ import {
   type KeyAnalysisSource
 } from './types'
 
-const execFileAsync = promisify(execFile)
+type KeyAnalysisEnqueueOptions = {
+  urgent?: boolean
+  source?: KeyAnalysisSource
+  fastAnalysis?: boolean
+  focusSlot?: string
+  preemptible?: boolean
+  category?: KeyAnalysisQueueCategory
+  waveformOnly?: boolean
+  manualBatchId?: string
+  manualBatchIds?: string[]
+}
 
 export class KeyAnalysisQueue {
   private workers: Worker[] = []
@@ -152,22 +158,44 @@ export class KeyAnalysisQueue {
 
   private applyQueueCategory(job: KeyAnalysisJob, category?: KeyAnalysisQueueCategory) {
     if (!category) return
+    if (job.category === 'manual-batch' && category !== 'manual-batch') return
+    if (job.priority === 'high' && category === 'visible') return
     if (job.category === 'visible' && category === 'waveform-preview') return
     job.category = category
+  }
+
+  private normalizeManualBatchIds(options: {
+    manualBatchId?: string
+    manualBatchIds?: string[]
+  }): string[] {
+    const ids = [options.manualBatchId, ...(options.manualBatchIds || [])]
+    return Array.from(
+      new Set(ids.map((id) => String(id || '').trim()).filter((id) => id.length > 0))
+    )
+  }
+
+  private addManualBatchIdsToJob(job: KeyAnalysisJob, batchIds: string[]) {
+    if (!batchIds.length) return
+    const current = Array.isArray(job.manualBatchIds) ? job.manualBatchIds.filter(Boolean) : []
+    job.manualBatchIds = Array.from(new Set([...current, ...batchIds]))
+  }
+
+  private removeManualBatchIdFromJob(job: KeyAnalysisJob, batchId: string): boolean {
+    const current = job.manualBatchIds?.filter(Boolean) || []
+    if (!current.includes(batchId)) return false
+    const next = current.filter((id) => id !== batchId)
+    job.manualBatchIds = next.length ? next : undefined
+    return true
+  }
+
+  private isManualOnlyJob(job: KeyAnalysisJob): boolean {
+    return job.category === 'manual-batch' && !this.hasActiveFocusSlot(job)
   }
 
   enqueue(
     filePath: string,
     priority: KeyAnalysisPriority,
-    options: {
-      urgent?: boolean
-      source?: KeyAnalysisSource
-      fastAnalysis?: boolean
-      focusSlot?: string
-      preemptible?: boolean
-      category?: KeyAnalysisQueueCategory
-      waveformOnly?: boolean
-    } = {}
+    options: KeyAnalysisEnqueueOptions = {}
   ) {
     if (!filePath) return
     if (priority === 'background' && !this.background.isEnabled()) return
@@ -175,6 +203,7 @@ export class KeyAnalysisQueue {
     const normalizedPath = normalizePath(filePath)
     const source = options.source || (priority === 'background' ? 'background' : 'foreground')
     const focusSlot = this.normalizeFocusSlot(options.focusSlot)
+    const manualBatchIds = this.normalizeManualBatchIds(options)
     if (source === 'foreground') {
       this.background.touchForeground()
     }
@@ -184,6 +213,7 @@ export class KeyAnalysisQueue {
     const active = this.activeByPath.get(normalizedPath)
     if (active) {
       this.addFocusSlotToJob(active, focusSlot)
+      this.addManualBatchIdsToJob(active, manualBatchIds)
       return
     }
     const existing = this.pendingByPath.get(normalizedPath)
@@ -200,6 +230,7 @@ export class KeyAnalysisQueue {
         }
         this.applyQueueCategory(existing, options.category)
         this.applyWaveformOnlyOption(existing, options.waveformOnly)
+        this.addManualBatchIdsToJob(existing, manualBatchIds)
         this.addFocusSlotToJob(existing, focusSlot)
         this.addPending(existing, options.urgent)
       } else {
@@ -208,6 +239,7 @@ export class KeyAnalysisQueue {
         }
         this.applyQueueCategory(existing, options.category)
         this.applyWaveformOnlyOption(existing, options.waveformOnly)
+        this.addManualBatchIdsToJob(existing, manualBatchIds)
         this.addFocusSlotToJob(existing, focusSlot)
       }
       if (options.urgent && existing.priority === 'high') {
@@ -226,7 +258,8 @@ export class KeyAnalysisQueue {
       source,
       preemptible: options.preemptible === true,
       category: options.category,
-      waveformOnly: options.waveformOnly === true
+      waveformOnly: options.waveformOnly === true,
+      manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }
     this.addFocusSlotToJob(job, focusSlot)
     this.addPending(job, options.urgent)
@@ -239,15 +272,7 @@ export class KeyAnalysisQueue {
   enqueueList(
     filePaths: string[],
     priority: KeyAnalysisPriority,
-    options: {
-      urgent?: boolean
-      source?: KeyAnalysisSource
-      fastAnalysis?: boolean
-      focusSlot?: string
-      preemptible?: boolean
-      category?: KeyAnalysisQueueCategory
-      waveformOnly?: boolean
-    } = {}
+    options: KeyAnalysisEnqueueOptions = {}
   ) {
     if (!Array.isArray(filePaths) || filePaths.length === 0) return
     for (const filePath of filePaths) {
@@ -319,6 +344,37 @@ export class KeyAnalysisQueue {
         this.background.unmarkProcessing(job.jobId)
       }
       this.markExpectedWorkerTermination(worker, 'path-cancel')
+      terminations.push(
+        worker.terminate().catch(() => {
+          this.clearExpectedWorkerTermination(worker)
+        })
+      )
+    }
+
+    if (terminations.length > 0) {
+      await Promise.allSettled(terminations)
+      this.background.emitBackgroundStatus()
+    }
+  }
+
+  async cancelManualBatch(batchId: string) {
+    const normalizedBatchId = String(batchId || '').trim()
+    if (!normalizedBatchId) return
+
+    for (const job of Array.from(this.pendingByPath.values())) {
+      if (!this.removeManualBatchIdFromJob(job, normalizedBatchId)) continue
+      if (!job.manualBatchIds && this.isManualOnlyJob(job)) {
+        this.removePending(job)
+      }
+    }
+
+    const terminations: Array<Promise<unknown>> = []
+    for (const [worker, jobId] of Array.from(this.busy.entries())) {
+      const job = this.inFlight.get(jobId)
+      if (!job) continue
+      if (!this.removeManualBatchIdFromJob(job, normalizedBatchId)) continue
+      if (job.manualBatchIds || !this.isManualOnlyJob(job)) continue
+      this.markExpectedWorkerTermination(worker, 'manual-batch-cancel')
       terminations.push(
         worker.terminate().catch(() => {
           this.clearExpectedWorkerTermination(worker)
@@ -534,76 +590,13 @@ export class KeyAnalysisQueue {
     return 'worker-runtime-error'
   }
 
-  private resolveBundledFfprobePath(): string | null {
-    const ffprobeName = process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe'
-    const envFfmpeg = String(process.env.FRKB_FFMPEG_PATH || '').trim()
-    if (envFfmpeg) {
-      const candidate = path.join(path.dirname(envFfmpeg), ffprobeName)
-      if (existsSync(candidate)) return candidate
-    }
-    try {
-      const ffmpegPath = resolveBundledFfmpegPath()
-      const candidate = path.join(path.dirname(ffmpegPath), ffprobeName)
-      if (existsSync(candidate)) return candidate
-    } catch {}
-    return null
-  }
-
-  private async probeAudioFile(filePath: string): Promise<KeyAnalysisAudioProbe> {
-    const ffprobePath = this.resolveBundledFfprobePath()
-    if (!ffprobePath) {
-      return { error: 'ffprobe-not-found' }
-    }
-    try {
-      const { stdout } = await execFileAsync(
-        ffprobePath,
-        [
-          '-v',
-          'error',
-          '-print_format',
-          'json',
-          '-show_entries',
-          'format=duration,bit_rate:stream=codec_name,sample_rate,channels',
-          '-select_streams',
-          'a:0',
-          filePath
-        ],
-        {
-          windowsHide: true,
-          timeout: KEY_ANALYSIS_TIMEOUT_PROBE_TIMEOUT_MS,
-          maxBuffer: 2 * 1024 * 1024
-        }
-      )
-      const parsed = JSON.parse(String(stdout || '{}')) as {
-        format?: { duration?: string; bit_rate?: string }
-        streams?: Array<{ codec_name?: string; sample_rate?: string; channels?: number }>
-      }
-      const stream = Array.isArray(parsed.streams) ? parsed.streams[0] : undefined
-      const durationSec = Number(parsed.format?.duration)
-      const bitRate = Number(parsed.format?.bit_rate)
-      const sampleRate = Number(stream?.sample_rate)
-      const channels = Number(stream?.channels)
-      return {
-        durationSec: Number.isFinite(durationSec) ? durationSec : undefined,
-        bitRate: Number.isFinite(bitRate) ? bitRate : undefined,
-        sampleRate: Number.isFinite(sampleRate) ? sampleRate : undefined,
-        channels: Number.isFinite(channels) ? channels : undefined,
-        codec: stream?.codec_name
-      }
-    } catch (error) {
-      return {
-        error: error instanceof Error ? error.message : String(error)
-      }
-    }
-  }
-
   private scheduleFailureProbe(job: KeyAnalysisJob, reason: KeyAnalysisFailureReason) {
     const normalizedPath = job.normalizedPath
     if (!normalizedPath || this.failureProbeInFlight.has(normalizedPath)) return
     this.failureProbeInFlight.add(normalizedPath)
     void (async () => {
       try {
-        const probe = await this.probeAudioFile(job.filePath)
+        const probe = await probeAudioFile(job.filePath)
         const { size, mtimeMs } = this.getJobFileVersion(job)
         this.probeCache.set(normalizedPath, { size, mtimeMs, probe, probedAt: Date.now() })
         job.probe = probe
@@ -706,6 +699,7 @@ export class KeyAnalysisQueue {
 
   private getFailureCooldownRecord(job: KeyAnalysisJob): KeyAnalysisFailureRecord | null {
     if (job.priority === 'high') return null
+    if (job.category === 'manual-batch') return null
     const record = this.failedByPath.get(job.normalizedPath)
     if (!record) return null
     const sameFileVersion = this.isSameFileVersion(record, this.getJobFileVersion(job))
@@ -772,7 +766,7 @@ export class KeyAnalysisQueue {
       return
     }
     if (!this.shouldProbeForTimeoutBudget(job)) return
-    const probe = await this.probeAudioFile(job.filePath)
+    const probe = await probeAudioFile(job.filePath)
     job.probe = probe
     const { size, mtimeMs } = this.getJobFileVersion(job)
     this.probeCache.set(job.normalizedPath, {
@@ -965,6 +959,10 @@ export class KeyAnalysisQueue {
       void (async () => {
         const ready = await this.persistence.prepareJob(job)
         if (!ready) {
+          this.events.emit('analysis-job-skipped', {
+            filePath: job.filePath,
+            manualBatchIds: job.manualBatchIds
+          })
           this.inFlight.delete(job.jobId)
           this.busy.delete(worker)
           this.activeByPath.delete(job.normalizedPath)
@@ -974,6 +972,10 @@ export class KeyAnalysisQueue {
         }
         const coolingRecord = this.getFailureCooldownRecord(job)
         if (coolingRecord) {
+          this.events.emit('analysis-job-skipped', {
+            filePath: job.filePath,
+            manualBatchIds: job.manualBatchIds
+          })
           this.inFlight.delete(job.jobId)
           this.busy.delete(worker)
           this.activeByPath.delete(job.normalizedPath)

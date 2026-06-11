@@ -389,6 +389,30 @@ keyAnalysisEvents.on('analysis-stage-update', (payload) => {
   }
 })
 
+keyAnalysisEvents.on('manual-batch-start', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('key-analysis:manual-batch-start', payload)
+    } catch {}
+  }
+})
+
+keyAnalysisEvents.on('manual-batch-end', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('key-analysis:manual-batch-end', payload)
+    } catch {}
+  }
+})
+
+keyAnalysisEvents.on('manual-batch-progress', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('progressSet', payload)
+    } catch {}
+  }
+})
+
 analysisRuntimeDownloadEvents.on('state', (payload) => {
   if (mainWindow.instance) {
     try {

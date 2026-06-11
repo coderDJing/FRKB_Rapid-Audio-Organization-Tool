@@ -17,6 +17,10 @@ import {
   startAudioConvertFromFiles
 } from '@renderer/utils/audioConvertActions'
 import {
+  queueManualKeyAnalysisBatch,
+  scanSongListsForMissingAnalysisFiles
+} from '@renderer/utils/manualKeyAnalysis'
+import {
   clearSongsAreaPaneBySongListUUID,
   showSongListInPane
 } from '@renderer/utils/songsAreaSplit'
@@ -113,6 +117,12 @@ export function useLibraryContextMenu({
     return files
   }
 
+  const canShowMissingAnalysisMenu = (node: IDir) =>
+    (props.libraryName === 'FilterLibrary' || props.libraryName === 'CuratedLibrary') &&
+    node.dirName !== '' &&
+    runtime.creatingSongListUUID !== node.uuid &&
+    (node.type === 'library' || node.type === 'dir' || node.type === 'songList')
+
   const rightClickMenuShow = ref(false)
   const buildMenuArr = (): IMenu[][] => {
     const dirData = getDirData()
@@ -138,7 +148,10 @@ export function useLibraryContextMenu({
       return [
         [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
         [{ menuName: 'common.rename' }, { menuName: 'common.delete' }],
-        [{ menuName: 'playlist.batchRename' }]
+        [{ menuName: 'playlist.batchRename' }],
+        ...(canShowMissingAnalysisMenu(dirData)
+          ? [[{ menuName: 'tracks.analyzeMissingTracks' }]]
+          : [])
       ]
     }
     if (dirData.type === 'mixtapeList') {
@@ -165,7 +178,9 @@ export function useLibraryContextMenu({
       [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
       [{ menuName: 'playlist.fingerprintDeduplicate' }, { menuName: 'fingerprints.analyzeAndAdd' }],
       [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }],
-      ...(isCoreLibrary ? [[{ menuName: 'tracks.reanalyzePlaylist' }]] : [])
+      ...(isCoreLibrary
+        ? [[{ menuName: 'tracks.analyzeMissingTracks' }, { menuName: 'tracks.reanalyzePlaylist' }]]
+        : [])
     ]
   }
 
@@ -854,6 +869,24 @@ export function useLibraryContextMenu({
           clearSongsAreaPaneBySongListUUID(runtime, props.uuid)
           await libraryUtils.diffLibraryTreeExecuteFileOperation()
         }
+        break
+      }
+      case 'tracks.analyzeMissingTracks': {
+        const operateUuids = collectSongListUuids(getOperateUuids())
+        if (!operateUuids.length) break
+        const files = await scanSongListsForMissingAnalysisFiles(
+          operateUuids,
+          runtime.analysisRuntime.available === true
+        )
+        if (!files.length) {
+          await confirm({
+            title: t('dialog.hint'),
+            content: [t('tracks.noMissingAnalysisTracks')],
+            confirmShow: false
+          })
+          return
+        }
+        await queueManualKeyAnalysisBatch(files, 'tracks.analyzingMissingTracks')
         break
       }
       case 'tracks.reanalyzePlaylist': {

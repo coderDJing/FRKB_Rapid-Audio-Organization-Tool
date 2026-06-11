@@ -1,8 +1,10 @@
 import { ipcMain } from 'electron'
 import {
   cancelKeyAnalysisBackground,
+  cancelManualKeyAnalysisBatch,
   enqueueKeyAnalysis,
   enqueueKeyAnalysisList,
+  enqueueManualKeyAnalysisBatch,
   replaceVisibleKeyAnalysisList,
   getKeyAnalysisBackgroundStatus
 } from '../services/keyAnalysisQueue'
@@ -12,6 +14,11 @@ type VisibleQueuePayload = {
   filePaths?: string[]
   waveformOnly?: boolean
   scope?: 'list' | 'waveform-preview'
+}
+
+type ManualBatchPayload = {
+  filePaths?: string[]
+  titleKey?: string
 }
 
 export function registerKeyAnalysisHandlers() {
@@ -61,6 +68,27 @@ export function registerKeyAnalysisHandlers() {
     const pauseMs = mode === '1h' ? 60 * 60 * 1000 : mode === '3h' ? 3 * 60 * 60 * 1000 : 0
     cancelKeyAnalysisBackground(pauseMs || undefined)
   })
+
+  ipcMain.handle('key-analysis:queue-manual-batch', (_e, payload?: ManualBatchPayload) => {
+    const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
+    const normalized = paths.filter((p) => typeof p === 'string' && p.trim().length > 0)
+    return enqueueManualKeyAnalysisBatch(normalized, {
+      titleKey: typeof payload?.titleKey === 'string' ? payload.titleKey : undefined
+    })
+  })
+
+  ipcMain.handle(
+    'key-analysis:cancel-manual-batch',
+    async (_e, payload?: { batchId?: string } | string) => {
+      const batchId =
+        typeof payload === 'string'
+          ? payload
+          : typeof payload?.batchId === 'string'
+            ? payload.batchId
+            : ''
+      return await cancelManualKeyAnalysisBatch(batchId)
+    }
+  )
 
   ipcMain.handle('key-analysis:background-status', () => {
     return getKeyAnalysisBackgroundStatus()

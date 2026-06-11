@@ -41,6 +41,7 @@ type KeyAnalysisWorkerPoolDeps = {
       preemptible?: boolean
       category?: KeyAnalysisQueueCategory
       waveformOnly?: boolean
+      manualBatchIds?: string[]
     }
   ) => void
   onJobProgress: (worker: Worker, job: KeyAnalysisJob, progress: KeyAnalysisProgress) => void
@@ -75,7 +76,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         fastAnalysis: job.fastAnalysis,
         preemptible: job.preemptible,
         category: job.category,
-        waveformOnly: job.waveformOnly
+        waveformOnly: job.waveformOnly,
+        manualBatchIds: job.manualBatchIds
       }
     )
   }
@@ -113,7 +115,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       stage: progress.stage,
       needsKey: job.needsKey,
       needsBpm: job.needsBpm,
-      needsWaveform: job.needsWaveform
+      needsWaveform: job.needsWaveform,
+      manualBatchIds: job.manualBatchIds
     })
   }
 

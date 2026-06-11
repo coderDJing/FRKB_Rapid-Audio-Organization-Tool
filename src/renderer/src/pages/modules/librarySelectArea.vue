@@ -36,6 +36,10 @@ import {
   collectFilesForAudioConvert,
   startAudioConvertFromFiles
 } from '@renderer/utils/audioConvertActions'
+import {
+  queueManualKeyAnalysisBatch,
+  scanSongListsForMissingAnalysisFiles
+} from '@renderer/utils/manualKeyAnalysis'
 import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_CHANGED_EVENT, RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
@@ -341,6 +345,9 @@ const emptyRecycleBinHandleClick = async () => {
 
 const buildMenuArr = (item: Icon) => {
   const commonMenus = [
+    ...(item.name === 'FilterLibrary' || item.name === 'CuratedLibrary'
+      ? [[{ menuName: 'tracks.analyzeMissingTracks' }]]
+      : []),
     [{ menuName: 'metadata.autoFillMenu' }],
     [{ menuName: 'tracks.convertNonMp3ToMp3' }]
   ]
@@ -348,6 +355,21 @@ const buildMenuArr = (item: Icon) => {
     return [[{ menuName: 'recycleBin.emptyRecycleBin' }], ...commonMenus]
   }
   return commonMenus
+}
+
+const handleAnalyzeMissingForLibrary = async (libraryName: string) => {
+  const uuids = collectSongLists(findLibraryNode(libraryName)).map((item) => item.uuid)
+  const requiresRuntimeAnalysis = runtime.analysisRuntime.available === true
+  const files = await scanSongListsForMissingAnalysisFiles(uuids, requiresRuntimeAnalysis)
+  if (files.length) {
+    await queueManualKeyAnalysisBatch(files, 'tracks.analyzingMissingTracks')
+    return
+  }
+  await confirm({
+    title: t('dialog.hint'),
+    content: [t('tracks.noMissingAnalysisTracks')],
+    confirmShow: false
+  })
 }
 
 const handleConvertLibraryToMp3 = async (libraryName: string) => {
@@ -386,6 +408,9 @@ const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
   const result = await rightClickMenu({ menuArr, clickEvent: event })
   if (result === 'cancel') return
   switch (result.menuName) {
+    case 'tracks.analyzeMissingTracks':
+      await handleAnalyzeMissingForLibrary(item.name)
+      break
     case 'metadata.autoFillMenu':
       await handleAutoFillForLibrary(item.name)
       break
