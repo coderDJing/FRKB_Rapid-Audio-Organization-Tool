@@ -76,11 +76,9 @@ mod horizontal_browse_transport;
 mod mixxx_waveform;
 mod pioneer_anlz_raw;
 mod pioneer_cues;
-mod qm_bpm;
 mod qm_key;
 mod soundtouch_native;
 
-use crate::analysis_utils::{calc_frames_to_process, to_stereo, K_ANALYSIS_FRAMES_PER_CHUNK};
 pub use crate::horizontal_browse_transport::*;
 use crate::mixxx_waveform::MixxxWaveformData;
 pub use crate::pioneer_cues::*;
@@ -148,21 +146,6 @@ pub struct KeyAnalysisResult {
   pub key_text: String,
   /// 错误描述（当分析失败时）
   pub error: Option<String>,
-}
-
-/// 调性+BPM分析结果
-#[napi(object)]
-pub struct KeyBpmAnalysisResult {
-  /// ID3v2 ASCII key 文本
-  pub key_text: String,
-  /// BPM 值
-  pub bpm: f64,
-  /// 首拍偏移（毫秒）
-  pub first_beat_ms: f64,
-  /// 调性分析错误描述
-  pub key_error: Option<String>,
-  /// BPM 分析错误描述
-  pub bpm_error: Option<String>,
 }
 
 /// Pioneer 旧 Device Library 调试输出
@@ -701,189 +684,6 @@ pub fn analyze_key_from_pcm(
       key_text: "o".to_string(),
       error: Some(error),
     },
-  }
-}
-
-/// 基于 PCM 同时计算调性与 BPM（Mixxx Queen Mary）
-///
-/// # 参数
-/// * `pcm_data` - 交错 PCM Buffer (f32 小端序)
-/// * `sample_rate` - 采样率
-/// * `channels` - 声道数
-/// * `fast_analysis` - 是否启用 fast analysis
-#[napi]
-pub fn analyze_key_and_bpm_from_pcm(
-  pcm_data: Buffer,
-  sample_rate: u32,
-  channels: u8,
-  fast_analysis: bool,
-) -> KeyBpmAnalysisResult {
-  let mut key_text = "o".to_string();
-  let mut bpm = 0.0;
-  let mut first_beat_ms = 0.0;
-  let mut key_error: Option<String> = None;
-  let mut bpm_error: Option<String> = None;
-
-  let pcm_bytes = pcm_data.as_ref();
-  let pcm_f32 = match try_cast_slice::<u8, f32>(pcm_bytes) {
-    Ok(slice) => Cow::Borrowed(slice),
-    Err(_) => {
-      if pcm_bytes.len() % 4 != 0 {
-        let msg = "PCM buffer length is not aligned".to_string();
-        return KeyBpmAnalysisResult {
-          key_text,
-          bpm,
-          first_beat_ms,
-          key_error: Some(msg.clone()),
-          bpm_error: Some(msg),
-        };
-      }
-      let mut out = Vec::with_capacity(pcm_bytes.len() / 4);
-      for chunk in pcm_bytes.chunks_exact(4) {
-        out.push(f32::from_le_bytes(chunk.try_into().unwrap()));
-      }
-      Cow::Owned(out)
-    }
-  };
-
-  if sample_rate == 0 {
-    let msg = "sample_rate is 0".to_string();
-    return KeyBpmAnalysisResult {
-      key_text,
-      bpm,
-      first_beat_ms,
-      key_error: Some(msg.clone()),
-      bpm_error: Some(msg),
-    };
-  }
-  if channels == 0 {
-    let msg = "channels is 0".to_string();
-    return KeyBpmAnalysisResult {
-      key_text,
-      bpm,
-      first_beat_ms,
-      key_error: Some(msg.clone()),
-      bpm_error: Some(msg),
-    };
-  }
-
-  let channels_usize = channels as usize;
-  if pcm_f32.is_empty() {
-    let msg = "pcm_data is empty".to_string();
-    return KeyBpmAnalysisResult {
-      key_text,
-      bpm,
-      first_beat_ms,
-      key_error: Some(msg.clone()),
-      bpm_error: Some(msg),
-    };
-  }
-
-  let total_frames = pcm_f32.len() / channels_usize;
-  if total_frames == 0 {
-    let msg = "pcm_data has no frames".to_string();
-    return KeyBpmAnalysisResult {
-      key_text,
-      bpm,
-      first_beat_ms,
-      key_error: Some(msg.clone()),
-      bpm_error: Some(msg),
-    };
-  }
-
-  let frames_to_process = calc_frames_to_process(total_frames, sample_rate, fast_analysis);
-  if frames_to_process == 0 {
-    let msg = "frames_to_process is 0".to_string();
-    return KeyBpmAnalysisResult {
-      key_text,
-      bpm,
-      first_beat_ms,
-      key_error: Some(msg.clone()),
-      bpm_error: Some(msg),
-    };
-  }
-
-  let needed_samples = frames_to_process * channels_usize;
-  let pcm_slice = &pcm_f32[..needed_samples];
-  let stereo = to_stereo(pcm_slice, channels_usize, frames_to_process);
-  let stereo_samples = stereo.as_ref();
-
-  let mut key_detector = match qm_key::KeyDetector::new(sample_rate) {
-    Ok(detector) => Some(detector),
-    Err(error) => {
-      key_error = Some(error);
-      None
-    }
-  };
-  let mut bpm_detector = match qm_bpm::BpmDetector::new(sample_rate) {
-    Ok(detector) => Some(detector),
-    Err(error) => {
-      bpm_error = Some(error);
-      None
-    }
-  };
-
-  let mut offset_frames = 0usize;
-  while offset_frames < frames_to_process {
-    let chunk_frames = std::cmp::min(
-      K_ANALYSIS_FRAMES_PER_CHUNK,
-      frames_to_process - offset_frames,
-    );
-    let start = offset_frames * 2;
-    let end = start + chunk_frames * 2;
-    if let Some(detector) = key_detector.as_mut() {
-      if let Err(error) = detector.process(&stereo_samples[start..end], chunk_frames, 2) {
-        key_error = Some(error);
-        key_detector = None;
-      }
-    }
-    if let Some(detector) = bpm_detector.as_mut() {
-      if let Err(error) = detector.process(&stereo_samples[start..end], chunk_frames, 2) {
-        bpm_error = Some(error);
-        bpm_detector = None;
-      }
-    }
-    offset_frames += chunk_frames;
-  }
-
-  if let Some(detector) = key_detector.as_mut() {
-    match detector.finalize() {
-      Ok(key_id) => {
-        key_text = key_id_to_id3_text(key_id);
-      }
-      Err(error) => {
-        key_error = Some(error);
-      }
-    }
-  }
-
-  if let Some(detector) = bpm_detector.as_mut() {
-    match detector.finalize() {
-      Ok(result) => {
-        if result.bpm > 0.0 && result.bpm.is_finite() {
-          bpm = result.bpm;
-        } else {
-          bpm_error = Some("bpm not detected".to_string());
-        }
-        if let Some(first_beat_frame) = result.first_beat_frame {
-          let first_beat_ms_candidate = first_beat_frame * 1000.0 / sample_rate as f64;
-          if first_beat_ms_candidate.is_finite() && first_beat_ms_candidate >= 0.0 {
-            first_beat_ms = first_beat_ms_candidate;
-          }
-        }
-      }
-      Err(error) => {
-        bpm_error = Some(error);
-      }
-    }
-  }
-
-  KeyBpmAnalysisResult {
-    key_text,
-    bpm,
-    first_beat_ms,
-    key_error,
-    bpm_error,
   }
 }
 

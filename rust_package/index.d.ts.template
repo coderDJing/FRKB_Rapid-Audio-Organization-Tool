@@ -61,18 +61,26 @@ export interface KeyAnalysisResult {
   /** 错误描述（当分析失败时） */
   error?: string
 }
-/** 调性+BPM分析结果 */
-export interface KeyBpmAnalysisResult {
-  /** ID3v2 ASCII key 文本 */
-  keyText: string
-  /** BPM 值 */
-  bpm: number
-  /** 首拍偏移（毫秒） */
-  firstBeatMs: number
-  /** 调性分析错误描述 */
-  keyError?: string
-  /** BPM 分析错误描述 */
-  bpmError?: string
+/** Pioneer 旧 Device Library 调试输出 */
+export interface PioneerExportDebugDump {
+  /** export.pdb 路径 */
+  exportPdbPath: string
+  /** 表摘要 */
+  tableSummaries: Array<string>
+  /** 以树形文本打印的播放列表结构 */
+  playlistTreeLines: Array<string>
+  /** 播放列表树原始行总数 */
+  playlistTreeTotal: number
+  /** 播放列表项原始行总数 */
+  playlistEntryTotal: number
+  /** 曲目原始行总数 */
+  trackTotal: number
+  /** 播放列表项调试文本 */
+  playlistEntries: Array<string>
+  /** 曲目调试文本 */
+  tracks: Array<string>
+  /** 错误描述（失败时） */
+  error?: string
 }
 /** Mixxx 波形频段数据 */
 export interface MixxxWaveformBand {
@@ -262,21 +270,10 @@ export declare function analyzeKeyFromPcm(
   channels: number,
   fastAnalysis: boolean
 ): KeyAnalysisResult
-/**
- * 基于 PCM 同时计算调性与 BPM（Mixxx Queen Mary）
- *
- * # 参数
- * * `pcm_data` - 交错 PCM Buffer (f32 小端序)
- * * `sample_rate` - 采样率
- * * `channels` - 声道数
- * * `fast_analysis` - 是否启用 fast analysis
- */
-export declare function analyzeKeyAndBpmFromPcm(
-  pcmData: Buffer,
-  sampleRate: number,
-  channels: number,
-  fastAnalysis: boolean
-): KeyBpmAnalysisResult
+export declare function dumpPioneerExportDebug(
+  exportPdbPath: string,
+  maxRows?: number | undefined | null
+): PioneerExportDebugDump
 export declare function horizontalBrowseTransportReset(): void
 export declare function horizontalBrowseTransportSetDeckState(
   deck: string,

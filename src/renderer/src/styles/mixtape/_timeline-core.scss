@@ -253,56 +253,6 @@
   pointer-events: none;
 }
 
-.mixtape-stem-progress-mask {
-  position: absolute;
-  inset: 0;
-  padding: 12px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 22;
-  pointer-events: auto;
-  background: var(--mixtape-mask-overlay);
-}
-
-.mixtape-stem-progress-mask__bar {
-  width: min(420px, 100%);
-  height: 8px;
-  border-radius: 999px;
-  overflow: hidden;
-  background: var(--mixtape-mask-rail);
-}
-
-.mixtape-stem-progress-mask__bar-fill {
-  height: 100%;
-  width: 0;
-  background: var(--accent);
-  transition: width 0.2s ease;
-}
-
-.mixtape-stem-progress-mask__detail-list {
-  width: min(560px, 100%);
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--mixtape-mask-separator);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 170px;
-  overflow: hidden;
-}
-
-.mixtape-stem-progress-mask__detail-item {
-  color: var(--mixtape-mask-text-muted);
-  font-size: 12px;
-  line-height: 1.35;
-  text-align: left;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .mixtape-decode-mask {
   position: absolute;
   inset: 0;

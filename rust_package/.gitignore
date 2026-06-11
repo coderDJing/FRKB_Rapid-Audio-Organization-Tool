@@ -195,3 +195,6 @@ Cargo.lock
 !.yarn/versions
 
 # *.node
+
+# napi-build auto-generated (canonical types live in types/index.d.ts)
+index.d.ts
