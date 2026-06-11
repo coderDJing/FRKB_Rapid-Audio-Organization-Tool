@@ -12,6 +12,7 @@ import {
 } from '@renderer/utils/analysisRuntimeDownloadUi'
 import { hasCompleteKeyAnalysis } from '@renderer/pages/modules/songsArea/composables/useKeyAnalysisProgress'
 import { useBottomInfoVisibleAnalysisProgress } from './bottomInfoAreaVisibleAnalysis'
+import { toIpcCloneablePayload } from './bottomInfoAreaIpcPayload'
 import type { ISongInfo } from 'src/types/globals'
 const runtime = useRuntimeStore()
 
@@ -466,7 +467,7 @@ const cancelTask = async (task: Task) => {
     return
   }
   try {
-    const payload = task.cancelPayload ?? task.id
+    const payload = toIpcCloneablePayload(task.cancelPayload ?? task.id)
     await window.electron.ipcRenderer.invoke(channel, payload)
   } catch (error) {
     console.error('cancel task failed', error)
