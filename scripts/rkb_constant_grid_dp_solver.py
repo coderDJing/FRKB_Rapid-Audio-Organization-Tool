@@ -1,7 +1,5 @@
-import argparse
 import math
 import statistics
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -30,6 +28,10 @@ from rkb_constant_grid_dp_selection import (
     select_phase_evidence_candidate,
     snap_legacy_integer_bpm,
 )
+from rkb_constant_grid_dp_octave import (
+    choose_rank1_octave_down_candidate,
+    rank1_octave_down_diagnostic_features,
+)
 from rkb_locked_phase_ranker import choose_locked_rising_edge_candidate
 from rkb_runtime_grid_common import (
     metadata_legacy_candidate as _metadata_legacy_candidate,
@@ -42,7 +44,7 @@ DEFAULT_TEMPO_STEP_BPM = 0.5
 DEFAULT_TEMPO_LIMIT = 24
 DEFAULT_PHASE_STEP_MS = 2.0
 DEFAULT_MAX_CANDIDATES = 640
-SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-negative-legacy-score-v1-head-near-zero-v1"
+SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1"
 PHASE_PATH_TARGET_OFFSETS_MS = (8.0, 10.0, 12.0)
 
 
@@ -918,6 +920,27 @@ def solve_constant_grid_dp(
     if rank1_negative_legacy_score_switch:
         selected = rank1_negative_legacy_score_selected
         use_new = True
+    rank1_octave_down_selected, rank1_octave_down_meta = choose_rank1_octave_down_candidate(
+        candidates=candidates,
+        selected_source=baseline_selected_source,
+        legacy_candidate=legacy_candidate,
+        confidence=confidence,
+    )
+    rank1_octave_down_switch = bool(
+        not previous_switch_selected
+        and not head_near_zero_switch
+        and not rank1_negative_legacy_score_switch
+        and rank1_octave_down_selected is not None
+    )
+    if not rank1_octave_down_switch and rank1_octave_down_selected is not None:
+        rank1_octave_down_meta = {
+            **rank1_octave_down_meta,
+            "selected": False,
+            "reason": "previous-switch-selected",
+        }
+    if rank1_octave_down_switch:
+        selected = rank1_octave_down_selected
+        use_new = True
     integer_bpm_snap_meta: dict[str, Any] = {
         "snapped": False,
         "originalBpm": _round_feature(_to_float(selected.get("bpm"))),
@@ -950,6 +973,8 @@ def solve_constant_grid_dp(
         guard = "constant-grid-dp-rank1-structural-phase-switch"
     elif rank1_negative_legacy_score_switch:
         guard = "constant-grid-dp-rank1-negative-legacy-score-switch"
+    elif rank1_octave_down_switch:
+        guard = "constant-grid-dp-rank1-octave-down-switch"
     elif head_near_zero_switch:
         guard = "constant-grid-dp-head-near-zero-switch"
     elif confidence_level == "high" and use_new:
@@ -975,6 +1000,8 @@ def solve_constant_grid_dp(
         if rank1_structural_phase_switch
         else _to_float(rank1_negative_legacy_score_meta.get("gridScore"))
         if rank1_negative_legacy_score_switch
+        else _to_float(rank1_octave_down_meta.get("gridScore"))
+        if rank1_octave_down_switch
         else selected_score
         if head_near_zero_switch
         else confidence if use_new else _to_float(selected.get("score"))
@@ -1049,6 +1076,10 @@ def solve_constant_grid_dp(
                 rank1_negative_legacy_score_switch=rank1_negative_legacy_score_switch,
                 rank1_negative_legacy_score_meta=rank1_negative_legacy_score_meta,
             ),
+            **rank1_octave_down_diagnostic_features(
+                rank1_octave_down_switch=rank1_octave_down_switch,
+                rank1_octave_down_meta=rank1_octave_down_meta,
+            ),
             **head_near_zero_switch_diagnostic_features(
                 head_near_zero_switch=head_near_zero_switch,
                 head_near_zero_meta=head_near_zero_meta,
@@ -1059,79 +1090,11 @@ def solve_constant_grid_dp(
     }
 
 
-def solve_constant_grid_dp_from_cache(
-    *,
-    track: dict[str, Any],
-    feature_cache_dir: Path,
-    min_bpm: float = DEFAULT_MIN_BPM,
-    max_bpm: float = DEFAULT_MAX_BPM,
-    tempo_step_bpm: float = DEFAULT_TEMPO_STEP_BPM,
-    tempo_limit: int = DEFAULT_TEMPO_LIMIT,
-    phase_step_ms: float = DEFAULT_PHASE_STEP_MS,
-    max_candidates: int = DEFAULT_MAX_CANDIDATES,
-) -> dict[str, Any]:
-    from rkb_beatgrid_lab_common import (
-        build_feature_index_map,
-        read_feature_metadata,
-        resolve_feature_arrays_path,
-        resolve_feature_entry,
-    )
-
-    index_map = build_feature_index_map(feature_cache_dir)
-    entry = resolve_feature_entry(track=track, index_map=index_map)
-    if entry is None:
-        file_name = str(track.get("fileName") or "")
-        raise RuntimeError(f"constant-grid-dp feature cache missing for {file_name}")
-    metadata = read_feature_metadata(feature_cache_dir, entry)
-    arrays_path = resolve_feature_arrays_path(feature_cache_dir, entry, metadata)
-    if not arrays_path.exists():
-        raise RuntimeError(f"constant-grid-dp feature arrays missing: {arrays_path}")
-    with np.load(arrays_path, allow_pickle=False) as arrays:
-        return solve_constant_grid_dp(
-            metadata=metadata,
-            arrays=arrays,
-            min_bpm=min_bpm,
-            max_bpm=max_bpm,
-            tempo_step_bpm=tempo_step_bpm,
-            tempo_limit=tempo_limit,
-            phase_step_ms=phase_step_ms,
-            max_candidates=max_candidates,
-        )
-
-
-def main() -> int:
-    from rkb_beatgrid_lab_common import (
-        DEFAULT_FEATURE_CACHE_DIR,
-        configure_utf8_stdio,
-        normalize_lookup_key,
-        print_json,
-    )
-
-    configure_utf8_stdio()
-    parser = argparse.ArgumentParser(description="Solve one cached track with constant-grid-dp")
-    parser.add_argument("--feature-cache-dir", default=str(DEFAULT_FEATURE_CACHE_DIR))
-    parser.add_argument("--file-name", required=True)
-    parser.add_argument("--min-bpm", type=float, default=DEFAULT_MIN_BPM)
-    parser.add_argument("--max-bpm", type=float, default=DEFAULT_MAX_BPM)
-    parser.add_argument("--tempo-step-bpm", type=float, default=DEFAULT_TEMPO_STEP_BPM)
-    parser.add_argument("--tempo-limit", type=int, default=DEFAULT_TEMPO_LIMIT)
-    parser.add_argument("--phase-step-ms", type=float, default=DEFAULT_PHASE_STEP_MS)
-    parser.add_argument("--max-candidates", type=int, default=DEFAULT_MAX_CANDIDATES)
-    args = parser.parse_args()
-
-    result = solve_constant_grid_dp_from_cache(
-        track={"fileName": str(args.file_name), "lookupKey": normalize_lookup_key(args.file_name)},
-        feature_cache_dir=Path(args.feature_cache_dir),
-        min_bpm=float(args.min_bpm),
-        max_bpm=float(args.max_bpm),
-        tempo_step_bpm=float(args.tempo_step_bpm),
-        tempo_limit=int(args.tempo_limit),
-        phase_step_ms=float(args.phase_step_ms),
-        max_candidates=int(args.max_candidates),
-    )
-    print_json({"result": result})
-    return 0
+def solve_constant_grid_dp_from_cache(**kwargs: Any) -> dict[str, Any]:
+    from rkb_constant_grid_dp_cache import solve_constant_grid_dp_from_cache as solve_from_cache
+    return solve_from_cache(**kwargs)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    from rkb_constant_grid_dp_cli import main as _main
+    raise SystemExit(_main())

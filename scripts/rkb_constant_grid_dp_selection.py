@@ -29,8 +29,10 @@ RANK1_NEGATIVE_LEGACY_SCORE_MIN_GRID_SCORE = 0.85
 RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_PATH_SCORE = 0.8
 RANK1_NEGATIVE_LEGACY_SCORE_MAX_LEGACY_SCORE = 0.0
 RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_DELTA_MS = 5.0
+RANK1_NEGATIVE_LEGACY_SCORE_SOFT_PHASE_DELTA_MS = 10.0
+RANK1_NEGATIVE_LEGACY_SCORE_SOFT_MIN_GRID_SCORE = 0.99
 RANK1_NEGATIVE_LEGACY_SCORE_MAX_BPM_DELTA = 0.08
-RANK1_NEGATIVE_LEGACY_SCORE_VERSION = "rank1-negative-legacy-score-v1"
+RANK1_NEGATIVE_LEGACY_SCORE_VERSION = "rank1-negative-legacy-score-v2"
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -684,6 +686,11 @@ def choose_rank1_negative_legacy_score_candidate(
         return None, {**next_meta, "reason": "phase-path-score-too-low"}
     if phase_delta_abs_ms <= RANK1_NEGATIVE_LEGACY_SCORE_MIN_PHASE_DELTA_MS:
         return None, {**next_meta, "reason": "phase-delta-not-material"}
+    if (
+        phase_delta_abs_ms < RANK1_NEGATIVE_LEGACY_SCORE_SOFT_PHASE_DELTA_MS
+        and grid_score < RANK1_NEGATIVE_LEGACY_SCORE_SOFT_MIN_GRID_SCORE
+    ):
+        return None, {**next_meta, "reason": "soft-phase-delta-grid-score-too-low"}
     if bpm_delta > RANK1_NEGATIVE_LEGACY_SCORE_MAX_BPM_DELTA:
         return None, {**next_meta, "reason": "bpm-delta-too-large"}
     if not same_bar_beat_offset_mod4:

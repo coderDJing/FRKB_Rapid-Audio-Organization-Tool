@@ -9,12 +9,12 @@
 
 ## 当前算法接入状态
 
-`constant-grid-dp` 验收链路已接入 locked rising-edge ranker、保守的 legacy integer BPM snap、rank1 material legacy weakness switch、rank1 structural phase switch、head near-zero switch，以及 rank1 negative legacy score switch。六者都走同一套 solver 入口，已覆盖 Electron 实时分析路径。
+`constant-grid-dp` 验收链路已接入 locked rising-edge ranker、保守的 legacy integer BPM snap、rank1 material legacy weakness switch、rank1 structural phase switch、head near-zero switch、rank1 negative legacy score v2 switch，以及 rank1 octave-down switch。七者都走同一套 solver 入口，已覆盖 Electron 实时分析路径。
 
 当前 `scripts/rkb_constant_grid_dp_solver.py` 版本：
 
 ```text
-constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-negative-legacy-score-v1-head-near-zero-v1
+constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1
 ```
 
 接入边界：
@@ -22,30 +22,43 @@ constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-mater
 - 已接入：`scripts/rkb_constant_grid_dp_solver.py`
 - 新增冻结模型：`scripts/rkb_locked_phase_ranker.py`
 - 新增 selection 辅助模块：`scripts/rkb_constant_grid_dp_selection.py`
+- 新增 solver 拆分模块：`scripts/rkb_constant_grid_dp_cache.py`、`scripts/rkb_constant_grid_dp_cli.py`、
+  `scripts/rkb_constant_grid_dp_octave.py`
 - 已验证链路：`scripts/run_parallel_rkb_rekordbox_benchmark.py --solver constant-grid-dp`
 - benchmark 输出原子写已加 Windows `PermissionError` 短重试，避免杀毒/索引器短暂占用目标 JSON 时丢掉已完成 shard 合并结果。
 - 运行时接入：`scripts/beat_this_bridge.py` 通过 `scripts/beat_this_runtime_constant_grid.py` 现场构造同形 metadata/arrays，然后调用同一套 `constant-grid-dp + locked ranker`。
 - 运行时保护：`_analyze_prepared_windows_to_track_result` 默认仍不启用 runtime constant-grid，Electron bridge 仅在 `gridSolverPolicy != "off"` 时启用，避免 feature-cache 生成 legacyGridSolver 时递归污染。
-- 打包资源：`package.json` 与 `electron-builder.yml` 已补充 `beat_this_runtime_constant_grid.py`、`benchmark_rkb_rekordbox_truth.py`、`rkb_*.py` 到 `demucs/bootstrap`。
-- `pnpm run build:unpack` 已验证 unpacked package，`dist/win-unpacked/resources/demucs/bootstrap` 内包含 runtime constant-grid 依赖。
+- 打包资源：`package.json` 与 `electron-builder.yml` 已补充 `beat_this_runtime_constant_grid.py`、`benchmark_rkb_rekordbox_truth.py`、`rkb_*.py` 到 `demucs/bootstrap`，并覆盖
+  `rkb_constant_grid_dp_cache.py`、`rkb_constant_grid_dp_cli.py`、`rkb_constant_grid_dp_octave.py`
+  这些 solver 拆分模块。
+- 上一轮 `pnpm run build:unpack` 曾验证 runtime constant-grid 依赖进入 unpacked package；本轮新增
+  cache / CLI / octave 拆分模块后尚未重跑打包验证。
 
 当前生产回归口径：
 
-- current：`706 / 931 = 75.83%`，error `0`
+- current production latest：`707 / 931 = 75.94%`，error `0`；
+  固定输出为 `grid-analysis-lab/rkb-rekordbox-benchmark/frkb-current-latest.json`，
+  刷新来源为 `grid-analysis-lab/rkb-rekordbox-benchmark/frkb-current-rank1-octave-down.json`
 - blind：`436 / 608 = 71.71%`，error `0`
 - latest `test353` sealed-intake batch：`224 / 353 = 63.46%`，error `0`
-- rank1 negative legacy score 相比 baseline：current `702 -> 706`，blind `436 -> 436`，
-  latest `test353` 批次 `222 -> 224`；current/blind/latest `test353` 逐曲 diff 没有 `pass -> fail`。
+- consumed `test327` batch：`218 / 327 = 66.67%`，error `0`
+- consumed `test316` batch：`176 / 316 = 55.70%`，error `0`
+- rank1 negative legacy score v2 相比 baseline：current `702 -> 706`，blind `436 -> 436`，
+  latest `test353` 批次 `222 -> 224`；v2 在 test353 上保留 pass 数但收紧 2 次非 pass
+  错误类型漂移，current/blind/latest `test353` 逐曲 diff 没有 `pass -> fail`。
+- rank1 octave-down 相比上一轮：current `706 -> 707`，blind `436 -> 436`，
+  `test327` final 到 `218 / 327`，`test316` `175 -> 176`；逐曲 diff 没有 `pass -> fail`。
 - head near-zero 相比 structural phase v2：current `702 -> 702`，blind `435 -> 436`，latest `test`
   批次 `212 -> 215`；current/blind/latest `test` 逐曲 diff 没有 `pass -> fail`。
 - structural phase v2 相比 v3：current `696 -> 702`，blind `432 -> 435`，latest `test`
   批次 `230 -> 231`；current/blind 逐曲 diff 没有 `pass -> fail`。
-- `frkb-current-latest.json` 已按 current `706 / 931` 重跑；`frkb-classification-current.json`、
-  sample/failure 派生视图已刷新到 current `706 / 931`。
+- `frkb-current-latest.json`、`frkb-classification-current.json`、sample/failure 派生视图已刷新到
+  `707 / 931`。
 - FRKB-5 正式开发音乐库固定为 `D:/FRKB_database-E`；B 只作为历史来源，不再作为脚本默认目标。
 - 音乐库长期保留 5 个音频歌单：`new`、`sample`、`grid-failures-current`、
   `blind-rekordbox-truth`、`sealed-eval`；`sealed-intake` 是唯一固定临时入口。
-- current 音频目标分布：`new = 0`，`sample = 706`，`grid-failures-current = 225`；
+- current 音频目标分布：`new = 0`，`sample = 707`，
+  `grid-failures-current = 224`。
   `sync_frkb_classification_audio_dirs.py --dry-run` 必须为 `moveCount = 0`。
 - current 命中：`Aftertime - Franky Wah.mp3`，`124.035116 -> 124.0 BPM`，`bpm -> pass`
 - old sealed/test integer BPM snap 命中：`Kosheen & Kasia - Catch (Extended Mix).mp3`，
@@ -69,6 +82,11 @@ constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-mater
   - blind：`Fiona Zanetti - Trust The Process (Original Mix).mp3`
   - blind：`Pr0xima - Devolver (Original Mix).mp3`
   - latest `test`：`Oliver Koletzki - It's All Gone (Original Mix).mp3`
+- rank1 octave-down 新增 pass 命中：
+  - current：`Umoja - Rabia (Original Mix).mp3`，`half-or-double-bpm -> pass`
+  - consumed `test327`：`Kid Ink feat. Lil Wayne & Saweetie - YUSO (I.mp3`，`half-or-double-bpm -> pass`
+  - consumed `test327`：`City Girls feat. Cardi B vs. Juicy J - Twerk.mp3`，`half-or-double-bpm -> pass`
+  - consumed `test316`：`Club des Belugas - It Don't Mean a Thing.mp3`，`half-or-double-bpm -> pass`
 
 head near-zero 规则：
 
@@ -125,18 +143,34 @@ rank1 negative legacy score 规则：
 - 要求 legacy `legacyGridSolverScore <= 0.0`。
 - 要求 rank1 `score >= 0.85`，`phasePathScore >= 0.8`。
 - 要求 rank1 与 legacy 的相位差 `> 5ms`，BPM 差 `<= 0.08`，bar offset mod4 相同。
+- v2 soft guard：如果 rank1 与 legacy 的相位差 `< 10ms`，要求 rank1 `score >= 0.99`。
 - 要求 rank1 `downbeatRank == 0`。
 - 不使用 `fileName`、artist/title/path、truth、benchmark category、pass/fail 或 split identity。
 - guard 标记为 `constant-grid-dp-rank1-negative-legacy-score-switch`。
 - 这是在 test353 已跑完后形成的窄边界开发回归；current/blind 不退只是回归证据，
   不能包装成新的 sealed 泛化证明。
 
+rank1 octave-down 规则：
+
+- 只在最终选择仍是 `constant-grid-dp:legacy-fallback`，且 head near-zero 与
+  rank1 negative legacy score 都没切换时生效。
+- 只看候选池 rank1，不从 topN 里挑候选。
+- 要求 `confidence <= 0.82`，避免高置信 legacy 被半速/倍速候选覆盖。
+- 要求 `abs(rank1Bpm * 2 - legacyBpm) <= 0.08`，只处理 rank1 近似 legacy 半速的窄场景。
+- 要求 rank1 来源包含 `window-beat-leading-edge`。
+- 要求 rank1 `score >= 0.86`、`downbeatRank == 0`、`downbeatMargin >= 0.5`、
+  `phasePathScore >= 0.7`、`leadingEdgePeakOffsetMadMs <= 8ms`、`tempoScore >= 0.74`。
+- 不使用 `fileName`、artist/title/path、truth、benchmark category、pass/fail 或 split identity。
+- guard 标记为 `constant-grid-dp-rank1-octave-down-switch`。
+- 这是在 current / test327 / test316 已看过数据上形成的 half/double 窄边界开发回归；
+  current/blind/各消耗批次不退只是回归证据，不能包装成新的 sealed 泛化证明。
+
 ## latest `test353` 批次结果
 
 当前 Rekordbox `test` 歌单重新抓取后得到 353 首。音频已经复制到 `sealed-intake`，本轮
 `sync_rekordbox_playlist_audio.py --dry-run` 为 `copyCount = 353`、`skippedCount = 0`，
 随后已执行复制。feature cache 已生成，summary indexed 353。这批已经用于
-rank1 negative legacy score 开发回归，后续只能当普通回归集。
+rank1 negative legacy score v1/v2 开发回归，后续只能当普通回归集。
 
 产物路径：
 
@@ -144,19 +178,20 @@ rank1 negative legacy score 开发回归，后续只能当普通回归集。
 - audio：`D:/FRKB_database-E/library/FilterLibrary/sealed-intake`
 - feature cache：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/feature-cache-test353`
 - baseline benchmark：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-constant-grid-dp-test353.json`
-- rank1 negative legacy score benchmark：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-constant-grid-dp-test353-rank1-negative-legacy-score.json`
+- rank1 negative legacy score v1 benchmark：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-constant-grid-dp-test353-rank1-negative-legacy-score.json`
+- final v2 + octave benchmark：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-test353-rank1-negative-v2-octave-down.json`
 
 production benchmark：
 
 - baseline：`222 / 353 = 62.89%`
-- rank1 negative legacy score selected：`224 / 353 = 63.46%`
+- final selected：`224 / 353 = 63.46%`
 - errorTrackCount：`0`
-- category：`pass 224`，`first-beat-phase 82`，`downbeat 17`，`bpm 17`，
+- category：`pass 224`，`first-beat-phase 84`，`downbeat 15`，`bpm 17`，
   `half-or-double-bpm 12`，`grid-drift 1`
 - candidate oracle：`338 / 353 = 95.75%`
 - oracle selected fail：`114`
 - guard 计数：`legacy-fallback-low-confidence 312`，
-  `constant-grid-dp-rank1-negative-legacy-score-switch 5`，
+  `constant-grid-dp-rank1-negative-legacy-score-switch 2`，
   `constant-grid-dp-head-near-zero-switch 5`，`constant-grid-dp-conservative-switch 13`，
   `constant-grid-dp-phase-evidence-switch 6`，
   `constant-grid-dp-locked-rising-edge-ranker 5`，`legacy-fallback-integer-bpm-snap 4`，
@@ -165,11 +200,12 @@ production benchmark：
 
 rank1 negative legacy score 触发结果：
 
-- latest test353：5 次触发，2 首 `fail -> pass`，2 首 `first-beat-phase -> downbeat`，0 首 `pass -> fail`。
+- latest test353：v1 5 次触发，2 首 `fail -> pass`，2 首 `first-beat-phase -> downbeat`，
+  0 首 `pass -> fail`；v2 soft guard 后保留 `224` pass，仅剩 2 次非 pass 错误类型变化。
 - current：6 次触发，4 首 `fail -> pass`，0 首 `pass -> fail`。
 - blind：1 次触发，`first-beat-phase -> downbeat`，0 首 pass gain/loss。
 
-结论：test353 是新鲜样本进入时的 sealed 验收结果，但它随后已经参与 rank1 negative legacy score
+结论：test353 是新鲜样本进入时的 sealed 验收结果，但它随后已经参与 rank1 negative legacy score v1/v2
 规则形成，所以现在只能算 consumed sealed regression，不再是 fresh 泛化证明。下一次泛化证明必须来自
 另一批全新 Rekordbox playlist。
 
@@ -177,7 +213,8 @@ rank1 negative legacy score 触发结果：
 
 当前 Rekordbox `test` 歌单重新抓取后得到 327 首。音频已经在 `sealed-intake`，本轮
 `sync_rekordbox_playlist_audio.py --dry-run` 为 `copyCount = 0`、`skippedCount = 327`。
-这批已经用于 head near-zero 开发回归，后续只能当普通回归集。
+这批已经用于 head near-zero、rank1 negative legacy score v2 和 rank1 octave-down 开发回归，
+后续只能当普通回归集。
 
 产物路径：
 
@@ -186,27 +223,64 @@ rank1 negative legacy score 触发结果：
 - feature cache：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/feature-cache-test327`
 - baseline benchmark：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-constant-grid-dp-test327.json`
 - head near-zero benchmark：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-constant-grid-dp-test327-head-near-zero.json`
+- final v2 + octave benchmark：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-test327-rank1-negative-v2-octave-down.json`
 
 production benchmark：
 
 - structural phase v2 baseline：`212 / 327 = 64.83%`
 - head near-zero selected：`215 / 327 = 65.75%`
+- final selected：`218 / 327 = 66.67%`
 - errorTrackCount：`0`
-- category：`pass 215`，`first-beat-phase 65`，`downbeat 26`，`bpm 8`，
-  `half-or-double-bpm 13`
+- category：`pass 218`，`first-beat-phase 64`，`downbeat 27`，`bpm 8`，
+  `half-or-double-bpm 10`
 - candidate oracle：`316 / 327 = 96.64%`
-- oracle selected fail：`101`
-- guard 计数：`legacy-fallback-low-confidence 281`，`constant-grid-dp-head-near-zero-switch 6`，
+- oracle selected fail：`98`
+- guard 计数：`legacy-fallback-low-confidence 273`，`constant-grid-dp-head-near-zero-switch 6`，
   `constant-grid-dp-locked-rising-edge-ranker 19`，`legacy-fallback-integer-bpm-snap 6`，
   `constant-grid-dp-rank1-locked-legacy-weakness-switch 3`，
   `constant-grid-dp-phase-evidence-switch 5`，`constant-grid-dp-conservative-switch 4`，
-  `constant-grid-dp-rank1-structural-phase-switch 3`
+  `constant-grid-dp-rank1-structural-phase-switch 3`，
+  `constant-grid-dp-rank1-negative-legacy-score-switch 5`，
+  `constant-grid-dp-rank1-octave-down-switch 3`
 
 head near-zero 新增 pass：
 
 - `Chiodan - Persoana.mp3`
 - `Crankdat & NGHTMRE - TYPE SHIT  (Spritzur Ed.wav`
 - `JayJay - Cinema (master).wav`
+
+final v2 + octave 额外变化：
+
+- `Ariana Grande - thank u, next (PeteDown Mix).mp3`：`first-beat-phase -> pass`，guard `rank1-negative-legacy-score`
+- `Kid Ink feat. Lil Wayne & Saweetie - YUSO (I.mp3`：`half-or-double-bpm -> pass`，guard `rank1-octave-down`
+- `City Girls feat. Cardi B vs. Juicy J - Twerk.mp3`：`half-or-double-bpm -> pass`，guard `rank1-octave-down`
+- `14？,Shing02 - Real With You Feat. Shing02.mp3`：`half-or-double-bpm -> downbeat`，非 pass 类型变化
+
+## consumed `test316` 批次结果
+
+这批已经用于 rank1 octave-down 开发回归，后续只能当普通回归集。
+
+产物路径：
+
+- final benchmark：`grid-analysis-lab/rkb-rekordbox-benchmark/sealed-eval/frkb-sealed-test316-rank1-negative-v2-octave-down.json`
+
+production benchmark：
+
+- final selected：`176 / 316 = 55.70%`
+- errorTrackCount：`0`
+- category：`pass 176`，`first-beat-phase 83`，`downbeat 20`，`half-or-double-bpm 21`，`bpm 16`
+- candidate oracle：`298 / 316 = 94.30%`
+- oracle selected fail：`122`
+- guard 计数：`legacy-fallback-low-confidence 279`，`constant-grid-dp-conservative-switch 10`，
+  `constant-grid-dp-head-near-zero-switch 6`，`constant-grid-dp-locked-rising-edge-ranker 6`，
+  `constant-grid-dp-rank1-structural-phase-switch 5`，
+  `constant-grid-dp-rank1-negative-legacy-score-switch 4`，
+  `legacy-fallback-integer-bpm-snap 3`，`constant-grid-dp-phase-evidence-switch 2`，
+  `constant-grid-dp-rank1-octave-down-switch 1`
+
+rank1 octave-down 新增 pass：
+
+- `Club des Belugas - It Don't Mean a Thing.mp3`
 
 ## previous `test-new-357` 批次结果
 
@@ -280,23 +354,26 @@ structural phase v2 在 latest `test` 上仍只新增这一首命中：
 当前最值得复验的是：
 
 ```text
-rising-edge locked ranker + legacy integer BPM snap + rank1 material legacy weakness + rank1 structural phase v2 + head near-zero + rank1 negative legacy score
+rising-edge locked ranker + legacy integer BPM snap + rank1 material legacy weakness + rank1 structural phase v2 + rank1 negative legacy score v2 + head near-zero + rank1 octave-down
 ```
 
 当前 current/blind/latest test 回归结果：
 
-- current：`685 -> 694 -> 695 -> 696 -> 701 -> 702 -> 702 -> 706`
+- current：`685 -> 694 -> 695 -> 696 -> 701 -> 702 -> 702 -> 706 -> 707`
 - blind：`425 -> 430 -> 430 -> 432 -> 434 -> 435 -> 436 -> 436`
 - old consumed test：`274 -> 277 -> 278 -> 279`
 - latest test-new-357：`229 -> 230 -> 231`
-- latest test327：`212 -> 215`
-- latest test353：`222 -> 224`
+- latest test327：`212 -> 215 -> 218`
+- latest test353：`222 -> 224 -> 224`
+- latest test316：`175 -> 176`
 - 全 split：`pass -> fail = 0`
 
 current/blind 本身仍不是生产提升证明，因为它是在看过 current/blind 报告后形成的验后污染假设。
-old consumed test、latest test-new-357、latest test327 与 latest test353 都已经被优化消耗，后续只能作为普通回归集使用。要证明
+old consumed test、latest test-new-357、latest test327、latest test353 与 latest test316
+都已经被优化消耗，后续只能作为普通回归集使用。要证明
 integer BPM snap、rank1 material legacy weakness v3、rank1 structural phase v2、head near-zero 和
-rank1 negative legacy score 的泛化，需要另一批全新 Rekordbox playlist 原样 sealed 复验。
+rank1 negative legacy score v2、rank1 octave-down 的泛化，需要另一批全新 Rekordbox playlist
+原样 sealed 复验。
 
 不要把 locked ranker 阈值继续往下扫。本轮离线检查过，把 `0.93` 往 `0.90` 降会带来正向净增，但三套集合都会出现 `pass -> fail`；这条路目前不够干净。也不要改成 top16 best-prob switch；本次留下的是 rank1-only + material phase delta 的窄 guard。
 
@@ -310,24 +387,31 @@ rank1 negative legacy score 的泛化，需要另一批全新 Rekordbox playlist
   没有 fresh sealed 前不进入 production。
 - head near-zero 不是开放 topN selector；它只处理 rank1 明显远离头部、同 BPM/同 downbeat mod4
   里存在近头部 leading-edge 候选的窄场景。不要把它扩展成“top8 里挑最像 truth 的候选”。
+- 本轮二次扫描还试过 same-BPM / low-legacy high-grid structural 分支。离线假设一开始看着有收益，
+  但真实 solver 验证暴露出它依赖了错误的 legacy 字段口径，落到实际 production 输出没有稳定净增；
+  已完全回滚，不作为后续方向。
 
 ## 下一批新样本要验证什么
 
-结论先写死：现在必须要 fresh Rekordbox playlist。current、blind、latest test-new-357、latest test327
-和 latest test353 都已经被
+结论先写死：现在必须要 fresh Rekordbox playlist。current、blind、latest test-new-357、latest test327、
+latest test353 和 latest test316 都已经被
 看过并参与过开发判断，继续用它们涨分只算回归，不算泛化。
 
 下一批新样本只验证这些事：
 
 1. 当前 production solver 是否能原样泛化：
-   `locked rising-edge ranker + integer BPM snap + rank1 material legacy weakness v3 + rank1 structural phase v2 + head near-zero + rank1 negative legacy score`
+   `locked rising-edge ranker + integer BPM snap + rank1 material legacy weakness v3 + rank1 structural phase v2 + rank1 negative legacy score v2 + head near-zero + rank1 octave-down`
    必须不改阈值、不改 guard、不重训，直接跑 sealed-eval。
-2. `rank1 structural phase v2` 的低概率高证据分支和 `rank1 negative legacy score` 是否在 fresh 样本上仍是净正向：
+2. `rank1 structural phase v2` 的低概率高证据分支、`rank1 negative legacy score v2`
+   和 `rank1 octave-down` 是否在 fresh 样本上仍是净正向：
    如果 `0.85 <= probability < 0.86` 的 switch 触发，要单独记录触发曲目、最终 category、
    `score`、`downbeatMargin`、`legacyGridSolverScore` 和相位差；不能看到结果后再调 `0.85`。
    如果 rank1 negative legacy score 触发，要单独记录 `score`、`phasePathScore`、
    `legacyGridSolverScore`、相位差、BPM 差和 `downbeatRank`；不能根据触发曲目现场改
    `0.85` / `0.8` / `0.0`。
+   如果 rank1 octave-down 触发，要单独记录 `confidence`、`rank1Bpm`、`legacyBpm`、
+   `score`、`downbeatMargin`、`phasePathScore`、`leadingEdgePeakOffsetMadMs`
+   和 `tempoScore`；不能根据触发曲目现场改 `0.82` / `0.86` / `0.74`。
 3. current 已证伪方向在 fresh 上是否仍危险：
    locked ranker 阈值下调、rank<=8/topN selector、half/double BPM switch 都只能做离线诊断，
    不能进入 production。诊断目标是看是否出现新的结构性证据，不是挑一个当前批次最高分配置。
@@ -351,7 +435,8 @@ rank1 negative legacy score 的泛化，需要另一批全新 Rekordbox playlist
 
 可选下一步：
 
-- 若要发布安装包，继续跑 `pnpm run build:win`；当前已通过 unpacked package 验证，尚未生成安装器。
+- 若要发布安装包，先补跑 `pnpm run build:unpack` 验证新拆分模块进入 bootstrap，
+  再跑 `pnpm run build:win`。
 - 如果还想更保守，再让用户提供另一批全新 Rekordbox 歌单，按下面流程原样复验。不要复用 `test` 当 sealed。
 
 拿到新的实际歌单名后，把它填入下面命令里的 `$playlist`，不要改阈值、不要现场挑歌、不要重训选择规则。
@@ -379,8 +464,8 @@ $sealedArchiveRoot = "D:/FRKB_database-E/library/FilterLibrary/sealed-eval"
 ```
 
 生成 feature cache 和当前 production solver benchmark。当前 `constant-grid-dp` 已包含 locked ranker、
-integer BPM snap、rank1 material legacy weakness v3、rank1 structural phase v2、head near-zero
-和 rank1 negative legacy score；这一步就是主验收输出，不要在 sealed-eval 上现场改阈值：
+integer BPM snap、rank1 material legacy weakness v3、rank1 structural phase v2、rank1 negative legacy score v2、
+head near-zero 和 rank1 octave-down；这一步就是主验收输出，不要在 sealed-eval 上现场改阈值：
 
 ```powershell
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/run_parallel_rkb_beatgrid_feature_cache.py" --truth "$sealedRoot/rekordbox-sealed-truth.json" --audio-root "$sealedIntakeRoot" --cache-dir "$sealedRoot/feature-cache" --prediction-cache-dir "grid-analysis-lab/rkb-rekordbox-benchmark/beatthis-prediction-cache" --jobs 4 --device cpu
@@ -415,6 +500,9 @@ integer BPM snap、rank1 material legacy weakness v3、rank1 structural phase v2
 - `scripts/beat_this_bridge.py`
 - `scripts/beat_this_runtime_constant_grid.py`
 - `scripts/rkb_constant_grid_dp_solver.py`
+- `scripts/rkb_constant_grid_dp_cache.py`
+- `scripts/rkb_constant_grid_dp_cli.py`
+- `scripts/rkb_constant_grid_dp_octave.py`
 - `scripts/rkb_constant_grid_dp_selection.py`
 - `scripts/rkb_locked_phase_ranker.py`
 - `scripts/rkb_phase_ranker_rising_edge_locked_replay.py`
@@ -426,16 +514,13 @@ integer BPM snap、rank1 material legacy weakness v3、rank1 structural phase v2
 
 ## 已验证
 
-- `py_compile` 通过。
-- `beat_this_bridge` / `beat_this_runtime_constant_grid` import smoke 通过。
-- `dist/win-unpacked/resources/demucs/bootstrap` packaged import smoke 通过。
-- `package.json` 解析通过。
-- `electron-builder.yml` 解析通过。
-- `pnpm run build:unpack` 通过。
-- `dist/win-unpacked/resources/demucs/bootstrap` 资源检查通过：`beat_this_runtime_constant_grid.py`、`rkb_constant_grid_dp_solver.py`、`rkb_locked_phase_ranker.py`、`benchmark_rkb_rekordbox_truth.py` 均存在。
+- `py_compile` 通过：`rkb_constant_grid_dp_selection.py`、`rkb_constant_grid_dp_solver.py`、
+  `rkb_constant_grid_dp_octave.py`、`rkb_constant_grid_dp_cache.py`、`rkb_constant_grid_dp_cli.py`。
 - `npx vue-tsc --noEmit` 通过。
 - `git diff --check` 通过（仅 Git CRLF 提示）。
-- `scripts/rkb_phase_ranker_rising_edge_locked_replay.py` current/blind sanity check 跑通。
+- 单曲 smoke 通过：
+  - `Umoja - Rabia (Original Mix).mp3`：`half-or-double-bpm -> pass`，guard `rank1-octave-down`
+  - `Club des Belugas - It Don't Mean a Thing.mp3`：`half-or-double-bpm -> pass`，guard `rank1-octave-down`
 - old consumed test integrated sealed benchmark：locked ranker `277 / 377`，integer BPM snap
   `278 / 377`，`pass -> fail = 0`。
 - integer BPM snap 回归：current `695 / 931`，blind `430 / 608`，old consumed test
@@ -446,17 +531,24 @@ integer BPM snap、rank1 material legacy weakness v3、rank1 structural phase v2
   latest test-new-357 `231 / 357`；current/blind 逐曲 diff 均 `pass -> fail = 0`。
 - head near-zero 回归：current `702 / 931`，blind `436 / 608`，
   latest test327 `215 / 327`；current/blind/test327 逐曲 diff 均 `pass -> fail = 0`。
-- rank1 negative legacy score 回归：current `706 / 931`，blind `436 / 608`，
+- rank1 negative legacy score v2 回归：current `706 / 931`，blind `436 / 608`，
   latest test353 `224 / 353`；current/blind/test353 逐曲 diff 均 `pass -> fail = 0`。
-- current classification / sample-regression / grid-failures-current 派生视图已刷新到 `706 / 931`。
-- E 音乐库 current 目标分布为 `new = 0`、`sample = 706`、`grid-failures-current = 225`，
+- rank1 octave-down 回归：current `707 / 931`，blind `436 / 608`，latest test327
+  `218 / 327`，latest test316 `176 / 316`；current/blind/test327/test316 逐曲 diff 均
+  `pass -> fail = 0`。
+- current classification / sample-regression / grid-failures-current 派生视图已刷新到 `707 / 931`。
+- E 音乐库 current 目标分布为 `new = 0`、`sample = 707`、`grid-failures-current = 224`，
   同步后 `sync_frkb_classification_audio_dirs.py --dry-run` 必须为 `moveCount = 0`。
+- 本轮实际同步移动 `Umoja - Rabia (Original Mix).mp3`：
+  `grid-failures-current -> sample`。
 - latest test-new-357 音频当前位于 `D:/FRKB_database-E/library/FilterLibrary/sealed-intake`，
   已消耗，不可再当 fresh sealed。
 - latest test327 音频同样位于 `D:/FRKB_database-E/library/FilterLibrary/sealed-intake`，
   已消耗，不可再当 fresh sealed；下一批 fresh 前必须先归档/清空该临时入口。
 - latest test353 音频同样位于 `D:/FRKB_database-E/library/FilterLibrary/sealed-intake`，
   已消耗，不可再当 fresh sealed；`sealed-intake` 当前共 1037 首。
+- 临时 `*.progress.json` 与 `*.shards` 已按用户确认清理完毕；当前剩余数量为 0。
+- 本轮没有重新跑 `pnpm run build:unpack` / `pnpm run build:win`；发版或安装包验收前需要补跑。
 - `scripts/rkb_phase_ranker_rising_edge_locked_replay.py` 的 pre-v3 latest test-new-357 回放为：
   current `696 -> 697`、blind `425 -> 432`、test-new-357 `229 -> 230`。
   v3 已把 test-new-357 的这 1 首纳入 production benchmark；这段只作为决策来源记录，不再是新泛化证据。
