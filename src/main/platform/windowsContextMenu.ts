@@ -169,7 +169,7 @@ const buildContextMenuSignature = (): string => {
   return JSON.stringify(payload)
 }
 
-async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
+export async function ensureWindowsContextMenuIfNeeded(): Promise<void> {
   if (process.platform !== 'win32') return
   const signature = buildContextMenuSignature()
   if (!signature) return
