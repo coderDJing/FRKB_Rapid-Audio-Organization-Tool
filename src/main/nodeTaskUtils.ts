@@ -2,6 +2,10 @@ import fs = require('fs-extra')
 import path = require('path')
 import { isENOSPCError } from './nodeErrorUtils'
 
+// This module intentionally stays separate from utils.ts.
+// scanSongs is loaded by songListScanWorker via node:worker_threads, while utils.ts has
+// Electron IPC/session imports at module load time. Merging these helpers into utils.ts
+// makes the worker load Electron-only dependencies and fail before scanning starts.
 type InterruptedDecision = 'resume' | 'cancel'
 
 export const collectFilesWithExtensions = async (dir: string, extensions: string[] = []) => {
