@@ -649,25 +649,32 @@ jobs:
           ARM64_BREW_PREFIX="$(brew --prefix)"
           copy_ffmpeg_dev_files "$ARM64_BREW_PREFIX" "rust_package/native/ffmpeg/darwin-arm64"
 
-          X64_BOTTLE_TAG="$(python3 - <<'PY'
-          import json
-          import urllib.request
+          X64_BOTTLE_TAG=""
+          for candidate in sequoia sonoma ventura monterey; do
+            echo "Trying Intel Homebrew bottle tag: ${candidate}"
+            if brew fetch --force --retry --bottle-tag="$candidate" ffmpeg 2>/dev/null; then
+              X64_BOTTLE_PATH="$(brew --cache --bottle-tag="$candidate" ffmpeg)"
+              if [ -n "$X64_BOTTLE_PATH" ] && [ -f "$X64_BOTTLE_PATH" ]; then
+                X64_BOTTLE_TAG="$candidate"
+                echo "Successfully fetched Intel Homebrew bottle tag: ${candidate}"
+                break
+              fi
+            fi
+            echo "Bottle tag ${candidate} not available, trying next..."
+          done
 
-          with urllib.request.urlopen("https://formulae.brew.sh/api/formula/ffmpeg.json", timeout=30) as response:
-              files = json.load(response)["bottle"]["stable"]["files"]
-
-          for tag in ("sequoia", "sonoma", "ventura", "monterey"):
-              if tag in files:
-                  print(tag)
-                  break
-          else:
-              raise SystemExit(f"No Intel macOS ffmpeg bottle tag found. Available tags: {', '.join(files)}")
-          PY
-          )"
-          echo "Using Intel Homebrew bottle tag: ${X64_BOTTLE_TAG}"
-
-          brew fetch --force --retry --bottle-tag="$X64_BOTTLE_TAG" ffmpeg
-          X64_BOTTLE_PATH="$(brew --cache --bottle-tag="$X64_BOTTLE_TAG" ffmpeg)"
+          if [ -z "$X64_BOTTLE_TAG" ]; then
+            echo "ERROR: No Intel macOS ffmpeg bottle available. Available tags from API:"
+            python3 -c "
+          import json, urllib.request
+          with urllib.request.urlopen('https://formulae.brew.sh/api/formula/ffmpeg.json', timeout=30) as r:
+              files = json.load(r)['bottle']['stable']['files']
+          for tag in files:
+              if not tag.startswith('arm64_') and not tag.endswith('_linux'):
+                  print(f'  {tag}')
+          "
+            exit 1
+          fi
           X64_BOTTLE_ROOT="tmp/homebrew-ffmpeg-x64"
           rm -rf "$X64_BOTTLE_ROOT"
           mkdir -p "$X64_BOTTLE_ROOT"
