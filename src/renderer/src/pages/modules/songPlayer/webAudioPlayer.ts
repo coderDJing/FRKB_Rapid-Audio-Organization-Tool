@@ -19,6 +19,11 @@ import type {
   WebAudioPlayerEvents,
   WindowWithAudioContext
 } from './webAudioPlayer.shared'
+import { createBrowserPlayerMetadataPreloadPool } from './browserPlayerMetadataPreload'
+import { createBrowserPlayerHtmlSeekController } from './browserPlayerHtmlSeekController'
+
+const ACTIVE_LOAD_METADATA_PRELOAD_DEFER_MS = 2500
+const MANUAL_SEEK_METADATA_PRELOAD_DEFER_MS = 6000
 
 export { canPlayHtmlAudio, toPreviewUrl } from './webAudioPlayer.shared'
 export type {
@@ -41,6 +46,7 @@ export class WebAudioPlayer {
   private animationFrameId: number | null = null
   private volume: number = 0.8
   private pendingSeekTime: number | null = null
+  private pendingSeekManual = false
   private pendingPlay = false
   private metadataReady = false
   private currentOutputDeviceId: string = ''
@@ -50,6 +56,9 @@ export class WebAudioPlayer {
   private ignoreNextEmptySourceError = false
   private mode: 'none' | 'html' | 'pcm' = 'none'
   private visualizerAnalyserNode: AnalyserNode | null = null
+  private metadataPreloads = createBrowserPlayerMetadataPreloadPool()
+  private htmlSeekController = createBrowserPlayerHtmlSeekController()
+  private lastHtmlCurrentTime = 0
 
   private audioElement: AudioElementWithExtensions | null = null
   private audioHandlers: {
@@ -58,6 +67,7 @@ export class WebAudioPlayer {
     pause: () => void
     ended: () => void
     error: () => void
+    seeked: () => void
   } | null = null
   private htmlAnalysisContext: AudioContext | null = null
   private htmlAnalysisAudioElement: AudioElementWithExtensions | null = null
@@ -73,7 +83,6 @@ export class WebAudioPlayer {
   private pcmStartTime = 0
   private pcmDuration = 0
   private pcmSuppressEnded = false
-
   on<K extends keyof WebAudioPlayerEvents>(
     event: K,
     handler: (payload: WebAudioPlayerEvents[K]) => void
@@ -98,7 +107,6 @@ export class WebAudioPlayer {
     }
     this.on(event, wrapper)
   }
-
   private emit<K extends keyof WebAudioPlayerEvents>(
     event: K,
     payload?: WebAudioPlayerEvents[K]
@@ -133,31 +141,38 @@ export class WebAudioPlayer {
   suppressNextEmptySourceError(): void {
     this.ignoreNextEmptySourceError = true
   }
-
   loadFile(filePath: string): void {
     const normalized = (filePath || '').trim()
     if (!normalized) {
       this.emit('error', new Error('No file path provided'))
       return
     }
-
     this.switchToHtml()
     this.stopInternal()
     this.audioBuffer = null
     this.pendingSeekTime = null
+    this.pendingSeekManual = false
     this.pendingPlay = false
     this.metadataReady = false
+    this.lastHtmlCurrentTime = 0
     this.releaseCompactVisualWaveformData()
     this.releasePioneerPreviewWaveformData()
-
-    const audio = this.createAudioElement()
+    this.htmlSeekController.reset()
+    const preloaded = this.metadataPreloads.take(normalized)
+    this.metadataPreloads.clear({
+      reason: 'active-load',
+      filePath: normalized
+    })
+    this.metadataPreloads.defer(ACTIVE_LOAD_METADATA_PRELOAD_DEFER_MS, {
+      reason: 'active-load',
+      filePath: normalized
+    })
+    const audio = preloaded?.audio || this.createAudioElement()
     this.attachAudioElement(audio)
-
-    const src = toPreviewUrl(normalized)
+    const src = preloaded?.src || toPreviewUrl(normalized)
     this.activeFilePath = normalized
     this.activeSrc = src
-
-    const sourceChanged = audio.src !== src
+    const sourceChanged = !preloaded && audio.src !== src
     if (sourceChanged) {
       audio.src = src
     }
@@ -173,12 +188,10 @@ export class WebAudioPlayer {
       }
     }
     this.ensureHtmlAnalysis(audio)
-
     if (audio.readyState >= 1) {
       this.handleMetadataReady()
     }
   }
-
   loadPCM(payload: PcmLoadPayload): void {
     const filePath = (payload?.filePath || '').trim()
     const pcmData = normalizePcmData(payload?.pcmData)
@@ -190,10 +203,10 @@ export class WebAudioPlayer {
       this.emit('error', new Error('Empty PCM payload'))
       return
     }
-
     this.switchToPcm()
     this.stopInternal()
     this.pendingSeekTime = null
+    this.pendingSeekManual = false
     this.pendingPlay = false
     this.metadataReady = false
     this.releaseCompactVisualWaveformData()
@@ -204,7 +217,6 @@ export class WebAudioPlayer {
       this.emit('error', new Error('AudioContext unavailable'))
       return
     }
-
     const frameCount =
       totalFrames > 0 ? Math.min(totalFrames, Math.floor(pcmData.length / channels)) : 0
     const safeFrames = frameCount || Math.floor(pcmData.length / channels)
@@ -212,7 +224,6 @@ export class WebAudioPlayer {
       this.emit('error', new Error('Invalid PCM frames'))
       return
     }
-
     const buffer = context.createBuffer(channels, safeFrames, sampleRate)
     for (let channel = 0; channel < channels; channel++) {
       const channelData = buffer.getChannelData(channel)
@@ -229,24 +240,21 @@ export class WebAudioPlayer {
     this.pcmStartTime = 0
     this.activeFilePath = filePath || this.activeFilePath
     this.activeSrc = ''
-
     if (payload?.compactVisualWaveformData !== undefined) {
       this.setCompactVisualWaveformData(payload.compactVisualWaveformData ?? null)
     }
-
     this.handleMetadataReady()
   }
-
   play(startTime?: number): void {
     if (typeof startTime === 'number' && Number.isFinite(startTime)) {
       this.pendingSeekTime = Math.max(0, startTime)
+      this.pendingSeekManual = false
     }
 
     if (!this.metadataReady) {
       this.pendingPlay = true
       return
     }
-
     if (this.mode === 'pcm' && this.isPlayingFlag) {
       if (this.pendingSeekTime !== null) {
         const target = this.pendingSeekTime
@@ -255,10 +263,8 @@ export class WebAudioPlayer {
       }
       return
     }
-
     this.startPlayback()
   }
-
   pause(): void {
     if (this.mode === 'pcm') {
       this.pausePcm()
@@ -310,7 +316,6 @@ export class WebAudioPlayer {
     this.isPlayingFlag = false
     this.stopTimeUpdate()
   }
-
   private stopPcmInternal(resetTime = false): void {
     this.stopPcmSource(true)
     if (resetTime) {
@@ -319,7 +324,6 @@ export class WebAudioPlayer {
     this.isPlayingFlag = false
     this.stopTimeUpdate()
   }
-
   setVolume(volume: number): void {
     this.volume = Math.max(0, Math.min(1, volume))
     if (this.mode === 'html' && this.htmlOutputGainNode) {
@@ -334,11 +338,19 @@ export class WebAudioPlayer {
       this.audioElement.volume = this.volume
     }
   }
-
   getVolume(): number {
     return this.volume
   }
-
+  deferMetadataPreloadsForManualSeek(): void {
+    this.metadataPreloads.clear({
+      reason: 'manual-seek',
+      filePath: this.activeFilePath || undefined
+    })
+    this.metadataPreloads.defer(MANUAL_SEEK_METADATA_PRELOAD_DEFER_MS, {
+      reason: 'manual-seek',
+      filePath: this.activeFilePath || undefined
+    })
+  }
   seek(time: number, manual = false): void {
     if (this.mode === 'pcm') {
       this.seekPcm(time, manual)
@@ -346,35 +358,37 @@ export class WebAudioPlayer {
     }
     const audio = this.audioElement
     if (!audio) return
-
     const duration = this.getDuration()
     const nextTime = duration > 0 ? clampNumber(time, 0, duration) : Math.max(0, time)
-
+    if (manual) {
+      this.deferMetadataPreloadsForManualSeek()
+    }
     if (!this.metadataReady) {
       this.pendingSeekTime = nextTime
-      this.emit('seeked', { time: nextTime, manual })
+      this.pendingSeekManual = manual
       return
     }
+    if (!audio.seeking) {
+      this.lastHtmlCurrentTime = this.readHtmlCurrentTime(audio)
+    }
+    const result = this.htmlSeekController.requestSeek({
+      audio,
+      timeSec: nextTime,
+      manual
+    })
 
-    try {
-      if (typeof audio.fastSeek === 'function') {
-        audio.fastSeek(nextTime)
-      } else {
-        audio.currentTime = nextTime
+    if (result.status === 'already-current') {
+      const actualTime = this.getCurrentTime()
+      this.emit('seeked', { time: actualTime, manual })
+      if (!this.isPlayingFlag) {
+        this.emit('timeupdate', actualTime)
       }
-    } catch (_) {}
-
-    this.emit('seeked', { time: nextTime, manual })
-    if (!this.isPlayingFlag) {
-      this.emit('timeupdate', nextTime)
     }
   }
-
   skip(seconds: number, manual = false): void {
     const currentTime = this.getCurrentTime()
     this.seek(currentTime + seconds, manual)
   }
-
   getCurrentTime(): number {
     if (this.mode === 'pcm') {
       return this.getPcmCurrentTime()
@@ -382,9 +396,13 @@ export class WebAudioPlayer {
     const audio = this.audioElement
     if (!audio) return 0
     if (!this.metadataReady) return 0
-    return Number.isFinite(audio.currentTime) ? audio.currentTime : 0
+    const currentTime = this.readHtmlCurrentTime(audio)
+    if (audio.seeking) {
+      return this.lastHtmlCurrentTime
+    }
+    this.lastHtmlCurrentTime = currentTime
+    return currentTime
   }
-
   getDuration(): number {
     if (this.mode === 'pcm') {
       return Number.isFinite(this.pcmDuration) ? this.pcmDuration : 0
@@ -394,11 +412,9 @@ export class WebAudioPlayer {
     const duration = audio.duration
     return Number.isFinite(duration) ? duration : 0
   }
-
   isPlaying(): boolean {
     return this.isPlayingFlag
   }
-
   empty(): void {
     this.pendingPlay = false
     this.stopInternal(true)
@@ -407,12 +423,19 @@ export class WebAudioPlayer {
     this.pcmOffset = 0
     this.pcmStartTime = 0
     this.pendingSeekTime = null
+    this.pendingSeekManual = false
     this.metadataReady = false
+    this.lastHtmlCurrentTime = 0
     this.releaseCompactVisualWaveformData()
     this.releasePioneerPreviewWaveformData()
     this.activeFilePath = null
     this.activeSrc = ''
+    this.htmlSeekController.reset()
     this.detachAudioElement(true)
+  }
+
+  preloadHtmlMetadata(filePaths: string[], options?: { reason?: string }): void {
+    this.metadataPreloads.preload(filePaths, options)
   }
 
   private startTimeUpdate(): void {
@@ -423,6 +446,10 @@ export class WebAudioPlayer {
       }
     }
     this.animationFrameId = requestAnimationFrame(update)
+  }
+
+  private readHtmlCurrentTime(audio: AudioElementWithExtensions): number {
+    return Number.isFinite(audio.currentTime) ? audio.currentTime : 0
   }
 
   private stopTimeUpdate(): void {
@@ -463,6 +490,8 @@ export class WebAudioPlayer {
   destroy(): void {
     this.stopInternal(true)
     this.empty()
+    this.metadataPreloads.clear()
+    this.htmlSeekController.reset()
     this.removeAllListeners()
     this.releaseHtmlAnalysis()
     this.releasePcmContext()
@@ -520,7 +549,7 @@ export class WebAudioPlayer {
       this.ensureAudioElementAttached(audio)
       return
     }
-    this.detachAudioElement(false)
+    this.detachAudioElement(true)
     this.audioElement = audio
     this.bindAudioEvents(audio)
     this.ensureAudioElementAttached(audio)
@@ -564,13 +593,15 @@ export class WebAudioPlayer {
       play: () => this.handlePlayEvent(),
       pause: () => this.handlePauseEvent(),
       ended: () => this.handleEndedEvent(),
-      error: () => this.handleAudioError()
+      error: () => this.handleAudioError(),
+      seeked: () => this.handleAudioSeeked()
     }
     audio.addEventListener('loadedmetadata', handlers.loadedmetadata)
     audio.addEventListener('play', handlers.play)
     audio.addEventListener('pause', handlers.pause)
     audio.addEventListener('ended', handlers.ended)
     audio.addEventListener('error', handlers.error)
+    audio.addEventListener('seeked', handlers.seeked)
     this.audioHandlers = handlers
   }
 
@@ -582,7 +613,18 @@ export class WebAudioPlayer {
     audio.removeEventListener('pause', handlers.pause)
     audio.removeEventListener('ended', handlers.ended)
     audio.removeEventListener('error', handlers.error)
+    audio.removeEventListener('seeked', handlers.seeked)
     this.audioHandlers = null
+  }
+
+  private handleAudioSeeked(): void {
+    const audio = this.audioElement
+    if (!audio) return
+    const completion = this.htmlSeekController.handleSeeked(audio)
+    const actualTime = this.readHtmlCurrentTime(audio)
+    this.lastHtmlCurrentTime = actualTime
+    this.emit('seeked', { time: actualTime, manual: completion?.manual ?? false })
+    this.emit('timeupdate', actualTime)
   }
 
   private handleMetadataReady(): void {
@@ -593,8 +635,10 @@ export class WebAudioPlayer {
     this.emit('ready')
     if (this.pendingSeekTime !== null) {
       const target = this.pendingSeekTime
+      const manual = this.pendingSeekManual
       this.pendingSeekTime = null
-      this.seek(target, false)
+      this.pendingSeekManual = false
+      this.seek(target, manual)
     }
     if (this.pendingPlay) {
       this.pendingPlay = false
@@ -616,6 +660,7 @@ export class WebAudioPlayer {
     if (this.pendingSeekTime !== null) {
       const target = this.pendingSeekTime
       this.pendingSeekTime = null
+      this.pendingSeekManual = false
       try {
         if (typeof audio.fastSeek === 'function') {
           audio.fastSeek(target)
@@ -986,7 +1031,7 @@ export class WebAudioPlayer {
 
     if (!this.metadataReady) {
       this.pendingSeekTime = nextTime
-      this.emit('seeked', { time: nextTime, manual })
+      this.pendingSeekManual = manual
       return
     }
 

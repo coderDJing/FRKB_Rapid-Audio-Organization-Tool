@@ -29,6 +29,7 @@ import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vu
 import emitter from '@renderer/utils/mitt'
 import { useSongLoader } from './useSongLoader'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
+import { createBrowserPlayerKeyboardPercentSeek } from './browserPlayerKeyboardPercentSeek'
 import {
   MAIN_WINDOW_VOLUME_CHANGED_EVENT,
   MAIN_WINDOW_VOLUME_SET_EVENT,
@@ -102,7 +103,43 @@ let previousTime = 0
 const rangeStopTolerance = 0.05
 let manualSeekActive = false
 let manualSeekResetTimer: number | null = null
+let metadataPreloadTimer: number | null = null
 let teardownPlayerEvents: (() => void) | null = null
+const seekSettledMetadataPreloadDelayMs = 6000
+const keyboardPercentSeek = createBrowserPlayerKeyboardPercentSeek({
+  getPlayer: () => audioPlayer.value,
+  getFilePath: () => runtime.playingData.playingSong?.filePath,
+  isAllowed: () => Boolean(audioPlayer.value && waveformShow.value && !runtime.isSwitchingSong)
+})
+
+const resolveAdjacentMetadataPreloadPaths = () => {
+  const currentPath = runtime.playingData.playingSong?.filePath
+  if (!currentPath) return []
+  const list = runtime.playingData.playingSongListData || []
+  const currentIndex = list.findIndex((song) => song.filePath === currentPath)
+  if (currentIndex < 0) return []
+  return [list[currentIndex - 1], list[currentIndex + 1]]
+    .filter((song): song is ISongInfo => Boolean(song?.filePath && !song.fileMissing))
+    .map((song) => song.filePath)
+}
+
+const clearMetadataPreloadTimer = () => {
+  if (metadataPreloadTimer !== null) {
+    window.clearTimeout(metadataPreloadTimer)
+    metadataPreloadTimer = null
+  }
+}
+
+const scheduleAdjacentMetadataPreload = (reason: string, delayMs = 180) => {
+  clearMetadataPreloadTimer()
+  metadataPreloadTimer = window.setTimeout(() => {
+    metadataPreloadTimer = null
+    const player = audioPlayer.value
+    if (!player?.isReady?.()) return
+    const paths = resolveAdjacentMetadataPreloadPaths()
+    player.preloadHtmlMetadata(paths, { reason })
+  }, delayMs)
+}
 
 const buildBrowserPlaybackSnapshot = (): MainWindowPlaybackSnapshot | null => {
   const song = runtime.playingData.playingSong
@@ -135,9 +172,11 @@ const clearManualSeekTimer = () => {
 
 const scheduleManualSeekReset = () => {
   clearManualSeekTimer()
+  clearMetadataPreloadTimer()
   manualSeekResetTimer = window.setTimeout(() => {
     manualSeekActive = false
     manualSeekResetTimer = null
+    scheduleAdjacentMetadataPreload('manual-seek-settled', seekSettledMetadataPreloadDelayMs)
   }, 400)
 }
 
@@ -248,6 +287,7 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   const onReady = () => {
     ignoreNextEmptyError.value = false
     updateParentWaveformWidth()
+    scheduleAdjacentMetadataPreload('current-ready')
   }
   player.on('ready', onReady)
   disposers.push(() => player.off('ready', onReady))
@@ -375,6 +415,7 @@ const handleReplayRequest = () => {
 
   const wasPlaying = playerInstance.isPlaying()
   runtime.playerReady = false
+  clearMetadataPreloadTimer()
 
   playerInstance.seek(startTime)
   if (!wasPlaying) {
@@ -478,16 +519,7 @@ const handleUserTogglePlayPause = () => {
 }
 
 const handleSeekToPercent = (percent: number) => {
-  const playerInstance = audioPlayer.value
-  if (!playerInstance || !waveformShow.value || runtime.isSwitchingSong) {
-    return
-  }
-  const duration = playerInstance.getDuration()
-  if (!duration || Number.isNaN(duration)) {
-    return
-  }
-  const clamped = Math.min(Math.max(percent, 0), 1)
-  playerInstance.seek(duration * clamped, true)
+  keyboardPercentSeek.request(percent)
 }
 
 const handleMainWaveformHotCueClick = (sec: number) => {
@@ -656,7 +688,9 @@ watch(
 
 onUnmounted(() => {
   runtime.playerReady = false
+  keyboardPercentSeek.clear('unmount')
   clearManualSeekTimer()
+  clearMetadataPreloadTimer()
   unregisterTitleAudioVisualizerSource('mainWindow', titleAudioVisualizerSource)
   if (teardownPlayerEvents) {
     teardownPlayerEvents()
@@ -682,6 +716,7 @@ watch(
   () => runtime.playingData.playingSong,
   (newSong, oldSong) => {
     if (newSong?.filePath && newSong.filePath !== oldSong?.filePath) {
+      keyboardPercentSeek.clear('song-change')
       try {
         window.electron.ipcRenderer.send('key-analysis:queue-playing', {
           filePath: newSong.filePath,

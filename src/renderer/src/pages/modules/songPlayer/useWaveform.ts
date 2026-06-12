@@ -41,6 +41,7 @@ export function useWaveform(params: {
 
   const waveformHeight = 40
   const cursorWidth = 9
+  const pointerPreloadDeferRefreshMs = 1000
 
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
 
@@ -123,6 +124,7 @@ export function useWaveform(params: {
   let audioBuffer: AudioBuffer | null = null
   let hoverEl: HTMLElement | null = null
   let isPointerDown = false
+  let lastPointerPreloadDeferAt = 0
   type AudioEventName = keyof WebAudioPlayerEvents
   const audioEventHandlers: Array<() => void> = []
 
@@ -151,19 +153,41 @@ export function useWaveform(params: {
     }
   }
 
-  const seekToPercent = (percent: number) => {
-    if (!audioPlayer.value) return
-    const duration = audioPlayer.value.getDuration()
-    if (duration > 0 && Number.isFinite(duration)) {
-      audioPlayer.value.seek(duration * percent, true)
+  const resolveSeekTarget = (percent: number) => {
+    const player = audioPlayer.value
+    if (!player) return null
+    const duration = player.getDuration()
+    if (duration <= 0 || !Number.isFinite(duration)) return null
+    const clampedPercent = clamp01(percent)
+    return {
+      duration,
+      percent: clampedPercent,
+      timeSec: duration * clampedPercent
     }
+  }
+
+  const deferManualSeekPreloads = (force = false) => {
+    const player = audioPlayer.value
+    if (!player) return
+    const now = performance.now()
+    if (!force && now - lastPointerPreloadDeferAt < pointerPreloadDeferRefreshMs) return
+    lastPointerPreloadDeferAt = now
+    player.deferMetadataPreloadsForManualSeek()
+  }
+
+  const commitSeekPercent = (percent: number) => {
+    const target = resolveSeekTarget(percent)
+    const player = audioPlayer.value
+    if (!target || !player) return false
+    player.seek(target.timeSec, true)
+    return true
   }
 
   const handlePointerMove = (event: PointerEvent) => {
     const percent = getPercentFromClientX(event.clientX)
     syncHoverOverlay(percent)
     if (isPointerDown) {
-      seekToPercent(percent)
+      deferManualSeekPreloads()
     }
   }
 
@@ -174,16 +198,26 @@ export function useWaveform(params: {
       interactionLayer.setPointerCapture(event.pointerId)
     } catch {}
     const percent = getPercentFromClientX(event.clientX)
-    seekToPercent(percent)
+    syncHoverOverlay(percent)
+    deferManualSeekPreloads(true)
+  }
+
+  const finishPointerSeek = (event: PointerEvent, commit: boolean) => {
+    if (!isPointerDown) return
+    const percent = getPercentFromClientX(event.clientX)
+    if (commit) commitSeekPercent(percent)
+    isPointerDown = false
+    try {
+      interactionLayer.releasePointerCapture(event.pointerId)
+    } catch {}
   }
 
   const handlePointerUp = (event: PointerEvent) => {
-    if (isPointerDown) {
-      isPointerDown = false
-      try {
-        interactionLayer.releasePointerCapture(event.pointerId)
-      } catch {}
-    }
+    finishPointerSeek(event, true)
+  }
+
+  const handlePointerCancel = (event: PointerEvent) => {
+    finishPointerSeek(event, false)
   }
 
   const handlePointerLeave = () => {
@@ -195,7 +229,7 @@ export function useWaveform(params: {
   interactionLayer.addEventListener('pointermove', handlePointerMove)
   interactionLayer.addEventListener('pointerdown', handlePointerDown)
   interactionLayer.addEventListener('pointerup', handlePointerUp)
-  interactionLayer.addEventListener('pointercancel', handlePointerUp)
+  interactionLayer.addEventListener('pointercancel', handlePointerCancel)
   interactionLayer.addEventListener('pointerleave', handlePointerLeave)
 
   const handleResize = () => {
@@ -609,7 +643,7 @@ export function useWaveform(params: {
     interactionLayer.removeEventListener('pointermove', handlePointerMove)
     interactionLayer.removeEventListener('pointerdown', handlePointerDown)
     interactionLayer.removeEventListener('pointerup', handlePointerUp)
-    interactionLayer.removeEventListener('pointercancel', handlePointerUp)
+    interactionLayer.removeEventListener('pointercancel', handlePointerCancel)
     interactionLayer.removeEventListener('pointerleave', handlePointerLeave)
     hoverEl = null
     if (canvasContainer.parentNode) {

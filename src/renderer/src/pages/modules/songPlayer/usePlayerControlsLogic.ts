@@ -289,47 +289,13 @@ export function usePlayerControlsLogic({
     audioPlayer.value?.skip(runtime.setting.fastBackwardTime, true)
   }
 
-  const markSongMissingAndNotify = (filePath: string) => {
-    const idx = runtime.playingData.playingSongListData.findIndex((s) => s.filePath === filePath)
-    if (idx !== -1) {
-      runtime.playingData.playingSongListData[idx] = {
-        ...runtime.playingData.playingSongListData[idx],
-        fileMissing: true
-      }
-      emitter.emit('songFileMissing', {
-        listUUID: runtime.playingData.playingSongListUUID,
-        filePath
-      })
-    }
-  }
-
-  const restoreSongIfFileReturns = (filePath: string) => {
-    const idx = runtime.playingData.playingSongListData.findIndex((s) => s.filePath === filePath)
-    if (idx !== -1 && runtime.playingData.playingSongListData[idx].fileMissing) {
-      runtime.playingData.playingSongListData[idx] = {
-        ...runtime.playingData.playingSongListData[idx],
-        fileMissing: false
-      }
-      emitter.emit('songFileRestored', {
-        listUUID: runtime.playingData.playingSongListUUID,
-        filePath
-      })
-    }
-  }
-
-  const findNextPlayableSong = async (
-    startIndex: number,
-    direction: 1 | -1
-  ): Promise<ISongInfo | null> => {
+  const findNextPlayableSong = (startIndex: number, direction: 1 | -1): ISongInfo | null => {
     const songList = runtime.playingData.playingSongListData
     for (let i = startIndex + direction; i >= 0 && i < songList.length; i += direction) {
       const song = songList[i]
-      const exists = await window.electron.ipcRenderer.invoke('check-path-exists', song.filePath)
-      if (exists) {
-        if (song.fileMissing) restoreSongIfFileReturns(song.filePath)
+      if (!song.fileMissing) {
         return song
       }
-      if (!song.fileMissing) markSongMissingAndNotify(song.filePath)
     }
     return null
   }
@@ -348,22 +314,13 @@ export function usePlayerControlsLogic({
       runtime.isSwitchingSong = false
       return
     }
-    const nextSongData = await findNextPlayableSong(currentIndex, 1)
+    const nextSongData = findNextPlayableSong(currentIndex, 1)
     if (!nextSongData) {
       runtime.playerReady = true
       runtime.isSwitchingSong = false
       return
     }
     const nextSongFilePath = nextSongData.filePath
-    // 每次切换歌曲时，强制清空播放器实例
-    if (audioPlayer.value) {
-      if (audioPlayer.value.isPlaying()) {
-        audioPlayer.value.pause()
-      }
-      ignoreNextEmptyError.value = true
-      audioPlayer.value.stop()
-    }
-
     // 重要：在开始加载前先更新UI状态
     isInternalSongChange.value = true // 标记内部切换
     runtime.playingData.playingSong = nextSongData
@@ -387,7 +344,7 @@ export function usePlayerControlsLogic({
       return
     }
 
-    const prevCandidate = await findNextPlayableSong(currentIndex, -1)
+    const prevCandidate = findNextPlayableSong(currentIndex, -1)
     if (!prevCandidate) {
       runtime.playerReady = true
       runtime.isSwitchingSong = false
@@ -395,14 +352,6 @@ export function usePlayerControlsLogic({
     }
 
     const prevSongFilePath = prevCandidate.filePath
-    // 每次切换歌曲时，强制清空播放器实例
-    if (audioPlayer.value) {
-      if (audioPlayer.value.isPlaying()) {
-        audioPlayer.value.pause()
-      }
-      ignoreNextEmptyError.value = true
-      audioPlayer.value.stop()
-    }
     // 设置内部切换并请求加载
     isInternalSongChange.value = true // 标记内部切换
     runtime.playingData.playingSong = prevCandidate

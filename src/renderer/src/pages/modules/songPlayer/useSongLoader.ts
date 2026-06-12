@@ -429,7 +429,6 @@ export function useSongLoader(params: {
     if (audioPlayer.value) {
       if (audioPlayer.value.isPlaying()) audioPlayer.value.pause()
       ignoreNextEmptyError.value = true
-      audioPlayer.value.stop()
     }
 
     runtime.playerReady = false
