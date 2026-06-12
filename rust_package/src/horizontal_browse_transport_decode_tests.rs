@@ -114,7 +114,7 @@ fn startup_decode_covers_current_playhead_when_cue_is_after_startup_block() {
   assert!(bootstrap.is_some());
   let bootstrap = bootstrap.unwrap();
   assert!(!bootstrap.is_full_decode);
-  assert!((bootstrap.start_sec - 12.5).abs() < 0.0001);
+  assert!((bootstrap.start_sec - 12.25).abs() < 0.0001);
   assert_eq!(
     bootstrap.max_duration_sec,
     Some(HORIZONTAL_BROWSE_STARTUP_DECODE_SEC)
@@ -146,7 +146,7 @@ fn prepare_playhead_decode_request_reuses_pending_startup_decode_covering_playhe
   assert!(engine
     .deck(DeckId::Top)
     .pending_decode_start_sec
-    .is_some_and(|value| (value - 0.135).abs() < 0.0001));
+    .is_some_and(|value| value.abs() < 0.0001));
   assert_eq!(
     engine.deck(DeckId::Top).pending_decode_max_duration_sec,
     Some(HORIZONTAL_BROWSE_STARTUP_DECODE_SEC)
@@ -165,6 +165,34 @@ fn prepare_playhead_decode_request_reuses_pending_startup_decode_covering_playhe
   assert!(snapshot.top.loaded);
   assert!(snapshot.top.playhead_loaded);
   assert!(!snapshot.top.decoding);
+}
+
+#[test]
+fn prepare_playhead_reuses_pending_startup_after_time_basis_offset_moves_playhead_back() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("offset-playhead.mp3".to_string());
+    top.duration_sec = 60.0;
+    top.current_sec = 0.036057;
+  }
+
+  let pending = engine.prepare_decode_request(DeckId::Top).unwrap();
+  assert_eq!(pending.request_id, 1);
+  assert!(pending.start_sec.abs() < 0.0001);
+
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.time_basis_offset_ms = Some(25.057);
+  }
+
+  let playhead = engine.prepare_playhead_decode_request(DeckId::Top);
+  assert!(playhead.is_none());
+  assert_eq!(engine.deck(DeckId::Top).decode_request_id, 1);
+  assert_eq!(
+    engine.deck(DeckId::Top).pending_decode_file_path.as_deref(),
+    Some("offset-playhead.mp3")
+  );
 }
 
 #[test]
@@ -191,7 +219,7 @@ fn prepare_playhead_decode_request_replaces_pending_startup_decode_after_playhea
   let playhead = engine.prepare_playhead_decode_request(DeckId::Top).unwrap();
   assert_eq!(playhead.request_id, 2);
   assert!(!playhead.is_full_decode);
-  assert!((playhead.start_sec - 19.975).abs() < 0.0001);
+  assert!((playhead.start_sec - 19.725).abs() < 0.0001);
   assert_eq!(
     engine.deck(DeckId::Top).pending_decode_file_path.as_deref(),
     Some("playhead.mp3")
@@ -243,7 +271,7 @@ fn startup_decode_refills_current_playhead_after_time_basis_offset_changes() {
   assert!(bootstrap.is_some());
   let bootstrap = bootstrap.unwrap();
   assert!(!bootstrap.is_full_decode);
-  assert!((bootstrap.start_sec - 0.008).abs() < 0.0001);
+  assert!(bootstrap.start_sec.abs() < 0.0001);
   assert_eq!(
     engine
       .deck(DeckId::Top)
@@ -294,7 +322,7 @@ fn startup_decode_can_fill_current_playhead_while_full_decode_is_pending() {
   assert!(bootstrap.is_some());
   let bootstrap = bootstrap.unwrap();
   assert!(!bootstrap.is_full_decode);
-  assert!((bootstrap.start_sec - 42.0).abs() < 0.0001);
+  assert!((bootstrap.start_sec - 41.75).abs() < 0.0001);
   assert_eq!(engine.deck(DeckId::Top).decode_request_id, 1);
   assert_eq!(
     engine

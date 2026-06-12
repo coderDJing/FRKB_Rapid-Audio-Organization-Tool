@@ -137,6 +137,7 @@ struct PreparedDecodedAudio {
 }
 
 const HORIZONTAL_BROWSE_STARTUP_DECODE_SEC: f64 = 10.0;
+const HORIZONTAL_BROWSE_STARTUP_DECODE_PRE_ROLL_SEC: f64 = 0.25;
 const HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT: usize = 256;
 const HORIZONTAL_BROWSE_LOOP_END_EPSILON_SEC: f64 = 0.0005;
 const HORIZONTAL_BROWSE_LOOP_POSITION_EPSILON_SEC: f64 = 0.0001;
@@ -390,7 +391,9 @@ impl HorizontalBrowseTransportEngine {
 
   fn resolve_startup_decode_start_sec(&self, deck: DeckId, target_timeline_sec: f64) -> f64 {
     let deck_state = self.deck(deck);
-    let target_audio_sec = Self::timeline_sec_to_audio_sec(deck_state, target_timeline_sec);
+    let target_audio_sec = (Self::timeline_sec_to_audio_sec(deck_state, target_timeline_sec)
+      - HORIZONTAL_BROWSE_STARTUP_DECODE_PRE_ROLL_SEC)
+      .max(0.0);
     if deck_state.duration_sec.is_finite() && deck_state.duration_sec > 0.0 {
       return target_audio_sec.min((deck_state.duration_sec - 0.001).max(0.0));
     }

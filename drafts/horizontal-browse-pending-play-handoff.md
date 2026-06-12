@@ -74,6 +74,43 @@ current:
 
 当前候选改动：Rust transport 现在会记录 pending startup decode 的窗口（start/max duration）。`preparePlayhead` 如果发现同文件已有 pending startup decode 且该窗口覆盖当前播放头，就不再作废它并同步重解；只有播放头已经移出该 pending 窗口时，才替换为新的 playhead decode。这个改动保留 `playheadLoaded` 真实门槛，目标是避免点击播放把已经在路上的有效 startup decode 取消后再卡主进程同步解码。它已通过单元测试和类型检查，但还需要真实复现链路复验；再次出现长 pending 时继续按下面规则抓日志。
 
+补充：2026-06-12 当前项目实例再次复现，版本 `v1.2.0-rc.202606111656`：
+
+```text
+[HB-TRANSPORT-SLOW] prepare-playhead elapsedMs: 5318.7
+before.loaded=false
+before.decoding=true
+before.playheadLoaded=false
+before.currentSec=0.036
+before.audioCurrentSec=0.011
+after.loaded=true
+after.playheadLoaded=true
+after.loadedSegmentStartSec=0.011
+after.loadedSegmentEndSec=10.011
+hadPendingStartupAtStart=true
+
+[HB-TRANSPORT-DECODE-SLOW] async cancelled
+requestId=1
+startSec=0.036057
+totalMs=6007.4
+
+[HB-TRANSPORT-DECODE-SLOW] sync decoded
+requestId=2
+startSec=0.011
+totalMs=5318.4
+ffmpegSpawnMs=5076.3
+ffmpegFirstByteMs=5231.7
+ffmpegReadMs=190.0
+prepareMs=0.004
+applyMs=0.027
+
+[HB-PENDING-PLAY] cleared elapsedMs: 5334.8
+```
+
+这说明上一个候选改动还没覆盖“timeBasisOffset 把真实 audio playhead 往前挪几十毫秒”的窗口：async startup 从 `0.036057s` 起解，而点击时 `audioCurrentSec=0.011s`，所以 `preparePlayhead` 仍判断 pending startup 不覆盖当前播放头，取消 async 后同步重解。新的候选修正是在 startup decode 起点前留 `250ms` pre-roll 并 clamp 到 0，避免这种小幅 timeBasisOffset/beatgrid 修正把已有 startup decode 判成不覆盖。
+
+同时，这次日志明确暴露 FFmpeg 启动成本异常：`ffmpegSpawnMs` 约 `5.1s`，占掉几乎全部 pending 时间。即使避免同步重解，如果 startup async decode 自身仍要 5-6 秒才吐第一批 PCM，用户立刻点播放仍可能等待。pre-roll 只修“重复取消/同步重解”这一层；下一层要继续看 FFmpeg 冷启动/常驻 worker/解码后端策略。
+
 ## 已加诊断
 
 当前工作区已加两层诊断。
@@ -162,6 +199,7 @@ rg -n "\[HB-PENDING-PLAY\]|\[HB-TRANSPORT-SLOW\]|\[HB-TRANSPORT-DECODE-SLOW\]" "
 - 如果没有慢 `prepare-playhead`，不要继续沿着同步重解猜；改看 async decode 队列、full decode 应用、snapshot 广播、renderer pending 状态是否延迟清除。
 - 如果有 `[HB-TRANSPORT-DECODE-SLOW] sync`，继续按 FFmpeg 阶段字段拆解。
 - 如果只有 `[HB-PENDING-PLAY]`，只能说明卡在 `playheadLoaded=false`，需要先补齐或确认该实例是否带有主进程/Rust 慢日志。
+- 如果 `ffmpegSpawnMs`/`ffmpegFirstByteMs` 继续接近秒级，优先按 FFmpeg 冷启动或输入探测路径查，不要再只围着 pending 状态机转。
 
 ## 判读规则
 
@@ -238,8 +276,8 @@ node -e "const rp=require('./rust_package'); console.log(typeof rp.horizontalBro
 
 优先候选：
 
-1. 复验当前“复用已有 pending startup decode 窗口”的候选改动；如果仍复现，再看新的慢日志分布。
-2. 避免播放点击路径同步硬等 startup decode，改成 async ready 后自动续播。
-3. 让载入歌曲后的 startup segment 预热更可靠，并复用已有片段。
-4. 如果 `[HB-TRANSPORT-DECODE-SLOW]` 证明 `ffmpegSpawnMs` 占比很高，再讨论 FFmpeg 常驻/worker pool。
+1. 复验“startup decode 起点增加 250ms pre-roll”是否能避免 timeBasisOffset 小幅前移导致的同步重解。
+2. 如果仍复现且 `ffmpegSpawnMs` 继续占 4-5 秒，优先调研 FFmpeg 冷启动成本、常驻 worker/pool、或 startup decode 的非 FFmpeg 后端。
+3. 避免播放点击路径同步硬等 startup decode，改成 async ready 后自动续播。
+4. 让载入歌曲后的 startup segment 预热更可靠，并复用已有片段。
 5. 如果主要是 `ffmpegFirstByteMs` 或 `ffmpegReadMs`，常驻 FFmpeg 未必能解决根因，应考虑 seek/解码/文件 IO 策略。
