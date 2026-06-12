@@ -11,10 +11,7 @@ import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import emitter from '@renderer/utils/mitt'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
-import {
-  fetchAcoustIdClientKeyStatus,
-  hasConfiguredAcoustIdClientKey
-} from '@renderer/utils/acoustid'
+import { hasEffectiveAcoustIdKey } from '@renderer/utils/acoustid'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { startAudioConvertFromFiles } from '@renderer/utils/audioConvertActions'
 import choiceDialog from '@renderer/components/choiceDialog'
@@ -115,16 +112,11 @@ export function useSongItemContextMenu(
     )
     return selectedKeys.filter((key) => available.has(key))
   }
-  const hasAcoustIdKey = async () => {
-    if (hasConfiguredAcoustIdClientKey(runtime.setting)) return true
-    const status = await fetchAcoustIdClientKeyStatus()
-    return status.hasEffectiveKey
-  }
   const hasWarnedMissingAcoustId = ref(false)
   const warnAcoustIdMissing = () => {
     if (hasWarnedMissingAcoustId.value) return
     void (async () => {
-      if (await hasAcoustIdKey()) return
+      if (await hasEffectiveAcoustIdKey(runtime.setting)) return
       hasWarnedMissingAcoustId.value = true
       void confirm({
         title: t('metadata.autoFillFingerprintHintTitle'),

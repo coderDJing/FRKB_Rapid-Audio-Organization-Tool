@@ -29,6 +29,14 @@ export async function fetchAcoustIdClientKeyStatus(): Promise<AcoustIdClientKeyS
   }
 }
 
+export async function hasEffectiveAcoustIdKey(setting?: {
+  acoustIdClientKey?: string
+}): Promise<boolean> {
+  if (hasConfiguredAcoustIdClientKey(setting)) return true
+  const status = await fetchAcoustIdClientKeyStatus()
+  return status.hasEffectiveKey
+}
+
 export function mapAcoustIdClientError(code?: string): string {
   if (!code) return t('metadata.acoustidKeyVerifyUnknown')
   const normalized = String(code || '').split(':')[0]

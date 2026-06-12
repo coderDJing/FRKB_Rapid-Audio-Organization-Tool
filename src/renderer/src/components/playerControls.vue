@@ -16,6 +16,23 @@ import confirm from '@renderer/components/confirmDialog'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 import { resolveLibraryTransferActionModeForPlayback } from '@renderer/utils/libraryTransfer'
+import {
+  buildNeteaseSearchQuery,
+  normalizeNeteaseSearchText,
+  openNeteaseSearch
+} from '@renderer/utils/neteaseSearch'
+import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
+import { hasEffectiveAcoustIdKey } from '@renderer/utils/acoustid'
+import { openRekordboxDesktopPlaylistForSelectedTracks } from '@renderer/utils/rekordboxDesktopPlaylist'
+import { openRekordboxXmlExportForSelectedTracks } from '@renderer/utils/rekordboxXmlExport'
+import { startAudioConvertFromFiles } from '@renderer/utils/audioConvertActions'
+import libraryUtils from '@renderer/utils/libraryUtils'
+import emitter from '@renderer/utils/mitt'
+import {
+  type ISongInfo,
+  type IMetadataAutoFillSummary,
+  type IMetadataAutoFillItemResult
+} from '../../../types/globals'
 const previousSong = previousSongAsset
 const fastBackward = fastBackwardAsset
 const play = playAsset
@@ -153,6 +170,51 @@ const exportTrack = () => {
 }
 const showInFileExplorer = () => {
   window.electron.ipcRenderer.send('show-item-in-folder', runtime.playingData.playingSong?.filePath)
+  closeMoreMenu()
+}
+
+const closeMoreMenu = () => {
+  runtime.activeMenuUUID = ''
+  moreMenuShow.value = false
+}
+
+const normalizeFilePathForCompare = (filePath?: string | null) =>
+  String(filePath || '')
+    .replace(/\//g, '\\')
+    .toLowerCase()
+
+const resolvePlaybackSourceSongListPath = (listUuid = runtime.playingData.playingSongListUUID) => {
+  return listUuid ? String(libraryUtils.findDirPathByUuid(listUuid) || '') : ''
+}
+
+const syncRemovedPlaybackSourcePaths = (removedPaths: string[], sourceListUuid: string) => {
+  const normalizedRemovedPaths = new Set(
+    removedPaths.map((item) => normalizeFilePathForCompare(item)).filter(Boolean)
+  )
+  if (normalizedRemovedPaths.size === 0) return
+
+  if (!sourceListUuid || runtime.playingData.playingSongListUUID === sourceListUuid) {
+    runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.filter(
+      (item) => !normalizedRemovedPaths.has(normalizeFilePathForCompare(item.filePath))
+    )
+    if (
+      runtime.playingData.playingSong &&
+      normalizedRemovedPaths.has(
+        normalizeFilePathForCompare(runtime.playingData.playingSong.filePath)
+      )
+    ) {
+      runtime.playingData.playingSong = null
+    }
+  }
+
+  if (!sourceListUuid) return
+  try {
+    emitter.emit('songsRemoved', {
+      listUUID: sourceListUuid,
+      paths: removedPaths
+    })
+    emitter.emit('playlistContentChanged', { uuids: [sourceListUuid] })
+  } catch {}
 }
 
 const handleAnalyzeCurrentSongFingerprint = async () => {
@@ -165,10 +227,285 @@ const handleAnalyzeCurrentSongFingerprint = async () => {
     })
     return
   }
+  closeMoreMenu()
   await analyzeFingerprintsForPaths([filePath], { origin: 'player' })
-  runtime.activeMenuUUID = ''
-  moreMenuShow.value = false
 }
+
+const showNeteaseSearchEmptyHint = async (messageKey: string) => {
+  await confirm({
+    title: t('dialog.hint'),
+    content: [t(messageKey)],
+    confirmShow: false
+  })
+}
+
+const openSongNeteaseSearch = async (query: string) => {
+  if (!openNeteaseSearch(query)) {
+    await showNeteaseSearchEmptyHint('tracks.neteaseSearchEmpty')
+  }
+}
+
+const handleNeteaseSearchTitleArtist = async () => {
+  const song = runtime.playingData.playingSong
+  if (!song) return
+  const title = normalizeNeteaseSearchText(song.title)
+  const artist = normalizeNeteaseSearchText(song.artist)
+  if (!title && !artist) {
+    await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleArtistEmpty')
+    return
+  }
+  await openSongNeteaseSearch(buildNeteaseSearchQuery(title, artist))
+  closeMoreMenu()
+}
+
+const handleNeteaseSearchTitle = async () => {
+  const song = runtime.playingData.playingSong
+  if (!song) return
+  const title = normalizeNeteaseSearchText(song.title)
+  if (!title) {
+    await showNeteaseSearchEmptyHint('tracks.neteaseSearchTitleEmpty')
+    return
+  }
+  await openSongNeteaseSearch(title)
+  closeMoreMenu()
+}
+
+const handleNeteaseSearchArtist = async () => {
+  const song = runtime.playingData.playingSong
+  if (!song) return
+  const artist = normalizeNeteaseSearchText(song.artist)
+  if (!artist) {
+    await showNeteaseSearchEmptyHint('tracks.neteaseSearchArtistEmpty')
+    return
+  }
+  await openSongNeteaseSearch(artist)
+  closeMoreMenu()
+}
+
+const handleNeteaseSearchAlbum = async () => {
+  const song = runtime.playingData.playingSong
+  if (!song) return
+  const album = normalizeNeteaseSearchText(song.album)
+  if (!album) {
+    await showNeteaseSearchEmptyHint('tracks.neteaseSearchAlbumEmpty')
+    return
+  }
+  await openSongNeteaseSearch(album)
+  closeMoreMenu()
+}
+
+const handleSimilarTracks = async () => {
+  const song = runtime.playingData.playingSong
+  if (!song) return
+  const { default: openSimilarTracksDialog } =
+    await import('@renderer/components/similarTracksDialog')
+  await openSimilarTracksDialog(song)
+  closeMoreMenu()
+}
+
+const handleAutoFillMetadata = async () => {
+  const filePath = runtime.playingData.playingSong?.filePath
+  if (!filePath) return
+  closeMoreMenu()
+  if (!(await hasEffectiveAcoustIdKey(runtime.setting))) {
+    await confirm({
+      title: t('metadata.autoFillFingerprintHintTitle'),
+      content: [
+        t('metadata.autoFillFingerprintHintMissing'),
+        t('metadata.autoFillFingerprintHintGuide')
+      ],
+      confirmShow: false
+    })
+  }
+  runtime.isProgressing = true
+  let summary: IMetadataAutoFillSummary | null = null
+  let hadError = false
+  try {
+    summary = await invokeMetadataAutoFill([filePath])
+  } catch (error: unknown) {
+    hadError = true
+    await confirm({
+      title: t('common.error'),
+      content: [error instanceof Error ? error.message : String(error || t('common.unknownError'))],
+      confirmShow: false
+    })
+  } finally {
+    runtime.isProgressing = false
+  }
+  if (!summary) {
+    if (!hadError) {
+      await confirm({
+        title: t('dialog.hint'),
+        content: [t('metadata.autoFillNoEligible')],
+        confirmShow: false
+      })
+    }
+    return
+  }
+  const { default: openAutoSummary } =
+    await import('@renderer/components/autoMetadataSummaryDialog')
+  await openAutoSummary(summary)
+  applyMetadataChangesToPlayingSong(summary.items)
+}
+
+const applyMetadataUpdateToPlayingSong = (updatedSong: ISongInfo, oldFilePath?: string) => {
+  const current = runtime.playingData.playingSong
+  if (!current) return
+  if (current.filePath !== updatedSong.filePath && current.filePath !== (oldFilePath ?? '')) return
+  runtime.playingData.playingSong = { ...current, ...updatedSong }
+  runtime.playingData.playingSong.filePath = updatedSong.filePath
+  runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.map((item) =>
+    item.filePath === (oldFilePath ?? updatedSong.filePath) ||
+    item.filePath === updatedSong.filePath
+      ? { ...item, ...updatedSong }
+      : item
+  )
+}
+
+const emitMetadataUpdates = (updates: Array<{ song: ISongInfo; oldFilePath?: string }>) => {
+  if (!updates.length) return
+  for (const update of updates) {
+    applyMetadataUpdateToPlayingSong(update.song, update.oldFilePath)
+  }
+  try {
+    emitter.emit('metadataBatchUpdated', { updates })
+  } catch {}
+}
+
+const applyMetadataChangesToPlayingSong = (items?: IMetadataAutoFillItemResult[]) => {
+  if (!items?.length) return
+  const updates: Array<{ song: ISongInfo; oldFilePath?: string }> = []
+  for (const item of items) {
+    if (item.status === 'applied' && item.updatedSongInfo) {
+      updates.push({
+        song: item.updatedSongInfo,
+        oldFilePath: item.oldFilePath
+      })
+    }
+  }
+  emitMetadataUpdates(updates)
+}
+
+const handleEditMetadata = async () => {
+  const filePath = runtime.playingData.playingSong?.filePath
+  if (!filePath) return
+  closeMoreMenu()
+  const { default: openEditMetadataDialog } =
+    await import('@renderer/components/editMetadataDialog')
+  const result = await openEditMetadataDialog({ filePath })
+  if (result && result !== 'cancel') {
+    emitMetadataUpdates([
+      {
+        song: result.updatedSongInfo,
+        oldFilePath: result.oldFilePath
+      }
+    ])
+  }
+}
+
+const handleConvertFormat = async () => {
+  const filePath = runtime.playingData.playingSong?.filePath
+  if (!filePath) return
+  closeMoreMenu()
+  try {
+    await startAudioConvertFromFiles({
+      files: [filePath],
+      allowedSourceExts: runtime.setting.audioExt,
+      songListUUID: runtime.playingData.playingSongListUUID
+    })
+  } catch {
+    // 忽略错误，由主进程统一上报
+  }
+}
+
+const handleClearTrackCache = async () => {
+  const filePath = runtime.playingData.playingSong?.filePath
+  if (!filePath) return
+  closeMoreMenu()
+  await window.electron.ipcRenderer.invoke('track:cache:clear:batch', [filePath])
+}
+
+const handleRekordboxDesktopPlaylist = async () => {
+  const song = runtime.playingData.playingSong
+  if (!song) return
+  const sourceListUuid = runtime.playingData.playingSongListUUID
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
+  closeMoreMenu()
+  runtime.isProgressing = true
+  try {
+    const songListPath = resolvePlaybackSourceSongListPath(sourceListUuid)
+    const summary = await openRekordboxDesktopPlaylistForSelectedTracks({
+      tracks: [song],
+      songListUUID: sourceListUuid,
+      ...(songListPath ? { deletePayload: { songListPath } } : {})
+    })
+    if (summary?.removedSourceFilePaths?.length) {
+      syncRemovedPlaybackSourcePaths(summary.removedSourceFilePaths, sourceListUuid)
+    }
+  } finally {
+    runtime.isProgressing = false
+  }
+}
+
+const resolvePlaybackSourceLibraryName = (): 'FilterLibrary' | 'CuratedLibrary' | '' => {
+  const listUuid = runtime.playingData.playingSongListUUID
+  if (!listUuid) return ''
+  const dirPath = String(libraryUtils.findDirPathByUuid(listUuid) || '').replace(/\\/g, '/')
+  if (dirPath === 'library/FilterLibrary' || dirPath.startsWith('library/FilterLibrary/')) {
+    return 'FilterLibrary'
+  }
+  if (dirPath === 'library/CuratedLibrary' || dirPath.startsWith('library/CuratedLibrary/')) {
+    return 'CuratedLibrary'
+  }
+  return ''
+}
+
+const handleRekordboxXmlExport = async () => {
+  const song = runtime.playingData.playingSong
+  if (!song) return
+  const sourceListUuid = runtime.playingData.playingSongListUUID
+  if (runtime.isProgressing) {
+    await confirm({
+      title: t('dialog.hint'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
+  const sourceLibraryName = resolvePlaybackSourceLibraryName()
+  if (!sourceLibraryName) {
+    await confirm({
+      title: t('rekordboxXmlExport.failureTitle'),
+      content: [t('rekordboxXmlExport.unsupportedSource')],
+      confirmShow: false
+    })
+    return
+  }
+  closeMoreMenu()
+  runtime.isProgressing = true
+  try {
+    const summary = await openRekordboxXmlExportForSelectedTracks({
+      tracks: [song],
+      sourceLibraryName,
+      songListUUID: sourceListUuid
+    })
+    if (summary && summary.mode === 'move' && summary.sourceFilePaths.length > 0) {
+      syncRemovedPlaybackSourcePaths(summary.sourceFilePaths, sourceListUuid)
+    }
+  } finally {
+    runtime.isProgressing = false
+  }
+}
+
+const neteaseSearchShow = ref(false)
+
 const exportTrackLabel = computed(() =>
   isReadOnlyPlaybackSource.value ? t('tracks.exportTracksCopyOnly') : t('tracks.exportTracks')
 )
@@ -370,6 +707,17 @@ onUnmounted(() => {
             <span>{{ exportTrackLabel }}</span>
           </div>
         </div>
+        <div
+          v-if="!isReadOnlyPlaybackSource"
+          style="padding: 5px 5px; border-bottom: 1px solid var(--border)"
+        >
+          <div class="menuButton" @click="handleRekordboxDesktopPlaylist()">
+            <span>{{ t('rekordboxDesktop.menuCreatePlaylistFromSelectedTracks') }}</span>
+          </div>
+          <div class="menuButton" @click="handleRekordboxXmlExport()">
+            <span>{{ t('rekordboxXmlExport.menuExportSelectedTracks') }}</span>
+          </div>
+        </div>
         <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
           <div class="menuButton" @click="moveToListLibrary()">
             <div>
@@ -404,14 +752,62 @@ onUnmounted(() => {
             </div>
           </div>
         </div>
-        <div style="padding: 5px 5px">
+        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
           <div class="menuButton" @click="showInFileExplorer()">
             <span>{{ t('tracks.showInFileExplorer') }}</span>
           </div>
         </div>
-        <div style="padding: 5px 5px; border-top: 1px solid var(--border)">
+        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
+          <div
+            class="menuButton hasSubmenu"
+            :class="{ submenuOpen: neteaseSearchShow }"
+            @mouseenter="neteaseSearchShow = true"
+            @mouseleave="neteaseSearchShow = false"
+          >
+            <span>{{ t('tracks.neteaseSearch') }}</span>
+            <span style="margin-left: 8px; opacity: 0.6">▸</span>
+            <div v-if="neteaseSearchShow" class="submenu">
+              <div class="menuButton" @click.stop="handleNeteaseSearchTitleArtist()">
+                <span>{{ t('tracks.neteaseSearchTitleArtist') }}</span>
+              </div>
+              <div class="menuButton" @click.stop="handleNeteaseSearchTitle()">
+                <span>{{ t('tracks.neteaseSearchTitle') }}</span>
+              </div>
+              <div class="menuButton" @click.stop="handleNeteaseSearchArtist()">
+                <span>{{ t('tracks.neteaseSearchArtist') }}</span>
+              </div>
+              <div class="menuButton" @click.stop="handleNeteaseSearchAlbum()">
+                <span>{{ t('tracks.neteaseSearchAlbum') }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
+          <div class="menuButton" @click="handleSimilarTracks()">
+            <span>{{ t('similarTracks.menu') }}</span>
+          </div>
+        </div>
+        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
+          <div class="menuButton" @click="handleAutoFillMetadata()">
+            <span>{{ t('metadata.autoFillMenu') }}</span>
+          </div>
+          <div class="menuButton" @click="handleEditMetadata()">
+            <span>{{ t('tracks.editMetadata') }}</span>
+          </div>
+        </div>
+        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
           <div class="menuButton" @click="handleAnalyzeCurrentSongFingerprint()">
             <span>{{ t('fingerprints.analyzeAndAdd') }}</span>
+          </div>
+        </div>
+        <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
+          <div class="menuButton" @click="handleConvertFormat()">
+            <span>{{ t('tracks.convertFormat') }}</span>
+          </div>
+        </div>
+        <div style="padding: 5px 5px">
+          <div class="menuButton" @click="handleClearTrackCache()">
+            <span>{{ t('tracks.clearTrackCache') }}</span>
           </div>
         </div>
       </div>
@@ -420,7 +816,7 @@ onUnmounted(() => {
 </template>
 <style lang="scss" scoped>
 .moreMenu {
-  width: 250px;
+  width: 280px;
   background-color: var(--bg-elev);
   position: absolute;
   border: 1px solid var(--border);
@@ -454,6 +850,27 @@ onUnmounted(() => {
     width: 1.5ch; /* 约等于一个数字字符宽，足够容纳 Q/E/F 等 */
     text-align: center; /* 居中，保证不同字符的视觉中心一致 */
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  }
+
+  .hasSubmenu {
+    position: relative;
+
+    &.submenuOpen {
+      background-color: var(--accent);
+      color: #ffffff;
+    }
+  }
+
+  .submenu {
+    position: absolute;
+    left: 100%;
+    bottom: 0;
+    width: 200px;
+    background-color: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 5px 5px;
+    z-index: var(--z-popover);
   }
 }
 
