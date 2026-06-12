@@ -24,6 +24,8 @@ type KeyAnalysisWorkerPoolDeps = {
   inFlight: Map<number, KeyAnalysisJob>
   activeByPath: Map<string, KeyAnalysisJob>
   preemptedJobs: Map<number, KeyAnalysisPreemptionKind>
+  retiringWorkers: Set<Worker>
+  getGlobalConcurrencyLimit: () => number
   getForegroundWorker: () => Worker | null
   setForegroundWorker: (worker: Worker | null) => void
   markExpectedWorkerTermination: (worker: Worker, reason: string) => void
@@ -63,6 +65,11 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     const idx = list.indexOf(worker)
     if (idx !== -1) list.splice(idx, 1)
   }
+
+  const getReusableWorkers = () =>
+    deps.workers.filter((worker) => !deps.retiringWorkers.has(worker))
+
+  const hasReusableIdleWorker = () => deps.idle.some((worker) => !deps.retiringWorkers.has(worker))
 
   const reenqueuePreemptedJob = (
     job: KeyAnalysisJob,
@@ -259,15 +266,22 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       }
     }
 
+    const wasRetiring = deps.retiringWorkers.has(worker)
     removeWorkerFromList(deps.workers, worker)
     removeWorkerFromList(deps.idle, worker)
+    deps.retiringWorkers.delete(worker)
 
-    const replacement = createWorker()
-    deps.workers.push(replacement)
-    if (wasForegroundWorker) {
-      deps.setForegroundWorker(replacement)
+    const isConcurrencyShrink =
+      expectedTerminationReason === 'concurrency-retire' ||
+      expectedTerminationReason === 'concurrency-downscale'
+    if (!wasRetiring && !isConcurrencyShrink) {
+      const replacement = createWorker()
+      deps.workers.push(replacement)
+      if (wasForegroundWorker) {
+        deps.setForegroundWorker(replacement)
+      }
+      refreshForegroundWorker()
     }
-    refreshForegroundWorker()
     deps.drain()
     if (
       preemptedJob &&
@@ -323,7 +337,21 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     }
     deps.inFlight.delete(jobId)
     deps.busy.delete(worker)
-    deps.idle.push(worker)
+
+    const isRetiring = deps.retiringWorkers.has(worker)
+    if (isRetiring) {
+      removeWorkerFromList(deps.workers, worker)
+      removeWorkerFromList(deps.idle, worker)
+      deps.retiringWorkers.delete(worker)
+      deps.markExpectedWorkerTermination(worker, 'concurrency-retire')
+      void worker.terminate().catch(() => {
+        deps.clearExpectedWorkerTermination(worker)
+      })
+      deps.background.emitBackgroundStatus()
+    } else {
+      deps.idle.push(worker)
+    }
+
     if (job) {
       deps.activeByPath.delete(job.normalizedPath)
       logCompletedJobErrors(worker, job, payloadResult, payloadError)
@@ -389,29 +417,36 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   }
 
   const refreshForegroundWorker = () => {
-    if (deps.workers.length <= 1) {
+    const reusableWorkers = getReusableWorkers()
+    if (reusableWorkers.length <= 1) {
       deps.setForegroundWorker(null)
       return
     }
     const current = deps.getForegroundWorker()
-    if (current && deps.workers.includes(current)) {
+    if (current && reusableWorkers.includes(current)) {
       return
     }
-    deps.setForegroundWorker(deps.workers[0] || null)
+    deps.setForegroundWorker(reusableWorkers[0] || null)
   }
 
   const getReservedWorker = (): Worker | null => {
-    if (deps.workers.length <= 1) return null
-    return deps.getForegroundWorker()
+    const reusableWorkers = getReusableWorkers()
+    if (reusableWorkers.length <= 1) return null
+    const current = deps.getForegroundWorker()
+    if (current && reusableWorkers.includes(current)) return current
+    return reusableWorkers[0] || null
   }
 
   const getIdleWorker = (allowReserved: boolean): Worker | null => {
     if (deps.idle.length === 0) return null
     const reserved = getReservedWorker()
     if (!reserved || allowReserved) {
-      return deps.idle.shift() || null
+      const idx = deps.idle.findIndex((item) => !deps.retiringWorkers.has(item))
+      if (idx === -1) return null
+      const [worker] = deps.idle.splice(idx, 1)
+      return worker || null
     }
-    const idx = deps.idle.findIndex((item) => item !== reserved)
+    const idx = deps.idle.findIndex((item) => item !== reserved && !deps.retiringWorkers.has(item))
     if (idx === -1) return null
     const [worker] = deps.idle.splice(idx, 1)
     return worker || null
@@ -419,7 +454,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
 
   const maybePreemptForJob = (incomingJob: KeyAnalysisJob) => {
     if (incomingJob.priority !== 'high') return
-    if (deps.idle.length > 0) return
+    if (hasReusableIdleWorker() && deps.busy.size < deps.getGlobalConcurrencyLimit()) return
     if (deps.workers.length <= 1) return
 
     const canPreempt = (job: KeyAnalysisJob | null | undefined) => {

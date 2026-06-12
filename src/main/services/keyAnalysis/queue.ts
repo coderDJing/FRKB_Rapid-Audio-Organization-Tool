@@ -4,21 +4,18 @@ import path from 'node:path'
 import { createKeyAnalysisBackground, type KeyAnalysisBackground } from './background'
 import { createKeyAnalysisPersistence, type KeyAnalysisPersistence } from './persistence'
 import { createKeyAnalysisWorkerPool, type KeyAnalysisWorkerPool } from './workerPool'
-import { probeAudioFile } from './audioProbe'
+import { createKeyAnalysisFailureTracker, type KeyAnalysisFailureTracker } from './failureTracker'
 import { log } from '../../log'
 import {
   BACKGROUND_MAX_INFLIGHT,
   KEY_ANALYSIS_ANALYZE_STAGE_TIMEOUT_MS,
   KEY_ANALYSIS_DECODE_STAGE_TIMEOUT_MS,
-  KEY_ANALYSIS_FAILURE_BASE_COOLDOWN_MS,
-  KEY_ANALYSIS_FAILURE_MAX_COOLDOWN_MS,
   KEY_ANALYSIS_FAILURE_RECORD_TTL_MS,
-  KEY_ANALYSIS_FAILURE_SKIP_THRESHOLD,
   KEY_ANALYSIS_JOB_TIMEOUT_MS,
   KEY_ANALYSIS_STAGE_TIMEOUT_MAX_MS,
-  KEY_ANALYSIS_TIMEOUT_PROBE_MIN_FILE_SIZE_BYTES,
   KEY_ANALYSIS_TIMEOUT_PROBE_TTL_MS,
   KEY_ANALYSIS_WAVEFORM_STAGE_TIMEOUT_MS,
+  KEY_ANALYSIS_WORKER_MAX,
   normalizePath,
   type KeyAnalysisAudioProbe,
   type DoneEntry,
@@ -45,6 +42,16 @@ type KeyAnalysisEnqueueOptions = {
   manualBatchIds?: string[]
 }
 
+/**
+ * 全局 key-analysis 队列。
+ *
+ * 核心原则：
+ * - 所有分析任务（手动批量、可见列表、播放分析、后台闲时）共享同一个队列实例。
+ * - 并发额度属于全局队列，不属于任何单个任务或 batch。
+ * - 任务只负责逻辑归属（batch id、进度、取消），不持有并发额度，不自己 drain 队列。
+ * - 10 个任务同时存在，也只能共享同一份额度（例如全局上限 2，则最多同时分析 2 首）。
+ * - 优先级决定 job 选择顺序，不改变总并发上限。
+ */
 export class KeyAnalysisQueue {
   private workers: Worker[] = []
   private idle: Worker[] = []
@@ -73,18 +80,32 @@ export class KeyAnalysisQueue {
     }
   >()
   private jobTimeouts = new Map<number, ReturnType<typeof setTimeout>>()
+  private retiringWorkers = new Set<Worker>()
   private nextJobId = 0
   private events: EventEmitter
   private persistence: KeyAnalysisPersistence
   private background: KeyAnalysisBackground
   private workerPool: KeyAnalysisWorkerPool
+  private failureTracker: KeyAnalysisFailureTracker
+  private globalConcurrencyLimit = 1
 
+  /**
+   * 创建全局 key-analysis 队列。
+   * @param workerCount 全局 worker 数量上限（所有任务共享，不按 batch 变化）
+   * @param events 全局事件发射器
+   */
   constructor(workerCount: number, events: EventEmitter) {
-    const count = Math.max(1, workerCount)
+    const count = Math.max(1, Math.min(workerCount, KEY_ANALYSIS_WORKER_MAX))
+    this.globalConcurrencyLimit = count
     this.events = events
     this.persistence = createKeyAnalysisPersistence({
       doneByPath: this.doneByPath,
       events
+    })
+    this.failureTracker = createKeyAnalysisFailureTracker({
+      failedByPath: this.failedByPath,
+      probeCache: this.probeCache,
+      failureProbeInFlight: this.failureProbeInFlight
     })
     this.background = createKeyAnalysisBackground({
       events,
@@ -106,6 +127,8 @@ export class KeyAnalysisQueue {
       inFlight: this.inFlight,
       activeByPath: this.activeByPath,
       preemptedJobs: this.preemptedJobs,
+      retiringWorkers: this.retiringWorkers,
+      getGlobalConcurrencyLimit: () => this.globalConcurrencyLimit,
       getForegroundWorker: () => this.foregroundWorker,
       setForegroundWorker: (worker) => {
         this.foregroundWorker = worker
@@ -121,8 +144,9 @@ export class KeyAnalysisQueue {
       background: this.background,
       enqueue: (filePath, priority, options) => this.enqueue(filePath, priority, options),
       onJobProgress: (worker, job, progress) => this.handleJobProgress(worker, job, progress),
-      onJobFailure: (job, reason, detail) => this.recordJobFailure(job, reason, detail),
-      onJobSuccess: (job) => this.clearJobFailure(job),
+      onJobFailure: (job, reason, detail) =>
+        this.failureTracker.recordJobFailure(job, reason, detail),
+      onJobSuccess: (job) => this.failureTracker.clearJobFailure(job),
       drain: () => this.drain(),
       events: this.events
     })
@@ -138,6 +162,88 @@ export class KeyAnalysisQueue {
 
   isForegroundBusy(): boolean {
     return this.hasForegroundWork()
+  }
+
+  getWorkerCount(): number {
+    return this.workers.length
+  }
+
+  /**
+   * 运行时调整全局并发上限。
+   * 扩容：立即创建新 worker 并加入 idle 池（含补充即将退出的 retiring worker 名额）。
+   * 缩容：标记多余 worker 为 retiring，等当前 job 完成后退出，不主动 terminate in-flight job。
+   * retiring worker 仍留在 this.workers 中直到 job 完成，计算有效数量时需排除。
+   */
+  setGlobalConcurrency(targetCount: number) {
+    const clamped = Math.max(1, Math.min(targetCount, KEY_ANALYSIS_WORKER_MAX))
+    this.globalConcurrencyLimit = clamped
+    const current = this.workers.length
+    const retiringCount = this.retiringWorkers.size
+    const effectiveCurrent = current - retiringCount
+    if (clamped === effectiveCurrent) return
+
+    if (clamped > effectiveCurrent) {
+      let toAdd = clamped - effectiveCurrent
+      for (const worker of Array.from(this.retiringWorkers)) {
+        if (toAdd <= 0) break
+        if (!this.workers.includes(worker)) {
+          this.retiringWorkers.delete(worker)
+          continue
+        }
+        this.retiringWorkers.delete(worker)
+        toAdd -= 1
+      }
+      for (let i = 0; i < toAdd; i += 1) {
+        this.workers.push(this.workerPool.createWorker())
+      }
+      this.workerPool.refreshForegroundWorker()
+      this.drain()
+      return
+    }
+
+    // 缩容：标记多余 worker 为 retiring，等当前 job 完成后自然退出
+    const toRemove = effectiveCurrent - clamped
+    let removed = 0
+    for (let i = this.workers.length - 1; i >= 0 && removed < toRemove; i -= 1) {
+      const worker = this.workers[i]
+      if (!worker) continue
+      if (this.retiringWorkers.has(worker)) continue
+      if (this.busy.has(worker)) {
+        // worker 正在执行 job，标记为 retiring，job 完成后不再复用
+        this.retiringWorkers.add(worker)
+        removed += 1
+      } else {
+        // worker 空闲，直接移除
+        this.workers.splice(i, 1)
+        const idleIdx = this.idle.indexOf(worker)
+        if (idleIdx !== -1) this.idle.splice(idleIdx, 1)
+        this.markExpectedWorkerTermination(worker, 'concurrency-downscale')
+        void worker.terminate().catch(() => {
+          this.clearExpectedWorkerTermination(worker)
+          this.retiringWorkers.delete(worker)
+        })
+        removed += 1
+      }
+    }
+    this.workerPool.refreshForegroundWorker()
+    this.drain()
+  }
+
+  private releaseWorkerAfterSkippedJob(worker: Worker) {
+    if (!this.retiringWorkers.has(worker)) {
+      this.idle.push(worker)
+      return
+    }
+    this.retiringWorkers.delete(worker)
+    const workerIdx = this.workers.indexOf(worker)
+    if (workerIdx !== -1) this.workers.splice(workerIdx, 1)
+    const idleIdx = this.idle.indexOf(worker)
+    if (idleIdx !== -1) this.idle.splice(idleIdx, 1)
+    this.markExpectedWorkerTermination(worker, 'concurrency-retire')
+    void worker.terminate().catch(() => {
+      this.clearExpectedWorkerTermination(worker)
+    })
+    this.workerPool.refreshForegroundWorker()
   }
 
   startBackgroundSweep() {
@@ -541,242 +647,6 @@ export class KeyAnalysisQueue {
     return this.workerPool.countBackgroundInFlight()
   }
 
-  private cleanupStaleFailures() {
-    if (this.failedByPath.size === 0) return
-    const now = Date.now()
-    for (const [normalizedPath, record] of this.failedByPath.entries()) {
-      if (now - record.lastFailedAt <= KEY_ANALYSIS_FAILURE_RECORD_TTL_MS) continue
-      this.failedByPath.delete(normalizedPath)
-    }
-  }
-
-  private getJobFileVersion(job: KeyAnalysisJob): { size: number; mtimeMs: number } {
-    const size = Number.isFinite(job.fileSize) ? Number(job.fileSize) : -1
-    const mtimeMs = Number.isFinite(job.fileMtimeMs) ? Number(job.fileMtimeMs) : -1
-    return { size, mtimeMs }
-  }
-
-  private isSameFileVersion(
-    left: { size: number; mtimeMs: number },
-    right: { size: number; mtimeMs: number }
-  ): boolean {
-    return left.size === right.size && Math.abs(left.mtimeMs - right.mtimeMs) < 1
-  }
-
-  private computeFailureCooldownMs(failCount: number): number {
-    if (failCount < KEY_ANALYSIS_FAILURE_SKIP_THRESHOLD) return 0
-    const exp = failCount - KEY_ANALYSIS_FAILURE_SKIP_THRESHOLD
-    return Math.min(
-      KEY_ANALYSIS_FAILURE_BASE_COOLDOWN_MS * 2 ** exp,
-      KEY_ANALYSIS_FAILURE_MAX_COOLDOWN_MS
-    )
-  }
-
-  private inferFailureCause(job: KeyAnalysisJob, reason: KeyAnalysisFailureReason): string {
-    const stage = job.trace?.lastStage
-    if (reason === 'timeout') {
-      if (stage === 'decode-start') return 'decode-stage-timeout'
-      if (stage === 'analyze-start') {
-        const decodeMs = Number(job.trace?.decodeMs || 0)
-        if (decodeMs >= KEY_ANALYSIS_JOB_TIMEOUT_MS * 0.75) {
-          return 'decode-consumed-time-budget'
-        }
-        return 'analyze-stage-timeout'
-      }
-      if (stage === 'waveform-start') return 'waveform-stage-timeout'
-      return 'job-timeout'
-    }
-    if (reason === 'worker-exit') return 'worker-process-exit'
-    return 'worker-runtime-error'
-  }
-
-  private scheduleFailureProbe(job: KeyAnalysisJob, reason: KeyAnalysisFailureReason) {
-    const normalizedPath = job.normalizedPath
-    if (!normalizedPath || this.failureProbeInFlight.has(normalizedPath)) return
-    this.failureProbeInFlight.add(normalizedPath)
-    void (async () => {
-      try {
-        const probe = await probeAudioFile(job.filePath)
-        const { size, mtimeMs } = this.getJobFileVersion(job)
-        this.probeCache.set(normalizedPath, { size, mtimeMs, probe, probedAt: Date.now() })
-        job.probe = probe
-        const current = this.failedByPath.get(normalizedPath)
-        if (current) {
-          current.lastProbe = probe
-        }
-        log.error('[闲时分析] 失败文件诊断', {
-          filePath: job.filePath,
-          fileName: path.basename(job.filePath),
-          source: job.source,
-          reason,
-          stage: job.trace?.lastStage || 'unknown',
-          decodeBackend: job.trace?.decodeBackend || 'unknown',
-          inferredCause: current?.inferredCause || this.inferFailureCause(job, reason),
-          failCount: current?.failCount,
-          decodeMs: job.trace?.decodeMs,
-          analyzeMs: job.trace?.analyzeMs,
-          waveformMs: job.trace?.waveformMs,
-          partialKeyPersisted: job.trace?.partialKeyPersisted === true,
-          partialBpmPersisted: job.trace?.partialBpmPersisted === true,
-          ...probe
-        })
-      } catch (error) {
-        log.error('[闲时分析] 失败文件诊断异常', {
-          filePath: job.filePath,
-          error: error instanceof Error ? error.message : String(error)
-        })
-      } finally {
-        this.failureProbeInFlight.delete(normalizedPath)
-      }
-    })()
-  }
-
-  private recordJobFailure(job: KeyAnalysisJob, reason: KeyAnalysisFailureReason, detail?: string) {
-    const normalizedPath = job.normalizedPath
-    const now = Date.now()
-    const { size, mtimeMs } = this.getJobFileVersion(job)
-    const existing = this.failedByPath.get(normalizedPath)
-    const sameFileVersion = existing && this.isSameFileVersion(existing, { size, mtimeMs })
-    const failCount = sameFileVersion ? existing.failCount + 1 : 1
-    const cooldownMs = this.computeFailureCooldownMs(failCount)
-    const nextRetryAt = now + cooldownMs
-    const inferredCause = this.inferFailureCause(job, reason)
-    const record: KeyAnalysisFailureRecord = {
-      size,
-      mtimeMs,
-      failCount,
-      firstFailedAt: sameFileVersion ? existing.firstFailedAt : now,
-      lastFailedAt: now,
-      nextRetryAt,
-      lastReason: reason,
-      lastStage: job.trace?.lastStage,
-      lastDetail: detail || job.trace?.detail,
-      inferredCause,
-      lastProbe: existing?.lastProbe
-    }
-    this.failedByPath.set(normalizedPath, record)
-
-    if (cooldownMs === 0) {
-      log.error('[闲时分析] 任务失败（未进入冷却阈值）', {
-        filePath: job.filePath,
-        fileName: path.basename(job.filePath),
-        source: job.source,
-        reason,
-        inferredCause,
-        stage: job.trace?.lastStage || 'unknown',
-        decodeBackend: job.trace?.decodeBackend || 'unknown',
-        failCount,
-        partialKeyPersisted: job.trace?.partialKeyPersisted === true,
-        partialBpmPersisted: job.trace?.partialBpmPersisted === true,
-        detail: record.lastDetail
-      })
-    }
-
-    if (cooldownMs > 0) {
-      log.error('[闲时分析] 任务失败进入冷却期，后续将暂时跳过', {
-        filePath: job.filePath,
-        fileName: path.basename(job.filePath),
-        source: job.source,
-        reason,
-        inferredCause,
-        stage: job.trace?.lastStage || 'unknown',
-        decodeBackend: job.trace?.decodeBackend || 'unknown',
-        failCount,
-        cooldownMs,
-        nextRetryAt: new Date(nextRetryAt).toISOString(),
-        partialKeyPersisted: job.trace?.partialKeyPersisted === true,
-        partialBpmPersisted: job.trace?.partialBpmPersisted === true,
-        detail: record.lastDetail
-      })
-    }
-    this.scheduleFailureProbe(job, reason)
-  }
-
-  private clearJobFailure(job: KeyAnalysisJob) {
-    if (!this.failedByPath.has(job.normalizedPath)) return
-    this.failedByPath.delete(job.normalizedPath)
-  }
-
-  private getFailureCooldownRecord(job: KeyAnalysisJob): KeyAnalysisFailureRecord | null {
-    if (job.priority === 'high') return null
-    if (job.category === 'manual-batch') return null
-    const record = this.failedByPath.get(job.normalizedPath)
-    if (!record) return null
-    const sameFileVersion = this.isSameFileVersion(record, this.getJobFileVersion(job))
-    if (!sameFileVersion) {
-      this.failedByPath.delete(job.normalizedPath)
-      return null
-    }
-    if (record.nextRetryAt <= Date.now()) return null
-    return record
-  }
-
-  private cleanupStaleProbeCache() {
-    if (this.probeCache.size === 0) return
-    const now = Date.now()
-    for (const [normalizedPath, entry] of this.probeCache.entries()) {
-      if (now - entry.probedAt <= KEY_ANALYSIS_TIMEOUT_PROBE_TTL_MS) continue
-      this.probeCache.delete(normalizedPath)
-    }
-  }
-
-  private getProbeForJob(job: KeyAnalysisJob): KeyAnalysisAudioProbe | undefined {
-    const normalizedPath = job.normalizedPath
-    if (!normalizedPath) return undefined
-    const fileVersion = this.getJobFileVersion(job)
-    const cache = this.probeCache.get(normalizedPath)
-    if (cache && this.isSameFileVersion(cache, fileVersion)) {
-      if (Date.now() - cache.probedAt <= KEY_ANALYSIS_TIMEOUT_PROBE_TTL_MS) {
-        return cache.probe
-      }
-      this.probeCache.delete(normalizedPath)
-    }
-
-    const failed = this.failedByPath.get(normalizedPath)
-    if (
-      failed &&
-      this.isSameFileVersion(failed, fileVersion) &&
-      failed.lastProbe &&
-      Date.now() - failed.lastFailedAt <= KEY_ANALYSIS_TIMEOUT_PROBE_TTL_MS
-    ) {
-      this.probeCache.set(normalizedPath, {
-        size: failed.size,
-        mtimeMs: failed.mtimeMs,
-        probe: failed.lastProbe,
-        probedAt: failed.lastFailedAt
-      })
-      return failed.lastProbe
-    }
-    return undefined
-  }
-
-  private shouldProbeForTimeoutBudget(job: KeyAnalysisJob): boolean {
-    if (job.probe) return false
-    if (this.getProbeForJob(job)) return false
-    const hasFailureRecord = this.failedByPath.has(job.normalizedPath)
-    if (hasFailureRecord) return true
-    const { size } = this.getJobFileVersion(job)
-    return size >= KEY_ANALYSIS_TIMEOUT_PROBE_MIN_FILE_SIZE_BYTES
-  }
-
-  private async ensureJobProbe(job: KeyAnalysisJob) {
-    const reusedProbe = this.getProbeForJob(job)
-    if (reusedProbe) {
-      job.probe = reusedProbe
-      return
-    }
-    if (!this.shouldProbeForTimeoutBudget(job)) return
-    const probe = await probeAudioFile(job.filePath)
-    job.probe = probe
-    const { size, mtimeMs } = this.getJobFileVersion(job)
-    this.probeCache.set(job.normalizedPath, {
-      size,
-      mtimeMs,
-      probe,
-      probedAt: Date.now()
-    })
-  }
-
   private clampStageTimeoutMs(timeoutMs: number): number {
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return KEY_ANALYSIS_JOB_TIMEOUT_MS
     return Math.max(1000, Math.min(Math.round(timeoutMs), KEY_ANALYSIS_STAGE_TIMEOUT_MAX_MS))
@@ -875,7 +745,7 @@ export class KeyAnalysisQueue {
         ...(activeJob.trace || {}),
         timedOutAt: Date.now()
       }
-      this.recordJobFailure(activeJob, 'timeout')
+      this.failureTracker.recordJobFailure(activeJob, 'timeout')
       const trace = activeJob.trace
       const stageStuckMs =
         typeof trace?.lastUpdateAt === 'number' ? Date.now() - trace.lastUpdateAt : undefined
@@ -924,11 +794,19 @@ export class KeyAnalysisQueue {
     }
   }
 
+  /**
+   * 从全局待处理队列中取出 job 并分配给 idle worker。
+   * 并发控制逻辑：
+   * - worker 数量上限由 setGlobalConcurrency 动态调整（全局共享，不按 batch 变化）
+   * - 后台分析受 BACKGROUND_MAX_INFLIGHT 限制，不会抢满全部 worker
+   * - 优先级决定 job 选择顺序，不改变总并发上限
+   */
   private drain() {
-    this.cleanupStaleFailures()
-    this.cleanupStaleProbeCache()
+    this.failureTracker.cleanupStaleFailures()
+    this.failureTracker.cleanupStaleProbeCache()
     this.cleanupStaleJobTimeouts()
     while (this.idle.length > 0) {
+      if (this.busy.size >= this.globalConcurrencyLimit) break
       const hasForegroundPending =
         this.pendingHigh.length > 0 || this.pendingMedium.length > 0 || this.pendingLow.length > 0
       const allowAggressiveBackgroundConcurrency =
@@ -966,11 +844,11 @@ export class KeyAnalysisQueue {
           this.inFlight.delete(job.jobId)
           this.busy.delete(worker)
           this.activeByPath.delete(job.normalizedPath)
-          this.idle.push(worker)
+          this.releaseWorkerAfterSkippedJob(worker)
           this.drain()
           return
         }
-        const coolingRecord = this.getFailureCooldownRecord(job)
+        const coolingRecord = this.failureTracker.getFailureCooldownRecord(job)
         if (coolingRecord) {
           this.events.emit('analysis-job-skipped', {
             filePath: job.filePath,
@@ -979,7 +857,7 @@ export class KeyAnalysisQueue {
           this.inFlight.delete(job.jobId)
           this.busy.delete(worker)
           this.activeByPath.delete(job.normalizedPath)
-          this.idle.push(worker)
+          this.releaseWorkerAfterSkippedJob(worker)
           this.drain()
           return
         }
@@ -989,7 +867,7 @@ export class KeyAnalysisQueue {
           this.background.emitBackgroundStatus()
         }
         try {
-          await this.ensureJobProbe(job)
+          await this.failureTracker.ensureJobProbe(job)
         } catch (error) {
           log.error('[闲时分析] 音频探测失败，回退默认预算', {
             jobId: job.jobId,

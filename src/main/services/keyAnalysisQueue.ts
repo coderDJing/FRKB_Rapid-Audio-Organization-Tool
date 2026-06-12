@@ -5,11 +5,88 @@ import type {
   KeyAnalysisPriority,
   KeyAnalysisQueueCategory
 } from './keyAnalysis/types'
-import { normalizePath } from './keyAnalysis/types'
+import { KEY_ANALYSIS_WORKER_MAX, normalizePath } from './keyAnalysis/types'
 import * as LibraryCacheDb from '../libraryCacheDb'
 
-// 分析是 CPU 重活，保持单路执行，给播放解码留调度余量。
-const workerCount = 1
+// 全局并发策略：所有分析任务共享同一个全局队列和并发额度。
+// 并发上限属于全局队列，不属于任何单个任务或 batch。
+// 即使存在多个手动批量任务，也必须共享同一份额度，不能按任务线性放大。
+const KEY_ANALYSIS_WORKER_MIN = 1
+
+// 提升到 2 路并发所需的冷却时间（最后一次 transport 操作后需等待的毫秒数）
+const CONCURRENCY_BOOST_COOLDOWN_MS = 5000
+
+// 播放状态跟踪
+let isAnyDeckPlaying = false
+let lastTransportActivityAt = 0
+let concurrencyCooldownTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * 解析全局 key-analysis worker 数量。
+ * 提升到 2 的条件（全部满足）：
+ * - 队列里有手动批量任务，且待分析数量大于 1
+ * - 当前没有播放中的 deck
+ * - 最近 5 秒内没有 preparePlayhead / seek / 切歌操作
+ * 降回 1 的条件（任意一个）：
+ * - 播放开始
+ * - 用户频繁切歌、seek、拖动横向浏览
+ * - 队列里只有后台闲时分析
+ */
+function resolveKeyAnalysisWorkerCount(): number {
+  if (isAnyDeckPlaying) return KEY_ANALYSIS_WORKER_MIN
+  if (Date.now() - lastTransportActivityAt < CONCURRENCY_BOOST_COOLDOWN_MS) {
+    return KEY_ANALYSIS_WORKER_MIN
+  }
+  if (manualBatches.size > 0) {
+    const hasPendingWork = Array.from(manualBatches.values()).some(
+      (batch) => batch.pendingByPath.size > 1
+    )
+    if (hasPendingWork) return KEY_ANALYSIS_WORKER_MAX
+  }
+  return KEY_ANALYSIS_WORKER_MIN
+}
+
+/**
+ * 通知队列播放状态变化，触发并发策略重新评估。
+ */
+export function notifyPlaybackStateChange(playing: boolean) {
+  if (isAnyDeckPlaying === playing) return
+  isAnyDeckPlaying = playing
+  reevaluateConcurrency()
+  if (!playing) {
+    scheduleCooldownReevaluation()
+  }
+}
+
+/**
+ * 通知队列 transport 操作发生（preparePlayhead / seek / 切歌），触发并发降级。
+ */
+export function notifyTransportActivity() {
+  lastTransportActivityAt = Date.now()
+  reevaluateConcurrency()
+  scheduleCooldownReevaluation()
+}
+
+function reevaluateConcurrency() {
+  if (!queue) return
+  const target = resolveKeyAnalysisWorkerCount()
+  queue.setGlobalConcurrency(target)
+}
+
+function scheduleCooldownReevaluation() {
+  if (concurrencyCooldownTimer) {
+    clearTimeout(concurrencyCooldownTimer)
+    concurrencyCooldownTimer = null
+  }
+  if (isAnyDeckPlaying) return
+  const remaining = CONCURRENCY_BOOST_COOLDOWN_MS - (Date.now() - lastTransportActivityAt)
+  if (remaining <= 0) return
+  concurrencyCooldownTimer = setTimeout(() => {
+    concurrencyCooldownTimer = null
+    reevaluateConcurrency()
+  }, remaining + 10)
+}
+
 export const keyAnalysisEvents = new EventEmitter()
 let queue: KeyAnalysisQueue | null = null
 let nextManualBatchSeq = 0
@@ -26,9 +103,14 @@ type ManualKeyAnalysisBatch = {
 
 const manualBatches = new Map<string, ManualKeyAnalysisBatch>()
 
+/**
+ * 获取全局单例队列实例。
+ * 禁止任何入口直接 new KeyAnalysisQueue(...)，所有分析必须通过这个单例。
+ * 任务只负责逻辑归属（batch id、进度、取消），不持有并发额度，不自己 drain 队列。
+ */
 const getQueue = () => {
   if (!queue) {
-    queue = new KeyAnalysisQueue(workerCount, keyAnalysisEvents)
+    queue = new KeyAnalysisQueue(resolveKeyAnalysisWorkerCount(), keyAnalysisEvents)
   }
   return queue
 }
@@ -110,6 +192,7 @@ const finishManualBatch = (batch: ManualKeyAnalysisBatch, canceled = false) => {
       })
     }
   }
+  reevaluateConcurrency()
 }
 
 const completeManualBatchFile = (filePath: string, manualBatchIds?: string[]) => {
@@ -117,16 +200,21 @@ const completeManualBatchFile = (filePath: string, manualBatchIds?: string[]) =>
   if (!normalizedPath) return
   const batchIdSet =
     Array.isArray(manualBatchIds) && manualBatchIds.length > 0 ? new Set(manualBatchIds) : null
+  let changed = false
   for (const batch of manualBatches.values()) {
     if (batchIdSet && !batchIdSet.has(batch.id)) continue
     if (!batch.pendingByPath.has(normalizedPath)) continue
     batch.pendingByPath.delete(normalizedPath)
     batch.completed = Math.min(batch.total, batch.completed + 1)
+    changed = true
     if (batch.pendingByPath.size === 0) {
       finishManualBatch(batch)
     } else {
       emitManualBatchProgress(batch)
     }
+  }
+  if (changed) {
+    reevaluateConcurrency()
   }
 }
 
@@ -191,6 +279,8 @@ export function enqueueManualKeyAnalysisBatch(
     category: 'manual-batch',
     manualBatchId: batchId
   })
+  reevaluateConcurrency()
+  scheduleCooldownReevaluation()
   return { batchId, queued: uniqueFilePaths.length }
 }
 

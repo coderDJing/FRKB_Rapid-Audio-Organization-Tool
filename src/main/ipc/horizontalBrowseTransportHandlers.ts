@@ -18,6 +18,7 @@ import mainWindow from '../window/mainWindow'
 import { createRecordingOutputPath } from '../recordingLibraryService'
 import { log } from '../log'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
+import { notifyPlaybackStateChange, notifyTransportActivity } from '../services/keyAnalysisQueue'
 
 const SLOW_TRANSPORT_OPERATION_LOG_THRESHOLD_MS = 500
 
@@ -128,6 +129,7 @@ export function registerHorizontalBrowseTransportHandlers() {
   ipcMain.handle('horizontal-browse-transport:reset', async () => {
     await horizontalBrowseTransportBridge.reset()
     const snapshot = horizontalBrowseTransportBridge.snapshot()
+    notifyPlaybackStateChange(false)
     broadcastHorizontalBrowseTransportSnapshot(snapshot)
     return snapshot
   })
@@ -151,6 +153,10 @@ export function registerHorizontalBrowseTransportHandlers() {
         after: buildDeckDiagnosticSnapshot(snapshot, deck)
       })
       flushTransportDecodeDiagnostics()
+      notifyTransportActivity()
+      notifyPlaybackStateChange(
+        [snapshot.top, snapshot.bottom].some((d) => d.playingAudible || d.playing)
+      )
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }
@@ -178,6 +184,10 @@ export function registerHorizontalBrowseTransportHandlers() {
         }
       })
       flushTransportDecodeDiagnostics()
+      notifyTransportActivity()
+      notifyPlaybackStateChange(
+        [snapshot.top, snapshot.bottom].some((d) => d.playingAudible || d.playing)
+      )
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }
@@ -303,6 +313,9 @@ export function registerHorizontalBrowseTransportHandlers() {
     'horizontal-browse-transport:set-playing',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number, playing: boolean) => {
       const snapshot = horizontalBrowseTransportBridge.setPlaying(deck, nowMs, playing)
+      notifyPlaybackStateChange(
+        [snapshot.top, snapshot.bottom].some((d) => d.playingAudible || d.playing)
+      )
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }
@@ -332,6 +345,7 @@ export function registerHorizontalBrowseTransportHandlers() {
         )
       })
       flushTransportDecodeDiagnostics()
+      notifyTransportActivity()
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }
@@ -341,6 +355,7 @@ export function registerHorizontalBrowseTransportHandlers() {
     'horizontal-browse-transport:seek',
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number, currentSec: number) => {
       const snapshot = horizontalBrowseTransportBridge.seek(deck, nowMs, currentSec)
+      notifyTransportActivity()
       broadcastHorizontalBrowseTransportSnapshot(snapshot)
       return snapshot
     }
@@ -363,6 +378,7 @@ export function registerHorizontalBrowseTransportHandlers() {
         currentSec,
         rate
       )
+      notifyTransportActivity()
       return snapshot
     }
   )
