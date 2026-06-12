@@ -378,6 +378,23 @@ jobs:
           name: rekordbox-runtime-darwin-x64
           path: dist/rekordbox-runtime-darwin-x64.tar.gz
 
+      - name: Fetch Intel FFmpeg static libs
+        run: |
+          set -euo pipefail
+          brew update
+          brew install ffmpeg
+          mkdir -p dist/ffmpeg-x64-dev/lib dist/ffmpeg-x64-dev/include
+          for lib in libavcodec libavformat libavutil libswresample; do
+            cp -L "$(brew --prefix)/lib/${lib}.a" dist/ffmpeg-x64-dev/lib/
+            cp -RL "$(brew --prefix)/include/${lib}" dist/ffmpeg-x64-dev/include/
+          done
+
+      - name: Upload Intel FFmpeg dev artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-x64-dev
+          path: dist/ffmpeg-x64-dev
+
   build_mac:
     if: >-
       ${{
@@ -462,6 +479,12 @@ jobs:
 
       - name: Ensure Rekordbox Desktop runtime (macOS arm64)
         run: pnpm run rekordbox:runtime:ensure
+
+      - name: Download Intel FFmpeg dev artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: ffmpeg-x64-dev
+          path: artifacts/ffmpeg-x64-dev
 
       - name: Download Rekordbox runtime artifact (macOS x64)
         uses: actions/download-artifact@v8
@@ -649,47 +672,7 @@ jobs:
           ARM64_BREW_PREFIX="$(brew --prefix)"
           copy_ffmpeg_dev_files "$ARM64_BREW_PREFIX" "rust_package/native/ffmpeg/darwin-arm64"
 
-          echo "Fetching Intel ffmpeg bottle URL from Homebrew API..."
-          X64_BOTTLE_INFO="$(python3 - <<'PY'
-          import json, urllib.request
-
-          with urllib.request.urlopen("https://formulae.brew.sh/api/formula/ffmpeg.json", timeout=30) as response:
-              files = json.load(response)["bottle"]["stable"]["files"]
-
-          for tag in ("sonoma", "sequoia", "ventura", "monterey"):
-              if tag in files:
-                  print(f"{tag}|{files[tag]['url']}|{files[tag]['sha256']}")
-                  break
-          else:
-              raise SystemExit(f"No Intel macOS ffmpeg bottle tag found. Available tags: {', '.join(files)}")
-          PY
-          )"
-          X64_BOTTLE_TAG="$(echo "$X64_BOTTLE_INFO" | cut -d'|' -f1)"
-          X64_BOTTLE_URL="$(echo "$X64_BOTTLE_INFO" | cut -d'|' -f2)"
-          X64_BOTTLE_SHA256="$(echo "$X64_BOTTLE_INFO" | cut -d'|' -f3)"
-          echo "Using Intel Homebrew bottle tag: ${X64_BOTTLE_TAG}"
-          echo "Bottle URL: ${X64_BOTTLE_URL}"
-
-          X64_BOTTLE_ROOT="tmp/homebrew-ffmpeg-x64"
-          rm -rf "$X64_BOTTLE_ROOT"
-          mkdir -p "$X64_BOTTLE_ROOT"
-          X64_BOTTLE_PATH="$X64_BOTTLE_ROOT/ffmpeg-x64.tar.gz"
-          echo "Downloading Intel ffmpeg bottle..."
-          curl --fail --location --retry 3 --retry-all-errors --retry-delay 2 --connect-timeout 30 --max-time 600 "$X64_BOTTLE_URL" -o "$X64_BOTTLE_PATH"
-          echo "Verifying sha256..."
-          echo "$X64_BOTTLE_SHA256  $X64_BOTTLE_PATH" | shasum -a 256 -c -
-          tar -xzf "$X64_BOTTLE_PATH" -C "$X64_BOTTLE_ROOT"
-
-          X64_FFMPEG_PREFIX="$(
-            find "$X64_BOTTLE_ROOT" -type f -path '*/include/libavcodec/avcodec.h' -print -quit |
-              sed 's#/include/libavcodec/avcodec\.h$##'
-          )"
-          if [ -z "$X64_FFMPEG_PREFIX" ]; then
-            echo "ERROR: failed to locate extracted Intel ffmpeg dev files"
-            find "$X64_BOTTLE_ROOT" -maxdepth 4 -type f | head -n 80 || true
-            exit 1
-          fi
-          copy_ffmpeg_dev_files "$X64_FFMPEG_PREFIX" "rust_package/native/ffmpeg/darwin-x64"
+          copy_ffmpeg_dev_files "artifacts/ffmpeg-x64-dev" "rust_package/native/ffmpeg/darwin-x64"
 
           if ! lipo -archs rust_package/native/ffmpeg/darwin-x64/lib/libavcodec.a | grep -q "x86_64"; then
             echo "ERROR: Intel FFmpeg static lib is not x86_64"
