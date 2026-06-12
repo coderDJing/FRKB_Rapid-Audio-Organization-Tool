@@ -45,6 +45,7 @@ FRKB_FILTER_SEALED_INTAKE_ROOT = FRKB_FILTER_LIBRARY_ROOT / "sealed-intake"
 FRKB_BENCHMARK_CURRENT_AUDIO_ROOT = ";".join(
     str(item)
     for item in (
+        FRKB_FILTER_NEW_ROOT,
         FRKB_FILTER_SAMPLE_ROOT,
         FRKB_FILTER_FAILURE_ROOT,
     )

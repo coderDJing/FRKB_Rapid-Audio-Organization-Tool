@@ -43,7 +43,9 @@ extraResources:
       - rkb_beatgrid_candidate_lab.py
       - rkb_constant_grid_dp_cache.py
       - rkb_constant_grid_dp_cli.py
+      - rkb_constant_grid_dp_high_structural.py
       - rkb_constant_grid_dp_octave.py
+      - rkb_constant_grid_dp_phase_path.py
       - rkb_constant_grid_dp_selection.py
       - rkb_constant_grid_dp_solver.py
       - rkb_locked_phase_ranker.py

@@ -12,6 +12,11 @@ from rkb_beatgrid_candidate_lab import (
     _score_leading_edge_grid,
     _sigmoid,
 )
+from rkb_constant_grid_dp_high_structural import (
+    choose_rank1_high_structural_score_candidate,
+    rank1_high_structural_score_diagnostic_features,
+)
+from rkb_constant_grid_dp_phase_path import _score_phase_path_grid, _weighted_median
 from rkb_constant_grid_dp_selection import (
     PHASE_EVIDENCE_LEGACY_WEAKNESS_THRESHOLD,
     PHASE_EVIDENCE_SWITCH_THRESHOLD,
@@ -44,8 +49,7 @@ DEFAULT_TEMPO_STEP_BPM = 0.5
 DEFAULT_TEMPO_LIMIT = 24
 DEFAULT_PHASE_STEP_MS = 2.0
 DEFAULT_MAX_CANDIDATES = 640
-SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1"
-PHASE_PATH_TARGET_OFFSETS_MS = (8.0, 10.0, 12.0)
+SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-high-structural-score-v1-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1"
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -85,22 +89,6 @@ def _sample_values_at_rate(values: np.ndarray, times_sec: np.ndarray, frame_rate
     fractions = valid_positions - left_indices
     right_indices = np.minimum(left_indices + 1, values.size - 1)
     return values[left_indices] * (1.0 - fractions) + values[right_indices] * fractions
-
-
-def _weighted_median(values: np.ndarray, weights: np.ndarray) -> float | None:
-    if values.size == 0 or values.size != weights.size:
-        return None
-    total_weight = float(np.sum(weights))
-    if not math.isfinite(total_weight) or total_weight <= 0.0:
-        return None
-    order = np.argsort(values)
-    sorted_values = values[order]
-    sorted_weights = weights[order]
-    cumulative = np.cumsum(sorted_weights)
-    index = int(np.searchsorted(cumulative, total_weight * 0.5, side="left"))
-    index = max(0, min(index, sorted_values.size - 1))
-    value = float(sorted_values[index])
-    return value if math.isfinite(value) else None
 
 
 def _score_intro_leading_edge_grid(
@@ -199,194 +187,6 @@ def _score_intro_leading_edge_grid(
         "introLeadingEdgePeakOffsetMadMs": round(float(mad), 3),
         "introLeadingEdgeSupport": int(peak_values.size),
     }
-
-
-def _score_phase_path_for_target(
-    envelope: np.ndarray,
-    *,
-    envelope_rate: int,
-    bpm: float,
-    phase_ms: float,
-    duration_sec: float,
-    target_peak_offset_ms: float,
-    beat_limit: int = 64,
-    block_size: int = 16,
-) -> dict[str, float | int]:
-    if envelope.size == 0 or envelope_rate <= 0 or bpm <= 0.0 or duration_sec <= 0.0:
-        return {
-            "phasePathScore": 0.0,
-            "phasePathTargetScore": 0.0,
-            "phasePathSegmentAgreement": 0.0,
-            "phasePathPeakScore": 0.0,
-            "phasePathIntroReliability": 0.0,
-            "phasePathPeakOffsetMedianMs": 999.0,
-            "phasePathPeakOffsetMadMs": 999.0,
-            "phasePathStableSegmentCount": 0,
-            "phasePathSupport": 0,
-        }
-
-    times_sec = _grid_times_for_phase(phase_ms, bpm, min(duration_sec, 90.0))
-    times_sec = times_sec[times_sec >= 0.0][:beat_limit]
-    if times_sec.size < block_size:
-        return {
-            "phasePathScore": 0.0,
-            "phasePathTargetScore": 0.0,
-            "phasePathSegmentAgreement": 0.0,
-            "phasePathPeakScore": 0.0,
-            "phasePathIntroReliability": 0.0,
-            "phasePathPeakOffsetMedianMs": 999.0,
-            "phasePathPeakOffsetMadMs": 999.0,
-            "phasePathStableSegmentCount": 0,
-            "phasePathSupport": int(times_sec.size),
-        }
-
-    start_offset = int(round(float(envelope_rate) * -0.014))
-    end_offset = int(round(float(envelope_rate) * 0.038))
-    offset_step = max(1, int(round(float(envelope_rate) * 0.002)))
-    offset_samples = np.arange(start_offset, end_offset + 1, offset_step, dtype="int64")
-    if offset_samples.size == 0:
-        return {
-            "phasePathScore": 0.0,
-            "phasePathTargetScore": 0.0,
-            "phasePathSegmentAgreement": 0.0,
-            "phasePathPeakScore": 0.0,
-            "phasePathIntroReliability": 0.0,
-            "phasePathPeakOffsetMedianMs": 999.0,
-            "phasePathPeakOffsetMadMs": 999.0,
-            "phasePathStableSegmentCount": 0,
-            "phasePathSupport": 0,
-        }
-
-    block_offsets: list[float] = []
-    block_weights: list[float] = []
-    block_scores: list[float] = []
-    block_peak_scores: list[float] = []
-    support = 0
-    for start in range(0, int(times_sec.size), block_size):
-        block_times = times_sec[start : start + block_size]
-        if block_times.size < max(8, block_size // 2):
-            continue
-        positions = np.rint(block_times * float(envelope_rate)).astype("int64", copy=False)
-        indices = positions[:, None] + offset_samples[None, :]
-        valid = (indices >= 0) & (indices < envelope.size)
-        if not bool(np.any(valid)):
-            continue
-        clipped = np.clip(indices, 0, max(0, envelope.size - 1))
-        values = envelope[clipped].astype("float64", copy=False)
-        values = np.where(valid, values, -np.inf)
-        best_columns = np.argmax(values, axis=1)
-        row_indices = np.arange(values.shape[0])
-        peak_values = values[row_indices, best_columns]
-        finite_mask = np.isfinite(peak_values)
-        if int(np.count_nonzero(finite_mask)) < max(8, block_size // 2):
-            continue
-        peak_values = peak_values[finite_mask]
-        peak_offsets_ms = (
-            offset_samples[best_columns[finite_mask]].astype("float64", copy=False)
-            * 1000.0
-            / float(envelope_rate)
-        )
-        weights = np.maximum(peak_values, 0.000001)
-        median_offset = _weighted_median(peak_offsets_ms, weights)
-        if median_offset is None:
-            continue
-        mad = _weighted_median(np.abs(peak_offsets_ms - median_offset), weights)
-        if mad is None:
-            mad = 999.0
-        target_score = _clamp01(1.0 - abs(float(median_offset) - target_peak_offset_ms) / 18.0)
-        consistency_score = _clamp01(1.0 - float(mad) / 14.0)
-        peak_score = _clamp01(float(np.mean(peak_values)) * 4.0)
-        block_score = _clamp01(target_score * 0.48 + consistency_score * 0.36 + peak_score * 0.16)
-        block_offsets.append(float(median_offset))
-        block_peak_scores.append(peak_score)
-        block_scores.append(block_score)
-        block_weights.append(max(0.001, peak_score * float(peak_values.size)))
-        support += int(peak_values.size)
-
-    if not block_offsets:
-        return {
-            "phasePathScore": 0.0,
-            "phasePathTargetScore": 0.0,
-            "phasePathSegmentAgreement": 0.0,
-            "phasePathPeakScore": 0.0,
-            "phasePathIntroReliability": 0.0,
-            "phasePathPeakOffsetMedianMs": 999.0,
-            "phasePathPeakOffsetMadMs": 999.0,
-            "phasePathStableSegmentCount": 0,
-            "phasePathSupport": support,
-        }
-
-    offsets = np.asarray(block_offsets, dtype="float64")
-    weights = np.asarray(block_weights, dtype="float64")
-    median_offset = _weighted_median(offsets, weights)
-    if median_offset is None:
-        median_offset = 999.0
-    offset_mad = _weighted_median(np.abs(offsets - median_offset), weights)
-    if offset_mad is None:
-        offset_mad = 999.0
-    target_score = _clamp01(1.0 - abs(float(median_offset) - target_peak_offset_ms) / 16.0)
-    segment_agreement = _clamp01(1.0 - float(offset_mad) / 10.0)
-    peak_score = _clamp01(statistics.fmean(block_peak_scores))
-    mean_block_score = _clamp01(statistics.fmean(block_scores))
-    stable_count = sum(1 for score in block_scores if score >= 0.62)
-    stable_ratio = _clamp01(stable_count / max(1.0, min(4.0, len(block_scores))))
-    intro_reliability = _clamp01(block_scores[0])
-    score = _clamp01(
-        target_score * 0.34
-        + segment_agreement * 0.26
-        + mean_block_score * 0.22
-        + peak_score * 0.10
-        + stable_ratio * 0.08
-    )
-    return {
-        "phasePathScore": _round_feature(score),
-        "phasePathTargetScore": _round_feature(target_score),
-        "phasePathSegmentAgreement": _round_feature(segment_agreement),
-        "phasePathPeakScore": _round_feature(peak_score),
-        "phasePathIntroReliability": _round_feature(intro_reliability),
-        "phasePathPeakOffsetMedianMs": round(float(median_offset), 3),
-        "phasePathPeakOffsetMadMs": round(float(offset_mad), 3),
-        "phasePathStableSegmentCount": int(stable_count),
-        "phasePathSupport": int(support),
-    }
-
-
-def _score_phase_path_grid(
-    envelope: np.ndarray,
-    *,
-    envelope_rate: int,
-    bpm: float,
-    phase_ms: float,
-    duration_sec: float,
-) -> dict[str, float | int]:
-    best: dict[str, float | int] | None = None
-    best_target = 0.0
-    for target_offset_ms in PHASE_PATH_TARGET_OFFSETS_MS:
-        stats = _score_phase_path_for_target(
-            envelope,
-            envelope_rate=envelope_rate,
-            bpm=bpm,
-            phase_ms=phase_ms,
-            duration_sec=duration_sec,
-            target_peak_offset_ms=target_offset_ms,
-        )
-        if best is None or float(stats["phasePathScore"]) > float(best["phasePathScore"]):
-            best = stats
-            best_target = target_offset_ms
-    if best is None:
-        return {
-            "phasePathScore": 0.0,
-            "phasePathTargetScore": 0.0,
-            "phasePathSegmentAgreement": 0.0,
-            "phasePathPeakScore": 0.0,
-            "phasePathIntroReliability": 0.0,
-            "phasePathPeakOffsetMedianMs": 999.0,
-            "phasePathPeakOffsetMadMs": 999.0,
-            "phasePathStableSegmentCount": 0,
-            "phasePathSupport": 0,
-            "phasePathTargetOffsetMs": 0.0,
-        }
-    return {**best, "phasePathTargetOffsetMs": round(float(best_target), 3)}
 
 
 def _series_segment_stats(
@@ -877,10 +677,37 @@ def solve_constant_grid_dp(
     if rank1_structural_phase_switch:
         selected = rank1_structural_phase_selected
         use_new = True
+    rank1_high_structural_score_selected, rank1_high_structural_score_meta = (
+        choose_rank1_high_structural_score_candidate(
+            candidates=candidates,
+            selected_source=baseline_selected_source,
+            legacy_candidate=legacy_candidate,
+        )
+    )
+    rank1_high_structural_score_switch = bool(
+        not locked_ranker_switch
+        and not rank1_legacy_weakness_switch
+        and not rank1_structural_phase_switch
+        and rank1_high_structural_score_selected is not None
+    )
+    if (
+        not rank1_high_structural_score_switch
+        and (locked_ranker_switch or rank1_legacy_weakness_switch or rank1_structural_phase_switch)
+        and rank1_high_structural_score_selected is not None
+    ):
+        rank1_high_structural_score_meta = {
+            **rank1_high_structural_score_meta,
+            "selected": False,
+            "reason": "previous-switch-selected",
+        }
+    if rank1_high_structural_score_switch:
+        selected = rank1_high_structural_score_selected
+        use_new = True
     previous_switch_selected = bool(
         locked_ranker_switch
         or rank1_legacy_weakness_switch
         or rank1_structural_phase_switch
+        or rank1_high_structural_score_switch
         or use_new
     )
     if previous_switch_selected:
@@ -971,6 +798,8 @@ def solve_constant_grid_dp(
         guard = "constant-grid-dp-rank1-locked-legacy-weakness-switch"
     elif rank1_structural_phase_switch:
         guard = "constant-grid-dp-rank1-structural-phase-switch"
+    elif rank1_high_structural_score_switch:
+        guard = "constant-grid-dp-rank1-high-structural-score-switch"
     elif rank1_negative_legacy_score_switch:
         guard = "constant-grid-dp-rank1-negative-legacy-score-switch"
     elif rank1_octave_down_switch:
@@ -998,6 +827,8 @@ def solve_constant_grid_dp(
         if rank1_legacy_weakness_switch
         else _to_float(rank1_structural_phase_meta.get("probability"))
         if rank1_structural_phase_switch
+        else _to_float(rank1_high_structural_score_meta.get("gridScore"))
+        if rank1_high_structural_score_switch
         else _to_float(rank1_negative_legacy_score_meta.get("gridScore"))
         if rank1_negative_legacy_score_switch
         else _to_float(rank1_octave_down_meta.get("gridScore"))
@@ -1071,6 +902,10 @@ def solve_constant_grid_dp(
                 rank1_legacy_weakness_meta=rank1_legacy_weakness_meta,
                 rank1_structural_phase_switch=rank1_structural_phase_switch,
                 rank1_structural_phase_meta=rank1_structural_phase_meta,
+            ),
+            **rank1_high_structural_score_diagnostic_features(
+                rank1_high_structural_score_switch=rank1_high_structural_score_switch,
+                rank1_high_structural_score_meta=rank1_high_structural_score_meta,
             ),
             **rank1_negative_legacy_score_diagnostic_features(
                 rank1_negative_legacy_score_switch=rank1_negative_legacy_score_switch,

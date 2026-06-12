@@ -20,7 +20,9 @@ scripts/move_rekordbox_playlist_grid_diffs.py
 ## Upan 源头清理
 
 如果本轮样本源来自 Rekordbox `Upan` 歌单，第一步先运行源头清理脚本，再继续从
-`Upan` 抽样到 `test`。脚本固定按下面顺序执行：
+`Upan` 抽样到 `test`。`Upan` 是已有 Rekordbox 歌单，抽样移动不等于新导入音频；
+只要 bridge 能读到 `bpm` / grid，就视为 Rekordbox 已分析完成，移动到 `test` 后可以直接跑本差异分拣脚本。
+脚本固定按下面顺序执行：
 
 1. 去重：和 current truth 重复的曲目直接从 `Upan` 移除，一首不留；只在 `Upan` 内部重复、
    且不命中 current truth 的曲目，保留第一条 playlist entry，移除后续多余项。
@@ -83,6 +85,10 @@ dry-run 不会创建 `needReview`，也不会改动 Rekordbox 歌单。
 
 确认 dry-run 报告没问题后，再执行实际写回。写回前关闭 Rekordbox，确保本机
 Rekordbox 数据库可写。
+
+注意：直接在 dry-run 命令后追加 `--apply` 会重新分析源歌单音频，然后再写回。刚跑过
+dry-run 且报告已经确认时，优先使用下面的“从报告写回”，这样只按报告里的
+`differences[]` 移动曲目，不会重复分析。
 
 ```powershell
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" `
