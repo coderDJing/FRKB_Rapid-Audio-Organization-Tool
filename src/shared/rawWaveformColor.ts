@@ -29,7 +29,7 @@ export type RawFftBandProfile = {
   color: RawWaveformRgbColor
 }
 
-export type RawWaveformColorProfile = {
+type RawWaveformColorProfile = {
   colorIndex: Uint8Array
   colorLow: Uint8Array
   colorMid: Uint8Array

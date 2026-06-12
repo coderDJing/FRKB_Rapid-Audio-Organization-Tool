@@ -1,7 +1,7 @@
 const ARTIST_TEXT_CONNECTOR_RE = /\s+(?:feat\.?|ft\.?|featuring|with)\s*/gi
 const ARTIST_TEXT_SPLITTER_RE = /\s*[,，、&＆/／;；]\s*/g
 
-export const sanitizeArtistName = (value: unknown): string =>
+const sanitizeArtistName = (value: unknown): string =>
   String(value || '')
     .trim()
     .replace(/\s+/g, ' ')

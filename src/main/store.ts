@@ -70,11 +70,9 @@ let settingConfig: ISettingConfig = {
   lastRunAppVersion: '',
   analysisRuntimeStartupPromptShownVersion: ''
 } //设置config
-let analyseSongPort: string = ''
 export default {
   songFingerprintList,
   databaseDir,
   layoutConfig,
-  settingConfig,
-  analyseSongPort
+  settingConfig
 }

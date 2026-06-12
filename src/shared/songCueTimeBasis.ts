@@ -5,7 +5,7 @@ type SongCueTimeBasisInput = {
   source?: unknown
 }
 
-export type SongCueTimelineDefinition = {
+type SongCueTimelineDefinition = {
   sec: number
   isLoop?: boolean
   loopEndSec?: number
