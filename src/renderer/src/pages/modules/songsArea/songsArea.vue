@@ -354,13 +354,15 @@ onMounted(() => {
   schedulePaneScrollRestore()
 })
 
-// 切换歌单时快照旧数据，用于离开动画期间保持渲染
+// 切换歌单时快照旧数据，用于离开动画期间保持渲染；同时重置滚动位置
 watch(
   () => songsAreaState.songListUUID,
   (_newUUID, _oldUUID) => {
     if (_oldUUID && songsAreaState.songInfoArr.length > 0) {
       leaveData.value = [...songsAreaState.songInfoArr]
     }
+    songsAreaState.scrollTop = 0
+    songsAreaState.scrollLeft = 0
   }
 )
 
