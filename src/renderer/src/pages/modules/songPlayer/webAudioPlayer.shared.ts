@@ -38,6 +38,7 @@ export type WebAudioPlayerEvents = {
   play: undefined
   pause: undefined
   finish: undefined
+  seekstart: SeekedEventPayload
   seeked: SeekedEventPayload
   timeupdate: number
   decode: number

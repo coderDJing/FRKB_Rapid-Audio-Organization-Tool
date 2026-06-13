@@ -377,6 +377,13 @@ export class WebAudioPlayer {
       manual
     })
 
+    if (result.status === 'pending') {
+      this.lastHtmlCurrentTime = nextTime
+      this.emit('seekstart', { time: nextTime, manual })
+      this.emit('timeupdate', nextTime)
+      return
+    }
+
     if (result.status === 'already-current') {
       const actualTime = this.getCurrentTime()
       this.emit('seeked', { time: actualTime, manual })
@@ -662,6 +669,9 @@ export class WebAudioPlayer {
       this.pendingSeekTime = null
       this.pendingSeekManual = false
       try {
+        this.lastHtmlCurrentTime = target
+        this.emit('seekstart', { time: target, manual: false })
+        this.emit('timeupdate', target)
         if (typeof audio.fastSeek === 'function') {
           audio.fastSeek(target)
         } else {

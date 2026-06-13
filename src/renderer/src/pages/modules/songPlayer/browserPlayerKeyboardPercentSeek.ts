@@ -16,14 +16,12 @@ type KeyboardPercentSeekOptions = {
 }
 
 const REQUEST_COMMIT_DELAY_MS = 80
-const MIN_COMMIT_INTERVAL_MS = 1200
 
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value))
 
 export const createBrowserPlayerKeyboardPercentSeek = (options: KeyboardPercentSeekOptions) => {
   let timer: number | null = null
   let pending: KeyboardPercentSeekPending | null = null
-  let lastCommitAt = 0
 
   const clearTimer = () => {
     if (timer === null) return
@@ -60,7 +58,6 @@ export const createBrowserPlayerKeyboardPercentSeek = (options: KeyboardPercentS
 
     const targetSec = duration * target.percent
     player.seek(targetSec, true)
-    lastCommitAt = performance.now()
     resetBurst()
   }
 
@@ -77,7 +74,6 @@ export const createBrowserPlayerKeyboardPercentSeek = (options: KeyboardPercentS
     const player = options.getPlayer()
     if (!player) return
 
-    const now = performance.now()
     const clampedPercent = clamp01(percent)
     const filePath = options.getFilePath()
 
@@ -88,11 +84,7 @@ export const createBrowserPlayerKeyboardPercentSeek = (options: KeyboardPercentS
 
     player.deferMetadataPreloadsForManualSeek?.()
 
-    const minIntervalDelay =
-      lastCommitAt > 0 ? Math.max(0, MIN_COMMIT_INTERVAL_MS - (now - lastCommitAt)) : 0
-    const delayMs = Math.max(REQUEST_COMMIT_DELAY_MS, minIntervalDelay)
-
-    scheduleFlush(delayMs)
+    scheduleFlush(REQUEST_COMMIT_DELAY_MS)
   }
 
   const clear = (_reason = 'clear') => {

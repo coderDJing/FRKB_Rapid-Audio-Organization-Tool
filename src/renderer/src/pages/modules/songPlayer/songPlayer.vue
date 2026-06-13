@@ -255,7 +255,7 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   player.on('timeupdate', onTimeUpdate)
   disposers.push(() => player.off('timeupdate', onTimeUpdate))
 
-  const onSeeked = ({ time, manual }: { time: number; manual: boolean }) => {
+  const syncManualSeekState = ({ time, manual }: { time: number; manual: boolean }) => {
     previousTime = time
     if (manual) {
       manualSeekActive = true
@@ -265,6 +265,11 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
       clearManualSeekTimer()
     }
   }
+  const onSeekStart = syncManualSeekState
+  player.on('seekstart', onSeekStart)
+  disposers.push(() => player.off('seekstart', onSeekStart))
+
+  const onSeeked = syncManualSeekState
   player.on('seeked', onSeeked)
   disposers.push(() => player.off('seeked', onSeeked))
 
