@@ -146,7 +146,9 @@ export const handleDragOver = (e: DragEvent, dirData: IDir | null, dragState: Dr
     return
   }
 
-  let dragApproach = calculateDragApproach(e.offsetY, dirData.type === 'dir')
+  const targetElement = e.currentTarget instanceof HTMLElement ? e.currentTarget : null
+  const offsetY = targetElement ? e.clientY - targetElement.getBoundingClientRect().top : e.offsetY
+  const dragApproach = calculateDragApproach(offsetY, dirData.type === 'dir')
 
   // 内部拖拽处理
   if (!isValidDrop(runtime.dragItemData, dirData, dragApproach)) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, shallowRef } from 'vue'
+import { ref, computed, watch, shallowRef, onUnmounted } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
@@ -25,6 +25,7 @@ import {
   replaceSongsAreaPaneSongList,
   resolveSongsAreaPaneForLibraryClick
 } from '@renderer/utils/songsAreaSplit'
+import { createTouchLongPressDrag } from '@renderer/utils/touchLongPressDrag'
 import type { IDir } from '../../../../types/globals'
 const listIcon = listIconAsset
 const listIconMaskStyle = {
@@ -46,6 +47,7 @@ const props = defineProps({
   }
 })
 const runtime = useRuntimeStore()
+const touchPlaylistDrag = createTouchLongPressDrag()
 const hasWarnedAcoustId = ref(false)
 const hasAcoustIdKey = async () => {
   if (hasConfiguredAcoustIdClientKey(runtime.setting)) return true
@@ -343,6 +345,22 @@ const openMixtapeHandleClick = () => {
     playlistName: currentDirData.dirName
   })
 }
+
+const canStartLibraryItemDrag = computed(
+  () =>
+    !!dirData.value?.dirName && !renameDivShow.value && runtime.libraryAreaSelected !== 'RecycleBin'
+)
+
+const handleTouchStart = (event: TouchEvent) => {
+  if (!canStartLibraryItemDrag.value) return
+  const sourceElement = event.currentTarget
+  if (!(sourceElement instanceof HTMLElement)) return
+  touchPlaylistDrag.handleTouchStart(event, sourceElement)
+}
+
+onUnmounted(() => {
+  touchPlaylistDrag.cancel()
+})
 </script>
 <template>
   <div
@@ -351,11 +369,7 @@ const openMixtapeHandleClick = () => {
     class="mainBody"
     style="display: flex; box-sizing: border-box"
     :style="'padding-left:' + indentWidth + 'px'"
-    :draggable="
-      dirData.dirName && !renameDivShow && runtime.libraryAreaSelected !== 'RecycleBin'
-        ? true
-        : false
-    "
+    :draggable="canStartLibraryItemDrag"
     :class="{
       rightClickBorder: rightClickMenuShow,
       borderTop: dragApproach == 'top',
@@ -366,6 +380,7 @@ const openMixtapeHandleClick = () => {
     }"
     @contextmenu.stop="contextmenuEvent"
     @click.stop="dirHandleClick($event)"
+    @touchstart="handleTouchStart"
     @dragover.stop.prevent="dragover"
     @dragstart.stop="dragstart"
     @dragenter.stop.prevent="dragenter"

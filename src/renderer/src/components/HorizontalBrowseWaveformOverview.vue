@@ -55,6 +55,7 @@ let seekRaf = 0
 let pendingSeekSeconds: number | null = null
 let lastSeekEmitAt = 0
 let lastSeekEmitSeconds: number | null = null
+let activeScrubPointerId: number | null = null
 const SEEK_EMIT_DUPLICATE_WINDOW_MS = 350
 const SEEK_EMIT_DUPLICATE_EPSILON_SEC = 0.05
 const SEEK_EMIT_DUPLICATE_EPSILON_PX = 2
@@ -157,6 +158,7 @@ const resolveSeekSecondsByClientX = (clientX: number) => {
 
 const handlePointerMove = (event: PointerEvent) => {
   if (!scrubbing.value) return
+  if (activeScrubPointerId !== null && event.pointerId !== activeScrubPointerId) return
   const seconds = resolveSeekSecondsByClientX(event.clientX)
   if (seconds === null) return
   scheduleSeek(seconds)
@@ -165,12 +167,14 @@ const handlePointerMove = (event: PointerEvent) => {
 const stopScrubbing = () => {
   if (!scrubbing.value) return
   scrubbing.value = false
+  activeScrubPointerId = null
   window.removeEventListener('pointermove', handlePointerMove)
   window.removeEventListener('pointerup', handlePointerUp)
-  window.removeEventListener('pointercancel', handlePointerUp)
+  window.removeEventListener('pointercancel', handlePointerCancel)
 }
 
 const handlePointerUp = (event: PointerEvent) => {
+  if (activeScrubPointerId !== null && event.pointerId !== activeScrubPointerId) return
   const seconds = resolveSeekSecondsByClientX(event.clientX)
   if (seconds !== null && !isDuplicateSeekSeconds(seconds)) {
     scheduleSeek(seconds, true)
@@ -178,15 +182,25 @@ const handlePointerUp = (event: PointerEvent) => {
   stopScrubbing()
 }
 
-const handlePointerDown = (event: PointerEvent) => {
-  if (event.button !== 0 || !props.song || totalSeconds.value <= 0) return
+const handlePointerCancel = (event: PointerEvent) => {
+  if (activeScrubPointerId !== null && event.pointerId !== activeScrubPointerId) return
+  stopScrubbing()
+}
+
+const beginScrubbing = (event: PointerEvent) => {
   const seconds = resolveSeekSecondsByClientX(event.clientX)
   if (seconds === null) return
   scrubbing.value = true
+  activeScrubPointerId = event.pointerId
   scheduleSeek(seconds, true)
   window.addEventListener('pointermove', handlePointerMove, { passive: true })
   window.addEventListener('pointerup', handlePointerUp, { passive: true })
-  window.addEventListener('pointercancel', handlePointerUp, { passive: true })
+  window.addEventListener('pointercancel', handlePointerCancel, { passive: true })
+}
+
+const handlePointerDown = (event: PointerEvent) => {
+  if (event.button !== 0 || !props.song || totalSeconds.value <= 0) return
+  beginScrubbing(event)
   event.preventDefault()
 }
 
@@ -507,7 +521,7 @@ onUnmounted(() => {
   padding-inline: var(--overview-waveform-side-inset, 10px);
   box-sizing: border-box;
   cursor: default;
-  touch-action: none;
+  touch-action: pan-y;
   background: var(--shell-waveform-bg, var(--waveform-bg));
 }
 

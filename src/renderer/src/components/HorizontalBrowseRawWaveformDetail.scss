@@ -5,6 +5,7 @@
   min-width: 0;
   min-height: 0;
   cursor: default;
+  touch-action: pan-y;
   background: var(--shell-waveform-bg, var(--waveform-bg));
   overflow: visible;
 }

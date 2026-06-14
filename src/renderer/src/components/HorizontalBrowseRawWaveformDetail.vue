@@ -44,6 +44,12 @@ import { buildHorizontalBrowseRawWaveformGridSignature } from '@renderer/compone
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import { resolveHorizontalBrowseRawWaveformStreamParams } from '@renderer/components/horizontalBrowseEditDetailRawWaveform'
 import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailExpose'
+import {
+  HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON,
+  createHorizontalBrowsePlaybackDiscontinuityDetector,
+  normalizeHorizontalBrowseSharedZoom,
+  normalizeHorizontalBrowseTimelineSeconds
+} from '@renderer/components/horizontalBrowseRawWaveformDetailMath'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -124,24 +130,16 @@ const resolveWaveformCurrentSeconds = () =>
     (Number(props.currentSeconds) || 0) + localGridShiftPhaseOffsetSec.value
   )
 
-const HORIZONTAL_BROWSE_PLAYBACK_RESYNC_THRESHOLD_SEC = 0.04
-const HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON = 0.0005
-
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
 let dragStartClientX = 0
 let dragStartSec = 0
+let activeDragPointerId: number | null = null
+const playbackDiscontinuityDetector = createHorizontalBrowsePlaybackDiscontinuityDetector()
 let persistTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
 let dragWaveformRefreshTimer: ReturnType<typeof setTimeout> | null = null
 let pendingLocalGridSignature = ''
-let lastPlaybackPositionSample: {
-  songKey: string
-  seconds: number
-  atMs: number
-  playbackRate: number
-  playing: boolean
-} | null = null
 
 const resolveDisplayGridBpm = () =>
   Number.isFinite(Number(props.song?.bpm)) && Number(props.song?.bpm) > 0
@@ -241,14 +239,6 @@ const scrubPreview = useHorizontalBrowseWaveformScrubPreview({
   resolveAnchorSec: resolvePreviewAnchorSec,
   emitPreview: (payload) => emit('drag-session-preview', payload)
 })
-const normalizeSharedZoom = (value: unknown) => {
-  const numeric =
-    typeof value === 'object' && value !== null && 'value' in value
-      ? Number((value as { value?: unknown }).value)
-      : Number(value)
-  if (!Number.isFinite(numeric) || numeric <= 0) return HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
-  return clampNumber(numeric, HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM, previewMaxZoom.value)
-}
 
 const clearPersistTimer = () => {
   if (!persistTimer) return
@@ -293,17 +283,12 @@ function resolveEffectiveTimelineEndSec() {
   })
 }
 
-function normalizePreviewTimelineSeconds(seconds: number) {
-  const numeric = Number(seconds)
-  if (!Number.isFinite(numeric)) return 0
-  const duration = resolveEffectiveTimelineEndSec()
-  if (duration > 0) {
-    return props.allowNegativeTimeline
-      ? Math.min(numeric, duration)
-      : clampNumber(numeric, 0, duration)
-  }
-  return props.allowNegativeTimeline ? numeric : Math.max(0, numeric)
-}
+const normalizePreviewTimelineSeconds = (seconds: number) =>
+  normalizeHorizontalBrowseTimelineSeconds(
+    seconds,
+    resolveEffectiveTimelineEndSec(),
+    Boolean(props.allowNegativeTimeline)
+  )
 
 const applyPreviewPlaybackPosition = (seconds: number, scheduleFrame = true) => {
   const safeSeconds = normalizePreviewTimelineSeconds(seconds)
@@ -315,31 +300,6 @@ const applyPreviewPlaybackPosition = (seconds: number, scheduleFrame = true) => 
   if (scheduleFrame) {
     scheduleDraw()
   }
-}
-
-const resolvePlaybackPositionDiscontinuity = (
-  songKey: string,
-  seconds: number,
-  playing: boolean
-) => {
-  const nowMs = performance.now()
-  const playbackRate = Math.max(0.25, Number(props.playbackRate) || 1)
-  const previous = lastPlaybackPositionSample
-  lastPlaybackPositionSample = {
-    songKey,
-    seconds,
-    atMs: nowMs,
-    playbackRate,
-    playing
-  }
-
-  if (!playing || !previous?.playing || previous.songKey !== songKey) return false
-  const elapsedSec = Math.max(0, nowMs - previous.atMs) / 1000
-  const expectedSeconds = previous.seconds + elapsedSec * previous.playbackRate
-  const boundedExpectedSeconds = normalizePreviewTimelineSeconds(expectedSeconds)
-  return (
-    Math.abs(seconds - boundedExpectedSeconds) > HORIZONTAL_BROWSE_PLAYBACK_RESYNC_THRESHOLD_SEC
-  )
 }
 
 const resetPreviewBpmTap = () => {
@@ -387,10 +347,12 @@ const stopDragging = (commitPlayhead = false, refreshWaveform = true) => {
   if (!dragging.value) return
   const finalAnchorSec = resolvePreviewAnchorSec()
   dragging.value = false
+  activeDragPointerId = null
   clearDragWaveformRefreshTimer()
   scrubPreview.stop()
-  window.removeEventListener('mousemove', handleDragMove)
-  window.removeEventListener('mouseup', handleWindowMouseUp)
+  window.removeEventListener('pointermove', handleDragPointerMove)
+  window.removeEventListener('pointerup', handleWindowPointerUp)
+  window.removeEventListener('pointercancel', handleWindowPointerCancel)
   emit('drag-session-end', {
     anchorSec: finalAnchorSec,
     committed: commitPlayhead && Boolean(props.song)
@@ -412,13 +374,37 @@ const requestWaveformSourceForDrag = (anchorSec: number) => {
   }, 160)
 }
 
-const handleWindowMouseUp = (event: MouseEvent) => {
-  handleDragMove(event)
+const beginWaveformDrag = (event: PointerEvent) => {
+  dragging.value = true
+  activeDragPointerId = event.pointerId
+  dragStartClientX = event.clientX
+  dragStartSec = previewStartSec.value
+  const anchorSec = resolvePreviewAnchorSec()
+  emit('drag-session-start')
+  scrubPreview.start(anchorSec)
+  maybeContinueWaveformSource(anchorSec)
+  window.addEventListener('pointermove', handleDragPointerMove, { passive: false })
+  window.addEventListener('pointerup', handleWindowPointerUp, { passive: true })
+  window.addEventListener('pointercancel', handleWindowPointerCancel, { passive: true })
+}
+
+const handleWindowPointerUp = (event: PointerEvent) => {
+  if (activeDragPointerId !== null && event.pointerId !== activeDragPointerId) return
+  handleDragPointerMove(event)
   stopDragging(true)
 }
 
-function handleDragMove(event: MouseEvent) {
+const handleWindowPointerCancel = (event: PointerEvent) => {
+  if (activeDragPointerId !== null && event.pointerId !== activeDragPointerId) return
+  stopDragging(false)
+}
+
+function handleDragPointerMove(event: PointerEvent) {
   if (!dragging.value) return
+  if (activeDragPointerId !== null && event.pointerId !== activeDragPointerId) return
+  if (event.pointerType === 'touch') {
+    event.preventDefault()
+  }
   const wrap = wrapRef.value
   if (!wrap) return
   const visibleDuration = resolveVisibleDurationSec()
@@ -432,23 +418,17 @@ function handleDragMove(event: MouseEvent) {
   scheduleDraw()
 }
 
-const handleMouseDown = (event: MouseEvent) => {
-  if (event.button !== 0) return
-  if (!props.song?.filePath || !resolvePreviewDurationSec()) return
-  if (handlePreviewMouseDownForBarLinePicking(event)) {
+const handlePointerDown = (event: PointerEvent) => {
+  const durationSec = resolvePreviewDurationSec()
+  if (event.button !== 0 || dragging.value) return
+  if (!props.song?.filePath || !durationSec) return
+  const barLinePicked = handlePreviewMouseDownForBarLinePicking(event)
+  if (barLinePicked) {
     emitToolbarState()
     schedulePersistGridDefinition()
     return
   }
-  dragging.value = true
-  dragStartClientX = event.clientX
-  dragStartSec = previewStartSec.value
-  const anchorSec = resolvePreviewAnchorSec()
-  emit('drag-session-start')
-  scrubPreview.start(anchorSec)
-  maybeContinueWaveformSource(anchorSec)
-  window.addEventListener('mousemove', handleDragMove, { passive: false })
-  window.addEventListener('mouseup', handleWindowMouseUp, { passive: true })
+  beginWaveformDrag(event)
   event.preventDefault()
 }
 
@@ -864,7 +844,7 @@ watch(
 watch(
   () => props.sharedZoomState,
   (state) => {
-    const nextZoom = normalizeSharedZoom(state)
+    const nextZoom = normalizeHorizontalBrowseSharedZoom(state, previewMaxZoom.value)
     if (
       state?.sourceDirection === props.direction &&
       Math.abs(nextZoom - previewZoom.value) <= 0.000001
@@ -928,14 +908,16 @@ watch(
       const safeSeconds = normalizePreviewTimelineSeconds(seconds)
       maybeContinueWaveformSource(safeSeconds)
       if (!safeSongKey) {
-        lastPlaybackPositionSample = null
+        playbackDiscontinuityDetector.reset()
         applyPreviewPlaybackPosition(0)
         return
       }
-      const playbackPositionJumped = resolvePlaybackPositionDiscontinuity(
+      const playbackPositionJumped = playbackDiscontinuityDetector.check(
         safeSongKey,
         safeSeconds,
-        playing
+        playing,
+        props.playbackRate,
+        normalizePreviewTimelineSeconds
       )
       const previousPlaying = Boolean(previousValue?.[1])
       const previousSongKey = String(previousValue?.[2] || '').trim()
@@ -1072,7 +1054,7 @@ defineExpose(
         'is-loading': previewLoading && resolveRawWaveformStreamMode() === 'edit-window'
       }
     ]"
-    @mousedown.stop="handleMouseDown"
+    @pointerdown.stop="handlePointerDown"
     @mousemove="handlePreviewMouseMoveForBarLinePicking"
     @mouseleave="handlePreviewMouseLeaveForBarLinePicking"
     @wheel.prevent.stop="handleWheel"

@@ -20,6 +20,7 @@ import CoverPreviewOverlay from './SongListRows/CoverPreviewOverlay.vue'
 import CuratedArtistCellContent from './SongListRows/CuratedArtistCellContent.vue'
 import RowAnalysisBar from './SongListRows/RowAnalysisBar.vue'
 import WaveformPreviewCell from './SongListRows/WaveformPreviewCell.vue'
+import { createTouchLongPressDrag } from '@renderer/utils/touchLongPressDrag'
 
 const props = defineProps({
   songs: {
@@ -189,6 +190,7 @@ const clearDragHover = () => {
 const draggingItemIds = vRef<string[]>([])
 const draggingSourceListUUID = vRef('')
 const lastAutoScrollAt = vRef(0)
+const touchSongDrag = createTouchLongPressDrag()
 const AUTO_SCROLL_EDGE_PX = 36
 const AUTO_SCROLL_STEP_PX = 22
 const AUTO_SCROLL_MIN_INTERVAL = 16
@@ -649,6 +651,13 @@ const handleRowDragStart = (event: DragEvent, item: { song: ISongInfo }) => {
   emit('song-dragstart', event, item.song)
 }
 
+const handleRowTouchStart = (event: TouchEvent) => {
+  if (!canStartSongDrag.value) return
+  const sourceElement = event.currentTarget
+  if (!(sourceElement instanceof HTMLElement)) return
+  touchSongDrag.handleTouchStart(event, sourceElement)
+}
+
 const {
   onRowsMouseOver,
   onRowsMouseLeave,
@@ -666,6 +675,7 @@ const {
 })
 
 onUnmounted(() => {
+  touchSongDrag.cancel()
   coverCellRefMap.clear()
 })
 </script>
@@ -701,6 +711,7 @@ onUnmounted(() => {
           :data-filepath="item.song.filePath"
           :data-rowkey="getRowKey(item.song)"
           :draggable="canStartSongDrag"
+          @touchstart="handleRowTouchStart"
           @dragstart.stop="canStartSongDrag && handleRowDragStart($event, item)"
           @dragend.stop="canStartSongDrag && handleRowDragEnd($event)"
           @dragover="isInternalReorderEnabled && handleRowDragOver($event, item)"
