@@ -20,6 +20,119 @@ const WAVEFORM_PLAYHEAD_NEEDLE_BACKGROUND = [
   'transparent 100%)'
 ].join(' ')
 
+type TimelineTickPalette = {
+  baseline: string
+  minor: string
+  major: string
+  anchor: string
+}
+type PlayerWaveformThemeVariant = 'light' | 'dark'
+
+const TIMELINE_MINOR_TICK_SEC = 5
+const TIMELINE_MAJOR_TICK_SEC = 30
+const TIMELINE_ANCHOR_TICK_SEC = 60
+
+const hasThemeClass = (className: string) => {
+  const htmlEl = document.documentElement
+  const bodyEl = document.body
+  const appEl = document.getElementById('app')
+  return (
+    htmlEl?.classList.contains(className) ||
+    bodyEl?.classList.contains(className) ||
+    appEl?.classList.contains(className)
+  )
+}
+
+const resolveSystemThemeVariant = (): PlayerWaveformThemeVariant => {
+  if (hasThemeClass('theme-light')) return 'light'
+  if (hasThemeClass('theme-dark')) return 'dark'
+  try {
+    return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light'
+  } catch {
+    return 'dark'
+  }
+}
+
+const resolvePlayerWaveformThemeVariant = (mode?: unknown): PlayerWaveformThemeVariant => {
+  if (mode === 'light') return 'light'
+  if (mode === 'dark') return 'dark'
+  return resolveSystemThemeVariant()
+}
+
+const resolveTimelineTickPalette = (
+  active: boolean,
+  themeVariant: PlayerWaveformThemeVariant
+): TimelineTickPalette => {
+  if (themeVariant === 'light') {
+    return active
+      ? {
+          baseline: 'rgba(15, 23, 42, 0.16)',
+          minor: 'rgba(15, 23, 42, 0.22)',
+          major: 'rgba(15, 23, 42, 0.32)',
+          anchor: 'rgba(15, 23, 42, 0.4)'
+        }
+      : {
+          baseline: 'rgba(15, 23, 42, 0.07)',
+          minor: 'rgba(15, 23, 42, 0.11)',
+          major: 'rgba(15, 23, 42, 0.19)',
+          anchor: 'rgba(15, 23, 42, 0.25)'
+        }
+  }
+
+  return active
+    ? {
+        baseline: 'rgba(255, 255, 255, 0.22)',
+        minor: 'rgba(255, 255, 255, 0.3)',
+        major: 'rgba(255, 255, 255, 0.44)',
+        anchor: 'rgba(255, 255, 255, 0.54)'
+      }
+    : {
+        baseline: 'rgba(255, 255, 255, 0.08)',
+        minor: 'rgba(255, 255, 255, 0.14)',
+        major: 'rgba(255, 255, 255, 0.24)',
+        anchor: 'rgba(255, 255, 255, 0.3)'
+      }
+}
+
+const drawTimelineTickTrack = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  palette: TimelineTickPalette,
+  duration: number
+) => {
+  const centerY = Math.floor(height / 2)
+
+  ctx.imageSmoothingEnabled = false
+  ctx.fillStyle = palette.baseline
+  ctx.fillRect(0, centerY, width, 1)
+
+  const safeDuration = Math.max(0, Number(duration) || 0)
+  if (!safeDuration) {
+    for (let x = 4, index = 0; x < width; x += 8, index += 1) {
+      const isAnchorTick = index % 12 === 0
+      const isMajorTick = index % 6 === 0
+      const tickHeight = isAnchorTick ? 18 : isMajorTick ? 12 : 6
+      const tickY = Math.max(0, Math.round(centerY - tickHeight / 2))
+
+      ctx.fillStyle = isAnchorTick ? palette.anchor : isMajorTick ? palette.major : palette.minor
+      ctx.fillRect(Math.floor(x), tickY, 1, Math.min(tickHeight, height))
+    }
+    return
+  }
+
+  for (let second = 0; second <= safeDuration; second += TIMELINE_MINOR_TICK_SEC) {
+    const x = (second / safeDuration) * width
+    const isAnchorTick = second % TIMELINE_ANCHOR_TICK_SEC === 0
+    const isMajorTick = second % TIMELINE_MAJOR_TICK_SEC === 0
+    const tickHeight = isAnchorTick ? 18 : isMajorTick ? 12 : 6
+    const tickY = Math.max(0, Math.round(centerY - tickHeight / 2))
+
+    ctx.fillStyle = isAnchorTick ? palette.anchor : isMajorTick ? palette.major : palette.minor
+    ctx.fillRect(Math.min(width - 1, Math.round(x)), tickY, 1, Math.min(tickHeight, height))
+  }
+}
+
 export function useWaveform(params: {
   waveformEl: Ref<HTMLDivElement | null>
   audioPlayer: Ref<WebAudioPlayer | null>
@@ -125,6 +238,7 @@ export function useWaveform(params: {
   let hoverEl: HTMLElement | null = null
   let isPointerDown = false
   let lastPointerPreloadDeferAt = 0
+  let themeClassObserver: MutationObserver | null = null
   type AudioEventName = keyof WebAudioPlayerEvents
   const audioEventHandlers: Array<() => void> = []
 
@@ -236,6 +350,25 @@ export function useWaveform(params: {
     updateWaveform()
   }
 
+  const bindThemeClassObserver = () => {
+    if (themeClassObserver || typeof MutationObserver === 'undefined') return
+    const targets = [
+      document.documentElement,
+      document.body,
+      document.getElementById('app')
+    ].filter((target): target is HTMLElement => Boolean(target))
+    if (!targets.length) return
+    themeClassObserver = new MutationObserver(() => {
+      updateWaveform()
+    })
+    for (const target of targets) {
+      themeClassObserver.observe(target, {
+        attributes: true,
+        attributeFilter: ['class']
+      })
+    }
+  }
+
   const updateProgressVisual = (progress: number) => {
     const clamped = Math.max(0, Math.min(1, progress || 0))
     const percent = clamped * 100
@@ -273,6 +406,27 @@ export function useWaveform(params: {
     baseCtx.clearRect(0, 0, baseCanvas.width, baseCanvas.height)
     progressCtx.setTransform(1, 0, 0, 1, 0, 0)
     progressCtx.clearRect(0, 0, progressCanvas.width, progressCanvas.height)
+  }
+
+  const drawEmptyTimelineTicks = (width: number, height: number, duration: number) => {
+    const pixelRatio = window.devicePixelRatio || 1
+    const themeVariant = resolvePlayerWaveformThemeVariant(runtime.setting?.themeMode)
+    resizeCanvas(baseCanvas, baseCtx, width, height, pixelRatio)
+    resizeCanvas(progressCanvas, progressCtx, width, height, pixelRatio)
+    drawTimelineTickTrack(
+      baseCtx,
+      width,
+      height,
+      resolveTimelineTickPalette(false, themeVariant),
+      duration
+    )
+    drawTimelineTickTrack(
+      progressCtx,
+      width,
+      height,
+      resolveTimelineTickPalette(true, themeVariant),
+      duration
+    )
   }
 
   const drawPioneerPreviewWaveform = (
@@ -398,7 +552,7 @@ export function useWaveform(params: {
       return
     }
 
-    clearCanvases()
+    drawEmptyTimelineTicks(width, height, duration)
   }
 
   let ro: ResizeObserver | null = null
@@ -410,8 +564,7 @@ export function useWaveform(params: {
     const compactVisualData = player.compactVisualWaveformData ?? null
     if (!pioneerPreviewData && !compactVisualData) {
       audioBuffer = null
-      clearCanvases()
-      updateProgressVisual(0)
+      drawWaveform(true)
       syncHoverOverlay(0)
       return
     }
@@ -599,6 +752,15 @@ export function useWaveform(params: {
   )
 
   watch(
+    () => runtime.setting?.themeMode,
+    () => {
+      setTimeout(() => {
+        updateWaveform()
+      }, 0)
+    }
+  )
+
+  watch(
     () => audioPlayer.value,
     () => {
       detachEventListeners()
@@ -624,6 +786,7 @@ export function useWaveform(params: {
     if (animationFrameId === null) {
       animationFrameId = requestAnimationFrame(animate)
     }
+    bindThemeClassObserver()
     window.addEventListener('resize', handleResize)
   })
 
@@ -639,6 +802,12 @@ export function useWaveform(params: {
         ro.disconnect()
       } catch {}
       ro = null
+    }
+    if (themeClassObserver) {
+      try {
+        themeClassObserver.disconnect()
+      } catch {}
+      themeClassObserver = null
     }
     interactionLayer.removeEventListener('pointermove', handlePointerMove)
     interactionLayer.removeEventListener('pointerdown', handlePointerDown)
