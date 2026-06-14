@@ -20,8 +20,10 @@ import {
   drawSongListCompactVisualWaveform,
   drawSongListMixxxWaveform,
   drawSongListPioneerPreviewWaveform,
+  drawSongListTimelineTicks,
   type SongListWaveformRgbMetricsCacheEntry
 } from '@renderer/workers/songListWaveformPreview.shared'
+import { resolveWaveformTimelineTickThemeVariant } from '@renderer/components/waveformTimelineTicks'
 import type {
   SongListWaveformWorkerData,
   SongListWaveformWorkerIncoming
@@ -179,20 +181,15 @@ export function useWaveformPreview(params: {
   }
   const getWaveformDataVersion = (filePath: string) =>
     waveformDataVersionMap.get(normalizePath(filePath)) ?? 0
+  const resolveTimelineDurationSec = (filePath: string) => {
+    const song = resolveVisibleSongByFilePath(filePath)
+    return parseDurationToSeconds(song?.duration)
+  }
   const renderWaveformWithWorker = (filePath: string) => {
     if (!canUseAsyncWaveformWorker) return
     const worker = ensureWaveformWorker()
     const canvas = canvasMap.get(filePath)
     if (!worker || !canvas) return
-    const data = dataMap.get(filePath) ?? null
-    if (!data) {
-      const message: SongListWaveformWorkerIncoming = {
-        type: 'clearCanvas',
-        payload: { canvasId: filePath }
-      }
-      worker.postMessage(message)
-      return
-    }
     const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
     const accent = computedStyle?.getPropertyValue('--accent') || ''
     const progressColor = accent.trim() || '#0078d4'
@@ -209,7 +206,9 @@ export function useWaveformPreview(params: {
         isHalf: useHalfWaveform(),
         backgroundColor,
         progressColor,
-        playedPercent
+        playedPercent,
+        durationSec: resolveTimelineDurationSec(filePath),
+        themeVariant: resolveWaveformTimelineTickThemeVariant(runtime.setting?.themeMode)
       }
     }
     worker.postMessage(message)
@@ -406,10 +405,10 @@ export function useWaveformPreview(params: {
     ) {
       if (getAnalysisProgress) {
         const progress = getAnalysisProgress(filePath)
-        if (progress != null) return t('tracks.waveformAnalyzing')
+        if (progress != null) return ''
       }
       if (isSongNeedsAnalysis && isSongNeedsAnalysis(filePath)) {
-        return t('tracks.waveformWaitingAnalysis')
+        return ''
       }
     }
 
@@ -500,10 +499,17 @@ export function useWaveformPreview(params: {
     ctx.fillStyle = backgroundColor
     ctx.fillRect(0, 0, width, height)
     const data = dataMap.get(filePath) ?? null
-    if (!data) return
     const accent = computedStyle?.getPropertyValue('--accent') || ''
     const progressColor = accent.trim() || '#0078d4'
     const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
+    if (!data) {
+      drawSongListTimelineTicks(ctx, width, height, {
+        durationSec: resolveTimelineDurationSec(filePath),
+        playedPercent,
+        themeVariant: resolveWaveformTimelineTickThemeVariant(runtime.setting?.themeMode)
+      })
+      return
+    }
     if (data.kind === 'pioneer') {
       drawSongListPioneerPreviewWaveform(
         ctx,

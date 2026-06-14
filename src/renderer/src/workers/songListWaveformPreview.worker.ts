@@ -1,5 +1,6 @@
 import {
   drawSongListCompactVisualWaveform,
+  drawSongListTimelineTicks,
   drawSongListMixxxWaveform,
   drawSongListPioneerPreviewWaveform,
   type SongListWaveformRgbMetricsCacheEntry
@@ -61,9 +62,16 @@ const renderWaveform = (payload: RenderPayload) => {
   ctx.fillRect(0, 0, width, height)
 
   const data = dataMap.get(payload.filePath) ?? null
-  if (!data) return
-
   const playedPercent = clamp01(payload.playedPercent)
+  if (!data) {
+    drawSongListTimelineTicks(ctx, width, height, {
+      durationSec: payload.durationSec,
+      playedPercent,
+      themeVariant: payload.themeVariant
+    })
+    return
+  }
+
   if (data.kind === 'pioneer') {
     drawSongListPioneerPreviewWaveform(
       ctx,

@@ -56,6 +56,8 @@ export type SongListWaveformWorkerIncoming =
         backgroundColor: string
         progressColor: string
         playedPercent: number
+        durationSec: number
+        themeVariant: 'light' | 'dark'
       }
     }
   | {

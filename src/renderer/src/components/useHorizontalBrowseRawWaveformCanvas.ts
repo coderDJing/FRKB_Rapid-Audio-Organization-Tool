@@ -105,6 +105,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   // worker overlay 独立渲染，即使 displayReady=false，也会跟随当前 range 立即更新。
   const displayStartSec = ref(0)
   const displayReady = ref(false)
+  const placeholderVisible = ref(false)
   let lastQueuedPlaybackSyncRevision = -1
   let playbackRawSettleUntilMs = 0
   let lastQueuedPlaybackRawSlot: 'live' | 'retained' | null = null
@@ -120,6 +121,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const setDisplayReady = (ready: boolean) => {
     if (!ready) {
       preservePlaybackDisplayUntilRawReady = false
+    }
+    if (ready) {
+      placeholderVisible.value = false
     }
     displayReady.value = ready
   }
@@ -141,6 +145,16 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         0
     )
     return Number.isFinite(duration) && duration > 0 ? duration : 0
+  }
+
+  const canShowTimelinePlaceholder = () => {
+    if (!String(options.song()?.filePath || '').trim()) return false
+    return resolvePreviewDurationSec() > 0
+  }
+
+  const hasDrawableRawFrames = (rawData: RawWaveformData | null) => {
+    if (!rawData) return false
+    return Math.max(0, Math.floor(Number(rawData.loadedFrames ?? rawData.frames) || 0)) > 0
   }
 
   const resolveVisibleDurationSec = () =>
@@ -295,6 +309,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   }
 
   const clearCanvas = () => {
+    placeholderVisible.value = false
     liveCanvasRenderToken += 1
     liveCanvasBridge.clear()
     clearLiveCanvasPresentationOffset()
@@ -498,6 +513,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       waveformLayout,
       waveformRenderStyle,
       preferRawPeaksOnly,
+      showTimelinePlaceholder:
+        canShowTimelinePlaceholder() && !hasDrawableRawFrames(payload.rawData),
       themeVariant: resolveHorizontalBrowseWaveformThemeVariant(),
       rawSlot,
       direction: options.direction(),
@@ -593,6 +610,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
     const duration = resolvePreviewDurationSec()
     if (!duration) {
+      placeholderVisible.value = false
       clearCanvas()
       setDisplayReady(false)
       return
@@ -680,6 +698,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     }
 
     const effectiveMixxxData = effectiveMixxxSelection.data
+    const effectiveMixxxDrawable =
+      !!effectiveMixxxData &&
+      effectiveMixxxSelection.source !== 'placeholder' &&
+      effectiveMixxxSelection.source !== 'retained-placeholder'
     const effectiveRawCoverage = isRawDataCoveringRange(
       effectiveRawData,
       renderStartSec,
@@ -707,11 +729,15 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       }
     }
 
-    if (!effectiveMixxxData && !drawableRawData) {
+    const hasTimelinePlaceholderTarget =
+      canShowTimelinePlaceholder() && !hasDrawableRawFrames(drawableRawData)
+
+    if (!effectiveMixxxDrawable && !drawableRawData) {
       if (shouldPreserveDisplay || shouldHoldPlaybackFrame) {
         return
       }
       lastStreamRenderedRawData = null
+      placeholderVisible.value = hasTimelinePlaceholderTarget
       // 完全无高清波形可画：只清波形层；时间线 overlay 仍按当前 range 渲染。
       setDisplayReady(false)
       queueLiveWaveformRender({
@@ -741,6 +767,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           return
         }
         lastStreamRenderedRawData = null
+        placeholderVisible.value = hasTimelinePlaceholderTarget
         setDisplayReady(false)
         queueLiveWaveformRender({
           rangeStartSec: renderStartSec,
@@ -774,6 +801,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     } else if (!drawableRawData && !canRenderWithoutRawCoverage) {
       if (shouldPreserveDisplay) return
       lastStreamRenderedRawData = null
+      placeholderVisible.value = canShowTimelinePlaceholder()
       setDisplayReady(false)
       queueLiveWaveformRender({
         rangeStartSec: renderStartSec,
@@ -785,6 +813,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       })
     } else {
       holdPreviousWaveformFrame = false
+      placeholderVisible.value = false
       const finishTiming = startHorizontalBrowseUserTiming(
         `frkb:hb:canvas:worker-live:${options.direction()}`
       )
@@ -1039,6 +1068,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     storeRawWaveform,
     displayStartSec,
     displayReady,
+    placeholderVisible,
     dispose
   }
 }

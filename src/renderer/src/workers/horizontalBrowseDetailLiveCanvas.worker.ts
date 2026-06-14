@@ -5,6 +5,7 @@ import { drawRgbWaveform } from '@renderer/components/rgbWaveformRenderer'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import { createHorizontalBrowseDetailLiveCanvasOverlayRenderer } from './horizontalBrowseDetailLiveCanvasOverlay'
 import { createHorizontalBrowseDetailLiveCanvasRawStore } from './horizontalBrowseDetailLiveCanvasRawStore'
+import { renderHorizontalBrowseTimelineFallback } from './horizontalBrowseDetailLiveCanvasTimelineFallback'
 import {
   PLAYBACK_CLOCK_REANCHOR_MIN_FRAME_GAP_MS,
   PLAYBACK_INITIAL_FULL_RENDER_LEAD_DEFAULT_MS,
@@ -59,12 +60,12 @@ let playbackRaf = 0
 let playbackInitialFullRenderLeadMs = PLAYBACK_INITIAL_FULL_RENDER_LEAD_DEFAULT_MS,
   preferRetainedPlaybackRaw = false
 const COLUMN_SMOOTH_OVERSCAN_SCALED_PX = 2
-const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => {
-  const scope = self as typeof globalThis & {
-    postMessage: (payload: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => void
-  }
-  scope.postMessage(message)
-}
+const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) =>
+  (
+    self as typeof globalThis & {
+      postMessage: (payload: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => void
+    }
+  ).postMessage(message)
 
 const resetFrameState = () => {
   lastFrame = null
@@ -703,11 +704,6 @@ const patchDirtySegmentInCurrentFrame = (
   return rendered
 }
 
-const renderTimelineFallback = () => {
-  if (!ctx) return
-  clearWaveformPixels()
-}
-
 const isDirtyRenderRequest = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) =>
   typeof request.dirtyStartSec === 'number' || typeof request.dirtyEndSec === 'number'
 
@@ -755,7 +751,10 @@ const processRender = (
     lastFrame = previousFrame
     lastWaveformScrollShiftScaledPx = null
   } else if (metrics && renderState && !ready && !holdMissingPlaybackRaw) {
-    renderTimelineFallback()
+    clearWaveformPixels()
+    if (request.showTimelinePlaceholder && ctx) {
+      renderHorizontalBrowseTimelineFallback(ctx, request, metrics)
+    }
   }
   // committed range 是本次实际留在 canvas 上的波形坐标；preserved 帧必须回报旧帧坐标。
   const committedRangeStartSec =

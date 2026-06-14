@@ -53,6 +53,7 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   waveformLayout: 'full' | 'top-half' | 'bottom-half'
   waveformRenderStyle: HorizontalBrowseDetailLiveCanvasWaveformRenderStyle
   preferRawPeaksOnly: boolean
+  showTimelinePlaceholder: boolean
   themeVariant: 'light' | 'dark'
   rawSlot: HorizontalBrowseDetailLiveCanvasRawSlot | null
   direction: HorizontalBrowseDetailLiveCanvasDirection

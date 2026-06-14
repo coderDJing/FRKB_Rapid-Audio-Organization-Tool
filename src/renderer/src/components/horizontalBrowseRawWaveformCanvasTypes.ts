@@ -31,6 +31,7 @@ export type UseHorizontalBrowseRawWaveformCanvasOptions = {
   previewTimeBasisOffsetMs: Ref<number>
   dragging: Ref<boolean>
   rawStreamActive: Ref<boolean>
+  previewLoading: Ref<boolean>
   allowNegativeTimeline: () => boolean
   waveformLayout: () => HorizontalBrowseWaveformLayout
   waveformRenderStyle: () => HorizontalBrowseWaveformRenderStyle

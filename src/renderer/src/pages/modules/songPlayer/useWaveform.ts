@@ -8,6 +8,10 @@ import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import { formatSaturatedWaveformRgb } from '@shared/waveformDisplayColor'
 import { drawPlayerCompactVisualWaveform } from './playerCompactVisualWaveformRenderer'
+import {
+  drawWaveformTimelineTicks,
+  resolveWaveformTimelineTickThemeVariant
+} from '@renderer/components/waveformTimelineTicks'
 
 const WAVEFORM_PLAYHEAD_NEEDLE_BACKGROUND = [
   'linear-gradient(90deg,',
@@ -19,119 +23,6 @@ const WAVEFORM_PLAYHEAD_NEEDLE_BACKGROUND = [
   'transparent 82%,',
   'transparent 100%)'
 ].join(' ')
-
-type TimelineTickPalette = {
-  baseline: string
-  minor: string
-  major: string
-  anchor: string
-}
-type PlayerWaveformThemeVariant = 'light' | 'dark'
-
-const TIMELINE_MINOR_TICK_SEC = 5
-const TIMELINE_MAJOR_TICK_SEC = 30
-const TIMELINE_ANCHOR_TICK_SEC = 60
-
-const hasThemeClass = (className: string) => {
-  const htmlEl = document.documentElement
-  const bodyEl = document.body
-  const appEl = document.getElementById('app')
-  return (
-    htmlEl?.classList.contains(className) ||
-    bodyEl?.classList.contains(className) ||
-    appEl?.classList.contains(className)
-  )
-}
-
-const resolveSystemThemeVariant = (): PlayerWaveformThemeVariant => {
-  if (hasThemeClass('theme-light')) return 'light'
-  if (hasThemeClass('theme-dark')) return 'dark'
-  try {
-    return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ? 'dark' : 'light'
-  } catch {
-    return 'dark'
-  }
-}
-
-const resolvePlayerWaveformThemeVariant = (mode?: unknown): PlayerWaveformThemeVariant => {
-  if (mode === 'light') return 'light'
-  if (mode === 'dark') return 'dark'
-  return resolveSystemThemeVariant()
-}
-
-const resolveTimelineTickPalette = (
-  active: boolean,
-  themeVariant: PlayerWaveformThemeVariant
-): TimelineTickPalette => {
-  if (themeVariant === 'light') {
-    return active
-      ? {
-          baseline: 'rgba(15, 23, 42, 0.16)',
-          minor: 'rgba(15, 23, 42, 0.22)',
-          major: 'rgba(15, 23, 42, 0.32)',
-          anchor: 'rgba(15, 23, 42, 0.4)'
-        }
-      : {
-          baseline: 'rgba(15, 23, 42, 0.07)',
-          minor: 'rgba(15, 23, 42, 0.11)',
-          major: 'rgba(15, 23, 42, 0.19)',
-          anchor: 'rgba(15, 23, 42, 0.25)'
-        }
-  }
-
-  return active
-    ? {
-        baseline: 'rgba(255, 255, 255, 0.22)',
-        minor: 'rgba(255, 255, 255, 0.3)',
-        major: 'rgba(255, 255, 255, 0.44)',
-        anchor: 'rgba(255, 255, 255, 0.54)'
-      }
-    : {
-        baseline: 'rgba(255, 255, 255, 0.08)',
-        minor: 'rgba(255, 255, 255, 0.14)',
-        major: 'rgba(255, 255, 255, 0.24)',
-        anchor: 'rgba(255, 255, 255, 0.3)'
-      }
-}
-
-const drawTimelineTickTrack = (
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  palette: TimelineTickPalette,
-  duration: number
-) => {
-  const centerY = Math.floor(height / 2)
-
-  ctx.imageSmoothingEnabled = false
-  ctx.fillStyle = palette.baseline
-  ctx.fillRect(0, centerY, width, 1)
-
-  const safeDuration = Math.max(0, Number(duration) || 0)
-  if (!safeDuration) {
-    for (let x = 4, index = 0; x < width; x += 8, index += 1) {
-      const isAnchorTick = index % 12 === 0
-      const isMajorTick = index % 6 === 0
-      const tickHeight = isAnchorTick ? 18 : isMajorTick ? 12 : 6
-      const tickY = Math.max(0, Math.round(centerY - tickHeight / 2))
-
-      ctx.fillStyle = isAnchorTick ? palette.anchor : isMajorTick ? palette.major : palette.minor
-      ctx.fillRect(Math.floor(x), tickY, 1, Math.min(tickHeight, height))
-    }
-    return
-  }
-
-  for (let second = 0; second <= safeDuration; second += TIMELINE_MINOR_TICK_SEC) {
-    const x = (second / safeDuration) * width
-    const isAnchorTick = second % TIMELINE_ANCHOR_TICK_SEC === 0
-    const isMajorTick = second % TIMELINE_MAJOR_TICK_SEC === 0
-    const tickHeight = isAnchorTick ? 18 : isMajorTick ? 12 : 6
-    const tickY = Math.max(0, Math.round(centerY - tickHeight / 2))
-
-    ctx.fillStyle = isAnchorTick ? palette.anchor : isMajorTick ? palette.major : palette.minor
-    ctx.fillRect(Math.min(width - 1, Math.round(x)), tickY, 1, Math.min(tickHeight, height))
-  }
-}
 
 export function useWaveform(params: {
   waveformEl: Ref<HTMLDivElement | null>
@@ -410,23 +301,11 @@ export function useWaveform(params: {
 
   const drawEmptyTimelineTicks = (width: number, height: number, duration: number) => {
     const pixelRatio = window.devicePixelRatio || 1
-    const themeVariant = resolvePlayerWaveformThemeVariant(runtime.setting?.themeMode)
+    const themeVariant = resolveWaveformTimelineTickThemeVariant(runtime.setting?.themeMode)
     resizeCanvas(baseCanvas, baseCtx, width, height, pixelRatio)
     resizeCanvas(progressCanvas, progressCtx, width, height, pixelRatio)
-    drawTimelineTickTrack(
-      baseCtx,
-      width,
-      height,
-      resolveTimelineTickPalette(false, themeVariant),
-      duration
-    )
-    drawTimelineTickTrack(
-      progressCtx,
-      width,
-      height,
-      resolveTimelineTickPalette(true, themeVariant),
-      duration
-    )
+    drawWaveformTimelineTicks(baseCtx, width, height, duration, themeVariant)
+    drawWaveformTimelineTicks(progressCtx, width, height, duration, themeVariant, { active: true })
   }
 
   const drawPioneerPreviewWaveform = (

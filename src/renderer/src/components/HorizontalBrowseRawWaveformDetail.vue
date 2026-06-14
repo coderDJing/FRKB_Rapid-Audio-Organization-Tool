@@ -195,6 +195,7 @@ const {
   updateLiveWaveformRawMeta,
   storeRawWaveform,
   displayReady,
+  placeholderVisible,
   dispose: disposeWaveformCanvas
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => props.song,
@@ -212,6 +213,7 @@ const {
   playbackSyncRevision,
   rawData,
   mixxxData,
+  previewLoading,
   previewStartSec,
   previewZoom,
   previewBpm: previewRenderBpm,
@@ -1066,7 +1068,7 @@ defineExpose(
       {
         'is-dragging': dragging,
         'is-bar-selecting': previewBarLinePicking,
-        'is-waveform-ready': displayReady,
+        'is-waveform-ready': displayReady || placeholderVisible,
         'is-loading': previewLoading && resolveRawWaveformStreamMode() === 'edit-window'
       }
     ]"

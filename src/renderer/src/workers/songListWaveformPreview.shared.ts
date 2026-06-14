@@ -9,10 +9,12 @@ import {
   resolveSaturatedWaveformColor
 } from '@shared/waveformDisplayColor'
 import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
+import {
+  drawWaveformTimelineTicks,
+  type WaveformTimelineTickThemeVariant
+} from '@renderer/components/waveformTimelineTicks'
 
-type SongListWaveformCanvasContext =
-  | CanvasRenderingContext2D
-  | OffscreenCanvasRenderingContext2D
+type SongListWaveformCanvasContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D
 
 type MixxxColumnMetrics = {
   amplitudeLeft: number
@@ -38,6 +40,21 @@ const MIXXX_RGB_COMPONENTS: Record<RGBWaveformBandKey, { r: number; g: number; b
 
 const toColorChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value)))
 const clamp01 = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0)
+
+export const drawSongListTimelineTicks = (
+  ctx: SongListWaveformCanvasContext,
+  width: number,
+  height: number,
+  options: {
+    durationSec: number
+    playedPercent: number
+    themeVariant: WaveformTimelineTickThemeVariant
+  }
+) => {
+  drawWaveformTimelineTicks(ctx, width, height, options.durationSec, options.themeVariant, {
+    playedPercent: options.playedPercent
+  })
+}
 
 const computeSongListMixxxColumnMetrics = (
   filePath: string,

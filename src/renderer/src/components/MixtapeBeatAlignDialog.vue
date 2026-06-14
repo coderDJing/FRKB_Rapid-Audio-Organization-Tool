@@ -318,6 +318,7 @@ const {
   playbackSyncRevision,
   rawData: overviewRawData,
   mixxxData: previewMixxxData,
+  previewLoading,
   previewStartSec,
   previewZoom,
   previewBpm,

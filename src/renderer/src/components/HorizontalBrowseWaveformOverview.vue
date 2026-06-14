@@ -18,6 +18,10 @@ import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 import { formatSaturatedWaveformRgb } from '@shared/waveformDisplayColor'
 import { loadWaveformGlobalOverviewData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
 import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
+import {
+  drawWaveformTimelineTicks,
+  resolveWaveformTimelineTickThemeVariant
+} from '@renderer/components/waveformTimelineTicks'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -45,6 +49,7 @@ const pioneerPreviewData = ref<IPioneerPreviewWaveformData | null>(null)
 const scrubbing = ref(false)
 
 let resizeObserver: ResizeObserver | null = null
+let themeClassObserver: MutationObserver | null = null
 let loadToken = 0
 let seekRaf = 0
 let pendingSeekSeconds: number | null = null
@@ -218,6 +223,23 @@ const clearCanvas = () => {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
 }
 
+const drawTimelineTicks = (ctx: CanvasRenderingContext2D, width: number, height: number) => {
+  if (!props.song || totalSeconds.value <= 0) {
+    clearCanvas()
+    return
+  }
+  drawWaveformTimelineTicks(
+    ctx,
+    width,
+    height,
+    totalSeconds.value,
+    resolveWaveformTimelineTickThemeVariant(runtime.setting?.themeMode),
+    {
+      playedPercent: totalSeconds.value > 0 ? Number(props.currentSeconds) / totalSeconds.value : 0
+    }
+  )
+}
+
 const drawPioneerPreviewWaveform = (
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -311,7 +333,7 @@ const drawWaveform = () => {
     return
   }
 
-  clearCanvas()
+  drawTimelineTicks(ctx, width, height)
 }
 
 const loadWaveform = async () => {
@@ -357,7 +379,7 @@ const loadWaveform = async () => {
     } catch {}
   }
 
-  clearCanvas()
+  drawWaveform()
 }
 
 watch(
@@ -379,6 +401,21 @@ watch(
   }
 )
 
+watch(
+  () => runtime.setting?.themeMode,
+  () => {
+    drawWaveform()
+  }
+)
+
+watch(
+  () => [Number(props.currentSeconds) || 0, totalSeconds.value] as const,
+  () => {
+    if (compactVisualData.value || pioneerPreviewData.value) return
+    drawWaveform()
+  }
+)
+
 const handleSongWaveformUpdated = (_event: unknown, payload: { filePath?: string }) => {
   const filePath = String(payload?.filePath || '').trim()
   const currentSongFilePath = String(props.song?.filePath || '').trim()
@@ -394,6 +431,17 @@ onMounted(() => {
     })
     resizeObserver.observe(trackRef.value)
   }
+  if (typeof MutationObserver !== 'undefined') {
+    const targets = [
+      document.documentElement,
+      document.body,
+      document.getElementById('app')
+    ].filter((target): target is HTMLElement => Boolean(target))
+    themeClassObserver = new MutationObserver(() => drawWaveform())
+    for (const target of targets) {
+      themeClassObserver.observe(target, { attributes: true, attributeFilter: ['class'] })
+    }
+  }
   window.electron.ipcRenderer.on('song-waveform-updated', handleSongWaveformUpdated)
   drawWaveform()
 })
@@ -408,6 +456,10 @@ onUnmounted(() => {
   if (resizeObserver) {
     resizeObserver.disconnect()
     resizeObserver = null
+  }
+  if (themeClassObserver) {
+    themeClassObserver.disconnect()
+    themeClassObserver = null
   }
   window.electron.ipcRenderer.removeListener('song-waveform-updated', handleSongWaveformUpdated)
 })
