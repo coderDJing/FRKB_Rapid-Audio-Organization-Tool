@@ -377,7 +377,6 @@ export function useLibraryContextMenu({
           dirName: '',
           type: 'songList'
         })
-        runtime.songsArea.songListUUID = newUuid
         break
       }
       case 'library.createStemMixtape':
@@ -400,7 +399,6 @@ export function useLibraryContextMenu({
           mixMode,
           stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
         })
-        runtime.songsArea.songListUUID = newUuid
         break
       }
       case 'library.createFolder': {

@@ -120,9 +120,6 @@ export function useLibraryItemEditing({
         await persistMixtapeProjectMode(dirData.uuid, projectMode)
       }
     }
-    if (dirData.type === 'songList') {
-      runtime.songsArea.songListUUID = dirData.uuid
-    }
     if (runtime.creatingSongListUUID === dirData.uuid) {
       runtime.creatingSongListUUID = ''
     }
