@@ -11,6 +11,8 @@ type UseHorizontalBrowseEditDeckNavigationParams = {
   topDeckSong: Ref<ISongInfo | null>
   assignSongToDeck: (deck: DeckKey, song: ISongInfo) => Promise<unknown>
   handleDeckBeatJump: (deck: DeckKey, direction: -1 | 1, beatCount: number) => void
+  resolveDeckPlaying: (deck: DeckKey) => boolean
+  handleDeckPlayPauseToggle: (deck: DeckKey) => void
 }
 
 const resolveSongQueueKey = (song: ISongInfo | null | undefined) =>
@@ -34,10 +36,13 @@ const resolveCurrentSongIndex = (songs: ISongInfo[], currentSong: ISongInfo | nu
 export const useHorizontalBrowseEditDeckNavigation = ({
   topDeckSong,
   assignSongToDeck,
-  handleDeckBeatJump
+  handleDeckBeatJump,
+  resolveDeckPlaying,
+  handleDeckPlayPauseToggle
 }: UseHorizontalBrowseEditDeckNavigationParams) => {
   const runtime = useRuntimeStore()
   const editBeatStep = ref<HorizontalBrowseEditBeatStep>(4)
+  let editNavigationToken = 0
 
   const editModeQueue = computed(() =>
     runtime.playingData.playingSongListData.filter((song) => Boolean(resolveSongFilePath(song)))
@@ -58,8 +63,19 @@ export const useHorizontalBrowseEditDeckNavigation = ({
     const nextSong = editModeQueue.value[currentIndex + direction]
     const filePath = resolveSongFilePath(nextSong)
     if (!filePath) return
+    const shouldResumePlayback = resolveDeckPlaying('top')
+    const token = (editNavigationToken += 1)
     beginHorizontalBrowseDeckInteraction('top', filePath)
-    void assignSongToDeck('top', { ...nextSong })
+    void assignSongToDeck('top', { ...nextSong }).then(() => {
+      if (
+        shouldResumePlayback &&
+        editNavigationToken === token &&
+        resolveSongFilePath(topDeckSong.value) === filePath &&
+        !resolveDeckPlaying('top')
+      ) {
+        handleDeckPlayPauseToggle('top')
+      }
+    })
   }
 
   const jumpEditDeckByBeats = (direction: -1 | 1) => {

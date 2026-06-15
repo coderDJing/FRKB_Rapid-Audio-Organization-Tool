@@ -455,7 +455,9 @@ const {
 } = useHorizontalBrowseEditDeckNavigation({
   topDeckSong,
   assignSongToDeck,
-  handleDeckBeatJump
+  handleDeckBeatJump,
+  resolveDeckPlaying,
+  handleDeckPlayPauseToggle
 })
 
 const { handleDeckHotCuePress, handleDeckHotCueDelete, handleSongHotCuesUpdated } =
@@ -673,7 +675,8 @@ useHorizontalBrowseHotkeys({
   onDelete: handleDeckDeleteHotkey,
   onSeekPercent: handleDeckSeekPercent,
   onNudgeCrossfader: handleCrossfaderNudgeByKeyboard,
-  onResetCrossfader: handleCrossfaderResetByKeyboard
+  onResetCrossfader: handleCrossfaderResetByKeyboard,
+  onNavigateEditSong: loadEditAdjacentSong
 })
 
 const {

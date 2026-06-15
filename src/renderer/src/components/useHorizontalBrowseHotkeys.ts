@@ -24,6 +24,7 @@ type UseHorizontalBrowseHotkeysParams = {
   onSeekPercent: (deck: HorizontalBrowseDeckKey, percent: number) => void
   onNudgeCrossfader: (direction: -1 | 1) => void
   onResetCrossfader: () => void
+  onNavigateEditSong?: (direction: -1 | 1) => void
 }
 
 type PreviewStatePayload = {
@@ -216,7 +217,11 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
 
     if (code === 'KeyW' || code === 'ArrowUp') {
       stopKeyboardEvent(event)
-      if (isEditModeActive()) return
+      if (isEditModeActive()) {
+        if (event.repeat) return
+        params.onNavigateEditSong?.(-1)
+        return
+      }
       if (event.shiftKey) {
         clearCrossfaderKeyState()
         if (event.repeat) return
@@ -231,7 +236,11 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
 
     if (code === 'KeyS' || code === 'ArrowDown') {
       stopKeyboardEvent(event)
-      if (isEditModeActive()) return
+      if (isEditModeActive()) {
+        if (event.repeat) return
+        params.onNavigateEditSong?.(1)
+        return
+      }
       if (event.shiftKey) {
         clearCrossfaderKeyState()
         if (event.repeat) return
