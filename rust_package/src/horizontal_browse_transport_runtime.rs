@@ -60,7 +60,7 @@ impl AsyncDecodeQueue {
         .pending
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-      pending.retain(|queued| queued.deck != request.deck);
+      pending.retain(|queued| should_keep_queued_decode_request(queued, &request));
       if request.is_full_decode {
         pending.push_back(request);
       } else {
@@ -108,6 +108,10 @@ impl AsyncDecodeQueue {
       finish_decode_request(request, decoded, "async", queue_wait_ms, started_at_ms);
     }
   }
+}
+
+fn should_keep_queued_decode_request(queued: &DecodeRequest, request: &DecodeRequest) -> bool {
+  queued.deck != request.deck || queued.is_full_decode != request.is_full_decode
 }
 
 fn async_decode_queue() -> &'static AsyncDecodeQueue {
@@ -489,4 +493,54 @@ pub(super) fn native_now_ms() -> f64 {
 
 pub(super) fn next_snapshot_sequence() -> f64 {
   SNAPSHOT_SEQUENCE.fetch_add(1, Ordering::Relaxed) as f64 + 1.0
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn decode_request(deck: DeckId, is_full_decode: bool) -> DecodeRequest {
+    DecodeRequest {
+      deck,
+      file_path: "track.mp3".to_string(),
+      request_id: 1,
+      start_sec: 0.0,
+      max_duration_sec: if is_full_decode { None } else { Some(10.0) },
+      is_full_decode,
+      queued_at_ms: None,
+    }
+  }
+
+  #[test]
+  fn queued_startup_and_full_decode_do_not_replace_each_other() {
+    let queued_startup = decode_request(DeckId::Top, false);
+    let next_full = decode_request(DeckId::Top, true);
+    assert!(should_keep_queued_decode_request(
+      &queued_startup,
+      &next_full
+    ));
+
+    let queued_full = decode_request(DeckId::Top, true);
+    let next_startup = decode_request(DeckId::Top, false);
+    assert!(should_keep_queued_decode_request(
+      &queued_full,
+      &next_startup
+    ));
+  }
+
+  #[test]
+  fn queued_decode_replaces_same_deck_same_decode_kind_only() {
+    let queued_startup = decode_request(DeckId::Top, false);
+    let next_startup = decode_request(DeckId::Top, false);
+    assert!(!should_keep_queued_decode_request(
+      &queued_startup,
+      &next_startup
+    ));
+
+    let other_deck_startup = decode_request(DeckId::Bottom, false);
+    assert!(should_keep_queued_decode_request(
+      &other_deck_startup,
+      &next_startup
+    ));
+  }
 }

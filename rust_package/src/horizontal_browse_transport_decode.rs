@@ -44,20 +44,10 @@ impl HorizontalBrowseTransportEngine {
       return None;
     }
 
-    let pending_start_sec = self.deck(deck).pending_decode_start_sec;
-    let pending_max_duration_sec = self.deck(deck).pending_decode_max_duration_sec;
     let pending_matches_file =
       self.deck(deck).pending_decode_file_path.as_deref() == Some(file_path.as_str());
     if pending_matches_file {
       if !replace_pending {
-        return None;
-      }
-      let target_audio_sec = Self::timeline_sec_to_audio_sec(self.deck(deck), startup_target_sec);
-      if Self::decode_request_window_covers(
-        pending_start_sec,
-        pending_max_duration_sec,
-        target_audio_sec,
-      ) {
         return None;
       }
     }
@@ -91,24 +81,6 @@ impl HorizontalBrowseTransportEngine {
       is_full_decode: false,
       queued_at_ms: None,
     })
-  }
-
-  fn decode_request_window_covers(
-    start_sec: Option<f64>,
-    max_duration_sec: Option<f64>,
-    target_audio_sec: f64,
-  ) -> bool {
-    let Some(start_sec) = start_sec else {
-      return false;
-    };
-    let Some(max_duration_sec) = max_duration_sec else {
-      return false;
-    };
-    if !start_sec.is_finite() || !max_duration_sec.is_finite() || !target_audio_sec.is_finite() {
-      return false;
-    }
-    target_audio_sec + 0.0001 >= start_sec
-      && target_audio_sec < start_sec + max_duration_sec - 0.0001
   }
 
   pub(super) fn prepare_full_decode_request(&mut self, deck: DeckId) -> Option<DecodeRequest> {

@@ -21,10 +21,6 @@ import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import { notifyPlaybackStateChange, notifyTransportActivity } from '../services/keyAnalysisQueue'
 
 const SLOW_TRANSPORT_OPERATION_LOG_THRESHOLD_MS = 500
-const DECODE_DIAGNOSTIC_FLUSH_INTERVAL_MS = 250
-
-let decodeDiagnosticFlushTimer: ReturnType<typeof setInterval> | null = null
-let preparePlayheadDiagnosticId = 0
 
 const normalizeDiagnosticNumber = (value: unknown, fractionDigits = 3) => {
   const numeric = Number(value)
@@ -70,72 +66,6 @@ const buildDeckDiagnosticSnapshot = (
   }
 }
 
-const buildDeckCoverageDiagnostic = (
-  deckSnapshot: HorizontalBrowseTransportDeckSnapshot | null
-) => {
-  if (!deckSnapshot) {
-    return {
-      state: 'missing',
-      gapSec: null
-    }
-  }
-  if (deckSnapshot.playheadLoaded) {
-    return {
-      state: 'covered',
-      gapSec: 0
-    }
-  }
-  if (!deckSnapshot.loaded) {
-    return {
-      state: 'not-loaded',
-      gapSec: null
-    }
-  }
-  const audioCurrentSec = Number(deckSnapshot.audioCurrentSec)
-  const loadedSegmentStartSec = Number(deckSnapshot.loadedSegmentStartSec)
-  const loadedSegmentEndSec = Number(deckSnapshot.loadedSegmentEndSec)
-  if (
-    !Number.isFinite(audioCurrentSec) ||
-    !Number.isFinite(loadedSegmentStartSec) ||
-    !Number.isFinite(loadedSegmentEndSec) ||
-    loadedSegmentEndSec <= loadedSegmentStartSec
-  ) {
-    return {
-      state: 'invalid-loaded-segment',
-      gapSec: null
-    }
-  }
-  if (audioCurrentSec < loadedSegmentStartSec) {
-    return {
-      state: 'before-loaded-segment',
-      gapSec: normalizeDiagnosticNumber(loadedSegmentStartSec - audioCurrentSec)
-    }
-  }
-  if (audioCurrentSec >= loadedSegmentEndSec) {
-    return {
-      state: 'after-loaded-segment',
-      gapSec: normalizeDiagnosticNumber(audioCurrentSec - loadedSegmentEndSec)
-    }
-  }
-  return {
-    state: 'inside-loaded-segment-but-unready',
-    gapSec: null
-  }
-}
-
-const shouldLogPreparePlayheadDiagnostic = (
-  deckSnapshot: HorizontalBrowseTransportDeckSnapshot | null
-) => {
-  if (!deckSnapshot || deckSnapshot.playheadLoaded) return false
-  const coverage = buildDeckCoverageDiagnostic(deckSnapshot)
-  return (
-    deckSnapshot.decoding ||
-    coverage.state === 'before-loaded-segment' ||
-    coverage.state === 'after-loaded-segment' ||
-    coverage.state === 'invalid-loaded-segment'
-  )
-}
-
 const buildDeckInputDiagnosticSnapshot = (payload: HorizontalBrowseTransportDeckInput) => ({
   filePath: String(payload.filePath || '').trim(),
   title: String(payload.title || '').trim(),
@@ -172,23 +102,6 @@ const flushTransportDecodeDiagnostics = () => {
   }
 }
 
-const startTransportDecodeDiagnosticFlusher = () => {
-  if (decodeDiagnosticFlushTimer) return
-  decodeDiagnosticFlushTimer = setInterval(() => {
-    try {
-      flushTransportDecodeDiagnostics()
-    } catch (error) {
-      log.error('[HB-TRANSPORT-DECODE] flush failed', error)
-    }
-  }, DECODE_DIAGNOSTIC_FLUSH_INTERVAL_MS)
-}
-
-export const stopHorizontalBrowseTransportDecodeDiagnosticFlusher = () => {
-  if (!decodeDiagnosticFlushTimer) return
-  clearInterval(decodeDiagnosticFlushTimer)
-  decodeDiagnosticFlushTimer = null
-}
-
 const logSlowPreparePlayhead = (
   deck: HorizontalBrowseDeckKey,
   elapsedMs: number,
@@ -208,7 +121,6 @@ const logSlowPreparePlayhead = (
 }
 
 export function registerHorizontalBrowseTransportHandlers() {
-  startTransportDecodeDiagnosticFlusher()
   startHorizontalBrowseTransportSnapshotBroadcaster(() => {
     const snapshot = horizontalBrowseTransportBridge.snapshot()
     flushTransportDecodeDiagnostics()
@@ -415,61 +327,10 @@ export function registerHorizontalBrowseTransportHandlers() {
     async (_event, deck: HorizontalBrowseDeckKey, nowMs: number) => {
       const before = horizontalBrowseTransportBridge.snapshot(nowMs)
       const beforeDeck = resolveSnapshotDeck(before, deck)
-      const shouldTracePreparePlayhead = shouldLogPreparePlayheadDiagnostic(beforeDeck)
-      const diagnosticId = shouldTracePreparePlayhead ? ++preparePlayheadDiagnosticId : 0
-      const beforeCoverage = buildDeckCoverageDiagnostic(beforeDeck)
-      if (diagnosticId > 0) {
-        log.warn(
-          `[HB-TRANSPORT-PREPARE-PLAYHEAD] start ${JSON.stringify({
-            id: diagnosticId,
-            deck,
-            nowMs: normalizeDiagnosticNumber(nowMs),
-            beforeCoverage,
-            before: buildDeckDiagnosticSnapshot(before, deck)
-          })}`
-        )
-      }
       const startedAt = performance.now()
-      let snapshot: HorizontalBrowseTransportSnapshot
-      try {
-        snapshot = horizontalBrowseTransportBridge.preparePlayhead(deck, nowMs)
-      } catch (error) {
-        if (diagnosticId > 0) {
-          log.error(
-            `[HB-TRANSPORT-PREPARE-PLAYHEAD] error ${JSON.stringify({
-              id: diagnosticId,
-              deck,
-              elapsedMs: normalizeDiagnosticNumber(performance.now() - startedAt, 1),
-              beforeCoverage,
-              before: buildDeckDiagnosticSnapshot(before, deck)
-            })}`,
-            error
-          )
-        }
-        throw error
-      }
+      const snapshot = horizontalBrowseTransportBridge.preparePlayhead(deck, nowMs)
       const elapsedMs = performance.now() - startedAt
       const afterDeck = resolveSnapshotDeck(snapshot, deck)
-      const afterCoverage = buildDeckCoverageDiagnostic(afterDeck)
-      if (diagnosticId > 0) {
-        log.warn(
-          `[HB-TRANSPORT-PREPARE-PLAYHEAD] done ${JSON.stringify({
-            id: diagnosticId,
-            deck,
-            elapsedMs: normalizeDiagnosticNumber(elapsedMs, 1),
-            beforeCoverage,
-            afterCoverage,
-            before: buildDeckDiagnosticSnapshot(before, deck),
-            after: buildDeckDiagnosticSnapshot(snapshot, deck),
-            becamePlayheadLoaded: Boolean(!beforeDeck?.playheadLoaded && afterDeck?.playheadLoaded),
-            loadedSegmentExpanded: Boolean(
-              Number(afterDeck?.loadedSegmentEndSec || 0) >
-              Number(beforeDeck?.loadedSegmentEndSec || 0)
-            ),
-            decodePendingAfter: Boolean(afterDeck?.decoding)
-          })}`
-        )
-      }
       logSlowPreparePlayhead(deck, elapsedMs, before, snapshot)
       logSlowTransportOperation('prepare-playhead', elapsedMs, {
         deck,

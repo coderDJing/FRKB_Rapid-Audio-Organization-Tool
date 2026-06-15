@@ -250,6 +250,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
     await params.nativeTransport.preparePlayhead(deck).catch(() => undefined)
   }
 
+  const resumeDeckPlaybackAfterSeek = async (deck: DeckKey) => {
+    await prepareDeckPlayheadIfNeeded(deck)
+    await params.nativeTransport.setPlaying(deck, true)
+  }
+
   const pendingPlayDiagnostics = createHorizontalBrowsePendingPlayDiagnostics({
     resolveDeckSong: params.resolveDeckSong,
     resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot,
@@ -443,8 +448,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
             }
           }
 
-          if (shouldPauseForSyncedSeek && deckSeekResumeOnComplete[deck]) {
-            await params.nativeTransport.setPlaying(deck, true)
+          if (deckSeekResumeOnComplete[deck]) {
+            await resumeDeckPlaybackAfterSeek(deck)
 
             if (deckSeekActionToken[deck] !== token) {
               continue
@@ -646,8 +651,10 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
       await ensureDualTransportSync(deck)
       if (shouldResume) {
-        await params.nativeTransport.setPlaying(deck, true)
-        await params.nativeTransport.setPlaying(otherDeck, true)
+        await resumeDeckPlaybackAfterSeek(deck)
+        if (deckWaveformDragState[deck].token !== sourceFinish.token) return
+        await resumeDeckPlaybackAfterSeek(otherDeck)
+        if (deckWaveformDragState[otherDeck].token !== otherFinish.token) return
       }
       params.syncDeckRenderState({ force: 'all' })
     })().catch(() => {})
@@ -719,7 +726,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
         }
       }
       if (shouldResume) {
-        await params.nativeTransport.setPlaying(deck, true)
+        await resumeDeckPlaybackAfterSeek(deck)
         if (deckWaveformDragState[deck].token !== token) {
           return
         }
@@ -777,7 +784,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       if (otherBoundaryExceeded) {
         params.deactivateDualTransportSync?.()
         if (shouldResume && !sourceAtEnd) {
-          await params.nativeTransport.setPlaying(deck, true)
+          await resumeDeckPlaybackAfterSeek(deck)
         }
         await params.nativeTransport.setPlaying(otherDeck, false)
         deckSeekResumeOnComplete[deck] = false
@@ -787,6 +794,10 @@ export const useHorizontalBrowseDeckPlaybackController = (
       }
 
       if (shouldResume) {
+        await Promise.all([
+          prepareDeckPlayheadIfNeeded(deck),
+          prepareDeckPlayheadIfNeeded(otherDeck)
+        ])
         await Promise.all([
           params.nativeTransport.setPlaying(deck, true),
           params.nativeTransport.setPlaying(otherDeck, true)
