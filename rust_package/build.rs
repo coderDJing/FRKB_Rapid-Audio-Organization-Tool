@@ -202,6 +202,7 @@ fn main() {
     .include(&ffmpeg_include_dir)
     .include(&chromaprint_include)
     .file("native/ffmpeg/frkb_ffmpeg_decode_wrapper.c")
+    .define("CHROMAPRINT_NODLL", None)
     .define("_USE_MATH_DEFINES", None)
     .warnings(false)
     .compile("frkb_ffmpeg_decode");

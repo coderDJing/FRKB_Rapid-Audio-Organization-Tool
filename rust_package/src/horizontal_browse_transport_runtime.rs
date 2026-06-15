@@ -9,15 +9,25 @@ const STARTUP_DECODE_DIAGNOSTIC_THRESHOLD_MS: f64 = 500.0;
 const FULL_DECODE_DIAGNOSTIC_THRESHOLD_MS: f64 = 5000.0;
 const MAX_DECODE_DIAGNOSTICS: usize = 64;
 
+#[derive(Clone, Default)]
+struct DecodeBackendTrace {
+  decoder_backend: Option<String>,
+}
+
 enum DecodeRequestAudioResult {
   Decoded {
     samples: Vec<f32>,
     sample_rate: u32,
     channels: u16,
     ffmpeg_metrics: FfmpegTransportDecodeMetrics,
+    backend_trace: DecodeBackendTrace,
   },
-  Failed,
-  Cancelled,
+  Failed {
+    backend_trace: DecodeBackendTrace,
+  },
+  Cancelled {
+    backend_trace: DecodeBackendTrace,
+  },
 }
 
 struct AsyncDecodeQueue {
@@ -174,6 +184,7 @@ fn empty_decode_diagnostic(
     full_decode: request.is_full_decode,
     start_sec: request.start_sec,
     max_duration_sec: request.max_duration_sec,
+    decoder_backend: None,
     queue_wait_ms,
     total_ms,
     ffmpeg_total_ms: None,
@@ -202,13 +213,27 @@ fn record_decode_request_status(
   queue_wait_ms: Option<f64>,
   total_ms: f64,
 ) {
-  push_decode_diagnostic(empty_decode_diagnostic(
+  record_decode_request_status_with_trace(
     request,
     operation,
     status,
     queue_wait_ms,
     total_ms,
-  ));
+    DecodeBackendTrace::default(),
+  );
+}
+
+fn record_decode_request_status_with_trace(
+  request: &DecodeRequest,
+  operation: &str,
+  status: &str,
+  queue_wait_ms: Option<f64>,
+  total_ms: f64,
+  backend_trace: DecodeBackendTrace,
+) {
+  let mut diagnostic = empty_decode_diagnostic(request, operation, status, queue_wait_ms, total_ms);
+  diagnostic.decoder_backend = backend_trace.decoder_backend;
+  push_decode_diagnostic(diagnostic);
 }
 
 fn finish_decode_request(
@@ -224,6 +249,7 @@ fn finish_decode_request(
       sample_rate,
       channels,
       ffmpeg_metrics,
+      backend_trace,
     } => {
       let sample_count = samples.len() as f64;
       let frame_count = if channels > 0 {
@@ -233,10 +259,7 @@ fn finish_decode_request(
       };
       let loudness_started_at_ms = native_now_ms();
       let loudness_analysis = if request.is_full_decode {
-        super::horizontal_browse_transport_auto_gain::analyze_loudness(
-          &samples,
-          channels,
-        )
+        super::horizontal_browse_transport_auto_gain::analyze_loudness(&samples, channels)
       } else {
         None
       };
@@ -255,12 +278,13 @@ fn finish_decode_request(
         )
       };
       let Some(apply_baseline) = apply_baseline else {
-        record_decode_request_status(
+        record_decode_request_status_with_trace(
           &request,
           operation,
           "stale-before-prepare",
           queue_wait_ms,
           (native_now_ms() - started_at_ms).max(0.0),
+          backend_trace,
         );
         return;
       };
@@ -312,6 +336,7 @@ fn finish_decode_request(
         full_decode: request.is_full_decode,
         start_sec: request.start_sec,
         max_duration_sec: request.max_duration_sec,
+        decoder_backend: backend_trace.decoder_backend,
         queue_wait_ms,
         total_ms: (native_now_ms() - started_at_ms).max(0.0),
         ffmpeg_total_ms: Some(ffmpeg_metrics.total_ms),
@@ -335,7 +360,7 @@ fn finish_decode_request(
         schedule_decode_request(request);
       }
     }
-    DecodeRequestAudioResult::Failed => {
+    DecodeRequestAudioResult::Failed { backend_trace } => {
       let mut engine_guard = engine().lock();
       engine_guard.mark_decode_finished(
         request.deck,
@@ -349,21 +374,23 @@ fn finish_decode_request(
       } else {
         engine_guard.refresh_auto_gain();
       }
-      record_decode_request_status(
+      record_decode_request_status_with_trace(
         &request,
         operation,
         "failed",
         queue_wait_ms,
         (native_now_ms() - started_at_ms).max(0.0),
+        backend_trace,
       );
     }
-    DecodeRequestAudioResult::Cancelled => {
-      record_decode_request_status(
+    DecodeRequestAudioResult::Cancelled { backend_trace } => {
+      record_decode_request_status_with_trace(
         &request,
         operation,
         "cancelled",
         queue_wait_ms,
         (native_now_ms() - started_at_ms).max(0.0),
+        backend_trace,
       );
     }
   }
@@ -375,10 +402,23 @@ fn decode_transport_audio_file(
   max_duration_sec: Option<f64>,
 ) -> DecodeRequestAudioResult {
   let path = std::path::Path::new(&request.file_path);
-  let decoded =
-    crate::ffmpeg_decode_transport_raw_pipe_cancellable(path, start_sec, max_duration_sec, || {
-      !is_decode_request_current(request)
-    });
+  let (decoded, backend_trace) = if request.is_full_decode {
+    (
+      crate::ffmpeg_decode_transport_native_cancellable(path, start_sec, max_duration_sec, || {
+        !is_decode_request_current(request)
+      }),
+      DecodeBackendTrace {
+        decoder_backend: Some("native-libav".to_string()),
+      },
+    )
+  } else {
+    (
+      crate::ffmpeg_decode_transport_native(path, start_sec, max_duration_sec).map(Some),
+      DecodeBackendTrace {
+        decoder_backend: Some("native-libav".to_string()),
+      },
+    )
+  };
   match decoded {
     Ok(Some(ffmpeg_pcm)) => {
       if ffmpeg_pcm.channels > 0 {
@@ -387,13 +427,14 @@ fn decode_transport_audio_file(
           sample_rate: ffmpeg_pcm.sample_rate,
           channels: ffmpeg_pcm.channels,
           ffmpeg_metrics: ffmpeg_pcm.metrics,
+          backend_trace,
         }
       } else {
-        DecodeRequestAudioResult::Failed
+        DecodeRequestAudioResult::Failed { backend_trace }
       }
     }
-    Ok(None) => DecodeRequestAudioResult::Cancelled,
-    Err(_) => DecodeRequestAudioResult::Failed,
+    Ok(None) => DecodeRequestAudioResult::Cancelled { backend_trace },
+    Err(_) => DecodeRequestAudioResult::Failed { backend_trace },
   }
 }
 

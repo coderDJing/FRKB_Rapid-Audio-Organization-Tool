@@ -1,5 +1,4 @@
 import { parentPort } from 'node:worker_threads'
-import childProcess from 'node:child_process'
 
 type MixtapeRawWaveformJob = {
   jobId: number
@@ -70,22 +69,25 @@ const loadRust = () => {
       totalFrames: number
       error?: string
     }
+    decodeAudioFileNativePcm?: (
+      filePath: string,
+      startSec: number | null | undefined,
+      maxDurationSec: number | null | undefined,
+      sampleRate: number,
+      channels: number
+    ) => {
+      pcmData: Buffer
+      sampleRate: number
+      channels: number
+      totalFrames: number
+      error?: string
+    }
   }
   return binding
 }
 
 const STREAM_SAMPLE_RATE = 44100
 const STREAM_CHANNELS = 2
-let activeFfmpegChild: childProcess.ChildProcess | null = null
-
-const cancelActiveFfmpegChild = () => {
-  const child = activeFfmpegChild
-  if (!child) return
-  try {
-    if (!child.killed) child.kill('SIGKILL')
-  } catch {}
-}
-
 const toFloat32ArrayFromBuffer = (input: Buffer): Float32Array => {
   if (!input || input.length < 4) return new Float32Array(0)
   const byteOffsetAligned = input.byteOffset % 4 === 0
@@ -98,14 +100,6 @@ const toFloat32ArrayFromBuffer = (input: Buffer): Float32Array => {
   const copied = new Uint8Array(usableBytes)
   copied.set(input.subarray(0, usableBytes))
   return new Float32Array(copied.buffer)
-}
-
-const resolveBundledFfmpegPath = () => {
-  const envPath = String(process.env.FRKB_FFMPEG_PATH || '').trim()
-  if (!envPath) {
-    throw new Error('FRKB_FFMPEG_PATH not configured')
-  }
-  return envPath
 }
 
 const createRawWaveformAccumulator = (params: {
@@ -612,34 +606,29 @@ const buildRawWaveformStreamed = async (
     onChunk?: (payload: MixtapeRawWaveformProgressPayload) => void
   }
 ) => {
-  const ffmpegPath = resolveBundledFfmpegPath()
   const startSec = Math.max(0, Number(options.startSec) || 0)
   const expectedDurationSec = Math.max(0, Number(options.expectedDurationSec) || 0)
-  const args = [
-    '-nostdin',
-    '-v',
-    'error',
-    ...(startSec > 0 ? ['-ss', String(startSec)] : []),
-    '-i',
+  const rust = loadRust()
+  const decodeNative = rust.decodeAudioFileNativePcm
+  if (typeof decodeNative !== 'function') {
+    throw new Error('decodeAudioFileNativePcm unavailable')
+  }
+  const nativeDecoded = decodeNative(
     filePath,
-    ...(expectedDurationSec > 0 ? ['-t', String(expectedDurationSec)] : []),
-    '-map',
-    '0:a:0',
-    '-vn',
-    '-sn',
-    '-dn',
-    '-ac',
-    String(STREAM_CHANNELS),
-    '-ar',
-    String(STREAM_SAMPLE_RATE),
-    '-f',
-    'f32le',
-    'pipe:1'
-  ]
-
+    startSec > 0 ? startSec : null,
+    expectedDurationSec > 0 ? expectedDurationSec : null,
+    STREAM_SAMPLE_RATE,
+    STREAM_CHANNELS
+  )
+  if (nativeDecoded.error) {
+    throw new Error(nativeDecoded.error)
+  }
+  if (!nativeDecoded.pcmData || nativeDecoded.pcmData.byteLength <= 0) {
+    throw new Error('native decoded empty PCM')
+  }
   const accumulator = createRawWaveformAccumulator({
-    sampleRate: STREAM_SAMPLE_RATE,
-    channels: STREAM_CHANNELS,
+    sampleRate: nativeDecoded.sampleRate,
+    channels: nativeDecoded.channels,
     targetRate,
     songDurationSec: options.songDurationSec,
     expectedDurationSec: options.expectedDurationSec,
@@ -650,57 +639,12 @@ const buildRawWaveformStreamed = async (
     metadataOnlyResult: options.metadataOnlyResult,
     onChunk: options.onChunk
   })
-
-  await new Promise<void>((resolve, reject) => {
-    const child = childProcess.spawn(ffmpegPath, args, {
-      windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe']
-    })
-    activeFfmpegChild = child
-    let remainder: Buffer<ArrayBufferLike> = Buffer.alloc(0)
-    let stderrText = ''
-
-    child.stdout.on('data', (chunk: Buffer) => {
-      const combined = remainder.length > 0 ? Buffer.concat([remainder, chunk]) : chunk
-      const frameByteSize = STREAM_CHANNELS * 4
-      const usableBytes = combined.length - (combined.length % frameByteSize)
-      if (usableBytes <= 0) {
-        remainder = combined
-        return
-      }
-      const usableChunk =
-        usableBytes === combined.length ? combined : combined.subarray(0, usableBytes)
-      remainder = usableBytes === combined.length ? Buffer.alloc(0) : combined.subarray(usableBytes)
-      accumulator.appendSamples(toFloat32ArrayFromBuffer(usableChunk))
-    })
-
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderrText += chunk.toString()
-    })
-
-    child.once('error', (error) => {
-      if (activeFfmpegChild === child) activeFfmpegChild = null
-      reject(error)
-    })
-
-    child.once('exit', (code) => {
-      if (activeFfmpegChild === child) activeFfmpegChild = null
-      if (code === 0) {
-        resolve()
-        return
-      }
-      reject(new Error(stderrText.trim() || `ffmpeg exited with code ${code}`))
-    })
-  })
-
+  accumulator.appendSamples(toFloat32ArrayFromBuffer(nativeDecoded.pcmData))
   return { rawWaveformData: accumulator.finalize() }
 }
 
 parentPort?.on('message', async (job: MixtapeRawWaveformJob) => {
-  if (job?.type === 'cancel') {
-    cancelActiveFfmpegChild()
-    return
-  }
+  if (job?.type === 'cancel') return
 
   const response: MixtapeRawWaveformResponse = {
     jobId: job?.jobId ?? 0,

@@ -19,6 +19,7 @@ type HorizontalBrowseTransportDecodeDiagnostic = {
   fullDecode: boolean
   startSec: number
   maxDurationSec?: number
+  decoderBackend?: string
   queueWaitMs?: number
   totalMs: number
   ffmpegTotalMs?: number

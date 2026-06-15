@@ -1,5 +1,4 @@
 import { parentPort } from 'node:worker_threads'
-import childProcess from 'node:child_process'
 import path from 'node:path'
 import type { MixxxWaveformData } from '../waveformCache'
 import { COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE } from '../../shared/compactVisualWaveform'
@@ -10,7 +9,6 @@ import {
 } from '../../shared/unifiedDisplayWaveform'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 import { getBeatThisRuntimeAvailabilitySnapshot } from './beatThisRuntime'
-import { buildAnalysisChildEnv, lowerAnalysisProcessPriority } from './analysisRuntimeTuning'
 import { computeRawWaveform } from './rawWaveformBuilder'
 
 type KeyJob = {
@@ -114,6 +112,20 @@ const loadRust = () => {
       decoderBackend?: string
       error?: string
     }
+    decodeAudioFileNativePcm?: (
+      filePath: string,
+      startSec: number | null | undefined,
+      maxDurationSec: number | null | undefined,
+      sampleRate: number,
+      channels: number
+    ) => {
+      pcmData: Buffer
+      sampleRate: number
+      channels: number
+      totalFrames: number
+      decoderBackend?: string
+      error?: string
+    }
     analyzeKeyFromPcm?: (
       pcmData: Buffer,
       sampleRate: number,
@@ -141,161 +153,62 @@ const getRustBinding = () => {
   return cachedRustBinding
 }
 
-const resolveBeatGridFfmpegPath = () => {
-  const ffmpegPath = String(process.env.FRKB_FFMPEG_PATH || '').trim()
-  if (!ffmpegPath) {
-    throw new Error('FRKB_FFMPEG_PATH not configured for beat grid decode')
-  }
-  return ffmpegPath
-}
-
 const shouldUseFfmpegWaveformDecode = (filePath: string) => {
   const ext = path.extname(filePath || '').toLowerCase()
   return ext === '.mp3'
 }
 
-const decodeWaveformPcmWithFfmpeg = async (filePath: string): Promise<DecodedWaveformPcm> => {
-  const ffmpegPath = resolveBeatGridFfmpegPath()
-  const channels = BEAT_GRID_ANALYSIS_CHANNELS
-  const sampleRate = BEAT_GRID_ANALYSIS_SAMPLE_RATE
-  const chunks: Buffer[] = []
-  let stderrText = ''
-
-  await new Promise<void>((resolve, reject) => {
-    const child = childProcess.spawn(
-      ffmpegPath,
-      [
-        '-v',
-        'error',
-        '-threads',
-        '1',
-        '-i',
-        filePath,
-        '-f',
-        'f32le',
-        '-acodec',
-        'pcm_f32le',
-        '-ac',
-        String(channels),
-        '-ar',
-        String(sampleRate),
-        'pipe:1'
-      ],
-      {
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: buildAnalysisChildEnv(process.env)
-      }
-    )
-    lowerAnalysisProcessPriority(child)
-
-    child.stdout.on('data', (chunk: Buffer | string) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-    })
-    child.stderr.on('data', (chunk: Buffer | string) => {
-      stderrText += chunk.toString()
-      if (stderrText.length > 4000) {
-        stderrText = stderrText.slice(-4000)
-      }
-    })
-    child.once('error', (error) => reject(error))
-    child.once('exit', (code) => {
-      if (code === 0) {
-        resolve()
-        return
-      }
-      reject(new Error(stderrText.trim() || `FFmpeg exited with code ${code}`))
-    })
-  })
-
-  const pcmData = Buffer.concat(chunks)
-  const frameByteSize = channels * 4
-  const usableByteLength = pcmData.byteLength - (pcmData.byteLength % frameByteSize)
-  if (usableByteLength <= 0) {
-    throw new Error('FFmpeg decoded empty PCM for waveform')
+const decodePcmWithNative = (
+  filePath: string,
+  params: {
+    startSec?: number
+    maxDurationSec?: number
+    sampleRate: number
+    channels: number
+    decoderBackend: string
   }
-  const normalizedPcmData =
-    usableByteLength === pcmData.byteLength ? pcmData : pcmData.subarray(0, usableByteLength)
+): DecodedBeatGridPcm => {
+  const rust = getRustBinding()
+  const decodeNative = rust.decodeAudioFileNativePcm
+  if (typeof decodeNative !== 'function') {
+    throw new Error('decodeAudioFileNativePcm unavailable')
+  }
+  const decoded = decodeNative(
+    filePath,
+    params.startSec ?? null,
+    params.maxDurationSec ?? null,
+    params.sampleRate,
+    params.channels
+  )
+  if (decoded.error) throw new Error(decoded.error)
+  if (!decoded.pcmData || decoded.pcmData.byteLength <= 0) {
+    throw new Error('native decoded empty PCM')
+  }
   return {
-    pcmData: normalizedPcmData,
-    sampleRate,
-    channels,
-    totalFrames: usableByteLength / frameByteSize,
-    decoderBackend: 'ffmpeg-waveform'
+    pcmData: decoded.pcmData,
+    sampleRate: decoded.sampleRate,
+    channels: decoded.channels,
+    totalFrames: decoded.totalFrames,
+    decoderBackend: params.decoderBackend
   }
 }
 
-const decodeBeatGridPcmForFile = async (filePath: string): Promise<DecodedBeatGridPcm> => {
-  const ffmpegPath = resolveBeatGridFfmpegPath()
-  const chunks: Buffer[] = []
-  let stderrText = ''
-
-  await new Promise<void>((resolve, reject) => {
-    const child = childProcess.spawn(
-      ffmpegPath,
-      [
-        '-v',
-        'error',
-        '-threads',
-        '1',
-        '-ss',
-        '0',
-        '-t',
-        String(BEAT_GRID_ANALYSIS_MAX_SCAN_SEC),
-        '-i',
-        filePath,
-        '-f',
-        'f32le',
-        '-acodec',
-        'pcm_f32le',
-        '-ac',
-        String(BEAT_GRID_ANALYSIS_CHANNELS),
-        '-ar',
-        String(BEAT_GRID_ANALYSIS_SAMPLE_RATE),
-        'pipe:1'
-      ],
-      {
-        windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        env: buildAnalysisChildEnv(process.env)
-      }
-    )
-    lowerAnalysisProcessPriority(child)
-
-    child.stdout.on('data', (chunk: Buffer | string) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
-    })
-    child.stderr.on('data', (chunk: Buffer | string) => {
-      stderrText += chunk.toString()
-      if (stderrText.length > 4000) {
-        stderrText = stderrText.slice(-4000)
-      }
-    })
-    child.once('error', (error) => reject(error))
-    child.once('exit', (code) => {
-      if (code === 0) {
-        resolve()
-        return
-      }
-      reject(new Error(stderrText.trim() || `FFmpeg exited with code ${code}`))
-    })
-  })
-
-  const pcmData = Buffer.concat(chunks)
-  const frameByteSize = BEAT_GRID_ANALYSIS_CHANNELS * 4
-  const usableByteLength = pcmData.byteLength - (pcmData.byteLength % frameByteSize)
-  if (usableByteLength <= 0) {
-    throw new Error('FFmpeg decoded empty PCM for beat grid')
-  }
-  const normalizedPcmData =
-    usableByteLength === pcmData.byteLength ? pcmData : pcmData.subarray(0, usableByteLength)
-  return {
-    pcmData: normalizedPcmData,
+const decodeWaveformPcmWithFfmpeg = async (filePath: string): Promise<DecodedWaveformPcm> => {
+  return decodePcmWithNative(filePath, {
     sampleRate: BEAT_GRID_ANALYSIS_SAMPLE_RATE,
     channels: BEAT_GRID_ANALYSIS_CHANNELS,
-    totalFrames: usableByteLength / frameByteSize,
-    decoderBackend: 'ffmpeg-beat-grid'
-  }
+    decoderBackend: 'native-libav-waveform'
+  })
+}
+
+const decodeBeatGridPcmForFile = async (filePath: string): Promise<DecodedBeatGridPcm> => {
+  return decodePcmWithNative(filePath, {
+    startSec: 0,
+    maxDurationSec: BEAT_GRID_ANALYSIS_MAX_SCAN_SEC,
+    sampleRate: BEAT_GRID_ANALYSIS_SAMPLE_RATE,
+    channels: BEAT_GRID_ANALYSIS_CHANNELS,
+    decoderBackend: 'native-libav-beat-grid'
+  })
 }
 
 const analyzeKeyForFile = (

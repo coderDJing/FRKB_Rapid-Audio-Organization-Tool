@@ -144,6 +144,7 @@ pub struct HorizontalBrowseTransportDecodeDiagnostic {
   pub full_decode: bool,
   pub start_sec: f64,
   pub max_duration_sec: Option<f64>,
+  pub decoder_backend: Option<String>,
   pub queue_wait_ms: Option<f64>,
   pub total_ms: f64,
   pub ffmpeg_total_ms: Option<f64>,

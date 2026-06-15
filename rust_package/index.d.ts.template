@@ -224,6 +224,13 @@ export declare function calculateFileHashesWithProgress(
  * * 包含 PCM 数据和元数据的解码结果
  */
 export declare function decodeAudioFile(filePath: string): DecodeAudioResult
+export declare function decodeAudioFileNativePcm(
+  filePath: string,
+  startSec: number | undefined | null,
+  maxDurationSec: number | undefined | null,
+  sampleRate: number,
+  channels: number
+): DecodeAudioResult
 /**
  * 生成 Chromaprint 音频指纹（原生调用，无子进程开销）
  *
@@ -405,6 +412,7 @@ export interface HorizontalBrowseTransportDecodeDiagnostic {
   fullDecode: boolean
   startSec: number
   maxDurationSec?: number
+  decoderBackend?: string
   queueWaitMs?: number
   totalMs: number
   ffmpegTotalMs?: number

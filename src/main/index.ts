@@ -63,7 +63,10 @@ import { registerSongSearchHandlers } from './ipc/songSearchHandlers'
 import { registerPioneerDeviceLibraryHandlers } from './ipc/pioneerDeviceLibraryHandlers'
 import { registerRekordboxDesktopLibraryHandlers } from './ipc/rekordboxDesktopLibraryHandlers'
 import { registerRekordboxXmlExportHandlers } from './ipc/rekordboxXmlExportHandlers'
-import { registerHorizontalBrowseTransportHandlers } from './ipc/horizontalBrowseTransportHandlers'
+import {
+  registerHorizontalBrowseTransportHandlers,
+  stopHorizontalBrowseTransportDecodeDiagnosticFlusher
+} from './ipc/horizontalBrowseTransportHandlers'
 import { stopHorizontalBrowseTransportSnapshotBroadcaster } from './ipc/horizontalBrowseTransportSnapshotBroadcaster'
 import { registerDevSongListTraceHandlers } from './ipc/devSongListTraceHandlers'
 import { registerHotCueHandlers } from './ipc/hotCueHandlers'
@@ -661,6 +664,7 @@ app.on('window-all-closed', async () => {
   // removeAllListeners 在 app.quit() 前调用是安全的，因为项目中没有
   // before-quit 处理器会调用 event.preventDefault() 阻止退出。
   ipcMain.removeAllListeners()
+  stopHorizontalBrowseTransportDecodeDiagnosticFlusher()
   stopHorizontalBrowseTransportSnapshotBroadcaster()
   stopBackgroundOrchestrator()
   app.quit()
