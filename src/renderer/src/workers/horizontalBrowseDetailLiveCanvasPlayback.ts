@@ -1,4 +1,5 @@
 import type { HorizontalBrowseDetailLiveCanvasRenderRequest } from './horizontalBrowseDetailLiveCanvas.types'
+import type { PlaybackAnimationState } from './horizontalBrowseDetailLiveCanvasRenderState'
 
 export const PLAYHEAD_RATIO = 0.5
 export const PLAYBACK_RENDER_INTERVAL_MS = 16
@@ -38,11 +39,10 @@ export const resolvePlaybackRenderClockStartedAtMs = (
 const clampPlaybackRangeStart = (
   value: number,
   duration: number,
-  visibleDuration: number
+  leadingPad: number,
+  trailingPad: number
 ) => {
-  if (!duration || !visibleDuration) return 0
-  const leadingPad = visibleDuration * PLAYHEAD_RATIO
-  const trailingPad = visibleDuration * (1 - PLAYHEAD_RATIO)
+  if (!duration || leadingPad + trailingPad <= 0) return 0
   return Math.min(Number.isFinite(value) ? value : 0, Math.max(-leadingPad, duration - trailingPad))
 }
 
@@ -68,6 +68,29 @@ export const resolvePlaybackRangeStartSec = (
   return clampPlaybackRangeStart(
     playbackSeconds - request.rangeDurationSec * PLAYHEAD_RATIO,
     durationSec,
-    request.rangeDurationSec
+    request.rangeDurationSec * PLAYHEAD_RATIO,
+    request.rangeDurationSec * (1 - PLAYHEAD_RATIO)
   )
+}
+
+export const buildPlaybackRenderRequest = (
+  animation: PlaybackAnimationState,
+  allowScrollReuse = animation.request.allowScrollReuse !== false,
+  nowMs = performance.now()
+): HorizontalBrowseDetailLiveCanvasRenderRequest => {
+  const playbackSeconds = resolvePlaybackSeconds(
+    animation.request,
+    animation.baseSeconds,
+    animation.startedAtMs,
+    nowMs
+  )
+  const rangeStartSec = resolvePlaybackRangeStartSec(animation.request, playbackSeconds)
+  return {
+    ...animation.request,
+    playbackSeconds,
+    allowScrollReuse,
+    phaseAwareScrollReuse: allowScrollReuse && animation.request.phaseAwareScrollReuse === true,
+    rangeStartSec,
+    viewportRangeStartSec: rangeStartSec
+  }
 }

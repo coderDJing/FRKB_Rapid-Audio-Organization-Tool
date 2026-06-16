@@ -195,8 +195,16 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
   ): OverlayCanvasMetrics | null => {
     if (!canvas || !ctx) return null
     const waveformCssHeight = Math.max(1, Number(request.height) || 1)
+    const cssWidth = Math.max(
+      1,
+      Number(
+        request.stableWaveformSource === true
+          ? request.width
+          : request.viewportWidth || request.width
+      ) || 1
+    )
     const cssHeight = waveformCssHeight + HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX * 2
-    const metrics = resolveCanvasScaleMetrics(request.width, cssHeight, request.pixelRatio, {
+    const metrics = resolveCanvasScaleMetrics(cssWidth, cssHeight, request.pixelRatio, {
       preserveFractionalCssSize: true
     })
     const previousWidth = canvas.width

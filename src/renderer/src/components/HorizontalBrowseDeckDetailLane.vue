@@ -35,8 +35,6 @@ const props = defineProps<{
   cueSeconds: number
   hotCues: ISongHotCue[]
   memoryCues: ISongMemoryCue[]
-  deferWaveformLoad: boolean
-  rawLoadPriorityHint: number
   seekTargetSeconds: number
   seekRevision: number
   direction: 'up' | 'down'
@@ -109,8 +107,6 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       :cue-seconds="props.cueSeconds"
       :hot-cues="props.hotCues"
       :memory-cues="props.memoryCues"
-      :defer-waveform-load="props.deferWaveformLoad"
-      :raw-load-priority-hint="props.rawLoadPriorityHint"
       :seek-target-seconds="props.seekTargetSeconds"
       :seek-revision="props.seekRevision"
       :max-zoom="props.maxZoom"

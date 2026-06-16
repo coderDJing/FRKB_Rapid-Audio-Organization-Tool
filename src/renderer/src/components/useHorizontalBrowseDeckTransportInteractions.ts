@@ -16,6 +16,8 @@ const PLAYHEAD_READY_NEGATIVE_EPSILON_SEC = 0.0001
 type UseHorizontalBrowseDeckTransportInteractionsParams = {
   touchDeckInteraction: (deck: DeckKey) => void
   notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
+  holdDeckRenderCurrentSeconds: (deck: DeckKey, seconds: number) => void
+  startDeckRenderPlaybackClock: (deck: DeckKey, seconds: number) => void
   nativeTransport: {
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
     preparePlayhead: (deck: DeckKey) => Promise<unknown>
@@ -99,6 +101,8 @@ export const useHorizontalBrowseDeckTransportInteractions = (
   } = useHorizontalBrowseDeckPlaybackController({
     touchDeckInteraction: params.touchDeckInteraction,
     notifyDeckSeekIntent: params.notifyDeckSeekIntent,
+    holdDeckRenderCurrentSeconds: params.holdDeckRenderCurrentSeconds,
+    startDeckRenderPlaybackClock: params.startDeckRenderPlaybackClock,
     nativeTransport: params.nativeTransport,
     syncDeckRenderState: params.syncDeckRenderState,
     commitDeckStatesToNative: params.commitDeckStatesToNative,
@@ -106,6 +110,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     resolveDeckGridBpm: params.resolveDeckGridBpm,
     resolveDeckDurationSeconds: params.resolveDeckDurationSeconds,
     resolveDeckCurrentSeconds: params.resolveDeckCurrentSeconds,
+    resolveDeckRenderCurrentSeconds: params.resolveDeckRenderCurrentSeconds,
     resolveDeckPlaying: params.resolveDeckPlaying,
     resolveDeckLoaded: params.resolveDeckLoaded,
     resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot,

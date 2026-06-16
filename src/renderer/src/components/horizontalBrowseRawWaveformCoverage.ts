@@ -1,5 +1,6 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import { HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC } from '@renderer/components/horizontalBrowseRawWaveformStreamTypes'
+
+const HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC = 0.75
 
 const resolveRawDataStartSec = (rawData: RawWaveformData | null, timeBasisOffsetSec: number) => {
   if (!rawData) return 0

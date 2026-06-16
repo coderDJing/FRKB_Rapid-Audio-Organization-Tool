@@ -1,7 +1,7 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type { ISongHotCue, ISongMemoryCue } from 'src/types/globals'
 
-type HorizontalBrowseDetailLiveCanvasRawSlot = 'live' | 'retained'
+type HorizontalBrowseDetailLiveCanvasRawSlot = 'live'
 type HorizontalBrowseDetailLiveCanvasDirection = 'up' | 'down'
 type HorizontalBrowseDetailLiveCanvasWaveformRenderStyle = 'columns' | 'raw-curve'
 
@@ -10,30 +10,10 @@ export type HorizontalBrowseDetailLiveCanvasLoopRange = {
   endSec: number
 }
 
-export type HorizontalBrowseDetailLiveCanvasRawMeta = {
-  duration: number
-  sampleRate: number
-  rate: number
-  frames: number
-  startSec: number
-  loadedFrames?: number
-}
-
-export type HorizontalBrowseDetailLiveCanvasRawChunk = HorizontalBrowseDetailLiveCanvasRawMeta & {
-  startFrame: number
-  chunkFrames: number
-  minLeft: Float32Array
-  maxLeft: Float32Array
-  minRight: Float32Array
-  maxRight: Float32Array
-  meanLeft?: Float32Array
-  meanRight?: Float32Array
-  rmsLeft?: Float32Array
-  rmsRight?: Float32Array
-}
-
 export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   renderToken: number
+  renderPriority?: 'normal' | 'immediate'
+  renderViewportOnly?: boolean
   width: number
   height: number
   pixelRatio: number
@@ -43,6 +23,9 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   timeBasisOffsetMs: number
   rangeStartSec: number
   rangeDurationSec: number
+  viewportWidth?: number
+  viewportRangeStartSec?: number
+  viewportRangeDurationSec?: number
   maxSamplesPerPixel: number
   showDetailHighlights: boolean
   showCenterLine: boolean
@@ -50,6 +33,8 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   showBeatGrid: boolean
   allowScrollReuse: boolean
   phaseAwareScrollReuse: boolean
+  presentationOffsetMode?: 'free' | 'device-pixel' | 'none'
+  stableWaveformSource?: boolean
   waveformLayout: 'full' | 'top-half' | 'bottom-half'
   waveformRenderStyle: HorizontalBrowseDetailLiveCanvasWaveformRenderStyle
   preferRawPeaksOnly: boolean
@@ -69,8 +54,6 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   playbackRenderClockEpochMs?: number | null
   playbackDurationSec: number
   waveformGain: number
-  dirtyStartSec?: number
-  dirtyEndSec?: number
 }
 
 export type HorizontalBrowseDetailLiveCanvasWorkerIncoming =
@@ -91,29 +74,10 @@ export type HorizontalBrowseDetailLiveCanvasWorkerIncoming =
       type: 'stopPlayback'
     }
   | {
-      type: 'resetRaw'
-      payload: HorizontalBrowseDetailLiveCanvasRawMeta & {
-        retainCurrent?: boolean
-        preferRetainedPlaybackRaw?: boolean
-      }
-    }
-  | {
-      type: 'ensureRawCapacity'
-      payload: HorizontalBrowseDetailLiveCanvasRawMeta
-    }
-  | {
-      type: 'applyRawChunk'
-      payload: HorizontalBrowseDetailLiveCanvasRawChunk
-    }
-  | {
       type: 'replaceRaw'
       payload: {
         data: RawWaveformData | null
       }
-    }
-  | {
-      type: 'updateRawMeta'
-      payload: Partial<HorizontalBrowseDetailLiveCanvasRawMeta>
     }
   | {
       type: 'render'
@@ -128,6 +92,7 @@ export type HorizontalBrowseDetailLiveCanvasWorkerOutgoing =
         rangeStartSec: number
         rangeDurationSec: number
         ready: boolean
+        renderViewportOnly?: boolean
       }
     }
   | {

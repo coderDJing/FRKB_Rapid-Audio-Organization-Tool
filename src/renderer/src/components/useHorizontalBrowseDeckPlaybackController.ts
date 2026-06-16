@@ -25,12 +25,15 @@ import {
   type DeckWaveformDragState,
   type DeckWaveformScrubPreviewPayload
 } from '@renderer/components/horizontalBrowseDeckPlaybackState'
+import { createHorizontalBrowseSyncedSeekPreparation } from '@renderer/components/horizontalBrowseSyncedSeekPreparation'
 
 type DeckKey = HorizontalBrowseDeckKey
 
 type UseHorizontalBrowseDeckPlaybackControllerParams = {
   touchDeckInteraction: (deck: DeckKey) => void
   notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
+  holdDeckRenderCurrentSeconds: (deck: DeckKey, seconds: number) => void
+  startDeckRenderPlaybackClock: (deck: DeckKey, seconds: number) => void
   nativeTransport: {
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
     preparePlayhead: (deck: DeckKey) => Promise<unknown>
@@ -51,6 +54,7 @@ type UseHorizontalBrowseDeckPlaybackControllerParams = {
   resolveDeckGridBpm: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
+  resolveDeckRenderCurrentSeconds: (deck: DeckKey) => number
   resolveDeckPlaying: (deck: DeckKey) => boolean
   resolveDeckLoaded: (deck: DeckKey) => boolean
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
@@ -72,7 +76,6 @@ const SYNCED_SEEK_PLAYHEAD_READY_TIMEOUT_MS = 1500
 const SYNCED_SEEK_PLAYHEAD_READY_POLL_MS = 24
 const SYNCED_SEEK_PREPARE_TIMEOUT_MS = 3000
 const SYNCED_SEEK_PREPARE_MAX_ALIGNMENTS = 4
-const SYNCED_SEEK_PHASE_EPSILON_BEATS = 0.04
 const PLAYHEAD_READY_NEGATIVE_EPSILON_SEC = 0.0001
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
@@ -166,60 +169,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
     }, PENDING_PLAY_VISIBLE_DELAY_MS)
   }
 
-  const buildDeckBeatDiagnostics = (deck: DeckKey) => {
-    const snapshot = params.resolveTransportDeckSnapshot(deck)
-    const song = params.resolveDeckSong(deck)
-    const bpm = Number(params.resolveDeckGridBpm(deck)) || 0
-    const firstBeatSec = Math.max(0, Number(song?.firstBeatMs) || 0) / 1000
-    const beatSec = bpm > 0 ? 60 / bpm : 0
-    const currentSec = Math.max(0, Number(snapshot.currentSec) || 0)
-    const renderCurrentSec = Math.max(0, Number(snapshot.renderCurrentSec) || 0)
-    const beatDistance = beatSec > 0 ? (currentSec - firstBeatSec) / beatSec : 0
-    const renderBeatDistance = beatSec > 0 ? (renderCurrentSec - firstBeatSec) / beatSec : 0
-    const barBeatOffset = Number(song?.barBeatOffset) || 0
-    const normalizePhase = (value: number, modulo: number) => ((value % modulo) + modulo) % modulo
-    return {
-      bpm,
-      firstBeatSec,
-      beatSec,
-      currentSec,
-      renderCurrentSec,
-      beatDistance,
-      renderBeatDistance,
-      beatPhase: normalizePhase(beatDistance, 1),
-      renderBeatPhase: normalizePhase(renderBeatDistance, 1),
-      barBeatOffset,
-      barPhase: normalizePhase(beatDistance - barBeatOffset, 32)
-    }
-  }
-
-  const resolveCircularPhaseDelta = (leftPhase: number, rightPhase: number) => {
-    if (!Number.isFinite(leftPhase) || !Number.isFinite(rightPhase)) return null
-    const normalized = (((leftPhase - rightPhase) % 1) + 1) % 1
-    return normalized > 0.5 ? 1 - normalized : normalized
-  }
-
-  const resolveSyncedSeekPhaseDelta = (deck: DeckKey) => {
-    const otherDeck = deck === 'top' ? 'bottom' : 'top'
-    const targetBeat = buildDeckBeatDiagnostics(deck)
-    const otherBeat = buildDeckBeatDiagnostics(otherDeck)
-    if (targetBeat.beatSec <= 0 || otherBeat.beatSec <= 0) return null
-    return resolveCircularPhaseDelta(targetBeat.beatPhase, otherBeat.beatPhase)
-  }
-
-  const resolveSyncedSeekPreparationState = (deck: DeckKey) => {
-    const snapshot = params.resolveTransportDeckSnapshot(deck)
-    const phaseDelta = resolveSyncedSeekPhaseDelta(deck)
-    const phaseReady = phaseDelta === null || phaseDelta <= SYNCED_SEEK_PHASE_EPSILON_BEATS
-    const playheadReady = snapshot.playheadLoaded
-    return {
-      snapshot,
-      phaseDelta,
-      phaseReady,
-      playheadReady,
-      ready: playheadReady && snapshot.syncLock === 'full' && phaseReady
-    }
-  }
+  const { resolveSyncedSeekPreparationState } = createHorizontalBrowseSyncedSeekPreparation({
+    resolveDeckSong: params.resolveDeckSong,
+    resolveDeckGridBpm: params.resolveDeckGridBpm,
+    resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot
+  })
 
   const queueDeckSongPriorityAnalysis = (deck: DeckKey, filePath: string) => {
     const normalizedPath = String(filePath || '').trim()
@@ -252,6 +206,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
   const resumeDeckPlaybackAfterSeek = async (deck: DeckKey) => {
     await prepareDeckPlayheadIfNeeded(deck)
+    params.startDeckRenderPlaybackClock(deck, params.resolveDeckRenderCurrentSeconds(deck))
     await params.nativeTransport.setPlaying(deck, true)
   }
 
@@ -798,6 +753,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
           prepareDeckPlayheadIfNeeded(deck),
           prepareDeckPlayheadIfNeeded(otherDeck)
         ])
+        params.startDeckRenderPlaybackClock(deck, params.resolveDeckRenderCurrentSeconds(deck))
+        params.startDeckRenderPlaybackClock(
+          otherDeck,
+          params.resolveDeckRenderCurrentSeconds(otherDeck)
+        )
         await Promise.all([
           params.nativeTransport.setPlaying(deck, true),
           params.nativeTransport.setPlaying(otherDeck, true)
@@ -918,6 +878,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       await params.commitDeckStatesToNative()
       await params.nativeTransport.beatsync(deck)
     }
+    params.startDeckRenderPlaybackClock(deck, params.resolveDeckRenderCurrentSeconds(deck))
     await params.nativeTransport.setPlaying(deck, true)
     params.syncDeckRenderState({ force: deck })
   }
@@ -962,17 +923,27 @@ export const useHorizontalBrowseDeckPlaybackController = (
           }
           await params.commitDeckStatesToNative()
           await ensureDualTransportSync(deck)
+          params.startDeckRenderPlaybackClock(deck, params.resolveDeckRenderCurrentSeconds(deck))
+          params.startDeckRenderPlaybackClock(
+            otherDeck,
+            params.resolveDeckRenderCurrentSeconds(otherDeck)
+          )
           await params.nativeTransport.setPlaying(deck, true)
           await params.nativeTransport.setPlaying(otherDeck, true)
           params.syncDeckRenderState({ force: 'all' })
           return
         }
 
+        params.holdDeckRenderCurrentSeconds(deck, params.resolveDeckRenderCurrentSeconds(deck))
+        params.holdDeckRenderCurrentSeconds(
+          otherDeck,
+          params.resolveDeckRenderCurrentSeconds(otherDeck)
+        )
         await Promise.all([
           params.nativeTransport.setPlaying(deck, false),
           params.nativeTransport.setPlaying(otherDeck, false)
         ])
-        params.syncDeckRenderState({ force: 'all', forceRevision: true })
+        params.syncDeckRenderState()
       } finally {
         finishTiming()
       }
@@ -989,6 +960,9 @@ export const useHorizontalBrowseDeckPlaybackController = (
       return
     }
     const nextPlaying = !params.resolveDeckPlaying(deck)
+    if (!nextPlaying) {
+      params.holdDeckRenderCurrentSeconds(deck, params.resolveDeckRenderCurrentSeconds(deck))
+    }
     void (async () => {
       const filePath = String(params.resolveDeckSong(deck)?.filePath || '').trim()
       const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:play-toggle:${deck}`)
@@ -1024,6 +998,9 @@ export const useHorizontalBrowseDeckPlaybackController = (
             await params.nativeTransport.beatsync(deck)
           }
         }
+        if (nextPlaying) {
+          params.startDeckRenderPlaybackClock(deck, params.resolveDeckRenderCurrentSeconds(deck))
+        }
         await params.nativeTransport.setPlaying(deck, nextPlaying)
         if (nextPlaying) {
           traceDeckAction(deck, 'play-toggle:done', {
@@ -1034,7 +1011,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
             )
           })
         }
-        params.syncDeckRenderState({ force: deck, forceRevision: !nextPlaying })
+        params.syncDeckRenderState(nextPlaying ? { force: deck } : undefined)
       } finally {
         finishTiming()
       }

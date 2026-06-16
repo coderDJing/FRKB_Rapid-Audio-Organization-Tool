@@ -29,19 +29,32 @@
   backface-visibility: hidden;
 }
 
-.raw-detail-waveform__canvas--waveform,
-.raw-detail-waveform__canvas--grid {
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+.raw-detail-waveform__surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.raw-detail-waveform__overlay-surface {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12px;
+  bottom: -12px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.raw-detail-waveform__surface,
+.raw-detail-waveform__overlay-surface {
+  opacity: 0;
+  transition: none;
 }
 
 .raw-detail-waveform__canvas--waveform {
-  opacity: 0;
-  transition: opacity 100ms linear;
-}
-
-.raw-detail-waveform.is-waveform-ready .raw-detail-waveform__canvas--waveform {
-  opacity: 1;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 .raw-detail-waveform.is-loading::after {
@@ -61,15 +74,8 @@
   transform: translate(-50%, -50%);
 }
 
-.raw-detail-waveform__canvas--grid {
-  pointer-events: none;
-}
-
 .raw-detail-waveform__canvas--overlay {
-  inset: -12px 0;
-  height: calc(100% + 24px);
   pointer-events: none;
-  z-index: 3;
 }
 
 .raw-detail-waveform.is-bar-selecting {

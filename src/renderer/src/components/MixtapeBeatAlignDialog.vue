@@ -107,8 +107,6 @@ const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const previewStartSec = ref(0)
 const previewDragging = ref(false)
 const previewPlaying = ref(false)
-const rawStreamActive = ref(false)
-const previewWaveformDeferred = ref(false)
 const overviewDragging = ref(false)
 const previewBarBeatOffset = ref(0)
 const previewFirstBeatMs = ref(0)
@@ -301,13 +299,12 @@ const {
   invalidateWaveformTiles,
   mountWaveformCanvasWorker,
   resetGridRenderer,
-  resetRetainedWaveformData,
+  resetLiveWaveformData,
   replaceLiveWaveformRaw,
   dispose: disposeWaveformCanvas
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => beatAlignSong.value,
   direction: () => 'up',
-  deferWaveformLoad: previewWaveformDeferred,
   cueSeconds: () => undefined,
   hotCues: () => [],
   memoryCues: () => [],
@@ -326,7 +323,6 @@ const {
   previewBarBeatOffset,
   previewTimeBasisOffsetMs,
   dragging: previewDragging,
-  rawStreamActive,
   allowNegativeTimeline: () => false,
   waveformLayout: () => 'full',
   waveformRenderStyle: () => 'raw-curve'
@@ -746,7 +742,7 @@ const loadPreviewWaveform = async (filePath: string) => {
   clearPreviewWarmupTimer()
   stopPreviewPlayback({ syncPosition: false })
   invalidateWaveformTiles()
-  resetRetainedWaveformData()
+  resetLiveWaveformData()
   resetGridRenderer()
   replaceLiveWaveformRaw(null)
   clearPreviewCanvas()

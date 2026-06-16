@@ -35,6 +35,7 @@ const RENDER_SYNC_FULL_SYNC_PHASE_REANCHOR_SEC = 0.002
 const RENDER_SYNC_PENDING_INTENT_EPSILON_SEC = 0.05
 const RENDER_SYNC_PENDING_INTENT_MAX_MS = 1500
 const RENDER_SYNC_RECENT_INTENT_CONFIRM_MS = 1000
+const RENDER_SYNC_POSITION_HOLD_MAX_MS = 700
 
 type PendingRenderSeekIntent = {
   seconds: number
@@ -95,6 +96,10 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     top: null,
     bottom: null
   })
+  const pendingRenderPositionHold = reactive<Record<DeckKey, PendingRenderSeekIntent | null>>({
+    top: null,
+    bottom: null
+  })
   const recentRenderSeekIntent = reactive<Record<DeckKey, PendingRenderSeekIntent | null>>({
     top: null,
     bottom: null
@@ -105,6 +110,10 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
   let lastTransportSnapshotAt = 0
 
   const estimateDeckRenderCurrentSeconds = (deck: DeckKey, nowMs = performance.now()) => {
+    const pendingHold = pendingRenderPositionHold[deck]
+    if (pendingHold && nowMs - pendingHold.startedAtMs < RENDER_SYNC_POSITION_HOLD_MAX_MS) {
+      return pendingHold.seconds
+    }
     const pendingIntent = pendingRenderSeekIntent[deck]
     if (pendingIntent) return pendingIntent.seconds
     const snapshot = params.resolveTransportDeckSnapshot(deck)
@@ -165,6 +174,22 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const snapshotSec = normalizeTimelineSeconds(snapshot.renderCurrentSec)
     const estimatedSec = estimateDeckRenderCurrentSeconds(deck, snapshotAtMs)
     const renderEstimatedSec = estimateDeckRenderCurrentSeconds(deck, renderNowMs)
+    const pendingHold = pendingRenderPositionHold[deck]
+    const holdExpired =
+      pendingHold && renderNowMs - pendingHold.startedAtMs >= RENDER_SYNC_POSITION_HOLD_MAX_MS
+    const holdConfirmed =
+      pendingHold &&
+      Math.abs(snapshotSec - pendingHold.seconds) <= RENDER_SYNC_FULL_SYNC_PHASE_REANCHOR_SEC
+    if (pendingHold && !holdExpired && !holdConfirmed) {
+      assignDeckRenderCurrentSeconds(
+        deck,
+        pendingHold.seconds,
+        topDeckRenderCurrentSeconds,
+        bottomDeckRenderCurrentSeconds
+      )
+      return
+    }
+    pendingRenderPositionHold[deck] = null
     const pendingIntent = pendingRenderSeekIntent[deck]
     let confirmedPendingIntent = false
     if (pendingIntent) {
@@ -354,6 +379,7 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     const normalizedSeconds = normalizeTimelineSeconds(seconds)
     const safeSeconds =
       renderLimitSec > 0 ? Math.min(normalizedSeconds, renderLimitSec) : normalizedSeconds
+    pendingRenderPositionHold[deck] = null
     pendingRenderSeekIntent[deck] = {
       seconds: safeSeconds,
       startedAtMs: nowMs
@@ -365,6 +391,47 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     deckRenderSyncBaseSec[deck] = safeSeconds
     deckRenderSyncBaseAtMs[deck] = nowMs
     bumpDeckPlaybackSyncRevision(deck)
+    assignDeckRenderCurrentSeconds(
+      deck,
+      safeSeconds,
+      topDeckRenderCurrentSeconds,
+      bottomDeckRenderCurrentSeconds,
+      nowMs
+    )
+  }
+
+  const holdDeckRenderCurrentSeconds = (deck: DeckKey, seconds: number) => {
+    const nowMs = performance.now()
+    const snapshot = params.resolveTransportDeckSnapshot(deck)
+    const renderLimitSec = resolveDeckRenderLimitSec(snapshot)
+    const normalizedSeconds = normalizeTimelineSeconds(seconds)
+    const safeSeconds =
+      renderLimitSec > 0 ? Math.min(normalizedSeconds, renderLimitSec) : normalizedSeconds
+    pendingRenderPositionHold[deck] = {
+      seconds: safeSeconds,
+      startedAtMs: nowMs
+    }
+    deckRenderSyncBaseSec[deck] = safeSeconds
+    deckRenderSyncBaseAtMs[deck] = nowMs
+    assignDeckRenderCurrentSeconds(
+      deck,
+      safeSeconds,
+      topDeckRenderCurrentSeconds,
+      bottomDeckRenderCurrentSeconds,
+      nowMs
+    )
+  }
+
+  const startDeckRenderPlaybackClock = (deck: DeckKey, seconds: number) => {
+    const nowMs = performance.now()
+    const snapshot = params.resolveTransportDeckSnapshot(deck)
+    const renderLimitSec = resolveDeckRenderLimitSec(snapshot)
+    const normalizedSeconds = normalizeTimelineSeconds(seconds)
+    const safeSeconds =
+      renderLimitSec > 0 ? Math.min(normalizedSeconds, renderLimitSec) : normalizedSeconds
+    pendingRenderPositionHold[deck] = null
+    deckRenderSyncBaseSec[deck] = safeSeconds
+    deckRenderSyncBaseAtMs[deck] = nowMs
     assignDeckRenderCurrentSeconds(
       deck,
       safeSeconds,
@@ -434,6 +501,8 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
     syncDeckRenderState,
     markTransportStateFresh,
     applyDeckRenderCurrentSeconds,
+    holdDeckRenderCurrentSeconds,
+    startDeckRenderPlaybackClock,
     startRenderSyncLoop,
     stopRenderSyncLoop
   }

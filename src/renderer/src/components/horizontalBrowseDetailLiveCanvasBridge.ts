@@ -1,8 +1,6 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { createHorizontalBrowseDetailLiveCanvasWorker } from '@renderer/workers/horizontalBrowseDetailLiveCanvas.workerClient'
 import type {
-  HorizontalBrowseDetailLiveCanvasRawChunk,
-  HorizontalBrowseDetailLiveCanvasRawMeta,
   HorizontalBrowseDetailLiveCanvasRenderRequest,
   HorizontalBrowseDetailLiveCanvasWorkerIncoming,
   HorizontalBrowseDetailLiveCanvasWorkerOutgoing
@@ -59,27 +57,6 @@ const collectTransferableBuffers = (arrays: Array<Float32Array | Uint8Array>) =>
   }
   return [...buffers]
 }
-
-const cloneRawChunk = (
-  value: HorizontalBrowseDetailLiveCanvasRawChunk
-): HorizontalBrowseDetailLiveCanvasRawChunk => ({
-  duration: value.duration,
-  sampleRate: value.sampleRate,
-  rate: value.rate,
-  frames: value.frames,
-  startSec: value.startSec,
-  loadedFrames: value.loadedFrames,
-  startFrame: value.startFrame,
-  chunkFrames: value.chunkFrames,
-  minLeft: new Float32Array(value.minLeft),
-  maxLeft: new Float32Array(value.maxLeft),
-  minRight: new Float32Array(value.minRight),
-  maxRight: new Float32Array(value.maxRight),
-  meanLeft: value.meanLeft ? new Float32Array(value.meanLeft) : undefined,
-  meanRight: value.meanRight ? new Float32Array(value.meanRight) : undefined,
-  rmsLeft: value.rmsLeft ? new Float32Array(value.rmsLeft) : undefined,
-  rmsRight: value.rmsRight ? new Float32Array(value.rmsRight) : undefined
-})
 
 export const createHorizontalBrowseDetailLiveCanvasBridge = (
   options: CreateHorizontalBrowseDetailLiveCanvasBridgeOptions
@@ -167,39 +144,6 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
     postMessage({ type: 'stopPlayback' })
   }
 
-  const resetRaw = (
-    meta: HorizontalBrowseDetailLiveCanvasRawMeta,
-    retainCurrent = true,
-    preferRetainedPlaybackRaw = false
-  ) => {
-    postMessage({
-      type: 'resetRaw',
-      payload: { ...meta, retainCurrent, preferRetainedPlaybackRaw }
-    })
-  }
-
-  const ensureRawCapacity = (meta: HorizontalBrowseDetailLiveCanvasRawMeta) => {
-    postMessage({ type: 'ensureRawCapacity', payload: meta })
-  }
-
-  const applyRawChunk = (
-    chunk: HorizontalBrowseDetailLiveCanvasRawChunk,
-    transferOwnership = false
-  ) => {
-    const payload = transferOwnership ? chunk : cloneRawChunk(chunk)
-    postMessage(
-      { type: 'applyRawChunk', payload },
-      collectTransferableBuffers([
-        payload.minLeft,
-        payload.maxLeft,
-        payload.minRight,
-        payload.maxRight,
-        ...(payload.meanLeft && payload.meanRight ? [payload.meanLeft, payload.meanRight] : []),
-        ...(payload.rmsLeft && payload.rmsRight ? [payload.rmsLeft, payload.rmsRight] : [])
-      ])
-    )
-  }
-
   const replaceRaw = (data: RawWaveformData | null) => {
     const cloned = data ? cloneRawWaveformData(data) : null
     postMessage(
@@ -229,10 +173,6 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
     )
   }
 
-  const updateRawMeta = (meta: Partial<HorizontalBrowseDetailLiveCanvasRawMeta>) => {
-    postMessage({ type: 'updateRawMeta', payload: meta })
-  }
-
   const render = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
     postMessage({ type: 'render', payload: request })
   }
@@ -247,11 +187,7 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
     clear,
     clearRaw,
     stopPlayback,
-    resetRaw,
-    ensureRawCapacity,
-    applyRawChunk,
     replaceRaw,
-    updateRawMeta,
     render,
     dispose
   }

@@ -150,12 +150,8 @@ const deckTempoCommitToken = reactive<Record<DeckKey, number>>({
   top: 0,
   bottom: 0
 })
-const {
-  deckInteractionOrder,
-  deckRecentInteraction,
-  touchDeckInteraction,
-  clearDeckRecentInteractionTimer
-} = useHorizontalBrowseDeckInteractionState()
+const { touchDeckInteraction, clearDeckRecentInteractionTimer } =
+  useHorizontalBrowseDeckInteractionState()
 const {
   nativeTransport,
   deckSyncState,
@@ -177,6 +173,8 @@ const {
   stopSnapshotSync,
   startRenderSyncLoop,
   stopRenderSyncLoop,
+  holdDeckRenderCurrentSeconds,
+  startDeckRenderPlaybackClock,
   notifyDeckSeekIntent
 } = useHorizontalBrowseTransportController()
 useHorizontalBrowseVisualizer({ nativeTransport })
@@ -219,12 +217,6 @@ const bottomDeckPlayButtonActive = computed(
 )
 const topDeckUiDecoding = computed(() => resolveDeckDecoding('top'))
 const bottomDeckUiDecoding = computed(() => resolveDeckDecoding('bottom'))
-const topDeckShouldDeferWaveformLoad = computed(
-  () => bottomDeckUiPlaying.value && !topDeckUiPlaying.value
-)
-const bottomDeckShouldDeferWaveformLoad = computed(
-  () => topDeckUiPlaying.value && !bottomDeckUiPlaying.value
-)
 const resolveDeckGridBpm = (deck: DeckKey) =>
   resolveHorizontalBrowseDeckGridBpm(
     resolveTransportDeckSnapshot(deck).effectiveBpm,
@@ -426,6 +418,8 @@ const {
 } = useHorizontalBrowseDeckTransportInteractions({
   touchDeckInteraction,
   notifyDeckSeekIntent,
+  holdDeckRenderCurrentSeconds,
+  startDeckRenderPlaybackClock,
   nativeTransport,
   syncDeckRenderState,
   commitDeckStatesToNative,
@@ -599,25 +593,6 @@ const resolveDeckSyncUiLock = (deck: DeckKey) =>
     resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore,
     resolveDeckCuePreviewRuntimeState(deck).syncLockBefore
   )
-
-const resolveDeckRawLoadPriorityHint = (deck: DeckKey) => {
-  const playingBoost = resolveDeckPlaying(deck) ? 4_000_000 : 0
-  const dragBoost = isDeckWaveformDragging(deck) ? 3_000_000 : 0
-  const cuePreviewBoost = resolveDeckCuePreviewRuntimeState(deck).active ? 2_500_000 : 0
-  const recentBoost = !resolveDeckPlaying(deck) && deckRecentInteraction[deck] ? 1_000_000 : 0
-  const loadedBoost = resolveDeckSong(deck) ? 100_000 : 0
-  return (
-    playingBoost +
-    dragBoost +
-    cuePreviewBoost +
-    recentBoost +
-    loadedBoost +
-    deckInteractionOrder[deck]
-  )
-}
-
-const topDeckRawLoadPriorityHint = computed(() => resolveDeckRawLoadPriorityHint('top'))
-const bottomDeckRawLoadPriorityHint = computed(() => resolveDeckRawLoadPriorityHint('bottom'))
 
 const resolveDeckToolbarState = (deck: DeckKey) =>
   buildHorizontalBrowseDeckToolbarState(
@@ -943,8 +918,6 @@ onUnmounted(() => {
           :cue-seconds="topDeckCuePointSeconds"
           :hot-cues="topDeckSong?.hotCues || []"
           :memory-cues="topDeckSong?.memoryCues || []"
-          :defer-waveform-load="topDeckShouldDeferWaveformLoad"
-          :raw-load-priority-hint="topDeckRawLoadPriorityHint"
           :seek-target-seconds="deckSeekIntent.top.seconds"
           :seek-revision="deckSeekIntent.top.revision"
           :max-zoom="
@@ -984,8 +957,6 @@ onUnmounted(() => {
           :cue-seconds="bottomDeckCuePointSeconds"
           :hot-cues="bottomDeckSong?.hotCues || []"
           :memory-cues="bottomDeckSong?.memoryCues || []"
-          :defer-waveform-load="bottomDeckShouldDeferWaveformLoad"
-          :raw-load-priority-hint="bottomDeckRawLoadPriorityHint"
           :seek-target-seconds="deckSeekIntent.bottom.seconds"
           :seek-revision="deckSeekIntent.bottom.revision"
           :max-zoom="HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM"

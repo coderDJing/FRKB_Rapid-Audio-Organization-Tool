@@ -10,7 +10,6 @@ export type HorizontalBrowseWaveformRenderStyle = 'columns' | 'raw-curve'
 export type UseHorizontalBrowseRawWaveformCanvasOptions = {
   song: () => ISongInfo | null
   direction: () => HorizontalBrowseDirection
-  deferWaveformLoad: Ref<boolean>
   cueSeconds: () => number | undefined
   hotCues: () => ISongHotCue[] | null | undefined
   memoryCues: () => ISongMemoryCue[] | null | undefined
@@ -30,10 +29,11 @@ export type UseHorizontalBrowseRawWaveformCanvasOptions = {
   previewBarBeatOffset: Ref<number>
   previewTimeBasisOffsetMs: Ref<number>
   dragging: Ref<boolean>
-  rawStreamActive: Ref<boolean>
   previewLoading: Ref<boolean>
   allowNegativeTimeline: () => boolean
   waveformLayout: () => HorizontalBrowseWaveformLayout
   waveformRenderStyle: () => HorizontalBrowseWaveformRenderStyle
+  stableWaveformSource?: () => boolean
+  stableRenderRevision?: () => number
   phaseAwareScrollReuse?: () => boolean
 }

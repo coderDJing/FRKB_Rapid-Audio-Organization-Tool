@@ -60,6 +60,8 @@ export const useHorizontalBrowseTransportController = () => {
     syncDeckRenderState,
     markTransportStateFresh,
     applyDeckRenderCurrentSeconds,
+    holdDeckRenderCurrentSeconds: holdRenderCurrentSeconds,
+    startDeckRenderPlaybackClock: startRenderPlaybackClock,
     startRenderSyncLoop,
     stopRenderSyncLoop
   } = useHorizontalBrowseRenderSync({
@@ -78,6 +80,12 @@ export const useHorizontalBrowseTransportController = () => {
     // seek 意图先改渲染基准，避免 nativeTransport.seek 的 IPC 往返期间
     // 大波形还沿着旧时间继续外推，造成“先飘再跳”的错位感。
     applyDeckRenderCurrentSeconds(deck, safeSeconds)
+  }
+  const holdDeckRenderCurrentSeconds = (deck: DeckKey, seconds: number) => {
+    holdRenderCurrentSeconds(deck, normalizeTimelineSeconds(seconds))
+  }
+  const startDeckRenderPlaybackClock = (deck: DeckKey, seconds: number) => {
+    startRenderPlaybackClock(deck, normalizeTimelineSeconds(seconds))
   }
 
   const startSnapshotSync = () => {
@@ -120,6 +128,8 @@ export const useHorizontalBrowseTransportController = () => {
     stopSnapshotSync,
     startRenderSyncLoop,
     stopRenderSyncLoop,
+    holdDeckRenderCurrentSeconds,
+    startDeckRenderPlaybackClock,
     notifyDeckSeekIntent
   }
 }
