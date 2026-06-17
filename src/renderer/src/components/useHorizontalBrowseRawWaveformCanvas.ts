@@ -17,7 +17,6 @@ import {
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { shouldUseAttackSafeRawPeaks } from '@renderer/components/horizontalBrowseRawWaveformCanvasPolicy'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
-import { isRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformData'
 import { resolveHorizontalBrowseWaveformThemeVariant } from '@renderer/components/horizontalBrowseWaveformDetail.utils'
 import { createHorizontalBrowseDetailLiveCanvasBridge } from '@renderer/components/horizontalBrowseDetailLiveCanvasBridge'
 import { HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX } from '@renderer/components/horizontalBrowseDetailOverlayCanvas'
@@ -40,6 +39,19 @@ import type {
 import { normalizeSongHotCues } from '@shared/hotCues'
 import { normalizeSongMemoryCues } from '@shared/memoryCues'
 import { resolveHorizontalBrowseLinkedGridVisualPhase } from '@renderer/components/horizontalBrowseLinkedGridVisualPhase'
+import {
+  resolveHorizontalBrowseCanvasTranslateX,
+  resolveHorizontalBrowseRenderedCanvasViewportStartSec
+} from '@renderer/components/horizontalBrowseRenderedCanvasViewport'
+import {
+  canCompleteHorizontalBrowseDragPresentationRelease,
+  isHorizontalBrowseDragPresentationReleaseExpired,
+  resolveHorizontalBrowseDragReleaseRenderedViewportStartSec
+} from '@renderer/components/horizontalBrowseDragPresentationRelease'
+import {
+  resolveHorizontalBrowseActiveMixxxSelection,
+  resolveHorizontalBrowseCueAccentColor
+} from '@renderer/components/horizontalBrowseRawWaveformCanvasData'
 import type {
   HorizontalBrowseDetailLiveCanvasLoopRange,
   HorizontalBrowseDetailLiveCanvasWorkerOutgoing
@@ -57,9 +69,8 @@ type LiveCanvasPresentationPayload = Extract<
 const PLAYBACK_RAW_SETTLE_HOLD_MS = 360
 const STABLE_VIEWPORT_RENDER_HOLD_MS = 90
 const STABLE_FULL_RENDER_DELAY_MS = 96
-const STABLE_SEEK_REVEAL_HOLD_MS = 90
-const DEFAULT_CUE_ACCENT_COLOR = '#d98921'
-
+const STABLE_SEEK_REVEAL_HOLD_MS = 0
+const WAVEFORM_SURFACE_FADE_IN_MS = 50
 export const useHorizontalBrowseRawWaveformCanvas = (
   options: UseHorizontalBrowseRawWaveformCanvasOptions
 ) => {
@@ -69,7 +80,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const waveformCanvasRef = ref<HTMLCanvasElement | null>(null)
   const gridCanvasRef = ref<HTMLCanvasElement | null>(null)
   const overlayCanvasRef = ref<HTMLCanvasElement | null>(null)
-
   let drawRaf = 0
   let liveCanvasRenderToken = 0
   let liveCanvasAttached = false
@@ -81,6 +91,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const displayStartSec = ref(0)
   const displayReady = ref(false)
   const placeholderVisible = ref(false)
+  const dragPresentationReleaseActive = ref(false)
   let lastQueuedPlaybackSyncRevision = -1
   let playbackRawSettleUntilMs = 0
   let lastQueuedPlaybackRawSlot: 'live' | null = null
@@ -92,7 +103,15 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let stablePresentationRevealAfterMs = 0
   let stableSurfaceForceHidden = false
   let surfaceVisible: boolean | null = null
-
+  let dragPresentationActive = false
+  let dragPresentationBaseOffsetCssPx = 0
+  let dragPresentationReleasePending = false
+  let dragPresentationReleaseViewportStartSec: number | null = null
+  let dragPresentationReleaseStartedAtMs = 0
+  let preserveSurfaceUntilNextReady = false
+  let suppressNextSurfaceFadeIn = false
+  let lastRenderedRangeStartSec: number | null = null
+  let lastRenderedRangeDurationSec: number | null = null
   const stablePresentation = createHorizontalBrowseStableCanvasPresentationController({
     isActive: () => resolveStableWaveformSource(),
     isPlaying: () => options.playing.value,
@@ -127,7 +146,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     if (surfaceVisible === visible) return
     surfaceVisible = visible
     forEachWaveformSurface((element) => {
-      element.style.transition = visible && fadeIn ? 'opacity 100ms linear' : 'none'
+      element.style.transition =
+        visible && fadeIn ? `opacity ${WAVEFORM_SURFACE_FADE_IN_MS}ms linear` : 'none'
       element.style.opacity = visible ? '1' : '0'
     })
   }
@@ -153,11 +173,13 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       clearDisplayReadyRevealTimer()
       displayReadyRevealGeneration += 1
       displayReady.value = false
+      if (preserveSurfaceUntilNextReady) return
       syncWaveformSurfaceVisibility(false)
       return
     }
     const nowMs = performance.now()
-    if (nowMs < stablePresentationRevealAfterMs) {
+    const fadeIn = !suppressNextSurfaceFadeIn
+    if (fadeIn && nowMs < stablePresentationRevealAfterMs) {
       const generation = displayReadyRevealGeneration + 1
       displayReadyRevealGeneration = generation
       clearDisplayReadyRevealTimer()
@@ -181,7 +203,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       placeholderVisible.value = false
     }
     displayReady.value = ready
-    syncWaveformSurfaceVisibility(true)
+    preserveSurfaceUntilNextReady = false
+    suppressNextSurfaceFadeIn = false
+    syncWaveformSurfaceVisibility(fadeIn)
   }
 
   const resolvePreviewTimeScale = () =>
@@ -271,12 +295,42 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       options.allowNegativeTimeline()
     )
 
-  const resolveCueAccentColor = () => {
-    const value = getComputedStyle(document.documentElement)
-      .getPropertyValue('--shell-cue-accent')
-      .trim()
-    return value || DEFAULT_CUE_ACCENT_COLOR
+  const clearDragPresentationRelease = () => {
+    dragPresentationReleasePending = false
+    dragPresentationReleaseActive.value = false
+    dragPresentationReleaseViewportStartSec = null
+    dragPresentationReleaseStartedAtMs = 0
+    preserveSurfaceUntilNextReady = false
+    suppressNextSurfaceFadeIn = false
   }
+
+  const finishDragPresentationRelease = () => {
+    dragPresentationReleasePending = false
+    dragPresentationReleaseActive.value = false
+    dragPresentationReleaseViewportStartSec = null
+    dragPresentationReleaseStartedAtMs = 0
+    preserveSurfaceUntilNextReady = false
+  }
+
+  const resolveRenderedViewportStartSec = (payload: LiveCanvasRenderedPayload) => {
+    return resolveHorizontalBrowseDragReleaseRenderedViewportStartSec({
+      stableWaveformSource: resolveStableWaveformSource(),
+      rangeStartSec: payload.rangeStartSec,
+      rangeDurationSec: payload.rangeDurationSec,
+      visibleDurationSec: resolveVisibleDurationSec()
+    })
+  }
+
+  const canCompleteDragPresentationRelease = (payload: LiveCanvasRenderedPayload) => {
+    return canCompleteHorizontalBrowseDragPresentationRelease({
+      pending: dragPresentationReleasePending,
+      expectedStartSec: dragPresentationReleaseViewportStartSec,
+      renderedViewportStartSec: resolveRenderedViewportStartSec(payload)
+    })
+  }
+
+  const isDragPresentationReleaseExpired = () =>
+    isHorizontalBrowseDragPresentationReleaseExpired(dragPresentationReleaseStartedAtMs)
 
   const resolveWorkerLoopRange = (): HorizontalBrowseDetailLiveCanvasLoopRange | null => {
     const loopRange = options.loopRange()
@@ -291,6 +345,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const resetLiveWaveformData = () => {
     clearStableFullRenderTimer()
+    dragPresentationActive = false
+    clearDragPresentationRelease()
     liveCanvasRenderToken += 1
     liveCanvasBridge.clearRaw()
     suppressNextPlaybackScrollReuse = false
@@ -299,6 +355,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     playbackRawSettleUntilMs = 0
     lastQueuedPlaybackRawSlot = null
     lastQueuedMissingPlaybackRawSyncRevision = -1
+    lastRenderedRangeStartSec = null
+    lastRenderedRangeDurationSec = null
     stablePresentation.clear()
     clearLiveCanvasPresentationOffset()
     setDisplayReady(false)
@@ -317,14 +375,20 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     playbackRawSettleUntilMs = 0
     lastQueuedPlaybackRawSlot = null
     lastQueuedMissingPlaybackRawSyncRevision = -1
+    lastRenderedRangeStartSec = null
+    lastRenderedRangeDurationSec = null
     stablePresentation.clear()
   }
 
   const clearCanvas = () => {
     clearStableFullRenderTimer()
+    dragPresentationActive = false
+    clearDragPresentationRelease()
     placeholderVisible.value = false
     liveCanvasRenderToken += 1
     liveCanvasBridge.clear()
+    lastRenderedRangeStartSec = null
+    lastRenderedRangeDurationSec = null
     stablePresentation.clear()
     clearLiveCanvasPresentationOffset()
     setDisplayReady(false)
@@ -358,9 +422,29 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   }
 
   const handleLiveCanvasRendered = (payload: LiveCanvasRenderedPayload) => {
+    if (dragPresentationActive) return
     if (payload.renderToken !== liveCanvasRenderToken) return
+    if (payload.ready) {
+      lastRenderedRangeStartSec = payload.rangeStartSec
+      lastRenderedRangeDurationSec = payload.rangeDurationSec
+    } else {
+      lastRenderedRangeStartSec = null
+      lastRenderedRangeDurationSec = null
+    }
+    let forceStableViewportStart = false
+    if (dragPresentationReleasePending && payload.ready) {
+      if (!canCompleteDragPresentationRelease(payload) && !isDragPresentationReleaseExpired()) {
+        drawWaveformNow({ preferPreviewStart: true, viewportOnly: true })
+        return
+      }
+      forceStableViewportStart = true
+      clearLiveCanvasPresentationOffset()
+      finishDragPresentationRelease()
+    }
     displayStartSec.value = payload.rangeStartSec
-    stablePresentation.handleRendered(payload)
+    stablePresentation.handleRendered(payload, {
+      forceViewportRangeStart: forceStableViewportStart
+    })
     if (!payload.ready) {
       setDisplayReady(false)
       return
@@ -384,6 +468,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     )
 
   const handleLiveCanvasPresentation = (payload: LiveCanvasPresentationPayload) => {
+    if (dragPresentationActive || dragPresentationReleasePending) return
     if (payload.renderToken !== liveCanvasRenderToken) return
     if (stablePresentation.isActive()) return
     applyHorizontalBrowseCanvasPresentationOffset(
@@ -583,7 +668,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       hotCues: normalizeSongHotCues(options.hotCues()),
       memoryCues: normalizeSongMemoryCues(options.memoryCues()),
       loopRange: resolveWorkerLoopRange(),
-      cueAccentColor: resolveCueAccentColor(),
+      cueAccentColor: resolveHorizontalBrowseCueAccentColor(),
       playbackActive,
       playbackSeconds,
       playbackSyncRevision: renderPlaybackSyncRevision,
@@ -641,16 +726,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     )
   }
 
-  const resolveActiveMixxxSelection = () => {
-    const liveMixxxData = options.mixxxData.value
-    if (liveMixxxData && !isRawPlaceholderMixxxData(liveMixxxData)) {
-      return { data: liveMixxxData, source: 'live' as const }
-    }
-    if (liveMixxxData) {
-      return { data: liveMixxxData, source: 'placeholder' as const }
-    }
-    return { data: null, source: 'none' as const }
-  }
+  const resolveActiveMixxxSelection = () =>
+    resolveHorizontalBrowseActiveMixxxSelection(options.mixxxData.value)
 
   const invalidateWaveformTiles = () => {
     liveCanvasRenderToken += 1
@@ -660,6 +737,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const drawWaveform = (
     drawOptions: { preferPreviewStart?: boolean; viewportOnly?: boolean } = {}
   ) => {
+    if (dragPresentationActive) return
     const wrap = wrapRef.value
     const waveformCanvas = waveformCanvasRef.value
     if (!wrap || !waveformCanvas) return
@@ -871,6 +949,70 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     drawWaveform(drawOptions)
   }
 
+  const resolveWaveformCanvasTranslateX = () =>
+    resolveHorizontalBrowseCanvasTranslateX(waveformCanvasRef.value)
+
+  const resolveRenderedCanvasViewportStartSec = () =>
+    resolveHorizontalBrowseRenderedCanvasViewportStartSec({
+      canvas: waveformCanvasRef.value,
+      rangeStartSec: lastRenderedRangeStartSec,
+      rangeDurationSec: lastRenderedRangeDurationSec
+    })
+
+  const beginDragCanvasPresentation = () => {
+    const viewportStartSec = resolveRenderedCanvasViewportStartSec()
+    dragPresentationActive = true
+    clearDragPresentationRelease()
+    dragPresentationBaseOffsetCssPx = resolveWaveformCanvasTranslateX()
+    stablePresentation.stopPlayback()
+    liveCanvasBridge.stopPlayback()
+    return {
+      viewportStartSec
+    }
+  }
+
+  const applyDragCanvasPresentationOffset = (offsetCssPx: number) => {
+    if (!dragPresentationActive) return
+    applyHorizontalBrowseCanvasPresentationOffset(
+      waveformCanvasRef.value,
+      overlayCanvasRef.value,
+      dragPresentationBaseOffsetCssPx + (Number(offsetCssPx) || 0),
+      true
+    )
+  }
+
+  const endDragCanvasPresentation = (viewportStartSec?: number) => {
+    if (!dragPresentationActive) {
+      return {
+        requiresRender: false
+      }
+    }
+    const safeViewportStartSec = Number.isFinite(Number(viewportStartSec))
+      ? Number(viewportStartSec)
+      : null
+    dragPresentationActive = false
+    dragPresentationBaseOffsetCssPx = 0
+    if (
+      safeViewportStartSec !== null &&
+      resolveStableWaveformSource() &&
+      stablePresentation.applyViewportRangeStart(safeViewportStartSec)
+    ) {
+      clearDragPresentationRelease()
+      return {
+        requiresRender: false
+      }
+    }
+    dragPresentationReleasePending = true
+    dragPresentationReleaseActive.value = true
+    dragPresentationReleaseViewportStartSec = safeViewportStartSec
+    dragPresentationReleaseStartedAtMs = performance.now()
+    preserveSurfaceUntilNextReady = true
+    suppressNextSurfaceFadeIn = true
+    return {
+      requiresRender: true
+    }
+  }
+
   const hideStableCanvasPresentation = () => {
     clearStableFullRenderTimer()
     stableSurfaceForceHidden = true
@@ -934,6 +1076,11 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     mountWaveformCanvasWorker,
     scheduleDraw,
     drawWaveformNow,
+    beginDragCanvasPresentation,
+    applyDragCanvasPresentationOffset,
+    endDragCanvasPresentation,
+    resolveRenderedCanvasViewportStartSec,
+    dragPresentationReleaseActive,
     scheduleGridOverlayDraw,
     resetGridRenderer,
     resetLiveWaveformData,

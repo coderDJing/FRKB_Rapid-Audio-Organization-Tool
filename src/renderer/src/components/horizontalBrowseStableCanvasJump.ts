@@ -20,21 +20,24 @@ type PrepareStableCanvasJumpOptions = {
   seconds: number
   measure: (seconds: number) => HorizontalBrowseStableCanvasPresentationMeasureResult
   hide: () => void
+  maxOffsetCssPx?: number
 }
 
 const canReuseStableCanvasMeasure = (
-  measure: HorizontalBrowseStableCanvasPresentationMeasureResult
+  measure: HorizontalBrowseStableCanvasPresentationMeasureResult,
+  maxOffsetCssPx = STABLE_SEEK_REUSE_MAX_OFFSET_CSS_PX
 ) =>
   measure.presentable &&
-  Math.abs(Number(measure.offsetCssPx) || 0) <= STABLE_SEEK_REUSE_MAX_OFFSET_CSS_PX
+  Math.abs(Number(measure.offsetCssPx) || 0) <= Math.max(0, Number(maxOffsetCssPx) || 0)
 
 export const prepareHorizontalBrowseStableCanvasJump = ({
   seconds,
   measure,
-  hide
+  hide,
+  maxOffsetCssPx
 }: PrepareStableCanvasJumpOptions) => {
   const measured = measure(Number(seconds) || 0)
-  const canReuseStableFrame = canReuseStableCanvasMeasure(measured)
+  const canReuseStableFrame = canReuseStableCanvasMeasure(measured, maxOffsetCssPx)
   if (!canReuseStableFrame) {
     hide()
     return false

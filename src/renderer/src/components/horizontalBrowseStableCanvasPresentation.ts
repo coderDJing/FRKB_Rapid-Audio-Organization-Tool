@@ -78,6 +78,10 @@ type StableCanvasPresentationApplyOptions = {
   requirePresentable?: boolean
 }
 
+type StableCanvasRenderedOptions = {
+  forceViewportRangeStart?: boolean
+}
+
 type StableCanvasPresentationPlaybackClock = {
   seconds: number
   startedAtMs: number
@@ -299,7 +303,10 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     return true
   }
 
-  const handleRendered = (payload: StableCanvasRenderedPayload) => {
+  const handleRendered = (
+    payload: StableCanvasRenderedPayload,
+    renderedOptions: StableCanvasRenderedOptions = {}
+  ) => {
     if (payload.renderToken !== pendingFrame?.renderToken) return false
     const renderedFrame = pendingFrame
     const pendingViewportRangeStartSec = pendingFrame.viewportRangeStartSec
@@ -317,7 +324,12 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
         renderedFrame.anchorSec +
         (Math.max(0, performance.now() - renderedFrame.anchorStartedAtMs) / 1000) *
           renderedFrame.playbackRate
-      if (payload.renderViewportOnly === true && !options.isPlaying()) {
+      if (renderedOptions.forceViewportRangeStart === true) {
+        applyViewportRangeStart(pendingViewportRangeStartSec)
+        if (options.isPlaying() && !playbackClock) {
+          resumePlaybackFrom(renderedFrame.anchorSec)
+        }
+      } else if (payload.renderViewportOnly === true && !options.isPlaying()) {
         applyViewportRangeStart(pendingViewportRangeStartSec)
       } else {
         const seconds = playbackClock ? estimatePlaybackSeconds() : pendingPlaybackSeconds
@@ -337,6 +349,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     handleRendered,
     measure,
     apply,
+    applyViewportRangeStart,
     startPlayback,
     stopPlayback,
     reanchorPlayback,

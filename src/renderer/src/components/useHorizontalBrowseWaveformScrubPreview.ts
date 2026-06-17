@@ -29,6 +29,9 @@ export const useHorizontalBrowseWaveformScrubPreview = (
   let lastMoveAt = 0
   let smoothedRate = 0
   let idleTimer: ReturnType<typeof setTimeout> | null = null
+  let previewRaf = 0
+  let pendingPreviewAnchorSec = 0
+  let pendingPreviewPlaybackRate = 0
 
   const clearIdleTimer = () => {
     if (!idleTimer) return
@@ -36,10 +39,26 @@ export const useHorizontalBrowseWaveformScrubPreview = (
     idleTimer = null
   }
 
+  const clearPreviewRaf = () => {
+    if (!previewRaf) return
+    cancelAnimationFrame(previewRaf)
+    previewRaf = 0
+  }
+
   const emitPreview = (anchorSec: number, playbackRate: number) => {
     options.emitPreview({
       anchorSec: Number(anchorSec) || 0,
       playbackRate: normalizeScrubPreviewRate(playbackRate)
+    })
+  }
+
+  const schedulePreviewEmit = (anchorSec: number, playbackRate: number) => {
+    pendingPreviewAnchorSec = Number(anchorSec) || 0
+    pendingPreviewPlaybackRate = Number(playbackRate) || 0
+    if (previewRaf) return
+    previewRaf = requestAnimationFrame(() => {
+      previewRaf = 0
+      emitPreview(pendingPreviewAnchorSec, pendingPreviewPlaybackRate)
     })
   }
 
@@ -54,6 +73,7 @@ export const useHorizontalBrowseWaveformScrubPreview = (
   }
 
   const start = (anchorSec: number) => {
+    clearPreviewRaf()
     lastAnchorSec = Number(anchorSec) || 0
     lastMoveAt = performance.now()
     smoothedRate = 0
@@ -77,12 +97,13 @@ export const useHorizontalBrowseWaveformScrubPreview = (
 
     lastAnchorSec = safeAnchorSec
     lastMoveAt = nowMs
-    emitPreview(safeAnchorSec, smoothedRate)
+    schedulePreviewEmit(safeAnchorSec, smoothedRate)
     scheduleIdleStop()
   }
 
   const stop = () => {
     clearIdleTimer()
+    clearPreviewRaf()
     smoothedRate = 0
   }
 

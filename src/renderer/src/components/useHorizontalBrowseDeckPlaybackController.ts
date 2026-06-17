@@ -249,10 +249,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
     return Number.isFinite(currentSec) ? currentSec : 0
   }
 
-  const isSyncedSeekTokenCurrent = (deck: DeckKey, token: number, source: string) =>
-    source === 'detail-drag'
-      ? deckWaveformDragState[deck].token === token
-      : deckSeekActionToken[deck] === token
+  const isSyncedSeekTokenCurrent = (deck: DeckKey, token: number, _source: string) =>
+    deckSeekActionToken[deck] === token
 
   const waitForSyncedSeekPlayheadReady = async (
     deck: DeckKey,
@@ -446,7 +444,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     dragState.active = true
     dragState.wasPlaying = snapshot.playing
-    dragState.syncEnabledBefore = snapshot.syncEnabled
     dragState.startAnchorSec = clampDeckTimelineSeconds(deck, resolveSnapshotAnchorSec(snapshot))
     dragState.anchorSec = dragState.startAnchorSec
     dragState.cueCommittedDuringDrag = false
@@ -514,7 +511,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
     }
     dragState.active = false
     dragState.wasPlaying = false
-    dragState.syncEnabledBefore = false
     dragState.pausePromise = null
     dragState.startAnchorSec = 0
     dragState.anchorSec = targetSec
@@ -552,7 +548,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       otherDragState.startAnchorSec + (anchorSec - dragState.startAnchorSec)
     )
     otherDragState.anchorSec = otherAnchorSec
-    params.notifyDeckSeekIntent(otherDeck, otherAnchorSec)
+    params.holdDeckRenderCurrentSeconds(otherDeck, otherAnchorSec)
     queueDeckScrubPreviewRequest(otherDeck, {
       token: otherDragState.token,
       active: true,
@@ -600,16 +596,24 @@ export const useHorizontalBrowseDeckPlaybackController = (
       }
 
       await params.nativeTransport.seek(deck, targetSec)
-      if (deckWaveformDragState[deck].token !== sourceFinish.token) return
+      if (deckWaveformDragState[deck].token !== sourceFinish.token) {
+        return
+      }
       await params.nativeTransport.seek(otherDeck, otherTargetSec)
-      if (deckWaveformDragState[otherDeck].token !== otherFinish.token) return
+      if (deckWaveformDragState[otherDeck].token !== otherFinish.token) {
+        return
+      }
 
       await ensureDualTransportSync(deck)
       if (shouldResume) {
         await resumeDeckPlaybackAfterSeek(deck)
-        if (deckWaveformDragState[deck].token !== sourceFinish.token) return
+        if (deckWaveformDragState[deck].token !== sourceFinish.token) {
+          return
+        }
         await resumeDeckPlaybackAfterSeek(otherDeck)
-        if (deckWaveformDragState[otherDeck].token !== otherFinish.token) return
+        if (deckWaveformDragState[otherDeck].token !== otherFinish.token) {
+          return
+        }
       }
       params.syncDeckRenderState({ force: 'all' })
     })().catch(() => {})
@@ -624,12 +628,9 @@ export const useHorizontalBrowseDeckPlaybackController = (
     }
     const dragState = deckWaveformDragState[deck]
     const shouldResume = dragState.wasPlaying
-    const syncEnabledBefore = dragState.syncEnabledBefore
     const pausePromise = dragState.pausePromise
-
     dragState.active = false
     dragState.wasPlaying = false
-    dragState.syncEnabledBefore = false
     dragState.pausePromise = null
     dragState.startAnchorSec = 0
     dragState.token += 1
@@ -644,16 +645,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     })
     if (!payload?.committed) return
 
-    const shouldAlignToLeader =
-      targetSec >= 0 &&
-      shouldResume &&
-      syncEnabledBefore &&
-      !params.resolveTransportDeckSnapshot(deck).leader &&
-      !params.isDeckLoopActive(deck)
-
-    if (!shouldAlignToLeader) {
-      params.notifyDeckSeekIntent(deck, targetSec)
-    }
+    params.notifyDeckSeekIntent(deck, targetSec)
     void (async () => {
       if (pausePromise) {
         await pausePromise
@@ -661,24 +653,9 @@ export const useHorizontalBrowseDeckPlaybackController = (
           return
         }
       }
-      if (shouldAlignToLeader) {
-        const preparedSec = await prepareSyncedSeekBeforeResume(
-          deck,
-          token,
-          'detail-drag',
-          targetSec
-        )
-        if (deckWaveformDragState[deck].token !== token) {
-          return
-        }
-        if (preparedSec === null) {
-          return
-        }
-      } else {
-        await params.nativeTransport.seek(deck, targetSec)
-        if (deckWaveformDragState[deck].token !== token) {
-          return
-        }
+      await params.nativeTransport.seek(deck, targetSec)
+      if (deckWaveformDragState[deck].token !== token) {
+        return
       }
       if (shouldResume) {
         await resumeDeckPlaybackAfterSeek(deck)
@@ -686,7 +663,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
           return
         }
       }
-      params.syncDeckRenderState({ force: shouldAlignToLeader ? 'all' : deck })
+      params.syncDeckRenderState({ force: deck })
     })().catch(() => {})
   }
 

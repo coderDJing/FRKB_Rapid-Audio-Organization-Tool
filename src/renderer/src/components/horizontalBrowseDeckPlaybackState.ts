@@ -11,7 +11,6 @@ export type DeckWaveformScrubPreviewPayload = {
 export type DeckWaveformDragState = {
   active: boolean
   wasPlaying: boolean
-  syncEnabledBefore: boolean
   token: number
   pausePromise: Promise<void> | null
   startAnchorSec: number
@@ -36,7 +35,6 @@ export type DeckScrubPreviewRequest = {
 export const createDefaultDeckWaveformDragState = (): DeckWaveformDragState => ({
   active: false,
   wasPlaying: false,
-  syncEnabledBefore: false,
   token: 0,
   pausePromise: null,
   startAnchorSec: 0,
