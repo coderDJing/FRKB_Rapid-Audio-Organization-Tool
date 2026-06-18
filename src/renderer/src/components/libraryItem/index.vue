@@ -464,11 +464,7 @@ onUnmounted(() => {
           :title="nameForDisplay"
           :only-when-overflow="onlyShowBubbleWhenOverflow"
         />
-        <span
-          v-if="dirData.type === 'mixtapeList' || showTrackCount"
-          class="rowActions"
-          @click.stop
-        >
+        <span v-if="dirData.type === 'mixtapeList' || showTrackCount" class="rowActions">
           <bubbleBoxTrigger
             v-if="dirData.type === 'mixtapeList'"
             tag="span"
@@ -479,6 +475,7 @@ onUnmounted(() => {
               isPlaying: isPlaying
             }"
             :title="resolveMixtapeBadgeTitle(dirData.mixMode)"
+            @click.stop
           >
             <span>{{ resolveMixtapeModeTag(dirData.mixMode) }}</span>
           </bubbleBoxTrigger>
