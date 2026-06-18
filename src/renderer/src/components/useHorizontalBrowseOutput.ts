@@ -1,12 +1,6 @@
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import emitter from '@renderer/utils/mitt'
-import {
-  MAIN_WINDOW_VOLUME_CHANGED_EVENT,
-  MAIN_WINDOW_VOLUME_SET_EVENT,
-  MAIN_WINDOW_VOLUME_STORAGE_KEY,
-  clampVolumeValue,
-  readWindowVolume
-} from '@renderer/utils/windowVolume'
+import { computed, onUnmounted, ref, type Ref } from 'vue'
+import { clampNumber } from '@renderer/components/horizontalBrowseMath'
+import { clampVolumeValue } from '@renderer/utils/windowVolume'
 
 type UseHorizontalBrowseOutputParams = {
   nativeTransport: {
@@ -18,18 +12,19 @@ type UseHorizontalBrowseOutputParams = {
     }
     setOutputState: (crossfaderValue: number, masterGain: number) => Promise<unknown>
   }
+  mainWindowVolume: Ref<number>
 }
 
 const FADER_TRAVEL_INSET_RATIO = 0.17
 const CROSSFADER_KEY_STEP = 0.25
 
-const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
-
-export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrowseOutputParams) => {
+export const useHorizontalBrowseOutput = ({
+  nativeTransport,
+  mainWindowVolume
+}: UseHorizontalBrowseOutputParams) => {
   const faderRef = ref<HTMLElement | null>(null)
   const faderRailRef = ref<HTMLElement | null>(null)
   const faderDragging = ref(false)
-  const mainWindowVolume = ref(readWindowVolume(MAIN_WINDOW_VOLUME_STORAGE_KEY))
 
   const resolveCrossfaderTravelPercentByValue = (value: number) => {
     const travelPercent = FADER_TRAVEL_INSET_RATIO * 100
@@ -99,12 +94,6 @@ export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrow
     syncCrossfaderValue(0)
   }
 
-  const handleMainWindowVolumeSync = (value: unknown) => {
-    if (typeof value !== 'number' || !Number.isFinite(value)) return
-    mainWindowVolume.value = clampVolumeValue(value)
-    void nativeTransport.setOutputState(resolveCrossfaderValue(), mainWindowVolume.value)
-  }
-
   const nudgeCrossfaderByKeyboard = (direction: -1 | 1) => {
     syncCrossfaderValue(resolveCrossfaderValue() + direction * CROSSFADER_KEY_STEP)
   }
@@ -113,15 +102,7 @@ export const useHorizontalBrowseOutput = ({ nativeTransport }: UseHorizontalBrow
     syncCrossfaderValue(0)
   }
 
-  onMounted(() => {
-    emitter.on(MAIN_WINDOW_VOLUME_SET_EVENT, handleMainWindowVolumeSync)
-    emitter.on(MAIN_WINDOW_VOLUME_CHANGED_EVENT, handleMainWindowVolumeSync)
-    void nativeTransport.setOutputState(resolveCrossfaderValue(), mainWindowVolume.value)
-  })
-
   onUnmounted(() => {
-    emitter.off(MAIN_WINDOW_VOLUME_SET_EVENT, handleMainWindowVolumeSync)
-    emitter.off(MAIN_WINDOW_VOLUME_CHANGED_EVENT, handleMainWindowVolumeSync)
     stopFaderDragging()
   })
 

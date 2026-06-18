@@ -11,10 +11,8 @@ import {
   HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC
 } from '@renderer/components/horizontalBrowseWaveform.constants'
 import { parseHorizontalBrowseDurationToSeconds } from '@renderer/components/horizontalBrowseShellState'
-import {
-  PREVIEW_MAX_SAMPLES_PER_PIXEL,
-  clampNumber
-} from '@renderer/components/MixtapeBeatAlignDialog.constants'
+import { PREVIEW_MAX_SAMPLES_PER_PIXEL } from '@renderer/components/MixtapeBeatAlignDialog.constants'
+import { clampNumber } from '@renderer/components/horizontalBrowseMath'
 import { shouldUseAttackSafeRawPeaks } from '@renderer/components/horizontalBrowseRawWaveformCanvasPolicy'
 import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import { resolveHorizontalBrowseWaveformThemeVariant } from '@renderer/components/horizontalBrowseWaveformDetail.utils'

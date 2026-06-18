@@ -1,5 +1,5 @@
 import { HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM } from '@renderer/components/horizontalBrowseWaveform.constants'
-import { clampNumber } from '@renderer/components/MixtapeBeatAlignDialog.constants'
+import { clampNumber } from '@renderer/components/horizontalBrowseMath'
 
 export const HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON = 0.0005
 

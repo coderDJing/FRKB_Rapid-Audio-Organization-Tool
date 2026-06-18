@@ -1,5 +1,5 @@
 import type { ISongInfo } from 'src/types/globals'
-import { clampNumber } from '@renderer/components/MixtapeBeatAlignDialog.constants'
+import { clampNumber } from '@renderer/components/horizontalBrowseMath'
 import { HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO } from '@renderer/components/horizontalBrowseWaveform.constants'
 
 export const clampHorizontalBrowsePreviewStartByVisibleDuration = (

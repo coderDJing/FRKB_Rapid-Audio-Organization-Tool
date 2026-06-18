@@ -69,6 +69,7 @@ import {
   type SharedDetailZoomState
 } from '@renderer/components/horizontalBrowseModeShellTypes'
 import { useHorizontalBrowseModePlaybackHandoff } from '@renderer/components/useHorizontalBrowseModePlaybackHandoff'
+import { useHorizontalBrowseVolumeSync } from '@renderer/components/useHorizontalBrowseVolumeSync'
 import { MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT } from '@renderer/utils/mainWindowPlaybackHandoff'
 
 type DeckKey = HorizontalBrowseDeckKey
@@ -179,6 +180,7 @@ const {
   notifyDeckSeekIntent
 } = useHorizontalBrowseTransportController()
 useHorizontalBrowseVisualizer({ nativeTransport })
+const { mainWindowVolume, syncCurrentVolume } = useHorizontalBrowseVolumeSync({ nativeTransport })
 const topDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('top'))
 const bottomDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('bottom'))
 const resolveDeckCuePointRef = (deck: DeckKey) =>
@@ -729,6 +731,7 @@ onMounted(() => {
   startSnapshotSync()
   void nativeTransport.reset().finally(() => {
     faderPanelRef.value?.syncCrossfaderValue(0)
+    syncCurrentVolume()
     markPlaybackHandoffReady()
   })
   startRenderSyncLoop(handleDeckLoopPlaybackTick)
@@ -822,9 +825,10 @@ onUnmounted(() => {
 
       <HorizontalBrowseFaderPanel
         v-if="!isEditMode"
-        v-model:expanded="faderControlsExpanded"
         ref="faderPanelRef"
+        v-model:expanded="faderControlsExpanded"
         :native-transport="nativeTransport"
+        :main-window-volume="mainWindowVolume"
         :transport-sync-enabled="dualTransportSyncEnabled"
         :transport-sync-disabled="!canUseDualTransportSync"
         @toggle-transport-sync="handleDualTransportSyncToggle"
