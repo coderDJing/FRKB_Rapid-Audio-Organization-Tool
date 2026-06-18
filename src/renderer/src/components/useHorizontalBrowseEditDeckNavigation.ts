@@ -45,7 +45,9 @@ export const useHorizontalBrowseEditDeckNavigation = ({
   let editNavigationToken = 0
 
   const editModeQueue = computed(() =>
-    runtime.playingData.playingSongListData.filter((song) => Boolean(resolveSongFilePath(song)))
+    runtime.horizontalBrowseDecks.topSongListData.filter((song) =>
+      Boolean(resolveSongFilePath(song))
+    )
   )
   const currentEditQueueIndex = computed(() =>
     resolveCurrentSongIndex(editModeQueue.value, topDeckSong.value)
