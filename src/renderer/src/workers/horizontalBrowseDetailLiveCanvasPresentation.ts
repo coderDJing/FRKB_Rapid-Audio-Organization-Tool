@@ -1,20 +1,5 @@
-import type { HorizontalBrowseDetailLiveCanvasRenderRequest } from './horizontalBrowseDetailLiveCanvas.types'
 import type { CanvasMetrics } from './horizontalBrowseDetailLiveCanvasRenderState'
-
-export const resolveOverlayRangeStartSec = (
-  request: HorizontalBrowseDetailLiveCanvasRenderRequest
-) =>
-  Number.isFinite(Number(request.viewportRangeStartSec))
-    ? Number(request.viewportRangeStartSec)
-    : request.rangeStartSec
-
-export const resolveOverlayRangeDurationSec = (
-  request: HorizontalBrowseDetailLiveCanvasRenderRequest
-) =>
-  Number.isFinite(Number(request.viewportRangeDurationSec)) &&
-  Number(request.viewportRangeDurationSec) > 0
-    ? Number(request.viewportRangeDurationSec)
-    : request.rangeDurationSec
+import type { HorizontalBrowseDetailLiveCanvasRenderRequest } from './horizontalBrowseDetailLiveCanvas.types'
 
 export const resolvePresentationOffsetCssPx = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,

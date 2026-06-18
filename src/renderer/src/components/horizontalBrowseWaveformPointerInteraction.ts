@@ -41,9 +41,10 @@ type PointerInteractionOptions = {
     anchorRatio: number
     sourceDirection: 'up' | 'down'
   }) => void
+  resolvePlaybackActive: () => boolean
   maybeContinueWaveformSource: (anchorSec?: number) => void
   drawWaveformNow: (options?: { preferPreviewStart?: boolean; viewportOnly?: boolean }) => void
-  scheduleDraw: () => void
+  scheduleDraw: (drawOptions?: { preferPreviewStart?: boolean; viewportOnly?: boolean }) => void
   zoomStepFactor: number
   minZoom: number
   clampNumber: (value: number, min: number, max: number) => number
@@ -177,7 +178,9 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
       sourceDirection: options.direction()
     })
     options.maybeContinueWaveformSource(options.resolvePreviewAnchorSec())
-    options.scheduleDraw()
+    options.scheduleDraw(
+      options.resolvePlaybackActive() ? undefined : { preferPreviewStart: true, viewportOnly: true }
+    )
   }
 
   return {

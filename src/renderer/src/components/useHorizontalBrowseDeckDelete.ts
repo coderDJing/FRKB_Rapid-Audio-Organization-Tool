@@ -8,13 +8,11 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { t } from '@renderer/utils/translate'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
-
-type DeleteSummary = {
-  total?: number
-  success?: number
-  failed?: number
-  removedPaths?: string[]
-}
+import {
+  delSongsViaSend,
+  permanentlyDelSongsViaSend,
+  type DeleteSummary
+} from '@renderer/utils/recycleBinActions'
 
 type UseHorizontalBrowseDeckDeleteParams = {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -26,13 +24,6 @@ const normalizePath = (value: string | null | undefined) =>
   String(value || '')
     .replace(/\//g, '\\')
     .toLowerCase()
-
-const normalizeDeleteSummary = (summary: DeleteSummary | null | undefined): DeleteSummary => ({
-  total: Number(summary?.total || 0),
-  success: Number(summary?.success || 0),
-  failed: Number(summary?.failed || 0),
-  removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
-})
 
 export const useHorizontalBrowseDeckDelete = (params: UseHorizontalBrowseDeckDeleteParams) => {
   const deletingDecks = new Set<HorizontalBrowseDeckKey>()
@@ -96,23 +87,16 @@ export const useHorizontalBrowseDeckDelete = (params: UseHorizontalBrowseDeckDel
       }
 
       const summary = permanently
-        ? normalizeDeleteSummary(
-            (await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
-              filePath
-            ])) as DeleteSummary | null
-          )
-        : normalizeDeleteSummary(
-            (await window.electron.ipcRenderer.invoke(
-              'delSongsAwaitable',
-              effectiveListUuid === EXTERNAL_PLAYLIST_UUID
-                ? { filePaths: [filePath], sourceType: 'external' }
-                : (() => {
-                    const songListPath = effectiveListUuid
-                      ? libraryUtils.findDirPathByUuid(effectiveListUuid)
-                      : ''
-                    return songListPath ? { filePaths: [filePath], songListPath } : [filePath]
-                  })()
-            )) as DeleteSummary | null
+        ? await permanentlyDelSongsViaSend([filePath])
+        : await delSongsViaSend(
+            effectiveListUuid === EXTERNAL_PLAYLIST_UUID
+              ? { filePaths: [filePath], sourceType: 'external' }
+              : (() => {
+                  const songListPath = effectiveListUuid
+                    ? libraryUtils.findDirPathByUuid(effectiveListUuid)
+                    : ''
+                  return songListPath ? { filePaths: [filePath], songListPath } : [filePath]
+                })()
           )
 
       const removedPaths =

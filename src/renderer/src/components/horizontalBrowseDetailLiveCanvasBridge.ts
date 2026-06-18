@@ -21,43 +21,6 @@ type CreateHorizontalBrowseDetailLiveCanvasBridgeOptions = {
   ) => void
 }
 
-const cloneRawWaveformData = (value: RawWaveformData): RawWaveformData => ({
-  duration: Number(value.duration) || 0,
-  sampleRate: Number(value.sampleRate) || 0,
-  rate: Number(value.rate) || 0,
-  frames: Math.max(0, Number(value.frames) || 0),
-  startSec: Math.max(0, Number(value.startSec) || 0),
-  loadedFrames: Math.max(0, Number(value.loadedFrames ?? value.frames) || 0),
-  minLeft: new Float32Array(value.minLeft),
-  maxLeft: new Float32Array(value.maxLeft),
-  minRight: new Float32Array(value.minRight),
-  maxRight: new Float32Array(value.maxRight),
-  meanLeft: value.meanLeft ? new Float32Array(value.meanLeft) : undefined,
-  meanRight: value.meanRight ? new Float32Array(value.meanRight) : undefined,
-  rmsLeft: value.rmsLeft ? new Float32Array(value.rmsLeft) : undefined,
-  rmsRight: value.rmsRight ? new Float32Array(value.rmsRight) : undefined,
-  compactColorIndex: value.compactColorIndex ? new Uint8Array(value.compactColorIndex) : undefined,
-  compactColorLow: value.compactColorLow ? new Uint8Array(value.compactColorLow) : undefined,
-  compactColorMid: value.compactColorMid ? new Uint8Array(value.compactColorMid) : undefined,
-  compactColorHigh: value.compactColorHigh ? new Uint8Array(value.compactColorHigh) : undefined,
-  compactColorRed: value.compactColorRed ? new Uint8Array(value.compactColorRed) : undefined,
-  compactColorGreen: value.compactColorGreen ? new Uint8Array(value.compactColorGreen) : undefined,
-  compactColorBlue: value.compactColorBlue ? new Uint8Array(value.compactColorBlue) : undefined,
-  compactColorRateDivisor: value.compactColorRateDivisor,
-  compactColorStartFrame: value.compactColorStartFrame
-})
-
-const collectTransferableBuffers = (arrays: Array<Float32Array | Uint8Array>) => {
-  const buffers = new Set<ArrayBuffer>()
-  for (const array of arrays) {
-    const buffer = array.buffer
-    if (buffer instanceof ArrayBuffer) {
-      buffers.add(buffer)
-    }
-  }
-  return [...buffers]
-}
-
 export const createHorizontalBrowseDetailLiveCanvasBridge = (
   options: CreateHorizontalBrowseDetailLiveCanvasBridgeOptions
 ) => {
@@ -104,29 +67,41 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
   }
 
   const mount = (
-    waveformCanvas: HTMLCanvasElement | null,
-    overlayCanvas: HTMLCanvasElement | null
+    waveformCanvases: Array<HTMLCanvasElement | null>,
+    overlayCanvases: Array<HTMLCanvasElement | null>
   ) => {
+    const validWaveformCanvases = waveformCanvases.filter(
+      (canvas): canvas is HTMLCanvasElement =>
+        !!canvas && typeof canvas.transferControlToOffscreen === 'function'
+    )
+    const validOverlayCanvases = overlayCanvases.filter(
+      (canvas): canvas is HTMLCanvasElement =>
+        !!canvas && typeof canvas.transferControlToOffscreen === 'function'
+    )
     if (
       attached ||
-      !waveformCanvas ||
-      !overlayCanvas ||
-      typeof waveformCanvas.transferControlToOffscreen !== 'function' ||
-      typeof overlayCanvas.transferControlToOffscreen !== 'function'
+      validWaveformCanvases.length === 0 ||
+      validWaveformCanvases.length !== validOverlayCanvases.length
     ) {
       return false
     }
-    const offscreenWaveformCanvas = waveformCanvas.transferControlToOffscreen()
-    const offscreenOverlayCanvas = overlayCanvas.transferControlToOffscreen()
+    const offscreenWaveformCanvases = validWaveformCanvases.map((canvas) =>
+      canvas.transferControlToOffscreen()
+    )
+    const offscreenOverlayCanvases = validOverlayCanvases.map((canvas) =>
+      canvas.transferControlToOffscreen()
+    )
     postMessage(
       {
         type: 'attachCanvas',
         payload: {
-          waveformCanvas: offscreenWaveformCanvas,
-          overlayCanvas: offscreenOverlayCanvas
+          waveformCanvas: offscreenWaveformCanvases[0],
+          overlayCanvas: offscreenOverlayCanvases[0],
+          waveformCanvases: offscreenWaveformCanvases,
+          overlayCanvases: offscreenOverlayCanvases
         }
       },
-      [offscreenWaveformCanvas, offscreenOverlayCanvas]
+      [...offscreenWaveformCanvases, ...offscreenOverlayCanvases]
     )
     attached = true
     return true
@@ -145,32 +120,12 @@ export const createHorizontalBrowseDetailLiveCanvasBridge = (
   }
 
   const replaceRaw = (data: RawWaveformData | null) => {
-    const cloned = data ? cloneRawWaveformData(data) : null
-    postMessage(
-      {
-        type: 'replaceRaw',
-        payload: {
-          data: cloned
-        }
-      },
-      cloned
-        ? collectTransferableBuffers([
-            cloned.minLeft,
-            cloned.maxLeft,
-            cloned.minRight,
-            cloned.maxRight,
-            ...(cloned.meanLeft && cloned.meanRight ? [cloned.meanLeft, cloned.meanRight] : []),
-            ...(cloned.rmsLeft && cloned.rmsRight ? [cloned.rmsLeft, cloned.rmsRight] : []),
-            ...(cloned.compactColorIndex ? [cloned.compactColorIndex] : []),
-            ...(cloned.compactColorLow ? [cloned.compactColorLow] : []),
-            ...(cloned.compactColorMid ? [cloned.compactColorMid] : []),
-            ...(cloned.compactColorHigh ? [cloned.compactColorHigh] : []),
-            ...(cloned.compactColorRed ? [cloned.compactColorRed] : []),
-            ...(cloned.compactColorGreen ? [cloned.compactColorGreen] : []),
-            ...(cloned.compactColorBlue ? [cloned.compactColorBlue] : [])
-          ])
-        : undefined
-    )
+    postMessage({
+      type: 'replaceRaw',
+      payload: {
+        data
+      }
+    })
   }
 
   const render = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {

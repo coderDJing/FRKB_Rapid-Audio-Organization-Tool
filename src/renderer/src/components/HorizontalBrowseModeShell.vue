@@ -647,6 +647,7 @@ useHorizontalBrowseHotkeys({
   onCueKeyUp: handleDeckCueHotkeyUp,
   onJumpBar: handleDeckBarJump,
   onJumpPhrase: handleDeckPhraseJump,
+  onJumpEditBeats: jumpEditDeckByBeats,
   onMoveToFilter: handleDeckMoveToFilterHotkey,
   onMoveToCurated: handleDeckMoveToCuratedHotkey,
   onDelete: handleDeckDeleteHotkey,

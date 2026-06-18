@@ -26,7 +26,11 @@ import {
   type RecycleBinRecord
 } from '../recycleBinDb'
 import { scanSongList as svcScanSongList } from '../services/scanSongs'
-import { RECYCLE_BIN_UUID } from '../../shared/recycleBin'
+import {
+  RECYCLE_BIN_UUID,
+  DEL_SONGS_DONE_EVENT,
+  PERMANENTLY_DEL_SONGS_DONE_EVENT
+} from '../../shared/recycleBin'
 import {
   RECORDING_LIBRARY_CHANGED_EVENT,
   RECORDING_LIBRARY_UUID
@@ -317,65 +321,95 @@ export function registerLibraryMaintenanceHandlers() {
     }
   )
 
-  ipcMain.handle(
+  ipcMain.on(
     'delSongsAwaitable',
     async (
       _e,
       payload: { filePaths: string[]; songListPath?: string; sourceType?: string } | string[]
     ) => {
-      return await executeDelSongs(payload)
+      try {
+        const summary = await executeDelSongs(payload)
+        mainWindow.instance?.webContents.send(DEL_SONGS_DONE_EVENT, summary)
+      } catch {
+        mainWindow.instance?.webContents.send(DEL_SONGS_DONE_EVENT, {
+          total: 0,
+          success: 0,
+          failed: 0,
+          removedPaths: []
+        })
+      }
     }
   )
 
-  ipcMain.handle('permanentlyDelSongs', async (_e, songFilePaths: string[]) => {
+  ipcMain.on('permanentlyDelSongs', async (_e, songFilePaths: string[]) => {
     const uniquePaths = Array.isArray(songFilePaths)
       ? Array.from(new Set(songFilePaths.filter(Boolean)))
       : []
     if (uniquePaths.length === 0) {
-      return { total: 0, success: 0, failed: 0, removedPaths: [] }
-    }
-    const tasks = uniquePaths.map((item) => async () => {
-      const ok = await permanentlyDeleteFile(item)
-      if (!ok) {
-        throw new Error('delete failed')
-      }
-      return item
-    })
-    const batchId = `permanentlyDelSongs_${Date.now()}`
-    if (mainWindow.instance) {
-      mainWindow.instance.webContents.send('progressSet', {
-        id: batchId,
-        titleKey: 'recycleBin.progressDeleting',
-        now: 0,
-        total: tasks.length,
-        isInitial: true
+      mainWindow.instance?.webContents.send(PERMANENTLY_DEL_SONGS_DONE_EVENT, {
+        total: 0,
+        success: 0,
+        failed: 0,
+        removedPaths: []
       })
+      return
     }
-    const { results, success, failed } = await runWithConcurrency(tasks, {
-      concurrency: 16,
-      onProgress: (done, total) => {
-        if (mainWindow.instance) {
-          mainWindow.instance.webContents.send('progressSet', {
-            id: batchId,
-            titleKey: 'recycleBin.progressDeleting',
-            now: done,
-            total
-          })
+    try {
+      const tasks = uniquePaths.map((item) => async () => {
+        const ok = await permanentlyDeleteFile(item)
+        if (!ok) {
+          throw new Error('delete failed')
         }
+        return item
+      })
+      const batchId = `permanentlyDelSongs_${Date.now()}`
+      if (mainWindow.instance) {
+        mainWindow.instance.webContents.send('progressSet', {
+          id: batchId,
+          titleKey: 'recycleBin.progressDeleting',
+          now: 0,
+          total: tasks.length,
+          isInitial: true
+        })
       }
-    })
-    if (mainWindow.instance) {
-      mainWindow.instance.webContents.send('progressSet', {
-        id: batchId,
-        titleKey: 'recycleBin.progressDeleting',
-        now: tasks.length,
-        total: tasks.length
+      const { results, success, failed } = await runWithConcurrency(tasks, {
+        concurrency: 16,
+        onProgress: (done, total) => {
+          if (mainWindow.instance) {
+            mainWindow.instance.webContents.send('progressSet', {
+              id: batchId,
+              titleKey: 'recycleBin.progressDeleting',
+              now: done,
+              total
+            })
+          }
+        }
+      })
+      if (mainWindow.instance) {
+        mainWindow.instance.webContents.send('progressSet', {
+          id: batchId,
+          titleKey: 'recycleBin.progressDeleting',
+          now: tasks.length,
+          total: tasks.length
+        })
+      }
+      const removedPaths = results
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item)
+      mainWindow.instance?.webContents.send(PERMANENTLY_DEL_SONGS_DONE_EVENT, {
+        total: results.length,
+        success,
+        failed,
+        removedPaths
+      })
+    } catch {
+      mainWindow.instance?.webContents.send(PERMANENTLY_DEL_SONGS_DONE_EVENT, {
+        total: uniquePaths.length,
+        success: 0,
+        failed: uniquePaths.length,
+        removedPaths: []
       })
     }
-    const removedPaths = results
-      .filter((item): item is string => typeof item === 'string')
-      .map((item) => item)
-    return { total: results.length, success, failed, removedPaths }
   })
 
   ipcMain.handle('recycleBin:list', async () => {

@@ -28,6 +28,7 @@ import {
   normalizeNeteaseSearchText,
   openNeteaseSearch
 } from '@renderer/utils/neteaseSearch'
+import { delSongsViaSend, permanentlyDelSongsViaSend } from '@renderer/utils/recycleBinActions'
 
 // Type for the return value when a dialog needs to be opened by the parent
 interface OpenDialogAction {
@@ -319,16 +320,7 @@ export function useSongItemContextMenu(
       }
     }
     const requestDeleteSongs = async (paths: string[]) => {
-      const summary = await window.electron.ipcRenderer.invoke(
-        'delSongsAwaitable',
-        buildDelSongsPayload(paths)
-      )
-      return {
-        total: Number(summary?.total || 0),
-        success: Number(summary?.success || 0),
-        failed: Number(summary?.failed || 0),
-        removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
-      } as DeleteSummary
+      return await delSongsViaSend(buildDelSongsPayload(paths))
     }
 
     const showDeleteSummaryIfNeeded = async (
@@ -595,15 +587,7 @@ export function useSongItemContextMenu(
         try {
           let deleteSummary: DeleteSummary
           if (isRecycleBinView) {
-            const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
-              ...delPaths
-            ])
-            deleteSummary = {
-              total: Number(summary?.total || 0),
-              success: Number(summary?.success || 0),
-              failed: Number(summary?.failed || 0),
-              removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
-            }
+            deleteSummary = await permanentlyDelSongsViaSend([...delPaths])
           } else {
             deleteSummary = await requestDeleteSongs([...delPaths])
           }
@@ -711,15 +695,7 @@ export function useSongItemContextMenu(
             try {
               let deleteSummary: DeleteSummary
               if (isRecycleBinView) {
-                const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', [
-                  ...resolvedSelectedPaths
-                ])
-                deleteSummary = {
-                  total: Number(summary?.total || 0),
-                  success: Number(summary?.success || 0),
-                  failed: Number(summary?.failed || 0),
-                  removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
-                }
+                deleteSummary = await permanentlyDelSongsViaSend([...resolvedSelectedPaths])
               } else {
                 deleteSummary = await requestDeleteSongs([...resolvedSelectedPaths])
               }

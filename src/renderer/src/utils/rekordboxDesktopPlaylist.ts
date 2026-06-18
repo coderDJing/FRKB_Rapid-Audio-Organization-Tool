@@ -22,6 +22,7 @@ import type {
   RekordboxDesktopPlaylistTrackInput,
   RekordboxDesktopPlaylistWriteTarget
 } from '@shared/rekordboxDesktopPlaylist'
+import { delSongsViaSend } from '@renderer/utils/recycleBinActions'
 
 type RekordboxDesktopDeletePayload = {
   songListPath?: string
@@ -253,12 +254,7 @@ const deleteSourceTracksAfterWrite = async (params: {
           sourceType: params.deletePayload?.sourceType
         }
       : params.sourceFilePaths
-  const summary = (await window.electron.ipcRenderer.invoke('delSongsAwaitable', payload)) as {
-    total?: number
-    success?: number
-    failed?: number
-    removedPaths?: string[]
-  }
+  const summary = await delSongsViaSend(payload)
   const removedPaths = Array.isArray(summary?.removedPaths) ? summary.removedPaths : []
   const failed = Number(summary?.failed || 0)
   if (failed > 0) {
