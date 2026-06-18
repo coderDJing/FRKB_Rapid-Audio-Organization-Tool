@@ -1,5 +1,6 @@
 import { computed, onUnmounted, reactive, watch, type Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
+import { detectSongsAreaScrollCarrier } from '../composables/scrollCarrier'
 
 interface UseCoverPreviewOptions {
   songs: Ref<ISongInfo[] | undefined>
@@ -65,7 +66,16 @@ export function useCoverPreview({
 
   let overlayLeftLock = 0
   let detachPreviewGuards: (() => void) | null = null
+  let detachListWheelShim: (() => void) | null = null
+  let listWheelShimCarrier: HTMLElement | null = null
   let rafId = 0
+  const wheelLineHeightPx = 16
+
+  function isHorizontalWheelIntent(event: WheelEvent): boolean {
+    const deltaX = Number.isFinite(event.deltaX) ? event.deltaX : 0
+    const deltaY = Number.isFinite(event.deltaY) ? event.deltaY : 0
+    return Math.abs(deltaX) > 0.01 || (event.shiftKey && Math.abs(deltaY) > 0.01)
+  }
 
   function getListContainerRect(): DOMRect | null {
     const container =
@@ -212,6 +222,88 @@ export function useCoverPreview({
     stopRafMonitor()
   }
 
+  function resolveWheelCarrier(): HTMLElement | null {
+    return detectSongsAreaScrollCarrier(
+      viewportElement.value || hostElement.value || rowsRoot.value,
+      hostElement.value || rowsRoot.value
+    ).carrier
+  }
+
+  function resolveWheelScale(event: WheelEvent, carrier: HTMLElement): number {
+    if (event.deltaMode === 1) return wheelLineHeightPx
+    if (event.deltaMode === 2) return Math.max(carrier.clientHeight, 1)
+    return 1
+  }
+
+  function resolveWheelDeltas(event: WheelEvent, carrier: HTMLElement) {
+    const scale = resolveWheelScale(event, carrier)
+    const rawDeltaX = Number.isFinite(event.deltaX) ? event.deltaX : 0
+    const rawDeltaY = Number.isFinite(event.deltaY) ? event.deltaY : 0
+    const shiftMapsVerticalToHorizontal =
+      event.shiftKey && Math.abs(rawDeltaX) < 0.01 && Math.abs(rawDeltaY) > 0
+    return {
+      left: (shiftMapsVerticalToHorizontal ? rawDeltaY : rawDeltaX) * scale,
+      top: (shiftMapsVerticalToHorizontal ? 0 : rawDeltaY) * scale
+    }
+  }
+
+  function clampScroll(value: number, max: number): number {
+    if (!Number.isFinite(value)) return 0
+    return Math.max(0, Math.min(max, value))
+  }
+
+  function handleCoverPreviewWheel(event: WheelEvent) {
+    const carrier = resolveWheelCarrier()
+    if (!carrier) {
+      closeCoverPreview()
+      return
+    }
+    const { left: deltaLeft, top: deltaTop } = resolveWheelDeltas(event, carrier)
+    if (Math.abs(deltaLeft) < 0.01 && Math.abs(deltaTop) < 0.01) return
+
+    const maxLeft = Math.max(0, carrier.scrollWidth - carrier.clientWidth)
+    const maxTop = Math.max(0, carrier.scrollHeight - carrier.clientHeight)
+    const nextLeft = clampScroll(carrier.scrollLeft + deltaLeft, maxLeft)
+    const nextTop = clampScroll(carrier.scrollTop + deltaTop, maxTop)
+    const changed =
+      Math.abs(nextLeft - carrier.scrollLeft) > 0.5 || Math.abs(nextTop - carrier.scrollTop) > 0.5
+
+    if (changed) {
+      carrier.scrollLeft = nextLeft
+      carrier.scrollTop = nextTop
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    closeCoverPreview()
+  }
+
+  function attachListWheelShim() {
+    const carrier = resolveWheelCarrier()
+    if (!carrier) {
+      detachListWheelShim?.()
+      return
+    }
+    if (carrier === listWheelShimCarrier) return
+    detachListWheelShim?.()
+    listWheelShimCarrier = carrier
+    const handleListWheel = (event: WheelEvent) => {
+      if (!isHorizontalWheelIntent(event)) return
+      const { left: deltaLeft } = resolveWheelDeltas(event, carrier)
+      const maxLeft = Math.max(0, carrier.scrollWidth - carrier.clientWidth)
+      const nextLeft = clampScroll(carrier.scrollLeft + deltaLeft, maxLeft)
+      if (Math.abs(nextLeft - carrier.scrollLeft) <= 0.5) return
+
+      carrier.scrollLeft = nextLeft
+      event.preventDefault()
+      event.stopPropagation()
+    }
+    carrier.addEventListener('wheel', handleListWheel, { capture: true, passive: false })
+    detachListWheelShim = () => {
+      carrier.removeEventListener('wheel', handleListWheel, true)
+      listWheelShimCarrier = null
+    }
+  }
+
   function onCoverMouseEnter(idx: number, event: MouseEvent) {
     const target = event.currentTarget as HTMLElement | null
     if (!target) return
@@ -307,6 +399,13 @@ export function useCoverPreview({
     }
   )
   watch(
+    () => [viewportElement.value, hostElement.value, rowsRoot.value] as const,
+    () => {
+      attachListWheelShim()
+    },
+    { immediate: true }
+  )
+  watch(
     () => songsComputed.value,
     () => {
       if (coverPreviewState.active) closeCoverPreview()
@@ -327,6 +426,7 @@ export function useCoverPreview({
 
   onUnmounted(() => {
     closeCoverPreview()
+    detachListWheelShim?.()
   })
 
   return {
@@ -336,6 +436,7 @@ export function useCoverPreview({
     onCoverMouseEnter,
     onCoverMouseLeave,
     handleCoverPreviewMouseMove,
+    handleCoverPreviewWheel,
     closeCoverPreview
   }
 }

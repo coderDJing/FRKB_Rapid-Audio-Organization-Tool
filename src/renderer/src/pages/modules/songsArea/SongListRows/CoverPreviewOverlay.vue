@@ -13,6 +13,7 @@ const props = defineProps<{
 defineEmits<{
   mousemove: [event: MouseEvent]
   mouseleave: [event: MouseEvent]
+  wheel: [event: WheelEvent]
   contextmenu: [event: MouseEvent]
   dblclick: [event: MouseEvent]
 }>()
@@ -32,6 +33,7 @@ const overlayStyle = computed<CSSProperties>(() => ({
     :style="overlayStyle"
     @mousemove="$emit('mousemove', $event)"
     @mouseleave="$emit('mouseleave', $event)"
+    @wheel="$emit('wheel', $event)"
     @contextmenu.stop.prevent="$emit('contextmenu', $event)"
     @dblclick.stop.prevent="$emit('dblclick', $event)"
   >

@@ -10,7 +10,10 @@ interface SongsAreaScrollCarrierInfo {
 
 const isScrollable = (element: HTMLElement | null | undefined) => {
   if (!element) return false
-  return element.clientHeight > 0 && element.scrollHeight > element.clientHeight + 1
+  return (
+    (element.clientHeight > 0 && element.scrollHeight > element.clientHeight + 1) ||
+    (element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1)
+  )
 }
 
 const pushCandidate = (list: HTMLElement[], element: HTMLElement | null | undefined) => {
