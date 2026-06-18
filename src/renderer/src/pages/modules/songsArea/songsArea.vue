@@ -733,6 +733,10 @@ const harmonicReferenceKeyForRows = computed(() => {
   return ''
 })
 const currentPlayingRowKey = computed(() => {
+  if (runtime.mainWindowBrowseMode === 'edit') {
+    const topDeckSong = runtime.horizontalBrowseDecks.topSong
+    if (topDeckSong) return getRowKey(topDeckSong)
+  }
   const playingSong = runtime.playingData.playingSong
   if (!playingSong) return ''
   return getRowKey(playingSong)
