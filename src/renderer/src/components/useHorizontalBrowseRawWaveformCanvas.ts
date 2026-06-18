@@ -156,7 +156,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const syncWaveformSurfaceVisibility = (fadeIn: boolean) => {
     setWaveformSurfaceVisible(
-      !stableSurfaceForceHidden && (displayReady.value || placeholderVisible.value),
+      placeholderVisible.value || (!stableSurfaceForceHidden && displayReady.value),
       fadeIn
     )
   }
@@ -417,6 +417,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const handleLiveCanvasRendered = (payload: LiveCanvasRenderedPayload) => {
     if (dragPresentationActive) return
     if (payload.renderToken !== liveCanvasRenderToken) return
+    const placeholderPresentationReady = !payload.ready && placeholderVisible.value
     if (payload.ready) {
       lastRenderedRangeStartSec = payload.rangeStartSec
       lastRenderedRangeDurationSec = payload.rangeDurationSec
@@ -438,15 +439,21 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const renderTargetIndex = Number.isInteger(payload.renderTargetIndex)
       ? Number(payload.renderTargetIndex)
       : null
+    const presentationPayload = placeholderPresentationReady
+      ? {
+          ...payload,
+          ready: true
+        }
+      : payload
     if (payload.stableWaveformSource === true && renderTargetIndex !== null) {
       liveCanvasBuffers.withPresentationTarget(renderTargetIndex, () =>
-        stablePresentation.handleRendered(payload, {
+        stablePresentation.handleRendered(presentationPayload, {
           forceViewportRangeStart: forceStableViewportStart
         })
       )
       liveCanvasBuffers.activate(renderTargetIndex)
     } else {
-      stablePresentation.handleRendered(payload, {
+      stablePresentation.handleRendered(presentationPayload, {
         forceViewportRangeStart: forceStableViewportStart
       })
     }
@@ -534,6 +541,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const playbackRawRecovering = playbackActive && !!rawSlot && !displayReady.value
     const allowScrollReuse = payload.allowScrollReuse && !playbackSyncChanged
     const renderBpm = Number(options.previewBpm.value) || 0
+    const showBeatGrid = renderBpm > 0
     const renderFirstBeatMs = Number(options.previewFirstBeatMs.value) || 0
     const renderBarBeatOffset = Number(options.previewBarBeatOffset.value) || 0
     const renderTimeBasisOffsetMs = Number(options.previewTimeBasisOffsetMs.value) || 0
@@ -656,7 +664,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       showDetailHighlights: false,
       showCenterLine: false,
       showBackground: false,
-      showBeatGrid: Number(options.previewBpm.value) > 0,
+      showBeatGrid,
       allowScrollReuse,
       phaseAwareScrollReuse: allowScrollReuse && options.phaseAwareScrollReuse?.() === true,
       presentationOffsetMode: stableWaveformSource ? 'device-pixel' : 'free',
@@ -664,8 +672,11 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       waveformLayout,
       waveformRenderStyle,
       preferRawPeaksOnly,
+      // 网格和真实波形优先级高于空时间轴占位，避免中间态叠在一起。
       showTimelinePlaceholder:
-        canShowTimelinePlaceholder() && !hasHorizontalBrowseDrawableRawFrames(payload.rawData),
+        canShowTimelinePlaceholder() &&
+        !showBeatGrid &&
+        !hasHorizontalBrowseDrawableRawFrames(payload.rawData),
       themeVariant: resolveHorizontalBrowseWaveformThemeVariant(),
       rawSlot,
       direction: options.direction(),
@@ -813,17 +824,21 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const canRenderWithoutRawCoverage = effectiveMixxxSelection.source === 'live'
     const shouldHoldPlaybackFrame =
       playbackViewportMoving && !stableWaveformSource && wasDisplayReady
+    const hasBeatGridTarget = Number(options.previewBpm.value) > 0
 
     const hasTimelinePlaceholderTarget =
-      canShowTimelinePlaceholder() && !hasHorizontalBrowseDrawableRawFrames(drawableRawData)
+      canShowTimelinePlaceholder() &&
+      !hasBeatGridTarget &&
+      !hasHorizontalBrowseDrawableRawFrames(drawableRawData)
+    const shouldShowEmptySurface = hasTimelinePlaceholderTarget || hasBeatGridTarget
 
     if (!effectiveMixxxDrawable && !drawableRawData) {
       if (shouldHoldPlaybackFrame) {
         return
       }
       lastRenderedRawData = null
-      placeholderVisible.value = hasTimelinePlaceholderTarget
-      // 完全无高清波形可画：只清波形层；时间线 overlay 仍按当前 range 渲染。
+      placeholderVisible.value = shouldShowEmptySurface
+      // 完全无高清波形可画：只清波形层；worker 仍按当前 range 渲染网格或时间轴占位。
       setDisplayReady(false)
       queueLiveWaveformRender({
         rangeStartSec: renderStartSec,
@@ -852,7 +867,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           return
         }
         lastRenderedRawData = null
-        placeholderVisible.value = hasTimelinePlaceholderTarget
+        placeholderVisible.value = shouldShowEmptySurface
         setDisplayReady(false)
         queueLiveWaveformRender({
           rangeStartSec: renderStartSec,
@@ -887,7 +902,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       }
     } else if (!drawableRawData && !canRenderWithoutRawCoverage) {
       lastRenderedRawData = null
-      placeholderVisible.value = canShowTimelinePlaceholder()
+      placeholderVisible.value = shouldShowEmptySurface
       setDisplayReady(false)
       queueLiveWaveformRender({
         rangeStartSec: renderStartSec,

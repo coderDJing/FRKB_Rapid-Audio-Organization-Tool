@@ -83,19 +83,19 @@ export const useHorizontalBrowseCompactVisualWaveformStrip = (
     requestOptions: { force?: boolean; clearIfOutside?: boolean } = {}
   ) => {
     const filePath = String(options.song()?.filePath || '').trim()
-    if (!filePath || !options.active.value) {
-      return
+    if (!filePath || (!options.active.value && requestOptions.force !== true)) {
+      return false
     }
     const range = resolveRequestRange(anchorSec)
     if (
       !requestOptions.force &&
       isRawDataCoveringRange(options.rawData.value, range.visibleStart, range.visibleEnd)
     ) {
-      return
+      return true
     }
     const nextRequestKey = [filePath, 'full'].join('|')
     if (!requestOptions.force && requestKey === nextRequestKey) {
-      return
+      return true
     }
     requestKey = nextRequestKey
     const buildToken = ++token
@@ -108,16 +108,24 @@ export const useHorizontalBrowseCompactVisualWaveformStrip = (
       clearWaveformShape()
       options.scheduleDraw()
     }
-    const data = await loadUnifiedDisplayWaveformData(filePath)
-    if (buildToken !== token || !options.active.value) return
+    let data: HorizontalBrowseCompactVisualWaveformWorkerIncoming['payload']['data'] | null = null
+    try {
+      data = await loadUnifiedDisplayWaveformData(filePath)
+    } catch (error: unknown) {
+      console.error('[horizontal-browse-compact-strip] load unified display waveform failed', error)
+    }
+    if (buildToken !== token || (!options.active.value && requestOptions.force !== true)) {
+      return false
+    }
     if (!data) {
       requestKey = ''
       options.previewLoading.value = false
       clearWaveformShape()
       options.scheduleDraw()
-      return
+      return false
     }
     postBuild(buildToken, data)
+    return true
   }
 
   const handleWorkerMessage = (
@@ -129,6 +137,7 @@ export const useHorizontalBrowseCompactVisualWaveformStrip = (
       requestKey = ''
       options.previewLoading.value = false
       if (message.payload.data) {
+        options.active.value = true
         options.resetPlaybackRenderState()
         options.rawData.value = message.payload.data
         options.mixxxData.value = createRawPlaceholderMixxxData(message.payload.data)
@@ -165,8 +174,7 @@ export const useHorizontalBrowseCompactVisualWaveformStrip = (
     if (
       !currentFilePath ||
       !updatedFilePath ||
-      !isSameHorizontalBrowseSongFilePath(currentFilePath, updatedFilePath) ||
-      !options.active.value
+      !isSameHorizontalBrowseSongFilePath(currentFilePath, updatedFilePath)
     ) {
       return
     }
