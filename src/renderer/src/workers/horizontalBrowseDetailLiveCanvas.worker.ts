@@ -4,13 +4,10 @@ import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWave
 import { drawRgbWaveform } from '@renderer/components/rgbWaveformRenderer'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import { createHorizontalBrowseDetailLiveCanvasOverlayRenderer } from './horizontalBrowseDetailLiveCanvasOverlay'
+import { createHorizontalBrowseDetailLiveCanvasBufferManager } from './horizontalBrowseDetailLiveCanvasBuffers'
 import { createHorizontalBrowseDetailLiveCanvasRawStore } from './horizontalBrowseDetailLiveCanvasRawStore'
 import { renderHorizontalBrowseTimelineFallback } from './horizontalBrowseDetailLiveCanvasTimelineFallback'
-import {
-  resolveOverlayRangeDurationSec,
-  resolveOverlayRangeStartSec,
-  resolvePresentationOffsetCssPx
-} from './horizontalBrowseDetailLiveCanvasPresentation'
+import { resolvePresentationOffsetCssPx } from './horizontalBrowseDetailLiveCanvasPresentation'
 import {
   PLAYBACK_CLOCK_REANCHOR_MIN_FRAME_GAP_MS,
   PLAYBACK_INITIAL_FULL_RENDER_LEAD_DEFAULT_MS,
@@ -49,6 +46,7 @@ const normalizeWaveformGain = (value: number) => {
 }
 let canvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
+let scrollSourceCanvas: OffscreenCanvas | null = null
 let lastFrame: FrameState | null = null
 let lastWaveformScrollShiftScaledPx: number | null = null
 let scrollScratchCanvas: OffscreenCanvas | null = null
@@ -70,7 +68,8 @@ const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) =>
       postMessage: (payload: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => void
     }
   ).postMessage(message)
-const overlayRenderer = createHorizontalBrowseDetailLiveCanvasOverlayRenderer()
+let overlayRenderer = createHorizontalBrowseDetailLiveCanvasOverlayRenderer()
+const canvasBufferManager = createHorizontalBrowseDetailLiveCanvasBufferManager()
 
 const resetFrameState = () => {
   lastFrame = lastWaveformScrollShiftScaledPx = null
@@ -146,6 +145,28 @@ const ensureCanvasMetrics = (
     ...metrics,
     resized: previousWidth !== metrics.scaledWidth || previousHeight !== metrics.scaledHeight
   }
+}
+
+const selectRenderBuffer = (request: HorizontalBrowseDetailLiveCanvasRenderRequest) => {
+  const selected = canvasBufferManager.resolve(request.renderTargetIndex)
+  canvas = selected?.canvas ?? null
+  ctx = selected?.ctx ?? null
+  overlayRenderer = selected?.overlayRenderer ?? overlayRenderer
+  scrollSourceCanvas = canvasBufferManager.resolve(request.renderSourceIndex)?.canvas ?? canvas
+}
+
+const copyScrollSourceToTarget = (
+  metrics: CanvasMetrics,
+  targetCtx: OffscreenCanvasRenderingContext2D
+) => {
+  const sourceCanvas = scrollSourceCanvas ?? canvas
+  if (!sourceCanvas) return false
+  if (sourceCanvas === canvas) return true
+  targetCtx.setTransform(1, 0, 0, 1, 0, 0)
+  targetCtx.imageSmoothingEnabled = false
+  targetCtx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
+  targetCtx.drawImage(sourceCanvas, 0, 0)
+  return true
 }
 
 const ensureScratchCanvas = (
@@ -473,8 +494,8 @@ const clearWaveformPixels = () => {
 const clearCanvasPixels = () => {
   pendingRender = null
   stopPlaybackAnimation()
-  clearWaveformPixels()
-  overlayRenderer.clear()
+  canvasBufferManager.clearAll()
+  resetFrameState()
 }
 
 const shouldUseStableColumnGrid = (
@@ -529,6 +550,7 @@ const renderFullFrame = (
       0.000001
   ) {
     state.rangeStartSec = lastFrame.rangeStartSec + resolvePhaseShiftSec(lastFrame)
+    if (!copyScrollSourceToTarget(metrics, ctx)) return false
     lastFrame = resolveReusedFrameState()
     return true
   }
@@ -564,7 +586,7 @@ const renderFullFrame = (
     if (absShiftScaledPx === 0) {
       state.rangeStartSec = lastFrame.rangeStartSec + phaseShiftSec
       lastWaveformScrollShiftScaledPx = 0
-      reused = true
+      reused = copyScrollSourceToTarget(metrics, ctx)
     } else if (absShiftScaledPx < metrics.scaledWidth) {
       state.rangeStartSec = quantizedRangeStartSec
       const scratch = ensureScrollScratch(metrics.scaledWidth, metrics.scaledHeight)
@@ -572,8 +594,9 @@ const renderFullFrame = (
         scratch.ctx.setTransform(1, 0, 0, 1, 0, 0)
         scratch.ctx.imageSmoothingEnabled = false
         scratch.ctx.clearRect(0, 0, metrics.scaledWidth, metrics.scaledHeight)
-        if (canvas) {
-          scratch.ctx.drawImage(canvas, 0, 0)
+        const sourceCanvas = scrollSourceCanvas ?? canvas
+        if (sourceCanvas) {
+          scratch.ctx.drawImage(sourceCanvas, 0, 0)
         }
 
         const segmentPaddingScaledPx = Math.max(2, Math.ceil(metrics.scaleX * 2))
@@ -699,6 +722,7 @@ const processRender = (
   request: HorizontalBrowseDetailLiveCanvasRenderRequest,
   notifyMain = true
 ) => {
+  selectRenderBuffer(request)
   const metrics = ensureCanvasMetrics(request)
   const rawData = resolveRawForRender(request)
   const state = metrics ? buildFrameState(request, metrics, rawData) : null
@@ -744,12 +768,8 @@ const processRender = (
     renderState &&
     !overlayRenderer.render(
       request,
-      request.stableWaveformSource === true
-        ? committedRangeStartSec
-        : resolveOverlayRangeStartSec(request),
-      request.stableWaveformSource === true
-        ? committedRangeDurationSec
-        : resolveOverlayRangeDurationSec(request),
+      committedRangeStartSec,
+      committedRangeDurationSec,
       lastWaveformScrollShiftScaledPx
     )
   ) {
@@ -768,7 +788,9 @@ const processRender = (
         rangeStartSec: committedRangeStartSec,
         rangeDurationSec: committedRangeDurationSec,
         ready: ready || preserved,
-        renderViewportOnly: request.renderViewportOnly === true
+        renderViewportOnly: request.renderViewportOnly === true,
+        renderTargetIndex: request.renderTargetIndex,
+        stableWaveformSource: request.stableWaveformSource === true
       }
     })
   }
@@ -975,9 +997,15 @@ self.onmessage = (event: MessageEvent<HorizontalBrowseDetailLiveCanvasWorkerInco
   if (!message?.type) return
 
   if (message.type === 'attachCanvas') {
-    canvas = message.payload.waveformCanvas
-    ctx = canvas.getContext('2d')
-    overlayRenderer.attach(message.payload.overlayCanvas)
+    canvasBufferManager.attach(
+      message.payload.waveformCanvases ?? [message.payload.waveformCanvas],
+      message.payload.overlayCanvases ?? [message.payload.overlayCanvas]
+    )
+    const selected = canvasBufferManager.resolve(0)
+    canvas = selected?.canvas ?? null
+    ctx = selected?.ctx ?? null
+    overlayRenderer = selected?.overlayRenderer ?? overlayRenderer
+    scrollSourceCanvas = canvas
     resetFrameState()
     return
   }

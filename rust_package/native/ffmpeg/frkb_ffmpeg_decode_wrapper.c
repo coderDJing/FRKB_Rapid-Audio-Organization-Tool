@@ -163,6 +163,11 @@ static int decode_should_cancel(void *cancel_opaque, int (*should_cancel)(void *
     return should_cancel(cancel_opaque) != 0;
 }
 
+static int is_recoverable_decode_error(int ret)
+{
+    return ret == AVERROR_INVALIDDATA;
+}
+
 /* ===================== Public API ===================== */
 
 int frkb_ffmpeg_chromaprint_generate(
@@ -397,6 +402,9 @@ int frkb_ffmpeg_transport_decode(
         ret = avcodec_send_packet(ctx.dec_ctx, pkt);
         av_packet_unref(pkt);
         if (ret < 0) {
+            if (is_recoverable_decode_error(ret)) {
+                continue;
+            }
             ret = FRKB_ERR_DECODE;
             goto finish_transport;
         }

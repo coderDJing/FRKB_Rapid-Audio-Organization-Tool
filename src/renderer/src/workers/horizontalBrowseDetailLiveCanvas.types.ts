@@ -13,6 +13,8 @@ export type HorizontalBrowseDetailLiveCanvasLoopRange = {
 export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   renderToken: number
   renderPriority?: 'normal' | 'immediate'
+  renderTargetIndex?: number
+  renderSourceIndex?: number
   renderViewportOnly?: boolean
   width: number
   height: number
@@ -62,6 +64,8 @@ export type HorizontalBrowseDetailLiveCanvasWorkerIncoming =
       payload: {
         waveformCanvas: OffscreenCanvas
         overlayCanvas: OffscreenCanvas
+        waveformCanvases?: OffscreenCanvas[]
+        overlayCanvases?: OffscreenCanvas[]
       }
     }
   | {
@@ -93,6 +97,8 @@ export type HorizontalBrowseDetailLiveCanvasWorkerOutgoing =
         rangeDurationSec: number
         ready: boolean
         renderViewportOnly?: boolean
+        renderTargetIndex?: number
+        stableWaveformSource?: boolean
       }
     }
   | {

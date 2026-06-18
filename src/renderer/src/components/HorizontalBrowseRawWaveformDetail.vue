@@ -163,8 +163,10 @@ const {
   wrapRef,
   waveformSurfaceRef,
   waveformCanvasRef,
+  waveformCanvasBackRef,
   overlaySurfaceRef,
   overlayCanvasRef,
+  overlayCanvasBackRef,
   resolvePreviewTimeScale,
   resolvePreviewDurationSec,
   resolveVisibleDurationSec,
@@ -318,6 +320,22 @@ const {
 const consumeDragReleaseStablePresentationOffsetLimit = (seconds: number) => {
   const consumed = dragReleaseHandoff.consume('stable-presentation', seconds)
   return consumed ? Number.POSITIVE_INFINITY : undefined
+}
+
+const applyStablePresentationSeekTarget = (seconds: number) => {
+  if (!compactVisualWaveformActive.value) return false
+  const result = applyStableCanvasPresentation(seconds, {
+    allowReanchor: false,
+    requirePresentable: true
+  })
+  if (!result.applied) return false
+  applyPreviewPlaybackPosition(seconds, false)
+  if (waveformPlaybackActive.value) {
+    reanchorStableCanvasPlayback(seconds, resolveWaveformPlaybackRate())
+  } else {
+    stopStableCanvasPlayback()
+  }
+  return true
 }
 
 const resetPreviewBpmTap = () => {
@@ -532,6 +550,7 @@ const { stopDragging, handlePointerDown, handleWheel } =
     emitDragSessionStart: () => emit('drag-session-start'),
     emitDragSessionEnd: (payload) => emit('drag-session-end', payload),
     emitZoomChange: (payload) => emit('zoom-change', payload),
+    resolvePlaybackActive: () => waveformPlaybackActive.value,
     maybeContinueWaveformSource,
     drawWaveformNow,
     scheduleDraw,
@@ -704,7 +723,9 @@ watch(
     previewStartSec.value = clampPreviewStart(anchorSec - nextVisible * anchorRatio)
     resetGridRenderer()
     maybeContinueWaveformSource(resolvePreviewAnchorSec())
-    scheduleDraw()
+    scheduleDraw(
+      waveformPlaybackActive.value ? undefined : { preferPreviewStart: true, viewportOnly: true }
+    )
   },
   { immediate: true }
 )
@@ -815,6 +836,7 @@ watch(
         compactVisualWaveformActive.value &&
         !dragReleaseHandoff.matches(safeSeekTargetSeconds)
       ) {
+        if (applyStablePresentationSeekTarget(safeSeekTargetSeconds)) return
         startStableSeekSyncHandoff(safeSeekRevision, safeSeekTargetSeconds)
         forceRenderStableSeekTarget(safeSeekTargetSeconds)
         return
@@ -933,6 +955,7 @@ watch(
       return
     }
     if (compactVisualWaveformActive.value) {
+      if (applyStablePresentationSeekTarget(safeTargetSeconds)) return
       startStableSeekSyncHandoff(revision, safeTargetSeconds)
       forceRenderStableSeekTarget(safeTargetSeconds)
       return
@@ -1045,11 +1068,19 @@ defineExpose(
         ref="waveformCanvasRef"
         class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform"
       />
+      <canvas
+        ref="waveformCanvasBackRef"
+        class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform raw-detail-waveform__canvas--buffer-back"
+      />
     </div>
     <div ref="overlaySurfaceRef" class="raw-detail-waveform__overlay-surface">
       <canvas
         ref="overlayCanvasRef"
         class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay"
+      />
+      <canvas
+        ref="overlayCanvasBackRef"
+        class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay raw-detail-waveform__canvas--buffer-back"
       />
     </div>
     <div

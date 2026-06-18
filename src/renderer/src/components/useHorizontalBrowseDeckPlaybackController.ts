@@ -17,6 +17,7 @@ import {
   createHorizontalBrowsePendingPlayDiagnostics,
   type HorizontalBrowsePendingPlayViewMode
 } from '@renderer/components/horizontalBrowsePendingPlayDiagnostics'
+import { createHorizontalBrowsePlaybackStallRecovery } from '@renderer/components/horizontalBrowsePlaybackStallRecovery'
 import {
   createDefaultDeckWaveformDragState,
   type DeckScrubPreviewRequest,
@@ -218,6 +219,14 @@ export const useHorizontalBrowseDeckPlaybackController = (
     resolveDualTransportSyncActive: isDualTransportSyncActive,
     resolveBrowseViewMode: params.resolveBrowseViewMode
   })
+  const playbackStallRecovery = createHorizontalBrowsePlaybackStallRecovery({
+    nativeTransport: params.nativeTransport,
+    syncDeckRenderState: params.syncDeckRenderState,
+    resolveDeckSong: params.resolveDeckSong,
+    resolveDeckPlaying: params.resolveDeckPlaying,
+    resolveDeckPendingPlay: (deck) => deckPendingPlayOnLoad[deck],
+    resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot
+  })
 
   watch(
     () => [deckPendingPlayOnLoad.top, deckPendingPlayOnLoad.bottom] as const,
@@ -233,6 +242,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     clearPendingPlayVisibleTimer('top')
     clearPendingPlayVisibleTimer('bottom')
     pendingPlayDiagnostics.dispose()
+    playbackStallRecovery.dispose()
   })
 
   const clampDeckTimelineSeconds = (deck: DeckKey, seconds: number) => {

@@ -57,6 +57,10 @@
   image-rendering: crisp-edges;
 }
 
+.raw-detail-waveform__canvas--buffer-back {
+  opacity: 0;
+}
+
 .raw-detail-waveform.is-loading::after {
   content: '加载波形...';
   position: absolute;

@@ -18,6 +18,7 @@ type UseHorizontalBrowseHotkeysParams = {
   onCueKeyUp: (deck: HorizontalBrowseDeckKey) => void
   onJumpBar: (deck: HorizontalBrowseDeckKey, direction: -1 | 1) => void
   onJumpPhrase: (deck: HorizontalBrowseDeckKey, direction: -1 | 1) => void
+  onJumpEditBeats?: (direction: -1 | 1) => void
   onMoveToFilter: (deck: HorizontalBrowseDeckKey) => void
   onMoveToCurated: (deck: HorizontalBrowseDeckKey) => void
   onDelete: (deck: HorizontalBrowseDeckKey) => void
@@ -204,6 +205,10 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
     if (code === 'KeyA' || code === 'ArrowLeft') {
       stopKeyboardEvent(event)
       if (event.repeat) return
+      if (isEditModeActive()) {
+        params.onJumpEditBeats?.(-1)
+        return
+      }
       params.onJumpBar(deck, -1)
       return
     }
@@ -211,6 +216,10 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
     if (code === 'KeyD' || code === 'ArrowRight') {
       stopKeyboardEvent(event)
       if (event.repeat) return
+      if (isEditModeActive()) {
+        params.onJumpEditBeats?.(1)
+        return
+      }
       params.onJumpBar(deck, 1)
       return
     }

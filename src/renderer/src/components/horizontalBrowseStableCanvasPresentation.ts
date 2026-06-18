@@ -32,7 +32,14 @@ export const resolveHorizontalBrowseStableCanvasOffsetCssPx = (
 export const shouldReanchorHorizontalBrowseStableCanvas = (
   frame: HorizontalBrowseStableCanvasPresentationFrame,
   offsetCssPx: number
-) => offsetCssPx <= -Math.max(1, Math.max(0, frame.overscanCssPx) * 0.7)
+) => {
+  const overscanCssPx = Math.max(0, Number(frame.overscanCssPx) || 0)
+  const renderWidth = Math.max(1, Number(frame.renderWidth) || 1)
+  const viewportWidth = Math.max(1, renderWidth - overscanCssPx * 2)
+  const viewportStepLimit = Math.min(64, Math.max(32, viewportWidth * 0.05))
+  const reanchorOffsetLimit = Math.min(overscanCssPx * 0.7, viewportStepLimit)
+  return offsetCssPx <= -Math.max(1, reanchorOffsetLimit)
+}
 
 export const canPresentHorizontalBrowseStableCanvas = (
   frame: HorizontalBrowseStableCanvasPresentationFrame,
