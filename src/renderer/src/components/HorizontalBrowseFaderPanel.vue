@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, toRef } from 'vue'
 import type { CSSProperties } from 'vue'
 import { useHorizontalBrowseOutput } from '@renderer/components/useHorizontalBrowseOutput'
 
@@ -22,6 +22,7 @@ type FaderTick = {
 
 const props = defineProps<{
   nativeTransport: HorizontalBrowseOutputTransport
+  mainWindowVolume: number
   expanded: boolean
   transportSyncEnabled: boolean
   transportSyncDisabled: boolean
@@ -31,6 +32,8 @@ const emit = defineEmits<{
   (event: 'update:expanded', value: boolean): void
   (event: 'toggle-transport-sync'): void
 }>()
+
+const mainWindowVolumeRef = toRef(props, 'mainWindowVolume')
 
 const {
   faderRef,
@@ -43,7 +46,10 @@ const {
   handleFaderDoubleClick,
   nudgeCrossfaderByKeyboard,
   resetCrossfaderByKeyboard
-} = useHorizontalBrowseOutput({ nativeTransport: props.nativeTransport })
+} = useHorizontalBrowseOutput({
+  nativeTransport: props.nativeTransport,
+  mainWindowVolume: mainWindowVolumeRef
+})
 
 const resolvedFaderTicks = computed(() => faderTicks as FaderTick[])
 const resolvedFaderThumbStyle = computed(() => faderThumbStyle.value as CSSProperties)

@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import { clampNumber } from '@renderer/components/MixtapeBeatAlignDialog.constants'
+import { clampNumber } from '@renderer/components/horizontalBrowseMath'
 
 export type HorizontalBrowseScrubPreviewPayload = {
   anchorSec: number
