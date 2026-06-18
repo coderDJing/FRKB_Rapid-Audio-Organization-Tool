@@ -71,6 +71,7 @@ const STABLE_VIEWPORT_RENDER_HOLD_MS = 90
 const STABLE_FULL_RENDER_DELAY_MS = 96
 const STABLE_SEEK_REVEAL_HOLD_MS = 0
 const WAVEFORM_SURFACE_FADE_IN_MS = 50
+
 export const useHorizontalBrowseRawWaveformCanvas = (
   options: UseHorizontalBrowseRawWaveformCanvasOptions
 ) => {
@@ -510,6 +511,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const renderDurationScale = renderWidth / Math.max(1, width)
     const renderRangeDurationSec = payload.rangeDurationSec * renderDurationScale
     const stableOverscanSec = (payload.rangeDurationSec * stableOverscanCssPx) / Math.max(1, width)
+    const playheadCanvasX =
+      stableOverscanCssPx + wrapWidth * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
     setHorizontalBrowseLiveCanvasGeometry(
       waveformCanvasRef.value,
       gridCanvasRef.value,
@@ -547,10 +550,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const playbackRate = Math.max(0.25, Number(options.playbackRate()) || 1)
     const sourcePlaybackSeconds = Number(options.currentSeconds()) || 0
     const anchorStartedAtMs = performance.now()
-    const stableAnchorSec = Math.max(
-      0,
-      payload.rangeStartSec + payload.rangeDurationSec * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
-    )
     const visualGridPhase = resolveHorizontalBrowseLinkedGridVisualPhase({
       direction: options.direction(),
       active: waveformLayout !== 'full',
@@ -569,13 +568,24 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       !preferPreviewStart &&
       !viewportOnly &&
       nowMs < stableViewportRenderPendingUntilMs
-    const viewportRangeStartSec =
+    const baseViewportRangeStartSec =
       preferPreviewStart || (!sourcePlaybackActive && !visualGridPhase.linked)
         ? payload.rangeStartSec
         : resolvePlaybackAlignedStart(playbackSeconds)
-    const renderRangeStartSec = stableWaveformSource
-      ? viewportRangeStartSec - stableOverscanSec
-      : viewportRangeStartSec
+    const renderAnchorSec =
+      preferPreviewStart || (!sourcePlaybackActive && !visualGridPhase.linked)
+        ? Math.max(
+            0,
+            baseViewportRangeStartSec +
+              payload.rangeDurationSec * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
+          )
+        : playbackSeconds
+    const renderRangeStartSec =
+      renderAnchorSec -
+      (playheadCanvasX / Math.max(1, renderWidth)) * Math.max(0.0001, renderRangeDurationSec)
+    const viewportRangeStartSec = stableWaveformSource
+      ? renderRangeStartSec + stableOverscanSec
+      : renderRangeStartSec
     if (suppressStablePlaybackRender) {
       return false
     }
@@ -619,7 +629,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       renderRangeStartSec,
       renderRangeDurationSec,
       viewportRangeStartSec,
-      preferPreviewStart ? stableAnchorSec : playbackSeconds,
+      renderAnchorSec,
       anchorStartedAtMs,
       playbackRate,
       renderWidth,

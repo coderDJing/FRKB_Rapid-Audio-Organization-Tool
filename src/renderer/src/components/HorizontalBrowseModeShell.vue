@@ -175,6 +175,7 @@ const {
   stopRenderSyncLoop,
   holdDeckRenderCurrentSeconds,
   startDeckRenderPlaybackClock,
+  primeDeckRenderCurrentSeconds,
   notifyDeckSeekIntent
 } = useHorizontalBrowseTransportController()
 useHorizontalBrowseVisualizer({ nativeTransport })
@@ -369,6 +370,7 @@ const { assignSongToDeck: assignSongToDeckBase } = createHorizontalBrowseDeckAss
     return resolveDeckPlaying(otherDeck) && !resolveDeckPlaying(deck)
   },
   syncDeckDefaultCue,
+  primeDeckRenderCurrentSeconds,
   setDeckBeatGridToNative: nativeTransport.setBeatGrid,
   commitDeckStateToNative
 })

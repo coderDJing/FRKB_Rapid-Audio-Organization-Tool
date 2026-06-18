@@ -129,12 +129,17 @@ const drawBeatGridOverlay = (
   const rangeEndSec = rangeStartSec + rangeDurationSec
   const startIndex = Math.floor((rangeStartSec - firstBeatSec) / beatSec) - 2
   const endIndex = Math.ceil((rangeEndSec - firstBeatSec) / beatSec) + 2
+  const resolveLineLeft = (x: number, safeWidth: number) => x - safeWidth * 0.5
+  const resolveLineCenter = (x: number, safeWidth: number) =>
+    resolveLineLeft(x, safeWidth) + safeWidth * 0.5
   const drawVerticalLineLayer = (x: number, lineWidth: number, color: string) => {
     const safeWidth = Math.max(1, lineWidth)
     const halfWidth = safeWidth * 0.5
-    if (x < -halfWidth || x > width + halfWidth) return
-    const left = Math.max(0, x - halfWidth)
-    const right = Math.min(width, left + safeWidth)
+    const drawCenterX = resolveLineCenter(x, safeWidth)
+    if (drawCenterX < -halfWidth || drawCenterX > width + halfWidth) return
+    const rawLeft = resolveLineLeft(x, safeWidth)
+    const left = Math.max(0, rawLeft)
+    const right = Math.min(width, rawLeft + safeWidth)
     if (right <= left) return
     ctx.fillStyle = color
     ctx.fillRect(

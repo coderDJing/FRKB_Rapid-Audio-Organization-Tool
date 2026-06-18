@@ -320,18 +320,18 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     pendingFrame = null
     reanchorPending = false
     if (payload.ready && options.isActive()) {
-      const pendingPlaybackSeconds =
-        renderedFrame.anchorSec +
-        (Math.max(0, performance.now() - renderedFrame.anchorStartedAtMs) / 1000) *
-          renderedFrame.playbackRate
       if (renderedOptions.forceViewportRangeStart === true) {
         applyViewportRangeStart(pendingViewportRangeStartSec)
         if (options.isPlaying() && !playbackClock) {
           resumePlaybackFrom(renderedFrame.anchorSec)
         }
-      } else if (payload.renderViewportOnly === true && !options.isPlaying()) {
+      } else if (!options.isPlaying()) {
         applyViewportRangeStart(pendingViewportRangeStartSec)
       } else {
+        const pendingPlaybackSeconds =
+          renderedFrame.anchorSec +
+          (Math.max(0, performance.now() - renderedFrame.anchorStartedAtMs) / 1000) *
+            renderedFrame.playbackRate
         const seconds = playbackClock ? estimatePlaybackSeconds() : pendingPlaybackSeconds
         const result = apply(seconds)
         if (result.applied && options.isPlaying() && !playbackClock) {

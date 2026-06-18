@@ -30,6 +30,7 @@ type CreateHorizontalBrowseDeckAssignerParams = {
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
   shouldDeferDeckSongPriorityAnalysis: (deck: DeckKey) => boolean
   syncDeckDefaultCue: (deck: DeckKey, song: ISongInfo | null, force?: boolean) => void
+  primeDeckRenderCurrentSeconds: (deck: DeckKey, seconds: number) => void
   setDeckBeatGridToNative: (
     deck: DeckKey,
     payload: HorizontalBrowseTransportBeatGridInput
@@ -148,10 +149,6 @@ export const createHorizontalBrowseDeckAssigner = (
     params.touchDeckInteraction(deck)
     const initialSong = { ...song }
     const initialFilePath = String(initialSong.filePath || '').trim()
-    params.setDeckSong(deck, initialSong)
-    queueDeckSongPriorityAnalysis(deck, initialSong)
-    params.syncDeckDefaultCue(deck, initialSong, true)
-
     const nowMs = performance.now()
     const initialDurationSec = parseHorizontalBrowseDurationToSeconds(initialSong.duration)
     const initialCueSec = resolveHorizontalBrowseDefaultCuePointSec(initialSong, initialDurationSec)
@@ -164,6 +161,11 @@ export const createHorizontalBrowseDeckAssigner = (
           ? Math.max(0, Number(options.initialCurrentSec))
           : initialCueSec
     const applyHydratedCue = options?.applyHydratedCue ?? !hasInitialCurrentSec
+    params.primeDeckRenderCurrentSeconds(deck, initialCurrentSec)
+    params.setDeckSong(deck, initialSong)
+    queueDeckSongPriorityAnalysis(deck, initialSong)
+    params.syncDeckDefaultCue(deck, initialSong, true)
+
     const initialCommit = params.commitDeckStateToNative(deck, {
       currentSec: initialCurrentSec,
       lastObservedAtMs: nowMs,
@@ -190,13 +192,16 @@ export const createHorizontalBrowseDeckAssigner = (
         return
       }
 
-      params.setDeckSong(deck, nextSong)
       const nextDurationSec = parseHorizontalBrowseDurationToSeconds(nextSong.duration)
       const nextCueSec = resolveHorizontalBrowseDefaultCuePointSec(nextSong, nextDurationSec)
       const canApplyHydratedCue =
         applyHydratedCue &&
         !params.resolveDeckPlaying(deck) &&
         Math.abs(params.resolveDeckCurrentSeconds(deck) - initialCurrentSec) <= 0.05
+      if (canApplyHydratedCue && Math.abs(nextCueSec - initialCurrentSec) > 0.0001) {
+        params.primeDeckRenderCurrentSeconds(deck, nextCueSec)
+      }
+      params.setDeckSong(deck, nextSong)
       params.syncDeckDefaultCue(deck, nextSong, canApplyHydratedCue)
       const nativeGridPayload = buildNativeGridPayload(nextSong)
       if (nativeGridPayload) {

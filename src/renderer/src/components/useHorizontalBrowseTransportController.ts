@@ -87,6 +87,9 @@ export const useHorizontalBrowseTransportController = () => {
   const startDeckRenderPlaybackClock = (deck: DeckKey, seconds: number) => {
     startRenderPlaybackClock(deck, normalizeTimelineSeconds(seconds))
   }
+  const primeDeckRenderCurrentSeconds = (deck: DeckKey, seconds: number) => {
+    applyDeckRenderCurrentSeconds(deck, normalizeTimelineSeconds(seconds))
+  }
 
   const startSnapshotSync = () => {
     if (stopSnapshotSubscription) return
@@ -130,6 +133,7 @@ export const useHorizontalBrowseTransportController = () => {
     stopRenderSyncLoop,
     holdDeckRenderCurrentSeconds,
     startDeckRenderPlaybackClock,
+    primeDeckRenderCurrentSeconds,
     notifyDeckSeekIntent
   }
 }

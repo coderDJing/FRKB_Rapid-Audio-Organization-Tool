@@ -106,12 +106,11 @@ const resolveMarkerCenterX = (
   seconds: number | undefined,
   rangeStartSec: number,
   rangeDurationSec: number,
-  width: number,
-  xPixelScale: number
+  width: number
 ) => {
   const ratio = resolveHorizontalBrowseTimePercent(Number(seconds), rangeStartSec, rangeDurationSec)
   if (ratio === null) return null
-  return snapToDevicePixel(ratio * width, xPixelScale)
+  return ratio * width
 }
 
 const drawCueTriangle = (
@@ -299,13 +298,7 @@ export const drawHorizontalBrowseDetailOverlay = (
     loopRange
   )
 
-  const cueCenterX = resolveMarkerCenterX(
-    cueSeconds,
-    rangeStartSec,
-    rangeDurationSec,
-    width,
-    safeXPixelScale
-  )
+  const cueCenterX = resolveMarkerCenterX(cueSeconds, rangeStartSec, rangeDurationSec, width)
   if (cueCenterX !== null) {
     const cueTopY =
       direction === 'up' ? waveformTop + waveformHeight - CUE_MARKER_HEIGHT : waveformTop
@@ -323,8 +316,7 @@ export const drawHorizontalBrowseDetailOverlay = (
       markerSec ?? undefined,
       rangeStartSec,
       rangeDurationSec,
-      width,
-      safeXPixelScale
+      width
     )
     if (centerX === null) continue
     drawMemoryCue(ctx, centerX, memoryTopY, memoryAnchor, resolveSongMemoryCueDisplayColor(marker))
@@ -340,8 +332,7 @@ export const drawHorizontalBrowseDetailOverlay = (
       markerSec ?? undefined,
       rangeStartSec,
       rangeDurationSec,
-      width,
-      safeXPixelScale
+      width
     )
     if (centerX === null) continue
     drawHotCue(

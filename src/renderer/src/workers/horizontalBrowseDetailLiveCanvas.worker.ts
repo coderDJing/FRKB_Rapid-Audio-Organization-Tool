@@ -49,7 +49,6 @@ const normalizeWaveformGain = (value: number) => {
 }
 let canvas: OffscreenCanvas | null = null
 let ctx: OffscreenCanvasRenderingContext2D | null = null
-const overlayRenderer = createHorizontalBrowseDetailLiveCanvasOverlayRenderer()
 let lastFrame: FrameState | null = null
 let lastWaveformScrollShiftScaledPx: number | null = null
 let scrollScratchCanvas: OffscreenCanvas | null = null
@@ -71,6 +70,7 @@ const postToMain = (message: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) =>
       postMessage: (payload: HorizontalBrowseDetailLiveCanvasWorkerOutgoing) => void
     }
   ).postMessage(message)
+const overlayRenderer = createHorizontalBrowseDetailLiveCanvasOverlayRenderer()
 
 const resetFrameState = () => {
   lastFrame = lastWaveformScrollShiftScaledPx = null
