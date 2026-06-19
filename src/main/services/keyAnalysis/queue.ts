@@ -848,7 +848,8 @@ export class KeyAnalysisQueue {
           this.drain()
           return
         }
-        const coolingRecord = this.failureTracker.getFailureCooldownRecord(job)
+        const coolingRecord =
+          job.needsKey || job.needsBpm ? this.failureTracker.getFailureCooldownRecord(job) : null
         if (coolingRecord) {
           this.events.emit('analysis-job-skipped', {
             filePath: job.filePath,

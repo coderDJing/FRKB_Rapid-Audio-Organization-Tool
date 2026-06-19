@@ -98,7 +98,7 @@ export type KeyAnalysisJob = {
   prepareDetails?: KeyAnalysisPrepareDetails
 }
 
-export type KeyAnalysisFailureReason = 'timeout' | 'worker-exit' | 'worker-error'
+export type KeyAnalysisFailureReason = 'timeout' | 'worker-exit' | 'worker-error' | 'analysis-error'
 
 export type KeyAnalysisPreemptionKind =
   | 'background-resume'

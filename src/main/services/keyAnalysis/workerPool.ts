@@ -162,6 +162,11 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     })
   }
 
+  const getJobResultErrorDetail = (
+    payloadResult?: WorkerPayload['result'],
+    payloadError?: string
+  ): string => collectJobResultErrors(payloadResult, payloadError).join('; ').slice(0, 300)
+
   const persistAnalyzePartialResult = async (
     job: KeyAnalysisJob,
     progress: KeyAnalysisProgress
@@ -315,6 +320,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     }
 
     if (job) {
+      const resultErrorDetail = getJobResultErrorDetail(payloadResult, payloadError)
       applyWorkerProgress(worker, job, {
         stage: payloadError ? 'job-error' : 'job-done',
         elapsedMs:
@@ -323,10 +329,12 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
             : job.startTime
               ? Date.now() - job.startTime
               : 0,
-        detail: payloadError ? String(payloadError).slice(0, 300) : undefined
+        detail: payloadError ? String(payloadError).slice(0, 300) : resultErrorDetail || undefined
       })
       if (payloadError) {
         deps.onJobFailure(job, 'worker-error', String(payloadError).slice(0, 300))
+      } else if (resultErrorDetail) {
+        deps.onJobFailure(job, 'analysis-error', resultErrorDetail)
       } else {
         deps.onJobSuccess(job)
       }

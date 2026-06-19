@@ -67,6 +67,7 @@ export const createKeyAnalysisFailureTracker = (deps: KeyAnalysisFailureTrackerD
       return 'job-timeout'
     }
     if (reason === 'worker-exit') return 'worker-process-exit'
+    if (reason === 'analysis-error') return 'analysis-result-error'
     return 'worker-runtime-error'
   }
 
