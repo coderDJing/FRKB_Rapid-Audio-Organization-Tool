@@ -3,11 +3,7 @@ import type { useRuntimeStore } from '@renderer/stores/runtime'
 import confirm from '@renderer/components/confirmDialog'
 import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
-import {
-  RECYCLE_BIN_UUID,
-  DEL_SONGS_DONE_EVENT,
-  PERMANENTLY_DEL_SONGS_DONE_EVENT
-} from '@shared/recycleBin'
+import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 
 export type DeleteSummary = {
   total?: number
@@ -28,8 +24,6 @@ export const normalizeDeleteSummary = (summary: unknown): DeleteSummary => {
   }
 }
 
-const IPC_SEND_WAIT_TIMEOUT_MS = 30_000
-
 const EMPTY_DELETE_SUMMARY: DeleteSummary = {
   total: 0,
   success: 0,
@@ -37,60 +31,24 @@ const EMPTY_DELETE_SUMMARY: DeleteSummary = {
   removedPaths: []
 }
 
-function ipcSendAndWait<T>(
-  channel: string,
-  doneEvent: string,
-  fallback: T,
-  ...args: unknown[]
-): Promise<T> {
-  return new Promise<T>((resolve) => {
-    let settled = false
-    const cleanup = () => {
-      window.electron.ipcRenderer.removeListener(doneEvent, handler)
-      if (timer) clearTimeout(timer)
-    }
-    const handler = (_event: unknown, result: T) => {
-      if (settled) return
-      settled = true
-      cleanup()
-      resolve(result)
-    }
-    const timer = setTimeout(() => {
-      if (settled) return
-      settled = true
-      cleanup()
-      resolve(fallback)
-    }, IPC_SEND_WAIT_TIMEOUT_MS)
-    window.electron.ipcRenderer.on(doneEvent, handler)
-    try {
-      window.electron.ipcRenderer.send(channel, ...args)
-    } catch {
-      if (settled) return
-      settled = true
-      cleanup()
-      resolve(fallback)
-    }
-  })
-}
-
-export function delSongsViaSend(
+export async function delSongsViaSend(
   payload: { filePaths: string[]; songListPath?: string; sourceType?: string } | string[]
 ): Promise<DeleteSummary> {
-  return ipcSendAndWait<DeleteSummary>(
-    'delSongsAwaitable',
-    DEL_SONGS_DONE_EVENT,
-    EMPTY_DELETE_SUMMARY,
-    payload
-  )
+  try {
+    const summary = await window.electron.ipcRenderer.invoke('delSongsAwaitable', payload)
+    return normalizeDeleteSummary(summary)
+  } catch {
+    return { ...EMPTY_DELETE_SUMMARY }
+  }
 }
 
-export function permanentlyDelSongsViaSend(filePaths: string[]): Promise<DeleteSummary> {
-  return ipcSendAndWait<DeleteSummary>(
-    'permanentlyDelSongs',
-    PERMANENTLY_DEL_SONGS_DONE_EVENT,
-    EMPTY_DELETE_SUMMARY,
-    filePaths
-  )
+export async function permanentlyDelSongsViaSend(filePaths: string[]): Promise<DeleteSummary> {
+  try {
+    const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', filePaths)
+    return normalizeDeleteSummary(summary)
+  } catch {
+    return { ...EMPTY_DELETE_SUMMARY }
+  }
 }
 
 const showDeleteSummaryIfNeeded = async (

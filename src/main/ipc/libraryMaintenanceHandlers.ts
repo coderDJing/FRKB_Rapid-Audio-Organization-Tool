@@ -26,11 +26,7 @@ import {
   type RecycleBinRecord
 } from '../recycleBinDb'
 import { scanSongList as svcScanSongList } from '../services/scanSongs'
-import {
-  RECYCLE_BIN_UUID,
-  DEL_SONGS_DONE_EVENT,
-  PERMANENTLY_DEL_SONGS_DONE_EVENT
-} from '../../shared/recycleBin'
+import { RECYCLE_BIN_UUID } from '../../shared/recycleBin'
 import {
   RECORDING_LIBRARY_CHANGED_EVENT,
   RECORDING_LIBRARY_UUID
@@ -321,38 +317,36 @@ export function registerLibraryMaintenanceHandlers() {
     }
   )
 
-  ipcMain.on(
+  ipcMain.handle(
     'delSongsAwaitable',
     async (
       _e,
       payload: { filePaths: string[]; songListPath?: string; sourceType?: string } | string[]
     ) => {
       try {
-        const summary = await executeDelSongs(payload)
-        mainWindow.instance?.webContents.send(DEL_SONGS_DONE_EVENT, summary)
+        return await executeDelSongs(payload)
       } catch {
-        mainWindow.instance?.webContents.send(DEL_SONGS_DONE_EVENT, {
+        return {
           total: 0,
           success: 0,
           failed: 0,
           removedPaths: []
-        })
+        }
       }
     }
   )
 
-  ipcMain.on('permanentlyDelSongs', async (_e, songFilePaths: string[]) => {
+  ipcMain.handle('permanentlyDelSongs', async (_e, songFilePaths: string[]) => {
     const uniquePaths = Array.isArray(songFilePaths)
       ? Array.from(new Set(songFilePaths.filter(Boolean)))
       : []
     if (uniquePaths.length === 0) {
-      mainWindow.instance?.webContents.send(PERMANENTLY_DEL_SONGS_DONE_EVENT, {
+      return {
         total: 0,
         success: 0,
         failed: 0,
         removedPaths: []
-      })
-      return
+      }
     }
     try {
       const tasks = uniquePaths.map((item) => async () => {
@@ -396,19 +390,19 @@ export function registerLibraryMaintenanceHandlers() {
       const removedPaths = results
         .filter((item): item is string => typeof item === 'string')
         .map((item) => item)
-      mainWindow.instance?.webContents.send(PERMANENTLY_DEL_SONGS_DONE_EVENT, {
+      return {
         total: results.length,
         success,
         failed,
         removedPaths
-      })
+      }
     } catch {
-      mainWindow.instance?.webContents.send(PERMANENTLY_DEL_SONGS_DONE_EVENT, {
+      return {
         total: uniquePaths.length,
         success: 0,
         failed: uniquePaths.length,
         removedPaths: []
-      })
+      }
     }
   })
 
