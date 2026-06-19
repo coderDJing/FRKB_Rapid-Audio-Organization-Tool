@@ -12,6 +12,7 @@ export type RekordboxDesktopPlaylistTrackInput = {
   duration?: string
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
+  setItemId?: string
 }
 
 export type RekordboxDesktopWriteAvailabilityStatus =

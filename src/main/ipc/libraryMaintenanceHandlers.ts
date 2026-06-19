@@ -45,6 +45,7 @@ import {
   compactSongListTrackNumbersByFilePaths,
   isSupportedPlaylistTrackNumberListRoot
 } from '../services/playlistTrackNumbers'
+import { protectSetReferencedFilesForDeletion } from './setListHandlers'
 
 const DIRTY_DATA_SQL_TABLES = [
   'song_cache',
@@ -208,8 +209,14 @@ export function registerLibraryMaintenanceHandlers() {
     const sourceType =
       payload && !Array.isArray(payload) && payload.sourceType ? payload.sourceType : null
     const uniquePaths = Array.from(new Set(filePaths.filter(Boolean)))
+    const setProtection = await protectSetReferencedFilesForDeletion(uniquePaths)
+    const protectedMovedPaths = setProtection.protectedFiles
+      .filter((item) => item.success)
+      .map((item) => item.filePath)
+    const protectedFailedCount = setProtection.protectedFiles.filter((item) => !item.success).length
+    const protectedHandledCount = setProtection.protectedFiles.length
     const tasks: Array<() => Promise<RecycleBinMoveResult>> = []
-    for (const item of uniquePaths) {
+    for (const item of setProtection.unprotectedFiles) {
       tasks.push(async () => {
         const result = await moveFileToRecycleBin(item, {
           originalPlaylistPath,
@@ -226,8 +233,8 @@ export function registerLibraryMaintenanceHandlers() {
       mainWindow.instance.webContents.send('progressSet', {
         id: batchId,
         titleKey: 'library.deleteProgressRemoving',
-        now: 0,
-        total: tasks.length,
+        now: protectedHandledCount,
+        total: uniquePaths.length,
         isInitial: true
       })
     }
@@ -238,8 +245,8 @@ export function registerLibraryMaintenanceHandlers() {
           mainWindow.instance.webContents.send('progressSet', {
             id: batchId,
             titleKey: 'library.deleteProgressRemoving',
-            now: done,
-            total
+            now: protectedHandledCount + done,
+            total: protectedHandledCount + total
           })
         }
       },
@@ -250,9 +257,9 @@ export function registerLibraryMaintenanceHandlers() {
     if (hasENOSPC && mainWindow.instance) {
       mainWindow.instance.webContents.send('file-batch-summary', {
         context: 'delSongs',
-        total: tasks.length,
-        success,
-        failed,
+        total: uniquePaths.length,
+        success: success + protectedMovedPaths.length,
+        failed: failed + protectedFailedCount,
         hasENOSPC,
         skipped,
         errorSamples: results
@@ -267,8 +274,8 @@ export function registerLibraryMaintenanceHandlers() {
       mainWindow.instance.webContents.send('progressSet', {
         id: batchId,
         titleKey: 'library.deleteProgressRemoving',
-        now: tasks.length,
-        total: tasks.length
+        now: uniquePaths.length,
+        total: uniquePaths.length
       })
     }
     const removedPaths = results
@@ -277,6 +284,7 @@ export function registerLibraryMaintenanceHandlers() {
           !(item instanceof Error) && isRecycleBinMoveResult(item)
       )
       .map((item) => item.srcPath)
+      .concat(protectedMovedPaths)
     if (removedPaths.length > 0) {
       let compacted = false
       if (sourceSongListRoot) {
@@ -298,12 +306,13 @@ export function registerLibraryMaintenanceHandlers() {
       }
     }
     return {
-      total: tasks.length,
-      success,
-      failed,
+      total: uniquePaths.length,
+      success: success + protectedMovedPaths.length,
+      failed: failed + protectedFailedCount,
       skipped,
       hasENOSPC,
-      removedPaths
+      removedPaths,
+      protectedFiles: setProtection.protectedFiles
     }
   }
 
@@ -602,7 +611,7 @@ export function registerLibraryMaintenanceHandlers() {
       const { mappedPath, absPath } = resolveLibraryPath(targetPath)
       if (!(await fs.pathExists(absPath))) return false
       const node = findLibraryNodeByPath(mappedPath)
-      const validTypes = ['root', 'library', 'dir', 'songList', 'mixtapeList']
+      const validTypes = ['root', 'library', 'dir', 'songList', 'mixtapeList', 'setList']
       return !!(node && validTypes.includes(node.nodeType))
     } catch {
       return false

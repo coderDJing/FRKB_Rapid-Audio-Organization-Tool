@@ -17,6 +17,7 @@ import { writeWavRiffInfoWindows } from './wavRiffInfo'
 import { moveFileToRecycleBin } from '../recycleBinService'
 import { compactSongListTrackNumbersByFilePaths } from './playlistTrackNumbers'
 import { markGlobalSongSearchDirty } from './globalSongSearch'
+import { updateSetItemFilePathReferences } from '../setListDb'
 import type { IAudioMetadata } from 'music-metadata'
 
 type ConvertJobOptions = {
@@ -643,6 +644,9 @@ export async function startAudioConversion(
       success += 1
       if (dest) {
         convertedDestPaths.push(dest)
+      }
+      if (options.strategy === 'replace' && dest && dest !== src) {
+        updateSetItemFilePathReferences(src, dest)
       }
 
       if (mainWindow) mainWindow.webContents.send('audio:convert:progress', { jobId })

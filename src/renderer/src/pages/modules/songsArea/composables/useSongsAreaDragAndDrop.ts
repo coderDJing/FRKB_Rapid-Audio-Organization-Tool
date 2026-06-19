@@ -167,6 +167,9 @@ export const useSongsAreaDragAndDrop = (options: UseSongsAreaDragAndDropOptions)
     () =>
       libraryUtils.getLibraryTreeByUUID(options.songsAreaState.songListUUID)?.type === 'songList'
   )
+  const isSetListDropTarget = computed(
+    () => libraryUtils.getLibraryTreeByUUID(options.songsAreaState.songListUUID)?.type === 'setList'
+  )
 
   const shouldBlockParentDropZone = computed(() => runtime.songsAreaPanels.splitEnabled)
 
@@ -174,7 +177,10 @@ export const useSongsAreaDragAndDrop = (options: UseSongsAreaDragAndDropOptions)
     event: DragEvent
   ): { accepted: boolean; mode: 'internal' | 'external' | '' } => {
     if (isInternalSongDragEvent(event)) {
-      if (!isPlainSongListDropTarget.value || runtime.dragTableHeader) {
+      if (
+        (!isPlainSongListDropTarget.value && !isSetListDropTarget.value) ||
+        runtime.dragTableHeader
+      ) {
         return { accepted: shouldBlockParentDropZone.value, mode: '' }
       }
       return { accepted: true, mode: 'internal' }
@@ -205,7 +211,13 @@ export const useSongsAreaDragAndDrop = (options: UseSongsAreaDragAndDropOptions)
     event.stopPropagation()
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect =
-        mode === 'external' ? 'copy' : mode === 'internal' ? 'move' : 'none'
+        mode === 'external'
+          ? 'copy'
+          : mode === 'internal'
+            ? isSetListDropTarget.value
+              ? 'copy'
+              : 'move'
+            : 'none'
     }
     if (mode) {
       options.activatePaneIfNeeded()

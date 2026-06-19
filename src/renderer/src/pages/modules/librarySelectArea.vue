@@ -3,6 +3,7 @@ import listIconAsset from '@renderer/assets/list.svg?asset'
 import likeIconAsset from '@renderer/assets/like.svg?asset'
 import trashIconAsset from '@renderer/assets/trash.svg?asset'
 import mixtapeIconAsset from '@renderer/assets/mixtape.svg?asset'
+import setListIconAsset from '@renderer/assets/setList.svg?asset'
 import recordIconAsset from '@renderer/assets/record.svg?asset'
 import usbDriveIconAsset from '@renderer/assets/usbDrive.svg?asset'
 import rekordboxDesktopIconAsset from '@renderer/assets/rekordboxDesktop.svg?asset'
@@ -105,6 +106,14 @@ const baseIcons: Icon[] = [
     i18nKey: 'library.curated'
   },
   {
+    name: 'SetLibrary',
+    grey: setListIconAsset,
+    white: setListIconAsset,
+    src: setListIconAsset,
+    showAlt: false,
+    i18nKey: 'library.setLibrary'
+  },
+  {
     name: 'MixtapeLibrary',
     grey: mixtapeIconAsset,
     white: mixtapeIconAsset,
@@ -123,7 +132,13 @@ const baseIcons: Icon[] = [
 ]
 
 const iconArr = ref<Icon[]>([...baseIcons])
-const coreIconNameSet = new Set(['FilterLibrary', 'CuratedLibrary', 'MixtapeLibrary', 'RecycleBin'])
+const coreIconNameSet = new Set([
+  'FilterLibrary',
+  'CuratedLibrary',
+  'SetLibrary',
+  'MixtapeLibrary',
+  'RecycleBin'
+])
 const coreIconArr = computed(() => iconArr.value.filter((item) => coreIconNameSet.has(item.name)))
 const dynamicIconArr = computed(() =>
   iconArr.value.filter((item) => !coreIconNameSet.has(item.name))

@@ -36,6 +36,7 @@ export type RekordboxXmlExportResolvedTrack = {
   duration?: string
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
+  setItemId?: string
 }
 
 export type RekordboxXmlExportStagedTrack = {
@@ -56,6 +57,7 @@ export type RekordboxXmlExportStagedTrack = {
   duration?: string
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
+  setItemId?: string
 }
 
 export type RekordboxXmlExportAppliedOperation = {

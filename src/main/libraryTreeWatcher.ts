@@ -31,6 +31,7 @@ async function reconcileLibraryTree(window: BrowserWindow | null) {
       coreDirNames: {
         FilterLibrary: getCoreFsDirName('FilterLibrary'),
         CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+        SetLibrary: getCoreFsDirName('SetLibrary'),
         MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
         RecordingLibrary: getCoreFsDirName('RecordingLibrary'),
         RecycleBin: getCoreFsDirName('RecycleBin')

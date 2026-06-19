@@ -98,7 +98,8 @@ const dirData = computed(() => dirDataRef.value)
 
 const isSongList = computed(() => dirData.value?.type === 'songList')
 const isMixtapeList = computed(() => dirData.value?.type === 'mixtapeList')
-const isPlaylist = computed(() => isSongList.value || isMixtapeList.value)
+const isSetList = computed(() => dirData.value?.type === 'setList')
+const isPlaylist = computed(() => isSongList.value || isMixtapeList.value || isSetList.value)
 const resolveMixtapeModeTag = (mixMode?: string) =>
   mixMode === 'eq' ? t('mixtape.mixModeEqTag') : t('mixtape.mixModeStemTag')
 const resolveMixtapeModeLabel = (mixMode?: string) =>
@@ -313,7 +314,7 @@ const displayDirName = computed(() => {
     }
   }
   if (
-    d.type === 'songList' &&
+    (d.type === 'songList' || d.type === 'setList') &&
     runtime.setting.showPlaylistTrackCount &&
     trackCount.value !== null
   ) {
@@ -326,7 +327,7 @@ const displayDirName = computed(() => {
 const nameForDisplay = computed(() => displayDirName.value)
 const showTrackCount = computed(
   () =>
-    dirData.value?.type === 'songList' &&
+    (dirData.value?.type === 'songList' || dirData.value?.type === 'setList') &&
     runtime.setting.showPlaylistTrackCount &&
     trackCount.value !== null
 )

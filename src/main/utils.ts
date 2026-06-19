@@ -174,6 +174,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
     coreDirNames: {
       FilterLibrary: getCoreFsDirName('FilterLibrary'),
       CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+      SetLibrary: getCoreFsDirName('SetLibrary'),
       MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
       RecordingLibrary: getCoreFsDirName('RecordingLibrary'),
       RecycleBin: getCoreFsDirName('RecycleBin')
@@ -184,6 +185,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
       coreDirNames: {
         FilterLibrary: getCoreFsDirName('FilterLibrary'),
         CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+        SetLibrary: getCoreFsDirName('SetLibrary'),
         MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
         RecordingLibrary: getCoreFsDirName('RecordingLibrary'),
         RecycleBin: getCoreFsDirName('RecycleBin')
@@ -201,6 +203,7 @@ export async function getLibrary(options: { skipSync?: boolean } = {}) {
   const fsToRenderer = new Map<string, string>([
     [getCoreFsDirName('FilterLibrary'), 'FilterLibrary'],
     [getCoreFsDirName('CuratedLibrary'), 'CuratedLibrary'],
+    [getCoreFsDirName('SetLibrary'), 'SetLibrary'],
     [getCoreFsDirName('RecycleBin'), 'RecycleBin'],
     [getCoreFsDirName('RecordingLibrary'), 'RecordingLibrary'],
     [getCoreFsDirName('MixtapeLibrary'), 'MixtapeLibrary']

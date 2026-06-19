@@ -23,6 +23,11 @@ type DeleteSummary = {
   removedPaths?: string[]
 }
 
+type ExportSongsToDirSummary = {
+  removedPaths?: string[]
+  removedSetItemIds?: string[]
+}
+
 type OptimisticRestoreItem = {
   song: ISongInfo
   index: number
@@ -805,20 +810,30 @@ export function usePlayerControlsLogic({
       const songToExport = JSON.parse(JSON.stringify(runtime.playingData.playingSong))
       const filePath = songToExport.filePath
       const currentList = runtime.playingData.playingSongListData
-      const currentIndex = currentList.findIndex((item) => item.filePath === filePath)
+      const rowKey = songToExport.setItemId || songToExport.mixtapeItemId || filePath
+      const currentIndex = currentList.findIndex(
+        (item) => (item.setItemId || item.mixtapeItemId || item.filePath) === rowKey
+      )
       const listUuidAtExportStart = runtime.playingData.playingSongListUUID
 
       try {
         // 调用后端导出功能
-        await window.electron.ipcRenderer.invoke(
+        const exportSummary = (await window.electron.ipcRenderer.invoke(
           'exportSongsToDir',
           folderPathVal,
           deleteSongsAfterExport,
           [songToExport] // 导出的是当前播放的这一首
-        )
+        )) as ExportSongsToDirSummary | undefined
 
         // 如果设置了导出后删除
         if (deleteSongsAfterExport) {
+          const removedSetItemIds = Array.isArray(exportSummary?.removedSetItemIds)
+            ? exportSummary.removedSetItemIds
+            : []
+          const removedPaths =
+            Array.isArray(exportSummary?.removedPaths) && exportSummary.removedPaths.length > 0
+              ? exportSummary.removedPaths
+              : [filePath]
           if (currentIndex !== -1) {
             // 停止播放并清空
             audioPlayer.value?.stop()
@@ -848,7 +863,14 @@ export function usePlayerControlsLogic({
               runtime.playingData.playingSongListUUID = ''
             }
           }
-          emitter.emit('songsRemoved', { listUUID: listUuidAtExportStart, paths: [filePath] })
+          if (removedSetItemIds.length > 0) {
+            emitter.emit('songsRemoved', {
+              listUUID: listUuidAtExportStart,
+              itemIds: removedSetItemIds
+            })
+          } else {
+            emitter.emit('songsRemoved', { listUUID: listUuidAtExportStart, paths: removedPaths })
+          }
           emitter.emit('playlistContentChanged', { uuids: [listUuidAtExportStart] })
         }
       } catch (error) {

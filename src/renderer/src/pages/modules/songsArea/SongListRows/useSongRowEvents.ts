@@ -23,7 +23,11 @@ export function useSongRowEvents({
     if (!row) return null
     const rowKey = row.dataset.rowkey || row.dataset.filepath
     if (!rowKey) return null
-    return resolveSongs().find((s) => s.mixtapeItemId === rowKey || s.filePath === rowKey) || null
+    return (
+      resolveSongs().find(
+        (s) => s.mixtapeItemId === rowKey || s.setItemId === rowKey || s.filePath === rowKey
+      ) || null
+    )
   }
 
   const onRowsClick = (e: MouseEvent) => {

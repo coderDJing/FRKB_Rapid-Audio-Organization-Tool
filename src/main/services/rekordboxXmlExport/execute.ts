@@ -9,6 +9,9 @@ import { readTrackMetadata } from '../metadataEditor'
 import { scanSongListOffMainThread } from '../songListScanWorker'
 import { loadSharedSongHotCueDefinition } from '../sharedSongHotCues'
 import { loadSharedSongMemoryCueDefinition } from '../sharedSongMemoryCues'
+import { moveFileToRecycleBin } from '../../recycleBinService'
+import { removeSetItemsByIds } from '../../setListDb'
+import { protectSetReferencedFilesForDeletion } from '../../ipc/setListHandlers'
 import { normalizeSongHotCues } from '../../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../../shared/memoryCues'
 import { sortByPlaylistTrackNumber } from '../../../shared/playlistTrackOrder'
@@ -33,6 +36,7 @@ import {
   RekordboxXmlExportAppliedOperation,
   RekordboxXmlExportJobControl,
   RekordboxXmlExportResolvedTrack,
+  RekordboxXmlExportStagedTrack,
   RekordboxXmlExportRunOptions
 } from './types'
 
@@ -99,7 +103,8 @@ const resolveSelectedTracks = (request: RekordboxXmlExportRequest) => {
         bitrate: typeof track.bitrate === 'number' ? track.bitrate : undefined,
         duration: typeof track.duration === 'string' ? track.duration : '',
         hotCues: normalizeSongHotCues(track.hotCues),
-        memoryCues: normalizeSongMemoryCues(track.memoryCues)
+        memoryCues: normalizeSongMemoryCues(track.memoryCues),
+        setItemId: track.setItemId
       }
     }
   )
@@ -249,6 +254,66 @@ const enrichTracksWithSharedCues = async (tracks: RekordboxXmlExportResolvedTrac
   )
 }
 
+const normalizeSourcePathKey = (value: string) => {
+  const resolved = path.resolve(value)
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+const removeSourceFilesAfterMoveExport = async (stagedTracks: RekordboxXmlExportStagedTrack[]) => {
+  const groups = new Map<string, { sourcePath: string; setItemIds: string[] }>()
+  for (const track of stagedTracks) {
+    const sourcePath = String(track.sourcePath || '').trim()
+    if (!sourcePath) continue
+    const key = normalizeSourcePathKey(sourcePath)
+    const group = groups.get(key) || { sourcePath, setItemIds: [] }
+    const setItemId = String(track.setItemId || '').trim()
+    if (setItemId) group.setItemIds.push(setItemId)
+    groups.set(key, group)
+  }
+
+  const removedSourceFilePaths: string[] = []
+  const removedSetItemIds: string[] = []
+  for (const group of groups.values()) {
+    const setItemIds = Array.from(new Set(group.setItemIds.filter(Boolean)))
+    if (setItemIds.length > 0) {
+      const result = await moveFileToRecycleBin(group.sourcePath, {
+        originalPlaylistPath: null,
+        sourceType: 'rekordbox_xml_export_move'
+      })
+      if (result.status !== 'moved') {
+        throw new Error(result.error || `move to recycle bin ${result.status}`)
+      }
+      removeSetItemsByIds(setItemIds)
+      removedSourceFilePaths.push(group.sourcePath)
+      removedSetItemIds.push(...setItemIds)
+      continue
+    }
+
+    const setProtection = await protectSetReferencedFilesForDeletion([group.sourcePath])
+    const protectedFile = setProtection.protectedFiles[0]
+    if (protectedFile) {
+      if (!protectedFile.success) {
+        throw new Error(protectedFile.error || 'move to set custody failed')
+      }
+      removedSourceFilePaths.push(group.sourcePath)
+      continue
+    }
+
+    const result = await moveFileToRecycleBin(group.sourcePath, {
+      sourceType: 'rekordbox_xml_export_move'
+    })
+    if (result.status !== 'moved') {
+      throw new Error(result.error || `move to recycle bin ${result.status}`)
+    }
+    removedSourceFilePaths.push(group.sourcePath)
+  }
+
+  return {
+    removedSourceFilePaths: Array.from(new Set(removedSourceFilePaths)),
+    removedSetItemIds: Array.from(new Set(removedSetItemIds))
+  }
+}
+
 export const requestCancelRekordboxXmlExport = (jobId: string) => {
   const control = activeJobControls.get(String(jobId || '').trim())
   if (!control) return false
@@ -388,8 +453,11 @@ export async function runRekordboxXmlExportJob(
       total: totalSteps
     })
 
+    let removedSetItemIds: string[] = []
     if (request.mode === 'move') {
-      await compactSongListTrackNumbersByFilePaths(stagedTracks.map((track) => track.sourcePath))
+      const removeSummary = await removeSourceFilesAfterMoveExport(stagedTracks)
+      removedSetItemIds = removeSummary.removedSetItemIds
+      await compactSongListTrackNumbersByFilePaths(removeSummary.removedSourceFilePaths)
       markGlobalSongSearchDirty('rekordbox-xml-export-move')
     }
 
@@ -402,7 +470,8 @@ export async function runRekordboxXmlExportJob(
         xmlPath,
         playlistName: normalizedPlaylistName,
         sourceFilePaths: stagedTracks.map((track) => track.sourcePath),
-        exportedFilePaths: stagedTracks.map((track) => track.outputPath)
+        exportedFilePaths: stagedTracks.map((track) => track.outputPath),
+        removedSetItemIds
       }
     }
   } catch (error) {

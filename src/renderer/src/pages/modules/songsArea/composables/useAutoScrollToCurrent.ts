@@ -137,7 +137,7 @@ export function useAutoScrollToCurrent(params: UseAutoScrollParams) {
 
   const resolveRowElement = (index: number, queryRoot: ParentNode) => {
     const song = songsAreaState.songInfoArr[index]
-    const rowKey = song?.mixtapeItemId || song?.filePath
+    const rowKey = song?.mixtapeItemId || song?.setItemId || song?.filePath
     if (!rowKey) return null
     const escaped =
       typeof CSS !== 'undefined' && typeof CSS.escape === 'function'

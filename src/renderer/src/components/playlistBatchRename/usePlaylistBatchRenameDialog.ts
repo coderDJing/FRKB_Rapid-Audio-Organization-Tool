@@ -26,6 +26,7 @@ import type {
 
 export function usePlaylistBatchRenameDialog(props: {
   songLists: BatchRenameSongListTarget[]
+  tracks?: IBatchRenameTrackInput[]
   selectedPresetId?: string
 }) {
   const runtime = useRuntimeStore()
@@ -56,7 +57,7 @@ export function usePlaylistBatchRenameDialog(props: {
   const draftChanged = ref(false)
   const scanning = ref(true)
   const scanNow = ref(0)
-  const scanTotal = ref(props.songLists.length)
+  const scanTotal = ref(props.songLists.length + (props.tracks?.length ? 1 : 0))
   const sampleLoading = ref(false)
   const previewLoading = ref(false)
   const sampleItems = ref<IBatchRenamePreviewItem[]>([])
@@ -155,6 +156,37 @@ export function usePlaylistBatchRenameDialog(props: {
       key: track.key ? String(track.key) : undefined,
       bpm: typeof track.bpm === 'number' ? track.bpm : undefined
     }))
+
+  const normalizeTrackKey = (filePath: string) => filePath.replace(/\//g, '\\').toLowerCase()
+
+  const pushTrackInput = (
+    tracks: IBatchRenameTrackInput[],
+    seen: Set<string>,
+    track: Partial<IBatchRenameTrackInput>,
+    order: number
+  ) => {
+    const filePath = String(track.filePath || '').trim()
+    if (!filePath) return false
+    const key = normalizeTrackKey(filePath)
+    if (seen.has(key)) return false
+    seen.add(key)
+    tracks.push({
+      order,
+      songListUUID: track.songListUUID ? String(track.songListUUID) : undefined,
+      songListPath: track.songListPath ? String(track.songListPath) : undefined,
+      filePath,
+      fileName: String(track.fileName || ''),
+      title: typeof track.title === 'string' ? track.title : undefined,
+      artist: typeof track.artist === 'string' ? track.artist : undefined,
+      album: typeof track.album === 'string' ? track.album : undefined,
+      genre: typeof track.genre === 'string' ? track.genre : undefined,
+      label: typeof track.label === 'string' ? track.label : undefined,
+      duration: typeof track.duration === 'string' ? track.duration : undefined,
+      key: typeof track.key === 'string' ? track.key : undefined,
+      bpm: typeof track.bpm === 'number' ? track.bpm : undefined
+    })
+    return true
+  }
 
   const replaceTemplateSegments = (segments: IBatchRenameTemplateSegment[]) => {
     templateSegments.value = normalizeTemplateSegments(segments)
@@ -592,12 +624,23 @@ export function usePlaylistBatchRenameDialog(props: {
 
   const scanTracks = async () => {
     scanNow.value = 0
-    scanTotal.value = props.songLists.length
+    scanTotal.value = props.songLists.length + (props.tracks?.length ? 1 : 0)
     const nextTracks: IBatchRenameTrackInput[] = []
+    const seen = new Set<string>()
     let order = 0
+
+    if (props.tracks?.length) {
+      for (const track of props.tracks) {
+        if (pushTrackInput(nextTracks, seen, track, order)) {
+          order += 1
+        }
+      }
+      scanNow.value = 1
+    }
+
     for (let index = 0; index < props.songLists.length; index += 1) {
       const songList = props.songLists[index]
-      scanNow.value = index + 1
+      scanNow.value = index + 1 + (props.tracks?.length ? 1 : 0)
       try {
         const scan = (await window.electron.ipcRenderer.invoke(
           'scanSongList',
@@ -606,24 +649,29 @@ export function usePlaylistBatchRenameDialog(props: {
         )) as { scanData?: Array<Record<string, unknown>> } | null
         const rows = Array.isArray(scan?.scanData) ? scan.scanData : []
         for (const row of rows) {
-          const filePath = String(row.filePath || '')
-          if (!filePath) continue
-          nextTracks.push({
-            order,
-            songListUUID: songList.uuid,
-            songListPath: songList.path,
-            filePath,
-            fileName: String(row.fileName || ''),
-            title: typeof row.title === 'string' ? row.title : undefined,
-            artist: typeof row.artist === 'string' ? row.artist : undefined,
-            album: typeof row.album === 'string' ? row.album : undefined,
-            genre: typeof row.genre === 'string' ? row.genre : undefined,
-            label: typeof row.label === 'string' ? row.label : undefined,
-            duration: typeof row.duration === 'string' ? row.duration : undefined,
-            key: typeof row.key === 'string' ? row.key : undefined,
-            bpm: typeof row.bpm === 'number' ? row.bpm : undefined
-          })
-          order += 1
+          const added = pushTrackInput(
+            nextTracks,
+            seen,
+            {
+              order,
+              songListUUID: songList.uuid,
+              songListPath: songList.path,
+              filePath: String(row.filePath || ''),
+              fileName: String(row.fileName || ''),
+              title: typeof row.title === 'string' ? row.title : undefined,
+              artist: typeof row.artist === 'string' ? row.artist : undefined,
+              album: typeof row.album === 'string' ? row.album : undefined,
+              genre: typeof row.genre === 'string' ? row.genre : undefined,
+              label: typeof row.label === 'string' ? row.label : undefined,
+              duration: typeof row.duration === 'string' ? row.duration : undefined,
+              key: typeof row.key === 'string' ? row.key : undefined,
+              bpm: typeof row.bpm === 'number' ? row.bpm : undefined
+            },
+            order
+          )
+          if (added) {
+            order += 1
+          }
         }
       } catch (error) {
         console.error('[batchRename] scanSongList failed', songList.path, error)

@@ -10,11 +10,16 @@ import type { BatchRenameSongListTarget } from './index'
 import { usePlaylistBatchRenameDialog } from './usePlaylistBatchRenameDialog'
 import { createTextSegment, createTokenSegment, normalizeTemplateSegments } from './storage'
 import { v4 as uuidV4 } from 'uuid'
-import type { IBatchRenameTemplateSegment, IBatchRenameTemplateToken } from 'src/types/globals'
+import type {
+  IBatchRenameTemplateSegment,
+  IBatchRenameTemplateToken,
+  IBatchRenameTrackInput
+} from 'src/types/globals'
 
 const props = defineProps<{
   title: string
   songLists: BatchRenameSongListTarget[]
+  tracks?: IBatchRenameTrackInput[]
   selectedPresetId?: string
 }>()
 
@@ -45,6 +50,7 @@ const {
   tokenLabelMap
 } = usePlaylistBatchRenameDialog({
   songLists: props.songLists,
+  tracks: props.tracks || [],
   selectedPresetId: props.selectedPresetId
 })
 

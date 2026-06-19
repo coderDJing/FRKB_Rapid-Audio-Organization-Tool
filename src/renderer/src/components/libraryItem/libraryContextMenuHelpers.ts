@@ -1,0 +1,278 @@
+import libraryUtils from '@renderer/utils/libraryUtils'
+import { collectFilesForAudioConvert } from '@renderer/utils/audioConvertActions'
+import { collectMissingAnalysisFilesFromSongs } from '@renderer/utils/manualKeyAnalysis'
+import type { IBatchRenameTrackInput, IDir, IMenu, ISongInfo } from 'src/types/globals'
+
+type ScanSongListResult = {
+  scanData?: Array<{ filePath?: string }>
+}
+
+export type SongListTarget = {
+  uuid: string
+  path: string
+  name: string
+}
+
+type BuildLibraryContextMenuOptions = {
+  dirData: IDir | null
+  libraryAreaSelected: string
+  libraryName: string
+  creatingSongListUUID: string
+}
+
+const canShowMissingAnalysisMenu = (
+  node: IDir,
+  libraryName: string,
+  creatingSongListUUID: string
+) =>
+  (libraryName === 'FilterLibrary' || libraryName === 'CuratedLibrary') &&
+  node.dirName !== '' &&
+  creatingSongListUUID !== node.uuid &&
+  (node.type === 'library' || node.type === 'dir' || node.type === 'songList')
+
+export const buildLibraryContextMenuArr = ({
+  dirData,
+  libraryAreaSelected,
+  libraryName,
+  creatingSongListUUID
+}: BuildLibraryContextMenuOptions): IMenu[][] => {
+  if (!dirData) return []
+  if (libraryAreaSelected === 'RecycleBin') {
+    return [
+      [{ menuName: 'recycleBin.permanentlyDelete' }],
+      [{ menuName: 'tracks.showInFileExplorer' }],
+      [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }]
+    ]
+  }
+  if (dirData.type === 'dir') {
+    if (libraryAreaSelected === 'MixtapeLibrary') {
+      return [
+        [
+          { menuName: 'library.createStemMixtape' },
+          { menuName: 'library.createEqMixtape' },
+          { menuName: 'library.createFolder' }
+        ],
+        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
+      ]
+    }
+    if (libraryAreaSelected === 'SetLibrary') {
+      return [
+        [{ menuName: 'library.createSetPlaylist' }, { menuName: 'library.createSetFolder' }],
+        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
+      ]
+    }
+    return [
+      [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
+      [{ menuName: 'common.rename' }, { menuName: 'common.delete' }],
+      [{ menuName: 'playlist.batchRename' }],
+      ...(canShowMissingAnalysisMenu(dirData, libraryName, creatingSongListUUID)
+        ? [[{ menuName: 'tracks.analyzeMissingTracks' }]]
+        : [])
+    ]
+  }
+  if (dirData.type === 'mixtapeList') {
+    return [
+      [{ menuName: 'playlist.autoMix' }],
+      [{ menuName: 'common.rename' }, { menuName: 'playlist.deletePlaylist' }]
+    ]
+  }
+  if (dirData.type === 'setList') {
+    return [
+      [{ menuName: 'tracks.exportTracks' }],
+      [
+        { menuName: 'common.rename' },
+        { menuName: 'playlist.deletePlaylist' },
+        { menuName: 'playlist.emptyPlaylist' }
+      ],
+      [{ menuName: 'playlist.showInLeftPane' }, { menuName: 'playlist.showInRightPane' }],
+      [
+        { menuName: 'rekordboxDesktop.menuCreatePlaylistFromPlaylist' },
+        { menuName: 'rekordboxXmlExport.menuExportPlaylist' }
+      ],
+      [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
+      [{ menuName: 'tracks.analyzeMissingTracks' }, { menuName: 'tracks.reanalyzePlaylist' }],
+      [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }]
+    ]
+  }
+  const isCoreLibrary = libraryName === 'FilterLibrary' || libraryName === 'CuratedLibrary'
+  return [
+    [{ menuName: 'tracks.importTracks' }, { menuName: 'tracks.exportTracks' }],
+    [
+      { menuName: 'rekordboxDesktop.menuCreatePlaylistFromPlaylist' },
+      { menuName: 'rekordboxXmlExport.menuExportPlaylist' }
+    ],
+    [
+      { menuName: 'common.rename' },
+      { menuName: 'playlist.deletePlaylist' },
+      { menuName: 'playlist.emptyPlaylist' }
+    ],
+    [{ menuName: 'playlist.showInLeftPane' }, { menuName: 'playlist.showInRightPane' }],
+    [{ menuName: 'tracks.showInFileExplorer' }],
+    [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
+    [{ menuName: 'playlist.fingerprintDeduplicate' }, { menuName: 'fingerprints.analyzeAndAdd' }],
+    [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }],
+    ...(isCoreLibrary
+      ? [[{ menuName: 'tracks.analyzeMissingTracks' }, { menuName: 'tracks.reanalyzePlaylist' }]]
+      : [])
+  ]
+}
+
+export const collectSongListUuids = (uuids: string[]): string[] => {
+  const seen = new Set<string>()
+  const result: string[] = []
+  const traverse = (node: IDir) => {
+    if (node.type === 'songList' && !seen.has(node.uuid)) {
+      seen.add(node.uuid)
+      result.push(node.uuid)
+    }
+    if (Array.isArray(node.children)) {
+      node.children.forEach((child) => traverse(child))
+    }
+  }
+  for (const uuid of uuids) {
+    const node = libraryUtils.getLibraryTreeByUUID(uuid)
+    if (node) traverse(node)
+  }
+  return result
+}
+
+export const collectSetListUuids = (uuids: string[]): string[] => {
+  const seen = new Set<string>()
+  const result: string[] = []
+  const traverse = (node: IDir) => {
+    if (node.type === 'setList' && !seen.has(node.uuid)) {
+      seen.add(node.uuid)
+      result.push(node.uuid)
+    }
+    if (Array.isArray(node.children)) {
+      node.children.forEach((child) => traverse(child))
+    }
+  }
+  for (const uuid of uuids) {
+    const node = libraryUtils.getLibraryTreeByUUID(uuid)
+    if (node) traverse(node)
+  }
+  return result
+}
+
+export const scanSongListsForFiles = async (uuids: string[]): Promise<string[]> => {
+  const files: string[] = []
+  for (const uuid of uuids) {
+    const dirPath = libraryUtils.findDirPathByUuid(uuid)
+    const scan = (await window.electron.ipcRenderer.invoke(
+      'scanSongList',
+      dirPath,
+      uuid
+    )) as ScanSongListResult | null
+    if (Array.isArray(scan?.scanData)) {
+      files.push(...scan.scanData.map((s) => s.filePath).filter((item): item is string => !!item))
+    }
+  }
+  return files
+}
+
+export const loadSetPlaylistSongs = async (playlistUuid: string): Promise<ISongInfo[]> => {
+  const result = (await window.electron.ipcRenderer.invoke('setList:load-items', playlistUuid)) as {
+    scanData?: ISongInfo[]
+  } | null
+  return Array.isArray(result?.scanData) ? result.scanData : []
+}
+
+export const collectSetPlaylistFiles = async (uuids: string[]): Promise<string[]> => {
+  const files: string[] = []
+  for (const uuid of uuids) {
+    const songs = await loadSetPlaylistSongs(uuid)
+    files.push(
+      ...songs
+        .filter((song) => !song.fileMissing)
+        .map((song) => song.filePath)
+        .filter((item): item is string => !!item)
+    )
+  }
+  return files
+}
+
+export const uniqueFilePaths = (files: string[]) => {
+  const byKey = new Map<string, string>()
+  for (const filePath of files) {
+    const value = String(filePath || '').trim()
+    const key = value.replace(/\//g, '\\').toLowerCase()
+    if (!value || byKey.has(key)) continue
+    byKey.set(key, value)
+  }
+  return [...byKey.values()]
+}
+
+export const collectSetPlaylistMissingAnalysisFiles = async (
+  uuids: string[],
+  requiresRuntimeAnalysis: boolean
+): Promise<string[]> => {
+  const files: string[] = []
+  const seen = new Set<string>()
+  for (const uuid of uuids) {
+    const songs = await loadSetPlaylistSongs(uuid)
+    files.push(...collectMissingAnalysisFilesFromSongs(songs, requiresRuntimeAnalysis, seen))
+  }
+  return files
+}
+
+export const collectSetPlaylistTracksForBatchRename = async (
+  uuids: string[]
+): Promise<IBatchRenameTrackInput[]> => {
+  const tracks: IBatchRenameTrackInput[] = []
+  let order = 0
+  for (const uuid of uuids) {
+    const songs = await loadSetPlaylistSongs(uuid)
+    for (const song of songs) {
+      if (song.fileMissing || !song.filePath) continue
+      tracks.push({
+        order,
+        songListUUID: uuid,
+        filePath: song.filePath,
+        fileName: song.fileName || '',
+        title: song.title,
+        artist: song.artist,
+        album: song.album,
+        genre: song.genre,
+        label: song.label,
+        duration: song.duration,
+        key: song.key,
+        bpm: song.bpm
+      })
+      order += 1
+    }
+  }
+  return tracks
+}
+
+export const collectFilesForCurrentTrackOperation = async (operateUuids: string[]) => {
+  const songListUuids = collectSongListUuids(operateUuids)
+  const setListUuids = collectSetListUuids(operateUuids)
+  const songLists = songListUuids.map((uuid) => ({
+    songListPath: libraryUtils.findDirPathByUuid(uuid),
+    songListUUID: uuid
+  }))
+  const [songListFiles, setPlaylistFiles] = await Promise.all([
+    songLists.length ? collectFilesForAudioConvert(songLists) : Promise.resolve([]),
+    setListUuids.length ? collectSetPlaylistFiles(setListUuids) : Promise.resolve([])
+  ])
+  return [...songListFiles, ...setPlaylistFiles]
+}
+
+export const collectSongListTargets = (root: IDir): SongListTarget[] => {
+  const result: SongListTarget[] = []
+  const traverse = (node: IDir) => {
+    if (node.type === 'songList') {
+      result.push({
+        uuid: node.uuid,
+        path: libraryUtils.findDirPathByUuid(node.uuid),
+        name: node.dirName
+      })
+    }
+    if (Array.isArray(node.children)) {
+      node.children.forEach((child) => traverse(child))
+    }
+  }
+  traverse(root)
+  return result
+}

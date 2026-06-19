@@ -10,7 +10,11 @@ import {
   type LibraryTransferActionMode
 } from '@renderer/utils/libraryTransfer'
 
-export type MoveSongsLibraryName = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
+export type MoveSongsLibraryName =
+  | 'CuratedLibrary'
+  | 'FilterLibrary'
+  | 'SetLibrary'
+  | 'MixtapeLibrary'
 
 interface UseSelectAndMoveSongsParams {
   songsAreaState: ISongsAreaPaneRuntimeState
@@ -67,15 +71,31 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
       bitrate: song?.bitrate,
       container: song?.container,
       key: song?.key,
+      keyAnalysisAlgorithmVersion: song?.keyAnalysisAlgorithmVersion,
       originalKey: song?.key,
       bpm: song?.bpm,
       originalBpm: song?.bpm,
       firstBeatMs: song?.firstBeatMs,
       barBeatOffset: song?.barBeatOffset,
+      timeBasisOffsetMs: song?.timeBasisOffsetMs,
+      beatGridSource: song?.beatGridSource,
+      beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
       hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
       memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
     }
   }
+  const buildSongAnalysisSnapshot = (song?: ISongInfo | null) => ({
+    key: song?.key,
+    keyAnalysisAlgorithmVersion: song?.keyAnalysisAlgorithmVersion,
+    bpm: song?.bpm,
+    firstBeatMs: song?.firstBeatMs,
+    barBeatOffset: song?.barBeatOffset,
+    timeBasisOffsetMs: song?.timeBasisOffsetMs,
+    beatGridSource: song?.beatGridSource,
+    beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
+    hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
+    memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
+  })
 
   const isDialogVisible = ref(false)
   const targetLibraryName = ref<MoveSongsLibraryName | ''>('')
@@ -88,6 +108,27 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
     isDialogVisible.value = true
   }
 
+  const resolveSourceRowKey = (sourceNodeType: string | undefined, song: ISongInfo) => {
+    if (sourceNodeType === 'mixtapeList' && song.mixtapeItemId) return song.mixtapeItemId
+    if (sourceNodeType === 'setList' && song.setItemId) return song.setItemId
+    return song.filePath
+  }
+
+  const resolveSelectedSongsByRowKey = (selectedKeys: string[], sourceNodeType?: string) => {
+    const songByKey = new Map<string, ISongInfo>()
+    const songByPath = new Map<string, ISongInfo>()
+    for (const song of songsAreaState.songInfoArr) {
+      const rowKey = resolveSourceRowKey(sourceNodeType, song)
+      if (rowKey) songByKey.set(rowKey, song)
+      if (song.filePath && !songByPath.has(song.filePath)) {
+        songByPath.set(song.filePath, song)
+      }
+    }
+    return selectedKeys
+      .map((key) => songByKey.get(key) || songByPath.get(key))
+      .filter((song): song is ISongInfo => !!song?.filePath)
+  }
+
   /**
    * Handles the confirmation from the select song list dialog.
    * Moves selected songs to the chosen directory and updates the store.
@@ -98,11 +139,6 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
     options: MoveSongsConfirmOptions = {}
   ) => {
     isDialogVisible.value = false
-    if (targetSongListUUID === songsAreaState.songListUUID) {
-      // Moving to the same list, do nothing.
-      return
-    }
-
     const sourceSongListUUID = songsAreaState.songListUUID
     const sourceActionMode = resolveLibraryTransferActionModeForSongList(sourceSongListUUID)
     const selectedPaths = sortFilePathsByVisibleSongOrder(
@@ -113,13 +149,62 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
 
     const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
     const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
+    const isSetTarget = targetNode?.type === 'setList' || targetLibraryName.value === 'SetLibrary'
+    if (targetSongListUUID === songsAreaState.songListUUID && !isSetTarget) {
+      // Moving to the same list, do nothing.
+      return
+    }
+    if (isSetTarget) {
+      if (
+        targetNode?.type !== 'setList' ||
+        (sourceNode &&
+          sourceNode.type !== 'songList' &&
+          sourceNode.type !== 'mixtapeList' &&
+          sourceNode.type !== 'setList')
+      ) {
+        return
+      }
+      const selectedKeys = normalizeUniqueStrings(songsAreaState.selectedSongFilePath)
+      const originPathSnapshot = sourceNode
+        ? libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
+        : ''
+      const items = resolveSelectedSongsByRowKey(selectedKeys, sourceNode?.type).map((song) => ({
+        filePath: song.filePath,
+        originPlaylistUuid: sourceSongListUUID,
+        originPathSnapshot,
+        analysis: buildSongAnalysisSnapshot(song)
+      }))
+      if (items.length === 0) return
+      await window.electron.ipcRenderer.invoke('setList:append-items', {
+        playlistUuid: targetSongListUUID,
+        items
+      })
+      songsAreaState.selectedSongFilePath.length = 0
+      try {
+        emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+        emitter.emit('setList/itemsChanged', { uuids: [targetSongListUUID] })
+        emitter.emit('songsArea/clipboardHint', {
+          message: t('library.addToSet')
+        })
+      } catch {}
+      return
+    }
     const isMixtapeTarget =
       targetNode?.type === 'mixtapeList' || targetLibraryName.value === 'MixtapeLibrary'
     if (isMixtapeTarget) {
-      if (!sourceNode || (sourceNode.type !== 'songList' && sourceNode.type !== 'mixtapeList')) {
+      if (
+        !sourceNode ||
+        (sourceNode.type !== 'songList' &&
+          sourceNode.type !== 'mixtapeList' &&
+          sourceNode.type !== 'setList')
+      ) {
         return
       }
       const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
+      const selectedSourceSongs = resolveSelectedSongsByRowKey(
+        normalizeUniqueStrings(selectedPaths),
+        sourceNode.type
+      )
       const mixtapeSongMap = new Map(
         songsAreaState.songInfoArr
           .filter((song) => typeof song.mixtapeItemId === 'string' && song.mixtapeItemId.length > 0)
@@ -162,12 +247,19 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
           ? itemsFromMixtapeIds.length > 0
             ? itemsFromMixtapeIds
             : itemsFromMixtapePaths
-          : normalizeUniqueStrings(selectedPaths).map((filePath: string) => ({
-              filePath,
-              originPlaylistUuid: sourceSongListUUID,
-              originPathSnapshot,
-              info: buildSongSnapshot(filePath, songMap.get(filePath))
-            }))
+          : sourceNode.type === 'setList'
+            ? selectedSourceSongs.map((song) => ({
+                filePath: song.filePath,
+                originPlaylistUuid: sourceSongListUUID,
+                originPathSnapshot,
+                info: buildSongSnapshot(song.filePath, song)
+              }))
+            : normalizeUniqueStrings(selectedPaths).map((filePath: string) => ({
+                filePath,
+                originPlaylistUuid: sourceSongListUUID,
+                originPathSnapshot,
+                info: buildSongSnapshot(filePath, songMap.get(filePath))
+              }))
       if (items.length === 0) return
       await window.electron.ipcRenderer.invoke('mixtape:append', {
         playlistId: targetSongListUUID,
@@ -184,19 +276,13 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
     }
 
     if (sourceActionMode === 'copy') {
-      const selectedSourceItems = normalizeUniqueStrings(selectedPaths)
-        .map((key) => {
-          const song =
-            songsAreaState.songInfoArr.find(
-              (item) => typeof item.mixtapeItemId === 'string' && item.mixtapeItemId.trim() === key
-            ) || songMap.get(key)
-          if (!song?.filePath) return null
-          return {
-            filePath: song.filePath,
-            song
-          }
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null)
+      const selectedSourceItems = resolveSelectedSongsByRowKey(
+        normalizeUniqueStrings(selectedPaths),
+        sourceNode?.type
+      ).map((song) => ({
+        filePath: song.filePath,
+        song
+      }))
       if (!selectedSourceItems.length) return
 
       const targetDirPath = libraryUtils.findDirPathByUuid(targetSongListUUID)

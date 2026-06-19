@@ -164,17 +164,24 @@ onUnmounted(() => {
 })
 
 let librarySelected = ref('FilterLibrary')
-type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary'
+type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'SetLibrary' | 'MixtapeLibrary'
 const splitPaneKeys: SplitSongsAreaPaneKey[] = ['left', 'right']
 const normalizeLibraryPath = (value: string) => (value || '').replace(/\\/g, '/')
 const isCoreLibraryName = (value: string): value is CoreLibraryName =>
-  ['FilterLibrary', 'CuratedLibrary', 'MixtapeLibrary'].includes(value)
+  ['FilterLibrary', 'CuratedLibrary', 'SetLibrary', 'MixtapeLibrary'].includes(value)
 const isPlaylistUnderLibrary = (uuid: string, libraryName: CoreLibraryName): boolean => {
   if (!uuid) return false
   const node = libraryUtils.getLibraryTreeByUUID(uuid)
-  if (!node || (node.type !== 'songList' && node.type !== 'mixtapeList')) return false
+  if (
+    !node ||
+    (node.type !== 'songList' && node.type !== 'mixtapeList' && node.type !== 'setList')
+  ) {
+    return false
+  }
   if (libraryName === 'MixtapeLibrary') {
     if (node.type !== 'mixtapeList') return false
+  } else if (libraryName === 'SetLibrary') {
+    if (node.type !== 'setList') return false
   } else if (node.type !== 'songList') {
     return false
   }
@@ -196,6 +203,9 @@ const resolveLibrarySelectionBySongListUUID = (uuid: string): LibrarySelection |
   if (dirPath === 'library/CuratedLibrary' || dirPath.startsWith('library/CuratedLibrary/')) {
     return 'CuratedLibrary'
   }
+  if (dirPath === 'library/SetLibrary' || dirPath.startsWith('library/SetLibrary/')) {
+    return 'SetLibrary'
+  }
   if (dirPath === 'library/MixtapeLibrary' || dirPath.startsWith('library/MixtapeLibrary/')) {
     return 'MixtapeLibrary'
   }
@@ -207,6 +217,8 @@ const resolveLibraryLabel = (libraryName: LibrarySelection | '') => {
       return t('library.filter')
     case 'CuratedLibrary':
       return t('library.curated')
+    case 'SetLibrary':
+      return t('library.setLibrary')
     case 'MixtapeLibrary':
       return t('library.mixtapeLibrary')
     case 'ExternalPlaylist':

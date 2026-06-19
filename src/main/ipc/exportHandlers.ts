@@ -16,12 +16,19 @@ import { log } from '../log'
 import mainWindow from '../window/mainWindow'
 import { exportSnapshot, importFromJsonFile } from '../fingerprintStore'
 import { deleteRecycleBinRecord } from '../recycleBinDb'
-import { isInRecycleBinAbsPath, toLibraryRelativePath } from '../recycleBinService'
+import {
+  isInRecycleBinAbsPath,
+  moveFileToRecycleBin,
+  normalizeRendererPlaylistPath,
+  toLibraryRelativePath
+} from '../recycleBinService'
 import { findSongListRoot, transferTrackCaches } from '../services/cacheMaintenance'
 import { replaceMixtapeFilePath } from '../mixtapeDb'
+import { removeSetItemsByIds } from '../setListDb'
 import { rememberCuratedArtistsForAddedTracks } from '../curatedArtistLibrary'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import { remapKeyAnalysisTrackedPath } from '../services/keyAnalysisQueue'
+import { protectSetReferencedFilesForDeletion } from './setListHandlers'
 import {
   appendSongListTrackNumbers,
   compactSongListTrackNumbers,
@@ -34,6 +41,23 @@ type MoveSongsToDirOptions = {
   curatedArtistNames?: Array<string | null | undefined>
 }
 
+type ExportSongInput = {
+  filePath?: unknown
+  setItemId?: unknown
+}
+
+type ExportTaskResult = {
+  exportedPaths: string[]
+  removedPaths: string[]
+  removedSetItemIds: string[]
+}
+
+type ExportSongsSummary = {
+  exportedPaths: string[]
+  removedPaths: string[]
+  removedSetItemIds: string[]
+}
+
 type ErrorSample = {
   code?: unknown
   message: string
@@ -44,6 +68,101 @@ const toErrorSample = (result: unknown, index: number): ErrorSample | null => {
   if (!(result instanceof Error)) return null
   const error = result as Error & { code?: unknown }
   return { code: error.code, message: error.message, index }
+}
+
+const normalizeNonEmptyString = (value: unknown): string => {
+  if (typeof value !== 'string') return ''
+  return value.trim()
+}
+
+const createExportTaskResult = (
+  exportedPaths: string[],
+  removedPaths: string[] = [],
+  removedSetItemIds: string[] = []
+): ExportTaskResult => ({
+  exportedPaths,
+  removedPaths,
+  removedSetItemIds
+})
+
+const collectExportSummary = (results: Array<ExportTaskResult | Error>): ExportSongsSummary => {
+  const summary: ExportSongsSummary = {
+    exportedPaths: [],
+    removedPaths: [],
+    removedSetItemIds: []
+  }
+  for (const result of results) {
+    if (result instanceof Error) continue
+    summary.exportedPaths.push(...result.exportedPaths)
+    summary.removedPaths.push(...result.removedPaths)
+    summary.removedSetItemIds.push(...result.removedSetItemIds)
+  }
+  summary.exportedPaths = Array.from(new Set(summary.exportedPaths))
+  summary.removedPaths = Array.from(new Set(summary.removedPaths))
+  summary.removedSetItemIds = Array.from(new Set(summary.removedSetItemIds))
+  return summary
+}
+
+const moveSourceToRecycleBinAfterExport = async (
+  sourcePath: string,
+  originalPlaylistPath: string | null
+): Promise<void> => {
+  const result = await moveFileToRecycleBin(sourcePath, {
+    originalPlaylistPath,
+    sourceType: 'export_after_delete'
+  })
+  if (result.status !== 'moved') {
+    throw new Error(result.error || `move to recycle bin ${result.status}`)
+  }
+}
+
+const removeSourceAfterExport = async (
+  sourcePath: string,
+  options: {
+    originalPlaylistPath?: string | null
+    setItemIds?: string[]
+  } = {}
+): Promise<{ removedPaths: string[]; removedSetItemIds: string[] }> => {
+  const setItemIds = Array.isArray(options.setItemIds)
+    ? Array.from(new Set(options.setItemIds.map(normalizeNonEmptyString).filter(Boolean)))
+    : []
+  if (setItemIds.length > 0) {
+    await moveSourceToRecycleBinAfterExport(sourcePath, options.originalPlaylistPath ?? null)
+    removeSetItemsByIds(setItemIds)
+    return { removedPaths: [sourcePath], removedSetItemIds: setItemIds }
+  }
+
+  const setProtection = await protectSetReferencedFilesForDeletion([sourcePath])
+  const protectedFile = setProtection.protectedFiles[0]
+  if (protectedFile) {
+    if (!protectedFile.success) {
+      throw new Error(protectedFile.error || 'move to set custody failed')
+    }
+    return { removedPaths: [sourcePath], removedSetItemIds: [] }
+  }
+
+  await moveSourceToRecycleBinAfterExport(sourcePath, options.originalPlaylistPath ?? null)
+  return { removedPaths: [sourcePath], removedSetItemIds: [] }
+}
+
+const copySourceForExport = async (sourcePath: string, targetPath: string): Promise<string> => {
+  return await moveOrCopyItemWithCheckIsExist(sourcePath, targetPath, false)
+}
+
+const exportThenRemoveSource = async (
+  sourcePath: string,
+  targetPaths: string[],
+  options: {
+    originalPlaylistPath?: string | null
+    setItemIds?: string[]
+  } = {}
+): Promise<ExportTaskResult> => {
+  const exportedPaths: string[] = []
+  for (const targetPath of targetPaths) {
+    exportedPaths.push(await copySourceForExport(sourcePath, targetPath))
+  }
+  const removed = await removeSourceAfterExport(sourcePath, options)
+  return createExportTaskResult(exportedPaths, removed.removedPaths, removed.removedSetItemIds)
 }
 
 async function findUniqueFolder(inputFolderPath: string) {
@@ -85,12 +204,19 @@ export function registerExportHandlers() {
       const folderName = path.basename(scanPath)
       const targetPath = await findUniqueFolder(path.join(folderPathVal, folderName))
       await fs.ensureDir(targetPath)
-      const tasks: Array<() => Promise<string>> = []
+      const originalPlaylistPath = normalizeRendererPlaylistPath(dirPath)
+      const tasks: Array<() => Promise<ExportTaskResult>> = []
       for (const item of songFileUrls) {
         const fileName = path.basename(item)
         if (fileName) {
           const dest = path.join(targetPath, fileName)
-          tasks.push(() => moveOrCopyItemWithCheckIsExist(item, dest, deleteSongsAfterExport))
+          tasks.push(() =>
+            deleteSongsAfterExport
+              ? exportThenRemoveSource(item, [dest], { originalPlaylistPath })
+              : copySourceForExport(item, dest).then((exportedPath) =>
+                  createExportTaskResult([exportedPath])
+                )
+          )
         }
       }
       const batchId = `exportSongList_${Date.now()}`
@@ -149,20 +275,58 @@ export function registerExportHandlers() {
         await compactSongListTrackNumbers(scanPath)
         markGlobalSongSearchDirty('exportSongListToDir')
       }
+      const summary = collectExportSummary(results)
       if (failed > 0) {
         throw new Error('exportSongListToDir failed')
       }
+      return summary
     }
   )
 
   ipcMain.handle('exportSongsToDir', async (_e, folderPathVal, deleteSongsAfterExport, songs) => {
-    const tasks: Array<() => Promise<string>> = []
-    for (const item of songs) {
-      const fileName = path.basename(item.filePath)
-      if (fileName) {
+    const songItems: ExportSongInput[] = Array.isArray(songs) ? songs : []
+    const tasks: Array<() => Promise<ExportTaskResult>> = []
+    if (deleteSongsAfterExport) {
+      const groups = new Map<
+        string,
+        {
+          sourcePath: string
+          targetPaths: string[]
+          setItemIds: string[]
+        }
+      >()
+      for (const item of songItems) {
+        const sourcePath = normalizeNonEmptyString(item?.filePath)
+        const fileName = path.basename(sourcePath)
+        if (!fileName) continue
+        const key = path.resolve(sourcePath).toLowerCase()
+        const group = groups.get(key) || {
+          sourcePath,
+          targetPaths: [],
+          setItemIds: []
+        }
+        group.targetPaths.push(path.join(folderPathVal, fileName))
+        const setItemId = normalizeNonEmptyString(item?.setItemId)
+        if (setItemId) group.setItemIds.push(setItemId)
+        groups.set(key, group)
+      }
+      for (const group of groups.values()) {
+        tasks.push(() =>
+          exportThenRemoveSource(group.sourcePath, group.targetPaths, {
+            setItemIds: group.setItemIds
+          })
+        )
+      }
+    } else {
+      for (const item of songItems) {
+        const sourcePath = normalizeNonEmptyString(item?.filePath)
+        const fileName = path.basename(sourcePath)
+        if (!fileName) continue
         const targetPath = path.join(folderPathVal, fileName)
         tasks.push(() =>
-          moveOrCopyItemWithCheckIsExist(item.filePath, targetPath, deleteSongsAfterExport)
+          copySourceForExport(sourcePath, targetPath).then((exportedPath) =>
+            createExportTaskResult([exportedPath])
+          )
         )
       }
     }
@@ -214,11 +378,9 @@ export function registerExportHandlers() {
         total: tasks.length
       })
     }
+    const summary = collectExportSummary(results)
     if (deleteSongsAfterExport && success > 0) {
-      const sourcePaths = Array.isArray(songs)
-        ? songs.map((item) => String(item?.filePath || '').trim()).filter((item) => item.length > 0)
-        : []
-      const compactResult = await compactSongListTrackNumbersByFilePaths(sourcePaths)
+      const compactResult = await compactSongListTrackNumbersByFilePaths(summary.removedPaths)
       if (compactResult.roots > 0) {
         markGlobalSongSearchDirty('exportSongsToDir')
       }
@@ -226,6 +388,7 @@ export function registerExportHandlers() {
     if (failed > 0) {
       throw new Error('exportSongsToDir failed')
     }
+    return summary
   })
 
   ipcMain.handle('moveSongsToDir', async (_e, srcs, dest, options: MoveSongsToDirOptions = {}) => {

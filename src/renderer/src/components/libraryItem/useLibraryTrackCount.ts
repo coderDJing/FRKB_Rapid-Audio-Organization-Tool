@@ -24,9 +24,14 @@ export function useLibraryTrackCount({ runtime, dirDataRef, props }: UseLibraryT
     const dirData = getDirData()
     if (!runtime.setting.showPlaylistTrackCount) return
     if (fetchingCount) return
-    if (!dirData || dirData.type !== 'songList') return
+    if (!dirData || (dirData.type !== 'songList' && dirData.type !== 'setList')) return
     try {
       fetchingCount = true
+      if (dirData.type === 'setList') {
+        const count = await window.electron.ipcRenderer.invoke('setList:count', props.uuid)
+        trackCount.value = typeof count === 'number' ? count : 0
+        return
+      }
       const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
       const count = await window.electron.ipcRenderer.invoke('getSongListTrackCount', songListPath)
       trackCount.value = typeof count === 'number' ? count : 0

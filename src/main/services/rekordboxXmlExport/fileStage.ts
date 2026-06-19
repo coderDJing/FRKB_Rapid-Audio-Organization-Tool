@@ -52,7 +52,6 @@ export const stageTrackFiles = async (params: {
   const {
     tracks,
     exportDirPath,
-    mode,
     stagedTracks = [],
     appliedOperations = [],
     throwIfCancelled,
@@ -67,11 +66,7 @@ export const stageTrackFiles = async (params: {
     const fallbackName = path.basename(sourcePath, sourceExt)
     const preferredName = sanitizePathSegment(track.displayName || fallbackName, fallbackName)
     const outputPath = await resolveUniqueFilePath(exportDirPath, `${preferredName}${sourceExt}`)
-    if (mode === 'move') {
-      await fs.move(sourcePath, outputPath)
-    } else {
-      await fs.copy(sourcePath, outputPath)
-    }
+    await fs.copy(sourcePath, outputPath)
     stagedTracks.push({
       trackId: index + 1,
       sourcePath,
@@ -89,10 +84,11 @@ export const stageTrackFiles = async (params: {
       bitrate: track.bitrate,
       duration: track.duration,
       hotCues: track.hotCues,
-      memoryCues: track.memoryCues
+      memoryCues: track.memoryCues,
+      setItemId: track.setItemId
     })
     appliedOperations.push({
-      mode,
+      mode: 'copy',
       sourcePath,
       outputPath
     })

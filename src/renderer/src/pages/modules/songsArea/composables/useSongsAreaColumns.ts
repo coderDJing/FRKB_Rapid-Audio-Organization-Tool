@@ -206,6 +206,9 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   const isMixtapeView = computed(
     () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
   )
+  const isSetView = computed(
+    () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'setList'
+  )
   const columnMode = computed<SongsAreaColumnMode>(() => {
     if (isRecycleBinView.value) return 'recycle'
     if (isRecordingLibraryView.value) return 'recording'
@@ -555,13 +558,13 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       }
     }
 
-    // 防御性去重：以 filePath 为键去重，避免竞态下重复条目影响渲染与选择
+    // 防御性去重：SET 歌单允许同文件重复，需按映射条目 ID 去重。
     const seen = new Set<string>()
     filtered = filtered.filter((item) => {
-      const p = item.filePath
-      if (!p) return false
-      if (seen.has(p)) return false
-      seen.add(p)
+      const key = isSetView.value ? item.setItemId || item.filePath : item.filePath
+      if (!key) return false
+      if (seen.has(key)) return false
+      seen.add(key)
       return true
     })
 

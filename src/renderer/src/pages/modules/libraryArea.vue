@@ -65,7 +65,9 @@ const allSongListArr = computed<IDir[]>(() => {
   const result: IDir[] = []
   const traverse = (node?: IDir) => {
     if (!node) return
-    if (node.type === 'songList' || node.type === 'mixtapeList') result.push(node)
+    if (node.type === 'songList' || node.type === 'mixtapeList' || node.type === 'setList') {
+      result.push(node)
+    }
     if (node.children && node.children.length) {
       for (const child of node.children) traverse(child as IDir)
     }
@@ -101,6 +103,7 @@ const showCreateNow = computed(() => {
   return !exactMatchExists.value && !directNameConflictExists.value
 })
 const isMixtapeLibrary = computed(() => runtime.libraryAreaSelected === 'MixtapeLibrary')
+const isSetLibrary = computed(() => runtime.libraryAreaSelected === 'SetLibrary')
 const createPendingMixtapeList = (mixMode: 'stem' | 'eq') => {
   const newUuid = uuidV4()
   for (let item of libraryData.value.children || []) {
@@ -148,7 +151,7 @@ const createNow = async () => {
   libraryData.value.children = libraryData.value.children || []
   libraryData.value.children.unshift({
     uuid: newUuid,
-    type: isMixtapeLibrary.value ? 'mixtapeList' : 'songList',
+    type: isMixtapeLibrary.value ? 'mixtapeList' : isSetLibrary.value ? 'setList' : 'songList',
     dirName: name,
     mixMode: isMixtapeLibrary.value ? 'stem' : undefined,
     stemProfile: isMixtapeLibrary.value ? DEFAULT_MIXTAPE_STEM_PROFILE : undefined,
@@ -183,6 +186,10 @@ const contextmenuEvent = async (event: MouseEvent) => {
         { menuName: 'library.createFolder' }
       ]
     ]
+  } else if (runtime.libraryAreaSelected === 'SetLibrary') {
+    menuArr.value = [
+      [{ menuName: 'library.createSetPlaylist' }, { menuName: 'library.createSetFolder' }]
+    ]
   } else {
     menuArr.value = [[{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]]
   }
@@ -197,6 +204,21 @@ const contextmenuEvent = async (event: MouseEvent) => {
         dirName: ''
       })
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
+    } else if (result.menuName == 'library.createSetPlaylist') {
+      const newUuid = uuidV4()
+      libraryData.value.children = libraryData.value.children || []
+      libraryData.value.children.unshift({
+        uuid: newUuid,
+        type: 'setList',
+        dirName: ''
+      })
+    } else if (result.menuName == 'library.createSetFolder') {
+      libraryData.value.children = libraryData.value.children || []
+      libraryData.value.children.unshift({
+        uuid: uuidV4(),
+        type: 'dir',
+        dirName: ''
+      })
     } else if (result.menuName == 'library.createStemMixtape') {
       createPendingMixtapeList('stem')
     } else if (result.menuName == 'library.createEqMixtape') {

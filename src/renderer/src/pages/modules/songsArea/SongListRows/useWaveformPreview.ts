@@ -272,6 +272,12 @@ export function useWaveformPreview(params: {
       )?.song || null
     )
   }
+  const resolveWaveformListRootForFilePath = (filePath: string) => {
+    const song = resolveVisibleSongByFilePath(filePath)
+    const perSongRoot = String(song?.waveformPreviewListRoot || '').trim()
+    if (perSongRoot) return perSongRoot
+    return (songListRootDir.value || '').trim()
+  }
   const collectKnownFilePathsByNormalizedPaths = (normalizedPaths: Set<string>) =>
     Array.from(
       new Set([
@@ -628,15 +634,28 @@ export function useWaveformPreview(params: {
       inflight.add(filePath)
       setWaveformPlaceholderLoading(filePath)
     }
-    const listRoot = (songListRootDir.value || '').trim()
     let response: {
       items?: Array<{ filePath: string; data: WaveformListPreviewData | null }>
     } | null = null
     try {
-      response = await window.electron.ipcRenderer.invoke('waveform-list-preview-cache:batch', {
-        listRoot,
-        filePaths
-      })
+      const groups = new Map<string, string[]>()
+      for (const filePath of filePaths) {
+        const listRoot = resolveWaveformListRootForFilePath(filePath)
+        const group = groups.get(listRoot) || []
+        group.push(filePath)
+        groups.set(listRoot, group)
+      }
+      const responses = await Promise.all(
+        Array.from(groups.entries()).map(([listRoot, groupedFilePaths]) =>
+          window.electron.ipcRenderer.invoke('waveform-list-preview-cache:batch', {
+            listRoot,
+            filePaths: groupedFilePaths
+          })
+        )
+      )
+      response = {
+        items: responses.flatMap((item) => (Array.isArray(item?.items) ? item.items : []))
+      }
     } catch {
       response = null
     }

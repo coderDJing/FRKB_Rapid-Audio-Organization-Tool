@@ -15,6 +15,8 @@ export function useLibraryFilter({
   dirChildShow
 }: UseLibraryFilterOptions) {
   const getDirData = () => dirDataRef.value
+  const isPlaylistNode = (node?: IDir | null) =>
+    node?.type === 'songList' || node?.type === 'mixtapeList' || node?.type === 'setList'
 
   const keyword = computed(() =>
     String(props.filterText || '')
@@ -26,21 +28,14 @@ export function useLibraryFilter({
     const dirData = getDirData()
     if (!dirData) return false
     if (!keyword.value) return true
-    return (
-      (dirData?.type === 'songList' || dirData?.type === 'mixtapeList') &&
-      dirData?.dirName?.toLowerCase().includes(keyword.value)
-    )
+    return isPlaylistNode(dirData) && dirData?.dirName?.toLowerCase().includes(keyword.value)
   })
 
   const hasMatchingDescendant = (node?: IDir | null): boolean => {
     if (!keyword.value) return true
     if (!node?.children) return false
     for (const c of node.children) {
-      if (
-        (c.type === 'songList' || c.type === 'mixtapeList') &&
-        c.dirName?.toLowerCase().includes(keyword.value)
-      )
-        return true
+      if (isPlaylistNode(c) && c.dirName?.toLowerCase().includes(keyword.value)) return true
       if (c.type === 'dir' && hasMatchingDescendant(c)) return true
     }
     return false

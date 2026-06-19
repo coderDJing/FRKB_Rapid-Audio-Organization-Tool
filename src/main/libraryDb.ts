@@ -4,7 +4,7 @@ import store from './store'
 import { log } from './log'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 33
+const SCHEMA_VERSION = 35
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
@@ -795,8 +795,48 @@ function createDatabase(dbPath: string): SqliteDatabase {
         PRIMARY KEY (list_root, file_path)
       );
       CREATE INDEX IF NOT EXISTS idx_waveform_surface_cache_root
-        ON waveform_surface_cache(list_root);
+      ON waveform_surface_cache(list_root);
     `)
+  }
+  if (userVersion < 34) {
+    instance.exec(`
+      CREATE TABLE IF NOT EXISTS set_items (
+        id TEXT PRIMARY KEY,
+        playlist_uuid TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        sort_order INTEGER NOT NULL,
+        origin_playlist_uuid TEXT,
+        origin_path_snapshot TEXT,
+        analysis_json TEXT,
+        created_at_ms INTEGER NOT NULL,
+        FOREIGN KEY (playlist_uuid) REFERENCES library_nodes(uuid) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_set_items_playlist ON set_items(playlist_uuid);
+      CREATE INDEX IF NOT EXISTS idx_set_items_order ON set_items(playlist_uuid, sort_order);
+    `)
+  }
+  instance.exec(`
+    CREATE TABLE IF NOT EXISTS set_items (
+      id TEXT PRIMARY KEY,
+      playlist_uuid TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      sort_order INTEGER NOT NULL,
+      origin_playlist_uuid TEXT,
+      origin_path_snapshot TEXT,
+      analysis_json TEXT,
+      created_at_ms INTEGER NOT NULL,
+      FOREIGN KEY (playlist_uuid) REFERENCES library_nodes(uuid) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_set_items_playlist ON set_items(playlist_uuid);
+    CREATE INDEX IF NOT EXISTS idx_set_items_order ON set_items(playlist_uuid, sort_order);
+  `)
+  if (userVersion < 35) {
+    const setItemColumns = listTableColumns(instance, 'set_items')
+    if (!setItemColumns.has('analysis_json')) {
+      try {
+        instance.exec(`ALTER TABLE set_items ADD COLUMN analysis_json TEXT`)
+      } catch {}
+    }
   }
   instance.exec(`
     CREATE TABLE IF NOT EXISTS waveform_surface_cache (

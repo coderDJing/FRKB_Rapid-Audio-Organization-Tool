@@ -5,7 +5,7 @@ import { getLibraryDb, initLibraryDb, isSqliteRow } from './libraryDb'
 import { log } from './log'
 import type { SqliteDatabase } from './libraryDb'
 
-export type LibraryNodeType = 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList'
+export type LibraryNodeType = 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList' | 'setList'
 
 export type LibraryNodeRow = {
   uuid: string
@@ -86,6 +86,7 @@ export function decideNodeType(
   hasAudio: boolean
 ): Exclude<LibraryNodeType, 'root' | 'library'> {
   if (existingType === 'mixtapeList') return 'mixtapeList'
+  if (existingType === 'setList') return 'setList'
   if (hasSubdirs) return 'dir'
   if (hasAudio) return 'songList'
   if (existingType === 'dir' || existingType === 'songList') return existingType
@@ -108,12 +109,19 @@ function isNodeType(value: unknown): value is LibraryNodeType {
     value === 'library' ||
     value === 'dir' ||
     value === 'songList' ||
-    value === 'mixtapeList'
+    value === 'mixtapeList' ||
+    value === 'setList'
   )
 }
 
 export function isChildNodeType(value: unknown): value is Exclude<LibraryNodeType, 'root'> {
-  return value === 'library' || value === 'dir' || value === 'songList' || value === 'mixtapeList'
+  return (
+    value === 'library' ||
+    value === 'dir' ||
+    value === 'songList' ||
+    value === 'mixtapeList' ||
+    value === 'setList'
+  )
 }
 
 export function toNodeRow(row: unknown): LibraryNodeRow | null {

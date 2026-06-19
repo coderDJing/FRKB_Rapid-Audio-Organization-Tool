@@ -16,6 +16,14 @@ import {
   replaceMixtapeStemAssetFilePath
 } from '../mixtapeStemDb'
 import { cancelKeyAnalysisForPaths } from './keyAnalysisQueue'
+import { getCoreFsDirName } from '../coreLibraries'
+
+const SET_CUSTODY_DIR_NAME = '__set_custody__'
+
+type CacheFileStat = {
+  size: number
+  mtimeMs: number
+}
 
 const normalizePath = (value: string): string => {
   if (!value) return ''
@@ -26,15 +34,33 @@ const normalizePath = (value: string): string => {
   return normalized
 }
 
+const isCacheStatMatch = (
+  entry: { size?: unknown; mtimeMs?: unknown } | null | undefined,
+  stat: CacheFileStat
+) =>
+  Boolean(
+    entry &&
+    Number(entry.size) === stat.size &&
+    Number.isFinite(Number(entry.mtimeMs)) &&
+    Math.abs(Number(entry.mtimeMs) - stat.mtimeMs) <= 1
+  )
+
 async function findSongListRoot(startDir: string): Promise<string | null> {
   if (!startDir) return null
   const rootDir = store.databaseDir
   if (rootDir) {
     const recycleRoot = path.join(rootDir, mapRendererPathToFsPath('library/RecycleBin'))
     const recordingRoot = path.join(rootDir, mapRendererPathToFsPath('library/RecordingLibrary'))
+    const setCustodyRoot = path.join(
+      rootDir,
+      'library',
+      getCoreFsDirName('SetLibrary'),
+      SET_CUSTODY_DIR_NAME
+    )
     const normalizedStart = normalizePath(startDir)
     const normalizedRecycle = normalizePath(recycleRoot)
     const normalizedRecording = normalizePath(recordingRoot)
+    const normalizedSetCustody = normalizePath(setCustodyRoot)
     if (
       normalizedStart &&
       normalizedRecycle &&
@@ -50,6 +76,14 @@ async function findSongListRoot(startDir: string): Promise<string | null> {
         normalizedStart.startsWith(normalizedRecording + path.sep))
     ) {
       return recordingRoot
+    }
+    if (
+      normalizedStart &&
+      normalizedSetCustody &&
+      (normalizedStart === normalizedSetCustody ||
+        normalizedStart.startsWith(normalizedSetCustody + path.sep))
+    ) {
+      return setCustodyRoot
     }
   }
   return await findSongListRootByPath(startDir)
@@ -187,6 +221,8 @@ export async function transferTrackCaches(params: {
   toRoot: string | null
   fromPath: string
   toPath: string
+  fromStat?: CacheFileStat | null
+  toStat?: CacheFileStat | null
 }): Promise<void> {
   const { fromRoot, toRoot, fromPath, toPath } = params
   if (!fromPath || !toPath) return
@@ -211,21 +247,25 @@ export async function transferTrackCaches(params: {
     return
   }
 
-  let stat: { size: number; mtimeMs: number } | null = null
-  try {
-    const fsStat = await fs.stat(toPath)
-    stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
-  } catch {
-    return
+  let toStat: CacheFileStat | null = params.toStat || null
+  if (!toStat) {
+    try {
+      const fsStat = await fs.stat(toPath)
+      toStat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+    } catch {
+      return
+    }
   }
+  const fromStat = params.fromStat || toStat
+  if (!fromStat || !toStat) return
 
   try {
     const cacheEntry = await LibraryCacheDb.loadSongCacheEntry(fromRoot, fromPath)
-    if (cacheEntry && stat) {
+    if (cacheEntry && toStat && isCacheStatMatch(cacheEntry, fromStat)) {
       const nextInfo = { ...cacheEntry.info, filePath: toPath }
       const updated = await LibraryCacheDb.upsertSongCacheEntry(toRoot, toPath, {
-        size: stat.size,
-        mtimeMs: stat.mtimeMs,
+        size: toStat.size,
+        mtimeMs: toStat.mtimeMs,
         info: nextInfo
       })
       if (updated) {
@@ -234,18 +274,17 @@ export async function transferTrackCaches(params: {
     }
   } catch {}
 
-  if (!stat) return
   try {
     const unified = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
       fromRoot,
       fromPath,
-      stat
+      fromStat
     )
     if (unified) {
       const updated = await LibraryCacheDb.upsertUnifiedDisplayWaveformCacheEntry(
         toRoot,
         toPath,
-        stat,
+        toStat,
         unified
       )
       if (updated) {
@@ -259,15 +298,15 @@ export async function transferTrackCaches(params: {
     const listPreview = await LibraryCacheDb.loadWaveformListPreviewCacheData(
       fromRoot,
       fromPath,
-      stat
+      fromStat
     )
     const globalOverview = await LibraryCacheDb.loadWaveformGlobalOverviewCacheData(
       fromRoot,
       fromPath,
-      stat
+      fromStat
     )
     if (listPreview && globalOverview) {
-      const updated = await LibraryCacheDb.upsertWaveformSurfaceCacheEntry(toRoot, toPath, stat, {
+      const updated = await LibraryCacheDb.upsertWaveformSurfaceCacheEntry(toRoot, toPath, toStat, {
         listPreview,
         globalOverview
       })

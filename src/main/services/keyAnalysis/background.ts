@@ -259,6 +259,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       if (!rel) continue
       const normalizedRel = rel.replace(/\\/g, '/').toLowerCase()
       if (
+        normalizedRel.startsWith('library/setlibrary/') ||
         normalizedRel.startsWith('library/mixtapelibrary/') ||
         normalizedRel.startsWith('library/recyclebin/') ||
         normalizedRel.startsWith('library/recordinglibrary/')
@@ -286,6 +287,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       if (!libraryEntry.isDirectory()) continue
       if (libraryEntry.name.startsWith('.')) continue
       if (
+        libraryEntry.name === 'SetLibrary' ||
         libraryEntry.name === 'MixtapeLibrary' ||
         libraryEntry.name === 'RecycleBin' ||
         libraryEntry.name === 'RecordingLibrary'

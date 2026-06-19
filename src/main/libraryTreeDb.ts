@@ -26,6 +26,7 @@ export type { LibraryNodeType, LibraryNodeRow, LegacyLibraryNode } from './libra
 const TREE_MIGRATION_DONE_KEY = 'library_tree_migration_done_v1'
 const TREE_MIGRATION_IN_PROGRESS_KEY = 'library_tree_migration_in_progress_v1'
 const TREE_ARCHIVE_DONE_KEY = 'library_tree_legacy_archive_done_v1'
+const SET_CUSTODY_DIR_NAME = '__set_custody__'
 
 export function isLibraryTreeMigrationDone(db: SqliteDatabase): boolean {
   return getMetaValue(db, TREE_MIGRATION_DONE_KEY) === '1'
@@ -269,6 +270,7 @@ export async function ensureLibraryTreeBaseline(
     coreDirNames?: {
       FilterLibrary: string
       CuratedLibrary: string
+      SetLibrary: string
       MixtapeLibrary: string
       RecordingLibrary: string
       RecycleBin: string
@@ -287,12 +289,14 @@ export async function ensureLibraryTreeBaseline(
     const coreNames = options.coreDirNames || {
       FilterLibrary: 'FilterLibrary',
       CuratedLibrary: 'CuratedLibrary',
+      SetLibrary: 'SetLibrary',
       MixtapeLibrary: 'MixtapeLibrary',
       RecordingLibrary: 'RecordingLibrary',
       RecycleBin: 'RecycleBin'
     }
     const filterUuid = uuidV4()
     const curatedUuid = uuidV4()
+    const setUuid = uuidV4()
     const mixtapeUuid = uuidV4()
     const recordingUuid = uuidV4()
     const recycleUuid = uuidV4()
@@ -302,9 +306,10 @@ export async function ensureLibraryTreeBaseline(
     const run = db.transaction(() => {
       insert.run(filterUuid, root.uuid, coreNames.FilterLibrary, 'library', 1)
       insert.run(curatedUuid, root.uuid, coreNames.CuratedLibrary, 'library', 2)
-      insert.run(mixtapeUuid, root.uuid, coreNames.MixtapeLibrary, 'library', 3)
-      insert.run(recordingUuid, root.uuid, coreNames.RecordingLibrary, 'library', 4)
-      insert.run(recycleUuid, root.uuid, coreNames.RecycleBin, 'library', 5)
+      insert.run(setUuid, root.uuid, coreNames.SetLibrary, 'library', 3)
+      insert.run(mixtapeUuid, root.uuid, coreNames.MixtapeLibrary, 'library', 4)
+      insert.run(recordingUuid, root.uuid, coreNames.RecordingLibrary, 'library', 5)
+      insert.run(recycleUuid, root.uuid, coreNames.RecycleBin, 'library', 6)
     })
     run()
     setLibraryTreeMigrationDone(db, true)
@@ -335,6 +340,7 @@ export async function syncLibraryTreeFromDisk(
     coreDirNames?: {
       FilterLibrary: string
       CuratedLibrary: string
+      SetLibrary: string
       MixtapeLibrary: string
       RecordingLibrary: string
       RecycleBin: string
@@ -389,6 +395,7 @@ export async function syncLibraryTreeFromDisk(
   const coreNames = options.coreDirNames || {
     FilterLibrary: 'FilterLibrary',
     CuratedLibrary: 'CuratedLibrary',
+    SetLibrary: 'SetLibrary',
     MixtapeLibrary: 'MixtapeLibrary',
     RecordingLibrary: 'RecordingLibrary',
     RecycleBin: 'RecycleBin'
@@ -396,14 +403,16 @@ export async function syncLibraryTreeFromDisk(
   const coreOrderMap = new Map<string, number>([
     [coreNames.FilterLibrary, 1],
     [coreNames.CuratedLibrary, 2],
-    [coreNames.MixtapeLibrary, 3],
-    [coreNames.RecordingLibrary, 4],
-    [coreNames.RecycleBin, 5]
+    [coreNames.SetLibrary, 3],
+    [coreNames.MixtapeLibrary, 4],
+    [coreNames.RecordingLibrary, 5],
+    [coreNames.RecycleBin, 6]
   ])
   const coreNameList = Array.from(
     new Set([
       coreNames.FilterLibrary,
       coreNames.CuratedLibrary,
+      coreNames.SetLibrary,
       coreNames.MixtapeLibrary,
       coreNames.RecordingLibrary,
       coreNames.RecycleBin
@@ -414,6 +423,18 @@ export async function syncLibraryTreeFromDisk(
   const libraryRoot = path.join(dbRoot, rootDirName)
   if (!(await fs.pathExists(libraryRoot))) {
     return { added: 0, removed: 0, updated: 0 }
+  }
+  const normalizeTreeRelPathKey = (relPath: string) => {
+    let normalized = path.normalize(relPath)
+    if (process.platform === 'win32') normalized = normalized.toLowerCase()
+    return normalized
+  }
+  const setCustodyRelPathKey = normalizeTreeRelPathKey(
+    path.join(rootDirName, coreNames.SetLibrary, SET_CUSTODY_DIR_NAME)
+  )
+  const isInternalSetCustodyRelPath = (relPath: string) => {
+    const key = normalizeTreeRelPathKey(relPath)
+    return key === setCustodyRelPathKey || key.startsWith(setCustodyRelPathKey + path.sep)
   }
 
   const audioExts = normalizeAudioExtensions(
@@ -477,9 +498,10 @@ export async function syncLibraryTreeFromDisk(
     for (const entry of entries) {
       if (entry.isDirectory()) {
         if (entry.name.startsWith('.')) continue
-        hasSubdirs = true
         const childAbs = path.join(current.absPath, entry.name)
         const childRel = path.join(current.relPath, entry.name)
+        if (isInternalSetCustodyRelPath(childRel)) continue
+        hasSubdirs = true
         scanQueue.push({ absPath: childAbs, relPath: childRel })
       } else if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase()

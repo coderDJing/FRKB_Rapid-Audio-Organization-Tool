@@ -41,6 +41,11 @@ import {
 import { formatWindowTitle } from '@renderer/utils/windowTitle'
 import type { MainWindowBrowseMode } from '@renderer/utils/mainWindowPlaybackHandoff'
 import { useMainWindowPlaybackHandoff } from '@renderer/composables/useMainWindowPlaybackHandoff'
+import {
+  handleSongsRemovedForGlobalSearchUpdate,
+  markGlobalSongSearchDirty,
+  type SongsRemovedPayload
+} from '@renderer/utils/globalSongSearchEvents'
 
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
@@ -198,11 +203,6 @@ const {
 })
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
-type SongsRemovedPayload = {
-  listUUID?: string
-  itemIds?: string[]
-  paths?: string[]
-}
 type MixtapeItemsRemovedPayload = {
   playlistId?: string
   itemIds?: string[]
@@ -231,14 +231,6 @@ type GlobalSongSearchItem = {
 let ctrlTapAt = 0
 let ctrlDown = false
 let ctrlComboDirty = false
-
-const normalizePath = (value: string) =>
-  String(value || '')
-    .replace(/\//g, '\\')
-    .toLowerCase()
-const markSongSearchDirty = (reason: string) => {
-  void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
-}
 
 const focusSongFromGlobalSearch = async (
   payload: GlobalSongSearchItem,
@@ -309,44 +301,7 @@ const handleCtrlDoubleTapKeyUp = (event: KeyboardEvent) => {
 }
 
 const handleSongsRemovedForGlobalSearch = (payload: SongsRemovedPayload | null) => {
-  try {
-    markSongSearchDirty('songs-removed')
-    const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
-    const listUUID: string | undefined = payload?.listUUID
-    if (itemIds.length > 0) {
-      if (listUUID && listUUID !== runtime.playingData.playingSongListUUID) return
-      const idSet = new Set(itemIds)
-
-      runtime.playingData.playingSongListData = (
-        runtime.playingData.playingSongListData || []
-      ).filter((song) => !idSet.has(song?.mixtapeItemId || ''))
-
-      if (
-        runtime.playingData.playingSong &&
-        idSet.has(runtime.playingData.playingSong.mixtapeItemId || '')
-      ) {
-        runtime.playingData.playingSong = null
-      }
-
-      return
-    }
-
-    const paths: string[] = Array.isArray(payload?.paths) ? payload.paths : []
-    if (!paths.length) return
-    if (listUUID && listUUID !== runtime.playingData.playingSongListUUID) return
-    const normalizedSet = new Set(paths.map((p) => normalizePath(p)).filter(Boolean))
-
-    runtime.playingData.playingSongListData = (
-      runtime.playingData.playingSongListData || []
-    ).filter((song) => !normalizedSet.has(normalizePath(song.filePath)))
-
-    if (
-      runtime.playingData.playingSong &&
-      normalizedSet.has(normalizePath(runtime.playingData.playingSong.filePath))
-    ) {
-      runtime.playingData.playingSong = null
-    }
-  } catch {}
+  handleSongsRemovedForGlobalSearchUpdate(runtime, payload)
 }
 const handleMixtapeItemsRemoved = (_e: unknown, payload: MixtapeItemsRemovedPayload | null) => {
   const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId.trim() : ''
@@ -362,11 +317,11 @@ const handleMixtapeItemsRemoved = (_e: unknown, payload: MixtapeItemsRemovedPayl
 }
 
 const handleMetadataBatchUpdatedForGlobalSearch = () => {
-  markSongSearchDirty('metadata-batch-updated')
+  markGlobalSongSearchDirty('metadata-batch-updated')
 }
 
 const handleSongMetadataUpdatedForGlobalSearch = () => {
-  markSongSearchDirty('song-metadata-updated')
+  markGlobalSongSearchDirty('song-metadata-updated')
 }
 
 const sendFileOpControl = (action: 'resume' | 'cancel') => {
@@ -836,7 +791,7 @@ const handleExternalOpenImported = async (_e: unknown, payload: { paths?: string
         emitter.emit('external-open/play', { songs, startIndex: 0 })
       }
     }
-    markSongSearchDirty('external-open-imported')
+    markGlobalSongSearchDirty('external-open-imported')
   } catch (error) {
     console.error('[external-open] failed to prepare playlist', error)
   }
@@ -868,11 +823,11 @@ const handleLibraryTreeUpdated = async (_e: unknown, tree: unknown) => {
     if (isRuntimeLibraryTree(tree)) {
       runtime.libraryTree = tree
       runtime.oldLibraryTree = JSON.parse(JSON.stringify(tree))
-      markSongSearchDirty('library-tree-updated')
+      markGlobalSongSearchDirty('library-tree-updated')
       return
     }
     await getLibrary()
-    markSongSearchDirty('library-tree-reloaded')
+    markGlobalSongSearchDirty('library-tree-reloaded')
   } catch (_err) {}
 }
 const handleOpenDialogFromChild = (e: Event) => {

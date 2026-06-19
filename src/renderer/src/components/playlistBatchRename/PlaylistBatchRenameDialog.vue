@@ -8,11 +8,12 @@ import { t } from '@renderer/utils/translate'
 import type { BatchRenameSongListTarget } from './index'
 import openPresetManagerDialog from './presetManagerDialog'
 import { usePlaylistBatchRenameDialog } from './usePlaylistBatchRenameDialog'
-import type { IBatchRenamePreviewResult } from 'src/types/globals'
+import type { IBatchRenamePreviewResult, IBatchRenameTrackInput } from 'src/types/globals'
 
 const props = defineProps<{
   title: string
   songLists: BatchRenameSongListTarget[]
+  tracks?: IBatchRenameTrackInput[]
 }>()
 
 const emits = defineEmits<{
@@ -38,7 +39,8 @@ const {
   selectedPreset,
   switchPreset
 } = usePlaylistBatchRenameDialog({
-  songLists: props.songLists
+  songLists: props.songLists,
+  tracks: props.tracks || []
 })
 
 const presetOptions = computed(() =>
@@ -54,6 +56,7 @@ const handleManagePresets = async () => {
   const nextPresetId = await openPresetManagerDialog({
     title: props.title,
     songLists: props.songLists,
+    tracks: props.tracks || [],
     selectedPresetId: selectedPresetId.value
   })
   if (nextPresetId) {

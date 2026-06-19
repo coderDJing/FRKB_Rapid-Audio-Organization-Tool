@@ -2,7 +2,7 @@ import { createVNode, render } from 'vue'
 import { attachAppContext } from '@renderer/utils/appContext'
 import PlaylistBatchRenameDialog from './PlaylistBatchRenameDialog.vue'
 import openPreviewDialog from './previewDialog'
-import type { IBatchRenamePreviewResult } from 'src/types/globals'
+import type { IBatchRenamePreviewResult, IBatchRenameTrackInput } from 'src/types/globals'
 
 export interface BatchRenameSongListTarget {
   uuid: string
@@ -13,6 +13,7 @@ export interface BatchRenameSongListTarget {
 export default (options: {
   title: string
   songLists: BatchRenameSongListTarget[]
+  tracks?: IBatchRenameTrackInput[]
 }): Promise<void> =>
   new Promise<void>((resolve) => {
     const div = document.createElement('div')
@@ -37,6 +38,7 @@ export default (options: {
     const vnode = createVNode(PlaylistBatchRenameDialog, {
       title: options.title,
       songLists: options.songLists,
+      tracks: options.tracks || [],
       onClose: handleClose,
       onProceed: handleProceed
     })

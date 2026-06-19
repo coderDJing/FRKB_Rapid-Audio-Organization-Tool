@@ -1,13 +1,14 @@
 import type { IDir } from 'src/types/globals'
 
 type DialogNavArea = 'recent' | 'tree'
+type DialogLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'SetLibrary' | 'MixtapeLibrary'
 export type DialogNavItem = { uuid: string; area: DialogNavArea }
 const RECENT_DIALOG_SELECTED_SONGLIST_KEY_PREFIX = 'recentDialogSelectedSongListUUID'
 
 const resolveRecentDialogSelectedSongListStorageKey = (libraryName: string) =>
   `${RECENT_DIALOG_SELECTED_SONGLIST_KEY_PREFIX}${libraryName}`
 
-const filterSongListsByKeyword = (songLists: IDir[], keyword: string) => {
+export const filterSongListsByKeyword = (songLists: IDir[], keyword: string) => {
   const safeKeyword = String(keyword || '')
     .trim()
     .toLowerCase()
@@ -17,6 +18,28 @@ const filterSongListsByKeyword = (songLists: IDir[], keyword: string) => {
       .toLowerCase()
       .includes(safeKeyword)
   )
+}
+
+export const isDialogListNode = (node: IDir | null | undefined, libraryName: string) => {
+  if (libraryName === 'MixtapeLibrary') return node?.type === 'mixtapeList'
+  if (libraryName === 'SetLibrary') return node?.type === 'setList'
+  return node?.type === 'songList'
+}
+
+export const collectDialogSongLists = (
+  root: IDir | null | undefined,
+  libraryName: DialogLibraryName | string
+) => {
+  const result: IDir[] = []
+  const traverse = (node?: IDir) => {
+    if (!node) return
+    if (isDialogListNode(node, libraryName)) result.push(node)
+    if (node.children?.length) {
+      for (const child of node.children) traverse(child)
+    }
+  }
+  traverse(root || undefined)
+  return result
 }
 
 export const buildVisibleCombinedNavList = (

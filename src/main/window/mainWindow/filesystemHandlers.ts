@@ -52,6 +52,10 @@ import {
   isSupportedPlaylistTrackNumberListRoot
 } from '../../services/playlistTrackNumbers'
 import { markGlobalSongSearchDirty } from '../../services/globalSongSearch'
+import {
+  protectSetReferencedFilesForDeletion,
+  removeSetItemsByPlaylistWithCustodyCleanup
+} from '../../ipc/setListHandlers'
 
 const MIXTAPE_WINDOW_OPEN_ERROR_CODE = 'MIXTAPE_WINDOW_OPEN'
 const FILE_BATCH_CONCURRENCY = 8
@@ -64,6 +68,7 @@ const normalizeLibraryNodeType = (value: unknown): LibraryNodeType => {
     case 'dir':
     case 'songList':
     case 'mixtapeList':
+    case 'setList':
       return value
     default:
       return 'dir'
@@ -90,6 +95,40 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
     removeMixtapeItemsByPlaylist(playlistId)
     await cleanupMixtapeWaveformCache(filePaths)
     await cleanupOrphanedMixtapeVaultFiles(filePaths)
+  }
+
+  const collectSetListUuidsForSubtree = (rootUuid: string): string[] => {
+    if (!rootUuid) return []
+    const nodes = loadLibraryNodes() || []
+    const byUuid = new Map(nodes.map((node) => [node.uuid, node]))
+    const childrenByParent = new Map<string, LibraryNodeRow[]>()
+    for (const node of nodes) {
+      if (!node.parentUuid) continue
+      const list = childrenByParent.get(node.parentUuid)
+      if (list) {
+        list.push(node)
+      } else {
+        childrenByParent.set(node.parentUuid, [node])
+      }
+    }
+    const result: string[] = []
+    const queue = [rootUuid]
+    for (let i = 0; i < queue.length; i += 1) {
+      const uuid = queue[i]
+      const node = byUuid.get(uuid)
+      if (node?.nodeType === 'setList') result.push(uuid)
+      const children = childrenByParent.get(uuid) || []
+      for (const child of children) {
+        queue.push(child.uuid)
+      }
+    }
+    return result
+  }
+
+  const clearSetMappingsForPlaylists = async (playlistUuids: string[]) => {
+    for (const uuid of playlistUuids) {
+      await removeSetItemsByPlaylistWithCustodyCleanup(uuid)
+    }
   }
 
   ipcMain.on('openFileExplorer', (_e, targetPath) => {
@@ -498,6 +537,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         } else if (item.type === 'delete') {
           const progressId =
             deleteProgressBatch?.id || createProgressId(`library_delete_${item.uuid}`)
+          const setListUuidsToClear = collectSetListUuidsForSubtree(item.uuid)
           sendDeleteProgress(progressId, {
             titleKey: 'library.deleteProgressScanning',
             now: 0,
@@ -512,6 +552,7 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
           if (isEmpty) {
             await fs.remove(dirPath)
             removeLibraryNode(item.uuid)
+            await clearSetMappingsForPlaylists(setListUuidsToClear)
             operationStatus = 'removed'
             if (item.nodeType === 'mixtapeList') {
               await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
@@ -525,19 +566,26 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             try {
               const audioExts = store.settingConfig.audioExt
               const audioFiles = await collectFilesWithExtensions(dirPath, audioExts)
-              const tasks: Array<() => Promise<RecycleBinMoveResult>> = audioFiles.map(
-                (srcPath) => async () => {
+              const setProtection = await protectSetReferencedFilesForDeletion(audioFiles)
+              const protectedMovedPaths = setProtection.protectedFiles
+                .filter((protectedFile) => protectedFile.success)
+                .map((protectedFile) => protectedFile.filePath)
+              const protectedFailedCount = setProtection.protectedFiles.filter(
+                (protectedFile) => !protectedFile.success
+              ).length
+              const protectedHandledCount = setProtection.protectedFiles.length
+              const tasks: Array<() => Promise<RecycleBinMoveResult>> =
+                setProtection.unprotectedFiles.map((srcPath) => async () => {
                   const result = await moveFileToRecycleBin(srcPath)
                   if (result.status === 'failed') {
                     throw new Error(result.error || 'move to recycle bin failed')
                   }
                   return result
-                }
-              )
+                })
               sendDeleteProgress(progressId, {
                 titleKey: 'library.deleteProgressRemoving',
-                now: 0,
-                total: tasks.length,
+                now: protectedHandledCount,
+                total: audioFiles.length,
                 noProgress: false
               })
               const batchId = `recycleMove_${Date.now()}`
@@ -550,8 +598,8 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                   onProgress: (done: number, total: number) => {
                     sendDeleteProgress(progressId, {
                       titleKey: 'library.deleteProgressRemoving',
-                      now: done,
-                      total,
+                      now: protectedHandledCount + done,
+                      total: protectedHandledCount + total,
                       noProgress: false
                     })
                   },
@@ -565,11 +613,17 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
                     !(result instanceof Error) && isRecycleBinMoveResult(result)
                 )
                 .map((result) => result.srcPath)
+                .concat(protectedMovedPaths)
               await removeNonAudioEntries(dirPath, audioExts)
-              const allAudioMoved = failed === 0 && skipped === 0 && success === tasks.length
+              const allAudioMoved =
+                failed === 0 &&
+                skipped === 0 &&
+                success === tasks.length &&
+                protectedFailedCount === 0
               if (allAudioMoved) {
                 await fs.remove(dirPath)
                 removeLibraryNode(item.uuid)
+                await clearSetMappingsForPlaylists(setListUuidsToClear)
                 if (item.nodeType === 'mixtapeList') {
                   await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
                 }
@@ -590,9 +644,9 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
               if (hasENOSPC && getWindow()) {
                 getWindow()?.webContents.send('file-batch-summary', {
                   context: 'recycleMove',
-                  total: tasks.length,
-                  success,
-                  failed,
+                  total: audioFiles.length,
+                  success: success + protectedMovedPaths.length,
+                  failed: failed + protectedFailedCount,
                   hasENOSPC,
                   skipped,
                   errorSamples: []
@@ -612,9 +666,11 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         } else if (item.type === 'permanentlyDelete') {
           const mixtapeFilePaths =
             item.nodeType === 'mixtapeList' ? listMixtapeFilePathsByPlaylist(item.uuid) : []
+          const setListUuidsToClear = collectSetListUuidsForSubtree(item.uuid)
           const { absPath } = resolveLibraryPath(item.path)
           await fs.remove(absPath)
           removeLibraryNode(item.uuid)
+          await clearSetMappingsForPlaylists(setListUuidsToClear)
           operationStatus = 'permanently_deleted'
           if (item.nodeType === 'mixtapeList') {
             await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)

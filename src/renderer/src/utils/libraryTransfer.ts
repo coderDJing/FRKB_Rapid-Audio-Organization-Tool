@@ -3,13 +3,17 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 
 export type LibraryTransferActionMode = 'move' | 'copy'
-export type LibraryTransferTarget = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary'
+export type LibraryTransferTarget =
+  | 'FilterLibrary'
+  | 'CuratedLibrary'
+  | 'SetLibrary'
+  | 'MixtapeLibrary'
 
 export const resolveLibraryTransferActionModeForSongList = (
   songListUUID: string
 ): LibraryTransferActionMode => {
   const node = libraryUtils.getLibraryTreeByUUID(songListUUID)
-  if (node?.type === 'mixtapeList') return 'copy'
+  if (node?.type === 'mixtapeList' || node?.type === 'setList') return 'copy'
   return 'move'
 }
 
@@ -29,6 +33,9 @@ export const resolveLibraryTransferActionLabelKey = (
 ) => {
   if (targetLibrary === 'MixtapeLibrary') {
     return actionMode === 'copy' ? 'library.addToMixtapeByCopy' : 'library.addToMixtape'
+  }
+  if (targetLibrary === 'SetLibrary') {
+    return 'library.addToSet'
   }
   if (targetLibrary === 'FilterLibrary') {
     return actionMode === 'copy' ? 'library.copyToFilter' : 'library.moveToFilter'

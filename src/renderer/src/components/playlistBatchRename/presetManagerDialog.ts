@@ -2,10 +2,12 @@ import { createVNode, render } from 'vue'
 import { attachAppContext } from '@renderer/utils/appContext'
 import PresetManagerDialog from './PresetManagerDialog.vue'
 import type { BatchRenameSongListTarget } from './index'
+import type { IBatchRenameTrackInput } from 'src/types/globals'
 
 export default (options: {
   title: string
   songLists: BatchRenameSongListTarget[]
+  tracks?: IBatchRenameTrackInput[]
   selectedPresetId?: string
 }): Promise<string | null> =>
   new Promise((resolve) => {
@@ -21,6 +23,7 @@ export default (options: {
     const vnode = createVNode(PresetManagerDialog, {
       title: options.title,
       songLists: options.songLists,
+      tracks: options.tracks || [],
       selectedPresetId: options.selectedPresetId || '',
       onClose
     })

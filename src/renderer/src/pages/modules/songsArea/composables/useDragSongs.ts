@@ -68,6 +68,18 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
     )
   const normalizePath = (p: string | undefined | null) =>
     (p || '').replace(/\//g, '\\').toLowerCase()
+  const buildSongAnalysisSnapshot = (song?: ISongInfo | null) => ({
+    key: song?.key,
+    keyAnalysisAlgorithmVersion: song?.keyAnalysisAlgorithmVersion,
+    bpm: song?.bpm,
+    firstBeatMs: song?.firstBeatMs,
+    barBeatOffset: song?.barBeatOffset,
+    timeBasisOffsetMs: song?.timeBasisOffsetMs,
+    beatGridSource: song?.beatGridSource,
+    beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
+    hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
+    memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
+  })
 
   const resolveSourceSongsAreaState = (sourceSongListUUID: string) => {
     if (songsAreaState.songListUUID === sourceSongListUUID) return songsAreaState
@@ -207,7 +219,36 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
         selectedSongFilePaths,
         sourceSongsAreaState.songInfoArr
       )
+      const isSetTarget = targetNode?.type === 'setList'
       const isMixtapeTarget = targetNode?.type === 'mixtapeList'
+
+      if (isSetTarget) {
+        if (!sourceNode || sourceNode.type !== 'songList') {
+          return []
+        }
+        const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(sourceSongListUUID)
+        const songMap = new Map(
+          sourceSongsAreaState.songInfoArr.map((song) => [song.filePath, song])
+        )
+        const items = orderedSongFilePaths.map((filePath) => ({
+          filePath,
+          originPlaylistUuid: sourceSongListUUID,
+          originPathSnapshot,
+          analysis: buildSongAnalysisSnapshot(songMap.get(filePath))
+        }))
+        if (items.length === 0) {
+          return []
+        }
+        await window.electron.ipcRenderer.invoke('setList:append-items', {
+          playlistUuid: targetSongListUUID,
+          items
+        })
+        try {
+          emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+          emitter.emit('setList/itemsChanged', { uuids: [targetSongListUUID] })
+        } catch {}
+        return []
+      }
 
       if (isMixtapeTarget) {
         if (!sourceNode || (sourceNode.type !== 'songList' && sourceNode.type !== 'mixtapeList')) {

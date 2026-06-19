@@ -87,6 +87,9 @@ const resolveCoreLibraryNameBySongListUUID = (uuid: string) => {
   if (dirPath === 'library/CuratedLibrary' || dirPath.startsWith('library/CuratedLibrary/')) {
     return 'CuratedLibrary'
   }
+  if (dirPath === 'library/SetLibrary' || dirPath.startsWith('library/SetLibrary/')) {
+    return 'SetLibrary'
+  }
   if (dirPath === 'library/MixtapeLibrary' || dirPath.startsWith('library/MixtapeLibrary/')) {
     return 'MixtapeLibrary'
   }
@@ -104,15 +107,25 @@ const handleOverlayClick = (e: MouseEvent) => {
 const isMixtapeListView = computed(
   () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
 )
+const isSetListView = computed(
+  () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'setList'
+)
 const getRowKey = (song: ISongInfo) =>
-  isMixtapeListView.value && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
+  isMixtapeListView.value && song.mixtapeItemId
+    ? song.mixtapeItemId
+    : isSetListView.value && song.setItemId
+      ? song.setItemId
+      : song.filePath
 const resolveSelectedFilePaths = (keys?: string[]) => {
   const selectedKeys = keys ?? songsAreaState.selectedSongFilePath
-  if (!isMixtapeListView.value) return selectedKeys
+  if (!isMixtapeListView.value && !isSetListView.value) return selectedKeys
   const map = new Map<string, string>()
   for (const item of songsAreaState.songInfoArr) {
     if (item.mixtapeItemId) {
       map.set(item.mixtapeItemId, item.filePath)
+    }
+    if (item.setItemId) {
+      map.set(item.setItemId, item.filePath)
     }
   }
   return selectedKeys
@@ -462,7 +475,7 @@ const applyMetadataUpdate = async (
   let idx = arr.findIndex((item) => item.filePath === oldFilePath)
   if (idx === -1) idx = arr.findIndex((item) => item.filePath === updatedSong.filePath)
   if (idx !== -1) {
-    arr.splice(idx, 1, updatedSong)
+    arr.splice(idx, 1, { ...arr[idx], ...updatedSong })
     originalSongInfoArr.value = arr
     applyFiltersAndSorting()
     touchedCurrentList = true
@@ -472,7 +485,7 @@ const applyMetadataUpdate = async (
   songsAreaState.songInfoArr = songsAreaState.songInfoArr.map((item) => {
     if (item.filePath === oldFilePath) {
       runtimeListTouched = true
-      return { ...updatedSong }
+      return { ...item, ...updatedSong }
     }
     if (item.filePath === updatedSong.filePath) {
       runtimeListTouched = true
@@ -824,10 +837,13 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   const isMixtapeTarget =
     targetNode?.type === 'mixtapeList' ||
     selectSongListDialogTargetLibraryName.value === 'MixtapeLibrary'
+  const isSetTarget =
+    targetNode?.type === 'setList' || selectSongListDialogTargetLibraryName.value === 'SetLibrary'
   const removesFromSource =
     sourceActionMode === 'move' &&
     !isMixtapeSource &&
     !isMixtapeTarget &&
+    !isSetTarget &&
     targetSongListUuid !== currentListUuid
 
   if (pathsEffectivelyMoved.length === 0) {

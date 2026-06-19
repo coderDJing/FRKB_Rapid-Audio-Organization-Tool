@@ -15,6 +15,7 @@ import type {
 export type LibrarySelection =
   | 'FilterLibrary'
   | 'CuratedLibrary'
+  | 'SetLibrary'
   | 'RecordingLibrary'
   | 'MixtapeLibrary'
   | 'RecycleBin'
@@ -148,6 +149,7 @@ interface Runtime {
   lastSongListUUIDByLibrary: {
     FilterLibrary: string
     CuratedLibrary: string
+    SetLibrary: string
     MixtapeLibrary: string
   }
   importingSongListUUID: string
@@ -251,6 +253,7 @@ export const useRuntimeStore = defineStore('runtime', {
       lastSongListUUIDByLibrary: {
         FilterLibrary: '',
         CuratedLibrary: '',
+        SetLibrary: '',
         MixtapeLibrary: ''
       },
       importingSongListUUID: '', //正在执行导入中的歌单

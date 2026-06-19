@@ -6,7 +6,7 @@ import type { RekordboxSourceKind, RekordboxSourceLibraryType } from '../shared/
 
 interface IDir {
   uuid: string
-  type: 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList'
+  type: 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList' | 'setList'
   dirName: string
   mixMode?: 'eq' | 'stem'
   stemProfile?: 'quality'
@@ -53,10 +53,12 @@ interface ISongInfo {
   memoryCues?: ISongMemoryCue[]
   mixOrder?: number
   mixtapeItemId?: string
+  setItemId?: string
   analysisOnly?: boolean
   autoFilled?: boolean
   externalAnalyzePath?: string | null
   externalWaveformRootPath?: string | null
+  waveformPreviewListRoot?: string | null
   externalSourceKind?: RekordboxSourceKind | null
   pioneerCoverPath?: string | null
   pioneerAnalyzePath?: string | null
@@ -697,6 +699,7 @@ type Icon = {
   name:
     | 'FilterLibrary'
     | 'CuratedLibrary'
+    | 'SetLibrary'
     | 'RecordingLibrary'
     | 'MixtapeLibrary'
     | 'RecycleBin'

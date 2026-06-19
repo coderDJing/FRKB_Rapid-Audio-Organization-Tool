@@ -55,12 +55,16 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
 
   const isMixtapeViewForState = (state: ISongsAreaPaneRuntimeState) =>
     libraryUtils.getLibraryTreeByUUID(state.songListUUID)?.type === 'mixtapeList'
+  const isSetViewForState = (state: ISongsAreaPaneRuntimeState) =>
+    libraryUtils.getLibraryTreeByUUID(state.songListUUID)?.type === 'setList'
   const isPioneerSourceState = (state: ISongsAreaPaneRuntimeState) =>
     /^(desktop|usb):/.test(String(state.songListUUID || '').trim())
   const getRowKeyForState = (state: ISongsAreaPaneRuntimeState, song: ISongInfo) =>
     (isMixtapeViewForState(state) || isPioneerSourceState(state)) && song.mixtapeItemId
       ? song.mixtapeItemId
-      : song.filePath
+      : isSetViewForState(state) && song.setItemId
+        ? song.setItemId
+        : song.filePath
   const getRowKey = (song: ISongInfo) => getRowKeyForState(songsAreaState, song)
   const getSelectedKeys = () => songsAreaState.selectedSongFilePath
   const setSelectedKeys = (next: string[]) => {
@@ -73,11 +77,20 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     })
   const resolveSelectedFilePathsForState = (state: ISongsAreaPaneRuntimeState, keys?: string[]) => {
     const selectedKeys = keys ?? state.selectedSongFilePath
-    if (!isMixtapeViewForState(state) && !isPioneerSourceState(state)) return selectedKeys
+    if (
+      !isMixtapeViewForState(state) &&
+      !isPioneerSourceState(state) &&
+      !isSetViewForState(state)
+    ) {
+      return selectedKeys
+    }
     const map = new Map<string, string>()
     for (const item of state.songInfoArr) {
       if (item.mixtapeItemId) {
         map.set(item.mixtapeItemId, item.filePath)
+      }
+      if (item.setItemId) {
+        map.set(item.setItemId, item.filePath)
       }
     }
     return selectedKeys
@@ -254,7 +267,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
 
   async function handleDeleteKey() {
     const activeSongsAreaState = songsAreaState
-    const selectedKeys = JSON.parse(JSON.stringify(activeSongsAreaState.selectedSongFilePath))
+    const selectedKeys = [...activeSongsAreaState.selectedSongFilePath]
     if (!selectedKeys.length) return false
 
     const isInRecycleBin = activeSongsAreaState.songListUUID === RECYCLE_BIN_UUID
@@ -269,6 +282,29 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       emitter.emit('songsRemoved', {
         listUUID: activeSongsAreaState.songListUUID,
         itemIds: selectedKeys
+      })
+      return false
+    }
+    if (isSetViewForState(activeSongsAreaState)) {
+      const itemIds = selectedKeys.filter((key) =>
+        activeSongsAreaState.songInfoArr.some((song) => song.setItemId === key)
+      )
+      if (itemIds.length === 0) return false
+      await window.electron.ipcRenderer.invoke('setList:remove-items', itemIds)
+      activeSongsAreaState.selectedSongFilePath.length = 0
+      if (
+        runtime.playingData.playingSongListUUID === activeSongsAreaState.songListUUID &&
+        runtime.playingData.playingSong?.setItemId &&
+        itemIds.includes(runtime.playingData.playingSong.setItemId)
+      ) {
+        runtime.playingData.playingSongListUUID = ''
+        runtime.playingData.playingSongListData = []
+        runtime.playingData.playingSong = null
+      }
+      emitter.emit('playlistContentChanged', { uuids: [activeSongsAreaState.songListUUID] })
+      emitter.emit('songsRemoved', {
+        listUUID: activeSongsAreaState.songListUUID,
+        itemIds
       })
       return false
     }

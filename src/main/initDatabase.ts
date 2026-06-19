@@ -59,8 +59,10 @@ export async function initDatabaseStructure(
   const recycleBinPath = path.join(dirPath, 'library', getCoreFsDirName('RecycleBin'))
   const recordingLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('RecordingLibrary'))
   const mixtapeLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('MixtapeLibrary'))
+  const setLibraryPath = path.join(dirPath, 'library', getCoreFsDirName('SetLibrary'))
   await fs.ensureDir(filterLibraryPath)
   await fs.ensureDir(curatedLibraryPath)
+  await fs.ensureDir(setLibraryPath)
   await fs.ensureDir(recycleBinPath)
   await fs.ensureDir(recordingLibraryPath)
   await fs.ensureDir(mixtapeLibraryPath)
@@ -69,6 +71,7 @@ export async function initDatabaseStructure(
     coreDirNames: {
       FilterLibrary: getCoreFsDirName('FilterLibrary'),
       CuratedLibrary: getCoreFsDirName('CuratedLibrary'),
+      SetLibrary: getCoreFsDirName('SetLibrary'),
       MixtapeLibrary: getCoreFsDirName('MixtapeLibrary'),
       RecordingLibrary: getCoreFsDirName('RecordingLibrary'),
       RecycleBin: getCoreFsDirName('RecycleBin')

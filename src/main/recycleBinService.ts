@@ -12,6 +12,7 @@ import {
 } from './recycleBinDb'
 import {
   clearTrackCache,
+  findSongListRoot,
   purgeCoverCacheForTrack,
   transferTrackCaches
 } from './services/cacheMaintenance'
@@ -406,7 +407,7 @@ export async function moveFileToRecycleBin(
   if (!recycleRoot || !libraryRoot || !srcPath) {
     return { status: 'failed', srcPath, error: 'recycle bin root unavailable' }
   }
-  const sourceListRoot = await findSongListRootByPath(path.dirname(srcPath))
+  const sourceListRoot = await findSongListRoot(path.dirname(srcPath))
   try {
     if (!(await fs.pathExists(srcPath))) {
       return { status: 'skipped', srcPath }

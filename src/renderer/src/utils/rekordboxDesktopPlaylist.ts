@@ -31,6 +31,7 @@ type RekordboxDesktopDeletePayload = {
 
 type RekordboxDesktopPlaylistWriteResult = RekordboxDesktopPlaylistSuccessSummary & {
   removedSourceFilePaths?: string[]
+  removedSetItemIds?: string[]
 }
 
 const pad = (value: number) => String(value).padStart(2, '0')
@@ -56,7 +57,8 @@ const buildTrackInput = (song: ISongInfo): RekordboxDesktopPlaylistTrackInput =>
   bitrate: typeof song.bitrate === 'number' ? song.bitrate : undefined,
   duration: typeof song.duration === 'string' ? song.duration : '',
   hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
-  memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
+  memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : [],
+  setItemId: typeof song.setItemId === 'string' ? song.setItemId : undefined
 })
 
 const buildJobId = () =>
@@ -244,8 +246,40 @@ const cleanupCopiedTracks = async (filePaths: string[]) => {
 
 const deleteSourceTracksAfterWrite = async (params: {
   sourceFilePaths: string[]
+  setItemIds?: string[]
   deletePayload?: RekordboxDesktopDeletePayload
 }) => {
+  const setItemIds = Array.isArray(params.setItemIds)
+    ? params.setItemIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : []
+  if (setItemIds.length > 0) {
+    const summary = (await window.electron.ipcRenderer.invoke(
+      'setList:recycle-item-files',
+      setItemIds
+    )) as {
+      success?: number
+      failed?: number
+      removedPaths?: string[]
+      removedSetItemIds?: string[]
+    }
+    const failed = Number(summary?.failed || 0)
+    if (failed > 0) {
+      await confirm({
+        title: t('rekordboxDesktop.deleteSourceFailedTitle'),
+        content: [
+          t('rekordboxDesktop.deleteSourceSuccessCount', { count: Number(summary?.success || 0) }),
+          t('rekordboxDesktop.deleteSourceFailedCount', { count: failed })
+        ],
+        confirmShow: false,
+        innerHeight: 0
+      })
+    }
+    return {
+      removedPaths: Array.isArray(summary?.removedPaths) ? summary.removedPaths : [],
+      removedSetItemIds: Array.isArray(summary?.removedSetItemIds) ? summary.removedSetItemIds : []
+    }
+  }
+
   const payload =
     params.deletePayload?.songListPath || params.deletePayload?.sourceType
       ? {
@@ -268,7 +302,7 @@ const deleteSourceTracksAfterWrite = async (params: {
       innerHeight: 0
     })
   }
-  return removedPaths
+  return { removedPaths, removedSetItemIds: [] }
 }
 
 const runCreateRequest = async (request: RekordboxDesktopPlaylistRequest) => {
@@ -297,6 +331,7 @@ const runCreateRequest = async (request: RekordboxDesktopPlaylistRequest) => {
 export const openRekordboxDesktopPlaylistForSelectedTracks = async (params: {
   tracks: ISongInfo[]
   songListUUID: string
+  playlistName?: string
   deletePayload?: RekordboxDesktopDeletePayload
   forceKeepSourceTracks?: boolean
 }): Promise<RekordboxDesktopPlaylistWriteResult | null> => {
@@ -311,7 +346,8 @@ export const openRekordboxDesktopPlaylistForSelectedTracks = async (params: {
 
   const target = await openTargetDialog({
     title: t('rekordboxDesktop.dialogTitleTracks'),
-    defaultPlaylistName: buildDefaultSelectedTracksPlaylistName(),
+    defaultPlaylistName:
+      String(params.playlistName || '').trim() || buildDefaultSelectedTracksPlaylistName(),
     trackCount: params.tracks.length
   })
   if (!target) return null
@@ -359,17 +395,24 @@ export const openRekordboxDesktopPlaylistForSelectedTracks = async (params: {
   }
 
   let removedSourceFilePaths: string[] = []
+  let removedSetItemIds: string[] = []
   if (deleteSourceAfterWrite && copyResponse.summary.sourceFilePaths.length > 0) {
-    removedSourceFilePaths = await deleteSourceTracksAfterWrite({
+    const deleteSummary = await deleteSourceTracksAfterWrite({
       sourceFilePaths: copyResponse.summary.sourceFilePaths,
+      setItemIds: originalTracks
+        .map((track) => track.setItemId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
       deletePayload: params.deletePayload
     })
+    removedSourceFilePaths = deleteSummary.removedPaths
+    removedSetItemIds = deleteSummary.removedSetItemIds
   }
 
   await showSuccessSummary(summary, removedSourceFilePaths)
   return {
     ...summary,
-    removedSourceFilePaths
+    removedSourceFilePaths,
+    removedSetItemIds
   }
 }
 
@@ -438,16 +481,23 @@ export const openRekordboxDesktopPlaylistForPlaylist = async (params: {
   }
 
   let removedSourceFilePaths: string[] = []
+  let removedSetItemIds: string[] = []
   if (deleteSourceAfterWrite && copyResponse.summary.sourceFilePaths.length > 0) {
-    removedSourceFilePaths = await deleteSourceTracksAfterWrite({
+    const deleteSummary = await deleteSourceTracksAfterWrite({
       sourceFilePaths: copyResponse.summary.sourceFilePaths,
+      setItemIds: originalTracks
+        .map((track) => track.setItemId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
       deletePayload: params.deletePayload
     })
+    removedSourceFilePaths = deleteSummary.removedPaths
+    removedSetItemIds = deleteSummary.removedSetItemIds
   }
 
   await showSuccessSummary(summary, removedSourceFilePaths)
   return {
     ...summary,
-    removedSourceFilePaths
+    removedSourceFilePaths,
+    removedSetItemIds
   }
 }

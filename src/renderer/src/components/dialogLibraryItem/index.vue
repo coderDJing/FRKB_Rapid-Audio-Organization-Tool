@@ -61,8 +61,12 @@ if (dirData === null) {
 }
 let fatherDirData = libraryUtils.getFatherLibraryTreeByUUID(props.uuid)
 const isMixtapeDialog = computed(() => String(props.libraryName || '').startsWith('MixtapeLibrary'))
-const isDialogListType = (node?: IDir | null) =>
-  node?.type === 'songList' || (isMixtapeDialog.value && node?.type === 'mixtapeList')
+const isSetDialog = computed(() => props.libraryName === 'SetLibrary')
+const isDialogListType = (node?: IDir | null) => {
+  if (isMixtapeDialog.value) return node?.type === 'mixtapeList'
+  if (isSetDialog.value) return node?.type === 'setList'
+  return node?.type === 'songList'
+}
 const resolveMixtapeModeTag = (mixMode?: string) =>
   mixMode === 'eq' ? t('mixtape.mixModeEqTag') : t('mixtape.mixModeStemTag')
 const resolveMixtapeModeLabel = (mixMode?: string) =>
@@ -76,6 +80,8 @@ const onlyShowBubbleWhenOverflow = computed(
 const createPlaylistMenuKey = 'library.createPlaylist'
 const createStemMixtapeMenuKey = 'library.createStemMixtape'
 const createEqMixtapeMenuKey = 'library.createEqMixtape'
+const createSetPlaylistMenuKey = 'library.createSetPlaylist'
+const createSetFolderMenuKey = 'library.createSetFolder'
 const createFolderMenuKey = 'library.createFolder'
 const renameMenuKey = 'common.rename'
 const deleteMenuKey = 'common.delete'
@@ -191,18 +197,22 @@ if (dirData && dirData.dirName == '') {
 }
 
 const rightClickMenuShow = ref(false)
+const buildCreateMenuItems = (): IMenu[] => {
+  if (isMixtapeDialog.value) {
+    return [
+      { menuName: createStemMixtapeMenuKey },
+      { menuName: createEqMixtapeMenuKey },
+      { menuName: createFolderMenuKey }
+    ]
+  }
+  if (isSetDialog.value) {
+    return [{ menuName: createSetPlaylistMenuKey }, { menuName: createSetFolderMenuKey }]
+  }
+  return [{ menuName: createPlaylistMenuKey }, { menuName: createFolderMenuKey }]
+}
 const menuArr = ref<IMenu[][]>(
   dirData?.type == 'dir'
-    ? [
-        isMixtapeDialog.value
-          ? [
-              { menuName: createStemMixtapeMenuKey },
-              { menuName: createEqMixtapeMenuKey },
-              { menuName: createFolderMenuKey }
-            ]
-          : [{ menuName: createPlaylistMenuKey }, { menuName: createFolderMenuKey }],
-        [{ menuName: renameMenuKey }, { menuName: deleteMenuKey }]
-      ]
+    ? [buildCreateMenuItems(), [{ menuName: renameMenuKey }, { menuName: deleteMenuKey }]]
     : [[{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }]]
 )
 const deleteDir = async () => {
@@ -273,7 +283,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   rightClickMenuShow.value = false
   if (result !== 'cancel') {
-    if (result.menuName == createPlaylistMenuKey) {
+    if (result.menuName == createPlaylistMenuKey || result.menuName == createSetPlaylistMenuKey) {
       dirChildRendered.value = true
       dirChildShow.value = true
       const newUuid = uuidV4()
@@ -281,7 +291,7 @@ const contextmenuEvent = async (event: MouseEvent) => {
       dirData.children.unshift({
         uuid: newUuid,
         dirName: '',
-        type: 'songList'
+        type: result.menuName == createSetPlaylistMenuKey ? 'setList' : 'songList'
       })
       // 不在此时标记“创建中”，等待命名确认开始写盘时再标记
     } else if (
@@ -304,7 +314,10 @@ const contextmenuEvent = async (event: MouseEvent) => {
         mixMode,
         stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
       })
-    } else if (result.menuName == createFolderMenuKey) {
+    } else if (
+      result.menuName == createFolderMenuKey ||
+      result.menuName == createSetFolderMenuKey
+    ) {
       dirChildRendered.value = true
       dirChildShow.value = true
       dirData.children = dirData.children || []
@@ -672,7 +685,7 @@ watch(
         class="songlist-icon"
       />
       <div
-        v-if="dirData.type == 'songList' && runtime.creatingSongListUUID === props.uuid"
+        v-if="isDialogListType(dirData) && runtime.creatingSongListUUID === props.uuid"
         class="loading"
       ></div>
     </div>

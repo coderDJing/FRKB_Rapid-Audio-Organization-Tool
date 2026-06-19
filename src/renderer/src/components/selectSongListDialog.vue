@@ -34,6 +34,9 @@ import {
 } from '@renderer/composables/mixtape/stemMode'
 import {
   buildVisibleCombinedNavList,
+  collectDialogSongLists,
+  filterSongListsByKeyword,
+  isDialogListNode,
   loadRecentDialogSelectedSongListUUIDs,
   persistRecentDialogSelectedSongListUUIDs,
   resolveDialogNavIndexByUUID,
@@ -57,8 +60,8 @@ const props = defineProps({
   }
 })
 const isMixtapeDialog = computed(() => props.libraryName === 'MixtapeLibrary')
-const isDialogListType = (node?: IDir | null) =>
-  isMixtapeDialog.value ? node?.type === 'mixtapeList' : node?.type === 'songList'
+const isSetDialog = computed(() => props.libraryName === 'SetLibrary')
+const isDialogListType = (node?: IDir | null) => isDialogListNode(node, props.libraryName)
 
 const runtime = useRuntimeStore()
 runtime.activeMenuUUID = ''
@@ -143,18 +146,7 @@ watch(
 
 // 扁平化当前库下的全部歌单（不关心折叠状态）
 const allSongListArr = computed<IDir[]>(() => {
-  const result: IDir[] = []
-  const traverse = (node?: IDir) => {
-    if (!node) return
-    if (isDialogListType(node)) {
-      result.push(node)
-    }
-    if (node.children && node.children.length) {
-      for (const child of node.children) traverse(child)
-    }
-  }
-  traverse(libraryData.value)
-  return result
+  return collectDialogSongLists(libraryData.value, props.libraryName)
 })
 
 // 组合“最近使用歌单”+“全部歌单”（保留重复项，便于在两个区域都可停留）
@@ -243,6 +235,7 @@ const dialogTitleText = computed(() => {
   if (
     props.libraryName !== 'FilterLibrary' &&
     props.libraryName !== 'CuratedLibrary' &&
+    props.libraryName !== 'SetLibrary' &&
     props.libraryName !== 'MixtapeLibrary'
   ) {
     return libraryTitleText.value
@@ -255,7 +248,7 @@ const dialogTitleText = computed(() => {
   )
 })
 const confirmActionText = computed(() => {
-  if (props.libraryName === 'MixtapeLibrary') {
+  if (props.libraryName === 'MixtapeLibrary' || props.libraryName === 'SetLibrary') {
     return t('common.confirm')
   }
   return props.actionMode === 'copy' ? t('common.copy') : t('common.move')
@@ -267,34 +260,34 @@ const resolveMixtapeModeLabel = (mixMode?: string) =>
   mixMode === 'eq' ? t('mixtape.mixModeEqLabel') : t('mixtape.mixModeStemLabel')
 const resolveMixtapeBadgeTitle = (mixMode?: string) => resolveMixtapeModeLabel(mixMode)
 
-const menuArr = ref([
-  isMixtapeDialog.value
-    ? [
-        { menuName: 'library.createStemMixtape' },
-        { menuName: 'library.createEqMixtape' },
-        { menuName: 'library.createFolder' }
-      ]
-    : [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
-])
+const buildMenuItems = () => {
+  if (isMixtapeDialog.value) {
+    return [
+      { menuName: 'library.createStemMixtape' },
+      { menuName: 'library.createEqMixtape' },
+      { menuName: 'library.createFolder' }
+    ]
+  }
+  if (isSetDialog.value) {
+    return [{ menuName: 'library.createSetPlaylist' }, { menuName: 'library.createSetFolder' }]
+  }
+  return [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
+}
+const menuArr = ref([buildMenuItems()])
 const contextmenuEvent = async (event: MouseEvent) => {
   if (!libraryData.value) return
-  menuArr.value = [
-    isMixtapeDialog.value
-      ? [
-          { menuName: 'library.createStemMixtape' },
-          { menuName: 'library.createEqMixtape' },
-          { menuName: 'library.createFolder' }
-        ]
-      : [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]
-  ]
+  menuArr.value = [buildMenuItems()]
   let result = await rightClickMenu({ menuArr: menuArr.value, clickEvent: event })
   if (result !== 'cancel') {
-    if (result.menuName == 'library.createPlaylist') {
+    if (
+      result.menuName == 'library.createPlaylist' ||
+      result.menuName == 'library.createSetPlaylist'
+    ) {
       const newUuid = uuidV4()
       libraryData.value.children = libraryData.value.children || []
       libraryData.value.children.unshift({
         uuid: newUuid,
-        type: 'songList',
+        type: result.menuName == 'library.createSetPlaylist' ? 'setList' : 'songList',
         dirName: ''
       })
       // 新建后在对话框中仅定位高亮，不触发双击
@@ -355,20 +348,10 @@ const searchKeyword = computed(() =>
 )
 const filteredRecentSongListArr = computed(() => {
   const base = recentSongListArr.value.filter((item) => isDialogListType(item))
-  if (!searchKeyword.value) return base
-  return base.filter((item) =>
-    String(item.dirName || '')
-      .toLowerCase()
-      .includes(searchKeyword.value)
-  )
+  return filterSongListsByKeyword(base, searchKeyword.value)
 })
 const filteredAllSongListArr = computed(() => {
-  if (!searchKeyword.value) return allSongListArr.value
-  return allSongListArr.value.filter((item) =>
-    String(item.dirName || '')
-      .toLowerCase()
-      .includes(searchKeyword.value)
-  )
+  return filterSongListsByKeyword(allSongListArr.value, searchKeyword.value)
 })
 const filteredSongListUuids = computed(() => {
   if (!searchKeyword.value) return allSongListArr.value.map((item) => item.uuid)
@@ -392,7 +375,7 @@ const createNow = async () => {
   libraryData.value.children = libraryData.value.children || []
   libraryData.value.children.unshift({
     uuid: newUuid,
-    type: isMixtapeDialog.value ? 'mixtapeList' : 'songList',
+    type: isMixtapeDialog.value ? 'mixtapeList' : isSetDialog.value ? 'setList' : 'songList',
     dirName: name,
     mixMode: isMixtapeDialog.value ? projectMode?.mixMode || 'stem' : undefined,
     stemProfile: isMixtapeDialog.value ? projectMode?.stemProfile || 'quality' : undefined,
@@ -787,7 +770,7 @@ watch(
                   >
                     <dialogLibraryItem
                       :uuid="item.uuid"
-                      :library-name="libraryData.dirName + 'Dialog'"
+                      :library-name="props.libraryName"
                       :filter-text="playlistSearch"
                       :suppress-highlight="selectedArea === 'recent'"
                       @dbl-click-song-list="confirmHandle()"

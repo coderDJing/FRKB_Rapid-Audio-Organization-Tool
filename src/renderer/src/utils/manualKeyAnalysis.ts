@@ -10,7 +10,18 @@ type ScanSongListResult = {
   }>
 }
 
-const hasRequiredAnalysis = (
+type AnalysisCandidate = {
+  filePath?: string
+  key?: unknown
+  bpm?: unknown
+  firstBeatMs?: unknown
+  barBeatOffset?: unknown
+  fileMissing?: boolean
+}
+
+const normalizeFilePathKey = (filePath: string) => filePath.replace(/\//g, '\\').toLowerCase()
+
+export const hasRequiredAnalysis = (
   song: { key?: unknown; bpm?: unknown; firstBeatMs?: unknown; barBeatOffset?: unknown },
   requiresRuntimeAnalysis: boolean
 ) => {
@@ -28,6 +39,24 @@ const hasRequiredAnalysis = (
   )
 }
 
+export const collectMissingAnalysisFilesFromSongs = (
+  songs: AnalysisCandidate[],
+  requiresRuntimeAnalysis: boolean,
+  seen = new Set<string>()
+) => {
+  const files: string[] = []
+  for (const song of songs) {
+    if (song.fileMissing) continue
+    const filePath = String(song.filePath || '').trim()
+    const key = normalizeFilePathKey(filePath)
+    if (!filePath || seen.has(key)) continue
+    if (hasRequiredAnalysis(song, requiresRuntimeAnalysis)) continue
+    seen.add(key)
+    files.push(filePath)
+  }
+  return files
+}
+
 export const scanSongListsForMissingAnalysisFiles = async (
   uuids: string[],
   requiresRuntimeAnalysis: boolean
@@ -42,13 +71,9 @@ export const scanSongListsForMissingAnalysisFiles = async (
       uuid
     )) as ScanSongListResult | null
     if (!Array.isArray(scan?.scanData)) continue
-    for (const song of scan.scanData) {
-      const filePath = String(song.filePath || '').trim()
-      if (!filePath || seen.has(filePath)) continue
-      if (hasRequiredAnalysis(song, requiresRuntimeAnalysis)) continue
-      seen.add(filePath)
-      files.push(filePath)
-    }
+    files.push(
+      ...collectMissingAnalysisFilesFromSongs(scan.scanData, requiresRuntimeAnalysis, seen)
+    )
   }
   return files
 }

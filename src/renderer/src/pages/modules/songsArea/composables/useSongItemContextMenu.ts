@@ -20,20 +20,24 @@ import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import {
-  resolveLibraryTransferActionLabelKey,
-  resolveLibraryTransferActionModeForSongList
-} from '@renderer/utils/libraryTransfer'
-import {
   buildNeteaseSearchQuery,
   normalizeNeteaseSearchText,
   openNeteaseSearch
 } from '@renderer/utils/neteaseSearch'
 import { delSongsViaSend, permanentlyDelSongsViaSend } from '@renderer/utils/recycleBinActions'
+import {
+  buildSongItemMenuArr,
+  createDefaultMenuArr,
+  createMixtapeMenuArr,
+  createRecycleMenuArr,
+  createSetMenuArr,
+  withoutRecordingAnalysisMenus
+} from './songItemContextMenuMenus'
 
 // Type for the return value when a dialog needs to be opened by the parent
 interface OpenDialogAction {
   action: 'openSelectSongListDialog'
-  libraryName: 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
+  libraryName: 'CuratedLibrary' | 'FilterLibrary' | 'SetLibrary' | 'MixtapeLibrary'
 }
 
 // 新增：用于表示歌曲被右键菜单操作移除的返回类型
@@ -61,18 +65,15 @@ type DeleteSummary = {
   removedPaths?: string[]
 }
 
+type ExportSongsToDirSummary = {
+  removedPaths?: string[]
+  removedSetItemIds?: string[]
+}
+
 type OptimisticRestoreItem = {
   song: ISongInfo
   index: number
 }
-
-const RECORDING_LIBRARY_ANALYSIS_MENU_NAMES = new Set([
-  'tracks.neteaseSearch',
-  'similarTracks.menu',
-  'metadata.autoFillMenu',
-  'fingerprints.analyzeAndAdd',
-  'tracks.clearTrackCache'
-])
 
 export function useSongItemContextMenu(
   songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null>, // For scrolling
@@ -85,18 +86,27 @@ export function useSongItemContextMenu(
     (p || '').replace(/\//g, '\\').toLowerCase()
   const isMixtapeView = () =>
     libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList'
+  const isSetView = () =>
+    libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'setList'
   const getRowKey = (song: ISongInfo) =>
-    isMixtapeView() && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
+    isMixtapeView() && song.mixtapeItemId
+      ? song.mixtapeItemId
+      : isSetView() && song.setItemId
+        ? song.setItemId
+        : song.filePath
   const resolveSelectedKeys = () => songsAreaState.selectedSongFilePath
   const resolveSelectedFilePaths = (keys?: string[]) => {
     const selectedKeys = keys ?? resolveSelectedKeys()
-    if (!isMixtapeView()) {
+    if (!isMixtapeView() && !isSetView()) {
       return selectedKeys.filter((p) => typeof p === 'string' && p.length > 0)
     }
     const map = new Map<string, string>()
     for (const item of songsAreaState.songInfoArr) {
       if (item.mixtapeItemId) {
         map.set(item.mixtapeItemId, item.filePath)
+      }
+      if (item.setItemId) {
+        map.set(item.setItemId, item.filePath)
       }
     }
     return selectedKeys
@@ -112,6 +122,25 @@ export function useSongItemContextMenu(
         .filter((id): id is string => typeof id === 'string' && id.length > 0)
     )
     return selectedKeys.filter((key) => available.has(key))
+  }
+  const resolveSelectedSetItemIds = (keys?: string[]) => {
+    if (!isSetView()) return []
+    const selectedKeys = keys ?? resolveSelectedKeys()
+    const available = new Set(
+      songsAreaState.songInfoArr
+        .map((item) => item.setItemId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    )
+    return selectedKeys.filter((key) => available.has(key))
+  }
+  const resolveSelectedSongs = (keys?: string[]) => {
+    const selectedKeys = keys ?? resolveSelectedKeys()
+    if (isMixtapeView() || isSetView()) {
+      const selectedKeySet = new Set(selectedKeys)
+      return songsAreaState.songInfoArr.filter((item) => selectedKeySet.has(getRowKey(item)))
+    }
+    const selectedFilePathSet = new Set(resolveSelectedFilePaths(selectedKeys))
+    return songsAreaState.songInfoArr.filter((item) => selectedFilePathSet.has(item.filePath))
   }
   const hasWarnedMissingAcoustId = ref(false)
   const warnAcoustIdMissing = () => {
@@ -130,13 +159,6 @@ export function useSongItemContextMenu(
     })()
   }
 
-  const cloneMenuItem = (item: IMenu): IMenu => ({
-    ...item,
-    ...(item.children ? { children: item.children.map(cloneMenuItem) } : {})
-  })
-  const cloneMenuArr = (source: IMenu[][]): IMenu[][] =>
-    source.map((group) => group.map(cloneMenuItem))
-
   const confirmTaskBusy = async () => {
     await confirm({
       title: t('dialog.hint'),
@@ -145,7 +167,7 @@ export function useSongItemContextMenu(
     })
   }
 
-  const resolveCoreLibraryName = (): 'FilterLibrary' | 'CuratedLibrary' | '' => {
+  const resolveCoreLibraryName = (): 'FilterLibrary' | 'CuratedLibrary' | 'SetLibrary' | '' => {
     const dirPath = String(
       libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
     ).replace(/\\/g, '/')
@@ -154,6 +176,9 @@ export function useSongItemContextMenu(
     }
     if (dirPath === 'library/CuratedLibrary' || dirPath.startsWith('library/CuratedLibrary/')) {
       return 'CuratedLibrary'
+    }
+    if (dirPath === 'library/SetLibrary' || dirPath.startsWith('library/SetLibrary/')) {
+      return 'SetLibrary'
     }
     return ''
   }
@@ -177,90 +202,7 @@ export function useSongItemContextMenu(
     return matchedArtists
   }
 
-  const buildMenuArr = (base: IMenu[][], matchedArtists: string[]) => {
-    const next = cloneMenuArr(base)
-    if (matchedArtists.length > 0) {
-      next.splice(2, 0, [{ menuName: 'library.removeCuratedArtistFavorite' }])
-    }
-    return next
-  }
-
-  const resolveMoveMenuName = (target: 'FilterLibrary' | 'CuratedLibrary') =>
-    resolveLibraryTransferActionLabelKey(
-      target,
-      resolveLibraryTransferActionModeForSongList(songsAreaState.songListUUID)
-    )
-  const createNeteaseSearchMenu = (): IMenu[] => [
-    {
-      menuName: 'tracks.neteaseSearch',
-      children: [
-        { menuName: 'tracks.neteaseSearchTitleArtist' },
-        { menuName: 'tracks.neteaseSearchTitle' },
-        { menuName: 'tracks.neteaseSearchArtist' },
-        { menuName: 'tracks.neteaseSearchAlbum' }
-      ]
-    }
-  ]
-  const createDefaultMenuArr = (): IMenu[][] => [
-    [{ menuName: 'tracks.exportTracks' }],
-    [
-      { menuName: 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks' },
-      { menuName: 'rekordboxXmlExport.menuExportSelectedTracks' }
-    ],
-    [
-      { menuName: resolveMoveMenuName('FilterLibrary') },
-      { menuName: resolveMoveMenuName('CuratedLibrary') },
-      { menuName: 'library.addToMixtape' }
-    ],
-    [
-      { menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' },
-      { menuName: 'tracks.deleteAllAbove' }
-    ],
-    [{ menuName: 'tracks.showInFileExplorer' }],
-    createNeteaseSearchMenu(),
-    [{ menuName: 'similarTracks.menu' }],
-    [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'tracks.editMetadata' }],
-    [{ menuName: 'fingerprints.analyzeAndAdd' }],
-    [{ menuName: 'tracks.convertFormat' }],
-    [{ menuName: 'tracks.clearTrackCache' }]
-  ]
-  const createRecycleMenuArr = (): IMenu[][] => [
-    [{ menuName: 'recycleBin.restoreToOriginal' }],
-    [{ menuName: 'tracks.exportTracks' }],
-    [{ menuName: 'library.moveToFilter' }, { menuName: 'library.moveToCurated' }],
-    [
-      { menuName: 'recycleBin.permanentlyDeleteTracks', shortcutKey: 'Delete' },
-      { menuName: 'tracks.deleteAllAbove' }
-    ],
-    [{ menuName: 'tracks.showInFileExplorer' }],
-    createNeteaseSearchMenu(),
-    [{ menuName: 'similarTracks.menu' }],
-    [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'tracks.editMetadata' }],
-    [{ menuName: 'fingerprints.analyzeAndAdd' }],
-    [{ menuName: 'tracks.convertFormat' }],
-    [{ menuName: 'tracks.clearTrackCache' }]
-  ]
-  const createMixtapeMenuArr = (): IMenu[][] => [
-    [{ menuName: 'tracks.exportTracks' }],
-    [
-      { menuName: 'library.copyToFilter' },
-      { menuName: 'library.copyToCurated' },
-      { menuName: 'library.addToMixtape' }
-    ],
-    [{ menuName: 'tracks.deleteTracks', shortcutKey: 'Delete' }],
-    [{ menuName: 'tracks.showInFileExplorer' }],
-    createNeteaseSearchMenu(),
-    [{ menuName: 'similarTracks.menu' }],
-    [{ menuName: 'tracks.editMetadata' }],
-    [{ menuName: 'tracks.clearTrackCache' }]
-  ]
-  const withoutRecordingAnalysisMenus = (groups: IMenu[][]): IMenu[][] =>
-    groups
-      .map((group) =>
-        group.filter((item) => !RECORDING_LIBRARY_ANALYSIS_MENU_NAMES.has(item.menuName))
-      )
-      .filter((group) => group.length > 0)
-  const menuArr: Ref<IMenu[][]> = ref(createDefaultMenuArr())
+  const menuArr: Ref<IMenu[][]> = ref(createDefaultMenuArr(songsAreaState.songListUUID))
 
   const showAndHandleSongContextMenu = async (
     event: MouseEvent,
@@ -285,8 +227,10 @@ export function useSongItemContextMenu(
       ? createMixtapeMenuArr()
       : isRecycleBinView
         ? createRecycleMenuArr()
-        : createDefaultMenuArr()
-    menuArr.value = buildMenuArr(
+        : isSetView()
+          ? createSetMenuArr(songsAreaState.songListUUID)
+          : createDefaultMenuArr(songsAreaState.songListUUID)
+    menuArr.value = buildSongItemMenuArr(
       isRecordingLibraryView ? withoutRecordingAnalysisMenus(baseMenuArr) : baseMenuArr,
       matchedCuratedArtists
     )
@@ -538,7 +482,7 @@ export function useSongItemContextMenu(
         // 1. 基于当前状态和右键的歌曲，确定要删除的歌曲信息和路径 (delPaths)
         const initialSongInfoArrSnapshot = [...songsAreaState.songInfoArr]
         const songIndex = initialSongInfoArrSnapshot.findIndex(
-          (item) => item.filePath === song.filePath
+          (item) => getRowKey(item) === getRowKey(song)
         )
 
         if (songIndex === -1) {
@@ -549,6 +493,30 @@ export function useSongItemContextMenu(
         }
 
         const songsToRemoveInfoBasedOnSnapshot = initialSongInfoArrSnapshot.slice(0, songIndex)
+        if (isSetView()) {
+          const itemIds = songsToRemoveInfoBasedOnSnapshot
+            .map((item) => item.setItemId)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0)
+          if (!itemIds.length) return null
+          await window.electron.ipcRenderer.invoke('setList:remove-items', itemIds)
+          songsAreaState.selectedSongFilePath.length = 0
+          if (
+            runtime.playingData.playingSongListUUID === songsAreaState.songListUUID &&
+            runtime.playingData.playingSong?.setItemId &&
+            itemIds.includes(runtime.playingData.playingSong.setItemId)
+          ) {
+            runtime.playingData.playingSongListUUID = ''
+            runtime.playingData.playingSongListData = []
+            runtime.playingData.playingSong = null
+          }
+          emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
+          emitter.emit('songsRemoved', {
+            listUUID: songsAreaState.songListUUID,
+            itemIds
+          })
+          scrollSongsAreaToTop()
+          return { action: 'songsRemoved', itemIds }
+        }
         const delPaths = songsToRemoveInfoBasedOnSnapshot.map((s) => s.filePath)
 
         if (delPaths.length === 0) {
@@ -644,6 +612,7 @@ export function useSongItemContextMenu(
         return { action: 'songsRemoved', paths: removedPathsForEvent }
       }
       case 'tracks.deleteTracks':
+      case 'library.removeFromSet':
       case 'recycleBin.permanentlyDeleteTracks':
         {
           const currentSelectedKeys = [...resolveSelectedKeys()]
@@ -658,6 +627,27 @@ export function useSongItemContextMenu(
               itemIds: [...itemIds]
             })
             songsAreaState.selectedSongFilePath.length = 0
+            emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
+            emitter.emit('songsRemoved', {
+              listUUID: songsAreaState.songListUUID,
+              itemIds: [...itemIds]
+            })
+            return { action: 'songsRemoved', itemIds: [...itemIds] }
+          }
+          if (isSetView()) {
+            const itemIds = resolveSelectedSetItemIds(currentSelectedKeys)
+            if (!itemIds.length) return null
+            await window.electron.ipcRenderer.invoke('setList:remove-items', itemIds)
+            songsAreaState.selectedSongFilePath.length = 0
+            if (
+              runtime.playingData.playingSongListUUID === songsAreaState.songListUUID &&
+              runtime.playingData.playingSong?.setItemId &&
+              itemIds.includes(runtime.playingData.playingSong.setItemId)
+            ) {
+              runtime.playingData.playingSongListUUID = ''
+              runtime.playingData.playingSongListData = []
+              runtime.playingData.playingSong = null
+            }
             emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
             emitter.emit('songsRemoved', {
               listUUID: songsAreaState.songListUUID,
@@ -805,6 +795,8 @@ export function useSongItemContextMenu(
       case 'library.moveToFilter':
       case 'library.copyToFilter':
         return { action: 'openSelectSongListDialog', libraryName: 'FilterLibrary' }
+      case 'library.addToSet':
+        return { action: 'openSelectSongListDialog', libraryName: 'SetLibrary' }
       case 'library.addToMixtape':
         return { action: 'openSelectSongListDialog', libraryName: 'MixtapeLibrary' }
       case 'tracks.exportTracks': {
@@ -815,41 +807,77 @@ export function useSongItemContextMenu(
         const exportResult = await exportDialog({ title: 'tracks.title' })
         if (exportResult !== 'cancel') {
           const { folderPathVal, deleteSongsAfterExport } = exportResult
-          const songsToExportFilePaths = resolveSelectedFilePaths()
+          const currentSelectedKeys = [...resolveSelectedKeys()]
+          const songsToExportFilePaths = resolveSelectedFilePaths(currentSelectedKeys)
 
-          const songsToExportObjects = songsAreaState.songInfoArr.filter((item) =>
-            songsToExportFilePaths.includes(item.filePath)
-          )
+          const selectedKeySet = new Set(currentSelectedKeys)
+          const songsToExportObjects =
+            isMixtapeView() || isSetView()
+              ? songsAreaState.songInfoArr.filter((item) => selectedKeySet.has(getRowKey(item)))
+              : songsAreaState.songInfoArr.filter((item) =>
+                  songsToExportFilePaths.includes(item.filePath)
+                )
 
-          await window.electron.ipcRenderer.invoke(
+          if (songsToExportObjects.length === 0) return null
+
+          const exportSummary = (await window.electron.ipcRenderer.invoke(
             'exportSongsToDir',
             folderPathVal,
             deleteSongsAfterExport,
             JSON.parse(JSON.stringify(songsToExportObjects))
-          )
+          )) as ExportSongsToDirSummary | undefined
           if (deleteSongsAfterExport && songsToExportFilePaths.length > 0) {
+            const removedPaths =
+              Array.isArray(exportSummary?.removedPaths) && exportSummary.removedPaths.length > 0
+                ? exportSummary.removedPaths
+                : songsToExportFilePaths
+            const removedSetItemIds =
+              Array.isArray(exportSummary?.removedSetItemIds) &&
+              exportSummary.removedSetItemIds.length > 0
+                ? exportSummary.removedSetItemIds
+                : songsToExportObjects
+                    .map((item) => item.setItemId)
+                    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+            if (isSetView() && removedSetItemIds.length > 0) {
+              songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
+                (key) => !removedSetItemIds.includes(key)
+              )
+              if (
+                songsAreaState.songListUUID === runtime.playingData.playingSongListUUID &&
+                runtime.playingData.playingSong?.setItemId &&
+                removedSetItemIds.includes(runtime.playingData.playingSong.setItemId)
+              ) {
+                runtime.playingData.playingSong = null
+              }
+              emitter.emit('songsRemoved', {
+                listUUID: songsAreaState.songListUUID,
+                itemIds: removedSetItemIds
+              })
+              emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
+              return { action: 'songsRemoved', itemIds: removedSetItemIds }
+            }
             // 不直接修改显示列表，仅广播，由 songsArea.vue 统一处理 original + applyFiltersAndSorting
             if (isMixtapeView()) {
               songsAreaState.selectedSongFilePath.length = 0
             } else {
               songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
-                (path) => !songsToExportFilePaths.includes(path)
+                (path) => !removedPaths.includes(path)
               )
             }
             if (songsAreaState.songListUUID === runtime.playingData.playingSongListUUID) {
               if (
                 runtime.playingData.playingSong &&
-                songsToExportFilePaths.includes(runtime.playingData.playingSong.filePath)
+                removedPaths.includes(runtime.playingData.playingSong.filePath)
               ) {
                 runtime.playingData.playingSong = null
               }
             }
             emitter.emit('songsRemoved', {
               listUUID: songsAreaState.songListUUID,
-              paths: songsToExportFilePaths
+              paths: removedPaths
             })
             emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
-            return { action: 'songsRemoved', paths: songsToExportFilePaths }
+            return { action: 'songsRemoved', paths: removedPaths }
           }
         }
         break
@@ -868,10 +896,7 @@ export function useSongItemContextMenu(
           })
           return null
         }
-        const selectedFilePathSet = new Set(resolveSelectedFilePaths())
-        const selectedSongs = songsAreaState.songInfoArr.filter((item) =>
-          selectedFilePathSet.has(item.filePath)
-        )
+        const selectedSongs = resolveSelectedSongs()
         if (!selectedSongs.length) {
           await confirm({
             title: t('rekordboxXmlExport.failureTitle'),
@@ -888,6 +913,28 @@ export function useSongItemContextMenu(
             songListUUID: songsAreaState.songListUUID
           })
           if (summary && summary.mode === 'move' && summary.sourceFilePaths.length > 0) {
+            const removedSetItemIds = Array.isArray(summary.removedSetItemIds)
+              ? summary.removedSetItemIds
+              : []
+            if (isSetView() && removedSetItemIds.length > 0) {
+              songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
+                (item) => !removedSetItemIds.includes(item)
+              )
+              if (songsAreaState.songListUUID === runtime.playingData.playingSongListUUID) {
+                if (
+                  runtime.playingData.playingSong?.setItemId &&
+                  removedSetItemIds.includes(runtime.playingData.playingSong.setItemId)
+                ) {
+                  runtime.playingData.playingSong = null
+                }
+              }
+              emitter.emit('songsRemoved', {
+                listUUID: songsAreaState.songListUUID,
+                itemIds: removedSetItemIds
+              })
+              emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
+              return { action: 'songsRemoved', itemIds: removedSetItemIds }
+            }
             if (isMixtapeView()) {
               songsAreaState.selectedSongFilePath.length = 0
             } else {
@@ -920,10 +967,7 @@ export function useSongItemContextMenu(
           await confirmTaskBusy()
           return null
         }
-        const selectedFilePathSet = new Set(resolveSelectedFilePaths())
-        const selectedSongs = songsAreaState.songInfoArr.filter((item) =>
-          selectedFilePathSet.has(item.filePath)
-        )
+        const selectedSongs = resolveSelectedSongs()
         if (!selectedSongs.length) {
           await confirm({
             title: t('rekordboxDesktop.failureTitle'),
@@ -944,6 +988,26 @@ export function useSongItemContextMenu(
               sourceType: isExternalView ? 'external' : undefined
             }
           })
+          if (summary?.removedSetItemIds?.length) {
+            const removedSetItemIds = summary.removedSetItemIds
+            songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
+              (item) => !removedSetItemIds.includes(item)
+            )
+            if (songsAreaState.songListUUID === runtime.playingData.playingSongListUUID) {
+              if (
+                runtime.playingData.playingSong?.setItemId &&
+                removedSetItemIds.includes(runtime.playingData.playingSong.setItemId)
+              ) {
+                runtime.playingData.playingSong = null
+              }
+            }
+            emitter.emit('songsRemoved', {
+              listUUID: songsAreaState.songListUUID,
+              itemIds: removedSetItemIds
+            })
+            emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
+            return { action: 'songsRemoved', itemIds: removedSetItemIds }
+          }
           if (summary?.removedSourceFilePaths?.length) {
             if (isMixtapeView()) {
               songsAreaState.selectedSongFilePath.length = 0

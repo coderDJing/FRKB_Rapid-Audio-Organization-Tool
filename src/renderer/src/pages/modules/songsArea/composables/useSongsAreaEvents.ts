@@ -190,18 +190,19 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
     const currentListUUID = songsAreaState.songListUUID
     const isMixtapeView = libraryUtils.getLibraryTreeByUUID(currentListUUID)?.type === 'mixtapeList'
+    const isSetView = libraryUtils.getLibraryTreeByUUID(currentListUUID)?.type === 'setList'
+    const resolveItemId = (song: ISongInfo) =>
+      isMixtapeView ? song.mixtapeItemId || '' : isSetView ? song.setItemId || '' : ''
 
     if (itemIds.length > 0) {
-      if (!isMixtapeView) return
+      if (!isMixtapeView && !isSetView) return
       if (listUUID && listUUID !== currentListUUID) return
       const idSet = new Set(itemIds)
-      const hasIntersection = originalSongInfoArr.value.some((s) =>
-        idSet.has(s.mixtapeItemId || '')
-      )
+      const hasIntersection = originalSongInfoArr.value.some((s) => idSet.has(resolveItemId(s)))
       if (!hasIntersection) return
 
       originalSongInfoArr.value = originalSongInfoArr.value.filter(
-        (song) => !idSet.has(song.mixtapeItemId || '')
+        (song) => !idSet.has(resolveItemId(song))
       )
       applyFiltersAndSorting()
 
@@ -209,7 +210,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
         runtime.playingData.playingSongListData = songsAreaState.songInfoArr
         if (
           runtime.playingData.playingSong &&
-          idSet.has(runtime.playingData.playingSong.mixtapeItemId || '')
+          idSet.has(resolveItemId(runtime.playingData.playingSong))
         ) {
           runtime.playingData.playingSong = null
         }
@@ -714,6 +715,13 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     void openSongList().catch(() => {})
   }
 
+  const onSetListItemsChanged = (payload?: { uuids?: string[] } | null) => {
+    const uuids = Array.isArray(payload?.uuids) ? payload.uuids : []
+    if (!songsAreaState.songListUUID || !uuids.includes(songsAreaState.songListUUID)) return
+    if (libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type !== 'setList') return
+    void openSongList().catch(() => {})
+  }
+
   onMounted(() => {
     emitter.on('songsArea/optimistic-remove', onSongsOptimisticallyRemoved)
     emitter.on('songsArea/optimistic-restore', onSongsOptimisticallyRestored)
@@ -730,6 +738,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on('audio:convert:done', onAudioConvertDone)
     window.electron.ipcRenderer.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
     emitter.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
+    emitter.on('setList/itemsChanged', onSetListItemsChanged)
     void loadCurrentSongList(songsAreaState.songListUUID).catch(() => {})
   })
 
@@ -755,6 +764,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       onRecordingLibraryChanged
     )
     emitter.off(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
+    emitter.off('setList/itemsChanged', onSetListItemsChanged)
   })
 
   // 切换歌单时刷新列表

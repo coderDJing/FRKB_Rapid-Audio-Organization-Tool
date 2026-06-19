@@ -217,6 +217,36 @@ const syncRemovedPlaybackSourcePaths = (removedPaths: string[], sourceListUuid: 
   } catch {}
 }
 
+const syncRemovedPlaybackSourceItemIds = (removedItemIds: string[], sourceListUuid: string) => {
+  const idSet = new Set(removedItemIds.filter(Boolean))
+  if (idSet.size === 0) return
+
+  if (!sourceListUuid || runtime.playingData.playingSongListUUID === sourceListUuid) {
+    runtime.playingData.playingSongListData = runtime.playingData.playingSongListData.filter(
+      (item) => !idSet.has(item.setItemId || item.mixtapeItemId || '')
+    )
+    if (
+      runtime.playingData.playingSong &&
+      idSet.has(
+        runtime.playingData.playingSong.setItemId ||
+          runtime.playingData.playingSong.mixtapeItemId ||
+          ''
+      )
+    ) {
+      runtime.playingData.playingSong = null
+    }
+  }
+
+  if (!sourceListUuid) return
+  try {
+    emitter.emit('songsRemoved', {
+      listUUID: sourceListUuid,
+      itemIds: removedItemIds
+    })
+    emitter.emit('playlistContentChanged', { uuids: [sourceListUuid] })
+  } catch {}
+}
+
 const handleAnalyzeCurrentSongFingerprint = async () => {
   const filePath = runtime.playingData.playingSong?.filePath
   if (!filePath) {
@@ -446,7 +476,9 @@ const handleRekordboxDesktopPlaylist = async () => {
       songListUUID: sourceListUuid,
       ...(songListPath ? { deletePayload: { songListPath } } : {})
     })
-    if (summary?.removedSourceFilePaths?.length) {
+    if (summary?.removedSetItemIds?.length) {
+      syncRemovedPlaybackSourceItemIds(summary.removedSetItemIds, sourceListUuid)
+    } else if (summary?.removedSourceFilePaths?.length) {
       syncRemovedPlaybackSourcePaths(summary.removedSourceFilePaths, sourceListUuid)
     }
   } finally {
@@ -454,7 +486,11 @@ const handleRekordboxDesktopPlaylist = async () => {
   }
 }
 
-const resolvePlaybackSourceLibraryName = (): 'FilterLibrary' | 'CuratedLibrary' | '' => {
+const resolvePlaybackSourceLibraryName = ():
+  | 'FilterLibrary'
+  | 'CuratedLibrary'
+  | 'SetLibrary'
+  | '' => {
   const listUuid = runtime.playingData.playingSongListUUID
   if (!listUuid) return ''
   const dirPath = String(libraryUtils.findDirPathByUuid(listUuid) || '').replace(/\\/g, '/')
@@ -463,6 +499,9 @@ const resolvePlaybackSourceLibraryName = (): 'FilterLibrary' | 'CuratedLibrary' 
   }
   if (dirPath === 'library/CuratedLibrary' || dirPath.startsWith('library/CuratedLibrary/')) {
     return 'CuratedLibrary'
+  }
+  if (dirPath === 'library/SetLibrary' || dirPath.startsWith('library/SetLibrary/')) {
+    return 'SetLibrary'
   }
   return ''
 }
@@ -496,7 +535,9 @@ const handleRekordboxXmlExport = async () => {
       sourceLibraryName,
       songListUUID: sourceListUuid
     })
-    if (summary && summary.mode === 'move' && summary.sourceFilePaths.length > 0) {
+    if (summary?.removedSetItemIds?.length) {
+      syncRemovedPlaybackSourceItemIds(summary.removedSetItemIds, sourceListUuid)
+    } else if (summary && summary.mode === 'move' && summary.sourceFilePaths.length > 0) {
       syncRemovedPlaybackSourcePaths(summary.sourceFilePaths, sourceListUuid)
     }
   } finally {

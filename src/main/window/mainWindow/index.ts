@@ -20,6 +20,7 @@ import { registerFingerprintHandlers } from './fingerprintHandlers'
 import { registerImportHandlers } from './importHandlers'
 import { registerFilesystemHandlers } from './filesystemHandlers'
 import { registerAudioConversionHandlers } from './audioConversionHandlers'
+import { registerSetListHandlers } from '../../ipc/setListHandlers'
 import { createProgressSender } from './progress'
 import { startLibraryTreeWatcher, stopLibraryTreeWatcher } from '../../libraryTreeWatcher'
 import { startKeyAnalysisBackground } from '../../services/keyAnalysisQueue'
@@ -335,6 +336,7 @@ function ensureSharedHandlersRegistered() {
   registerImportHandlers(sendProgress, getMainWindow)
   registerFilesystemHandlers(getMainWindow)
   registerAudioConversionHandlers(getMainWindow)
+  registerSetListHandlers()
   sharedHandlersRegistered = true
 }
 

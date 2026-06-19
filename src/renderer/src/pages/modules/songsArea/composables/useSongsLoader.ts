@@ -52,6 +52,12 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   }
   const isMixtapeListUUID = (songListUUID: string) =>
     libraryUtils.getLibraryTreeByUUID(songListUUID)?.type === 'mixtapeList'
+  const isSetListView = () => {
+    const node = libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)
+    return node?.type === 'setList'
+  }
+  const isSetListUUID = (songListUUID: string) =>
+    libraryUtils.getLibraryTreeByUUID(songListUUID)?.type === 'setList'
   const normalizeSongPath = (value: string | undefined | null) =>
     String(value || '')
       .replace(/\//g, '\\')
@@ -67,7 +73,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   const normalizeComparableNumber = (value: unknown) =>
     typeof value === 'number' && Number.isFinite(value) ? value : null
   const getSongIdentityKey = (song: ISongInfo) =>
-    normalizeComparableText(song.mixtapeItemId) || normalizeSongPath(song.filePath)
+    normalizeComparableText(song.mixtapeItemId) ||
+    normalizeComparableText(song.setItemId) ||
+    normalizeSongPath(song.filePath)
   const ignoredSongListRefreshDiffFields = new Set(['key', 'bpm'])
 
   const notifySongSearchDirty = (reason: string) => {
@@ -153,6 +161,15 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       songsAreaState.selectedSongFilePath = currentSelection.filter((key) => validIds.has(key))
       return
     }
+    if (isSetListUUID(songListUUID)) {
+      const validIds = new Set(
+        scanData
+          .map((song) => song.setItemId)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      )
+      songsAreaState.selectedSongFilePath = currentSelection.filter((key) => validIds.has(key))
+      return
+    }
 
     const filePathMap = new Map<string, string>()
     for (const song of scanData) {
@@ -181,6 +198,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     if (!currentPlayingSong) return
 
     const playingMixtapeItemId = normalizeComparableText(currentPlayingSong.mixtapeItemId)
+    const playingSetItemId = normalizeComparableText(currentPlayingSong.setItemId)
     const normalizedPlayingPath = normalizeSongPath(currentPlayingSong.filePath)
     const songCandidates =
       songsAreaState.songInfoArr.length > 0 ? songsAreaState.songInfoArr : scanData
@@ -189,6 +207,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       const songMixtapeItemId = normalizeComparableText(song.mixtapeItemId)
       if (playingMixtapeItemId && songMixtapeItemId) {
         return songMixtapeItemId === playingMixtapeItemId
+      }
+      const songSetItemId = normalizeComparableText(song.setItemId)
+      if (playingSetItemId && songSetItemId) {
+        return songSetItemId === playingSetItemId
       }
       return (
         normalizedPlayingPath !== '' && normalizeSongPath(song.filePath) === normalizedPlayingPath
@@ -226,6 +248,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       normalizeComparableNumber(left.mixOrder) === normalizeComparableNumber(right.mixOrder) &&
       normalizeComparableText(left.mixtapeItemId) ===
         normalizeComparableText(right.mixtapeItemId) &&
+      normalizeComparableText(left.setItemId) === normalizeComparableText(right.setItemId) &&
       normalizeComparableNumber(left.deletedAtMs) ===
         normalizeComparableNumber(right.deletedAtMs) &&
       normalizeComparableText(left.originalPlaylistPath) ===
@@ -299,6 +322,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       normalizeComparableText(left.mixtapeItemId) !== normalizeComparableText(right.mixtapeItemId)
     ) {
       fields.push('mixtapeItemId')
+    }
+    if (normalizeComparableText(left.setItemId) !== normalizeComparableText(right.setItemId)) {
+      fields.push('setItemId')
     }
     if (
       normalizeComparableNumber(left.deletedAtMs) !== normalizeComparableNumber(right.deletedAtMs)
@@ -554,6 +580,32 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
         await nextTick()
         await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+      } finally {
+        isRequesting.value = false
+        clearTimeout(loadingSetTimeout)
+        loadingShow.value = false
+      }
+      return
+    }
+
+    if (isSetListView()) {
+      loadingShow.value = false
+      const loadingSetTimeout = setTimeout(() => {
+        loadingShow.value = true
+      }, 100)
+      try {
+        const { scanData, songListUUID } = await window.electron.ipcRenderer.invoke(
+          'setList:load-items',
+          songsAreaState.songListUUID
+        )
+        if (songListUUID !== songsAreaState.songListUUID) return
+        const songs = Array.isArray(scanData) ? scanData : []
+        originalSongInfoArr.value = markRaw(songs)
+        applyFiltersAndSorting()
+        syncSelectedKeysAfterReload(songs, songListUUID)
+        syncPlayingStateAfterReload(songs, songListUUID)
+        lastAppliedSongListUUID = songListUUID
+        await hydrateRenderCount()
       } finally {
         isRequesting.value = false
         clearTimeout(loadingSetTimeout)

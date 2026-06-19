@@ -25,11 +25,12 @@ export const useSongRowIdentity = (params: {
     () => isNormalLibraryContext.value || isPioneerLibraryContext.value
   )
 
-  const getRowKey = (song: ISongInfo) =>
-    (isPioneerLibraryContext.value || !isNormalLibraryContext.value || isPlaylistReorder.value) &&
-    song.mixtapeItemId
-      ? song.mixtapeItemId
-      : song.filePath
+  const getRowKey = (song: ISongInfo) => {
+    if (song.setItemId) return song.setItemId
+    const shouldUseItemId =
+      isPioneerLibraryContext.value || !isNormalLibraryContext.value || isPlaylistReorder.value
+    return shouldUseItemId && song.mixtapeItemId ? song.mixtapeItemId : song.filePath
+  }
 
   const getCellKey = (song: ISongInfo, colKey: string) => `${getRowKey(song)}__${colKey}`
 

@@ -40,11 +40,15 @@ const buildMixtapeSongSnapshot = (
     bitrate: song?.bitrate,
     container: song?.container,
     key: song?.key,
+    keyAnalysisAlgorithmVersion: song?.keyAnalysisAlgorithmVersion,
     originalKey: song?.key,
     bpm: song?.bpm,
     originalBpm: song?.bpm,
     firstBeatMs: song?.firstBeatMs,
     barBeatOffset: song?.barBeatOffset,
+    timeBasisOffsetMs: song?.timeBasisOffsetMs,
+    beatGridSource: song?.beatGridSource,
+    beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
     hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
     memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
   }

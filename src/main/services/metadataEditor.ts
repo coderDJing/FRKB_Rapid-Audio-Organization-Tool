@@ -10,6 +10,7 @@ import { writeWavRiffInfoWindows, readWavRiffInfoWindows } from './wavRiffInfo'
 import { updateSongCacheEntry, purgeCoverCacheForTrack, findSongListRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { IAudioMetadata, IPicture } from 'music-metadata'
+import { updateSetItemFilePathReferences } from '../setListDb'
 
 async function parseMetadata(filePath: string) {
   const mm = await import('music-metadata')
@@ -503,6 +504,9 @@ export async function updateTrackMetadata(
     const renamedFrom = originalFilePath === filePath ? undefined : originalFilePath
     await updateSongCacheEntry(filePath, songInfo, renamedFrom)
     await purgeCoverCacheForTrack(filePath, renamedFrom)
+    if (renamedFrom) {
+      updateSetItemFilePathReferences(renamedFrom, filePath)
+    }
 
     // Mark track as auto-filled if requested (from MusicBrainz search)
     if (payload.markAsAutoFilled) {

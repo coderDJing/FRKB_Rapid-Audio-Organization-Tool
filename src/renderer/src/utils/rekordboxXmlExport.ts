@@ -59,7 +59,8 @@ const buildTrackInput = (song: ISongInfo): RekordboxXmlExportTrackInput => ({
   bitrate: typeof song.bitrate === 'number' ? song.bitrate : undefined,
   duration: typeof song.duration === 'string' ? song.duration : '',
   hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
-  memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
+  memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : [],
+  setItemId: typeof song.setItemId === 'string' ? song.setItemId : undefined
 })
 
 const buildJobId = () =>
@@ -145,9 +146,11 @@ export const openRekordboxXmlExportForSelectedTracks = async (params: {
   tracks: ISongInfo[]
   sourceLibraryName: RekordboxXmlExportSourceLibraryName
   songListUUID: string
+  playlistName?: string
 }) => {
   const orderedTracks = sortByPlaylistTrackNumber(params.tracks)
-  const defaultPlaylistName = buildSelectedTracksDefaultPlaylistName()
+  const defaultPlaylistName =
+    String(params.playlistName || '').trim() || buildSelectedTracksDefaultPlaylistName()
   const dialogResult = await openRekordboxXmlExportDialog({
     dialogTitle: t('rekordboxXmlExport.dialogTitleTracks'),
     defaultExportDirName: buildDefaultExportDirName(defaultPlaylistName),

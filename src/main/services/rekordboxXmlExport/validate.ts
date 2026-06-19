@@ -11,7 +11,8 @@ import type {
 
 const SUPPORTED_SOURCE_LIBRARIES = new Set<RekordboxXmlExportSourceLibraryName>([
   'FilterLibrary',
-  'CuratedLibrary'
+  'CuratedLibrary',
+  'SetLibrary'
 ])
 
 const normalizeComparePath = (value: string) => {
@@ -99,7 +100,8 @@ export const validateSelectedTrackInputs = (tracks: RekordboxXmlExportTrackInput
       bitrate: typeof item.bitrate === 'number' ? item.bitrate : undefined,
       duration: String(item.duration || '').trim(),
       hotCues: normalizeSongHotCues(item.hotCues),
-      memoryCues: normalizeSongMemoryCues(item.memoryCues)
+      memoryCues: normalizeSongMemoryCues(item.memoryCues),
+      setItemId: String(item.setItemId || '').trim() || undefined
     }))
   }
 }
