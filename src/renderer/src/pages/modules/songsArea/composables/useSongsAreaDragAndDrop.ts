@@ -515,6 +515,7 @@ export const useSongsAreaDragAndDrop = (options: UseSongsAreaDragAndDropOptions)
   const handleSongDragEnd = () => {
     cancelActiveMixtapeDragSession(2000)
     runtime.songDragSuppressClickUntilMs = Date.now() + 450
+    resetPaneDropHover()
     hideDragHint()
     options.scheduleDragCleanup()
   }
