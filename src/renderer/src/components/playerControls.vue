@@ -74,6 +74,7 @@ const emits = defineEmits([
   'delSong',
   'moveToLikeLibrary',
   'moveToListLibrary',
+  'moveToSetLibrary',
   'moveToMixtapeLibrary',
   'exportTrack'
 ])
@@ -161,6 +162,9 @@ const moveToLikeLibrary = () => {
 
 const moveToListLibrary = () => {
   emits('moveToListLibrary', runtime.playingData.playingSong)
+}
+const moveToSetLibrary = () => {
+  emits('moveToSetLibrary', runtime.playingData.playingSong)
 }
 const moveToMixtapeLibrary = () => {
   emits('moveToMixtapeLibrary', runtime.playingData.playingSong)
@@ -775,6 +779,9 @@ onUnmounted(() => {
             <div class="shortcut" style="display: flex; align-items: center">
               <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
             </div>
+          </div>
+          <div class="menuButton" @click="moveToSetLibrary()">
+            <span>{{ t('library.addToSet') }}</span>
           </div>
           <div v-if="isReadOnlyPlaybackSource" class="menuButton" @click="moveToMixtapeLibrary()">
             <span>{{ t('library.addToMixtapeByCopy') }}</span>

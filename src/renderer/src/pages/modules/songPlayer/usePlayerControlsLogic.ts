@@ -13,7 +13,8 @@ import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 import {
   resolveLibraryTransferActionModeForPlayback,
-  type LibraryTransferActionMode
+  type LibraryTransferActionMode,
+  type LibraryTransferTarget
 } from '@renderer/utils/libraryTransfer'
 
 type DeleteSummary = {
@@ -95,15 +96,31 @@ export function usePlayerControlsLogic({
       bitrate: song?.bitrate,
       container: song?.container,
       key: song?.key,
+      keyAnalysisAlgorithmVersion: song?.keyAnalysisAlgorithmVersion,
       originalKey: song?.key,
       bpm: song?.bpm,
       originalBpm: song?.bpm,
       firstBeatMs: song?.firstBeatMs,
       barBeatOffset: song?.barBeatOffset,
+      timeBasisOffsetMs: song?.timeBasisOffsetMs,
+      beatGridSource: song?.beatGridSource,
+      beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
       hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
       memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
     }
   }
+  const buildSongAnalysisSnapshot = (song: ISongInfo) => ({
+    key: song.key,
+    keyAnalysisAlgorithmVersion: song.keyAnalysisAlgorithmVersion,
+    bpm: song.bpm,
+    firstBeatMs: song.firstBeatMs,
+    barBeatOffset: song.barBeatOffset,
+    timeBasisOffsetMs: song.timeBasisOffsetMs,
+    beatGridSource: song.beatGridSource,
+    beatGridAlgorithmVersion: song.beatGridAlgorithmVersion,
+    hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
+    memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
+  })
   const showDeleteSummaryIfNeeded = async (
     summary: {
       total?: number
@@ -549,10 +566,7 @@ export function usePlayerControlsLogic({
     }
   }
 
-  const openSongMoveDialog = (
-    libraryName: 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary',
-    song?: ISongInfo
-  ) => {
+  const openSongMoveDialog = (libraryName: LibraryTransferTarget, song?: ISongInfo) => {
     const targetSong = song || runtime.playingData.playingSong
     if (!targetSong) return
     const sourceListUuid = String(runtime.playingData.playingSongListUUID || '')
@@ -572,6 +586,10 @@ export function usePlayerControlsLogic({
 
   const moveToLikeLibrary = (song?: ISongInfo) => {
     openSongMoveDialog('CuratedLibrary', song)
+  }
+
+  const moveToSetLibrary = (song?: ISongInfo) => {
+    openSongMoveDialog('SetLibrary', song)
   }
 
   const moveToMixtapeLibrary = (song?: ISongInfo) => {
@@ -604,15 +622,16 @@ export function usePlayerControlsLogic({
     const songToMove = moveContext.song
 
     const sourceActionMode = moveContext.actionMode
+    const sourceListUuid = moveContext.sourceListUuid
     const readOnlySource = sourceActionMode === 'copy'
-    const sourceRequiresVaultCopy = isRekordboxExternalPlaybackSource(
-      moveContext.sourceListUuid,
-      songToMove
-    )
+    const sourceRequiresVaultCopy = isRekordboxExternalPlaybackSource(sourceListUuid, songToMove)
     const targetNode = libraryUtils.getLibraryTreeByUUID(targetListUuid)
+    const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceListUuid)
+    const isSetTarget =
+      targetNode?.type === 'setList' || selectSongListDialogLibraryName.value === 'SetLibrary'
     const isMixtapeTarget = targetNode?.type === 'mixtapeList'
 
-    if (!readOnlySource && targetListUuid === moveContext.sourceListUuid) {
+    if (!readOnlySource && targetListUuid === moveContext.sourceListUuid && !isSetTarget) {
       // 移动到当前列表，无需操作
       // 重置存储的歌曲信息
       songToMoveRef.value = null
@@ -621,13 +640,13 @@ export function usePlayerControlsLogic({
 
     isFileOperationInProgress.value = true
     const filePathToMove = songToMove.filePath
-    const sourceListUuid = moveContext.sourceListUuid
-    const targetDirPath = isMixtapeTarget ? '' : libraryUtils.findDirPathByUuid(targetListUuid)
+    const targetDirPath =
+      isMixtapeTarget || isSetTarget ? '' : libraryUtils.findDirPathByUuid(targetListUuid)
 
     // 重置存储的歌曲信息
     songToMoveRef.value = null
 
-    if (!isMixtapeTarget && !targetDirPath) {
+    if (!isMixtapeTarget && !isSetTarget && !targetDirPath) {
       console.error(
         `[usePlayerControlsLogic] handleMoveSong: 未找到目标目录路径: ${targetListUuid}`
       )
@@ -637,6 +656,39 @@ export function usePlayerControlsLogic({
 
     try {
       selectSongListDialogShow.value = false // 关闭对话框
+
+      if (isSetTarget) {
+        if (
+          targetNode?.type !== 'setList' ||
+          (sourceNode &&
+            sourceNode.type !== 'songList' &&
+            sourceNode.type !== 'mixtapeList' &&
+            sourceNode.type !== 'setList')
+        ) {
+          isFileOperationInProgress.value = false
+          return
+        }
+        await window.electron.ipcRenderer.invoke('setList:append-items', {
+          playlistUuid: targetListUuid,
+          items: [
+            {
+              filePath: filePathToMove,
+              originPlaylistUuid: sourceListUuid,
+              originPathSnapshot: sourceNode
+                ? libraryUtils.buildDisplayPathByUuid(sourceListUuid)
+                : '',
+              analysis: buildSongAnalysisSnapshot(songToMove)
+            }
+          ]
+        })
+        emitter.emit('playlistContentChanged', { uuids: [targetListUuid] })
+        emitter.emit('setList/itemsChanged', { uuids: [targetListUuid] })
+        emitter.emit('songsArea/clipboardHint', {
+          message: t('library.addToSet')
+        })
+        isFileOperationInProgress.value = false
+        return
+      }
 
       if (readOnlySource) {
         if (isMixtapeTarget) {
@@ -891,6 +943,7 @@ export function usePlayerControlsLogic({
     delSong,
     moveToListLibrary,
     moveToLikeLibrary,
+    moveToSetLibrary,
     moveToMixtapeLibrary,
     exportTrack,
     handleMoveSong // 暴露给父组件的 selectSongListDialogConfirm 使用

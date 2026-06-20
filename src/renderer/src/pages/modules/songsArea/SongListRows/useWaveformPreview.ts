@@ -38,6 +38,7 @@ import {
   type PioneerPreviewWaveformItemHandler,
   type WaveformUpdatedHandler
 } from './waveformPreviewIpcSubscriptions'
+import { createWaveformPreviewCanvasRegistry } from './waveformPreviewCanvasRegistry'
 type VisibleSongItem = { song: ISongInfo; idx: number }
 type WaveformCacheEntry =
   | {
@@ -98,8 +99,6 @@ export function useWaveformPreview(params: {
     String(value || '')
       .replace(/\//g, '\\')
       .toLowerCase()
-  const canvasMap = markRaw(new Map<string, HTMLCanvasElement>())
-  const workerCanvasMap = markRaw(new Map<string, HTMLCanvasElement>())
   const dataMap = markRaw(new Map<string, WaveformCacheEntry>())
   const placeholderStateMap = markRaw(new Map<string, WaveformPlaceholderState>())
   const placeholderReasonMap = markRaw(new Map<string, string>())
@@ -141,6 +140,10 @@ export function useWaveformPreview(params: {
     })
     return waveformWorker
   }
+  const waveformCanvasRegistry = createWaveformPreviewCanvasRegistry({
+    canUseAsyncWaveformWorker,
+    ensureWaveformWorker
+  })
   const toWorkerData = (data: WaveformCacheEntry): SongListWaveformWorkerData => {
     if (!data) return null
     if (data.kind === 'pioneer') {
@@ -188,69 +191,44 @@ export function useWaveformPreview(params: {
   const renderWaveformWithWorker = (filePath: string) => {
     if (!canUseAsyncWaveformWorker) return
     const worker = ensureWaveformWorker()
-    const canvas = canvasMap.get(filePath)
-    if (!worker || !canvas) return
-    const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
-    const accent = computedStyle?.getPropertyValue('--accent') || ''
-    const progressColor = accent.trim() || '#0078d4'
-    const backgroundColor = computedStyle?.getPropertyValue('--waveform-bg').trim() || '#d9dee6'
-    const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
-    const message: SongListWaveformWorkerIncoming = {
-      type: 'render',
-      payload: {
-        canvasId: filePath,
-        filePath,
-        width: canvas.clientWidth || 1,
-        height: canvas.clientHeight || 1,
-        pixelRatio: window.devicePixelRatio || 1,
-        isHalf: useHalfWaveform(),
-        backgroundColor,
-        progressColor,
-        playedPercent,
-        durationSec: resolveTimelineDurationSec(filePath),
-        themeVariant: resolveWaveformTimelineTickThemeVariant(runtime.setting?.themeMode)
-      }
-    }
-    worker.postMessage(message)
-  }
-  const setWaveformCanvasRef = (filePath: string, el: HTMLCanvasElement | null) => {
-    if (!filePath) return
-    if (el) {
-      canvasMap.set(filePath, el)
-      if (canUseAsyncWaveformWorker) {
-        const currentBoundCanvas = workerCanvasMap.get(filePath)
-        if (currentBoundCanvas !== el) {
-          if (currentBoundCanvas) {
-            ensureWaveformWorker()?.postMessage({
-              type: 'detachCanvas',
-              payload: { canvasId: filePath }
-            } satisfies SongListWaveformWorkerIncoming)
-          }
-          const offscreen = el.transferControlToOffscreen()
-          ensureWaveformWorker()?.postMessage(
-            {
-              type: 'attachCanvas',
-              payload: {
-                canvasId: filePath,
-                canvas: offscreen
-              }
-            } satisfies SongListWaveformWorkerIncoming,
-            [offscreen]
-          )
-          workerCanvasMap.set(filePath, el)
-          syncWaveformDataToWorker(filePath, dataMap.get(filePath) ?? null)
+    const canvasEntries = waveformCanvasRegistry.getCanvasEntriesForFilePath(filePath)
+    if (!worker || canvasEntries.length === 0) return
+    for (const [canvasId, canvas] of canvasEntries) {
+      const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
+      const accent = computedStyle?.getPropertyValue('--accent') || ''
+      const progressColor = accent.trim() || '#0078d4'
+      const backgroundColor = computedStyle?.getPropertyValue('--waveform-bg').trim() || '#d9dee6'
+      const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
+      const message: SongListWaveformWorkerIncoming = {
+        type: 'render',
+        payload: {
+          canvasId,
+          filePath,
+          width: canvas.clientWidth || 1,
+          height: canvas.clientHeight || 1,
+          pixelRatio: window.devicePixelRatio || 1,
+          isHalf: useHalfWaveform(),
+          backgroundColor,
+          progressColor,
+          playedPercent,
+          durationSec: resolveTimelineDurationSec(filePath),
+          themeVariant: resolveWaveformTimelineTickThemeVariant(runtime.setting?.themeMode)
         }
       }
-      scheduleDrawForFilePath(filePath)
-    } else {
-      canvasMap.delete(filePath)
-      if (canUseAsyncWaveformWorker && workerCanvasMap.get(filePath)) {
-        ensureWaveformWorker()?.postMessage({
-          type: 'detachCanvas',
-          payload: { canvasId: filePath }
-        } satisfies SongListWaveformWorkerIncoming)
-        workerCanvasMap.delete(filePath)
+      worker.postMessage(message)
+    }
+  }
+  const setWaveformCanvasRef = (
+    canvasId: string,
+    filePath: string,
+    el: HTMLCanvasElement | null
+  ) => {
+    const result = waveformCanvasRegistry.setCanvasRef(canvasId, filePath, el)
+    if (el) {
+      if (result.attachedToWorker) {
+        syncWaveformDataToWorker(filePath, dataMap.get(filePath) ?? null)
       }
+      scheduleDrawForFilePath(filePath)
     }
   }
   const getVisiblePaths = (): string[] => {
@@ -264,6 +242,11 @@ export function useWaveformPreview(params: {
     }
     return paths
   }
+  const getVisibleSongCanvasIdentity = (song?: ISongInfo | null) =>
+    [song?.setItemId, song?.mixtapeItemId, song?.filePath]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean)
+      .join(':')
   const resolveVisibleSongByFilePath = (filePath: string) => {
     const normalizedTargetPath = normalizePath(filePath)
     return (
@@ -283,7 +266,7 @@ export function useWaveformPreview(params: {
       new Set([
         ...getVisiblePaths(),
         ...dataMap.keys(),
-        ...canvasMap.keys(),
+        ...waveformCanvasRegistry.getRegisteredFilePaths(),
         ...inflight,
         ...queuedMissing
       ])
@@ -335,7 +318,7 @@ export function useWaveformPreview(params: {
     return [...eager, ...visibleRest, ...buffered, ...remainder]
   }
   const getWaveformClickPercent = (filePath: string, clientX: number) => {
-    const canvas = canvasMap.get(filePath)
+    const canvas = waveformCanvasRegistry.getCanvasEntriesForFilePath(filePath)[0]?.[1]
     if (!canvas) return 0
     const rect = canvas.getBoundingClientRect()
     if (!rect.width) return 0
@@ -445,10 +428,7 @@ export function useWaveformPreview(params: {
     inflight.delete(filePath)
     syncWaveformDataToWorker(filePath, null)
     if (canUseAsyncWaveformWorker) {
-      ensureWaveformWorker()?.postMessage({
-        type: 'clearCanvas',
-        payload: { canvasId: filePath }
-      } satisfies SongListWaveformWorkerIncoming)
+      waveformCanvasRegistry.clearWorkerCanvasesForFilePath(filePath)
     }
     setWaveformPlaceholderLoading(filePath)
   }
@@ -493,53 +473,53 @@ export function useWaveformPreview(params: {
       renderWaveformWithWorker(filePath)
       return
     }
-    const canvas = canvasMap.get(filePath)
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    const width = canvas.clientWidth || 1
-    const height = canvas.clientHeight || 1
-    resizeCanvas(canvas, ctx, width, height)
-    const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
-    const backgroundColor = computedStyle?.getPropertyValue('--waveform-bg').trim() || '#d9dee6'
-    ctx.fillStyle = backgroundColor
-    ctx.fillRect(0, 0, width, height)
-    const data = dataMap.get(filePath) ?? null
-    const accent = computedStyle?.getPropertyValue('--accent') || ''
-    const progressColor = accent.trim() || '#0078d4'
-    const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
-    if (!data) {
-      drawSongListTimelineTicks(ctx, width, height, {
-        durationSec: resolveTimelineDurationSec(filePath),
-        playedPercent,
-        themeVariant: resolveWaveformTimelineTickThemeVariant(runtime.setting?.themeMode)
-      })
-      return
-    }
-    if (data.kind === 'pioneer') {
-      drawSongListPioneerPreviewWaveform(
-        ctx,
-        width,
-        height,
-        data.data,
-        playedPercent,
-        progressColor
-      )
-      return
-    }
-    if (data.kind === 'compactVisual') {
-      drawSongListCompactVisualWaveform(ctx, width, height, data.data, {
+    for (const [, canvas] of waveformCanvasRegistry.getCanvasEntriesForFilePath(filePath)) {
+      const ctx = canvas.getContext('2d')
+      if (!ctx) continue
+      const width = canvas.clientWidth || 1
+      const height = canvas.clientHeight || 1
+      resizeCanvas(canvas, ctx, width, height)
+      const computedStyle = typeof window !== 'undefined' ? getComputedStyle(canvas) : null
+      const backgroundColor = computedStyle?.getPropertyValue('--waveform-bg').trim() || '#d9dee6'
+      ctx.fillStyle = backgroundColor
+      ctx.fillRect(0, 0, width, height)
+      const data = dataMap.get(filePath) ?? null
+      const accent = computedStyle?.getPropertyValue('--accent') || ''
+      const progressColor = accent.trim() || '#0078d4'
+      const playedPercent = isWaveformPreviewActive(filePath) ? clamp01(previewPercent.value) : 0
+      if (!data) {
+        drawSongListTimelineTicks(ctx, width, height, {
+          durationSec: resolveTimelineDurationSec(filePath),
+          playedPercent,
+          themeVariant: resolveWaveformTimelineTickThemeVariant(runtime.setting?.themeMode)
+        })
+        continue
+      }
+      if (data.kind === 'pioneer') {
+        drawSongListPioneerPreviewWaveform(
+          ctx,
+          width,
+          height,
+          data.data,
+          playedPercent,
+          progressColor
+        )
+        continue
+      }
+      if (data.kind === 'compactVisual') {
+        drawSongListCompactVisualWaveform(ctx, width, height, data.data, {
+          isHalf: useHalfWaveform(),
+          progressColor,
+          playedPercent
+        })
+        continue
+      }
+      drawSongListMixxxWaveform(ctx, width, height, filePath, data.data, {
         isHalf: useHalfWaveform(),
-        progressColor,
-        playedPercent
+        playedPercent,
+        rgbMetricsCache
       })
-      return
     }
-    drawSongListMixxxWaveform(ctx, width, height, filePath, data.data, {
-      isHalf: useHalfWaveform(),
-      playedPercent,
-      rgbMetricsCache
-    })
   }
   const drawVisible = () => {
     if (!waveformVisible.value) return
@@ -550,7 +530,7 @@ export function useWaveformPreview(params: {
   }
   const drawTargets = (targets: Iterable<string>) => {
     for (const filePath of targets) {
-      if (!filePath || !canvasMap.has(filePath)) continue
+      if (!filePath || !waveformCanvasRegistry.hasCanvasForFilePath(filePath)) continue
       drawWaveform(filePath)
     }
   }
@@ -799,7 +779,7 @@ export function useWaveformPreview(params: {
     const song = resolveVisibleSongByFilePath(filePath)
     const visibleFilePath = typeof song?.filePath === 'string' ? song.filePath : ''
     if (!visibleFilePath) return
-    if (!canvasMap.has(visibleFilePath)) return
+    if (!waveformCanvasRegistry.hasCanvasForFilePath(visibleFilePath)) return
     if (
       resolveSongExternalWaveformSource(song, {
         rootPath: resolveExternalRootPath(),
@@ -915,7 +895,8 @@ export function useWaveformPreview(params: {
     drawWaveform(filePath)
   }
   watch(
-    () => visibleSongsWithIndex.value.map((item) => item.song?.filePath || '').join('|'),
+    () =>
+      visibleSongsWithIndex.value.map((item) => getVisibleSongCanvasIdentity(item.song)).join('|'),
     () => {
       if (!waveformVisible.value) return
       if (resolveExternalRootPath()) {
@@ -942,12 +923,7 @@ export function useWaveformPreview(params: {
         for (const filePath of dataMap.keys()) {
           syncWaveformDataToWorker(filePath, null)
         }
-        for (const canvasId of workerCanvasMap.keys()) {
-          ensureWaveformWorker()?.postMessage({
-            type: 'clearCanvas',
-            payload: { canvasId }
-          } satisfies SongListWaveformWorkerIncoming)
-        }
+        waveformCanvasRegistry.clearWorkerCanvases()
       }
       dataMap.clear()
       inflight.clear()
@@ -1006,7 +982,7 @@ export function useWaveformPreview(params: {
       waveformWorker.terminate()
       waveformWorker = null
     }
-    workerCanvasMap.clear()
+    waveformCanvasRegistry.clear()
     unsubscribeWaveformUpdated()
     unsubscribePioneerPreviewWaveformItem()
     unsubscribePioneerPreviewWaveformDone()

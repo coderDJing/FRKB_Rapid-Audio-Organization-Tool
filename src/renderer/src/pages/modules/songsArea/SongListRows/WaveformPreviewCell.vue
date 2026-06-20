@@ -6,13 +6,14 @@ import type { ISongInfo } from 'src/types/globals'
 
 const props = defineProps<{
   song: ISongInfo
+  rowKey: string
   widthPx: number
   canPreviewWaveform: boolean
   isWaveformPreviewActive: (filePath: string) => boolean
   handleWaveformClick: (song: ISongInfo, event: MouseEvent) => void
   handleWaveformStopClick: (event: MouseEvent) => void
   handleHotCueClick: (song: ISongInfo, sec: number) => void
-  setWaveformCanvasRef: (filePath: string, el: HTMLCanvasElement | null) => void
+  setWaveformCanvasRef: (canvasId: string, filePath: string, el: HTMLCanvasElement | null) => void
   getWaveformPlaceholderText: (filePath: string) => string
   getWaveformPlaceholderTitle: (filePath: string) => string
   getWaveformPreviewPlayheadStyle: (filePath: string) => Record<string, string | undefined>
@@ -51,7 +52,12 @@ const parseDurationToSeconds = (input: unknown) => {
     <div class="waveform-preview-shell">
       <canvas
         :ref="
-          (el) => props.setWaveformCanvasRef(props.song.filePath, el as HTMLCanvasElement | null)
+          (el) =>
+            props.setWaveformCanvasRef(
+              props.rowKey,
+              props.song.filePath,
+              el as HTMLCanvasElement | null
+            )
         "
         class="waveform-preview-canvas"
       ></canvas>

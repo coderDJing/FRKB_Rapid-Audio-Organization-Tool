@@ -777,6 +777,7 @@ onUnmounted(() => {
               <WaveformPreviewCell
                 v-else-if="col.key === 'waveformPreview'"
                 :song="item.song"
+                :row-key="getRowKey(item.song)"
                 :width-px="col.width"
                 :can-preview-waveform="canPreviewWaveform"
                 :is-waveform-preview-active="isWaveformPreviewActive"
