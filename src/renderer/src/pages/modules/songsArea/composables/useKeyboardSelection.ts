@@ -43,6 +43,7 @@ interface UseKeyboardSelectionParams {
 export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   const { runtime, songsAreaState, externalViewportHeight } = params
   const readOnly = params.readOnly ?? false
+  let pendingShiftSelectTimer: ReturnType<typeof setTimeout> | null = null
   const CUT_POLL_INTERVAL_MS = 1500
   const CUT_POLL_TIMEOUT_MS = 2 * 60 * 1000
   let cutPollTimer: ReturnType<typeof setInterval> | null = null
@@ -111,6 +112,13 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     return true
   }
 
+  const cancelPendingShiftSelect = () => {
+    if (pendingShiftSelectTimer) {
+      clearTimeout(pendingShiftSelectTimer)
+      pendingShiftSelectTimer = null
+    }
+  }
+
   const songClick = (event: MouseEvent, song: ISongInfo) => {
     if (runtime.songDragSuppressClickUntilMs > Date.now()) {
       event.preventDefault()
@@ -124,6 +132,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
     const rowKey = getRowKey(song)
     if (event.ctrlKey) {
       cancelPendingRepeatSingleClickDeselect()
+      cancelPendingShiftSelect()
       const index = getSelectedKeys().indexOf(rowKey)
       if (index !== -1) {
         songsAreaState.selectedSongFilePath.splice(index, 1)
@@ -132,30 +141,35 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
       }
     } else if (event.shiftKey) {
       cancelPendingRepeatSingleClickDeselect()
-      let lastClickSongFilePath: string | null = null
-      if (getSelectedKeys().length) {
-        lastClickSongFilePath = getSelectedKeys()[getSelectedKeys().length - 1]
-      }
-      let lastClickSongIndex = 0
-      if (lastClickSongFilePath) {
-        lastClickSongIndex = songsAreaState.songInfoArr.findIndex(
-          (item) => getRowKey(item) === lastClickSongFilePath
-        )
-      }
-
-      const clickSongIndex = songsAreaState.songInfoArr.findIndex(
-        (item) => getRowKey(item) === rowKey
-      )
-      const sliceArr = songsAreaState.songInfoArr.slice(
-        Math.min(lastClickSongIndex, clickSongIndex),
-        Math.max(lastClickSongIndex, clickSongIndex) + 1
-      )
-      for (const item of sliceArr) {
-        const key = getRowKey(item)
-        if (getSelectedKeys().indexOf(key) === -1) {
-          songsAreaState.selectedSongFilePath.push(key)
+      cancelPendingShiftSelect()
+      // 延迟 200ms 执行 Shift 多选逻辑，避免 Shift+双击时同时触发多选和双击
+      pendingShiftSelectTimer = setTimeout(() => {
+        pendingShiftSelectTimer = null
+        let lastClickSongFilePath: string | null = null
+        if (getSelectedKeys().length) {
+          lastClickSongFilePath = getSelectedKeys()[getSelectedKeys().length - 1]
         }
-      }
+        let lastClickSongIndex = 0
+        if (lastClickSongFilePath) {
+          lastClickSongIndex = songsAreaState.songInfoArr.findIndex(
+            (item) => getRowKey(item) === lastClickSongFilePath
+          )
+        }
+
+        const clickSongIndex = songsAreaState.songInfoArr.findIndex(
+          (item) => getRowKey(item) === rowKey
+        )
+        const sliceArr = songsAreaState.songInfoArr.slice(
+          Math.min(lastClickSongIndex, clickSongIndex),
+          Math.max(lastClickSongIndex, clickSongIndex) + 1
+        )
+        for (const item of sliceArr) {
+          const key = getRowKey(item)
+          if (getSelectedKeys().indexOf(key) === -1) {
+            songsAreaState.selectedSongFilePath.push(key)
+          }
+        }
+      }, 200)
     } else {
       handlePlainRowClickSelection(event, rowKey)
     }
@@ -618,6 +632,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
   onUnmounted(() => {
     emitter.off('waveform-preview:state', handleWaveformPreviewState)
     cancelPendingRepeatSingleClickDeselect()
+    cancelPendingShiftSelect()
     windowHotkeyBinderCount = Math.max(0, windowHotkeyBinderCount - 1)
     if (windowHotkeyBinderCount > 0) return
     windowPreviewHotkeysLocked = false
@@ -636,6 +651,7 @@ export function useKeyboardSelection(params: UseKeyboardSelectionParams) {
 
   return {
     songClick,
-    cancelPendingRepeatSingleClickDeselect
+    cancelPendingRepeatSingleClickDeselect,
+    cancelPendingShiftSelect
   }
 }

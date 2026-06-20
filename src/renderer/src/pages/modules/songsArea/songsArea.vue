@@ -317,12 +317,13 @@ const handleMetadataBatchUpdatedFromEvent = async (payload: {
 emitter.on('metadataBatchUpdated', handleMetadataBatchUpdatedFromEvent)
 
 // 键盘与鼠标选择
-const { songClick, cancelPendingRepeatSingleClickDeselect } = useKeyboardSelection({
-  runtime,
-  songsAreaState,
-  externalViewportHeight,
-  scheduleSweepCovers
-})
+const { songClick, cancelPendingRepeatSingleClickDeselect, cancelPendingShiftSelect } =
+  useKeyboardSelection({
+    runtime,
+    songsAreaState,
+    externalViewportHeight,
+    scheduleSweepCovers
+  })
 
 // 自动滚动到当前播放项
 const { scrollToIndex, scrollToIndexIfNeeded } = useAutoScrollToCurrent({
@@ -609,6 +610,7 @@ const requestImmediateAnalysis = (song: ISongInfo) => {
 
 const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   cancelPendingRepeatSingleClickDeselect()
+  cancelPendingShiftSelect()
   if (runtime.songDragSuppressClickUntilMs > Date.now()) return
   try {
     emitter.emit('waveform-preview:stop', { reason: 'switch' })

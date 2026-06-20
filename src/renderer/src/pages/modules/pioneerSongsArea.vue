@@ -94,12 +94,13 @@ const pioneerSongsAreaState = {
   },
   columnCacheByMode: {}
 } as unknown as ISongsAreaPaneRuntimeState
-const { songClick, cancelPendingRepeatSingleClickDeselect } = useKeyboardSelection({
-  runtime,
-  songsAreaState: pioneerSongsAreaState,
-  externalViewportHeight,
-  readOnly: true
-})
+const { songClick, cancelPendingRepeatSingleClickDeselect, cancelPendingShiftSelect } =
+  useKeyboardSelection({
+    runtime,
+    songsAreaState: pioneerSongsAreaState,
+    externalViewportHeight,
+    readOnly: true
+  })
 const selectedRowKeysForTemplate = computed(() => [...selectedRowKeys.value])
 
 const selectedSourceKey = computed(() => runtime.pioneerDeviceLibrary.selectedSourceKey || '')
@@ -558,6 +559,7 @@ const { handleSongDragStart, handleSongDragEnd } = usePioneerSongDrag({
 
 const handleSongDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   cancelPendingRepeatSingleClickDeselect()
+  cancelPendingShiftSelect()
   if (!song.fileMissing && song.filePath) {
     const exists = await window.electron.ipcRenderer.invoke('check-path-exists', song.filePath)
     if (!exists) {
