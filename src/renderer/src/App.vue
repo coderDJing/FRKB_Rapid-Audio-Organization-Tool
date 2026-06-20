@@ -892,7 +892,7 @@ onMounted(() => {
         if (uuid) emitter.emit('dialog/trigger-rename', uuid)
         return
       }
-      const uuid = runtime.songsArea.songListUUID
+      const uuid = runtime.selectedPlaylistIds[0]
       if (uuid) emitter.emit('libraryArea/trigger-rename', uuid)
     } catch {}
   }
