@@ -33,6 +33,7 @@ import {
   createSetMenuArr,
   withoutRecordingAnalysisMenus
 } from './songItemContextMenuMenus'
+import { detectSongsAreaScrollCarrier } from './scrollCarrier'
 
 // Type for the return value when a dialog needs to be opened by the parent
 interface OpenDialogAction {
@@ -77,7 +78,8 @@ type OptimisticRestoreItem = {
 
 export function useSongItemContextMenu(
   songsAreaHostElementRef: Ref<InstanceType<typeof OverlayScrollbarsComponent> | null>, // For scrolling
-  songsAreaState: ISongsAreaPaneRuntimeState
+  songsAreaState: ISongsAreaPaneRuntimeState,
+  syncSongsAreaScrollMetrics?: () => void
 ) {
   const getErrorMessage = (error: unknown) =>
     error instanceof Error ? error.message : String(error || t('common.unknownError'))
@@ -296,12 +298,32 @@ export function useSongItemContextMenu(
       })
     }
 
-    const scrollSongsAreaToTop = () => {
-      nextTick(() => {
-        const viewport = songsAreaHostElementRef.value?.osInstance()?.elements().viewport
-        if (viewport) {
-          viewport.scrollTo({ top: 0, behavior: 'smooth' })
+    const resetSongsAreaScrollCarrierToTop = () => {
+      const scrollElements = songsAreaHostElementRef.value?.osInstance()?.elements()
+      const explicitViewport = scrollElements?.viewport as HTMLElement | undefined
+      const explicitHost = scrollElements?.host as HTMLElement | undefined
+      const info = detectSongsAreaScrollCarrier(
+        explicitViewport || explicitHost || null,
+        explicitHost || null
+      )
+      const targets = [info.carrier, info.viewport, info.content, info.host].filter(
+        (element, index, list): element is HTMLElement =>
+          element instanceof HTMLElement && list.indexOf(element) === index
+      )
+      for (const target of targets) {
+        if (target.scrollTop !== 0) {
+          target.scrollTop = 0
         }
+      }
+    }
+
+    const scrollSongsAreaToTop = () => {
+      songsAreaState.scrollTop = 0
+      resetSongsAreaScrollCarrierToTop()
+      syncSongsAreaScrollMetrics?.()
+      void nextTick().then(() => {
+        resetSongsAreaScrollCarrierToTop()
+        syncSongsAreaScrollMetrics?.()
       })
     }
 

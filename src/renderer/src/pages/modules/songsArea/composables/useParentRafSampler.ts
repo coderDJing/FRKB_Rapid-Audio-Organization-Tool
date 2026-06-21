@@ -119,5 +119,5 @@ export function useParentRafSampler(params: UseParentRafSamplerParams) {
     }
   )
 
-  return { externalScrollTop, externalViewportHeight, startParentRafSampler }
+  return { externalScrollTop, externalViewportHeight, startParentRafSampler, syncMetrics }
 }

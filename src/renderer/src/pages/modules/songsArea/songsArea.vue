@@ -164,7 +164,11 @@ const handleListLeave = (el: Element, done: () => void) => {
 }
 
 // 父级滚动采样
-const { externalScrollTop, externalViewportHeight } = useParentRafSampler({ songsAreaRef })
+const {
+  externalScrollTop,
+  externalViewportHeight,
+  syncMetrics: syncParentScrollMetrics
+} = useParentRafSampler({ songsAreaRef })
 
 let detachPaneScrollListener: (() => void) | null = null
 const resolvePaneScrollCarrier = () => {
@@ -217,7 +221,11 @@ const schedulePaneScrollRestore = () => {
 }
 
 // Initialize composables
-const { showAndHandleSongContextMenu } = useSongItemContextMenu(songsAreaRef, songsAreaState)
+const { showAndHandleSongContextMenu } = useSongItemContextMenu(
+  songsAreaRef,
+  songsAreaState,
+  syncParentScrollMetrics
+)
 const {
   isDialogVisible: isSelectSongListDialogVisible,
   targetLibraryName: selectSongListDialogTargetLibraryName,
