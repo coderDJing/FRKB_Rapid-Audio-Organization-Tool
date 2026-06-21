@@ -364,11 +364,11 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
       } catch {}
 
       const normalizedMovedPlaybackSet = new Set(orderedSongFilePaths.map((p) => normalizePath(p)))
-      if (
+      const movedCurrentPlaying =
         runtime.playingData.playingSongListUUID === sourceSongListUUID &&
         runtime.playingData.playingSong?.filePath &&
         normalizedMovedPlaybackSet.has(normalizePath(runtime.playingData.playingSong.filePath))
-      ) {
+      if (movedCurrentPlaying) {
         const playbackList = [...runtime.playingData.playingSongListData]
         const currentIndex = playbackList.findIndex(
           (song) =>
@@ -394,7 +394,8 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
         emitter.emit('songsRemoved', {
           listUUID: sourceSongListUUID,
           paths: normalized,
-          preservePlaybackForRemovedPaths: true
+          preservePlaybackForRemovedPaths: true,
+          resumeMainPlayerAfterPreviewStop: !movedCurrentPlaying
         })
       } catch {}
 

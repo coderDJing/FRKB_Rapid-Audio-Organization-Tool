@@ -388,6 +388,8 @@ watch(
   }
 )
 
+const activePreviewFilePath = ref('')
+
 // songsArea 相关事件
 useSongsAreaEvents({
   runtime,
@@ -396,13 +398,13 @@ useSongsAreaEvents({
   applyFiltersAndSorting,
   shouldApplyFiltersAndSortingForSongChange,
   openSongList,
-  scheduleSweepCovers
+  scheduleSweepCovers,
+  activeWaveformPreviewFilePath: activePreviewFilePath
 })
 if (props.enablePreviewPlayer) {
   useWaveformPreviewPlayer()
 }
 emitter.on('songsArea/clipboardHint', handleClipboardHint)
-const activePreviewFilePath = ref('')
 const handleWaveformPreviewState = (payload?: WaveformPreviewStatePayload) => {
   if (
     payload?.active &&
@@ -866,6 +868,14 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   const currentPlayingSong = runtime.playingData.playingSong
     ? { ...runtime.playingData.playingSong }
     : null
+  const normalizeMovedPath = (p: string | undefined | null) =>
+    (p || '').replace(/\//g, '\\').toLowerCase()
+  const movedPathSet = new Set(pathsEffectivelyMoved.map((p) => normalizeMovedPath(p)))
+  const currentPlayingWillBeRemoved =
+    removesFromSource &&
+    runtime.playingData.playingSongListUUID === currentListUuid &&
+    !!currentPlayingSong?.filePath &&
+    movedPathSet.has(normalizeMovedPath(currentPlayingSong.filePath))
   const resolveNextPlayingSong = (list: ISongInfo[], removedPaths: string[]): ISongInfo | null => {
     if (!currentPlayingSong?.filePath) return null
     const currentIndex = list.findIndex((item) => item.filePath === currentPlayingSong.filePath)
@@ -886,36 +896,29 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     if (!remaining.length) return null
     return remaining[Math.min(currentIndex, remaining.length - 1)] || null
   }
-  const nextPlayingSong =
-    removesFromSource && runtime.playingData.playingSongListUUID === currentListUuid
-      ? resolveNextPlayingSong(playingListSnapshot, pathsEffectivelyMoved)
-      : null
+  const nextPlayingSong = currentPlayingWillBeRemoved
+    ? resolveNextPlayingSong(playingListSnapshot, pathsEffectivelyMoved)
+    : null
 
   // 调用 composable 执行移动操作，并处理对话框关闭与选中清理
   await handleMoveSongsConfirm(targetSongListUuid, {
-    preservePlaybackForRemovedPaths: Boolean(nextPlayingSong?.filePath)
+    preservePlaybackForRemovedPaths:
+      currentPlayingWillBeRemoved && Boolean(nextPlayingSong?.filePath),
+    resumeMainPlayerAfterPreviewStop: !currentPlayingWillBeRemoved
   })
-  if (
-    removesFromSource &&
-    activePreviewFilePath.value &&
-    pathsEffectivelyMoved.includes(activePreviewFilePath.value)
-  ) {
-    emitter.emit('waveform-preview:stop', { reason: 'switch' })
-  }
   if (removesFromSource && runtime.playingData.playingSongListUUID === currentListUuid) {
     runtime.playingData.playingSongListData = [...songsAreaState.songInfoArr]
-    runtime.playingData.playingSong = nextPlayingSong
+    if (currentPlayingWillBeRemoved) {
+      runtime.playingData.playingSong = nextPlayingSong
+    }
   }
   if (!removesFromSource) {
     return
   }
   // 非 Mixtape 目标时，从当前列表中同步移除已移动项
   if (pathsEffectivelyMoved.length > 0) {
-    const normalizePath = (p: string | undefined | null) =>
-      (p || '').replace(/\//g, '\\').toLowerCase()
-    const movedSet = new Set(pathsEffectivelyMoved.map((p) => normalizePath(p)))
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
-      (item) => !movedSet.has(normalizePath(item.filePath))
+      (item) => !movedPathSet.has(normalizeMovedPath(item.filePath))
     )
     applyFiltersAndSorting()
 

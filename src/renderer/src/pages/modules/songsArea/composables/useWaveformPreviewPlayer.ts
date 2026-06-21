@@ -33,6 +33,7 @@ type PreviewPlayPayload = {
 
 type PreviewStopPayload = {
   reason?: string
+  resumeMain?: boolean
 }
 
 type PreviewStopReason = 'explicit' | 'auto-finish' | 'manual-play' | 'switch' | 'cancel' | 'error'
@@ -321,7 +322,7 @@ export function useWaveformPreviewPlayer() {
     } satisfies PauseMainPayload)
   }
 
-  const stopWaveformPreview = (reason: PreviewStopReason) => {
+  const stopWaveformPreview = (reason: PreviewStopReason, options?: { resumeMain?: boolean }) => {
     if (!previewActive.value || stopping) return
     stopping = true
     const filePath = previewFilePath.value
@@ -349,7 +350,8 @@ export function useWaveformPreviewPlayer() {
     stopPcmSource(true)
 
     const shouldResume =
-      resumeMainPlayer.value && (reason === 'explicit' || reason === 'auto-finish')
+      resumeMainPlayer.value &&
+      (options?.resumeMain === true || reason === 'explicit' || reason === 'auto-finish')
     resumeMainPlayer.value = false
     if (shouldResume) {
       emitter.emit('waveform-preview:resume-main')
@@ -631,7 +633,7 @@ export function useWaveformPreviewPlayer() {
 
   const handlePreviewStop = (payload?: PreviewStopPayload) => {
     const reason = normalizeStopReason(payload?.reason)
-    stopWaveformPreview(reason)
+    stopWaveformPreview(reason, { resumeMain: payload?.resumeMain === true })
   }
 
   onMounted(() => {

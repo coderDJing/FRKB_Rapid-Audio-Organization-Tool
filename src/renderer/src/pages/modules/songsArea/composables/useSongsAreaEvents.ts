@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted, watch, markRaw, triggerRef } from 'vue'
 import emitter from '@renderer/utils/mitt'
-import type { ShallowRef } from 'vue'
+import type { Ref, ShallowRef } from 'vue'
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from '../../../../../../types/globals'
 import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
@@ -19,6 +19,7 @@ interface UseSongsAreaEventsParams {
   shouldApplyFiltersAndSortingForSongChange: (fields: string[]) => boolean
   openSongList: () => Promise<void>
   scheduleSweepCovers: () => void
+  activeWaveformPreviewFilePath?: Ref<string>
 }
 
 export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
@@ -29,7 +30,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     applyFiltersAndSorting,
     shouldApplyFiltersAndSortingForSongChange,
     openSongList,
-    scheduleSweepCovers
+    scheduleSweepCovers,
+    activeWaveformPreviewFilePath
   } = params
 
   const isSupportedPlaylistTrackNumberList = () => {
@@ -88,7 +90,30 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     syncPlayingSongTrackNumberForCurrentList()
   }
 
-  const onSongsOptimisticallyRemoved = (payload: { listUUID?: string; paths?: string[] }) => {
+  const stopActiveWaveformPreviewIfRemoved = (
+    normalizedRemovedPathSet: Set<string>,
+    resumeMainPlayerAfterPreviewStop?: boolean
+  ) => {
+    const activePreviewPath = normalizePath(activeWaveformPreviewFilePath?.value)
+    if (!activePreviewPath || !normalizedRemovedPathSet.has(activePreviewPath)) return
+
+    const currentPlayingPath = normalizePath(runtime.playingData.playingSong?.filePath)
+    const currentPlayingRemoved =
+      runtime.playingData.playingSongListUUID === songsAreaState.songListUUID &&
+      !!currentPlayingPath &&
+      normalizedRemovedPathSet.has(currentPlayingPath)
+
+    emitter.emit('waveform-preview:stop', {
+      reason: 'switch',
+      resumeMain: resumeMainPlayerAfterPreviewStop ?? !currentPlayingRemoved
+    })
+  }
+
+  const onSongsOptimisticallyRemoved = (payload: {
+    listUUID?: string
+    paths?: string[]
+    resumeMainPlayerAfterPreviewStop?: boolean
+  }) => {
     const listUUID = payload?.listUUID
     const currentListUUID = songsAreaState.songListUUID
     if (listUUID && listUUID !== currentListUUID) return
@@ -101,6 +126,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       normalizedSet.has(normalizePath(s.filePath))
     )
     if (!hasIntersection) return
+
+    stopActiveWaveformPreviewIfRemoved(normalizedSet, payload?.resumeMainPlayerAfterPreviewStop)
 
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
       (song) => !normalizedSet.has(normalizePath(song.filePath))
@@ -185,6 +212,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     paths?: string[]
     itemIds?: string[]
     preservePlaybackForRemovedPaths?: boolean
+    resumeMainPlayerAfterPreviewStop?: boolean
   }) => {
     const listUUID = payload?.listUUID
     const itemIds: string[] = Array.isArray(payload?.itemIds) ? payload.itemIds : []
@@ -198,8 +226,25 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       if (!isMixtapeView && !isSetView) return
       if (listUUID && listUUID !== currentListUUID) return
       const idSet = new Set(itemIds)
-      const hasIntersection = originalSongInfoArr.value.some((s) => idSet.has(resolveItemId(s)))
+      const removedPathSet = new Set(
+        originalSongInfoArr.value
+          .filter((song) => idSet.has(resolveItemId(song)))
+          .map((song) => normalizePath(song.filePath))
+          .filter(Boolean)
+      )
+      const hasIntersection = removedPathSet.size > 0
       if (!hasIntersection) return
+
+      const currentPlayingItemId =
+        runtime.playingData.playingSongListUUID === currentListUUID &&
+        runtime.playingData.playingSong
+          ? resolveItemId(runtime.playingData.playingSong)
+          : ''
+      const currentPlayingRemoved = !!currentPlayingItemId && idSet.has(currentPlayingItemId)
+      stopActiveWaveformPreviewIfRemoved(
+        removedPathSet,
+        payload?.resumeMainPlayerAfterPreviewStop ?? !currentPlayingRemoved
+      )
 
       originalSongInfoArr.value = originalSongInfoArr.value.filter(
         (song) => !idSet.has(resolveItemId(song))
@@ -236,6 +281,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     // 任意视图：仅在当前列表与要移除的路径存在交集时才更新，避免误删与不必要重建
     if (!hasIntersection) return
 
+    stopActiveWaveformPreviewIfRemoved(normalizedSet, payload?.resumeMainPlayerAfterPreviewStop)
+
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
       (song) => !normalizedSet.has(normalizePath(song.filePath))
     )
@@ -261,7 +308,13 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   }
 
   const onSongsMovedByDrag = (
-    payload: string[] | { paths?: string[]; preservePlaybackForRemovedPaths?: boolean }
+    payload:
+      | string[]
+      | {
+          paths?: string[]
+          preservePlaybackForRemovedPaths?: boolean
+          resumeMainPlayerAfterPreviewStop?: boolean
+        }
   ) => {
     if (libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'mixtapeList') {
       return
@@ -270,6 +323,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (!Array.isArray(movedSongPaths) || movedSongPaths.length === 0) return
     const normalizedMovedSet = new Set(
       movedSongPaths.map((path) => normalizePath(path)).filter(Boolean)
+    )
+    stopActiveWaveformPreviewIfRemoved(
+      normalizedMovedSet,
+      Array.isArray(payload) ? undefined : payload?.resumeMainPlayerAfterPreviewStop
     )
 
     originalSongInfoArr.value = originalSongInfoArr.value.filter(

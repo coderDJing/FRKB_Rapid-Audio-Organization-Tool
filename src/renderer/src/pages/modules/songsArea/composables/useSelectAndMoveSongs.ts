@@ -22,6 +22,7 @@ interface UseSelectAndMoveSongsParams {
 
 type MoveSongsConfirmOptions = {
   preservePlaybackForRemovedPaths?: boolean
+  resumeMainPlayerAfterPreviewStop?: boolean
 }
 
 export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
@@ -337,7 +338,8 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
     emitter.emit('songsRemoved', {
       listUUID: songsAreaState.songListUUID,
       paths: selectedPaths,
-      preservePlaybackForRemovedPaths: options.preservePlaybackForRemovedPaths
+      preservePlaybackForRemovedPaths: options.preservePlaybackForRemovedPaths,
+      resumeMainPlayerAfterPreviewStop: options.resumeMainPlayerAfterPreviewStop
     })
 
     // 同步通知源/目标歌单数量刷新
