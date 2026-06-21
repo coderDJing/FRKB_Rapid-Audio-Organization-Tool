@@ -15,6 +15,7 @@ import {
 } from '../utils'
 import { isSupportedAudioPath } from '../services/externalOpenQueue'
 import { moveFileToRecycleBin, normalizeRendererPlaylistPath } from '../recycleBinService'
+import { protectSetReferencedFilesForDeletion } from './setListHandlers'
 import { findLibraryNodeByPath, findSongListRootByPath } from '../libraryTreeDb'
 import {
   cancelPlaylistBatchRename,
@@ -446,7 +447,15 @@ export function registerPlaylistHandlers() {
         pushProgress('playlist.deduplicateProgressRemoving', 0, existingToRemove.length)
 
         const originalPlaylistPath = normalizeRendererPlaylistPath(rendererPath)
-        const moveTasks = existingToRemove.map((srcPath) => async () => {
+        const setProtection = await protectSetReferencedFilesForDeletion(existingToRemove)
+        const protectedMovedPaths = setProtection.protectedFiles
+          .filter((protectedFile) => protectedFile.success)
+          .map((protectedFile) => protectedFile.filePath)
+        const protectedFailed = setProtection.protectedFiles.filter(
+          (protectedFile) => !protectedFile.success
+        )
+        const protectedHandledCount = setProtection.protectedFiles.length
+        const moveTasks = setProtection.unprotectedFiles.map((srcPath) => async () => {
           const result = await moveFileToRecycleBin(srcPath, { originalPlaylistPath })
           if (result.status === 'failed') {
             throw new Error(result.error || 'move to recycle bin failed')
@@ -457,15 +466,29 @@ export function registerPlaylistHandlers() {
         const { results: moveResults } = await runWithConcurrency(moveTasks, {
           concurrency: 16,
           onProgress: (done: number, total: number) => {
-            pushProgress('playlist.deduplicateProgressRemoving', done, total)
+            pushProgress(
+              'playlist.deduplicateProgressRemoving',
+              protectedHandledCount + done,
+              protectedHandledCount + total
+            )
           }
         })
-        const movedPaths = moveResults.filter((item): item is string => typeof item === 'string')
+        const movedPaths = moveResults
+          .filter((item): item is string => typeof item === 'string')
+          .concat(protectedMovedPaths)
         const failedMoves = moveResults.filter((item) => item instanceof Error) as Error[]
 
         if (failedMoves.length > 0) {
           failedMoves.forEach((err, index) => {
             log.error('指纹去重移动重复文件失败', { error: err?.message, index })
+          })
+        }
+        if (protectedFailed.length > 0) {
+          protectedFailed.forEach((item) => {
+            log.error('指纹去重保护 SET 引用文件失败', {
+              filePath: item.filePath,
+              error: item.error
+            })
           })
         }
         if (movedPaths.length > 0) {

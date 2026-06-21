@@ -16,6 +16,7 @@ import {
 import type { IImportSongsFormData, md5 } from '../../../types/globals'
 import type { SendProgress } from './progress'
 import { moveFileToRecycleBin } from '../../recycleBinService'
+import { protectSetReferencedFilesForDeletion } from '../../ipc/setListHandlers'
 import { rememberCuratedArtistsForAddedTracks } from '../../curatedArtistLibrary'
 import { log } from '../../log'
 import { markGlobalSongSearchDirty } from '../../services/globalSongSearch'
@@ -23,6 +24,7 @@ import {
   appendSongListTrackNumbers,
   isSupportedPlaylistTrackNumberListRoot
 } from '../../services/playlistTrackNumbers'
+import { updateSetItemFilePathReferences } from '../../setListDb'
 
 type ImportItem = md5 | string
 
@@ -162,6 +164,9 @@ export function registerImportHandlers(
           targetPath,
           isDeleteSourceFile
         )
+        if (isDeleteSourceFile) {
+          updateSetItemFilePathReferences(sourceFilePath, finalPath)
+        }
         if (isPushSongFingerprintLibrary && sha) {
           fingerprintsToAdd.push(sha)
         }
@@ -277,20 +282,33 @@ async function moveToRecycleBin(
   getWindow: () => BrowserWindow | null,
   sendProgress: SendProgress
 ) {
-  const tasks: Array<() => Promise<void>> = delList.map((srcPath) => async () => {
-    const result = await moveFileToRecycleBin(srcPath, {
-      sourceType: 'import_dedup',
-      originalPlaylistPath: null
-    })
-    if (result.status === 'failed') {
-      throw new Error(result.error || 'move to recycle bin failed')
+  const setProtection = await protectSetReferencedFilesForDeletion(delList)
+  const protectedFailedCount = setProtection.protectedFiles.filter(
+    (protectedFile) => !protectedFile.success
+  ).length
+  const protectedHandledCount = setProtection.protectedFiles.length
+  const tasks: Array<() => Promise<void>> = setProtection.unprotectedFiles.map(
+    (srcPath) => async () => {
+      const result = await moveFileToRecycleBin(srcPath, {
+        sourceType: 'import_dedup',
+        originalPlaylistPath: null
+      })
+      if (result.status === 'failed') {
+        throw new Error(result.error || 'move to recycle bin failed')
+      }
     }
-  })
+  )
   const batchId = `import_recycle_duplicates_${Date.now()}`
   const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
     concurrency: 16,
     onProgress: (done, total) =>
-      sendProgress('tracks.recyclingDuplicates', done, total, false, progressId),
+      sendProgress(
+        'tracks.recyclingDuplicates',
+        protectedHandledCount + done,
+        protectedHandledCount + total,
+        false,
+        progressId
+      ),
     stopOnENOSPC: true,
     onInterrupted: async (payload) =>
       waitForUserDecision(getWindow(), batchId, 'recycleDuplicatesOnImport', payload)
@@ -299,9 +317,11 @@ async function moveToRecycleBin(
   if (targetWindow && hasENOSPC) {
     targetWindow.webContents.send('file-batch-summary', {
       context: 'recycleDuplicatesOnImport',
-      total: tasks.length,
-      success,
-      failed,
+      total: delList.length,
+      success:
+        success +
+        setProtection.protectedFiles.filter((protectedFile) => protectedFile.success).length,
+      failed: failed + protectedFailedCount,
       hasENOSPC,
       skipped,
       errorSamples: []

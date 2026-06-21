@@ -43,6 +43,7 @@ import {
   removeMixtapeItemsByPlaylist,
   replaceMixtapeFilePath
 } from '../../mixtapeDb'
+import { updateSetItemFilePathReferences } from '../../setListDb'
 import { replaceMixtapeStemAssetFilePath } from '../../mixtapeStemDb'
 import { getLibraryRootAbs } from '../../services/libraryStemAssetStorage'
 import { isMixtapeWindowOpenByPlaylistId } from '../mixtapeWindow'
@@ -177,23 +178,33 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
         })
         return { total: 0, success: 0, failed: 0, skipped: 0, hasENOSPC: false }
       }
-      const tasks: Array<() => Promise<RecycleBinMoveResult>> = songFileUrls.map((srcPath) => {
-        return async () => {
-          const result = await moveFileToRecycleBin(srcPath, {
-            originalPlaylistPath
-          })
-          if (result.status === 'failed') {
-            throw new Error(result.error || 'move to recycle bin failed')
+      const setProtection = await protectSetReferencedFilesForDeletion(songFileUrls)
+      const protectedMovedPaths = setProtection.protectedFiles
+        .filter((protectedFile) => protectedFile.success)
+        .map((protectedFile) => protectedFile.filePath)
+      const protectedFailedCount = setProtection.protectedFiles.filter(
+        (protectedFile) => !protectedFile.success
+      ).length
+      const protectedHandledCount = setProtection.protectedFiles.length
+      const tasks: Array<() => Promise<RecycleBinMoveResult>> = setProtection.unprotectedFiles.map(
+        (srcPath) => {
+          return async () => {
+            const result = await moveFileToRecycleBin(srcPath, {
+              originalPlaylistPath
+            })
+            if (result.status === 'failed') {
+              throw new Error(result.error || 'move to recycle bin failed')
+            }
+            return result
           }
-          return result
         }
-      })
+      )
       const batchId = `emptyDir_${Date.now()}`
       sendProgress({
         id: progressId,
         titleKey: 'library.deleteProgressRemoving',
-        now: 0,
-        total: tasks.length,
+        now: protectedHandledCount,
+        total: songFileUrls.length,
         noProgress: false
       })
       const { success, failed, hasENOSPC, skipped } = await runWithConcurrency(tasks, {
@@ -204,8 +215,8 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
           sendProgress({
             id: progressId,
             titleKey: 'library.deleteProgressRemoving',
-            now: done,
-            total,
+            now: protectedHandledCount + done,
+            total: protectedHandledCount + total,
             noProgress: false
           })
         },
@@ -214,13 +225,15 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       })
       await removeNonAudioEntries(absPath, audioExts)
       await compactTrackNumbersIfSupported()
+      const totalSuccess = success + protectedMovedPaths.length
+      const totalFailed = failed + protectedFailedCount
       const targetWindow = getWindow()
       if (targetWindow && hasENOSPC) {
         targetWindow.webContents.send('file-batch-summary', {
           context: 'emptyDir',
-          total: tasks.length,
-          success,
-          failed,
+          total: songFileUrls.length,
+          success: totalSuccess,
+          failed: totalFailed,
           hasENOSPC,
           skipped,
           errorSamples: []
@@ -229,13 +242,19 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
       sendProgress({
         id: progressId,
         titleKey:
-          failed === 0 && skipped === 0
+          totalFailed === 0 && skipped === 0
             ? 'library.deleteProgressFinished'
             : 'library.deleteProgressFailed',
         now: 1,
         total: 1
       })
-      return { total: tasks.length, success, failed, skipped, hasENOSPC }
+      return {
+        total: songFileUrls.length,
+        success: totalSuccess,
+        failed: totalFailed,
+        skipped,
+        hasENOSPC
+      }
     } catch (error) {
       sendProgress({
         id: progressId,
@@ -668,12 +687,21 @@ export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null
             item.nodeType === 'mixtapeList' ? listMixtapeFilePathsByPlaylist(item.uuid) : []
           const setListUuidsToClear = collectSetListUuidsForSubtree(item.uuid)
           const { absPath } = resolveLibraryPath(item.path)
-          await fs.remove(absPath)
-          removeLibraryNode(item.uuid)
-          await clearSetMappingsForPlaylists(setListUuidsToClear)
-          operationStatus = 'permanently_deleted'
-          if (item.nodeType === 'mixtapeList') {
-            await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
+          const audioFiles = await collectFilesWithExtensions(absPath, store.settingConfig.audioExt)
+          const setProtection = await protectSetReferencedFilesForDeletion(audioFiles)
+          const protectedFailedCount = setProtection.protectedFiles.filter(
+            (protectedFile) => !protectedFile.success
+          ).length
+          if (protectedFailedCount > 0) {
+            operationStatus = 'permanent_delete_failed'
+          } else {
+            await fs.remove(absPath)
+            removeLibraryNode(item.uuid)
+            await clearSetMappingsForPlaylists(setListUuidsToClear)
+            operationStatus = 'permanently_deleted'
+            if (item.nodeType === 'mixtapeList') {
+              await finalizeMixtapePlaylistRemoval(item.uuid, mixtapeFilePaths)
+            }
           }
         } else if (item.type === 'move') {
           const oldTarget = resolveLibraryPath(item.path)
@@ -778,7 +806,7 @@ async function transferCachesAfterDirChange(params: {
     try {
       const audioExts = store.settingConfig.audioExt || []
       const files = await collectFilesWithExtensions(newFullPath, audioExts)
-      await syncMixtapePathReferencesAfterDirChange(oldFullPath, newFullPath, files)
+      await syncMappedPathReferencesAfterDirChange(oldFullPath, newFullPath, files)
       if (files.length === 0) return
       const tasks: Array<() => Promise<void>> = files.map((filePath) => async () => {
         const rel = path.relative(newFullPath, filePath)
@@ -799,7 +827,7 @@ async function transferCachesAfterDirChange(params: {
   try {
     const audioExts = store.settingConfig.audioExt || []
     const files = await collectFilesWithExtensions(newFullPath, audioExts)
-    await syncMixtapePathReferencesAfterDirChange(oldFullPath, newFullPath, files)
+    await syncMappedPathReferencesAfterDirChange(oldFullPath, newFullPath, files)
     const rootDir = store.databaseDir
     if (!rootDir) return
     const nodes = loadLibraryNodes(rootDir) || []
@@ -828,7 +856,7 @@ async function transferCachesAfterDirChange(params: {
   } catch {}
 }
 
-async function syncMixtapePathReferencesAfterDirChange(
+async function syncMappedPathReferencesAfterDirChange(
   oldFullPath: string,
   newFullPath: string,
   movedFiles: string[]
@@ -841,6 +869,7 @@ async function syncMixtapePathReferencesAfterDirChange(
       if (!rel || rel.startsWith('..')) return
       const oldFilePath = path.join(oldFullPath, rel)
       replaceMixtapeFilePath(oldFilePath, newFilePath)
+      updateSetItemFilePathReferences(oldFilePath, newFilePath)
       if (libraryRoot) {
         replaceMixtapeStemAssetFilePath({
           libraryRoot,
@@ -851,7 +880,7 @@ async function syncMixtapePathReferencesAfterDirChange(
     })
     await runWithConcurrency(tasks, { concurrency: 8, stopOnENOSPC: false })
   } catch {
-    // 移动文件本身已经完成；这里同步的是 mixtape 引用缓存，失败不应打断文件操作。
+    // 移动文件本身已经完成；这里同步的是映射引用缓存，失败不应打断文件操作。
     // 上层没有可展示的恢复动作，避免把可忽略的缓存同步失败写入 log.txt。
   }
 }

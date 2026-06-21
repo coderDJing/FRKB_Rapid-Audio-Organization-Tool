@@ -24,7 +24,7 @@ import {
 } from '../recycleBinService'
 import { findSongListRoot, transferTrackCaches } from '../services/cacheMaintenance'
 import { replaceMixtapeFilePath } from '../mixtapeDb'
-import { removeSetItemsByIds } from '../setListDb'
+import { removeSetItemsByIds, updateSetItemFilePathReferences } from '../setListDb'
 import { rememberCuratedArtistsForAddedTracks } from '../curatedArtistLibrary'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import { remapKeyAnalysisTrackedPath } from '../services/keyAnalysisQueue'
@@ -411,6 +411,7 @@ export function registerExportHandlers() {
           if (isMove) {
             remapKeyAnalysisTrackedPath(src, movedPath)
             replaceMixtapeFilePath(src, movedPath)
+            updateSetItemFilePathReferences(src, movedPath)
             try {
               const fromRoot = await findSongListRoot(path.dirname(src))
               const toRoot = await findSongListRoot(path.dirname(movedPath))

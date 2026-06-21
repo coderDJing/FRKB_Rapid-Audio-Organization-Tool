@@ -20,6 +20,7 @@ import { findSongListRootByPath } from './libraryTreeDb'
 import { invalidateKeyAnalysisCache } from './services/keyAnalysisQueue'
 import { listMixtapeItemsByFilePath, replaceMixtapeFilePath } from './mixtapeDb'
 import { replaceMixtapeStemAssetFilePath } from './mixtapeStemDb'
+import { updateSetItemFilePathReferences } from './setListDb'
 
 type RecycleBinSourceType = 'external' | 'import_dedup' | 'unknown'
 
@@ -239,6 +240,14 @@ function syncMixtapeFilePathReference(fromPath: string, toPath: string): number 
   return result.updated
 }
 
+function syncSetFilePathReference(fromPath: string, toPath: string): number {
+  const sourcePath = typeof fromPath === 'string' ? fromPath.trim() : ''
+  const targetPath = typeof toPath === 'string' ? toPath.trim() : ''
+  if (!sourcePath || !targetPath) return 0
+  if (normalizePathForCompare(sourcePath) === normalizePathForCompare(targetPath)) return 0
+  return updateSetItemFilePathReferences(sourcePath, targetPath)
+}
+
 async function resolveMissingFromRecycleBin(missingPath: string): Promise<string | null> {
   const libraryRoot = getLibraryRootAbs()
   if (!libraryRoot || !missingPath) return null
@@ -395,6 +404,7 @@ async function moveReferencedMixtapeFileToVault(
     invalidateKeyAnalysisCache([sourcePath, destPath])
   } catch {}
   syncMixtapeFilePathReference(sourcePath, destPath)
+  syncSetFilePathReference(sourcePath, destPath)
   return { moved: true, destPath }
 }
 
@@ -490,6 +500,7 @@ export async function restoreRecycleBinFile(filePath: string): Promise<RecycleBi
       invalidateKeyAnalysisCache([srcPath, destPath])
     } catch {}
     syncMixtapeFilePathReference(srcPath, destPath)
+    syncSetFilePathReference(srcPath, destPath)
     if (recordKey) deleteRecycleBinRecord(recordKey)
     return { status: 'restored', srcPath, destPath, playlistPath: playlistRel }
   } catch (error) {
@@ -547,6 +558,7 @@ export async function permanentlyDeleteFile(filePath: string): Promise<boolean> 
       }
       if (legacyRefPath && moveResult.destPath) {
         syncMixtapeFilePathReference(legacyRefPath, moveResult.destPath)
+        syncSetFilePathReference(legacyRefPath, moveResult.destPath)
       }
       if (recordKey) {
         deleteRecycleBinRecord(recordKey)
