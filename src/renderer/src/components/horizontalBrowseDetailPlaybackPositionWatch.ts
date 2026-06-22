@@ -32,6 +32,7 @@ type DetailPlaybackPositionWatchParams = {
   seekRevision: () => number | undefined
   seekTargetSeconds: () => number | undefined
   playbackRate: () => number | undefined
+  linkedGridActive: () => boolean
   linkedGridVisualPending: () => boolean
   linkedGridVisualTransactionCommitted: () => boolean
   setLinkedGridVisualTransactionCommitted: (value: boolean) => void
@@ -113,8 +114,10 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
         const previousLinkedGridVisualPending = Boolean(previousValue?.[6])
         const resumedFromLinkedGridVisualPending =
           previousLinkedGridVisualPending && !linkedGridVisualPending
+        const linkedGridActive = params.linkedGridActive()
         const playbackSyncChanged =
-          syncRevision !== previousSyncRevision || resumedFromLinkedGridVisualPending
+          !linkedGridActive &&
+          (syncRevision !== previousSyncRevision || resumedFromLinkedGridVisualPending)
         const safeSeekRevision = Math.max(0, Math.floor(Number(seekRevision) || 0))
         const safeSeekTargetSeconds = params.normalizePreviewTimelineSeconds(seekTargetSeconds)
         const seekRevisionChanged =
@@ -157,7 +160,7 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
         )
         const playbackPositionChanged =
           previousValue === undefined || Math.abs(safeSeconds - previousSeconds) > 0.0001
-        const playbackClockJumped = params.playbackDiscontinuityDetector.check(
+        const rawPlaybackClockJumped = params.playbackDiscontinuityDetector.check(
           safeSongKey,
           safeSeconds,
           playing,
@@ -168,7 +171,8 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
           !playing &&
           previousValue !== undefined &&
           Math.abs(safeSeconds - previousSeconds) > STABLE_PLAYBACK_POSITION_JUMP_SEC
-        const playbackPositionJumped = playbackClockJumped || pausedPositionJumped
+        const playbackPositionJumped =
+          (!linkedGridActive && rawPlaybackClockJumped) || pausedPositionJumped
         if (
           stableSeekSyncHandoffActive &&
           (playbackSyncChanged || playbackPositionJumped || songChanged)

@@ -1,11 +1,20 @@
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import type { HorizontalBrowseDeckDetailLaneExpose } from '@renderer/components/horizontalBrowseModeShellTypes'
+import {
+  alignHorizontalBrowseLinkedGridVisualTransactionResults,
+  type HorizontalBrowseLinkedGridVisualTransactionResults
+} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 
 type DeckKey = HorizontalBrowseDeckKey
 
 type WaveformPresentationTransactionState = {
   beginSyncTransaction: (leader: DeckKey, follower: DeckKey) => void
-  finishSyncTransaction: (leader: DeckKey, follower: DeckKey, committed: boolean) => void
+  finishSyncTransaction: (
+    leader: DeckKey,
+    follower: DeckKey,
+    committed: boolean,
+    results: HorizontalBrowseLinkedGridVisualTransactionResults
+  ) => void
 }
 
 type ShellDetailTransactionsParams = {
@@ -33,15 +42,21 @@ export const createHorizontalBrowseModeShellDetailTransactions = ({
     const follower = payload?.follower ?? (leader === 'top' ? 'bottom' : 'top')
     presentation.beginSyncTransaction(leader, follower)
     let committed = false
+    let results: HorizontalBrowseLinkedGridVisualTransactionResults = {}
     try {
-      const [topCommitted, bottomCommitted] = await Promise.all([
-        Promise.resolve(resolveDetailRef('top')?.commitLinkedGridVisualTransaction?.() ?? false),
-        Promise.resolve(resolveDetailRef('bottom')?.commitLinkedGridVisualTransaction?.() ?? false)
+      const [topResult, bottomResult] = await Promise.all([
+        Promise.resolve(resolveDetailRef('top')?.commitLinkedGridVisualTransaction?.() ?? null),
+        Promise.resolve(resolveDetailRef('bottom')?.commitLinkedGridVisualTransaction?.() ?? null)
       ])
-      committed = topCommitted && bottomCommitted
+      results.top = topResult
+      results.bottom = bottomResult
+      committed = topResult?.committed === true && bottomResult?.committed === true
+      if (committed) {
+        results = alignHorizontalBrowseLinkedGridVisualTransactionResults(results, leader, follower)
+      }
       return committed
     } finally {
-      presentation.finishSyncTransaction(leader, follower, committed)
+      presentation.finishSyncTransaction(leader, follower, committed, results)
     }
   }
 

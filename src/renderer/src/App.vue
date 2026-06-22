@@ -39,75 +39,25 @@ import {
   writeWindowVolume
 } from '@renderer/utils/windowVolume'
 import { formatWindowTitle } from '@renderer/utils/windowTitle'
-import type { MainWindowBrowseMode } from '@renderer/utils/mainWindowPlaybackHandoff'
 import { useMainWindowPlaybackHandoff } from '@renderer/composables/useMainWindowPlaybackHandoff'
+import { useMainWindowBrowseModeState } from '@renderer/composables/useMainWindowBrowseModeState'
+import type { MainWindowBrowseMode } from '@renderer/utils/mainWindowPlaybackHandoff'
 import {
   handleSongsRemovedForGlobalSearchUpdate,
   markGlobalSongSearchDirty,
   type SongsRemovedPayload
 } from '@renderer/utils/globalSongSearchEvents'
+import {
+  createLayoutConfigReadHandler,
+  isRuntimeLibraryTree
+} from '@renderer/utils/appRuntimeStateGuards'
 
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
 const CONTEXT_MENU_SELECTOR = '[data-frkb-context-menu="true"]'
-type RuntimeLayoutConfig = typeof runtime.layoutConfig
-type RuntimeLibraryTree = typeof runtime.libraryTree
 const { stageMainWindowPlaybackHandoff } = useMainWindowPlaybackHandoff(runtime)
-
-const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object'
-
-const isRuntimeLayoutConfig = (value: unknown): value is RuntimeLayoutConfig => {
-  if (!isPlainRecord(value)) return false
-  return (
-    typeof value.libraryAreaWidth === 'number' &&
-    typeof value.songsAreaSplitLeftRatio === 'number' &&
-    typeof value.isMaxMainWin === 'boolean' &&
-    typeof value.mainWindowWidth === 'number' &&
-    typeof value.mainWindowHeight === 'number'
-  )
-}
-
-const isRuntimeLibraryTree = (value: unknown): value is RuntimeLibraryTree => {
-  if (!isPlainRecord(value)) return false
-  return (
-    typeof value.uuid === 'string' &&
-    (value.type === 'root' ||
-      value.type === 'library' ||
-      value.type === 'dir' ||
-      value.type === 'songList' ||
-      value.type === 'mixtapeList') &&
-    typeof value.dirName === 'string'
-  )
-}
-
-function handleLayoutConfigReaded(_event: unknown, layoutConfig: unknown) {
-  if (!isRuntimeLayoutConfig(layoutConfig)) return
-  runtime.layoutConfig = layoutConfig
-}
-
-const normalizeMainWindowBrowseMode = (value: unknown): MainWindowBrowseMode =>
-  value === 'horizontal' || value === 'edit' ? value : 'browser'
-{
-  const p = runtime.setting?.platform
-  runtime.platform = p === 'darwin' ? 'Mac' : p === 'win32' ? 'Windows' : 'Unknown'
-}
-runtime.mainWindowBrowseMode = normalizeMainWindowBrowseMode(runtime.setting?.mainWindowBrowseMode)
-watch(
-  () => runtime.mainWindowBrowseMode,
-  (mode) => {
-    const normalizedMode = normalizeMainWindowBrowseMode(mode)
-    if (runtime.mainWindowBrowseMode !== normalizedMode) {
-      runtime.mainWindowBrowseMode = normalizedMode
-      return
-    }
-    if (runtime.setting?.mainWindowBrowseMode !== normalizedMode) {
-      runtime.setting.mainWindowBrowseMode = normalizedMode
-    }
-    window.electron.ipcRenderer.send('main-window-browse-mode-updated', normalizedMode)
-  },
-  { immediate: true }
-)
+const handleLayoutConfigReaded = createLayoutConfigReadHandler(runtime)
+useMainWindowBrowseModeState(runtime)
 const mainWindowTitleText = computed(() => formatWindowTitle(`FRKB - ${t('app.name')}`))
 watch(
   mainWindowTitleText,

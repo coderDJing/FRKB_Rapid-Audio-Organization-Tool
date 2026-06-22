@@ -1,5 +1,11 @@
 import { reactive } from 'vue'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
+import type {
+  HorizontalBrowseLinkedGridVisualTransactionGridTimeBasis,
+  HorizontalBrowseLinkedGridVisualTransactionPlaybackClock,
+  HorizontalBrowseLinkedGridVisualTransactionResult,
+  HorizontalBrowseLinkedGridVisualTransactionResults
+} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -12,6 +18,7 @@ export type HorizontalBrowseWaveformPresentationOwner =
   | 'zoom'
   | 'linked-zoom'
   | 'sync-transaction'
+  | 'linked-playback'
   | 'grid-edit'
   | 'load'
   | 'worker-ready'
@@ -74,6 +81,52 @@ type PresentationPatch = Partial<
 type PresentationDeckPatch = Partial<Record<DeckKey, PresentationPatch>>
 const resolveOptionalNumber = (value: unknown) =>
   value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value) : null
+
+const normalizeGridTimeBasis = (
+  value: HorizontalBrowseLinkedGridVisualTransactionGridTimeBasis | null | undefined
+) => {
+  if (!value) return null
+  return {
+    bpm: Number(value.bpm) || 0,
+    firstBeatMs: Number(value.firstBeatMs) || 0,
+    barBeatOffset: Number(value.barBeatOffset) || 0,
+    timeBasisOffsetMs: Number(value.timeBasisOffsetMs) || 0
+  }
+}
+
+const normalizePlaybackClock = (
+  value: HorizontalBrowseLinkedGridVisualTransactionPlaybackClock | null | undefined
+) => {
+  if (!value) return null
+  const seconds = resolveOptionalNumber(value.seconds)
+  const startedAtMs = resolveOptionalNumber(value.startedAtMs)
+  if (seconds === null || startedAtMs === null) return null
+  return {
+    seconds,
+    startedAtMs,
+    playbackRate: Math.max(0.25, Number(value.playbackRate) || 1)
+  }
+}
+
+const buildSyncCommitPatch = (
+  result: HorizontalBrowseLinkedGridVisualTransactionResult,
+  sourceDeck: DeckKey,
+  affectedDecks: DeckKey[]
+): PresentationPatch => ({
+  owner: 'linked-playback',
+  sourceDeck,
+  affectedDecks,
+  anchorSec: resolveOptionalNumber(result.anchorSec),
+  viewportStartSec: resolveOptionalNumber(result.viewportStartSec),
+  visibleDurationSec: resolveOptionalNumber(result.visibleDurationSec),
+  anchorRatio: Math.max(0, Math.min(1, Number(result.anchorRatio) || 0.5)),
+  timeScale: Math.max(0.25, Number(result.timeScale) || 1),
+  gridTimeBasis: normalizeGridTimeBasis(result.gridTimeBasis),
+  playbackClock: normalizePlaybackClock(result.playbackClock),
+  surfaceMode: 'dual-detail',
+  linked: true,
+  visualPending: false
+})
 
 export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
   let revision = 0
@@ -237,14 +290,35 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     })
   }
 
-  const finishSyncTransaction = (leader: DeckKey, follower: DeckKey, committed: boolean) => {
+  const finishSyncTransaction = (
+    leader: DeckKey,
+    follower: DeckKey,
+    committed: boolean,
+    results: HorizontalBrowseLinkedGridVisualTransactionResults = {}
+  ) => {
     const affectedDecks = resolveSyncDecks(leader, follower)
-    commitDecks(affectedDecks, {
-      owner: committed ? 'playback' : 'idle',
-      sourceDeck: leader,
-      affectedDecks,
-      linked: committed,
-      visualPending: false
+    const topResult = results.top
+    const bottomResult = results.bottom
+    const canCommit = committed && topResult?.committed === true && bottomResult?.committed === true
+    if (!canCommit) {
+      commitDecks(affectedDecks, {
+        owner: 'idle',
+        sourceDeck: leader,
+        affectedDecks,
+        linked: false,
+        visualPending: false,
+        gridTimeBasis: null,
+        playbackClock: null,
+        anchorSec: null,
+        viewportStartSec: null,
+        visibleDurationSec: null,
+        timeScale: 1
+      })
+      return
+    }
+    commitDeckPatches({
+      top: buildSyncCommitPatch(topResult, leader, affectedDecks),
+      bottom: buildSyncCommitPatch(bottomResult, leader, affectedDecks)
     })
   }
 

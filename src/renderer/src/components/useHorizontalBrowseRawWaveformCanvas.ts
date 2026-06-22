@@ -57,6 +57,7 @@ const STABLE_VIEWPORT_RENDER_HOLD_MS = 90
 const STABLE_FULL_RENDER_DELAY_MS = 96
 const STABLE_SEEK_REVEAL_HOLD_MS = 0
 const WAVEFORM_SURFACE_FADE_IN_MS = 50
+
 export const useHorizontalBrowseRawWaveformCanvas = (
   options: UseHorizontalBrowseRawWaveformCanvasOptions
 ) => {
@@ -88,6 +89,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let playbackRawSettleUntilMs = 0
   let lastQueuedPlaybackRawSlot: 'live' | null = null
   let lastQueuedMissingPlaybackRawSyncRevision = -1
+  let lastQueuedStableRenderRevision = -1
   let stableFullRenderTimer: ReturnType<typeof setTimeout> | null = null
   let stableViewportRenderPendingUntilMs = 0
   let displayReadyRevealTimer: ReturnType<typeof setTimeout> | null = null
@@ -110,6 +112,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     isDragging: () => options.dragging.value,
     currentSeconds: () => Number(options.currentSeconds()) || 0,
     playbackRate: () => Number(options.playbackRate()) || 1,
+    renderRevision: () => resolveStableRenderRevision(),
     resolveViewportRangeStartSec: (seconds) => resolvePlaybackAlignedStart(seconds),
     waveformCanvas: () => liveCanvasBuffers.presentationWaveformCanvas(),
     overlayCanvas: () => liveCanvasBuffers.presentationOverlayCanvas(),
@@ -272,6 +275,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     playbackRawSettleUntilMs = 0
     lastQueuedPlaybackRawSlot = null
     lastQueuedMissingPlaybackRawSyncRevision = -1
+    lastQueuedStableRenderRevision = -1
     lastRenderedRangeStartSec = null
     lastRenderedRangeDurationSec = null
     stablePresentation.clear()
@@ -293,6 +297,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     playbackRawSettleUntilMs = 0
     lastQueuedPlaybackRawSlot = null
     lastQueuedMissingPlaybackRawSyncRevision = -1
+    lastQueuedStableRenderRevision = -1
     lastRenderedRangeStartSec = null
     lastRenderedRangeDurationSec = null
     stablePresentation.clear()
@@ -308,6 +313,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     liveCanvasBridge.clear()
     lastRenderedRangeStartSec = null
     lastRenderedRangeDurationSec = null
+    lastQueuedStableRenderRevision = -1
     stablePresentation.clear()
     clearLiveCanvasPresentationOffset()
     setDisplayReady(false)
@@ -572,11 +578,24 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     ) {
       return false
     }
+    if (!stableWaveformSource) {
+      lastQueuedStableRenderRevision = -1
+    } else if (renderPlaybackSyncRevision !== lastQueuedStableRenderRevision) {
+      stablePresentation.clear()
+      liveCanvasBridge.stopPlayback()
+      preserveSurfaceUntilNextReady = true
+      suppressNextSurfaceFadeIn = true
+      setDisplayReady(false)
+    }
     const renderToken = liveCanvasRenderToken + 1
     liveCanvasRenderToken = renderToken
+    if (stableWaveformSource) {
+      lastQueuedStableRenderRevision = renderPlaybackSyncRevision
+    }
     stablePresentation.queueRenderFrame(
       stableWaveformSource,
       renderToken,
+      renderPlaybackSyncRevision,
       renderRangeStartSec,
       renderRangeDurationSec,
       viewportRangeStartSec,

@@ -2,6 +2,7 @@ import { applyHorizontalBrowseCanvasPresentationOffset } from './horizontalBrows
 
 export type HorizontalBrowseStableCanvasPresentationFrame = {
   renderToken: number
+  renderRevision: number
   rangeStartSec: number
   rangeDurationSec: number
   viewportRangeStartSec: number
@@ -55,6 +56,8 @@ const STABLE_REANCHOR_RETRY_MS = 96
 const STABLE_PENDING_PLAYBACK_START_EPSILON_SEC = 0.5
 const STABLE_STALE_FRAME_PLAYBACK_START_SEC = 1
 
+const normalizeRenderRevision = (value: unknown) => Math.max(0, Math.floor(Number(value) || 0))
+
 export const applyHorizontalBrowseStableCanvasPresentation = (
   waveformCanvas: HTMLCanvasElement | null,
   overlayCanvas: HTMLCanvasElement | null,
@@ -77,6 +80,7 @@ type StableCanvasPresentationControllerOptions = {
   isDragging: () => boolean
   currentSeconds: () => number
   playbackRate: () => number
+  renderRevision?: () => number
   resolveViewportRangeStartSec: (seconds: number) => number
   waveformCanvas: () => HTMLCanvasElement | null
   overlayCanvas: () => HTMLCanvasElement | null
@@ -97,6 +101,10 @@ type StableCanvasPresentationPlaybackClock = {
   seconds: number
   startedAtMs: number
   playbackRate: number
+}
+
+type StableCanvasPresentationPlaybackClockOptions = {
+  startedAtMs?: number
 }
 
 export type HorizontalBrowseStableCanvasPresentationApplyResult = {
@@ -122,6 +130,13 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
   let playbackClock: StableCanvasPresentationPlaybackClock | null = null
   let playbackRaf = 0
 
+  const resolveRenderRevision = () => normalizeRenderRevision(options.renderRevision?.())
+
+  const isCurrentRenderRevision = (
+    frame: HorizontalBrowseStableCanvasPresentationFrame | null
+  ): frame is HorizontalBrowseStableCanvasPresentationFrame =>
+    !!frame && normalizeRenderRevision(frame.renderRevision) === resolveRenderRevision()
+
   const clearPlaybackLoop = () => {
     if (!playbackRaf) return
     cancelAnimationFrame(playbackRaf)
@@ -143,7 +158,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
   }
 
   const shouldDeferPlaybackStartForPendingFrame = (seconds: number) => {
-    if (!pendingFrame) return false
+    if (!isCurrentRenderRevision(pendingFrame)) return !isCurrentRenderRevision(currentFrame)
     if (
       Math.abs(Number(pendingFrame.anchorSec) - seconds) > STABLE_PENDING_PLAYBACK_START_EPSILON_SEC
     ) {
@@ -176,6 +191,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
   const queueRenderFrame = (
     active: boolean,
     renderToken: number,
+    renderRevision: number,
     rangeStartSec: number,
     rangeDurationSec: number,
     viewportRangeStartSec: number,
@@ -186,10 +202,18 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     overscanCssPx: number,
     pixelRatio: number
   ) => {
+    const safeRenderRevision = normalizeRenderRevision(renderRevision)
+    if (
+      currentFrame &&
+      normalizeRenderRevision(currentFrame.renderRevision) !== safeRenderRevision
+    ) {
+      currentFrame = null
+    }
     queueFrame(
       active
         ? {
             renderToken,
+            renderRevision: safeRenderRevision,
             rangeStartSec,
             rangeDurationSec,
             viewportRangeStartSec,
@@ -216,7 +240,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
   const measure = (
     seconds = Number(options.currentSeconds()) || 0
   ): HorizontalBrowseStableCanvasPresentationMeasureResult => {
-    if (!options.isActive() || !currentFrame) {
+    if (!options.isActive() || !isCurrentRenderRevision(currentFrame)) {
       return {
         frame: null,
         offsetCssPx: null,
@@ -294,13 +318,24 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     playbackClock = null
   }
 
-  const startPlayback = (seconds: number, playbackRate: number) => {
+  const resolveClockStartedAtMs = (
+    options: StableCanvasPresentationPlaybackClockOptions | undefined
+  ) => {
+    const startedAtMs = Number(options?.startedAtMs)
+    return Number.isFinite(startedAtMs) ? startedAtMs : performance.now()
+  }
+
+  const startPlayback = (
+    seconds: number,
+    playbackRate: number,
+    clockOptions?: StableCanvasPresentationPlaybackClockOptions
+  ) => {
     const safeSeconds = Number(seconds) || 0
     const safePlaybackRate = Math.max(0.25, Number(playbackRate) || 1)
     const deferForPendingFrame = shouldDeferPlaybackStartForPendingFrame(safeSeconds)
     playbackClock = {
       seconds: safeSeconds,
-      startedAtMs: performance.now(),
+      startedAtMs: resolveClockStartedAtMs(clockOptions),
       playbackRate: safePlaybackRate
     }
     if (deferForPendingFrame) {
@@ -317,11 +352,15 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     playbackClock = null
   }
 
-  const reanchorPlayback = (seconds: number, playbackRate: number) => {
+  const reanchorPlayback = (
+    seconds: number,
+    playbackRate: number,
+    clockOptions?: StableCanvasPresentationPlaybackClockOptions
+  ) => {
     const rate = Math.max(0.25, Number(playbackRate) || 1)
     playbackClock = {
       seconds,
-      startedAtMs: performance.now(),
+      startedAtMs: resolveClockStartedAtMs(clockOptions),
       playbackRate: rate
     }
     if (options.isActive() && options.isPlaying() && !options.isDragging() && !playbackRaf) {
@@ -338,7 +377,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     viewportRangeStartSec: number,
     applyOptions: StableCanvasPresentationApplyOptions = {}
   ) => {
-    if (!options.isActive() || !currentFrame) return false
+    if (!options.isActive() || !isCurrentRenderRevision(currentFrame)) return false
     const offsetCssPx = resolveHorizontalBrowseStableCanvasOffsetCssPx(
       currentFrame,
       viewportRangeStartSec
@@ -358,6 +397,12 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     renderedOptions: StableCanvasRenderedOptions = {}
   ) => {
     if (payload.renderToken !== pendingFrame?.renderToken) return false
+    if (!isCurrentRenderRevision(pendingFrame)) {
+      pendingFrame = null
+      reanchorPending = false
+      reanchorPendingAtMs = 0
+      return false
+    }
     const renderedFrame = pendingFrame
     const pendingViewportRangeStartSec = pendingFrame.viewportRangeStartSec
     const canPromoteFrame = payload.ready && payload.renderViewportOnly !== true

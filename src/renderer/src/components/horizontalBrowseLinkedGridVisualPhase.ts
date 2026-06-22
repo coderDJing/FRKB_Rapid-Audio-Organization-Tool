@@ -260,19 +260,23 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
     const clockDeltaSec = input.clockActive
       ? ((currentSample.epochMs - reference.epochMs) / 1000) * reference.playbackRate
       : 0
+    const currentClockDeltaSec = input.clockActive
+      ? ((currentSample.epochMs - reference.epochMs) / 1000) * currentSample.playbackRate
+      : 0
     const referenceBeatDistance =
       reference.beatDistance + (reference.beatSec > 0 ? clockDeltaSec / reference.beatSec : 0)
-    const referenceBeatPhase = normalizePhase(referenceBeatDistance, 1)
+    const referenceBarPhase = normalizePhase(referenceBeatDistance - reference.barBeatOffset, 32)
+    const barBeatOffset = normalizeBarBeatOffset(currentSample.beatDistance - referenceBarPhase)
+    const currentBarPhase = normalizePhase(currentSample.beatDistance - barBeatOffset, 32)
     const phaseShiftSec =
-      resolveSignedCircularDelta(currentSample.beatPhase, referenceBeatPhase, 1) *
-      currentSample.beatSec
+      resolveSignedCircularDelta(currentBarPhase, referenceBarPhase, 32) * currentSample.beatSec
     return {
-      barBeatOffset: sourceBarBeatOffset,
+      barBeatOffset,
       sourceBarBeatOffset,
-      playbackSeconds: sourcePlaybackSeconds - phaseShiftSec,
+      playbackSeconds: sourcePlaybackSeconds - currentClockDeltaSec - phaseShiftSec,
       sourcePlaybackSeconds,
-      playbackRenderClockEpochMs: currentSample.epochMs,
-      playbackClockLinked: false,
+      playbackRenderClockEpochMs: reference.epochMs,
+      playbackClockLinked: true,
       phaseShiftSec,
       linked: true,
       referenceDirection

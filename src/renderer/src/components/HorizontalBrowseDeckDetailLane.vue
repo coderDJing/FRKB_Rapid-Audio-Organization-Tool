@@ -88,7 +88,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   prepareStableFrameForAnchor: (seconds: number, options?: { timeoutMs?: number }) =>
     detailRef.value?.prepareStableFrameForAnchor?.(seconds, options) ?? Promise.resolve(false),
   commitLinkedGridVisualTransaction: () =>
-    detailRef.value?.commitLinkedGridVisualTransaction?.() ?? false
+    detailRef.value?.commitLinkedGridVisualTransaction?.() ?? null
 })
 </script>
 

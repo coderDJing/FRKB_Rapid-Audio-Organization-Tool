@@ -763,16 +763,16 @@ const processRender = (
     preserved && previousFrame
       ? previousFrame.rangeDurationSec
       : (renderState?.rangeDurationSec ?? request.rangeDurationSec)
-  if (
-    metrics &&
-    renderState &&
-    !overlayRenderer.render(
-      request,
-      committedRangeStartSec,
-      committedRangeDurationSec,
-      lastWaveformScrollShiftScaledPx
-    )
-  ) {
+  const overlayRenderResult =
+    metrics && renderState
+      ? overlayRenderer.render(
+          request,
+          committedRangeStartSec,
+          committedRangeDurationSec,
+          lastWaveformScrollShiftScaledPx
+        )
+      : null
+  if (metrics && renderState && !overlayRenderResult) {
     overlayRenderer.clear()
   }
 

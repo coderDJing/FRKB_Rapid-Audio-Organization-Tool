@@ -62,6 +62,21 @@ const localGridShiftPhaseOffsetSec = ref(0)
 const playbackSyncRevision = computed(() =>
   Math.max(0, Math.floor(Number(props.playbackSyncRevision) || 0))
 )
+const stableRenderRevision = computed(() => {
+  const state = props.presentationState
+  const presentationRevision = Math.max(0, Math.floor(Number(state?.revision) || 0))
+  if (
+    state?.owner === 'linked-playback' ||
+    state?.owner === 'seek' ||
+    state?.owner === 'zoom' ||
+    state?.owner === 'linked-zoom' ||
+    state?.owner === 'drag' ||
+    state?.owner === 'linked-drag'
+  ) {
+    return presentationRevision
+  }
+  return 0
+})
 const waveformPlaybackActive = computed(() => Boolean(props.playbackActive ?? props.playing))
 const presentationLinkedDragActive = computed(
   () => Boolean(props.linkedDragActive) || props.presentationState?.owner === 'linked-drag'
@@ -172,8 +187,6 @@ const {
   endDragCanvasPresentation,
   resolveRenderedCanvasViewportStartSec,
   dragPresentationReleaseActive,
-  displayReady,
-  placeholderVisible,
   dispose: disposeWaveformCanvas
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => props.song,
@@ -202,7 +215,7 @@ const {
   waveformLayout: resolveWaveformLayout,
   waveformRenderStyle: resolveWaveformRenderStyle,
   stableWaveformSource: () => compactVisualWaveformActive.value,
-  stableRenderRevision: () => 0,
+  stableRenderRevision: () => stableRenderRevision.value,
   linkedGridActive: () => presentationLinkedGridActive.value,
   phaseAwareScrollReuse: () => Math.abs(localGridShiftPhaseOffsetSec.value) > 0.000001
 })
@@ -488,11 +501,13 @@ const {
   applyIncomingPreviewTimeScale,
   commitLinkedGridVisualTransaction: commitLinkedGridVisualPresentationTransaction
 } = createHorizontalBrowseDetailPresentationActions({
+  deck: resolveDetailDeck,
   currentSeconds: () => props.currentSeconds,
   compactVisualWaveformActive,
   previewStartSec,
   localGridShiftPhaseOffsetSec,
   waveformPlaybackActive: () => waveformPlaybackActive.value,
+  linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
   normalizePreviewTimelineSeconds,
   resolveVisibleDurationSec,
   resolveWaveformCurrentSeconds,
@@ -503,6 +518,13 @@ const {
   getLastAppliedPreviewTimeScale: presentationState.getLastAppliedPreviewTimeScale,
   setLastAppliedPreviewTimeScale: presentationState.setLastAppliedPreviewTimeScale,
   resolveIncomingPreviewTimeScale,
+  resolveWaveformPlaybackRate,
+  resolveGridTimeBasis: () => ({
+    bpm: visualGridRenderBpm.value,
+    firstBeatMs: visualGridFirstBeatMs.value,
+    barBeatOffset: visualGridBarBeatOffset.value,
+    timeBasisOffsetMs: visualGridTimeBasisOffsetMs.value
+  }),
   invalidateWaveformTiles,
   resetGridRenderer,
   maybeContinueWaveformSource,
@@ -517,7 +539,7 @@ const {
 })
 
 const commitLinkedGridVisualTransaction = () =>
-  props.song?.filePath ? commitLinkedGridVisualPresentationTransaction() : false
+  props.song?.filePath ? commitLinkedGridVisualPresentationTransaction() : null
 
 const { handleSharedZoomState, handlePresentationState } =
   createHorizontalBrowseDetailPresentationConsumer({
@@ -533,8 +555,17 @@ const { handleSharedZoomState, handlePresentationState } =
     clampPreviewStart,
     resetGridRenderer,
     maybeContinueWaveformSource,
+    setLastAppliedPreviewTimeScale: presentationState.setLastAppliedPreviewTimeScale,
+    applyGridTimeBasis: (gridTimeBasis) => {
+      visualGridBpm.value = gridTimeBasis.bpm
+      visualGridFirstBeatMs.value = gridTimeBasis.firstBeatMs
+      visualGridBarBeatOffset.value = gridTimeBasis.barBeatOffset
+      visualGridTimeBasisOffsetMs.value = gridTimeBasis.timeBasisOffsetMs
+    },
+    drawWaveformNow,
     schedulePlaybackStableFrameRender,
     clearPlaybackStableFrameRenderTimer,
+    reanchorStableCanvasPlayback,
     scheduleDraw,
     applyPresentationSeekTarget
   })
@@ -752,7 +783,9 @@ watch(
 
 watch(
   () => props.presentationState?.revision ?? 0,
-  () => handlePresentationState(props.presentationState),
+  () => {
+    handlePresentationState(props.presentationState)
+  },
   { immediate: true, flush: 'sync' }
 )
 
@@ -830,6 +863,7 @@ watchHorizontalBrowseDetailPlaybackPosition({
   seekRevision: () => props.seekRevision,
   seekTargetSeconds: () => props.seekTargetSeconds,
   playbackRate: () => props.playbackRate,
+  linkedGridActive: () => presentationLinkedGridActive.value,
   linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
   linkedGridVisualTransactionCommitted: () => linkedGridVisualTransactionCommitted,
   setLinkedGridVisualTransactionCommitted: (value) => {

@@ -82,7 +82,9 @@ const printRendererPortConflictHint = (port, env) => {
 const args = process.argv.slice(2)
 const releaseRuntime = args.includes('--release-runtime')
 const noRuntime = args.includes('--no-runtime')
-const forwardedArgs = args.filter((arg) => arg !== '--release-runtime' && arg !== '--no-runtime')
+const forwardedArgs = args.filter(
+  (arg) => arg !== '--release-runtime' && arg !== '--no-runtime'
+)
 
 const releaseRuntimeRoot = 'vendor/demucs-release'
 const env = {
@@ -104,7 +106,6 @@ if (noRuntime) {
   env.FRKB_IGNORE_BUNDLED_DEMUCS_RUNTIME = '1'
   env.FRKB_IGNORE_DEV_BEAT_THIS_RUNTIME = '1'
 }
-
 if (rendererPort && !(await isRendererPortAvailable(rendererPort))) {
   exitWithRendererPortConflict(rendererPort, env)
 }

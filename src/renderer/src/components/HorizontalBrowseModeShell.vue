@@ -21,7 +21,6 @@ import {
   resolveHorizontalBrowseDeckSyncUiLock,
   resolveHorizontalBrowseDeckWaveformGain
 } from '@renderer/components/horizontalBrowseShellState'
-import { formatPreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import {
   resolveHorizontalBrowseCuePointSec,
@@ -75,6 +74,10 @@ import { useHorizontalBrowseWaveformPresentationCoordinator } from '@renderer/co
 import { createHorizontalBrowseWaveformPresentationShellBridge } from '@renderer/components/horizontalBrowseWaveformPresentationShellBridge'
 import type { HorizontalBrowseDetailZoomChangePayload } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
 import { createHorizontalBrowseModeShellDetailTransactions } from '@renderer/components/horizontalBrowseModeShellDetailTransactions'
+import {
+  resolveHorizontalBrowseDeckToolbarBpmInputValue,
+  resolveHorizontalBrowseDeckWaveformPlaybackActive
+} from '@renderer/components/horizontalBrowseModeShellPresentationResolvers'
 
 type DeckKey = HorizontalBrowseDeckKey
 const props = withDefaults(defineProps<{ viewMode?: HorizontalBrowseViewMode }>(), {
@@ -128,7 +131,6 @@ watch(
   },
   { immediate: true }
 )
-
 const {
   resolveSongsAreaStateBySongListUUID,
   resolveSongListSnapshot,
@@ -137,7 +139,6 @@ const {
   clearDeckSongListSource,
   clearAllDeckSongListSources
 } = useHorizontalBrowseDeckSourceState()
-
 const setDeckSong = (deck: DeckKey, song: ISongInfo | null) => {
   deckTempoInputDirty[deck] = false
   if (!song) {
@@ -212,17 +213,14 @@ const resolveDeckDurationSeconds = (deck: DeckKey) =>
 const topDeckUiPlaying = computed(() => resolveDeckPlaying('top'))
 const bottomDeckUiPlaying = computed(() => resolveDeckPlaying('bottom'))
 const HORIZONTAL_BROWSE_NEGATIVE_PLAYBACK_EPSILON_SEC = 0.0001
-const resolveDeckWaveformPlaybackActive = (deck: DeckKey) => {
-  const snapshot = resolveTransportDeckSnapshot(deck)
-  if (!snapshot.playing) return false
-  if (snapshot.playingAudible || snapshot.playheadLoaded) return true
-  const renderCurrentSec =
-    deck === 'top' ? topDeckRenderCurrentSeconds.value : bottomDeckRenderCurrentSeconds.value
-  return (
-    Number(snapshot.renderCurrentSec) < -HORIZONTAL_BROWSE_NEGATIVE_PLAYBACK_EPSILON_SEC ||
-    renderCurrentSec < -HORIZONTAL_BROWSE_NEGATIVE_PLAYBACK_EPSILON_SEC
-  )
-}
+const resolveDeckWaveformPlaybackActive = (deck: DeckKey) =>
+  resolveHorizontalBrowseDeckWaveformPlaybackActive({
+    deck,
+    snapshot: resolveTransportDeckSnapshot(deck),
+    topRenderCurrentSeconds: topDeckRenderCurrentSeconds,
+    bottomRenderCurrentSeconds: bottomDeckRenderCurrentSeconds,
+    negativePlaybackEpsilonSec: HORIZONTAL_BROWSE_NEGATIVE_PLAYBACK_EPSILON_SEC
+  })
 const topDeckWaveformPlaybackActive = computed(() => resolveDeckWaveformPlaybackActive('top'))
 const bottomDeckWaveformPlaybackActive = computed(() => resolveDeckWaveformPlaybackActive('bottom'))
 const resolveDeckWaveformGain = (deck: DeckKey) =>
@@ -274,32 +272,16 @@ const {
 })
 const resolveDeckMarkerPlacementSeconds = (deck: DeckKey) =>
   Math.max(0, Number(resolveDeckMarkerPlacementSec(deck)) || 0)
-const resolveDeckToolbarBpmInputValue = (deck: DeckKey) => {
-  const toolbarState = deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value
-  if (deckTempoInputDirty[deck]) {
-    return toolbarState.bpmInputValue
-  }
-  if (isEditMode.value) {
-    const songBpm = Number(resolveDeckSong(deck)?.bpm)
-    if (Number.isFinite(songBpm) && songBpm > 0) {
-      return formatPreviewBpm(songBpm)
-    }
-    const baseGridBpm = Number(resolveDeckGridBpm(deck))
-    if (Number.isFinite(baseGridBpm) && baseGridBpm > 0) {
-      return formatPreviewBpm(baseGridBpm)
-    }
-    return toolbarState.bpmInputValue
-  }
-  const effectiveBpm = Number(resolveTransportDeckSnapshot(deck).effectiveBpm)
-  if (Number.isFinite(effectiveBpm) && effectiveBpm > 0) {
-    return formatPreviewBpm(effectiveBpm)
-  }
-  const baseGridBpm = Number(resolveDeckGridBpm(deck))
-  if (Number.isFinite(baseGridBpm) && baseGridBpm > 0) {
-    return formatPreviewBpm(baseGridBpm)
-  }
-  return toolbarState.bpmInputValue
-}
+const resolveDeckToolbarBpmInputValue = (deck: DeckKey) =>
+  resolveHorizontalBrowseDeckToolbarBpmInputValue({
+    deck,
+    toolbarState: deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value,
+    deckTempoInputDirty,
+    editMode: isEditMode.value,
+    resolveDeckSong,
+    resolveDeckGridBpm,
+    resolveTransportDeckSnapshot
+  })
 let resolveDeckMasterTempoEnabledForTransport: (deck: DeckKey) => boolean = () => true
 const {
   resolveDeckPlaybackRateForTransport,
@@ -482,7 +464,6 @@ const {
   previewDeckRawWaveformScrub,
   endDeckRawWaveformDrag
 })
-
 const {
   editBeatStep,
   canPreviousEditSong,
@@ -496,7 +477,6 @@ const {
   resolveDeckPlaying,
   handleDeckPlayPauseToggle
 })
-
 const { handleDeckHotCuePress, handleDeckHotCueDelete, handleSongHotCuesUpdated } =
   useHorizontalBrowseDeckHotCues({
     resolveDeckSong,
@@ -512,7 +492,6 @@ const { handleDeckHotCuePress, handleDeckHotCueDelete, handleSongHotCuesUpdated 
     syncDeckRenderState,
     isDeckLoopActive
   })
-
 const {
   handleDeckMemoryCueCreate,
   handleDeckMemoryCueDelete,
@@ -524,7 +503,6 @@ const {
   buildDeckStoredCueDefinition,
   handleDeckMemoryCueRecall
 })
-
 const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
   resolveDeckCuePreviewRuntimeState,
   resolveTransportDeckSnapshot,
@@ -533,12 +511,10 @@ const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
   commitDeckStateToNative,
   suppressDeckCueClick
 })
-
 const handleDeckQuantizeToggle = (deck: DeckKey) => {
   touchDeckInteraction(deck)
   toggleDeckQuantize(deck)
 }
-
 const handleSharedDetailZoomChange = (payload: HorizontalBrowseDetailZoomChangePayload) => {
   const numeric = Number(payload?.value)
   if (!Number.isFinite(numeric) || numeric <= 0) return
@@ -552,7 +528,6 @@ const handleSharedDetailZoomChange = (payload: HorizontalBrowseDetailZoomChangeP
     revision: sharedDetailZoomState.value.revision + 1
   }
 }
-
 const handleEditDetailZoomChange = (payload: HorizontalBrowseDetailZoomChangePayload) => {
   const numeric = Number(payload?.value)
   if (!Number.isFinite(numeric) || numeric <= 0) return
@@ -566,7 +541,6 @@ const handleEditDetailZoomChange = (payload: HorizontalBrowseDetailZoomChangePay
     revision: editDetailZoomState.value.revision + 1
   }
 }
-
 const handleDetailZoomChange = (payload: HorizontalBrowseDetailZoomChangePayload) => {
   if (!markDetailZoomPresentation(payload)) return
   if (horizontalBrowseViewMode.value === 'edit') {
@@ -575,12 +549,10 @@ const handleDetailZoomChange = (payload: HorizontalBrowseDetailZoomChangePayload
   }
   handleSharedDetailZoomChange(payload)
 }
-
 const shouldPreserveGridShiftPhase = (deck: DeckKey) => {
   const snapshot = resolveTransportDeckSnapshot(deck)
   return snapshot.syncEnabled && snapshot.syncLock === 'full'
 }
-
 const {
   handleToolbarStateChange,
   handleDeckBarLinePickingToggle,
@@ -622,7 +594,6 @@ const resolveDeckSyncUiLock = (deck: DeckKey) =>
     resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore,
     resolveDeckCuePreviewRuntimeState(deck).syncLockBefore
   )
-
 const resolveDeckToolbarState = (deck: DeckKey) =>
   buildHorizontalBrowseDeckToolbarState(
     deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value,
@@ -641,7 +612,6 @@ const resolveDeckToolbarState = (deck: DeckKey) =>
 const handleCrossfaderNudgeByKeyboard = (direction: -1 | 1) => {
   faderPanelRef.value?.nudgeCrossfaderByKeyboard(direction)
 }
-
 const handleCrossfaderResetByKeyboard = () => {
   faderPanelRef.value?.resetCrossfaderByKeyboard()
 }

@@ -118,7 +118,7 @@ const drawBeatGridOverlay = (
   rangeStartSec: number,
   rangeDurationSec: number,
   themeVariant: 'light' | 'dark'
-) => {
+): void => {
   if (!Number.isFinite(bpm) || bpm <= 0 || rangeDurationSec <= 0) return
   const beatSec = 60 / bpm
   if (!Number.isFinite(beatSec) || beatSec <= 0) return
@@ -157,9 +157,11 @@ const drawBeatGridOverlay = (
 
   for (let i = startIndex; i <= endIndex; i += 1) {
     const beatTime = firstBeatSec + i * beatSec
-    if (beatTime < 0) continue
-    if (beatTime < rangeStartSec - beatSec || beatTime > rangeEndSec + beatSec) continue
     const x = ((beatTime - rangeStartSec) / rangeDurationSec) * width
+    if (beatTime < 0) {
+      continue
+    }
+    if (beatTime < rangeStartSec - beatSec || beatTime > rangeEndSec + beatSec) continue
     const shiftedIndex = i - normalizedBarOffset
     const modBar = ((shiftedIndex % BAR_BEAT_INTERVAL) + BAR_BEAT_INTERVAL) % BAR_BEAT_INTERVAL
     const mod4 = ((shiftedIndex % BEAT4_INTERVAL) + BEAT4_INTERVAL) % BEAT4_INTERVAL

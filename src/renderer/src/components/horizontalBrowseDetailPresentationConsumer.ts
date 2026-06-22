@@ -1,5 +1,8 @@
 import type { Ref } from 'vue'
-import { HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO } from '@renderer/components/horizontalBrowseWaveform.constants'
+import {
+  HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
+  HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC
+} from '@renderer/components/horizontalBrowseWaveform.constants'
 import { normalizeHorizontalBrowseSharedZoom } from '@renderer/components/horizontalBrowseRawWaveformDetailMath'
 import type { HorizontalBrowseSharedZoomState } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
@@ -20,8 +23,18 @@ type DetailPresentationConsumerParams = {
   clampPreviewStart: (seconds: number) => number
   resetGridRenderer: () => void
   maybeContinueWaveformSource: (anchorSec?: number) => void
+  setLastAppliedPreviewTimeScale: (value: number) => void
+  applyGridTimeBasis: (
+    gridTimeBasis: NonNullable<HorizontalBrowseWaveformPresentationState['gridTimeBasis']>
+  ) => void
+  drawWaveformNow: (options?: { preferPreviewStart?: boolean; viewportOnly?: boolean }) => void
   schedulePlaybackStableFrameRender: () => void
   clearPlaybackStableFrameRenderTimer: () => void
+  reanchorStableCanvasPlayback: (
+    seconds: number,
+    playbackRate: number,
+    options?: { startedAtMs?: number }
+  ) => void
   scheduleDraw: (options?: { preferPreviewStart?: boolean; viewportOnly?: boolean }) => void
   applyPresentationSeekTarget: (seconds: number, revision: number) => void
 }
@@ -40,8 +53,27 @@ const isFiniteNumber = (value: unknown): value is number =>
 const isZoomOwner = (state: HorizontalBrowseWaveformPresentationState | undefined) =>
   state?.owner === 'zoom' || state?.owner === 'linked-zoom'
 
+const isDragOwner = (state: HorizontalBrowseWaveformPresentationState | undefined) =>
+  state?.owner === 'drag' || state?.owner === 'linked-drag'
+
+const isCommittedLinkedPlaybackOwner = (
+  state: HorizontalBrowseWaveformPresentationState | undefined
+) => state?.owner === 'linked-playback' && state.linked === true && state.visualPending === false
+
 const resolveDeckDirection = (deck: DeckKey | null): 'up' | 'down' | null =>
   deck === 'top' ? 'up' : deck === 'bottom' ? 'down' : null
+
+const resolvePlaybackClockSeconds = (
+  playbackClock: HorizontalBrowseWaveformPresentationState['playbackClock']
+) => {
+  if (!playbackClock) return null
+  const seconds = Number(playbackClock.seconds)
+  const startedAtMs = Number(playbackClock.startedAtMs)
+  if (!Number.isFinite(seconds) || !Number.isFinite(startedAtMs)) return null
+  const elapsedSec = Math.max(0, performance.now() - startedAtMs) / 1000
+  const playbackRate = Math.max(0.25, Number(playbackClock.playbackRate) || 1)
+  return seconds + elapsedSec * playbackRate
+}
 
 export const createHorizontalBrowseDetailPresentationConsumer = (
   params: DetailPresentationConsumerParams
@@ -98,6 +130,55 @@ export const createHorizontalBrowseDetailPresentationConsumer = (
     }
   }
 
+  const applyCommittedLinkedPlaybackState = (state: HorizontalBrowseWaveformPresentationState) => {
+    if (state.gridTimeBasis) {
+      params.applyGridTimeBasis(state.gridTimeBasis)
+    }
+    const stateTimeScale = Math.max(0.25, Number(state.timeScale) || 1)
+    params.setLastAppliedPreviewTimeScale(stateTimeScale)
+    if (isFiniteNumber(state.visibleDurationSec) && Number(state.visibleDurationSec) > 0) {
+      const targetZoom =
+        (HORIZONTAL_BROWSE_DETAIL_VISIBLE_DURATION_BASE_SEC * stateTimeScale) /
+        Number(state.visibleDurationSec)
+      params.previewZoom.value = normalizeHorizontalBrowseSharedZoom(
+        targetZoom,
+        params.previewMaxZoom.value
+      )
+    }
+    const nextVisible = params.resolveVisibleDurationSec()
+    const anchorRatio = Math.max(0, Math.min(1, Number(state.anchorRatio) || 0.5))
+    const playbackClockSeconds = params.waveformPlaybackActive()
+      ? resolvePlaybackClockSeconds(state.playbackClock)
+      : null
+    const anchorSec =
+      playbackClockSeconds !== null
+        ? playbackClockSeconds
+        : isFiniteNumber(state.anchorSec)
+          ? Number(state.anchorSec)
+          : params.resolveWaveformCurrentSeconds()
+    const viewportStartSec =
+      playbackClockSeconds === null && isFiniteNumber(state.viewportStartSec)
+        ? Number(state.viewportStartSec)
+        : anchorSec - nextVisible * anchorRatio
+    params.previewStartSec.value = params.clampPreviewStart(viewportStartSec)
+    params.resetGridRenderer()
+    params.maybeContinueWaveformSource(anchorSec)
+    if (params.waveformPlaybackActive()) {
+      params.clearPlaybackStableFrameRenderTimer()
+      params.drawWaveformNow({ preferPreviewStart: true })
+      if (state.playbackClock) {
+        params.reanchorStableCanvasPlayback(
+          state.playbackClock.seconds,
+          state.playbackClock.playbackRate,
+          { startedAtMs: state.playbackClock.startedAtMs }
+        )
+      }
+    } else {
+      params.clearPlaybackStableFrameRenderTimer()
+      params.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
+    }
+  }
+
   const handleSharedZoomState = (state: HorizontalBrowseSharedZoomState | undefined) => {
     if (isZoomOwner(params.presentationState())) return
     applyZoomTarget({
@@ -128,6 +209,20 @@ export const createHorizontalBrowseDetailPresentationConsumer = (
         anchorSec: state.anchorSec,
         viewportStartSec: state.viewportStartSec
       })
+      return
+    }
+    if (state.owner === 'sync-transaction' && state.visualPending) {
+      return
+    }
+    if (isCommittedLinkedPlaybackOwner(state)) {
+      applyCommittedLinkedPlaybackState(state)
+      return
+    }
+    if (isDragOwner(state)) {
+      return
+    }
+    if (state.owner === 'idle' || state.owner === 'playback') {
+      return
     }
   }
 
