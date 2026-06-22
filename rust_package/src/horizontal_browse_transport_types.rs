@@ -58,6 +58,7 @@ pub struct HorizontalBrowseTransportBeatGridInput {
 #[napi(object)]
 pub struct HorizontalBrowseTransportStateInput {
   pub now_ms: Option<f64>,
+  pub allow_phase_alignment: Option<bool>,
   pub top: HorizontalBrowseTransportDeckInput,
   pub bottom: HorizontalBrowseTransportDeckInput,
 }

@@ -1,5 +1,9 @@
-import type { Ref } from 'vue'
-import type { HorizontalBrowseDragSessionEndPayload } from './horizontalBrowseRawWaveformDetailTypes'
+import { watch, type Ref } from 'vue'
+import { HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO } from '@renderer/components/horizontalBrowseWaveform.constants'
+import type {
+  HorizontalBrowseDetailZoomChangePayload,
+  HorizontalBrowseDragSessionEndPayload
+} from './horizontalBrowseRawWaveformDetailTypes'
 
 type DragPresentationStartResult = {
   viewportStartSec: number | null
@@ -36,11 +40,9 @@ type PointerInteractionOptions = {
   schedulePersistGridDefinition: () => void
   emitDragSessionStart: () => void
   emitDragSessionEnd: (payload: HorizontalBrowseDragSessionEndPayload) => void
-  emitZoomChange: (payload: {
-    value: number
-    anchorRatio: number
-    sourceDirection: 'up' | 'down'
-  }) => void
+  emitZoomChange: (payload: HorizontalBrowseDetailZoomChangePayload) => void
+  linkedDragActive?: () => boolean
+  linkedDragAnchorSec?: () => number | null
   resolvePlaybackActive: () => boolean
   maybeContinueWaveformSource: (anchorSec?: number) => void
   drawWaveformNow: (options?: { preferPreviewStart?: boolean; viewportOnly?: boolean }) => void
@@ -56,6 +58,61 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
   let dragStartClientX = 0
   let dragStartSec = 0
   let activeDragPointerId: number | null = null
+  let linkedDragPresentationActive = false
+  let linkedDragStartSec = 0
+
+  const finishLinkedDragPresentation = () => {
+    if (!linkedDragPresentationActive) return
+    const finalAnchorSec = options.resolvePreviewAnchorSec()
+    const finalPreviewStartSec = options.previewStartSec.value
+    linkedDragPresentationActive = false
+    linkedDragStartSec = 0
+    const dragRelease = options.endDragCanvasPresentation(finalPreviewStartSec)
+    options.maybeContinueWaveformSource(finalAnchorSec)
+    if (dragRelease.requiresRender) {
+      options.drawWaveformNow({ preferPreviewStart: true })
+    }
+  }
+
+  if (options.linkedDragActive && options.linkedDragAnchorSec) {
+    watch(
+      () =>
+        [
+          Boolean(options.linkedDragActive?.()),
+          Number(options.linkedDragAnchorSec?.()),
+          options.hasSong()
+        ] as const,
+      ([active, anchorSec, hasSong]) => {
+        if (options.dragging.value) return
+        if (!active || !hasSong || !Number.isFinite(anchorSec)) {
+          finishLinkedDragPresentation()
+          return
+        }
+        const wrap = options.wrapRef.value
+        const visibleDuration = options.resolveVisibleDurationSec()
+        if (!wrap || !visibleDuration) return
+        if (!linkedDragPresentationActive) {
+          const dragPresentation = options.beginDragCanvasPresentation()
+          linkedDragPresentationActive = true
+          const visualStartSec = dragPresentation.viewportStartSec
+          linkedDragStartSec =
+            visualStartSec !== null && Number.isFinite(visualStartSec)
+              ? options.clampPreviewStart(visualStartSec)
+              : options.previewStartSec.value
+          options.previewStartSec.value = linkedDragStartSec
+        }
+        const nextPreviewStartSec = options.clampPreviewStart(
+          anchorSec - visibleDuration * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
+        )
+        options.previewStartSec.value = nextPreviewStartSec
+        const presentationOffset =
+          ((linkedDragStartSec - nextPreviewStartSec) / visibleDuration) *
+          Math.max(1, wrap.clientWidth)
+        options.applyDragCanvasPresentationOffset(presentationOffset)
+      },
+      { flush: 'post' }
+    )
+  }
 
   const handleDragPointerMove = (event: PointerEvent) => {
     if (!options.dragging.value) return
@@ -101,13 +158,14 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
     if (refreshWaveform) {
       options.maybeContinueWaveformSource(finalAnchorSec)
       if (dragRelease.requiresRender) {
-        options.drawWaveformNow({ preferPreviewStart: true, viewportOnly: true })
+        options.drawWaveformNow({ preferPreviewStart: true })
       }
     }
   }
 
   const beginWaveformDrag = (event: PointerEvent) => {
     options.clearDragReleaseHandoff()
+    finishLinkedDragPresentation()
     options.dragging.value = true
     activeDragPointerId = event.pointerId
     dragStartClientX = event.clientX
@@ -175,12 +233,15 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
     options.emitZoomChange({
       value: options.previewZoom.value,
       anchorRatio: ratio,
-      sourceDirection: options.direction()
+      sourceDirection: options.direction(),
+      anchorSec,
+      viewportStartSec: options.previewStartSec.value,
+      visibleDurationSec: nextVisible
     })
     options.maybeContinueWaveformSource(options.resolvePreviewAnchorSec())
-    options.scheduleDraw(
-      options.resolvePlaybackActive() ? undefined : { preferPreviewStart: true, viewportOnly: true }
-    )
+    if (!options.resolvePlaybackActive()) {
+      options.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
+    }
   }
 
   return {

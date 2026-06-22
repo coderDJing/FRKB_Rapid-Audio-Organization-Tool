@@ -22,6 +22,11 @@ export type HorizontalBrowseDeckDetailLaneExpose = {
   blurBpmInput?: () => void
   tapBpm?: () => void
   cycleMetronomeState?: () => void
+  prepareStableFrameForAnchor?: (
+    seconds: number,
+    options?: { timeoutMs?: number }
+  ) => Promise<boolean>
+  commitLinkedGridVisualTransaction?: () => boolean
 }
 
 export const EDIT_MODE_BPM_INPUT_TITLE = '网格 BPM：修改分析结果和网格线，不改变播放速度'

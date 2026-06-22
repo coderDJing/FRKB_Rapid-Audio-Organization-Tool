@@ -133,7 +133,11 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
-  const setState = async (payload: { top: LocalDeckState; bottom: LocalDeckState }) => {
+  const setState = async (payload: {
+    top: LocalDeckState
+    bottom: LocalDeckState
+    allowPhaseAlignment?: boolean
+  }) => {
     const nowMs = performance.now()
     const snapshot = await invoke('horizontal-browse-transport:set-state', {
       nowMs,
@@ -164,7 +168,8 @@ export const createHorizontalBrowseNativeTransport = () => {
         playing: Boolean(payload.bottom.playing),
         playbackRate: Number(payload.bottom.playbackRate) || 1,
         masterTempoEnabled: payload.bottom.masterTempoEnabled !== false
-      }
+      },
+      allowPhaseAlignment: payload.allowPhaseAlignment !== false
     })
     applySnapshot(snapshot)
     return snapshot

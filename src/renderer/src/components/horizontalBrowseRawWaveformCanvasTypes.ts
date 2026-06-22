@@ -35,5 +35,6 @@ export type UseHorizontalBrowseRawWaveformCanvasOptions = {
   waveformRenderStyle: () => HorizontalBrowseWaveformRenderStyle
   stableWaveformSource?: () => boolean
   stableRenderRevision?: () => number
+  linkedGridActive?: () => boolean
   phaseAwareScrollReuse?: () => boolean
 }

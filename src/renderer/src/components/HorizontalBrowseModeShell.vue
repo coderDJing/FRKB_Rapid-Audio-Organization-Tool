@@ -71,16 +71,15 @@ import {
 import { useHorizontalBrowseModePlaybackHandoff } from '@renderer/components/useHorizontalBrowseModePlaybackHandoff'
 import { useHorizontalBrowseVolumeSync } from '@renderer/components/useHorizontalBrowseVolumeSync'
 import { MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT } from '@renderer/utils/mainWindowPlaybackHandoff'
+import { useHorizontalBrowseWaveformPresentationCoordinator } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
+import { createHorizontalBrowseWaveformPresentationShellBridge } from '@renderer/components/horizontalBrowseWaveformPresentationShellBridge'
+import type { HorizontalBrowseDetailZoomChangePayload } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
+import { createHorizontalBrowseModeShellDetailTransactions } from '@renderer/components/horizontalBrowseModeShellDetailTransactions'
 
 type DeckKey = HorizontalBrowseDeckKey
-const props = withDefaults(
-  defineProps<{
-    viewMode?: HorizontalBrowseViewMode
-  }>(),
-  {
-    viewMode: 'dual'
-  }
-)
+const props = withDefaults(defineProps<{ viewMode?: HorizontalBrowseViewMode }>(), {
+  viewMode: 'dual'
+})
 const runtime = useRuntimeStore()
 const {
   topDeckSong,
@@ -90,8 +89,16 @@ const {
 } = useHorizontalBrowseDeckSongs()
 const topDeckCuePointSeconds = ref(0)
 const bottomDeckCuePointSeconds = ref(0)
+const waveformPresentation = useHorizontalBrowseWaveformPresentationCoordinator()
 const topDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
 const bottomDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
+const resolveDetailRef = (deck: DeckKey) =>
+  deck === 'top' ? topDetailRef.value : bottomDetailRef.value
+const { prepareDeckStableFrameForAnchor, commitLinkedGridVisualTransaction } =
+  createHorizontalBrowseModeShellDetailTransactions({
+    presentation: waveformPresentation,
+    resolveDetailRef
+  })
 const faderPanelRef = ref<InstanceType<typeof HorizontalBrowseFaderPanel> | null>(null)
 const topDeckToolbarState = ref(createDefaultDeckToolbarState())
 const bottomDeckToolbarState = ref(createDefaultDeckToolbarState())
@@ -113,6 +120,14 @@ const isLightTheme = computed(() => {
     document.body.classList.contains('theme-light')
   )
 })
+watch(
+  isEditMode,
+  (editMode) => {
+    waveformPresentation.setSurfaceMode('top', editMode ? 'edit-detail' : 'dual-detail')
+    waveformPresentation.setSurfaceMode('bottom', 'dual-detail')
+  },
+  { immediate: true }
+)
 
 const {
   resolveSongsAreaStateBySongListUUID,
@@ -179,6 +194,10 @@ const {
   primeDeckRenderCurrentSeconds,
   notifyDeckSeekIntent
 } = useHorizontalBrowseTransportController()
+const notifyDeckSeekPresentationIntent = (deck: DeckKey, seconds: number) => {
+  waveformPresentation.markSeek(deck, seconds)
+  notifyDeckSeekIntent(deck, seconds)
+}
 useHorizontalBrowseVisualizer({ nativeTransport })
 const { mainWindowVolume, syncCurrentVolume } = useHorizontalBrowseVolumeSync({ nativeTransport })
 const topDeckDurationSeconds = computed(() => resolveDeckDurationSeconds('top'))
@@ -341,6 +360,7 @@ const {
   deckCueMonitorState,
   faderControlsExpanded,
   dualTransportSyncEnabled,
+  dualTransportSyncActivating,
   canUseDualTransportSync,
   activateDualTransportSync,
   deactivateDualTransportSync,
@@ -356,6 +376,7 @@ const {
   nativeTransport,
   commitDeckStatesToNative,
   syncDeckRenderState,
+  commitLinkedGridVisualTransaction,
   resolveDeckSong,
   resolveDeckPlaying,
   resolveDeckCurrentSeconds,
@@ -392,6 +413,7 @@ const {
   deckPendingCuePreviewOnLoad,
   suppressDeckCueClick,
   isDeckWaveformDragging,
+  resolveDeckWaveformDragAnchorSec,
   resolveDeckCuePreviewRuntimeState,
   resolveDeckLoopRange,
   resolveDeckLoopBeatLabel,
@@ -401,9 +423,9 @@ const {
   handleDeckLoopStepDown,
   handleDeckLoopStepUp,
   handleDeckLoopPlaybackTick,
-  handleDeckRawWaveformDragStart,
-  handleDeckRawWaveformScrubPreview,
-  handleDeckRawWaveformDragEnd,
+  handleDeckRawWaveformDragStart: startDeckRawWaveformDrag,
+  handleDeckRawWaveformScrubPreview: previewDeckRawWaveformScrub,
+  handleDeckRawWaveformDragEnd: endDeckRawWaveformDrag,
   handleDeckPlayheadSeek,
   handleDeckBarJump,
   handleDeckPhraseJump,
@@ -421,9 +443,10 @@ const {
   handleDeckPlayPauseToggle
 } = useHorizontalBrowseDeckTransportInteractions({
   touchDeckInteraction,
-  notifyDeckSeekIntent,
+  notifyDeckSeekIntent: notifyDeckSeekPresentationIntent,
   holdDeckRenderCurrentSeconds,
   startDeckRenderPlaybackClock,
+  prepareDeckStableFrameForAnchor,
   nativeTransport,
   syncDeckRenderState,
   commitDeckStatesToNative,
@@ -442,6 +465,22 @@ const {
     dualTransportSyncEnabled.value && canUseDualTransportSync.value,
   ensureDualTransportSync: activateDualTransportSync,
   deactivateDualTransportSync
+})
+const {
+  handleDeckRawWaveformDragStart,
+  handleDeckRawWaveformScrubPreview,
+  handleDeckRawWaveformDragEnd,
+  markDetailZoomPresentation
+} = createHorizontalBrowseWaveformPresentationShellBridge({
+  presentation: waveformPresentation,
+  resolveLinkedDragActive: () =>
+    !isEditMode.value && dualTransportSyncEnabled.value && canUseDualTransportSync.value,
+  resolveZoomLinked: () => horizontalBrowseViewMode.value !== 'edit',
+  resolveDeckRenderCurrentSeconds,
+  resolveDeckWaveformDragAnchorSec,
+  startDeckRawWaveformDrag,
+  previewDeckRawWaveformScrub,
+  endDeckRawWaveformDrag
 })
 
 const {
@@ -495,19 +534,12 @@ const handleDeckEjectSong = createHorizontalBrowseDeckEjectHandler({
   suppressDeckCueClick
 })
 
-const resolveDetailRef = (deck: DeckKey) =>
-  deck === 'top' ? topDetailRef.value : bottomDetailRef.value
-
 const handleDeckQuantizeToggle = (deck: DeckKey) => {
   touchDeckInteraction(deck)
   toggleDeckQuantize(deck)
 }
 
-const handleSharedDetailZoomChange = (payload: {
-  value: number
-  anchorRatio: number
-  sourceDirection: 'up' | 'down'
-}) => {
+const handleSharedDetailZoomChange = (payload: HorizontalBrowseDetailZoomChangePayload) => {
   const numeric = Number(payload?.value)
   if (!Number.isFinite(numeric) || numeric <= 0) return
   sharedDetailZoomState.value = {
@@ -521,11 +553,7 @@ const handleSharedDetailZoomChange = (payload: {
   }
 }
 
-const handleEditDetailZoomChange = (payload: {
-  value: number
-  anchorRatio: number
-  sourceDirection: 'up' | 'down'
-}) => {
+const handleEditDetailZoomChange = (payload: HorizontalBrowseDetailZoomChangePayload) => {
   const numeric = Number(payload?.value)
   if (!Number.isFinite(numeric) || numeric <= 0) return
   editDetailZoomState.value = {
@@ -539,11 +567,8 @@ const handleEditDetailZoomChange = (payload: {
   }
 }
 
-const handleDetailZoomChange = (payload: {
-  value: number
-  anchorRatio: number
-  sourceDirection: 'up' | 'down'
-}) => {
+const handleDetailZoomChange = (payload: HorizontalBrowseDetailZoomChangePayload) => {
+  if (!markDetailZoomPresentation(payload)) return
   if (horizontalBrowseViewMode.value === 'edit') {
     handleEditDetailZoomChange(payload)
     return
@@ -716,7 +741,7 @@ const {
   resolveTransportDeckSnapshot,
   setDeckSong,
   assignSongToDeck,
-  notifyDeckSeekIntent,
+  notifyDeckSeekIntent: notifyDeckSeekPresentationIntent,
   commitDeckStateToNative,
   syncDeckRenderState,
   handleDeckPlayPauseToggle
@@ -829,8 +854,8 @@ onUnmounted(() => {
         v-model:expanded="faderControlsExpanded"
         :native-transport="nativeTransport"
         :main-window-volume="mainWindowVolume"
-        :transport-sync-enabled="dualTransportSyncEnabled"
-        :transport-sync-disabled="!canUseDualTransportSync"
+        :transport-sync-enabled="dualTransportSyncEnabled || dualTransportSyncActivating"
+        :transport-sync-disabled="!canUseDualTransportSync || dualTransportSyncActivating"
         @toggle-transport-sync="handleDualTransportSyncToggle"
       />
 
@@ -927,6 +952,11 @@ onUnmounted(() => {
           :memory-cues="topDeckSong?.memoryCues || []"
           :seek-target-seconds="deckSeekIntent.top.seconds"
           :seek-revision="deckSeekIntent.top.revision"
+          :linked-drag-active="isDeckWaveformDragging('top')"
+          :linked-drag-anchor-sec="resolveDeckWaveformDragAnchorSec('top')"
+          :linked-grid-active="!isEditMode && shouldPreserveGridShiftPhase('top')"
+          :linked-grid-visual-pending="dualTransportSyncActivating"
+          :presentation-state="waveformPresentation.state.top"
           :max-zoom="
             isEditMode ? HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM : HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
           "
@@ -966,6 +996,11 @@ onUnmounted(() => {
           :memory-cues="bottomDeckSong?.memoryCues || []"
           :seek-target-seconds="deckSeekIntent.bottom.seconds"
           :seek-revision="deckSeekIntent.bottom.revision"
+          :linked-drag-active="isDeckWaveformDragging('bottom')"
+          :linked-drag-anchor-sec="resolveDeckWaveformDragAnchorSec('bottom')"
+          :linked-grid-active="shouldPreserveGridShiftPhase('bottom')"
+          :linked-grid-visual-pending="dualTransportSyncActivating"
+          :presentation-state="waveformPresentation.state.bottom"
           :max-zoom="HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM"
           waveform-layout="auto"
           waveform-render-style="raw-curve"

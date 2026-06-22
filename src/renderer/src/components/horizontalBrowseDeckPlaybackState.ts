@@ -15,6 +15,7 @@ export type DeckWaveformDragState = {
   pausePromise: Promise<void> | null
   startAnchorSec: number
   anchorSec: number
+  visualPlaybackRate: number
   cueCommittedDuringDrag: boolean
 }
 
@@ -39,5 +40,6 @@ export const createDefaultDeckWaveformDragState = (): DeckWaveformDragState => (
   pausePromise: null,
   startAnchorSec: 0,
   anchorSec: 0,
+  visualPlaybackRate: 1,
   cueCommittedDuringDrag: false
 })

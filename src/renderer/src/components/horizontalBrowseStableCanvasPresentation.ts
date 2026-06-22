@@ -38,7 +38,7 @@ export const shouldReanchorHorizontalBrowseStableCanvas = (
   const viewportWidth = Math.max(1, renderWidth - overscanCssPx * 2)
   const viewportStepLimit = Math.min(64, Math.max(32, viewportWidth * 0.05))
   const reanchorOffsetLimit = Math.min(overscanCssPx * 0.7, viewportStepLimit)
-  return offsetCssPx <= -Math.max(1, reanchorOffsetLimit)
+  return Math.abs(offsetCssPx) >= Math.max(1, reanchorOffsetLimit)
 }
 
 export const canPresentHorizontalBrowseStableCanvas = (
@@ -50,6 +50,10 @@ export const canPresentHorizontalBrowseStableCanvas = (
   const coverOffsetLimit = Math.max(0, (renderWidth - viewportWidth) * 0.5)
   return Math.abs(offsetCssPx) <= coverOffsetLimit
 }
+
+const STABLE_REANCHOR_RETRY_MS = 96
+const STABLE_PENDING_PLAYBACK_START_EPSILON_SEC = 0.5
+const STABLE_STALE_FRAME_PLAYBACK_START_SEC = 1
 
 export const applyHorizontalBrowseStableCanvasPresentation = (
   waveformCanvas: HTMLCanvasElement | null,
@@ -114,6 +118,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
   let pendingFrame: HorizontalBrowseStableCanvasPresentationFrame | null = null
   let currentFrame: HorizontalBrowseStableCanvasPresentationFrame | null = null
   let reanchorPending = false
+  let reanchorPendingAtMs = 0
   let playbackClock: StableCanvasPresentationPlaybackClock | null = null
   let playbackRaf = 0
 
@@ -129,12 +134,34 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     return playbackClock.seconds + elapsedSec * playbackClock.playbackRate
   }
 
+  const estimateFramePlaybackSeconds = (
+    frame: HorizontalBrowseStableCanvasPresentationFrame,
+    nowMs = performance.now()
+  ) => {
+    const elapsedSec = Math.max(0, nowMs - frame.anchorStartedAtMs) / 1000
+    return frame.anchorSec + elapsedSec * Math.max(0.25, Number(frame.playbackRate) || 1)
+  }
+
+  const shouldDeferPlaybackStartForPendingFrame = (seconds: number) => {
+    if (!pendingFrame) return false
+    if (
+      Math.abs(Number(pendingFrame.anchorSec) - seconds) > STABLE_PENDING_PLAYBACK_START_EPSILON_SEC
+    ) {
+      return false
+    }
+    if (!currentFrame) return true
+    return (
+      Math.abs(Number(currentFrame.anchorSec) - seconds) > STABLE_STALE_FRAME_PLAYBACK_START_SEC
+    )
+  }
+
   const clear = () => {
     clearPlaybackLoop()
     playbackClock = null
     pendingFrame = null
     currentFrame = null
     reanchorPending = false
+    reanchorPendingAtMs = 0
   }
 
   const queueFrame = (frame: HorizontalBrowseStableCanvasPresentationFrame | null) => {
@@ -142,6 +169,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     if (!frame) {
       currentFrame = null
       reanchorPending = false
+      reanchorPendingAtMs = 0
     }
   }
 
@@ -174,6 +202,15 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
           }
         : null
     )
+  }
+
+  const shouldRetryReanchor = () =>
+    !reanchorPending || performance.now() - reanchorPendingAtMs >= STABLE_REANCHOR_RETRY_MS
+
+  const requestReanchor = () => {
+    reanchorPending = true
+    reanchorPendingAtMs = performance.now()
+    options.scheduleDraw()
   }
 
   const measure = (
@@ -219,10 +256,9 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
         applyOptions.allowReanchor !== false &&
         options.isPlaying() &&
         !options.isDragging() &&
-        !reanchorPending
+        shouldRetryReanchor()
       ) {
-        reanchorPending = true
-        options.scheduleDraw()
+        requestReanchor()
       }
       return { applied: false, offsetCssPx, presentable }
     }
@@ -235,11 +271,10 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
       applyOptions.allowReanchor !== false &&
       options.isPlaying() &&
       !options.isDragging() &&
-      !reanchorPending &&
+      shouldRetryReanchor() &&
       reanchorNeeded
     if (shouldReanchor) {
-      reanchorPending = true
-      options.scheduleDraw()
+      requestReanchor()
     }
     return { applied: true, offsetCssPx, presentable }
   }
@@ -250,7 +285,8 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
       playbackClock = null
       return
     }
-    const result = apply(estimatePlaybackSeconds(), { allowReanchor: true })
+    const estimatedSeconds = estimatePlaybackSeconds()
+    const result = apply(estimatedSeconds, { allowReanchor: true })
     if (result.applied) {
       playbackRaf = requestAnimationFrame(tickPlayback)
       return
@@ -259,10 +295,17 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
   }
 
   const startPlayback = (seconds: number, playbackRate: number) => {
+    const safeSeconds = Number(seconds) || 0
+    const safePlaybackRate = Math.max(0.25, Number(playbackRate) || 1)
+    const deferForPendingFrame = shouldDeferPlaybackStartForPendingFrame(safeSeconds)
     playbackClock = {
-      seconds,
+      seconds: safeSeconds,
       startedAtMs: performance.now(),
-      playbackRate: Math.max(0.25, Number(playbackRate) || 1)
+      playbackRate: safePlaybackRate
+    }
+    if (deferForPendingFrame) {
+      clearPlaybackLoop()
+      return
     }
     if (!playbackRaf) {
       playbackRaf = requestAnimationFrame(tickPlayback)
@@ -317,20 +360,26 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     if (payload.renderToken !== pendingFrame?.renderToken) return false
     const renderedFrame = pendingFrame
     const pendingViewportRangeStartSec = pendingFrame.viewportRangeStartSec
-    currentFrame = payload.ready
+    const canPromoteFrame = payload.ready && payload.renderViewportOnly !== true
+    currentFrame = canPromoteFrame
       ? {
           ...renderedFrame,
           rangeStartSec: payload.rangeStartSec,
           rangeDurationSec: payload.rangeDurationSec
         }
-      : null
+      : payload.ready
+        ? currentFrame
+        : null
     pendingFrame = null
     reanchorPending = false
-    if (payload.ready && options.isActive()) {
+    reanchorPendingAtMs = 0
+    if (canPromoteFrame && options.isActive()) {
       if (renderedOptions.forceViewportRangeStart === true) {
         applyViewportRangeStart(pendingViewportRangeStartSec)
         if (options.isPlaying() && !playbackClock) {
-          resumePlaybackFrom(renderedFrame.anchorSec)
+          const seconds = estimateFramePlaybackSeconds(renderedFrame)
+          apply(seconds, { allowReanchor: false })
+          resumePlaybackFrom(seconds)
         }
       } else if (!options.isPlaying()) {
         applyViewportRangeStart(pendingViewportRangeStartSec)
@@ -341,8 +390,12 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
             renderedFrame.playbackRate
         const seconds = playbackClock ? estimatePlaybackSeconds() : pendingPlaybackSeconds
         const result = apply(seconds)
-        if (result.applied && options.isPlaying() && !playbackClock) {
-          resumePlaybackFrom(seconds)
+        if (result.applied && options.isPlaying()) {
+          if (!playbackClock) {
+            resumePlaybackFrom(seconds)
+          } else if (!playbackRaf) {
+            playbackRaf = requestAnimationFrame(tickPlayback)
+          }
         }
       }
     }

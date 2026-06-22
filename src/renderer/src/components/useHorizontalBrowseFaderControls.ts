@@ -1,4 +1,4 @@
-import { computed, reactive, ref, watch, type Ref } from 'vue'
+import { computed, nextTick, reactive, ref, watch, type Ref } from 'vue'
 import type { ISettingConfig, ISongInfo } from 'src/types/globals'
 import type {
   HorizontalBrowseDeckKey,
@@ -26,6 +26,10 @@ type UseHorizontalBrowseFaderControlsParams = {
   }
   commitDeckStatesToNative: () => Promise<unknown>
   syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
+  commitLinkedGridVisualTransaction?: (payload: {
+    leader: DeckKey
+    follower: DeckKey
+  }) => Promise<boolean> | boolean
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckPlaying: (deck: DeckKey) => boolean
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
@@ -37,6 +41,20 @@ const createDefaultBandState = (): HorizontalBrowseTransportBandState => ({
   mid: true,
   low: true
 })
+
+const waitForAnimationFrame = () =>
+  new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve())
+      return
+    }
+    setTimeout(resolve, 16)
+  })
+
+const waitForLinkedGridVisualHold = async () => {
+  await nextTick()
+  await waitForAnimationFrame()
+}
 
 export const useHorizontalBrowseFaderControls = (
   params: UseHorizontalBrowseFaderControlsParams
@@ -51,6 +69,8 @@ export const useHorizontalBrowseFaderControls = (
   })
   const faderControlsExpanded = ref(Boolean(params.setting.horizontalBrowseFaderControlsExpanded))
   const dualTransportSyncEnabled = ref(false)
+  const dualTransportSyncActivating = ref(false)
+  let dualTransportSyncActivationToken = 0
   const canUseDualTransportSync = computed(() =>
     Boolean(params.topDeckSong.value && params.bottomDeckSong.value)
   )
@@ -64,8 +84,10 @@ export const useHorizontalBrowseFaderControls = (
   }
 
   const deactivateDualTransportSync = () => {
-    if (!dualTransportSyncEnabled.value) return
+    if (!dualTransportSyncEnabled.value && !dualTransportSyncActivating.value) return
+    dualTransportSyncActivationToken += 1
     dualTransportSyncEnabled.value = false
+    dualTransportSyncActivating.value = false
     void Promise.allSettled([
       params.nativeTransport.setSyncEnabled('top', false),
       params.nativeTransport.setSyncEnabled('bottom', false)
@@ -85,37 +107,56 @@ export const useHorizontalBrowseFaderControls = (
 
   const activateDualTransportSync = async (sourceDeck?: DeckKey) => {
     if (!canUseDualTransportSync.value) return false
-    const leader = resolveDualTransportLeader(sourceDeck)
-    const follower: DeckKey = leader === 'top' ? 'bottom' : 'top'
-    const topWasPlaying = params.resolveDeckPlaying('top')
-    const bottomWasPlaying = params.resolveDeckPlaying('bottom')
-    await params.commitDeckStatesToNative()
-    await params.nativeTransport.setLeader(leader)
-    await params.nativeTransport.setSyncEnabled('top', true)
-    await params.nativeTransport.setSyncEnabled('bottom', true)
-    const alignTargetSec = params.resolveDeckCurrentSeconds(follower)
-    await params.nativeTransport.alignToLeader(follower, alignTargetSec)
-    if (topWasPlaying || bottomWasPlaying) {
-      if (!topWasPlaying) {
-        await params.nativeTransport.setPlaying('top', true)
+    if (dualTransportSyncActivating.value) return true
+    const activationToken = dualTransportSyncActivationToken + 1
+    dualTransportSyncActivationToken = activationToken
+    dualTransportSyncActivating.value = true
+    await nextTick()
+    try {
+      const leader = resolveDualTransportLeader(sourceDeck)
+      const follower: DeckKey = leader === 'top' ? 'bottom' : 'top'
+      const topWasPlaying = params.resolveDeckPlaying('top')
+      const bottomWasPlaying = params.resolveDeckPlaying('bottom')
+      await params.commitDeckStatesToNative()
+      await params.nativeTransport.setLeader(leader)
+      await params.nativeTransport.setSyncEnabled('top', true)
+      await params.nativeTransport.setSyncEnabled('bottom', true)
+      const alignTargetSec = params.resolveDeckCurrentSeconds(follower)
+      await params.nativeTransport.alignToLeader(follower, alignTargetSec)
+      if (topWasPlaying || bottomWasPlaying) {
+        if (!topWasPlaying) {
+          await params.nativeTransport.setPlaying('top', true)
+        }
+        if (!bottomWasPlaying) {
+          await params.nativeTransport.setPlaying('bottom', true)
+        }
       }
-      if (!bottomWasPlaying) {
-        await params.nativeTransport.setPlaying('bottom', true)
+      params.syncDeckRenderState({ force: 'all' })
+      await nextTick()
+      try {
+        await params.commitLinkedGridVisualTransaction?.({ leader, follower })
+      } catch {}
+      if (dualTransportSyncActivationToken === activationToken) {
+        dualTransportSyncEnabled.value = true
+      }
+      return true
+    } finally {
+      await waitForLinkedGridVisualHold()
+      if (dualTransportSyncActivationToken === activationToken) {
+        dualTransportSyncActivating.value = false
       }
     }
-    params.syncDeckRenderState({ force: 'all' })
-    return true
   }
 
   const handleDualTransportSyncToggle = () => {
-    if (dualTransportSyncEnabled.value) {
+    if (dualTransportSyncEnabled.value || dualTransportSyncActivating.value) {
       deactivateDualTransportSync()
       return
     }
     if (!canUseDualTransportSync.value) return
-    dualTransportSyncEnabled.value = true
     void activateDualTransportSync().catch(() => {
       dualTransportSyncEnabled.value = false
+      dualTransportSyncActivating.value = false
     })
   }
 
@@ -199,6 +240,7 @@ export const useHorizontalBrowseFaderControls = (
     deckCueMonitorState,
     faderControlsExpanded,
     dualTransportSyncEnabled,
+    dualTransportSyncActivating,
     canUseDualTransportSync,
     activateDualTransportSync,
     deactivateDualTransportSync,

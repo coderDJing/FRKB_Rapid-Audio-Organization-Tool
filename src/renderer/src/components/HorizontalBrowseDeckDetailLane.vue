@@ -6,7 +6,11 @@ import type {
   HorizontalBrowseGridShiftOptions,
   HorizontalBrowseGridToolbarState
 } from '@renderer/components/useHorizontalBrowseGridToolbar'
-import type { HorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
+import type {
+  HorizontalBrowseDetailZoomChangePayload,
+  HorizontalBrowseRawWaveformDetailExpose
+} from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
+import type { HorizontalBrowseWaveformPresentationState } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
 
 type HorizontalBrowseSharedZoomState = {
   value: number
@@ -37,6 +41,11 @@ const props = defineProps<{
   memoryCues: ISongMemoryCue[]
   seekTargetSeconds: number
   seekRevision: number
+  linkedDragActive?: boolean
+  linkedDragAnchorSec?: number | null
+  linkedGridActive?: boolean
+  linkedGridVisualPending?: boolean
+  presentationState?: HorizontalBrowseWaveformPresentationState
   direction: 'up' | 'down'
   maxZoom?: number
   waveformLayout?: 'auto' | 'full'
@@ -52,10 +61,7 @@ const emit = defineEmits<{
   (event: 'region-drag-leave', regionId: number, dragEvent: DragEvent): void
   (event: 'region-drop', regionId: number, dragEvent: DragEvent): void
   (event: 'toolbar-state-change', value: HorizontalBrowseGridToolbarState): void
-  (
-    event: 'zoom-change',
-    value: { value: number; anchorRatio: number; sourceDirection: 'up' | 'down' }
-  ): void
+  (event: 'zoom-change', value: HorizontalBrowseDetailZoomChangePayload): void
   (event: 'drag-session-start'): void
   (event: 'drag-session-preview', payload: { anchorSec: number; playbackRate: number }): void
   (event: 'drag-session-end', payload: { anchorSec: number; committed: boolean }): void
@@ -78,7 +84,11 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   updateBpmInput: (value: string) => detailRef.value?.updateBpmInput?.(value),
   blurBpmInput: () => detailRef.value?.blurBpmInput?.(),
   tapBpm: () => detailRef.value?.tapBpm?.(),
-  cycleMetronomeState: () => detailRef.value?.cycleMetronomeState?.()
+  cycleMetronomeState: () => detailRef.value?.cycleMetronomeState?.(),
+  prepareStableFrameForAnchor: (seconds: number, options?: { timeoutMs?: number }) =>
+    detailRef.value?.prepareStableFrameForAnchor?.(seconds, options) ?? Promise.resolve(false),
+  commitLinkedGridVisualTransaction: () =>
+    detailRef.value?.commitLinkedGridVisualTransaction?.() ?? false
 })
 </script>
 
@@ -109,6 +119,11 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       :memory-cues="props.memoryCues"
       :seek-target-seconds="props.seekTargetSeconds"
       :seek-revision="props.seekRevision"
+      :linked-drag-active="props.linkedDragActive"
+      :linked-drag-anchor-sec="props.linkedDragAnchorSec"
+      :linked-grid-active="props.linkedGridActive"
+      :linked-grid-visual-pending="props.linkedGridVisualPending"
+      :presentation-state="props.presentationState"
       :max-zoom="props.maxZoom"
       :waveform-layout="props.waveformLayout"
       :waveform-render-style="props.waveformRenderStyle"

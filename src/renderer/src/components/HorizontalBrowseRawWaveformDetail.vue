@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -10,89 +9,40 @@ import {
   HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
   HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR
 } from '@renderer/components/horizontalBrowseWaveform.constants'
-import {
-  useHorizontalBrowseGridToolbar,
-  type HorizontalBrowseGridToolbarState
-} from '@renderer/components/useHorizontalBrowseGridToolbar'
+import { useHorizontalBrowseGridToolbar } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
 import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
 import {
   PREVIEW_BAR_BEAT_INTERVAL,
   PREVIEW_BAR_LINE_HIT_RADIUS_PX,
-  PREVIEW_BPM_TAP_RESET_MS,
-  clampNumber,
-  normalizeBeatOffset,
-  normalizePreviewBpm
+  clampNumber
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
 import { resolveHorizontalBrowseEffectiveTimelineEndSec } from '@renderer/components/horizontalBrowseRawWaveformTimeline'
 import { useHorizontalBrowseCompactVisualWaveformStrip } from '@renderer/components/useHorizontalBrowseCompactVisualWaveformStrip'
-import {
-  useHorizontalBrowseWaveformScrubPreview,
-  type HorizontalBrowseScrubPreviewPayload
-} from '@renderer/components/useHorizontalBrowseWaveformScrubPreview'
+import { useHorizontalBrowseWaveformScrubPreview } from '@renderer/components/useHorizontalBrowseWaveformScrubPreview'
 import type {
-  HorizontalBrowseDragSessionEndPayload,
-  HorizontalBrowseLoopRange,
-  HorizontalBrowseSharedZoomState,
-  HorizontalBrowseWaveformLayout,
-  HorizontalBrowseWaveformRenderStyle
+  HorizontalBrowseRawWaveformDetailEmit,
+  HorizontalBrowseRawWaveformDetailProps
 } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
-import { buildHorizontalBrowseRawWaveformGridSignature } from '@renderer/components/horizontalBrowseRawWaveformGridSignature'
-import { startHorizontalBrowseUserTiming } from '@renderer/components/horizontalBrowseUserTiming'
 import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailExpose'
 import {
-  HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON,
   createHorizontalBrowsePlaybackDiscontinuityDetector,
-  normalizeHorizontalBrowseSharedZoom,
   normalizeHorizontalBrowseTimelineSeconds
 } from '@renderer/components/horizontalBrowseRawWaveformDetailMath'
-import {
-  STABLE_PLAYBACK_POSITION_JUMP_SEC,
-  createHorizontalBrowseStablePlaybackReanchorGate,
-  prepareHorizontalBrowseStableCanvasJump
-} from '@renderer/components/horizontalBrowseStableCanvasJump'
+import { createHorizontalBrowseStablePlaybackReanchorGate } from '@renderer/components/horizontalBrowseStableCanvasJump'
 import { createHorizontalBrowseDragReleaseHandoff } from '@renderer/components/horizontalBrowseDragReleaseHandoff'
 import { createHorizontalBrowseStableInteractionHandoff } from '@renderer/components/horizontalBrowseStableInteractionHandoff'
 import { createHorizontalBrowseWaveformPointerInteraction } from '@renderer/components/horizontalBrowseWaveformPointerInteraction'
+import { createHorizontalBrowseDetailPresentationState } from '@renderer/components/horizontalBrowseDetailPresentationState'
+import { createHorizontalBrowseDetailPresentationActions } from '@renderer/components/horizontalBrowseDetailPresentationActions'
+import { createHorizontalBrowseDetailGridPersistence } from '@renderer/components/horizontalBrowseDetailGridPersistence'
+import { createHorizontalBrowseDetailPresentationConsumer } from '@renderer/components/horizontalBrowseDetailPresentationConsumer'
+import { watchHorizontalBrowseDetailPlaybackPosition } from '@renderer/components/horizontalBrowseDetailPlaybackPositionWatch'
 
 const HORIZONTAL_BROWSE_TIMELINE_TAIL_TOLERANCE_SEC = 0.75
-const props = defineProps<{
-  song: ISongInfo | null
-  direction: 'up' | 'down'
-  sharedZoomState?: HorizontalBrowseSharedZoomState
-  currentSeconds?: number
-  playing?: boolean
-  playbackActive?: boolean
-  playbackRate?: number
-  visualPlaybackRate?: number
-  waveformGain?: number
-  playbackSyncRevision?: number
-  gridBpm?: number
-  loopRange?: HorizontalBrowseLoopRange | null
-  cueSeconds?: number
-  hotCues?: ISongHotCue[]
-  memoryCues?: ISongMemoryCue[]
-  seekTargetSeconds?: number
-  seekRevision?: number
-  maxZoom?: number
-  waveformLayout?: HorizontalBrowseWaveformLayout
-  waveformRenderStyle?: HorizontalBrowseWaveformRenderStyle
-  allowNegativeTimeline?: boolean
-}>()
-
-const emit = defineEmits<{
-  (event: 'toolbar-state-change', value: HorizontalBrowseGridToolbarState): void
-  (
-    event: 'zoom-change',
-    value: { value: number; anchorRatio: number; sourceDirection: 'up' | 'down' }
-  ): void
-  (event: 'drag-session-start'): void
-  (event: 'drag-session-preview', value: HorizontalBrowseScrubPreviewPayload): void
-  (event: 'drag-session-end', value: HorizontalBrowseDragSessionEndPayload): void
-  (event: 'edit-waveform-loading-change', value: boolean): void
-}>()
-
+const props = defineProps<HorizontalBrowseRawWaveformDetailProps>()
+const emit = defineEmits<HorizontalBrowseRawWaveformDetailEmit>()
 const runtime = useRuntimeStore()
 const rawData = ref<RawWaveformData | null>(null)
 const mixxxData = ref<MixxxWaveformData | null>(null)
@@ -113,6 +63,25 @@ const playbackSyncRevision = computed(() =>
   Math.max(0, Math.floor(Number(props.playbackSyncRevision) || 0))
 )
 const waveformPlaybackActive = computed(() => Boolean(props.playbackActive ?? props.playing))
+const presentationLinkedDragActive = computed(
+  () => Boolean(props.linkedDragActive) || props.presentationState?.owner === 'linked-drag'
+)
+const presentationLinkedDragAnchorSec = computed(() => {
+  const stateAnchor = Number(props.presentationState?.anchorSec)
+  if (props.presentationState?.owner === 'linked-drag' && Number.isFinite(stateAnchor)) {
+    return stateAnchor
+  }
+  return props.linkedDragAnchorSec ?? null
+})
+const presentationLinkedGridActive = computed(
+  () => props.linkedGridActive === true || props.presentationState?.linked === true
+)
+const presentationLinkedGridVisualPending = computed(
+  () =>
+    props.linkedGridVisualPending === true ||
+    props.presentationState?.visualPending === true ||
+    props.presentationState?.owner === 'sync-transaction'
+)
 const previewMaxZoom = computed(() => {
   const value = Number(props.maxZoom)
   return Number.isFinite(value) && value > HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
@@ -121,9 +90,9 @@ const previewMaxZoom = computed(() => {
 })
 const resolveWaveformLayout = () =>
   props.waveformLayout === 'full' ? 'full' : props.direction === 'up' ? 'top-half' : 'bottom-half'
-
 const resolveWaveformRenderStyle = () =>
   props.waveformRenderStyle === 'raw-curve' ? 'raw-curve' : 'columns'
+const resolveDetailDeck = () => (props.direction === 'up' ? 'top' : 'bottom')
 
 const resolveWaveformCurrentSeconds = () =>
   normalizePreviewTimelineSeconds(
@@ -134,30 +103,38 @@ const resolveWaveformPlaybackRate = () => Math.max(0.25, Number(props.playbackRa
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
 const playbackDiscontinuityDetector = createHorizontalBrowsePlaybackDiscontinuityDetector()
-let persistTimer: ReturnType<typeof setTimeout> | null = null
-let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
-let pendingLocalGridSignature = ''
+let linkedGridVisualTransactionCommitted = false
 const stablePlaybackReanchorGate = createHorizontalBrowseStablePlaybackReanchorGate()
-const resolveDisplayGridBpm = () =>
-  Number.isFinite(Number(props.song?.bpm)) && Number(props.song?.bpm) > 0
-    ? normalizePreviewBpm(Number(props.song?.bpm))
-    : 0
-
-const previewRenderBpm = computed(() => {
-  const localBpm = Number(previewBpm.value)
-  if (
-    Number.isFinite(localBpm) &&
-    localBpm > 0 &&
-    Math.abs(localBpm - resolveDisplayGridBpm()) > HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON
-  ) {
-    return normalizePreviewBpm(localBpm)
-  }
-  const gridBpm = Number(props.gridBpm)
-  if (Number.isFinite(gridBpm) && gridBpm > 0) {
-    return normalizePreviewBpm(gridBpm)
-  }
-  return localBpm || 0
+const presentationState = createHorizontalBrowseDetailPresentationState({
+  song: () => props.song,
+  direction: () => props.direction,
+  gridBpm: () => props.gridBpm,
+  playbackRate: () => props.playbackRate,
+  visualPlaybackRate: () => props.visualPlaybackRate,
+  linkedGridActive: () => presentationLinkedGridActive.value,
+  linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
+  waveformLayout: resolveWaveformLayout,
+  waveformPlaybackActive: () => waveformPlaybackActive.value,
+  resolveWaveformCurrentSeconds,
+  resolveWaveformPlaybackRate,
+  previewBpm,
+  previewFirstBeatMs,
+  previewBarBeatOffset,
+  previewTimeBasisOffsetMs
 })
+const {
+  previewRenderBpm,
+  visualGridBpm,
+  visualGridFirstBeatMs,
+  visualGridBarBeatOffset,
+  visualGridTimeBasisOffsetMs,
+  visualGridRenderBpm,
+  resolveDisplayGridBpm,
+  resolveIncomingPreviewTimeScale,
+  resolveCanvasVisualPlaybackRate,
+  syncVisualGridStateFromPreview,
+  publishLinkedGridVisualPhaseSample
+} = presentationState
 
 const {
   wrapRef,
@@ -207,7 +184,7 @@ const {
   loopRange: () => props.loopRange,
   currentSeconds: resolveWaveformCurrentSeconds,
   playbackRate: () => props.playbackRate,
-  visualPlaybackRate: () => props.visualPlaybackRate,
+  visualPlaybackRate: resolveCanvasVisualPlaybackRate,
   waveformGain: () => props.waveformGain,
   playing: previewPlaying,
   playbackSyncRevision,
@@ -216,18 +193,23 @@ const {
   previewLoading,
   previewStartSec,
   previewZoom,
-  previewBpm: previewRenderBpm,
-  previewFirstBeatMs,
-  previewBarBeatOffset,
-  previewTimeBasisOffsetMs,
+  previewBpm: visualGridRenderBpm,
+  previewFirstBeatMs: visualGridFirstBeatMs,
+  previewBarBeatOffset: visualGridBarBeatOffset,
+  previewTimeBasisOffsetMs: visualGridTimeBasisOffsetMs,
   dragging,
   allowNegativeTimeline: () => Boolean(props.allowNegativeTimeline),
   waveformLayout: resolveWaveformLayout,
   waveformRenderStyle: resolveWaveformRenderStyle,
   stableWaveformSource: () => compactVisualWaveformActive.value,
   stableRenderRevision: () => 0,
+  linkedGridActive: () => presentationLinkedGridActive.value,
   phaseAwareScrollReuse: () => Math.abs(localGridShiftPhaseOffsetSec.value) > 0.000001
 })
+presentationState.setLastAppliedPreviewTimeScale(
+  Math.max(0.25, Number(resolvePreviewTimeScale()) || 1)
+)
+
 const applyLocalGridShiftPhaseCompensation = (deltaMs: number) => {
   const deltaSec = Number(deltaMs) / 1000
   if (!Number.isFinite(deltaSec) || Math.abs(deltaSec) <= 0) return
@@ -243,39 +225,11 @@ const scrubPreview = useHorizontalBrowseWaveformScrubPreview({
   emitPreview: (payload) => emit('drag-session-preview', payload)
 })
 
-const clearPersistTimer = () => {
-  if (!persistTimer) return
-  clearTimeout(persistTimer)
-  persistTimer = null
-}
-
-const clearBpmTapResetTimer = () => {
-  if (!bpmTapResetTimer) return
-  clearTimeout(bpmTapResetTimer)
-  bpmTapResetTimer = null
-}
-
-const buildPreviewGridSignature = () =>
-  buildHorizontalBrowseRawWaveformGridSignature({
-    bpm: previewBpm.value,
-    firstBeatMs: previewFirstBeatMs.value,
-    barBeatOffset: previewBarBeatOffset.value,
-    timeBasisOffsetMs: previewTimeBasisOffsetMs.value
-  })
-
-const buildSongGridSignature = () =>
-  buildHorizontalBrowseRawWaveformGridSignature({
-    bpm: props.song?.bpm,
-    firstBeatMs: props.song?.firstBeatMs,
-    barBeatOffset: props.song?.barBeatOffset,
-    timeBasisOffsetMs: props.song?.timeBasisOffsetMs
-  })
-
 function resolveEffectiveTimelineEndSec() {
   return resolveHorizontalBrowseEffectiveTimelineEndSec({
     rawData: rawData.value,
     durationSec: resolvePreviewDurationSec(),
-    timeBasisOffsetMs: previewTimeBasisOffsetMs.value,
+    timeBasisOffsetMs: visualGridTimeBasisOffsetMs.value,
     tailToleranceSec: HORIZONTAL_BROWSE_TIMELINE_TAIL_TOLERANCE_SEC
   })
 }
@@ -338,45 +292,20 @@ const applyStablePresentationSeekTarget = (seconds: number) => {
   return true
 }
 
-const resetPreviewBpmTap = () => {
-  clearBpmTapResetTimer()
-  bpmTapTimestamps.value = []
-}
-
-const schedulePreviewBpmTapReset = () => {
-  clearBpmTapResetTimer()
-  bpmTapResetTimer = setTimeout(() => {
-    bpmTapResetTimer = null
-    bpmTapTimestamps.value = []
-  }, PREVIEW_BPM_TAP_RESET_MS)
-}
-
-const persistGridDefinition = async () => {
-  clearPersistTimer()
-  const filePath = String(props.song?.filePath || '').trim()
-  if (!filePath) return
-  pendingLocalGridSignature = buildPreviewGridSignature()
-  const firstBeatMs = Number(previewFirstBeatMs.value)
-  const payload = {
-    filePath,
-    bpm: Number(previewBpm.value) || 0,
-    firstBeatMs: Number.isFinite(firstBeatMs) ? firstBeatMs : 0,
-    barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL)
+const applyPresentationSeekTarget = (targetSeconds: number, revision: number) => {
+  if (!props.song?.filePath) return
+  const safeTargetSeconds = normalizePreviewTimelineSeconds(targetSeconds)
+  if (dragReleaseHandoff.consume('seek-revision', safeTargetSeconds)) {
+    applyPreviewPlaybackPosition(safeTargetSeconds, false)
+    return
   }
-  try {
-    await window.electron.ipcRenderer.invoke('mixtape:update-grid-definition', payload)
-  } catch (error) {
-    console.error('[horizontal-browse] persist grid definition failed', error)
+  if (compactVisualWaveformActive.value) {
+    if (applyStablePresentationSeekTarget(safeTargetSeconds)) return
+    startStableSeekSyncHandoff(revision, safeTargetSeconds)
+    forceRenderStableSeekTarget(safeTargetSeconds)
+    return
   }
-}
-
-const schedulePersistGridDefinition = () => {
-  clearPersistTimer()
-  pendingLocalGridSignature = buildPreviewGridSignature()
-  persistTimer = setTimeout(() => {
-    persistTimer = null
-    void persistGridDefinition()
-  }, 120)
+  applyPreviewPlaybackPosition(safeTargetSeconds, true, true)
 }
 
 const canAdjustGrid = computed(() => {
@@ -401,6 +330,26 @@ const syncNativeMetronomeState = (state: { enabled: boolean; volumeLevel: 1 | 2 
       console.error('[horizontal-browse-metronome] sync native state failed', error)
     })
 }
+
+const {
+  buildSongGridSignature,
+  clearPendingLocalGridSignature,
+  clearPersistTimer,
+  clearBpmTapResetTimer,
+  resetPreviewBpmTap,
+  schedulePreviewBpmTapReset,
+  persistGridDefinition,
+  schedulePersistGridDefinition,
+  shouldDeferSongGridSync
+} = createHorizontalBrowseDetailGridPersistence({
+  song: () => props.song,
+  previewBpm,
+  previewFirstBeatMs,
+  previewBarBeatOffset,
+  previewTimeBasisOffsetMs,
+  bpmTapTimestamps
+})
+
 const detailVisible = computed(() => true)
 watch(
   () => previewLoading.value,
@@ -502,6 +451,13 @@ const {
   handleMetronomeStateCycle: cycleMetronomeRuntimeState
 })
 
+const syncGridStateFromSongForDisplay = () => {
+  syncGridStateFromSong()
+  if (!presentationLinkedGridVisualPending.value) {
+    syncVisualGridStateFromPreview()
+  }
+}
+
 const {
   requestCompactVisualWaveformStrip,
   maybeContinueCompactVisualWaveformStrip,
@@ -524,6 +480,64 @@ const {
 
 const maybeContinueWaveformSource = (anchorSec?: number) =>
   maybeContinueCompactVisualWaveformStrip(anchorSec)
+
+const {
+  clearPlaybackStableFrameRenderTimer,
+  schedulePlaybackStableFrameRender,
+  prepareStableFrameForAnchor,
+  applyIncomingPreviewTimeScale,
+  commitLinkedGridVisualTransaction: commitLinkedGridVisualPresentationTransaction
+} = createHorizontalBrowseDetailPresentationActions({
+  currentSeconds: () => props.currentSeconds,
+  compactVisualWaveformActive,
+  previewStartSec,
+  localGridShiftPhaseOffsetSec,
+  waveformPlaybackActive: () => waveformPlaybackActive.value,
+  normalizePreviewTimelineSeconds,
+  resolveVisibleDurationSec,
+  resolveWaveformCurrentSeconds,
+  clampPreviewStart,
+  stopStableCanvasPlayback,
+  drawWaveformNow,
+  measureStableCanvasPresentation,
+  getLastAppliedPreviewTimeScale: presentationState.getLastAppliedPreviewTimeScale,
+  setLastAppliedPreviewTimeScale: presentationState.setLastAppliedPreviewTimeScale,
+  resolveIncomingPreviewTimeScale,
+  invalidateWaveformTiles,
+  resetGridRenderer,
+  maybeContinueWaveformSource,
+  scheduleDraw,
+  syncGridStateFromSong,
+  syncVisualGridStateFromPreview,
+  applyPreviewPlaybackPosition,
+  publishLinkedGridVisualPhaseSample,
+  markLinkedGridVisualTransactionCommitted: () => {
+    linkedGridVisualTransactionCommitted = true
+  }
+})
+
+const commitLinkedGridVisualTransaction = () =>
+  props.song?.filePath ? commitLinkedGridVisualPresentationTransaction() : false
+
+const { handleSharedZoomState, handlePresentationState } =
+  createHorizontalBrowseDetailPresentationConsumer({
+    deck: resolveDetailDeck,
+    direction: () => props.direction,
+    presentationState: () => props.presentationState,
+    previewZoom,
+    previewMaxZoom,
+    previewStartSec,
+    waveformPlaybackActive: () => waveformPlaybackActive.value,
+    resolveWaveformCurrentSeconds,
+    resolveVisibleDurationSec,
+    clampPreviewStart,
+    resetGridRenderer,
+    maybeContinueWaveformSource,
+    schedulePlaybackStableFrameRender,
+    clearPlaybackStableFrameRenderTimer,
+    scheduleDraw,
+    applyPresentationSeekTarget
+  })
 
 const { stopDragging, handlePointerDown, handleWheel } =
   createHorizontalBrowseWaveformPointerInteraction({
@@ -550,6 +564,8 @@ const { stopDragging, handlePointerDown, handleWheel } =
     emitDragSessionStart: () => emit('drag-session-start'),
     emitDragSessionEnd: (payload) => emit('drag-session-end', payload),
     emitZoomChange: (payload) => emit('zoom-change', payload),
+    linkedDragActive: () => presentationLinkedDragActive.value,
+    linkedDragAnchorSec: () => presentationLinkedDragAnchorSec.value,
     resolvePlaybackActive: () => waveformPlaybackActive.value,
     maybeContinueWaveformSource,
     drawWaveformNow,
@@ -562,10 +578,11 @@ const { stopDragging, handlePointerDown, handleWheel } =
 const loadWaveform = async () => {
   const currentSong = props.song
   const currentToken = ++loadToken
-  pendingLocalGridSignature = ''
+  clearPendingLocalGridSignature()
   dragReleaseHandoff.clear()
 
   clearPersistTimer()
+  clearPlaybackStableFrameRenderTimer()
   resetCompactVisualWaveformStrip()
   invalidateWaveformTiles()
   previewLoading.value = false
@@ -580,13 +597,13 @@ const loadWaveform = async () => {
 
   const filePath = String(currentSong?.filePath || '').trim()
   if (!filePath) {
-    syncGridStateFromSong()
+    syncGridStateFromSongForDisplay()
     return
   }
 
   try {
     previewLoading.value = true
-    syncGridStateFromSong()
+    syncGridStateFromSongForDisplay()
     previewStartSec.value = resolvePlaybackAlignedStart(resolveWaveformCurrentSeconds())
     compactVisualWaveformActive.value = true
     await requestCompactVisualWaveformStrip(resolveWaveformCurrentSeconds(), {
@@ -603,7 +620,7 @@ const loadWaveform = async () => {
     replaceLiveWaveformRaw(null)
     resetGridRenderer()
     clearCanvas()
-    syncGridStateFromSong()
+    syncGridStateFromSongForDisplay()
   }
 }
 
@@ -629,18 +646,20 @@ watch(
       props.song?.bpm,
       props.song?.firstBeatMs,
       props.song?.barBeatOffset,
-      props.song?.timeBasisOffsetMs
+      props.song?.timeBasisOffsetMs,
+      presentationLinkedGridVisualPending.value
     ] as const,
-  () => {
-    const songGridSignature = buildSongGridSignature()
-    if (pendingLocalGridSignature) {
-      if (songGridSignature !== pendingLocalGridSignature) {
-        return
-      }
-      pendingLocalGridSignature = ''
+  ([, , , , linkedGridVisualPending]) => {
+    if (linkedGridVisualPending) {
+      emitToolbarState()
+      return
     }
-    syncGridStateFromSong()
-    scheduleGridOverlayDraw()
+    const songGridSignature = buildSongGridSignature()
+    if (shouldDeferSongGridSync(songGridSignature)) return
+    syncGridStateFromSongForDisplay()
+    if (!linkedGridVisualPending) {
+      scheduleGridOverlayDraw()
+    }
   }
 )
 
@@ -682,11 +701,32 @@ watch(
 )
 
 watch(
-  () => resolvePreviewTimeScale(),
+  () =>
+    [
+      presentationLinkedGridActive.value,
+      props.direction,
+      props.song?.filePath ?? '',
+      visualGridRenderBpm.value,
+      visualGridFirstBeatMs.value,
+      visualGridBarBeatOffset.value,
+      props.currentSeconds,
+      props.playbackRate,
+      waveformPlaybackActive.value,
+      resolveWaveformLayout()
+    ] as const,
   () => {
-    invalidateWaveformTiles()
-    resetGridRenderer()
-    scheduleDraw()
+    publishLinkedGridVisualPhaseSample()
+  },
+  { immediate: true, flush: 'sync' }
+)
+
+watch(
+  () => [resolveIncomingPreviewTimeScale(), presentationLinkedGridVisualPending.value] as const,
+  ([, linkedGridVisualPending]) => {
+    if (linkedGridVisualPending) {
+      return
+    }
+    applyIncomingPreviewTimeScale()
   }
 )
 
@@ -697,7 +737,7 @@ watch(
     return clampNumber(numeric, 0, 16)
   },
   () => {
-    invalidateWaveformTiles()
+    invalidateWaveformTiles({ preserveDisplay: compactVisualWaveformActive.value })
     scheduleDraw()
   }
 )
@@ -705,29 +745,15 @@ watch(
 watch(
   () => props.sharedZoomState,
   (state) => {
-    const nextZoom = normalizeHorizontalBrowseSharedZoom(state, previewMaxZoom.value)
-    if (
-      state?.sourceDirection === props.direction &&
-      Math.abs(nextZoom - previewZoom.value) <= 0.000001
-    ) {
-      return
-    }
-    const anchorRatio = clampNumber(
-      Number(state?.anchorRatio ?? HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO),
-      0,
-      1
-    )
-    const anchorSec = previewStartSec.value + resolveVisibleDurationSec() * anchorRatio
-    previewZoom.value = nextZoom
-    const nextVisible = resolveVisibleDurationSec()
-    previewStartSec.value = clampPreviewStart(anchorSec - nextVisible * anchorRatio)
-    resetGridRenderer()
-    maybeContinueWaveformSource(resolvePreviewAnchorSec())
-    scheduleDraw(
-      waveformPlaybackActive.value ? undefined : { preferPreviewStart: true, viewportOnly: true }
-    )
+    handleSharedZoomState(state)
   },
   { immediate: true }
+)
+
+watch(
+  () => props.presentationState?.revision ?? 0,
+  () => handlePresentationState(props.presentationState),
+  { immediate: true, flush: 'sync' }
 )
 
 watch(
@@ -748,6 +774,11 @@ watch(
     if (playing) {
       const anchorSec = toggleAnchorSec
       if (compactVisualWaveformActive.value) {
+        if (dragPresentationReleaseActive.value) {
+          stablePlaybackReanchorGate.suppress()
+          holdStablePlaybackToggleRender()
+          return
+        }
         stablePlaybackReanchorGate.suppress()
         const measured = measureStableCanvasPresentation(anchorSec)
         const refreshFrame = shouldRenderStableCanvasForPlaybackToggle(measured)
@@ -790,177 +821,52 @@ watch(
   { immediate: true, flush: 'sync' }
 )
 
-watch(
-  () =>
-    [
-      Number(props.currentSeconds) || 0,
-      waveformPlaybackActive.value,
-      props.song?.filePath ?? '',
-      playbackSyncRevision.value,
-      Number(props.seekRevision) || 0,
-      Number(props.seekTargetSeconds) || 0
-    ] as const,
-  ([seconds, playing, songKey, syncRevision, seekRevision, seekTargetSeconds], previousValue) => {
-    const finishTiming = startHorizontalBrowseUserTiming(
-      `frkb:hb:detail:current-seconds:${props.direction}`
-    )
-    try {
-      if (dragging.value) return
-      const safeSongKey = String(songKey || '').trim()
-      const safeSeconds = normalizePreviewTimelineSeconds(seconds)
-      if (!safeSongKey) {
-        playbackDiscontinuityDetector.reset()
-        applyPreviewPlaybackPosition(0)
-        return
-      }
-      const previousPlaying = Boolean(previousValue?.[1])
-      const previousSongKey = String(previousValue?.[2] || '').trim()
-      const previousSyncRevision = Math.max(0, Math.floor(Number(previousValue?.[3]) || 0))
-      const previousSeekRevision = Math.max(0, Math.floor(Number(previousValue?.[4]) || 0))
-      const playbackSyncChanged = syncRevision !== previousSyncRevision
-      const safeSeekRevision = Math.max(0, Math.floor(Number(seekRevision) || 0))
-      const safeSeekTargetSeconds = normalizePreviewTimelineSeconds(seekTargetSeconds)
-      const seekRevisionChanged =
-        previousValue !== undefined &&
-        safeSeekRevision > 0 &&
-        safeSeekRevision !== previousSeekRevision
-      if (playbackSyncChanged || safeSongKey !== previousSongKey) {
-        localGridShiftPhaseOffsetSec.value = 0
-      }
-      if (playbackSyncChanged && dragReleaseHandoff.consume('playback-sync', safeSeconds)) {
-        applyPreviewPlaybackPosition(safeSeconds, false)
-        return
-      }
-      if (
-        seekRevisionChanged &&
-        compactVisualWaveformActive.value &&
-        !dragReleaseHandoff.matches(safeSeekTargetSeconds)
-      ) {
-        if (applyStablePresentationSeekTarget(safeSeekTargetSeconds)) return
-        startStableSeekSyncHandoff(safeSeekRevision, safeSeekTargetSeconds)
-        forceRenderStableSeekTarget(safeSeekTargetSeconds)
-        return
-      }
-      const stableSeekSyncHandoffActive =
-        compactVisualWaveformActive.value &&
-        isStableSeekSyncHandoffActive(safeSeekRevision, safeSeconds)
-      if (dragPresentationReleaseActive.value) {
-        applyPreviewPlaybackPosition(safeSeconds, false)
-        return
-      }
-      const previousSeconds = normalizePreviewTimelineSeconds(Number(previousValue?.[0]) || 0)
-      const playbackPositionChanged =
-        previousValue === undefined || Math.abs(safeSeconds - previousSeconds) > 0.0001
-      const playbackClockJumped = playbackDiscontinuityDetector.check(
-        safeSongKey,
-        safeSeconds,
-        playing,
-        props.playbackRate,
-        normalizePreviewTimelineSeconds
-      )
-      const pausedPositionJumped =
-        !playing &&
-        previousValue !== undefined &&
-        Math.abs(safeSeconds - previousSeconds) > STABLE_PLAYBACK_POSITION_JUMP_SEC
-      const playbackPositionJumped = playbackClockJumped || pausedPositionJumped
-      if (
-        stableSeekSyncHandoffActive &&
-        (playbackSyncChanged || playbackPositionJumped || safeSongKey !== previousSongKey)
-      ) {
-        forceRenderStableSeekTarget(safeSeconds)
-        return
-      }
-      if (compactVisualWaveformActive.value && isStablePlaybackToggleRenderHeld()) {
-        return
-      }
-      const stablePresentationActive = compactVisualWaveformActive.value && playing
-      if (stablePresentationActive) {
-        const allowReanchor =
-          previousPlaying === true &&
-          !playbackSyncChanged &&
-          !playbackPositionJumped &&
-          stablePlaybackReanchorGate.canReanchor()
-        const requirePresentable =
-          playbackSyncChanged || playbackPositionJumped || safeSongKey !== previousSongKey
-        if (requirePresentable) {
-          const maxOffsetCssPx = consumeDragReleaseStablePresentationOffsetLimit(safeSeconds)
-          const canReuseStableFrame = prepareHorizontalBrowseStableCanvasJump({
-            seconds: safeSeconds,
-            measure: measureStableCanvasPresentation,
-            hide: hideStableCanvasPresentation,
-            maxOffsetCssPx
-          })
-          if (!canReuseStableFrame) {
-            stopStableCanvasPlayback()
-            applyPreviewPlaybackPosition(safeSeconds, true, true)
-            return
-          }
-        }
-        if (requirePresentable) {
-          const result = applyStableCanvasPresentation(safeSeconds, {
-            allowReanchor,
-            requirePresentable
-          })
-          if (result.applied) {
-            reanchorStableCanvasPlayback(safeSeconds, resolveWaveformPlaybackRate())
-          }
-          applyPreviewPlaybackPosition(safeSeconds, !result.applied, true)
-        }
-        return
-      }
-      if (compactVisualWaveformActive.value) {
-        stopStableCanvasPlayback()
-        const requirePresentable =
-          playbackSyncChanged || playbackPositionJumped || safeSongKey !== previousSongKey
-        if (requirePresentable) {
-          const maxOffsetCssPx = consumeDragReleaseStablePresentationOffsetLimit(safeSeconds)
-          const canReuseStableFrame = prepareHorizontalBrowseStableCanvasJump({
-            seconds: safeSeconds,
-            measure: measureStableCanvasPresentation,
-            hide: hideStableCanvasPresentation,
-            maxOffsetCssPx
-          })
-          if (!canReuseStableFrame) {
-            applyPreviewPlaybackPosition(safeSeconds, true, true)
-            return
-          }
-        }
-        const result = applyStableCanvasPresentation(safeSeconds)
-        applyPreviewPlaybackPosition(safeSeconds, !result.applied)
-        return
-      }
-      maybeContinueWaveformSource(safeSeconds)
-      const shouldScheduleFrame =
-        (!playing && playbackPositionChanged) ||
-        dragging.value ||
-        playing !== previousPlaying ||
-        safeSongKey !== previousSongKey ||
-        playbackSyncChanged ||
-        playbackPositionJumped
-      applyPreviewPlaybackPosition(safeSeconds, shouldScheduleFrame)
-    } finally {
-      finishTiming()
-    }
-  }
-)
+watchHorizontalBrowseDetailPlaybackPosition({
+  direction: () => props.direction,
+  currentSeconds: () => props.currentSeconds,
+  playbackActive: () => waveformPlaybackActive.value,
+  songKey: () => props.song?.filePath ?? '',
+  playbackSyncRevision: () => playbackSyncRevision.value,
+  seekRevision: () => props.seekRevision,
+  seekTargetSeconds: () => props.seekTargetSeconds,
+  playbackRate: () => props.playbackRate,
+  linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
+  linkedGridVisualTransactionCommitted: () => linkedGridVisualTransactionCommitted,
+  setLinkedGridVisualTransactionCommitted: (value) => {
+    linkedGridVisualTransactionCommitted = value
+  },
+  dragging,
+  compactVisualWaveformActive,
+  dragPresentationReleaseActive,
+  normalizePreviewTimelineSeconds,
+  playbackDiscontinuityDetector,
+  applyPreviewPlaybackPosition,
+  dragReleaseHandoff,
+  applyStablePresentationSeekTarget,
+  startStableSeekSyncHandoff,
+  isStableSeekSyncHandoffActive,
+  forceRenderStableSeekTarget,
+  isStablePlaybackToggleRenderHeld,
+  stopStableCanvasPlayback,
+  consumeDragReleaseStablePresentationOffsetLimit,
+  measureStableCanvasPresentation,
+  hideStableCanvasPresentation,
+  applyStableCanvasPresentation,
+  reanchorStableCanvasPlayback,
+  resolveWaveformPlaybackRate,
+  maybeContinueWaveformSource,
+  stablePlaybackReanchorCanReanchor: stablePlaybackReanchorGate.canReanchor
+})
 
 watch(
   () => [Number(props.seekRevision) || 0, Number(props.seekTargetSeconds) || 0] as const,
   ([revision, targetSeconds]) => {
     if (!revision) return
-    if (!props.song?.filePath) return
-    const safeTargetSeconds = normalizePreviewTimelineSeconds(targetSeconds)
-    if (dragReleaseHandoff.consume('seek-revision', safeTargetSeconds)) {
-      applyPreviewPlaybackPosition(safeTargetSeconds, false)
+    const state = props.presentationState
+    if (state?.owner === 'seek' && state.sourceDeck === resolveDetailDeck()) {
       return
     }
-    if (compactVisualWaveformActive.value) {
-      if (applyStablePresentationSeekTarget(safeTargetSeconds)) return
-      startStableSeekSyncHandoff(revision, safeTargetSeconds)
-      forceRenderStableSeekTarget(safeTargetSeconds)
-      return
-    }
-    applyPreviewPlaybackPosition(safeTargetSeconds, true, true)
+    applyPresentationSeekTarget(targetSeconds, revision)
   }
 )
 
@@ -978,9 +884,15 @@ watch(
       previewRenderBpm.value,
       previewFirstBeatMs.value,
       previewBarBeatOffset.value,
-      previewTimeBasisOffsetMs.value
+      previewTimeBasisOffsetMs.value,
+      presentationLinkedGridVisualPending.value
     ] as const,
-  () => {
+  ([, , , , , linkedGridVisualPending]) => {
+    if (linkedGridVisualPending) {
+      emitToolbarState()
+      return
+    }
+    syncVisualGridStateFromPreview()
     scheduleGridOverlayDraw()
     emitToolbarState()
   }
@@ -996,7 +908,7 @@ watch(
 watch(
   () => runtime.setting?.themeMode,
   () => {
-    invalidateWaveformTiles()
+    invalidateWaveformTiles({ preserveDisplay: compactVisualWaveformActive.value })
     resetGridRenderer()
     scheduleDraw()
   }
@@ -1021,6 +933,7 @@ onUnmounted(() => {
   resetCompactVisualWaveformStrip()
   clearPersistTimer()
   clearBpmTapResetTimer()
+  clearPlaybackStableFrameRenderTimer()
   clearStableSeekRenderRaf()
   stopDragging(false, false)
   disposeWaveformCanvas()
@@ -1040,6 +953,8 @@ defineExpose(
     blurBpmInput: handlePreviewBpmInputBlur,
     tapBpm: handlePreviewBpmTap,
     cycleMetronomeState,
+    prepareStableFrameForAnchor,
+    commitLinkedGridVisualTransaction,
     resolveVisibleDurationSec,
     resolveWrapWidth: () => Number(wrapRef.value?.getBoundingClientRect().width || 0)
   })

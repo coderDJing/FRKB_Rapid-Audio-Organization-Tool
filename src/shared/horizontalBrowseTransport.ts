@@ -30,6 +30,7 @@ export type HorizontalBrowseTransportBeatGridInput = {
 
 export type HorizontalBrowseTransportStateInput = {
   nowMs?: number
+  allowPhaseAlignment?: boolean
   top: HorizontalBrowseTransportDeckInput
   bottom: HorizontalBrowseTransportDeckInput
 }

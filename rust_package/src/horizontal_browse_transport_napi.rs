@@ -48,6 +48,7 @@ pub fn horizontal_browse_transport_set_state(
 ) -> HorizontalBrowseTransportSnapshot {
   let top_playing = payload.top.playing;
   let bottom_playing = payload.bottom.playing;
+  let allow_phase_alignment = payload.allow_phase_alignment.unwrap_or(true);
   let now_ms = payload.now_ms.unwrap_or(
     payload
       .top
@@ -74,7 +75,7 @@ pub fn horizontal_browse_transport_set_state(
   let top_full_decode_request = engine_guard.prepare_full_decode_request(DeckId::Top);
   let bottom_full_decode_request = engine_guard.prepare_full_decode_request(DeckId::Bottom);
   let _ = engine_guard.ensure_output_stream();
-  engine_guard.refresh();
+  engine_guard.refresh_sync_state(allow_phase_alignment);
   engine_guard.refresh_auto_gain();
   drop(engine_guard);
   if let Some(request) = top_decode_request {

@@ -8,6 +8,10 @@ import { useHorizontalBrowseDeckCueController } from '@renderer/components/useHo
 import { useHorizontalBrowseDeckLoopController } from '@renderer/components/useHorizontalBrowseDeckLoopController'
 import { useHorizontalBrowseDeckPlaybackController } from '@renderer/components/useHorizontalBrowseDeckPlaybackController'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
+import type {
+  HorizontalBrowseDeckStateCommitOptions,
+  HorizontalBrowseDeckTransportStateOverride
+} from '@renderer/components/useHorizontalBrowseTransportMutations'
 
 type DeckKey = HorizontalBrowseDeckKey
 type HorizontalBrowsePendingPlayViewMode = 'dual' | 'edit' | 'unknown'
@@ -18,8 +22,10 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
   notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
   holdDeckRenderCurrentSeconds: (deck: DeckKey, seconds: number) => void
   startDeckRenderPlaybackClock: (deck: DeckKey, seconds: number) => void
+  prepareDeckStableFrameForAnchor?: (deck: DeckKey, seconds: number) => Promise<boolean>
   nativeTransport: {
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
+    setLeader: (deck?: DeckKey | null) => Promise<unknown>
     preparePlayhead: (deck: DeckKey) => Promise<unknown>
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
     setScrubPreview: (
@@ -38,7 +44,10 @@ type UseHorizontalBrowseDeckTransportInteractionsParams = {
     clearLoop: (deck: DeckKey) => Promise<unknown>
   }
   syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
-  commitDeckStatesToNative: () => Promise<unknown>
+  commitDeckStatesToNative: (
+    overrides?: Partial<Record<DeckKey, HorizontalBrowseDeckTransportStateOverride>>,
+    options?: HorizontalBrowseDeckStateCommitOptions
+  ) => Promise<unknown>
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckGridBpm: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
@@ -103,6 +112,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     notifyDeckSeekIntent: params.notifyDeckSeekIntent,
     holdDeckRenderCurrentSeconds: params.holdDeckRenderCurrentSeconds,
     startDeckRenderPlaybackClock: params.startDeckRenderPlaybackClock,
+    prepareDeckStableFrameForAnchor: params.prepareDeckStableFrameForAnchor,
     nativeTransport: params.nativeTransport,
     syncDeckRenderState: params.syncDeckRenderState,
     commitDeckStatesToNative: params.commitDeckStatesToNative,
@@ -216,6 +226,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     deckPendingCuePreviewOnLoad,
     suppressDeckCueClick,
     isDeckWaveformDragging,
+    resolveDeckWaveformDragAnchorSec,
     resolveDeckCuePreviewRuntimeState,
     resolveDeckLoopRange,
     resolveDeckLoopBeatLabel,

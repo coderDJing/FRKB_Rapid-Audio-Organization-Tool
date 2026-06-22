@@ -5,6 +5,8 @@ type LinkedGridSample = {
   atMs: number
   epochMs: number
   bpm: number
+  playbackRate: number
+  effectiveBpm: number
   beatSec: number
   currentSec: number
   beatDistance: number
@@ -18,7 +20,7 @@ type LinkedGridRenderClockSample = {
   seconds: number
 }
 
-type LinkedGridVisualPhaseInput = {
+export type LinkedGridVisualPhaseInput = {
   direction: HorizontalBrowseDirection
   active: boolean
   clockActive: boolean
@@ -44,6 +46,7 @@ type LinkedGridVisualPhaseResult = {
 const BAR_BEAT_INTERVAL = 32
 const LINKED_GRID_SAMPLE_MAX_AGE_MS = 1000
 const LINKED_GRID_BPM_EPSILON = 0.001
+const LINKED_GRID_EFFECTIVE_BPM_EPSILON = 0.01
 const LINKED_GRID_BEAT_PHASE_EPSILON = 0.05
 const LINKED_GRID_CLOCK_SECONDS_EPSILON = 0.25
 
@@ -90,8 +93,17 @@ const resolveRenderClockSample = (
 const buildSample = (input: LinkedGridVisualPhaseInput, nowMs: number): LinkedGridSample | null => {
   const bpm = Number(input.bpm)
   const currentSec = Number(input.currentSec)
+  const playbackRate = Math.max(0.25, Number(input.playbackRate) || 1)
+  const effectiveBpm = bpm * playbackRate
   const firstBeatSec = (Number(input.firstBeatMs) || 0) / 1000
-  if (!input.active || !Number.isFinite(bpm) || bpm <= 0 || !Number.isFinite(currentSec)) {
+  if (
+    !input.active ||
+    !Number.isFinite(bpm) ||
+    bpm <= 0 ||
+    !Number.isFinite(effectiveBpm) ||
+    effectiveBpm <= 0 ||
+    !Number.isFinite(currentSec)
+  ) {
     return null
   }
   const beatSec = 60 / bpm
@@ -104,6 +116,8 @@ const buildSample = (input: LinkedGridVisualPhaseInput, nowMs: number): LinkedGr
     atMs: renderClock?.atMs ?? nowMs,
     epochMs: renderClock?.epochMs ?? resolveEpochMs(nowMs),
     bpm,
+    playbackRate,
+    effectiveBpm,
     beatSec,
     currentSec,
     beatDistance,
@@ -116,14 +130,17 @@ const canLinkSamples = (
   current: LinkedGridSample,
   reference: LinkedGridSample | null | undefined,
   nowMs: number,
-  clockActive: boolean,
-  playbackRate: number
+  clockActive: boolean
 ) => {
   if (!reference?.active) return false
   if (nowMs - reference.atMs > LINKED_GRID_SAMPLE_MAX_AGE_MS) return false
-  if (Math.abs(current.bpm - reference.bpm) > LINKED_GRID_BPM_EPSILON) return false
+  const rawBpmLinked = Math.abs(current.bpm - reference.bpm) <= LINKED_GRID_BPM_EPSILON
+  const effectiveBpmLinked =
+    Math.abs(current.effectiveBpm - reference.effectiveBpm) <= LINKED_GRID_EFFECTIVE_BPM_EPSILON
+  if (!rawBpmLinked && !effectiveBpmLinked) return false
+  if (!rawBpmLinked && effectiveBpmLinked) return true
   const clockDeltaSec = clockActive
-    ? ((current.epochMs - reference.epochMs) / 1000) * playbackRate
+    ? ((current.epochMs - reference.epochMs) / 1000) * reference.playbackRate
     : 0
   const referenceBeatDistance =
     reference.beatDistance + (reference.beatSec > 0 ? clockDeltaSec / reference.beatSec : 0)
@@ -131,6 +148,13 @@ const canLinkSamples = (
   return (
     resolveCircularDelta(current.beatPhase, referenceBeatPhase, 1) <= LINKED_GRID_BEAT_PHASE_EPSILON
   )
+}
+
+const canLinkByEffectiveBpmOnly = (current: LinkedGridSample, reference: LinkedGridSample) => {
+  const rawBpmLinked = Math.abs(current.bpm - reference.bpm) <= LINKED_GRID_BPM_EPSILON
+  const effectiveBpmLinked =
+    Math.abs(current.effectiveBpm - reference.effectiveBpm) <= LINKED_GRID_EFFECTIVE_BPM_EPSILON
+  return !rawBpmLinked && effectiveBpmLinked
 }
 
 export const publishHorizontalBrowseLinkedGridRenderClock = (
@@ -154,6 +178,16 @@ export const publishHorizontalBrowseLinkedGridRenderClockPair = (
   publishHorizontalBrowseLinkedGridRenderClock('down', downSeconds, atMs)
 }
 
+export const publishHorizontalBrowseLinkedGridVisualPhaseSample = (
+  input: LinkedGridVisualPhaseInput,
+  atMs = typeof performance !== 'undefined' ? performance.now() : Date.now()
+) => {
+  const sample = buildSample(input, atMs)
+  if (!sample) return false
+  samples[input.direction] = sample
+  return true
+}
+
 export const resolveHorizontalBrowseLinkedGridVisualPhase = (
   input: LinkedGridVisualPhaseInput
 ): LinkedGridVisualPhaseResult => {
@@ -166,6 +200,8 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
     atMs: nowMs,
     epochMs: resolveEpochMs(nowMs),
     bpm: 0,
+    playbackRate: 1,
+    effectiveBpm: 0,
     beatSec: 0,
     currentSec: sourcePlaybackSeconds,
     beatDistance: 0,
@@ -190,11 +226,10 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
   const referenceDirection: HorizontalBrowseDirection | null =
     input.direction === 'down' ? 'up' : null
   const reference = referenceDirection ? samples[referenceDirection] : samples[counterpartDirection]
-  const playbackRate = Math.max(0.25, Number(input.playbackRate) || 1)
   const linkedToCounterpart =
     !!reference &&
     reference !== currentSample &&
-    canLinkSamples(currentSample, reference, nowMs, input.clockActive, playbackRate)
+    canLinkSamples(currentSample, reference, nowMs, input.clockActive)
   if (input.direction === 'up' && linkedToCounterpart) {
     return {
       barBeatOffset: sourceBarBeatOffset,
@@ -221,9 +256,31 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
       referenceDirection: null
     }
   }
+  if (canLinkByEffectiveBpmOnly(currentSample, reference)) {
+    const clockDeltaSec = input.clockActive
+      ? ((currentSample.epochMs - reference.epochMs) / 1000) * reference.playbackRate
+      : 0
+    const referenceBeatDistance =
+      reference.beatDistance + (reference.beatSec > 0 ? clockDeltaSec / reference.beatSec : 0)
+    const referenceBeatPhase = normalizePhase(referenceBeatDistance, 1)
+    const phaseShiftSec =
+      resolveSignedCircularDelta(currentSample.beatPhase, referenceBeatPhase, 1) *
+      currentSample.beatSec
+    return {
+      barBeatOffset: sourceBarBeatOffset,
+      sourceBarBeatOffset,
+      playbackSeconds: sourcePlaybackSeconds - phaseShiftSec,
+      sourcePlaybackSeconds,
+      playbackRenderClockEpochMs: currentSample.epochMs,
+      playbackClockLinked: false,
+      phaseShiftSec,
+      linked: true,
+      referenceDirection
+    }
+  }
 
   const clockDeltaSec = input.clockActive
-    ? ((currentSample.epochMs - reference.epochMs) / 1000) * playbackRate
+    ? ((currentSample.epochMs - reference.epochMs) / 1000) * reference.playbackRate
     : 0
   const referenceBeatDistance =
     reference.beatDistance + (reference.beatSec > 0 ? clockDeltaSec / reference.beatSec : 0)

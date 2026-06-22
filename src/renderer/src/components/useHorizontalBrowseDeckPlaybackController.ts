@@ -18,6 +18,8 @@ import {
   type HorizontalBrowsePendingPlayViewMode
 } from '@renderer/components/horizontalBrowsePendingPlayDiagnostics'
 import { createHorizontalBrowsePlaybackStallRecovery } from '@renderer/components/horizontalBrowsePlaybackStallRecovery'
+import type { CommitHorizontalBrowseDeckStatesToNative } from '@renderer/components/horizontalBrowseLinkedDragReleaseCommit'
+import { handleHorizontalBrowseLinkedRawWaveformDragEnd } from '@renderer/components/horizontalBrowseLinkedRawWaveformDragEnd'
 import {
   createDefaultDeckWaveformDragState,
   type DeckScrubPreviewRequest,
@@ -35,8 +37,14 @@ type UseHorizontalBrowseDeckPlaybackControllerParams = {
   notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
   holdDeckRenderCurrentSeconds: (deck: DeckKey, seconds: number) => void
   startDeckRenderPlaybackClock: (deck: DeckKey, seconds: number) => void
+  prepareDeckStableFrameForAnchor?: (
+    deck: DeckKey,
+    seconds: number,
+    options?: { timeoutMs?: number }
+  ) => Promise<boolean>
   nativeTransport: {
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
+    setLeader: (deck?: DeckKey | null) => Promise<unknown>
     preparePlayhead: (deck: DeckKey) => Promise<unknown>
     seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
     setScrubPreview: (
@@ -50,7 +58,7 @@ type UseHorizontalBrowseDeckPlaybackControllerParams = {
     snapshot: (nowMs?: number) => Promise<unknown>
   }
   syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
-  commitDeckStatesToNative: () => Promise<unknown>
+  commitDeckStatesToNative: CommitHorizontalBrowseDeckStatesToNative
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckGridBpm: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
@@ -77,11 +85,16 @@ const SYNCED_SEEK_PLAYHEAD_READY_TIMEOUT_MS = 1500
 const SYNCED_SEEK_PLAYHEAD_READY_POLL_MS = 24
 const SYNCED_SEEK_PREPARE_TIMEOUT_MS = 3000
 const SYNCED_SEEK_PREPARE_MAX_ALIGNMENTS = 4
+const DRAG_RELEASE_STABLE_FRAME_WAIT_MS = 120
 const PLAYHEAD_READY_NEGATIVE_EPSILON_SEC = 0.0001
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
 const resolveOtherDeck = (deck: DeckKey): DeckKey => (deck === 'top' ? 'bottom' : 'top')
+const normalizeLinkedDragVisualPlaybackRate = (value: unknown) => {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric > 0 ? Math.max(0.25, numeric) : 1
+}
 
 const PENDING_PLAY_VISIBLE_DELAY_MS = 250
 
@@ -139,6 +152,33 @@ export const useHorizontalBrowseDeckPlaybackController = (
   const ensureDualTransportSync = async (sourceDeck: DeckKey) => {
     if (!isDualTransportSyncActive()) return false
     return Boolean(await params.ensureDualTransportSync?.(sourceDeck))
+  }
+
+  const resolveLinkedDragDelta = (deck: DeckKey, otherDeck: DeckKey, sourceTargetSec: number) => {
+    const sourceDragState = deckWaveformDragState[deck]
+    const otherDragState = deckWaveformDragState[otherDeck]
+    const sourceVisualPlaybackRate = normalizeLinkedDragVisualPlaybackRate(
+      sourceDragState.visualPlaybackRate
+    )
+    const otherVisualPlaybackRate = normalizeLinkedDragVisualPlaybackRate(
+      otherDragState.visualPlaybackRate
+    )
+    const deltaScale = otherVisualPlaybackRate / sourceVisualPlaybackRate
+    const sourceDeltaSec = sourceTargetSec - sourceDragState.startAnchorSec
+    const otherDeltaSec = sourceDeltaSec * deltaScale
+    const otherTargetSec = clampDeckTimelineSeconds(
+      otherDeck,
+      otherDragState.startAnchorSec + otherDeltaSec
+    )
+    return {
+      otherTargetSec,
+      sourceDeltaSec,
+      otherDeltaSec: otherTargetSec - otherDragState.startAnchorSec,
+      expectedOtherDeltaSec: otherDeltaSec,
+      deltaScale,
+      sourceVisualPlaybackRate,
+      otherVisualPlaybackRate
+    }
   }
 
   const traceDeckAction = (deck: DeckKey, stage: string, payload?: Record<string, unknown>) => {
@@ -204,6 +244,14 @@ export const useHorizontalBrowseDeckPlaybackController = (
     if (isDeckPlayheadReady(deck) || !canDeckExecuteImmediateTransportAction(deck)) return
     await params.nativeTransport.preparePlayhead(deck).catch(() => undefined)
   }
+
+  const prepareDeckStableFrameForAnchor = (
+    deck: DeckKey,
+    seconds: number,
+    options?: { timeoutMs?: number }
+  ) =>
+    params.prepareDeckStableFrameForAnchor?.(deck, seconds, options).catch(() => false) ??
+    Promise.resolve(false)
 
   const resumeDeckPlaybackAfterSeek = async (deck: DeckKey) => {
     await prepareDeckPlayheadIfNeeded(deck)
@@ -456,6 +504,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     dragState.wasPlaying = snapshot.playing
     dragState.startAnchorSec = clampDeckTimelineSeconds(deck, resolveSnapshotAnchorSec(snapshot))
     dragState.anchorSec = dragState.startAnchorSec
+    dragState.visualPlaybackRate = normalizeLinkedDragVisualPlaybackRate(snapshot.playbackRate)
     dragState.cueCommittedDuringDrag = false
     dragState.token += 1
 
@@ -478,7 +527,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
   const handleDeckRawWaveformDragStart = (deck: DeckKey) => {
     startSingleDeckRawWaveformDrag(deck)
     if (!isDualTransportSyncActive()) return
-    startSingleDeckRawWaveformDrag(resolveOtherDeck(deck))
+    const otherDeck = resolveOtherDeck(deck)
+    startSingleDeckRawWaveformDrag(otherDeck)
   }
 
   const runLatestDeckScrubPreviewRequest = (deck: DeckKey) => {
@@ -524,6 +574,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     dragState.pausePromise = null
     dragState.startAnchorSec = 0
     dragState.anchorSec = targetSec
+    dragState.visualPlaybackRate = 1
     dragState.token = result.token
     queueDeckScrubPreviewRequest(deck, {
       token: result.token,
@@ -553,87 +604,39 @@ export const useHorizontalBrowseDeckPlaybackController = (
     const otherDeck = resolveOtherDeck(deck)
     const otherDragState = deckWaveformDragState[otherDeck]
     if (!otherDragState.active) return
-    const otherAnchorSec = clampDeckTimelineSeconds(
-      otherDeck,
-      otherDragState.startAnchorSec + (anchorSec - dragState.startAnchorSec)
-    )
+    const linkedDelta = resolveLinkedDragDelta(deck, otherDeck, anchorSec)
+    const otherAnchorSec = linkedDelta.otherTargetSec
     otherDragState.anchorSec = otherAnchorSec
     params.holdDeckRenderCurrentSeconds(otherDeck, otherAnchorSec)
     queueDeckScrubPreviewRequest(otherDeck, {
       token: otherDragState.token,
       active: true,
       anchorSec: otherAnchorSec,
-      playbackRate: Number(payload.playbackRate) || 0
+      playbackRate: (Number(payload.playbackRate) || 0) * linkedDelta.deltaScale
     })
   }
 
-  const handleLinkedDeckRawWaveformDragEnd = (
-    deck: DeckKey,
-    payload: DeckWaveformDragEndPayload
-  ) => {
-    const otherDeck = resolveOtherDeck(deck)
-    const dragState = deckWaveformDragState[deck]
-    const otherDragState = deckWaveformDragState[otherDeck]
-    if (!dragState.active || !otherDragState.active) return false
-
-    const sourceStartSec = dragState.startAnchorSec
-    const otherStartSec = otherDragState.startAnchorSec
-    const targetSec = clampDeckTimelineSeconds(deck, Number(payload.anchorSec) || 0)
-    const otherTargetSec = clampDeckTimelineSeconds(
-      otherDeck,
-      otherDragState.startAnchorSec + (targetSec - dragState.startAnchorSec)
-    )
-    const sourceFinish = finishDeckWaveformDragState(deck, targetSec)
-    const otherFinish = finishDeckWaveformDragState(otherDeck, otherTargetSec)
-    if (!payload?.committed) {
-      params.notifyDeckSeekIntent(deck, sourceStartSec)
-      params.notifyDeckSeekIntent(otherDeck, otherStartSec)
-      return true
-    }
-
-    const shouldResume = sourceFinish.shouldResume || otherFinish.shouldResume
-    params.notifyDeckSeekIntent(deck, targetSec)
-    params.notifyDeckSeekIntent(otherDeck, otherTargetSec)
-
-    void (async () => {
-      await sourceFinish.pausePromise
-      await otherFinish.pausePromise
-      if (
-        deckWaveformDragState[deck].token !== sourceFinish.token ||
-        deckWaveformDragState[otherDeck].token !== otherFinish.token
-      ) {
-        return
-      }
-
-      await params.nativeTransport.seek(deck, targetSec)
-      if (deckWaveformDragState[deck].token !== sourceFinish.token) {
-        return
-      }
-      await params.nativeTransport.seek(otherDeck, otherTargetSec)
-      if (deckWaveformDragState[otherDeck].token !== otherFinish.token) {
-        return
-      }
-
-      await ensureDualTransportSync(deck)
-      if (shouldResume) {
-        await resumeDeckPlaybackAfterSeek(deck)
-        if (deckWaveformDragState[deck].token !== sourceFinish.token) {
-          return
-        }
-        await resumeDeckPlaybackAfterSeek(otherDeck)
-        if (deckWaveformDragState[otherDeck].token !== otherFinish.token) {
-          return
-        }
-      }
-      params.syncDeckRenderState({ force: 'all' })
-    })().catch(() => {})
-
-    return true
+  const handleLinkedRawWaveformDragEnd = (deck: DeckKey, payload: DeckWaveformDragEndPayload) => {
+    return handleHorizontalBrowseLinkedRawWaveformDragEnd({
+      deck,
+      payload,
+      resolveOtherDeck,
+      resolveDeckDragState: (targetDeck) => deckWaveformDragState[targetDeck],
+      resolveDeckLeader: (targetDeck) => params.resolveTransportDeckSnapshot(targetDeck).leader,
+      clampDeckTimelineSeconds,
+      resolveLinkedDragDelta,
+      finishDeckWaveformDragState,
+      notifyDeckSeekIntent: params.notifyDeckSeekIntent,
+      setLeader: params.nativeTransport.setLeader,
+      prepareDeckPlayheadIfNeeded,
+      startDeckRenderPlaybackClock: params.startDeckRenderPlaybackClock,
+      commitDeckStatesToNative: params.commitDeckStatesToNative
+    })
   }
 
   const handleDeckRawWaveformDragEnd = (deck: DeckKey, payload: DeckWaveformDragEndPayload) => {
     params.touchDeckInteraction(deck)
-    if (isDualTransportSyncActive() && handleLinkedDeckRawWaveformDragEnd(deck, payload)) {
+    if (isDualTransportSyncActive() && handleLinkedRawWaveformDragEnd(deck, payload)) {
       return
     }
     const dragState = deckWaveformDragState[deck]
@@ -668,6 +671,12 @@ export const useHorizontalBrowseDeckPlaybackController = (
         return
       }
       if (shouldResume) {
+        await prepareDeckStableFrameForAnchor(deck, targetSec, {
+          timeoutMs: DRAG_RELEASE_STABLE_FRAME_WAIT_MS
+        })
+        if (deckWaveformDragState[deck].token !== token) {
+          return
+        }
         await resumeDeckPlaybackAfterSeek(deck)
         if (deckWaveformDragState[deck].token !== token) {
           return
