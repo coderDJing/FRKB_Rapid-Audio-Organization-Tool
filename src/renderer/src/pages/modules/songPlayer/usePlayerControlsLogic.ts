@@ -782,12 +782,19 @@ export function usePlayerControlsLogic({
       ])
 
       // 先切到下一首，再广播移除事件，避免全局 songsRemoved 监听把当前播放上下文误清空。
+      const currentPlayingFilePath = normalizePath(runtime.playingData.playingSong?.filePath)
+      const nextPlayingFilePath = normalizePath(nextPlayingSong?.filePath)
       if (nextPlayingSong) {
-        switchPlaybackToSong({
-          listUUID: sourceListUuid,
-          listData: nextList,
-          song: nextPlayingSong
-        })
+        if (currentPlayingFilePath && currentPlayingFilePath === nextPlayingFilePath) {
+          // 下一首就是当前正在播放的歌，只更新列表数据，不重新加载
+          runtime.playingData.playingSongListData = nextList
+        } else {
+          switchPlaybackToSong({
+            listUUID: sourceListUuid,
+            listData: nextList,
+            song: nextPlayingSong
+          })
+        }
       } else {
         if (audioPlayer.value) {
           if (audioPlayer.value.isPlaying()) {
