@@ -227,13 +227,28 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     })
   }
 
-  const clearDrag = (deck: DeckKey) => {
-    if (state[deck].owner !== 'drag' && state[deck].owner !== 'linked-drag') return
-    const affectedDecks = state[deck].linked
-      ? state[deck].affectedDecks.length
-        ? state[deck].affectedDecks
+  const clearDrag = (deck: DeckKey, linkedActive = state[deck].linked) => {
+    const currentState = state[deck]
+    if (currentState.owner !== 'drag' && currentState.owner !== 'linked-drag') return
+    const wasLinkedDrag = currentState.owner === 'linked-drag' || currentState.linked
+    const affectedDecks = wasLinkedDrag
+      ? currentState.affectedDecks.length
+        ? currentState.affectedDecks
         : (['top', 'bottom'] as DeckKey[])
       : [deck]
+    if (wasLinkedDrag && linkedActive) {
+      commitDecks(affectedDecks, {
+        owner: 'linked-playback',
+        sourceDeck: deck,
+        affectedDecks,
+        viewportStartSec: null,
+        playbackClock: null,
+        linked: true,
+        visualPending: false,
+        surfaceMode: 'dual-detail'
+      })
+      return
+    }
     commitDecks(affectedDecks, {
       owner: 'playback',
       sourceDeck: deck,
@@ -322,6 +337,24 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     })
   }
 
+  const clearLinkedPresentation = () => {
+    commitDecks(['top', 'bottom'], {
+      owner: 'idle',
+      sourceDeck: null,
+      affectedDecks: ['top', 'bottom'],
+      anchorSec: null,
+      viewportStartSec: null,
+      visibleDurationSec: null,
+      zoom: null,
+      timeScale: 1,
+      gridTimeBasis: null,
+      playbackClock: null,
+      linked: false,
+      visualPending: false,
+      surfaceMode: 'dual-detail'
+    })
+  }
+
   return {
     state,
     setSurfaceMode,
@@ -330,6 +363,7 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     clearDrag,
     markZoom,
     beginSyncTransaction,
-    finishSyncTransaction
+    finishSyncTransaction,
+    clearLinkedPresentation
   }
 }

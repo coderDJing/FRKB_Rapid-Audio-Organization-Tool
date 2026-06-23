@@ -29,6 +29,7 @@ export type LinkedGridVisualPhaseInput = {
   barBeatOffset: number
   currentSec: number
   playbackRate: number
+  phaseLocked?: boolean
 }
 
 type LinkedGridVisualPhaseResult = {
@@ -215,6 +216,19 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
       playbackSeconds: sourcePlaybackSeconds,
       sourcePlaybackSeconds,
       playbackRenderClockEpochMs: null,
+      playbackClockLinked: false,
+      phaseShiftSec: 0,
+      linked: false,
+      referenceDirection: null
+    }
+  }
+  if (input.phaseLocked === true) {
+    return {
+      barBeatOffset: sourceBarBeatOffset,
+      sourceBarBeatOffset,
+      playbackSeconds: sourcePlaybackSeconds,
+      sourcePlaybackSeconds,
+      playbackRenderClockEpochMs: currentSample.epochMs,
       playbackClockLinked: false,
       phaseShiftSec: 0,
       linked: false,

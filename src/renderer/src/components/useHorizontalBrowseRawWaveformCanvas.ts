@@ -506,6 +506,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const playbackRate = Math.max(0.25, Number(options.playbackRate()) || 1)
     const sourcePlaybackSeconds = Number(options.currentSeconds()) || 0
     const anchorStartedAtMs = performance.now()
+    const linkedGridPhaseLocked =
+      dragPresentationReleasePending || dragPresentationReleaseActive.value
     const visualGridPhase = resolveHorizontalBrowseLinkedGridVisualPhase({
       direction: options.direction(),
       active: waveformLayout !== 'full' && options.linkedGridActive?.() === true,
@@ -514,7 +516,8 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       firstBeatMs: renderFirstBeatMs,
       barBeatOffset: renderBarBeatOffset,
       currentSec: sourcePlaybackSeconds,
-      playbackRate
+      playbackRate,
+      phaseLocked: linkedGridPhaseLocked
     })
     const playbackSeconds = visualGridPhase.playbackSeconds
     const preferPreviewStart = payload.preferPreviewStart === true

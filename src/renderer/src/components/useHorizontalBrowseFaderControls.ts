@@ -30,6 +30,7 @@ type UseHorizontalBrowseFaderControlsParams = {
     leader: DeckKey
     follower: DeckKey
   }) => Promise<boolean> | boolean
+  clearLinkedPresentation?: () => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckPlaying: (deck: DeckKey) => boolean
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
@@ -88,6 +89,7 @@ export const useHorizontalBrowseFaderControls = (
     dualTransportSyncActivationToken += 1
     dualTransportSyncEnabled.value = false
     dualTransportSyncActivating.value = false
+    params.clearLinkedPresentation?.()
     void Promise.allSettled([
       params.nativeTransport.setSyncEnabled('top', false),
       params.nativeTransport.setSyncEnabled('bottom', false)

@@ -359,6 +359,7 @@ const {
   commitDeckStatesToNative,
   syncDeckRenderState,
   commitLinkedGridVisualTransaction,
+  clearLinkedPresentation: waveformPresentation.clearLinkedPresentation,
   resolveDeckSong,
   resolveDeckPlaying,
   resolveDeckCurrentSeconds,

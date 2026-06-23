@@ -14,7 +14,7 @@ type WaveformPresentationBridgeState = {
     linked: boolean,
     linkedAnchors?: Partial<Record<DeckKey, number>>
   ) => void
-  clearDrag: (deck: DeckKey) => void
+  clearDrag: (deck: DeckKey, linkedActive?: boolean) => void
   markZoom: (
     deck: DeckKey,
     zoom: number,
@@ -66,7 +66,7 @@ export const createHorizontalBrowseWaveformPresentationShellBridge = (
   }
 
   const clearDeckWaveformDragPresentation = (deck: DeckKey) => {
-    params.presentation.clearDrag(deck)
+    params.presentation.clearDrag(deck, params.resolveLinkedDragActive())
   }
 
   const handleDeckRawWaveformDragStart = (deck: DeckKey) => {
