@@ -80,9 +80,11 @@ export const handleHorizontalBrowseLinkedRawWaveformDragEnd = ({
   const shouldResume = sourceFinish.shouldResume || otherFinish.shouldResume
   notifyDeckSeekIntent(deck, targetSec)
   notifyDeckSeekIntent(otherDeck, otherTargetSec)
-  const stopIfStale = (_reason: string) =>
-    resolveDeckDragState(deck).token !== sourceFinish.token ||
-    resolveDeckDragState(otherDeck).token !== otherFinish.token
+  const stopIfStale = (_reason: string) => {
+    const sourceToken = resolveDeckDragState(deck).token
+    const otherToken = resolveDeckDragState(otherDeck).token
+    return sourceToken !== sourceFinish.token || otherToken !== otherFinish.token
+  }
   void (async () => {
     await sourceFinish.pausePromise
     await otherFinish.pausePromise

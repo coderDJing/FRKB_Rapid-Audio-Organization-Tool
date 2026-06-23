@@ -24,6 +24,7 @@ type PointerInteractionOptions = {
   resolvePreviewDurationSec: () => number
   resolveVisibleDurationSec: () => number
   resolvePreviewAnchorSec: () => number
+  resolveWaveformCurrentSeconds: () => number
   clampPreviewStart: (seconds: number) => number
   beginDragCanvasPresentation: () => DragPresentationStartResult
   applyDragCanvasPresentationOffset: (offsetCssPx: number) => void
@@ -33,7 +34,7 @@ type PointerInteractionOptions = {
   scrubPreview: {
     start: (anchorSec: number) => void
     update: (anchorSec: number) => void
-    stop: () => void
+    stop: (options?: { flushPending?: boolean }) => void
   }
   handlePreviewMouseDownForBarLinePicking: (event: PointerEvent) => boolean
   emitToolbarState: () => void
@@ -146,7 +147,7 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
     }
     options.dragging.value = false
     activeDragPointerId = null
-    options.scrubPreview.stop()
+    options.scrubPreview.stop({ flushPending: committed && refreshWaveform })
     const dragRelease = options.endDragCanvasPresentation(finalPreviewStartSec)
     window.removeEventListener('pointermove', handleDragPointerMove)
     window.removeEventListener('pointerup', handleWindowPointerUp)
@@ -217,8 +218,12 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
     const rect = wrap.getBoundingClientRect()
     const ratio =
       rect.width > 0 ? options.clampNumber((event.clientX - rect.left) / rect.width, 0, 1) : 0.5
+    const playbackActive = options.resolvePlaybackActive()
     const beforeVisible = options.resolveVisibleDurationSec()
-    const anchorSec = options.previewStartSec.value + beforeVisible * ratio
+    const anchorRatio = playbackActive ? HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO : ratio
+    const anchorSec = playbackActive
+      ? options.resolveWaveformCurrentSeconds()
+      : options.previewStartSec.value + beforeVisible * ratio
     const factor = event.deltaY < 0 ? options.zoomStepFactor : 1 / options.zoomStepFactor
     const nextZoom = options.clampNumber(
       options.previewZoom.value * factor,
@@ -229,17 +234,17 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
 
     options.previewZoom.value = nextZoom
     const nextVisible = options.resolveVisibleDurationSec()
-    options.previewStartSec.value = options.clampPreviewStart(anchorSec - nextVisible * ratio)
+    options.previewStartSec.value = options.clampPreviewStart(anchorSec - nextVisible * anchorRatio)
     options.emitZoomChange({
       value: options.previewZoom.value,
-      anchorRatio: ratio,
+      anchorRatio,
       sourceDirection: options.direction(),
       anchorSec,
       viewportStartSec: options.previewStartSec.value,
       visibleDurationSec: nextVisible
     })
     options.maybeContinueWaveformSource(options.resolvePreviewAnchorSec())
-    if (!options.resolvePlaybackActive()) {
+    if (!playbackActive) {
       options.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
     }
   }

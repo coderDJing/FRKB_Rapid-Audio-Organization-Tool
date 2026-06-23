@@ -83,7 +83,6 @@ export const createHorizontalBrowseWaveformPresentationShellBridge = (
   }
 
   const handleDeckRawWaveformDragEnd = (deck: DeckKey, payload: DeckWaveformDragEndPayload) => {
-    const linked = params.resolveLinkedDragActive()
     params.endDeckRawWaveformDrag(deck, payload)
     clearDeckWaveformDragPresentation(deck)
   }
@@ -92,18 +91,13 @@ export const createHorizontalBrowseWaveformPresentationShellBridge = (
     const numeric = Number(payload?.value)
     if (!Number.isFinite(numeric) || numeric <= 0) return false
     const sourceDeck: DeckKey = payload?.sourceDirection === 'down' ? 'bottom' : 'top'
-    params.presentation.markZoom(
-      sourceDeck,
-      numeric,
-      payload.anchorRatio,
-      params.resolveZoomLinked(),
-      {
-        anchorSec: payload.anchorSec,
-        viewportStartSec: payload.viewportStartSec,
-        visibleDurationSec: payload.visibleDurationSec,
-        timeScale: payload.timeScale
-      }
-    )
+    const linked = params.resolveZoomLinked()
+    params.presentation.markZoom(sourceDeck, numeric, payload.anchorRatio, linked, {
+      anchorSec: payload.anchorSec,
+      viewportStartSec: payload.viewportStartSec,
+      visibleDurationSec: payload.visibleDurationSec,
+      timeScale: payload.timeScale
+    })
     return true
   }
 

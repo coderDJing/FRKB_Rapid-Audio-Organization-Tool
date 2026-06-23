@@ -19,6 +19,7 @@ type DetailPresentationConsumerParams = {
   previewStartSec: Ref<number>
   waveformPlaybackActive: () => boolean
   resolveWaveformCurrentSeconds: () => number
+  resolveWaveformPlaybackRate: () => number
   resolveVisibleDurationSec: () => number
   clampPreviewStart: (seconds: number) => number
   resetGridRenderer: () => void
@@ -45,6 +46,7 @@ type ZoomTarget = {
   sourceDirection: 'up' | 'down' | null
   anchorSec?: number | null
   viewportStartSec?: number | null
+  presentationState?: HorizontalBrowseWaveformPresentationState
 }
 
 const isFiniteNumber = (value: unknown): value is number =>
@@ -75,6 +77,8 @@ const resolvePlaybackClockSeconds = (
   return seconds + elapsedSec * playbackRate
 }
 
+const PLAYBACK_ZOOM_CLOCK_DRIFT_TOLERANCE_SEC = 0.25
+
 export const createHorizontalBrowseDetailPresentationConsumer = (
   params: DetailPresentationConsumerParams
 ) => {
@@ -83,6 +87,7 @@ export const createHorizontalBrowseDetailPresentationConsumer = (
   const applyZoomTarget = (target: ZoomTarget) => {
     const numeric = Number(target.value)
     if (!Number.isFinite(numeric) || numeric <= 0) return
+    const direction = params.direction()
     const nextZoom = normalizeHorizontalBrowseSharedZoom(
       {
         value: numeric,
@@ -93,25 +98,37 @@ export const createHorizontalBrowseDetailPresentationConsumer = (
       params.previewMaxZoom.value
     )
     const sameSourceZoom =
-      target.sourceDirection === params.direction() &&
+      target.sourceDirection === direction &&
       Math.abs(nextZoom - params.previewZoom.value) <= 0.000001
     if (sameSourceZoom && !params.waveformPlaybackActive()) return
     const playbackZoomActive = params.waveformPlaybackActive()
     const anchorRatio = Math.max(0, Math.min(1, Number(target.anchorRatio) || 0))
-    const sourceOwnsDeck = target.sourceDirection === params.direction()
+    const sourceOwnsDeck = target.sourceDirection === direction
+    const playbackClock = target.presentationState?.playbackClock ?? null
+    const rawPlaybackClockSeconds = playbackZoomActive
+      ? resolvePlaybackClockSeconds(playbackClock)
+      : null
+    const waveformCurrentSeconds = params.resolveWaveformCurrentSeconds()
+    const playbackClockDriftSec =
+      rawPlaybackClockSeconds !== null ? rawPlaybackClockSeconds - waveformCurrentSeconds : null
+    const playbackClockTrusted =
+      rawPlaybackClockSeconds !== null &&
+      Math.abs(playbackClockDriftSec ?? 0) <= PLAYBACK_ZOOM_CLOCK_DRIFT_TOLERANCE_SEC
+    const playbackClockSeconds = playbackClockTrusted ? rawPlaybackClockSeconds : null
     const targetAnchorSec =
-      sourceOwnsDeck && isFiniteNumber(target.anchorSec) ? Number(target.anchorSec) : null
+      !playbackZoomActive && sourceOwnsDeck && isFiniteNumber(target.anchorSec)
+        ? Number(target.anchorSec)
+        : null
     const targetViewportStartSec =
-      sourceOwnsDeck && isFiniteNumber(target.viewportStartSec)
+      !playbackZoomActive && sourceOwnsDeck && isFiniteNumber(target.viewportStartSec)
         ? Number(target.viewportStartSec)
         : null
     const previousVisible = params.resolveVisibleDurationSec()
-    const anchorSec =
-      targetAnchorSec !== null
+    const anchorSec = playbackZoomActive
+      ? (playbackClockSeconds ?? waveformCurrentSeconds)
+      : targetAnchorSec !== null
         ? targetAnchorSec
-        : playbackZoomActive
-          ? params.resolveWaveformCurrentSeconds()
-          : params.previewStartSec.value + previousVisible * anchorRatio
+        : params.previewStartSec.value + previousVisible * anchorRatio
     params.previewZoom.value = nextZoom
     const nextVisible = params.resolveVisibleDurationSec()
     const nextAnchorRatio = playbackZoomActive
@@ -123,7 +140,15 @@ export const createHorizontalBrowseDetailPresentationConsumer = (
     params.resetGridRenderer()
     params.maybeContinueWaveformSource(anchorSec)
     if (playbackZoomActive) {
-      params.schedulePlaybackStableFrameRender()
+      params.clearPlaybackStableFrameRenderTimer()
+      params.drawWaveformNow({ preferPreviewStart: true })
+      if (playbackClockTrusted && playbackClock) {
+        params.reanchorStableCanvasPlayback(playbackClock.seconds, playbackClock.playbackRate, {
+          startedAtMs: playbackClock.startedAtMs
+        })
+      } else {
+        params.reanchorStableCanvasPlayback(anchorSec, params.resolveWaveformPlaybackRate())
+      }
     } else {
       params.clearPlaybackStableFrameRenderTimer()
       params.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
@@ -207,7 +232,8 @@ export const createHorizontalBrowseDetailPresentationConsumer = (
         anchorRatio: state.anchorRatio,
         sourceDirection: resolveDeckDirection(state.sourceDeck),
         anchorSec: state.anchorSec,
-        viewportStartSec: state.viewportStartSec
+        viewportStartSec: state.viewportStartSec,
+        presentationState: state
       })
       return
     }

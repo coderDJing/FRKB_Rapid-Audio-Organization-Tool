@@ -6,7 +6,6 @@ import type {
   HorizontalBrowseLinkedGridVisualTransactionResult,
   HorizontalBrowseLinkedGridVisualTransactionResults
 } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
-
 type DeckKey = HorizontalBrowseDeckKey
 
 export type HorizontalBrowseWaveformPresentationOwner =
@@ -185,6 +184,9 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
       sourceDeck: deck,
       affectedDecks: [deck],
       anchorSec: Number(seconds) || 0,
+      viewportStartSec: null,
+      visibleDurationSec: null,
+      playbackClock: null,
       linked: false,
       visualPending: false
     })
@@ -272,19 +274,47 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     } = {}
   ) => {
     const affectedDecks = options.affectedDecks ?? (linked ? ['top', 'bottom'] : [deck])
-    commitDecks(affectedDecks, {
+    const normalizedAnchorRatio = Math.max(0, Math.min(1, Number(anchorRatio) || 0.5))
+    const normalizedZoom = Number(zoom) || null
+    const resolveZoomTimeScale = (targetDeck: DeckKey) =>
+      Math.max(0.25, Number(options.timeScale) || Number(state[targetDeck].timeScale) || 1)
+    const resolveZoomPlaybackClock = (targetDeck: DeckKey) => {
+      const currentState = state[targetDeck]
+      if (currentState.owner === 'linked-playback' || currentState.owner === 'linked-zoom') {
+        return currentState.playbackClock
+      }
+      return null
+    }
+    const buildPatch = (
+      targetDeck: DeckKey,
+      includeSourceViewport: boolean
+    ): PresentationPatch => ({
       owner: linked ? 'linked-zoom' : 'zoom',
       sourceDeck: deck,
       affectedDecks,
-      anchorSec: resolveOptionalNumber(options.anchorSec),
-      viewportStartSec: resolveOptionalNumber(options.viewportStartSec),
-      visibleDurationSec: resolveOptionalNumber(options.visibleDurationSec),
-      zoom: Number(zoom) || null,
-      anchorRatio: Math.max(0, Math.min(1, Number(anchorRatio) || 0.5)),
-      timeScale: Math.max(0.25, Number(options.timeScale) || 1),
+      anchorSec: includeSourceViewport ? resolveOptionalNumber(options.anchorSec) : null,
+      viewportStartSec: includeSourceViewport
+        ? resolveOptionalNumber(options.viewportStartSec)
+        : null,
+      visibleDurationSec: includeSourceViewport
+        ? resolveOptionalNumber(options.visibleDurationSec)
+        : null,
+      zoom: normalizedZoom,
+      anchorRatio: normalizedAnchorRatio,
+      timeScale: resolveZoomTimeScale(targetDeck),
+      playbackClock: resolveZoomPlaybackClock(targetDeck),
       linked,
       visualPending: false
     })
+    if (linked) {
+      const patches = affectedDecks.reduce<PresentationDeckPatch>((result, targetDeck) => {
+        result[targetDeck] = buildPatch(targetDeck, targetDeck === deck)
+        return result
+      }, {})
+      commitDeckPatches(patches)
+    } else {
+      commitDecks(affectedDecks, buildPatch(deck, true))
+    }
   }
 
   const beginSyncTransaction = (leader: DeckKey, follower: DeckKey) => {

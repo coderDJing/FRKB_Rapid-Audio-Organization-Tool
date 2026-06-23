@@ -68,8 +68,6 @@ const stableRenderRevision = computed(() => {
   if (
     state?.owner === 'linked-playback' ||
     state?.owner === 'seek' ||
-    state?.owner === 'zoom' ||
-    state?.owner === 'linked-zoom' ||
     state?.owner === 'drag' ||
     state?.owner === 'linked-drag'
   ) {
@@ -551,6 +549,7 @@ const { handleSharedZoomState, handlePresentationState } =
     previewStartSec,
     waveformPlaybackActive: () => waveformPlaybackActive.value,
     resolveWaveformCurrentSeconds,
+    resolveWaveformPlaybackRate,
     resolveVisibleDurationSec,
     clampPreviewStart,
     resetGridRenderer,
@@ -582,6 +581,7 @@ const { stopDragging, handlePointerDown, handleWheel } =
     resolvePreviewDurationSec,
     resolveVisibleDurationSec,
     resolvePreviewAnchorSec,
+    resolveWaveformCurrentSeconds,
     clampPreviewStart,
     beginDragCanvasPresentation,
     applyDragCanvasPresentationOffset,

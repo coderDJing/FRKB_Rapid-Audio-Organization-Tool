@@ -6,6 +6,10 @@ export type HorizontalBrowseScrubPreviewPayload = {
   playbackRate: number
 }
 
+type HorizontalBrowseScrubPreviewStopOptions = {
+  flushPending?: boolean
+}
+
 type UseHorizontalBrowseWaveformScrubPreviewOptions = {
   dragging: Ref<boolean>
   resolveAnchorSec: () => number
@@ -43,6 +47,12 @@ export const useHorizontalBrowseWaveformScrubPreview = (
     if (!previewRaf) return
     cancelAnimationFrame(previewRaf)
     previewRaf = 0
+  }
+
+  const flushPendingPreviewEmit = () => {
+    if (!previewRaf) return
+    clearPreviewRaf()
+    emitPreview(pendingPreviewAnchorSec, pendingPreviewPlaybackRate)
   }
 
   const emitPreview = (anchorSec: number, playbackRate: number) => {
@@ -101,9 +111,13 @@ export const useHorizontalBrowseWaveformScrubPreview = (
     scheduleIdleStop()
   }
 
-  const stop = () => {
+  const stop = (stopOptions: HorizontalBrowseScrubPreviewStopOptions = {}) => {
     clearIdleTimer()
-    clearPreviewRaf()
+    if (stopOptions.flushPending) {
+      flushPendingPreviewEmit()
+    } else {
+      clearPreviewRaf()
+    }
     smoothedRate = 0
   }
 

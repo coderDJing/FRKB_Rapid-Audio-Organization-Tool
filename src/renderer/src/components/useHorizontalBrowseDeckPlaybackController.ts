@@ -697,7 +697,16 @@ export const useHorizontalBrowseDeckPlaybackController = (
     const currentSeconds = params.resolveDeckCurrentSeconds(deck)
     const otherCurrentSeconds = params.resolveDeckCurrentSeconds(otherDeck)
     const otherDurationSeconds = params.resolveDeckDurationSeconds(otherDeck)
-    const rawOtherSeconds = otherCurrentSeconds + (nextSeconds - currentSeconds)
+    const sourceVisualPlaybackRate = normalizeLinkedDragVisualPlaybackRate(
+      params.resolveTransportDeckSnapshot(deck).playbackRate
+    )
+    const otherVisualPlaybackRate = normalizeLinkedDragVisualPlaybackRate(
+      params.resolveTransportDeckSnapshot(otherDeck).playbackRate
+    )
+    const deltaScale = otherVisualPlaybackRate / sourceVisualPlaybackRate
+    const sourceDeltaSec = nextSeconds - currentSeconds
+    const expectedOtherDeltaSec = sourceDeltaSec * deltaScale
+    const rawOtherSeconds = otherCurrentSeconds + expectedOtherDeltaSec
     const otherBoundaryExceeded =
       (otherDurationSeconds > 0 && rawOtherSeconds > otherDurationSeconds) || rawOtherSeconds < 0
     const sourceAtEnd = durationSeconds > 0 && nextSeconds >= Math.max(0, durationSeconds - 0.08)
