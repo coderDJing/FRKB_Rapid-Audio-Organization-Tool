@@ -59,6 +59,7 @@ export class WebAudioPlayer {
   private metadataPreloads = createBrowserPlayerMetadataPreloadPool()
   private htmlSeekController = createBrowserPlayerHtmlSeekController()
   private lastHtmlCurrentTime = 0
+  private pendingSeekedCleanup: (() => void) | null = null
 
   private audioElement: AudioElementWithExtensions | null = null
   private audioHandlers: {
@@ -294,6 +295,8 @@ export class WebAudioPlayer {
   }
 
   private stopHtmlInternal(resetTime = false): void {
+    this.pendingSeekedCleanup?.()
+    this.pendingSeekedCleanup = null
     const audio = this.audioElement
     if (!audio) {
       this.isPlayingFlag = false
@@ -677,8 +680,30 @@ export class WebAudioPlayer {
         } else {
           audio.currentTime = target
         }
+        if (audio.paused) {
+          const seekedHandler = () => {
+            this.pendingSeekedCleanup = null
+            clearTimeout(fallbackTimer)
+            this.startHtmlPlay(audio)
+          }
+          const fallbackTimer = window.setTimeout(() => {
+            this.pendingSeekedCleanup = null
+            audio.removeEventListener('seeked', seekedHandler)
+            this.startHtmlPlay(audio)
+          }, 200)
+          audio.addEventListener('seeked', seekedHandler, { once: true })
+          this.pendingSeekedCleanup = () => {
+            clearTimeout(fallbackTimer)
+            audio.removeEventListener('seeked', seekedHandler)
+          }
+          return
+        }
       } catch (_) {}
     }
+    this.startHtmlPlay(audio)
+  }
+
+  private startHtmlPlay(audio: AudioElementWithExtensions): void {
     if (!audio.paused && !audio.ended) {
       return
     }
