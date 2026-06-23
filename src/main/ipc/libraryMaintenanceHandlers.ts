@@ -81,6 +81,20 @@ type ErrorWithCode = Error & {
   code?: string
 }
 
+type RestoreProgressPayload = {
+  id: string
+  titleKey?: string
+  now?: number
+  total?: number
+  isInitial?: boolean
+  noProgress?: boolean
+  dismiss?: boolean
+}
+
+const sendRestoreProgress = (payload: RestoreProgressPayload) => {
+  mainWindow.instance?.webContents.send('progressSet', payload)
+}
+
 const getErrorCode = (error: ErrorWithCode): string => String(error.code || '').trim()
 
 const isRecycleBinMoveResult = (value: unknown): value is RecycleBinMoveResult =>
@@ -531,78 +545,105 @@ export function registerLibraryMaintenanceHandlers() {
         playlistUuids: []
       }
     }
-    const tasks = uniquePaths.map((filePath) => async () => {
-      return await restoreRecycleBinFile(filePath)
-    })
-    const { results } = await runWithConcurrency(tasks, { concurrency: 8 })
-    let restored = 0
-    let missingPlaylist = 0
-    let missingRecord = 0
-    let missingFile = 0
-    let failed = 0
-    const removedPaths: string[] = []
-    const playlistUuids = new Set<string>()
-    for (const res of results) {
-      if (res instanceof Error || !res) {
-        failed += 1
-        continue
-      }
-      if (res.status === 'restored') {
-        restored += 1
-        removedPaths.push(res.srcPath)
-        if (res.playlistPath) {
-          const node = findLibraryNodeByPath(path.join('library', res.playlistPath))
-          if (node?.uuid) playlistUuids.add(node.uuid)
-        }
-        continue
-      }
-      if (res.status === 'missing_playlist') {
-        missingPlaylist += 1
-        continue
-      }
-      if (res.status === 'missing_record') {
-        missingRecord += 1
-        continue
-      }
-      if (res.status === 'missing_file') {
-        missingFile += 1
-        removedPaths.push(res.srcPath)
-        continue
-      }
-      if (res.status === 'failed') {
-        failed += 1
-      }
-    }
-    if (restored > 0) {
-      const restoredByPlaylist = new Map<string, string[]>()
-      for (const res of results) {
-        if (res instanceof Error || !res || res.status !== 'restored') continue
-        const playlistPath = String(res.playlistPath || '').trim()
-        const destPath = String(res.destPath || '').trim()
-        if (!playlistPath || !destPath) continue
-        const list = restoredByPlaylist.get(playlistPath) || []
-        list.push(destPath)
-        restoredByPlaylist.set(playlistPath, list)
-      }
-      for (const [playlistPath, destPaths] of restoredByPlaylist) {
-        const playlistRoot = path.join(rootDir, playlistPath)
-        if (!isSupportedPlaylistTrackNumberListRoot(playlistRoot)) continue
-        await appendSongListTrackNumbers({
-          listRoot: playlistRoot,
-          appendedFilePaths: destPaths
-        })
-      }
-      markGlobalSongSearchDirty('recycleBin:restore')
-    }
-    return {
+    const progressId = `recycle_bin_restore_${Date.now()}`
+    sendRestoreProgress({
+      id: progressId,
+      titleKey: 'recycleBin.restoreProgressRestoring',
+      now: 0,
       total: uniquePaths.length,
-      restored,
-      missingPlaylist,
-      missingRecord,
-      missingFile,
-      failed,
-      removedPaths,
-      playlistUuids: Array.from(playlistUuids)
+      isInitial: true,
+      noProgress: false
+    })
+    try {
+      const tasks = uniquePaths.map((filePath) => async () => {
+        return await restoreRecycleBinFile(filePath)
+      })
+      const { results } = await runWithConcurrency(tasks, {
+        concurrency: 8,
+        onProgress: (done: number, total: number) => {
+          sendRestoreProgress({
+            id: progressId,
+            titleKey: 'recycleBin.restoreProgressRestoring',
+            now: done,
+            total,
+            noProgress: false
+          })
+        }
+      })
+      let restored = 0
+      let missingPlaylist = 0
+      let missingRecord = 0
+      let missingFile = 0
+      let failed = 0
+      const removedPaths: string[] = []
+      const playlistUuids = new Set<string>()
+      for (const res of results) {
+        if (res instanceof Error || !res) {
+          failed += 1
+          continue
+        }
+        if (res.status === 'restored') {
+          restored += 1
+          removedPaths.push(res.srcPath)
+          if (res.playlistPath) {
+            const node = findLibraryNodeByPath(path.join('library', res.playlistPath))
+            if (node?.uuid) playlistUuids.add(node.uuid)
+          }
+          continue
+        }
+        if (res.status === 'missing_playlist') {
+          missingPlaylist += 1
+          continue
+        }
+        if (res.status === 'missing_record') {
+          missingRecord += 1
+          continue
+        }
+        if (res.status === 'missing_file') {
+          missingFile += 1
+          removedPaths.push(res.srcPath)
+          continue
+        }
+        if (res.status === 'failed') {
+          failed += 1
+        }
+      }
+      if (restored > 0) {
+        const restoredByPlaylist = new Map<string, string[]>()
+        for (const res of results) {
+          if (res instanceof Error || !res || res.status !== 'restored') continue
+          const playlistPath = String(res.playlistPath || '').trim()
+          const destPath = String(res.destPath || '').trim()
+          if (!playlistPath || !destPath) continue
+          const list = restoredByPlaylist.get(playlistPath) || []
+          list.push(destPath)
+          restoredByPlaylist.set(playlistPath, list)
+        }
+        for (const [playlistPath, destPaths] of restoredByPlaylist) {
+          const playlistRoot = path.join(rootDir, playlistPath)
+          if (!isSupportedPlaylistTrackNumberListRoot(playlistRoot)) continue
+          await appendSongListTrackNumbers({
+            listRoot: playlistRoot,
+            appendedFilePaths: destPaths
+          })
+        }
+        markGlobalSongSearchDirty('recycleBin:restore')
+      }
+      return {
+        total: uniquePaths.length,
+        restored,
+        missingPlaylist,
+        missingRecord,
+        missingFile,
+        failed,
+        removedPaths,
+        playlistUuids: Array.from(playlistUuids)
+      }
+    } finally {
+      sendRestoreProgress({
+        id: progressId,
+        dismiss: true
+      })
     }
   })
 

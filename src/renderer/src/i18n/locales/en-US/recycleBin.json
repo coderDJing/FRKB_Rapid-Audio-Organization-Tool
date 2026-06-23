@@ -16,6 +16,7 @@
     "progressDeleting": "Permanently deleting recycle bin items",
     "progressFinished": "Recycle bin cleared",
     "progressFailed": "Recycle bin clear did not finish",
+    "restoreProgressRestoring": "Restoring recycle bin tracks",
     "restoreSummaryTitle": "Restore Summary",
     "restoreSummarySuccess": "Restored {count} track(s)",
     "restoreSummaryMissingPlaylist": "Original playlist missing: {count}",
