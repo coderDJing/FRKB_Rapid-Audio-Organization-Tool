@@ -175,19 +175,6 @@ export function appendSetItems(playlistUuid: string, items: SetAppendItem[]): Se
   }
 }
 
-export function removeSetItem(id: string): boolean {
-  if (!id) return false
-  const db = getLibraryDb()
-  if (!db) return false
-  try {
-    const info = db.prepare(`DELETE FROM ${TABLE} WHERE id = ?`).run(id)
-    return Number(info?.changes || 0) > 0
-  } catch (error) {
-    log.error('[sqlite] set remove item failed', error)
-    return false
-  }
-}
-
 export function removeSetItemsByPlaylist(playlistUuid: string): number {
   if (!playlistUuid) return 0
   const db = getLibraryDb()
@@ -275,21 +262,6 @@ export function updateSetItemAnalysisSnapshot(
     return Number(info?.changes || 0) > 0
   } catch (error) {
     log.error('[sqlite] set update item analysis failed', error)
-    return false
-  }
-}
-
-export function updateSetItemOrder(id: string, sortOrder: number): boolean {
-  if (!id) return false
-  const db = getLibraryDb()
-  if (!db) return false
-  try {
-    const info = db
-      .prepare(`UPDATE ${TABLE} SET sort_order = ? WHERE id = ?`)
-      .run(Number(sortOrder) || 0, id)
-    return Number(info?.changes || 0) > 0
-  } catch (error) {
-    log.error('[sqlite] set update item order failed', error)
     return false
   }
 }
