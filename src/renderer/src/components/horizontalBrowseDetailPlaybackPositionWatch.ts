@@ -39,6 +39,8 @@ type DetailPlaybackPositionWatchParams = {
   dragging: Ref<boolean>
   compactVisualWaveformActive: Ref<boolean>
   dragPresentationReleaseActive: Ref<boolean>
+  syncDragPresentationReleaseViewportStart: (seconds: number) => void
+  consumeDragPresentationReleaseRequiresFreshFrame: () => boolean
   normalizePreviewTimelineSeconds: (seconds: number) => number
   playbackDiscontinuityDetector: PlaybackDiscontinuityDetector
   applyPreviewPlaybackPosition: (
@@ -81,7 +83,8 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
         params.playbackSyncRevision(),
         Number(params.seekRevision()) || 0,
         Number(params.seekTargetSeconds()) || 0,
-        params.linkedGridVisualPending()
+        params.linkedGridVisualPending(),
+        params.dragPresentationReleaseActive.value
       ] as const,
     (
       [
@@ -91,7 +94,8 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
         syncRevision,
         seekRevision,
         seekTargetSeconds,
-        linkedGridVisualPending
+        linkedGridVisualPending,
+        dragPresentationReleaseActive
       ],
       previousValue
     ) => {
@@ -112,8 +116,12 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
         const previousSyncRevision = Math.max(0, Math.floor(Number(previousValue?.[3]) || 0))
         const previousSeekRevision = Math.max(0, Math.floor(Number(previousValue?.[4]) || 0))
         const previousLinkedGridVisualPending = Boolean(previousValue?.[6])
+        const previousDragPresentationReleaseActive = Boolean(previousValue?.[7])
         const resumedFromLinkedGridVisualPending =
           previousLinkedGridVisualPending && !linkedGridVisualPending
+        const dragPresentationReleaseCompleted =
+          previousDragPresentationReleaseActive && !dragPresentationReleaseActive
+        let dragPresentationReleaseRequiresFreshFrame = false
         const linkedGridActive = params.linkedGridActive()
         const playbackSyncChanged =
           !linkedGridActive &&
@@ -151,10 +159,14 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
         const stableSeekSyncHandoffActive =
           params.compactVisualWaveformActive.value &&
           params.isStableSeekSyncHandoffActive(safeSeekRevision, safeSeconds)
-        if (params.dragPresentationReleaseActive.value) {
+        if (dragPresentationReleaseActive) {
           params.applyPreviewPlaybackPosition(safeSeconds, false)
+          params.syncDragPresentationReleaseViewportStart(safeSeconds)
           return
         }
+        dragPresentationReleaseRequiresFreshFrame = dragPresentationReleaseCompleted
+          ? params.consumeDragPresentationReleaseRequiresFreshFrame()
+          : false
         const previousSeconds = params.normalizePreviewTimelineSeconds(
           Number(previousValue?.[0]) || 0
         )
@@ -180,10 +192,27 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
           params.forceRenderStableSeekTarget(safeSeconds)
           return
         }
-        if (params.compactVisualWaveformActive.value && params.isStablePlaybackToggleRenderHeld()) {
+        const stablePlaybackToggleHeld =
+          params.compactVisualWaveformActive.value && params.isStablePlaybackToggleRenderHeld()
+        if (stablePlaybackToggleHeld && !dragPresentationReleaseCompleted) {
           return
         }
-        const requirePresentable = playbackSyncChanged || playbackPositionJumped || songChanged
+        const requirePresentable =
+          playbackSyncChanged ||
+          playbackPositionJumped ||
+          songChanged ||
+          dragPresentationReleaseCompleted
+        if (
+          dragPresentationReleaseCompleted &&
+          dragPresentationReleaseRequiresFreshFrame &&
+          params.compactVisualWaveformActive.value
+        ) {
+          params.consumeDragReleaseStablePresentationOffsetLimit(safeSeconds)
+          if (playing) params.stopStableCanvasPlayback()
+          params.hideStableCanvasPresentation()
+          params.applyPreviewPlaybackPosition(safeSeconds, true, true)
+          return
+        }
         if (params.compactVisualWaveformActive.value && requirePresentable) {
           const maxOffsetCssPx = params.consumeDragReleaseStablePresentationOffsetLimit(safeSeconds)
           const canReuseStableFrame = prepareHorizontalBrowseStableCanvasJump({

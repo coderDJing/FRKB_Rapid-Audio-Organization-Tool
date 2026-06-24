@@ -183,6 +183,8 @@ const {
   beginDragCanvasPresentation,
   applyDragCanvasPresentationOffset,
   endDragCanvasPresentation,
+  syncDragPresentationReleaseViewportStart,
+  consumeDragPresentationReleaseRequiresFreshFrame,
   resolveRenderedCanvasViewportStartSec,
   dragPresentationReleaseActive,
   dispose: disposeWaveformCanvas
@@ -872,6 +874,8 @@ watchHorizontalBrowseDetailPlaybackPosition({
   dragging,
   compactVisualWaveformActive,
   dragPresentationReleaseActive,
+  syncDragPresentationReleaseViewportStart,
+  consumeDragPresentationReleaseRequiresFreshFrame,
   normalizePreviewTimelineSeconds,
   playbackDiscontinuityDetector,
   applyPreviewPlaybackPosition,

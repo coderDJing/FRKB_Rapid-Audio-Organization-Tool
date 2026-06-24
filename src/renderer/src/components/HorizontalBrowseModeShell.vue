@@ -303,6 +303,8 @@ const { commitDeckStateToNative, commitDeckStatesToNative, toggleDeckMaster, tri
     touchDeckInteraction,
     nativeTransport,
     syncDeckRenderState,
+    commitLinkedGridVisualTransaction,
+    clearLinkedPresentation: waveformPresentation.clearLinkedPresentation,
     resolveDeckSong,
     resolveDeckCurrentSeconds,
     resolveDeckDurationSeconds,

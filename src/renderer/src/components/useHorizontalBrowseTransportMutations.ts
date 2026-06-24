@@ -1,9 +1,14 @@
+import { nextTick } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot
 } from '@shared/horizontalBrowseTransport'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
+import {
+  hasHorizontalBrowseActiveFullSyncDeck,
+  resolveHorizontalBrowseBeatSyncDecks
+} from '@renderer/components/horizontalBrowseBeatSyncDecks'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -45,6 +50,11 @@ type UseHorizontalBrowseTransportMutationsParams = {
     snapshot: (nowMs?: number) => Promise<unknown>
   }
   syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
+  commitLinkedGridVisualTransaction?: (payload: {
+    leader: DeckKey
+    follower: DeckKey
+  }) => Promise<boolean> | boolean
+  clearLinkedPresentation?: () => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
@@ -69,6 +79,13 @@ export const useHorizontalBrowseTransportMutations = (
     playbackRate: override?.playbackRate ?? params.resolveDeckPlaybackRate(deck),
     masterTempoEnabled: override?.masterTempoEnabled ?? params.resolveDeckMasterTempoEnabled(deck)
   })
+
+  const resolveActiveBeatSyncDecks = (deck: DeckKey) =>
+    resolveHorizontalBrowseBeatSyncDecks({
+      deck,
+      hasDeckSong: (targetDeck) => Boolean(params.resolveDeckSong(targetDeck)),
+      resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot
+    })
 
   const commitDeckStateToNative = async (
     deck: DeckKey,
@@ -103,19 +120,24 @@ export const useHorizontalBrowseTransportMutations = (
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     if (snapshot.syncEnabled) {
       await params.nativeTransport.setSyncEnabled(deck, false)
-      params.syncDeckRenderState({ force: deck })
+      if (!hasHorizontalBrowseActiveFullSyncDeck(params.resolveTransportDeckSnapshot)) {
+        params.clearLinkedPresentation?.()
+      }
+      params.syncDeckRenderState({ force: 'all' })
       return
     }
-    const otherDeck: DeckKey = deck === 'top' ? 'bottom' : 'top'
-    const otherSnapshot = params.resolveTransportDeckSnapshot(otherDeck)
-    const shouldSkipGridSnap = !snapshot.playing && otherSnapshot.playing
     const anchorSec = Number(snapshot.currentSec)
     await params.nativeTransport.alignToLeader(
       deck,
       Number.isFinite(anchorSec) ? anchorSec : undefined,
-      shouldSkipGridSnap
+      false
     )
     params.syncDeckRenderState({ force: 'all' })
+    await nextTick()
+    const activeSyncDecks = resolveActiveBeatSyncDecks(deck)
+    if (activeSyncDecks) {
+      await params.commitLinkedGridVisualTransaction?.(activeSyncDecks)
+    }
   }
 
   return {

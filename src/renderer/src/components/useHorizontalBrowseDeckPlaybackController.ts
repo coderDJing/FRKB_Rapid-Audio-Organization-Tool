@@ -29,6 +29,7 @@ import {
   type DeckWaveformScrubPreviewPayload
 } from '@renderer/components/horizontalBrowseDeckPlaybackState'
 import { createHorizontalBrowseSyncedSeekPreparation } from '@renderer/components/horizontalBrowseSyncedSeekPreparation'
+import { resolveHorizontalBrowseBeatSyncDecks } from '@renderer/components/horizontalBrowseBeatSyncDecks'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -153,6 +154,13 @@ export const useHorizontalBrowseDeckPlaybackController = (
     if (!isDualTransportSyncActive()) return false
     return Boolean(await params.ensureDualTransportSync?.(sourceDeck))
   }
+
+  const resolveActiveBeatSyncDecks = (deck: DeckKey) =>
+    resolveHorizontalBrowseBeatSyncDecks({
+      deck,
+      hasDeckSong: (targetDeck) => Boolean(params.resolveDeckSong(targetDeck)),
+      resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot
+    })
 
   const resolveLinkedDragDelta = (deck: DeckKey, otherDeck: DeckKey, sourceTargetSec: number) => {
     const sourceDragState = deckWaveformDragState[deck]
@@ -660,29 +668,47 @@ export const useHorizontalBrowseDeckPlaybackController = (
 
     params.notifyDeckSeekIntent(deck, targetSec)
     void (async () => {
+      let activeSyncDecks = resolveActiveBeatSyncDecks(deck)
+      const beatSyncReleaseActive = activeSyncDecks !== null
       if (pausePromise) {
         await pausePromise
         if (deckWaveformDragState[deck].token !== token) {
           return
         }
       }
-      await params.nativeTransport.seek(deck, targetSec)
+      if (activeSyncDecks) {
+        if (activeSyncDecks.leader === deck) {
+          await params.nativeTransport.setLeader(activeSyncDecks.follower)
+          activeSyncDecks = resolveActiveBeatSyncDecks(deck)
+        }
+        await params.nativeTransport.alignToLeader(deck, targetSec, false)
+      } else {
+        await params.nativeTransport.seek(deck, targetSec)
+      }
       if (deckWaveformDragState[deck].token !== token) {
         return
       }
+      const alignedSnapshot = params.resolveTransportDeckSnapshot(deck)
+      const alignedTargetSec = Number.isFinite(Number(alignedSnapshot.currentSec))
+        ? Number(alignedSnapshot.currentSec)
+        : targetSec
+      params.notifyDeckSeekIntent(deck, alignedTargetSec)
       if (shouldResume) {
-        await prepareDeckStableFrameForAnchor(deck, targetSec, {
-          timeoutMs: DRAG_RELEASE_STABLE_FRAME_WAIT_MS
-        })
-        if (deckWaveformDragState[deck].token !== token) {
-          return
+        if (!beatSyncReleaseActive) {
+          await prepareDeckStableFrameForAnchor(deck, alignedTargetSec, {
+            timeoutMs: DRAG_RELEASE_STABLE_FRAME_WAIT_MS
+          })
+          if (deckWaveformDragState[deck].token !== token) {
+            return
+          }
         }
         await resumeDeckPlaybackAfterSeek(deck)
         if (deckWaveformDragState[deck].token !== token) {
           return
         }
       }
-      params.syncDeckRenderState({ force: deck })
+      activeSyncDecks = resolveActiveBeatSyncDecks(deck)
+      params.syncDeckRenderState({ force: activeSyncDecks ? 'all' : deck })
     })().catch(() => {})
   }
 
