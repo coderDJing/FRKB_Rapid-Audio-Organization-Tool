@@ -69,6 +69,7 @@ import { registerDevSongListTraceHandlers } from './ipc/devSongListTraceHandlers
 import { registerHotCueHandlers } from './ipc/hotCueHandlers'
 import { registerMemoryCueHandlers } from './ipc/memoryCueHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
+import { registerPlaybackForegroundActivityHandlers } from './services/playbackForegroundActivity'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
 import fs from 'fs-extra'
@@ -300,6 +301,7 @@ if (is.dev && devInstanceLock?.isPrimaryInstance && devRuntime?.userDataDir) {
 maybeClearLogAfterUpgrade()
 errorReport.setup()
 registerWhatsNewHandlers()
+registerPlaybackForegroundActivityHandlers()
 registerSettingsHandlers({
   loadFingerprintList: async (mode) => {
     const FingerprintStore = require('./fingerprintStore')

@@ -10,6 +10,8 @@ import { pruneOrphanedSongListCaches } from './services/cacheMaintenance'
 let watcher: fs.FSWatcher | null = null
 let debounceTimer: NodeJS.Timeout | null = null
 let reconciling = false
+let bulkOperationDepth = 0
+let pendingBulkReconcileWindow: BrowserWindow | null = null
 
 const WATCH_DEBOUNCE_MS = 400
 
@@ -52,9 +54,27 @@ async function reconcileLibraryTree(window: BrowserWindow | null) {
 
 function scheduleReconcile(window: BrowserWindow | null) {
   clearDebounceTimer()
+  if (bulkOperationDepth > 0) {
+    pendingBulkReconcileWindow = window
+    return
+  }
   debounceTimer = setTimeout(() => {
     void reconcileLibraryTree(window)
   }, WATCH_DEBOUNCE_MS)
+}
+
+export function beginLibraryTreeWatcherBulkOperation(): () => void {
+  bulkOperationDepth += 1
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    bulkOperationDepth = Math.max(0, bulkOperationDepth - 1)
+    if (bulkOperationDepth > 0 || !pendingBulkReconcileWindow) return
+    const window = pendingBulkReconcileWindow
+    pendingBulkReconcileWindow = null
+    scheduleReconcile(window)
+  }
 }
 
 export function startLibraryTreeWatcher(window: BrowserWindow | null): void {

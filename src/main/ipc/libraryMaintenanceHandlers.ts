@@ -34,6 +34,8 @@ import {
 import { getLibraryDb, type SqliteDatabase } from '../libraryDb'
 import { getLibraryStemCacheRootAbs } from '../services/libraryStemAssetStorage'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
+import { waitForPlaybackForegroundIdle } from '../services/playbackForegroundActivity'
+import { beginLibraryTreeWatcherBulkOperation } from '../libraryTreeWatcher'
 import {
   getRecordingLibraryRootAbs,
   hasRecordings,
@@ -65,6 +67,9 @@ const DIRTY_DATA_SQL_TABLES = [
   'mixtape_raw_waveform_cache',
   'mixtape_stem_waveform_cache'
 ] as const
+
+const DELETE_SONGS_BATCH_CONCURRENCY = 16
+const DELETE_SONGS_BATCH_YIELD_EVERY = 0
 
 type DirtyDataSqlSummary = {
   removedRows: number
@@ -232,6 +237,9 @@ export function registerLibraryMaintenanceHandlers() {
     const tasks: Array<() => Promise<RecycleBinMoveResult>> = []
     for (const item of setProtection.unprotectedFiles) {
       tasks.push(async () => {
+        await waitForPlaybackForegroundIdle('delSongs:task-start', {
+          filePath: item
+        })
         const result = await moveFileToRecycleBin(item, {
           originalPlaylistPath,
           sourceType
@@ -252,22 +260,30 @@ export function registerLibraryMaintenanceHandlers() {
         isInitial: true
       })
     }
-    const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
-      concurrency: 16,
-      onProgress: (done, total) => {
-        if (mainWindow.instance) {
-          mainWindow.instance.webContents.send('progressSet', {
-            id: batchId,
-            titleKey: 'library.deleteProgressRemoving',
-            now: protectedHandledCount + done,
-            total: protectedHandledCount + total
-          })
-        }
-      },
-      stopOnENOSPC: true,
-      onInterrupted: async (interruptPayload) =>
-        waitForUserDecision(mainWindow.instance ?? null, batchId, 'delSongs', interruptPayload)
-    })
+    const releaseLibraryTreeWatcherBulk = beginLibraryTreeWatcherBulkOperation()
+    const { success, failed, hasENOSPC, skipped, results } = await (async () => {
+      try {
+        return await runWithConcurrency(tasks, {
+          concurrency: DELETE_SONGS_BATCH_CONCURRENCY,
+          yieldEvery: DELETE_SONGS_BATCH_YIELD_EVERY,
+          onProgress: (done, total) => {
+            if (mainWindow.instance) {
+              mainWindow.instance.webContents.send('progressSet', {
+                id: batchId,
+                titleKey: 'library.deleteProgressRemoving',
+                now: protectedHandledCount + done,
+                total: protectedHandledCount + total
+              })
+            }
+          },
+          stopOnENOSPC: true,
+          onInterrupted: async (interruptPayload) =>
+            waitForUserDecision(mainWindow.instance ?? null, batchId, 'delSongs', interruptPayload)
+        })
+      } finally {
+        releaseLibraryTreeWatcherBulk()
+      }
+    })()
     if (hasENOSPC && mainWindow.instance) {
       mainWindow.instance.webContents.send('file-batch-summary', {
         context: 'delSongs',

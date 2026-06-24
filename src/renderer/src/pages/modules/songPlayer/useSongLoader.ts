@@ -39,6 +39,8 @@ type DeleteSongsSummary = {
   removedPaths?: unknown
 }
 
+const PLAYER_FOREGROUND_ACTIVITY_CHANNEL = 'player:foreground-activity'
+
 const resolveRemovedPaths = (summary: DeleteSongsSummary | null | undefined) =>
   Array.isArray(summary?.removedPaths)
     ? summary.removedPaths.filter((item): item is string => typeof item === 'string')
@@ -59,6 +61,58 @@ export function useSongLoader(params: {
   const isLoadingBlob = ref(false)
   const ignoreNextEmptyError = ref(false)
   let waveformTraceStartedAt = 0
+  let htmlPlaybackForegroundCleanup: (() => void) | null = null
+
+  const sendPlaybackForegroundActivity = (
+    state: 'start' | 'end',
+    source: string,
+    filePath: string,
+    requestId: number,
+    reason?: string
+  ) => {
+    window.electron.ipcRenderer.send(PLAYER_FOREGROUND_ACTIVITY_CHANNEL, {
+      state,
+      source,
+      filePath,
+      requestId,
+      reason
+    })
+  }
+
+  const clearHtmlPlaybackForegroundActivity = () => {
+    htmlPlaybackForegroundCleanup?.()
+    htmlPlaybackForegroundCleanup = null
+  }
+
+  const startHtmlPlaybackForegroundActivity = (
+    playerInstance: WebAudioPlayer,
+    filePath: string,
+    requestId: number
+  ) => {
+    clearHtmlPlaybackForegroundActivity()
+    let foregroundActive = true
+    sendPlaybackForegroundActivity('start', 'html-load', filePath, requestId)
+
+    const endForegroundActivity = (reason: string) => {
+      if (!foregroundActive) return
+      foregroundActive = false
+      sendPlaybackForegroundActivity('end', 'html-load', filePath, requestId, reason)
+    }
+    const cleanup = () => {
+      playerInstance.off('ready', handleReady)
+      playerInstance.off('error', handleError)
+      endForegroundActivity('cleanup')
+    }
+    const handleReady = () => {
+      clearHtmlPlaybackForegroundActivity()
+    }
+    const handleError = () => {
+      clearHtmlPlaybackForegroundActivity()
+    }
+    playerInstance.on('ready', handleReady)
+    playerInstance.on('error', handleError)
+    htmlPlaybackForegroundCleanup = cleanup
+  }
 
   const resolveBrowserPlaybackHandoff = (filePath: string, durationSec: number) => {
     const handoff = runtime.mainWindowPlaybackHandoff
@@ -384,6 +438,7 @@ export function useSongLoader(params: {
     try {
       playerInstance.setCompactVisualWaveformData(null)
       if (useHtmlPlayback) {
+        startHtmlPlaybackForegroundActivity(playerInstance, filePath, requestId)
         playerInstance.loadFile(filePath)
 
         startPlaybackWhenReady(playerInstance, filePath, requestId)
@@ -410,11 +465,13 @@ export function useSongLoader(params: {
           })()
         }
       } else {
+        clearHtmlPlaybackForegroundActivity()
         tracePlayerWaveform('loader', 'pcm-decode:request', filePath)
         window.electron.ipcRenderer.send('readSongFile', filePath, String(requestId))
       }
     } catch (loadError: unknown) {
       isLoadingBlob.value = false
+      clearHtmlPlaybackForegroundActivity()
       if (!isAbortError(loadError)) {
         await handleSongLoadError(filePath, false)
       }
@@ -505,6 +562,7 @@ export function useSongLoader(params: {
   window.electron.ipcRenderer.on('readSongFileError', handleReadSongFileError)
 
   onBeforeUnmount(() => {
+    clearHtmlPlaybackForegroundActivity()
     window.electron.ipcRenderer.removeListener('song-waveform-updated', handleWaveformUpdated)
     window.electron.ipcRenderer.removeListener('readedSongFile', handleReadedSongFile)
     window.electron.ipcRenderer.removeListener('readSongFileError', handleReadSongFileError)

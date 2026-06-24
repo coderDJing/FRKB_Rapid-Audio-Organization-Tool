@@ -21,6 +21,7 @@ import { invalidateKeyAnalysisCache } from './services/keyAnalysisQueue'
 import { listMixtapeItemsByFilePath, replaceMixtapeFilePath } from './mixtapeDb'
 import { replaceMixtapeStemAssetFilePath } from './mixtapeStemDb'
 import { updateSetItemFilePathReferences } from './setListDb'
+import { runPlaybackAwareBackgroundFileIo } from './services/playbackForegroundActivity'
 
 type RecycleBinSourceType = 'external' | 'import_dedup' | 'unknown'
 
@@ -211,7 +212,14 @@ async function moveFileToUniqueDestination(
     const targetName = await resolveUniqueFileName(destDir, sanitizedName)
     const destPath = path.join(destDir, targetName)
     try {
-      await fs.move(srcPath, destPath, { overwrite: false })
+      await runPlaybackAwareBackgroundFileIo(
+        'recycle-bin:fs-move',
+        {
+          srcPath,
+          destPath
+        },
+        () => fs.move(srcPath, destPath, { overwrite: false })
+      )
       return destPath
     } catch (error) {
       if (!isDestinationAlreadyExistsError(error) || !(await fs.pathExists(srcPath))) {
@@ -426,12 +434,20 @@ export async function moveFileToRecycleBin(
     const originalFileName = options.originalFileName || path.basename(srcPath)
     const destPath = await moveFileToUniqueDestination(srcPath, recycleRoot, originalFileName)
     try {
-      await transferTrackCaches({
-        fromRoot: sourceListRoot,
-        toRoot: recycleRoot,
-        fromPath: srcPath,
-        toPath: destPath
-      })
+      await runPlaybackAwareBackgroundFileIo(
+        'recycle-bin:transfer-track-caches',
+        {
+          srcPath,
+          destPath
+        },
+        () =>
+          transferTrackCaches({
+            fromRoot: sourceListRoot,
+            toRoot: recycleRoot,
+            fromPath: srcPath,
+            toPath: destPath
+          })
+      )
     } catch {}
     try {
       invalidateKeyAnalysisCache([srcPath, destPath])
