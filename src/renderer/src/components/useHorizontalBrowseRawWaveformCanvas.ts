@@ -561,7 +561,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     if (!stableWaveformSource) {
       lastQueuedStableRenderRevision = -1
     } else if (renderPlaybackSyncRevision !== lastQueuedStableRenderRevision) {
-      stablePresentation.clear()
       liveCanvasBridge.stopPlayback()
       preserveSurfaceUntilNextReady = true
       suppressNextSurfaceFadeIn = true

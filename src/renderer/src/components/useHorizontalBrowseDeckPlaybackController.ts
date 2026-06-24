@@ -669,7 +669,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
     params.notifyDeckSeekIntent(deck, targetSec)
     void (async () => {
       let activeSyncDecks = resolveActiveBeatSyncDecks(deck)
-      const beatSyncReleaseActive = activeSyncDecks !== null
       if (pausePromise) {
         await pausePromise
         if (deckWaveformDragState[deck].token !== token) {
@@ -694,13 +693,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
         : targetSec
       params.notifyDeckSeekIntent(deck, alignedTargetSec)
       if (shouldResume) {
-        if (!beatSyncReleaseActive) {
-          await prepareDeckStableFrameForAnchor(deck, alignedTargetSec, {
-            timeoutMs: DRAG_RELEASE_STABLE_FRAME_WAIT_MS
-          })
-          if (deckWaveformDragState[deck].token !== token) {
-            return
-          }
+        await prepareDeckStableFrameForAnchor(deck, alignedTargetSec, {
+          timeoutMs: DRAG_RELEASE_STABLE_FRAME_WAIT_MS
+        })
+        if (deckWaveformDragState[deck].token !== token) {
+          return
         }
         await resumeDeckPlaybackAfterSeek(deck)
         if (deckWaveformDragState[deck].token !== token) {

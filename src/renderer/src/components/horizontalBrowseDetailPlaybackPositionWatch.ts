@@ -63,7 +63,11 @@ type DetailPlaybackPositionWatchParams = {
   hideStableCanvasPresentation: () => void
   applyStableCanvasPresentation: (
     seconds: number,
-    options?: { allowReanchor?: boolean; requirePresentable?: boolean }
+    options?: {
+      allowReanchor?: boolean
+      requirePresentable?: boolean
+      allowRevisionHandoff?: boolean
+    }
   ) => { applied: boolean }
   reanchorStableCanvasPlayback: (seconds: number, playbackRate: number) => void
   resolveWaveformPlaybackRate: () => number
@@ -132,7 +136,19 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
           previousValue !== undefined &&
           safeSeekRevision > 0 &&
           safeSeekRevision !== previousSeekRevision
-        if (linkedGridVisualPending) return
+        if (linkedGridVisualPending) {
+          if (params.compactVisualWaveformActive.value && playing) {
+            const result = params.applyStableCanvasPresentation(safeSeconds, {
+              allowReanchor: params.stablePlaybackReanchorCanReanchor(),
+              requirePresentable: false,
+              allowRevisionHandoff: true
+            })
+            if (result.applied) {
+              params.reanchorStableCanvasPlayback(safeSeconds, params.resolveWaveformPlaybackRate())
+            }
+          }
+          return
+        }
         if (resumedFromLinkedGridVisualPending && params.linkedGridVisualTransactionCommitted()) {
           params.setLinkedGridVisualTransactionCommitted(false)
           return
@@ -151,7 +167,9 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
           params.compactVisualWaveformActive.value &&
           !params.dragReleaseHandoff.matches(safeSeekTargetSeconds)
         ) {
-          if (params.applyStablePresentationSeekTarget(safeSeekTargetSeconds)) return
+          if (params.applyStablePresentationSeekTarget(safeSeekTargetSeconds)) {
+            return
+          }
           params.startStableSeekSyncHandoff(safeSeekRevision, safeSeekTargetSeconds)
           params.forceRenderStableSeekTarget(safeSeekTargetSeconds)
           return

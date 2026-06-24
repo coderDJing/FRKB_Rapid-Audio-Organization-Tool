@@ -87,6 +87,20 @@ export type HorizontalBrowseClearLinkedPresentationDeckState = {
 export type HorizontalBrowseClearLinkedPresentationState = Partial<
   Record<DeckKey, HorizontalBrowseClearLinkedPresentationDeckState>
 >
+
+const buildNextPresentationState = (
+  previousState: HorizontalBrowseWaveformPresentationState,
+  patch: PresentationPatch,
+  revision: number,
+  updatedAtMs: number
+): HorizontalBrowseWaveformPresentationState => ({
+  ...previousState,
+  ...patch,
+  affectedDecks: patch.affectedDecks ? [...patch.affectedDecks] : previousState.affectedDecks,
+  revision,
+  updatedAtMs
+})
+
 const resolveOptionalNumber = (value: unknown) =>
   value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value) : null
 
@@ -176,22 +190,21 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
 
   const commitDeck = (deck: DeckKey, patch: PresentationPatch) => {
     const nextRevision = (revision += 1)
-    Object.assign(state[deck], {
-      ...patch,
-      revision: nextRevision,
-      updatedAtMs: performance.now()
-    })
+    const nextState = buildNextPresentationState(
+      state[deck],
+      patch,
+      nextRevision,
+      performance.now()
+    )
+    state[deck] = nextState
   }
 
   const commitDecks = (decks: DeckKey[], patch: PresentationPatch) => {
     const nextRevision = (revision += 1)
     const updatedAtMs = performance.now()
     decks.forEach((deck) => {
-      Object.assign(state[deck], {
-        ...patch,
-        revision: nextRevision,
-        updatedAtMs
-      })
+      const nextState = buildNextPresentationState(state[deck], patch, nextRevision, updatedAtMs)
+      state[deck] = nextState
     })
   }
 
@@ -202,11 +215,8 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     decks.forEach((deck) => {
       const patch = patches[deck]
       if (!patch) return
-      Object.assign(state[deck], {
-        ...patch,
-        revision: nextRevision,
-        updatedAtMs
-      })
+      const nextState = buildNextPresentationState(state[deck], patch, nextRevision, updatedAtMs)
+      state[deck] = nextState
     })
   }
 
@@ -365,12 +375,6 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
       affectedDecks,
       linked: true,
       visualPending: true,
-      gridTimeBasis: null,
-      playbackClock: null,
-      anchorSec: null,
-      viewportStartSec: null,
-      visibleDurationSec: null,
-      timeScale: 1,
       surfaceMode: 'dual-detail'
     })
   }

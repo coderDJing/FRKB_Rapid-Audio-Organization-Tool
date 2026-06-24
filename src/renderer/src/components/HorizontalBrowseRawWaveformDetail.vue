@@ -62,6 +62,7 @@ const localGridShiftPhaseOffsetSec = ref(0)
 const playbackSyncRevision = computed(() =>
   Math.max(0, Math.floor(Number(props.playbackSyncRevision) || 0))
 )
+let lastPresentationStableRenderRevision = 0
 const stableRenderRevision = computed(() => {
   const state = props.presentationState
   const presentationRevision = Math.max(0, Math.floor(Number(state?.revision) || 0))
@@ -71,8 +72,17 @@ const stableRenderRevision = computed(() => {
     state?.owner === 'drag' ||
     state?.owner === 'linked-drag'
   ) {
+    lastPresentationStableRenderRevision = presentationRevision
     return presentationRevision
   }
+  if (
+    state?.owner === 'sync-transaction' ||
+    state?.visualPending === true ||
+    props.linkedGridVisualPending === true
+  ) {
+    return lastPresentationStableRenderRevision
+  }
+  lastPresentationStableRenderRevision = 0
   return 0
 })
 const waveformPlaybackActive = computed(() => Boolean(props.playbackActive ?? props.playing))

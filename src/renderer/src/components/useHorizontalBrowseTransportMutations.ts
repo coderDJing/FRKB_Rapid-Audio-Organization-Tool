@@ -5,10 +5,8 @@ import type {
   HorizontalBrowseTransportDeckSnapshot
 } from '@shared/horizontalBrowseTransport'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
-import {
-  hasHorizontalBrowseActiveFullSyncDeck,
-  resolveHorizontalBrowseBeatSyncDecks
-} from '@renderer/components/horizontalBrowseBeatSyncDecks'
+import type { HorizontalBrowseClearLinkedPresentationState } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
+import { resolveHorizontalBrowseBeatSyncDecks } from '@renderer/components/horizontalBrowseBeatSyncDecks'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -54,7 +52,7 @@ type UseHorizontalBrowseTransportMutationsParams = {
     leader: DeckKey
     follower: DeckKey
   }) => Promise<boolean> | boolean
-  clearLinkedPresentation?: () => void
+  clearLinkedPresentation?: (playbackStates?: HorizontalBrowseClearLinkedPresentationState) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
@@ -86,6 +84,24 @@ export const useHorizontalBrowseTransportMutations = (
       hasDeckSong: (targetDeck) => Boolean(params.resolveDeckSong(targetDeck)),
       resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot
     })
+
+  const buildClearLinkedPresentationPlaybackStates =
+    (): HorizontalBrowseClearLinkedPresentationState => {
+      const startedAtMs = performance.now()
+      const buildDeckState = (deck: DeckKey) => {
+        const snapshot = params.resolveTransportDeckSnapshot(deck)
+        return {
+          currentSec: Number(snapshot.renderCurrentSec ?? snapshot.currentSec) || 0,
+          playbackRate: Math.max(0.25, Number(snapshot.playbackRate) || 1),
+          playing: snapshot.playing === true,
+          startedAtMs
+        }
+      }
+      return {
+        top: buildDeckState('top'),
+        bottom: buildDeckState('bottom')
+      }
+    }
 
   const commitDeckStateToNative = async (
     deck: DeckKey,
@@ -120,8 +136,11 @@ export const useHorizontalBrowseTransportMutations = (
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     if (snapshot.syncEnabled) {
       await params.nativeTransport.setSyncEnabled(deck, false)
-      if (!hasHorizontalBrowseActiveFullSyncDeck(params.resolveTransportDeckSnapshot)) {
-        params.clearLinkedPresentation?.()
+      const activeSyncDecks = resolveActiveBeatSyncDecks(deck)
+      if (activeSyncDecks) {
+        await params.commitLinkedGridVisualTransaction?.(activeSyncDecks)
+      } else {
+        params.clearLinkedPresentation?.(buildClearLinkedPresentationPlaybackStates())
       }
       params.syncDeckRenderState({ force: 'all' })
       return

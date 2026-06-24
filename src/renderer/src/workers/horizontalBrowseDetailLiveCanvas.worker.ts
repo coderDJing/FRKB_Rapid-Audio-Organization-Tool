@@ -739,16 +739,17 @@ const processRender = (
     request.rawSlot !== null &&
     !rawData &&
     canPreservePlaybackFrameOnMissingRaw(renderState, previousFrame)
-  const preserved =
+  const shouldPreserve =
     holdMissingPlaybackRaw ||
     (!!metrics &&
       !!renderState &&
       !ready &&
       canPreserveHorizontalBrowseWaveformAfterRenderMiss(request, renderState, previousFrame))
+  const preserved = shouldPreserve && !!metrics && !!ctx && copyScrollSourceToTarget(metrics, ctx)
   if (preserved) {
     lastFrame = previousFrame
     lastWaveformScrollShiftScaledPx = null
-  } else if (metrics && renderState && !ready && !holdMissingPlaybackRaw) {
+  } else if (metrics && renderState && !ready) {
     clearWaveformPixels()
     if (request.showTimelinePlaceholder && ctx) {
       renderHorizontalBrowseTimelineFallback(ctx, request, metrics)

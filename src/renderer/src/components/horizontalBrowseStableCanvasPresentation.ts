@@ -88,6 +88,11 @@ type StableCanvasPresentationControllerOptions = {
 type StableCanvasPresentationApplyOptions = {
   allowReanchor?: boolean
   requirePresentable?: boolean
+  allowRevisionHandoff?: boolean
+}
+
+type StableCanvasPresentationMeasureOptions = {
+  allowRevisionHandoff?: boolean
 }
 
 type StableCanvasRenderedOptions = {
@@ -133,6 +138,15 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     frame: HorizontalBrowseStableCanvasPresentationFrame | null
   ): frame is HorizontalBrowseStableCanvasPresentationFrame =>
     !!frame && normalizeRenderRevision(frame.renderRevision) === resolveRenderRevision()
+
+  const canUseRevisionHandoffFrame = (
+    frame: HorizontalBrowseStableCanvasPresentationFrame | null
+  ): frame is HorizontalBrowseStableCanvasPresentationFrame =>
+    !!frame &&
+    options.isPlaying() &&
+    !options.isDragging() &&
+    !isCurrentRenderRevision(frame) &&
+    isCurrentRenderRevision(pendingFrame)
 
   const clearPlaybackLoop = () => {
     if (!playbackRaf) return
@@ -200,12 +214,6 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     pixelRatio: number
   ) => {
     const safeRenderRevision = normalizeRenderRevision(renderRevision)
-    if (
-      currentFrame &&
-      normalizeRenderRevision(currentFrame.renderRevision) !== safeRenderRevision
-    ) {
-      currentFrame = null
-    }
     queueFrame(
       active
         ? {
@@ -235,9 +243,15 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
   }
 
   const measure = (
-    seconds = Number(options.currentSeconds()) || 0
+    seconds = Number(options.currentSeconds()) || 0,
+    measureOptions: StableCanvasPresentationMeasureOptions = {}
   ): HorizontalBrowseStableCanvasPresentationMeasureResult => {
-    if (!options.isActive() || !isCurrentRenderRevision(currentFrame)) {
+    const measuredFrame = isCurrentRenderRevision(currentFrame)
+      ? currentFrame
+      : measureOptions.allowRevisionHandoff === true && canUseRevisionHandoffFrame(currentFrame)
+        ? currentFrame
+        : null
+    if (!options.isActive() || !measuredFrame) {
       return {
         frame: null,
         offsetCssPx: null,
@@ -246,13 +260,13 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
       }
     }
     const offsetCssPx = resolveHorizontalBrowseStableCanvasOffsetCssPx(
-      currentFrame,
+      measuredFrame,
       options.resolveViewportRangeStartSec(seconds)
     )
-    const reanchorNeeded = shouldReanchorHorizontalBrowseStableCanvas(currentFrame, offsetCssPx)
-    const presentable = canPresentHorizontalBrowseStableCanvas(currentFrame, offsetCssPx)
+    const reanchorNeeded = shouldReanchorHorizontalBrowseStableCanvas(measuredFrame, offsetCssPx)
+    const presentable = canPresentHorizontalBrowseStableCanvas(measuredFrame, offsetCssPx)
     return {
-      frame: currentFrame,
+      frame: measuredFrame,
       offsetCssPx,
       presentable,
       reanchorNeeded
@@ -263,7 +277,9 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     seconds = Number(options.currentSeconds()) || 0,
     applyOptions: StableCanvasPresentationApplyOptions = {}
   ): HorizontalBrowseStableCanvasPresentationApplyResult => {
-    const measured = measure(seconds)
+    const measured = measure(seconds, {
+      allowRevisionHandoff: applyOptions.allowRevisionHandoff
+    })
     const currentFrame = measured.frame
     if (!currentFrame) {
       return { applied: false, offsetCssPx: null, presentable: false }
@@ -307,7 +323,10 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
       return
     }
     const estimatedSeconds = estimatePlaybackSeconds()
-    const result = apply(estimatedSeconds, { allowReanchor: true })
+    const result = apply(estimatedSeconds, {
+      allowReanchor: true,
+      allowRevisionHandoff: true
+    })
     if (result.applied) {
       playbackRaf = requestAnimationFrame(tickPlayback)
       return
@@ -336,7 +355,13 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
       playbackRate: safePlaybackRate
     }
     if (deferForPendingFrame) {
-      clearPlaybackLoop()
+      if (canUseRevisionHandoffFrame(currentFrame)) {
+        if (!playbackRaf) {
+          playbackRaf = requestAnimationFrame(tickPlayback)
+        }
+      } else {
+        clearPlaybackLoop()
+      }
       return
     }
     if (!playbackRaf) {
