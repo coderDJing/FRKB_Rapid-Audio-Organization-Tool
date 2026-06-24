@@ -39,6 +39,7 @@ import {
   type WaveformUpdatedHandler
 } from './waveformPreviewIpcSubscriptions'
 import { createWaveformPreviewCanvasRegistry } from './waveformPreviewCanvasRegistry'
+import { createWaveformPreviewRetry, type WaveformPlaceholderState } from './waveformPreviewRetry'
 type VisibleSongItem = { song: ISongInfo; idx: number }
 type WaveformCacheEntry =
   | {
@@ -54,7 +55,6 @@ type WaveformCacheEntry =
       data: WaveformListPreviewData
     }
   | null
-type WaveformPlaceholderState = 'loading' | 'unavailable' | 'ready'
 const PIONEER_WAVEFORM_EAGER_COUNT = 8
 const clamp01 = (value: number) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0)
 export function useWaveformPreview(params: {
@@ -122,6 +122,7 @@ export function useWaveformPreview(params: {
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
   const resolveExternalRootPath = () => String(externalWaveformRootPath.value || '').trim()
   const touchPlaceholderState = () => (placeholderVersion.value += 1)
+  let waveformPreviewRetry: ReturnType<typeof createWaveformPreviewRetry> | null = null
   const ensureWaveformWorker = () => {
     if (!canUseAsyncWaveformWorker) return null
     if (waveformWorker) return waveformWorker
@@ -228,6 +229,9 @@ export function useWaveformPreview(params: {
       if (result.attachedToWorker) {
         syncWaveformDataToWorker(filePath, dataMap.get(filePath) ?? null)
       }
+      if (placeholderStateMap.get(filePath) === 'loading') {
+        waveformPreviewRetry?.trackLoading(filePath)
+      }
       scheduleDrawForFilePath(filePath)
     }
   }
@@ -261,6 +265,10 @@ export function useWaveformPreview(params: {
     if (perSongRoot) return perSongRoot
     return (songListRootDir.value || '').trim()
   }
+  waveformPreviewRetry = createWaveformPreviewRetry({
+    resolvePlaceholderState: (filePath) => placeholderStateMap.get(filePath),
+    retryLoading: (filePath) => void fetchWaveformBatch([filePath])
+  })
   const collectKnownFilePathsByNormalizedPaths = (normalizedPaths: Set<string>) =>
     Array.from(
       new Set([
@@ -363,6 +371,7 @@ export function useWaveformPreview(params: {
     if (!filePath) return
     placeholderStateMap.set(filePath, 'loading')
     placeholderReasonMap.delete(filePath)
+    waveformPreviewRetry?.trackLoading(filePath)
     touchPlaceholderState()
   }
   const setWaveformPlaceholderUnavailable = (filePath: string, reason?: string) => {
@@ -373,12 +382,14 @@ export function useWaveformPreview(params: {
     } else {
       placeholderReasonMap.delete(filePath)
     }
+    waveformPreviewRetry?.clear(filePath)
     touchPlaceholderState()
   }
   const setWaveformPlaceholderReady = (filePath: string) => {
     if (!filePath) return
     placeholderStateMap.set(filePath, 'ready')
     placeholderReasonMap.delete(filePath)
+    waveformPreviewRetry?.clear(filePath)
     touchPlaceholderState()
   }
   const getWaveformPlaceholderText = (filePath: string) => {
@@ -447,6 +458,7 @@ export function useWaveformPreview(params: {
         queuedMissing.delete(oldest)
         placeholderStateMap.delete(oldest)
         placeholderReasonMap.delete(oldest)
+        waveformPreviewRetry?.clear(oldest)
         syncWaveformDataToWorker(oldest, null)
       }
     }
@@ -678,6 +690,10 @@ export function useWaveformPreview(params: {
           queuedMissing.add(filePath)
         }
       }
+      missing
+        .filter((filePath) => getAnalysisProgress?.(filePath) === null)
+        .filter((filePath) => isSongNeedsAnalysis?.(filePath) !== true)
+        .forEach((filePath) => waveformPreviewRetry?.retryMissingSoon(filePath))
     }
     scheduleDrawForFilePaths(filePaths)
   }
@@ -931,6 +947,7 @@ export function useWaveformPreview(params: {
       queuedMissing.clear()
       placeholderStateMap.clear()
       placeholderReasonMap.clear()
+      waveformPreviewRetry?.clearAll()
       if (!waveformVisible.value) return
       scheduleLoad()
       nextTick(() => scheduleVisibleDraw())
@@ -973,6 +990,7 @@ export function useWaveformPreview(params: {
   onBeforeUnmount(() => {
     if (loadTimer) clearTimeout(loadTimer)
     if (drawRaf) cancelAnimationFrame(drawRaf)
+    waveformPreviewRetry?.clearAll()
     themeClassObserver?.disconnect()
     themeClassObserver = null
     drawAllVisiblePending = false
