@@ -4,7 +4,7 @@ import * as LibraryCacheDb from '../libraryCacheDb'
 import { hasCurrentNoBpmBeatGridResult } from './beatGridAlgorithmVersion'
 import { findSongListRoot } from './cacheMaintenance'
 
-export type MixtapeNoBpmGuardInfo = {
+type MixtapeNoBpmGuardInfo = {
   beatThisWindowCount?: unknown
   beatGridAlgorithmVersion?: unknown
   beatGridSource?: unknown

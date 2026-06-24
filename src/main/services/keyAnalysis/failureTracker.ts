@@ -15,7 +15,7 @@ import {
   type KeyAnalysisJob
 } from './types'
 
-export type KeyAnalysisFailureTrackerDeps = {
+type KeyAnalysisFailureTrackerDeps = {
   failedByPath: Map<string, KeyAnalysisFailureRecord>
   probeCache: Map<
     string,

@@ -651,11 +651,6 @@ interface ISettingConfig {
   analysisRuntimeStartupPromptShownVersion?: string
 }
 
-interface ILanguageDict {
-  [key: string]: {
-    [key: string]: string | string[]
-  }
-}
 interface IMenu {
   menuName: string
   shortcutKey?: string
@@ -751,7 +746,6 @@ export {
   IPlayerGlobalShortcuts,
   TitleAudioVisualizerMode,
   PlayerGlobalShortcutAction,
-  ILanguageDict,
   IMenu,
   IImportSongsFormData,
   ISongsAreaColumn,

@@ -36,7 +36,7 @@ import {
 
 export const SET_CUSTODY_DIR_NAME = '__set_custody__'
 
-export type SetMappingWithPlaylistName = SetItemRecord & {
+type SetMappingWithPlaylistName = SetItemRecord & {
   playlistName: string
 }
 
@@ -525,13 +525,13 @@ export function findSetReferencesForFiles(filePaths: string[]): SetMappingWithPl
   return results
 }
 
-export type SetCustodyResult = {
+type SetCustodyResult = {
   movedMap: Map<string, string>
   sourceStats: Map<string, { size: number; mtimeMs: number }>
   failures: Array<{ filePath: string; error: string }>
 }
 
-export type SetDeleteProtectionResult = {
+type SetDeleteProtectionResult = {
   protectedFiles: Array<{
     filePath: string
     movedTo: string

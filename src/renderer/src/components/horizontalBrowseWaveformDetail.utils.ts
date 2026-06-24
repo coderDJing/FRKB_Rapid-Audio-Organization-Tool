@@ -1,10 +1,5 @@
 export type HorizontalBrowseWaveformThemeVariant = 'light' | 'dark'
 
-export const normalizeHorizontalBrowsePathKey = (value: unknown) =>
-  String(value || '')
-    .trim()
-    .toLowerCase()
-
 export const resolveHorizontalBrowseWaveformThemeVariant =
   (): HorizontalBrowseWaveformThemeVariant => {
     const htmlEl = document.documentElement

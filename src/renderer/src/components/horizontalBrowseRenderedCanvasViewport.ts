@@ -1,4 +1,4 @@
-export type HorizontalBrowseRenderedCanvasViewportOptions = {
+type HorizontalBrowseRenderedCanvasViewportOptions = {
   canvas: HTMLCanvasElement | null
   rangeStartSec: number | null
   rangeDurationSec: number | null
@@ -15,7 +15,7 @@ export const resolveHorizontalBrowseCanvasTranslateX = (canvas: HTMLCanvasElemen
   }
 }
 
-export const resolveHorizontalBrowseCanvasStylePixel = (value: string | undefined) => {
+const resolveHorizontalBrowseCanvasStylePixel = (value: string | undefined) => {
   const numeric = Number.parseFloat(String(value || ''))
   return Number.isFinite(numeric) ? numeric : 0
 }

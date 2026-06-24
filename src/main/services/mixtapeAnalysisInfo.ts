@@ -1,6 +1,6 @@
 import type { ISongInfo } from '../../types/globals'
 
-export type MixtapeAnalysisCopyField =
+type MixtapeAnalysisCopyField =
   | 'bpm'
   | 'originalBpm'
   | 'firstBeatMs'

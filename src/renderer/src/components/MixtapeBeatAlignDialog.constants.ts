@@ -1,8 +1,6 @@
 import { BPM_INTERNAL_DECIMALS, formatBpmDisplay } from '@renderer/utils/bpm'
 import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
-export const PREVIEW_RAW_TARGET_RATE = 4800
-export const PREVIEW_EDIT_RAW_TARGET_RATE = 44100
 export const PREVIEW_WARMUP_DELAY_MS = 600
 export const PREVIEW_WARMUP_EAGER_DELAY_MS = 0
 export const OVERVIEW_MAX_RENDER_COLUMNS = 960
