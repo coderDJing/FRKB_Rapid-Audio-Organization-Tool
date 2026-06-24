@@ -1,8 +1,10 @@
 import { computed, nextTick, reactive, ref, watch, type Ref } from 'vue'
 import type { ISettingConfig, ISongInfo } from 'src/types/globals'
+import type { HorizontalBrowseClearLinkedPresentationState } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
 import type {
   HorizontalBrowseDeckKey,
-  HorizontalBrowseTransportBandState
+  HorizontalBrowseTransportBandState,
+  HorizontalBrowseTransportDeckSnapshot
 } from '@renderer/components/horizontalBrowseNativeTransport'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 
@@ -30,11 +32,12 @@ type UseHorizontalBrowseFaderControlsParams = {
     leader: DeckKey
     follower: DeckKey
   }) => Promise<boolean> | boolean
-  clearLinkedPresentation?: () => void
+  clearLinkedPresentation?: (playbackStates?: HorizontalBrowseClearLinkedPresentationState) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckPlaying: (deck: DeckKey) => boolean
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
   resolveDeckDurationSeconds: (deck: DeckKey) => number
+  resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
 }
 
 const createDefaultBandState = (): HorizontalBrowseTransportBandState => ({
@@ -77,6 +80,24 @@ export const useHorizontalBrowseFaderControls = (
   )
   const DECK_END_EPSILON_SEC = 0.08
 
+  const buildClearLinkedPresentationPlaybackStates =
+    (): HorizontalBrowseClearLinkedPresentationState => {
+      const startedAtMs = performance.now()
+      const buildDeckState = (deck: DeckKey) => {
+        const snapshot = params.resolveTransportDeckSnapshot(deck)
+        return {
+          currentSec: Number(snapshot.renderCurrentSec ?? snapshot.currentSec) || 0,
+          playbackRate: Math.max(0.25, Number(snapshot.playbackRate) || 1),
+          playing: snapshot.playing === true,
+          startedAtMs
+        }
+      }
+      return {
+        top: buildDeckState('top'),
+        bottom: buildDeckState('bottom')
+      }
+    }
+
   const isDeckAtEnd = (deck: DeckKey) => {
     const duration = Number(params.resolveDeckDurationSeconds(deck)) || 0
     if (duration <= 0) return false
@@ -89,7 +110,7 @@ export const useHorizontalBrowseFaderControls = (
     dualTransportSyncActivationToken += 1
     dualTransportSyncEnabled.value = false
     dualTransportSyncActivating.value = false
-    params.clearLinkedPresentation?.()
+    params.clearLinkedPresentation?.(buildClearLinkedPresentationPlaybackStates())
     void Promise.allSettled([
       params.nativeTransport.setSyncEnabled('top', false),
       params.nativeTransport.setSyncEnabled('bottom', false)

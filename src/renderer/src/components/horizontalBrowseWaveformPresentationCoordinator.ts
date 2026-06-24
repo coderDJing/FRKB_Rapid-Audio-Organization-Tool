@@ -78,6 +78,15 @@ type PresentationPatch = Partial<
 >
 
 type PresentationDeckPatch = Partial<Record<DeckKey, PresentationPatch>>
+export type HorizontalBrowseClearLinkedPresentationDeckState = {
+  currentSec: number
+  playbackRate: number
+  playing: boolean
+  startedAtMs: number
+}
+export type HorizontalBrowseClearLinkedPresentationState = Partial<
+  Record<DeckKey, HorizontalBrowseClearLinkedPresentationDeckState>
+>
 const resolveOptionalNumber = (value: unknown) =>
   value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value) : null
 
@@ -126,6 +135,37 @@ const buildSyncCommitPatch = (
   linked: true,
   visualPending: false
 })
+
+const buildClearLinkedPresentationPatch = (
+  playbackState: HorizontalBrowseClearLinkedPresentationDeckState | undefined
+): PresentationPatch => {
+  const anchorSec = resolveOptionalNumber(playbackState?.currentSec)
+  const playbackRate = Math.max(0.25, Number(playbackState?.playbackRate) || 1)
+  const startedAtMs = resolveOptionalNumber(playbackState?.startedAtMs)
+  const playing = playbackState?.playing === true
+  return {
+    owner: playing ? 'playback' : 'idle',
+    sourceDeck: null,
+    affectedDecks: ['top', 'bottom'],
+    anchorSec,
+    viewportStartSec: null,
+    visibleDurationSec: null,
+    zoom: null,
+    timeScale: 1,
+    gridTimeBasis: null,
+    playbackClock:
+      playing && anchorSec !== null && startedAtMs !== null
+        ? {
+            seconds: anchorSec,
+            startedAtMs,
+            playbackRate
+          }
+        : null,
+    linked: false,
+    visualPending: false,
+    surfaceMode: 'dual-detail'
+  }
+}
 
 export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
   let revision = 0
@@ -367,21 +407,12 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     })
   }
 
-  const clearLinkedPresentation = () => {
-    commitDecks(['top', 'bottom'], {
-      owner: 'idle',
-      sourceDeck: null,
-      affectedDecks: ['top', 'bottom'],
-      anchorSec: null,
-      viewportStartSec: null,
-      visibleDurationSec: null,
-      zoom: null,
-      timeScale: 1,
-      gridTimeBasis: null,
-      playbackClock: null,
-      linked: false,
-      visualPending: false,
-      surfaceMode: 'dual-detail'
+  const clearLinkedPresentation = (
+    playbackStates: HorizontalBrowseClearLinkedPresentationState = {}
+  ) => {
+    commitDeckPatches({
+      top: buildClearLinkedPresentationPatch(playbackStates.top),
+      bottom: buildClearLinkedPresentationPatch(playbackStates.bottom)
     })
   }
 

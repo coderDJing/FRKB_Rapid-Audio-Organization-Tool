@@ -365,7 +365,8 @@ const {
   resolveDeckSong,
   resolveDeckPlaying,
   resolveDeckCurrentSeconds,
-  resolveDeckDurationSeconds
+  resolveDeckDurationSeconds,
+  resolveTransportDeckSnapshot
 })
 const { assignSongToDeck: assignSongToDeckBase } = createHorizontalBrowseDeckAssigner({
   touchDeckInteraction,

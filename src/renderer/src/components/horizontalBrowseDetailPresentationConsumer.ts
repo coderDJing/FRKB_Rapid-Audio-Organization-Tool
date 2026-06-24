@@ -62,6 +62,16 @@ const isCommittedLinkedPlaybackOwner = (
   state: HorizontalBrowseWaveformPresentationState | undefined
 ) => state?.owner === 'linked-playback' && state.linked === true && state.visualPending === false
 
+const isPlaybackHandoffOwner = (
+  state: HorizontalBrowseWaveformPresentationState | undefined,
+  deck: DeckKey
+) =>
+  state?.owner === 'playback' &&
+  state.linked === false &&
+  state.visualPending === false &&
+  state.sourceDeck === null &&
+  state.affectedDecks.includes(deck)
+
 const resolveDeckDirection = (deck: DeckKey | null): 'up' | 'down' | null =>
   deck === 'top' ? 'up' : deck === 'bottom' ? 'down' : null
 
@@ -204,6 +214,28 @@ export const createHorizontalBrowseDetailPresentationConsumer = (
     }
   }
 
+  const applyPlaybackHandoffState = (state: HorizontalBrowseWaveformPresentationState) => {
+    const playbackActive = params.waveformPlaybackActive()
+    const anchorSec = playbackActive
+      ? params.resolveWaveformCurrentSeconds()
+      : isFiniteNumber(state.anchorSec)
+        ? Number(state.anchorSec)
+        : params.resolveWaveformCurrentSeconds()
+    const nextVisible = params.resolveVisibleDurationSec()
+    params.previewStartSec.value = params.clampPreviewStart(
+      anchorSec - nextVisible * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
+    )
+    params.resetGridRenderer()
+    params.maybeContinueWaveformSource(anchorSec)
+    params.clearPlaybackStableFrameRenderTimer()
+    if (playbackActive) {
+      params.drawWaveformNow({ preferPreviewStart: true })
+      params.reanchorStableCanvasPlayback(anchorSec, params.resolveWaveformPlaybackRate())
+      return
+    }
+    params.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
+  }
+
   const handleSharedZoomState = (state: HorizontalBrowseSharedZoomState | undefined) => {
     if (isZoomOwner(params.presentationState())) return
     applyZoomTarget({
@@ -242,6 +274,10 @@ export const createHorizontalBrowseDetailPresentationConsumer = (
     }
     if (isCommittedLinkedPlaybackOwner(state)) {
       applyCommittedLinkedPlaybackState(state)
+      return
+    }
+    if (isPlaybackHandoffOwner(state, params.deck())) {
+      applyPlaybackHandoffState(state)
       return
     }
     if (isDragOwner(state)) {
