@@ -29,6 +29,11 @@ type ExportSongsToDirSummary = {
   removedSetItemIds?: string[]
 }
 
+type MixtapeAppendResult = {
+  inserted?: number
+  skippedNoBpm?: number
+}
+
 type OptimisticRestoreItem = {
   song: ISongInfo
   index: number
@@ -74,6 +79,7 @@ export function usePlayerControlsLogic({
       runtime.playingData.playingSongListUUID,
       runtime.playingData.playingSong
     )
+  const isNoBpmSong = (song?: ISongInfo | null) => song?.beatGridStatus === 'no-bpm'
   const buildSongSnapshot = (filePath: string, song: ISongInfo) => {
     const baseName =
       String(filePath || '')
@@ -104,6 +110,7 @@ export function usePlayerControlsLogic({
       barBeatOffset: song?.barBeatOffset,
       timeBasisOffsetMs: song?.timeBasisOffsetMs,
       beatGridSource: song?.beatGridSource,
+      beatGridStatus: song?.beatGridStatus,
       beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
       hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
       memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
@@ -117,6 +124,7 @@ export function usePlayerControlsLogic({
     barBeatOffset: song.barBeatOffset,
     timeBasisOffsetMs: song.timeBasisOffsetMs,
     beatGridSource: song.beatGridSource,
+    beatGridStatus: song.beatGridStatus,
     beatGridAlgorithmVersion: song.beatGridAlgorithmVersion,
     hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
     memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
@@ -631,6 +639,15 @@ export function usePlayerControlsLogic({
       targetNode?.type === 'setList' || selectSongListDialogLibraryName.value === 'SetLibrary'
     const isMixtapeTarget = targetNode?.type === 'mixtapeList'
 
+    if (isMixtapeTarget && isNoBpmSong(songToMove)) {
+      selectSongListDialogShow.value = false
+      songToMoveRef.value = null
+      emitter.emit('songsArea/clipboardHint', {
+        message: t('mixtape.noBpmBlocked')
+      })
+      return
+    }
+
     if (!readOnlySource && targetListUuid === moveContext.sourceListUuid && !isSetTarget) {
       // 移动到当前列表，无需操作
       // 重置存储的歌曲信息
@@ -706,7 +723,7 @@ export function usePlayerControlsLogic({
           if (!copiedPath) {
             throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
           }
-          await window.electron.ipcRenderer.invoke('mixtape:append', {
+          const appendResult = (await window.electron.ipcRenderer.invoke('mixtape:append', {
             playlistId: targetListUuid,
             items: [
               {
@@ -716,10 +733,21 @@ export function usePlayerControlsLogic({
                 info: buildSongSnapshot(copiedPath, songToMove)
               }
             ]
-          })
+          })) as MixtapeAppendResult | null
+          const inserted = Math.max(0, Number(appendResult?.inserted || 0))
+          const skippedNoBpm = Math.max(0, Number(appendResult?.skippedNoBpm || 0))
+          if (inserted <= 0) {
+            if (skippedNoBpm > 0) {
+              emitter.emit('songsArea/clipboardHint', {
+                message: t('mixtape.noBpmBlocked')
+              })
+            }
+            isFileOperationInProgress.value = false
+            return
+          }
           emitter.emit('playlistContentChanged', { uuids: [targetListUuid] })
           emitter.emit('songsArea/clipboardHint', {
-            message: t('mixtape.addedToMixtape', { count: 1 })
+            message: t('mixtape.addedToMixtape', { count: inserted })
           })
           isFileOperationInProgress.value = false
           return

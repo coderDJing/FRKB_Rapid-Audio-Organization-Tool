@@ -48,6 +48,9 @@ export const useSongRowDisplay = (params: {
       if (Number.isFinite(bpm) && bpm > 0) {
         return formatBpmDisplay(bpm, '')
       }
+      if (song.beatGridStatus === 'no-bpm') {
+        return t('tracks.noBpm')
+      }
       return isDesktopRekordboxSong(song) ? t('rekordboxDesktop.analysisRequired') : ''
     }
     if (raw === undefined || raw === null) return ''

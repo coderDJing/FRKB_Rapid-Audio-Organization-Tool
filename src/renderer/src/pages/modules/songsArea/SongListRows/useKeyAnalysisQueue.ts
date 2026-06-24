@@ -17,6 +17,7 @@ const hasRequiredKeyAnalysis = (song: ISongInfo | undefined, requiresRuntimeAnal
   const keyText = typeof song.key === 'string' ? song.key.trim() : ''
   if (!keyText) return false
   if (!requiresRuntimeAnalysis) return true
+  if (song.beatGridStatus === 'no-bpm') return true
   const bpm = Number(song.bpm)
   const firstBeatMs = Number(song.firstBeatMs)
   const barBeatOffset = Number(song.barBeatOffset)

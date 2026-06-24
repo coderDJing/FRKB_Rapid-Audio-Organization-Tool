@@ -58,6 +58,7 @@ import {
 } from '../services/sharedSongGrid'
 import { emitSongGridUpdated } from '../services/songGridEvents'
 import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
+import { createMixtapeNoBpmGuard } from '../services/mixtapeNoBpmGuard'
 import {
   runMixtapeOutput,
   type MixtapeOutputInput,
@@ -65,43 +66,10 @@ import {
 } from '../services/mixtapeOutput'
 import { moveOrCopyItemWithCheckIsExist, runWithConcurrency, waitForUserDecision } from '../utils'
 import { getMixtapeVaultRootAbs } from '../recycleBinService'
-
-type MixtapeAnalysisCopyField =
-  | 'bpm'
-  | 'originalBpm'
-  | 'firstBeatMs'
-  | 'barBeatOffset'
-  | 'timeBasisOffsetMs'
-  | 'beatGridAlgorithmVersion'
-  | 'key'
-  | 'originalKey'
-  | 'stemStatus'
-  | 'stemReadyAt'
-  | 'stemModel'
-  | 'stemVersion'
-  | 'stemVocalPath'
-  | 'stemInstPath'
-  | 'stemBassPath'
-  | 'stemDrumsPath'
-
-type MixtapeAnalysisInfo = Record<string, unknown> & {
-  bpm?: number
-  originalBpm?: number
-  firstBeatMs?: number
-  barBeatOffset?: number
-  timeBasisOffsetMs?: number
-  beatGridAlgorithmVersion?: number
-  key?: string
-  originalKey?: string
-  stemStatus?: string
-  stemReadyAt?: number
-  stemModel?: string
-  stemVersion?: string
-  stemVocalPath?: string
-  stemInstPath?: string
-  stemBassPath?: string
-  stemDrumsPath?: string
-}
+import {
+  MIXTAPE_ANALYSIS_COPY_FIELDS,
+  type MixtapeAnalysisInfo
+} from '../services/mixtapeAnalysisInfo'
 
 const normalizeStemProfileInput = (
   value: unknown,
@@ -513,28 +481,11 @@ export function registerMixtapeHandlers() {
         const bpm = Number(info.bpm)
         return Number.isFinite(bpm) && bpm > 0
       }
-      const ANALYSIS_COPY_FIELDS: MixtapeAnalysisCopyField[] = [
-        'bpm',
-        'originalBpm',
-        'firstBeatMs',
-        'barBeatOffset',
-        'timeBasisOffsetMs',
-        'beatGridAlgorithmVersion',
-        'key',
-        'originalKey',
-        'stemStatus',
-        'stemReadyAt',
-        'stemModel',
-        'stemVersion',
-        'stemVocalPath',
-        'stemInstPath',
-        'stemBassPath',
-        'stemDrumsPath'
-      ]
+      const noBpmGuard = createMixtapeNoBpmGuard()
       const pickAnalysisInfo = (info: MixtapeAnalysisInfo | null): MixtapeAnalysisInfo | null => {
         if (!info) return null
         const picked: MixtapeAnalysisInfo = {}
-        for (const key of ANALYSIS_COPY_FIELDS) {
+        for (const key of MIXTAPE_ANALYSIS_COPY_FIELDS) {
           if (!Object.prototype.hasOwnProperty.call(info, key)) continue
           const value = info[key]
           if (value === undefined || value === null) continue
@@ -552,7 +503,7 @@ export function registerMixtapeHandlers() {
         if (!analysisInfo) return baseInfo
         if (!baseInfo) return { ...analysisInfo }
         const merged: MixtapeAnalysisInfo = { ...baseInfo }
-        for (const key of ANALYSIS_COPY_FIELDS) {
+        for (const key of MIXTAPE_ANALYSIS_COPY_FIELDS) {
           const nextValue = analysisInfo[key]
           if (nextValue === undefined || nextValue === null) continue
           if (
@@ -641,6 +592,7 @@ export function registerMixtapeHandlers() {
       const filePathSet = new Set<string>()
       const bpmAnalyzeFilePathSet = new Set<string>()
       const stemEnqueueFilePathSet = new Set<string>()
+      let skippedNoBpm = 0
       for (const item of inputItems) {
         const filePath = normalizeText(item?.filePath)
         if (!filePath) continue
@@ -660,6 +612,10 @@ export function registerMixtapeHandlers() {
             ? null
             : reusableAnalysisByFilePath.get(filePath) || null
         const info = sourceInfo || mergeInfoWithAnalysis(itemInfo, fallbackAnalysisInfo)
+        if (await noBpmGuard.shouldBlock(filePath, info)) {
+          skippedNoBpm += 1
+          continue
+        }
         normalizedItems.push({
           filePath,
           originPlaylistUuid: item?.originPlaylistUuid || null,
@@ -727,7 +683,10 @@ export function registerMixtapeHandlers() {
             .catch(() => {})
         }
       }
-      return result
+      return {
+        ...result,
+        skippedNoBpm
+      }
     }
   )
 

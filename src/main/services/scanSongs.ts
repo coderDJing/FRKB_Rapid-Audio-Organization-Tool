@@ -7,7 +7,11 @@ import { readWavRiffInfoWindows } from './wavRiffInfo'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
-import { shouldAcceptBeatGridCacheVersion } from './beatGridAlgorithmVersion'
+import {
+  BEAT_GRID_STATUS_NO_BPM,
+  hasCurrentNoBpmBeatGridResult,
+  shouldAcceptBeatGridCacheVersion
+} from './beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from './keyAnalysisAlgorithmVersion'
 import {
   ensurePlaylistTrackNumbers,
@@ -34,17 +38,24 @@ const hasPositiveInteger = (value: unknown): value is number =>
 type CachedKeyInfo = Pick<ISongInfo, 'key' | 'keyAnalysisAlgorithmVersion'>
 type CachedGridInfo = Pick<
   ISongInfo,
-  'bpm' | 'firstBeatMs' | 'barBeatOffset' | 'beatGridAlgorithmVersion' | 'beatGridSource'
+  | 'bpm'
+  | 'firstBeatMs'
+  | 'barBeatOffset'
+  | 'beatGridAlgorithmVersion'
+  | 'beatGridSource'
+  | 'beatGridStatus'
 > & {
   beatThisWindowCount?: unknown
 }
 const hasCurrentKeyAnalysis = (info: CachedKeyInfo | null | undefined) =>
   hasKey(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
-const hasCompleteGrid = (info: CachedGridInfo | null | undefined) =>
+const hasCompleteNumericGrid = (info: CachedGridInfo | null | undefined) =>
   hasBpm(info?.bpm) &&
   hasFirstBeatMs(info?.firstBeatMs) &&
   hasBarBeatOffset(info?.barBeatOffset) &&
   shouldAcceptBeatGridCacheVersion(info)
+const hasCompleteGrid = (info: CachedGridInfo | null | undefined) =>
+  hasCurrentNoBpmBeatGridResult(info) || hasCompleteNumericGrid(info)
 
 const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
   const next = { ...info }
@@ -52,12 +63,21 @@ const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
     delete next.key
     delete next.keyAnalysisAlgorithmVersion
   }
-  if (!hasCompleteGrid(next)) {
+  if (hasCurrentNoBpmBeatGridResult(next)) {
     delete next.bpm
     delete next.firstBeatMs
     delete next.barBeatOffset
     delete next.timeBasisOffsetMs
     delete next.beatGridSource
+  } else if (hasCompleteNumericGrid(next)) {
+    delete next.beatGridStatus
+  } else {
+    delete next.bpm
+    delete next.firstBeatMs
+    delete next.barBeatOffset
+    delete next.timeBasisOffsetMs
+    delete next.beatGridSource
+    delete next.beatGridStatus
     delete next.beatGridAlgorithmVersion
   }
   return next
@@ -69,14 +89,26 @@ const preserveCachedKeyAndBpm = (target: ISongInfo, cachedInfo?: ISongInfo | nul
     target.key = cachedInfo.key as string
     target.keyAnalysisAlgorithmVersion = cachedInfo.keyAnalysisAlgorithmVersion
   }
-  if (!hasCompleteGrid(target) && hasCompleteGrid(cachedInfo)) {
+  if (!hasCompleteNumericGrid(target) && hasCompleteNumericGrid(cachedInfo)) {
     target.bpm = cachedInfo.bpm as number
   }
 }
 
 const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
   if (!cachedInfo) return
-  if (!hasCompleteGrid(cachedInfo)) return
+  if (hasCurrentNoBpmBeatGridResult(cachedInfo)) {
+    if (hasCompleteGrid(target)) return
+    delete target.bpm
+    delete target.firstBeatMs
+    delete target.barBeatOffset
+    delete target.timeBasisOffsetMs
+    delete target.beatGridSource
+    target.beatGridStatus = BEAT_GRID_STATUS_NO_BPM
+    target.beatGridAlgorithmVersion = cachedInfo.beatGridAlgorithmVersion
+    return
+  }
+  if (!hasCompleteNumericGrid(cachedInfo)) return
+  delete target.beatGridStatus
   if (!hasFirstBeatMs(target.firstBeatMs) && hasFirstBeatMs(cachedInfo.firstBeatMs)) {
     target.firstBeatMs = cachedInfo.firstBeatMs
   }

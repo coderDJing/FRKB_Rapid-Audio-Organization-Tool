@@ -7,6 +7,7 @@ type ScanSongListResult = {
     bpm?: unknown
     firstBeatMs?: unknown
     barBeatOffset?: unknown
+    beatGridStatus?: unknown
   }>
 }
 
@@ -16,18 +17,26 @@ type AnalysisCandidate = {
   bpm?: unknown
   firstBeatMs?: unknown
   barBeatOffset?: unknown
+  beatGridStatus?: unknown
   fileMissing?: boolean
 }
 
 const normalizeFilePathKey = (filePath: string) => filePath.replace(/\//g, '\\').toLowerCase()
 
 export const hasRequiredAnalysis = (
-  song: { key?: unknown; bpm?: unknown; firstBeatMs?: unknown; barBeatOffset?: unknown },
+  song: {
+    key?: unknown
+    bpm?: unknown
+    firstBeatMs?: unknown
+    barBeatOffset?: unknown
+    beatGridStatus?: unknown
+  },
   requiresRuntimeAnalysis: boolean
 ) => {
   const keyText = typeof song.key === 'string' ? song.key.trim() : ''
   if (!keyText) return false
   if (!requiresRuntimeAnalysis) return true
+  if (song.beatGridStatus === 'no-bpm') return true
   const bpm = Number(song.bpm)
   const firstBeatMs = Number(song.firstBeatMs)
   const barBeatOffset = Number(song.barBeatOffset)

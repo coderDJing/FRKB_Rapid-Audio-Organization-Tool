@@ -12,7 +12,11 @@ import { moveFileToRecycleBin } from '../recycleBinService'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
-import { shouldAcceptBeatGridCacheVersion } from '../services/beatGridAlgorithmVersion'
+import {
+  BEAT_GRID_STATUS_NO_BPM,
+  hasCurrentNoBpmBeatGridResult,
+  shouldAcceptBeatGridCacheVersion
+} from '../services/beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from '../services/keyAnalysisAlgorithmVersion'
 import type { ISongInfo } from '../../types/globals'
 import {
@@ -70,11 +74,13 @@ const hasPositiveInteger = (value: unknown): value is number =>
 const hasCurrentKeyAnalysis = (info: Partial<ISongInfo> | null | undefined) =>
   hasKey(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
 
-const hasCompleteGrid = (info: Partial<ISongInfo> | null | undefined) =>
+const hasCompleteNumericGrid = (info: Partial<ISongInfo> | null | undefined) =>
   hasBpm(info?.bpm) &&
   hasFirstBeatMs(info?.firstBeatMs) &&
   hasBarBeatOffset(info?.barBeatOffset) &&
   shouldAcceptBeatGridCacheVersion(info)
+const hasCompleteGrid = (info: Partial<ISongInfo> | null | undefined) =>
+  hasCurrentNoBpmBeatGridResult(info) || hasCompleteNumericGrid(info)
 
 function parseSetItemAnalysisJson(raw: unknown): Partial<ISongInfo> | null {
   if (typeof raw !== 'string' || !raw.trim()) return null
@@ -98,7 +104,12 @@ function buildSetAnalysisSnapshot(
       snapshot.keyAnalysisAlgorithmVersion = source.keyAnalysisAlgorithmVersion
     }
   }
-  if (hasCompleteGrid(source)) {
+  if (hasCurrentNoBpmBeatGridResult(source)) {
+    snapshot.beatGridStatus = BEAT_GRID_STATUS_NO_BPM
+    if (hasPositiveInteger(source.beatGridAlgorithmVersion)) {
+      snapshot.beatGridAlgorithmVersion = source.beatGridAlgorithmVersion
+    }
+  } else if (hasCompleteNumericGrid(source)) {
     snapshot.bpm = source.bpm
     snapshot.firstBeatMs = source.firstBeatMs
     snapshot.barBeatOffset = source.barBeatOffset
@@ -141,7 +152,18 @@ function mergeSetAnalysisFields(target: ISongInfo, source: Partial<ISongInfo> | 
       next.keyAnalysisAlgorithmVersion = source.keyAnalysisAlgorithmVersion
     }
   }
-  if (!hasCompleteGrid(next) && hasCompleteGrid(source)) {
+  if (!hasCompleteGrid(next) && hasCurrentNoBpmBeatGridResult(source)) {
+    delete next.bpm
+    delete next.firstBeatMs
+    delete next.barBeatOffset
+    delete next.timeBasisOffsetMs
+    delete next.beatGridSource
+    next.beatGridStatus = BEAT_GRID_STATUS_NO_BPM
+    if (hasPositiveInteger(source.beatGridAlgorithmVersion)) {
+      next.beatGridAlgorithmVersion = source.beatGridAlgorithmVersion
+    }
+  } else if (!hasCompleteNumericGrid(next) && hasCompleteNumericGrid(source)) {
+    delete next.beatGridStatus
     next.bpm = source.bpm as number
     next.firstBeatMs = source.firstBeatMs as number
     next.barBeatOffset = source.barBeatOffset as number

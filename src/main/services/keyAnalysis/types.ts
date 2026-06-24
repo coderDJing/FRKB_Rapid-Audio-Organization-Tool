@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { MixxxWaveformData } from '../../waveformCache'
 import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
+import type { BeatGridStatus } from '../../../types/globals'
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
@@ -125,13 +126,17 @@ export type KeyAnalysisResult = {
   keyText: string
 }
 
+export const isNoBpmBeatGridResultError = (value: unknown) =>
+  typeof value === 'string' && /no valid beat-this result/i.test(value)
+
 export type BpmAnalysisResult = {
   filePath: string
-  bpm: number
+  bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number | null
+  beatGridStatus?: BeatGridStatus
 }
 
 export type DoneEntry = {
@@ -144,6 +149,7 @@ export type DoneEntry = {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number
+  beatGridStatus?: BeatGridStatus
   hasWaveform?: boolean
 }
 

@@ -65,6 +65,14 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
     touched = true
   }
   if (
+    typeof payload.bpm === 'number' &&
+    Number.isFinite(payload.bpm) &&
+    nextSong.beatGridStatus !== undefined
+  ) {
+    delete nextSong.beatGridStatus
+    touched = true
+  }
+  if (
     typeof payload.firstBeatMs === 'number' &&
     Number.isFinite(payload.firstBeatMs) &&
     nextSong.firstBeatMs !== payload.firstBeatMs

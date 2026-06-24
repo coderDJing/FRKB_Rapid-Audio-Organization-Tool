@@ -22,6 +22,11 @@ type UseHorizontalBrowseDeckMoveParams = {
   setDeckSong: (deck: HorizontalBrowseDeckKey, song: ISongInfo | null) => void
 }
 
+type MixtapeAppendResult = {
+  inserted?: number
+  skippedNoBpm?: number
+}
+
 const normalizePath = (value: string | null | undefined) =>
   String(value || '')
     .replace(/\//g, '\\')
@@ -67,6 +72,8 @@ const buildSongSnapshot = (filePath: string, song?: ISongInfo | null): ISongInfo
     autoFilled: song?.autoFilled
   }
 }
+
+const isNoBpmSong = (song?: ISongInfo | null) => song?.beatGridStatus === 'no-bpm'
 
 const buildMovedDeckSong = (song: ISongInfo, nextFilePath: string): ISongInfo => {
   const meta = resolveFileNameAndFormat(nextFilePath)
@@ -177,6 +184,14 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
         targetNode?.type === 'mixtapeList' || targetLibraryName === 'MixtapeLibrary'
 
       if (isMixtapeTarget) {
+        if (isNoBpmSong(song)) {
+          emitter.emit('songsArea/clipboardHint', {
+            message: t('mixtape.noBpmBlocked')
+          })
+          return
+        }
+        let appendResult: MixtapeAppendResult | null = null
+        let copiedDeckPath = ''
         if (readOnlySource) {
           let copiedPath = song.filePath
           if (requiresVaultCopy) {
@@ -191,7 +206,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
           if (!copiedPath) {
             throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
           }
-          await window.electron.ipcRenderer.invoke('mixtape:append', {
+          appendResult = (await window.electron.ipcRenderer.invoke('mixtape:append', {
             playlistId: targetSongListUUID,
             items: [
               {
@@ -201,10 +216,10 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
                 info: buildSongSnapshot(copiedPath, song)
               }
             ]
-          })
-          setDeckSong(deck, buildMovedDeckSong(song, copiedPath))
+          })) as MixtapeAppendResult | null
+          copiedDeckPath = copiedPath
         } else {
-          await window.electron.ipcRenderer.invoke('mixtape:append', {
+          appendResult = (await window.electron.ipcRenderer.invoke('mixtape:append', {
             playlistId: targetSongListUUID,
             items: [
               {
@@ -217,12 +232,26 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
                 info: buildSongSnapshot(song.filePath, song)
               }
             ]
-          })
+          })) as MixtapeAppendResult | null
+        }
+
+        const skippedNoBpm = Math.max(0, Number(appendResult?.skippedNoBpm || 0))
+        const inserted = Math.max(0, Number(appendResult?.inserted || 0))
+        if (inserted <= 0) {
+          if (skippedNoBpm > 0) {
+            emitter.emit('songsArea/clipboardHint', {
+              message: t('mixtape.noBpmBlocked')
+            })
+          }
+          return
+        }
+        if (copiedDeckPath) {
+          setDeckSong(deck, buildMovedDeckSong(song, copiedDeckPath))
         }
 
         emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
         emitter.emit('songsArea/clipboardHint', {
-          message: t('mixtape.addedToMixtape', { count: 1 })
+          message: t('mixtape.addedToMixtape', { count: inserted })
         })
         await refreshSongsAreaListIfNeeded(targetSongListUUID)
         return

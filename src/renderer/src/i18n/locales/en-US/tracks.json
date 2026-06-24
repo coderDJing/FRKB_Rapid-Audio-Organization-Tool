@@ -53,6 +53,7 @@
     "waveformPreviewUnavailable": "No preview waveform",
     "waveformAnalyzing": "Analyzing",
     "waveformWaitingAnalysis": "Waiting",
+    "noBpm": "No BPM",
     "renumberPlaylistTrackNumbersAction": "Renumber by current order",
     "playlistTrackNumbersInitializedHint": "Real track numbers have been initialized for this playlist.",
     "playlistTrackNumbersAlreadyMatchHint": "The current order already matches the real track numbers.",

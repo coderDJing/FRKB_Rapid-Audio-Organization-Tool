@@ -25,6 +25,11 @@ type MoveSongsConfirmOptions = {
   resumeMainPlayerAfterPreviewStop?: boolean
 }
 
+type MixtapeAppendResult = {
+  inserted?: number
+  skippedNoBpm?: number
+}
+
 export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
   const { songsAreaState } = params
   const normalizeUniqueStrings = (values: unknown[]): string[] =>
@@ -80,6 +85,7 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
       barBeatOffset: song?.barBeatOffset,
       timeBasisOffsetMs: song?.timeBasisOffsetMs,
       beatGridSource: song?.beatGridSource,
+      beatGridStatus: song?.beatGridStatus,
       beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
       hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
       memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
@@ -93,10 +99,22 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
     barBeatOffset: song?.barBeatOffset,
     timeBasisOffsetMs: song?.timeBasisOffsetMs,
     beatGridSource: song?.beatGridSource,
+    beatGridStatus: song?.beatGridStatus,
     beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
     hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
     memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
   })
+  const isNoBpmSong = (song?: ISongInfo | null) => song?.beatGridStatus === 'no-bpm'
+  const emitNoBpmMixtapeHint = (count: number) => {
+    const skipped = Math.max(0, Math.round(Number(count) || 0))
+    if (skipped <= 0) return
+    try {
+      emitter.emit('songsArea/clipboardHint', {
+        message:
+          skipped > 1 ? t('mixtape.noBpmSkipped', { count: skipped }) : t('mixtape.noBpmBlocked')
+      })
+    } catch {}
+  }
 
   const isDialogVisible = ref(false)
   const targetLibraryName = ref<MoveSongsLibraryName | ''>('')
@@ -243,7 +261,7 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
           }
         })
         .filter((item): item is NonNullable<typeof item> => item !== null)
-      const items =
+      const rawItems =
         sourceNode.type === 'mixtapeList'
           ? itemsFromMixtapeIds.length > 0
             ? itemsFromMixtapeIds
@@ -261,16 +279,33 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
                 originPathSnapshot,
                 info: buildSongSnapshot(filePath, songMap.get(filePath))
               }))
-      if (items.length === 0) return
-      await window.electron.ipcRenderer.invoke('mixtape:append', {
+      const items = rawItems.filter((item) => !isNoBpmSong(item.info))
+      const skippedNoBpm = rawItems.length - items.length
+      if (items.length === 0) {
+        emitNoBpmMixtapeHint(skippedNoBpm)
+        return
+      }
+      const result = (await window.electron.ipcRenderer.invoke('mixtape:append', {
         playlistId: targetSongListUUID,
         items
-      })
+      })) as MixtapeAppendResult | null
+      const totalSkippedNoBpm = skippedNoBpm + Math.max(0, Number(result?.skippedNoBpm || 0))
+      const inserted = Math.max(0, Number(result?.inserted || 0))
+      if (inserted <= 0 && totalSkippedNoBpm > 0) {
+        emitNoBpmMixtapeHint(totalSkippedNoBpm)
+      }
+      if (inserted <= 0) return
       songsAreaState.selectedSongFilePath.length = 0
       try {
         emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
         emitter.emit('songsArea/clipboardHint', {
-          message: t('mixtape.addedToMixtape', { count: items.length })
+          message:
+            totalSkippedNoBpm > 0
+              ? t('mixtape.addedToMixtapeWithNoBpmSkipped', {
+                  count: inserted,
+                  skipped: totalSkippedNoBpm
+                })
+              : t('mixtape.addedToMixtape', { count: inserted })
         })
       } catch {}
       return

@@ -1,9 +1,13 @@
+import type { BeatGridStatus } from '../../types/globals'
+
 export const CURRENT_BEAT_GRID_ALGORITHM_VERSION = 9
+export const BEAT_GRID_STATUS_NO_BPM: BeatGridStatus = 'no-bpm'
 
 type BeatGridCacheVersionInfo = {
   beatThisWindowCount?: unknown
   beatGridAlgorithmVersion?: unknown
   beatGridSource?: unknown
+  beatGridStatus?: unknown
 }
 
 export const normalizeBeatGridAlgorithmVersion = (value: unknown) => {
@@ -21,3 +25,6 @@ export const shouldAcceptBeatGridCacheVersion = (
   }
   return false
 }
+
+export const hasCurrentNoBpmBeatGridResult = (info: BeatGridCacheVersionInfo | null | undefined) =>
+  info?.beatGridStatus === BEAT_GRID_STATUS_NO_BPM && shouldAcceptBeatGridCacheVersion(info)

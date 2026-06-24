@@ -758,6 +758,7 @@ export function upsertMixtapeItemGridByFilePath(
           }
           if (hasNextBpm) {
             info.bpm = nextBpm
+            delete info.beatGridStatus
           }
           if (hasNextTimeBasisOffsetMs) {
             info.timeBasisOffsetMs = normalizeTimeBasisOffsetMs(nextGrid.timeBasisOffsetMs!)

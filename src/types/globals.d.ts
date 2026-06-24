@@ -20,6 +20,8 @@ type md5 = {
   error?: string
 }
 
+type BeatGridStatus = 'no-bpm'
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -46,6 +48,7 @@ interface ISongInfo {
   firstBeatMs?: number
   barBeatOffset?: number
   beatGridSource?: 'manual' | 'analysis'
+  beatGridStatus?: BeatGridStatus
   playlistTrackNumber?: number
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number
@@ -711,6 +714,7 @@ type Icon = {
   i18nKey?: string
 }
 export {
+  BeatGridStatus,
   md5,
   IDir,
   ISongInfo,

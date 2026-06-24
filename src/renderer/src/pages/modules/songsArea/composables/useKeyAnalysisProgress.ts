@@ -230,6 +230,7 @@ export const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => 
   if (!song) return false
   const keyText = typeof song.key === 'string' ? song.key.trim() : ''
   if (!keyText) return false
+  if (song.beatGridStatus === 'no-bpm') return true
   const bpm = Number(song.bpm)
   const firstBeatMs = Number(song.firstBeatMs)
   const barBeatOffset = Number(song.barBeatOffset)

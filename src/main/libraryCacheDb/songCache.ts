@@ -732,6 +732,7 @@ export async function clearSongCacheAnalysisFields(
     delete entry.info.firstBeatMs
     delete entry.info.barBeatOffset
     delete entry.info.beatGridSource
+    delete entry.info.beatGridStatus
     delete entry.info.beatGridAlgorithmVersion
     delete entry.info.timeBasisOffsetMs
     return await upsertSongCacheEntry(listRoot, filePath, entry)

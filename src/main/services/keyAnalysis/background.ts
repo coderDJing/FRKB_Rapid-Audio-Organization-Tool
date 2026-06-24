@@ -15,7 +15,10 @@ import { log } from '../../log'
 import { requestBackgroundTaskExecution } from '../backgroundOrchestrator'
 import { getBackgroundIdleSnapshot } from '../backgroundIdleGate'
 import store from '../../store'
-import { shouldAcceptBeatGridCacheVersion } from '../beatGridAlgorithmVersion'
+import {
+  hasCurrentNoBpmBeatGridResult,
+  shouldAcceptBeatGridCacheVersion
+} from '../beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from '../keyAnalysisAlgorithmVersion'
 import type { KeyAnalysisPersistence } from './persistence'
 import {
@@ -54,6 +57,7 @@ type CachedAnalysisInfo = {
   beatThisWindowCount?: unknown
   beatGridAlgorithmVersion?: unknown
   beatGridSource?: unknown
+  beatGridStatus?: unknown
 }
 
 type KeyAnalysisBackgroundDeps = {
@@ -98,10 +102,11 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     isValidKeyText(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
 
   const hasCurrentBeatGridAnalysis = (info: CachedAnalysisInfo | null | undefined) =>
-    isValidBpm(info?.bpm) &&
-    isValidFirstBeatMs(info?.firstBeatMs) &&
-    isValidBarBeatOffset(info?.barBeatOffset) &&
-    shouldAcceptBeatGridCacheVersion(info)
+    hasCurrentNoBpmBeatGridResult(info) ||
+    (isValidBpm(info?.bpm) &&
+      isValidFirstBeatMs(info?.firstBeatMs) &&
+      isValidBarBeatOffset(info?.barBeatOffset) &&
+      shouldAcceptBeatGridCacheVersion(info))
 
   const getBackgroundStatus = (): KeyAnalysisBackgroundStatus => {
     const pending = deps.getPendingBackgroundCount()

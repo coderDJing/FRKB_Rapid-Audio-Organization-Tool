@@ -20,6 +20,7 @@ type UseMixtapeMainWindowDropOptions = {
 
 type MixtapeAppendResult = {
   inserted?: number
+  skippedNoBpm?: number
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -245,6 +246,15 @@ export const useMixtapeMainWindowDrop = ({
         items: session.items
       })) as MixtapeAppendResult
       const inserted = Math.max(0, Number(result?.inserted || 0))
+      const skippedNoBpm = Math.max(0, Number(result?.skippedNoBpm || 0))
+      if (inserted <= 0 && skippedNoBpm > 0) {
+        showNotice('mixtape.dropNoBpmBlockedTitle', 'mixtape.dropNoBpmBlockedHint', skippedNoBpm)
+        return
+      }
+      if (inserted <= 0) {
+        showNotice('mixtape.dropFailedTitle', 'mixtape.dropFailedHint')
+        return
+      }
       await loadMixtapeItems({ background: true })
       const selectedTrack = tracks.value[previousTrackCount] || tracks.value.at(-1)
       if (selectedTrack?.id) {
@@ -253,8 +263,8 @@ export const useMixtapeMainWindowDrop = ({
       scrollTimelineToEnd()
       showNotice(
         'mixtape.dropAddedTitle',
-        'mixtape.dropAddedHint',
-        inserted || session.items.length
+        skippedNoBpm > 0 ? 'mixtape.dropNoBpmSkippedHint' : 'mixtape.dropAddedHint',
+        inserted
       )
     } catch {
       showNotice('mixtape.dropFailedTitle', 'mixtape.dropFailedHint')

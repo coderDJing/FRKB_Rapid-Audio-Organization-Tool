@@ -440,6 +440,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       song.firstBeatMs === undefined &&
       song.barBeatOffset === undefined &&
       song.beatGridSource === undefined &&
+      song.beatGridStatus === undefined &&
       song.beatGridAlgorithmVersion === undefined &&
       song.timeBasisOffsetMs === undefined
     ) {
@@ -451,6 +452,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     delete nextSong.firstBeatMs
     delete nextSong.barBeatOffset
     delete nextSong.beatGridSource
+    delete nextSong.beatGridStatus
     delete nextSong.beatGridAlgorithmVersion
     delete nextSong.timeBasisOffsetMs
     return nextSong
@@ -481,6 +483,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
         'firstBeatMs',
         'barBeatOffset',
         'beatGridSource',
+        'beatGridStatus',
         'beatGridAlgorithmVersion',
         'timeBasisOffsetMs'
       ])
@@ -523,11 +526,14 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       barBeatOffset?: number
       timeBasisOffsetMs?: number
       beatGridAlgorithmVersion?: number | null
+      beatGridStatus?: ISongInfo['beatGridStatus']
     }
   ) => {
     const filePath = payload?.filePath
-    const bpmValue = payload?.bpm
-    if (!filePath || typeof bpmValue !== 'number' || !Number.isFinite(bpmValue)) return
+    const bpmValue =
+      typeof payload?.bpm === 'number' && Number.isFinite(payload.bpm) ? payload.bpm : undefined
+    const isNoBpm = payload?.beatGridStatus === 'no-bpm'
+    if (!filePath || (!isNoBpm && bpmValue === undefined)) return
     const normalizedTargetPath = normalizePath(filePath)
     const hasFirstBeatMs =
       typeof payload?.firstBeatMs === 'number' && Number.isFinite(payload.firstBeatMs)
@@ -543,51 +549,77 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
         : undefined
 
     const applyBpmPatch = (song: ISongInfo): ISongInfo => {
-      let touched = false
-      const nextSong: ISongInfo = song.bpm === bpmValue ? song : { ...song, bpm: bpmValue }
-      if (nextSong !== song) {
-        touched = true
-      }
-      if (hasFirstBeatMs && nextSong.firstBeatMs !== payload.firstBeatMs) {
-        if (!touched) {
-          touched = true
+      let nextSong: ISongInfo | null = null
+      const ensureNextSong = () => {
+        if (!nextSong) {
+          nextSong = { ...song }
         }
-        nextSong.firstBeatMs = payload.firstBeatMs
+        return nextSong
       }
-      if (hasBarBeatOffset && nextSong.barBeatOffset !== payload.barBeatOffset) {
-        if (!touched) {
-          touched = true
+
+      if (isNoBpm) {
+        if (song.bpm !== undefined) delete ensureNextSong().bpm
+        if (song.firstBeatMs !== undefined) delete ensureNextSong().firstBeatMs
+        if (song.barBeatOffset !== undefined) delete ensureNextSong().barBeatOffset
+        if (song.timeBasisOffsetMs !== undefined) delete ensureNextSong().timeBasisOffsetMs
+        if (song.beatGridSource !== undefined) delete ensureNextSong().beatGridSource
+        if (song.beatGridStatus !== 'no-bpm') {
+          ensureNextSong().beatGridStatus = 'no-bpm'
         }
-        nextSong.barBeatOffset = payload.barBeatOffset
+        if (
+          nextBeatGridAlgorithmVersion !== undefined &&
+          song.beatGridAlgorithmVersion !== nextBeatGridAlgorithmVersion
+        ) {
+          ensureNextSong().beatGridAlgorithmVersion = nextBeatGridAlgorithmVersion
+        }
+        return nextSong || song
       }
-      if (hasTimeBasisOffsetMs && nextSong.timeBasisOffsetMs !== payload.timeBasisOffsetMs) {
-        if (!touched) {
-          touched = true
-        }
-        nextSong.timeBasisOffsetMs = payload.timeBasisOffsetMs
+
+      if (song.bpm !== bpmValue) {
+        ensureNextSong().bpm = bpmValue
+      }
+      if (song.beatGridStatus !== undefined) {
+        delete ensureNextSong().beatGridStatus
+      }
+      if (hasFirstBeatMs && song.firstBeatMs !== payload.firstBeatMs) {
+        ensureNextSong().firstBeatMs = payload.firstBeatMs
+      }
+      if (hasBarBeatOffset && song.barBeatOffset !== payload.barBeatOffset) {
+        ensureNextSong().barBeatOffset = payload.barBeatOffset
+      }
+      if (hasTimeBasisOffsetMs && song.timeBasisOffsetMs !== payload.timeBasisOffsetMs) {
+        ensureNextSong().timeBasisOffsetMs = payload.timeBasisOffsetMs
       }
       if (
         nextBeatGridAlgorithmVersion !== undefined &&
-        nextSong.beatGridAlgorithmVersion !== nextBeatGridAlgorithmVersion
+        song.beatGridAlgorithmVersion !== nextBeatGridAlgorithmVersion
       ) {
-        if (!touched) {
-          touched = true
-        }
-        nextSong.beatGridAlgorithmVersion = nextBeatGridAlgorithmVersion
+        ensureNextSong().beatGridAlgorithmVersion = nextBeatGridAlgorithmVersion
       }
-      return touched ? nextSong : song
+      return nextSong || song
     }
 
-    if (patchOriginalSongByPath(normalizedTargetPath, applyBpmPatch)) {
-      scheduleApplyIfNeeded(
-        [
+    const changedFields = isNoBpm
+      ? [
+          'bpm',
+          'firstBeatMs',
+          'barBeatOffset',
+          'timeBasisOffsetMs',
+          'beatGridSource',
+          'beatGridStatus',
+          nextBeatGridAlgorithmVersion !== undefined ? 'beatGridAlgorithmVersion' : ''
+        ].filter(Boolean)
+      : [
           'bpm',
           hasFirstBeatMs ? 'firstBeatMs' : '',
           hasBarBeatOffset ? 'barBeatOffset' : '',
           hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : '',
+          'beatGridStatus',
           nextBeatGridAlgorithmVersion !== undefined ? 'beatGridAlgorithmVersion' : ''
         ].filter(Boolean)
-      )
+
+    if (patchOriginalSongByPath(normalizedTargetPath, applyBpmPatch)) {
+      scheduleApplyIfNeeded(changedFields)
     }
 
     patchSongsAreaSongByPath(normalizedTargetPath, applyBpmPatch)
@@ -622,7 +654,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       hasBpm ? 'bpm' : '',
       hasFirstBeatMs ? 'firstBeatMs' : '',
       hasBarBeatOffset ? 'barBeatOffset' : '',
-      hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : ''
+      hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : '',
+      hasBpm ? 'beatGridStatus' : ''
     ].filter(Boolean)
 
     const applyGridPatch = (song: ISongInfo): ISongInfo => {
@@ -630,6 +663,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       const nextSong: ISongInfo = { ...song }
       if (hasBpm && nextSong.bpm !== payload.bpm) {
         nextSong.bpm = payload.bpm
+        touched = true
+      }
+      if (hasBpm && nextSong.beatGridStatus !== undefined) {
+        delete nextSong.beatGridStatus
         touched = true
       }
       if (hasFirstBeatMs && nextSong.firstBeatMs !== payload.firstBeatMs) {

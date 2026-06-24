@@ -76,7 +76,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     normalizeComparableText(song.mixtapeItemId) ||
     normalizeComparableText(song.setItemId) ||
     normalizeSongPath(song.filePath)
-  const ignoredSongListRefreshDiffFields = new Set(['key', 'bpm'])
+  const ignoredSongListRefreshDiffFields = new Set(['key', 'bpm', 'beatGridStatus'])
 
   const notifySongSearchDirty = (reason: string) => {
     void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
@@ -243,6 +243,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         normalizeComparableText(right.container).toUpperCase() &&
       normalizeComparableText(left.key) === normalizeComparableText(right.key) &&
       normalizeComparableNumber(left.bpm) === normalizeComparableNumber(right.bpm) &&
+      normalizeComparableText(left.beatGridStatus) ===
+        normalizeComparableText(right.beatGridStatus) &&
       areSongHotCuesEqual(left.hotCues, right.hotCues) &&
       areSongMemoryCuesEqual(left.memoryCues, right.memoryCues) &&
       normalizeComparableNumber(left.mixOrder) === normalizeComparableNumber(right.mixOrder) &&
@@ -308,6 +310,11 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
     if (normalizeComparableNumber(left.bpm) !== normalizeComparableNumber(right.bpm)) {
       fields.push('bpm')
+    }
+    if (
+      normalizeComparableText(left.beatGridStatus) !== normalizeComparableText(right.beatGridStatus)
+    ) {
+      fields.push('beatGridStatus')
     }
     if (!areSongHotCuesEqual(left.hotCues, right.hotCues)) {
       fields.push('hotCues')

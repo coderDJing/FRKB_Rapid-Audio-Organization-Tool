@@ -5,6 +5,7 @@ import { ISongInfo } from '../../../../../../types/globals'
 import emitter from '@renderer/utils/mitt'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import { buildMixtapeDragSessionItem } from '@renderer/utils/mixtapeDragSession'
+import { t } from '@renderer/utils/translate'
 
 interface DragSongData {
   songFilePaths: string[]
@@ -66,6 +67,24 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
           .filter(Boolean)
       )
     )
+  const isNoBpmMixtapeItem = (item: { info?: unknown } | null | undefined) =>
+    Boolean(
+      item &&
+      typeof item.info === 'object' &&
+      item.info !== null &&
+      !Array.isArray(item.info) &&
+      (item.info as { beatGridStatus?: unknown }).beatGridStatus === 'no-bpm'
+    )
+  const emitNoBpmMixtapeHint = (count: number) => {
+    const skipped = Math.max(0, Math.round(Number(count) || 0))
+    if (skipped <= 0) return
+    try {
+      emitter.emit('songsArea/clipboardHint', {
+        message:
+          skipped > 1 ? t('mixtape.noBpmSkipped', { count: skipped }) : t('mixtape.noBpmBlocked')
+      })
+    } catch {}
+  }
   const normalizePath = (p: string | undefined | null) =>
     (p || '').replace(/\//g, '\\').toLowerCase()
   const buildSongAnalysisSnapshot = (song?: ISongInfo | null) => ({
@@ -76,6 +95,7 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
     barBeatOffset: song?.barBeatOffset,
     timeBasisOffsetMs: song?.timeBasisOffsetMs,
     beatGridSource: song?.beatGridSource,
+    beatGridStatus: song?.beatGridStatus,
     beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
     hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
     memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
@@ -295,7 +315,7 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
             })
           })
           .filter((item): item is NonNullable<typeof item> => item !== null)
-        const items =
+        const rawItems =
           sourceNode.type === 'mixtapeList'
             ? itemsFromMixtapeIds.length > 0
               ? itemsFromMixtapeIds
@@ -310,15 +330,34 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
                   })
                 )
                 .filter((item): item is NonNullable<typeof item> => item !== null)
+        const items = rawItems.filter((item) => !isNoBpmMixtapeItem(item))
+        const skippedNoBpm = rawItems.length - items.length
         if (items.length === 0) {
+          emitNoBpmMixtapeHint(skippedNoBpm)
           return []
         }
-        await window.electron.ipcRenderer.invoke('mixtape:append', {
+        const result = (await window.electron.ipcRenderer.invoke('mixtape:append', {
           playlistId: targetSongListUUID,
           items
-        })
+        })) as { inserted?: number; skippedNoBpm?: number } | null
+        const inserted = Math.max(0, Number(result?.inserted || 0))
+        const totalSkippedNoBpm = skippedNoBpm + Math.max(0, Number(result?.skippedNoBpm || 0))
+        if (inserted <= 0 && totalSkippedNoBpm > 0) {
+          emitNoBpmMixtapeHint(totalSkippedNoBpm)
+          return []
+        }
         try {
-          emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+          if (inserted > 0) {
+            emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
+            if (totalSkippedNoBpm > 0) {
+              emitter.emit('songsArea/clipboardHint', {
+                message: t('mixtape.addedToMixtapeWithNoBpmSkipped', {
+                  count: inserted,
+                  skipped: totalSkippedNoBpm
+                })
+              })
+            }
+          }
         } catch {}
         // Mixtape 自动录制歌单目标始终为复制，不回传“移动”结果
         return []

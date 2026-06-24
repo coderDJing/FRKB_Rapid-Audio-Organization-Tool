@@ -6,6 +6,7 @@ import { resolveMainWorkerPath } from '../../workerPath'
 import type { KeyAnalysisBackground } from './background'
 import type { KeyAnalysisPersistence } from './persistence'
 import {
+  isNoBpmBeatGridResultError,
   isValidBpm,
   isValidKeyText,
   type KeyAnalysisFailureReason,
@@ -133,7 +134,9 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   ): string[] => {
     const errors: string[] = []
     if (payloadResult?.keyError) errors.push(`key: ${payloadResult.keyError}`)
-    if (payloadResult?.bpmError) errors.push(`bpm: ${payloadResult.bpmError}`)
+    if (payloadResult?.bpmError && !isNoBpmBeatGridResultError(payloadResult.bpmError)) {
+      errors.push(`bpm: ${payloadResult.bpmError}`)
+    }
     if (payloadError) errors.push(`worker错误: ${payloadError}`)
     return errors
   }
@@ -192,6 +195,9 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         partialResult.timeBasisOffsetMs,
         { firstBeatCoordinate: 'audio' }
       )
+      bpmPersisted = true
+    } else if (isNoBpmBeatGridResultError(partialResult.bpmError)) {
+      await deps.persistence.persistNoBpm(job.filePath)
       bpmPersisted = true
     }
 
@@ -376,17 +382,21 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       }
     }
 
-    if (job && payloadResult && !payloadResult.bpmError) {
-      const bpmValue = payloadResult.bpm
-      if (isValidBpm(bpmValue)) {
-        await deps.persistence.persistBpm(
-          job.filePath,
-          bpmValue,
-          payloadResult.firstBeatMs,
-          payloadResult.barBeatOffset,
-          payloadResult.timeBasisOffsetMs,
-          { firstBeatCoordinate: 'audio' }
-        )
+    if (job && payloadResult) {
+      if (isNoBpmBeatGridResultError(payloadResult.bpmError)) {
+        await deps.persistence.persistNoBpm(job.filePath)
+      } else if (!payloadResult.bpmError) {
+        const bpmValue = payloadResult.bpm
+        if (isValidBpm(bpmValue)) {
+          await deps.persistence.persistBpm(
+            job.filePath,
+            bpmValue,
+            payloadResult.firstBeatMs,
+            payloadResult.barBeatOffset,
+            payloadResult.timeBasisOffsetMs,
+            { firstBeatCoordinate: 'audio' }
+          )
+        }
       }
     }
 

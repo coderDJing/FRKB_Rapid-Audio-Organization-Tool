@@ -9,7 +9,10 @@ import { log } from '../log'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
 import { normalizePlaylistTrackNumber } from './playlistTrackNumbers'
-import { shouldAcceptBeatGridCacheVersion } from './beatGridAlgorithmVersion'
+import {
+  hasCurrentNoBpmBeatGridResult,
+  shouldAcceptBeatGridCacheVersion
+} from './beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from './keyAnalysisAlgorithmVersion'
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
@@ -304,13 +307,14 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     typeof rawInfo?.barBeatOffset === 'number' &&
     Number.isFinite(rawInfo.barBeatOffset) &&
     shouldAcceptBeatGridCacheVersion(rawInfo)
+  const hasCurrentNoBpmGrid = hasCurrentNoBpmBeatGridResult(rawInfo)
   const bpm = hasCurrentBeatGrid ? rawInfo?.bpm : undefined
   const firstBeatMs = hasCurrentBeatGrid ? rawInfo?.firstBeatMs : undefined
   const barBeatOffset = hasCurrentBeatGrid ? rawInfo?.barBeatOffset : undefined
-  const beatGridAlgorithmVersion = hasCurrentBeatGrid
-    ? rawInfo?.beatGridAlgorithmVersion
-    : undefined
+  const beatGridAlgorithmVersion =
+    hasCurrentBeatGrid || hasCurrentNoBpmGrid ? rawInfo?.beatGridAlgorithmVersion : undefined
   const beatGridSource = hasCurrentBeatGrid ? rawInfo?.beatGridSource : undefined
+  const beatGridStatus = hasCurrentNoBpmGrid ? rawInfo?.beatGridStatus : undefined
   const playlistTrackNumber = normalizePlaylistTrackNumber(rawInfo?.playlistTrackNumber)
 
   return {
@@ -333,6 +337,7 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     barBeatOffset,
     beatGridAlgorithmVersion,
     beatGridSource,
+    beatGridStatus,
     playlistTrackNumber,
     hotCues: normalizeSongHotCues(rawInfo?.hotCues),
     memoryCues: normalizeSongMemoryCues(rawInfo?.memoryCues),

@@ -20,6 +20,11 @@ type MixtapeAppendItem = {
   info: PioneerSongSnapshot
 }
 
+type MixtapeAppendResult = {
+  inserted?: number
+  skippedNoBpm?: number
+}
+
 type UsePioneerTrackCopyDialogParams = {
   resolveTrackKey: (song: ISongInfo) => string
   resolveSelectedTracksByKeys: (keys: string[]) => ISongInfo[]
@@ -41,6 +46,15 @@ export const usePioneerTrackCopyDialog = (params: UsePioneerTrackCopyDialogParam
       title: t('common.error'),
       content: [message || t('common.unknownError')],
       confirmShow: false
+    })
+  }
+  const isNoBpmSong = (song?: ISongInfo | null) => song?.beatGridStatus === 'no-bpm'
+  const emitNoBpmMixtapeHint = (count: number) => {
+    const skipped = Math.max(0, Math.round(Number(count) || 0))
+    if (skipped <= 0) return
+    emitter.emit('songsArea/clipboardHint', {
+      message:
+        skipped > 1 ? t('mixtape.noBpmSkipped', { count: skipped }) : t('mixtape.noBpmBlocked')
     })
   }
 
@@ -74,17 +88,23 @@ export const usePioneerTrackCopyDialog = (params: UsePioneerTrackCopyDialogParam
 
     try {
       if (targetLibraryName === 'MixtapeLibrary') {
+        const copyableTracks = selectedTracks.filter((track) => !isNoBpmSong(track))
+        const skippedNoBpm = selectedTracks.length - copyableTracks.length
+        if (!copyableTracks.length) {
+          emitNoBpmMixtapeHint(skippedNoBpm)
+          return
+        }
         const copiedTracks = (await window.electron.ipcRenderer.invoke(
           'mixtape:copy-files-to-vault',
           {
-            filePaths: selectedTracks.map((item) => item.filePath)
+            filePaths: copyableTracks.map((item) => item.filePath)
           }
         )) as Array<{ sourcePath: string; targetPath: string }>
 
         const copiedPathMap = new Map(
           copiedTracks.map((item) => [params.normalizePath(item.sourcePath), item.targetPath])
         )
-        const items = selectedTracks
+        const items = copyableTracks
           .map((track): MixtapeAppendItem | null => {
             const copiedPath = copiedPathMap.get(params.normalizePath(track.filePath))
             if (!copiedPath) return null
@@ -100,13 +120,25 @@ export const usePioneerTrackCopyDialog = (params: UsePioneerTrackCopyDialogParam
           throw new Error('MIXTAPE_COPY_TO_VAULT_FAILED')
         }
 
-        await window.electron.ipcRenderer.invoke('mixtape:append', {
+        const result = (await window.electron.ipcRenderer.invoke('mixtape:append', {
           playlistId: targetSongListUUID,
           items
-        })
+        })) as MixtapeAppendResult | null
+        const totalSkippedNoBpm = skippedNoBpm + Math.max(0, Number(result?.skippedNoBpm || 0))
+        const inserted = Math.max(0, Number(result?.inserted || 0))
+        if (inserted <= 0) {
+          emitNoBpmMixtapeHint(totalSkippedNoBpm)
+          return
+        }
         emitter.emit('playlistContentChanged', { uuids: [targetSongListUUID] })
         emitter.emit('songsArea/clipboardHint', {
-          message: t('mixtape.addedToMixtape', { count: items.length })
+          message:
+            totalSkippedNoBpm > 0
+              ? t('mixtape.addedToMixtapeWithNoBpmSkipped', {
+                  count: inserted,
+                  skipped: totalSkippedNoBpm
+                })
+              : t('mixtape.addedToMixtape', { count: inserted })
         })
         return
       }
