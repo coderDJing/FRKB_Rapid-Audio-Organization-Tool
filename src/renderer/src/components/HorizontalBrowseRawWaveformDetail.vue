@@ -25,7 +25,10 @@ import type {
   HorizontalBrowseRawWaveformDetailEmit,
   HorizontalBrowseRawWaveformDetailProps
 } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
-import type { HorizontalBrowseLinkedGridVisualTransactionDeckState } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
+import type {
+  HorizontalBrowseLinkedGridVisualTransactionCommitOptions,
+  HorizontalBrowseLinkedGridVisualTransactionDeckState
+} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailExpose'
 import {
   createHorizontalBrowsePlaybackDiscontinuityDetector,
@@ -556,8 +559,10 @@ const {
 })
 
 const commitLinkedGridVisualTransaction = (
-  deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState
-) => (props.song?.filePath ? commitLinkedGridVisualPresentationTransaction(deckState) : null)
+  deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState,
+  options?: HorizontalBrowseLinkedGridVisualTransactionCommitOptions
+) =>
+  props.song?.filePath ? commitLinkedGridVisualPresentationTransaction(deckState, options) : null
 
 const { handleSharedZoomState, handlePresentationState } =
   createHorizontalBrowseDetailPresentationConsumer({

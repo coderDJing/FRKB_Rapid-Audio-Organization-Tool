@@ -6,7 +6,10 @@ import type {
 } from '@shared/horizontalBrowseTransport'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 import type { HorizontalBrowseClearLinkedPresentationState } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
-import type { HorizontalBrowseLinkedGridVisualTransactionDeckState } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
+import type {
+  HorizontalBrowseLinkedGridVisualTransactionDeckState,
+  HorizontalBrowseLinkedGridVisualTransactionMode
+} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 import { resolveHorizontalBrowseBeatSyncDecks } from '@renderer/components/horizontalBrowseBeatSyncDecks'
 
 type DeckKey = HorizontalBrowseDeckKey
@@ -53,12 +56,21 @@ type UseHorizontalBrowseTransportMutationsParams = {
     payload: {
       leader: DeckKey
       follower: DeckKey
+      mode?: HorizontalBrowseLinkedGridVisualTransactionMode
       deckStates?: Partial<Record<DeckKey, HorizontalBrowseLinkedGridVisualTransactionDeckState>>
     },
     options?: { begin?: boolean }
   ) => Promise<boolean> | boolean
-  beginLinkedGridVisualTransaction?: (payload: { leader: DeckKey; follower: DeckKey }) => void
-  cancelLinkedGridVisualTransaction?: (payload: { leader: DeckKey; follower: DeckKey }) => void
+  beginLinkedGridVisualTransaction?: (payload: {
+    leader: DeckKey
+    follower: DeckKey
+    mode?: HorizontalBrowseLinkedGridVisualTransactionMode
+  }) => void
+  cancelLinkedGridVisualTransaction?: (payload: {
+    leader: DeckKey
+    follower: DeckKey
+    mode?: HorizontalBrowseLinkedGridVisualTransactionMode
+  }) => void
   clearLinkedPresentation?: (playbackStates?: HorizontalBrowseClearLinkedPresentationState) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
@@ -152,9 +164,23 @@ export const useHorizontalBrowseTransportMutations = (
     }
     const provisionalSyncDecks = {
       leader: deck === 'top' ? 'bottom' : 'top',
-      follower: deck
-    } satisfies { leader: DeckKey; follower: DeckKey }
+      follower: deck,
+      mode: 'beatsync'
+    } satisfies {
+      leader: DeckKey
+      follower: DeckKey
+      mode: HorizontalBrowseLinkedGridVisualTransactionMode
+    }
     const anchorSec = Number(snapshot.currentSec)
+    if (snapshot.leader) {
+      await params.nativeTransport.alignToLeader(
+        deck,
+        Number.isFinite(anchorSec) ? anchorSec : undefined,
+        false
+      )
+      params.syncDeckRenderState()
+      return
+    }
     params.beginLinkedGridVisualTransaction?.(provisionalSyncDecks)
     let visualTransactionFinished = false
     try {
@@ -163,11 +189,17 @@ export const useHorizontalBrowseTransportMutations = (
         Number.isFinite(anchorSec) ? anchorSec : undefined,
         false
       )
-      params.syncDeckRenderState({ force: 'all' })
+      params.syncDeckRenderState({ force: deck })
       await nextTick()
       const activeSyncDecks = resolveActiveBeatSyncDecks(deck)
       if (activeSyncDecks) {
-        await params.commitLinkedGridVisualTransaction?.(activeSyncDecks, { begin: false })
+        await params.commitLinkedGridVisualTransaction?.(
+          {
+            ...activeSyncDecks,
+            mode: 'beatsync'
+          },
+          { begin: false }
+        )
         visualTransactionFinished = true
       }
     } finally {

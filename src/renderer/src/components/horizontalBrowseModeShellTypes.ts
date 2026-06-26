@@ -1,5 +1,6 @@
 import type { HorizontalBrowseGridShiftOptions } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import type {
+  HorizontalBrowseLinkedGridVisualTransactionCommitOptions,
   HorizontalBrowseLinkedGridVisualTransactionDeckState,
   HorizontalBrowseLinkedGridVisualTransactionResult
 } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
@@ -31,7 +32,8 @@ export type HorizontalBrowseDeckDetailLaneExpose = {
     options?: { timeoutMs?: number }
   ) => Promise<boolean>
   commitLinkedGridVisualTransaction?: (
-    deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState
+    deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState,
+    options?: HorizontalBrowseLinkedGridVisualTransactionCommitOptions
   ) => HorizontalBrowseLinkedGridVisualTransactionResult | null
 }
 

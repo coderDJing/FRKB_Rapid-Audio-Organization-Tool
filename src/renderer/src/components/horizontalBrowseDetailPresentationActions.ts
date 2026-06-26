@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import type {
+  HorizontalBrowseLinkedGridVisualTransactionCommitOptions,
   HorizontalBrowseLinkedGridVisualTransactionDeckState,
   HorizontalBrowseLinkedGridVisualTransactionGridTimeBasis,
   HorizontalBrowseLinkedGridVisualTransactionResult
@@ -158,7 +159,8 @@ export const createHorizontalBrowseDetailPresentationActions = (
     )
 
   const commitLinkedGridVisualTransaction = (
-    deckState: HorizontalBrowseLinkedGridVisualTransactionDeckState = {}
+    deckState: HorizontalBrowseLinkedGridVisualTransactionDeckState = {},
+    options: HorizontalBrowseLinkedGridVisualTransactionCommitOptions = {}
   ): HorizontalBrowseLinkedGridVisualTransactionResult => {
     const targetSeconds = Number(deckState.currentSeconds ?? params.currentSeconds()) || 0
     const playbackActive = deckState.playbackActive ?? params.waveformPlaybackActive()
@@ -170,11 +172,16 @@ export const createHorizontalBrowseDetailPresentationActions = (
       Number.isFinite(Number(deckState.startedAtMs)) && Number(deckState.startedAtMs) >= 0
         ? Number(deckState.startedAtMs)
         : performance.now()
-    clearPlaybackStableFrameRenderTimer()
     const safeSeconds = params.normalizePreviewTimelineSeconds(targetSeconds)
     const linkedGridVisualPending = params.linkedGridVisualPending()
-    if (linkedGridVisualPending) {
-      params.syncGridStateFromSong()
+    const shouldMutatePresentation = options.mutate !== false
+    if (shouldMutatePresentation) {
+      clearPlaybackStableFrameRenderTimer()
+    }
+    if (linkedGridVisualPending || !shouldMutatePresentation) {
+      if (shouldMutatePresentation) {
+        params.syncGridStateFromSong()
+      }
       const timeScale = Math.max(0.25, Number(params.resolveIncomingPreviewTimeScale()) || 1)
       const visibleDurationSec = resolveVisibleDurationSecForTimeScale(timeScale)
       const viewportStartSec = clampPreviewStartForVisibleDuration(
@@ -182,7 +189,9 @@ export const createHorizontalBrowseDetailPresentationActions = (
         visibleDurationSec
       )
       const gridTimeBasis = params.resolveGridTimeBasis()
-      params.markLinkedGridVisualTransactionCommitted()
+      if (shouldMutatePresentation) {
+        params.markLinkedGridVisualTransactionCommitted()
+      }
       return {
         deck: params.deck(),
         committed: true,

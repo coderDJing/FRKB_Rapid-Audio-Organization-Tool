@@ -4,6 +4,7 @@ import type { HorizontalBrowseGridToolbarState } from '@renderer/components/useH
 import type { HorizontalBrowseScrubPreviewPayload } from '@renderer/components/useHorizontalBrowseWaveformScrubPreview'
 import type { HorizontalBrowseWaveformPresentationState } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
 import type {
+  HorizontalBrowseLinkedGridVisualTransactionCommitOptions,
   HorizontalBrowseLinkedGridVisualTransactionDeckState,
   HorizontalBrowseLinkedGridVisualTransactionResult
 } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
@@ -92,6 +93,7 @@ export type HorizontalBrowseRawWaveformDetailExpose = {
     options?: { timeoutMs?: number }
   ) => Promise<boolean>
   commitLinkedGridVisualTransaction: (
-    deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState
+    deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState,
+    options?: HorizontalBrowseLinkedGridVisualTransactionCommitOptions
   ) => HorizontalBrowseLinkedGridVisualTransactionResult | null
 }

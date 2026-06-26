@@ -71,11 +71,6 @@ const resolveCircularDelta = (left: number, right: number, modulo: number) => {
   return normalized > modulo / 2 ? modulo - normalized : normalized
 }
 
-const resolveSignedCircularDelta = (left: number, right: number, modulo: number) => {
-  const normalized = normalizePhase(left - right, modulo)
-  return normalized > modulo / 2 ? normalized - modulo : normalized
-}
-
 const normalizeBarBeatOffset = (value: number) =>
   normalizePhase(Math.round(Number.isFinite(value) ? value : 0), BAR_BEAT_INTERVAL)
 
@@ -271,27 +266,17 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
     }
   }
   if (canLinkByEffectiveBpmOnly(currentSample, reference)) {
-    const clockDeltaSec = input.clockActive
-      ? ((currentSample.epochMs - reference.epochMs) / 1000) * reference.playbackRate
-      : 0
     const currentClockDeltaSec = input.clockActive
       ? ((currentSample.epochMs - reference.epochMs) / 1000) * currentSample.playbackRate
       : 0
-    const referenceBeatDistance =
-      reference.beatDistance + (reference.beatSec > 0 ? clockDeltaSec / reference.beatSec : 0)
-    const referenceBarPhase = normalizePhase(referenceBeatDistance - reference.barBeatOffset, 32)
-    const barBeatOffset = normalizeBarBeatOffset(currentSample.beatDistance - referenceBarPhase)
-    const currentBarPhase = normalizePhase(currentSample.beatDistance - barBeatOffset, 32)
-    const phaseShiftSec =
-      resolveSignedCircularDelta(currentBarPhase, referenceBarPhase, 32) * currentSample.beatSec
     return {
-      barBeatOffset,
+      barBeatOffset: sourceBarBeatOffset,
       sourceBarBeatOffset,
-      playbackSeconds: sourcePlaybackSeconds - currentClockDeltaSec - phaseShiftSec,
+      playbackSeconds: sourcePlaybackSeconds - currentClockDeltaSec,
       sourcePlaybackSeconds,
       playbackRenderClockEpochMs: reference.epochMs,
       playbackClockLinked: true,
-      phaseShiftSec,
+      phaseShiftSec: 0,
       linked: true,
       referenceDirection
     }
@@ -300,21 +285,14 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
   const clockDeltaSec = input.clockActive
     ? ((currentSample.epochMs - reference.epochMs) / 1000) * reference.playbackRate
     : 0
-  const referenceBeatDistance =
-    reference.beatDistance + (reference.beatSec > 0 ? clockDeltaSec / reference.beatSec : 0)
-  const referenceBarPhase = normalizePhase(referenceBeatDistance - reference.barBeatOffset, 32)
-  const barBeatOffset = normalizeBarBeatOffset(currentSample.beatDistance - referenceBarPhase)
-  const currentBarPhase = normalizePhase(currentSample.beatDistance - barBeatOffset, 32)
-  const phaseShiftSec =
-    resolveSignedCircularDelta(currentBarPhase, referenceBarPhase, 32) * currentSample.beatSec
   return {
-    barBeatOffset,
+    barBeatOffset: sourceBarBeatOffset,
     sourceBarBeatOffset,
-    playbackSeconds: sourcePlaybackSeconds - clockDeltaSec - phaseShiftSec,
+    playbackSeconds: sourcePlaybackSeconds - clockDeltaSec,
     sourcePlaybackSeconds,
     playbackRenderClockEpochMs: reference.epochMs,
     playbackClockLinked: true,
-    phaseShiftSec,
+    phaseShiftSec: 0,
     linked: true,
     referenceDirection
   }

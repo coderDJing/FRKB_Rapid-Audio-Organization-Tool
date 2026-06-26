@@ -1,5 +1,11 @@
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 
+export type HorizontalBrowseLinkedGridVisualTransactionMode = 'linked' | 'beatsync'
+
+export type HorizontalBrowseLinkedGridVisualTransactionCommitOptions = {
+  mutate?: boolean
+}
+
 export type HorizontalBrowseLinkedGridVisualTransactionGridTimeBasis = {
   bpm: number
   firstBeatMs: number
@@ -35,27 +41,6 @@ export type HorizontalBrowseLinkedGridVisualTransactionResult = {
 export type HorizontalBrowseLinkedGridVisualTransactionResults = Partial<
   Record<HorizontalBrowseDeckKey, HorizontalBrowseLinkedGridVisualTransactionResult | null>
 >
-
-const BAR_BEAT_INTERVAL = 32
-
-const normalizePhase = (value: number, modulo: number) => {
-  if (!Number.isFinite(value) || !Number.isFinite(modulo) || modulo <= 0) return 0
-  return ((value % modulo) + modulo) % modulo
-}
-
-const normalizeBarBeatOffset = (value: number) =>
-  normalizePhase(Math.round(Number.isFinite(value) ? value : 0), BAR_BEAT_INTERVAL)
-
-const resolveBeatDistance = (result: HorizontalBrowseLinkedGridVisualTransactionResult) => {
-  const bpm = Number(result.gridTimeBasis.bpm)
-  if (!Number.isFinite(bpm) || bpm <= 0) return null
-  const beatSec = 60 / bpm
-  if (!Number.isFinite(beatSec) || beatSec <= 0) return null
-  const anchorSec = Number(result.anchorSec)
-  if (!Number.isFinite(anchorSec)) return null
-  const firstBeatSec = (Number(result.gridTimeBasis.firstBeatMs) || 0) / 1000
-  return (anchorSec - firstBeatSec) / beatSec
-}
 
 const normalizePlaybackClockToStartedAt = (
   result: HorizontalBrowseLinkedGridVisualTransactionResult,
@@ -113,25 +98,10 @@ export const alignHorizontalBrowseLinkedGridVisualTransactionResults = (
   const leaderResult = results[leader]
   const followerResult = results[follower]
   if (leaderResult?.committed !== true || followerResult?.committed !== true) return results
-  const leaderBeatDistance = resolveBeatDistance(leaderResult)
-  const followerBeatDistance = resolveBeatDistance(followerResult)
-  if (leaderBeatDistance === null || followerBeatDistance === null) return results
-  const leaderBarPhase = normalizePhase(
-    leaderBeatDistance - normalizeBarBeatOffset(leaderResult.gridTimeBasis.barBeatOffset),
-    BAR_BEAT_INTERVAL
-  )
   const alignedPlayback = alignPlaybackClocks(leaderResult, followerResult)
-  const alignedLeaderResult = alignedPlayback.leaderResult
-  const alignedFollowerResult = alignedPlayback.followerResult
   return {
     ...results,
-    [leader]: alignedLeaderResult,
-    [follower]: {
-      ...alignedFollowerResult,
-      gridTimeBasis: {
-        ...alignedFollowerResult.gridTimeBasis,
-        barBeatOffset: normalizeBarBeatOffset(followerBeatDistance - leaderBarPhase)
-      }
-    }
+    [leader]: alignedPlayback.leaderResult,
+    [follower]: alignedPlayback.followerResult
   }
 }

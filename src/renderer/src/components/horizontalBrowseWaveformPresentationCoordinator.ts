@@ -2,6 +2,7 @@ import { reactive } from 'vue'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import type {
   HorizontalBrowseLinkedGridVisualTransactionGridTimeBasis,
+  HorizontalBrowseLinkedGridVisualTransactionMode,
   HorizontalBrowseLinkedGridVisualTransactionPlaybackClock,
   HorizontalBrowseLinkedGridVisualTransactionResult,
   HorizontalBrowseLinkedGridVisualTransactionResults
@@ -220,8 +221,14 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     })
   }
 
-  const resolveSyncDecks = (leader: DeckKey, follower: DeckKey): DeckKey[] =>
-    leader === follower ? ['top', 'bottom'] : [leader, follower]
+  const resolveSyncDecks = (
+    leader: DeckKey,
+    follower: DeckKey,
+    mode: HorizontalBrowseLinkedGridVisualTransactionMode = 'linked'
+  ): DeckKey[] => {
+    if (mode === 'beatsync') return [follower]
+    return leader === follower ? ['top', 'bottom'] : [leader, follower]
+  }
 
   const setSurfaceMode = (
     deck: DeckKey,
@@ -367,8 +374,12 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     }
   }
 
-  const beginSyncTransaction = (leader: DeckKey, follower: DeckKey) => {
-    const affectedDecks = resolveSyncDecks(leader, follower)
+  const beginSyncTransaction = (
+    leader: DeckKey,
+    follower: DeckKey,
+    mode: HorizontalBrowseLinkedGridVisualTransactionMode = 'linked'
+  ) => {
+    const affectedDecks = resolveSyncDecks(leader, follower, mode)
     commitDecks(affectedDecks, {
       owner: 'sync-transaction',
       sourceDeck: leader,
@@ -383,9 +394,10 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     leader: DeckKey,
     follower: DeckKey,
     committed: boolean,
-    results: HorizontalBrowseLinkedGridVisualTransactionResults = {}
+    results: HorizontalBrowseLinkedGridVisualTransactionResults = {},
+    mode: HorizontalBrowseLinkedGridVisualTransactionMode = 'linked'
   ) => {
-    const affectedDecks = resolveSyncDecks(leader, follower)
+    const affectedDecks = resolveSyncDecks(leader, follower, mode)
     const topResult = results.top
     const bottomResult = results.bottom
     const canCommit = committed && topResult?.committed === true && bottomResult?.committed === true
@@ -403,6 +415,13 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
         playbackClock: null,
         timeScale: 1
       })
+      return
+    }
+    if (mode === 'beatsync') {
+      const followerResult = results[follower]
+      if (followerResult?.committed === true) {
+        commitDeck(follower, buildSyncCommitPatch(followerResult, leader, affectedDecks))
+      }
       return
     }
     commitDeckPatches({
