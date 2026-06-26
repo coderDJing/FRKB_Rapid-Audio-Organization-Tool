@@ -11,6 +11,7 @@ import type { HorizontalBrowseLinkedGridVisualTransactionDeckState } from '@rend
 
 type DeckKey = HorizontalBrowseDeckKey
 export type HorizontalBrowseBandKey = keyof HorizontalBrowseTransportBandState
+const DUAL_DECKS: DeckKey[] = ['top', 'bottom']
 
 type UseHorizontalBrowseFaderControlsParams = {
   topDeckSong: Ref<ISongInfo | null>
@@ -168,12 +169,31 @@ export const useHorizontalBrowseFaderControls = (
     return 'top'
   }
 
+  const isDeckFullBeatSyncPlaying = (deck: DeckKey) => {
+    const snapshot = params.resolveTransportDeckSnapshot(deck)
+    const playbackActive =
+      params.resolveDeckPlaying(deck) ||
+      snapshot.playing === true ||
+      snapshot.playingAudible === true
+    return playbackActive && snapshot.syncEnabled === true && snapshot.syncLock === 'full'
+  }
+
+  const canActivateDualTransportSyncWithoutAlignment = () =>
+    DUAL_DECKS.every(
+      (deck) => Boolean(params.resolveDeckSong(deck)) && isDeckFullBeatSyncPlaying(deck)
+    )
+
   const activateDualTransportSync = async (sourceDeck?: DeckKey) => {
     if (!canUseDualTransportSync.value) return false
     await waitForPendingDualTransportSyncDeactivation()
     if (dualTransportSyncActivating.value) return true
     const activationToken = dualTransportSyncActivationToken + 1
     dualTransportSyncActivationToken = activationToken
+    if (canActivateDualTransportSyncWithoutAlignment()) {
+      dualTransportSyncEnabled.value = true
+      dualTransportSyncActivating.value = false
+      return true
+    }
     const leader = resolveDualTransportLeader(sourceDeck)
     const follower: DeckKey = leader === 'top' ? 'bottom' : 'top'
     const visualTransaction = { leader, follower }
