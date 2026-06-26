@@ -186,6 +186,7 @@ export const useHorizontalBrowseFaderControls = (
   const activateDualTransportSync = async (sourceDeck?: DeckKey) => {
     if (!canUseDualTransportSync.value) return false
     await waitForPendingDualTransportSyncDeactivation()
+    if (dualTransportSyncEnabled.value) return true
     if (dualTransportSyncActivating.value) return true
     const activationToken = dualTransportSyncActivationToken + 1
     dualTransportSyncActivationToken = activationToken

@@ -104,6 +104,24 @@ export const useHorizontalBrowseDeckPlaybackController = (
     return Boolean(await params.ensureDualTransportSync?.(sourceDeck))
   }
 
+  const resolveCurrentTransportLeader = (fallbackDeck: DeckKey): DeckKey => {
+    if (params.resolveTransportDeckSnapshot('top').leader && params.resolveDeckSong('top')) {
+      return 'top'
+    }
+    if (params.resolveTransportDeckSnapshot('bottom').leader && params.resolveDeckSong('bottom')) {
+      return 'bottom'
+    }
+    return fallbackDeck
+  }
+
+  const resolveLinkedDeckPlaybackOrder = (fallbackDeck: DeckKey) => {
+    const leader = resolveCurrentTransportLeader(fallbackDeck)
+    return {
+      leader,
+      follower: resolveOtherDeck(leader)
+    }
+  }
+
   const resolveActiveBeatSyncDecks = (deck: DeckKey) =>
     resolveHorizontalBrowseBeatSyncDecks({
       deck,
@@ -926,26 +944,29 @@ export const useHorizontalBrowseDeckPlaybackController = (
           }
           await params.commitDeckStatesToNative()
           await ensureDualTransportSync(deck)
-          params.startDeckRenderPlaybackClock(deck, params.resolveDeckRenderCurrentSeconds(deck))
+          const playbackOrder = resolveLinkedDeckPlaybackOrder(deck)
           params.startDeckRenderPlaybackClock(
-            otherDeck,
-            params.resolveDeckRenderCurrentSeconds(otherDeck)
+            playbackOrder.leader,
+            params.resolveDeckRenderCurrentSeconds(playbackOrder.leader)
           )
-          await params.nativeTransport.setPlaying(deck, true)
-          await params.nativeTransport.setPlaying(otherDeck, true)
+          params.startDeckRenderPlaybackClock(
+            playbackOrder.follower,
+            params.resolveDeckRenderCurrentSeconds(playbackOrder.follower)
+          )
+          await params.nativeTransport.setPlaying(playbackOrder.leader, true)
+          await params.nativeTransport.setPlaying(playbackOrder.follower, true)
           params.syncDeckRenderState({ force: 'all' })
           return
         }
 
+        const playbackOrder = resolveLinkedDeckPlaybackOrder(deck)
         params.holdDeckRenderCurrentSeconds(deck, params.resolveDeckRenderCurrentSeconds(deck))
         params.holdDeckRenderCurrentSeconds(
           otherDeck,
           params.resolveDeckRenderCurrentSeconds(otherDeck)
         )
-        await Promise.all([
-          params.nativeTransport.setPlaying(deck, false),
-          params.nativeTransport.setPlaying(otherDeck, false)
-        ])
+        await params.nativeTransport.setPlaying(playbackOrder.follower, false)
+        await params.nativeTransport.setPlaying(playbackOrder.leader, false)
         params.syncDeckRenderState()
       } finally {
         finishTiming()
