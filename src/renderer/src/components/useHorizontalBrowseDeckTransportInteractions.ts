@@ -12,57 +12,59 @@ import type {
   HorizontalBrowseDeckStateCommitOptions,
   HorizontalBrowseDeckTransportStateOverride
 } from '@renderer/components/useHorizontalBrowseTransportMutations'
+import type { HorizontalBrowseBeatSyncDragReleaseVisualTransactionHooks } from '@renderer/components/horizontalBrowseBeatSyncRawWaveformDragRelease'
 
 type DeckKey = HorizontalBrowseDeckKey
 type HorizontalBrowsePendingPlayViewMode = 'dual' | 'edit' | 'unknown'
 const PLAYHEAD_READY_NEGATIVE_EPSILON_SEC = 0.0001
 
-type UseHorizontalBrowseDeckTransportInteractionsParams = {
-  touchDeckInteraction: (deck: DeckKey) => void
-  notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
-  holdDeckRenderCurrentSeconds: (deck: DeckKey, seconds: number) => void
-  startDeckRenderPlaybackClock: (deck: DeckKey, seconds: number) => void
-  prepareDeckStableFrameForAnchor?: (deck: DeckKey, seconds: number) => Promise<boolean>
-  nativeTransport: {
-    setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
-    setLeader: (deck?: DeckKey | null) => Promise<unknown>
-    preparePlayhead: (deck: DeckKey) => Promise<unknown>
-    seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
-    setScrubPreview: (
-      deck: DeckKey,
-      active: boolean,
-      currentSec: number,
-      rate: number
+type UseHorizontalBrowseDeckTransportInteractionsParams =
+  HorizontalBrowseBeatSyncDragReleaseVisualTransactionHooks & {
+    touchDeckInteraction: (deck: DeckKey) => void
+    notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
+    holdDeckRenderCurrentSeconds: (deck: DeckKey, seconds: number) => void
+    startDeckRenderPlaybackClock: (deck: DeckKey, seconds: number) => void
+    prepareDeckStableFrameForAnchor?: (deck: DeckKey, seconds: number) => Promise<boolean>
+    nativeTransport: {
+      setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
+      setLeader: (deck?: DeckKey | null) => Promise<unknown>
+      preparePlayhead: (deck: DeckKey) => Promise<unknown>
+      seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
+      setScrubPreview: (
+        deck: DeckKey,
+        active: boolean,
+        currentSec: number,
+        rate: number
+      ) => Promise<unknown>
+      beatsync: (deck: DeckKey) => Promise<unknown>
+      alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
+      snapshot: (nowMs?: number) => Promise<unknown>
+      setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
+      toggleLoop: (deck: DeckKey) => Promise<unknown>
+      stepLoopBeats: (deck: DeckKey, direction: -1 | 1) => Promise<unknown>
+      setLoopFromRange: (deck: DeckKey, startSec: number, endSec: number) => Promise<unknown>
+      clearLoop: (deck: DeckKey) => Promise<unknown>
+    }
+    syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
+    commitDeckStatesToNative: (
+      overrides?: Partial<Record<DeckKey, HorizontalBrowseDeckTransportStateOverride>>,
+      options?: HorizontalBrowseDeckStateCommitOptions
     ) => Promise<unknown>
-    beatsync: (deck: DeckKey) => Promise<unknown>
-    alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
-    snapshot: (nowMs?: number) => Promise<unknown>
-    setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
-    toggleLoop: (deck: DeckKey) => Promise<unknown>
-    stepLoopBeats: (deck: DeckKey, direction: -1 | 1) => Promise<unknown>
-    setLoopFromRange: (deck: DeckKey, startSec: number, endSec: number) => Promise<unknown>
-    clearLoop: (deck: DeckKey) => Promise<unknown>
+    resolveDeckSong: (deck: DeckKey) => ISongInfo | null
+    resolveDeckGridBpm: (deck: DeckKey) => number
+    resolveDeckDurationSeconds: (deck: DeckKey) => number
+    resolveDeckCurrentSeconds: (deck: DeckKey) => number
+    resolveDeckRenderCurrentSeconds: (deck: DeckKey) => number
+    resolveDeckPlaying: (deck: DeckKey) => boolean
+    resolveDeckLoaded: (deck: DeckKey) => boolean
+    resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
+    resolveDeckCuePointRef: (deck: DeckKey) => Ref<number>
+    resolveDeckCuePlacementSec: (deck: DeckKey) => number
+    resolveDualTransportSyncEnabled?: () => boolean
+    ensureDualTransportSync?: (sourceDeck?: DeckKey) => Promise<boolean>
+    deactivateDualTransportSync?: () => void
+    resolveBrowseViewMode?: () => HorizontalBrowsePendingPlayViewMode
   }
-  syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
-  commitDeckStatesToNative: (
-    overrides?: Partial<Record<DeckKey, HorizontalBrowseDeckTransportStateOverride>>,
-    options?: HorizontalBrowseDeckStateCommitOptions
-  ) => Promise<unknown>
-  resolveDeckSong: (deck: DeckKey) => ISongInfo | null
-  resolveDeckGridBpm: (deck: DeckKey) => number
-  resolveDeckDurationSeconds: (deck: DeckKey) => number
-  resolveDeckCurrentSeconds: (deck: DeckKey) => number
-  resolveDeckRenderCurrentSeconds: (deck: DeckKey) => number
-  resolveDeckPlaying: (deck: DeckKey) => boolean
-  resolveDeckLoaded: (deck: DeckKey) => boolean
-  resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
-  resolveDeckCuePointRef: (deck: DeckKey) => Ref<number>
-  resolveDeckCuePlacementSec: (deck: DeckKey) => number
-  resolveDualTransportSyncEnabled?: () => boolean
-  ensureDualTransportSync?: (sourceDeck?: DeckKey) => Promise<boolean>
-  deactivateDualTransportSync?: () => void
-  resolveBrowseViewMode?: () => HorizontalBrowsePendingPlayViewMode
-}
 
 export const useHorizontalBrowseDeckTransportInteractions = (
   params: UseHorizontalBrowseDeckTransportInteractionsParams
@@ -115,6 +117,9 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     prepareDeckStableFrameForAnchor: params.prepareDeckStableFrameForAnchor,
     nativeTransport: params.nativeTransport,
     syncDeckRenderState: params.syncDeckRenderState,
+    commitLinkedGridVisualTransaction: params.commitLinkedGridVisualTransaction,
+    beginLinkedGridVisualTransaction: params.beginLinkedGridVisualTransaction,
+    cancelLinkedGridVisualTransaction: params.cancelLinkedGridVisualTransaction,
     commitDeckStatesToNative: params.commitDeckStatesToNative,
     resolveDeckSong: params.resolveDeckSong,
     resolveDeckGridBpm: params.resolveDeckGridBpm,
