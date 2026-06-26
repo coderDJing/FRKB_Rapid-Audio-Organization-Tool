@@ -6,6 +6,7 @@ import type {
 } from '@shared/horizontalBrowseTransport'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
 import type { HorizontalBrowseClearLinkedPresentationState } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
+import type { HorizontalBrowseLinkedGridVisualTransactionDeckState } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 import { resolveHorizontalBrowseBeatSyncDecks } from '@renderer/components/horizontalBrowseBeatSyncDecks'
 
 type DeckKey = HorizontalBrowseDeckKey
@@ -48,10 +49,16 @@ type UseHorizontalBrowseTransportMutationsParams = {
     snapshot: (nowMs?: number) => Promise<unknown>
   }
   syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
-  commitLinkedGridVisualTransaction?: (payload: {
-    leader: DeckKey
-    follower: DeckKey
-  }) => Promise<boolean> | boolean
+  commitLinkedGridVisualTransaction?: (
+    payload: {
+      leader: DeckKey
+      follower: DeckKey
+      deckStates?: Partial<Record<DeckKey, HorizontalBrowseLinkedGridVisualTransactionDeckState>>
+    },
+    options?: { begin?: boolean }
+  ) => Promise<boolean> | boolean
+  beginLinkedGridVisualTransaction?: (payload: { leader: DeckKey; follower: DeckKey }) => void
+  cancelLinkedGridVisualTransaction?: (payload: { leader: DeckKey; follower: DeckKey }) => void
   clearLinkedPresentation?: (playbackStates?: HorizontalBrowseClearLinkedPresentationState) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckCurrentSeconds: (deck: DeckKey) => number
@@ -136,26 +143,37 @@ export const useHorizontalBrowseTransportMutations = (
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     if (snapshot.syncEnabled) {
       await params.nativeTransport.setSyncEnabled(deck, false)
-      const activeSyncDecks = resolveActiveBeatSyncDecks(deck)
-      if (activeSyncDecks) {
-        await params.commitLinkedGridVisualTransaction?.(activeSyncDecks)
-      } else {
-        params.clearLinkedPresentation?.(buildClearLinkedPresentationPlaybackStates())
-      }
+      // 关闭 BeatSync 没有“对齐”要做，必须走 playback handoff 平滑接管当前可见帧；
+      // 不能复用开启时的 commitLinkedGridVisualTransaction，否则会先进入 visualPending
+      // 挂起画面、并在任一 lane commit 失败时把 owner 砸成 idle 清零 viewport，造成黑一下 + 卡顿。
+      params.clearLinkedPresentation?.(buildClearLinkedPresentationPlaybackStates())
       params.syncDeckRenderState({ force: 'all' })
       return
     }
+    const provisionalSyncDecks = {
+      leader: deck === 'top' ? 'bottom' : 'top',
+      follower: deck
+    } satisfies { leader: DeckKey; follower: DeckKey }
     const anchorSec = Number(snapshot.currentSec)
-    await params.nativeTransport.alignToLeader(
-      deck,
-      Number.isFinite(anchorSec) ? anchorSec : undefined,
-      false
-    )
-    params.syncDeckRenderState({ force: 'all' })
-    await nextTick()
-    const activeSyncDecks = resolveActiveBeatSyncDecks(deck)
-    if (activeSyncDecks) {
-      await params.commitLinkedGridVisualTransaction?.(activeSyncDecks)
+    params.beginLinkedGridVisualTransaction?.(provisionalSyncDecks)
+    let visualTransactionFinished = false
+    try {
+      await params.nativeTransport.alignToLeader(
+        deck,
+        Number.isFinite(anchorSec) ? anchorSec : undefined,
+        false
+      )
+      params.syncDeckRenderState({ force: 'all' })
+      await nextTick()
+      const activeSyncDecks = resolveActiveBeatSyncDecks(deck)
+      if (activeSyncDecks) {
+        await params.commitLinkedGridVisualTransaction?.(activeSyncDecks, { begin: false })
+        visualTransactionFinished = true
+      }
+    } finally {
+      if (!visualTransactionFinished) {
+        params.cancelLinkedGridVisualTransaction?.(provisionalSyncDecks)
+      }
     }
   }
 

@@ -97,11 +97,15 @@ const topDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
 const bottomDetailRef = ref<HorizontalBrowseDeckDetailLaneExpose | null>(null)
 const resolveDetailRef = (deck: DeckKey) =>
   deck === 'top' ? topDetailRef.value : bottomDetailRef.value
-const { prepareDeckStableFrameForAnchor, commitLinkedGridVisualTransaction } =
-  createHorizontalBrowseModeShellDetailTransactions({
-    presentation: waveformPresentation,
-    resolveDetailRef
-  })
+const {
+  prepareDeckStableFrameForAnchor,
+  beginLinkedGridVisualTransaction,
+  cancelLinkedGridVisualTransaction,
+  commitLinkedGridVisualTransaction
+} = createHorizontalBrowseModeShellDetailTransactions({
+  presentation: waveformPresentation,
+  resolveDetailRef
+})
 const faderPanelRef = ref<InstanceType<typeof HorizontalBrowseFaderPanel> | null>(null)
 const topDeckToolbarState = ref(createDefaultDeckToolbarState())
 const bottomDeckToolbarState = ref(createDefaultDeckToolbarState())
@@ -194,7 +198,11 @@ const {
   startDeckRenderPlaybackClock,
   primeDeckRenderCurrentSeconds,
   notifyDeckSeekIntent
-} = useHorizontalBrowseTransportController()
+} = useHorizontalBrowseTransportController({
+  linkedGridVisualPending: () =>
+    waveformPresentation.state.top.visualPending === true ||
+    waveformPresentation.state.bottom.visualPending === true
+})
 const notifyDeckSeekPresentationIntent = (deck: DeckKey, seconds: number) => {
   waveformPresentation.markSeek(deck, seconds)
   notifyDeckSeekIntent(deck, seconds)
@@ -304,6 +312,8 @@ const { commitDeckStateToNative, commitDeckStatesToNative, toggleDeckMaster, tri
     nativeTransport,
     syncDeckRenderState,
     commitLinkedGridVisualTransaction,
+    beginLinkedGridVisualTransaction,
+    cancelLinkedGridVisualTransaction,
     clearLinkedPresentation: waveformPresentation.clearLinkedPresentation,
     resolveDeckSong,
     resolveDeckCurrentSeconds,
@@ -345,6 +355,7 @@ const {
   faderControlsExpanded,
   dualTransportSyncEnabled,
   dualTransportSyncActivating,
+  dualTransportSyncDeactivating,
   canUseDualTransportSync,
   activateDualTransportSync,
   deactivateDualTransportSync,
@@ -361,6 +372,8 @@ const {
   commitDeckStatesToNative,
   syncDeckRenderState,
   commitLinkedGridVisualTransaction,
+  beginLinkedGridVisualTransaction,
+  cancelLinkedGridVisualTransaction,
   clearLinkedPresentation: waveformPresentation.clearLinkedPresentation,
   resolveDeckSong,
   resolveDeckPlaying,
@@ -829,7 +842,9 @@ onUnmounted(() => {
         :native-transport="nativeTransport"
         :main-window-volume="mainWindowVolume"
         :transport-sync-enabled="dualTransportSyncEnabled || dualTransportSyncActivating"
-        :transport-sync-disabled="!canUseDualTransportSync || dualTransportSyncActivating"
+        :transport-sync-disabled="
+          !canUseDualTransportSync || dualTransportSyncActivating || dualTransportSyncDeactivating
+        "
         @toggle-transport-sync="handleDualTransportSyncToggle"
       />
 
@@ -929,7 +944,6 @@ onUnmounted(() => {
           :linked-drag-active="isDeckWaveformDragging('top')"
           :linked-drag-anchor-sec="resolveDeckWaveformDragAnchorSec('top')"
           :linked-grid-active="!isEditMode && shouldPreserveGridShiftPhase('top')"
-          :linked-grid-visual-pending="dualTransportSyncActivating"
           :presentation-state="waveformPresentation.state.top"
           :max-zoom="
             isEditMode ? HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM : HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM
@@ -973,7 +987,6 @@ onUnmounted(() => {
           :linked-drag-active="isDeckWaveformDragging('bottom')"
           :linked-drag-anchor-sec="resolveDeckWaveformDragAnchorSec('bottom')"
           :linked-grid-active="shouldPreserveGridShiftPhase('bottom')"
-          :linked-grid-visual-pending="dualTransportSyncActivating"
           :presentation-state="waveformPresentation.state.bottom"
           :max-zoom="HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM"
           waveform-layout="auto"

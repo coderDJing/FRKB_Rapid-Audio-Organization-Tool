@@ -7,6 +7,7 @@ import type {
   HorizontalBrowseTransportDeckSnapshot
 } from '@renderer/components/horizontalBrowseNativeTransport'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/components/useHorizontalBrowseRenderSync'
+import type { HorizontalBrowseLinkedGridVisualTransactionDeckState } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 
 type DeckKey = HorizontalBrowseDeckKey
 export type HorizontalBrowseBandKey = keyof HorizontalBrowseTransportBandState
@@ -28,10 +29,16 @@ type UseHorizontalBrowseFaderControlsParams = {
   }
   commitDeckStatesToNative: () => Promise<unknown>
   syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
-  commitLinkedGridVisualTransaction?: (payload: {
-    leader: DeckKey
-    follower: DeckKey
-  }) => Promise<boolean> | boolean
+  commitLinkedGridVisualTransaction?: (
+    payload: {
+      leader: DeckKey
+      follower: DeckKey
+      deckStates?: Partial<Record<DeckKey, HorizontalBrowseLinkedGridVisualTransactionDeckState>>
+    },
+    options?: { begin?: boolean }
+  ) => Promise<boolean> | boolean
+  beginLinkedGridVisualTransaction?: (payload: { leader: DeckKey; follower: DeckKey }) => void
+  cancelLinkedGridVisualTransaction?: (payload: { leader: DeckKey; follower: DeckKey }) => void
   clearLinkedPresentation?: (playbackStates?: HorizontalBrowseClearLinkedPresentationState) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
   resolveDeckPlaying: (deck: DeckKey) => boolean
@@ -74,7 +81,9 @@ export const useHorizontalBrowseFaderControls = (
   const faderControlsExpanded = ref(Boolean(params.setting.horizontalBrowseFaderControlsExpanded))
   const dualTransportSyncEnabled = ref(false)
   const dualTransportSyncActivating = ref(false)
+  const dualTransportSyncDeactivating = ref(false)
   let dualTransportSyncActivationToken = 0
+  let dualTransportSyncDeactivationPromise: Promise<void> | null = null
   const canUseDualTransportSync = computed(() =>
     Boolean(params.topDeckSong.value && params.bottomDeckSong.value)
   )
@@ -105,16 +114,47 @@ export const useHorizontalBrowseFaderControls = (
     return current >= Math.max(0, duration - DECK_END_EPSILON_SEC)
   }
 
+  const waitForPendingDualTransportSyncDeactivation = async () => {
+    if (!dualTransportSyncDeactivationPromise) return
+    await dualTransportSyncDeactivationPromise
+  }
+
   const deactivateDualTransportSync = () => {
-    if (!dualTransportSyncEnabled.value && !dualTransportSyncActivating.value) return
-    dualTransportSyncActivationToken += 1
+    if (
+      !dualTransportSyncEnabled.value &&
+      !dualTransportSyncActivating.value &&
+      !dualTransportSyncDeactivating.value
+    ) {
+      return
+    }
+    const deactivationToken = dualTransportSyncActivationToken + 1
+    dualTransportSyncActivationToken = deactivationToken
     dualTransportSyncEnabled.value = false
     dualTransportSyncActivating.value = false
-    params.clearLinkedPresentation?.(buildClearLinkedPresentationPlaybackStates())
-    void Promise.allSettled([
-      params.nativeTransport.setSyncEnabled('top', false),
-      params.nativeTransport.setSyncEnabled('bottom', false)
-    ])
+    dualTransportSyncDeactivating.value = true
+    let deactivationTask: Promise<void> | null = null
+    deactivationTask = (async () => {
+      try {
+        await Promise.allSettled([
+          params.nativeTransport.setSyncEnabled('top', false),
+          params.nativeTransport.setSyncEnabled('bottom', false)
+        ])
+        params.syncDeckRenderState()
+        await nextTick()
+        params.clearLinkedPresentation?.(buildClearLinkedPresentationPlaybackStates())
+      } catch {
+        // Keep deactivation best-effort so the UI state can still clear in finally.
+      } finally {
+        await waitForLinkedGridVisualHold()
+        if (dualTransportSyncActivationToken === deactivationToken) {
+          dualTransportSyncDeactivating.value = false
+        }
+        if (deactivationTask && dualTransportSyncDeactivationPromise === deactivationTask) {
+          dualTransportSyncDeactivationPromise = null
+        }
+      }
+    })()
+    dualTransportSyncDeactivationPromise = deactivationTask
   }
 
   const resolveDualTransportLeader = (sourceDeck?: DeckKey): DeckKey => {
@@ -130,14 +170,20 @@ export const useHorizontalBrowseFaderControls = (
 
   const activateDualTransportSync = async (sourceDeck?: DeckKey) => {
     if (!canUseDualTransportSync.value) return false
+    await waitForPendingDualTransportSyncDeactivation()
     if (dualTransportSyncActivating.value) return true
     const activationToken = dualTransportSyncActivationToken + 1
     dualTransportSyncActivationToken = activationToken
+    const leader = resolveDualTransportLeader(sourceDeck)
+    const follower: DeckKey = leader === 'top' ? 'bottom' : 'top'
+    const visualTransaction = { leader, follower }
+    let visualTransactionStarted = false
+    let visualTransactionFinished = false
     dualTransportSyncActivating.value = true
+    params.beginLinkedGridVisualTransaction?.(visualTransaction)
+    visualTransactionStarted = true
     await nextTick()
     try {
-      const leader = resolveDualTransportLeader(sourceDeck)
-      const follower: DeckKey = leader === 'top' ? 'bottom' : 'top'
       const topWasPlaying = params.resolveDeckPlaying('top')
       const bottomWasPlaying = params.resolveDeckPlaying('bottom')
       await params.commitDeckStatesToNative()
@@ -154,16 +200,48 @@ export const useHorizontalBrowseFaderControls = (
           await params.nativeTransport.setPlaying('bottom', true)
         }
       }
-      params.syncDeckRenderState({ force: 'all' })
+      // Let the render clock reanchor only when the native snapshot actually changed.
+      // For an already aligned close/open cycle, forcing both decks bumps playback
+      // revisions and creates a visible one-frame pause for no semantic change.
+      params.syncDeckRenderState()
       await nextTick()
       try {
-        await params.commitLinkedGridVisualTransaction?.({ leader, follower })
-      } catch {}
+        const commitStartedAtMs = performance.now()
+        const resolveCommitDeckState = (
+          deck: DeckKey
+        ): HorizontalBrowseLinkedGridVisualTransactionDeckState => {
+          const snapshot = params.resolveTransportDeckSnapshot(deck)
+          return {
+            currentSeconds: Number(snapshot.currentSec ?? snapshot.renderCurrentSec) || 0,
+            playbackRate: Math.max(0.25, Number(snapshot.playbackRate) || 1),
+            playbackActive: snapshot.playing === true || snapshot.playingAudible === true,
+            startedAtMs: commitStartedAtMs
+          }
+        }
+        await params.commitLinkedGridVisualTransaction?.(
+          {
+            ...visualTransaction,
+            deckStates: {
+              top: resolveCommitDeckState('top'),
+              bottom: resolveCommitDeckState('bottom')
+            }
+          },
+          {
+            begin: false
+          }
+        )
+        visualTransactionFinished = true
+      } catch {
+        // Failed visual transaction commits are handled by the cancellation path below.
+      }
       if (dualTransportSyncActivationToken === activationToken) {
         dualTransportSyncEnabled.value = true
       }
       return true
     } finally {
+      if (visualTransactionStarted && !visualTransactionFinished) {
+        params.cancelLinkedGridVisualTransaction?.(visualTransaction)
+      }
       await waitForLinkedGridVisualHold()
       if (dualTransportSyncActivationToken === activationToken) {
         dualTransportSyncActivating.value = false
@@ -172,6 +250,7 @@ export const useHorizontalBrowseFaderControls = (
   }
 
   const handleDualTransportSyncToggle = () => {
+    if (dualTransportSyncDeactivating.value) return
     if (dualTransportSyncEnabled.value || dualTransportSyncActivating.value) {
       deactivateDualTransportSync()
       return
@@ -264,6 +343,7 @@ export const useHorizontalBrowseFaderControls = (
     faderControlsExpanded,
     dualTransportSyncEnabled,
     dualTransportSyncActivating,
+    dualTransportSyncDeactivating,
     canUseDualTransportSync,
     activateDualTransportSync,
     deactivateDualTransportSync,

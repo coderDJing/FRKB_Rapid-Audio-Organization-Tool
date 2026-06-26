@@ -3,7 +3,10 @@ import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type { HorizontalBrowseGridToolbarState } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import type { HorizontalBrowseScrubPreviewPayload } from '@renderer/components/useHorizontalBrowseWaveformScrubPreview'
 import type { HorizontalBrowseWaveformPresentationState } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
-import type { HorizontalBrowseLinkedGridVisualTransactionResult } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
+import type {
+  HorizontalBrowseLinkedGridVisualTransactionDeckState,
+  HorizontalBrowseLinkedGridVisualTransactionResult
+} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 
 export type HorizontalBrowseSharedZoomState = {
   value: number
@@ -88,5 +91,7 @@ export type HorizontalBrowseRawWaveformDetailExpose = {
     seconds: number,
     options?: { timeoutMs?: number }
   ) => Promise<boolean>
-  commitLinkedGridVisualTransaction: () => HorizontalBrowseLinkedGridVisualTransactionResult | null
+  commitLinkedGridVisualTransaction: (
+    deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState
+  ) => HorizontalBrowseLinkedGridVisualTransactionResult | null
 }

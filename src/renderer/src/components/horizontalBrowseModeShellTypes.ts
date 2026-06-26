@@ -1,5 +1,8 @@
 import type { HorizontalBrowseGridShiftOptions } from '@renderer/components/useHorizontalBrowseGridToolbar'
-import type { HorizontalBrowseLinkedGridVisualTransactionResult } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
+import type {
+  HorizontalBrowseLinkedGridVisualTransactionDeckState,
+  HorizontalBrowseLinkedGridVisualTransactionResult
+} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 
 export type HorizontalBrowseViewMode = 'dual' | 'edit'
 
@@ -27,7 +30,9 @@ export type HorizontalBrowseDeckDetailLaneExpose = {
     seconds: number,
     options?: { timeoutMs?: number }
   ) => Promise<boolean>
-  commitLinkedGridVisualTransaction?: () => HorizontalBrowseLinkedGridVisualTransactionResult | null
+  commitLinkedGridVisualTransaction?: (
+    deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState
+  ) => HorizontalBrowseLinkedGridVisualTransactionResult | null
 }
 
 export const EDIT_MODE_BPM_INPUT_TITLE = '网格 BPM：修改分析结果和网格线，不改变播放速度'

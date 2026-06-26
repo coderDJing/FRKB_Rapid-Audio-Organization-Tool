@@ -25,6 +25,7 @@ import type {
   HorizontalBrowseRawWaveformDetailEmit,
   HorizontalBrowseRawWaveformDetailProps
 } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
+import type { HorizontalBrowseLinkedGridVisualTransactionDeckState } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailExpose'
 import {
   createHorizontalBrowsePlaybackDiscontinuityDetector,
@@ -77,6 +78,10 @@ const stableRenderRevision = computed(() => {
   }
   if (
     state?.owner === 'sync-transaction' ||
+    (state?.owner === 'playback' &&
+      state.sourceDeck === null &&
+      state.visualPending === false &&
+      lastPresentationStableRenderRevision > 0) ||
     state?.visualPending === true ||
     props.linkedGridVisualPending === true
   ) {
@@ -520,7 +525,9 @@ const {
   linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
   normalizePreviewTimelineSeconds,
   resolveVisibleDurationSec,
+  resolvePreviewDurationSec,
   resolveWaveformCurrentSeconds,
+  allowNegativeTimeline: () => Boolean(props.allowNegativeTimeline),
   clampPreviewStart,
   stopStableCanvasPlayback,
   drawWaveformNow,
@@ -530,10 +537,10 @@ const {
   resolveIncomingPreviewTimeScale,
   resolveWaveformPlaybackRate,
   resolveGridTimeBasis: () => ({
-    bpm: visualGridRenderBpm.value,
-    firstBeatMs: visualGridFirstBeatMs.value,
-    barBeatOffset: visualGridBarBeatOffset.value,
-    timeBasisOffsetMs: visualGridTimeBasisOffsetMs.value
+    bpm: previewRenderBpm.value,
+    firstBeatMs: previewFirstBeatMs.value,
+    barBeatOffset: previewBarBeatOffset.value,
+    timeBasisOffsetMs: previewTimeBasisOffsetMs.value
   }),
   invalidateWaveformTiles,
   resetGridRenderer,
@@ -548,8 +555,9 @@ const {
   }
 })
 
-const commitLinkedGridVisualTransaction = () =>
-  props.song?.filePath ? commitLinkedGridVisualPresentationTransaction() : null
+const commitLinkedGridVisualTransaction = (
+  deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState
+) => (props.song?.filePath ? commitLinkedGridVisualPresentationTransaction(deckState) : null)
 
 const { handleSharedZoomState, handlePresentationState } =
   createHorizontalBrowseDetailPresentationConsumer({
@@ -805,6 +813,9 @@ watch(
   () => waveformPlaybackActive.value,
   (playing, previousPlaying) => {
     previewPlaying.value = playing
+    if (presentationLinkedGridVisualPending.value) {
+      return
+    }
     if (dragging.value) {
       if (!playing && previousPlaying === true) {
         const stableWaveformSource = compactVisualWaveformActive.value

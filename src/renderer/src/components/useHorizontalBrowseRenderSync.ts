@@ -26,6 +26,7 @@ type UseHorizontalBrowseRenderSyncParams = {
   }
   resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
   resolveDeckPlaying: (deck: DeckKey) => boolean
+  linkedGridVisualPending?: () => boolean
 }
 
 const TRANSPORT_SNAPSHOT_FALLBACK_INTERVAL_IDLE_MS = 1000
@@ -310,6 +311,19 @@ export const useHorizontalBrowseRenderSync = (params: UseHorizontalBrowseRenderS
         (force ||
           fullSyncPhaseChanged ||
           (snapshot.playing && (!previousSignature || driftSec >= RENDER_SYNC_REANCHOR_DRIFT_SEC))))
+    const visualPending = params.linkedGridVisualPending?.() === true
+    const suppressedByVisualPending = visualPending && !force
+
+    if (suppressedByVisualPending) {
+      assignDeckRenderCurrentSeconds(
+        deck,
+        renderEstimatedSec,
+        topDeckRenderCurrentSeconds,
+        bottomDeckRenderCurrentSeconds,
+        renderNowMs
+      )
+      return
+    }
 
     if (shouldReanchor) {
       deckRenderSyncBaseSec[deck] = snapshotSec

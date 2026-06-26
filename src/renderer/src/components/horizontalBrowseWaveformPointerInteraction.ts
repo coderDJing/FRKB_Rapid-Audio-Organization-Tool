@@ -158,7 +158,7 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
     })
     if (refreshWaveform) {
       options.maybeContinueWaveformSource(finalAnchorSec)
-      if (dragRelease.requiresRender) {
+      if (dragRelease.requiresRender && !committed) {
         options.drawWaveformNow({ preferPreviewStart: true })
       }
     }

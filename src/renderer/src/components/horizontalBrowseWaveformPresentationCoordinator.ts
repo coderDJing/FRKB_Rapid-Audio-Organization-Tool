@@ -158,7 +158,7 @@ const buildClearLinkedPresentationPatch = (
   const startedAtMs = resolveOptionalNumber(playbackState?.startedAtMs)
   const playing = playbackState?.playing === true
   return {
-    owner: playing ? 'playback' : 'idle',
+    owner: 'playback',
     sourceDeck: null,
     affectedDecks: ['top', 'bottom'],
     anchorSec,
@@ -390,17 +390,17 @@ export const useHorizontalBrowseWaveformPresentationCoordinator = () => {
     const bottomResult = results.bottom
     const canCommit = committed && topResult?.committed === true && bottomResult?.committed === true
     if (!canCommit) {
+      // 事务取消时退回普通 playback handoff，保留各 deck 当前 anchor/viewport，
+      // 让 detail consumer 沿用现有可见帧继续滚动。禁止砸成 idle 并清零 viewport，
+      // 否则 consumer 对 idle 不绘制，canvas 失去视口直接黑一下。
       commitDecks(affectedDecks, {
-        owner: 'idle',
-        sourceDeck: leader,
+        owner: 'playback',
+        sourceDeck: null,
         affectedDecks,
         linked: false,
         visualPending: false,
         gridTimeBasis: null,
         playbackClock: null,
-        anchorSec: null,
-        viewportStartSec: null,
-        visibleDurationSec: null,
         timeScale: 1
       })
       return

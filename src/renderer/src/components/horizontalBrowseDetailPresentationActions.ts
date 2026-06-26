@@ -1,10 +1,12 @@
 import type { Ref } from 'vue'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
 import type {
+  HorizontalBrowseLinkedGridVisualTransactionDeckState,
   HorizontalBrowseLinkedGridVisualTransactionGridTimeBasis,
   HorizontalBrowseLinkedGridVisualTransactionResult
 } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 import { HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO } from '@renderer/components/horizontalBrowseWaveform.constants'
+import { clampHorizontalBrowsePreviewStartByVisibleDuration } from '@renderer/components/horizontalBrowseDetailMath'
 
 const STABLE_FRAME_PREPARE_TIMEOUT_MS = 700
 const STABLE_FRAME_PREPARE_ANCHOR_EPSILON_SEC = 0.08
@@ -20,7 +22,9 @@ type HorizontalBrowseDetailPresentationActionsParams = {
   linkedGridVisualPending: () => boolean
   normalizePreviewTimelineSeconds: (seconds: number) => number
   resolveVisibleDurationSec: () => number
+  resolvePreviewDurationSec: () => number
   resolveWaveformCurrentSeconds: () => number
+  allowNegativeTimeline: () => boolean
   clampPreviewStart: (seconds: number) => number
   stopStableCanvasPlayback: () => void
   drawWaveformNow: (options?: { preferPreviewStart?: boolean; viewportOnly?: boolean }) => void
@@ -132,52 +136,112 @@ export const createHorizontalBrowseDetailPresentationActions = (
     return true
   }
 
-  const commitLinkedGridVisualTransaction =
-    (): HorizontalBrowseLinkedGridVisualTransactionResult => {
-      const targetSeconds = Number(params.currentSeconds()) || 0
-      clearPlaybackStableFrameRenderTimer()
-      params.localGridShiftPhaseOffsetSec.value = 0
+  const resolveVisibleDurationSecForTimeScale = (timeScale: number) => {
+    const safeNextScale = Math.max(0.25, Number(timeScale) || 1)
+    const safePreviousScale = Math.max(
+      0.25,
+      Number(params.getLastAppliedPreviewTimeScale()) || safeNextScale
+    )
+    const currentVisibleDurationSec = Math.max(
+      0.001,
+      Number(params.resolveVisibleDurationSec()) || 0
+    )
+    return Math.max(0.001, currentVisibleDurationSec * (safeNextScale / safePreviousScale))
+  }
+
+  const clampPreviewStartForVisibleDuration = (value: number, visibleDurationSec: number) =>
+    clampHorizontalBrowsePreviewStartByVisibleDuration(
+      value,
+      params.resolvePreviewDurationSec(),
+      visibleDurationSec,
+      params.allowNegativeTimeline()
+    )
+
+  const commitLinkedGridVisualTransaction = (
+    deckState: HorizontalBrowseLinkedGridVisualTransactionDeckState = {}
+  ): HorizontalBrowseLinkedGridVisualTransactionResult => {
+    const targetSeconds = Number(deckState.currentSeconds ?? params.currentSeconds()) || 0
+    const playbackActive = deckState.playbackActive ?? params.waveformPlaybackActive()
+    const playbackRate = Math.max(
+      0.25,
+      Number(deckState.playbackRate ?? params.resolveWaveformPlaybackRate()) || 1
+    )
+    const playbackStartedAtMs =
+      Number.isFinite(Number(deckState.startedAtMs)) && Number(deckState.startedAtMs) >= 0
+        ? Number(deckState.startedAtMs)
+        : performance.now()
+    clearPlaybackStableFrameRenderTimer()
+    const safeSeconds = params.normalizePreviewTimelineSeconds(targetSeconds)
+    const linkedGridVisualPending = params.linkedGridVisualPending()
+    if (linkedGridVisualPending) {
       params.syncGridStateFromSong()
-      params.syncVisualGridStateFromPreview()
-      const safeSeconds = params.normalizePreviewTimelineSeconds(targetSeconds)
-      applyIncomingPreviewTimeScale(false)
-      params.applyPreviewPlaybackPosition(safeSeconds, false)
-      params.resetGridRenderer()
-      params.maybeContinueWaveformSource(safeSeconds)
-      if (!params.linkedGridVisualPending()) {
-        if (params.waveformPlaybackActive()) {
-          schedulePlaybackStableFrameRender()
-        } else {
-          params.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
-        }
-        params.publishLinkedGridVisualPhaseSample()
-      }
-      params.markLinkedGridVisualTransactionCommitted()
-      const visibleDurationSec = params.resolveVisibleDurationSec()
-      const timeScale = Math.max(
-        0.25,
-        Number(params.getLastAppliedPreviewTimeScale()) ||
-          Number(params.resolveIncomingPreviewTimeScale()) ||
-          1
+      const timeScale = Math.max(0.25, Number(params.resolveIncomingPreviewTimeScale()) || 1)
+      const visibleDurationSec = resolveVisibleDurationSecForTimeScale(timeScale)
+      const viewportStartSec = clampPreviewStartForVisibleDuration(
+        safeSeconds - visibleDurationSec * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
+        visibleDurationSec
       )
+      const gridTimeBasis = params.resolveGridTimeBasis()
+      params.markLinkedGridVisualTransactionCommitted()
       return {
         deck: params.deck(),
         committed: true,
         anchorSec: safeSeconds,
-        viewportStartSec: params.previewStartSec.value,
+        viewportStartSec,
         visibleDurationSec,
         anchorRatio: HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
         timeScale,
-        gridTimeBasis: params.resolveGridTimeBasis(),
-        playbackClock: params.waveformPlaybackActive()
+        gridTimeBasis,
+        playbackClock: playbackActive
           ? {
               seconds: safeSeconds,
-              startedAtMs: performance.now(),
-              playbackRate: Math.max(0.25, Number(params.resolveWaveformPlaybackRate()) || 1)
+              startedAtMs: playbackStartedAtMs,
+              playbackRate
             }
           : null
       }
     }
+    params.localGridShiftPhaseOffsetSec.value = 0
+    params.syncGridStateFromSong()
+    params.syncVisualGridStateFromPreview()
+    applyIncomingPreviewTimeScale(false)
+    params.applyPreviewPlaybackPosition(safeSeconds, false)
+    params.resetGridRenderer()
+    params.maybeContinueWaveformSource(safeSeconds)
+    if (!linkedGridVisualPending) {
+      if (params.waveformPlaybackActive()) {
+        schedulePlaybackStableFrameRender()
+      } else {
+        params.scheduleDraw({ preferPreviewStart: true, viewportOnly: true })
+      }
+      params.publishLinkedGridVisualPhaseSample()
+    }
+    params.markLinkedGridVisualTransactionCommitted()
+    const visibleDurationSec = params.resolveVisibleDurationSec()
+    const timeScale = Math.max(
+      0.25,
+      Number(params.getLastAppliedPreviewTimeScale()) ||
+        Number(params.resolveIncomingPreviewTimeScale()) ||
+        1
+    )
+    return {
+      deck: params.deck(),
+      committed: true,
+      anchorSec: safeSeconds,
+      viewportStartSec: params.previewStartSec.value,
+      visibleDurationSec,
+      anchorRatio: HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
+      timeScale,
+      gridTimeBasis: params.resolveGridTimeBasis(),
+      playbackClock: playbackActive
+        ? {
+            seconds: safeSeconds,
+            startedAtMs: playbackStartedAtMs,
+            playbackRate
+          }
+        : null
+    }
+  }
 
   return {
     clearPlaybackStableFrameRenderTimer,

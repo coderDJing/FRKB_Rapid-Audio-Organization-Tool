@@ -11,6 +11,7 @@ import type {
   HorizontalBrowseRawWaveformDetailExpose
 } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
 import type { HorizontalBrowseWaveformPresentationState } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
+import type { HorizontalBrowseLinkedGridVisualTransactionDeckState } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 
 type HorizontalBrowseSharedZoomState = {
   value: number
@@ -87,8 +88,9 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   cycleMetronomeState: () => detailRef.value?.cycleMetronomeState?.(),
   prepareStableFrameForAnchor: (seconds: number, options?: { timeoutMs?: number }) =>
     detailRef.value?.prepareStableFrameForAnchor?.(seconds, options) ?? Promise.resolve(false),
-  commitLinkedGridVisualTransaction: () =>
-    detailRef.value?.commitLinkedGridVisualTransaction?.() ?? null
+  commitLinkedGridVisualTransaction: (
+    deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState
+  ) => detailRef.value?.commitLinkedGridVisualTransaction?.(deckState) ?? null
 })
 </script>
 

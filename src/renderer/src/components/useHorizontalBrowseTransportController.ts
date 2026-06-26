@@ -10,6 +10,10 @@ import type {
 type DeckKey = HorizontalBrowseDeckKey
 const MAX_SNAPSHOT_EVENT_AGE_MS = 10000
 
+type UseHorizontalBrowseTransportControllerOptions = {
+  linkedGridVisualPending?: () => boolean
+}
+
 const resolveSnapshotAtMs = (snapshot: HorizontalBrowseTransportSnapshot, receivedAtMs: number) => {
   const capturedAtEpochMs = Number(snapshot.capturedAtEpochMs)
   if (!Number.isFinite(capturedAtEpochMs) || capturedAtEpochMs <= 0) {
@@ -22,7 +26,9 @@ const resolveSnapshotAtMs = (snapshot: HorizontalBrowseTransportSnapshot, receiv
   return Math.max(0, receivedAtMs - Math.min(ageMs, MAX_SNAPSHOT_EVENT_AGE_MS))
 }
 
-export const useHorizontalBrowseTransportController = () => {
+export const useHorizontalBrowseTransportController = (
+  options: UseHorizontalBrowseTransportControllerOptions = {}
+) => {
   const nativeTransport = createHorizontalBrowseNativeTransport()
   const deckSyncState = nativeTransport.state
   const deckSeekIntent = reactive<Record<DeckKey, { seconds: number; revision: number }>>({
@@ -67,7 +73,8 @@ export const useHorizontalBrowseTransportController = () => {
   } = useHorizontalBrowseRenderSync({
     nativeTransport,
     resolveTransportDeckSnapshot,
-    resolveDeckPlaying
+    resolveDeckPlaying,
+    linkedGridVisualPending: options.linkedGridVisualPending
   })
   let stopSnapshotSubscription: (() => void) | null = null
 

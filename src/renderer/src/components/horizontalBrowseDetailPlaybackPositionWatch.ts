@@ -137,16 +137,6 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
           safeSeekRevision > 0 &&
           safeSeekRevision !== previousSeekRevision
         if (linkedGridVisualPending) {
-          if (params.compactVisualWaveformActive.value && playing) {
-            const result = params.applyStableCanvasPresentation(safeSeconds, {
-              allowReanchor: params.stablePlaybackReanchorCanReanchor(),
-              requirePresentable: false,
-              allowRevisionHandoff: true
-            })
-            if (result.applied) {
-              params.reanchorStableCanvasPlayback(safeSeconds, params.resolveWaveformPlaybackRate())
-            }
-          }
           return
         }
         if (resumedFromLinkedGridVisualPending && params.linkedGridVisualTransactionCommitted()) {

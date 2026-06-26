@@ -2,6 +2,7 @@ import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBro
 import type { HorizontalBrowseDeckDetailLaneExpose } from '@renderer/components/horizontalBrowseModeShellTypes'
 import {
   alignHorizontalBrowseLinkedGridVisualTransactionResults,
+  type HorizontalBrowseLinkedGridVisualTransactionDeckState,
   type HorizontalBrowseLinkedGridVisualTransactionResults
 } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 
@@ -22,6 +23,16 @@ type ShellDetailTransactionsParams = {
   resolveDetailRef: (deck: DeckKey) => HorizontalBrowseDeckDetailLaneExpose | null
 }
 
+type LinkedGridVisualTransactionPayload = {
+  leader: DeckKey
+  follower: DeckKey
+  deckStates?: Partial<Record<DeckKey, HorizontalBrowseLinkedGridVisualTransactionDeckState>>
+}
+
+type LinkedGridVisualTransactionOptions = {
+  begin?: boolean
+}
+
 export const createHorizontalBrowseModeShellDetailTransactions = ({
   presentation,
   resolveDetailRef
@@ -34,19 +45,41 @@ export const createHorizontalBrowseModeShellDetailTransactions = ({
     resolveDetailRef(deck)?.prepareStableFrameForAnchor?.(seconds, options) ??
     Promise.resolve(false)
 
-  const commitLinkedGridVisualTransaction = async (payload?: {
-    leader: DeckKey
-    follower: DeckKey
-  }) => {
+  const resolveTransactionDecks = (payload?: LinkedGridVisualTransactionPayload) => {
     const leader = payload?.leader ?? 'top'
     const follower = payload?.follower ?? (leader === 'top' ? 'bottom' : 'top')
+    return { leader, follower }
+  }
+
+  const beginLinkedGridVisualTransaction = (payload?: LinkedGridVisualTransactionPayload) => {
+    const { leader, follower } = resolveTransactionDecks(payload)
     presentation.beginSyncTransaction(leader, follower)
+  }
+
+  const cancelLinkedGridVisualTransaction = (payload?: LinkedGridVisualTransactionPayload) => {
+    const { leader, follower } = resolveTransactionDecks(payload)
+    presentation.finishSyncTransaction(leader, follower, false, {})
+  }
+
+  const commitLinkedGridVisualTransaction = async (
+    payload?: LinkedGridVisualTransactionPayload,
+    options: LinkedGridVisualTransactionOptions = {}
+  ) => {
+    const { leader, follower } = resolveTransactionDecks(payload)
+    if (options.begin !== false) {
+      presentation.beginSyncTransaction(leader, follower)
+    }
     let committed = false
     let results: HorizontalBrowseLinkedGridVisualTransactionResults = {}
     try {
+      const deckStates = payload?.deckStates ?? {}
       const [topResult, bottomResult] = await Promise.all([
-        Promise.resolve(resolveDetailRef('top')?.commitLinkedGridVisualTransaction?.() ?? null),
-        Promise.resolve(resolveDetailRef('bottom')?.commitLinkedGridVisualTransaction?.() ?? null)
+        Promise.resolve(
+          resolveDetailRef('top')?.commitLinkedGridVisualTransaction?.(deckStates.top) ?? null
+        ),
+        Promise.resolve(
+          resolveDetailRef('bottom')?.commitLinkedGridVisualTransaction?.(deckStates.bottom) ?? null
+        )
       ])
       results.top = topResult
       results.bottom = bottomResult
@@ -62,6 +95,8 @@ export const createHorizontalBrowseModeShellDetailTransactions = ({
 
   return {
     prepareDeckStableFrameForAnchor,
+    beginLinkedGridVisualTransaction,
+    cancelLinkedGridVisualTransaction,
     commitLinkedGridVisualTransaction
   }
 }

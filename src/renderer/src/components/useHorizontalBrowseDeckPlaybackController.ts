@@ -666,9 +666,12 @@ export const useHorizontalBrowseDeckPlaybackController = (
     })
     if (!payload?.committed) return
 
-    params.notifyDeckSeekIntent(deck, targetSec)
+    const initialActiveSyncDecks = resolveActiveBeatSyncDecks(deck)
+    if (!initialActiveSyncDecks) {
+      params.notifyDeckSeekIntent(deck, targetSec)
+    }
     void (async () => {
-      let activeSyncDecks = resolveActiveBeatSyncDecks(deck)
+      let activeSyncDecks = initialActiveSyncDecks
       if (pausePromise) {
         await pausePromise
         if (deckWaveformDragState[deck].token !== token) {

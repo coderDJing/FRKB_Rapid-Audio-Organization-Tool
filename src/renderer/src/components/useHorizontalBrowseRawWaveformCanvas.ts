@@ -53,6 +53,7 @@ const STABLE_VIEWPORT_RENDER_HOLD_MS = 90
 const STABLE_FULL_RENDER_DELAY_MS = 96
 const STABLE_SEEK_REVEAL_HOLD_MS = 0
 const WAVEFORM_SURFACE_FADE_IN_MS = 50
+type StableRevisionRenderKind = 'anchor' | 'playback' | 'viewport'
 
 export const useHorizontalBrowseRawWaveformCanvas = (
   options: UseHorizontalBrowseRawWaveformCanvasOptions
@@ -92,6 +93,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let stablePresentationRevealAfterMs = 0
   let stableSurfaceForceHidden = false
   let surfaceVisible: boolean | null = null
+  let stableRevisionHandoffSurfaceActive = false
+  let pendingStableRevisionRender: {
+    revision: number
+    token: number
+    kind: StableRevisionRenderKind
+  } | null = null
   let dragPresentationActive = false
   let dragPresentationBaseOffsetCssPx = 0
   let preserveSurfaceUntilNextReady = false
@@ -109,8 +116,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     resolveViewportRangeStartSec: (seconds) => resolvePlaybackAlignedStart(seconds),
     waveformCanvas: () => liveCanvasBuffers.presentationWaveformCanvas(),
     overlayCanvas: () => liveCanvasBuffers.presentationOverlayCanvas(),
-    scheduleDraw: () => drawWaveformNow(),
-    debugLabel: () => options.direction()
+    scheduleDraw: () => drawWaveformNow()
   })
 
   const liveCanvasBridge = createHorizontalBrowseDetailLiveCanvasBridge({
@@ -160,11 +166,22 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     })
   }
 
+  const hasStableRevisionHandoffSurface = () =>
+    stableRevisionHandoffSurfaceActive && preserveSurfaceUntilNextReady
+
+  const resolveDisplayReadyForReuse = () => displayReady.value || hasStableRevisionHandoffSurface()
+
   const syncWaveformSurfaceVisibility = (fadeIn: boolean) => {
     setWaveformSurfaceVisible(
-      placeholderVisible.value || (!stableSurfaceForceHidden && displayReady.value),
+      placeholderVisible.value ||
+        (!stableSurfaceForceHidden && (displayReady.value || preserveSurfaceUntilNextReady)),
       fadeIn
     )
+  }
+
+  const clearStableRevisionReplacementState = () => {
+    stableRevisionHandoffSurfaceActive = false
+    pendingStableRevisionRender = null
   }
 
   watch(
@@ -183,6 +200,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       displayReadyRevealGeneration += 1
       displayReady.value = false
       if (preserveSurfaceUntilNextReady) return
+      clearStableRevisionReplacementState()
       syncWaveformSurfaceVisibility(false)
       return
     }
@@ -199,6 +217,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           stableSurfaceForceHidden = false
           placeholderVisible.value = false
           displayReady.value = true
+          clearStableRevisionReplacementState()
           syncWaveformSurfaceVisibility(true)
         },
         Math.max(0, stablePresentationRevealAfterMs - nowMs)
@@ -212,10 +231,26 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       placeholderVisible.value = false
     }
     displayReady.value = ready
+    if (ready) {
+      clearStableRevisionReplacementState()
+    }
     preserveSurfaceUntilNextReady = false
     suppressNextSurfaceFadeIn = false
     syncWaveformSurfaceVisibility(fadeIn)
   }
+
+  const resolveStableRevisionRenderKind = (
+    preferPreviewStart: boolean,
+    viewportOnly: boolean
+  ): StableRevisionRenderKind => {
+    if (viewportOnly) return 'viewport'
+    return preferPreviewStart ? 'anchor' : 'playback'
+  }
+
+  const canReplacePendingStableRevisionRender = (
+    pendingKind: StableRevisionRenderKind,
+    incomingKind: StableRevisionRenderKind
+  ) => pendingKind !== 'anchor' && incomingKind === 'anchor'
 
   const resolveWaveformGain = () => {
     const numeric = Number(options.waveformGain?.() ?? 1)
@@ -234,6 +269,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     dragReleaseState.reset()
     preserveSurfaceUntilNextReady = false
     suppressNextSurfaceFadeIn = false
+    clearStableRevisionReplacementState()
     liveCanvasRenderToken += 1
     liveCanvasBridge.clearRaw()
     suppressNextPlaybackScrollReuse = false
@@ -256,6 +292,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const preserveDisplay = resetOptions.preserveDisplay === true && displayReady.value
     if (!preserveDisplay) {
       liveCanvasRenderToken += 1
+      clearStableRevisionReplacementState()
       setDisplayReady(false)
       liveCanvasBridge.clear()
       lastRenderedRawData = null
@@ -267,6 +304,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     lastQueuedStableRenderRevision = -1
     lastRenderedRangeStartSec = null
     lastRenderedRangeDurationSec = null
+    clearStableRevisionReplacementState()
     stablePresentation.clear()
   }
 
@@ -277,6 +315,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     dragReleaseState.reset()
     preserveSurfaceUntilNextReady = false
     suppressNextSurfaceFadeIn = false
+    clearStableRevisionReplacementState()
     placeholderVisible.value = false
     liveCanvasRenderToken += 1
     liveCanvasBridge.clear()
@@ -321,6 +360,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   const handleLiveCanvasRendered = (payload: LiveCanvasRenderedPayload) => {
     if (dragPresentationActive) return
     if (payload.renderToken !== liveCanvasRenderToken) return
+    const pendingStableRender = pendingStableRevisionRender
+    if (pendingStableRender?.token === payload.renderToken) {
+      pendingStableRevisionRender = null
+    }
     const placeholderPresentationReady = !payload.ready && placeholderVisible.value
     const preservePreviousSurfaceOnNotReady =
       !payload.ready &&
@@ -504,6 +547,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       !preferPreviewStart &&
       !viewportOnly &&
       nowMs < stableViewportRenderPendingUntilMs
+    const stableRevisionRenderKind = resolveStableRevisionRenderKind(
+      preferPreviewStart,
+      viewportOnly
+    )
+    const stableRevisionChanged =
+      stableWaveformSource && renderPlaybackSyncRevision !== lastQueuedStableRenderRevision
     const baseViewportRangeStartSec =
       preferPreviewStart || (!sourcePlaybackActive && !visualGridPhase.linked)
         ? payload.rangeStartSec
@@ -522,6 +571,23 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const viewportRangeStartSec = stableWaveformSource
       ? renderRangeStartSec + stableOverscanSec
       : renderRangeStartSec
+    const duplicateStableRevisionRenderPending =
+      stableWaveformSource &&
+      !stableRevisionChanged &&
+      !!pendingStableRevisionRender &&
+      pendingStableRevisionRender.revision === renderPlaybackSyncRevision &&
+      !displayReady.value &&
+      preserveSurfaceUntilNextReady
+    if (
+      duplicateStableRevisionRenderPending &&
+      pendingStableRevisionRender &&
+      !canReplacePendingStableRevisionRender(
+        pendingStableRevisionRender.kind,
+        stableRevisionRenderKind
+      )
+    ) {
+      return false
+    }
     if (suppressStablePlaybackRender) {
       scheduleStablePlaybackRenderRetry(stableViewportRenderPendingUntilMs)
       return false
@@ -558,13 +624,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     ) {
       return false
     }
+    const previousDisplayReady = resolveDisplayReadyForReuse()
     if (!stableWaveformSource) {
       lastQueuedStableRenderRevision = -1
-    } else if (renderPlaybackSyncRevision !== lastQueuedStableRenderRevision) {
+      clearStableRevisionReplacementState()
+    } else if (stableRevisionChanged) {
       liveCanvasBridge.stopPlayback()
-      preserveSurfaceUntilNextReady = true
-      suppressNextSurfaceFadeIn = true
-      setDisplayReady(false)
     }
     const renderToken = liveCanvasRenderToken + 1
     liveCanvasRenderToken = renderToken
@@ -575,6 +640,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       stableWaveformSource,
       renderToken,
       renderPlaybackSyncRevision,
+      sourcePlaybackActive,
       renderRangeStartSec,
       renderRangeDurationSec,
       viewportRangeStartSec,
@@ -585,6 +651,27 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       stableOverscanCssPx,
       pixelRatio
     )
+    if (stableWaveformSource) {
+      pendingStableRevisionRender = {
+        revision: renderPlaybackSyncRevision,
+        token: renderToken,
+        kind: stableRevisionRenderKind
+      }
+    }
+    if (stableRevisionChanged) {
+      const handoffMeasurement =
+        previousDisplayReady && sourcePlaybackActive
+          ? stablePresentation.measure(playbackSeconds, {
+              allowRevisionHandoff: true,
+              useFrameViewportForRevisionHandoff: true
+            })
+          : null
+      preserveSurfaceUntilNextReady = previousDisplayReady
+      suppressNextSurfaceFadeIn = previousDisplayReady
+      stableRevisionHandoffSurfaceActive =
+        previousDisplayReady && handoffMeasurement?.presentable === true
+      setDisplayReady(false)
+    }
     if (stableWaveformSource && viewportOnly) {
       stableViewportRenderPendingUntilMs = performance.now() + STABLE_VIEWPORT_RENDER_HOLD_MS
     }
@@ -700,11 +787,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const invalidateWaveformTiles = (invalidateOptions: { preserveDisplay?: boolean } = {}) => {
     liveCanvasRenderToken += 1
-    if (invalidateOptions.preserveDisplay === true && displayReady.value) {
+    if (invalidateOptions.preserveDisplay === true && resolveDisplayReadyForReuse()) {
       preserveSurfaceUntilNextReady = true
       suppressNextSurfaceFadeIn = true
       return
     }
+    clearStableRevisionReplacementState()
     liveCanvasBridge.clear()
   }
 
@@ -732,7 +820,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       drawOptions.preferPreviewStart === true
         ? resolveSnappedRenderStartSec(visibleDuration)
         : resolvePlaybackDrivenRenderStartSec(visibleDuration)
-    const wasDisplayReady = displayReady.value
+    const wasDisplayReady = resolveDisplayReadyForReuse()
     const stableWaveformSource = resolveStableWaveformSource()
     const playbackViewportMoving = options.playing.value && !options.dragging.value
     const playbackStartedThisDraw = playbackViewportMoving && !lastDrawPlaybackActive
@@ -927,6 +1015,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     dragReleaseState.reset()
     preserveSurfaceUntilNextReady = false
     suppressNextSurfaceFadeIn = false
+    clearStableRevisionReplacementState()
     dragPresentationBaseOffsetCssPx = resolveWaveformCanvasTranslateX()
     stablePresentation.stopPlayback()
     liveCanvasBridge.stopPlayback()
@@ -985,6 +1074,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     }
     stableSurfaceForceHidden = true
     setWaveformSurfaceVisible(false, false)
+    clearStableRevisionReplacementState()
     stablePresentation.clear()
     stablePresentationRevealAfterMs = performance.now() + STABLE_SEEK_REVEAL_HOLD_MS
     setDisplayReady(false)

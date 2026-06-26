@@ -1,6 +1,9 @@
 import type { HorizontalBrowseGridShiftOptions } from '@renderer/components/useHorizontalBrowseGridToolbar'
 import type { HorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
-import type { HorizontalBrowseLinkedGridVisualTransactionResult } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
+import type {
+  HorizontalBrowseLinkedGridVisualTransactionDeckState,
+  HorizontalBrowseLinkedGridVisualTransactionResult
+} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 
 const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX = 1
 const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX = 2.5
@@ -17,7 +20,9 @@ type CreateHorizontalBrowseRawWaveformDetailExposeParams = {
     seconds: number,
     options?: { timeoutMs?: number }
   ) => Promise<boolean>
-  commitLinkedGridVisualTransaction: () => HorizontalBrowseLinkedGridVisualTransactionResult | null
+  commitLinkedGridVisualTransaction: (
+    deckState?: HorizontalBrowseLinkedGridVisualTransactionDeckState
+  ) => HorizontalBrowseLinkedGridVisualTransactionResult | null
   resolveVisibleDurationSec: () => number
   resolveWrapWidth: () => number
 }

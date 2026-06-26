@@ -13,6 +13,13 @@ export type HorizontalBrowseLinkedGridVisualTransactionPlaybackClock = {
   playbackRate: number
 }
 
+export type HorizontalBrowseLinkedGridVisualTransactionDeckState = {
+  currentSeconds?: number
+  playbackRate?: number
+  playbackActive?: boolean
+  startedAtMs?: number
+}
+
 export type HorizontalBrowseLinkedGridVisualTransactionResult = {
   deck: HorizontalBrowseDeckKey
   committed: boolean
