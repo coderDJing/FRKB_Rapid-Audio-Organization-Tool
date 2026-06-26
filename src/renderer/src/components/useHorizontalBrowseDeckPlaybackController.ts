@@ -953,6 +953,72 @@ export const useHorizontalBrowseDeckPlaybackController = (
     })()
   }
 
+  const executeDeckPlayPauseToggle = async (deck: DeckKey, nextPlaying: boolean) => {
+    if (!nextPlaying) {
+      params.holdDeckRenderCurrentSeconds(deck, params.resolveDeckRenderCurrentSeconds(deck))
+    }
+    const filePath = String(params.resolveDeckSong(deck)?.filePath || '').trim()
+    const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:play-toggle:${deck}`)
+    if (nextPlaying) {
+      beginHorizontalBrowseDeckAction(deck, 'play-toggle', filePath)
+      queueDeckSongPriorityAnalysis(deck, filePath)
+      traceDeckAction(deck, 'play-toggle:start')
+    }
+    let playStartSecondsOverride: number | null = null
+    try {
+      if (nextPlaying && !isDeckPlayheadReady(deck)) {
+        if (!canDeckExecuteImmediateTransportAction(deck)) {
+          return
+        }
+        deckPendingPlayOnLoad[deck] = true
+        await params.commitDeckStatesToNative()
+        await prepareDeckPlayheadIfNeeded(deck)
+        await params.nativeTransport.snapshot(performance.now()).catch(() => undefined)
+        params.syncDeckRenderState({ force: deck })
+        if (!isDeckPlayheadReady(deck)) {
+          return
+        }
+        deckPendingPlayOnLoad[deck] = false
+      } else {
+        deckPendingPlayOnLoad[deck] = false
+      }
+      if (nextPlaying) {
+        await params.syncDeckIntoLoopRangeBeforePlay(deck)
+        const shouldBeatSyncBeforePlay =
+          params.resolveTransportDeckSnapshot(deck).syncEnabled && !params.isDeckLoopActive(deck)
+        if (shouldBeatSyncBeforePlay) {
+          await params.commitDeckStatesToNative()
+          await params.nativeTransport.beatsync(deck)
+          const alignedSnapshot = params.resolveTransportDeckSnapshot(deck)
+          const alignedStartSec = Number(
+            alignedSnapshot.renderCurrentSec ?? alignedSnapshot.currentSec
+          )
+          if (Number.isFinite(alignedStartSec)) {
+            playStartSecondsOverride = alignedStartSec
+          }
+        }
+      }
+      if (nextPlaying) {
+        const renderClockStartSec =
+          playStartSecondsOverride ?? params.resolveDeckRenderCurrentSeconds(deck)
+        params.startDeckRenderPlaybackClock(deck, renderClockStartSec)
+      }
+      await params.nativeTransport.setPlaying(deck, nextPlaying)
+      if (nextPlaying) {
+        traceDeckAction(deck, 'play-toggle:done', {
+          sincePlayToggleMs: resolveHorizontalBrowseDeckActionElapsedMs(
+            deck,
+            'play-toggle',
+            filePath
+          )
+        })
+      }
+      params.syncDeckRenderState(nextPlaying ? { force: deck } : undefined)
+    } finally {
+      finishTiming()
+    }
+  }
+
   const handleDeckPlayPauseToggle = (deck: DeckKey) => {
     if (isDualTransportSyncActive()) {
       handleLinkedDeckPlayPauseToggle(deck)
@@ -963,62 +1029,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       return
     }
     const nextPlaying = !params.resolveDeckPlaying(deck)
-    if (!nextPlaying) {
-      params.holdDeckRenderCurrentSeconds(deck, params.resolveDeckRenderCurrentSeconds(deck))
-    }
-    void (async () => {
-      const filePath = String(params.resolveDeckSong(deck)?.filePath || '').trim()
-      const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:play-toggle:${deck}`)
-      if (nextPlaying) {
-        beginHorizontalBrowseDeckAction(deck, 'play-toggle', filePath)
-        queueDeckSongPriorityAnalysis(deck, filePath)
-        traceDeckAction(deck, 'play-toggle:start')
-      }
-      try {
-        if (nextPlaying && !isDeckPlayheadReady(deck)) {
-          if (!canDeckExecuteImmediateTransportAction(deck)) {
-            return
-          }
-          deckPendingPlayOnLoad[deck] = true
-          await params.commitDeckStatesToNative()
-          await prepareDeckPlayheadIfNeeded(deck)
-          await params.nativeTransport.snapshot(performance.now()).catch(() => undefined)
-          params.syncDeckRenderState({ force: deck })
-          if (!isDeckPlayheadReady(deck)) {
-            return
-          }
-          deckPendingPlayOnLoad[deck] = false
-        } else {
-          deckPendingPlayOnLoad[deck] = false
-        }
-        if (nextPlaying) {
-          await params.syncDeckIntoLoopRangeBeforePlay(deck)
-          if (
-            params.resolveTransportDeckSnapshot(deck).syncEnabled &&
-            !params.isDeckLoopActive(deck)
-          ) {
-            await params.commitDeckStatesToNative()
-            await params.nativeTransport.beatsync(deck)
-          }
-        }
-        if (nextPlaying) {
-          params.startDeckRenderPlaybackClock(deck, params.resolveDeckRenderCurrentSeconds(deck))
-        }
-        await params.nativeTransport.setPlaying(deck, nextPlaying)
-        if (nextPlaying) {
-          traceDeckAction(deck, 'play-toggle:done', {
-            sincePlayToggleMs: resolveHorizontalBrowseDeckActionElapsedMs(
-              deck,
-              'play-toggle',
-              filePath
-            )
-          })
-        }
-        params.syncDeckRenderState(nextPlaying ? { force: deck } : undefined)
-      } finally {
-        finishTiming()
-      }
-    })()
+    void executeDeckPlayPauseToggle(deck, nextPlaying)
   }
 
   const maybeResumePendingPlay = (deck: DeckKey, playheadReady: boolean) => {

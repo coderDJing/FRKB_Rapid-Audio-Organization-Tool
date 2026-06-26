@@ -10,7 +10,10 @@ import type {
   HorizontalBrowseLinkedGridVisualTransactionDeckState,
   HorizontalBrowseLinkedGridVisualTransactionMode
 } from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
-import { resolveHorizontalBrowseBeatSyncDecks } from '@renderer/components/horizontalBrowseBeatSyncDecks'
+import {
+  resolveHorizontalBrowseBeatSyncDecks,
+  resolveOtherHorizontalBrowseDeck
+} from '@renderer/components/horizontalBrowseBeatSyncDecks'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -160,6 +163,21 @@ export const useHorizontalBrowseTransportMutations = (
       // 挂起画面、并在任一 lane commit 失败时把 owner 砸成 idle 清零 viewport，造成黑一下 + 卡顿。
       params.clearLinkedPresentation?.(buildClearLinkedPresentationPlaybackStates())
       params.syncDeckRenderState({ force: 'all' })
+      return
+    }
+    const deckPlaybackActive =
+      params.resolveDeckPlaying(deck) ||
+      snapshot.playing === true ||
+      snapshot.playingAudible === true
+    const otherDeck = resolveOtherHorizontalBrowseDeck(deck)
+    const otherSnapshot = params.resolveTransportDeckSnapshot(otherDeck)
+    const otherDeckPlaybackActive =
+      params.resolveDeckPlaying(otherDeck) ||
+      otherSnapshot.playing === true ||
+      otherSnapshot.playingAudible === true
+    if (!deckPlaybackActive && otherDeckPlaybackActive) {
+      await params.nativeTransport.setSyncEnabled(deck, true)
+      params.syncDeckRenderState()
       return
     }
     const provisionalSyncDecks = {

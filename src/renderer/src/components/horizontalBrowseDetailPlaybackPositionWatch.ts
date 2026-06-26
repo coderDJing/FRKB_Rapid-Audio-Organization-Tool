@@ -145,6 +145,7 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
         }
         params.setLinkedGridVisualTransactionCommitted(false)
         const songChanged = safeSongKey !== previousSongKey
+        const linkedGridPlaybackStarted = linkedGridActive && playing && !previousPlaying
         if (
           playbackSyncChanged &&
           params.dragReleaseHandoff.consume('playback-sync', safeSeconds)
@@ -202,13 +203,20 @@ export const watchHorizontalBrowseDetailPlaybackPosition = (
         }
         const stablePlaybackToggleHeld =
           params.compactVisualWaveformActive.value && params.isStablePlaybackToggleRenderHeld()
-        if (stablePlaybackToggleHeld && !dragPresentationReleaseCompleted) {
+        const shouldBypassStablePlaybackToggleHold =
+          playbackSyncChanged || playbackPositionJumped || songChanged || linkedGridPlaybackStarted
+        if (
+          stablePlaybackToggleHeld &&
+          !dragPresentationReleaseCompleted &&
+          !shouldBypassStablePlaybackToggleHold
+        ) {
           return
         }
         const requirePresentable =
           playbackSyncChanged ||
           playbackPositionJumped ||
           songChanged ||
+          linkedGridPlaybackStarted ||
           dragPresentationReleaseCompleted
         if (
           dragPresentationReleaseCompleted &&
