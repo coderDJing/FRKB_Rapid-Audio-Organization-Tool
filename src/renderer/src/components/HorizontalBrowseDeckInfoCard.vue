@@ -10,7 +10,6 @@ import { t } from '@renderer/utils/translate'
 const props = defineProps<{
   song: ISongInfo | null
   beatSyncEnabled: boolean
-  beatSyncBlinking: boolean
   masterActive: boolean
   keyHighlighted: boolean
   currentSeconds?: number
@@ -219,7 +218,7 @@ onUnmounted(() => {
       <button
         type="button"
         class="deck-info-action"
-        :class="{ 'is-active': props.beatSyncEnabled, 'is-blinking': props.beatSyncBlinking }"
+        :class="{ 'is-active': props.beatSyncEnabled }"
         :disabled="!props.song"
         @click.stop="emit('trigger-beat-sync')"
       >
@@ -481,35 +480,5 @@ onUnmounted(() => {
   border-color: color-mix(in srgb, var(--shell-cue-accent, #d98921) 88%, white);
   background: transparent;
   box-shadow: none;
-}
-
-.deck-info-action.is-active.is-blinking {
-  animation: deck-info-action-sync-flash 1s steps(1, end) infinite;
-}
-
-@keyframes deck-info-action-sync-flash {
-  0%,
-  49.99% {
-    color: var(--shell-active-control-text, #ffffff);
-    border-color: var(--shell-active-control-border, var(--accent));
-    background: var(--shell-active-control-bg, var(--accent));
-    box-shadow:
-      0 0 0 1px var(--shell-active-control-outline, transparent),
-      inset 0 1px 0 var(--shell-active-control-inset, transparent);
-  }
-
-  50%,
-  100% {
-    color: var(--text-weak);
-    border-color: var(--border);
-    background: transparent;
-    box-shadow: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .deck-info-action.is-active.is-blinking {
-    animation: none;
-  }
 }
 </style>

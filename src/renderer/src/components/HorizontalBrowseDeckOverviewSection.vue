@@ -38,7 +38,6 @@ const props = defineProps<{
   deckHovered: boolean
   song: ISongInfo | null
   beatSyncEnabled: boolean
-  beatSyncBlinking: boolean
   masterActive: boolean
   keyHighlighted: boolean
   currentSeconds: number
@@ -116,7 +115,6 @@ const isTop = props.position === 'top'
         v-if="(isTop && regionId === 1) || (!isTop && regionId === 8)"
         :song="props.song"
         :beat-sync-enabled="props.beatSyncEnabled"
-        :beat-sync-blinking="props.beatSyncBlinking"
         :master-active="props.masterActive"
         :key-highlighted="props.keyHighlighted"
         :current-seconds="props.currentSeconds"

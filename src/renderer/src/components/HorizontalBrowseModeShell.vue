@@ -18,7 +18,6 @@ import {
   resolveHorizontalBrowseDeckDurationSeconds,
   resolveHorizontalBrowseDeckGridBpm,
   resolveHorizontalBrowseDeckSyncUiEnabled,
-  resolveHorizontalBrowseDeckSyncUiLock,
   resolveHorizontalBrowseDeckWaveformGain
 } from '@renderer/components/horizontalBrowseShellState'
 import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
@@ -606,14 +605,6 @@ const resolveDeckSyncUiEnabled = (deck: DeckKey) =>
     resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore
   )
 
-const resolveDeckSyncUiLock = (deck: DeckKey) =>
-  resolveHorizontalBrowseDeckSyncUiLock(
-    Boolean(resolveDeckSong(deck)),
-    resolveTransportDeckSnapshot(deck).syncLock,
-    resolveDeckCuePreviewRuntimeState(deck).active,
-    resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore,
-    resolveDeckCuePreviewRuntimeState(deck).syncLockBefore
-  )
 const resolveDeckToolbarState = (deck: DeckKey) =>
   buildHorizontalBrowseDeckToolbarState(
     deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value,
@@ -879,7 +870,6 @@ onUnmounted(() => {
         :deck-hovered="isDeckHovered('top')"
         :song="topDeckSong"
         :beat-sync-enabled="topDeckSong ? resolveDeckSyncUiEnabled('top') : false"
-        :beat-sync-blinking="topDeckSong ? resolveDeckSyncUiLock('top') === 'tempo-only' : false"
         :master-active="topDeckSong ? deckSyncState.leaderDeck === 'top' : false"
         :key-highlighted="deckKeysHarmonicMatched"
         :current-seconds="topDeckRenderCurrentSeconds"
@@ -1018,9 +1008,6 @@ onUnmounted(() => {
         :deck-hovered="isDeckHovered('bottom')"
         :song="bottomDeckSong"
         :beat-sync-enabled="bottomDeckSong ? resolveDeckSyncUiEnabled('bottom') : false"
-        :beat-sync-blinking="
-          bottomDeckSong ? resolveDeckSyncUiLock('bottom') === 'tempo-only' : false
-        "
         :master-active="bottomDeckSong ? deckSyncState.leaderDeck === 'bottom' : false"
         :key-highlighted="deckKeysHarmonicMatched"
         :current-seconds="bottomDeckRenderCurrentSeconds"

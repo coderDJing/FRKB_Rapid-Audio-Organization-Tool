@@ -50,6 +50,7 @@ type StartBeatSyncRawWaveformDragReleaseParams =
     resolveDeckWaveformDragToken: (deck: DeckKey) => number
     resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
     setLeader: (deck?: DeckKey | null) => Promise<unknown>
+    setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
     alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
     syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
     resumeDeckPlaybackAfterSeek: (deck: DeckKey) => Promise<void>
@@ -158,6 +159,8 @@ export const startHorizontalBrowseBeatSyncRawWaveformDragRelease = (
       }
 
       if (params.activeSyncDecks?.leader === params.deck) {
+        await params.setSyncEnabled(params.activeSyncDecks.follower, false)
+        if (!isCurrentDragToken(params)) return
         await params.setLeader(params.activeSyncDecks.follower)
       }
       await params.alignToLeader(params.deck, params.targetSec, false)

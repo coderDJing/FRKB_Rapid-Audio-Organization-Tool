@@ -626,6 +626,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
       resolveDeckWaveformDragToken: (targetDeck) => deckWaveformDragState[targetDeck].token,
       resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot,
       setLeader: params.nativeTransport.setLeader,
+      setSyncEnabled: params.nativeTransport.setSyncEnabled,
       alignToLeader: params.nativeTransport.alignToLeader,
       syncDeckRenderState: params.syncDeckRenderState,
       resumeDeckPlaybackAfterSeek,

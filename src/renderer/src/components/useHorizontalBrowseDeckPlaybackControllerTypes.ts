@@ -35,6 +35,7 @@ export type UseHorizontalBrowseDeckPlaybackControllerParams =
       ) => Promise<unknown>
       beatsync: (deck: DeckKey) => Promise<unknown>
       alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
+      setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
       snapshot: (nowMs?: number) => Promise<unknown>
     }
     syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void

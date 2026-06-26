@@ -43,17 +43,6 @@ export const resolveHorizontalBrowseDeckSyncUiEnabled = (
   return hasSong && (syncEnabled || (cuePreviewActive && cuePreviewSyncEnabledBefore))
 }
 
-export const resolveHorizontalBrowseDeckSyncUiLock = (
-  hasSong: boolean,
-  syncLock: string,
-  cuePreviewActive: boolean,
-  cuePreviewSyncEnabledBefore: boolean,
-  cuePreviewSyncLockBefore: string
-) => {
-  if (!hasSong) return 'off'
-  return cuePreviewActive && cuePreviewSyncEnabledBefore ? cuePreviewSyncLockBefore : syncLock
-}
-
 export const resolveHorizontalBrowseDeckWaveformGain = (snapshot: {
   autoGainEnabled: boolean
   autoGainStatus: string
