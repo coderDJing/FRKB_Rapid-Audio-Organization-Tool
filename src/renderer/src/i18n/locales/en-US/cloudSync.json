@@ -19,6 +19,8 @@
     "limit": "Quota limit",
     "connectivityFailed": "Failed",
     "startSync": "Sync",
+    "minimize": "Minimize",
+    "minimizedTitle": "Cloud sync",
     "syncCompleted": "Cloud sync completed",
     "syncResult": "Summary",
     "inSyncWithServer": "In sync",

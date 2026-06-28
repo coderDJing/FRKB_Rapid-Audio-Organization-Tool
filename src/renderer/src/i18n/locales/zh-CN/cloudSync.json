@@ -19,6 +19,8 @@
     "limit": "配额上限",
     "connectivityFailed": "连通失败",
     "startSync": "开始同步",
+    "minimize": "最小化",
+    "minimizedTitle": "云同步",
     "syncCompleted": "云端同步完成",
     "syncResult": "同步结果",
     "inSyncWithServer": "已与服务端一致",

@@ -1,140 +1,34 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, computed } from 'vue'
+import { onMounted, onUnmounted, computed, ref } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import utils from '@renderer/utils/utils'
 import { useI18n } from '@renderer/composables/useI18n'
-import confirm from '@renderer/components/confirmDialog'
-import { CONTACT_EMAIL } from '../constants/app'
-import {
-  useDialogTransition,
-  DIALOG_TRANSITION_DURATION
-} from '@renderer/composables/useDialogTransition'
+import { useRuntimeStore } from '@renderer/stores/runtime'
+import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 const emits = defineEmits(['cancel'])
 const uuid = uuidV4()
+const runtime = useRuntimeStore()
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const cancelDialog = () => {
+  closeWithAnimation(() => emits('cancel'))
+}
+// 最小化：保留同步状态到底部进度区，仅隐藏对话框
+const minimize = () => {
+  runtime.setCloudSyncMinimized(true)
   closeWithAnimation(() => emits('cancel'))
 }
 
 const { t } = useI18n()
 
 const configured = ref<boolean | null>(null)
-const syncing = ref(false)
-const phase = ref<
-  'checking' | 'diffing' | 'analyzing' | 'pulling' | 'committing' | 'finalizing' | 'idle'
->('idle')
-const percent = ref(0)
 const logMsg = ref('')
-type CloudSyncPhase =
-  | 'checking'
-  | 'diffing'
-  | 'analyzing'
-  | 'pulling'
-  | 'committing'
-  | 'finalizing'
-  | 'idle'
 
-type CloudSyncSummary = {
-  addedToServerCount?: number
-  pulledToClientCount?: number
-  curatedArtistClientInitialCount?: number
-  curatedArtistClientCountAfter?: number
-  curatedArtistServerInitialCount?: number
-  curatedArtistServerCountAfter?: number
-  durationMs?: number
-  clientInitialCount?: number
-  totalClientCountAfter?: number
-  serverInitialCount?: number
-  totalServerCountAfter?: number
-}
-
-type CloudSyncProgressDetails = {
-  clientCount?: number
-  serverCount?: number
-  toAddCount?: number
-  pulledPages?: number
-  totalPages?: number
-}
-
-type CloudSyncNoticePayload = {
-  code?: string
-  message?: string
-  retryAfterMs?: number
-  currentInWindow?: number
-  details?: {
-    retryAfterMs?: number
-  }
-}
-
-type CloudSyncErrorPayload = {
-  message?: string
-  error?: {
-    code?: string
-    error?: string
-    scope?: string
-    retryAfterMs?: number
-    details?: Record<string, unknown>
-  }
-}
-
-type CloudSyncProgressPayload = {
-  phase: CloudSyncPhase
-  percent: number
-  details?: CloudSyncProgressDetails
-}
-
-const summary = ref<CloudSyncSummary | null>(null)
-const summaryShouldRender = ref(false)
-const {
-  dialogVisible: summaryDialogVisible,
-  closeWithAnimation: closeSummaryWithAnimation,
-  show: showSummaryDialog
-} = useDialogTransition(DIALOG_TRANSITION_DURATION, false)
-
-const summaryView = computed(() => ({
-  addedToServerCount: Number(summary.value?.addedToServerCount || 0),
-  pulledToClientCount: Number(summary.value?.pulledToClientCount || 0),
-  curatedArtistClientInitialCount: Number(summary.value?.curatedArtistClientInitialCount || 0),
-  curatedArtistClientCountAfter: Number(summary.value?.curatedArtistClientCountAfter || 0),
-  curatedArtistServerInitialCount: Number(summary.value?.curatedArtistServerInitialCount || 0),
-  curatedArtistServerCountAfter: Number(summary.value?.curatedArtistServerCountAfter || 0),
-  clientInitialCount: Number(summary.value?.clientInitialCount || 0),
-  totalClientCountAfter: Number(summary.value?.totalClientCountAfter || 0),
-  serverInitialCount: Number(summary.value?.serverInitialCount || 0),
-  totalServerCountAfter: Number(summary.value?.totalServerCountAfter || 0)
-}))
-
-const curatedArtistSummaryView = computed(() => {
-  const view = summaryView.value
-  const uploadedCount = Math.max(
-    view.curatedArtistServerCountAfter - view.curatedArtistServerInitialCount,
-    0
-  )
-  const pulledCount = Math.max(
-    view.curatedArtistClientCountAfter - view.curatedArtistClientInitialCount,
-    0
-  )
-  return {
-    uploadedCount,
-    pulledCount
-  }
-})
-
-const openSummary = (data: CloudSyncSummary) => {
-  summary.value = data
-  summaryShouldRender.value = true
-  showSummaryDialog()
-}
-
-const closeSummaryPanel = (after?: () => void) => {
-  closeSummaryWithAnimation(() => {
-    summaryShouldRender.value = false
-    summary.value = null
-    after?.()
-  })
-}
-const progressDetails = ref<CloudSyncProgressDetails>({})
+// 同步状态全部来自 store（单一数据源，最小化后由 App.vue 常驻监听器维护）
+const syncing = computed(() => runtime.cloudSync.syncing)
+const phase = computed(() => runtime.cloudSync.phase)
+const percent = computed(() => runtime.cloudSync.percent)
+const progressDetails = computed(() => runtime.cloudSync.details)
 
 const stages = [
   { key: 'checking', label: 'cloudSync.phases.checking' },
@@ -168,166 +62,19 @@ const startSync = async () => {
     }, 300)
     return
   }
-  syncing.value = true
-}
-
-const isErrorPromptOpen = ref(false)
-
-// 事件处理函数需要具名，便于移除监听，避免重复绑定导致多重弹窗
-const handleState = (_e: unknown, state: string) => {
-  if (state === 'syncing') {
-    syncing.value = true
-    return
-  }
-  if (state === 'success' || state === 'failed' || state === 'cancelled') {
-    syncing.value = false
-    if (state !== 'success') {
-      percent.value = 0
-      phase.value = 'idle'
-    }
-  }
-}
-const isNoticePromptOpen = ref(false)
-const handleNotice = (_e: unknown, payload: CloudSyncNoticePayload | null) => {
-  if (isNoticePromptOpen.value) return
-  let contentMsg = ''
-  if (payload?.code === 'rate_limit_warning') {
-    const retryAfterMs = Math.max(
-      0,
-      Number(payload?.retryAfterMs || payload?.details?.retryAfterMs || 0)
-    )
-    const seconds = Math.ceil(retryAfterMs / 1000)
-    const currentInWindow = Number(payload?.currentInWindow || 0)
-    if (currentInWindow === 8) {
-      contentMsg = t('cloudSync.errors.rateLimitWarning8', { seconds })
-    } else if (currentInWindow === 9) {
-      contentMsg = t('cloudSync.errors.rateLimitWarning9', { seconds })
-    } else {
-      // 兜底
-      contentMsg = t('cloudSync.errors.rateLimit', { seconds })
-    }
-  } else {
-    const msg = payload?.message || ''
-    if (!msg) return
-    contentMsg = t(msg)
-  }
-  isNoticePromptOpen.value = true
-  // 先关闭同步面板再提示
-  closeWithAnimation(() => {
-    emits('cancel')
-    void confirm({ title: t('dialog.hint'), content: [contentMsg], confirmShow: false })
-  })
-}
-const handleProgress = (_e: unknown, p: CloudSyncProgressPayload) => {
-  phase.value = p.phase
-  percent.value = p.percent
-  progressDetails.value = p.details || {}
-}
-const handleError = async (_e: unknown, err: CloudSyncErrorPayload | null) => {
-  // 网络错误或其他错误：仅提示并复位，用户手动点击“开始同步”自行重试
-  syncing.value = false
-  percent.value = 0
-  phase.value = 'idle'
-  if (isErrorPromptOpen.value) return
-  isErrorPromptOpen.value = true
-  try {
-    const code = (err?.error?.code || err?.error?.error || '').toString().toUpperCase()
-    if (code === 'RATE_LIMITED' && err?.error?.scope === 'sync_start') {
-      const message = t('cloudSync.errors.sensitiveOperationTooFrequent')
-      logMsg.value = `${message}`
-      await confirm({ title: t('dialog.hint'), content: [logMsg.value], confirmShow: false })
-      return
-    }
-    if (code === 'FINGERPRINT_LIMIT_EXCEEDED') {
-      const details = err?.error?.details || {}
-      const limitNum = Number(details?.limit)
-      // 第一行固定使用“本次同步将超过配额上限，已中止。”
-      const baseMsg = t('cloudSync.errors.limit.willExceedHint')
-      const phase = String(details?.phase || '')
-      // 计算摘要行
-      let summary = ''
-      if (phase === 'check') {
-        summary = t('cloudSync.errors.limit.summary.check', {
-          limit: Number.isFinite(limitNum) ? limitNum : '-',
-          client: Number(details?.clientCount) || '-',
-          server: Number(details?.serverCount) || '-'
-        })
-      } else if (phase === 'bidirectional_diff') {
-        summary = t('cloudSync.errors.limit.summary.bidirectional', {
-          limit: Number.isFinite(limitNum) ? limitNum : '-',
-          current: Number(details?.currentServerCount) || '-',
-          add: Number(details?.requestedAddCount) || '-',
-          allowed: Number(details?.allowedAddCount) || '-'
-        })
-      } else if (phase === 'analyze_diff') {
-        summary = t('cloudSync.errors.limit.summary.analyze', {
-          limit: Number.isFinite(limitNum) ? limitNum : '-',
-          final: Number(details?.finalTotal) || '-'
-        })
-      } else if (phase === 'batch_add') {
-        summary = t('cloudSync.errors.limit.summary.batchAdd', {
-          limit: Number.isFinite(limitNum) ? limitNum : '-',
-          current: Number(details?.currentCount) || '-',
-          add: Number(details?.uniqueNewCount) || '-',
-          allowed: Number(details?.allowedAddCount) || '-'
-        })
-      } else {
-        summary = t('cloudSync.errors.limit.summary.batchAdd', {
-          limit: Number.isFinite(limitNum) ? limitNum : '-',
-          current: Number(details?.currentServerCount || details?.currentCount) || '-',
-          add: Number(details?.requestedAddCount || details?.uniqueNewCount) || '-',
-          allowed: Number(details?.allowedAddCount) || '-'
-        })
-      }
-      // 三行：主文案 + 摘要 + 联系邮箱
-      const lines = [
-        baseMsg,
-        summary || t('cloudSync.errors.limit.willExceedHint'),
-        t('cloudSync.errors.limit.contactToIncreaseLimit', { email: CONTACT_EMAIL })
-      ]
-      await confirm({ title: t('common.error'), content: lines, confirmShow: false })
-      return
-    }
-    logMsg.value = t(err?.message || 'error')
-    await confirm({ title: t('common.error'), content: [logMsg.value], confirmShow: false })
-  } finally {
-    isErrorPromptOpen.value = false
-  }
-}
-
-const closeSummaryAndCancel = () => {
-  closeSummaryPanel(() => {
-    cancelDialog()
-  })
+  // syncing 状态由主进程回送的 cloudSync/state:'syncing' 驱动（App.vue 常驻监听）
 }
 
 onMounted(async () => {
+  // 从底部进度区再次打开对话框时回到前台
+  runtime.setCloudSyncMinimized(false)
   const cfg = await window.electron.ipcRenderer.invoke('cloudSync/config/get')
   configured.value = !!cfg?.userKey
   hotkeys('Esc', uuid, () => cancelDialog())
   utils.setHotkeysScpoe(uuid)
-  // 防止累积：先清理仅由本组件使用的事件
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/state')
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/notice')
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/progress')
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/error')
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/summary')
-  window.electron.ipcRenderer.on('cloudSync/state', handleState)
-  window.electron.ipcRenderer.on('cloudSync/notice', handleNotice)
-  window.electron.ipcRenderer.on('cloudSync/progress', handleProgress)
-  window.electron.ipcRenderer.on('cloudSync/error', handleError)
-  window.electron.ipcRenderer.on('cloudSync/summary', (_e, s: CloudSyncSummary) => {
-    syncing.value = false
-    openSummary(s)
-  })
 })
 onUnmounted(() => {
   utils.delHotkeysScope(uuid)
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/state')
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/notice')
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/progress')
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/error')
-  window.electron.ipcRenderer.removeAllListeners('cloudSync/summary')
 })
 </script>
 
@@ -388,133 +135,20 @@ onUnmounted(() => {
           {{ t('cloudSync.startSync') }}
         </div>
         <div
+          v-if="syncing"
+          class="button"
+          style="width: 90px; text-align: center; height: 25px; line-height: 25px"
+          @click="minimize"
+        >
+          {{ t('cloudSync.minimize') }}
+        </div>
+        <div
+          v-if="!syncing"
           class="button"
           style="width: 90px; text-align: center; height: 25px; line-height: 25px"
           @click="cancelDialog()"
         >
           {{ t('common.close') }} (Esc)
-        </div>
-      </div>
-    </div>
-  </div>
-  <div
-    v-if="summaryShouldRender"
-    class="dialog unselectable"
-    :class="{ 'dialog-visible': summaryDialogVisible }"
-  >
-    <div v-dialog-drag="'.dialog-title'" class="inner">
-      <div class="title dialog-title dialog-header">{{ t('cloudSync.syncCompleted') }}</div>
-      <div class="body summary-body">
-        <div class="stats">
-          <div class="section">
-            <div class="section-title">{{ t('cloudSync.audioFingerprintCount') }}</div>
-            <div class="chips">
-              <div class="chip" :class="{ success: summaryView.addedToServerCount > 0 }">
-                <div class="num">{{ summaryView.addedToServerCount }}</div>
-                <div class="cap">{{ t('cloudSync.uploadedNew') }}</div>
-              </div>
-              <div class="chip" :class="{ success: summaryView.pulledToClientCount > 0 }">
-                <div class="num">{{ summaryView.pulledToClientCount }}</div>
-                <div class="cap">{{ t('cloudSync.pulledNew') }}</div>
-              </div>
-            </div>
-            <div class="section-body">
-              <span class="count-pair">
-                <span class="count-text"
-                  >{{ t('cloudSync.clientCount') }}: {{ summaryView.clientInitialCount }}</span
-                >
-                <span class="arrow" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path
-                      d="M5 12h12M13 6l6 6-6 6"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    ></path>
-                  </svg>
-                </span>
-                <span class="count-text">{{ summaryView.totalClientCountAfter }}</span>
-              </span>
-              <span class="count-pair" style="margin-left: 16px">
-                <span class="count-text"
-                  >{{ t('cloudSync.serverCount') }}: {{ summaryView.serverInitialCount }}</span
-                >
-                <span class="arrow" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path
-                      d="M5 12h12M13 6l6 6-6 6"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    ></path>
-                  </svg>
-                </span>
-                <span class="count-text">{{ summaryView.totalServerCountAfter }}</span>
-              </span>
-            </div>
-          </div>
-          <div class="section">
-            <div class="section-title">{{ t('cloudSync.curatedArtistCount') }}</div>
-            <div class="chips">
-              <div class="chip" :class="{ success: curatedArtistSummaryView.uploadedCount > 0 }">
-                <div class="num">{{ curatedArtistSummaryView.uploadedCount }}</div>
-                <div class="cap">{{ t('cloudSync.curatedArtistUploadedNew') }}</div>
-              </div>
-              <div class="chip" :class="{ success: curatedArtistSummaryView.pulledCount > 0 }">
-                <div class="num">{{ curatedArtistSummaryView.pulledCount }}</div>
-                <div class="cap">{{ t('cloudSync.curatedArtistPulledNew') }}</div>
-              </div>
-            </div>
-            <div class="section-body">
-              <span class="count-pair">
-                <span class="count-text"
-                  >{{ t('cloudSync.clientCount') }}:
-                  {{ summaryView.curatedArtistClientInitialCount }}</span
-                >
-                <span class="arrow" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path
-                      d="M5 12h12M13 6l6 6-6 6"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    ></path>
-                  </svg>
-                </span>
-                <span class="count-text">{{ summaryView.curatedArtistClientCountAfter }}</span>
-              </span>
-              <span class="count-pair" style="margin-left: 16px">
-                <span class="count-text"
-                  >{{ t('cloudSync.serverCount') }}:
-                  {{ summaryView.curatedArtistServerInitialCount }}</span
-                >
-                <span class="arrow" aria-hidden="true">
-                  <svg viewBox="0 0 24 24">
-                    <path
-                      d="M5 12h12M13 6l6 6-6 6"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                    ></path>
-                  </svg>
-                </span>
-                <span class="count-text">{{ summaryView.curatedArtistServerCountAfter }}</span>
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="dialog-footer">
-        <div class="button" @click="closeSummaryAndCancel">
-          {{ t('common.close') }}
         </div>
       </div>
     </div>
@@ -537,9 +171,6 @@ onUnmounted(() => {
   gap: 14px;
   flex: 1;
   min-height: 0;
-}
-.summary-body {
-  gap: 12px;
 }
 .stages {
   display: flex;
@@ -687,147 +318,5 @@ onUnmounted(() => {
   text-align: center;
   font-size: 12px;
   color: var(--text-weak);
-}
-.report {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text);
-}
-.stats {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  font-size: 12px;
-  color: var(--text);
-}
-.row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.row .label {
-  width: 90px;
-  min-width: 90px;
-  text-align: right;
-  color: var(--text-weak);
-}
-.row .value {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.section-title {
-  font-size: 13px;
-  color: #d0d0d0;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-}
-.section-body {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.chips {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.chip {
-  min-width: 96px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--bg-elev);
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-}
-.chip .num {
-  font-size: 18px;
-  color: var(--text);
-  font-weight: 700;
-  line-height: 1;
-}
-.chip .cap {
-  font-size: 11px;
-  color: var(--text-weak);
-  margin-top: 4px;
-}
-.chip.success .num {
-  color: #9fe870;
-}
-.count-pair {
-  display: inline-flex;
-  align-items: center;
-  line-height: 14px;
-  height: 14px;
-}
-.count-pair > .count-text {
-  display: inline-flex;
-  align-items: center;
-  line-height: 14px;
-  height: 14px;
-}
-.arrow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  margin: 0 6px;
-  line-height: 14px;
-  vertical-align: middle;
-}
-.arrow svg {
-  width: 14px;
-  height: 14px;
-  display: block;
-}
-.count-pair {
-  display: inline-flex;
-  align-items: center;
-}
-.count-pair > .count-text {
-  display: inline-flex;
-  align-items: center;
-  line-height: 1.2;
-  height: 14px;
-}
-.arrow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  margin: 0 6px;
-  line-height: 14px;
-  vertical-align: middle;
-}
-.arrow svg {
-  width: 14px;
-  height: 14px;
-  display: block;
-}
-.big {
-  font-size: 14px;
-  color: var(--text);
-  font-weight: 600;
-}
-.muted {
-  color: var(--text-weak);
-}
-.link {
-  color: var(--accent);
-  cursor: pointer;
-  user-select: none;
 }
 </style>

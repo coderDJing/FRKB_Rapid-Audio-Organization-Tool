@@ -137,7 +137,16 @@ const analysisRuntimeTaskPercent = computed(() =>
 const analysisRuntimeOverlayMinimized = computed(
   () => runtime.analysisRuntime.downloadOverlayMinimized
 )
-const hasAnyVisibleTask = computed(() => analysisRuntimeTaskVisible.value || tasks.value.length > 0)
+// 云同步最小化后在底部展示的进度行（仅标题 + 百分比，不可恢复）
+const cloudSyncTaskVisible = computed(
+  () => runtime.cloudSync.minimized && runtime.cloudSync.syncing
+)
+const cloudSyncTaskPercent = computed(() =>
+  Math.max(0, Math.min(100, Math.round(runtime.cloudSync.percent || 0)))
+)
+const hasAnyVisibleTask = computed(
+  () => analysisRuntimeTaskVisible.value || cloudSyncTaskVisible.value || tasks.value.length > 0
+)
 const showTotalRow = ref(!hasAnyVisibleTask.value)
 const cancelMenuTaskId = ref<string | null>(null)
 const backgroundTaskId = 'key-analysis.background'
@@ -704,6 +713,23 @@ onBeforeUnmount(() => {
         <button class="task-btn" type="button" @click="restoreAnalysisRuntimeOverlay">
           {{ t('analysisRuntime.restoreOverlay') }}
         </button>
+      </div>
+    </div>
+    <div v-if="cloudSyncTaskVisible" class="task-row task-row--cloud-sync">
+      <div class="spinner">
+        <div class="loading">
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+        </div>
+      </div>
+      <div class="label">{{ t('cloudSync.minimizedTitle') }}</div>
+      <div class="container">
+        <div class="progress">
+          <div class="progress-bar" :style="{ width: `${cloudSyncTaskPercent}%` }" />
+        </div>
       </div>
     </div>
     <TransitionGroup

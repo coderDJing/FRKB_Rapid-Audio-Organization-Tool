@@ -12,6 +12,11 @@ import type {
   MainWindowBrowseMode,
   MainWindowPlaybackHandoff
 } from '@renderer/utils/mainWindowPlaybackHandoff'
+import type {
+  CloudSyncPhase,
+  CloudSyncProgressDetails,
+  CloudSyncSummary
+} from 'src/types/cloudSync'
 export type LibrarySelection =
   | 'FilterLibrary'
   | 'CuratedLibrary'
@@ -160,6 +165,15 @@ interface Runtime {
     preferred: AnalysisRuntimePreferredInfo
     state: AnalysisRuntimeDownloadState
   }
+  cloudSync: {
+    minimized: boolean // 是否已最小化到底部进度区
+    syncing: boolean // 是否正在同步
+    phase: CloudSyncPhase // 当前阶段
+    percent: number // 进度百分比
+    details: CloudSyncProgressDetails // 当前阶段明细
+    summary: CloudSyncSummary | null // 完成汇总数据
+    summaryVisible: boolean // 控制汇总组件显隐
+  }
   playingData: {
     playingSong: null | ISongInfo
     playingSongListUUID: string
@@ -291,6 +305,15 @@ export const useRuntimeStore = defineStore('runtime', {
           updatedAt: 0
         }
       },
+      cloudSync: {
+        minimized: false,
+        syncing: false,
+        phase: 'idle',
+        percent: 0,
+        details: {},
+        summary: null,
+        summaryVisible: false
+      },
       playingData: {
         //播放器相关
         playingSong: null, //正在播放的歌曲信息
@@ -399,6 +422,40 @@ export const useRuntimeStore = defineStore('runtime', {
   actions: {
     setAnalysisRuntimeDownloadOverlayMinimized(minimized: boolean) {
       this.analysisRuntime.downloadOverlayMinimized = minimized
+    },
+    setCloudSyncMinimized(minimized: boolean) {
+      this.cloudSync.minimized = minimized
+    },
+    setCloudSyncSyncing(syncing: boolean) {
+      this.cloudSync.syncing = syncing
+    },
+    setCloudSyncProgress(
+      phase: CloudSyncPhase,
+      percent: number,
+      details?: CloudSyncProgressDetails
+    ) {
+      this.cloudSync.phase = phase
+      this.cloudSync.percent = percent
+      this.cloudSync.details = details || {}
+    },
+    resetCloudSync() {
+      this.cloudSync.minimized = false
+      this.cloudSync.syncing = false
+      this.cloudSync.phase = 'idle'
+      this.cloudSync.percent = 0
+      this.cloudSync.details = {}
+    },
+    openCloudSyncSummary(summary: CloudSyncSummary) {
+      this.cloudSync.summary = summary
+      this.cloudSync.summaryVisible = true
+    },
+    closeCloudSyncSummary() {
+      this.cloudSync.summaryVisible = false
+      this.cloudSync.summary = null
+      // 关闭报告后复位进度，避免下次打开对话框时残留上次的进度（如 100%）
+      this.cloudSync.phase = 'idle'
+      this.cloudSync.percent = 0
+      this.cloudSync.details = {}
     },
     setSongsAreaActivePane(pane: SongsAreaPaneKey) {
       this.songsAreaPanels.activePane = pane
