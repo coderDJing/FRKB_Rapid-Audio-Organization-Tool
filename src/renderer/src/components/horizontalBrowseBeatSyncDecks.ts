@@ -48,11 +48,3 @@ export const resolveHorizontalBrowseBeatSyncDecks = ({
   }
   return null
 }
-
-export const hasHorizontalBrowseActiveFullSyncDeck = (
-  resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
-) =>
-  (['top', 'bottom'] as DeckKey[]).some((deck) => {
-    const snapshot = resolveTransportDeckSnapshot(deck)
-    return snapshot.syncEnabled && snapshot.syncLock === 'full'
-  })

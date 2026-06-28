@@ -871,7 +871,7 @@ watch(
           applyPreviewPlaybackPosition(anchorSec, true, true, false)
           return
         }
-        const visualAnchorSec = freezeStableCanvasPlaybackTogglePosition(anchorSec)
+        freezeStableCanvasPlaybackTogglePosition(anchorSec)
         holdStablePlaybackToggleRender()
         return
       }

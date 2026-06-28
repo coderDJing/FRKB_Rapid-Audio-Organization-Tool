@@ -437,10 +437,7 @@ export const createHorizontalBrowseStableCanvasPresentationController = (
     reanchorPlayback(seconds, options.playbackRate())
   }
 
-  const applyViewportRangeStart = (
-    viewportRangeStartSec: number,
-    applyOptions: StableCanvasPresentationApplyOptions = {}
-  ) => {
+  const applyViewportRangeStart = (viewportRangeStartSec: number) => {
     if (!options.isActive() || !isCurrentRenderRevision(currentFrame)) return false
     const offsetCssPx = resolveHorizontalBrowseStableCanvasOffsetCssPx(
       currentFrame,

@@ -339,35 +339,6 @@ export async function loadUnifiedDisplayWaveformCacheData(
   }
 }
 
-export async function hasUnifiedDisplayWaveformCacheEntryByMeta(
-  listRoot: string,
-  filePath: string,
-  size: number,
-  mtimeMs: number
-): Promise<boolean> {
-  if (!listRoot || !filePath) return false
-  try {
-    const hit = loadRow(listRoot, filePath)
-    if (!hit) return false
-    const meta = normalizeMeta(hit.row)
-    if (
-      !meta ||
-      meta.size !== size ||
-      Math.abs(meta.mtimeMs - mtimeMs) > 1 ||
-      meta.cacheVersion !== UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION ||
-      meta.parameterVersion !== UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION ||
-      meta.frameCount <= 0
-    ) {
-      await removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
-      return false
-    }
-    return true
-  } catch (error) {
-    log.error('[sqlite] unified display waveform cache check failed', error)
-    return false
-  }
-}
-
 export async function upsertUnifiedDisplayWaveformCacheEntry(
   listRoot: string,
   filePath: string,

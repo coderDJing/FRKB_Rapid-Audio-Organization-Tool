@@ -1,5 +1,3 @@
-export const COMPACT_VISUAL_WAVEFORM_CACHE_VERSION = 1
-export const COMPACT_VISUAL_WAVEFORM_PARAMETER_VERSION = 6
 export const COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE = 4800
 
 export type CompactVisualWaveformData = {

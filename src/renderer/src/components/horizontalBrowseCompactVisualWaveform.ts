@@ -1,9 +1,4 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import {
-  COMPACT_VISUAL_WAVEFORM_CACHE_VERSION,
-  COMPACT_VISUAL_WAVEFORM_PARAMETER_VERSION,
-  type CompactVisualWaveformData
-} from '@shared/compactVisualWaveform'
 import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
 import {
   normalizeWaveformSurfaceData,
