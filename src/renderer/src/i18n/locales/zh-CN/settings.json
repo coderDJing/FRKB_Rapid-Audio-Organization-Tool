@@ -25,7 +25,9 @@
       "clearConfirmLine1": "将清空当前音乐库里记录的精选表演者名单。",
       "clearConfirmLine2": "不会删除歌曲文件，也不会改动精选库里的曲目。确定继续？",
       "clearSuccess": "精选表演者名单已清空。",
-      "clearFailed": "清空精选表演者名单失败"
+      "clearFailed": "清空精选表演者名单失败",
+      "importProgressScan": "正在导入精选艺人：扫描曲目…",
+      "importProgressFingerprint": "正在导入精选艺人：计算指纹…"
     },
     "songListBubble": {
       "title": "歌单行气泡提示显示",

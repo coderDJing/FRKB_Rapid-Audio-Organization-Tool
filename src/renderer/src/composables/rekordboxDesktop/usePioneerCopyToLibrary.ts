@@ -7,7 +7,7 @@ import {
   type SongCueCopyEntry,
   type SongCueCopySummary
 } from '@renderer/utils/songCueTransfer'
-import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
+import { loadRekordboxPlaylistTracks } from '@renderer/composables/rekordboxDesktop/useRekordboxTrackLoader'
 import { v4 as uuidV4 } from 'uuid'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { RekordboxSourceKind, RekordboxSourceLibraryType } from '@shared/rekordboxSources'
@@ -237,23 +237,7 @@ const loadPlaylistTracks = async ({
   playlistId: number
   sourceRootPath?: string
   sourceLibraryType?: RekordboxSourceLibraryType | ''
-}) => {
-  if (sourceKind === 'desktop') {
-    return (await window.electron.ipcRenderer.invoke(
-      buildRekordboxSourceChannel('desktop', 'load-playlist-tracks'),
-      playlistId
-    )) as { tracks?: IPioneerPlaylistTrack[] }
-  }
-
-  const rootPath = String(sourceRootPath || '').trim()
-  if (!rootPath) return { tracks: [] }
-  return (await window.electron.ipcRenderer.invoke(
-    buildRekordboxSourceChannel('usb', 'load-playlist-tracks'),
-    rootPath,
-    playlistId,
-    sourceLibraryType || undefined
-  )) as { tracks?: IPioneerPlaylistTrack[] }
-}
+}) => loadRekordboxPlaylistTracks({ sourceKind, playlistId, sourceRootPath, sourceLibraryType })
 
 const copyStagedPlaylist = async ({
   playlist,

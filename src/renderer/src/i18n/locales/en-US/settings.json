@@ -25,7 +25,9 @@
       "clearConfirmLine1": "This will clear the curated artist list stored in the current library.",
       "clearConfirmLine2": "It will not delete tracks or change the Curated library contents. Continue?",
       "clearSuccess": "The curated artist list has been cleared.",
-      "clearFailed": "Failed to clear the curated artist list"
+      "clearFailed": "Failed to clear the curated artist list",
+      "importProgressScan": "Importing curated artists: scanning tracks...",
+      "importProgressFingerprint": "Importing curated artists: fingerprinting tracks..."
     },
     "songListBubble": {
       "title": "Track row bubble tooltip",

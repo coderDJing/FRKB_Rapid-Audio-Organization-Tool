@@ -7,6 +7,7 @@ import type { SqliteDatabase } from './libraryDb'
 import { normalizeArtistName, splitArtistNames } from '../shared/artistNames'
 import path = require('path')
 import crypto = require('crypto')
+import fs = require('fs-extra')
 
 const META_KEY = 'curated_artist_library_v1'
 const FINGERPRINT_REGEX = /^[a-f0-9]{64}$/i
@@ -229,7 +230,8 @@ function broadcastSnapshot(snapshot: CuratedArtistLibrarySnapshot): void {
 }
 
 async function collectArtistCountsFromTargetPaths(
-  targetPaths: string[]
+  targetPaths: string[],
+  options: { onAnalyseProgress?: (processed: number, total: number) => void } = {}
 ): Promise<Map<string, CuratedArtistFavoriteEntry[]>> {
   const validPaths = Array.from(
     new Set(targetPaths.map((item) => String(item || '').trim()).filter((item) => item.length > 0))
@@ -237,6 +239,15 @@ async function collectArtistCountsFromTargetPaths(
   if (!validPaths.length) return new Map()
 
   try {
+    const reportAnalyseProgress =
+      typeof options.onAnalyseProgress === 'function'
+        ? (processed: unknown) => {
+            const done = Number(processed)
+            if (Number.isFinite(done)) {
+              options.onAnalyseProgress?.(Math.max(0, done), validPaths.length)
+            }
+          }
+        : () => {}
     const [scanResult, analyseResult] = await Promise.all([
       scanSongList(
         validPaths,
@@ -244,7 +255,7 @@ async function collectArtistCountsFromTargetPaths(
         '',
         { enablePostScanTasks: false }
       ),
-      getSongsAnalyseResult(validPaths, () => {})
+      getSongsAnalyseResult(validPaths, reportAnalyseProgress)
     ])
 
     const fingerprintMap = new Map<string, string>()
@@ -284,28 +295,56 @@ export function getCuratedArtistLibrarySnapshot(): CuratedArtistLibrarySnapshot 
   return createSnapshot(readCurrentArtists())
 }
 
-export async function rememberCuratedArtistsForAddedTracks(payload: {
-  artistNames?: unknown[]
-  targetPaths?: string[]
-  tracks?: Array<{
-    artistName?: unknown
-    targetPath?: unknown
-  }>
-}): Promise<CuratedArtistLibrarySnapshot> {
-  if (store.settingConfig?.enableCuratedArtistTracking === false) {
-    return getCuratedArtistLibrarySnapshot()
-  }
+export type CuratedArtistImportProgress = {
+  stage: 'scan' | 'fingerprint'
+  processed: number
+  total: number
+}
 
+export type CuratedArtistImportResult = CuratedArtistLibrarySnapshot & {
+  importedTrackCount: number
+  fingerprintedTrackCount: number
+  artistOnlyTrackCount: number
+}
+
+type ApplyCuratedTracksOptions = {
+  onProgress?: (progress: CuratedArtistImportProgress) => void
+}
+
+// 共享内部实现：被 rememberCuratedArtistsForAddedTracks（复制到精选库时的被动追踪）
+// 与 importCuratedArtistsFromTracks（主动从外部库导入）共用。
+// 注意：tracks[].targetPath 是内部约定字段——表示"用于扫描算指纹的本机路径"。
+// 被动追踪场景它是复制后的目标路径；导入场景由 importCuratedArtistsFromTracks
+// 从对外的 filePath 转换而来（且仅传入文件确实存在的路径）。
+async function applyCuratedTracksInternal(
+  payload: {
+    artistNames?: unknown[]
+    targetPaths?: string[]
+    tracks?: Array<{
+      artistName?: unknown
+      targetPath?: unknown
+    }>
+  },
+  options: ApplyCuratedTracksOptions = {}
+): Promise<{
+  snapshot: CuratedArtistLibrarySnapshot
+  changed: boolean
+  scannedArtistsByPath: Map<string, CuratedArtistFavoriteEntry[]>
+}> {
   const current = readCurrentArtists()
   const tracks = Array.isArray(payload.tracks) ? payload.tracks : []
   const explicitTargetPaths = Array.isArray(payload.targetPaths) ? payload.targetPaths : []
   const trackTargetPaths = tracks
     .map((item) => String(item?.targetPath || '').trim())
     .filter((item) => item.length > 0)
-  const scannedArtistsByPath = await collectArtistCountsFromTargetPaths([
-    ...explicitTargetPaths,
-    ...trackTargetPaths
-  ])
+  const scannedArtistsByPath = await collectArtistCountsFromTargetPaths(
+    [...explicitTargetPaths, ...trackTargetPaths],
+    {
+      onAnalyseProgress: options.onProgress
+        ? (processed, total) => options.onProgress?.({ stage: 'fingerprint', processed, total })
+        : undefined
+    }
+  )
   const incomingEntries: CuratedArtistFavoriteEntry[] = []
 
   if (tracks.length > 0) {
@@ -344,10 +383,110 @@ export async function rememberCuratedArtistsForAddedTracks(payload: {
 
   const snapshot = createSnapshot(mergeFavoriteEntries(current, incomingEntries))
   const previous = createSnapshot(current)
-  if (isSameSnapshot(snapshot, previous)) return previous
+  if (isSameSnapshot(snapshot, previous)) {
+    return { snapshot: previous, changed: false, scannedArtistsByPath }
+  }
   writeCurrentArtists(snapshot.items)
   broadcastSnapshot(snapshot)
+  return { snapshot, changed: true, scannedArtistsByPath }
+}
+
+export async function rememberCuratedArtistsForAddedTracks(payload: {
+  artistNames?: unknown[]
+  targetPaths?: string[]
+  tracks?: Array<{
+    artistName?: unknown
+    targetPath?: unknown
+  }>
+}): Promise<CuratedArtistLibrarySnapshot> {
+  if (store.settingConfig?.enableCuratedArtistTracking === false) {
+    return getCuratedArtistLibrarySnapshot()
+  }
+
+  const { snapshot } = await applyCuratedTracksInternal(payload)
   return snapshot
+}
+
+export async function importCuratedArtistsFromTracks(
+  payload: {
+    tracks?: Array<{
+      artistName?: unknown
+      filePath?: unknown
+    }>
+  },
+  options: { onProgress?: (progress: CuratedArtistImportProgress) => void } = {}
+): Promise<CuratedArtistImportResult> {
+  const rawTracks = Array.isArray(payload?.tracks) ? payload.tracks : []
+
+  // 1. 把 filePath 映射为内部 targetPath，并按规范化路径去重
+  //    （同一首歌跨多个播放列表只算一次，避免遍历叶子歌单导致的重复计数）
+  const dedupedByPath = new Map<string, { artistName?: unknown; filePath: string }>()
+  const pathlessTracks: Array<{ artistName?: unknown; targetPath: string }> = []
+  for (const track of rawTracks) {
+    const filePath = String(track?.filePath || '').trim()
+    if (!filePath) {
+      // 没有路径但有艺人名的轨道仍计入（纯元数据来源）
+      if (resolveArtistNames(track?.artistName).length > 0) {
+        pathlessTracks.push({ artistName: track?.artistName, targetPath: '' })
+      }
+      continue
+    }
+    const pathKey = normalizePathKey(filePath)
+    if (dedupedByPath.has(pathKey)) continue
+    dedupedByPath.set(pathKey, { artistName: track?.artistName, filePath })
+  }
+
+  // 2. 预先检查文件是否存在（指纹策略 A）：
+  //    存在 → 保留 targetPath 交给扫描算 SHA256；不存在 → 清空 targetPath 仅记艺人名。
+  //    这一步也保护底层 scanSongList——它对不存在路径会 fs.stat 抛错，
+  //    一个坏路径会让整批扫描结果丢失，因此必须在传入前过滤掉。
+  const dedupedEntries = [...dedupedByPath.values()]
+  const existsFlags = await Promise.all(
+    dedupedEntries.map(async ({ filePath }) => {
+      try {
+        return await fs.pathExists(filePath)
+      } catch {
+        return false
+      }
+    })
+  )
+
+  const reachableTracks: Array<{ artistName?: unknown; targetPath: string }> = []
+  const reachablePathKeys = new Set<string>()
+  const unreachableTracks: Array<{ artistName?: unknown; targetPath: string }> = []
+  dedupedEntries.forEach((entry, index) => {
+    if (existsFlags[index]) {
+      reachableTracks.push({ artistName: entry.artistName, targetPath: entry.filePath })
+      reachablePathKeys.add(normalizePathKey(entry.filePath))
+    } else {
+      unreachableTracks.push({ artistName: entry.artistName, targetPath: '' })
+    }
+  })
+
+  const tracks = [...reachableTracks, ...unreachableTracks, ...pathlessTracks]
+  const importedTrackCount = tracks.length
+
+  const { snapshot, scannedArtistsByPath } = await applyCuratedTracksInternal(
+    { tracks },
+    { onProgress: options.onProgress }
+  )
+
+  // 3. 统计指纹覆盖：在"文件可达"的轨道里，真正算出了 sha256 的数量
+  //    （文件存在但元数据无艺人/解析失败的，不计入指纹数）
+  let fingerprintedTrackCount = 0
+  for (const pathKey of reachablePathKeys) {
+    const entries = scannedArtistsByPath.get(pathKey)
+    if (Array.isArray(entries) && entries.some((entry) => entry.fingerprints.length > 0)) {
+      fingerprintedTrackCount += 1
+    }
+  }
+
+  return {
+    ...snapshot,
+    importedTrackCount,
+    fingerprintedTrackCount,
+    artistOnlyTrackCount: Math.max(0, importedTrackCount - fingerprintedTrackCount)
+  }
 }
 
 export function removeCuratedArtist(artistName: unknown): CuratedArtistLibrarySnapshot {

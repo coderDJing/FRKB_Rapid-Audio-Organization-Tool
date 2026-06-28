@@ -36,6 +36,18 @@
     "copyToLibrarySuccessCount": "成功复制 {count} 个歌单。",
     "copyToLibraryFailedCount": "复制失败 {count} 个歌单。",
     "copyCueDefinitionsIncomplete": "有些曲目的 cue 点没有写入本地缓存，音频文件已复制。",
-    "noPlaylistsToCopy": "没有可复制的歌单。"
+    "noPlaylistsToCopy": "没有可复制的歌单。",
+    "importArtistsToCurated": "导入艺人到精选",
+    "importWholeLibraryArtistsToCurated": "导入整库艺人到精选",
+    "importArtistsToCuratedTitle": "导入艺人到精选",
+    "importArtistsSinglePlaylistConfirm": "将「{name}」中的艺人导入精选艺人列表？仅记录艺人名，不复制任何音频文件。",
+    "importArtistsFolderConfirm": "将「{name}」及其下 {count} 个歌单中的艺人导入精选艺人列表？仅记录艺人名，不复制任何音频文件。",
+    "importArtistsWholeLibraryConfirm": "将「{name}」整库（共 {count} 个歌单）的艺人导入精选艺人列表？仅记录艺人名，不复制任何音频文件。",
+    "importArtistsNoPlaylists": "没有找到包含曲目的歌单可供导入。",
+    "importArtistsNoTracks": "所选曲目中没有找到艺人。",
+    "importArtistsFinishedTitle": "导入完成",
+    "importArtistsSummaryCount": "已从 {trackCount} 首曲目导入艺人；精选列表当前共 {artistCount} 位艺人。",
+    "importArtistsFingerprintBreakdown": "{fingerprinted} 首曲目文件可读、已计算指纹；{artistOnly} 首曲目文件不可达，仅按艺人名记录。",
+    "importArtistsFailedPlaylistCount": "有 {count} 个歌单读取失败。"
   }
 }

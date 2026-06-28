@@ -17,6 +17,7 @@ import {
 import { t } from '@renderer/utils/translate'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import { copyPioneerNodeToLibrary } from '@renderer/composables/rekordboxDesktop/usePioneerCopyToLibrary'
+import { importCuratedArtistsFromPioneerSource } from '@renderer/composables/rekordboxDesktop/useImportCuratedArtists'
 import { usePioneerDeviceTreeDrag } from '@renderer/composables/rekordboxDesktop/usePioneerDeviceTreeDrag'
 import {
   countNodeDescendants,
@@ -433,8 +434,15 @@ const collapseAllHandleClick = async () => {
 }
 
 const contextmenuEvent = async (event: MouseEvent) => {
-  if (!isDesktopSource.value || dialogWriting.value) return
-  const menuArr = [[{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]]
+  if (dialogWriting.value || localLibraryCopying.value) return
+  if (!isCopyableSource.value) return
+
+  const menuArr = isDesktopSource.value
+    ? [
+        [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
+        [{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }]
+      ]
+    : [[{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }]]
   const result = await rightClickMenu({ menuArr, clickEvent: event })
   if (result === 'cancel') return
   if (result.menuName === 'library.createPlaylist') {
@@ -443,6 +451,11 @@ const contextmenuEvent = async (event: MouseEvent) => {
   }
   if (result.menuName === 'library.createFolder') {
     await openCreateFolderDialog(0)
+    return
+  }
+  if (result.menuName === 'pioneer.importWholeLibraryArtistsToCurated') {
+    await importWholeLibraryArtists()
+    return
   }
 }
 
@@ -464,9 +477,40 @@ const copyPlaylistToLibrary = async (
   })
 }
 
+const importArtistsForNode = async (node: IPioneerPlaylistTreeNode) => {
+  const sourceKind = runtime.pioneerDeviceLibrary.selectedSourceKind
+  if (sourceKind !== 'desktop' && sourceKind !== 'usb') return
+  await importCuratedArtistsFromPioneerSource({
+    scope: 'node',
+    node,
+    sourceKind,
+    sourceRootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
+    sourceLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType || '',
+    runWithBusy: runWithLocalLibraryCopying,
+    isBusy: () => dialogWriting.value || localLibraryCopying.value
+  })
+}
+
+const importWholeLibraryArtists = async () => {
+  const sourceKind = runtime.pioneerDeviceLibrary.selectedSourceKind
+  if (sourceKind !== 'desktop' && sourceKind !== 'usb') return
+  await importCuratedArtistsFromPioneerSource({
+    scope: 'wholeLibrary',
+    sourceKind,
+    sourceRootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
+    sourceLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType || '',
+    sourceName: runtime.pioneerDeviceLibrary.selectedSourceName,
+    runWithBusy: runWithLocalLibraryCopying,
+    isBusy: () => dialogWriting.value || localLibraryCopying.value
+  })
+}
+
 const handleCopyOnlyContextMenu = async (event: MouseEvent, node: IPioneerPlaylistTreeNode) => {
   const result = await rightClickMenu({
-    menuArr: [[{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }]],
+    menuArr: [
+      [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
+      [{ menuName: 'pioneer.importArtistsToCurated' }]
+    ],
     clickEvent: event
   })
   if (result === 'cancel') return
@@ -476,6 +520,11 @@ const handleCopyOnlyContextMenu = async (event: MouseEvent, node: IPioneerPlayli
   }
   if (result.menuName === 'pioneer.copyToCurated') {
     await copyPlaylistToLibrary(node, 'CuratedLibrary')
+    return
+  }
+  if (result.menuName === 'pioneer.importArtistsToCurated') {
+    await importArtistsForNode(node)
+    return
   }
 }
 
@@ -491,6 +540,7 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
     const menuArr = [
       [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
       [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
+      [{ menuName: 'pioneer.importArtistsToCurated' }],
       [{ menuName: renameMenuKey }, { menuName: deleteFolderMenuKey }]
     ]
     const result = await rightClickMenu({ menuArr, clickEvent: event })
@@ -511,6 +561,10 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
       await copyPlaylistToLibrary(node, 'CuratedLibrary')
       return
     }
+    if (result.menuName === 'pioneer.importArtistsToCurated') {
+      await importArtistsForNode(node)
+      return
+    }
     if (result.menuName === renameMenuKey) {
       await openRenameNodeDialog(node)
       return
@@ -523,6 +577,7 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
 
   const menuArr = [
     [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
+    [{ menuName: 'pioneer.importArtistsToCurated' }],
     [{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }],
     [{ menuName: 'pioneer.cleanMissingFiles' }]
   ]
@@ -534,6 +589,10 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
   }
   if (result.menuName === 'pioneer.copyToCurated') {
     await copyPlaylistToLibrary(node, 'CuratedLibrary')
+    return
+  }
+  if (result.menuName === 'pioneer.importArtistsToCurated') {
+    await importArtistsForNode(node)
     return
   }
   if (result.menuName === renameMenuKey) {

@@ -10,9 +10,11 @@ import { rebuildMacMenusForCurrentFocus } from '../menu/macMenu'
 import { saveLibrarySettingsFromConfig } from '../librarySettingsDb'
 import { persistSettingConfig } from '../settingsPersistence'
 import { syncWindowScreenshotShortcut } from '../window/mainWindow'
+import mainWindow from '../window/mainWindow'
 import {
   clearCuratedArtistLibrary,
   getCuratedArtistLibrarySnapshot,
+  importCuratedArtistsFromTracks,
   replaceCuratedArtistLibrary,
   removeCuratedArtist
 } from '../curatedArtistLibrary'
@@ -94,4 +96,33 @@ export function registerSettingsHandlers(deps: Dependencies) {
   ipcMain.handle('curatedArtists:setAll', (_event, artists) => {
     return replaceCuratedArtistLibrary(artists)
   })
+
+  ipcMain.handle(
+    'curatedArtists:importFromTracks',
+    async (_event, payload: { tracks?: Array<{ artistName?: unknown; filePath?: unknown }> }) => {
+      const progressId = 'curated-artists.import-from-tracks'
+      try {
+        return await importCuratedArtistsFromTracks(payload, {
+          onProgress: (progress) => {
+            mainWindow.instance?.webContents.send('progressSet', {
+              id: progressId,
+              titleKey:
+                progress.stage === 'fingerprint'
+                  ? 'settings.curatedArtistTracking.importProgressFingerprint'
+                  : 'settings.curatedArtistTracking.importProgressScan',
+              now: progress.processed,
+              total: progress.total,
+              isInitial: progress.processed === 0,
+              noProgress: progress.total <= 0
+            })
+          }
+        })
+      } finally {
+        mainWindow.instance?.webContents.send('progressSet', {
+          id: progressId,
+          dismiss: true
+        })
+      }
+    }
+  )
 }

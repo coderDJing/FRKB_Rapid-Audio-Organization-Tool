@@ -36,6 +36,18 @@
     "copyToLibrarySuccessCount": "Successfully copied {count} playlist(s).",
     "copyToLibraryFailedCount": "Failed to copy {count} playlist(s).",
     "copyCueDefinitionsIncomplete": "Some track cue points were not written to the local cache. The audio files were copied.",
-    "noPlaylistsToCopy": "No playlists to copy."
+    "noPlaylistsToCopy": "No playlists to copy.",
+    "importArtistsToCurated": "Import artists to Curated",
+    "importWholeLibraryArtistsToCurated": "Import all artists to Curated",
+    "importArtistsToCuratedTitle": "Import Artists to Curated",
+    "importArtistsSinglePlaylistConfirm": "Import the artists from \"{name}\" into the curated artist list? Only artist names are recorded — no audio files are copied.",
+    "importArtistsFolderConfirm": "Import the artists from \"{name}\" and its {count} playlist(s) into the curated artist list? Only artist names are recorded — no audio files are copied.",
+    "importArtistsWholeLibraryConfirm": "Import every artist from \"{name}\" ({count} playlist(s)) into the curated artist list? Only artist names are recorded — no audio files are copied.",
+    "importArtistsNoPlaylists": "No playlists with tracks were found to import.",
+    "importArtistsNoTracks": "No artists were found in the selected tracks.",
+    "importArtistsFinishedTitle": "Import Complete",
+    "importArtistsSummaryCount": "Imported artists from {trackCount} track(s); the curated list now holds {artistCount} artist(s).",
+    "importArtistsFingerprintBreakdown": "{fingerprinted} track(s) had reachable files and were fingerprinted; {artistOnly} track(s) were unreachable and recorded by artist name only.",
+    "importArtistsFailedPlaylistCount": "Failed to read {count} playlist(s)."
   }
 }
