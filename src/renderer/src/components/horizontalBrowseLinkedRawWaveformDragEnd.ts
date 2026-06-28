@@ -123,6 +123,7 @@ export const handleHorizontalBrowseLinkedRawWaveformDragEnd = ({
           otherTargetSec,
           shouldResume,
           boundaryReferenceDeck: otherDeck,
+          finalLeaderDeck: releaseLeaderDeck,
           setLeader,
           alignToLeader,
           resolveTransportDeckSnapshot,

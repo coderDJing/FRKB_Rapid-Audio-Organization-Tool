@@ -30,6 +30,10 @@ import {
   normalizeLinkedDragVisualPlaybackRate,
   resolveHorizontalBrowseLinkedDragTargets
 } from '@renderer/components/horizontalBrowseLinkedDragTargets'
+import {
+  resolveHorizontalBrowseLinkedDeckPlaybackOrder,
+  resolveOtherHorizontalBrowseLinkedDeck
+} from '@renderer/components/horizontalBrowseLinkedDeckOrder'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -44,7 +48,7 @@ const PLAYHEAD_READY_NEGATIVE_EPSILON_SEC = 0.0001
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
-const resolveOtherDeck = (deck: DeckKey): DeckKey => (deck === 'top' ? 'bottom' : 'top')
+const resolveOtherDeck = resolveOtherHorizontalBrowseLinkedDeck
 
 const PENDING_PLAY_VISIBLE_DELAY_MS = 250
 
@@ -104,23 +108,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
     return Boolean(await params.ensureDualTransportSync?.(sourceDeck))
   }
 
-  const resolveCurrentTransportLeader = (fallbackDeck: DeckKey): DeckKey => {
-    if (params.resolveTransportDeckSnapshot('top').leader && params.resolveDeckSong('top')) {
-      return 'top'
-    }
-    if (params.resolveTransportDeckSnapshot('bottom').leader && params.resolveDeckSong('bottom')) {
-      return 'bottom'
-    }
-    return fallbackDeck
-  }
-
-  const resolveLinkedDeckPlaybackOrder = (fallbackDeck: DeckKey) => {
-    const leader = resolveCurrentTransportLeader(fallbackDeck)
-    return {
-      leader,
-      follower: resolveOtherDeck(leader)
-    }
-  }
+  const resolveLinkedDeckPlaybackOrder = (fallbackDeck: DeckKey) =>
+    resolveHorizontalBrowseLinkedDeckPlaybackOrder(fallbackDeck, {
+      resolveDeckSong: params.resolveDeckSong,
+      resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot
+    })
 
   const resolveActiveBeatSyncDecks = (deck: DeckKey) =>
     resolveHorizontalBrowseBeatSyncDecks({
@@ -450,23 +442,9 @@ export const useHorizontalBrowseDeckPlaybackController = (
     })
   }
 
-  const startSingleDeckRawWaveformDrag = (deck: DeckKey) => {
-    params.touchDeckInteraction(deck)
+  const pauseDeckRawWaveformDragPlayback = (deck: DeckKey) => {
     const dragState = deckWaveformDragState[deck]
-    if (dragState.active) {
-      return
-    }
-
-    const snapshot = params.resolveTransportDeckSnapshot(deck)
-    dragState.active = true
-    dragState.wasPlaying = snapshot.playing
-    dragState.startAnchorSec = clampDeckTimelineSeconds(deck, resolveSnapshotAnchorSec(snapshot))
-    dragState.anchorSec = dragState.startAnchorSec
-    dragState.visualPlaybackRate = normalizeLinkedDragVisualPlaybackRate(snapshot.playbackRate)
-    dragState.cueCommittedDuringDrag = false
-    dragState.token += 1
-
-    if (!dragState.wasPlaying) return
+    if (!dragState.active || !dragState.wasPlaying || dragState.pausePromise) return
 
     const token = dragState.token
     dragState.pausePromise = params.nativeTransport
@@ -482,11 +460,38 @@ export const useHorizontalBrowseDeckPlaybackController = (
       .catch(() => {})
   }
 
+  const startSingleDeckRawWaveformDrag = (deck: DeckKey, pausePlayback = true) => {
+    params.touchDeckInteraction(deck)
+    const dragState = deckWaveformDragState[deck]
+    if (dragState.active) {
+      return
+    }
+
+    const snapshot = params.resolveTransportDeckSnapshot(deck)
+    dragState.active = true
+    dragState.wasPlaying = snapshot.playing
+    dragState.startAnchorSec = clampDeckTimelineSeconds(deck, resolveSnapshotAnchorSec(snapshot))
+    dragState.anchorSec = dragState.startAnchorSec
+    dragState.visualPlaybackRate = normalizeLinkedDragVisualPlaybackRate(snapshot.playbackRate)
+    dragState.cueCommittedDuringDrag = false
+    dragState.token += 1
+
+    if (pausePlayback) {
+      pauseDeckRawWaveformDragPlayback(deck)
+    }
+  }
+
   const handleDeckRawWaveformDragStart = (deck: DeckKey) => {
-    startSingleDeckRawWaveformDrag(deck)
-    if (!isDualTransportSyncActive()) return
+    if (!isDualTransportSyncActive()) {
+      startSingleDeckRawWaveformDrag(deck)
+      return
+    }
     const otherDeck = resolveOtherDeck(deck)
-    startSingleDeckRawWaveformDrag(otherDeck)
+    const playbackOrder = resolveLinkedDeckPlaybackOrder(deck)
+    startSingleDeckRawWaveformDrag(deck, false)
+    startSingleDeckRawWaveformDrag(otherDeck, false)
+    pauseDeckRawWaveformDragPlayback(playbackOrder.follower)
+    pauseDeckRawWaveformDragPlayback(playbackOrder.leader)
   }
 
   const runLatestDeckScrubPreviewRequest = (deck: DeckKey) => {

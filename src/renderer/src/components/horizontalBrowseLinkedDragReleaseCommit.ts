@@ -32,6 +32,7 @@ type LinkedDragReleaseCommitParams = {
 
 type BoundaryLinkedDragReleaseCommitParams = LinkedDragReleaseCommitParams & {
   boundaryReferenceDeck: DeckKey
+  finalLeaderDeck: DeckKey | null
   setLeader: (
     deck?: DeckKey | null,
     options?: { notifySnapshotListeners?: boolean }
@@ -190,6 +191,7 @@ export const commitHorizontalBrowseBoundaryLinkedDragRelease = async ({
   otherTargetSec,
   shouldResume,
   boundaryReferenceDeck,
+  finalLeaderDeck,
   setLeader,
   alignToLeader,
   resolveTransportDeckSnapshot,
@@ -230,6 +232,16 @@ export const commitHorizontalBrowseBoundaryLinkedDragRelease = async ({
   }
   if (stopIfStale('after-boundary-align-token-mismatch')) {
     return { committed: false, targetSec: alignedTargetSec, otherTargetSec: alignedOtherTargetSec }
+  }
+  if (finalLeaderDeck && finalLeaderDeck !== boundaryReferenceDeck) {
+    await setLeader(finalLeaderDeck, { notifySnapshotListeners: false })
+    if (stopIfStale('after-boundary-restore-leader-token-mismatch')) {
+      return {
+        committed: false,
+        targetSec: alignedTargetSec,
+        otherTargetSec: alignedOtherTargetSec
+      }
+    }
   }
   await commitLinkedGridVisualTransaction?.(
     {
