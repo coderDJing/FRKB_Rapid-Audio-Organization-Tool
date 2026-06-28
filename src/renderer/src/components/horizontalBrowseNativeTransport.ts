@@ -30,6 +30,9 @@ type LocalDeckState = {
 }
 
 type SnapshotListener = (snapshot: HorizontalBrowseTransportSnapshot) => void
+type SnapshotApplyOptions = {
+  notifySnapshotListeners?: boolean
+}
 
 export const createHorizontalBrowseNativeTransport = () => {
   const state = reactive<HorizontalBrowseTransportSnapshot>(
@@ -133,11 +136,14 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
-  const setState = async (payload: {
-    top: LocalDeckState
-    bottom: LocalDeckState
-    allowPhaseAlignment?: boolean
-  }) => {
+  const setState = async (
+    payload: {
+      top: LocalDeckState
+      bottom: LocalDeckState
+      allowPhaseAlignment?: boolean
+    },
+    options: SnapshotApplyOptions = {}
+  ) => {
     const nowMs = performance.now()
     const snapshot = await invoke('horizontal-browse-transport:set-state', {
       nowMs,
@@ -171,7 +177,7 @@ export const createHorizontalBrowseNativeTransport = () => {
       },
       allowPhaseAlignment: payload.allowPhaseAlignment !== false
     })
-    applySnapshot(snapshot)
+    applySnapshot(snapshot, options.notifySnapshotListeners !== false)
     return snapshot
   }
 
@@ -231,7 +237,8 @@ export const createHorizontalBrowseNativeTransport = () => {
   const alignToLeader = async (
     deck: HorizontalBrowseDeckKey,
     targetSec?: number,
-    skipGridSnap?: boolean
+    skipGridSnap?: boolean,
+    options: SnapshotApplyOptions = {}
   ) => {
     const snapshot = await invoke(
       'horizontal-browse-transport:align-to-leader',
@@ -240,7 +247,7 @@ export const createHorizontalBrowseNativeTransport = () => {
       Number.isFinite(Number(targetSec)) ? Number(targetSec) : undefined,
       skipGridSnap
     )
-    applySnapshot(snapshot)
+    applySnapshot(snapshot, options.notifySnapshotListeners !== false)
     return snapshot
   }
 
@@ -255,13 +262,16 @@ export const createHorizontalBrowseNativeTransport = () => {
     return snapshot
   }
 
-  const setLeader = async (deck?: HorizontalBrowseDeckKey | null) => {
+  const setLeader = async (
+    deck?: HorizontalBrowseDeckKey | null,
+    options: SnapshotApplyOptions = {}
+  ) => {
     const snapshot = await invoke(
       'horizontal-browse-transport:set-leader',
       deck || null,
       performance.now()
     )
-    applySnapshot(snapshot)
+    applySnapshot(snapshot, options.notifySnapshotListeners !== false)
     return snapshot
   }
 

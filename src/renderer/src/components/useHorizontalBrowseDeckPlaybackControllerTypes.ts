@@ -24,7 +24,10 @@ export type UseHorizontalBrowseDeckPlaybackControllerParams =
     ) => Promise<boolean>
     nativeTransport: {
       setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
-      setLeader: (deck?: DeckKey | null) => Promise<unknown>
+      setLeader: (
+        deck?: DeckKey | null,
+        options?: { notifySnapshotListeners?: boolean }
+      ) => Promise<unknown>
       preparePlayhead: (deck: DeckKey) => Promise<unknown>
       seek: (deck: DeckKey, currentSec: number) => Promise<unknown>
       setScrubPreview: (
@@ -34,7 +37,12 @@ export type UseHorizontalBrowseDeckPlaybackControllerParams =
         rate: number
       ) => Promise<unknown>
       beatsync: (deck: DeckKey) => Promise<unknown>
-      alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
+      alignToLeader: (
+        deck: DeckKey,
+        targetSec?: number,
+        skipGridSnap?: boolean,
+        options?: { notifySnapshotListeners?: boolean }
+      ) => Promise<unknown>
       setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
       snapshot: (nowMs?: number) => Promise<unknown>
     }

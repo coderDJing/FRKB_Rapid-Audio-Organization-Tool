@@ -1,22 +1,23 @@
-import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
+import type {
+  HorizontalBrowseDeckKey,
+  HorizontalBrowseTransportDeckSnapshot
+} from '@renderer/components/horizontalBrowseNativeTransport'
 import type {
   DeckWaveformDragEndPayload,
   DeckWaveformDragState
 } from '@renderer/components/horizontalBrowseDeckPlaybackState'
 import {
+  commitHorizontalBrowseBoundaryLinkedDragRelease,
   commitHorizontalBrowseLinkedDragRelease,
   type CommitHorizontalBrowseDeckStatesToNative
 } from '@renderer/components/horizontalBrowseLinkedDragReleaseCommit'
+import type { HorizontalBrowseLinkedDragTargets } from '@renderer/components/horizontalBrowseLinkedDragTargets'
+import type {
+  HorizontalBrowseLinkedGridVisualTransactionDeckState,
+  HorizontalBrowseLinkedGridVisualTransactionMode
+} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
 
 type DeckKey = HorizontalBrowseDeckKey
-
-type LinkedDragDelta = {
-  otherTargetSec: number
-  expectedOtherDeltaSec: number
-  deltaScale: number
-  sourceVisualPlaybackRate: number
-  otherVisualPlaybackRate: number
-}
 
 type LinkedRawWaveformDragEndParams = {
   deck: DeckKey
@@ -24,8 +25,11 @@ type LinkedRawWaveformDragEndParams = {
   resolveOtherDeck: (deck: DeckKey) => DeckKey
   resolveDeckDragState: (deck: DeckKey) => DeckWaveformDragState
   resolveDeckLeader: (deck: DeckKey) => boolean
-  clampDeckTimelineSeconds: (deck: DeckKey, seconds: number) => number
-  resolveLinkedDragDelta: (deck: DeckKey, otherDeck: DeckKey, targetSec: number) => LinkedDragDelta
+  resolveLinkedDragDelta: (
+    deck: DeckKey,
+    otherDeck: DeckKey,
+    targetSec: number
+  ) => HorizontalBrowseLinkedDragTargets
   finishDeckWaveformDragState: (
     deck: DeckKey,
     targetSec: number
@@ -35,7 +39,26 @@ type LinkedRawWaveformDragEndParams = {
     token: number
   }
   notifyDeckSeekIntent: (deck: DeckKey, seconds: number) => void
-  setLeader: (deck?: DeckKey | null) => Promise<unknown>
+  setLeader: (
+    deck?: DeckKey | null,
+    options?: { notifySnapshotListeners?: boolean }
+  ) => Promise<unknown>
+  alignToLeader: (
+    deck: DeckKey,
+    targetSec?: number,
+    skipGridSnap?: boolean,
+    options?: { notifySnapshotListeners?: boolean }
+  ) => Promise<unknown>
+  resolveTransportDeckSnapshot: (deck: DeckKey) => HorizontalBrowseTransportDeckSnapshot
+  commitLinkedGridVisualTransaction?: (
+    payload: {
+      leader: DeckKey
+      follower: DeckKey
+      mode?: HorizontalBrowseLinkedGridVisualTransactionMode
+      deckStates?: Partial<Record<DeckKey, HorizontalBrowseLinkedGridVisualTransactionDeckState>>
+    },
+    options?: { begin?: boolean }
+  ) => Promise<boolean> | boolean
   prepareDeckPlayheadIfNeeded: (deck: DeckKey) => Promise<void>
   startDeckRenderPlaybackClock: (deck: DeckKey, seconds: number) => void
   commitDeckStatesToNative: CommitHorizontalBrowseDeckStatesToNative
@@ -47,11 +70,13 @@ export const handleHorizontalBrowseLinkedRawWaveformDragEnd = ({
   resolveOtherDeck,
   resolveDeckDragState,
   resolveDeckLeader,
-  clampDeckTimelineSeconds,
   resolveLinkedDragDelta,
   finishDeckWaveformDragState,
   notifyDeckSeekIntent,
   setLeader,
+  alignToLeader,
+  resolveTransportDeckSnapshot,
+  commitLinkedGridVisualTransaction,
   prepareDeckPlayheadIfNeeded,
   startDeckRenderPlaybackClock,
   commitDeckStatesToNative
@@ -67,9 +92,10 @@ export const handleHorizontalBrowseLinkedRawWaveformDragEnd = ({
     : resolveDeckLeader(otherDeck)
       ? otherDeck
       : null
-  const targetSec = clampDeckTimelineSeconds(deck, Number(payload.anchorSec) || 0)
-  const linkedDelta = resolveLinkedDragDelta(deck, otherDeck, targetSec)
+  const linkedDelta = resolveLinkedDragDelta(deck, otherDeck, Number(payload.anchorSec) || 0)
+  const targetSec = linkedDelta.sourceTargetSec
   const otherTargetSec = linkedDelta.otherTargetSec
+  const shouldSnapSourceToBoundaryReference = linkedDelta.otherBoundary !== 'none'
   const sourceFinish = finishDeckWaveformDragState(deck, targetSec)
   const otherFinish = finishDeckWaveformDragState(otherDeck, otherTargetSec)
   if (!payload?.committed) {
@@ -89,18 +115,37 @@ export const handleHorizontalBrowseLinkedRawWaveformDragEnd = ({
     await sourceFinish.pausePromise
     await otherFinish.pausePromise
     if (stopIfStale('after-pause-token-mismatch')) return
-    if (releaseLeaderDeck) await setLeader(releaseLeaderDeck)
-    const committed = await commitHorizontalBrowseLinkedDragRelease({
-      deck,
-      otherDeck,
-      targetSec,
-      otherTargetSec,
-      shouldResume,
-      prepareDeckPlayheadIfNeeded,
-      startDeckRenderPlaybackClock,
-      commitDeckStatesToNative,
-      stopIfStale
-    })
+    const committed = shouldSnapSourceToBoundaryReference
+      ? await commitHorizontalBrowseBoundaryLinkedDragRelease({
+          deck,
+          otherDeck,
+          targetSec,
+          otherTargetSec,
+          shouldResume,
+          boundaryReferenceDeck: otherDeck,
+          setLeader,
+          alignToLeader,
+          resolveTransportDeckSnapshot,
+          commitLinkedGridVisualTransaction,
+          prepareDeckPlayheadIfNeeded,
+          startDeckRenderPlaybackClock,
+          commitDeckStatesToNative,
+          stopIfStale
+        })
+      : await (async () => {
+          if (releaseLeaderDeck) await setLeader(releaseLeaderDeck)
+          return commitHorizontalBrowseLinkedDragRelease({
+            deck,
+            otherDeck,
+            targetSec,
+            otherTargetSec,
+            shouldResume,
+            prepareDeckPlayheadIfNeeded,
+            startDeckRenderPlaybackClock,
+            commitDeckStatesToNative,
+            stopIfStale
+          })
+        })()
     void committed
   })().catch(() => undefined)
   return true

@@ -29,6 +29,7 @@ type OverlayFrameState = {
   firstBeatMs: number
   barBeatOffset: number
   showBeatGrid: boolean
+  playbackDurationSec: number
   themeVariant: 'light' | 'dark'
   rangeStartSec: number
   rangeDurationSec: number
@@ -115,6 +116,7 @@ const drawBeatGridOverlay = (
   bpm: number,
   firstBeatMs: number,
   barBeatOffset: number,
+  playbackDurationSec: number,
   rangeStartSec: number,
   rangeDurationSec: number,
   themeVariant: 'light' | 'dark'
@@ -127,8 +129,14 @@ const drawBeatGridOverlay = (
   const firstBeatSec = (Number(firstBeatMs) || 0) / 1000
   const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, BAR_BEAT_INTERVAL)
   const rangeEndSec = rangeStartSec + rangeDurationSec
-  const startIndex = Math.floor((rangeStartSec - firstBeatSec) / beatSec) - 2
-  const endIndex = Math.ceil((rangeEndSec - firstBeatSec) / beatSec) + 2
+  const durationSec = Math.max(0, Number(playbackDurationSec) || 0)
+  const drawStartSec = Math.max(0, rangeStartSec)
+  const drawEndSec = durationSec > 0 ? Math.min(durationSec, rangeEndSec) : rangeEndSec
+  if (drawEndSec <= drawStartSec) return
+  const drawLeft = ((drawStartSec - rangeStartSec) / rangeDurationSec) * width
+  const drawRight = ((drawEndSec - rangeStartSec) / rangeDurationSec) * width
+  const startIndex = Math.floor((drawStartSec - firstBeatSec) / beatSec) - 2
+  const endIndex = Math.ceil((drawEndSec - firstBeatSec) / beatSec) + 2
   const resolveLineLeft = (x: number, safeWidth: number) => x - safeWidth * 0.5
   const resolveLineCenter = (x: number, safeWidth: number) =>
     resolveLineLeft(x, safeWidth) + safeWidth * 0.5
@@ -136,10 +144,10 @@ const drawBeatGridOverlay = (
     const safeWidth = Math.max(1, lineWidth)
     const halfWidth = safeWidth * 0.5
     const drawCenterX = resolveLineCenter(x, safeWidth)
-    if (drawCenterX < -halfWidth || drawCenterX > width + halfWidth) return
+    if (drawCenterX < drawLeft - halfWidth || drawCenterX > drawRight + halfWidth) return
     const rawLeft = resolveLineLeft(x, safeWidth)
-    const left = Math.max(0, rawLeft)
-    const right = Math.min(width, rawLeft + safeWidth)
+    const left = Math.max(0, drawLeft, rawLeft)
+    const right = Math.min(width, drawRight, rawLeft + safeWidth)
     if (right <= left) return
     ctx.fillStyle = color
     ctx.fillRect(
@@ -158,7 +166,10 @@ const drawBeatGridOverlay = (
   for (let i = startIndex; i <= endIndex; i += 1) {
     const beatTime = firstBeatSec + i * beatSec
     const x = ((beatTime - rangeStartSec) / rangeDurationSec) * width
-    if (beatTime < 0) {
+    if (beatTime < drawStartSec - 0.001) {
+      continue
+    }
+    if (beatTime > drawEndSec + 0.001) {
       continue
     }
     if (beatTime < rangeStartSec - beatSec || beatTime > rangeEndSec + beatSec) continue
@@ -244,6 +255,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
     firstBeatMs: Number(request.firstBeatMs) || 0,
     barBeatOffset: Number(request.barBeatOffset) || 0,
     showBeatGrid: request.showBeatGrid === true,
+    playbackDurationSec: Math.max(0, Number(request.playbackDurationSec) || 0),
     themeVariant: request.themeVariant,
     rangeStartSec,
     rangeDurationSec: Math.max(0.0001, Number(rangeDurationSec) || 0.0001),
@@ -289,6 +301,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
       lastFrame.firstBeatMs === current.firstBeatMs &&
       lastFrame.barBeatOffset === current.barBeatOffset &&
       lastFrame.showBeatGrid === current.showBeatGrid &&
+      lastFrame.playbackDurationSec === current.playbackDurationSec &&
       lastFrame.themeVariant === current.themeVariant &&
       lastFrame.rangeDurationSec === current.rangeDurationSec &&
       lastFrame.timeBasisOffsetMs === current.timeBasisOffsetMs &&
@@ -360,6 +373,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
         Number(request.bpm) || 0,
         Number(request.firstBeatMs) || 0,
         Number(request.barBeatOffset) || 0,
+        Number(request.playbackDurationSec) || 0,
         rangeStartSec,
         rangeDurationSec,
         request.themeVariant

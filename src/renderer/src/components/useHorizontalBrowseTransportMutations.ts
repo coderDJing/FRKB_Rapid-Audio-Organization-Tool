@@ -38,17 +38,22 @@ type LocalDeckState = {
 
 export type HorizontalBrowseDeckStateCommitOptions = {
   allowPhaseAlignment?: boolean
+  notifySnapshotListeners?: boolean
+  syncRenderState?: boolean
 }
 
 type UseHorizontalBrowseTransportMutationsParams = {
   touchDeckInteraction: (deck: DeckKey) => void
   nativeTransport: {
     setDeckState: (deck: DeckKey, payload: LocalDeckState) => Promise<unknown>
-    setState: (payload: {
-      top: LocalDeckState
-      bottom: LocalDeckState
-      allowPhaseAlignment?: boolean
-    }) => Promise<unknown>
+    setState: (
+      payload: {
+        top: LocalDeckState
+        bottom: LocalDeckState
+        allowPhaseAlignment?: boolean
+      },
+      options?: { notifySnapshotListeners?: boolean }
+    ) => Promise<unknown>
     setLeader: (deck?: DeckKey | null) => Promise<unknown>
     setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
     alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
@@ -137,12 +142,17 @@ export const useHorizontalBrowseTransportMutations = (
     overrides?: Partial<Record<DeckKey, HorizontalBrowseDeckTransportStateOverride>>,
     options?: HorizontalBrowseDeckStateCommitOptions
   ) => {
-    await params.nativeTransport.setState({
-      top: buildDeckStateForNative('top', overrides?.top),
-      bottom: buildDeckStateForNative('bottom', overrides?.bottom),
-      allowPhaseAlignment: options?.allowPhaseAlignment !== false
-    })
-    params.syncDeckRenderState()
+    await params.nativeTransport.setState(
+      {
+        top: buildDeckStateForNative('top', overrides?.top),
+        bottom: buildDeckStateForNative('bottom', overrides?.bottom),
+        allowPhaseAlignment: options?.allowPhaseAlignment !== false
+      },
+      { notifySnapshotListeners: options?.notifySnapshotListeners }
+    )
+    if (options?.syncRenderState !== false) {
+      params.syncDeckRenderState()
+    }
   }
 
   const toggleDeckMaster = async (deck: DeckKey) => {
