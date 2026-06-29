@@ -21,14 +21,20 @@ import {
   validateAcoustIdClientKeyValue,
   getAcoustIdClientKeyStatus
 } from '../services/acoustId'
-import { findSimilarTracksBatch, cancelSimilarTracksBatch } from '../services/similarTracks'
+import {
+  findSimilarTracksBatch,
+  cancelSimilarTracksBatch,
+  getSimilarTrackBlockedRecommendationKeys,
+  blockSimilarTrackRecommendation
+} from '../services/similarTracks'
 import {
   IMusicBrainzSearchPayload,
   IMusicBrainzSuggestionParams,
   IMusicBrainzAcoustIdPayload,
   ITrackMetadataUpdatePayload,
   IMetadataAutoFillRequest,
-  ISimilarTracksBatchRequest
+  ISimilarTracksBatchRequest,
+  ISimilarTrackBlockTarget
 } from '../../types/globals'
 
 type MetadataUpdateError = {
@@ -127,6 +133,17 @@ export function registerMediaMetadataHandlers() {
   ipcMain.handle('similarTracks:findBatch', async (_e, payload: ISimilarTracksBatchRequest) => {
     return await findSimilarTracksBatch(payload)
   })
+
+  ipcMain.handle('similarTracks:getBlockedRecommendationKeys', async () => {
+    return await getSimilarTrackBlockedRecommendationKeys()
+  })
+
+  ipcMain.handle(
+    'similarTracks:blockRecommendation',
+    async (_e, payload: ISimilarTrackBlockTarget) => {
+      return await blockSimilarTrackRecommendation(payload)
+    }
+  )
 
   ipcMain.handle('similarTracks:cancelBatch', async (_e, progressId: string) => {
     cancelSimilarTracksBatch(typeof progressId === 'string' ? progressId : '')

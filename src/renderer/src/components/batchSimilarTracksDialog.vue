@@ -14,6 +14,8 @@ import type {
   ISimilarTracksBatchResult,
   ISimilarTracksProviderStatus,
   ISimilarTracksPoolItem,
+  ISimilarTrackBlockTarget,
+  ISimilarTrackBlockResult,
   ISongInfo
 } from 'src/types/globals'
 
@@ -32,6 +34,8 @@ const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const errorText = ref(props.initialErrorText || '')
 const activeFilter = ref<FilterKey>('all')
 const failedCoverKeys = ref(new Set<string>())
+const blockedRecommendationKeys = ref(new Set<string>())
+const blockingTrackKeys = ref(new Set<string>())
 const batchResult = ref<ISimilarTracksBatchResult | null>(props.initialResult || null)
 
 // 汇总统计
@@ -50,8 +54,26 @@ const normalizeText = (value?: string | null): string =>
 const normalizeKey = (value?: string | null): string => normalizeText(value).toLocaleLowerCase()
 
 // 推荐项去重键：优先 MBID，否则 artist|title 文本
-const textKeyOfTrack = (track: ISimilarTrackItem): string =>
+const textKeyOfTrack = (track: Pick<ISimilarTrackItem, 'artist' | 'title'>): string =>
   `text:${normalizeKey(track.artist)}:${normalizeKey(track.title)}`
+
+const blockKeysOfTrack = (
+  track: Pick<ISimilarTrackItem, 'artist' | 'title' | 'recordingMbid'>
+): string[] => {
+  const keys: string[] = []
+  const recordingMbid = normalizeKey(track.recordingMbid)
+  if (recordingMbid) keys.push(`mbid:${recordingMbid}`)
+  const artist = normalizeKey(track.artist)
+  const title = normalizeKey(track.title)
+  if (artist && title) keys.push(`text:${artist}:${title}`)
+  return Array.from(new Set(keys))
+}
+
+const isTrackBlocked = (track: ISimilarTrackItem): boolean =>
+  blockKeysOfTrack(track).some((key) => blockedRecommendationKeys.value.has(key))
+
+const blockActionKey = (track: ISimilarTrackItem): string =>
+  blockKeysOfTrack(track).join('|') || track.id
 
 const sourceLabel = (source: ISimilarTrackSource) =>
   source === 'listenbrainz'
@@ -116,8 +138,10 @@ if (props.initialResult) {
   buildPool(props.initialResult)
 }
 
+const visiblePool = computed(() => pool.value.filter((item) => !isTrackBlocked(item)))
+
 const filteredTracks = computed(() => {
-  const tracks = pool.value
+  const tracks = visiblePool.value
   if (activeFilter.value === 'listenbrainz') {
     return tracks.filter((item) => item.sources.includes('listenbrainz'))
   }
@@ -133,7 +157,7 @@ const filteredTracks = computed(() => {
 })
 
 const counts = computed<Record<FilterKey, number>>(() => {
-  const tracks = pool.value
+  const tracks = visiblePool.value
   return {
     all: tracks.length,
     listenbrainz: tracks.filter((item) => item.sources.includes('listenbrainz')).length,
@@ -304,6 +328,55 @@ const openTrackNeteaseSearch = (track: ISimilarTrackItem) => {
   openNeteaseSearch(resolveNeteaseSearchQuery(track))
 }
 
+const loadBlockedRecommendationKeys = async () => {
+  try {
+    const keys = (await window.electron.ipcRenderer.invoke(
+      'similarTracks:getBlockedRecommendationKeys'
+    )) as string[]
+    blockedRecommendationKeys.value = new Set(
+      Array.isArray(keys) ? keys.filter((key) => typeof key === 'string' && key.length > 0) : []
+    )
+  } catch (error) {
+    console.error('[similar-tracks] load blocked recommendation keys failed', error)
+  }
+}
+
+const isBlockingTrack = (track: ISimilarTrackItem): boolean =>
+  blockingTrackKeys.value.has(blockActionKey(track))
+
+const blockTrackRecommendation = async (track: ISimilarTrackItem) => {
+  const localKeys = blockKeysOfTrack(track)
+  if (!localKeys.length) return
+  const actionKey = blockActionKey(track)
+  if (blockingTrackKeys.value.has(actionKey)) return
+
+  blockingTrackKeys.value = new Set(blockingTrackKeys.value).add(actionKey)
+  try {
+    const payload: ISimilarTrackBlockTarget = {
+      title: normalizeText(track.title) || undefined,
+      artist: normalizeText(track.artist) || undefined,
+      album: normalizeText(track.album) || undefined,
+      recordingMbid: normalizeText(track.recordingMbid) || undefined,
+      sources: track.sources.filter((source) => source === 'listenbrainz' || source === 'lastfm')
+    }
+    const result = (await window.electron.ipcRenderer.invoke(
+      'similarTracks:blockRecommendation',
+      payload
+    )) as ISimilarTrackBlockResult
+    const nextKeys = new Set(blockedRecommendationKeys.value)
+    for (const key of [...localKeys, ...(Array.isArray(result.keys) ? result.keys : [])]) {
+      if (typeof key === 'string' && key.length > 0) nextKeys.add(key)
+    }
+    blockedRecommendationKeys.value = nextKeys
+  } catch (error) {
+    console.error('[similar-tracks] block recommendation failed', error)
+  } finally {
+    const nextBlockingKeys = new Set(blockingTrackKeys.value)
+    nextBlockingKeys.delete(actionKey)
+    blockingTrackKeys.value = nextBlockingKeys
+  }
+}
+
 const coverKey = (track: ISimilarTrackItem) => `${track.id}:${track.coverUrl || ''}`
 const hasCover = (track: ISimilarTrackItem) =>
   !!track.coverUrl && !failedCoverKeys.value.has(coverKey(track))
@@ -326,6 +399,7 @@ const retrySearch = () => {
 
 onMounted(() => {
   utils.setHotkeysScpoe(scope)
+  void loadBlockedRecommendationKeys()
   hotkeys('esc', scope, () => {
     closeDialog()
     return false
@@ -438,7 +512,22 @@ onUnmounted(() => {
                   </div>
                 </div>
                 <div class="track-side">
-                  <div class="score">{{ t('similarTracks.score', { score: track.score }) }}</div>
+                  <div class="track-side-top">
+                    <div class="score">{{ t('similarTracks.score', { score: track.score }) }}</div>
+                    <bubbleBoxTrigger
+                      tag="button"
+                      class="block-recommendation-button"
+                      type="button"
+                      :disabled="isBlockingTrack(track)"
+                      :aria-label="t('similarTracks.blockRecommendation')"
+                      :title="t('similarTracks.blockRecommendation')"
+                      :show-delay="250"
+                      :max-width="180"
+                      @click="blockTrackRecommendation(track)"
+                    >
+                      <span class="block-recommendation-mark">×</span>
+                    </bubbleBoxTrigger>
+                  </div>
                   <div class="track-actions">
                     <button
                       class="open-button"
@@ -676,14 +765,7 @@ onUnmounted(() => {
   padding: 10px 12px 10px 10px;
   transition:
     border-color 0.16s ease,
-    background-color 0.16s ease,
-    transform 0.16s ease;
-
-  &:hover {
-    border-color: var(--accent);
-    background-color: var(--hover);
-    transform: translateY(-1px);
-  }
+    background-color 0.16s ease;
 }
 
 .cover-box {
@@ -761,6 +843,13 @@ onUnmounted(() => {
   gap: 10px;
 }
 
+.track-side-top {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .track-actions {
   display: flex;
   justify-content: flex-end;
@@ -779,6 +868,41 @@ onUnmounted(() => {
   font-weight: 700;
   line-height: 22px;
   text-align: center;
+}
+
+.block-recommendation-button {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background-color: var(--bg);
+  color: var(--text-weak);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    border-color: rgba(239, 68, 68, 0.52);
+    background-color: rgba(239, 68, 68, 0.08);
+    color: #dc2626;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.48;
+  }
+}
+
+.block-recommendation-mark {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 24px;
 }
 
 .open-button {

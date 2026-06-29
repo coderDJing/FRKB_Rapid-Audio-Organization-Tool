@@ -383,6 +383,20 @@ interface ISimilarTracksPoolItem extends ISimilarTrackItem {
   recommendedBySeeds: string[]
 }
 
+interface ISimilarTrackBlockTarget {
+  title?: string
+  artist?: string
+  album?: string
+  recordingMbid?: string
+  sources?: ISimilarTrackSource[]
+}
+
+interface ISimilarTrackBlockResult {
+  /** 本次屏蔽命中的稳定键：优先 MBID，文本键作为兜底。 */
+  keys: string[]
+  blockedAt: number
+}
+
 interface IMusicBrainzApplyPayload {
   title?: string
   artist?: string
@@ -814,5 +828,7 @@ export {
   ISimilarTracksBatchRequest,
   ISimilarTracksBatchSeedResult,
   ISimilarTracksBatchResult,
-  ISimilarTracksPoolItem
+  ISimilarTracksPoolItem,
+  ISimilarTrackBlockTarget,
+  ISimilarTrackBlockResult
 }

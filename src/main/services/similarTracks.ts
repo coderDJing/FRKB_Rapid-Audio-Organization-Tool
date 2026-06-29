@@ -11,7 +11,9 @@ import {
   ISimilarTracksSeed,
   ISimilarTracksBatchRequest,
   ISimilarTracksBatchResult,
-  ISimilarTracksBatchSeedResult
+  ISimilarTracksBatchSeedResult,
+  ISimilarTrackBlockTarget,
+  ISimilarTrackBlockResult
 } from '../../types/globals'
 import { getSystemProxy } from '../utils'
 import { matchTrackWithAcoustId } from './acoustId'
@@ -40,6 +42,7 @@ const lastFmQueue = createRateLimitedQueue({ minInterval: LASTFM_MIN_INTERVAL })
 // 批量场景里重复的种子 / 重复的推荐目标可直接命中，大幅减少外部请求。
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
 const CACHE_FILE_NAME = 'similarTracksCache.json'
+const BLOCKED_RECOMMENDATIONS_FILE_NAME = 'similarTracksBlockedRecommendations.json'
 
 type JsonObject = Record<string, unknown>
 type RequestInitWithDispatcher = UndiciRequestInit
@@ -64,14 +67,40 @@ type SimilarCacheEntry = {
 }
 type SimilarCacheStore = Record<string, SimilarCacheEntry>
 
+type SimilarTrackBlockedRecommendation = {
+  keys: string[]
+  title: string
+  artist: string
+  album?: string
+  recordingMbid?: string
+  sources: ISimilarTrackSource[]
+  blockedAt: number
+  updatedAt: number
+}
+
+type SimilarTrackBlockedRecommendationsStore = {
+  version: 1
+  items: Record<string, SimilarTrackBlockedRecommendation>
+}
+
 const appReady = app.isReady() ? Promise.resolve() : app.whenReady()
 let cacheLoaded = false
 let cacheStore: SimilarCacheStore = {}
 let cachePersistTimer: NodeJS.Timeout | null = null
+let blockedRecommendationsLoaded = false
+let blockedRecommendationsStore: SimilarTrackBlockedRecommendationsStore = {
+  version: 1,
+  items: {}
+}
 
 async function getCacheFilePath(): Promise<string> {
   await appReady
   return path.join(app.getPath('userData'), CACHE_FILE_NAME)
+}
+
+async function getBlockedRecommendationsFilePath(): Promise<string> {
+  await appReady
+  return path.join(app.getPath('userData'), BLOCKED_RECOMMENDATIONS_FILE_NAME)
 }
 
 async function loadSimilarCache(): Promise<void> {
@@ -211,6 +240,141 @@ function normalizeText(value?: string | null): string {
 
 function normalizeKey(value?: string | null): string {
   return normalizeText(value).toLocaleLowerCase()
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.filter((value) => value.length > 0)))
+}
+
+function normalizeBlockedRecommendationsStore(
+  value: unknown
+): SimilarTrackBlockedRecommendationsStore {
+  const root = getJsonObject(value)
+  const rawItems = getJsonObject(root?.items)
+  if (!rawItems) return { version: 1, items: {} }
+
+  const items: Record<string, SimilarTrackBlockedRecommendation> = {}
+  for (const [key, rawItem] of Object.entries(rawItems)) {
+    const item = getJsonObject(rawItem)
+    if (!item) continue
+    const keys = uniqueStrings(
+      Array.isArray(item.keys) ? item.keys.map((value) => normalizeText(getString(value))) : []
+    )
+    if (!keys.length) continue
+    const blockedAt = Number(item.blockedAt)
+    const updatedAt = Number(item.updatedAt)
+    items[key] = {
+      keys,
+      title: normalizeText(getString(item.title)),
+      artist: normalizeText(getString(item.artist)),
+      album: normalizeText(getString(item.album)) || undefined,
+      recordingMbid: normalizeText(getString(item.recordingMbid)) || undefined,
+      sources: Array.isArray(item.sources)
+        ? item.sources.filter(
+            (source): source is ISimilarTrackSource =>
+              source === 'listenbrainz' || source === 'lastfm'
+          )
+        : [],
+      blockedAt: Number.isFinite(blockedAt) ? blockedAt : Date.now(),
+      updatedAt: Number.isFinite(updatedAt) ? updatedAt : Date.now()
+    }
+  }
+
+  return { version: 1, items }
+}
+
+async function loadBlockedRecommendations(): Promise<void> {
+  if (blockedRecommendationsLoaded) return
+  blockedRecommendationsLoaded = true
+  try {
+    const file = await getBlockedRecommendationsFilePath()
+    if (await fs.pathExists(file)) {
+      blockedRecommendationsStore = normalizeBlockedRecommendationsStore(await fs.readJson(file))
+    }
+  } catch {
+    blockedRecommendationsStore = { version: 1, items: {} }
+  }
+}
+
+async function persistBlockedRecommendations(): Promise<void> {
+  const file = await getBlockedRecommendationsFilePath()
+  await fs.outputJson(file, blockedRecommendationsStore, { spaces: 2 })
+}
+
+function buildSimilarTrackBlockKeys(target: {
+  recordingMbid?: string | null
+  artist?: string | null
+  title?: string | null
+}): string[] {
+  const keys: string[] = []
+  const recordingMbid = normalizeKey(target.recordingMbid)
+  if (recordingMbid) keys.push(`mbid:${recordingMbid}`)
+
+  const artist = normalizeKey(target.artist)
+  const title = normalizeKey(target.title)
+  if (artist && title) keys.push(`text:${artist}:${title}`)
+
+  return uniqueStrings(keys)
+}
+
+function getBlockedRecommendationKeysFromStore(): string[] {
+  return uniqueStrings(
+    Object.values(blockedRecommendationsStore.items).flatMap((item) => item.keys)
+  )
+}
+
+function filterBlockedTracksByKeys(
+  tracks: ISimilarTrackItem[],
+  blockedKeys: Set<string>
+): ISimilarTrackItem[] {
+  if (!blockedKeys.size) return tracks
+  return tracks.filter((track) => {
+    const keys = buildSimilarTrackBlockKeys(track)
+    return !keys.some((key) => blockedKeys.has(key))
+  })
+}
+
+export async function getSimilarTrackBlockedRecommendationKeys(): Promise<string[]> {
+  await loadBlockedRecommendations()
+  return getBlockedRecommendationKeysFromStore()
+}
+
+export async function blockSimilarTrackRecommendation(
+  target: ISimilarTrackBlockTarget
+): Promise<ISimilarTrackBlockResult> {
+  await loadBlockedRecommendations()
+  const safeTarget = target && typeof target === 'object' ? target : {}
+  const keys = buildSimilarTrackBlockKeys(safeTarget)
+  if (!keys.length) {
+    throw new Error('SIMILAR_TRACKS_BLOCK_INVALID_TARGET')
+  }
+
+  const now = Date.now()
+  const existingEntry = Object.entries(blockedRecommendationsStore.items).find(([, item]) =>
+    item.keys.some((key) => keys.includes(key))
+  )
+  const itemKey = existingEntry?.[0] || keys[0]
+  const existing = existingEntry?.[1]
+  const nextKeys = uniqueStrings([...(existing?.keys || []), ...keys])
+
+  blockedRecommendationsStore.items[itemKey] = {
+    keys: nextKeys,
+    title: normalizeText(safeTarget.title) || existing?.title || '',
+    artist: normalizeText(safeTarget.artist) || existing?.artist || '',
+    album: normalizeText(safeTarget.album) || existing?.album,
+    recordingMbid: normalizeText(safeTarget.recordingMbid) || existing?.recordingMbid,
+    sources: uniqueStrings([
+      ...(existing?.sources || []),
+      ...(Array.isArray(safeTarget.sources) ? safeTarget.sources : [])
+    ]).filter(
+      (source): source is ISimilarTrackSource => source === 'listenbrainz' || source === 'lastfm'
+    ),
+    blockedAt: existing?.blockedAt || now,
+    updatedAt: now
+  }
+
+  await persistBlockedRecommendations()
+  return { keys: nextKeys, blockedAt: blockedRecommendationsStore.items[itemKey].blockedAt }
 }
 
 function firstString(row: JsonObject, keys: string[]): string | undefined {
@@ -686,9 +850,11 @@ async function findSimilarTracks(payload: ISimilarTracksRequest): Promise<ISimil
   } else {
     providerStatus.push(failedStatus('lastfm', lastFmResult.reason))
   }
+  const blockedKeys = new Set(await getSimilarTrackBlockedRecommendationKeys())
+  const visibleTracks = filterBlockedTracksByKeys(tracks, blockedKeys)
   return {
     seed,
-    tracks: mergeTracks(tracks, limit),
+    tracks: mergeTracks(visibleTracks, limit),
     providerStatus
   }
 }
