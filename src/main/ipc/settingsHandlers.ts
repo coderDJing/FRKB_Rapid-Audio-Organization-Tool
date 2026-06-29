@@ -11,6 +11,7 @@ import { saveLibrarySettingsFromConfig } from '../librarySettingsDb'
 import { persistSettingConfig } from '../settingsPersistence'
 import { syncWindowScreenshotShortcut } from '../window/mainWindow'
 import mainWindow from '../window/mainWindow'
+import { CURATED_ARTIST_IMPORT_PROGRESS_ID } from '../../shared/curatedArtistProgress'
 import {
   clearCuratedArtistLibrary,
   getCuratedArtistLibrarySnapshot,
@@ -100,7 +101,7 @@ export function registerSettingsHandlers(deps: Dependencies) {
   ipcMain.handle(
     'curatedArtists:importFromTracks',
     async (_event, payload: { tracks?: Array<{ artistName?: unknown; filePath?: unknown }> }) => {
-      const progressId = 'curated-artists.import-from-tracks'
+      const progressId = CURATED_ARTIST_IMPORT_PROGRESS_ID
       try {
         return await importCuratedArtistsFromTracks(payload, {
           onProgress: (progress) => {

@@ -3,6 +3,7 @@ import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import confirm from '@renderer/components/confirmDialog'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
+import emitter from '@renderer/utils/mitt'
 import BottomInfoAreaTotalRow from './BottomInfoAreaTotalRow.vue'
 import {
   isAnalysisRuntimeDownloadActiveStatus,
@@ -329,6 +330,13 @@ const handleProgressSet = (
 }
 window.electron.ipcRenderer.on('progressSet', handleProgressSet)
 
+const handleRendererProgressSet = (payload: unknown) => {
+  if (isRecord(payload)) {
+    applyProgressPayload(payload as ProgressPayload)
+  }
+}
+emitter.on('renderer-progressSet', handleRendererProgressSet)
+
 watch(hasAnyVisibleTask, (visible) => {
   if (visible) {
     showTotalRow.value = false
@@ -568,6 +576,7 @@ onBeforeUnmount(() => {
 
   // 清理 IPC 监听器
   window.electron?.ipcRenderer?.removeListener('progressSet', handleProgressSet)
+  emitter.off('renderer-progressSet', handleRendererProgressSet)
   window.electron?.ipcRenderer?.removeListener('importFinished', handleImportFinished)
   window.electron?.ipcRenderer?.removeListener(
     'addSongFingerprintFinished',

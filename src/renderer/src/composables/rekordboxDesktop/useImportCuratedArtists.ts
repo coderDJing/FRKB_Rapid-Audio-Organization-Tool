@@ -1,5 +1,7 @@
 import confirm from '@renderer/components/confirmDialog'
+import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
+import { CURATED_ARTIST_IMPORT_PROGRESS_ID } from '@shared/curatedArtistProgress'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import { loadRekordboxPlaylistTracks } from '@renderer/composables/rekordboxDesktop/useRekordboxTrackLoader'
 import { flattenPlayableNodes } from '@renderer/composables/rekordboxDesktop/useRekordboxTreeUtils'
@@ -14,6 +16,27 @@ type ImportCuratedArtistsResult = {
   importedTrackCount?: number
   fingerprintedTrackCount?: number
   artistOnlyTrackCount?: number
+}
+
+type RendererProgressPayload = {
+  id: string
+  titleKey?: string
+  now?: number
+  total?: number
+  isInitial?: boolean
+  dismiss?: boolean
+  noProgress?: boolean
+}
+
+const sendImportProgress = (payload: Omit<RendererProgressPayload, 'id'>) => {
+  emitter.emit('renderer-progressSet', {
+    id: CURATED_ARTIST_IMPORT_PROGRESS_ID,
+    ...payload
+  })
+}
+
+const dismissImportProgress = () => {
+  sendImportProgress({ dismiss: true })
 }
 
 interface ImportCuratedArtistsOptions {
@@ -80,9 +103,20 @@ export const importCuratedArtistsFromPioneerSource = async ({
   let isFolderScope = false
 
   if (scope === 'wholeLibrary') {
-    const tree = await loadSourceTree({ sourceKind, sourceRootPath, sourceLibraryType })
-    leafNodes = flattenPlayableNodes(tree)
-    displayName = String(sourceName || '').trim()
+    sendImportProgress({
+      titleKey: 'settings.curatedArtistTracking.importProgressLoadTree',
+      now: 0,
+      total: 1,
+      isInitial: true,
+      noProgress: true
+    })
+    try {
+      const tree = await loadSourceTree({ sourceKind, sourceRootPath, sourceLibraryType })
+      leafNodes = flattenPlayableNodes(tree)
+      displayName = String(sourceName || '').trim()
+    } finally {
+      dismissImportProgress()
+    }
   } else {
     if (!node) return
     if (node.isSmartPlaylist) return
@@ -128,10 +162,29 @@ export const importCuratedArtistsFromPioneerSource = async ({
     try {
       const tracksPayload: Array<{ artistName: string; filePath: string }> = []
       let failedPlaylistCount = 0
+      const playlistTotal = leafNodes.length
 
-      for (const leaf of leafNodes) {
+      sendImportProgress({
+        titleKey: 'settings.curatedArtistTracking.importProgressLoadPlaylists',
+        now: 0,
+        total: playlistTotal,
+        isInitial: false,
+        noProgress: playlistTotal <= 0
+      })
+
+      for (let index = 0; index < leafNodes.length; index++) {
+        const leaf = leafNodes[index]
         const playlistId = Number(leaf.id) || 0
-        if (playlistId <= 0) continue
+        if (playlistId <= 0) {
+          sendImportProgress({
+            titleKey: 'settings.curatedArtistTracking.importProgressLoadPlaylists',
+            now: index + 1,
+            total: playlistTotal,
+            isInitial: false,
+            noProgress: playlistTotal <= 0
+          })
+          continue
+        }
         try {
           const loadResult = await loadRekordboxPlaylistTracks({
             sourceKind,
@@ -148,10 +201,19 @@ export const importCuratedArtistsFromPioneerSource = async ({
           }
         } catch {
           failedPlaylistCount += 1
+        } finally {
+          sendImportProgress({
+            titleKey: 'settings.curatedArtistTracking.importProgressLoadPlaylists',
+            now: index + 1,
+            total: playlistTotal,
+            isInitial: false,
+            noProgress: playlistTotal <= 0
+          })
         }
       }
 
       if (!tracksPayload.length) {
+        dismissImportProgress()
         await confirm({
           title: t('pioneer.importArtistsFinishedTitle'),
           content: [t('pioneer.importArtistsNoTracks')],
@@ -187,6 +249,7 @@ export const importCuratedArtistsFromPioneerSource = async ({
         confirmShow: false
       })
     } catch (error: unknown) {
+      dismissImportProgress()
       await confirm({
         title: t('common.error'),
         content: [error instanceof Error ? error.message : String(error)],

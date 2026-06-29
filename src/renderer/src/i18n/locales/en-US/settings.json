@@ -26,6 +26,8 @@
       "clearConfirmLine2": "It will not delete tracks or change the Curated library contents. Continue?",
       "clearSuccess": "The curated artist list has been cleared.",
       "clearFailed": "Failed to clear the curated artist list",
+      "importProgressLoadTree": "Importing curated artists: loading the external playlist tree...",
+      "importProgressLoadPlaylists": "Importing curated artists: loading playlist tracks...",
       "importProgressScan": "Importing curated artists: scanning tracks...",
       "importProgressFingerprint": "Importing curated artists: fingerprinting tracks..."
     },

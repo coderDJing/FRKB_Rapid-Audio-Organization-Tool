@@ -311,6 +311,20 @@ type ApplyCuratedTracksOptions = {
   onProgress?: (progress: CuratedArtistImportProgress) => void
 }
 
+function reportCuratedImportProgress(
+  options: { onProgress?: (progress: CuratedArtistImportProgress) => void },
+  progress: CuratedArtistImportProgress
+): void {
+  if (typeof options.onProgress !== 'function') return
+  if (progress.total <= 0 || progress.processed <= 0 || progress.processed >= progress.total) {
+    options.onProgress(progress)
+    return
+  }
+  if (progress.processed % 25 === 0) {
+    options.onProgress(progress)
+  }
+}
+
 // 共享内部实现：被 rememberCuratedArtistsForAddedTracks（复制到精选库时的被动追踪）
 // 与 importCuratedArtistsFromTracks（主动从外部库导入）共用。
 // 注意：tracks[].targetPath 是内部约定字段——表示"用于扫描算指纹的本机路径"。
@@ -441,12 +455,27 @@ export async function importCuratedArtistsFromTracks(
   //    这一步也保护底层 scanSongList——它对不存在路径会 fs.stat 抛错，
   //    一个坏路径会让整批扫描结果丢失，因此必须在传入前过滤掉。
   const dedupedEntries = [...dedupedByPath.values()]
+  let checkedPathCount = 0
+  if (dedupedEntries.length > 0) {
+    reportCuratedImportProgress(options, {
+      stage: 'scan',
+      processed: 0,
+      total: dedupedEntries.length
+    })
+  }
   const existsFlags = await Promise.all(
     dedupedEntries.map(async ({ filePath }) => {
       try {
         return await fs.pathExists(filePath)
       } catch {
         return false
+      } finally {
+        checkedPathCount += 1
+        reportCuratedImportProgress(options, {
+          stage: 'scan',
+          processed: checkedPathCount,
+          total: dedupedEntries.length
+        })
       }
     })
   )
