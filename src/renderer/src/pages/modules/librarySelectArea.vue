@@ -443,6 +443,7 @@ const {
   desktopLibraryIcon,
   clickPioneerDriveIcon,
   clickDesktopLibraryIcon,
+  handleDesktopLibraryContextmenu,
   handlePioneerDriveContextmenu,
   isEjectingPioneerDriveIcon,
   isSelectedPioneerDriveIcon,
@@ -775,6 +776,7 @@ watch(
             :ref="(el) => setScrollItemRef(desktopLibraryIcon?.key || '', el)"
             class="iconBox iconBox--device"
             @click="clickDesktopLibraryIcon()"
+            @contextmenu.stop.prevent="handleDesktopLibraryContextmenu($event)"
             @mouseover="iconMouseover(desktopLibraryIcon)"
             @mouseout="iconMouseout(desktopLibraryIcon)"
           >

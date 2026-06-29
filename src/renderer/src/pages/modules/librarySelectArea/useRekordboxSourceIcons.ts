@@ -13,6 +13,7 @@ import {
 } from '@renderer/utils/rekordboxLibraryCache'
 import { t } from '@renderer/utils/translate'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
+import { importCuratedArtistsFromPioneerSource } from '@renderer/composables/rekordboxDesktop/useImportCuratedArtists'
 import type {
   IPioneerDeviceLibraryKind,
   IPioneerPlaylistTreeNode,
@@ -97,6 +98,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
   const pioneerDriveIcons = ref<PioneerDriveIcon[]>([])
   const desktopLibraryIcon = ref<RekordboxDesktopIcon | null>(null)
   const ejectingDriveKeys = ref<string[]>([])
+  const wholeLibraryArtistImporting = ref(false)
   let refreshTimer: ReturnType<typeof setInterval> | null = null
   let sourceTreeRequestToken = 0
   let refreshInFlight: Promise<void> | null = null
@@ -582,6 +584,42 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     }
   }
 
+  const runWithWholeLibraryArtistImporting = async <T>(task: () => Promise<T>): Promise<T> => {
+    wholeLibraryArtistImporting.value = true
+    try {
+      return await task()
+    } finally {
+      wholeLibraryArtistImporting.value = false
+    }
+  }
+
+  const importDesktopWholeLibraryArtists = async () => {
+    const icon = desktopLibraryIcon.value
+    if (!icon?.rootPath || wholeLibraryArtistImporting.value) return
+    await importCuratedArtistsFromPioneerSource({
+      scope: 'wholeLibrary',
+      sourceKind: 'desktop',
+      sourceRootPath: icon.rootPath,
+      sourceLibraryType: 'masterDb',
+      sourceName: icon.tooltip || t('library.rekordboxDesktopLibrary'),
+      runWithBusy: runWithWholeLibraryArtistImporting,
+      isBusy: () => wholeLibraryArtistImporting.value
+    })
+  }
+
+  const importPioneerDriveWholeLibraryArtists = async (item: PioneerDriveIcon) => {
+    if (!item.path || wholeLibraryArtistImporting.value) return
+    await importCuratedArtistsFromPioneerSource({
+      scope: 'wholeLibrary',
+      sourceKind: 'usb',
+      sourceRootPath: item.path,
+      sourceLibraryType: item.libraryType,
+      sourceName: item.tooltip,
+      runWithBusy: runWithWholeLibraryArtistImporting,
+      isBusy: () => wholeLibraryArtistImporting.value
+    })
+  }
+
   const isEjectingPioneerDriveIcon = (item: PioneerDriveIcon) =>
     ejectingDriveKeys.value.includes(item.key)
 
@@ -668,15 +706,35 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
   }
 
   const handlePioneerDriveContextmenu = async (event: MouseEvent, item: PioneerDriveIcon) => {
-    if (isEjectingPioneerDriveIcon(item)) return
+    if (isEjectingPioneerDriveIcon(item) || wholeLibraryArtistImporting.value) return
     event.preventDefault()
     const result = await rightClickMenu({
-      menuArr: [[{ menuName: 'library.ejectUsbDrive' }]],
+      menuArr: [
+        [{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }],
+        [{ menuName: 'library.ejectUsbDrive' }]
+      ],
       clickEvent: event
     })
     if (result === 'cancel') return
+    if (result.menuName === 'pioneer.importWholeLibraryArtistsToCurated') {
+      await importPioneerDriveWholeLibraryArtists(item)
+      return
+    }
     if (result.menuName === 'library.ejectUsbDrive') {
       await ejectPioneerDriveIcon(item)
+    }
+  }
+
+  const handleDesktopLibraryContextmenu = async (event: MouseEvent) => {
+    if (!desktopLibraryIcon.value || wholeLibraryArtistImporting.value) return
+    event.preventDefault()
+    const result = await rightClickMenu({
+      menuArr: [[{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }]],
+      clickEvent: event
+    })
+    if (result === 'cancel') return
+    if (result.menuName === 'pioneer.importWholeLibraryArtistsToCurated') {
+      await importDesktopWholeLibraryArtists()
     }
   }
 
@@ -739,6 +797,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     refreshRekordboxSourceIcons,
     clickPioneerDriveIcon,
     clickDesktopLibraryIcon,
+    handleDesktopLibraryContextmenu,
     handlePioneerDriveContextmenu,
     isEjectingPioneerDriveIcon,
     isSelectedPioneerDriveIcon,

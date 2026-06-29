@@ -435,15 +435,12 @@ const collapseAllHandleClick = async () => {
 
 const contextmenuEvent = async (event: MouseEvent) => {
   if (dialogWriting.value || localLibraryCopying.value) return
-  if (!isCopyableSource.value) return
+  if (!isDesktopSource.value) return
 
-  const menuArr = isDesktopSource.value
-    ? [
-        [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
-        [{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }]
-      ]
-    : [[{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }]]
-  const result = await rightClickMenu({ menuArr, clickEvent: event })
+  const result = await rightClickMenu({
+    menuArr: [[{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }]],
+    clickEvent: event
+  })
   if (result === 'cancel') return
   if (result.menuName === 'library.createPlaylist') {
     await openCreatePlaylistDialog(0)
@@ -451,10 +448,6 @@ const contextmenuEvent = async (event: MouseEvent) => {
   }
   if (result.menuName === 'library.createFolder') {
     await openCreateFolderDialog(0)
-    return
-  }
-  if (result.menuName === 'pioneer.importWholeLibraryArtistsToCurated') {
-    await importWholeLibraryArtists()
     return
   }
 }
@@ -486,20 +479,6 @@ const importArtistsForNode = async (node: IPioneerPlaylistTreeNode) => {
     sourceKind,
     sourceRootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
     sourceLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType || '',
-    runWithBusy: runWithLocalLibraryCopying,
-    isBusy: () => dialogWriting.value || localLibraryCopying.value
-  })
-}
-
-const importWholeLibraryArtists = async () => {
-  const sourceKind = runtime.pioneerDeviceLibrary.selectedSourceKind
-  if (sourceKind !== 'desktop' && sourceKind !== 'usb') return
-  await importCuratedArtistsFromPioneerSource({
-    scope: 'wholeLibrary',
-    sourceKind,
-    sourceRootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
-    sourceLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType || '',
-    sourceName: runtime.pioneerDeviceLibrary.selectedSourceName,
     runWithBusy: runWithLocalLibraryCopying,
     isBusy: () => dialogWriting.value || localLibraryCopying.value
   })
