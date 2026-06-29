@@ -746,6 +746,14 @@ const processRender = (
       !ready &&
       canPreserveHorizontalBrowseWaveformAfterRenderMiss(request, renderState, previousFrame))
   const preserved = shouldPreserve && !!metrics && !!ctx && copyScrollSourceToTarget(metrics, ctx)
+  const notReadyReason =
+    ready || preserved
+      ? undefined
+      : !metrics
+        ? 'missing-metrics'
+        : !rawData
+          ? 'missing-raw-data'
+          : 'render-full-frame-failed'
   if (preserved) {
     lastFrame = previousFrame
     lastWaveformScrollShiftScaledPx = null
@@ -791,7 +799,8 @@ const processRender = (
         ready: ready || preserved,
         renderViewportOnly: request.renderViewportOnly === true,
         renderTargetIndex: request.renderTargetIndex,
-        stableWaveformSource: request.stableWaveformSource === true
+        stableWaveformSource: request.stableWaveformSource === true,
+        notReadyReason
       }
     })
   }

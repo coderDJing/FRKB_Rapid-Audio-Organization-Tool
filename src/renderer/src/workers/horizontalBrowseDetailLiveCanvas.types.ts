@@ -99,6 +99,7 @@ export type HorizontalBrowseDetailLiveCanvasWorkerOutgoing =
         renderViewportOnly?: boolean
         renderTargetIndex?: number
         stableWaveformSource?: boolean
+        notReadyReason?: 'missing-metrics' | 'missing-raw-data' | 'render-full-frame-failed'
       }
     }
   | {
