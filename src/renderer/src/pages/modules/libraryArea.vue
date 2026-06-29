@@ -464,8 +464,9 @@ const handleContentClick = () => {
 .libraryStatusText {
   font-size: 12px;
   color: var(--text-weak);
-  position: absolute;
-  bottom: 50vh;
+  line-height: 1.4;
+  text-align: center;
+  padding: 0 8px;
 }
 
 .libraryArea {
