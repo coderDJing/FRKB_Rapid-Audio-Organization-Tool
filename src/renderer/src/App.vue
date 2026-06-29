@@ -444,6 +444,42 @@ const handleDevSongListTraceError = async (
   )
 }
 
+let isExitCloudSyncConfirmOpen = false
+const requestMainWindowClose = async () => {
+  if (runtime.isProgressing === true) {
+    await confirm({
+      title: t('common.exit'),
+      content: [t('import.waitForTask')],
+      confirmShow: false
+    })
+    return
+  }
+
+  if (runtime.cloudSync.syncing) {
+    if (isExitCloudSyncConfirmOpen) return
+    isExitCloudSyncConfirmOpen = true
+    try {
+      const result = await confirm({
+        title: t('common.exit'),
+        content: [t('cloudSync.exitWhileSyncing'), t('cloudSync.exitWhileSyncingDetail')],
+        confirmText: t('cloudSync.exitAndCancelSync'),
+        cancelText: t('common.cancel'),
+        innerHeight: 240
+      })
+      if (result !== 'confirm') return
+    } finally {
+      isExitCloudSyncConfirmOpen = false
+    }
+
+    window.electron.ipcRenderer.send('cloudSync/cancel')
+    runtime.setCloudSyncSyncing(false)
+    runtime.setCloudSyncMinimized(false)
+    runtime.setCloudSyncProgress('idle', 0, {})
+  }
+
+  window.electron.ipcRenderer.send('toggle-close')
+}
+
 const openDialog = async (item: string) => {
   if (item === '关于') item = 'menu.about'
   if (item === '第三方许可') item = 'menu.thirdPartyNotices'
@@ -561,16 +597,8 @@ const openDialog = async (item: string) => {
     return
   }
   if (item === 'menu.exit') {
-    if (runtime.isProgressing === true) {
-      await confirm({
-        title: t('common.exit'),
-        content: [t('import.waitForTask')],
-        confirmShow: false
-      })
-      return
-    } else {
-      window.electron.ipcRenderer.send('toggle-close')
-    }
+    await requestMainWindowClose()
+    return
   }
   if (item === 'cloudSync.settings') {
     activeDialog.value = item
@@ -722,15 +750,7 @@ const handleTrayAction = async (_e: unknown, action: string) => {
     return
   }
   if (action === 'exit') {
-    if (runtime.isProgressing === true) {
-      await confirm({
-        title: t('common.exit'),
-        content: [t('import.waitForTask')],
-        confirmShow: false
-      })
-      return
-    }
-    window.electron.ipcRenderer.send('toggle-close')
+    await requestMainWindowClose()
     return
   }
 }
@@ -797,12 +817,10 @@ const handleOpenDialogFromChild = (e: Event) => {
 }
 const handleCloudSyncState = (_e: unknown, state: CloudSyncState) => {
   if (state === 'syncing') {
-    runtime.isProgressing = true
     runtime.setCloudSyncSyncing(true)
     return
   }
   if (state === 'success' || state === 'failed' || state === 'cancelled') {
-    runtime.isProgressing = false
     runtime.setCloudSyncSyncing(false)
     if (state !== 'success') {
       // 失败/取消：复位进度并收起底部进度行
@@ -946,15 +964,7 @@ onMounted(() => {
   })
 
   const handleAltF4 = async () => {
-    if (runtime.isProgressing === true) {
-      await confirm({
-        title: t('common.exit'),
-        content: [t('import.waitForTask')],
-        confirmShow: false
-      })
-    } else {
-      window.electron.ipcRenderer.send('toggle-close')
-    }
+    await requestMainWindowClose()
   }
   hotkeys('command+q', () => {
     handleAltF4()
