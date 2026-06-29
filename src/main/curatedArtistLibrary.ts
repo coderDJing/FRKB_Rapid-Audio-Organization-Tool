@@ -59,12 +59,20 @@ function sanitizeFingerprintList(value: unknown, fallback: string[] = []): strin
   return fingerprints
 }
 
+function compareStableText(left: string, right: string): number {
+  if (left < right) return -1
+  if (left > right) return 1
+  return 0
+}
+
 function calculateSnapshotHash(items: CuratedArtistFavoriteEntry[]): string {
-  const canonical = items.map((item) => [
-    normalizeArtistName(item.name),
-    Math.max(1, Math.round(Number(item.count) || 1)),
-    sanitizeFingerprintList(item.fingerprints)
-  ])
+  const canonical: Array<[string, number, string[]]> = items
+    .map((item): [string, number, string[]] => [
+      normalizeArtistName(item.name),
+      Math.max(1, Math.round(Number(item.count) || 1)),
+      sanitizeFingerprintList(item.fingerprints)
+    ])
+    .sort((left, right) => compareStableText(left[0], right[0]))
   return crypto.createHash('sha256').update(JSON.stringify(canonical), 'utf8').digest('hex')
 }
 
