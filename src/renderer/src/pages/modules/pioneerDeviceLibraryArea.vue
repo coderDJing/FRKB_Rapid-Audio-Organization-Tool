@@ -20,6 +20,10 @@ import { copyPioneerNodeToLibrary } from '@renderer/composables/rekordboxDesktop
 import { importCuratedArtistsFromPioneerSource } from '@renderer/composables/rekordboxDesktop/useImportCuratedArtists'
 import { usePioneerDeviceTreeDrag } from '@renderer/composables/rekordboxDesktop/usePioneerDeviceTreeDrag'
 import {
+  collectRekordboxSimilarTracksSeeds,
+  openBatchSimilarTracksDialogForSeeds
+} from '@renderer/utils/similarTracksActions'
+import {
   countNodeDescendants,
   findNodeById,
   isPlayablePlaylistNode,
@@ -27,6 +31,7 @@ import {
   sanitizeNodeName
 } from '@renderer/composables/rekordboxDesktop/useRekordboxTreeUtils'
 import type { IPioneerPlaylistTreeNode, IPioneerPlaylistTrack } from '../../../../types/globals'
+import type { RekordboxSourceKind, RekordboxSourceLibraryType } from '@shared/rekordboxSources'
 import type {
   RekordboxDesktopCreateEmptyPlaylistResponse,
   RekordboxDesktopCreateFolderResponse,
@@ -134,6 +139,14 @@ const showFailureDialog = async (message: string, logPath?: string) => {
     textAlign: 'left',
     canCopyText: Boolean(logPath)
   })
+}
+
+const getDialogErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error) {
+    const message = String(error.message || '').trim()
+    return message || fallback
+  }
+  return String(error || fallback)
 }
 
 const filterTreeByPlaylistName = (
@@ -452,6 +465,40 @@ const contextmenuEvent = async (event: MouseEvent) => {
   }
 }
 
+const normalizeSourceKind = (value: unknown): RekordboxSourceKind | '' =>
+  value === 'desktop' || value === 'usb' ? value : ''
+
+const normalizeSourceLibraryType = (value: unknown): RekordboxSourceLibraryType | '' =>
+  value === 'deviceLibrary' || value === 'oneLibrary' || value === 'masterDb' ? value : ''
+
+const openSimilarTracksForRekordboxNodes = async (nodes: IPioneerPlaylistTreeNode[]) => {
+  const sourceKind = normalizeSourceKind(runtime.pioneerDeviceLibrary.selectedSourceKind)
+  if (!sourceKind) return
+  const sourceLibraryType = normalizeSourceLibraryType(
+    runtime.pioneerDeviceLibrary.selectedLibraryType
+  )
+  try {
+    const seeds = await collectRekordboxSimilarTracksSeeds({
+      nodes,
+      sourceKind,
+      sourceRootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
+      sourceLibraryType
+    })
+    await openBatchSimilarTracksDialogForSeeds(seeds)
+  } catch (error) {
+    await confirm({
+      title: t('common.error'),
+      content: [
+        getDialogErrorMessage(
+          error,
+          isDesktopSource.value ? t('rekordboxDesktop.loadTreeFailed') : t('pioneer.loadTreeFailed')
+        )
+      ],
+      confirmShow: false
+    })
+  }
+}
+
 const copyPlaylistToLibrary = async (
   node: IPioneerPlaylistTreeNode,
   targetLibrary: 'FilterLibrary' | 'CuratedLibrary'
@@ -488,7 +535,8 @@ const handleCopyOnlyContextMenu = async (event: MouseEvent, node: IPioneerPlayli
   const result = await rightClickMenu({
     menuArr: [
       [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
-      [{ menuName: 'pioneer.importArtistsToCurated' }]
+      [{ menuName: 'pioneer.importArtistsToCurated' }],
+      [{ menuName: 'similarTracks.menu' }]
     ],
     clickEvent: event
   })
@@ -503,6 +551,10 @@ const handleCopyOnlyContextMenu = async (event: MouseEvent, node: IPioneerPlayli
   }
   if (result.menuName === 'pioneer.importArtistsToCurated') {
     await importArtistsForNode(node)
+    return
+  }
+  if (result.menuName === 'similarTracks.menu') {
+    await openSimilarTracksForRekordboxNodes([node])
     return
   }
 }
@@ -520,6 +572,7 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
       [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
       [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
       [{ menuName: 'pioneer.importArtistsToCurated' }],
+      [{ menuName: 'similarTracks.menu' }],
       [{ menuName: renameMenuKey }, { menuName: deleteFolderMenuKey }]
     ]
     const result = await rightClickMenu({ menuArr, clickEvent: event })
@@ -544,6 +597,10 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
       await importArtistsForNode(node)
       return
     }
+    if (result.menuName === 'similarTracks.menu') {
+      await openSimilarTracksForRekordboxNodes([node])
+      return
+    }
     if (result.menuName === renameMenuKey) {
       await openRenameNodeDialog(node)
       return
@@ -557,6 +614,7 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
   const menuArr = [
     [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
     [{ menuName: 'pioneer.importArtistsToCurated' }],
+    [{ menuName: 'similarTracks.menu' }],
     [{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }],
     [{ menuName: 'pioneer.cleanMissingFiles' }]
   ]
@@ -572,6 +630,10 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
   }
   if (result.menuName === 'pioneer.importArtistsToCurated') {
     await importArtistsForNode(node)
+    return
+  }
+  if (result.menuName === 'similarTracks.menu') {
+    await openSimilarTracksForRekordboxNodes([node])
     return
   }
   if (result.menuName === renameMenuKey) {

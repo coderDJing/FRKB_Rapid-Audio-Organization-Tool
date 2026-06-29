@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import hotkeys from 'hotkeys-js'
-import { v4 as uuidV4 } from 'uuid'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
 import utils from '@renderer/utils/utils'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import { buildNeteaseSearchQuery, openNeteaseSearch } from '@renderer/utils/neteaseSearch'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
+import { seedKeyOfSimilarSong } from '@renderer/utils/similarTracksBatch'
 import type {
   ISimilarTrackItem,
   ISimilarTrackSource,
@@ -21,18 +21,18 @@ type FilterKey = 'all' | 'listenbrainz' | 'lastfm' | 'both'
 
 const props = defineProps<{
   seeds: ISongInfo[]
+  initialResult?: ISimilarTracksBatchResult | null
+  initialErrorText?: string
 }>()
-const emits = defineEmits(['close'])
+const emits = defineEmits(['close', 'retry'])
 
-const scope = uuidV4()
-const progressId = `similar_batch_${uuidV4()}`
+const scope = `similar_batch_dialog_${Math.random().toString(36).slice(2)}`
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
-const loading = ref(false)
-const errorText = ref('')
+const errorText = ref(props.initialErrorText || '')
 const activeFilter = ref<FilterKey>('all')
 const failedCoverKeys = ref(new Set<string>())
-const batchResult = ref<ISimilarTracksBatchResult | null>(null)
+const batchResult = ref<ISimilarTracksBatchResult | null>(props.initialResult || null)
 
 // 汇总统计
 const pool = ref<ISimilarTracksPoolItem[]>([])
@@ -60,15 +60,6 @@ const sourceLabel = (source: ISimilarTrackSource) =>
 
 const sourceClass = (source: ISimilarTrackSource) =>
   source === 'listenbrainz' ? 'source-listenbrainz' : 'source-lastfm'
-
-const mapError = (message: string) => {
-  if (message === 'SIMILAR_TRACKS_NO_SEED') return t('similarTracks.errorNoSeed')
-  if (message === 'ACOUSTID_CLIENT_MISSING') return t('similarTracks.errorAcoustIdMissing')
-  if (message === 'SIMILAR_TRACKS_NETWORK') return t('similarTracks.errorNetwork')
-  if (message === 'SIMILAR_TRACKS_TIMEOUT') return t('similarTracks.errorTimeout')
-  if (message === 'SIMILAR_TRACKS_RATE_LIMITED') return t('similarTracks.errorRateLimited')
-  return t('similarTracks.loadFailed', { message })
-}
 
 /**
  * 把后端按种子返回的结果，合并去重成一个推荐池：
@@ -121,35 +112,8 @@ const buildPool = (result: ISimilarTracksBatchResult): void => {
   wasCanceled.value = result.canceled
 }
 
-const runBatch = async () => {
-  if (loading.value) return
-  loading.value = true
-  errorText.value = ''
-  batchResult.value = null
-  pool.value = []
-  wasCanceled.value = false
-  try {
-    const seedPayloads = (props.seeds || []).map((song, index) => ({
-      seedKey: seedKeyOfSong(song, index),
-      filePath: song.filePath,
-      title: song.title || song.fileName,
-      artist: song.artist,
-      album: song.album,
-      limit: 60
-    }))
-    const result = (await window.electron.ipcRenderer.invoke('similarTracks:findBatch', {
-      seeds: seedPayloads,
-      progressId
-    })) as ISimilarTracksBatchResult
-    batchResult.value = result
-    buildPool(result)
-    activeFilter.value = 'all'
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error || '')
-    errorText.value = mapError(message)
-  } finally {
-    loading.value = false
-  }
+if (props.initialResult) {
+  buildPool(props.initialResult)
 }
 
 const filteredTracks = computed(() => {
@@ -193,13 +157,10 @@ const filterTabs = computed<Array<{ key: FilterKey; label: string; count: number
 
 const isSingleSeed = computed(() => props.seeds.length === 1)
 
-const seedKeyOfSong = (song: ISongInfo, index: number): string =>
-  song.filePath || song.mixtapeItemId || song.setItemId || `seed:${index}`
-
 const seedKeyToSong = computed(() => {
   const map = new Map<string, ISongInfo>()
   props.seeds.forEach((song, index) => {
-    map.set(seedKeyOfSong(song, index), song)
+    map.set(seedKeyOfSimilarSong(song, index), song)
   })
   return map
 })
@@ -233,10 +194,6 @@ const summaryText = computed(() => {
 
 const seedPanelLabel = computed(() =>
   isSingleSeed.value ? t('similarTracks.seedLabel') : t('similarTracks.batchSeedLabel')
-)
-
-const loadingText = computed(() =>
-  isSingleSeed.value ? t('similarTracks.loading') : t('similarTracks.batchLoading')
 )
 
 const seedSourceText = computed(() => {
@@ -359,13 +316,12 @@ const coverFallbackText = (track: ISimilarTrackItem) => {
   return firstChar ? firstChar.toLocaleUpperCase() : '#'
 }
 
-const cancelBatch = () => {
-  void window.electron.ipcRenderer.invoke('similarTracks:cancelBatch', progressId).catch(() => {})
+const closeDialog = () => {
+  closeWithAnimation(() => emits('close'))
 }
 
-const closeDialog = () => {
-  cancelBatch()
-  closeWithAnimation(() => emits('close'))
+const retrySearch = () => {
+  closeWithAnimation(() => emits('retry'))
 }
 
 onMounted(() => {
@@ -374,12 +330,10 @@ onMounted(() => {
     closeDialog()
     return false
   })
-  void runBatch()
 })
 
 onUnmounted(() => {
   utils.delHotkeysScope(scope)
-  cancelBatch()
 })
 </script>
 
@@ -428,8 +382,7 @@ onUnmounted(() => {
         </div>
 
         <div class="result-panel">
-          <div v-if="loading" class="placeholder">{{ loadingText }}</div>
-          <div v-else-if="errorText" class="placeholder error-text">{{ errorText }}</div>
+          <div v-if="errorText" class="placeholder error-text">{{ errorText }}</div>
           <div v-else-if="!pool.length" class="placeholder">
             {{ t('similarTracks.batchNoResults') }}
           </div>
@@ -512,8 +465,7 @@ onUnmounted(() => {
       </div>
 
       <div class="dialog-footer">
-        <div v-if="loading" class="button" @click="cancelBatch">{{ t('common.cancel') }}</div>
-        <div v-else class="button" @click="runBatch">{{ t('similarTracks.retry') }}</div>
+        <div class="button" @click="retrySearch">{{ t('similarTracks.retry') }}</div>
         <div class="button" @click="closeDialog">{{ t('common.close') }} (Esc)</div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { collectFilesForAudioConvert } from '@renderer/utils/audioConvertActions'
 import { collectMissingAnalysisFilesFromSongs } from '@renderer/utils/manualKeyAnalysis'
+import { mapMixtapeSnapshotToSongInfo } from '@renderer/composables/mixtape/mixtapeSnapshotSongMapper'
 import type { IBatchRenameTrackInput, IDir, IMenu, ISongInfo } from 'src/types/globals'
 
 type ScanSongListResult = {
@@ -52,13 +53,15 @@ export const buildLibraryContextMenuArr = ({
           { menuName: 'library.createEqMixtape' },
           { menuName: 'library.createFolder' }
         ],
-        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
+        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }],
+        [{ menuName: 'similarTracks.menu' }]
       ]
     }
     if (libraryAreaSelected === 'SetLibrary') {
       return [
         [{ menuName: 'library.createSetPlaylist' }, { menuName: 'library.createSetFolder' }],
-        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }]
+        [{ menuName: 'common.rename' }, { menuName: 'common.delete' }],
+        [{ menuName: 'similarTracks.menu' }]
       ]
     }
     return [
@@ -74,7 +77,8 @@ export const buildLibraryContextMenuArr = ({
   if (dirData.type === 'mixtapeList') {
     return [
       [{ menuName: 'playlist.autoMix' }],
-      [{ menuName: 'common.rename' }, { menuName: 'playlist.deletePlaylist' }]
+      [{ menuName: 'common.rename' }, { menuName: 'playlist.deletePlaylist' }],
+      [{ menuName: 'similarTracks.menu' }]
     ]
   }
   if (dirData.type === 'setList') {
@@ -158,6 +162,25 @@ export const collectSetListUuids = (uuids: string[]): string[] => {
   return result
 }
 
+export const collectMixtapeListUuids = (uuids: string[]): string[] => {
+  const seen = new Set<string>()
+  const result: string[] = []
+  const traverse = (node: IDir) => {
+    if (node.type === 'mixtapeList' && !seen.has(node.uuid)) {
+      seen.add(node.uuid)
+      result.push(node.uuid)
+    }
+    if (Array.isArray(node.children)) {
+      node.children.forEach((child) => traverse(child))
+    }
+  }
+  for (const uuid of uuids) {
+    const node = libraryUtils.getLibraryTreeByUUID(uuid)
+    if (node) traverse(node)
+  }
+  return result
+}
+
 export const scanSongListsForFiles = async (uuids: string[]): Promise<string[]> => {
   const files: string[] = []
   for (const uuid of uuids) {
@@ -205,6 +228,20 @@ export const loadSetPlaylistSongs = async (playlistUuid: string): Promise<ISongI
     scanData?: ISongInfo[]
   } | null
   return Array.isArray(result?.scanData) ? result.scanData : []
+}
+
+export const loadMixtapePlaylistSongs = async (playlistUuid: string): Promise<ISongInfo[]> => {
+  const result = (await window.electron.ipcRenderer.invoke('mixtape:list', {
+    playlistId: playlistUuid
+  })) as {
+    items?: Array<Record<string, unknown>>
+  } | null
+  const rawItems = Array.isArray(result?.items) ? result.items : []
+  return rawItems.map((item, index) =>
+    mapMixtapeSnapshotToSongInfo(item, index, {
+      buildDisplayPathByUuid: (uuid) => libraryUtils.buildDisplayPathByUuid(uuid)
+    })
+  )
 }
 
 export const collectSetPlaylistFiles = async (uuids: string[]): Promise<string[]> => {
@@ -308,23 +345,28 @@ export const collectSongListTargets = (root: IDir): SongListTarget[] => {
 
 /**
  * 为「批量查找相似歌曲」收集完整 ISongInfo 列表：
- * 普通歌单走 scanSongListsForSongs，Set 歌单走 loadSetPlaylistSongs，按 filePath 去重合并。
+ * 普通歌单走 scanSongListsForSongs，Set 歌单走 loadSetPlaylistSongs，
+ * 混音歌单走 mixtape:list，按 filePath 去重合并。
  * 传入原始 operate UUIDs（库/文件夹/歌单皆可），内部递归展开到歌单。
  */
 export const collectSongsForSimilarBatch = async (operateUuids: string[]): Promise<ISongInfo[]> => {
   const songListUuids = collectSongListUuids(operateUuids)
   const setListUuids = collectSetListUuids(operateUuids)
-  const [songListSongs, setSongsArrays] = await Promise.all([
+  const mixtapeListUuids = collectMixtapeListUuids(operateUuids)
+  const [songListSongs, setSongsArrays, mixtapeSongsArrays] = await Promise.all([
     songListUuids.length ? scanSongListsForSongs(songListUuids) : Promise.resolve([]),
     setListUuids.length
       ? Promise.all(setListUuids.map((uuid) => loadSetPlaylistSongs(uuid)))
+      : Promise.resolve([] as ISongInfo[][]),
+    mixtapeListUuids.length
+      ? Promise.all(mixtapeListUuids.map((uuid) => loadMixtapePlaylistSongs(uuid)))
       : Promise.resolve([] as ISongInfo[][])
   ])
   const merged: ISongInfo[] = [...songListSongs]
   const seen = new Set(
     songListSongs.map((s) => String(s.filePath).replace(/\//g, '\\').toLowerCase())
   )
-  for (const arr of setSongsArrays) {
+  for (const arr of [...setSongsArrays, ...mixtapeSongsArrays]) {
     for (const song of arr) {
       if (song?.fileMissing || !song?.filePath) continue
       const key = String(song.filePath).replace(/\//g, '\\').toLowerCase()

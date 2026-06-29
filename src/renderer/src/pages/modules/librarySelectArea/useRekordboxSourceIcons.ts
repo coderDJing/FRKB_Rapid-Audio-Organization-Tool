@@ -12,6 +12,10 @@ import {
   shouldRefreshRekordboxSourceTree
 } from '@renderer/utils/rekordboxLibraryCache'
 import { t } from '@renderer/utils/translate'
+import {
+  collectRekordboxSimilarTracksSeeds,
+  openBatchSimilarTracksDialogForSeeds
+} from '@renderer/utils/similarTracksActions'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import { importCuratedArtistsFromPioneerSource } from '@renderer/composables/rekordboxDesktop/useImportCuratedArtists'
 import type {
@@ -705,12 +709,89 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     }
   }
 
+  const loadPioneerDriveTreeForMenu = async (item: PioneerDriveIcon) => {
+    const sourceCacheKey = resolvePioneerDriveSourceCacheKey(item)
+    const cachedTree = getCachedRekordboxSourceTree(sourceCacheKey)
+    if (cachedTree && !shouldRefreshRekordboxSourceTree(sourceCacheKey)) {
+      return cachedTree.treeNodes
+    }
+    const result = (await window.electron.ipcRenderer.invoke(
+      buildRekordboxSourceChannel('usb', 'load-tree'),
+      item.path,
+      item.libraryType
+    )) as RekordboxSourceTreeLoadResult
+    const treeNodes = Array.isArray(result?.treeNodes) ? result.treeNodes : []
+    setCachedRekordboxSourceTree(sourceCacheKey, treeNodes, {
+      selectedPlaylistId: getRememberedRekordboxSourceSelectedPlaylist(sourceCacheKey)
+    })
+    return treeNodes
+  }
+
+  const loadDesktopLibraryTreeForMenu = async (icon: RekordboxDesktopIcon) => {
+    const sourceCacheKey = resolveDesktopLibrarySourceCacheKey(icon)
+    const cachedTree = getCachedRekordboxSourceTree(sourceCacheKey)
+    if (cachedTree && !shouldRefreshRekordboxSourceTree(sourceCacheKey)) {
+      return {
+        treeNodes: cachedTree.treeNodes,
+        rootPath: icon.rootPath
+      }
+    }
+    const result = (await window.electron.ipcRenderer.invoke(
+      buildRekordboxSourceChannel('desktop', 'load-tree')
+    )) as RekordboxSourceTreeLoadResult
+    const treeNodes = Array.isArray(result?.treeNodes) ? result.treeNodes : []
+    const rootPath = String(result?.sourceRootPath || icon.rootPath || '').trim()
+    setCachedRekordboxSourceTree(sourceCacheKey, treeNodes, {
+      selectedPlaylistId: getRememberedRekordboxSourceSelectedPlaylist(sourceCacheKey)
+    })
+    return { treeNodes, rootPath }
+  }
+
+  const openSimilarTracksForPioneerDriveIcon = async (item: PioneerDriveIcon) => {
+    try {
+      const treeNodes = await loadPioneerDriveTreeForMenu(item)
+      const seeds = await collectRekordboxSimilarTracksSeeds({
+        nodes: treeNodes,
+        sourceKind: 'usb',
+        sourceRootPath: item.path,
+        sourceLibraryType: item.libraryType
+      })
+      await openBatchSimilarTracksDialogForSeeds(seeds)
+    } catch (error) {
+      await confirm({
+        title: t('common.error'),
+        content: [getErrorMessage(error, t('pioneer.loadTreeFailed'))],
+        confirmShow: false
+      })
+    }
+  }
+
+  const openSimilarTracksForDesktopLibraryIcon = async (icon: RekordboxDesktopIcon) => {
+    try {
+      const { treeNodes, rootPath } = await loadDesktopLibraryTreeForMenu(icon)
+      const seeds = await collectRekordboxSimilarTracksSeeds({
+        nodes: treeNodes,
+        sourceKind: 'desktop',
+        sourceRootPath: rootPath,
+        sourceLibraryType: 'masterDb'
+      })
+      await openBatchSimilarTracksDialogForSeeds(seeds)
+    } catch (error) {
+      await confirm({
+        title: t('common.error'),
+        content: [getErrorMessage(error, t('rekordboxDesktop.loadTreeFailed'))],
+        confirmShow: false
+      })
+    }
+  }
+
   const handlePioneerDriveContextmenu = async (event: MouseEvent, item: PioneerDriveIcon) => {
     if (isEjectingPioneerDriveIcon(item) || wholeLibraryArtistImporting.value) return
     event.preventDefault()
     const result = await rightClickMenu({
       menuArr: [
         [{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }],
+        [{ menuName: 'similarTracks.menu' }],
         [{ menuName: 'library.ejectUsbDrive' }]
       ],
       clickEvent: event
@@ -720,21 +801,33 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
       await importPioneerDriveWholeLibraryArtists(item)
       return
     }
+    if (result.menuName === 'similarTracks.menu') {
+      await openSimilarTracksForPioneerDriveIcon(item)
+      return
+    }
     if (result.menuName === 'library.ejectUsbDrive') {
       await ejectPioneerDriveIcon(item)
     }
   }
 
   const handleDesktopLibraryContextmenu = async (event: MouseEvent) => {
-    if (!desktopLibraryIcon.value || wholeLibraryArtistImporting.value) return
+    const icon = desktopLibraryIcon.value
+    if (!icon?.rootPath || wholeLibraryArtistImporting.value) return
     event.preventDefault()
     const result = await rightClickMenu({
-      menuArr: [[{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }]],
+      menuArr: [
+        [{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }],
+        [{ menuName: 'similarTracks.menu' }]
+      ],
       clickEvent: event
     })
     if (result === 'cancel') return
     if (result.menuName === 'pioneer.importWholeLibraryArtistsToCurated') {
       await importDesktopWholeLibraryArtists()
+      return
+    }
+    if (result.menuName === 'similarTracks.menu') {
+      await openSimilarTracksForDesktopLibraryIcon(icon)
     }
   }
 
@@ -797,8 +890,8 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     refreshRekordboxSourceIcons,
     clickPioneerDriveIcon,
     clickDesktopLibraryIcon,
-    handleDesktopLibraryContextmenu,
     handlePioneerDriveContextmenu,
+    handleDesktopLibraryContextmenu,
     isEjectingPioneerDriveIcon,
     isSelectedPioneerDriveIcon,
     isSelectedDesktopLibraryIcon

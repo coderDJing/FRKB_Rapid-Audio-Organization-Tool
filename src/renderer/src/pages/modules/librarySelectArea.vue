@@ -47,6 +47,8 @@ import { RECORDING_LIBRARY_CHANGED_EVENT, RECORDING_LIBRARY_UUID } from '@shared
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { useRekordboxSourceIcons } from './librarySelectArea/useRekordboxSourceIcons'
 import { resolveActivePlaybackSongListUUIDs } from '@renderer/utils/playbackSongListSources'
+import { collectSongsForSimilarBatch } from '@renderer/components/libraryItem/libraryContextMenuHelpers'
+import { openBatchSimilarTracksDialogForSeeds } from '@renderer/utils/similarTracksActions'
 const emit = defineEmits(['librarySelectedChange'])
 
 type HoverableIcon = {
@@ -359,15 +361,26 @@ const emptyRecycleBinHandleClick = async () => {
 }
 
 const buildMenuArr = (item: Icon) => {
+  const similarMenu =
+    item.name === 'FilterLibrary' ||
+    item.name === 'CuratedLibrary' ||
+    item.name === 'SetLibrary' ||
+    item.name === 'MixtapeLibrary'
+      ? [[{ menuName: 'similarTracks.menu' }]]
+      : []
   const commonMenus = [
     ...(item.name === 'FilterLibrary' || item.name === 'CuratedLibrary'
       ? [[{ menuName: 'tracks.analyzeMissingTracks' }]]
       : []),
     [{ menuName: 'metadata.autoFillMenu' }],
+    ...similarMenu,
     [{ menuName: 'tracks.convertNonMp3ToMp3' }]
   ]
   if (item.name === 'RecycleBin') {
     return [[{ menuName: 'recycleBin.emptyRecycleBin' }], ...commonMenus]
+  }
+  if (item.name === 'SetLibrary' || item.name === 'MixtapeLibrary') {
+    return similarMenu
   }
   return commonMenus
 }
@@ -416,8 +429,24 @@ const handleConvertLibraryToMp3 = async (libraryName: string) => {
   }
 }
 
+const handleSimilarTracksForLibrary = async (libraryName: string) => {
+  const libraryNode = findLibraryNode(libraryName)
+  if (!libraryNode) {
+    await openBatchSimilarTracksDialogForSeeds([])
+    return
+  }
+  const seeds = await collectSongsForSimilarBatch([libraryNode.uuid])
+  await openBatchSimilarTracksDialogForSeeds(seeds)
+}
+
 const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
-  if (!['FilterLibrary', 'CuratedLibrary', 'RecycleBin'].includes(item.name as string)) return
+  if (
+    !['FilterLibrary', 'CuratedLibrary', 'SetLibrary', 'MixtapeLibrary', 'RecycleBin'].includes(
+      item.name as string
+    )
+  ) {
+    return
+  }
   event.preventDefault()
   const menuArr = buildMenuArr(item)
   const result = await rightClickMenu({ menuArr, clickEvent: event })
@@ -432,6 +461,9 @@ const handleIconContextmenu = async (event: MouseEvent, item: Icon) => {
     case 'tracks.convertNonMp3ToMp3':
       await handleConvertLibraryToMp3(item.name)
       break
+    case 'similarTracks.menu':
+      await handleSimilarTracksForLibrary(item.name)
+      break
     case 'recycleBin.emptyRecycleBin':
       await emptyRecycleBinHandleClick()
       break
@@ -443,8 +475,8 @@ const {
   desktopLibraryIcon,
   clickPioneerDriveIcon,
   clickDesktopLibraryIcon,
-  handleDesktopLibraryContextmenu,
   handlePioneerDriveContextmenu,
+  handleDesktopLibraryContextmenu,
   isEjectingPioneerDriveIcon,
   isSelectedPioneerDriveIcon,
   isSelectedDesktopLibraryIcon
