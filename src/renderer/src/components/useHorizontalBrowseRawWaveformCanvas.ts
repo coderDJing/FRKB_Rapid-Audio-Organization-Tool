@@ -22,7 +22,6 @@ import {
   hasHorizontalBrowseDrawableRawFrames,
   resolveHorizontalBrowseWorkerLoopRange
 } from '@renderer/components/horizontalBrowseRawWaveformRenderPayload'
-import { createHorizontalBrowseWaveformLoadDiagnostics } from '@renderer/components/horizontalBrowseWaveformLoadDiagnostics'
 import {
   createHorizontalBrowseRawWaveformDrawScheduler,
   type HorizontalBrowseRawWaveformDrawOptions,
@@ -108,22 +107,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   let suppressNextSurfaceFadeIn = false
   let lastRenderedRangeStartSec: number | null = null
   let lastRenderedRangeDurationSec: number | null = null
-  const waveformLoadDiagnostics = createHorizontalBrowseWaveformLoadDiagnostics(() => ({
-    direction: options.direction(),
-    filePath: String(options.song()?.filePath || ''),
-    waveformLayout: options.waveformLayout(),
-    waveformRenderStyle: options.waveformRenderStyle(),
-    playing: options.playing.value,
-    dragging: options.dragging.value,
-    displayReady: displayReady.value,
-    placeholderVisible: placeholderVisible.value,
-    preserveSurfaceUntilNextReady,
-    currentSec: options.currentSeconds(),
-    previewStartSec: options.previewStartSec.value,
-    previewBpm: options.previewBpm.value,
-    rawData: options.rawData.value,
-    mixxxData: options.mixxxData.value
-  }))
 
   const stablePresentation = createHorizontalBrowseStableCanvasPresentationController({
     isActive: () => resolveStableWaveformSource(),
@@ -163,118 +146,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     resolveStableWaveformSource: () => resolveStableWaveformSource(),
     drawWaveformNow
   })
-  let pendingReadyPresentationDiagnostic: {
-    payload: LiveCanvasRenderedPayload
-    renderTargetIndex: number | null
-  } | null = null
   const clearDisplayReadyRevealTimer = () => {
     if (!displayReadyRevealTimer) return
     clearTimeout(displayReadyRevealTimer)
     displayReadyRevealTimer = null
-  }
-
-  const normalizeDomDiagnosticNumber = (value: unknown, fractionDigits = 3) => {
-    const numeric = Number(value)
-    if (!Number.isFinite(numeric)) return null
-    return Number(numeric.toFixed(fractionDigits))
-  }
-
-  const summarizeElementState = (element: HTMLElement | null): Record<string, unknown> => {
-    if (!element) return { present: false }
-    const rect = element.getBoundingClientRect()
-    let computed: Record<string, unknown> = { readable: false }
-    try {
-      const style = window.getComputedStyle(element)
-      computed = {
-        readable: true,
-        display: style.display,
-        visibility: style.visibility,
-        opacity: style.opacity,
-        zIndex: style.zIndex,
-        transform: style.transform,
-        pointerEvents: style.pointerEvents
-      }
-    } catch {}
-    return {
-      present: true,
-      rect: {
-        x: normalizeDomDiagnosticNumber(rect.x),
-        y: normalizeDomDiagnosticNumber(rect.y),
-        width: normalizeDomDiagnosticNumber(rect.width),
-        height: normalizeDomDiagnosticNumber(rect.height)
-      },
-      offset: {
-        width: element.offsetWidth,
-        height: element.offsetHeight
-      },
-      style: {
-        opacity: element.style.opacity || null,
-        zIndex: element.style.zIndex || null,
-        transform: element.style.transform || null,
-        transition: element.style.transition || null,
-        display: element.style.display || null,
-        visibility: element.style.visibility || null
-      },
-      computed
-    }
-  }
-
-  const summarizeCanvasState = (canvas: HTMLCanvasElement | null): Record<string, unknown> => ({
-    ...summarizeElementState(canvas),
-    canvas: canvas
-      ? {
-          width: canvas.width,
-          height: canvas.height
-        }
-      : {
-          present: false
-        }
-  })
-
-  const resolveWaveformCanvasByIndex = (index: number | null) =>
-    index === 0 || index === 1 ? (liveCanvasBuffers.waveformCanvases()[index] ?? null) : null
-
-  const buildReadyPresentationDiagnosticPayload = (
-    pending: Exclude<typeof pendingReadyPresentationDiagnostic, null>
-  ): Record<string, unknown> => {
-    const renderTargetIndex = pending.renderTargetIndex
-    const activeIndex = liveCanvasBuffers.activeIndex()
-    const inactiveIndex = liveCanvasBuffers.inactiveIndex()
-    return {
-      renderToken: pending.payload.renderToken,
-      rangeStartSec: normalizeDomDiagnosticNumber(pending.payload.rangeStartSec),
-      rangeDurationSec: normalizeDomDiagnosticNumber(pending.payload.rangeDurationSec),
-      renderViewportOnly: pending.payload.renderViewportOnly === true,
-      renderTargetIndex,
-      activeIndex,
-      inactiveIndex,
-      stableWaveformSource: pending.payload.stableWaveformSource === true,
-      surfaceVisible,
-      stableSurfaceForceHidden,
-      stableRevisionHandoffSurfaceActive,
-      preserveSurfaceUntilNextReady,
-      suppressNextSurfaceFadeIn,
-      workerDiagnostics: pending.payload.diagnostics ?? null,
-      wrap: summarizeElementState(wrapRef.value),
-      waveformSurface: summarizeElementState(waveformSurfaceRef.value),
-      overlaySurface: summarizeElementState(overlaySurfaceRef.value),
-      activeWaveformCanvas: summarizeCanvasState(liveCanvasBuffers.activeWaveformCanvas()),
-      inactiveWaveformCanvas: summarizeCanvasState(resolveWaveformCanvasByIndex(inactiveIndex)),
-      renderTargetWaveformCanvas: summarizeCanvasState(
-        resolveWaveformCanvasByIndex(renderTargetIndex)
-      ),
-      gridCanvas: summarizeCanvasState(gridCanvasRef.value)
-    }
-  }
-
-  const emitPendingReadyPresentationDiagnostic = (reason: string) => {
-    const pending = pendingReadyPresentationDiagnostic
-    pendingReadyPresentationDiagnostic = null
-    if (!pending) return
-    waveformLoadDiagnostics.emitReadyApplied(
-      reason,
-      buildReadyPresentationDiagnosticPayload(pending)
-    )
   }
 
   const forEachWaveformSurface = (visitor: (element: HTMLDivElement) => void) => {
@@ -322,7 +197,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const setDisplayReady = (ready: boolean) => {
     if (!ready) {
-      pendingReadyPresentationDiagnostic = null
       clearDisplayReadyRevealTimer()
       displayReadyRevealGeneration += 1
       displayReady.value = false
@@ -346,7 +220,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           displayReady.value = true
           clearStableRevisionReplacementState()
           syncWaveformSurfaceVisibility(true)
-          emitPendingReadyPresentationDiagnostic('delayed-ready-applied')
         },
         Math.max(0, stablePresentationRevealAfterMs - nowMs)
       )
@@ -365,9 +238,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     preserveSurfaceUntilNextReady = false
     suppressNextSurfaceFadeIn = false
     syncWaveformSurfaceVisibility(fadeIn)
-    if (ready) {
-      emitPendingReadyPresentationDiagnostic('ready-applied')
-    }
   }
 
   const resolveStableWaveformSource = () => options.stableWaveformSource?.() === true
@@ -450,14 +320,12 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       liveCanvasBuffers.waveformCanvases(),
       liveCanvasBuffers.overlayCanvases()
     )
-    waveformLoadDiagnostics.emitMount(liveCanvasAttached)
     return liveCanvasAttached
   }
 
   const handleLiveCanvasRendered = (payload: LiveCanvasRenderedPayload) => {
     if (dragPresentationActive) return
     if (payload.renderToken !== liveCanvasRenderToken) return
-    waveformLoadDiagnostics.emitWorkerRendered(payload)
     const pendingStableRender = pendingStableRevisionRender
     if (pendingStableRender?.token === payload.renderToken) {
       pendingStableRevisionRender = null
@@ -538,10 +406,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       stablePresentation.handleRendered(presentationPayload, {
         forceViewportRangeStart: forceStableViewportStart
       })
-    }
-    pendingReadyPresentationDiagnostic = {
-      payload,
-      renderTargetIndex
     }
     setDisplayReady(true)
     if (
@@ -872,10 +736,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const wrap = wrapRef.value
     const waveformCanvas = liveCanvasBuffers.activeWaveformCanvas()
     if (!wrap || !waveformCanvas) {
-      waveformLoadDiagnostics.emitDrawSkipped('missing-canvas', {
-        hasWrap: !!wrap,
-        hasWaveformCanvas: !!waveformCanvas
-      })
       return
     }
 
@@ -961,17 +821,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       if (shouldHoldPlaybackFrame) {
         return
       }
-      waveformLoadDiagnostics.emitDrawBlocked('no-drawable-source', {
-        renderStartSec: Number(renderStartSec.toFixed(3)),
-        visibleDurationSec: Number(visibleDuration.toFixed(3)),
-        effectiveMixxxDrawable,
-        effectiveMixxxSource: effectiveMixxxSelection.source,
-        effectiveRawCoverage,
-        effectiveRawIntersection,
-        hasBeatGridTarget,
-        hasTimelinePlaceholderTarget,
-        shouldShowEmptySurface
-      })
       lastRenderedRawData = null
       placeholderVisible.value = shouldShowEmptySurface
       // 完全无高清波形可画：只清波形层；worker 仍按当前 range 渲染网格或时间轴占位。
@@ -1002,18 +851,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         if (shouldHoldPlaybackFrame) {
           return
         }
-        waveformLoadDiagnostics.emitDrawBlocked('playback-raw-not-covering', {
-          renderStartSec: Number(renderStartSec.toFixed(3)),
-          visibleDurationSec: Number(visibleDuration.toFixed(3)),
-          effectiveRawCoverage,
-          effectiveRawIntersection,
-          allowPlaybackScrollReuse,
-          rawDataRefStable,
-          allowPartialViewportPaint,
-          hasBeatGridTarget,
-          hasTimelinePlaceholderTarget,
-          shouldShowEmptySurface
-        })
         lastRenderedRawData = null
         placeholderVisible.value = shouldShowEmptySurface
         setDisplayReady(false)
@@ -1049,17 +886,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
         finishTiming()
       }
     } else if (!drawableRawData && !canRenderWithoutRawCoverage) {
-      waveformLoadDiagnostics.emitDrawBlocked('paused-raw-not-covering', {
-        renderStartSec: Number(renderStartSec.toFixed(3)),
-        visibleDurationSec: Number(visibleDuration.toFixed(3)),
-        effectiveMixxxSource: effectiveMixxxSelection.source,
-        effectiveRawCoverage,
-        effectiveRawIntersection,
-        canRenderWithoutRawCoverage,
-        hasBeatGridTarget,
-        hasTimelinePlaceholderTarget,
-        shouldShowEmptySurface
-      })
       lastRenderedRawData = null
       placeholderVisible.value = shouldShowEmptySurface
       setDisplayReady(false)
@@ -1207,7 +1033,6 @@ export const useHorizontalBrowseRawWaveformCanvas = (
   }
 
   const replaceLiveWaveformRaw = (data: RawWaveformData | null) => {
-    waveformLoadDiagnostics.emitRawReplace(data)
     liveCanvasBridge.replaceRaw(data)
   }
 

@@ -1,4 +1,4 @@
-const STABLE_MAX_RENDER_SCALED_WIDTH = 30000
+const STABLE_MAX_RENDER_SCALED_WIDTH = 15360
 
 export const resolvePixelSnappedCssSize = (value: number, pixelRatio: number) => {
   const safePixelRatio = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1

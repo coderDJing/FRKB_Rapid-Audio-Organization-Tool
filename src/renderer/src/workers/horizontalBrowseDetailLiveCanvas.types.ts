@@ -10,59 +10,6 @@ export type HorizontalBrowseDetailLiveCanvasLoopRange = {
   endSec: number
 }
 
-export type HorizontalBrowseDetailLiveCanvasRenderedDiagnostics = {
-  readySource: 'rendered' | 'preserved' | 'not-ready'
-  request: {
-    width: number
-    height: number
-    pixelRatio: number
-    renderTargetIndex?: number
-    renderSourceIndex?: number
-    renderViewportOnly: boolean
-    stableWaveformSource: boolean
-    waveformLayout: 'full' | 'top-half' | 'bottom-half'
-    waveformRenderStyle: HorizontalBrowseDetailLiveCanvasWaveformRenderStyle
-    rawSlotPresent: boolean
-    playbackActive: boolean
-  }
-  metrics: {
-    present: boolean
-    cssWidth?: number
-    cssHeight?: number
-    scaledWidth?: number
-    scaledHeight?: number
-    pixelRatio?: number
-    resized?: boolean
-  }
-  rawData: {
-    present: boolean
-    startSec?: number
-    durationSec?: number
-    rate?: number
-    frames?: number
-    loadedFrames?: number
-  }
-  canvas: {
-    present: boolean
-    width?: number
-    height?: number
-  }
-  previousFramePresent: boolean
-  holdMissingPlaybackRaw: boolean
-  shouldPreserve: boolean
-  pixelSample: {
-    sampled: boolean
-    reason?: 'not-ready' | 'playback-active' | 'missing-context' | 'read-failed'
-    sampleColumns?: number
-    sampledPixels?: number
-    nonTransparentPixels?: number
-    nonTransparentRatio?: number
-    nonZeroRgbPixels?: number
-    maxAlpha?: number
-    maxRgb?: number
-  }
-}
-
 export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   renderToken: number
   renderPriority?: 'normal' | 'immediate'
@@ -153,7 +100,6 @@ export type HorizontalBrowseDetailLiveCanvasWorkerOutgoing =
         renderTargetIndex?: number
         stableWaveformSource?: boolean
         notReadyReason?: 'missing-metrics' | 'missing-raw-data' | 'render-full-frame-failed'
-        diagnostics?: HorizontalBrowseDetailLiveCanvasRenderedDiagnostics
       }
     }
   | {
