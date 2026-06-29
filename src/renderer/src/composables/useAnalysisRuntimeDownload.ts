@@ -98,8 +98,33 @@ const normalizeAnalysisRuntimePreferredInfo = (value: unknown): AnalysisRuntimeP
   }
 }
 
+type AnalysisRuntimeStatusResponse = {
+  preferred?: unknown
+  state?: unknown
+}
+
+const normalizeAnalysisRuntimeStatusResponse = (value: unknown): AnalysisRuntimeStatusResponse => {
+  const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
+  return {
+    preferred: record.preferred,
+    state: record.state
+  }
+}
+
 // 模块级 mutex，防止多个 composable 实例同时弹出提示
 let analysisRuntimePromptBusy = false
+let analysisRuntimeStatusRequestPromise: Promise<AnalysisRuntimeStatusResponse> | null = null
+
+const requestAnalysisRuntimeStatus = async () => {
+  if (analysisRuntimeStatusRequestPromise) return await analysisRuntimeStatusRequestPromise
+  analysisRuntimeStatusRequestPromise = window.electron.ipcRenderer
+    .invoke('analysis-runtime:get-status')
+    .then(normalizeAnalysisRuntimeStatusResponse)
+    .finally(() => {
+      analysisRuntimeStatusRequestPromise = null
+    })
+  return await analysisRuntimeStatusRequestPromise
+}
 
 export const useAnalysisRuntimeDownload = (options: {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -178,7 +203,7 @@ export const useAnalysisRuntimeDownload = (options: {
   }
 
   const refreshAnalysisRuntimeStatus = async () => {
-    const response = await window.electron.ipcRenderer.invoke('analysis-runtime:get-status')
+    const response = await requestAnalysisRuntimeStatus()
     return applyAnalysisRuntimeStatus({
       preferred: response?.preferred,
       state: response?.state
@@ -212,6 +237,7 @@ export const useAnalysisRuntimeDownload = (options: {
   const promptAnalysisRuntimeDownload = async (
     source: AnalysisRuntimePromptSource
   ): Promise<AnalysisRuntimePromptResult> => {
+    if (options.runtime.analysisRuntime.available) return 'ready'
     if (analysisRuntimePromptBusy) {
       const currentResult = resolvePromptResultFromCurrentState()
       if (currentResult === 'started' && source !== 'startup') {
@@ -327,9 +353,17 @@ export const useAnalysisRuntimeDownload = (options: {
   }
 
   const ensureAnalysisRuntimeForHorizontalMode = async () => {
+    if (options.runtime.analysisRuntime.available) {
+      return true
+    }
+
     const result = await promptAnalysisRuntimeDownload('horizontal')
-    if (result === 'ready' || options.runtime.analysisRuntime.available) return true
-    if (result === 'started' || analysisRuntimeDownloadVisible.value) return false
+    if (result === 'ready' || options.runtime.analysisRuntime.available) {
+      return true
+    }
+    if (result === 'started' || analysisRuntimeDownloadVisible.value) {
+      return false
+    }
     await options.confirmDialog({
       title: options.t('analysisRuntime.unsupportedTitle'),
       content: [options.t('analysisRuntime.horizontalBlockedHint')],
