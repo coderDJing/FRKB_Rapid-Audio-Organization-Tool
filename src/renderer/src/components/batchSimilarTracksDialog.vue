@@ -7,33 +7,51 @@ import { t } from '@renderer/utils/translate'
 import utils from '@renderer/utils/utils'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import { buildNeteaseSearchQuery, openNeteaseSearch } from '@renderer/utils/neteaseSearch'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type {
   ISimilarTrackItem,
   ISimilarTrackSource,
+  ISimilarTracksBatchResult,
   ISimilarTracksProviderStatus,
-  ISimilarTracksResult,
+  ISimilarTracksPoolItem,
   ISongInfo
 } from 'src/types/globals'
 
 type FilterKey = 'all' | 'listenbrainz' | 'lastfm' | 'both'
 
 const props = defineProps<{
-  song: ISongInfo
+  seeds: ISongInfo[]
 }>()
 const emits = defineEmits(['close'])
 
 const scope = uuidV4()
+const progressId = `similar_batch_${uuidV4()}`
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
+
 const loading = ref(false)
 const errorText = ref('')
-const result = ref<ISimilarTracksResult | null>(null)
 const activeFilter = ref<FilterKey>('all')
 const failedCoverKeys = ref(new Set<string>())
+const batchResult = ref<ISimilarTracksBatchResult | null>(null)
 
-const closeDialog = () => {
-  void window.electron.ipcRenderer.invoke('similarTracks:cancel').catch(() => {})
-  closeWithAnimation(() => emits('close'))
-}
+// 汇总统计
+const pool = ref<ISimilarTracksPoolItem[]>([])
+const seedTotal = ref(props.seeds.length)
+const seedProcessed = ref(0)
+const seedEmptyCount = ref(0)
+const wasCanceled = ref(false)
+
+// ---- 文本归一化（与后端 normalizeKey 对齐：NFKC + 去空白 + 小写）----
+const normalizeText = (value?: string | null): string =>
+  String(value || '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/\s+/g, ' ')
+const normalizeKey = (value?: string | null): string => normalizeText(value).toLocaleLowerCase()
+
+// 推荐项去重键：优先 MBID，否则 artist|title 文本
+const textKeyOfTrack = (track: ISimilarTrackItem): string =>
+  `text:${normalizeKey(track.artist)}:${normalizeKey(track.title)}`
 
 const sourceLabel = (source: ISimilarTrackSource) =>
   source === 'listenbrainz'
@@ -52,31 +70,90 @@ const mapError = (message: string) => {
   return t('similarTracks.loadFailed', { message })
 }
 
-const loadSimilarTracks = async () => {
+/**
+ * 把后端按种子返回的结果，合并去重成一个推荐池：
+ *  - 同一首被多个种子推荐则合并，记录 recommendedBy 计数与来源
+ *  - 排序：被推荐次数↓ → 综合分↓ → 标题序
+ */
+const buildPool = (result: ISimilarTracksBatchResult): void => {
+  const map = new Map<string, ISimilarTracksPoolItem>()
+
+  for (const seedResult of result.perSeed || []) {
+    const seedKey = seedResult.seedKey
+    for (const track of seedResult.tracks || []) {
+      // 池内去重键：优先 MBID
+      const textKey = textKeyOfTrack(track)
+      const poolKey = track.recordingMbid ? `mbid:${normalizeKey(track.recordingMbid)}` : textKey
+      const existing = map.get(poolKey)
+      if (!existing) {
+        map.set(poolKey, {
+          ...track,
+          sources: [...track.sources],
+          recommendedBy: 1,
+          recommendedBySeeds: [seedKey]
+        })
+      } else if (!existing.recommendedBySeeds.includes(seedKey)) {
+        existing.recommendedBy += 1
+        existing.recommendedBySeeds.push(seedKey)
+        // 合并来源/封面/分数等信息，保留更高综合分
+        for (const source of track.sources) {
+          if (!existing.sources.includes(source)) existing.sources.push(source)
+        }
+        existing.coverUrl = existing.coverUrl || track.coverUrl
+        existing.album = existing.album || track.album
+        existing.recordingMbid = existing.recordingMbid || track.recordingMbid
+        existing.sourceUrls = { ...(existing.sourceUrls || {}), ...(track.sourceUrls || {}) }
+        if (track.score > existing.score) existing.score = track.score
+      }
+    }
+  }
+
+  const merged = [...map.values()].sort((a, b) => {
+    if (b.recommendedBy !== a.recommendedBy) return b.recommendedBy - a.recommendedBy
+    if (b.score !== a.score) return b.score - a.score
+    return a.title.localeCompare(b.title)
+  })
+
+  pool.value = merged
+  seedProcessed.value = result.processed
+  seedTotal.value = result.total
+  seedEmptyCount.value = result.emptyCount
+  wasCanceled.value = result.canceled
+}
+
+const runBatch = async () => {
   if (loading.value) return
   loading.value = true
   errorText.value = ''
+  batchResult.value = null
+  pool.value = []
+  wasCanceled.value = false
   try {
-    const response = (await window.electron.ipcRenderer.invoke('similarTracks:find', {
-      filePath: props.song.filePath,
-      title: props.song.title || props.song.fileName,
-      artist: props.song.artist,
-      album: props.song.album,
+    const seedPayloads = (props.seeds || []).map((song, index) => ({
+      seedKey: seedKeyOfSong(song, index),
+      filePath: song.filePath,
+      title: song.title || song.fileName,
+      artist: song.artist,
+      album: song.album,
       limit: 60
-    })) as ISimilarTracksResult
-    result.value = response
+    }))
+    const result = (await window.electron.ipcRenderer.invoke('similarTracks:findBatch', {
+      seeds: seedPayloads,
+      progressId
+    })) as ISimilarTracksBatchResult
+    batchResult.value = result
+    buildPool(result)
     activeFilter.value = 'all'
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error || '')
     errorText.value = mapError(message)
-    result.value = null
   } finally {
     loading.value = false
   }
 }
 
 const filteredTracks = computed(() => {
-  const tracks = result.value?.tracks || []
+  const tracks = pool.value
   if (activeFilter.value === 'listenbrainz') {
     return tracks.filter((item) => item.sources.includes('listenbrainz'))
   }
@@ -92,7 +169,7 @@ const filteredTracks = computed(() => {
 })
 
 const counts = computed<Record<FilterKey, number>>(() => {
-  const tracks = result.value?.tracks || []
+  const tracks = pool.value
   return {
     all: tracks.length,
     listenbrainz: tracks.filter((item) => item.sources.includes('listenbrainz')).length,
@@ -114,35 +191,138 @@ const filterTabs = computed<Array<{ key: FilterKey; label: string; count: number
   { key: 'both', label: t('similarTracks.filterBoth'), count: counts.value.both }
 ])
 
-const seedText = computed(() => {
-  const seed = result.value?.seed
-  if (!seed) return ''
-  const parts = [seed.title, seed.artist].filter(Boolean)
-  return parts.join(' - ')
+const isSingleSeed = computed(() => props.seeds.length === 1)
+
+const seedKeyOfSong = (song: ISongInfo, index: number): string =>
+  song.filePath || song.mixtapeItemId || song.setItemId || `seed:${index}`
+
+const seedKeyToSong = computed(() => {
+  const map = new Map<string, ISongInfo>()
+  props.seeds.forEach((song, index) => {
+    map.set(seedKeyOfSong(song, index), song)
+  })
+  return map
 })
 
+const songDisplayName = (song?: ISongInfo | null): string => {
+  if (!song) return ''
+  const title = normalizeText(song.title || song.fileName)
+  const artist = normalizeText(song.artist)
+  return [title, artist].filter(Boolean).join(' - ')
+}
+
+const singleSeedText = computed(() => {
+  const inputSong = props.seeds[0]
+  const resolvedSeed = batchResult.value?.perSeed?.[0]?.seed
+  if (resolvedSeed) {
+    return [resolvedSeed.title, resolvedSeed.artist].filter(Boolean).join(' - ')
+  }
+  return songDisplayName(inputSong)
+})
+
+const summaryText = computed(() => {
+  if (isSingleSeed.value) {
+    return singleSeedText.value || t('similarTracks.singleSeedUnknown')
+  }
+  return t('similarTracks.batchSummary', {
+    processed: seedProcessed.value,
+    total: seedTotal.value,
+    empty: seedEmptyCount.value
+  })
+})
+
+const seedPanelLabel = computed(() =>
+  isSingleSeed.value ? t('similarTracks.seedLabel') : t('similarTracks.batchSeedLabel')
+)
+
+const loadingText = computed(() =>
+  isSingleSeed.value ? t('similarTracks.loading') : t('similarTracks.batchLoading')
+)
+
 const seedSourceText = computed(() => {
-  const source = result.value?.seed?.source
+  if (!isSingleSeed.value) return ''
+  const source = batchResult.value?.perSeed?.[0]?.seed?.source
   if (source === 'acoustid') return t('similarTracks.seedFromAcoustId')
   if (source === 'tags') return t('similarTracks.seedFromTags')
   return ''
 })
 
-const statusText = (status: ISimilarTracksProviderStatus) => {
-  const label = sourceLabel(status.source)
-  if (status.status === 'missing-key') return t('similarTracks.missingLastFmKey')
-  if (status.status === 'no-seed') return t('similarTracks.missingListenBrainzSeed')
-  if (status.status === 'error') {
-    return t('similarTracks.providerError', {
-      source: label,
-      message: status.message || 'unknown'
+const sourceSeedLabels = (track: ISimilarTracksPoolItem): string[] =>
+  track.recommendedBySeeds
+    .map((seedKey) => songDisplayName(seedKeyToSong.value.get(seedKey)))
+    .filter((label) => label.length > 0)
+
+const sourceSeedText = (track: ISimilarTracksPoolItem): string => {
+  const labels = sourceSeedLabels(track)
+  if (labels.length === 0) return ''
+  if (labels.length === 1) return t('similarTracks.recommendedFromOne', { seed: labels[0] })
+  return t('similarTracks.recommendedFromMany', { count: labels.length })
+}
+
+const sourceSeedTooltip = (track: ISimilarTracksPoolItem): string => {
+  const labels = sourceSeedLabels(track)
+  if (labels.length === 0) return ''
+  return labels.join('\n')
+}
+
+const providerDiagnosticText = (source: ISimilarTrackSource, status: string, count: number) => {
+  if (source === 'lastfm' && status === 'missing-key') {
+    return t('similarTracks.batchDiagnosticLastFmMissingKey')
+  }
+  if (source === 'listenbrainz' && status === 'no-seed') {
+    return t('similarTracks.batchDiagnosticListenBrainzNoSeed', { count })
+  }
+  if (status === 'error') {
+    return t('similarTracks.batchDiagnosticProviderError', {
+      source: sourceLabel(source),
+      count
     })
   }
-  return t('similarTracks.providerOk', {
-    source: label,
-    count: status.count || 0
-  })
+  return ''
 }
+
+const diagnosticItems = computed(() => {
+  const result = batchResult.value
+  if (!result) return []
+  const items: Array<{ key: string; text: string; level: 'warn' | 'error' }> = []
+  const noSeedCount = result.perSeed.filter(
+    (item) => item.errorCode === 'SIMILAR_TRACKS_NO_SEED'
+  ).length
+  if (noSeedCount > 0) {
+    items.push({
+      key: 'no-seed',
+      text: isSingleSeed.value
+        ? t('similarTracks.errorNoSeed')
+        : t('similarTracks.batchDiagnosticNoSeed', { count: noSeedCount }),
+      level: 'warn'
+    })
+  }
+
+  const statusCounts = new Map<string, { status: ISimilarTracksProviderStatus; count: number }>()
+  for (const seedResult of result.perSeed) {
+    for (const status of seedResult.providerStatus || []) {
+      if (status.status === 'ok') continue
+      const key = `${status.source}:${status.status}:${status.message || ''}`
+      const existing = statusCounts.get(key)
+      if (existing) {
+        existing.count += 1
+      } else {
+        statusCounts.set(key, { status, count: 1 })
+      }
+    }
+  }
+
+  for (const { status, count } of statusCounts.values()) {
+    const text = providerDiagnosticText(status.source, status.status, count)
+    if (!text) continue
+    items.push({
+      key: `${status.source}:${status.status}:${status.message || ''}`,
+      text,
+      level: status.status === 'error' ? 'error' : 'warn'
+    })
+  }
+  return items
+})
 
 const openTrackSource = (track: ISimilarTrackItem) => {
   const url =
@@ -168,18 +348,24 @@ const openTrackNeteaseSearch = (track: ISimilarTrackItem) => {
 }
 
 const coverKey = (track: ISimilarTrackItem) => `${track.id}:${track.coverUrl || ''}`
-
 const hasCover = (track: ISimilarTrackItem) =>
   !!track.coverUrl && !failedCoverKeys.value.has(coverKey(track))
-
 const markCoverFailed = (track: ISimilarTrackItem) => {
   failedCoverKeys.value = new Set(failedCoverKeys.value).add(coverKey(track))
 }
-
 const coverFallbackText = (track: ISimilarTrackItem) => {
   const text = (track.title || track.artist || '').trim()
   const [firstChar] = Array.from(text)
   return firstChar ? firstChar.toLocaleUpperCase() : '#'
+}
+
+const cancelBatch = () => {
+  void window.electron.ipcRenderer.invoke('similarTracks:cancelBatch', progressId).catch(() => {})
+}
+
+const closeDialog = () => {
+  cancelBatch()
+  closeWithAnimation(() => emits('close'))
 }
 
 onMounted(() => {
@@ -188,12 +374,12 @@ onMounted(() => {
     closeDialog()
     return false
   })
-  void loadSimilarTracks()
+  void runBatch()
 })
 
 onUnmounted(() => {
   utils.delHotkeysScope(scope)
-  void window.electron.ipcRenderer.invoke('similarTracks:cancel').catch(() => {})
+  cancelBatch()
 })
 </script>
 
@@ -205,25 +391,25 @@ onUnmounted(() => {
       <div class="similar-body">
         <div class="seed-panel">
           <div class="seed-main">
-            <span class="seed-label">{{ t('similarTracks.seedLabel') }}</span>
-            <span class="seed-title">{{
-              seedText || props.song.title || props.song.fileName
+            <span class="seed-label">{{ seedPanelLabel }}</span>
+            <span class="seed-title">{{ summaryText }}</span>
+          </div>
+          <div class="seed-badges">
+            <span v-if="seedSourceText" class="source-chip seed-source">{{ seedSourceText }}</span>
+            <span v-if="wasCanceled" class="source-chip seed-source">{{
+              t('similarTracks.batchCanceled')
             }}</span>
           </div>
-          <span v-if="seedSourceText" class="source-chip seed-source">{{ seedSourceText }}</span>
         </div>
 
-        <div class="source-status">
+        <div v-if="diagnosticItems.length" class="source-status">
           <span
-            v-for="status in result?.providerStatus || []"
-            :key="status.source"
+            v-for="item in diagnosticItems"
+            :key="item.key"
             class="status-pill"
-            :class="{
-              warn: status.status === 'missing-key' || status.status === 'no-seed',
-              error: status.status === 'error'
-            }"
+            :class="item.level"
           >
-            {{ statusText(status) }}
+            {{ item.text }}
           </span>
         </div>
 
@@ -242,10 +428,10 @@ onUnmounted(() => {
         </div>
 
         <div class="result-panel">
-          <div v-if="loading" class="placeholder">{{ t('similarTracks.loading') }}</div>
+          <div v-if="loading" class="placeholder">{{ loadingText }}</div>
           <div v-else-if="errorText" class="placeholder error-text">{{ errorText }}</div>
-          <div v-else-if="!result?.tracks.length" class="placeholder">
-            {{ t('similarTracks.noResults') }}
+          <div v-else-if="!pool.length" class="placeholder">
+            {{ t('similarTracks.batchNoResults') }}
           </div>
           <div v-else-if="!filteredTracks.length" class="placeholder">
             {{ t('similarTracks.noFilteredResults') }}
@@ -279,6 +465,15 @@ onUnmounted(() => {
                     <span>{{ track.album || t('similarTracks.albumUnknown') }}</span>
                   </div>
                   <div class="track-sources">
+                    <bubbleBoxTrigger
+                      v-if="sourceSeedText(track)"
+                      tag="span"
+                      class="source-chip rec-chip"
+                      :title="sourceSeedTooltip(track)"
+                      :max-width="360"
+                    >
+                      {{ sourceSeedText(track) }}
+                    </bubbleBoxTrigger>
                     <span
                       v-for="source in track.sources"
                       :key="source"
@@ -317,7 +512,8 @@ onUnmounted(() => {
       </div>
 
       <div class="dialog-footer">
-        <div class="button" @click="loadSimilarTracks">{{ t('similarTracks.retry') }}</div>
+        <div v-if="loading" class="button" @click="cancelBatch">{{ t('common.cancel') }}</div>
+        <div v-else class="button" @click="runBatch">{{ t('similarTracks.retry') }}</div>
         <div class="button" @click="closeDialog">{{ t('common.close') }} (Esc)</div>
       </div>
     </div>
@@ -375,6 +571,13 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
+.seed-badges {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .source-chip {
   height: 22px;
   line-height: 20px;
@@ -387,37 +590,17 @@ onUnmounted(() => {
   box-sizing: border-box;
 }
 
-.source-status {
-  min-height: 24px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.status-pill {
-  height: 22px;
-  line-height: 20px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 8px;
-  font-size: 11px;
-  color: var(--text-weak);
-  background-color: var(--bg);
-  box-sizing: border-box;
-}
-
-.status-pill.warn {
-  border-color: rgba(234, 179, 8, 0.5);
-  color: #b7791f;
-}
-
-.status-pill.error {
-  border-color: rgba(239, 68, 68, 0.45);
-  color: #dc2626;
-}
-
 .seed-source {
   flex: 0 0 auto;
+}
+
+.rec-chip {
+  max-width: 260px;
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #0284c7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .source-listenbrainz {
@@ -428,6 +611,34 @@ onUnmounted(() => {
 .source-lastfm {
   border-color: rgba(239, 68, 68, 0.42);
   color: #dc2626;
+}
+
+.source-status {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  min-height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--bg-elev);
+  color: var(--text-weak);
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 16px;
+  box-sizing: border-box;
+
+  &.warn {
+    border-color: rgba(245, 158, 11, 0.45);
+    color: #d97706;
+  }
+
+  &.error {
+    border-color: rgba(239, 68, 68, 0.42);
+    color: #dc2626;
+  }
 }
 
 .filter-tabs {

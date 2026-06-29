@@ -160,9 +160,9 @@ export const usePioneerSongContextMenu = (params: UsePioneerSongContextMenuParam
         )
         return
       case 'similarTracks.menu': {
-        const { default: openSimilarTracksDialog } =
-          await import('@renderer/components/similarTracksDialog')
-        await openSimilarTracksDialog(song)
+        const { default: openBatchSimilarTracksDialog } =
+          await import('@renderer/components/batchSimilarTracksDialog')
+        await openBatchSimilarTracksDialog(existingTracks.length ? existingTracks : [song])
         return
       }
       case 'rekordboxDesktop.menuCreatePlaylistFromSelectedTracks':

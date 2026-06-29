@@ -331,9 +331,9 @@ const handleNeteaseSearchAlbum = async () => {
 const handleSimilarTracks = async () => {
   const song = runtime.playingData.playingSong
   if (!song) return
-  const { default: openSimilarTracksDialog } =
-    await import('@renderer/components/similarTracksDialog')
-  await openSimilarTracksDialog(song)
+  const { default: openBatchSimilarTracksDialog } =
+    await import('@renderer/components/batchSimilarTracksDialog')
+  await openBatchSimilarTracksDialog([song])
   closeMoreMenu()
 }
 

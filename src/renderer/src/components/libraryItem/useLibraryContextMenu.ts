@@ -36,6 +36,7 @@ import {
   collectSetPlaylistTracksForBatchRename,
   collectSongListTargets,
   collectSongListUuids,
+  collectSongsForSimilarBatch,
   loadSetPlaylistSongs,
   scanSongListsForFiles,
   uniqueFilePaths
@@ -882,6 +883,21 @@ export function useLibraryContextMenu({
             })
           }
         } catch {}
+        break
+      }
+      case 'similarTracks.menu': {
+        const seeds = await collectSongsForSimilarBatch(getOperateUuids())
+        if (!seeds.length) {
+          await confirm({
+            title: t('dialog.hint'),
+            content: [t('similarTracks.batchNoSeeds')],
+            confirmShow: false
+          })
+          return
+        }
+        const { default: openBatchSimilarTracksDialog } =
+          await import('@renderer/components/batchSimilarTracksDialog')
+        await openBatchSimilarTracksDialog(seeds)
         break
       }
       case 'fingerprints.analyzeAndAdd': {

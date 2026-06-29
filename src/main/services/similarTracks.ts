@@ -1,4 +1,6 @@
 import { app } from 'electron'
+import path = require('path')
+import fs = require('fs-extra')
 import { ProxyAgent, fetch as undiciFetch, type RequestInit as UndiciRequestInit } from 'undici'
 import {
   ISimilarTrackItem,
@@ -6,11 +8,16 @@ import {
   ISimilarTracksProviderStatus,
   ISimilarTracksRequest,
   ISimilarTracksResult,
-  ISimilarTracksSeed
+  ISimilarTracksSeed,
+  ISimilarTracksBatchRequest,
+  ISimilarTracksBatchResult,
+  ISimilarTracksBatchSeedResult
 } from '../../types/globals'
 import { getSystemProxy } from '../utils'
 import { matchTrackWithAcoustId } from './acoustId'
 import { searchMusicBrainz } from './musicBrainz'
+import mainWindow from '../window/mainWindow'
+import { createRateLimitedQueue } from './rateLimitedQueue'
 
 const LISTENBRAINZ_URL = 'https://labs.api.listenbrainz.org/similar-recordings/json'
 const LISTENBRAINZ_ALGORITHM =
@@ -19,6 +26,20 @@ const LASTFM_URL = 'https://ws.audioscrobbler.com/2.0/'
 const DEFAULT_LASTFM_API_KEY = String(process.env.FRKB_LASTFM_API_KEY || '').trim()
 const REQUEST_TIMEOUT = 12_000
 const DEFAULT_LIMIT = 50
+
+// 限流间隔（毫秒）。依据见 rateLimitedQueue.ts 顶部注释：
+// ListenBrainz labs 官方无数字、无限流头 → 取保守值；Last.fm 官方无数字 → 取保守值。
+const LISTENBRAINZ_MIN_INTERVAL = 400
+const LASTFM_MIN_INTERVAL = 250
+
+// 每个外部源独立一条串行队列：不同主机/不同政策，避免快的被慢的拖累。
+const listenBrainzQueue = createRateLimitedQueue({ minInterval: LISTENBRAINZ_MIN_INTERVAL })
+const lastFmQueue = createRateLimitedQueue({ minInterval: LASTFM_MIN_INTERVAL })
+
+// 结果缓存（持久化到 userData/similarTracksCache.json，TTL 7 天）。
+// 批量场景里重复的种子 / 重复的推荐目标可直接命中，大幅减少外部请求。
+const CACHE_TTL = 7 * 24 * 60 * 60 * 1000
+const CACHE_FILE_NAME = 'similarTracksCache.json'
 
 type JsonObject = Record<string, unknown>
 type RequestInitWithDispatcher = UndiciRequestInit
@@ -31,6 +52,73 @@ type ErrorLike = {
 let proxyDispatcher: ProxyAgent | undefined
 let proxyInitialized = false
 const activeControllers = new Set<AbortController>()
+
+// 批量取消标志：progressId -> 是否已请求取消
+const canceledBatches = new Set<string>()
+
+// ---- 结果缓存（按 provider + seed 关键字）----
+type SimilarCacheEntry = {
+  tracks: ISimilarTrackItem[]
+  status: ISimilarTracksProviderStatus
+  createdAt: number
+}
+type SimilarCacheStore = Record<string, SimilarCacheEntry>
+
+const appReady = app.isReady() ? Promise.resolve() : app.whenReady()
+let cacheLoaded = false
+let cacheStore: SimilarCacheStore = {}
+let cachePersistTimer: NodeJS.Timeout | null = null
+
+async function getCacheFilePath(): Promise<string> {
+  await appReady
+  return path.join(app.getPath('userData'), CACHE_FILE_NAME)
+}
+
+async function loadSimilarCache(): Promise<void> {
+  if (cacheLoaded) return
+  cacheLoaded = true
+  try {
+    const file = await getCacheFilePath()
+    if (await fs.pathExists(file)) {
+      cacheStore = (await fs.readJson(file)) as SimilarCacheStore
+    }
+  } catch {
+    cacheStore = {}
+  }
+}
+
+function scheduleCachePersist(): void {
+  if (cachePersistTimer) return
+  cachePersistTimer = setTimeout(() => {
+    cachePersistTimer = null
+    void (async () => {
+      try {
+        const file = await getCacheFilePath()
+        await fs.outputJson(file, cacheStore)
+      } catch {
+        // 忽略持久化失败
+      }
+    })()
+  }, 2000)
+}
+
+async function readSimilarCache(key: string): Promise<SimilarCacheEntry | null> {
+  await loadSimilarCache()
+  const entry = cacheStore[key]
+  if (!entry) return null
+  if (Date.now() - entry.createdAt > CACHE_TTL) {
+    delete cacheStore[key]
+    scheduleCachePersist()
+    return null
+  }
+  return entry
+}
+
+async function writeSimilarCache(key: string, entry: SimilarCacheEntry): Promise<void> {
+  await loadSimilarCache()
+  cacheStore[key] = entry
+  scheduleCachePersist()
+}
 
 const isJsonObject = (value: unknown): value is JsonObject =>
   !!value && typeof value === 'object' && !Array.isArray(value)
@@ -285,23 +373,28 @@ async function fetchListenBrainzSimilar(seed: ISimilarTracksSeed, limit: number)
       } satisfies ISimilarTracksProviderStatus
     }
   }
+  const cacheKey = `lb:${normalizeKey(seed.recordingMbid)}:${limit}`
+  const cached = await readSimilarCache(cacheKey)
+  if (cached) return { tracks: cached.tracks, status: cached.status }
   const params = new URLSearchParams({
     algorithm: LISTENBRAINZ_ALGORITHM,
     recording_mbids: seed.recordingMbid,
     limit: String(limit)
   })
-  const json = await requestJson<unknown>(`${LISTENBRAINZ_URL}?${params.toString()}`)
+  // 经 ListenBrainz 专属串行限流队列，避免批量撞 429/503
+  const json = await listenBrainzQueue.schedule(() =>
+    requestJson<unknown>(`${LISTENBRAINZ_URL}?${params.toString()}`)
+  )
   const tracks = extractListenBrainzRows(json)
     .map(transformListenBrainzTrack)
     .filter((item): item is ISimilarTrackItem => !!item)
-  return {
-    tracks,
-    status: {
-      source: 'listenbrainz',
-      status: 'ok',
-      count: tracks.length
-    } satisfies ISimilarTracksProviderStatus
-  }
+  const status = {
+    source: 'listenbrainz',
+    status: 'ok',
+    count: tracks.length
+  } satisfies ISimilarTracksProviderStatus
+  await writeSimilarCache(cacheKey, { tracks, status, createdAt: Date.now() })
+  return { tracks, status }
 }
 
 function extractLastFmRows(payload: unknown): JsonObject[] {
@@ -373,7 +466,10 @@ async function requestLastFm(
     params.set('artist', seed.artist)
     params.set('track', seed.title)
   }
-  return await requestJson<unknown>(`${LASTFM_URL}?${params.toString()}`)
+  // 经 Last.fm 专属串行限流队列
+  return await lastFmQueue.schedule(() =>
+    requestJson<unknown>(`${LASTFM_URL}?${params.toString()}`)
+  )
 }
 
 function resolveLastFmApiKey(): string {
@@ -402,6 +498,9 @@ async function fetchLastFmSimilar(seed: ISimilarTracksSeed, limit: number) {
       } satisfies ISimilarTracksProviderStatus
     }
   }
+  const cacheKey = `lf:${seed.recordingMbid ? `mbid:${normalizeKey(seed.recordingMbid)}` : `text:${normalizeKey(seed.artist)}:${normalizeKey(seed.title)}`}:${limit}`
+  const cached = await readSimilarCache(cacheKey)
+  if (cached) return { tracks: cached.tracks, status: cached.status }
   let rows: JsonObject[] = []
   if (seed.recordingMbid) {
     const byMbid = await requestLastFm(seed, apiKey, limit, true)
@@ -414,14 +513,13 @@ async function fetchLastFmSimilar(seed: ISimilarTracksSeed, limit: number) {
     rows = extractLastFmRows(byText)
   }
   const tracks = rows.map(transformLastFmTrack).filter((item): item is ISimilarTrackItem => !!item)
-  return {
-    tracks,
-    status: {
-      source: 'lastfm',
-      status: 'ok',
-      count: tracks.length
-    } satisfies ISimilarTracksProviderStatus
-  }
+  const status = {
+    source: 'lastfm',
+    status: 'ok',
+    count: tracks.length
+  } satisfies ISimilarTracksProviderStatus
+  await writeSimilarCache(cacheKey, { tracks, status, createdAt: Date.now() })
+  return { tracks, status }
 }
 
 function mergeTrackIntoMap(map: Map<string, ISimilarTrackItem>, track: ISimilarTrackItem) {
@@ -561,9 +659,7 @@ function failedStatus(source: ISimilarTrackSource, error: unknown): ISimilarTrac
   }
 }
 
-export async function findSimilarTracks(
-  payload: ISimilarTracksRequest
-): Promise<ISimilarTracksResult> {
+async function findSimilarTracks(payload: ISimilarTracksRequest): Promise<ISimilarTracksResult> {
   if (!payload || !payload.filePath) {
     throw new Error('SIMILAR_TRACKS_INVALID_PARAMS')
   }
@@ -597,7 +693,92 @@ export async function findSimilarTracks(
   }
 }
 
-export function cancelSimilarTracksRequests() {
+function emitBatchProgress(
+  progressId: string,
+  now: number,
+  total: number,
+  isInitial: boolean
+): void {
+  if (!mainWindow.instance) return
+  mainWindow.instance.webContents.send('progressSet', {
+    id: progressId,
+    titleKey: 'similarTracks.batchProgress',
+    now,
+    total,
+    isInitial,
+    cancelable: true,
+    cancelChannel: 'similarTracks:cancelBatch',
+    cancelPayload: progressId
+  })
+}
+
+/**
+ * 批量查找相似歌曲。
+ * 逐首串行调用 findSimilarTracks（天然被各外部源的限流队列约束），
+ * 每完成一首通过底部全局进度条上报进度，支持按 progressId 中途取消。
+ * 不在此处做「合并去重 / 剔除已拥有」——交给前端处理（前端持有本地库元数据）。
+ */
+export async function findSimilarTracksBatch(
+  payload: ISimilarTracksBatchRequest
+): Promise<ISimilarTracksBatchResult> {
+  const seeds = Array.isArray(payload?.seeds) ? payload.seeds : []
+  const progressId = String(payload?.progressId || '')
+  const total = seeds.length
+  const perSeed: ISimilarTracksBatchSeedResult[] = []
+  let processed = 0
+  let emptyCount = 0
+  let canceled = false
+
+  canceledBatches.delete(progressId)
+  emitBatchProgress(progressId, 0, total, true)
+
+  for (const seed of seeds) {
+    if (canceledBatches.has(progressId)) {
+      canceled = true
+      break
+    }
+    const seedKey = seed.seedKey || seed.filePath
+    try {
+      const result = await findSimilarTracks(seed)
+      const tracks = result.tracks || []
+      const seedResolved = !!result.seed
+      perSeed.push({
+        seedKey,
+        seed: result.seed,
+        seedResolved,
+        tracks,
+        providerStatus: result.providerStatus
+      })
+      if (!tracks.length) emptyCount += 1
+    } catch (error) {
+      const errorCode =
+        error instanceof Error ? error.message : String(error || 'SIMILAR_TRACKS_UNKNOWN')
+      perSeed.push({
+        seedKey,
+        seedResolved: false,
+        tracks: [],
+        providerStatus: [],
+        errorCode
+      })
+      emptyCount += 1
+    }
+    processed += 1
+    emitBatchProgress(progressId, processed, total, false)
+  }
+
+  // 让底部进度条收尾消失（now===total 触发自动移除）
+  emitBatchProgress(progressId, total, total, false)
+  canceledBatches.delete(progressId)
+
+  return { perSeed, processed, total, emptyCount, canceled }
+}
+
+export function cancelSimilarTracksBatch(progressId: string): void {
+  const id = String(progressId || '')
+  if (id) canceledBatches.add(id)
+  // 清空尚未发出的队列任务，让在跑的批次尽快收尾
+  listenBrainzQueue.clear()
+  lastFmQueue.clear()
   for (const controller of activeControllers) {
     try {
       controller.abort()

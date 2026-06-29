@@ -495,9 +495,11 @@ export function useSongItemContextMenu(
         return null
       }
       case 'similarTracks.menu': {
-        const { default: openSimilarTracksDialog } =
-          await import('@renderer/components/similarTracksDialog')
-        await openSimilarTracksDialog(song)
+        const seeds = resolveSelectedSongs()
+        if (!seeds.length) return null
+        const { default: openBatchSimilarTracksDialog } =
+          await import('@renderer/components/batchSimilarTracksDialog')
+        await openBatchSimilarTracksDialog(seeds)
         return null
       }
       case 'tracks.deleteAllAbove': {

@@ -336,6 +336,53 @@ interface ISimilarTracksResult {
   providerStatus: ISimilarTracksProviderStatus[]
 }
 
+/** 批量查找相似歌曲：一首种子歌的查询请求项（在 ISimilarTracksRequest 基础上带一个稳定标识）。 */
+interface ISimilarTracksBatchSeed extends ISimilarTracksRequest {
+  /** 种子歌的稳定标识，用于进度展示与结果归属。 */
+  seedKey: string
+}
+
+interface ISimilarTracksBatchRequest {
+  seeds: ISimilarTracksBatchSeed[]
+  /** 进度 id，用于底部全局进度条与取消。 */
+  progressId: string
+}
+
+/** 单首种子歌的批量查询结果。 */
+interface ISimilarTracksBatchSeedResult {
+  seedKey: string
+  /** 后端实际识别出的源曲；识别失败时为空。 */
+  seed?: ISimilarTracksSeed
+  /** 该种子是否成功识别出 seed（AcoustID/标签）。识别失败时 tracks 为空。 */
+  seedResolved: boolean
+  /** 该种子查到的外部推荐（未去重，交给前端汇总）。 */
+  tracks: ISimilarTrackItem[]
+  /** 每个外部来源的查询状态，用于批量聚合诊断。 */
+  providerStatus: ISimilarTracksProviderStatus[]
+  /** 该种子整体失败（如无种子、网络错误）时的错误码，用于顶部汇总统计。 */
+  errorCode?: string
+}
+
+interface ISimilarTracksBatchResult {
+  perSeed: ISimilarTracksBatchSeedResult[]
+  /** 实际处理（已跑完）的种子数。 */
+  processed: number
+  /** 总种子数。 */
+  total: number
+  /** 识别失败或无推荐的种子数（顶部汇总用）。 */
+  emptyCount: number
+  /** 是否被用户中途取消。 */
+  canceled: boolean
+}
+
+/** 前端推荐池中的一项：在 ISimilarTrackItem 基础上记录来源种子。 */
+interface ISimilarTracksPoolItem extends ISimilarTrackItem {
+  /** 被多少首不同的种子歌同时推荐。 */
+  recommendedBy: number
+  /** 被哪些种子推荐（seedKey 列表，留作可展开明细）。 */
+  recommendedBySeeds: string[]
+}
+
 interface IMusicBrainzApplyPayload {
   title?: string
   artist?: string
@@ -762,5 +809,10 @@ export {
   ISimilarTracksSeed,
   ISimilarTrackItem,
   ISimilarTracksProviderStatus,
-  ISimilarTracksResult
+  ISimilarTracksResult,
+  ISimilarTracksBatchSeed,
+  ISimilarTracksBatchRequest,
+  ISimilarTracksBatchSeedResult,
+  ISimilarTracksBatchResult,
+  ISimilarTracksPoolItem
 }

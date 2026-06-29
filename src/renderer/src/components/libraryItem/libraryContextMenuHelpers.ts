@@ -4,7 +4,7 @@ import { collectMissingAnalysisFilesFromSongs } from '@renderer/utils/manualKeyA
 import type { IBatchRenameTrackInput, IDir, IMenu, ISongInfo } from 'src/types/globals'
 
 type ScanSongListResult = {
-  scanData?: Array<{ filePath?: string }>
+  scanData?: ISongInfo[]
 }
 
 export type SongListTarget = {
@@ -65,6 +65,7 @@ export const buildLibraryContextMenuArr = ({
       [{ menuName: 'library.createPlaylist' }, { menuName: 'library.createFolder' }],
       [{ menuName: 'common.rename' }, { menuName: 'common.delete' }],
       [{ menuName: 'playlist.batchRename' }],
+      [{ menuName: 'similarTracks.menu' }],
       ...(canShowMissingAnalysisMenu(dirData, libraryName, creatingSongListUUID)
         ? [[{ menuName: 'tracks.analyzeMissingTracks' }]]
         : [])
@@ -91,6 +92,7 @@ export const buildLibraryContextMenuArr = ({
       ],
       [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
       [{ menuName: 'tracks.analyzeMissingTracks' }, { menuName: 'tracks.reanalyzePlaylist' }],
+      [{ menuName: 'similarTracks.menu' }],
       [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }]
     ]
   }
@@ -110,6 +112,7 @@ export const buildLibraryContextMenuArr = ({
     [{ menuName: 'tracks.showInFileExplorer' }],
     [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
     [{ menuName: 'playlist.fingerprintDeduplicate' }, { menuName: 'fingerprints.analyzeAndAdd' }],
+    [{ menuName: 'similarTracks.menu' }],
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }],
     ...(isCoreLibrary
       ? [[{ menuName: 'tracks.analyzeMissingTracks' }, { menuName: 'tracks.reanalyzePlaylist' }]]
@@ -169,6 +172,32 @@ export const scanSongListsForFiles = async (uuids: string[]): Promise<string[]> 
     }
   }
   return files
+}
+
+/**
+ * 扫描普通歌单（songList）的完整 ISongInfo 列表（含 artist/title），按 filePath 去重。
+ * 供「批量查找相似歌曲」使用：既要当种子，又要拿 artist/title 做「剔除已拥有」。
+ */
+export const scanSongListsForSongs = async (uuids: string[]): Promise<ISongInfo[]> => {
+  const songs: ISongInfo[] = []
+  const seen = new Set<string>()
+  for (const uuid of uuids) {
+    const dirPath = libraryUtils.findDirPathByUuid(uuid)
+    const scan = (await window.electron.ipcRenderer.invoke(
+      'scanSongList',
+      dirPath,
+      uuid
+    )) as ScanSongListResult | null
+    if (!Array.isArray(scan?.scanData)) continue
+    for (const song of scan.scanData) {
+      if (song?.fileMissing || !song?.filePath) continue
+      const key = String(song.filePath).replace(/\//g, '\\').toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      songs.push(song)
+    }
+  }
+  return songs
 }
 
 export const loadSetPlaylistSongs = async (playlistUuid: string): Promise<ISongInfo[]> => {
@@ -275,4 +304,34 @@ export const collectSongListTargets = (root: IDir): SongListTarget[] => {
   }
   traverse(root)
   return result
+}
+
+/**
+ * 为「批量查找相似歌曲」收集完整 ISongInfo 列表：
+ * 普通歌单走 scanSongListsForSongs，Set 歌单走 loadSetPlaylistSongs，按 filePath 去重合并。
+ * 传入原始 operate UUIDs（库/文件夹/歌单皆可），内部递归展开到歌单。
+ */
+export const collectSongsForSimilarBatch = async (operateUuids: string[]): Promise<ISongInfo[]> => {
+  const songListUuids = collectSongListUuids(operateUuids)
+  const setListUuids = collectSetListUuids(operateUuids)
+  const [songListSongs, setSongsArrays] = await Promise.all([
+    songListUuids.length ? scanSongListsForSongs(songListUuids) : Promise.resolve([]),
+    setListUuids.length
+      ? Promise.all(setListUuids.map((uuid) => loadSetPlaylistSongs(uuid)))
+      : Promise.resolve([] as ISongInfo[][])
+  ])
+  const merged: ISongInfo[] = [...songListSongs]
+  const seen = new Set(
+    songListSongs.map((s) => String(s.filePath).replace(/\//g, '\\').toLowerCase())
+  )
+  for (const arr of setSongsArrays) {
+    for (const song of arr) {
+      if (song?.fileMissing || !song?.filePath) continue
+      const key = String(song.filePath).replace(/\//g, '\\').toLowerCase()
+      if (seen.has(key)) continue
+      seen.add(key)
+      merged.push(song)
+    }
+  }
+  return merged
 }
