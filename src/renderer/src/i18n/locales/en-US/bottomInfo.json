@@ -5,6 +5,7 @@
     "pendingAnalysis": "{count} pending analysis",
     "pendingAnalysisLeft": "L: {count} pending",
     "pendingAnalysisRight": "R: {count} pending",
+    "analyzePending": "Analyze",
     "durationUnits": {
       "day": {
         "one": "{count} day",

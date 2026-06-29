@@ -73,6 +73,12 @@
     "noMissingAnalysisTracks": "没有需要分析的歌曲",
     "clearTrackCache": "重新分析曲目",
     "reanalyzePlaylist": "重新分析所有曲目",
-    "clearingOldAnalysis": "清除旧分析结果"
+    "clearingOldAnalysis": "清除旧分析结果",
+    "analyzePlaylistPromptTitle": "分析此歌单？",
+    "analyzePlaylistPromptContent": "此歌单中有 {count} 首曲目尚未分析。",
+    "analyzePlaylistPromptQuestion": "是否现在分析全部？",
+    "analyzePlaylistConfirm": "分析全部",
+    "analyzePlaylistCancel": "暂不",
+    "analyzingPlaylist": "正在分析歌单"
   }
 }

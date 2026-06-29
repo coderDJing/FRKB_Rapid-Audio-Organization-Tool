@@ -73,6 +73,12 @@
     "noMissingAnalysisTracks": "No tracks need analysis",
     "clearTrackCache": "Re-analyze track",
     "reanalyzePlaylist": "Re-analyze all tracks",
-    "clearingOldAnalysis": "Clearing old analysis"
+    "clearingOldAnalysis": "Clearing old analysis",
+    "analyzePlaylistPromptTitle": "Analyze this playlist?",
+    "analyzePlaylistPromptContent": "This playlist has {count} track(s) not yet analyzed.",
+    "analyzePlaylistPromptQuestion": "Analyze all of them now?",
+    "analyzePlaylistConfirm": "Analyze all",
+    "analyzePlaylistCancel": "Not now",
+    "analyzingPlaylist": "Analyzing playlist"
   }
 }

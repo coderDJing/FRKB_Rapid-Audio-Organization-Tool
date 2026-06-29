@@ -425,7 +425,8 @@ const {
   actualVisibleStartIndex: actualStartIndex,
   actualVisibleEndIndex: actualEndIndex,
   getAnalysisProgress,
-  isSongNeedsAnalysis
+  isSongNeedsAnalysis,
+  queueMissingAnalysis: enableKeyAnalysisQueueRef
 })
 
 const handleWaveformClick = async (song: ISongInfo, event: MouseEvent) => {

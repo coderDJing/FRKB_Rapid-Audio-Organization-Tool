@@ -5,6 +5,7 @@
     "pendingAnalysis": "{count} 首待分析",
     "pendingAnalysisLeft": "左 {count} 首待分析",
     "pendingAnalysisRight": "右 {count} 首待分析",
+    "analyzePending": "分析",
     "durationUnits": {
       "day": {
         "one": "{count}天",

@@ -69,6 +69,7 @@ export function useWaveformPreview(params: {
   actualVisibleEndIndex: Ref<number>
   getAnalysisProgress?: (filePath: string) => number | null
   isSongNeedsAnalysis?: (filePath: string) => boolean
+  queueMissingAnalysis?: Ref<boolean>
 }) {
   const {
     visibleSongsWithIndex,
@@ -81,7 +82,8 @@ export function useWaveformPreview(params: {
     actualVisibleStartIndex,
     actualVisibleEndIndex,
     getAnalysisProgress,
-    isSongNeedsAnalysis
+    isSongNeedsAnalysis,
+    queueMissingAnalysis
   } = params
   const runtime = useRuntimeStore()
   const waveformColumn = computed(() =>
@@ -121,6 +123,7 @@ export function useWaveformPreview(params: {
   const pioneerStreamFilePathMap = markRaw(new Map<string, string[]>())
   const useHalfWaveform = () => (runtime.setting?.waveformMode ?? 'half') !== 'full'
   const resolveExternalRootPath = () => String(externalWaveformRootPath.value || '').trim()
+  const shouldQueueMissingAnalysis = () => queueMissingAnalysis?.value !== false
   const touchPlaceholderState = () => (placeholderVersion.value += 1)
   let waveformPreviewRetry: ReturnType<typeof createWaveformPreviewRetry> | null = null
   const ensureWaveformWorker = () => {
@@ -641,7 +644,8 @@ export function useWaveformPreview(params: {
         Array.from(groups.entries()).map(([listRoot, groupedFilePaths]) =>
           window.electron.ipcRenderer.invoke('waveform-list-preview-cache:batch', {
             listRoot,
-            filePaths: groupedFilePaths
+            filePaths: groupedFilePaths,
+            queueIfMissing: shouldQueueMissingAnalysis()
           })
         )
       )
@@ -684,6 +688,14 @@ export function useWaveformPreview(params: {
       inflight.delete(filePath)
     }
     if (missing.length) {
+      if (!shouldQueueMissingAnalysis()) {
+        for (const filePath of missing) {
+          queuedMissing.delete(filePath)
+          setWaveformPlaceholderUnavailable(filePath)
+        }
+        scheduleDrawForFilePaths(filePaths)
+        return
+      }
       const toQueue = missing.filter((filePath) => !queuedMissing.has(filePath))
       if (toQueue.length) {
         for (const filePath of toQueue) {

@@ -17,19 +17,19 @@ import { beginHorizontalBrowseDeckInteraction } from '@renderer/components/horiz
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 import { ISongInfo } from '../../../../../types/globals'
-import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { activateSongsAreaPane } from '@renderer/utils/songsAreaSplit'
 import type { MoveSongsLibraryName } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
+import { usePlaylistAnalysisPrompt } from '@renderer/pages/modules/songsArea/composables/usePlaylistAnalysisPrompt'
+import { useSongsAreaEmptyState } from '@renderer/pages/modules/songsArea/composables/useSongsAreaEmptyState'
 
-// 组件导入
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import welcomePage from '@renderer/components/welcomePage.vue'
 import SongListHeader from './SongListHeader.vue'
 import SongListRows from './SongListRows.vue'
 import ColumnHeaderContextMenu from './ColumnHeaderContextMenu.vue'
+import PlaylistAnalysisFloatingButton from './PlaylistAnalysisFloatingButton.vue'
 
-// Composable import
 import { useSongItemContextMenu } from '@renderer/pages/modules/songsArea/composables/useSongItemContextMenu'
 import { useSelectAndMoveSongs } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
 import { useDragSongs } from '@renderer/pages/modules/songsArea/composables/useDragSongs'
@@ -46,7 +46,6 @@ import { useSongsAreaDragAndDrop } from '@renderer/pages/modules/songsArea/compo
 import { usePlaylistTrackNumbers } from '@renderer/pages/modules/songsArea/composables/usePlaylistTrackNumbers'
 import { detectSongsAreaScrollCarrier } from '@renderer/pages/modules/songsArea/composables/scrollCarrier'
 
-// 资源导入
 import ascendingOrderAsset from '@renderer/assets/ascending-order.svg?asset'
 import descendingOrderAsset from '@renderer/assets/descending-order.svg?asset'
 
@@ -283,6 +282,18 @@ const { loadingShow, isRequesting, openSongList } = useSongsLoader({
   originalSongInfoArr,
   applyFiltersAndSorting
 })
+
+const {
+  songListAutoAnalyzeEnabled,
+  playlistAnalysisActionVisible,
+  playlistAnalysisActionPending,
+  handleUserOpenedSongList,
+  analyzeDismissedPlaylist
+} = usePlaylistAnalysisPrompt({
+  runtime,
+  songsAreaState,
+  isMixtapeListView
+})
 const {
   trackNumberMutationPending,
   canReorderPlaylistTracks,
@@ -399,7 +410,8 @@ useSongsAreaEvents({
   shouldApplyFiltersAndSortingForSongChange,
   openSongList,
   scheduleSweepCovers,
-  activeWaveformPreviewFilePath: activePreviewFilePath
+  activeWaveformPreviewFilePath: activePreviewFilePath,
+  onUserOpenedSongList: handleUserOpenedSongList
 })
 if (props.enablePreviewPlayer) {
   useWaveformPreviewPlayer()
@@ -470,10 +482,6 @@ onUnmounted(() => {
   emitter.off('preview-transfer:open-dialog', handlePreviewMoveRequest)
   clearGlobalSearchFlashSchedule()
 })
-// 上述列处理、加载、事件与封面清理均由 composable 提供
-
-// songClick 宸茬敱 useKeyboardSelection 鎻愪緵
-
 const applyMetadataUpdate = async (
   updatedSong: ISongInfo | undefined,
   incomingOldFilePath?: string,
@@ -721,13 +729,6 @@ useGlobalSearchFocus({
   onFocusHit: triggerGlobalSearchFlash
 })
 
-// 删除按键处理由 useKeyboardSelection 绑定
-
-// 键盘 Shift 范围选择与快捷键绑定由 useKeyboardSelection 管理
-
-// 排序、筛选与列表头点击等逻辑由 useSongsAreaColumns 提供
-
-// 提供给 SongListRows 的派生状态
 const playingSongFilePathForRows = computed(() => {
   const playingSong = runtime.playingData.playingSong
   if (!playingSong) return undefined
@@ -834,11 +835,6 @@ const handleScrollToPlaying = () => {
   scrollToIndex(currentPlayingIndex.value)
 }
 
-// 父级滚动采样由 useParentRafSampler 提供
-
-// 自动滚动逻辑由 useAutoScrollToCurrent 提供
-
-// 处理移动歌曲对话框确认后的逻辑
 async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   const pathsEffectivelyMoved = [...songsAreaState.selectedSongFilePath]
   const currentListUuid = songsAreaState.songListUUID
@@ -900,7 +896,6 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
     ? resolveNextPlayingSong(playingListSnapshot, pathsEffectivelyMoved)
     : null
 
-  // 调用 composable 执行移动操作，并处理对话框关闭与选中清理
   await handleMoveSongsConfirm(targetSongListUuid, {
     preservePlaybackForRemovedPaths:
       currentPlayingWillBeRemoved && Boolean(nextPlayingSong?.filePath),
@@ -915,43 +910,23 @@ async function onMoveSongsDialogConfirmed(targetSongListUuid: string) {
   if (!removesFromSource) {
     return
   }
-  // 非 Mixtape 目标时，从当前列表中同步移除已移动项
   if (pathsEffectivelyMoved.length > 0) {
     originalSongInfoArr.value = originalSongInfoArr.value.filter(
       (item) => !movedPathSet.has(normalizeMovedPath(item.filePath))
     )
     applyFiltersAndSorting()
 
-    // 若当前播放列表即为当前视图，同步快照（与其他删除路径保持一致）
     if (runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
       runtime.playingData.playingSongListData = [...songsAreaState.songInfoArr]
     }
   }
 }
 
-const shouldShowEmptyState = computed(() => {
-  return (
-    !isRequesting.value && songsAreaState.songListUUID && songsAreaState.songInfoArr.length === 0
-  )
+const { shouldShowEmptyState, emptyTitleText, emptyHintText } = useSongsAreaEmptyState({
+  isRequesting,
+  songsAreaState,
+  columnData
 })
-// 空状态相关计算
-const hasActiveFilter = computed(() => columnData.value.some((c) => !!c.filterActive))
-const isRecycleBinView = computed(() => songsAreaState.songListUUID === RECYCLE_BIN_UUID)
-const isRecordingLibraryView = computed(
-  () => songsAreaState.songListUUID === RECORDING_LIBRARY_UUID
-)
-const emptyTitleText = computed(() => {
-  if (hasActiveFilter.value) return t('filters.noResults')
-  if (isRecycleBinView.value) return t('recycleBin.noDeletionRecords')
-  if (isRecordingLibraryView.value) return t('tracks.noTracks')
-  return t('tracks.noTracks')
-})
-const emptyHintText = computed(() => {
-  if (hasActiveFilter.value) return t('filters.noResultsHint')
-  if (isRecycleBinView.value || isRecordingLibraryView.value) return ''
-  return t('tracks.noTracksHint')
-})
-// 派生状态结束
 
 // 播放列表同步由 useSongsAreaEvents 管理
 </script>
@@ -1032,6 +1007,7 @@ const emptyHintText = computed(() => {
                   :source-library-name="runtime.libraryAreaSelected"
                   :source-song-list-u-u-i-d="songsAreaState.songListUUID"
                   :source-pane-key="props.pane"
+                  :enable-key-analysis-queue="songListAutoAnalyzeEnabled"
                   :scroll-host-element="songsAreaRef?.osInstance()?.elements().viewport"
                   :external-scroll-top="externalScrollTop"
                   :external-viewport-height="externalViewportHeight"
@@ -1051,6 +1027,13 @@ const emptyHintText = computed(() => {
             </div>
           </Transition>
         </OverlayScrollbarsComponent>
+
+        <PlaylistAnalysisFloatingButton
+          v-if="playlistAnalysisActionVisible"
+          :pending="playlistAnalysisActionPending"
+          :with-jump="showScrollToPlaying"
+          @analyze="analyzeDismissedPlaylist"
+        />
 
         <bubbleBoxTrigger
           v-if="showScrollToPlaying"

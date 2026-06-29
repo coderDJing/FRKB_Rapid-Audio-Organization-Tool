@@ -40,6 +40,20 @@ export function useKeyAnalysisQueue({
   let lastSignature = ''
   const isEnabled = () => (enabled ? enabled.value !== false : true)
   const shouldRequireRuntimeAnalysis = () => requiresRuntimeAnalysis?.value === true
+  const sendVisibleQueue = (filePaths: string[]) => {
+    window.electron.ipcRenderer.send('key-analysis:queue-visible', {
+      filePaths,
+      scope: 'list'
+    })
+  }
+  const clearVisibleQueue = () => {
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    lastSignature = ''
+    sendVisibleQueue([])
+  }
 
   const appendPendingSongPath = (
     paths: string[],
@@ -72,10 +86,7 @@ export function useKeyAnalysisQueue({
     const signature = `${queueKey?.value || ''}:${shouldRequireRuntimeAnalysis() ? 'runtime' : 'lite'}::${paths.join('|')}`
     if (signature === lastSignature) return
     lastSignature = signature
-    window.electron.ipcRenderer.send('key-analysis:queue-visible', {
-      filePaths: paths,
-      scope: 'list'
-    })
+    sendVisibleQueue(paths)
   }
 
   const schedule = () => {
@@ -95,14 +106,20 @@ export function useKeyAnalysisQueue({
     },
     { immediate: true }
   )
+  const stopEnabledWatch = watch(
+    () => isEnabled(),
+    (enabledNow, enabledBefore) => {
+      if (enabledNow) {
+        schedule()
+        return
+      }
+      if (enabledBefore) clearVisibleQueue()
+    }
+  )
 
   onUnmounted(() => {
-    if (timer) clearTimeout(timer)
     stopWatch()
-    if (!isEnabled()) return
-    window.electron.ipcRenderer.send('key-analysis:queue-visible', {
-      filePaths: [],
-      scope: 'list'
-    })
+    stopEnabledWatch()
+    clearVisibleQueue()
   })
 }

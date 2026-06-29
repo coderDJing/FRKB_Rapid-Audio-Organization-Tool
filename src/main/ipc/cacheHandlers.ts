@@ -30,6 +30,10 @@ type PlayerWaveformCacheItem = {
   data: WaveformGlobalOverviewData | null
 }
 
+type SurfaceCacheLoadOptions = {
+  queueIfMissing?: boolean
+}
+
 export function registerCacheHandlers() {
   registerMixtapeRawWaveformHandlers()
 
@@ -68,7 +72,8 @@ export function registerCacheHandlers() {
   const loadListPreviewSurface = async (
     filePath: string,
     listRootRaw: string,
-    priority: 'low' | 'medium'
+    priority: 'low' | 'medium',
+    options: SurfaceCacheLoadOptions = {}
   ): Promise<WaveformListPreviewData | null> => {
     const listRoot = await resolvePayloadListRoot(listRootRaw, filePath)
     if (!listRoot) return null
@@ -76,10 +81,16 @@ export function registerCacheHandlers() {
       const fsStat = await fs.stat(filePath)
       const stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
       const data = await LibraryCacheDb.loadWaveformListPreviewCacheData(listRoot, filePath, stat)
-      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-      await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-      if (data) return data
-      queueSurfaceAnalysis(filePath, priority)
+      if (data) {
+        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        return data
+      }
+      if (options.queueIfMissing !== false) {
+        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        queueSurfaceAnalysis(filePath, priority)
+      }
       return null
     } catch {
       await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
@@ -93,7 +104,8 @@ export function registerCacheHandlers() {
   const loadGlobalOverviewSurface = async (
     filePath: string,
     listRootRaw: string,
-    priority: 'low' | 'medium'
+    priority: 'low' | 'medium',
+    options: SurfaceCacheLoadOptions = {}
   ): Promise<WaveformGlobalOverviewData | null> => {
     const listRoot = await resolvePayloadListRoot(listRootRaw, filePath)
     if (!listRoot) return null
@@ -105,10 +117,16 @@ export function registerCacheHandlers() {
         filePath,
         stat
       )
-      await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
-      await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
-      if (data) return data
-      queueSurfaceAnalysis(filePath, priority)
+      if (data) {
+        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        return data
+      }
+      if (options.queueIfMissing !== false) {
+        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        queueSurfaceAnalysis(filePath, priority)
+      }
       return null
     } catch {
       await LibraryCacheDb.removeSongCacheEntry(listRoot, filePath)
@@ -290,15 +308,25 @@ export function registerCacheHandlers() {
     }
   )
 
-  const handleGlobalOverviewLoad = async (payload: { listRoot?: string; filePath?: string }) => {
+  const handleGlobalOverviewLoad = async (payload: {
+    listRoot?: string
+    filePath?: string
+    queueIfMissing?: boolean
+  }) => {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath) return { status: 'missing' as const, data: null }
     const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
-    const data = await loadGlobalOverviewSurface(filePath, listRootRaw, 'medium')
+    const data = await loadGlobalOverviewSurface(filePath, listRootRaw, 'medium', {
+      queueIfMissing: payload?.queueIfMissing
+    })
     return data ? { status: 'ready' as const, data } : { status: 'missing' as const, data: null }
   }
 
-  const handleListPreviewBatch = async (payload: { listRoot?: string; filePaths?: string[] }) => {
+  const handleListPreviewBatch = async (payload: {
+    listRoot?: string
+    filePaths?: string[]
+    queueIfMissing?: boolean
+  }) => {
     const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     const normalizedPaths = filePaths.filter(
       (filePath) => typeof filePath === 'string' && filePath.trim().length > 0
@@ -311,7 +339,9 @@ export function registerCacheHandlers() {
     for (const filePath of normalizedPaths) {
       items.push({
         filePath,
-        data: await loadListPreviewSurface(filePath, listRootRaw, 'low')
+        data: await loadListPreviewSurface(filePath, listRootRaw, 'low', {
+          queueIfMissing: payload?.queueIfMissing
+        })
       })
     }
     return { items }
@@ -320,6 +350,7 @@ export function registerCacheHandlers() {
   const handleGlobalOverviewBatch = async (payload: {
     listRoot?: string
     filePaths?: string[]
+    queueIfMissing?: boolean
   }) => {
     const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     const normalizedPaths = filePaths.filter(
@@ -333,7 +364,9 @@ export function registerCacheHandlers() {
     for (const filePath of normalizedPaths) {
       items.push({
         filePath,
-        data: await loadGlobalOverviewSurface(filePath, listRootRaw, 'low')
+        data: await loadGlobalOverviewSurface(filePath, listRootRaw, 'low', {
+          queueIfMissing: payload?.queueIfMissing
+        })
       })
     }
     return { items }
@@ -341,32 +374,34 @@ export function registerCacheHandlers() {
 
   ipcMain.handle(
     'waveform-list-preview-cache:load',
-    async (_e, payload: { listRoot?: string; filePath?: string }) => {
+    async (_e, payload: { listRoot?: string; filePath?: string; queueIfMissing?: boolean }) => {
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       if (!filePath) return { status: 'missing' as const, data: null }
       const listRootRaw = typeof payload?.listRoot === 'string' ? payload.listRoot.trim() : ''
-      const data = await loadListPreviewSurface(filePath, listRootRaw, 'medium')
+      const data = await loadListPreviewSurface(filePath, listRootRaw, 'medium', {
+        queueIfMissing: payload?.queueIfMissing
+      })
       return data ? { status: 'ready' as const, data } : { status: 'missing' as const, data: null }
     }
   )
 
   ipcMain.handle(
     'waveform-list-preview-cache:batch',
-    async (_e, payload: { listRoot?: string; filePaths?: string[] }) => {
+    async (_e, payload: { listRoot?: string; filePaths?: string[]; queueIfMissing?: boolean }) => {
       return await handleListPreviewBatch(payload)
     }
   )
 
   ipcMain.handle(
     'waveform-global-overview-cache:load',
-    async (_e, payload: { listRoot?: string; filePath?: string }) => {
+    async (_e, payload: { listRoot?: string; filePath?: string; queueIfMissing?: boolean }) => {
       return await handleGlobalOverviewLoad(payload)
     }
   )
 
   ipcMain.handle(
     'waveform-global-overview-cache:batch',
-    async (_e, payload: { listRoot?: string; filePaths?: string[] }) => {
+    async (_e, payload: { listRoot?: string; filePaths?: string[]; queueIfMissing?: boolean }) => {
       return await handleGlobalOverviewBatch(payload)
     }
   )

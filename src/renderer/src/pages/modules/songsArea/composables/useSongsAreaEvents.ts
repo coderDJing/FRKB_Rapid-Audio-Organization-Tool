@@ -20,6 +20,9 @@ interface UseSongsAreaEventsParams {
   openSongList: () => Promise<void>
   scheduleSweepCovers: () => void
   activeWaveformPreviewFilePath?: Ref<string>
+  // 用户主动打开/切换到某个歌单（首次挂载或点击切换）后触发；
+  // 后台刷新（导入/转换/录音库变化等）不会触发，用于决定是否弹框询问分析。
+  onUserOpenedSongList?: (songListUUID: string) => void | Promise<void>
 }
 
 export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
@@ -31,7 +34,8 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     shouldApplyFiltersAndSortingForSongChange,
     openSongList,
     scheduleSweepCovers,
-    activeWaveformPreviewFilePath
+    activeWaveformPreviewFilePath,
+    onUserOpenedSongList
   } = params
 
   const isSupportedPlaylistTrackNumberList = () => {
@@ -783,7 +787,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
 
   const loadCurrentSongList = async (
     songListUUID: string,
-    options?: { resetSelection?: boolean }
+    options?: { resetSelection?: boolean; notifyUserOpened?: boolean }
   ) => {
     if (options?.resetSelection) {
       songsAreaState.selectedSongFilePath.length = 0
@@ -799,10 +803,23 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       originalSongInfoArr.value = markRaw([...songs])
       applyFiltersAndSorting()
       scheduleSweepCovers()
+      if (options?.notifyUserOpened) notifyUserOpenedSongList(songListUUID)
       return
     }
     await openSongList()
+    if (options?.notifyUserOpened) notifyUserOpenedSongList(songListUUID)
   }
+
+  // 仅当加载完成后用户仍停留在同一歌单时，才通知“用户主动打开了此歌单”
+  const notifyUserOpenedSongList = (songListUUID: string) => {
+    if (!onUserOpenedSongList) return
+    if (songsAreaState.songListUUID !== songListUUID) return
+    void Promise.resolve(onUserOpenedSongList(songListUUID)).catch(() => {})
+  }
+
+  // 记录当前 pane 已“打开过”的歌单（无论是否弹框）。
+  // 用于区分“真正切换到新歌单”与“程序化 '' → 原值 伪切换 / 组件重挂载”，避免后者重复弹框。
+  let lastOpenedUUID = ''
 
   const onRecordingLibraryChanged = () => {
     if (songsAreaState.songListUUID !== RECORDING_LIBRARY_UUID) return
@@ -833,6 +850,9 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
     emitter.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
     emitter.on('setList/itemsChanged', onSetListItemsChanged)
+    // 组件挂载（含切分屏/进出 Pioneer 等导致的重挂载）恢复已有歌单时不弹框，
+    // 仅记录已打开的歌单，待用户真正切换歌单时才询问。
+    lastOpenedUUID = songsAreaState.songListUUID || ''
     void loadCurrentSongList(songsAreaState.songListUUID).catch(() => {})
   })
 
@@ -865,7 +885,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   watch(
     () => songsAreaState.songListUUID,
     async (newUUID) => {
-      await loadCurrentSongList(newUUID, { resetSelection: true })
+      // 仅在真正切换到“此前未打开过的非空歌单”时才询问分析；
+      // 程序化的 '' → 原值 伪切换（如把歌曲移动到当前歌单后强制刷新）目标仍是已打开歌单，不弹框。
+      const notifyUserOpened = !!newUUID && newUUID !== lastOpenedUUID
+      if (newUUID) lastOpenedUUID = newUUID
+      await loadCurrentSongList(newUUID, { resetSelection: true, notifyUserOpened })
     }
   )
 
