@@ -163,10 +163,118 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     resolveStableWaveformSource: () => resolveStableWaveformSource(),
     drawWaveformNow
   })
+  let pendingReadyPresentationDiagnostic: {
+    payload: LiveCanvasRenderedPayload
+    renderTargetIndex: number | null
+  } | null = null
   const clearDisplayReadyRevealTimer = () => {
     if (!displayReadyRevealTimer) return
     clearTimeout(displayReadyRevealTimer)
     displayReadyRevealTimer = null
+  }
+
+  const normalizeDomDiagnosticNumber = (value: unknown, fractionDigits = 3) => {
+    const numeric = Number(value)
+    if (!Number.isFinite(numeric)) return null
+    return Number(numeric.toFixed(fractionDigits))
+  }
+
+  const summarizeElementState = (element: HTMLElement | null): Record<string, unknown> => {
+    if (!element) return { present: false }
+    const rect = element.getBoundingClientRect()
+    let computed: Record<string, unknown> = { readable: false }
+    try {
+      const style = window.getComputedStyle(element)
+      computed = {
+        readable: true,
+        display: style.display,
+        visibility: style.visibility,
+        opacity: style.opacity,
+        zIndex: style.zIndex,
+        transform: style.transform,
+        pointerEvents: style.pointerEvents
+      }
+    } catch {}
+    return {
+      present: true,
+      rect: {
+        x: normalizeDomDiagnosticNumber(rect.x),
+        y: normalizeDomDiagnosticNumber(rect.y),
+        width: normalizeDomDiagnosticNumber(rect.width),
+        height: normalizeDomDiagnosticNumber(rect.height)
+      },
+      offset: {
+        width: element.offsetWidth,
+        height: element.offsetHeight
+      },
+      style: {
+        opacity: element.style.opacity || null,
+        zIndex: element.style.zIndex || null,
+        transform: element.style.transform || null,
+        transition: element.style.transition || null,
+        display: element.style.display || null,
+        visibility: element.style.visibility || null
+      },
+      computed
+    }
+  }
+
+  const summarizeCanvasState = (canvas: HTMLCanvasElement | null): Record<string, unknown> => ({
+    ...summarizeElementState(canvas),
+    canvas: canvas
+      ? {
+          width: canvas.width,
+          height: canvas.height
+        }
+      : {
+          present: false
+        }
+  })
+
+  const resolveWaveformCanvasByIndex = (index: number | null) =>
+    index === 0 || index === 1 ? (liveCanvasBuffers.waveformCanvases()[index] ?? null) : null
+
+  const buildReadyPresentationDiagnosticPayload = (
+    pending: Exclude<typeof pendingReadyPresentationDiagnostic, null>
+  ): Record<string, unknown> => {
+    const renderTargetIndex = pending.renderTargetIndex
+    const activeIndex = liveCanvasBuffers.activeIndex()
+    const inactiveIndex = liveCanvasBuffers.inactiveIndex()
+    return {
+      renderToken: pending.payload.renderToken,
+      rangeStartSec: normalizeDomDiagnosticNumber(pending.payload.rangeStartSec),
+      rangeDurationSec: normalizeDomDiagnosticNumber(pending.payload.rangeDurationSec),
+      renderViewportOnly: pending.payload.renderViewportOnly === true,
+      renderTargetIndex,
+      activeIndex,
+      inactiveIndex,
+      stableWaveformSource: pending.payload.stableWaveformSource === true,
+      surfaceVisible,
+      stableSurfaceForceHidden,
+      stableRevisionHandoffSurfaceActive,
+      preserveSurfaceUntilNextReady,
+      suppressNextSurfaceFadeIn,
+      workerDiagnostics: pending.payload.diagnostics ?? null,
+      wrap: summarizeElementState(wrapRef.value),
+      waveformSurface: summarizeElementState(waveformSurfaceRef.value),
+      overlaySurface: summarizeElementState(overlaySurfaceRef.value),
+      activeWaveformCanvas: summarizeCanvasState(liveCanvasBuffers.activeWaveformCanvas()),
+      inactiveWaveformCanvas: summarizeCanvasState(resolveWaveformCanvasByIndex(inactiveIndex)),
+      renderTargetWaveformCanvas: summarizeCanvasState(
+        resolveWaveformCanvasByIndex(renderTargetIndex)
+      ),
+      gridCanvas: summarizeCanvasState(gridCanvasRef.value)
+    }
+  }
+
+  const emitPendingReadyPresentationDiagnostic = (reason: string) => {
+    const pending = pendingReadyPresentationDiagnostic
+    pendingReadyPresentationDiagnostic = null
+    if (!pending) return
+    waveformLoadDiagnostics.emitReadyApplied(
+      reason,
+      buildReadyPresentationDiagnosticPayload(pending)
+    )
   }
 
   const forEachWaveformSurface = (visitor: (element: HTMLDivElement) => void) => {
@@ -214,6 +322,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
 
   const setDisplayReady = (ready: boolean) => {
     if (!ready) {
+      pendingReadyPresentationDiagnostic = null
       clearDisplayReadyRevealTimer()
       displayReadyRevealGeneration += 1
       displayReady.value = false
@@ -237,6 +346,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
           displayReady.value = true
           clearStableRevisionReplacementState()
           syncWaveformSurfaceVisibility(true)
+          emitPendingReadyPresentationDiagnostic('delayed-ready-applied')
         },
         Math.max(0, stablePresentationRevealAfterMs - nowMs)
       )
@@ -255,6 +365,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     preserveSurfaceUntilNextReady = false
     suppressNextSurfaceFadeIn = false
     syncWaveformSurfaceVisibility(fadeIn)
+    if (ready) {
+      emitPendingReadyPresentationDiagnostic('ready-applied')
+    }
   }
 
   const resolveStableWaveformSource = () => options.stableWaveformSource?.() === true
@@ -425,6 +538,10 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       stablePresentation.handleRendered(presentationPayload, {
         forceViewportRangeStart: forceStableViewportStart
       })
+    }
+    pendingReadyPresentationDiagnostic = {
+      payload,
+      renderTargetIndex
     }
     setDisplayReady(true)
     if (

@@ -29,10 +29,7 @@ type WaveformLoadDiagnosticBase = {
   mixxxData: MixxxWaveformData | null
 }
 
-type WaveformLoadDiagnosticPayload = Record<
-  string,
-  string | number | boolean | null | undefined | Record<string, unknown>
->
+type WaveformLoadDiagnosticPayload = Record<string, unknown>
 
 const WAVEFORM_LOAD_DIAGNOSTIC_REPEAT_SUPPRESS_MS = 1500
 
@@ -96,6 +93,7 @@ export const createHorizontalBrowseWaveformLoadDiagnostics = (
   let lastSignature = ''
   let lastEmittedAtMs = 0
   let awaitingReadyAfterIssue = false
+  let awaitingPresentationAfterReady = false
 
   const buildBasePayload = () => {
     const base = resolveBase()
@@ -179,6 +177,7 @@ export const createHorizontalBrowseWaveformLoadDiagnostics = (
       if (payload.ready) {
         if (!awaitingReadyAfterIssue) return
         awaitingReadyAfterIssue = false
+        awaitingPresentationAfterReady = true
         emit(
           'worker-rendered',
           'ready',
@@ -188,13 +187,15 @@ export const createHorizontalBrowseWaveformLoadDiagnostics = (
             rangeDurationSec: normalizeDiagnosticNumber(payload.rangeDurationSec),
             renderViewportOnly: payload.renderViewportOnly === true,
             renderTargetIndex: payload.renderTargetIndex,
-            stableWaveformSource: payload.stableWaveformSource === true
+            stableWaveformSource: payload.stableWaveformSource === true,
+            workerDiagnostics: payload.diagnostics ?? null
           },
           true
         )
         return
       }
       awaitingReadyAfterIssue = true
+      awaitingPresentationAfterReady = false
       emit('worker-rendered', 'not-ready', {
         renderToken: payload.renderToken,
         rangeStartSec: normalizeDiagnosticNumber(payload.rangeStartSec),
@@ -202,8 +203,14 @@ export const createHorizontalBrowseWaveformLoadDiagnostics = (
         renderViewportOnly: payload.renderViewportOnly === true,
         renderTargetIndex: payload.renderTargetIndex,
         stableWaveformSource: payload.stableWaveformSource === true,
-        notReadyReason: payload.notReadyReason
+        notReadyReason: payload.notReadyReason,
+        workerDiagnostics: payload.diagnostics ?? null
       })
+    },
+    emitReadyApplied: (reason: string, payload: WaveformLoadDiagnosticPayload = {}) => {
+      if (!awaitingPresentationAfterReady) return
+      awaitingPresentationAfterReady = false
+      emit('ready-applied', reason, payload, true)
     }
   }
 }

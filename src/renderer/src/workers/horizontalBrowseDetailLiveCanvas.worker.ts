@@ -33,12 +33,18 @@ import type {
   WorkerAnimationFrameScope
 } from './horizontalBrowseDetailLiveCanvasRenderState'
 import type {
+  HorizontalBrowseDetailLiveCanvasRenderedDiagnostics,
   HorizontalBrowseDetailLiveCanvasRenderRequest,
   HorizontalBrowseDetailLiveCanvasWorkerIncoming,
   HorizontalBrowseDetailLiveCanvasWorkerOutgoing
 } from './horizontalBrowseDetailLiveCanvas.types'
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+const normalizeDiagnosticNumber = (value: unknown, fractionDigits = 3) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return undefined
+  return Number(numeric.toFixed(fractionDigits))
+}
 const normalizeWaveformGain = (value: number) => {
   const numeric = Number(value)
   if (!Number.isFinite(numeric)) return 1
@@ -154,6 +160,139 @@ const selectRenderBuffer = (request: HorizontalBrowseDetailLiveCanvasRenderReque
   overlayRenderer = selected?.overlayRenderer ?? overlayRenderer
   scrollSourceCanvas = canvasBufferManager.resolve(request.renderSourceIndex)?.canvas ?? canvas
 }
+
+const summarizeRawDataForDiagnostics = (
+  rawData: RawWaveformData | null
+): HorizontalBrowseDetailLiveCanvasRenderedDiagnostics['rawData'] => {
+  if (!rawData) return { present: false }
+  const frames = Math.max(
+    0,
+    Math.min(
+      Math.floor(Number(rawData.frames) || 0),
+      rawData.minLeft.length,
+      rawData.maxLeft.length,
+      rawData.minRight.length,
+      rawData.maxRight.length
+    )
+  )
+  const loadedFrames = Math.max(
+    0,
+    Math.min(Math.floor(Number(rawData.loadedFrames ?? frames) || 0), frames)
+  )
+  return {
+    present: true,
+    startSec: normalizeDiagnosticNumber(rawData.startSec),
+    durationSec: normalizeDiagnosticNumber(rawData.duration),
+    rate: normalizeDiagnosticNumber(rawData.rate, 0),
+    frames,
+    loadedFrames
+  }
+}
+
+const sampleRenderedPixels = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  metrics: CanvasMetrics | null,
+  ready: boolean
+): HorizontalBrowseDetailLiveCanvasRenderedDiagnostics['pixelSample'] => {
+  if (!ready) return { sampled: false, reason: 'not-ready' }
+  if (request.playbackActive === true) return { sampled: false, reason: 'playback-active' }
+  if (!ctx || !metrics || metrics.scaledWidth <= 0 || metrics.scaledHeight <= 0) {
+    return { sampled: false, reason: 'missing-context' }
+  }
+
+  try {
+    const sampleColumns = Math.min(32, Math.max(1, metrics.scaledWidth))
+    let sampledPixels = 0
+    let nonTransparentPixels = 0
+    let nonZeroRgbPixels = 0
+    let maxAlpha = 0
+    let maxRgb = 0
+    for (let index = 0; index < sampleColumns; index += 1) {
+      const x = clampNumber(
+        Math.floor(((index + 0.5) / sampleColumns) * metrics.scaledWidth),
+        0,
+        Math.max(0, metrics.scaledWidth - 1)
+      )
+      const data = ctx.getImageData(x, 0, 1, metrics.scaledHeight).data
+      sampledPixels += metrics.scaledHeight
+      for (let offset = 0; offset < data.length; offset += 4) {
+        const red = data[offset] || 0
+        const green = data[offset + 1] || 0
+        const blue = data[offset + 2] || 0
+        const alpha = data[offset + 3] || 0
+        const rgbMax = Math.max(red, green, blue)
+        if (alpha > 0) nonTransparentPixels += 1
+        if (rgbMax > 0) nonZeroRgbPixels += 1
+        if (alpha > maxAlpha) maxAlpha = alpha
+        if (rgbMax > maxRgb) maxRgb = rgbMax
+      }
+    }
+    return {
+      sampled: true,
+      sampleColumns,
+      sampledPixels,
+      nonTransparentPixels,
+      nonTransparentRatio: normalizeDiagnosticNumber(
+        sampledPixels > 0 ? nonTransparentPixels / sampledPixels : 0,
+        6
+      ),
+      nonZeroRgbPixels,
+      maxAlpha,
+      maxRgb
+    }
+  } catch {
+    return { sampled: false, reason: 'read-failed' }
+  }
+}
+
+const buildRenderedDiagnostics = (
+  request: HorizontalBrowseDetailLiveCanvasRenderRequest,
+  metrics: CanvasMetrics | null,
+  rawData: RawWaveformData | null,
+  previousFrame: FrameState | null,
+  ready: boolean,
+  preserved: boolean,
+  holdMissingPlaybackRaw: boolean,
+  shouldPreserve: boolean
+): HorizontalBrowseDetailLiveCanvasRenderedDiagnostics => ({
+  readySource: ready ? 'rendered' : preserved ? 'preserved' : 'not-ready',
+  request: {
+    width: request.width,
+    height: request.height,
+    pixelRatio: request.pixelRatio,
+    renderTargetIndex: request.renderTargetIndex,
+    renderSourceIndex: request.renderSourceIndex,
+    renderViewportOnly: request.renderViewportOnly === true,
+    stableWaveformSource: request.stableWaveformSource === true,
+    waveformLayout: request.waveformLayout,
+    waveformRenderStyle: request.waveformRenderStyle,
+    rawSlotPresent: request.rawSlot !== null,
+    playbackActive: request.playbackActive === true
+  },
+  metrics: metrics
+    ? {
+        present: true,
+        cssWidth: normalizeDiagnosticNumber(metrics.cssWidth),
+        cssHeight: normalizeDiagnosticNumber(metrics.cssHeight),
+        scaledWidth: metrics.scaledWidth,
+        scaledHeight: metrics.scaledHeight,
+        pixelRatio: normalizeDiagnosticNumber(metrics.pixelRatio),
+        resized: metrics.resized
+      }
+    : { present: false },
+  rawData: summarizeRawDataForDiagnostics(rawData),
+  canvas: canvas
+    ? {
+        present: true,
+        width: canvas.width,
+        height: canvas.height
+      }
+    : { present: false },
+  previousFramePresent: !!previousFrame,
+  holdMissingPlaybackRaw,
+  shouldPreserve,
+  pixelSample: sampleRenderedPixels(request, metrics, ready || preserved)
+})
 
 const copyScrollSourceToTarget = (
   metrics: CanvasMetrics,
@@ -800,7 +939,17 @@ const processRender = (
         renderViewportOnly: request.renderViewportOnly === true,
         renderTargetIndex: request.renderTargetIndex,
         stableWaveformSource: request.stableWaveformSource === true,
-        notReadyReason
+        notReadyReason,
+        diagnostics: buildRenderedDiagnostics(
+          request,
+          metrics,
+          rawData,
+          previousFrame,
+          ready,
+          preserved,
+          holdMissingPlaybackRaw,
+          shouldPreserve
+        )
       }
     })
   }
