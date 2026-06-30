@@ -760,6 +760,9 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
         try {
           emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
         } catch {}
+        // 导入到当前歌单后，复用“用户主动打开歌单”的询问分析逻辑：
+        // 列表已刷新且用户仍停留在该歌单时，弹框询问是否分析新导入的曲目。
+        notifyUserOpenedSongList(songListUUID)
       }, 1000)
       return
     }

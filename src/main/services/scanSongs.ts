@@ -140,7 +140,8 @@ const preserveCachedAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo 
 
 export const scheduleSongListPostScanTasks = async (
   scanPath: string | string[],
-  scanData: ISongInfo[]
+  scanData: ISongInfo[],
+  options: { enableAutoAnalysis?: boolean } = {}
 ) => {
   const cacheBase =
     typeof scanPath === 'string' ? scanPath : Array.isArray(scanPath) ? (scanPath[0] ?? '') : ''
@@ -151,14 +152,18 @@ export const scheduleSongListPostScanTasks = async (
 
   if (!cacheRoot || scanData.length === 0) return
 
-  const pendingKeys = scanData
-    .filter((info) => !isInRecordingLibraryAbsPath(info.filePath))
-    .filter((info) => !hasCurrentKeyAnalysis(info) || !hasCompleteGrid(info))
-    .map((info) => info.filePath)
-    .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
-  if (pendingKeys.length > 0) {
-    const { enqueueKeyAnalysisList } = await import('./keyAnalysisQueue')
-    enqueueKeyAnalysisList(pendingKeys, 'background', { source: 'background' })
+  // 自动入队分析默认关闭：扫描/导入歌单不再静默触发后台分析，
+  // 是否分析交由前端“询问是否分析”弹框或闲时全库扫描决定。
+  if (options.enableAutoAnalysis === true) {
+    const pendingKeys = scanData
+      .filter((info) => !isInRecordingLibraryAbsPath(info.filePath))
+      .filter((info) => !hasCurrentKeyAnalysis(info) || !hasCompleteGrid(info))
+      .map((info) => info.filePath)
+      .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
+    if (pendingKeys.length > 0) {
+      const { enqueueKeyAnalysisList } = await import('./keyAnalysisQueue')
+      enqueueKeyAnalysisList(pendingKeys, 'background', { source: 'background' })
+    }
   }
 
   const currentFilePaths = scanData.map((info) => info.filePath)
