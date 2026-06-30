@@ -252,11 +252,12 @@ const dirHandleClick = async (event: MouseEvent) => {
   }
 }
 
-emitter.on('collapseButtonHandleClick', (libraryName: string) => {
-  if (libraryName == props.libraryName) {
+const handleCollapseButtonClick = (libraryName: unknown) => {
+  if (String(libraryName || '') == props.libraryName) {
     dirChildShow.value = false
   }
-})
+}
+emitter.on('collapseButtonHandleClick', handleCollapseButtonClick)
 
 const indentWidth = ref(0)
 const syncIndentWidth = () => {
@@ -360,6 +361,7 @@ const handleTouchStart = (event: TouchEvent) => {
 }
 
 onUnmounted(() => {
+  emitter.off('collapseButtonHandleClick', handleCollapseButtonClick)
   touchPlaylistDrag.cancel()
 })
 </script>

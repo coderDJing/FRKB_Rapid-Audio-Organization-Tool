@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import mainWindow from '../window/mainWindow'
@@ -15,6 +15,7 @@ import {
 import { getLibraryDbPath } from '../libraryDb'
 import { ensureLegacyMigration } from '../libraryMigration'
 import { persistSettingConfig } from '../settingsPersistence'
+import { restrictExternalNavigation } from './externalNavigation'
 let databaseInitWindow: BrowserWindow | null = null
 
 type BrowserWindowWithVisualEffect = BrowserWindow & {
@@ -63,10 +64,7 @@ const createWindow = ({ needErrorHint = false } = {}) => {
     databaseInitWindow.webContents.openDevTools()
   }
 
-  databaseInitWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  restrictExternalNavigation(databaseInitWindow.webContents)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     databaseInitWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/databaseInit.html`)

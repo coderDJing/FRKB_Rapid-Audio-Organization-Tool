@@ -56,10 +56,10 @@ export async function readUuidMarker(dirPath: string): Promise<string | null> {
 async function setHiddenOnWindows(filePath: string): Promise<void> {
   if (process.platform !== 'win32') return
   try {
-    const { exec } = require('child_process')
+    const { execFile } = require('child_process')
     const { promisify } = require('util')
-    const execAsync = promisify(exec)
-    await execAsync(`attrib +h "${filePath}"`)
+    const execFileAsync = promisify(execFile)
+    await execFileAsync('attrib', ['+h', filePath], { windowsHide: true })
   } catch {}
 }
 

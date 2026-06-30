@@ -36,6 +36,7 @@ import {
   WINDOW_SCREENSHOT_SHORTCUT,
   isWindowScreenshotFeatureAvailable
 } from '../../../shared/windowScreenshotFeature'
+import { restrictExternalNavigation } from '../externalNavigation'
 
 let mainWindow: BrowserWindow | null = null
 const getMainWindow = () => mainWindow
@@ -391,10 +392,7 @@ function createWindow() {
     syncWindowScreenshotShortcut()
   })
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  restrictExternalNavigation(mainWindow.webContents)
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if ((input.control || input.meta) && input.key.toLowerCase() === 'w') {

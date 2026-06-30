@@ -54,6 +54,8 @@ function listTableColumns(dbInstance: SqliteDatabase, tableName: string): Set<st
 function createDatabase(dbPath: string): SqliteDatabase {
   const Database = require('better-sqlite3') as SqliteDatabaseCtor
   const instance = new Database(dbPath)
+  instance.pragma('journal_mode = WAL')
+  instance.pragma('busy_timeout = 5000')
   instance.pragma('foreign_keys = ON')
   const userVersion = instance.pragma('user_version', { simple: true }) as number
   if (userVersion < 1) {
@@ -263,84 +265,92 @@ function createDatabase(dbPath: string): SqliteDatabase {
     `)
   }
   if (userVersion < 14) {
-    try {
-      instance.exec(
-        `ALTER TABLE mixtape_projects ADD COLUMN stem_profile TEXT NOT NULL DEFAULT 'quality' CHECK (stem_profile IN ('quality'))`
-      )
-    } catch {}
-    instance.exec(`
-      UPDATE mixtape_projects
-      SET stem_profile = 'quality';
-      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
-    `)
+    instance.transaction(() => {
+      try {
+        instance.exec(
+          `ALTER TABLE mixtape_projects ADD COLUMN stem_profile TEXT NOT NULL DEFAULT 'quality' CHECK (stem_profile IN ('quality'))`
+        )
+      } catch {}
+      instance.exec(`
+        UPDATE mixtape_projects
+        SET stem_profile = 'quality';
+        CREATE INDEX IF NOT EXISTS idx_mixtape_projects_stem_profile ON mixtape_projects(stem_profile);
+      `)
+    })()
   }
   if (userVersion < 16) {
-    try {
-      instance.exec(
-        `ALTER TABLE mixtape_projects ADD COLUMN mix_mode TEXT NOT NULL DEFAULT 'stem' CHECK (mix_mode IN ('eq', 'stem'))`
-      )
-    } catch {}
-    instance.exec(`
-      UPDATE mixtape_projects
-      SET mix_mode = CASE
-            WHEN mix_mode IN ('eq', 'stem') THEN mix_mode
-            WHEN mix_mode = 'traditional' THEN 'eq'
-            ELSE 'stem'
-          END;
-      CREATE INDEX IF NOT EXISTS idx_mixtape_projects_mix_mode ON mixtape_projects(mix_mode);
-    `)
+    instance.transaction(() => {
+      try {
+        instance.exec(
+          `ALTER TABLE mixtape_projects ADD COLUMN mix_mode TEXT NOT NULL DEFAULT 'stem' CHECK (mix_mode IN ('eq', 'stem'))`
+        )
+      } catch {}
+      instance.exec(`
+        UPDATE mixtape_projects
+        SET mix_mode = CASE
+              WHEN mix_mode IN ('eq', 'stem') THEN mix_mode
+              WHEN mix_mode = 'traditional' THEN 'eq'
+              ELSE 'stem'
+            END;
+        CREATE INDEX IF NOT EXISTS idx_mixtape_projects_mix_mode ON mixtape_projects(mix_mode);
+      `)
+    })()
   }
   if (userVersion < 17) {
-    instance.exec(`
-      CREATE TABLE IF NOT EXISTS mixtape_stem_assets (
-        list_root TEXT NOT NULL,
-        file_path TEXT NOT NULL,
-        stem_mode TEXT NOT NULL CHECK (stem_mode IN ('3stems', '4stems')),
-        model TEXT NOT NULL,
-        status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed')),
-        vocal_path TEXT,
-        inst_path TEXT,
-        bass_path TEXT,
-        drums_path TEXT,
-        error_code TEXT,
-        error_message TEXT,
-        created_at_ms INTEGER NOT NULL,
-        updated_at_ms INTEGER NOT NULL,
-        PRIMARY KEY (list_root, file_path, stem_mode, model)
-      );
-      CREATE INDEX IF NOT EXISTS idx_mixtape_stem_assets_root ON mixtape_stem_assets(list_root);
-      CREATE INDEX IF NOT EXISTS idx_mixtape_stem_assets_file ON mixtape_stem_assets(file_path);
-      CREATE INDEX IF NOT EXISTS idx_mixtape_stem_assets_status ON mixtape_stem_assets(status);
-    `)
+    instance.transaction(() => {
+      instance.exec(`
+        CREATE TABLE IF NOT EXISTS mixtape_stem_assets (
+          list_root TEXT NOT NULL,
+          file_path TEXT NOT NULL,
+          stem_mode TEXT NOT NULL CHECK (stem_mode IN ('3stems', '4stems')),
+          model TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'ready', 'failed')),
+          vocal_path TEXT,
+          inst_path TEXT,
+          bass_path TEXT,
+          drums_path TEXT,
+          error_code TEXT,
+          error_message TEXT,
+          created_at_ms INTEGER NOT NULL,
+          updated_at_ms INTEGER NOT NULL,
+          PRIMARY KEY (list_root, file_path, stem_mode, model)
+        );
+        CREATE INDEX IF NOT EXISTS idx_mixtape_stem_assets_root ON mixtape_stem_assets(list_root);
+        CREATE INDEX IF NOT EXISTS idx_mixtape_stem_assets_file ON mixtape_stem_assets(file_path);
+        CREATE INDEX IF NOT EXISTS idx_mixtape_stem_assets_status ON mixtape_stem_assets(status);
+      `)
 
-    let columns = listTableColumns(instance, 'mixtape_stem_assets')
-    if (!columns.has('inst_path')) {
-      if (columns.has('harmonic_path')) {
-        try {
-          instance.exec(`ALTER TABLE mixtape_stem_assets RENAME COLUMN harmonic_path TO inst_path`)
-        } catch {}
-      }
-      columns = listTableColumns(instance, 'mixtape_stem_assets')
+      let columns = listTableColumns(instance, 'mixtape_stem_assets')
       if (!columns.has('inst_path')) {
+        if (columns.has('harmonic_path')) {
+          try {
+            instance.exec(
+              `ALTER TABLE mixtape_stem_assets RENAME COLUMN harmonic_path TO inst_path`
+            )
+          } catch {}
+        }
+        columns = listTableColumns(instance, 'mixtape_stem_assets')
+        if (!columns.has('inst_path')) {
+          try {
+            instance.exec(`ALTER TABLE mixtape_stem_assets ADD COLUMN inst_path TEXT`)
+          } catch {}
+        }
+      }
+
+      columns = listTableColumns(instance, 'mixtape_stem_assets')
+      if (columns.has('inst_path') && columns.has('harmonic_path')) {
         try {
-          instance.exec(`ALTER TABLE mixtape_stem_assets ADD COLUMN inst_path TEXT`)
+          instance.exec(`
+            UPDATE mixtape_stem_assets
+            SET inst_path = CASE
+                  WHEN inst_path IS NULL OR inst_path = '' THEN harmonic_path
+                  ELSE inst_path
+                END
+            WHERE harmonic_path IS NOT NULL AND harmonic_path != '';
+          `)
         } catch {}
       }
-    }
-
-    columns = listTableColumns(instance, 'mixtape_stem_assets')
-    if (columns.has('inst_path') && columns.has('harmonic_path')) {
-      try {
-        instance.exec(`
-          UPDATE mixtape_stem_assets
-          SET inst_path = CASE
-                WHEN inst_path IS NULL OR inst_path = '' THEN harmonic_path
-                ELSE inst_path
-              END
-          WHERE harmonic_path IS NOT NULL AND harmonic_path != '';
-        `)
-      } catch {}
-    }
+    })()
   }
   if (userVersion < 18) {
     instance.exec(`
@@ -619,13 +629,15 @@ function createDatabase(dbPath: string): SqliteDatabase {
     CREATE INDEX IF NOT EXISTS idx_external_analysis_cache_seen ON external_analysis_cache(last_seen_at_ms);
   `)
   if (userVersion < 25 && hasTable(instance, 'mixtape_raw_waveform_cache')) {
-    const columns = listTableColumns(instance, 'mixtape_raw_waveform_cache')
-    if (!columns.has('rms_left')) {
-      instance.exec('ALTER TABLE mixtape_raw_waveform_cache ADD COLUMN rms_left BLOB;')
-    }
-    if (!columns.has('rms_right')) {
-      instance.exec('ALTER TABLE mixtape_raw_waveform_cache ADD COLUMN rms_right BLOB;')
-    }
+    instance.transaction(() => {
+      const columns = listTableColumns(instance, 'mixtape_raw_waveform_cache')
+      if (!columns.has('rms_left')) {
+        instance.exec('ALTER TABLE mixtape_raw_waveform_cache ADD COLUMN rms_left BLOB;')
+      }
+      if (!columns.has('rms_right')) {
+        instance.exec('ALTER TABLE mixtape_raw_waveform_cache ADD COLUMN rms_right BLOB;')
+      }
+    })()
   }
   if (userVersion < 26 && hasTable(instance, 'mixtape_raw_waveform_cache')) {
     const columns = listTableColumns(instance, 'mixtape_raw_waveform_cache')
@@ -894,8 +906,11 @@ export function getLibraryDb(): SqliteDatabase | null {
   return initLibraryDb(dir)
 }
 
-function closeLibraryDb(): void {
+export function closeLibraryDb(): void {
   if (db) {
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)')
+    } catch {}
     try {
       db.close()
     } catch {}

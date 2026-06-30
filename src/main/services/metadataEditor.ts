@@ -11,6 +11,7 @@ import { updateSongCacheEntry, purgeCoverCacheForTrack, findSongListRoot } from 
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { IAudioMetadata, IPicture } from 'music-metadata'
 import { updateSetItemFilePathReferences } from '../setListDb'
+import { registerChildProcess } from './childProcessRegistry'
 
 async function parseMetadata(filePath: string) {
   const mm = await import('music-metadata')
@@ -395,6 +396,7 @@ export async function updateTrackMetadata(
     const args = buildFfmpegArgs(filePath, tempOutput, payload, coverTempPath)
     await new Promise<void>((resolve, reject) => {
       const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
+      registerChildProcess(child, 'metadata-editor:ffmpeg')
       let stderrOutput = ''
       child.stderr?.on('data', (chunk) => {
         if (stderrOutput.length < 8000) {
@@ -461,6 +463,7 @@ export async function updateTrackMetadata(
               )
               await new Promise<void>((resolve, reject) => {
                 const child = child_process.spawn(ffmpegPath, patchArgs, { windowsHide: true })
+                registerChildProcess(child, 'metadata-editor:ffmpeg-cover-restore')
                 let stderrOutput = ''
                 child.stderr?.on('data', (chunk) => {
                   if (stderrOutput.length < 8000) {

@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import childProcess from 'node:child_process'
 import { log } from '../../log'
+import { registerChildProcess } from '../childProcessRegistry'
 import type {
   RekordboxDesktopHelperError,
   RekordboxDesktopHelperProgressPayload,
@@ -282,6 +283,7 @@ export async function runRekordboxDesktopHelper<TResult, TPayload extends Record
       stdio: ['pipe', 'pipe', 'pipe'],
       env: childEnv
     })
+    registerChildProcess(child, `rekordbox-desktop:${command}`)
 
     let stdout = ''
     let stderr = ''

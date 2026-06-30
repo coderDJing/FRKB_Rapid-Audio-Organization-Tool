@@ -13,6 +13,7 @@ import {
   pickManualMacUpdateAsset
 } from '../services/manualMacUpdate'
 import { fetchReleaseNotesRange } from '../services/releaseNotes'
+import { openSafeExternalUrl, restrictExternalNavigation } from './externalNavigation'
 import type { ReleaseNotesRangePayload } from '../../shared/releaseNotes'
 const autoUpdater = electronUpdater.autoUpdater
 let updateWindow: BrowserWindow | null = null
@@ -332,7 +333,7 @@ const handleToggleMinimize = () => {
 }
 
 const handleOpenManualDownload = () => {
-  void shell.openExternal(latestManualUpdateUrl)
+  openSafeExternalUrl(latestManualUpdateUrl)
 }
 
 const openDownloadedFilePath = (filePath: string) => {
@@ -413,10 +414,7 @@ const createWindow = (options: CreateUpdateWindowOptions = false) => {
     } catch {}
   }
 
-  updateWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  restrictExternalNavigation(updateWindow.webContents)
 
   updateWindow.webContents.on('did-finish-load', () => {
     sendLastReleaseNotesRange()

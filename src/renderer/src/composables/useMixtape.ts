@@ -620,7 +620,8 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     openOutputDialog,
     applyOutputProgressPayload,
     handleOutputDialogConfirm,
-    handleOutputDialogCancel
+    handleOutputDialogCancel,
+    handleOutputCancelRunning
   } = createUseMixtapeBpmAndUiModule({
     payload,
     tracks,
@@ -1064,6 +1065,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     stemRuntimeProgressByTrackId,
     handleOutputDialogConfirm,
     handleOutputDialogCancel,
+    handleOutputCancelRunning,
     stemSeparationProgressVisible,
     stemSeparationProgressPercent,
     stemSeparationProgressText,

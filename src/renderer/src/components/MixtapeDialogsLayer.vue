@@ -78,6 +78,7 @@ const props = defineProps<{
   outputFilename: string
   handleOutputDialogConfirm: (payload: OutputDialogPayload) => void
   handleOutputDialogCancel: () => void
+  handleOutputCancelRunning: () => void
   trackContextMenuVisible: boolean
   trackContextMenuStyle: Record<string, string>
   handleTrackMenuAdjustGrid: () => void
@@ -160,6 +161,11 @@ const autoGainColumnMenuVisibleModel = computed({
       <div class="bpm-loading-sub">{{ outputProgressText }}</div>
       <div class="preload-bar">
         <div class="preload-bar__fill" :style="{ width: `${outputProgressPercent}%` }"></div>
+      </div>
+      <div class="bpm-loading-actions">
+        <button type="button" class="bpm-loading-action-btn" @click="handleOutputCancelRunning">
+          {{ t('common.cancel') }}
+        </button>
       </div>
     </div>
   </div>

@@ -1,8 +1,9 @@
-import { BrowserWindow, shell, ipcMain, screen } from 'electron'
+import { BrowserWindow, ipcMain, screen } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import path = require('path')
 import { log } from '../log'
+import { restrictExternalNavigation } from './externalNavigation'
 
 export type MixtapeWindowPayload = {
   playlistId?: string
@@ -170,10 +171,7 @@ const createWindow = (payload: MixtapeWindowPayload, windowKey: string) => {
     mixtapeWindow.webContents.openDevTools()
   }
 
-  mixtapeWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  restrictExternalNavigation(mixtapeWindow.webContents)
 
   mixtapeWindow.webContents.on('render-process-gone', (_event, details) => {
     log.error('[mixtape] render-process-gone', details)

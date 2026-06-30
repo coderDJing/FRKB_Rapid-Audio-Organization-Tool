@@ -1035,7 +1035,8 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
     openOutputDialog,
     applyOutputProgressPayload,
     handleOutputDialogConfirm,
-    handleOutputDialogCancel
+    handleOutputDialogCancel,
+    handleOutputCancelRunning
   } = createMixtapeOutputUi({
     payload,
     tracks,
@@ -1089,6 +1090,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
     openOutputDialog,
     applyOutputProgressPayload,
     handleOutputDialogConfirm,
-    handleOutputDialogCancel
+    handleOutputDialogCancel,
+    handleOutputCancelRunning
   }
 }

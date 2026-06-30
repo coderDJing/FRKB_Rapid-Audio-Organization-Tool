@@ -60,8 +60,11 @@ import { emitSongGridUpdated } from '../services/songGridEvents'
 import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
 import { createMixtapeNoBpmGuard } from '../services/mixtapeNoBpmGuard'
 import {
+  cancelMixtapeOutputControl,
+  createMixtapeOutputControl,
   runMixtapeOutput,
   type MixtapeOutputInput,
+  type MixtapeOutputControl,
   type MixtapeOutputProgressPayload
 } from '../services/mixtapeOutput'
 import { moveOrCopyItemWithCheckIsExist, runWithConcurrency, waitForUserDecision } from '../utils'
@@ -82,6 +85,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
 
 export function registerMixtapeHandlers() {
+  const mixtapeOutputControls = new Map<string, MixtapeOutputControl>()
+  const MIXTAPE_OUTPUT_TIMEOUT_MS = 3 * 60 * 60 * 1000
+
+  const normalizeMixtapeOutputRequestId = (payload?: { requestId?: unknown }) => {
+    const requestId = typeof payload?.requestId === 'string' ? payload.requestId.trim() : ''
+    return requestId || `mixtape_output_${Date.now()}`
+  }
+
   const resolveWritableSharedGridEntries = async (
     entries: SharedSongGridDefinition[],
     beatGridSource: SharedSongGridDefinition['beatGridSource'] = 'analysis'
@@ -767,6 +778,12 @@ export function registerMixtapeHandlers() {
   })
 
   ipcMain.handle('mixtape:output', async (event, payload?: MixtapeOutputInput) => {
+    const requestId = normalizeMixtapeOutputRequestId(payload)
+    const control = createMixtapeOutputControl(requestId)
+    mixtapeOutputControls.set(requestId, control)
+    const timeout = setTimeout(() => {
+      cancelMixtapeOutputControl(control, 'mixtape.outputTimeout')
+    }, MIXTAPE_OUTPUT_TIMEOUT_MS)
     const sendProgress = (progress: MixtapeOutputProgressPayload) => {
       try {
         event.sender.send('mixtape-output:progress', progress)
@@ -775,6 +792,7 @@ export function registerMixtapeHandlers() {
     try {
       const result = await runMixtapeOutput({
         payload: payload || {},
+        control,
         onProgress: sendProgress
       })
       sendProgress({
@@ -795,12 +813,27 @@ export function registerMixtapeHandlers() {
         total: 100,
         percent: 100
       })
-      log.error('[mixtape-output] export failed', { message, error })
+      if (message !== 'mixtape.outputCancelled') {
+        log.error('[mixtape-output] export failed', { message, error })
+      }
       return {
         ok: false,
         error: message
       }
+    } finally {
+      clearTimeout(timeout)
+      mixtapeOutputControls.delete(requestId)
     }
+  })
+
+  ipcMain.handle('mixtape:output:cancel', async (_event, payload?: { requestId?: string }) => {
+    const requestId = normalizeMixtapeOutputRequestId(payload)
+    const control = mixtapeOutputControls.get(requestId)
+    if (!control) {
+      return { canceled: false }
+    }
+    cancelMixtapeOutputControl(control)
+    return { canceled: true }
   })
 
   ipcMain.handle('song:get-shared-grid-definition', async (_e, payload?: { filePath?: string }) => {

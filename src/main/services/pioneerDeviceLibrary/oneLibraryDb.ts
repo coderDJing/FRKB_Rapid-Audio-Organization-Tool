@@ -54,6 +54,7 @@ type PlaylistTrackRow = {
   artworkPath?: string
 }
 
+// rekordbox OneLibrary 的公开互操作密钥，不是 FRKB 自有 secret。
 const ONE_LIBRARY_SQLITE_KEY = 'r8gddnr4k847830ar6cqzbkk0el6qytmb3trbbx805jm74vez64i5o8fnrqryqls'
 
 const escapePragmaString = (value: string) => String(value || '').replace(/'/g, "''")

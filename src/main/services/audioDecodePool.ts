@@ -311,6 +311,7 @@ class AudioDecodeWorkerPool {
       }
       if (job.replaceQueued && job.queueKey) {
         this.rejectQueuedJobsByKey(job.queueKey)
+        this.cancelBusyJobsByKey(job.queueKey)
       }
       this.pending.set(jobId, job)
       this.queueByPriority[job.priority].push(job)
@@ -324,6 +325,7 @@ class AudioDecodeWorkerPool {
     const worker = new Worker(workerPath)
 
     worker.on('message', (payload: DecodeWorkerPayload) => {
+      if (this.failedWorkers.has(worker)) return
       const jobId = typeof payload?.jobId === 'number' ? payload.jobId : -1
       const job = this.pending.get(jobId)
       if (!job) {
@@ -369,6 +371,22 @@ class AudioDecodeWorkerPool {
         this.pending.delete(job.jobId)
         job.reject(new DecodeJobSupersededError())
       }
+    }
+  }
+
+  private cancelBusyJobsByKey(queueKey: string) {
+    for (const [worker, jobId] of Array.from(this.busy.entries())) {
+      const job = this.pending.get(jobId)
+      if (!job || job.queueKey !== queueKey) continue
+      this.pending.delete(jobId)
+      this.busy.delete(worker)
+      job.reject(new DecodeJobSupersededError())
+      this.workers = this.workers.filter((item) => item !== worker)
+      this.idle = this.idle.filter((item) => item !== worker)
+      this.failedWorkers.add(worker)
+      void worker.terminate().catch(() => {})
+      const replacement = this.createWorker()
+      this.workers.push(replacement)
     }
   }
 

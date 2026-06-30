@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import childProcess from 'node:child_process'
 import { resolveBundledFfmpegPath } from '../ffmpeg'
+import { registerChildProcess, terminateChildProcess } from './childProcessRegistry'
 import type { MixtapeStemMode } from '../mixtapeDb'
 import {
   DEFAULT_MIXTAPE_STEM_PROFILE,
@@ -196,6 +197,7 @@ export const runProcess = async (
       env: options?.env,
       windowsHide: true
     })
+    registerChildProcess(child, options?.traceLabel || 'stem-separation')
     let stderrText = ''
     let stdoutText = ''
     let timedOut = false
@@ -214,17 +216,13 @@ export const runProcess = async (
       if (now - startedAt >= absoluteTimeoutMs) {
         timedOut = true
         timeoutReason = 'absolute'
-        try {
-          child.kill()
-        } catch {}
+        terminateChildProcess(child, options?.traceLabel || 'stem-separation')
         return
       }
       if (now - lastActivityAt >= timeoutMs) {
         timedOut = true
         timeoutReason = 'idle'
-        try {
-          child.kill()
-        } catch {}
+        terminateChildProcess(child, options?.traceLabel || 'stem-separation')
       }
     }, 1000)
 
@@ -332,6 +330,7 @@ export const runProbeProcess = async (params: {
         windowsHide: true,
         env: params.env
       })
+      registerChildProcess(child, 'stem-probe')
     } catch (error) {
       finalize(null, error instanceof Error ? error.message : String(error || 'spawn failed'))
       return
@@ -339,9 +338,7 @@ export const runProbeProcess = async (params: {
     timeoutTimer = setTimeout(
       () => {
         timedOut = true
-        try {
-          child.kill()
-        } catch {}
+        terminateChildProcess(child, 'stem-probe')
       },
       Math.max(1000, Number(params.timeoutMs) || 10_000)
     )

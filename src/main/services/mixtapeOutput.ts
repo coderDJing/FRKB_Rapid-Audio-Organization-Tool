@@ -2,6 +2,7 @@ import child_process from 'node:child_process'
 import path from 'node:path'
 import fs from 'fs-extra'
 import { ensureExecutableOnMac, resolveBundledFfmpegPath } from '../ffmpeg'
+import { registerChildProcess, terminateChildProcess } from './childProcessRegistry'
 
 const INVALID_FILENAME_CHARS_REG = /[<>:"/\\|?*\u0000-\u001f]/g
 const TIME_PROGRESS_REG = /time=(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)/g
@@ -37,6 +38,7 @@ type MixtapeOutputTrackInput = {
 }
 
 export type MixtapeOutputInput = {
+  requestId?: string
   outputPath?: string
   outputFormat?: MixtapeOutputFormat
   outputFilename?: string
@@ -57,6 +59,13 @@ export type MixtapeOutputProgressPayload = {
 type MixtapeOutputResult = {
   outputPath: string
   trackCount: number
+}
+
+export type MixtapeOutputControl = {
+  requestId: string
+  cancelled: boolean
+  cancelReason?: string
+  currentChild: child_process.ChildProcess | null
 }
 
 type NormalizedTrack = {
@@ -218,11 +227,56 @@ const toNodeBuffer = (value: unknown): Buffer => {
   return Buffer.alloc(0)
 }
 
+export const createMixtapeOutputControl = (requestId: string): MixtapeOutputControl => ({
+  requestId,
+  cancelled: false,
+  currentChild: null
+})
+
+export const cancelMixtapeOutputControl = (
+  control: MixtapeOutputControl,
+  reason = 'mixtape.outputCancelled'
+): void => {
+  control.cancelled = true
+  control.cancelReason = reason
+  if (!control.currentChild) return
+  terminateChildProcess(control.currentChild, 'mixtape-output:ffmpeg')
+  control.currentChild = null
+}
+
+const ensureNotCancelled = (control?: MixtapeOutputControl) => {
+  if (control?.cancelled) {
+    throw new Error(control.cancelReason || 'mixtape.outputCancelled')
+  }
+}
+
+const spawnMixtapeFfmpeg = (
+  ffmpegPath: string,
+  args: string[],
+  control?: MixtapeOutputControl
+): child_process.ChildProcess => {
+  ensureNotCancelled(control)
+  const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
+  registerChildProcess(child, 'mixtape-output:ffmpeg')
+  if (control) {
+    control.currentChild = child
+    const clearChild = () => {
+      if (control.currentChild === child) {
+        control.currentChild = null
+      }
+    }
+    child.once('exit', clearChild)
+    child.once('error', clearChild)
+  }
+  return child
+}
+
 const transcodeWavToMp3 = async (
   ffmpegPath: string,
   wavPath: string,
   mp3Path: string,
   durationSec: number,
+  control?: MixtapeOutputControl,
   onProgress?: (payload: MixtapeOutputProgressPayload) => void
 ) => {
   const args = [
@@ -239,7 +293,7 @@ const transcodeWavToMp3 = async (
     mp3Path
   ]
   await new Promise<void>((resolve, reject) => {
-    const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
+    const child = spawnMixtapeFfmpeg(ffmpegPath, args, control)
     let stderrText = ''
     child.stderr?.on('data', (chunk) => {
       const text = chunk.toString()
@@ -261,6 +315,10 @@ const transcodeWavToMp3 = async (
     })
     child.on('error', (error) => reject(error))
     child.on('exit', (code) => {
+      if (control?.cancelled) {
+        reject(new Error(control.cancelReason || 'mixtape.outputCancelled'))
+        return
+      }
       if (code === 0) {
         resolve()
         return
@@ -324,6 +382,7 @@ const runFfmpegMix = async (
   outputFilePath: string,
   outputFormat: MixtapeOutputFormat,
   estimatedDurationSec: number,
+  control?: MixtapeOutputControl,
   onProgress?: (payload: MixtapeOutputProgressPayload) => void
 ) => {
   const args: string[] = ['-hide_banner', '-y']
@@ -339,7 +398,7 @@ const runFfmpegMix = async (
   args.push(outputFilePath)
 
   await new Promise<void>((resolve, reject) => {
-    const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
+    const child = spawnMixtapeFfmpeg(ffmpegPath, args, control)
     let stderrText = ''
     let lastPercent = 5
     let lastEmitAt = 0
@@ -376,6 +435,10 @@ const runFfmpegMix = async (
     })
 
     child.on('exit', (code) => {
+      if (control?.cancelled) {
+        reject(new Error(control.cancelReason || 'mixtape.outputCancelled'))
+        return
+      }
       if (code === 0) {
         resolve()
         return
@@ -426,9 +489,11 @@ const resolveEstimatedDurationSec = (tracks: NormalizedTrack[]) => {
 
 export const runMixtapeOutput = async (params: {
   payload: MixtapeOutputInput
+  control?: MixtapeOutputControl
   onProgress?: (payload: MixtapeOutputProgressPayload) => void
 }): Promise<MixtapeOutputResult> => {
   const payload = params.payload || {}
+  ensureNotCancelled(params.control)
   const outputDir = typeof payload.outputPath === 'string' ? payload.outputPath.trim() : ''
   if (!outputDir) {
     throw new Error('mixtape.outputPathRequired')
@@ -453,6 +518,7 @@ export const runMixtapeOutput = async (params: {
       total: 100,
       percent: 96
     })
+    ensureNotCancelled(params.control)
     if (outputFormat === 'wav') {
       await fs.writeFile(outputFilePath, renderedWavBuffer)
     } else {
@@ -467,6 +533,7 @@ export const runMixtapeOutput = async (params: {
           tempWavPath,
           outputFilePath,
           durationSec,
+          params.control,
           params.onProgress
         )
       } finally {
@@ -487,6 +554,7 @@ export const runMixtapeOutput = async (params: {
   }
 
   const estimatedDurationSec = resolveEstimatedDurationSec(normalizedTracks)
+  ensureNotCancelled(params.control)
   params.onProgress?.({
     stageKey: 'mixtape.outputProgressPreparing',
     done: 2,
@@ -509,6 +577,7 @@ export const runMixtapeOutput = async (params: {
     outputFilePath,
     outputFormat,
     estimatedDurationSec,
+    params.control,
     params.onProgress
   )
 

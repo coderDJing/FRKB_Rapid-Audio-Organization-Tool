@@ -9,6 +9,7 @@ import {
   resolveBeatThisRuntime
 } from './beatThisRuntime'
 import { lowerAnalysisProcessPriority } from './analysisRuntimeTuning'
+import { registerChildProcess, terminateChildProcess } from '../services/childProcessRegistry'
 
 type BeatThisAnalyzeResult = {
   bpm: number
@@ -216,9 +217,7 @@ const registerCleanupHooks = () => {
   cleanupHooksRegistered = true
   const shutdown = () => {
     if (!bridgeChild) return
-    try {
-      bridgeChild.kill()
-    } catch {}
+    terminateChildProcess(bridgeChild, 'beat-this:bridge')
   }
   process.once('exit', shutdown)
   process.once('SIGINT', () => {
@@ -320,6 +319,7 @@ const startBridgeProcess = async () => {
       env: buildBeatThisChildEnv(pythonCommand)
     }
   )
+  registerChildProcess(child, 'beat-this:bridge')
   lowerAnalysisProcessPriority(child)
 
   bridgeChild = child

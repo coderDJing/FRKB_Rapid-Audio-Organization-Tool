@@ -1,7 +1,7 @@
 // 必须在导入任何原生模块之前设置 FFmpeg DLL 路径（仅 Windows 生效）
 import './nativeModuleSetup'
 import 'dotenv/config'
-import { app, BrowserWindow, ipcMain, shell, nativeTheme, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, protocol } from 'electron'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 import {
   log,
@@ -98,6 +98,9 @@ import {
   startDevExternalOpenHandoffWatcher,
   writeDevExternalOpenHandoff
 } from './services/devExternalOpenHandoff'
+import { terminateRegisteredChildProcesses } from './services/childProcessRegistry'
+import { closeLibraryDb } from './libraryDb'
+import { openSafeExternalUrl } from './window/externalNavigation'
 
 const devRuntime = configureDevRuntime(is.dev, process.platform, log)
 configureLogTransports()
@@ -329,6 +332,17 @@ registerHorizontalBrowseTransportHandlers()
 registerHotCueHandlers()
 registerMemoryCueHandlers()
 registerDevSongListTraceHandlers()
+
+let appRuntimeCleanupDone = false
+const cleanupAppRuntimeResources = () => {
+  if (appRuntimeCleanupDone) return
+  appRuntimeCleanupDone = true
+  terminateRegisteredChildProcesses()
+  closeLibraryDb()
+}
+
+app.on('will-quit', cleanupAppRuntimeResources)
+process.on('exit', cleanupAppRuntimeResources)
 
 ipcMain.on('external-open:renderer-ready', (event) => {
   markExternalOpenRendererReady(event.sender)
@@ -665,6 +679,7 @@ app.on('window-all-closed', async () => {
   ipcMain.removeAllListeners()
   stopHorizontalBrowseTransportSnapshotBroadcaster()
   stopBackgroundOrchestrator()
+  cleanupAppRuntimeResources()
   app.quit()
 })
 
@@ -724,14 +739,7 @@ ipcMain.on('outputLog', (_event, logMsg) => {
 })
 
 ipcMain.on('openLocalBrowser', (_event, url: string) => {
-  try {
-    const parsed = new URL(url)
-    if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-      shell.openExternal(url)
-    }
-  } catch {
-    // url 格式无效，忽略
-  }
+  openSafeExternalUrl(url)
 })
 
 ipcMain.on('openLog', async () => {

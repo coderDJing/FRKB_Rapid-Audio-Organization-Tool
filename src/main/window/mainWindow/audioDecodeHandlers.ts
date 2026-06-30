@@ -96,7 +96,9 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           rawTargetRate: COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE,
           fileStat: stat,
           traceLabel: eventName,
-          priority: 'high'
+          priority: 'high',
+          queueKey: eventName,
+          replaceQueued: true
         })
         if (shouldBuildUnifiedDisplayWaveform && result.mixxxWaveformData && listRoot && stat) {
           const cachedEntry = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
@@ -162,7 +164,9 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         needWaveform: false,
         needRawWaveform: false,
         traceLabel: 'readPreviewSongFile',
-        priority: 'high'
+        priority: 'high',
+        queueKey: 'readPreviewSongFile',
+        replaceQueued: true
       })
       const payload = {
         pcmData: clonePcmData(result.pcmData),

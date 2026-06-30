@@ -1,4 +1,4 @@
-import { nextTick, ref, useTemplateRef, type Ref } from 'vue'
+import { nextTick, onUnmounted, ref, useTemplateRef, type Ref } from 'vue'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import {
@@ -14,7 +14,10 @@ interface UseLibraryItemEditingOptions {
   fatherDirDataRef: Ref<IDir | null>
   runtime: ReturnType<typeof useRuntimeStore>
   props: { uuid: string }
-  emitter: { on: (event: string, handler: (payload: unknown) => void) => void }
+  emitter: {
+    on: (event: string, handler: (payload: unknown) => void) => void
+    off: (event: string, handler: (payload: unknown) => void) => void
+  }
 }
 
 export function useLibraryItemEditing({
@@ -221,11 +224,15 @@ export function useLibraryItemEditing({
     myRenameInput.value?.focus()
   }
 
-  emitter.on('libraryArea/trigger-rename', async (targetUuid: string) => {
+  const handleTriggerRename = async (targetUuid: unknown) => {
     try {
       if (targetUuid !== props.uuid) return
       await startRename()
     } catch {}
+  }
+  emitter.on('libraryArea/trigger-rename', handleTriggerRename)
+  onUnmounted(() => {
+    emitter.off('libraryArea/trigger-rename', handleTriggerRename)
   })
 
   return {

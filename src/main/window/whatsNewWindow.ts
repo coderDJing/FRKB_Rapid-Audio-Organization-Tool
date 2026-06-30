@@ -1,7 +1,8 @@
-import { BrowserWindow, shell, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import path = require('path')
+import { restrictExternalNavigation } from './externalNavigation'
 
 export type WhatsNewReleasePayload = {
   title: string
@@ -52,10 +53,7 @@ const createWindow = () => {
     } catch {}
   }
 
-  whatsNewWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  restrictExternalNavigation(whatsNewWindow.webContents)
 
   whatsNewWindow.webContents.on('did-finish-load', () => {
     sendPayloadIfAny()

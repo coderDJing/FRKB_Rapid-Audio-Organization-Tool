@@ -280,14 +280,14 @@ export const operateHiddenFile = async (
     return run()
   }
 
-  const { exec } = require('child_process')
+  const { execFile } = require('child_process')
   const { promisify } = require('util')
-  const execAsync = promisify(exec)
+  const execFileAsync = promisify(execFile)
 
   // 独立处理 attrib 错误，避免覆盖业务异常
-  const tryExec = async (cmd: string) => {
+  const tryAttrib = async (attribute: '+h' | '-h') => {
     try {
-      await execAsync(cmd)
+      await execFileAsync('attrib', [attribute, filePath], { windowsHide: true })
     } catch {
       // 静默忽略 attrib 失败（可能：文件不存在、被移动、权限受限）
     }
@@ -296,14 +296,14 @@ export const operateHiddenFile = async (
   // 若存在则去隐藏，再执行业务，最后若存在则设隐藏
   const existedBefore = await fs.pathExists(filePath)
   if (existedBefore) {
-    await tryExec(`attrib -h "${filePath}"`)
+    await tryAttrib('-h')
   }
   try {
     await run()
   } finally {
     const existsAfter = await fs.pathExists(filePath)
     if (existsAfter) {
-      await tryExec(`attrib +h "${filePath}"`)
+      await tryAttrib('+h')
     }
   }
 }

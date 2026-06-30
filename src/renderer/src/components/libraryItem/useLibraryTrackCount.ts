@@ -1,4 +1,4 @@
-import { onMounted, ref, watch, type Ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '../../utils/mitt'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
@@ -48,7 +48,7 @@ export function useLibraryTrackCount({ runtime, dirDataRef, props }: UseLibraryT
 
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   const pendingSet = new Set<string>()
-  emitter.on('playlistContentChanged', (payload: unknown) => {
+  const handlePlaylistContentChanged = (payload: unknown) => {
     try {
       const resolvedPayload =
         payload && typeof payload === 'object' && !Array.isArray(payload)
@@ -72,6 +72,16 @@ export function useLibraryTrackCount({ runtime, dirDataRef, props }: UseLibraryT
         pendingSet.clear()
       }, 200)
     } catch {}
+  }
+  emitter.on('playlistContentChanged', handlePlaylistContentChanged)
+
+  onUnmounted(() => {
+    emitter.off('playlistContentChanged', handlePlaylistContentChanged)
+    if (debounceTimer) {
+      clearTimeout(debounceTimer)
+      debounceTimer = null
+    }
+    pendingSet.clear()
   })
 
   watch(

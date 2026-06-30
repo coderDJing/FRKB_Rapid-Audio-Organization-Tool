@@ -18,6 +18,7 @@ import { moveFileToRecycleBin } from '../recycleBinService'
 import { compactSongListTrackNumbersByFilePaths } from './playlistTrackNumbers'
 import { markGlobalSongSearchDirty } from './globalSongSearch'
 import { updateSetItemFilePathReferences } from '../setListDb'
+import { registerChildProcess, terminateChildProcess } from './childProcessRegistry'
 import type { IAudioMetadata } from 'music-metadata'
 
 type ConvertJobOptions = {
@@ -60,6 +61,24 @@ type StartPayload = {
 
 const jobIdToChildren = new Map<string, child_process.ChildProcess>()
 const cancelledJobIds = new Set<string>()
+
+const spawnFfmpegForJob = (
+  ffmpegPath: string,
+  args: string[],
+  jobId: string
+): child_process.ChildProcess => {
+  const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
+  registerChildProcess(child, 'audio-convert:ffmpeg')
+  jobIdToChildren.set(jobId, child)
+  const clearJobChild = () => {
+    if (jobIdToChildren.get(jobId) === child) {
+      jobIdToChildren.delete(jobId)
+    }
+  }
+  child.once('exit', clearJobChild)
+  child.once('error', clearJobChild)
+  return child
+}
 
 const getStringComment = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim()) return value
@@ -462,8 +481,7 @@ export async function startAudioConversion(
           const args = buildFfmpegArgs(src, tmp, options)
           lastFfmpegArgs = args
           tmpPaths.push(tmp)
-          const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
-          jobIdToChildren.set(jobId, child)
+          const child = spawnFfmpegForJob(ffmpegPath, args, jobId)
           let stderrData = ''
           child.stderr?.on('data', (chunk) => {
             stderrData += chunk.toString()
@@ -508,8 +526,7 @@ export async function startAudioConversion(
           const args = buildFfmpegArgs(src, tmp, options)
           lastFfmpegArgs = args
           tmpPaths.push(tmp)
-          const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
-          jobIdToChildren.set(jobId, child)
+          const child = spawnFfmpegForJob(ffmpegPath, args, jobId)
           let stderrData = ''
           child.stderr?.on('data', (chunk) => {
             stderrData += chunk.toString()
@@ -555,8 +572,7 @@ export async function startAudioConversion(
         const args = buildFfmpegArgs(src, tmp, options)
         lastFfmpegArgs = args
         tmpPaths.push(tmp)
-        const child = child_process.spawn(ffmpegPath, args, { windowsHide: true })
-        jobIdToChildren.set(jobId, child)
+        const child = spawnFfmpegForJob(ffmpegPath, args, jobId)
         let stderrData = ''
         child.stderr?.on('data', (chunk) => {
           stderrData += chunk.toString()
@@ -587,7 +603,12 @@ export async function startAudioConversion(
             const meta = await mm.parseFile(src).catch(() => null)
             await writeWavRiffInfoWindows(dest, buildWavInfoTags(meta))
           }
-        } catch {}
+        } catch (error) {
+          log.error('[audio-convert] add fingerprint failed', {
+            filePath: dest,
+            error
+          })
+        }
         renamed += 1
       }
 
@@ -730,12 +751,7 @@ export function cancelAudioConversion(jobId: string) {
   cancelledJobIds.add(jobId)
   const child = jobIdToChildren.get(jobId)
   if (child) {
-    try {
-      child.stdin?.write('q')
-    } catch {}
-    try {
-      child.kill()
-    } catch {}
+    terminateChildProcess(child, 'audio-convert:ffmpeg')
     jobIdToChildren.delete(jobId)
   }
 }

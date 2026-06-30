@@ -137,6 +137,7 @@ const {
   outputProgressPercent,
   handleOutputDialogConfirm,
   handleOutputDialogCancel,
+  handleOutputCancelRunning,
   stemSeparationProgressVisible,
   stemSeparationProgressPercent,
   stemSeparationProgressText,
@@ -1009,6 +1010,7 @@ onBeforeUnmount(() => {
       :output-filename="outputFilename"
       :handle-output-dialog-confirm="handleOutputDialogConfirm"
       :handle-output-dialog-cancel="handleOutputDialogCancel"
+      :handle-output-cancel-running="handleOutputCancelRunning"
       :track-context-menu-visible="trackContextMenuVisible"
       :track-context-menu-style="trackContextMenuStyle"
       :handle-track-menu-adjust-grid="handleTrackMenuAdjustGrid"

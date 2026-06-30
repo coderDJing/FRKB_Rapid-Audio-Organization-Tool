@@ -80,6 +80,11 @@ export const createMixtapeOutputUi = (ctx: MixtapeOutputUiContext) => {
     confirmDialog,
     t
   } = ctx
+  let currentOutputRequestId = ''
+  let outputCancelRequested = false
+
+  const createOutputRequestId = () =>
+    `mixtape_output_${Date.now()}_${Math.random().toString(16).slice(2)}`
 
   const openOutputDialog = () => {
     if (outputRunning.value) return
@@ -187,6 +192,8 @@ export const createMixtapeOutputUi = (ctx: MixtapeOutputUiContext) => {
     }
 
     outputRunning.value = true
+    outputCancelRequested = false
+    currentOutputRequestId = createOutputRequestId()
     outputProgressKey.value = 'mixtape.outputProgressPreparing'
     outputProgressDone.value = 0
     outputProgressTotal.value = 100
@@ -197,6 +204,7 @@ export const createMixtapeOutputUi = (ctx: MixtapeOutputUiContext) => {
     })
 
     const outputRequest = {
+      requestId: currentOutputRequestId,
       outputPath: normalizedOutputPath,
       outputFormat: outputFormat.value,
       outputFilename: normalizedFilename
@@ -206,6 +214,9 @@ export const createMixtapeOutputUi = (ctx: MixtapeOutputUiContext) => {
       const rendered = await renderMixtapeOutputWav({
         onProgress: applyOutputProgressPayload
       })
+      if (outputCancelRequested) {
+        throw new Error('mixtape.outputCancelled')
+      }
       const result = await window.electron.ipcRenderer.invoke('mixtape:output', {
         ...outputRequest,
         wavBytes: rendered.wavBytes,
@@ -232,23 +243,46 @@ export const createMixtapeOutputUi = (ctx: MixtapeOutputUiContext) => {
       })
     } catch (error) {
       const rawMessage = error instanceof Error ? error.message : String(error || t('common.error'))
+      const isCancelled = rawMessage === 'mixtape.outputCancelled'
+      const isTimeout = rawMessage === 'mixtape.outputTimeout'
       const message = t(rawMessage)
       applyOutputProgressPayload({
-        stageKey: 'mixtape.outputProgressFailed',
+        stageKey: isCancelled ? 'mixtape.outputProgressCancelled' : 'mixtape.outputProgressFailed',
         done: 100,
         total: 100,
         percent: 100
       })
       outputRunning.value = false
       await confirmDialog({
-        title: t('common.error'),
-        content: [t('mixtape.outputFailedHint', { reason: message })],
+        title: isCancelled ? t('common.cancel') : t('common.error'),
+        content: [
+          isCancelled
+            ? t('mixtape.outputCancelledHint')
+            : isTimeout
+              ? t('mixtape.outputFailedHint', { reason: t('mixtape.outputTimeout') })
+              : t('mixtape.outputFailedHint', { reason: message })
+        ],
         confirmShow: false,
         textAlign: 'left',
         innerWidth: 500
       })
     } finally {
       outputRunning.value = false
+      outputCancelRequested = false
+      currentOutputRequestId = ''
+    }
+  }
+
+  const handleOutputCancelRunning = async () => {
+    if (!outputRunning.value) return
+    outputCancelRequested = true
+    outputProgressKey.value = 'mixtape.outputProgressCancelling'
+    const requestId = currentOutputRequestId
+    if (!requestId) return
+    try {
+      await window.electron.ipcRenderer.invoke('mixtape:output:cancel', { requestId })
+    } catch (error) {
+      console.error('[mixtape] cancel output failed', error)
     }
   }
 
@@ -272,6 +306,7 @@ export const createMixtapeOutputUi = (ctx: MixtapeOutputUiContext) => {
     openOutputDialog,
     applyOutputProgressPayload,
     handleOutputDialogConfirm,
-    handleOutputDialogCancel
+    handleOutputDialogCancel,
+    handleOutputCancelRunning
   }
 }

@@ -1,10 +1,11 @@
-import { shell, BrowserWindow, ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import icon from '../../../resources/icon.png?asset'
 import updateWindow from './updateWindow.js'
 import type { UpdateInfo } from 'electron-updater'
 import type { ReleaseNotesRangePayload } from '../../shared/releaseNotes'
 import path = require('path')
+import { restrictExternalNavigation } from './externalNavigation'
 
 export type FoundNewVersionPayload = {
   version: string
@@ -76,10 +77,7 @@ const createWindow = () => {
     } catch {}
   }
 
-  foundNewVersionWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  restrictExternalNavigation(foundNewVersionWindow.webContents)
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     foundNewVersionWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/foundNewVersion.html`)

@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { ref, nextTick, useTemplateRef, reactive, onMounted, watch, computed } from 'vue'
+import {
+  ref,
+  nextTick,
+  useTemplateRef,
+  reactive,
+  onMounted,
+  onUnmounted,
+  watch,
+  computed
+} from 'vue'
 import rightClickMenu from '@renderer/components/rightClickMenu'
 import dialogLibraryItem from '@renderer/components/dialogLibraryItem/index.vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
@@ -367,11 +376,12 @@ const dirHandleDblClick = () => {
   }
 }
 
-emitter.on('collapseButtonHandleClick', (libraryName) => {
-  if (libraryName == props.libraryName) {
+const handleCollapseButtonClick = (libraryName: unknown) => {
+  if (String(libraryName || '') == props.libraryName) {
     dirChildShow.value = false
   }
-})
+}
+emitter.on('collapseButtonHandleClick', handleCollapseButtonClick)
 //----重命名功能--------------------------------------
 const renameDivShow = ref(false)
 const renameDivValue = ref('')
@@ -472,7 +482,7 @@ const renameMyInputHandleInput = () => {
 }
 
 // 监听对话框重命名触发（无需先点击，直接对高亮项生效）
-emitter.on('dialog/trigger-rename', async (targetUuid: string) => {
+const handleDialogTriggerRename = async (targetUuid: unknown) => {
   try {
     if (targetUuid !== props.uuid) return
     if (!dirData?.dirName) return
@@ -481,7 +491,8 @@ emitter.on('dialog/trigger-rename', async (targetUuid: string) => {
     await nextTick()
     myRenameInput.value?.focus()
   } catch {}
-})
+}
+emitter.on('dialog/trigger-rename', handleDialogTriggerRename)
 //------------------------------------
 
 const dragState = reactive<DragState>({
@@ -562,9 +573,13 @@ onMounted(() => {
 // 200ms 去抖 + 去重刷新（对话框）
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 const pendingSet = new Set<string>()
-emitter.on('playlistContentChanged', (payload: PlaylistContentChangedPayload | null) => {
+const handlePlaylistContentChanged = (payload: unknown) => {
   try {
-    const uuids: string[] = (payload?.uuids || []).filter(Boolean)
+    const resolvedPayload =
+      payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? (payload as PlaylistContentChangedPayload)
+        : {}
+    const uuids: string[] = (resolvedPayload.uuids || []).filter(Boolean)
     for (const u of uuids) pendingSet.add(u)
     if (debounceTimer) clearTimeout(debounceTimer)
     debounceTimer = setTimeout(() => {
@@ -575,6 +590,18 @@ emitter.on('playlistContentChanged', (payload: PlaylistContentChangedPayload | n
       pendingSet.clear()
     }, 200)
   } catch {}
+}
+emitter.on('playlistContentChanged', handlePlaylistContentChanged)
+
+onUnmounted(() => {
+  emitter.off('collapseButtonHandleClick', handleCollapseButtonClick)
+  emitter.off('dialog/trigger-rename', handleDialogTriggerRename)
+  emitter.off('playlistContentChanged', handlePlaylistContentChanged)
+  if (debounceTimer) {
+    clearTimeout(debounceTimer)
+    debounceTimer = null
+  }
+  pendingSet.clear()
 })
 
 // --- 筛选：仅歌单名匹配 + 自动展开包含匹配歌单的文件夹（对话框树） ---

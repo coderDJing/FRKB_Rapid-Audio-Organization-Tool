@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { resolveBundledDemucsBootstrapDirPath } from '../demucs'
 import mixtapeWindow from '../window/mixtapeWindow'
+import { registerChildProcess, terminateChildProcess } from './childProcessRegistry'
 
 const XPU_WORKER_POOL_SIZE = 2
 const XPU_WORKER_PRIMARY_IDLE_TIMEOUT_MS = 120_000
@@ -250,6 +251,7 @@ class PersistentXpuStemWorkerSlot {
         windowsHide: true,
         env
       })
+      registerChildProcess(child, `stem-xpu-worker:${this.slotId}`)
       child.stdout.setEncoding('utf8')
       child.stderr.setEncoding('utf8')
       child.stdout.on('data', (chunk: string) => {
@@ -406,9 +408,7 @@ class PersistentXpuStemWorkerSlot {
     this.signature = ''
     this.reserved = false
     if (!child) return
-    try {
-      child.kill()
-    } catch {}
+    terminateChildProcess(child, `stem-xpu-worker:${this.slotId}`)
   }
 }
 
