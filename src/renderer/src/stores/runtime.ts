@@ -436,8 +436,12 @@ export const useRuntimeStore = defineStore('runtime', {
       percent: number,
       details?: CloudSyncProgressDetails
     ) {
+      const nextPercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)))
       this.cloudSync.phase = phase
-      this.cloudSync.percent = percent
+      this.cloudSync.percent =
+        this.cloudSync.syncing && phase !== 'idle'
+          ? Math.max(this.cloudSync.percent, nextPercent)
+          : nextPercent
       this.cloudSync.details = details || {}
     },
     resetCloudSync() {

@@ -21,15 +21,21 @@ export function useCloudSyncEvents(options: { runtime: RuntimeStore; activeDialo
 
   const handleCloudSyncState = (_e: unknown, state: CloudSyncState) => {
     if (state === 'syncing') {
+      if (!runtime.cloudSync.syncing) {
+        runtime.setCloudSyncProgress('idle', 0, {})
+      }
       runtime.setCloudSyncSyncing(true)
       return
     }
     if (state === 'success' || state === 'failed' || state === 'cancelled') {
       runtime.setCloudSyncSyncing(false)
+      runtime.setCloudSyncMinimized(false)
       if (state !== 'success') {
         // 失败/取消：复位进度并收起底部进度行
         runtime.setCloudSyncProgress('idle', 0, {})
-        runtime.setCloudSyncMinimized(false)
+      } else if (!runtime.cloudSync.summaryVisible) {
+        // 已是最新时不会弹汇总窗，成功态自己清掉进度残留
+        runtime.setCloudSyncProgress('idle', 0, {})
       }
     }
   }

@@ -62,6 +62,7 @@ async function limitedFetch(input: FetchInput, init?: FetchInit) {
 const SYNC_WINDOW_MS = 5 * 60 * 1000
 const SYNC_MAX_IN_WINDOW = 10
 let syncStartTimestamps: number[] = []
+let cloudSyncRunning = false
 function canStartSyncNow() {
   const now = Date.now()
   syncStartTimestamps = syncStartTimestamps.filter((t) => now - t < SYNC_WINDOW_MS)
@@ -243,7 +244,7 @@ ipcMain.handle('cloudSync/testConnectivity', async (_e, payload: { userKey: stri
   }
 })
 
-ipcMain.handle('cloudSync/start', async () => {
+async function startCloudSync() {
   // 频控：限制 5 分钟内最多 10 次同步启动
   // 在接近上限时（第 9 次或第 10 次）给出友好提示并告知下一次安全操作时间
   {
@@ -324,9 +325,17 @@ ipcMain.handle('cloudSync/start', async () => {
     cancelRequested = true
   })
 
+  let lastProgressPercent = 0
   const sendProgress = (phase: string, percent: number, details?: unknown) => {
     if (mainWindow.instance) {
-      mainWindow.instance.webContents.send('cloudSync/progress', { phase, percent, details })
+      const normalizedPercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)))
+      const nextPercent = Math.max(lastProgressPercent, normalizedPercent)
+      lastProgressPercent = nextPercent
+      mainWindow.instance.webContents.send('cloudSync/progress', {
+        phase,
+        percent: nextPercent,
+        details
+      })
     }
   }
   const sendState = (state: 'syncing' | 'success' | 'failed' | 'cancelled') => {
@@ -467,6 +476,8 @@ ipcMain.handle('cloudSync/start', async () => {
     const batchSize = 1000
     let mergedList = [...clientFingerprints]
     let serverFinalCount = toNumber(serverCount)
+    let clientFinalCount = toNumber(clientCount)
+    let pulledToClientTotal = 0
     let verifiedHashMatched = !fingerprintNeedSync
 
     if (fingerprintNeedSync) {
@@ -638,7 +649,13 @@ ipcMain.handle('cloudSync/start', async () => {
           return 'failed'
         }
         const missing: string[] = Array.isArray(missingArr) ? missingArr : []
-        for (const m of missing) mergedSet.add(String(m).toLowerCase())
+        for (const m of missing) {
+          const fingerprint = String(m).toLowerCase()
+          if (!mergedSet.has(fingerprint)) {
+            mergedSet.add(fingerprint)
+            pulledToClientTotal += 1
+          }
+        }
         const pullPortion = 30
         const progress = 45 + ((page + 1) / Math.max(totalPages, 1)) * pullPortion
         sendProgress('pulling', Math.round(progress), { pulledPages: page + 1, totalPages })
@@ -698,6 +715,7 @@ ipcMain.handle('cloudSync/start', async () => {
           return 'failed'
         }
         addedToServerTotal += addedCount
+        serverFinalCount = toNumber(addJson?.serverCountAfter, serverFinalCount)
         committedCount += slice.length
         const ratio = uploadList.length > 0 ? Math.min(committedCount / uploadList.length, 1) : 1
         const progress = 78 + Math.round(ratio * 14) // 78 -> 92
@@ -710,6 +728,7 @@ ipcMain.handle('cloudSync/start', async () => {
       // 本地保存（多版本+指针，原子切换）
       mergedList = Array.from(mergedSet)
       await FingerprintStore.saveList(mergedList)
+      clientFinalCount = clientCount + pulledToClientTotal
 
       // 6) 提交后复查 /check
       sendProgress('finalizing', 93)
@@ -746,6 +765,7 @@ ipcMain.handle('cloudSync/start', async () => {
         if (verifyJson?.success) {
           verifiedHashMatched = verifyJson?.needSync === false
           serverFinalCount = toNumber(verifyJson?.serverCount, serverFinalCount)
+          clientFinalCount = toNumber(verifyJson?.clientCount, clientFinalCount)
         }
       } catch (_e) {
         // 错误需记录日志，但不影响主流程
@@ -831,30 +851,32 @@ ipcMain.handle('cloudSync/start', async () => {
     sendProgress('finalizing', 98)
     await wait(120)
     sendProgress('finalizing', 100)
-    if (!fingerprintNeedSync && !curatedArtistNeedSync && mainWindow.instance) {
+    const alreadyLatest = !fingerprintNeedSync && !curatedArtistNeedSync
+    if (alreadyLatest && mainWindow.instance) {
       mainWindow.instance.webContents.send('cloudSync/notice', {
         message: 'cloudSync.errors.alreadyLatest'
       })
     }
     const endAt = Date.now()
-    const pulledToClientCount = Math.max(0, mergedList.length - clientFingerprints.length)
+    const pulledToClientCount = toNumber(pulledToClientTotal)
+    const addedToServerCount = toNumber(addedToServerTotal)
     const summary = {
       startAt: formatTs(startAt),
       endAt: formatTs(endAt),
       durationMs: endAt - startAt,
       clientInitialCount: toNumber(clientFingerprints.length),
       serverInitialCount: toNumber(serverCount),
-      addedToServerCount: toNumber(addedToServerTotal),
+      addedToServerCount,
       pulledToClientCount,
       curatedArtistClientInitialCount,
       curatedArtistClientCountAfter,
       curatedArtistServerInitialCount,
       curatedArtistServerCountAfter,
-      totalClientCountAfter: toNumber(mergedList.length),
+      totalClientCountAfter: toNumber(clientFinalCount),
       totalServerCountAfter: toNumber(serverFinalCount),
       verifiedHashMatched
     }
-    if (mainWindow.instance) {
+    if (!alreadyLatest && mainWindow.instance) {
       mainWindow.instance.webContents.send('cloudSync/summary', summary)
     }
     sendState('success')
@@ -880,5 +902,15 @@ ipcMain.handle('cloudSync/start', async () => {
     sendError(msg, e)
     sendState('failed')
     return 'failed'
+  }
+}
+
+ipcMain.handle('cloudSync/start', async () => {
+  if (cloudSyncRunning) return 'already_running'
+  cloudSyncRunning = true
+  try {
+    return await startCloudSync()
+  } finally {
+    cloudSyncRunning = false
   }
 })
