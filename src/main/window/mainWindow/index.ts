@@ -18,7 +18,7 @@ import databaseInitWindow from '../databaseInitWindow'
 import { registerAudioDecodeHandlers } from './audioDecodeHandlers'
 import { registerFingerprintHandlers } from './fingerprintHandlers'
 import { registerImportHandlers } from './importHandlers'
-import { registerFilesystemHandlers } from './filesystemHandlers'
+import { registerMainWindowFilesystemHandlers } from './mainWindowFilesystemHandlers'
 import { registerAudioConversionHandlers } from './audioConversionHandlers'
 import { registerSetListHandlers } from '../../ipc/setListHandlers'
 import { createProgressSender } from './progress'
@@ -334,7 +334,7 @@ function ensureSharedHandlersRegistered() {
   registerAudioDecodeHandlers(getMainWindow)
   registerFingerprintHandlers({ sendProgress, getWindow: getMainWindow })
   registerImportHandlers(sendProgress, getMainWindow)
-  registerFilesystemHandlers(getMainWindow)
+  registerMainWindowFilesystemHandlers(getMainWindow)
   registerAudioConversionHandlers(getMainWindow)
   registerSetListHandlers()
   sharedHandlersRegistered = true

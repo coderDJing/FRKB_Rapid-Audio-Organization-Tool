@@ -83,7 +83,7 @@ const isRecycleBinMoveResult = (value: unknown): value is RecycleBinMoveResult =
   typeof Reflect.get(value, 'status') === 'string' &&
   typeof Reflect.get(value, 'srcPath') === 'string'
 
-export function registerFilesystemHandlers(getWindow: () => BrowserWindow | null) {
+export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWindow | null) {
   const sendProgress = (payload: Record<string, unknown>) => {
     getWindow()?.webContents.send('progressSet', payload)
   }
