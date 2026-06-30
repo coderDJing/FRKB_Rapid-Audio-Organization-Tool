@@ -22,6 +22,10 @@ import {
   type WaveformGlobalOverviewData
 } from '../../../shared/waveformSurfaceCache'
 
+type DecodeRequestOptions = {
+  skipPlaybackGridAnalysis?: boolean
+}
+
 const clonePcmData = (pcmData: unknown): Float32Array => {
   if (!pcmData) {
     return new Float32Array(0)
@@ -60,11 +64,18 @@ const enqueuePlaybackGridAnalysis = (filePath: string, focusSlot?: string) => {
 export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | null) {
   const handleDecode =
     (eventName: 'readSongFile' | 'readNextSongFile', successEvent: string, errorEvent: string) =>
-    async (_e: Electron.IpcMainEvent, filePath: string, requestId: string) => {
+    async (
+      _e: Electron.IpcMainEvent,
+      filePath: string,
+      requestId: string,
+      options?: DecodeRequestOptions
+    ) => {
       try {
         const sharedGrid = await loadSharedSongGridDefinition(filePath).catch(() => null)
         const needsGridAnalysis =
-          !isInRecordingLibraryAbsPath(filePath) && !isCompleteSharedSongGridDefinition(sharedGrid)
+          options?.skipPlaybackGridAnalysis !== true &&
+          !isInRecordingLibraryAbsPath(filePath) &&
+          !isCompleteSharedSongGridDefinition(sharedGrid)
         if (needsGridAnalysis) {
           enqueuePlaybackGridAnalysis(
             filePath,

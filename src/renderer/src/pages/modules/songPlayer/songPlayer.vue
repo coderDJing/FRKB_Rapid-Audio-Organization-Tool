@@ -42,6 +42,7 @@ import {
   unregisterTitleAudioVisualizerSource,
   type TitleAudioVisualizerSource
 } from '@renderer/composables/titleAudioVisualizerBridge'
+import { shouldQueueBrowserMainPlayerAnalysis } from '@renderer/utils/playlistAnalysisGate'
 import { sendPlayerWaveformTrace } from './playerWaveformTrace'
 import {
   MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT,
@@ -722,12 +723,14 @@ watch(
   (newSong, oldSong) => {
     if (newSong?.filePath && newSong.filePath !== oldSong?.filePath) {
       keyboardPercentSeek.clear('song-change')
-      try {
-        window.electron.ipcRenderer.send('key-analysis:queue-playing', {
-          filePath: newSong.filePath,
-          focusSlot: 'main-player'
-        })
-      } catch {}
+      if (shouldQueueBrowserMainPlayerAnalysis(runtime)) {
+        try {
+          window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+            filePath: newSong.filePath,
+            focusSlot: 'main-player'
+          })
+        } catch {}
+      }
     }
     if (isInternalSongChange.value) {
       isInternalSongChange.value = false

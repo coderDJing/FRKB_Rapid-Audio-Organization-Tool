@@ -15,6 +15,7 @@ import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 import { resolvePlayerWaveformTraceElapsedMs, sendPlayerWaveformTrace } from './playerWaveformTrace'
 import { normalizePlaybackHandoffSeconds } from '@renderer/utils/mainWindowPlaybackHandoff'
+import { shouldQueueBrowserMainPlayerAnalysis } from '@renderer/utils/playlistAnalysisGate'
 
 type WaveformCacheResponse = {
   items?: Array<{
@@ -457,6 +458,7 @@ export function useSongLoader(params: {
             if (hasCachedWaveform) return
             if (requestId !== currentLoadRequestId.value) return
             if (runtime.playingData.playingSong?.filePath !== filePath) return
+            if (!shouldQueueBrowserMainPlayerAnalysis(runtime)) return
             tracePlayerWaveform('loader', 'formal-cache:queue-generation', filePath)
             window.electron.ipcRenderer.send('key-analysis:queue-playing', {
               filePath,
@@ -467,7 +469,9 @@ export function useSongLoader(params: {
       } else {
         clearHtmlPlaybackForegroundActivity()
         tracePlayerWaveform('loader', 'pcm-decode:request', filePath)
-        window.electron.ipcRenderer.send('readSongFile', filePath, String(requestId))
+        window.electron.ipcRenderer.send('readSongFile', filePath, String(requestId), {
+          skipPlaybackGridAnalysis: !shouldQueueBrowserMainPlayerAnalysis(runtime)
+        })
       }
     } catch (loadError: unknown) {
       isLoadingBlob.value = false
