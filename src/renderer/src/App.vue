@@ -445,14 +445,23 @@ const handleDevSongListTraceError = async (
 }
 
 let isExitCloudSyncConfirmOpen = false
+let isExitProgressingConfirmOpen = false
 const requestMainWindowClose = async () => {
   if (runtime.isProgressing === true) {
-    await confirm({
-      title: t('common.exit'),
-      content: [t('import.waitForTask')],
-      confirmShow: false
-    })
-    return
+    if (isExitProgressingConfirmOpen) return
+    isExitProgressingConfirmOpen = true
+    try {
+      const result = await confirm({
+        title: t('common.exit'),
+        content: [t('import.exitWhileTask'), t('import.exitWhileTaskDetail')],
+        confirmText: t('import.exitAndAbandonTask'),
+        cancelText: t('common.cancel'),
+        innerHeight: 240
+      })
+      if (result !== 'confirm') return
+    } finally {
+      isExitProgressingConfirmOpen = false
+    }
   }
 
   if (runtime.cloudSync.syncing) {
