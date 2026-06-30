@@ -4,6 +4,10 @@ import { ISongInfo, IMenu, type IMetadataAutoFillSummary } from '../../../../../
 import { t } from '@renderer/utils/translate'
 import rightClickMenu from '@renderer/components/rightClickMenu' // Assuming it's a default export or easily callable
 import confirm from '@renderer/components/confirmDialog'
+import {
+  showDeleteSummaryIfNeeded,
+  showRestoreSummaryIfNeeded
+} from './songItemContextMenuSummaries'
 import exportDialog from '@renderer/components/exportDialog'
 import { openRekordboxDesktopPlaylistForSelectedTracks } from '@renderer/utils/rekordboxDesktopPlaylist'
 import { openRekordboxXmlExportForSelectedTracks } from '@renderer/utils/rekordboxXmlExport'
@@ -269,35 +273,6 @@ export function useSongItemContextMenu(
       return await delSongsViaSend(buildDelSongsPayload(paths))
     }
 
-    const showDeleteSummaryIfNeeded = async (
-      summary: {
-        total?: number
-        success?: number
-        failed?: number
-      },
-      options?: {
-        restoredFailed?: boolean
-      }
-    ) => {
-      const total = Number(summary?.total || 0)
-      const success = Number(summary?.success || 0)
-      const failed = Number(summary?.failed || 0)
-      if (total <= 1 && failed === 0) return
-      const content: string[] = []
-      content.push(t('recycleBin.deleteSummarySuccess', { count: success }))
-      if (failed > 0) {
-        content.push(t('recycleBin.deleteSummaryFailed', { count: failed }))
-        if (options?.restoredFailed) {
-          content.push(t('recycleBin.deleteSummaryRestoredFailed', { count: failed }))
-        }
-      }
-      await confirm({
-        title: t('recycleBin.deleteSummaryTitle'),
-        content,
-        confirmShow: false
-      })
-    }
-
     const resetSongsAreaScrollCarrierToTop = () => {
       const scrollElements = songsAreaHostElementRef.value?.osInstance()?.elements()
       const explicitViewport = scrollElements?.viewport as HTMLElement | undefined
@@ -339,50 +314,6 @@ export function useSongItemContextMenu(
       runtime.playingData.playingSongListData = []
       runtime.playingData.playingSong = null
       return true
-    }
-
-    const showRestoreSummaryIfNeeded = async (summary: {
-      total?: number
-      restored?: number
-      missingPlaylist?: number
-      missingFile?: number
-      missingRecord?: number
-      failed?: number
-    }) => {
-      const total = Number(summary?.total || 0)
-      const restored = Number(summary?.restored || 0)
-      const missingPlaylist = Number(summary?.missingPlaylist || 0)
-      const missingFile = Number(summary?.missingFile || 0)
-      const missingRecord = Number(summary?.missingRecord || 0)
-      const failed = Number(summary?.failed || 0)
-      if (
-        total <= 1 &&
-        missingPlaylist === 0 &&
-        missingFile === 0 &&
-        missingRecord === 0 &&
-        failed === 0
-      )
-        return
-      const content: string[] = []
-      content.push(t('recycleBin.restoreSummarySuccess', { count: restored }))
-      if (missingPlaylist > 0) {
-        content.push(t('recycleBin.restoreSummaryMissingPlaylist', { count: missingPlaylist }))
-        content.push(t('recycleBin.restoreMissingPlaylistHint'))
-      }
-      if (missingFile > 0) {
-        content.push(t('recycleBin.restoreSummaryMissingFile', { count: missingFile }))
-      }
-      if (missingRecord > 0) {
-        content.push(t('recycleBin.restoreSummaryMissingRecord', { count: missingRecord }))
-      }
-      if (failed > 0) {
-        content.push(t('recycleBin.restoreSummaryFailed', { count: failed }))
-      }
-      await confirm({
-        title: t('recycleBin.restoreSummaryTitle'),
-        content,
-        confirmShow: false
-      })
     }
 
     switch (result.menuName) {

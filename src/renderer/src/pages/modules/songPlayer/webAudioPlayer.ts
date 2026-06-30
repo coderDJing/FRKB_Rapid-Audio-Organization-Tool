@@ -12,15 +12,17 @@ import {
   toPreviewUrl
 } from './webAudioPlayer.shared'
 import type {
-  AudioContextConstructor,
-  AudioContextWithExtensions,
   AudioElementWithExtensions,
   PcmLoadPayload,
-  WebAudioPlayerEvents,
-  WindowWithAudioContext
+  WebAudioPlayerEvents
 } from './webAudioPlayer.shared'
 import { createBrowserPlayerMetadataPreloadPool } from './browserPlayerMetadataPreload'
 import { createBrowserPlayerHtmlSeekController } from './browserPlayerHtmlSeekController'
+import {
+  createAudioContext,
+  unregisterAudioContext,
+  applyOutputDeviceToContext
+} from './browserPlayerAudioContext'
 
 const ACTIVE_LOAD_METADATA_PRELOAD_DEFER_MS = 2500
 const MANUAL_SEEK_METADATA_PRELOAD_DEFER_MS = 6000
@@ -518,7 +520,7 @@ export class WebAudioPlayer {
       if (!context) {
         return
       }
-      await this.applyOutputDeviceToContext(context, normalized)
+      await applyOutputDeviceToContext(context, normalized)
       return
     }
     const audio = this.audioElement
@@ -826,37 +828,6 @@ export class WebAudioPlayer {
     this.visualizerAnalyserNode = analyser
   }
 
-  private resolveAudioContextConstructor(): AudioContextConstructor | null {
-    const windowWithAudio = window as WindowWithAudioContext
-    return windowWithAudio.AudioContext || windowWithAudio.webkitAudioContext || null
-  }
-
-  private createAudioContext(options?: AudioContextOptions): AudioContext | null {
-    const AudioContextCtor = this.resolveAudioContextConstructor()
-    if (!AudioContextCtor) {
-      return null
-    }
-    try {
-      const ctx = options ? new AudioContextCtor(options) : new AudioContextCtor()
-      // 注册到全局列表，窗口关闭时可立即挂起所有 AudioContext
-      const contexts = (window.__FRKB_AUDIO_CONTEXTS__ ??= [])
-      contexts.push(ctx)
-      return ctx
-    } catch {
-      return null
-    }
-  }
-
-  private unregisterAudioContext(ctx: AudioContext): void {
-    try {
-      const list = window.__FRKB_AUDIO_CONTEXTS__
-      if (list) {
-        const idx = list.indexOf(ctx)
-        if (idx >= 0) list.splice(idx, 1)
-      }
-    } catch {}
-  }
-
   private ensureHtmlAnalysis(audio: AudioElementWithExtensions): void {
     if (this.mode !== 'html') return
     if (this.htmlAnalysisAudioElement === audio && this.htmlAnalysisAnalyserNode) {
@@ -865,7 +836,7 @@ export class WebAudioPlayer {
     }
 
     this.releaseHtmlAnalysis()
-    const context = this.createAudioContext()
+    const context = createAudioContext()
     if (!context) {
       this.setVisualizerAnalyserNode(null)
       return
@@ -888,7 +859,7 @@ export class WebAudioPlayer {
       this.setVisualizerAnalyserNode(analyser)
       audio.volume = 1
       if (this.currentOutputDeviceId) {
-        void this.applyOutputDeviceToContext(context, this.currentOutputDeviceId).catch(() => {})
+        void applyOutputDeviceToContext(context, this.currentOutputDeviceId).catch(() => {})
       }
     } catch {
       try {
@@ -917,7 +888,7 @@ export class WebAudioPlayer {
       this.htmlOutputGainNode?.disconnect()
     } catch {}
     if (this.htmlAnalysisContext && this.htmlAnalysisContext.state !== 'closed') {
-      this.unregisterAudioContext(this.htmlAnalysisContext)
+      unregisterAudioContext(this.htmlAnalysisContext)
       try {
         void this.htmlAnalysisContext.close()
       } catch {}
@@ -941,7 +912,7 @@ export class WebAudioPlayer {
       }
     }
 
-    this.pcmContext = this.createAudioContext(sampleRate ? { sampleRate } : undefined)
+    this.pcmContext = createAudioContext(sampleRate ? { sampleRate } : undefined)
     if (!this.pcmContext) {
       this.pcmContext = null
       return null
@@ -960,7 +931,7 @@ export class WebAudioPlayer {
     this.setVisualizerAnalyserNode(this.pcmAnalyserNode)
 
     if (this.currentOutputDeviceId) {
-      void this.applyOutputDeviceToContext(context, this.currentOutputDeviceId).catch(() => {})
+      void applyOutputDeviceToContext(context, this.currentOutputDeviceId).catch(() => {})
     }
 
     return context
@@ -974,7 +945,7 @@ export class WebAudioPlayer {
       this.pcmAnalyserNode?.disconnect()
     } catch {}
     if (this.pcmContext) {
-      this.unregisterAudioContext(this.pcmContext)
+      unregisterAudioContext(this.pcmContext)
       try {
         void this.pcmContext.close()
       } catch {}
@@ -1104,14 +1075,5 @@ export class WebAudioPlayer {
     this.pcmSourceNode = null
     this.pcmOffset = this.getDuration()
     this.emitFinishEvent()
-  }
-
-  private async applyOutputDeviceToContext(context: AudioContext, deviceId: string): Promise<void> {
-    const extendedContext = context as AudioContextWithExtensions
-    const setSinkId = extendedContext.setSinkId
-    if (typeof setSinkId !== 'function') {
-      throw new Error('setSinkIdUnsupported')
-    }
-    await setSinkId.call(extendedContext, deviceId)
   }
 }
