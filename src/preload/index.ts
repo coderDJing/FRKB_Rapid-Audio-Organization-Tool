@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
+import { HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT } from '@shared/horizontalBrowseTransport'
 
 type IpcListener = Parameters<typeof ipcRenderer.on>[1]
 type IpcMethod = 'invoke' | 'send' | 'on'
@@ -133,6 +134,7 @@ const exactListenChannels = new Set([
   'file-op-interrupted',
   'fingerprints:addExistingFinished',
   'foundNewVersion-data',
+  HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT,
   'importFinished',
   'isError',
   'isLatestVersion',
@@ -230,7 +232,6 @@ const isAllowedIpcChannel = (method: IpcMethod, channel: string): boolean => {
   }
   return (
     exactListenChannels.has(channel) ||
-    channel === 'horizontal-browse-transport:snapshot' ||
     sourceChannelPrefixes.some(
       (prefix) =>
         channel === `${prefix}preview-waveform-item` || channel === `${prefix}preview-waveform-done`
