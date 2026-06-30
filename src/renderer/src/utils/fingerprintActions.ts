@@ -2,7 +2,7 @@ import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import confirm from '@renderer/components/confirmDialog'
 
-type FingerprintActionOrigin = 'player' | 'selection' | 'playlist'
+type FingerprintActionOrigin = 'player' | 'selection' | 'playlist' | 'rekordboxLibrary'
 
 interface AnalyzeOptions {
   origin?: FingerprintActionOrigin

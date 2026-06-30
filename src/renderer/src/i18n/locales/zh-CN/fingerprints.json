@@ -30,6 +30,9 @@
     "noAudioFilesFound": "未扫描到音频文件",
     "noTracksSelected": "请选择至少一首曲目",
     "noEligibleTracks": "所选项目中没有可分析的音频文件",
-    "noPlayingTrack": "当前没有正在播放的曲目"
+    "noPlayingTrack": "当前没有正在播放的曲目",
+    "scanLibraryToFingerprint": "扫描所有歌曲并加入指纹库",
+    "collectingLibraryTracks": "正在读取库内曲目…",
+    "noTracksInLibrary": "该库内没有可用的歌曲"
   }
 }

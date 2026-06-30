@@ -30,6 +30,9 @@
     "noAudioFilesFound": "No audio files found.",
     "noTracksSelected": "Select at least one track.",
     "noEligibleTracks": "Selected items do not contain analyzable audio files.",
-    "noPlayingTrack": "No track is currently playing."
+    "noPlayingTrack": "No track is currently playing.",
+    "scanLibraryToFingerprint": "Scan all tracks & add to fingerprint library",
+    "collectingLibraryTracks": "Reading library tracks…",
+    "noTracksInLibrary": "No usable tracks in this library."
   }
 }

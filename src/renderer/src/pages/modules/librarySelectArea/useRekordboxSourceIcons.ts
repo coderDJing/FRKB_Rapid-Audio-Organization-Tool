@@ -12,10 +12,12 @@ import {
   shouldRefreshRekordboxSourceTree
 } from '@renderer/utils/rekordboxLibraryCache'
 import { t } from '@renderer/utils/translate'
+import emitter from '@renderer/utils/mitt'
 import {
   collectRekordboxSimilarTracksSeeds,
   openBatchSimilarTracksDialogForSeeds
 } from '@renderer/utils/similarTracksActions'
+import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import { importCuratedArtistsFromPioneerSource } from '@renderer/composables/rekordboxDesktop/useImportCuratedArtists'
 import type {
@@ -24,7 +26,8 @@ import type {
   IPioneerPlaylistTreeNode,
   IRekordboxLibraryBrowserState,
   IRekordboxSourceKind,
-  IRekordboxSourceLibraryType
+  IRekordboxSourceLibraryType,
+  ISongInfo
 } from '../../../../../types/globals'
 
 type HoverableIcon = {
@@ -857,6 +860,75 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     }
   }
 
+  // 共享：收集库内曲目(带进度) → 计算指纹并入库
+  const runLibraryFingerprintScan = async (
+    collectSeeds: (onProgress: (now: number, total: number) => void) => Promise<ISongInfo[]>,
+    fallbackErrKey: string
+  ) => {
+    const progressId = `fpScan_${Date.now()}`
+    let seeds: ISongInfo[]
+    try {
+      seeds = await collectSeeds((now, total) =>
+        emitter.emit('renderer-progressSet', {
+          id: progressId,
+          titleKey: 'fingerprints.collectingLibraryTracks',
+          now,
+          total,
+          isInitial: now === 0
+        })
+      )
+    } catch (error) {
+      emitter.emit('renderer-progressSet', { id: progressId, dismiss: true })
+      await confirm({
+        title: t('common.error'),
+        content: [getErrorMessage(error, t(fallbackErrKey))],
+        confirmShow: false
+      })
+      return
+    }
+    // 收集结束，先关掉收集进度条
+    emitter.emit('renderer-progressSet', { id: progressId, dismiss: true })
+
+    if (seeds.length === 0) {
+      await confirm({
+        title: t('dialog.hint'),
+        content: [t('fingerprints.noTracksInLibrary')],
+        confirmShow: false
+      })
+      return
+    }
+
+    // 指纹计算阶段：后端 addExistingFromPaths 会另开 import 组进度
+    await analyzeFingerprintsForPaths(
+      seeds.map((s) => s.filePath),
+      { origin: 'rekordboxLibrary' }
+    )
+  }
+
+  const scanFingerprintsForDesktopLibraryIcon = (icon: RekordboxDesktopIcon) =>
+    runLibraryFingerprintScan(async (onProgress) => {
+      const { treeNodes, rootPath } = await loadDesktopLibraryTreeForMenu(icon)
+      return collectRekordboxSimilarTracksSeeds({
+        nodes: treeNodes,
+        sourceKind: 'desktop',
+        sourceRootPath: rootPath,
+        sourceLibraryType: 'masterDb',
+        onProgress
+      })
+    }, 'rekordboxDesktop.loadTreeFailed')
+
+  const scanFingerprintsForPioneerDriveIcon = (item: PioneerDriveIcon) =>
+    runLibraryFingerprintScan(async (onProgress) => {
+      const treeNodes = await loadPioneerDriveTreeForMenu(item)
+      return collectRekordboxSimilarTracksSeeds({
+        nodes: treeNodes,
+        sourceKind: 'usb',
+        sourceRootPath: item.path,
+        sourceLibraryType: item.libraryType,
+        onProgress
+      })
+    }, 'pioneer.loadTreeFailed')
+
   const handlePioneerDriveContextmenu = async (event: MouseEvent, item: PioneerDriveIcon) => {
     if (isEjectingPioneerDriveIcon(item)) return
     event.preventDefault()
@@ -867,6 +939,13 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
         [
           buildSourceBusyMenuItem(
             'similarTracks.menu',
+            sourceBusy,
+            'pioneer.sourceReadingBusyReason'
+          )
+        ],
+        [
+          buildSourceBusyMenuItem(
+            'fingerprints.scanLibraryToFingerprint',
             sourceBusy,
             'pioneer.sourceReadingBusyReason'
           )
@@ -890,6 +969,10 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
       await openSimilarTracksForPioneerDriveIcon(item)
       return
     }
+    if (result.menuName === 'fingerprints.scanLibraryToFingerprint') {
+      await scanFingerprintsForPioneerDriveIcon(item)
+      return
+    }
     if (result.menuName === 'library.ejectUsbDrive') {
       await ejectPioneerDriveIcon(item)
     }
@@ -909,6 +992,13 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
             sourceBusy,
             'pioneer.sourceReadingBusyReason'
           )
+        ],
+        [
+          buildSourceBusyMenuItem(
+            'fingerprints.scanLibraryToFingerprint',
+            sourceBusy,
+            'pioneer.sourceReadingBusyReason'
+          )
         ]
       ],
       clickEvent: event
@@ -920,6 +1010,10 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     }
     if (result.menuName === 'similarTracks.menu') {
       await openSimilarTracksForDesktopLibraryIcon(icon)
+      return
+    }
+    if (result.menuName === 'fingerprints.scanLibraryToFingerprint') {
+      await scanFingerprintsForDesktopLibraryIcon(icon)
     }
   }
 

@@ -9,6 +9,8 @@ type CollectRekordboxSimilarSeedsOptions = {
   sourceKind: RekordboxSourceKind
   sourceRootPath?: string
   sourceLibraryType?: RekordboxSourceLibraryType | ''
+  /** 可选进度回调，按"已处理歌单数 / 总歌单数"上报；不传则行为不变 */
+  onProgress?: (processed: number, total: number) => void
 }
 
 const normalizeSeedKey = (song: ISongInfo) =>
@@ -85,15 +87,23 @@ export const collectRekordboxSimilarTracksSeeds = async ({
   nodes,
   sourceKind,
   sourceRootPath,
-  sourceLibraryType
+  sourceLibraryType,
+  onProgress
 }: CollectRekordboxSimilarSeedsOptions): Promise<ISongInfo[]> => {
   const playlistNodes = collectPlayablePlaylistNodes(nodes)
+  const total = playlistNodes.length
   const seeds: ISongInfo[] = []
   const seen = new Set<string>()
 
+  onProgress?.(0, total)
+  let processed = 0
   for (const node of playlistNodes) {
     const playlistId = Number(node.id) || 0
-    if (playlistId <= 0) continue
+    if (playlistId <= 0) {
+      processed += 1
+      onProgress?.(processed, total)
+      continue
+    }
     const result = await loadRekordboxPlaylistTracks({
       sourceKind,
       playlistId,
@@ -109,6 +119,8 @@ export const collectRekordboxSimilarTracksSeeds = async ({
       seen.add(key)
       seeds.push(song)
     }
+    processed += 1
+    onProgress?.(processed, total)
   }
 
   return seeds
