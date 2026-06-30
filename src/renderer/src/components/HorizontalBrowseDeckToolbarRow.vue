@@ -3,9 +3,9 @@ import BeatGridMetronomeControls from '@renderer/components/BeatGridMetronomeCon
 import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatAlignGridAdjustToolbar.vue'
 import HorizontalBrowseDeckMoveButton from '@renderer/components/HorizontalBrowseDeckMoveButton.vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
-import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/components/useHorizontalBrowseDeckMove'
+import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
 import { t } from '@renderer/utils/translate'
-import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/components/useHorizontalBrowseDeckTempoNudge'
+import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoNudge'
 
 const props = defineProps<{
   disabled: boolean

@@ -3,9 +3,9 @@ import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import HorizontalBrowseDeckInfoCard from '@renderer/components/HorizontalBrowseDeckInfoCard.vue'
 import HorizontalBrowseWaveformOverview from '@renderer/components/HorizontalBrowseWaveformOverview.vue'
 import HorizontalBrowseDeckToolbarRow from '@renderer/components/HorizontalBrowseDeckToolbarRow.vue'
-import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
-import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/components/useHorizontalBrowseDeckTempoNudge'
-import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/components/useHorizontalBrowseDeckMove'
+import type { HorizontalBrowseDeckKey } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
+import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoNudge'
+import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
 
 type DeckToolbarState = {
   disabled: boolean

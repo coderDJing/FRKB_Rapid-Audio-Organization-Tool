@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
-import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/components/useHorizontalBrowseDeckMove'
+import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
 import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
 
 const props = defineProps<{

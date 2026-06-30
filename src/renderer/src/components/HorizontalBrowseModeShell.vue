@@ -12,49 +12,49 @@ import {
   HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
-} from '@renderer/components/horizontalBrowseWaveform.constants'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveform.constants'
 import {
   buildHorizontalBrowseDeckToolbarState,
   resolveHorizontalBrowseDeckDurationSeconds,
   resolveHorizontalBrowseDeckGridBpm,
   resolveHorizontalBrowseDeckSyncUiEnabled,
   resolveHorizontalBrowseDeckWaveformGain
-} from '@renderer/components/horizontalBrowseShellState'
-import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseShellState'
+import type { HorizontalBrowseDeckKey } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import {
   resolveHorizontalBrowseCuePointSec,
   resolveHorizontalBrowseDefaultCuePointSec
-} from '@renderer/components/horizontalBrowseDetailMath'
-import { createHorizontalBrowseDeckEjectHandler } from '@renderer/components/useHorizontalBrowseDeckEject'
-import { useHorizontalBrowseDeckDelete } from '@renderer/components/useHorizontalBrowseDeckDelete'
-import { useHorizontalBrowseDeckMove } from '@renderer/components/useHorizontalBrowseDeckMove'
-import { useHorizontalBrowseDeckSongs } from '@renderer/components/useHorizontalBrowseDeckSongs'
-import { useHorizontalBrowseHotkeys } from '@renderer/components/useHorizontalBrowseHotkeys'
-import { useHorizontalBrowseDeckTempoControls } from '@renderer/components/useHorizontalBrowseDeckTempoControls'
-import { useHorizontalBrowseDeckTempoNudge } from '@renderer/components/useHorizontalBrowseDeckTempoNudge'
-import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/components/useHorizontalBrowseDeckToolbarInteractions'
-import { useHorizontalBrowseDeckTransportInteractions } from '@renderer/components/useHorizontalBrowseDeckTransportInteractions'
-import { useHorizontalBrowseEditDeckNavigation } from '@renderer/components/useHorizontalBrowseEditDeckNavigation'
-import { useHorizontalBrowseDeckHotCues } from '@renderer/components/useHorizontalBrowseDeckHotCues'
-import { useHorizontalBrowseDeckMemoryCues } from '@renderer/components/useHorizontalBrowseDeckMemoryCues'
-import { useHorizontalBrowseDeckQuantize } from '@renderer/components/useHorizontalBrowseDeckQuantize'
-import { useHorizontalBrowseDeckSongSync } from '@renderer/components/useHorizontalBrowseDeckSongSync'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailMath'
+import { createHorizontalBrowseDeckEjectHandler } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckEject'
+import { useHorizontalBrowseDeckDelete } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckDelete'
+import { useHorizontalBrowseDeckMove } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
+import { useHorizontalBrowseDeckSongs } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckSongs'
+import { useHorizontalBrowseHotkeys } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseHotkeys'
+import { useHorizontalBrowseDeckTempoControls } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoControls'
+import { useHorizontalBrowseDeckTempoNudge } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoNudge'
+import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckToolbarInteractions'
+import { useHorizontalBrowseDeckTransportInteractions } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTransportInteractions'
+import { useHorizontalBrowseEditDeckNavigation } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseEditDeckNavigation'
+import { useHorizontalBrowseDeckHotCues } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckHotCues'
+import { useHorizontalBrowseDeckMemoryCues } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMemoryCues'
+import { useHorizontalBrowseDeckQuantize } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckQuantize'
+import { useHorizontalBrowseDeckSongSync } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckSongSync'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { isHarmonicMixCompatible } from '@shared/keyDisplay'
 import emitter from '@renderer/utils/mitt'
-import { createHorizontalBrowseDeckAssigner } from '@renderer/components/horizontalBrowseDeckAssignment'
-import type { HorizontalBrowseDeckAssignTransportOptions } from '@renderer/components/horizontalBrowseDeckAssignment'
-import { useHorizontalBrowseTransportController } from '@renderer/components/useHorizontalBrowseTransportController'
-import { useHorizontalBrowseTransportMutations } from '@renderer/components/useHorizontalBrowseTransportMutations'
-import { useHorizontalBrowseFaderControls } from '@renderer/components/useHorizontalBrowseFaderControls'
-import { useHorizontalBrowseVisualizer } from '@renderer/components/useHorizontalBrowseVisualizer'
+import { createHorizontalBrowseDeckAssigner } from '@renderer/composables/horizontalBrowse/horizontalBrowseDeckAssignment'
+import type { HorizontalBrowseDeckAssignTransportOptions } from '@renderer/composables/horizontalBrowse/horizontalBrowseDeckAssignment'
+import { useHorizontalBrowseTransportController } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseTransportController'
+import { useHorizontalBrowseTransportMutations } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseTransportMutations'
+import { useHorizontalBrowseFaderControls } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseFaderControls'
+import { useHorizontalBrowseVisualizer } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseVisualizer'
 import {
   useHorizontalBrowseDeckSourceState,
   type HorizontalBrowseDeckSongSourceOptions
-} from '@renderer/components/useHorizontalBrowseDeckSourceState'
-import { useHorizontalBrowseDeckDrop } from '@renderer/components/useHorizontalBrowseDeckDrop'
-import { useHorizontalBrowseDeckInteractionState } from '@renderer/components/useHorizontalBrowseDeckInteractionState'
-import { useHorizontalBrowseSongsRemoved } from '@renderer/components/useHorizontalBrowseSongsRemoved'
+} from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckSourceState'
+import { useHorizontalBrowseDeckDrop } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckDrop'
+import { useHorizontalBrowseDeckInteractionState } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckInteractionState'
+import { useHorizontalBrowseSongsRemoved } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseSongsRemoved'
 import {
   createDefaultDeckToolbarState,
   createDefaultSharedDetailZoomState,
@@ -65,18 +65,18 @@ import {
   type HorizontalBrowseDeckDetailLaneExpose,
   type HorizontalBrowseViewMode,
   type SharedDetailZoomState
-} from '@renderer/components/horizontalBrowseModeShellTypes'
-import { useHorizontalBrowseModePlaybackHandoff } from '@renderer/components/useHorizontalBrowseModePlaybackHandoff'
-import { useHorizontalBrowseVolumeSync } from '@renderer/components/useHorizontalBrowseVolumeSync'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseModeShellTypes'
+import { useHorizontalBrowseModePlaybackHandoff } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseModePlaybackHandoff'
+import { useHorizontalBrowseVolumeSync } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseVolumeSync'
 import { MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT } from '@renderer/utils/mainWindowPlaybackHandoff'
-import { useHorizontalBrowseWaveformPresentationCoordinator } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
-import { createHorizontalBrowseWaveformPresentationShellBridge } from '@renderer/components/horizontalBrowseWaveformPresentationShellBridge'
-import type { HorizontalBrowseDetailZoomChangePayload } from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
-import { createHorizontalBrowseModeShellDetailTransactions } from '@renderer/components/horizontalBrowseModeShellDetailTransactions'
+import { useHorizontalBrowseWaveformPresentationCoordinator } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPresentationCoordinator'
+import { createHorizontalBrowseWaveformPresentationShellBridge } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPresentationShellBridge'
+import type { HorizontalBrowseDetailZoomChangePayload } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailTypes'
+import { createHorizontalBrowseModeShellDetailTransactions } from '@renderer/composables/horizontalBrowse/horizontalBrowseModeShellDetailTransactions'
 import {
   resolveHorizontalBrowseDeckToolbarBpmInputValue,
   resolveHorizontalBrowseDeckWaveformPlaybackActive
-} from '@renderer/components/horizontalBrowseModeShellPresentationResolvers'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseModeShellPresentationResolvers'
 
 type DeckKey = HorizontalBrowseDeckKey
 const props = withDefaults(defineProps<{ viewMode?: HorizontalBrowseViewMode }>(), {

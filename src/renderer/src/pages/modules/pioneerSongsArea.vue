@@ -10,8 +10,8 @@ import confirm from '@renderer/components/confirmDialog'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import RekordboxDesktopWritingOverlay from '@renderer/components/RekordboxDesktopWritingOverlay.vue'
 import emitter from '@renderer/utils/mitt'
-import { sendHorizontalBrowseInteractionTrace } from '@renderer/components/horizontalBrowseInteractionTrace'
-import { beginHorizontalBrowseDeckInteraction } from '@renderer/components/horizontalBrowseInteractionTimeline'
+import { sendHorizontalBrowseInteractionTrace } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTrace'
+import { beginHorizontalBrowseDeckInteraction } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTimeline'
 import { t } from '@renderer/utils/translate'
 import {
   buildRekordboxSourceCacheKey,

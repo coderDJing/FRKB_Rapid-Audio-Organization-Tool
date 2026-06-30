@@ -8,8 +8,8 @@ import {
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
   HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR
-} from '@renderer/components/horizontalBrowseWaveform.constants'
-import { useHorizontalBrowseGridToolbar } from '@renderer/components/useHorizontalBrowseGridToolbar'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveform.constants'
+import { useHorizontalBrowseGridToolbar } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseGridToolbar'
 import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
 import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
 import {
@@ -17,32 +17,32 @@ import {
   PREVIEW_BAR_LINE_HIT_RADIUS_PX,
   clampNumber
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
-import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
-import { resolveHorizontalBrowseEffectiveTimelineEndSec } from '@renderer/components/horizontalBrowseRawWaveformTimeline'
-import { useHorizontalBrowseCompactVisualWaveformStrip } from '@renderer/components/useHorizontalBrowseCompactVisualWaveformStrip'
-import { useHorizontalBrowseWaveformScrubPreview } from '@renderer/components/useHorizontalBrowseWaveformScrubPreview'
+import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRawWaveformCanvas'
+import { resolveHorizontalBrowseEffectiveTimelineEndSec } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformTimeline'
+import { useHorizontalBrowseCompactVisualWaveformStrip } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseCompactVisualWaveformStrip'
+import { useHorizontalBrowseWaveformScrubPreview } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseWaveformScrubPreview'
 import type {
   HorizontalBrowseRawWaveformDetailEmit,
   HorizontalBrowseRawWaveformDetailProps
-} from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailTypes'
 import type {
   HorizontalBrowseLinkedGridVisualTransactionCommitOptions,
   HorizontalBrowseLinkedGridVisualTransactionDeckState
-} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
-import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/components/horizontalBrowseRawWaveformDetailExpose'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedGridVisualTransaction'
+import { createHorizontalBrowseRawWaveformDetailExpose } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailExpose'
 import {
   createHorizontalBrowsePlaybackDiscontinuityDetector,
   normalizeHorizontalBrowseTimelineSeconds
-} from '@renderer/components/horizontalBrowseRawWaveformDetailMath'
-import { createHorizontalBrowseStablePlaybackReanchorGate } from '@renderer/components/horizontalBrowseStableCanvasJump'
-import { createHorizontalBrowseDragReleaseHandoff } from '@renderer/components/horizontalBrowseDragReleaseHandoff'
-import { createHorizontalBrowseStableInteractionHandoff } from '@renderer/components/horizontalBrowseStableInteractionHandoff'
-import { createHorizontalBrowseWaveformPointerInteraction } from '@renderer/components/horizontalBrowseWaveformPointerInteraction'
-import { createHorizontalBrowseDetailPresentationState } from '@renderer/components/horizontalBrowseDetailPresentationState'
-import { createHorizontalBrowseDetailPresentationActions } from '@renderer/components/horizontalBrowseDetailPresentationActions'
-import { createHorizontalBrowseDetailGridPersistence } from '@renderer/components/horizontalBrowseDetailGridPersistence'
-import { createHorizontalBrowseDetailPresentationConsumer } from '@renderer/components/horizontalBrowseDetailPresentationConsumer'
-import { watchHorizontalBrowseDetailPlaybackPosition } from '@renderer/components/horizontalBrowseDetailPlaybackPositionWatch'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailMath'
+import { createHorizontalBrowseStablePlaybackReanchorGate } from '@renderer/composables/horizontalBrowse/horizontalBrowseStableCanvasJump'
+import { createHorizontalBrowseDragReleaseHandoff } from '@renderer/composables/horizontalBrowse/horizontalBrowseDragReleaseHandoff'
+import { createHorizontalBrowseStableInteractionHandoff } from '@renderer/composables/horizontalBrowse/horizontalBrowseStableInteractionHandoff'
+import { createHorizontalBrowseWaveformPointerInteraction } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPointerInteraction'
+import { createHorizontalBrowseDetailPresentationState } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPresentationState'
+import { createHorizontalBrowseDetailPresentationActions } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPresentationActions'
+import { createHorizontalBrowseDetailGridPersistence } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailGridPersistence'
+import { createHorizontalBrowseDetailPresentationConsumer } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPresentationConsumer'
+import { watchHorizontalBrowseDetailPlaybackPosition } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPlaybackPositionWatch'
 
 const HORIZONTAL_BROWSE_TIMELINE_TAIL_TOLERANCE_SEC = 0.75
 const props = defineProps<HorizontalBrowseRawWaveformDetailProps>()

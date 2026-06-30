@@ -1,7 +1,7 @@
 import {
   drawHorizontalBrowseDetailOverlay,
   HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX
-} from '@renderer/components/horizontalBrowseDetailOverlayCanvas'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailOverlayCanvas'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import type { HorizontalBrowseDetailLiveCanvasRenderRequest } from './horizontalBrowseDetailLiveCanvas.types'
 

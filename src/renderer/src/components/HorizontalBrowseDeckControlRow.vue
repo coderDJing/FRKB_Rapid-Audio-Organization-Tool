@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
+import type { HorizontalBrowseDeckKey } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import type { HorizontalBrowseTransportBandState } from '@shared/horizontalBrowseTransport'
 import HorizontalBrowseDeckBandControls from '@renderer/components/HorizontalBrowseDeckBandControls.vue'
 import HorizontalBrowseDeckButtons from '@renderer/components/HorizontalBrowseDeckButtons.vue'

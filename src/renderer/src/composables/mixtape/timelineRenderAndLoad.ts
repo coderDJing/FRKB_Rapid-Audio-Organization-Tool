@@ -1,7 +1,7 @@
 import type { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { MIXTAPE_WAVEFORM_HEIGHT_SCALE } from '@renderer/composables/mixtape/constants'
 import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
-import { normalizeUnifiedDisplayWaveformData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
+import { normalizeUnifiedDisplayWaveformData } from '@renderer/composables/horizontalBrowse/horizontalBrowseCompactVisualWaveform'
 import type {
   MinMaxSample,
   MixtapeMixMode,

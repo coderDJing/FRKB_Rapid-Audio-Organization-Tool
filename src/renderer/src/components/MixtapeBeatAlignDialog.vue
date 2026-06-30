@@ -16,14 +16,14 @@ import {
   loadUnifiedDisplayWaveformData,
   loadWaveformGlobalOverviewData,
   unifiedDisplayWaveformToRawData
-} from '@renderer/components/horizontalBrowseCompactVisualWaveform'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseCompactVisualWaveform'
 import {
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
   HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
   HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR,
   HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM
-} from '@renderer/components/horizontalBrowseWaveform.constants'
-import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/components/useHorizontalBrowseRawWaveformCanvas'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveform.constants'
+import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRawWaveformCanvas'
 import {
   OVERVIEW_MAX_RENDER_COLUMNS,
   OVERVIEW_WAVEFORM_VERTICAL_PADDING,

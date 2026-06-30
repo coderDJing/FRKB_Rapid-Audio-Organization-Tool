@@ -5,16 +5,16 @@ import HorizontalBrowseRawWaveformDetail from '@renderer/components/HorizontalBr
 import type {
   HorizontalBrowseGridShiftOptions,
   HorizontalBrowseGridToolbarState
-} from '@renderer/components/useHorizontalBrowseGridToolbar'
+} from '@renderer/composables/horizontalBrowse/useHorizontalBrowseGridToolbar'
 import type {
   HorizontalBrowseDetailZoomChangePayload,
   HorizontalBrowseRawWaveformDetailExpose
-} from '@renderer/components/horizontalBrowseRawWaveformDetailTypes'
-import type { HorizontalBrowseWaveformPresentationState } from '@renderer/components/horizontalBrowseWaveformPresentationCoordinator'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailTypes'
+import type { HorizontalBrowseWaveformPresentationState } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPresentationCoordinator'
 import type {
   HorizontalBrowseLinkedGridVisualTransactionCommitOptions,
   HorizontalBrowseLinkedGridVisualTransactionDeckState
-} from '@renderer/components/horizontalBrowseLinkedGridVisualTransaction'
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedGridVisualTransaction'
 
 type HorizontalBrowseSharedZoomState = {
   value: number

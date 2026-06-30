@@ -1,4 +1,4 @@
-import { unifiedDisplayWaveformToRawData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
+import { unifiedDisplayWaveformToRawData } from '@renderer/composables/horizontalBrowse/horizontalBrowseCompactVisualWaveform'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type {
   HorizontalBrowseCompactVisualWaveformWorkerIncoming,

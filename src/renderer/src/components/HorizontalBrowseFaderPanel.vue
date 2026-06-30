@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, toRef } from 'vue'
 import type { CSSProperties } from 'vue'
-import { useHorizontalBrowseOutput } from '@renderer/components/useHorizontalBrowseOutput'
+import { useHorizontalBrowseOutput } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseOutput'
 
 type HorizontalBrowseOutputTransport = {
   state: {

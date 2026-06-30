@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import type { HorizontalBrowseDeckKey } from '@renderer/components/horizontalBrowseNativeTransport'
-import type { HorizontalBrowseBandKey } from '@renderer/components/useHorizontalBrowseFaderControls'
+import type { HorizontalBrowseDeckKey } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
+import type { HorizontalBrowseBandKey } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseFaderControls'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
-import { useHorizontalBrowseAutoGain } from '@renderer/components/useHorizontalBrowseAutoGain'
+import { useHorizontalBrowseAutoGain } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseAutoGain'
 
 type HorizontalBrowseBandState = Record<HorizontalBrowseBandKey, boolean>
 

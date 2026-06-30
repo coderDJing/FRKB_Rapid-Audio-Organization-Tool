@@ -9,14 +9,14 @@ import type {
 } from 'src/types/globals'
 import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
 import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
-import { isSameHorizontalBrowseSongFilePath } from '@renderer/components/horizontalBrowseShellSongs'
+import { isSameHorizontalBrowseSongFilePath } from '@renderer/composables/horizontalBrowse/horizontalBrowseShellSongs'
 import {
   getRekordboxPreviewWaveformRequestChannel,
   resolveSongExternalWaveformSource
 } from '@renderer/utils/rekordboxExternalSource'
 import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 import { formatSaturatedWaveformRgb } from '@shared/waveformDisplayColor'
-import { loadWaveformGlobalOverviewData } from '@renderer/components/horizontalBrowseCompactVisualWaveform'
+import { loadWaveformGlobalOverviewData } from '@renderer/composables/horizontalBrowse/horizontalBrowseCompactVisualWaveform'
 import { drawCompactVisualWaveform } from '@renderer/components/compactVisualWaveformRenderer'
 import {
   drawWaveformTimelineTicks,
