@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { watch, ref, onUnmounted, onMounted, PropType, nextTick } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
@@ -7,6 +8,7 @@ import utils from '../utils/utils'
 import { t } from '@renderer/utils/translate'
 import { IMenu } from '../../../types/globals'
 import { resolveContextMenuPoint } from '@renderer/utils/contextMenuPosition'
+import bubbleBox from './bubbleBox.vue'
 
 const uuid = uuidV4()
 const runtime = useRuntimeStore()
@@ -35,6 +37,7 @@ const menuRef = ref<HTMLDivElement | null>(null)
 const isVisible = ref(true)
 const isClosing = ref(false)
 const closeResult = ref<IMenu | 'cancel'>('cancel')
+const menuButtonRefs = ref<Record<string, HTMLElement | null>>({})
 
 const requestClose = (result: IMenu | 'cancel') => {
   if (isClosing.value) return
@@ -70,14 +73,40 @@ let openSubmenuLeft = ref(false)
 positionTop.value = -9999
 positionLeft.value = -9999
 
+const hoverItem = ref<IMenu | null>(null)
+const getMenuItemRefKey = (item: IMenu) => item.menuName
+const setMenuItemRef = (item: IMenu, element: Element | ComponentPublicInstance | null) => {
+  const key = getMenuItemRefKey(item)
+  if (element instanceof HTMLElement) {
+    menuButtonRefs.value[key] = element
+    return
+  }
+  menuButtonRefs.value[key] = null
+}
+const resolveDisabledReason = (item: IMenu) => {
+  if (item.disabledReasonKey) return t(item.disabledReasonKey)
+  return item.disabledReason || ''
+}
+const resolveTrailingText = (item: IMenu) => {
+  if (item.disabled) return t(item.disabledStatusKey || 'common.loading')
+  return item.children?.length ? '>' : item.shortcutKey
+}
+const isMenuItemOver = (item: IMenu) => {
+  if (hoverItem.value === null) return false
+  return (
+    hoverItem.value.menuName === item.menuName ||
+    !!item.children?.some((child) => child.menuName === hoverItem.value?.menuName)
+  )
+}
+const isMenuItemEnabled = (item: IMenu) => !item.disabled
 const menuButtonClick = (item: IMenu) => {
+  if (item.disabled) return
   if (item.children?.length) {
     hoverItem.value = item
     return
   }
   requestClose(item)
 }
-const hoverItem = ref<IMenu | null>(null)
 const mouseover = (item: IMenu) => {
   hoverItem.value = item
 }
@@ -111,32 +140,40 @@ onMounted(() => {
   })
 
   const getNavigableItems = () =>
-    props.menuArr.flat(1).flatMap((item) => [item, ...(item.children || [])])
+    props.menuArr
+      .flat(1)
+      .flatMap((item) => [item, ...(item.children || [])])
+      .filter(isMenuItemEnabled)
 
   hotkeys('w', uuid, () => {
     let menuArr = getNavigableItems()
-    if (hoverItem.value === null || menuArr.indexOf(hoverItem.value) === 0) {
+    if (menuArr.length === 0) return false
+    const currentIndex = hoverItem.value === null ? -1 : menuArr.indexOf(hoverItem.value)
+    if (currentIndex <= 0) {
       hoverItem.value = menuArr[menuArr.length - 1]
     } else {
-      hoverItem.value = menuArr[menuArr.indexOf(hoverItem.value) - 1]
+      hoverItem.value = menuArr[currentIndex - 1]
     }
     return false
   })
   hotkeys('s', uuid, () => {
     let menuArr = getNavigableItems()
-    if (hoverItem.value === null || menuArr.indexOf(hoverItem.value) === menuArr.length - 1) {
+    if (menuArr.length === 0) return false
+    const currentIndex = hoverItem.value === null ? -1 : menuArr.indexOf(hoverItem.value)
+    if (currentIndex < 0 || currentIndex >= menuArr.length - 1) {
       hoverItem.value = menuArr[0]
     } else {
-      hoverItem.value = menuArr[menuArr.indexOf(hoverItem.value) + 1]
+      hoverItem.value = menuArr[currentIndex + 1]
     }
     return false
   })
   hotkeys('E,Enter', uuid, () => {
     if (hoverItem.value === null) {
       const flattened = getNavigableItems()
+      if (flattened.length === 0) return false
       hoverItem.value = flattened[0]
     }
-    if (hoverItem.value && !hoverItem.value.children?.length) {
+    if (hoverItem.value && !hoverItem.value.disabled && !hoverItem.value.children?.length) {
       requestClose(hoverItem.value)
     }
   })
@@ -163,23 +200,32 @@ onUnmounted(() => {
       <div v-for="item of props.menuArr" class="menuGroup">
         <div
           v-for="button of item"
+          :ref="(el) => setMenuItemRef(button, el)"
           class="menuButton"
           :class="{
-            menuButtonOver:
-              hoverItem === null
-                ? false
-                : hoverItem.menuName === button.menuName ||
-                  !!button.children?.some((child) => child.menuName === hoverItem?.menuName)
+            menuButtonOver: isMenuItemOver(button),
+            menuButtonDisabled: button.disabled
           }"
+          :aria-disabled="button.disabled ? 'true' : 'false'"
           @click="menuButtonClick(button)"
           @mouseover.stop="mouseover(button)"
-          @contextmenu="menuButtonClick(button)"
+          @contextmenu.stop.prevent="menuButtonClick(button)"
         >
           <span>{{ t(button.menuName) }}</span>
-          <span>{{ button.children?.length ? '>' : button.shortcutKey }}</span>
+          <span :class="{ menuButtonStatus: button.disabled }">{{
+            resolveTrailingText(button)
+          }}</span>
+          <bubbleBox
+            v-if="button.disabled && resolveDisabledReason(button)"
+            :dom="menuButtonRefs[getMenuItemRefKey(button)] || undefined"
+            :title="resolveDisabledReason(button)"
+            :show-delay="250"
+            :z-index="'calc(var(--z-context-menu) + 1)'"
+          />
           <div
             v-if="
               button.children?.length &&
+              !button.disabled &&
               hoverItem &&
               (hoverItem.menuName === button.menuName ||
                 button.children.some((child) => child.menuName === hoverItem?.menuName))
@@ -191,14 +237,28 @@ onUnmounted(() => {
           >
             <div
               v-for="child of button.children"
+              :ref="(el) => setMenuItemRef(child, el)"
               class="submenuButton"
-              :class="{ menuButtonOver: hoverItem?.menuName === child.menuName }"
+              :class="{
+                menuButtonOver: hoverItem?.menuName === child.menuName,
+                submenuButtonDisabled: child.disabled
+              }"
+              :aria-disabled="child.disabled ? 'true' : 'false'"
               @click.stop="menuButtonClick(child)"
               @mouseover.stop="mouseover(child)"
               @contextmenu.stop.prevent="menuButtonClick(child)"
             >
               <span>{{ t(child.menuName) }}</span>
-              <span>{{ child.shortcutKey }}</span>
+              <span :class="{ menuButtonStatus: child.disabled }">{{
+                resolveTrailingText(child)
+              }}</span>
+              <bubbleBox
+                v-if="child.disabled && resolveDisabledReason(child)"
+                :dom="menuButtonRefs[getMenuItemRefKey(child)] || undefined"
+                :title="resolveDisabledReason(child)"
+                :show-delay="250"
+                :z-index="'calc(var(--z-context-menu) + 1)'"
+              />
             </div>
           </div>
         </div>
@@ -265,6 +325,22 @@ onUnmounted(() => {
       color: #ffffff;
     }
 
+    .menuButtonDisabled {
+      color: var(--text-weak);
+      cursor: default;
+      opacity: 0.68;
+
+      &:hover {
+        background-color: transparent;
+        color: var(--text-weak);
+      }
+    }
+
+    .menuButtonStatus {
+      font-size: 12px;
+      color: inherit;
+    }
+
     .submenu {
       position: absolute;
       top: -5px;
@@ -286,6 +362,7 @@ onUnmounted(() => {
     }
 
     .submenuButton {
+      position: relative;
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       align-items: center;
@@ -307,6 +384,17 @@ onUnmounted(() => {
     .submenuButton > span:first-child {
       overflow: hidden;
       text-overflow: ellipsis;
+    }
+
+    .submenuButtonDisabled {
+      color: var(--text-weak);
+      cursor: default;
+      opacity: 0.68;
+
+      &:hover {
+        background-color: transparent;
+        color: var(--text-weak);
+      }
     }
   }
 

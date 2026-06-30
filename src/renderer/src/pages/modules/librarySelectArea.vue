@@ -478,6 +478,8 @@ const {
   handlePioneerDriveContextmenu,
   handleDesktopLibraryContextmenu,
   isEjectingPioneerDriveIcon,
+  isImportingPioneerDriveIcon,
+  isImportingDesktopLibraryIcon,
   isSelectedPioneerDriveIcon,
   isSelectedDesktopLibraryIcon
 } = useRekordboxSourceIcons({
@@ -807,6 +809,7 @@ watch(
             v-if="desktopLibraryIcon"
             :ref="(el) => setScrollItemRef(desktopLibraryIcon?.key || '', el)"
             class="iconBox iconBox--device"
+            :class="{ 'is-importing': isImportingDesktopLibraryIcon }"
             @click="clickDesktopLibraryIcon()"
             @contextmenu.stop.prevent="handleDesktopLibraryContextmenu($event)"
             @mouseover="iconMouseover(desktopLibraryIcon)"
@@ -823,13 +826,18 @@ watch(
                 :class="[
                   'sidebar-icon',
                   {
-                    'is-active': isSelectedDesktopLibraryIcon
+                    'is-active': isSelectedDesktopLibraryIcon,
+                    'is-importing': isImportingDesktopLibraryIcon
                   }
                 ]"
               ></span>
               <bubbleBox
                 :dom="iconRefMap[desktopLibraryIcon?.key || ''] || undefined"
-                :title="desktopLibraryIcon?.tooltip || ''"
+                :title="
+                  isImportingDesktopLibraryIcon
+                    ? t('pioneer.importArtistsSourceBusyTooltip')
+                    : desktopLibraryIcon?.tooltip || ''
+                "
                 :max-width="320"
               />
             </div>
@@ -848,7 +856,10 @@ watch(
                 <div
                   :ref="(el) => setScrollItemRef(item.key, el)"
                   class="iconBox iconBox--device iconBox--device-group"
-                  :class="{ 'is-ejecting': isEjectingPioneerDriveIcon(item) }"
+                  :class="{
+                    'is-ejecting': isEjectingPioneerDriveIcon(item),
+                    'is-importing': isImportingPioneerDriveIcon(item)
+                  }"
                   @click="isEjectingPioneerDriveIcon(item) ? null : clickPioneerDriveIcon(item)"
                   @contextmenu.stop.prevent="handlePioneerDriveContextmenu($event, item)"
                   @mouseover="iconMouseover(item)"
@@ -868,7 +879,8 @@ watch(
                         'sidebar-icon',
                         {
                           'is-active': isSelectedPioneerDriveIcon(item),
-                          'is-ejecting': isEjectingPioneerDriveIcon(item)
+                          'is-ejecting': isEjectingPioneerDriveIcon(item),
+                          'is-importing': isImportingPioneerDriveIcon(item)
                         }
                       ]"
                     ></span>
@@ -877,7 +889,9 @@ watch(
                       :title="
                         isEjectingPioneerDriveIcon(item)
                           ? t('library.ejectUsbDriveProgress')
-                          : item.tooltip
+                          : isImportingPioneerDriveIcon(item)
+                            ? t('pioneer.importArtistsSourceBusyTooltip')
+                            : item.tooltip
                       "
                       :max-width="320"
                     />
@@ -1015,11 +1029,13 @@ watch(
         color 0.15s ease;
     }
 
-    .sidebar-icon.is-ejecting {
+    .sidebar-icon.is-ejecting,
+    .sidebar-icon.is-importing {
       opacity: 0.82;
     }
 
-    .sidebar-icon.is-ejecting::after {
+    .sidebar-icon.is-ejecting::after,
+    .sidebar-icon.is-importing::after {
       content: '';
       position: absolute;
       width: 6px;
@@ -1046,7 +1062,8 @@ watch(
       color: var(--accent);
     }
 
-    &.iconBox--device.is-ejecting {
+    &.iconBox--device.is-ejecting,
+    &.iconBox--device.is-importing {
       cursor: progress;
     }
 

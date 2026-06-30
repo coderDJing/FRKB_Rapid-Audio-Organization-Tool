@@ -715,6 +715,10 @@ interface ISettingConfig {
 interface IMenu {
   menuName: string
   shortcutKey?: string
+  disabled?: boolean
+  disabledReason?: string
+  disabledReasonKey?: string
+  disabledStatusKey?: string
   children?: IMenu[]
 }
 

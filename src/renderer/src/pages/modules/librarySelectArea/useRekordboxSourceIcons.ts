@@ -19,6 +19,7 @@ import {
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import { importCuratedArtistsFromPioneerSource } from '@renderer/composables/rekordboxDesktop/useImportCuratedArtists'
 import type {
+  IMenu,
   IPioneerDeviceLibraryKind,
   IPioneerPlaylistTreeNode,
   IRekordboxLibraryBrowserState,
@@ -78,6 +79,12 @@ export type RekordboxDesktopIcon = HoverableIcon & {
   rootPath: string
 }
 
+type WholeLibraryArtistImportBusySource = {
+  sourceKind: 'desktop' | 'usb'
+  physicalSourceKey: string
+  sourceName: string
+}
+
 type UseRekordboxSourceIconsOptions = {
   runtime: ReturnType<typeof useRuntimeStore>
   usbDriveIconAsset: string
@@ -102,7 +109,7 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
   const pioneerDriveIcons = ref<PioneerDriveIcon[]>([])
   const desktopLibraryIcon = ref<RekordboxDesktopIcon | null>(null)
   const ejectingDriveKeys = ref<string[]>([])
-  const wholeLibraryArtistImporting = ref(false)
+  const wholeLibraryArtistImportBusy = ref<WholeLibraryArtistImportBusySource | null>(null)
   let refreshTimer: ReturnType<typeof setInterval> | null = null
   let sourceTreeRequestToken = 0
   let refreshInFlight: Promise<void> | null = null
@@ -138,6 +145,56 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
 
   const getPioneerLibraryTypeLabel = (libraryType: IPioneerDeviceLibraryKind) =>
     libraryType === 'oneLibrary' ? t('pioneer.oneLibraryLabel') : t('pioneer.deviceLibraryLabel')
+
+  const normalizePhysicalPathKey = (value: string) =>
+    String(value || '')
+      .trim()
+      .replace(/[\\/]+$/, '')
+      .toLocaleLowerCase()
+
+  const resolvePhysicalSourceKey = (sourceKind: 'desktop' | 'usb', rootPath?: string) => {
+    if (sourceKind === 'desktop') return 'desktop'
+    return `usb:${normalizePhysicalPathKey(rootPath || '')}`
+  }
+
+  const isWholeLibraryArtistImporting = () => Boolean(wholeLibraryArtistImportBusy.value)
+
+  const isSamePhysicalImportSource = (sourceKind: 'desktop' | 'usb', rootPath?: string) =>
+    wholeLibraryArtistImportBusy.value?.physicalSourceKey ===
+    resolvePhysicalSourceKey(sourceKind, rootPath)
+
+  const isImportingPioneerDriveIcon = (item: PioneerDriveIcon) =>
+    isSamePhysicalImportSource('usb', item.path)
+
+  const isImportingDesktopLibraryIcon = computed(() =>
+    isSamePhysicalImportSource('desktop', desktopLibraryIcon.value?.rootPath)
+  )
+
+  const buildWholeLibraryImportMenuItem = (): IMenu => {
+    if (!isWholeLibraryArtistImporting()) {
+      return { menuName: 'pioneer.importWholeLibraryArtistsToCurated' }
+    }
+    return {
+      menuName: 'pioneer.importWholeLibraryArtistsToCurated',
+      disabled: true,
+      disabledReasonKey: 'pioneer.importArtistsBusyReason',
+      disabledStatusKey: 'pioneer.menuStatusInProgress'
+    }
+  }
+
+  const buildSourceBusyMenuItem = (
+    menuName: string,
+    disabled: boolean,
+    disabledReasonKey: string
+  ): IMenu => {
+    if (!disabled) return { menuName }
+    return {
+      menuName,
+      disabled: true,
+      disabledReasonKey,
+      disabledStatusKey: 'pioneer.menuStatusReading'
+    }
+  }
 
   const snapshotSelection = (): IRekordboxLibraryBrowserState => ({
     selectedSourceKey: runtime.pioneerDeviceLibrary.selectedSourceKey,
@@ -588,39 +645,54 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     }
   }
 
-  const runWithWholeLibraryArtistImporting = async <T>(task: () => Promise<T>): Promise<T> => {
-    wholeLibraryArtistImporting.value = true
+  const runWithWholeLibraryArtistImporting = async <T>(
+    source: WholeLibraryArtistImportBusySource,
+    task: () => Promise<T>
+  ): Promise<T> => {
+    wholeLibraryArtistImportBusy.value = source
     try {
       return await task()
     } finally {
-      wholeLibraryArtistImporting.value = false
+      if (wholeLibraryArtistImportBusy.value?.physicalSourceKey === source.physicalSourceKey) {
+        wholeLibraryArtistImportBusy.value = null
+      }
     }
   }
 
   const importDesktopWholeLibraryArtists = async () => {
     const icon = desktopLibraryIcon.value
-    if (!icon?.rootPath || wholeLibraryArtistImporting.value) return
+    if (!icon?.rootPath || isWholeLibraryArtistImporting()) return
+    const source = {
+      sourceKind: 'desktop' as const,
+      physicalSourceKey: resolvePhysicalSourceKey('desktop', icon.rootPath),
+      sourceName: icon.tooltip || t('library.rekordboxDesktopLibrary')
+    }
     await importCuratedArtistsFromPioneerSource({
       scope: 'wholeLibrary',
       sourceKind: 'desktop',
       sourceRootPath: icon.rootPath,
       sourceLibraryType: 'masterDb',
-      sourceName: icon.tooltip || t('library.rekordboxDesktopLibrary'),
-      runWithBusy: runWithWholeLibraryArtistImporting,
-      isBusy: () => wholeLibraryArtistImporting.value
+      sourceName: source.sourceName,
+      runWithBusy: (task) => runWithWholeLibraryArtistImporting(source, task),
+      isBusy: isWholeLibraryArtistImporting
     })
   }
 
   const importPioneerDriveWholeLibraryArtists = async (item: PioneerDriveIcon) => {
-    if (!item.path || wholeLibraryArtistImporting.value) return
+    if (!item.path || isWholeLibraryArtistImporting()) return
+    const source = {
+      sourceKind: 'usb' as const,
+      physicalSourceKey: resolvePhysicalSourceKey('usb', item.path),
+      sourceName: item.tooltip
+    }
     await importCuratedArtistsFromPioneerSource({
       scope: 'wholeLibrary',
       sourceKind: 'usb',
       sourceRootPath: item.path,
       sourceLibraryType: item.libraryType,
-      sourceName: item.tooltip,
-      runWithBusy: runWithWholeLibraryArtistImporting,
-      isBusy: () => wholeLibraryArtistImporting.value
+      sourceName: source.sourceName,
+      runWithBusy: (task) => runWithWholeLibraryArtistImporting(source, task),
+      isBusy: isWholeLibraryArtistImporting
     })
   }
 
@@ -786,13 +858,26 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
   }
 
   const handlePioneerDriveContextmenu = async (event: MouseEvent, item: PioneerDriveIcon) => {
-    if (isEjectingPioneerDriveIcon(item) || wholeLibraryArtistImporting.value) return
+    if (isEjectingPioneerDriveIcon(item)) return
     event.preventDefault()
+    const sourceBusy = isImportingPioneerDriveIcon(item)
     const result = await rightClickMenu({
       menuArr: [
-        [{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }],
-        [{ menuName: 'similarTracks.menu' }],
-        [{ menuName: 'library.ejectUsbDrive' }]
+        [buildWholeLibraryImportMenuItem()],
+        [
+          buildSourceBusyMenuItem(
+            'similarTracks.menu',
+            sourceBusy,
+            'pioneer.sourceReadingBusyReason'
+          )
+        ],
+        [
+          buildSourceBusyMenuItem(
+            'library.ejectUsbDrive',
+            sourceBusy,
+            'pioneer.sourceEjectBusyReason'
+          )
+        ]
       ],
       clickEvent: event
     })
@@ -812,12 +897,19 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
 
   const handleDesktopLibraryContextmenu = async (event: MouseEvent) => {
     const icon = desktopLibraryIcon.value
-    if (!icon?.rootPath || wholeLibraryArtistImporting.value) return
+    if (!icon?.rootPath) return
     event.preventDefault()
+    const sourceBusy = isImportingDesktopLibraryIcon.value
     const result = await rightClickMenu({
       menuArr: [
-        [{ menuName: 'pioneer.importWholeLibraryArtistsToCurated' }],
-        [{ menuName: 'similarTracks.menu' }]
+        [buildWholeLibraryImportMenuItem()],
+        [
+          buildSourceBusyMenuItem(
+            'similarTracks.menu',
+            sourceBusy,
+            'pioneer.sourceReadingBusyReason'
+          )
+        ]
       ],
       clickEvent: event
     })
@@ -893,6 +985,8 @@ export function useRekordboxSourceIcons(options: UseRekordboxSourceIconsOptions)
     handlePioneerDriveContextmenu,
     handleDesktopLibraryContextmenu,
     isEjectingPioneerDriveIcon,
+    isImportingPioneerDriveIcon,
+    isImportingDesktopLibraryIcon,
     isSelectedPioneerDriveIcon,
     isSelectedDesktopLibraryIcon
   }
