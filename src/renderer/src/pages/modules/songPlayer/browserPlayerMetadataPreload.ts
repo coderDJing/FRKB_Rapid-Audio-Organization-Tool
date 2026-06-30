@@ -233,7 +233,3 @@ export const createBrowserPlayerMetadataPreloadPool = () => {
     defer
   }
 }
-
-export type BrowserPlayerMetadataPreloadPool = ReturnType<
-  typeof createBrowserPlayerMetadataPreloadPool
->

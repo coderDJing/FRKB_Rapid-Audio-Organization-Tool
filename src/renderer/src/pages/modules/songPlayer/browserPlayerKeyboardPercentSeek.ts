@@ -97,7 +97,3 @@ export const createBrowserPlayerKeyboardPercentSeek = (options: KeyboardPercentS
     clear
   }
 }
-
-export type BrowserPlayerKeyboardPercentSeek = ReturnType<
-  typeof createBrowserPlayerKeyboardPercentSeek
->

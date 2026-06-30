@@ -10,7 +10,7 @@ import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
 
 export type MixtapeMixMode = 'eq' | 'stem'
 export type MixtapeStemMode = typeof FIXED_MIXTAPE_STEM_MODE
-export type MixtapeProjectMode = {
+type MixtapeProjectMode = {
   mixMode: MixtapeMixMode
   stemProfile: MixtapeStemProfile
 }

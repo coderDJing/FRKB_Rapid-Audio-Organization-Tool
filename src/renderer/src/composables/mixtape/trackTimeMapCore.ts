@@ -103,7 +103,7 @@ export const sampleTrackBpmEnvelopeAtSec = (
   return points[points.length - 1]?.bpm ?? fallbackBpm
 }
 
-export const resolveTrackTempoRatioAtSec = (params: {
+const resolveTrackTempoRatioAtSec = (params: {
   points: MixtapeBpmPoint[]
   sec: number
   originalBpm: number
@@ -410,7 +410,7 @@ const integrateTempoRatioToSec = (params: {
   return integral
 }
 
-export const resolveTrackSourceProgressAtLocalSec = (params: {
+const resolveTrackSourceProgressAtLocalSec = (params: {
   points: MixtapeBpmPoint[]
   localSec: number
   durationSec: number

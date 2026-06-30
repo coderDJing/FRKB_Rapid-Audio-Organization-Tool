@@ -507,12 +507,8 @@ export {
   probeTorchDeviceCompatibility,
   probeDirectmlDemucsCompatibility,
   probeXpuDemucsCompatibility,
-  probeDemucsDevicesForRuntime,
-  resolveProbeSnapshotDeviceScore,
-  resolveProbeSnapshotTieBreakScore,
   probeDemucsDevices,
   resolveCpuFallbackReason,
   resolveDemucsDeviceArg,
-  parseClockTokenToSeconds,
   parseDemucsProgressText
 }

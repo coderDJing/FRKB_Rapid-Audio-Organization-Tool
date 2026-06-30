@@ -127,7 +127,3 @@ export const createBrowserPlayerHtmlSeekController = () => {
     reset
   }
 }
-
-export type BrowserPlayerHtmlSeekController = ReturnType<
-  typeof createBrowserPlayerHtmlSeekController
->

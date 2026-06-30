@@ -16,7 +16,7 @@ export type MixParamId =
   | 'drums'
   | 'volume'
 
-export type MixParamOption = {
+type MixParamOption = {
   id: MixParamId
   labelKey: string
 }

@@ -7,7 +7,7 @@ const LOOP_SEC_EPSILON = 0.0001
 
 type MixtapeTrackLoopSectionKind = 'head' | 'loop-source' | 'loop-repeat' | 'tail'
 
-export type MixtapeTrackLoopSection = {
+type MixtapeTrackLoopSection = {
   key: string
   loopKey: string | null
   kind: MixtapeTrackLoopSectionKind

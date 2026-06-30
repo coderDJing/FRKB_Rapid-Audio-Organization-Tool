@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 
-export const DIALOG_TRANSITION_DURATION = 240
+const DIALOG_TRANSITION_DURATION = 240
 
 export function useDialogTransition(duration = DIALOG_TRANSITION_DURATION, autoShow = true) {
   const dialogVisible = ref(false)

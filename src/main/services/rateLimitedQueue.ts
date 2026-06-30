@@ -19,7 +19,7 @@ interface QueueItem<T> {
   reject: (reason?: unknown) => void
 }
 
-export interface RateLimitedQueueOptions {
+interface RateLimitedQueueOptions {
   /** 两次请求之间的最小间隔（毫秒）。 */
   minInterval: number
   /** 限流错误（429/503）时的最大重试次数，默认 3。 */
@@ -59,7 +59,7 @@ const defaultIsRateLimitError = (error: unknown): boolean => {
   )
 }
 
-export interface RateLimitedQueue {
+interface RateLimitedQueue {
   /** 将一个异步任务排入队列，按最小间隔串行执行；限流错误自动退避重试。 */
   schedule<T>(fn: () => Promise<T>): Promise<T>
   /** 清空尚未开始执行的排队任务（已在执行中的不受影响）。返回被丢弃的任务数。 */

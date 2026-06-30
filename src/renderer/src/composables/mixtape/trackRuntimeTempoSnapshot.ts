@@ -29,7 +29,7 @@ import type {
   SerializedTrackTempoSnapshot
 } from '@renderer/composables/mixtape/types'
 
-export type TrackRuntimeTempoSnapshot = {
+type TrackRuntimeTempoSnapshot = {
   track: MixtapeTrack
   durationSec: number
   baseDurationSec: number
