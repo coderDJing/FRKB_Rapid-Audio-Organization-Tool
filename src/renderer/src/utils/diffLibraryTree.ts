@@ -1,15 +1,7 @@
 import { IDir } from '../../../types/globals'
+import type { FileSystemOperation } from '@shared/fileSystemOperation'
 
-export interface FileSystemOperation {
-  type: 'create' | 'delete' | 'permanentlyDelete' | 'rename' | 'move' | 'reorder'
-  path: string
-  newPath?: string
-  newName?: string
-  order?: number
-  oldOrder?: number
-  uuid: string
-  nodeType?: string
-}
+export type { FileSystemOperation }
 
 export function calculateFileSystemOperations(oldTree: IDir, newTree: IDir): FileSystemOperation[] {
   const operations: FileSystemOperation[] = []

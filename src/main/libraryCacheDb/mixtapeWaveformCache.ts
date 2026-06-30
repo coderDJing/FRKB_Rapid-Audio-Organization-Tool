@@ -5,7 +5,7 @@ import {
   encodeMixxxWaveformData,
   MIXXX_MIXTAPE_WAVEFORM_CACHE_VERSION,
   type MixxxWaveformData
-} from '../waveformCache'
+} from '../waveformCodec'
 import {
   toNumber,
   resolveListRootInput,

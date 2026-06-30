@@ -3,7 +3,7 @@ import os from 'node:os'
 import { Worker } from 'node:worker_threads'
 import { log } from '../log'
 import { resolveMainWorkerPath } from '../workerPath'
-import type { MixxxWaveformData } from '../waveformCache'
+import type { MixxxWaveformData } from '../waveformCodec'
 import { isMissingFileDecodeError } from './decodeErrorUtils'
 
 export type SharedRawWaveformData = {

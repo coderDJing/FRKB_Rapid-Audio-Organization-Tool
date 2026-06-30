@@ -5,7 +5,7 @@ import {
   encodeMixxxWaveformData,
   MIXXX_WAVEFORM_CACHE_VERSION,
   type MixxxWaveformData
-} from '../waveformCache'
+} from '../waveformCodec'
 import type { ISongInfo } from '../../types/globals'
 import { stripBeatThisDebugInfo } from './pathResolvers'
 

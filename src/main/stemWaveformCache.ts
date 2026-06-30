@@ -1,5 +1,5 @@
 import type { MixtapeStemMode } from './mixtapeDb'
-import type { MixxxWaveformBand } from './waveformCache'
+import type { MixxxWaveformBand } from './waveformCodec'
 import { normalizeMixtapeStemMode } from '../shared/mixtapeStemMode'
 
 export const STEM_WAVEFORM_CACHE_VERSION = 2

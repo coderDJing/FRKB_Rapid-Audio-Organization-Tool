@@ -17,7 +17,7 @@ import {
   cleanupOrphanedMixtapeVaultFiles
 } from '../../services/mixtapeWaveformMaintenance'
 import { renameCacheRoot } from '../../libraryCacheDb'
-import { FileSystemOperation } from '@renderer/utils/diffLibraryTree'
+import type { FileSystemOperation } from '@shared/fileSystemOperation'
 import {
   findLibraryNodeByPath,
   insertLibraryNode,

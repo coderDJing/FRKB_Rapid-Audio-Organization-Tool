@@ -5,7 +5,7 @@ import { decodeAudioShared } from './audioDecodePool'
 import { findMixtapeCacheRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import mixtapeWindow from '../window/mixtapeWindow'
-import type { MixxxWaveformData } from '../waveformCache'
+import type { MixxxWaveformData } from '../waveformCodec'
 import { isMissingFileDecodeError } from './decodeErrorUtils'
 import { resolveMixtapeFilePathWithFallback } from './mixtapeFileFallback'
 

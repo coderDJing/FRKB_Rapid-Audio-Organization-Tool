@@ -1,5 +1,5 @@
 import { parentPort } from 'node:worker_threads'
-import type { MixxxWaveformData } from '../waveformCache'
+import type { MixxxWaveformData } from '../waveformCodec'
 
 type DecodeJob = {
   jobId: number

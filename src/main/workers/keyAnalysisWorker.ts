@@ -1,6 +1,6 @@
 import { parentPort } from 'node:worker_threads'
 import path from 'node:path'
-import type { MixxxWaveformData } from '../waveformCache'
+import type { MixxxWaveformData } from '../waveformCodec'
 import { COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE } from '../../shared/compactVisualWaveform'
 import {
   buildUnifiedDisplayWaveformDetailFromMixxx,
