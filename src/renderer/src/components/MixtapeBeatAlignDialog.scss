@@ -3,33 +3,9 @@
   --beat-align-anchor-line: rgba(255, 233, 141, 0.7);
   --beat-align-anchor-line-active: rgba(255, 227, 122, 0.94);
   --beat-align-anchor-shadow: rgba(0, 0, 0, 0.22);
-  --beat-align-overview-bg: linear-gradient(
-    180deg,
-    rgba(20, 32, 47, 0.72) 0%,
-    rgba(10, 16, 24, 0.88) 100%
-  );
-  --beat-align-overview-inset-top: rgba(255, 255, 255, 0.03);
-  --beat-align-overview-inset-bottom: rgba(0, 0, 0, 0.22);
-  --beat-align-viewport-border: rgba(131, 197, 240, 0.68);
-  --beat-align-viewport-bg: linear-gradient(
-    180deg,
-    rgba(122, 185, 236, 0.18) 0%,
-    rgba(81, 150, 218, 0.08) 100%
-  );
-  --beat-align-viewport-inset: rgba(255, 255, 255, 0.08);
-  --beat-align-viewport-outline: rgba(16, 28, 43, 0.34);
-  --beat-align-viewport-shadow: rgba(72, 144, 225, 0.16);
-  --beat-align-viewport-border-active: rgba(152, 214, 248, 0.82);
-  --beat-align-viewport-bg-active: linear-gradient(
-    180deg,
-    rgba(134, 200, 239, 0.24) 0%,
-    rgba(92, 163, 228, 0.11) 100%
-  );
-  --beat-align-viewport-inset-active: rgba(255, 255, 255, 0.12);
-  --beat-align-viewport-outline-active: rgba(20, 36, 56, 0.4);
-  --beat-align-viewport-shadow-active: rgba(80, 156, 238, 0.2);
   --beat-align-status-bg: rgba(5, 10, 16, 0.6);
   --beat-align-status-error: #f6a2a2;
+  --shell-playhead-bg: rgba(255, 255, 255, 0.96);
   padding: 16px 20px 0;
   flex: 1 1 auto;
   display: flex;
@@ -42,33 +18,9 @@
   --beat-align-anchor-line: rgba(198, 138, 16, 0.56);
   --beat-align-anchor-line-active: rgba(198, 138, 16, 0.82);
   --beat-align-anchor-shadow: rgba(255, 255, 255, 0.46);
-  --beat-align-overview-bg: linear-gradient(
-    180deg,
-    rgba(236, 242, 249, 0.98) 0%,
-    rgba(223, 232, 242, 0.98) 100%
-  );
-  --beat-align-overview-inset-top: rgba(255, 255, 255, 0.78);
-  --beat-align-overview-inset-bottom: rgba(87, 109, 136, 0.12);
-  --beat-align-viewport-border: rgba(43, 102, 217, 0.44);
-  --beat-align-viewport-bg: linear-gradient(
-    180deg,
-    rgba(43, 102, 217, 0.12) 0%,
-    rgba(43, 102, 217, 0.04) 100%
-  );
-  --beat-align-viewport-inset: rgba(255, 255, 255, 0.38);
-  --beat-align-viewport-outline: rgba(43, 102, 217, 0.12);
-  --beat-align-viewport-shadow: rgba(43, 102, 217, 0.1);
-  --beat-align-viewport-border-active: rgba(43, 102, 217, 0.58);
-  --beat-align-viewport-bg-active: linear-gradient(
-    180deg,
-    rgba(43, 102, 217, 0.16) 0%,
-    rgba(43, 102, 217, 0.06) 100%
-  );
-  --beat-align-viewport-inset-active: rgba(255, 255, 255, 0.52);
-  --beat-align-viewport-outline-active: rgba(43, 102, 217, 0.16);
-  --beat-align-viewport-shadow-active: rgba(43, 102, 217, 0.12);
   --beat-align-status-bg: rgba(255, 255, 255, 0.82);
   --beat-align-status-error: #b42318;
+  --shell-playhead-bg: rgba(15, 23, 42, 0.96);
 }
 
 .track-name {
@@ -111,22 +63,45 @@
   display: block;
   width: 100%;
   height: 100%;
+  transform-origin: 0 0;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
-.raw-detail-waveform__canvas:not(.raw-detail-waveform__canvas--overlay) {
+.raw-detail-waveform__surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.raw-detail-waveform__overlay-surface {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -12px;
+  bottom: -12px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.raw-detail-waveform__surface,
+.raw-detail-waveform__overlay-surface {
+  opacity: 0;
+  transition: none;
+}
+
+.raw-detail-waveform__canvas--waveform {
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
 
-.raw-detail-waveform__canvas--grid {
-  pointer-events: none;
+.raw-detail-waveform__canvas--buffer-back {
+  opacity: 0;
 }
 
 .raw-detail-waveform__canvas--overlay {
-  inset: -12px 0;
-  height: calc(100% + 24px);
   pointer-events: none;
-  z-index: 3;
 }
 
 .raw-detail-waveform__barline-glow {
@@ -159,54 +134,12 @@
 
 .overview-canvas-wrap {
   position: relative;
-  height: 66px;
+  height: 36px;
   border: 1px solid var(--beat-align-frame-border);
   border-radius: 6px;
   background: var(--waveform-bg);
-  box-shadow:
-    0 1px 0 var(--beat-align-overview-inset-top) inset,
-    0 -1px 0 var(--beat-align-overview-inset-bottom) inset;
   overflow: hidden;
-  cursor: grab;
-}
-
-.overview-canvas-wrap.is-dragging {
-  cursor: grabbing;
-}
-
-.overview-canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.overview-viewport {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  border: 1px solid var(--beat-align-viewport-border);
-  background: var(--beat-align-viewport-bg);
-  border-radius: 0;
-  box-shadow:
-    0 0 0 1px var(--beat-align-viewport-inset) inset,
-    0 0 0 1px var(--beat-align-viewport-outline),
-    0 4px 10px var(--beat-align-viewport-shadow);
-  pointer-events: none;
-  will-change: transform;
-  transition:
-    border-color 0.14s ease,
-    background 0.14s ease,
-    box-shadow 0.14s ease;
-}
-
-.overview-canvas-wrap.is-dragging .overview-viewport {
-  border-color: var(--beat-align-viewport-border-active);
-  background: var(--beat-align-viewport-bg-active);
-  box-shadow:
-    0 0 0 1px var(--beat-align-viewport-inset-active) inset,
-    0 0 0 1px var(--beat-align-viewport-outline-active),
-    0 6px 12px var(--beat-align-viewport-shadow-active);
+  --overview-waveform-side-inset: 0;
 }
 
 .preview-status {

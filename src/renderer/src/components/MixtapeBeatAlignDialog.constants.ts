@@ -1,10 +1,7 @@
 import { BPM_INTERNAL_DECIMALS, formatBpmDisplay } from '@renderer/utils/bpm'
-import { resizeCanvasWithScaleMetrics } from '@renderer/utils/canvasScale'
 
 export const PREVIEW_WARMUP_DELAY_MS = 600
 export const PREVIEW_WARMUP_EAGER_DELAY_MS = 0
-export const OVERVIEW_MAX_RENDER_COLUMNS = 960
-export const OVERVIEW_WAVEFORM_VERTICAL_PADDING = 8
 export const PREVIEW_MAX_SAMPLES_PER_PIXEL = 180
 export const PREVIEW_SHORTCUT_FALLBACK_BPM = 128
 const PREVIEW_BPM_INTERNAL_DECIMALS = BPM_INTERNAL_DECIMALS
@@ -14,13 +11,10 @@ export const PREVIEW_BPM_MAX = 300
 export const PREVIEW_SHORTCUT_BEATS = 4
 export const PREVIEW_BAR_BEAT_INTERVAL = 32
 export const PREVIEW_BAR_LINE_HIT_RADIUS_PX = 14
-export const PREVIEW_GRID_SHIFT_SMALL_MS = 5
-export const PREVIEW_GRID_SHIFT_LARGE_MS = 20
 export const PREVIEW_BPM_TAP_RESET_MS = 5000
 export const PREVIEW_BPM_TAP_MIN_DELTA_MS = 50
 export const PREVIEW_BPM_TAP_MAX_DELTA_MS = 2000
 export const PREVIEW_BPM_TAP_MAX_COUNT = 8
-const OVERVIEW_VIEWPORT_MIN_WIDTH = 12
 
 export const normalizePathKey = (value: unknown) =>
   String(value || '')
@@ -55,47 +49,6 @@ export const parsePreviewBpmInput = (value: string) => {
   const numeric = Number(normalized)
   if (!Number.isFinite(numeric) || numeric <= 0) return null
   return normalizePreviewBpm(numeric)
-}
-
-type ResolveOverviewViewportMetricsParams = {
-  durationSec: number
-  visibleDurationSec: number
-  leadingPadSec: number
-  virtualSpanSec: number
-  wrapWidth: number
-  startSec: number
-}
-
-export const resolveOverviewViewportMetricsByRange = (
-  params: ResolveOverviewViewportMetricsParams
-) => {
-  if (!params.durationSec || !params.visibleDurationSec || params.wrapWidth <= 0) {
-    return { left: 0, width: 0, wrapWidth: 0 }
-  }
-  const safeVisible = clampNumber(params.visibleDurationSec, 0.0001, params.virtualSpanSec)
-  if (safeVisible >= params.virtualSpanSec) {
-    return { left: 0, width: params.wrapWidth, wrapWidth: params.wrapWidth }
-  }
-  const rawWidth = (safeVisible / params.virtualSpanSec) * params.wrapWidth
-  const width = clampNumber(rawWidth, OVERVIEW_VIEWPORT_MIN_WIDTH, params.wrapWidth)
-  const maxLeftTime = Math.max(0, params.virtualSpanSec - safeVisible)
-  const minStart = -Math.max(0, params.leadingPadSec)
-  const maxStart = Math.max(minStart, params.virtualSpanSec - safeVisible - params.leadingPadSec)
-  const safeStart = clampNumber(params.startSec, minStart, maxStart)
-  const leftTime = safeStart + params.leadingPadSec
-  const startRatio = maxLeftTime > 0 ? leftTime / maxLeftTime : 0
-  const maxLeft = Math.max(0, params.wrapWidth - width)
-  const left = startRatio * maxLeft
-  return { left, width, wrapWidth: params.wrapWidth }
-}
-
-export const resizePreviewCanvasByPixelRatio = (
-  canvas: HTMLCanvasElement,
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number
-) => {
-  resizeCanvasWithScaleMetrics(canvas, ctx, width, height, window.devicePixelRatio || 1)
 }
 
 export const isEditableEventTarget = (target: EventTarget | null) => {

@@ -1,32 +1,34 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import { t } from '@renderer/utils/translate'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
+import HorizontalBrowseWaveformOverview from '@renderer/components/HorizontalBrowseWaveformOverview.vue'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatAlignGridAdjustToolbar.vue'
 import MixtapeBeatAlignTopControls from '@renderer/components/mixtapeBeatAlignTopControls.vue'
 import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
-import { rebuildBeatAlignOverviewCache } from '@renderer/components/mixtapeBeatAlignOverviewCache'
 import { useMixtapeBeatAlignPlayback } from '@renderer/components/mixtapeBeatAlignPlayback'
 import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
-import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
 import {
-  loadUnifiedDisplayWaveformData,
-  loadWaveformGlobalOverviewData,
-  unifiedDisplayWaveformToRawData
-} from '@renderer/composables/horizontalBrowse/horizontalBrowseCompactVisualWaveform'
+  useMixtapeBeatAlignInitialGridAlignment,
+  useMixtapeBeatAlignPreviewInteraction,
+  useMixtapeBeatAlignWaveformError
+} from '@renderer/components/mixtapeBeatAlignPreviewState'
 import {
   HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
-  HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO,
-  HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR,
-  HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM
+  HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveform.constants'
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRawWaveformCanvas'
+import { useHorizontalBrowseCompactVisualWaveformStrip } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseCompactVisualWaveformStrip'
+import { createHorizontalBrowseStableInteractionHandoff } from '@renderer/composables/horizontalBrowse/horizontalBrowseStableInteractionHandoff'
 import {
-  OVERVIEW_MAX_RENDER_COLUMNS,
-  OVERVIEW_WAVEFORM_VERTICAL_PADDING,
+  HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX,
+  HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX,
+  resolveHorizontalBrowseGridShiftMs
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailExpose'
+import {
   PREVIEW_BAR_BEAT_INTERVAL,
   PREVIEW_BAR_LINE_HIT_RADIUS_PX,
   PREVIEW_BPM_MAX,
@@ -36,24 +38,18 @@ import {
   PREVIEW_BPM_TAP_MAX_DELTA_MS,
   PREVIEW_BPM_TAP_MIN_DELTA_MS,
   PREVIEW_BPM_TAP_RESET_MS,
-  PREVIEW_GRID_SHIFT_LARGE_MS,
-  PREVIEW_GRID_SHIFT_SMALL_MS,
   PREVIEW_SHORTCUT_BEATS,
   PREVIEW_SHORTCUT_FALLBACK_BPM,
   PREVIEW_WARMUP_DELAY_MS,
   PREVIEW_WARMUP_EAGER_DELAY_MS,
-  clampNumber,
   formatPreviewBpm,
   isEditableEventTarget,
   normalizeBeatOffset,
   normalizePathKey,
   normalizePreviewBpm,
-  parsePreviewBpmInput,
-  resolveOverviewViewportMetricsByRange,
-  resizePreviewCanvasByPixelRatio
+  parsePreviewBpmInput
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 
 const props = defineProps({
   trackTitle: {
@@ -83,6 +79,10 @@ const props = defineProps({
   barBeatOffset: {
     type: Number,
     default: 0
+  },
+  windowVolume: {
+    type: Number,
+    default: 0.8
   }
 })
 
@@ -96,18 +96,17 @@ const emit = defineEmits<{
 
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 
-const overviewWrapRef = ref<HTMLDivElement | null>(null)
-const overviewCanvasRef = ref<HTMLCanvasElement | null>(null)
 const previewLoading = ref(false)
 const previewError = ref('')
 const previewMixxxData = ref<MixxxWaveformData | null>(null)
-const overviewRawData = ref<RawWaveformData | null>(null)
-const overviewCompactData = ref<WaveformGlobalOverviewData | null>(null)
+const previewWaveformData = ref<RawWaveformData | null>(null)
+const compactVisualWaveformActive = ref(false)
+const previewWaveformRequestStarted = ref(false)
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const previewStartSec = ref(0)
 const previewDragging = ref(false)
 const previewPlaying = ref(false)
-const overviewDragging = ref(false)
+const overviewCurrentSec = ref(0)
 const previewBarBeatOffset = ref(0)
 const previewFirstBeatMs = ref(0)
 const previewTimeBasisOffsetMs = ref(0)
@@ -115,21 +114,10 @@ const previewBpm = ref(128)
 const previewBpmInput = ref('128.00')
 const bpmTapTimestamps = ref<number[]>([])
 
-let overviewRaf = 0
-let previewDragStartClientX = 0
-let previewDragStartSec = 0
-let previewDragLastAnchorSec = 0
-let previewDragLastTs = 0
-let previewDragScrubbing = false
-let previewDragScrubToken = 0
-let overviewDragStartX = 0
-let overviewDragOffset = 0
-let overviewDragMoved = false
-let overviewSuppressClick = false
-let overviewCacheCanvas: HTMLCanvasElement | null = null
 let previewLoadSequence = 0
 let previewWarmupTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
+let overviewClockRaf = 0
 
 const bpmDisplay = computed(() => {
   const bpmValue = Number(previewBpm.value)
@@ -259,7 +247,7 @@ const beatAlignSong = computed<ISongInfo | null>(() => {
   if (!filePath) return null
   const duration = Math.max(
     0,
-    Number(overviewRawData.value?.duration || previewMixxxData.value?.duration || 0)
+    Number(previewWaveformData.value?.duration || previewMixxxData.value?.duration || 0)
   )
   return {
     filePath,
@@ -288,12 +276,14 @@ let resolveWaveformCurrentSeconds = () => 0
 const {
   wrapRef: previewWrapRef,
   waveformCanvasRef,
-  gridCanvasRef,
   overlayCanvasRef,
   resolvePreviewDurationSec,
   resolveVisibleDurationSec,
   resolvePreviewAnchorSec,
   clampPreviewStart,
+  resolvePlaybackAlignedStart,
+  resolveRenderedCanvasViewportStartSec,
+  resetWaveformRenderState,
   scheduleDraw: schedulePreviewDraw,
   clearCanvas: clearPreviewCanvas,
   invalidateWaveformTiles,
@@ -301,6 +291,19 @@ const {
   resetGridRenderer,
   resetLiveWaveformData,
   replaceLiveWaveformRaw,
+  drawWaveformNow,
+  beginDragCanvasPresentation,
+  applyDragCanvasPresentationOffset,
+  endDragCanvasPresentation,
+  measureStableCanvasPresentation,
+  applyStableCanvasPresentation,
+  stopStableCanvasPlayback,
+  reanchorStableCanvasPlayback,
+  hideStableCanvasPresentation,
+  waveformSurfaceRef,
+  waveformCanvasBackRef,
+  overlaySurfaceRef,
+  overlayCanvasBackRef,
   dispose: disposeWaveformCanvas
 } = useHorizontalBrowseRawWaveformCanvas({
   song: () => beatAlignSong.value,
@@ -313,7 +316,7 @@ const {
   playbackRate: () => 1,
   playing: previewPlaying,
   playbackSyncRevision,
-  rawData: overviewRawData,
+  rawData: previewWaveformData,
   mixxxData: previewMixxxData,
   previewLoading,
   previewStartSec,
@@ -325,67 +328,74 @@ const {
   dragging: previewDragging,
   allowNegativeTimeline: () => false,
   waveformLayout: () => 'full',
-  waveformRenderStyle: () => 'raw-curve'
+  waveformRenderStyle: () => 'raw-curve',
+  stableWaveformSource: () => compactVisualWaveformActive.value
 })
+
+const {
+  requestCompactVisualWaveformStrip,
+  resetCompactVisualWaveformStrip,
+  disposeCompactVisualWaveformStrip
+} = useHorizontalBrowseCompactVisualWaveformStrip({
+  song: () => beatAlignSong.value,
+  active: compactVisualWaveformActive,
+  rawData: previewWaveformData,
+  mixxxData: previewMixxxData,
+  previewLoading,
+  previewZoom,
+  resolveVisibleDurationSec,
+  resolvePreviewAnchorSec,
+  clampPreviewStart,
+  replaceLiveWaveformRaw,
+  resetPlaybackRenderState: () => resetWaveformRenderState({ preserveDisplay: true }),
+  scheduleDraw: schedulePreviewDraw
+})
+
+const { syncPreviewWaveformError } = useMixtapeBeatAlignWaveformError({
+  previewWaveformRequestStarted,
+  previewLoading,
+  previewMixxxData,
+  previewError,
+  resolveUnavailableText: () => t('mixtape.gridAdjustWaveformUnavailable')
+})
+
+const normalizePreviewTimelineSeconds = (seconds: number) => {
+  const duration = resolvePreviewDurationSec()
+  const numeric = Number(seconds)
+  if (!Number.isFinite(numeric)) return 0
+  return duration > 0 ? Math.max(0, Math.min(numeric, duration)) : Math.max(0, numeric)
+}
+
+const { applyPreviewPlaybackPosition, forceRenderStableSeekTarget, clearStableSeekRenderRaf } =
+  createHorizontalBrowseStableInteractionHandoff({
+    previewStartSec,
+    compactVisualWaveformActive,
+    normalizeSeconds: normalizePreviewTimelineSeconds,
+    clampPreviewStart,
+    resolvePlaybackAlignedStart,
+    resolveVisibleDurationSec,
+    resolveRenderedCanvasViewportStartSec,
+    suppressStablePlaybackReanchor: () => {},
+    stopStableCanvasPlayback,
+    hideStableCanvasPresentation,
+    drawWaveformNow,
+    scheduleDraw: schedulePreviewDraw,
+    playheadRatio: HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
+  })
 
 const resolvePreviewLeadingPadSec = () =>
   resolveVisibleDurationSec() * HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
 
-const resolvePreviewTrailingPadSec = () =>
-  resolveVisibleDurationSec() * (1 - HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO)
-
-const resolvePreviewVirtualSpanSec = () =>
-  Math.max(
-    0.0001,
-    resolvePreviewDurationSec() + resolvePreviewLeadingPadSec() + resolvePreviewTrailingPadSec()
-  )
-
-const resolveOverviewViewportMetrics = () =>
-  resolveOverviewViewportMetricsByRange({
-    durationSec: resolvePreviewDurationSec(),
-    visibleDurationSec: resolveVisibleDurationSec(),
-    leadingPadSec: resolvePreviewLeadingPadSec(),
-    virtualSpanSec: resolvePreviewVirtualSpanSec(),
-    wrapWidth: Math.max(0, Number(overviewWrapRef.value?.clientWidth || 0)),
-    startSec: previewStartSec.value
+const { markInitialGridAlignmentPending, clearInitialGridAlignmentPending } =
+  useMixtapeBeatAlignInitialGridAlignment({
+    song: () => beatAlignSong.value,
+    previewWaveformData,
+    previewMixxxData,
+    previewStartSec,
+    resolvePreviewDurationSec,
+    resolvePlaybackAlignedStart,
+    schedulePreviewDraw
   })
-
-const overviewViewportStyle = computed(() => {
-  const { left, width } = resolveOverviewViewportMetrics()
-  return {
-    transform: `translate3d(${left}px, 0, 0)`,
-    width: `${width}px`,
-    opacity: width > 0 ? '1' : '0'
-  }
-})
-
-const drawOverviewCanvas = () => {
-  const canvas = overviewCanvasRef.value
-  const wrap = overviewWrapRef.value
-  if (!canvas || !wrap) return
-
-  const width = Math.max(1, Math.floor(wrap.clientWidth))
-  const height = Math.max(1, Math.floor(wrap.clientHeight))
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  resizePreviewCanvasByPixelRatio(canvas, ctx, width, height)
-
-  if (overviewCacheCanvas) {
-    ctx.imageSmoothingEnabled = false
-    ctx.drawImage(
-      overviewCacheCanvas,
-      0,
-      0,
-      overviewCacheCanvas.width,
-      overviewCacheCanvas.height,
-      0,
-      0,
-      width,
-      height
-    )
-  }
-}
 
 const {
   previewDecoding,
@@ -407,15 +417,70 @@ const {
   previewMixxxData,
   previewPlaying,
   previewStartSec,
+  windowVolumeRef: toRef(props, 'windowVolume'),
   resolveVisibleDurationSec,
   resolvePreviewDurationSec,
   clampPreviewStart,
   schedulePreviewDraw,
-  isViewportInteracting: () => previewDragging.value || overviewDragging.value,
+  isViewportInteracting: () => previewDragging.value,
   playheadRatio: HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO
 })
 
 resolveWaveformCurrentSeconds = getPreviewPlaybackSec
+
+const stopOverviewClock = () => {
+  if (!overviewClockRaf) return
+  cancelAnimationFrame(overviewClockRaf)
+  overviewClockRaf = 0
+}
+
+const syncOverviewCurrentSec = (seconds: number = getPreviewPlaybackSec()) => {
+  const duration = resolvePreviewDurationSec()
+  const numeric = Number(seconds)
+  if (!Number.isFinite(numeric)) return
+  const next = duration > 0 ? Math.max(0, Math.min(numeric, duration)) : Math.max(0, numeric)
+  if (Math.abs(next - overviewCurrentSec.value) <= 0.005) return
+  overviewCurrentSec.value = next
+}
+
+const tickOverviewClock = () => {
+  overviewClockRaf = 0
+  if (!dialogVisible.value || !previewPlaying.value) return
+  syncOverviewCurrentSec()
+  overviewClockRaf = requestAnimationFrame(tickOverviewClock)
+}
+
+const startOverviewClock = () => {
+  if (overviewClockRaf || !dialogVisible.value || !previewPlaying.value) return
+  overviewClockRaf = requestAnimationFrame(tickOverviewClock)
+}
+
+const applyStablePresentationSeekTarget = (seconds: number) => {
+  if (!compactVisualWaveformActive.value) return false
+  const targetSec = normalizePreviewTimelineSeconds(seconds)
+  const result = applyStableCanvasPresentation(targetSec, {
+    allowReanchor: false,
+    requirePresentable: true
+  })
+  if (!result.applied) return false
+  applyPreviewPlaybackPosition(targetSec, false)
+  if (previewPlaying.value) {
+    reanchorStableCanvasPlayback(targetSec, 1)
+  } else {
+    stopStableCanvasPlayback()
+  }
+  return true
+}
+
+const applyPreviewSeekTarget = (seconds: number) => {
+  const targetSec = normalizePreviewTimelineSeconds(seconds)
+  if (compactVisualWaveformActive.value) {
+    if (applyStablePresentationSeekTarget(targetSec)) return
+    forceRenderStableSeekTarget(targetSec)
+    return
+  }
+  applyPreviewPlaybackPosition(targetSec, true, true)
+}
 
 const { metronomeEnabled, metronomeVolumeLevel, metronomeSupported, cycleMetronomeState } =
   useMixtapeBeatAlignMetronome({
@@ -423,6 +488,7 @@ const { metronomeEnabled, metronomeVolumeLevel, metronomeSupported, cycleMetrono
     previewPlaying,
     bpm: computed(() => Number(previewBpm.value) || 0),
     firstBeatMs: computed(() => Number(previewFirstBeatMs.value) || 0),
+    outputVolume: toRef(props, 'windowVolume'),
     resolveAnchorSec: () => getPreviewPlaybackSec()
   })
 
@@ -446,6 +512,7 @@ const handleMetronomeStateCycle = () => {
 const handlePreviewStopToStart = () => {
   stopPreviewPlayback({ syncPosition: false })
   previewStartSec.value = clampPreviewStart(-resolvePreviewLeadingPadSec())
+  syncOverviewCurrentSec()
   schedulePreviewDraw()
 }
 
@@ -506,235 +573,70 @@ const schedulePreviewWarmup = (
     Math.max(0, Number(delayMs) || 0)
   )
 }
-const rebuildOverviewCache = () => {
-  overviewCacheCanvas = rebuildBeatAlignOverviewCache({
-    wrap: overviewWrapRef.value,
-    cacheCanvas: overviewCacheCanvas,
-    compactData: overviewCompactData.value,
-    maxRenderColumns: OVERVIEW_MAX_RENDER_COLUMNS,
-    waveformVerticalPadding: OVERVIEW_WAVEFORM_VERTICAL_PADDING,
-    leadingPadSec: resolvePreviewLeadingPadSec(),
-    trailingPadSec: resolvePreviewTrailingPadSec(),
-    timeBasisOffsetMs: Math.max(0, Number(props.timeBasisOffsetMs) || 0)
-  })
-}
 
-const scheduleOverviewRebuild = () => {
-  if (overviewRaf) return
-  overviewRaf = requestAnimationFrame(() => {
-    overviewRaf = 0
-    rebuildOverviewCache()
-    drawOverviewCanvas()
+const { handlePreviewWheel, handlePreviewMouseDown, stopPreviewDragging } =
+  useMixtapeBeatAlignPreviewInteraction({
+    previewWrapRef,
+    previewDragging,
+    previewPlaying,
+    previewMixxxData,
+    previewStartSec,
+    previewZoom,
+    resolvePreviewDurationSec,
+    resolveVisibleDurationSec,
+    resolvePreviewAnchorSec,
+    clampPreviewStart,
+    getPreviewPlaybackSec,
+    handlePreviewMouseDownForBarLinePicking,
+    requestCompactVisualWaveformStrip,
+    startPreviewScrub,
+    updatePreviewScrub,
+    stopPreviewScrub,
+    seekPreviewAnchorSec,
+    beginDragCanvasPresentation,
+    applyDragCanvasPresentationOffset,
+    endDragCanvasPresentation,
+    drawWaveformNow,
+    schedulePreviewDraw,
+    resetGridRenderer
   })
-}
 
-const setPreviewZoom = (targetZoom: number, anchorRatio: number = 0.5) => {
-  const total = resolvePreviewDurationSec()
-  if (!total) return
-  const clampedZoom = Math.max(
-    HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM,
-    Math.min(HORIZONTAL_BROWSE_EDIT_DETAIL_MAX_ZOOM, targetZoom)
-  )
-  const beforeDuration = resolveVisibleDurationSec()
-  const anchor = previewStartSec.value + beforeDuration * Math.max(0, Math.min(1, anchorRatio))
-  previewZoom.value = clampedZoom
-  const nextDuration = resolveVisibleDurationSec()
-  previewStartSec.value = clampPreviewStart(anchor - nextDuration * anchorRatio)
+const handleOverviewSeek = (seconds: number) => {
+  const duration = resolvePreviewDurationSec()
+  const numeric = Number(seconds)
+  if (!Number.isFinite(numeric) || duration <= 0) return
+  const targetSec = Math.max(0, Math.min(numeric, duration))
+  overviewCurrentSec.value = targetSec
+  applyPreviewSeekTarget(targetSec)
   resetGridRenderer()
-  schedulePreviewDraw()
+  void requestCompactVisualWaveformStrip(targetSec, { clearIfOutside: true })
+  void seekPreviewAnchorSec(targetSec)
 }
 
-const handlePreviewWheel = (event: WheelEvent) => {
-  const wrap = previewWrapRef.value
-  if (!wrap) return
-  event.preventDefault()
-  stopPreviewPlayback({ syncPosition: true })
+const resolvePreviewGridShiftMs = (targetCssPx: number) =>
+  resolveHorizontalBrowseGridShiftMs(
+    {
+      resolveVisibleDurationSec,
+      resolveWrapWidth: () => Number(previewWrapRef.value?.getBoundingClientRect().width || 0)
+    },
+    targetCssPx
+  )
 
-  const rect = wrap.getBoundingClientRect()
-  const ratio = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5
-  const factor =
-    event.deltaY < 0
-      ? HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR
-      : 1 / HORIZONTAL_BROWSE_DETAIL_ZOOM_STEP_FACTOR
-  setPreviewZoom(previewZoom.value * factor, Math.max(0, Math.min(1, ratio)))
+const handlePreviewGridShift = (targetCssPx: number, direction: 1 | -1) => {
+  handleGridShift(resolvePreviewGridShiftMs(targetCssPx) * direction)
 }
 
-const handlePreviewDragMove = (event: MouseEvent) => {
-  if (!previewDragging.value) return
+const handlePreviewGridShiftLargeLeft = () =>
+  handlePreviewGridShift(HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX, -1)
 
-  const wrap = previewWrapRef.value
-  if (!wrap) return
+const handlePreviewGridShiftSmallLeft = () =>
+  handlePreviewGridShift(HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX, -1)
 
-  const width = Math.max(1, wrap.clientWidth)
-  const visibleDuration = resolveVisibleDurationSec()
-  if (!visibleDuration) return
+const handlePreviewGridShiftSmallRight = () =>
+  handlePreviewGridShift(HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX, 1)
 
-  const deltaX = event.clientX - previewDragStartClientX
-  const deltaSec = (deltaX / width) * visibleDuration
-  previewStartSec.value = clampPreviewStart(previewDragStartSec - deltaSec)
-
-  const anchorSec = resolvePreviewAnchorSec()
-  const now = performance.now()
-  if (previewDragScrubbing) {
-    const dtSec = Math.max(0.001, (now - previewDragLastTs) / 1000)
-    const velocitySecPerSec = (anchorSec - previewDragLastAnchorSec) / dtSec
-    updatePreviewScrub(anchorSec, velocitySecPerSec)
-  }
-  previewDragLastAnchorSec = anchorSec
-  previewDragLastTs = now
-  schedulePreviewDraw()
-}
-
-const stopPreviewDragging = () => {
-  if (!previewDragging.value) return
-  previewDragging.value = false
-  window.removeEventListener('mousemove', handlePreviewDragMove)
-  window.removeEventListener('mouseup', stopPreviewDragging)
-  const finalAnchorSec = resolvePreviewAnchorSec()
-  previewDragScrubToken += 1
-  if (previewDragScrubbing) {
-    previewDragScrubbing = false
-    void stopPreviewScrub(finalAnchorSec)
-  } else if (previewPlaying.value) {
-    void seekPreviewAnchorSec(finalAnchorSec)
-  }
-  schedulePreviewDraw()
-}
-
-const handlePreviewMouseDown = (event: MouseEvent) => {
-  if (event.button !== 0) return
-  if (!previewMixxxData.value) return
-  if (handlePreviewMouseDownForBarLinePicking(event)) return
-
-  previewDragging.value = true
-  previewDragStartClientX = event.clientX
-  previewDragStartSec = previewStartSec.value
-  previewDragLastAnchorSec = resolvePreviewAnchorSec()
-  previewDragLastTs = performance.now()
-  previewDragScrubbing = false
-  if (previewPlaying.value) {
-    const token = ++previewDragScrubToken
-    void startPreviewScrub(previewDragLastAnchorSec).then((started) => {
-      if (!started) return
-      if (token !== previewDragScrubToken || !previewDragging.value) {
-        void stopPreviewScrub(resolvePreviewAnchorSec())
-        return
-      }
-      previewDragScrubbing = true
-      previewDragLastAnchorSec = resolvePreviewAnchorSec()
-      previewDragLastTs = performance.now()
-      updatePreviewScrub(previewDragLastAnchorSec, 0)
-    })
-  }
-  window.addEventListener('mousemove', handlePreviewDragMove, { passive: false })
-  window.addEventListener('mouseup', stopPreviewDragging, { passive: true })
-}
-
-const resolveOverviewPointer = (event: MouseEvent) => {
-  const rect = overviewWrapRef.value?.getBoundingClientRect()
-  if (!rect || rect.width <= 0) return null
-  const x = clampNumber(event.clientX - rect.left, 0, rect.width)
-  return { rect, x }
-}
-
-const setPreviewStartByOverviewCenterRatio = (ratio: number) => {
-  const total = resolvePreviewDurationSec()
-  const visible = resolveVisibleDurationSec()
-  const leadingPad = resolvePreviewLeadingPadSec()
-  const virtualSpan = resolvePreviewVirtualSpanSec()
-  if (!total || !visible || !virtualSpan) return
-  const safeRatio = clampNumber(ratio, 0, 1)
-  const targetCenter = safeRatio * virtualSpan
-  previewStartSec.value = clampPreviewStart(targetCenter - visible / 2 - leadingPad)
-  schedulePreviewDraw()
-}
-
-const setPreviewStartByOverviewLeft = (left: number) => {
-  const total = resolvePreviewDurationSec()
-  const visible = resolveVisibleDurationSec()
-  const leadingPad = resolvePreviewLeadingPadSec()
-  const virtualSpan = resolvePreviewVirtualSpanSec()
-  const { width, wrapWidth } = resolveOverviewViewportMetrics()
-  if (!total || !visible || wrapWidth <= 0 || !virtualSpan) return
-  const maxLeft = Math.max(0, wrapWidth - width)
-  const clampedLeft = clampNumber(left, 0, maxLeft)
-  const maxLeftTime = Math.max(0, virtualSpan - visible)
-  const leftTime = maxLeft > 0 ? (clampedLeft / maxLeft) * maxLeftTime : 0
-  previewStartSec.value = clampPreviewStart(leftTime - leadingPad)
-  schedulePreviewDraw()
-}
-
-const handleOverviewMouseMove = (event: MouseEvent) => {
-  if (!overviewDragging.value) return
-  const pointer = resolveOverviewPointer(event)
-  if (!pointer) return
-  const { x, rect } = pointer
-  if (!overviewDragMoved && Math.abs(x - overviewDragStartX) > 2) {
-    overviewDragMoved = true
-  }
-  const { width } = resolveOverviewViewportMetrics()
-  const maxLeft = Math.max(0, rect.width - width)
-  const nextLeft = clampNumber(x - overviewDragOffset, 0, maxLeft)
-  setPreviewStartByOverviewLeft(nextLeft)
-  event.preventDefault()
-}
-
-const stopOverviewDragging = () => {
-  if (!overviewDragging.value) return
-  overviewDragging.value = false
-  overviewSuppressClick = overviewDragMoved
-  overviewDragMoved = false
-  window.removeEventListener('mousemove', handleOverviewMouseMove)
-  window.removeEventListener('mouseup', stopOverviewDragging)
-  if (typeof document !== 'undefined') {
-    document.body.style.userSelect = ''
-  }
-  if (previewPlaying.value) {
-    void seekPreviewAnchorSec(resolvePreviewAnchorSec())
-  }
-  schedulePreviewDraw()
-}
-
-const handleOverviewMouseDown = (event: MouseEvent) => {
-  if (event.button !== 0) return
-  if (!previewMixxxData.value) return
-  const pointer = resolveOverviewPointer(event)
-  if (!pointer) return
-  const { x, rect } = pointer
-  const { left, width } = resolveOverviewViewportMetrics()
-
-  overviewDragStartX = x
-  overviewDragMoved = false
-  overviewSuppressClick = false
-
-  if (width > 0 && x >= left && x <= left + width) {
-    overviewDragOffset = x - left
-  } else {
-    overviewDragOffset = width > 0 ? width / 2 : 0
-    setPreviewStartByOverviewCenterRatio(x / rect.width)
-  }
-
-  overviewDragging.value = true
-  if (typeof document !== 'undefined') {
-    document.body.style.userSelect = 'none'
-  }
-  window.addEventListener('mousemove', handleOverviewMouseMove, { passive: false })
-  window.addEventListener('mouseup', stopOverviewDragging, { passive: true })
-  event.preventDefault()
-}
-
-const handleOverviewClick = (event: MouseEvent) => {
-  if (overviewSuppressClick) {
-    overviewSuppressClick = false
-    return
-  }
-  const pointer = resolveOverviewPointer(event)
-  if (!pointer) return
-  setPreviewStartByOverviewCenterRatio(pointer.x / pointer.rect.width)
-  if (previewPlaying.value) {
-    void seekPreviewAnchorSec(resolvePreviewAnchorSec())
-  }
-}
+const handlePreviewGridShiftLargeRight = () =>
+  handlePreviewGridShift(HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX, 1)
 
 const loadPreviewWaveform = async (filePath: string) => {
   const normalized = typeof filePath === 'string' ? filePath.trim() : ''
@@ -748,11 +650,14 @@ const loadPreviewWaveform = async (filePath: string) => {
   clearPreviewCanvas()
   previewLoading.value = false
   previewMixxxData.value = null
-  overviewRawData.value = null
-  overviewCompactData.value = null
+  previewWaveformData.value = null
+  compactVisualWaveformActive.value = false
+  previewWaveformRequestStarted.value = false
+  clearInitialGridAlignmentPending()
   previewError.value = ''
   previewZoom.value = HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM
   previewStartSec.value = 0
+  overviewCurrentSec.value = 0
   syncPreviewBpmFromProps()
   previewBarBeatOffset.value = normalizeBeatOffset(props.barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
   previewFirstBeatMs.value = Number.isFinite(Number(props.firstBeatMs))
@@ -761,52 +666,42 @@ const loadPreviewWaveform = async (filePath: string) => {
   previewTimeBasisOffsetMs.value = Math.max(0, Number(props.timeBasisOffsetMs) || 0)
   resetBarLinePicking()
   stopPreviewDragging()
-  stopOverviewDragging()
+  resetCompactVisualWaveformStrip()
   schedulePreviewDraw()
-  scheduleOverviewRebuild()
   if (!normalized || !window?.electron?.ipcRenderer?.invoke) {
     previewError.value = t('mixtape.gridAdjustWaveformUnavailable')
     schedulePreviewDraw()
-    scheduleOverviewRebuild()
     return
   }
   previewLoading.value = true
   // 对话框一打开即开始预解码，避免用户首次点击播放时才触发解码等待
   schedulePreviewWarmup(normalized, requestSeq, PREVIEW_WARMUP_EAGER_DELAY_MS)
   try {
-    const globalOverview = await loadWaveformGlobalOverviewData(normalized).catch(() => null)
+    compactVisualWaveformActive.value = true
+    previewWaveformRequestStarted.value = true
+    markInitialGridAlignmentPending()
+    previewStartSec.value = 0
+    const requested = await requestCompactVisualWaveformStrip(resolvePreviewAnchorSec(), {
+      force: true,
+      clearIfOutside: true
+    })
     if (requestSeq !== previewLoadSequence) return
-    overviewCompactData.value = globalOverview
-    scheduleOverviewRebuild()
-
-    const unified = await loadUnifiedDisplayWaveformData(normalized).catch(() => null)
-    if (requestSeq !== previewLoadSequence) return
-    overviewRawData.value = unified ? unifiedDisplayWaveformToRawData(unified) : null
-    previewMixxxData.value = overviewRawData.value
-      ? createRawPlaceholderMixxxData(overviewRawData.value)
-      : null
-    if (overviewRawData.value) {
-      replaceLiveWaveformRaw(overviewRawData.value)
-      previewStartSec.value = clampPreviewStart(-resolvePreviewLeadingPadSec())
+    if (!requested) {
+      clearInitialGridAlignmentPending()
+      syncPreviewWaveformError()
     }
-    if (!overviewRawData.value) {
-      previewError.value = t('mixtape.gridAdjustWaveformUnavailable')
-    }
-    previewLoading.value = false
     schedulePreviewDraw()
-    scheduleOverviewRebuild()
   } catch {
     if (requestSeq !== previewLoadSequence) return
+    clearInitialGridAlignmentPending()
     previewError.value = t('mixtape.gridAdjustWaveformUnavailable')
     previewLoading.value = false
     schedulePreviewDraw()
-    scheduleOverviewRebuild()
   }
 }
 
 const handleWindowResize = () => {
   schedulePreviewDraw()
-  scheduleOverviewRebuild()
 }
 
 const handleSongWaveformUpdated = (_event: unknown, payload?: { filePath?: string }) => {
@@ -889,7 +784,27 @@ watch(
     invalidateWaveformTiles()
     resetGridRenderer()
     schedulePreviewDraw()
-    scheduleOverviewRebuild()
+  }
+)
+
+watch(
+  () => previewStartSec.value,
+  () => {
+    if (previewPlaying.value) return
+    syncOverviewCurrentSec()
+  }
+)
+
+watch(
+  () => previewPlaying.value,
+  (playing) => {
+    syncOverviewCurrentSec()
+    if (playing) {
+      startOverviewClock()
+    } else {
+      stopOverviewClock()
+      syncOverviewCurrentSec()
+    }
   }
 )
 
@@ -897,9 +812,11 @@ watch(
   () => dialogVisible.value,
   (visible) => {
     if (visible) {
+      syncOverviewCurrentSec()
       schedulePreviewDraw()
-      scheduleOverviewRebuild()
+      startOverviewClock()
     } else {
+      stopOverviewClock()
       resetPreviewBpmTap()
       resetBarLinePicking()
       stopPreviewPlayback({ syncPosition: false })
@@ -919,15 +836,12 @@ onBeforeUnmount(() => {
   clearPreviewWarmupTimer()
   resetPreviewBpmTap()
   cleanupPreviewPlayback()
+  clearStableSeekRenderRaf()
+  stopOverviewClock()
   disposeWaveformCanvas()
-  if (overviewRaf) {
-    cancelAnimationFrame(overviewRaf)
-    overviewRaf = 0
-  }
-  overviewCacheCanvas = null
+  disposeCompactVisualWaveformStrip()
   resetBarLinePicking()
   stopPreviewDragging()
-  stopOverviewDragging()
   window.electron.ipcRenderer.removeListener('song-waveform-updated', handleSongWaveformUpdated)
   window.removeEventListener('resize', handleWindowResize)
   window.removeEventListener('keydown', handleWindowKeydown)
@@ -973,15 +887,26 @@ onBeforeUnmount(() => {
           @mouseleave="handlePreviewMouseLeaveForBarLinePicking"
           @wheel.prevent="handlePreviewWheel"
         >
-          <canvas ref="waveformCanvasRef" class="raw-detail-waveform__canvas"></canvas>
-          <canvas
-            ref="gridCanvasRef"
-            class="raw-detail-waveform__canvas raw-detail-waveform__canvas--grid"
-          ></canvas>
-          <canvas
-            ref="overlayCanvasRef"
-            class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay"
-          ></canvas>
+          <div ref="waveformSurfaceRef" class="raw-detail-waveform__surface">
+            <canvas
+              ref="waveformCanvasRef"
+              class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform"
+            ></canvas>
+            <canvas
+              ref="waveformCanvasBackRef"
+              class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform raw-detail-waveform__canvas--buffer-back"
+            ></canvas>
+          </div>
+          <div ref="overlaySurfaceRef" class="raw-detail-waveform__overlay-surface">
+            <canvas
+              ref="overlayCanvasRef"
+              class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay"
+            ></canvas>
+            <canvas
+              ref="overlayCanvasBackRef"
+              class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay raw-detail-waveform__canvas--buffer-back"
+            ></canvas>
+          </div>
           <div
             v-if="previewBarLineHoverVisible"
             class="raw-detail-waveform__barline-glow"
@@ -1006,27 +931,26 @@ onBeforeUnmount(() => {
           :bpm-min="PREVIEW_BPM_MIN"
           :bpm-max="PREVIEW_BPM_MAX"
           @set-bar-line="handleSetBarLineAtPlayhead"
-          @shift-left-large="handleGridShift(-PREVIEW_GRID_SHIFT_LARGE_MS)"
-          @shift-left-small="handleGridShift(-PREVIEW_GRID_SHIFT_SMALL_MS)"
-          @shift-right-small="handleGridShift(PREVIEW_GRID_SHIFT_SMALL_MS)"
-          @shift-right-large="handleGridShift(PREVIEW_GRID_SHIFT_LARGE_MS)"
+          @shift-left-large="handlePreviewGridShiftLargeLeft"
+          @shift-left-small="handlePreviewGridShiftSmallLeft"
+          @shift-right-small="handlePreviewGridShiftSmallRight"
+          @shift-right-large="handlePreviewGridShiftLargeRight"
           @update-bpm-input="handlePreviewBpmInputUpdate"
           @blur-bpm-input="handlePreviewBpmInputBlur"
           @tap-bpm="handlePreviewBpmTap"
         />
-        <div
-          ref="overviewWrapRef"
-          class="overview-canvas-wrap"
-          :class="{ 'is-dragging': overviewDragging }"
-          @mousedown="handleOverviewMouseDown"
-          @click="handleOverviewClick"
-        >
-          <canvas ref="overviewCanvasRef" class="overview-canvas"></canvas>
-          <div class="overview-viewport" :style="overviewViewportStyle"></div>
+        <div class="overview-canvas-wrap">
+          <HorizontalBrowseWaveformOverview
+            :song="beatAlignSong"
+            :current-seconds="overviewCurrentSec"
+            :duration-seconds="resolvePreviewDurationSec()"
+            marker-anchor="top"
+            @seek="handleOverviewSeek"
+          />
         </div>
       </div>
       <div class="dialog-footer">
-        <div class="button" @click="save">{{ t('common.save') }}</div>
+        <div class="button" @click="save">{{ t('mixtape.gridAdjustApply') }}</div>
         <div class="button" @click="cancel">{{ t('common.cancel') }}</div>
       </div>
     </div>

@@ -87,6 +87,7 @@ const props = defineProps<{
   trackMenuMasterTempoChecked: boolean
   beatAlignDialogVisible: boolean
   beatAlignTrack: MixtapeTrack | null
+  beatAlignWindowVolume: number
   resolveTrackTitle: (track: MixtapeTrack) => string
   handleBeatAlignGridDefinitionSave: (payload: BeatAlignGridPayload) => void
   handleBeatAlignDialogCancel: () => void
@@ -309,6 +310,7 @@ const autoGainColumnMenuVisibleModel = computed({
     :first-beat-ms="Number(beatAlignTrack.firstBeatMs) || 0"
     :time-basis-offset-ms="Number(beatAlignTrack.timeBasisOffsetMs) || 0"
     :bar-beat-offset="Number(beatAlignTrack.barBeatOffset) || 0"
+    :window-volume="beatAlignWindowVolume"
     @save-grid-definition="handleBeatAlignGridDefinitionSave"
     @cancel="handleBeatAlignDialogCancel"
   />

@@ -6,8 +6,8 @@ import type {
   HorizontalBrowseLinkedGridVisualTransactionResult
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedGridVisualTransaction'
 
-const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX = 1
-const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX = 2.5
+export const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX = 1
+export const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX = 2.5
 
 type CreateHorizontalBrowseRawWaveformDetailExposeParams = {
   toggleBarLinePicking: () => void
@@ -29,11 +29,13 @@ type CreateHorizontalBrowseRawWaveformDetailExposeParams = {
   resolveWrapWidth: () => number
 }
 
-const resolveGridShiftMs = (
-  params: Pick<
-    CreateHorizontalBrowseRawWaveformDetailExposeParams,
-    'resolveVisibleDurationSec' | 'resolveWrapWidth'
-  >,
+export type HorizontalBrowseGridShiftMsParams = {
+  resolveVisibleDurationSec: () => number
+  resolveWrapWidth: () => number
+}
+
+export const resolveHorizontalBrowseGridShiftMs = (
+  params: HorizontalBrowseGridShiftMsParams,
   targetCssPx: number
 ) => {
   const visibleDurationMs = Math.max(1, params.resolveVisibleDurationSec() * 1000)
@@ -47,7 +49,7 @@ export const createHorizontalBrowseRawWaveformDetailExpose = (
 ): HorizontalBrowseRawWaveformDetailExpose => {
   const shiftBy =
     (targetCssPx: number, direction: 1 | -1) => (options?: HorizontalBrowseGridShiftOptions) => {
-      const deltaMs = resolveGridShiftMs(params, targetCssPx) * direction
+      const deltaMs = resolveHorizontalBrowseGridShiftMs(params, targetCssPx) * direction
       params.shiftGrid(deltaMs, options)
     }
 

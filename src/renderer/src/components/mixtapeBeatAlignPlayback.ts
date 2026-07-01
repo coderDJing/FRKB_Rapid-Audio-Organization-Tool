@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import {
   canPlayHtmlAudio,
   toPreviewUrl,
@@ -11,6 +11,7 @@ type UseMixtapeBeatAlignPlaybackParams = {
   previewMixxxData: Ref<MixxxWaveformData | null>
   previewPlaying?: Ref<boolean>
   previewStartSec: Ref<number>
+  windowVolumeRef?: Ref<number>
   resolveVisibleDurationSec: () => number
   resolvePreviewDurationSec: () => number
   clampPreviewStart: (value: number) => number
@@ -29,6 +30,10 @@ type DecodeForTransportResult = {
 type StopPlaybackOptions = {
   syncPosition?: boolean
   cancelPending?: boolean
+}
+
+type StartScrubOptions = {
+  resumePlaybackOnStop?: boolean
 }
 
 type ScrubWorkletToMainMessage = {
@@ -56,8 +61,14 @@ const PREVIEW_PLAY_SCHEDULE_LEAD_SEC = 0.03
 const PREVIEW_SCRUB_MAX_RATE = 12
 const PREVIEW_SCRUB_RATE_DEADZONE = 0.04
 const PREVIEW_SCRUB_OUTPUT_GAIN = 0.94
+const DEFAULT_PREVIEW_OUTPUT_VOLUME = 0.8
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
+
+const normalizePreviewOutputVolume = (value: unknown) => {
+  const numeric = Number(value)
+  return clampNumber(Number.isFinite(numeric) ? numeric : DEFAULT_PREVIEW_OUTPUT_VOLUME, 0, 1)
+}
 
 const normalizePcmData = (pcmData: unknown): Float32Array => {
   if (!pcmData) return new Float32Array(0)
@@ -108,6 +119,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     previewMixxxData,
     previewPlaying: previewPlayingParam,
     previewStartSec,
+    windowVolumeRef,
     resolveVisibleDurationSec,
     resolvePreviewDurationSec,
     clampPreviewStart,
@@ -141,11 +153,13 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
   let playbackStartSec = 0
   let playbackDurationSec = 0
   let audioCtx: AudioContext | null = null
+  let masterGainNode: GainNode | null = null
   let sourceNode: AudioBufferSourceNode | null = null
   let scrubNode: AudioWorkletNode | null = null
   let scrubGainNode: GainNode | null = null
   let scrubBuffer: AudioBuffer | null = null
   let scrubCurrentSec = 0
+  let scrubResumePlaybackOnStop = false
   let scrubWorkletModulePromise: Promise<void> | null = null
   let scrubWorkletModuleCtx: AudioContext | null = null
   const audioBufferCache = new Map<string, AudioBuffer>()
@@ -159,6 +173,39 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     contexts.push(audioCtx)
     return audioCtx
   }
+
+  const resolvePreviewOutputVolume = () => normalizePreviewOutputVolume(windowVolumeRef?.value)
+
+  const syncPreviewOutputVolume = () => {
+    if (!audioCtx || audioCtx.state === 'closed' || !masterGainNode) return
+    const volume = resolvePreviewOutputVolume()
+    try {
+      masterGainNode.gain.setTargetAtTime(volume, audioCtx.currentTime, 0.03)
+    } catch {
+      masterGainNode.gain.value = volume
+    }
+  }
+
+  const resolvePreviewOutputNode = (ctx: AudioContext) => {
+    if (!masterGainNode || masterGainNode.context !== ctx) {
+      if (masterGainNode) {
+        try {
+          masterGainNode.disconnect()
+        } catch {}
+      }
+      masterGainNode = ctx.createGain()
+      masterGainNode.gain.value = resolvePreviewOutputVolume()
+      masterGainNode.connect(ctx.destination)
+    }
+    return masterGainNode
+  }
+
+  watch(
+    () => windowVolumeRef?.value,
+    () => {
+      syncPreviewOutputVolume()
+    }
+  )
 
   const syncPreviewWindowToAnchorSec = (anchorSec: number) => {
     const total = resolvePreviewDurationSec()
@@ -238,6 +285,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     }
     scrubBuffer = null
     scrubCurrentSec = 0
+    scrubResumePlaybackOnStop = false
   }
 
   const resolveCurrentScrubSec = () => {
@@ -388,7 +436,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
 
     const source = ctx.createBufferSource()
     source.buffer = buffer
-    source.connect(ctx.destination)
+    source.connect(resolvePreviewOutputNode(ctx))
     sourceNode = source
     playbackDurationSec = duration
     playbackStartSec = safeStart
@@ -428,8 +476,9 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     return true
   }
 
-  const startPreviewScrub = async (anchorSec: number) => {
-    if (!previewPlaying.value || previewDecoding.value) return false
+  const startPreviewScrub = async (anchorSec: number, options: StartScrubOptions = {}) => {
+    if (previewDecoding.value) return false
+    const resumePlaybackOnStop = options.resumePlaybackOnStop ?? previewPlaying.value
     let buffer = sourceNode?.buffer || null
     if (!buffer) {
       const filePath = filePathRef.value
@@ -444,6 +493,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
 
     const token = ++playbackVersion
     stopActivePlayback(false)
+    scrubResumePlaybackOnStop = resumePlaybackOnStop
 
     const ctx = ensureAudioContext(buffer.sampleRate)
     if (ctx.state === 'suspended') {
@@ -457,9 +507,15 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
       await ensureScrubWorkletModule(ctx)
     } catch (error) {
       console.error('[mixtape-beat-align] load scrub worklet failed', error)
+      if (token === playbackVersion) {
+        scrubResumePlaybackOnStop = false
+      }
       return false
     }
-    if (token !== playbackVersion) return false
+    if (token !== playbackVersion) {
+      scrubResumePlaybackOnStop = false
+      return false
+    }
 
     const outputChannels = Math.max(1, Math.min(2, buffer.numberOfChannels || 1))
     const processor = new AudioWorkletNode(ctx, 'mixtape-beat-align-scrub', {
@@ -516,7 +572,7 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     processor.port.postMessage(startTargetMessage)
 
     processor.connect(gainNode)
-    gainNode.connect(ctx.destination)
+    gainNode.connect(resolvePreviewOutputNode(ctx))
     scrubNode = processor
     scrubGainNode = gainNode
     previewPlaying.value = true
@@ -558,8 +614,16 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
       typeof anchorSec === 'number'
         ? clampPlaybackAnchorSec(anchorSec, buffer.duration)
         : resolveCurrentScrubSec()
+    const resumePlayback = scrubResumePlaybackOnStop
     clearScrubNodes()
     const token = ++playbackVersion
+    if (!resumePlayback) {
+      previewPlaying.value = false
+      playbackAudioStartAt = 0
+      playbackAudioLatencySec = 0
+      syncPreviewWindowToAnchorSec(targetAnchor)
+      return false
+    }
     const started = await startPlaybackFromBuffer(buffer, targetAnchor, token)
     if (!started && token === playbackVersion) {
       syncPreviewWindowToAnchorSec(targetAnchor)
@@ -645,6 +709,12 @@ export const useMixtapeBeatAlignPlayback = (params: UseMixtapeBeatAlignPlaybackP
     stopPreviewPlayback({ syncPosition: false })
     audioBufferCache.clear()
     audioBufferInflight.clear()
+    if (masterGainNode) {
+      try {
+        masterGainNode.disconnect()
+      } catch {}
+      masterGainNode = null
+    }
     if (audioCtx && audioCtx.state !== 'closed') {
       try {
         void audioCtx.close()

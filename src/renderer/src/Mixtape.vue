@@ -1019,6 +1019,7 @@ onBeforeUnmount(() => {
       :track-menu-master-tempo-checked="trackMenuMasterTempoChecked"
       :beat-align-dialog-visible="beatAlignDialogVisible"
       :beat-align-track="beatAlignTrack"
+      :beat-align-window-volume="mixtapeWindowVolume"
       :resolve-track-title="resolveTrackTitle"
       :handle-beat-align-grid-definition-save="handleBeatAlignGridDefinitionSave"
       :handle-beat-align-dialog-cancel="handleBeatAlignDialogCancel"

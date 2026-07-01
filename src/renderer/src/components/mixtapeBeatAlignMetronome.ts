@@ -8,6 +8,7 @@ type UseMixtapeBeatAlignMetronomeParams = {
   bpm: Readonly<Ref<number>>
   firstBeatMs: Readonly<Ref<number>>
   playbackRate?: Readonly<Ref<number>>
+  outputVolume?: Readonly<Ref<number>>
   resetKey?: Readonly<Ref<unknown>>
   outputMode?: 'internal' | 'external'
   syncExternalState?: (state: { enabled: boolean; volumeLevel: MetronomeVolumeLevel }) => void
@@ -27,12 +28,17 @@ const TICK_ATTACK_SEC = 0.002
 const TICK_DURATION_SEC = 0.045
 const TICK_GAP_SEC = 0.01
 const MAX_TICKS_PER_FRAME = 3
+const DEFAULT_OUTPUT_VOLUME = 0.8
 const ANCHOR_DIFF_EPSILON = 0.000001
 const MAX_CONTINUOUS_FRAME_INTERVAL_SEC = 0.35
 const ANCHOR_JUMP_GRACE_SEC = 0.08
 
 const clampNumber = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
 const isFinitePositive = (value: number) => Number.isFinite(value) && value > 0
+const normalizeOutputVolume = (value: unknown) => {
+  const numeric = Number(value)
+  return clampNumber(Number.isFinite(numeric) ? numeric : DEFAULT_OUTPUT_VOLUME, 0, 1)
+}
 const normalizeMetronomeVolumeLevel = (level: unknown): MetronomeVolumeLevel => {
   const numeric = Math.round(Number(level) || DEFAULT_METRONOME_VOLUME_LEVEL)
   const clamped = clampNumber(numeric, 1, TICK_GAIN_LEVELS.length)
@@ -135,7 +141,9 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
       1,
       TICK_GAIN_LEVELS.length
     )
-    const gainValue = TICK_GAIN_LEVELS[gainLevel - 1] || TICK_GAIN_LEVELS[0]
+    const gainValue =
+      (TICK_GAIN_LEVELS[gainLevel - 1] || TICK_GAIN_LEVELS[0]) *
+      normalizeOutputVolume(params.outputVolume?.value)
     gainNode.gain.setValueAtTime(0.0001, now)
     gainNode.gain.exponentialRampToValueAtTime(gainValue, now + TICK_ATTACK_SEC)
     gainNode.gain.exponentialRampToValueAtTime(0.0001, now + TICK_DURATION_SEC)
