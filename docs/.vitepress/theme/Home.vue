@@ -163,7 +163,7 @@ const zhContent = {
     titleTop: '终结混乱的',
     titleBottom: 'DJ 音频工作站',
     subtitle:
-      '不再需要在多个软件间疲于奔命。从指纹去重、波形试听、Rekordbox 库集成，到双轨横推、录音库与 Mixtape Stem 工作流，FRKB 用键盘优先的操作方式，为你打造一站式、所见即所得的桌面音频整理引擎。'
+      '不再需要在多个软件间疲于奔命。从真实文件整理、SET 歌单、指纹去重、波形试听、Rekordbox 库集成，到双轨横推、录音库与 Mixtape Stem 工作流，FRKB 用键盘优先的操作方式，为你打造一站式、所见即所得的桌面音频整理引擎。'
   },
   impacts: [
     {
@@ -201,9 +201,19 @@ const zhContent = {
         '基于音频指纹技术，精准识别内容重复的文件。界面上的分组与目录即是真实的磁盘结构，同步生效，告别重复与混乱。'
     },
     {
+      title: 'SET 托管歌单',
+      details:
+        '按演出或场景准备映射型歌单，支持重复曲目、稳定序号、拖拽重排和删除保护。整理 SET 不必破坏源曲目。'
+    },
+    {
       title: 'Rekordbox & Pioneer 生态接入',
       details:
-        '直接读取本机 Rekordbox 库与歌单，支持拖拽排序、Cue/Loop 读取和 XML 一次性导出。支持 Pioneer U 盘库直接读取与预览。'
+        '直接读取本机 Rekordbox 库与 Pioneer U 盘库，支持拖拽排序、Cue/Loop 保留、键盘多选、精选表演者导入和 XML 导出。'
+    },
+    {
+      title: '可控的分析流程',
+      details:
+        '歌单分析可以确认、暂不分析或手动启动，列表内直接显示进度。后台队列按闲时调度，尽量不抢前台播放。'
     },
     {
       title: '键盘优先的人机工学',
@@ -218,7 +228,8 @@ const zhContent = {
   bentoFeatures: [
     {
       title: '智能节拍网格与分析',
-      details: '分析曲目速度、调性与节拍网格，支持 Tap Tempo 手动修正和列表内分析进度展示。'
+      details:
+        '分析曲目速度、调性与节拍网格，支持 Tap Tempo 手动修正、未分析队列和列表内分析进度展示。'
     },
     {
       title: '全能格式转换与元数据',
@@ -226,7 +237,8 @@ const zhContent = {
     },
     {
       title: '跨设备云同步',
-      details: '支持 SHA256 指纹双向云同步，精选表演者自动拆分联动，数据库轻量便携。'
+      details:
+        '支持 SHA256 指纹双向云同步、清晰同步摘要和可最小化进度窗口，精选表演者自动拆分联动。'
     },
     {
       title: '录音库与双轨录音',
@@ -247,7 +259,17 @@ const zhContent = {
     },
     {
       title: '全局搜歌与双源发现',
-      details: '支持跨界面搜歌、网易云网页搜索和相似歌曲双源查询。'
+      details: '支持跨界面搜歌、网易云网页搜索、库菜单相似歌曲推荐和不再推荐屏蔽。'
+    },
+    {
+      title: '指纹库与相似歌曲',
+      details:
+        '可从库入口扫描全库加入指纹库，为后续查重、跨来源分析缓存和相似歌曲推荐提供稳定基础。'
+    },
+    {
+      title: 'SET 与演出准备',
+      details:
+        'SET 歌单保留源曲目映射，允许重复编排和序号排序，适合为不同演出、场景或能量段准备曲目。'
     },
     {
       title: '外部库分析缓存',
@@ -277,7 +299,7 @@ const enContent = {
     titleTop: 'End the Chaos.',
     titleBottom: 'The Ultimate DJ Audio Workspace.',
     subtitle:
-      'Stop bouncing between apps. From fingerprint dedup, waveform preview, and Rekordbox integration, to dual-deck browsing, the Recording Library, and Mixtape Stem workflows. FRKB delivers an all-in-one, WYSIWYG desktop engine built around keyboard-first control.'
+      'Stop bouncing between apps. From real file organization, SET playlists, fingerprint dedup, waveform preview, and Rekordbox integration, to dual-deck browsing, the Recording Library, and Mixtape Stem workflows. FRKB delivers an all-in-one, WYSIWYG desktop engine built around keyboard-first control.'
   },
   impacts: [
     {
@@ -316,9 +338,19 @@ const enContent = {
         'Identify duplicates based on audio characteristics. UI groups and directories reflect the true disk structure. Say goodbye to duplicates and mess.'
     },
     {
+      title: 'Managed SET Playlists',
+      details:
+        'Prepare performance sets as mapping-based playlists with duplicate entries, stable indices, drag reordering, and source-track deletion protection.'
+    },
+    {
       title: 'Rekordbox & Pioneer Integration',
       details:
-        'Directly read local Rekordbox libraries and playlists with drag-to-reorder, Cue/Loop reading, and one-click XML export. Browse Pioneer USB libraries directly.'
+        'Directly read local Rekordbox and Pioneer USB libraries with drag-to-reorder, Cue/Loop preservation, keyboard multi-selection, curated artist import, and XML export.'
+    },
+    {
+      title: 'Analysis Under Your Control',
+      details:
+        'Confirm, skip, or manually start playlist analysis. Per-track progress stays visible, while background queues are scheduled around foreground playback.'
     },
     {
       title: 'Keyboard-First Ergonomics',
@@ -334,7 +366,7 @@ const enContent = {
     {
       title: 'Smart Beatgrid & Analysis',
       details:
-        'BPM, key, and beat-grid analysis with Tap Tempo support and visible per-track analysis progress.'
+        'BPM, key, and beat-grid analysis with Tap Tempo, manual unanalysed-track queues, and visible per-track analysis progress.'
     },
     {
       title: 'Format Conversion & Metadata',
@@ -344,7 +376,7 @@ const enContent = {
     {
       title: 'Cross-Device Cloud Sync',
       details:
-        'SHA256-based fingerprint sync, curated artist split-linking, and portable library state.'
+        'SHA256-based fingerprint sync, clear sync summaries, minimizable progress, curated artist split-linking, and portable library state.'
     },
     {
       title: 'Recording Library',
@@ -368,7 +400,18 @@ const enContent = {
     },
     {
       title: 'Global Search & Discovery',
-      details: 'Global search, NetEase Cloud search, and dual-source similar track discovery.'
+      details:
+        'Global search, NetEase Cloud search, library-menu similar track discovery, and controls for hiding unwanted recommendations.'
+    },
+    {
+      title: 'Fingerprint Library',
+      details:
+        'Scan whole libraries into a reusable fingerprint store for more consistent deduplication, analysis reuse, and similar-track workflows.'
+    },
+    {
+      title: 'SET Preparation',
+      details:
+        'SET playlists keep source-track mappings intact while allowing duplicate programming, stable ordering, and scene-specific performance crates.'
     },
     {
       title: 'External Analysis Cache',

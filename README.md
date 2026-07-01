@@ -25,7 +25,7 @@
 
 ## What It Is
 
-**FRKB** is a desktop audio workflow tool for DJs and music collectors who need to organize, preview, analyze, and prepare large track libraries quickly. It combines real file-based library management, waveform browsing, fingerprint deduplication, Rekordbox and Pioneer library access, dual-deck auditioning, recording, metadata cleanup, conversion, and Mixtape preparation in one Windows/macOS app.
+**FRKB** is a desktop audio workflow tool for DJs and music collectors who need to organize, preview, analyze, and prepare large track libraries quickly. It combines real file-based library management, SET playlist preparation, waveform browsing, fingerprint deduplication, Rekordbox and Pioneer library access, dual-deck auditioning, recording, metadata cleanup, conversion, similar-track discovery, cloud fingerprint sync, and Mixtape preparation in one Windows/macOS app.
 
 FRKB is built around a simple rule: the structure you see in the app should match the actual music files on disk. It is not just a reference manager. When you organize, move, export, deduplicate, or restore tracks, the file system stays aligned with your library.
 
@@ -50,6 +50,7 @@ FRKB does not provide an official Linux release.
 
 - **Real file management**: FRKB manages the audio files themselves, so playlists and library folders stay reflected on disk.
 - **Filter and Curated libraries**: A two-stage DJ workflow for fast triage and long-term selection.
+- **SET playlists**: Prepare performance sets as mapping-based playlists that support duplicate entries, stable track indices, drag reordering, and deletion protection for referenced source tracks.
 - **Drag-and-drop import and movement**: Import files or folders, move tracks between playlists, and drag copies out to Explorer/Finder with Ctrl/Option.
 - **Safe recycle bin**: Deleted tracks and deduplicated items go to FRKB's recycle bin and can be restored to their original playlists.
 - **Playlist cleanup tools**: Clear playlists with visible progress, batch rename playlist tracks, clean missing external-library records, and keep selection counts visible before bulk operations.
@@ -62,6 +63,8 @@ FRKB does not provide an official Linux release.
 - **BPM and beat-grid analysis**: Analyze tempo and grid placement, tap BPM manually, restore system-analyzed BPM, and work with stricter grid candidate rules for difficult tracks.
 - **Key analysis**: Display musical key in Classic notation such as `C#m` or Camelot notation such as `1A/1B`.
 - **Visible analysis progress**: Track-level analysis status is surfaced in the song list instead of leaving background work invisible.
+- **Manual analysis control**: Playlist analysis can be confirmed, skipped, or started manually, so imported crates do not unexpectedly consume foreground playback resources.
+- **Fingerprint library scanning**: Build a reusable fingerprint library from selected libraries to make future deduplication and similar-track workflows faster and more consistent.
 - **External-source analysis cache**: Rekordbox, Pioneer USB, and ordinary external tracks can reuse cached analysis data instead of repeatedly reprocessing the same files.
 - **Metadata editing and online fill**: Edit tags and cover art, search MusicBrainz, use AcoustID/Chromaprint matching, and batch-fill metadata.
 - **Native Chromaprint fingerprinting**: AcoustID fingerprint generation runs through the native module for lower overhead during metadata matching.
@@ -73,6 +76,7 @@ FRKB does not provide an official Linux release.
 - **Output device selection**: Play through a selected audio device or follow the system default.
 - **Multiple waveform styles**: SoundCloud-style waveform, detailed waveform, RGB energy view, list waveform previews, and single-track editing waveforms.
 - **Large waveform browsing**: Dual-track and edit-mode waveforms support precise seeking, cue placement, grid inspection, and smooth redraw during playback.
+- **Lightweight waveform caches**: RGB display data and surface-specific caches keep large waveforms, list previews, and Mixtape timelines responsive across repeat visits.
 - **Title-bar audio visualization**: Monitor playback energy from the title bar without giving up screen space.
 - **File association and external playback**: Open supported audio files from the system and audition them temporarily without importing them into the library.
 - **Global shortcuts**: Control playback while the window is minimized, with configurable show/hide behavior.
@@ -105,13 +109,14 @@ FRKB does not provide an official Linux release.
 - **Pioneer USB support**: Read Device Library and OneLibrary USB structures, including playlist trees, waveform previews, multi-drive identity, and track playback.
 - **External-library context menus**: Use familiar right-click actions on Rekordbox and Pioneer rows, including copying to Filter or Curated libraries.
 - **Keyboard multi-selection**: Select multiple songs in Rekordbox/Pioneer lists with keyboard-style range selection.
+- **Curated artist import**: Import curated artist data from Rekordbox and Pioneer USB libraries to keep selection tags useful across sources.
 - **Missing-file handling**: Missing source files are clearly marked, blocked from playback, and can be cleaned from Rekordbox playlist records when appropriate.
 
 ### Mixtape And Stem Workflow
 
 - **Mixtape timeline workspace**: Arrange tracks on a timeline, preview transitions, edit beat alignment, and export a timeline-accurate result.
 - **Cross-window track drag-in**: Drag songs from the main library directly into the Mixtape workspace.
-- **Beat alignment tools**: Adjust grids, preview alignment, use metronome tools, and keep timeline playback aligned with edited grid data.
+- **Beat alignment tools**: Adjust grids, preview alignment on unified waveform controls, use metronome tools, and keep timeline playback aligned with edited grid data.
 - **Gain, BPM, mute, and loop controls**: Shape the mix with timeline controls, envelopes, mute sections, loop overlays, and undo support.
 - **Stem preparation**: Managed Stem runtime, separation cache management, ONNX fast separation, and DirectML/XPU acceleration support auto-recording and mix preparation workflows.
 
@@ -150,8 +155,8 @@ FRKB does not provide an official Linux release.
 - **Global track search**: Search across the app and jump back to the matching location.
 - **Song filtering**: Filter by title, artist, album, duration, format, BPM, and more, with optional persistence after restart.
 - **NetEase Cloud search**: Search the selected track on NetEase Cloud Music from the context menu.
-- **Similar tracks query**: Query multiple sources for tracks with a similar vibe.
-- **Cloud fingerprint sync**: Sync local SHA256 fingerprints with the FRKB cloud backend, including diff analysis, paginated pulls, batched uploads, quotas, and rate limiting.
+- **Similar tracks query**: Query multiple sources for tracks with a similar vibe, launch recommendations from library menus, and hide tracks you no longer want suggested.
+- **Cloud fingerprint sync**: Sync local SHA256 fingerprints with the FRKB cloud backend, including diff analysis, paginated pulls, batched uploads, quotas, rate limiting, clear summaries, and a minimizable progress window.
 - **Curated artist sync**: Split and link multi-artist tracks and sync curated artist data across devices.
 - **Internationalization**: Built-in Simplified Chinese and English language packs.
 
