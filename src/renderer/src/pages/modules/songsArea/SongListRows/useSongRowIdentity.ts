@@ -21,8 +21,13 @@ export const useSongRowIdentity = (params: {
       .replace(/\\/g, '/')
       .startsWith('library/PioneerDeviceLibrary')
   )
+  const isSetLibraryContext = computed(() =>
+    String(params.songListRootDir.value || '')
+      .replace(/\\/g, '/')
+      .startsWith('library/SetLibrary')
+  )
   const shouldDisplayPlaylistTrackNumber = computed(
-    () => isNormalLibraryContext.value || isPioneerLibraryContext.value
+    () => isNormalLibraryContext.value || isPioneerLibraryContext.value || isSetLibraryContext.value
   )
 
   const getRowKey = (song: ISongInfo) => {

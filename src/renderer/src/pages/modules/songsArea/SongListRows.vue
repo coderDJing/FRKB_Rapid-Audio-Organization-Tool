@@ -518,7 +518,7 @@ const handleRowDragOver = (event: DragEvent, item: { song: ISongInfo; idx: numbe
   const sourceItemIds = resolveDragItemIds(event)
   if (!sourceItemIds.length) return
   updateDropPadRects()
-  const targetId = item?.song?.mixtapeItemId
+  const targetId = getRowKey(item.song)
   if (targetId && sourceItemIds.includes(targetId)) {
     clearDragHover()
     return
@@ -602,7 +602,7 @@ const handleRowDrop = (event: DragEvent, item: { song: ISongInfo; idx: number })
   if (!sourceItemIds.length) return
   event.preventDefault()
   event.stopPropagation()
-  const targetId = item.song?.mixtapeItemId
+  const targetId = getRowKey(item.song)
   if (targetId && sourceItemIds.includes(targetId)) {
     clearDragHover()
     return

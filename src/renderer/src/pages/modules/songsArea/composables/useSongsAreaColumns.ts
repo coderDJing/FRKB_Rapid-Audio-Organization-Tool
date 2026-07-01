@@ -217,6 +217,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
   })
   const canUsePlaylistTrackNumberForIndex = computed(() => {
     if (columnMode.value !== 'default') return false
+    if (isSetView.value) return true
     const dirPath = String(
       libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
     ).replace(/\\/g, '/')

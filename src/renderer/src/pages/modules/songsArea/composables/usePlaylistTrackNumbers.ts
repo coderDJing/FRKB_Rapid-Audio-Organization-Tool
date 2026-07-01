@@ -21,8 +21,10 @@ const normalizePath = (value: string | undefined | null) =>
     .replace(/\//g, '\\')
     .toLowerCase()
 
-const buildNumberMap = (orderedFilePaths: string[]) =>
-  new Map(orderedFilePaths.map((filePath, index) => [normalizePath(filePath), index + 1]))
+const normalizeSetItemId = (value: string | undefined | null) => String(value || '').trim()
+
+const buildNumberMap = (orderedIds: string[], normalizeId: (value: string) => string) =>
+  new Map(orderedIds.map((id, index) => [normalizeId(id), index + 1]))
 
 export const usePlaylistTrackNumbers = (params: UsePlaylistTrackNumbersParams) => {
   const {
@@ -41,10 +43,15 @@ export const usePlaylistTrackNumbers = (params: UsePlaylistTrackNumbersParams) =
     const libraryName = resolveCoreLibraryNameBySongListUUID(songsAreaState.songListUUID)
     const nodeType = libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type
     return (
-      nodeType === 'songList' &&
-      (libraryName === 'FilterLibrary' || libraryName === 'CuratedLibrary')
+      nodeType === 'setList' ||
+      (nodeType === 'songList' &&
+        (libraryName === 'FilterLibrary' || libraryName === 'CuratedLibrary'))
     )
   })
+
+  const isSetPlaylistTrackNumberList = computed(
+    () => libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)?.type === 'setList'
+  )
 
   const hasActiveTrackFilters = computed(() =>
     columnData.value.some((column) => Boolean(column.filterActive))
@@ -80,9 +87,13 @@ export const usePlaylistTrackNumbers = (params: UsePlaylistTrackNumbersParams) =
     runtime.playingData.playingSongListData = [...songsAreaState.songInfoArr]
     const currentPlayingSong = runtime.playingData.playingSong
     if (!currentPlayingSong?.filePath) return
-    const matchedSong = songsAreaState.songInfoArr.find(
-      (song) => normalizePath(song.filePath) === normalizePath(currentPlayingSong.filePath)
-    )
+    const currentSetItemId = normalizeSetItemId(currentPlayingSong.setItemId)
+    const matchedSong = songsAreaState.songInfoArr.find((song) => {
+      if (isSetPlaylistTrackNumberList.value && currentSetItemId) {
+        return normalizeSetItemId(song.setItemId) === currentSetItemId
+      }
+      return normalizePath(song.filePath) === normalizePath(currentPlayingSong.filePath)
+    })
     if (!matchedSong) return
     runtime.playingData.playingSong = {
       ...currentPlayingSong,
@@ -90,37 +101,48 @@ export const usePlaylistTrackNumbers = (params: UsePlaylistTrackNumbersParams) =
     }
   }
 
-  const isSameOrderAsCurrentTrackNumbers = (orderedFilePaths: string[]) => {
-    const currentOrderedFilePaths = originalSongInfoArr.value
-      .map((song) => song.filePath)
-      .filter(Boolean)
-    if (currentOrderedFilePaths.length !== orderedFilePaths.length) return false
-    return currentOrderedFilePaths.every(
-      (filePath, index) => normalizePath(filePath) === normalizePath(orderedFilePaths[index])
+  const normalizeTrackNumberId = (value: string) =>
+    isSetPlaylistTrackNumberList.value ? normalizeSetItemId(value) : normalizePath(value)
+
+  const getTrackNumberId = (song: ISongInfo) =>
+    isSetPlaylistTrackNumberList.value
+      ? normalizeSetItemId(song.setItemId)
+      : String(song.filePath || '').trim()
+
+  const getOrderedTrackNumberIds = (songs: ISongInfo[]) =>
+    songs.map(getTrackNumberId).filter(Boolean)
+
+  const isSameOrderAsCurrentTrackNumbers = (orderedIds: string[]) => {
+    const currentOrderedIds = getOrderedTrackNumberIds(originalSongInfoArr.value)
+    if (currentOrderedIds.length !== orderedIds.length) return false
+    return currentOrderedIds.every(
+      (id, index) => normalizeTrackNumberId(id) === normalizeTrackNumberId(orderedIds[index])
     )
   }
 
-  const applyOptimisticTrackNumbers = (orderedFilePaths: string[]) => {
-    const numberMap = buildNumberMap(orderedFilePaths)
+  const applyOptimisticTrackNumbers = (orderedIds: string[]) => {
+    const numberMap = buildNumberMap(orderedIds, normalizeTrackNumberId)
     const songMap = new Map(
-      originalSongInfoArr.value.map((song) => [normalizePath(song.filePath), song] as const)
+      originalSongInfoArr.value.map(
+        (song) => [normalizeTrackNumberId(getTrackNumberId(song)), song] as const
+      )
     )
     const nextSongs: ISongInfo[] = []
     const used = new Set<string>()
-    for (const filePath of orderedFilePaths) {
-      const normalizedPath = normalizePath(filePath)
-      const song = songMap.get(normalizedPath)
-      if (!song || used.has(normalizedPath)) continue
-      used.add(normalizedPath)
-      const nextNumber = numberMap.get(normalizedPath)
+    for (const id of orderedIds) {
+      const normalizedId = normalizeTrackNumberId(id)
+      const song = songMap.get(normalizedId)
+      if (!song || used.has(normalizedId)) continue
+      used.add(normalizedId)
+      const nextNumber = numberMap.get(normalizedId)
       nextSongs.push({
         ...song,
         playlistTrackNumber: nextNumber
       })
     }
     for (const song of originalSongInfoArr.value) {
-      const normalizedPath = normalizePath(song.filePath)
-      if (used.has(normalizedPath)) continue
+      const normalizedId = normalizeTrackNumberId(getTrackNumberId(song))
+      if (used.has(normalizedId)) continue
       nextSongs.push({ ...song })
     }
     originalSongInfoArr.value = markRaw(nextSongs)
@@ -144,12 +166,14 @@ export const usePlaylistTrackNumbers = (params: UsePlaylistTrackNumbersParams) =
     })
   }
 
-  const persistTrackNumbers = async (orderedFilePaths: string[]) => {
-    const songListPath = libraryUtils.findDirPathByUuid(songsAreaState.songListUUID)
-    if (!songListPath) {
+  const persistTrackNumbers = async (orderedIds: string[]) => {
+    const songListPath = isSetPlaylistTrackNumberList.value
+      ? ''
+      : libraryUtils.findDirPathByUuid(songsAreaState.songListUUID)
+    if (!isSetPlaylistTrackNumberList.value && !songListPath) {
       throw new Error('目标歌单路径不存在')
     }
-    const isNoop = isSameOrderAsCurrentTrackNumbers(orderedFilePaths)
+    const isNoop = isSameOrderAsCurrentTrackNumbers(orderedIds)
     if (isNoop) {
       try {
         emitter.emit('songsArea/clipboardHint', {
@@ -161,19 +185,28 @@ export const usePlaylistTrackNumbers = (params: UsePlaylistTrackNumbersParams) =
     trackNumberMutationPending.value = true
     const snapshotBeforeUpdate = originalSongInfoArr.value.map((song) => ({ ...song }))
     try {
-      applyOptimisticTrackNumbers(orderedFilePaths)
-      const result = await window.electron.ipcRenderer.invoke('songList:reorder-track-numbers', {
-        songListPath,
-        orderedFilePaths
-      })
-      if (!result?.updated || Number(result?.total || 0) <= 0) {
+      applyOptimisticTrackNumbers(orderedIds)
+      const result = isSetPlaylistTrackNumberList.value
+        ? await window.electron.ipcRenderer.invoke('setList:reorder', {
+            playlistUuid: songsAreaState.songListUUID,
+            orderedIds
+          })
+        : await window.electron.ipcRenderer.invoke('songList:reorder-track-numbers', {
+            songListPath,
+            orderedFilePaths: orderedIds
+          })
+      if (
+        isSetPlaylistTrackNumberList.value
+          ? result !== true
+          : !result?.updated || Number(result?.total || 0) <= 0
+      ) {
         throw new Error('真实序号写入失败')
       }
       try {
         emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
         emitter.emit('songsArea/clipboardHint', {
           message: t('tracks.playlistTrackNumbersRenumberedHint', {
-            count: orderedFilePaths.length
+            count: orderedIds.length
           })
         })
       } catch {}
@@ -187,15 +220,15 @@ export const usePlaylistTrackNumbers = (params: UsePlaylistTrackNumbersParams) =
 
   const buildReorderedVisibleSongs = (sourceItemIds: string[], targetIndex: number) => {
     const normalizedSourceSet = new Set(
-      sourceItemIds.map((itemId) => normalizePath(itemId)).filter(Boolean)
+      sourceItemIds.map((itemId) => normalizeTrackNumberId(itemId)).filter(Boolean)
     )
     const currentVisibleSongs = [...songsAreaState.songInfoArr]
     const moving = currentVisibleSongs.filter((song) =>
-      normalizedSourceSet.has(normalizePath(song.filePath))
+      normalizedSourceSet.has(normalizeTrackNumberId(getTrackNumberId(song)))
     )
     if (moving.length === 0) return null
     const remaining = currentVisibleSongs.filter(
-      (song) => !normalizedSourceSet.has(normalizePath(song.filePath))
+      (song) => !normalizedSourceSet.has(normalizeTrackNumberId(getTrackNumberId(song)))
     )
     let insertIndex = remaining.length
     if (targetIndex <= 0) {
@@ -203,7 +236,9 @@ export const usePlaylistTrackNumbers = (params: UsePlaylistTrackNumbersParams) =
     } else if (targetIndex < currentVisibleSongs.length) {
       const movingBefore = currentVisibleSongs
         .slice(0, Math.min(targetIndex, currentVisibleSongs.length))
-        .filter((song) => normalizedSourceSet.has(normalizePath(song.filePath))).length
+        .filter((song) =>
+          normalizedSourceSet.has(normalizeTrackNumberId(getTrackNumberId(song)))
+        ).length
       insertIndex = Math.max(0, Math.min(remaining.length, targetIndex - movingBefore))
     }
     return [...remaining.slice(0, insertIndex), ...moving, ...remaining.slice(insertIndex)]
@@ -220,18 +255,15 @@ export const usePlaylistTrackNumbers = (params: UsePlaylistTrackNumbersParams) =
     )
     if (!reorderedVisibleSongs) return
     const isDescending = sortedTrackColumn.value?.order === 'desc'
-    const orderedFilePaths = (
+    const orderedIds = getOrderedTrackNumberIds(
       isDescending ? [...reorderedVisibleSongs].reverse() : reorderedVisibleSongs
     )
-      .map((song) => song.filePath)
-      .filter(Boolean)
-    await persistTrackNumbers(orderedFilePaths)
+    await persistTrackNumbers(orderedIds)
   }
 
   const handleRenumberTracksByVisibleOrder = async () => {
     if (!canRenumberPlaylistTracks.value) return
-    const orderedFilePaths = songsAreaState.songInfoArr.map((song) => song.filePath).filter(Boolean)
-    await persistTrackNumbers(orderedFilePaths)
+    await persistTrackNumbers(getOrderedTrackNumberIds(songsAreaState.songInfoArr))
   }
 
   return {

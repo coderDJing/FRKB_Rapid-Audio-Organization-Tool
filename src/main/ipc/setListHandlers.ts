@@ -208,6 +208,7 @@ function createMissingSetSong(item: SetItemRecord): ISongInfo {
       label: undefined,
       bitrate: undefined,
       container: undefined,
+      playlistTrackNumber: item.sortOrder,
       fileMissing: true
     },
     parseSetItemAnalysisJson(item.analysisJson)
@@ -739,7 +740,8 @@ export function registerSetListHandlers() {
             item,
             {
               ...scannedSong,
-              setItemId: item.id
+              setItemId: item.id,
+              playlistTrackNumber: item.sortOrder
             },
             playlistRootByUuid
           )
