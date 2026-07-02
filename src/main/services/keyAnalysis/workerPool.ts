@@ -130,6 +130,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   }
 
   const collectJobResultErrors = (
+    job: KeyAnalysisJob | undefined,
     payloadResult?: WorkerPayload['result'],
     payloadError?: string
   ): string[] => {
@@ -137,6 +138,9 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (payloadResult?.keyError) errors.push(`key: ${payloadResult.keyError}`)
     if (payloadResult?.bpmError && !isNoBpmBeatGridResultError(payloadResult.bpmError)) {
       errors.push(`bpm: ${payloadResult.bpmError}`)
+    }
+    if (job?.needsEnergy === true && payloadResult?.energyScore === undefined) {
+      errors.push('energy: missing energy score from analyzer')
     }
     if (payloadError) errors.push(`worker错误: ${payloadError}`)
     return errors
@@ -148,7 +152,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     payloadResult?: WorkerPayload['result'],
     payloadError?: string
   ) => {
-    const errors = collectJobResultErrors(payloadResult, payloadError)
+    const errors = collectJobResultErrors(job, payloadResult, payloadError)
     if (errors.length <= 0) return
     const elapsedMs = job.startTime ? Date.now() - job.startTime : job.trace?.elapsedMs
     log.error('[闲时分析] 任务完成但有错误', {
@@ -167,9 +171,10 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   }
 
   const getJobResultErrorDetail = (
+    job: KeyAnalysisJob | undefined,
     payloadResult?: WorkerPayload['result'],
     payloadError?: string
-  ): string => collectJobResultErrors(payloadResult, payloadError).join('; ').slice(0, 300)
+  ): string => collectJobResultErrors(job, payloadResult, payloadError).join('; ').slice(0, 300)
 
   const persistAnalyzePartialResult = async (
     job: KeyAnalysisJob,
@@ -326,10 +331,14 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       return
     }
 
+    let terminalProgress: KeyAnalysisProgress | null = null
+    let resultErrorDetail = ''
+
     if (job) {
-      const resultErrorDetail = getJobResultErrorDetail(payloadResult, payloadError)
-      applyWorkerProgress(worker, job, {
-        stage: payloadError ? 'job-error' : 'job-done',
+      resultErrorDetail = getJobResultErrorDetail(job, payloadResult, payloadError)
+      const terminalStage = payloadError || resultErrorDetail ? 'job-error' : 'job-done'
+      terminalProgress = {
+        stage: terminalStage,
         elapsedMs:
           typeof job.trace?.elapsedMs === 'number'
             ? job.trace.elapsedMs
@@ -337,14 +346,83 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
               ? Date.now() - job.startTime
               : 0,
         detail: payloadError ? String(payloadError).slice(0, 300) : resultErrorDetail || undefined
+      }
+      // 先清掉 worker 阶段超时，但不要向 renderer/manual-batch 宣告终态。
+      // 终态必须等 key/BPM/energy/waveform 持久化完成后再发。
+      deps.onJobProgress(worker, job, terminalProgress)
+    }
+
+    let persistenceErrorDetail = ''
+    try {
+      if (job && payloadResult && !payloadResult.keyError) {
+        const keyText = payloadResult.keyText
+        if (isValidKeyText(keyText)) {
+          await deps.persistence.persistKey(job.filePath, keyText)
+        }
+      }
+
+      if (job && payloadResult) {
+        if (isNoBpmBeatGridResultError(payloadResult.bpmError)) {
+          await deps.persistence.persistNoBpm(job.filePath)
+        } else if (!payloadResult.bpmError) {
+          const bpmValue = payloadResult.bpm
+          if (isValidBpm(bpmValue)) {
+            await deps.persistence.persistBpm(
+              job.filePath,
+              bpmValue,
+              payloadResult.firstBeatMs,
+              payloadResult.barBeatOffset,
+              payloadResult.timeBasisOffsetMs,
+              { firstBeatCoordinate: 'audio' }
+            )
+          }
+        }
+      }
+
+      if (job && payloadResult?.energyScore !== undefined) {
+        await deps.persistence.persistEnergy(
+          job.filePath,
+          payloadResult.energyScore,
+          payloadResult.energyAlgorithmVersion
+        )
+      }
+
+      if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {
+        await deps.persistence.persistWaveform(
+          job.filePath,
+          payloadResult.mixxxWaveformData,
+          payloadResult.unifiedDisplayWaveformData ?? null
+        )
+        deps.events.emit('waveform-updated', { filePath: job.filePath })
+      }
+    } catch (error) {
+      persistenceErrorDetail = `persist: ${
+        error instanceof Error ? error.message : String(error || 'unknown error')
+      }`.slice(0, 300)
+      if (terminalProgress) {
+        terminalProgress = {
+          ...terminalProgress,
+          stage: 'job-error',
+          detail: [terminalProgress.detail, persistenceErrorDetail].filter(Boolean).join('; ')
+        }
+      }
+      log.error('[闲时分析] 任务结果持久化失败', {
+        filePath: job?.filePath,
+        fileName: job?.filePath ? path.basename(job.filePath) : '',
+        error: persistenceErrorDetail
       })
+    }
+
+    if (job && terminalProgress) {
+      applyWorkerProgress(worker, job, terminalProgress)
       if (payloadError) {
         deps.onJobFailure(job, 'worker-error', String(payloadError).slice(0, 300))
-      } else if (resultErrorDetail) {
-        deps.onJobFailure(job, 'analysis-error', resultErrorDetail)
+      } else if (resultErrorDetail || persistenceErrorDetail) {
+        deps.onJobFailure(job, 'analysis-error', resultErrorDetail || persistenceErrorDetail)
       } else {
         deps.onJobSuccess(job)
       }
+      logCompletedJobErrors(worker, job, payloadResult, payloadError || persistenceErrorDetail)
     }
 
     if (typeof jobId === 'number') {
@@ -369,53 +447,10 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
 
     if (job) {
       deps.activeByPath.delete(job.normalizedPath)
-      logCompletedJobErrors(worker, job, payloadResult, payloadError)
       if (job.source === 'background') {
         deps.background.unmarkProcessing(job.jobId)
         deps.background.emitBackgroundStatus()
       }
-    }
-
-    if (job && payloadResult && !payloadResult.keyError) {
-      const keyText = payloadResult.keyText
-      if (isValidKeyText(keyText)) {
-        await deps.persistence.persistKey(job.filePath, keyText)
-      }
-    }
-
-    if (job && payloadResult) {
-      if (isNoBpmBeatGridResultError(payloadResult.bpmError)) {
-        await deps.persistence.persistNoBpm(job.filePath)
-      } else if (!payloadResult.bpmError) {
-        const bpmValue = payloadResult.bpm
-        if (isValidBpm(bpmValue)) {
-          await deps.persistence.persistBpm(
-            job.filePath,
-            bpmValue,
-            payloadResult.firstBeatMs,
-            payloadResult.barBeatOffset,
-            payloadResult.timeBasisOffsetMs,
-            { firstBeatCoordinate: 'audio' }
-          )
-        }
-      }
-    }
-
-    if (job && payloadResult?.energyScore !== undefined) {
-      await deps.persistence.persistEnergy(
-        job.filePath,
-        payloadResult.energyScore,
-        payloadResult.energyAlgorithmVersion
-      )
-    }
-
-    if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {
-      await deps.persistence.persistWaveform(
-        job.filePath,
-        payloadResult.mixxxWaveformData,
-        payloadResult.unifiedDisplayWaveformData ?? null
-      )
-      deps.events.emit('waveform-updated', { filePath: job.filePath })
     }
 
     deps.drain()

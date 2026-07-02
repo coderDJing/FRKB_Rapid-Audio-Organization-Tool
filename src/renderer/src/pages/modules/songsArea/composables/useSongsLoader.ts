@@ -23,6 +23,10 @@ interface LoadSongListFromDiskOptions {
   forceNotifySongSearchDirty?: boolean
 }
 
+export interface OpenSongListOptions {
+  waitForFreshAnalysisFields?: boolean
+}
+
 interface SongListDiffSummary {
   hasIgnoredOnlyDiffs: boolean
   hasMeaningfulDiffs: boolean
@@ -504,7 +508,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     return true
   }
 
-  const openSongList = async () => {
+  const openSongList = async (options: OpenSongListOptions = {}) => {
     const requestUUID = songsAreaState.songListUUID
     clearBackgroundRefreshTimer()
     isRequesting.value = true
@@ -673,6 +677,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
           await applySongListData(fastItems)
           isRequesting.value = false
           loadingShow.value = false
+          if (options.waitForFreshAnalysisFields === true) {
+            await loadSongListFromDisk(songListPath, songsAreaState.songListUUID)
+            return
+          }
           // 后台刷新一次磁盘结果，保证索引与磁盘一致
           scheduleBackgroundSongListRefresh(songListPath, songsAreaState.songListUUID)
           return

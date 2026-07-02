@@ -103,6 +103,40 @@ type ManualKeyAnalysisBatch = {
 
 const manualBatches = new Map<string, ManualKeyAnalysisBatch>()
 
+const isPathTrackedByQueue = (normalizedPath: string): boolean =>
+  Boolean(queue?.hasTrackedPath(normalizedPath))
+
+const isPathPendingInManualBatch = (normalizedPath: string): boolean => {
+  if (!normalizedPath) return false
+  for (const batch of manualBatches.values()) {
+    if (batch.pendingByPath.has(normalizedPath) && isPathTrackedByQueue(normalizedPath)) {
+      return true
+    }
+  }
+  return false
+}
+
+export function getManualKeyAnalysisPendingFilePaths(filePaths?: string[]) {
+  pruneUntrackedManualBatchPaths()
+  const filterSet = new Set(
+    (Array.isArray(filePaths) ? filePaths : [])
+      .map((filePath) => (typeof filePath === 'string' ? normalizePath(filePath.trim()) : ''))
+      .filter(Boolean)
+  )
+  const result: string[] = []
+  const seen = new Set<string>()
+  for (const batch of manualBatches.values()) {
+    for (const [normalizedPath, filePath] of batch.pendingByPath) {
+      if (!isPathTrackedByQueue(normalizedPath)) continue
+      if (filterSet.size > 0 && !filterSet.has(normalizedPath)) continue
+      if (seen.has(normalizedPath)) continue
+      seen.add(normalizedPath)
+      result.push(filePath)
+    }
+  }
+  return result
+}
+
 /**
  * 获取全局单例队列实例。
  * 禁止任何入口直接 new KeyAnalysisQueue(...)，所有分析必须通过这个单例。
@@ -163,7 +197,11 @@ const emitManualBatchProgress = (batch: ManualKeyAnalysisBatch) => {
   })
 }
 
-const finishManualBatch = (batch: ManualKeyAnalysisBatch, canceled = false) => {
+const finishManualBatch = (
+  batch: ManualKeyAnalysisBatch,
+  canceled = false,
+  terminalStage?: 'job-done' | 'job-error'
+) => {
   if (!manualBatches.has(batch.id)) return
   manualBatches.delete(batch.id)
   batch.canceled = canceled
@@ -183,16 +221,31 @@ const finishManualBatch = (batch: ManualKeyAnalysisBatch, canceled = false) => {
           cancelable: false
         })
   })
-  if (canceled) {
+  const stageToEmit = terminalStage || (canceled ? 'job-error' : undefined)
+  if (stageToEmit) {
     for (const filePath of batch.filePaths) {
       keyAnalysisEvents.emit('analysis-stage-update', {
         filePath,
-        stage: 'job-error',
+        stage: stageToEmit,
         manualBatchIds: [batch.id]
       })
     }
   }
   reevaluateConcurrency()
+}
+
+function pruneUntrackedManualBatchPaths() {
+  for (const batch of Array.from(manualBatches.values())) {
+    let changed = false
+    for (const normalizedPath of Array.from(batch.pendingByPath.keys())) {
+      if (isPathTrackedByQueue(normalizedPath)) continue
+      batch.pendingByPath.delete(normalizedPath)
+      changed = true
+    }
+    if (changed && batch.pendingByPath.size === 0) {
+      finishManualBatch(batch, false, 'job-done')
+    }
+  }
 }
 
 const completeManualBatchFile = (filePath: string, manualBatchIds?: string[]) => {
@@ -243,6 +296,7 @@ export function enqueueManualKeyAnalysisBatch(
   filePaths: string[],
   options?: { titleKey?: string }
 ) {
+  pruneUntrackedManualBatchPaths()
   const pendingByPath = new Map<string, string>()
   for (const filePath of Array.isArray(filePaths) ? filePaths : []) {
     if (typeof filePath !== 'string') continue
@@ -250,6 +304,7 @@ export function enqueueManualKeyAnalysisBatch(
     if (!trimmed) continue
     const normalized = normalizePath(trimmed)
     if (!normalized || pendingByPath.has(normalized)) continue
+    if (isPathPendingInManualBatch(normalized)) continue
     pendingByPath.set(normalized, trimmed)
   }
   const uniqueFilePaths = Array.from(pendingByPath.values())

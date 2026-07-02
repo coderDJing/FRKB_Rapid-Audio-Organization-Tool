@@ -13,6 +13,7 @@ import type { ISongInfo } from '../../../../../../types/globals'
 
 type PlaylistAnalysisRuntime = {
   libraryAreaSelected: string
+  manualKeyAnalysisPendingFilePaths: string[]
   analysisRuntime: {
     available: boolean
   }
@@ -73,6 +74,35 @@ export function usePlaylistAnalysisPrompt({
       runtime.analysisRuntime.available === true
     )
   )
+
+  const resolveManualBatchPendingFiles = async (filePaths: readonly string[]) => {
+    const fallbackPendingFiles = Array.isArray(runtime.manualKeyAnalysisPendingFilePaths)
+      ? runtime.manualKeyAnalysisPendingFilePaths
+      : []
+    if (!filePaths.length) return [] as string[]
+    try {
+      const result = (await window.electron.ipcRenderer.invoke(
+        'key-analysis:manual-batch-pending',
+        {
+          filePaths: [...filePaths]
+        }
+      )) as { filePaths?: string[] } | null
+      return Array.isArray(result?.filePaths) ? result.filePaths : fallbackPendingFiles
+    } catch {
+      return fallbackPendingFiles
+    }
+  }
+
+  const filterManualBatchPendingFiles = async (filePaths: readonly string[]) => {
+    const pendingFiles = await resolveManualBatchPendingFiles(filePaths)
+    const pendingPathSet = new Set(
+      pendingFiles.map((filePath) => normalizeFilePathKey(filePath)).filter(Boolean)
+    )
+    return {
+      files: filePaths.filter((filePath) => !pendingPathSet.has(normalizeFilePathKey(filePath))),
+      pendingFiles
+    }
+  }
 
   const shouldSkipAnalysisPrompt = (songListUUID: string) =>
     !songListUUID ||
@@ -204,11 +234,25 @@ export function usePlaylistAnalysisPrompt({
     if (shouldSkipAnalysisPrompt(songListUUID)) return
 
     const missingFilesForEvaluation = missingAnalysisFiles.value
-    const missingCount = missingFilesForEvaluation.length
     logAnalysisPromptDiagnostic('evaluate', songListUUID, missingFilesForEvaluation, options)
-    if (!missingCount) {
+    if (!missingFilesForEvaluation.length) {
       clearDismissedSongList(songListUUID)
       logAnalysisPromptDiagnostic('clear-dismissed-no-missing', songListUUID, [], options)
+      return
+    }
+    const promptMissingResult = await filterManualBatchPendingFiles(missingFilesForEvaluation)
+    const missingFilesToPrompt = promptMissingResult.files
+    const missingCount = missingFilesToPrompt.length
+    if (!missingCount) {
+      logAnalysisPromptDiagnostic(
+        'skip-active-manual-batch',
+        songListUUID,
+        missingFilesForEvaluation,
+        options,
+        {
+          activeManualBatchFiles: promptMissingResult.pendingFiles
+        }
+      )
       return
     }
     if (options?.forceAnalysisPrompt) {
@@ -223,7 +267,9 @@ export function usePlaylistAnalysisPrompt({
       return
     }
 
-    logAnalysisPromptDiagnostic('prompt-open', songListUUID, missingFilesForEvaluation, options)
+    logAnalysisPromptDiagnostic('prompt-open', songListUUID, missingFilesToPrompt, options, {
+      activeManualBatchFiles: promptMissingResult.pendingFiles
+    })
     const choice = await confirm({
       title: t('tracks.analyzePlaylistPromptTitle'),
       content: [
@@ -257,13 +303,22 @@ export function usePlaylistAnalysisPrompt({
     }
 
     const missingFiles = missingAnalysisFiles.value
-    logAnalysisPromptDiagnostic('prompt-confirm', songListUUID, missingFiles, options)
-    if (!missingFiles.length) return
+    const confirmMissingResult = await filterManualBatchPendingFiles(missingFiles)
+    logAnalysisPromptDiagnostic(
+      'prompt-confirm',
+      songListUUID,
+      confirmMissingResult.files,
+      options,
+      {
+        activeManualBatchFiles: confirmMissingResult.pendingFiles
+      }
+    )
+    if (!confirmMissingResult.files.length) return
 
     clearDismissedSongList(songListUUID)
     autoAnalyzeEnabled.value = true
     const result = (await queueManualKeyAnalysisBatch(
-      missingFiles,
+      confirmMissingResult.files,
       'tracks.analyzingPlaylist'
     )) as QueueManualBatchResult
     rememberManualBatch(result, songListUUID)
@@ -293,8 +348,10 @@ export function usePlaylistAnalysisPrompt({
     autoAnalyzeEnabled.value = true
     clearDismissedSongList(songListUUID)
     try {
+      const pendingResult = await filterManualBatchPendingFiles(missingFiles)
+      if (!pendingResult.files.length) return
       const result = (await queueManualKeyAnalysisBatch(
-        missingFiles,
+        pendingResult.files,
         'tracks.analyzingPlaylist'
       )) as QueueManualBatchResult
       rememberManualBatch(result, songListUUID)

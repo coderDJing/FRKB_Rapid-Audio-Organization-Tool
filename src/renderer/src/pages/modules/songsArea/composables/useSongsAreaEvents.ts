@@ -9,6 +9,7 @@ import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
 import { normalizeSongEnergyScore } from '@shared/songEnergy'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import type { OpenSongListOptions } from './useSongsLoader'
 
 const normalizePath = (p: string | undefined | null) => (p || '').replace(/\//g, '\\').toLowerCase()
 
@@ -23,7 +24,7 @@ interface UseSongsAreaEventsParams {
   originalSongInfoArr: ShallowRef<ISongInfo[]>
   applyFiltersAndSorting: () => void
   shouldApplyFiltersAndSortingForSongChange: (fields: string[]) => boolean
-  openSongList: () => Promise<void>
+  openSongList: (options?: OpenSongListOptions) => Promise<void>
   scheduleSweepCovers: () => void
   activeWaveformPreviewFilePath?: Ref<string>
   // 用户主动打开/切换到某个歌单（首次挂载或点击切换）后触发；
@@ -754,7 +755,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   const onImportFinished = async (_event: unknown, songListUUID: string, _summary: unknown) => {
     if (songListUUID === songsAreaState.songListUUID) {
       setTimeout(async () => {
-        await openSongList()
+        await openSongList({ waitForFreshAnalysisFields: true })
         // 通知库侧刷新歌单曲目数量徽标
         try {
           emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
@@ -821,7 +822,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       }
       return
     }
-    await openSongList()
+    await openSongList({ waitForFreshAnalysisFields: options?.notifyUserOpened === true })
     if (options?.notifyUserOpened) {
       notifyUserOpenedSongList(songListUUID, {
         ...options,

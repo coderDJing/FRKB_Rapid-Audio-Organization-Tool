@@ -247,6 +247,11 @@ export class KeyAnalysisQueue {
     this.background.startBackgroundSweep()
   }
 
+  hasTrackedPath(normalizedPath: string): boolean {
+    if (!normalizedPath) return false
+    return this.pendingByPath.has(normalizedPath) || this.activeByPath.has(normalizedPath)
+  }
+
   private applyWaveformOnlyOption(job: KeyAnalysisJob, waveformOnly?: boolean) {
     if (waveformOnly !== true) {
       if (waveformOnly === false || job.waveformOnly) {
@@ -283,6 +288,23 @@ export class KeyAnalysisQueue {
     job.manualBatchIds = Array.from(new Set([...current, ...batchIds]))
   }
 
+  private isTerminalStage(stage: unknown): stage is 'job-done' | 'job-error' {
+    return stage === 'job-done' || stage === 'job-error'
+  }
+
+  private emitTerminalStageForManualBatchIds(job: KeyAnalysisJob, batchIds: string[]) {
+    if (!batchIds.length || !this.isTerminalStage(job.trace?.lastStage)) return
+    this.events.emit('analysis-stage-update', {
+      filePath: job.filePath,
+      stage: job.trace.lastStage,
+      needsKey: job.needsKey,
+      needsBpm: job.needsBpm,
+      needsWaveform: job.needsWaveform,
+      needsEnergy: job.needsEnergy,
+      manualBatchIds: batchIds
+    })
+  }
+
   private removeManualBatchIdFromJob(job: KeyAnalysisJob, batchId: string): boolean {
     const current = job.manualBatchIds?.filter(Boolean) || []
     if (!current.includes(batchId)) return false
@@ -317,6 +339,7 @@ export class KeyAnalysisQueue {
     if (active) {
       this.addFocusSlotToJob(active, focusSlot)
       this.addManualBatchIdsToJob(active, manualBatchIds)
+      this.emitTerminalStageForManualBatchIds(active, manualBatchIds)
       return
     }
     const existing = this.pendingByPath.get(normalizedPath)

@@ -5,6 +5,7 @@ import {
   enqueueKeyAnalysis,
   enqueueKeyAnalysisList,
   enqueueManualKeyAnalysisBatch,
+  getManualKeyAnalysisPendingFilePaths,
   replaceVisibleKeyAnalysisList,
   getKeyAnalysisBackgroundStatus
 } from '../services/keyAnalysisQueue'
@@ -75,6 +76,11 @@ export function registerKeyAnalysisHandlers() {
     return enqueueManualKeyAnalysisBatch(normalized, {
       titleKey: typeof payload?.titleKey === 'string' ? payload.titleKey : undefined
     })
+  })
+
+  ipcMain.handle('key-analysis:manual-batch-pending', (_e, payload?: { filePaths?: string[] }) => {
+    const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : undefined
+    return { filePaths: getManualKeyAnalysisPendingFilePaths(paths) }
   })
 
   ipcMain.handle(
