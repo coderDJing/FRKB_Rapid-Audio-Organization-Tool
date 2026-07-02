@@ -492,6 +492,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     if (!diffSummary.hasMeaningfulDiffs && diffSummary.hasIgnoredOnlyDiffs) {
       await applySongListData(scanData)
       lastAppliedSongListUUID = loadedUUID
+      notifySongSearchDirty('scanSongList-analysis-fields')
       if (options?.forceNotifySongSearchDirty) {
         notifySongSearchDirty('scanSongList')
       }

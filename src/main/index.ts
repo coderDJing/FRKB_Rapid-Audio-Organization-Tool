@@ -60,6 +60,7 @@ import { registerMixtapeHandlers } from './ipc/mixtapeHandlers'
 import { registerMixtapeDragSessionHandlers } from './ipc/mixtapeDragSessionHandlers'
 import { registerMixtapeProjectTempoHandlers } from './ipc/mixtapeProjectTempoHandlers'
 import { registerSongSearchHandlers } from './ipc/songSearchHandlers'
+import { markGlobalSongSearchDirty } from './services/globalSongSearch'
 import { registerPioneerDeviceLibraryHandlers } from './ipc/pioneerDeviceLibraryHandlers'
 import { registerRekordboxDesktopLibraryHandlers } from './ipc/rekordboxDesktopLibraryHandlers'
 import { registerRekordboxXmlExportHandlers } from './ipc/rekordboxXmlExportHandlers'
@@ -349,6 +350,7 @@ ipcMain.on('external-open:renderer-ready', (event) => {
 })
 
 keyAnalysisEvents.on('key-updated', (payload) => {
+  markGlobalSongSearchDirty('key-analysis:key-updated')
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-key-updated', payload)
@@ -357,6 +359,7 @@ keyAnalysisEvents.on('key-updated', (payload) => {
 })
 
 keyAnalysisEvents.on('bpm-updated', (payload) => {
+  markGlobalSongSearchDirty('key-analysis:bpm-updated')
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-bpm-updated', payload)
@@ -365,6 +368,7 @@ keyAnalysisEvents.on('bpm-updated', (payload) => {
 })
 
 keyAnalysisEvents.on('energy-updated', (payload) => {
+  markGlobalSongSearchDirty('key-analysis:energy-updated')
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-energy-updated', payload)
@@ -373,6 +377,7 @@ keyAnalysisEvents.on('energy-updated', (payload) => {
 })
 
 songGridEvents.on('grid-updated', (payload) => {
+  markGlobalSongSearchDirty('song-grid:grid-updated')
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-grid-updated', payload)
@@ -382,6 +387,7 @@ songGridEvents.on('grid-updated', (payload) => {
 })
 
 songHotCueEvents.on('hot-cues-updated', (payload) => {
+  markGlobalSongSearchDirty('song-hot-cues:updated')
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-hot-cues-updated', payload)
@@ -390,6 +396,7 @@ songHotCueEvents.on('hot-cues-updated', (payload) => {
 })
 
 songMemoryCueEvents.on('memory-cues-updated', (payload) => {
+  markGlobalSongSearchDirty('song-memory-cues:updated')
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-memory-cues-updated', payload)
