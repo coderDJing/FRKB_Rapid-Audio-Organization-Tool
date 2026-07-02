@@ -202,7 +202,7 @@ pnpm run build:mac
 
 ## 许可证
 
-FRKB 遵循 GNU GPL v2.0 或更高版本（GPL-2.0-or-later）。
+CoderDJing 编写的 FRKB 项目代码遵循 MIT License。当前打包应用包含 GPL/LGPL 第三方组件；详见 [LICENSE](../LICENSE) 和 [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md)。
 
 ## 计划开发的功能清单
 

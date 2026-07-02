@@ -202,7 +202,7 @@ Issues, feature suggestions, and pull requests are welcome.
 
 ## License
 
-FRKB is licensed under GNU General Public License v2.0 or later (GPL-2.0-or-later).
+FRKB project code written by CoderDJing is licensed under the MIT License. The current packaged application includes GPL/LGPL third-party components; see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Backlog
 
