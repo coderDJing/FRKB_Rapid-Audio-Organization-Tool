@@ -48,18 +48,11 @@ export const createPersistEnergy = (params: CreateEnergyPersistenceParams) => {
       normalizeEnergyAlgorithmVersion(energyAlgorithmVersion) ??
       CURRENT_SONG_ENERGY_ALGORITHM_VERSION
     if (normalizedEnergyScore === undefined) {
-      log.warn('[energy-analysis] persist-skip-invalid-score', {
-        filePath,
-        fileName: path.basename(filePath),
-        energyScore,
-        energyAlgorithmVersion
-      })
       return
     }
     try {
       const stat = await fs.stat(filePath)
       const existing = params.doneByPath.get(normalizedPath)
-      let persistTarget = 'done-by-path-only'
       params.doneByPath.set(normalizedPath, {
         size: stat.size,
         mtimeMs: stat.mtimeMs,
@@ -78,7 +71,6 @@ export const createPersistEnergy = (params: CreateEnergyPersistenceParams) => {
 
       const listRoot = await findSongListRoot(path.dirname(filePath))
       if (listRoot) {
-        persistTarget = 'song-cache'
         await params.ensureSongCacheEntry(
           listRoot,
           filePath,
@@ -91,7 +83,6 @@ export const createPersistEnergy = (params: CreateEnergyPersistenceParams) => {
       } else {
         const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
         if (externalContext) {
-          persistTarget = 'external-cache'
           const cached = await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, {
             size: stat.size,
             mtimeMs: stat.mtimeMs
@@ -115,19 +106,8 @@ export const createPersistEnergy = (params: CreateEnergyPersistenceParams) => {
         energyScore: normalizedEnergyScore,
         energyAlgorithmVersion: normalizedEnergyAlgorithmVersion
       })
-      log.info('[energy-analysis] persist-success', {
-        filePath,
-        fileName: path.basename(filePath),
-        energyScore: normalizedEnergyScore,
-        energyAlgorithmVersion: normalizedEnergyAlgorithmVersion,
-        target: persistTarget
-      })
     } catch (error) {
       if (params.isMissingFileError(error)) {
-        log.warn('[energy-analysis] persist-skip-missing-file', {
-          filePath,
-          fileName: path.basename(filePath)
-        })
         await params.cleanupMissingPersistTarget(normalizedPath, filePath)
         return
       }

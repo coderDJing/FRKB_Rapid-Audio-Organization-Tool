@@ -65,7 +65,6 @@ export function usePlayerControlsLogic({
   requestLoadSong,
   ignoreNextEmptyError
 }: UsePlayerControlsOptions) {
-  // 调试日志已清理
   const isFileOperationInProgress = ref(false)
   const songToMoveRef = ref<{
     song: ISongInfo
