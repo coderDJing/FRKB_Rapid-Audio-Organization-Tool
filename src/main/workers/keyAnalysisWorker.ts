@@ -7,6 +7,10 @@ import {
   UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE,
   type UnifiedDisplayWaveformDetailData
 } from '../../shared/unifiedDisplayWaveform'
+import {
+  calculateSongEnergyScoreFromPcm,
+  calculateSongEnergyScoreFromUnifiedDisplay
+} from '../../shared/songEnergy'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 import { getBeatThisRuntimeAvailabilitySnapshot } from './beatThisRuntime'
 import { computeRawWaveform } from './rawWaveformBuilder'
@@ -18,6 +22,8 @@ type KeyJob = {
   needsKey?: boolean
   needsBpm?: boolean
   needsWaveform?: boolean
+  needsEnergy?: boolean
+  cachedBpm?: number
 }
 
 type KeyResultPayload = {
@@ -27,6 +33,8 @@ type KeyResultPayload = {
   firstBeatMs?: number
   barBeatOffset?: number
   bpmError?: string
+  energyScore?: number
+  energyAlgorithmVersion?: number
   mixxxWaveformData?: MixxxWaveformData | null
   unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
 }
@@ -54,6 +62,7 @@ type KeyProgressPayload = {
   needsKey?: boolean
   needsBpm?: boolean
   needsWaveform?: boolean
+  needsEnergy?: boolean
   detail?: string
   partialResult?: Omit<KeyResultPayload, 'mixxxWaveformData' | 'unifiedDisplayWaveformData'>
 }
@@ -213,7 +222,14 @@ const decodeBeatGridPcmForFile = async (filePath: string): Promise<DecodedBeatGr
 
 const analyzeKeyForFile = (
   filePath: string,
-  options: { fastAnalysis: boolean; needsKey: boolean; needsBpm: boolean; needsWaveform: boolean },
+  options: {
+    fastAnalysis: boolean
+    needsKey: boolean
+    needsBpm: boolean
+    needsWaveform: boolean
+    needsEnergy: boolean
+    cachedBpm?: number
+  },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
   return analyzeKeyForFileInternal(filePath, options, reportProgress)
@@ -221,17 +237,28 @@ const analyzeKeyForFile = (
 
 const analyzeKeyForFileInternal = async (
   filePath: string,
-  options: { fastAnalysis: boolean; needsKey: boolean; needsBpm: boolean; needsWaveform: boolean },
+  options: {
+    fastAnalysis: boolean
+    needsKey: boolean
+    needsBpm: boolean
+    needsWaveform: boolean
+    needsEnergy: boolean
+    cachedBpm?: number
+  },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
   const result: KeyResultPayload = {}
   const needsKey = Boolean(options.needsKey)
   const needsBpm = Boolean(options.needsBpm) && getBeatThisRuntimeAvailabilitySnapshot() !== false
   const needsWaveform = Boolean(options.needsWaveform)
-  const useFfmpegWaveformDecode = needsWaveform && shouldUseFfmpegWaveformDecode(filePath)
-  const useFfmpegPrimaryDecode = needsKey && useFfmpegWaveformDecode
+  const needsEnergy = Boolean(options.needsEnergy)
+  const needsPcmEnergy = needsEnergy
+  const useFfmpegWaveformDecode =
+    (needsWaveform || needsPcmEnergy) && shouldUseFfmpegWaveformDecode(filePath)
+  const useFfmpegPrimaryDecode = (needsKey || needsPcmEnergy) && useFfmpegWaveformDecode
   const needsRustDecode =
-    (needsKey && !useFfmpegPrimaryDecode) || (needsWaveform && !useFfmpegWaveformDecode)
+    (needsKey && !useFfmpegPrimaryDecode) ||
+    ((needsWaveform || needsPcmEnergy) && !useFfmpegWaveformDecode)
   let rust: RustBinding | null = null
   let decoded: DecodedAudioPcm | null = null
   let beatGridDecoded: DecodedBeatGridPcm | null = null
@@ -248,7 +275,8 @@ const analyzeKeyForFileInternal = async (
       stage: 'decode-start',
       needsKey,
       needsBpm,
-      needsWaveform
+      needsWaveform,
+      needsEnergy
     })
     const decodeStartAt = Date.now()
     if (useFfmpegPrimaryDecode) {
@@ -374,6 +402,19 @@ const analyzeKeyForFileInternal = async (
     })
   }
 
+  if (needsEnergy && decoded) {
+    const energy = calculateSongEnergyScoreFromPcm({
+      pcmData: decoded.pcmData,
+      sampleRate: decoded.sampleRate,
+      channels: decoded.channels,
+      bpm: result.bpm ?? options.cachedBpm
+    })
+    if (energy) {
+      result.energyScore = energy.energyScore
+      result.energyAlgorithmVersion = energy.energyAlgorithmVersion
+    }
+  }
+
   if (
     needsWaveform &&
     (typeof resolveRustBinding().computeMixxxWaveformWithRate === 'function' ||
@@ -384,7 +425,7 @@ const analyzeKeyForFileInternal = async (
         throw new Error('Rust PCM decode missing for waveform analysis')
       }
     }
-    reportProgress({ stage: 'waveform-start' })
+    reportProgress({ stage: 'waveform-start', needsEnergy })
     const waveformStartAt = Date.now()
     try {
       const targetRate = UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE
@@ -422,9 +463,21 @@ const analyzeKeyForFileInternal = async (
       result.unifiedDisplayWaveformData = result.mixxxWaveformData
         ? buildUnifiedDisplayWaveformDetailFromMixxx(result.mixxxWaveformData, rawWaveformData)
         : null
+      const energy =
+        result.energyScore === undefined
+          ? calculateSongEnergyScoreFromUnifiedDisplay(
+              result.unifiedDisplayWaveformData,
+              result.bpm ?? options.cachedBpm
+            )
+          : null
+      if (energy && needsEnergy) {
+        result.energyScore = energy.energyScore
+        result.energyAlgorithmVersion = energy.energyAlgorithmVersion
+      }
       reportProgress({
         stage: 'waveform-done',
         waveformMs: Date.now() - waveformStartAt,
+        needsEnergy,
         detail: String(waveformDecoded.decoderBackend || '').startsWith('ffmpeg-')
           ? 'waveform-ok:ffmpeg'
           : 'waveform-ok'
@@ -434,6 +487,7 @@ const analyzeKeyForFileInternal = async (
       reportProgress({
         stage: 'waveform-done',
         waveformMs: Date.now() - waveformStartAt,
+        needsEnergy,
         detail: 'waveform-failed'
       })
     }
@@ -467,7 +521,8 @@ parentPort?.on('message', async (job: KeyJob) => {
       stage: 'job-received',
       needsKey: Boolean(job.needsKey),
       needsBpm: Boolean(job.needsBpm),
-      needsWaveform: Boolean(job.needsWaveform)
+      needsWaveform: Boolean(job.needsWaveform),
+      needsEnergy: Boolean(job.needsEnergy)
     })
     const result = await analyzeKeyForFile(
       job.filePath,
@@ -475,7 +530,9 @@ parentPort?.on('message', async (job: KeyJob) => {
         fastAnalysis: Boolean(job.fastAnalysis),
         needsKey: Boolean(job.needsKey),
         needsBpm: Boolean(job.needsBpm),
-        needsWaveform: Boolean(job.needsWaveform)
+        needsWaveform: Boolean(job.needsWaveform),
+        needsEnergy: Boolean(job.needsEnergy),
+        cachedBpm: job.cachedBpm
       },
       reportProgress
     )

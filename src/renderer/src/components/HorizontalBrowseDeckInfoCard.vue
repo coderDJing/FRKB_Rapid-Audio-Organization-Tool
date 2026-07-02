@@ -15,6 +15,7 @@ const props = defineProps<{
   currentSeconds?: number
   durationSeconds?: number
   hideSyncControls?: boolean
+  showEnergy?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -140,6 +141,11 @@ const bpmText = computed(() => {
   const bpm = Number(props.song?.bpm)
   return Number.isFinite(bpm) && bpm > 0 ? formatBpmDisplay(bpm, '--') : '--'
 })
+const energyText = computed(() => {
+  const energyScore = Number(props.song?.energyScore)
+  if (!Number.isFinite(energyScore)) return '--'
+  return String(Math.max(0, Math.min(100, Math.round(energyScore))))
+})
 const totalSeconds = computed(() => {
   const explicit = Number(props.durationSeconds)
   if (Number.isFinite(explicit) && explicit > 0) {
@@ -211,6 +217,10 @@ onUnmounted(() => {
         </div>
         <span class="deck-info-card__meta-separator"></span>
         <div class="deck-info-card__meta-line">{{ bpmText }}</div>
+        <template v-if="props.showEnergy">
+          <span class="deck-info-card__meta-separator"></span>
+          <div class="deck-info-card__meta-line">{{ energyText }}</div>
+        </template>
       </div>
     </div>
 

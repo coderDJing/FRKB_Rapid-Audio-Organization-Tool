@@ -30,6 +30,8 @@ export type PioneerSongSnapshot = {
   originalBpm: number | undefined
   firstBeatMs: number | undefined
   barBeatOffset: number | undefined
+  energyScore: number | undefined
+  energyAlgorithmVersion: number | undefined
   hotCues: ISongHotCue[]
   memoryCues: ISongMemoryCue[]
 }
@@ -108,6 +110,11 @@ const parseComparableBpm = (input: unknown): number | null => {
   const numeric = parseNumberInput(input)
   if (Number.isNaN(numeric)) return null
   return normalizeBpmDisplayScaled(numeric)
+}
+
+const parseComparableNumber = (input: unknown): number | null => {
+  const numeric = parseNumberInput(input)
+  return Number.isNaN(numeric) ? null : numeric
 }
 
 const parseExcludeKeywords = (input: unknown): string[] => {
@@ -194,6 +201,8 @@ export const usePioneerSongsProjection = (params: UsePioneerSongsProjectionParam
       originalBpm: song.bpm,
       firstBeatMs: song.firstBeatMs,
       barBeatOffset: song.barBeatOffset,
+      energyScore: song.energyScore,
+      energyAlgorithmVersion: song.energyAlgorithmVersion,
       hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
       memoryCues: Array.isArray(song.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
     }
@@ -238,6 +247,16 @@ export const usePioneerSongsProjection = (params: UsePioneerSongsProjectionParam
           if (col.filterOp === 'eq') return bpm === target
           if (col.filterOp === 'gte') return bpm >= target
           if (col.filterOp === 'lte') return bpm <= target
+          return true
+        })
+      } else if (col.filterType === 'number' && col.filterOp && col.filterNumber) {
+        const target = parseComparableNumber(col.filterNumber)
+        filtered = filtered.filter((song) => {
+          const value = parseComparableNumber(getSongField(song, col.key))
+          if (value === null || target === null) return false
+          if (col.filterOp === 'eq') return value === target
+          if (col.filterOp === 'gte') return value >= target
+          if (col.filterOp === 'lte') return value <= target
           return true
         })
       }

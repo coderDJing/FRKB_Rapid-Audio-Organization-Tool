@@ -50,6 +50,8 @@ const buildMixtapeSongSnapshot = (
     beatGridSource: song?.beatGridSource,
     beatGridStatus: song?.beatGridStatus,
     beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
+    energyScore: song?.energyScore,
+    energyAlgorithmVersion: song?.energyAlgorithmVersion,
     hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
     memoryCues: Array.isArray(song?.memoryCues) ? song.memoryCues.map((cue) => ({ ...cue })) : []
   }

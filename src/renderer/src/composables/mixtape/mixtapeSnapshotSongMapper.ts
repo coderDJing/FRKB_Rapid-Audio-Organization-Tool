@@ -68,6 +68,8 @@ export const mapMixtapeSnapshotToSongInfo = (
     bpm: info?.bpm,
     beatGridStatus: info?.beatGridStatus,
     beatGridAlgorithmVersion: info?.beatGridAlgorithmVersion,
+    energyScore: info?.energyScore,
+    energyAlgorithmVersion: info?.energyAlgorithmVersion,
     hotCues: normalizeSongHotCues(info?.hotCues),
     memoryCues: normalizeSongMemoryCues(info?.memoryCues),
     firstBeatMs:

@@ -11,6 +11,11 @@ import type { MixxxWaveformData } from '../../waveformCodec'
 import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
 import { buildWaveformSurfaceCacheDataFromUnifiedDisplay } from '../../../shared/waveformSurfaceCache'
 import {
+  CURRENT_SONG_ENERGY_ALGORITHM_VERSION,
+  hasCurrentSongEnergyAnalysis,
+  normalizeSongEnergyScore
+} from '../../../shared/songEnergy'
+import {
   persistSharedSongGridDefinition,
   shouldKeepManualSharedSongGridDefinition
 } from '../sharedSongGrid'
@@ -43,6 +48,8 @@ import {
   type KeyAnalysisJob,
   type KeyAnalysisResult
 } from './types'
+import { createPersistEnergy } from './energyPersistence'
+import { removeCoverCacheForMissingTrack } from './coverCacheCleanup'
 
 type KeyAnalysisPersistenceDeps = {
   doneByPath: Map<string, DoneEntry>
@@ -99,18 +106,22 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     doneEntryHit: boolean
     songCacheHit: boolean
     waveformCacheHit: boolean
+    energyCacheHit: boolean
     needsKey: boolean
     needsBpm: boolean
     needsWaveform: boolean
+    needsEnergy: boolean
   }) => ({
     listRootResolved: params.listRootResolved,
     externalCacheResolved: params.externalCacheResolved === true,
     doneEntryHit: params.doneEntryHit,
     songCacheHit: params.songCacheHit,
     waveformCacheHit: params.waveformCacheHit,
+    energyCacheHit: params.energyCacheHit,
     needsKey: params.needsKey,
     needsBpm: params.needsBpm,
-    needsWaveform: params.needsWaveform
+    needsWaveform: params.needsWaveform,
+    needsEnergy: params.needsEnergy
   })
 
   const ensureSongCacheEntry = async (
@@ -126,6 +137,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       beatGridAlgorithmVersion?: number | null
       beatGridSource?: ISongInfo['beatGridSource']
       beatGridStatus?: ISongInfo['beatGridStatus']
+      energyScore?: number
+      energyAlgorithmVersion?: number
     },
     stat?: { size: number; mtimeMs: number }
   ) => {
@@ -184,6 +197,11 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     if (payload.beatGridStatus !== undefined) {
       info.beatGridStatus = payload.beatGridStatus
     }
+    if (payload.energyScore !== undefined) {
+      info.energyScore = payload.energyScore
+      info.energyAlgorithmVersion =
+        payload.energyAlgorithmVersion ?? CURRENT_SONG_ENERGY_ALGORITHM_VERSION
+    }
     await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
       size: fileStat.size,
       mtimeMs: fileStat.mtimeMs,
@@ -207,6 +225,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
         beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
         beatGridStatus: existing?.beatGridStatus,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
 
@@ -269,6 +289,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
         beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
         beatGridStatus: existing?.beatGridStatus,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
       const payload: KeyAnalysisResult = { filePath, keyText }
@@ -353,6 +375,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             existing?.timeBasisOffsetMs ??
             normalizedTimeBasisOffsetMs,
           beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+          energyScore: existing?.energyScore,
+          energyAlgorithmVersion: existing?.energyAlgorithmVersion,
           hasWaveform: existing?.hasWaveform
         })
         const nextInfo = applyLiteDefaults(
@@ -396,6 +420,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         barBeatOffset: normalizedBarBeatOffset ?? existing?.barBeatOffset,
         timeBasisOffsetMs: normalizedTimeBasisOffsetMs ?? existing?.timeBasisOffsetMs,
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
 
@@ -473,6 +499,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         barBeatOffset: normalizedBarBeatOffset ?? existing?.barBeatOffset,
         timeBasisOffsetMs: normalizedTimeBasisOffsetMs ?? existing?.timeBasisOffsetMs,
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
       const payload: BpmAnalysisResult = {
@@ -513,6 +541,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
         beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION,
         beatGridStatus: BEAT_GRID_STATUS_NO_BPM,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
 
@@ -570,6 +600,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
         beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION,
         beatGridStatus: BEAT_GRID_STATUS_NO_BPM,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
         hasWaveform: existing?.hasWaveform
       })
       deps.events.emit('bpm-updated', {
@@ -608,6 +640,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
         beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
         beatGridStatus: existing?.beatGridStatus,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
         hasWaveform: listRoot ? Boolean(surfaceData) : true
       })
 
@@ -680,6 +714,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         timeBasisOffsetMs: existing?.timeBasisOffsetMs,
         beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
         beatGridStatus: existing?.beatGridStatus,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
         hasWaveform: true
       })
       log.error('[闲时分析] persistWaveform 失败，已写入内存兜底', {
@@ -712,6 +748,14 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     await handleMissingFile(filePath)
   }
 
+  const persistEnergy = createPersistEnergy({
+    doneByPath: deps.doneByPath,
+    events: deps.events,
+    ensureSongCacheEntry,
+    cleanupMissingPersistTarget,
+    isMissingFileError
+  })
+
   const prepareJob = async (job: KeyAnalysisJob): Promise<boolean> => {
     const filePath = job.filePath
     let stat: { size: number; mtimeMs: number }
@@ -720,30 +764,55 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     let doneEntryHit = false
     let songCacheHit = false
     let waveformCacheHit = false
-    try {
-      const fsStat = await fs.stat(filePath)
-      stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
-    } catch {
-      job.prepareReason = 'skip-missing-file'
-      job.prepareDetails = buildPrepareDetails({
+    let energyCacheHit = false
+    let needsKey = false
+    let needsBpm = false
+    let needsWaveform = false
+    let needsEnergy = false
+    const buildCurrentPrepareDetails = () =>
+      buildPrepareDetails({
         listRootResolved,
         externalCacheResolved,
         doneEntryHit,
         songCacheHit,
         waveformCacheHit,
-        needsKey: false,
-        needsBpm: false,
-        needsWaveform: false
+        energyCacheHit,
+        needsKey,
+        needsBpm,
+        needsWaveform,
+        needsEnergy
       })
+    const applyJobNeeds = () => {
+      Object.assign(job, { needsKey, needsBpm, needsWaveform, needsEnergy })
+    }
+    const resolveCurrentEnergy = (
+      info: { energyScore?: unknown; energyAlgorithmVersion?: unknown } | null | undefined
+    ) => {
+      if (!hasCurrentSongEnergyAnalysis(info)) return null
+      const energyScore = normalizeSongEnergyScore(info?.energyScore)
+      if (energyScore === undefined) return null
+      return {
+        energyScore,
+        energyAlgorithmVersion: CURRENT_SONG_ENERGY_ALGORITHM_VERSION
+      }
+    }
+    try {
+      const fsStat = await fs.stat(filePath)
+      stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+    } catch {
+      job.prepareReason = 'skip-missing-file'
+      applyJobNeeds()
+      job.prepareDetails = buildCurrentPrepareDetails()
       await handleMissingFile(job.filePath)
       return false
     }
     job.fileSize = stat.size
     job.fileMtimeMs = stat.mtimeMs
 
-    let needsKey = true
-    let needsBpm = true
-    let needsWaveform = true
+    needsKey = true
+    needsBpm = true
+    needsWaveform = true
+    needsEnergy = true
     const done = deps.doneByPath.get(job.normalizedPath)
     if (done && done.size === stat.size && Math.abs(done.mtimeMs - stat.mtimeMs) < 1) {
       doneEntryHit = true
@@ -753,6 +822,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       const hasDoneCurrentKeyAlgorithm = shouldAcceptKeyAnalysisCacheVersion(done)
       const hasDoneCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(done)
       const hasDoneNoBpm = hasCurrentNoBpmBeatGridResult(done)
+      const hasDoneEnergy = hasCurrentSongEnergyAnalysis(done)
       if (isValidKeyText(done.keyText) && hasDoneCurrentKeyAlgorithm) {
         needsKey = false
       }
@@ -763,23 +833,20 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           hasDoneBarBeatOffset &&
           hasDoneCurrentBeatGridAlgorithm)
       ) {
+        job.cachedBpm = done.bpm
         needsBpm = false
       }
-      if (!needsKey && !needsBpm && !needsWaveform) {
-        job.needsKey = false
-        job.needsBpm = false
-        job.needsWaveform = false
+      if (done.hasWaveform) {
+        needsWaveform = false
+      }
+      if (hasDoneEnergy) {
+        energyCacheHit = true
+        needsEnergy = false
+      }
+      if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy) {
+        applyJobNeeds()
         job.prepareReason = 'skip-done-cache-complete'
-        job.prepareDetails = buildPrepareDetails({
-          listRootResolved,
-          externalCacheResolved,
-          doneEntryHit,
-          songCacheHit,
-          waveformCacheHit,
-          needsKey,
-          needsBpm,
-          needsWaveform
-        })
+        job.prepareDetails = buildCurrentPrepareDetails()
         return false
       }
     }
@@ -809,7 +876,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         const hasNoBpm = hasCurrentNoBpmBeatGridResult(cached.info)
         const hasCompleteCurrentGrid =
           hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm
-        if (hasKey || hasCompleteCurrentGrid || hasNoBpm) {
+        const cachedEnergy = resolveCurrentEnergy(cached.info)
+        if (cachedEnergy) {
+          energyCacheHit = true
+          needsEnergy = false
+        }
+        if (hasKey || hasCompleteCurrentGrid || hasNoBpm || cachedEnergy) {
           deps.doneByPath.set(job.normalizedPath, {
             size: stat.size,
             mtimeMs: stat.mtimeMs,
@@ -829,6 +901,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
                 ? cachedBeatGridAlgorithmVersion
                 : undefined,
             beatGridStatus: hasNoBpm ? BEAT_GRID_STATUS_NO_BPM : undefined,
+            energyScore: cachedEnergy?.energyScore,
+            energyAlgorithmVersion: cachedEnergy?.energyAlgorithmVersion,
             hasWaveform: false
           })
         }
@@ -840,6 +914,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           (hasNoBpm ||
             (hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm))
         ) {
+          job.cachedBpm = cachedBpm
           needsBpm = false
         }
         const hasWaveform = await LibraryCacheDb.hasWaveformSurfaceCacheEntryByMeta(
@@ -862,25 +937,16 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             timeBasisOffsetMs: existingDone?.timeBasisOffsetMs,
             beatGridAlgorithmVersion: existingDone?.beatGridAlgorithmVersion,
             beatGridStatus: existingDone?.beatGridStatus,
+            energyScore: existingDone?.energyScore,
+            energyAlgorithmVersion: existingDone?.energyAlgorithmVersion,
             hasWaveform: true
           })
           needsWaveform = false
         }
-        if (!needsKey && !needsBpm && !needsWaveform) {
-          job.needsKey = false
-          job.needsBpm = false
-          job.needsWaveform = false
+        if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy) {
+          applyJobNeeds()
           job.prepareReason = 'skip-db-cache-complete'
-          job.prepareDetails = buildPrepareDetails({
-            listRootResolved,
-            externalCacheResolved,
-            doneEntryHit,
-            songCacheHit,
-            waveformCacheHit,
-            needsKey,
-            needsBpm,
-            needsWaveform
-          })
+          job.prepareDetails = buildCurrentPrepareDetails()
           return false
         }
       }
@@ -910,7 +976,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           const hasNoBpm = hasCurrentNoBpmBeatGridResult(cached.info)
           const hasCompleteCurrentGrid =
             hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm
-          if (hasKey || hasCompleteCurrentGrid || hasNoBpm || cached.hasWaveform) {
+          const cachedEnergy = resolveCurrentEnergy(cached.info)
+          if (cachedEnergy) {
+            energyCacheHit = true
+            needsEnergy = false
+          }
+          if (hasKey || hasCompleteCurrentGrid || hasNoBpm || cached.hasWaveform || cachedEnergy) {
             deps.doneByPath.set(job.normalizedPath, {
               size: stat.size,
               mtimeMs: stat.mtimeMs,
@@ -930,6 +1001,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
                   ? cachedBeatGridAlgorithmVersion
                   : undefined,
               beatGridStatus: hasNoBpm ? BEAT_GRID_STATUS_NO_BPM : undefined,
+              energyScore: cachedEnergy?.energyScore,
+              energyAlgorithmVersion: cachedEnergy?.energyAlgorithmVersion,
               hasWaveform: cached.hasWaveform
             })
           }
@@ -941,27 +1014,17 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             (hasNoBpm ||
               (hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm))
           ) {
+            job.cachedBpm = cachedBpm
             needsBpm = false
           }
           if (cached.hasWaveform) {
             waveformCacheHit = true
             needsWaveform = false
           }
-          if (!needsKey && !needsBpm && !needsWaveform) {
-            job.needsKey = false
-            job.needsBpm = false
-            job.needsWaveform = false
+          if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy) {
+            applyJobNeeds()
             job.prepareReason = 'skip-external-cache-complete'
-            job.prepareDetails = buildPrepareDetails({
-              listRootResolved,
-              externalCacheResolved,
-              doneEntryHit,
-              songCacheHit,
-              waveformCacheHit,
-              needsKey,
-              needsBpm,
-              needsWaveform
-            })
+            job.prepareDetails = buildCurrentPrepareDetails()
             deps.events.emit('analysis-stage-update', {
               filePath: job.filePath,
               stage: 'job-done',
@@ -974,6 +1037,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         }
       } else {
         needsWaveform = false
+        needsEnergy = false
       }
     }
 
@@ -982,23 +1046,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       needsBpm = false
     }
 
-    if (!needsKey && !needsBpm && !needsWaveform) {
-      job.needsKey = false
-      job.needsBpm = false
-      job.needsWaveform = false
+    if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy) {
+      applyJobNeeds()
       job.prepareReason = job.waveformOnly
         ? 'skip-waveform-cache-complete'
         : 'skip-special-grid-complete'
-      job.prepareDetails = buildPrepareDetails({
-        listRootResolved,
-        externalCacheResolved,
-        doneEntryHit,
-        songCacheHit,
-        waveformCacheHit,
-        needsKey,
-        needsBpm,
-        needsWaveform
-      })
+      job.prepareDetails = buildCurrentPrepareDetails()
       return false
     }
 
@@ -1009,43 +1062,15 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       needsBpm = false
     }
 
-    job.needsKey = needsKey
-    job.needsBpm = needsBpm
-    job.needsWaveform = needsWaveform
+    applyJobNeeds()
     job.prepareReason = 'ready-analysis'
-    job.prepareDetails = buildPrepareDetails({
-      listRootResolved,
-      externalCacheResolved,
-      doneEntryHit,
-      songCacheHit,
-      waveformCacheHit,
-      needsKey,
-      needsBpm,
-      needsWaveform
-    })
+    job.prepareDetails = buildCurrentPrepareDetails()
     return true
-  }
-
-  const removeCoverCacheForMissingTrack = async (listRoot: string, filePath: string) => {
-    try {
-      const removed = await LibraryCacheDb.removeCoverIndexEntry(listRoot, filePath)
-      if (removed === undefined || !removed) return
-      const remaining = await LibraryCacheDb.countCoverIndexByHash(listRoot, removed.hash)
-      if (remaining !== 0) return
-      const listRootAbs = LibraryCacheDb.resolveCacheListRootAbs(listRoot) || listRoot
-      const coverPath = path.join(
-        listRootAbs,
-        '.frkb_covers',
-        `${removed.hash}${removed.ext || '.jpg'}`
-      )
-      try {
-        await fs.rm(coverPath, { force: true })
-      } catch {}
-    } catch {}
   }
 
   return {
     persistKey,
+    persistEnergy,
     persistBpm,
     persistNoBpm,
     persistWaveform,

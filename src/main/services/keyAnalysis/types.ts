@@ -32,6 +32,7 @@ export type KeyAnalysisProgress = {
   needsKey?: boolean
   needsBpm?: boolean
   needsWaveform?: boolean
+  needsEnergy?: boolean
   detail?: string
   partialResult?: KeyAnalysisWorkerPartialResult
 }
@@ -60,9 +61,11 @@ type KeyAnalysisPrepareDetails = {
   doneEntryHit: boolean
   songCacheHit: boolean
   waveformCacheHit: boolean
+  energyCacheHit: boolean
   needsKey: boolean
   needsBpm: boolean
   needsWaveform: boolean
+  needsEnergy: boolean
 }
 
 export type KeyAnalysisAudioProbe = {
@@ -89,6 +92,8 @@ export type KeyAnalysisJob = {
   needsKey?: boolean
   needsBpm?: boolean
   needsWaveform?: boolean
+  needsEnergy?: boolean
+  cachedBpm?: number
   startTime?: number
   trace?: KeyAnalysisJobTrace
   fileSize?: number
@@ -150,6 +155,8 @@ export type DoneEntry = {
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number
   beatGridStatus?: BeatGridStatus
+  energyScore?: number
+  energyAlgorithmVersion?: number
   hasWaveform?: boolean
 }
 
@@ -169,6 +176,8 @@ type KeyAnalysisWorkerPartialResult = {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   bpmError?: string
+  energyScore?: number
+  energyAlgorithmVersion?: number
 }
 
 type KeyAnalysisWorkerResult = KeyAnalysisWorkerPartialResult & {

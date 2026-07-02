@@ -10,12 +10,14 @@ import singleCheckbox from '@renderer/components/singleCheckbox.vue'
 type Op = 'eq' | 'gte' | 'lte'
 
 const props = defineProps<{
-  type: 'text' | 'duration' | 'bpm'
+  type: 'text' | 'duration' | 'bpm' | 'number'
   initText?: string
   initExcludeText?: string
   initOp?: Op
   initDuration?: string
   initNumber?: string
+  numberTitle?: string
+  numberPlaceholder?: string
   showCuratedOnly?: boolean
   initCuratedOnly?: boolean
 }>()
@@ -26,7 +28,7 @@ const emits = defineEmits<{
     payload:
       | { type: 'text'; text: string; excludeText: string; curatedOnly: boolean }
       | { type: 'duration'; op: Op; duration: string }
-      | { type: 'bpm'; op: Op; value: string }
+      | { type: 'bpm' | 'number'; op: Op; value: string }
   ): void
   (e: 'cancel'): void
   (e: 'clear'): void
@@ -96,7 +98,11 @@ const handleConfirm = () => {
         } as const)
       : props.type === 'duration'
         ? ({ type: 'duration', op: op.value, duration: normalizeMmSs(duration.value) } as const)
-        : ({ type: 'bpm', op: op.value, value: normalizeNumberInput(numberValue.value) } as const)
+        : ({
+            type: props.type,
+            op: op.value,
+            value: normalizeNumberInput(numberValue.value)
+          } as const)
   closeWithAnimation(() => emits('confirm', payload))
 }
 const handleCancel = () => closeWithAnimation(() => emits('cancel'))
@@ -142,7 +148,9 @@ onUnmounted(() => {
               ? t('filters.filterByText')
               : props.type === 'duration'
                 ? t('filters.filterByDuration')
-                : t('filters.filterByBpm')
+                : props.type === 'bpm'
+                  ? t('filters.filterByBpm')
+                  : props.numberTitle || t('filters.filterByNumber')
           }}
         </span>
       </div>
@@ -230,7 +238,7 @@ onUnmounted(() => {
             class="filter-input"
             type="text"
             inputmode="decimal"
-            :placeholder="t('filters.bpmPlaceholder')"
+            :placeholder="props.numberPlaceholder || t('filters.numberPlaceholder')"
             style="width: 100%"
             @blur="numberValue = normalizeNumberInput(numberValue)"
             @keydown.enter.prevent.stop="handleConfirm"

@@ -13,6 +13,7 @@
     "fileFormat": "File Format",
     "format": "Format",
     "bpm": "BPM",
+    "energy": "Energy",
     "waveformPreview": "Waveform",
     "index": "Index",
     "mixOrder": "Recording order",

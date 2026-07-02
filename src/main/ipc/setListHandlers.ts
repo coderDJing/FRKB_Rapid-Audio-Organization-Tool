@@ -18,6 +18,7 @@ import {
   shouldAcceptBeatGridCacheVersion
 } from '../services/beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from '../services/keyAnalysisAlgorithmVersion'
+import { hasCurrentSongEnergyAnalysis } from '../../shared/songEnergy'
 import type { ISongInfo } from '../../types/globals'
 import {
   listSetItemsByPlaylist,
@@ -123,6 +124,12 @@ function buildSetAnalysisSnapshot(
       snapshot.beatGridSource = source.beatGridSource
     }
   }
+  if (hasCurrentSongEnergyAnalysis(source)) {
+    snapshot.energyScore = source.energyScore
+    if (hasPositiveInteger(source.energyAlgorithmVersion)) {
+      snapshot.energyAlgorithmVersion = source.energyAlgorithmVersion
+    }
+  }
   const hotCues = normalizeSongHotCues(source.hotCues)
   if (hotCues.length > 0) {
     snapshot.hotCues = hotCues
@@ -175,6 +182,12 @@ function mergeSetAnalysisFields(target: ISongInfo, source: Partial<ISongInfo> | 
     }
     if (source.beatGridSource === 'manual' || source.beatGridSource === 'analysis') {
       next.beatGridSource = source.beatGridSource
+    }
+  }
+  if (!hasCurrentSongEnergyAnalysis(next) && hasCurrentSongEnergyAnalysis(source)) {
+    next.energyScore = source.energyScore
+    if (hasPositiveInteger(source.energyAlgorithmVersion)) {
+      next.energyAlgorithmVersion = source.energyAlgorithmVersion
     }
   }
   if (!Array.isArray(next.hotCues) || next.hotCues.length === 0) {
@@ -366,11 +379,19 @@ async function enrichSetSongFromSourceAnalysis(
       foundCurrentCache = true
       next = mergeSetAnalysisFields(next, cached.info)
       persistSetAnalysisSnapshotIfChanged(item, buildSetAnalysisSnapshot(cached.info))
-      if (hasCurrentKeyAnalysis(next) && hasCompleteGrid(next)) {
+      if (
+        hasCurrentKeyAnalysis(next) &&
+        hasCompleteGrid(next) &&
+        hasCurrentSongEnergyAnalysis(next)
+      ) {
         break
       }
     }
-    if (hasCurrentKeyAnalysis(next) && hasCompleteGrid(next)) {
+    if (
+      hasCurrentKeyAnalysis(next) &&
+      hasCompleteGrid(next) &&
+      hasCurrentSongEnergyAnalysis(next)
+    ) {
       break
     }
   }

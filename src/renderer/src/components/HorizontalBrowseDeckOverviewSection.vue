@@ -52,6 +52,7 @@ const props = defineProps<{
   tempoNudgeActiveDirection?: HorizontalBrowseTempoNudgeDirection | null
   showTempoNudge?: boolean
   hideSyncControls?: boolean
+  showEnergy?: boolean
   showLargeShiftButtons?: boolean
 }>()
 
@@ -120,6 +121,7 @@ const isTop = props.position === 'top'
         :current-seconds="props.currentSeconds"
         :duration-seconds="props.durationSeconds"
         :hide-sync-controls="props.hideSyncControls"
+        :show-energy="props.showEnergy"
         @trigger-beat-sync="emit('trigger-beat-sync')"
         @toggle-master="emit('toggle-master')"
         @eject-song="emit('eject-song')"

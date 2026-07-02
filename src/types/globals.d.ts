@@ -49,6 +49,8 @@ interface ISongInfo {
   barBeatOffset?: number
   beatGridSource?: 'manual' | 'analysis'
   beatGridStatus?: BeatGridStatus
+  energyScore?: number
+  energyAlgorithmVersion?: number
   playlistTrackNumber?: number
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number
@@ -741,8 +743,8 @@ interface ISongsAreaColumn {
   width: number
   order?: 'asc' | 'desc'
   // 可选：列筛选能力与状态（仅在实现列筛选功能时使用）
-  // filterType：'text' 适用于标题/艺人/专辑/流派/厂牌/格式等；'duration' 适用于时长列；'bpm' 适用于 BPM 列
-  filterType?: 'text' | 'duration' | 'bpm'
+  // filterType：'text' 适用于标题/艺人/专辑/流派/厂牌/格式等；'duration' 适用于时长列；'bpm' 适用于 BPM 列；'number' 适用于能量等普通数值列
+  filterType?: 'text' | 'duration' | 'bpm' | 'number'
   // 是否存在生效的筛选（用于列头图标高亮与关键字展示）
   filterActive?: boolean
   // 文本筛选：关键字（包含匹配，不区分大小写）
@@ -752,7 +754,7 @@ interface ISongsAreaColumn {
   // 时长筛选：操作符与目标时长（固定 MM:SS 字符串）
   filterOp?: 'eq' | 'gte' | 'lte'
   filterDuration?: string
-  // BPM 筛选：目标数值（支持小数）
+  // 数值筛选：目标数值（支持小数）
   filterNumber?: string
   // 仅查看精选过的表演者（仅 artist 列使用）
   filterCuratedOnly?: boolean

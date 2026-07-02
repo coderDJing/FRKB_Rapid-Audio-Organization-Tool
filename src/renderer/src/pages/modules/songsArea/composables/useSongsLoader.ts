@@ -76,7 +76,13 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     normalizeComparableText(song.mixtapeItemId) ||
     normalizeComparableText(song.setItemId) ||
     normalizeSongPath(song.filePath)
-  const ignoredSongListRefreshDiffFields = new Set(['key', 'bpm', 'beatGridStatus'])
+  const ignoredSongListRefreshDiffFields = new Set([
+    'key',
+    'bpm',
+    'beatGridStatus',
+    'energyScore',
+    'energyAlgorithmVersion'
+  ])
 
   const notifySongSearchDirty = (reason: string) => {
     void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
@@ -245,6 +251,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       normalizeComparableNumber(left.bpm) === normalizeComparableNumber(right.bpm) &&
       normalizeComparableText(left.beatGridStatus) ===
         normalizeComparableText(right.beatGridStatus) &&
+      normalizeComparableNumber(left.energyScore) ===
+        normalizeComparableNumber(right.energyScore) &&
+      normalizeComparableNumber(left.energyAlgorithmVersion) ===
+        normalizeComparableNumber(right.energyAlgorithmVersion) &&
       areSongHotCuesEqual(left.hotCues, right.hotCues) &&
       areSongMemoryCuesEqual(left.memoryCues, right.memoryCues) &&
       normalizeComparableNumber(left.mixOrder) === normalizeComparableNumber(right.mixOrder) &&
@@ -315,6 +325,17 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       normalizeComparableText(left.beatGridStatus) !== normalizeComparableText(right.beatGridStatus)
     ) {
       fields.push('beatGridStatus')
+    }
+    if (
+      normalizeComparableNumber(left.energyScore) !== normalizeComparableNumber(right.energyScore)
+    ) {
+      fields.push('energyScore')
+    }
+    if (
+      normalizeComparableNumber(left.energyAlgorithmVersion) !==
+      normalizeComparableNumber(right.energyAlgorithmVersion)
+    ) {
+      fields.push('energyAlgorithmVersion')
     }
     if (!areSongHotCuesEqual(left.hotCues, right.hotCues)) {
       fields.push('hotCues')
@@ -469,6 +490,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
     const diffSummary = summarizeSongListDiff(scanData, originalSongInfoArr.value)
     if (!diffSummary.hasMeaningfulDiffs && diffSummary.hasIgnoredOnlyDiffs) {
+      await applySongListData(scanData)
       lastAppliedSongListUUID = loadedUUID
       if (options?.forceNotifySongSearchDirty) {
         notifySongSearchDirty('scanSongList')

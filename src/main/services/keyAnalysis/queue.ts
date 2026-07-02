@@ -791,6 +791,18 @@ export class KeyAnalysisQueue {
     }
   }
 
+  private emitCachedEnergyIfVisible(job: KeyAnalysisJob) {
+    if (job.category !== 'manual-batch' && job.category !== 'visible') return
+    if (job.prepareDetails?.energyCacheHit !== true) return
+    const cached = this.doneByPath.get(job.normalizedPath)
+    if (cached?.energyScore === undefined || cached.energyAlgorithmVersion === undefined) return
+    this.events.emit('energy-updated', {
+      filePath: job.filePath,
+      energyScore: cached.energyScore,
+      energyAlgorithmVersion: cached.energyAlgorithmVersion
+    })
+  }
+
   /**
    * 从全局待处理队列中取出 job 并分配给 idle worker。
    * 并发控制逻辑：
@@ -834,6 +846,7 @@ export class KeyAnalysisQueue {
       void (async () => {
         const ready = await this.persistence.prepareJob(job)
         if (!ready) {
+          this.emitCachedEnergyIfVisible(job)
           this.events.emit('analysis-job-skipped', {
             filePath: job.filePath,
             manualBatchIds: job.manualBatchIds
@@ -887,7 +900,9 @@ export class KeyAnalysisQueue {
           fastAnalysis: job.fastAnalysis,
           needsKey: job.needsKey,
           needsBpm: job.needsBpm,
-          needsWaveform: job.needsWaveform
+          needsWaveform: job.needsWaveform,
+          needsEnergy: job.needsEnergy,
+          cachedBpm: job.cachedBpm
         })
       })()
     }

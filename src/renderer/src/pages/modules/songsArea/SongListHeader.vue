@@ -14,11 +14,11 @@ const filterIconMaskStyle = {
 
 // 类型定义
 type VDraggableBinding = [list: ISongsAreaColumn[], options?: UseDraggableOptions<ISongsAreaColumn>]
-type FilterDialogType = 'text' | 'duration' | 'bpm'
+type FilterDialogType = 'text' | 'duration' | 'bpm' | 'number'
 type FilterDialogPayload =
   | { type: 'text'; text: string; excludeText: string; curatedOnly: boolean }
   | { type: 'duration'; op: 'eq' | 'gte' | 'lte'; duration: string }
-  | { type: 'bpm'; op: 'eq' | 'gte' | 'lte'; value: string }
+  | { type: 'bpm' | 'number'; op: 'eq' | 'gte' | 'lte'; value: string }
 
 // Props
 const props = defineProps({
@@ -275,7 +275,7 @@ function handleFilterIconClick(e: MouseEvent, col: ISongsAreaColumn) {
   } else if (col.filterType === 'duration') {
     tempOp.value = col.filterOp || 'gte'
     tempDuration.value = col.filterDuration || '00:00'
-  } else if (col.filterType === 'bpm') {
+  } else if (col.filterType === 'bpm' || col.filterType === 'number') {
     tempOp.value = col.filterOp || 'gte'
     tempNumber.value = col.filterNumber || ''
   }
@@ -338,7 +338,7 @@ function applyFilterConfirm(target: ISongsAreaColumn) {
       next.filterValue = undefined
       next.filterExcludeValue = undefined
       next.filterNumber = undefined
-    } else if (c.filterType === 'bpm') {
+    } else if (c.filterType === 'bpm' || c.filterType === 'number') {
       next.filterOp = tempOp.value
       next.filterNumber = normalizeNumberInput(tempNumber.value)
       next.filterActive = !!next.filterNumber
@@ -405,11 +405,32 @@ function getFilterTooltip(col: ISongsAreaColumn): string {
           : props.t('filters.lessOrEqual')
     return `${props.t('filters.filterByBpm')}: ${op} ${col.filterNumber || ''}`
   }
+  if (col.filterType === 'number') {
+    const op =
+      col.filterOp === 'eq'
+        ? props.t('filters.equals')
+        : col.filterOp === 'gte'
+          ? props.t('filters.greaterOrEqual')
+          : props.t('filters.lessOrEqual')
+    return `${props.t(`filters.filterBy.${col.key}`)}: ${op} ${col.filterNumber || ''}`
+  }
   return ''
 }
 
 function resolveFilterDialogType(col: ISongsAreaColumn): FilterDialogType {
-  return col.filterType === 'duration' || col.filterType === 'bpm' ? col.filterType : 'text'
+  return col.filterType === 'duration' || col.filterType === 'bpm' || col.filterType === 'number'
+    ? col.filterType
+    : 'text'
+}
+
+function resolveNumberFilterTitle(col: ISongsAreaColumn): string {
+  if (col.filterType === 'bpm') return props.t('filters.filterByBpm')
+  return props.t(`filters.filterBy.${col.key}`)
+}
+
+function resolveNumberFilterPlaceholder(col: ISongsAreaColumn): string {
+  if (col.filterType === 'bpm') return props.t('filters.bpmPlaceholder')
+  return props.t(`filters.placeholder.${col.key}`)
 }
 
 // 处理表头区域的右键菜单事件
@@ -538,6 +559,8 @@ const handleIndexActionClick = () => {
           :init-op="tempOp"
           :init-duration="tempDuration"
           :init-number="tempNumber"
+          :number-title="resolveNumberFilterTitle(col)"
+          :number-placeholder="resolveNumberFilterPlaceholder(col)"
           :show-curated-only="col.key === 'artist'"
           :init-curated-only="tempCuratedOnly"
           @confirm="
@@ -549,7 +572,7 @@ const handleIndexActionClick = () => {
               } else if (payload.type === 'duration') {
                 tempOp = payload.op
                 tempDuration = payload.duration
-              } else if (payload.type === 'bpm') {
+              } else if (payload.type === 'bpm' || payload.type === 'number') {
                 tempOp = payload.op
                 tempNumber = payload.value
               }

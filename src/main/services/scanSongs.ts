@@ -19,6 +19,7 @@ import {
   sortSongsByPlaylistTrackNumber
 } from './playlistTrackNumbers'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
+import { hasCurrentSongEnergyAnalysis } from '../../shared/songEnergy'
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
@@ -47,6 +48,7 @@ type CachedGridInfo = Pick<
 > & {
   beatThisWindowCount?: unknown
 }
+type CachedEnergyInfo = Pick<ISongInfo, 'energyScore' | 'energyAlgorithmVersion'>
 const hasCurrentKeyAnalysis = (info: CachedKeyInfo | null | undefined) =>
   hasKey(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
 const hasCompleteNumericGrid = (info: CachedGridInfo | null | undefined) =>
@@ -79,6 +81,10 @@ const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
     delete next.beatGridSource
     delete next.beatGridStatus
     delete next.beatGridAlgorithmVersion
+  }
+  if (!hasCurrentSongEnergyAnalysis(next)) {
+    delete next.energyScore
+    delete next.energyAlgorithmVersion
   }
   return next
 }
@@ -133,9 +139,20 @@ const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongI
   }
 }
 
+const preserveCachedEnergyAnalysisFields = (
+  target: ISongInfo,
+  cachedInfo?: CachedEnergyInfo | null
+) => {
+  if (!cachedInfo) return
+  if (hasCurrentSongEnergyAnalysis(target) || !hasCurrentSongEnergyAnalysis(cachedInfo)) return
+  target.energyScore = cachedInfo.energyScore
+  target.energyAlgorithmVersion = cachedInfo.energyAlgorithmVersion
+}
+
 const preserveCachedAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
   preserveCachedKeyAndBpm(target, cachedInfo)
   preserveCachedGridAnalysisFields(target, cachedInfo)
+  preserveCachedEnergyAnalysisFields(target, cachedInfo)
 }
 
 export const scheduleSongListPostScanTasks = async (
@@ -157,7 +174,12 @@ export const scheduleSongListPostScanTasks = async (
   if (options.enableAutoAnalysis === true) {
     const pendingKeys = scanData
       .filter((info) => !isInRecordingLibraryAbsPath(info.filePath))
-      .filter((info) => !hasCurrentKeyAnalysis(info) || !hasCompleteGrid(info))
+      .filter(
+        (info) =>
+          !hasCurrentKeyAnalysis(info) ||
+          !hasCompleteGrid(info) ||
+          !hasCurrentSongEnergyAnalysis(info)
+      )
       .map((info) => info.filePath)
       .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
     if (pendingKeys.length > 0) {
@@ -294,6 +316,7 @@ export async function scanSongList(
       // ignore stat error
     }
   }
+  const filesStatByKey = new Map(filesStatList.map((item) => [item.key, item]))
   const cachedInfos: ISongInfo[] = []
   const filesToParse: string[] = []
   const analysisOnlyByPath = new Map<string, ISongInfo>()
@@ -359,8 +382,11 @@ export async function scanSongList(
     for (const st of filesStatList) {
       const entry = cacheMap.get(st.key)
       if (!entry || !entry.info) continue
-      const missingKeyGrid = !hasCurrentKeyAnalysis(entry.info) || !hasCompleteGrid(entry.info)
-      if (!missingKeyGrid) continue
+      const missingAnalysis =
+        !hasCurrentKeyAnalysis(entry.info) ||
+        !hasCompleteGrid(entry.info) ||
+        !hasCurrentSongEnergyAnalysis(entry.info)
+      if (!missingAnalysis) continue
       const refreshed = await LibraryCacheDb.loadSongCacheEntry(cacheRoot, st.file)
       if (refreshed?.info) {
         cacheMap.set(st.key, refreshed)
@@ -485,8 +511,16 @@ export async function scanSongList(
   songInfoArr = songInfoArr.map(discardStaleAnalysisFields)
 
   for (const info of songInfoArr) {
-    const cachedInfo = cacheMap.get(normalizePathKey(info.filePath))?.info
+    const key = normalizePathKey(info.filePath)
+    const cached = cacheMap.get(key)
+    const cachedInfo = cached?.info
     if (!cachedInfo) continue
+    const stat = filesStatByKey.get(key)
+    const cachedStatMatches =
+      !!stat && cached.size === stat.size && Math.abs(cached.mtimeMs - stat.mtimeMs) < 1
+    if (cachedStatMatches) {
+      preserveCachedAnalysisFields(info, cachedInfo)
+    }
     const cachedPlaylistTrackNumber = normalizePlaylistTrackNumber(cachedInfo.playlistTrackNumber)
     if (
       normalizePlaylistTrackNumber(info.playlistTrackNumber) === undefined &&
@@ -564,6 +598,7 @@ export async function scanSongList(
             cached.size === st.size && Math.abs(cached.mtimeMs - st.mtimeMs) < 1
           if (cachedStatMatches) {
             preserveCachedGridAnalysisFields(nextInfo, cached.info)
+            preserveCachedEnergyAnalysisFields(nextInfo, cached.info)
           }
           if (nextInfo.analysisOnly === undefined && cached.info.analysisOnly) {
             nextInfo.analysisOnly = true

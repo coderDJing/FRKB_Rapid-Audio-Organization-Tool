@@ -129,6 +129,12 @@ const buildSongsAreaBaseColumns = (
       filterType: isMixtape ? undefined : 'bpm'
     },
     {
+      columnName: 'columns.energy',
+      key: 'energyScore',
+      show: true,
+      filterType: isMixtape ? undefined : 'number'
+    },
+    {
       columnName: 'columns.key',
       key: 'key',
       show: true,
@@ -175,7 +181,7 @@ const buildSongsAreaBaseColumns = (
   return columns
 }
 
-const defaultNoExtraWidthKeys = new Set(['index', 'duration', 'bpm', 'key'])
+const defaultNoExtraWidthKeys = new Set(['index', 'duration', 'bpm', 'energyScore', 'key'])
 
 export const getSongsAreaMinWidthByKey = (key: string, mode: SongsAreaColumnMode) => {
   const base = MIN_WIDTH_BY_KEY[key] ?? 0
@@ -396,6 +402,11 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
     return normalizeBpmDisplayScaled(numeric)
   }
 
+  function parseComparableNumber(input: unknown): number | null {
+    const numeric = parseNumberInput(input)
+    return Number.isNaN(numeric) ? null : numeric
+  }
+
   function parseExcludeKeywords(input: unknown): string[] {
     if (input === null || input === undefined) return []
     const raw = String(input)
@@ -480,6 +491,16 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
           if (col.filterOp === 'lte') return bpm <= target
           return true
         })
+      } else if (col.filterType === 'number' && col.filterOp && col.filterNumber) {
+        const target = parseComparableNumber(col.filterNumber)
+        filtered = filtered.filter((song) => {
+          const value = parseComparableNumber(getSongField(song, col.key))
+          if (value === null || target === null) return false
+          if (col.filterOp === 'eq') return value === target
+          if (col.filterOp === 'gte') return value >= target
+          if (col.filterOp === 'lte') return value <= target
+          return true
+        })
       }
     }
 
@@ -536,6 +557,17 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
           if (!validB) return -1
           return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
         })
+      } else if (sortedCol.key === 'energyScore') {
+        filtered = [...filtered].sort((a, b) => {
+          const valueA = Number(a.energyScore)
+          const valueB = Number(b.energyScore)
+          const validA = Number.isFinite(valueA)
+          const validB = Number.isFinite(valueB)
+          if (!validA && !validB) return 0
+          if (!validA) return 1
+          if (!validB) return -1
+          return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
+        })
       } else if (sortedCol.key === 'originalPlaylistPath') {
         const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
         filtered = [...filtered].sort((a, b) => {
@@ -585,6 +617,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       }
       if (!col.filterActive) return false
       if (col.filterType === 'bpm') return fieldSet.has('bpm')
+      if (col.filterType === 'number') return fieldSet.has(String(col.key || ''))
       if (col.filterType === 'text' && col.key === 'key') return fieldSet.has('key')
       return false
     })

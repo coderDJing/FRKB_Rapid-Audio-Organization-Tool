@@ -29,11 +29,9 @@ import type {
   SongListWaveformWorkerIncoming
 } from '@renderer/workers/songListWaveformPreview.types'
 import {
-  subscribeManualKeyAnalysisBatchStart,
   subscribePioneerPreviewWaveformDone,
   subscribePioneerPreviewWaveformItem,
   subscribeWaveformUpdated,
-  type ManualKeyAnalysisBatchStartPayload,
   type PioneerPreviewWaveformDoneHandler,
   type PioneerPreviewWaveformItemHandler,
   type WaveformUpdatedHandler
@@ -272,18 +270,6 @@ export function useWaveformPreview(params: {
     resolvePlaceholderState: (filePath) => placeholderStateMap.get(filePath),
     retryLoading: (filePath) => void fetchWaveformBatch([filePath])
   })
-  const collectKnownFilePathsByNormalizedPaths = (normalizedPaths: Set<string>) =>
-    Array.from(
-      new Set([
-        ...getVisiblePaths(),
-        ...dataMap.keys(),
-        ...waveformCanvasRegistry.getRegisteredFilePaths(),
-        ...inflight,
-        ...queuedMissing
-      ])
-    )
-      .map((filePath) => String(filePath || '').trim())
-      .filter((filePath) => filePath && normalizedPaths.has(normalizePath(filePath)))
   const buildPioneerStreamRequestId = () =>
     `pioneer-waveform:${Date.now()}:${Math.random().toString(36).slice(2)}`
   const resetPioneerStreamState = () => {
@@ -819,31 +805,6 @@ export function useWaveformPreview(params: {
     clearWaveformDataForFilePath(visibleFilePath)
     void fetchWaveformBatch([visibleFilePath])
   }
-  const handleManualKeyAnalysisBatchStart = (
-    _event: unknown,
-    payload?: ManualKeyAnalysisBatchStartPayload
-  ) => {
-    const normalizedPaths = new Set(
-      (Array.isArray(payload?.filePaths) ? payload.filePaths : [])
-        .map((filePath) => normalizePath(filePath))
-        .filter(Boolean)
-    )
-    if (!normalizedPaths.size) return
-    const affectedFilePaths = collectKnownFilePathsByNormalizedPaths(normalizedPaths).filter(
-      (filePath) => {
-        const song = resolveVisibleSongByFilePath(filePath)
-        return !resolveSongExternalWaveformSource(song, {
-          rootPath: resolveExternalRootPath(),
-          sourceKind: runtime.pioneerDeviceLibrary.selectedSourceKind || undefined
-        })
-      }
-    )
-    if (!affectedFilePaths.length) return
-    for (const filePath of affectedFilePaths) {
-      clearWaveformDataForFilePath(filePath)
-    }
-    scheduleDrawForFilePaths(affectedFilePaths)
-  }
   const handlePioneerPreviewWaveformItem: PioneerPreviewWaveformItemHandler = (_event, payload) => {
     const requestId = String(payload?.requestId || '').trim()
     if (!requestId || requestId !== activePioneerStreamRequestId) return
@@ -993,9 +954,6 @@ export function useWaveformPreview(params: {
   const unsubscribePioneerPreviewWaveformDone = subscribePioneerPreviewWaveformDone(
     handlePioneerPreviewWaveformDone
   )
-  const unsubscribeManualKeyAnalysisBatchStart = subscribeManualKeyAnalysisBatchStart(
-    handleManualKeyAnalysisBatchStart
-  )
   bindThemeClassObserver()
   emitter.on('waveform-preview:state', handleWaveformPreviewState)
   emitter.on('waveform-preview:progress', handleWaveformPreviewProgress)
@@ -1016,7 +974,6 @@ export function useWaveformPreview(params: {
     unsubscribeWaveformUpdated()
     unsubscribePioneerPreviewWaveformItem()
     unsubscribePioneerPreviewWaveformDone()
-    unsubscribeManualKeyAnalysisBatchStart()
     emitter.off('waveform-preview:state', handleWaveformPreviewState)
     emitter.off('waveform-preview:progress', handleWaveformPreviewProgress)
   })

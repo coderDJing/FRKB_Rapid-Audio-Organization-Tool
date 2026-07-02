@@ -7,9 +7,14 @@ import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECORDING_LIBRARY_CHANGED_EVENT, RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
+import { normalizeSongEnergyScore } from '@shared/songEnergy'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
 const normalizePath = (p: string | undefined | null) => (p || '').replace(/\//g, '\\').toLowerCase()
+
+type UserOpenedSongListOptions = {
+  forceAnalysisPrompt?: boolean
+}
 
 interface UseSongsAreaEventsParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -22,7 +27,10 @@ interface UseSongsAreaEventsParams {
   activeWaveformPreviewFilePath?: Ref<string>
   // 用户主动打开/切换到某个歌单（首次挂载或点击切换）后触发；
   // 后台刷新（导入/转换/录音库变化等）不会触发，用于决定是否弹框询问分析。
-  onUserOpenedSongList?: (songListUUID: string) => void | Promise<void>
+  onUserOpenedSongList?: (
+    songListUUID: string,
+    options?: UserOpenedSongListOptions
+  ) => void | Promise<void>
 }
 
 export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
@@ -437,66 +445,6 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     return true
   }
 
-  const clearAnalysisFields = (song: ISongInfo): ISongInfo => {
-    if (
-      song.key === undefined &&
-      song.bpm === undefined &&
-      song.firstBeatMs === undefined &&
-      song.barBeatOffset === undefined &&
-      song.beatGridSource === undefined &&
-      song.beatGridStatus === undefined &&
-      song.beatGridAlgorithmVersion === undefined &&
-      song.timeBasisOffsetMs === undefined
-    ) {
-      return song
-    }
-    const nextSong = { ...song }
-    delete nextSong.key
-    delete nextSong.bpm
-    delete nextSong.firstBeatMs
-    delete nextSong.barBeatOffset
-    delete nextSong.beatGridSource
-    delete nextSong.beatGridStatus
-    delete nextSong.beatGridAlgorithmVersion
-    delete nextSong.timeBasisOffsetMs
-    return nextSong
-  }
-
-  const onManualKeyAnalysisBatchStart = (_event: unknown, payload?: { filePaths?: string[] }) => {
-    const normalizedPaths = new Set(
-      (Array.isArray(payload?.filePaths) ? payload.filePaths : [])
-        .map((filePath) => normalizePath(filePath))
-        .filter(Boolean)
-    )
-    if (!normalizedPaths.size) return
-    let touchedOriginal = false
-    let touchedVisible = false
-    for (const normalizedPath of normalizedPaths) {
-      touchedOriginal =
-        patchOriginalSongByPath(normalizedPath, clearAnalysisFields) || touchedOriginal
-      touchedVisible =
-        patchSongsAreaSongByPath(normalizedPath, clearAnalysisFields) || touchedVisible
-      patchPlayingSongByPath(normalizedPath, clearAnalysisFields)
-      patchPlayingSongListByPath(normalizedPath, clearAnalysisFields)
-      patchExternalPlaylistSongByPath(normalizedPath, clearAnalysisFields)
-    }
-    if (touchedOriginal) {
-      scheduleApplyIfNeeded([
-        'key',
-        'bpm',
-        'firstBeatMs',
-        'barBeatOffset',
-        'beatGridSource',
-        'beatGridStatus',
-        'beatGridAlgorithmVersion',
-        'timeBasisOffsetMs'
-      ])
-    }
-    if (touchedVisible && runtime.playingData.playingSongListUUID === songsAreaState.songListUUID) {
-      runtime.playingData.playingSongListData = songsAreaState.songInfoArr
-    }
-  }
-
   const onSongKeyUpdated = (_e: unknown, payload: { filePath?: string; keyText?: string }) => {
     const filePath = payload?.filePath
     const keyText = payload?.keyText
@@ -632,6 +580,56 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     patchExternalPlaylistSongByPath(normalizedTargetPath, applyBpmPatch)
   }
 
+  const onSongEnergyUpdated = (
+    _e: unknown,
+    payload: {
+      filePath?: string
+      energyScore?: number
+      energyAlgorithmVersion?: number
+    }
+  ) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
+    const energyScore = normalizeSongEnergyScore(payload?.energyScore)
+    if (!filePath || energyScore === undefined) return
+    const normalizedTargetPath = normalizePath(filePath)
+    const rawEnergyAlgorithmVersion = payload?.energyAlgorithmVersion
+    const energyAlgorithmVersion =
+      typeof rawEnergyAlgorithmVersion === 'number' &&
+      Number.isFinite(rawEnergyAlgorithmVersion) &&
+      rawEnergyAlgorithmVersion > 0
+        ? Math.floor(rawEnergyAlgorithmVersion)
+        : undefined
+
+    const applyEnergyPatch = (song: ISongInfo): ISongInfo => {
+      if (
+        song.energyScore === energyScore &&
+        (energyAlgorithmVersion === undefined ||
+          song.energyAlgorithmVersion === energyAlgorithmVersion)
+      ) {
+        return song
+      }
+      return {
+        ...song,
+        energyScore,
+        energyAlgorithmVersion: energyAlgorithmVersion ?? song.energyAlgorithmVersion
+      }
+    }
+
+    const changedFields = [
+      'energyScore',
+      energyAlgorithmVersion !== undefined ? 'energyAlgorithmVersion' : ''
+    ].filter(Boolean)
+
+    if (patchOriginalSongByPath(normalizedTargetPath, applyEnergyPatch)) {
+      scheduleApplyIfNeeded(changedFields)
+    }
+
+    patchSongsAreaSongByPath(normalizedTargetPath, applyEnergyPatch)
+    patchPlayingSongByPath(normalizedTargetPath, applyEnergyPatch)
+    patchPlayingSongListByPath(normalizedTargetPath, applyEnergyPatch)
+    patchExternalPlaylistSongByPath(normalizedTargetPath, applyEnergyPatch)
+  }
+
   const onSongGridUpdated = (
     _e: unknown,
     payload: {
@@ -762,7 +760,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
         } catch {}
         // 导入到当前歌单后，复用“用户主动打开歌单”的询问分析逻辑：
         // 列表已刷新且用户仍停留在该歌单时，弹框询问是否分析新导入的曲目。
-        notifyUserOpenedSongList(songListUUID)
+        notifyUserOpenedSongList(songListUUID, { forceAnalysisPrompt: true })
       }, 1000)
       return
     }
@@ -790,7 +788,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
 
   const loadCurrentSongList = async (
     songListUUID: string,
-    options?: { resetSelection?: boolean; notifyUserOpened?: boolean }
+    options?: {
+      resetSelection?: boolean
+      notifyUserOpened?: boolean
+      forceAnalysisPrompt?: boolean
+    }
   ) => {
     if (options?.resetSelection) {
       songsAreaState.selectedSongFilePath.length = 0
@@ -806,18 +808,18 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       originalSongInfoArr.value = markRaw([...songs])
       applyFiltersAndSorting()
       scheduleSweepCovers()
-      if (options?.notifyUserOpened) notifyUserOpenedSongList(songListUUID)
+      if (options?.notifyUserOpened) notifyUserOpenedSongList(songListUUID, options)
       return
     }
     await openSongList()
-    if (options?.notifyUserOpened) notifyUserOpenedSongList(songListUUID)
+    if (options?.notifyUserOpened) notifyUserOpenedSongList(songListUUID, options)
   }
 
   // 仅当加载完成后用户仍停留在同一歌单时，才通知“用户主动打开了此歌单”
-  const notifyUserOpenedSongList = (songListUUID: string) => {
+  const notifyUserOpenedSongList = (songListUUID: string, options?: UserOpenedSongListOptions) => {
     if (!onUserOpenedSongList) return
     if (songsAreaState.songListUUID !== songListUUID) return
-    void Promise.resolve(onUserOpenedSongList(songListUUID)).catch(() => {})
+    void Promise.resolve(onUserOpenedSongList(songListUUID, options)).catch(() => {})
   }
 
   // 记录当前 pane 已“打开过”的歌单（无论是否弹框）。
@@ -844,10 +846,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     emitter.on('external-playlist/refresh', onExternalPlaylistRefresh)
     window.electron.ipcRenderer.on('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.on('song-bpm-updated', onSongBpmUpdated)
+    window.electron.ipcRenderer.on('song-energy-updated', onSongEnergyUpdated)
     window.electron.ipcRenderer.on('song-grid-updated', onSongGridUpdated)
     window.electron.ipcRenderer.on('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.on('song-memory-cues-updated', onSongMemoryCuesUpdated)
-    window.electron.ipcRenderer.on('key-analysis:manual-batch-start', onManualKeyAnalysisBatchStart)
     window.electron.ipcRenderer.on('importFinished', onImportFinished)
     window.electron.ipcRenderer.on('audio:convert:done', onAudioConvertDone)
     window.electron.ipcRenderer.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
@@ -867,13 +869,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     emitter.off('external-playlist/refresh', onExternalPlaylistRefresh)
     window.electron.ipcRenderer.removeListener('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.removeListener('song-bpm-updated', onSongBpmUpdated)
+    window.electron.ipcRenderer.removeListener('song-energy-updated', onSongEnergyUpdated)
     window.electron.ipcRenderer.removeListener('song-grid-updated', onSongGridUpdated)
     window.electron.ipcRenderer.removeListener('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.removeListener('song-memory-cues-updated', onSongMemoryCuesUpdated)
-    window.electron.ipcRenderer.removeListener(
-      'key-analysis:manual-batch-start',
-      onManualKeyAnalysisBatchStart
-    )
     window.electron.ipcRenderer.removeListener('importFinished', onImportFinished)
     window.electron.ipcRenderer.removeListener('audio:convert:done', onAudioConvertDone)
     window.electron.ipcRenderer.removeListener(

@@ -124,6 +124,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       needsKey: job.needsKey,
       needsBpm: job.needsBpm,
       needsWaveform: job.needsWaveform,
+      needsEnergy: job.needsEnergy,
       manualBatchIds: job.manualBatchIds
     })
   }
@@ -398,6 +399,14 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           )
         }
       }
+    }
+
+    if (job && payloadResult?.energyScore !== undefined) {
+      await deps.persistence.persistEnergy(
+        job.filePath,
+        payloadResult.energyScore,
+        payloadResult.energyAlgorithmVersion
+      )
     }
 
     if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {

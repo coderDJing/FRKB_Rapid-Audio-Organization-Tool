@@ -3,6 +3,10 @@
     "filterByText": "按文本筛选（包含/排除）",
     "filterByDuration": "按时长筛选",
     "filterByBpm": "按 BPM 筛选",
+    "filterByNumber": "按数值筛选",
+    "filterBy": {
+      "energyScore": "按能量筛选"
+    },
     "equals": "等于",
     "greaterOrEqual": "大于等于",
     "lessOrEqual": "小于等于",
@@ -13,6 +17,10 @@
     "clearThisColumn": "清空本列",
     "durationPlaceholder": "MM:SS",
     "bpmPlaceholder": "例如 128 或 128.5",
+    "numberPlaceholder": "请输入数值",
+    "placeholder": {
+      "energyScore": "例如 70"
+    },
     "noResults": "未找到符合筛选条件的曲目",
     "noResultsHint": "可尝试放宽条件或清空筛选。",
     "persistFiltersAfterRestart": "重新启动保留筛选条件",

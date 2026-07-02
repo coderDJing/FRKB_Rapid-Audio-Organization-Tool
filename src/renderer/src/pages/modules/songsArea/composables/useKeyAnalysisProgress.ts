@@ -1,5 +1,6 @@
 import { computed, ref, type Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
+import { hasCurrentSongEnergyAnalysis } from '@shared/songEnergy'
 
 type AnalysisStage =
   | 'job-received'
@@ -228,6 +229,7 @@ bindIpcListener()
 
 export const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => {
   if (!song) return false
+  if (!hasCurrentSongEnergyAnalysis(song)) return false
   const keyText = typeof song.key === 'string' ? song.key.trim() : ''
   if (!keyText) return false
   if (song.beatGridStatus === 'no-bpm') return true
@@ -261,6 +263,7 @@ export function useKeyAnalysisProgress(params: {
 
   const hasRequiredAnalysis = (song: ISongInfo | undefined) => {
     if (!song) return false
+    if (!hasCurrentSongEnergyAnalysis(song)) return false
     if (requiresRuntimeAnalysis?.value === true) return hasCompleteKeyAnalysis(song)
     return typeof song.key === 'string' && song.key.trim().length > 0
   }

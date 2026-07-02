@@ -1,4 +1,5 @@
 import libraryUtils from '@renderer/utils/libraryUtils'
+import { hasCurrentSongEnergyAnalysis } from '@shared/songEnergy'
 
 type ScanSongListResult = {
   scanData?: Array<{
@@ -8,6 +9,8 @@ type ScanSongListResult = {
     firstBeatMs?: unknown
     barBeatOffset?: unknown
     beatGridStatus?: unknown
+    energyScore?: unknown
+    energyAlgorithmVersion?: unknown
   }>
 }
 
@@ -18,6 +21,8 @@ type AnalysisCandidate = {
   firstBeatMs?: unknown
   barBeatOffset?: unknown
   beatGridStatus?: unknown
+  energyScore?: unknown
+  energyAlgorithmVersion?: unknown
   fileMissing?: boolean
 }
 
@@ -30,9 +35,12 @@ export const hasRequiredAnalysis = (
     firstBeatMs?: unknown
     barBeatOffset?: unknown
     beatGridStatus?: unknown
+    energyScore?: unknown
+    energyAlgorithmVersion?: unknown
   },
   requiresRuntimeAnalysis: boolean
 ) => {
+  if (!hasCurrentSongEnergyAnalysis(song)) return false
   const keyText = typeof song.key === 'string' ? song.key.trim() : ''
   if (!keyText) return false
   if (!requiresRuntimeAnalysis) return true

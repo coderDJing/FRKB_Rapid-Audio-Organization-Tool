@@ -5,7 +5,6 @@ import {
 } from '@renderer/utils/rekordboxExternalSource'
 
 export type WaveformUpdatedPayload = { filePath?: string }
-export type ManualKeyAnalysisBatchStartPayload = { filePaths?: string[] }
 type PioneerPreviewWaveformItemPayload = {
   requestId?: string
   analyzePath?: string
@@ -18,10 +17,6 @@ type PioneerPreviewWaveformDonePayload = {
 }
 
 export type WaveformUpdatedHandler = (_event: unknown, payload: WaveformUpdatedPayload) => void
-type ManualKeyAnalysisBatchStartHandler = (
-  _event: unknown,
-  payload?: ManualKeyAnalysisBatchStartPayload
-) => void
 export type PioneerPreviewWaveformItemHandler = (
   _event: unknown,
   payload: PioneerPreviewWaveformItemPayload
@@ -125,15 +120,5 @@ export const subscribePioneerPreviewWaveformDone = (handler: PioneerPreviewWavef
   return () => {
     pioneerPreviewWaveformDoneSubscribers.delete(handler)
     unbindWaveformIpcListenersIfIdle()
-  }
-}
-
-export const subscribeManualKeyAnalysisBatchStart = (
-  handler: ManualKeyAnalysisBatchStartHandler
-) => {
-  if (typeof window === 'undefined' || !window.electron?.ipcRenderer) return () => {}
-  window.electron.ipcRenderer.on('key-analysis:manual-batch-start', handler)
-  return () => {
-    window.electron.ipcRenderer.removeListener('key-analysis:manual-batch-start', handler)
   }
 }

@@ -53,6 +53,13 @@ export const useSongRowDisplay = (params: {
       }
       return isDesktopRekordboxSong(song) ? t('rekordboxDesktop.analysisRequired') : ''
     }
+    if (colKey === 'energyScore') {
+      const energyScore = Number(raw)
+      if (Number.isFinite(energyScore)) {
+        return Math.max(0, Math.min(100, Math.round(energyScore)))
+      }
+      return ''
+    }
     if (raw === undefined || raw === null) return ''
     return raw as string | number
   }

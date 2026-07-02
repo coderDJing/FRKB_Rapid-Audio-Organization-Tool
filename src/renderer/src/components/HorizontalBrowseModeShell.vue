@@ -884,6 +884,7 @@ onUnmounted(() => {
         :tempo-nudge-active-direction="resolveDeckTempoNudgeDirection('top')"
         :show-tempo-nudge="!isEditMode"
         :hide-sync-controls="isEditMode"
+        show-energy
         :show-large-shift-buttons="isEditMode"
         @region-drag-enter="handleRegionDragEnter"
         @region-drag-over="handleRegionDragOver"
@@ -1021,6 +1022,7 @@ onUnmounted(() => {
         :master-tempo-enabled="isDeckMasterTempoEnabled('bottom')"
         :tempo-nudge-active-direction="resolveDeckTempoNudgeDirection('bottom')"
         :show-tempo-nudge="!isEditMode"
+        show-energy
         @region-drag-enter="handleRegionDragEnter"
         @region-drag-over="handleRegionDragOver"
         @region-drag-leave="handleRegionDragLeave"

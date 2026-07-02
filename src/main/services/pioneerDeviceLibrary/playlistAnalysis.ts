@@ -10,6 +10,7 @@ import {
 import { shouldAcceptKeyAnalysisCacheVersion } from '../keyAnalysisAlgorithmVersion'
 import { findSongListRoot } from '../cacheMaintenance'
 import { ensurePioneerUsbIdentity } from './usbIdentity'
+import { hasCurrentSongEnergyAnalysis } from '../../../shared/songEnergy'
 import type { ISongInfo } from '../../../types/globals'
 import type { ExternalAnalysisSourceKind } from '../../libraryCacheDb'
 
@@ -69,6 +70,7 @@ const hasCompleteFrkbAnalysis = (info: Partial<ISongInfo> | null | undefined) =>
   return (
     keyText.length > 0 &&
     shouldAcceptKeyAnalysisCacheVersion(info) &&
+    hasCurrentSongEnergyAnalysis(info) &&
     (hasCurrentNoBpmBeatGridResult(info) ||
       (Number.isFinite(bpm) &&
         bpm > 0 &&

@@ -364,6 +364,14 @@ keyAnalysisEvents.on('bpm-updated', (payload) => {
   }
 })
 
+keyAnalysisEvents.on('energy-updated', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('song-energy-updated', payload)
+    } catch {}
+  }
+})
+
 songGridEvents.on('grid-updated', (payload) => {
   if (mainWindow.instance) {
     try {

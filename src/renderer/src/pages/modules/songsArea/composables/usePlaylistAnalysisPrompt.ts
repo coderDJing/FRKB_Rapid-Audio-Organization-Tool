@@ -34,6 +34,10 @@ type ManualBatchEndPayload = {
   canceled?: boolean
 }
 
+type OpenSongListAnalysisPromptOptions = {
+  forceAnalysisPrompt?: boolean
+}
+
 export function usePlaylistAnalysisPrompt({
   runtime,
   songsAreaState,
@@ -69,8 +73,11 @@ export function usePlaylistAnalysisPrompt({
       runtime.playlistAnalysisPromptDismissedSongListUUIDs.filter((uuid) => uuid !== songListUUID)
   }
 
+  const isDismissedSongList = (songListUUID: string) =>
+    runtime.playlistAnalysisPromptDismissedSongListUUIDs.includes(songListUUID)
+
   const markDismissedSongList = (songListUUID: string) => {
-    if (runtime.playlistAnalysisPromptDismissedSongListUUIDs.includes(songListUUID)) return
+    if (isDismissedSongList(songListUUID)) return
     runtime.playlistAnalysisPromptDismissedSongListUUIDs = [
       ...runtime.playlistAnalysisPromptDismissedSongListUUIDs,
       songListUUID
@@ -107,13 +114,23 @@ export function usePlaylistAnalysisPrompt({
     )
   })
 
-  const handleUserOpenedSongList = async (songListUUID: string) => {
+  const handleUserOpenedSongList = async (
+    songListUUID: string,
+    options?: OpenSongListAnalysisPromptOptions
+  ) => {
     autoAnalyzeEnabled.value = false
-    clearDismissedSongList(songListUUID)
     if (shouldSkipAnalysisPrompt(songListUUID)) return
 
     const missingCount = missingAnalysisFiles.value.length
-    if (!missingCount) return
+    if (!missingCount) {
+      clearDismissedSongList(songListUUID)
+      return
+    }
+    if (options?.forceAnalysisPrompt) {
+      clearDismissedSongList(songListUUID)
+    } else if (isDismissedSongList(songListUUID)) {
+      return
+    }
 
     const choice = await confirm({
       title: t('tracks.analyzePlaylistPromptTitle'),
@@ -135,6 +152,7 @@ export function usePlaylistAnalysisPrompt({
     const missingFiles = missingAnalysisFiles.value
     if (!missingFiles.length) return
 
+    clearDismissedSongList(songListUUID)
     autoAnalyzeEnabled.value = true
     const result = (await queueManualKeyAnalysisBatch(
       missingFiles,
@@ -147,7 +165,7 @@ export function usePlaylistAnalysisPrompt({
     () =>
       !manualAnalyzePending.value &&
       !shouldSkipAnalysisPrompt(songsAreaState.songListUUID) &&
-      runtime.playlistAnalysisPromptDismissedSongListUUIDs.includes(songsAreaState.songListUUID) &&
+      isDismissedSongList(songsAreaState.songListUUID) &&
       missingAnalysisFiles.value.length > 0
   )
 
@@ -157,7 +175,7 @@ export function usePlaylistAnalysisPrompt({
     if (
       manualAnalyzePending.value ||
       shouldSkipAnalysisPrompt(songListUUID) ||
-      !runtime.playlistAnalysisPromptDismissedSongListUUIDs.includes(songListUUID) ||
+      !isDismissedSongList(songListUUID) ||
       !missingFiles.length
     ) {
       return
