@@ -1,5 +1,9 @@
 import libraryUtils from '@renderer/utils/libraryUtils'
-import { hasCurrentSongEnergyAnalysis } from '@shared/songEnergy'
+import {
+  CURRENT_SONG_ENERGY_ALGORITHM_VERSION,
+  hasCurrentSongEnergyAnalysis,
+  normalizeSongEnergyScore
+} from '@shared/songEnergy'
 
 type ScanSongListResult = {
   scanData?: Array<{
@@ -39,21 +43,39 @@ export const hasRequiredAnalysis = (
     energyAlgorithmVersion?: unknown
   },
   requiresRuntimeAnalysis: boolean
+) => resolveMissingAnalysisReasons(song, requiresRuntimeAnalysis).length === 0
+
+export const resolveMissingAnalysisReasons = (
+  song: {
+    key?: unknown
+    bpm?: unknown
+    firstBeatMs?: unknown
+    barBeatOffset?: unknown
+    beatGridStatus?: unknown
+    energyScore?: unknown
+    energyAlgorithmVersion?: unknown
+  },
+  requiresRuntimeAnalysis: boolean
 ) => {
-  if (!hasCurrentSongEnergyAnalysis(song)) return false
+  const reasons: string[] = []
+  if (!hasCurrentSongEnergyAnalysis(song)) {
+    reasons.push(
+      normalizeSongEnergyScore(song.energyScore) === undefined
+        ? 'missing-energy-score'
+        : `stale-energy-version:${String(song.energyAlgorithmVersion || '')}->${CURRENT_SONG_ENERGY_ALGORITHM_VERSION}`
+    )
+  }
   const keyText = typeof song.key === 'string' ? song.key.trim() : ''
-  if (!keyText) return false
-  if (!requiresRuntimeAnalysis) return true
-  if (song.beatGridStatus === 'no-bpm') return true
+  if (!keyText) reasons.push('missing-key')
+  if (!requiresRuntimeAnalysis) return reasons
+  if (song.beatGridStatus === 'no-bpm') return reasons
   const bpm = Number(song.bpm)
   const firstBeatMs = Number(song.firstBeatMs)
   const barBeatOffset = Number(song.barBeatOffset)
-  return (
-    Number.isFinite(bpm) &&
-    bpm > 0 &&
-    Number.isFinite(firstBeatMs) &&
-    Number.isFinite(barBeatOffset)
-  )
+  if (!Number.isFinite(bpm) || bpm <= 0) reasons.push('missing-bpm')
+  if (!Number.isFinite(firstBeatMs)) reasons.push('missing-first-beat')
+  if (!Number.isFinite(barBeatOffset)) reasons.push('missing-bar-beat-offset')
+  return reasons
 }
 
 export const collectMissingAnalysisFilesFromSongs = (

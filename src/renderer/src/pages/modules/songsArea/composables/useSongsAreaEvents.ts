@@ -14,6 +14,7 @@ const normalizePath = (p: string | undefined | null) => (p || '').replace(/\//g,
 
 type UserOpenedSongListOptions = {
   forceAnalysisPrompt?: boolean
+  source?: string
 }
 
 interface UseSongsAreaEventsParams {
@@ -760,7 +761,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
         } catch {}
         // 导入到当前歌单后，复用“用户主动打开歌单”的询问分析逻辑：
         // 列表已刷新且用户仍停留在该歌单时，弹框询问是否分析新导入的曲目。
-        notifyUserOpenedSongList(songListUUID, { forceAnalysisPrompt: true })
+        notifyUserOpenedSongList(songListUUID, {
+          forceAnalysisPrompt: true,
+          source: 'import-finished-current-list'
+        })
       }, 1000)
       return
     }
@@ -792,6 +796,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       resetSelection?: boolean
       notifyUserOpened?: boolean
       forceAnalysisPrompt?: boolean
+      source?: string
     }
   ) => {
     if (options?.resetSelection) {
@@ -808,11 +813,21 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       originalSongInfoArr.value = markRaw([...songs])
       applyFiltersAndSorting()
       scheduleSweepCovers()
-      if (options?.notifyUserOpened) notifyUserOpenedSongList(songListUUID, options)
+      if (options?.notifyUserOpened) {
+        notifyUserOpenedSongList(songListUUID, {
+          ...options,
+          source: options.source || 'external-playlist-load'
+        })
+      }
       return
     }
     await openSongList()
-    if (options?.notifyUserOpened) notifyUserOpenedSongList(songListUUID, options)
+    if (options?.notifyUserOpened) {
+      notifyUserOpenedSongList(songListUUID, {
+        ...options,
+        source: options.source || 'song-list-load'
+      })
+    }
   }
 
   // 仅当加载完成后用户仍停留在同一歌单时，才通知“用户主动打开了此歌单”
@@ -891,7 +906,11 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       // 程序化的 '' → 原值 伪切换（如把歌曲移动到当前歌单后强制刷新）目标仍是已打开歌单，不弹框。
       const notifyUserOpened = !!newUUID && newUUID !== lastOpenedUUID
       if (newUUID) lastOpenedUUID = newUUID
-      await loadCurrentSongList(newUUID, { resetSelection: true, notifyUserOpened })
+      await loadCurrentSongList(newUUID, {
+        resetSelection: true,
+        notifyUserOpened,
+        source: 'song-list-watch'
+      })
     }
   )
 
