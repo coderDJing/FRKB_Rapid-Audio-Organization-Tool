@@ -3,6 +3,7 @@ import path from 'node:path'
 import type { MixxxWaveformData } from '../../waveformCodec'
 import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
 import type { BeatGridStatus } from '../../../types/globals'
+import type { SongStructureAnalysis } from '../../../shared/songStructure'
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
@@ -94,6 +95,8 @@ export type KeyAnalysisJob = {
   needsWaveform?: boolean
   needsEnergy?: boolean
   cachedBpm?: number
+  cachedFirstBeatMs?: number
+  cachedBarBeatOffset?: number
   startTime?: number
   trace?: KeyAnalysisJobTrace
   fileSize?: number
@@ -142,6 +145,7 @@ export type BpmAnalysisResult = {
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number | null
   beatGridStatus?: BeatGridStatus
+  songStructure?: SongStructureAnalysis
 }
 
 export type DoneEntry = {
@@ -157,6 +161,7 @@ export type DoneEntry = {
   beatGridStatus?: BeatGridStatus
   energyScore?: number
   energyAlgorithmVersion?: number
+  songStructure?: SongStructureAnalysis
   hasWaveform?: boolean
 }
 
@@ -178,6 +183,7 @@ type KeyAnalysisWorkerPartialResult = {
   bpmError?: string
   energyScore?: number
   energyAlgorithmVersion?: number
+  songStructure?: SongStructureAnalysis
 }
 
 type KeyAnalysisWorkerResult = KeyAnalysisWorkerPartialResult & {

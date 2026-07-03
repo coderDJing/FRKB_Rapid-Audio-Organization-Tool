@@ -11,6 +11,7 @@ import {
   calculateSongEnergyScoreFromPcm,
   calculateSongEnergyScoreFromUnifiedDisplay
 } from '../../shared/songEnergy'
+import { buildSongStructureAnalysis, type SongStructureAnalysis } from '../../shared/songStructure'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 import { getBeatThisRuntimeAvailabilitySnapshot } from './beatThisRuntime'
 import { computeRawWaveform } from './rawWaveformBuilder'
@@ -24,6 +25,8 @@ type KeyJob = {
   needsWaveform?: boolean
   needsEnergy?: boolean
   cachedBpm?: number
+  cachedFirstBeatMs?: number
+  cachedBarBeatOffset?: number
 }
 
 type KeyResultPayload = {
@@ -35,6 +38,7 @@ type KeyResultPayload = {
   bpmError?: string
   energyScore?: number
   energyAlgorithmVersion?: number
+  songStructure?: SongStructureAnalysis
   mixxxWaveformData?: MixxxWaveformData | null
   unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
 }
@@ -229,6 +233,8 @@ const analyzeKeyForFile = (
     needsWaveform: boolean
     needsEnergy: boolean
     cachedBpm?: number
+    cachedFirstBeatMs?: number
+    cachedBarBeatOffset?: number
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -244,6 +250,8 @@ const analyzeKeyForFileInternal = async (
     needsWaveform: boolean
     needsEnergy: boolean
     cachedBpm?: number
+    cachedFirstBeatMs?: number
+    cachedBarBeatOffset?: number
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -463,6 +471,13 @@ const analyzeKeyForFileInternal = async (
       result.unifiedDisplayWaveformData = result.mixxxWaveformData
         ? buildUnifiedDisplayWaveformDetailFromMixxx(result.mixxxWaveformData, rawWaveformData)
         : null
+      result.songStructure =
+        buildSongStructureAnalysis({
+          waveformData: result.unifiedDisplayWaveformData,
+          bpm: result.bpm ?? options.cachedBpm,
+          firstBeatMs: result.firstBeatMs ?? options.cachedFirstBeatMs,
+          barBeatOffset: result.barBeatOffset ?? options.cachedBarBeatOffset
+        }) ?? undefined
       const energy =
         result.energyScore === undefined
           ? calculateSongEnergyScoreFromUnifiedDisplay(
@@ -532,7 +547,9 @@ parentPort?.on('message', async (job: KeyJob) => {
         needsBpm: Boolean(job.needsBpm),
         needsWaveform: Boolean(job.needsWaveform),
         needsEnergy: Boolean(job.needsEnergy),
-        cachedBpm: job.cachedBpm
+        cachedBpm: job.cachedBpm,
+        cachedFirstBeatMs: job.cachedFirstBeatMs,
+        cachedBarBeatOffset: job.cachedBarBeatOffset
       },
       reportProgress
     )

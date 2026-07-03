@@ -1,6 +1,7 @@
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
+import { normalizeSongStructureAnalysis, type SongStructureAnalysis } from '@shared/songStructure'
 
 type SharedSongGridPayload = {
   filePath?: string
@@ -104,6 +105,27 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
     touched = true
   }
   return touched ? nextSong : song
+}
+
+export const mergeHorizontalBrowseSongWithStructure = (
+  song: ISongInfo,
+  payload: { filePath?: string; songStructure?: SongStructureAnalysis } | null
+): ISongInfo => {
+  if (!payload) return song
+  const filePath = String(payload.filePath || '').trim()
+  if (!filePath || !isSameHorizontalBrowseSongFilePath(filePath, song.filePath)) return song
+  const songStructure = normalizeSongStructureAnalysis(payload.songStructure)
+  if (!songStructure) return song
+  if (
+    JSON.stringify(normalizeSongStructureAnalysis(song.songStructure)) ===
+    JSON.stringify(songStructure)
+  ) {
+    return song
+  }
+  return {
+    ...song,
+    songStructure
+  }
 }
 
 export const mergeHorizontalBrowseSongWithHotCues = (

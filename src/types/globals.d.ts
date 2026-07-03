@@ -3,6 +3,7 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 import { PreloadApi } from '../preload/index'
 import { IPicture } from 'music-metadata'
 import type { RekordboxSourceKind, RekordboxSourceLibraryType } from '../shared/rekordboxSources'
+import type { SongStructureAnalysis } from '../shared/songStructure'
 
 interface IDir {
   uuid: string
@@ -51,6 +52,7 @@ interface ISongInfo {
   beatGridStatus?: BeatGridStatus
   energyScore?: number
   energyAlgorithmVersion?: number
+  songStructure?: SongStructureAnalysis
   playlistTrackNumber?: number
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number
@@ -804,6 +806,7 @@ export {
   IPioneerDeviceLibraryKind,
   IPioneerPlaylistTreeNode,
   IPioneerPlaylistTrack,
+  SongStructureAnalysis,
   ITrackMetadataUpdatePayload,
   IMetadataAutoFillRequest,
   IMetadataAutoFillItemResult,

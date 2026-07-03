@@ -2,8 +2,10 @@ import type { Ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import {
   isSameHorizontalBrowseSongFilePath,
-  mergeHorizontalBrowseSongWithSharedGrid
+  mergeHorizontalBrowseSongWithSharedGrid,
+  mergeHorizontalBrowseSongWithStructure
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseShellSongs'
+import type { SongStructureAnalysis } from '@shared/songStructure'
 import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportBeatGridInput
@@ -25,6 +27,11 @@ type SharedSongGridPayload = {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   beatGridSource?: ISongInfo['beatGridSource']
+} | null
+
+type SongStructurePayload = {
+  filePath?: string
+  songStructure?: SongStructureAnalysis
 } | null
 
 type UseHorizontalBrowseDeckSongSyncParams = {
@@ -148,10 +155,24 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     patchDeckSongKey('bottom')
   }
 
+  const handleSongStructureUpdated = (_event: unknown, payload: SongStructurePayload) => {
+    const patchDeckSongStructure = (deck: DeckKey) => {
+      const currentSong = params.resolveDeckSong(deck)
+      if (!currentSong) return
+      const nextSong = mergeHorizontalBrowseSongWithStructure(currentSong, payload)
+      if (nextSong === currentSong) return
+      params.setDeckSong(deck, nextSong)
+    }
+
+    patchDeckSongStructure('top')
+    patchDeckSongStructure('bottom')
+  }
+
   return {
     disposeSongSync() {},
     handleExternalDeckSongLoad,
     handleSongGridUpdated,
-    handleSongKeyUpdated
+    handleSongKeyUpdated,
+    handleSongStructureUpdated
   }
 }

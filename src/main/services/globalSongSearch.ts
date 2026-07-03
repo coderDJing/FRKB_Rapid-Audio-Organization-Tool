@@ -15,6 +15,10 @@ import {
 } from './beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from './keyAnalysisAlgorithmVersion'
 import { hasCurrentSongEnergyAnalysis, normalizeSongEnergyScore } from '../../shared/songEnergy'
+import {
+  hasCurrentSongStructureAnalysis,
+  normalizeSongStructureAnalysis
+} from '../../shared/songStructure'
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 
@@ -321,6 +325,9 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     : undefined
   const energyAlgorithmVersion =
     energyScore !== undefined ? rawInfo?.energyAlgorithmVersion : undefined
+  const songStructure = hasCurrentSongStructureAnalysis(rawInfo)
+    ? normalizeSongStructureAnalysis(rawInfo?.songStructure)
+    : undefined
   const playlistTrackNumber = normalizePlaylistTrackNumber(rawInfo?.playlistTrackNumber)
 
   return {
@@ -346,6 +353,7 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     beatGridStatus,
     energyScore,
     energyAlgorithmVersion,
+    songStructure,
     playlistTrackNumber,
     hotCues: normalizeSongHotCues(rawInfo?.hotCues),
     memoryCues: normalizeSongMemoryCues(rawInfo?.memoryCues),

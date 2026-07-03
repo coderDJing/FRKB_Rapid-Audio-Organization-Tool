@@ -66,6 +66,7 @@ export const createPersistEnergy = (params: CreateEnergyPersistenceParams) => {
         beatGridStatus: existing?.beatGridStatus,
         energyScore: normalizedEnergyScore,
         energyAlgorithmVersion: normalizedEnergyAlgorithmVersion,
+        songStructure: existing?.songStructure,
         hasWaveform: existing?.hasWaveform
       })
 
@@ -125,6 +126,7 @@ export const createPersistEnergy = (params: CreateEnergyPersistenceParams) => {
         beatGridStatus: existing?.beatGridStatus,
         energyScore: normalizedEnergyScore,
         energyAlgorithmVersion: normalizedEnergyAlgorithmVersion,
+        songStructure: existing?.songStructure,
         hasWaveform: existing?.hasWaveform
       })
       params.events.emit('energy-updated', {

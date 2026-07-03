@@ -20,6 +20,10 @@ import {
 } from './playlistTrackNumbers'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 import { hasCurrentSongEnergyAnalysis } from '../../shared/songEnergy'
+import {
+  hasCurrentSongStructureAnalysis,
+  normalizeSongStructureAnalysis
+} from '../../shared/songStructure'
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
@@ -49,6 +53,10 @@ type CachedGridInfo = Pick<
   beatThisWindowCount?: unknown
 }
 type CachedEnergyInfo = Pick<ISongInfo, 'energyScore' | 'energyAlgorithmVersion'>
+type CachedStructureInfo = Pick<
+  ISongInfo,
+  'songStructure' | 'bpm' | 'firstBeatMs' | 'barBeatOffset'
+>
 const hasCurrentKeyAnalysis = (info: CachedKeyInfo | null | undefined) =>
   hasKey(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
 const hasCompleteNumericGrid = (info: CachedGridInfo | null | undefined) =>
@@ -85,6 +93,9 @@ const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
   if (!hasCurrentSongEnergyAnalysis(next)) {
     delete next.energyScore
     delete next.energyAlgorithmVersion
+  }
+  if (!hasCurrentSongStructureAnalysis(next)) {
+    delete next.songStructure
   }
   return next
 }
@@ -149,10 +160,23 @@ const preserveCachedEnergyAnalysisFields = (
   target.energyAlgorithmVersion = cachedInfo.energyAlgorithmVersion
 }
 
+const preserveCachedStructureAnalysisFields = (
+  target: ISongInfo,
+  cachedInfo?: CachedStructureInfo | null
+) => {
+  if (!cachedInfo) return
+  if (hasCurrentSongStructureAnalysis(target) || !hasCurrentSongStructureAnalysis(cachedInfo))
+    return
+  const structure = normalizeSongStructureAnalysis(cachedInfo.songStructure)
+  if (!structure) return
+  target.songStructure = structure
+}
+
 const preserveCachedAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
   preserveCachedKeyAndBpm(target, cachedInfo)
   preserveCachedGridAnalysisFields(target, cachedInfo)
   preserveCachedEnergyAnalysisFields(target, cachedInfo)
+  preserveCachedStructureAnalysisFields(target, cachedInfo)
 }
 
 export const scheduleSongListPostScanTasks = async (

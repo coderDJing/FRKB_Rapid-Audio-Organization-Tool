@@ -16,6 +16,11 @@ import {
   normalizeSongEnergyScore
 } from '../../../shared/songEnergy'
 import {
+  hasCurrentSongStructureAnalysis,
+  normalizeSongStructureAnalysis,
+  type SongStructureAnalysis
+} from '../../../shared/songStructure'
+import {
   persistSharedSongGridDefinition,
   shouldKeepManualSharedSongGridDefinition
 } from '../sharedSongGrid'
@@ -92,6 +97,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     delete info.beatGridSource
     delete info.beatGridStatus
     delete info.beatGridAlgorithmVersion
+    delete info.songStructure
   }
 
   const applyNoBpmBeatGridResult = (info: ISongInfo) => {
@@ -139,6 +145,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       beatGridStatus?: ISongInfo['beatGridStatus']
       energyScore?: number
       energyAlgorithmVersion?: number
+      songStructure?: SongStructureAnalysis | null
     },
     stat?: { size: number; mtimeMs: number }
   ) => {
@@ -202,6 +209,22 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       info.energyAlgorithmVersion =
         payload.energyAlgorithmVersion ?? CURRENT_SONG_ENERGY_ALGORITHM_VERSION
     }
+    if (Object.prototype.hasOwnProperty.call(payload, 'songStructure')) {
+      const songStructure = normalizeSongStructureAnalysis(payload.songStructure)
+      if (songStructure) {
+        info.songStructure = songStructure
+      } else {
+        delete info.songStructure
+      }
+    } else if (
+      (payload.bpm !== undefined ||
+        payload.firstBeatMs !== undefined ||
+        payload.barBeatOffset !== undefined ||
+        payload.beatGridStatus !== undefined) &&
+      !hasCurrentSongStructureAnalysis(info)
+    ) {
+      delete info.songStructure
+    }
     await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
       size: fileStat.size,
       mtimeMs: fileStat.mtimeMs,
@@ -227,6 +250,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         beatGridStatus: existing?.beatGridStatus,
         energyScore: existing?.energyScore,
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: existing?.songStructure,
         hasWaveform: existing?.hasWaveform
       })
 
@@ -291,6 +315,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         beatGridStatus: existing?.beatGridStatus,
         energyScore: existing?.energyScore,
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: existing?.songStructure,
         hasWaveform: existing?.hasWaveform
       })
       const payload: KeyAnalysisResult = { filePath, keyText }
@@ -377,6 +402,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
           energyScore: existing?.energyScore,
           energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+          songStructure: existing?.songStructure,
           hasWaveform: existing?.hasWaveform
         })
         const nextInfo = applyLiteDefaults(
@@ -389,6 +415,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         nextInfo.beatGridSource = 'manual'
         stripBeatThisDebugInfo(nextInfo)
         nextInfo.beatGridAlgorithmVersion = normalizedBeatGridAlgorithmVersion
+        if (!hasCurrentSongStructureAnalysis(nextInfo)) {
+          delete nextInfo.songStructure
+        }
         if (listRoot) {
           await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
             size: stat.size,
@@ -422,6 +451,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
         energyScore: existing?.energyScore,
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: existing?.songStructure,
         hasWaveform: existing?.hasWaveform
       })
 
@@ -471,6 +501,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           analysisOnly: true
         })
         delete nextInfo.beatGridStatus
+        if (!hasCurrentSongStructureAnalysis(nextInfo)) {
+          delete nextInfo.songStructure
+        }
         await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, nextInfo)
       }
 
@@ -501,6 +534,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
         energyScore: existing?.energyScore,
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: existing?.songStructure,
         hasWaveform: existing?.hasWaveform
       })
       const payload: BpmAnalysisResult = {
@@ -543,6 +577,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         beatGridStatus: BEAT_GRID_STATUS_NO_BPM,
         energyScore: existing?.energyScore,
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: undefined,
         hasWaveform: existing?.hasWaveform
       })
 
@@ -602,6 +637,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         beatGridStatus: BEAT_GRID_STATUS_NO_BPM,
         energyScore: existing?.energyScore,
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: undefined,
         hasWaveform: existing?.hasWaveform
       })
       deps.events.emit('bpm-updated', {
@@ -619,7 +655,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
   const persistWaveform = async (
     filePath: string,
     waveformData: MixxxWaveformData,
-    unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
+    unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null,
+    songStructure?: SongStructureAnalysis | null
   ) => {
     const normalizedPath = normalizePath(filePath)
     try {
@@ -629,6 +666,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       const surfaceData = buildWaveformSurfaceCacheDataFromUnifiedDisplay(
         unifiedDisplayWaveformData
       )
+      const normalizedSongStructure = normalizeSongStructureAnalysis(songStructure)
       deps.doneByPath.set(normalizedPath, {
         size: stat.size,
         mtimeMs: stat.mtimeMs,
@@ -642,6 +680,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         beatGridStatus: existing?.beatGridStatus,
         energyScore: existing?.energyScore,
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: normalizedSongStructure ?? existing?.songStructure,
         hasWaveform: listRoot ? Boolean(surfaceData) : true
       })
 
@@ -651,7 +690,14 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           await ensureSongCacheEntry(
             listRoot,
             filePath,
-            {},
+            { songStructure: normalizedSongStructure ?? null },
+            { size: stat.size, mtimeMs: stat.mtimeMs }
+          )
+        } else if (normalizedSongStructure) {
+          await ensureSongCacheEntry(
+            listRoot,
+            filePath,
+            { songStructure: normalizedSongStructure },
             { size: stat.size, mtimeMs: stat.mtimeMs }
           )
         }
@@ -687,8 +733,20 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, {
               ...buildLiteSongInfo(filePath),
               filePath,
+              ...(normalizedSongStructure ? { songStructure: normalizedSongStructure } : {}),
               analysisOnly: true
             })
+          } else if (normalizedSongStructure) {
+            await LibraryCacheDb.upsertExternalAnalysisCacheEntry(
+              externalContext,
+              stat,
+              stripBeatThisDebugInfo({
+                ...cached.info,
+                filePath,
+                songStructure: normalizedSongStructure,
+                analysisOnly: true
+              })
+            )
           }
           await LibraryCacheDb.upsertExternalAnalysisWaveformCacheEntry(
             externalContext,
@@ -696,6 +754,12 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             waveformData
           )
         }
+      }
+      if (normalizedSongStructure) {
+        deps.events.emit('structure-updated', {
+          filePath,
+          songStructure: normalizedSongStructure
+        })
       }
     } catch (error) {
       if (isMissingFileError(error)) {
@@ -716,6 +780,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         beatGridStatus: existing?.beatGridStatus,
         energyScore: existing?.energyScore,
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: existing?.songStructure,
         hasWaveform: true
       })
       log.error('[闲时分析] persistWaveform 失败，已写入内存兜底', {
@@ -796,6 +861,20 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         energyAlgorithmVersion: CURRENT_SONG_ENERGY_ALGORITHM_VERSION
       }
     }
+    const resolveCurrentStructure = (
+      info:
+        | {
+            songStructure?: unknown
+            bpm?: unknown
+            firstBeatMs?: unknown
+            barBeatOffset?: unknown
+          }
+        | null
+        | undefined
+    ) =>
+      hasCurrentSongStructureAnalysis(info)
+        ? normalizeSongStructureAnalysis(info?.songStructure)
+        : undefined
     try {
       const fsStat = await fs.stat(filePath)
       stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
@@ -823,20 +902,19 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       const hasDoneCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(done)
       const hasDoneNoBpm = hasCurrentNoBpmBeatGridResult(done)
       const hasDoneEnergy = hasCurrentSongEnergyAnalysis(done)
+      const hasDoneCompleteGrid =
+        hasDoneBpm && hasDoneFirstBeatMs && hasDoneBarBeatOffset && hasDoneCurrentBeatGridAlgorithm
+      const doneStructure = resolveCurrentStructure(done)
       if (isValidKeyText(done.keyText) && hasDoneCurrentKeyAlgorithm) {
         needsKey = false
       }
-      if (
-        hasDoneNoBpm ||
-        (hasDoneBpm &&
-          hasDoneFirstBeatMs &&
-          hasDoneBarBeatOffset &&
-          hasDoneCurrentBeatGridAlgorithm)
-      ) {
+      if (hasDoneNoBpm || hasDoneCompleteGrid) {
         job.cachedBpm = done.bpm
+        job.cachedFirstBeatMs = done.firstBeatMs
+        job.cachedBarBeatOffset = done.barBeatOffset
         needsBpm = false
       }
-      if (done.hasWaveform) {
+      if (done.hasWaveform && (!hasDoneCompleteGrid || doneStructure)) {
         needsWaveform = false
       }
       if (hasDoneEnergy) {
@@ -877,11 +955,14 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         const hasCompleteCurrentGrid =
           hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm
         const cachedEnergy = resolveCurrentEnergy(cached.info)
+        const cachedStructure = hasCompleteCurrentGrid
+          ? resolveCurrentStructure(cached.info)
+          : undefined
         if (cachedEnergy) {
           energyCacheHit = true
           needsEnergy = false
         }
-        if (hasKey || hasCompleteCurrentGrid || hasNoBpm || cachedEnergy) {
+        if (hasKey || hasCompleteCurrentGrid || hasNoBpm || cachedEnergy || cachedStructure) {
           deps.doneByPath.set(job.normalizedPath, {
             size: stat.size,
             mtimeMs: stat.mtimeMs,
@@ -903,6 +984,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             beatGridStatus: hasNoBpm ? BEAT_GRID_STATUS_NO_BPM : undefined,
             energyScore: cachedEnergy?.energyScore,
             energyAlgorithmVersion: cachedEnergy?.energyAlgorithmVersion,
+            songStructure: cachedStructure,
             hasWaveform: false
           })
         }
@@ -915,6 +997,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             (hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm))
         ) {
           job.cachedBpm = cachedBpm
+          job.cachedFirstBeatMs = cachedFirstBeatMs
+          job.cachedBarBeatOffset = cachedBarBeatOffset
           needsBpm = false
         }
         const hasWaveform = await LibraryCacheDb.hasWaveformSurfaceCacheEntryByMeta(
@@ -939,9 +1023,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             beatGridStatus: existingDone?.beatGridStatus,
             energyScore: existingDone?.energyScore,
             energyAlgorithmVersion: existingDone?.energyAlgorithmVersion,
+            songStructure: existingDone?.songStructure,
             hasWaveform: true
           })
-          needsWaveform = false
+          needsWaveform = hasCompleteCurrentGrid && !existingDone?.songStructure
         }
         if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy) {
           applyJobNeeds()
@@ -977,11 +1062,21 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           const hasCompleteCurrentGrid =
             hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm
           const cachedEnergy = resolveCurrentEnergy(cached.info)
+          const cachedStructure = hasCompleteCurrentGrid
+            ? resolveCurrentStructure(cached.info)
+            : undefined
           if (cachedEnergy) {
             energyCacheHit = true
             needsEnergy = false
           }
-          if (hasKey || hasCompleteCurrentGrid || hasNoBpm || cached.hasWaveform || cachedEnergy) {
+          if (
+            hasKey ||
+            hasCompleteCurrentGrid ||
+            hasNoBpm ||
+            cached.hasWaveform ||
+            cachedEnergy ||
+            cachedStructure
+          ) {
             deps.doneByPath.set(job.normalizedPath, {
               size: stat.size,
               mtimeMs: stat.mtimeMs,
@@ -1003,6 +1098,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
               beatGridStatus: hasNoBpm ? BEAT_GRID_STATUS_NO_BPM : undefined,
               energyScore: cachedEnergy?.energyScore,
               energyAlgorithmVersion: cachedEnergy?.energyAlgorithmVersion,
+              songStructure: cachedStructure,
               hasWaveform: cached.hasWaveform
             })
           }
@@ -1015,11 +1111,13 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
               (hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm))
           ) {
             job.cachedBpm = cachedBpm
+            job.cachedFirstBeatMs = cachedFirstBeatMs
+            job.cachedBarBeatOffset = cachedBarBeatOffset
             needsBpm = false
           }
           if (cached.hasWaveform) {
             waveformCacheHit = true
-            needsWaveform = false
+            needsWaveform = hasCompleteCurrentGrid && !cachedStructure
           }
           if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy) {
             applyJobNeeds()

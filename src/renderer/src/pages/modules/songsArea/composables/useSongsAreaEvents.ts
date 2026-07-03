@@ -8,6 +8,7 @@ import { RECORDING_LIBRARY_CHANGED_EVENT, RECORDING_LIBRARY_UUID } from '@shared
 import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
 import { normalizeSongEnergyScore } from '@shared/songEnergy'
+import { normalizeSongStructureAnalysis, type SongStructureAnalysis } from '@shared/songStructure'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import type { OpenSongListOptions } from './useSongsLoader'
 
@@ -632,6 +633,40 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     patchExternalPlaylistSongByPath(normalizedTargetPath, applyEnergyPatch)
   }
 
+  const onSongStructureUpdated = (
+    _e: unknown,
+    payload: {
+      filePath?: string
+      songStructure?: SongStructureAnalysis
+    }
+  ) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
+    if (!filePath) return
+    const songStructure = normalizeSongStructureAnalysis(payload?.songStructure)
+    if (!songStructure) return
+    const normalizedTargetPath = normalizePath(filePath)
+    const signature = JSON.stringify(songStructure)
+
+    const applyStructurePatch = (song: ISongInfo): ISongInfo => {
+      if (JSON.stringify(normalizeSongStructureAnalysis(song.songStructure)) === signature) {
+        return song
+      }
+      return {
+        ...song,
+        songStructure
+      }
+    }
+
+    if (patchOriginalSongByPath(normalizedTargetPath, applyStructurePatch)) {
+      scheduleApplyIfNeeded(['songStructure'])
+    }
+
+    patchSongsAreaSongByPath(normalizedTargetPath, applyStructurePatch)
+    patchPlayingSongByPath(normalizedTargetPath, applyStructurePatch)
+    patchPlayingSongListByPath(normalizedTargetPath, applyStructurePatch)
+    patchExternalPlaylistSongByPath(normalizedTargetPath, applyStructurePatch)
+  }
+
   const onSongGridUpdated = (
     _e: unknown,
     payload: {
@@ -863,6 +898,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.on('song-bpm-updated', onSongBpmUpdated)
     window.electron.ipcRenderer.on('song-energy-updated', onSongEnergyUpdated)
+    window.electron.ipcRenderer.on('song-structure-updated', onSongStructureUpdated)
     window.electron.ipcRenderer.on('song-grid-updated', onSongGridUpdated)
     window.electron.ipcRenderer.on('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.on('song-memory-cues-updated', onSongMemoryCuesUpdated)
@@ -886,6 +922,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.removeListener('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.removeListener('song-bpm-updated', onSongBpmUpdated)
     window.electron.ipcRenderer.removeListener('song-energy-updated', onSongEnergyUpdated)
+    window.electron.ipcRenderer.removeListener('song-structure-updated', onSongStructureUpdated)
     window.electron.ipcRenderer.removeListener('song-grid-updated', onSongGridUpdated)
     window.electron.ipcRenderer.removeListener('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.removeListener('song-memory-cues-updated', onSongMemoryCuesUpdated)

@@ -925,7 +925,9 @@ export class KeyAnalysisQueue {
           needsBpm: job.needsBpm,
           needsWaveform: job.needsWaveform,
           needsEnergy: job.needsEnergy,
-          cachedBpm: job.cachedBpm
+          cachedBpm: job.cachedBpm,
+          cachedFirstBeatMs: job.cachedFirstBeatMs,
+          cachedBarBeatOffset: job.cachedBarBeatOffset
         })
       })()
     }

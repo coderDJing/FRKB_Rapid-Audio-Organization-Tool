@@ -376,6 +376,15 @@ keyAnalysisEvents.on('energy-updated', (payload) => {
   }
 })
 
+keyAnalysisEvents.on('structure-updated', (payload) => {
+  markGlobalSongSearchDirty('key-analysis:structure-updated')
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('song-structure-updated', payload)
+    } catch {}
+  }
+})
+
 songGridEvents.on('grid-updated', (payload) => {
   markGlobalSongSearchDirty('song-grid:grid-updated')
   if (mainWindow.instance) {

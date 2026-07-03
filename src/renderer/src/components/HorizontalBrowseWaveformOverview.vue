@@ -22,6 +22,11 @@ import {
   drawWaveformTimelineTicks,
   resolveWaveformTimelineTickThemeVariant
 } from '@renderer/components/waveformTimelineTicks'
+import {
+  normalizeSongStructureAnalysis,
+  type SongStructureSection,
+  type SongStructureSectionKind
+} from '@shared/songStructure'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -99,6 +104,42 @@ const loopMaskStyle = computed(() => {
     left: `${(startSec / totalSeconds.value) * 100}%`,
     width: `${((endSec - startSec) / totalSeconds.value) * 100}%`
   }
+})
+
+const resolveStructureLabel = (kind: SongStructureSectionKind) => {
+  if (kind === 'breakdown') return 'BREAK'
+  return kind.toUpperCase()
+}
+
+const structureSections = computed(() => {
+  const structure = normalizeSongStructureAnalysis(props.song?.songStructure)
+  if (!structure || totalSeconds.value <= 0) return []
+  return structure.sections
+    .map((section: SongStructureSection) => {
+      const startSec = Math.max(0, Math.min(totalSeconds.value, Number(section.startSec) || 0))
+      const endSec = Math.max(startSec, Math.min(totalSeconds.value, Number(section.endSec) || 0))
+      if (endSec - startSec <= 0.2) return null
+      return {
+        key: `${section.phraseIndex}-${section.kind}-${section.startSec}-${section.endSec}`,
+        kind: section.kind,
+        label: resolveStructureLabel(section.kind),
+        style: {
+          left: `${(startSec / totalSeconds.value) * 100}%`,
+          width: `${((endSec - startSec) / totalSeconds.value) * 100}%`,
+          '--structure-strength': String(Math.max(0.42, Math.min(0.92, section.confidence)))
+        } as Record<string, string>
+      }
+    })
+    .filter(
+      (
+        section
+      ): section is {
+        key: string
+        kind: SongStructureSectionKind
+        label: string
+        style: Record<string, string>
+      } => section !== null
+    )
 })
 
 const resolveSeekDuplicateEpsilonSec = () => {
@@ -487,6 +528,17 @@ onUnmounted(() => {
   >
     <div ref="trackRef" class="overview-waveform__track">
       <canvas ref="canvasRef" class="overview-waveform__canvas"></canvas>
+      <div v-if="structureSections.length" class="overview-waveform__structure" aria-hidden="true">
+        <div
+          v-for="section in structureSections"
+          :key="section.key"
+          class="overview-waveform__structure-segment"
+          :class="`overview-waveform__structure-segment--${section.kind}`"
+          :style="section.style"
+        >
+          <span class="overview-waveform__structure-label">{{ section.label }}</span>
+        </div>
+      </div>
       <MemoryCueMarkersLayer
         :memory-cues="props.memoryCues || []"
         :visible-duration-sec="totalSeconds"
@@ -538,6 +590,94 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+.overview-waveform__structure {
+  --structure-intro: rgba(125, 211, 252, 0.86);
+  --structure-groove: rgba(52, 211, 153, 0.82);
+  --structure-breakdown: rgba(196, 181, 253, 0.86);
+  --structure-build: rgba(251, 191, 36, 0.88);
+  --structure-drop: rgba(248, 113, 113, 0.9);
+  --structure-outro: rgba(148, 163, 184, 0.84);
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 3px;
+  height: 22px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.overview-waveform__structure-segment {
+  position: absolute;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  min-width: 4px;
+  overflow: hidden;
+  border-radius: 3px;
+  opacity: var(--structure-strength, 0.62);
+  background: var(--structure-groove);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 1px 4px rgba(0, 0, 0, 0.28);
+}
+
+.overview-waveform__structure-label {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 4px;
+  color: rgba(12, 18, 28, 0.9);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 22px;
+  text-align: center;
+  text-overflow: clip;
+  text-shadow: 0 1px 1px rgba(255, 255, 255, 0.26);
+  white-space: nowrap;
+}
+
+.overview-waveform__structure-segment--intro {
+  background: var(--structure-intro);
+}
+
+.overview-waveform__structure-segment--groove {
+  background: var(--structure-groove);
+}
+
+.overview-waveform__structure-segment--breakdown {
+  background: var(--structure-breakdown);
+}
+
+.overview-waveform__structure-segment--build {
+  background: var(--structure-build);
+}
+
+.overview-waveform__structure-segment--drop {
+  background: var(--structure-drop);
+}
+
+.overview-waveform__structure-segment--outro {
+  background: var(--structure-outro);
+}
+
+:global(.theme-light) .overview-waveform__structure,
+:global(.theme-light) .overview-waveform {
+  --structure-intro: rgba(2, 132, 199, 0.76);
+  --structure-groove: rgba(5, 150, 105, 0.76);
+  --structure-breakdown: rgba(124, 58, 237, 0.74);
+  --structure-build: rgba(217, 119, 6, 0.78);
+  --structure-drop: rgba(220, 38, 38, 0.78);
+  --structure-outro: rgba(71, 85, 105, 0.72);
+}
+
+:global(.theme-light) .overview-waveform__structure-label {
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.24);
 }
 
 .overview-waveform__loop-mask {

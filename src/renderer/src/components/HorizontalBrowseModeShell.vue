@@ -678,16 +678,21 @@ const {
   assignSongToDeck
 })
 
-const { disposeSongSync, handleExternalDeckSongLoad, handleSongGridUpdated, handleSongKeyUpdated } =
-  useHorizontalBrowseDeckSongSync({
-    topDeckSong,
-    bottomDeckSong,
-    resolveDeckSong,
-    setDeckSong,
-    syncDeckDefaultCue,
-    setDeckBeatGridToNative: (deck, payload) => nativeTransport.setBeatGrid(deck, payload),
-    assignSongToDeck
-  })
+const {
+  disposeSongSync,
+  handleExternalDeckSongLoad,
+  handleSongGridUpdated,
+  handleSongKeyUpdated,
+  handleSongStructureUpdated
+} = useHorizontalBrowseDeckSongSync({
+  topDeckSong,
+  bottomDeckSong,
+  resolveDeckSong,
+  setDeckSong,
+  syncDeckDefaultCue,
+  setDeckBeatGridToNative: (deck, payload) => nativeTransport.setBeatGrid(deck, payload),
+  assignSongToDeck
+})
 
 watch(
   () => deckSyncState.leaderDeck,
@@ -751,6 +756,7 @@ onMounted(() => {
   emitter.on('songsRemoved', handleSongsRemoved)
   window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.on('song-key-updated', handleSongKeyUpdated)
+  window.electron.ipcRenderer.on('song-structure-updated', handleSongStructureUpdated)
   window.electron.ipcRenderer.on('song-hot-cues-updated', handleSongHotCuesUpdated)
   window.electron.ipcRenderer.on('song-memory-cues-updated', handleSongMemoryCuesUpdated)
 })
@@ -777,6 +783,7 @@ onUnmounted(() => {
   emitter.off('songsRemoved', handleSongsRemoved)
   window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)
+  window.electron.ipcRenderer.removeListener('song-structure-updated', handleSongStructureUpdated)
   window.electron.ipcRenderer.removeListener('song-hot-cues-updated', handleSongHotCuesUpdated)
   window.electron.ipcRenderer.removeListener(
     'song-memory-cues-updated',
