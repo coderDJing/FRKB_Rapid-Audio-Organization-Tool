@@ -920,7 +920,7 @@ onUnmounted(() => {
         @toggle-quantize="handleDeckQuantizeToggle('top')"
         @tempo-nudge-start="startDeckTempoNudge('top', $event)"
         @tempo-nudge-end="stopDeckTempoNudge('top', $event)"
-        @select-move-target="openDeckMoveDialog('top', $event)"
+        @select-move-target="(target, actionMode) => openDeckMoveDialog('top', target, actionMode)"
       />
 
       <section class="detail-pair" :class="{ 'detail-pair--edit': isEditMode }">
@@ -1057,7 +1057,9 @@ onUnmounted(() => {
         @toggle-quantize="handleDeckQuantizeToggle('bottom')"
         @tempo-nudge-start="startDeckTempoNudge('bottom', $event)"
         @tempo-nudge-end="stopDeckTempoNudge('bottom', $event)"
-        @select-move-target="openDeckMoveDialog('bottom', $event)"
+        @select-move-target="
+          (target, actionMode) => openDeckMoveDialog('bottom', target, actionMode)
+        "
       />
       <HorizontalBrowseCuePanels
         v-model:top-mode="deckCuePanelMode.top"

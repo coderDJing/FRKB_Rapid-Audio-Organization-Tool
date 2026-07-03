@@ -125,12 +125,14 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
 
   const openDeckMoveDialog = (
     deck: HorizontalBrowseDeckKey,
-    libraryName: HorizontalBrowseDeckMoveTargetLibrary
+    libraryName: HorizontalBrowseDeckMoveTargetLibrary,
+    actionMode?: LibraryTransferActionMode
   ) => {
     if (!getDeckSong(deck)) return
     pendingDeck.value = deck
     selectSongListDialogTargetLibraryName.value = libraryName
-    selectSongListDialogActionMode.value = isDeckSongReadOnly(deck) ? 'copy' : 'move'
+    selectSongListDialogActionMode.value =
+      actionMode ?? (isDeckSongReadOnly(deck) ? 'copy' : 'move')
     selectSongListDialogVisible.value = true
   }
 
@@ -145,6 +147,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
   const handleDeckMoveSong = async (targetSongListUUID: string) => {
     const deck = pendingDeck.value
     const targetLibraryName = selectSongListDialogTargetLibraryName.value
+    const actionMode = selectSongListDialogActionMode.value
     clearPendingState()
 
     if (!deck || !targetSongListUUID || !targetLibraryName) return
@@ -152,7 +155,8 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
     const song = getDeckSong(deck)
     if (!song?.filePath) return
     try {
-      const readOnlySource = selectSongListDialogActionMode.value === 'copy'
+      const copyMode = actionMode === 'copy'
+      const sourceIsReadOnly = isDeckSongReadOnly(deck)
       const requiresVaultCopy = isRekordboxExternalPlaybackSource('', song)
       const currentSongsAreaListUuid = runtime.songsArea.songListUUID
       const currentSongsAreaNode = libraryUtils.getLibraryTreeByUUID(currentSongsAreaListUuid)
@@ -167,7 +171,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
         songListPath?: string
       } | null
       const sourceSongListUuid = String(sourceResolution?.songListUuid || '')
-      const sourceActionMode = readOnlySource
+      const sourceActionMode = copyMode
         ? 'copy'
         : resolveLibraryTransferActionModeForPlayback(sourceSongListUuid, song)
       const currentSongListIsSource =
@@ -194,7 +198,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
         }
         let appendResult: MixtapeAppendResult | null = null
         let copiedDeckPath = ''
-        if (readOnlySource) {
+        if (copyMode) {
           let copiedPath = song.filePath
           if (requiresVaultCopy) {
             const copiedTracks = (await window.electron.ipcRenderer.invoke(
@@ -247,7 +251,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
           }
           return
         }
-        if (copiedDeckPath) {
+        if (sourceIsReadOnly && copiedDeckPath) {
           setDeckSong(deck, buildMovedDeckSong(song, copiedDeckPath))
         }
 
@@ -268,7 +272,7 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
         'moveSongsToDir',
         [song.filePath],
         targetDirPath,
-        readOnlySource
+        copyMode
           ? {
               mode: 'copy',
               curatedArtistNames: [song.artist || '']
@@ -288,9 +292,11 @@ export const useHorizontalBrowseDeckMove = (params: UseHorizontalBrowseDeckMoveP
         }
       ])
 
-      setDeckSong(deck, buildMovedDeckSong(song, nextFilePath))
+      if (!copyMode || sourceIsReadOnly) {
+        setDeckSong(deck, buildMovedDeckSong(song, nextFilePath))
+      }
 
-      if (!readOnlySource && currentSongListIsSource && currentSongsAreaNode?.type === 'songList') {
+      if (!copyMode && currentSongListIsSource && currentSongsAreaNode?.type === 'songList') {
         emitter.emit('songsRemoved', {
           listUUID: currentSongsAreaListUuid,
           paths: [song.filePath]

@@ -38,11 +38,13 @@ import {
   withoutRecordingAnalysisMenus
 } from './songItemContextMenuMenus'
 import { detectSongsAreaScrollCarrier } from './scrollCarrier'
+import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
 
 // Type for the return value when a dialog needs to be opened by the parent
 interface OpenDialogAction {
   action: 'openSelectSongListDialog'
   libraryName: 'CuratedLibrary' | 'FilterLibrary' | 'SetLibrary' | 'MixtapeLibrary'
+  actionMode?: LibraryTransferActionMode
 }
 
 // 新增：用于表示歌曲被右键菜单操作移除的返回类型
@@ -745,11 +747,29 @@ export function useSongItemContextMenu(
         return null
       }
       case 'library.moveToCurated':
+        return {
+          action: 'openSelectSongListDialog',
+          libraryName: 'CuratedLibrary',
+          actionMode: 'move'
+        }
       case 'library.copyToCurated':
-        return { action: 'openSelectSongListDialog', libraryName: 'CuratedLibrary' }
+        return {
+          action: 'openSelectSongListDialog',
+          libraryName: 'CuratedLibrary',
+          actionMode: 'copy'
+        }
       case 'library.moveToFilter':
+        return {
+          action: 'openSelectSongListDialog',
+          libraryName: 'FilterLibrary',
+          actionMode: 'move'
+        }
       case 'library.copyToFilter':
-        return { action: 'openSelectSongListDialog', libraryName: 'FilterLibrary' }
+        return {
+          action: 'openSelectSongListDialog',
+          libraryName: 'FilterLibrary',
+          actionMode: 'copy'
+        }
       case 'library.addToSet':
         return { action: 'openSelectSongListDialog', libraryName: 'SetLibrary' }
       case 'library.addToMixtape':

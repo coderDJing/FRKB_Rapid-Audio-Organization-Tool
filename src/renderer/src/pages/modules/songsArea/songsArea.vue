@@ -577,7 +577,7 @@ const handleSongContextMenuEvent = async (event: MouseEvent, song: ISongInfo) =>
   if (!result) return
 
   if (result.action === 'openSelectSongListDialog') {
-    initiateMoveSongs(result.libraryName)
+    initiateMoveSongs(result.libraryName, result.actionMode)
     return
   }
 

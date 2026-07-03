@@ -412,16 +412,19 @@ export function registerExportHandlers() {
             remapKeyAnalysisTrackedPath(src, movedPath)
             replaceMixtapeFilePath(src, movedPath)
             updateSetItemFilePathReferences(src, movedPath)
-            try {
-              const fromRoot = await findSongListRoot(path.dirname(src))
-              const toRoot = await findSongListRoot(path.dirname(movedPath))
-              await transferTrackCaches({
-                fromRoot,
-                toRoot,
-                fromPath: src,
-                toPath: movedPath
-              })
-            } catch {}
+          }
+          try {
+            const fromRoot = await findSongListRoot(path.dirname(src))
+            const toRoot = await findSongListRoot(path.dirname(movedPath))
+            await transferTrackCaches({
+              fromRoot,
+              toRoot,
+              fromPath: src,
+              toPath: movedPath,
+              mode: isMove ? 'move' : 'copy'
+            })
+          } catch {}
+          if (isMove) {
             if (isInRecycleBinAbsPath(src)) {
               const rel = toLibraryRelativePath(src)
               if (rel) deleteRecycleBinRecord(rel)

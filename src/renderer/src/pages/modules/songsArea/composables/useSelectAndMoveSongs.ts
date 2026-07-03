@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { ref } from 'vue'
 import type { ISongsAreaPaneRuntimeState } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import emitter from '@renderer/utils/mitt'
@@ -122,12 +122,15 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
 
   const isDialogVisible = ref(false)
   const targetLibraryName = ref<MoveSongsLibraryName | ''>('')
-  const dialogActionMode = computed<LibraryTransferActionMode>(() =>
-    resolveLibraryTransferActionModeForSongList(songsAreaState.songListUUID)
-  )
+  const dialogActionMode = ref<LibraryTransferActionMode>('move')
 
-  const initiateMoveSongs = (libraryName: MoveSongsLibraryName) => {
+  const initiateMoveSongs = (
+    libraryName: MoveSongsLibraryName,
+    actionMode?: LibraryTransferActionMode
+  ) => {
     targetLibraryName.value = libraryName
+    dialogActionMode.value =
+      actionMode ?? resolveLibraryTransferActionModeForSongList(songsAreaState.songListUUID)
     isDialogVisible.value = true
   }
 
@@ -163,7 +166,7 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
   ) => {
     isDialogVisible.value = false
     const sourceSongListUUID = songsAreaState.songListUUID
-    const sourceActionMode = resolveLibraryTransferActionModeForSongList(sourceSongListUUID)
+    const sourceActionMode = dialogActionMode.value
     const selectedPaths = sortFilePathsByVisibleSongOrder(
       JSON.parse(JSON.stringify(songsAreaState.selectedSongFilePath))
     )
@@ -173,7 +176,11 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
     const targetNode = libraryUtils.getLibraryTreeByUUID(targetSongListUUID)
     const sourceNode = libraryUtils.getLibraryTreeByUUID(sourceSongListUUID)
     const isSetTarget = targetNode?.type === 'setList' || targetLibraryName.value === 'SetLibrary'
-    if (targetSongListUUID === songsAreaState.songListUUID && !isSetTarget) {
+    if (
+      sourceActionMode === 'move' &&
+      targetSongListUUID === songsAreaState.songListUUID &&
+      !isSetTarget
+    ) {
       // Moving to the same list, do nothing.
       return
     }

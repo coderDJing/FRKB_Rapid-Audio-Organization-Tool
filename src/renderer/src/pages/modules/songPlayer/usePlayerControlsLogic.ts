@@ -577,26 +577,31 @@ export function usePlayerControlsLogic({
     }
   }
 
-  const openSongMoveDialog = (libraryName: LibraryTransferTarget, song?: ISongInfo) => {
+  const openSongMoveDialog = (
+    libraryName: LibraryTransferTarget,
+    song?: ISongInfo,
+    actionMode?: LibraryTransferActionMode
+  ) => {
     const targetSong = song || runtime.playingData.playingSong
     if (!targetSong) return
     const sourceListUuid = String(runtime.playingData.playingSongListUUID || '')
     songToMoveRef.value = {
       song: targetSong,
       sourceListUuid,
-      actionMode: resolveLibraryTransferActionModeForPlayback(sourceListUuid, targetSong)
+      actionMode:
+        actionMode ?? resolveLibraryTransferActionModeForPlayback(sourceListUuid, targetSong)
     }
     selectSongListDialogActionMode.value = songToMoveRef.value.actionMode
     selectSongListDialogLibraryName.value = libraryName
     selectSongListDialogShow.value = true
   }
 
-  const moveToListLibrary = (song?: ISongInfo) => {
-    openSongMoveDialog('FilterLibrary', song)
+  const moveToListLibrary = (song?: ISongInfo, actionMode?: LibraryTransferActionMode) => {
+    openSongMoveDialog('FilterLibrary', song, actionMode)
   }
 
-  const moveToLikeLibrary = (song?: ISongInfo) => {
-    openSongMoveDialog('CuratedLibrary', song)
+  const moveToLikeLibrary = (song?: ISongInfo, actionMode?: LibraryTransferActionMode) => {
+    openSongMoveDialog('CuratedLibrary', song, actionMode)
   }
 
   const moveToSetLibrary = (song?: ISongInfo) => {

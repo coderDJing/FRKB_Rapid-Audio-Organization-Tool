@@ -4,6 +4,7 @@ import MixtapeBeatAlignGridAdjustToolbar from '@renderer/components/mixtapeBeatA
 import HorizontalBrowseDeckMoveButton from '@renderer/components/HorizontalBrowseDeckMoveButton.vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
+import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
 import { t } from '@renderer/utils/translate'
 import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoNudge'
 
@@ -53,7 +54,11 @@ const emit = defineEmits<{
   (event: 'cycle-metronome-state'): void
   (event: 'tempo-nudge-start', direction: HorizontalBrowseTempoNudgeDirection): void
   (event: 'tempo-nudge-end', direction: HorizontalBrowseTempoNudgeDirection): void
-  (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
+  (
+    event: 'select-move-target',
+    target: HorizontalBrowseDeckMoveTargetLibrary,
+    actionMode?: LibraryTransferActionMode
+  ): void
 }>()
 
 const captureTempoNudgePointer = (event: PointerEvent) => {
@@ -288,7 +293,7 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
         <HorizontalBrowseDeckMoveButton
           :disabled="!props.songPresent"
           :read-only-source="props.readOnlySource"
-          @select-target="emit('select-move-target', $event)"
+          @select-target="(target, actionMode) => emit('select-move-target', target, actionMode)"
         />
       </div>
     </div>

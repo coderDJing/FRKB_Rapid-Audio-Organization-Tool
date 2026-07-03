@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
+import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
 
 type MoveSongsLibraryName = 'CuratedLibrary' | 'FilterLibrary' | 'MixtapeLibrary'
 
@@ -12,7 +13,11 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (event: 'select-target', target: MoveSongsLibraryName): void
+  (
+    event: 'select-target',
+    target: MoveSongsLibraryName,
+    actionMode?: LibraryTransferActionMode
+  ): void
 }>()
 
 const runtime = useRuntimeStore()
@@ -28,12 +33,6 @@ watch(
   }
 )
 
-const moveToFilterLabel = computed(() =>
-  props.readOnlySource ? t('library.copyToFilter') : t('library.moveToFilter')
-)
-const moveToCuratedLabel = computed(() =>
-  props.readOnlySource ? t('library.copyToCurated') : t('library.moveToCurated')
-)
 const addToMixtapeLabel = computed(() =>
   props.readOnlySource ? t('library.addToMixtapeByCopy') : t('library.addToMixtape')
 )
@@ -49,10 +48,13 @@ const toggleMenu = () => {
   menuOpen.value = true
 }
 
-const handleSelectTarget = (target: MoveSongsLibraryName) => {
+const handleSelectTarget = (
+  target: MoveSongsLibraryName,
+  actionMode?: LibraryTransferActionMode
+) => {
   runtime.activeMenuUUID = ''
   menuOpen.value = false
-  emit('select-target', target)
+  emit('select-target', target, actionMode)
 }
 
 onUnmounted(() => {
@@ -80,18 +82,34 @@ onUnmounted(() => {
     <transition name="fade">
       <div v-if="menuOpen" class="deck-move-button__menu">
         <button
+          v-if="!props.readOnlySource"
           type="button"
           class="deck-move-button__menu-item"
-          @click.stop="handleSelectTarget('FilterLibrary')"
+          @click.stop="handleSelectTarget('FilterLibrary', 'move')"
         >
-          {{ moveToFilterLabel }}
+          {{ t('library.moveToFilter') }}
+        </button>
+        <button
+          v-if="!props.readOnlySource"
+          type="button"
+          class="deck-move-button__menu-item"
+          @click.stop="handleSelectTarget('CuratedLibrary', 'move')"
+        >
+          {{ t('library.moveToCurated') }}
         </button>
         <button
           type="button"
           class="deck-move-button__menu-item"
-          @click.stop="handleSelectTarget('CuratedLibrary')"
+          @click.stop="handleSelectTarget('FilterLibrary', 'copy')"
         >
-          {{ moveToCuratedLabel }}
+          {{ t('library.copyToFilter') }}
+        </button>
+        <button
+          type="button"
+          class="deck-move-button__menu-item"
+          @click.stop="handleSelectTarget('CuratedLibrary', 'copy')"
+        >
+          {{ t('library.copyToCurated') }}
         </button>
         <button
           type="button"

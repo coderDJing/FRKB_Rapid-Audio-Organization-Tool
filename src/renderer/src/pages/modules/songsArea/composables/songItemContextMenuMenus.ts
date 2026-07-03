@@ -1,6 +1,6 @@
 import {
-  resolveLibraryTransferActionLabelKey,
-  resolveLibraryTransferActionModeForSongList
+  resolveLibraryTransferActionModeForSongList,
+  type LibraryTransferActionMode
 } from '@renderer/utils/libraryTransfer'
 import type { IMenu } from '../../../../../../types/globals'
 
@@ -20,11 +20,17 @@ const cloneMenuItem = (item: IMenu): IMenu => ({
 const cloneMenuArr = (source: IMenu[][]): IMenu[][] =>
   source.map((group) => group.map(cloneMenuItem))
 
-const resolveMoveMenuName = (songListUUID: string, target: 'FilterLibrary' | 'CuratedLibrary') =>
-  resolveLibraryTransferActionLabelKey(
-    target,
-    resolveLibraryTransferActionModeForSongList(songListUUID)
-  )
+const createFilterCuratedTransferMenus = (actionMode: LibraryTransferActionMode): IMenu[] => {
+  if (actionMode === 'copy') {
+    return [{ menuName: 'library.copyToFilter' }, { menuName: 'library.copyToCurated' }]
+  }
+  return [
+    { menuName: 'library.moveToFilter' },
+    { menuName: 'library.moveToCurated' },
+    { menuName: 'library.copyToFilter' },
+    { menuName: 'library.copyToCurated' }
+  ]
+}
 
 export const buildSongItemMenuArr = (base: IMenu[][], matchedArtists: string[]) => {
   const next = cloneMenuArr(base)
@@ -53,8 +59,7 @@ export const createDefaultMenuArr = (songListUUID: string): IMenu[][] => [
     { menuName: 'rekordboxXmlExport.menuExportSelectedTracks' }
   ],
   [
-    { menuName: resolveMoveMenuName(songListUUID, 'FilterLibrary') },
-    { menuName: resolveMoveMenuName(songListUUID, 'CuratedLibrary') },
+    ...createFilterCuratedTransferMenus(resolveLibraryTransferActionModeForSongList(songListUUID)),
     { menuName: 'library.addToSet' },
     { menuName: 'library.addToMixtape' }
   ],
@@ -87,7 +92,7 @@ export const createSetMenuArr = (songListUUID: string): IMenu[][] =>
 export const createRecycleMenuArr = (): IMenu[][] => [
   [{ menuName: 'recycleBin.restoreToOriginal' }],
   [{ menuName: 'tracks.exportTracks' }],
-  [{ menuName: 'library.moveToFilter' }, { menuName: 'library.moveToCurated' }],
+  [...createFilterCuratedTransferMenus('move')],
   [
     { menuName: 'recycleBin.permanentlyDeleteTracks', shortcutKey: 'Delete' },
     { menuName: 'tracks.deleteAllAbove' }

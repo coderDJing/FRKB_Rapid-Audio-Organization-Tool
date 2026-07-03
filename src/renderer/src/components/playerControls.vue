@@ -15,7 +15,7 @@ import { t } from '@renderer/utils/translate'
 import confirm from '@renderer/components/confirmDialog'
 import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
-import { resolveLibraryTransferActionModeForPlayback } from '@renderer/utils/libraryTransfer'
+import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
 import {
   buildNeteaseSearchQuery,
   normalizeNeteaseSearchText,
@@ -45,12 +45,6 @@ const uuid = uuidV4()
 const runtime = useRuntimeStore()
 const isReadOnlyPlaybackSource = computed(() =>
   isRekordboxExternalPlaybackSource(
-    runtime.playingData.playingSongListUUID,
-    runtime.playingData.playingSong
-  )
-)
-const playbackTransferActionMode = computed(() =>
-  resolveLibraryTransferActionModeForPlayback(
     runtime.playingData.playingSongListUUID,
     runtime.playingData.playingSong
   )
@@ -156,12 +150,18 @@ const delSong = () => {
   emits('delSong')
 }
 
-const moveToLikeLibrary = () => {
-  emits('moveToLikeLibrary', runtime.playingData.playingSong)
+const moveToLikeLibrary = (actionMode: LibraryTransferActionMode = 'move') => {
+  emits('moveToLikeLibrary', runtime.playingData.playingSong, actionMode)
 }
 
-const moveToListLibrary = () => {
-  emits('moveToListLibrary', runtime.playingData.playingSong)
+const moveToListLibrary = (actionMode: LibraryTransferActionMode = 'move') => {
+  emits('moveToListLibrary', runtime.playingData.playingSong, actionMode)
+}
+const copyToLikeLibrary = () => {
+  moveToLikeLibrary('copy')
+}
+const copyToListLibrary = () => {
+  moveToListLibrary('copy')
 }
 const moveToSetLibrary = () => {
   emits('moveToSetLibrary', runtime.playingData.playingSong)
@@ -554,16 +554,6 @@ const neteaseSearchShow = ref(false)
 const exportTrackLabel = computed(() =>
   isReadOnlyPlaybackSource.value ? t('tracks.exportTracksCopyOnly') : t('tracks.exportTracks')
 )
-const moveToFilterLabel = computed(() =>
-  playbackTransferActionMode.value === 'copy'
-    ? t('library.copyToFilter')
-    : t('library.moveToFilter')
-)
-const moveToCuratedLabel = computed(() =>
-  playbackTransferActionMode.value === 'copy'
-    ? t('library.copyToCurated')
-    : t('library.moveToCurated')
-)
 
 defineExpose({
   setPlayingValue
@@ -764,19 +754,43 @@ onUnmounted(() => {
           </div>
         </div>
         <div style="padding: 5px 5px; border-bottom: 1px solid var(--border)">
-          <div class="menuButton" @click="moveToListLibrary()">
+          <div v-if="!isReadOnlyPlaybackSource" class="menuButton" @click="moveToListLibrary()">
             <div>
-              <span>{{ moveToFilterLabel }}</span>
+              <span>{{ t('library.moveToFilter') }}</span>
             </div>
             <div class="shortcut" style="display: flex; align-items: center">
               <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>Q</span>
             </div>
           </div>
-          <div class="menuButton" @click="moveToLikeLibrary()">
+          <div v-if="!isReadOnlyPlaybackSource" class="menuButton" @click="moveToLikeLibrary()">
             <div>
-              <span>{{ moveToCuratedLabel }}</span>
+              <span>{{ t('library.moveToCurated') }}</span>
             </div>
             <div class="shortcut" style="display: flex; align-items: center">
+              <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
+            </div>
+          </div>
+          <div class="menuButton" @click="copyToListLibrary()">
+            <div>
+              <span>{{ t('library.copyToFilter') }}</span>
+            </div>
+            <div
+              v-if="isReadOnlyPlaybackSource"
+              class="shortcut"
+              style="display: flex; align-items: center"
+            >
+              <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>Q</span>
+            </div>
+          </div>
+          <div class="menuButton" @click="copyToLikeLibrary()">
+            <div>
+              <span>{{ t('library.copyToCurated') }}</span>
+            </div>
+            <div
+              v-if="isReadOnlyPlaybackSource"
+              class="shortcut"
+              style="display: flex; align-items: center"
+            >
               <img :src="shortcutIcon" style="margin-right: 5px" :draggable="false" /><span>E</span>
             </div>
           </div>

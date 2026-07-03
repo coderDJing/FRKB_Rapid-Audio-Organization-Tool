@@ -6,6 +6,7 @@ import HorizontalBrowseDeckToolbarRow from '@renderer/components/HorizontalBrows
 import type { HorizontalBrowseDeckKey } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoNudge'
 import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
+import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
 
 type DeckToolbarState = {
   disabled: boolean
@@ -84,7 +85,11 @@ const emit = defineEmits<{
   (event: 'cycle-metronome-state'): void
   (event: 'tempo-nudge-start', direction: HorizontalBrowseTempoNudgeDirection): void
   (event: 'tempo-nudge-end', direction: HorizontalBrowseTempoNudgeDirection): void
-  (event: 'select-move-target', target: HorizontalBrowseDeckMoveTargetLibrary): void
+  (
+    event: 'select-move-target',
+    target: HorizontalBrowseDeckMoveTargetLibrary,
+    actionMode?: LibraryTransferActionMode
+  ): void
 }>()
 
 const isTop = props.position === 'top'
@@ -181,7 +186,7 @@ const isTop = props.position === 'top'
         @cycle-metronome-state="emit('cycle-metronome-state')"
         @tempo-nudge-start="emit('tempo-nudge-start', $event)"
         @tempo-nudge-end="emit('tempo-nudge-end', $event)"
-        @select-move-target="emit('select-move-target', $event)"
+        @select-move-target="(target, actionMode) => emit('select-move-target', target, actionMode)"
       />
     </div>
   </section>

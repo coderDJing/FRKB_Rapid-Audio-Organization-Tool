@@ -847,8 +847,12 @@ watch(
             @next-song="handleUserNextSong"
             @previous-song="handleUserPreviousSong"
             @del-song="playerActions.delSong"
-            @move-to-list-library="(song) => playerActions.moveToListLibrary(song)"
-            @move-to-like-library="(song) => playerActions.moveToLikeLibrary(song)"
+            @move-to-list-library="
+              (song, actionMode) => playerActions.moveToListLibrary(song, actionMode)
+            "
+            @move-to-like-library="
+              (song, actionMode) => playerActions.moveToLikeLibrary(song, actionMode)
+            "
             @move-to-set-library="(song) => playerActions.moveToSetLibrary(song)"
             @move-to-mixtape-library="(song) => playerActions.moveToMixtapeLibrary(song)"
             @export-track="playerActions.exportTrack"

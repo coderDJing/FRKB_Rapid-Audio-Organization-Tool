@@ -1,5 +1,7 @@
 import { ipcMain } from 'electron'
-import type { ISongHotCue, ISongMemoryCue } from '../../types/globals'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import type { ISongHotCue, ISongInfo, ISongMemoryCue } from '../../types/globals'
 import {
   normalizeSongHotCueSec,
   normalizeSongHotCues,
@@ -18,6 +20,42 @@ import {
   persistSharedSongHotCueDefinition
 } from '../services/sharedSongHotCues'
 import { persistSharedSongMemoryCueDefinition } from '../services/sharedSongMemoryCues'
+import { findSongListRoot } from '../services/cacheMaintenance'
+import * as LibraryCacheDb from '../libraryCacheDb'
+import { applyLiteDefaults, buildLiteSongInfo } from '../services/songInfoLite'
+
+const ANALYSIS_FIELD_KEYS = [
+  'key',
+  'keyAnalysisAlgorithmVersion',
+  'bpm',
+  'firstBeatMs',
+  'barBeatOffset',
+  'beatGridSource',
+  'beatGridStatus',
+  'energyScore',
+  'energyAlgorithmVersion',
+  'songStructure',
+  'timeBasisOffsetMs',
+  'beatGridAlgorithmVersion'
+] as const
+
+type SongAnalysisFieldKey = (typeof ANALYSIS_FIELD_KEYS)[number]
+type SongAnalysisFieldPayload = Pick<ISongInfo, SongAnalysisFieldKey>
+
+const copyAnalysisFields = (source: Partial<ISongInfo> | null | undefined) => {
+  const next: Partial<SongAnalysisFieldPayload> = {}
+  if (!source || typeof source !== 'object') return next
+  for (const key of ANALYSIS_FIELD_KEYS) {
+    const value = source[key]
+    if (value !== undefined) {
+      next[key] = value as never
+    }
+  }
+  return next
+}
+
+const hasAnalysisFields = (value: Partial<SongAnalysisFieldPayload>) =>
+  ANALYSIS_FIELD_KEYS.some((key) => value[key] !== undefined)
 
 export function registerHotCueHandlers() {
   ipcMain.handle('song:get-hot-cues', async (_event, payload?: { filePath?: string }) => {
@@ -144,6 +182,63 @@ export function registerHotCueHandlers() {
       return {
         hotCueUpdated,
         memoryCueUpdated
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'song:copy-analysis-fields-by-file-path',
+    async (
+      _event,
+      payload?: {
+        entries?: Array<{
+          filePath?: string
+          sourceSong?: Partial<ISongInfo>
+        }>
+      }
+    ) => {
+      const entries = Array.isArray(payload?.entries) ? payload.entries : []
+      let analysisUpdated = 0
+
+      for (const entry of entries) {
+        const filePath = typeof entry?.filePath === 'string' ? entry.filePath.trim() : ''
+        if (!filePath) continue
+        const analysisFields = copyAnalysisFields(entry?.sourceSong)
+        if (!hasAnalysisFields(analysisFields)) continue
+
+        const songListRoot = await findSongListRoot(path.dirname(filePath))
+        if (!songListRoot) continue
+
+        let stat: { size: number; mtimeMs: number } | null = null
+        try {
+          const fileStat = await fs.stat(filePath)
+          stat = { size: fileStat.size, mtimeMs: fileStat.mtimeMs }
+        } catch {
+          continue
+        }
+
+        const existing = await LibraryCacheDb.loadSongCacheEntry(songListRoot, filePath)
+        const nextInfo = applyLiteDefaults(
+          existing?.info ? { ...existing.info } : buildLiteSongInfo(filePath),
+          filePath
+        )
+        Object.assign(nextInfo, analysisFields)
+        if (existing?.info?.analysisOnly === false) {
+          nextInfo.analysisOnly = false
+        } else if (!existing?.info && nextInfo.analysisOnly === undefined) {
+          nextInfo.analysisOnly = true
+        }
+
+        const updated = await LibraryCacheDb.upsertSongCacheEntry(songListRoot, filePath, {
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          info: nextInfo
+        })
+        if (updated) analysisUpdated += 1
+      }
+
+      return {
+        analysisUpdated
       }
     }
   )

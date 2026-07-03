@@ -25,6 +25,8 @@ type CacheFileStat = {
   mtimeMs: number
 }
 
+type TrackCacheTransferMode = 'move' | 'copy'
+
 const normalizePath = (value: string): string => {
   if (!value) return ''
   let normalized = path.resolve(value)
@@ -223,19 +225,23 @@ export async function transferTrackCaches(params: {
   toPath: string
   fromStat?: CacheFileStat | null
   toStat?: CacheFileStat | null
+  mode?: TrackCacheTransferMode
 }): Promise<void> {
   const { fromRoot, toRoot, fromPath, toPath } = params
   if (!fromPath || !toPath) return
   if (normalizePath(fromPath) === normalizePath(toPath)) return
+  const removeSource = params.mode !== 'copy'
 
-  const libraryRoot = getLibraryRootAbs()
-  if (libraryRoot) {
+  if (removeSource) {
+    const libraryRoot = getLibraryRootAbs()
     try {
-      replaceMixtapeStemAssetFilePath({
-        libraryRoot,
-        oldFilePath: fromPath,
-        newFilePath: toPath
-      })
+      if (libraryRoot) {
+        replaceMixtapeStemAssetFilePath({
+          libraryRoot,
+          oldFilePath: fromPath,
+          newFilePath: toPath
+        })
+      }
     } catch {}
   }
 
@@ -256,7 +262,16 @@ export async function transferTrackCaches(params: {
       return
     }
   }
-  const fromStat = params.fromStat || toStat
+  let fromStat: CacheFileStat | null = params.fromStat || null
+  if (!fromStat && !removeSource) {
+    try {
+      const fsStat = await fs.stat(fromPath)
+      fromStat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
+    } catch {}
+  }
+  if (!fromStat) {
+    fromStat = toStat
+  }
   if (!fromStat || !toStat) return
 
   try {
@@ -268,7 +283,7 @@ export async function transferTrackCaches(params: {
         mtimeMs: toStat.mtimeMs,
         info: nextInfo
       })
-      if (updated) {
+      if (updated && removeSource) {
         await LibraryCacheDb.removeSongCacheEntry(fromRoot, fromPath)
       }
     }
@@ -288,8 +303,10 @@ export async function transferTrackCaches(params: {
         unified
       )
       if (updated) {
-        await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(fromRoot, fromPath)
-        await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(fromRoot, fromPath)
+        if (removeSource) {
+          await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(fromRoot, fromPath)
+          await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(fromRoot, fromPath)
+        }
         await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(toRoot, toPath)
       }
     }
@@ -310,14 +327,16 @@ export async function transferTrackCaches(params: {
         listPreview,
         globalOverview
       })
-      if (updated) {
+      if (updated && removeSource) {
         await LibraryCacheDb.removeWaveformSurfaceCacheEntry(fromRoot, fromPath)
       }
     }
   } catch {}
-  await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(fromRoot, fromPath)
+  if (removeSource) {
+    await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(fromRoot, fromPath)
+    await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
+  }
   await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(toRoot, toPath)
-  await LibraryCacheDb.removeWaveformCacheEntry(fromRoot, fromPath)
   await LibraryCacheDb.removeWaveformCacheEntry(toRoot, toPath)
 
   try {
@@ -339,7 +358,7 @@ export async function transferTrackCaches(params: {
       } catch {}
     }
     const saved = await LibraryCacheDb.upsertCoverIndexEntry(toRoot, toPath, cover.hash, ext)
-    if (saved) {
+    if (saved && removeSource) {
       const removed = await LibraryCacheDb.removeCoverIndexEntry(fromRoot, fromPath)
       if (removed) {
         const remaining = await LibraryCacheDb.countCoverIndexByHash(fromRoot, removed.hash)
