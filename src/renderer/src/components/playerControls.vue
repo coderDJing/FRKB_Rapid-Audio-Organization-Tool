@@ -693,16 +693,7 @@ onUnmounted(() => {
 </script>
 <template>
   <div class="playerControlsRoot">
-    <div
-      class="playerControls unselectable"
-      style="
-        width: 100%;
-        height: 50px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      "
-    >
+    <div class="playerControls unselectable">
       <div ref="previousSongRef" class="buttonIcon" @click="handlePreviousSong()">
         <img :src="previousSong" draggable="false" />
       </div>
@@ -884,7 +875,7 @@ onUnmounted(() => {
   border: 1px solid var(--border);
   border-radius: 3px;
   z-index: var(--z-popover);
-  bottom: 60px;
+  bottom: 58px;
   left: 250px;
   font-size: 14px;
   color: var(--text);
@@ -946,10 +937,20 @@ onUnmounted(() => {
   opacity: 0;
 }
 
+.playerControlsRoot {
+  width: 100%;
+}
+
 .playerControls {
+  display: flex;
+  width: 100%;
+  height: 44px;
+  align-items: center;
+  justify-content: space-between;
+
   .buttonIcon {
-    height: 40px;
-    width: 40px;
+    height: 36px;
+    width: 36px;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -961,8 +962,8 @@ onUnmounted(() => {
 }
 
 img {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 /* 浅色主题下：去掉阴影，用纯黑作为 hover 高亮（适用于白色 PNG 图标） */

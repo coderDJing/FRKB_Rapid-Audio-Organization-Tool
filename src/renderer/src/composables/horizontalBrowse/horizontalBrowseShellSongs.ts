@@ -56,6 +56,7 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
   if (!filePath || !isSameHorizontalBrowseSongFilePath(filePath, song.filePath)) return song
 
   let touched = false
+  let structureGridChanged = false
   const nextSong: ISongInfo = { ...song }
   if (
     typeof payload.bpm === 'number' &&
@@ -64,6 +65,7 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
   ) {
     nextSong.bpm = payload.bpm
     touched = true
+    structureGridChanged = true
   }
   if (
     typeof payload.bpm === 'number' &&
@@ -80,6 +82,7 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
   ) {
     nextSong.firstBeatMs = payload.firstBeatMs
     touched = true
+    structureGridChanged = true
   }
   if (
     typeof payload.barBeatOffset === 'number' &&
@@ -88,6 +91,7 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
   ) {
     nextSong.barBeatOffset = payload.barBeatOffset
     touched = true
+    structureGridChanged = true
   }
   if (
     typeof payload.timeBasisOffsetMs === 'number' &&
@@ -102,6 +106,10 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
     nextSong.beatGridSource !== payload.beatGridSource
   ) {
     nextSong.beatGridSource = payload.beatGridSource
+    touched = true
+  }
+  if (structureGridChanged && nextSong.songStructure !== undefined) {
+    delete nextSong.songStructure
     touched = true
   }
   return touched ? nextSong : song

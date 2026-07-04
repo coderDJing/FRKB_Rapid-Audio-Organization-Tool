@@ -1,6 +1,7 @@
 import { computed, ref, type Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
 import { hasCurrentSongEnergyAnalysis } from '@shared/songEnergy'
+import { hasCurrentSongStructureAnalysis } from '@shared/songStructure'
 
 type AnalysisStage =
   | 'job-received'
@@ -19,6 +20,7 @@ type StageUpdatePayload = {
   needsKey?: boolean
   needsBpm?: boolean
   needsWaveform?: boolean
+  needsStructure?: boolean
 }
 
 // 每个阶段的基础权重
@@ -37,10 +39,11 @@ const computePercent = (
   stage: AnalysisStage,
   needsKey?: boolean,
   needsBpm?: boolean,
-  needsWaveform?: boolean
+  needsWaveform?: boolean,
+  needsStructure?: boolean
 ): number => {
   const needsAnalysis = needsKey === true || needsBpm === true
-  const needsWave = needsWaveform === true
+  const needsWave = needsWaveform === true || needsStructure === true
 
   // 计算需要的阶段权重总和
   let totalWeight = PHASE_WEIGHTS.decode // 解码总是需要的
@@ -121,6 +124,7 @@ const progressMap = ref(
       needsKey?: boolean
       needsBpm?: boolean
       needsWaveform?: boolean
+      needsStructure?: boolean
     }
   >()
 )
@@ -181,7 +185,8 @@ const updateProgress = (payload: StageUpdatePayload) => {
     payload.stage,
     payload.needsKey,
     payload.needsBpm,
-    payload.needsWaveform
+    payload.needsWaveform,
+    payload.needsStructure
   )
   const phase = STAGE_TO_PHASE[payload.stage]
 
@@ -195,7 +200,8 @@ const updateProgress = (payload: StageUpdatePayload) => {
       displayPercent: startPercent,
       needsKey: payload.needsKey,
       needsBpm: payload.needsBpm,
-      needsWaveform: payload.needsWaveform
+      needsWaveform: payload.needsWaveform,
+      needsStructure: payload.needsStructure
     }
     progressMap.value.set(filePath, entry)
     startAnimTimer(filePath, entry, PHASE_DURATION_MS[phase])
@@ -208,7 +214,8 @@ const updateProgress = (payload: StageUpdatePayload) => {
       displayPercent: percent,
       needsKey: payload.needsKey,
       needsBpm: payload.needsBpm,
-      needsWaveform: payload.needsWaveform
+      needsWaveform: payload.needsWaveform,
+      needsStructure: payload.needsStructure
     }
     progressMap.value.set(filePath, entry)
   }
@@ -240,7 +247,8 @@ export const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => 
     Number.isFinite(bpm) &&
     bpm > 0 &&
     Number.isFinite(firstBeatMs) &&
-    Number.isFinite(barBeatOffset)
+    Number.isFinite(barBeatOffset) &&
+    hasCurrentSongStructureAnalysis(song)
   )
 }
 

@@ -36,10 +36,12 @@ const props = defineProps<{
   memoryCues?: ISongMemoryCue[]
   markerAnchor?: 'top' | 'bottom'
   loopRange?: { startSec: number; endSec: number } | null
+  sectionSeekMode?: 'seek' | 'seek-play'
 }>()
 
 const emit = defineEmits<{
   (event: 'seek', value: number): void
+  (event: 'seek-play', value: number): void
 }>()
 
 type PioneerPreviewWaveformResponse = {
@@ -79,9 +81,22 @@ const parseDurationToSeconds = (input: unknown) => {
   return parts[0]
 }
 
+const resolvePositiveSeconds = (input: unknown) => {
+  const value = Number(input)
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
+
+const normalizedStructure = computed(() =>
+  normalizeSongStructureAnalysis(props.song?.songStructure)
+)
+
 const totalSeconds = computed(() => {
-  const explicit = Number(props.durationSeconds)
-  if (Number.isFinite(explicit) && explicit > 0) return explicit
+  const compactDuration = resolvePositiveSeconds(compactVisualData.value?.duration)
+  if (compactDuration > 0) return compactDuration
+  const structureDuration = resolvePositiveSeconds(normalizedStructure.value?.durationSec)
+  if (structureDuration > 0) return structureDuration
+  const explicit = resolvePositiveSeconds(props.durationSeconds)
+  if (explicit > 0) return explicit
   return parseDurationToSeconds(props.song?.duration)
 })
 
@@ -112,7 +127,7 @@ const resolveStructureLabel = (kind: SongStructureSectionKind) => {
 }
 
 const structureSections = computed(() => {
-  const structure = normalizeSongStructureAnalysis(props.song?.songStructure)
+  const structure = normalizedStructure.value
   if (!structure || totalSeconds.value <= 0) return []
   return structure.sections
     .map((section: SongStructureSection) => {
@@ -123,10 +138,15 @@ const structureSections = computed(() => {
         key: `${section.phraseIndex}-${section.kind}-${section.startSec}-${section.endSec}`,
         kind: section.kind,
         label: resolveStructureLabel(section.kind),
+        startSec,
+        active:
+          Number.isFinite(Number(props.currentSeconds)) &&
+          Number(props.currentSeconds) >= startSec &&
+          Number(props.currentSeconds) < endSec,
         style: {
           left: `${(startSec / totalSeconds.value) * 100}%`,
           width: `${((endSec - startSec) / totalSeconds.value) * 100}%`,
-          '--structure-strength': String(Math.max(0.42, Math.min(0.92, section.confidence)))
+          '--structure-strength': String(Math.max(0.38, Math.min(0.78, section.confidence)))
         } as Record<string, string>
       }
     })
@@ -137,10 +157,20 @@ const structureSections = computed(() => {
         key: string
         kind: SongStructureSectionKind
         label: string
+        startSec: number
+        active: boolean
         style: Record<string, string>
       } => section !== null
     )
 })
+
+const handleStructureSectionClick = (startSec: number) => {
+  if (props.sectionSeekMode === 'seek-play') {
+    emit('seek-play', startSec)
+    return
+  }
+  emit('seek', startSec)
+}
 
 const resolveSeekDuplicateEpsilonSec = () => {
   const track = trackRef.value
@@ -528,17 +558,6 @@ onUnmounted(() => {
   >
     <div ref="trackRef" class="overview-waveform__track">
       <canvas ref="canvasRef" class="overview-waveform__canvas"></canvas>
-      <div v-if="structureSections.length" class="overview-waveform__structure" aria-hidden="true">
-        <div
-          v-for="section in structureSections"
-          :key="section.key"
-          class="overview-waveform__structure-segment"
-          :class="`overview-waveform__structure-segment--${section.kind}`"
-          :style="section.style"
-        >
-          <span class="overview-waveform__structure-label">{{ section.label }}</span>
-        </div>
-      </div>
       <MemoryCueMarkersLayer
         :memory-cues="props.memoryCues || []"
         :visible-duration-sec="totalSeconds"
@@ -560,6 +579,25 @@ onUnmounted(() => {
         :style="{ left: playheadLeft }"
       ></div>
     </div>
+    <div v-if="structureSections.length" class="overview-waveform__structure" @pointerdown.stop>
+      <button
+        v-for="section in structureSections"
+        :key="section.key"
+        type="button"
+        class="overview-waveform__structure-segment"
+        :aria-label="`Seek to ${section.label}`"
+        :class="[
+          `overview-waveform__structure-segment--${section.kind}`,
+          { 'overview-waveform__structure-segment--active': section.active }
+        ]"
+        :style="section.style"
+        @click.stop="handleStructureSectionClick(section.startSec)"
+      >
+        <span class="overview-waveform__structure-label">
+          {{ section.label }}
+        </span>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -570,6 +608,9 @@ onUnmounted(() => {
   height: 100%;
   min-width: 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding-inline: var(--overview-waveform-side-inset, 10px);
   box-sizing: border-box;
   cursor: default;
@@ -579,8 +620,9 @@ onUnmounted(() => {
 
 .overview-waveform__track {
   position: relative;
+  flex: 1 1 auto;
   width: 100%;
-  height: 100%;
+  height: auto;
   min-width: 0;
   min-height: 0;
 }
@@ -593,18 +635,20 @@ onUnmounted(() => {
 }
 
 .overview-waveform__structure {
-  --structure-intro: rgba(125, 211, 252, 0.86);
-  --structure-groove: rgba(52, 211, 153, 0.82);
-  --structure-breakdown: rgba(196, 181, 253, 0.86);
-  --structure-build: rgba(251, 191, 36, 0.88);
-  --structure-drop: rgba(248, 113, 113, 0.9);
-  --structure-outro: rgba(148, 163, 184, 0.84);
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 3px;
-  height: 22px;
-  pointer-events: none;
+  --structure-intro: rgba(125, 211, 252, 0.74);
+  --structure-groove: rgba(52, 211, 153, 0.72);
+  --structure-breakdown: rgba(196, 181, 253, 0.74);
+  --structure-build: rgba(251, 191, 36, 0.76);
+  --structure-drop: rgba(248, 113, 113, 0.78);
+  --structure-outro: rgba(148, 163, 184, 0.68);
+  position: relative;
+  flex: 0 0 8px;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--shell-waveform-bg, var(--waveform-bg)) 86%, var(--border));
+  border-radius: 0;
+  pointer-events: auto;
   z-index: 2;
 }
 
@@ -614,15 +658,35 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 22px;
-  min-width: 4px;
+  height: 8px;
+  min-width: 3px;
   overflow: hidden;
-  border-radius: 3px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  appearance: none;
   opacity: var(--structure-strength, 0.62);
   background: var(--structure-groove);
+  cursor: pointer;
   box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
-    0 1px 4px rgba(0, 0, 0, 0.28);
+    inset 1px 0 0 rgba(255, 255, 255, 0.34),
+    inset -1px 0 0 rgba(0, 0, 0, 0.18),
+    0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.overview-waveform__structure-segment:focus-visible {
+  outline: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
+    0 0 0 1px rgba(0, 0, 0, 0.34);
+}
+
+.overview-waveform__structure-segment--active {
+  opacity: min(1, calc(var(--structure-strength, 0.62) + 0.22));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.44),
+    0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 1px 4px rgba(0, 0, 0, 0.32);
 }
 
 .overview-waveform__structure-label {
@@ -630,15 +694,16 @@ onUnmounted(() => {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  padding: 0 4px;
+  padding: 0 3px;
   color: rgba(12, 18, 28, 0.9);
-  font-size: 10px;
+  font-size: 7px;
   font-weight: 800;
-  line-height: 22px;
+  line-height: 8px;
   text-align: center;
   text-overflow: clip;
   text-shadow: 0 1px 1px rgba(255, 255, 255, 0.26);
   white-space: nowrap;
+  pointer-events: none;
 }
 
 .overview-waveform__structure-segment--intro {
@@ -667,12 +732,12 @@ onUnmounted(() => {
 
 :global(.theme-light) .overview-waveform__structure,
 :global(.theme-light) .overview-waveform {
-  --structure-intro: rgba(2, 132, 199, 0.76);
-  --structure-groove: rgba(5, 150, 105, 0.76);
-  --structure-breakdown: rgba(124, 58, 237, 0.74);
-  --structure-build: rgba(217, 119, 6, 0.78);
-  --structure-drop: rgba(220, 38, 38, 0.78);
-  --structure-outro: rgba(71, 85, 105, 0.72);
+  --structure-intro: rgba(2, 132, 199, 0.62);
+  --structure-groove: rgba(5, 150, 105, 0.62);
+  --structure-breakdown: rgba(124, 58, 237, 0.6);
+  --structure-build: rgba(217, 119, 6, 0.64);
+  --structure-drop: rgba(220, 38, 38, 0.66);
+  --structure-outro: rgba(71, 85, 105, 0.58);
 }
 
 :global(.theme-light) .overview-waveform__structure-label {

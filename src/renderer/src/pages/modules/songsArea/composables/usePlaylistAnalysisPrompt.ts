@@ -176,7 +176,8 @@ export function usePlaylistAnalysisPrompt({
         beatGridStatus: toLogValue(song.beatGridStatus),
         beatGridAlgorithmVersion: toLogValue(song.beatGridAlgorithmVersion),
         energyScore: toLogValue(song.energyScore),
-        energyAlgorithmVersion: toLogValue(song.energyAlgorithmVersion)
+        energyAlgorithmVersion: toLogValue(song.energyAlgorithmVersion),
+        songStructure: toLogValue(song.songStructure)
       })),
       ...extra
     }

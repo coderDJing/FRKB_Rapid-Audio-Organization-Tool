@@ -125,6 +125,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       needsBpm: job.needsBpm,
       needsWaveform: job.needsWaveform,
       needsEnergy: job.needsEnergy,
+      needsStructure: job.needsStructure,
       manualBatchIds: job.manualBatchIds
     })
   }
@@ -141,6 +142,13 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     }
     if (job?.needsEnergy === true && payloadResult?.energyScore === undefined) {
       errors.push('energy: missing energy score from analyzer')
+    }
+    if (
+      job?.needsStructure === true &&
+      payloadResult?.songStructure === undefined &&
+      !payloadResult?.bpmError
+    ) {
+      errors.push('structure: missing song structure from analyzer')
     }
     if (payloadError) errors.push(`worker错误: ${payloadError}`)
     return errors
@@ -385,6 +393,15 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           payloadResult.energyScore,
           payloadResult.energyAlgorithmVersion
         )
+      }
+
+      if (
+        job &&
+        payloadResult?.songStructure &&
+        job.needsStructure &&
+        (!job.needsWaveform || !payloadResult.mixxxWaveformData)
+      ) {
+        await deps.persistence.persistSongStructure(job.filePath, payloadResult.songStructure)
       }
 
       if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {

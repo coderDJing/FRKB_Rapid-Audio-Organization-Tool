@@ -1,8 +1,10 @@
 import type { UnifiedDisplayWaveformDetailData } from './unifiedDisplayWaveform'
 
-export const CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION = 10
+export const CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION = 15
 
 export type SongStructureSectionKind = 'intro' | 'groove' | 'breakdown' | 'build' | 'drop' | 'outro'
+
+export type SongStructureAnalysisSource = 'algorithmic'
 
 export type SongStructureSection = {
   startSec: number
@@ -20,6 +22,7 @@ export type SongStructureSection = {
 
 export type SongStructureAnalysis = {
   algorithmVersion: number
+  source?: SongStructureAnalysisSource
   durationSec: number
   bpm: number
   firstBeatMs: number

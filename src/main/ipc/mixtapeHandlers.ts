@@ -58,6 +58,10 @@ import {
 } from '../services/sharedSongGrid'
 import { emitSongGridUpdated } from '../services/songGridEvents'
 import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
+import {
+  enqueueKeyAnalysis,
+  invalidateKeyAnalysisSongStructure
+} from '../services/keyAnalysisQueue'
 import { createMixtapeNoBpmGuard } from '../services/mixtapeNoBpmGuard'
 import {
   cancelMixtapeOutputControl,
@@ -858,6 +862,18 @@ export function registerMixtapeHandlers() {
       if (!filePath || (!hasOffset && !hasFirstBeatMs && !hasBpm)) {
         return { updated: 0 }
       }
+      const previousGrid = await loadSharedSongGridDefinition(filePath).catch(() => null)
+      const nextOffset = hasOffset ? ((Math.round(rawOffset) % 32) + 32) % 32 : undefined
+      const nextFirstBeatMs = hasFirstBeatMs ? Number(rawFirstBeatMs.toFixed(3)) : undefined
+      const nextBpm = hasBpm ? Number(rawBpm.toFixed(6)) : undefined
+      const structureGridChanged =
+        (nextOffset !== undefined && previousGrid?.barBeatOffset !== nextOffset) ||
+        (nextFirstBeatMs !== undefined &&
+          (!Number.isFinite(Number(previousGrid?.firstBeatMs)) ||
+            Math.abs(Number(previousGrid?.firstBeatMs) - nextFirstBeatMs) > 0.001)) ||
+        (nextBpm !== undefined &&
+          (!Number.isFinite(Number(previousGrid?.bpm)) ||
+            Math.abs(Number(previousGrid?.bpm) - nextBpm) > 0.0001))
       const result = upsertMixtapeItemGridByFilePath([
         {
           filePath,
@@ -879,6 +895,15 @@ export function registerMixtapeHandlers() {
         ],
         'manual'
       )
+      if (structureGridChanged) {
+        invalidateKeyAnalysisSongStructure(filePath)
+        enqueueKeyAnalysis(filePath, 'medium', {
+          urgent: true,
+          source: 'foreground',
+          fastAnalysis: true,
+          preemptible: true
+        })
+      }
       return result
     }
   )

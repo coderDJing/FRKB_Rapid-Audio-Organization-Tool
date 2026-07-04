@@ -11,6 +11,7 @@ import { areSongMemoryCuesEqual } from '@shared/memoryCues'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { t } from '@renderer/utils/translate'
+import { normalizeSongStructureAnalysis } from '@shared/songStructure'
 
 interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -76,6 +77,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   }
   const normalizeComparableNumber = (value: unknown) =>
     typeof value === 'number' && Number.isFinite(value) ? value : null
+  const normalizeComparableSongStructure = (value: unknown) => {
+    const structure = normalizeSongStructureAnalysis(value)
+    return structure ? JSON.stringify(structure) : ''
+  }
   const getSongIdentityKey = (song: ISongInfo) =>
     normalizeComparableText(song.mixtapeItemId) ||
     normalizeComparableText(song.setItemId) ||
@@ -85,7 +90,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     'bpm',
     'beatGridStatus',
     'energyScore',
-    'energyAlgorithmVersion'
+    'energyAlgorithmVersion',
+    'songStructure'
   ])
 
   const notifySongSearchDirty = (reason: string) => {
@@ -259,6 +265,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         normalizeComparableNumber(right.energyScore) &&
       normalizeComparableNumber(left.energyAlgorithmVersion) ===
         normalizeComparableNumber(right.energyAlgorithmVersion) &&
+      normalizeComparableSongStructure(left.songStructure) ===
+        normalizeComparableSongStructure(right.songStructure) &&
       areSongHotCuesEqual(left.hotCues, right.hotCues) &&
       areSongMemoryCuesEqual(left.memoryCues, right.memoryCues) &&
       normalizeComparableNumber(left.mixOrder) === normalizeComparableNumber(right.mixOrder) &&
@@ -340,6 +348,12 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       normalizeComparableNumber(right.energyAlgorithmVersion)
     ) {
       fields.push('energyAlgorithmVersion')
+    }
+    if (
+      normalizeComparableSongStructure(left.songStructure) !==
+      normalizeComparableSongStructure(right.songStructure)
+    ) {
+      fields.push('songStructure')
     }
     if (!areSongHotCuesEqual(left.hotCues, right.hotCues)) {
       fields.push('hotCues')

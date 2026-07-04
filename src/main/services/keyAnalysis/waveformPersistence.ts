@@ -1,0 +1,173 @@
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import type { EventEmitter } from 'node:events'
+import { findSongListRoot } from '../cacheMaintenance'
+import * as LibraryCacheDb from '../../libraryCacheDb'
+import { stripBeatThisDebugInfo } from '../../libraryCacheDb/pathResolvers'
+import { buildLiteSongInfo } from '../songInfoLite'
+import { log } from '../../log'
+import type { MixxxWaveformData } from '../../waveformCodec'
+import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
+import { buildWaveformSurfaceCacheDataFromUnifiedDisplay } from '../../../shared/waveformSurfaceCache'
+import {
+  normalizeSongStructureAnalysis,
+  type SongStructureAnalysis
+} from '../../../shared/songStructure'
+import { normalizePath, type DoneEntry } from './types'
+
+type EnsureWaveformSongCacheEntry = (
+  listRoot: string,
+  filePath: string,
+  payload: {
+    songStructure?: SongStructureAnalysis | null
+  },
+  stat?: { size: number; mtimeMs: number }
+) => Promise<void>
+
+type CreateWaveformPersistenceParams = {
+  doneByPath: Map<string, DoneEntry>
+  events: EventEmitter
+  ensureSongCacheEntry: EnsureWaveformSongCacheEntry
+  cleanupMissingPersistTarget: (normalizedPath: string, filePath: string) => Promise<void>
+  isMissingFileError: (error: unknown) => boolean
+}
+
+export const createPersistWaveform = (params: CreateWaveformPersistenceParams) => {
+  return async (
+    filePath: string,
+    waveformData: MixxxWaveformData,
+    unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null,
+    songStructure?: SongStructureAnalysis | null
+  ) => {
+    const normalizedPath = normalizePath(filePath)
+    try {
+      const stat = await fs.stat(filePath)
+      const existing = params.doneByPath.get(normalizedPath)
+      const listRoot = await findSongListRoot(path.dirname(filePath))
+      const surfaceData = buildWaveformSurfaceCacheDataFromUnifiedDisplay(
+        unifiedDisplayWaveformData
+      )
+      const normalizedSongStructure = normalizeSongStructureAnalysis(songStructure)
+      params.doneByPath.set(normalizedPath, {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        keyText: existing?.keyText,
+        keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
+        bpm: existing?.bpm,
+        firstBeatMs: existing?.firstBeatMs,
+        barBeatOffset: existing?.barBeatOffset,
+        timeBasisOffsetMs: existing?.timeBasisOffsetMs,
+        beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
+        beatGridStatus: existing?.beatGridStatus,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: normalizedSongStructure ?? existing?.songStructure,
+        hasWaveform: listRoot ? Boolean(surfaceData) : true
+      })
+
+      if (listRoot) {
+        const cached = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
+        if (!cached) {
+          await params.ensureSongCacheEntry(
+            listRoot,
+            filePath,
+            { songStructure: normalizedSongStructure ?? null },
+            { size: stat.size, mtimeMs: stat.mtimeMs }
+          )
+        } else if (normalizedSongStructure) {
+          await params.ensureSongCacheEntry(
+            listRoot,
+            filePath,
+            { songStructure: normalizedSongStructure },
+            { size: stat.size, mtimeMs: stat.mtimeMs }
+          )
+        }
+        await LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, filePath)
+        await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        if (unifiedDisplayWaveformData && surfaceData) {
+          await LibraryCacheDb.upsertUnifiedDisplayWaveformCacheEntry(
+            listRoot,
+            filePath,
+            { size: stat.size, mtimeMs: stat.mtimeMs },
+            unifiedDisplayWaveformData
+          )
+          await LibraryCacheDb.upsertWaveformSurfaceCacheEntry(
+            listRoot,
+            filePath,
+            { size: stat.size, mtimeMs: stat.mtimeMs },
+            surfaceData
+          )
+          await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(listRoot, filePath)
+          await LibraryCacheDb.removeWaveformCacheEntry(listRoot, filePath)
+        } else {
+          await LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
+          await LibraryCacheDb.removeWaveformSurfaceCacheEntry(listRoot, filePath)
+        }
+      } else {
+        const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
+        if (externalContext) {
+          const cached = await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, {
+            size: stat.size,
+            mtimeMs: stat.mtimeMs
+          })
+          if (!cached) {
+            await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, {
+              ...buildLiteSongInfo(filePath),
+              filePath,
+              ...(normalizedSongStructure ? { songStructure: normalizedSongStructure } : {}),
+              analysisOnly: true
+            })
+          } else if (normalizedSongStructure) {
+            await LibraryCacheDb.upsertExternalAnalysisCacheEntry(
+              externalContext,
+              stat,
+              stripBeatThisDebugInfo({
+                ...cached.info,
+                filePath,
+                songStructure: normalizedSongStructure,
+                analysisOnly: true
+              })
+            )
+          }
+          await LibraryCacheDb.upsertExternalAnalysisWaveformCacheEntry(
+            externalContext,
+            { size: stat.size, mtimeMs: stat.mtimeMs },
+            waveformData
+          )
+        }
+      }
+      if (normalizedSongStructure) {
+        params.events.emit('structure-updated', {
+          filePath,
+          songStructure: normalizedSongStructure
+        })
+      }
+    } catch (error) {
+      if (params.isMissingFileError(error)) {
+        await params.cleanupMissingPersistTarget(normalizedPath, filePath)
+        return
+      }
+      const existing = params.doneByPath.get(normalizedPath)
+      params.doneByPath.set(normalizedPath, {
+        size: 0,
+        mtimeMs: 0,
+        keyText: existing?.keyText,
+        keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
+        bpm: existing?.bpm,
+        firstBeatMs: existing?.firstBeatMs,
+        barBeatOffset: existing?.barBeatOffset,
+        timeBasisOffsetMs: existing?.timeBasisOffsetMs,
+        beatGridAlgorithmVersion: existing?.beatGridAlgorithmVersion,
+        beatGridStatus: existing?.beatGridStatus,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: existing?.songStructure,
+        hasWaveform: true
+      })
+      log.error('[闲时分析] persistWaveform 失败，已写入内存兜底', {
+        filePath,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+}

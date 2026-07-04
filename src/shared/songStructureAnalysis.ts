@@ -19,6 +19,7 @@ import {
   type SongStructureSection,
   type SongStructureSectionKind
 } from './songStructureCommon'
+import { buildAlgorithmicSongStructureSections } from './songStructureAlgorithmic'
 
 type SongStructureFeature = {
   startSec: number
@@ -905,11 +906,21 @@ export const buildSongStructureAnalysisCore = (
   if (!features.length) return null
 
   const stats = buildStats(features, durationSec)
-  const sections = buildTemplateStructureSections(features, stats)
+  const templateSections = buildTemplateStructureSections(features, stats)
+  const algorithmicCandidate = buildAlgorithmicSongStructureSections(
+    waveformData,
+    durationSec,
+    grid.bpm,
+    grid.firstBeatMs,
+    grid.barBeatOffset,
+    templateSections ?? undefined
+  )
+  const sections = algorithmicCandidate?.sections ?? templateSections
   if (!sections?.length) return null
 
   return {
     algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
+    source: 'algorithmic',
     durationSec: toFixedNumber(durationSec, 3),
     bpm: grid.bpm,
     firstBeatMs: grid.firstBeatMs,

@@ -183,7 +183,7 @@
 
 .waveform-stack--edit {
   grid-template-rows:
-    minmax(62px, 0.72fr) minmax(22px, 0.22fr) minmax(0, 2.35fr)
+    minmax(62px, 0.72fr) minmax(30px, 0.3fr) minmax(0, 2.27fr)
     minmax(42px, 0.48fr);
 }
 
@@ -226,12 +226,12 @@
 }
 
 .overview--top {
-  grid-template-rows: minmax(0, 1.46fr) minmax(0, 0.62fr) minmax(0, 0.92fr);
+  grid-template-rows: minmax(0, 1.38fr) minmax(0, 0.74fr) minmax(0, 0.88fr);
   z-index: var(--shell-z-overview-top);
 }
 
 .overview--bottom {
-  grid-template-rows: minmax(0, 0.92fr) minmax(0, 0.62fr) minmax(0, 1.46fr);
+  grid-template-rows: minmax(0, 0.88fr) minmax(0, 0.74fr) minmax(0, 1.38fr);
   z-index: var(--shell-z-overview-bottom);
 }
 
@@ -339,15 +339,15 @@
 
   .waveform-stack--edit {
     grid-template-rows:
-      minmax(58px, 0.7fr) minmax(20px, 0.22fr) minmax(0, 2.3fr)
+      minmax(58px, 0.7fr) minmax(28px, 0.3fr) minmax(0, 2.22fr)
       minmax(40px, 0.48fr);
   }
 
   .overview--top {
-    grid-template-rows: minmax(0, 1.4fr) minmax(0, 0.68fr) minmax(0, 0.92fr);
+    grid-template-rows: minmax(0, 1.34fr) minmax(0, 0.74fr) minmax(0, 0.92fr);
   }
 
   .overview--bottom {
-    grid-template-rows: minmax(0, 0.92fr) minmax(0, 0.68fr) minmax(0, 1.4fr);
+    grid-template-rows: minmax(0, 0.92fr) minmax(0, 0.74fr) minmax(0, 1.34fr);
   }
 }

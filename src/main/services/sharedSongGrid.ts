@@ -6,6 +6,7 @@ import { stripBeatThisDebugInfo } from '../libraryCacheDb/pathResolvers'
 import { listMixtapeItemsByFilePath } from '../mixtapeDb'
 import { findSongListRoot } from './cacheMaintenance'
 import { applyLiteDefaults, buildLiteSongInfo } from './songInfoLite'
+import { hasCurrentSongStructureAnalysis } from '../../shared/songStructure'
 import {
   normalizeBeatGridAlgorithmVersion,
   shouldAcceptBeatGridCacheVersion
@@ -327,6 +328,9 @@ export async function persistSharedSongGridDefinition(
       normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
     }
     stripBeatThisDebugInfo(normalizedInfo)
+    if (!hasCurrentSongStructureAnalysis(normalizedInfo)) {
+      delete normalizedInfo.songStructure
+    }
     normalizedInfo.analysisOnly = true
     await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, normalizedInfo)
     return extractSharedGridFromInfo(normalizedPath, normalizedInfo)
@@ -365,6 +369,9 @@ export async function persistSharedSongGridDefinition(
     normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
   }
   stripBeatThisDebugInfo(normalizedInfo)
+  if (!hasCurrentSongStructureAnalysis(normalizedInfo)) {
+    delete normalizedInfo.songStructure
+  }
 
   await LibraryCacheDb.upsertSongCacheEntry(songListRoot, normalizedPath, {
     size: stat.size,

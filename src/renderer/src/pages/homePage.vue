@@ -852,12 +852,12 @@ const drop = async (e: DragEvent) => {
   transition: height 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 
   &.mainContent--with-player {
-    height: calc(100% - 51px);
+    height: calc(100% - 63px);
   }
 }
 
 .mainPlayerShell {
-  height: 50px;
+  height: 62px;
   max-height: 0;
   opacity: 0;
   transform: translateY(8px);
@@ -874,7 +874,7 @@ const drop = async (e: DragEvent) => {
 }
 
 .mainPlayerShell--visible {
-  max-height: 50px;
+  max-height: 62px;
   opacity: 1;
   transform: translateY(0);
   border-top-color: var(--border);

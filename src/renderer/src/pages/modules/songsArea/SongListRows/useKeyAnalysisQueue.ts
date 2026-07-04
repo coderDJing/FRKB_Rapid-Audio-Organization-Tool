@@ -2,6 +2,7 @@ import { onUnmounted, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
 import { hasCurrentSongEnergyAnalysis } from '@shared/songEnergy'
+import { hasCurrentSongStructureAnalysis } from '@shared/songStructure'
 
 interface UseKeyAnalysisQueueOptions {
   visibleSongsWithIndex: Ref<Array<{ song: ISongInfo; idx: number }>>
@@ -27,7 +28,8 @@ const hasRequiredKeyAnalysis = (song: ISongInfo | undefined, requiresRuntimeAnal
     Number.isFinite(bpm) &&
     bpm > 0 &&
     Number.isFinite(firstBeatMs) &&
-    Number.isFinite(barBeatOffset)
+    Number.isFinite(barBeatOffset) &&
+    hasCurrentSongStructureAnalysis(song)
   )
 }
 

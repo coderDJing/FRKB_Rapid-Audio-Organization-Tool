@@ -34,11 +34,11 @@ import {
   resolveHorizontalBrowseLinkedDeckPlaybackOrder,
   resolveOtherHorizontalBrowseLinkedDeck
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedDeckOrder'
+import { createHorizontalBrowseSectionSeekPlayHandler } from '@renderer/composables/horizontalBrowse/horizontalBrowseSectionSeekPlay'
+import { createHorizontalBrowseBeatJumpHandlers } from '@renderer/composables/horizontalBrowse/horizontalBrowseBeatJumpHandlers'
 
 type DeckKey = HorizontalBrowseDeckKey
 
-const BAR_JUMP_BEATS = 4
-const PHRASE_JUMP_BEATS = 32
 const SYNCED_SEEK_PLAYHEAD_READY_TIMEOUT_MS = 1500
 const SYNCED_SEEK_PLAYHEAD_READY_POLL_MS = 24
 const SYNCED_SEEK_PREPARE_TIMEOUT_MS = 3000
@@ -836,21 +836,21 @@ export const useHorizontalBrowseDeckPlaybackController = (
   const handleDeckPlayheadSeek = (deck: DeckKey, seconds: number) =>
     seekDeckToSeconds(deck, seconds, 'overview-or-playhead')
 
-  const jumpDeckByBeatCount = (deck: DeckKey, direction: -1 | 1, beatCount: number) => {
-    const gridBpm = Number(params.resolveDeckGridBpm(deck))
-    if (!Number.isFinite(gridBpm) || gridBpm <= 0) return
-    const deltaSeconds = (60 / gridBpm) * beatCount * direction
-    seekDeckToSeconds(deck, params.resolveDeckCurrentSeconds(deck) + deltaSeconds, 'transport')
-  }
+  const handleDeckSectionSeekPlay = createHorizontalBrowseSectionSeekPlayHandler({
+    params,
+    deckSeekActionToken,
+    deckSeekResumeOnComplete,
+    clampDeckTimelineSeconds,
+    prepareDeckPlayheadIfNeeded,
+    traceDeckAction
+  })
 
-  const handleDeckBarJump = (deck: DeckKey, direction: -1 | 1) =>
-    jumpDeckByBeatCount(deck, direction, BAR_JUMP_BEATS)
-
-  const handleDeckPhraseJump = (deck: DeckKey, direction: -1 | 1) =>
-    jumpDeckByBeatCount(deck, direction, PHRASE_JUMP_BEATS)
-
-  const handleDeckBeatJump = (deck: DeckKey, direction: -1 | 1, beatCount: number) =>
-    jumpDeckByBeatCount(deck, direction, beatCount)
+  const { handleDeckBarJump, handleDeckPhraseJump, handleDeckBeatJump } =
+    createHorizontalBrowseBeatJumpHandlers({
+      resolveDeckGridBpm: params.resolveDeckGridBpm,
+      resolveDeckCurrentSeconds: params.resolveDeckCurrentSeconds,
+      seekDeckToSeconds
+    })
 
   const handleDeckSeekPercent = (deck: DeckKey, percent: number) => {
     const safePercent = clampNumber(Number(percent) || 0, 0, 1)
@@ -1084,6 +1084,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     handleDeckRawWaveformScrubPreview,
     handleDeckRawWaveformDragEnd,
     handleDeckPlayheadSeek,
+    handleDeckSectionSeekPlay,
     handleDeckBarJump,
     handleDeckPhraseJump,
     handleDeckBeatJump,

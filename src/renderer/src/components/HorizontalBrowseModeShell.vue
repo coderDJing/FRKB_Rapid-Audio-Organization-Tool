@@ -425,6 +425,7 @@ const {
   handleDeckRawWaveformScrubPreview: previewDeckRawWaveformScrub,
   handleDeckRawWaveformDragEnd: endDeckRawWaveformDrag,
   handleDeckPlayheadSeek,
+  handleDeckSectionSeekPlay,
   handleDeckBarJump,
   handleDeckPhraseJump,
   handleDeckBeatJump,
@@ -901,6 +902,7 @@ onUnmounted(() => {
         @toggle-master="toggleDeckMaster('top')"
         @eject-song="handleDeckEjectSong('top')"
         @seek="handleDeckPlayheadSeek('top', $event)"
+        @seek-play="handleDeckSectionSeekPlay('top', $event)"
         @set-bar-line="handleDeckSetBarLineAtPlayhead('top')"
         @shift-left-large="handleDeckGridShiftLargeLeft('top')"
         @shift-left-small="handleDeckGridShiftSmallLeft('top')"
@@ -1038,6 +1040,7 @@ onUnmounted(() => {
         @toggle-master="toggleDeckMaster('bottom')"
         @eject-song="handleDeckEjectSong('bottom')"
         @seek="handleDeckPlayheadSeek('bottom', $event)"
+        @seek-play="handleDeckSectionSeekPlay('bottom', $event)"
         @set-bar-line="handleDeckSetBarLineAtPlayhead('bottom')"
         @shift-left-large="handleDeckGridShiftLargeLeft('bottom')"
         @shift-left-small="handleDeckGridShiftSmallLeft('bottom')"

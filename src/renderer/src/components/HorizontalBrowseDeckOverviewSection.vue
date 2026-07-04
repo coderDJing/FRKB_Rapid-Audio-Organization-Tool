@@ -66,6 +66,7 @@ const emit = defineEmits<{
   (event: 'toggle-master'): void
   (event: 'eject-song'): void
   (event: 'seek', seconds: number): void
+  (event: 'seek-play', seconds: number): void
   (event: 'set-bar-line'): void
   (event: 'shift-left-large'): void
   (event: 'shift-left-small'): void
@@ -140,7 +141,9 @@ const isTop = props.position === 'top'
         :memory-cues="props.memoryCues"
         marker-anchor="top"
         :loop-range="props.loopRange"
+        section-seek-mode="seek-play"
         @seek="emit('seek', $event)"
+        @seek-play="emit('seek-play', $event)"
       />
       <HorizontalBrowseDeckToolbarRow
         v-else-if="(isTop && regionId === 3) || (!isTop && regionId === 6)"

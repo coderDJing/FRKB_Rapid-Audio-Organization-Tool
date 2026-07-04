@@ -4,6 +4,7 @@ import {
   hasCurrentSongEnergyAnalysis,
   normalizeSongEnergyScore
 } from '@shared/songEnergy'
+import { hasCurrentSongStructureAnalysis } from '@shared/songStructure'
 
 type ScanSongListResult = {
   scanData?: Array<{
@@ -15,6 +16,7 @@ type ScanSongListResult = {
     beatGridStatus?: unknown
     energyScore?: unknown
     energyAlgorithmVersion?: unknown
+    songStructure?: unknown
   }>
 }
 
@@ -27,6 +29,7 @@ type AnalysisCandidate = {
   beatGridStatus?: unknown
   energyScore?: unknown
   energyAlgorithmVersion?: unknown
+  songStructure?: unknown
   fileMissing?: boolean
 }
 
@@ -41,6 +44,7 @@ export const hasRequiredAnalysis = (
     beatGridStatus?: unknown
     energyScore?: unknown
     energyAlgorithmVersion?: unknown
+    songStructure?: unknown
   },
   requiresRuntimeAnalysis: boolean
 ) => resolveMissingAnalysisReasons(song, requiresRuntimeAnalysis).length === 0
@@ -54,6 +58,7 @@ export const resolveMissingAnalysisReasons = (
     beatGridStatus?: unknown
     energyScore?: unknown
     energyAlgorithmVersion?: unknown
+    songStructure?: unknown
   },
   requiresRuntimeAnalysis: boolean
 ) => {
@@ -75,6 +80,15 @@ export const resolveMissingAnalysisReasons = (
   if (!Number.isFinite(bpm) || bpm <= 0) reasons.push('missing-bpm')
   if (!Number.isFinite(firstBeatMs)) reasons.push('missing-first-beat')
   if (!Number.isFinite(barBeatOffset)) reasons.push('missing-bar-beat-offset')
+  if (
+    Number.isFinite(bpm) &&
+    bpm > 0 &&
+    Number.isFinite(firstBeatMs) &&
+    Number.isFinite(barBeatOffset) &&
+    !hasCurrentSongStructureAnalysis(song)
+  ) {
+    reasons.push('missing-song-structure')
+  }
   return reasons
 }
 

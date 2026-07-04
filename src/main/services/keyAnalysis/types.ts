@@ -34,6 +34,7 @@ export type KeyAnalysisProgress = {
   needsBpm?: boolean
   needsWaveform?: boolean
   needsEnergy?: boolean
+  needsStructure?: boolean
   detail?: string
   partialResult?: KeyAnalysisWorkerPartialResult
 }
@@ -67,6 +68,7 @@ type KeyAnalysisPrepareDetails = {
   needsBpm: boolean
   needsWaveform: boolean
   needsEnergy: boolean
+  needsStructure: boolean
 }
 
 export type KeyAnalysisAudioProbe = {
@@ -94,6 +96,7 @@ export type KeyAnalysisJob = {
   needsBpm?: boolean
   needsWaveform?: boolean
   needsEnergy?: boolean
+  needsStructure?: boolean
   cachedBpm?: number
   cachedFirstBeatMs?: number
   cachedBarBeatOffset?: number

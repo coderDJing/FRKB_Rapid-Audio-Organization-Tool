@@ -20,6 +20,8 @@ import playerControls from '../../../components/playerControls.vue'
 import selectSongListDialog from '@renderer/components/selectSongListDialog.vue'
 import BpmTap from './BpmTap.vue'
 import PlaybackRangeHandles from './PlaybackRangeHandles.vue'
+import PlayerCoverSlot from './PlayerCoverSlot.vue'
+import PlayerStructureRail from './PlayerStructureRail.vue'
 import { usePlayerHotkeys } from './usePlayerHotkeys'
 import { usePlayerControlsLogic } from './usePlayerControlsLogic'
 import { useCover } from './useCover'
@@ -52,6 +54,7 @@ import {
   normalizePlaybackHandoffSeconds,
   type MainWindowPlaybackSnapshot
 } from '@renderer/utils/mainWindowPlaybackHandoff'
+import { normalizeSongStructureAnalysis } from '@shared/songStructure'
 const musicIcon = musicIconAsset
 type WaveformPreviewStatePayload = {
   active?: boolean
@@ -90,6 +93,8 @@ const AUDIO_FOLLOW_SYSTEM_ID = ''
 let pendingAudioOutputDeviceId = runtime.setting.audioOutputDeviceId || AUDIO_FOLLOW_SYSTEM_ID
 const waveformShow = ref(false)
 const waveformContainerWidth = ref(0)
+const playerCurrentSeconds = ref(0)
+const playerWaveformRenderRevision = ref(0)
 let lastPlayerWaveformRenderSource = ''
 const updateParentWaveformWidth = () => {
   const waveformEl = waveform.value
@@ -218,6 +223,7 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   disposers.push(() => player.off('finish', onFinish))
 
   const onTimeUpdate = (currentTime: number) => {
+    playerCurrentSeconds.value = Math.max(0, Number(currentTime) || 0)
     const timeEl = document.querySelector('#time')
     const durationEl = document.querySelector('#duration')
     if (!timeEl || !durationEl) return
@@ -257,6 +263,7 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   disposers.push(() => player.off('timeupdate', onTimeUpdate))
 
   const syncManualSeekState = ({ time, manual }: { time: number; manual: boolean }) => {
+    playerCurrentSeconds.value = Math.max(0, Number(time) || 0)
     previousTime = time
     if (manual) {
       manualSeekActive = true
@@ -275,6 +282,7 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   disposers.push(() => player.off('seeked', onSeeked))
 
   const onDecode = (duration: number) => {
+    playerWaveformRenderRevision.value += 1
     const durationEl = document.querySelector('#duration')
     if (durationEl) {
       const formatTime = (seconds: number) => {
@@ -290,8 +298,15 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
   player.on('decode', onDecode)
   disposers.push(() => player.off('decode', onDecode))
 
+  const onWaveformReady = () => {
+    playerWaveformRenderRevision.value += 1
+  }
+  player.on('waveformready', onWaveformReady)
+  disposers.push(() => player.off('waveformready', onWaveformReady))
+
   const onReady = () => {
     ignoreNextEmptyError.value = false
+    playerWaveformRenderRevision.value += 1
     updateParentWaveformWidth()
     scheduleAdjacentMetadataPreload('current-ready')
   }
@@ -636,11 +651,37 @@ const parseDurationToSeconds = (input: unknown) => {
   if (parts.length === 2) return parts[0] * 60 + parts[1]
   return parts[0]
 }
+const resolvePositiveSeconds = (input: unknown) => {
+  const value = Number(input)
+  return Number.isFinite(value) && value > 0 ? value : 0
+}
 const playerWaveformDurationSec = computed(() => {
-  const playerDuration = Number(audioPlayer.value?.getDuration())
-  if (Number.isFinite(playerDuration) && playerDuration > 0) return playerDuration
+  void playerWaveformRenderRevision.value
+  const compactDuration = resolvePositiveSeconds(
+    audioPlayer.value?.compactVisualWaveformData?.duration
+  )
+  if (compactDuration > 0) return compactDuration
+  const structureDuration = resolvePositiveSeconds(
+    normalizeSongStructureAnalysis(runtime.playingData.playingSong?.songStructure)?.durationSec
+  )
+  if (structureDuration > 0) return structureDuration
+  const playerDuration = resolvePositiveSeconds(audioPlayer.value?.getDuration())
+  if (playerDuration > 0) return playerDuration
   return parseDurationToSeconds(runtime.playingData.playingSong?.duration)
 })
+
+const handlePlayerStructureSectionClick = (startSec: number) => {
+  const playerInstance = audioPlayer.value
+  if (!playerInstance || !waveformShow.value || runtime.isSwitchingSong) return
+  playerInstance.play(Math.max(0, Number(startSec) || 0))
+}
+
+watch(
+  () => runtime.playingData.playingSong?.filePath,
+  () => {
+    playerCurrentSeconds.value = 0
+  }
+)
 const playerState = {
   waveformShow,
   selectSongListDialogShow,
@@ -790,23 +831,11 @@ watch(
         box-sizing: border-box;
       "
     >
-      <div style="width: 50px; display: flex" class="unselectable">
-        <div
-          style="
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 50px;
-            width: 50px;
-          "
-          @mouseenter="songInfoShow = true"
-        >
-          <transition name="cover-switch" mode="out-in">
-            <img v-if="coverBlobUrl" :key="coverBlobUrl" :src="coverBlobUrl" class="songCover" />
-            <img v-else :key="'placeholder'" :src="musicIcon" style="width: 25px; height: 25px" />
-          </transition>
-        </div>
-      </div>
+      <PlayerCoverSlot
+        :cover-blob-url="coverBlobUrl"
+        :placeholder-src="musicIcon"
+        @hover-cover="songInfoShow = true"
+      />
       <transition name="fade">
         <div v-if="songInfoShow" class="songInfo" @mouseleave="handleSongInfoMouseLeave">
           <div class="cover unselectable" @contextmenu.prevent="showCoverContextMenu">
@@ -834,7 +863,7 @@ watch(
       </transition>
       <div
         class="controlsContainer"
-        :style="{ width: runtime.setting.hiddenPlayControlArea ? '15px' : '260px' }"
+        :style="{ width: runtime.setting.hiddenPlayControlArea ? '15px' : '244px' }"
       >
         <transition name="player-controls-toggle">
           <playerControls
@@ -860,7 +889,7 @@ watch(
         </transition>
       </div>
 
-      <div style="flex-grow: 1; position: relative" class="unselectable">
+      <div class="main-player-waveform-slot unselectable">
         <div id="waveform" ref="waveform">
           <div id="time">0:00</div>
           <div id="duration">0:00</div>
@@ -879,15 +908,20 @@ watch(
             clickable
             @marker-click="handleMainWaveformHotCueClick($event.sec)"
           />
+          <PlaybackRangeHandles
+            v-model:model-value-start="runtime.setting.startPlayPercent"
+            v-model:model-value-end="runtime.setting.endPlayPercent"
+            :container-width="waveformContainerWidth"
+            :enable-playback-range="runtime.setting.enablePlaybackRange"
+            :waveform-show="waveformShow"
+            @drag-end="setSetting"
+          />
         </div>
-
-        <PlaybackRangeHandles
-          v-model:model-value-start="runtime.setting.startPlayPercent"
-          v-model:model-value-end="runtime.setting.endPlayPercent"
-          :container-width="waveformContainerWidth"
-          :enable-playback-range="runtime.setting.enablePlaybackRange"
-          :waveform-show="waveformShow"
-          @drag-end="setSetting"
+        <PlayerStructureRail
+          :song="runtime.playingData.playingSong"
+          :current-seconds="playerCurrentSeconds"
+          :duration-seconds="playerWaveformDurationSec"
+          @seek-play="handlePlayerStructureSectionClick"
         />
       </div>
       <BpmTap
@@ -954,16 +988,24 @@ watch(
   opacity: 0;
 }
 
+.main-player-waveform-slot {
+  flex: 1 1 auto;
+  display: flex;
+  min-width: 0;
+  height: 52px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  position: relative;
+}
+
 #waveform {
   position: relative;
+  flex: 0 0 40px;
+  width: 100%;
   min-height: 40px;
   background: var(--waveform-bg);
   overflow: hidden;
-}
-
-.songCover {
-  width: 40px;
-  height: 40px;
 }
 
 #hover {
@@ -1037,27 +1079,12 @@ watch(
   transform: translateY(4px);
 }
 
-.cover-switch-enter-active,
-.cover-switch-leave-active {
-  transition:
-    opacity 0.16s ease,
-    transform 0.16s ease;
-}
-
-.cover-switch-enter-from,
-.cover-switch-leave-to {
-  opacity: 0;
-  transform: scale(0.9);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .player-area-toggle-enter-active,
   .player-area-toggle-leave-active,
   .player-controls-toggle-enter-active,
   .player-controls-toggle-leave-active,
-  .controlsContainer,
-  .cover-switch-enter-active,
-  .cover-switch-leave-active {
+  .controlsContainer {
     transition: none;
   }
 }

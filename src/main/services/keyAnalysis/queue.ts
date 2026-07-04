@@ -301,6 +301,7 @@ export class KeyAnalysisQueue {
       needsBpm: job.needsBpm,
       needsWaveform: job.needsWaveform,
       needsEnergy: job.needsEnergy,
+      needsStructure: job.needsStructure,
       manualBatchIds: batchIds
     })
   }
@@ -925,6 +926,7 @@ export class KeyAnalysisQueue {
           needsBpm: job.needsBpm,
           needsWaveform: job.needsWaveform,
           needsEnergy: job.needsEnergy,
+          needsStructure: job.needsStructure,
           cachedBpm: job.cachedBpm,
           cachedFirstBeatMs: job.cachedFirstBeatMs,
           cachedBarBeatOffset: job.cachedBarBeatOffset
@@ -945,6 +947,20 @@ export class KeyAnalysisQueue {
       this.doneByPath.delete(normalizedPath)
       this.failedByPath.delete(normalizedPath)
       this.probeCache.delete(normalizedPath)
+    }
+  }
+
+  invalidateSongStructureByPath(filePaths: string[]) {
+    if (!Array.isArray(filePaths) || filePaths.length === 0) return
+    for (const filePath of filePaths) {
+      if (!filePath) continue
+      const normalizedPath = normalizePath(filePath)
+      const done = this.doneByPath.get(normalizedPath)
+      if (!done?.songStructure) continue
+      this.doneByPath.set(normalizedPath, {
+        ...done,
+        songStructure: undefined
+      })
     }
   }
 

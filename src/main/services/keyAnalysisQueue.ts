@@ -396,6 +396,12 @@ export function invalidateKeyAnalysisCache(filePaths: string[] | string) {
   LibraryCacheDb.unregisterExternalAnalysisContexts(list)
 }
 
+export function invalidateKeyAnalysisSongStructure(filePaths: string[] | string) {
+  if (!queue) return
+  const list = Array.isArray(filePaths) ? filePaths : [filePaths]
+  queue.invalidateSongStructureByPath(list)
+}
+
 export function remapKeyAnalysisTrackedPath(fromPath: string, toPath: string) {
   if (!queue) return
   queue.remapTrackedPath(fromPath, toPath)

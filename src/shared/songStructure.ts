@@ -8,6 +8,7 @@ import {
   toFixedNumber,
   type BuildSongStructureInput,
   type SongStructureAnalysis,
+  type SongStructureAnalysisSource,
   type SongStructureSection,
   type SongStructureSectionKind
 } from './songStructureCommon'
@@ -35,6 +36,11 @@ const normalizeSectionKind = (value: unknown): SongStructureSectionKind | null =
     return value
   }
   return null
+}
+
+const normalizeStructureSource = (value: unknown): SongStructureAnalysisSource | undefined => {
+  if (value === 'algorithmic') return 'algorithmic'
+  return undefined
 }
 
 const normalizeSongStructureSection = (value: unknown): SongStructureSection | null => {
@@ -87,6 +93,7 @@ export const normalizeSongStructureAnalysis = (
   }
   return {
     algorithmVersion,
+    source: normalizeStructureSource(record.source),
     durationSec: toFixedNumber(durationSec, 3),
     bpm: grid.bpm,
     firstBeatMs: grid.firstBeatMs,

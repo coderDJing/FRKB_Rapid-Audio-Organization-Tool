@@ -12,6 +12,7 @@ import {
   drawWaveformTimelineTicks,
   resolveWaveformTimelineTickThemeVariant
 } from '@renderer/components/waveformTimelineTicks'
+import { normalizeSongStructureAnalysis } from '@shared/songStructure'
 
 const WAVEFORM_PLAYHEAD_NEEDLE_BACKGROUND = [
   'linear-gradient(90deg,',
@@ -161,7 +162,7 @@ export function useWaveform(params: {
   const resolveSeekTarget = (percent: number) => {
     const player = audioPlayer.value
     if (!player) return null
-    const duration = player.getDuration()
+    const duration = resolveWaveformTimelineDuration(player)
     if (duration <= 0 || !Number.isFinite(duration)) return null
     const clampedPercent = clamp01(percent)
     return {
@@ -267,6 +268,19 @@ export function useWaveform(params: {
     progressWrapper.style.width = `${percent}%`
     progressWrapper.style.transform = `translateX(0)`
     cursorEl.style.left = `${percent}%`
+  }
+
+  const resolveWaveformTimelineDuration = (player: WebAudioPlayer) => {
+    const compactDuration = Number(player.compactVisualWaveformData?.duration)
+    if (Number.isFinite(compactDuration) && compactDuration > 0) return compactDuration
+    const structureDuration = Number(
+      normalizeSongStructureAnalysis(runtime.playingData.playingSong?.songStructure)?.durationSec
+    )
+    if (Number.isFinite(structureDuration) && structureDuration > 0) return structureDuration
+    const playerDuration = Number(player.getDuration())
+    if (Number.isFinite(playerDuration) && playerDuration > 0) return playerDuration
+    const bufferDuration = Number(audioBuffer?.duration)
+    return Number.isFinite(bufferDuration) && bufferDuration > 0 ? bufferDuration : 0
   }
 
   const resizeCanvas = (
@@ -401,7 +415,7 @@ export function useWaveform(params: {
     const pioneerPreviewData = player.pioneerPreviewWaveformData ?? null
     const compactVisualData = player.compactVisualWaveformData ?? null
 
-    const duration = player?.getDuration?.() ?? audioBuffer?.duration ?? 0
+    const duration = resolveWaveformTimelineDuration(player)
     const currentTime = player?.getCurrentTime?.() ?? 0
     const progress = duration > 0 ? currentTime / duration : 0
     updateProgressVisual(progress)

@@ -82,8 +82,9 @@ const printRendererPortConflictHint = (port, env) => {
 const args = process.argv.slice(2)
 const releaseRuntime = args.includes('--release-runtime')
 const noRuntime = args.includes('--no-runtime')
+const preflightOnly = args.includes('--preflight-only')
 const forwardedArgs = args.filter(
-  (arg) => arg !== '--release-runtime' && arg !== '--no-runtime'
+  (arg) => arg !== '--release-runtime' && arg !== '--no-runtime' && arg !== '--preflight-only'
 )
 
 const releaseRuntimeRoot = 'vendor/demucs-release'
@@ -182,6 +183,11 @@ const nativeDepsResult = spawnSync(process.execPath, [electronBuilderCliPath, 'i
 
 if ((nativeDepsResult.status ?? 1) !== 0) {
   process.exit(nativeDepsResult.status ?? 1)
+}
+
+if (preflightOnly) {
+  console.log('[frkb-dev] preflight complete')
+  process.exit(0)
 }
 
 const electronViteCliPath = path.resolve('./node_modules/electron-vite/bin/electron-vite.js')

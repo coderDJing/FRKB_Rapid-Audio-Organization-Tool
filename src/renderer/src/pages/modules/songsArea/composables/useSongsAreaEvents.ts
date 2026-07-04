@@ -694,15 +694,18 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       hasFirstBeatMs ? 'firstBeatMs' : '',
       hasBarBeatOffset ? 'barBeatOffset' : '',
       hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : '',
-      hasBpm ? 'beatGridStatus' : ''
+      hasBpm ? 'beatGridStatus' : '',
+      hasBpm || hasFirstBeatMs || hasBarBeatOffset ? 'songStructure' : ''
     ].filter(Boolean)
 
     const applyGridPatch = (song: ISongInfo): ISongInfo => {
       let touched = false
+      let structureGridChanged = false
       const nextSong: ISongInfo = { ...song }
       if (hasBpm && nextSong.bpm !== payload.bpm) {
         nextSong.bpm = payload.bpm
         touched = true
+        structureGridChanged = true
       }
       if (hasBpm && nextSong.beatGridStatus !== undefined) {
         delete nextSong.beatGridStatus
@@ -711,13 +714,19 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       if (hasFirstBeatMs && nextSong.firstBeatMs !== payload.firstBeatMs) {
         nextSong.firstBeatMs = payload.firstBeatMs
         touched = true
+        structureGridChanged = true
       }
       if (hasBarBeatOffset && nextSong.barBeatOffset !== payload.barBeatOffset) {
         nextSong.barBeatOffset = payload.barBeatOffset
         touched = true
+        structureGridChanged = true
       }
       if (hasTimeBasisOffsetMs && nextSong.timeBasisOffsetMs !== payload.timeBasisOffsetMs) {
         nextSong.timeBasisOffsetMs = payload.timeBasisOffsetMs
+        touched = true
+      }
+      if (structureGridChanged && nextSong.songStructure !== undefined) {
+        delete nextSong.songStructure
         touched = true
       }
       return touched ? nextSong : song
