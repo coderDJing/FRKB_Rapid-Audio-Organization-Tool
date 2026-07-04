@@ -62,7 +62,10 @@ const structureSections = computed(() => {
 </script>
 
 <template>
-  <div v-if="structureSections.length" class="player-structure-rail">
+  <div
+    class="player-structure-rail"
+    :class="{ 'player-structure-rail--empty': !structureSections.length }"
+  >
     <button
       v-for="section in structureSections"
       :key="section.key"
@@ -97,6 +100,11 @@ const structureSections = computed(() => {
   border-radius: 0;
   background: color-mix(in srgb, var(--waveform-bg) 86%, var(--border));
   pointer-events: auto;
+}
+
+.player-structure-rail--empty {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .player-structure-rail__segment {

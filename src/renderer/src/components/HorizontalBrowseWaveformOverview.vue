@@ -579,7 +579,11 @@ onUnmounted(() => {
         :style="{ left: playheadLeft }"
       ></div>
     </div>
-    <div v-if="structureSections.length" class="overview-waveform__structure" @pointerdown.stop>
+    <div
+      class="overview-waveform__structure"
+      :class="{ 'overview-waveform__structure--empty': !structureSections.length }"
+      @pointerdown.stop
+    >
       <button
         v-for="section in structureSections"
         :key="section.key"
@@ -650,6 +654,11 @@ onUnmounted(() => {
   border-radius: 0;
   pointer-events: auto;
   z-index: 2;
+}
+
+.overview-waveform__structure--empty {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .overview-waveform__structure-segment {
