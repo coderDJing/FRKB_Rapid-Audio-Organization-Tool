@@ -4,6 +4,7 @@ import { PreloadApi } from '../preload/index'
 import { IPicture } from 'music-metadata'
 import type { RekordboxSourceKind, RekordboxSourceLibraryType } from '../shared/rekordboxSources'
 import type { SongStructureAnalysis } from '../shared/songStructure'
+import type { PlaybackRangeMode, PlaybackRangeSectionMatchMode } from '../shared/playbackRange'
 
 interface IDir {
   uuid: string
@@ -637,6 +638,9 @@ interface ISettingConfig {
   autoPlayNextSong: boolean
   startPlayPercent: number
   endPlayPercent: number
+  playbackRangeMode?: PlaybackRangeMode
+  playbackRangeSectionKinds?: Array<'intro' | 'groove' | 'breakdown' | 'build' | 'drop' | 'outro'>
+  playbackRangeSectionMatchMode?: PlaybackRangeSectionMatchMode
   fastForwardTime: number
   fastBackwardTime: number
   autoScrollToCurrentSong: boolean

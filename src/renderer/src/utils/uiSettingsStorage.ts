@@ -6,6 +6,11 @@ import {
   UI_SETTING_KEYS,
   type UiSettingKey
 } from '../../../shared/uiSettings'
+import {
+  normalizePlaybackRangeMode,
+  normalizePlaybackRangeSectionKinds,
+  normalizePlaybackRangeSectionMatchMode
+} from '../../../shared/playbackRange'
 
 const STORAGE_KEY = 'frkb_ui_settings_v1'
 const MIGRATION_KEY = 'frkb_ui_settings_migrated_v1'
@@ -72,6 +77,21 @@ const sanitizeUiSettings = (input: Record<string, unknown>): UiSettings => {
       case 'keyDisplayStyle':
         if (value === 'Classic' || value === 'Camelot') {
           output[key] = value
+        }
+        break
+      case 'playbackRangeMode':
+        if (value === 'custom' || value === 'section') {
+          output[key] = normalizePlaybackRangeMode(value)
+        }
+        break
+      case 'playbackRangeSectionKinds':
+        if (Array.isArray(value) || typeof value === 'string') {
+          output[key] = normalizePlaybackRangeSectionKinds(value)
+        }
+        break
+      case 'playbackRangeSectionMatchMode':
+        if (value === 'all' || value === 'first' || value === 'last') {
+          output[key] = normalizePlaybackRangeSectionMatchMode(value)
         }
         break
       case 'startPlayPercent':

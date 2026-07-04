@@ -46,6 +46,7 @@ import {
 } from '@renderer/composables/titleAudioVisualizerBridge'
 import { shouldQueueBrowserMainPlayerAnalysis } from '@renderer/utils/playlistAnalysisGate'
 import { sendPlayerWaveformTrace } from './playerWaveformTrace'
+import { usePlaybackRangeController } from './usePlaybackRangeController'
 import {
   MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT,
   clonePlaybackHandoffSong,
@@ -237,26 +238,7 @@ const bindPlayerEvents = (player: WebAudioPlayer) => {
 
     ;(timeEl as HTMLElement).textContent = formatTime(currentTime)
 
-    if (runtime.setting.enablePlaybackRange) {
-      const duration = player.getDuration()
-      if (duration > 0) {
-        const endPercent = runtime.setting.endPlayPercent ?? 100
-        const endTime = (duration * endPercent) / 100
-        const effectiveEnd = Math.max(endTime - rangeStopTolerance, 0)
-        const crossedEnd =
-          currentTime >= effectiveEnd && previousTime < effectiveEnd && player.isPlaying()
-        if (crossedEnd) {
-          if (manualSeekActive) {
-            manualSeekActive = false
-            clearManualSeekTimer()
-          } else if (runtime.setting.autoPlayNextSong) {
-            playerActions.nextSong()
-          } else {
-            player.pause()
-          }
-        }
-      }
-    }
+    handlePlaybackRangeTimeUpdate(player, currentTime)
     previousTime = currentTime
   }
   player.on('timeupdate', onTimeUpdate)
@@ -426,13 +408,7 @@ const handleReplayRequest = () => {
   const duration = playerInstance.getDuration()
   if (!duration || Number.isNaN(duration)) return
 
-  const enableRange = runtime.setting.enablePlaybackRange
-  const startPercentRaw = enableRange ? (runtime.setting.startPlayPercent ?? 0) : 0
-  const startPercentNumber =
-    typeof startPercentRaw === 'number' ? startPercentRaw : parseFloat(String(startPercentRaw))
-  const safePercent = Number.isFinite(startPercentNumber) ? startPercentNumber : 0
-  const clampedPercent = Math.min(Math.max(safePercent, 0), 100)
-  const startTime = (duration * clampedPercent) / 100
+  const startTime = resolvePlaybackRangeStartSec(duration)
 
   const wasPlaying = playerInstance.isPlaying()
   runtime.playerReady = false
@@ -668,6 +644,34 @@ const playerWaveformDurationSec = computed(() => {
   const playerDuration = resolvePositiveSeconds(audioPlayer.value?.getDuration())
   if (playerDuration > 0) return playerDuration
   return parseDurationToSeconds(runtime.playingData.playingSong?.duration)
+})
+
+const {
+  playbackRangeHandlesLocked,
+  playbackRangeHandlesVisible,
+  playbackRangeLockedRanges,
+  playbackRangeHandleStartPercent,
+  playbackRangeHandleEndPercent,
+  handlePlaybackRangeTimeUpdate,
+  handlePlaybackRangeDragEnd,
+  resolvePlaybackRangeStartSec
+} = usePlaybackRangeController({
+  runtime,
+  audioPlayer,
+  playerCurrentSeconds,
+  playerWaveformDurationSec,
+  rangeStopTolerance,
+  getPreviousTime: () => previousTime,
+  setPreviousTime: (value) => {
+    previousTime = value
+  },
+  isManualSeekActive: () => manualSeekActive,
+  clearManualSeekActive: () => {
+    manualSeekActive = false
+    clearManualSeekTimer()
+  },
+  nextSong: () => playerActions.nextSong(),
+  setSetting
 })
 
 const handlePlayerStructureSectionClick = (startSec: number) => {
@@ -909,12 +913,14 @@ watch(
             @marker-click="handleMainWaveformHotCueClick($event.sec)"
           />
           <PlaybackRangeHandles
-            v-model:model-value-start="runtime.setting.startPlayPercent"
-            v-model:model-value-end="runtime.setting.endPlayPercent"
+            v-model:model-value-start="playbackRangeHandleStartPercent"
+            v-model:model-value-end="playbackRangeHandleEndPercent"
             :container-width="waveformContainerWidth"
-            :enable-playback-range="runtime.setting.enablePlaybackRange"
+            :enable-playback-range="playbackRangeHandlesVisible"
             :waveform-show="waveformShow"
-            @drag-end="setSetting"
+            :locked="playbackRangeHandlesLocked"
+            :locked-ranges="playbackRangeLockedRanges"
+            @drag-end="handlePlaybackRangeDragEnd"
           />
         </div>
         <PlayerStructureRail

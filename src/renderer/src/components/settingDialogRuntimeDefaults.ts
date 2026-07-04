@@ -32,6 +32,15 @@ export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime
   if (runtime.setting.endPlayPercent === undefined) {
     runtime.setting.endPlayPercent = 100
   }
+  if (runtime.setting.playbackRangeMode === undefined) {
+    runtime.setting.playbackRangeMode = 'custom'
+  }
+  if (runtime.setting.playbackRangeSectionKinds === undefined) {
+    runtime.setting.playbackRangeSectionKinds = ['drop']
+  }
+  if (runtime.setting.playbackRangeSectionMatchMode === undefined) {
+    runtime.setting.playbackRangeSectionMatchMode = 'all'
+  }
   if (runtime.setting.showIdleAnalysisStatus === undefined) {
     runtime.setting.showIdleAnalysisStatus = false
   }

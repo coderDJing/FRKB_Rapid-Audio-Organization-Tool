@@ -85,6 +85,7 @@
       "summaryDesc": "先把最容易被反复调整的关键项放到最上面。",
       "sectionCommonTitle": "常用设置",
       "sectionCommonDesc": "主题、语言、输出设备和最常改的基础行为优先放这里。",
+      "sectionPlaybackRangeTitle": "区间播放",
       "sectionPlaybackTitle": "播放与快捷键",
       "sectionPlaybackDesc": "播放器行为、波形显示和全局快捷键统一归到一组。",
       "sectionMetadataTitle": "元数据与指纹",

@@ -5,7 +5,6 @@ import type { EventEmitter } from 'node:events'
 import { sweepSongListCovers } from '../covers'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { getLibraryDb } from '../../libraryDb'
-import { isInRecordingLibraryAbsPath } from '../../recordingLibraryService'
 import {
   loadLibraryNodes,
   pruneMissingLibraryNodes,
@@ -61,6 +60,13 @@ type CachedAnalysisInfo = {
   beatGridStatus?: unknown
   songStructure?: unknown
 }
+
+const BACKGROUND_EXCLUDED_CORE_LIBRARY_DIRS = new Set([
+  'setlibrary',
+  'mixtapelibrary',
+  'recyclebin',
+  'recordinglibrary'
+])
 
 type KeyAnalysisBackgroundDeps = {
   events: EventEmitter
@@ -230,6 +236,16 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     return result
   }
 
+  const isExcludedCoreLibraryAbsPath = (absPath: string) => {
+    const rootDir = store.databaseDir
+    if (!rootDir || !absPath) return false
+    const libraryRoot = path.join(rootDir, 'library')
+    const rel = path.relative(libraryRoot, path.resolve(absPath))
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return false
+    const firstSegment = rel.split(/[\\/]/)[0]?.toLowerCase()
+    return !!firstSegment && BACKGROUND_EXCLUDED_CORE_LIBRARY_DIRS.has(firstSegment)
+  }
+
   const resolveSongListRoots = (): string[] => {
     const rootDir = store.databaseDir
     if (!rootDir) return []
@@ -296,12 +312,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
     for (const libraryEntry of libraryEntries) {
       if (!libraryEntry.isDirectory()) continue
       if (libraryEntry.name.startsWith('.')) continue
-      if (
-        libraryEntry.name === 'SetLibrary' ||
-        libraryEntry.name === 'MixtapeLibrary' ||
-        libraryEntry.name === 'RecycleBin' ||
-        libraryEntry.name === 'RecordingLibrary'
-      ) {
+      if (BACKGROUND_EXCLUDED_CORE_LIBRARY_DIRS.has(libraryEntry.name.toLowerCase())) {
         continue
       }
       const libraryDir = path.join(libraryRoot, libraryEntry.name)
@@ -491,7 +502,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       if (!listRoot) continue
       const absFilePath = LibraryCacheDb.resolveCacheFilePath(listRoot, filePath)
       if (!absFilePath) continue
-      if (isInRecordingLibraryAbsPath(absFilePath)) continue
+      if (isExcludedCoreLibraryAbsPath(absFilePath)) continue
       const size = Number(row?.size)
       const mtimeMs = Number(row?.mtime_ms)
       let hasWaveform = false
@@ -560,6 +571,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           const ext = path.extname(entry.name).toLowerCase()
           if (!audioExts.has(ext)) continue
           const filePath = path.join(current.dir, entry.name)
+          if (isExcludedCoreLibraryAbsPath(filePath)) continue
           const normalizedPath = normalizePath(filePath)
           if (deps.pendingByPath.has(normalizedPath) || deps.activeByPath.has(normalizedPath)) {
             continue

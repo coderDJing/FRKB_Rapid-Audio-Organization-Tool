@@ -25,19 +25,37 @@ type ManualBatchPayload = {
 export function registerKeyAnalysisHandlers() {
   ipcMain.on('key-analysis:queue-visible', (_e, payload: VisibleQueuePayload) => {
     const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
-    const normalized = paths.filter((p) => typeof p === 'string' && p.trim().length > 0)
+    const normalized = paths
+      .map((p) => (typeof p === 'string' ? p.trim() : ''))
+      .filter((p) => p.length > 0)
     if (payload?.scope === 'waveform-preview') {
-      enqueueKeyAnalysisList(normalized, 'low', {
-        source: 'foreground',
-        preemptible: true,
-        category: 'waveform-preview',
-        waveformOnly: payload?.waveformOnly === true
-      })
+      const waveformOnly = payload?.waveformOnly === true
+      const normalPaths = normalized.filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
+      const recordingPaths = normalized.filter((filePath) => isInRecordingLibraryAbsPath(filePath))
+      if (normalPaths.length > 0) {
+        enqueueKeyAnalysisList(normalPaths, 'low', {
+          source: 'foreground',
+          preemptible: true,
+          category: 'waveform-preview',
+          waveformOnly
+        })
+      }
+      if (recordingPaths.length > 0) {
+        enqueueKeyAnalysisList(recordingPaths, 'low', {
+          source: 'foreground',
+          preemptible: true,
+          category: 'waveform-preview',
+          waveformOnly: true
+        })
+      }
       return
     }
-    replaceVisibleKeyAnalysisList(normalized, {
-      waveformOnly: payload?.waveformOnly === true
-    })
+    replaceVisibleKeyAnalysisList(
+      normalized.filter((filePath) => !isInRecordingLibraryAbsPath(filePath)),
+      {
+        waveformOnly: payload?.waveformOnly === true
+      }
+    )
   })
 
   ipcMain.on(
@@ -72,7 +90,9 @@ export function registerKeyAnalysisHandlers() {
 
   ipcMain.handle('key-analysis:queue-manual-batch', (_e, payload?: ManualBatchPayload) => {
     const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
-    const normalized = paths.filter((p) => typeof p === 'string' && p.trim().length > 0)
+    const normalized = paths
+      .filter((p) => typeof p === 'string' && p.trim().length > 0)
+      .filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
     return enqueueManualKeyAnalysisBatch(normalized, {
       titleKey: typeof payload?.titleKey === 'string' ? payload.titleKey : undefined
     })

@@ -1048,9 +1048,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     if (job.waveformOnly) {
       needsKey = false
       needsBpm = false
-      if (!hasCachedStructureGrid()) {
-        needsStructure = false
-      }
+      needsEnergy = false
+      needsStructure = false
     }
 
     if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy && !needsStructure) {

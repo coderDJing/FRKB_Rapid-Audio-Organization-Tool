@@ -11,6 +11,14 @@ import {
   settingDialogContextKey,
   type SettingDialogContext
 } from '@renderer/components/settingDialog/context'
+import {
+  PLAYBACK_RANGE_SECTION_KINDS,
+  PLAYBACK_RANGE_SECTION_LABELS,
+  normalizePlaybackRangeSectionKinds,
+  type PlaybackRangeMode,
+  type PlaybackRangeSectionMatchMode
+} from '@shared/playbackRange'
+import type { SongStructureSectionKind } from '@shared/songStructure'
 
 const ctx = inject<SettingDialogContext>(settingDialogContextKey)
 
@@ -95,6 +103,59 @@ const showTitleAudioVisualizerModel = computed<boolean>({
     runtime.setting.showTitleAudioVisualizer = value
   }
 })
+
+const playbackRangeModeModel = computed<PlaybackRangeMode>({
+  get: () => (runtime.setting.playbackRangeMode === 'section' ? 'section' : 'custom'),
+  set: (value) => {
+    runtime.setting.playbackRangeMode = value
+  }
+})
+
+const playbackRangeSectionMatchModeModel = computed<PlaybackRangeSectionMatchMode>({
+  get: () => {
+    const value = runtime.setting.playbackRangeSectionMatchMode
+    return value === 'first' || value === 'last' ? value : 'all'
+  },
+  set: (value) => {
+    runtime.setting.playbackRangeSectionMatchMode = value
+  }
+})
+
+const playbackRangeModeOptions = computed(() => [
+  { label: t('player.playbackRangeModeCustom'), value: 'custom' },
+  { label: t('player.playbackRangeModeSection'), value: 'section' }
+])
+
+const playbackRangeSectionMatchModeOptions = computed(() => [
+  { label: t('player.playbackRangeSectionMatchAll'), value: 'all' },
+  { label: t('player.playbackRangeSectionMatchFirst'), value: 'first' },
+  { label: t('player.playbackRangeSectionMatchLast'), value: 'last' }
+])
+
+const playbackRangeSectionKindOptions = computed(() =>
+  PLAYBACK_RANGE_SECTION_KINDS.map((kind) => ({
+    label: PLAYBACK_RANGE_SECTION_LABELS[kind],
+    value: kind
+  }))
+)
+
+const playbackRangeSelectedSectionKinds = computed(
+  () => new Set(normalizePlaybackRangeSectionKinds(runtime.setting.playbackRangeSectionKinds))
+)
+
+const togglePlaybackRangeSectionKind = (kind: SongStructureSectionKind, checked: boolean) => {
+  const current = normalizePlaybackRangeSectionKinds(runtime.setting.playbackRangeSectionKinds)
+  const selected = new Set(current)
+  if (checked) {
+    selected.add(kind)
+  } else if (selected.size > 1) {
+    selected.delete(kind)
+  }
+  runtime.setting.playbackRangeSectionKinds = PLAYBACK_RANGE_SECTION_KINDS.filter((item) =>
+    selected.has(item)
+  )
+  setSetting()
+}
 
 const currentLibraryPathText = computed(
   () => runtime.setting.databaseUrl || t('database.notConfigured')
@@ -218,7 +279,7 @@ const rekordboxDesktopTrackStorageDirText = computed(
           </div>
 
           <div class="settings-section">
-            <div class="section-title">{{ t('settings.layout.sectionPlaybackTitle') }}</div>
+            <div class="section-title">{{ t('settings.layout.sectionPlaybackRangeTitle') }}</div>
 
             <label class="setting-block" for="setting-checkbox-enablePlaybackRange"
               >{{ t('player.enablePlaybackRange') }}：</label
@@ -230,6 +291,50 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 @change="setSetting()"
               />
             </div>
+
+            <template v-if="runtime.setting.enablePlaybackRange">
+              <div class="setting-block">{{ t('player.playbackRangeMode') }}：</div>
+              <div class="setting-control">
+                <BaseSelect
+                  v-model="playbackRangeModeModel"
+                  :options="playbackRangeModeOptions"
+                  :width="220"
+                  @change="setSetting"
+                />
+              </div>
+
+              <template v-if="playbackRangeModeModel === 'section'">
+                <div class="setting-block">{{ t('player.playbackRangeSectionKinds') }}：</div>
+                <div class="setting-control section-kind-list">
+                  <singleCheckbox
+                    v-for="option in playbackRangeSectionKindOptions"
+                    :id="`setting-checkbox-playbackRangeSection-${option.value}`"
+                    :key="option.value"
+                    class="section-kind-item"
+                    :model-value="playbackRangeSelectedSectionKinds.has(option.value)"
+                    @change="
+                      (checked) => togglePlaybackRangeSectionKind(option.value, Boolean(checked))
+                    "
+                  >
+                    {{ option.label }}
+                  </singleCheckbox>
+                </div>
+
+                <div class="setting-block">{{ t('player.playbackRangeSectionMatchMode') }}：</div>
+                <div class="setting-control">
+                  <BaseSelect
+                    v-model="playbackRangeSectionMatchModeModel"
+                    :options="playbackRangeSectionMatchModeOptions"
+                    :width="220"
+                    @change="setSetting"
+                  />
+                </div>
+              </template>
+            </template>
+          </div>
+
+          <div class="settings-section">
+            <div class="section-title">{{ t('settings.layout.sectionPlaybackTitle') }}</div>
 
             <label class="setting-block" for="setting-checkbox-hideControlsShowWaveform"
               >{{ t('player.hideControlsShowWaveform') }}：</label
@@ -776,6 +881,17 @@ label.setting-block {
   align-items: center;
   gap: 6px;
   min-width: 82px;
+}
+
+.section-kind-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  max-width: 360px;
+}
+
+.section-kind-item {
+  min-width: 86px;
 }
 
 .myInput {

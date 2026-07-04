@@ -16,6 +16,7 @@ import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 import { resolvePlayerWaveformTraceElapsedMs, sendPlayerWaveformTrace } from './playerWaveformTrace'
 import { normalizePlaybackHandoffSeconds } from '@renderer/utils/mainWindowPlaybackHandoff'
 import { shouldQueueBrowserMainPlayerAnalysis } from '@renderer/utils/playlistAnalysisGate'
+import { resolveInitialPlaybackRangeStartSec } from '@shared/playbackRange'
 
 type WaveformCacheResponse = {
   items?: Array<{
@@ -380,11 +381,11 @@ export function useSongLoader(params: {
       const handoff = resolveBrowserPlaybackHandoff(filePath, duration)
       let startTime = handoff?.currentSec ?? 0
       if (!handoff && runtime.setting.enablePlaybackRange && duration > 0) {
-        const startPercent = runtime.setting.startPlayPercent ?? 0
-        const startValue =
-          typeof startPercent === 'number' ? startPercent : parseFloat(String(startPercent))
-        const safePercent = Number.isFinite(startValue) ? startValue : 0
-        startTime = (duration * Math.min(Math.max(safePercent, 0), 100)) / 100
+        startTime = resolveInitialPlaybackRangeStartSec(
+          runtime.setting,
+          runtime.playingData.playingSong?.songStructure,
+          duration
+        )
       }
       try {
         if (handoff && !handoff.shouldPlay) {

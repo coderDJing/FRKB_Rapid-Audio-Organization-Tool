@@ -85,6 +85,7 @@
       "summaryDesc": "The settings most likely to be changed repeatedly are surfaced first.",
       "sectionCommonTitle": "Common Settings",
       "sectionCommonDesc": "Theme, language, output device, and frequently changed basics stay here first.",
+      "sectionPlaybackRangeTitle": "Playback Range",
       "sectionPlaybackTitle": "Playback & Shortcuts",
       "sectionPlaybackDesc": "Player behavior, waveform display, and global shortcuts live in one place.",
       "sectionMetadataTitle": "Metadata & Fingerprints",

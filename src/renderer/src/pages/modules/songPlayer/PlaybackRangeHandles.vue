@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
 
+type LockedRange = {
+  startPercent: number
+  endPercent: number
+}
+
 interface Props {
   modelValueStart: number
   modelValueEnd: number
   containerWidth: number
   enablePlaybackRange: boolean
   waveformShow: boolean
+  locked?: boolean
+  lockedRanges?: LockedRange[]
 }
 
 const props = defineProps<Props>()
@@ -25,6 +32,24 @@ const endPercentAtDragStart = ref(0)
 
 const startHandleLeftPercent = computed(() => props.modelValueStart)
 const endHandleLeftPercent = computed(() => props.modelValueEnd)
+const normalizePercent = (value: unknown) => {
+  const percent = Number(value)
+  return Number.isFinite(percent) ? Math.min(Math.max(percent, 0), 100) : 0
+}
+const lockedDisplayRanges = computed(() => {
+  if (!props.locked) return []
+  return (props.lockedRanges || [])
+    .map((range) => {
+      const startPercent = normalizePercent(range.startPercent)
+      const endPercent = normalizePercent(range.endPercent)
+      return {
+        startPercent: Math.min(startPercent, endPercent),
+        endPercent: Math.max(startPercent, endPercent)
+      }
+    })
+    .filter((range) => range.endPercent > range.startPercent)
+})
+const useLockedDisplayRanges = computed(() => props.locked && lockedDisplayRanges.value.length > 0)
 
 const handleGlobalMouseMove = (event: MouseEvent) => {
   if ((!isDraggingStart.value && !isDraggingEnd.value) || props.containerWidth <= 0) return
@@ -58,6 +83,7 @@ const handleGlobalMouseUp = () => {
 }
 
 const handleMouseDown = (event: MouseEvent, handleType: 'start' | 'end') => {
+  if (props.locked) return
   event.preventDefault()
   event.stopPropagation()
   if (props.containerWidth <= 0) {
@@ -86,24 +112,51 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div
-    v-show="waveformShow && enablePlaybackRange"
-    class="manual-handle start-handle"
-    :class="{ dragging: isDraggingStart }"
-    :style="{ left: startHandleLeftPercent + '%' }"
-    @mousedown="(event) => handleMouseDown(event, 'start')"
-  >
-    <span class="handle-line"></span>
-  </div>
-  <div
-    v-show="waveformShow && enablePlaybackRange"
-    class="manual-handle end-handle"
-    :class="{ dragging: isDraggingEnd }"
-    :style="{ left: endHandleLeftPercent + '%' }"
-    @mousedown="(event) => handleMouseDown(event, 'end')"
-  >
-    <span class="handle-line"></span>
-  </div>
+  <template v-if="useLockedDisplayRanges">
+    <template
+      v-for="(range, index) in lockedDisplayRanges"
+      :key="`${range.startPercent}-${range.endPercent}-${index}`"
+    >
+      <div
+        v-show="waveformShow && enablePlaybackRange"
+        class="manual-handle start-handle is-locked"
+        :style="{ left: range.startPercent + '%' }"
+        aria-disabled="true"
+      >
+        <span class="handle-line"></span>
+      </div>
+      <div
+        v-show="waveformShow && enablePlaybackRange"
+        class="manual-handle end-handle is-locked"
+        :style="{ left: range.endPercent + '%' }"
+        aria-disabled="true"
+      >
+        <span class="handle-line"></span>
+      </div>
+    </template>
+  </template>
+  <template v-else>
+    <div
+      v-show="waveformShow && enablePlaybackRange"
+      class="manual-handle start-handle"
+      :class="{ dragging: isDraggingStart, 'is-locked': locked }"
+      :style="{ left: startHandleLeftPercent + '%' }"
+      :aria-disabled="locked"
+      @mousedown="(event) => handleMouseDown(event, 'start')"
+    >
+      <span class="handle-line"></span>
+    </div>
+    <div
+      v-show="waveformShow && enablePlaybackRange"
+      class="manual-handle end-handle"
+      :class="{ dragging: isDraggingEnd, 'is-locked': locked }"
+      :style="{ left: endHandleLeftPercent + '%' }"
+      :aria-disabled="locked"
+      @mousedown="(event) => handleMouseDown(event, 'end')"
+    >
+      <span class="handle-line"></span>
+    </div>
+  </template>
 </template>
 
 <style scoped>
@@ -148,6 +201,15 @@ onUnmounted(() => {
 .manual-handle.dragging .handle-line {
   width: 3px;
   opacity: 1;
+}
+
+.manual-handle.is-locked {
+  cursor: default;
+  pointer-events: none;
+}
+
+.manual-handle.is-locked:hover .handle-line {
+  width: 2px;
 }
 
 :global(.theme-light) .manual-handle {
