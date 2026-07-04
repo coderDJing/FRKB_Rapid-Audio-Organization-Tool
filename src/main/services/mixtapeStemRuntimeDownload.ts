@@ -251,9 +251,7 @@ const fetchRuntimeAsset = async (
   init?: UndiciRequestInit
 ): Promise<UndiciResponse> => {
   await ensureRuntimeDownloadProxyInitialized()
-  const requestInit: UndiciRequestInit = {
-    ...init
-  }
+  const requestInit: UndiciRequestInit = { ...init }
   if (runtimeDownloadProxyDispatcher) {
     requestInit.dispatcher = runtimeDownloadProxyDispatcher
   }

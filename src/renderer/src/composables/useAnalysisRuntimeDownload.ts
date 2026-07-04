@@ -69,7 +69,7 @@ const normalizeAnalysisRuntimeDownloadState = (value: unknown): AnalysisRuntimeD
     profile: typeof raw.profile === 'string' ? raw.profile.trim() : '',
     runtimeKey: typeof raw.runtimeKey === 'string' ? raw.runtimeKey.trim() : '',
     version: typeof raw.version === 'string' ? raw.version.trim() : '',
-    percent: Math.max(0, Math.min(100, Math.round(Number(raw.percent) || 0))),
+    percent: Math.max(0, Math.min(100, Math.round((Number(raw.percent) || 0) * 10) / 10)),
     downloadedBytes: Math.max(0, Number(raw.downloadedBytes) || 0),
     totalBytes: Math.max(0, Number(raw.totalBytes) || 0),
     archiveSize: Math.max(0, Number(raw.archiveSize) || 0),

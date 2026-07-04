@@ -11,7 +11,12 @@ type AnalysisRuntimeDisplayState = {
 }
 
 const clampAnalysisRuntimePercent = (value: unknown) =>
-  Math.max(0, Math.min(100, Math.round(Number(value) || 0)))
+  Math.max(0, Math.min(100, Math.round((Number(value) || 0) * 10) / 10))
+
+export const formatAnalysisRuntimePercent = (value: unknown) => {
+  const percent = clampAnalysisRuntimePercent(value)
+  return Number.isInteger(percent) ? String(percent) : percent.toFixed(1)
+}
 
 export const isAnalysisRuntimeDownloadActiveStatus = (value: unknown) =>
   value === 'downloading' || value === 'extracting'
@@ -46,7 +51,7 @@ export const resolveAnalysisRuntimeDownloadText = (
   t: TranslateFn,
   state: AnalysisRuntimeDisplayState
 ) => {
-  const percent = resolveAnalysisRuntimeDownloadPercent(state)
+  const percent = formatAnalysisRuntimePercent(state.percent)
   const totalBytes = Math.max(0, Number(state.totalBytes) || 0)
   const archiveSize = Math.max(0, Number(state.archiveSize) || 0)
   const downloadedBytes = Math.max(0, Number(state.downloadedBytes) || 0)

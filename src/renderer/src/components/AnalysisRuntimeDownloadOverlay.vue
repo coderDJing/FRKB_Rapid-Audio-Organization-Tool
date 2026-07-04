@@ -12,7 +12,14 @@ const props = defineProps<{
 }>()
 
 const runtime = useRuntimeStore()
-const clampedPercent = computed(() => Math.max(0, Math.min(100, Math.round(props.percent || 0))))
+const clampedPercent = computed(() =>
+  Math.max(0, Math.min(100, Math.round((props.percent || 0) * 10) / 10))
+)
+const percentText = computed(() =>
+  Number.isInteger(clampedPercent.value)
+    ? String(clampedPercent.value)
+    : clampedPercent.value.toFixed(1)
+)
 const shouldRender = computed(
   () => props.visible && !runtime.analysisRuntime.downloadOverlayMinimized
 )
@@ -34,7 +41,7 @@ const minimizeOverlay = () => {
       <div class="analysis-runtime-download-hint">{{ hint }}</div>
       <div class="analysis-runtime-download-text">{{ text }}</div>
       <div class="analysis-runtime-download-progress-row">
-        <span>{{ clampedPercent }}%</span>
+        <span>{{ percentText }}%</span>
       </div>
       <div class="analysis-runtime-download-progress">
         <div
