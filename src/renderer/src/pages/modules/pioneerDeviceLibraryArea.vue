@@ -17,6 +17,7 @@ import {
 import { t } from '@renderer/utils/translate'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import { copyPioneerNodeToLibrary } from '@renderer/composables/rekordboxDesktop/usePioneerCopyToLibrary'
+import { copyPioneerPlaylistToMixtape } from '@renderer/composables/rekordboxDesktop/usePioneerCopyToMixtape'
 import { importCuratedArtistsFromPioneerSource } from '@renderer/composables/rekordboxDesktop/useImportCuratedArtists'
 import { usePioneerDeviceTreeDrag } from '@renderer/composables/rekordboxDesktop/usePioneerDeviceTreeDrag'
 import {
@@ -517,6 +518,20 @@ const copyPlaylistToLibrary = async (
   })
 }
 
+const addPlaylistToMixtape = async (node: IPioneerPlaylistTreeNode) => {
+  const sourceKind = runtime.pioneerDeviceLibrary.selectedSourceKind
+  if ((sourceKind !== 'desktop' && sourceKind !== 'usb') || node.isFolder) return
+  await copyPioneerPlaylistToMixtape({
+    node,
+    sourceKind,
+    sourceRootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
+    sourceLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType || '',
+    sourceName: title.value,
+    runWithCopyBusy: runWithLocalLibraryCopying,
+    isBusy: () => dialogWriting.value || localLibraryCopying.value
+  })
+}
+
 const importArtistsForNode = async (node: IPioneerPlaylistTreeNode) => {
   const sourceKind = runtime.pioneerDeviceLibrary.selectedSourceKind
   if (sourceKind !== 'desktop' && sourceKind !== 'usb') return
@@ -536,7 +551,8 @@ const handleCopyOnlyContextMenu = async (event: MouseEvent, node: IPioneerPlayli
     menuArr: [
       [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
       [{ menuName: 'pioneer.importArtistsToCurated' }],
-      [{ menuName: 'similarTracks.menu' }]
+      [{ menuName: 'similarTracks.menu' }],
+      ...(node.isFolder ? [] : [[{ menuName: 'library.addToMixtapeByCopy' }]])
     ],
     clickEvent: event
   })
@@ -547,6 +563,10 @@ const handleCopyOnlyContextMenu = async (event: MouseEvent, node: IPioneerPlayli
   }
   if (result.menuName === 'pioneer.copyToCurated') {
     await copyPlaylistToLibrary(node, 'CuratedLibrary')
+    return
+  }
+  if (result.menuName === 'library.addToMixtapeByCopy') {
+    await addPlaylistToMixtape(node)
     return
   }
   if (result.menuName === 'pioneer.importArtistsToCurated') {
@@ -615,6 +635,7 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
     [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
     [{ menuName: 'pioneer.importArtistsToCurated' }],
     [{ menuName: 'similarTracks.menu' }],
+    [{ menuName: 'library.addToMixtapeByCopy' }],
     [{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }],
     [{ menuName: 'pioneer.cleanMissingFiles' }]
   ]
@@ -626,6 +647,10 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
   }
   if (result.menuName === 'pioneer.copyToCurated') {
     await copyPlaylistToLibrary(node, 'CuratedLibrary')
+    return
+  }
+  if (result.menuName === 'library.addToMixtapeByCopy') {
+    await addPlaylistToMixtape(node)
     return
   }
   if (result.menuName === 'pioneer.importArtistsToCurated') {

@@ -2,6 +2,7 @@ import libraryUtils from '@renderer/utils/libraryUtils'
 import { collectFilesForAudioConvert } from '@renderer/utils/audioConvertActions'
 import { collectMissingAnalysisFilesFromSongs } from '@renderer/utils/manualKeyAnalysis'
 import { mapMixtapeSnapshotToSongInfo } from '@renderer/composables/mixtape/mixtapeSnapshotSongMapper'
+import type { MixtapeAppendSourceEntry } from '@renderer/utils/mixtapePlaylistAppend'
 import type { IBatchRenameTrackInput, IDir, IMenu, ISongInfo } from 'src/types/globals'
 
 type ScanSongListResult = {
@@ -97,6 +98,7 @@ export const buildLibraryContextMenuArr = ({
       [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
       [{ menuName: 'tracks.analyzeMissingTracks' }, { menuName: 'tracks.reanalyzePlaylist' }],
       [{ menuName: 'similarTracks.menu' }],
+      [{ menuName: 'library.addToMixtape' }],
       [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }]
     ]
   }
@@ -117,6 +119,7 @@ export const buildLibraryContextMenuArr = ({
     [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
     [{ menuName: 'playlist.fingerprintDeduplicate' }, { menuName: 'fingerprints.analyzeAndAdd' }],
     [{ menuName: 'similarTracks.menu' }],
+    ...(dirData.type === 'songList' ? [[{ menuName: 'library.addToMixtape' }]] : []),
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }],
     ...(isCoreLibrary
       ? [[{ menuName: 'tracks.analyzeMissingTracks' }, { menuName: 'tracks.reanalyzePlaylist' }]]
@@ -242,6 +245,52 @@ export const loadMixtapePlaylistSongs = async (playlistUuid: string): Promise<IS
       buildDisplayPathByUuid: (uuid) => libraryUtils.buildDisplayPathByUuid(uuid)
     })
   )
+}
+
+export const collectOrderedSongsForMixtape = async (
+  uuids: string[]
+): Promise<MixtapeAppendSourceEntry[]> => {
+  const targets: Array<{ uuid: string; type: 'songList' | 'setList' }> = []
+  const seen = new Set<string>()
+  const traverse = (node: IDir) => {
+    if ((node.type === 'songList' || node.type === 'setList') && !seen.has(node.uuid)) {
+      seen.add(node.uuid)
+      targets.push({ uuid: node.uuid, type: node.type })
+      return
+    }
+    if (Array.isArray(node.children)) {
+      node.children.forEach((child) => traverse(child))
+    }
+  }
+  for (const uuid of uuids) {
+    const node = libraryUtils.getLibraryTreeByUUID(uuid)
+    if (node) traverse(node)
+  }
+
+  const entries: MixtapeAppendSourceEntry[] = []
+  for (const target of targets) {
+    const originPathSnapshot = libraryUtils.buildDisplayPathByUuid(target.uuid)
+    let songs: ISongInfo[] = []
+    if (target.type === 'setList') {
+      songs = await loadSetPlaylistSongs(target.uuid)
+    } else {
+      const dirPath = libraryUtils.findDirPathByUuid(target.uuid)
+      const scan = (await window.electron.ipcRenderer.invoke(
+        'scanSongList',
+        dirPath,
+        target.uuid
+      )) as ScanSongListResult | null
+      songs = Array.isArray(scan?.scanData) ? scan.scanData : []
+    }
+    entries.push(
+      ...songs.map((song) => ({
+        song,
+        originPlaylistUuid: target.uuid,
+        originPathSnapshot
+      }))
+    )
+  }
+  return entries
 }
 
 export const collectSetPlaylistFiles = async (uuids: string[]): Promise<string[]> => {

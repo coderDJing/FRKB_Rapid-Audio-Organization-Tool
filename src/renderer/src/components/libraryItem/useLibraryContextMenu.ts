@@ -19,6 +19,7 @@ import { analyzeFingerprintsForPaths } from '@renderer/utils/fingerprintActions'
 import { invokeMetadataAutoFill } from '@renderer/utils/metadataAutoFill'
 import { setPendingMixtapeProjectMode } from '@renderer/composables/mixtape/stemMode'
 import { startAudioConvertFromFiles } from '@renderer/utils/audioConvertActions'
+import { appendOrderedTracksToMixtape } from '@renderer/utils/mixtapePlaylistAppend'
 import {
   queueManualKeyAnalysisBatch,
   scanSongListsForMissingAnalysisFiles
@@ -36,6 +37,7 @@ import {
   collectSetPlaylistTracksForBatchRename,
   collectSongListTargets,
   collectSongListUuids,
+  collectOrderedSongsForMixtape,
   collectSongsForSimilarBatch,
   loadSetPlaylistSongs,
   scanSongListsForFiles,
@@ -434,6 +436,15 @@ export function useLibraryContextMenu({
           return
         }
         await scanNewSongDialog({ libraryName: props.libraryName, songListUuid: props.uuid })
+        break
+      }
+      case 'library.addToMixtape': {
+        if (runtime.isProgressing) {
+          await confirmTaskBusy()
+          return
+        }
+        const entries = await collectOrderedSongsForMixtape(getOperateUuids())
+        await appendOrderedTracksToMixtape({ entries })
         break
       }
       case 'tracks.exportTracks': {

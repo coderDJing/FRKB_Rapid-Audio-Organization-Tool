@@ -225,6 +225,7 @@
     "addedToMixtape": "已加入 Mixtape 自动录制（{count}首）",
     "addedToMixtapeWithNoBpmSkipped": "已加入 Mixtape 自动录制（{count}首），跳过 {skipped} 首无 BPM 曲目",
     "noBpmBlocked": "无 BPM 曲目不能加入 Mixtape 自动录制",
+    "noTracksToAdd": "没有可加入 Mixtape 自动录制的曲目",
     "noBpmSkipped": "已跳过 {count} 首无 BPM 曲目",
     "waveformLoading": "（波形生成中）",
     "rawWaveformLoading": "加载中",

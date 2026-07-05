@@ -225,6 +225,7 @@
     "addedToMixtape": "Added to Mixtape Auto-Recording ({count} tracks)",
     "addedToMixtapeWithNoBpmSkipped": "Added to Mixtape Auto-Recording ({count} tracks), skipped {skipped} without BPM",
     "noBpmBlocked": "Tracks without BPM cannot be added to Mixtape Auto-Recording",
+    "noTracksToAdd": "No tracks can be added to Mixtape Auto-Recording.",
     "noBpmSkipped": "Skipped {count} track(s) without BPM",
     "waveformLoading": "(Waveform pending)",
     "rawWaveformLoading": "Loading",
