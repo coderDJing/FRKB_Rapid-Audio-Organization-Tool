@@ -1,3 +1,5 @@
+import type { SongBeatGridMap } from '@shared/songBeatGridMap'
+
 export type StemWaveformBand = {
   left: Uint8Array
   right: Uint8Array
@@ -44,6 +46,7 @@ export type SerializedWorkerTrackTempoSnapshot = {
   firstBeatSourceSec: number
   beatSourceSec: number
   barBeatOffset: number
+  sourceBeatGridMap?: SongBeatGridMap
   mappingMode?: 'tempoEnvelope' | 'masterGrid'
   trackStartSec?: number
   masterGridFallbackBpm?: number

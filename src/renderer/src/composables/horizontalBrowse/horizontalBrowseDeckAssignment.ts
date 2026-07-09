@@ -9,6 +9,7 @@ import {
   mergeHorizontalBrowseSongWithMemoryCues,
   mergeHorizontalBrowseSongWithSharedGrid
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseShellSongs'
+import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
 import { sendHorizontalBrowseInteractionTrace } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTrace'
 import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTimeline'
 import type { HorizontalBrowseTransportBeatGridInput } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
@@ -20,6 +21,7 @@ type SharedSongGridPayload = {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  beatGridMap?: ISongInfo['beatGridMap'] | null
 } | null
 
 type CreateHorizontalBrowseDeckAssignerParams = {
@@ -71,11 +73,15 @@ export const createHorizontalBrowseDeckAssigner = (
     const firstBeatMs = Number(song.firstBeatMs)
     const barBeatOffset = Number(song.barBeatOffset)
     const timeBasisOffsetMs = Number(song.timeBasisOffsetMs)
+    const beatGridMap = normalizeSongBeatGridMap(song.beatGridMap)
     const hasBpm = Number.isFinite(bpm) && bpm > 0
     const hasFirstBeatMs = Number.isFinite(firstBeatMs)
     const hasBarBeatOffset = Number.isFinite(barBeatOffset)
     const hasTimeBasisOffsetMs = Number.isFinite(timeBasisOffsetMs) && timeBasisOffsetMs >= 0
-    if (!filePath || (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset && !hasTimeBasisOffsetMs)) {
+    if (
+      !filePath ||
+      (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset && !hasTimeBasisOffsetMs && !beatGridMap)
+    ) {
       return null
     }
     return {
@@ -83,6 +89,14 @@ export const createHorizontalBrowseDeckAssigner = (
       bpm: hasBpm ? bpm : undefined,
       firstBeatMs: hasFirstBeatMs ? firstBeatMs : undefined,
       barBeatOffset: hasBarBeatOffset ? barBeatOffset : undefined,
+      beatGridClips: beatGridMap
+        ? beatGridMap.clips.map((clip) => ({
+            startSec: clip.startSec,
+            anchorSec: clip.anchorSec,
+            bpm: clip.bpm,
+            barBeatOffset: clip.barBeatOffset
+          }))
+        : undefined,
       timeBasisOffsetMs: hasTimeBasisOffsetMs ? timeBasisOffsetMs : undefined
     }
   }

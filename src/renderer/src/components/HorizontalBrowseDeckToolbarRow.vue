@@ -18,6 +18,10 @@ const props = defineProps<{
   bpmInputFirst?: boolean
   showTapButton?: boolean
   tapBpmTitle?: string
+  gridControlsDisabled?: boolean
+  showSplitAfterPlayhead?: boolean
+  showDeleteBoundary?: boolean
+  gridAdjustScope?: 'whole' | 'after'
   barLinePicking: boolean
   loopBeatLabel: string
   loopActive: boolean
@@ -44,6 +48,9 @@ const emit = defineEmits<{
   (event: 'blur-bpm-input'): void
   (event: 'tap-bpm'): void
   (event: 'memory-cue'): void
+  (event: 'select-whole-adjustment'): void
+  (event: 'split-after-playhead'): void
+  (event: 'delete-boundary'): void
   (event: 'toggle-bar-line-picking'): void
   (event: 'loop-step-down'): void
   (event: 'loop-step-up'): void
@@ -108,6 +115,7 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
     <div class="overview__toolbar-main">
       <MixtapeBeatAlignGridAdjustToolbar
         :disabled="props.disabled"
+        :grid-controls-disabled="props.gridControlsDisabled"
         :bpm-input-value="props.bpmInputValue"
         :bpm-step="props.bpmStep"
         :bpm-min="props.bpmMin"
@@ -117,6 +125,9 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
         :show-tap-button="props.showTapButton === true"
         :tap-bpm-title="props.tapBpmTitle"
         show-memory-button
+        :show-split-after-playhead="props.showSplitAfterPlayhead"
+        :show-delete-boundary="props.showDeleteBoundary"
+        :grid-adjust-scope="props.gridAdjustScope"
         :show-large-shift-buttons="props.showLargeShiftButtons"
         @set-bar-line="emit('set-bar-line')"
         @shift-left-large="emit('shift-left-large')"
@@ -127,6 +138,9 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
         @blur-bpm-input="emit('blur-bpm-input')"
         @tap-bpm="emit('tap-bpm')"
         @memory-cue="emit('memory-cue')"
+        @select-whole-adjustment="emit('select-whole-adjustment')"
+        @split-after-playhead="emit('split-after-playhead')"
+        @delete-boundary="emit('delete-boundary')"
       />
       <div class="overview__toolbar-group overview__loop-control">
         <bubbleBoxTrigger

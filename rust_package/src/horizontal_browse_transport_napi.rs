@@ -174,12 +174,15 @@ pub fn horizontal_browse_transport_set_beat_grid(
     .first_beat_ms
     .filter(|value| value.is_finite() && *value >= 0.0);
   let next_bar_beat_offset = payload.bar_beat_offset.filter(|value| value.is_finite());
+  let next_beat_grid_clips = payload.beat_grid_clips;
+  let has_beat_grid_clips = next_beat_grid_clips.is_some();
   let next_time_basis_offset_ms = payload
     .time_basis_offset_ms
     .filter(|value| value.is_finite() && *value >= 0.0);
   if next_bpm.is_none()
     && next_first_beat_ms.is_none()
     && next_bar_beat_offset.is_none()
+    && !has_beat_grid_clips
     && next_time_basis_offset_ms.is_none()
   {
     return Ok(engine_guard.snapshot(engine_guard.last_now_ms));
@@ -189,6 +192,7 @@ pub fn horizontal_browse_transport_set_beat_grid(
     next_bpm,
     next_first_beat_ms,
     next_bar_beat_offset,
+    next_beat_grid_clips,
     next_time_basis_offset_ms,
   );
   let deck_playing = engine_guard.deck(deck_id).playing;

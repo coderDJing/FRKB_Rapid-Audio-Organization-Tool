@@ -7,6 +7,8 @@ import {
   createTransportSoundTouchPreviewSource,
   type TransportPlayableSource
 } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
+import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
+import { resolveTransportDynamicTempoSegmentAtLocalSec } from '@renderer/composables/mixtape/timelineTransportDynamicTempoSegments'
 import type {
   TransportEntry,
   TransportStemAudioRef,
@@ -89,6 +91,24 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
     return Math.max(0, Math.min(baseOffsetSec, Math.max(0, offsetDuration - 0.02)))
   }
 
+  const resolveInitialTempoRatio = () => {
+    const localStartSec = Math.max(0, Number(entry.localStartSec) || 0)
+    const localSec = localStartSec + Math.max(0, Number(offsetTimelineSec) || 0)
+    const dynamicSegment = resolveTransportDynamicTempoSegmentAtLocalSec(
+      entry.dynamicTempoSegments,
+      localSec
+    )
+    if (!dynamicSegment) return entry.tempoRatio
+    const targetBpm = createTrackTimeMapFromSnapshotPayload(entry.tempoSnapshot).sampleBpmAtLocal(
+      localSec
+    )
+    const sourceBpm = Number(dynamicSegment.sourceBpm)
+    if (!Number.isFinite(targetBpm) || targetBpm <= 0 || !Number.isFinite(sourceBpm)) {
+      return entry.tempoRatio
+    }
+    return Math.max(0.25, Math.min(4, targetBpm / Math.max(0.000001, sourceBpm)))
+  }
+
   const createPlaybackSource = (
     ctx: AudioContext,
     buffer: AudioBuffer,
@@ -113,6 +133,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
   }
 
   if (isStemMixMode()) {
+    const initialTempoRatio = resolveInitialTempoRatio()
     const stemIds = resolveStemIdsForMode()
     const stemAudios = stemIds
       .map((stemId) => entry.stemAudioById?.[stemId])
@@ -143,7 +164,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
           stemAudio.audioBuffer as AudioBuffer,
           resolvePlaybackSourceMode(entry)
         )
-        source.playbackRate.value = entry.tempoRatio
+        source.playbackRate.value = initialTempoRatio
         const stemGain = ctx.createGain()
         stemGain.gain.value = resolveEntryEnvelopeValue(entry, stemAudio.stemId, offsetTimelineSec)
         source.connect(stemGain)
@@ -176,7 +197,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
         const stemDuration = Number(stemNode.source.buffer?.duration || 0)
         const safeOffset = resolveSourceStartOffset(stemNode.source, stemDuration)
         try {
-          stemNode.source.playbackRate.setTargetAtTime(entry.tempoRatio, safeWhen, 0.0001)
+          stemNode.source.playbackRate.setTargetAtTime(initialTempoRatio, safeWhen, 0.0001)
         } catch {}
         stemNode.source.start(safeWhen, safeOffset)
         stemNode.source.stop(safeWhen + remainingTimelineSec + 0.02)
@@ -230,13 +251,14 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
   const audioBuffer = entry.audioRef?.audioBuffer
   if (!audioBuffer) return
   try {
+    const initialTempoRatio = resolveInitialTempoRatio()
     const ctx = ensureTransportAudioContext(audioBuffer.sampleRate)
     if (ctx.state === 'suspended') {
       void ctx.resume()
     }
 
     const source = createPlaybackSource(ctx, audioBuffer, resolvePlaybackSourceMode(entry))
-    source.playbackRate.value = entry.tempoRatio
+    source.playbackRate.value = initialTempoRatio
 
     const eqLow = ctx.createBiquadFilter()
     eqLow.type = 'lowshelf'
@@ -270,7 +292,7 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
     const safeWhen = Number.isFinite(whenSec) ? Math.max(ctx.currentTime, whenSec) : ctx.currentTime
     const safeOffset = resolveSourceStartOffset(source, audioBuffer.duration)
     try {
-      source.playbackRate.setTargetAtTime(entry.tempoRatio, safeWhen, 0.0001)
+      source.playbackRate.setTargetAtTime(initialTempoRatio, safeWhen, 0.0001)
     } catch {}
     source.start(safeWhen, safeOffset)
     source.stop(safeWhen + Math.max(0.02, Number(entry.duration) - offsetTimelineSec) + 0.02)

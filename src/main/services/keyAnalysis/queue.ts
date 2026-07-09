@@ -35,6 +35,7 @@ type KeyAnalysisEnqueueOptions = {
   preemptible?: boolean
   category?: KeyAnalysisQueueCategory
   waveformOnly?: boolean
+  includeStructure?: boolean
   manualBatchId?: string
   manualBatchIds?: string[]
 }
@@ -272,6 +273,16 @@ export class KeyAnalysisQueue {
     job.category = category
   }
 
+  private applyIncludeStructureOption(job: KeyAnalysisJob, includeStructure?: boolean) {
+    if (includeStructure === true) {
+      job.includeStructure = true
+      return
+    }
+    if (includeStructure === false && job.includeStructure !== true) {
+      job.includeStructure = false
+    }
+  }
+
   private normalizeManualBatchIds(options: {
     manualBatchId?: string
     manualBatchIds?: string[]
@@ -357,6 +368,7 @@ export class KeyAnalysisQueue {
         }
         this.applyQueueCategory(existing, options.category)
         this.applyWaveformOnlyOption(existing, options.waveformOnly)
+        this.applyIncludeStructureOption(existing, options.includeStructure)
         this.addManualBatchIdsToJob(existing, manualBatchIds)
         this.addFocusSlotToJob(existing, focusSlot)
         this.addPending(existing, options.urgent)
@@ -366,6 +378,7 @@ export class KeyAnalysisQueue {
         }
         this.applyQueueCategory(existing, options.category)
         this.applyWaveformOnlyOption(existing, options.waveformOnly)
+        this.applyIncludeStructureOption(existing, options.includeStructure)
         this.addManualBatchIdsToJob(existing, manualBatchIds)
         this.addFocusSlotToJob(existing, focusSlot)
       }
@@ -386,6 +399,7 @@ export class KeyAnalysisQueue {
       preemptible: options.preemptible === true,
       category: options.category,
       waveformOnly: options.waveformOnly === true,
+      includeStructure: options.includeStructure !== false,
       manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }
     this.addFocusSlotToJob(job, focusSlot)
@@ -418,7 +432,8 @@ export class KeyAnalysisQueue {
       source: 'foreground',
       preemptible: true,
       category: 'visible',
-      waveformOnly: options.waveformOnly === true
+      waveformOnly: options.waveformOnly === true,
+      includeStructure: false
     })
     this.drain()
   }
@@ -929,7 +944,8 @@ export class KeyAnalysisQueue {
           needsStructure: job.needsStructure,
           cachedBpm: job.cachedBpm,
           cachedFirstBeatMs: job.cachedFirstBeatMs,
-          cachedBarBeatOffset: job.cachedBarBeatOffset
+          cachedBarBeatOffset: job.cachedBarBeatOffset,
+          cachedBeatGridMap: job.cachedBeatGridMap
         })
       })()
     }

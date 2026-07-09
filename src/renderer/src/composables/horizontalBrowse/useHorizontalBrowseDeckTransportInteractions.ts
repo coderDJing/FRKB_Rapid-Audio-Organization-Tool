@@ -87,6 +87,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     nativeTransport: params.nativeTransport,
     resolveDeckSong: params.resolveDeckSong,
     resolveDeckPlaying: params.resolveDeckPlaying,
+    resolveDeckDurationSeconds: params.resolveDeckDurationSeconds,
     resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot,
     resolveDeckCuePointRef: params.resolveDeckCuePointRef
   })

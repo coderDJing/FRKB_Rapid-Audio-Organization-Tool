@@ -15,6 +15,7 @@ impl HorizontalBrowseTransportEngine {
 
   pub(super) fn sample_deck_mix(&mut self, deck: DeckId) -> DeckOutputFrame {
     let output_sample_rate = self.output_sample_rate.max(1) as f64;
+    self.smooth_dynamic_sync_playback_rate(deck, output_sample_rate);
     self.advance_auto_gain(deck, output_sample_rate);
     self.refresh_output_gains();
     let before_sec = self.deck(deck).current_sec;

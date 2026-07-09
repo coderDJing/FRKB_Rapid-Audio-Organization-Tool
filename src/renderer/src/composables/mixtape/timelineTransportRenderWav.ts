@@ -5,6 +5,7 @@ import {
   ensureTransportKeyLockWorkletModule,
   type TransportPlayableAudioContext
 } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
+import { hasTransportDynamicTempoSegments } from '@renderer/composables/mixtape/timelineTransportDynamicTempoSegments'
 import { processMixtapeAudioBufferWithSoundTouch } from '@renderer/composables/mixtape/mixtapeSoundTouch'
 import type { TransportSyncNode } from '@renderer/composables/mixtape/timelineTransportSync'
 import type { MixtapeEnvelopeParamId } from '@renderer/composables/mixtape/types'
@@ -431,6 +432,10 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
   ) => {
     const processedFileKeys = new Set<string>()
     for (const entry of entries) {
+      if (hasTransportDynamicTempoSegments(entry)) {
+        entry.soundTouchRendered = false
+        continue
+      }
       if (!entry.masterTempo || Math.abs(Number(entry.tempoRatio) - 1) <= 0.0001) {
         entry.soundTouchRendered = false
         continue

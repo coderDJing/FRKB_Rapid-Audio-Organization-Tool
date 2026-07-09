@@ -24,6 +24,7 @@ impl HorizontalBrowseTransportEngine {
     bpm: Option<f64>,
     first_beat_ms: Option<f64>,
     bar_beat_offset: Option<f64>,
+    beat_grid_clips: Option<Vec<HorizontalBrowseTransportBeatGridClipInput>>,
     time_basis_offset_ms: Option<f64>,
   ) {
     let sync_reference = self.resolve_grid_change_sync_reference(deck);
@@ -35,6 +36,8 @@ impl HorizontalBrowseTransportEngine {
     let next_bar_beat_offset = bar_beat_offset
       .filter(|value| value.is_finite())
       .map(Self::normalize_bar_beat_offset);
+    let next_dynamic_beat_grid =
+      Self::normalize_dynamic_beat_grid(beat_grid_clips, self.deck(deck).duration_sec);
     let next_time_basis_offset_ms =
       time_basis_offset_ms.filter(|value| value.is_finite() && *value >= 0.0);
     {
@@ -42,6 +45,10 @@ impl HorizontalBrowseTransportEngine {
       grid_changed |= Self::set_grid_value(&mut target.bpm, next_bpm);
       grid_changed |= Self::set_grid_value(&mut target.first_beat_ms, next_first_beat_ms);
       grid_changed |= Self::set_grid_value(&mut target.bar_beat_offset, next_bar_beat_offset);
+      if target.dynamic_beat_grid != next_dynamic_beat_grid {
+        target.dynamic_beat_grid = next_dynamic_beat_grid;
+        grid_changed = true;
+      }
       audio_timeline_mapping_changed =
         Self::set_grid_value(&mut target.time_basis_offset_ms, next_time_basis_offset_ms);
       grid_changed |= audio_timeline_mapping_changed;
@@ -112,19 +119,6 @@ impl HorizontalBrowseTransportEngine {
     Some(leader)
   }
 
-  fn nearest_sec_with_grid_offset(
-    anchor_sec: f64,
-    desired_offset_sec: f64,
-    grid: BeatGridSnapshot,
-  ) -> f64 {
-    if !anchor_sec.is_finite() || !grid.beat_sec.is_finite() || grid.beat_sec <= 0.0 {
-      return anchor_sec;
-    }
-    let anchor_index =
-      ((anchor_sec - desired_offset_sec - grid.first_beat_sec) / grid.beat_sec).round();
-    grid.first_beat_sec + anchor_index * grid.beat_sec + desired_offset_sec
-  }
-
   pub(super) fn apply_grid_change_sync_compensation(
     &mut self,
     updated_deck: DeckId,
@@ -134,18 +128,29 @@ impl HorizontalBrowseTransportEngine {
     if !self.is_sync_ready(updated_deck, now_ms) || !self.is_sync_ready(reference_deck, now_ms) {
       return false;
     }
-    let Some(reference_grid) = self.original_beat_grid(reference_deck) else {
+    if self.original_beat_grid(reference_deck).is_none()
+      || self.original_beat_grid(updated_deck).is_none()
+    {
       return false;
-    };
-    let Some(updated_grid) = self.original_beat_grid(updated_deck) else {
-      return false;
-    };
+    }
     let reference_current_sec = Self::estimate_current_sec(self.deck(reference_deck), now_ms);
     let updated_current_sec = Self::estimate_current_sec(self.deck(updated_deck), now_ms);
-    let reference_offset_sec = Self::nearest_grid_offset_sec(reference_grid, reference_current_sec);
-    let mut aligned_sec =
-      Self::nearest_sec_with_grid_offset(updated_current_sec, reference_offset_sec, updated_grid);
     let duration_sec = self.deck(updated_deck).duration_sec;
+    let max_sec = if duration_sec.is_finite() && duration_sec > 0.0 {
+      duration_sec
+    } else {
+      updated_current_sec.max(0.0)
+    };
+    let Some(mut aligned_sec) = self.nearest_valid_sec_matching_sync_phase(
+      updated_deck,
+      updated_current_sec,
+      reference_deck,
+      reference_current_sec,
+      0.0,
+      max_sec,
+    ) else {
+      return false;
+    };
     if duration_sec.is_finite() && duration_sec > 0.0 {
       aligned_sec = aligned_sec.min(duration_sec);
     }

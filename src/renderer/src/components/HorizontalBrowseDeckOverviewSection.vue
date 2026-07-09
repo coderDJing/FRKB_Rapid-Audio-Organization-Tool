@@ -22,6 +22,10 @@ type DeckToolbarState = {
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
+  gridControlsDisabled: boolean
+  showSplitAfterPlayhead: boolean
+  showDeleteBoundary: boolean
+  gridAdjustScope: 'whole' | 'after'
   loopBeatLabel: string
   loopActive: boolean
   loopDisabled: boolean
@@ -76,6 +80,9 @@ const emit = defineEmits<{
   (event: 'blur-bpm-input'): void
   (event: 'tap-bpm'): void
   (event: 'memory-cue'): void
+  (event: 'select-whole-adjustment'): void
+  (event: 'split-after-playhead'): void
+  (event: 'delete-boundary'): void
   (event: 'toggle-bar-line-picking'): void
   (event: 'loop-step-down'): void
   (event: 'loop-step-up'): void
@@ -156,6 +163,10 @@ const isTop = props.position === 'top'
         :bpm-input-first="props.toolbarState.bpmInputFirst"
         :show-tap-button="props.toolbarState.showTapButton"
         :tap-bpm-title="props.toolbarState.tapBpmTitle"
+        :grid-controls-disabled="props.toolbarState.gridControlsDisabled"
+        :show-split-after-playhead="props.toolbarState.showSplitAfterPlayhead"
+        :show-delete-boundary="props.toolbarState.showDeleteBoundary"
+        :grid-adjust-scope="props.toolbarState.gridAdjustScope"
         :bar-line-picking="props.toolbarState.barLinePicking"
         :loop-beat-label="props.toolbarState.loopBeatLabel"
         :loop-active="props.toolbarState.loopActive"
@@ -179,6 +190,9 @@ const isTop = props.position === 'top'
         @blur-bpm-input="emit('blur-bpm-input')"
         @tap-bpm="emit('tap-bpm')"
         @memory-cue="emit('memory-cue')"
+        @select-whole-adjustment="emit('select-whole-adjustment')"
+        @split-after-playhead="emit('split-after-playhead')"
+        @delete-boundary="emit('delete-boundary')"
         @toggle-bar-line-picking="emit('toggle-bar-line-picking')"
         @loop-step-down="emit('loop-step-down')"
         @loop-step-up="emit('loop-step-up')"

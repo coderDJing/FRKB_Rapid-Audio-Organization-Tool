@@ -17,6 +17,7 @@ import {
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoState'
 import { resolveSnappedStartSecByVisibleGrid } from '@renderer/composables/mixtape/trackGridSnap'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
+import { createDynamicSourceBeatMap } from '@renderer/composables/mixtape/trackTimeMapCore'
 import {
   BPM_POINT_SEC_EPSILON,
   roundTrackTempoSec,
@@ -392,19 +393,38 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
       0,
       Number(resolveTrackSourceDurationSeconds(payload.track)) || 0
     )
-    const sourceDurationBeats = sourceDurationSec / beatSourceSec
+    const dynamicSourceBeatMap = createDynamicSourceBeatMap(
+      payload.track.beatGridMap,
+      sourceDurationSec
+    )
+    const sourceDurationBeats = dynamicSourceBeatMap
+      ? dynamicSourceBeatMap.beatSpan
+      : sourceDurationSec / beatSourceSec
     const firstBeatMs = Number(payload.track.firstBeatMs)
     const firstBeatSourceSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
-    const firstBeatSourceBeats = firstBeatSourceSec / beatSourceSec
+    const firstBeatSourceBeats = dynamicSourceBeatMap
+      ? dynamicSourceBeatMap.firstBeatDelta
+      : firstBeatSourceSec / beatSourceSec
     const barBeatOffset = normalizeBeatOffset(payload.track.barBeatOffset, 32)
     let phaseOffsetBeats = firstBeatSourceBeats
     let hasVisibleFamily = true
     if (intervalBeats === 32) {
-      phaseOffsetBeats = firstBeatSourceBeats + barBeatOffset
-      hasVisibleFamily = phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+      phaseOffsetBeats =
+        dynamicSourceBeatMap?.firstBarBeatDelta ?? firstBeatSourceBeats + barBeatOffset
+      hasVisibleFamily = dynamicSourceBeatMap
+        ? dynamicSourceBeatMap.firstBarBeatDelta !== null &&
+          phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+        : phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
     } else if (intervalBeats === 4) {
-      phaseOffsetBeats = firstBeatSourceBeats + (barBeatOffset % 4)
-      hasVisibleFamily = phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+      const firstBeat4Line = dynamicSourceBeatMap?.lines.find(
+        (line) => line.level === 'bar' || line.level === 'beat4'
+      )
+      phaseOffsetBeats = firstBeat4Line
+        ? firstBeat4Line.beatOrdinal - (dynamicSourceBeatMap?.startBeatOrdinal ?? 0)
+        : firstBeatSourceBeats + (barBeatOffset % 4)
+      hasVisibleFamily = dynamicSourceBeatMap
+        ? Boolean(firstBeat4Line) && phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+        : phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
     }
     if (!hasVisibleFamily) return null
     const fallbackBpm =

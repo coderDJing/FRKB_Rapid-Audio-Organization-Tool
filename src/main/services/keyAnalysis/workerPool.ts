@@ -148,11 +148,23 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       payloadResult?.songStructure === undefined &&
       !payloadResult?.bpmError
     ) {
-      errors.push('structure: missing song structure from analyzer')
+      const structureError = String(payloadResult?.songStructureError || '').trim()
+      errors.push(`structure: ${structureError || 'missing song structure from analyzer'}`)
     }
     if (payloadError) errors.push(`worker错误: ${payloadError}`)
     return errors
   }
+
+  const isStructureOnlyResultError = (value: string) => value.startsWith('structure: ')
+
+  const collectFatalJobResultErrors = (
+    job: KeyAnalysisJob | undefined,
+    payloadResult?: WorkerPayload['result'],
+    payloadError?: string
+  ): string[] =>
+    collectJobResultErrors(job, payloadResult, payloadError).filter(
+      (error) => !isStructureOnlyResultError(error)
+    )
 
   const logCompletedJobErrors = (
     worker: Worker,
@@ -162,6 +174,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   ) => {
     const errors = collectJobResultErrors(job, payloadResult, payloadError)
     if (errors.length <= 0) return
+    if (errors.length === 1 && isStructureOnlyResultError(errors[0])) return
     const elapsedMs = job.startTime ? Date.now() - job.startTime : job.trace?.elapsedMs
     log.error('[闲时分析] 任务完成但有错误', {
       filePath: job.filePath,
@@ -182,7 +195,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     job: KeyAnalysisJob | undefined,
     payloadResult?: WorkerPayload['result'],
     payloadError?: string
-  ): string => collectJobResultErrors(job, payloadResult, payloadError).join('; ').slice(0, 300)
+  ): string =>
+    collectFatalJobResultErrors(job, payloadResult, payloadError).join('; ').slice(0, 300)
 
   const persistAnalyzePartialResult = async (
     job: KeyAnalysisJob,

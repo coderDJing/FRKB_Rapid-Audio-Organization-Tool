@@ -1,4 +1,5 @@
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue'
+import { createSongBeatGridRuntime, type SongBeatGridMap } from '@shared/songBeatGridMap'
 
 export type MetronomeVolumeLevel = 1 | 2 | 3
 
@@ -13,12 +14,21 @@ type UseMixtapeBeatAlignMetronomeParams = {
   outputMode?: 'internal' | 'external'
   syncExternalState?: (state: { enabled: boolean; volumeLevel: MetronomeVolumeLevel }) => void
   resolveAnchorSec: () => number
+  beatGridMap?: () => SongBeatGridMap | null | undefined
+  resolveDurationSec?: () => number
 }
 
-type BeatClock = {
-  beatSec: number
-  firstBeatSec: number
-}
+type BeatClock =
+  | {
+      kind: 'fixed'
+      beatSec: number
+      firstBeatSec: number
+    }
+  | {
+      kind: 'dynamic'
+      beatSec: number
+      lines: Array<{ sec: number }>
+    }
 
 const TICK_FREQUENCY_HZ = 1560
 const TICK_END_FREQUENCY_HZ = 1320
@@ -65,6 +75,11 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
   const metronomeEnabled = ref(false)
   const metronomeVolumeLevel = ref<MetronomeVolumeLevel>(DEFAULT_METRONOME_VOLUME_LEVEL)
   const metronomeSupported = computed(() => {
+    const dynamicRuntime = createSongBeatGridRuntime(
+      params.beatGridMap?.(),
+      params.resolveDurationSec?.()
+    )
+    if (dynamicRuntime) return true
     const bpmValue = Number(params.bpm.value)
     return isFinitePositive(bpmValue)
   })
@@ -90,12 +105,29 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
   }
 
   const resolveBeatClock = (): BeatClock | null => {
+    const dynamicRuntime = createSongBeatGridRuntime(
+      params.beatGridMap?.(),
+      params.resolveDurationSec?.()
+    )
+    if (dynamicRuntime) {
+      const anchorSec = resolveAnchorSec() ?? 0
+      const currentClip =
+        dynamicRuntime.clips.find(
+          (clip) => anchorSec >= clip.startSec && anchorSec <= clip.endSec
+        ) || dynamicRuntime.clips[0]
+      return {
+        kind: 'dynamic',
+        beatSec: currentClip?.beatSec ?? 0.5,
+        lines: dynamicRuntime.lines
+      }
+    }
     const bpmValue = Number(params.bpm.value)
     if (!isFinitePositive(bpmValue)) return null
     const beatSec = 60 / bpmValue
     if (!isFinitePositive(beatSec)) return null
     const firstBeatSec = (Number(params.firstBeatMs.value) || 0) / 1000
     return {
+      kind: 'fixed',
       beatSec,
       firstBeatSec
     }
@@ -185,9 +217,20 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
     if (Math.abs(toSec - fromSec) <= ANCHOR_DIFF_EPSILON) return
     if (toSec < fromSec) return
 
-    const { firstBeatSec, beatSec } = clock
     let playedCount = 0
+    if (clock.kind === 'dynamic') {
+      for (const line of clock.lines) {
+        if (playedCount >= MAX_TICKS_PER_FRAME) break
+        if (line.sec <= fromSec + ANCHOR_DIFF_EPSILON || line.sec > toSec + ANCHOR_DIFF_EPSILON) {
+          continue
+        }
+        playTick(playedCount * TICK_GAP_SEC)
+        playedCount += 1
+      }
+      return
+    }
 
+    const { firstBeatSec, beatSec } = clock
     const startIndex = Math.floor((fromSec - firstBeatSec) / beatSec) + 1
     const endIndex = Math.floor((toSec - firstBeatSec) / beatSec)
     for (let i = startIndex; i <= endIndex; i += 1) {
@@ -312,7 +355,13 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
   )
 
   watch(
-    () => [params.bpm.value, params.firstBeatMs.value] as const,
+    () =>
+      [
+        params.bpm.value,
+        params.firstBeatMs.value,
+        params.beatGridMap?.()?.signature ?? '',
+        params.resolveDurationSec?.() ?? 0
+      ] as const,
     () => {
       lastAnchorSec = resolveAnchorSec()
       lastFrameAtMs = performance.now()

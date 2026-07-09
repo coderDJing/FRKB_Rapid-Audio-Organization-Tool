@@ -370,6 +370,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       firstBeatSourceSec: Number(tempoSnapshot.firstBeatSourceSec) || 0,
       beatSourceSec: Number(tempoSnapshot.beatSourceSec) || 0,
       barBeatOffset: Number(tempoSnapshot.barBeatOffset) || 0,
+      sourceBeatGridMap: tempoSnapshot.sourceBeatGridMap,
       mappingMode: tempoSnapshot.mappingMode,
       trackStartSec: Number(tempoSnapshot.trackStartSec) || 0,
       masterGridFallbackBpm: Number(tempoSnapshot.masterGridFallbackBpm) || 128,

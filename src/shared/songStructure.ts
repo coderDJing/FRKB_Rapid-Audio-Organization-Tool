@@ -12,6 +12,7 @@ import {
   type SongStructureSection,
   type SongStructureSectionKind
 } from './songStructureCommon'
+import { normalizeSongBeatGridMap } from './songBeatGridMap'
 
 export {
   CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
@@ -98,6 +99,10 @@ export const normalizeSongStructureAnalysis = (
     bpm: grid.bpm,
     firstBeatMs: grid.firstBeatMs,
     barBeatOffset: grid.barBeatOffset,
+    beatGridSignature:
+      typeof record.beatGridSignature === 'string' && record.beatGridSignature.trim()
+        ? record.beatGridSignature.trim()
+        : undefined,
     phraseBars: PHRASE_BARS,
     sections
   }
@@ -110,11 +115,16 @@ export const hasCurrentSongStructureAnalysis = (
         bpm?: unknown
         firstBeatMs?: unknown
         barBeatOffset?: unknown
+        beatGridMap?: unknown
       }
     | null
     | undefined
 ) => {
   const structure = normalizeSongStructureAnalysis(info?.songStructure)
+  const beatGridMap = normalizeSongBeatGridMap(info?.beatGridMap)
+  if (beatGridMap) {
+    return structure?.beatGridSignature === beatGridMap.signature
+  }
   const grid = normalizeStructureGrid(info)
   if (!structure || !grid) return false
   return (

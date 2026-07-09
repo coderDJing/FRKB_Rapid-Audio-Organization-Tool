@@ -9,6 +9,16 @@ import { formatPreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.co
 
 type DeckKey = HorizontalBrowseDeckKey
 
+export const resolveHorizontalBrowseLightThemeActive = (themeMode: unknown) => {
+  if (themeMode === 'light') return true
+  if (themeMode === 'dark') return false
+  if (typeof document === 'undefined') return false
+  return (
+    document.documentElement.classList.contains('theme-light') ||
+    document.body.classList.contains('theme-light')
+  )
+}
+
 type ResolveDeckWaveformPlaybackActiveParams = {
   deck: DeckKey
   snapshot: HorizontalBrowseTransportDeckSnapshot
@@ -57,6 +67,9 @@ export const resolveHorizontalBrowseDeckToolbarBpmInputValue = ({
     return toolbarState.bpmInputValue
   }
   if (editMode) {
+    if (toolbarState.bpmInputValue) {
+      return toolbarState.bpmInputValue
+    }
     const songBpm = Number(resolveDeckSong(deck)?.bpm)
     if (Number.isFinite(songBpm) && songBpm > 0) {
       return formatPreviewBpm(songBpm)

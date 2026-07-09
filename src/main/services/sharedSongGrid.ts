@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { ISongInfo } from '../../types/globals'
+import type { SongBeatGridMap } from '../../shared/songBeatGridMap'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { stripBeatThisDebugInfo } from '../libraryCacheDb/pathResolvers'
 import { listMixtapeItemsByFilePath } from '../mixtapeDb'
@@ -11,6 +12,10 @@ import {
   normalizeBeatGridAlgorithmVersion,
   shouldAcceptBeatGridCacheVersion
 } from './beatGridAlgorithmVersion'
+import {
+  normalizeSongBeatGridMap,
+  projectSongBeatGridMapToFixedGrid
+} from '../../shared/songBeatGridMap'
 
 type SharedGridInfo = Partial<ISongInfo> & {
   bpm?: unknown
@@ -18,6 +23,7 @@ type SharedGridInfo = Partial<ISongInfo> & {
   barBeatOffset?: unknown
   timeBasisOffsetMs?: unknown
   beatGridSource?: unknown
+  beatGridMap?: unknown
   beatThisWindowCount?: unknown
   beatGridAlgorithmVersion?: unknown
 }
@@ -29,6 +35,7 @@ export type SharedSongGridDefinition = {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   beatGridSource?: 'manual' | 'analysis'
+  beatGridMap?: SongBeatGridMap | null
   beatGridAlgorithmVersion?: number
 }
 
@@ -40,10 +47,11 @@ export const isCompleteSharedSongGridDefinition = (
   value: SharedSongGridDefinition | null | undefined
 ): value is SharedSongGridDefinition =>
   !!value &&
-  value.bpm !== undefined &&
-  value.firstBeatMs !== undefined &&
-  value.barBeatOffset !== undefined &&
-  shouldAcceptBeatGridCacheVersion(value)
+  ((value.bpm !== undefined &&
+    value.firstBeatMs !== undefined &&
+    value.barBeatOffset !== undefined &&
+    shouldAcceptBeatGridCacheVersion(value)) ||
+    normalizeSongBeatGridMap(value.beatGridMap) !== null)
 
 const normalizeBpm = (value: unknown): number | undefined => {
   const numeric = Number(value)
@@ -95,6 +103,7 @@ const hasSharedGridValue = (
     value.firstBeatMs !== undefined ||
     value.barBeatOffset !== undefined ||
     value.timeBasisOffsetMs !== undefined ||
+    value.beatGridMap !== undefined ||
     value.beatThisWindowCount !== undefined ||
     value.beatGridAlgorithmVersion !== undefined)
 
@@ -113,6 +122,9 @@ export const shouldKeepManualSharedSongGridDefinition = (
   next: SharedSongGridDefinition | null | undefined
 ) => {
   if (current?.beatGridSource !== 'manual' || !next) return false
+  if (normalizeSongBeatGridMap(current.beatGridMap) && next.beatGridSource === 'analysis') {
+    return true
+  }
   if (!shouldAcceptBeatGridCacheVersion(current)) return false
   if (next.beatGridSource === 'analysis') return true
   return (
@@ -153,6 +165,8 @@ const extractSharedGridFromInfo = (
   const barBeatOffset = normalizeBarBeatOffset(info.barBeatOffset)
   const timeBasisOffsetMs = normalizeTimeBasisOffsetMs(info.timeBasisOffsetMs)
   const beatGridSource = normalizeBeatGridSource(info.beatGridSource)
+  const beatGridMap = normalizeSongBeatGridMap(info.beatGridMap)
+  const beatGridProjection = projectSongBeatGridMapToFixedGrid(beatGridMap)
   const beatThisWindowCount = normalizeBeatThisWindowCount(info.beatThisWindowCount)
   const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(info.beatGridAlgorithmVersion)
   if (
@@ -160,6 +174,7 @@ const extractSharedGridFromInfo = (
     firstBeatMs === undefined &&
     barBeatOffset === undefined &&
     timeBasisOffsetMs === undefined &&
+    !beatGridMap &&
     beatThisWindowCount === undefined &&
     beatGridAlgorithmVersion === undefined
   ) {
@@ -167,11 +182,12 @@ const extractSharedGridFromInfo = (
   }
   return {
     filePath,
-    bpm,
-    firstBeatMs,
-    barBeatOffset,
+    bpm: beatGridProjection?.bpm ?? bpm,
+    firstBeatMs: beatGridProjection?.firstBeatMs ?? firstBeatMs,
+    barBeatOffset: beatGridProjection?.barBeatOffset ?? barBeatOffset,
     timeBasisOffsetMs,
-    beatGridSource,
+    beatGridSource: beatGridMap ? 'manual' : beatGridSource,
+    beatGridMap: beatGridMap ?? undefined,
     beatThisWindowCount,
     beatGridAlgorithmVersion
   }
@@ -190,6 +206,7 @@ const mergeSharedGridDefinition = (
     barBeatOffset: next.barBeatOffset ?? base.barBeatOffset,
     timeBasisOffsetMs: next.timeBasisOffsetMs ?? base.timeBasisOffsetMs,
     beatGridSource: next.beatGridSource ?? base.beatGridSource,
+    beatGridMap: next.beatGridMap ?? base.beatGridMap,
     beatThisWindowCount: next.beatThisWindowCount ?? base.beatThisWindowCount,
     beatGridAlgorithmVersion: next.beatGridAlgorithmVersion ?? base.beatGridAlgorithmVersion
   }
@@ -276,22 +293,50 @@ export async function persistSharedSongGridDefinition(
   const normalizedPath = typeof input?.filePath === 'string' ? input.filePath.trim() : ''
   if (!normalizedPath) return null
 
+  const hasBeatGridMapInput = Object.prototype.hasOwnProperty.call(input, 'beatGridMap')
+  const beatGridMap = normalizeSongBeatGridMap(input?.beatGridMap)
+  const beatGridProjection = projectSongBeatGridMapToFixedGrid(input?.beatGridMap)
+  const shouldClearBeatGridMap =
+    !beatGridMap && (hasBeatGridMapInput || input?.beatGridSource === 'analysis')
   const bpm = normalizeBpm(input?.bpm)
   const firstBeatMs = normalizeFirstBeatMs(input?.firstBeatMs)
   const barBeatOffset = normalizeBarBeatOffset(input?.barBeatOffset)
   const timeBasisOffsetMs = normalizeTimeBasisOffsetMs(input?.timeBasisOffsetMs)
-  const beatGridSource = normalizeBeatGridSource(input?.beatGridSource)
+  const beatGridSource =
+    beatGridMap || (hasBeatGridMapInput && beatGridProjection)
+      ? 'manual'
+      : normalizeBeatGridSource(input?.beatGridSource)
   const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
     input?.beatGridAlgorithmVersion
   )
+  const nextBpm = beatGridProjection?.bpm ?? bpm
+  const nextFirstBeatMs = beatGridProjection?.firstBeatMs ?? firstBeatMs
+  const nextBarBeatOffset = beatGridProjection?.barBeatOffset ?? barBeatOffset
   if (
-    bpm === undefined &&
-    firstBeatMs === undefined &&
-    barBeatOffset === undefined &&
+    nextBpm === undefined &&
+    nextFirstBeatMs === undefined &&
+    nextBarBeatOffset === undefined &&
     timeBasisOffsetMs === undefined &&
-    beatGridAlgorithmVersion === undefined
+    beatGridAlgorithmVersion === undefined &&
+    !beatGridMap &&
+    !shouldClearBeatGridMap
   ) {
     return null
+  }
+
+  const buildPersistResult = (
+    info: SharedGridInfo,
+    forceClearedBeatGridMap: boolean
+  ): SharedSongGridDefinition | null => {
+    const extracted = extractSharedGridFromInfo(normalizedPath, info)
+    if (!extracted) return null
+    if (beatGridMap) {
+      return { ...toPublicSharedGridDefinition(extracted), beatGridMap }
+    }
+    if (forceClearedBeatGridMap) {
+      return { ...toPublicSharedGridDefinition(extracted), beatGridMap: null }
+    }
+    return toPublicSharedGridDefinition(extracted)
   }
 
   const songListRoot = await findSongListRoot(path.dirname(normalizedPath))
@@ -300,10 +345,12 @@ export async function persistSharedSongGridDefinition(
     if (!externalContext) {
       return {
         filePath: normalizedPath,
-        bpm,
-        firstBeatMs,
-        barBeatOffset,
+        bpm: nextBpm,
+        firstBeatMs: nextFirstBeatMs,
+        barBeatOffset: nextBarBeatOffset,
         timeBasisOffsetMs,
+        beatGridSource,
+        beatGridMap: beatGridMap ?? (shouldClearBeatGridMap ? null : undefined),
         beatGridAlgorithmVersion
       }
     }
@@ -319,11 +366,16 @@ export async function persistSharedSongGridDefinition(
       ? { ...existingEntry.info }
       : buildLiteSongInfo(normalizedPath)
     const normalizedInfo = applyLiteDefaults(nextInfo, normalizedPath)
-    if (bpm !== undefined) normalizedInfo.bpm = bpm
-    if (firstBeatMs !== undefined) normalizedInfo.firstBeatMs = firstBeatMs
-    if (barBeatOffset !== undefined) normalizedInfo.barBeatOffset = barBeatOffset
+    if (nextBpm !== undefined) normalizedInfo.bpm = nextBpm
+    if (nextFirstBeatMs !== undefined) normalizedInfo.firstBeatMs = nextFirstBeatMs
+    if (nextBarBeatOffset !== undefined) normalizedInfo.barBeatOffset = nextBarBeatOffset
     if (timeBasisOffsetMs !== undefined) normalizedInfo.timeBasisOffsetMs = timeBasisOffsetMs
     if (beatGridSource !== undefined) normalizedInfo.beatGridSource = beatGridSource
+    if (beatGridMap) {
+      normalizedInfo.beatGridMap = beatGridMap
+    } else if (shouldClearBeatGridMap) {
+      delete normalizedInfo.beatGridMap
+    }
     if (beatGridAlgorithmVersion !== undefined) {
       normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
     }
@@ -333,7 +385,7 @@ export async function persistSharedSongGridDefinition(
     }
     normalizedInfo.analysisOnly = true
     await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, normalizedInfo)
-    return extractSharedGridFromInfo(normalizedPath, normalizedInfo)
+    return buildPersistResult(normalizedInfo, shouldClearBeatGridMap)
   }
 
   let stat: { size: number; mtimeMs: number } | null = null
@@ -350,20 +402,25 @@ export async function persistSharedSongGridDefinition(
     : buildLiteSongInfo(normalizedPath)
   const normalizedInfo = applyLiteDefaults(nextInfo, normalizedPath)
 
-  if (bpm !== undefined) {
-    normalizedInfo.bpm = bpm
+  if (nextBpm !== undefined) {
+    normalizedInfo.bpm = nextBpm
   }
-  if (firstBeatMs !== undefined) {
-    normalizedInfo.firstBeatMs = firstBeatMs
+  if (nextFirstBeatMs !== undefined) {
+    normalizedInfo.firstBeatMs = nextFirstBeatMs
   }
-  if (barBeatOffset !== undefined) {
-    normalizedInfo.barBeatOffset = barBeatOffset
+  if (nextBarBeatOffset !== undefined) {
+    normalizedInfo.barBeatOffset = nextBarBeatOffset
   }
   if (timeBasisOffsetMs !== undefined) {
     normalizedInfo.timeBasisOffsetMs = timeBasisOffsetMs
   }
   if (beatGridSource !== undefined) {
     normalizedInfo.beatGridSource = beatGridSource
+  }
+  if (beatGridMap) {
+    normalizedInfo.beatGridMap = beatGridMap
+  } else if (shouldClearBeatGridMap) {
+    delete normalizedInfo.beatGridMap
   }
   if (beatGridAlgorithmVersion !== undefined) {
     normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
@@ -379,5 +436,5 @@ export async function persistSharedSongGridDefinition(
     info: normalizedInfo
   })
 
-  return extractSharedGridFromInfo(normalizedPath, normalizedInfo)
+  return buildPersistResult(normalizedInfo, shouldClearBeatGridMap)
 }

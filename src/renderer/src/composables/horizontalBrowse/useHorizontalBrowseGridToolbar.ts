@@ -24,6 +24,10 @@ export type HorizontalBrowseGridToolbarState = {
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
+  gridControlsDisabled: boolean
+  showSplitAfterPlayhead: boolean
+  showDeleteBoundary: boolean
+  gridAdjustScope: 'whole' | 'after'
 }
 
 export type HorizontalBrowseGridShiftOptions = {
@@ -58,6 +62,14 @@ type UseHorizontalBrowseGridToolbarParams = {
   handleSetBarLineAtPlayhead: () => void
   handleGridShift: (deltaMs: number, options?: HorizontalBrowseGridShiftOptions) => void
   handleMetronomeStateCycle: () => void
+  resolveGridControlsDisabled?: () => boolean
+  resolveShowSplitAfterPlayhead?: () => boolean
+  resolveShowDeleteBoundary?: () => boolean
+  resolveGridAdjustScope?: () => 'whole' | 'after'
+  handleSelectWholeAdjustment?: () => void
+  handleSplitAfterPlayhead?: () => void
+  handleDeleteBoundary?: () => void
+  applyBpmToActiveGridTarget?: (bpm: number) => boolean
 }
 
 export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridToolbarParams) => {
@@ -71,7 +83,11 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
       barLinePicking: params.previewBarLinePicking.value,
       metronomeEnabled: params.metronomeEnabled.value,
       metronomeVolumeLevel: params.metronomeVolumeLevel.value,
-      canToggleMetronome: params.canToggleMetronome.value
+      canToggleMetronome: params.canToggleMetronome.value,
+      gridControlsDisabled: params.resolveGridControlsDisabled?.() === true,
+      showSplitAfterPlayhead: params.resolveShowSplitAfterPlayhead?.() === true,
+      showDeleteBoundary: params.resolveShowDeleteBoundary?.() === true,
+      gridAdjustScope: params.resolveGridAdjustScope?.() === 'after' ? 'after' : 'whole'
     })
   }
 
@@ -94,14 +110,17 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
   }
 
   const handlePreviewBpmInputUpdate = (value: string) => {
+    if (params.resolveGridControlsDisabled?.() === true) return
     const parsed = parsePreviewBpmInput(value)
     if (parsed === null) {
       params.previewBpmInput.value = formatPreviewBpm(params.previewBpm.value)
       emitToolbarState()
       return
     }
-    params.previewBpm.value = parsed
-    params.previewBpmInput.value = formatPreviewBpm(parsed)
+    if (!params.applyBpmToActiveGridTarget?.(parsed)) {
+      params.previewBpm.value = parsed
+      params.previewBpmInput.value = formatPreviewBpm(parsed)
+    }
     params.resetPreviewBpmTap()
     emitToolbarState()
     params.scheduleDraw()
@@ -109,6 +128,7 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
   }
 
   const handlePreviewBpmInputBlur = () => {
+    if (params.resolveGridControlsDisabled?.() === true) return
     params.previewBpmInput.value = formatPreviewBpm(params.previewBpm.value)
     emitToolbarState()
     void params.persistGridDefinition()
@@ -116,6 +136,7 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
 
   const handlePreviewBpmTap = () => {
     if (!params.canAdjustGrid.value || params.previewLoading.value) return
+    if (params.resolveGridControlsDisabled?.() === true) return
     const now = Date.now()
     const lastTap = params.bpmTapTimestamps.value[params.bpmTapTimestamps.value.length - 1]
     if (lastTap && now - lastTap > PREVIEW_BPM_TAP_RESET_MS) {
@@ -139,8 +160,11 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     if (!deltas.length) return
     const avgMs = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length
     if (!Number.isFinite(avgMs) || avgMs <= 0) return
-    params.previewBpm.value = normalizePreviewBpm(60000 / avgMs)
-    params.previewBpmInput.value = formatPreviewBpm(params.previewBpm.value)
+    const nextBpm = normalizePreviewBpm(60000 / avgMs)
+    if (!params.applyBpmToActiveGridTarget?.(nextBpm)) {
+      params.previewBpm.value = nextBpm
+      params.previewBpmInput.value = formatPreviewBpm(params.previewBpm.value)
+    }
     emitToolbarState()
     params.scheduleDraw()
     params.schedulePersistGridDefinition()
@@ -152,12 +176,14 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
   }
 
   const setBarLineAtPlayhead = () => {
+    if (params.resolveGridControlsDisabled?.() === true) return
     params.handleSetBarLineAtPlayhead()
     emitToolbarState()
     params.schedulePersistGridDefinition()
   }
 
   const shiftGrid = (deltaMs: number, options?: HorizontalBrowseGridShiftOptions) => {
+    if (params.resolveGridControlsDisabled?.() === true) return
     params.handleGridShift(deltaMs, options)
     emitToolbarState()
     params.schedulePersistGridDefinition()
@@ -166,6 +192,21 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
   const cycleMetronomeState = () => {
     if (!params.canToggleMetronome.value) return
     params.handleMetronomeStateCycle()
+    emitToolbarState()
+  }
+
+  const splitAfterPlayhead = () => {
+    params.handleSplitAfterPlayhead?.()
+    emitToolbarState()
+  }
+
+  const selectWholeAdjustment = () => {
+    params.handleSelectWholeAdjustment?.()
+    emitToolbarState()
+  }
+
+  const deleteBoundary = () => {
+    params.handleDeleteBoundary?.()
     emitToolbarState()
   }
 
@@ -178,6 +219,9 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     toggleBarLinePicking,
     setBarLineAtPlayhead,
     shiftGrid,
-    cycleMetronomeState
+    cycleMetronomeState,
+    selectWholeAdjustment,
+    splitAfterPlayhead,
+    deleteBoundary
   }
 }

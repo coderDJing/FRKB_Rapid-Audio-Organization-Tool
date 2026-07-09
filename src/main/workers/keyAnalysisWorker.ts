@@ -12,6 +12,8 @@ import {
   calculateSongEnergyScoreFromUnifiedDisplay
 } from '../../shared/songEnergy'
 import { buildSongStructureAnalysis, type SongStructureAnalysis } from '../../shared/songStructure'
+import { diagnoseSongStructureAnalysisFailure } from '../../shared/songStructureDiagnostics'
+import type { SongBeatGridMap } from '../../shared/songBeatGridMap'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 import { getBeatThisRuntimeAvailabilitySnapshot } from './beatThisRuntime'
 import { computeRawWaveform } from './rawWaveformBuilder'
@@ -28,6 +30,7 @@ type KeyJob = {
   cachedBpm?: number
   cachedFirstBeatMs?: number
   cachedBarBeatOffset?: number
+  cachedBeatGridMap?: SongBeatGridMap
 }
 
 type KeyResultPayload = {
@@ -37,6 +40,7 @@ type KeyResultPayload = {
   firstBeatMs?: number
   barBeatOffset?: number
   bpmError?: string
+  songStructureError?: string
   energyScore?: number
   energyAlgorithmVersion?: number
   songStructure?: SongStructureAnalysis
@@ -238,6 +242,7 @@ const analyzeKeyForFile = (
     cachedBpm?: number
     cachedFirstBeatMs?: number
     cachedBarBeatOffset?: number
+    cachedBeatGridMap?: SongBeatGridMap
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -256,6 +261,7 @@ const analyzeKeyForFileInternal = async (
     cachedBpm?: number
     cachedFirstBeatMs?: number
     cachedBarBeatOffset?: number
+    cachedBeatGridMap?: SongBeatGridMap
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -486,13 +492,24 @@ const analyzeKeyForFileInternal = async (
         const structureGrid = {
           bpm: result.bpm ?? options.cachedBpm,
           firstBeatMs: result.firstBeatMs ?? options.cachedFirstBeatMs,
-          barBeatOffset: result.barBeatOffset ?? options.cachedBarBeatOffset
+          barBeatOffset: result.barBeatOffset ?? options.cachedBarBeatOffset,
+          beatGridMap: options.cachedBeatGridMap ?? null
         }
-        const fallbackStructure = buildSongStructureAnalysis({
+        const structureInput = {
           waveformData: unifiedDisplayWaveformData,
           ...structureGrid
-        })
-        result.songStructure = fallbackStructure ?? undefined
+        }
+        try {
+          const fallbackStructure = buildSongStructureAnalysis(structureInput)
+          result.songStructure = fallbackStructure ?? undefined
+          result.songStructureError = fallbackStructure
+            ? undefined
+            : diagnoseSongStructureAnalysisFailure(structureInput)
+        } catch (error) {
+          result.songStructureError = `structure exception: ${
+            error instanceof Error ? error.message : String(error || 'unknown error')
+          }`.slice(0, 300)
+        }
       }
       const energy =
         result.energyScore === undefined
@@ -514,8 +531,13 @@ const analyzeKeyForFileInternal = async (
           ? 'waveform-ok:ffmpeg'
           : 'waveform-ok'
       })
-    } catch {
+    } catch (error) {
       result.mixxxWaveformData = null
+      if (needsStructure) {
+        result.songStructureError = `waveform exception: ${
+          error instanceof Error ? error.message : String(error || 'unknown error')
+        }`.slice(0, 300)
+      }
       reportProgress({
         stage: 'waveform-done',
         waveformMs: Date.now() - waveformStartAt,
@@ -569,7 +591,8 @@ parentPort?.on('message', async (job: KeyJob) => {
         needsStructure: Boolean(job.needsStructure),
         cachedBpm: job.cachedBpm,
         cachedFirstBeatMs: job.cachedFirstBeatMs,
-        cachedBarBeatOffset: job.cachedBarBeatOffset
+        cachedBarBeatOffset: job.cachedBarBeatOffset,
+        cachedBeatGridMap: job.cachedBeatGridMap
       },
       reportProgress
     )

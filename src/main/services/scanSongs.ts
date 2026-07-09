@@ -24,6 +24,10 @@ import {
   hasCurrentSongStructureAnalysis,
   normalizeSongStructureAnalysis
 } from '../../shared/songStructure'
+import {
+  normalizeSongBeatGridMap,
+  projectSongBeatGridMapToFixedGrid
+} from '../../shared/songBeatGridMap'
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
@@ -49,6 +53,7 @@ type CachedGridInfo = Pick<
   | 'beatGridAlgorithmVersion'
   | 'beatGridSource'
   | 'beatGridStatus'
+  | 'beatGridMap'
 > & {
   beatThisWindowCount?: unknown
 }
@@ -64,8 +69,10 @@ const hasCompleteNumericGrid = (info: CachedGridInfo | null | undefined) =>
   hasFirstBeatMs(info?.firstBeatMs) &&
   hasBarBeatOffset(info?.barBeatOffset) &&
   shouldAcceptBeatGridCacheVersion(info)
+const hasDynamicBeatGridMap = (info: CachedGridInfo | null | undefined) =>
+  normalizeSongBeatGridMap(info?.beatGridMap) !== null
 const hasCompleteGrid = (info: CachedGridInfo | null | undefined) =>
-  hasCurrentNoBpmBeatGridResult(info) || hasCompleteNumericGrid(info)
+  hasCurrentNoBpmBeatGridResult(info) || hasDynamicBeatGridMap(info) || hasCompleteNumericGrid(info)
 
 const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
   const next = { ...info }
@@ -79,7 +86,10 @@ const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
     delete next.barBeatOffset
     delete next.timeBasisOffsetMs
     delete next.beatGridSource
+    delete next.beatGridMap
   } else if (hasCompleteNumericGrid(next)) {
+    delete next.beatGridStatus
+  } else if (hasDynamicBeatGridMap(next)) {
     delete next.beatGridStatus
   } else {
     delete next.bpm
@@ -88,6 +98,7 @@ const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
     delete next.timeBasisOffsetMs
     delete next.beatGridSource
     delete next.beatGridStatus
+    delete next.beatGridMap
     delete next.beatGridAlgorithmVersion
   }
   if (!hasCurrentSongEnergyAnalysis(next)) {
@@ -120,12 +131,28 @@ const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongI
     delete target.barBeatOffset
     delete target.timeBasisOffsetMs
     delete target.beatGridSource
+    delete target.beatGridMap
     target.beatGridStatus = BEAT_GRID_STATUS_NO_BPM
     target.beatGridAlgorithmVersion = cachedInfo.beatGridAlgorithmVersion
     return
   }
+  const cachedBeatGridMap = normalizeSongBeatGridMap(cachedInfo.beatGridMap)
+  if (cachedBeatGridMap) {
+    if (hasCompleteGrid(target)) return
+    const projection = projectSongBeatGridMapToFixedGrid(cachedBeatGridMap)
+    delete target.beatGridStatus
+    target.beatGridMap = cachedBeatGridMap
+    target.beatGridSource = 'manual'
+    if (projection) {
+      target.bpm = projection.bpm
+      target.firstBeatMs = projection.firstBeatMs
+      target.barBeatOffset = projection.barBeatOffset
+    }
+    return
+  }
   if (!hasCompleteNumericGrid(cachedInfo)) return
   delete target.beatGridStatus
+  delete target.beatGridMap
   if (!hasFirstBeatMs(target.firstBeatMs) && hasFirstBeatMs(cachedInfo.firstBeatMs)) {
     target.firstBeatMs = cachedInfo.firstBeatMs
   }

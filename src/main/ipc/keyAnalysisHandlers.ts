@@ -37,7 +37,8 @@ export function registerKeyAnalysisHandlers() {
           source: 'foreground',
           preemptible: true,
           category: 'waveform-preview',
-          waveformOnly
+          waveformOnly,
+          includeStructure: false
         })
       }
       if (recordingPaths.length > 0) {
@@ -45,7 +46,8 @@ export function registerKeyAnalysisHandlers() {
           source: 'foreground',
           preemptible: true,
           category: 'waveform-preview',
-          waveformOnly: true
+          waveformOnly: true,
+          includeStructure: false
         })
       }
       return
@@ -67,7 +69,8 @@ export function registerKeyAnalysisHandlers() {
       enqueueKeyAnalysis(filePath, 'high', {
         urgent: true,
         source: 'foreground',
-        focusSlot: payload?.focusSlot
+        focusSlot: payload?.focusSlot,
+        includeStructure: false
       })
     }
   )
@@ -78,7 +81,8 @@ export function registerKeyAnalysisHandlers() {
     if (isInRecordingLibraryAbsPath(filePath)) return
     enqueueKeyAnalysis(filePath, 'low', {
       source: 'foreground',
-      preemptible: true
+      preemptible: true,
+      includeStructure: false
     })
   })
 

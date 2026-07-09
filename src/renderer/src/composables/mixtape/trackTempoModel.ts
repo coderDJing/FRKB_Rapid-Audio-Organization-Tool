@@ -70,7 +70,8 @@ const collapseBoundaryBpmPoints = (
         Number.isFinite(Number(point.sourceSec)) && Number(point.sourceSec) >= 0
           ? roundTrackTempoSec(Number(point.sourceSec))
           : undefined,
-      allowOffGrid: point.allowOffGrid === true ? true : undefined
+      allowOffGrid: point.allowOffGrid === true ? true : undefined,
+      source: point.source === 'auto' || point.source === 'manual' ? point.source : undefined
     }))
 }
 
@@ -154,7 +155,9 @@ export const normalizeTrackBpmEnvelopePoints = (
               Number.isFinite(sourceSec) && sourceSec >= 0
                 ? roundTrackTempoSec(sourceSec)
                 : undefined,
-            allowOffGrid: point?.allowOffGrid === true ? true : undefined
+            allowOffGrid: point?.allowOffGrid === true ? true : undefined,
+            source:
+              point?.source === 'auto' || point?.source === 'manual' ? point.source : undefined
           }
         })
         .filter(Boolean)

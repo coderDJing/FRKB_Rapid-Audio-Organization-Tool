@@ -71,6 +71,11 @@ export const createKeyAnalysisFailureTracker = (deps: KeyAnalysisFailureTrackerD
     return 'worker-runtime-error'
   }
 
+  const isStructureOnlyFailure = (detail?: string) =>
+    String(detail || '')
+      .trim()
+      .startsWith('structure: ')
+
   const cleanupStaleFailures = () => {
     if (deps.failedByPath.size === 0) return
     const now = Date.now()
@@ -135,6 +140,8 @@ export const createKeyAnalysisFailureTracker = (deps: KeyAnalysisFailureTrackerD
     const cooldownMs = computeFailureCooldownMs(failCount)
     const nextRetryAt = now + cooldownMs
     const inferredCause = inferFailureCause(job, reason)
+    const failureDetail = detail || job.trace?.detail
+    const structureMissingOnly = isStructureOnlyFailure(failureDetail)
     const record: KeyAnalysisFailureRecord = {
       size,
       mtimeMs,
@@ -144,11 +151,13 @@ export const createKeyAnalysisFailureTracker = (deps: KeyAnalysisFailureTrackerD
       nextRetryAt,
       lastReason: reason,
       lastStage: job.trace?.lastStage,
-      lastDetail: detail || job.trace?.detail,
+      lastDetail: failureDetail,
       inferredCause,
       lastProbe: existing?.lastProbe
     }
     deps.failedByPath.set(normalizedPath, record)
+
+    if (structureMissingOnly) return
 
     if (cooldownMs === 0) {
       log.error('[闲时分析] 任务失败（未进入冷却阈值）', {
@@ -192,10 +201,10 @@ export const createKeyAnalysisFailureTracker = (deps: KeyAnalysisFailureTrackerD
   }
 
   const getFailureCooldownRecord = (job: KeyAnalysisJob): KeyAnalysisFailureRecord | null => {
-    if (job.priority === 'high') return null
-    if (job.category === 'manual-batch') return null
     const record = deps.failedByPath.get(job.normalizedPath)
     if (!record) return null
+    if (job.priority === 'high' && !isStructureOnlyFailure(record.lastDetail)) return null
+    if (job.category === 'manual-batch') return null
     const sameFileVersion = isSameFileVersion(record, getJobFileVersion(job))
     if (!sameFileVersion) {
       deps.failedByPath.delete(job.normalizedPath)

@@ -23,6 +23,7 @@ import {
   resolveTrackGridSourceBpm,
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'
+import { createDynamicSourceBeatMap } from '@renderer/composables/mixtape/trackTimeMapCore'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeGainPoint,
@@ -44,6 +45,10 @@ import type {
 import type { MixtapeOutputProgressState } from '@renderer/composables/mixtape/mixtapeOutputProgress'
 import { createMixtapeOutputUi } from '@renderer/composables/mixtape/mixtapeOutputUi'
 import { createMixtapeWindowInputHandlers } from '@renderer/composables/mixtape/mixtapeWindowInput'
+import {
+  createMixtapeBeatAlignGridDefinitionSaver,
+  type MixtapeEnvelopeField
+} from '@renderer/composables/mixtape/mixtapeBeatAlignGridDefinitionSave'
 type TrackMenuContextItem = {
   track?: {
     id?: string | null
@@ -61,19 +66,6 @@ type MixtapeListPayload = {
   stemProfile?: unknown
   stemSummary?: unknown
 }
-type EnvelopeField =
-  | 'gainEnvelope'
-  | 'highEnvelope'
-  | 'midEnvelope'
-  | 'lowEnvelope'
-  | 'vocalEnvelope'
-  | 'instEnvelope'
-  | 'bassEnvelope'
-  | 'drumsEnvelope'
-  | 'volumeEnvelope'
-
-const getTrackEnvelopeField = (value: unknown): EnvelopeField => value as EnvelopeField
-
 type BpmAnalysisResultItem = {
   filePath?: unknown
   bpm?: unknown
@@ -169,7 +161,7 @@ type UseMixtapeBpmAndUiModuleContext = {
   normalizeBpm: (value: unknown) => number | null
   MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL: MixtapeEnvelopeParamId[]
   MIXTAPE_ENVELOPE_PARAMS_STEM: MixtapeEnvelopeParamId[]
-  MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM: Record<MixtapeEnvelopeParamId, EnvelopeField>
+  MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM: Record<MixtapeEnvelopeParamId, MixtapeEnvelopeField>
   buildFlatMixEnvelope: (
     param: MixtapeEnvelopeParamId,
     durationSec: number,
@@ -397,14 +389,22 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
       const sourceDurationSec = Math.max(0, Number(resolveTrackSourceDurationSeconds(track)) || 0)
       const gridSourceBpm = resolveTrackGridSourceBpm(track)
       const beatSourceSec = Math.max(BPM_POINT_SEC_EPSILON, resolveBeatSecByBpm(gridSourceBpm))
+      const dynamicSourceBeatMap = createDynamicSourceBeatMap(track.beatGridMap, sourceDurationSec)
       const firstBeatMs = Number(track?.firstBeatMs)
       const firstBeatSourceSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
-      const firstBeatSourceBeats = firstBeatSourceSec / beatSourceSec
-      const sourceDurationBeats = sourceDurationSec / beatSourceSec
+      const firstBeatSourceBeats = dynamicSourceBeatMap
+        ? dynamicSourceBeatMap.firstBeatDelta
+        : firstBeatSourceSec / beatSourceSec
+      const sourceDurationBeats = dynamicSourceBeatMap
+        ? dynamicSourceBeatMap.beatSpan
+        : sourceDurationSec / beatSourceSec
       const normalizedBarBeatOffset = normalizeBarBeatOffset(track?.barBeatOffset)
-      const firstBarLineSourceBeats = firstBeatSourceBeats + normalizedBarBeatOffset
-      const hasVisibleBarLine =
-        firstBarLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+      const firstBarLineSourceBeats =
+        dynamicSourceBeatMap?.firstBarBeatDelta ?? firstBeatSourceBeats + normalizedBarBeatOffset
+      const hasVisibleBarLine = dynamicSourceBeatMap
+        ? dynamicSourceBeatMap.firstBarBeatDelta !== null &&
+          firstBarLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+        : firstBarLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
       const sourceAnchorBeats = hasVisibleBarLine ? firstBarLineSourceBeats : firstBeatSourceBeats
       const anchorIntervalBeats = hasVisibleBarLine ? GRID_ALIGN_BAR_INTERVAL : 1
       const shouldPlaceTrackAtTimelineStart = cursorSec <= BPM_POINT_SEC_EPSILON
@@ -844,178 +844,26 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
     beatAlignTrackId.value = ''
   }
 
-  const handleBeatAlignGridDefinitionSave = async (nextGrid: {
-    barBeatOffset: number
-    firstBeatMs: number
-    bpm: number
-  }) => {
-    const playlistId = String(payload.value.playlistId || '').trim()
-    const trackId = beatAlignTrackId.value
-    if (!trackId) return
-    const targetIndex = tracks.value.findIndex((track: MixtapeTrack) => track.id === trackId)
-    if (targetIndex < 0) return
-    const currentTrack = tracks.value[targetIndex]
-    if (!currentTrack) return
-    const normalizedOffset = normalizeBarBeatOffset(nextGrid?.barBeatOffset)
-    const normalizedFirstBeatMs = normalizeFirstBeatMs(nextGrid?.firstBeatMs)
-    const normalizedInputBpm = normalizeBpm(nextGrid?.bpm)
-    const currentOffset = normalizeBarBeatOffset(currentTrack.barBeatOffset)
-    const currentFirstBeatMs = normalizeFirstBeatMs(currentTrack.firstBeatMs)
-    const offsetChanged = normalizedOffset !== currentOffset
-    const firstBeatChanged = Math.abs(normalizedFirstBeatMs - currentFirstBeatMs) > 0.0001
-    const targetFilePath = normalizeMixtapeFilePath(currentTrack.filePath)
-    const gridBaseBpm = normalizeBpm(currentTrack.gridBaseBpm)
-    const originalBpm = normalizeBpm(currentTrack.originalBpm)
-    const bpmCompareBase = gridBaseBpm ?? originalBpm ?? normalizeBpm(currentTrack.bpm)
-    const shouldPersistBpm =
-      normalizedInputBpm !== null &&
-      (bpmCompareBase === null || Math.abs(normalizedInputBpm - bpmCompareBase) > 0.0001)
-    const isSameTrack = (track: MixtapeTrack) =>
-      targetFilePath.length > 0
-        ? normalizeMixtapeFilePath(track.filePath) === targetFilePath
-        : track.id === trackId
-    const bpmChanged =
-      shouldPersistBpm &&
-      tracks.value.some((track: MixtapeTrack) => {
-        if (!isSameTrack(track)) return false
-        const trackBpmBase =
-          normalizeBpm(track.gridBaseBpm) ??
-          normalizeBpm(track.originalBpm) ??
-          normalizeBpm(track.bpm)
-        if (trackBpmBase === null) return true
-        return Math.abs(trackBpmBase - Number(normalizedInputBpm)) > 0.0001
-      })
-    if (!offsetChanged && !firstBeatChanged && !bpmChanged) return
-    const gridPositionChanged = firstBeatChanged || bpmChanged
-    const activeEnvelopeParams =
-      mixtapeMixMode.value === 'eq'
-        ? MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL
-        : MIXTAPE_ENVELOPE_PARAMS_STEM
-    const shouldResetEnvelope = gridPositionChanged
-      ? (await confirmDialog({
-          title: t('mixtape.gridAdjustSaveResetEnvelopeTitle'),
-          content: [t('mixtape.gridAdjustSaveResetEnvelopeHint')],
-          confirmText: t('mixtape.gridAdjustSaveResetEnvelopeConfirm'),
-          cancelText: t('mixtape.gridAdjustSaveResetEnvelopeCancel')
-        })) === 'confirm'
-      : false
-    if (gridPositionChanged && !shouldResetEnvelope) return
-    const nextTracks = tracks.value.map((track: MixtapeTrack) => {
-      if (!isSameTrack(track)) return track
-      const fallbackGridBaseBpm =
-        normalizeBpm(track.gridBaseBpm) ?? normalizeBpm(track.originalBpm) ?? track.gridBaseBpm
-      const nextTrack = {
-        ...track,
-        barBeatOffset: normalizedOffset,
-        firstBeatMs: normalizedFirstBeatMs,
-        gridBaseBpm:
-          shouldPersistBpm && normalizedInputBpm !== null
-            ? Number(normalizedInputBpm)
-            : fallbackGridBaseBpm,
-        originalBpm:
-          shouldPersistBpm && normalizedInputBpm !== null
-            ? Number(normalizedInputBpm)
-            : track.originalBpm
-      }
-      if (!shouldResetEnvelope) return nextTrack
-      for (const param of activeEnvelopeParams as MixtapeEnvelopeParamId[]) {
-        const envelopeField = getTrackEnvelopeField(MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param])
-        nextTrack[envelopeField] = buildFlatMixEnvelope(
-          param,
-          resolveTrackDurationSeconds(track),
-          1
-        )
-      }
-      nextTrack.volumeMuteSegments = []
-      return nextTrack
-    })
-    tracks.value = nextTracks
-    refreshTimelineForGlobalTempoChange()
-    if (!window?.electron?.ipcRenderer?.invoke) return
-
-    if (targetFilePath) {
-      void window.electron.ipcRenderer
-        .invoke('mixtape:update-grid-definition', {
-          filePath: targetFilePath,
-          barBeatOffset: normalizedOffset,
-          firstBeatMs: normalizedFirstBeatMs,
-          bpm: bpmChanged ? normalizedInputBpm : undefined
-        })
-        .catch((error: unknown) => {
-          console.error('[mixtape] update grid definition failed', {
-            filePath: targetFilePath,
-            barBeatOffset: normalizedOffset,
-            firstBeatMs: normalizedFirstBeatMs,
-            bpm: bpmChanged ? normalizedInputBpm : undefined,
-            error
-          })
-        })
-    }
-
-    if (!shouldResetEnvelope) return
-    const affectedTracks = nextTracks.filter((track: MixtapeTrack) => isSameTrack(track))
-    if (!affectedTracks.length) return
-    const envelopeUpdateTasks = (activeEnvelopeParams as MixtapeEnvelopeParamId[]).map((param) => {
-      const envelopeField = getTrackEnvelopeField(MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param])
-      const entries = affectedTracks
-        .map((track: MixtapeTrack) => {
-          const points = normalizeMixEnvelopePoints(
-            param,
-            track[envelopeField],
-            resolveTrackDurationSeconds(track)
-          ) as MixtapeGainPoint[]
-          if (points.length < 2) return null
-          return {
-            itemId: track.id,
-            gainEnvelope: points.map((point: MixtapeGainPoint) => ({
-              sec: Number(point.sec),
-              gain: Number(point.gain)
-            }))
-          }
-        })
-        .filter(
-          (
-            item: { itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> } | null
-          ): item is { itemId: string; gainEnvelope: Array<{ sec: number; gain: number }> } =>
-            item !== null
-        )
-      if (!entries.length) return Promise.resolve(null)
-      return window.electron.ipcRenderer.invoke('mixtape:update-mix-envelope', {
-        param,
-        entries
-      })
-    })
-    const muteSegmentUpdateEntries = affectedTracks.map((track: MixtapeTrack) => ({
-      itemId: track.id,
-      segments: []
-    }))
-    const muteSegmentUpdateTask =
-      muteSegmentUpdateEntries.length > 0
-        ? window.electron.ipcRenderer.invoke('mixtape:update-volume-mute-segments', {
-            entries: muteSegmentUpdateEntries
-          })
-        : Promise.resolve(null)
-    const originalBpmUpdateTask =
-      bpmChanged && normalizedInputBpm !== null
-        ? window.electron.ipcRenderer.invoke('mixtape:update-track-start-sec', {
-            entries: affectedTracks.map((track: MixtapeTrack) => ({
-              itemId: track.id,
-              originalBpm: Number(normalizedInputBpm)
-            }))
-          })
-        : Promise.resolve(null)
-    void Promise.all([...envelopeUpdateTasks, muteSegmentUpdateTask, originalBpmUpdateTask]).catch(
-      (error: unknown) => {
-        console.error('[mixtape] reset mix envelope after grid update failed', {
-          trackCount: affectedTracks.length,
-          error
-        })
-      }
-    )
-    ensureDefaultGlobalTempoEnvelope(playlistId, {
-      refreshWaveform: false
-    })
-  }
+  const handleBeatAlignGridDefinitionSave = createMixtapeBeatAlignGridDefinitionSaver({
+    payload,
+    tracks,
+    beatAlignTrackId,
+    mixtapeMixMode,
+    refreshTimelineForGlobalTempoChange,
+    ensureDefaultGlobalTempoEnvelope,
+    resolveTrackDurationSeconds,
+    normalizeMixtapeFilePath,
+    normalizeBarBeatOffset,
+    normalizeFirstBeatMs,
+    normalizeBpm,
+    MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL,
+    MIXTAPE_ENVELOPE_PARAMS_STEM,
+    MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM,
+    buildFlatMixEnvelope,
+    normalizeMixEnvelopePoints,
+    confirmDialog,
+    t
+  })
 
   const { handleGlobalPointerDown, handleWindowKeydown } = createMixtapeWindowInputHandlers({
     trackContextMenuVisible,

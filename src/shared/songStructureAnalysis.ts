@@ -20,6 +20,9 @@ import {
   type SongStructureSectionKind
 } from './songStructureCommon'
 import { buildAlgorithmicSongStructureSections } from './songStructureAlgorithmic'
+import { buildDynamicPhraseBoundaries } from './songStructureDynamicBoundaries'
+import { createSongBeatGridRuntime } from './songBeatGridMap'
+import { buildWholeSongStructureAnalysis } from './songStructureWholeSong'
 
 type SongStructureFeature = {
   startSec: number
@@ -266,6 +269,74 @@ const buildFeatures = (
         beatSec,
         barBeatOffset
       ),
+      phraseIndex: index,
+      ...values,
+      slices
+    })
+  }
+
+  return features
+}
+
+const resolveDynamicBarNumber = (sec: number, barLines: readonly number[]) => {
+  let count = 0
+  for (const lineSec of barLines) {
+    if (lineSec <= sec + 0.0001) count += 1
+    else break
+  }
+  return Math.max(1, count)
+}
+
+const buildDynamicFineFeature = (
+  data: UnifiedDisplayWaveformDetailData,
+  startSec: number,
+  endSec: number,
+  detailRate: number,
+  barLines: readonly number[]
+): SongStructureFineFeature => {
+  const startFrame = Math.floor(startSec * detailRate)
+  const endFrame = Math.ceil(endSec * detailRate)
+  const values = summarizeFeatureValues(data, startFrame, endFrame)
+  return {
+    startSec,
+    endSec,
+    startBar: resolveDynamicBarNumber(startSec, barLines),
+    endBar: resolveDynamicBarNumber(endSec, barLines),
+    ...values
+  }
+}
+
+const buildDynamicFeatures = (
+  data: UnifiedDisplayWaveformDetailData,
+  boundaries: readonly number[],
+  barLines: readonly number[]
+) => {
+  const detailRate = Math.max(1, Number(data.detailRate) || 1)
+  const features: SongStructureFeature[] = []
+
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const startSec = boundaries[index] ?? 0
+    const endSec = boundaries[index + 1] ?? startSec
+    if (endSec - startSec <= 0.5) continue
+    const startFrame = Math.floor(startSec * detailRate)
+    const endFrame = Math.ceil(endSec * detailRate)
+    const values = summarizeFeatureValues(data, startFrame, endFrame)
+    const slices: SongStructureFineFeature[] = []
+    const sliceDurationSec = Math.max((endSec - startSec) / PHRASE_BARS, 0.5)
+    for (
+      let sliceStartSec = startSec;
+      sliceStartSec < endSec - 0.25;
+      sliceStartSec += sliceDurationSec
+    ) {
+      const sliceEndSec = Math.min(endSec, sliceStartSec + sliceDurationSec)
+      if (sliceEndSec - sliceStartSec <= 0.25) continue
+      slices.push(buildDynamicFineFeature(data, sliceStartSec, sliceEndSec, detailRate, barLines))
+    }
+    features.push({
+      startSec,
+      endSec,
+      startBar: resolveDynamicBarNumber(startSec, barLines),
+      endBar: resolveDynamicBarNumber(endSec, barLines),
       phraseIndex: index,
       ...values,
       slices
@@ -888,13 +959,68 @@ export const buildSongStructureAnalysisCore = (
   const detailFrames = waveformData.height?.length || 0
   if (durationSec <= 0 || detailFrames <= 0) return null
 
+  const dynamicBoundaries = buildDynamicPhraseBoundaries(input, durationSec)
+  if (dynamicBoundaries) {
+    const barLines = dynamicBoundaries.runtime.lines
+      .filter((line) => line.level === 'bar')
+      .map((line) => line.sec)
+    const features = buildDynamicFeatures(waveformData, dynamicBoundaries.boundaries, barLines)
+    if (!features.length) {
+      return buildWholeSongStructureAnalysis(
+        waveformData,
+        durationSec,
+        grid,
+        dynamicBoundaries.runtime.signature,
+        barLines
+      )
+    }
+    const stats = buildStats(features, durationSec)
+    const templateSections = buildTemplateStructureSections(features, stats)
+    const sections = templateSections
+    if (!sections?.length) {
+      return buildWholeSongStructureAnalysis(
+        waveformData,
+        durationSec,
+        grid,
+        dynamicBoundaries.runtime.signature,
+        barLines
+      )
+    }
+    return {
+      algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
+      source: 'algorithmic',
+      durationSec: toFixedNumber(durationSec, 3),
+      bpm: grid.bpm,
+      firstBeatMs: grid.firstBeatMs,
+      barBeatOffset: grid.barBeatOffset,
+      beatGridSignature: dynamicBoundaries.runtime.signature,
+      phraseBars: PHRASE_BARS,
+      sections
+    }
+  }
+  if (input.beatGridMap) {
+    const runtime = createSongBeatGridRuntime(input.beatGridMap, durationSec)
+    if (runtime) {
+      const barLines = runtime.lines.filter((line) => line.level === 'bar').map((line) => line.sec)
+      return buildWholeSongStructureAnalysis(
+        waveformData,
+        durationSec,
+        grid,
+        runtime.signature,
+        barLines
+      )
+    }
+  }
+
   const boundaries = buildPhraseBoundaries(
     durationSec,
     grid.bpm,
     grid.firstBeatMs,
     grid.barBeatOffset
   )
-  if (boundaries.length < 2) return null
+  if (boundaries.length < 2) {
+    return buildWholeSongStructureAnalysis(waveformData, durationSec, grid)
+  }
 
   const features = buildFeatures(
     waveformData,
@@ -903,7 +1029,9 @@ export const buildSongStructureAnalysisCore = (
     grid.firstBeatMs,
     grid.barBeatOffset
   )
-  if (!features.length) return null
+  if (!features.length) {
+    return buildWholeSongStructureAnalysis(waveformData, durationSec, grid)
+  }
 
   const stats = buildStats(features, durationSec)
   const templateSections = buildTemplateStructureSections(features, stats)
@@ -916,7 +1044,9 @@ export const buildSongStructureAnalysisCore = (
     templateSections ?? undefined
   )
   const sections = algorithmicCandidate?.sections ?? templateSections
-  if (!sections?.length) return null
+  if (!sections?.length) {
+    return buildWholeSongStructureAnalysis(waveformData, durationSec, grid)
+  }
 
   return {
     algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,

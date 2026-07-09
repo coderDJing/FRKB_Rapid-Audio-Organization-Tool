@@ -26,6 +26,10 @@ export type HorizontalBrowseDeckDetailLaneExpose = {
   updateBpmInput?: (value: string) => void
   blurBpmInput?: () => void
   tapBpm?: () => void
+  splitAfterPlayhead?: () => void
+  deleteBoundary?: () => void
+  freezeDynamicGridSelectionForBpmInput?: () => void
+  releaseDynamicGridSelectionForBpmInput?: () => void
   cycleMetronomeState?: () => void
   prepareStableFrameForAnchor?: (
     seconds: number,
@@ -61,5 +65,9 @@ export const createDefaultDeckToolbarState = () => ({
   barLinePicking: false,
   metronomeEnabled: false,
   metronomeVolumeLevel: 2 as 1 | 2 | 3,
-  canToggleMetronome: false
+  canToggleMetronome: false,
+  gridControlsDisabled: false,
+  showSplitAfterPlayhead: false,
+  showDeleteBoundary: false,
+  gridAdjustScope: 'whole' as 'whole' | 'after'
 })

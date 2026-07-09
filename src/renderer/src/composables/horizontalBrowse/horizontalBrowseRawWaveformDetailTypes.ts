@@ -66,6 +66,7 @@ export type HorizontalBrowseRawWaveformDetailProps = {
   waveformLayout?: HorizontalBrowseWaveformLayout
   waveformRenderStyle?: HorizontalBrowseWaveformRenderStyle
   allowNegativeTimeline?: boolean
+  gridEditMode?: boolean
 }
 
 export type HorizontalBrowseRawWaveformDetailEmit = {
@@ -87,6 +88,11 @@ export type HorizontalBrowseRawWaveformDetailExpose = {
   updateBpmInput: (value: string) => void
   blurBpmInput: () => void
   tapBpm: () => void
+  selectWholeAdjustment: () => void
+  splitAfterPlayhead: () => void
+  deleteBoundary: () => void
+  freezeDynamicGridSelectionForBpmInput: () => void
+  releaseDynamicGridSelectionForBpmInput: () => void
   cycleMetronomeState: () => void
   prepareStableFrameForAnchor: (
     seconds: number,

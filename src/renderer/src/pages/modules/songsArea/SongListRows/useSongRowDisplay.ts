@@ -8,7 +8,7 @@ import {
 import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { t } from '@renderer/utils/translate'
 import { formatDeletedAtMs, getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
-import { formatBpmDisplay } from '@renderer/utils/bpm'
+import { summarizeSongBeatGridBpm } from '@shared/songBeatGridMap'
 
 export const useSongRowDisplay = (params: {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -44,9 +44,9 @@ export const useSongRowDisplay = (params: {
     }
     const raw = song[colKey as keyof ISongInfo]
     if (colKey === 'bpm') {
-      const bpm = Number(raw)
-      if (Number.isFinite(bpm) && bpm > 0) {
-        return formatBpmDisplay(bpm, '')
+      const bpmSummary = summarizeSongBeatGridBpm(song.beatGridMap, song.bpm)
+      if (bpmSummary.displayText) {
+        return bpmSummary.displayText
       }
       if (song.beatGridStatus === 'no-bpm') {
         return t('tracks.noBpm')
@@ -62,6 +62,14 @@ export const useSongRowDisplay = (params: {
     }
     if (raw === undefined || raw === null) return ''
     return raw as string | number
+  }
+
+  const getCellTitle = (song: ISongInfo, colKey: string): string => {
+    if (colKey === 'bpm') {
+      const bpmSummary = summarizeSongBeatGridBpm(song.beatGridMap, song.bpm)
+      if (bpmSummary.titleText) return bpmSummary.titleText
+    }
+    return String(getCellValue(song, colKey))
   }
 
   const curatedArtistFavoriteSet = computed(
@@ -134,6 +142,7 @@ export const useSongRowDisplay = (params: {
 
   return {
     getCellValue,
+    getCellTitle,
     isCuratedArtistHit,
     getCuratedArtistBadgeText,
     getCuratedArtistBadgeTitle,

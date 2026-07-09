@@ -16,6 +16,11 @@ type CreateHorizontalBrowseRawWaveformDetailExposeParams = {
   updateBpmInput: (value: string) => void
   blurBpmInput: () => void
   tapBpm: () => void
+  selectWholeAdjustment: () => void
+  splitAfterPlayhead: () => void
+  deleteBoundary: () => void
+  freezeDynamicGridSelectionForBpmInput: () => void
+  releaseDynamicGridSelectionForBpmInput: () => void
   cycleMetronomeState: () => void
   prepareStableFrameForAnchor: (
     seconds: number,
@@ -63,6 +68,11 @@ export const createHorizontalBrowseRawWaveformDetailExpose = (
     updateBpmInput: params.updateBpmInput,
     blurBpmInput: params.blurBpmInput,
     tapBpm: params.tapBpm,
+    selectWholeAdjustment: params.selectWholeAdjustment,
+    splitAfterPlayhead: params.splitAfterPlayhead,
+    deleteBoundary: params.deleteBoundary,
+    freezeDynamicGridSelectionForBpmInput: params.freezeDynamicGridSelectionForBpmInput,
+    releaseDynamicGridSelectionForBpmInput: params.releaseDynamicGridSelectionForBpmInput,
     cycleMetronomeState: params.cycleMetronomeState,
     prepareStableFrameForAnchor: params.prepareStableFrameForAnchor,
     commitLinkedGridVisualTransaction: params.commitLinkedGridVisualTransaction

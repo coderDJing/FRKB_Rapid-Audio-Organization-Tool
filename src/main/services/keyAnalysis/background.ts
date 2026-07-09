@@ -20,6 +20,7 @@ import {
 } from '../beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from '../keyAnalysisAlgorithmVersion'
 import { hasCurrentSongStructureAnalysis } from '../../../shared/songStructure'
+import { normalizeSongBeatGridMap } from '../../../shared/songBeatGridMap'
 import type { KeyAnalysisPersistence } from './persistence'
 import {
   BACKGROUND_BATCH_SIZE,
@@ -58,6 +59,7 @@ type CachedAnalysisInfo = {
   beatGridAlgorithmVersion?: unknown
   beatGridSource?: unknown
   beatGridStatus?: unknown
+  beatGridMap?: unknown
   songStructure?: unknown
 }
 
@@ -117,7 +119,10 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       shouldAcceptBeatGridCacheVersion(info))
 
   const hasRequiredSongStructureAnalysis = (info: CachedAnalysisInfo | null | undefined) =>
-    hasCurrentNoBpmBeatGridResult(info) || hasCurrentSongStructureAnalysis(info)
+    hasCurrentNoBpmBeatGridResult(info) ||
+    hasCurrentBeatGridAnalysis(info) ||
+    normalizeSongBeatGridMap(info?.beatGridMap) !== null ||
+    hasCurrentSongStructureAnalysis(info)
 
   const getBackgroundStatus = (): KeyAnalysisBackgroundStatus => {
     const pending = deps.getPendingBackgroundCount()

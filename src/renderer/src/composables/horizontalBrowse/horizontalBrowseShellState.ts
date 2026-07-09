@@ -64,6 +64,10 @@ export const buildHorizontalBrowseDeckToolbarState = (
     metronomeEnabled: boolean
     metronomeVolumeLevel: 1 | 2 | 3
     canToggleMetronome: boolean
+    gridControlsDisabled?: boolean
+    showSplitAfterPlayhead?: boolean
+    showDeleteBoundary?: boolean
+    gridAdjustScope?: 'whole' | 'after'
   },
   bpmInputValue: string,
   loopState?: {
@@ -89,6 +93,12 @@ export const buildHorizontalBrowseDeckToolbarState = (
   metronomeEnabled: toolbarState.metronomeEnabled,
   metronomeVolumeLevel: toolbarState.metronomeVolumeLevel,
   canToggleMetronome: toolbarState.canToggleMetronome,
+  gridControlsDisabled: toolbarState.gridControlsDisabled === true,
+  showSplitAfterPlayhead: toolbarState.showSplitAfterPlayhead === true,
+  showDeleteBoundary: toolbarState.showDeleteBoundary === true,
+  gridAdjustScope: (toolbarState.gridAdjustScope === 'after' ? 'after' : 'whole') as
+    | 'whole'
+    | 'after',
   loopBeatLabel: loopState?.loopBeatLabel || '8',
   loopActive: loopState?.loopActive === true,
   loopDisabled: loopState?.loopDisabled === true

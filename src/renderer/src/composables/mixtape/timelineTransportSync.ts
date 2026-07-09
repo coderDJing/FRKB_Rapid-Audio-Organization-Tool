@@ -4,6 +4,10 @@ import {
   resolveSyncPlaybackRateWithDiagnostics
 } from '@renderer/composables/mixtape/beatSyncModel'
 import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
+import {
+  resolveTransportDynamicTempoSegmentAtLocalSec,
+  type TransportDynamicTempoSegment
+} from '@renderer/composables/mixtape/timelineTransportDynamicTempoSegments'
 import type { TransportPlayableSource } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 import type { SerializedTrackTempoSnapshot } from '@renderer/composables/mixtape/types'
 
@@ -23,6 +27,7 @@ type TransportSyncEntry = {
   masterTempo: boolean
   syncAnchorSec: number
   tempoRatio: number
+  dynamicTempoSegments?: TransportDynamicTempoSegment[]
 }
 
 export type TransportSyncNode = {
@@ -32,6 +37,8 @@ export type TransportSyncNode = {
   runtimeSyncAnchorSec?: number
   phaseAnchorLocked?: boolean
   phaseAnchorMasterTrackId?: string
+  phaseAnchorMasterSegmentKey?: string
+  phaseAnchorSegmentKey?: string
   estimatedSourceSec?: number
   lastTimelineSec?: number
 }
@@ -113,7 +120,7 @@ const resolveNodeSourceDurationSec = (node: TransportSyncNode) => {
   return 0
 }
 
-const resolveEntryBpmAtTimelineSec = (
+const resolveEntryLocalSecAtTimelineSec = (
   entry: TransportSyncEntry,
   timelineSec: number,
   latencySec = 0
@@ -123,9 +130,27 @@ const resolveEntryBpmAtTimelineSec = (
     0,
     Math.max(0, Number(entry.duration) || 0)
   )
-  const localTimelineSec =
-    Math.max(0, Number(entry.localStartSec) || 0) + Math.max(0, Number(sectionOffsetSec) || 0)
-  return resolveEntryTimeMap(entry).sampleBpmAtLocal(localTimelineSec)
+  return Math.max(0, Number(entry.localStartSec) || 0) + Math.max(0, sectionOffsetSec)
+}
+
+const resolveEntryDynamicSegmentAtTimelineSec = (
+  entry: TransportSyncEntry,
+  timelineSec: number,
+  latencySec = 0
+) =>
+  resolveTransportDynamicTempoSegmentAtLocalSec(
+    entry.dynamicTempoSegments,
+    resolveEntryLocalSecAtTimelineSec(entry, timelineSec, latencySec)
+  )
+
+const resolveEntryBpmAtTimelineSec = (
+  entry: TransportSyncEntry,
+  timelineSec: number,
+  latencySec = 0
+) => {
+  return resolveEntryTimeMap(entry).sampleBpmAtLocal(
+    resolveEntryLocalSecAtTimelineSec(entry, timelineSec, latencySec)
+  )
 }
 
 const resolveEntryBasePlaybackRateAtTimelineSec = (
@@ -134,7 +159,8 @@ const resolveEntryBasePlaybackRateAtTimelineSec = (
   latencySec = 0
 ) => {
   const targetBpm = resolveEntryBpmAtTimelineSec(entry, timelineSec, latencySec)
-  const originalBpm = Number(entry.originalBpm)
+  const dynamicSegment = resolveEntryDynamicSegmentAtTimelineSec(entry, timelineSec, latencySec)
+  const originalBpm = Number(dynamicSegment?.sourceBpm ?? entry.originalBpm)
   if (!Number.isFinite(targetBpm) || targetBpm <= 0) {
     return clampNumber(Number(entry.tempoRatio) || 1, 0.25, 4)
   }
@@ -143,6 +169,22 @@ const resolveEntryBasePlaybackRateAtTimelineSec = (
   }
   return resolveTempoRatioByBpm(targetBpm, originalBpm)
 }
+
+const resolveEntrySyncAnchorSecAtTimelineSec = (
+  entry: TransportSyncEntry,
+  timelineSec: number,
+  latencySec = 0
+) => {
+  const dynamicSegment = resolveEntryDynamicSegmentAtTimelineSec(entry, timelineSec, latencySec)
+  const syncAnchorSec = Number(dynamicSegment?.syncAnchorSec ?? entry.syncAnchorSec)
+  return Number.isFinite(syncAnchorSec) ? syncAnchorSec : 0
+}
+
+const resolveEntryTempoSegmentKeyAtTimelineSec = (
+  entry: TransportSyncEntry,
+  timelineSec: number,
+  latencySec = 0
+) => resolveEntryDynamicSegmentAtTimelineSec(entry, timelineSec, latencySec)?.key ?? 'fixed'
 
 const resolveInitialEstimatedSourceSec = (
   node: TransportSyncNode,
@@ -325,7 +367,14 @@ export const applyTimelineTransportSync = (
   const sharedMasterBpm = Number(params.sharedMasterBpm)
   const hasSharedMasterBpm = Number.isFinite(sharedMasterBpm) && sharedMasterBpm > 0
   const masterBpm = hasSharedMasterBpm ? sharedMasterBpm : masterTargetBpm
-  const masterAnchorSec = Number(masterEntry.syncAnchorSec) + masterLatencySec
+  const masterTempoSegmentKey = resolveEntryTempoSegmentKeyAtTimelineSec(
+    masterEntry,
+    timelineSec,
+    masterLatencySec
+  )
+  const masterAnchorSec =
+    resolveEntrySyncAnchorSecAtTimelineSec(masterEntry, timelineSec, masterLatencySec) +
+    masterLatencySec
   const diagnostics: TransportSyncDiagnostic[] = []
   const orderedActiveNodes = [
     masterNode,
@@ -336,8 +385,13 @@ export const applyTimelineTransportSync = (
     const entry = node.entry
     const isMasterNode = node.trackId === masterNode.trackId
     const latencySec = resolveNodeLatencySec(node)
-    const originSyncAnchorSec = Number(entry.syncAnchorSec)
+    const originSyncAnchorSec = resolveEntrySyncAnchorSecAtTimelineSec(
+      entry,
+      timelineSec,
+      latencySec
+    )
     const safeOriginSyncAnchorSec = Number.isFinite(originSyncAnchorSec) ? originSyncAnchorSec : 0
+    const tempoSegmentKey = resolveEntryTempoSegmentKeyAtTimelineSec(entry, timelineSec, latencySec)
     const baseRate = clampNumber(
       resolveEntryBasePlaybackRateAtTimelineSec(entry, timelineSec, latencySec),
       0.25,
@@ -352,9 +406,18 @@ export const applyTimelineTransportSync = (
       runtimeSyncAnchorSec = safeOriginSyncAnchorSec
       node.phaseAnchorLocked = true
       node.phaseAnchorMasterTrackId = masterNode.trackId
-    } else if (node.phaseAnchorMasterTrackId !== masterNode.trackId) {
+      node.phaseAnchorMasterSegmentKey = masterTempoSegmentKey
+      node.phaseAnchorSegmentKey = tempoSegmentKey
+    } else if (
+      node.phaseAnchorMasterTrackId !== masterNode.trackId ||
+      node.phaseAnchorMasterSegmentKey !== masterTempoSegmentKey ||
+      node.phaseAnchorSegmentKey !== tempoSegmentKey
+    ) {
       node.phaseAnchorLocked = false
       node.phaseAnchorMasterTrackId = masterNode.trackId
+      node.phaseAnchorMasterSegmentKey = masterTempoSegmentKey
+      node.phaseAnchorSegmentKey = tempoSegmentKey
+      runtimeSyncAnchorSec = safeOriginSyncAnchorSec
     }
     node.runtimeSyncAnchorSec = runtimeSyncAnchorSec
     const audibleOriginSyncAnchorSec = safeOriginSyncAnchorSec + latencySec
@@ -391,6 +454,8 @@ export const applyTimelineTransportSync = (
         node.runtimeSyncAnchorSec = runtimeSyncAnchorSec
         audibleRuntimeSyncAnchorSec = runtimeSyncAnchorSec + latencySec
         node.phaseAnchorLocked = true
+        node.phaseAnchorMasterSegmentKey = masterTempoSegmentKey
+        node.phaseAnchorSegmentKey = tempoSegmentKey
         postSyncDiagnostics = resolveSyncPlaybackRateWithDiagnostics({
           basePlaybackRate: baseRate,
           targetBpm: currentTargetBpm,

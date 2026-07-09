@@ -1,5 +1,25 @@
 import { computed, ref, type Ref } from 'vue'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
+import type { DynamicBeatGridBarLinePickCandidate } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDynamicBeatGridEdit'
+
+type DynamicBeatGridEditController = {
+  isDynamic: Readonly<Ref<boolean>>
+  gridControlsDisabled: Readonly<Ref<boolean>>
+  selectTargetByPointer: (event: PointerEvent) => boolean
+  resolveBarLinePickCandidateByClientX: (
+    clientX: number,
+    hitRadiusPx: number
+  ) => DynamicBeatGridBarLinePickCandidate | null
+  applyBarLinePickCandidate: (candidate: DynamicBeatGridBarLinePickCandidate | null) => boolean
+  setActiveGridBarBeatOffset: (barBeatOffset: number) => boolean
+  setActiveGridBarLineAtSec: (sec: number) => boolean
+  shiftActiveGrid: (deltaMs: number) => boolean
+}
+
+type BarLinePickCandidate = {
+  lineX: number
+  hit: boolean
+}
 
 type UseMixtapeBeatAlignGridAdjustParams = {
   previewWrapRef: Ref<HTMLDivElement | null>
@@ -21,6 +41,7 @@ type UseMixtapeBeatAlignGridAdjustParams = {
   applyPlaybackPhaseCompensation?: (deltaMs: number) => void
   barBeatInterval: number
   barLineHitRadiusPx: number
+  dynamicGridEdit?: DynamicBeatGridEditController
 }
 
 type GridShiftOptions = {
@@ -53,6 +74,9 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
     return !!params.previewMixxxData.value
   })
 
+  const canAdjustClipGrid = () =>
+    canAdjustGrid.value && params.dynamicGridEdit?.gridControlsDisabled.value !== true
+
   const previewBarLineHoverVisible = computed(
     () => previewBarLinePicking.value && previewBarLineHoverHit.value
   )
@@ -71,6 +95,12 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
   }
 
   const resolveBarLinePickCandidateByClientX = (clientX: number) => {
+    if (params.dynamicGridEdit?.isDynamic.value === true) {
+      return params.dynamicGridEdit.resolveBarLinePickCandidateByClientX(
+        clientX,
+        params.barLineHitRadiusPx
+      )
+    }
     const wrap = params.previewWrapRef.value
     if (!wrap) return null
     const bpmValue = Number(params.bpm.value)
@@ -105,7 +135,7 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
 
   const updatePreviewBarLineHover = (clientX: number) => {
     if (!previewBarLinePicking.value) return
-    const candidate = resolveBarLinePickCandidateByClientX(clientX)
+    const candidate: BarLinePickCandidate | null = resolveBarLinePickCandidateByClientX(clientX)
     if (!candidate || !candidate.hit) {
       clearPreviewBarLineHover()
       return
@@ -115,6 +145,21 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
   }
 
   const applyBarLineDefinitionByClientX = (clientX: number) => {
+    if (params.dynamicGridEdit?.isDynamic.value === true) {
+      const candidate = params.dynamicGridEdit.resolveBarLinePickCandidateByClientX(
+        clientX,
+        params.barLineHitRadiusPx
+      )
+      if (!candidate || !candidate.hit) {
+        clearPreviewBarLineHover()
+        return false
+      }
+      if (!canAdjustClipGrid()) return false
+      const applied = params.dynamicGridEdit.applyBarLinePickCandidate(candidate)
+      if (!applied) return false
+      resetBarLinePicking()
+      return true
+    }
     const candidate = resolveBarLinePickCandidateByClientX(clientX)
     if (!candidate || !candidate.hit) {
       clearPreviewBarLineHover()
@@ -130,7 +175,7 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
   }
 
   const handleBarLinePickingToggle = () => {
-    if (!canAdjustGrid.value) return
+    if (!canAdjustClipGrid()) return
     previewBarLinePicking.value = !previewBarLinePicking.value
     clearPreviewBarLineHover()
   }
@@ -145,8 +190,15 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
     clearPreviewBarLineHover()
   }
 
-  const handlePreviewMouseDownForBarLinePicking = (event: MouseEvent) => {
-    if (!previewBarLinePicking.value) return false
+  const handlePreviewMouseDownForBarLinePicking = (event: PointerEvent) => {
+    if (!previewBarLinePicking.value) {
+      if (params.dynamicGridEdit?.selectTargetByPointer(event) === true) {
+        event.preventDefault()
+        event.stopPropagation()
+        return true
+      }
+      return false
+    }
     event.preventDefault()
     event.stopPropagation()
     if (!applyBarLineDefinitionByClientX(event.clientX)) {
@@ -156,7 +208,7 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
   }
 
   const handleSetBarLineAtPlayhead = () => {
-    if (!canAdjustGrid.value) return
+    if (!canAdjustClipGrid()) return
     const bpmValue = Number(params.bpm.value)
     if (!Number.isFinite(bpmValue) || bpmValue <= 0) return
     const beatMs = (60 / bpmValue) * 1000
@@ -168,6 +220,10 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
     const anchorSec = Number.isFinite(candidateSec)
       ? candidateSec
       : params.resolvePreviewAnchorSec()
+    if (params.dynamicGridEdit?.isDynamic.value === true) {
+      params.dynamicGridEdit.setActiveGridBarLineAtSec(anchorSec)
+      return
+    }
     const interval = Math.max(1, Math.floor(params.barBeatInterval || 32))
     const cycleMs = beatMs * interval
     const barBeatOffset = normalizeBeatOffset(params.previewBarBeatOffset.value, interval)
@@ -178,7 +234,11 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
   }
 
   const handleGridShift = (delta: number, options: GridShiftOptions = {}) => {
-    if (!canAdjustGrid.value) return
+    if (!canAdjustClipGrid()) return
+    if (params.dynamicGridEdit?.isDynamic.value === true) {
+      params.dynamicGridEdit.shiftActiveGrid(delta)
+      return
+    }
     const bpmValue = Number(params.bpm.value)
     if (!Number.isFinite(bpmValue) || bpmValue <= 0) return
     const beatMs = (60 / bpmValue) * 1000

@@ -19,6 +19,11 @@ import {
   buildTransportPlaybackSequence,
   type TransportPlaybackSequence
 } from '@renderer/composables/mixtape/timelineTransportPlaybackSequence'
+import {
+  buildTransportDynamicTempoSegments,
+  resolveTransportDynamicTempoSegmentAtLocalSec,
+  type TransportDynamicTempoSegment
+} from '@renderer/composables/mixtape/timelineTransportDynamicTempoSegments'
 import { normalizeVolumeMuteSegments } from '@renderer/composables/mixtape/volumeMuteSegments'
 import type {
   MixtapeEnvelopeParamId,
@@ -109,6 +114,7 @@ export type TransportEntry = {
   mixEnvelopeSources: Partial<Record<MixtapeEnvelopeParamId, MixtapeGainPoint[] | undefined>>
   volumeMuteSegments: MixtapeMuteSegment[]
   volumeMuteSegmentsSource?: MixtapeMuteSegment[]
+  dynamicTempoSegments?: TransportDynamicTempoSegment[]
   playbackSequence?: TransportPlaybackSequence
   audioRef?: TransportAudioRef
   stemAudioById?: Partial<Record<TransportStemId, TransportStemAudioRef>>
@@ -402,6 +408,25 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
         loopSegment: Array.isArray(loopValue) ? undefined : loopValue,
         mapBaseLocalToSource: (localSec: number) => baseTimeMap.mapLocalToSource(localSec)
       })
+      const dynamicTempoSegments = buildTransportDynamicTempoSegments({
+        sourceBeatGridMap: track.beatGridMap,
+        sourceDurationSec: sourceDuration,
+        trackStartSec,
+        playbackSequence,
+        mapSourceToBaseLocal: (sourceSec: number) => baseTimeMap.mapSourceToLocal(sourceSec)
+      })
+      const resolveSegmentTempoRatio = (localSec: number) => {
+        const segment = resolveTransportDynamicTempoSegmentAtLocalSec(
+          dynamicTempoSegments,
+          localSec
+        )
+        if (!segment) return tempoRatio
+        const targetBpm = runtimeTempoSnapshot.timeMap.sampleBpmAtLocal(localSec)
+        if (!Number.isFinite(targetBpm) || targetBpm <= 0) return tempoRatio
+        const sourceBpm = Number(segment.sourceBpm)
+        if (!Number.isFinite(sourceBpm) || sourceBpm <= 0) return tempoRatio
+        return targetBpm / sourceBpm
+      }
       const sectionList = splitLoopSections
         ? buildMixtapeTrackLoopSections(tempoSnapshot.baseDurationSec, loopValue)
         : [
@@ -474,11 +499,12 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           trackDuration,
           localStartSec,
           baseLocalStartSec: splitLoopSections ? Number(section.baseStartSec.toFixed(4)) : 0,
-          tempoRatio: Math.max(0.25, Math.min(4, tempoRatio)),
+          tempoRatio: Math.max(0.25, Math.min(4, resolveSegmentTempoRatio(localStartSec))),
           mixEnvelopes,
           mixEnvelopeSources,
           volumeMuteSegments,
           volumeMuteSegmentsSource,
+          dynamicTempoSegments: dynamicTempoSegments.length ? dynamicTempoSegments : undefined,
           playbackSequence: splitLoopSections ? undefined : playbackSequence,
           audioRef,
           stemAudioById

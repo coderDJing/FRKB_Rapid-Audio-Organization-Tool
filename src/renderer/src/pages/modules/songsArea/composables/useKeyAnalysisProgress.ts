@@ -1,7 +1,6 @@
 import { computed, ref, type Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
 import { hasCurrentSongEnergyAnalysis } from '@shared/songEnergy'
-import { hasCurrentSongStructureAnalysis } from '@shared/songStructure'
 
 type AnalysisStage =
   | 'job-received'
@@ -247,8 +246,7 @@ export const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => 
     Number.isFinite(bpm) &&
     bpm > 0 &&
     Number.isFinite(firstBeatMs) &&
-    Number.isFinite(barBeatOffset) &&
-    hasCurrentSongStructureAnalysis(song)
+    Number.isFinite(barBeatOffset)
   )
 }
 

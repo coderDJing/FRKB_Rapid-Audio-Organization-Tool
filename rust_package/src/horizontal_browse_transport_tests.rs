@@ -331,6 +331,7 @@ fn external_same_file_state_does_not_rewind_playing_deck() {
       bpm: Some(128.0),
       first_beat_ms: Some(0.0),
       bar_beat_offset: Some(0.0),
+      beat_grid_clips: None,
       time_basis_offset_ms: Some(0.0),
       duration_sec: 20.0,
       current_sec: 1.0,

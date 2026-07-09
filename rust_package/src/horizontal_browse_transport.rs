@@ -13,8 +13,12 @@ mod horizontal_browse_transport_auto_gain;
 mod horizontal_browse_transport_decode;
 #[path = "horizontal_browse_transport_engine_state.rs"]
 mod horizontal_browse_transport_engine_state;
+#[path = "horizontal_browse_transport_dynamic_grid.rs"]
+mod horizontal_browse_transport_dynamic_grid;
 #[path = "horizontal_browse_transport_grid_sync.rs"]
 mod horizontal_browse_transport_grid_sync;
+#[path = "horizontal_browse_transport_loop.rs"]
+mod horizontal_browse_transport_loop;
 #[path = "horizontal_browse_transport_mix.rs"]
 mod horizontal_browse_transport_mix;
 #[path = "horizontal_browse_transport_napi.rs"]
@@ -40,13 +44,14 @@ use horizontal_browse_transport_runtime::{
 };
 use horizontal_browse_transport_types::{
   parse_deck_id, BeatGridSnapshot, DeckDerivedState, DeckId, DecodeRequest,
+  DynamicBeatGridClipSnapshot,
 };
 pub use horizontal_browse_transport_types::{
   HorizontalBrowseTransportBandState, HorizontalBrowseTransportBeatGridInput,
-  HorizontalBrowseTransportDeckInput, HorizontalBrowseTransportDeckSnapshot,
-  HorizontalBrowseTransportDecodeDiagnostic, HorizontalBrowseTransportOutputSnapshot,
-  HorizontalBrowseTransportSnapshot, HorizontalBrowseTransportStateInput,
-  HorizontalBrowseTransportVisualizerSnapshot,
+  HorizontalBrowseTransportBeatGridClipInput, HorizontalBrowseTransportDeckInput,
+  HorizontalBrowseTransportDeckSnapshot, HorizontalBrowseTransportDecodeDiagnostic,
+  HorizontalBrowseTransportOutputSnapshot, HorizontalBrowseTransportSnapshot,
+  HorizontalBrowseTransportStateInput, HorizontalBrowseTransportVisualizerSnapshot,
 };
 
 struct DeckState {
@@ -61,6 +66,7 @@ struct DeckState {
   bpm: Option<f64>,
   first_beat_ms: Option<f64>,
   bar_beat_offset: Option<f64>,
+  dynamic_beat_grid: Vec<DynamicBeatGridClipSnapshot>,
   time_basis_offset_ms: Option<f64>,
   duration_sec: f64,
   current_sec: f64,
@@ -142,6 +148,7 @@ const HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT: usize = 256;
 const HORIZONTAL_BROWSE_LOOP_END_EPSILON_SEC: f64 = 0.0005;
 const HORIZONTAL_BROWSE_LOOP_POSITION_EPSILON_SEC: f64 = 0.0001;
 const HORIZONTAL_BROWSE_LOOP_BEAT_INDEX_EPSILON: f64 = 1e-6;
+const HORIZONTAL_BROWSE_DYNAMIC_GRID_EPSILON_SEC: f64 = 0.000001;
 const HORIZONTAL_BROWSE_METRONOME_BEAT_EPSILON_SEC: f64 = 1e-7;
 const HORIZONTAL_BROWSE_METRONOME_TICK_FREQUENCY_HZ: f64 = 1560.0;
 const HORIZONTAL_BROWSE_METRONOME_TICK_END_FREQUENCY_HZ: f64 = 1320.0;
@@ -234,6 +241,7 @@ impl Default for DeckState {
       bpm: None,
       first_beat_ms: None,
       bar_beat_offset: None,
+      dynamic_beat_grid: Vec::new(),
       time_basis_offset_ms: None,
       duration_sec: 0.0,
       current_sec: 0.0,
@@ -730,7 +738,7 @@ impl HorizontalBrowseTransportEngine {
     was_playing: bool,
   ) -> f32 {
     let output_sample_rate = self.output_sample_rate.max(1) as f64;
-    let grid = self.beat_grid(deck);
+    let grid = self.beat_grid_at_sec(deck, before_sec);
     let target = self.deck_mut(deck);
     if let Some(grid) = grid {
       Self::maybe_trigger_metronome(

@@ -5,12 +5,20 @@ export type HorizontalBrowseDeckKey = 'top' | 'bottom'
 type HorizontalBrowseAudioBandKey = 'high' | 'mid' | 'low'
 export type HorizontalBrowseTransportBandState = Record<HorizontalBrowseAudioBandKey, boolean>
 
+export type HorizontalBrowseTransportBeatGridClipInput = {
+  startSec: number
+  anchorSec: number
+  bpm: number
+  barBeatOffset: number
+}
+
 export type HorizontalBrowseTransportDeckInput = {
   filePath?: string
   title?: string
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  beatGridClips?: HorizontalBrowseTransportBeatGridClipInput[]
   timeBasisOffsetMs?: number
   durationSec: number
   currentSec: number
@@ -25,6 +33,7 @@ export type HorizontalBrowseTransportBeatGridInput = {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  beatGridClips?: HorizontalBrowseTransportBeatGridClipInput[]
   timeBasisOffsetMs?: number
 }
 

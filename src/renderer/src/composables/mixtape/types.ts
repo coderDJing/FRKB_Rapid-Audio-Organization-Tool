@@ -1,5 +1,6 @@
 import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
+import type { SongBeatGridMap } from '@shared/songBeatGridMap'
 
 export type StemWaveformBand = {
   left: Uint8Array
@@ -100,6 +101,8 @@ export type MixtapeTrack = {
   barBeatOffset?: number
   // 仅用于把 FRKB 播放/波形时间基准对齐到外部分析源（如 Rekordbox）
   timeBasisOffsetMs?: number
+  // 动态多 clip 网格事实源；固定 BPM 曲目保持为空
+  beatGridMap?: SongBeatGridMap
   // Stem 素材状态（pending/running/ready/failed）
   stemStatus?: MixtapeStemStatus
   stemError?: string
@@ -128,6 +131,7 @@ export type MixtapeBpmPoint = {
   bpm: number
   sourceSec?: number
   allowOffGrid?: boolean
+  source?: 'auto' | 'manual'
 }
 
 export type MixtapeProjectBpmEnvelopeSnapshot = {
@@ -147,6 +151,7 @@ export type SerializedTrackTempoSnapshot = {
   firstBeatSourceSec: number
   beatSourceSec: number
   barBeatOffset: number
+  sourceBeatGridMap?: SongBeatGridMap
   mappingMode?: 'tempoEnvelope' | 'masterGrid'
   trackStartSec?: number
   masterGridFallbackBpm?: number

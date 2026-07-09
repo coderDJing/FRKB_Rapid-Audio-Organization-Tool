@@ -72,7 +72,8 @@ export const useHorizontalBrowseDeckQuantize = (params: UseHorizontalBrowseDeckQ
       currentSec: anchorSec,
       durationSec,
       bpm: gridBpm,
-      firstBeatMs: song?.firstBeatMs
+      firstBeatMs: song?.firstBeatMs,
+      beatGridMap: song?.beatGridMap
     })
   }
 

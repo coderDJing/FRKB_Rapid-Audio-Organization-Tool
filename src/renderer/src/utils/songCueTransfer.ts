@@ -8,6 +8,7 @@ const ANALYSIS_FIELD_KEYS = [
   'barBeatOffset',
   'beatGridSource',
   'beatGridStatus',
+  'beatGridMap',
   'energyScore',
   'energyAlgorithmVersion',
   'songStructure',

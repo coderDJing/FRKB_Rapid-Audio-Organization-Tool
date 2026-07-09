@@ -74,6 +74,7 @@ import { createHorizontalBrowseWaveformPresentationShellBridge } from '@renderer
 import type { HorizontalBrowseDetailZoomChangePayload } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailTypes'
 import { createHorizontalBrowseModeShellDetailTransactions } from '@renderer/composables/horizontalBrowse/horizontalBrowseModeShellDetailTransactions'
 import {
+  resolveHorizontalBrowseLightThemeActive,
   resolveHorizontalBrowseDeckToolbarBpmInputValue,
   resolveHorizontalBrowseDeckWaveformPlaybackActive
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseModeShellPresentationResolvers'
@@ -116,16 +117,9 @@ const editDetailZoomState = ref<SharedDetailZoomState>(
 )
 const horizontalBrowseViewMode = computed<HorizontalBrowseViewMode>(() => props.viewMode)
 const isEditMode = computed(() => horizontalBrowseViewMode.value === 'edit')
-const isLightTheme = computed(() => {
-  const mode = runtime.setting?.themeMode || 'system'
-  if (mode === 'light') return true
-  if (mode === 'dark') return false
-  if (typeof document === 'undefined') return false
-  return (
-    document.documentElement.classList.contains('theme-light') ||
-    document.body.classList.contains('theme-light')
-  )
-})
+const isLightTheme = computed(() =>
+  resolveHorizontalBrowseLightThemeActive(runtime.setting?.themeMode || 'system')
+)
 watch(
   isEditMode,
   (editMode) => {
@@ -584,7 +578,10 @@ const {
   handleDeckMetronomeStateCycle,
   handleDeckBpmTap,
   handleDeckBpmInputUpdate,
-  handleDeckBpmInputBlur
+  handleDeckBpmInputBlur,
+  handleDeckSelectWholeAdjustment,
+  handleDeckSplitAfterPlayhead,
+  handleDeckDeleteBoundary
 } = useHorizontalBrowseDeckToolbarInteractions({
   topDeckToolbarState,
   bottomDeckToolbarState,
@@ -912,6 +909,9 @@ onUnmounted(() => {
         @blur-bpm-input="handleDeckBpmInputBlur('top')"
         @tap-bpm="handleDeckBpmTap('top')"
         @memory-cue="void handleDeckMemoryCueCreate('top')"
+        @select-whole-adjustment="handleDeckSelectWholeAdjustment('top')"
+        @split-after-playhead="handleDeckSplitAfterPlayhead('top')"
+        @delete-boundary="handleDeckDeleteBoundary('top')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
         @cycle-metronome-state="handleDeckMetronomeStateCycle('top')"
         @loop-step-down="handleDeckLoopStepDown('top')"
@@ -954,6 +954,7 @@ onUnmounted(() => {
           :waveform-layout="isEditMode ? 'full' : 'auto'"
           waveform-render-style="raw-curve"
           allow-negative-timeline
+          :grid-edit-mode="isEditMode"
           direction="up"
           :deck-hovered="isDeckHovered('top')"
           :region-id="4"
@@ -995,6 +996,7 @@ onUnmounted(() => {
           waveform-layout="auto"
           waveform-render-style="raw-curve"
           allow-negative-timeline
+          :grid-edit-mode="false"
           direction="down"
           :deck-hovered="isDeckHovered('bottom')"
           :region-id="5"
@@ -1050,6 +1052,9 @@ onUnmounted(() => {
         @blur-bpm-input="handleDeckBpmInputBlur('bottom')"
         @tap-bpm="handleDeckBpmTap('bottom')"
         @memory-cue="void handleDeckMemoryCueCreate('bottom')"
+        @select-whole-adjustment="handleDeckSelectWholeAdjustment('bottom')"
+        @split-after-playhead="handleDeckSplitAfterPlayhead('bottom')"
+        @delete-boundary="handleDeckDeleteBoundary('bottom')"
         @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
         @cycle-metronome-state="handleDeckMetronomeStateCycle('bottom')"
         @loop-step-down="handleDeckLoopStepDown('bottom')"

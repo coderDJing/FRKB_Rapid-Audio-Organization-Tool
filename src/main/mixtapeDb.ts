@@ -10,6 +10,11 @@ import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
 import { areSongHotCuesEqual, normalizeSongHotCues } from '../shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '../shared/memoryCues'
 import { hasCurrentSongStructureAnalysis } from '../shared/songStructure'
+import {
+  normalizeSongBeatGridMap,
+  projectSongBeatGridMapToFixedGrid
+} from '../shared/songBeatGridMap'
+import type { SongBeatGridMap } from '../shared/songBeatGridMap'
 import type { ISongHotCue, ISongMemoryCue } from '../types/globals'
 import type { SqliteDatabase } from './libraryDb'
 
@@ -624,6 +629,7 @@ export function upsertMixtapeItemGridByFilePath(
     firstBeatMs?: number
     bpm?: number
     timeBasisOffsetMs?: number
+    beatGridMap?: SongBeatGridMap | null
     beatGridAlgorithmVersion?: number
   }>
 ): { updated: number } {
@@ -667,25 +673,35 @@ export function upsertMixtapeItemGridByFilePath(
       firstBeatMs?: number
       bpm?: number
       timeBasisOffsetMs?: number
+      beatGridMap?: SongBeatGridMap | null
       beatGridAlgorithmVersion?: number
     }
   >()
   for (const item of entries) {
     const filePath = typeof item?.filePath === 'string' ? item.filePath.trim() : ''
     if (!filePath) continue
-    const normalizedOffset = normalizeBarBeatOffset(item?.barBeatOffset ?? 0)
-    const hasFirstBeatMs = Number.isFinite(Number(item?.firstBeatMs))
-    const normalizedBpm = normalizeBpm(Number(item?.bpm))
+    const beatGridProjection = projectSongBeatGridMapToFixedGrid(item?.beatGridMap)
+    const normalizedOffset = normalizeBarBeatOffset(
+      item?.barBeatOffset ?? beatGridProjection?.barBeatOffset ?? 0
+    )
+    const hasFirstBeatMs =
+      Number.isFinite(Number(item?.firstBeatMs)) || beatGridProjection?.firstBeatMs !== undefined
+    const normalizedBpm = normalizeBpm(Number(item?.bpm ?? beatGridProjection?.bpm))
     const hasBpm = normalizedBpm > 0
     const normalizedTimeBasisOffsetMs = normalizeTimeBasisOffsetMs(Number(item?.timeBasisOffsetMs))
+    const hasBeatGridMapInput = Object.prototype.hasOwnProperty.call(item, 'beatGridMap')
+    const normalizedBeatGridMap = normalizeSongBeatGridMap(item?.beatGridMap)
     const normalizedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
       Number(item?.beatGridAlgorithmVersion)
     )
     offsetMap.set(filePath, {
       barBeatOffset: normalizedOffset,
-      firstBeatMs: hasFirstBeatMs ? normalizeFirstBeatMs(Number(item?.firstBeatMs)) : undefined,
+      firstBeatMs: hasFirstBeatMs
+        ? normalizeFirstBeatMs(Number(item?.firstBeatMs ?? beatGridProjection?.firstBeatMs))
+        : undefined,
       bpm: hasBpm ? normalizedBpm : undefined,
       timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
+      beatGridMap: normalizedBeatGridMap ?? (hasBeatGridMapInput ? null : undefined),
       beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion
     })
   }
@@ -721,6 +737,7 @@ export function upsertMixtapeItemGridByFilePath(
           const currentBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
             Number(info.beatGridAlgorithmVersion)
           )
+          const currentBeatGridMap = normalizeSongBeatGridMap(info.beatGridMap)
           const hasNextFirstBeatMs = Number.isFinite(Number(nextGrid.firstBeatMs))
           const nextFirstBeatMs = hasNextFirstBeatMs
             ? normalizeFirstBeatMs(Number(nextGrid.firstBeatMs))
@@ -733,6 +750,8 @@ export function upsertMixtapeItemGridByFilePath(
           const hasNextBeatGridAlgorithmVersion =
             typeof nextGrid.beatGridAlgorithmVersion === 'number' &&
             Number.isFinite(nextGrid.beatGridAlgorithmVersion)
+          const hasNextBeatGridMap = Object.prototype.hasOwnProperty.call(nextGrid, 'beatGridMap')
+          const nextBeatGridMap = normalizeSongBeatGridMap(nextGrid.beatGridMap)
           const offsetChanged = currentOffset !== nextOffset
           const firstBeatChanged =
             hasNextFirstBeatMs && Math.abs(currentFirstBeatMs - nextFirstBeatMs) > 0.0001
@@ -744,12 +763,18 @@ export function upsertMixtapeItemGridByFilePath(
             hasNextBeatGridAlgorithmVersion &&
             currentBeatGridAlgorithmVersion !==
               normalizeBeatGridAlgorithmVersion(nextGrid.beatGridAlgorithmVersion!)
+          const beatGridMapChanged =
+            hasNextBeatGridMap &&
+            (nextBeatGridMap
+              ? currentBeatGridMap?.signature !== nextBeatGridMap.signature
+              : currentBeatGridMap !== null)
           if (
             !offsetChanged &&
             !firstBeatChanged &&
             !bpmChanged &&
             !timeBasisChanged &&
-            !beatGridAlgorithmVersionChanged
+            !beatGridAlgorithmVersionChanged &&
+            !beatGridMapChanged
           ) {
             continue
           }
@@ -760,6 +785,14 @@ export function upsertMixtapeItemGridByFilePath(
           if (hasNextBpm) {
             info.bpm = nextBpm
             delete info.beatGridStatus
+          }
+          if (hasNextBeatGridMap) {
+            if (nextBeatGridMap) {
+              info.beatGridMap = nextBeatGridMap
+              info.beatGridSource = 'manual'
+            } else {
+              delete info.beatGridMap
+            }
           }
           if (hasNextTimeBasisOffsetMs) {
             info.timeBasisOffsetMs = normalizeTimeBasisOffsetMs(nextGrid.timeBasisOffsetMs!)

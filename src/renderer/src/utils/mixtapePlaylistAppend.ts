@@ -9,6 +9,7 @@ import type {
   ISongInfo,
   ISongMemoryCue
 } from '../../../types/globals'
+import type { SongBeatGridMap } from '../../../shared/songBeatGridMap'
 
 type MixtapeAppendInfo = {
   filePath: string
@@ -33,6 +34,7 @@ type MixtapeAppendInfo = {
   timeBasisOffsetMs: number | undefined
   beatGridSource: 'manual' | 'analysis' | undefined
   beatGridStatus: 'no-bpm' | undefined
+  beatGridMap: SongBeatGridMap | undefined
   beatGridAlgorithmVersion: number | undefined
   energyScore: number | undefined
   energyAlgorithmVersion: number | undefined
@@ -106,6 +108,7 @@ const buildSongSnapshot = (
     timeBasisOffsetMs: song?.timeBasisOffsetMs,
     beatGridSource: song?.beatGridSource,
     beatGridStatus: song?.beatGridStatus,
+    beatGridMap: song?.beatGridMap,
     beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
     energyScore: song?.energyScore,
     energyAlgorithmVersion: song?.energyAlgorithmVersion,

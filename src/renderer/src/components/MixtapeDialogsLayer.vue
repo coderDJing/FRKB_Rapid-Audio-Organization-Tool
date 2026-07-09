@@ -20,6 +20,7 @@ type BeatAlignGridPayload = {
   barBeatOffset: number
   firstBeatMs: number
   bpm: number
+  beatGridMap?: MixtapeTrack['beatGridMap'] | null
 }
 
 type OutputDialogPayload = {
@@ -310,6 +311,7 @@ const autoGainColumnMenuVisibleModel = computed({
     :first-beat-ms="Number(beatAlignTrack.firstBeatMs) || 0"
     :time-basis-offset-ms="Number(beatAlignTrack.timeBasisOffsetMs) || 0"
     :bar-beat-offset="Number(beatAlignTrack.barBeatOffset) || 0"
+    :beat-grid-map="beatAlignTrack.beatGridMap ?? null"
     :window-volume="beatAlignWindowVolume"
     @save-grid-definition="handleBeatAlignGridDefinitionSave"
     @cancel="handleBeatAlignDialogCancel"

@@ -8,6 +8,19 @@ import type {
 import { KEY_ANALYSIS_WORKER_MAX, normalizePath } from './keyAnalysis/types'
 import * as LibraryCacheDb from '../libraryCacheDb'
 
+type EnqueueKeyAnalysisOptions = {
+  urgent?: boolean
+  source?: 'foreground' | 'background'
+  fastAnalysis?: boolean
+  focusSlot?: string
+  preemptible?: boolean
+  category?: KeyAnalysisQueueCategory
+  waveformOnly?: boolean
+  includeStructure?: boolean
+  manualBatchId?: string
+  manualBatchIds?: string[]
+}
+
 // 全局并发策略：所有分析任务共享同一个全局队列和并发额度。
 // 并发上限属于全局队列，不属于任何单个任务或 batch。
 // 即使存在多个手动批量任务，也必须共享同一份额度，不能按任务线性放大。
@@ -152,17 +165,7 @@ const getQueue = () => {
 export function enqueueKeyAnalysis(
   filePath: string,
   priority: KeyAnalysisPriority = 'low',
-  options: {
-    urgent?: boolean
-    source?: 'foreground' | 'background'
-    fastAnalysis?: boolean
-    focusSlot?: string
-    preemptible?: boolean
-    category?: KeyAnalysisQueueCategory
-    waveformOnly?: boolean
-    manualBatchId?: string
-    manualBatchIds?: string[]
-  } = {}
+  options: EnqueueKeyAnalysisOptions = {}
 ) {
   getQueue().enqueue(filePath, priority, options)
 }
@@ -170,17 +173,7 @@ export function enqueueKeyAnalysis(
 export function enqueueKeyAnalysisList(
   filePaths: string[],
   priority: KeyAnalysisPriority = 'low',
-  options: {
-    urgent?: boolean
-    source?: 'foreground' | 'background'
-    fastAnalysis?: boolean
-    focusSlot?: string
-    preemptible?: boolean
-    category?: KeyAnalysisQueueCategory
-    waveformOnly?: boolean
-    manualBatchId?: string
-    manualBatchIds?: string[]
-  } = {}
+  options: EnqueueKeyAnalysisOptions = {}
 ) {
   getQueue().enqueueList(filePaths, priority, options)
 }
@@ -332,7 +325,8 @@ export function enqueueManualKeyAnalysisBatch(
     source: 'foreground',
     preemptible: true,
     category: 'manual-batch',
-    manualBatchId: batchId
+    manualBatchId: batchId,
+    includeStructure: true
   })
   reevaluateConcurrency()
   scheduleCooldownReevaluation()

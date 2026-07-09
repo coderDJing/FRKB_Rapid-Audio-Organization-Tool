@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, toRef, watch, type PropType } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import { t } from '@renderer/utils/translate'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
@@ -23,6 +23,7 @@ import {
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRawWaveformCanvas'
 import { useHorizontalBrowseCompactVisualWaveformStrip } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseCompactVisualWaveformStrip'
 import { createHorizontalBrowseStableInteractionHandoff } from '@renderer/composables/horizontalBrowse/horizontalBrowseStableInteractionHandoff'
+import { useHorizontalBrowseDynamicBeatGridEdit } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDynamicBeatGridEdit'
 import {
   HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX,
   HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX,
@@ -50,6 +51,7 @@ import {
   parsePreviewBpmInput
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import { projectSongBeatGridMapToFixedGrid, type SongBeatGridMap } from '@shared/songBeatGridMap'
 
 const props = defineProps({
   trackTitle: {
@@ -80,6 +82,10 @@ const props = defineProps({
     type: Number,
     default: 0
   },
+  beatGridMap: {
+    type: Object as PropType<SongBeatGridMap | null>,
+    default: null
+  },
   windowVolume: {
     type: Number,
     default: 0.8
@@ -90,7 +96,12 @@ const emit = defineEmits<{
   (event: 'cancel'): void
   (
     event: 'save-grid-definition',
-    payload: { barBeatOffset: number; firstBeatMs: number; bpm: number }
+    payload: {
+      barBeatOffset: number
+      firstBeatMs: number
+      bpm: number
+      beatGridMap?: SongBeatGridMap | null
+    }
   ): void
 }>()
 
@@ -110,6 +121,7 @@ const overviewCurrentSec = ref(0)
 const previewBarBeatOffset = ref(0)
 const previewFirstBeatMs = ref(0)
 const previewTimeBasisOffsetMs = ref(0)
+const previewBeatGridMap = ref<SongBeatGridMap | null>(null)
 const previewBpm = ref(128)
 const previewBpmInput = ref('128.00')
 const bpmTapTimestamps = ref<number[]>([])
@@ -118,6 +130,7 @@ let previewLoadSequence = 0
 let previewWarmupTimer: ReturnType<typeof setTimeout> | null = null
 let bpmTapResetTimer: ReturnType<typeof setTimeout> | null = null
 let overviewClockRaf = 0
+let applyDynamicPreviewBpm = (_bpm: number) => false
 
 const bpmDisplay = computed(() => {
   const bpmValue = Number(previewBpm.value)
@@ -158,6 +171,7 @@ const handlePreviewBpmInputUpdate = (value: string) => {
     previewBpmInput.value = formatPreviewBpm(previewBpm.value)
     return
   }
+  if (applyDynamicPreviewBpm(parsed)) return
   previewBpm.value = parsed
   previewBpmInput.value = formatPreviewBpm(parsed)
   resetPreviewBpmTap()
@@ -211,6 +225,7 @@ const handlePreviewBpmTap = () => {
   const avgMs = deltas.reduce((sum, delta) => sum + delta, 0) / deltas.length
   if (!Number.isFinite(avgMs) || avgMs <= 0) return
   const tappedBpm = 60000 / avgMs
+  if (applyDynamicPreviewBpm(tappedBpm)) return
   previewBpm.value = normalizePreviewBpm(tappedBpm)
   previewBpmInput.value = formatPreviewBpm(previewBpm.value)
 }
@@ -223,12 +238,17 @@ const closeDialog = () => {
 const cancel = () => closeDialog()
 
 const save = () => {
+  const dynamicProjection = projectSongBeatGridMapToFixedGrid(previewBeatGridMap.value)
+  const hasSourceBeatGridMap = props.beatGridMap !== null && props.beatGridMap !== undefined
   emit('save-grid-definition', {
-    barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL),
-    firstBeatMs: Number.isFinite(Number(previewFirstBeatMs.value))
-      ? Number(previewFirstBeatMs.value)
-      : 0,
-    bpm: normalizePreviewBpm(previewBpm.value)
+    barBeatOffset:
+      dynamicProjection?.barBeatOffset ??
+      normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL),
+    firstBeatMs:
+      dynamicProjection?.firstBeatMs ??
+      (Number.isFinite(Number(previewFirstBeatMs.value)) ? Number(previewFirstBeatMs.value) : 0),
+    bpm: dynamicProjection?.bpm ?? normalizePreviewBpm(previewBpm.value),
+    beatGridMap: previewBeatGridMap.value ?? (hasSourceBeatGridMap ? null : undefined)
   })
   closeDialog()
 }
@@ -266,7 +286,17 @@ const beatAlignSong = computed<ISongInfo | null>(() => {
     bpm: Number(previewBpm.value) || 0,
     firstBeatMs: Number(previewFirstBeatMs.value) || 0,
     barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL),
-    timeBasisOffsetMs: Number(previewTimeBasisOffsetMs.value) || 0
+    timeBasisOffsetMs: Number(previewTimeBasisOffsetMs.value) || 0,
+    ...(previewBeatGridMap.value ? { beatGridMap: previewBeatGridMap.value } : {})
+  }
+})
+
+const sourceBeatAlignSong = computed<ISongInfo | null>(() => {
+  const song = beatAlignSong.value
+  if (!song) return null
+  return {
+    ...song,
+    ...(props.beatGridMap ? { beatGridMap: props.beatGridMap } : {})
   }
 })
 
@@ -329,7 +359,8 @@ const {
   allowNegativeTimeline: () => false,
   waveformLayout: () => 'full',
   waveformRenderStyle: () => 'raw-curve',
-  stableWaveformSource: () => compactVisualWaveformActive.value
+  stableWaveformSource: () => compactVisualWaveformActive.value,
+  beatGridMap: () => previewBeatGridMap.value
 })
 
 const {
@@ -488,6 +519,7 @@ const { metronomeEnabled, metronomeVolumeLevel, metronomeSupported, cycleMetrono
     previewPlaying,
     bpm: computed(() => Number(previewBpm.value) || 0),
     firstBeatMs: computed(() => Number(previewFirstBeatMs.value) || 0),
+    beatGridMap: () => previewBeatGridMap.value,
     outputVolume: toRef(props, 'windowVolume'),
     resolveAnchorSec: () => getPreviewPlaybackSec()
   })
@@ -518,6 +550,52 @@ const handlePreviewStopToStart = () => {
 
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
 
+const dynamicGridEdit = useHorizontalBrowseDynamicBeatGridEdit({
+  enabled: () => !previewLoading.value && !!previewMixxxData.value,
+  song: () => sourceBeatAlignSong.value,
+  previewBeatGridMap,
+  previewBpm,
+  previewBpmInput,
+  previewFirstBeatMs,
+  previewBarBeatOffset,
+  previewStartSec,
+  previewWrapRef,
+  resolveCurrentSec: () => getPreviewPlaybackSec(),
+  resolvePreviewAnchorSec,
+  resolvePreviewDurationSec,
+  resolveVisibleDurationSec,
+  clampPreviewStart,
+  schedulePreviewDraw,
+  schedulePersistGridDefinition: () => {}
+})
+
+applyDynamicPreviewBpm = (bpm: number) => {
+  if (!dynamicGridEdit.isDynamic.value) return false
+  return dynamicGridEdit.setActiveGridBpm(bpm)
+}
+
+watch(
+  () => resolvePreviewDurationSec(),
+  () => dynamicGridEdit.syncFromSong(),
+  { flush: 'post' }
+)
+
+const handleCreateDynamicBoundaryAfterPlayhead = () => {
+  dynamicGridEdit.createBoundaryAfterPlayhead()
+}
+
+const handleSelectWholeDynamicAdjustment = () => {
+  dynamicGridEdit.selectWholeAdjustment()
+}
+
+const handleDeleteDynamicBoundary = () => {
+  dynamicGridEdit.deleteSelectedBoundary()
+}
+
+const dynamicGridControlsDisabled = computed(() => dynamicGridEdit.gridControlsDisabled.value)
+const dynamicBoundarySelected = computed(() => dynamicGridEdit.isBoundarySelected.value)
+const dynamicGridAdjustScope = computed(() => dynamicGridEdit.adjustmentScope.value)
+
 const {
   canAdjustGrid,
   previewBarLinePicking,
@@ -547,7 +625,8 @@ const {
   getPreviewPlaybackSec,
   schedulePreviewDraw,
   barBeatInterval: PREVIEW_BAR_BEAT_INTERVAL,
-  barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX
+  barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX,
+  dynamicGridEdit
 })
 
 const clearPreviewWarmupTimer = () => {
@@ -926,15 +1005,22 @@ onBeforeUnmount(() => {
         </div>
         <MixtapeBeatAlignGridAdjustToolbar
           :disabled="!canAdjustGrid"
+          :grid-controls-disabled="dynamicGridControlsDisabled"
           :bpm-input-value="previewBpmInput"
           :bpm-step="PREVIEW_BPM_STEP"
           :bpm-min="PREVIEW_BPM_MIN"
           :bpm-max="PREVIEW_BPM_MAX"
+          :show-split-after-playhead="true"
+          :show-delete-boundary="dynamicBoundarySelected"
+          :grid-adjust-scope="dynamicGridAdjustScope"
           @set-bar-line="handleSetBarLineAtPlayhead"
           @shift-left-large="handlePreviewGridShiftLargeLeft"
           @shift-left-small="handlePreviewGridShiftSmallLeft"
           @shift-right-small="handlePreviewGridShiftSmallRight"
           @shift-right-large="handlePreviewGridShiftLargeRight"
+          @select-whole-adjustment="handleSelectWholeDynamicAdjustment"
+          @split-after-playhead="handleCreateDynamicBoundaryAfterPlayhead"
+          @delete-boundary="handleDeleteDynamicBoundary"
           @update-bpm-input="handlePreviewBpmInputUpdate"
           @blur-bpm-input="handlePreviewBpmInputBlur"
           @tap-bpm="handlePreviewBpmTap"

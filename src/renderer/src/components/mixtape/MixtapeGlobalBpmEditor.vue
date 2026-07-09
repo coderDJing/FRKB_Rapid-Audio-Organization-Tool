@@ -86,6 +86,7 @@ type PointDot = {
   labelAlign: 'center' | 'left' | 'right'
   isBoundary: boolean
   isActive: boolean
+  isAuto: boolean
   edge: 'start' | 'end' | null
 }
 
@@ -159,7 +160,7 @@ const plotHeightPx = computed(() => Math.max(1, Math.max(0, Number(props.heightP
 const resolvePlotYPx = (yPercent: number) =>
   Number(((clampNumber(Number(yPercent) || 0, 0, 100) / 100) * plotHeightPx.value).toFixed(3))
 
-const effectivePoints = computed(() =>
+const effectivePoints = computed<MixtapeBpmPoint[]>(() =>
   normalizeMixtapeGlobalBpmEnvelopePoints(
     mixtapeGlobalTempoEnvelope.value,
     timelineDurationSec.value,
@@ -224,6 +225,7 @@ const pointDots = computed<PointDot[]>(() => {
       labelAlign: xRatio <= 0.08 ? 'left' : xRatio >= 0.92 ? 'right' : 'center',
       isBoundary,
       isActive,
+      isAuto: point.source === 'auto',
       edge: !isBoundary ? null : index === 0 ? 'start' : 'end'
     }
   })
@@ -729,8 +731,9 @@ const handleStageMouseDown = (event: MouseEvent) => {
     ) ?? defaultBpm.value
 
   const undoPoints = clonePoints(effectivePoints.value)
+  const manualPoint: MixtapeBpmPoint = { ...point, source: 'manual' }
   const nextPoints = normalizeMixtapeGlobalBpmEnvelopePoints(
-    [...effectivePoints.value, point],
+    [...effectivePoints.value, manualPoint],
     timelineDurationSec.value,
     defaultBpm.value
   )
@@ -782,6 +785,7 @@ const handleWindowMouseMove = (event: MouseEvent) => {
       normalizeTrackBpmValue(
         clampNumber(basePoint.bpm + deltaBpm, visualRange.value.minBpm, visualRange.value.maxBpm)
       ) ?? basePoint.bpm
+    targetPoint.source = 'manual'
   }
 
   if (currentDragState.pointGridBeats.size > 0) {
@@ -970,7 +974,11 @@ watch(
           <button
             class="timeline-master-bpm__point"
             :class="[
-              { 'is-boundary': point.isBoundary, 'is-active': point.isActive },
+              {
+                'is-boundary': point.isBoundary,
+                'is-active': point.isActive,
+                'is-auto': point.isAuto
+              },
               point.edge ? `is-edge-${point.edge}` : ''
             ]"
             type="button"

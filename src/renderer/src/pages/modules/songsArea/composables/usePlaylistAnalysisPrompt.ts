@@ -3,8 +3,7 @@ import confirm from '@renderer/components/confirmDialog'
 import { t } from '@renderer/utils/translate'
 import {
   collectMissingAnalysisFilesFromSongs,
-  queueManualKeyAnalysisBatch,
-  resolveMissingAnalysisReasons
+  queueManualKeyAnalysisBatch
 } from '@renderer/utils/manualKeyAnalysis'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
@@ -42,16 +41,6 @@ type OpenSongListAnalysisPromptOptions = {
 }
 
 const normalizeFilePathKey = (filePath: string) => filePath.replace(/\//g, '\\').toLowerCase()
-
-const toLogValue = (value: unknown) => (value === undefined ? null : value)
-
-const safeJsonStringify = (payload: unknown) => {
-  try {
-    return JSON.stringify(payload)
-  } catch {
-    return String(payload)
-  }
-}
 
 export function usePlaylistAnalysisPrompt({
   runtime,
@@ -120,75 +109,6 @@ export function usePlaylistAnalysisPrompt({
   const isDismissedSongList = (songListUUID: string) =>
     runtime.playlistAnalysisPromptDismissedSongListUUIDs.includes(songListUUID)
 
-  const shouldLogAnalysisPromptDiagnostic = (
-    missingCount: number,
-    options?: OpenSongListAnalysisPromptOptions
-  ) =>
-    songsAreaState.songInfoArr.length === 1 ||
-    missingCount === 1 ||
-    options?.forceAnalysisPrompt === true
-
-  const logAnalysisPromptDiagnostic = (
-    event: string,
-    songListUUID: string,
-    missingFiles: readonly string[],
-    options?: OpenSongListAnalysisPromptOptions,
-    extra: Record<string, unknown> = {}
-  ) => {
-    if (!shouldLogAnalysisPromptDiagnostic(missingFiles.length, options)) return
-    const requiresRuntimeAnalysis = runtime.analysisRuntime.available === true
-    const missingPathSet = new Set(
-      missingFiles.map((filePath) => normalizeFilePathKey(filePath)).filter(Boolean)
-    )
-    const songsToLog = songsAreaState.songInfoArr
-      .map((song, index) => ({ song, index }))
-      .filter(
-        ({ song }) =>
-          songsAreaState.songInfoArr.length === 1 ||
-          missingPathSet.has(normalizeFilePathKey(String(song.filePath || '')))
-      )
-    const payload = {
-      event,
-      songListUUID,
-      source: options?.source || '',
-      forceAnalysisPrompt: options?.forceAnalysisPrompt === true,
-      dismissedBefore: isDismissedSongList(songListUUID),
-      runtimeAvailable: runtime.analysisRuntime.available === true,
-      requiresRuntimeAnalysis,
-      libraryAreaSelected: runtime.libraryAreaSelected,
-      isMixtapeListView: isMixtapeListView.value,
-      totalSongs: songsAreaState.songInfoArr.length,
-      missingCount: missingFiles.length,
-      missingFiles,
-      songs: songsToLog.map(({ song, index }) => ({
-        index,
-        filePath: song.filePath,
-        fileName: song.fileName,
-        title: song.title,
-        artist: song.artist,
-        fileMissing: song.fileMissing === true,
-        isMissing: missingPathSet.has(normalizeFilePathKey(String(song.filePath || ''))),
-        missingReasons: resolveMissingAnalysisReasons(song, requiresRuntimeAnalysis),
-        key: toLogValue(song.key),
-        bpm: toLogValue(song.bpm),
-        firstBeatMs: toLogValue(song.firstBeatMs),
-        barBeatOffset: toLogValue(song.barBeatOffset),
-        beatGridStatus: toLogValue(song.beatGridStatus),
-        beatGridAlgorithmVersion: toLogValue(song.beatGridAlgorithmVersion),
-        energyScore: toLogValue(song.energyScore),
-        energyAlgorithmVersion: toLogValue(song.energyAlgorithmVersion),
-        songStructure: toLogValue(song.songStructure)
-      })),
-      ...extra
-    }
-    window.electron.ipcRenderer.send('outputLog', {
-      level: 'debug',
-      source: 'songs-area',
-      scope: 'playlist-analysis-prompt',
-      message: safeJsonStringify(payload)
-    })
-  }
-
   const markDismissedSongList = (songListUUID: string) => {
     if (isDismissedSongList(songListUUID)) return
     runtime.playlistAnalysisPromptDismissedSongListUUIDs = [
@@ -235,42 +155,22 @@ export function usePlaylistAnalysisPrompt({
     if (shouldSkipAnalysisPrompt(songListUUID)) return
 
     const missingFilesForEvaluation = missingAnalysisFiles.value
-    logAnalysisPromptDiagnostic('evaluate', songListUUID, missingFilesForEvaluation, options)
     if (!missingFilesForEvaluation.length) {
       clearDismissedSongList(songListUUID)
-      logAnalysisPromptDiagnostic('clear-dismissed-no-missing', songListUUID, [], options)
       return
     }
     const promptMissingResult = await filterManualBatchPendingFiles(missingFilesForEvaluation)
     const missingFilesToPrompt = promptMissingResult.files
     const missingCount = missingFilesToPrompt.length
     if (!missingCount) {
-      logAnalysisPromptDiagnostic(
-        'skip-active-manual-batch',
-        songListUUID,
-        missingFilesForEvaluation,
-        options,
-        {
-          activeManualBatchFiles: promptMissingResult.pendingFiles
-        }
-      )
       return
     }
     if (options?.forceAnalysisPrompt) {
       clearDismissedSongList(songListUUID)
     } else if (isDismissedSongList(songListUUID)) {
-      logAnalysisPromptDiagnostic(
-        'skip-dismissed',
-        songListUUID,
-        missingFilesForEvaluation,
-        options
-      )
       return
     }
 
-    logAnalysisPromptDiagnostic('prompt-open', songListUUID, missingFilesToPrompt, options, {
-      activeManualBatchFiles: promptMissingResult.pendingFiles
-    })
     const choice = await confirm({
       title: t('tracks.analyzePlaylistPromptTitle'),
       content: [
@@ -282,38 +182,16 @@ export function usePlaylistAnalysisPrompt({
     })
 
     if (songsAreaState.songListUUID !== songListUUID) {
-      logAnalysisPromptDiagnostic(
-        'prompt-stale-after-choice',
-        songListUUID,
-        missingFilesForEvaluation,
-        options,
-        {
-          choice,
-          currentSongListUUID: songsAreaState.songListUUID
-        }
-      )
       return
     }
     if (choice !== 'confirm') {
       const stillMissingFiles = missingAnalysisFiles.value
-      logAnalysisPromptDiagnostic('prompt-cancel', songListUUID, stillMissingFiles, options, {
-        choice
-      })
       if (stillMissingFiles.length) markDismissedSongList(songListUUID)
       return
     }
 
     const missingFiles = missingAnalysisFiles.value
     const confirmMissingResult = await filterManualBatchPendingFiles(missingFiles)
-    logAnalysisPromptDiagnostic(
-      'prompt-confirm',
-      songListUUID,
-      confirmMissingResult.files,
-      options,
-      {
-        activeManualBatchFiles: confirmMissingResult.pendingFiles
-      }
-    )
     if (!confirmMissingResult.files.length) return
 
     clearDismissedSongList(songListUUID)

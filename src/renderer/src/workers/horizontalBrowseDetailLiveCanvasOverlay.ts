@@ -4,6 +4,7 @@ import {
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailOverlayCanvas'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import type { HorizontalBrowseDetailLiveCanvasRenderRequest } from './horizontalBrowseDetailLiveCanvas.types'
+import { createSongBeatGridRuntime, type SongBeatGridRuntime } from '@shared/songBeatGridMap'
 
 type CanvasMetrics = {
   cssWidth: number
@@ -28,6 +29,10 @@ type OverlayFrameState = {
   bpm: number
   firstBeatMs: number
   barBeatOffset: number
+  beatGridMapSignature: string
+  beatGridEditMode: boolean
+  beatGridVisibleFromSec: number | null
+  beatGridSelectedBoundarySec: number | null
   showBeatGrid: boolean
   playbackDurationSec: number
   themeVariant: 'light' | 'dark'
@@ -58,6 +63,10 @@ const BAR_GRID_LINE_WIDTH = 2.05
 const MAJOR_GRID_LINE_WIDTH = 1.85
 const MINOR_GRID_LINE_WIDTH = 1.45
 const GRID_LINE_VERTICAL_OVERSCAN = 2
+const CLIP_BOUNDARY_LINE_WIDTH = 1
+const CLIP_BOUNDARY_SELECTED_LINE_WIDTH = 1
+const CLIP_BOUNDARY_SELECTED_CAP_WIDTH = 7
+const CLIP_BOUNDARY_SELECTED_CAP_HEIGHT = 1
 
 type GridLineStyle = {
   core: string
@@ -88,6 +97,16 @@ const resolveGridPalette = (themeVariant: 'light' | 'dark') =>
           core: 'rgba(8, 13, 23, 0.58)',
           halo: 'rgba(255, 255, 255, 0.38)',
           haloExtraWidth: 0.85
+        },
+        clipBoundary: {
+          core: 'rgba(217, 137, 33, 0.95)',
+          halo: 'rgba(217, 137, 33, 0.95)',
+          haloExtraWidth: 0
+        },
+        selectedClipBoundary: {
+          core: 'rgba(255, 177, 59, 1)',
+          halo: 'rgba(255, 177, 59, 1)',
+          haloExtraWidth: 0
         }
       }
     : {
@@ -105,38 +124,72 @@ const resolveGridPalette = (themeVariant: 'light' | 'dark') =>
           core: 'rgba(255, 255, 255, 0.68)',
           halo: 'rgba(0, 0, 0, 0.32)',
           haloExtraWidth: 0.85
+        },
+        clipBoundary: {
+          core: 'rgba(255, 184, 77, 0.96)',
+          halo: 'rgba(255, 184, 77, 0.96)',
+          haloExtraWidth: 0
+        },
+        selectedClipBoundary: {
+          core: 'rgba(255, 214, 92, 1)',
+          halo: 'rgba(255, 214, 92, 1)',
+          haloExtraWidth: 0
         }
       }
+
+const resolveFirstVisibleDynamicLineIndex = (
+  lines: SongBeatGridRuntime['lines'],
+  startSec: number
+) => {
+  let left = 0
+  let right = lines.length - 1
+  let answer = lines.length
+  while (left <= right) {
+    const middle = (left + right) >> 1
+    if (lines[middle].sec >= startSec) {
+      answer = middle
+      right = middle - 1
+    } else {
+      left = middle + 1
+    }
+  }
+  return answer
+}
 
 const drawBeatGridOverlay = (
   ctx: OffscreenCanvasRenderingContext2D,
   width: number,
   waveformTop: number,
   waveformHeight: number,
+  overlayHeight: number,
   bpm: number,
   firstBeatMs: number,
   barBeatOffset: number,
+  dynamicRuntime: SongBeatGridRuntime | null,
   playbackDurationSec: number,
   rangeStartSec: number,
   rangeDurationSec: number,
-  themeVariant: 'light' | 'dark'
+  themeVariant: 'light' | 'dark',
+  beatGridEditMode: boolean,
+  beatGridVisibleFromSec: number | null,
+  beatGridSelectedBoundarySec: number | null
 ): void => {
-  if (!Number.isFinite(bpm) || bpm <= 0 || rangeDurationSec <= 0) return
-  const beatSec = 60 / bpm
-  if (!Number.isFinite(beatSec) || beatSec <= 0) return
+  if (rangeDurationSec <= 0) return
 
   const palette = resolveGridPalette(themeVariant)
-  const firstBeatSec = (Number(firstBeatMs) || 0) / 1000
-  const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, BAR_BEAT_INTERVAL)
   const rangeEndSec = rangeStartSec + rangeDurationSec
   const durationSec = Math.max(0, Number(playbackDurationSec) || 0)
   const drawStartSec = Math.max(0, rangeStartSec)
   const drawEndSec = durationSec > 0 ? Math.min(durationSec, rangeEndSec) : rangeEndSec
   if (drawEndSec <= drawStartSec) return
+  const editVisibleFromSec =
+    beatGridEditMode && Number.isFinite(Number(beatGridVisibleFromSec))
+      ? Math.max(0, Number(beatGridVisibleFromSec))
+      : null
+  const lineDrawStartSec =
+    editVisibleFromSec === null ? drawStartSec : Math.max(drawStartSec, editVisibleFromSec)
   const drawLeft = ((drawStartSec - rangeStartSec) / rangeDurationSec) * width
   const drawRight = ((drawEndSec - rangeStartSec) / rangeDurationSec) * width
-  const startIndex = Math.floor((drawStartSec - firstBeatSec) / beatSec) - 2
-  const endIndex = Math.ceil((drawEndSec - firstBeatSec) / beatSec) + 2
   const resolveLineLeft = (x: number, safeWidth: number) => x - safeWidth * 0.5
   const resolveLineCenter = (x: number, safeWidth: number) =>
     resolveLineLeft(x, safeWidth) + safeWidth * 0.5
@@ -163,10 +216,71 @@ const drawBeatGridOverlay = (
     drawVerticalLineLayer(x, lineWidth, style.core)
   }
 
+  const drawClipBoundary = (x: number, style: GridLineStyle, selected: boolean) => {
+    const safeWidth = Math.max(
+      1,
+      selected ? CLIP_BOUNDARY_SELECTED_LINE_WIDTH : CLIP_BOUNDARY_LINE_WIDTH
+    )
+    const halfWidth = safeWidth * 0.5
+    const drawCenterX = resolveLineCenter(x, safeWidth)
+    if (drawCenterX < drawLeft - halfWidth || drawCenterX > drawRight + halfWidth) return
+    const rawLeft = resolveLineLeft(x, safeWidth)
+    const left = Math.max(0, drawLeft, rawLeft)
+    const right = Math.min(width, drawRight, rawLeft + safeWidth)
+    if (right <= left) return
+    ctx.fillStyle = style.core
+    ctx.fillRect(left, 0, right - left, Math.max(1, overlayHeight))
+    if (!selected) return
+    const capWidth = Math.min(CLIP_BOUNDARY_SELECTED_CAP_WIDTH, Math.max(1, drawRight - drawLeft))
+    const capHeight = Math.min(CLIP_BOUNDARY_SELECTED_CAP_HEIGHT, Math.max(1, overlayHeight))
+    const capLeft = Math.max(
+      0,
+      drawLeft,
+      Math.min(drawCenterX - capWidth * 0.5, drawRight - capWidth)
+    )
+    ctx.fillRect(capLeft, 0, capWidth, capHeight)
+    ctx.fillRect(capLeft, Math.max(0, overlayHeight - capHeight), capWidth, capHeight)
+  }
+
+  if (dynamicRuntime) {
+    const lines = dynamicRuntime.lines
+    const firstLineIndex = resolveFirstVisibleDynamicLineIndex(lines, lineDrawStartSec - 0.001)
+    for (let index = firstLineIndex; index < lines.length; index += 1) {
+      const line = lines[index]
+      const beatTime = line.sec
+      if (beatTime > drawEndSec + 0.001) break
+      const x = ((beatTime - rangeStartSec) / rangeDurationSec) * width
+      if (line.level === 'bar') {
+        drawVerticalLine(x, BAR_GRID_LINE_WIDTH, palette.barLine)
+      } else if (line.level === 'beat4') {
+        drawVerticalLine(x, MAJOR_GRID_LINE_WIDTH, palette.majorGrid)
+      } else {
+        drawVerticalLine(x, MINOR_GRID_LINE_WIDTH, palette.minorGrid)
+      }
+    }
+    for (const boundarySec of dynamicRuntime.clipBoundaries) {
+      if (boundarySec < drawStartSec - 0.001 || boundarySec > drawEndSec + 0.001) continue
+      const x = ((boundarySec - rangeStartSec) / rangeDurationSec) * width
+      const selected =
+        beatGridSelectedBoundarySec !== null &&
+        Math.abs(boundarySec - beatGridSelectedBoundarySec) <= 0.001
+      drawClipBoundary(x, selected ? palette.selectedClipBoundary : palette.clipBoundary, selected)
+    }
+    return
+  }
+
+  if (!Number.isFinite(bpm) || bpm <= 0) return
+  const beatSec = 60 / bpm
+  if (!Number.isFinite(beatSec) || beatSec <= 0) return
+
+  const firstBeatSec = (Number(firstBeatMs) || 0) / 1000
+  const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, BAR_BEAT_INTERVAL)
+  const startIndex = Math.floor((lineDrawStartSec - firstBeatSec) / beatSec) - 2
+  const endIndex = Math.ceil((drawEndSec - firstBeatSec) / beatSec) + 2
   for (let i = startIndex; i <= endIndex; i += 1) {
     const beatTime = firstBeatSec + i * beatSec
     const x = ((beatTime - rangeStartSec) / rangeDurationSec) * width
-    if (beatTime < drawStartSec - 0.001) {
+    if (beatTime < lineDrawStartSec - 0.001) {
       continue
     }
     if (beatTime > drawEndSec + 0.001) {
@@ -190,6 +304,11 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
   let canvas: OffscreenCanvas | null = null
   let ctx: OffscreenCanvasRenderingContext2D | null = null
   let lastFrame: OverlayFrameState | null = null
+  let dynamicRuntimeCache: {
+    signature: string
+    durationSec: number
+    runtime: SongBeatGridRuntime | null
+  } | null = null
 
   const reset = () => {
     lastFrame = null
@@ -254,6 +373,14 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
     bpm: Number(request.bpm) || 0,
     firstBeatMs: Number(request.firstBeatMs) || 0,
     barBeatOffset: Number(request.barBeatOffset) || 0,
+    beatGridMapSignature: String(request.beatGridMap?.signature || ''),
+    beatGridEditMode: request.beatGridEditMode === true,
+    beatGridVisibleFromSec: Number.isFinite(Number(request.beatGridVisibleFromSec))
+      ? Number(request.beatGridVisibleFromSec)
+      : null,
+    beatGridSelectedBoundarySec: Number.isFinite(Number(request.beatGridSelectedBoundarySec))
+      ? Number(request.beatGridSelectedBoundarySec)
+      : null,
     showBeatGrid: request.showBeatGrid === true,
     playbackDurationSec: Math.max(0, Number(request.playbackDurationSec) || 0),
     themeVariant: request.themeVariant,
@@ -300,6 +427,10 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
       lastFrame.bpm === current.bpm &&
       lastFrame.firstBeatMs === current.firstBeatMs &&
       lastFrame.barBeatOffset === current.barBeatOffset &&
+      lastFrame.beatGridMapSignature === current.beatGridMapSignature &&
+      lastFrame.beatGridEditMode === current.beatGridEditMode &&
+      lastFrame.beatGridVisibleFromSec === current.beatGridVisibleFromSec &&
+      lastFrame.beatGridSelectedBoundarySec === current.beatGridSelectedBoundarySec &&
       lastFrame.showBeatGrid === current.showBeatGrid &&
       lastFrame.playbackDurationSec === current.playbackDurationSec &&
       lastFrame.themeVariant === current.themeVariant &&
@@ -344,6 +475,29 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
     })
   }
 
+  const resolveDynamicRuntime = (
+    beatGridMap: HorizontalBrowseDetailLiveCanvasRenderRequest['beatGridMap'],
+    durationSec: number
+  ) => {
+    const signature = String(beatGridMap?.signature || '')
+    const safeDurationSec = Math.max(0, Number(durationSec) || 0)
+    if (!signature || safeDurationSec <= 0) return null
+    if (
+      dynamicRuntimeCache &&
+      dynamicRuntimeCache.signature === signature &&
+      dynamicRuntimeCache.durationSec === safeDurationSec
+    ) {
+      return dynamicRuntimeCache.runtime
+    }
+    const runtime = createSongBeatGridRuntime(beatGridMap, safeDurationSec)
+    dynamicRuntimeCache = {
+      signature,
+      durationSec: safeDurationSec,
+      runtime
+    }
+    return runtime
+  }
+
   const render = (
     request: HorizontalBrowseDetailLiveCanvasRenderRequest,
     rangeStartSec: number,
@@ -365,18 +519,28 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
 
     ctx.clearRect(0, 0, metrics.cssWidth, metrics.cssHeight)
     if (request.showBeatGrid) {
+      const playbackDurationSec = Number(request.playbackDurationSec) || 0
       drawBeatGridOverlay(
         ctx,
         metrics.cssWidth,
         HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX,
         metrics.waveformCssHeight,
+        metrics.cssHeight,
         Number(request.bpm) || 0,
         Number(request.firstBeatMs) || 0,
         Number(request.barBeatOffset) || 0,
-        Number(request.playbackDurationSec) || 0,
+        resolveDynamicRuntime(request.beatGridMap, playbackDurationSec),
+        playbackDurationSec,
         rangeStartSec,
         rangeDurationSec,
-        request.themeVariant
+        request.themeVariant,
+        request.beatGridEditMode === true,
+        Number.isFinite(Number(request.beatGridVisibleFromSec))
+          ? Number(request.beatGridVisibleFromSec)
+          : null,
+        Number.isFinite(Number(request.beatGridSelectedBoundarySec))
+          ? Number(request.beatGridSelectedBoundarySec)
+          : null
       )
     }
     drawOverlayRange(

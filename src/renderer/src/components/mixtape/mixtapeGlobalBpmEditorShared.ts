@@ -23,7 +23,8 @@ const resolveLockedGridBeat = (beat: number) => {
 export const clonePoints = (points: MixtapeBpmPoint[]) =>
   points.map((point) => ({
     sec: Number(point.sec),
-    bpm: Number(point.bpm)
+    bpm: Number(point.bpm),
+    source: point.source === 'auto' || point.source === 'manual' ? point.source : undefined
   }))
 
 export const cloneTracks = (tracks: MixtapeTrack[]) => tracks.map((track) => ({ ...track }))

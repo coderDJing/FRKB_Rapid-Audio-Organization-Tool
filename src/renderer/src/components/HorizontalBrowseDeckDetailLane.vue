@@ -55,6 +55,7 @@ const props = defineProps<{
   waveformLayout?: 'auto' | 'full'
   waveformRenderStyle?: 'columns' | 'raw-curve'
   allowNegativeTimeline?: boolean
+  gridEditMode?: boolean
   deckHovered: boolean
   regionId: number
 }>()
@@ -88,6 +89,13 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
   updateBpmInput: (value: string) => detailRef.value?.updateBpmInput?.(value),
   blurBpmInput: () => detailRef.value?.blurBpmInput?.(),
   tapBpm: () => detailRef.value?.tapBpm?.(),
+  selectWholeAdjustment: () => detailRef.value?.selectWholeAdjustment?.(),
+  splitAfterPlayhead: () => detailRef.value?.splitAfterPlayhead?.(),
+  deleteBoundary: () => detailRef.value?.deleteBoundary?.(),
+  freezeDynamicGridSelectionForBpmInput: () =>
+    detailRef.value?.freezeDynamicGridSelectionForBpmInput?.(),
+  releaseDynamicGridSelectionForBpmInput: () =>
+    detailRef.value?.releaseDynamicGridSelectionForBpmInput?.(),
   cycleMetronomeState: () => detailRef.value?.cycleMetronomeState?.(),
   prepareStableFrameForAnchor: (seconds: number, options?: { timeoutMs?: number }) =>
     detailRef.value?.prepareStableFrameForAnchor?.(seconds, options) ?? Promise.resolve(false),
@@ -134,6 +142,7 @@ defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
       :waveform-layout="props.waveformLayout"
       :waveform-render-style="props.waveformRenderStyle"
       :allow-negative-timeline="props.allowNegativeTimeline"
+      :grid-edit-mode="props.gridEditMode"
       :direction="props.direction"
       @toolbar-state-change="emit('toolbar-state-change', $event)"
       @zoom-change="emit('zoom-change', $event)"

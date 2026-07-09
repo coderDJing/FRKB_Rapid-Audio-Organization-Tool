@@ -9,6 +9,7 @@ type HorizontalBrowseGridSignatureInput = {
   firstBeatMs?: unknown
   barBeatOffset?: unknown
   timeBasisOffsetMs?: unknown
+  beatGridMapSignature?: unknown
 }
 
 const normalizeGridSignatureBpm = (value: unknown) => {
@@ -33,5 +34,6 @@ export const buildHorizontalBrowseRawWaveformGridSignature = (
     normalizeGridSignatureBpm(input.bpm).toFixed(6),
     normalizeGridSignatureFirstBeatMs(input.firstBeatMs).toFixed(3),
     normalizeGridSignatureBarBeatOffset(input.barBeatOffset),
-    normalizeGridSignatureFirstBeatMs(input.timeBasisOffsetMs).toFixed(3)
+    normalizeGridSignatureFirstBeatMs(input.timeBasisOffsetMs).toFixed(3),
+    typeof input.beatGridMapSignature === 'string' ? input.beatGridMapSignature : ''
   ].join('|')

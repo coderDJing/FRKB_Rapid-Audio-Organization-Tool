@@ -12,6 +12,7 @@ import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { t } from '@renderer/utils/translate'
 import { normalizeSongStructureAnalysis } from '@shared/songStructure'
+import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
 
 interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -81,6 +82,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     const structure = normalizeSongStructureAnalysis(value)
     return structure ? JSON.stringify(structure) : ''
   }
+  const normalizeComparableBeatGridMap = (value: unknown) => {
+    const map = normalizeSongBeatGridMap(value)
+    return map ? map.signature : ''
+  }
   const getSongIdentityKey = (song: ISongInfo) =>
     normalizeComparableText(song.mixtapeItemId) ||
     normalizeComparableText(song.setItemId) ||
@@ -88,6 +93,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   const ignoredSongListRefreshDiffFields = new Set([
     'key',
     'bpm',
+    'beatGridMap',
     'beatGridStatus',
     'energyScore',
     'energyAlgorithmVersion',
@@ -259,6 +265,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         normalizeComparableText(right.container).toUpperCase() &&
       normalizeComparableText(left.key) === normalizeComparableText(right.key) &&
       normalizeComparableNumber(left.bpm) === normalizeComparableNumber(right.bpm) &&
+      normalizeComparableBeatGridMap(left.beatGridMap) ===
+        normalizeComparableBeatGridMap(right.beatGridMap) &&
       normalizeComparableText(left.beatGridStatus) ===
         normalizeComparableText(right.beatGridStatus) &&
       normalizeComparableNumber(left.energyScore) ===
@@ -332,6 +340,12 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
     if (normalizeComparableNumber(left.bpm) !== normalizeComparableNumber(right.bpm)) {
       fields.push('bpm')
+    }
+    if (
+      normalizeComparableBeatGridMap(left.beatGridMap) !==
+      normalizeComparableBeatGridMap(right.beatGridMap)
+    ) {
+      fields.push('beatGridMap')
     }
     if (
       normalizeComparableText(left.beatGridStatus) !== normalizeComparableText(right.beatGridStatus)

@@ -30,7 +30,8 @@ export const applyMixtapeGlobalTempoSnapshot = (params: {
   mixtapeGlobalTempoEnvelope.value = Array.isArray(params.snapshot?.bpmEnvelope)
     ? params.snapshot.bpmEnvelope.map((point) => ({
         sec: Number(point.sec),
-        bpm: Number(point.bpm)
+        bpm: Number(point.bpm),
+        source: point.source === 'auto' || point.source === 'manual' ? point.source : undefined
       }))
     : []
   mixtapeGlobalTempoDurationSec.value = Math.max(

@@ -13,6 +13,9 @@ export const emitSongGridUpdated = (payload: SharedSongGridDefinition | null | u
     barBeatOffset: payload?.barBeatOffset,
     timeBasisOffsetMs: payload?.timeBasisOffsetMs,
     beatGridSource: payload?.beatGridSource,
+    beatGridMap: Object.prototype.hasOwnProperty.call(payload, 'beatGridMap')
+      ? payload?.beatGridMap
+      : undefined,
     beatGridAlgorithmVersion: payload?.beatGridAlgorithmVersion
   } satisfies SharedSongGridDefinition)
 }

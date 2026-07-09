@@ -1,4 +1,5 @@
 import type { ISongInfo } from '../../types/globals'
+import type { SongBeatGridMap } from '../../shared/songBeatGridMap'
 
 type MixtapeAnalysisCopyField =
   | 'bpm'
@@ -8,6 +9,7 @@ type MixtapeAnalysisCopyField =
   | 'timeBasisOffsetMs'
   | 'beatGridAlgorithmVersion'
   | 'beatGridStatus'
+  | 'beatGridMap'
   | 'key'
   | 'originalKey'
   | 'stemStatus'
@@ -27,6 +29,7 @@ export type MixtapeAnalysisInfo = Record<string, unknown> & {
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number
   beatGridStatus?: ISongInfo['beatGridStatus']
+  beatGridMap?: SongBeatGridMap
   key?: string
   originalKey?: string
   stemStatus?: string
@@ -47,6 +50,7 @@ export const MIXTAPE_ANALYSIS_COPY_FIELDS: MixtapeAnalysisCopyField[] = [
   'timeBasisOffsetMs',
   'beatGridAlgorithmVersion',
   'beatGridStatus',
+  'beatGridMap',
   'key',
   'originalKey',
   'stemStatus',

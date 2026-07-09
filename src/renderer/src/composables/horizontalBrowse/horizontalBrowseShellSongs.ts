@@ -2,6 +2,7 @@ import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
 import { normalizeSongStructureAnalysis, type SongStructureAnalysis } from '@shared/songStructure'
+import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
 
 type SharedSongGridPayload = {
   filePath?: string
@@ -10,6 +11,7 @@ type SharedSongGridPayload = {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   beatGridSource?: ISongInfo['beatGridSource']
+  beatGridMap?: ISongInfo['beatGridMap'] | null
 } | null
 
 export const isSameHorizontalBrowseSongFilePath = (left: unknown, right: unknown) => {
@@ -107,6 +109,24 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
   ) {
     nextSong.beatGridSource = payload.beatGridSource
     touched = true
+  }
+  if (payload.beatGridMap !== undefined) {
+    const beatGridMap = normalizeSongBeatGridMap(payload.beatGridMap)
+    if (beatGridMap) {
+      if (
+        JSON.stringify(normalizeSongBeatGridMap(nextSong.beatGridMap)) !==
+        JSON.stringify(beatGridMap)
+      ) {
+        nextSong.beatGridMap = beatGridMap
+        nextSong.beatGridSource = 'manual'
+        touched = true
+        structureGridChanged = true
+      }
+    } else if (nextSong.beatGridMap !== undefined) {
+      delete nextSong.beatGridMap
+      touched = true
+      structureGridChanged = true
+    }
   }
   if (structureGridChanged && nextSong.songStructure !== undefined) {
     delete nextSong.songStructure

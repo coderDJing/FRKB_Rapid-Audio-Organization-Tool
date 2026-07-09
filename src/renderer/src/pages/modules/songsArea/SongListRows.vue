@@ -268,6 +268,7 @@ const scheduleAutoScroll = (event: DragEvent) => {
 
 const {
   getCellValue,
+  getCellTitle,
   isCuratedArtistHit,
   getCuratedArtistBadgeText,
   getCuratedArtistBadgeTitle,
@@ -817,7 +818,7 @@ onUnmounted(() => {
                     !hasCuratedArtistBadge(item.song, col.key)
                   "
                   :dom="cellRefMap[getCellKey(item.song, col.key)] || undefined"
-                  :title="String(getCellValue(item.song, col.key))"
+                  :title="getCellTitle(item.song, col.key)"
                   :only-when-overflow="onlyWhenOverflowComputed"
                 />
               </div>

@@ -1,5 +1,6 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type { ISongHotCue, ISongMemoryCue } from 'src/types/globals'
+import type { SongBeatGridMap } from '@shared/songBeatGridMap'
 
 type HorizontalBrowseDetailLiveCanvasRawSlot = 'live'
 type HorizontalBrowseDetailLiveCanvasDirection = 'up' | 'down'
@@ -22,6 +23,10 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   bpm: number
   firstBeatMs: number
   barBeatOffset: number
+  beatGridMap?: SongBeatGridMap | null
+  beatGridEditMode?: boolean
+  beatGridVisibleFromSec?: number | null
+  beatGridSelectedBoundarySec?: number | null
   timeBasisOffsetMs: number
   rangeStartSec: number
   rangeDurationSec: number

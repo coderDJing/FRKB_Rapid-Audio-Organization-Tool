@@ -3,9 +3,24 @@ import type { ISongInfo } from 'src/types/globals'
 import { normalizePreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailMath'
 import { publishHorizontalBrowseLinkedGridVisualPhaseSample } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedGridVisualPhase'
+import { resolveSongBeatGridBpmAtSec } from '@shared/songBeatGridMap'
 
 type HorizontalBrowseDetailDirection = 'up' | 'down'
 type HorizontalBrowseDetailLayout = 'full' | 'top-half' | 'bottom-half'
+
+const parseDurationToSeconds = (input: unknown) => {
+  const raw = String(input || '').trim()
+  if (!raw) return 0
+  if (/^\d+(\.\d+)?$/.test(raw)) return Math.max(0, Number(raw) || 0)
+  const parts = raw
+    .split(':')
+    .map((part) => Number(part))
+    .filter((part) => Number.isFinite(part))
+  if (!parts.length) return 0
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
+  if (parts.length === 2) return parts[0] * 60 + parts[1]
+  return parts[0]
+}
 
 type HorizontalBrowseDetailPresentationStateParams = {
   song: () => ISongInfo | null
@@ -35,7 +50,14 @@ export const createHorizontalBrowseDetailPresentationState = (
   let lastAppliedPreviewTimeScale = 1
 
   const resolveDisplayGridBpm = () => {
-    const songBpm = Number(params.song()?.bpm)
+    const song = params.song()
+    const dynamicBpm = resolveSongBeatGridBpmAtSec(
+      song?.beatGridMap,
+      parseDurationToSeconds(song?.duration),
+      params.resolveWaveformCurrentSeconds()
+    )
+    if (dynamicBpm !== null) return normalizePreviewBpm(dynamicBpm)
+    const songBpm = Number(song?.bpm)
     return Number.isFinite(songBpm) && songBpm > 0 ? normalizePreviewBpm(songBpm) : 0
   }
 

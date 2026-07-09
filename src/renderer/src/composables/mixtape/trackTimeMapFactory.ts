@@ -1,9 +1,14 @@
 import {
+  buildTrackTargetBeatIntegralCache,
+  buildTrackVisibleGridLinesFromDynamicSourceGrid,
   buildTempoRatioIntegralCache,
   buildTrackVisibleGridLines,
+  createDynamicSourceBeatMap,
   resolveTrackBpmEnvelopeRenderablePoints,
   resolveTrackLocalSecAtSourceTime,
   resolveTrackSourceTimeAtLocalSec,
+  resolveLocalSecAtTargetBeatDelta,
+  resolveTargetBeatDeltaAtLocalSec,
   sampleTrackBpmEnvelopeAtSec,
   type TrackTimeMap,
   type TrackTimeMapInput,
@@ -181,7 +186,7 @@ const createLoopedTrackTimeMap = (
 }
 
 const createLegacyTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
-  const durationSec = Math.max(0, Number(input.durationSec) || 0)
+  let durationSec = Math.max(0, Number(input.durationSec) || 0)
   const sourceDurationSec = Math.max(0, Number(input.sourceDurationSec) || 0)
   const inputFirstBeatSourceSec = Number(input.firstBeatSourceSec)
   const firstBeatSourceSec = Number.isFinite(inputFirstBeatSourceSec) ? inputFirstBeatSourceSec : 0
@@ -200,19 +205,83 @@ const createLegacyTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
     originalBpm: input.originalBpm,
     fallbackBpm: input.fallbackBpm
   })
-
-  const buildLines = (zoom: number) =>
-    buildTrackVisibleGridLines({
+  const dynamicSourceBeatMap = createDynamicSourceBeatMap(
+    input.sourceBeatGridMap,
+    sourceDurationSec
+  )
+  const targetBeatIntegralCache = dynamicSourceBeatMap
+    ? buildTrackTargetBeatIntegralCache({
+        points: renderPoints,
+        durationSec,
+        fallbackBpm: input.fallbackBpm
+      })
+    : null
+  const mapLocalToSource = (localSec: number) => {
+    if (
+      dynamicSourceBeatMap &&
+      targetBeatIntegralCache &&
+      targetBeatIntegralCache.totalBeats > BPM_POINT_SEC_EPSILON
+    ) {
+      const targetBeatDelta = resolveTargetBeatDeltaAtLocalSec(targetBeatIntegralCache, localSec)
+      const sourceBeatDelta =
+        targetBeatDelta * (dynamicSourceBeatMap.beatSpan / targetBeatIntegralCache.totalBeats)
+      return dynamicSourceBeatMap.mapBeatOrdinalToSource(
+        dynamicSourceBeatMap.startBeatOrdinal + sourceBeatDelta
+      )
+    }
+    return resolveTrackSourceTimeAtLocalSec({
       points: renderPoints,
+      localSec,
       durationSec,
       sourceDurationSec,
-      firstBeatSourceSec,
-      beatSourceSec,
-      barBeatOffset,
-      zoom,
       originalBpm: input.originalBpm,
-      fallbackBpm: input.fallbackBpm
+      fallbackBpm: input.fallbackBpm,
+      integralCache: tempoRatioIntegralCache
     })
+  }
+  const mapSourceToLocal = (sourceSec: number) => {
+    if (
+      dynamicSourceBeatMap &&
+      targetBeatIntegralCache &&
+      dynamicSourceBeatMap.beatSpan > BPM_POINT_SEC_EPSILON
+    ) {
+      const sourceBeatDelta =
+        dynamicSourceBeatMap.mapSourceToBeatOrdinal(sourceSec) -
+        dynamicSourceBeatMap.startBeatOrdinal
+      const targetBeatDelta =
+        sourceBeatDelta * (targetBeatIntegralCache.totalBeats / dynamicSourceBeatMap.beatSpan)
+      return resolveLocalSecAtTargetBeatDelta(targetBeatIntegralCache, targetBeatDelta)
+    }
+    return resolveTrackLocalSecAtSourceTime({
+      points: renderPoints,
+      sourceSec,
+      durationSec,
+      sourceDurationSec,
+      originalBpm: input.originalBpm,
+      fallbackBpm: input.fallbackBpm,
+      integralCache: tempoRatioIntegralCache
+    })
+  }
+
+  const buildLines = (zoom: number) =>
+    dynamicSourceBeatMap
+      ? buildTrackVisibleGridLinesFromDynamicSourceGrid({
+          sourceBeatGridMap: input.sourceBeatGridMap,
+          sourceDurationSec,
+          zoom,
+          mapSourceToLocal
+        }) || []
+      : buildTrackVisibleGridLines({
+          points: renderPoints,
+          durationSec,
+          sourceDurationSec,
+          firstBeatSourceSec,
+          beatSourceSec,
+          barBeatOffset,
+          zoom,
+          originalBpm: input.originalBpm,
+          fallbackBpm: input.fallbackBpm
+        })
   const gridResolvers = createGridResolvers({ durationSec, buildLines })
 
   return {
@@ -223,42 +292,12 @@ const createLegacyTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
     firstBeatSourceSec,
     beatSourceSec,
     barBeatOffset,
-    mapLocalToSource: (localSec: number) =>
-      resolveTrackSourceTimeAtLocalSec({
-        points: renderPoints,
-        localSec,
-        durationSec,
-        sourceDurationSec,
-        originalBpm: input.originalBpm,
-        fallbackBpm: input.fallbackBpm,
-        integralCache: tempoRatioIntegralCache
-      }),
-    mapSourceToLocal: (sourceSec: number) =>
-      resolveTrackLocalSecAtSourceTime({
-        points: renderPoints,
-        sourceSec,
-        durationSec,
-        sourceDurationSec,
-        originalBpm: input.originalBpm,
-        fallbackBpm: input.fallbackBpm,
-        integralCache: tempoRatioIntegralCache
-      }),
+    mapLocalToSource,
+    mapSourceToLocal,
     sampleBpmAtLocal: (localSec: number) =>
       sampleTrackBpmEnvelopeAtSec(renderPoints, localSec, input.fallbackBpm),
     sampleBpmAtSource: (sourceSec: number) =>
-      sampleTrackBpmEnvelopeAtSec(
-        renderPoints,
-        resolveTrackLocalSecAtSourceTime({
-          points: renderPoints,
-          sourceSec,
-          durationSec,
-          sourceDurationSec,
-          originalBpm: input.originalBpm,
-          fallbackBpm: input.fallbackBpm,
-          integralCache: tempoRatioIntegralCache
-        }),
-        input.fallbackBpm
-      ),
+      sampleTrackBpmEnvelopeAtSec(renderPoints, mapSourceToLocal(sourceSec), input.fallbackBpm),
     buildVisibleGridLines: (zoom: number) => buildLines(zoom),
     buildSnapCandidates: gridResolvers.buildSnapCandidates,
     resolveNearestGridLine: gridResolvers.resolveNearestGridLine,
@@ -267,7 +306,7 @@ const createLegacyTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
 }
 
 const createMasterGridTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
-  const durationSec = Math.max(0, Number(input.durationSec) || 0)
+  let durationSec = Math.max(0, Number(input.durationSec) || 0)
   const sourceDurationSec = Math.max(0, Number(input.sourceDurationSec) || 0)
   const inputFirstBeatSourceSec = Number(input.firstBeatSourceSec)
   const firstBeatSourceSec = Number.isFinite(inputFirstBeatSourceSec) ? inputFirstBeatSourceSec : 0
@@ -279,6 +318,19 @@ const createMasterGridTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap =>
     phaseOffsetSec: input.masterGridPhaseOffsetSec,
     fallbackBpm: Number(input.masterGridFallbackBpm) || Number(input.fallbackBpm) || 128
   })
+  const dynamicSourceBeatMap = createDynamicSourceBeatMap(
+    input.sourceBeatGridMap,
+    sourceDurationSec
+  )
+  const trackStartBeat = masterGrid.mapSecToBeats(trackStartSec)
+  if (dynamicSourceBeatMap) {
+    durationSec = roundTrackTempoSec(
+      Math.max(
+        0,
+        masterGrid.mapBeatsToSec(trackStartBeat + dynamicSourceBeatMap.beatSpan) - trackStartSec
+      )
+    )
+  }
   const renderPoints = input.controlPoints.map((point) => ({
     sec: Number(point.sec),
     bpm: Number(point.bpm),
@@ -288,7 +340,47 @@ const createMasterGridTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap =>
         : undefined,
     allowOffGrid: point.allowOffGrid === true ? true : undefined
   }))
+  const mapSourceToLocal = (sourceSec: number) => {
+    if (dynamicSourceBeatMap) {
+      const sourceBeatDelta =
+        dynamicSourceBeatMap.mapSourceToBeatOrdinal(sourceSec) -
+        dynamicSourceBeatMap.startBeatOrdinal
+      const localSec = masterGrid.mapBeatsToSec(trackStartBeat + sourceBeatDelta) - trackStartSec
+      return roundTrackTempoSec(clampTrackTempoNumber(localSec, 0, durationSec))
+    }
+    return mapTrackSourceToLocalOnMasterGrid({
+      grid: masterGrid,
+      trackStartSec,
+      sourceSec,
+      sourceDurationSec,
+      beatSourceSec,
+      durationSec
+    })
+  }
+  const mapLocalToSource = (localSec: number) => {
+    if (dynamicSourceBeatMap) {
+      const safeLocalSec = clampTrackTempoNumber(Number(localSec) || 0, 0, durationSec)
+      const timelineBeat = masterGrid.mapSecToBeats(trackStartSec + safeLocalSec)
+      return dynamicSourceBeatMap.mapBeatOrdinalToSource(
+        dynamicSourceBeatMap.startBeatOrdinal + (timelineBeat - trackStartBeat)
+      )
+    }
+    return mapTrackLocalToSourceOnMasterGrid({
+      grid: masterGrid,
+      trackStartSec,
+      localSec,
+      sourceDurationSec,
+      beatSourceSec,
+      durationSec
+    })
+  }
   const buildLines = (zoom: number) =>
+    buildTrackVisibleGridLinesFromDynamicSourceGrid({
+      sourceBeatGridMap: input.sourceBeatGridMap,
+      sourceDurationSec,
+      zoom,
+      mapSourceToLocal
+    }) ??
     buildTrackVisibleGridLinesOnMasterGrid({
       grid: masterGrid,
       trackStartSec,
@@ -309,38 +401,12 @@ const createMasterGridTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap =>
     firstBeatSourceSec,
     beatSourceSec,
     barBeatOffset,
-    mapLocalToSource: (localSec: number) =>
-      mapTrackLocalToSourceOnMasterGrid({
-        grid: masterGrid,
-        trackStartSec,
-        localSec,
-        sourceDurationSec,
-        beatSourceSec,
-        durationSec
-      }),
-    mapSourceToLocal: (sourceSec: number) =>
-      mapTrackSourceToLocalOnMasterGrid({
-        grid: masterGrid,
-        trackStartSec,
-        sourceSec,
-        sourceDurationSec,
-        beatSourceSec,
-        durationSec
-      }),
+    mapLocalToSource,
+    mapSourceToLocal,
     sampleBpmAtLocal: (localSec: number) =>
       masterGrid.sampleBpmAtSec(trackStartSec + Number(localSec || 0)),
     sampleBpmAtSource: (sourceSec: number) =>
-      masterGrid.sampleBpmAtSec(
-        trackStartSec +
-          mapTrackSourceToLocalOnMasterGrid({
-            grid: masterGrid,
-            trackStartSec,
-            sourceSec,
-            sourceDurationSec,
-            beatSourceSec,
-            durationSec
-          })
-      ),
+      masterGrid.sampleBpmAtSec(trackStartSec + mapSourceToLocal(sourceSec)),
     buildVisibleGridLines: (zoom: number) => buildLines(zoom),
     buildSnapCandidates: gridResolvers.buildSnapCandidates,
     resolveNearestGridLine: gridResolvers.resolveNearestGridLine,
@@ -382,6 +448,7 @@ export const createTrackTimeMapFromSnapshotPayload = (
     firstBeatSourceSec: Number(snapshot.firstBeatSourceSec) || 0,
     beatSourceSec: Number(snapshot.beatSourceSec) || 0,
     barBeatOffset: Number(snapshot.barBeatOffset) || 0,
+    sourceBeatGridMap: snapshot.sourceBeatGridMap,
     loopSegments: Array.isArray(snapshot.loopSegments)
       ? snapshot.loopSegments.map((segment) => ({
           startSec: Number(segment.startSec),

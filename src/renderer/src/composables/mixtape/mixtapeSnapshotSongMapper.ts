@@ -1,6 +1,10 @@
 import type { ISongInfo } from '../../../../types/globals'
 import { normalizeSongHotCues } from '@shared/hotCues'
 import { normalizeSongMemoryCues } from '@shared/memoryCues'
+import {
+  normalizeSongBeatGridMap,
+  projectSongBeatGridMapToFixedGrid
+} from '@shared/songBeatGridMap'
 
 type MixtapeSnapshotSongRaw = {
   id?: string | number | null
@@ -45,6 +49,8 @@ export const mapMixtapeSnapshotToSongInfo = (
   options: SnapshotMapperOptions = {}
 ): ISongInfo => {
   const info = parseSnapshotInfo(raw)
+  const beatGridMap = normalizeSongBeatGridMap(info?.beatGridMap)
+  const beatGridProjection = projectSongBeatGridMapToFixedGrid(beatGridMap)
   const filePath = String(raw?.filePath || info?.filePath || '')
   const meta = resolveFileNameAndFormat(filePath)
   const originUuid = String(raw?.originPlaylistUuid || '')
@@ -65,21 +71,25 @@ export const mapMixtapeSnapshotToSongInfo = (
     bitrate: info?.bitrate,
     container: info?.container,
     key: info?.key,
-    bpm: info?.bpm,
+    bpm: beatGridProjection?.bpm ?? info?.bpm,
     beatGridStatus: info?.beatGridStatus,
+    beatGridSource: beatGridMap ? 'manual' : info?.beatGridSource,
+    beatGridMap: beatGridMap ?? undefined,
     beatGridAlgorithmVersion: info?.beatGridAlgorithmVersion,
     energyScore: info?.energyScore,
     energyAlgorithmVersion: info?.energyAlgorithmVersion,
     hotCues: normalizeSongHotCues(info?.hotCues),
     memoryCues: normalizeSongMemoryCues(info?.memoryCues),
     firstBeatMs:
-      typeof info?.firstBeatMs === 'number' && Number.isFinite(info.firstBeatMs)
+      beatGridProjection?.firstBeatMs ??
+      (typeof info?.firstBeatMs === 'number' && Number.isFinite(info.firstBeatMs)
         ? info.firstBeatMs
-        : undefined,
+        : undefined),
     barBeatOffset:
-      typeof info?.barBeatOffset === 'number' && Number.isFinite(info.barBeatOffset)
+      beatGridProjection?.barBeatOffset ??
+      (typeof info?.barBeatOffset === 'number' && Number.isFinite(info.barBeatOffset)
         ? info.barBeatOffset
-        : undefined,
+        : undefined),
     timeBasisOffsetMs:
       typeof info?.timeBasisOffsetMs === 'number' && Number.isFinite(info.timeBasisOffsetMs)
         ? info.timeBasisOffsetMs

@@ -4,6 +4,7 @@ import type { MixxxWaveformData } from '../../waveformCodec'
 import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
 import type { BeatGridStatus } from '../../../types/globals'
 import type { SongStructureAnalysis } from '../../../shared/songStructure'
+import type { SongBeatGridMap } from '../../../shared/songBeatGridMap'
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
@@ -90,6 +91,7 @@ export type KeyAnalysisJob = {
   preemptible?: boolean
   category?: KeyAnalysisQueueCategory
   waveformOnly?: boolean
+  includeStructure?: boolean
   focusSlots?: string[]
   manualBatchIds?: string[]
   needsKey?: boolean
@@ -100,6 +102,7 @@ export type KeyAnalysisJob = {
   cachedBpm?: number
   cachedFirstBeatMs?: number
   cachedBarBeatOffset?: number
+  cachedBeatGridMap?: SongBeatGridMap
   startTime?: number
   trace?: KeyAnalysisJobTrace
   fileSize?: number
@@ -148,6 +151,7 @@ export type BpmAnalysisResult = {
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number | null
   beatGridStatus?: BeatGridStatus
+  beatGridMap?: SongBeatGridMap
   songStructure?: SongStructureAnalysis
 }
 
@@ -162,6 +166,7 @@ export type DoneEntry = {
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number
   beatGridStatus?: BeatGridStatus
+  beatGridMap?: SongBeatGridMap
   energyScore?: number
   energyAlgorithmVersion?: number
   songStructure?: SongStructureAnalysis
@@ -184,6 +189,7 @@ type KeyAnalysisWorkerPartialResult = {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   bpmError?: string
+  songStructureError?: string
   energyScore?: number
   energyAlgorithmVersion?: number
   songStructure?: SongStructureAnalysis

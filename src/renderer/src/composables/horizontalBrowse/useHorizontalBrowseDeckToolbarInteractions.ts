@@ -21,6 +21,11 @@ type HorizontalBrowseDetailExpose = {
   updateBpmInput?: (value: string) => void
   blurBpmInput?: () => void
   tapBpm?: () => void
+  selectWholeAdjustment?: () => void
+  splitAfterPlayhead?: () => void
+  deleteBoundary?: () => void
+  freezeDynamicGridSelectionForBpmInput?: () => void
+  releaseDynamicGridSelectionForBpmInput?: () => void
   cycleMetronomeState?: () => void
 }
 
@@ -105,6 +110,7 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
 
   const handleDeckBpmInputUpdate = (deck: HorizontalBrowseDeckKey, value: string) => {
     params.touchDeckInteraction(deck)
+    params.resolveDetailRef(deck)?.freezeDynamicGridSelectionForBpmInput?.()
     const toolbarStateRef = resolveToolbarStateRef(deck)
     params.deckTempoCommitToken[deck] += 1
     params.deckTempoInputDirty[deck] = true
@@ -119,6 +125,7 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     if (parsed === null) {
       params.deckTempoInputDirty[deck] = false
       params.deckTempoCommitToken[deck] += 1
+      params.resolveDetailRef(deck)?.releaseDynamicGridSelectionForBpmInput?.()
       toolbarStateRef.value = {
         ...nextToolbarState,
         bpmInputValue: params.resolveDeckToolbarBpmInputValue(deck)
@@ -139,6 +146,7 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
       if (detail?.updateBpmInput && detail?.blurBpmInput) {
         detail.updateBpmInput(formattedBpm)
         detail.blurBpmInput()
+        detail.releaseDynamicGridSelectionForBpmInput?.()
         params.deckTempoInputDirty[deck] = false
         const latestToolbarState = resolveToolbarStateRef(deck).value
         resolveToolbarStateRef(deck).value = {
@@ -149,6 +157,7 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
       }
 
       params.deckTempoInputDirty[deck] = false
+      params.resolveDetailRef(deck)?.releaseDynamicGridSelectionForBpmInput?.()
       const latestToolbarState = resolveToolbarStateRef(deck).value
       resolveToolbarStateRef(deck).value = {
         ...latestToolbarState,
@@ -161,12 +170,28 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     void params.setDeckTargetBpm(deck, parsed).finally(() => {
       if (params.deckTempoCommitToken[deck] !== token) return
       params.deckTempoInputDirty[deck] = false
+      params.resolveDetailRef(deck)?.releaseDynamicGridSelectionForBpmInput?.()
       const latestToolbarState = resolveToolbarStateRef(deck).value
       resolveToolbarStateRef(deck).value = {
         ...latestToolbarState,
         bpmInputValue: params.resolveDeckToolbarBpmInputValue(deck)
       }
     })
+  }
+
+  const handleDeckSplitAfterPlayhead = (deck: HorizontalBrowseDeckKey) => {
+    params.touchDeckInteraction(deck)
+    params.resolveDetailRef(deck)?.splitAfterPlayhead?.()
+  }
+
+  const handleDeckSelectWholeAdjustment = (deck: HorizontalBrowseDeckKey) => {
+    params.touchDeckInteraction(deck)
+    params.resolveDetailRef(deck)?.selectWholeAdjustment?.()
+  }
+
+  const handleDeckDeleteBoundary = (deck: HorizontalBrowseDeckKey) => {
+    params.touchDeckInteraction(deck)
+    params.resolveDetailRef(deck)?.deleteBoundary?.()
   }
 
   return {
@@ -180,6 +205,9 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     handleDeckMetronomeStateCycle,
     handleDeckBpmTap,
     handleDeckBpmInputUpdate,
-    handleDeckBpmInputBlur
+    handleDeckBpmInputBlur,
+    handleDeckSelectWholeAdjustment,
+    handleDeckSplitAfterPlayhead,
+    handleDeckDeleteBoundary
   }
 }

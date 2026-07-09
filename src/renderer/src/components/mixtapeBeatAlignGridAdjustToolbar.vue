@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
 
 const props = defineProps({
   disabled: {
+    type: Boolean,
+    default: false
+  },
+  gridControlsDisabled: {
     type: Boolean,
     default: false
   },
@@ -44,6 +48,18 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  showSplitAfterPlayhead: {
+    type: Boolean,
+    default: false
+  },
+  gridAdjustScope: {
+    type: String,
+    default: 'whole'
+  },
+  showDeleteBoundary: {
+    type: Boolean,
+    default: false
+  },
   showLargeShiftButtons: {
     type: Boolean,
     default: true
@@ -60,6 +76,9 @@ const emit = defineEmits<{
   (event: 'blur-bpm-input'): void
   (event: 'tap-bpm'): void
   (event: 'memory-cue'): void
+  (event: 'select-whole-adjustment'): void
+  (event: 'split-after-playhead'): void
+  (event: 'delete-boundary'): void
 }>()
 
 type ShiftEventName =
@@ -83,6 +102,7 @@ let bpmDragStartValue = 0
 let bpmDragActive = false
 let bpmDragInputTarget: HTMLInputElement | null = null
 let bodyUserSelectBeforeBpmDrag = ''
+const controlsDisabled = computed(() => props.disabled || props.gridControlsDisabled)
 
 const clearShiftHoldTimers = () => {
   if (holdStartTimer) {
@@ -97,7 +117,7 @@ const clearShiftHoldTimers = () => {
 }
 
 const emitShift = (eventName: ShiftEventName) => {
-  if (props.disabled) return
+  if (controlsDisabled.value) return
   if (eventName === 'shift-left-large') {
     emit('shift-left-large')
     return
@@ -114,16 +134,16 @@ const emitShift = (eventName: ShiftEventName) => {
 }
 
 const handleShiftPointerDown = (eventName: ShiftEventName, event?: PointerEvent) => {
-  if (props.disabled || (event && event.button !== 0)) return
+  if (controlsDisabled.value || (event && event.button !== 0)) return
   clearShiftHoldTimers()
   suppressNextClickFor = null
   holdEventName = eventName
   holdStartTimer = setTimeout(() => {
-    if (!holdEventName || props.disabled) return
+    if (!holdEventName || controlsDisabled.value) return
     suppressNextClickFor = holdEventName
     emitShift(holdEventName)
     holdRepeatTimer = setInterval(() => {
-      if (!holdEventName || props.disabled) return
+      if (!holdEventName || controlsDisabled.value) return
       emitShift(holdEventName)
     }, HOLD_REPEAT_INTERVAL_MS)
   }, HOLD_START_DELAY_MS)
@@ -151,7 +171,7 @@ const handleShiftLostPointerCapture = () => {
 }
 
 const handleShiftClick = (eventName: ShiftEventName) => {
-  if (props.disabled) return
+  if (controlsDisabled.value) return
   if (suppressNextClickFor === eventName) {
     suppressNextClickFor = null
     return
@@ -160,6 +180,7 @@ const handleShiftClick = (eventName: ShiftEventName) => {
 }
 
 const handleBpmInput = (event: Event) => {
+  if (controlsDisabled.value) return
   const target = event.target as HTMLInputElement | null
   emit('update-bpm-input', target?.value || '')
 }
@@ -242,7 +263,8 @@ const clearBpmDrag = () => {
 }
 
 function handleWindowBpmDragMove(event: PointerEvent) {
-  if (bpmDragPointerId === null || event.pointerId !== bpmDragPointerId || props.disabled) return
+  if (bpmDragPointerId === null || event.pointerId !== bpmDragPointerId || controlsDisabled.value)
+    return
   const deltaY = bpmDragStartY - event.clientY
   if (!bpmDragActive && Math.abs(deltaY) >= BPM_DRAG_THRESHOLD_PX) {
     bpmDragActive = true
@@ -267,7 +289,7 @@ function handleWindowBpmDragEnd(event: PointerEvent) {
 }
 
 const handleBpmPointerDown = (event: PointerEvent) => {
-  if (props.disabled || event.button !== 0 || event.pointerType === 'touch') return
+  if (controlsDisabled.value || event.button !== 0 || event.pointerType === 'touch') return
   const target = event.target as HTMLInputElement | null
   if (!target) return
   event.preventDefault()
@@ -304,7 +326,7 @@ onBeforeUnmount(() => {
         tag="button"
         class="grid-adjust-icon-btn"
         type="button"
-        :disabled="disabled"
+        :disabled="controlsDisabled"
         :title="t('mixtape.gridAdjustShiftLeftLarge')"
         :aria-label="t('mixtape.gridAdjustShiftLeftLarge')"
         @click="handleShiftClick('shift-left-large')"
@@ -325,7 +347,7 @@ onBeforeUnmount(() => {
         tag="button"
         class="grid-adjust-icon-btn"
         type="button"
-        :disabled="disabled"
+        :disabled="controlsDisabled"
         :title="t('mixtape.gridAdjustShiftLeftSmall')"
         :aria-label="t('mixtape.gridAdjustShiftLeftSmall')"
         @click="handleShiftClick('shift-left-small')"
@@ -345,7 +367,7 @@ onBeforeUnmount(() => {
         tag="button"
         class="grid-adjust-icon-btn"
         type="button"
-        :disabled="disabled"
+        :disabled="controlsDisabled"
         :title="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
         :aria-label="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
         @click="emit('set-bar-line')"
@@ -361,7 +383,7 @@ onBeforeUnmount(() => {
         tag="button"
         class="grid-adjust-icon-btn"
         type="button"
-        :disabled="disabled"
+        :disabled="controlsDisabled"
         :title="t('mixtape.gridAdjustShiftRightSmall')"
         :aria-label="t('mixtape.gridAdjustShiftRightSmall')"
         @click="handleShiftClick('shift-right-small')"
@@ -382,7 +404,7 @@ onBeforeUnmount(() => {
         tag="button"
         class="grid-adjust-icon-btn"
         type="button"
-        :disabled="disabled"
+        :disabled="controlsDisabled"
         :title="t('mixtape.gridAdjustShiftRightLarge')"
         :aria-label="t('mixtape.gridAdjustShiftRightLarge')"
         @click="handleShiftClick('shift-right-large')"
@@ -397,6 +419,58 @@ onBeforeUnmount(() => {
           <path d="m4.5 3.5 3.7 4.5-3.7 4.5"></path>
           <path d="m7.9 3.5 3.7 4.5-3.7 4.5"></path>
         </svg>
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        v-if="showSplitAfterPlayhead"
+        wrapper-tag="span"
+        tag="button"
+        class="grid-adjust-icon-btn grid-adjust-icon-btn--scope"
+        :class="{ 'is-active': gridAdjustScope !== 'after' }"
+        type="button"
+        :disabled="disabled"
+        :title="t('mixtape.gridAdjustWholeAdjustment')"
+        :aria-label="t('mixtape.gridAdjustWholeAdjustment')"
+        @click="emit('select-whole-adjustment')"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M2.5 3.5v9"></path>
+          <path d="M13.5 3.5v9"></path>
+          <path d="M5.5 5v6"></path>
+          <path d="M10.5 5v6"></path>
+          <path d="M2.5 8h11"></path>
+        </svg>
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        v-if="showSplitAfterPlayhead"
+        wrapper-tag="span"
+        tag="button"
+        class="grid-adjust-icon-btn grid-adjust-icon-btn--scope"
+        :class="{ 'is-active': gridAdjustScope === 'after' }"
+        type="button"
+        :disabled="disabled"
+        :title="t('mixtape.gridAdjustSplitAfterPlayhead')"
+        :aria-label="t('mixtape.gridAdjustSplitAfterPlayhead')"
+        @click="emit('split-after-playhead')"
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="M5.5 2.5v11"></path>
+          <path d="M8 5h4.5"></path>
+          <path d="m10.5 3 2 2-2 2"></path>
+          <path d="M8 11h4.5"></path>
+        </svg>
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        v-if="showDeleteBoundary"
+        wrapper-tag="span"
+        tag="button"
+        class="grid-adjust-boundary-btn grid-adjust-boundary-btn--danger"
+        type="button"
+        :disabled="disabled"
+        :title="t('mixtape.gridAdjustDeleteBoundary')"
+        :aria-label="t('mixtape.gridAdjustDeleteBoundary')"
+        @click="emit('delete-boundary')"
+      >
+        {{ t('mixtape.gridAdjustDeleteBoundaryShort') }}
       </bubbleBoxTrigger>
     </div>
     <bubbleBoxTrigger
@@ -422,7 +496,7 @@ onBeforeUnmount(() => {
         :step="bpmStep"
         :min="bpmMin"
         :max="bpmMax"
-        :disabled="disabled"
+        :disabled="controlsDisabled"
         :value="bpmInputValue"
         :title="bpmInputTitle || t('mixtape.bpm')"
         :aria-label="bpmInputTitle || t('mixtape.bpm')"
@@ -439,7 +513,7 @@ onBeforeUnmount(() => {
       tag="button"
       class="grid-adjust-tap-btn"
       type="button"
-      :disabled="disabled"
+      :disabled="controlsDisabled"
       :title="tapBpmTitle || t('mixtape.gridAdjustTapBpm')"
       :aria-label="tapBpmTitle || t('mixtape.gridAdjustTapBpm')"
       @click="emit('tap-bpm')"
@@ -508,6 +582,32 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
+.grid-adjust-boundary-btn {
+  height: 22px;
+  min-width: 38px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 20px;
+  box-sizing: border-box;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.grid-adjust-icon-btn--scope.is-active {
+  border-color: var(--accent);
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.grid-adjust-boundary-btn--danger {
+  color: var(--danger, #d96a6a);
+  border-color: color-mix(in srgb, var(--danger, #d96a6a) 44%, var(--border));
+}
+
 .grid-adjust-icon-btn:focus,
 .grid-adjust-tap-btn:focus {
   outline: none;
@@ -540,12 +640,22 @@ onBeforeUnmount(() => {
   background: var(--hover);
 }
 
+.grid-adjust-boundary-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+
 .grid-adjust-icon-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
 .grid-adjust-memory-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.grid-adjust-boundary-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

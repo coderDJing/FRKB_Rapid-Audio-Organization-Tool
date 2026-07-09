@@ -5,11 +5,12 @@ import type {
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import type { HorizontalBrowseLoopRange } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckLoopController'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRenderSync'
-import type { HorizontalBrowsePendingPlayViewMode } from '@renderer/composables/horizontalBrowse/horizontalBrowsePendingPlayDiagnostics'
 import type { CommitHorizontalBrowseDeckStatesToNative } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedDragReleaseCommit'
 import type { HorizontalBrowseBeatSyncDragReleaseVisualTransactionHooks } from '@renderer/composables/horizontalBrowse/horizontalBrowseBeatSyncRawWaveformDragRelease'
 
 type DeckKey = HorizontalBrowseDeckKey
+
+export type HorizontalBrowsePendingPlayViewMode = 'dual' | 'edit' | 'unknown'
 
 export type UseHorizontalBrowseDeckPlaybackControllerParams =
   HorizontalBrowseBeatSyncDragReleaseVisualTransactionHooks & {

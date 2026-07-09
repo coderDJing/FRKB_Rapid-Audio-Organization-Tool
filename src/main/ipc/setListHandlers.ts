@@ -19,6 +19,10 @@ import {
 } from '../services/beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from '../services/keyAnalysisAlgorithmVersion'
 import { hasCurrentSongEnergyAnalysis } from '../../shared/songEnergy'
+import {
+  normalizeSongBeatGridMap,
+  projectSongBeatGridMapToFixedGrid
+} from '../../shared/songBeatGridMap'
 import type { ISongInfo } from '../../types/globals'
 import {
   listSetItemsByPlaylist,
@@ -80,8 +84,10 @@ const hasCompleteNumericGrid = (info: Partial<ISongInfo> | null | undefined) =>
   hasFirstBeatMs(info?.firstBeatMs) &&
   hasBarBeatOffset(info?.barBeatOffset) &&
   shouldAcceptBeatGridCacheVersion(info)
+const hasDynamicBeatGridMap = (info: Partial<ISongInfo> | null | undefined) =>
+  normalizeSongBeatGridMap(info?.beatGridMap) !== null
 const hasCompleteGrid = (info: Partial<ISongInfo> | null | undefined) =>
-  hasCurrentNoBpmBeatGridResult(info) || hasCompleteNumericGrid(info)
+  hasCurrentNoBpmBeatGridResult(info) || hasDynamicBeatGridMap(info) || hasCompleteNumericGrid(info)
 
 function parseSetItemAnalysisJson(raw: unknown): Partial<ISongInfo> | null {
   if (typeof raw !== 'string' || !raw.trim()) return null
@@ -109,6 +115,16 @@ function buildSetAnalysisSnapshot(
     snapshot.beatGridStatus = BEAT_GRID_STATUS_NO_BPM
     if (hasPositiveInteger(source.beatGridAlgorithmVersion)) {
       snapshot.beatGridAlgorithmVersion = source.beatGridAlgorithmVersion
+    }
+  } else if (hasDynamicBeatGridMap(source)) {
+    const beatGridMap = normalizeSongBeatGridMap(source.beatGridMap)
+    const projection = projectSongBeatGridMapToFixedGrid(beatGridMap)
+    if (projection && beatGridMap) {
+      snapshot.bpm = projection.bpm
+      snapshot.firstBeatMs = projection.firstBeatMs
+      snapshot.barBeatOffset = projection.barBeatOffset
+      snapshot.beatGridSource = 'manual'
+      snapshot.beatGridMap = beatGridMap
     }
   } else if (hasCompleteNumericGrid(source)) {
     snapshot.bpm = source.bpm
@@ -165,12 +181,25 @@ function mergeSetAnalysisFields(target: ISongInfo, source: Partial<ISongInfo> | 
     delete next.barBeatOffset
     delete next.timeBasisOffsetMs
     delete next.beatGridSource
+    delete next.beatGridMap
     next.beatGridStatus = BEAT_GRID_STATUS_NO_BPM
     if (hasPositiveInteger(source.beatGridAlgorithmVersion)) {
       next.beatGridAlgorithmVersion = source.beatGridAlgorithmVersion
     }
+  } else if (!hasCompleteGrid(next) && hasDynamicBeatGridMap(source)) {
+    const beatGridMap = normalizeSongBeatGridMap(source.beatGridMap)
+    const projection = projectSongBeatGridMapToFixedGrid(beatGridMap)
+    if (beatGridMap && projection) {
+      delete next.beatGridStatus
+      next.bpm = projection.bpm
+      next.firstBeatMs = projection.firstBeatMs
+      next.barBeatOffset = projection.barBeatOffset
+      next.beatGridSource = 'manual'
+      next.beatGridMap = beatGridMap
+    }
   } else if (!hasCompleteNumericGrid(next) && hasCompleteNumericGrid(source)) {
     delete next.beatGridStatus
+    delete next.beatGridMap
     next.bpm = source.bpm as number
     next.firstBeatMs = source.firstBeatMs as number
     next.barBeatOffset = source.barBeatOffset as number

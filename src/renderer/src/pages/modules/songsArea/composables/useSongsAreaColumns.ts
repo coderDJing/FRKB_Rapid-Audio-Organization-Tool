@@ -8,6 +8,10 @@ import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
 import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
+import {
+  resolveSongBeatGridBpmFilterValues,
+  resolveSongBeatGridBpmSortValue
+} from '@shared/songBeatGridMap'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
 interface UseSongsAreaColumnsParams {
@@ -484,12 +488,16 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       } else if (col.filterType === 'bpm' && col.filterOp && col.filterNumber) {
         const target = parseComparableBpm(col.filterNumber)
         filtered = filtered.filter((song) => {
-          const bpm = parseComparableBpm(song.bpm)
-          if (bpm === null || target === null) return false
-          if (col.filterOp === 'eq') return bpm === target
-          if (col.filterOp === 'gte') return bpm >= target
-          if (col.filterOp === 'lte') return bpm <= target
-          return true
+          const bpmValues = resolveSongBeatGridBpmFilterValues(song.beatGridMap, song.bpm)
+          if (!bpmValues.length || target === null) return false
+          return bpmValues.some((bpmValue) => {
+            const bpm = parseComparableBpm(bpmValue)
+            if (bpm === null) return false
+            if (col.filterOp === 'eq') return bpm === target
+            if (col.filterOp === 'gte') return bpm >= target
+            if (col.filterOp === 'lte') return bpm <= target
+            return true
+          })
         })
       } else if (col.filterType === 'number' && col.filterOp && col.filterNumber) {
         const target = parseComparableNumber(col.filterNumber)
@@ -568,6 +576,17 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
           if (!validB) return -1
           return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
         })
+      } else if (sortedCol.key === 'bpm') {
+        filtered = [...filtered].sort((a, b) => {
+          const valueA = resolveSongBeatGridBpmSortValue(a.beatGridMap, a.bpm)
+          const valueB = resolveSongBeatGridBpmSortValue(b.beatGridMap, b.bpm)
+          const validA = valueA !== null
+          const validB = valueB !== null
+          if (!validA && !validB) return 0
+          if (!validA) return 1
+          if (!validB) return -1
+          return sortedCol.order === 'asc' ? valueA - valueB : valueB - valueA
+        })
       } else if (sortedCol.key === 'originalPlaylistPath') {
         const collator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' })
         filtered = [...filtered].sort((a, b) => {
@@ -613,10 +632,11 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       if (col.order) {
         if (col.key === 'index') return fieldSet.has('playlistTrackNumber')
         if (col.key === 'key') return fieldSet.has('key')
+        if (col.key === 'bpm') return fieldSet.has('bpm') || fieldSet.has('beatGridMap')
         return fieldSet.has(String(col.key || ''))
       }
       if (!col.filterActive) return false
-      if (col.filterType === 'bpm') return fieldSet.has('bpm')
+      if (col.filterType === 'bpm') return fieldSet.has('bpm') || fieldSet.has('beatGridMap')
       if (col.filterType === 'number') return fieldSet.has(String(col.key || ''))
       if (col.filterType === 'text' && col.key === 'key') return fieldSet.has('key')
       return false

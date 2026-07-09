@@ -13,7 +13,11 @@ import {
   resolveTrackBpmEnvelopeClampRange,
   roundTrackTempoSec
 } from '@renderer/composables/mixtape/trackTempoModel'
+import { createDynamicSourceBeatMap } from '@renderer/composables/mixtape/trackTimeMapCore'
+import { buildMixtapeTrackLoopSections } from '@renderer/composables/mixtape/mixtapeTrackLoop'
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
+
+const AUTO_BPM_POINT_SOURCE = 'auto' as const
 
 const resolveTrackStartSec = (track: MixtapeTrack) => {
   const numeric = Number(track.startSec)
@@ -37,6 +41,150 @@ export const buildFlatMixtapeGlobalBpmEnvelope = (durationSec: number, bpm: numb
     sec: Number(point.sec),
     bpm: Number(point.bpm)
   }))
+
+const markGeneratedBpmEnvelopePoints = (points: MixtapeBpmPoint[]) =>
+  points.map((point) => ({
+    ...point,
+    source: AUTO_BPM_POINT_SOURCE
+  }))
+
+const resolveTrackLoopValue = (track: MixtapeTrack) =>
+  Array.isArray(track.loopSegments) && track.loopSegments.length
+    ? track.loopSegments
+    : track.loopSegment
+
+const resolveTrackVisibleSourceSections = (track: MixtapeTrack, sourceDurationSec: number) =>
+  buildMixtapeTrackLoopSections(sourceDurationSec, resolveTrackLoopValue(track)).filter(
+    (section) =>
+      section.displayEndSec > section.displayStartSec + BPM_POINT_SEC_EPSILON &&
+      section.baseEndSec > section.baseStartSec + BPM_POINT_SEC_EPSILON
+  )
+
+const resolveTrackVisibleSourceDisplayDuration = (track: MixtapeTrack, sourceDurationSec: number) =>
+  Math.max(
+    0,
+    ...buildMixtapeTrackLoopSections(sourceDurationSec, resolveTrackLoopValue(track)).map(
+      (section) => Number(section.displayEndSec) || 0
+    )
+  )
+
+const resolveRuntimeClipBpmAtSourceSec = (
+  clips: Array<{ startSec: number; endSec: number; bpm: number }>,
+  sourceSecInput: number
+) => {
+  if (!clips.length) return null
+  const sourceSec = Math.max(0, Number(sourceSecInput) || 0)
+  let resolved = clips[0] || null
+  for (const clip of clips) {
+    if (sourceSec < clip.startSec - BPM_POINT_SEC_EPSILON) break
+    if (sourceSec <= clip.endSec + BPM_POINT_SEC_EPSILON) {
+      resolved = clip
+    }
+  }
+  return normalizeTrackBpmValue(resolved?.bpm) ?? null
+}
+
+const pushGeneratedBpmPoint = (
+  points: MixtapeBpmPoint[],
+  sec: number,
+  bpm: number,
+  fallbackBpm: number
+) => {
+  points.push({
+    sec: roundTrackTempoSec(sec),
+    bpm: normalizeTrackBpmValue(bpm) ?? fallbackBpm,
+    source: AUTO_BPM_POINT_SOURCE
+  })
+}
+
+const appendGeneratedDynamicTrackBpmPoints = (params: {
+  track: MixtapeTrack
+  startSec: number
+  sourceDurationSec: number
+  defaultBpm: number
+  points: MixtapeBpmPoint[]
+}) => {
+  const dynamicSourceBeatMap = createDynamicSourceBeatMap(
+    params.track.beatGridMap,
+    params.sourceDurationSec
+  )
+  if (!dynamicSourceBeatMap) return null
+  const sections = resolveTrackVisibleSourceSections(params.track, params.sourceDurationSec)
+  const firstSourceSec = sections[0]?.baseStartSec ?? 0
+  const firstClipBpm = dynamicSourceBeatMap.runtime.clips[0]?.bpm ?? params.defaultBpm
+  const sourceAnchorBpm =
+    resolveRuntimeClipBpmAtSourceSec(dynamicSourceBeatMap.runtime.clips, firstSourceSec) ??
+    normalizeTrackBpmValue(firstClipBpm) ??
+    params.defaultBpm
+  const targetAnchorBpm = normalizeTrackBpmValue(params.track.bpm) ?? sourceAnchorBpm
+  const scale = clampTrackTempoNumber(
+    targetAnchorBpm / Math.max(BPM_POINT_SEC_EPSILON, sourceAnchorBpm),
+    0.25,
+    4
+  )
+  const scaleDivisor = Math.max(BPM_POINT_SEC_EPSILON, scale)
+  let trackEndSec = params.startSec
+  let appended = false
+
+  for (const section of sections) {
+    const sectionTimelineStartSec = roundTrackTempoSec(
+      params.startSec + section.displayStartSec / scaleDivisor
+    )
+    const sectionTimelineEndSec = roundTrackTempoSec(
+      params.startSec + section.displayEndSec / scaleDivisor
+    )
+    if (sectionTimelineEndSec <= sectionTimelineStartSec + BPM_POINT_SEC_EPSILON) continue
+    const sectionStartBpm =
+      resolveRuntimeClipBpmAtSourceSec(dynamicSourceBeatMap.runtime.clips, section.baseStartSec) ??
+      sourceAnchorBpm
+    pushGeneratedBpmPoint(
+      params.points,
+      sectionTimelineStartSec,
+      sectionStartBpm * scale,
+      params.defaultBpm
+    )
+
+    for (const clip of dynamicSourceBeatMap.runtime.clips.slice(1)) {
+      const boundarySourceSec = Number(clip.startSec)
+      if (boundarySourceSec <= section.baseStartSec + BPM_POINT_SEC_EPSILON) continue
+      if (boundarySourceSec >= section.baseEndSec - BPM_POINT_SEC_EPSILON) continue
+      const boundaryTimelineSec = roundTrackTempoSec(
+        sectionTimelineStartSec + (boundarySourceSec - section.baseStartSec) / scaleDivisor
+      )
+      const previousBpm =
+        resolveRuntimeClipBpmAtSourceSec(
+          dynamicSourceBeatMap.runtime.clips,
+          boundarySourceSec - BPM_POINT_SEC_EPSILON * 2
+        ) ?? sectionStartBpm
+      const nextBpm =
+        resolveRuntimeClipBpmAtSourceSec(dynamicSourceBeatMap.runtime.clips, boundarySourceSec) ??
+        previousBpm
+      pushGeneratedBpmPoint(
+        params.points,
+        boundaryTimelineSec,
+        previousBpm * scale,
+        params.defaultBpm
+      )
+      pushGeneratedBpmPoint(params.points, boundaryTimelineSec, nextBpm * scale, params.defaultBpm)
+    }
+
+    const sectionEndBpm =
+      resolveRuntimeClipBpmAtSourceSec(
+        dynamicSourceBeatMap.runtime.clips,
+        section.baseEndSec - BPM_POINT_SEC_EPSILON * 2
+      ) ?? sectionStartBpm
+    pushGeneratedBpmPoint(
+      params.points,
+      sectionTimelineEndSec,
+      sectionEndBpm * scale,
+      params.defaultBpm
+    )
+    trackEndSec = Math.max(trackEndSec, sectionTimelineEndSec)
+    appended = true
+  }
+
+  return appended ? trackEndSec : null
+}
 
 const resolveTrackVisibleAnchorLocalSec = (params: {
   track: MixtapeTrack
@@ -108,17 +256,84 @@ export const buildDefaultMixtapeGlobalBpmEnvelopeSnapshot = (params: {
   resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
 }) => {
   const defaultBpm = resolveDefaultGlobalBpmFromTracks(params.tracks)
-  const durationSec = Math.max(
-    0,
-    ...params.tracks.map((track) => {
-      const startSec = Number(track.startSec)
-      const safeStartSec = Number.isFinite(startSec) && startSec >= 0 ? startSec : 0
-      const trackDurationSec = Math.max(0, Number(params.resolveTrackDurationSeconds(track)) || 0)
-      return safeStartSec + trackDurationSec
-    })
-  )
+  const tracksHaveMaterializedStarts = params.tracks.every((track) => {
+    const startSec = Number(track.startSec)
+    return Number.isFinite(startSec) && startSec >= 0
+  })
+  const generatedPoints: MixtapeBpmPoint[] = []
+  let durationSec = 0
+  if (tracksHaveMaterializedStarts) {
+    for (const track of params.tracks) {
+      const startSec = resolveTrackStartSec(track)
+      const sourceDurationSec = Math.max(
+        0,
+        Number(params.resolveTrackSourceDurationSeconds(track)) || 0
+      )
+      const fallbackDurationSec = Math.max(
+        0,
+        Number(params.resolveTrackDurationSeconds(track)) || 0
+      )
+      const dynamicTrackEndSec = appendGeneratedDynamicTrackBpmPoints({
+        track,
+        startSec,
+        sourceDurationSec,
+        defaultBpm,
+        points: generatedPoints
+      })
+      if (dynamicTrackEndSec !== null) {
+        durationSec = Math.max(durationSec, dynamicTrackEndSec)
+        continue
+      }
+      const trackSourceBpm = resolveTrackGridSourceBpm(track)
+      const trackBpm =
+        normalizeTrackBpmValue(track.bpm) ??
+        normalizeTrackBpmValue(track.gridBaseBpm) ??
+        normalizeTrackBpmValue(track.originalBpm) ??
+        defaultBpm
+      const trackScale = clampTrackTempoNumber(
+        trackBpm / Math.max(BPM_POINT_SEC_EPSILON, trackSourceBpm),
+        0.25,
+        4
+      )
+      const visibleSourceDurationSec = resolveTrackVisibleSourceDisplayDuration(
+        track,
+        sourceDurationSec
+      )
+      const trackDurationSec =
+        visibleSourceDurationSec > 0
+          ? roundTrackTempoSec(
+              visibleSourceDurationSec / Math.max(BPM_POINT_SEC_EPSILON, trackScale)
+            )
+          : fallbackDurationSec || sourceDurationSec
+      generatedPoints.push(
+        { sec: startSec, bpm: trackBpm, source: AUTO_BPM_POINT_SOURCE },
+        {
+          sec: roundTrackTempoSec(startSec + trackDurationSec),
+          bpm: trackBpm,
+          source: AUTO_BPM_POINT_SOURCE
+        }
+      )
+      durationSec = Math.max(durationSec, startSec + trackDurationSec)
+    }
+  } else {
+    durationSec = Math.max(
+      0,
+      ...params.tracks.map((track) => {
+        const startSec = Number(track.startSec)
+        const safeStartSec = Number.isFinite(startSec) && startSec >= 0 ? startSec : 0
+        const trackDurationSec = Math.max(0, Number(params.resolveTrackDurationSeconds(track)) || 0)
+        return safeStartSec + trackDurationSec
+      })
+    )
+  }
+  const normalizedGeneratedPoints =
+    durationSec > 0 && generatedPoints.length >= 2
+      ? markGeneratedBpmEnvelopePoints(
+          normalizeMixtapeGlobalBpmEnvelopePoints(generatedPoints, durationSec, defaultBpm)
+        )
+      : markGeneratedBpmEnvelopePoints(buildFlatMixtapeGlobalBpmEnvelope(durationSec, defaultBpm))
   return {
-    bpmEnvelope: buildFlatMixtapeGlobalBpmEnvelope(durationSec, defaultBpm),
+    bpmEnvelope: normalizedGeneratedPoints,
     bpmEnvelopeDurationSec: durationSec,
     gridPhaseOffsetSec: resolveDefaultMixtapeGlobalGridPhaseOffsetSec({
       tracks: params.tracks,
@@ -127,6 +342,23 @@ export const buildDefaultMixtapeGlobalBpmEnvelopeSnapshot = (params: {
     })
   }
 }
+
+export const buildMixtapeGlobalBpmEnvelopeSnapshotSignature = (snapshot: {
+  bpmEnvelope: MixtapeBpmPoint[]
+  bpmEnvelopeDurationSec: number
+  gridPhaseOffsetSec?: number
+}) =>
+  [
+    Math.round((Number(snapshot.bpmEnvelopeDurationSec) || 0) * 10000),
+    Math.round((Number(snapshot.gridPhaseOffsetSec) || 0) * 10000),
+    ...(Array.isArray(snapshot.bpmEnvelope) ? snapshot.bpmEnvelope : []).map((point) =>
+      [
+        Math.round((Number(point.sec) || 0) * 10000),
+        Math.round((Number(point.bpm) || 0) * 1000000),
+        point.source === 'auto' ? 'a' : point.source === 'manual' ? 'm' : ''
+      ].join(':')
+    )
+  ].join('|')
 
 export const normalizeMixtapeGlobalBpmEnvelopePoints = (
   value: unknown,
@@ -140,7 +372,8 @@ export const normalizeMixtapeGlobalBpmEnvelopePoints = (
     normalizedDefaultBpm
   ).map((point) => ({
     sec: Number(point.sec),
-    bpm: Number(point.bpm)
+    bpm: Number(point.bpm),
+    source: point.source === 'auto' || point.source === 'manual' ? point.source : undefined
   }))
 
   if (

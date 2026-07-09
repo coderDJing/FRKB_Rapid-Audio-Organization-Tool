@@ -5,6 +5,7 @@ import {
   mergeHorizontalBrowseSongWithSharedGrid,
   mergeHorizontalBrowseSongWithStructure
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseShellSongs'
+import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
 import type { SongStructureAnalysis } from '@shared/songStructure'
 import type {
   HorizontalBrowseDeckKey,
@@ -27,6 +28,7 @@ type SharedSongGridPayload = {
   barBeatOffset?: number
   timeBasisOffsetMs?: number
   beatGridSource?: ISongInfo['beatGridSource']
+  beatGridMap?: ISongInfo['beatGridMap'] | null
 } | null
 
 type SongStructurePayload = {
@@ -59,6 +61,17 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     song.firstBeatMs = nextSong.firstBeatMs
     song.barBeatOffset = nextSong.barBeatOffset
     song.timeBasisOffsetMs = nextSong.timeBasisOffsetMs
+    song.beatGridSource = nextSong.beatGridSource
+    if (nextSong.beatGridMap) {
+      song.beatGridMap = nextSong.beatGridMap
+    } else {
+      delete song.beatGridMap
+    }
+    if (nextSong.songStructure) {
+      song.songStructure = nextSong.songStructure
+    } else {
+      delete song.songStructure
+    }
     return true
   }
 
@@ -70,11 +83,15 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     const firstBeatMs = Number(payload?.firstBeatMs)
     const barBeatOffset = Number(payload?.barBeatOffset)
     const timeBasisOffsetMs = Number(payload?.timeBasisOffsetMs)
+    const beatGridMap = normalizeSongBeatGridMap(payload?.beatGridMap)
     const hasBpm = Number.isFinite(bpm) && bpm > 0
     const hasFirstBeatMs = Number.isFinite(firstBeatMs)
     const hasBarBeatOffset = Number.isFinite(barBeatOffset)
     const hasTimeBasisOffsetMs = Number.isFinite(timeBasisOffsetMs) && timeBasisOffsetMs >= 0
-    if (!filePath || (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset && !hasTimeBasisOffsetMs)) {
+    if (
+      !filePath ||
+      (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset && !hasTimeBasisOffsetMs && !beatGridMap)
+    ) {
       return null
     }
     return {
@@ -82,6 +99,14 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
       bpm: hasBpm ? bpm : undefined,
       firstBeatMs: hasFirstBeatMs ? firstBeatMs : undefined,
       barBeatOffset: hasBarBeatOffset ? barBeatOffset : undefined,
+      beatGridClips: beatGridMap
+        ? beatGridMap.clips.map((clip) => ({
+            startSec: clip.startSec,
+            anchorSec: clip.anchorSec,
+            bpm: clip.bpm,
+            barBeatOffset: clip.barBeatOffset
+          }))
+        : undefined,
       timeBasisOffsetMs: hasTimeBasisOffsetMs ? timeBasisOffsetMs : undefined
     }
   }

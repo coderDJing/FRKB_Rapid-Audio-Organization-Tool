@@ -13,6 +13,7 @@ type ScanSongListResult = {
     bpm?: unknown
     firstBeatMs?: unknown
     barBeatOffset?: unknown
+    beatGridMap?: unknown
     beatGridStatus?: unknown
     energyScore?: unknown
     energyAlgorithmVersion?: unknown
@@ -26,11 +27,16 @@ type AnalysisCandidate = {
   bpm?: unknown
   firstBeatMs?: unknown
   barBeatOffset?: unknown
+  beatGridMap?: unknown
   beatGridStatus?: unknown
   energyScore?: unknown
   energyAlgorithmVersion?: unknown
   songStructure?: unknown
   fileMissing?: boolean
+}
+
+type MissingAnalysisOptions = {
+  includeSongStructure?: boolean
 }
 
 const normalizeFilePathKey = (filePath: string) => filePath.replace(/\//g, '\\').toLowerCase()
@@ -41,13 +47,15 @@ export const hasRequiredAnalysis = (
     bpm?: unknown
     firstBeatMs?: unknown
     barBeatOffset?: unknown
+    beatGridMap?: unknown
     beatGridStatus?: unknown
     energyScore?: unknown
     energyAlgorithmVersion?: unknown
     songStructure?: unknown
   },
-  requiresRuntimeAnalysis: boolean
-) => resolveMissingAnalysisReasons(song, requiresRuntimeAnalysis).length === 0
+  requiresRuntimeAnalysis: boolean,
+  options: MissingAnalysisOptions = {}
+) => resolveMissingAnalysisReasons(song, requiresRuntimeAnalysis, options).length === 0
 
 export const resolveMissingAnalysisReasons = (
   song: {
@@ -55,12 +63,14 @@ export const resolveMissingAnalysisReasons = (
     bpm?: unknown
     firstBeatMs?: unknown
     barBeatOffset?: unknown
+    beatGridMap?: unknown
     beatGridStatus?: unknown
     energyScore?: unknown
     energyAlgorithmVersion?: unknown
     songStructure?: unknown
   },
-  requiresRuntimeAnalysis: boolean
+  requiresRuntimeAnalysis: boolean,
+  options: MissingAnalysisOptions = {}
 ) => {
   const reasons: string[] = []
   if (!hasCurrentSongEnergyAnalysis(song)) {
@@ -85,6 +95,7 @@ export const resolveMissingAnalysisReasons = (
     bpm > 0 &&
     Number.isFinite(firstBeatMs) &&
     Number.isFinite(barBeatOffset) &&
+    options.includeSongStructure === true &&
     !hasCurrentSongStructureAnalysis(song)
   ) {
     reasons.push('missing-song-structure')
@@ -95,7 +106,8 @@ export const resolveMissingAnalysisReasons = (
 export const collectMissingAnalysisFilesFromSongs = (
   songs: AnalysisCandidate[],
   requiresRuntimeAnalysis: boolean,
-  seen = new Set<string>()
+  seen = new Set<string>(),
+  options: MissingAnalysisOptions = {}
 ) => {
   const files: string[] = []
   for (const song of songs) {
@@ -103,7 +115,7 @@ export const collectMissingAnalysisFilesFromSongs = (
     const filePath = String(song.filePath || '').trim()
     const key = normalizeFilePathKey(filePath)
     if (!filePath || seen.has(key)) continue
-    if (hasRequiredAnalysis(song, requiresRuntimeAnalysis)) continue
+    if (hasRequiredAnalysis(song, requiresRuntimeAnalysis, options)) continue
     seen.add(key)
     files.push(filePath)
   }
@@ -112,7 +124,8 @@ export const collectMissingAnalysisFilesFromSongs = (
 
 export const scanSongListsForMissingAnalysisFiles = async (
   uuids: string[],
-  requiresRuntimeAnalysis: boolean
+  requiresRuntimeAnalysis: boolean,
+  options: MissingAnalysisOptions = {}
 ): Promise<string[]> => {
   const files: string[] = []
   const seen = new Set<string>()
@@ -125,7 +138,7 @@ export const scanSongListsForMissingAnalysisFiles = async (
     )) as ScanSongListResult | null
     if (!Array.isArray(scan?.scanData)) continue
     files.push(
-      ...collectMissingAnalysisFilesFromSongs(scan.scanData, requiresRuntimeAnalysis, seen)
+      ...collectMissingAnalysisFilesFromSongs(scan.scanData, requiresRuntimeAnalysis, seen, options)
     )
   }
   return files

@@ -11,7 +11,6 @@ import {
 import { sendHorizontalBrowseInteractionTrace } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTrace'
 import { startHorizontalBrowseUserTiming } from '@renderer/composables/horizontalBrowse/horizontalBrowseUserTiming'
 import { resolveSongCueTimelineDefinition } from '@shared/songCueTimeBasis'
-import { createHorizontalBrowsePendingPlayDiagnostics } from '@renderer/composables/horizontalBrowse/horizontalBrowsePendingPlayDiagnostics'
 import { createHorizontalBrowsePlaybackStallRecovery } from '@renderer/composables/horizontalBrowse/horizontalBrowsePlaybackStallRecovery'
 import { handleHorizontalBrowseLinkedRawWaveformDragEnd } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedRawWaveformDragEnd'
 import {
@@ -209,14 +208,6 @@ export const useHorizontalBrowseDeckPlaybackController = (
     await params.nativeTransport.setPlaying(deck, true)
   }
 
-  const pendingPlayDiagnostics = createHorizontalBrowsePendingPlayDiagnostics({
-    resolveDeckSong: params.resolveDeckSong,
-    resolveTransportDeckSnapshot: params.resolveTransportDeckSnapshot,
-    resolveDeckPendingPlay: (deck) => deckPendingPlayOnLoad[deck],
-    isDeckPlayheadReady,
-    resolveDualTransportSyncActive: isDualTransportSyncActive,
-    resolveBrowseViewMode: params.resolveBrowseViewMode
-  })
   const playbackStallRecovery = createHorizontalBrowsePlaybackStallRecovery({
     nativeTransport: params.nativeTransport,
     syncDeckRenderState: params.syncDeckRenderState,
@@ -231,15 +222,12 @@ export const useHorizontalBrowseDeckPlaybackController = (
     ([topPending, bottomPending]) => {
       syncPendingPlayVisible('top', topPending)
       syncPendingPlayVisible('bottom', bottomPending)
-      pendingPlayDiagnostics.sync('top', topPending)
-      pendingPlayDiagnostics.sync('bottom', bottomPending)
     }
   )
 
   onScopeDispose(() => {
     clearPendingPlayVisibleTimer('top')
     clearPendingPlayVisibleTimer('bottom')
-    pendingPlayDiagnostics.dispose()
     playbackStallRecovery.dispose()
   })
 
@@ -849,6 +837,8 @@ export const useHorizontalBrowseDeckPlaybackController = (
     createHorizontalBrowseBeatJumpHandlers({
       resolveDeckGridBpm: params.resolveDeckGridBpm,
       resolveDeckCurrentSeconds: params.resolveDeckCurrentSeconds,
+      resolveDeckDurationSeconds: params.resolveDeckDurationSeconds,
+      resolveDeckSong: params.resolveDeckSong,
       seekDeckToSeconds
     })
 

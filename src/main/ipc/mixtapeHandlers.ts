@@ -49,14 +49,15 @@ import {
   reconcileMixtapeMissingFiles
 } from './mixtapeHandlers.shared'
 import {
-  isCompleteSharedSongGridDefinition,
   loadSharedSongGridDefinition,
-  loadSharedSongGridDefinitions,
-  persistSharedSongGridDefinition,
-  shouldKeepManualSharedSongGridDefinition,
   type SharedSongGridDefinition
 } from '../services/sharedSongGrid'
-import { emitSongGridUpdated } from '../services/songGridEvents'
+import {
+  hydrateMixtapeItemsGridFromShared,
+  persistAndBroadcastSharedGridBatch,
+  persistAndBroadcastSharedGridEntries,
+  resolveWritableSharedGridEntries
+} from './mixtapeSharedGridPersistence'
 import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
 import {
   enqueueKeyAnalysis,
@@ -77,6 +78,11 @@ import {
   MIXTAPE_ANALYSIS_COPY_FIELDS,
   type MixtapeAnalysisInfo
 } from '../services/mixtapeAnalysisInfo'
+import {
+  normalizeSongBeatGridMap,
+  projectSongBeatGridMapToFixedGrid,
+  type SongBeatGridMap
+} from '../../shared/songBeatGridMap'
 
 const normalizeStemProfileInput = (
   value: unknown,
@@ -95,90 +101,6 @@ export function registerMixtapeHandlers() {
   const normalizeMixtapeOutputRequestId = (payload?: { requestId?: unknown }) => {
     const requestId = typeof payload?.requestId === 'string' ? payload.requestId.trim() : ''
     return requestId || `mixtape_output_${Date.now()}`
-  }
-
-  const resolveWritableSharedGridEntries = async (
-    entries: SharedSongGridDefinition[],
-    beatGridSource: SharedSongGridDefinition['beatGridSource'] = 'analysis'
-  ): Promise<SharedSongGridDefinition[]> => {
-    const normalizedEntries = entries
-      .filter(
-        (item) =>
-          typeof item?.filePath === 'string' &&
-          item.filePath.trim().length > 0 &&
-          (item.bpm !== undefined ||
-            item.firstBeatMs !== undefined ||
-            item.barBeatOffset !== undefined ||
-            item.timeBasisOffsetMs !== undefined ||
-            item.beatGridAlgorithmVersion !== undefined)
-      )
-      .map((item) => ({ ...item, beatGridSource }))
-    if (!normalizedEntries.length) return []
-    const writableEntries: SharedSongGridDefinition[] = []
-    for (const item of normalizedEntries) {
-      if (beatGridSource === 'analysis') {
-        const current = await loadSharedSongGridDefinition(item.filePath).catch(
-          (): SharedSongGridDefinition | null => null
-        )
-        if (shouldKeepManualSharedSongGridDefinition(current, item)) continue
-      }
-      writableEntries.push(item)
-    }
-    return writableEntries
-  }
-
-  const persistAndBroadcastSharedGridEntries = async (
-    writableEntries: SharedSongGridDefinition[]
-  ): Promise<void> => {
-    if (!writableEntries.length) return
-    const results = await Promise.allSettled(
-      writableEntries.map((item) => persistSharedSongGridDefinition(item))
-    )
-    for (let index = 0; index < results.length; index += 1) {
-      const result = results[index]
-      if (result.status === 'fulfilled' && result.value) {
-        emitSongGridUpdated(result.value)
-        continue
-      }
-      emitSongGridUpdated(writableEntries[index])
-    }
-  }
-
-  const persistAndBroadcastSharedGridBatch = async (
-    entries: SharedSongGridDefinition[],
-    beatGridSource: SharedSongGridDefinition['beatGridSource'] = 'analysis'
-  ): Promise<void> => {
-    const writableEntries = await resolveWritableSharedGridEntries(entries, beatGridSource)
-    await persistAndBroadcastSharedGridEntries(writableEntries)
-  }
-
-  const hydrateMixtapeItemsGridFromShared = async (items: Array<{ filePath?: string }>) => {
-    const filePaths = Array.from(
-      new Set(
-        items
-          .map((item) => (typeof item?.filePath === 'string' ? item.filePath.trim() : ''))
-          .filter(Boolean)
-      )
-    )
-    if (!filePaths.length) return { updated: 0 }
-
-    const sharedGridMap = await loadSharedSongGridDefinitions(filePaths).catch(
-      (): Map<string, SharedSongGridDefinition> => new Map()
-    )
-    const entries: SharedSongGridDefinition[] = []
-    for (const filePath of filePaths) {
-      const sharedGrid = sharedGridMap.get(filePath)
-      if (!isCompleteSharedSongGridDefinition(sharedGrid)) continue
-      entries.push({
-        filePath,
-        bpm: sharedGrid.bpm,
-        firstBeatMs: sharedGrid.firstBeatMs,
-        barBeatOffset: sharedGrid.barBeatOffset,
-        timeBasisOffsetMs: sharedGrid.timeBasisOffsetMs,
-        beatGridAlgorithmVersion: sharedGrid.beatGridAlgorithmVersion
-      })
-    }
-    return upsertMixtapeItemGridByFilePath(entries)
   }
 
   const broadcastMixtapeItemsRemoved = (
@@ -682,6 +604,7 @@ export function registerMixtapeHandlers() {
                     firstBeatMs: item.firstBeatMs,
                     barBeatOffset: item.barBeatOffset,
                     timeBasisOffsetMs: item.timeBasisOffsetMs,
+                    beatGridMap: null,
                     beatGridAlgorithmVersion: item.beatGridAlgorithmVersion
                   }))
                 )
@@ -759,6 +682,7 @@ export function registerMixtapeHandlers() {
             firstBeatMs: item.firstBeatMs,
             barBeatOffset: item.barBeatOffset,
             timeBasisOffsetMs: item.timeBasisOffsetMs,
+            beatGridMap: null,
             beatGridAlgorithmVersion: item.beatGridAlgorithmVersion
           }))
         )
@@ -850,23 +774,38 @@ export function registerMixtapeHandlers() {
     'mixtape:update-grid-definition',
     async (
       _e,
-      payload: { filePath?: string; barBeatOffset?: number; firstBeatMs?: number; bpm?: number }
+      payload: {
+        filePath?: string
+        barBeatOffset?: number
+        firstBeatMs?: number
+        bpm?: number
+        beatGridMap?: SongBeatGridMap | null
+      }
     ) => {
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+      const hasBeatGridMapInput = Object.prototype.hasOwnProperty.call(payload || {}, 'beatGridMap')
+      const nextBeatGridMap = normalizeSongBeatGridMap(payload?.beatGridMap)
+      const beatGridProjection = projectSongBeatGridMapToFixedGrid(nextBeatGridMap)
       const rawOffset = Number(payload?.barBeatOffset)
-      const rawFirstBeatMs = Number(payload?.firstBeatMs)
-      const rawBpm = Number(payload?.bpm)
+      const rawFirstBeatMs = Number(payload?.firstBeatMs ?? beatGridProjection?.firstBeatMs)
+      const rawBpm = Number(payload?.bpm ?? beatGridProjection?.bpm)
       const hasOffset = Number.isFinite(rawOffset)
       const hasFirstBeatMs = Number.isFinite(rawFirstBeatMs)
       const hasBpm = Number.isFinite(rawBpm) && rawBpm > 0
-      if (!filePath || (!hasOffset && !hasFirstBeatMs && !hasBpm)) {
+      if (!filePath || (!hasOffset && !hasFirstBeatMs && !hasBpm && !hasBeatGridMapInput)) {
         return { updated: 0 }
       }
       const previousGrid = await loadSharedSongGridDefinition(filePath).catch(() => null)
-      const nextOffset = hasOffset ? ((Math.round(rawOffset) % 32) + 32) % 32 : undefined
+      const nextOffset = hasOffset
+        ? ((Math.round(rawOffset) % 32) + 32) % 32
+        : beatGridProjection?.barBeatOffset
       const nextFirstBeatMs = hasFirstBeatMs ? Number(rawFirstBeatMs.toFixed(3)) : undefined
       const nextBpm = hasBpm ? Number(rawBpm.toFixed(6)) : undefined
       const structureGridChanged =
+        (hasBeatGridMapInput &&
+          (nextBeatGridMap
+            ? previousGrid?.beatGridMap?.signature !== nextBeatGridMap.signature
+            : previousGrid?.beatGridMap !== undefined && previousGrid?.beatGridMap !== null)) ||
         (nextOffset !== undefined && previousGrid?.barBeatOffset !== nextOffset) ||
         (nextFirstBeatMs !== undefined &&
           (!Number.isFinite(Number(previousGrid?.firstBeatMs)) ||
@@ -874,12 +813,15 @@ export function registerMixtapeHandlers() {
         (nextBpm !== undefined &&
           (!Number.isFinite(Number(previousGrid?.bpm)) ||
             Math.abs(Number(previousGrid?.bpm) - nextBpm) > 0.0001))
+      const shouldInvalidateStructure = structureGridChanged
+      const shouldQueueStructureRefresh = structureGridChanged || hasBeatGridMapInput
       const result = upsertMixtapeItemGridByFilePath([
         {
           filePath,
-          barBeatOffset: hasOffset ? rawOffset : 0,
+          barBeatOffset: nextOffset ?? 0,
           firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
           bpm: hasBpm ? rawBpm : undefined,
+          beatGridMap: nextBeatGridMap ?? (hasBeatGridMapInput ? null : undefined),
           beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
         }
       ])
@@ -887,21 +829,23 @@ export function registerMixtapeHandlers() {
         [
           {
             filePath,
-            barBeatOffset: hasOffset ? rawOffset : undefined,
+            barBeatOffset: nextOffset,
             firstBeatMs: hasFirstBeatMs ? rawFirstBeatMs : undefined,
             bpm: hasBpm ? rawBpm : undefined,
+            beatGridMap: nextBeatGridMap ?? (hasBeatGridMapInput ? null : undefined),
             beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
           }
         ],
         'manual'
       )
-      if (structureGridChanged) {
+      if (shouldInvalidateStructure) {
         invalidateKeyAnalysisSongStructure(filePath)
+      }
+      if (shouldQueueStructureRefresh) {
         enqueueKeyAnalysis(filePath, 'medium', {
-          urgent: true,
           source: 'foreground',
-          fastAnalysis: true,
-          preemptible: true
+          preemptible: true,
+          includeStructure: true
         })
       }
       return result

@@ -11,6 +11,10 @@ import type {
   MixtapeStemStatus,
   MixtapeTrack
 } from '@renderer/composables/mixtape/types'
+import {
+  normalizeSongBeatGridMap,
+  projectSongBeatGridMapToFixedGrid
+} from '@shared/songBeatGridMap'
 
 const parseSnapshotInfo = (raw: MixtapeRawItem): Record<string, unknown> | null => {
   if (!raw?.infoJson) return null
@@ -79,18 +83,22 @@ export const parseSnapshot = (
   unknownTrackLabel: string
 ): MixtapeTrack => {
   const info = parseSnapshotInfo(raw)
+  const parsedBeatGridMap = normalizeSongBeatGridMap(info?.beatGridMap)
+  const beatGridProjection = projectSongBeatGridMapToFixedGrid(parsedBeatGridMap)
   const filePath =
     normalizeMixtapeFilePath(raw?.filePath) || normalizeMixtapeFilePath(info?.filePath)
   const fileName = filePath.split(/[/\\]/).pop() || filePath || unknownTrackLabel
   const parsedBpm =
-    typeof info?.bpm === 'number' && Number.isFinite(info.bpm) && info.bpm > 0
+    beatGridProjection?.bpm ??
+    (typeof info?.bpm === 'number' && Number.isFinite(info.bpm) && info.bpm > 0
       ? info.bpm
-      : undefined
+      : undefined)
   const parsedOriginalBpmCandidate = Number(info?.originalBpm)
   const parsedOriginalBpm =
-    Number.isFinite(parsedOriginalBpmCandidate) && parsedOriginalBpmCandidate > 0
+    beatGridProjection?.bpm ??
+    (Number.isFinite(parsedOriginalBpmCandidate) && parsedOriginalBpmCandidate > 0
       ? parsedOriginalBpmCandidate
-      : parsedBpm
+      : parsedBpm)
   const parsedMasterTempo = info?.masterTempo !== false
   const hasFirstBeatField = !!info && Object.prototype.hasOwnProperty.call(info, 'firstBeatMs')
   const hasBarBeatOffsetField =
@@ -100,9 +108,10 @@ export const parseSnapshot = (
   const hasLaneIndexField = !!info && Object.prototype.hasOwnProperty.call(info, 'laneIndex')
   const parsedFirstBeatMsValue = Number(info?.firstBeatMs)
   const parsedFirstBeatMs =
-    hasFirstBeatField && Number.isFinite(parsedFirstBeatMsValue) && parsedFirstBeatMsValue >= 0
+    beatGridProjection?.firstBeatMs ??
+    (hasFirstBeatField && Number.isFinite(parsedFirstBeatMsValue) && parsedFirstBeatMsValue >= 0
       ? parsedFirstBeatMsValue
-      : undefined
+      : undefined)
   const parsedTimeBasisOffsetMsValue = Number(info?.timeBasisOffsetMs)
   const parsedTimeBasisOffsetMs =
     hasTimeBasisOffsetField &&
@@ -114,8 +123,8 @@ export const parseSnapshot = (
   const parsedOriginalKeyRaw = typeof info?.originalKey === 'string' ? info.originalKey.trim() : ''
   const parsedOriginalKey = parsedOriginalKeyRaw || parsedKey || undefined
   const parsedBarBeatOffset = hasBarBeatOffsetField
-    ? normalizeBarBeatOffset(info?.barBeatOffset)
-    : undefined
+    ? (beatGridProjection?.barBeatOffset ?? normalizeBarBeatOffset(info?.barBeatOffset))
+    : beatGridProjection?.barBeatOffset
   const parsedGainEnvelope = normalizeGainEnvelopePoints(info?.gainEnvelope)
   const parsedHighEnvelope = normalizeMixEnvelopePoints('high', info?.highEnvelope)
   const parsedMidEnvelope = normalizeMixEnvelopePoints('mid', info?.midEnvelope)
@@ -186,6 +195,7 @@ export const parseSnapshot = (
     firstBeatMs: parsedFirstBeatMs,
     barBeatOffset: parsedBarBeatOffset,
     timeBasisOffsetMs: parsedTimeBasisOffsetMs,
+    beatGridMap: parsedBeatGridMap ?? undefined,
     stemStatus: parsedStemStatus,
     stemError: parsedStemError,
     stemReadyAt: parsedStemReadyAt,

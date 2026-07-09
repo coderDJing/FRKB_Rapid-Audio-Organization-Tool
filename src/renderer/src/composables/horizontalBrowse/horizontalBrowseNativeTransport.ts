@@ -5,11 +5,13 @@ import {
   createEmptyHorizontalBrowseTransportSnapshot,
   HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT,
   type HorizontalBrowseTransportBeatGridInput,
+  type HorizontalBrowseTransportBeatGridClipInput,
   type HorizontalBrowseTransportBandState,
   type HorizontalBrowseDeckKey,
   type HorizontalBrowseTransportSnapshot,
   type HorizontalBrowseTransportVisualizerSnapshot
 } from '@shared/horizontalBrowseTransport'
+import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
 export type {
   HorizontalBrowseTransportBeatGridInput,
   HorizontalBrowseTransportBandState,
@@ -32,6 +34,19 @@ type LocalDeckState = {
 type SnapshotListener = (snapshot: HorizontalBrowseTransportSnapshot) => void
 type SnapshotApplyOptions = {
   notifySnapshotListeners?: boolean
+}
+
+const buildNativeBeatGridClips = (
+  song: ISongInfo | null | undefined
+): HorizontalBrowseTransportBeatGridClipInput[] | undefined => {
+  const map = normalizeSongBeatGridMap(song?.beatGridMap)
+  if (!map) return undefined
+  return map.clips.map((clip) => ({
+    startSec: clip.startSec,
+    anchorSec: clip.anchorSec,
+    bpm: clip.bpm,
+    barBeatOffset: clip.barBeatOffset
+  }))
 }
 
 export const createHorizontalBrowseNativeTransport = () => {
@@ -123,6 +138,7 @@ export const createHorizontalBrowseNativeTransport = () => {
       bpm: Number(payload.song?.bpm) || 0,
       firstBeatMs: Number(payload.song?.firstBeatMs) || 0,
       barBeatOffset: Number(payload.song?.barBeatOffset) || 0,
+      beatGridClips: buildNativeBeatGridClips(payload.song),
       timeBasisOffsetMs: Number(payload.song?.timeBasisOffsetMs) || 0,
       durationSec: Number(payload.durationSec) || 0,
       currentSec: Number(payload.currentSec) || 0,
@@ -153,6 +169,7 @@ export const createHorizontalBrowseNativeTransport = () => {
         bpm: Number(payload.top.song?.bpm) || 0,
         firstBeatMs: Number(payload.top.song?.firstBeatMs) || 0,
         barBeatOffset: Number(payload.top.song?.barBeatOffset) || 0,
+        beatGridClips: buildNativeBeatGridClips(payload.top.song),
         timeBasisOffsetMs: Number(payload.top.song?.timeBasisOffsetMs) || 0,
         durationSec: Number(payload.top.durationSec) || 0,
         currentSec: Number(payload.top.currentSec) || 0,
@@ -167,6 +184,7 @@ export const createHorizontalBrowseNativeTransport = () => {
         bpm: Number(payload.bottom.song?.bpm) || 0,
         firstBeatMs: Number(payload.bottom.song?.firstBeatMs) || 0,
         barBeatOffset: Number(payload.bottom.song?.barBeatOffset) || 0,
+        beatGridClips: buildNativeBeatGridClips(payload.bottom.song),
         timeBasisOffsetMs: Number(payload.bottom.song?.timeBasisOffsetMs) || 0,
         durationSec: Number(payload.bottom.durationSec) || 0,
         currentSec: Number(payload.bottom.currentSec) || 0,

@@ -1,6 +1,7 @@
 import type { UnifiedDisplayWaveformDetailData } from './unifiedDisplayWaveform'
+import type { SongBeatGridMap } from './songBeatGridMap'
 
-export const CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION = 15
+export const CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION = 16
 
 export type SongStructureSectionKind = 'intro' | 'groove' | 'breakdown' | 'build' | 'drop' | 'outro'
 
@@ -27,6 +28,7 @@ export type SongStructureAnalysis = {
   bpm: number
   firstBeatMs: number
   barBeatOffset: number
+  beatGridSignature?: string
   phraseBars: number
   sections: SongStructureSection[]
 }
@@ -36,12 +38,14 @@ export type BuildSongStructureInput = {
   bpm: unknown
   firstBeatMs: unknown
   barBeatOffset: unknown
+  beatGridMap?: SongBeatGridMap | null
 }
 
 export type SongStructureGrid = {
   bpm?: unknown
   firstBeatMs?: unknown
   barBeatOffset?: unknown
+  beatGridMap?: unknown
 }
 
 export const BYTE_MAX = 255

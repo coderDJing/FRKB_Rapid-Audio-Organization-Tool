@@ -43,6 +43,14 @@ import { createHorizontalBrowseDetailPresentationActions } from '@renderer/compo
 import { createHorizontalBrowseDetailGridPersistence } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailGridPersistence'
 import { createHorizontalBrowseDetailPresentationConsumer } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPresentationConsumer'
 import { watchHorizontalBrowseDetailPlaybackPosition } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPlaybackPositionWatch'
+import { useHorizontalBrowseDynamicBeatGridEdit } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDynamicBeatGridEdit'
+import { createHorizontalBrowseNativeMetronomeSync } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeMetronome'
+import {
+  createHorizontalBrowseRawWaveformDynamicGridSelectionState,
+  watchHorizontalBrowseRawWaveformDynamicGridSelection
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDynamicGridSelection'
+import { watchHorizontalBrowseRawWaveformPlaybackToggle } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformPlaybackToggleWatch'
+import type { SongBeatGridMap } from '@shared/songBeatGridMap'
 
 const HORIZONTAL_BROWSE_TIMELINE_TAIL_TOLERANCE_SEC = 0.75
 const props = defineProps<HorizontalBrowseRawWaveformDetailProps>()
@@ -58,6 +66,7 @@ const previewFirstBeatMs = ref(0)
 const previewTimeBasisOffsetMs = ref(0)
 const previewBpm = ref(0)
 const previewBpmInput = ref('')
+const previewBeatGridMap = ref<SongBeatGridMap | null>(null)
 const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const compactVisualWaveformActive = ref(false)
@@ -131,11 +140,19 @@ const resolveWaveformCurrentSeconds = () =>
   )
 const resolveWaveformPlaybackRate = () => Math.max(0.25, Number(props.playbackRate) || 1)
 
+const resolveGridEditVisibleFromSec = () =>
+  props.gridEditMode === true ? selectedDynamicGridVisibleFromSec.value : null
+
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
 const playbackDiscontinuityDetector = createHorizontalBrowsePlaybackDiscontinuityDetector()
 let linkedGridVisualTransactionCommitted = false
 const stablePlaybackReanchorGate = createHorizontalBrowseStablePlaybackReanchorGate()
+const dynamicGridSelection = createHorizontalBrowseRawWaveformDynamicGridSelectionState()
+const {
+  selectedBoundarySec: selectedDynamicGridBoundarySec,
+  selectedVisibleFromSec: selectedDynamicGridVisibleFromSec
+} = dynamicGridSelection
 const presentationState = createHorizontalBrowseDetailPresentationState({
   song: () => props.song,
   direction: () => props.direction,
@@ -227,6 +244,10 @@ const {
   previewBpm: visualGridRenderBpm,
   previewFirstBeatMs: visualGridFirstBeatMs,
   previewBarBeatOffset: visualGridBarBeatOffset,
+  beatGridMap: () => previewBeatGridMap.value ?? props.song?.beatGridMap ?? null,
+  beatGridEditMode: () => props.gridEditMode === true,
+  beatGridVisibleFromSec: resolveGridEditVisibleFromSec,
+  beatGridSelectedBoundarySec: () => selectedDynamicGridBoundarySec.value,
   previewTimeBasisOffsetMs: visualGridTimeBasisOffsetMs,
   dragging,
   allowNegativeTimeline: () => Boolean(props.allowNegativeTimeline),
@@ -237,6 +258,7 @@ const {
   linkedGridActive: () => presentationLinkedGridActive.value,
   phaseAwareScrollReuse: () => Math.abs(localGridShiftPhaseOffsetSec.value) > 0.000001
 })
+
 presentationState.setLastAppliedPreviewTimeScale(
   Math.max(0.25, Number(resolvePreviewTimeScale()) || 1)
 )
@@ -348,19 +370,7 @@ const metronomePlaybackRate = computed(() => Math.max(0.25, Number(props.playbac
 const metronomeResetKey = computed(
   () => `${String(props.song?.filePath || '')}:${Number(props.seekRevision) || 0}`
 )
-const resolveNativeMetronomeDeck = () => (props.direction === 'up' ? 'top' : 'bottom')
-const syncNativeMetronomeState = (state: { enabled: boolean; volumeLevel: 1 | 2 | 3 }) => {
-  void window.electron.ipcRenderer
-    .invoke(
-      'horizontal-browse-transport:set-metronome',
-      resolveNativeMetronomeDeck(),
-      state.enabled,
-      state.volumeLevel
-    )
-    .catch((error) => {
-      console.error('[horizontal-browse-metronome] sync native state failed', error)
-    })
-}
+const syncNativeMetronomeState = createHorizontalBrowseNativeMetronomeSync(() => props.direction)
 
 const {
   buildSongGridSignature,
@@ -378,7 +388,40 @@ const {
   previewFirstBeatMs,
   previewBarBeatOffset,
   previewTimeBasisOffsetMs,
+  previewBeatGridMap,
+  resolvePreviewDurationSec,
   bpmTapTimestamps
+})
+
+const forceDynamicGridFrameRefresh = () => {
+  syncVisualGridStateFromPreview()
+  invalidateWaveformTiles({ preserveDisplay: compactVisualWaveformActive.value })
+  resetGridRenderer()
+  scheduleGridOverlayDraw()
+}
+
+const dynamicBeatGridEdit = useHorizontalBrowseDynamicBeatGridEdit({
+  enabled: () => props.gridEditMode === true,
+  autoSyncFromSong: false,
+  song: () => props.song,
+  previewBeatGridMap,
+  previewBpm,
+  previewBpmInput,
+  previewFirstBeatMs,
+  previewBarBeatOffset,
+  previewStartSec,
+  previewWrapRef: wrapRef,
+  resolveCurrentSec: () =>
+    waveformPlaybackActive.value ? resolveWaveformCurrentSeconds() : resolvePreviewAnchorSec(),
+  resolvePreviewAnchorSec,
+  resolvePreviewDurationSec,
+  resolveVisibleDurationSec,
+  resolveViewportStartSec: resolveRenderedCanvasViewportStartSec,
+  clampPreviewStart,
+  playbackActive: () => waveformPlaybackActive.value,
+  schedulePreviewDraw: scheduleGridOverlayDraw,
+  forceGridFrameRefresh: forceDynamicGridFrameRefresh,
+  schedulePersistGridDefinition
 })
 
 const detailVisible = computed(() => true)
@@ -420,7 +463,8 @@ const {
   schedulePreviewDraw: scheduleGridOverlayDraw,
   applyPlaybackPhaseCompensation: applyLocalGridShiftPhaseCompensation,
   barBeatInterval: PREVIEW_BAR_BEAT_INTERVAL,
-  barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX
+  barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX,
+  dynamicGridEdit: dynamicBeatGridEdit
 })
 
 const {
@@ -437,7 +481,9 @@ const {
   resetKey: metronomeResetKey,
   outputMode: 'external',
   syncExternalState: syncNativeMetronomeState,
-  resolveAnchorSec: () => Math.max(0, Number(props.currentSeconds) || 0)
+  resolveAnchorSec: () => Math.max(0, Number(props.currentSeconds) || 0),
+  beatGridMap: () => previewBeatGridMap.value ?? props.song?.beatGridMap ?? null,
+  resolveDurationSec: resolvePreviewDurationSec
 })
 
 const canToggleMetronome = computed(() => canAdjustGrid.value && metronomeSupported.value)
@@ -451,7 +497,10 @@ const {
   toggleBarLinePicking,
   setBarLineAtPlayhead,
   shiftGrid,
-  cycleMetronomeState
+  cycleMetronomeState,
+  splitAfterPlayhead,
+  selectWholeAdjustment,
+  deleteBoundary
 } = useHorizontalBrowseGridToolbar({
   canAdjustGrid,
   previewLoading,
@@ -479,11 +528,30 @@ const {
   handleBarLinePickingToggle,
   handleSetBarLineAtPlayhead,
   handleGridShift,
-  handleMetronomeStateCycle: cycleMetronomeRuntimeState
+  handleMetronomeStateCycle: cycleMetronomeRuntimeState,
+  resolveGridControlsDisabled: () => dynamicBeatGridEdit.gridControlsDisabled.value,
+  resolveShowSplitAfterPlayhead: () => props.gridEditMode === true && canAdjustGrid.value,
+  resolveShowDeleteBoundary: () => dynamicBeatGridEdit.isBoundarySelected.value,
+  resolveGridAdjustScope: () => dynamicBeatGridEdit.adjustmentScope.value,
+  handleSelectWholeAdjustment: dynamicBeatGridEdit.selectWholeAdjustment,
+  handleSplitAfterPlayhead: dynamicBeatGridEdit.createBoundaryAfterPlayhead,
+  handleDeleteBoundary: dynamicBeatGridEdit.deleteSelectedBoundary,
+  applyBpmToActiveGridTarget: (bpm) =>
+    dynamicBeatGridEdit.isDynamic.value && dynamicBeatGridEdit.setActiveGridBpm(bpm)
+})
+
+watchHorizontalBrowseRawWaveformDynamicGridSelection({
+  source: dynamicBeatGridEdit,
+  selection: dynamicGridSelection,
+  forceFrameRefresh: forceDynamicGridFrameRefresh,
+  scheduleGridOverlayDraw,
+  emitToolbarState
 })
 
 const syncGridStateFromSongForDisplay = () => {
+  dynamicBeatGridEdit.syncFromSong()
   syncGridStateFromSong()
+  dynamicBeatGridEdit.syncPreviewFromSelectedTarget()
   if (!presentationLinkedGridVisualPending.value) {
     syncVisualGridStateFromPreview()
   }
@@ -702,10 +770,11 @@ watch(
       props.song?.bpm,
       props.song?.firstBeatMs,
       props.song?.barBeatOffset,
+      props.song?.beatGridMap?.signature,
       props.song?.timeBasisOffsetMs,
       presentationLinkedGridVisualPending.value
     ] as const,
-  ([, , , , linkedGridVisualPending]) => {
+  ([, , , , , linkedGridVisualPending]) => {
     if (linkedGridVisualPending) {
       emitToolbarState()
       return
@@ -814,73 +883,26 @@ watch(
   { immediate: true, flush: 'sync' }
 )
 
-watch(
-  () => waveformPlaybackActive.value,
-  (playing, previousPlaying) => {
-    previewPlaying.value = playing
-    if (presentationLinkedGridVisualPending.value) {
-      return
-    }
-    if (dragging.value) {
-      if (!playing && previousPlaying === true) {
-        const stableWaveformSource = compactVisualWaveformActive.value
-        stopLiveWaveformPlayback(stableWaveformSource)
-        if (stableWaveformSource) {
-          stopStableCanvasPlayback()
-        }
-      }
-      return
-    }
-    const toggleAnchorSec = resolveWaveformCurrentSeconds()
-    if (playing) {
-      const anchorSec = toggleAnchorSec
-      if (compactVisualWaveformActive.value) {
-        if (dragPresentationReleaseActive.value) {
-          stablePlaybackReanchorGate.suppress()
-          holdStablePlaybackToggleRender()
-          return
-        }
-        stablePlaybackReanchorGate.suppress()
-        const measured = measureStableCanvasPresentation(anchorSec)
-        const refreshFrame = shouldRenderStableCanvasForPlaybackToggle(measured)
-        if (refreshFrame) {
-          holdStablePlaybackToggleRender()
-          applyPreviewPlaybackPosition(anchorSec, true, true, false)
-          return
-        }
-        const visualAnchorSec = freezeStableCanvasPlaybackTogglePosition(anchorSec)
-        holdStablePlaybackToggleRender()
-        startStableCanvasPlayback(visualAnchorSec, resolveWaveformPlaybackRate())
-        return
-      } else {
-        applyPreviewPlaybackPosition(anchorSec, true)
-      }
-      maybeContinueWaveformSource(anchorSec)
-      return
-    }
-    if (!playing) {
-      const stableWaveformSource = compactVisualWaveformActive.value
-      const anchorSec = toggleAnchorSec
-      if (previousPlaying === true) stopLiveWaveformPlayback(stableWaveformSource)
-      if (stableWaveformSource) {
-        stopStableCanvasPlayback()
-        const measured = measureStableCanvasPresentation(anchorSec)
-        const refreshFrame = shouldRenderStableCanvasForPlaybackToggle(measured)
-        if (refreshFrame) {
-          holdStablePlaybackToggleRender()
-          applyPreviewPlaybackPosition(anchorSec, true, true, false)
-          return
-        }
-        freezeStableCanvasPlaybackTogglePosition(anchorSec)
-        holdStablePlaybackToggleRender()
-        return
-      }
-      applyPreviewPlaybackPosition(anchorSec, true)
-      maybeContinueWaveformSource(anchorSec)
-    }
-  },
-  { immediate: true, flush: 'sync' }
-)
+watchHorizontalBrowseRawWaveformPlaybackToggle({
+  playbackActive: () => waveformPlaybackActive.value,
+  previewPlaying,
+  linkedGridVisualPending: () => presentationLinkedGridVisualPending.value,
+  dragging,
+  compactVisualWaveformActive,
+  dragPresentationReleaseActive,
+  resolveCurrentSeconds: resolveWaveformCurrentSeconds,
+  resolvePlaybackRate: resolveWaveformPlaybackRate,
+  stopLiveWaveformPlayback,
+  stopStableCanvasPlayback,
+  suppressStablePlaybackReanchor: stablePlaybackReanchorGate.suppress,
+  holdStablePlaybackToggleRender,
+  measureStableCanvasPresentation,
+  shouldRenderStableCanvasForPlaybackToggle,
+  applyPreviewPlaybackPosition,
+  freezeStableCanvasPlaybackTogglePosition,
+  startStableCanvasPlayback,
+  maybeContinueWaveformSource
+})
 
 watchHorizontalBrowseDetailPlaybackPosition({
   direction: () => props.direction,
@@ -1016,6 +1038,11 @@ defineExpose(
     updateBpmInput: handlePreviewBpmInputUpdate,
     blurBpmInput: handlePreviewBpmInputBlur,
     tapBpm: handlePreviewBpmTap,
+    splitAfterPlayhead,
+    selectWholeAdjustment,
+    deleteBoundary,
+    freezeDynamicGridSelectionForBpmInput: dynamicBeatGridEdit.freezeSelectionForBpmInput,
+    releaseDynamicGridSelectionForBpmInput: dynamicBeatGridEdit.releaseSelectionForBpmInput,
     cycleMetronomeState,
     prepareStableFrameForAnchor,
     commitLinkedGridVisualTransaction,

@@ -781,6 +781,25 @@ const processRender = (
           lastWaveformScrollShiftScaledPx
         )
       : null
+  if (
+    metrics &&
+    renderState &&
+    !ready &&
+    !preserved &&
+    request.stableWaveformSource === true &&
+    request.showBeatGrid === true &&
+    request.renderSourceIndex !== request.renderTargetIndex
+  ) {
+    const sourceBuffer = canvasBufferManager.resolve(request.renderSourceIndex)
+    if (sourceBuffer && sourceBuffer.overlayRenderer !== overlayRenderer) {
+      sourceBuffer.overlayRenderer.render(
+        request,
+        committedRangeStartSec,
+        committedRangeDurationSec,
+        lastWaveformScrollShiftScaledPx
+      )
+    }
+  }
   if (metrics && renderState && !overlayRenderResult) {
     overlayRenderer.clear()
   }
