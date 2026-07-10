@@ -45,7 +45,8 @@ export function useCloudSyncEvents(options: { runtime: RuntimeStore; activeDialo
   }
 
   const handleCloudSyncSummary = (_e: unknown, s: CloudSyncSummary) => {
-    // summary 在 state:'success' 之前到达，这里负责停 syncing、收起底部行并弹报告
+    // summary 在 state:'success' 之前到达，这里负责收起同步窗、停 syncing、收起底部行并弹报告
+    if (activeDialog.value === 'cloudSync.syncFingerprints') activeDialog.value = ''
     runtime.setCloudSyncSyncing(false)
     runtime.setCloudSyncMinimized(false)
     runtime.openCloudSyncSummary(s)
