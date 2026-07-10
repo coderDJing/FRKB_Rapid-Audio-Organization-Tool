@@ -1,6 +1,7 @@
 {
   "recycleBin": {
     "recycleBin": "回收站",
+    "tooltipWithTrackCount": "回收站（{count} 首曲目）",
     "emptyRecycleBin": "清空回收站",
     "noDeletionRecords": "暂无删除记录",
     "permanentlyDelete": "彻底删除",

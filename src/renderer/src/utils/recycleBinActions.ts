@@ -31,12 +31,22 @@ const EMPTY_DELETE_SUMMARY: DeleteSummary = {
   removedPaths: []
 }
 
+const notifyRecycleBinContentChanged = () => {
+  try {
+    emitter.emit('playlistContentChanged', { uuids: [RECYCLE_BIN_UUID] })
+  } catch {}
+}
+
 export async function delSongsViaSend(
   payload: { filePaths: string[]; songListPath?: string; sourceType?: string } | string[]
 ): Promise<DeleteSummary> {
   try {
     const summary = await window.electron.ipcRenderer.invoke('delSongsAwaitable', payload)
-    return normalizeDeleteSummary(summary)
+    const normalizedSummary = normalizeDeleteSummary(summary)
+    if (Number(normalizedSummary.success || 0) > 0) {
+      notifyRecycleBinContentChanged()
+    }
+    return normalizedSummary
   } catch {
     return { ...EMPTY_DELETE_SUMMARY }
   }
@@ -45,7 +55,11 @@ export async function delSongsViaSend(
 export async function permanentlyDelSongsViaSend(filePaths: string[]): Promise<DeleteSummary> {
   try {
     const summary = await window.electron.ipcRenderer.invoke('permanentlyDelSongs', filePaths)
-    return normalizeDeleteSummary(summary)
+    const normalizedSummary = normalizeDeleteSummary(summary)
+    if (Number(normalizedSummary.success || 0) > 0) {
+      notifyRecycleBinContentChanged()
+    }
+    return normalizedSummary
   } catch {
     return { ...EMPTY_DELETE_SUMMARY }
   }
@@ -138,9 +152,7 @@ export async function emptyRecycleBinWithOptimisticUpdate(
 
     await reloadRecycleBinSongsAreaIfNeeded(runtime)
 
-    try {
-      emitter.emit('playlistContentChanged', { uuids: [RECYCLE_BIN_UUID] })
-    } catch {}
+    notifyRecycleBinContentChanged()
 
     if (Number(deleteSummary.failed || 0) > 0) {
       const removedNormalizedSet = new Set(

@@ -551,9 +551,9 @@ export function usePlayerControlsLogic({
             paths: removedPathsForEvent
           })
         }
-        if (listUuidAtDeleteStart) {
-          emitter.emit('playlistContentChanged', { uuids: [listUuidAtDeleteStart] })
-        }
+        const changedPlaylistUuids = new Set<string>([RECYCLE_BIN_UUID])
+        if (listUuidAtDeleteStart) changedPlaylistUuids.add(listUuidAtDeleteStart)
+        emitter.emit('playlistContentChanged', { uuids: Array.from(changedPlaylistUuids) })
 
         await nextTick() // 等待 DOM 更新
       } catch (error) {

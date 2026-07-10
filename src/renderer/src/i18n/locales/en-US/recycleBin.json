@@ -1,6 +1,7 @@
 {
   "recycleBin": {
     "recycleBin": "Recycle Bin",
+    "tooltipWithTrackCount": "Recycle Bin ({count} track(s))",
     "emptyRecycleBin": "Empty Recycle Bin",
     "noDeletionRecords": "No records",
     "permanentlyDelete": "Permanently delete",

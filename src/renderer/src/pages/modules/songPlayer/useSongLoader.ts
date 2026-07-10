@@ -258,6 +258,9 @@ export function useSongLoader(params: {
             listUUID: currentListUUID,
             paths: removedPathsForEvent
           })
+          const changedPlaylistUuids = new Set<string>([RECYCLE_BIN_UUID])
+          if (currentListUUID) changedPlaylistUuids.add(currentListUUID)
+          emitter.emit('playlistContentChanged', { uuids: Array.from(changedPlaylistUuids) })
         }
       } else {
         if (runtime.playingData.playingSong?.filePath === localFilePath) {

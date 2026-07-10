@@ -333,8 +333,10 @@ export function useSongItemContextMenu(
           })
         }
         const playlistUuids = Array.isArray(summary?.playlistUuids) ? summary.playlistUuids : []
-        if (playlistUuids.length > 0) {
-          emitter.emit('playlistContentChanged', { uuids: playlistUuids })
+        if (removedPaths.length > 0) {
+          emitter.emit('playlistContentChanged', {
+            uuids: Array.from(new Set([RECYCLE_BIN_UUID, ...playlistUuids]))
+          })
         }
         songsAreaState.selectedSongFilePath = songsAreaState.selectedSongFilePath.filter(
           (path) => !removedPaths.includes(path)

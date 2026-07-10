@@ -43,6 +43,10 @@ type HoverableIcon = {
   i18nKey?: string
 }
 
+type PlaylistContentChangedPayload = {
+  uuids?: unknown
+}
+
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
 type ComponentWithElement = ComponentPublicInstance & { $el?: unknown }
 
@@ -131,6 +135,82 @@ const selectedIcon = ref<HoverableIcon>(iconArr.value[0])
 selectedIcon.value.src = selectedIcon.value.white
 
 const runtime = useRuntimeStore()
+const recycleBinTrackCount = ref<number | null>(null)
+let recycleBinTrackCountRequestId = 0
+let recycleBinTrackCountRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+const refreshRecycleBinTrackCount = async (requestId: number) => {
+  try {
+    const count = await window.electron.ipcRenderer.invoke(
+      'getSongListTrackCount',
+      'library/RecycleBin'
+    )
+    if (requestId !== recycleBinTrackCountRequestId) return
+    recycleBinTrackCount.value =
+      typeof count === 'number' && Number.isFinite(count) ? Math.max(0, count) : 0
+  } catch {
+    if (requestId === recycleBinTrackCountRequestId) {
+      recycleBinTrackCount.value = 0
+    }
+  }
+}
+
+const scheduleRecycleBinTrackCountRefresh = (delay = 0) => {
+  const requestId = ++recycleBinTrackCountRequestId
+  if (recycleBinTrackCountRefreshTimer) {
+    clearTimeout(recycleBinTrackCountRefreshTimer)
+  }
+  recycleBinTrackCountRefreshTimer = setTimeout(() => {
+    recycleBinTrackCountRefreshTimer = null
+    void refreshRecycleBinTrackCount(requestId)
+  }, delay)
+}
+
+const getIconTooltipTitle = (item: Icon) => {
+  if (item.name === 'RecycleBin' && recycleBinTrackCount.value !== null) {
+    return t('recycleBin.tooltipWithTrackCount', { count: recycleBinTrackCount.value })
+  }
+  return t(item.i18nKey || item.name)
+}
+
+const hasRecycleBinContentChange = (payload: unknown) => {
+  if (!payload || typeof payload !== 'object') return false
+  const { uuids } = payload as PlaylistContentChangedPayload
+  return Array.isArray(uuids) && uuids.some((uuid: unknown) => uuid === RECYCLE_BIN_UUID)
+}
+
+const handlePlaylistContentChanged = (payload: unknown) => {
+  if (hasRecycleBinContentChange(payload)) {
+    scheduleRecycleBinTrackCountRefresh()
+  }
+}
+
+const handleLibraryTreeUpdated = () => {
+  scheduleRecycleBinTrackCountRefresh(100)
+}
+
+const handleIconTooltipMouseEnter = (item: Icon) => {
+  if (item.name === 'RecycleBin') {
+    scheduleRecycleBinTrackCountRefresh()
+  }
+}
+
+onMounted(() => {
+  emitter.on('playlistContentChanged', handlePlaylistContentChanged)
+  window.electron.ipcRenderer.on('library-tree-updated', handleLibraryTreeUpdated)
+  scheduleRecycleBinTrackCountRefresh()
+})
+
+onUnmounted(() => {
+  emitter.off('playlistContentChanged', handlePlaylistContentChanged)
+  window.electron.ipcRenderer.removeListener('library-tree-updated', handleLibraryTreeUpdated)
+  recycleBinTrackCountRequestId += 1
+  if (recycleBinTrackCountRefreshTimer) {
+    clearTimeout(recycleBinTrackCountRefreshTimer)
+    recycleBinTrackCountRefreshTimer = null
+  }
+})
+
 const waitForUiIdle = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const updateSelectedIcon = (item: HoverableIcon | undefined) => {
@@ -143,6 +223,9 @@ const updateSelectedIcon = (item: HoverableIcon | undefined) => {
 }
 
 const clickIcon = (item: Icon) => {
+  if (item.name === 'RecycleBin') {
+    scheduleRecycleBinTrackCountRefresh()
+  }
   if (item.name == selectedIcon.value.name) {
     runtime.libraryAreaSelected = item.name
     return
@@ -472,11 +555,9 @@ watch(
                 'is-playing': isPlayingLibraryIcon(item)
               }
             ]"
+            @mouseenter="handleIconTooltipMouseEnter(item)"
           ></span>
-          <bubbleBox
-            :dom="iconRefMap[item.name] || undefined"
-            :title="t(item.i18nKey || item.name)"
-          />
+          <bubbleBox :dom="iconRefMap[item.name] || undefined" :title="getIconTooltipTitle(item)" />
         </div>
       </div>
     </div>
@@ -536,7 +617,7 @@ watch(
               ></span>
               <bubbleBox
                 :dom="iconRefMap[item.name] || undefined"
-                :title="t(item.i18nKey || item.name)"
+                :title="getIconTooltipTitle(item)"
               />
             </div>
           </div>
