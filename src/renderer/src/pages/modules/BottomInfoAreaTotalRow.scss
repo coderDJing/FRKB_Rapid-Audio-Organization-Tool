@@ -4,6 +4,7 @@
   align-items: center;
   min-height: 20px;
   padding: 0 8px;
+  pointer-events: auto;
 }
 
 .selected-count-text,
@@ -14,6 +15,28 @@
   margin-bottom: 2px;
   user-select: none;
   -webkit-user-select: none;
+}
+
+.pending-analysis-button {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.pending-analysis-button:hover {
+  color: var(--accent);
+}
+
+.pending-analysis-button:focus-visible {
+  color: var(--accent);
+  outline: 1px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 .total-row > .selected-count-text + .selected-count-text::before,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, shallowRef, watch, useTemplateRef } from 'vue'
+import { computed, nextTick, onUnmounted, ref, shallowRef, watch, useTemplateRef } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue'
@@ -21,7 +21,9 @@ import { buildSongsAreaDefaultColumns } from '@renderer/pages/modules/songsArea/
 import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHeaderContextMenu.vue'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useKeyboardSelection } from '@renderer/pages/modules/songsArea/composables/useKeyboardSelection'
-import type { ISongsAreaPaneRuntimeState } from '@renderer/stores/runtime'
+import { useAutoScrollToCurrent } from '@renderer/pages/modules/songsArea/composables/useAutoScrollToCurrent'
+import { useSongLocateFlash } from '@renderer/pages/modules/songsArea/composables/useSongLocateFlash'
+import type { ISongsAreaPaneRuntimeState, SongsAreaPaneKey } from '@renderer/stores/runtime'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import { usePioneerDesktopPlaylistActions } from './pioneerSongsArea/usePioneerDesktopPlaylistActions'
 import { usePioneerExternalPlaylistAnalysis } from './pioneerSongsArea/usePioneerExternalPlaylistAnalysis'
@@ -222,6 +224,43 @@ const {
   },
   emitPioneerSongsAreaLog
 })
+
+const { scrollToIndex } = useAutoScrollToCurrent({
+  runtime,
+  songsAreaState: pioneerSongsAreaState,
+  songsAreaRef
+})
+const {
+  flashRowKey: locateFlashRowKey,
+  flashRowToken: locateFlashRowToken,
+  triggerFlash: triggerLocateFlash
+} = useSongLocateFlash()
+
+type FocusSongPayload = {
+  pane?: SongsAreaPaneKey | 'pioneer'
+  songListUUID?: string
+  filePath?: string
+}
+
+const handleFocusSongRequest = async (payload?: FocusSongPayload) => {
+  if (payload?.pane !== 'pioneer') return
+  const targetListUUID = String(payload.songListUUID || '').trim()
+  if (targetListUUID && targetListUUID !== currentPlaybackListKey.value) return
+  const targetPath = normalizePath(String(payload.filePath || ''))
+  if (!targetPath) return
+  const targetIndex = visibleSongs.value.findIndex(
+    (song) => normalizePath(song.filePath) === targetPath
+  )
+  if (targetIndex < 0) return
+  const targetSong = visibleSongs.value[targetIndex]
+  const rowKey = resolveTrackKey(targetSong)
+  selectedRowKeys.value = [rowKey]
+  await nextTick()
+  scrollToIndex(targetIndex)
+  triggerLocateFlash(rowKey)
+}
+
+emitter.on('songsArea/focus-song', handleFocusSongRequest)
 
 const { placeholderText } = usePioneerSongsPlaceholder({
   loading,
@@ -642,6 +681,7 @@ const handleSongDblClick = async (song: ISongInfo, event?: MouseEvent) => {
 
 onUnmounted(() => {
   cancelPendingRepeatSingleClickDeselect()
+  emitter.off('songsArea/focus-song', handleFocusSongRequest)
   emitter.off('preview-transfer:open-dialog', handlePreviewMoveRequest)
   emitter.off('songFileMissing', handleSongFileMissing)
   emitter.off('songFileRestored', handleSongFileRestored)
@@ -692,8 +732,8 @@ onUnmounted(() => {
         :selected-song-file-paths="selectedRowKeysForTemplate"
         :playing-song-file-path="playingSongFilePathForRows"
         :playing-song-file-paths="playingSongFilePathsForRows"
-        :flash-row-key="''"
-        :flash-row-token="0"
+        :flash-row-key="locateFlashRowKey"
+        :flash-row-token="locateFlashRowToken"
         :harmonic-reference-key="harmonicReferenceKeyForRows"
         :total-width="totalWidth"
         source-library-name="PioneerDeviceLibrary"

@@ -54,6 +54,11 @@
 
 .song-row-content {
   --song-harmonic-match-color: color-mix(in srgb, #63a07f 78%, var(--text) 22%);
+  --song-locate-flash-rest: color-mix(in srgb, var(--accent) 14%, transparent);
+  --song-locate-flash-peak: color-mix(in srgb, var(--accent) 40%, transparent);
+  --song-locate-flash-border: color-mix(in srgb, var(--accent) 55%, transparent);
+  --song-locate-flash-bar: color-mix(in srgb, var(--accent) 82%, transparent);
+  --song-locate-flash-glow: color-mix(in srgb, var(--accent) 28%, transparent);
   display: flex;
   height: 30px; // Standard row height
   contain: layout style;
@@ -120,6 +125,14 @@
   }
 }
 
+:global(.theme-light) .song-row-content {
+  --song-locate-flash-rest: color-mix(in srgb, var(--accent) 9%, transparent);
+  --song-locate-flash-peak: color-mix(in srgb, var(--accent) 28%, transparent);
+  --song-locate-flash-border: color-mix(in srgb, var(--accent) 42%, transparent);
+  --song-locate-flash-bar: color-mix(in srgb, var(--accent) 70%, transparent);
+  --song-locate-flash-glow: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .cell-title--curated-artist-hit {
   color: #c8a23c;
   font-weight: 600;
@@ -143,24 +156,24 @@
 @keyframes global-search-locate-flash-a {
   0%,
   100% {
-    background-color: rgba(0, 120, 212, 0.2);
+    background-color: var(--song-locate-flash-rest);
     box-shadow: none;
   }
   50% {
-    background-color: rgba(74, 176, 255, 0.52);
-    box-shadow: inset 0 0 0 1px rgba(120, 205, 255, 0.72);
+    background-color: var(--song-locate-flash-peak);
+    box-shadow: inset 0 0 0 1px var(--song-locate-flash-border);
   }
 }
 
 @keyframes global-search-locate-flash-b {
   0%,
   100% {
-    background-color: rgba(0, 120, 212, 0.2);
+    background-color: var(--song-locate-flash-rest);
     box-shadow: none;
   }
   50% {
-    background-color: rgba(74, 176, 255, 0.52);
-    box-shadow: inset 0 0 0 1px rgba(120, 205, 255, 0.72);
+    background-color: var(--song-locate-flash-peak);
+    box-shadow: inset 0 0 0 1px var(--song-locate-flash-border);
   }
 }
 
@@ -173,8 +186,8 @@
   }
   50% {
     width: 6px;
-    background: #80d0ff;
-    box-shadow: 0 0 12px rgba(128, 208, 255, 0.45);
+    background: var(--song-locate-flash-bar);
+    box-shadow: 0 0 10px var(--song-locate-flash-glow);
   }
 }
 

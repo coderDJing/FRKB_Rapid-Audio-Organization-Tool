@@ -185,6 +185,7 @@ interface IRekordboxLibraryBrowserState {
   loading: boolean
   visibleSongCount: number
   pendingAnalysisCount: number
+  firstPendingAnalysisFilePath: string
   visibleAnalysisProgressCount: number
   treeNodes: IPioneerPlaylistTreeNode[]
 }

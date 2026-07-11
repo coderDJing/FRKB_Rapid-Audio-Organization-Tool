@@ -43,6 +43,7 @@ import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composabl
 import { useSongsAreaEvents } from '@renderer/pages/modules/songsArea/composables/useSongsAreaEvents'
 import { useWaveformPreviewPlayer } from '@renderer/pages/modules/songsArea/composables/useWaveformPreviewPlayer'
 import { useGlobalSearchFocus } from '@renderer/pages/modules/songsArea/composables/useGlobalSearchFocus'
+import { useSongLocateFlash } from '@renderer/pages/modules/songsArea/composables/useSongLocateFlash'
 import { useSongsAreaDragAndDrop } from '@renderer/pages/modules/songsArea/composables/useSongsAreaDragAndDrop'
 import { usePlaylistTrackNumbers } from '@renderer/pages/modules/songsArea/composables/usePlaylistTrackNumbers'
 import { detectSongsAreaScrollCarrier } from '@renderer/pages/modules/songsArea/composables/scrollCarrier'
@@ -481,7 +482,6 @@ onUnmounted(() => {
   emitter.off('songsArea/clipboardHint', handleClipboardHint)
   emitter.off('waveform-preview:state', handleWaveformPreviewState)
   emitter.off('preview-transfer:open-dialog', handlePreviewMoveRequest)
-  clearGlobalSearchFlashSchedule()
 })
 const applyMetadataUpdate = async (
   updatedSong: ISongInfo | undefined,
@@ -676,51 +676,15 @@ const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   runtime.playingData.playingSong = normalizedSong
 }
 
-const globalSearchFlashRowKey = ref('')
-const globalSearchFlashToken = ref(0)
-let globalSearchFlashTimer: ReturnType<typeof setTimeout> | null = null
-let globalSearchFlashRafA: number | null = null
-let globalSearchFlashRafB: number | null = null
-const clearGlobalSearchFlashSchedule = () => {
-  if (globalSearchFlashTimer) {
-    clearTimeout(globalSearchFlashTimer)
-    globalSearchFlashTimer = null
-  }
-  if (globalSearchFlashRafA !== null) {
-    cancelAnimationFrame(globalSearchFlashRafA)
-    globalSearchFlashRafA = null
-  }
-  if (globalSearchFlashRafB !== null) {
-    cancelAnimationFrame(globalSearchFlashRafB)
-    globalSearchFlashRafB = null
-  }
-}
-const triggerGlobalSearchFlash = (rowKey: string) => {
-  if (!rowKey) return
-  clearGlobalSearchFlashSchedule()
-  globalSearchFlashRowKey.value = ''
-  globalSearchFlashToken.value += 1
-  const flashToken = globalSearchFlashToken.value
-  void nextTick().then(() => {
-    globalSearchFlashRafA = requestAnimationFrame(() => {
-      globalSearchFlashRafA = null
-      globalSearchFlashRafB = requestAnimationFrame(() => {
-        globalSearchFlashRafB = null
-        if (globalSearchFlashToken.value !== flashToken) return
-        globalSearchFlashRowKey.value = rowKey
-      })
-    })
-  })
-  globalSearchFlashTimer = setTimeout(() => {
-    if (globalSearchFlashToken.value === flashToken && globalSearchFlashRowKey.value === rowKey) {
-      globalSearchFlashRowKey.value = ''
-    }
-    globalSearchFlashTimer = null
-  }, 1400)
-}
+const {
+  flashRowKey: globalSearchFlashRowKey,
+  flashRowToken: globalSearchFlashToken,
+  triggerFlash: triggerGlobalSearchFlash
+} = useSongLocateFlash()
 
 useGlobalSearchFocus({
   runtime,
+  pane: props.pane,
   songsAreaState,
   originalSongInfoArr,
   columnData,

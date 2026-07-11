@@ -345,6 +345,7 @@ export const useRuntimeStore = defineStore('runtime', {
         loading: false,
         visibleSongCount: 0,
         pendingAnalysisCount: 0,
+        firstPendingAnalysisFilePath: '',
         visibleAnalysisProgressCount: 0,
         treeNodes: []
       },

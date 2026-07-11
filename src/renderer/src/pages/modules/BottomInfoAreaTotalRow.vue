@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { i18n } from '@renderer/i18n'
-import { useRuntimeStore } from '@renderer/stores/runtime'
+import { type SongsAreaPaneKey, useRuntimeStore } from '@renderer/stores/runtime'
+import { activateSongsAreaPane } from '@renderer/utils/songsAreaSplit'
+import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { collectMissingAnalysisFilesFromSongs } from '@renderer/utils/manualKeyAnalysis'
 import type { ISongInfo } from 'src/types/globals'
@@ -34,14 +37,15 @@ const pendingAnalysisFiles = computed(() =>
 const pendingAnalysisCount = computed(() =>
   isPioneerView.value ? 0 : pendingAnalysisFiles.value.length
 )
-const manualPendingAnalysisCount = computed(
+const manualPendingAnalysisPathSet = computed(
   () =>
     new Set(
       runtime.manualKeyAnalysisPendingFilePaths
         .map((filePath) => normalizeAnalysisPath(filePath))
         .filter(Boolean)
-    ).size
+    )
 )
+const manualPendingAnalysisCount = computed(() => manualPendingAnalysisPathSet.value.size)
 const pioneerPendingAnalysisCount = computed(() =>
   Math.max(0, Number(runtime.pioneerDeviceLibrary.pendingAnalysisCount) || 0)
 )
@@ -53,6 +57,36 @@ const splitRightPendingFiles = computed(() =>
 )
 const splitLeftPendingCount = computed(() => splitLeftPendingFiles.value.length)
 const splitRightPendingCount = computed(() => splitRightPendingFiles.value.length)
+const resolveFirstPendingAnalysisFile = (songInfoArr: ISongInfo[], pendingFiles: string[]) => {
+  const manualPathSet = manualPendingAnalysisPathSet.value
+  if (manualPathSet.size > 0) {
+    const manualSong = songInfoArr.find((song) => {
+      if (song.fileMissing) return false
+      const filePath = normalizeAnalysisPath(song.filePath)
+      return Boolean(filePath && manualPathSet.has(filePath))
+    })
+    if (manualSong?.filePath) return manualSong.filePath
+  }
+  return pendingFiles[0] || ''
+}
+const firstPendingAnalysisFile = computed(() =>
+  resolveFirstPendingAnalysisFile(runtime.songsArea.songInfoArr, pendingAnalysisFiles.value)
+)
+const firstSplitLeftPendingFile = computed(() =>
+  resolveFirstPendingAnalysisFile(
+    runtime.songsAreaPanels.panes.left.songInfoArr,
+    splitLeftPendingFiles.value
+  )
+)
+const firstSplitRightPendingFile = computed(() =>
+  resolveFirstPendingAnalysisFile(
+    runtime.songsAreaPanels.panes.right.songInfoArr,
+    splitRightPendingFiles.value
+  )
+)
+const firstPioneerPendingAnalysisFile = computed(() =>
+  String(runtime.pioneerDeviceLibrary.firstPendingAnalysisFilePath || '').trim()
+)
 const displayPendingAnalysisCount = computed(() =>
   manualPendingAnalysisCount.value > 0
     ? manualPendingAnalysisCount.value
@@ -76,6 +110,30 @@ const hasTotalRowContent = computed(() => {
   }
   return Boolean(runtime.songsArea.songListUUID && runtime.songsArea.songInfoArr.length > 0)
 })
+const focusPendingAnalysisSong = (
+  pane: SongsAreaPaneKey | 'pioneer',
+  filePath: string,
+  songListUUID = ''
+) => {
+  const targetFilePath = String(filePath || '').trim()
+  if (!targetFilePath) return
+  if (pane !== 'pioneer') {
+    activateSongsAreaPane(runtime, pane)
+  }
+  emitter.emit('songsArea/focus-song', {
+    pane,
+    songListUUID,
+    filePath: targetFilePath,
+    flash: true,
+    waitForListStabilize: false
+  })
+}
+const focusSplitPendingAnalysisSong = (pane: Extract<SongsAreaPaneKey, 'left' | 'right'>) => {
+  const paneState = runtime.songsAreaPanels.panes[pane]
+  const filePath =
+    pane === 'left' ? firstSplitLeftPendingFile.value : firstSplitRightPendingFile.value
+  focusPendingAnalysisSong(pane, filePath, paneState.songListUUID)
+}
 function formatDurationUnit(unit: 'day' | 'hour' | 'minute' | 'second', count: number): string {
   const pluralKey = count === 1 ? 'one' : 'other'
   return t(`bottomInfo.durationUnits.${unit}.${pluralKey}`, { count })
@@ -121,22 +179,60 @@ const playlistTotalDaysHoursSeconds = computed(() => {
         !isPioneerView && runtime.songsAreaPanels.splitEnabled && manualPendingAnalysisCount <= 0
       "
     >
-      <div v-if="splitLeftPendingCount > 0" class="selected-count-text">
+      <bubbleBoxTrigger
+        v-if="splitLeftPendingCount > 0"
+        tag="button"
+        type="button"
+        class="selected-count-text pending-analysis-button"
+        :title="t('bottomInfo.locatePendingAnalysis')"
+        :aria-label="t('bottomInfo.locatePendingAnalysis')"
+        @click="focusSplitPendingAnalysisSong('left')"
+      >
         {{ t('bottomInfo.pendingAnalysisLeft', { count: splitLeftPendingCount }) }}
-      </div>
-      <div v-if="splitRightPendingCount > 0" class="selected-count-text">
+      </bubbleBoxTrigger>
+      <bubbleBoxTrigger
+        v-if="splitRightPendingCount > 0"
+        tag="button"
+        type="button"
+        class="selected-count-text pending-analysis-button"
+        :title="t('bottomInfo.locatePendingAnalysis')"
+        :aria-label="t('bottomInfo.locatePendingAnalysis')"
+        @click="focusSplitPendingAnalysisSong('right')"
+      >
         {{ t('bottomInfo.pendingAnalysisRight', { count: splitRightPendingCount }) }}
-      </div>
+      </bubbleBoxTrigger>
     </template>
     <template v-else-if="isPioneerView">
-      <div v-if="displayPioneerPendingAnalysisCount > 0" class="selected-count-text">
+      <bubbleBoxTrigger
+        v-if="displayPioneerPendingAnalysisCount > 0"
+        tag="button"
+        type="button"
+        class="selected-count-text pending-analysis-button"
+        :title="t('bottomInfo.locatePendingAnalysis')"
+        :aria-label="t('bottomInfo.locatePendingAnalysis')"
+        @click="focusPendingAnalysisSong('pioneer', firstPioneerPendingAnalysisFile)"
+      >
         {{ t('bottomInfo.pendingAnalysis', { count: displayPioneerPendingAnalysisCount }) }}
-      </div>
+      </bubbleBoxTrigger>
     </template>
     <template v-else>
-      <div v-if="displayPendingAnalysisCount > 0" class="selected-count-text">
+      <bubbleBoxTrigger
+        v-if="displayPendingAnalysisCount > 0"
+        tag="button"
+        type="button"
+        class="selected-count-text pending-analysis-button"
+        :title="t('bottomInfo.locatePendingAnalysis')"
+        :aria-label="t('bottomInfo.locatePendingAnalysis')"
+        @click="
+          focusPendingAnalysisSong(
+            runtime.songsAreaPanels.splitEnabled ? runtime.songsAreaPanels.activePane : 'single',
+            firstPendingAnalysisFile,
+            runtime.songsArea.songListUUID
+          )
+        "
+      >
         {{ t('bottomInfo.pendingAnalysis', { count: displayPendingAnalysisCount }) }}
-      </div>
+      </bubbleBoxTrigger>
     </template>
     <div v-if="!isPioneerView" class="total-text">
       {{ totalDurationLabel }}{{ playlistTotalDaysHoursSeconds }}

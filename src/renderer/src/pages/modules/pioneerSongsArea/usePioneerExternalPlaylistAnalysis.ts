@@ -40,16 +40,34 @@ export const usePioneerExternalPlaylistAnalysis = (
   const frkbAnalyzedPathSet = computed(
     () => new Set(frkbAnalyzedFilePaths.value.map((filePath) => normalizePath(filePath)))
   )
-  const pendingAnalysisCount = computed(() => {
-    let count = 0
+  const manualPendingPathSet = computed(
+    () =>
+      new Set(
+        runtime.manualKeyAnalysisPendingFilePaths
+          .map((filePath) => normalizePath(filePath))
+          .filter(Boolean)
+      )
+  )
+  const pendingAnalysisFilePaths = computed(() => {
+    const filePaths: string[] = []
     const analyzedPathSet = frkbAnalyzedPathSet.value
     for (const song of params.visibleSongs.value) {
       const filePath = normalizePath(song.filePath)
       if (!filePath) continue
       if (hasCompleteKeyAnalysis(song) || analyzedPathSet.has(filePath)) continue
-      count++
+      filePaths.push(song.filePath)
     }
-    return count
+    return filePaths
+  })
+  const pendingAnalysisCount = computed(() => pendingAnalysisFilePaths.value.length)
+  const firstPendingAnalysisFilePath = computed(() => {
+    const manualPathSet = manualPendingPathSet.value
+    const manualSong = params.visibleSongs.value.find((song) => {
+      if (song.fileMissing) return false
+      const filePath = normalizePath(song.filePath)
+      return Boolean(filePath && manualPathSet.has(filePath))
+    })
+    return manualSong?.filePath || pendingAnalysisFilePaths.value[0] || ''
   })
   const visibleAnalysisProgressCount = computed(() =>
     hasDisplayableAnalysisProgressForSongs(params.visibleSongs.value) ? 1 : 0
@@ -60,11 +78,18 @@ export const usePioneerExternalPlaylistAnalysis = (
       [
         params.visibleSongs.value.length,
         pendingAnalysisCount.value,
+        firstPendingAnalysisFilePath.value,
         visibleAnalysisProgressCount.value
       ] as const,
-    ([visibleSongCount, nextPendingAnalysisCount, nextVisibleAnalysisProgressCount]) => {
+    ([
+      visibleSongCount,
+      nextPendingAnalysisCount,
+      nextFirstPendingAnalysisFilePath,
+      nextVisibleAnalysisProgressCount
+    ]) => {
       runtime.pioneerDeviceLibrary.visibleSongCount = visibleSongCount
       runtime.pioneerDeviceLibrary.pendingAnalysisCount = nextPendingAnalysisCount
+      runtime.pioneerDeviceLibrary.firstPendingAnalysisFilePath = nextFirstPendingAnalysisFilePath
       runtime.pioneerDeviceLibrary.visibleAnalysisProgressCount = nextVisibleAnalysisProgressCount
     },
     { immediate: true }
@@ -156,6 +181,7 @@ export const usePioneerExternalPlaylistAnalysis = (
   onUnmounted(() => {
     runtime.pioneerDeviceLibrary.visibleSongCount = 0
     runtime.pioneerDeviceLibrary.pendingAnalysisCount = 0
+    runtime.pioneerDeviceLibrary.firstPendingAnalysisFilePath = ''
     runtime.pioneerDeviceLibrary.visibleAnalysisProgressCount = 0
     if (typeof window !== 'undefined' && window.electron?.ipcRenderer) {
       window.electron.ipcRenderer.removeListener(

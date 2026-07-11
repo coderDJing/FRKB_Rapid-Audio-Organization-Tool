@@ -6,6 +6,7 @@
     "pendingAnalysisLeft": "L: {count} pending",
     "pendingAnalysisRight": "R: {count} pending",
     "analyzePending": "Analyze",
+    "locatePendingAnalysis": "Locate the first track pending analysis",
     "durationUnits": {
       "day": {
         "one": "{count} day",

@@ -1,17 +1,24 @@
 import { nextTick, onUnmounted, ref, watch, type Ref, type ShallowRef } from 'vue'
 import emitter from '@renderer/utils/mitt'
-import type { ISongsAreaPaneRuntimeState, useRuntimeStore } from '@renderer/stores/runtime'
+import type {
+  ISongsAreaPaneRuntimeState,
+  SongsAreaPaneKey,
+  useRuntimeStore
+} from '@renderer/stores/runtime'
 import type { ISongInfo, ISongsAreaColumn } from '../../../../../../types/globals'
 
 type FocusSongPayload = {
+  pane?: SongsAreaPaneKey | 'pioneer'
   songListUUID?: string
   filePath?: string
   autoPlay?: boolean
   flash?: boolean
+  waitForListStabilize?: boolean
 }
 
 interface UseGlobalSearchFocusParams {
   runtime: ReturnType<typeof useRuntimeStore>
+  pane: SongsAreaPaneKey
   songsAreaState: ISongsAreaPaneRuntimeState
   originalSongInfoArr: ShallowRef<ISongInfo[]>
   columnData: Ref<ISongsAreaColumn[]>
@@ -33,6 +40,7 @@ const normalizeSongPath = (value: string | undefined | null) =>
 
 export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
   const {
+    pane,
     songsAreaState,
     originalSongInfoArr,
     columnData,
@@ -84,6 +92,7 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
   }
 
   const applyFocusSongPayload = async (payload: FocusSongPayload, _attemptNo: number) => {
+    if (payload.pane && payload.pane !== pane) return false
     const targetPath = normalizeSongPath(payload?.filePath)
     const targetListUUID = String(payload?.songListUUID || '')
     if (!targetPath) return false
@@ -112,7 +121,8 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
     }
     if (!focusHasHit) {
       focusHasHit = true
-      focusStabilizeUntil = Date.now() + FOCUS_STABILIZE_MS
+      focusStabilizeUntil =
+        payload.waitForListStabilize === false ? 0 : Date.now() + FOCUS_STABILIZE_MS
     }
     if (Date.now() < focusStabilizeUntil) {
       return false
@@ -166,6 +176,7 @@ export function useGlobalSearchFocus(params: UseGlobalSearchFocusParams) {
 
   const handleFocusSongRequest = (payload?: FocusSongPayload) => {
     if (!payload) return
+    if (payload.pane && payload.pane !== pane) return
     focusAttemptSeq = 0
     focusHasHit = false
     focusAutoPlayed = false
