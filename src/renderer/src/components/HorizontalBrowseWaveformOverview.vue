@@ -9,6 +9,7 @@ import type {
 } from 'src/types/globals'
 import HotCueMarkersLayer from '@renderer/components/HotCueMarkersLayer.vue'
 import MemoryCueMarkersLayer from '@renderer/components/MemoryCueMarkersLayer.vue'
+import PlaybackRangeHandles from '@renderer/pages/modules/songPlayer/PlaybackRangeHandles.vue'
 import { isSameHorizontalBrowseSongFilePath } from '@renderer/composables/horizontalBrowse/horizontalBrowseShellSongs'
 import {
   getRekordboxPreviewWaveformRequestChannel,
@@ -27,6 +28,7 @@ import {
   type SongStructureSection,
   type SongStructureSectionKind
 } from '@shared/songStructure'
+import type { HorizontalBrowsePlaybackRangeOverlay } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseEditPlaybackRange'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -37,6 +39,7 @@ const props = defineProps<{
   markerAnchor?: 'top' | 'bottom'
   loopRange?: { startSec: number; endSec: number } | null
   sectionSeekMode?: 'seek' | 'seek-play'
+  playbackRange?: HorizontalBrowsePlaybackRangeOverlay | null
 }>()
 
 const emit = defineEmits<{
@@ -54,6 +57,7 @@ const canvasRef = ref<HTMLCanvasElement | null>(null)
 const compactVisualData = ref<WaveformGlobalOverviewData | null>(null)
 const pioneerPreviewData = ref<IPioneerPreviewWaveformData | null>(null)
 const scrubbing = ref(false)
+const trackWidth = ref(0)
 
 let resizeObserver: ResizeObserver | null = null
 let themeClassObserver: MutationObserver | null = null
@@ -394,6 +398,7 @@ const drawWaveform = () => {
 
   const width = Math.max(1, track.clientWidth)
   const height = Math.max(1, track.clientHeight)
+  trackWidth.value = width
   const ctx = canvas.getContext('2d')
   if (!ctx) return
 
@@ -558,6 +563,23 @@ onUnmounted(() => {
   >
     <div ref="trackRef" class="overview-waveform__track">
       <canvas ref="canvasRef" class="overview-waveform__canvas"></canvas>
+      <div
+        v-if="props.playbackRange?.visible"
+        class="overview-waveform__playback-range"
+        @pointerdown.stop
+      >
+        <PlaybackRangeHandles
+          :model-value-start="props.playbackRange.startPercent"
+          :model-value-end="props.playbackRange.endPercent"
+          :container-width="trackWidth"
+          enable-playback-range
+          :waveform-show="!!props.song"
+          :locked="props.playbackRange.locked"
+          :locked-ranges="props.playbackRange.lockedRanges"
+          @update:model-value-start="props.playbackRange.setStartPercent"
+          @update:model-value-end="props.playbackRange.setEndPercent"
+        />
+      </div>
       <MemoryCueMarkersLayer
         :memory-cues="props.memoryCues || []"
         :visible-duration-sec="totalSeconds"
@@ -636,6 +658,17 @@ onUnmounted(() => {
   width: 100%;
   height: 100%;
   pointer-events: none;
+}
+
+.overview-waveform__playback-range {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 12;
+}
+
+.overview-waveform__playback-range :deep(.manual-handle:not(.is-locked)) {
+  pointer-events: auto;
 }
 
 .overview-waveform__structure {

@@ -15,6 +15,7 @@ import {
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveform.constants'
 import {
   buildHorizontalBrowseDeckToolbarState,
+  parseHorizontalBrowseDurationToSeconds,
   resolveHorizontalBrowseDeckDurationSeconds,
   resolveHorizontalBrowseDeckGridBpm,
   resolveHorizontalBrowseDeckSyncUiEnabled,
@@ -26,10 +27,8 @@ import {
   resolveHorizontalBrowseDefaultCuePointSec
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailMath'
 import { createHorizontalBrowseDeckEjectHandler } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckEject'
-import { useHorizontalBrowseDeckDelete } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckDelete'
 import { useHorizontalBrowseDeckMove } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
 import { useHorizontalBrowseDeckSongs } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckSongs'
-import { useHorizontalBrowseHotkeys } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseHotkeys'
 import { useHorizontalBrowseDeckTempoControls } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoControls'
 import { useHorizontalBrowseDeckTempoNudge } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoNudge'
 import { useHorizontalBrowseDeckToolbarInteractions } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckToolbarInteractions'
@@ -67,6 +66,8 @@ import {
   type SharedDetailZoomState
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseModeShellTypes'
 import { useHorizontalBrowseModePlaybackHandoff } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseModePlaybackHandoff'
+import { useHorizontalBrowseEditPlaybackRange } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseEditPlaybackRange'
+import { useHorizontalBrowseModeShellHotkeys } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseModeShellHotkeys'
 import { useHorizontalBrowseVolumeSync } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseVolumeSync'
 import { MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT } from '@renderer/utils/mainWindowPlaybackHandoff'
 import { useHorizontalBrowseWaveformPresentationCoordinator } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveformPresentationCoordinator'
@@ -78,6 +79,7 @@ import {
   resolveHorizontalBrowseDeckToolbarBpmInputValue,
   resolveHorizontalBrowseDeckWaveformPlaybackActive
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseModeShellPresentationResolvers'
+import { resolveInitialPlaybackRangeStartSec } from '@shared/playbackRange'
 
 type DeckKey = HorizontalBrowseDeckKey
 const props = withDefaults(defineProps<{ viewMode?: HorizontalBrowseViewMode }>(), {
@@ -397,7 +399,22 @@ const assignSongToDeck = async (
   transportOptions?: HorizontalBrowseDeckAssignTransportOptions
 ) => {
   setDeckSongListSource(deck, resolveDeckSongSourceOptions(sourceOptions))
-  await assignSongToDeckBase(deck, song, transportOptions)
+  const shouldApplyEditPlaybackRange =
+    deck === 'top' &&
+    isEditMode.value &&
+    runtime.setting.enablePlaybackRange === true &&
+    !Number.isFinite(transportOptions?.initialCurrentSec)
+  const resolvedTransportOptions = shouldApplyEditPlaybackRange
+    ? {
+        ...(transportOptions || {}),
+        initialCurrentSec: resolveInitialPlaybackRangeStartSec(
+          runtime.setting,
+          song.songStructure,
+          parseHorizontalBrowseDurationToSeconds(song.duration)
+        )
+      }
+    : transportOptions
+  await assignSongToDeckBase(deck, song, resolvedTransportOptions)
 }
 
 const {
@@ -490,6 +507,20 @@ const {
   handleDeckBeatJump,
   resolveDeckPlaying,
   handleDeckPlayPauseToggle
+})
+const { playbackRangeOverlay, handleDeckPlaybackTick } = useHorizontalBrowseEditPlaybackRange({
+  runtime,
+  isEditMode,
+  topDeckSong,
+  currentSeconds: topDeckRenderCurrentSeconds,
+  durationSeconds: topDeckDurationSeconds,
+  resolvePlaying: () => resolveDeckPlaying('top'),
+  resolveLoopActive: () => isDeckLoopActive('top'),
+  seek: (seconds) => handleDeckPlayheadSeek('top', seconds),
+  seekAndPlay: (seconds) => handleDeckSectionSeekPlay('top', seconds),
+  pause: () => resolveDeckPlaying('top') && handleDeckPlayPauseToggle('top'),
+  advanceToNextSong: () => Boolean(loadEditAdjacentSong(1)),
+  handleLoopPlaybackTick: handleDeckLoopPlaybackTick
 })
 const { handleDeckHotCuePress, handleDeckHotCueDelete, handleSongHotCuesUpdated } =
   useHorizontalBrowseDeckHotCues({
@@ -618,48 +649,20 @@ const resolveDeckToolbarState = (deck: DeckKey) =>
     }
   )
 
-const handleCrossfaderNudgeByKeyboard = (direction: -1 | 1) => {
-  faderPanelRef.value?.nudgeCrossfaderByKeyboard(direction)
-}
-const handleCrossfaderResetByKeyboard = () => {
-  faderPanelRef.value?.resetCrossfaderByKeyboard()
-}
-
-const handleDeckMoveToFilterHotkey = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  openDeckMoveDialog(deck, 'FilterLibrary')
-}
-
-const handleDeckMoveToCuratedHotkey = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  openDeckMoveDialog(deck, 'CuratedLibrary')
-}
-
-const { deleteDeckSong } = useHorizontalBrowseDeckDelete({
+useHorizontalBrowseModeShellHotkeys({
   runtime,
-  getDeckSong: resolveDeckSong,
-  ejectDeckSong: handleDeckEjectSong
-})
-
-const handleDeckDeleteHotkey = (deck: DeckKey) => {
-  touchDeckInteraction(deck)
-  void deleteDeckSong(deck)
-}
-
-useHorizontalBrowseHotkeys({
-  runtime,
+  touchDeckInteraction,
+  resolveDeckSong,
+  ejectDeckSong: handleDeckEjectSong,
+  openDeckMoveDialog,
   onTogglePlayPause: handleDeckPlayPauseToggle,
   onCueKeyDown: handleDeckCueHotkeyDown,
   onCueKeyUp: handleDeckCueHotkeyUp,
   onJumpBar: handleDeckBarJump,
   onJumpPhrase: handleDeckPhraseJump,
   onJumpEditBeats: jumpEditDeckByBeats,
-  onMoveToFilter: handleDeckMoveToFilterHotkey,
-  onMoveToCurated: handleDeckMoveToCuratedHotkey,
-  onDelete: handleDeckDeleteHotkey,
   onSeekPercent: handleDeckSeekPercent,
-  onNudgeCrossfader: handleCrossfaderNudgeByKeyboard,
-  onResetCrossfader: handleCrossfaderResetByKeyboard,
+  faderPanel: faderPanelRef,
   onNavigateEditSong: loadEditAdjacentSong
 })
 
@@ -743,7 +746,7 @@ onMounted(() => {
     syncCurrentVolume()
     markPlaybackHandoffReady()
   })
-  startRenderSyncLoop(handleDeckLoopPlaybackTick)
+  startRenderSyncLoop(handleDeckPlaybackTick)
   window.addEventListener('drop', handleGlobalDragFinish, true)
   window.addEventListener('dragend', handleGlobalDragFinish, true)
   window.addEventListener('pointerup', handleWindowDeckCuePointerUp)
@@ -883,6 +886,7 @@ onUnmounted(() => {
         :memory-cues="topDeckSong?.memoryCues || []"
         :toolbar-state="resolveDeckToolbarState('top')"
         :loop-range="resolveDeckLoopRange('top')"
+        :playback-range="playbackRangeOverlay"
         :read-only-source="isDeckSongReadOnly('top')"
         :quantize-enabled="deckQuantizeEnabled.top"
         :master-tempo-enabled="isDeckMasterTempoEnabled('top')"

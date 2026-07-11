@@ -44,6 +44,11 @@ export type PlaybackSectionRange = {
   kinds: SongStructureSectionKind[]
 }
 
+export type PlaybackRangePercentRange = {
+  startPercent: number
+  endPercent: number
+}
+
 export type PlaybackSectionRangeStatus = 'disabled' | 'custom' | 'unanalysed' | 'no-match' | 'ready'
 
 export type PlaybackSectionRangeResolution = {

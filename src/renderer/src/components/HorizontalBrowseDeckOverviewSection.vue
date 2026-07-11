@@ -7,6 +7,7 @@ import type { HorizontalBrowseDeckKey } from '@renderer/composables/horizontalBr
 import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoNudge'
 import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
 import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
+import type { HorizontalBrowsePlaybackRangeOverlay } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseEditPlaybackRange'
 
 type DeckToolbarState = {
   disabled: boolean
@@ -59,6 +60,7 @@ const props = defineProps<{
   hideSyncControls?: boolean
   showEnergy?: boolean
   showLargeShiftButtons?: boolean
+  playbackRange?: HorizontalBrowsePlaybackRangeOverlay | null
 }>()
 
 const emit = defineEmits<{
@@ -149,6 +151,7 @@ const isTop = props.position === 'top'
         marker-anchor="top"
         :loop-range="props.loopRange"
         section-seek-mode="seek-play"
+        :playback-range="props.playbackRange"
         @seek="emit('seek', $event)"
         @seek-play="emit('seek-play', $event)"
       />

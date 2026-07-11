@@ -61,10 +61,10 @@ export const useHorizontalBrowseEditDeckNavigation = ({
 
   const loadEditAdjacentSong = (direction: -1 | 1) => {
     const currentIndex = currentEditQueueIndex.value
-    if (currentIndex < 0) return
+    if (currentIndex < 0) return false
     const nextSong = editModeQueue.value[currentIndex + direction]
     const filePath = resolveSongFilePath(nextSong)
-    if (!filePath) return
+    if (!filePath) return false
     const shouldResumePlayback = resolveDeckPlaying('top')
     const token = (editNavigationToken += 1)
     beginHorizontalBrowseDeckInteraction('top', filePath)
@@ -78,6 +78,7 @@ export const useHorizontalBrowseEditDeckNavigation = ({
         handleDeckPlayPauseToggle('top')
       }
     })
+    return true
   }
 
   const jumpEditDeckByBeats = (direction: -1 | 1) => {

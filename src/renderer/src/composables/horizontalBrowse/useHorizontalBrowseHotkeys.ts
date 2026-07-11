@@ -26,6 +26,7 @@ type UseHorizontalBrowseHotkeysParams = {
   onNudgeCrossfader: (direction: -1 | 1) => void
   onResetCrossfader: () => void
   onNavigateEditSong?: (direction: -1 | 1) => void
+  onTogglePlaybackRange?: () => void
 }
 
 type PreviewStatePayload = {
@@ -280,6 +281,13 @@ export const useHorizontalBrowseHotkeys = (params: UseHorizontalBrowseHotkeysPar
       stopKeyboardEvent(event)
       if (event.repeat) return
       params.onDelete(deck)
+      return
+    }
+
+    if (code === 'KeyR' && isEditModeActive()) {
+      stopKeyboardEvent(event)
+      if (event.repeat) return
+      params.onTogglePlaybackRange?.()
       return
     }
 

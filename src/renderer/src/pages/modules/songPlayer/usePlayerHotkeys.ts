@@ -189,6 +189,7 @@ export function usePlayerHotkeys(
     })
 
     hotkeys('r', scope, (event) => {
+      if (runtime.mainWindowBrowseMode !== 'browser') return
       event.preventDefault()
       if (
         !state.waveformShow.value ||

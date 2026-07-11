@@ -1,10 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onUnmounted } from 'vue'
-
-type LockedRange = {
-  startPercent: number
-  endPercent: number
-}
+import type { PlaybackRangePercentRange } from '@shared/playbackRange'
 
 interface Props {
   modelValueStart: number
@@ -13,7 +9,7 @@ interface Props {
   enablePlaybackRange: boolean
   waveformShow: boolean
   locked?: boolean
-  lockedRanges?: LockedRange[]
+  lockedRanges?: PlaybackRangePercentRange[]
 }
 
 const props = defineProps<Props>()
