@@ -675,6 +675,13 @@ const rekordboxDesktopTrackStorageDirText = computed(
               <div class="setting-hint">{{ t('settings.currentLibraryPathHint') }}</div>
             </div>
 
+            <div class="setting-block">{{ t('database.reselectLocation') }}：</div>
+            <div class="setting-control">
+              <div class="button settings-inline-button" @click="reSelectLibrary()">
+                {{ t('dialog.reselect') }}
+              </div>
+            </div>
+
             <div class="setting-block">
               {{ t('settings.rekordboxDesktopTrackStorageDir.title') }}：
             </div>
@@ -696,13 +703,6 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 >
                   {{ t('settings.rekordboxDesktopTrackStorageDir.chooseButton') }}
                 </div>
-              </div>
-            </div>
-
-            <div class="setting-block">{{ t('database.reselectLocation') }}：</div>
-            <div class="setting-control">
-              <div class="button settings-inline-button" @click="reSelectLibrary()">
-                {{ t('dialog.reselect') }}
               </div>
             </div>
           </div>
