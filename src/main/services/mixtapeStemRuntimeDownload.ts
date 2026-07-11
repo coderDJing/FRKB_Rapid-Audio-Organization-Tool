@@ -596,10 +596,23 @@ const resolveRuntimeBeatThisCheckpointCandidates = (
   return relativeCandidates.map((relativePath) => path.join(runtimeDir, ...relativePath.split('/')))
 }
 
+const resolveRuntimeSitePackagesDir = (runtimeDir: string) => {
+  if (process.platform === 'win32') return path.join(runtimeDir, 'Lib', 'site-packages')
+
+  const libDir = path.join(runtimeDir, 'lib')
+  try {
+    for (const entry of fs.readdirSync(libDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !/^python\d+(?:\.\d+)*$/i.test(entry.name)) continue
+      const sitePackagesDir = path.join(libDir, entry.name, 'site-packages')
+      if (fs.existsSync(sitePackagesDir)) return sitePackagesDir
+    }
+  } catch {}
+  return ''
+}
+
 const hasBundledBeatThisSupport = async (runtimeDir: string) => {
   const runtimeMeta = await readRuntimeMetaFile(runtimeDir)
-  const sitePackagesDir =
-    process.platform === 'win32' ? path.join(runtimeDir, 'Lib', 'site-packages') : ''
+  const sitePackagesDir = resolveRuntimeSitePackagesDir(runtimeDir)
   const beatThisPackagePath = sitePackagesDir ? path.join(sitePackagesDir, 'beat_this') : ''
   if (!beatThisPackagePath || !(await fileExists(beatThisPackagePath))) return false
   if (runtimeMeta?.beatThisInstalled === false) return false

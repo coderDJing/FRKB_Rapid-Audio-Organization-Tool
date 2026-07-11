@@ -1,4 +1,5 @@
 import os
+import contextlib
 import json
 import math
 import statistics
@@ -157,6 +158,19 @@ from beat_this_runtime_constant_grid import (
 from beat_this_window_selection import select_anchor_window_result as _select_anchor_window_result
 
 _ORIGINAL_BEAT_THIS_LOAD_MODEL = _beat_this_inference.load_model
+_ORIGINAL_TORCH_AUTOCAST = torch.autocast
+
+
+def _mps_safe_autocast(*args: Any, **kwargs: Any) -> Any:
+    device_type = kwargs.get("device_type")
+    if device_type is None and args:
+        device_type = args[0]
+    if str(device_type or "").strip().lower().startswith("mps"):
+        return contextlib.nullcontext()
+    return _ORIGINAL_TORCH_AUTOCAST(*args, **kwargs)
+
+
+torch.autocast = _mps_safe_autocast
 
 
 def _is_directml_device(device: Any) -> bool:

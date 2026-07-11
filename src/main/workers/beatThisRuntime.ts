@@ -239,6 +239,15 @@ const resolveRuntimeSitePackagesDir = (runtimeDir: string) => {
   if (process.platform === 'win32') {
     return path.join(normalizedRuntimeDir, 'Lib', 'site-packages')
   }
+
+  const libDir = path.join(normalizedRuntimeDir, 'lib')
+  try {
+    for (const entry of fs.readdirSync(libDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !/^python\d+(?:\.\d+)*$/i.test(entry.name)) continue
+      const sitePackagesDir = path.join(libDir, entry.name, 'site-packages')
+      if (fs.existsSync(sitePackagesDir)) return sitePackagesDir
+    }
+  } catch {}
   return ''
 }
 

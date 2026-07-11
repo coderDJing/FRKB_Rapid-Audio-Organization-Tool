@@ -60,7 +60,7 @@ const createWindow = ({ needErrorHint = false } = {}) => {
       )
     } catch {}
   }
-  if (!app.isPackaged) {
+  if (!app.isPackaged && process.env.FRKB_OPEN_DEVTOOLS === '1') {
     databaseInitWindow.webContents.openDevTools()
   }
 
