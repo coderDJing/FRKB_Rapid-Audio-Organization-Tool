@@ -20,6 +20,31 @@ type DriveInfo = {
   FreeSpace?: string | number
 }
 
+type FileSizeResult = {
+  path: string
+  size: number | null
+}
+
+const FILE_SIZE_BATCH_LIMIT = 256
+const FILE_SIZE_STAT_CONCURRENCY = 16
+
+const getConfiguredAudioExtensions = () => {
+  const configuredExts = Array.isArray(store.settingConfig?.audioExt)
+    ? store.settingConfig.audioExt
+        .map((ext) =>
+          String(ext || '')
+            .trim()
+            .replace(/^\./, '')
+            .toLowerCase()
+        )
+        .filter(Boolean)
+    : []
+
+  return Array.from(
+    new Set(configuredExts.length > 0 ? configuredExts : [...SUPPORTED_AUDIO_FORMATS])
+  )
+}
+
 const normalizeDriveInfo = (drive: DriveInfo) => {
   const name = String(drive.DeviceID || '').trim()
   return {
@@ -65,19 +90,7 @@ export function registerFilesystemHandlers() {
   })
 
   ipcMain.handle('select-audio-files', async () => {
-    const configuredExts = Array.isArray(store.settingConfig?.audioExt)
-      ? store.settingConfig.audioExt
-          .map((ext) =>
-            String(ext || '')
-              .trim()
-              .replace(/^\./, '')
-              .toLowerCase()
-          )
-          .filter(Boolean)
-      : []
-    const extensions = Array.from(
-      new Set(configuredExts.length > 0 ? configuredExts : [...SUPPORTED_AUDIO_FORMATS])
-    )
+    const extensions = getConfiguredAudioExtensions()
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Audio Files', extensions }]
@@ -167,32 +180,62 @@ export function registerFilesystemHandlers() {
         normalizedPath = path.resolve(dirPath).replace(/\\/g, '/')
       }
 
+      const audioExtensions = new Set(getConfiguredAudioExtensions())
       const items = await fs.readdir(normalizedPath, { withFileTypes: true })
-      const result = await Promise.all(
-        items.map(async (item) => {
-          const itemPath = path.join(normalizedPath, item.name)
-          let size = 0
-          if (item.isFile()) {
-            try {
-              const stats = await fs.stat(itemPath)
-              size = stats.size
-            } catch {
-              size = 0
-            }
-          }
-          return {
-            name: item.name,
-            path: itemPath,
-            isDirectory: item.isDirectory(),
-            isFile: item.isFile(),
-            size
-          }
+
+      return items
+        .filter((item) => {
+          if (item.isDirectory()) return true
+          const extension = path.extname(item.name).replace(/^\./, '').toLowerCase()
+          return audioExtensions.has(extension)
         })
-      )
-      return result
+        .map((item) => ({
+          name: item.name,
+          path: path.join(normalizedPath, item.name),
+          isDirectory: item.isDirectory(),
+          isFile: !item.isDirectory()
+        }))
     } catch (error) {
       throw new Error(`无法读取目录 ${dirPath}: ${error}`)
     }
+  })
+
+  ipcMain.handle('get-file-sizes', async (_event, rawFilePaths: unknown) => {
+    const filePaths = Array.isArray(rawFilePaths)
+      ? Array.from(
+          new Set(
+            rawFilePaths
+              .map((filePath) => String(filePath || '').trim())
+              .filter(Boolean)
+              .slice(0, FILE_SIZE_BATCH_LIMIT)
+          )
+        )
+      : []
+
+    if (filePaths.length === 0) return [] as FileSizeResult[]
+
+    const results = new Array<FileSizeResult>(filePaths.length)
+    let nextIndex = 0
+    const workerCount = Math.min(FILE_SIZE_STAT_CONCURRENCY, filePaths.length)
+
+    const statNextFile = async () => {
+      while (nextIndex < filePaths.length) {
+        const index = nextIndex++
+        const filePath = filePaths[index]
+        try {
+          const stats = await fs.stat(filePath)
+          results[index] = {
+            path: filePath,
+            size: stats.isFile() ? stats.size : null
+          }
+        } catch {
+          results[index] = { path: filePath, size: null }
+        }
+      }
+    }
+
+    await Promise.all(Array.from({ length: workerCount }, () => statNextFile()))
+    return results
   })
 
   ipcMain.handle('select-existing-database-file', async () => {

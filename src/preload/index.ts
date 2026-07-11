@@ -44,6 +44,7 @@ const exactInvokeChannels = new Set([
   'find-db-root-upwards',
   'foundNewVersionWindow-startUpdate',
   'get-drives',
+  'get-file-sizes',
   'get-user-home',
   'get-windows-hide-ext',
   'getLibrary',

@@ -2,21 +2,15 @@ export type FileSystemItem = {
   name: string
   path: string
   type: 'file' | 'directory'
-  size?: number
+  size?: number | null
   isSpecial?: boolean
-  children?: FileSystemItem[]
-  isExpanded?: boolean
-  isSelected?: boolean
-  isVisible?: boolean
-  parent?: FileSystemItem
 }
 
 export type SelectedItem = {
-  id: string
   name: string
   path: string
   type: 'file' | 'directory'
-  size?: number
+  size?: number | null
 }
 
 export type SelectionModifiers = {

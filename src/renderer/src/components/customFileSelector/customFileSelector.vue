@@ -1,14 +1,22 @@
 <script setup lang="ts">
+import { nextTick, onUnmounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import { t } from '@renderer/utils/translate'
+import bubbleBox from '@renderer/components/bubbleBox.vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useCustomFileSelector } from './useCustomFileSelector'
+import { useFixedVirtualList } from './useFixedVirtualList'
 import type {
   CustomFileSelectorEmits,
   CustomFileSelectorProps,
   FileSystemItem,
   SelectedItem
 } from './types'
+
+type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
+
+const FILE_ROW_HEIGHT = 28
+const SELECTED_ROW_HEIGHT = 40
 
 const props = withDefaults(defineProps<CustomFileSelectorProps>(), {
   visible: false,
@@ -31,6 +39,7 @@ const {
   scrollbarOptions,
   handleItemClick,
   handleItemDoubleClick,
+  handleKeyDown,
   removeSelectionByPath,
   clearSelection,
   confirm,
@@ -38,26 +47,103 @@ const {
   modalRef,
   formatFileSize,
   getItemIcon,
+  getItemSize,
+  requestFileSizes,
   navigateUp,
-  findItemIndex,
-  isDrive
+  isDrive,
+  isItemSelected,
+  setScrollToIndexHandler
 } = useCustomFileSelector(props, emit)
 
+const fileScrollRef = useTemplateRef<OverlayScrollbarsComponentRef>('fileScrollRef')
+const selectedScrollRef = useTemplateRef<OverlayScrollbarsComponentRef>('selectedScrollRef')
+const fileVirtual = useFixedVirtualList(filteredTree, {
+  rowHeight: FILE_ROW_HEIGHT,
+  overscan: 12,
+  fallbackVisibleRows: 18
+})
+const selectedVirtual = useFixedVirtualList(selectedItems, {
+  rowHeight: SELECTED_ROW_HEIGHT,
+  overscan: 8,
+  fallbackVisibleRows: 12
+})
+const tooltipAnchor = shallowRef<HTMLElement | null>(null)
+const tooltipTitle = ref('')
+
+const attachFileViewport = async () => {
+  await nextTick()
+  fileVirtual.attachViewport(
+    fileScrollRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined
+  )
+}
+
+const attachSelectedViewport = async () => {
+  await nextTick()
+  selectedVirtual.attachViewport(
+    selectedScrollRef.value?.osInstance()?.elements().viewport as HTMLElement | undefined
+  )
+}
+
+const setTooltip = (event: MouseEvent, title: string) => {
+  tooltipAnchor.value = event.currentTarget instanceof HTMLElement ? event.currentTarget : null
+  tooltipTitle.value = title
+}
+
+const clearTooltip = () => {
+  tooltipAnchor.value = null
+  tooltipTitle.value = ''
+}
+
+const handleRemoveSelectedItem = (path: string) => {
+  clearTooltip()
+  removeSelectionByPath(path)
+}
+
+const formatItemSize = (item: FileSystemItem) => {
+  const size = getItemSize(item)
+  return typeof size === 'number' ? formatFileSize(size) : '-'
+}
+
 const isSpecialItem = (item: FileSystemItem) => Boolean(item.isSpecial)
-const getSelectedItemIcon = (item: SelectedItem) =>
-  getItemIcon({
-    ...item,
-    isExpanded: false,
-    isSelected: false,
-    isVisible: true,
-    children: []
-  })
+const getSelectedItemIcon = (item: SelectedItem) => getItemIcon(item)
+
+setScrollToIndexHandler(fileVirtual.scrollToIndex)
+
+watch(
+  fileVirtual.visibleEntries,
+  (entries) => {
+    void requestFileSizes(entries.map((entry) => entry.item))
+  },
+  { immediate: true }
+)
+
+watch(searchQuery, () => {
+  fileVirtual.resetScroll()
+  clearTooltip()
+})
+
+watch(visible, (isVisible) => {
+  if (!isVisible) {
+    fileVirtual.attachViewport(null)
+    selectedVirtual.attachViewport(null)
+    clearTooltip()
+  }
+})
+
+onUnmounted(() => {
+  setScrollToIndexHandler(null)
+})
 </script>
 
 <template>
-  <div v-if="visible" ref="modalRef" class="file-selector-modal" tabindex="0">
+  <div
+    v-if="visible"
+    ref="modalRef"
+    class="file-selector-modal"
+    tabindex="0"
+    @keydown="handleKeyDown"
+  >
     <div class="file-selector-content">
-      <!-- 顶部路径导航 -->
       <div class="path-navigation">
         <div class="path-breadcrumb">
           <button class="back-button" type="button" :disabled="!currentPath" @click="navigateUp">
@@ -78,9 +164,7 @@ const getSelectedItemIcon = (item: SelectedItem) =>
         </div>
       </div>
 
-      <!-- 主要内容区域 -->
       <div class="main-content">
-        <!-- 文件列表 -->
         <div class="file-list-container">
           <div class="file-list-header">
             <span class="header-name">{{ t('fileSelector.name') }}</span>
@@ -95,55 +179,72 @@ const getSelectedItemIcon = (item: SelectedItem) =>
 
           <OverlayScrollbarsComponent
             v-else
+            ref="fileScrollRef"
             :options="scrollbarOptions"
             element="div"
             class="file-list"
             defer
+            @os-initialized="attachFileViewport"
+            @os-destroyed="fileVirtual.attachViewport(null)"
+            @os-scroll="clearTooltip"
           >
-            <div v-for="item in filteredTree" :key="item.path" class="file-item-wrapper">
+            <div
+              class="virtual-list-space"
+              :style="{ height: `${fileVirtual.totalHeight.value}px` }"
+            >
               <div
-                class="file-item"
-                :class="{
-                  'is-directory': item.type === 'directory',
-                  'is-file': item.type === 'file',
-                  'is-selected': item.isSelected
-                }"
-                :data-index="findItemIndex(item)"
-                :data-path="item.path"
-                @click="handleItemClick(item, $event)"
-                @dblclick="item.type === 'directory' ? handleItemDoubleClick(item, $event) : null"
+                class="virtual-list-window"
+                :style="{ transform: `translateY(${fileVirtual.offsetTop.value}px)` }"
               >
-                <div class="item-icon">
-                  <img :src="getItemIcon(item)" alt="" />
-                </div>
-                <div class="item-name-wrapper">
-                  <bubbleBoxTrigger tag="div" class="item-name" :title="item.name">
-                    {{ item.name }}
-                  </bubbleBoxTrigger>
-                </div>
-                <div v-if="item.size && item.size > 0" class="item-size">
-                  {{ formatFileSize(item.size) }}
-                </div>
-                <div v-else-if="item.type === 'directory'" class="item-size">-</div>
-                <div v-else class="item-size">{{ formatFileSize(item.size || 0) }}</div>
-                <div v-if="item.type === 'file'" class="item-type">
-                  {{ item.name.split('.').pop()?.toUpperCase() }}
-                </div>
-                <div v-else-if="item.type === 'directory'" class="item-type">
-                  {{
-                    isSpecialItem(item)
-                      ? t('fileSelector.commonFolder')
-                      : isDrive(item)
-                        ? t('fileSelector.drive')
-                        : t('fileSelector.folder')
-                  }}
+                <div
+                  v-for="entry in fileVirtual.visibleEntries.value"
+                  :key="entry.item.path"
+                  class="file-item-wrapper"
+                >
+                  <div
+                    class="file-item"
+                    :class="{
+                      'is-directory': entry.item.type === 'directory',
+                      'is-file': entry.item.type === 'file',
+                      'is-selected': isItemSelected(entry.item)
+                    }"
+                    :data-index="entry.index"
+                    :data-path="entry.item.path"
+                    @click="handleItemClick(entry.item, entry.index, $event)"
+                    @dblclick="
+                      entry.item.type === 'directory'
+                        ? handleItemDoubleClick(entry.item, $event)
+                        : null
+                    "
+                  >
+                    <div class="item-icon">
+                      <img :src="getItemIcon(entry.item)" alt="" />
+                    </div>
+                    <div class="item-name-wrapper">
+                      <div class="item-name" @mouseenter="setTooltip($event, entry.item.name)">
+                        {{ entry.item.name }}
+                      </div>
+                    </div>
+                    <div class="item-size">{{ formatItemSize(entry.item) }}</div>
+                    <div v-if="entry.item.type === 'file'" class="item-type">
+                      {{ entry.item.name.split('.').pop()?.toUpperCase() }}
+                    </div>
+                    <div v-else class="item-type">
+                      {{
+                        isSpecialItem(entry.item)
+                          ? t('fileSelector.commonFolder')
+                          : isDrive(entry.item)
+                            ? t('fileSelector.drive')
+                            : t('fileSelector.folder')
+                      }}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
           </OverlayScrollbarsComponent>
         </div>
 
-        <!-- 选中项目面板 -->
         <div class="selected-panel">
           <div class="selected-header">
             <h4 class="selected-title">
@@ -166,24 +267,46 @@ const getSelectedItemIcon = (item: SelectedItem) =>
 
           <OverlayScrollbarsComponent
             v-if="selectedCount > 0"
+            ref="selectedScrollRef"
             :options="scrollbarOptions"
             element="div"
             class="selected-list"
             defer
+            @os-initialized="attachSelectedViewport"
+            @os-destroyed="selectedVirtual.attachViewport(null)"
+            @os-scroll="clearTooltip"
           >
-            <div v-for="item in selectedItems" :key="item.id" class="selected-item">
-              <div class="selected-icon">
-                <img :src="getSelectedItemIcon(item)" alt="" />
+            <div
+              class="virtual-list-space"
+              :style="{ height: `${selectedVirtual.totalHeight.value}px` }"
+            >
+              <div
+                class="virtual-list-window"
+                :style="{ transform: `translateY(${selectedVirtual.offsetTop.value}px)` }"
+              >
+                <div
+                  v-for="entry in selectedVirtual.visibleEntries.value"
+                  :key="entry.item.path"
+                  class="selected-item-wrapper"
+                >
+                  <div class="selected-item">
+                    <div class="selected-icon">
+                      <img :src="getSelectedItemIcon(entry.item)" alt="" />
+                    </div>
+                    <div class="selected-info">
+                      <div class="selected-name" @mouseenter="setTooltip($event, entry.item.name)">
+                        {{ entry.item.name }}
+                      </div>
+                      <div class="selected-path" @mouseenter="setTooltip($event, entry.item.path)">
+                        {{ entry.item.path }}
+                      </div>
+                    </div>
+                    <button class="remove-btn" @click="handleRemoveSelectedItem(entry.item.path)">
+                      ×
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div class="selected-info">
-                <bubbleBoxTrigger tag="div" class="selected-name" :title="item.name">
-                  {{ item.name }}
-                </bubbleBoxTrigger>
-                <bubbleBoxTrigger tag="div" class="selected-path" :title="item.path">
-                  {{ item.path }}
-                </bubbleBoxTrigger>
-              </div>
-              <button class="remove-btn" @click="removeSelectionByPath(item.path)">×</button>
             </div>
           </OverlayScrollbarsComponent>
 
@@ -193,7 +316,6 @@ const getSelectedItemIcon = (item: SelectedItem) =>
         </div>
       </div>
 
-      <!-- 底部操作区 -->
       <div class="action-bar">
         <div class="action-buttons import-dialog-style">
           <div
@@ -209,6 +331,7 @@ const getSelectedItemIcon = (item: SelectedItem) =>
         </div>
       </div>
     </div>
+    <bubbleBox :dom="tooltipAnchor || undefined" :title="tooltipTitle" :max-width="320" />
   </div>
 </template>
 
@@ -330,6 +453,19 @@ const getSelectedItemIcon = (item: SelectedItem) =>
   height: 100%;
 }
 
+.virtual-list-space {
+  position: relative;
+  width: 100%;
+}
+
+.virtual-list-window {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  will-change: transform;
+}
+
 /* 文件列表 */
 .file-list-container {
   flex: 1;
@@ -400,12 +536,15 @@ const getSelectedItemIcon = (item: SelectedItem) =>
 
     .file-item-wrapper {
       width: 100%;
+      height: 28px;
     }
 
     .file-item {
       display: flex;
       align-items: center;
+      height: 28px;
       padding: 4px 12px;
+      box-sizing: border-box;
       cursor: default;
       border-bottom: 1px solid var(--border);
       transition: background-color 0.2s;
@@ -542,11 +681,17 @@ const getSelectedItemIcon = (item: SelectedItem) =>
     padding: 6px;
     overflow: hidden;
 
+    .selected-item-wrapper {
+      height: 40px;
+    }
+
     .selected-item {
       display: flex;
       align-items: center;
+      height: 37px;
       padding: 4px 6px;
       margin-bottom: 3px;
+      box-sizing: border-box;
       background: var(--bg-elev);
       border: 1px solid var(--border);
       border-radius: 3px;

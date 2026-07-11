@@ -1,4 +1,14 @@
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  reactive,
+  ref,
+  shallowRef,
+  triggerRef,
+  watch
+} from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import { t } from '@renderer/utils/translate'
@@ -26,11 +36,16 @@ type RawDirectoryItem = {
   name: string
   path: string
   isDirectory: boolean
-  size?: number
+}
+
+type FileSizeResult = {
+  path: string
+  size: number | null
 }
 
 const PATH_STORAGE_KEY = 'fileSelector_lastPath'
 const DIRECTORY_CLICK_DELAY = 200
+const nameCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
 const scrollbarOptions = {
   scrollbars: {
     autoHide: 'leave' as const,
@@ -41,33 +56,6 @@ const scrollbarOptions = {
     x: 'hidden',
     y: 'scroll'
   } as const
-}
-
-const getAudioExtensions = () => {
-  const runtime = useRuntimeStore()
-  return (
-    runtime.setting.audioExt || [
-      '.mp3',
-      '.wav',
-      '.flac',
-      '.aif',
-      '.aiff',
-      '.ogg',
-      '.opus',
-      '.aac',
-      '.m4a',
-      '.mp4',
-      '.wma',
-      '.ac3',
-      '.dts',
-      '.mka',
-      '.webm',
-      '.ape',
-      '.tak',
-      '.tta',
-      '.wv'
-    ]
-  )
 }
 
 const getLastUsedPath = (): string => {
@@ -82,63 +70,127 @@ const saveLastUsedPath = (path: string) => {
   try {
     localStorage.setItem(PATH_STORAGE_KEY, path)
   } catch {
-    // ignore
+    // 本地存储不可用时不影响文件选择器主流程。
   }
+}
+
+const getParentPath = (inputPath: string): string => {
+  const normalized = inputPath.replace(/[\\/]+$/, '')
+  if (!normalized || /^[A-Za-z]:$/.test(normalized)) return ''
+
+  const separatorIndex = Math.max(normalized.lastIndexOf('/'), normalized.lastIndexOf('\\'))
+  if (separatorIndex < 0) return ''
+  if (separatorIndex === 2 && /^[A-Za-z]:/.test(normalized)) {
+    return normalized.slice(0, 2)
+  }
+  return normalized.slice(0, separatorIndex)
+}
+
+const getPathName = (path: string): string => {
+  const parts = path.split(/[/\\]/).filter(Boolean)
+  return parts[parts.length - 1] || path
 }
 
 const findExistingPath = async (startPath: string): Promise<string> => {
   if (!startPath) return ''
 
   let currentPath = startPath
-  const maxAttempts = 10
-
-  for (let i = 0; i < maxAttempts; i++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     try {
-      await window.electron.ipcRenderer.invoke('read-directory', currentPath)
-      return currentPath
+      const exists = await window.electron.ipcRenderer.invoke('check-path-exists', currentPath)
+      if (exists) return currentPath
     } catch {
-      const parentPath = currentPath.substring(
-        0,
-        currentPath.lastIndexOf('/') || currentPath.lastIndexOf('\\')
-      )
-      if (!parentPath || parentPath === currentPath) {
-        break
-      }
-      currentPath = parentPath
+      // 继续尝试上级目录。
     }
+
+    const parentPath = getParentPath(currentPath)
+    if (!parentPath || parentPath === currentPath) break
+    currentPath = parentPath
   }
 
   return ''
 }
 
+const sortDirectoryItems = (items: FileSystemItem[]) =>
+  items.sort((left, right) => {
+    if (left.type !== right.type) return left.type === 'directory' ? -1 : 1
+    return nameCollator.compare(left.name, right.name)
+  })
+
 export function useCustomFileSelector(
   props: CustomFileSelectorProps,
   emit: CustomFileSelectorEmits
 ) {
+  const runtime = useRuntimeStore()
   const uuid = uuidV4()
   const currentPath = ref('')
-  const fileTree = ref<FileSystemItem[]>([])
-  const selectedItems = ref<SelectedItem[]>([])
+  const fileTree = shallowRef<FileSystemItem[]>([])
+  const selectedItems = shallowRef<SelectedItem[]>([])
+  const selectedPathSet = new Set<string>()
+  const selectionRevision = ref(0)
+  const selectedFilesCount = ref(0)
+  const selectedFoldersCount = ref(0)
   const searchQuery = ref('')
   const isLoading = ref(false)
-  const expandedPaths = ref<Set<string>>(new Set())
-  const selectedItemRefs = ref<Map<string, FileSystemItem>>(new Map())
   const selectionModifiers = ref<SelectionModifiers>({ shift: false, ctrlOrMeta: false })
   const lastActiveIndex = ref<number | null>(null)
   const anchorIndex = ref<number | null>(null)
   const modalRef = ref<HTMLDivElement | null>(null)
-  const fileListRef = ref<HTMLElement | null>(null)
+  const fileSizeByPath = reactive(new Map<string, number | null>())
+  const pendingFileSizePaths = new Set<string>()
 
+  let directoryLoadRequestId = 0
+  let fileSizeRequestGeneration = 0
   let directorySelectionTimer: ReturnType<typeof setTimeout> | null = null
   let pendingDirectorySelection: {
     item: FileSystemItem
+    index: number
     modifiers: SelectionModifiers
   } | null = null
+  let scrollToIndexHandler: ((index: number) => void) | null = null
+
+  const visible = computed({
+    get: () => props.visible,
+    set: (value) => emit('update:visible', value)
+  })
+
+  const filteredTree = computed(() => {
+    const query = searchQuery.value.trim().toLocaleLowerCase()
+    if (!query) return fileTree.value
+    return fileTree.value.filter((item) => item.name.toLocaleLowerCase().includes(query))
+  })
+
+  const filteredIndexByPath = computed(() => {
+    const indexByPath = new Map<string, number>()
+    filteredTree.value.forEach((item, index) => indexByPath.set(item.path, index))
+    return indexByPath
+  })
+
+  const selectedCount = computed(() => selectedItems.value.length)
+
+  const getFlatItems = () => filteredTree.value
+  const findItemIndex = (target: Pick<FileSystemItem, 'path'>) =>
+    filteredIndexByPath.value.get(target.path) ?? -1
+
+  const setScrollToIndexHandler = (handler: ((index: number) => void) | null) => {
+    scrollToIndexHandler = handler
+  }
+
+  const adjustScrollToItem = (index: number) => {
+    if (index >= 0) scrollToIndexHandler?.(index)
+  }
+
+  const setActiveIndexAndFocus = (index: number) => {
+    if (index < 0) return
+    lastActiveIndex.value = index
+    anchorIndex.value = index
+    nextTick(() => adjustScrollToItem(index))
+  }
 
   const updateSelectionModifiers = (event: KeyboardEvent | MouseEvent) => {
     selectionModifiers.value = {
       shift: !!event.shiftKey,
-      ctrlOrMeta: !!(event.ctrlKey || (event as KeyboardEvent | undefined)?.metaKey)
+      ctrlOrMeta: !!(event.ctrlKey || event.metaKey)
     }
   }
 
@@ -146,100 +198,73 @@ export function useCustomFileSelector(
     selectionModifiers.value = { shift: false, ctrlOrMeta: false }
   }
 
-  const getFlatItems = () => filteredTree.value
-
-  const findItemIndex = (target: FileSystemItem) => {
-    const items = getFlatItems()
-    return items.findIndex((item) => item.path === target.path)
-  }
-
-  const setActiveIndexAndFocus = (index: number) => {
-    lastActiveIndex.value = index
-    anchorIndex.value = index
-
-    nextTick(() => {
-      adjustScrollToItem(index)
-    })
-  }
-
-  const adjustScrollToItem = (index: number) => {
-    const container = fileListRef.value
-    if (!container) return
-    const item = container.querySelector<HTMLElement>(`.file-item[data-index="${index}"]`)
-    if (item) {
-      item.scrollIntoView({ block: 'nearest' })
-    }
+  const getItemSize = (item: FileSystemItem | SelectedItem): number | null | undefined => {
+    if (typeof item.size === 'number' || item.size === null) return item.size
+    return fileSizeByPath.get(item.path)
   }
 
   const createSelectedItem = (item: FileSystemItem): SelectedItem => ({
-    id: uuidV4(),
     name: item.name,
     path: item.path,
     type: item.type,
-    size: item.size
+    size: getItemSize(item)
   })
 
-  const addSelection = (item: FileSystemItem, options?: { skipRange?: boolean }) => {
-    if (selectedItems.value.some((selected) => selected.path === item.path)) return
+  const addSelection = (item: FileSystemItem) => {
+    if (selectedPathSet.has(item.path)) return
 
+    selectedPathSet.add(item.path)
     selectedItems.value.push(createSelectedItem(item))
-    selectedItemRefs.value.set(item.path, item)
-    item.isSelected = true
-
-    if (!options?.skipRange) {
-      setActiveIndexAndFocus(findItemIndex(item))
+    triggerRef(selectedItems)
+    selectionRevision.value++
+    if (item.type === 'file') {
+      selectedFilesCount.value++
+    } else {
+      selectedFoldersCount.value++
     }
   }
 
-  const removeSelectionInternal = (path: string, options?: { skipRange?: boolean }) => {
+  const removeSelectionInternal = (path: string) => {
+    if (!selectedPathSet.delete(path)) return
+    selectionRevision.value++
+
     const existingIndex = selectedItems.value.findIndex((selected) => selected.path === path)
     if (existingIndex === -1) return
-
-    selectedItems.value.splice(existingIndex, 1)
-
-    const treeItem = selectedItemRefs.value.get(path)
-    if (treeItem) {
-      treeItem.isSelected = false
-    }
-    selectedItemRefs.value.delete(path)
-
-    if (!options?.skipRange) {
-      if (selectedItems.value.length === 0) {
-        lastActiveIndex.value = null
-        anchorIndex.value = null
-        return
-      }
-
-      const fallbackPath = selectedItems.value[selectedItems.value.length - 1]?.path
-      if (fallbackPath) {
-        const fallbackItem = selectedItemRefs.value.get(fallbackPath)
-        if (fallbackItem) {
-          const idx = findItemIndex(fallbackItem)
-          if (idx >= 0) {
-            lastActiveIndex.value = idx
-            anchorIndex.value = idx
-            adjustScrollToItem(idx)
-            return
-          }
-        }
-      }
-
-      lastActiveIndex.value = null
-      anchorIndex.value = null
+    const [removedItem] = selectedItems.value.splice(existingIndex, 1)
+    triggerRef(selectedItems)
+    if (removedItem?.type === 'file') {
+      selectedFilesCount.value = Math.max(0, selectedFilesCount.value - 1)
+    } else if (removedItem) {
+      selectedFoldersCount.value = Math.max(0, selectedFoldersCount.value - 1)
     }
   }
 
-  const removeSelectionByPath = (path: string) => removeSelectionInternal(path)
-
   const clearSelectionInternal = () => {
-    selectedItems.value.forEach((item) => {
-      const treeItem = selectedItemRefs.value.get(item.path)
-      if (treeItem) {
-        treeItem.isSelected = false
-      }
-    })
+    selectedPathSet.clear()
+    selectionRevision.value++
     selectedItems.value = []
-    selectedItemRefs.value.clear()
+    selectedFilesCount.value = 0
+    selectedFoldersCount.value = 0
+  }
+
+  const replaceSelection = (items: readonly FileSystemItem[]) => {
+    const nextItems: SelectedItem[] = []
+    let fileCount = 0
+    let folderCount = 0
+
+    selectedPathSet.clear()
+    for (const item of items) {
+      if (selectedPathSet.has(item.path)) continue
+      selectedPathSet.add(item.path)
+      nextItems.push(createSelectedItem(item))
+      if (item.type === 'file') fileCount++
+      else folderCount++
+    }
+
+    selectedItems.value = nextItems
+    selectedFilesCount.value = fileCount
+    selectedFoldersCount.value = folderCount
+    selectionRevision.value++
   }
 
   const clearSelection = () => {
@@ -248,57 +273,18 @@ export function useCustomFileSelector(
     anchorIndex.value = null
   }
 
-  const visible = computed({
-    get: () => props.visible,
-    set: (value) => emit('update:visible', value)
-  })
-
-  const filteredTree = computed(() => {
-    const filterTree = (items: FileSystemItem[]): FileSystemItem[] => {
-      return items.filter((item) => {
-        if (
-          searchQuery.value &&
-          !item.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-        ) {
-          return false
-        }
-
-        if (item.type === 'file') {
-          const ext = '.' + item.name.split('.').pop()?.toLowerCase()
-          if (!getAudioExtensions().includes(ext)) {
-            return false
-          }
-        }
-
-        if (item.children) {
-          const filteredChildren = filterTree(item.children)
-          item.children = filteredChildren
-          return filteredChildren.length > 0 || item.type === 'directory'
-        }
-
-        return true
-      })
+  const removeSelectionByPath = (path: string) => {
+    removeSelectionInternal(path)
+    if (selectedItems.value.length === 0) {
+      lastActiveIndex.value = null
+      anchorIndex.value = null
     }
+  }
 
-    const sortItems = (items: FileSystemItem[]): FileSystemItem[] => {
-      const folders = items.filter((item) => item.type === 'directory')
-      const files = items.filter((item) => item.type === 'file')
-      folders.sort((a, b) => a.name.localeCompare(b.name))
-      files.sort((a, b) => a.name.localeCompare(b.name))
-      return [...folders, ...files]
-    }
-
-    const filtered = filterTree([...fileTree.value])
-    return sortItems(filtered)
-  })
-
-  const selectedCount = computed(() => selectedItems.value.length)
-  const selectedFilesCount = computed(
-    () => selectedItems.value.filter((item) => item.type === 'file').length
-  )
-  const selectedFoldersCount = computed(
-    () => selectedItems.value.filter((item) => item.type === 'directory').length
-  )
+  const isItemSelected = (item: Pick<FileSystemItem, 'path'>) => {
+    void selectionRevision.value
+    return selectedPathSet.has(item.path)
+  }
 
   const clearPendingDirectorySelection = () => {
     if (directorySelectionTimer) {
@@ -308,335 +294,252 @@ export function useCustomFileSelector(
     pendingDirectorySelection = null
   }
 
-  const toggleSelectionForItem = (
-    item: FileSystemItem,
-    select: boolean,
-    options?: { skipRange?: boolean }
-  ) => {
-    if (select) {
-      addSelection(item, options)
-    } else {
-      removeSelectionInternal(item.path, options)
-    }
-  }
-
   const toggleItemSelection = (
     item: FileSystemItem,
-    modifiers: SelectionModifiers = selectionModifiers.value
+    modifiers: SelectionModifiers = selectionModifiers.value,
+    knownIndex?: number
   ) => {
     const items = getFlatItems()
-    const currentIndex = findItemIndex(item)
-    if (currentIndex === -1) return
+    const currentIndex = knownIndex ?? findItemIndex(item)
+    if (currentIndex < 0) return
 
-    if (!props.allowMixedSelection && selectedItems.value.length > 0) {
-      const firstType = selectedItems.value[0].type
-      if (firstType !== item.type) {
-        return
-      }
+    if (!props.allowMixedSelection && !isItemSelected(item) && selectedItems.value.length > 0) {
+      const firstType = selectedItems.value[0]?.type
+      if (firstType && firstType !== item.type) return
     }
 
     if (modifiers.shift && anchorIndex.value !== null) {
       const start = Math.min(anchorIndex.value, currentIndex)
       const end = Math.max(anchorIndex.value, currentIndex)
-
-      clearSelectionInternal()
-
-      for (let i = start; i <= end; i++) {
-        const rangeItem = items[i]
-        toggleSelectionForItem(rangeItem, true, { skipRange: true })
+      let rangeItems = items.slice(start, end + 1)
+      if (!props.allowMixedSelection && rangeItems.length > 0) {
+        const rangeType = rangeItems[0]?.type
+        rangeItems = rangeItems.filter((rangeItem) => rangeItem.type === rangeType)
       }
-
+      replaceSelection(rangeItems)
       setActiveIndexAndFocus(currentIndex)
       return
     }
 
-    if (modifiers.ctrlOrMeta) {
-      if (item.isSelected) {
-        removeSelectionInternal(item.path)
-      } else {
-        addSelection(item)
-      }
-      anchorIndex.value = findItemIndex(item)
-      lastActiveIndex.value = anchorIndex.value
+    if (props.multiSelect || modifiers.ctrlOrMeta) {
+      if (isItemSelected(item)) removeSelectionInternal(item.path)
+      else addSelection(item)
+      setActiveIndexAndFocus(currentIndex)
       return
     }
 
-    if (props.multiSelect) {
-      if (item.isSelected) {
-        removeSelectionInternal(item.path)
-      } else {
-        addSelection(item)
-      }
-      anchorIndex.value = currentIndex
-      lastActiveIndex.value = currentIndex
-    } else {
-      clearSelectionInternal()
-      addSelection(item)
-      setActiveIndexAndFocus(currentIndex)
-    }
+    replaceSelection([item])
+    setActiveIndexAndFocus(currentIndex)
   }
 
-  const handleItemClick = (item: FileSystemItem, event?: MouseEvent) => {
-    if (event) {
-      updateSelectionModifiers(event)
-    } else {
-      clearSelectionModifiers()
-    }
-
-    if (event && event.button !== 0) {
-      return
-    }
+  const handleItemClick = (item: FileSystemItem, index: number, event?: MouseEvent) => {
+    if (event) updateSelectionModifiers(event)
+    else clearSelectionModifiers()
+    if (event && event.button !== 0) return
+    modalRef.value?.focus({ preventScroll: true })
 
     const modifiers = selectionModifiers.value
-
     if (item.type === 'directory') {
       clearPendingDirectorySelection()
-      pendingDirectorySelection = { item, modifiers }
+      pendingDirectorySelection = { item, index, modifiers }
       directorySelectionTimer = setTimeout(() => {
         if (pendingDirectorySelection?.item === item) {
-          toggleItemSelection(item, modifiers)
+          toggleItemSelection(item, modifiers, index)
         }
         clearPendingDirectorySelection()
       }, DIRECTORY_CLICK_DELAY)
       return
     }
 
-    toggleItemSelection(item, modifiers)
-  }
-
-  const navigateTo = async (item: FileSystemItem) => {
-    if (item.type === 'directory') {
-      currentPath.value = item.path
-      saveLastUsedPath(item.path)
-      await loadDirectory(item.path)
-    }
-  }
-
-  const handleItemDoubleClick = async (item: FileSystemItem, event?: MouseEvent) => {
-    updateSelectionModifiers(event || ({} as KeyboardEvent))
-
-    if (item.type !== 'directory') return
-
-    clearPendingDirectorySelection()
-    await navigateTo(item)
+    toggleItemSelection(item, modifiers, index)
   }
 
   const loadDirectory = async (dirPath: string) => {
+    const requestId = ++directoryLoadRequestId
+    isLoading.value = true
     try {
       const items = await window.electron.ipcRenderer.invoke('read-directory', dirPath)
+      if (requestId !== directoryLoadRequestId) return
 
       const treeItems: FileSystemItem[] = (items as RawDirectoryItem[]).map((item) => ({
         name: item.name,
         path: item.path,
         type: item.isDirectory ? 'directory' : 'file',
-        size: item.size,
-        isExpanded: false,
-        isSelected: false,
-        isVisible: true,
-        children: item.isDirectory ? [] : undefined
+        size: item.isDirectory ? null : undefined,
+        isSpecial: false
       }))
 
-      fileTree.value = treeItems
-      expandedPaths.value.add(dirPath)
-
-      if (selectedItems.value.length > 0) {
-        const selectedPathSet = new Set(selectedItems.value.map((s) => s.path))
-        const mapTree = (nodes: FileSystemItem[]) => {
-          for (const node of nodes) {
-            if (selectedPathSet.has(node.path)) {
-              node.isSelected = true
-              selectedItemRefs.value.set(node.path, node)
-            }
-            if (node.children && node.children.length > 0) {
-              mapTree(node.children)
-            }
-          }
-        }
-        mapTree(fileTree.value)
-      }
+      fileTree.value = sortDirectoryItems(treeItems)
+      lastActiveIndex.value = null
+      anchorIndex.value = null
     } catch (error) {
-      console.error('加载目录失败:', error)
+      if (requestId === directoryLoadRequestId) {
+        console.error('加载目录失败:', error)
+      }
+    } finally {
+      if (requestId === directoryLoadRequestId) isLoading.value = false
     }
+  }
+
+  const navigateTo = async (item: FileSystemItem) => {
+    if (item.type !== 'directory') return
+    currentPath.value = item.path
+    saveLastUsedPath(item.path)
+    await loadDirectory(item.path)
+  }
+
+  const handleItemDoubleClick = async (item: FileSystemItem, event?: MouseEvent) => {
+    if (event) updateSelectionModifiers(event)
+    if (item.type !== 'directory') return
+    clearPendingDirectorySelection()
+    await navigateTo(item)
   }
 
   const getDesktopPath = (userHome: string): string => {
-    const runtime = useRuntimeStore()
-    const platform = runtime.setting.platform
-
-    switch (platform) {
-      case 'win32':
-        return `${userHome}\\Desktop`
-      case 'darwin':
-        return `${userHome}/Desktop`
-      default:
-        return `${userHome}/Desktop`
-    }
+    if (runtime.setting.platform === 'win32') return `${userHome}\\Desktop`
+    return `${userHome}/Desktop`
   }
 
   const loadDrives = async () => {
+    const requestId = ++directoryLoadRequestId
+    isLoading.value = true
     try {
       const drives = (await window.electron.ipcRenderer.invoke('get-drives')) as DriveInfo[]
       const userHome = await window.electron.ipcRenderer.invoke('get-user-home')
-      const desktopPath = getDesktopPath(userHome)
+      if (requestId !== directoryLoadRequestId) return
 
-      const desktopItem = {
+      const desktopItem: FileSystemItem = {
         name: t('fileSelector.desktop'),
-        path: desktopPath,
-        type: 'directory' as const,
-        size: 0,
-        isExpanded: false,
-        isSelected: false,
-        isVisible: true,
-        children: [],
+        path: getDesktopPath(String(userHome || '')),
+        type: 'directory',
+        size: null,
         isSpecial: true
       }
-
-      const driveItems = drives.map((drive) => ({
+      const driveItems: FileSystemItem[] = drives.map((drive) => ({
         name: drive.name,
         path: drive.path,
-        type: 'directory' as const,
-        size: drive.size || 0,
-        isExpanded: false,
-        isSelected: false,
-        isVisible: true,
-        children: []
+        type: 'directory',
+        size: drive.size ?? null,
+        isSpecial: false
       }))
 
       fileTree.value = [desktopItem, ...driveItems]
       currentPath.value = ''
+      lastActiveIndex.value = null
+      anchorIndex.value = null
     } catch (error) {
-      console.error('加载驱动器列表失败:', error)
-      throw error
+      if (requestId === directoryLoadRequestId) {
+        console.error('加载驱动器列表失败:', error)
+      }
+    } finally {
+      if (requestId === directoryLoadRequestId) isLoading.value = false
     }
   }
 
-  const markInitialSelections = async () => {
-    const ensureSelectedItem = (path: string) => {
-      const exists = selectedItems.value.some((s) => s.path === path)
-      if (!exists) {
-        const parts = path.split(/[/\\]/)
-        const name = parts[parts.length - 1] || path
-        selectedItems.value.push({
-          id: uuidV4(),
-          name,
+  const markInitialSelections = () => {
+    const currentItemByPath = new Map(fileTree.value.map((item) => [item.path, item]))
+    const initialItems = props.initialSelectedPaths.map(
+      (path): FileSystemItem =>
+        currentItemByPath.get(path) ?? {
+          name: getPathName(path),
           path,
           type: 'file',
-          size: 0
-        })
-      }
-    }
-
-    const tryMarkOnTree = (path: string) => {
-      const dfs = (items: FileSystemItem[]) => {
-        for (const item of items) {
-          if (item.path === path) {
-            item.isSelected = true
-            selectedItemRefs.value.set(item.path, item)
-            return true
-          }
-          if (item.children && dfs(item.children)) return true
+          size: fileSizeByPath.get(path)
         }
-        return false
-      }
-      dfs(fileTree.value)
-    }
-
-    for (const p of props.initialSelectedPaths) {
-      ensureSelectedItem(p)
-      tryMarkOnTree(p)
-    }
+    )
+    replaceSelection(initialItems)
   }
 
   const initialize = async () => {
+    const requestId = ++directoryLoadRequestId
+    fileSizeRequestGeneration++
     isLoading.value = true
-    try {
-      const lastPath = getLastUsedPath()
-      if (lastPath) {
-        try {
-          const existingPath = await findExistingPath(lastPath)
-          if (existingPath) {
-            currentPath.value = existingPath
-            await loadDirectory(existingPath)
-            return
-          }
-        } catch {}
+    fileSizeByPath.clear()
+    pendingFileSizePaths.clear()
+    const lastPath = getLastUsedPath()
+    if (lastPath) {
+      const existingPath = await findExistingPath(lastPath)
+      if (requestId !== directoryLoadRequestId || !props.visible) return
+      if (existingPath) {
+        currentPath.value = existingPath
+        await loadDirectory(existingPath)
+        return
       }
-
-      await loadDrives()
-    } catch (error) {
-      console.error('初始化文件选择器失败:', error)
-      try {
-        const userHome = await window.electron.ipcRenderer.invoke('get-user-home')
-        currentPath.value = userHome
-        await loadDirectory(userHome)
-      } catch (fallbackError) {
-        console.error('回退到用户目录失败:', fallbackError)
-      }
-    } finally {
-      isLoading.value = false
     }
+    if (requestId !== directoryLoadRequestId || !props.visible) return
+    await loadDrives()
   }
 
   const navigateUp = async () => {
-    if (!currentPath.value) {
+    clearPendingDirectorySelection()
+    const parentPath = getParentPath(currentPath.value)
+    if (!currentPath.value || !parentPath) {
       await loadDrives()
       return
     }
 
-    const pathParts = currentPath.value.split(/[/\\]/).filter(Boolean)
-    if (pathParts.length > 0) {
-      pathParts.pop()
-      const parentPath = pathParts.join('/') || ''
-      if (parentPath) {
-        currentPath.value = parentPath
-        saveLastUsedPath(parentPath)
-        await loadDirectory(parentPath)
-      } else {
-        await loadDrives()
+    currentPath.value = parentPath
+    saveLastUsedPath(parentPath)
+    await loadDirectory(parentPath)
+  }
+
+  const requestFileSizes = async (items: readonly FileSystemItem[]) => {
+    const filePaths = items
+      .filter(
+        (item) =>
+          item.type === 'file' &&
+          item.size === undefined &&
+          !fileSizeByPath.has(item.path) &&
+          !pendingFileSizePaths.has(item.path)
+      )
+      .map((item) => item.path)
+
+    if (filePaths.length === 0) return
+    const requestGeneration = fileSizeRequestGeneration
+    filePaths.forEach((path) => pendingFileSizePaths.add(path))
+
+    try {
+      const results = (await window.electron.ipcRenderer.invoke(
+        'get-file-sizes',
+        filePaths
+      )) as FileSizeResult[]
+      if (requestGeneration !== fileSizeRequestGeneration) return
+      for (const result of results) {
+        fileSizeByPath.set(result.path, result.size)
+      }
+    } catch (error) {
+      console.error('读取文件大小失败:', error)
+    } finally {
+      if (requestGeneration === fileSizeRequestGeneration) {
+        filePaths.forEach((path) => pendingFileSizePaths.delete(path))
       }
     }
   }
 
   const formatFileSize = (bytes: number) => {
     const units = ['B', 'KB', 'MB', 'GB']
-    let size = bytes
+    let size = Math.max(0, bytes)
     let unitIndex = 0
-
     while (size >= 1024 && unitIndex < units.length - 1) {
       size /= 1024
       unitIndex++
     }
-
     return `${size.toFixed(1)} ${units[unitIndex]}`
   }
 
-  const isDrive = (item: FileSystemItem) => {
-    return item.name.includes(':') || 'isSpecial' in item
-  }
+  const isDrive = (item: FileSystemItem) => item.name.includes(':') || item.isSpecial === true
 
-  const getItemIcon = (item: FileSystemItem) => {
-    if ('isSpecial' in item && item.isSpecial) {
-      return desktopIcon
-    }
-
-    if (item.type === 'directory') {
-      if (isDrive(item)) {
-        return diskIcon
-      }
-      return folderIcon
-    }
-
-    const ext = '.' + item.name.split('.').pop()?.toLowerCase()
-    if (getAudioExtensions().includes(ext)) {
-      return audioFileIcon
-    }
-
+  const getItemIcon = (item: FileSystemItem | SelectedItem) => {
+    if ('isSpecial' in item && item.isSpecial) return desktopIcon
+    if (item.type === 'directory') return isDrive(item as FileSystemItem) ? diskIcon : folderIcon
     return audioFileIcon
   }
 
   const confirm = () => {
-    const result = selectedItems.value.map((item) => item.path)
-    emit('confirm', result)
+    emit(
+      'confirm',
+      selectedItems.value.map((item) => item.path)
+    )
     close()
   }
 
@@ -649,24 +552,32 @@ export function useCustomFileSelector(
     visible.value = false
     searchQuery.value = ''
     clearSelection()
-    if (currentPath.value) {
-      saveLastUsedPath(currentPath.value)
-    }
+    clearPendingDirectorySelection()
+    directoryLoadRequestId++
+    fileSizeRequestGeneration++
+    isLoading.value = false
+    if (currentPath.value) saveLastUsedPath(currentPath.value)
   }
 
   const handleKeyDown = (event: KeyboardEvent) => {
+    const eventTarget = event.target
+    if (
+      eventTarget instanceof HTMLInputElement ||
+      eventTarget instanceof HTMLTextAreaElement ||
+      eventTarget instanceof HTMLButtonElement ||
+      (eventTarget instanceof HTMLElement && eventTarget.isContentEditable)
+    ) {
+      return
+    }
+
     updateSelectionModifiers(event)
     const items = getFlatItems()
     if (items.length === 0) return
 
-    const currentIndex =
-      lastActiveIndex.value ??
-      (selectedItems.value.length > 0
-        ? findItemIndex(
-            selectedItems.value[selectedItems.value.length - 1] as unknown as FileSystemItem
-          )
-        : 0)
-
+    const selectedFallbackIndex = selectedItems.value.length
+      ? findItemIndex(selectedItems.value[selectedItems.value.length - 1] as SelectedItem)
+      : -1
+    const currentIndex = lastActiveIndex.value ?? Math.max(0, selectedFallbackIndex)
     let newIndex = currentIndex
 
     switch (event.key) {
@@ -695,11 +606,13 @@ export function useCustomFileSelector(
         event.preventDefault()
         break
       case 'a':
+      case 'A':
         if (event.ctrlKey || event.metaKey) {
-          clearSelectionInternal()
-          items.forEach((item) => toggleSelectionForItem(item, true, { skipRange: true }))
-          event.preventDefault()
+          replaceSelection(items)
           lastActiveIndex.value = items.length - 1
+          anchorIndex.value = items.length - 1
+          adjustScrollToItem(items.length - 1)
+          event.preventDefault()
         }
         return
       case 'Escape':
@@ -707,7 +620,16 @@ export function useCustomFileSelector(
         return
       case ' ':
         if (items[currentIndex]) {
-          toggleSelectionForItem(items[currentIndex], !items[currentIndex].isSelected)
+          toggleItemSelection(
+            items[currentIndex],
+            !event.shiftKey
+              ? selectionModifiers.value
+              : {
+                  shift: true,
+                  ctrlOrMeta: event.ctrlKey || event.metaKey
+                },
+            currentIndex
+          )
           event.preventDefault()
         }
         return
@@ -715,57 +637,44 @@ export function useCustomFileSelector(
         return
     }
 
-    if (items[newIndex]) {
-      const targetItem = items[newIndex]
-      if (event.shiftKey && lastActiveIndex.value !== null) {
-        toggleItemSelection(targetItem, { shift: true, ctrlOrMeta: event.ctrlKey || event.metaKey })
-      } else {
-        toggleItemSelection(targetItem, {
-          shift: false,
-          ctrlOrMeta: event.ctrlKey || event.metaKey
-        })
-      }
-
-      nextTick(() => {
-        const container = fileListRef.value
-        const itemEl = container?.querySelector<HTMLElement>(
-          `.file-item[data-path="${CSS.escape(targetItem.path)}"]`
-        )
-        if (itemEl) {
-          itemEl.scrollIntoView({ block: 'nearest' })
-        }
-      })
-    }
+    const targetItem = items[newIndex]
+    if (!targetItem) return
+    toggleItemSelection(
+      targetItem,
+      {
+        shift: event.shiftKey,
+        ctrlOrMeta: event.ctrlKey || event.metaKey
+      },
+      newIndex
+    )
   }
 
   watch(
     () => props.visible,
     async (newVisible) => {
-      if (newVisible) {
-        await initialize()
-        if (props.initialSelectedPaths.length > 0) {
-          await markInitialSelections()
-        }
-      }
+      if (!newVisible) return
+      await initialize()
+      if (!props.visible) return
+      if (props.initialSelectedPaths.length > 0) markInitialSelections()
+      await nextTick()
+      modalRef.value?.focus()
     }
   )
 
-  onMounted(() => {
-    const modalEl = modalRef.value
-    modalEl?.addEventListener('keydown', handleKeyDown)
+  watch(searchQuery, () => {
+    lastActiveIndex.value = null
+    anchorIndex.value = null
+  })
 
-    hotkeys('Esc', uuid, () => {
-      cancel()
-    })
-    hotkeys('E,Enter', uuid, () => {
-      confirm()
-    })
+  onMounted(() => {
+    hotkeys('Esc', uuid, cancel)
+    hotkeys('E,Enter', uuid, confirm)
     utils.setHotkeysScpoe(uuid)
   })
 
   onUnmounted(() => {
-    const modalEl = modalRef.value
-    modalEl?.removeEventListener('keydown', handleKeyDown)
+    directoryLoadRequestId++
+    clearPendingDirectorySelection()
     utils.delHotkeysScope(uuid)
   })
 
@@ -783,16 +692,19 @@ export function useCustomFileSelector(
     scrollbarOptions,
     handleItemClick,
     handleItemDoubleClick,
+    handleKeyDown,
     removeSelectionByPath,
     clearSelection,
     confirm,
     cancel,
     modalRef,
-    fileListRef,
     formatFileSize,
     getItemIcon,
+    getItemSize,
+    requestFileSizes,
     navigateUp,
-    findItemIndex,
-    isDrive
+    isDrive,
+    isItemSelected,
+    setScrollToIndexHandler
   }
 }
