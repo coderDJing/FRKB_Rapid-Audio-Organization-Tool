@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 
 fn emit_rerun_if_changed_recursive(path: &Path) {
   if path.is_file() {
@@ -187,6 +188,58 @@ fn main() {
     println!("cargo:rustc-link-lib=framework=CoreMedia");
     println!("cargo:rustc-link-lib=framework=CoreVideo");
     println!("cargo:rustc-link-lib=iconv");
+
+    // Homebrew's FFmpeg archives keep codec backends (x264, x265, vpx, etc.)
+    // as separate libraries. Ask pkg-config for those transitive link inputs
+    // so a locally built N-API module does not defer them to Electron at load time.
+    if let Ok(output) = Command::new("pkg-config")
+      .args([
+        "--static",
+        "--libs",
+        "libavcodec",
+        "libavformat",
+        "libavutil",
+        "libswresample",
+      ])
+      .output()
+    {
+      if output.status.success() {
+        let tokens = String::from_utf8_lossy(&output.stdout);
+        let mut parts = tokens.split_whitespace();
+        while let Some(part) = parts.next() {
+          if let Some(dir) = part.strip_prefix("-L") {
+            println!("cargo:rustc-link-search=native={dir}");
+          } else if let Some(lib) = part.strip_prefix("-l") {
+            println!("cargo:rustc-link-lib={lib}");
+          } else if part == "-framework" {
+            if let Some(framework) = parts.next() {
+              println!("cargo:rustc-link-lib=framework={framework}");
+            }
+          }
+        }
+      }
+    }
+    // Some Homebrew formulae are keg-only, so pkg-config omits their -L path
+    // when it considers the path a default search location.
+    for package in [
+      "lame",
+      "opus",
+      "dav1d",
+      "libvpx",
+      "svt-av1",
+      "x264",
+      "x265",
+      "openssl@3",
+    ] {
+      if let Ok(output) = Command::new("brew").args(["--prefix", package]).output() {
+        if output.status.success() {
+          let prefix = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+          if !prefix.is_empty() {
+            println!("cargo:rustc-link-search=native={prefix}/lib");
+          }
+        }
+      }
+    }
   }
   #[cfg(target_os = "windows")]
   {

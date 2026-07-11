@@ -7,6 +7,7 @@ const REMOTE_ASSET_STATE_FILE = '.frkb-runtime-asset.json'
 let runtimeDownloadProxyInitialized = false
 let runtimeDownloadProxyDispatcher
 let runtimeDownloadProxySource = ''
+let runtimeFetch = globalThis.fetch
 
 const buildPortableRuntimeCopyOptions = () => ({
   recursive: true,
@@ -202,6 +203,10 @@ const ensureRuntimeDownloadProxyInitialized = async () => {
   try {
     const undiciModule = await import('undici')
     ProxyAgent = undiciModule.ProxyAgent || null
+    // A dispatcher must come from the same undici implementation as fetch.
+    // Node's built-in fetch uses its bundled undici, which can differ from
+    // the project's installed version.
+    runtimeFetch = undiciModule.fetch || runtimeFetch
   } catch (error) {
     console.warn(
       `[demucs-runtime-ensure] Proxy support unavailable (undici missing): ${
@@ -232,7 +237,7 @@ export const fetchWithRuntimeProxy = async (url, init = {}) => {
   if (runtimeDownloadProxyDispatcher) {
     requestInit.dispatcher = runtimeDownloadProxyDispatcher
   }
-  return await fetch(url, requestInit)
+  return await runtimeFetch(url, requestInit)
 }
 
 export const createConsoleDownloadProgressReporter = ({ label, totalBytes }) => {
