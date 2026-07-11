@@ -12,17 +12,21 @@ import { moveFileToRecycleBin } from '../recycleBinService'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
-import {
-  BEAT_GRID_STATUS_NO_BPM,
-  hasCurrentNoBpmBeatGridResult,
-  shouldAcceptBeatGridCacheVersion
-} from '../services/beatGridAlgorithmVersion'
-import { shouldAcceptKeyAnalysisCacheVersion } from '../services/keyAnalysisAlgorithmVersion'
-import { hasCurrentSongEnergyAnalysis } from '../../shared/songEnergy'
+import { BEAT_GRID_STATUS_NO_BPM } from '../services/beatGridAlgorithmVersion'
+import { hasUsableSongEnergyAnalysis } from '../../shared/songEnergy'
 import {
   normalizeSongBeatGridMap,
   projectSongBeatGridMapToFixedGrid
 } from '../../shared/songBeatGridMap'
+import {
+  hasRequiredSongStructureAnalysis,
+  hasUsableKeyAnalysis,
+  resolveUsableSongBeatGrid
+} from '../../shared/songAnalysisCompleteness'
+import {
+  hasUsableSongStructureAnalysis,
+  normalizeSongStructureAnalysis
+} from '../../shared/songStructure'
 import type { ISongInfo } from '../../types/globals'
 import {
   listSetItemsByPlaylist,
@@ -64,30 +68,20 @@ function normalizeRequestedFilePaths(filePaths: string[]): string[] {
   return [...byKey.values()]
 }
 
-const hasKey = (value: unknown): value is string => typeof value === 'string' && value.trim() !== ''
-const hasBpm = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0
-const hasFirstBeatMs = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0
-const hasBarBeatOffset = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value)
 const hasFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 const hasPositiveInteger = (value: unknown): value is number =>
   hasFiniteNumber(value) && Math.floor(value) === value && value > 0
 
-const hasCurrentKeyAnalysis = (info: Partial<ISongInfo> | null | undefined) =>
-  hasKey(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
+const hasCompleteKeyAnalysis = (info: Partial<ISongInfo> | null | undefined) =>
+  hasUsableKeyAnalysis(info)
 
 const hasCompleteNumericGrid = (info: Partial<ISongInfo> | null | undefined) =>
-  hasBpm(info?.bpm) &&
-  hasFirstBeatMs(info?.firstBeatMs) &&
-  hasBarBeatOffset(info?.barBeatOffset) &&
-  shouldAcceptBeatGridCacheVersion(info)
+  resolveUsableSongBeatGrid(info).kind === 'fixed'
 const hasDynamicBeatGridMap = (info: Partial<ISongInfo> | null | undefined) =>
   normalizeSongBeatGridMap(info?.beatGridMap) !== null
 const hasCompleteGrid = (info: Partial<ISongInfo> | null | undefined) =>
-  hasCurrentNoBpmBeatGridResult(info) || hasDynamicBeatGridMap(info) || hasCompleteNumericGrid(info)
+  resolveUsableSongBeatGrid(info).kind !== 'missing'
 
 function parseSetItemAnalysisJson(raw: unknown): Partial<ISongInfo> | null {
   if (typeof raw !== 'string' || !raw.trim()) return null
@@ -105,13 +99,13 @@ function buildSetAnalysisSnapshot(
 ): Record<string, unknown> | null {
   if (!source) return null
   const snapshot: Record<string, unknown> = {}
-  if (hasCurrentKeyAnalysis(source)) {
+  if (hasCompleteKeyAnalysis(source)) {
     snapshot.key = source.key
     if (hasPositiveInteger(source.keyAnalysisAlgorithmVersion)) {
       snapshot.keyAnalysisAlgorithmVersion = source.keyAnalysisAlgorithmVersion
     }
   }
-  if (hasCurrentNoBpmBeatGridResult(source)) {
+  if (resolveUsableSongBeatGrid(source).kind === 'no-bpm') {
     snapshot.beatGridStatus = BEAT_GRID_STATUS_NO_BPM
     if (hasPositiveInteger(source.beatGridAlgorithmVersion)) {
       snapshot.beatGridAlgorithmVersion = source.beatGridAlgorithmVersion
@@ -140,11 +134,14 @@ function buildSetAnalysisSnapshot(
       snapshot.beatGridSource = source.beatGridSource
     }
   }
-  if (hasCurrentSongEnergyAnalysis(source)) {
+  if (hasUsableSongEnergyAnalysis(source)) {
     snapshot.energyScore = source.energyScore
     if (hasPositiveInteger(source.energyAlgorithmVersion)) {
       snapshot.energyAlgorithmVersion = source.energyAlgorithmVersion
     }
+  }
+  if (hasUsableSongStructureAnalysis(source)) {
+    snapshot.songStructure = normalizeSongStructureAnalysis(source.songStructure)
   }
   const hotCues = normalizeSongHotCues(source.hotCues)
   if (hotCues.length > 0) {
@@ -169,13 +166,13 @@ function persistSetAnalysisSnapshotIfChanged(
 function mergeSetAnalysisFields(target: ISongInfo, source: Partial<ISongInfo> | null): ISongInfo {
   if (!source) return target
   const next = { ...target }
-  if (!hasCurrentKeyAnalysis(next) && hasCurrentKeyAnalysis(source)) {
+  if (!hasCompleteKeyAnalysis(next) && hasCompleteKeyAnalysis(source)) {
     next.key = source.key as string
     if (hasPositiveInteger(source.keyAnalysisAlgorithmVersion)) {
       next.keyAnalysisAlgorithmVersion = source.keyAnalysisAlgorithmVersion
     }
   }
-  if (!hasCompleteGrid(next) && hasCurrentNoBpmBeatGridResult(source)) {
+  if (!hasCompleteGrid(next) && resolveUsableSongBeatGrid(source).kind === 'no-bpm') {
     delete next.bpm
     delete next.firstBeatMs
     delete next.barBeatOffset
@@ -213,11 +210,20 @@ function mergeSetAnalysisFields(target: ISongInfo, source: Partial<ISongInfo> | 
       next.beatGridSource = source.beatGridSource
     }
   }
-  if (!hasCurrentSongEnergyAnalysis(next) && hasCurrentSongEnergyAnalysis(source)) {
+  if (!hasUsableSongEnergyAnalysis(next) && hasUsableSongEnergyAnalysis(source)) {
     next.energyScore = source.energyScore
     if (hasPositiveInteger(source.energyAlgorithmVersion)) {
       next.energyAlgorithmVersion = source.energyAlgorithmVersion
     }
+  }
+  const sourceStructure = normalizeSongStructureAnalysis(source.songStructure)
+  if (
+    sourceStructure &&
+    !hasUsableSongStructureAnalysis(next) &&
+    hasUsableSongStructureAnalysis(source) &&
+    hasUsableSongStructureAnalysis({ ...next, songStructure: sourceStructure })
+  ) {
+    next.songStructure = sourceStructure
   }
   if (!Array.isArray(next.hotCues) || next.hotCues.length === 0) {
     const hotCues = normalizeSongHotCues(source.hotCues)
@@ -409,17 +415,19 @@ async function enrichSetSongFromSourceAnalysis(
       next = mergeSetAnalysisFields(next, cached.info)
       persistSetAnalysisSnapshotIfChanged(item, buildSetAnalysisSnapshot(cached.info))
       if (
-        hasCurrentKeyAnalysis(next) &&
+        hasCompleteKeyAnalysis(next) &&
         hasCompleteGrid(next) &&
-        hasCurrentSongEnergyAnalysis(next)
+        hasUsableSongEnergyAnalysis(next) &&
+        hasRequiredSongStructureAnalysis(next)
       ) {
         break
       }
     }
     if (
-      hasCurrentKeyAnalysis(next) &&
+      hasCompleteKeyAnalysis(next) &&
       hasCompleteGrid(next) &&
-      hasCurrentSongEnergyAnalysis(next)
+      hasUsableSongEnergyAnalysis(next) &&
+      hasRequiredSongStructureAnalysis(next)
     ) {
       break
     }

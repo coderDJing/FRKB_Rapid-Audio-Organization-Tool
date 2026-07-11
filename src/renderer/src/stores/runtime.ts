@@ -34,6 +34,7 @@ export type SongsAreaColumnMode = 'default' | 'recycle' | 'recording' | 'mixtape
 interface ISongsAreaState {
   songListUUID: string
   songInfoArr: ISongInfo[]
+  missingWaveformFilePaths: string[]
   totalSongCount: number
   selectedSongFilePath: string[]
   scrollTop: number
@@ -47,6 +48,7 @@ export interface ISongsAreaPaneRuntimeState extends ISongsAreaState {
 const createSongsAreaState = (): ISongsAreaPaneRuntimeState => ({
   songListUUID: '',
   songInfoArr: [],
+  missingWaveformFilePaths: [],
   totalSongCount: 0,
   selectedSongFilePath: [],
   scrollTop: 0,
@@ -60,6 +62,9 @@ const assignSongsAreaState = (
 ) => {
   target.songListUUID = String(source?.songListUUID || '')
   target.songInfoArr = Array.isArray(source?.songInfoArr) ? [...source.songInfoArr] : []
+  target.missingWaveformFilePaths = Array.isArray(source?.missingWaveformFilePaths)
+    ? [...source.missingWaveformFilePaths]
+    : []
   target.totalSongCount = Number(source?.totalSongCount || 0)
   target.selectedSongFilePath = Array.isArray(source?.selectedSongFilePath)
     ? [...source.selectedSongFilePath]

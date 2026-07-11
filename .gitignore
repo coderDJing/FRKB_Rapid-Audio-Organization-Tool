@@ -55,6 +55,11 @@ __pycache__/
 # Local grid analysis lab
 grid-analysis-lab/
 
+# Local song-structure analysis lab (reports, replay cache, scratch files)
+structure-analysis-lab/
+test-data/song-structure/audio/
+test-data/song-structure/local-paths.json
+
 # FFmpeg native binaries (downloaded at build time)
 rust_package/*.dll
 rust_package/native/ffmpeg/win32-x64/

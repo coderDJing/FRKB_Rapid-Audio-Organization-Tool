@@ -1,7 +1,11 @@
 import { onUnmounted, watch } from 'vue'
 import type { Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
-import { hasCurrentSongEnergyAnalysis } from '@shared/songEnergy'
+import { hasUsableSongEnergyAnalysis } from '@shared/songEnergy'
+import {
+  hasUsableKeyAnalysis,
+  hasUsableSongBeatGridAnalysis
+} from '@shared/songAnalysisCompleteness'
 
 interface UseKeyAnalysisQueueOptions {
   visibleSongsWithIndex: Ref<Array<{ song: ISongInfo; idx: number }>>
@@ -15,20 +19,9 @@ const CURRENT_LIST_QUEUE_LIMIT = 400
 
 const hasRequiredKeyAnalysis = (song: ISongInfo | undefined, requiresRuntimeAnalysis: boolean) => {
   if (!song) return false
-  if (!hasCurrentSongEnergyAnalysis(song)) return false
-  const keyText = typeof song.key === 'string' ? song.key.trim() : ''
-  if (!keyText) return false
+  if (!hasUsableSongEnergyAnalysis(song) || !hasUsableKeyAnalysis(song)) return false
   if (!requiresRuntimeAnalysis) return true
-  if (song.beatGridStatus === 'no-bpm') return true
-  const bpm = Number(song.bpm)
-  const firstBeatMs = Number(song.firstBeatMs)
-  const barBeatOffset = Number(song.barBeatOffset)
-  return (
-    Number.isFinite(bpm) &&
-    bpm > 0 &&
-    Number.isFinite(firstBeatMs) &&
-    Number.isFinite(barBeatOffset)
-  )
+  return hasUsableSongBeatGridAnalysis(song)
 }
 
 export function useKeyAnalysisQueue({

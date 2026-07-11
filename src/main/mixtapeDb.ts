@@ -9,7 +9,7 @@ import {
 import { FIXED_MIXTAPE_STEM_MODE } from '../shared/mixtapeStemMode'
 import { areSongHotCuesEqual, normalizeSongHotCues } from '../shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '../shared/memoryCues'
-import { hasCurrentSongStructureAnalysis } from '../shared/songStructure'
+import { hasUsableSongStructureAnalysis } from '../shared/songStructure'
 import {
   normalizeSongBeatGridMap,
   projectSongBeatGridMapToFixedGrid
@@ -802,7 +802,7 @@ export function upsertMixtapeItemGridByFilePath(
               nextGrid.beatGridAlgorithmVersion!
             )
           }
-          if (!hasCurrentSongStructureAnalysis(info)) {
+          if (!hasUsableSongStructureAnalysis(info)) {
             delete info.songStructure
           }
           updateStmt.run(JSON.stringify(info), row.id)

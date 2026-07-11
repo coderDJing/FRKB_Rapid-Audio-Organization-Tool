@@ -9,16 +9,15 @@ import { log } from '../log'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
 import { normalizePlaylistTrackNumber } from './playlistTrackNumbers'
+import { normalizeSongEnergyScore } from '../../shared/songEnergy'
 import {
-  hasCurrentNoBpmBeatGridResult,
-  shouldAcceptBeatGridCacheVersion
-} from './beatGridAlgorithmVersion'
-import { shouldAcceptKeyAnalysisCacheVersion } from './keyAnalysisAlgorithmVersion'
-import { hasCurrentSongEnergyAnalysis, normalizeSongEnergyScore } from '../../shared/songEnergy'
-import {
-  hasCurrentSongStructureAnalysis,
+  hasUsableSongStructureAnalysis,
   normalizeSongStructureAnalysis
 } from '../../shared/songStructure'
+import {
+  hasUsableKeyAnalysis,
+  resolveUsableSongBeatGrid
+} from '../../shared/songAnalysisCompleteness'
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
 
@@ -296,36 +295,38 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     typeof rawInfo?.bitrate === 'number' && Number.isFinite(rawInfo.bitrate)
       ? rawInfo.bitrate
       : undefined
-  const hasCurrentKeyAnalysis = shouldAcceptKeyAnalysisCacheVersion(rawInfo)
-  const key =
-    hasCurrentKeyAnalysis && typeof rawInfo?.key === 'string' && rawInfo.key.trim().length > 0
-      ? rawInfo.key
-      : undefined
-  const keyAnalysisAlgorithmVersion = hasCurrentKeyAnalysis
+  const hasKeyAnalysis = hasUsableKeyAnalysis(rawInfo)
+  const key = hasKeyAnalysis ? rawInfo?.key?.trim() : undefined
+  const keyAnalysisAlgorithmVersion = hasKeyAnalysis
     ? rawInfo?.keyAnalysisAlgorithmVersion
     : undefined
-  const hasCurrentBeatGrid =
-    typeof rawInfo?.bpm === 'number' &&
-    Number.isFinite(rawInfo.bpm) &&
-    typeof rawInfo?.firstBeatMs === 'number' &&
-    Number.isFinite(rawInfo.firstBeatMs) &&
-    typeof rawInfo?.barBeatOffset === 'number' &&
-    Number.isFinite(rawInfo.barBeatOffset) &&
-    shouldAcceptBeatGridCacheVersion(rawInfo)
-  const hasCurrentNoBpmGrid = hasCurrentNoBpmBeatGridResult(rawInfo)
-  const bpm = hasCurrentBeatGrid ? rawInfo?.bpm : undefined
-  const firstBeatMs = hasCurrentBeatGrid ? rawInfo?.firstBeatMs : undefined
-  const barBeatOffset = hasCurrentBeatGrid ? rawInfo?.barBeatOffset : undefined
+  const grid = resolveUsableSongBeatGrid(rawInfo)
+  const bpm = grid.kind === 'fixed' || grid.kind === 'dynamic' ? grid.bpm : undefined
+  const firstBeatMs =
+    grid.kind === 'fixed' || grid.kind === 'dynamic' ? grid.firstBeatMs : undefined
+  const barBeatOffset =
+    grid.kind === 'fixed' || grid.kind === 'dynamic' ? grid.barBeatOffset : undefined
+  const beatGridMap = grid.kind === 'dynamic' ? grid.beatGridMap : undefined
   const beatGridAlgorithmVersion =
-    hasCurrentBeatGrid || hasCurrentNoBpmGrid ? rawInfo?.beatGridAlgorithmVersion : undefined
-  const beatGridSource = hasCurrentBeatGrid ? rawInfo?.beatGridSource : undefined
-  const beatGridStatus = hasCurrentNoBpmGrid ? rawInfo?.beatGridStatus : undefined
-  const energyScore = hasCurrentSongEnergyAnalysis(rawInfo)
-    ? normalizeSongEnergyScore(rawInfo?.energyScore)
-    : undefined
+    grid.kind !== 'missing' ? rawInfo?.beatGridAlgorithmVersion : undefined
+  const beatGridSource =
+    grid.kind === 'dynamic'
+      ? 'manual'
+      : grid.kind === 'fixed' &&
+          (rawInfo?.beatGridSource === 'manual' || rawInfo?.beatGridSource === 'analysis')
+        ? rawInfo.beatGridSource
+        : undefined
+  const beatGridStatus = grid.kind === 'no-bpm' ? 'no-bpm' : undefined
+  const timeBasisOffsetMs =
+    grid.kind === 'fixed' &&
+    typeof rawInfo?.timeBasisOffsetMs === 'number' &&
+    Number.isFinite(rawInfo.timeBasisOffsetMs)
+      ? rawInfo.timeBasisOffsetMs
+      : undefined
+  const energyScore = normalizeSongEnergyScore(rawInfo?.energyScore)
   const energyAlgorithmVersion =
     energyScore !== undefined ? rawInfo?.energyAlgorithmVersion : undefined
-  const songStructure = hasCurrentSongStructureAnalysis(rawInfo)
+  const songStructure = hasUsableSongStructureAnalysis(rawInfo)
     ? normalizeSongStructureAnalysis(rawInfo?.songStructure)
     : undefined
   const playlistTrackNumber = normalizePlaylistTrackNumber(rawInfo?.playlistTrackNumber)
@@ -348,9 +349,11 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     bpm,
     firstBeatMs,
     barBeatOffset,
+    timeBasisOffsetMs,
     beatGridAlgorithmVersion,
     beatGridSource,
     beatGridStatus,
+    beatGridMap,
     energyScore,
     energyAlgorithmVersion,
     songStructure,

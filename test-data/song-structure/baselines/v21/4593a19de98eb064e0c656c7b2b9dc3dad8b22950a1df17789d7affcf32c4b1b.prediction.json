@@ -1,0 +1,83 @@
+{
+  "$schema": "../../schema/prediction.schema.json",
+  "schemaVersion": 1,
+  "trackId": "4593a19de98eb064e0c656c7b2b9dc3dad8b22950a1df17789d7affcf32c4b1b",
+  "generatedAt": "2026-07-11T06:02:36.644Z",
+  "algorithm": {
+    "version": 21,
+    "formatVersion": 1,
+    "strategy": "production-v21-pseudo-color",
+    "gitHead": "8e086ce5fcbbc300a6b3c17ecb037e009ecef0c8",
+    "dirty": true
+  },
+  "durationSec": 344.555,
+  "gridKind": "fixed",
+  "analysisMs": 180.357,
+  "sections": [
+    {
+      "startSec": 0,
+      "endSec": 20.135,
+      "startBar": 1,
+      "endBar": 12,
+      "phraseIndex": 0,
+      "kind": "intro",
+      "confidence": 0.661,
+      "energy": 0.663,
+      "low": 0.705,
+      "high": 0.226,
+      "novelty": 0.546
+    },
+    {
+      "startSec": 20.135,
+      "endSec": 106.204,
+      "startBar": 13,
+      "endBar": 64,
+      "phraseIndex": 1,
+      "kind": "groove",
+      "confidence": 0.744,
+      "energy": 0.711,
+      "low": 0.741,
+      "high": 0.292,
+      "novelty": 0.94
+    },
+    {
+      "startSec": 106.204,
+      "endSec": 159.17,
+      "startBar": 65,
+      "endBar": 96,
+      "phraseIndex": 8,
+      "kind": "breakdown",
+      "confidence": 0.895,
+      "energy": 0.513,
+      "low": 0.252,
+      "high": 0.468,
+      "novelty": 0.94
+    },
+    {
+      "startSec": 159.17,
+      "endSec": 304.825,
+      "startBar": 97,
+      "endBar": 184,
+      "phraseIndex": 12,
+      "kind": "drop",
+      "confidence": 0.645,
+      "energy": 0.739,
+      "low": 0.757,
+      "high": 0.33,
+      "novelty": 0.94
+    },
+    {
+      "startSec": 304.825,
+      "endSec": 344.555,
+      "startBar": 185,
+      "endBar": 208,
+      "phraseIndex": 23,
+      "kind": "outro",
+      "confidence": 0.666,
+      "energy": 0.646,
+      "low": 0.691,
+      "high": 0.164,
+      "novelty": 0
+    }
+  ]
+}

@@ -22,6 +22,7 @@ type PlaylistAnalysisRuntime = {
 type SongsAreaAnalysisState = {
   songListUUID: string
   songInfoArr: ISongInfo[]
+  missingWaveformFilePaths: string[]
 }
 
 type QueueManualBatchResult = {
@@ -60,7 +61,12 @@ export function usePlaylistAnalysisPrompt({
   const missingAnalysisFiles = computed(() =>
     collectMissingAnalysisFilesFromSongs(
       songsAreaState.songInfoArr,
-      runtime.analysisRuntime.available === true
+      runtime.analysisRuntime.available === true,
+      undefined,
+      {
+        includeSongStructure: true,
+        missingWaveformFilePaths: songsAreaState.missingWaveformFilePaths
+      }
     )
   )
 
@@ -135,8 +141,18 @@ export function usePlaylistAnalysisPrompt({
     if (missingAnalysisFiles.value.length) markDismissedSongList(songListUUID)
   }
 
+  const handleSongWaveformUpdated = (_event: unknown, payload?: { filePath?: string }) => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+    const pathKey = normalizeFilePathKey(filePath)
+    if (!pathKey || songsAreaState.missingWaveformFilePaths.length === 0) return
+    songsAreaState.missingWaveformFilePaths = songsAreaState.missingWaveformFilePaths.filter(
+      (item) => normalizeFilePathKey(item) !== pathKey
+    )
+  }
+
   onMounted(() => {
     window.electron.ipcRenderer.on('key-analysis:manual-batch-end', handleManualBatchEnd)
+    window.electron.ipcRenderer.on('song-waveform-updated', handleSongWaveformUpdated)
   })
 
   onUnmounted(() => {
@@ -145,6 +161,7 @@ export function usePlaylistAnalysisPrompt({
       'key-analysis:manual-batch-end',
       handleManualBatchEnd
     )
+    window.electron.ipcRenderer.removeListener('song-waveform-updated', handleSongWaveformUpdated)
   })
 
   const handleUserOpenedSongList = async (

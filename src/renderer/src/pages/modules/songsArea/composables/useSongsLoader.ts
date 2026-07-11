@@ -68,6 +68,17 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     String(value || '')
       .replace(/\//g, '\\')
       .toLowerCase()
+  const normalizeMissingWaveformFilePaths = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return []
+    const pathsByKey = new Map<string, string>()
+    for (const item of value) {
+      const filePath = typeof item === 'string' ? item.trim() : ''
+      const key = normalizeSongPath(filePath)
+      if (!filePath || !key || pathsByKey.has(key)) continue
+      pathsByKey.set(key, filePath)
+    }
+    return [...pathsByKey.values()]
+  }
   const normalizeComparableText = (value: unknown) => String(value || '').trim()
   const normalizeComparableFileName = (value: unknown) => {
     const normalized = normalizeComparableText(value)
@@ -511,6 +522,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     const scanData = Array.isArray(result?.scanData) ? result.scanData : []
     const loadedUUID = String(result?.songListUUID || '')
     if (loadedUUID !== songsAreaState.songListUUID) return false
+    songsAreaState.missingWaveformFilePaths = normalizeMissingWaveformFilePaths(
+      result?.missingWaveformFilePaths
+    )
     maybeShowPlaylistTrackNumberInitHint(loadedUUID, result?.playlistTrackNumbering || null)
     const unchanged = isEquivalentSongListSnapshot(scanData, originalSongInfoArr.value)
     if (unchanged) {
@@ -543,6 +557,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     const shouldResetVisibleList = lastAppliedSongListUUID !== requestUUID
     if (shouldResetVisibleList) {
       songsAreaState.songInfoArr = []
+      songsAreaState.missingWaveformFilePaths = []
       songsAreaState.totalSongCount = 0
       originalSongInfoArr.value = []
       renderCount.value = 0
@@ -551,6 +566,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
     if (songsAreaState.songListUUID === EXTERNAL_PLAYLIST_UUID) {
       const songs = runtime.externalPlaylist.songs || []
+      songsAreaState.missingWaveformFilePaths = []
       originalSongInfoArr.value = markRaw([...songs])
       applyFiltersAndSorting()
       syncSelectedKeysAfterReload(songsAreaState.songInfoArr, requestUUID)
@@ -561,6 +577,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       return
     }
     if (songsAreaState.songListUUID === RECYCLE_BIN_UUID) {
+      songsAreaState.missingWaveformFilePaths = []
       loadingShow.value = false
       const loadingSetTimeout = setTimeout(() => {
         loadingShow.value = true
@@ -582,6 +599,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       return
     }
     if (songsAreaState.songListUUID === RECORDING_LIBRARY_UUID) {
+      songsAreaState.missingWaveformFilePaths = []
       loadingShow.value = false
       const loadingSetTimeout = setTimeout(() => {
         loadingShow.value = true
@@ -604,6 +622,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
 
     if (isMixtapeListView()) {
+      songsAreaState.missingWaveformFilePaths = []
       loadingShow.value = false
       const loadingSetTimeout = setTimeout(() => {
         loadingShow.value = true
@@ -651,6 +670,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
 
     if (isSetListView()) {
+      songsAreaState.missingWaveformFilePaths = []
       loadingShow.value = false
       const loadingSetTimeout = setTimeout(() => {
         loadingShow.value = true

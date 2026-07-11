@@ -1,10 +1,11 @@
 import { parentPort } from 'node:worker_threads'
-import path from 'node:path'
 import type { MixxxWaveformData } from '../waveformCodec'
 import { COMPACT_VISUAL_WAVEFORM_COLOR_RAW_RATE } from '../../shared/compactVisualWaveform'
 import {
   buildUnifiedDisplayWaveformDetailFromMixxx,
+  UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION,
   UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE,
+  UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION,
   type UnifiedDisplayWaveformDetailData
 } from '../../shared/unifiedDisplayWaveform'
 import {
@@ -12,11 +13,16 @@ import {
   calculateSongEnergyScoreFromUnifiedDisplay
 } from '../../shared/songEnergy'
 import { buildSongStructureAnalysis, type SongStructureAnalysis } from '../../shared/songStructure'
+import { resolveSongStructureTimelineFirstBeatMs } from '../../shared/songStructureCommon'
 import { diagnoseSongStructureAnalysisFailure } from '../../shared/songStructureDiagnostics'
 import type { SongBeatGridMap } from '../../shared/songBeatGridMap'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 import { getBeatThisRuntimeAvailabilitySnapshot } from './beatThisRuntime'
 import { computeRawWaveform } from './rawWaveformBuilder'
+import {
+  decodeSongAnalysisAudio,
+  shouldUseNativeLibavSongAnalysisDecode
+} from './songAnalysisAudioDecoder'
 
 type KeyJob = {
   jobId: number
@@ -31,6 +37,8 @@ type KeyJob = {
   cachedFirstBeatMs?: number
   cachedBarBeatOffset?: number
   cachedBeatGridMap?: SongBeatGridMap
+  cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
+  analyzedTimeBasisOffsetMs?: number
 }
 
 type KeyResultPayload = {
@@ -39,6 +47,7 @@ type KeyResultPayload = {
   bpm?: number
   firstBeatMs?: number
   barBeatOffset?: number
+  timeBasisOffsetMs?: number
   bpmError?: string
   songStructureError?: string
   energyScore?: number
@@ -90,6 +99,40 @@ const BEAT_GRID_ANALYSIS_SAMPLE_RATE = 44100
 const BEAT_GRID_ANALYSIS_CHANNELS = 2
 const BEAT_GRID_ANALYSIS_MAX_SCAN_SEC = 120
 
+const isNonEmptyByteArray = (value: unknown): value is Uint8Array =>
+  value instanceof Uint8Array && value.length > 0
+
+const resolveCachedUnifiedDisplayWaveformData = (
+  value: UnifiedDisplayWaveformDetailData | null | undefined
+): UnifiedDisplayWaveformDetailData | null => {
+  if (!value) return null
+  if (
+    value.version !== UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION ||
+    !Number.isFinite(value.parameterVersion) ||
+    value.parameterVersion <= 0 ||
+    !Number.isFinite(value.duration) ||
+    value.duration <= 0 ||
+    !Number.isFinite(value.detailRate) ||
+    value.detailRate <= 0
+  ) {
+    return null
+  }
+  const arrays = [
+    value.height,
+    value.attack,
+    value.colorIndex,
+    value.colorLow,
+    value.colorMid,
+    value.colorHigh,
+    value.colorRed,
+    value.colorGreen,
+    value.colorBlue,
+    value.body,
+    value.overviewHeight
+  ]
+  return arrays.every(isNonEmptyByteArray) ? value : null
+}
+
 type RustBinding = ReturnType<typeof loadRust>
 
 type DecodedAudioPcm = {
@@ -104,8 +147,6 @@ type DecodedAudioPcm = {
 type DecodedBeatGridPcm = DecodedAudioPcm & {
   decoderBackend: string
 }
-
-type DecodedWaveformPcm = DecodedBeatGridPcm
 
 let cachedRustBinding: RustBinding | null = null
 
@@ -172,11 +213,6 @@ const getRustBinding = () => {
   return cachedRustBinding
 }
 
-const shouldUseFfmpegWaveformDecode = (filePath: string) => {
-  const ext = path.extname(filePath || '').toLowerCase()
-  return ext === '.mp3'
-}
-
 const decodePcmWithNative = (
   filePath: string,
   params: {
@@ -212,14 +248,6 @@ const decodePcmWithNative = (
   }
 }
 
-const decodeWaveformPcmWithFfmpeg = async (filePath: string): Promise<DecodedWaveformPcm> => {
-  return decodePcmWithNative(filePath, {
-    sampleRate: BEAT_GRID_ANALYSIS_SAMPLE_RATE,
-    channels: BEAT_GRID_ANALYSIS_CHANNELS,
-    decoderBackend: 'native-libav-waveform'
-  })
-}
-
 const decodeBeatGridPcmForFile = async (filePath: string): Promise<DecodedBeatGridPcm> => {
   return decodePcmWithNative(filePath, {
     startSec: 0,
@@ -243,6 +271,8 @@ const analyzeKeyForFile = (
     cachedFirstBeatMs?: number
     cachedBarBeatOffset?: number
     cachedBeatGridMap?: SongBeatGridMap
+    cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
+    analyzedTimeBasisOffsetMs?: number
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -262,6 +292,8 @@ const analyzeKeyForFileInternal = async (
     cachedFirstBeatMs?: number
     cachedBarBeatOffset?: number
     cachedBeatGridMap?: SongBeatGridMap
+    cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
+    analyzedTimeBasisOffsetMs?: number
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -271,25 +303,62 @@ const analyzeKeyForFileInternal = async (
   const needsWaveform = Boolean(options.needsWaveform)
   const needsEnergy = Boolean(options.needsEnergy)
   const needsStructure = Boolean(options.needsStructure)
-  const needsPcmEnergy = needsEnergy
-  const useFfmpegWaveformDecode =
-    (needsWaveform || needsStructure || needsPcmEnergy) && shouldUseFfmpegWaveformDecode(filePath)
-  const useFfmpegPrimaryDecode = (needsKey || needsPcmEnergy) && useFfmpegWaveformDecode
+  const cachedUnifiedDisplayWaveformData =
+    needsStructure || needsEnergy
+      ? resolveCachedUnifiedDisplayWaveformData(options.cachedUnifiedDisplayWaveformData)
+      : null
+  const needsStructureWaveformDecode = needsStructure && !cachedUnifiedDisplayWaveformData
+  const needsPcmEnergy = needsEnergy && !cachedUnifiedDisplayWaveformData
+  const useNativeLibavWaveformDecode =
+    (needsWaveform || needsStructureWaveformDecode || needsPcmEnergy) &&
+    shouldUseNativeLibavSongAnalysisDecode(filePath)
+  const useNativeLibavPrimaryDecode = (needsKey || needsPcmEnergy) && useNativeLibavWaveformDecode
   const needsRustDecode =
-    (needsKey && !useFfmpegPrimaryDecode) ||
-    ((needsWaveform || needsStructure || needsPcmEnergy) && !useFfmpegWaveformDecode)
+    (needsKey && !useNativeLibavPrimaryDecode) ||
+    ((needsWaveform || needsStructureWaveformDecode || needsPcmEnergy) &&
+      !useNativeLibavWaveformDecode)
   let rust: RustBinding | null = null
   let decoded: DecodedAudioPcm | null = null
   let beatGridDecoded: DecodedBeatGridPcm | null = null
-  let reusableFfmpegWaveformDecoded: DecodedWaveformPcm | null = null
+  let reusableNativeLibavWaveformDecoded: DecodedAudioPcm | null = null
   const resolveRustBinding = () => {
     if (!rust) {
       rust = getRustBinding()
     }
     return rust
   }
+  const analyzeSongStructureFromWaveform = (
+    waveformData: UnifiedDisplayWaveformDetailData | null
+  ) => {
+    const firstBeatMs = resolveSongStructureTimelineFirstBeatMs(
+      result.firstBeatMs,
+      options.cachedFirstBeatMs,
+      options.analyzedTimeBasisOffsetMs
+    )
+    const structureGrid = {
+      bpm: result.bpm ?? options.cachedBpm,
+      firstBeatMs,
+      barBeatOffset: result.barBeatOffset ?? options.cachedBarBeatOffset,
+      beatGridMap: options.cachedBeatGridMap ?? null
+    }
+    const structureInput = {
+      waveformData,
+      ...structureGrid
+    }
+    try {
+      const structure = buildSongStructureAnalysis(structureInput)
+      result.songStructure = structure ?? undefined
+      result.songStructureError = structure
+        ? undefined
+        : diagnoseSongStructureAnalysisFailure(structureInput)
+    } catch (error) {
+      result.songStructureError = `structure exception: ${
+        error instanceof Error ? error.message : String(error || 'unknown error')
+      }`.slice(0, 300)
+    }
+  }
 
-  if (needsRustDecode || useFfmpegPrimaryDecode || needsBpm) {
+  if (needsRustDecode || useNativeLibavPrimaryDecode || needsBpm) {
     reportProgress({
       stage: 'decode-start',
       needsKey,
@@ -299,9 +368,9 @@ const analyzeKeyForFileInternal = async (
       needsStructure
     })
     const decodeStartAt = Date.now()
-    if (useFfmpegPrimaryDecode) {
-      reusableFfmpegWaveformDecoded = await decodeWaveformPcmWithFfmpeg(filePath)
-      decoded = reusableFfmpegWaveformDecoded
+    if (useNativeLibavPrimaryDecode) {
+      reusableNativeLibavWaveformDecoded = decodeSongAnalysisAudio(resolveRustBinding(), filePath)
+      decoded = reusableNativeLibavWaveformDecoded
     } else if (needsRustDecode) {
       const rustDecoded = resolveRustBinding().decodeAudioFile(filePath)
       if (rustDecoded.error) {
@@ -390,6 +459,7 @@ const analyzeKeyForFileInternal = async (
         result.bpm = beatThisResult.bpm
         result.firstBeatMs = beatThisResult.firstBeatMs
         result.barBeatOffset = beatThisResult.barBeatOffset
+        result.timeBasisOffsetMs = options.analyzedTimeBasisOffsetMs
         result.bpmError = undefined
       } catch (error) {
         result.bpmError =
@@ -418,6 +488,7 @@ const analyzeKeyForFileInternal = async (
         bpm: result.bpm,
         firstBeatMs: result.firstBeatMs,
         barBeatOffset: result.barBeatOffset,
+        timeBasisOffsetMs: result.timeBasisOffsetMs,
         bpmError: result.bpmError
       }
     })
@@ -436,13 +507,42 @@ const analyzeKeyForFileInternal = async (
     }
   }
 
+  if (cachedUnifiedDisplayWaveformData) {
+    reportProgress({
+      stage: 'waveform-start',
+      needsEnergy,
+      needsStructure,
+      detail: 'structure-cache'
+    })
+    const waveformStartAt = Date.now()
+    analyzeSongStructureFromWaveform(cachedUnifiedDisplayWaveformData)
+    const energy =
+      needsEnergy && result.energyScore === undefined
+        ? calculateSongEnergyScoreFromUnifiedDisplay(
+            cachedUnifiedDisplayWaveformData,
+            result.bpm ?? options.cachedBpm
+          )
+        : null
+    if (energy && needsEnergy) {
+      result.energyScore = energy.energyScore
+      result.energyAlgorithmVersion = energy.energyAlgorithmVersion
+    }
+    reportProgress({
+      stage: 'waveform-done',
+      waveformMs: Date.now() - waveformStartAt,
+      needsEnergy,
+      needsStructure,
+      detail: 'structure-cache'
+    })
+  }
+
   if (
-    (needsWaveform || needsStructure) &&
+    (needsWaveform || needsStructureWaveformDecode) &&
     (typeof resolveRustBinding().computeMixxxWaveformWithRate === 'function' ||
       typeof resolveRustBinding().computeMixxxWaveform === 'function')
   ) {
     if (!decoded) {
-      if (!useFfmpegWaveformDecode) {
+      if (!useNativeLibavWaveformDecode) {
         throw new Error('Rust PCM decode missing for waveform/structure analysis')
       }
     }
@@ -450,14 +550,14 @@ const analyzeKeyForFileInternal = async (
     const waveformStartAt = Date.now()
     try {
       const targetRate = UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE
-      let waveformDecoded: DecodedWaveformPcm | DecodedAudioPcm
-      if (useFfmpegWaveformDecode) {
-        if (reusableFfmpegWaveformDecoded) {
-          waveformDecoded = reusableFfmpegWaveformDecoded
+      let waveformDecoded: DecodedAudioPcm
+      if (useNativeLibavWaveformDecode) {
+        if (reusableNativeLibavWaveformDecoded) {
+          waveformDecoded = reusableNativeLibavWaveformDecoded
         } else {
-          const ffmpegWaveformDecoded = await decodeWaveformPcmWithFfmpeg(filePath)
-          reusableFfmpegWaveformDecoded = ffmpegWaveformDecoded
-          waveformDecoded = ffmpegWaveformDecoded
+          const nativeLibavWaveformDecoded = decodeSongAnalysisAudio(resolveRustBinding(), filePath)
+          reusableNativeLibavWaveformDecoded = nativeLibavWaveformDecoded
+          waveformDecoded = nativeLibavWaveformDecoded
         }
       } else {
         waveformDecoded = decoded as DecodedAudioPcm
@@ -488,31 +588,11 @@ const analyzeKeyForFileInternal = async (
         result.mixxxWaveformData = mixxxWaveformData
         result.unifiedDisplayWaveformData = unifiedDisplayWaveformData
       }
-      if (needsStructure) {
-        const structureGrid = {
-          bpm: result.bpm ?? options.cachedBpm,
-          firstBeatMs: result.firstBeatMs ?? options.cachedFirstBeatMs,
-          barBeatOffset: result.barBeatOffset ?? options.cachedBarBeatOffset,
-          beatGridMap: options.cachedBeatGridMap ?? null
-        }
-        const structureInput = {
-          waveformData: unifiedDisplayWaveformData,
-          ...structureGrid
-        }
-        try {
-          const fallbackStructure = buildSongStructureAnalysis(structureInput)
-          result.songStructure = fallbackStructure ?? undefined
-          result.songStructureError = fallbackStructure
-            ? undefined
-            : diagnoseSongStructureAnalysisFailure(structureInput)
-        } catch (error) {
-          result.songStructureError = `structure exception: ${
-            error instanceof Error ? error.message : String(error || 'unknown error')
-          }`.slice(0, 300)
-        }
+      if (needsStructureWaveformDecode) {
+        analyzeSongStructureFromWaveform(unifiedDisplayWaveformData)
       }
       const energy =
-        result.energyScore === undefined
+        needsEnergy && result.energyScore === undefined
           ? calculateSongEnergyScoreFromUnifiedDisplay(
               unifiedDisplayWaveformData,
               result.bpm ?? options.cachedBpm
@@ -527,13 +607,13 @@ const analyzeKeyForFileInternal = async (
         waveformMs: Date.now() - waveformStartAt,
         needsEnergy,
         needsStructure,
-        detail: String(waveformDecoded.decoderBackend || '').startsWith('ffmpeg-')
-          ? 'waveform-ok:ffmpeg'
+        detail: String(waveformDecoded.decoderBackend || '').startsWith('native-libav')
+          ? 'waveform-ok:native-libav'
           : 'waveform-ok'
       })
     } catch (error) {
       result.mixxxWaveformData = null
-      if (needsStructure) {
+      if (needsStructureWaveformDecode) {
         result.songStructureError = `waveform exception: ${
           error instanceof Error ? error.message : String(error || 'unknown error')
         }`.slice(0, 300)
@@ -592,7 +672,9 @@ parentPort?.on('message', async (job: KeyJob) => {
         cachedBpm: job.cachedBpm,
         cachedFirstBeatMs: job.cachedFirstBeatMs,
         cachedBarBeatOffset: job.cachedBarBeatOffset,
-        cachedBeatGridMap: job.cachedBeatGridMap
+        cachedBeatGridMap: job.cachedBeatGridMap,
+        cachedUnifiedDisplayWaveformData: job.cachedUnifiedDisplayWaveformData,
+        analyzedTimeBasisOffsetMs: job.analyzedTimeBasisOffsetMs
       },
       reportProgress
     )

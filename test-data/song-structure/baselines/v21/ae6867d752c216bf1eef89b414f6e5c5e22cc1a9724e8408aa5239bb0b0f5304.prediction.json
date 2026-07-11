@@ -1,0 +1,122 @@
+{
+  "$schema": "../../schema/prediction.schema.json",
+  "schemaVersion": 1,
+  "trackId": "ae6867d752c216bf1eef89b414f6e5c5e22cc1a9724e8408aa5239bb0b0f5304",
+  "generatedAt": "2026-07-11T06:02:43.095Z",
+  "algorithm": {
+    "version": 21,
+    "formatVersion": 1,
+    "strategy": "production-v21-pseudo-color",
+    "gitHead": "8e086ce5fcbbc300a6b3c17ecb037e009ecef0c8",
+    "dirty": true
+  },
+  "durationSec": 347.115,
+  "gridKind": "fixed",
+  "analysisMs": 190.006,
+  "sections": [
+    {
+      "startSec": 0,
+      "endSec": 47.422,
+      "startBar": 1,
+      "endBar": 24,
+      "phraseIndex": 0,
+      "kind": "intro",
+      "confidence": 0.82,
+      "energy": 0.406,
+      "low": 0.412,
+      "high": 0.151,
+      "novelty": 0.477
+    },
+    {
+      "startSec": 47.422,
+      "endSec": 78.898,
+      "startBar": 25,
+      "endBar": 40,
+      "phraseIndex": 3,
+      "kind": "breakdown",
+      "confidence": 0.606,
+      "energy": 0.387,
+      "low": 0.2,
+      "high": 0.27,
+      "novelty": 0.94
+    },
+    {
+      "startSec": 78.898,
+      "endSec": 141.848,
+      "startBar": 41,
+      "endBar": 72,
+      "phraseIndex": 5,
+      "kind": "drop",
+      "confidence": 0.549,
+      "energy": 0.608,
+      "low": 0.587,
+      "high": 0.283,
+      "novelty": 0.94
+    },
+    {
+      "startSec": 141.848,
+      "endSec": 157.586,
+      "startBar": 73,
+      "endBar": 80,
+      "phraseIndex": 9,
+      "kind": "breakdown",
+      "confidence": 0.63,
+      "energy": 0.56,
+      "low": 0.205,
+      "high": 0.349,
+      "novelty": 0.898
+    },
+    {
+      "startSec": 157.586,
+      "endSec": 189.062,
+      "startBar": 81,
+      "endBar": 96,
+      "phraseIndex": 10,
+      "kind": "drop",
+      "confidence": 0.622,
+      "energy": 0.662,
+      "low": 0.58,
+      "high": 0.379,
+      "novelty": 0.854
+    },
+    {
+      "startSec": 189.062,
+      "endSec": 236.275,
+      "startBar": 97,
+      "endBar": 120,
+      "phraseIndex": 12,
+      "kind": "breakdown",
+      "confidence": 0.994,
+      "energy": 0.522,
+      "low": 0.167,
+      "high": 0.399,
+      "novelty": 0.884
+    },
+    {
+      "startSec": 236.275,
+      "endSec": 283.488,
+      "startBar": 121,
+      "endBar": 144,
+      "phraseIndex": 15,
+      "kind": "drop",
+      "confidence": 0.622,
+      "energy": 0.658,
+      "low": 0.607,
+      "high": 0.377,
+      "novelty": 0.884
+    },
+    {
+      "startSec": 283.488,
+      "endSec": 347.115,
+      "startBar": 145,
+      "endBar": 176,
+      "phraseIndex": 18,
+      "kind": "outro",
+      "confidence": 0.788,
+      "energy": 0.522,
+      "low": 0.541,
+      "high": 0.212,
+      "novelty": 0.467
+    }
+  ]
+}

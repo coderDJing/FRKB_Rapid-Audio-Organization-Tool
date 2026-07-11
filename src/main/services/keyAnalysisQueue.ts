@@ -3,12 +3,13 @@ import { KeyAnalysisQueue } from './keyAnalysis/queue'
 import type {
   KeyAnalysisBackgroundStatus,
   KeyAnalysisPriority,
-  KeyAnalysisQueueCategory
+  KeyAnalysisQueueCategory,
+  KeyAnalysisRequestFlags
 } from './keyAnalysis/types'
 import { KEY_ANALYSIS_WORKER_MAX, normalizePath } from './keyAnalysis/types'
 import * as LibraryCacheDb from '../libraryCacheDb'
 
-type EnqueueKeyAnalysisOptions = {
+type EnqueueKeyAnalysisOptions = KeyAnalysisRequestFlags & {
   urgent?: boolean
   source?: 'foreground' | 'background'
   fastAnalysis?: boolean
@@ -287,7 +288,7 @@ keyAnalysisEvents.on(
 
 export function enqueueManualKeyAnalysisBatch(
   filePaths: string[],
-  options?: { titleKey?: string }
+  options?: { titleKey?: string } & KeyAnalysisRequestFlags
 ) {
   pruneUntrackedManualBatchPaths()
   const pendingByPath = new Map<string, string>()
@@ -326,7 +327,8 @@ export function enqueueManualKeyAnalysisBatch(
     preemptible: true,
     category: 'manual-batch',
     manualBatchId: batchId,
-    includeStructure: true
+    includeStructure: true,
+    forceAnalysis: options?.forceAnalysis
   })
   reevaluateConcurrency()
   scheduleCooldownReevaluation()

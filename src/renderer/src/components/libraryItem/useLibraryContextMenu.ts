@@ -1034,7 +1034,9 @@ export function useLibraryContextMenu({
         const requiresRuntimeAnalysis = runtime.analysisRuntime.available === true
         const [songListFiles, setListFiles] = await Promise.all([
           songListUuids.length
-            ? scanSongListsForMissingAnalysisFiles(songListUuids, requiresRuntimeAnalysis)
+            ? scanSongListsForMissingAnalysisFiles(songListUuids, requiresRuntimeAnalysis, {
+                includeSongStructure: true
+              })
             : Promise.resolve([]),
           setListUuids.length
             ? collectSetPlaylistMissingAnalysisFiles(setListUuids, requiresRuntimeAnalysis)

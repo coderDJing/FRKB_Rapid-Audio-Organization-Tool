@@ -1,6 +1,7 @@
 import { buildSongStructureAnalysisCore } from './songStructureAnalysis'
 import {
   CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
+  CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
   PHRASE_BARS,
   clamp01,
   isSameGridValue,
@@ -14,8 +15,11 @@ import {
 } from './songStructureCommon'
 import { normalizeSongBeatGridMap } from './songBeatGridMap'
 
+const LEGACY_SONG_STRUCTURE_FORMAT_VERSION = 1
+
 export {
   CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
+  CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
   type SongStructureAnalysis,
   type SongStructureSection,
   type SongStructureSectionKind
@@ -75,6 +79,10 @@ export const normalizeSongStructureAnalysis = (
   const input = value && typeof value === 'object' && !Array.isArray(value) ? value : null
   if (!input) return undefined
   const record = input as Partial<Record<keyof SongStructureAnalysis, unknown>>
+  const formatVersion =
+    record.formatVersion === undefined
+      ? LEGACY_SONG_STRUCTURE_FORMAT_VERSION
+      : Math.floor(Number(record.formatVersion) || 0)
   const algorithmVersion = Math.floor(Number(record.algorithmVersion) || 0)
   const durationSec = Number(record.durationSec)
   const grid = normalizeStructureGrid(record)
@@ -84,7 +92,8 @@ export const normalizeSongStructureAnalysis = (
         .filter((section): section is SongStructureSection => section !== null)
     : []
   if (
-    algorithmVersion !== CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION ||
+    formatVersion !== CURRENT_SONG_STRUCTURE_FORMAT_VERSION ||
+    algorithmVersion <= 0 ||
     !grid ||
     !Number.isFinite(durationSec) ||
     durationSec <= 0 ||
@@ -93,6 +102,7 @@ export const normalizeSongStructureAnalysis = (
     return undefined
   }
   return {
+    formatVersion,
     algorithmVersion,
     source: normalizeStructureSource(record.source),
     durationSec: toFixedNumber(durationSec, 3),
@@ -108,28 +118,45 @@ export const normalizeSongStructureAnalysis = (
   }
 }
 
-export const hasCurrentSongStructureAnalysis = (
-  info:
-    | {
-        songStructure?: unknown
-        bpm?: unknown
-        firstBeatMs?: unknown
-        barBeatOffset?: unknown
-        beatGridMap?: unknown
-      }
-    | null
-    | undefined
+type SongStructureAnalysisInfo =
+  | {
+      songStructure?: unknown
+      bpm?: unknown
+      firstBeatMs?: unknown
+      barBeatOffset?: unknown
+      beatGridMap?: unknown
+    }
+  | null
+  | undefined
+
+const hasMatchingSongStructureGrid = (
+  info: SongStructureAnalysisInfo,
+  structure: SongStructureAnalysis
 ) => {
-  const structure = normalizeSongStructureAnalysis(info?.songStructure)
   const beatGridMap = normalizeSongBeatGridMap(info?.beatGridMap)
   if (beatGridMap) {
-    return structure?.beatGridSignature === beatGridMap.signature
+    return structure.beatGridSignature === beatGridMap.signature
   }
+  if (structure.beatGridSignature) return false
   const grid = normalizeStructureGrid(info)
-  if (!structure || !grid) return false
+  if (!grid) return false
   return (
     isSameGridValue(grid.bpm, structure.bpm, 0.0001) &&
     isSameGridValue(grid.firstBeatMs, structure.firstBeatMs, 0.001) &&
     isSameGridValue(grid.barBeatOffset, structure.barBeatOffset, 0)
+  )
+}
+
+export const hasUsableSongStructureAnalysis = (info: SongStructureAnalysisInfo) => {
+  const structure = normalizeSongStructureAnalysis(info?.songStructure)
+  return !!structure && hasMatchingSongStructureGrid(info, structure)
+}
+
+export const hasCurrentSongStructureAnalysis = (info: SongStructureAnalysisInfo) => {
+  const structure = normalizeSongStructureAnalysis(info?.songStructure)
+  return (
+    !!structure &&
+    structure.algorithmVersion === CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION &&
+    hasMatchingSongStructureGrid(info, structure)
   )
 }

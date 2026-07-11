@@ -36,6 +36,9 @@ export const hasCurrentSongEnergyAnalysis = (
   normalizeSongEnergyScore(info?.energyScore) !== undefined &&
   Number(info?.energyAlgorithmVersion) === CURRENT_SONG_ENERGY_ALGORITHM_VERSION
 
+export const hasUsableSongEnergyAnalysis = (info: { energyScore?: unknown } | null | undefined) =>
+  normalizeSongEnergyScore(info?.energyScore) !== undefined
+
 const readByte = (values: Uint8Array | undefined, index: number, fallback = 0) => {
   if (!values?.length) return fallback
   return clamp(values[clamp(index, 0, values.length - 1)] ?? fallback, 0, BYTE_MAX)

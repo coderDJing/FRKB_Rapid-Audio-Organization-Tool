@@ -15,12 +15,11 @@ import { requestBackgroundTaskExecution } from '../backgroundOrchestrator'
 import { getBackgroundIdleSnapshot } from '../backgroundIdleGate'
 import store from '../../store'
 import {
-  hasCurrentNoBpmBeatGridResult,
-  shouldAcceptBeatGridCacheVersion
-} from '../beatGridAlgorithmVersion'
-import { shouldAcceptKeyAnalysisCacheVersion } from '../keyAnalysisAlgorithmVersion'
-import { hasCurrentSongStructureAnalysis } from '../../../shared/songStructure'
-import { normalizeSongBeatGridMap } from '../../../shared/songBeatGridMap'
+  hasRequiredSongStructureAnalysis,
+  hasUsableKeyAnalysis,
+  hasUsableSongBeatGridAnalysis
+} from '../../../shared/songAnalysisCompleteness'
+import { hasUsableSongEnergyAnalysis } from '../../../shared/songEnergy'
 import type { KeyAnalysisPersistence } from './persistence'
 import {
   BACKGROUND_BATCH_SIZE,
@@ -35,10 +34,6 @@ import {
   BACKGROUND_LIBRARY_TREE_CLEANUP_INTERVAL_MS,
   BACKGROUND_SCAN_COOLDOWN_MS,
   BACKGROUND_SCAN_ROW_LIMIT,
-  isValidBarBeatOffset,
-  isValidBpm,
-  isValidFirstBeatMs,
-  isValidKeyText,
   normalizePath,
   type BackgroundDirItem,
   type DirHandle,
@@ -60,6 +55,7 @@ type CachedAnalysisInfo = {
   beatGridSource?: unknown
   beatGridStatus?: unknown
   beatGridMap?: unknown
+  energyScore?: unknown
   songStructure?: unknown
 }
 
@@ -107,22 +103,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
   let lastLibraryTreeCleanupAt = 0
   let lastCoverCleanupAt = 0
   let coverCleanupRootIndex = 0
-
-  const hasCurrentKeyAnalysis = (info: CachedAnalysisInfo | null | undefined) =>
-    isValidKeyText(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
-
-  const hasCurrentBeatGridAnalysis = (info: CachedAnalysisInfo | null | undefined) =>
-    hasCurrentNoBpmBeatGridResult(info) ||
-    (isValidBpm(info?.bpm) &&
-      isValidFirstBeatMs(info?.firstBeatMs) &&
-      isValidBarBeatOffset(info?.barBeatOffset) &&
-      shouldAcceptBeatGridCacheVersion(info))
-
-  const hasRequiredSongStructureAnalysis = (info: CachedAnalysisInfo | null | undefined) =>
-    hasCurrentNoBpmBeatGridResult(info) ||
-    hasCurrentBeatGridAnalysis(info) ||
-    normalizeSongBeatGridMap(info?.beatGridMap) !== null ||
-    hasCurrentSongStructureAnalysis(info)
 
   const getBackgroundStatus = (): KeyAnalysisBackgroundStatus => {
     const pending = deps.getPendingBackgroundCount()
@@ -500,8 +480,9 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       } catch {
         info = null
       }
-      const hasKey = hasCurrentKeyAnalysis(info)
-      const hasBpm = hasCurrentBeatGridAnalysis(info)
+      const hasKey = hasUsableKeyAnalysis(info)
+      const hasBpm = hasUsableSongBeatGridAnalysis(info)
+      const hasEnergy = hasUsableSongEnergyAnalysis(info)
       const hasStructure = hasRequiredSongStructureAnalysis(info)
       const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
       if (!listRoot) continue
@@ -519,7 +500,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           mtimeMs
         )
       }
-      if (!hasKey || !hasBpm || !hasStructure || !hasWaveform) {
+      if (!hasKey || !hasBpm || !hasEnergy || !hasStructure || !hasWaveform) {
         results.push(absFilePath)
         if (results.length >= limit) {
           processedAll = false
@@ -583,8 +564,9 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           }
           const cached = await LibraryCacheDb.loadSongCacheEntry(current.listRoot, filePath)
           if (cached === undefined) continue
-          const hasKey = hasCurrentKeyAnalysis(cached?.info)
-          const hasBpm = hasCurrentBeatGridAnalysis(cached?.info)
+          const hasKey = hasUsableKeyAnalysis(cached?.info)
+          const hasBpm = hasUsableSongBeatGridAnalysis(cached?.info)
+          const hasEnergy = hasUsableSongEnergyAnalysis(cached?.info)
           const hasStructure = hasRequiredSongStructureAnalysis(cached?.info)
           let hasWaveform = false
           if (cached && Number.isFinite(cached.size) && Number.isFinite(cached.mtimeMs)) {
@@ -595,7 +577,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
               cached.mtimeMs
             )
           }
-          if (!cached || !hasKey || !hasBpm || !hasStructure || !hasWaveform) {
+          if (!cached || !hasKey || !hasBpm || !hasEnergy || !hasStructure || !hasWaveform) {
             results.push(filePath)
             if (results.length >= limit) break
           }

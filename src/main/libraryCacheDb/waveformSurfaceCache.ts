@@ -146,8 +146,10 @@ function decodeWaveformSurfacePayload(
   if (!meta || !payload) return null
   if (
     meta.cacheVersion !== WAVEFORM_SURFACE_CACHE_VERSION ||
-    meta.listPreviewParameterVersion !== WAVEFORM_LIST_PREVIEW_PARAMETER_VERSION ||
-    meta.globalOverviewParameterVersion !== WAVEFORM_GLOBAL_OVERVIEW_PARAMETER_VERSION
+    !Number.isFinite(meta.listPreviewParameterVersion) ||
+    meta.listPreviewParameterVersion <= 0 ||
+    !Number.isFinite(meta.globalOverviewParameterVersion) ||
+    meta.globalOverviewParameterVersion <= 0
   ) {
     return null
   }
@@ -162,7 +164,10 @@ function decodeWaveformSurfacePayload(
   const detailRate = frameCount / Math.max(0.0001, meta.duration)
   const base = {
     version: WAVEFORM_SURFACE_CACHE_VERSION,
-    parameterVersion: getSurfaceParameterVersion(kind),
+    parameterVersion:
+      kind === 'listPreview'
+        ? meta.listPreviewParameterVersion
+        : meta.globalOverviewParameterVersion,
     duration: meta.duration,
     sampleRate: meta.sampleRate,
     detailRate,
@@ -331,8 +336,10 @@ const isMetaMatch = (meta: WaveformSurfaceMeta | null, stat: { size: number; mti
     meta.size === stat.size &&
     Math.abs(meta.mtimeMs - stat.mtimeMs) <= 1 &&
     meta.cacheVersion === WAVEFORM_SURFACE_CACHE_VERSION &&
-    meta.listPreviewParameterVersion === WAVEFORM_LIST_PREVIEW_PARAMETER_VERSION &&
-    meta.globalOverviewParameterVersion === WAVEFORM_GLOBAL_OVERVIEW_PARAMETER_VERSION &&
+    Number.isFinite(meta.listPreviewParameterVersion) &&
+    meta.listPreviewParameterVersion > 0 &&
+    Number.isFinite(meta.globalOverviewParameterVersion) &&
+    meta.globalOverviewParameterVersion > 0 &&
     meta.duration > 0 &&
     meta.sampleRate > 0 &&
     meta.listPreviewFrameCount > 0 &&
@@ -424,6 +431,44 @@ export async function hasWaveformSurfaceCacheEntryByMeta(
     log.error('[sqlite] waveform surface cache check failed', error)
     return false
   }
+}
+
+export function loadWaveformSurfaceAvailabilityByMeta(
+  listRoot: string,
+  entries: Array<{ filePath: string; size: number; mtimeMs: number }>
+): Map<string, boolean> {
+  const result = new Map<string, boolean>()
+  const db = getLibraryDb()
+  if (!db || !listRoot || !Array.isArray(entries) || entries.length === 0) return result
+  const stmt = db.prepare<WaveformSurfaceRow>(
+    `SELECT size, mtime_ms, cache_version,
+            list_preview_parameter_version, global_overview_parameter_version,
+            duration, sample_rate, list_preview_frame_count, global_overview_frame_count,
+            length(list_preview_payload) AS list_preview_payload_bytes,
+            length(global_overview_payload) AS global_overview_payload_bytes
+       FROM ${TABLE} WHERE list_root = ? AND file_path = ? LIMIT 1`
+  )
+  for (const entry of entries) {
+    const filePath = String(entry?.filePath || '').trim()
+    if (!filePath) continue
+    const candidates = resolveCacheCandidates(listRoot, filePath)
+    let available = false
+    if (candidates) {
+      for (const [root, file] of candidates) {
+        if (!root || !file) continue
+        const row = stmt.get(root, file)
+        if (!row) continue
+        const meta = normalizeMeta(row)
+        available = Boolean(
+          isMetaMatch(meta, { size: entry.size, mtimeMs: entry.mtimeMs }) &&
+          hasValidPayloads(row, meta!)
+        )
+        break
+      }
+    }
+    result.set(filePath, available)
+  }
+  return result
 }
 
 export async function upsertWaveformSurfaceCacheEntry(

@@ -7,11 +7,7 @@ import { readWavRiffInfoWindows } from './wavRiffInfo'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
-import {
-  BEAT_GRID_STATUS_NO_BPM,
-  hasCurrentNoBpmBeatGridResult,
-  shouldAcceptBeatGridCacheVersion
-} from './beatGridAlgorithmVersion'
+import { BEAT_GRID_STATUS_NO_BPM } from './beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from './keyAnalysisAlgorithmVersion'
 import {
   ensurePlaylistTrackNumbers,
@@ -19,23 +15,27 @@ import {
   sortSongsByPlaylistTrackNumber
 } from './playlistTrackNumbers'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
-import { hasCurrentSongEnergyAnalysis } from '../../shared/songEnergy'
-import {
-  hasCurrentSongStructureAnalysis,
-  normalizeSongStructureAnalysis
-} from '../../shared/songStructure'
+import { hasCurrentSongEnergyAnalysis, hasUsableSongEnergyAnalysis } from '../../shared/songEnergy'
 import {
   normalizeSongBeatGridMap,
   projectSongBeatGridMapToFixedGrid
 } from '../../shared/songBeatGridMap'
+import {
+  hasRequiredSongStructureAnalysis,
+  hasUsableKeyAnalysis,
+  hasUsableNoBpmBeatGridResult,
+  hasUsableSongBeatGridAnalysis,
+  resolveUsableSongBeatGrid
+} from '../../shared/songAnalysisCompleteness'
+import {
+  discardIncompatibleSongStructure,
+  preserveBestAvailableSongStructure
+} from './songStructureCachePolicy'
 
 type ScanSongListOptions = {
   enablePostScanTasks?: boolean
 }
 
-const hasKey = (value: unknown): boolean => typeof value === 'string' && value.trim() !== ''
-const hasBpm = (value: unknown): boolean =>
-  typeof value === 'number' && Number.isFinite(value) && value > 0
 const hasFirstBeatMs = (value: unknown): boolean =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0
 const hasBarBeatOffset = (value: unknown): boolean =>
@@ -58,39 +58,40 @@ type CachedGridInfo = Pick<
   beatThisWindowCount?: unknown
 }
 type CachedEnergyInfo = Pick<ISongInfo, 'energyScore' | 'energyAlgorithmVersion'>
-type CachedStructureInfo = Pick<
-  ISongInfo,
-  'songStructure' | 'bpm' | 'firstBeatMs' | 'barBeatOffset'
->
 const hasCurrentKeyAnalysis = (info: CachedKeyInfo | null | undefined) =>
-  hasKey(info?.key) && shouldAcceptKeyAnalysisCacheVersion(info)
+  hasUsableKeyAnalysis(info) && shouldAcceptKeyAnalysisCacheVersion(info)
 const hasCompleteNumericGrid = (info: CachedGridInfo | null | undefined) =>
-  hasBpm(info?.bpm) &&
-  hasFirstBeatMs(info?.firstBeatMs) &&
-  hasBarBeatOffset(info?.barBeatOffset) &&
-  shouldAcceptBeatGridCacheVersion(info)
-const hasDynamicBeatGridMap = (info: CachedGridInfo | null | undefined) =>
-  normalizeSongBeatGridMap(info?.beatGridMap) !== null
+  resolveUsableSongBeatGrid(info).kind === 'fixed'
 const hasCompleteGrid = (info: CachedGridInfo | null | undefined) =>
-  hasCurrentNoBpmBeatGridResult(info) || hasDynamicBeatGridMap(info) || hasCompleteNumericGrid(info)
+  hasUsableSongBeatGridAnalysis(info)
 
 const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
   const next = { ...info }
-  if (!hasCurrentKeyAnalysis(next)) {
+  if (!hasUsableKeyAnalysis(next)) {
     delete next.key
     delete next.keyAnalysisAlgorithmVersion
   }
-  if (hasCurrentNoBpmBeatGridResult(next)) {
+  const grid = resolveUsableSongBeatGrid(next)
+  if (grid.kind === 'dynamic') {
+    const projection = projectSongBeatGridMapToFixedGrid(grid.beatGridMap)
+    delete next.beatGridStatus
+    next.beatGridMap = grid.beatGridMap
+    next.beatGridSource = 'manual'
+    if (projection) {
+      next.bpm = projection.bpm
+      next.firstBeatMs = projection.firstBeatMs
+      next.barBeatOffset = projection.barBeatOffset
+    }
+  } else if (grid.kind === 'fixed') {
+    delete next.beatGridStatus
+    delete next.beatGridMap
+  } else if (grid.kind === 'no-bpm') {
     delete next.bpm
     delete next.firstBeatMs
     delete next.barBeatOffset
     delete next.timeBasisOffsetMs
     delete next.beatGridSource
     delete next.beatGridMap
-  } else if (hasCompleteNumericGrid(next)) {
-    delete next.beatGridStatus
-  } else if (hasDynamicBeatGridMap(next)) {
-    delete next.beatGridStatus
   } else {
     delete next.bpm
     delete next.firstBeatMs
@@ -101,19 +102,21 @@ const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
     delete next.beatGridMap
     delete next.beatGridAlgorithmVersion
   }
-  if (!hasCurrentSongEnergyAnalysis(next)) {
+  if (!hasUsableSongEnergyAnalysis(next)) {
     delete next.energyScore
     delete next.energyAlgorithmVersion
   }
-  if (!hasCurrentSongStructureAnalysis(next)) {
-    delete next.songStructure
-  }
+  discardIncompatibleSongStructure(next)
   return next
 }
 
 const preserveCachedKeyAndBpm = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
   if (!cachedInfo) return
-  if (!hasCurrentKeyAnalysis(target) && hasCurrentKeyAnalysis(cachedInfo)) {
+  if (
+    hasUsableKeyAnalysis(cachedInfo) &&
+    (!hasUsableKeyAnalysis(target) ||
+      (!hasCurrentKeyAnalysis(target) && hasCurrentKeyAnalysis(cachedInfo)))
+  ) {
     target.key = cachedInfo.key as string
     target.keyAnalysisAlgorithmVersion = cachedInfo.keyAnalysisAlgorithmVersion
   }
@@ -124,7 +127,7 @@ const preserveCachedKeyAndBpm = (target: ISongInfo, cachedInfo?: ISongInfo | nul
 
 const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
   if (!cachedInfo) return
-  if (hasCurrentNoBpmBeatGridResult(cachedInfo)) {
+  if (hasUsableNoBpmBeatGridResult(cachedInfo)) {
     if (hasCompleteGrid(target)) return
     delete target.bpm
     delete target.firstBeatMs
@@ -182,34 +185,28 @@ const preserveCachedEnergyAnalysisFields = (
   cachedInfo?: CachedEnergyInfo | null
 ) => {
   if (!cachedInfo) return
-  if (hasCurrentSongEnergyAnalysis(target) || !hasCurrentSongEnergyAnalysis(cachedInfo)) return
+  if (
+    !hasUsableSongEnergyAnalysis(cachedInfo) ||
+    (hasUsableSongEnergyAnalysis(target) &&
+      (!hasCurrentSongEnergyAnalysis(cachedInfo) || hasCurrentSongEnergyAnalysis(target)))
+  ) {
+    return
+  }
   target.energyScore = cachedInfo.energyScore
   target.energyAlgorithmVersion = cachedInfo.energyAlgorithmVersion
-}
-
-const preserveCachedStructureAnalysisFields = (
-  target: ISongInfo,
-  cachedInfo?: CachedStructureInfo | null
-) => {
-  if (!cachedInfo) return
-  if (hasCurrentSongStructureAnalysis(target) || !hasCurrentSongStructureAnalysis(cachedInfo))
-    return
-  const structure = normalizeSongStructureAnalysis(cachedInfo.songStructure)
-  if (!structure) return
-  target.songStructure = structure
 }
 
 const preserveCachedAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
   preserveCachedKeyAndBpm(target, cachedInfo)
   preserveCachedGridAnalysisFields(target, cachedInfo)
   preserveCachedEnergyAnalysisFields(target, cachedInfo)
-  preserveCachedStructureAnalysisFields(target, cachedInfo)
+  preserveBestAvailableSongStructure(target, cachedInfo)
 }
 
 export const scheduleSongListPostScanTasks = async (
   scanPath: string | string[],
   scanData: ISongInfo[],
-  options: { enableAutoAnalysis?: boolean } = {}
+  options: { enableAutoAnalysis?: boolean; missingWaveformFilePaths?: string[] } = {}
 ) => {
   const cacheBase =
     typeof scanPath === 'string' ? scanPath : Array.isArray(scanPath) ? (scanPath[0] ?? '') : ''
@@ -227,15 +224,19 @@ export const scheduleSongListPostScanTasks = async (
       .filter((info) => !isInRecordingLibraryAbsPath(info.filePath))
       .filter(
         (info) =>
-          !hasCurrentKeyAnalysis(info) ||
+          !hasUsableKeyAnalysis(info) ||
           !hasCompleteGrid(info) ||
-          !hasCurrentSongEnergyAnalysis(info)
+          !hasUsableSongEnergyAnalysis(info) ||
+          !hasRequiredSongStructureAnalysis(info)
       )
       .map((info) => info.filePath)
       .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
-    if (pendingKeys.length > 0) {
+    const pendingFiles = Array.from(
+      new Set([...(pendingKeys || []), ...(options.missingWaveformFilePaths || [])])
+    )
+    if (pendingFiles.length > 0) {
       const { enqueueKeyAnalysisList } = await import('./keyAnalysisQueue')
-      enqueueKeyAnalysisList(pendingKeys, 'background', { source: 'background' })
+      enqueueKeyAnalysisList(pendingFiles, 'background', { source: 'background' })
     }
   }
 
@@ -252,6 +253,7 @@ export async function scanSongList(
   options: ScanSongListOptions = {}
 ): Promise<{
   scanData: ISongInfo[]
+  missingWaveformFilePaths: string[]
   songListUUID: string
   playlistTrackNumbering: null | {
     initialized: boolean
@@ -368,6 +370,21 @@ export async function scanSongList(
     }
   }
   const filesStatByKey = new Map(filesStatList.map((item) => [item.key, item]))
+  const waveformAvailability = cacheRoot
+    ? LibraryCacheDb.loadWaveformSurfaceAvailabilityByMeta(
+        cacheRoot,
+        filesStatList.map((item) => ({
+          filePath: item.file,
+          size: item.size,
+          mtimeMs: item.mtimeMs
+        }))
+      )
+    : new Map<string, boolean>()
+  const missingWaveformFilePaths = cacheRoot
+    ? filesStatList
+        .filter((item) => waveformAvailability.get(item.file) !== true)
+        .map((item) => item.file)
+    : []
   const cachedInfos: ISongInfo[] = []
   const filesToParse: string[] = []
   const analysisOnlyByPath = new Map<string, ISongInfo>()
@@ -434,9 +451,10 @@ export async function scanSongList(
       const entry = cacheMap.get(st.key)
       if (!entry || !entry.info) continue
       const missingAnalysis =
-        !hasCurrentKeyAnalysis(entry.info) ||
+        !hasUsableKeyAnalysis(entry.info) ||
         !hasCompleteGrid(entry.info) ||
-        !hasCurrentSongEnergyAnalysis(entry.info)
+        !hasUsableSongEnergyAnalysis(entry.info) ||
+        !hasRequiredSongStructureAnalysis(entry.info)
       if (!missingAnalysis) continue
       const refreshed = await LibraryCacheDb.loadSongCacheEntry(cacheRoot, st.file)
       if (refreshed?.info) {
@@ -677,12 +695,13 @@ export async function scanSongList(
   }
 
   if (options.enablePostScanTasks !== false) {
-    void scheduleSongListPostScanTasks(scanPath, songInfoArr)
+    void scheduleSongListPostScanTasks(scanPath, songInfoArr, { missingWaveformFilePaths })
   }
 
   const perfAllEnd = Date.now()
   return {
     scanData: songInfoArr,
+    missingWaveformFilePaths,
     songListUUID,
     playlistTrackNumbering,
     perf: {

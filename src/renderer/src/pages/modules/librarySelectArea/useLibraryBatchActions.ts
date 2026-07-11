@@ -205,7 +205,9 @@ export function useLibraryBatchActions(options: {
   const handleAnalyzeMissingForLibrary = async (libraryName: string) => {
     const uuids = collectSongLists(findLibraryNode(libraryName)).map((item) => item.uuid)
     const requiresRuntimeAnalysis = runtime.analysisRuntime.available === true
-    const files = await scanSongListsForMissingAnalysisFiles(uuids, requiresRuntimeAnalysis)
+    const files = await scanSongListsForMissingAnalysisFiles(uuids, requiresRuntimeAnalysis, {
+      includeSongStructure: true
+    })
     if (files.length) {
       await queueManualKeyAnalysisBatch(files, 'tracks.analyzingMissingTracks')
       return

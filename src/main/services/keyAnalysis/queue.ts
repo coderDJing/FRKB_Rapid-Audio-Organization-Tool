@@ -5,6 +5,9 @@ import { createKeyAnalysisBackground, type KeyAnalysisBackground } from './backg
 import { createKeyAnalysisPersistence, type KeyAnalysisPersistence } from './persistence'
 import { createKeyAnalysisWorkerPool, type KeyAnalysisWorkerPool } from './workerPool'
 import { createKeyAnalysisFailureTracker, type KeyAnalysisFailureTracker } from './failureTracker'
+import { hasCurrentKeyAnalysisJobOwnership } from './jobOwnership'
+import { KeyAnalysisDeferredQueue } from './deferredQueue'
+import { buildKeyAnalysisWorkerMessage } from './workerDispatch'
 import { log } from '../../log'
 import {
   BACKGROUND_MAX_INFLIGHT,
@@ -24,10 +27,11 @@ import {
   type KeyAnalysisPriority,
   type KeyAnalysisProgress,
   type KeyAnalysisQueueCategory,
+  type KeyAnalysisRequestFlags,
   type KeyAnalysisSource
 } from './types'
 
-type KeyAnalysisEnqueueOptions = {
+type KeyAnalysisEnqueueOptions = KeyAnalysisRequestFlags & {
   urgent?: boolean
   source?: KeyAnalysisSource
   fastAnalysis?: boolean
@@ -40,16 +44,7 @@ type KeyAnalysisEnqueueOptions = {
   manualBatchIds?: string[]
 }
 
-/**
- * 全局 key-analysis 队列。
- *
- * 核心原则：
- * - 所有分析任务（手动批量、可见列表、播放分析、后台闲时）共享同一个队列实例。
- * - 并发额度属于全局队列，不属于任何单个任务或 batch。
- * - 任务只负责逻辑归属（batch id、进度、取消），不持有并发额度，不自己 drain 队列。
- * - 10 个任务同时存在，也只能共享同一份额度（例如全局上限 2，则最多同时分析 2 首）。
- * - 优先级决定 job 选择顺序，不改变总并发上限。
- */
+/** 所有手动、可见、播放和后台分析任务共享的全局队列。 */
 export class KeyAnalysisQueue {
   private workers: Worker[] = []
   private idle: Worker[] = []
@@ -60,6 +55,7 @@ export class KeyAnalysisQueue {
   private pendingBackground: KeyAnalysisJob[] = []
   private pendingByPath = new Map<string, KeyAnalysisJob>()
   private activeByPath = new Map<string, KeyAnalysisJob>()
+  private deferred = new KeyAnalysisDeferredQueue()
   private busy = new Map<Worker, number>()
   private inFlight = new Map<number, KeyAnalysisJob>()
   private preemptedJobs = new Map<number, KeyAnalysisPreemptionKind>()
@@ -86,12 +82,28 @@ export class KeyAnalysisQueue {
   private workerPool: KeyAnalysisWorkerPool
   private failureTracker: KeyAnalysisFailureTracker
   private globalConcurrencyLimit = 1
+  private readonly deferredHelpers = {
+    nextJobId: () => ++this.nextJobId,
+    isHigherPriority: (next: KeyAnalysisPriority, current: KeyAnalysisPriority) =>
+      this.isHigherPriority(next, current),
+    applyQueueCategory: (job: KeyAnalysisJob, category?: KeyAnalysisQueueCategory) =>
+      this.applyQueueCategory(job, category),
+    applyWaveformOnlyOption: (job: KeyAnalysisJob, waveformOnly?: boolean) =>
+      this.applyWaveformOnlyOption(job, waveformOnly),
+    applyIncludeStructureOption: (job: KeyAnalysisJob, includeStructure?: boolean) =>
+      this.applyIncludeStructureOption(job, includeStructure),
+    applyRequestFlags: (job: KeyAnalysisJob, flags: KeyAnalysisRequestFlags) =>
+      this.applyRequestFlags(job, flags),
+    addManualBatchIdsToJob: (job: KeyAnalysisJob, batchIds: string[]) =>
+      this.addManualBatchIdsToJob(job, batchIds),
+    addFocusSlotToJob: (job: KeyAnalysisJob, focusSlot?: string) =>
+      this.addFocusSlotToJob(job, focusSlot),
+    removeManualBatchIdFromJob: (job: KeyAnalysisJob, batchId: string) =>
+      this.removeManualBatchIdFromJob(job, batchId),
+    isManualOnlyJob: (job: KeyAnalysisJob) => this.isManualOnlyJob(job)
+  }
 
-  /**
-   * 创建全局 key-analysis 队列。
-   * @param workerCount 全局 worker 数量上限（所有任务共享，不按 batch 变化）
-   * @param events 全局事件发射器
-   */
+  /** workerCount 是所有任务共享的全局并发上限。 */
   constructor(workerCount: number, events: EventEmitter) {
     const count = Math.max(1, Math.min(workerCount, KEY_ANALYSIS_WORKER_MAX))
     this.globalConcurrencyLimit = count
@@ -137,6 +149,7 @@ export class KeyAnalysisQueue {
       clearExpectedWorkerTermination: (worker) => {
         this.clearExpectedWorkerTermination(worker)
       },
+      hasExpectedWorkerTermination: (worker) => this.expectedWorkerTerminations.has(worker),
       consumeExpectedWorkerTermination: (worker) => this.consumeExpectedWorkerTermination(worker),
       persistence: this.persistence,
       background: this.background,
@@ -166,12 +179,7 @@ export class KeyAnalysisQueue {
     return this.workers.length
   }
 
-  /**
-   * 运行时调整全局并发上限。
-   * 扩容：立即创建新 worker 并加入 idle 池（含补充即将退出的 retiring worker 名额）。
-   * 缩容：标记多余 worker 为 retiring，等当前 job 完成后退出，不主动 terminate in-flight job。
-   * retiring worker 仍留在 this.workers 中直到 job 完成，计算有效数量时需排除。
-   */
+  /** 缩容等待当前任务自然结束；扩容立即补充可复用 worker。 */
   setGlobalConcurrency(targetCount: number) {
     const clamped = Math.max(1, Math.min(targetCount, KEY_ANALYSIS_WORKER_MAX))
     this.globalConcurrencyLimit = clamped
@@ -229,7 +237,9 @@ export class KeyAnalysisQueue {
 
   private releaseWorkerAfterSkippedJob(worker: Worker) {
     if (!this.retiringWorkers.has(worker)) {
-      this.idle.push(worker)
+      if (!this.expectedWorkerTerminations.has(worker) && !this.idle.includes(worker)) {
+        this.idle.push(worker)
+      }
       return
     }
     this.retiringWorkers.delete(worker)
@@ -244,13 +254,26 @@ export class KeyAnalysisQueue {
     this.workerPool.refreshForegroundWorker()
   }
 
+  private isCurrentWorkerJob(worker: Worker, job: KeyAnalysisJob) {
+    return hasCurrentKeyAnalysisJobOwnership(job, {
+      terminationExpected: this.expectedWorkerTerminations.has(worker),
+      busyJobId: this.busy.get(worker),
+      inFlightJob: this.inFlight.get(job.jobId),
+      activeJob: this.activeByPath.get(job.normalizedPath)
+    })
+  }
+
   startBackgroundSweep() {
     this.background.startBackgroundSweep()
   }
 
   hasTrackedPath(normalizedPath: string): boolean {
     if (!normalizedPath) return false
-    return this.pendingByPath.has(normalizedPath) || this.activeByPath.has(normalizedPath)
+    return (
+      this.pendingByPath.has(normalizedPath) ||
+      this.activeByPath.has(normalizedPath) ||
+      this.deferred.has(normalizedPath)
+    )
   }
 
   private applyWaveformOnlyOption(job: KeyAnalysisJob, waveformOnly?: boolean) {
@@ -283,6 +306,11 @@ export class KeyAnalysisQueue {
     }
   }
 
+  private applyRequestFlags(job: KeyAnalysisJob, flags: KeyAnalysisRequestFlags) {
+    if (flags.forceAnalysis === true) {
+      job.forceAnalysis = true
+    }
+  }
   private normalizeManualBatchIds(options: {
     manualBatchId?: string
     manualBatchIds?: string[]
@@ -350,6 +378,18 @@ export class KeyAnalysisQueue {
     const active = this.activeByPath.get(normalizedPath)
     if (active) {
       this.addFocusSlotToJob(active, focusSlot)
+      if (this.deferred.requiresFollowUp(active, options)) {
+        this.deferred.defer(
+          active,
+          priority,
+          source,
+          options,
+          focusSlot,
+          manualBatchIds,
+          this.deferredHelpers
+        )
+        return
+      }
       this.addManualBatchIdsToJob(active, manualBatchIds)
       this.emitTerminalStageForManualBatchIds(active, manualBatchIds)
       return
@@ -369,6 +409,7 @@ export class KeyAnalysisQueue {
         this.applyQueueCategory(existing, options.category)
         this.applyWaveformOnlyOption(existing, options.waveformOnly)
         this.applyIncludeStructureOption(existing, options.includeStructure)
+        this.applyRequestFlags(existing, options)
         this.addManualBatchIdsToJob(existing, manualBatchIds)
         this.addFocusSlotToJob(existing, focusSlot)
         this.addPending(existing, options.urgent)
@@ -379,6 +420,7 @@ export class KeyAnalysisQueue {
         this.applyQueueCategory(existing, options.category)
         this.applyWaveformOnlyOption(existing, options.waveformOnly)
         this.applyIncludeStructureOption(existing, options.includeStructure)
+        this.applyRequestFlags(existing, options)
         this.addManualBatchIdsToJob(existing, manualBatchIds)
         this.addFocusSlotToJob(existing, focusSlot)
       }
@@ -400,6 +442,7 @@ export class KeyAnalysisQueue {
       category: options.category,
       waveformOnly: options.waveformOnly === true,
       includeStructure: options.includeStructure !== false,
+      forceAnalysis: options.forceAnalysis === true,
       manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }
     this.addFocusSlotToJob(job, focusSlot)
@@ -467,6 +510,7 @@ export class KeyAnalysisQueue {
       if (pending) {
         this.removePending(pending)
       }
+      this.deferred.delete(normalizedPath)
       this.doneByPath.delete(normalizedPath)
       this.failedByPath.delete(normalizedPath)
       this.probeCache.delete(normalizedPath)
@@ -510,6 +554,8 @@ export class KeyAnalysisQueue {
       }
     }
 
+    this.deferred.removeManualBatch(normalizedBatchId, this.deferredHelpers)
+
     const terminations: Array<Promise<unknown>> = []
     for (const [worker, jobId] of Array.from(this.busy.entries())) {
       const job = this.inFlight.get(jobId)
@@ -550,6 +596,7 @@ export class KeyAnalysisQueue {
       this.pendingByPath.delete(job.normalizedPath)
     }
     this.pendingBackground = []
+    this.deferred.clearBackground()
   }
 
   private isHigherPriority(next: KeyAnalysisPriority, current: KeyAnalysisPriority): boolean {
@@ -596,7 +643,8 @@ export class KeyAnalysisQueue {
 
     const previousJob =
       this.activeByPath.get(previousNormalizedPath) ||
-      this.pendingByPath.get(previousNormalizedPath)
+      this.pendingByPath.get(previousNormalizedPath) ||
+      this.deferred.get(previousNormalizedPath)
     if (previousJob) {
       this.removeFocusSlotFromJob(previousJob, focusSlot)
       if (!this.hasActiveFocusSlot(previousJob)) {
@@ -666,6 +714,7 @@ export class KeyAnalysisQueue {
     for (const job of this.inFlight.values()) {
       if (job.source === 'foreground') return true
     }
+    if (this.deferred.hasForegroundWork()) return true
     return false
   }
 
@@ -675,7 +724,8 @@ export class KeyAnalysisQueue {
       this.pendingHigh.length === 0 &&
       this.pendingMedium.length === 0 &&
       this.pendingLow.length === 0 &&
-      this.pendingBackground.length === 0
+      this.pendingBackground.length === 0 &&
+      this.deferred.size === 0
     )
   }
 
@@ -842,14 +892,13 @@ export class KeyAnalysisQueue {
     })
   }
 
-  /**
-   * 从全局待处理队列中取出 job 并分配给 idle worker。
-   * 并发控制逻辑：
-   * - worker 数量上限由 setGlobalConcurrency 动态调整（全局共享，不按 batch 变化）
-   * - 后台分析受 BACKGROUND_MAX_INFLIGHT 限制，不会抢满全部 worker
-   * - 优先级决定 job 选择顺序，不改变总并发上限
-   */
+  /** 按优先级分配任务，同时限制后台任务占用的 worker 数量。 */
   private drain() {
+    this.deferred.promote(
+      (normalizedPath) =>
+        this.activeByPath.has(normalizedPath) || this.pendingByPath.has(normalizedPath),
+      (job) => this.addPending(job)
+    )
     this.failureTracker.cleanupStaleFailures()
     this.failureTracker.cleanupStaleProbeCache()
     this.cleanupStaleJobTimeouts()
@@ -884,29 +933,38 @@ export class KeyAnalysisQueue {
 
       void (async () => {
         const ready = await this.persistence.prepareJob(job)
+        if (!this.isCurrentWorkerJob(worker, job)) return
         if (!ready) {
           this.emitCachedEnergyIfVisible(job)
           this.events.emit('analysis-job-skipped', {
             filePath: job.filePath,
             manualBatchIds: job.manualBatchIds
           })
+          if (!this.isCurrentWorkerJob(worker, job)) return
           this.inFlight.delete(job.jobId)
           this.busy.delete(worker)
-          this.activeByPath.delete(job.normalizedPath)
+          if (this.activeByPath.get(job.normalizedPath) === job) {
+            this.activeByPath.delete(job.normalizedPath)
+          }
           this.releaseWorkerAfterSkippedJob(worker)
           this.drain()
           return
         }
         const coolingRecord =
-          job.needsKey || job.needsBpm ? this.failureTracker.getFailureCooldownRecord(job) : null
+          job.needsKey || job.needsBpm || job.needsStructure
+            ? this.failureTracker.getFailureCooldownRecord(job)
+            : null
         if (coolingRecord) {
           this.events.emit('analysis-job-skipped', {
             filePath: job.filePath,
             manualBatchIds: job.manualBatchIds
           })
+          if (!this.isCurrentWorkerJob(worker, job)) return
           this.inFlight.delete(job.jobId)
           this.busy.delete(worker)
-          this.activeByPath.delete(job.normalizedPath)
+          if (this.activeByPath.get(job.normalizedPath) === job) {
+            this.activeByPath.delete(job.normalizedPath)
+          }
           this.releaseWorkerAfterSkippedJob(worker)
           this.drain()
           return
@@ -919,13 +977,16 @@ export class KeyAnalysisQueue {
         try {
           await this.failureTracker.ensureJobProbe(job)
         } catch (error) {
-          log.error('[闲时分析] 音频探测失败，回退默认预算', {
-            jobId: job.jobId,
-            filePath: job.filePath,
-            source: job.source,
-            error: error instanceof Error ? error.message : String(error)
-          })
+          if (this.isCurrentWorkerJob(worker, job)) {
+            log.error('[闲时分析] 音频探测失败，回退默认预算', {
+              jobId: job.jobId,
+              filePath: job.filePath,
+              source: job.source,
+              error: error instanceof Error ? error.message : String(error)
+            })
+          }
         }
+        if (!this.isCurrentWorkerJob(worker, job)) return
         job.trace = {
           ...(job.trace || {}),
           lastStage: 'job-received',
@@ -933,20 +994,14 @@ export class KeyAnalysisQueue {
           elapsedMs: 0
         }
         this.scheduleJobTimeout(worker, job, 'job-received')
-        worker.postMessage({
-          jobId: job.jobId,
-          filePath: job.filePath,
-          fastAnalysis: job.fastAnalysis,
-          needsKey: job.needsKey,
-          needsBpm: job.needsBpm,
-          needsWaveform: job.needsWaveform,
-          needsEnergy: job.needsEnergy,
-          needsStructure: job.needsStructure,
-          cachedBpm: job.cachedBpm,
-          cachedFirstBeatMs: job.cachedFirstBeatMs,
-          cachedBarBeatOffset: job.cachedBarBeatOffset,
-          cachedBeatGridMap: job.cachedBeatGridMap
-        })
+        try {
+          if (!this.isCurrentWorkerJob(worker, job)) return
+          const workerMessage = await buildKeyAnalysisWorkerMessage(job)
+          if (!this.isCurrentWorkerJob(worker, job)) return
+          worker.postMessage(workerMessage)
+        } finally {
+          job.cachedUnifiedDisplayWaveformData = undefined
+        }
       })()
     }
     if (this.isIdle()) {
@@ -1009,6 +1064,8 @@ export class KeyAnalysisQueue {
       rebindJobPath(activeJob)
       this.activeByPath.set(toNormalizedPath, activeJob)
     }
+
+    this.deferred.remap(fromNormalizedPath, toNormalizedPath, rebindJobPath, this.deferredHelpers)
 
     const doneEntry = this.doneByPath.get(fromNormalizedPath)
     if (doneEntry) {

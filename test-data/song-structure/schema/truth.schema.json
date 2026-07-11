@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frkb.local/schema/song-structure/truth.schema.json",
+  "title": "FRKB manually reviewed song-structure truth",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "trackId", "coverage", "review", "sections"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "trackId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "coverage": { "enum": ["none", "partial", "full"] },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "source"],
+      "properties": {
+        "status": { "enum": ["review-queue", "approved"] },
+        "source": { "enum": ["user-listening", "imported", "unknown"] },
+        "reviewedOn": { "type": "string", "format": "date" },
+        "notes": { "type": "string" }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "startBar",
+          "endBar",
+          "startSec",
+          "endSec",
+          "kind",
+          "acceptableKinds",
+          "boundaryToleranceBars"
+        ],
+        "properties": {
+          "startBar": { "type": "integer", "minimum": 1 },
+          "endBar": { "type": "integer", "minimum": 1 },
+          "startSec": { "type": "number", "minimum": 0 },
+          "endSec": { "type": "number", "exclusiveMinimum": 0 },
+          "kind": { "$ref": "#/$defs/kind" },
+          "acceptableKinds": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "$ref": "#/$defs/kind" }
+          },
+          "boundaryToleranceBars": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start", "end"],
+            "properties": {
+              "start": { "type": "integer", "minimum": 0 },
+              "end": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "kind": {
+      "enum": ["intro", "groove", "breakdown", "build", "drop", "outro"]
+    }
+  }
+}

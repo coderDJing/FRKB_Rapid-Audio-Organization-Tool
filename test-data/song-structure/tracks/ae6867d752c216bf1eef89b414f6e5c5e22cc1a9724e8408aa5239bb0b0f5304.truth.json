@@ -1,0 +1,41 @@
+{
+  "$schema": "../schema/truth.schema.json",
+  "schemaVersion": 1,
+  "trackId": "ae6867d752c216bf1eef89b414f6e5c5e22cc1a9724e8408aa5239bb0b0f5304",
+  "coverage": "partial",
+  "review": {
+    "status": "approved",
+    "source": "user-listening",
+    "reviewedOn": "2026-07-11",
+    "notes": "只批准用户明确指出的第二个 Drop、完整 Breakdown、后一个 Drop。"
+  },
+  "sections": [
+    {
+      "startBar": 81,
+      "endBar": 96,
+      "startSec": 157.586,
+      "endSec": 189.062,
+      "kind": "drop",
+      "acceptableKinds": ["drop"],
+      "boundaryToleranceBars": { "start": 0, "end": 0 }
+    },
+    {
+      "startBar": 97,
+      "endBar": 120,
+      "startSec": 189.062,
+      "endSec": 236.275,
+      "kind": "breakdown",
+      "acceptableKinds": ["breakdown"],
+      "boundaryToleranceBars": { "start": 0, "end": 0 }
+    },
+    {
+      "startBar": 121,
+      "endBar": 144,
+      "startSec": 236.275,
+      "endSec": 283.488,
+      "kind": "drop",
+      "acceptableKinds": ["drop"],
+      "boundaryToleranceBars": { "start": 0, "end": 0 }
+    }
+  ]
+}

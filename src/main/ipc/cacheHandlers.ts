@@ -2,10 +2,7 @@ import { ipcMain } from 'electron'
 import { FIXED_MIXTAPE_STEM_MODE } from '../../shared/mixtapeStemMode'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import {
-  clearTrackCache as svcClearTrackCache,
-  findSongListRoot
-} from '../services/cacheMaintenance'
+import { clearTrackCoreAnalysisForReanalysis, findSongListRoot } from '../services/cacheMaintenance'
 import { getLibrary, resolveLibraryPath } from '../utils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import type { StemWaveformDataLite } from '../stemWaveformCache'
@@ -13,11 +10,7 @@ import { queueMixtapeWaveforms } from '../services/mixtapeWaveformQueue'
 import { ensureMixtapeStemWaveformBundle } from '../services/mixtapeStemWaveformService'
 import { registerMixtapeRawWaveformHandlers } from './mixtapeRawWaveformHandlers'
 import mainWindow from '../window/mainWindow'
-import {
-  enqueueKeyAnalysisList,
-  enqueueManualKeyAnalysisBatch,
-  invalidateKeyAnalysisCache
-} from '../services/keyAnalysisQueue'
+import { enqueueKeyAnalysisList, enqueueManualKeyAnalysisBatch } from '../services/keyAnalysisQueue'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 import type { UnifiedDisplayWaveformDetailData } from '../../shared/unifiedDisplayWaveform'
 import type {
@@ -180,9 +173,15 @@ export function registerCacheHandlers() {
   }
 
   ipcMain.handle('track:cache:clear:batch', async (_e, filePaths: string[]) => {
-    const files = Array.isArray(filePaths)
-      ? filePaths.filter((p) => typeof p === 'string' && p.trim())
-      : []
+    const files = Array.from(
+      new Set(
+        Array.isArray(filePaths)
+          ? filePaths
+              .filter((p): p is string => typeof p === 'string' && p.trim().length > 0)
+              .map((p) => p.trim())
+          : []
+      )
+    )
     if (files.length === 0) return { cleared: 0 }
 
     const progressId = `reanalyze_${Date.now()}`
@@ -197,25 +196,40 @@ export function registerCacheHandlers() {
     }
     sendProgress(0)
 
-    let cleared = 0
+    const clearedFiles: string[] = []
+    const skippedItems: Array<{ filePath: string; reason: string }> = []
     for (let i = 0; i < files.length; i++) {
-      await svcClearTrackCache(files[i])
-      cleared++
-      if (cleared % 10 === 0 || cleared === files.length) {
-        sendProgress(cleared)
+      const filePath = files[i]
+      if (isInRecordingLibraryAbsPath(filePath)) {
+        skippedItems.push({ filePath, reason: 'recording-library-unsupported' })
+      } else {
+        const result = await clearTrackCoreAnalysisForReanalysis(filePath)
+        if (result.status === 'cleared') {
+          clearedFiles.push(result.filePath)
+        } else {
+          skippedItems.push({ filePath: result.filePath, reason: result.reason })
+        }
+      }
+      const processed = i + 1
+      if (processed % 10 === 0 || processed === files.length) {
+        sendProgress(processed)
       }
     }
 
-    invalidateKeyAnalysisCache(files)
-    const analysisFiles = files.filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
-    if (analysisFiles.length > 0) {
-      enqueueManualKeyAnalysisBatch(analysisFiles, {
-        titleKey: 'tracks.reanalyzingTracks'
+    if (clearedFiles.length > 0) {
+      enqueueManualKeyAnalysisBatch(clearedFiles, {
+        titleKey: 'tracks.reanalyzingTracks',
+        forceAnalysis: true
       })
     }
 
     sendProgress(files.length, true)
-    return { cleared, queued: analysisFiles.length }
+    return {
+      cleared: clearedFiles.length,
+      queued: clearedFiles.length,
+      skipped: skippedItems.length,
+      skippedItems
+    }
   })
 
   ipcMain.handle('getLibrary', async () => {

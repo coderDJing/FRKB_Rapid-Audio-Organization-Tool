@@ -1,7 +1,10 @@
 import type { UnifiedDisplayWaveformDetailData } from './unifiedDisplayWaveform'
 import type { SongBeatGridMap } from './songBeatGridMap'
+import type { SongStructureFeatureData } from './songStructureFeatureData'
 
-export const CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION = 16
+export const CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION = 22
+// 仅持久化结构格式不兼容时升级；普通算法调参只升级 algorithmVersion。
+export const CURRENT_SONG_STRUCTURE_FORMAT_VERSION = 1
 
 export type SongStructureSectionKind = 'intro' | 'groove' | 'breakdown' | 'build' | 'drop' | 'outro'
 
@@ -22,6 +25,7 @@ export type SongStructureSection = {
 }
 
 export type SongStructureAnalysis = {
+  formatVersion: number
   algorithmVersion: number
   source?: SongStructureAnalysisSource
   durationSec: number
@@ -35,6 +39,7 @@ export type SongStructureAnalysis = {
 
 export type BuildSongStructureInput = {
   waveformData: UnifiedDisplayWaveformDetailData | null | undefined
+  structureFeatureData?: SongStructureFeatureData | null
   bpm: unknown
   firstBeatMs: unknown
   barBeatOffset: unknown
@@ -65,6 +70,20 @@ export const ramp = (value: number, min: number, max: number) => {
 }
 
 export const toFixedNumber = (value: number, digits: number) => Number(value.toFixed(digits))
+
+export const resolveSongStructureTimelineFirstBeatMs = (
+  analyzedFirstBeatMs: unknown,
+  cachedFirstBeatMs: unknown,
+  timeBasisOffsetMs: unknown
+): number | undefined => {
+  const analyzed = Number(analyzedFirstBeatMs)
+  if (Number.isFinite(analyzed)) {
+    const offset = Number(timeBasisOffsetMs)
+    return toFixedNumber(analyzed + (Number.isFinite(offset) ? Math.max(0, offset) : 0), 3)
+  }
+  const cached = Number(cachedFirstBeatMs)
+  return Number.isFinite(cached) ? toFixedNumber(cached, 3) : undefined
+}
 
 export const resolveBassPresence = (value: { energy: number; low: number }) =>
   clamp01(Math.sqrt(clamp01(value.energy) * clamp01(value.low)))

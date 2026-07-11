@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frkb.local/schema/song-structure/manifest.schema.json",
+  "title": "FRKB song-structure truth manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "tracks"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "audioRootHint": { "type": "string", "minLength": 1 },
+    "tracks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/track" }
+    }
+  },
+  "$defs": {
+    "fixedGrid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "bpm", "firstBeatMs", "barBeatOffset"],
+      "properties": {
+        "kind": { "const": "fixed" },
+        "bpm": { "type": "number", "exclusiveMinimum": 0 },
+        "firstBeatMs": { "type": "number" },
+        "barBeatOffset": { "type": "number" }
+      }
+    },
+    "dynamicGrid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "clips"],
+      "properties": {
+        "kind": { "const": "dynamic" },
+        "clips": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["startSec", "anchorSec", "bpm", "barBeatOffset"],
+            "properties": {
+              "startSec": { "type": "number", "minimum": 0 },
+              "anchorSec": { "type": "number" },
+              "bpm": { "type": "number", "exclusiveMinimum": 0 },
+              "barBeatOffset": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    "track": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "audio", "grid", "dataset", "truthFile", "baselineFiles"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "title": { "type": "string", "minLength": 1 },
+        "audio": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["relativePath", "sha256", "sizeBytes", "originalFileName"],
+          "properties": {
+            "relativePath": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "sizeBytes": { "type": "integer", "minimum": 1 },
+            "originalFileName": { "type": "string", "minLength": 1 }
+          }
+        },
+        "durationSec": { "type": "number", "exclusiveMinimum": 0 },
+        "grid": {
+          "oneOf": [{ "$ref": "#/$defs/fixedGrid" }, { "$ref": "#/$defs/dynamicGrid" }]
+        },
+        "dataset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["split", "status"],
+          "properties": {
+            "split": {
+              "enum": ["calibration", "development", "regression", "holdout"]
+            },
+            "status": { "enum": ["approved", "review-queue", "known-failure"] }
+          }
+        },
+        "truthFile": { "type": "string", "pattern": "^tracks/" },
+        "baselineFiles": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^baselines/" },
+          "uniqueItems": true
+        },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}

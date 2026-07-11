@@ -9,6 +9,9 @@ import type { SongBeatGridMap } from '../../../shared/songBeatGridMap'
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
 export type KeyAnalysisQueueCategory = 'visible' | 'waveform-preview' | 'manual-batch'
+export type KeyAnalysisRequestFlags = {
+  forceAnalysis?: boolean
+}
 type KeyAnalysisProgressStage =
   | 'job-received'
   | 'decode-start'
@@ -92,6 +95,7 @@ export type KeyAnalysisJob = {
   category?: KeyAnalysisQueueCategory
   waveformOnly?: boolean
   includeStructure?: boolean
+  forceAnalysis?: boolean
   focusSlots?: string[]
   manualBatchIds?: string[]
   needsKey?: boolean
@@ -103,6 +107,7 @@ export type KeyAnalysisJob = {
   cachedFirstBeatMs?: number
   cachedBarBeatOffset?: number
   cachedBeatGridMap?: SongBeatGridMap
+  cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
   startTime?: number
   trace?: KeyAnalysisJobTrace
   fileSize?: number

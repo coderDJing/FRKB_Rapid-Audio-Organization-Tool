@@ -37,6 +37,7 @@ export {
   loadWaveformListPreviewCacheData,
   loadWaveformGlobalOverviewCacheData,
   hasWaveformSurfaceCacheEntryByMeta,
+  loadWaveformSurfaceAvailabilityByMeta,
   upsertWaveformSurfaceCacheEntry,
   updateWaveformSurfaceCacheStat,
   moveWaveformSurfaceCacheEntry,

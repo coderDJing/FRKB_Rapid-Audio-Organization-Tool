@@ -5,7 +5,7 @@ import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import type { ISongInfo } from '../../../types/globals'
 import { CURRENT_SONG_ENERGY_ALGORITHM_VERSION } from '../../../shared/songEnergy'
 import {
-  hasCurrentSongStructureAnalysis,
+  hasUsableSongStructureAnalysis,
   normalizeSongStructureAnalysis,
   type SongStructureAnalysis
 } from '../../../shared/songStructure'
@@ -29,9 +29,14 @@ export const ensureSongCacheEntry = async (
   listRoot: string,
   filePath: string,
   payload: EnsureSongCacheEntryPayload,
-  stat?: { size: number; mtimeMs: number }
+  stat?: { size: number; mtimeMs: number },
+  options: {
+    shouldPersist?: () => boolean
+    validateBeforeWrite?: () => boolean | Promise<boolean>
+  } = {}
 ) => {
-  if (!listRoot || !filePath) return
+  const shouldPersist = () => options.shouldPersist?.() !== false
+  if (!listRoot || !filePath || !shouldPersist()) return
   let fileStat = stat
   if (!fileStat) {
     try {
@@ -42,6 +47,7 @@ export const ensureSongCacheEntry = async (
     }
   }
   let entry = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
+  if (!shouldPersist()) return
   let info: ISongInfo
   if (entry && entry.info) {
     info = { ...entry.info }
@@ -104,10 +110,13 @@ export const ensureSongCacheEntry = async (
       payload.firstBeatMs !== undefined ||
       payload.barBeatOffset !== undefined ||
       payload.beatGridStatus !== undefined) &&
-    !hasCurrentSongStructureAnalysis(info)
+    !hasUsableSongStructureAnalysis(info)
   ) {
     delete info.songStructure
   }
+  const validation = options.validateBeforeWrite?.()
+  if (validation instanceof Promise ? !(await validation) : validation === false) return
+  if (!shouldPersist()) return
   await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
     size: fileStat.size,
     mtimeMs: fileStat.mtimeMs,

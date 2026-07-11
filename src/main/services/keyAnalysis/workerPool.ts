@@ -5,6 +5,7 @@ import { log } from '../../log'
 import { resolveMainWorkerPath } from '../../workerPath'
 import type { KeyAnalysisBackground } from './background'
 import type { KeyAnalysisPersistence } from './persistence'
+import { hasCurrentKeyAnalysisJobOwnership } from './jobOwnership'
 import {
   isNoBpmBeatGridResultError,
   isValidBpm,
@@ -15,6 +16,7 @@ import {
   type KeyAnalysisProgress,
   type KeyAnalysisQueueCategory,
   type KeyAnalysisPriority,
+  type KeyAnalysisRequestFlags,
   type WorkerPayload
 } from './types'
 
@@ -31,19 +33,21 @@ type KeyAnalysisWorkerPoolDeps = {
   setForegroundWorker: (worker: Worker | null) => void
   markExpectedWorkerTermination: (worker: Worker, reason: string) => void
   clearExpectedWorkerTermination: (worker: Worker) => void
+  hasExpectedWorkerTermination: (worker: Worker) => boolean
   consumeExpectedWorkerTermination: (worker: Worker) => string | null
   persistence: KeyAnalysisPersistence
   background: KeyAnalysisBackground
   enqueue: (
     filePath: string,
     priority: KeyAnalysisPriority,
-    options?: {
+    options?: KeyAnalysisRequestFlags & {
       urgent?: boolean
       source?: 'foreground' | 'background'
       fastAnalysis?: boolean
       preemptible?: boolean
       category?: KeyAnalysisQueueCategory
       waveformOnly?: boolean
+      includeStructure?: boolean
       manualBatchIds?: string[]
     }
   ) => void
@@ -55,6 +59,14 @@ type KeyAnalysisWorkerPoolDeps = {
 }
 
 export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => {
+  const isCurrentWorkerJob = (worker: Worker, job: KeyAnalysisJob) =>
+    hasCurrentKeyAnalysisJobOwnership(job, {
+      terminationExpected: deps.hasExpectedWorkerTermination(worker),
+      busyJobId: deps.busy.get(worker),
+      inFlightJob: deps.inFlight.get(job.jobId),
+      activeJob: deps.activeByPath.get(job.normalizedPath)
+    })
+
   const terminateWorker = (worker: Worker, reason: string) => {
     deps.markExpectedWorkerTermination(worker, reason)
     void worker.terminate().catch(() => {
@@ -85,6 +97,8 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         preemptible: job.preemptible,
         category: job.category,
         waveformOnly: job.waveformOnly,
+        includeStructure: job.includeStructure,
+        forceAnalysis: job.forceAnalysis,
         manualBatchIds: job.manualBatchIds
       }
     )
@@ -155,16 +169,11 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     return errors
   }
 
-  const isStructureOnlyResultError = (value: string) => value.startsWith('structure: ')
-
   const collectFatalJobResultErrors = (
     job: KeyAnalysisJob | undefined,
     payloadResult?: WorkerPayload['result'],
     payloadError?: string
-  ): string[] =>
-    collectJobResultErrors(job, payloadResult, payloadError).filter(
-      (error) => !isStructureOnlyResultError(error)
-    )
+  ): string[] => collectJobResultErrors(job, payloadResult, payloadError)
 
   const logCompletedJobErrors = (
     worker: Worker,
@@ -174,7 +183,6 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
   ) => {
     const errors = collectJobResultErrors(job, payloadResult, payloadError)
     if (errors.length <= 0) return
-    if (errors.length === 1 && isStructureOnlyResultError(errors[0])) return
     const elapsedMs = job.startTime ? Date.now() - job.startTime : job.trace?.elapsedMs
     log.error('[闲时分析] 任务完成但有错误', {
       filePath: job.filePath,
@@ -199,36 +207,39 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     collectFatalJobResultErrors(job, payloadResult, payloadError).join('; ').slice(0, 300)
 
   const persistAnalyzePartialResult = async (
+    worker: Worker,
     job: KeyAnalysisJob,
     progress: KeyAnalysisProgress
   ) => {
     if (progress.stage !== 'analyze-done') return
     const partialResult = progress.partialResult
     if (!partialResult) return
+    const shouldPersist = () => isCurrentWorkerJob(worker, job)
 
     let keyPersisted = false
     let bpmPersisted = false
 
-    if (!partialResult.keyError && isValidKeyText(partialResult.keyText)) {
+    if (shouldPersist() && !partialResult.keyError && isValidKeyText(partialResult.keyText)) {
       await deps.persistence.persistKey(job.filePath, partialResult.keyText)
-      keyPersisted = true
+      keyPersisted = shouldPersist()
     }
 
-    if (!partialResult.bpmError && isValidBpm(partialResult.bpm)) {
+    if (shouldPersist() && !partialResult.bpmError && isValidBpm(partialResult.bpm)) {
       await deps.persistence.persistBpm(
         job.filePath,
         partialResult.bpm,
         partialResult.firstBeatMs,
         partialResult.barBeatOffset,
         partialResult.timeBasisOffsetMs,
-        { firstBeatCoordinate: 'audio' }
+        { firstBeatCoordinate: 'audio', shouldPersist }
       )
-      bpmPersisted = true
-    } else if (isNoBpmBeatGridResultError(partialResult.bpmError)) {
-      await deps.persistence.persistNoBpm(job.filePath)
-      bpmPersisted = true
+      bpmPersisted = shouldPersist()
+    } else if (shouldPersist() && isNoBpmBeatGridResultError(partialResult.bpmError)) {
+      await deps.persistence.persistNoBpm(job.filePath, { shouldPersist })
+      bpmPersisted = shouldPersist()
     }
 
+    if (!shouldPersist()) return
     job.trace = {
       ...(job.trace || {}),
       partialKeyPersisted: job.trace?.partialKeyPersisted || keyPersisted,
@@ -285,7 +296,9 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
             log.error('[闲时分析] 前台任务 worker 异常退出', logPayload)
           }
         }
-        deps.activeByPath.delete(job.normalizedPath)
+        if (deps.activeByPath.get(job.normalizedPath) === job) {
+          deps.activeByPath.delete(job.normalizedPath)
+        }
         deps.inFlight.delete(jobId)
       }
       if (wasPreempted) {
@@ -337,12 +350,13 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     const payloadProgress = payload?.progress
     const payloadResult = payload?.result
     const payloadError = payload?.error
+    const workerTerminationExpected = deps.hasExpectedWorkerTermination(worker)
 
     if (payloadProgress) {
-      if (job) {
+      if (job && isCurrentWorkerJob(worker, job)) {
         applyWorkerProgress(worker, job, payloadProgress)
-        await persistAnalyzePartialResult(job, payloadProgress)
-      } else {
+        await persistAnalyzePartialResult(worker, job, payloadProgress)
+      } else if (!workerTerminationExpected) {
         log.error('[闲时分析] 收到进度但任务不存在', {
           jobId,
           filePath: payload?.filePath,
@@ -352,6 +366,15 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       }
       return
     }
+
+    if (!job || !isCurrentWorkerJob(worker, job)) {
+      if (!workerTerminationExpected && deps.workers.includes(worker)) {
+        terminateWorker(worker, 'orphan-result')
+      }
+      return
+    }
+
+    const shouldPersist = () => isCurrentWorkerJob(worker, job)
 
     let terminalProgress: KeyAnalysisProgress | null = null
     let resultErrorDetail = ''
@@ -376,16 +399,16 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
 
     let persistenceErrorDetail = ''
     try {
-      if (job && payloadResult && !payloadResult.keyError) {
+      if (shouldPersist() && payloadResult && !payloadResult.keyError) {
         const keyText = payloadResult.keyText
         if (isValidKeyText(keyText)) {
           await deps.persistence.persistKey(job.filePath, keyText)
         }
       }
 
-      if (job && payloadResult) {
+      if (shouldPersist() && payloadResult) {
         if (isNoBpmBeatGridResultError(payloadResult.bpmError)) {
-          await deps.persistence.persistNoBpm(job.filePath)
+          await deps.persistence.persistNoBpm(job.filePath, { shouldPersist })
         } else if (!payloadResult.bpmError) {
           const bpmValue = payloadResult.bpm
           if (isValidBpm(bpmValue)) {
@@ -395,13 +418,13 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
               payloadResult.firstBeatMs,
               payloadResult.barBeatOffset,
               payloadResult.timeBasisOffsetMs,
-              { firstBeatCoordinate: 'audio' }
+              { firstBeatCoordinate: 'audio', shouldPersist }
             )
           }
         }
       }
 
-      if (job && payloadResult?.energyScore !== undefined) {
+      if (shouldPersist() && payloadResult?.energyScore !== undefined) {
         await deps.persistence.persistEnergy(
           job.filePath,
           payloadResult.energyScore,
@@ -409,23 +432,21 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         )
       }
 
-      if (
-        job &&
-        payloadResult?.songStructure &&
-        job.needsStructure &&
-        (!job.needsWaveform || !payloadResult.mixxxWaveformData)
-      ) {
-        await deps.persistence.persistSongStructure(job.filePath, payloadResult.songStructure)
+      if (shouldPersist() && payloadResult?.songStructure && job.needsStructure) {
+        await deps.persistence.persistSongStructure(job.filePath, payloadResult.songStructure, {
+          shouldPersist
+        })
       }
 
-      if (job && payloadResult?.mixxxWaveformData && job.needsWaveform) {
+      if (shouldPersist() && payloadResult?.mixxxWaveformData && job.needsWaveform) {
         await deps.persistence.persistWaveform(
           job.filePath,
           payloadResult.mixxxWaveformData,
-          payloadResult.unifiedDisplayWaveformData ?? null,
-          payloadResult.songStructure ?? null
+          payloadResult.unifiedDisplayWaveformData ?? null
         )
-        deps.events.emit('waveform-updated', { filePath: job.filePath })
+        if (shouldPersist()) {
+          deps.events.emit('waveform-updated', { filePath: job.filePath })
+        }
       }
     } catch (error) {
       persistenceErrorDetail = `persist: ${
@@ -445,7 +466,9 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
       })
     }
 
-    if (job && terminalProgress) {
+    if (!shouldPersist()) return
+
+    if (terminalProgress) {
       applyWorkerProgress(worker, job, terminalProgress)
       if (payloadError) {
         deps.onJobFailure(job, 'worker-error', String(payloadError).slice(0, 300))
@@ -460,8 +483,12 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (typeof jobId === 'number') {
       deps.preemptedJobs.delete(jobId)
     }
-    deps.inFlight.delete(jobId)
-    deps.busy.delete(worker)
+    if (deps.inFlight.get(jobId) === job) {
+      deps.inFlight.delete(jobId)
+    }
+    if (deps.busy.get(worker) === jobId) {
+      deps.busy.delete(worker)
+    }
 
     const isRetiring = deps.retiringWorkers.has(worker)
     if (isRetiring) {
@@ -473,16 +500,20 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         deps.clearExpectedWorkerTermination(worker)
       })
       deps.background.emitBackgroundStatus()
-    } else {
+    } else if (
+      !deps.hasExpectedWorkerTermination(worker) &&
+      deps.workers.includes(worker) &&
+      !deps.idle.includes(worker)
+    ) {
       deps.idle.push(worker)
     }
 
-    if (job) {
+    if (deps.activeByPath.get(job.normalizedPath) === job) {
       deps.activeByPath.delete(job.normalizedPath)
-      if (job.source === 'background') {
-        deps.background.unmarkProcessing(job.jobId)
-        deps.background.emitBackgroundStatus()
-      }
+    }
+    if (job.source === 'background') {
+      deps.background.unmarkProcessing(job.jobId)
+      deps.background.emitBackgroundStatus()
     }
 
     deps.drain()

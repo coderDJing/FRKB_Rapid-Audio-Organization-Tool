@@ -2,6 +2,7 @@ import type { UnifiedDisplayWaveformDetailData } from './unifiedDisplayWaveform'
 import {
   BEATS_PER_BAR,
   CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
+  CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
   MAX_SECTIONS,
   PHRASE_BARS,
   PHRASE_BEATS,
@@ -22,6 +23,7 @@ import {
 import { buildAlgorithmicSongStructureSections } from './songStructureAlgorithmic'
 import { buildDynamicPhraseBoundaries } from './songStructureDynamicBoundaries'
 import { createSongBeatGridRuntime } from './songBeatGridMap'
+import { buildSpectralSongStructureSections } from './songStructureSpectral'
 import { buildWholeSongStructureAnalysis } from './songStructureWholeSong'
 
 type SongStructureFeature = {
@@ -959,6 +961,22 @@ export const buildSongStructureAnalysisCore = (
   const detailFrames = waveformData.height?.length || 0
   if (durationSec <= 0 || detailFrames <= 0) return null
 
+  const spectralCandidate = buildSpectralSongStructureSections(input, durationSec)
+  if (spectralCandidate) {
+    return {
+      formatVersion: CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
+      algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
+      source: 'algorithmic',
+      durationSec: toFixedNumber(durationSec, 3),
+      bpm: grid.bpm,
+      firstBeatMs: grid.firstBeatMs,
+      barBeatOffset: grid.barBeatOffset,
+      beatGridSignature: spectralCandidate.beatGridSignature,
+      phraseBars: PHRASE_BARS,
+      sections: spectralCandidate.sections
+    }
+  }
+
   const dynamicBoundaries = buildDynamicPhraseBoundaries(input, durationSec)
   if (dynamicBoundaries) {
     const barLines = dynamicBoundaries.runtime.lines
@@ -987,6 +1005,7 @@ export const buildSongStructureAnalysisCore = (
       )
     }
     return {
+      formatVersion: CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
       algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
       source: 'algorithmic',
       durationSec: toFixedNumber(durationSec, 3),
@@ -1049,6 +1068,7 @@ export const buildSongStructureAnalysisCore = (
   }
 
   return {
+    formatVersion: CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
     algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
     source: 'algorithmic',
     durationSec: toFixedNumber(durationSec, 3),

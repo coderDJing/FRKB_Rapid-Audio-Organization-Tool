@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://frkb.local/schema/song-structure/prediction.schema.json",
+  "title": "FRKB song-structure production prediction snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "trackId",
+    "generatedAt",
+    "algorithm",
+    "durationSec",
+    "gridKind",
+    "analysisMs",
+    "sections"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "trackId": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "algorithm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "formatVersion", "strategy", "gitHead", "dirty"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "formatVersion": { "type": "integer", "minimum": 1 },
+        "strategy": { "type": "string", "minLength": 1 },
+        "decoderBackend": { "type": "string", "minLength": 1 },
+        "gitHead": { "type": ["string", "null"] },
+        "dirty": { "type": "boolean" }
+      }
+    },
+    "durationSec": { "type": "number", "exclusiveMinimum": 0 },
+    "gridKind": { "enum": ["fixed", "dynamic"] },
+    "analysisMs": { "type": "number", "minimum": 0 },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["startSec", "endSec", "startBar", "endBar", "kind", "confidence"]
+      }
+    }
+  }
+}

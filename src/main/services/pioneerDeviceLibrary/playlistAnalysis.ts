@@ -3,14 +3,13 @@ import path from 'node:path'
 import { enqueueKeyAnalysisList } from '../keyAnalysisQueue'
 import * as LibraryCacheDb from '../../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
-import {
-  hasCurrentNoBpmBeatGridResult,
-  shouldAcceptBeatGridCacheVersion
-} from '../beatGridAlgorithmVersion'
-import { shouldAcceptKeyAnalysisCacheVersion } from '../keyAnalysisAlgorithmVersion'
 import { findSongListRoot } from '../cacheMaintenance'
 import { ensurePioneerUsbIdentity } from './usbIdentity'
-import { hasCurrentSongEnergyAnalysis } from '../../../shared/songEnergy'
+import { hasUsableSongEnergyAnalysis } from '../../../shared/songEnergy'
+import {
+  hasUsableKeyAnalysis,
+  resolveUsableSongBeatGrid
+} from '../../../shared/songAnalysisCompleteness'
 import type { ISongInfo } from '../../../types/globals'
 import type { ExternalAnalysisSourceKind } from '../../libraryCacheDb'
 
@@ -63,20 +62,10 @@ const buildExternalAnalysisRelativePath = (
 
 const hasCompleteFrkbAnalysis = (info: Partial<ISongInfo> | null | undefined) => {
   if (!info) return false
-  const keyText = typeof info.key === 'string' ? info.key.trim() : ''
-  const bpm = Number(info.bpm)
-  const firstBeatMs = Number(info.firstBeatMs)
-  const barBeatOffset = Number(info.barBeatOffset)
   return (
-    keyText.length > 0 &&
-    shouldAcceptKeyAnalysisCacheVersion(info) &&
-    hasCurrentSongEnergyAnalysis(info) &&
-    (hasCurrentNoBpmBeatGridResult(info) ||
-      (Number.isFinite(bpm) &&
-        bpm > 0 &&
-        Number.isFinite(firstBeatMs) &&
-        Number.isFinite(barBeatOffset) &&
-        shouldAcceptBeatGridCacheVersion(info)))
+    hasUsableKeyAnalysis(info) &&
+    hasUsableSongEnergyAnalysis(info) &&
+    resolveUsableSongBeatGrid(info).kind !== 'missing'
   )
 }
 

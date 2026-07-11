@@ -60,6 +60,7 @@ import {
 } from './mixtapeSharedGridPersistence'
 import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
 import {
+  cancelKeyAnalysisForPaths,
   enqueueKeyAnalysis,
   invalidateKeyAnalysisSongStructure
 } from '../services/keyAnalysisQueue'
@@ -815,6 +816,9 @@ export function registerMixtapeHandlers() {
             Math.abs(Number(previousGrid?.bpm) - nextBpm) > 0.0001))
       const shouldInvalidateStructure = structureGridChanged
       const shouldQueueStructureRefresh = structureGridChanged || hasBeatGridMapInput
+      if (shouldQueueStructureRefresh) {
+        await cancelKeyAnalysisForPaths(filePath)
+      }
       const result = upsertMixtapeItemGridByFilePath([
         {
           filePath,

@@ -1,0 +1,82 @@
+{
+  "$schema": "../../schema/prediction.schema.json",
+  "schemaVersion": 1,
+  "trackId": "d5aba7ba4b53d5483da54155a53ced730134487956e5b88690780327e366fff2",
+  "generatedAt": "2026-07-11T05:40:00.000Z",
+  "algorithm": {
+    "version": 20,
+    "formatVersion": 1,
+    "strategy": "spectral-v20-pseudo-color",
+    "gitHead": "8e086ce5fcbbc300a6b3c17ecb037e009ecef0c8",
+    "dirty": true
+  },
+  "durationSec": 346.044,
+  "gridKind": "fixed",
+  "analysisMs": 73.132,
+  "sections": [
+    {
+      "kind": "intro",
+      "startSec": 0,
+      "endSec": 15.663,
+      "startBar": 1,
+      "endBar": 8,
+      "confidence": 0.716
+    },
+    {
+      "kind": "groove",
+      "startSec": 15.663,
+      "endSec": 78.102,
+      "startBar": 9,
+      "endBar": 40,
+      "confidence": 0.757
+    },
+    {
+      "kind": "breakdown",
+      "startSec": 78.102,
+      "endSec": 89.809,
+      "startBar": 41,
+      "endBar": 46,
+      "confidence": 0.574
+    },
+    {
+      "kind": "drop",
+      "startSec": 89.809,
+      "endSec": 171.76,
+      "startBar": 47,
+      "endBar": 88,
+      "confidence": 0.597
+    },
+    {
+      "kind": "breakdown",
+      "startSec": 171.76,
+      "endSec": 187.37,
+      "startBar": 89,
+      "endBar": 96,
+      "confidence": 0.743
+    },
+    {
+      "kind": "groove",
+      "startSec": 187.37,
+      "endSec": 218.59,
+      "startBar": 97,
+      "endBar": 112,
+      "confidence": 0.948
+    },
+    {
+      "kind": "drop",
+      "startSec": 218.59,
+      "endSec": 312.248,
+      "startBar": 113,
+      "endBar": 160,
+      "confidence": 0.606
+    },
+    {
+      "kind": "outro",
+      "startSec": 312.248,
+      "endSec": 346.044,
+      "startBar": 161,
+      "endBar": 177,
+      "confidence": 0.678
+    }
+  ]
+}

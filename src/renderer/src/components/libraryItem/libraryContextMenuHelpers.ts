@@ -326,7 +326,11 @@ export const collectSetPlaylistMissingAnalysisFiles = async (
   const seen = new Set<string>()
   for (const uuid of uuids) {
     const songs = await loadSetPlaylistSongs(uuid)
-    files.push(...collectMissingAnalysisFilesFromSongs(songs, requiresRuntimeAnalysis, seen))
+    files.push(
+      ...collectMissingAnalysisFilesFromSongs(songs, requiresRuntimeAnalysis, seen, {
+        includeSongStructure: true
+      })
+    )
   }
   return files
 }

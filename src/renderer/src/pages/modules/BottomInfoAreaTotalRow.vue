@@ -29,7 +29,15 @@ const selectedSongsText = computed(() =>
 )
 
 const collectPendingAnalysisFiles = (songInfoArr: ISongInfo[]): string[] =>
-  collectMissingAnalysisFilesFromSongs(songInfoArr, runtime.analysisRuntime.available === true)
+  collectMissingAnalysisFilesFromSongs(
+    songInfoArr,
+    runtime.analysisRuntime.available === true,
+    undefined,
+    {
+      includeSongStructure: true,
+      missingWaveformFilePaths: runtime.songsArea?.missingWaveformFilePaths || []
+    }
+  )
 
 const pendingAnalysisFiles = computed(() =>
   collectPendingAnalysisFiles(runtime.songsArea?.songInfoArr || [])

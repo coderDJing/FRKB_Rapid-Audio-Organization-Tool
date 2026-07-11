@@ -104,6 +104,47 @@ component licenses below.
 - Dependency package metadata and license files are retained in the lockfiles,
   package metadata, Cargo metadata, and installed dependency folders.
 
+## MSAF Spectral Clustering Derived Logic
+
+- Project: Music Structure Analysis Framework (`urinieto/msaf`)
+- Source: https://github.com/urinieto/msaf/tree/main/msaf/algorithms/scluster
+- MSAF project license: MIT, Copyright (c) 2016 Oriol Nieto
+- The upstream `scluster/main2.py` identifies the original Laplacian
+  segmentation code as Brian McFee code under the ISC license.
+- Current use: the FRKB TypeScript song-structure implementation follows the
+  McFee/Ellis spectral-clustering pipeline used by MSAF, adapted to FRKB
+  beat-aligned waveform features and semantic EDM section decoding.
+
+MIT notice for MSAF:
+
+> Permission is hereby granted, free of charge, to any person obtaining a copy
+> of this software and associated documentation files (the "Software"), to deal
+> in the Software without restriction, including without limitation the rights
+> to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+> copies of the Software, and to permit persons to whom the Software is
+> furnished to do so, subject to the following conditions: The above copyright
+> notice and this permission notice shall be included in all copies or
+> substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS IS",
+> WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+> THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+> NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+> FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+> TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+> THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+ISC notice for the original Laplacian segmentation implementation:
+
+> Copyright (c) Brian McFee. Permission to use, copy, modify, and/or distribute
+> this software for any purpose with or without fee is hereby granted, provided
+> that the above copyright notice and this permission notice appear in all
+> copies. THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL
+> WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+> MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+> SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER
+> RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT,
+> NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE
+> USE OR PERFORMANCE OF THIS SOFTWARE.
+
 ## Compatibility Naming
 
 Some FRKB internal types and cache names still use `Mixxx` as a compatibility

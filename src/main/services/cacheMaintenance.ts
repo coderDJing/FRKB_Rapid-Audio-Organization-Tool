@@ -397,6 +397,76 @@ export async function purgeCoverCacheForTrack(filePath: string, oldFilePath?: st
   } catch {}
 }
 
+export type TrackCoreAnalysisClearResult =
+  | {
+      status: 'cleared'
+      filePath: string
+      listRoot: string
+    }
+  | {
+      status: 'skipped'
+      filePath: string
+      reason: 'invalid-path' | 'unsupported-location' | 'missing-song-cache' | 'clear-failed'
+    }
+
+/**
+ * 用户主动完整重新分析时，仅清理核心五项：Key、Beat Grid、Waveform、Energy、Structure。
+ * 封面、Stem、Mixtape 独立波形、Cue 和元数据必须保留。
+ */
+export async function clearTrackCoreAnalysisForReanalysis(
+  filePath: string
+): Promise<TrackCoreAnalysisClearResult> {
+  const normalizedFilePath = typeof filePath === 'string' ? filePath.trim() : ''
+  if (!normalizedFilePath) {
+    return { status: 'skipped', filePath: normalizedFilePath, reason: 'invalid-path' }
+  }
+
+  const listRoot = await findSongListRoot(path.dirname(normalizedFilePath))
+  if (!listRoot) {
+    return {
+      status: 'skipped',
+      filePath: normalizedFilePath,
+      reason: 'unsupported-location'
+    }
+  }
+
+  const existing = await LibraryCacheDb.loadSongCacheEntry(listRoot, normalizedFilePath)
+  if (!existing) {
+    return {
+      status: 'skipped',
+      filePath: normalizedFilePath,
+      reason: 'missing-song-cache'
+    }
+  }
+
+  await cancelKeyAnalysisForPaths(normalizedFilePath)
+
+  const analysisFieldsCleared = await LibraryCacheDb.clearSongCacheAnalysisFields(
+    listRoot,
+    normalizedFilePath
+  )
+  if (!analysisFieldsCleared) {
+    return {
+      status: 'skipped',
+      filePath: normalizedFilePath,
+      reason: 'clear-failed'
+    }
+  }
+
+  await Promise.all([
+    LibraryCacheDb.removeWaveformCacheEntry(listRoot, normalizedFilePath),
+    LibraryCacheDb.removeCompactVisualWaveformCacheEntry(listRoot, normalizedFilePath),
+    LibraryCacheDb.removeUnifiedDisplayWaveformCacheEntry(listRoot, normalizedFilePath),
+    LibraryCacheDb.removeWaveformSurfaceCacheEntry(listRoot, normalizedFilePath)
+  ])
+
+  return { status: 'cleared', filePath: normalizedFilePath, listRoot }
+}
+
+/**
+ * 文件永久删除/孤儿清理使用的破坏性清理，会移除封面和 Stem 等资产。
+ * 用户主动重新分析必须调用 clearTrackCoreAnalysisForReanalysis，禁止复用本函数。
+ */
 export async function clearTrackCache(filePath: string) {
   try {
     const cacheRoot = await findMixtapeCacheRoot(path.dirname(filePath))

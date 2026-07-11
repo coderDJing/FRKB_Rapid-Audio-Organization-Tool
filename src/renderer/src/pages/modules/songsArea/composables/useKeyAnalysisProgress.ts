@@ -1,6 +1,10 @@
 import { computed, ref, type Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
-import { hasCurrentSongEnergyAnalysis } from '@shared/songEnergy'
+import { hasUsableSongEnergyAnalysis } from '@shared/songEnergy'
+import {
+  hasUsableKeyAnalysis,
+  hasUsableSongBeatGridAnalysis
+} from '@shared/songAnalysisCompleteness'
 
 type AnalysisStage =
   | 'job-received'
@@ -235,18 +239,10 @@ bindIpcListener()
 
 export const hasCompleteKeyAnalysis = (song: ISongInfo | undefined): boolean => {
   if (!song) return false
-  if (!hasCurrentSongEnergyAnalysis(song)) return false
-  const keyText = typeof song.key === 'string' ? song.key.trim() : ''
-  if (!keyText) return false
-  if (song.beatGridStatus === 'no-bpm') return true
-  const bpm = Number(song.bpm)
-  const firstBeatMs = Number(song.firstBeatMs)
-  const barBeatOffset = Number(song.barBeatOffset)
   return (
-    Number.isFinite(bpm) &&
-    bpm > 0 &&
-    Number.isFinite(firstBeatMs) &&
-    Number.isFinite(barBeatOffset)
+    hasUsableSongEnergyAnalysis(song) &&
+    hasUsableKeyAnalysis(song) &&
+    hasUsableSongBeatGridAnalysis(song)
   )
 }
 
@@ -265,13 +261,11 @@ export function useKeyAnalysisProgress(params: {
   isAnalysisCompleteOverride?: (filePath: string) => boolean
   requiresRuntimeAnalysis?: Ref<boolean>
 }) {
-  const { visibleSongsWithIndex, isAnalysisCompleteOverride, requiresRuntimeAnalysis } = params
+  const { visibleSongsWithIndex, isAnalysisCompleteOverride } = params
 
   const hasRequiredAnalysis = (song: ISongInfo | undefined) => {
     if (!song) return false
-    if (!hasCurrentSongEnergyAnalysis(song)) return false
-    if (requiresRuntimeAnalysis?.value === true) return hasCompleteKeyAnalysis(song)
-    return typeof song.key === 'string' && song.key.trim().length > 0
+    return hasCompleteKeyAnalysis(song)
   }
 
   const getAnalysisProgress = (filePath: string): number | null => {

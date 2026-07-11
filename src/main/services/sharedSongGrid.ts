@@ -7,15 +7,13 @@ import { stripBeatThisDebugInfo } from '../libraryCacheDb/pathResolvers'
 import { listMixtapeItemsByFilePath } from '../mixtapeDb'
 import { findSongListRoot } from './cacheMaintenance'
 import { applyLiteDefaults, buildLiteSongInfo } from './songInfoLite'
-import { hasCurrentSongStructureAnalysis } from '../../shared/songStructure'
-import {
-  normalizeBeatGridAlgorithmVersion,
-  shouldAcceptBeatGridCacheVersion
-} from './beatGridAlgorithmVersion'
+import { hasUsableSongStructureAnalysis } from '../../shared/songStructure'
+import { normalizeBeatGridAlgorithmVersion } from './beatGridAlgorithmVersion'
 import {
   normalizeSongBeatGridMap,
   projectSongBeatGridMapToFixedGrid
 } from '../../shared/songBeatGridMap'
+import { shouldAcceptSharedSongGridCache } from './sharedSongGridCachePolicy'
 
 type SharedGridInfo = Partial<ISongInfo> & {
   bpm?: unknown
@@ -49,8 +47,7 @@ export const isCompleteSharedSongGridDefinition = (
   !!value &&
   ((value.bpm !== undefined &&
     value.firstBeatMs !== undefined &&
-    value.barBeatOffset !== undefined &&
-    shouldAcceptBeatGridCacheVersion(value)) ||
+    value.barBeatOffset !== undefined) ||
     normalizeSongBeatGridMap(value.beatGridMap) !== null)
 
 const normalizeBpm = (value: unknown): number | undefined => {
@@ -125,7 +122,7 @@ export const shouldKeepManualSharedSongGridDefinition = (
   if (normalizeSongBeatGridMap(current.beatGridMap) && next.beatGridSource === 'analysis') {
     return true
   }
-  if (!shouldAcceptBeatGridCacheVersion(current)) return false
+  if (!isCompleteSharedSongGridDefinition(current)) return false
   if (next.beatGridSource === 'analysis') return true
   return (
     differsWhenNextValueIsPresent(current.bpm, next.bpm, normalizeBpm) ||
@@ -257,7 +254,7 @@ export async function loadSharedSongGridDefinition(
     }
   }
 
-  if (!hasSharedGridValue(resolved) || !shouldAcceptBeatGridCacheVersion(resolved)) {
+  if (!hasSharedGridValue(resolved) || !shouldAcceptSharedSongGridCache(resolved)) {
     return null
   }
   return toPublicSharedGridDefinition(resolved)
@@ -288,10 +285,12 @@ export async function loadSharedSongGridDefinitions(filePaths: string[]) {
 }
 
 export async function persistSharedSongGridDefinition(
-  input: SharedSongGridDefinition
+  input: SharedSongGridDefinition,
+  options: { shouldPersist?: () => boolean } = {}
 ): Promise<SharedSongGridDefinition | null> {
+  const shouldPersist = () => options.shouldPersist?.() !== false
   const normalizedPath = typeof input?.filePath === 'string' ? input.filePath.trim() : ''
-  if (!normalizedPath) return null
+  if (!normalizedPath || !shouldPersist()) return null
 
   const hasBeatGridMapInput = Object.prototype.hasOwnProperty.call(input, 'beatGridMap')
   const beatGridMap = normalizeSongBeatGridMap(input?.beatGridMap)
@@ -340,6 +339,7 @@ export async function persistSharedSongGridDefinition(
   }
 
   const songListRoot = await findSongListRoot(path.dirname(normalizedPath))
+  if (!shouldPersist()) return null
   if (!songListRoot) {
     const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(normalizedPath)
     if (!externalContext) {
@@ -362,6 +362,7 @@ export async function persistSharedSongGridDefinition(
       return loadSharedSongGridDefinition(normalizedPath)
     }
     const existingEntry = await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, stat)
+    if (!shouldPersist()) return null
     const nextInfo = existingEntry?.info
       ? { ...existingEntry.info }
       : buildLiteSongInfo(normalizedPath)
@@ -380,10 +381,11 @@ export async function persistSharedSongGridDefinition(
       normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
     }
     stripBeatThisDebugInfo(normalizedInfo)
-    if (!hasCurrentSongStructureAnalysis(normalizedInfo)) {
+    if (!hasUsableSongStructureAnalysis(normalizedInfo)) {
       delete normalizedInfo.songStructure
     }
     normalizedInfo.analysisOnly = true
+    if (!shouldPersist()) return null
     await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, normalizedInfo)
     return buildPersistResult(normalizedInfo, shouldClearBeatGridMap)
   }
@@ -397,6 +399,7 @@ export async function persistSharedSongGridDefinition(
   }
 
   const existingEntry = await LibraryCacheDb.loadSongCacheEntry(songListRoot, normalizedPath)
+  if (!shouldPersist()) return null
   const nextInfo = existingEntry?.info
     ? { ...existingEntry.info }
     : buildLiteSongInfo(normalizedPath)
@@ -426,10 +429,11 @@ export async function persistSharedSongGridDefinition(
     normalizedInfo.beatGridAlgorithmVersion = beatGridAlgorithmVersion
   }
   stripBeatThisDebugInfo(normalizedInfo)
-  if (!hasCurrentSongStructureAnalysis(normalizedInfo)) {
+  if (!hasUsableSongStructureAnalysis(normalizedInfo)) {
     delete normalizedInfo.songStructure
   }
 
+  if (!shouldPersist()) return null
   await LibraryCacheDb.upsertSongCacheEntry(songListRoot, normalizedPath, {
     size: stat.size,
     mtimeMs: stat.mtimeMs,

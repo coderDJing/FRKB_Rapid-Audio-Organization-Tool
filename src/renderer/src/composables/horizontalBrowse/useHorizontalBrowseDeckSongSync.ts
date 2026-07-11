@@ -1,5 +1,6 @@
 import type { Ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
+import { useRuntimeStore } from '@renderer/stores/runtime'
 import {
   isSameHorizontalBrowseSongFilePath,
   mergeHorizontalBrowseSongWithSharedGrid,
@@ -7,6 +8,7 @@ import {
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseShellSongs'
 import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
 import type { SongStructureAnalysis } from '@shared/songStructure'
+import { patchHorizontalBrowseRuntimeSongSnapshots } from '@renderer/composables/horizontalBrowse/horizontalBrowseSongSnapshotPatch'
 import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportBeatGridInput
@@ -54,6 +56,8 @@ type UseHorizontalBrowseDeckSongSyncParams = {
 }
 
 export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckSongSyncParams) => {
+  const runtime = useRuntimeStore()
+
   const patchDeckSongSharedGrid = (song: ISongInfo, payload: SharedSongGridPayload) => {
     const nextSong = mergeHorizontalBrowseSongWithSharedGrid(song, payload)
     if (nextSong === song) return false
@@ -128,6 +132,11 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
   }
 
   const handleSongGridUpdated = (_event: unknown, payload: SharedSongGridPayload) => {
+    patchHorizontalBrowseRuntimeSongSnapshots(
+      runtime,
+      payload,
+      mergeHorizontalBrowseSongWithSharedGrid
+    )
     const nativeGridPayload = buildNativeGridPayload(payload)
     const nativeUpdates: Promise<unknown>[] = []
     const topSong = params.topDeckSong.value
@@ -181,6 +190,11 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
   }
 
   const handleSongStructureUpdated = (_event: unknown, payload: SongStructurePayload) => {
+    patchHorizontalBrowseRuntimeSongSnapshots(
+      runtime,
+      payload,
+      mergeHorizontalBrowseSongWithStructure
+    )
     const patchDeckSongStructure = (deck: DeckKey) => {
       const currentSong = params.resolveDeckSong(deck)
       if (!currentSong) return

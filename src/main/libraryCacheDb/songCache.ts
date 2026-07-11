@@ -715,9 +715,27 @@ export async function updateSongCacheKey(
 }
 
 /**
- * 清除歌曲的分析数据（BPM、Key、节拍网格等），用于重新分析。
+ * 清除歌曲的分析数据（Key、节拍网格、能量、段落等），用于重新分析。
  * 保留用户数据：playlistTrackNumber（序号）、hotCues、memoryCues、mixOrder 等。
  */
+export function stripSongCoreAnalysisFields(info: ISongInfo): ISongInfo {
+  const next = { ...info }
+  delete next.key
+  delete next.keyAnalysisAlgorithmVersion
+  delete next.bpm
+  delete next.firstBeatMs
+  delete next.barBeatOffset
+  delete next.beatGridSource
+  delete next.beatGridStatus
+  delete next.beatGridMap
+  delete next.beatGridAlgorithmVersion
+  delete next.timeBasisOffsetMs
+  delete next.energyScore
+  delete next.energyAlgorithmVersion
+  delete next.songStructure
+  return next
+}
+
 export async function clearSongCacheAnalysisFields(
   listRoot: string,
   filePath: string
@@ -725,17 +743,7 @@ export async function clearSongCacheAnalysisFields(
   try {
     const entry = await loadSongCacheEntry(listRoot, filePath)
     if (!entry) return false
-    // 清除分析数据（重新分析会重新生成）
-    delete entry.info.key
-    delete entry.info.keyAnalysisAlgorithmVersion
-    delete entry.info.bpm
-    delete entry.info.firstBeatMs
-    delete entry.info.barBeatOffset
-    delete entry.info.beatGridSource
-    delete entry.info.beatGridStatus
-    delete entry.info.beatGridMap
-    delete entry.info.beatGridAlgorithmVersion
-    delete entry.info.timeBasisOffsetMs
+    entry.info = stripSongCoreAnalysisFields(entry.info)
     return await upsertSongCacheEntry(listRoot, filePath, entry)
   } catch (error) {
     log.error('[sqlite] song cache analysis fields clear failed', error)

@@ -1,10 +1,16 @@
 import libraryUtils from '@renderer/utils/libraryUtils'
 import {
-  CURRENT_SONG_ENERGY_ALGORITHM_VERSION,
-  hasCurrentSongEnergyAnalysis,
-  normalizeSongEnergyScore
-} from '@shared/songEnergy'
-import { hasCurrentSongStructureAnalysis } from '@shared/songStructure'
+  collectMissingAnalysisFilesFromSongs,
+  type MissingAnalysisOptions
+} from './manualKeyAnalysisCompleteness'
+
+export {
+  collectMissingAnalysisFilesFromSongs,
+  hasRequiredAnalysis,
+  resolveMissingAnalysisReasons,
+  type AnalysisCandidate,
+  type MissingAnalysisOptions
+} from './manualKeyAnalysisCompleteness'
 
 type ScanSongListResult = {
   scanData?: Array<{
@@ -19,107 +25,7 @@ type ScanSongListResult = {
     energyAlgorithmVersion?: unknown
     songStructure?: unknown
   }>
-}
-
-type AnalysisCandidate = {
-  filePath?: string
-  key?: unknown
-  bpm?: unknown
-  firstBeatMs?: unknown
-  barBeatOffset?: unknown
-  beatGridMap?: unknown
-  beatGridStatus?: unknown
-  energyScore?: unknown
-  energyAlgorithmVersion?: unknown
-  songStructure?: unknown
-  fileMissing?: boolean
-}
-
-type MissingAnalysisOptions = {
-  includeSongStructure?: boolean
-}
-
-const normalizeFilePathKey = (filePath: string) => filePath.replace(/\//g, '\\').toLowerCase()
-
-export const hasRequiredAnalysis = (
-  song: {
-    key?: unknown
-    bpm?: unknown
-    firstBeatMs?: unknown
-    barBeatOffset?: unknown
-    beatGridMap?: unknown
-    beatGridStatus?: unknown
-    energyScore?: unknown
-    energyAlgorithmVersion?: unknown
-    songStructure?: unknown
-  },
-  requiresRuntimeAnalysis: boolean,
-  options: MissingAnalysisOptions = {}
-) => resolveMissingAnalysisReasons(song, requiresRuntimeAnalysis, options).length === 0
-
-export const resolveMissingAnalysisReasons = (
-  song: {
-    key?: unknown
-    bpm?: unknown
-    firstBeatMs?: unknown
-    barBeatOffset?: unknown
-    beatGridMap?: unknown
-    beatGridStatus?: unknown
-    energyScore?: unknown
-    energyAlgorithmVersion?: unknown
-    songStructure?: unknown
-  },
-  requiresRuntimeAnalysis: boolean,
-  options: MissingAnalysisOptions = {}
-) => {
-  const reasons: string[] = []
-  if (!hasCurrentSongEnergyAnalysis(song)) {
-    reasons.push(
-      normalizeSongEnergyScore(song.energyScore) === undefined
-        ? 'missing-energy-score'
-        : `stale-energy-version:${String(song.energyAlgorithmVersion || '')}->${CURRENT_SONG_ENERGY_ALGORITHM_VERSION}`
-    )
-  }
-  const keyText = typeof song.key === 'string' ? song.key.trim() : ''
-  if (!keyText) reasons.push('missing-key')
-  if (!requiresRuntimeAnalysis) return reasons
-  if (song.beatGridStatus === 'no-bpm') return reasons
-  const bpm = Number(song.bpm)
-  const firstBeatMs = Number(song.firstBeatMs)
-  const barBeatOffset = Number(song.barBeatOffset)
-  if (!Number.isFinite(bpm) || bpm <= 0) reasons.push('missing-bpm')
-  if (!Number.isFinite(firstBeatMs)) reasons.push('missing-first-beat')
-  if (!Number.isFinite(barBeatOffset)) reasons.push('missing-bar-beat-offset')
-  if (
-    Number.isFinite(bpm) &&
-    bpm > 0 &&
-    Number.isFinite(firstBeatMs) &&
-    Number.isFinite(barBeatOffset) &&
-    options.includeSongStructure === true &&
-    !hasCurrentSongStructureAnalysis(song)
-  ) {
-    reasons.push('missing-song-structure')
-  }
-  return reasons
-}
-
-export const collectMissingAnalysisFilesFromSongs = (
-  songs: AnalysisCandidate[],
-  requiresRuntimeAnalysis: boolean,
-  seen = new Set<string>(),
-  options: MissingAnalysisOptions = {}
-) => {
-  const files: string[] = []
-  for (const song of songs) {
-    if (song.fileMissing) continue
-    const filePath = String(song.filePath || '').trim()
-    const key = normalizeFilePathKey(filePath)
-    if (!filePath || seen.has(key)) continue
-    if (hasRequiredAnalysis(song, requiresRuntimeAnalysis, options)) continue
-    seen.add(key)
-    files.push(filePath)
-  }
-  return files
+  missingWaveformFilePaths?: string[]
 }
 
 export const scanSongListsForMissingAnalysisFiles = async (
@@ -138,7 +44,12 @@ export const scanSongListsForMissingAnalysisFiles = async (
     )) as ScanSongListResult | null
     if (!Array.isArray(scan?.scanData)) continue
     files.push(
-      ...collectMissingAnalysisFilesFromSongs(scan.scanData, requiresRuntimeAnalysis, seen, options)
+      ...collectMissingAnalysisFilesFromSongs(scan.scanData, requiresRuntimeAnalysis, seen, {
+        ...options,
+        missingWaveformFilePaths: Array.isArray(scan.missingWaveformFilePaths)
+          ? scan.missingWaveformFilePaths
+          : undefined
+      })
     )
   }
   return files

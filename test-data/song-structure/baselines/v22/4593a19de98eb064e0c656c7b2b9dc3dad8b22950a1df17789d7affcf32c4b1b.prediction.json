@@ -1,0 +1,84 @@
+{
+  "$schema": "../../schema/prediction.schema.json",
+  "schemaVersion": 1,
+  "trackId": "4593a19de98eb064e0c656c7b2b9dc3dad8b22950a1df17789d7affcf32c4b1b",
+  "generatedAt": "2026-07-11T06:54:03.089Z",
+  "algorithm": {
+    "version": 22,
+    "formatVersion": 1,
+    "strategy": "production-v22-pseudo-color-native-libav-44k1-stereo",
+    "decoderBackend": "native-libav-waveform",
+    "gitHead": "8e086ce5fcbbc300a6b3c17ecb037e009ecef0c8",
+    "dirty": true
+  },
+  "durationSec": 344.514,
+  "gridKind": "fixed",
+  "analysisMs": 137.561,
+  "sections": [
+    {
+      "startSec": 0,
+      "endSec": 26.756,
+      "startBar": 1,
+      "endBar": 16,
+      "phraseIndex": 0,
+      "kind": "intro",
+      "confidence": 0.614,
+      "energy": 0.657,
+      "low": 0.696,
+      "high": 0.244,
+      "novelty": 0.817
+    },
+    {
+      "startSec": 26.756,
+      "endSec": 106.204,
+      "startBar": 17,
+      "endBar": 64,
+      "phraseIndex": 2,
+      "kind": "groove",
+      "confidence": 0.813,
+      "energy": 0.718,
+      "low": 0.747,
+      "high": 0.291,
+      "novelty": 0.94
+    },
+    {
+      "startSec": 106.204,
+      "endSec": 159.17,
+      "startBar": 65,
+      "endBar": 96,
+      "phraseIndex": 8,
+      "kind": "breakdown",
+      "confidence": 0.832,
+      "energy": 0.515,
+      "low": 0.252,
+      "high": 0.468,
+      "novelty": 0.94
+    },
+    {
+      "startSec": 159.17,
+      "endSec": 291.583,
+      "startBar": 97,
+      "endBar": 176,
+      "phraseIndex": 12,
+      "kind": "drop",
+      "confidence": 0.611,
+      "energy": 0.742,
+      "low": 0.757,
+      "high": 0.335,
+      "novelty": 0.94
+    },
+    {
+      "startSec": 291.583,
+      "endSec": 344.514,
+      "startBar": 177,
+      "endBar": 208,
+      "phraseIndex": 22,
+      "kind": "outro",
+      "confidence": 0.965,
+      "energy": 0.663,
+      "low": 0.707,
+      "high": 0.191,
+      "novelty": 0.807
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import path from 'node:path'
 import fs = require('fs-extra')
 import * as LibraryCacheDb from '../libraryCacheDb'
-import { hasCurrentNoBpmBeatGridResult } from './beatGridAlgorithmVersion'
+import { hasUsableNoBpmBeatGridResult } from '../../shared/songAnalysisCompleteness'
 import { findSongListRoot } from './cacheMaintenance'
 
 type MixtapeNoBpmGuardInfo = {
@@ -15,7 +15,7 @@ const readCachedNoBpmResult = async (filePath: string): Promise<boolean> => {
   const listRoot = await findSongListRoot(path.dirname(filePath))
   if (listRoot) {
     const cached = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
-    return hasCurrentNoBpmBeatGridResult(cached?.info)
+    return hasUsableNoBpmBeatGridResult(cached?.info)
   }
 
   const externalContext = LibraryCacheDb.resolveExternalAnalysisContext(filePath)
@@ -26,7 +26,7 @@ const readCachedNoBpmResult = async (filePath: string): Promise<boolean> => {
     size: stat.size,
     mtimeMs: stat.mtimeMs
   })
-  return hasCurrentNoBpmBeatGridResult(cached?.info)
+  return hasUsableNoBpmBeatGridResult(cached?.info)
 }
 
 export const createMixtapeNoBpmGuard = () => {
@@ -49,7 +49,7 @@ export const createMixtapeNoBpmGuard = () => {
 
   return {
     async shouldBlock(filePath: string, info: MixtapeNoBpmGuardInfo | null): Promise<boolean> {
-      if (hasCurrentNoBpmBeatGridResult(info)) return true
+      if (hasUsableNoBpmBeatGridResult(info)) return true
       return await hasCachedNoBpmResult(filePath)
     }
   }

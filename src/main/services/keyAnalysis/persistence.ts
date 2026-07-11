@@ -7,17 +7,16 @@ import { stripBeatThisDebugInfo } from '../../libraryCacheDb/pathResolvers'
 import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import { log } from '../../log'
 import type { ISongInfo } from '../../../types/globals'
+import { hasUsableSongEnergyAnalysis, normalizeSongEnergyScore } from '../../../shared/songEnergy'
 import {
-  CURRENT_SONG_ENERGY_ALGORITHM_VERSION,
-  hasCurrentSongEnergyAnalysis,
-  normalizeSongEnergyScore
-} from '../../../shared/songEnergy'
-import {
-  buildSongStructureAnalysis,
-  hasCurrentSongStructureAnalysis,
+  hasUsableSongStructureAnalysis,
   normalizeSongStructureAnalysis,
   type SongStructureAnalysis
 } from '../../../shared/songStructure'
+import {
+  hasUsableKeyAnalysis,
+  resolveUsableSongBeatGrid
+} from '../../../shared/songAnalysisCompleteness'
 import {
   persistSharedSongGridDefinition,
   shouldKeepManualSharedSongGridDefinition
@@ -32,20 +31,16 @@ import {
 import {
   BEAT_GRID_STATUS_NO_BPM,
   CURRENT_BEAT_GRID_ALGORITHM_VERSION,
-  hasCurrentNoBpmBeatGridResult,
-  normalizeBeatGridAlgorithmVersion,
-  shouldAcceptBeatGridCacheVersion
+  normalizeBeatGridAlgorithmVersion
 } from '../beatGridAlgorithmVersion'
 import {
   CURRENT_KEY_ANALYSIS_ALGORITHM_VERSION,
-  normalizeKeyAnalysisAlgorithmVersion,
-  shouldAcceptKeyAnalysisCacheVersion
+  normalizeKeyAnalysisAlgorithmVersion
 } from '../keyAnalysisAlgorithmVersion'
 import {
   isValidBpm,
   isValidBarBeatOffset,
   isValidFirstBeatMs,
-  isValidKeyText,
   normalizePath,
   type BpmAnalysisResult,
   type DoneEntry,
@@ -231,8 +226,11 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     timeBasisOffsetMs?: number,
     options?: {
       firstBeatCoordinate?: 'audio' | 'timeline'
+      shouldPersist?: () => boolean
     }
   ) => {
+    const shouldPersist = () => options?.shouldPersist?.() !== false
+    if (!shouldPersist()) return
     const normalizedPath = normalizePath(filePath)
     const normalizedBpm = Number(bpm.toFixed(6))
     const normalizedInputFirstBeatMs = isValidFirstBeatMs(firstBeatMs)
@@ -245,6 +243,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     let normalizedFirstBeatMs = normalizedInputFirstBeatMs
     try {
       const stat = await fs.stat(filePath)
+      if (!shouldPersist()) return
       if (firstBeatCoordinate === 'audio' && normalizedInputFirstBeatMs !== undefined) {
         if (normalizedTimeBasisOffsetMs === undefined) {
           normalizedTimeBasisOffsetMs = normalizeTimeBasisOffsetMs(
@@ -255,8 +254,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           normalizedInputFirstBeatMs,
           normalizedTimeBasisOffsetMs ?? 0
         )
+        if (!shouldPersist()) return
       }
       const listRoot = await findSongListRoot(path.dirname(filePath))
+      if (!shouldPersist()) return
       const externalContext = listRoot
         ? null
         : LibraryCacheDb.resolveExternalAnalysisContext(filePath)
@@ -268,6 +269,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
               mtimeMs: stat.mtimeMs
             })
           : null
+      if (!shouldPersist()) return
       const existingSharedGrid = existingSongCacheEntry?.info
       if (
         existingSharedGrid &&
@@ -280,9 +282,10 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           beatGridSource: 'analysis'
         })
       ) {
+        if (!shouldPersist()) return
         const existing = deps.doneByPath.get(normalizedPath)
         const existingBeatGridMap = normalizeSongBeatGridMap(existingSharedGrid.beatGridMap)
-        deps.doneByPath.set(normalizedPath, {
+        const nextDoneEntry: DoneEntry = {
           size: stat.size,
           mtimeMs: stat.mtimeMs,
           keyText: existing?.keyText,
@@ -302,7 +305,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           energyAlgorithmVersion: existing?.energyAlgorithmVersion,
           songStructure: existing?.songStructure,
           hasWaveform: existing?.hasWaveform
-        })
+        }
         const nextInfo = applyLiteDefaults(
           existingSongCacheEntry?.info
             ? { ...existingSongCacheEntry.info }
@@ -313,18 +316,22 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         nextInfo.beatGridSource = 'manual'
         stripBeatThisDebugInfo(nextInfo)
         nextInfo.beatGridAlgorithmVersion = normalizedBeatGridAlgorithmVersion
-        if (!hasCurrentSongStructureAnalysis(nextInfo)) {
+        if (!hasUsableSongStructureAnalysis(nextInfo)) {
           delete nextInfo.songStructure
         }
         if (listRoot) {
+          if (!shouldPersist()) return
           await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
             size: stat.size,
             mtimeMs: stat.mtimeMs,
             info: nextInfo
           })
         } else if (externalContext) {
+          if (!shouldPersist()) return
           await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, nextInfo)
         }
+        if (!shouldPersist()) return
+        deps.doneByPath.set(normalizedPath, nextDoneEntry)
         deps.events.emit('bpm-updated', {
           filePath,
           bpm: existingSharedGrid.bpm ?? normalizedBpm,
@@ -337,8 +344,9 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         })
         return
       }
+      if (!shouldPersist()) return
       const existing = deps.doneByPath.get(normalizedPath)
-      deps.doneByPath.set(normalizedPath, {
+      const nextDoneEntry: DoneEntry = {
         size: stat.size,
         mtimeMs: stat.mtimeMs,
         keyText: existing?.keyText,
@@ -352,19 +360,23 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
         songStructure: existing?.songStructure,
         hasWaveform: existing?.hasWaveform
-      })
+      }
 
       const sharedGrid = listRoot
-        ? await persistSharedSongGridDefinition({
-            filePath,
-            bpm: normalizedBpm,
-            firstBeatMs: normalizedFirstBeatMs,
-            barBeatOffset: normalizedBarBeatOffset,
-            timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
-            beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
-            beatGridSource: 'analysis'
-          })
+        ? await persistSharedSongGridDefinition(
+            {
+              filePath,
+              bpm: normalizedBpm,
+              firstBeatMs: normalizedFirstBeatMs,
+              barBeatOffset: normalizedBarBeatOffset,
+              timeBasisOffsetMs: normalizedTimeBasisOffsetMs,
+              beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
+              beatGridSource: 'analysis'
+            },
+            { shouldPersist }
+          )
         : null
+      if (!shouldPersist()) return
       if (sharedGrid) {
         emitSongGridUpdated(sharedGrid)
       }
@@ -381,13 +393,15 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
             beatGridSource: 'analysis'
           },
-          { size: stat.size, mtimeMs: stat.mtimeMs }
+          { size: stat.size, mtimeMs: stat.mtimeMs },
+          { shouldPersist }
         )
       } else if (externalContext) {
         const cached = await LibraryCacheDb.loadExternalAnalysisCacheEntry(externalContext, {
           size: stat.size,
           mtimeMs: stat.mtimeMs
         })
+        if (!shouldPersist()) return
         const nextInfo: ISongInfo = stripBeatThisDebugInfo({
           ...(cached?.info || buildLiteSongInfo(filePath)),
           filePath,
@@ -400,12 +414,15 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           analysisOnly: true
         })
         delete nextInfo.beatGridStatus
-        if (!hasCurrentSongStructureAnalysis(nextInfo)) {
+        if (!hasUsableSongStructureAnalysis(nextInfo)) {
           delete nextInfo.songStructure
         }
+        if (!shouldPersist()) return
         await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, nextInfo)
       }
 
+      if (!shouldPersist()) return
+      deps.doneByPath.set(normalizedPath, nextDoneEntry)
       const payload: BpmAnalysisResult = {
         filePath,
         bpm: normalizedBpm,
@@ -416,6 +433,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       }
       deps.events.emit('bpm-updated', payload)
     } catch (error) {
+      if (!shouldPersist()) return
       if (isMissingFileError(error)) {
         await cleanupMissingPersistTarget(normalizedPath, filePath)
         return
@@ -433,7 +451,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         beatGridAlgorithmVersion: normalizedBeatGridAlgorithmVersion,
         energyScore: existing?.energyScore,
         energyAlgorithmVersion: existing?.energyAlgorithmVersion,
-        songStructure: existing?.songStructure,
+        songStructure: undefined,
         hasWaveform: existing?.hasWaveform
       })
       const payload: BpmAnalysisResult = {
@@ -462,27 +480,30 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     }
   }
 
-  const persistNoBpm = async (filePath: string) => {
+  const persistNoBpm = async (
+    filePath: string,
+    options: { shouldPersist?: () => boolean } = {}
+  ) => {
+    const shouldPersist = () => options.shouldPersist?.() !== false
+    if (!shouldPersist()) return
     const normalizedPath = normalizePath(filePath)
     try {
       const stat = await fs.stat(filePath)
-      const existing = deps.doneByPath.get(normalizedPath)
-      deps.doneByPath.set(normalizedPath, {
-        size: stat.size,
-        mtimeMs: stat.mtimeMs,
-        keyText: existing?.keyText,
-        keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
-        beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION,
-        beatGridStatus: BEAT_GRID_STATUS_NO_BPM,
-        energyScore: existing?.energyScore,
-        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
-        songStructure: undefined,
-        hasWaveform: existing?.hasWaveform
-      })
+      if (!shouldPersist()) return
 
       const listRoot = await findSongListRoot(path.dirname(filePath))
+      if (!shouldPersist()) return
       if (listRoot) {
         const entry = await LibraryCacheDb.loadSongCacheEntry(listRoot, filePath)
+        if (!shouldPersist()) return
+        if (
+          shouldKeepManualSharedSongGridDefinition(entry?.info, {
+            filePath,
+            beatGridSource: 'analysis'
+          })
+        ) {
+          return
+        }
         const info = applyLiteDefaults(
           entry?.info ? { ...entry.info } : buildLiteSongInfo(filePath),
           filePath
@@ -492,6 +513,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           info.analysisOnly = true
         }
         applyNoBpmBeatGridResult(info)
+        if (!shouldPersist()) return
         await LibraryCacheDb.upsertSongCacheEntry(listRoot, filePath, {
           size: stat.size,
           mtimeMs: stat.mtimeMs,
@@ -504,6 +526,15 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             size: stat.size,
             mtimeMs: stat.mtimeMs
           })
+          if (!shouldPersist()) return
+          if (
+            shouldKeepManualSharedSongGridDefinition(cached?.info, {
+              filePath,
+              beatGridSource: 'analysis'
+            })
+          ) {
+            return
+          }
           const info = applyLiteDefaults(
             cached?.info ? { ...cached.info, filePath } : buildLiteSongInfo(filePath),
             filePath
@@ -511,10 +542,25 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           stripBeatThisDebugInfo(info)
           info.analysisOnly = true
           applyNoBpmBeatGridResult(info)
+          if (!shouldPersist()) return
           await LibraryCacheDb.upsertExternalAnalysisCacheEntry(externalContext, stat, info)
         }
       }
 
+      if (!shouldPersist()) return
+      const existing = deps.doneByPath.get(normalizedPath)
+      deps.doneByPath.set(normalizedPath, {
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        keyText: existing?.keyText,
+        keyAnalysisAlgorithmVersion: existing?.keyAnalysisAlgorithmVersion,
+        beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION,
+        beatGridStatus: BEAT_GRID_STATUS_NO_BPM,
+        energyScore: existing?.energyScore,
+        energyAlgorithmVersion: existing?.energyAlgorithmVersion,
+        songStructure: existing?.songStructure,
+        hasWaveform: existing?.hasWaveform
+      })
       const payload: BpmAnalysisResult = {
         filePath,
         beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION,
@@ -522,6 +568,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       }
       deps.events.emit('bpm-updated', payload)
     } catch (error) {
+      if (!shouldPersist()) return
       if (isMissingFileError(error)) {
         await cleanupMissingPersistTarget(normalizedPath, filePath)
         return
@@ -592,7 +639,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
 
   const persistWaveform = createPersistWaveform({
     doneByPath: deps.doneByPath,
-    events: deps.events,
     ensureSongCacheEntry,
     cleanupMissingPersistTarget,
     isMissingFileError
@@ -600,6 +646,8 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
 
   const prepareJob = async (job: KeyAnalysisJob): Promise<boolean> => {
     const filePath = job.filePath
+    const forceAnalysis = job.forceAnalysis === true
+    job.cachedUnifiedDisplayWaveformData = undefined
     let stat: { size: number; mtimeMs: number }
     let listRootResolved = false
     let externalCacheResolved = false
@@ -627,20 +675,25 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         needsStructure
       })
     const applyJobNeeds = () => {
+      if (!needsStructure) {
+        job.cachedUnifiedDisplayWaveformData = undefined
+      }
       Object.assign(job, { needsKey, needsBpm, needsWaveform, needsEnergy, needsStructure })
     }
-    const resolveCurrentEnergy = (
+    const resolveUsableEnergy = (
       info: { energyScore?: unknown; energyAlgorithmVersion?: unknown } | null | undefined
     ) => {
-      if (!hasCurrentSongEnergyAnalysis(info)) return null
+      if (!hasUsableSongEnergyAnalysis(info)) return null
       const energyScore = normalizeSongEnergyScore(info?.energyScore)
       if (energyScore === undefined) return null
+      const version = Number(info?.energyAlgorithmVersion)
       return {
         energyScore,
-        energyAlgorithmVersion: CURRENT_SONG_ENERGY_ALGORITHM_VERSION
+        energyAlgorithmVersion:
+          Number.isFinite(version) && version > 0 ? Math.floor(version) : undefined
       }
     }
-    const resolveCurrentStructure = (
+    const resolveUsableStructure = (
       info:
         | {
             songStructure?: unknown
@@ -652,7 +705,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         | null
         | undefined
     ) =>
-      hasCurrentSongStructureAnalysis(info)
+      hasUsableSongStructureAnalysis(info)
         ? normalizeSongStructureAnalysis(info?.songStructure)
         : undefined
     const hasCachedStructureGrid = () =>
@@ -677,43 +730,33 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     needsBpm = true
     needsWaveform = true
     needsEnergy = true
-    needsStructure = true
+    needsStructure = job.includeStructure !== false
     const done = deps.doneByPath.get(job.normalizedPath)
     if (done && done.size === stat.size && Math.abs(done.mtimeMs - stat.mtimeMs) < 1) {
       doneEntryHit = true
-      const hasDoneBpm = isValidBpm(done.bpm)
-      const hasDoneFirstBeatMs = isValidFirstBeatMs(done.firstBeatMs)
-      const hasDoneBarBeatOffset = isValidBarBeatOffset(done.barBeatOffset)
-      const doneBeatGridMap = normalizeSongBeatGridMap(done.beatGridMap)
-      const hasDoneCurrentKeyAlgorithm = shouldAcceptKeyAnalysisCacheVersion(done)
-      const hasDoneCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(done)
-      const hasDoneNoBpm = hasCurrentNoBpmBeatGridResult(done)
-      const hasDoneEnergy = hasCurrentSongEnergyAnalysis(done)
-      const hasDoneDynamicGrid = Boolean(doneBeatGridMap)
-      const hasDoneCompleteGrid =
-        hasDoneDynamicGrid ||
-        (hasDoneBpm &&
-          hasDoneFirstBeatMs &&
-          hasDoneBarBeatOffset &&
-          hasDoneCurrentBeatGridAlgorithm)
-      const doneStructure = resolveCurrentStructure(done)
-      if (isValidKeyText(done.keyText) && hasDoneCurrentKeyAlgorithm) {
+      const doneGrid = resolveUsableSongBeatGrid(done)
+      const hasDoneNoBpm = doneGrid.kind === 'no-bpm'
+      const hasDoneCompleteGrid = doneGrid.kind === 'dynamic' || doneGrid.kind === 'fixed'
+      const doneStructure = hasDoneCompleteGrid ? resolveUsableStructure(done) : undefined
+      if (!forceAnalysis && hasUsableKeyAnalysis({ key: done.keyText })) {
         needsKey = false
       }
-      if (hasDoneNoBpm || hasDoneCompleteGrid) {
-        job.cachedBpm = done.bpm
-        job.cachedFirstBeatMs = done.firstBeatMs
-        job.cachedBarBeatOffset = done.barBeatOffset
-        job.cachedBeatGridMap = doneBeatGridMap ?? undefined
+      if (hasDoneCompleteGrid) {
+        job.cachedBpm = doneGrid.bpm
+        job.cachedFirstBeatMs = doneGrid.firstBeatMs
+        job.cachedBarBeatOffset = doneGrid.barBeatOffset
+        job.cachedBeatGridMap = doneGrid.kind === 'dynamic' ? doneGrid.beatGridMap : undefined
+        if (!forceAnalysis) needsBpm = false
+      } else if (!forceAnalysis && hasDoneNoBpm) {
         needsBpm = false
       }
-      if (hasDoneNoBpm || doneStructure) {
+      if (!forceAnalysis && (hasDoneNoBpm || doneStructure)) {
         needsStructure = false
       }
-      if (done.hasWaveform) {
+      if (!forceAnalysis && done.hasWaveform) {
         needsWaveform = false
       }
-      if (hasDoneEnergy) {
+      if (!forceAnalysis && hasUsableSongEnergyAnalysis(done)) {
         energyCacheHit = true
         needsEnergy = false
       }
@@ -732,73 +775,62 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       if (cached && cached.size === stat.size && Math.abs(cached.mtimeMs - stat.mtimeMs) < 1) {
         songCacheHit = true
         const cachedKey = cached.info?.key
-        const cachedBpm = cached.info?.bpm
-        const cachedFirstBeatMs = cached.info?.firstBeatMs
-        const cachedBarBeatOffset = cached.info?.barBeatOffset
-        const cachedBeatGridMap = normalizeSongBeatGridMap(cached.info?.beatGridMap)
         const cachedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
           cached.info?.beatGridAlgorithmVersion
         )
         const cachedKeyAnalysisAlgorithmVersion = normalizeKeyAnalysisAlgorithmVersion(
           cached.info?.keyAnalysisAlgorithmVersion
         )
-        const hasCurrentKeyAnalysisAlgorithm = shouldAcceptKeyAnalysisCacheVersion(cached.info)
-        const hasKey = isValidKeyText(cachedKey) && hasCurrentKeyAnalysisAlgorithm
-        const hasBpm = isValidBpm(cachedBpm)
-        const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)
-        const hasBarBeatOffset = isValidBarBeatOffset(cachedBarBeatOffset)
-        const hasCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(cached.info)
-        const hasNoBpm = hasCurrentNoBpmBeatGridResult(cached.info)
-        const hasDynamicGrid = Boolean(cachedBeatGridMap)
-        const hasCompleteCurrentGrid =
-          hasDynamicGrid ||
-          (hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm)
-        const cachedEnergy = resolveCurrentEnergy(cached.info)
-        const cachedStructure = hasCompleteCurrentGrid
-          ? resolveCurrentStructure(cached.info)
-          : undefined
-        if (cachedEnergy) {
+        const hasKey = hasUsableKeyAnalysis(cached.info)
+        const cachedGrid = resolveUsableSongBeatGrid(cached.info)
+        const hasNoBpm = cachedGrid.kind === 'no-bpm'
+        const hasCompleteGrid = cachedGrid.kind === 'dynamic' || cachedGrid.kind === 'fixed'
+        const cachedEnergy = resolveUsableEnergy(cached.info)
+        const cachedStructure = hasCompleteGrid ? resolveUsableStructure(cached.info) : undefined
+        if (!forceAnalysis && cachedEnergy) {
           energyCacheHit = true
           needsEnergy = false
         }
-        if (hasNoBpm || cachedStructure) {
+        if (!forceAnalysis && (hasNoBpm || cachedStructure)) {
           needsStructure = false
         }
-        if (hasKey || hasCompleteCurrentGrid || hasNoBpm || cachedEnergy || cachedStructure) {
+        if (hasKey || hasCompleteGrid || hasNoBpm || cachedEnergy || cachedStructure) {
           deps.doneByPath.set(job.normalizedPath, {
             size: stat.size,
             mtimeMs: stat.mtimeMs,
             keyText: hasKey ? cachedKey : undefined,
             keyAnalysisAlgorithmVersion: hasKey ? cachedKeyAnalysisAlgorithmVersion : undefined,
-            bpm: hasCompleteCurrentGrid ? cachedBpm : undefined,
-            firstBeatMs: hasCompleteCurrentGrid ? cachedFirstBeatMs : undefined,
-            barBeatOffset: hasCompleteCurrentGrid
-              ? normalizeBarBeatOffset(cachedBarBeatOffset)
+            bpm: hasCompleteGrid ? cachedGrid.bpm : undefined,
+            firstBeatMs: hasCompleteGrid ? cachedGrid.firstBeatMs : undefined,
+            barBeatOffset: hasCompleteGrid
+              ? normalizeBarBeatOffset(cachedGrid.barBeatOffset)
               : undefined,
-            timeBasisOffsetMs: hasCompleteCurrentGrid
+            timeBasisOffsetMs: hasCompleteGrid
               ? normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs)
               : undefined,
-            beatGridAlgorithmVersion: hasCompleteCurrentGrid
+            beatGridAlgorithmVersion: hasCompleteGrid
               ? cachedBeatGridAlgorithmVersion
               : hasNoBpm
                 ? cachedBeatGridAlgorithmVersion
                 : undefined,
             beatGridStatus: hasNoBpm ? BEAT_GRID_STATUS_NO_BPM : undefined,
-            beatGridMap: hasDynamicGrid ? (cachedBeatGridMap ?? undefined) : undefined,
+            beatGridMap: cachedGrid.kind === 'dynamic' ? cachedGrid.beatGridMap : undefined,
             energyScore: cachedEnergy?.energyScore,
             energyAlgorithmVersion: cachedEnergy?.energyAlgorithmVersion,
             songStructure: cachedStructure,
             hasWaveform: false
           })
         }
-        if (needsKey && hasKey) {
+        if (!forceAnalysis && needsKey && hasKey) {
           needsKey = false
         }
-        if (needsBpm && (hasNoBpm || hasCompleteCurrentGrid)) {
-          job.cachedBpm = cachedBpm
-          job.cachedFirstBeatMs = cachedFirstBeatMs
-          job.cachedBarBeatOffset = cachedBarBeatOffset
-          job.cachedBeatGridMap = cachedBeatGridMap ?? undefined
+        if (hasCompleteGrid) {
+          job.cachedBpm = cachedGrid.bpm
+          job.cachedFirstBeatMs = cachedGrid.firstBeatMs
+          job.cachedBarBeatOffset = cachedGrid.barBeatOffset
+          job.cachedBeatGridMap = cachedGrid.kind === 'dynamic' ? cachedGrid.beatGridMap : undefined
+          if (!forceAnalysis) needsBpm = false
+        } else if (!forceAnalysis && needsBpm && hasNoBpm) {
           needsBpm = false
         }
         const hasWaveform = await LibraryCacheDb.hasWaveformSurfaceCacheEntryByMeta(
@@ -827,23 +859,15 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             songStructure: existingDone?.songStructure,
             hasWaveform: true
           })
-          needsWaveform = false
-          if (needsStructure && hasCompleteCurrentGrid && !existingDone?.songStructure) {
+          if (!forceAnalysis) needsWaveform = false
+          if (!forceAnalysis && (needsEnergy || (needsStructure && hasCompleteGrid))) {
             const cachedUnifiedWaveform = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
               listRoot,
               filePath,
               stat
             )
-            const cachedUnifiedStructure = buildSongStructureAnalysis({
-              waveformData: cachedUnifiedWaveform,
-              bpm: cachedBpm,
-              firstBeatMs: cachedFirstBeatMs,
-              barBeatOffset: normalizeBarBeatOffset(cachedBarBeatOffset),
-              beatGridMap: cachedBeatGridMap ?? null
-            })
-            if (cachedUnifiedStructure) {
-              await persistSongStructure(filePath, cachedUnifiedStructure)
-              needsStructure = false
+            if (cachedUnifiedWaveform) {
+              job.cachedUnifiedDisplayWaveformData = cachedUnifiedWaveform
             }
           }
         }
@@ -862,41 +886,28 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         if (cached) {
           songCacheHit = true
           const cachedKey = cached.info?.key
-          const cachedBpm = cached.info?.bpm
-          const cachedFirstBeatMs = cached.info?.firstBeatMs
-          const cachedBarBeatOffset = cached.info?.barBeatOffset
-          const cachedBeatGridMap = normalizeSongBeatGridMap(cached.info?.beatGridMap)
           const cachedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
             cached.info?.beatGridAlgorithmVersion
           )
           const cachedKeyAnalysisAlgorithmVersion = normalizeKeyAnalysisAlgorithmVersion(
             cached.info?.keyAnalysisAlgorithmVersion
           )
-          const hasCurrentKeyAnalysisAlgorithm = shouldAcceptKeyAnalysisCacheVersion(cached.info)
-          const hasKey = isValidKeyText(cachedKey) && hasCurrentKeyAnalysisAlgorithm
-          const hasBpm = isValidBpm(cachedBpm)
-          const hasFirstBeatMs = isValidFirstBeatMs(cachedFirstBeatMs)
-          const hasBarBeatOffset = isValidBarBeatOffset(cachedBarBeatOffset)
-          const hasCurrentBeatGridAlgorithm = shouldAcceptBeatGridCacheVersion(cached.info)
-          const hasNoBpm = hasCurrentNoBpmBeatGridResult(cached.info)
-          const hasDynamicGrid = Boolean(cachedBeatGridMap)
-          const hasCompleteCurrentGrid =
-            hasDynamicGrid ||
-            (hasBpm && hasFirstBeatMs && hasBarBeatOffset && hasCurrentBeatGridAlgorithm)
-          const cachedEnergy = resolveCurrentEnergy(cached.info)
-          const cachedStructure = hasCompleteCurrentGrid
-            ? resolveCurrentStructure(cached.info)
-            : undefined
-          if (cachedEnergy) {
+          const hasKey = hasUsableKeyAnalysis(cached.info)
+          const cachedGrid = resolveUsableSongBeatGrid(cached.info)
+          const hasNoBpm = cachedGrid.kind === 'no-bpm'
+          const hasCompleteGrid = cachedGrid.kind === 'dynamic' || cachedGrid.kind === 'fixed'
+          const cachedEnergy = resolveUsableEnergy(cached.info)
+          const cachedStructure = hasCompleteGrid ? resolveUsableStructure(cached.info) : undefined
+          if (!forceAnalysis && cachedEnergy) {
             energyCacheHit = true
             needsEnergy = false
           }
-          if (hasNoBpm || cachedStructure) {
+          if (!forceAnalysis && (hasNoBpm || cachedStructure)) {
             needsStructure = false
           }
           if (
             hasKey ||
-            hasCompleteCurrentGrid ||
+            hasCompleteGrid ||
             hasNoBpm ||
             cached.hasWaveform ||
             cachedEnergy ||
@@ -907,38 +918,41 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
               mtimeMs: stat.mtimeMs,
               keyText: hasKey ? cachedKey : undefined,
               keyAnalysisAlgorithmVersion: hasKey ? cachedKeyAnalysisAlgorithmVersion : undefined,
-              bpm: hasCompleteCurrentGrid ? cachedBpm : undefined,
-              firstBeatMs: hasCompleteCurrentGrid ? cachedFirstBeatMs : undefined,
-              barBeatOffset: hasCompleteCurrentGrid
-                ? normalizeBarBeatOffset(cachedBarBeatOffset)
+              bpm: hasCompleteGrid ? cachedGrid.bpm : undefined,
+              firstBeatMs: hasCompleteGrid ? cachedGrid.firstBeatMs : undefined,
+              barBeatOffset: hasCompleteGrid
+                ? normalizeBarBeatOffset(cachedGrid.barBeatOffset)
                 : undefined,
-              timeBasisOffsetMs: hasCompleteCurrentGrid
+              timeBasisOffsetMs: hasCompleteGrid
                 ? normalizeTimeBasisOffsetMs(cached.info?.timeBasisOffsetMs)
                 : undefined,
-              beatGridAlgorithmVersion: hasCompleteCurrentGrid
+              beatGridAlgorithmVersion: hasCompleteGrid
                 ? cachedBeatGridAlgorithmVersion
                 : hasNoBpm
                   ? cachedBeatGridAlgorithmVersion
                   : undefined,
               beatGridStatus: hasNoBpm ? BEAT_GRID_STATUS_NO_BPM : undefined,
-              beatGridMap: hasDynamicGrid ? (cachedBeatGridMap ?? undefined) : undefined,
+              beatGridMap: cachedGrid.kind === 'dynamic' ? cachedGrid.beatGridMap : undefined,
               energyScore: cachedEnergy?.energyScore,
               energyAlgorithmVersion: cachedEnergy?.energyAlgorithmVersion,
               songStructure: cachedStructure,
               hasWaveform: cached.hasWaveform
             })
           }
-          if (needsKey && hasKey) {
+          if (!forceAnalysis && needsKey && hasKey) {
             needsKey = false
           }
-          if (needsBpm && (hasNoBpm || hasCompleteCurrentGrid)) {
-            job.cachedBpm = cachedBpm
-            job.cachedFirstBeatMs = cachedFirstBeatMs
-            job.cachedBarBeatOffset = cachedBarBeatOffset
-            job.cachedBeatGridMap = cachedBeatGridMap ?? undefined
+          if (hasCompleteGrid) {
+            job.cachedBpm = cachedGrid.bpm
+            job.cachedFirstBeatMs = cachedGrid.firstBeatMs
+            job.cachedBarBeatOffset = cachedGrid.barBeatOffset
+            job.cachedBeatGridMap =
+              cachedGrid.kind === 'dynamic' ? cachedGrid.beatGridMap : undefined
+            if (!forceAnalysis) needsBpm = false
+          } else if (!forceAnalysis && needsBpm && hasNoBpm) {
             needsBpm = false
           }
-          if (cached.hasWaveform) {
+          if (!forceAnalysis && cached.hasWaveform) {
             waveformCacheHit = true
             needsWaveform = false
           }
@@ -962,10 +976,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         needsEnergy = false
         needsStructure = false
       }
-    }
-
-    if (job.includeStructure === false) {
-      needsStructure = false
     }
 
     if (job.waveformOnly) {

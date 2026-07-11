@@ -1,6 +1,7 @@
 import {
   BEATS_PER_BAR,
   CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
+  CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
   PHRASE_BARS,
   clamp,
   clamp01,
@@ -65,6 +66,7 @@ export const buildWholeSongStructureAnalysis = (
     resolveDynamicEndBar(durationSec, barLines) ?? resolveFixedEndBar(durationSec, grid)
 
   return {
+    formatVersion: CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
     algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
     source: 'algorithmic',
     durationSec: toFixedNumber(durationSec, 3),

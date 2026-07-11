@@ -167,7 +167,8 @@ function decodeUnifiedDisplayWaveformCacheData(
   if (!meta || !payload) return null
   if (
     meta.cacheVersion !== UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION ||
-    meta.parameterVersion !== UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION
+    !Number.isFinite(meta.parameterVersion) ||
+    meta.parameterVersion <= 0
   ) {
     return null
   }
@@ -317,7 +318,8 @@ export async function loadUnifiedDisplayWaveformCacheData(
       meta.size !== stat.size ||
       Math.abs(meta.mtimeMs - stat.mtimeMs) > 1 ||
       meta.cacheVersion !== UNIFIED_DISPLAY_WAVEFORM_CACHE_VERSION ||
-      meta.parameterVersion !== UNIFIED_DISPLAY_WAVEFORM_PARAMETER_VERSION
+      !Number.isFinite(meta.parameterVersion) ||
+      meta.parameterVersion <= 0
     ) {
       await removeUnifiedDisplayWaveformCacheEntry(listRoot, filePath)
       return null

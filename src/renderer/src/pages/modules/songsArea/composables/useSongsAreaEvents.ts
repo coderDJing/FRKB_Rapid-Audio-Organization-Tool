@@ -886,6 +886,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
     if (!songListUUID) {
       songsAreaState.songInfoArr = []
+      songsAreaState.missingWaveformFilePaths = []
       songsAreaState.totalSongCount = 0
       originalSongInfoArr.value = []
       return
