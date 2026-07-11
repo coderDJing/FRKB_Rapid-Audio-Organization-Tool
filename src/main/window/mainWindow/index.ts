@@ -554,6 +554,7 @@ function createWindow() {
     ipcMain.removeAllListeners('toggle-close')
     ipcMain.removeAllListeners('checkForUpdates')
     ipcMain.removeHandler('changeGlobalShortcut')
+    ipcMain.removeHandler('playerGlobalShortcut:update')
     ipcMain.removeHandler('reSelectLibrary')
     ipcMain.removeAllListeners('startExternalSongDrag')
     globalShortcut.unregister(store.settingConfig.globalCallShortcut)
