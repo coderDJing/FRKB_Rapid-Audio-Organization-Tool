@@ -711,6 +711,25 @@ jobs:
           sed -i.bak '/^electron_mirror=/d' .npmrc && rm -f .npmrc.bak
           npx electron-builder --mac --universal --publish never
 
+      - name: Verify macOS RC signing mode
+        run: |
+          set -euo pipefail
+          APP_DIR="$(find dist/mac-universal -maxdepth 1 -name '*.app' -type d | head -n 1 || true)"
+          if [ -z "$APP_DIR" ]; then
+            echo "macOS app bundle not found under dist/mac-universal"
+            exit 1
+          fi
+          for binary_path in \
+            "$APP_DIR/Contents/MacOS/FRKB" \
+            "$APP_DIR/Contents/Frameworks/Electron Framework.framework/Versions/A/Electron Framework"; do
+            signature_info="$(codesign -dvvv "$binary_path" 2>&1)"
+            if grep -q 'flags=.*runtime' <<<"$signature_info"; then
+              echo "Unexpected Hardened Runtime signature: $binary_path"
+              echo "$signature_info"
+              exit 1
+            fi
+          done
+
       - name: Verify packaged Demucs resources (macOS)
         run: |
           set -euo pipefail

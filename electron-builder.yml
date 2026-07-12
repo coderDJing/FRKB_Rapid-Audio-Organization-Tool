@@ -1,5 +1,6 @@
 appId: com.frkbByCoderDjing.app
 productName: FRKB
+afterSign: build/afterSign.cjs
 directories:
   buildResources: build
 files:
