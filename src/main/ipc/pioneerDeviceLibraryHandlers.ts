@@ -16,7 +16,6 @@ import {
   streamPioneerPreviewWaveformsByDrivePath
 } from '../services/pioneerDeviceLibrary/waveform'
 import { preparePioneerUsbPlaylistAnalysis } from '../services/pioneerDeviceLibrary/playlistAnalysis'
-import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 export function registerPioneerDeviceLibraryHandlers() {
   const mimeFromExt = (ext: string) =>
@@ -65,7 +64,6 @@ export function registerPioneerDeviceLibraryHandlers() {
         tracks?: Array<{ filePath?: string }>
       }
     ) => {
-      assertLibraryMergeMutationAllowed()
       return await preparePioneerUsbPlaylistAnalysis({
         rootPath: String(payload?.rootPath || '').trim(),
         tracks: Array.isArray(payload?.tracks) ? payload.tracks : []

@@ -5,13 +5,9 @@ import {
   listAvailableTargetFormats,
   filterOutFilesWithExistingConvertedCopies
 } from '../../services/audioConversion'
-import { isLibraryMergeMutationLocked } from '../../services/libraryMerge/runtime'
 
 export function registerAudioConversionHandlers(getWindow: () => BrowserWindow | null) {
   ipcMain.handle('audio:convert:start', async (_e, payload) => {
-    if (isLibraryMergeMutationLocked()) {
-      throw new Error('LIBRARY_MERGE_IN_PROGRESS')
-    }
     return await startAudioConversion(getWindow(), payload)
   })
 

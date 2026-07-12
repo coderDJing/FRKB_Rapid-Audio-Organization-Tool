@@ -62,10 +62,6 @@ type StartPayload = {
 const jobIdToChildren = new Map<string, child_process.ChildProcess>()
 const cancelledJobIds = new Set<string>()
 
-export function isAudioConversionBusy(): boolean {
-  return jobIdToChildren.size > 0
-}
-
 const spawnFfmpegForJob = (
   ffmpegPath: string,
   args: string[],

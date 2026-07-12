@@ -1,27 +1,5 @@
 {
   "migration": {
-    "mergeLibrary": "合并 FRKB 库",
-    "mergePreparing": "正在准备合并计划",
-    "mergeFiles": "个文件",
-    "mergeLockedHint": "合并期间已锁定当前库，请不要关闭 FRKB 或执行其他操作。",
-    "mergePhase": {
-      "preflight": "正在检查 FRKB 库",
-      "staging": "正在复制来源库",
-      "promoting": "正在整理合并内容",
-      "committing": "正在保存合并结果",
-      "deleting-source": "正在清理来源库",
-      "completed": "FRKB 库合并完成",
-      "failed": "FRKB 库合并失败"
-    },
-    "mergeDescription": {
-      "preflight": "正在校验目录结构、数据库一致性和磁盘可用空间。",
-      "staging": "文件先写入隐藏暂存区，当前库尚未提交修改。",
-      "promoting": "正在把已校验的文件提升到当前库。",
-      "committing": "正在以单次数据库事务写入歌单、分析数据和指纹。",
-      "deleting-source": "当前库已合并成功，正在按你的选择清理来源库。",
-      "completed": "正在刷新当前库。",
-      "failed": "当前库未提交不完整的合并内容。"
-    },
     "legacyTitle": "库升级",
     "legacyInProgress": "检测到上次升级未完成，将重新执行。",
     "legacyRequired": "检测到旧库，需要升级后继续使用。",

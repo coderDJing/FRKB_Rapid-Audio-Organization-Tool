@@ -69,18 +69,6 @@ export const isMixtapeWindowOpenByPlaylistId = (playlistId: string): boolean => 
   return false
 }
 
-export const isAnyMixtapeWindowOpen = (): boolean => {
-  for (const [key, target] of mixtapeWindows.entries()) {
-    if (target.isDestroyed()) {
-      mixtapeWindows.delete(key)
-      payloadByKey.delete(key)
-      continue
-    }
-    return true
-  }
-  return false
-}
-
 const resolveWindowKey = (payload: MixtapeWindowPayload) => {
   return (
     (payload.playlistId || '').trim() ||

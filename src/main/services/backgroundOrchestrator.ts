@@ -29,24 +29,6 @@ let tickTimer: ReturnType<typeof setInterval> | null = null
 let started = false
 let flushInProgress = false
 let flushRequested = false
-let executionPaused = false
-
-export const getBackgroundTaskExecutionStatus = () => ({
-  pending: pendingRequestMap.size,
-  running: runningState !== null,
-  paused: executionPaused
-})
-
-export const pauseBackgroundTaskExecution = (): (() => void) => {
-  executionPaused = true
-  let released = false
-  return () => {
-    if (released) return
-    released = true
-    executionPaused = false
-    void flushPendingRequests()
-  }
-}
 
 const pickNextRequest = (): BackgroundTaskRequest | null => {
   if (pendingRequestMap.size === 0) return null
@@ -90,7 +72,7 @@ const runRequest = async (request: BackgroundTaskRequest) => {
 }
 
 const flushPendingRequests = async () => {
-  if (!started || executionPaused) return
+  if (!started) return
   if (flushInProgress) {
     flushRequested = true
     return
@@ -163,5 +145,4 @@ export const stopBackgroundOrchestrator = () => {
   runningState = null
   flushInProgress = false
   flushRequested = false
-  executionPaused = false
 }

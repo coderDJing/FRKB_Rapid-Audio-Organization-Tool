@@ -175,10 +175,7 @@ const defaultMenuConfigs = computed<MenuConfig[]>(() => [
   },
   {
     name: 'menu.migration',
-    subMenu: [
-      [{ name: 'fingerprints.exportDatabase' }, { name: 'fingerprints.importDatabase' }],
-      [{ name: 'migration.mergeLibrary', action: 'library-merge' }]
-    ]
+    subMenu: [[{ name: 'fingerprints.exportDatabase' }, { name: 'fingerprints.importDatabase' }]]
   },
   {
     name: 'menu.cloudSync',
@@ -340,10 +337,6 @@ const menuButtonClick = async (item: MenuItem) => {
   }
   if (item.action === 'open-log') {
     window.electron.ipcRenderer.send('openLog')
-    return
-  }
-  if (item.action === 'library-merge') {
-    await window.electron.ipcRenderer.invoke('library-merge:run-from-menu')
     return
   }
   if (item.action === 'download-analysis-runtime') {

@@ -44,10 +44,6 @@ type CancelState = {
 
 const cancelStates = new Map<string, CancelState>()
 
-export function isPlaylistBatchRenameBusy(): boolean {
-  return cancelStates.size > 0
-}
-
 const EXTRA_DETAIL_TOKENS = new Set<IBatchRenameTemplateToken>([
   'albumArtist',
   'year',

@@ -153,10 +153,6 @@ const isCancelledError = (err: unknown) => {
 
 const cancelTokens = new Map<string, { cancelled: boolean }>()
 
-export function isMetadataAutoFillBusy(): boolean {
-  return cancelTokens.size > 0
-}
-
 function createCancelToken(progressId: string) {
   const token = { cancelled: false }
   cancelTokens.set(progressId, token)

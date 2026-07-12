@@ -24,7 +24,6 @@ import {
   resolveRawWaveformInitialBurstFrames,
   resolveRawWaveformInitialChunkFrames
 } from './mixtapeRawWaveformStreamSizing'
-import { isLibraryMergeMutationLocked } from '../services/libraryMerge/runtime'
 
 const resolveRequestedRawRate = (value: unknown) => {
   const parsed = Number(value)
@@ -782,9 +781,6 @@ export function registerMixtapeRawWaveformHandlers() {
         cacheOnly?: boolean
       }
     ) => {
-      if (isLibraryMergeMutationLocked()) {
-        return { items: [] as Array<{ filePath: string; data: MixtapeRawWaveformData | null }> }
-      }
       const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
       const normalizedPaths = filePaths.filter(
         (filePath) => typeof filePath === 'string' && filePath.trim().length > 0
@@ -915,7 +911,6 @@ export function registerMixtapeRawWaveformHandlers() {
         peaksOnly?: boolean
       }
     ) => {
-      if (isLibraryMergeMutationLocked()) return
       const requestId = String(payload?.requestId || '').trim()
       const filePath = String(payload?.filePath || '').trim()
       if (!requestId || !filePath) return

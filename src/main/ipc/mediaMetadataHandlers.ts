@@ -36,7 +36,6 @@ import {
   ISimilarTracksBatchRequest,
   ISimilarTrackBlockTarget
 } from '../../types/globals'
-import { isLibraryMergeMutationLocked } from '../services/libraryMerge/runtime'
 
 type MetadataUpdateError = {
   message?: unknown
@@ -69,14 +68,6 @@ export function registerMediaMetadataHandlers() {
   })
 
   ipcMain.handle('audio:metadata:update', async (_e, payload: ITrackMetadataUpdatePayload) => {
-    if (isLibraryMergeMutationLocked()) {
-      return {
-        success: false,
-        message: 'library-merge-in-progress',
-        errorCode: 'LIBRARY_MERGE_IN_PROGRESS',
-        errorDetail: ''
-      }
-    }
     try {
       const result = await svcUpdateTrackMetadata(payload)
       return {
@@ -103,9 +94,6 @@ export function registerMediaMetadataHandlers() {
   })
 
   ipcMain.handle('metadata:autoFill', async (_e, payload: IMetadataAutoFillRequest) => {
-    if (isLibraryMergeMutationLocked()) {
-      throw new Error('LIBRARY_MERGE_IN_PROGRESS')
-    }
     return await autoFillTrackMetadata(
       payload && Array.isArray(payload.filePaths) ? payload : { filePaths: [] }
     )

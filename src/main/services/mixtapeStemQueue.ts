@@ -28,7 +28,6 @@ import { findSongListRoot } from './cacheMaintenance'
 import { computeLibraryStemSourceSignature, getLibraryRootAbs } from './libraryStemAssetStorage'
 import { runStemSeparation } from './mixtapeStemSeparationRun'
 import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
-import { isLibraryMergeMutationLocked } from './libraryMerge/mutationGate'
 import { getCachedStemDeviceProbeSnapshot, probeDemucsDevices } from './mixtapeStemSeparationProbe'
 import type {
   MixtapeStemComputeDevice,
@@ -783,9 +782,6 @@ const resolveLibraryRootForFile = async (filePath: string): Promise<string> => {
 export async function enqueueMixtapeStemJobs(
   params: MixtapeStemEnqueueParams
 ): Promise<MixtapeStemEnqueueResult> {
-  if (isLibraryMergeMutationLocked()) {
-    return { total: 0, queued: 0, merged: 0, readyFromCache: 0, skipped: 0 }
-  }
   const playlistId = normalizePlaylistId(params?.playlistId)
   const stemMode = normalizeMixtapeStemMode(params?.stemMode)
   const force = !!params?.force

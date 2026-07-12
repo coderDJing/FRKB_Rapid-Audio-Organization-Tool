@@ -57,7 +57,6 @@ import type {
   RekordboxDesktopCopyTracksToStorageResponse
 } from '../../shared/rekordboxDesktopPlaylist'
 import type { RekordboxDesktopCleanupCopiedTracksRequest } from '../../shared/rekordboxDesktopPlaylist'
-import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 export function registerRekordboxDesktopLibraryHandlers() {
   const mimeFromExt = (ext: string) =>
@@ -111,7 +110,6 @@ export function registerRekordboxDesktopLibraryHandlers() {
         tracks?: Array<{ filePath?: string }>
       }
     ) => {
-      assertLibraryMergeMutationAllowed()
       return await prepareRekordboxExternalPlaylistAnalysis({
         sourceKind: 'rekordbox-desktop',
         sourceId: String(payload?.sourceId || '').trim(),

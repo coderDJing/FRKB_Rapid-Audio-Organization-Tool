@@ -25,8 +25,6 @@ import {
   isSupportedPlaylistTrackNumberListRoot
 } from '../../services/playlistTrackNumbers'
 import { updateSetItemFilePathReferences } from '../../setListDb'
-import { isLibraryMergeMutationLocked } from '../../services/libraryMerge/runtime'
-import { beginImportSongsActivity } from '../../services/libraryMerge/operationActivity'
 
 type ImportItem = md5 | string
 
@@ -45,242 +43,235 @@ export function registerImportHandlers(
   getWindow: () => BrowserWindow | null
 ) {
   ipcMain.on('startImportSongs', async (_e, formData: IImportSongsFormData) => {
-    if (isLibraryMergeMutationLocked()) return
-    const finishImportActivity = beginImportSongsActivity()
-    try {
-      const importStartAt = Date.now()
-      const progressId = `import_${Date.now()}`
-      sendProgress('fingerprints.scanningFiles', 0, 1, true, progressId)
-      let filePaths = formData.selectedPaths || formData.filePaths || formData.folderPath
-      if (filePaths === undefined) {
-        filePaths = []
-      }
-      let songFileUrls: string[] = []
-      for (const filePath of filePaths) {
-        const stats = await fs.stat(filePath)
-        if (stats.isFile()) {
-          const ext = path.extname(filePath).toLowerCase()
-          if (store.settingConfig.audioExt.includes(ext)) {
-            songFileUrls.push(filePath)
-          }
-        } else if (stats.isDirectory()) {
-          const files = await collectFilesWithExtensions(filePath, store.settingConfig.audioExt)
-          songFileUrls = songFileUrls.concat(files)
+    const importStartAt = Date.now()
+    const progressId = `import_${Date.now()}`
+    sendProgress('fingerprints.scanningFiles', 0, 1, true, progressId)
+    let filePaths = formData.selectedPaths || formData.filePaths || formData.folderPath
+    if (filePaths === undefined) {
+      filePaths = []
+    }
+    let songFileUrls: string[] = []
+    for (const filePath of filePaths) {
+      const stats = await fs.stat(filePath)
+      if (stats.isFile()) {
+        const ext = path.extname(filePath).toLowerCase()
+        if (store.settingConfig.audioExt.includes(ext)) {
+          songFileUrls.push(filePath)
         }
+      } else if (stats.isDirectory()) {
+        const files = await collectFilesWithExtensions(filePath, store.settingConfig.audioExt)
+        songFileUrls = songFileUrls.concat(files)
       }
-      sendProgress('fingerprints.scanningFiles', 1, 1, true, progressId)
-      if (songFileUrls.length === 0) {
-        getWindow()?.webContents.send('noAudioFileWasScanned', progressId)
-        return
-      }
-      songFileUrls = Array.from(new Set(songFileUrls))
-      let { isComparisonSongFingerprint, isPushSongFingerprintLibrary, isDeleteSourceFile } =
-        formData
-      const incomingDedupMode = formData.deduplicateMode
-      const dedupMode: 'library' | 'batch' | 'none' =
-        incomingDedupMode ?? (isComparisonSongFingerprint ? 'library' : 'none')
-      const needAnalyze = dedupMode !== 'none' || isPushSongFingerprintLibrary
-      const songFingerprintListLengthBefore = store.songFingerprintList.length
-      let toBeDealSongs: ImportItem[] = []
-      let delList: string[] = []
-      let songsAnalyseResult: md5[] = []
-      let errorSongsAnalyseResult: md5[] = []
-      let alreadyExistInSongFingerprintList = new Set()
-      if (needAnalyze) {
-        sendProgress('fingerprints.analyzeInit', 0, songFileUrls.length, false, progressId)
-        const analyseResult = await getSongsAnalyseResult(songFileUrls, (resultLength: number) =>
-          sendProgress(
-            'fingerprints.analyzingFingerprints',
-            resultLength,
-            songFileUrls.length,
-            false,
-            progressId
-          )
+    }
+    sendProgress('fingerprints.scanningFiles', 1, 1, true, progressId)
+    if (songFileUrls.length === 0) {
+      getWindow()?.webContents.send('noAudioFileWasScanned', progressId)
+      return
+    }
+    songFileUrls = Array.from(new Set(songFileUrls))
+    let { isComparisonSongFingerprint, isPushSongFingerprintLibrary, isDeleteSourceFile } = formData
+    const incomingDedupMode = formData.deduplicateMode
+    const dedupMode: 'library' | 'batch' | 'none' =
+      incomingDedupMode ?? (isComparisonSongFingerprint ? 'library' : 'none')
+    const needAnalyze = dedupMode !== 'none' || isPushSongFingerprintLibrary
+    const songFingerprintListLengthBefore = store.songFingerprintList.length
+    let toBeDealSongs: ImportItem[] = []
+    let delList: string[] = []
+    let songsAnalyseResult: md5[] = []
+    let errorSongsAnalyseResult: md5[] = []
+    let alreadyExistInSongFingerprintList = new Set()
+    if (needAnalyze) {
+      sendProgress('fingerprints.analyzeInit', 0, songFileUrls.length, false, progressId)
+      const analyseResult = await getSongsAnalyseResult(songFileUrls, (resultLength: number) =>
+        sendProgress(
+          'fingerprints.analyzingFingerprints',
+          resultLength,
+          songFileUrls.length,
+          false,
+          progressId
         )
-        songsAnalyseResult = analyseResult.songsAnalyseResult
-        errorSongsAnalyseResult = analyseResult.errorSongsAnalyseResult
-        if (dedupMode === 'library') {
-          const uniqueSongs = new Map()
-          delList = songsAnalyseResult
-            .filter((song) => {
-              if (store.songFingerprintList.includes(song.sha256_Hash)) {
-                alreadyExistInSongFingerprintList.add(song.sha256_Hash)
-                return true
-              }
-              return false
-            })
-            .map((song) => song.file_path)
-          const duplicates: string[] = []
-          songsAnalyseResult
-            .filter((song) => !delList.includes(song.file_path))
-            .forEach((song) => {
-              if (uniqueSongs.has(song.sha256_Hash)) {
-                duplicates.push(song.file_path)
-              } else {
-                uniqueSongs.set(song.sha256_Hash, song)
-              }
-            })
-          delList = delList.concat(duplicates)
-          if (isDeleteSourceFile && delList.length > 0) {
-            await moveToRecycleBin(delList, progressId, getWindow, sendProgress)
-          }
-          toBeDealSongs = Array.from(uniqueSongs.values())
-        } else if (dedupMode === 'batch') {
-          const uniqueSongs = new Map()
-          const duplicates: string[] = []
-          songsAnalyseResult.forEach((song) => {
+      )
+      songsAnalyseResult = analyseResult.songsAnalyseResult
+      errorSongsAnalyseResult = analyseResult.errorSongsAnalyseResult
+      if (dedupMode === 'library') {
+        const uniqueSongs = new Map()
+        delList = songsAnalyseResult
+          .filter((song) => {
+            if (store.songFingerprintList.includes(song.sha256_Hash)) {
+              alreadyExistInSongFingerprintList.add(song.sha256_Hash)
+              return true
+            }
+            return false
+          })
+          .map((song) => song.file_path)
+        const duplicates: string[] = []
+        songsAnalyseResult
+          .filter((song) => !delList.includes(song.file_path))
+          .forEach((song) => {
             if (uniqueSongs.has(song.sha256_Hash)) {
               duplicates.push(song.file_path)
             } else {
               uniqueSongs.set(song.sha256_Hash, song)
             }
           })
-          delList = duplicates
-          if (isDeleteSourceFile && delList.length > 0) {
-            await moveToRecycleBin(delList, progressId, getWindow, sendProgress)
-          }
-          toBeDealSongs = Array.from(uniqueSongs.values())
-        } else if (isPushSongFingerprintLibrary) {
-          toBeDealSongs = songsAnalyseResult
+        delList = delList.concat(duplicates)
+        if (isDeleteSourceFile && delList.length > 0) {
+          await moveToRecycleBin(delList, progressId, getWindow, sendProgress)
         }
-      } else {
-        toBeDealSongs = songFileUrls
-      }
-
-      const targetSongList = resolveLibraryPath(formData.songListPath)
-      const tasks: Array<() => Promise<FileTaskResult>> = []
-      const fingerprintsToAdd: string[] = []
-      const isCuratedTarget = (() => {
-        const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/')
-        const targetPath = normalizeRelativePath(targetSongList.mappedPath)
-        const curatedRoot = normalizeRelativePath(
-          path.join('library', getCoreFsDirName('CuratedLibrary'))
-        )
-        return targetPath === curatedRoot || targetPath.startsWith(`${curatedRoot}/`)
-      })()
-      for (const item of toBeDealSongs) {
-        const sourceFilePath = isMd5Item(item) ? item.file_path : item
-        const matchResult = sourceFilePath.match(/[^\\/]+$/)
-        const filename = matchResult ? matchResult[0] : 'unknown_file'
-        const targetPath = resolveLibraryChildPath(targetSongList.absPath, filename)
-        const sha = isMd5Item(item) ? item.sha256_Hash : undefined
-        tasks.push(async () => {
-          const finalPath = await moveOrCopyItemWithCheckIsExist(
-            sourceFilePath,
-            targetPath,
-            isDeleteSourceFile
-          )
-          if (isDeleteSourceFile) {
-            updateSetItemFilePathReferences(sourceFilePath, finalPath)
+        toBeDealSongs = Array.from(uniqueSongs.values())
+      } else if (dedupMode === 'batch') {
+        const uniqueSongs = new Map()
+        const duplicates: string[] = []
+        songsAnalyseResult.forEach((song) => {
+          if (uniqueSongs.has(song.sha256_Hash)) {
+            duplicates.push(song.file_path)
+          } else {
+            uniqueSongs.set(song.sha256_Hash, song)
           }
-          if (isPushSongFingerprintLibrary && sha) {
-            fingerprintsToAdd.push(sha)
-          }
-          return finalPath
         })
+        delList = duplicates
+        if (isDeleteSourceFile && delList.length > 0) {
+          await moveToRecycleBin(delList, progressId, getWindow, sendProgress)
+        }
+        toBeDealSongs = Array.from(uniqueSongs.values())
+      } else if (isPushSongFingerprintLibrary) {
+        toBeDealSongs = songsAnalyseResult
       }
+    } else {
+      toBeDealSongs = songFileUrls
+    }
 
-      const batchId = `import_${Date.now()}`
-      const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
-        concurrency: 16,
-        onProgress: (done, total) =>
-          sendProgress(
-            isDeleteSourceFile ? 'tracks.movingTracks' : 'tracks.copyingTracks',
-            done,
-            total,
-            false,
-            progressId
-          ),
-        stopOnENOSPC: true,
-        onInterrupted: async (payload) =>
-          waitForUserDecision(getWindow(), batchId, 'importSongs', payload)
+    const targetSongList = resolveLibraryPath(formData.songListPath)
+    const tasks: Array<() => Promise<FileTaskResult>> = []
+    const fingerprintsToAdd: string[] = []
+    const isCuratedTarget = (() => {
+      const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/')
+      const targetPath = normalizeRelativePath(targetSongList.mappedPath)
+      const curatedRoot = normalizeRelativePath(
+        path.join('library', getCoreFsDirName('CuratedLibrary'))
+      )
+      return targetPath === curatedRoot || targetPath.startsWith(`${curatedRoot}/`)
+    })()
+    for (const item of toBeDealSongs) {
+      const sourceFilePath = isMd5Item(item) ? item.file_path : item
+      const matchResult = sourceFilePath.match(/[^\\/]+$/)
+      const filename = matchResult ? matchResult[0] : 'unknown_file'
+      const targetPath = resolveLibraryChildPath(targetSongList.absPath, filename)
+      const sha = isMd5Item(item) ? item.sha256_Hash : undefined
+      tasks.push(async () => {
+        const finalPath = await moveOrCopyItemWithCheckIsExist(
+          sourceFilePath,
+          targetPath,
+          isDeleteSourceFile
+        )
+        if (isDeleteSourceFile) {
+          updateSetItemFilePathReferences(sourceFilePath, finalPath)
+        }
+        if (isPushSongFingerprintLibrary && sha) {
+          fingerprintsToAdd.push(sha)
+        }
+        return finalPath
       })
+    }
 
-      sendProgress(
-        isDeleteSourceFile ? 'tracks.movingTracks' : 'tracks.copyingTracks',
-        tasks.length,
-        tasks.length,
-        false,
-        progressId
+    const batchId = `import_${Date.now()}`
+    const { success, failed, hasENOSPC, skipped, results } = await runWithConcurrency(tasks, {
+      concurrency: 16,
+      onProgress: (done, total) =>
+        sendProgress(
+          isDeleteSourceFile ? 'tracks.movingTracks' : 'tracks.copyingTracks',
+          done,
+          total,
+          false,
+          progressId
+        ),
+      stopOnENOSPC: true,
+      onInterrupted: async (payload) =>
+        waitForUserDecision(getWindow(), batchId, 'importSongs', payload)
+    })
+
+    sendProgress(
+      isDeleteSourceFile ? 'tracks.movingTracks' : 'tracks.copyingTracks',
+      tasks.length,
+      tasks.length,
+      false,
+      progressId
+    )
+
+    if (isPushSongFingerprintLibrary && fingerprintsToAdd.length > 0) {
+      const uniqueToAdd = Array.from(new Set(fingerprintsToAdd))
+      const beforeLen = store.songFingerprintList.length
+      store.songFingerprintList = Array.from(
+        new Set([...store.songFingerprintList, ...uniqueToAdd])
       )
-
-      if (isPushSongFingerprintLibrary && fingerprintsToAdd.length > 0) {
-        const uniqueToAdd = Array.from(new Set(fingerprintsToAdd))
-        const beforeLen = store.songFingerprintList.length
-        store.songFingerprintList = Array.from(
-          new Set([...store.songFingerprintList, ...uniqueToAdd])
-        )
-        if (store.songFingerprintList.length !== beforeLen) {
-          await FingerprintStore.saveList(store.songFingerprintList, getFingerprintMode())
-        }
+      if (store.songFingerprintList.length !== beforeLen) {
+        await FingerprintStore.saveList(store.songFingerprintList, getFingerprintMode())
       }
+    }
 
-      const importEndAt = Date.now()
-      const attemptedUniqueToAdd = isPushSongFingerprintLibrary
-        ? Array.from(new Set(fingerprintsToAdd)).length
-        : 0
-      const actualAddedCount = isPushSongFingerprintLibrary
-        ? Math.max(0, store.songFingerprintList.length - songFingerprintListLengthBefore)
-        : 0
-      const alreadyExistingCount = isPushSongFingerprintLibrary
-        ? Math.max(0, attemptedUniqueToAdd - actualAddedCount)
-        : 0
+    const importEndAt = Date.now()
+    const attemptedUniqueToAdd = isPushSongFingerprintLibrary
+      ? Array.from(new Set(fingerprintsToAdd)).length
+      : 0
+    const actualAddedCount = isPushSongFingerprintLibrary
+      ? Math.max(0, store.songFingerprintList.length - songFingerprintListLengthBefore)
+      : 0
+    const alreadyExistingCount = isPushSongFingerprintLibrary
+      ? Math.max(0, attemptedUniqueToAdd - actualAddedCount)
+      : 0
 
-      const importSummary = {
-        startAt: new Date(importStartAt).toISOString(),
-        endAt: new Date(importEndAt).toISOString(),
-        durationMs: importEndAt - importStartAt,
-        scannedCount: songFileUrls.length,
-        analyzeFailedCount: errorSongsAnalyseResult.length,
-        importedToPlaylistCount: success,
-        duplicatesRemovedCount: dedupMode !== 'none' ? delList.length : 0,
-        fingerprintAddedCount: actualAddedCount,
-        fingerprintAlreadyExistingCount: alreadyExistingCount,
-        fingerprintTotalBefore: songFingerprintListLengthBefore,
-        fingerprintTotalAfter: store.songFingerprintList.length,
-        isComparisonSongFingerprint: dedupMode !== 'none',
-        isPushSongFingerprintLibrary,
-        fingerprintMode: getFingerprintMode()
-      }
+    const importSummary = {
+      startAt: new Date(importStartAt).toISOString(),
+      endAt: new Date(importEndAt).toISOString(),
+      durationMs: importEndAt - importStartAt,
+      scannedCount: songFileUrls.length,
+      analyzeFailedCount: errorSongsAnalyseResult.length,
+      importedToPlaylistCount: success,
+      duplicatesRemovedCount: dedupMode !== 'none' ? delList.length : 0,
+      fingerprintAddedCount: actualAddedCount,
+      fingerprintAlreadyExistingCount: alreadyExistingCount,
+      fingerprintTotalBefore: songFingerprintListLengthBefore,
+      fingerprintTotalAfter: store.songFingerprintList.length,
+      isComparisonSongFingerprint: dedupMode !== 'none',
+      isPushSongFingerprintLibrary,
+      fingerprintMode: getFingerprintMode()
+    }
 
-      const importedPaths = results
-        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-        .map((item) => item.trim())
-      const targetSongListRoot = targetSongList.absPath
-      if (importedPaths.length > 0 && isSupportedPlaylistTrackNumberListRoot(targetSongListRoot)) {
-        await appendSongListTrackNumbers({
-          listRoot: targetSongListRoot,
-          appendedFilePaths: importedPaths
-        })
-      }
+    const importedPaths = results
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim())
+    const targetSongListRoot = targetSongList.absPath
+    if (importedPaths.length > 0 && isSupportedPlaylistTrackNumberListRoot(targetSongListRoot)) {
+      await appendSongListTrackNumbers({
+        listRoot: targetSongListRoot,
+        appendedFilePaths: importedPaths
+      })
+    }
 
-      markGlobalSongSearchDirty('importSongs')
-      getWindow()?.webContents.send(
-        'importFinished',
-        formData.songListUUID,
-        importSummary,
-        progressId
-      )
-      if (isCuratedTarget) {
-        const targetPaths = importedPaths
-        // 导入完成提示和列表刷新优先，精选表演者记录异步补上即可。
-        void rememberCuratedArtistsForAddedTracks({ targetPaths }).catch((error) => {
-          log.error('[curatedArtists] remember after import failed', error)
-        })
-      }
-      if (hasENOSPC) {
-        getWindow()?.webContents.send('file-batch-summary', {
-          context: 'importSongs',
-          total: tasks.length,
-          success,
-          failed,
-          hasENOSPC,
-          skipped,
-          errorSamples: []
-        })
-      }
-    } finally {
-      finishImportActivity()
+    markGlobalSongSearchDirty('importSongs')
+    getWindow()?.webContents.send(
+      'importFinished',
+      formData.songListUUID,
+      importSummary,
+      progressId
+    )
+    if (isCuratedTarget) {
+      const targetPaths = importedPaths
+      // 导入完成提示和列表刷新优先，精选表演者记录异步补上即可。
+      void rememberCuratedArtistsForAddedTracks({ targetPaths }).catch((error) => {
+        log.error('[curatedArtists] remember after import failed', error)
+      })
+    }
+    if (hasENOSPC) {
+      getWindow()?.webContents.send('file-batch-summary', {
+        context: 'importSongs',
+        total: tasks.length,
+        success,
+        failed,
+        hasENOSPC,
+        skipped,
+        errorSamples: []
+      })
     }
   })
 }

@@ -19,7 +19,6 @@ import {
   replaceCuratedArtistLibrary,
   removeCuratedArtist
 } from '../curatedArtistLibrary'
-import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 type Dependencies = {
   loadFingerprintList: (mode: 'pcm' | 'file') => Promise<string[]>
@@ -34,11 +33,9 @@ export function registerSettingsHandlers(deps: Dependencies) {
   let setSettingQueue: Promise<void> = Promise.resolve()
 
   ipcMain.handle('setSetting', async (_event, setting) => {
-    assertLibraryMergeMutationAllowed()
     const task = setSettingQueue
       .catch(() => undefined)
       .then(async () => {
-        assertLibraryMergeMutationAllowed()
         const prevContextMenu = !!store.settingConfig?.enableExplorerContextMenu
         const prevMode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
         store.settingConfig = setting
@@ -90,24 +87,20 @@ export function registerSettingsHandlers(deps: Dependencies) {
   })
 
   ipcMain.handle('curatedArtists:remove', (_event, artistName) => {
-    assertLibraryMergeMutationAllowed()
     return removeCuratedArtist(artistName)
   })
 
   ipcMain.handle('curatedArtists:clear', () => {
-    assertLibraryMergeMutationAllowed()
     return clearCuratedArtistLibrary()
   })
 
   ipcMain.handle('curatedArtists:setAll', (_event, artists) => {
-    assertLibraryMergeMutationAllowed()
     return replaceCuratedArtistLibrary(artists)
   })
 
   ipcMain.handle(
     'curatedArtists:importFromTracks',
     async (_event, payload: { tracks?: Array<{ artistName?: unknown; filePath?: unknown }> }) => {
-      assertLibraryMergeMutationAllowed()
       const progressId = CURATED_ARTIST_IMPORT_PROGRESS_ID
       try {
         return await importCuratedArtistsFromTracks(payload, {

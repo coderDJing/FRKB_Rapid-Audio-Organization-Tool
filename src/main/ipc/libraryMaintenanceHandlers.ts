@@ -48,7 +48,6 @@ import {
   isSupportedPlaylistTrackNumberListRoot
 } from '../services/playlistTrackNumbers'
 import { protectSetReferencedFilesForDeletion } from './setListHandlers'
-import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 const DIRTY_DATA_SQL_TABLES = [
   'song_cache',
@@ -203,7 +202,6 @@ export function registerLibraryMaintenanceHandlers() {
   const executeDelSongs = async (
     payload: { filePaths: string[]; songListPath?: string; sourceType?: string } | string[]
   ) => {
-    assertLibraryMergeMutationAllowed()
     const filePaths = Array.isArray(payload)
       ? payload
       : Array.isArray(payload?.filePaths)
@@ -378,7 +376,6 @@ export function registerLibraryMaintenanceHandlers() {
   )
 
   ipcMain.handle('permanentlyDelSongs', async (_e, songFilePaths: string[]) => {
-    assertLibraryMergeMutationAllowed()
     const uniquePaths = Array.isArray(songFilePaths)
       ? Array.from(new Set(songFilePaths.filter(Boolean)))
       : []
@@ -449,7 +446,6 @@ export function registerLibraryMaintenanceHandlers() {
   })
 
   ipcMain.handle('recycleBin:list', async () => {
-    assertLibraryMergeMutationAllowed()
     const records = listRecycleBinRecords()
     const recordMap = new Map(records.map((r) => [r.filePath, r]))
     const rootDir = store.databaseDir
@@ -546,7 +542,6 @@ export function registerLibraryMaintenanceHandlers() {
   })
 
   ipcMain.handle('recycleBin:restore', async (_e, payload: { filePaths?: string[] } | string[]) => {
-    assertLibraryMergeMutationAllowed()
     const filePaths = Array.isArray(payload)
       ? payload
       : Array.isArray(payload?.filePaths)
@@ -681,7 +676,6 @@ export function registerLibraryMaintenanceHandlers() {
   })
 
   ipcMain.handle('library:clear-dirty-data', async () => {
-    assertLibraryMergeMutationAllowed()
     const dbRoot = store.databaseDir
     if (!dbRoot) {
       throw new Error('databaseDir is empty')

@@ -19,7 +19,6 @@ import { createRecordingOutputPath } from '../recordingLibraryService'
 import { log } from '../log'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import { notifyPlaybackStateChange, notifyTransportActivity } from '../services/keyAnalysisQueue'
-import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 const SLOW_TRANSPORT_OPERATION_LOG_THRESHOLD_MS = 500
 
@@ -466,7 +465,6 @@ export function registerHorizontalBrowseTransportHandlers() {
   )
 
   ipcMain.handle('horizontal-browse-transport:recording-start', async () => {
-    assertLibraryMergeMutationAllowed()
     const outputPath = await createRecordingOutputPath()
     return horizontalBrowseTransportBridge.startRecording(outputPath)
   })

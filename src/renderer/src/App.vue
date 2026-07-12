@@ -26,7 +26,6 @@ import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import HorizontalBrowseModeShell from '@renderer/components/HorizontalBrowseModeShell.vue'
 import AnalysisRuntimeDownloadOverlay from '@renderer/components/AnalysisRuntimeDownloadOverlay.vue'
-import LibraryMergeProgressOverlay from '@renderer/components/LibraryMergeProgressOverlay.vue'
 import { useAnalysisRuntimeDownload } from '@renderer/composables/useAnalysisRuntimeDownload'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import settingIconAsset from '@renderer/assets/setting.svg?asset'
@@ -72,63 +71,6 @@ watch(
 )
 window.electron.ipcRenderer.on('layoutConfigReaded', handleLayoutConfigReaded)
 const activeDialog = ref('')
-type LibraryMergeProgressPayload = {
-  phase?: unknown
-  copiedBytes?: unknown
-  totalBytes?: unknown
-  copiedFiles?: unknown
-  totalFiles?: unknown
-  currentPath?: unknown
-}
-const libraryMergeProgress = ref<{
-  phase:
-    | 'preflight'
-    | 'staging'
-    | 'promoting'
-    | 'committing'
-    | 'deleting-source'
-    | 'completed'
-    | 'failed'
-  copiedBytes: number
-  totalBytes: number
-  copiedFiles: number
-  totalFiles: number
-  currentPath?: string
-} | null>(null)
-let libraryMergeProgressHideTimer: ReturnType<typeof setTimeout> | null = null
-const handleLibraryMergeProgress = (_event: unknown, payload: LibraryMergeProgressPayload) => {
-  const phase = String(payload?.phase || '')
-  const supportedPhases = new Set([
-    'preflight',
-    'staging',
-    'promoting',
-    'committing',
-    'deleting-source',
-    'completed',
-    'failed'
-  ])
-  if (!supportedPhases.has(phase)) return
-  if (libraryMergeProgressHideTimer) {
-    clearTimeout(libraryMergeProgressHideTimer)
-    libraryMergeProgressHideTimer = null
-  }
-  libraryMergeProgress.value = {
-    phase: phase as NonNullable<typeof libraryMergeProgress.value>['phase'],
-    copiedBytes: Math.max(0, Number(payload?.copiedBytes || 0)),
-    totalBytes: Math.max(0, Number(payload?.totalBytes || 0)),
-    copiedFiles: Math.max(0, Number(payload?.copiedFiles || 0)),
-    totalFiles: Math.max(0, Number(payload?.totalFiles || 0)),
-    ...(typeof payload?.currentPath === 'string' && payload.currentPath.trim()
-      ? { currentPath: payload.currentPath.trim() }
-      : {})
-  }
-  if (phase === 'completed' || phase === 'failed') {
-    libraryMergeProgressHideTimer = setTimeout(() => {
-      libraryMergeProgress.value = null
-      libraryMergeProgressHideTimer = null
-    }, 600)
-  }
-}
 const fileOpDialogVisible = ref(false)
 const fileOpContext = ref('')
 const fileOpDone = ref(0)
@@ -810,7 +752,6 @@ onMounted(() => {
   window.electron.ipcRenderer.send('external-open:renderer-ready')
   window.electron.ipcRenderer.on('file-op-interrupted', handleFileOpInterrupted)
   window.electron.ipcRenderer.on('library-tree-updated', handleLibraryTreeUpdated)
-  window.electron.ipcRenderer.on('library-merge:progress', handleLibraryMergeProgress)
 
   window.addEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.addEventListener('pointerdown', handleMainWindowBrowseModeMenuPointerDown, true)
@@ -848,10 +789,6 @@ onBeforeUnmount(() => {
     clearTimeout(songSearchWarmupTimer)
     songSearchWarmupTimer = null
   }
-  if (libraryMergeProgressHideTimer) {
-    clearTimeout(libraryMergeProgressHideTimer)
-    libraryMergeProgressHideTimer = null
-  }
   emitter.off(MAIN_WINDOW_VOLUME_CHANGED_EVENT, handleMainWindowVolumeSync)
   window.removeEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.removeEventListener('pointerdown', handleMainWindowBrowseModeMenuPointerDown, true)
@@ -865,7 +802,6 @@ onBeforeUnmount(() => {
   window.electron.ipcRenderer.removeListener('external-open/imported', handleExternalOpenImported)
   window.electron.ipcRenderer.removeListener('file-op-interrupted', handleFileOpInterrupted)
   window.electron.ipcRenderer.removeListener('library-tree-updated', handleLibraryTreeUpdated)
-  window.electron.ipcRenderer.removeListener('library-merge:progress', handleLibraryMergeProgress)
   window.removeEventListener('openDialogFromChild', handleOpenDialogFromChild)
   window.electron.ipcRenderer.removeListener('cloudSync/state', handleCloudSyncState)
   window.electron.ipcRenderer.removeListener('cloudSync/progress', handleCloudSyncProgress)
@@ -1044,7 +980,6 @@ onBeforeUnmount(() => {
     :percent="analysisRuntimeDownloadPercent"
     :hint="t('analysisRuntime.downloadBlockingHint')"
   />
-  <LibraryMergeProgressOverlay :progress="libraryMergeProgress" />
   <cloudSyncSummaryDialog
     v-if="runtime.cloudSync.summaryVisible"
     :summary="runtime.cloudSync.summary"

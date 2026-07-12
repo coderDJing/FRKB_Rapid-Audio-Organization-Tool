@@ -3,7 +3,6 @@ import {
   getMixtapeProjectBpmEnvelope,
   upsertMixtapeProjectBpmEnvelope
 } from '../mixtapeProjectTempoDb'
-import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 export function registerMixtapeProjectTempoHandlers() {
   ipcMain.handle(
@@ -25,7 +24,6 @@ export function registerMixtapeProjectTempoHandlers() {
         gridPhaseOffsetSec?: number
       }
     ) => {
-      assertLibraryMergeMutationAllowed()
       const playlistId = typeof payload?.playlistId === 'string' ? payload.playlistId : ''
       return upsertMixtapeProjectBpmEnvelope(playlistId, {
         bpmEnvelope: Array.isArray(payload?.bpmEnvelope)
