@@ -935,10 +935,13 @@ export function migrateStandaloneLibraryDb(dbPath: string): void {
 
 export function initLibraryDb(dirPath: string): SqliteDatabase | null {
   if (!dirPath) return null
+  // 打开既有库不能产生任何文件。启动时设置里可能仍保留一个已被手动删除的库路径；
+  // 若在这里补建根目录或 SQLite，后续启动检查就会把丢失的库误判为可修复的空库。
+  const libraryDirPath = path.join(dirPath, 'library')
+  if (!fs.pathExistsSync(dirPath) || !fs.pathExistsSync(libraryDirPath)) return null
   if (db && dbRoot === dirPath) return db
   try {
     closeLibraryDb()
-    fs.ensureDirSync(dirPath)
     db = createDatabase(getLibraryDbPath(dirPath))
     dbRoot = dirPath
     return db

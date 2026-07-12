@@ -34,10 +34,14 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     return
   }
 
-  // 若数据库根路径不存在：进入初始化且提示
+  // 已配置的库必须同时保留根目录和 library 目录。这里是只读边界：
+  // 不允许把用户手动删除的库路径补建成新的空库。
   try {
-    const exists = fs.pathExistsSync(store.settingConfig.databaseUrl)
-    if (!exists) {
+    const databaseRoot = store.settingConfig.databaseUrl
+    const libraryRoot = path.join(databaseRoot, 'library')
+    const rootExists = fs.pathExistsSync(databaseRoot)
+    const libraryExists = fs.pathExistsSync(libraryRoot)
+    if (!rootExists || !libraryExists) {
       databaseInitWindow.createWindow({ needErrorHint: true })
       return
     }
