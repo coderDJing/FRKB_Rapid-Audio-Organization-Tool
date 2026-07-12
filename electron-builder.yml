@@ -1,6 +1,5 @@
 appId: com.frkbByCoderDjing.app
 productName: FRKB
-afterSign: build/afterSign.cjs
 directories:
   buildResources: build
 files:
@@ -116,7 +115,6 @@ mac:
     - from: vendor/demucs/bootstrap
       to: demucs/bootstrap
   entitlementsInherit: build/entitlements.mac.plist
-  hardenedRuntime: false
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.

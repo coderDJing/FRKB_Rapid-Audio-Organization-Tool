@@ -86,6 +86,7 @@
     ],
     "appId": "com.electron.frkb",
     "productName": "FRKB",
+    "afterSign": "build/afterSign.cjs",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "files": [
       "**/*",
@@ -154,6 +155,7 @@
       "allowElevation": true
     },
     "mac": {
+      "hardenedRuntime": false,
       "extraResources": [
         {
           "from": "vendor/demucs/models",
