@@ -15,6 +15,10 @@ let pendingBulkReconcileWindow: BrowserWindow | null = null
 
 const WATCH_DEBOUNCE_MS = 400
 
+export function isLibraryTreeWatcherBusy(): boolean {
+  return reconciling || bulkOperationDepth > 0 || debounceTimer !== null
+}
+
 function clearDebounceTimer() {
   if (debounceTimer) {
     clearTimeout(debounceTimer)

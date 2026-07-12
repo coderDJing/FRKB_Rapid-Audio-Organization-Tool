@@ -17,6 +17,10 @@ import type {
   WaveformGlobalOverviewData,
   WaveformListPreviewData
 } from '../../shared/waveformSurfaceCache'
+import {
+  assertLibraryMergeMutationAllowed,
+  isLibraryMergeMutationLocked
+} from '../services/libraryMerge/runtime'
 
 type PlayerWaveformCacheItem = {
   filePath: string
@@ -86,6 +90,7 @@ export function registerCacheHandlers() {
   }
 
   const queueSurfaceAnalysis = (filePath: string, priority: 'low' | 'medium') => {
+    if (isLibraryMergeMutationLocked()) return
     enqueueKeyAnalysisList([filePath], priority, {
       source: 'foreground',
       preemptible: true,
@@ -100,6 +105,7 @@ export function registerCacheHandlers() {
     priority: 'low' | 'medium',
     options: SurfaceCacheLoadOptions = {}
   ): Promise<WaveformListPreviewData | null> => {
+    if (isLibraryMergeMutationLocked()) return null
     const listRoot = await resolvePayloadListRoot(listRootRaw, filePath)
     if (!listRoot) return null
     const statResult = await readCacheFileStat(filePath)
@@ -139,6 +145,7 @@ export function registerCacheHandlers() {
     priority: 'low' | 'medium',
     options: SurfaceCacheLoadOptions = {}
   ): Promise<WaveformGlobalOverviewData | null> => {
+    if (isLibraryMergeMutationLocked()) return null
     const listRoot = await resolvePayloadListRoot(listRootRaw, filePath)
     if (!listRoot) return null
     const statResult = await readCacheFileStat(filePath)
@@ -173,6 +180,7 @@ export function registerCacheHandlers() {
   }
 
   ipcMain.handle('track:cache:clear:batch', async (_e, filePaths: string[]) => {
+    assertLibraryMergeMutationAllowed()
     const files = Array.from(
       new Set(
         Array.isArray(filePaths)
@@ -245,6 +253,7 @@ export function registerCacheHandlers() {
         filePath?: string
       }
     ) => {
+      if (isLibraryMergeMutationLocked()) return { status: 'missing' as const, data: null }
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       if (!filePath) return { status: 'missing' as const, data: null }
       let listRoot = ''
@@ -307,6 +316,11 @@ export function registerCacheHandlers() {
         filePaths?: string[]
       }
     ) => {
+      if (isLibraryMergeMutationLocked()) {
+        return {
+          items: [] as Array<{ filePath: string; data: UnifiedDisplayWaveformDetailData | null }>
+        }
+      }
       const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
       const normalizedPaths = filePaths.filter(
         (filePath) => typeof filePath === 'string' && filePath.trim().length > 0

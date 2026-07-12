@@ -34,6 +34,7 @@ import type {
   IBatchRenameTemplateSegment,
   IBatchRenameTrackInput
 } from '../../types/globals'
+import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 type DeduplicateSongListPayload =
   | string
@@ -76,6 +77,7 @@ export function registerPlaylistHandlers() {
   ipcMain.handle(
     'scanSongList',
     async (_e, songListPath: string | string[], songListUUID: string) => {
+      assertLibraryMergeMutationAllowed()
       if (typeof songListPath === 'string') {
         const scanPath = resolveLibraryPath(songListPath).absPath
         return await runSongListScan(scanPath, songListUUID)
@@ -89,6 +91,7 @@ export function registerPlaylistHandlers() {
   ipcMain.handle(
     'songList:reorder-track-numbers',
     async (_e, payload: ReorderSongListTrackNumbersPayload) => {
+      assertLibraryMergeMutationAllowed()
       const songListPath = String(payload?.songListPath || '').trim()
       const orderedFilePaths = Array.isArray(payload?.orderedFilePaths)
         ? payload.orderedFilePaths.map((item) => String(item || '').trim()).filter(Boolean)
@@ -115,6 +118,7 @@ export function registerPlaylistHandlers() {
   ipcMain.handle(
     'songList:compact-track-numbers',
     async (_e, payload: CompactSongListTrackNumbersPayload) => {
+      assertLibraryMergeMutationAllowed()
       const songListPath = String(payload?.songListPath || '').trim()
       if (songListPath) {
         const absolutePlaylistPath = resolveLibraryPath(songListPath).absPath
@@ -140,6 +144,7 @@ export function registerPlaylistHandlers() {
   ipcMain.handle(
     'audio:convert:collect-files',
     async (_e, payload: AudioConvertCollectFilesPayload) => {
+      assertLibraryMergeMutationAllowed()
       const requests = Array.isArray(payload?.songLists) ? payload.songLists : []
       const progressId =
         typeof payload?.progressId === 'string' && payload.progressId.trim()
@@ -204,6 +209,7 @@ export function registerPlaylistHandlers() {
   )
 
   ipcMain.handle('externalPlaylist:scan', async (_e, rawPaths: string[]) => {
+    assertLibraryMergeMutationAllowed()
     try {
       const arr = Array.isArray(rawPaths) ? rawPaths : []
       const normalized = Array.from(
@@ -291,6 +297,7 @@ export function registerPlaylistHandlers() {
         items?: IBatchRenameExecutionRequestItem[]
       }
     ) => {
+      assertLibraryMergeMutationAllowed()
       return await executePlaylistBatchRename({
         taskId: String(payload?.taskId || ''),
         items: Array.isArray(payload?.items) ? payload.items : []
@@ -314,6 +321,7 @@ export function registerPlaylistHandlers() {
   ipcMain.handle(
     'deduplicateSongListByFingerprint',
     async (_e, payload: DeduplicateSongListPayload) => {
+      assertLibraryMergeMutationAllowed()
       let rendererPath = ''
       let incomingProgressId = ''
       if (typeof payload === 'string') {

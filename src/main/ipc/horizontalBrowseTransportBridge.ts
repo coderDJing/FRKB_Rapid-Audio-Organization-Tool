@@ -312,3 +312,12 @@ export const horizontalBrowseTransportBridge = {
     return requireFn('horizontalBrowseTransportRecordingSnapshot')()
   }
 }
+
+export const isHorizontalBrowseTransportRecordingActive = (): boolean => {
+  try {
+    const status = horizontalBrowseTransportBridge.recordingSnapshot()
+    return status.state === 'armed' || status.state === 'recording'
+  } catch {
+    return false
+  }
+}

@@ -1,5 +1,27 @@
 {
   "migration": {
+    "mergeLibrary": "Merge FRKB Libraries",
+    "mergePreparing": "Preparing merge plan",
+    "mergeFiles": "files",
+    "mergeLockedHint": "The current library is locked while merging. Do not close FRKB or make other changes.",
+    "mergePhase": {
+      "preflight": "Checking FRKB libraries",
+      "staging": "Copying source library",
+      "promoting": "Preparing merged content",
+      "committing": "Saving merged library",
+      "deleting-source": "Cleaning up source library",
+      "completed": "FRKB library merge complete",
+      "failed": "FRKB library merge failed"
+    },
+    "mergeDescription": {
+      "preflight": "Checking directory structure, database consistency, and free disk space.",
+      "staging": "Files are written to hidden staging first; the current library is not committed yet.",
+      "promoting": "Promoting verified files into the current library.",
+      "committing": "Writing playlists, analysis data, and fingerprints in one database transaction.",
+      "deleting-source": "The current library is merged. Cleaning the source library as requested.",
+      "completed": "Refreshing the current library.",
+      "failed": "The current library did not commit incomplete merge content."
+    },
     "legacyTitle": "Library Upgrade",
     "legacyInProgress": "Previous upgrade didn't finish. It will run again.",
     "legacyRequired": "Legacy library detected. Upgrade required to continue.",

@@ -8,11 +8,13 @@ import {
   requestCancelRekordboxXmlExport,
   runRekordboxXmlExportJob
 } from '../services/rekordboxXmlExport/execute'
+import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 export function registerRekordboxXmlExportHandlers() {
   ipcMain.handle(
     'rekordbox-xml-export:run',
     async (_event, request: RekordboxXmlExportRequest): Promise<RekordboxXmlExportResponse> => {
+      assertLibraryMergeMutationAllowed()
       return await runRekordboxXmlExportJob({
         request,
         control: { cancelled: false },

@@ -10,6 +10,7 @@ import {
   getKeyAnalysisBackgroundStatus
 } from '../services/keyAnalysisQueue'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
+import { isLibraryMergeMutationLocked } from '../services/libraryMerge/runtime'
 
 type VisibleQueuePayload = {
   filePaths?: string[]
@@ -24,6 +25,7 @@ type ManualBatchPayload = {
 
 export function registerKeyAnalysisHandlers() {
   ipcMain.on('key-analysis:queue-visible', (_e, payload: VisibleQueuePayload) => {
+    if (isLibraryMergeMutationLocked()) return
     const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     const normalized = paths
       .map((p) => (typeof p === 'string' ? p.trim() : ''))
@@ -63,6 +65,7 @@ export function registerKeyAnalysisHandlers() {
   ipcMain.on(
     'key-analysis:queue-playing',
     (_e, payload: { filePath?: string; focusSlot?: string }) => {
+      if (isLibraryMergeMutationLocked()) return
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       if (!filePath) return
       if (isInRecordingLibraryAbsPath(filePath)) return
@@ -76,6 +79,7 @@ export function registerKeyAnalysisHandlers() {
   )
 
   ipcMain.on('key-analysis:queue-deck-idle', (_e, payload: { filePath?: string }) => {
+    if (isLibraryMergeMutationLocked()) return
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath) return
     if (isInRecordingLibraryAbsPath(filePath)) return
@@ -93,6 +97,9 @@ export function registerKeyAnalysisHandlers() {
   })
 
   ipcMain.handle('key-analysis:queue-manual-batch', (_e, payload?: ManualBatchPayload) => {
+    if (isLibraryMergeMutationLocked()) {
+      return { batchId: '', queued: 0, blocked: true }
+    }
     const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     const normalized = paths
       .filter((p) => typeof p === 'string' && p.trim().length > 0)

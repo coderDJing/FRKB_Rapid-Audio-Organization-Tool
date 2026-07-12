@@ -71,6 +71,7 @@ import { registerHotCueHandlers } from './ipc/hotCueHandlers'
 import { registerMemoryCueHandlers } from './ipc/memoryCueHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import { registerPlaybackForegroundActivityHandlers } from './services/playbackForegroundActivity'
+import { registerLibraryMergeHandlers } from './ipc/libraryMergeHandlers'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
 import fs from 'fs-extra'
@@ -306,6 +307,7 @@ maybeClearLogAfterUpgrade()
 errorReport.setup()
 registerWhatsNewHandlers()
 registerPlaybackForegroundActivityHandlers()
+registerLibraryMergeHandlers()
 registerSettingsHandlers({
   loadFingerprintList: async (mode) => {
     const FingerprintStore = require('./fingerprintStore')

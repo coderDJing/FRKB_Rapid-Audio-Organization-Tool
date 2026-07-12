@@ -8,6 +8,7 @@ import type {
 } from './keyAnalysis/types'
 import { KEY_ANALYSIS_WORKER_MAX, normalizePath } from './keyAnalysis/types'
 import * as LibraryCacheDb from '../libraryCacheDb'
+import { isLibraryMergeMutationLocked } from './libraryMerge/mutationGate'
 
 type EnqueueKeyAnalysisOptions = KeyAnalysisRequestFlags & {
   urgent?: boolean
@@ -168,6 +169,7 @@ export function enqueueKeyAnalysis(
   priority: KeyAnalysisPriority = 'low',
   options: EnqueueKeyAnalysisOptions = {}
 ) {
+  if (isLibraryMergeMutationLocked()) return
   getQueue().enqueue(filePath, priority, options)
 }
 
@@ -176,6 +178,7 @@ export function enqueueKeyAnalysisList(
   priority: KeyAnalysisPriority = 'low',
   options: EnqueueKeyAnalysisOptions = {}
 ) {
+  if (isLibraryMergeMutationLocked()) return
   getQueue().enqueueList(filePaths, priority, options)
 }
 
@@ -290,6 +293,7 @@ export function enqueueManualKeyAnalysisBatch(
   filePaths: string[],
   options?: { titleKey?: string } & KeyAnalysisRequestFlags
 ) {
+  if (isLibraryMergeMutationLocked()) return { batchId: '', queued: 0 }
   pruneUntrackedManualBatchPaths()
   const pendingByPath = new Map<string, string>()
   for (const filePath of Array.isArray(filePaths) ? filePaths : []) {
@@ -348,10 +352,12 @@ export function replaceVisibleKeyAnalysisList(
   filePaths: string[],
   options: { waveformOnly?: boolean } = {}
 ) {
+  if (isLibraryMergeMutationLocked()) return
   getQueue().replaceVisibleList(filePaths, options)
 }
 
 export function startKeyAnalysisBackground() {
+  if (isLibraryMergeMutationLocked()) return
   getQueue().startBackgroundSweep()
 }
 

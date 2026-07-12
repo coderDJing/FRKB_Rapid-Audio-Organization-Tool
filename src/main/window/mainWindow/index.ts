@@ -21,6 +21,7 @@ import { registerImportHandlers } from './importHandlers'
 import { registerMainWindowFilesystemHandlers } from './mainWindowFilesystemHandlers'
 import { registerAudioConversionHandlers } from './audioConversionHandlers'
 import { registerSetListHandlers } from '../../ipc/setListHandlers'
+import { isLibraryMergeActive } from '../../services/libraryMerge'
 import { createProgressSender } from './progress'
 import { startLibraryTreeWatcher, stopLibraryTreeWatcher } from '../../libraryTreeWatcher'
 import { startKeyAnalysisBackground } from '../../services/keyAnalysisQueue'
@@ -473,6 +474,14 @@ function createWindow() {
     mainWindow?.webContents.send('mainWindowBlur')
   })
 
+  mainWindow.on('close', (event) => {
+    if (!isLibraryMergeActive()) return
+    event.preventDefault()
+    try {
+      mainWindow?.focus()
+    } catch {}
+  })
+
   ipcMain.on('toggle-maximize', () => {
     if (mainWindow?.isMaximized()) {
       mainWindow.unmaximize()
@@ -486,6 +495,7 @@ function createWindow() {
   })
 
   ipcMain.on('toggle-close', async () => {
+    if (isLibraryMergeActive()) return
     await persistMainWindowLayout()
     mainWindow?.close()
   })

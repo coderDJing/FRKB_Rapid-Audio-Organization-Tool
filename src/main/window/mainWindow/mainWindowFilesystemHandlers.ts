@@ -57,6 +57,7 @@ import {
   protectSetReferencedFilesForDeletion,
   removeSetItemsByPlaylistWithCustodyCleanup
 } from '../../ipc/setListHandlers'
+import { assertLibraryMergeMutationAllowed } from '../../services/libraryMerge/runtime'
 
 const MIXTAPE_WINDOW_OPEN_ERROR_CODE = 'MIXTAPE_WINDOW_OPEN'
 const FILE_BATCH_CONCURRENCY = 8
@@ -146,6 +147,7 @@ export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWin
   })
 
   ipcMain.handle('emptyDir', async (_e, targetPath: string) => {
+    assertLibraryMergeMutationAllowed()
     const progressId = createProgressId('playlist_empty')
     sendProgress({
       id: progressId,
@@ -267,6 +269,7 @@ export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWin
   })
 
   ipcMain.handle('emptyRecycleBin', async () => {
+    assertLibraryMergeMutationAllowed()
     const recycleBinPath = getRecycleBinRootAbs()
     if (!recycleBinPath) {
       return { total: 0, success: 0, failed: 0, removedPaths: [] }
@@ -413,6 +416,7 @@ export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWin
   })
 
   ipcMain.handle('operateFileSystemChange', async (_e, operateArray: FileSystemOperation[]) => {
+    assertLibraryMergeMutationAllowed()
     const results: Array<{ uuid: string; status: string }> = []
     const deleteProgressItems = operateArray.filter((item) => item.type === 'delete')
     const deleteProgressBatch =

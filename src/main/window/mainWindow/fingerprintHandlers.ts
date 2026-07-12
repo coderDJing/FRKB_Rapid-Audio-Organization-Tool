@@ -4,6 +4,7 @@ import fs = require('fs-extra')
 import store from '../../store'
 import FingerprintStore from '../../fingerprintStore'
 import { collectFilesWithExtensions, getSongsAnalyseResult } from '../../utils'
+import { assertLibraryMergeMutationAllowed } from '../../services/libraryMerge/runtime'
 import type { SendProgress } from './progress'
 
 interface RegisterFingerprintHandlersOptions {
@@ -37,6 +38,7 @@ export function registerFingerprintHandlers({
   getWindow
 }: RegisterFingerprintHandlersOptions) {
   ipcMain.on('addSongFingerprint', async (_e, folderPath: string[]) => {
+    assertLibraryMergeMutationAllowed()
     const progressId = `fingerprints_${Date.now()}`
     const fingerprintStartAt = Date.now()
     sendProgress({
@@ -101,6 +103,7 @@ export function registerFingerprintHandlers({
   })
 
   ipcMain.handle('fingerprints:addExistingFromPaths', async (_event, payload) => {
+    assertLibraryMergeMutationAllowed()
     const rawInput = Array.isArray(payload?.filePaths) ? (payload.filePaths as unknown[]) : []
     const normalizedPaths: string[] = Array.from(
       new Set(
