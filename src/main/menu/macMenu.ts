@@ -1,10 +1,19 @@
 import { app, BrowserWindow, Menu } from 'electron'
 import { is } from '@electron-toolkit/utils'
-import zhCNLocale from '../../renderer/src/i18n/locales/zh-CN.json'
-import enUSLocale from '../../renderer/src/i18n/locales/en-US.json'
+import zhCNCloudSyncLocale from '../../renderer/src/i18n/locales/zh-CN/cloudSync.json'
+import zhCNFingerprintsLocale from '../../renderer/src/i18n/locales/zh-CN/fingerprints.json'
+import zhCNLibraryLocale from '../../renderer/src/i18n/locales/zh-CN/library.json'
+import zhCNMenuLocale from '../../renderer/src/i18n/locales/zh-CN/menu.json'
+import zhCNMigrationLocale from '../../renderer/src/i18n/locales/zh-CN/migration.json'
+import enUSCloudSyncLocale from '../../renderer/src/i18n/locales/en-US/cloudSync.json'
+import enUSFingerprintsLocale from '../../renderer/src/i18n/locales/en-US/fingerprints.json'
+import enUSLibraryLocale from '../../renderer/src/i18n/locales/en-US/library.json'
+import enUSMenuLocale from '../../renderer/src/i18n/locales/en-US/menu.json'
+import enUSMigrationLocale from '../../renderer/src/i18n/locales/en-US/migration.json'
 import store from '../store'
 import mainWindow from '../window/mainWindow'
 import { openLogFile } from '../log'
+import { openLibraryMergeDialog } from '../ipc/libraryMergeHandlers'
 
 type MainWindowBrowseMode = 'browser' | 'horizontal' | 'edit'
 
@@ -13,19 +22,32 @@ let mainWindowBrowseMode: MainWindowBrowseMode = 'browser'
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value)
 
+const MENU_MESSAGES: Record<'zh-CN' | 'en-US', Record<string, unknown>> = {
+  'zh-CN': {
+    ...zhCNCloudSyncLocale,
+    ...zhCNFingerprintsLocale,
+    ...zhCNLibraryLocale,
+    ...zhCNMenuLocale,
+    ...zhCNMigrationLocale
+  },
+  'en-US': {
+    ...enUSCloudSyncLocale,
+    ...enUSFingerprintsLocale,
+    ...enUSLibraryLocale,
+    ...enUSMenuLocale,
+    ...enUSMigrationLocale
+  }
+}
+
 // 依据当前设置返回语言 ID
 const getCurrentLocaleId = (): 'zh-CN' | 'en-US' =>
   store.settingConfig?.language === 'enUS' ? 'en-US' : 'zh-CN'
 
 // 简单的字典查找（key 形如 a.b.c）
 const tMenu = (key: string): string => {
-  const MESSAGES: Record<'zh-CN' | 'en-US', Record<string, unknown>> = {
-    'zh-CN': zhCNLocale as Record<string, unknown>,
-    'en-US': enUSLocale as Record<string, unknown>
-  }
   const localeId = getCurrentLocaleId()
   const parts = key.split('.')
-  let cur: unknown = MESSAGES[localeId]
+  let cur: unknown = MENU_MESSAGES[localeId]
   for (const p of parts) {
     if (isRecord(cur) && p in cur) cur = cur[p]
     else return key
@@ -164,6 +186,13 @@ const buildFullMenu = () =>
               'openDialogFromTray',
               'fingerprints.importDatabase'
             )
+        },
+        { type: 'separator' },
+        {
+          label: tMenu('migration.mergeLibrary'),
+          click: () => {
+            openLibraryMergeDialog()
+          }
         }
       ]
     },

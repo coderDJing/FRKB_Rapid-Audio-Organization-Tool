@@ -169,11 +169,7 @@ const removeLockFileIfOwned = (lockFilePath: string) => {
 const getDevInstanceId = (): string =>
   sanitizeInstanceId(String(process.env[DEV_INSTANCE_ENV] || ''))
 
-export const configureDevRuntime = (
-  isDev: boolean,
-  platform: NodeJS.Platform,
-  log: LoggerLike
-): DevRuntimeConfig | null => {
+export const configureDevRuntime = (isDev: boolean, log: LoggerLike): DevRuntimeConfig | null => {
   if (!isDev) return null
   applyDevCliEnvironmentOverrides()
 
@@ -201,7 +197,7 @@ export const configureDevRuntime = (
   const configuredDatabaseDir = normalizeDirectoryOverride(
     String(process.env[DEV_DATABASE_ENV] || '')
   )
-  const databaseDir = platform === 'win32' ? configuredDatabaseDir : ''
+  const databaseDir = configuredDatabaseDir
 
   if (instanceId) {
     process.env[DEV_INSTANCE_ENV] = instanceId

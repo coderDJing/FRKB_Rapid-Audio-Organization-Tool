@@ -26,6 +26,7 @@ import { createClickThroughGuard } from '@renderer/utils/clickThroughGuard'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import HorizontalBrowseModeShell from '@renderer/components/HorizontalBrowseModeShell.vue'
 import AnalysisRuntimeDownloadOverlay from '@renderer/components/AnalysisRuntimeDownloadOverlay.vue'
+import LibraryMergeDialog from '@renderer/components/LibraryMergeDialog.vue'
 import { useAnalysisRuntimeDownload } from '@renderer/composables/useAnalysisRuntimeDownload'
 import settingDialog from '@renderer/components/settingDialog.vue'
 import settingIconAsset from '@renderer/assets/setting.svg?asset'
@@ -71,6 +72,10 @@ watch(
 )
 window.electron.ipcRenderer.on('layoutConfigReaded', handleLayoutConfigReaded)
 const activeDialog = ref('')
+const libraryMergeDialogVisible = ref(false)
+const openLibraryMergeDialog = () => {
+  libraryMergeDialogVisible.value = true
+}
 const fileOpDialogVisible = ref(false)
 const fileOpContext = ref('')
 const fileOpDone = ref(0)
@@ -752,6 +757,7 @@ onMounted(() => {
   window.electron.ipcRenderer.send('external-open:renderer-ready')
   window.electron.ipcRenderer.on('file-op-interrupted', handleFileOpInterrupted)
   window.electron.ipcRenderer.on('library-tree-updated', handleLibraryTreeUpdated)
+  window.electron.ipcRenderer.on('library-merge:open-dialog', openLibraryMergeDialog)
 
   window.addEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.addEventListener('pointerdown', handleMainWindowBrowseModeMenuPointerDown, true)
@@ -802,6 +808,7 @@ onBeforeUnmount(() => {
   window.electron.ipcRenderer.removeListener('external-open/imported', handleExternalOpenImported)
   window.electron.ipcRenderer.removeListener('file-op-interrupted', handleFileOpInterrupted)
   window.electron.ipcRenderer.removeListener('library-tree-updated', handleLibraryTreeUpdated)
+  window.electron.ipcRenderer.removeListener('library-merge:open-dialog', openLibraryMergeDialog)
   window.removeEventListener('openDialogFromChild', handleOpenDialogFromChild)
   window.electron.ipcRenderer.removeListener('cloudSync/state', handleCloudSyncState)
   window.electron.ipcRenderer.removeListener('cloudSync/progress', handleCloudSyncProgress)
@@ -980,6 +987,7 @@ onBeforeUnmount(() => {
     :percent="analysisRuntimeDownloadPercent"
     :hint="t('analysisRuntime.downloadBlockingHint')"
   />
+  <LibraryMergeDialog v-if="libraryMergeDialogVisible" @close="libraryMergeDialogVisible = false" />
   <cloudSyncSummaryDialog
     v-if="runtime.cloudSync.summaryVisible"
     :summary="runtime.cloudSync.summary"

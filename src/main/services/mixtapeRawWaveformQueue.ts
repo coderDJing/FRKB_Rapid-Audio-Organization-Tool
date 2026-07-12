@@ -6,6 +6,7 @@ import { findMixtapeCacheRoot } from './cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { isMissingFileDecodeError } from './decodeErrorUtils'
 import { resolveMixtapeFilePathWithFallback } from './mixtapeFileFallback'
+import { isLibraryMergeMutationLocked } from './libraryMerge/mutationGate'
 
 const RAW_WAVEFORM_TARGET_RATE = 2400
 const inflight = new Set<string>()
@@ -97,6 +98,7 @@ export function queueMixtapeRawWaveforms(
   listRoot?: string,
   targetRate?: number
 ) {
+  if (isLibraryMergeMutationLocked()) return
   if (!Array.isArray(filePaths) || filePaths.length === 0) return
   // 并发控制由底层 AudioDecodeWorkerPool 的 worker 数量限制（2-10个）提供，
   // 超出的任务会在队列中等待，不会同时执行，无需在此处额外限制。

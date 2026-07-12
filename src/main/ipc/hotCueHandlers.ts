@@ -23,6 +23,7 @@ import { persistSharedSongMemoryCueDefinition } from '../services/sharedSongMemo
 import { findSongListRoot } from '../services/cacheMaintenance'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { applyLiteDefaults, buildLiteSongInfo } from '../services/songInfoLite'
+import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 const ANALYSIS_FIELD_KEYS = [
   'key',
@@ -79,6 +80,7 @@ export function registerHotCueHandlers() {
         loopEndSec?: number
       }
     ) => {
+      assertLibraryMergeMutationAllowed()
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       const slot = normalizeSongHotCueSlot(payload?.slot)
       const sec = normalizeSongHotCueSec(payload?.sec, payload?.durationSec)
@@ -114,6 +116,7 @@ export function registerHotCueHandlers() {
   ipcMain.handle(
     'song:delete-hot-cue',
     async (_event, payload?: { filePath?: string; slot?: number; durationSec?: number }) => {
+      assertLibraryMergeMutationAllowed()
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       const slot = normalizeSongHotCueSlot(payload?.slot)
       if (!filePath || slot === null) return { filePath, hotCues: [] as ISongHotCue[] }
@@ -143,6 +146,7 @@ export function registerHotCueHandlers() {
         }>
       }
     ) => {
+      assertLibraryMergeMutationAllowed()
       const entries = Array.isArray(payload?.entries) ? payload.entries : []
       let hotCueUpdated = 0
       let memoryCueUpdated = 0
@@ -198,6 +202,7 @@ export function registerHotCueHandlers() {
         }>
       }
     ) => {
+      assertLibraryMergeMutationAllowed()
       const entries = Array.isArray(payload?.entries) ? payload.entries : []
       let analysisUpdated = 0
 

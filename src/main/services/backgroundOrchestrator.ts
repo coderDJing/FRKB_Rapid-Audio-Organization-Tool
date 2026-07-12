@@ -29,6 +29,38 @@ let tickTimer: ReturnType<typeof setInterval> | null = null
 let started = false
 let flushInProgress = false
 let flushRequested = false
+let executionPaused = false
+let runningCompletion: Promise<void> | null = null
+
+export const getBackgroundTaskExecutionStatus = () => ({
+  pending: pendingRequestMap.size,
+  running: runningState !== null,
+  paused: executionPaused
+})
+
+export const pauseBackgroundTaskExecution = (): (() => void) => {
+  executionPaused = true
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    executionPaused = false
+    void flushPendingRequests()
+  }
+}
+
+// Library merge cannot share a database with idle maintenance. Drop work that has not started,
+// then wait for the currently running bounded callback to exit before the merge takes its lock.
+// We intentionally do not force-kill a callback while it may be writing cache state.
+export const interruptBackgroundTaskExecution = async (): Promise<() => void> => {
+  const resume = pauseBackgroundTaskExecution()
+  pendingRequestMap.clear()
+  const activeRun = runningCompletion
+  if (activeRun) {
+    await activeRun
+  }
+  return resume
+}
 
 const pickNextRequest = (): BackgroundTaskRequest | null => {
   if (pendingRequestMap.size === 0) return null
@@ -72,7 +104,7 @@ const runRequest = async (request: BackgroundTaskRequest) => {
 }
 
 const flushPendingRequests = async () => {
-  if (!started) return
+  if (!started || executionPaused) return
   if (flushInProgress) {
     flushRequested = true
     return
@@ -89,7 +121,15 @@ const flushPendingRequests = async () => {
       const nextRequest = pickNextRequest()
       if (!nextRequest) return
       pendingRequestMap.delete(nextRequest.category)
-      await runRequest(nextRequest)
+      const completion = runRequest(nextRequest)
+      runningCompletion = completion
+      try {
+        await completion
+      } finally {
+        if (runningCompletion === completion) {
+          runningCompletion = null
+        }
+      }
       if (!flushRequested) {
         if (pendingRequestMap.size === 0) return
         continue
@@ -143,6 +183,8 @@ export const stopBackgroundOrchestrator = () => {
   }
   pendingRequestMap.clear()
   runningState = null
+  runningCompletion = null
   flushInProgress = false
   flushRequested = false
+  executionPaused = false
 }

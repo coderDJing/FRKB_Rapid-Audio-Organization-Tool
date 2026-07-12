@@ -88,6 +88,7 @@ function isVersionAtLeast(current: string, minimum: string): boolean {
 }
 
 export function isManifestCompatible(manifest: FrkbManifest, appVersion: string): boolean {
+  if (manifest.version > CURRENT_MANIFEST_VERSION) return false
   if (!manifest.minAppVersion) return true
   return isVersionAtLeast(appVersion, manifest.minAppVersion)
 }

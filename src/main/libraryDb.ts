@@ -2,6 +2,14 @@ import path = require('path')
 import fs = require('fs-extra')
 import store from './store'
 import { log } from './log'
+import {
+  assertRegisteredLibraryMetadataKey,
+  LibraryMetadataContractError
+} from '../shared/libraryMetadataContracts'
+import {
+  assertLibraryMergeParticipantCoverage,
+  LibraryMergeParticipantContractError
+} from './services/libraryMerge/participants'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
 const SCHEMA_VERSION = 35
@@ -17,6 +25,17 @@ export function isSqliteRow(value: unknown): value is SqliteRow {
 
 let db: SqliteDatabase | null = null
 let dbRoot: string | null = null
+
+const isConfiguredDevDatabase = (dirPath: string): boolean => {
+  if (process.env.FRKB_APP_PACKAGED === '1') return false
+  const configured = String(process.env.FRKB_DEV_DATABASE_URL || '').trim()
+  if (!configured || !dirPath) return false
+  const current = path.resolve(dirPath)
+  const expected = path.resolve(configured)
+  return process.platform === 'win32'
+    ? current.toLocaleLowerCase() === expected.toLocaleLowerCase()
+    : current === expected
+}
 
 function hasTable(dbInstance: SqliteDatabase, tableName: string): boolean {
   const normalized = String(tableName || '').trim()
@@ -48,6 +67,15 @@ function listTableColumns(dbInstance: SqliteDatabase, tableName: string): Set<st
     return columns
   } catch {
     return new Set()
+  }
+}
+
+function assertStoredMetadataContracts(dbInstance: SqliteDatabase): void {
+  const rows = dbInstance.prepare('SELECT key FROM meta ORDER BY key ASC').all() as Array<{
+    key?: unknown
+  }>
+  for (const row of rows) {
+    assertRegisteredLibraryMetadataKey(typeof row.key === 'string' ? row.key : '')
   }
 }
 
@@ -874,11 +902,35 @@ function createDatabase(dbPath: string): SqliteDatabase {
   if (userVersion < SCHEMA_VERSION) {
     instance.pragma('user_version = ' + SCHEMA_VERSION)
   }
+  try {
+    assertLibraryMergeParticipantCoverage(instance)
+    if (isConfiguredDevDatabase(path.dirname(dbPath))) {
+      assertStoredMetadataContracts(instance)
+    }
+  } catch (error) {
+    try {
+      instance.close()
+    } catch {}
+    throw error
+  }
   return instance
 }
 
 export function getLibraryDbPath(dirPath: string): string {
   return path.join(dirPath, DB_FILE_NAME)
+}
+
+// 用于不会成为当前活动库的隔离数据库副本。它复用正式 schema 迁移，但不会读写
+// store、切换全局连接或影响正在使用的库。
+export function migrateStandaloneLibraryDb(dbPath: string): void {
+  const normalizedPath = String(dbPath || '').trim()
+  if (!normalizedPath) throw new Error('数据库快照路径不能为空')
+  const instance = createDatabase(normalizedPath)
+  try {
+    instance.pragma('wal_checkpoint(TRUNCATE)')
+  } finally {
+    instance.close()
+  }
 }
 
 export function initLibraryDb(dirPath: string): SqliteDatabase | null {
@@ -894,6 +946,13 @@ export function initLibraryDb(dirPath: string): SqliteDatabase | null {
     db = null
     dbRoot = dirPath
     log.error('[sqlite] init failed', error)
+    if (
+      isConfiguredDevDatabase(dirPath) &&
+      (error instanceof LibraryMergeParticipantContractError ||
+        error instanceof LibraryMetadataContractError)
+    ) {
+      throw error
+    }
     return null
   }
 }
@@ -931,11 +990,18 @@ export function getMetaValue(dbInstance: SqliteDatabase, key: string): string | 
 }
 
 export function setMetaValue(dbInstance: SqliteDatabase, key: string, value: string): void {
+  const normalizedKey = String(key || '').trim()
+  try {
+    assertRegisteredLibraryMetadataKey(normalizedKey)
+  } catch (error) {
+    log.error('[sqlite] unregistered metadata key', error)
+    throw error
+  }
   try {
     dbInstance
       .prepare(
         'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
       )
-      .run(key, value)
+      .run(normalizedKey, value)
   } catch {}
 }

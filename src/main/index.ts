@@ -71,6 +71,7 @@ import { registerHotCueHandlers } from './ipc/hotCueHandlers'
 import { registerMemoryCueHandlers } from './ipc/memoryCueHandlers'
 import { maybeShowWhatsNew, registerWhatsNewHandlers } from './services/whatsNew'
 import { registerPlaybackForegroundActivityHandlers } from './services/playbackForegroundActivity'
+import { registerLibraryMergeHandlers } from './ipc/libraryMergeHandlers'
 import * as LibraryCacheDb from './libraryCacheDb'
 import path from 'path'
 import fs from 'fs-extra'
@@ -103,7 +104,7 @@ import { terminateRegisteredChildProcesses } from './services/childProcessRegist
 import { closeLibraryDb } from './libraryDb'
 import { openSafeExternalUrl } from './window/externalNavigation'
 
-const devRuntime = configureDevRuntime(is.dev, process.platform, log)
+const devRuntime = configureDevRuntime(is.dev, log)
 configureLogTransports()
 process.env.FRKB_APP_PACKAGED = app.isPackaged ? '1' : '0'
 
@@ -306,6 +307,7 @@ maybeClearLogAfterUpgrade()
 errorReport.setup()
 registerWhatsNewHandlers()
 registerPlaybackForegroundActivityHandlers()
+registerLibraryMergeHandlers()
 registerSettingsHandlers({
   loadFingerprintList: async (mode) => {
     const FingerprintStore = require('./fingerprintStore')
@@ -492,7 +494,7 @@ registerBackgroundForegroundBusyProvider(
   () => isMixtapeStemQueueBusy() || isMixtapeWaveformQueueBusy() || isMixtapeRawWaveformQueueBusy()
 )
 
-if (is.dev && platform === 'win32' && devDatabase) {
+if (is.dev && devDatabase) {
   store.settingConfig.databaseUrl = devDatabase
 }
 

@@ -3,6 +3,7 @@ import path = require('path')
 import fs = require('fs-extra')
 import { v4 as uuidV4 } from 'uuid'
 import { log } from '../log'
+import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 import store from '../store'
 import { getCoreFsDirName } from '../coreLibraries'
 import { loadLibraryNodes, type LibraryNodeRow } from '../libraryTreeDb'
@@ -828,6 +829,7 @@ export function registerSetListHandlers() {
       }
     ) => {
       try {
+        assertLibraryMergeMutationAllowed()
         const { playlistUuid, items } = payload || {}
         if (!playlistUuid || !Array.isArray(items) || items.length === 0) {
           return []
@@ -850,6 +852,7 @@ export function registerSetListHandlers() {
 
   ipcMain.handle('setList:remove-item', async (_e, id: string) => {
     try {
+      assertLibraryMergeMutationAllowed()
       return await removeSetItemWithCustodyCleanup(id)
     } catch (error) {
       log.error('[setList] remove-item failed', error)
@@ -859,6 +862,7 @@ export function registerSetListHandlers() {
 
   ipcMain.handle('setList:remove-items', async (_e, ids: string[]) => {
     try {
+      assertLibraryMergeMutationAllowed()
       return await removeSetItemsByIdsWithCustodyCleanup(ids)
     } catch (error) {
       log.error('[setList] remove-items failed', error)
@@ -868,6 +872,7 @@ export function registerSetListHandlers() {
 
   ipcMain.handle('setList:clear-playlist', async (_e, playlistUuid: string) => {
     try {
+      assertLibraryMergeMutationAllowed()
       return await removeSetItemsByPlaylistWithCustodyCleanup(playlistUuid)
     } catch (error) {
       log.error('[setList] clear playlist failed', error)
@@ -877,6 +882,7 @@ export function registerSetListHandlers() {
 
   ipcMain.handle('setList:recycle-item-files', async (_e, ids: string[]) => {
     try {
+      assertLibraryMergeMutationAllowed()
       return await recycleSetItemFilesAndRemoveItems(ids)
     } catch (error) {
       log.error('[setList] recycle item files failed', error)
@@ -888,6 +894,7 @@ export function registerSetListHandlers() {
     'setList:reorder',
     async (_e, payload: { playlistUuid: string; orderedIds: string[] }) => {
       try {
+        assertLibraryMergeMutationAllowed()
         const { playlistUuid, orderedIds } = payload || {}
         if (!playlistUuid || !Array.isArray(orderedIds)) {
           return false
@@ -927,6 +934,7 @@ export function registerSetListHandlers() {
     'setList:protect-delete',
     async (_e, filePaths: string[]): Promise<SetDeleteProtectionResult> => {
       try {
+        assertLibraryMergeMutationAllowed()
         return await protectSetReferencedFilesForDeletion(filePaths)
       } catch (error) {
         log.error('[setList] protect-delete failed', error)

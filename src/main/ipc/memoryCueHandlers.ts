@@ -12,6 +12,7 @@ import {
   loadSharedSongMemoryCueDefinition,
   persistSharedSongMemoryCueDefinition
 } from '../services/sharedSongMemoryCues'
+import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 export function registerMemoryCueHandlers() {
   ipcMain.handle('song:get-memory-cues', async (_event, payload?: { filePath?: string }) => {
@@ -33,6 +34,7 @@ export function registerMemoryCueHandlers() {
         loopEndSec?: number
       }
     ) => {
+      assertLibraryMergeMutationAllowed()
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       const sec = normalizeSongMemoryCueSec(payload?.sec, payload?.durationSec)
       if (!filePath || sec === null) return { filePath, memoryCues: [] as ISongMemoryCue[] }
@@ -65,6 +67,7 @@ export function registerMemoryCueHandlers() {
   ipcMain.handle(
     'song:delete-memory-cue',
     async (_event, payload?: { filePath?: string; sec?: number; durationSec?: number }) => {
+      assertLibraryMergeMutationAllowed()
       const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
       const sec = normalizeSongMemoryCueSec(payload?.sec, payload?.durationSec)
       if (!filePath || sec === null) return { filePath, memoryCues: [] as ISongMemoryCue[] }

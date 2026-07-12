@@ -5,14 +5,14 @@ import { getSongsAnalyseResult } from './utils'
 import { scanSongList } from './services/scanSongs'
 import type { SqliteDatabase } from './libraryDb'
 import { normalizeArtistName, splitArtistNames } from '../shared/artistNames'
+import { CURATED_ARTIST_LIBRARY_META_KEY } from '../shared/curatedArtistLibraryMerge'
 import path = require('path')
 import crypto = require('crypto')
 import fs = require('fs-extra')
 
-const META_KEY = 'curated_artist_library_v1'
 const FINGERPRINT_REGEX = /^[a-f0-9]{64}$/i
 
-type CuratedArtistFavoriteEntry = {
+export type CuratedArtistFavoriteEntry = {
   name: string
   count: number
   fingerprints: string[]
@@ -197,7 +197,7 @@ function readCurrentArtists(db?: SqliteDatabase | null): CuratedArtistFavoriteEn
   const database = db || getDbForCurrentLibrary()
   if (!database) return []
   try {
-    return parseStoredArtists(getMetaValue(database, META_KEY))
+    return parseStoredArtists(getMetaValue(database, CURATED_ARTIST_LIBRARY_META_KEY))
   } catch {
     return []
   }
@@ -209,7 +209,11 @@ function writeCurrentArtists(
 ): void {
   const database = db || getDbForCurrentLibrary()
   if (!database) return
-  setMetaValue(database, META_KEY, JSON.stringify(normalizeFavoriteEntries(artists)))
+  setMetaValue(
+    database,
+    CURATED_ARTIST_LIBRARY_META_KEY,
+    JSON.stringify(normalizeFavoriteEntries(artists))
+  )
 }
 
 function createSnapshot(artists: CuratedArtistFavoriteEntry[]): CuratedArtistLibrarySnapshot {
@@ -235,6 +239,14 @@ function broadcastSnapshot(snapshot: CuratedArtistLibrarySnapshot): void {
   try {
     mainWindow.instance?.webContents.send('curated-artists-updated', snapshot)
   } catch {}
+}
+
+export function notifyCuratedArtistLibraryChanged(
+  db?: SqliteDatabase | null
+): CuratedArtistLibrarySnapshot {
+  const snapshot = createSnapshot(readCurrentArtists(db))
+  broadcastSnapshot(snapshot)
+  return snapshot
 }
 
 async function collectArtistCountsFromTargetPaths(

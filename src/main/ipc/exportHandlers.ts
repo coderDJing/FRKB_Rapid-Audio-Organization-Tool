@@ -35,6 +35,7 @@ import {
   compactSongListTrackNumbersByFilePaths,
   isSupportedPlaylistTrackNumberListRoot
 } from '../services/playlistTrackNumbers'
+import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
 type MoveSongsToDirOptions = {
   mode?: 'copy' | 'move'
@@ -184,6 +185,7 @@ async function findUniqueFolder(inputFolderPath: string) {
 
 export function registerExportHandlers() {
   ipcMain.handle('exportSongFingerprint', async (_e, folderPath) => {
+    assertLibraryMergeMutationAllowed()
     const toPath = path.join(
       folderPath,
       'songFingerprint' + getCurrentTimeYYYYMMDDHHMMSSSSS() + '.json'
@@ -192,6 +194,7 @@ export function registerExportHandlers() {
   })
 
   ipcMain.handle('importSongFingerprint', async (_e, filePath: string) => {
+    assertLibraryMergeMutationAllowed()
     const merged = await importFromJsonFile(filePath)
     store.songFingerprintList = merged
   })
@@ -199,6 +202,7 @@ export function registerExportHandlers() {
   ipcMain.handle(
     'exportSongListToDir',
     async (_e, folderPathVal, deleteSongsAfterExport, dirPath) => {
+      assertLibraryMergeMutationAllowed()
       const { absPath: scanPath } = resolveLibraryPath(dirPath)
       const songFileUrls = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
       const folderName = path.basename(scanPath)
@@ -284,6 +288,7 @@ export function registerExportHandlers() {
   )
 
   ipcMain.handle('exportSongsToDir', async (_e, folderPathVal, deleteSongsAfterExport, songs) => {
+    assertLibraryMergeMutationAllowed()
     const songItems: ExportSongInput[] = Array.isArray(songs) ? songs : []
     const tasks: Array<() => Promise<ExportTaskResult>> = []
     if (deleteSongsAfterExport) {
@@ -392,6 +397,7 @@ export function registerExportHandlers() {
   })
 
   ipcMain.handle('moveSongsToDir', async (_e, srcs, dest, options: MoveSongsToDirOptions = {}) => {
+    assertLibraryMergeMutationAllowed()
     const isMove = options?.mode !== 'copy'
     const normalizeRelativePath = (value: string) => value.replace(/\\/g, '/')
     const target = resolveLibraryPath(dest)
