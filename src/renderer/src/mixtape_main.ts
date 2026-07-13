@@ -13,6 +13,7 @@ import {
   watchUiSettings
 } from '@renderer/utils/uiSettingsStorage'
 import { installConsoleLogBridge } from '@renderer/utils/installConsoleLogBridge'
+import { stopWindowAudio } from '@renderer/utils/windowAudioCleanup'
 
 declare global {
   interface Window {
@@ -24,6 +25,7 @@ const pinia = createPinia()
 const app = createApp(App)
 
 installConsoleLogBridge('mixtape-window')
+window.addEventListener('beforeunload', stopWindowAudio)
 
 app.directive('dialog-drag', dialogDrag)
 

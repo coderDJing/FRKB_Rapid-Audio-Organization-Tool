@@ -55,6 +55,7 @@ import {
   createLayoutConfigReadHandler,
   isRuntimeLibraryTree
 } from '@renderer/utils/appRuntimeStateGuards'
+import { stopWindowAudio } from '@renderer/utils/windowAudioCleanup'
 
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
@@ -573,21 +574,7 @@ const handleContextMenuClickCapture = (event: MouseEvent) => {
 }
 
 const handleBeforeUnload = () => {
-  document.querySelectorAll('audio').forEach((el) => {
-    try {
-      el.pause()
-    } catch {}
-  })
-  try {
-    const contexts = window.__FRKB_AUDIO_CONTEXTS__
-    if (contexts) {
-      for (const ctx of contexts) {
-        try {
-          void ctx.suspend()
-        } catch {}
-      }
-    }
-  } catch {}
+  stopWindowAudio()
 }
 
 const getLibrary = async () => {

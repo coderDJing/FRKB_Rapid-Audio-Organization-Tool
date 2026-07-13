@@ -24,7 +24,11 @@ import { registerSetListHandlers } from '../../ipc/setListHandlers'
 import { isLibraryMergeActive } from '../../services/libraryMerge'
 import { createProgressSender } from './progress'
 import { startLibraryTreeWatcher, stopLibraryTreeWatcher } from '../../libraryTreeWatcher'
-import { startKeyAnalysisBackground } from '../../services/keyAnalysisQueue'
+import {
+  notifyPlaybackStateChange,
+  startKeyAnalysisBackground
+} from '../../services/keyAnalysisQueue'
+import { horizontalBrowseTransportBridge } from '../../ipc/horizontalBrowseTransportBridge'
 import type { IPlayerGlobalShortcuts, PlayerGlobalShortcutAction } from 'src/types/globals'
 import {
   MAIN_WINDOW_MIN_HEIGHT,
@@ -43,6 +47,16 @@ let mainWindow: BrowserWindow | null = null
 const getMainWindow = () => mainWindow
 const sendProgress = createProgressSender(getMainWindow)
 let sharedHandlersRegistered = false
+
+const stopHorizontalBrowseTransportForMainWindowClose = () => {
+  try {
+    horizontalBrowseTransportBridge.reset()
+  } catch (error) {
+    log.error('[main-window] close 时停止 native transport 失败', error)
+  }
+  notifyPlaybackStateChange(false)
+}
+
 const playerShortcutActions: PlayerGlobalShortcutAction[] = [
   'fastForward',
   'fastBackward',
@@ -475,11 +489,14 @@ function createWindow() {
   })
 
   mainWindow.on('close', (event) => {
-    if (!isLibraryMergeActive()) return
-    event.preventDefault()
-    try {
-      mainWindow?.focus()
-    } catch {}
+    if (isLibraryMergeActive()) {
+      event.preventDefault()
+      try {
+        mainWindow?.focus()
+      } catch {}
+      return
+    }
+    stopHorizontalBrowseTransportForMainWindowClose()
   })
 
   ipcMain.on('toggle-maximize', () => {
