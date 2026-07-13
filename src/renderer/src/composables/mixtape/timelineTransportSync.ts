@@ -3,6 +3,7 @@ import {
   resolveTempoRatioByBpm,
   resolveSyncPlaybackRateWithDiagnostics
 } from '@renderer/composables/mixtape/beatSyncModel'
+import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
 import {
   resolveTransportDynamicTempoSegmentAtLocalSec,
@@ -375,6 +376,17 @@ export const applyTimelineTransportSync = (
   const masterAnchorSec =
     resolveEntrySyncAnchorSecAtTimelineSec(masterEntry, timelineSec, masterLatencySec) +
     masterLatencySec
+  const masterGridPoints = masterEntry.tempoSnapshot.masterGridPoints
+  const masterPhaseGrid =
+    masterEntry.tempoSnapshot.mappingMode === 'masterGrid' &&
+    Array.isArray(masterGridPoints) &&
+    masterGridPoints.length >= 2
+      ? createMixtapeMasterGrid({
+          points: masterGridPoints,
+          phaseOffsetSec: masterEntry.tempoSnapshot.masterGridPhaseOffsetSec,
+          fallbackBpm: masterBpm
+        })
+      : null
   const diagnostics: TransportSyncDiagnostic[] = []
   const orderedActiveNodes = [
     masterNode,
@@ -444,6 +456,7 @@ export const applyTimelineTransportSync = (
         targetAnchorSec: audibleRuntimeSyncAnchorSec,
         masterAnchorSec,
         timelineSec,
+        mapMasterSecToBeats: masterPhaseGrid?.mapSecToBeats,
         phaseLockStrength: 0.16,
         maxPhasePull: 0.05
       })
@@ -463,6 +476,7 @@ export const applyTimelineTransportSync = (
           targetAnchorSec: audibleRuntimeSyncAnchorSec,
           masterAnchorSec,
           timelineSec,
+          mapMasterSecToBeats: masterPhaseGrid?.mapSecToBeats,
           phaseLockStrength: 0.16,
           maxPhasePull: 0.05
         })

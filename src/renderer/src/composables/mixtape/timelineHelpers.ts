@@ -23,6 +23,7 @@ import {
   resolveFirstBeatTimelineSec,
   resolveTempoRatioByBpm
 } from '@renderer/composables/mixtape/beatSyncModel'
+import { resolveMixtapeAudioFirstBeatSec } from '@renderer/composables/mixtape/mixtapeAudioGridBasis'
 import { resolveRoundedTrackLocalPx } from '@renderer/composables/mixtape/timelinePixelMath'
 import { buildTrackRuntimeTempoSnapshot } from '@renderer/composables/mixtape/trackRuntimeTempoSnapshot'
 import {
@@ -310,8 +311,7 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     ].join('|')
 
   const resolveTrackFirstBeatSeconds = (track: MixtapeTrack, targetBpm?: number) => {
-    const firstBeatMs = Number(track.firstBeatMs)
-    const firstBeatSourceSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
+    const firstBeatSourceSec = resolveMixtapeAudioFirstBeatSec(track)
     if (!Number.isFinite(firstBeatSourceSec) || firstBeatSourceSec <= 0) return 0
 
     const hasTargetBpm =
@@ -343,7 +343,7 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
       effectiveTrack,
       hasTargetBpm ? Number(targetBpm) : undefined
     )
-    return resolveFirstBeatTimelineSec(track.firstBeatMs, ratio)
+    return resolveFirstBeatTimelineSec(firstBeatSourceSec * 1000, ratio)
   }
 
   const resolveTrackFirstBeatMs = (track: MixtapeTrack, targetBpm?: number) => {

@@ -128,6 +128,7 @@
     "masterTempoLaneEdited": "Edited",
     "masterTempoLaneCurrentBpm": "Current {bpm} BPM",
     "masterTempoLaneDragHint": "Double-click or right-click a point to remove it.",
+    "masterTempoLanePointTooltip": "BPM {bpm}\nDrag vertically to adjust; double-click or right-click to delete.",
     "masterTempoLaneExpandAction": "Show envelope",
     "masterTempoLaneCollapseAction": "Hide envelope",
     "masterTempoLaneSwitchOn": "ON",

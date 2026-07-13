@@ -128,6 +128,7 @@
     "masterTempoLaneEdited": "已编辑",
     "masterTempoLaneCurrentBpm": "当前 {bpm} BPM",
     "masterTempoLaneDragHint": "双击或右键点可删除",
+    "masterTempoLanePointTooltip": "BPM {bpm}\n上下拖动调整；双击或右键删除",
     "masterTempoLaneExpandAction": "展开包络线",
     "masterTempoLaneCollapseAction": "收起包络线",
     "masterTempoLaneSwitchOn": "开",

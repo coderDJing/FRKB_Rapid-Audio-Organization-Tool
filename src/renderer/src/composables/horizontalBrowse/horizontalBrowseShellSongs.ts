@@ -12,6 +12,7 @@ type SharedSongGridPayload = {
   timeBasisOffsetMs?: number
   beatGridSource?: ISongInfo['beatGridSource']
   beatGridMap?: ISongInfo['beatGridMap'] | null
+  songStructure?: SongStructureAnalysis
 } | null
 
 export const isSameHorizontalBrowseSongFilePath = (left: unknown, right: unknown) => {
@@ -128,7 +129,11 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
       structureGridChanged = true
     }
   }
-  if (structureGridChanged && nextSong.songStructure !== undefined) {
+  const songStructure = normalizeSongStructureAnalysis(payload.songStructure)
+  if (songStructure) {
+    nextSong.songStructure = songStructure
+    touched = true
+  } else if (structureGridChanged && nextSong.songStructure !== undefined) {
     delete nextSong.songStructure
     touched = true
   }

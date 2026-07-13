@@ -11,6 +11,10 @@ import {
 } from '@renderer/composables/mixtape/mixtapeGlobalTempoModel'
 import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
+  resolveMixtapeAudioBeatGridMap,
+  resolveMixtapeAudioFirstBeatSec
+} from '@renderer/composables/mixtape/mixtapeAudioGridBasis'
+import {
   applyMixtapeGlobalTempoSnapshot,
   isMixtapeGlobalTempoReady,
   mixtapeGlobalTempoEnvelope,
@@ -389,9 +393,11 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
       const sourceDurationSec = Math.max(0, Number(resolveTrackSourceDurationSeconds(track)) || 0)
       const gridSourceBpm = resolveTrackGridSourceBpm(track)
       const beatSourceSec = Math.max(BPM_POINT_SEC_EPSILON, resolveBeatSecByBpm(gridSourceBpm))
-      const dynamicSourceBeatMap = createDynamicSourceBeatMap(track.beatGridMap, sourceDurationSec)
-      const firstBeatMs = Number(track?.firstBeatMs)
-      const firstBeatSourceSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
+      const dynamicSourceBeatMap = createDynamicSourceBeatMap(
+        resolveMixtapeAudioBeatGridMap(track, sourceDurationSec),
+        sourceDurationSec
+      )
+      const firstBeatSourceSec = resolveMixtapeAudioFirstBeatSec(track)
       const firstBeatSourceBeats = dynamicSourceBeatMap
         ? dynamicSourceBeatMap.firstBeatDelta
         : firstBeatSourceSec / beatSourceSec

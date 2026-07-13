@@ -11,6 +11,10 @@ import {
 } from '@renderer/composables/mixtape/beatSyncModel'
 import { createMixtapeMasterGrid } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
+  resolveMixtapeAudioBeatGridMap,
+  resolveMixtapeAudioFirstBeatSec
+} from '@renderer/composables/mixtape/mixtapeAudioGridBasis'
+import {
   isMixtapeGlobalTempoReady,
   mixtapeGlobalTempoEnvelope,
   mixtapeGlobalTempoPhaseOffsetSec
@@ -394,14 +398,13 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
       Number(resolveTrackSourceDurationSeconds(payload.track)) || 0
     )
     const dynamicSourceBeatMap = createDynamicSourceBeatMap(
-      payload.track.beatGridMap,
+      resolveMixtapeAudioBeatGridMap(payload.track, sourceDurationSec),
       sourceDurationSec
     )
     const sourceDurationBeats = dynamicSourceBeatMap
       ? dynamicSourceBeatMap.beatSpan
       : sourceDurationSec / beatSourceSec
-    const firstBeatMs = Number(payload.track.firstBeatMs)
-    const firstBeatSourceSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
+    const firstBeatSourceSec = resolveMixtapeAudioFirstBeatSec(payload.track)
     const firstBeatSourceBeats = dynamicSourceBeatMap
       ? dynamicSourceBeatMap.firstBeatDelta
       : firstBeatSourceSec / beatSourceSec

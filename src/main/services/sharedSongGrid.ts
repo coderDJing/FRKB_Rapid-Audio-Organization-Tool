@@ -7,7 +7,11 @@ import { stripBeatThisDebugInfo } from '../libraryCacheDb/pathResolvers'
 import { listMixtapeItemsByFilePath } from '../mixtapeDb'
 import { findSongListRoot } from './cacheMaintenance'
 import { applyLiteDefaults, buildLiteSongInfo } from './songInfoLite'
-import { hasUsableSongStructureAnalysis } from '../../shared/songStructure'
+import {
+  hasUsableSongStructureAnalysis,
+  normalizeSongStructureAnalysis,
+  type SongStructureAnalysis
+} from '../../shared/songStructure'
 import { normalizeBeatGridAlgorithmVersion } from './beatGridAlgorithmVersion'
 import {
   normalizeSongBeatGridMap,
@@ -35,6 +39,7 @@ export type SharedSongGridDefinition = {
   beatGridSource?: 'manual' | 'analysis'
   beatGridMap?: SongBeatGridMap | null
   beatGridAlgorithmVersion?: number
+  songStructure?: SongStructureAnalysis
 }
 
 type SharedSongGridInternalDefinition = SharedSongGridDefinition & {
@@ -166,6 +171,9 @@ const extractSharedGridFromInfo = (
   const beatGridProjection = projectSongBeatGridMapToFixedGrid(beatGridMap)
   const beatThisWindowCount = normalizeBeatThisWindowCount(info.beatThisWindowCount)
   const beatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(info.beatGridAlgorithmVersion)
+  const songStructure = hasUsableSongStructureAnalysis(info)
+    ? (normalizeSongStructureAnalysis(info.songStructure) ?? undefined)
+    : undefined
   if (
     bpm === undefined &&
     firstBeatMs === undefined &&
@@ -186,7 +194,8 @@ const extractSharedGridFromInfo = (
     beatGridSource: beatGridMap ? 'manual' : beatGridSource,
     beatGridMap: beatGridMap ?? undefined,
     beatThisWindowCount,
-    beatGridAlgorithmVersion
+    beatGridAlgorithmVersion,
+    songStructure
   }
 }
 
@@ -205,7 +214,8 @@ const mergeSharedGridDefinition = (
     beatGridSource: next.beatGridSource ?? base.beatGridSource,
     beatGridMap: next.beatGridMap ?? base.beatGridMap,
     beatThisWindowCount: next.beatThisWindowCount ?? base.beatThisWindowCount,
-    beatGridAlgorithmVersion: next.beatGridAlgorithmVersion ?? base.beatGridAlgorithmVersion
+    beatGridAlgorithmVersion: next.beatGridAlgorithmVersion ?? base.beatGridAlgorithmVersion,
+    songStructure: next.songStructure ?? base.songStructure
   }
 }
 

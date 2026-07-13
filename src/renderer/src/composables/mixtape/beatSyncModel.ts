@@ -12,6 +12,7 @@ type SyncPlaybackRateParams = {
   targetAnchorSec: number
   masterAnchorSec: number
   timelineSec: number
+  mapMasterSecToBeats?: (sec: number) => number
   phaseLockStrength?: number
   maxPhasePull?: number
 }
@@ -131,18 +132,28 @@ export const resolveSyncPlaybackRateWithDiagnostics = (
     }
   }
 
-  // 再做 phase sync，相位误差小幅回拉，避免“跑马”。
-  const targetPhase = resolvePhaseSecAtTime(
-    Number(params.timelineSec),
-    Number(params.targetAnchorSec),
-    masterBeatSec
-  )
-  const masterPhase = resolvePhaseSecAtTime(
-    Number(params.timelineSec),
-    Number(params.masterAnchorSec),
-    masterBeatSec
-  )
-  const phaseErrorSec = wrapPhaseDiffSec(masterPhase - targetPhase, masterBeatSec)
+  // 动态主 BPM 必须基于累计拍数计算相位；用当前拍长做时间取模会在变速时产生假相位误差。
+  const mapMasterSecToBeats = params.mapMasterSecToBeats
+  const phaseErrorSec =
+    typeof mapMasterSecToBeats === 'function'
+      ? wrapPhaseDiffSec(
+          mapMasterSecToBeats(Number(params.masterAnchorSec)) -
+            mapMasterSecToBeats(Number(params.targetAnchorSec)),
+          1
+        ) * masterBeatSec
+      : wrapPhaseDiffSec(
+          resolvePhaseSecAtTime(
+            Number(params.timelineSec),
+            Number(params.masterAnchorSec),
+            masterBeatSec
+          ) -
+            resolvePhaseSecAtTime(
+              Number(params.timelineSec),
+              Number(params.targetAnchorSec),
+              masterBeatSec
+            ),
+          masterBeatSec
+        )
   const phaseLockStrength = clampNumber(Number(params.phaseLockStrength) || 0.12, 0, 0.5)
   const maxPhasePull = clampNumber(Number(params.maxPhasePull) || 0.04, 0, 0.15)
   const phasePull = clampNumber(

@@ -7,6 +7,7 @@ import {
   resolveGridAnchorSec
 } from '@renderer/composables/mixtape/beatSyncModel'
 import { MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM } from '@renderer/composables/mixtape/gainEnvelope'
+import { resolveMixtapeAudioBeatGridMap } from '@renderer/composables/mixtape/mixtapeAudioGridBasis'
 import {
   buildTrackRuntimeTempoSnapshot,
   serializeTrackRuntimeTempoSnapshot
@@ -409,7 +410,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
         mapBaseLocalToSource: (localSec: number) => baseTimeMap.mapLocalToSource(localSec)
       })
       const dynamicTempoSegments = buildTransportDynamicTempoSegments({
-        sourceBeatGridMap: track.beatGridMap,
+        sourceBeatGridMap: resolveMixtapeAudioBeatGridMap(track, sourceDuration),
         sourceDurationSec: sourceDuration,
         trackStartSec,
         playbackSequence,

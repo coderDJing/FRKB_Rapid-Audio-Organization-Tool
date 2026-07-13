@@ -9,6 +9,7 @@ import {
   mergeHorizontalBrowseSongWithMemoryCues,
   mergeHorizontalBrowseSongWithSharedGrid
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseShellSongs'
+import type { SongStructureAnalysis } from '@shared/songStructure'
 import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
 import { sendHorizontalBrowseInteractionTrace } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTrace'
 import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTimeline'
@@ -22,6 +23,7 @@ type SharedSongGridPayload = {
   firstBeatMs?: number
   barBeatOffset?: number
   beatGridMap?: ISongInfo['beatGridMap'] | null
+  songStructure?: SongStructureAnalysis
 } | null
 
 type CreateHorizontalBrowseDeckAssignerParams = {

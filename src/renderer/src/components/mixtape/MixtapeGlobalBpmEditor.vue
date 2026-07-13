@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useI18n } from '@renderer/composables/useI18n'
 import {
   BASE_PX_PER_SEC,
@@ -243,10 +244,15 @@ const buildCollapsedChipLabel = (bpms: number[]) => {
 }
 
 const collapsedPointChips = computed<CollapsedPointChip[]>(() => {
-  const displayPoints = effectivePoints.value.filter(
-    (point, index, points) =>
-      index === 0 || formatBpmLabel(point.bpm) !== formatBpmLabel(points[index - 1]?.bpm)
-  )
+  const transitionPoints = effectivePoints.value.filter((point, index, points) => {
+    const label = formatBpmLabel(point.bpm)
+    const previousLabel = index > 0 ? formatBpmLabel(points[index - 1]?.bpm) : label
+    const nextLabel = index + 1 < points.length ? formatBpmLabel(points[index + 1]?.bpm) : label
+    return label !== previousLabel || label !== nextLabel
+  })
+  const displayPoints = transitionPoints.length
+    ? transitionPoints
+    : effectivePoints.value.slice(0, 1)
   if (!displayPoints.length) return []
 
   const chips: CollapsedPointChip[] = []
@@ -383,10 +389,11 @@ const currentBpmValue = computed(() =>
 )
 
 const formatBpmLabel = (value: number) => formatTrackBpmDisplay(value, '--')
+const resolvePointTooltip = (point: Pick<PointDot, 'bpm'>) =>
+  t('mixtape.masterTempoLanePointTooltip', { bpm: formatBpmLabel(point.bpm) })
 
 const currentBpmLabel = computed(() => formatBpmLabel(currentBpmValue.value))
 const currentBpmText = computed(() => `BPM ${currentBpmLabel.value}`)
-const interactionHintText = computed(() => t('mixtape.masterTempoLaneDragHint'))
 
 const playheadMarker = computed(() => {
   const xPx = resolveTimelineXPx(currentPlayheadSec.value)
@@ -971,7 +978,8 @@ watch(
           class="timeline-master-bpm__point-wrap"
           :style="{ left: `${point.xPx}px`, top: `${point.yPx}px` }"
         >
-          <button
+          <bubbleBoxTrigger
+            tag="button"
             class="timeline-master-bpm__point"
             :class="[
               {
@@ -981,24 +989,20 @@ watch(
               },
               point.edge ? `is-edge-${point.edge}` : ''
             ]"
+            :title="resolvePointTooltip(point)"
+            :show-delay="250"
+            :max-width="240"
             type="button"
             @mousedown.stop.prevent="handlePointMouseDown($event, point.index)"
             @dblclick.stop.prevent="handlePointDoubleClick(point.index)"
             @contextmenu.stop.prevent="handlePointContextMenu(point.index, $event)"
-          ></button>
+          ></bubbleBoxTrigger>
           <span
             v-if="point.isActive"
             class="timeline-master-bpm__point-label"
             :class="[`is-${point.labelPlacement}`, `is-align-${point.labelAlign}`]"
           >
             {{ formatBpmLabel(point.bpm) }}
-          </span>
-          <span
-            v-else
-            class="timeline-master-bpm__point-hint"
-            :class="[`is-${point.labelPlacement}`, `is-align-${point.labelAlign}`]"
-          >
-            {{ interactionHintText }}
           </span>
         </div>
       </div>

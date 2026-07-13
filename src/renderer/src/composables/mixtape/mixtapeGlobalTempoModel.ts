@@ -4,6 +4,10 @@ import {
 } from '@renderer/composables/mixtape/beatSyncModel'
 import { sampleMixtapeMasterGridBpmAtSec } from '@renderer/composables/mixtape/mixtapeMasterGrid'
 import {
+  resolveMixtapeAudioBeatGridMap,
+  resolveMixtapeAudioFirstBeatSec
+} from '@renderer/composables/mixtape/mixtapeAudioGridBasis'
+import {
   clampTrackTempoNumber,
   BPM_POINT_SEC_EPSILON,
   buildFlatTrackBpmEnvelope,
@@ -97,6 +101,98 @@ const pushGeneratedBpmPoint = (
   })
 }
 
+type GeneratedTrackBpmEnvelope = {
+  order: number
+  startSec: number
+  endSec: number
+  points: MixtapeBpmPoint[]
+}
+
+const resolveGeneratedTrackBpmAtSec = (envelope: GeneratedTrackBpmEnvelope, sec: number) =>
+  sampleMixtapeMasterGridBpmAtSec(
+    envelope.points,
+    sec,
+    normalizeTrackBpmValue(envelope.points[0]?.bpm) ?? 128
+  )
+
+/**
+ * A master tempo lane can only describe one tempo at a time. When two tracks overlap,
+ * it keeps the outgoing BPM at the incoming track's start and ramps both tracks to the
+ * incoming BPM by the end of that overlap.
+ */
+const buildGeneratedGlobalBpmPoints = (params: {
+  envelopes: GeneratedTrackBpmEnvelope[]
+  durationSec: number
+  fallbackBpm: number
+}) => {
+  const safeDurationSec = Math.max(0, Number(params.durationSec) || 0)
+  const orderedEnvelopes = [...params.envelopes].sort((left, right) => {
+    if (Math.abs(left.startSec - right.startSec) > BPM_POINT_SEC_EPSILON) {
+      return left.startSec - right.startSec
+    }
+    return left.order - right.order
+  })
+  let points: MixtapeBpmPoint[] = []
+  const pushPoint = (secInput: number, bpm: number) => {
+    const sec = roundTrackTempoSec(secInput)
+    const previous = points[points.length - 1]
+    if (
+      previous &&
+      Math.abs(previous.sec - sec) <= BPM_POINT_SEC_EPSILON &&
+      Math.abs(previous.bpm - bpm) <= 0.000001
+    ) {
+      return
+    }
+    points.push({ sec, bpm, source: AUTO_BPM_POINT_SOURCE })
+  }
+
+  const appendEnvelopePoints = (envelope: GeneratedTrackBpmEnvelope, fromSec: number) => {
+    for (const point of envelope.points) {
+      const sec = roundTrackTempoSec(Number(point.sec))
+      if (sec < fromSec - BPM_POINT_SEC_EPSILON || sec > safeDurationSec) continue
+      pushPoint(sec, resolveGeneratedTrackBpmAtSec(envelope, sec))
+    }
+  }
+
+  for (const [index, envelope] of orderedEnvelopes.entries()) {
+    if (!points.length) {
+      appendEnvelopePoints(envelope, envelope.startSec)
+      continue
+    }
+    const outgoing = orderedEnvelopes
+      .slice(0, index)
+      .filter((candidate) => candidate.endSec > envelope.startSec + BPM_POINT_SEC_EPSILON)
+      .at(-1)
+    if (!outgoing) {
+      appendEnvelopePoints(envelope, envelope.startSec)
+      continue
+    }
+
+    const transitionStartSec = envelope.startSec
+    const transitionEndSec = Math.min(outgoing.endSec, envelope.endSec)
+    const transitionStartBpm = sampleMixtapeMasterGridBpmAtSec(
+      points,
+      transitionStartSec,
+      params.fallbackBpm
+    )
+    points = points.filter((point) => point.sec < transitionStartSec - BPM_POINT_SEC_EPSILON)
+    pushPoint(transitionStartSec, transitionStartBpm)
+    pushPoint(transitionEndSec, resolveGeneratedTrackBpmAtSec(envelope, transitionEndSec))
+    appendEnvelopePoints(envelope, transitionEndSec + BPM_POINT_SEC_EPSILON)
+  }
+
+  if (!points.length) return buildFlatMixtapeGlobalBpmEnvelope(safeDurationSec, params.fallbackBpm)
+  const last = points[points.length - 1]
+  if (Math.abs(last.sec - safeDurationSec) > BPM_POINT_SEC_EPSILON) {
+    points.push({
+      sec: safeDurationSec,
+      bpm: last.bpm,
+      source: AUTO_BPM_POINT_SOURCE
+    })
+  }
+  return points
+}
+
 const appendGeneratedDynamicTrackBpmPoints = (params: {
   track: MixtapeTrack
   startSec: number
@@ -105,7 +201,7 @@ const appendGeneratedDynamicTrackBpmPoints = (params: {
   points: MixtapeBpmPoint[]
 }) => {
   const dynamicSourceBeatMap = createDynamicSourceBeatMap(
-    params.track.beatGridMap,
+    resolveMixtapeAudioBeatGridMap(params.track, params.sourceDurationSec),
     params.sourceDurationSec
   )
   if (!dynamicSourceBeatMap) return null
@@ -116,7 +212,11 @@ const appendGeneratedDynamicTrackBpmPoints = (params: {
     resolveRuntimeClipBpmAtSourceSec(dynamicSourceBeatMap.runtime.clips, firstSourceSec) ??
     normalizeTrackBpmValue(firstClipBpm) ??
     params.defaultBpm
-  const targetAnchorBpm = normalizeTrackBpmValue(params.track.bpm) ?? sourceAnchorBpm
+  const targetAnchorBpm =
+    normalizeTrackBpmValue(params.track.gridBaseBpm) ??
+    normalizeTrackBpmValue(params.track.originalBpm) ??
+    normalizeTrackBpmValue(params.track.bpm) ??
+    sourceAnchorBpm
   const scale = clampTrackTempoNumber(
     targetAnchorBpm / Math.max(BPM_POINT_SEC_EPSILON, sourceAnchorBpm),
     0.25,
@@ -200,8 +300,7 @@ const resolveTrackVisibleAnchorLocalSec = (params: {
     Number(params.resolveTrackSourceDurationSeconds(track)) || 0
   )
   const sourceDurationBeats = sourceDurationSec / beatSourceSec
-  const firstBeatMs = Number(track.firstBeatMs)
-  const firstBeatSourceSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
+  const firstBeatSourceSec = resolveMixtapeAudioFirstBeatSec(track)
   const firstBeatSourceBeats = firstBeatSourceSec / beatSourceSec
   const normalizedBarBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
   const firstBarLineSourceBeats = firstBeatSourceBeats + normalizedBarBeatOffset
@@ -260,10 +359,10 @@ export const buildDefaultMixtapeGlobalBpmEnvelopeSnapshot = (params: {
     const startSec = Number(track.startSec)
     return Number.isFinite(startSec) && startSec >= 0
   })
-  const generatedPoints: MixtapeBpmPoint[] = []
+  const generatedEnvelopes: GeneratedTrackBpmEnvelope[] = []
   let durationSec = 0
   if (tracksHaveMaterializedStarts) {
-    for (const track of params.tracks) {
+    for (const [order, track] of params.tracks.entries()) {
       const startSec = resolveTrackStartSec(track)
       const sourceDurationSec = Math.max(
         0,
@@ -273,22 +372,29 @@ export const buildDefaultMixtapeGlobalBpmEnvelopeSnapshot = (params: {
         0,
         Number(params.resolveTrackDurationSeconds(track)) || 0
       )
+      const trackPoints: MixtapeBpmPoint[] = []
       const dynamicTrackEndSec = appendGeneratedDynamicTrackBpmPoints({
         track,
         startSec,
         sourceDurationSec,
         defaultBpm,
-        points: generatedPoints
+        points: trackPoints
       })
       if (dynamicTrackEndSec !== null) {
         durationSec = Math.max(durationSec, dynamicTrackEndSec)
+        generatedEnvelopes.push({
+          order,
+          startSec,
+          endSec: dynamicTrackEndSec,
+          points: trackPoints
+        })
         continue
       }
       const trackSourceBpm = resolveTrackGridSourceBpm(track)
       const trackBpm =
-        normalizeTrackBpmValue(track.bpm) ??
         normalizeTrackBpmValue(track.gridBaseBpm) ??
         normalizeTrackBpmValue(track.originalBpm) ??
+        normalizeTrackBpmValue(track.bpm) ??
         defaultBpm
       const trackScale = clampTrackTempoNumber(
         trackBpm / Math.max(BPM_POINT_SEC_EPSILON, trackSourceBpm),
@@ -305,15 +411,17 @@ export const buildDefaultMixtapeGlobalBpmEnvelopeSnapshot = (params: {
               visibleSourceDurationSec / Math.max(BPM_POINT_SEC_EPSILON, trackScale)
             )
           : fallbackDurationSec || sourceDurationSec
-      generatedPoints.push(
+      const endSec = roundTrackTempoSec(startSec + trackDurationSec)
+      trackPoints.push(
         { sec: startSec, bpm: trackBpm, source: AUTO_BPM_POINT_SOURCE },
         {
-          sec: roundTrackTempoSec(startSec + trackDurationSec),
+          sec: endSec,
           bpm: trackBpm,
           source: AUTO_BPM_POINT_SOURCE
         }
       )
-      durationSec = Math.max(durationSec, startSec + trackDurationSec)
+      generatedEnvelopes.push({ order, startSec, endSec, points: trackPoints })
+      durationSec = Math.max(durationSec, endSec)
     }
   } else {
     durationSec = Math.max(
@@ -327,9 +435,17 @@ export const buildDefaultMixtapeGlobalBpmEnvelopeSnapshot = (params: {
     )
   }
   const normalizedGeneratedPoints =
-    durationSec > 0 && generatedPoints.length >= 2
+    durationSec > 0 && generatedEnvelopes.length > 0
       ? markGeneratedBpmEnvelopePoints(
-          normalizeMixtapeGlobalBpmEnvelopePoints(generatedPoints, durationSec, defaultBpm)
+          normalizeMixtapeGlobalBpmEnvelopePoints(
+            buildGeneratedGlobalBpmPoints({
+              envelopes: generatedEnvelopes,
+              durationSec,
+              fallbackBpm: defaultBpm
+            }),
+            durationSec,
+            defaultBpm
+          )
         )
       : markGeneratedBpmEnvelopePoints(buildFlatMixtapeGlobalBpmEnvelope(durationSec, defaultBpm))
   return {

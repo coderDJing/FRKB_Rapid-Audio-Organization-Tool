@@ -41,6 +41,7 @@ vi.mock('../../log', () => ({
   log: { error: mocks.logError }
 }))
 
+import { normalizePath } from './types'
 import { createPersistSongStructure } from './structurePersistence'
 
 const FILE_PATH = 'G:\\FRKB_database-A\\library\\FilterLibrary\\test.mp3'
@@ -113,7 +114,7 @@ describe('createPersistSongStructure', () => {
     await persistSongStructure(FILE_PATH, structure, { shouldPersist: () => ownsJob })
 
     expect(updated).toEqual([{ filePath: FILE_PATH, songStructure: structure }])
-    expect(doneByPath.get(FILE_PATH.toLowerCase())?.songStructure).toEqual(structure)
+    expect(doneByPath.get(normalizePath(FILE_PATH))?.songStructure).toEqual(structure)
   })
 
   it('任务被接管且目标结果未真正写入时不会误广播', async () => {
