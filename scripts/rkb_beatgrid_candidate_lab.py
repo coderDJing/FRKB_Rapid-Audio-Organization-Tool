@@ -1055,7 +1055,7 @@ def main() -> int:
             entry = resolve_feature_entry(track=track, index_map=index_map)
             if entry is None:
                 raise RuntimeError("feature cache missing; run rkb_beatgrid_feature_cache.py first")
-            metadata = read_feature_metadata(cache_dir, entry)
+            metadata = read_feature_metadata(cache_dir, entry, track=track)
             arrays_path = resolve_feature_arrays_path(cache_dir, entry, metadata)
             if not arrays_path.exists():
                 raise RuntimeError(f"feature arrays missing: {arrays_path}")

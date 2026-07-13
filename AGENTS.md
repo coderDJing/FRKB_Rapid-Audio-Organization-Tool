@@ -76,7 +76,30 @@
 
 ## 按需脚本
 
-- **rekordbox样本预分拣**：`scripts/move_rekordbox_playlist_grid_diffs.py`，详细用法见 `drafts/rkb-rekordbox-playlist-diff-triage-script.md`。
+- **rekordbox样本预分拣**：`scripts/move_rekordbox_playlist_grid_diffs.py`，详细用法见 `drafts/rkb-benchmark-workflow/分拣脚本.md`。
   - Python 环境：`vendor/demucs/win32-x64/runtime-cpu/python.exe`（含 torch、soxr、beat_this 等 ML 依赖）。Rekordbox bridge 子进程会自动使用 `vendor/rekordbox-desktop-runtime/win32-x64/python/python.exe`。
-  - 执行流程：先跑 dry-run，如果 `errorTrackCount == 0`，直接加 `--apply` 再跑一次，不需要问用户确认。dry-run 本身就是确认步骤。
+  - 用户人工流程固定为 `Upan -> test -> needReview -> review`：艾特 `分拣脚本.md` 时从 Upan 取 500 首、
+    分拣后用户把 test + needReview 的本轮剩余项移入 review；艾特 `准备好rkb新样本.md` 时只从 review 的
+    report 绑定完整 roster 创建 consumed development batch。禁止绕过统一入口手工拼接 truth / benchmark / sealed 命令。
+  - 中央 `rkb-dataset-registry.json` 必须先一次性覆盖历史 3745 个 consumed 样本，并具备不可变 `familyId`、完整 Chromaprint、`batchId` 和 `batchStatus = consumed`；注册未完成时禁止 fresh prepare/evaluate，fresh/evaluating/exposed 记录禁止进入 development split。split / LOBO 必须先按固定纯音频 policy 合并为 `isolationFamilyId`，禁止只按 exact family 声称无泄漏。
+    初次迁移固定按历史批次执行 `import-consumed`，全部导入后执行
+    `initialize-registry --expected-track-count 3745`，并用重复的 `--expected-batch <batchId>=<数量>`
+    锁死 `current1407 / blind608 / old377 / new357 / test327 / test353 / test316` 七批；
+    `rebuild-registry` 只用于初始化后的派生视图重建。
+  - FRKB 数据库根目录只认 `.env` 的 `FRKB_BENCHMARK_DATABASE_ROOT` / `FRKB_DEV_DATABASE_URL`；
+    D 到 G 的文件迁移未完成时禁止切换配置、禁止按迁移中的目录瞬时数量初始化 registry，也禁止脚本自行猜盘符。
+    当前 FRKB-5 已切到 `G:/FRKB_database-E`，历史 baseline 为 7 批 / 3745 首；禁止回退到已不存在的 D 盘目录。
+  - PCM / Chromaprint 身份计算默认使用 `audio-identity-cache`，按 16 首分块断点续算。缓存命中仍必须重算
+    asset SHA-256 并校验文件大小、mtime、helper SHA 和参数；缓存只能减少重复解码，不能代替身份校验。
+  - G 盘旧 `.frkb_audio_library_manifest.json` 是 registry 建立前的 1916 首迁移快照，仅作历史记录；
+    当前数据权威源是 `rkb-dataset-registry.json` + baseline，禁止再拿旧 manifest 判断样本总数或根目录。
+  - `test` 差异分拣是 pre-review label QA：完整 roster、audio SHA-256、solver/hash 必须先写入 report，
+    再按同一 report 把差异项移至 `needReview`。旧算法的这次比对不改变未来候选的证据资格；只有 review batch
+    被用于训练/调参后，才不能验证使用过它的同一候选。review prepare 必须按 report 绑定整批 roster 与音频身份；缺 fingerprint 或近重复时 fail closed。
+  - 同一时刻只允许一个 fresh/evaluating/exposed 批次；存在活动批次或 `sealed-intake` 除 `.frkb.uuid` 外仍有内容时，必须先 finalize/清理，禁止强行 prepare。`.frkb.uuid` 是资料库节点身份标记，必须保留。
+  - 执行流程仍是先跑 dry-run；如果 `errorTrackCount == 0`，固定使用已生成报告的
+    `--from-report <report> --apply` 写回，不重新分析后直接 apply，也不需要再次询问用户。写回前必须校验
+    report 的 solver/snapshot 身份和 playlist `rowKey`。若用户要把本批纳入训练/调参，使用
+    `prepare --playlist review --reviewed-development --triage-report <report>` 直接 consumed；之后禁止根据本批
+    结果调参后再用本批证明同一候选提升。旧 consumed 数据维护才可传 `--consumed-maintenance`。
 - **Upan 源头清理**：`scripts/move_upan_non_integer_bpm_tracks.py`，默认 dry-run；确认后加 `--apply`。固定顺序：先从 `Upan` 直接移除 current truth 重复曲目和源歌单内部重复多余项，再将剩余曲目里 UI BPM（bridge `bpm` 字段）非整数的移动到 `upanNonIntegerBpm`。

@@ -10,17 +10,32 @@ from pathlib import Path
 from typing import Any
 
 import benchmark_rkb_rekordbox_truth as benchmark
-from rkb_beatgrid_lab_common import DEFAULT_FEATURE_CACHE_DIR
+from rkb_beatgrid_lab_common import (
+    DEFAULT_FEATURE_CACHE_DIR,
+    track_identity_key,
+    validate_feature_cache_coverage,
+    validate_feature_metadata_identity,
+    write_feature_index,
+)
+from rkb_dataset_contract import (
+    build_derived_shard_metadata,
+    enrich_truth_tracks_from_registry,
+    identity_projection_sha256,
+    materialize_registry_enriched_truth,
+    validate_truth_contract,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FEATURE_CACHE_SCRIPT = REPO_ROOT / "scripts" / "rkb_beatgrid_feature_cache.py"
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
 CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
+DEFAULT_REGISTRY = BENCHMARK_OUTPUT_DIR / "rkb-dataset-registry.json"
 DEFAULT_SHARD_DIR = BENCHMARK_OUTPUT_DIR / "feature-cache-shards"
 
 
 def _load_raw_truth_tracks(truth_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     payload = json.loads(truth_path.read_text(encoding="utf-8"))
+    validate_truth_contract(truth_path, payload)
     tracks = payload.get("tracks") if isinstance(payload, dict) else None
     if not isinstance(tracks, list) or not tracks:
         raise RuntimeError(f"truth contains no tracks: {truth_path}")
@@ -29,6 +44,20 @@ def _load_raw_truth_tracks(truth_path: Path) -> tuple[dict[str, Any], list[dict[
 
 def _normalize_lookup_key(value: Any) -> str:
     return benchmark._normalize_lookup_key(value)
+
+
+def _enrich_tracks_from_registry(
+    tracks: list[dict[str, Any]],
+    *,
+    registry_path: Path,
+    batch_id: str,
+) -> list[dict[str, Any]]:
+    _, enriched = enrich_truth_tracks_from_registry(
+        tracks,
+        registry_path=registry_path,
+        batch_id=batch_id,
+    )
+    return enriched
 
 
 def _matches_only_filters(track: dict[str, Any], filters: list[str]) -> bool:
@@ -49,12 +78,12 @@ def _select_tracks(tracks: list[dict[str, Any]], filters: list[str], limit: int)
     seen: set[str] = set()
     for track in tracks:
         file_name = str(track.get("fileName") or "").strip()
-        lookup_key = _normalize_lookup_key(file_name)
-        if not file_name or lookup_key in seen:
+        identity_key = track_identity_key(track)
+        if not file_name or not identity_key or identity_key in seen:
             continue
         if not _matches_only_filters(track, filters):
             continue
-        seen.add(lookup_key)
+        seen.add(identity_key)
         selected.append(track)
         if limit > 0 and len(selected) >= limit:
             break
@@ -83,15 +112,25 @@ def _write_shard_truth(
     path: Path,
     index: int,
     count: int,
+    source_truth_path: Path | None = None,
+    source_contract: dict[str, Any] | None = None,
 ) -> None:
     payload = {
         key: value
         for key, value in base_payload.items()
-        if key not in {"tracks", "trackCount", "sourcePlaylists"}
+        if key not in {"tracks", "trackCount", "sourcePlaylists", "registryEnrichedTruth"}
     }
     payload["note"] = f"feature cache shard {index + 1}/{count}"
     payload["trackCount"] = len(tracks)
     payload["tracks"] = tracks
+    if source_truth_path is not None and source_contract is not None:
+        payload["derivedShard"] = build_derived_shard_metadata(
+            source_truth_path=source_truth_path,
+            source_contract=source_contract,
+            tracks=tracks,
+            shard_index=index,
+            shard_count=count,
+        )
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -143,8 +182,16 @@ def _run_shard(
     return {"shardIndex": shard_index + 1}
 
 
-def _rebuild_index_from_metadata(cache_dir: Path) -> int:
-    entries_by_lookup_key: dict[str, dict[str, Any]] = {}
+def _rebuild_index_from_metadata(
+    cache_dir: Path,
+    truth_tracks: list[dict[str, Any]],
+) -> int:
+    truth_by_identity = {
+        identity_key: track
+        for track in truth_tracks
+        if (identity_key := track_identity_key(track))
+    }
+    entries_by_identity: dict[str, dict[str, Any]] = {}
     for metadata_path in cache_dir.glob("feature-*.json"):
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
@@ -163,6 +210,12 @@ def _rebuild_index_from_metadata(cache_dir: Path) -> int:
         entry = {
             "fileName": file_name,
             "lookupKey": lookup_key,
+            "instanceId": metadata.get("instanceId"),
+            "batchId": metadata.get("batchId"),
+            "assetSha256": metadata.get("assetSha256"),
+            "pcmSha256": metadata.get("pcmSha256"),
+            "familyId": metadata.get("familyId"),
+            "sourcePath": metadata.get("sourcePath"),
             "cacheKey": cache_key,
             "metadataPath": metadata_path.name,
             "arraysPath": arrays_path,
@@ -170,7 +223,15 @@ def _rebuild_index_from_metadata(cache_dir: Path) -> int:
             "featureCacheVersion": metadata.get("featureCacheVersion"),
             "updatedAt": metadata.get("createdAt"),
         }
-        previous = entries_by_lookup_key.get(lookup_key)
+        identity_key = track_identity_key(metadata)
+        track = truth_by_identity.get(identity_key)
+        if not identity_key or track is None:
+            continue
+        try:
+            validate_feature_metadata_identity(track=track, entry=entry, metadata=metadata)
+        except RuntimeError:
+            continue
+        previous = entries_by_identity.get(identity_key)
         previous_key = (
             int(previous.get("featureCacheVersion") or 0) if previous else -1,
             float(previous.get("updatedAt") or 0.0) if previous else -1.0,
@@ -180,24 +241,17 @@ def _rebuild_index_from_metadata(cache_dir: Path) -> int:
             float(entry.get("updatedAt") or 0.0),
         )
         if previous is None or next_key >= previous_key:
-            entries_by_lookup_key[lookup_key] = entry
-    entries = list(entries_by_lookup_key.values())
-    entries.sort(key=lambda item: str(item.get("lookupKey") or ""))
-    index_path = cache_dir / "index.json"
-    tmp_path = index_path.with_name(f"{index_path.name}.tmp")
-    payload = {
-        "version": 1,
-        "updatedAt": round(time.time(), 3),
-        "entries": entries,
-    }
-    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp_path.replace(index_path)
+            entries_by_identity[identity_key] = entry
+    entries = list(entries_by_identity.values())
+    write_feature_index(cache_dir, entries)
     return len(entries)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build hybrid beatgrid feature cache in parallel")
     parser.add_argument("--truth", default=str(CURRENT_TRUTH))
+    parser.add_argument("--truth-batch-id", default="")
+    parser.add_argument("--registry", default=str(DEFAULT_REGISTRY))
     parser.add_argument("--audio-root", default=str(benchmark.DEFAULT_AUDIO_ROOT))
     parser.add_argument("--ffmpeg", default=str(benchmark.DEFAULT_FFMPEG))
     parser.add_argument("--ffprobe", default=str(benchmark.DEFAULT_FFPROBE))
@@ -215,7 +269,21 @@ def main() -> int:
 
     truth_path = Path(args.truth)
     shard_dir = Path(args.shard_dir)
+    if shard_dir.exists():
+        shutil.rmtree(shard_dir)
+    shard_dir.mkdir(parents=True, exist_ok=True)
     base_payload, raw_tracks = _load_raw_truth_tracks(truth_path)
+    truth_contract = validate_truth_contract(truth_path, base_payload)
+    shard_source_path = truth_path
+    truth_batch_id = str(args.truth_batch_id or "").strip()
+    if truth_batch_id:
+        shard_source_path = shard_dir / "authoritative-enriched-truth.json"
+        base_payload, truth_contract, raw_tracks = materialize_registry_enriched_truth(
+            source_truth_path=truth_path,
+            registry_path=Path(args.registry),
+            batch_id=truth_batch_id,
+            output_path=shard_source_path,
+        )
     filters = [_normalize_lookup_key(item) for item in args.only if _normalize_lookup_key(item)]
     selected_tracks = _select_tracks(raw_tracks, filters, int(args.limit or 0))
     if not selected_tracks:
@@ -224,9 +292,6 @@ def main() -> int:
     started_at = time.time()
     job_count = _resolve_job_count(int(args.jobs or 0), len(selected_tracks))
     shards = _partition_tracks(selected_tracks, job_count)
-    if shard_dir.exists():
-        shutil.rmtree(shard_dir)
-    shard_dir.mkdir(parents=True, exist_ok=True)
 
     failures: list[dict[str, Any]] = []
     with ThreadPoolExecutor(max_workers=len(shards)) as executor:
@@ -239,6 +304,8 @@ def main() -> int:
                 path=shard_truth,
                 index=index,
                 count=len(shards),
+                source_truth_path=shard_source_path,
+                source_contract=truth_contract,
             )
             future = executor.submit(
                 _run_shard,
@@ -258,7 +325,15 @@ def main() -> int:
         print(json.dumps({"failures": failures}, ensure_ascii=False, indent=2), flush=True)
         return 1
 
-    indexed_count = _rebuild_index_from_metadata(Path(args.cache_dir))
+    indexed_count = _rebuild_index_from_metadata(Path(args.cache_dir), selected_tracks)
+    validated_count = validate_feature_cache_coverage(Path(args.cache_dir), selected_tracks)
+    if indexed_count != validated_count:
+        raise RuntimeError("feature index rebuild/validation count mismatch")
+    identity_sha256 = (
+        identity_projection_sha256(selected_tracks)
+        if all(str(track.get("instanceId") or "").strip() for track in selected_tracks)
+        else ""
+    )
     if not args.keep_shards:
         shutil.rmtree(shard_dir, ignore_errors=True)
     print(
@@ -267,6 +342,9 @@ def main() -> int:
                 "summary": {
                     "selectedTrackCount": len(selected_tracks),
                     "indexedFeatureCount": indexed_count,
+                    "registryBatchId": truth_batch_id or None,
+                    "identityProjectionSha256": identity_sha256 or None,
+                    "truthContractSha256": truth_contract["contractSha256"],
                     "jobs": job_count,
                     "cacheDir": str(args.cache_dir),
                     "durationSec": round(time.time() - started_at, 3),

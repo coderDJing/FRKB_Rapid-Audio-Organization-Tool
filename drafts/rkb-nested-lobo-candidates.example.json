@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "type": "rkb-nested-lobo-candidate-set",
+  "selectionPolicy": {
+    "objectiveVersion": "primary-inner-batch-lexicographic-v1",
+    "maximumErrorTrackCount": 0,
+    "maximumPassToFailRate": 0.005,
+    "maximumBpmBigErrorRateIncrease": 0.0025,
+    "maximumDownbeatFailureRateIncrease": 0.005
+  },
+  "aggregatePolicy": {
+    "maximumErrorTrackCount": 0,
+    "minimumPositivePrimaryFoldCount": 4,
+    "minimumMacroNetStrictAccuracyDeltaRate": 0.001,
+    "minimumWorstFoldNetStrictAccuracyDeltaRate": -0.0025,
+    "maximumWorstFoldPassToFailRate": 0.005,
+    "maximumWorstFoldBpmBigErrorRateIncrease": 0.0025,
+    "maximumWorstFoldDownbeatFailureRateIncrease": 0.005
+  },
+  "candidates": [
+    {
+      "candidateId": "baseline-default",
+      "mode": "constant-grid-dp-fixed-no-fit",
+      "isNoOp": true,
+      "complexityRank": 0,
+      "parameters": {
+        "minBpm": 70.0,
+        "maxBpm": 200.0,
+        "tempoStepBpm": 0.5,
+        "tempoLimit": 24,
+        "phaseStepMs": 2.0,
+        "maxCandidates": 640
+      }
+    },
+    {
+      "candidateId": "phase-grid-1ms",
+      "mode": "constant-grid-dp-fixed-no-fit",
+      "isNoOp": false,
+      "complexityRank": 1,
+      "parameters": {
+        "minBpm": 70.0,
+        "maxBpm": 200.0,
+        "tempoStepBpm": 0.5,
+        "tempoLimit": 24,
+        "phaseStepMs": 1.0,
+        "maxCandidates": 640
+      }
+    }
+  ]
+}

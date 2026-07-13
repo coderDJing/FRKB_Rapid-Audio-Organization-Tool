@@ -33,6 +33,9 @@ RANK1_NEGATIVE_LEGACY_SCORE_SOFT_PHASE_DELTA_MS = 10.0
 RANK1_NEGATIVE_LEGACY_SCORE_SOFT_MIN_GRID_SCORE = 0.99
 RANK1_NEGATIVE_LEGACY_SCORE_MAX_BPM_DELTA = 0.08
 RANK1_NEGATIVE_LEGACY_SCORE_VERSION = "rank1-negative-legacy-score-v2"
+LOCKED_PHASE_DOWNBEAT_PRESERVE_MAX_BPM_DELTA = 0.08
+LOCKED_PHASE_DOWNBEAT_PRESERVE_MAX_PHASE_DELTA_MS = 80.0
+LOCKED_PHASE_DOWNBEAT_PRESERVE_VERSION = "locked-phase-downbeat-ordinal-v1"
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -71,6 +74,93 @@ def _phase_delta_ms(candidate_phase_ms: float, selected_phase_ms: float, interva
     if interval_ms <= 0.0:
         return candidate_phase_ms - selected_phase_ms
     return (candidate_phase_ms - selected_phase_ms + interval_ms / 2.0) % interval_ms - interval_ms / 2.0
+
+
+def preserve_locked_phase_switch_downbeat_ordinal(
+    *,
+    candidate: dict[str, Any],
+    legacy_candidate: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    candidate_bpm = _to_float(candidate.get("bpm"))
+    legacy_bpm = _to_float((legacy_candidate or {}).get("bpm"))
+    bpm_delta = abs(candidate_bpm - legacy_bpm)
+    original_bar = _to_int(candidate.get("barBeatOffset")) % 32
+    legacy_bar = _to_int((legacy_candidate or {}).get("barBeatOffset")) % 32
+    meta: dict[str, Any] = {
+        "applied": False,
+        "reason": "not-evaluated",
+        "version": LOCKED_PHASE_DOWNBEAT_PRESERVE_VERSION,
+        "maxBpmDelta": LOCKED_PHASE_DOWNBEAT_PRESERVE_MAX_BPM_DELTA,
+        "maxPhaseDeltaMs": LOCKED_PHASE_DOWNBEAT_PRESERVE_MAX_PHASE_DELTA_MS,
+        "bpmDelta": _round_feature(bpm_delta),
+        "originalBarBeatOffset": original_bar,
+        "legacyBarBeatOffset": legacy_bar,
+        "adjustedBarBeatOffset": original_bar,
+        "phaseWrapBeats": 0,
+    }
+    if legacy_candidate is None:
+        return candidate, {**meta, "reason": "no-legacy-candidate"}
+    if candidate_bpm <= 0.0 or legacy_bpm <= 0.0:
+        return candidate, {**meta, "reason": "invalid-bpm"}
+    if bpm_delta > LOCKED_PHASE_DOWNBEAT_PRESERVE_MAX_BPM_DELTA:
+        return candidate, {**meta, "reason": "bpm-delta-too-large"}
+
+    interval_ms = 60000.0 / candidate_bpm
+    candidate_phase_ms = _to_float(candidate.get("firstBeatMs"))
+    legacy_phase_ms = _to_float(legacy_candidate.get("firstBeatMs"))
+    phase_delta_ms = _phase_delta_ms(candidate_phase_ms, legacy_phase_ms, interval_ms)
+    raw_phase_delta_ms = candidate_phase_ms - legacy_phase_ms
+    phase_wrap_beats = int(round((raw_phase_delta_ms - phase_delta_ms) / interval_ms))
+    if phase_wrap_beats == 0:
+        return candidate, {
+            **meta,
+            "reason": "no-phase-wrap",
+            "phaseDeltaMs": _round_feature(phase_delta_ms),
+            "rawPhaseDeltaMs": _round_feature(raw_phase_delta_ms),
+        }
+    if abs(phase_delta_ms) > LOCKED_PHASE_DOWNBEAT_PRESERVE_MAX_PHASE_DELTA_MS:
+        return candidate, {
+            **meta,
+            "reason": "phase-delta-too-large",
+            "phaseWrapBeats": phase_wrap_beats,
+            "phaseDeltaMs": _round_feature(phase_delta_ms),
+            "rawPhaseDeltaMs": _round_feature(raw_phase_delta_ms),
+        }
+    adjusted_bar = (legacy_bar - phase_wrap_beats) % 32
+    next_meta = {
+        **meta,
+        "applied": True,
+        "reason": "phase-only-downbeat-ordinal-preserved",
+        "adjustedBarBeatOffset": adjusted_bar,
+        "phaseWrapBeats": phase_wrap_beats,
+        "phaseDeltaMs": _round_feature(phase_delta_ms),
+        "rawPhaseDeltaMs": _round_feature(raw_phase_delta_ms),
+    }
+    features = dict(candidate.get("features") or {})
+    features.update(
+        {
+            "constantGridDpLockedPhaseDownbeatOrdinalPreserved": True,
+            "constantGridDpLockedPhaseDownbeatOrdinalVersion": (
+                LOCKED_PHASE_DOWNBEAT_PRESERVE_VERSION
+            ),
+            "constantGridDpLockedPhaseDownbeatOriginalBarBeatOffset": original_bar,
+            "constantGridDpLockedPhaseDownbeatLegacyBarBeatOffset": legacy_bar,
+            "constantGridDpLockedPhaseDownbeatAdjustedBarBeatOffset": adjusted_bar,
+            "constantGridDpLockedPhaseDownbeatPhaseWrapBeats": phase_wrap_beats,
+            "constantGridDpLockedPhaseDownbeatPhaseDeltaMs": _round_feature(phase_delta_ms),
+            "constantGridDpLockedPhaseDownbeatRawPhaseDeltaMs": _round_feature(
+                raw_phase_delta_ms
+            ),
+            "constantGridDpLockedPhaseDownbeatBpmDelta": _round_feature(bpm_delta),
+            "constantGridDpLockedPhaseDownbeatMaxBpmDelta": (
+                LOCKED_PHASE_DOWNBEAT_PRESERVE_MAX_BPM_DELTA
+            ),
+            "constantGridDpLockedPhaseDownbeatMaxPhaseDeltaMs": (
+                LOCKED_PHASE_DOWNBEAT_PRESERVE_MAX_PHASE_DELTA_MS
+            ),
+        }
+    )
+    return {**candidate, "barBeatOffset": adjusted_bar, "features": features}, next_meta
 
 
 def confidence_from_selected(

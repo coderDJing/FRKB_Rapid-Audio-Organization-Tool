@@ -19,6 +19,13 @@ from rkb_benchmark_candidate_oracle import derive_candidate_oracle as _derive_ca
 from rkb_benchmark_bridge_result import normalize_bridge_result as _normalize_bridge_result
 from rkb_benchmark_summary import build_summary as _build_summary_impl
 from frkb_database_paths import FRKB_BENCHMARK_CURRENT_AUDIO_ROOT
+from rkb_dataset_contract import (
+    OUTPUT_IDENTITY_FIELDS,
+    attach_benchmark_result_digest,
+    build_benchmark_provenance_from_args,
+    matches_track_filters,
+    validate_truth_contract,
+)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -35,6 +42,7 @@ DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
 DEFAULT_OUTPUT = BENCHMARK_ROOT / "latest.json"
 DEFAULT_PREDICTION_CACHE_DIR = BENCHMARK_ROOT / "beatthis-prediction-cache"
 DEFAULT_FEATURE_CACHE_DIR = BENCHMARK_ROOT / "feature-cache"
+DEFAULT_REGISTRY = BENCHMARK_ROOT / "rkb-dataset-registry.json"
 BEAT_THIS_BRIDGE = REPO_ROOT / "scripts" / "beat_this_bridge.py"
 
 SAMPLE_RATE = 44100
@@ -49,15 +57,11 @@ _ACTIVE_LOGIT_CACHE_CONTEXT: dict[str, Any] | None = None
 
 
 def _load_hybrid_solver_module() -> Any:
-    import rkb_hybrid_beatgrid_solver
-
-    return rkb_hybrid_beatgrid_solver
+    return importlib.import_module("rkb_hybrid_beatgrid_solver")
 
 
 def _load_constant_grid_dp_solver_module() -> Any:
-    import rkb_constant_grid_dp_solver
-
-    return rkb_constant_grid_dp_solver
+    return importlib.import_module("rkb_constant_grid_dp_solver")
 
 
 def _load_bridge_module() -> Any:
@@ -92,8 +96,7 @@ def _file_signature(path_value: str | Path | None) -> dict[str, Any]:
     }
 
 def _module_signature(module_name: str) -> dict[str, Any]:
-    module = sys.modules.get(module_name)
-    module_file = getattr(module, "__file__", None) if module is not None else None
+    module_file = getattr(sys.modules.get(module_name), "__file__", None)
     return _file_signature(module_file)
 
 
@@ -163,24 +166,13 @@ def _prediction_cache_key(
     kind: str,
     extra: dict[str, Any] | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    payload = {
-        **base_payload,
-        "kind": kind,
-        **(extra or {}),
-    }
+    payload = {**base_payload, "kind": kind, **(extra or {})}
     return _stable_cache_hash(payload), payload
 
 
 def _cache_stats() -> dict[str, int]:
-    return {
-        "windowHits": 0,
-        "windowMisses": 0,
-        "windowWrites": 0,
-        "logitHits": 0,
-        "logitMisses": 0,
-        "logitWrites": 0,
-        "errors": 0,
-    }
+    keys = ("windowHits", "windowMisses", "windowWrites", "logitHits", "logitMisses", "logitWrites", "errors")
+    return {key: 0 for key in keys}
 
 
 def _bump_cache_stat(stats: dict[str, int] | None, key: str) -> None:
@@ -507,8 +499,7 @@ def _percentile(values: list[float], percentile: float) -> float:
 
 
 def _status_from_error(value: float, tolerance_ms: float = STRICT_TOLERANCE_MS) -> str:
-    absolute = abs(float(value))
-    return "pass" if absolute <= tolerance_ms else "fail"
+    return "pass" if abs(float(value)) <= tolerance_ms else "fail"
 
 
 def _normalize_bar_offset(value: Any, modulo: int) -> int:
@@ -618,35 +609,51 @@ def _resolve_audio_path(audio_roots: list[Path], file_name: str) -> Path:
     return audio_roots[0] / file_name
 
 
-def _load_truth_tracks(truth_path: Path, audio_roots: list[Path], ffprobe_path: Path) -> list[dict[str, Any]]:
+def _load_truth_tracks(
+    truth_path: Path, audio_roots: list[Path], ffprobe_path: Path,
+    truth_batch_id: str = "", registry_path: Path | None = None,
+) -> list[dict[str, Any]]:
+    from rkb_beatgrid_lab_common import track_identity_key
     payload = json.loads(truth_path.read_text(encoding="utf-8"))
+    validate_truth_contract(truth_path, payload)
     tracks = payload.get("tracks") if isinstance(payload, dict) else None
     if not isinstance(tracks, list) or not tracks:
         raise RuntimeError(f"truth contains no tracks: {truth_path}")
-
+    if truth_batch_id:
+        from run_parallel_rkb_beatgrid_feature_cache import _enrich_tracks_from_registry
+        tracks = _enrich_tracks_from_registry(
+            [{key: value for key, value in item.items() if key not in {"sourcePath", "filePath"}} for item in tracks if isinstance(item, dict)],
+            registry_path=registry_path or DEFAULT_REGISTRY, batch_id=truth_batch_id,
+        )
     resolved: list[dict[str, Any]] = []
     seen_keys: set[str] = set()
     for item in tracks:
         if not isinstance(item, dict):
             continue
         file_name = str(item.get("fileName") or "").strip()
-        lookup_key = _normalize_lookup_key(file_name)
-        if not file_name or lookup_key in seen_keys:
+        identity_key = track_identity_key(item)
+        if not file_name or not identity_key or identity_key in seen_keys:
             continue
-        seen_keys.add(lookup_key)
-
+        seen_keys.add(identity_key)
+        instance_id = str(item.get("instanceId") or "").strip()
+        source_path_value = str(item.get("sourcePath") or "").strip()
+        if instance_id and not source_path_value:
+            raise RuntimeError(f"instance truth track is missing sourcePath: {instance_id}")
+        file_path = Path(source_path_value) if source_path_value else _resolve_audio_path(audio_roots, file_name)
+        if source_path_value and not file_path.is_file():
+            raise RuntimeError(f"truth sourcePath is not an existing file: {file_path}")
         bpm = _to_float(item.get("bpm"))
         first_beat_ms = _to_float(item.get("firstBeatMs"))
         if bpm is None or bpm <= 0.0 or first_beat_ms is None or first_beat_ms < 0.0:
             continue
-
-        file_path = _resolve_audio_path(audio_roots, file_name)
         bar_beat_offset = _normalize_bar_offset(item.get("barBeatOffset"), 32)
         first_beat_label = int(item.get("firstBeatLabel") or _resolve_first_beat_label_from_offset(bar_beat_offset))
         resolved.append(
             {
+                **{key: item[key] for key in OUTPUT_IDENTITY_FIELDS if item.get(key) not in (None, "")},
                 "fileName": file_name,
                 "filePath": str(file_path),
+                "sourcePath": str(file_path),
                 "title": str(item.get("title") or "").strip(),
                 "artist": str(item.get("artist") or "").strip(),
                 "bpm": round(float(bpm), 6),
@@ -658,19 +665,6 @@ def _load_truth_tracks(truth_path: Path, audio_roots: list[Path], ffprobe_path: 
             }
         )
     return resolved
-
-
-def _matches_only_filters(track: dict[str, Any], filters: list[str]) -> bool:
-    if not filters:
-        return True
-    haystack = " ".join(
-        [
-            str(track.get("fileName") or ""),
-            str(track.get("title") or ""),
-            str(track.get("artist") or ""),
-        ]
-    ).lower()
-    return any(item in haystack for item in filters)
 
 
 def _derive_grid_metrics(
@@ -904,6 +898,7 @@ def _build_track_report(analysis: dict[str, Any], truth: dict[str, Any]) -> dict
     )
 
     return {
+        **{key: truth[key] for key in OUTPUT_IDENTITY_FIELDS if truth.get(key) not in (None, "")},
         "fileName": truth["fileName"],
         "title": truth.get("title"),
         "artist": truth.get("artist"),
@@ -944,6 +939,8 @@ def _build_summary(rows: list[dict[str, Any]], error_rows: list[dict[str, Any]])
 def main() -> int:
     parser = argparse.ArgumentParser(description="Benchmark FRKB BeatThis grid against Rekordbox truth")
     parser.add_argument("--truth", default=str(DEFAULT_TRUTH))
+    parser.add_argument("--truth-batch-id", default="")
+    parser.add_argument("--registry", default=str(DEFAULT_REGISTRY))
     parser.add_argument("--audio-root", default=str(DEFAULT_AUDIO_ROOT))
     parser.add_argument("--ffmpeg", default=str(DEFAULT_FFMPEG))
     parser.add_argument("--ffprobe", default=str(DEFAULT_FFPROBE))
@@ -975,7 +972,6 @@ def main() -> int:
     feature_cache_dir = Path(args.feature_cache_dir)
     device = str(args.device or "cpu").strip() or "cpu"
     prediction_cache_dir = None if args.no_prediction_cache else Path(args.prediction_cache_dir)
-
     if not truth_path.exists():
         raise SystemExit(f"truth not found: {truth_path}")
     missing_audio_roots = [item for item in audio_roots if not item.exists()]
@@ -989,16 +985,18 @@ def main() -> int:
     if solver in {"hybrid", "constant-grid-dp"} and not feature_cache_dir.exists():
         raise SystemExit(f"feature cache dir not found: {feature_cache_dir}")
     started_at = time.time()
-    truth_tracks = _load_truth_tracks(truth_path, audio_roots, ffprobe_path)
+    truth_contract = validate_truth_contract(truth_path)
+    truth_tracks = _load_truth_tracks(
+        truth_path, audio_roots, ffprobe_path, str(args.truth_batch_id or "").strip(), Path(args.registry),
+    )
     missing_tracks = [item for item in truth_tracks if not item["fileExists"]]
     if missing_tracks:
         missing_names = ", ".join(item["fileName"] for item in missing_tracks[:5])
         raise SystemExit(f"truth tracks missing from audio roots: {missing_names}")
     only_filters = [_normalize_lookup_key(item) for item in args.only if _normalize_lookup_key(item)]
-    truth_tracks = [item for item in truth_tracks if _matches_only_filters(item, only_filters)]
+    truth_tracks = [item for item in truth_tracks if matches_track_filters(item, only_filters)]
     if args.limit and args.limit > 0:
         truth_tracks = truth_tracks[: args.limit]
-
     bridge = None
     checkpoint_path = ""
     predictor = None
@@ -1016,6 +1014,7 @@ def main() -> int:
     else:
         constant_grid_dp_solver = _load_constant_grid_dp_solver_module()
     prediction_cache_stats = _cache_stats()
+    run_provenance = build_benchmark_provenance_from_args(args, truth_contract)
 
     rows: list[dict[str, Any]] = []
     error_rows: list[dict[str, Any]] = []
@@ -1051,18 +1050,20 @@ def main() -> int:
         except Exception as error:
             error_rows.append(
                 {
-                    "fileName": truth["fileName"],
-                    "filePath": truth["filePath"],
+                    **truth,
                     "error": str(error),
                 }
             )
             print(f"  error: {error}", flush=True)
 
     summary = _build_summary(rows, error_rows)
-    payload = {
+    payload = attach_benchmark_result_digest({
         "summary": {
             **summary,
             "truthPath": str(truth_path),
+            "runProvenance": run_provenance,
+            "truthBatchId": str(args.truth_batch_id or "").strip() or None,
+            "registry": str(args.registry) if str(args.truth_batch_id or "").strip() else None,
             "audioRoot": str(args.audio_root),
             "audioRoots": [str(item) for item in audio_roots],
             "device": device,
@@ -1083,7 +1084,7 @@ def main() -> int:
         },
         "errors": error_rows,
         "tracks": rows,
-    }
+    })
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"summary": payload["summary"], "output": str(output_path)}, ensure_ascii=False, indent=2))

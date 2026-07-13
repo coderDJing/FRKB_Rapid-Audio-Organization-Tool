@@ -247,7 +247,7 @@ def _load_signal_bundle(
     entry = resolve_feature_entry(track=track, index_map=index_map)
     if entry is None:
         return None
-    metadata = read_feature_metadata(feature_cache_dir, entry)
+    metadata = read_feature_metadata(feature_cache_dir, entry, track=track)
     arrays_path = resolve_feature_arrays_path(feature_cache_dir, entry, metadata)
     if not arrays_path.exists():
         return None

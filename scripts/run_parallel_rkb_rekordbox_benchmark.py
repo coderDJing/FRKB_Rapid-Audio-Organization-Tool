@@ -11,6 +11,19 @@ from typing import Any
 
 import benchmark_rkb_rekordbox_truth as benchmark
 from frkb_database_paths import FRKB_FILTER_NEW_ROOT
+from rkb_beatgrid_lab_common import track_identity_key
+from rkb_dataset_contract import (
+    OUTPUT_IDENTITY_FIELDS,
+    attach_benchmark_result_digest,
+    build_benchmark_provenance_from_args,
+    build_derived_shard_metadata,
+    enrich_truth_tracks_from_registry,
+    materialize_registry_enriched_truth,
+    validate_benchmark_provenance,
+    validate_benchmark_result_digest,
+    validate_truth_contract,
+)
+from run_parallel_rkb_beatgrid_feature_cache import DEFAULT_REGISTRY
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_SCRIPT = REPO_ROOT / "scripts" / "benchmark_rkb_rekordbox_truth.py"
@@ -67,10 +80,25 @@ def _apply_profile_defaults(args: argparse.Namespace, argv: list[str]) -> None:
 
 def _load_raw_truth_tracks(truth_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     payload = json.loads(truth_path.read_text(encoding="utf-8"))
+    validate_truth_contract(truth_path, payload)
     tracks = payload.get("tracks") if isinstance(payload, dict) else None
     if not isinstance(tracks, list) or not tracks:
         raise RuntimeError(f"truth contains no tracks: {truth_path}")
     return payload, [item for item in tracks if isinstance(item, dict)]
+
+
+def _enrich_tracks_from_registry(
+    tracks: list[dict[str, Any]],
+    *,
+    registry_path: Path,
+    batch_id: str,
+) -> list[dict[str, Any]]:
+    _, enriched = enrich_truth_tracks_from_registry(
+        tracks,
+        registry_path=registry_path,
+        batch_id=batch_id,
+    )
+    return enriched
 
 
 def _matches_only_filters(track: dict[str, Any], filters: list[str]) -> bool:
@@ -86,6 +114,37 @@ def _matches_only_filters(track: dict[str, Any], filters: list[str]) -> bool:
     return any(item in haystack for item in filters)
 
 
+def _require_track_identity_key(track: dict[str, Any], *, owner: str) -> str:
+    identity_key = track_identity_key(track)
+    if not identity_key:
+        raise RuntimeError(f"{owner} track has no instanceId/fileName identity")
+    return identity_key
+
+
+def _require_result_identity_match(
+    *,
+    expected: dict[str, Any],
+    actual: dict[str, Any],
+    owner: str,
+) -> None:
+    identity_key = _require_track_identity_key(expected, owner="expected")
+    if _require_track_identity_key(actual, owner=owner) != identity_key:
+        raise RuntimeError(f"{owner} identity mismatch: {identity_key}")
+    for field in ("fileName", *OUTPUT_IDENTITY_FIELDS):
+        expected_value = str(expected.get(field) or "").strip()
+        if not expected_value:
+            continue
+        actual_value = str(actual.get(field) or "").strip()
+        if field == "sourcePath":
+            matches = bool(actual_value) and benchmark._normalized_path_identity(
+                Path(actual_value)
+            ) == benchmark._normalized_path_identity(Path(expected_value))
+        else:
+            matches = actual_value.casefold() == expected_value.casefold()
+        if not matches:
+            raise RuntimeError(f"{owner} {field} mismatch for {identity_key}")
+
+
 def _select_tracks(
     tracks: list[dict[str, Any]],
     *,
@@ -96,12 +155,12 @@ def _select_tracks(
     seen_keys: set[str] = set()
     for track in tracks:
         file_name = str(track.get("fileName") or "").strip()
-        lookup_key = benchmark._normalize_lookup_key(file_name)
-        if not file_name or lookup_key in seen_keys:
+        identity_key = _require_track_identity_key(track, owner="truth")
+        if not file_name or identity_key in seen_keys:
             continue
         if not _matches_only_filters(track, only_filters):
             continue
-        seen_keys.add(lookup_key)
+        seen_keys.add(identity_key)
         selected.append(track)
         if limit > 0 and len(selected) >= limit:
             break
@@ -119,7 +178,12 @@ def _resolve_job_count(requested_jobs: int, track_count: int) -> int:
 
 def _partition_tracks(tracks: list[dict[str, Any]], job_count: int) -> list[list[dict[str, Any]]]:
     shards = [[] for _ in range(job_count)]
+    seen_keys: set[str] = set()
     for index, track in enumerate(tracks):
+        identity_key = _require_track_identity_key(track, owner="selected")
+        if identity_key in seen_keys:
+            raise RuntimeError(f"selected tracks contain duplicate identity: {identity_key}")
+        seen_keys.add(identity_key)
         shards[index % job_count].append(track)
     return [shard for shard in shards if shard]
 
@@ -131,15 +195,25 @@ def _write_shard_truth(
     shard_path: Path,
     shard_index: int,
     shard_count: int,
+    source_truth_path: Path | None = None,
+    source_contract: dict[str, Any] | None = None,
 ) -> None:
     payload = {
         key: value
         for key, value in base_payload.items()
-        if key not in {"tracks", "trackCount", "sourcePlaylists"}
+        if key not in {"tracks", "trackCount", "sourcePlaylists", "registryEnrichedTruth"}
     }
     payload["note"] = f"parallel benchmark shard {shard_index + 1}/{shard_count}"
     payload["trackCount"] = len(tracks)
     payload["tracks"] = tracks
+    if source_truth_path is not None and source_contract is not None:
+        payload["derivedShard"] = build_derived_shard_metadata(
+            source_truth_path=source_truth_path,
+            source_contract=source_contract,
+            tracks=tracks,
+            shard_index=shard_index,
+            shard_count=shard_count,
+        )
     shard_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -190,7 +264,13 @@ def _run_shard(
         print(result.stdout, flush=True)
         raise RuntimeError(f"shard {shard_index + 1}/{shard_count} failed with {result.returncode}")
     print(f"[shard {shard_index + 1}/{shard_count}] done", flush=True)
-    return json.loads(shard_output_path.read_text(encoding="utf-8"))
+    payload = json.loads(shard_output_path.read_text(encoding="utf-8"))
+    validate_benchmark_result_digest(payload)
+    expected = build_benchmark_provenance_from_args(
+        args, validate_truth_contract(shard_truth_path)
+    )
+    validate_benchmark_provenance((payload.get("summary") or {}).get("runProvenance"), expected)
+    return payload
 
 
 def _load_existing_shard_payload(
@@ -198,7 +278,9 @@ def _load_existing_shard_payload(
     shard_index: int,
     shard_count: int,
     shard_output_path: Path,
+    shard_truth_path: Path,
     expected_tracks: list[dict[str, Any]],
+    args: argparse.Namespace,
 ) -> dict[str, Any] | None:
     if not shard_output_path.exists():
         return None
@@ -213,18 +295,43 @@ def _load_existing_shard_payload(
     if not isinstance(payload, dict) or "summary" not in payload or "tracks" not in payload:
         print(f"[shard {shard_index + 1}/{shard_count}] ignore invalid existing output", flush=True)
         return None
-    expected_names = [
-        benchmark._normalize_lookup_key(track.get("fileName"))
+    try:
+        validate_benchmark_result_digest(payload)
+        expected_provenance = build_benchmark_provenance_from_args(
+            args, validate_truth_contract(shard_truth_path)
+        )
+        validate_benchmark_provenance(
+            (payload.get("summary") or {}).get("runProvenance"), expected_provenance
+        )
+    except RuntimeError:
+        print(f"[shard {shard_index + 1}/{shard_count}] ignore stale provenance", flush=True)
+        return None
+    expected_by_key = {
+        _require_track_identity_key(track, owner="expected shard"): track
         for track in expected_tracks
-        if benchmark._normalize_lookup_key(track.get("fileName"))
-    ]
+    }
     actual_rows = list(payload.get("tracks") or []) + list(payload.get("errors") or [])
-    actual_names = [
-        benchmark._normalize_lookup_key(row.get("fileName"))
-        for row in actual_rows
-        if isinstance(row, dict) and benchmark._normalize_lookup_key(row.get("fileName"))
-    ]
-    if actual_names != expected_names:
+    try:
+        actual_by_key = {
+            _require_track_identity_key(row, owner="existing shard"): row
+            for row in actual_rows
+            if isinstance(row, dict)
+        }
+        for identity_key, expected in expected_by_key.items():
+            actual = actual_by_key.get(identity_key)
+            if actual is not None:
+                _require_result_identity_match(
+                    expected=expected,
+                    actual=actual,
+                    owner="existing shard",
+                )
+    except RuntimeError:
+        actual_by_key = {}
+    if (
+        len(expected_by_key) != len(expected_tracks)
+        or len(actual_by_key) != len(actual_rows)
+        or set(actual_by_key) != set(expected_by_key)
+    ):
         print(
             f"[shard {shard_index + 1}/{shard_count}] ignore stale existing output",
             flush=True,
@@ -263,20 +370,49 @@ def _merge_payloads(
     status: str,
     shard_failures: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    order = {
-        benchmark._normalize_lookup_key(track.get("fileName")): index
-        for index, track in enumerate(selected_tracks)
-    }
+    contract_truth_path = Path(str(getattr(args, "contract_truth_path", args.truth)))
+    run_provenance = build_benchmark_provenance_from_args(
+        args, validate_truth_contract(contract_truth_path)
+    )
+    order: dict[str, int] = {}
+    selected_by_key: dict[str, dict[str, Any]] = {}
+    for index, track in enumerate(selected_tracks):
+        identity_key = _require_track_identity_key(track, owner="selected")
+        if identity_key in order:
+            raise RuntimeError(f"selected tracks contain duplicate identity: {identity_key}")
+        order[identity_key] = index
+        selected_by_key[identity_key] = track
     rows = [row for payload in shard_payloads for row in payload.get("tracks", [])]
     errors = [row for payload in shard_payloads for row in payload.get("errors", [])]
-    rows.sort(key=lambda row: order.get(benchmark._normalize_lookup_key(row.get("fileName")), 999999))
-    errors.sort(key=lambda row: order.get(benchmark._normalize_lookup_key(row.get("fileName")), 999999))
+    seen_result_keys: set[str] = set()
+    for owner, result_rows in (("benchmark", rows), ("benchmark error", errors)):
+        for row in result_rows:
+            identity_key = _require_track_identity_key(row, owner=owner)
+            if identity_key not in order:
+                raise RuntimeError(f"{owner} returned unexpected identity: {identity_key}")
+            if identity_key in seen_result_keys:
+                raise RuntimeError(f"benchmark returned duplicate identity: {identity_key}")
+            _require_result_identity_match(
+                expected=selected_by_key[identity_key],
+                actual=row,
+                owner=owner,
+            )
+            seen_result_keys.add(identity_key)
+    if status == "complete" and len(seen_result_keys) != len(order):
+        missing_keys = [key for key in order if key not in seen_result_keys]
+        raise RuntimeError(f"benchmark merge is missing {len(missing_keys)} track identities")
+    rows.sort(key=lambda row: order[_require_track_identity_key(row, owner="benchmark")])
+    errors.sort(key=lambda row: order[_require_track_identity_key(row, owner="benchmark error")])
 
     summary = benchmark._build_summary(rows, errors)
-    return {
+    truth_batch_id = str(getattr(args, "truth_batch_id", "") or "").strip()
+    return attach_benchmark_result_digest({
         "summary": {
             **summary,
             "truthPath": str(args.truth),
+            "runProvenance": run_provenance,
+            "truthBatchId": truth_batch_id or None,
+            "registry": str(getattr(args, "registry", "")) if truth_batch_id else None,
             "audioRoot": str(args.audio_root),
             "device": str(args.device),
             "solver": str(args.solver),
@@ -308,7 +444,7 @@ def _merge_payloads(
         "errors": errors,
         "shardFailures": shard_failures or [],
         "tracks": rows,
-    }
+    })
 
 
 def _resolve_progress_output_path(args: argparse.Namespace, output_path: Path) -> Path:
@@ -374,6 +510,7 @@ def _write_progress_payload(
     )
     payload["summary"]["progressOutput"] = str(progress_path)
     payload["summary"]["parallel"]["selectedTrackCount"] = len(selected_tracks)
+    attach_benchmark_result_digest(payload)
     _write_json_atomic(progress_path, payload)
     return payload
 
@@ -386,6 +523,8 @@ def main() -> int:
         default="",
         help="Use fixed truth/audio/output paths for a maintained benchmark record.",
     )
+    parser.add_argument("--truth-batch-id", default="")
+    parser.add_argument("--registry", default=str(DEFAULT_REGISTRY))
     parser.add_argument("--truth", default=str(benchmark.DEFAULT_TRUTH))
     parser.add_argument("--audio-root", default=str(benchmark.DEFAULT_AUDIO_ROOT))
     parser.add_argument("--ffmpeg", default=str(benchmark.DEFAULT_FFMPEG))
@@ -421,7 +560,25 @@ def main() -> int:
 
     truth_path = Path(args.truth)
     output_path = Path(args.output)
+    tmp_path, auto_shard_dir = _resolve_shard_dir(args, output_path)
+    args.shard_dir = str(tmp_path)
+    if auto_shard_dir:
+        _prepare_auto_shard_dir(tmp_path, resume_existing_shards=bool(args.resume_existing_shards))
+    else:
+        tmp_path.mkdir(parents=True, exist_ok=True)
     base_payload, raw_tracks = _load_raw_truth_tracks(truth_path)
+    truth_contract = validate_truth_contract(truth_path, base_payload)
+    shard_source_path = truth_path
+    truth_batch_id = str(args.truth_batch_id or "").strip()
+    if truth_batch_id:
+        shard_source_path = tmp_path / "authoritative-enriched-truth.json"
+        base_payload, truth_contract, raw_tracks = materialize_registry_enriched_truth(
+            source_truth_path=truth_path,
+            registry_path=Path(args.registry),
+            batch_id=truth_batch_id,
+            output_path=shard_source_path,
+        )
+    args.contract_truth_path = str(shard_source_path)
     only_filters = [benchmark._normalize_lookup_key(item) for item in args.only if benchmark._normalize_lookup_key(item)]
     selected_tracks = _select_tracks(raw_tracks, only_filters=only_filters, limit=int(args.limit or 0))
     if not selected_tracks:
@@ -433,12 +590,6 @@ def main() -> int:
     progress_path = _resolve_progress_output_path(args, output_path)
     started_at = time.time()
 
-    tmp_path, auto_shard_dir = _resolve_shard_dir(args, output_path)
-    args.shard_dir = str(tmp_path)
-    if auto_shard_dir:
-        _prepare_auto_shard_dir(tmp_path, resume_existing_shards=bool(args.resume_existing_shards))
-    else:
-        tmp_path.mkdir(parents=True, exist_ok=True)
     shard_payloads: list[dict[str, Any]] = []
     shard_failures: list[dict[str, Any]] = []
     future_to_shard: dict[Any, dict[str, Any]] = {}
@@ -452,13 +603,17 @@ def main() -> int:
                 shard_path=shard_truth_path,
                 shard_index=shard_index,
                 shard_count=len(shards),
+                source_truth_path=shard_source_path,
+                source_contract=truth_contract,
             )
             existing_payload = (
                 _load_existing_shard_payload(
                     shard_index=shard_index,
                     shard_count=len(shards),
                     shard_output_path=shard_output_path,
+                    shard_truth_path=shard_truth_path,
                     expected_tracks=shard_tracks,
+                    args=args,
                 )
                 if args.resume_existing_shards
                 else None
@@ -549,6 +704,7 @@ def main() -> int:
     )
     payload["summary"]["progressOutput"] = str(progress_path)
     payload["summary"]["parallel"]["selectedTrackCount"] = len(selected_tracks)
+    attach_benchmark_result_digest(payload)
     _write_json_atomic(output_path, payload)
     _write_json_atomic(progress_path, payload)
     if auto_shard_dir and not args.keep_shards and not args.resume_existing_shards:

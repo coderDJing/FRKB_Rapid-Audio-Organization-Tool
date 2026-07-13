@@ -37,7 +37,7 @@ def solve_constant_grid_dp_from_cache(
     if entry is None:
         file_name = str(track.get("fileName") or "")
         raise RuntimeError(f"constant-grid-dp feature cache missing for {file_name}")
-    metadata = read_feature_metadata(feature_cache_dir, entry)
+    metadata = read_feature_metadata(feature_cache_dir, entry, track=track)
     arrays_path = resolve_feature_arrays_path(feature_cache_dir, entry, metadata)
     if not arrays_path.exists():
         raise RuntimeError(f"constant-grid-dp feature arrays missing: {arrays_path}")

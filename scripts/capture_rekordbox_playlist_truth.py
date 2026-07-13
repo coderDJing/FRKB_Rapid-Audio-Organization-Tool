@@ -212,6 +212,38 @@ def _load_playlist_truth(
     return source, truth_tracks
 
 
+def _select_requested_tracks(
+    source: dict[str, Any], tracks: list[dict[str, Any]], requested_names: list[str]
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    requested = [_normalize_key(name) for name in requested_names if _normalize_key(name)]
+    if not requested:
+        return source, tracks
+    if len(set(requested)) != len(requested):
+        raise RuntimeError("--file-name contains duplicate values")
+    by_name: dict[str, dict[str, Any]] = {}
+    for track in tracks:
+        name = _normalize_key(track.get("fileName"))
+        if not name or name in by_name:
+            raise RuntimeError("playlist contains duplicate or empty fileName values")
+        by_name[name] = track
+    missing = [name for name in requested if name not in by_name]
+    if missing:
+        raise RuntimeError("requested playlist tracks are missing: " + ", ".join(missing[:8]))
+    selected = [by_name[name] for name in requested]
+    return {**source, "trackCount": len(selected)}, selected
+
+
+def _requested_file_names(args: argparse.Namespace) -> list[str]:
+    requested = [str(value) for value in args.file_name]
+    raw_list_path = str(args.file_list or "").strip()
+    if raw_list_path:
+        list_path = Path(raw_list_path)
+        if not list_path.is_file():
+            raise RuntimeError(f"file list not found: {list_path}")
+        requested.extend(list_path.read_text(encoding="utf-8").splitlines())
+    return requested
+
+
 def _validate_audio_root(audio_root: Path, tracks: list[dict[str, Any]]) -> list[str]:
     if not audio_root.exists():
         raise RuntimeError(f"audio root not found: {audio_root}")
@@ -389,6 +421,17 @@ def main() -> int:
     parser.add_argument("--truth", default=str(DEFAULT_TRUTH))
     parser.add_argument("--db-path", default="")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
+    parser.add_argument(
+        "--file-name",
+        action="append",
+        default=[],
+        help="Require and capture only these exact playlist file names. Can be repeated.",
+    )
+    parser.add_argument(
+        "--file-list",
+        default="",
+        help="UTF-8 text file containing one exact playlist file name per line.",
+    )
     parser.add_argument("--merge", action="store_true")
     parser.add_argument(
         "--include-existing",
@@ -406,6 +449,7 @@ def main() -> int:
         raise SystemExit(f"bridge not found: {bridge_path}")
 
     source, tracks = _load_playlist_truth(bridge_path, args.playlist, str(args.db_path or ""))
+    source, tracks = _select_requested_tracks(source, tracks, _requested_file_names(args))
     source, tracks, skipped_existing_count = _filter_existing_truth_tracks(
         source,
         tracks,

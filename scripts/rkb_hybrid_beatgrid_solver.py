@@ -238,7 +238,7 @@ def solve_hybrid_beatgrid_from_cache(
     if entry is None:
         file_name = str(track.get("fileName") or "")
         raise RuntimeError(f"hybrid feature cache missing for {file_name}")
-    metadata = read_feature_metadata(feature_cache_dir, entry)
+    metadata = read_feature_metadata(feature_cache_dir, entry, track=track)
     arrays_path = resolve_feature_arrays_path(feature_cache_dir, entry, metadata)
     if not arrays_path.exists():
         raise RuntimeError(f"hybrid feature arrays missing: {arrays_path}")

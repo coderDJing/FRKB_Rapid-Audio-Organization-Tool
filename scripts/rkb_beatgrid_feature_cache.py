@@ -26,6 +26,7 @@ from rkb_beatgrid_lab_common import (
     resolve_feature_entry,
     stable_hash,
     update_feature_index_entry,
+    validate_feature_metadata_identity,
 )
 
 
@@ -245,15 +246,25 @@ def _extract_track_features(
     metadata_path = metadata_path_for_key(cache_dir, cache_key)
     arrays_path = arrays_path_for_key(cache_dir, cache_key)
     if not force and metadata_path.exists() and arrays_path.exists():
-        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-        if isinstance(metadata, dict) and metadata.get("cacheKey") == cache_key:
-            return {
-                "status": "hit",
-                "cacheKey": cache_key,
-                "metadata": metadata,
-                "metadataPath": metadata_path,
-                "arraysPath": arrays_path,
-            }
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            if isinstance(metadata, dict) and metadata.get("cacheKey") == cache_key:
+                entry = {
+                    "instanceId": metadata.get("instanceId"),
+                    "batchId": metadata.get("batchId"),
+                    "assetSha256": metadata.get("assetSha256"),
+                    "cacheKey": cache_key,
+                }
+                validate_feature_metadata_identity(track=track, entry=entry, metadata=metadata)
+                return {
+                    "status": "hit",
+                    "cacheKey": cache_key,
+                    "metadata": metadata,
+                    "metadataPath": metadata_path,
+                    "arraysPath": arrays_path,
+                }
+        except (OSError, RuntimeError, json.JSONDecodeError):
+            pass
 
     predictor, cpu_spect = _ensure_predictor(
         bridge=bridge,
@@ -376,6 +387,20 @@ def _extract_track_features(
             **prediction_stats,
         },
     }
+    for key in (
+        "instanceId",
+        "batchId",
+        "assetSha256",
+        "pcmSha256",
+        "familyId",
+        "isolationFamilyId",
+    ):
+        value = track.get(key)
+        if value not in (None, ""):
+            metadata[key] = value
+    source_path = track.get("sourcePath") or track.get("filePath")
+    if source_path not in (None, ""):
+        metadata["sourcePath"] = source_path
     atomic_write_json(metadata_path, metadata)
     return {
         "status": "miss",
@@ -441,11 +466,14 @@ def main() -> int:
             if not args.force:
                 entry = resolve_feature_entry(track=track, index_map=index_map)
                 if entry is not None:
-                    metadata = read_feature_metadata(cache_dir, entry)
-                    arrays_path = resolve_feature_arrays_path(cache_dir, entry, metadata)
-                    if arrays_path.exists() and metadata.get("cacheKey") == entry.get("cacheKey"):
-                        stats["hit"] += 1
-                        continue
+                    try:
+                        metadata = read_feature_metadata(cache_dir, entry, track=track)
+                        arrays_path = resolve_feature_arrays_path(cache_dir, entry, metadata)
+                        if arrays_path.exists():
+                            stats["hit"] += 1
+                            continue
+                    except RuntimeError:
+                        pass
             if bridge is None:
                 bridge = benchmark._load_bridge_module()
                 benchmark._install_full_logit_prediction_cache(bridge)
@@ -469,6 +497,13 @@ def main() -> int:
                     {
                         "fileName": track["fileName"],
                         "lookupKey": normalize_lookup_key(track["fileName"]),
+                        "instanceId": track.get("instanceId"),
+                        "batchId": track.get("batchId"),
+                        "assetSha256": track.get("assetSha256"),
+                        "pcmSha256": track.get("pcmSha256"),
+                        "familyId": track.get("familyId"),
+                        "isolationFamilyId": track.get("isolationFamilyId"),
+                        "sourcePath": track.get("sourcePath") or track.get("filePath"),
                         "cacheKey": result["cacheKey"],
                         "metadataPath": result["metadataPath"].name,
                         "arraysPath": result["arraysPath"].name,
@@ -479,7 +514,14 @@ def main() -> int:
                 )
         except Exception as error:
             stats["error"] += 1
-            errors.append({"fileName": track.get("fileName"), "error": str(error)})
+            errors.append(
+                {
+                    "fileName": track.get("fileName"),
+                    "instanceId": track.get("instanceId"),
+                    "batchId": track.get("batchId"),
+                    "error": str(error),
+                }
+            )
             print(f"  error: {error}", flush=True)
 
     print_json(

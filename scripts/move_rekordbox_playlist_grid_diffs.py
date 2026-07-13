@@ -15,6 +15,24 @@ from capture_rekordbox_playlist_truth import (
     _truth_track_from_rekordbox_track,
 )
 from frkb_database_paths import FRKB_BENCHMARK_CURRENT_AUDIO_ROOT
+from rkb_playlist_triage_report import (
+    REPORT_SCHEMA_VERSION,
+    REPORT_TYPE,
+    attach_report_integrity as _attach_report_integrity,
+    build_batch_snapshot as _build_batch_snapshot,
+    build_consumed_maintenance_guard as _build_consumed_maintenance_guard,
+    build_denominator_audio_identities as _build_denominator_audio_identities,
+    build_pre_review_guard as _build_pre_review_guard,
+    build_sealed_triage_guard as _build_sealed_triage_guard,
+    build_solver_identity as _build_solver_identity,
+    enable_production_runtime_constant_grid as _enable_production_runtime_constant_grid,
+    load_report_for_apply as _load_report_for_apply,
+    select_raw_tracks as _select_raw_tracks,
+    validate_current_solver as _validate_solver_match,
+    validate_current_workflow_guard as _validate_current_workflow_guard,
+    validate_apply_request as _validate_apply_request,
+)
+from rkb_playlist_triage_live_snapshot import validate_live_source_playlist as _validate_live_snapshot
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -28,6 +46,8 @@ DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "rekordbox-test-need-review-latest.json"
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
 DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
 DEFAULT_PREDICTION_CACHE_DIR = BENCHMARK_OUTPUT_DIR / "beatthis-prediction-cache"
+DEFAULT_SEALED_BATCHES_ROOT = BENCHMARK_OUTPUT_DIR / "sealed-batches"
+DEFAULT_DATASET_REGISTRY = BENCHMARK_OUTPUT_DIR / "rkb-dataset-registry.json"
 DEFAULT_SOURCE_PLAYLIST = "test"
 DEFAULT_TARGET_PLAYLIST = "needReview"
 
@@ -162,7 +182,7 @@ def _load_source_truth_tracks(
     ffprobe_path: Path,
     only_filters: list[str],
     limit: int,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+) -> tuple[dict[str, Any], list[dict[str, Any]], dict[str, Any]]:
     node = _resolve_playlist_node(bridge_path, source_playlist, db_path, required=True)
     if node is None:
         raise RuntimeError(f"playlist not found: {source_playlist}")
@@ -174,26 +194,15 @@ def _load_source_truth_tracks(
         raise RuntimeError(f"source playlist id is invalid: {source_playlist}")
 
     payload = _load_playlist_tracks(bridge_path, playlist_id, db_path)
-    raw_tracks = payload.get("tracks")
-    if not isinstance(raw_tracks, list) or not raw_tracks:
+    raw_tracks_payload = payload.get("tracks")
+    if not isinstance(raw_tracks_payload, list) or not raw_tracks_payload:
         raise RuntimeError(f"playlist has no tracks: {source_playlist}")
-
-    selected_raw_tracks: list[dict[str, Any]] = []
-    for raw_track in raw_tracks:
-        if not isinstance(raw_track, dict):
-            continue
-        haystack = " ".join(
-            [
-                str(raw_track.get("fileName") or ""),
-                str(raw_track.get("title") or ""),
-                str(raw_track.get("artist") or ""),
-            ]
-        ).casefold()
-        if only_filters and not any(item in haystack for item in only_filters):
-            continue
-        selected_raw_tracks.append(raw_track)
-        if limit > 0 and len(selected_raw_tracks) >= limit:
-            break
+    raw_tracks = [item for item in raw_tracks_payload if isinstance(item, dict)]
+    selected_raw_tracks = _select_raw_tracks(
+        raw_tracks,
+        only_filters=only_filters,
+        limit=limit,
+    )
 
     if not selected_raw_tracks:
         raise RuntimeError(f"no tracks selected from playlist: {source_playlist}")
@@ -203,19 +212,31 @@ def _load_source_truth_tracks(
         for raw_track in selected_raw_tracks
     ]
 
+    resolved_playlist_name = str(payload.get("playlistName") or source_playlist).strip()
+    batch = _build_batch_snapshot(
+        playlist_id=playlist_id,
+        playlist_name=resolved_playlist_name,
+        raw_tracks=raw_tracks,
+        selected_tracks=selected_raw_tracks,
+        only_filters=only_filters,
+        limit=limit,
+    )
     return {
         "playlistId": playlist_id,
-        "playlistName": str(payload.get("playlistName") or source_playlist).strip(),
+        "playlistName": resolved_playlist_name,
         "trackTotal": len(raw_tracks),
         "selectedTrackCount": len(selected),
         "probe": payload.get("probe") if isinstance(payload.get("probe"), dict) else {},
-    }, selected
+    }, selected, batch
 
 
-def _load_legacy_analyzer(device: str) -> dict[str, Any]:
+def _load_production_analyzer(device: str) -> dict[str, Any]:
     bridge = benchmark._load_bridge_module()
     benchmark._install_full_logit_prediction_cache(bridge)
+    _enable_production_runtime_constant_grid(bridge)
     checkpoint_path = str(bridge._resolve_checkpoint_path())
+    tuning = bridge._resolve_anchor_tuning()
+    bridge._resolve_anchor_tuning = lambda: dict(tuning)
     predictor = bridge.Audio2Beats(checkpoint_path=checkpoint_path, device=device, dbn=False)
     cpu_spect = bridge.LogMelSpect(device="cpu") if bridge._uses_accelerated_device(device) else None
     return {
@@ -223,7 +244,26 @@ def _load_legacy_analyzer(device: str) -> dict[str, Any]:
         "checkpointPath": checkpoint_path,
         "predictor": predictor,
         "cpuSpect": cpu_spect,
+        "tuning": tuning,
+        "solver": _build_solver_identity(
+            bridge,
+            checkpoint_path=checkpoint_path,
+            device=device,
+            tuning=tuning,
+        ),
     }
+
+
+def _load_current_solver_identity(device: str) -> dict[str, Any]:
+    bridge = benchmark._load_bridge_module()
+    checkpoint_path = str(bridge._resolve_checkpoint_path())
+    tuning = bridge._resolve_anchor_tuning()
+    return _build_solver_identity(
+        bridge,
+        checkpoint_path=checkpoint_path,
+        device=device,
+        tuning=tuning,
+    )
 
 
 def _analyze_playlist_tracks(
@@ -232,8 +272,8 @@ def _analyze_playlist_tracks(
     ffmpeg_path: Path,
     device: str,
     prediction_cache_dir: Path | None,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int]]:
-    analyzer = _load_legacy_analyzer(device)
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, int], dict[str, Any]]:
+    analyzer = _load_production_analyzer(device)
     cache_stats = benchmark._cache_stats()
     rows: list[dict[str, Any]] = []
     errors: list[dict[str, Any]] = []
@@ -277,7 +317,7 @@ def _analyze_playlist_tracks(
             )
             print(f"  error: {exc}", flush=True)
 
-    return rows, errors, cache_stats
+    return rows, errors, cache_stats, analyzer["solver"]
 
 
 def _difference_reasons(row: dict[str, Any]) -> list[str]:
@@ -498,22 +538,25 @@ def _apply_playlist_updates(
     }
 
 
-def _load_report_for_apply(
-    report_path: Path,
-) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    payload = json.loads(report_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"report is invalid: {report_path}")
-    summary = payload.get("summary")
-    differences = payload.get("differences")
-    if not isinstance(summary, dict):
-        raise RuntimeError(f"report has no summary: {report_path}")
-    if not isinstance(differences, list):
-        raise RuntimeError(f"report has no differences array: {report_path}")
-    return (
-        summary,
-        [item for item in differences if isinstance(item, dict)],
-    )
+def _validate_current_solver(report_solver: dict[str, Any]) -> None:
+    config = report_solver.get("config")
+    if not isinstance(config, dict):
+        raise RuntimeError("report solver.config is missing or invalid")
+    device = str(config.get("device") or "cpu").strip().lower() or "cpu"
+    current_solver = _load_current_solver_identity(device)
+    _validate_solver_match(report_solver, current_solver)
+
+
+def _validate_live_source_playlist(
+    *,
+    bridge_path: Path,
+    db_path: str,
+    batch: dict[str, Any],
+    differences: list[dict[str, Any]],
+) -> int:
+    playlist_id = _to_int(batch.get("sourcePlaylistId")) or 0
+    payload = _load_playlist_tracks(bridge_path, playlist_id, db_path)
+    return _validate_live_snapshot(batch=batch, differences=differences, live_payload=payload)
 
 
 def _apply_existing_report(
@@ -524,14 +567,38 @@ def _apply_existing_report(
     target_playlist: str,
     target_parent_id: int,
     copy_only: bool,
+    batches_root: Path = DEFAULT_SEALED_BATCHES_ROOT,
+    registry_path: Path = DEFAULT_DATASET_REGISTRY,
 ) -> dict[str, Any]:
-    summary, differences = _load_report_for_apply(report_path)
-    source = summary.get("sourcePlaylist")
-    if not isinstance(source, dict):
-        raise RuntimeError(f"report has no sourcePlaylist summary: {report_path}")
-    source_playlist_id = int(source.get("playlistId") or 0)
-    if source_playlist_id <= 0:
-        raise RuntimeError(f"report source playlist id is invalid: {report_path}")
+    payload = _load_report_for_apply(report_path)
+    summary = payload["summary"]
+    batch = payload["batch"]
+    solver = payload["solver"]
+    workflow_guard = payload["workflowGuard"]
+    differences = payload["differences"]
+    if str(summary.get("mode") or "") != "dry-run":
+        raise RuntimeError("--from-report only accepts a dry-run report")
+    if int(summary.get("errorTrackCount") or 0) != 0:
+        raise RuntimeError("dry-run report contains analysis errors; refusing to apply")
+    _validate_apply_request(
+        summary,
+        target_playlist=target_playlist,
+        target_parent_id=target_parent_id,
+        copy_only=copy_only,
+    )
+    _validate_current_solver(solver)
+    _validate_current_workflow_guard(
+        report_guard=workflow_guard,
+        batch=batch,
+        batches_root=batches_root,
+        registry_path=registry_path,
+    )
+    source_playlist_id = _validate_live_source_playlist(
+        bridge_path=bridge_path,
+        db_path=db_path,
+        batch=batch,
+        differences=differences,
+    )
     difference_apply_result = _apply_playlist_updates(
         bridge_path,
         db_path,
@@ -548,6 +615,7 @@ def _build_summary(
     *,
     source: dict[str, Any],
     target_playlist: str,
+    target_parent_id: int,
     rows: list[dict[str, Any]],
     errors: list[dict[str, Any]],
     differences: list[dict[str, Any]],
@@ -557,6 +625,8 @@ def _build_summary(
     prediction_cache_dir: Path | None,
     cache_stats: dict[str, int],
     elapsed_sec: float,
+    batch: dict[str, Any],
+    solver: dict[str, Any],
 ) -> dict[str, Any]:
     category_counts: dict[str, int] = {}
     for item in differences:
@@ -569,8 +639,15 @@ def _build_summary(
             "playlistName": source.get("playlistName"),
             "trackTotal": source.get("trackTotal"),
             "selectedTrackCount": source.get("selectedTrackCount"),
+            "playlistSnapshotSha256": batch.get("playlistSnapshotSha256"),
         },
+        "batchId": batch.get("batchId"),
+        "originalDenominatorTrackCount": batch.get("originalDenominatorTrackCount"),
+        "denominatorSnapshotSha256": batch.get("denominatorSnapshotSha256"),
+        "solverConfigSha256": solver.get("solverConfigSha256"),
         "targetPlaylistName": target_playlist,
+        "targetParentId": int(target_parent_id),
+        "requestedOperation": "copy" if copy_only else "move",
         "mode": "dry-run" if dry_run else ("copy" if copy_only else "move"),
         "strictToleranceMs": benchmark.STRICT_TOLERANCE_MS,
         "analyzedTrackCount": len(rows),
@@ -589,6 +666,71 @@ def _build_summary(
     }
 
 
+def _build_triage_workflow_guard(
+    *,
+    source_playlist: str,
+    source: dict[str, Any],
+    batch: dict[str, Any],
+    truth_tracks: list[dict[str, Any]],
+    batches_root: Path,
+    registry_path: Path,
+    sealed_batch_id: str,
+    consumed_maintenance: bool,
+    consumed_batch_id: str,
+    pre_review: bool = False,
+) -> dict[str, Any]:
+    normalized_source = _normalize_key(source_playlist)
+    normalized_batch_id = str(sealed_batch_id or "").strip()
+    normalized_consumed_batch_id = str(consumed_batch_id or "").strip()
+    if normalized_batch_id and (consumed_maintenance or normalized_consumed_batch_id):
+        raise RuntimeError(
+            "--sealed-batch-id, --consumed-maintenance and --pre-review are mutually exclusive"
+        )
+    if pre_review and (normalized_batch_id or consumed_maintenance or normalized_consumed_batch_id):
+        raise RuntimeError(
+            "--sealed-batch-id, --consumed-maintenance and --pre-review are mutually exclusive"
+        )
+    if consumed_maintenance and not normalized_consumed_batch_id:
+        raise RuntimeError("--consumed-maintenance requires --consumed-batch-id")
+    if normalized_consumed_batch_id and not consumed_maintenance:
+        raise RuntimeError("--consumed-batch-id requires --consumed-maintenance")
+    if pre_review:
+        denominator_audio_identities = _build_denominator_audio_identities(truth_tracks)
+        return _build_pre_review_guard(
+            batches_root=batches_root,
+            playlist_id=int(source.get("playlistId") or 0),
+            playlist_name=str(source.get("playlistName") or source_playlist),
+            batch=batch,
+            denominator_audio_identities=denominator_audio_identities,
+        )
+    if not normalized_batch_id and not consumed_maintenance:
+        playlist_label = "test " if normalized_source == _normalize_key(DEFAULT_SOURCE_PLAYLIST) else ""
+        raise RuntimeError(
+            f"{playlist_label}triage requires --sealed-batch-id after sealed finalize, "
+            "or explicit --consumed-maintenance with --consumed-batch-id"
+        )
+    denominator_audio_identities = _build_denominator_audio_identities(truth_tracks)
+    if normalized_batch_id:
+        return _build_sealed_triage_guard(
+            batches_root=batches_root,
+            registry_path=registry_path,
+            batch_id=normalized_batch_id,
+            playlist_id=int(source.get("playlistId") or 0),
+            playlist_name=str(source.get("playlistName") or source_playlist),
+            batch=batch,
+            denominator_audio_identities=denominator_audio_identities,
+        )
+    return _build_consumed_maintenance_guard(
+        batches_root=batches_root,
+        registry_path=registry_path,
+        batch_id=normalized_consumed_batch_id,
+        playlist_id=int(source.get("playlistId") or 0),
+        playlist_name=str(source.get("playlistName") or source_playlist),
+        batch=batch,
+        denominator_audio_identities=denominator_audio_identities,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Move Rekordbox playlist tracks whose FRKB grid analysis differs from Rekordbox.",
@@ -603,6 +745,34 @@ def main() -> int:
     parser.add_argument("--ffprobe", default=str(DEFAULT_FFPROBE))
     parser.add_argument("--prediction-cache-dir", default=str(DEFAULT_PREDICTION_CACHE_DIR))
     parser.add_argument("--no-prediction-cache", action="store_true")
+    parser.add_argument("--sealed-batches-root", default=str(DEFAULT_SEALED_BATCHES_ROOT))
+    parser.add_argument("--dataset-registry", default=str(DEFAULT_DATASET_REGISTRY))
+    parser.add_argument(
+        "--sealed-batch-id",
+        default="",
+        help="Consumed sealed-fresh batch that proves test was frozen and evaluated before triage.",
+    )
+    parser.add_argument(
+        "--consumed-maintenance",
+        action="store_true",
+        help=(
+            "Explicit non-fresh maintenance mode; requires --consumed-batch-id and proves every "
+            "playlist track against that consumed registry roster."
+        ),
+    )
+    parser.add_argument(
+        "--consumed-batch-id",
+        default="",
+        help="Exact consumed batch whose truth/audio roster must equal the maintenance playlist.",
+    )
+    parser.add_argument(
+        "--pre-review",
+        action="store_true",
+        help=(
+            "Intake triage before human review. The report is permanently marked as exposed "
+            "development evidence and cannot be reused as fresh proof."
+        ),
+    )
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument(
@@ -620,7 +790,7 @@ def main() -> int:
     parser.add_argument(
         "--apply",
         action="store_true",
-        help="Actually create/append/remove Rekordbox playlist entries. Default is dry-run.",
+        help="Apply an existing dry-run report; requires --from-report.",
     )
     parser.add_argument(
         "--copy-only",
@@ -636,6 +806,8 @@ def main() -> int:
     from_report_path = Path(str(args.from_report or "")) if str(args.from_report or "").strip() else None
     audio_roots = benchmark._parse_audio_roots(str(args.audio_root or ""))
     prediction_cache_dir = None if args.no_prediction_cache else Path(args.prediction_cache_dir)
+    sealed_batches_root = Path(args.sealed_batches_root)
+    dataset_registry = Path(args.dataset_registry)
     device = str(args.device or "cpu").strip() or "cpu"
     only_filters = [_normalize_key(item) for item in args.only if _normalize_key(item)]
 
@@ -653,16 +825,23 @@ def main() -> int:
             target_playlist=str(args.target_playlist or DEFAULT_TARGET_PLAYLIST),
             target_parent_id=int(args.target_parent_id or 0),
             copy_only=bool(args.copy_only),
+            batches_root=sealed_batches_root,
+            registry_path=dataset_registry,
         )
         print(json.dumps(apply_result, ensure_ascii=False, indent=2), flush=True)
         return 0
+
+    if bool(args.apply):
+        raise SystemExit(
+            "direct --apply is forbidden; run dry-run first, then use --from-report <report> --apply"
+        )
 
     if not ffmpeg_path.exists():
         raise SystemExit(f"ffmpeg not found: {ffmpeg_path}")
     if not ffprobe_path.exists():
         raise SystemExit(f"ffprobe not found: {ffprobe_path}")
     started_at = time.time()
-    source, truth_tracks = _load_source_truth_tracks(
+    source, truth_tracks, batch = _load_source_truth_tracks(
         bridge_path,
         str(args.source_playlist or DEFAULT_SOURCE_PLAYLIST),
         str(args.db_path or ""),
@@ -671,31 +850,31 @@ def main() -> int:
         only_filters=only_filters,
         limit=int(args.limit or 0),
     )
-    dry_run = not bool(args.apply)
+    dry_run = True
+    workflow_guard = _build_triage_workflow_guard(
+        source_playlist=str(args.source_playlist or DEFAULT_SOURCE_PLAYLIST),
+        source=source,
+        batch=batch,
+        truth_tracks=truth_tracks,
+        batches_root=sealed_batches_root,
+        registry_path=dataset_registry,
+        sealed_batch_id=str(args.sealed_batch_id or ""),
+        consumed_maintenance=bool(args.consumed_maintenance),
+        consumed_batch_id=str(args.consumed_batch_id or ""),
+        pre_review=bool(args.pre_review),
+    )
 
-    rows, errors, cache_stats = _analyze_playlist_tracks(
+    rows, errors, cache_stats, solver = _analyze_playlist_tracks(
         truth_tracks,
         ffmpeg_path=ffmpeg_path,
         device=device,
         prediction_cache_dir=prediction_cache_dir,
     )
     differences = _build_difference_rows(rows, errors)
-    apply_result: dict[str, Any] | None = None
-    if not dry_run:
-        difference_apply_result = _apply_playlist_updates(
-            bridge_path,
-            str(args.db_path or ""),
-            source_playlist_id=int(source["playlistId"]),
-            target_playlist=str(args.target_playlist or DEFAULT_TARGET_PLAYLIST),
-            target_parent_id=int(args.target_parent_id or 0),
-            differences=differences,
-            copy_only=bool(args.copy_only),
-        )
-        apply_result = difference_apply_result
-
     summary = _build_summary(
         source=source,
         target_playlist=str(args.target_playlist or DEFAULT_TARGET_PLAYLIST),
+        target_parent_id=int(args.target_parent_id or 0),
         rows=rows,
         errors=errors,
         differences=differences,
@@ -705,16 +884,25 @@ def main() -> int:
         prediction_cache_dir=prediction_cache_dir,
         cache_stats=cache_stats,
         elapsed_sec=time.time() - started_at,
+        batch=batch,
+        solver=solver,
     )
-    payload = {
-        "summary": {
-            **summary,
-            "applyResult": apply_result,
-        },
-        "differences": differences,
-        "rows": rows,
-        "errors": errors,
-    }
+    payload = _attach_report_integrity(
+        {
+            "schemaVersion": REPORT_SCHEMA_VERSION,
+            "reportType": REPORT_TYPE,
+            "summary": {
+                **summary,
+                "applyResult": None,
+            },
+            "batch": batch,
+            "solver": solver,
+            "workflowGuard": workflow_guard,
+            "differences": differences,
+            "rows": rows,
+            "errors": errors,
+        }
+    )
     _atomic_write_json(output_path, payload)
 
     print(
@@ -727,7 +915,7 @@ def main() -> int:
                 "differenceTrackCount": summary["differenceTrackCount"],
                 "errorTrackCount": summary["errorTrackCount"],
                 "output": str(output_path),
-                "applyResult": apply_result,
+                "applyResult": None,
             },
             ensure_ascii=False,
             indent=2,

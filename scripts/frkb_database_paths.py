@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_FRKB_DATABASE_ROOT = Path("D:/FRKB_database-E")
 
 
 def _read_dotenv_value(key: str) -> str:
@@ -29,7 +28,12 @@ def resolve_frkb_database_root() -> Path:
         or _read_dotenv_value("FRKB_BENCHMARK_DATABASE_ROOT")
         or _read_dotenv_value("FRKB_DEV_DATABASE_URL")
     )
-    return Path(configured) if configured else DEFAULT_FRKB_DATABASE_ROOT
+    if not configured:
+        raise RuntimeError(
+            "FRKB database root is not configured; set FRKB_DEV_DATABASE_URL or "
+            "FRKB_BENCHMARK_DATABASE_ROOT in the process environment or repository .env"
+        )
+    return Path(configured)
 
 
 FRKB_DATABASE_ROOT = resolve_frkb_database_root()

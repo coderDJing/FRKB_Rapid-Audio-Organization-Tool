@@ -21,6 +21,7 @@ from rkb_beatgrid_lab_common import (
     read_feature_metadata,
     resolve_feature_arrays_path,
     resolve_feature_entry,
+    track_identity_key,
 )
 from rkb_constant_grid_dp_solver import (
     DEFAULT_MAX_BPM,
@@ -43,12 +44,20 @@ def _load_split_map(path: Path) -> dict[str, str]:
     splits = payload.get("splits") if isinstance(payload, dict) else None
     if not isinstance(splits, dict):
         return {}
+    identity_key = str(payload.get("identityKey") or "fileName")
     result: dict[str, str] = {}
     for split_name, names in splits.items():
         if not isinstance(names, list):
             continue
         for name in names:
-            key = normalize_lookup_key(name)
+            raw_name = str(name or "").strip()
+            if not raw_name:
+                continue
+            key = (
+                f"instance:{raw_name.casefold()}"
+                if identity_key == "instanceId"
+                else f"file:{normalize_lookup_key(raw_name)}"
+            )
             if key:
                 result[key] = str(split_name)
     return result
@@ -65,10 +74,13 @@ def _baseline_category_map(path: Path) -> dict[str, str]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        key = normalize_lookup_key(row.get("fileName"))
+        key = track_identity_key(row)
+        file_key = normalize_lookup_key(row.get("fileName"))
         category = str(((row.get("currentTimeline") or {}).get("category")) or "")
         if key and category:
             result[key] = category
+        if file_key and category:
+            result.setdefault(f"file:{file_key}", category)
     return result
 
 
@@ -279,6 +291,8 @@ def _build_track_report(
     )
     return {
         "fileName": track["fileName"],
+        "instanceId": track.get("instanceId"),
+        "batchId": track.get("batchId"),
         "split": split,
         "legacyCategory": legacy_category,
         "truth": {
@@ -348,24 +362,35 @@ def main() -> int:
             entry = resolve_feature_entry(track=track, index_map=index_map)
             if entry is None:
                 raise RuntimeError("feature cache missing; run rkb_beatgrid_feature_cache.py first")
-            metadata = read_feature_metadata(cache_dir, entry)
+            metadata = read_feature_metadata(cache_dir, entry, track=track)
             arrays_path = resolve_feature_arrays_path(cache_dir, entry, metadata)
             if not arrays_path.exists():
                 raise RuntimeError(f"feature arrays missing: {arrays_path}")
-            lookup_key = normalize_lookup_key(track["fileName"])
+            lookup_key = track_identity_key(track)
+            file_lookup_key = f"file:{normalize_lookup_key(track['fileName'])}"
             with np.load(arrays_path, allow_pickle=False) as arrays:
                 rows.append(
                     _build_track_report(
                         track=track,
                         split=split_map.get(lookup_key, "unknown"),
-                        legacy_category=legacy_categories.get(lookup_key),
+                        legacy_category=(
+                            legacy_categories.get(lookup_key)
+                            or legacy_categories.get(file_lookup_key)
+                        ),
                         metadata=metadata,
                         arrays=arrays,
                         args=args,
                     )
                 )
         except Exception as error:
-            errors.append({"fileName": track.get("fileName"), "error": str(error)})
+            errors.append(
+                {
+                    "fileName": track.get("fileName"),
+                    "instanceId": track.get("instanceId"),
+                    "batchId": track.get("batchId"),
+                    "error": str(error),
+                }
+            )
             print(f"  error: {error}", flush=True)
 
     summary = {

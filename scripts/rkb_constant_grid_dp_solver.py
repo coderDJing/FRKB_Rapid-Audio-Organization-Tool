@@ -28,6 +28,7 @@ from rkb_constant_grid_dp_selection import (
     head_near_zero_switch_diagnostic_features,
     legacy_weakness_score,
     passes_conservative_switch_guard,
+    preserve_locked_phase_switch_downbeat_ordinal,
     rank1_negative_legacy_score_diagnostic_features,
     rank1_switch_diagnostic_features,
     select_phase_evidence_candidate,
@@ -49,7 +50,7 @@ DEFAULT_TEMPO_STEP_BPM = 0.5
 DEFAULT_TEMPO_LIMIT = 24
 DEFAULT_PHASE_STEP_MS = 2.0
 DEFAULT_MAX_CANDIDATES = 640
-SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-high-structural-score-v1-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1"
+SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-locked-phase-downbeat-ordinal-v1-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-high-structural-score-v1-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1"
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -635,6 +636,17 @@ def solve_constant_grid_dp(
         arrays=arrays,
         duration_sec=duration_sec,
     )
+    locked_phase_downbeat_meta: dict[str, Any] = {
+        "applied": False,
+        "reason": "locked-ranker-not-selected",
+    }
+    if locked_ranker_selected is not None:
+        locked_ranker_selected, locked_phase_downbeat_meta = (
+            preserve_locked_phase_switch_downbeat_ordinal(
+                candidate=locked_ranker_selected,
+                legacy_candidate=legacy_candidate,
+            )
+        )
     locked_ranker_switch = locked_ranker_selected is not None
     if locked_ranker_switch:
         selected = locked_ranker_selected
@@ -897,6 +909,27 @@ def solve_constant_grid_dp(
             "constantGridDpLockedRisingEdgeRankerCandidateRank": int(locked_ranker_meta.get("candidateRank") or 0),
             "constantGridDpLockedRisingEdgeRankerThreshold": _to_float(locked_ranker_meta.get("threshold"), 0.93),
             "constantGridDpLockedRisingEdgeRankerVersion": str(locked_ranker_meta.get("version") or ""),
+            "constantGridDpLockedPhaseDownbeatOrdinalPreserved": bool(
+                locked_phase_downbeat_meta.get("applied")
+            ),
+            "constantGridDpLockedPhaseDownbeatOrdinalReason": str(
+                locked_phase_downbeat_meta.get("reason") or ""
+            ),
+            "constantGridDpLockedPhaseDownbeatOriginalBarBeatOffset": int(
+                locked_phase_downbeat_meta.get("originalBarBeatOffset") or 0
+            ),
+            "constantGridDpLockedPhaseDownbeatLegacyBarBeatOffset": int(
+                locked_phase_downbeat_meta.get("legacyBarBeatOffset") or 0
+            ),
+            "constantGridDpLockedPhaseDownbeatAdjustedBarBeatOffset": int(
+                locked_phase_downbeat_meta.get("adjustedBarBeatOffset") or 0
+            ),
+            "constantGridDpLockedPhaseDownbeatPhaseWrapBeats": int(
+                locked_phase_downbeat_meta.get("phaseWrapBeats") or 0
+            ),
+            "constantGridDpLockedPhaseDownbeatVersion": str(
+                locked_phase_downbeat_meta.get("version") or ""
+            ),
             **rank1_switch_diagnostic_features(
                 rank1_legacy_weakness_switch=rank1_legacy_weakness_switch,
                 rank1_legacy_weakness_meta=rank1_legacy_weakness_meta,
