@@ -7,20 +7,18 @@ import {
   type SongStructureSection,
   type SongStructureSectionKind
 } from './songStructureCommon'
-import type {
-  SongStructureSpectralBoundary,
-  SongStructureSpectralClusteringResult
-} from './songStructureSpectralClustering'
 import {
   resolveSongStructureBuildRampScore,
-  SONG_STRUCTURE_BUILD_RAMP_MIN_SCORE
+  SONG_STRUCTURE_BUILD_RAMP_MIN_SCORE,
+  type SongStructureSpectralBoundary,
+  type SongStructureSpectralClusteringResult
 } from './songStructureSpectralClustering'
 import {
   refineTerminalOutroRanges,
-  type SongStructureSemanticRange
+  type SongStructureSemanticRange as SemanticRange
 } from './songStructureSemanticOutro'
 import { refineContextualBuildRanges } from './songStructureSemanticBuild'
-import { refineInactiveDropValleyRanges } from './songStructureSemanticInactiveValley'
+import * as inactiveValley from './songStructureSemanticInactiveValley'
 import {
   SONG_STRUCTURE_SPECTRAL_VALUE_KEYS,
   cosineSimilarity,
@@ -59,8 +57,6 @@ type SemanticSegment = {
   buildRamp: number
   scores: SongStructureSemanticScores
 }
-
-type SemanticRange = SongStructureSemanticRange
 
 export type SongStructureSemanticDiagnostic = {
   startIndex: number
@@ -201,7 +197,6 @@ const resolveStability = (
 
 const durationPrior = (bars: number, preferred: number, tolerance: number) =>
   1 - ramp(Math.abs(bars - preferred), tolerance * 0.3, tolerance)
-
 const toRank = (value: number) => clamp01(value * 0.5 + 0.5)
 
 const resolveSemanticActivity = (values: SongStructureSpectralValues) => {
@@ -939,9 +934,6 @@ const resolveRangeActivity = (
   return total / Math.max(1, end - start)
 }
 
-const isRecoveryGridBoundary = (bar: SongStructureSpectralBarFeature | undefined) =>
-  !!bar && (bar.isPhraseBoundary || (bar.startBar - 1) % 4 === 0)
-
 const findOversizedActiveRangeSplit = (
   bars: readonly SongStructureSpectralBarFeature[],
   boundaries: readonly SongStructureSpectralBoundary[],
@@ -958,7 +950,7 @@ const findOversizedActiveRangeSplit = (
   for (let index = start + minimumSideBars; index <= end - minimumSideBars; index += 1) {
     if (index - start > maxActiveBars) break
     const boundaryScore = boundaryScores.get(index) ?? 0
-    if (!isRecoveryGridBoundary(bars[index]) && boundaryScore <= 0) continue
+    if (!bars[index]) continue
     const beforeActivity = resolveRangeActivity(bars, Math.max(start, index - 4), index)
     const afterActivity = resolveRangeActivity(bars, index, Math.min(end, index + 4))
     const localActivity = resolveRangeActivity(
@@ -1073,9 +1065,10 @@ export const labelSongStructureSpectralSegments = (
     const previous = segments[index - 1]
     return previous && isDecisiveActiveReentry(previous, segment) ? [segment.startIndex] : []
   })
-  const inactiveValleyRefinedRanges = refineInactiveDropValleyRanges(
+  const inactiveValleyRefinedRanges = inactiveValley.refineInactiveDropValleyRanges(
     bars,
-    mergeSemanticRanges(segments, guarded)
+    mergeSemanticRanges(segments, guarded),
+    clustering.boundaries
   )
   const buildRefinedRanges = refineContextualBuildRanges(
     bars,
@@ -1087,7 +1080,11 @@ export const labelSongStructureSpectralSegments = (
     buildRefinedRanges,
     activeReentryIndexes
   )
-  const ranges = repairOversizedActiveRanges(bars, clustering.boundaries, terminalRefinedRanges)
+  const ranges = repairOversizedActiveRanges(
+    bars,
+    clustering.boundaries,
+    inactiveValley.refineInitialGrooveDropRanges(bars, terminalRefinedRanges, clustering.boundaries)
+  )
   const sections = ranges
     .map((range) => buildSection(bars, clustering.boundaries, range))
     .filter((section): section is SongStructureSection => section !== null)

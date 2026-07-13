@@ -417,6 +417,65 @@ describe('MSAF 风格歌曲结构分析', () => {
     expect(result?.sections.some((section) => section.kind === 'build')).toBe(false)
   })
 
+  it('强结构边界偏离全曲大节相位时仍会在网格线上切分', () => {
+    const waveform = createSyntheticWaveform(96, [
+      {
+        startBar: 0,
+        endBar: 32,
+        energy: constant(0.66),
+        low: constant(0.78),
+        mid: constant(0.48),
+        high: constant(0.3),
+        attacks: [0, 2, 4, 6, 8, 10, 12, 14]
+      },
+      {
+        startBar: 32,
+        endBar: 38,
+        energy: constant(0.36),
+        low: constant(0.16),
+        mid: constant(0.52),
+        high: constant(0.42),
+        attacks: [4, 12]
+      },
+      {
+        startBar: 38,
+        endBar: 46,
+        energy: (progress) => 0.42 + progress * 0.2,
+        low: (progress) => 0.18 + progress * 0.18,
+        mid: (progress) => 0.5 + progress * 0.22,
+        high: (progress) => 0.4 + progress * 0.28,
+        attacks: [0, 2, 4, 6, 8, 10, 12, 14, 15]
+      },
+      {
+        startBar: 46,
+        endBar: 72,
+        energy: constant(0.78),
+        low: constant(0.91),
+        mid: constant(0.68),
+        high: constant(0.56),
+        attacks: [0, 2, 4, 6, 8, 10, 12, 14]
+      },
+      {
+        startBar: 72,
+        endBar: 96,
+        energy: (progress) => 0.62 - progress * 0.14,
+        low: (progress) => 0.72 - progress * 0.16,
+        mid: (progress) => 0.4 - progress * 0.12,
+        high: (progress) => 0.3 - progress * 0.1,
+        attacks: [0, 4, 8, 12]
+      }
+    ])
+    const featureSet = buildSongStructureSpectralFeatures(buildInput(waveform), waveform.duration)
+    const clustering = featureSet ? clusterSongStructureSpectralBars(featureSet.bars) : null
+    const result = analyze(waveform)
+
+    expect(featureSet?.bars[46]?.isPhraseBoundary).toBe(false)
+    expect(
+      (clustering?.boundaries ?? []).some((boundary) => Math.abs(boundary.index - 46) <= 1)
+    ).toBe(true)
+    expect(hasSectionBoundaryNearBar(result?.sections ?? [], 46, 1)).toBe(true)
+  })
+
   it('Drop 内部换纹理时仍保持为一个连续 Drop', () => {
     const waveform = createSyntheticWaveform(104, [
       {

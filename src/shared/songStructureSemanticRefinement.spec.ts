@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { refineContextualBuildRanges } from './songStructureSemanticBuild'
-import { refineInactiveDropValleyRanges } from './songStructureSemanticInactiveValley'
+import {
+  refineInactiveDropValleyRanges,
+  refineInitialGrooveDropRanges
+} from './songStructureSemanticInactiveValley'
 import { repairOversizedActiveRanges } from './songStructureSemanticLabels'
 import type { SongStructureSpectralBoundary } from './songStructureSpectralClustering'
 import {
@@ -202,6 +205,129 @@ describe('歌曲结构语义范围精修', () => {
     ])
   })
 
+  it('Drop 后开头的长低谷即使被合为 Groove，也能在实际谱边界恢复 Breakdown 与后 Drop', () => {
+    const bars = Array.from({ length: 70 }, (_, index) => {
+      if (index < 26 || index >= 42) return createBar(index, createDropValues())
+      if (index < 34) return createBar(index, createInactiveValleyValues())
+      return createBar(index, createPartialFoundationRecoveryValues())
+    })
+    const ranges = [createRange(0, 26, 'drop'), createRange(26, 70, 'groove')]
+
+    expect(
+      refineInactiveDropValleyRanges(bars, ranges, [
+        { index: 26, score: 0.8 },
+        { index: 34, score: 0.8 },
+        { index: 42, score: 0.8 }
+      ])
+    ).toMatchObject([
+      { startIndex: 0, endIndex: 26, kind: 'drop' },
+      { startIndex: 26, endIndex: 42, kind: 'breakdown' },
+      { startIndex: 42, endIndex: 70, kind: 'drop' }
+    ])
+  })
+
+  it('首个 Groove 内的强入口若紧接后续 Breakdown，会拆出首 Drop', () => {
+    const bars = Array.from({ length: 72 }, (_, index) => {
+      if (index < 8) return createBar(index, createBreakdownValues())
+      if (index < 24) return createBar(index, createPartialFoundationRecoveryValues())
+      if (index < 40) return createBar(index, createDropValues())
+      if (index < 56) return createBar(index, createBreakdownValues())
+      return createBar(index, createDropValues())
+    })
+    const ranges = [
+      createRange(0, 8, 'intro'),
+      createRange(8, 40, 'groove'),
+      createRange(40, 56, 'breakdown'),
+      createRange(56, 72, 'drop')
+    ]
+
+    expect(refineInitialGrooveDropRanges(bars, ranges, [{ index: 24, score: 0.94 }])).toMatchObject(
+      [
+        { startIndex: 0, endIndex: 8, kind: 'intro' },
+        { startIndex: 8, endIndex: 24, kind: 'groove' },
+        { startIndex: 24, endIndex: 40, kind: 'drop' },
+        { startIndex: 40, endIndex: 56, kind: 'breakdown' },
+        { startIndex: 56, endIndex: 72, kind: 'drop' }
+      ]
+    )
+  })
+
+  it('Intro 后的长直接主段会被识别为首 Drop', () => {
+    const bars = Array.from({ length: 64 }, (_, index) => {
+      if (index < 8) return createBar(index, createBreakdownValues())
+      if (index < 40) return createBar(index, createDropValues())
+      if (index < 48) return createBar(index, createBreakdownValues())
+      return createBar(index, createDropValues())
+    })
+    const initialGroove = { ...createRange(8, 40, 'groove'), entryBoundaryScore: 0.8 }
+    const ranges = [
+      createRange(0, 8, 'intro'),
+      initialGroove,
+      createRange(40, 48, 'breakdown'),
+      createRange(48, 64, 'drop')
+    ]
+
+    expect(refineInitialGrooveDropRanges(bars, ranges, [])).toMatchObject([
+      { startIndex: 0, endIndex: 8, kind: 'intro' },
+      { startIndex: 8, endIndex: 40, kind: 'drop' },
+      { startIndex: 40, endIndex: 48, kind: 'breakdown' },
+      { startIndex: 48, endIndex: 64, kind: 'drop' }
+    ])
+  })
+
+  it('末段短 Groove 没有独立重入时合并回前一个 Drop，不凭空制造段落', () => {
+    const bars = Array.from({ length: 64 }, (_, index) => {
+      if (index < 32) return createBar(index, createDropValues())
+      if (index < 44) return createBar(index, createPartialFoundationRecoveryValues())
+      return createBar(index, createBreakdownValues())
+    })
+    const ranges = [
+      createRange(0, 32, 'drop'),
+      createRange(32, 44, 'groove'),
+      createRange(44, 64, 'outro')
+    ]
+
+    expect(refineInitialGrooveDropRanges(bars, ranges, [])).toMatchObject([
+      { startIndex: 0, endIndex: 44, kind: 'drop' },
+      { startIndex: 44, endIndex: 64, kind: 'outro' }
+    ])
+  })
+
+  it('较长的末段 Groove 仍保留为独立区段', () => {
+    const bars = Array.from({ length: 72 }, (_, index) => {
+      if (index < 32 || index >= 52) return createBar(index, createDropValues())
+      return createBar(index, createPartialFoundationRecoveryValues())
+    })
+    const ranges = [
+      createRange(0, 32, 'drop'),
+      createRange(32, 52, 'groove'),
+      createRange(52, 72, 'outro')
+    ]
+
+    expect(refineInitialGrooveDropRanges(bars, ranges, [])).toEqual(ranges)
+  })
+
+  it('确认的 Breakdown / Build 后回到前一主段平台时，将 Groove 重标为结构性 Drop', () => {
+    const bars = Array.from({ length: 70 }, (_, index) => {
+      if (index < 18 || index >= 38) return createBar(index, createDropValues())
+      if (index < 28) return createBar(index, createBreakdownValues())
+      return createBar(index, createPartialFoundationRecoveryValues())
+    })
+    const ranges = [
+      createRange(0, 18, 'groove'),
+      createRange(18, 28, 'breakdown'),
+      createRange(28, 38, 'build'),
+      createRange(38, 70, 'groove')
+    ]
+
+    expect(refineInactiveDropValleyRanges(bars, ranges)).toMatchObject([
+      { startIndex: 0, endIndex: 18, kind: 'groove' },
+      { startIndex: 18, endIndex: 28, kind: 'breakdown' },
+      { startIndex: 28, endIndex: 38, kind: 'build' },
+      { startIndex: 38, endIndex: 70, kind: 'drop' }
+    ])
+  })
+
   it('Drop 内只有一次 4-bar 抽空时不会切出 Breakdown', () => {
     const bars = Array.from({ length: 48 }, (_, index) =>
       createBar(
@@ -254,6 +380,28 @@ describe('歌曲结构语义范围精修', () => {
       { startIndex: 16, endIndex: 32, kind: 'breakdown' },
       { startIndex: 32, endIndex: 40, kind: 'build' },
       { startIndex: 40, endIndex: 72, kind: 'drop' }
+    ])
+  })
+
+  it('全局大节相位错开后，非大节线的强重入仍能修出 Build', () => {
+    const bars = Array.from({ length: 80 }, (_, index) => {
+      if (index < 24) return createBar(index, createDropValues())
+      if (index < 30) return createBar(index, createBreakdownValues())
+      if (index < 46) return createBar(index, createBuildEpisodeValues(index, 30))
+      return createBar(index, createDropValues())
+    })
+    const ranges = [
+      createRange(0, 24, 'groove'),
+      createRange(24, 46, 'breakdown'),
+      createRange(46, 80, 'drop')
+    ]
+
+    expect(bars[46]?.isPhraseBoundary).toBe(false)
+    expect(refineContextualBuildRanges(bars, ranges, [46])).toMatchObject([
+      { startIndex: 0, endIndex: 24, kind: 'groove' },
+      { startIndex: 24, endIndex: 30, kind: 'breakdown' },
+      { startIndex: 30, endIndex: 46, kind: 'build' },
+      { startIndex: 46, endIndex: 80, kind: 'drop' }
     ])
   })
 

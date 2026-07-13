@@ -1,4 +1,5 @@
 import { clamp, clamp01, ramp } from './songStructureCommon'
+import type { SongStructureSpectralBoundary } from './songStructureSpectralClustering'
 import type { SongStructureSemanticRange } from './songStructureSemanticOutro'
 import type {
   SongStructureSpectralBarFeature,
@@ -22,6 +23,23 @@ const MIN_REENTRY_FOUNDATION_GAIN = 0.065
 const MIN_REENTRY_ACTIVITY_GAIN = 0.05
 const MIN_SECONDARY_REENTRY_GAIN = 0.015
 const MIN_GROOVE_SCAN_BARS = 48
+const MIN_STRUCTURAL_REENTRY_BOUNDARY_SCORE = 0.34
+const MAX_STRUCTURAL_REENTRY_FOUNDATION_GAP = 0.07
+const MAX_STRUCTURAL_REENTRY_ACTIVITY_GAP = 0.07
+const MIN_INITIAL_DROP_BOUNDARY_SCORE = 0.72
+const MIN_INITIAL_DROP_ACTIVITY = 0.57
+const MIN_INITIAL_DROP_ACTIVITY_GAIN = 0.07
+const MIN_INITIAL_DROP_BARS = 8
+const MIN_DIRECT_INITIAL_DROP_BARS = 32
+const MIN_DIRECT_INITIAL_DROP_ACTIVITY = 0.42
+const MIN_DIRECT_INITIAL_DROP_ACTIVITY_GAIN = 0.15
+const MIN_LONG_POST_BREAK_DROP_BARS = 24
+const MIN_LONG_POST_BREAK_ACTIVITY = 0.56
+const MIN_LONG_POST_BREAK_BOUNDARY_SCORE = 0.28
+const MIN_TERMINAL_DROP_BARS = 24
+const MAX_TERMINAL_CONTINUATION_GROOVE_BARS = 16
+const MAX_TERMINAL_CONTINUATION_ACTIVITY_GAIN = 0.035
+const MAX_TERMINAL_CONTINUATION_FOUNDATION_GAIN = 0.035
 
 type InactiveWindowSummary = {
   activity: number
@@ -111,9 +129,19 @@ const summarizeWindow = (
   }
 }
 
-const isStructuralBoundary = (bars: readonly SongStructureSpectralBarFeature[], index: number) => {
+const isStructuralBoundary = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  index: number,
+  spectralBoundaryIndexes: ReadonlySet<number>,
+  allowSpectralBoundary: boolean
+) => {
   const bar = bars[index]
-  return !!bar && (bar.isPhraseBoundary || bar.isClipBoundary)
+  return (
+    !!bar &&
+    (bar.isPhraseBoundary ||
+      bar.isClipBoundary ||
+      (allowSpectralBoundary && spectralBoundaryIndexes.has(index)))
+  )
 }
 
 const resolveInactivePersistence = (
@@ -140,7 +168,9 @@ const resolveInactivePersistence = (
 const buildInactiveValleyCandidate = (
   bars: readonly SongStructureSpectralBarFeature[],
   range: SongStructureSemanticRange,
-  startIndex: number
+  startIndex: number,
+  spectralBoundaryIndexes: ReadonlySet<number>,
+  allowSpectralBoundary = false
 ): InactiveValleyCandidate | null => {
   const reference = summarizeWindow(bars, startIndex - REFERENCE_BARS, startIndex)
   const initial = summarizeWindow(bars, startIndex, startIndex + WINDOW_BARS)
@@ -159,7 +189,9 @@ const buildInactiveValleyCandidate = (
     reentryIndex <= scanEnd;
     reentryIndex += 1
   ) {
-    if (!isStructuralBoundary(bars, reentryIndex)) continue
+    if (!isStructuralBoundary(bars, reentryIndex, spectralBoundaryIndexes, allowSpectralBoundary)) {
+      continue
+    }
     const valley = summarizeWindow(bars, startIndex, reentryIndex)
     const averageFoundationDrop = reference.foundation - valley.foundation
     const averageActivityDrop = reference.activity - valley.activity
@@ -219,13 +251,14 @@ const buildInactiveValleyCandidate = (
 const findInactiveValleyCandidate = (
   bars: readonly SongStructureSpectralBarFeature[],
   range: SongStructureSemanticRange,
-  searchStartIndex: number
+  searchStartIndex: number,
+  spectralBoundaryIndexes: ReadonlySet<number>
 ) => {
   const start = Math.max(range.startIndex + REFERENCE_BARS, searchStartIndex)
   const end = range.endIndex - MIN_VALLEY_BARS - WINDOW_BARS
   for (let index = start; index <= end; index += 1) {
-    if (!isStructuralBoundary(bars, index)) continue
-    const candidate = buildInactiveValleyCandidate(bars, range, index)
+    if (!isStructuralBoundary(bars, index, spectralBoundaryIndexes, false)) continue
+    const candidate = buildInactiveValleyCandidate(bars, range, index, spectralBoundaryIndexes)
     if (candidate) return candidate
   }
   return null
@@ -233,14 +266,19 @@ const findInactiveValleyCandidate = (
 
 const splitActiveRangeAtInactiveValleys = (
   bars: readonly SongStructureSpectralBarFeature[],
-  range: SongStructureSemanticRange
+  range: SongStructureSemanticRange,
+  spectralBoundaryIndexes: ReadonlySet<number>,
+  leadingCandidate?: InactiveValleyCandidate | null
 ) => {
   const result: SongStructureSemanticRange[] = []
   let cursor = range.startIndex
   let activeKind = range.kind
   let lastReentryEvidence = 0
   while (cursor < range.endIndex) {
-    const candidate = findInactiveValleyCandidate(bars, range, cursor + REFERENCE_BARS)
+    const candidate =
+      cursor === range.startIndex && leadingCandidate
+        ? leadingCandidate
+        : findInactiveValleyCandidate(bars, range, cursor + REFERENCE_BARS, spectralBoundaryIndexes)
     if (!candidate) break
     if (candidate.startIndex > cursor) {
       result.push({
@@ -278,6 +316,227 @@ const splitActiveRangeAtInactiveValleys = (
   return result
 }
 
+const findInactiveFamilyStart = (
+  ranges: readonly SongStructureSemanticRange[],
+  activeIndex: number
+) => {
+  let index = activeIndex - 1
+  let hasBreakdown = false
+  while (index >= 0) {
+    const kind = ranges[index]?.kind
+    if (kind === 'breakdown') {
+      hasBreakdown = true
+      index -= 1
+      continue
+    }
+    if (kind === 'build') {
+      index -= 1
+      continue
+    }
+    break
+  }
+  return hasBreakdown ? index + 1 : null
+}
+
+const promoteStructuralDropReentries = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  ranges: readonly SongStructureSemanticRange[]
+) =>
+  ranges.map((range, index) => {
+    if (range.kind !== 'groove' || range.endIndex - range.startIndex < MIN_REENTRY_BARS) {
+      return { ...range }
+    }
+    if (range.entryBoundaryScore < MIN_STRUCTURAL_REENTRY_BOUNDARY_SCORE) return { ...range }
+
+    const inactiveStart = findInactiveFamilyStart(ranges, index)
+    if (inactiveStart === null || inactiveStart <= 0) return { ...range }
+    const anchor = ranges[inactiveStart - 1]
+    if (!anchor || (anchor.kind !== 'drop' && anchor.kind !== 'groove')) return { ...range }
+
+    const inactiveBars = range.startIndex - ranges[inactiveStart]!.startIndex
+    if (inactiveBars < MIN_VALLEY_BARS) return { ...range }
+    const reference = summarizeWindow(
+      bars,
+      Math.max(anchor.startIndex, anchor.endIndex - REFERENCE_BARS),
+      anchor.endIndex
+    )
+    const inactiveTail = summarizeWindow(
+      bars,
+      Math.max(ranges[inactiveStart]!.startIndex, range.startIndex - WINDOW_BARS),
+      range.startIndex
+    )
+    const reentry = summarizeWindow(bars, range.startIndex, range.startIndex + WINDOW_BARS)
+    const foundationDrop = reference.foundation - inactiveTail.foundation
+    const activityDrop = reference.activity - inactiveTail.activity
+    const foundationGain = reentry.foundation - inactiveTail.foundation
+    const activityGain = reentry.activity - inactiveTail.activity
+    const foundationGap = reference.foundation - reentry.foundation
+    const activityGap = reference.activity - reentry.activity
+    const hasClearReturn =
+      (foundationGain >= MIN_REENTRY_FOUNDATION_GAIN &&
+        activityGain >= MIN_SECONDARY_REENTRY_GAIN) ||
+      (activityGain >= MIN_REENTRY_ACTIVITY_GAIN && foundationGain >= MIN_SECONDARY_REENTRY_GAIN)
+    const hasLongPostBreakPlateau =
+      range.endIndex - range.startIndex >= MIN_LONG_POST_BREAK_DROP_BARS &&
+      range.entryBoundaryScore >= MIN_LONG_POST_BREAK_BOUNDARY_SCORE &&
+      reentry.activity >= MIN_LONG_POST_BREAK_ACTIVITY &&
+      foundationGap <= MAX_STRUCTURAL_REENTRY_FOUNDATION_GAP &&
+      activityGap <= MAX_STRUCTURAL_REENTRY_ACTIVITY_GAP &&
+      (foundationGain >= MIN_SECONDARY_REENTRY_GAIN || activityGain >= MIN_SECONDARY_REENTRY_GAIN)
+    if (
+      !hasLongPostBreakPlateau &&
+      (foundationDrop < MIN_AVERAGE_FOUNDATION_DROP ||
+        activityDrop < MIN_AVERAGE_ACTIVITY_DROP ||
+        foundationGap > MAX_STRUCTURAL_REENTRY_FOUNDATION_GAP ||
+        activityGap > MAX_STRUCTURAL_REENTRY_ACTIVITY_GAP ||
+        !hasClearReturn)
+    ) {
+      return { ...range }
+    }
+
+    return {
+      ...range,
+      kind: 'drop' as const,
+      confidence: Math.max(
+        range.confidence,
+        clamp01(0.58 + ramp(Math.max(foundationGain, activityGain), 0.05, 0.2) * 0.2)
+      )
+    }
+  })
+
+const splitInitialGrooveAtStructuralDrop = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  ranges: readonly SongStructureSemanticRange[],
+  spectralBoundaries: readonly SongStructureSpectralBoundary[]
+) => {
+  const result: SongStructureSemanticRange[] = []
+  let hasDrop = false
+  for (let rangeIndex = 0; rangeIndex < ranges.length; rangeIndex += 1) {
+    const range = ranges[rangeIndex]
+    if (!range) continue
+    const previous = ranges[rangeIndex - 1]
+    const next = ranges[rangeIndex + 1]
+    if (range.kind === 'drop') hasDrop = true
+    const isDirectInitialDrop =
+      !hasDrop &&
+      range.kind === 'groove' &&
+      previous?.kind === 'intro' &&
+      next?.kind === 'breakdown' &&
+      range.endIndex - range.startIndex >= MIN_DIRECT_INITIAL_DROP_BARS &&
+      range.entryBoundaryScore >= MIN_INITIAL_DROP_BOUNDARY_SCORE
+    if (isDirectInitialDrop) {
+      const before = summarizeWindow(
+        bars,
+        Math.max(previous.startIndex, range.startIndex - WINDOW_BARS),
+        range.startIndex
+      )
+      const entry = summarizeWindow(bars, range.startIndex, range.startIndex + WINDOW_BARS)
+      if (
+        entry.activity >= MIN_DIRECT_INITIAL_DROP_ACTIVITY &&
+        entry.activity - before.activity >= MIN_DIRECT_INITIAL_DROP_ACTIVITY_GAIN
+      ) {
+        result.push({
+          ...range,
+          kind: 'drop',
+          confidence: Math.max(
+            range.confidence,
+            clamp01(0.58 + ramp(entry.activity - before.activity, 0.15, 0.35) * 0.2)
+          )
+        })
+        hasDrop = true
+        continue
+      }
+    }
+    const canResolveInitialDrop =
+      !hasDrop &&
+      range.kind === 'groove' &&
+      next?.kind === 'breakdown' &&
+      range.endIndex - range.startIndex >= MIN_INITIAL_DROP_BARS * 2
+    if (!canResolveInitialDrop) {
+      result.push({ ...range })
+      continue
+    }
+
+    const candidate = spectralBoundaries.find((boundary) => {
+      if (
+        boundary.index <= range.startIndex ||
+        boundary.index + MIN_INITIAL_DROP_BARS > range.endIndex
+      ) {
+        return false
+      }
+      if (boundary.score < MIN_INITIAL_DROP_BOUNDARY_SCORE) return false
+      const before = summarizeWindow(bars, boundary.index - WINDOW_BARS, boundary.index)
+      const after = summarizeWindow(bars, boundary.index, boundary.index + WINDOW_BARS)
+      return (
+        after.activity >= MIN_INITIAL_DROP_ACTIVITY &&
+        after.activity - before.activity >= MIN_INITIAL_DROP_ACTIVITY_GAIN
+      )
+    })
+    if (!candidate) {
+      result.push({ ...range })
+      continue
+    }
+
+    result.push({ ...range, endIndex: candidate.index })
+    result.push({
+      ...range,
+      startIndex: candidate.index,
+      kind: 'drop',
+      confidence: Math.max(range.confidence, clamp01(0.6 + candidate.score * 0.2)),
+      entryBoundaryScore: Math.max(range.entryBoundaryScore, candidate.score)
+    })
+    hasDrop = true
+  }
+  return result
+}
+
+const mergeTerminalDropContinuationGroove = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  ranges: readonly SongStructureSemanticRange[]
+) => {
+  const result: SongStructureSemanticRange[] = []
+  for (let index = 0; index < ranges.length; index += 1) {
+    const range = ranges[index]
+    if (!range) continue
+    const previous = result.at(-1)
+    const next = ranges[index + 1]
+    const isTerminalContinuation =
+      previous?.kind === 'drop' &&
+      next?.kind === 'outro' &&
+      previous.endIndex - previous.startIndex >= MIN_TERMINAL_DROP_BARS &&
+      range.kind === 'groove' &&
+      range.endIndex - range.startIndex <= MAX_TERMINAL_CONTINUATION_GROOVE_BARS
+    if (!isTerminalContinuation || !previous) {
+      result.push({ ...range })
+      continue
+    }
+    const dropTail = summarizeWindow(
+      bars,
+      Math.max(previous.startIndex, previous.endIndex - WINDOW_BARS),
+      previous.endIndex
+    )
+    const continuation = summarizeWindow(
+      bars,
+      range.startIndex,
+      Math.min(range.endIndex, range.startIndex + WINDOW_BARS)
+    )
+    const hasIndependentReentry =
+      continuation.activity - dropTail.activity > MAX_TERMINAL_CONTINUATION_ACTIVITY_GAIN ||
+      continuation.foundation - dropTail.foundation > MAX_TERMINAL_CONTINUATION_FOUNDATION_GAIN
+    if (hasIndependentReentry) {
+      result.push({ ...range })
+      continue
+    }
+    const previousBars = previous.endIndex - previous.startIndex
+    const continuationBars = range.endIndex - range.startIndex
+    previous.confidence =
+      (previous.confidence * previousBars + range.confidence * continuationBars) /
+      Math.max(1, previousBars + continuationBars)
+    previous.endIndex = range.endIndex
+  }
+  return result
+}
+
 const mergeAdjacentRanges = (ranges: readonly SongStructureSemanticRange[]) => {
   const result: SongStructureSemanticRange[] = []
   for (const range of ranges) {
@@ -296,15 +555,41 @@ const mergeAdjacentRanges = (ranges: readonly SongStructureSemanticRange[]) => {
   return result
 }
 
-export const refineInactiveDropValleyRanges = (
+export const refineInitialGrooveDropRanges = (
   bars: readonly SongStructureSpectralBarFeature[],
-  ranges: readonly SongStructureSemanticRange[]
+  ranges: readonly SongStructureSemanticRange[],
+  spectralBoundaries: readonly SongStructureSpectralBoundary[]
 ) =>
   mergeAdjacentRanges(
-    ranges.flatMap((range) =>
-      range.kind === 'drop' ||
-      (range.kind === 'groove' && range.endIndex - range.startIndex >= MIN_GROOVE_SCAN_BARS)
-        ? splitActiveRangeAtInactiveValleys(bars, range)
-        : [{ ...range }]
+    mergeTerminalDropContinuationGroove(
+      bars,
+      splitInitialGrooveAtStructuralDrop(bars, ranges, spectralBoundaries)
     )
   )
+
+export const refineInactiveDropValleyRanges = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  ranges: readonly SongStructureSemanticRange[],
+  spectralBoundaries: readonly SongStructureSpectralBoundary[] = []
+) => {
+  const boundarySet = new Set(spectralBoundaries.map((boundary) => boundary.index))
+  return mergeAdjacentRanges(
+    promoteStructuralDropReentries(
+      bars,
+      ranges.flatMap((range, index) => {
+        const previous = ranges[index - 1]
+        const leadingCandidate =
+          range.kind === 'groove' && previous?.kind === 'drop'
+            ? buildInactiveValleyCandidate(bars, range, range.startIndex, boundarySet, true)
+            : null
+        const shouldScan =
+          range.kind === 'drop' ||
+          range.endIndex - range.startIndex >= MIN_GROOVE_SCAN_BARS ||
+          leadingCandidate !== null
+        return shouldScan
+          ? splitActiveRangeAtInactiveValleys(bars, range, boundarySet, leadingCandidate)
+          : [{ ...range }]
+      })
+    )
+  )
+}

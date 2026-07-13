@@ -94,12 +94,7 @@ const buildContextualBuildCandidate = (
   reentryIndex: number
 ): ContextualBuildCandidate | null => {
   const reentryBar = bars[reentryIndex]
-  if (
-    reentryIndex + 4 > bars.length ||
-    (!reentryBar?.isPhraseBoundary && !reentryBar?.isClipBoundary)
-  ) {
-    return null
-  }
+  if (!reentryBar || reentryIndex + 4 > bars.length) return null
 
   const dropValues = averageNormalizedValues(bars, reentryIndex, reentryIndex + 4)
   if (resolveBuildActivity(dropValues) < CONTEXTUAL_BUILD_MIN_DROP_ACTIVITY) return null
