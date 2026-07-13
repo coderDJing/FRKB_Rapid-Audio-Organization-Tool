@@ -18,7 +18,7 @@ interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
   songsAreaState: ISongsAreaPaneRuntimeState
   originalSongInfoArr: ShallowRef<ISongInfo[]>
-  applyFiltersAndSorting: () => void
+  applyFiltersAndSorting: () => void | Promise<void>
 }
 
 interface LoadSongListFromDiskOptions {
@@ -110,6 +110,23 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     'energyAlgorithmVersion',
     'songStructure'
   ])
+  const SONG_LIST_COMPARISON_YIELD_EVERY = 160
+
+  const yieldToRenderer = () =>
+    new Promise<void>((resolve) => {
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => resolve())
+        return
+      }
+      setTimeout(resolve, 0)
+    })
+
+  const yieldAfterSongListItems = async (index: number, total: number) => {
+    if (total < SONG_LIST_COMPARISON_YIELD_EVERY * 2) return
+    if (index > 0 && index % SONG_LIST_COMPARISON_YIELD_EVERY === 0) {
+      await yieldToRenderer()
+    }
+  }
 
   const notifySongSearchDirty = (reason: string) => {
     void window.electron.ipcRenderer.invoke('song-search:mark-dirty', { reason }).catch(() => {})
@@ -423,33 +440,35 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     return fields
   }
 
-  const isEquivalentSongListSnapshot = (nextData: ISongInfo[], currentData: ISongInfo[]) => {
+  const isEquivalentSongListSnapshot = async (nextData: ISongInfo[], currentData: ISongInfo[]) => {
     if (nextData.length !== currentData.length) return false
     if (nextData.length === 0) return true
 
     const currentByKey = new Map<string, ISongInfo>()
-    for (const song of currentData) {
+    for (const [index, song] of currentData.entries()) {
       const key = getSongIdentityKey(song)
       if (!key || currentByKey.has(key)) return false
       currentByKey.set(key, song)
+      await yieldAfterSongListItems(index + 1, currentData.length)
     }
 
     let matchedCount = 0
-    for (const song of nextData) {
+    for (const [index, song] of nextData.entries()) {
       const key = getSongIdentityKey(song)
       if (!key) return false
       const current = currentByKey.get(key)
       if (!current || !isEquivalentSongInfo(song, current)) return false
       matchedCount += 1
+      await yieldAfterSongListItems(index + 1, nextData.length)
     }
 
     return matchedCount === currentByKey.size
   }
 
-  const summarizeSongListDiff = (
+  const summarizeSongListDiff = async (
     nextData: ISongInfo[],
     currentData: ISongInfo[]
-  ): SongListDiffSummary => {
+  ): Promise<SongListDiffSummary> => {
     let hasMeaningfulDiffs = false
     let hasIgnoredOnlyDiffs = false
 
@@ -461,7 +480,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
 
     const currentByKey = new Map<string, ISongInfo>()
-    for (const song of currentData) {
+    for (const [index, song] of currentData.entries()) {
       const key = getSongIdentityKey(song)
       if (!key || currentByKey.has(key)) {
         return {
@@ -470,9 +489,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         }
       }
       currentByKey.set(key, song)
+      await yieldAfterSongListItems(index + 1, currentData.length)
     }
 
-    for (const song of nextData) {
+    for (const [index, song] of nextData.entries()) {
       const key = getSongIdentityKey(song)
       const current = key ? currentByKey.get(key) : undefined
       const fields = !key || !current ? ['__missing__'] : getSongInfoDiffFields(song, current)
@@ -486,6 +506,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       } else {
         hasIgnoredOnlyDiffs = true
       }
+      await yieldAfterSongListItems(index + 1, nextData.length)
     }
 
     return {
@@ -499,7 +520,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     songListUUID = songsAreaState.songListUUID
   ) => {
     originalSongInfoArr.value = markRaw(scanData)
-    applyFiltersAndSorting()
+    await applyFiltersAndSorting()
     syncSelectedKeysAfterReload(scanData, songListUUID)
     syncPlayingStateAfterReload(scanData, songListUUID)
     lastAppliedSongListUUID = songListUUID
@@ -526,7 +547,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       result?.missingWaveformFilePaths
     )
     maybeShowPlaylistTrackNumberInitHint(loadedUUID, result?.playlistTrackNumbering || null)
-    const unchanged = isEquivalentSongListSnapshot(scanData, originalSongInfoArr.value)
+    const unchanged = await isEquivalentSongListSnapshot(scanData, originalSongInfoArr.value)
+    if (loadedUUID !== songsAreaState.songListUUID) return false
     if (unchanged) {
       lastAppliedSongListUUID = loadedUUID
       if (options?.forceNotifySongSearchDirty) {
@@ -534,9 +556,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       }
       return true
     }
-    const diffSummary = summarizeSongListDiff(scanData, originalSongInfoArr.value)
+    const diffSummary = await summarizeSongListDiff(scanData, originalSongInfoArr.value)
+    if (loadedUUID !== songsAreaState.songListUUID) return false
     if (!diffSummary.hasMeaningfulDiffs && diffSummary.hasIgnoredOnlyDiffs) {
-      await applySongListData(scanData)
+      await applySongListData(scanData, loadedUUID)
       lastAppliedSongListUUID = loadedUUID
       notifySongSearchDirty('scanSongList-analysis-fields')
       if (options?.forceNotifySongSearchDirty) {
@@ -544,7 +567,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       }
       return true
     }
-    await applySongListData(scanData)
+    await applySongListData(scanData, loadedUUID)
     scheduleCoverSweepForCurrentList()
     notifySongSearchDirty('scanSongList')
     return true
@@ -697,13 +720,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
 
     const songListPath = libraryUtils.findDirPathByUuid(songsAreaState.songListUUID)
-    const actualTrackCountPromise =
-      songListPath && typeof songListPath === 'string'
-        ? window.electron.ipcRenderer
-            .invoke('getSongListTrackCount', songListPath)
-            .then((count) => (typeof count === 'number' && Number.isFinite(count) ? count : null))
-            .catch(() => null)
-        : Promise.resolve<number | null>(null)
 
     // 先走主进程内存索引快照，保证首屏秒开
     try {
@@ -716,24 +732,16 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       const hit = Boolean(fastPayload?.hit)
       if (hit) {
         const fastItems = Array.isArray(fastPayload?.items) ? fastPayload.items : []
-        const actualTrackCount = await actualTrackCountPromise
-        const fastLoadCountMismatch =
-          typeof actualTrackCount === 'number' &&
-          actualTrackCount >= 0 &&
-          actualTrackCount !== fastItems.length
-        if (!fastLoadCountMismatch) {
-          await applySongListData(fastItems)
-          isRequesting.value = false
-          loadingShow.value = false
-          if (options.waitForFreshAnalysisFields === true) {
-            await loadSongListFromDisk(songListPath, songsAreaState.songListUUID)
-            return
-          }
-          // 后台刷新一次磁盘结果，保证索引与磁盘一致
-          scheduleBackgroundSongListRefresh(songListPath, songsAreaState.songListUUID)
+        await applySongListData(fastItems)
+        isRequesting.value = false
+        loadingShow.value = false
+        if (options.waitForFreshAnalysisFields === true) {
+          await loadSongListFromDisk(songListPath, songsAreaState.songListUUID)
           return
         }
-        notifySongSearchDirty('playlist-fast-load-mismatch')
+        // 内存快照只负责立即展示；磁盘校验放到后台，不能拿一次慢盘遍历卡住窗口。
+        scheduleBackgroundSongListRefresh(songListPath, songsAreaState.songListUUID)
+        return
       }
     } catch {}
 

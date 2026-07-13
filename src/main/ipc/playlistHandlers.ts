@@ -7,6 +7,7 @@ import mainWindow from '../window/mainWindow'
 import { EXTERNAL_PLAYLIST_UUID } from '../../shared/externalPlayback'
 import { scheduleSongListPostScanTasks } from '../services/scanSongs'
 import { scanSongListOffMainThread } from '../services/songListScanWorker'
+import { countSongListTracksOffMainThread } from '../services/songListTrackCount'
 import {
   collectFilesWithExtensions,
   getSongsAnalyseResult,
@@ -242,8 +243,10 @@ export function registerPlaylistHandlers() {
   ipcMain.handle('getSongListTrackCount', async (_e, songListPath: string) => {
     try {
       const scanPath = resolveLibraryPath(songListPath).absPath
-      const files = await collectFilesWithExtensions(scanPath, store.settingConfig.audioExt)
-      return Array.isArray(files) ? files.length : 0
+      return await countSongListTracksOffMainThread({
+        scanPath,
+        audioExt: store.settingConfig.audioExt
+      })
     } catch {
       return 0
     }
