@@ -39,6 +39,7 @@ export const LIBRARY_METADATA_CONTRACTS: readonly LibraryMetadataContract[] = [
   { kind: 'exact', key: 'library_setting_fingerprint_mode', strategy: 'local' },
   { kind: 'exact', key: 'library_setting_audio_ext', strategy: 'local' },
   { kind: 'exact', key: 'library_setting_persist_song_filters', strategy: 'local' },
+  { kind: 'exact', key: 'cache_key_relative_migrated_v1', strategy: 'local' },
   { kind: 'exact', key: 'cache_key_relative_migrated_v2', strategy: 'local' },
   { kind: 'exact', key: 'library_tree_migration_done_v1', strategy: 'local' },
   { kind: 'exact', key: 'library_tree_migration_in_progress_v1', strategy: 'local' },
