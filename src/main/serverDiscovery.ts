@@ -2,26 +2,17 @@ import { is } from '@electron-toolkit/utils'
 import { fetchWithSystemProxy } from './fetchWithSystemProxy'
 
 const DISCOVERY_URL = process.env.CLOUD_SYNC_DISCOVERY_URL || ''
-const CACHE_TTL_MS = 10 * 60 * 1000 // 10 分钟
 
 const DEFAULT_BASE_URL = is.dev
   ? process.env.CLOUD_SYNC_BASE_URL_DEV || 'http://localhost:3001'
   : process.env.CLOUD_SYNC_BASE_URL_PROD || ''
 
-let cachedBaseUrl: string | null = null
-let cacheExpiresAt = 0
-
 /**
- * 从 Gist 发现服务器地址，带内存缓存和回退。
- * Gist 内容格式：{"baseUrl":"http://xxx"}
- * 解析失败或不可达时回退到构建时写死的默认地址。
+ * 从线上发现文件解析服务器地址。
+ * 每次操作开始时重新获取，避免服务器迁移后继续请求旧地址。
+ * 内容格式：{"baseUrl":"http://xxx"}
  */
 export async function resolveBaseUrl(): Promise<string> {
-  const now = Date.now()
-  if (cachedBaseUrl && now < cacheExpiresAt) {
-    return cachedBaseUrl
-  }
-
   // 没有配置发现地址，直接用默认
   if (!DISCOVERY_URL) {
     return DEFAULT_BASE_URL
@@ -40,8 +31,6 @@ export async function resolveBaseUrl(): Promise<string> {
     if (!discovered) {
       return fallback()
     }
-    cachedBaseUrl = discovered
-    cacheExpiresAt = now + CACHE_TTL_MS
     return discovered
   } catch {
     return fallback()
@@ -49,7 +38,5 @@ export async function resolveBaseUrl(): Promise<string> {
 }
 
 function fallback(): string {
-  // 不缓存回退值，下次仍会重试发现
-  cacheExpiresAt = 0
   return DEFAULT_BASE_URL
 }
