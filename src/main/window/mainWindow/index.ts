@@ -42,6 +42,7 @@ import {
   isWindowScreenshotFeatureAvailable
 } from '../../../shared/windowScreenshotFeature'
 import { restrictExternalNavigation } from '../externalNavigation'
+import startupWindow from '../startupWindow'
 
 let mainWindow: BrowserWindow | null = null
 const getMainWindow = () => mainWindow
@@ -392,6 +393,7 @@ function createWindow() {
     if (store.layoutConfig.isMaxMainWin) {
       mainWindow?.maximize()
     }
+    startupWindow.closeWindow()
     mainWindow?.show()
     globalShortcut.register(store.settingConfig.globalCallShortcut, () => {
       if (!mainWindow?.isFocused()) {

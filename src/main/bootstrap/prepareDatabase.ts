@@ -4,6 +4,7 @@ import path = require('path')
 import store from '../store'
 import databaseInitWindow from '../window/databaseInitWindow'
 import mainWindow from '../window/mainWindow'
+import startupWindow from '../window/startupWindow'
 import { initDatabaseStructure } from '../initDatabase'
 import {
   ensureManifestForLegacy,
@@ -30,6 +31,8 @@ const isConfiguredDevDatabase = (): boolean => {
 export const prepareAndOpenMainWindow = async (): Promise<void> => {
   // 未配置数据库路径：进入初始化
   if (!store.settingConfig.databaseUrl) {
+    startupWindow.setStage('selecting-library')
+    startupWindow.closeWindow()
     databaseInitWindow.createWindow()
     return
   }
@@ -37,15 +40,20 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
   // 已配置的库必须同时保留根目录和 library 目录。这里是只读边界：
   // 不允许把用户手动删除的库路径补建成新的空库。
   try {
+    startupWindow.setStage('checking-library')
     const databaseRoot = store.settingConfig.databaseUrl
     const libraryRoot = path.join(databaseRoot, 'library')
     const rootExists = fs.pathExistsSync(databaseRoot)
     const libraryExists = fs.pathExistsSync(libraryRoot)
     if (!rootExists || !libraryExists) {
+      startupWindow.setStage('selecting-library')
+      startupWindow.closeWindow()
       databaseInitWindow.createWindow({ needErrorHint: true })
       return
     }
   } catch (_e) {
+    startupWindow.setStage('selecting-library')
+    startupWindow.closeWindow()
     databaseInitWindow.createWindow({ needErrorHint: true })
     return
   }
@@ -55,9 +63,11 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     // SQLite 提交标记和已提升文件可能先被普通启动流程干扰。
     const databaseFilePath = path.join(store.settingConfig.databaseUrl, 'FRKB.database.sqlite')
     if (await fs.pathExists(databaseFilePath)) {
+      startupWindow.setStage('recovering-library')
       await recoverIncompleteLibraryMerges(store.settingConfig.databaseUrl)
     }
     // 幂等创建/修复结构
+    startupWindow.setStage('preparing-library')
     await initDatabaseStructure(store.settingConfig.databaseUrl, { createSamples: false })
     // Manifest：旧库静默生成或补齐
     try {
@@ -71,13 +81,18 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
       await ensureManifestMinVersion(store.settingConfig.databaseUrl, app.getVersion())
     } catch {}
     const proceed = await ensureLegacyMigration(store.settingConfig.databaseUrl)
-    if (!proceed) return
+    if (!proceed) {
+      startupWindow.closeWindow()
+      return
+    }
     // 根据设置的模式加载对应列表
+    startupWindow.setStage('loading-fingerprints')
     const mode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
     const list = await loadList(mode)
     store.databaseDir = store.settingConfig.databaseUrl
     store.songFingerprintList = Array.isArray(list) ? list : []
     // 创建主窗口
+    startupWindow.setStage('opening-main-window')
     mainWindow.createWindow()
   } catch (error) {
     if (isConfiguredDevDatabase()) {
@@ -86,9 +101,12 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
           error instanceof Error ? error.message : String(error || 'unknown error')
         }`
       )
+      startupWindow.closeWindow()
       app.exit(1)
       return
     }
+    startupWindow.setStage('selecting-library')
+    startupWindow.closeWindow()
     databaseInitWindow.createWindow({ needErrorHint: true })
   }
 }

@@ -17,6 +17,7 @@ import { saveList } from './fingerprintStore'
 import mainWindow from './window/mainWindow'
 import mixtapeWindow from './window/mixtapeWindow'
 import databaseInitWindow from './window/databaseInitWindow'
+import startupWindow from './window/startupWindow'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
 import {
@@ -625,6 +626,9 @@ app.whenReady().then(async () => {
     setupMacMenus()
   }
   // 数据库准备与主窗口：统一调用幂等流程
+  if (store.settingConfig.databaseUrl) {
+    await startupWindow.createWindow()
+  }
   await prepareAndOpenMainWindow()
   attachExternalOpenRendererLifecycle()
   startBackgroundOrchestrator()

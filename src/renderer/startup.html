@@ -1,0 +1,132 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>FRKB</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'"
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --startup-bg: #181818;
+        --startup-text: #cccccc;
+        --startup-muted: #a8abb2;
+        --startup-accent: #0078d4;
+        --startup-border: #3b3b3b;
+      }
+
+      :root[data-theme='light'] {
+        color-scheme: light;
+        --startup-bg: #f7f7f7;
+        --startup-text: #1f1f1f;
+        --startup-muted: #3c3c3c;
+        --startup-accent: #0078d4;
+        --startup-border: #d9d9d9;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--startup-bg);
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          'Microsoft YaHei',
+          sans-serif;
+      }
+
+      .startup {
+        box-sizing: border-box;
+        display: grid;
+        height: 100%;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto auto 2px;
+        align-content: center;
+        gap: 14px 20px;
+        padding: 30px;
+        border: 1px solid var(--startup-border);
+        color: var(--startup-text);
+      }
+
+      .name {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+
+      .logo {
+        width: 27px;
+        height: 27px;
+        object-fit: contain;
+      }
+
+      :root[data-theme='light'] .logo {
+        filter: invert(1);
+      }
+
+      .version {
+        justify-self: end;
+        color: var(--startup-muted);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        grid-column: 1 / -1;
+        min-height: 18px;
+        color: var(--startup-text);
+        font-size: 14px;
+      }
+
+      .progress {
+        position: relative;
+        grid-column: 1 / -1;
+        overflow: hidden;
+        height: 2px;
+        background: var(--startup-border);
+      }
+
+      .progress::before {
+        position: absolute;
+        top: 0;
+        left: -42%;
+        width: 42%;
+        height: 100%;
+        background: var(--startup-accent);
+        content: '';
+        animation: progress 1.15s ease-in-out infinite;
+      }
+
+      @keyframes progress {
+        to { transform: translateX(340%); }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="startup">
+      <div class="name">
+        <img class="logo" src="/src/assets/logo.png" alt="" />
+        <span>FRKB</span>
+      </div>
+      <div class="version" id="version-text"></div>
+      <div class="status">
+        <span id="status-text">…</span>
+      </div>
+      <div class="progress" aria-hidden="true"></div>
+    </main>
+    <script type="module" src="/src/startup_main"></script>
+  </body>
+</html>

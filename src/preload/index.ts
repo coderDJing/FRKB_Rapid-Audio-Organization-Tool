@@ -176,6 +176,7 @@ const exactListenChannels = new Set([
   'song-memory-cues-updated',
   'song-structure-updated',
   'song-waveform-updated',
+  'startup:state',
   'theme/system-updated',
   'tray-action',
   'updateDownloaded',
