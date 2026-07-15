@@ -372,7 +372,6 @@ export function upsertMixtapeItemStartSecById(
   entries: Array<{
     itemId: string
     startSec?: number
-    bpm?: number
     masterTempo?: boolean
     originalBpm?: number
     laneIndex?: number
@@ -404,7 +403,6 @@ export function upsertMixtapeItemStartSecById(
     string,
     {
       startSec?: number
-      bpm?: number
       masterTempo?: boolean
       originalBpm?: number
       laneIndex?: number
@@ -413,14 +411,12 @@ export function upsertMixtapeItemStartSecById(
   for (const item of entries) {
     const itemId = typeof item?.itemId === 'string' ? item.itemId.trim() : ''
     const startSec = normalizeStartSec(item?.startSec)
-    const bpm = normalizeBpm(item?.bpm)
     const originalBpm = normalizeBpm(item?.originalBpm)
     const laneIndex = normalizeLaneIndex(item?.laneIndex)
     const masterTempo = typeof item?.masterTempo === 'boolean' ? item.masterTempo : undefined
     if (!itemId) continue
     if (
       startSec === null &&
-      bpm === null &&
       originalBpm === null &&
       laneIndex === null &&
       masterTempo === undefined
@@ -431,7 +427,6 @@ export function upsertMixtapeItemStartSecById(
     trackPatchById.set(itemId, {
       ...prev,
       ...(startSec === null ? {} : { startSec }),
-      ...(bpm === null ? {} : { bpm }),
       ...(originalBpm === null ? {} : { originalBpm }),
       ...(laneIndex === null ? {} : { laneIndex }),
       ...(masterTempo === undefined ? {} : { masterTempo })
@@ -467,14 +462,6 @@ export function upsertMixtapeItemStartSecById(
             ) {
               info.startSec = Number(nextPatch.startSec)
               info.startSecUpdatedAt = Date.now()
-              changed = true
-            }
-          }
-
-          if (typeof nextPatch.bpm === 'number') {
-            const currentBpm = normalizeBpm(info.bpm)
-            if (currentBpm === null || Math.abs(currentBpm - Number(nextPatch.bpm)) > 0.0001) {
-              info.bpm = Number(nextPatch.bpm)
               changed = true
             }
           }

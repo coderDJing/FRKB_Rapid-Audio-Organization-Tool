@@ -2,15 +2,11 @@ import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
 import { normalizeSongStructureAnalysis, type SongStructureAnalysis } from '@shared/songStructure'
-import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
+import { normalizeSongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 type SharedSongGridPayload = {
   filePath?: string
-  bpm?: number
-  firstBeatMs?: number
-  barBeatOffset?: number
   timeBasisOffsetMs?: number
-  beatGridSource?: ISongInfo['beatGridSource']
   beatGridMap?: ISongInfo['beatGridMap'] | null
   songStructure?: SongStructureAnalysis
 } | null
@@ -59,43 +55,7 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
   if (!filePath || !isSameHorizontalBrowseSongFilePath(filePath, song.filePath)) return song
 
   let touched = false
-  let structureGridChanged = false
   const nextSong: ISongInfo = { ...song }
-  if (
-    typeof payload.bpm === 'number' &&
-    Number.isFinite(payload.bpm) &&
-    nextSong.bpm !== payload.bpm
-  ) {
-    nextSong.bpm = payload.bpm
-    touched = true
-    structureGridChanged = true
-  }
-  if (
-    typeof payload.bpm === 'number' &&
-    Number.isFinite(payload.bpm) &&
-    nextSong.beatGridStatus !== undefined
-  ) {
-    delete nextSong.beatGridStatus
-    touched = true
-  }
-  if (
-    typeof payload.firstBeatMs === 'number' &&
-    Number.isFinite(payload.firstBeatMs) &&
-    nextSong.firstBeatMs !== payload.firstBeatMs
-  ) {
-    nextSong.firstBeatMs = payload.firstBeatMs
-    touched = true
-    structureGridChanged = true
-  }
-  if (
-    typeof payload.barBeatOffset === 'number' &&
-    Number.isFinite(payload.barBeatOffset) &&
-    nextSong.barBeatOffset !== payload.barBeatOffset
-  ) {
-    nextSong.barBeatOffset = payload.barBeatOffset
-    touched = true
-    structureGridChanged = true
-  }
   if (
     typeof payload.timeBasisOffsetMs === 'number' &&
     Number.isFinite(payload.timeBasisOffsetMs) &&
@@ -104,37 +64,27 @@ export const mergeHorizontalBrowseSongWithSharedGrid = (
     nextSong.timeBasisOffsetMs = payload.timeBasisOffsetMs
     touched = true
   }
-  if (
-    (payload.beatGridSource === 'manual' || payload.beatGridSource === 'analysis') &&
-    nextSong.beatGridSource !== payload.beatGridSource
-  ) {
-    nextSong.beatGridSource = payload.beatGridSource
-    touched = true
-  }
   if (payload.beatGridMap !== undefined) {
-    const beatGridMap = normalizeSongBeatGridMap(payload.beatGridMap)
+    const beatGridMap = normalizeSongBeatGridMapV2(payload.beatGridMap, {
+      allowSingleClip: true
+    })
     if (beatGridMap) {
       if (
-        JSON.stringify(normalizeSongBeatGridMap(nextSong.beatGridMap)) !==
-        JSON.stringify(beatGridMap)
+        JSON.stringify(
+          normalizeSongBeatGridMapV2(nextSong.beatGridMap, { allowSingleClip: true })
+        ) !== JSON.stringify(beatGridMap)
       ) {
         nextSong.beatGridMap = beatGridMap
-        nextSong.beatGridSource = 'manual'
         touched = true
-        structureGridChanged = true
       }
     } else if (nextSong.beatGridMap !== undefined) {
       delete nextSong.beatGridMap
       touched = true
-      structureGridChanged = true
     }
   }
   const songStructure = normalizeSongStructureAnalysis(payload.songStructure)
   if (songStructure) {
     nextSong.songStructure = songStructure
-    touched = true
-  } else if (structureGridChanged && nextSong.songStructure !== undefined) {
-    delete nextSong.songStructure
     touched = true
   }
   return touched ? nextSong : song

@@ -8,11 +8,7 @@ export const emitSongGridUpdated = (payload: SharedSongGridDefinition | null | u
   if (!filePath) return
   songGridEvents.emit('grid-updated', {
     filePath,
-    bpm: payload?.bpm,
-    firstBeatMs: payload?.firstBeatMs,
-    barBeatOffset: payload?.barBeatOffset,
     timeBasisOffsetMs: payload?.timeBasisOffsetMs,
-    beatGridSource: payload?.beatGridSource,
     beatGridMap: Object.prototype.hasOwnProperty.call(payload, 'beatGridMap')
       ? payload?.beatGridMap
       : undefined,

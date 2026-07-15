@@ -28,17 +28,8 @@ import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runt
 const ANALYSIS_FIELD_KEYS = [
   'key',
   'keyAnalysisAlgorithmVersion',
-  'bpm',
-  'firstBeatMs',
-  'barBeatOffset',
-  'beatGridSource',
-  'beatGridStatus',
-  'beatGridMap',
   'energyScore',
-  'energyAlgorithmVersion',
-  'songStructure',
-  'timeBasisOffsetMs',
-  'beatGridAlgorithmVersion'
+  'energyAlgorithmVersion'
 ] as const
 
 type SongAnalysisFieldKey = (typeof ANALYSIS_FIELD_KEYS)[number]

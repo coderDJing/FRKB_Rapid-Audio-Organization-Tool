@@ -35,11 +35,11 @@ except Exception:
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_ROOT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
-DEFAULT_TRUTH = BENCHMARK_ROOT / "rekordbox-current-truth.json"
+DEFAULT_TRUTH = BENCHMARK_ROOT / "rekordbox-current-truth.v2.json"
 DEFAULT_AUDIO_ROOT = FRKB_BENCHMARK_CURRENT_AUDIO_ROOT
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
 DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
-DEFAULT_OUTPUT = BENCHMARK_ROOT / "latest.json"
+DEFAULT_OUTPUT = BENCHMARK_ROOT / "latest.v2.json"
 DEFAULT_PREDICTION_CACHE_DIR = BENCHMARK_ROOT / "beatthis-prediction-cache"
 DEFAULT_FEATURE_CACHE_DIR = BENCHMARK_ROOT / "feature-cache"
 DEFAULT_REGISTRY = BENCHMARK_ROOT / "rkb-dataset-registry.json"
@@ -502,17 +502,54 @@ def _status_from_error(value: float, tolerance_ms: float = STRICT_TOLERANCE_MS) 
     return "pass" if abs(float(value)) <= tolerance_ms else "fail"
 
 
-def _normalize_bar_offset(value: Any, modulo: int) -> int:
+def _normalize_downbeat_offset(value: Any) -> int:
     numeric = _to_float(value)
     if numeric is None:
         return 0
     rounded = int(round(numeric))
-    return ((rounded % modulo) + modulo) % modulo
+    return ((rounded % 4) + 4) % 4
 
 
-def _resolve_first_beat_label_from_offset(bar_beat_offset: int) -> int:
-    normalized = int(bar_beat_offset) % 4
-    return ((5 - normalized - 1) % 4) + 1
+def _read_fixed_truth_map(track: dict[str, Any]) -> dict[str, Any] | None:
+    beat_grid_map = track.get("beatGridMap")
+    if not isinstance(beat_grid_map, dict):
+        return None
+    if beat_grid_map.get("version") != 2 or beat_grid_map.get("source") not in {"manual", "analysis"}:
+        return None
+    if not isinstance(beat_grid_map.get("signature"), str) or not beat_grid_map["signature"].strip():
+        return None
+    clips = beat_grid_map.get("clips")
+    if not isinstance(clips, list) or len(clips) != 1 or not isinstance(clips[0], dict):
+        return None
+    clip = clips[0]
+    start_sec = _to_float(clip.get("startSec"))
+    anchor_sec = _to_float(clip.get("anchorSec"))
+    bpm = _to_float(clip.get("bpm"))
+    downbeat_beat_offset = clip.get("downbeatBeatOffset")
+    if (
+        start_sec is None
+        or abs(start_sec) > 0.000001
+        or anchor_sec is None
+        or anchor_sec < 0.0
+        or bpm is None
+        or bpm <= 0.0
+        or not isinstance(downbeat_beat_offset, int)
+        or not 0 <= downbeat_beat_offset < 4
+    ):
+        return None
+    return {
+        "version": 2,
+        "source": beat_grid_map["source"],
+        "signature": beat_grid_map["signature"].strip(),
+        "clips": [
+            {
+                "startSec": 0,
+                "anchorSec": round(anchor_sec, 6),
+                "bpm": round(bpm, 6),
+                "downbeatBeatOffset": downbeat_beat_offset,
+            }
+        ],
+    }
 
 
 def _decode_pcm_window(ffmpeg_path: Path, file_path: Path, duration_sec: float) -> bytes:
@@ -642,12 +679,12 @@ def _load_truth_tracks(
         file_path = Path(source_path_value) if source_path_value else _resolve_audio_path(audio_roots, file_name)
         if source_path_value and not file_path.is_file():
             raise RuntimeError(f"truth sourcePath is not an existing file: {file_path}")
-        bpm = _to_float(item.get("bpm"))
-        first_beat_ms = _to_float(item.get("firstBeatMs"))
-        if bpm is None or bpm <= 0.0 or first_beat_ms is None or first_beat_ms < 0.0:
-            continue
-        bar_beat_offset = _normalize_bar_offset(item.get("barBeatOffset"), 32)
-        first_beat_label = int(item.get("firstBeatLabel") or _resolve_first_beat_label_from_offset(bar_beat_offset))
+        beat_grid_map = _read_fixed_truth_map(item)
+        if not beat_grid_map:
+            raise RuntimeError(f"truth track has no valid fixed v2 map: {identity_key}")
+        clip = beat_grid_map["clips"][0]
+        bpm = float(clip["bpm"])
+        first_beat_ms = float(clip["anchorSec"]) * 1000.0
         resolved.append(
             {
                 **{key: item[key] for key in OUTPUT_IDENTITY_FIELDS if item.get(key) not in (None, "")},
@@ -658,8 +695,8 @@ def _load_truth_tracks(
                 "artist": str(item.get("artist") or "").strip(),
                 "bpm": round(float(bpm), 6),
                 "firstBeatMs": round(float(first_beat_ms), 3),
-                "firstBeatLabel": first_beat_label,
-                "barBeatOffset": bar_beat_offset,
+                "downbeatBeatOffset": int(clip["downbeatBeatOffset"]),
+                "beatGridMap": beat_grid_map,
                 "fileExists": file_path.exists(),
                 "timeBasis": _probe_time_basis(ffprobe_path, file_path) if file_path.exists() else None,
             }
@@ -671,7 +708,7 @@ def _derive_grid_metrics(
     *,
     result_bpm: float,
     result_first_beat_timeline_ms: float,
-    result_bar_beat_offset: int,
+    result_downbeat_beat_offset: int,
     truth: dict[str, Any],
     compare_count: int,
 ) -> dict[str, Any]:
@@ -700,17 +737,13 @@ def _derive_grid_metrics(
         )
         for horizon in DRIFT_BEAT_HORIZONS
     }
-    truth_bar_mod4 = _normalize_bar_offset(truth.get("barBeatOffset"), 4)
-    result_bar_mod4 = _normalize_bar_offset(result_bar_beat_offset, 4)
-    truth_bar_exact32 = _normalize_bar_offset(truth.get("barBeatOffset"), 32)
-    result_bar_exact32 = _normalize_bar_offset(result_bar_beat_offset, 32)
+    truth_downbeat_beat_offset = _normalize_downbeat_offset(truth.get("downbeatBeatOffset"))
+    result_downbeat_beat_offset = _normalize_downbeat_offset(result_downbeat_beat_offset)
     first_beat_shift = 0
     if truth_interval_ms > 0.0:
         first_beat_shift = int(round((raw_first_beat_delta_ms - phase_error_ms) / truth_interval_ms))
-    adjusted_result_bar_mod4 = _normalize_bar_offset(result_bar_beat_offset + first_beat_shift, 4)
-    adjusted_result_bar_exact32 = _normalize_bar_offset(
-        result_bar_beat_offset + first_beat_shift,
-        32,
+    adjusted_result_downbeat_beat_offset = _normalize_downbeat_offset(
+        result_downbeat_beat_offset + first_beat_shift
     )
     return {
         "bpmError": round(bpm_error, 6),
@@ -724,12 +757,10 @@ def _derive_grid_metrics(
         "gridP95AbsMs": round(_percentile(abs_errors, 95.0), 3),
         "gridMaxAbsMs": round(max(abs_errors, default=0.0), 3),
         "gridRmseMs": round(rmse_ms, 3),
-        "barBeatOffsetMatchedMod4": adjusted_result_bar_mod4 == truth_bar_mod4,
-        "barBeatOffsetMatchedExact32": adjusted_result_bar_exact32 == truth_bar_exact32,
-        "rawBarBeatOffsetMatchedMod4": result_bar_mod4 == truth_bar_mod4,
-        "rawBarBeatOffsetMatchedExact32": result_bar_exact32 == truth_bar_exact32,
-        "adjustedBarBeatOffsetMod4": adjusted_result_bar_mod4,
-        "adjustedBarBeatOffsetExact32": adjusted_result_bar_exact32,
+        "downbeatBeatOffsetMatches": adjusted_result_downbeat_beat_offset
+        == truth_downbeat_beat_offset,
+        "rawDownbeatBeatOffsetMatches": result_downbeat_beat_offset == truth_downbeat_beat_offset,
+        "adjustedDownbeatBeatOffset": adjusted_result_downbeat_beat_offset,
         **bpm_only_drift,
         **grid_drift,
     }
@@ -745,7 +776,7 @@ def _classify(metrics: dict[str, Any], result_bpm: float, truth_bpm: float) -> d
     bpm_drift_status = _status_from_error(float(metrics["bpmOnlyDrift128BeatsMs"]))
     phase_status = _status_from_error(float(metrics["firstBeatPhaseAbsErrorMs"]))
     grid_max_status = _status_from_error(float(metrics["gridMaxAbsMs"]))
-    bar_status = "pass" if metrics["barBeatOffsetMatchedMod4"] else "fail"
+    downbeat_status = "pass" if metrics["downbeatBeatOffsetMatches"] else "fail"
 
     if _is_half_or_double_bpm(result_bpm, truth_bpm):
         category = "half-or-double-bpm"
@@ -755,7 +786,7 @@ def _classify(metrics: dict[str, Any], result_bpm: float, truth_bpm: float) -> d
         category = "first-beat-phase"
     elif grid_max_status == "fail":
         category = "grid-drift"
-    elif bar_status == "fail":
+    elif downbeat_status == "fail":
         category = "downbeat"
     else:
         category = "pass"
@@ -765,7 +796,7 @@ def _classify(metrics: dict[str, Any], result_bpm: float, truth_bpm: float) -> d
         "bpmDriftStatus": bpm_drift_status,
         "firstBeatPhaseStatus": phase_status,
         "gridMaxStatus": grid_max_status,
-        "barBeatOffsetStatus": bar_status,
+        "downbeatBeatOffsetStatus": downbeat_status,
     }
 
 
@@ -867,21 +898,21 @@ def _build_track_report(analysis: dict[str, Any], truth: dict[str, Any]) -> dict
     current_metrics = _derive_grid_metrics(
         result_bpm=float(analysis["bpm"]),
         result_first_beat_timeline_ms=current_timeline_first_beat_ms,
-        result_bar_beat_offset=int(analysis["barBeatOffset"]),
+        result_downbeat_beat_offset=int(analysis["downbeatBeatOffset"]),
         truth=truth,
         compare_count=compare_count,
     )
     absolute_metrics = _derive_grid_metrics(
         result_bpm=float(analysis["bpm"]),
         result_first_beat_timeline_ms=absolute_timeline_first_beat_ms,
-        result_bar_beat_offset=int(analysis["barBeatOffset"]),
+        result_downbeat_beat_offset=int(analysis["downbeatBeatOffset"]),
         truth=truth,
         compare_count=compare_count,
     )
     raw_metrics = _derive_grid_metrics(
         result_bpm=float(analysis["bpm"]),
         result_first_beat_timeline_ms=raw_timeline_first_beat_ms,
-        result_bar_beat_offset=int(analysis["barBeatOffset"]),
+        result_downbeat_beat_offset=int(analysis["downbeatBeatOffset"]),
         truth=truth,
         compare_count=compare_count,
     )
@@ -894,7 +925,7 @@ def _build_track_report(analysis: dict[str, Any], truth: dict[str, Any]) -> dict
         derive_grid_metrics=_derive_grid_metrics,
         classify=_classify,
         to_float=_to_float,
-        normalize_bar_offset=_normalize_bar_offset,
+        normalize_downbeat_offset=_normalize_downbeat_offset,
     )
 
     return {
@@ -904,10 +935,7 @@ def _build_track_report(analysis: dict[str, Any], truth: dict[str, Any]) -> dict
         "artist": truth.get("artist"),
         "filePath": truth["filePath"],
         "truth": {
-            "bpm": truth["bpm"],
-            "firstBeatMs": truth["firstBeatMs"],
-            "firstBeatLabel": truth["firstBeatLabel"],
-            "barBeatOffset": truth["barBeatOffset"],
+            "beatGridMap": truth["beatGridMap"],
             "timeBasis": truth.get("timeBasis"),
         },
         "analysis": analysis,
@@ -973,7 +1001,13 @@ def main() -> int:
     device = str(args.device or "cpu").strip() or "cpu"
     prediction_cache_dir = None if args.no_prediction_cache else Path(args.prediction_cache_dir)
     if not truth_path.exists():
-        raise SystemExit(f"truth not found: {truth_path}")
+        legacy_truth_path = truth_path.with_name("rekordbox-current-truth.json")
+        raise SystemExit(
+            "v2 Rekordbox truth not found: "
+            f"{truth_path}. Generate a derived file without changing {legacy_truth_path} with: "
+            f'py -3 scripts/convert_legacy_grid_truth_to_v2.py --input "{legacy_truth_path}" '
+            f'--output "{truth_path}" --apply'
+        )
     missing_audio_roots = [item for item in audio_roots if not item.exists()]
     if missing_audio_roots:
         missing = ", ".join(str(item) for item in missing_audio_roots)

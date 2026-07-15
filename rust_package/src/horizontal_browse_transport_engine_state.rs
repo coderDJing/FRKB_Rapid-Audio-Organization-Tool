@@ -71,7 +71,10 @@ impl HorizontalBrowseTransportEngine {
       bpm,
       beat_sec: 60.0 / bpm,
       first_beat_sec: (deck_state.first_beat_ms.unwrap_or(0.0).max(0.0)) / 1000.0,
-      bar_beat_offset: Self::normalize_bar_beat_offset(deck_state.bar_beat_offset.unwrap_or(0.0)),
+      downbeat_beat_offset: deck_state
+        .downbeat_beat_offset
+        .and_then(Self::normalize_downbeat_beat_offset)
+        .unwrap_or(0.0),
     })
   }
 
@@ -96,7 +99,7 @@ impl HorizontalBrowseTransportEngine {
       bpm: adjusted_bpm,
       beat_sec: 60.0 / adjusted_bpm,
       first_beat_sec: original.first_beat_sec,
-      bar_beat_offset: original.bar_beat_offset,
+      downbeat_beat_offset: original.downbeat_beat_offset,
     })
   }
 
@@ -114,8 +117,8 @@ impl HorizontalBrowseTransportEngine {
       * if playback_rate.is_finite() && playback_rate > 0.0 {
         playback_rate
       } else {
-      1.0
-    }
+        1.0
+      }
   }
 
   pub(super) fn smooth_dynamic_sync_playback_rate(
@@ -488,19 +491,21 @@ impl HorizontalBrowseTransportEngine {
         if let Some(tempo_rate) = {
           let multiplier = self.resolve_bpm_multiplier(deck, leader_effective_bpm);
           self.bpm_multiplier[deck_index] = multiplier;
-          self.original_beat_grid_at_sec(deck, target_current_sec).and_then(|grid| {
-            let adjusted_target_bpm = grid.bpm
-              * if multiplier.is_finite() && multiplier > 0.0 {
-                multiplier
+          self
+            .original_beat_grid_at_sec(deck, target_current_sec)
+            .and_then(|grid| {
+              let adjusted_target_bpm = grid.bpm
+                * if multiplier.is_finite() && multiplier > 0.0 {
+                  multiplier
+                } else {
+                  1.0
+                };
+              if adjusted_target_bpm.is_finite() && adjusted_target_bpm > 0.0 {
+                Some((leader_effective_bpm / adjusted_target_bpm).clamp(0.25, 4.0))
               } else {
-                1.0
-              };
-            if adjusted_target_bpm.is_finite() && adjusted_target_bpm > 0.0 {
-              Some((leader_effective_bpm / adjusted_target_bpm).clamp(0.25, 4.0))
-            } else {
-              None
-            }
-          })
+                None
+              }
+            })
         } {
           self.deck_mut(deck).playback_rate = tempo_rate;
         }
@@ -582,15 +587,14 @@ impl HorizontalBrowseTransportEngine {
       target.title = payload.title;
       target.bpm = payload.bpm;
       target.first_beat_ms = payload.first_beat_ms;
-      target.bar_beat_offset = payload
-        .bar_beat_offset
+      target.downbeat_beat_offset = payload
+        .downbeat_beat_offset
         .filter(|value| value.is_finite())
-        .map(HorizontalBrowseTransportEngine::normalize_bar_beat_offset);
-      target.dynamic_beat_grid =
-        HorizontalBrowseTransportEngine::normalize_dynamic_beat_grid(
-          payload.beat_grid_clips,
-          payload.duration_sec,
-        );
+        .and_then(HorizontalBrowseTransportEngine::normalize_downbeat_beat_offset);
+      target.dynamic_beat_grid = HorizontalBrowseTransportEngine::normalize_dynamic_beat_grid(
+        payload.beat_grid_clips,
+        payload.duration_sec,
+      );
       target.time_basis_offset_ms = payload.time_basis_offset_ms;
       target.duration_sec = payload.duration_sec;
       target.current_sec = next_current_sec;

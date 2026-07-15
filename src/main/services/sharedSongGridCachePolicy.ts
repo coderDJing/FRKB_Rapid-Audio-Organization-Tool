@@ -1,16 +1,9 @@
-import { normalizeSongBeatGridMap } from '../../shared/songBeatGridMap'
+import { normalizeSongBeatGridMapV2 } from '../../shared/songBeatGridMapV2'
 
-type SharedSongGridCacheInfo = {
-  bpm?: unknown
-  firstBeatMs?: unknown
-  barBeatOffset?: unknown
-  beatGridMap?: unknown
-  beatGridAlgorithmVersion?: unknown
-}
+const getBeatGridMap = (value: unknown) =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as { beatGridMap?: unknown }).beatGridMap
+    : undefined
 
-export const shouldAcceptSharedSongGridCache = (info: SharedSongGridCacheInfo | null | undefined) =>
-  normalizeSongBeatGridMap(info?.beatGridMap) !== null ||
-  (Number.isFinite(Number(info?.bpm)) &&
-    Number(info?.bpm) > 0 &&
-    Number.isFinite(Number(info?.firstBeatMs)) &&
-    Number.isFinite(Number(info?.barBeatOffset)))
+export const shouldAcceptSharedSongGridCache = (info: unknown) =>
+  normalizeSongBeatGridMapV2(getBeatGridMap(info), { allowSingleClip: true }) !== null

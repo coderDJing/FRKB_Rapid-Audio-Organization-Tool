@@ -12,7 +12,7 @@ import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { t } from '@renderer/utils/translate'
 import { normalizeSongStructureAnalysis } from '@shared/songStructure'
-import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
+import { normalizeSongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -94,7 +94,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     return structure ? JSON.stringify(structure) : ''
   }
   const normalizeComparableBeatGridMap = (value: unknown) => {
-    const map = normalizeSongBeatGridMap(value)
+    const map = normalizeSongBeatGridMapV2(value, { allowSingleClip: true })
     return map ? map.signature : ''
   }
   const getSongIdentityKey = (song: ISongInfo) =>

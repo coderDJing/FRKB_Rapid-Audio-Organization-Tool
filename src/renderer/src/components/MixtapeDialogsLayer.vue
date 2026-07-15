@@ -7,6 +7,7 @@ import ColumnHeaderContextMenu from '@renderer/pages/modules/songsArea/ColumnHea
 import SongListHeader from '@renderer/pages/modules/songsArea/SongListHeader.vue'
 import SongListRows from '@renderer/pages/modules/songsArea/SongListRows.vue'
 import type { MixtapeTrack } from '@renderer/composables/mixtape/types'
+import { normalizeSongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 import type { ISongInfo, ISongsAreaColumn } from 'src/types/globals'
 
 type OverlayScrollbarsComponentRef = InstanceType<typeof OverlayScrollbarsComponent> | null
@@ -16,11 +17,10 @@ const emit = defineEmits<{
 }>()
 
 const autoGainSongListScrollRef = ref<OverlayScrollbarsComponentRef>(null)
+const resolveMixtapeTrackBeatGridMapV2 = (track: MixtapeTrack) =>
+  normalizeSongBeatGridMapV2(track.beatGridMap, { allowSingleClip: true })
 type BeatAlignGridPayload = {
-  barBeatOffset: number
-  firstBeatMs: number
-  bpm: number
-  beatGridMap?: MixtapeTrack['beatGridMap'] | null
+  beatGridMap: MixtapeTrack['beatGridMap']
 }
 
 type OutputDialogPayload = {
@@ -310,8 +310,8 @@ const autoGainColumnMenuVisibleModel = computed({
     "
     :first-beat-ms="Number(beatAlignTrack.firstBeatMs) || 0"
     :time-basis-offset-ms="Number(beatAlignTrack.timeBasisOffsetMs) || 0"
-    :bar-beat-offset="Number(beatAlignTrack.barBeatOffset) || 0"
-    :beat-grid-map="beatAlignTrack.beatGridMap ?? null"
+    :downbeat-beat-offset="Number(beatAlignTrack.downbeatBeatOffset) || 0"
+    :beat-grid-map="resolveMixtapeTrackBeatGridMapV2(beatAlignTrack)"
     :window-volume="beatAlignWindowVolume"
     @save-grid-definition="handleBeatAlignGridDefinitionSave"
     @cancel="handleBeatAlignDialogCancel"

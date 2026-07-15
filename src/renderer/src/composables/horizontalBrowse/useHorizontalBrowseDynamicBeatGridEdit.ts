@@ -1,21 +1,20 @@
 import { computed, ref, watch, type Ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import {
-  PREVIEW_BAR_BEAT_INTERVAL,
+  PREVIEW_DOWNBEAT_BEAT_INTERVAL,
   formatPreviewBpm,
   normalizeBeatOffset,
   normalizePreviewBpm
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import {
-  createSongBeatGridMapFromClips,
-  createSongBeatGridMapFromFixedGrid,
-  normalizeSongBeatGridMap,
-  projectSongBeatGridMapToFixedGrid,
-  resolveNearestSongBeatGridLine,
-  resolveSongBeatGridClipAtSec,
-  type SongBeatGridClip,
-  type SongBeatGridMap
-} from '@shared/songBeatGridMap'
+  createSongBeatGridMapV2FromClips,
+  createSongBeatGridMapV2FromFixedGrid,
+  normalizeSongBeatGridMapV2,
+  projectSongBeatGridMapV2ToFixedGrid,
+  resolveNearestSongBeatGridV2Line,
+  type SongBeatGridClipV2,
+  type SongBeatGridMapV2
+} from '@shared/songBeatGridMapV2'
 
 type DynamicBeatGridTarget =
   | { type: 'clip'; index: number; manual: boolean }
@@ -23,10 +22,14 @@ type DynamicBeatGridTarget =
 
 type DynamicBeatGridAdjustmentScope = 'whole' | 'after'
 
-export type DynamicBeatGridBarLinePickCandidate = {
+export type DynamicBeatGridDownbeatLinePickCandidate = {
   beatIndex: number
   clipIndex: number
   lineX: number
+  lineSec: number
+  targetSec: number
+  rangeStartSec: number
+  rangeDurationSec: number
   hit: boolean
 }
 
@@ -34,11 +37,11 @@ type UseHorizontalBrowseDynamicBeatGridEditParams = {
   enabled: () => boolean
   autoSyncFromSong?: boolean
   song: () => ISongInfo | null
-  previewBeatGridMap: Ref<SongBeatGridMap | null>
+  previewBeatGridMap: Ref<SongBeatGridMapV2 | null>
   previewBpm: Ref<number>
   previewBpmInput: Ref<string>
   previewFirstBeatMs: Ref<number>
-  previewBarBeatOffset: Ref<number>
+  previewDownbeatBeatOffset: Ref<number>
   previewStartSec: Ref<number>
   previewWrapRef: Ref<HTMLDivElement | null>
   resolveCurrentSec: () => number
@@ -87,11 +90,29 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
   }
 
   const resolveDynamicMap = () =>
-    normalizeSongBeatGridMap(params.previewBeatGridMap.value, {
-      durationSec: resolveDurationSec()
+    normalizeSongBeatGridMapV2(params.previewBeatGridMap.value, {
+      durationSec: resolveDurationSec(),
+      allowSingleClip: false
     })
 
+  const resolveV2GridMap = () =>
+    normalizeSongBeatGridMapV2(params.previewBeatGridMap.value ?? params.song()?.beatGridMap, {
+      durationSec: resolveDurationSec(),
+      allowSingleClip: true
+    })
+
+  const resolveClipIndexAtSec = (map: SongBeatGridMapV2, secInput: number) => {
+    const sec = clampNumber(Number(secInput) || 0, 0, resolveDurationSec())
+    let index = 0
+    for (let candidate = 1; candidate < map.clips.length; candidate += 1) {
+      if (map.clips[candidate].startSec > sec) break
+      index = candidate
+    }
+    return index
+  }
+
   const isDynamic = computed(() => resolveDynamicMap() !== null)
+  const hasV2GridMap = computed(() => resolveV2GridMap() !== null)
   const wholeAdjustmentActive = computed(() => adjustmentScope.value === 'whole')
   const clipAdjustmentActive = computed(() => adjustmentScope.value === 'after')
   const isBoundarySelected = computed(
@@ -134,45 +155,45 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
 
   const syncPreviewFromWholeTarget = () => {
     const map = resolveDynamicMap()
-    const projection = projectSongBeatGridMapToFixedGrid(map)
+    const projection = projectSongBeatGridMapV2ToFixedGrid(map)
     const bpm = Number(projection?.bpm ?? params.song()?.bpm ?? params.previewBpm.value)
     params.previewBpm.value = normalizePreviewBpm(bpm)
     params.previewBpmInput.value =
       params.previewBpm.value > 0 ? formatPreviewBpm(params.previewBpm.value) : ''
     params.previewFirstBeatMs.value =
       Number(projection?.firstBeatMs ?? params.song()?.firstBeatMs ?? 0) || 0
-    params.previewBarBeatOffset.value = normalizeBeatOffset(
-      Number(projection?.barBeatOffset ?? params.song()?.barBeatOffset ?? 0),
-      PREVIEW_BAR_BEAT_INTERVAL
+    params.previewDownbeatBeatOffset.value = normalizeBeatOffset(
+      Number(projection?.downbeatBeatOffset ?? params.song()?.downbeatBeatOffset ?? 0),
+      PREVIEW_DOWNBEAT_BEAT_INTERVAL
     )
   }
 
   const resolveEditableMap = () => {
     const durationSec = resolveDurationSec()
     const currentMap =
-      normalizeSongBeatGridMap(params.previewBeatGridMap.value ?? params.song()?.beatGridMap, {
+      normalizeSongBeatGridMapV2(params.previewBeatGridMap.value ?? params.song()?.beatGridMap, {
         durationSec,
         allowSingleClip: true
       }) ??
-      createSongBeatGridMapFromFixedGrid({
+      createSongBeatGridMapV2FromFixedGrid({
         bpm: params.previewBpm.value || params.song()?.bpm,
         firstBeatMs: params.previewFirstBeatMs.value || params.song()?.firstBeatMs,
-        barBeatOffset: params.previewBarBeatOffset.value || params.song()?.barBeatOffset
+        downbeatBeatOffset:
+          params.previewDownbeatBeatOffset.value || params.song()?.downbeatBeatOffset,
+        source: 'manual'
       })
     return currentMap
   }
 
-  const selectClipBySec = (map: SongBeatGridMap, sec: number, manual: boolean) => {
-    const durationSec = resolveDurationSec()
-    const runtimeClip = resolveSongBeatGridClipAtSec(map, durationSec, sec)
+  const selectClipBySec = (map: SongBeatGridMapV2, sec: number, manual: boolean) => {
     selectedTarget.value = {
       type: 'clip',
-      index: Math.max(0, runtimeClip?.index ?? 0),
+      index: resolveClipIndexAtSec(map, sec),
       manual
     }
   }
 
-  const selectClipByIndex = (map: SongBeatGridMap, index: number, manual: boolean) => {
+  const selectClipByIndex = (map: SongBeatGridMapV2, index: number, manual: boolean) => {
     const normalizedIndex = Math.max(0, Math.floor(Number(index) || 0))
     if (!map.clips[normalizedIndex]) return false
     selectedTarget.value = {
@@ -192,36 +213,36 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
     params.previewBpm.value = normalizePreviewBpm(clip.bpm)
     params.previewBpmInput.value = formatPreviewBpm(params.previewBpm.value)
     params.previewFirstBeatMs.value = Number((clip.anchorSec * 1000).toFixed(3))
-    params.previewBarBeatOffset.value = normalizeBeatOffset(
-      clip.barBeatOffset,
-      PREVIEW_BAR_BEAT_INTERVAL
+    params.previewDownbeatBeatOffset.value = normalizeBeatOffset(
+      clip.downbeatBeatOffset,
+      PREVIEW_DOWNBEAT_BEAT_INTERVAL
     )
   }
 
   const applyEditedMap = (
-    clips: readonly SongBeatGridClip[],
+    clips: readonly SongBeatGridClipV2[],
     selectionSec: number,
     manualSelection = true,
     nextScope: DynamicBeatGridAdjustmentScope = adjustmentScope.value
   ) => {
     const durationSec = resolveDurationSec()
-    const nextMap = createSongBeatGridMapFromClips(clips, {
+    const nextMap = createSongBeatGridMapV2FromClips(clips, 'manual', {
       durationSec,
       allowSingleClip: true
     })
     if (!nextMap) return false
     if (nextMap.clips.length < 2) {
-      const projection = projectSongBeatGridMapToFixedGrid(nextMap)
-      params.previewBeatGridMap.value = null
+      const projection = projectSongBeatGridMapV2ToFixedGrid(nextMap)
+      params.previewBeatGridMap.value = nextMap
       adjustmentScope.value = 'whole'
       selectedTarget.value = { type: 'clip', index: 0, manual: false }
       if (projection) {
         params.previewBpm.value = normalizePreviewBpm(projection.bpm)
         params.previewBpmInput.value = formatPreviewBpm(params.previewBpm.value)
         params.previewFirstBeatMs.value = projection.firstBeatMs
-        params.previewBarBeatOffset.value = normalizeBeatOffset(
-          projection.barBeatOffset,
-          PREVIEW_BAR_BEAT_INTERVAL
+        params.previewDownbeatBeatOffset.value = normalizeBeatOffset(
+          projection.downbeatBeatOffset,
+          PREVIEW_DOWNBEAT_BEAT_INTERVAL
         )
       }
     } else {
@@ -242,7 +263,7 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
   }
 
   const updateSelectedClip = (
-    updater: (clip: SongBeatGridClip) => SongBeatGridClip,
+    updater: (clip: SongBeatGridClipV2) => SongBeatGridClipV2,
     selectionSec?: number
   ) => {
     if (adjustmentScope.value !== 'after') return false
@@ -265,7 +286,7 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
   }
 
   const updateWholeGrid = (
-    updater: (clip: SongBeatGridClip, index: number) => SongBeatGridClip,
+    updater: (clip: SongBeatGridClipV2, index: number) => SongBeatGridClipV2,
     selectionSec = 0.0001
   ) => {
     const map = resolveEditableMap()
@@ -281,8 +302,9 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
     const previousScope = adjustmentScope.value
     const previousTarget = selectedTarget.value
     const previousPreviewSignature = params.previewBeatGridMap.value?.signature ?? ''
-    const map = normalizeSongBeatGridMap(params.song()?.beatGridMap, {
-      durationSec: resolveDurationSec()
+    const map = normalizeSongBeatGridMapV2(params.song()?.beatGridMap, {
+      durationSec: resolveDurationSec(),
+      allowSingleClip: true
     })
     const canPreserveAfterSelection =
       previousScope === 'after' &&
@@ -342,16 +364,21 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
 
   const resolveClientXSec = (clientX: number) => resolveClientXContext(clientX)?.targetSec ?? null
 
-  const resolveBarLinePickCandidateByClientX = (
+  const resolveDownbeatLinePickCandidateByClientX = (
     clientX: number,
     hitRadiusPx = BOUNDARY_SELECT_HIT_PX
-  ): DynamicBeatGridBarLinePickCandidate | null => {
-    if (!params.enabled() || !isDynamic.value) return null
-    const map = resolveDynamicMap()
+  ): DynamicBeatGridDownbeatLinePickCandidate | null => {
+    const map = resolveV2GridMap()
     const durationSec = resolveDurationSec()
     const context = resolveClientXContext(clientX)
-    if (!map || durationSec <= 0 || !context) return null
-    const nearestLine = resolveNearestSongBeatGridLine(map, durationSec, context.targetSec)
+    if (!map || !context) return null
+    // 画布已经有可见时间范围时，不能因为歌曲总时长仍在异步刷新就放弃整张 v2 网格。
+    const runtimeDurationSec = Math.max(
+      0.001,
+      durationSec,
+      context.rangeStartSec + context.rangeDurationSec
+    )
+    const nearestLine = resolveNearestSongBeatGridV2Line(map, runtimeDurationSec, context.targetSec)
     if (!nearestLine || !map.clips[nearestLine.clipIndex]) return null
     const lineRatio = (nearestLine.sec - context.rangeStartSec) / context.rangeDurationSec
     const lineX = clampNumber(lineRatio * context.rect.width, 0, context.rect.width)
@@ -359,16 +386,22 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
       beatIndex: nearestLine.clipBeatIndex,
       clipIndex: nearestLine.clipIndex,
       lineX,
+      lineSec: nearestLine.sec,
+      targetSec: context.targetSec,
+      rangeStartSec: context.rangeStartSec,
+      rangeDurationSec: context.rangeDurationSec,
       hit: Math.abs(context.localX - lineX) <= Math.max(1, hitRadiusPx)
     }
   }
 
-  const applyBarLinePickCandidate = (candidate: DynamicBeatGridBarLinePickCandidate | null) => {
+  const applyDownbeatLinePickCandidate = (
+    candidate: DynamicBeatGridDownbeatLinePickCandidate | null
+  ) => {
     if (!candidate?.hit) return false
-    const map = resolveDynamicMap()
+    const map = resolveV2GridMap()
     if (!map || !selectClipByIndex(map, candidate.clipIndex, true)) return false
     adjustmentScope.value = 'after'
-    return setSelectedClipBarBeatOffset(candidate.beatIndex)
+    return setSelectedClipDownbeatBeatOffset(candidate.beatIndex)
   }
 
   const selectTargetByPointer = (event: PointerEvent) => {
@@ -397,8 +430,7 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
     if (isBoundarySelected.value) return false
     if (adjustmentScope.value !== 'after') return false
     const previousTarget = selectedTarget.value
-    const runtimeClip = resolveSongBeatGridClipAtSec(map, resolveDurationSec(), targetSec)
-    const nextIndex = Math.max(0, runtimeClip?.index ?? 0)
+    const nextIndex = resolveClipIndexAtSec(map, targetSec)
     selectedTarget.value = {
       type: 'clip',
       index: nextIndex,
@@ -436,8 +468,7 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
       params.schedulePreviewDraw()
       return true
     }
-    const runtimeClip = resolveSongBeatGridClipAtSec(map, durationSec, boundarySec)
-    const sourceClipIndex = runtimeClip?.index ?? 0
+    const sourceClipIndex = resolveClipIndexAtSec(map, boundarySec)
     const sourceClip = map.clips[sourceClipIndex]
     if (!sourceClip) return false
     const phaseGuardSec = (60 / sourceClip.bpm) * 0.0002
@@ -516,43 +547,43 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
   const shiftActiveGrid = (deltaMs: number) =>
     adjustmentScope.value === 'after' ? shiftSelectedClip(deltaMs) : shiftWholeGrid(deltaMs)
 
-  const setSelectedClipBarBeatOffset = (barBeatOffset: number) =>
+  const setSelectedClipDownbeatBeatOffset = (downbeatBeatOffset: number) =>
     updateSelectedClip((clip) => ({
       ...clip,
-      barBeatOffset: normalizeBeatOffset(barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
+      downbeatBeatOffset: normalizeBeatOffset(downbeatBeatOffset, PREVIEW_DOWNBEAT_BEAT_INTERVAL)
     }))
 
-  const setWholeGridBarBeatOffset = (barBeatOffset: number) => {
-    const nextOffset = normalizeBeatOffset(barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
+  const setWholeGridDownbeatBeatOffset = (downbeatBeatOffset: number) => {
+    const nextOffset = normalizeBeatOffset(downbeatBeatOffset, PREVIEW_DOWNBEAT_BEAT_INTERVAL)
     return updateWholeGrid((clip) => ({
       ...clip,
-      barBeatOffset: nextOffset
+      downbeatBeatOffset: nextOffset
     }))
   }
 
-  const setActiveGridBarBeatOffset = (barBeatOffset: number) =>
+  const setActiveGridDownbeatBeatOffset = (downbeatBeatOffset: number) =>
     adjustmentScope.value === 'after'
-      ? setSelectedClipBarBeatOffset(barBeatOffset)
-      : setWholeGridBarBeatOffset(barBeatOffset)
+      ? setSelectedClipDownbeatBeatOffset(downbeatBeatOffset)
+      : setWholeGridDownbeatBeatOffset(downbeatBeatOffset)
 
-  const setSelectedClipBarLineAtSec = (sec: number) =>
+  const setSelectedClipDownbeatLineAtSec = (sec: number) =>
     updateSelectedClip((clip) => {
       const bpm = normalizePreviewBpm(clip.bpm)
       const beatSec = 60 / bpm
-      const offset = normalizeBeatOffset(clip.barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
+      const offset = normalizeBeatOffset(clip.downbeatBeatOffset, PREVIEW_DOWNBEAT_BEAT_INTERVAL)
       return {
         ...clip,
         anchorSec: normalizeSecond(sec - offset * beatSec)
       }
     }, sec)
 
-  const setWholeGridBarLineAtSec = (sec: number) => {
+  const setWholeGridDownbeatLineAtSec = (sec: number) => {
     const map = resolveEditableMap()
     const firstClip = map?.clips[0]
     if (!map || !firstClip) return false
     const bpm = normalizePreviewBpm(firstClip.bpm)
     const beatSec = 60 / bpm
-    const offset = normalizeBeatOffset(firstClip.barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
+    const offset = normalizeBeatOffset(firstClip.downbeatBeatOffset, PREVIEW_DOWNBEAT_BEAT_INTERVAL)
     const nextAnchorSec = normalizeSecond(sec - offset * beatSec)
     const deltaSec = nextAnchorSec - firstClip.anchorSec
     if (!Number.isFinite(deltaSec)) return false
@@ -565,10 +596,10 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
     )
   }
 
-  const setActiveGridBarLineAtSec = (sec: number) =>
+  const setActiveGridDownbeatLineAtSec = (sec: number) =>
     adjustmentScope.value === 'after'
-      ? setSelectedClipBarLineAtSec(sec)
-      : setWholeGridBarLineAtSec(sec)
+      ? setSelectedClipDownbeatLineAtSec(sec)
+      : setWholeGridDownbeatLineAtSec(sec)
 
   const selectWholeAdjustment = () => {
     if (!params.enabled()) return false
@@ -603,6 +634,7 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
   return {
     previewBeatGridMap: params.previewBeatGridMap,
     isDynamic,
+    hasV2GridMap,
     adjustmentScope,
     wholeAdjustmentActive,
     clipAdjustmentActive,
@@ -613,18 +645,18 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
     syncFromSong,
     selectWholeAdjustment,
     selectTargetByPointer,
-    resolveBarLinePickCandidateByClientX,
-    applyBarLinePickCandidate,
+    resolveDownbeatLinePickCandidateByClientX,
+    applyDownbeatLinePickCandidate,
     createBoundaryAfterPlayhead,
     deleteSelectedBoundary,
     setSelectedClipBpm,
     setActiveGridBpm,
     shiftSelectedClip,
     shiftActiveGrid,
-    setSelectedClipBarBeatOffset,
-    setActiveGridBarBeatOffset,
-    setSelectedClipBarLineAtSec,
-    setActiveGridBarLineAtSec,
+    setSelectedClipDownbeatBeatOffset,
+    setActiveGridDownbeatBeatOffset,
+    setSelectedClipDownbeatLineAtSec,
+    setActiveGridDownbeatLineAtSec,
     syncPreviewFromSelectedTarget,
     freezeSelectionForBpmInput: () => {
       selectionFrozenByBpmInput.value = true

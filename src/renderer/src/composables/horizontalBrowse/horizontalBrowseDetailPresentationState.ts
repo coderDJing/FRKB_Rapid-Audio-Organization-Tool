@@ -3,7 +3,7 @@ import type { ISongInfo } from 'src/types/globals'
 import { normalizePreviewBpm } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { HORIZONTAL_BROWSE_LOCAL_GRID_BPM_EPSILON } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailMath'
 import { publishHorizontalBrowseLinkedGridVisualPhaseSample } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedGridVisualPhase'
-import { resolveSongBeatGridBpmAtSec } from '@shared/songBeatGridMap'
+import { resolveSongBeatGridV2BpmAtSec } from '@shared/songBeatGridMapV2'
 
 type HorizontalBrowseDetailDirection = 'up' | 'down'
 type HorizontalBrowseDetailLayout = 'full' | 'top-half' | 'bottom-half'
@@ -36,7 +36,7 @@ type HorizontalBrowseDetailPresentationStateParams = {
   resolveWaveformPlaybackRate: () => number
   previewBpm: Ref<number>
   previewFirstBeatMs: Ref<number>
-  previewBarBeatOffset: Ref<number>
+  previewDownbeatBeatOffset: Ref<number>
   previewTimeBasisOffsetMs: Ref<number>
 }
 
@@ -45,13 +45,13 @@ export const createHorizontalBrowseDetailPresentationState = (
 ) => {
   const visualGridBpm = ref(0)
   const visualGridFirstBeatMs = ref(0)
-  const visualGridBarBeatOffset = ref(0)
+  const visualGridDownbeatBeatOffset = ref(0)
   const visualGridTimeBasisOffsetMs = ref(0)
   let lastAppliedPreviewTimeScale = 1
 
   const resolveDisplayGridBpm = () => {
     const song = params.song()
-    const dynamicBpm = resolveSongBeatGridBpmAtSec(
+    const dynamicBpm = resolveSongBeatGridV2BpmAtSec(
       song?.beatGridMap,
       parseDurationToSeconds(song?.duration),
       params.resolveWaveformCurrentSeconds()
@@ -82,7 +82,7 @@ export const createHorizontalBrowseDetailPresentationState = (
   const syncVisualGridStateFromPreview = () => {
     visualGridBpm.value = previewRenderBpm.value
     visualGridFirstBeatMs.value = params.previewFirstBeatMs.value
-    visualGridBarBeatOffset.value = params.previewBarBeatOffset.value
+    visualGridDownbeatBeatOffset.value = params.previewDownbeatBeatOffset.value
     visualGridTimeBasisOffsetMs.value = params.previewTimeBasisOffsetMs.value
   }
 
@@ -104,7 +104,7 @@ export const createHorizontalBrowseDetailPresentationState = (
       clockActive: params.waveformPlaybackActive(),
       bpm: visualGridRenderBpm.value,
       firstBeatMs: visualGridFirstBeatMs.value,
-      barBeatOffset: visualGridBarBeatOffset.value,
+      downbeatBeatOffset: visualGridDownbeatBeatOffset.value,
       currentSec: params.resolveWaveformCurrentSeconds(),
       playbackRate: params.resolveWaveformPlaybackRate()
     })
@@ -114,7 +114,7 @@ export const createHorizontalBrowseDetailPresentationState = (
     previewRenderBpm,
     visualGridBpm,
     visualGridFirstBeatMs,
-    visualGridBarBeatOffset,
+    visualGridDownbeatBeatOffset,
     visualGridTimeBasisOffsetMs,
     visualGridRenderBpm,
     resolveDisplayGridBpm,

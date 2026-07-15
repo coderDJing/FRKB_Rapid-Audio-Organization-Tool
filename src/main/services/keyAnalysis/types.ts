@@ -4,7 +4,7 @@ import type { MixxxWaveformData } from '../../waveformCodec'
 import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDisplayWaveform'
 import type { BeatGridStatus } from '../../../types/globals'
 import type { SongStructureAnalysis } from '../../../shared/songStructure'
-import type { SongBeatGridMap } from '../../../shared/songBeatGridMap'
+import type { SongBeatGridMapV2 } from '../../../shared/songBeatGridMapV2'
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
@@ -104,9 +104,6 @@ export type KeyAnalysisJob = {
   needsEnergy?: boolean
   needsStructure?: boolean
   cachedBpm?: number
-  cachedFirstBeatMs?: number
-  cachedBarBeatOffset?: number
-  cachedBeatGridMap?: SongBeatGridMap
   cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
   startTime?: number
   trace?: KeyAnalysisJobTrace
@@ -152,12 +149,11 @@ export type BpmAnalysisResult = {
   filePath: string
   bpm?: number
   firstBeatMs?: number
-  barBeatOffset?: number
+  downbeatBeatOffset?: number
   timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number | null
   beatGridStatus?: BeatGridStatus
-  beatGridMap?: SongBeatGridMap
-  songStructure?: SongStructureAnalysis
+  beatGridMap?: SongBeatGridMapV2
 }
 
 export type DoneEntry = {
@@ -165,13 +161,9 @@ export type DoneEntry = {
   mtimeMs: number
   keyText?: string
   keyAnalysisAlgorithmVersion?: number
-  bpm?: number
-  firstBeatMs?: number
-  barBeatOffset?: number
-  timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number
   beatGridStatus?: BeatGridStatus
-  beatGridMap?: SongBeatGridMap
+  beatGridMap?: SongBeatGridMapV2
   energyScore?: number
   energyAlgorithmVersion?: number
   songStructure?: SongStructureAnalysis
@@ -191,7 +183,7 @@ type KeyAnalysisWorkerPartialResult = {
   keyError?: string
   bpm?: number
   firstBeatMs?: number
-  barBeatOffset?: number
+  downbeatBeatOffset?: number
   timeBasisOffsetMs?: number
   bpmError?: string
   songStructureError?: string

@@ -71,7 +71,6 @@ export const createMixtapeGainEnvelopeEditor = (params: CreateMixtapeGainEnvelop
     resolveRenderZoom,
     resolveTrackDurationSeconds: params.resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds: params.resolveTrackSourceDurationSeconds,
-    resolveTrackFirstBeatSeconds: params.resolveTrackFirstBeatSeconds,
     isStemSegmentParam
   })
   const {

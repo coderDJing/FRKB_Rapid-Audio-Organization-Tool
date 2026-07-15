@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { closeLibraryDb, getLibraryDbPath, initLibraryDb } from './libraryDb'
+import {
+  assertExistingDatabaseSchemaSupported,
+  closeLibraryDb,
+  DatabaseSchemaVersionError,
+  getLibraryDbPath,
+  initLibraryDb,
+  MAX_SUPPORTED_DATABASE_SCHEMA_VERSION
+} from './libraryDb'
 
 const temporaryRoots: string[] = []
 
@@ -33,5 +40,20 @@ describe('library database initialization', () => {
 
     expect(initLibraryDb(root)).toBeNull()
     await expect(fs.access(getLibraryDbPath(root))).rejects.toThrow()
+  })
+
+  it('rejects a database created by a newer FRKB before opening it for writes', async () => {
+    const root = await createTemporaryRoot()
+    await fs.mkdir(path.join(root, 'library'))
+    const Database = require('better-sqlite3') as typeof import('better-sqlite3')
+    const databasePath = getLibraryDbPath(root)
+    const instance = new Database(databasePath)
+    instance.pragma(`user_version = ${MAX_SUPPORTED_DATABASE_SCHEMA_VERSION + 1}`)
+    instance.close()
+
+    expect(() => assertExistingDatabaseSchemaSupported(databasePath)).toThrow(
+      DatabaseSchemaVersionError
+    )
+    expect(() => initLibraryDb(root)).toThrow(DatabaseSchemaVersionError)
   })
 })

@@ -12,10 +12,6 @@ import {
   calculateSongEnergyScoreFromPcm,
   calculateSongEnergyScoreFromUnifiedDisplay
 } from '../../shared/songEnergy'
-import { buildSongStructureAnalysis, type SongStructureAnalysis } from '../../shared/songStructure'
-import { resolveSongStructureTimelineFirstBeatMs } from '../../shared/songStructureCommon'
-import { diagnoseSongStructureAnalysisFailure } from '../../shared/songStructureDiagnostics'
-import type { SongBeatGridMap } from '../../shared/songBeatGridMap'
 import { analyzeBeatGridWithBeatThisSlidingWindowsFromPcm } from './beatThisAnalyzer'
 import { getBeatThisRuntimeAvailabilitySnapshot } from './beatThisRuntime'
 import { computeRawWaveform } from './rawWaveformBuilder'
@@ -34,11 +30,7 @@ type KeyJob = {
   needsEnergy?: boolean
   needsStructure?: boolean
   cachedBpm?: number
-  cachedFirstBeatMs?: number
-  cachedBarBeatOffset?: number
-  cachedBeatGridMap?: SongBeatGridMap
   cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
-  analyzedTimeBasisOffsetMs?: number
 }
 
 type KeyResultPayload = {
@@ -46,13 +38,11 @@ type KeyResultPayload = {
   keyError?: string
   bpm?: number
   firstBeatMs?: number
-  barBeatOffset?: number
+  downbeatBeatOffset?: number
   timeBasisOffsetMs?: number
   bpmError?: string
-  songStructureError?: string
   energyScore?: number
   energyAlgorithmVersion?: number
-  songStructure?: SongStructureAnalysis
   mixxxWaveformData?: MixxxWaveformData | null
   unifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData | null
 }
@@ -269,8 +259,6 @@ const analyzeKeyForFile = (
     needsStructure: boolean
     cachedBpm?: number
     cachedFirstBeatMs?: number
-    cachedBarBeatOffset?: number
-    cachedBeatGridMap?: SongBeatGridMap
     cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
     analyzedTimeBasisOffsetMs?: number
   },
@@ -289,11 +277,7 @@ const analyzeKeyForFileInternal = async (
     needsEnergy: boolean
     needsStructure: boolean
     cachedBpm?: number
-    cachedFirstBeatMs?: number
-    cachedBarBeatOffset?: number
-    cachedBeatGridMap?: SongBeatGridMap
     cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
-    analyzedTimeBasisOffsetMs?: number
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -302,21 +286,17 @@ const analyzeKeyForFileInternal = async (
   const needsBpm = Boolean(options.needsBpm) && getBeatThisRuntimeAvailabilitySnapshot() !== false
   const needsWaveform = Boolean(options.needsWaveform)
   const needsEnergy = Boolean(options.needsEnergy)
-  const needsStructure = Boolean(options.needsStructure)
-  const cachedUnifiedDisplayWaveformData =
-    needsStructure || needsEnergy
-      ? resolveCachedUnifiedDisplayWaveformData(options.cachedUnifiedDisplayWaveformData)
-      : null
-  const needsStructureWaveformDecode = needsStructure && !cachedUnifiedDisplayWaveformData
+  const needsStructure = false
+  const cachedUnifiedDisplayWaveformData = needsEnergy
+    ? resolveCachedUnifiedDisplayWaveformData(options.cachedUnifiedDisplayWaveformData)
+    : null
   const needsPcmEnergy = needsEnergy && !cachedUnifiedDisplayWaveformData
   const useNativeLibavWaveformDecode =
-    (needsWaveform || needsStructureWaveformDecode || needsPcmEnergy) &&
-    shouldUseNativeLibavSongAnalysisDecode(filePath)
+    (needsWaveform || needsPcmEnergy) && shouldUseNativeLibavSongAnalysisDecode(filePath)
   const useNativeLibavPrimaryDecode = (needsKey || needsPcmEnergy) && useNativeLibavWaveformDecode
   const needsRustDecode =
     (needsKey && !useNativeLibavPrimaryDecode) ||
-    ((needsWaveform || needsStructureWaveformDecode || needsPcmEnergy) &&
-      !useNativeLibavWaveformDecode)
+    ((needsWaveform || needsPcmEnergy) && !useNativeLibavWaveformDecode)
   let rust: RustBinding | null = null
   let decoded: DecodedAudioPcm | null = null
   let beatGridDecoded: DecodedBeatGridPcm | null = null
@@ -327,37 +307,6 @@ const analyzeKeyForFileInternal = async (
     }
     return rust
   }
-  const analyzeSongStructureFromWaveform = (
-    waveformData: UnifiedDisplayWaveformDetailData | null
-  ) => {
-    const firstBeatMs = resolveSongStructureTimelineFirstBeatMs(
-      result.firstBeatMs,
-      options.cachedFirstBeatMs,
-      options.analyzedTimeBasisOffsetMs
-    )
-    const structureGrid = {
-      bpm: result.bpm ?? options.cachedBpm,
-      firstBeatMs,
-      barBeatOffset: result.barBeatOffset ?? options.cachedBarBeatOffset,
-      beatGridMap: options.cachedBeatGridMap ?? null
-    }
-    const structureInput = {
-      waveformData,
-      ...structureGrid
-    }
-    try {
-      const structure = buildSongStructureAnalysis(structureInput)
-      result.songStructure = structure ?? undefined
-      result.songStructureError = structure
-        ? undefined
-        : diagnoseSongStructureAnalysisFailure(structureInput)
-    } catch (error) {
-      result.songStructureError = `structure exception: ${
-        error instanceof Error ? error.message : String(error || 'unknown error')
-      }`.slice(0, 300)
-    }
-  }
-
   if (needsRustDecode || useNativeLibavPrimaryDecode || needsBpm) {
     reportProgress({
       stage: 'decode-start',
@@ -458,8 +407,7 @@ const analyzeKeyForFileInternal = async (
         })
         result.bpm = beatThisResult.bpm
         result.firstBeatMs = beatThisResult.firstBeatMs
-        result.barBeatOffset = beatThisResult.barBeatOffset
-        result.timeBasisOffsetMs = options.analyzedTimeBasisOffsetMs
+        result.downbeatBeatOffset = beatThisResult.downbeatBeatOffset
         result.bpmError = undefined
       } catch (error) {
         result.bpmError =
@@ -487,7 +435,7 @@ const analyzeKeyForFileInternal = async (
         keyError: result.keyError,
         bpm: result.bpm,
         firstBeatMs: result.firstBeatMs,
-        barBeatOffset: result.barBeatOffset,
+        downbeatBeatOffset: result.downbeatBeatOffset,
         timeBasisOffsetMs: result.timeBasisOffsetMs,
         bpmError: result.bpmError
       }
@@ -515,7 +463,6 @@ const analyzeKeyForFileInternal = async (
       detail: 'structure-cache'
     })
     const waveformStartAt = Date.now()
-    analyzeSongStructureFromWaveform(cachedUnifiedDisplayWaveformData)
     const energy =
       needsEnergy && result.energyScore === undefined
         ? calculateSongEnergyScoreFromUnifiedDisplay(
@@ -537,7 +484,7 @@ const analyzeKeyForFileInternal = async (
   }
 
   if (
-    (needsWaveform || needsStructureWaveformDecode) &&
+    needsWaveform &&
     (typeof resolveRustBinding().computeMixxxWaveformWithRate === 'function' ||
       typeof resolveRustBinding().computeMixxxWaveform === 'function')
   ) {
@@ -588,9 +535,6 @@ const analyzeKeyForFileInternal = async (
         result.mixxxWaveformData = mixxxWaveformData
         result.unifiedDisplayWaveformData = unifiedDisplayWaveformData
       }
-      if (needsStructureWaveformDecode) {
-        analyzeSongStructureFromWaveform(unifiedDisplayWaveformData)
-      }
       const energy =
         needsEnergy && result.energyScore === undefined
           ? calculateSongEnergyScoreFromUnifiedDisplay(
@@ -613,11 +557,6 @@ const analyzeKeyForFileInternal = async (
       })
     } catch (error) {
       result.mixxxWaveformData = null
-      if (needsStructureWaveformDecode) {
-        result.songStructureError = `waveform exception: ${
-          error instanceof Error ? error.message : String(error || 'unknown error')
-        }`.slice(0, 300)
-      }
       reportProgress({
         stage: 'waveform-done',
         waveformMs: Date.now() - waveformStartAt,
@@ -670,11 +609,7 @@ parentPort?.on('message', async (job: KeyJob) => {
         needsEnergy: Boolean(job.needsEnergy),
         needsStructure: Boolean(job.needsStructure),
         cachedBpm: job.cachedBpm,
-        cachedFirstBeatMs: job.cachedFirstBeatMs,
-        cachedBarBeatOffset: job.cachedBarBeatOffset,
-        cachedBeatGridMap: job.cachedBeatGridMap,
-        cachedUnifiedDisplayWaveformData: job.cachedUnifiedDisplayWaveformData,
-        analyzedTimeBasisOffsetMs: job.analyzedTimeBasisOffsetMs
+        cachedUnifiedDisplayWaveformData: job.cachedUnifiedDisplayWaveformData
       },
       reportProgress
     )

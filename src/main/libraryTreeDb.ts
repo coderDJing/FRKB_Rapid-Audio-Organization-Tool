@@ -548,6 +548,7 @@ export async function syncLibraryTreeFromDisk(
     dirName: string
     nodeType: LibraryNodeType
     order: number | null
+    depth: number
   }> = []
 
   let orderSeed = Date.now()
@@ -622,7 +623,8 @@ export async function syncLibraryTreeFromDisk(
         parentUuid,
         dirName: node.dirName,
         nodeType: finalType,
-        order
+        order,
+        depth: getPathDepth(node.relPath)
       })
     }
 
@@ -654,32 +656,35 @@ export async function syncLibraryTreeFromDisk(
     const insertStmt = db.prepare(
       'INSERT INTO library_nodes (uuid, parent_uuid, dir_name, node_type, sort_order) VALUES (?, ?, ?, ?, ?)'
     )
-    const updateMoveTemp = db.prepare(
+    const updateMoveTemp = db.prepare('UPDATE library_nodes SET dir_name = ? WHERE uuid = ?')
+    const updateMoveFinal = db.prepare(
       'UPDATE library_nodes SET parent_uuid = ?, dir_name = ? WHERE uuid = ?'
     )
-    const updateMoveFinal = db.prepare('UPDATE library_nodes SET dir_name = ? WHERE uuid = ?')
     const updateTypeStmt = db.prepare('UPDATE library_nodes SET node_type = ? WHERE uuid = ?')
     const deleteStmt = db.prepare('DELETE FROM library_nodes WHERE uuid = ?')
 
     const run = db.transaction(() => {
-      for (const uuid of toDelete) {
-        deleteStmt.run(uuid)
-        removed += 1
-      }
       for (const move of moveUpdates) {
-        updateMoveTemp.run(move.parentUuid, `__frkb_tmp_${move.uuid}`, move.uuid)
+        updateMoveTemp.run(`__frkb_tmp_${move.uuid}`, move.uuid)
         updated += 1
       }
+      for (const node of inserts.sort((left, right) => left.depth - right.depth)) {
+        insertStmt.run(node.uuid, node.parentUuid, node.dirName, node.nodeType, node.order)
+        added += 1
+      }
       for (const move of moveUpdates) {
-        updateMoveFinal.run(move.dirName, move.uuid)
+        updateMoveFinal.run(move.parentUuid, move.dirName, move.uuid)
       }
       for (const upd of typeUpdates) {
         updateTypeStmt.run(upd.nodeType, upd.uuid)
         updated += 1
       }
-      for (const node of inserts) {
-        insertStmt.run(node.uuid, node.parentUuid, node.dirName, node.nodeType, node.order)
-        added += 1
+      for (const uuid of [...toDelete].sort((left, right) => {
+        const leftDepth = getPathDepth(dbPathByUuid.get(left) || '')
+        const rightDepth = getPathDepth(dbPathByUuid.get(right) || '')
+        return rightDepth - leftDepth
+      })) {
+        if (deleteStmt.run(uuid).changes > 0) removed += 1
       }
     })
     run()

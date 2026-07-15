@@ -1,24 +1,31 @@
 import { computed, ref, type Ref } from 'vue'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
-import type { DynamicBeatGridBarLinePickCandidate } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDynamicBeatGridEdit'
+import type { DynamicBeatGridDownbeatLinePickCandidate } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDynamicBeatGridEdit'
 
 type DynamicBeatGridEditController = {
   isDynamic: Readonly<Ref<boolean>>
+  hasV2GridMap: Readonly<Ref<boolean>>
   gridControlsDisabled: Readonly<Ref<boolean>>
   selectTargetByPointer: (event: PointerEvent) => boolean
-  resolveBarLinePickCandidateByClientX: (
+  resolveDownbeatLinePickCandidateByClientX: (
     clientX: number,
     hitRadiusPx: number
-  ) => DynamicBeatGridBarLinePickCandidate | null
-  applyBarLinePickCandidate: (candidate: DynamicBeatGridBarLinePickCandidate | null) => boolean
-  setActiveGridBarBeatOffset: (barBeatOffset: number) => boolean
-  setActiveGridBarLineAtSec: (sec: number) => boolean
+  ) => DynamicBeatGridDownbeatLinePickCandidate | null
+  applyDownbeatLinePickCandidate: (
+    candidate: DynamicBeatGridDownbeatLinePickCandidate | null
+  ) => boolean
+  setActiveGridDownbeatBeatOffset: (downbeatBeatOffset: number) => boolean
+  setActiveGridDownbeatLineAtSec: (sec: number) => boolean
   shiftActiveGrid: (deltaMs: number) => boolean
 }
 
-type BarLinePickCandidate = {
+type DownbeatLinePickCandidate = {
   lineX: number
   hit: boolean
+  lineSec?: number
+  targetSec?: number
+  rangeStartSec?: number
+  rangeDurationSec?: number
 }
 
 type UseMixtapeBeatAlignGridAdjustParams = {
@@ -27,7 +34,7 @@ type UseMixtapeBeatAlignGridAdjustParams = {
   previewMixxxData: Ref<MixxxWaveformData | null>
   canAdjustGrid?: Ref<boolean>
   previewPlaying: Ref<boolean>
-  previewBarBeatOffset: Ref<number>
+  previewDownbeatBeatOffset: Ref<number>
   previewFirstBeatMs: Ref<number>
   previewStartSec: Ref<number>
   bpm: Readonly<Ref<number>>
@@ -39,8 +46,8 @@ type UseMixtapeBeatAlignGridAdjustParams = {
   getPreviewPlaybackSec: () => number
   schedulePreviewDraw: () => void
   applyPlaybackPhaseCompensation?: (deltaMs: number) => void
-  barBeatInterval: number
-  barLineHitRadiusPx: number
+  downbeatBeatInterval: number
+  downbeatLineHitRadiusPx: number
   dynamicGridEdit?: DynamicBeatGridEditController
 }
 
@@ -64,9 +71,9 @@ const wrapMsInCycle = (valueMs: number, cycleMs: number) => {
 }
 
 export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdjustParams) => {
-  const previewBarLinePicking = ref(false)
-  const previewBarLineHoverCenterPx = ref(0)
-  const previewBarLineHoverHit = ref(false)
+  const previewDownbeatLinePicking = ref(false)
+  const previewDownbeatLineHoverCenterPx = ref(0)
+  const previewDownbeatLineHoverHit = ref(false)
 
   const canAdjustGrid = computed(() => {
     if (params.canAdjustGrid) return params.canAdjustGrid.value
@@ -77,28 +84,28 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
   const canAdjustClipGrid = () =>
     canAdjustGrid.value && params.dynamicGridEdit?.gridControlsDisabled.value !== true
 
-  const previewBarLineHoverVisible = computed(
-    () => previewBarLinePicking.value && previewBarLineHoverHit.value
+  const previewDownbeatLineHoverVisible = computed(
+    () => previewDownbeatLinePicking.value && previewDownbeatLineHoverHit.value
   )
 
-  const previewBarLineGlowStyle = computed(() => ({
-    left: `${Math.round(previewBarLineHoverCenterPx.value)}px`
+  const previewDownbeatLineGlowStyle = computed(() => ({
+    left: `${Math.round(previewDownbeatLineHoverCenterPx.value)}px`
   }))
 
-  const clearPreviewBarLineHover = () => {
-    previewBarLineHoverHit.value = false
+  const clearPreviewDownbeatLineHover = () => {
+    previewDownbeatLineHoverHit.value = false
   }
 
-  const resetBarLinePicking = () => {
-    previewBarLinePicking.value = false
-    clearPreviewBarLineHover()
+  const resetDownbeatLinePicking = () => {
+    previewDownbeatLinePicking.value = false
+    clearPreviewDownbeatLineHover()
   }
 
-  const resolveBarLinePickCandidateByClientX = (clientX: number) => {
-    if (params.dynamicGridEdit?.isDynamic.value === true) {
-      return params.dynamicGridEdit.resolveBarLinePickCandidateByClientX(
+  const resolveDownbeatLinePickCandidateByClientX = (clientX: number) => {
+    if (params.dynamicGridEdit?.hasV2GridMap.value === true) {
+      return params.dynamicGridEdit.resolveDownbeatLinePickCandidateByClientX(
         clientX,
-        params.barLineHitRadiusPx
+        params.downbeatLineHitRadiusPx
       )
     }
     const wrap = params.previewWrapRef.value
@@ -129,69 +136,70 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
     return {
       beatIndex,
       lineX,
-      hit: distancePx <= params.barLineHitRadiusPx
+      hit: distancePx <= params.downbeatLineHitRadiusPx
     }
   }
 
-  const updatePreviewBarLineHover = (clientX: number) => {
-    if (!previewBarLinePicking.value) return
-    const candidate: BarLinePickCandidate | null = resolveBarLinePickCandidateByClientX(clientX)
+  const updatePreviewDownbeatLineHover = (clientX: number) => {
+    if (!previewDownbeatLinePicking.value) return
+    const candidate: DownbeatLinePickCandidate | null =
+      resolveDownbeatLinePickCandidateByClientX(clientX)
     if (!candidate || !candidate.hit) {
-      clearPreviewBarLineHover()
+      clearPreviewDownbeatLineHover()
       return
     }
-    previewBarLineHoverCenterPx.value = candidate.lineX
-    previewBarLineHoverHit.value = true
+    previewDownbeatLineHoverCenterPx.value = candidate.lineX
+    previewDownbeatLineHoverHit.value = true
   }
 
-  const applyBarLineDefinitionByClientX = (clientX: number) => {
-    if (params.dynamicGridEdit?.isDynamic.value === true) {
-      const candidate = params.dynamicGridEdit.resolveBarLinePickCandidateByClientX(
+  const applyDownbeatLineDefinitionByClientX = (clientX: number) => {
+    if (params.dynamicGridEdit?.hasV2GridMap.value === true) {
+      const candidate = params.dynamicGridEdit.resolveDownbeatLinePickCandidateByClientX(
         clientX,
-        params.barLineHitRadiusPx
+        params.downbeatLineHitRadiusPx
       )
       if (!candidate || !candidate.hit) {
-        clearPreviewBarLineHover()
+        clearPreviewDownbeatLineHover()
         return false
       }
       if (!canAdjustClipGrid()) return false
-      const applied = params.dynamicGridEdit.applyBarLinePickCandidate(candidate)
+      const applied = params.dynamicGridEdit.applyDownbeatLinePickCandidate(candidate)
       if (!applied) return false
-      resetBarLinePicking()
+      resetDownbeatLinePicking()
       return true
     }
-    const candidate = resolveBarLinePickCandidateByClientX(clientX)
+    const candidate = resolveDownbeatLinePickCandidateByClientX(clientX)
     if (!candidate || !candidate.hit) {
-      clearPreviewBarLineHover()
+      clearPreviewDownbeatLineHover()
       return false
     }
-    params.previewBarBeatOffset.value = normalizeBeatOffset(
+    params.previewDownbeatBeatOffset.value = normalizeBeatOffset(
       candidate.beatIndex,
-      params.barBeatInterval
+      params.downbeatBeatInterval
     )
-    resetBarLinePicking()
+    resetDownbeatLinePicking()
     params.schedulePreviewDraw()
     return true
   }
 
-  const handleBarLinePickingToggle = () => {
+  const handleDownbeatLinePickingToggle = () => {
     if (!canAdjustClipGrid()) return
-    previewBarLinePicking.value = !previewBarLinePicking.value
-    clearPreviewBarLineHover()
+    previewDownbeatLinePicking.value = !previewDownbeatLinePicking.value
+    clearPreviewDownbeatLineHover()
   }
 
-  const handlePreviewMouseMoveForBarLinePicking = (event: MouseEvent) => {
-    if (!previewBarLinePicking.value) return
-    updatePreviewBarLineHover(event.clientX)
+  const handlePreviewMouseMoveForDownbeatLinePicking = (event: MouseEvent) => {
+    if (!previewDownbeatLinePicking.value) return
+    updatePreviewDownbeatLineHover(event.clientX)
   }
 
-  const handlePreviewMouseLeaveForBarLinePicking = () => {
-    if (!previewBarLinePicking.value) return
-    clearPreviewBarLineHover()
+  const handlePreviewMouseLeaveForDownbeatLinePicking = () => {
+    if (!previewDownbeatLinePicking.value) return
+    clearPreviewDownbeatLineHover()
   }
 
-  const handlePreviewMouseDownForBarLinePicking = (event: PointerEvent) => {
-    if (!previewBarLinePicking.value) {
+  const handlePreviewMouseDownForDownbeatLinePicking = (event: PointerEvent) => {
+    if (!previewDownbeatLinePicking.value) {
       if (params.dynamicGridEdit?.selectTargetByPointer(event) === true) {
         event.preventDefault()
         event.stopPropagation()
@@ -201,13 +209,13 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
     }
     event.preventDefault()
     event.stopPropagation()
-    if (!applyBarLineDefinitionByClientX(event.clientX)) {
-      updatePreviewBarLineHover(event.clientX)
+    if (!applyDownbeatLineDefinitionByClientX(event.clientX)) {
+      updatePreviewDownbeatLineHover(event.clientX)
     }
     return true
   }
 
-  const handleSetBarLineAtPlayhead = () => {
+  const handleSetDownbeatLineAtPlayhead = () => {
     if (!canAdjustClipGrid()) return
     const bpmValue = Number(params.bpm.value)
     if (!Number.isFinite(bpmValue) || bpmValue <= 0) return
@@ -220,22 +228,22 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
     const anchorSec = Number.isFinite(candidateSec)
       ? candidateSec
       : params.resolvePreviewAnchorSec()
-    if (params.dynamicGridEdit?.isDynamic.value === true) {
-      params.dynamicGridEdit.setActiveGridBarLineAtSec(anchorSec)
+    if (params.dynamicGridEdit?.hasV2GridMap.value === true) {
+      params.dynamicGridEdit.setActiveGridDownbeatLineAtSec(anchorSec)
       return
     }
-    const interval = Math.max(1, Math.floor(params.barBeatInterval || 32))
+    const interval = Math.max(1, Math.floor(params.downbeatBeatInterval || 4))
     const cycleMs = beatMs * interval
-    const barBeatOffset = normalizeBeatOffset(params.previewBarBeatOffset.value, interval)
+    const downbeatBeatOffset = normalizeBeatOffset(params.previewDownbeatBeatOffset.value, interval)
     const anchorMs = Math.max(0, anchorSec * 1000)
-    const alignedFirstBeatMs = anchorMs - barBeatOffset * beatMs
+    const alignedFirstBeatMs = anchorMs - downbeatBeatOffset * beatMs
     params.previewFirstBeatMs.value = wrapMsInCycle(alignedFirstBeatMs, cycleMs)
     params.schedulePreviewDraw()
   }
 
   const handleGridShift = (delta: number, options: GridShiftOptions = {}) => {
     if (!canAdjustClipGrid()) return
-    if (params.dynamicGridEdit?.isDynamic.value === true) {
+    if (params.dynamicGridEdit?.hasV2GridMap.value === true) {
       params.dynamicGridEdit.shiftActiveGrid(delta)
       return
     }
@@ -243,7 +251,7 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
     if (!Number.isFinite(bpmValue) || bpmValue <= 0) return
     const beatMs = (60 / bpmValue) * 1000
     if (!Number.isFinite(beatMs) || beatMs <= 0) return
-    const cycleMs = beatMs * Math.max(1, Math.floor(params.barBeatInterval || 32))
+    const cycleMs = beatMs * Math.max(1, Math.floor(params.downbeatBeatInterval || 4))
     const nextFirstBeatMs = Number(params.previewFirstBeatMs.value) + Number(delta)
     params.previewFirstBeatMs.value = wrapMsInCycle(nextFirstBeatMs, cycleMs)
     if (options.preservePlaybackPhase === true) {
@@ -254,15 +262,15 @@ export const useMixtapeBeatAlignGridAdjust = (params: UseMixtapeBeatAlignGridAdj
 
   return {
     canAdjustGrid,
-    previewBarLinePicking,
-    previewBarLineHoverVisible,
-    previewBarLineGlowStyle,
-    handleBarLinePickingToggle,
-    handlePreviewMouseMoveForBarLinePicking,
-    handlePreviewMouseLeaveForBarLinePicking,
-    handlePreviewMouseDownForBarLinePicking,
-    handleSetBarLineAtPlayhead,
+    previewDownbeatLinePicking,
+    previewDownbeatLineHoverVisible,
+    previewDownbeatLineGlowStyle,
+    handleDownbeatLinePickingToggle,
+    handlePreviewMouseMoveForDownbeatLinePicking,
+    handlePreviewMouseLeaveForDownbeatLinePicking,
+    handlePreviewMouseDownForDownbeatLinePicking,
+    handleSetDownbeatLineAtPlayhead,
     handleGridShift,
-    resetBarLinePicking
+    resetDownbeatLinePicking
   }
 }

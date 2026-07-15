@@ -2,7 +2,6 @@ import { computed } from 'vue'
 import {
   BASE_PX_PER_SEC,
   FALLBACK_TRACK_WIDTH,
-  GRID_BEAT4_LINE_WIDTH,
   GRID_BEAT_LINE_WIDTH,
   LANE_COUNT,
   MIXTAPE_BASE_TRACK_LANE_HEIGHT,
@@ -68,7 +67,7 @@ type WaveformCacheEntry = {
   used: number
 }
 
-type TimelineGridLineLevel = 'bar' | 'beat4' | 'beat'
+type TimelineGridLineLevel = 'downbeat' | 'beat'
 
 type TimelineGridLineStyle = {
   haloColor: string
@@ -307,7 +306,7 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
       Math.round(
         (Number.isFinite(Number(track.firstBeatMs)) ? Number(track.firstBeatMs) : 0) * 1000
       ),
-      Math.round(Number(track.barBeatOffset) || 0)
+      Math.round(Number(track.downbeatBeatOffset) || 0)
     ].join('|')
 
   const resolveTrackFirstBeatSeconds = (track: MixtapeTrack, targetBpm?: number) => {
@@ -547,7 +546,7 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
 
   const resolveGridLineStyle = (level: TimelineGridLineLevel): TimelineGridLineStyle => {
     const light = isLightTheme()
-    if (level === 'bar') {
+    if (level === 'downbeat') {
       return light
         ? {
             haloColor: 'rgba(255, 255, 255, 0.72)',
@@ -558,19 +557,6 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
             haloColor: 'rgba(0, 0, 0, 0.62)',
             coreColor: 'rgba(245, 247, 250, 0.84)',
             haloExtraWidth: 2.4
-          }
-    }
-    if (level === 'beat4') {
-      return light
-        ? {
-            haloColor: 'rgba(255, 255, 255, 0.5)',
-            coreColor: 'rgba(15, 23, 42, 0.42)',
-            haloExtraWidth: 1.6
-          }
-        : {
-            haloColor: 'rgba(0, 0, 0, 0.44)',
-            coreColor: 'rgba(226, 232, 240, 0.5)',
-            haloExtraWidth: 1.6
           }
     }
     return light
@@ -610,7 +596,7 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
     track: MixtapeTrack,
     trackStartSec: number,
     renderPxPerSec: number,
-    _barBeatOffset: number,
+    _downbeatBeatOffset: number,
     range: { start: number; end: number },
     barWidth: number
   ) => {
@@ -638,14 +624,8 @@ export const createTimelineHelpersModule = (ctx: TimelineHelpersContext) => {
         pxPerSec: safeRenderPxPerSec
       })
       if (rawX < startX - 64 || rawX > endX + 64) continue
-      const level: TimelineGridLineLevel =
-        line.level === 'bar' || line.level === 'beat4' ? line.level : 'beat'
-      const lineWidth =
-        level === 'bar'
-          ? barWidth
-          : level === 'beat4'
-            ? GRID_BEAT4_LINE_WIDTH
-            : GRID_BEAT_LINE_WIDTH
+      const level: TimelineGridLineLevel = line.level
+      const lineWidth = level === 'downbeat' ? barWidth : GRID_BEAT_LINE_WIDTH
       const x = rawX - startX - lineWidth / 2
       drawNeutralGridLine(context, x, lineWidth, height, level)
     }

@@ -1,6 +1,6 @@
 import type { HorizontalBrowseDeckKey } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import type { ISongInfo } from 'src/types/globals'
-import { resolveSongBeatGridBeatJumpSec } from '@shared/songBeatGridMap'
+import { resolveSongBeatGridV2BeatJumpSec } from '@shared/songBeatGridMapV2'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -16,7 +16,7 @@ export const createHorizontalBrowseBeatJumpHandlers = (params: {
 }) => {
   const jumpDeckByBeatCount = (deck: DeckKey, direction: -1 | 1, beatCount: number) => {
     const currentSec = params.resolveDeckCurrentSeconds(deck)
-    const dynamicTargetSec = resolveSongBeatGridBeatJumpSec(
+    const dynamicTargetSec = resolveSongBeatGridV2BeatJumpSec(
       params.resolveDeckSong(deck)?.beatGridMap,
       params.resolveDeckDurationSeconds(deck),
       currentSec,

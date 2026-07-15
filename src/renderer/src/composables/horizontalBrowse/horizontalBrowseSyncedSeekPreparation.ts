@@ -1,4 +1,8 @@
 import type { ISongInfo } from 'src/types/globals'
+import {
+  normalizeSongBeatGridMapV2,
+  projectSongBeatGridMapV2ToFixedGrid
+} from '@shared/songBeatGridMapV2'
 import type {
   HorizontalBrowseDeckKey,
   HorizontalBrowseTransportDeckSnapshot
@@ -29,14 +33,17 @@ export const createHorizontalBrowseSyncedSeekPreparation = (
   const buildDeckBeatDiagnostics = (deck: DeckKey) => {
     const snapshot = params.resolveTransportDeckSnapshot(deck)
     const song = params.resolveDeckSong(deck)
-    const bpm = Number(params.resolveDeckGridBpm(deck)) || 0
-    const firstBeatSec = Math.max(0, Number(song?.firstBeatMs) || 0) / 1000
+    const beatGridProjection = projectSongBeatGridMapV2ToFixedGrid(
+      normalizeSongBeatGridMapV2(song?.beatGridMap, { allowSingleClip: true })
+    )
+    const bpm = beatGridProjection ? Number(params.resolveDeckGridBpm(deck)) || 0 : 0
+    const firstBeatSec = Math.max(0, Number(beatGridProjection?.firstBeatMs) || 0) / 1000
     const beatSec = bpm > 0 ? 60 / bpm : 0
     const currentSec = Math.max(0, Number(snapshot.currentSec) || 0)
     const renderCurrentSec = Math.max(0, Number(snapshot.renderCurrentSec) || 0)
     const beatDistance = beatSec > 0 ? (currentSec - firstBeatSec) / beatSec : 0
     const renderBeatDistance = beatSec > 0 ? (renderCurrentSec - firstBeatSec) / beatSec : 0
-    const barBeatOffset = Number(song?.barBeatOffset) || 0
+    const downbeatBeatOffset = beatGridProjection?.downbeatBeatOffset ?? 0
     return {
       bpm,
       firstBeatSec,
@@ -47,8 +54,8 @@ export const createHorizontalBrowseSyncedSeekPreparation = (
       renderBeatDistance,
       beatPhase: normalizePhase(beatDistance, 1),
       renderBeatPhase: normalizePhase(renderBeatDistance, 1),
-      barBeatOffset,
-      barPhase: normalizePhase(beatDistance - barBeatOffset, 32)
+      downbeatBeatOffset,
+      downbeatPhase: normalizePhase(beatDistance - downbeatBeatOffset, 4)
     }
   }
 

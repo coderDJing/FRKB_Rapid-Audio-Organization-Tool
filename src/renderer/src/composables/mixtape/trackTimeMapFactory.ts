@@ -44,7 +44,7 @@ const buildSerializedTrackTimeMapCacheKey = (snapshot: SerializedTrackTempoSnaps
     Math.round((Number(snapshot.sourceDurationSec) || 0) * 1000),
     Math.round((Number(snapshot.firstBeatSourceSec) || 0) * 1000),
     Math.round((Number(snapshot.beatSourceSec) || 0) * 1000),
-    Math.round((Number(snapshot.barBeatOffset) || 0) * 1000),
+    Math.round((Number(snapshot.downbeatBeatOffset) || 0) * 1000),
     Math.round((Number(snapshot.masterGridPhaseOffsetSec) || 0) * 1000)
   ].join('|')
 
@@ -191,7 +191,7 @@ const createLegacyTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
   const inputFirstBeatSourceSec = Number(input.firstBeatSourceSec)
   const firstBeatSourceSec = Number.isFinite(inputFirstBeatSourceSec) ? inputFirstBeatSourceSec : 0
   const beatSourceSec = Math.max(0, Number(input.beatSourceSec) || 0)
-  const barBeatOffset = Number(input.barBeatOffset) || 0
+  const downbeatBeatOffset = Number(input.downbeatBeatOffset) || 0
   const renderPoints = resolveTrackBpmEnvelopeRenderablePoints({
     points: input.controlPoints,
     durationSec,
@@ -277,7 +277,7 @@ const createLegacyTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
           sourceDurationSec,
           firstBeatSourceSec,
           beatSourceSec,
-          barBeatOffset,
+          downbeatBeatOffset,
           zoom,
           originalBpm: input.originalBpm,
           fallbackBpm: input.fallbackBpm
@@ -291,7 +291,7 @@ const createLegacyTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap => {
     sourceDurationSec,
     firstBeatSourceSec,
     beatSourceSec,
-    barBeatOffset,
+    downbeatBeatOffset,
     mapLocalToSource,
     mapSourceToLocal,
     sampleBpmAtLocal: (localSec: number) =>
@@ -311,7 +311,7 @@ const createMasterGridTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap =>
   const inputFirstBeatSourceSec = Number(input.firstBeatSourceSec)
   const firstBeatSourceSec = Number.isFinite(inputFirstBeatSourceSec) ? inputFirstBeatSourceSec : 0
   const beatSourceSec = Math.max(BPM_POINT_SEC_EPSILON, Number(input.beatSourceSec) || 0)
-  const barBeatOffset = Number(input.barBeatOffset) || 0
+  const downbeatBeatOffset = Number(input.downbeatBeatOffset) || 0
   const trackStartSec = Math.max(0, Number(input.trackStartSec) || 0)
   const masterGrid = createMixtapeMasterGrid({
     points: input.masterGridPoints || [],
@@ -388,7 +388,7 @@ const createMasterGridTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap =>
       sourceDurationSec,
       firstBeatSourceSec,
       beatSourceSec,
-      barBeatOffset,
+      downbeatBeatOffset,
       zoom
     })
   const gridResolvers = createGridResolvers({ durationSec, buildLines })
@@ -400,7 +400,7 @@ const createMasterGridTrackTimeMap = (input: TrackTimeMapInput): TrackTimeMap =>
     sourceDurationSec,
     firstBeatSourceSec,
     beatSourceSec,
-    barBeatOffset,
+    downbeatBeatOffset,
     mapLocalToSource,
     mapSourceToLocal,
     sampleBpmAtLocal: (localSec: number) =>
@@ -447,7 +447,7 @@ export const createTrackTimeMapFromSnapshotPayload = (
     fallbackBpm: Number(snapshot.baseBpm) || 128,
     firstBeatSourceSec: Number(snapshot.firstBeatSourceSec) || 0,
     beatSourceSec: Number(snapshot.beatSourceSec) || 0,
-    barBeatOffset: Number(snapshot.barBeatOffset) || 0,
+    downbeatBeatOffset: Number(snapshot.downbeatBeatOffset) || 0,
     sourceBeatGridMap: snapshot.sourceBeatGridMap,
     loopSegments: Array.isArray(snapshot.loopSegments)
       ? snapshot.loopSegments.map((segment) => ({

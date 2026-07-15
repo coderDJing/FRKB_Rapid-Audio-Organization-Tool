@@ -15,7 +15,7 @@ type BeatThisAnalyzeResult = {
   bpm: number
   firstBeatMs: number
   rawBpm?: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
   beatCount: number
   downbeatCount: number
   durationSec: number
@@ -37,6 +37,12 @@ type BeatThisAnalyzeResult = {
   windowIndex?: number
 }
 
+type BeatThisBridgeAnalyzeResult = Omit<BeatThisAnalyzeResult, 'downbeatBeatOffset'> & {
+  downbeatBeatOffset?: number
+  // 仅兼容尚未随应用更新的 bundled Python bridge；不会再向业务结果透传。
+  barBeatOffset?: number
+}
+
 type BeatThisBridgeMessage =
   | {
       type: 'ready'
@@ -44,7 +50,7 @@ type BeatThisBridgeMessage =
   | {
       type: 'result'
       requestId: string
-      result: BeatThisAnalyzeResult
+      result: BeatThisBridgeAnalyzeResult
     }
   | {
       type: 'error' | 'fatal'
@@ -116,11 +122,13 @@ const resolveBridgeScriptPath = () => {
   return localBridge
 }
 
-const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeResult | null => {
+export const normalizeBeatThisAnalyzeResult = (
+  input: BeatThisBridgeAnalyzeResult
+): BeatThisAnalyzeResult | null => {
   const bpm = Number(input?.bpm)
   const rawBpm = Number(input?.rawBpm)
   const firstBeatMs = Number(input?.firstBeatMs)
-  const rawBarBeatOffset = Number(input?.barBeatOffset)
+  const rawDownbeatBeatOffset = Number(input?.downbeatBeatOffset ?? input?.barBeatOffset)
   const beatCount = Math.max(0, Math.floor(Number(input?.beatCount) || 0))
   const downbeatCount = Math.max(0, Math.floor(Number(input?.downbeatCount) || 0))
   const durationSec = Math.max(0, Number(input?.durationSec) || 0)
@@ -144,13 +152,14 @@ const normalizeBeatThisResult = (input: BeatThisAnalyzeResult): BeatThisAnalyzeR
   if (!Number.isFinite(bpm) || bpm <= 0) return null
   if (!Number.isFinite(firstBeatMs)) return null
 
+  const downbeatBeatOffset = Number.isFinite(rawDownbeatBeatOffset)
+    ? ((Math.round(rawDownbeatBeatOffset) % 4) + 4) % 4
+    : 0
   return {
     bpm: Number(bpm.toFixed(6)),
     rawBpm: Number.isFinite(rawBpm) && rawBpm > 0 ? Number(rawBpm.toFixed(6)) : undefined,
     firstBeatMs: Number(firstBeatMs.toFixed(3)),
-    barBeatOffset: Number.isFinite(rawBarBeatOffset)
-      ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
-      : 0,
+    downbeatBeatOffset,
     beatCount,
     downbeatCount,
     durationSec: Number(durationSec.toFixed(3)),
@@ -253,7 +262,7 @@ const handleBridgeMessage = (message: BeatThisBridgeMessage) => {
   bridgePendingRequests.delete(requestId)
 
   if (message.type === 'result') {
-    const normalized = normalizeBeatThisResult(message.result)
+    const normalized = normalizeBeatThisAnalyzeResult(message.result)
     if (!normalized) {
       pending.reject(new Error('Beat This! returned invalid beat grid result'))
       return

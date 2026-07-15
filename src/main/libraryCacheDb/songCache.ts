@@ -3,6 +3,7 @@ import fs = require('fs-extra')
 import { getLibraryDb, isSqliteRow } from '../libraryDb'
 import { log } from '../log'
 import type { ISongInfo } from '../../types/globals'
+import { normalizeSongBeatGridMapV2 } from '../../shared/songBeatGridMapV2'
 import type { SongCacheEntry } from './types'
 import {
   toNumber,
@@ -54,6 +55,24 @@ function hasBpmValue(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
 
+export function normalizeSongCacheInfoForStorage(
+  info: ISongInfo,
+  absoluteFilePath: string
+): ISongInfo {
+  const next = { ...info, filePath: absoluteFilePath }
+  const beatGridMap = normalizeSongBeatGridMapV2(next.beatGridMap, { allowSingleClip: true })
+  if (beatGridMap) {
+    delete next.bpm
+    delete next.firstBeatMs
+    delete next.downbeatBeatOffset
+    delete (next as Record<string, unknown>).barBeatOffset
+    delete next.beatGridSource
+    delete next.beatGridStatus
+    next.beatGridMap = beatGridMap
+  }
+  return next
+}
+
 function mergeInfoJson(
   baseRaw: unknown,
   incomingRaw: unknown,
@@ -91,11 +110,11 @@ function mergeInfoJson(
   if (next.analysisOnly === undefined && base?.analysisOnly !== undefined) {
     next.analysisOnly = base?.analysisOnly
   }
-  next.filePath = absFilePath
   stripBeatThisDebugInfo(next)
+  const normalized = normalizeSongCacheInfoForStorage(next as ISongInfo, absFilePath)
   const changed =
     beforeKey !== next.key || beforeBpm !== next.bpm || beforeAnalysisOnly !== next.analysisOnly
-  return { json: JSON.stringify(next), changed }
+  return { json: JSON.stringify(normalized), changed }
 }
 
 function toLooseCompareExpr(column: string): string {
@@ -724,7 +743,8 @@ export function stripSongCoreAnalysisFields(info: ISongInfo): ISongInfo {
   delete next.keyAnalysisAlgorithmVersion
   delete next.bpm
   delete next.firstBeatMs
-  delete next.barBeatOffset
+  delete next.downbeatBeatOffset
+  delete (next as Record<string, unknown>).barBeatOffset
   delete next.beatGridSource
   delete next.beatGridStatus
   delete next.beatGridMap
@@ -777,7 +797,10 @@ export async function replaceSongCache(
         const resolvedFile = resolveFilePathInput(listRootAbs, filePath)
         if (!resolvedFile) continue
         const absFilePath = resolveAbsoluteFilePath(listRootKey, resolvedFile.key)
-        const infoJson = normalizeInfoJsonFilePath(JSON.stringify(entry.info), absFilePath)
+        const infoJson = normalizeInfoJsonFilePath(
+          JSON.stringify(normalizeSongCacheInfoForStorage(entry.info, absFilePath)),
+          absFilePath
+        )
         insert.run(listRootKey, resolvedFile.key, entry.size, entry.mtimeMs, infoJson)
       }
     })
@@ -832,7 +855,10 @@ export async function upsertSongCacheEntry(
         remove.run(listRootKey, resolvedFile.keyRaw)
       }
       const absFilePath = resolveAbsoluteFilePath(listRootKey, fileKey)
-      const infoJson = normalizeInfoJsonFilePath(JSON.stringify(entry.info), absFilePath)
+      const infoJson = normalizeInfoJsonFilePath(
+        JSON.stringify(normalizeSongCacheInfoForStorage(entry.info, absFilePath)),
+        absFilePath
+      )
       insert.run(listRootKey, fileKey, entry.size, entry.mtimeMs, infoJson)
     })
     run()

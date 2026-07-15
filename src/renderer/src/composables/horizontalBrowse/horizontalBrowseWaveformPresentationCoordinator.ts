@@ -39,7 +39,7 @@ export type HorizontalBrowseWaveformPresentationState = {
   gridTimeBasis: {
     bpm: number
     firstBeatMs: number
-    barBeatOffset: number
+    downbeatBeatOffset: number
     timeBasisOffsetMs: number
   } | null
   playbackClock: {
@@ -112,7 +112,7 @@ const normalizeGridTimeBasis = (
   return {
     bpm: Number(value.bpm) || 0,
     firstBeatMs: Number(value.firstBeatMs) || 0,
-    barBeatOffset: Number(value.barBeatOffset) || 0,
+    downbeatBeatOffset: Number(value.downbeatBeatOffset) || 0,
     timeBasisOffsetMs: Number(value.timeBasisOffsetMs) || 0
   }
 }

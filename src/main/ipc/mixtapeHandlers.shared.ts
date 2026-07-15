@@ -31,6 +31,10 @@ import {
 import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
 import { resolveMissingMixtapeFilePath } from '../recycleBinService'
 import { getBeatThisRuntimeAvailabilitySnapshot } from '../workers/beatThisRuntime'
+import {
+  normalizeSongBeatGridMapV2,
+  projectSongBeatGridMapV2ToFixedGrid
+} from '../../shared/songBeatGridMapV2'
 
 const resolveKeyAnalysisWorkerPath = () => resolveMainWorkerPath(__dirname, 'keyAnalysisWorker.js')
 
@@ -39,7 +43,7 @@ type MixtapeBpmAnalyzeResult = {
     filePath: string
     bpm: number
     firstBeatMs: number
-    barBeatOffset?: number
+    downbeatBeatOffset?: number
     timeBasisOffsetMs?: number
     beatGridAlgorithmVersion?: number
   }>
@@ -67,7 +71,7 @@ type BpmWorkerPayload = {
     bpm?: unknown
     bpmError?: unknown
     firstBeatMs?: unknown
-    barBeatOffset?: unknown
+    downbeatBeatOffset?: unknown
   }
 }
 
@@ -151,7 +155,7 @@ const analyzeMixtapeBpmBatch = async (
     filePath: string
     bpm: number
     firstBeatMs: number
-    barBeatOffset?: number
+    downbeatBeatOffset?: number
     timeBasisOffsetMs?: number
     beatGridAlgorithmVersion?: number
   }> = []
@@ -305,15 +309,18 @@ const analyzeMixtapeBpmBatch = async (
               : 0
             const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(filePath)
             const firstBeatMs = resolveAudioFirstBeatTimelineMs(firstBeatAudioMs, timeBasisOffsetMs)
-            const rawBarBeatOffset = Number(payload?.result?.barBeatOffset)
-            const barBeatOffset = Number.isFinite(rawBarBeatOffset)
-              ? ((Math.round(rawBarBeatOffset) % 32) + 32) % 32
-              : undefined
+            const rawDownbeatBeatOffset = Number(payload?.result?.downbeatBeatOffset)
+            const downbeatBeatOffset =
+              Number.isInteger(rawDownbeatBeatOffset) &&
+              rawDownbeatBeatOffset >= 0 &&
+              rawDownbeatBeatOffset < 4
+                ? rawDownbeatBeatOffset
+                : undefined
             results.push({
               filePath,
               bpm: bpmValue,
               firstBeatMs,
-              barBeatOffset,
+              downbeatBeatOffset,
               timeBasisOffsetMs,
               beatGridAlgorithmVersion: CURRENT_BEAT_GRID_ALGORITHM_VERSION
             })
@@ -407,7 +414,7 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
         filePath: string
         bpm: number
         firstBeatMs: number
-        barBeatOffset?: number
+        downbeatBeatOffset?: number
         timeBasisOffsetMs?: number
         beatGridAlgorithmVersion?: number
       }
@@ -423,11 +430,16 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
       if (!isCompleteSharedSongGridDefinition(sharedGrid)) continue
       const normalizedPath = normalizePathForBatchKey(filePath)
       if (!normalizedPath) continue
+      const sharedMapV2 = normalizeSongBeatGridMapV2(sharedGrid.beatGridMap, {
+        allowSingleClip: true
+      })
+      const sharedProjection = projectSongBeatGridMapV2ToFixedGrid(sharedMapV2)
+      if (!sharedProjection) continue
       resultMap.set(normalizedPath, {
         filePath,
-        bpm: Number(sharedGrid.bpm!.toFixed(6)),
-        firstBeatMs: Number(sharedGrid.firstBeatMs!.toFixed(3)),
-        barBeatOffset: ((Math.round(sharedGrid.barBeatOffset!) % 32) + 32) % 32,
+        bpm: Number(sharedProjection.bpm.toFixed(6)),
+        firstBeatMs: Number(sharedProjection.firstBeatMs.toFixed(3)),
+        downbeatBeatOffset: sharedProjection.downbeatBeatOffset,
         timeBasisOffsetMs:
           typeof sharedGrid.timeBasisOffsetMs === 'number' &&
           Number.isFinite(sharedGrid.timeBasisOffsetMs)
@@ -458,9 +470,12 @@ export const analyzeMixtapeBpmBatchShared = async (filePaths: string[]) => {
           filePath: item.filePath,
           bpm: item.bpm,
           firstBeatMs: Number(item.firstBeatMs.toFixed(3)),
-          barBeatOffset:
-            typeof item.barBeatOffset === 'number' && Number.isFinite(item.barBeatOffset)
-              ? ((Math.round(item.barBeatOffset) % 32) + 32) % 32
+          downbeatBeatOffset:
+            typeof item.downbeatBeatOffset === 'number' &&
+            Number.isInteger(item.downbeatBeatOffset) &&
+            item.downbeatBeatOffset >= 0 &&
+            item.downbeatBeatOffset < 4
+              ? item.downbeatBeatOffset
               : undefined,
           timeBasisOffsetMs:
             typeof item.timeBasisOffsetMs === 'number' && Number.isFinite(item.timeBasisOffsetMs)

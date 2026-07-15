@@ -6,9 +6,9 @@ import type {
 import type { Ref } from 'vue'
 import { resolveSongCueTimelineDefinition } from '@shared/songCueTimeBasis'
 import {
-  resolveNearestSongBeatGridLine,
-  resolveSongBeatGridSecAtBeatOrdinal
-} from '@shared/songBeatGridMap'
+  resolveNearestUnifiedSongBeatGridLine,
+  resolveUnifiedSongBeatGridSecAtBeatOrdinal
+} from '@shared/songBeatGridRuntime'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -120,9 +120,13 @@ export const useHorizontalBrowseDeckLoopController = (
   ): { startSec: number; endSec: number } | null => {
     const song = params.resolveDeckSong(deck)
     const durationSec = params.resolveDeckDurationSeconds(deck)
-    const startLine = resolveNearestSongBeatGridLine(song?.beatGridMap, durationSec, anchorSec)
+    const startLine = resolveNearestUnifiedSongBeatGridLine(
+      song?.beatGridMap,
+      durationSec,
+      anchorSec
+    )
     if (!startLine) return null
-    const endSec = resolveSongBeatGridSecAtBeatOrdinal(
+    const endSec = resolveUnifiedSongBeatGridSecAtBeatOrdinal(
       song?.beatGridMap,
       durationSec,
       startLine.beatOrdinal + beatValue
@@ -155,7 +159,11 @@ export const useHorizontalBrowseDeckLoopController = (
   const resolveDeckLoopDisabled = (deck: DeckKey) => {
     const song = params.resolveDeckSong(deck)
     if (
-      resolveNearestSongBeatGridLine(song?.beatGridMap, params.resolveDeckDurationSeconds(deck), 0)
+      resolveNearestUnifiedSongBeatGridLine(
+        song?.beatGridMap,
+        params.resolveDeckDurationSeconds(deck),
+        0
+      )
     ) {
       return false
     }

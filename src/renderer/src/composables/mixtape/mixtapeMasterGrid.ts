@@ -1,4 +1,7 @@
-import { GRID_BEAT4_LINE_ZOOM, GRID_BEAT_LINE_ZOOM } from '@renderer/composables/mixtape/constants'
+import {
+  GRID_BEAT_LINE_ZOOM,
+  GRID_DOWNBEAT_LINE_ZOOM
+} from '@renderer/composables/mixtape/constants'
 import { normalizeBeatOffset } from '@renderer/composables/mixtape/beatSyncModel'
 import {
   BPM_MIN_VALUE,
@@ -28,7 +31,7 @@ type MixtapeMasterGridIntegralCache = {
 type MixtapeMasterGridLine = {
   sec: number
   beat: number
-  level: 'bar' | 'beat4' | 'beat'
+  level: 'downbeat' | 'beat'
 }
 
 type MixtapeMasterGridRange = {
@@ -186,8 +189,7 @@ const resolveMixtapeMasterGridSecByRawBeats = (
 }
 
 const resolveMasterGridVisibility = (zoom: number) => ({
-  showBar: true,
-  showBeat4: zoom >= GRID_BEAT4_LINE_ZOOM,
+  showDownbeat: zoom >= GRID_DOWNBEAT_LINE_ZOOM,
   showBeat: zoom >= GRID_BEAT_LINE_ZOOM
 })
 
@@ -241,12 +243,10 @@ export const createMixtapeMasterGrid = (params: {
     const maxBeat = Math.floor(mapSecToBeats(maxSec) + BPM_POINT_SEC_EPSILON)
     const lines: MixtapeMasterGridLine[] = []
     for (let beat = minBeat; beat <= maxBeat; beat += 1) {
-      const mod32 = ((beat % 32) + 32) % 32
       const mod4 = ((beat % 4) + 4) % 4
-      const level: MixtapeMasterGridLine['level'] =
-        mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
+      const level: MixtapeMasterGridLine['level'] = mod4 === 0 ? 'downbeat' : 'beat'
+      if (level === 'downbeat' && !visibility.showDownbeat) continue
       if (level === 'beat' && !visibility.showBeat) continue
-      if (level === 'beat4' && !visibility.showBeat4) continue
       const sec = mapBeatsToSec(beat)
       if (sec < minSec - BPM_POINT_SEC_EPSILON || sec > maxSec + BPM_POINT_SEC_EPSILON) continue
       lines.push({
@@ -370,7 +370,7 @@ export const buildTrackVisibleGridLinesOnMasterGrid = (params: {
   sourceDurationSec: number
   firstBeatSourceSec: number
   beatSourceSec: number
-  barBeatOffset?: number
+  downbeatBeatOffset?: number
   zoom?: number
 }): TrackVisibleGridLine[] => {
   const durationSec = Math.max(0, Number(params.durationSec) || 0)
@@ -388,7 +388,7 @@ export const buildTrackVisibleGridLinesOnMasterGrid = (params: {
     return []
   }
   const visibility = resolveMasterGridVisibility(Number(params.zoom) || 0)
-  const normalizedBarOffset = normalizeBeatOffset(params.barBeatOffset, 32)
+  const normalizedDownbeatOffset = normalizeBeatOffset(params.downbeatBeatOffset, 4)
   const minBeatIndex = Math.ceil((0 - firstBeatSourceSec) / beatSourceSec)
   const maxBeatIndex = Math.floor((sourceDurationSec - firstBeatSourceSec) / beatSourceSec)
   if (minBeatIndex > maxBeatIndex) return []
@@ -401,12 +401,11 @@ export const buildTrackVisibleGridLinesOnMasterGrid = (params: {
     if (localSec < -BPM_POINT_SEC_EPSILON || localSec > durationSec + BPM_POINT_SEC_EPSILON) {
       continue
     }
-    const shiftedIndex = beatIndex - normalizedBarOffset
-    const mod32 = ((shiftedIndex % 32) + 32) % 32
+    const shiftedIndex = beatIndex - normalizedDownbeatOffset
     const mod4 = ((shiftedIndex % 4) + 4) % 4
-    const level: TrackVisibleGridLine['level'] = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
+    const level: TrackVisibleGridLine['level'] = mod4 === 0 ? 'downbeat' : 'beat'
+    if (level === 'downbeat' && !visibility.showDownbeat) continue
     if (level === 'beat' && !visibility.showBeat) continue
-    if (level === 'beat4' && !visibility.showBeat4) continue
     lines.push({
       sec: roundTrackTempoSec(clampTrackTempoNumber(localSec, 0, durationSec)),
       sourceSec: roundTrackTempoSec(clampTrackTempoNumber(sourceSec, 0, sourceDurationSec)),

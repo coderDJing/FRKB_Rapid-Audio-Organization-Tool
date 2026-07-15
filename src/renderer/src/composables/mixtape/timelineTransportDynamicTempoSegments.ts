@@ -1,9 +1,9 @@
+import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 import {
-  createSongBeatGridRuntime,
-  type SongBeatGridMap,
-  type SongBeatGridRuntime,
-  type SongBeatGridRuntimeClip
-} from '@shared/songBeatGridMap'
+  createUnifiedSongBeatGridRuntime,
+  type UnifiedSongBeatGridRuntime,
+  type UnifiedSongBeatGridRuntimeClip
+} from '@shared/songBeatGridRuntime'
 import {
   BPM_POINT_SEC_EPSILON,
   clampTrackTempoNumber,
@@ -31,9 +31,9 @@ const pushUniqueSec = (values: number[], value: number) => {
 }
 
 const resolveRuntimeClipAtSourceSec = (
-  runtime: SongBeatGridRuntime,
+  runtime: UnifiedSongBeatGridRuntime,
   sourceSecInput: number
-): SongBeatGridRuntimeClip | null => {
+): UnifiedSongBeatGridRuntimeClip | null => {
   const sourceSec = clampTrackTempoNumber(
     Number(sourceSecInput) || 0,
     0,
@@ -57,11 +57,11 @@ const resolveRuntimeClipAtSourceSec = (
 }
 
 const resolveClipAnchorSourceSec = (
-  runtime: SongBeatGridRuntime,
-  clip: SongBeatGridRuntimeClip
+  runtime: UnifiedSongBeatGridRuntime,
+  clip: UnifiedSongBeatGridRuntimeClip
 ) => {
   const preferredLine =
-    runtime.lines.find((line) => line.clipIndex === clip.index && line.level === 'bar') ||
+    runtime.lines.find((line) => line.clipIndex === clip.index && line.level === 'downbeat') ||
     runtime.lines.find((line) => line.clipIndex === clip.index) ||
     null
   if (preferredLine) return preferredLine.sec
@@ -80,14 +80,14 @@ const resolveDisplayLocalSec = (params: {
 }
 
 export const buildTransportDynamicTempoSegments = (params: {
-  sourceBeatGridMap?: SongBeatGridMap | null
+  sourceBeatGridMap?: SongBeatGridMapV2 | null
   sourceDurationSec: number
   trackStartSec: number
   playbackSequence: TransportPlaybackSequence
   mapSourceToBaseLocal: (sourceSec: number) => number
 }): TransportDynamicTempoSegment[] => {
   const sourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
-  const runtime = createSongBeatGridRuntime(params.sourceBeatGridMap, sourceDurationSec)
+  const runtime = createUnifiedSongBeatGridRuntime(params.sourceBeatGridMap, sourceDurationSec)
   if (!runtime || runtime.clips.length <= 1 || !params.playbackSequence.segments.length) {
     return []
   }

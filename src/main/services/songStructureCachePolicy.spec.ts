@@ -50,7 +50,7 @@ describe('songStructureCachePolicy', () => {
     expect(info.songStructure).toBeDefined()
   })
 
-  it('deletes a stale result after the grid changes', () => {
+  it('preserves a historical result after the grid changes', () => {
     const info = {
       ...GRID,
       firstBeatMs: GRID.firstBeatMs + 25,
@@ -62,7 +62,7 @@ describe('songStructureCachePolicy', () => {
 
     discardIncompatibleSongStructure(info)
 
-    expect(info.songStructure).toBeUndefined()
+    expect(info.songStructure).toBeDefined()
   })
 
   it('restores a usable stale result when the scanned target has none', () => {
@@ -83,7 +83,7 @@ describe('songStructureCachePolicy', () => {
     })
   })
 
-  it('prefers a current cached result over a usable stale target result', () => {
+  it('does not replace an existing historical target result', () => {
     const target = {
       ...GRID,
       songStructure: createStructure(
@@ -100,6 +100,6 @@ describe('songStructureCachePolicy', () => {
 
     preserveBestAvailableSongStructure(target, cached)
 
-    expect(target.songStructure.algorithmVersion).toBe(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION)
+    expect(target.songStructure.algorithmVersion).toBe(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1)
   })
 })

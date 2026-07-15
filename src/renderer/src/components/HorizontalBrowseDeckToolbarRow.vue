@@ -22,7 +22,7 @@ const props = defineProps<{
   showSplitAfterPlayhead?: boolean
   showDeleteBoundary?: boolean
   gridAdjustScope?: 'whole' | 'after'
-  barLinePicking: boolean
+  downbeatLinePicking: boolean
   loopBeatLabel: string
   loopActive: boolean
   loopDisabled: boolean
@@ -39,7 +39,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (event: 'set-bar-line'): void
+  (event: 'set-downbeat-line'): void
   (event: 'shift-left-large'): void
   (event: 'shift-left-small'): void
   (event: 'shift-right-small'): void
@@ -51,7 +51,7 @@ const emit = defineEmits<{
   (event: 'select-whole-adjustment'): void
   (event: 'split-after-playhead'): void
   (event: 'delete-boundary'): void
-  (event: 'toggle-bar-line-picking'): void
+  (event: 'toggle-downbeat-line-picking'): void
   (event: 'loop-step-down'): void
   (event: 'loop-step-up'): void
   (event: 'toggle-loop'): void
@@ -129,7 +129,7 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
         :show-delete-boundary="props.showDeleteBoundary"
         :grid-adjust-scope="props.gridAdjustScope"
         :show-large-shift-buttons="props.showLargeShiftButtons"
-        @set-bar-line="emit('set-bar-line')"
+        @set-downbeat-line="emit('set-downbeat-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"
         @shift-right-small="emit('shift-right-small')"
@@ -189,14 +189,14 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
         <button
           type="button"
           class="overview__set-bar-btn"
-          :class="{ 'is-active': props.barLinePicking }"
+          :class="{ 'is-active': props.downbeatLinePicking }"
           :disabled="props.disabled"
-          @click="emit('toggle-bar-line-picking')"
+          @click="emit('toggle-downbeat-line-picking')"
         >
           {{
-            props.barLinePicking
-              ? t('mixtape.gridAdjustSetBarLineCancel')
-              : t('mixtape.gridAdjustSetBarLine')
+            props.downbeatLinePicking
+              ? t('mixtape.gridAdjustSetDownbeatLineCancel')
+              : t('mixtape.gridAdjustSetDownbeatLine')
           }}
         </button>
       </div>

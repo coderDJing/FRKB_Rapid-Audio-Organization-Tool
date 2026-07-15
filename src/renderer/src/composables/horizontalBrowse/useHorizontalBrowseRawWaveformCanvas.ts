@@ -419,7 +419,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const allowScrollReuse = payload.allowScrollReuse && !playbackSyncChanged
     const renderBpm = Number(options.previewBpm.value) || 0
     const renderFirstBeatMs = Number(options.previewFirstBeatMs.value) || 0
-    const renderBarBeatOffset = Number(options.previewBarBeatOffset.value) || 0
+    const renderDownbeatBeatOffset = Number(options.previewDownbeatBeatOffset.value) || 0
     const renderBeatGridMap = cloneSongBeatGridMapForHorizontalBrowseWorker(
       options.beatGridMap?.() ?? options.song()?.beatGridMap ?? null
     )
@@ -452,7 +452,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       clockActive: sourcePlaybackActive,
       bpm: renderBpm,
       firstBeatMs: renderFirstBeatMs,
-      barBeatOffset: renderBarBeatOffset,
+      downbeatBeatOffset: renderDownbeatBeatOffset,
       currentSec: sourcePlaybackSeconds,
       playbackRate,
       phaseLocked: linkedGridPhaseLocked
@@ -608,7 +608,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       pixelRatio,
       bpm: renderBpm,
       firstBeatMs: renderFirstBeatMs,
-      barBeatOffset: visualGridPhase.barBeatOffset,
+      downbeatBeatOffset: visualGridPhase.downbeatBeatOffset,
       beatGridMap: renderBeatGridMap,
       beatGridEditMode: renderBeatGridEditMode,
       beatGridVisibleFromSec: renderBeatGridVisibleFromSec,

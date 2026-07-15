@@ -71,6 +71,25 @@ class SealedBatchTests(unittest.TestCase):
     def _write_playlist(self, rows: list[dict[str, object]]) -> None:
         self.playlist_json.write_text(json.dumps(rows, ensure_ascii=False), encoding="utf-8")
 
+    def _v2_truth_track(self, file_name: str, **extra: object) -> dict[str, object]:
+        return {
+            "fileName": file_name,
+            "beatGridMap": {
+                "version": 2,
+                "source": "manual",
+                "signature": "sbgm_test",
+                "clips": [
+                    {
+                        "startSec": 0,
+                        "anchorSec": 0,
+                        "bpm": 120.0,
+                        "downbeatBeatOffset": 0,
+                    }
+                ],
+            },
+            **extra,
+        }
+
     def _storage_args(self) -> list[str]:
         return [
             "--batches-root",
@@ -103,15 +122,11 @@ class SealedBatchTests(unittest.TestCase):
                 {
                     "source": {"type": "test"},
                     "tracks": [
-                        {
-                            "fileName": "old.wav",
-                            "title": "old",
-                            "artist": "tester",
-                            "bpm": 120.0,
-                            "firstBeatMs": 0.0,
-                            "firstBeatLabel": 1,
-                            "barBeatOffset": 0,
-                        }
+                        self._v2_truth_track(
+                            "old.wav",
+                            title="old",
+                            artist="tester",
+                        )
                     ],
                 }
             ),
@@ -146,7 +161,7 @@ class SealedBatchTests(unittest.TestCase):
         audio_root.mkdir()
         (audio_root / "old.wav").write_bytes(b"old-audio")
         truth = self.root / "consumed-truth.json"
-        truth.write_text(json.dumps({"tracks": [{"fileName": "old.wav"}]}), encoding="utf-8")
+        truth.write_text(json.dumps({"tracks": [self._v2_truth_track("old.wav")]}), encoding="utf-8")
         sealed.run(
             [
                 "import-consumed",
@@ -179,7 +194,7 @@ class SealedBatchTests(unittest.TestCase):
         audio_root.mkdir()
         (audio_root / "late.wav").write_bytes(b"late-consumed")
         truth = self.root / "late-consumed-truth.json"
-        truth.write_text(json.dumps({"tracks": [{"fileName": "late.wav"}]}), encoding="utf-8")
+        truth.write_text(json.dumps({"tracks": [self._v2_truth_track("late.wav")]}), encoding="utf-8")
 
         with self.assertRaisesRegex(SealedBatchError, "disabled after registry baseline"):
             sealed.run(
@@ -387,10 +402,10 @@ class SealedBatchTests(unittest.TestCase):
             json.dumps(
                 {
                     "tracks": [
-                        {
-                            "fileName": "duplicate.wav",
-                            "filePath": str(expected),
-                        }
+                        self._v2_truth_track(
+                            "duplicate.wav",
+                            filePath=str(expected),
+                        )
                     ]
                 }
             ),
@@ -415,10 +430,10 @@ class SealedBatchTests(unittest.TestCase):
             json.dumps(
                 {
                     "tracks": [
-                        {
-                            "fileName": "track.wav",
-                            "filePath": str(source),
-                        }
+                        self._v2_truth_track(
+                            "track.wav",
+                            filePath=str(source),
+                        )
                     ]
                 }
             ),
@@ -772,12 +787,19 @@ tracks = [{
     'fileName': row['fileName'],
     'title': row.get('title', ''),
     'artist': row.get('artist', ''),
-    'bpm': row.get('gridBpm', 120.0),
-    'firstBeatMs': row.get('gridFirstBeatMs', 0.0),
-    'firstBeatLabel': row.get('gridFirstBeatLabel', 1),
-    'barBeatOffset': row.get('gridBarBeatOffset', 0),
+    'beatGridMap': {
+        'version': 2,
+        'source': 'manual',
+        'signature': 'sbgm_test',
+        'clips': [{
+            'startSec': 0,
+            'anchorSec': round(float(row.get('gridFirstBeatMs', 0.0)) / 1000.0, 6),
+            'bpm': row.get('gridBpm', 120.0),
+            'downbeatBeatOffset': int(row.get('gridBarBeatOffset', 0)) % 4,
+        }],
+    },
 } for row in rows]
-Path(args.output).write_text(json.dumps({'source': {'playlistName': args.playlist}, 'tracks': tracks}), encoding='utf-8')
+Path(args.output).write_text(json.dumps({'type': 'frkb-grid-truth-v2', 'schemaVersion': 2, 'source': {'playlistName': args.playlist}, 'tracks': tracks}), encoding='utf-8')
 print(json.dumps({'playlistName': args.playlist, 'playlistId': 123, 'capturedTrackCount': len(tracks)}))
 """
 

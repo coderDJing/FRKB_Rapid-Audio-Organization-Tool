@@ -1,39 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { createSongBeatGridMapFromClips } from '../../../shared/songBeatGridMap'
-import { CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION } from '../../../shared/songStructure'
+import { createSongBeatGridMapV2FromFixedGrid } from '../../../shared/songBeatGridMapV2'
 import {
   collectMissingAnalysisFilesFromSongs,
   resolveMissingAnalysisReasons
 } from './manualKeyAnalysisCompleteness'
 
-const FIXED_GRID = { bpm: 128, firstBeatMs: 125, barBeatOffset: 0 }
-
-const createStructure = (algorithmVersion: number) => ({
-  formatVersion: 1,
-  algorithmVersion,
-  source: 'algorithmic',
-  durationSec: 60,
-  ...FIXED_GRID,
-  phraseBars: 8,
-  sections: [
-    {
-      startSec: 0,
-      endSec: 60,
-      startBar: 1,
-      endBar: 32,
-      phraseIndex: 0,
-      kind: 'groove',
-      confidence: 0.6,
-      energy: 0.6,
-      low: 0.6,
-      high: 0.4,
-      novelty: 0.2
-    }
-  ]
+const FIXED_GRID_V2 = createSongBeatGridMapV2FromFixedGrid({
+  bpm: 128,
+  firstBeatMs: 125,
+  downbeatBeatOffset: 0,
+  source: 'analysis'
 })
 
 describe('manual key analysis completeness', () => {
-  it('does not treat compatible old algorithm results as missing', () => {
+  it('does not treat a missing frozen segment result as pending analysis', () => {
     const filePath = 'D:\\music\\stale-techno.wav'
     expect(
       resolveMissingAnalysisReasons(
@@ -44,8 +24,7 @@ describe('manual key analysis completeness', () => {
           energyScore: 72,
           energyAlgorithmVersion: 1,
           beatGridAlgorithmVersion: 1,
-          ...FIXED_GRID,
-          songStructure: createStructure(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1)
+          beatGridMap: FIXED_GRID_V2 ?? undefined
         },
         true,
         { includeSongStructure: true, missingWaveformFilePaths: [] }
@@ -55,7 +34,12 @@ describe('manual key analysis completeness', () => {
 
   it('reports waveform as the fifth independently missing result', () => {
     const filePath = 'D:\\music\\missing-waveform.wav'
-    const song = { filePath, key: '8A', energyScore: 72, ...FIXED_GRID }
+    const song = {
+      filePath,
+      key: '8A',
+      energyScore: 72,
+      beatGridMap: FIXED_GRID_V2 ?? undefined
+    }
     expect(
       resolveMissingAnalysisReasons(song, true, {
         missingWaveformFilePaths: [filePath]
@@ -68,11 +52,13 @@ describe('manual key analysis completeness', () => {
     ).toEqual([filePath])
   })
 
-  it('accepts a dynamic manual grid without an analysis algorithm version', () => {
-    const beatGridMap = createSongBeatGridMapFromClips([
-      { startSec: 0, anchorSec: 0.125, bpm: 128, barBeatOffset: 0 },
-      { startSec: 32, anchorSec: 32.25, bpm: 130, barBeatOffset: 0 }
-    ])
+  it('accepts a canonical v2 manual grid without an analysis algorithm version', () => {
+    const beatGridMap = createSongBeatGridMapV2FromFixedGrid({
+      bpm: 128,
+      firstBeatMs: 125,
+      downbeatBeatOffset: 0,
+      source: 'manual'
+    })
     expect(beatGridMap).not.toBeNull()
     expect(
       resolveMissingAnalysisReasons(
@@ -113,6 +99,6 @@ describe('manual key analysis completeness', () => {
         false,
         { includeSongStructure: true }
       )
-    ).toEqual(['missing-bpm', 'missing-first-beat', 'missing-bar-beat-offset'])
+    ).toEqual(['missing-bpm', 'missing-first-beat', 'missing-downbeat-beat-offset'])
   })
 })

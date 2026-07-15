@@ -2,24 +2,22 @@ import argparse
 import importlib.util
 import json
 import math
-import statistics
 import subprocess
 from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_MANUAL_TRUTH = REPO_ROOT / "grid-analysis-lab" / "manual-truth" / "truth-sample.json"
+DEFAULT_MANUAL_TRUTH = REPO_ROOT / "grid-analysis-lab" / "manual-truth" / "truth-sample.v2.json"
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
-DEFAULT_OUTPUT = REPO_ROOT / "grid-analysis-lab" / "manual-truth" / "benchmark-latest.json"
+DEFAULT_OUTPUT = REPO_ROOT / "grid-analysis-lab" / "manual-truth" / "benchmark-latest.v2.json"
 BEAT_THIS_BRIDGE = REPO_ROOT / "scripts" / "beat_this_bridge.py"
 SAMPLE_RATE = 44100
 CHANNELS = 2
 WINDOW_SEC = 30.0
 MAX_SCAN_SEC = 120.0
-WINDOW_MIN_DURATION_SEC = 8.0
-QUALITY_EARLY_STOP_THRESHOLD = 0.72
-QUALITY_MIN_BEAT_COUNT = 32
 DRIFT_BEAT_HORIZONS = (32, 64, 128)
+SIGNATURE_HASH_OFFSET = 2166136261
+SIGNATURE_HASH_PRIME = 16777619
 
 
 def _load_bridge_module():
@@ -39,28 +37,67 @@ def _to_float(value: Any) -> float | None:
     return numeric if math.isfinite(numeric) else None
 
 
+def _calculate_map_signature(clip: dict[str, Any]) -> str:
+    payload = "v2:{startSec:.6f},{anchorSec:.6f},{bpm:.6f},{downbeatBeatOffset}".format(**clip)
+    value = SIGNATURE_HASH_OFFSET
+    for character in payload:
+        value ^= ord(character)
+        value = (value * SIGNATURE_HASH_PRIME) & 0xFFFFFFFF
+    return f"sbgm_{value:08x}"
+
+
+def _read_fixed_truth_map(track: dict[str, Any]) -> dict[str, Any] | None:
+    beat_grid_map = track.get("beatGridMap")
+    if not isinstance(beat_grid_map, dict):
+        return None
+    if beat_grid_map.get("version") != 2 or beat_grid_map.get("source") not in {"manual", "analysis"}:
+        return None
+    clips = beat_grid_map.get("clips")
+    if not isinstance(clips, list) or len(clips) != 1 or not isinstance(clips[0], dict):
+        return None
+    clip = clips[0]
+    start_sec = _to_float(clip.get("startSec"))
+    anchor_sec = _to_float(clip.get("anchorSec"))
+    bpm = _to_float(clip.get("bpm"))
+    downbeat_beat_offset = clip.get("downbeatBeatOffset")
+    if (
+        start_sec is None
+        or abs(start_sec) > 0.000001
+        or anchor_sec is None
+        or anchor_sec < 0
+        or bpm is None
+        or bpm <= 0
+    ):
+        return None
+    if not isinstance(downbeat_beat_offset, int) or not 0 <= downbeat_beat_offset < 4:
+        return None
+    normalized_clip = {
+        "startSec": 0,
+        "anchorSec": round(anchor_sec, 6),
+        "bpm": round(bpm, 6),
+        "downbeatBeatOffset": downbeat_beat_offset,
+    }
+    signature = str(beat_grid_map.get("signature") or "").strip()
+    if signature != _calculate_map_signature(normalized_clip):
+        return None
+    return {
+        "version": 2,
+        "source": beat_grid_map["source"],
+        "clips": [normalized_clip],
+        "signature": signature,
+    }
+
+
 def _derive_manual_ground_truth(track: dict[str, Any]) -> dict[str, Any] | None:
     file_name = str(track.get("fileName") or "").strip().lower()
     file_path = str(track.get("filePath") or "").strip()
-    bpm = _to_float(track.get("bpm"))
-    first_beat_ms = _to_float(track.get("firstBeatMs"))
-    bar_beat_offset = track.get("barBeatOffset")
-    if not file_name or not file_path or bpm is None or bpm <= 0 or first_beat_ms is None or first_beat_ms < 0:
+    beat_grid_map = _read_fixed_truth_map(track)
+    if not file_name or not file_path or not beat_grid_map:
         return None
-    try:
-        normalized_offset = int(bar_beat_offset) % 4
-    except Exception:
-        normalized_offset = 0
-    first_label = _resolve_first_beat_label_from_offset(normalized_offset)
+    clip = beat_grid_map["clips"][0]
+    bpm = float(clip["bpm"])
+    first_beat_ms = float(clip["anchorSec"]) * 1000.0
     beat_interval_sec = 60.0 / bpm
-    synthetic_grid = [
-        {
-            "beat": ((first_label - 1 + index) % 4) + 1,
-            "bpm": bpm,
-            "timeSec": (first_beat_ms / 1000.0) + index * beat_interval_sec,
-        }
-        for index in range(128)
-    ]
     return {
         "trackTitle": str(track.get("title") or "").strip(),
         "artist": str(track.get("artist") or "").strip(),
@@ -68,18 +105,12 @@ def _derive_manual_ground_truth(track: dict[str, Any]) -> dict[str, Any] | None:
         "filePath": file_path,
         "bpm": round(float(bpm), 6),
         "firstBeatMs": round(float(first_beat_ms), 3),
-        "firstBeatLabel": first_label,
-        "barBeatOffset": normalized_offset,
-        "grid": synthetic_grid,
-        "dynamic": False,
-        "uniqueBpms": [round(float(bpm), 6)],
-        "truthSource": str(track.get("source") or "manual"),
+        "downbeatBeatOffset": int(clip["downbeatBeatOffset"]),
+        "referenceBeatTimesSec": [
+            round(float(clip["anchorSec"]) + index * beat_interval_sec, 6) for index in range(128)
+        ],
+        "beatGridMap": beat_grid_map,
     }
-
-
-def _resolve_first_beat_label_from_offset(bar_beat_offset: int) -> int:
-    normalized = int(bar_beat_offset) % 4
-    return ((5 - normalized - 1) % 4) + 1
 
 
 def _phase_delta_ms(candidate_ms: float, reference_ms: float, interval_ms: float) -> float:
@@ -91,52 +122,6 @@ def _phase_delta_ms(candidate_ms: float, reference_ms: float, interval_ms: float
     return delta
 
 
-def _apply_manual_truth(
-    ground_truth: dict[str, Any],
-    manual_truth_map: dict[str, dict[str, Any]],
-) -> dict[str, Any]:
-    if not ground_truth:
-        return ground_truth
-    manual = manual_truth_map.get(str(ground_truth.get("fileName") or "").lower())
-    if not manual:
-        return ground_truth
-
-    bpm = _to_float(manual.get("bpm"))
-    if bpm is None or bpm <= 0:
-        bpm = float(ground_truth["bpm"])
-    first_beat_ms = _to_float(manual.get("firstBeatMs"))
-    if first_beat_ms is None or first_beat_ms < 0:
-        first_beat_ms = float(ground_truth["firstBeatMs"])
-    manual_bar_beat_offset = manual.get("barBeatOffset")
-    if manual_bar_beat_offset is None:
-        manual_bar_beat_offset = ground_truth["barBeatOffset"]
-    manual_bar_beat_offset = int(manual_bar_beat_offset)
-    first_label = _resolve_first_beat_label_from_offset(manual_bar_beat_offset)
-
-    beat_interval_sec = 60.0 / bpm
-    manual_grid = []
-    original_grid = ground_truth.get("grid") or []
-    for index, row in enumerate(original_grid):
-        beat_label = int(row.get("beat") or ((first_label - 1 + index) % 4) + 1)
-        time_sec = (first_beat_ms / 1000.0) + index * beat_interval_sec
-        manual_grid.append({"beat": beat_label, "bpm": bpm, "timeSec": time_sec})
-
-    if not manual_grid:
-        manual_grid = list(original_grid)
-
-    patched = dict(ground_truth)
-    patched.update(
-        {
-            "bpm": round(float(bpm), 6),
-            "firstBeatMs": round(float(first_beat_ms), 3),
-            "firstBeatLabel": first_label,
-            "barBeatOffset": manual_bar_beat_offset,
-            "grid": manual_grid,
-            "dynamic": False,
-            "uniqueBpms": [round(float(bpm), 6)],
-            "truthSource": str(manual.get("source") or "manual"),
-        }
-    )
 def _decode_pcm_window(ffmpeg_path: Path, file_path: str, duration_sec: float) -> bytes:
     cmd = [
         str(ffmpeg_path),
@@ -167,16 +152,24 @@ def _normalize_result(result: dict[str, Any] | None) -> dict[str, Any] | None:
         return None
     bpm = _to_float(result.get("bpm"))
     first_beat_ms = _to_float(result.get("firstBeatMs"))
+    downbeat_beat_offset = result.get("downbeatBeatOffset")
     beat_count = int(result.get("beatCount") or 0)
     downbeat_count = int(result.get("downbeatCount") or 0)
     quality_score = _to_float(result.get("qualityScore")) or 0.0
-    if bpm is None or bpm <= 0 or first_beat_ms is None or first_beat_ms < 0:
+    if (
+        bpm is None
+        or bpm <= 0
+        or first_beat_ms is None
+        or first_beat_ms < 0
+        or not isinstance(downbeat_beat_offset, int)
+        or not 0 <= downbeat_beat_offset < 4
+    ):
         return None
     return {
         "bpm": round(bpm, 6),
         "firstBeatMs": round(first_beat_ms, 3),
         "rawFirstBeatMs": round(_to_float(result.get("rawFirstBeatMs")) or first_beat_ms, 3),
-        "barBeatOffset": int(result.get("barBeatOffset") or 0),
+        "downbeatBeatOffset": downbeat_beat_offset,
         "beatCount": max(0, beat_count),
         "downbeatCount": max(0, downbeat_count),
         "qualityScore": max(0.0, min(1.0, quality_score)),
@@ -192,172 +185,13 @@ def _normalize_result(result: dict[str, Any] | None) -> dict[str, Any] | None:
     }
 
 
-def _is_window_good_enough(result: dict[str, Any]) -> bool:
-    return (
-        float(result.get("qualityScore") or 0.0) >= QUALITY_EARLY_STOP_THRESHOLD
-        and int(result.get("beatCount") or 0) >= QUALITY_MIN_BEAT_COUNT
-    )
-
-
-def _compare_window_result(left: dict[str, Any], right: dict[str, Any]) -> int:
-    left_quality = float(left.get("qualityScore") or 0.0)
-    right_quality = float(right.get("qualityScore") or 0.0)
-    if abs(left_quality - right_quality) > 0.000001:
-        return -1 if left_quality < right_quality else 1
-    left_beats = int(left.get("beatCount") or 0)
-    right_beats = int(right.get("beatCount") or 0)
-    if left_beats != right_beats:
-        return -1 if left_beats < right_beats else 1
-    left_downbeats = int(left.get("downbeatCount") or 0)
-    right_downbeats = int(right.get("downbeatCount") or 0)
-    if left_downbeats != right_downbeats:
-        return -1 if left_downbeats < right_downbeats else 1
-    return 0
-
-
-def _slice_pcm_window(pcm_data: bytes, start_sec: float, duration_sec: float) -> tuple[bytes, float]:
-    total_samples = len(pcm_data) // 4
-    total_frames = total_samples // CHANNELS
-    start_frame = max(0, int(max(0.0, start_sec) * SAMPLE_RATE))
-    duration_frames = max(1, int(max(0.0, duration_sec) * SAMPLE_RATE))
-    end_frame = min(total_frames, start_frame + duration_frames)
-    actual_frames = max(0, end_frame - start_frame)
-    if actual_frames <= 0:
-        return b"", 0.0
-    byte_offset = start_frame * CHANNELS * 4
-    byte_length = actual_frames * CHANNELS * 4
-    return pcm_data[byte_offset : byte_offset + byte_length], actual_frames / SAMPLE_RATE
-
-
-def _analyze_pcm_windows(
-    bridge: Any,
-    predictor: Any,
-    pcm_data: bytes,
-    source_file_path: str,
-    use_legacy_anchor: bool,
-) -> dict[str, Any]:
-    total_samples = len(pcm_data) // 4
-    total_frames = total_samples // CHANNELS
-    total_duration_sec = total_frames / SAMPLE_RATE
-    scan_limit_sec = min(total_duration_sec, MAX_SCAN_SEC)
-
-    best_result: dict[str, Any] | None = None
-    for window_index, window_start_sec in enumerate(
-        [offset for offset in range(0, int(scan_limit_sec), int(WINDOW_SEC))]
-    ):
-        remaining_sec = scan_limit_sec - float(window_start_sec)
-        if remaining_sec < WINDOW_MIN_DURATION_SEC:
-            break
-        window_duration_sec = min(WINDOW_SEC, remaining_sec)
-        window_pcm, actual_duration_sec = _slice_pcm_window(
-            pcm_data, float(window_start_sec), window_duration_sec
-        )
-        if actual_duration_sec < WINDOW_MIN_DURATION_SEC or not window_pcm:
-            break
-
-        signal = bridge._decode_signal(window_pcm, CHANNELS)
-        beats, downbeats = bridge._predict_beats(predictor, signal, SAMPLE_RATE, "cpu", None)
-        beat_list = bridge._to_float_list(beats)
-        downbeat_list = bridge._to_float_list(downbeats)
-        raw_bpm = bridge._derive_bpm(beat_list)
-        raw_beat_interval = bridge._derive_interval(beat_list)
-        if raw_bpm is None or raw_beat_interval is None or not beat_list:
-            continue
-        tuning = bridge._resolve_anchor_tuning()
-        bpm = bridge._stabilize_bpm_for_grid(raw_bpm, tuning)
-        beat_interval = 60.0 / bpm if bpm > 0 else raw_beat_interval
-
-        raw_first_beat_ms = beat_list[0] * 1000.0
-        if use_legacy_anchor:
-            anchor_correction_ms = 0.0
-            anchor_confidence_score = 0.0
-            anchor_matched_beat_count = 0
-            corrected_first_beat_ms = raw_first_beat_ms
-            anchor_strategy = "legacy"
-        else:
-            (
-                anchor_correction_ms,
-                anchor_confidence_score,
-                anchor_matched_beat_count,
-            ) = bridge._estimate_anchor_correction(signal, SAMPLE_RATE, beat_list, raw_beat_interval)
-            grid_phase_correction = bridge._estimate_grid_phase_correction(
-                signal,
-                SAMPLE_RATE,
-                beat_list,
-                raw_beat_interval,
-                anchor_correction_ms,
-            )
-            if grid_phase_correction is not None:
-                (
-                    anchor_correction_ms,
-                    anchor_confidence_score,
-                    anchor_matched_beat_count,
-                ) = grid_phase_correction
-                anchor_strategy = "grid-solver"
-                if bridge._should_preserve_grid_solver_bpm(raw_bpm, bpm):
-                    bpm = round(raw_bpm, 6)
-                    beat_interval = 60.0 / bpm if bpm > 0 else raw_beat_interval
-            else:
-                anchor_strategy = "refined"
-            corrected_first_beat_ms = max(0.0, raw_first_beat_ms + anchor_correction_ms)
-
-        expected_beat_count = actual_duration_sec / beat_interval if beat_interval > 0 else 0.0
-        expected_downbeat_count = expected_beat_count / 4.0 if expected_beat_count > 0 else 0.0
-        beat_coverage_score = bridge._clamp01(
-            len(beat_list)
-            / max(8.0, expected_beat_count * 0.85 if expected_beat_count > 0 else 8.0)
-        )
-        downbeat_coverage_score = bridge._clamp01(
-            len(downbeat_list)
-            / max(2.0, expected_downbeat_count * 0.6 if expected_downbeat_count > 0 else 2.0)
-        )
-        beat_stability_score = bridge._derive_stability(beat_list, raw_beat_interval, 1.0)
-        downbeat_stability_score = bridge._derive_stability(downbeat_list, raw_beat_interval, 4.0)
-        quality_score = (
-            beat_coverage_score * 0.4
-            + beat_stability_score * 0.35
-            + downbeat_coverage_score * 0.1
-            + downbeat_stability_score * 0.15
-        )
-
-        result = _normalize_result(
-            {
-                "bpm": bpm,
-                "firstBeatMs": corrected_first_beat_ms + float(window_start_sec) * 1000.0,
-                "rawFirstBeatMs": raw_first_beat_ms + float(window_start_sec) * 1000.0,
-                "barBeatOffset": bridge._derive_bar_beat_offset(beat_list, downbeat_list),
-                "beatCount": len(beat_list),
-                "downbeatCount": len(downbeat_list),
-                "qualityScore": quality_score,
-                "anchorCorrectionMs": anchor_correction_ms,
-                "anchorConfidenceScore": anchor_confidence_score,
-                "anchorMatchedBeatCount": anchor_matched_beat_count,
-                "anchorStrategy": anchor_strategy,
-                "windowIndex": window_index,
-                "windowStartSec": float(window_start_sec),
-                "windowDurationSec": actual_duration_sec,
-            }
-        )
-        if not result:
-            continue
-
-        if best_result is None or _compare_window_result(result, best_result) > 0:
-            best_result = result
-        if _is_window_good_enough(result):
-            return result
-
-    if best_result is None:
-        raise RuntimeError(f"no valid beat-this result for {source_file_path}")
-    return best_result
-
-
 def _derive_grid_metrics(result: dict[str, Any], ground_truth: dict[str, Any]) -> dict[str, Any]:
     predicted_bpm = float(result["bpm"])
     beat_interval_sec = 60.0 / predicted_bpm if predicted_bpm > 0 else 0.0
     truth_bpm = float(ground_truth["bpm"])
     truth_beat_interval_sec = 60.0 / truth_bpm if truth_bpm > 0 else 0.0
     beat_interval_error_ms = (beat_interval_sec - truth_beat_interval_sec) * 1000.0
-    compare_count = min(len(ground_truth["grid"]), 128)
+    compare_count = min(len(ground_truth["referenceBeatTimesSec"]), 128)
     phase_error_ms = _phase_delta_ms(
         float(result["firstBeatMs"]),
         float(ground_truth["firstBeatMs"]),
@@ -386,7 +220,8 @@ def _derive_grid_metrics(result: dict[str, Any], ground_truth: dict[str, Any]) -
         "absBpmError": round(abs(predicted_bpm - float(ground_truth["bpm"])), 6),
         "firstBeatErrorMs": round(phase_error_ms, 3),
         "absFirstBeatErrorMs": round(abs(phase_error_ms), 3),
-        "barBeatOffsetMatches": int(result["barBeatOffset"]) == int(ground_truth["barBeatOffset"]),
+        "downbeatBeatOffsetMatches": int(result["downbeatBeatOffset"])
+        == int(ground_truth["downbeatBeatOffset"]),
         "gridCompareCount": compare_count,
         "gridRmseMs": round(rmse_ms, 3),
         "gridMeanAbsMs": round(mean_abs_ms, 3),
@@ -408,7 +243,13 @@ def main() -> int:
     if not ffmpeg_path.exists():
         raise SystemExit(f"ffmpeg not found: {ffmpeg_path}")
     if not manual_truth_path.exists():
-        raise SystemExit(f"manual truth not found: {manual_truth_path}")
+        legacy_path = manual_truth_path.with_name("truth-sample.json")
+        raise SystemExit(
+            "v2 manual truth not found: "
+            f"{manual_truth_path}. Generate a derived file without touching {legacy_path} with: "
+            f'py -3 scripts/convert_legacy_grid_truth_to_v2.py --input "{legacy_path}" '
+            f'--output "{manual_truth_path}" --apply'
+        )
 
     manual_truth_payload = json.loads(manual_truth_path.read_text(encoding="utf-8"))
     truth_tracks = manual_truth_payload.get("tracks")
@@ -467,6 +308,10 @@ def main() -> int:
             force_legacy_anchor=True,
             use_global_solver=False,
         )
+        refined_result = _normalize_result(bridge._to_public_downbeat_result(refined_result))
+        legacy_result = _normalize_result(bridge._to_public_downbeat_result(legacy_result))
+        if not refined_result or not legacy_result:
+            continue
         refined_metrics = _derive_grid_metrics(refined_result, ground_truth)
         legacy_metrics = _derive_grid_metrics(legacy_result, ground_truth)
         refined_grid_errors.append(float(refined_metrics["gridMeanAbsMs"]))
@@ -483,12 +328,7 @@ def main() -> int:
                 "artist": ground_truth["artist"],
                 "filePath": ground_truth["filePath"],
                 "truth": {
-                    "bpm": ground_truth["bpm"],
-                    "firstBeatMs": ground_truth["firstBeatMs"],
-                    "firstBeatLabel": ground_truth["firstBeatLabel"],
-                    "barBeatOffset": ground_truth["barBeatOffset"],
-                    "dynamic": ground_truth["dynamic"],
-                    "truthSource": ground_truth.get("truthSource"),
+                    "beatGridMap": ground_truth["beatGridMap"],
                 },
                 "refined": {**refined_result, **refined_metrics},
                 "legacy": {**legacy_result, **legacy_metrics},
@@ -511,7 +351,9 @@ def main() -> int:
         "playlistName": str(manual_truth_payload.get("listRoot") or "manual-truth"),
         "trackTotal": len(benchmark_rows),
         "manualTruthCount": sum(
-            1 for item in benchmark_rows if item["truth"].get("truthSource") != "rekordbox"
+            1
+            for item in benchmark_rows
+            if (item["truth"].get("beatGridMap") or {}).get("source") == "manual"
         ),
         "refinedMeanGridAbsMs": round(
             sum(refined_grid_errors) / max(1, len(refined_grid_errors)), 3

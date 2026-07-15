@@ -10,7 +10,7 @@ import {
   mergeHorizontalBrowseSongWithSharedGrid
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseShellSongs'
 import type { SongStructureAnalysis } from '@shared/songStructure'
-import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
+import { buildHorizontalBrowseTransportGridPayload } from '@shared/horizontalBrowseTransportGrid'
 import { sendHorizontalBrowseInteractionTrace } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTrace'
 import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTimeline'
 import type { HorizontalBrowseTransportBeatGridInput } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
@@ -19,9 +19,6 @@ type DeckKey = HorizontalBrowseDeckKey
 
 type SharedSongGridPayload = {
   filePath?: string
-  bpm?: number
-  firstBeatMs?: number
-  barBeatOffset?: number
   beatGridMap?: ISongInfo['beatGridMap'] | null
   songStructure?: SongStructureAnalysis
 } | null
@@ -67,41 +64,8 @@ export const createHorizontalBrowseDeckAssigner = (
     })
   }
 
-  const buildNativeGridPayload = (
-    song: ISongInfo
-  ): HorizontalBrowseTransportBeatGridInput | null => {
-    const filePath = String(song.filePath || '').trim()
-    const bpm = Number(song.bpm)
-    const firstBeatMs = Number(song.firstBeatMs)
-    const barBeatOffset = Number(song.barBeatOffset)
-    const timeBasisOffsetMs = Number(song.timeBasisOffsetMs)
-    const beatGridMap = normalizeSongBeatGridMap(song.beatGridMap)
-    const hasBpm = Number.isFinite(bpm) && bpm > 0
-    const hasFirstBeatMs = Number.isFinite(firstBeatMs)
-    const hasBarBeatOffset = Number.isFinite(barBeatOffset)
-    const hasTimeBasisOffsetMs = Number.isFinite(timeBasisOffsetMs) && timeBasisOffsetMs >= 0
-    if (
-      !filePath ||
-      (!hasBpm && !hasFirstBeatMs && !hasBarBeatOffset && !hasTimeBasisOffsetMs && !beatGridMap)
-    ) {
-      return null
-    }
-    return {
-      filePath,
-      bpm: hasBpm ? bpm : undefined,
-      firstBeatMs: hasFirstBeatMs ? firstBeatMs : undefined,
-      barBeatOffset: hasBarBeatOffset ? barBeatOffset : undefined,
-      beatGridClips: beatGridMap
-        ? beatGridMap.clips.map((clip) => ({
-            startSec: clip.startSec,
-            anchorSec: clip.anchorSec,
-            bpm: clip.bpm,
-            barBeatOffset: clip.barBeatOffset
-          }))
-        : undefined,
-      timeBasisOffsetMs: hasTimeBasisOffsetMs ? timeBasisOffsetMs : undefined
-    }
-  }
+  const buildNativeGridPayload = (song: ISongInfo): HorizontalBrowseTransportBeatGridInput | null =>
+    buildHorizontalBrowseTransportGridPayload(song)
 
   const resolveDeckSongWithSharedGrid = async (song: ISongInfo) => {
     const filePath = String(song.filePath || '').trim()

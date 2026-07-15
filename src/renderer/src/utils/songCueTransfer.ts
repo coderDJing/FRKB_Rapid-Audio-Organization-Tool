@@ -3,17 +3,8 @@ import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 const ANALYSIS_FIELD_KEYS = [
   'key',
   'keyAnalysisAlgorithmVersion',
-  'bpm',
-  'firstBeatMs',
-  'barBeatOffset',
-  'beatGridSource',
-  'beatGridStatus',
-  'beatGridMap',
   'energyScore',
-  'energyAlgorithmVersion',
-  'songStructure',
-  'timeBasisOffsetMs',
-  'beatGridAlgorithmVersion'
+  'energyAlgorithmVersion'
 ] as const
 
 type SongAnalysisFieldKey = (typeof ANALYSIS_FIELD_KEYS)[number]

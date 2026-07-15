@@ -5,7 +5,6 @@ import {
   sampleMixEnvelopeAtSec
 } from '@renderer/composables/mixtape/gainEnvelope'
 import { buildMixtapeTrackLoopSignature } from '@renderer/composables/mixtape/mixtapeTrackLoop'
-import { snapSecToVisibleGrid as snapSecToVisibleGridByUtils } from '@renderer/composables/mixtape/gainEnvelopeEditorGrid'
 import {
   STEM_SEGMENT_ACTIVE_GAIN,
   STEM_SEGMENT_MUTE_THRESHOLD
@@ -26,18 +25,13 @@ export const createGainEnvelopeTrackStateModule = (params: {
   resolveRenderZoom: () => number
   resolveTrackDurationSeconds: (track: MixtapeTrack) => number
   resolveTrackSourceDurationSeconds: (track: MixtapeTrack) => number
-  resolveTrackFirstBeatSeconds: (track: MixtapeTrack) => number
   isStemSegmentParam: (param: MixtapeEnvelopeParamId) => boolean
 }) => {
   type TrackGridRuntimeCacheEntry = {
     durationSec: number
     sourceDurationSec: number
     zoom: number
-    bpm?: number
-    gridBaseBpm?: number
-    originalBpm?: number
-    firstBeatMs?: number
-    barBeatOffset?: number
+    beatGridMapSignature?: string
     loopSignature: string
     visibleGridLines: ReturnType<
       ReturnType<typeof buildTrackRuntimeTempoSnapshot>['timeMap']['buildVisibleGridLines']
@@ -98,11 +92,7 @@ export const createGainEnvelopeTrackStateModule = (params: {
       cached.durationSec === safeDurationSec &&
       cached.sourceDurationSec === sourceDurationSec &&
       cached.zoom === zoom &&
-      cached.bpm === track.bpm &&
-      cached.gridBaseBpm === track.gridBaseBpm &&
-      cached.originalBpm === track.originalBpm &&
-      cached.firstBeatMs === track.firstBeatMs &&
-      cached.barBeatOffset === track.barBeatOffset &&
+      cached.beatGridMapSignature === track.beatGridMap?.signature &&
       cached.loopSignature ===
         buildMixtapeTrackLoopSignature(track.loopSegments ?? track.loopSegment)
     ) {
@@ -118,11 +108,7 @@ export const createGainEnvelopeTrackStateModule = (params: {
       durationSec: safeDurationSec,
       sourceDurationSec,
       zoom,
-      bpm: track.bpm,
-      gridBaseBpm: track.gridBaseBpm,
-      originalBpm: track.originalBpm,
-      firstBeatMs: track.firstBeatMs,
-      barBeatOffset: track.barBeatOffset,
+      beatGridMapSignature: track.beatGridMap?.signature,
       loopSignature: buildMixtapeTrackLoopSignature(track.loopSegments ?? track.loopSegment),
       visibleGridLines: snapshot.visibleGridLines,
       visibleGridSegments: buildVisibleGridSegmentsFromLines(
@@ -209,11 +195,14 @@ export const createGainEnvelopeTrackStateModule = (params: {
       }
     )
     if (nearest) return nearest.sec
-    return snapSecToVisibleGridByUtils({
-      ...payload,
-      zoom: params.resolveRenderZoom(),
-      firstBeatSec: Math.max(0, Number(params.resolveTrackFirstBeatSeconds(payload.track)) || 0)
-    })
+    const durationSec = Math.max(0, Number(payload.durationSec) || 0)
+    const minSec = clampNumber(Number(payload.minSec) || 0, 0, durationSec)
+    const maxSec = clampNumber(
+      Number.isFinite(Number(payload.maxSec)) ? Number(payload.maxSec) : durationSec,
+      minSec,
+      durationSec
+    )
+    return clampNumber(Number(payload.sec) || 0, minSec, maxSec)
   }
 
   const resolveTrackEnvelopeState = (trackId: string, param: MixtapeEnvelopeParamId) => {

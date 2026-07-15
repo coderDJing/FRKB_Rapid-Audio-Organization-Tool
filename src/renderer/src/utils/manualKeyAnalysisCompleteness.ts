@@ -1,8 +1,7 @@
 import { hasUsableSongEnergyAnalysis } from '../../../shared/songEnergy'
 import {
-  hasRequiredSongStructureAnalysis,
   hasUsableKeyAnalysis,
-  resolveUsableSongBeatGrid
+  resolveCanonicalSongBeatGridV2
 } from '../../../shared/songAnalysisCompleteness'
 
 export type AnalysisCandidate = {
@@ -11,7 +10,6 @@ export type AnalysisCandidate = {
   keyAnalysisAlgorithmVersion?: unknown
   bpm?: unknown
   firstBeatMs?: unknown
-  barBeatOffset?: unknown
   beatGridMap?: unknown
   beatGridStatus?: unknown
   beatGridAlgorithmVersion?: unknown
@@ -61,28 +59,11 @@ export const resolveMissingAnalysisReasons = (
   if (!hasUsableKeyAnalysis(song)) reasons.push('missing-key')
   if (isWaveformMissing(song, options)) reasons.push('missing-waveform')
 
-  const grid = resolveUsableSongBeatGrid(song)
+  const grid = resolveCanonicalSongBeatGridV2(song)
   if (grid.kind === 'no-bpm') return reasons
-  if (grid.kind === 'dynamic') {
-    if (options.includeSongStructure === true && !hasRequiredSongStructureAnalysis(song)) {
-      reasons.push('missing-song-structure')
-    }
-    return reasons
-  }
+  if (grid.kind === 'grid') return reasons
 
-  const bpm = Number(song.bpm)
-  const firstBeatMs = Number(song.firstBeatMs)
-  const barBeatOffset = Number(song.barBeatOffset)
-  if (!Number.isFinite(bpm) || bpm <= 0) reasons.push('missing-bpm')
-  if (!Number.isFinite(firstBeatMs)) reasons.push('missing-first-beat')
-  if (!Number.isFinite(barBeatOffset)) reasons.push('missing-bar-beat-offset')
-  if (
-    grid.kind === 'fixed' &&
-    options.includeSongStructure === true &&
-    !hasRequiredSongStructureAnalysis(song)
-  ) {
-    reasons.push('missing-song-structure')
-  }
+  reasons.push('missing-bpm', 'missing-first-beat', 'missing-downbeat-beat-offset')
   return reasons
 }
 

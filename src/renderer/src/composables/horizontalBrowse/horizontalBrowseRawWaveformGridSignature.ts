@@ -1,5 +1,5 @@
 import {
-  PREVIEW_BAR_BEAT_INTERVAL,
+  PREVIEW_DOWNBEAT_BEAT_INTERVAL,
   normalizeBeatOffset,
   normalizePreviewBpm
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
@@ -7,7 +7,7 @@ import {
 type HorizontalBrowseGridSignatureInput = {
   bpm?: unknown
   firstBeatMs?: unknown
-  barBeatOffset?: unknown
+  downbeatBeatOffset?: unknown
   timeBasisOffsetMs?: unknown
   beatGridMapSignature?: unknown
 }
@@ -24,8 +24,8 @@ const normalizeGridSignatureFirstBeatMs = (value: unknown) => {
   return Number(numeric.toFixed(3))
 }
 
-const normalizeGridSignatureBarBeatOffset = (value: unknown) =>
-  normalizeBeatOffset(Number(value) || 0, PREVIEW_BAR_BEAT_INTERVAL)
+const normalizeGridSignatureDownbeatBeatOffset = (value: unknown) =>
+  normalizeBeatOffset(Number(value) || 0, PREVIEW_DOWNBEAT_BEAT_INTERVAL)
 
 export const buildHorizontalBrowseRawWaveformGridSignature = (
   input: HorizontalBrowseGridSignatureInput
@@ -33,7 +33,7 @@ export const buildHorizontalBrowseRawWaveformGridSignature = (
   [
     normalizeGridSignatureBpm(input.bpm).toFixed(6),
     normalizeGridSignatureFirstBeatMs(input.firstBeatMs).toFixed(3),
-    normalizeGridSignatureBarBeatOffset(input.barBeatOffset),
+    normalizeGridSignatureDownbeatBeatOffset(input.downbeatBeatOffset),
     normalizeGridSignatureFirstBeatMs(input.timeBasisOffsetMs).toFixed(3),
     typeof input.beatGridMapSignature === 'string' ? input.beatGridMapSignature : ''
   ].join('|')

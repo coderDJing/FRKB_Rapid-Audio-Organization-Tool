@@ -236,7 +236,7 @@ export function registerHorizontalBrowseTransportHandlers() {
         filePath?: string
         bpm?: number
         firstBeatMs?: number
-        barBeatOffset?: number
+        downbeatBeatOffset?: number
         timeBasisOffsetMs?: number
       }
     ) => {

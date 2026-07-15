@@ -9,7 +9,7 @@ export type HorizontalBrowseLinkedGridVisualTransactionCommitOptions = {
 export type HorizontalBrowseLinkedGridVisualTransactionGridTimeBasis = {
   bpm: number
   firstBeatMs: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
   timeBasisOffsetMs: number
 }
 

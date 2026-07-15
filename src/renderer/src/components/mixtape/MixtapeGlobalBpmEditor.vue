@@ -4,7 +4,6 @@ import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { useI18n } from '@renderer/composables/useI18n'
 import {
   BASE_PX_PER_SEC,
-  GRID_BEAT4_LINE_WIDTH,
   GRID_BEAT_LINE_WIDTH,
   MIXTAPE_WIDTH_SCALE,
   resolveTimelineGridBarWidth,
@@ -101,7 +100,7 @@ type ProjectedTrackGridLine = {
   key: string
   sec: number
   leftPx: number
-  level: 'bar' | 'beat4' | 'beat'
+  level: 'downbeat' | 'beat'
 }
 
 const dragState = ref<DragState | null>(null)
@@ -417,14 +416,11 @@ const gridCanvasStyle = computed(() => ({
 }))
 
 const resolveGridLineVisual = (level: ProjectedTrackGridLine['level']) => {
-  if (level === 'bar') {
+  if (level === 'downbeat') {
     return {
       width: resolveTimelineGridBarWidth(Number(props.renderZoomLevel) || 0),
-      color: 'var(--mixtape-grid-line-bar)'
+      color: 'var(--mixtape-grid-line-downbeat)'
     }
-  }
-  if (level === 'beat4') {
-    return { width: GRID_BEAT4_LINE_WIDTH, color: 'var(--mixtape-grid-line-beat4)' }
   }
   return { width: GRID_BEAT_LINE_WIDTH, color: 'var(--mixtape-grid-line-beat)' }
 }

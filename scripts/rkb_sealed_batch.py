@@ -70,7 +70,7 @@ BENCHMARK_ROOT = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
 DEFAULT_BATCHES_ROOT = BENCHMARK_ROOT / "sealed-batches"
 DEFAULT_REGISTRY = BENCHMARK_ROOT / "rkb-dataset-registry.json"
 DEFAULT_BASELINE = BENCHMARK_ROOT / "rkb-dataset-registry-baseline.json"
-DEFAULT_CURRENT_TRUTH = BENCHMARK_ROOT / "rekordbox-current-truth.json"
+DEFAULT_CURRENT_TRUTH = BENCHMARK_ROOT / "rekordbox-current-truth.v2.json"
 DEFAULT_PREDICTION_CACHE_DIR = BENCHMARK_ROOT / "beatthis-prediction-cache"
 DEFAULT_SYNC_SCRIPT = SCRIPTS_ROOT / "sync_rekordbox_playlist_audio.py"
 DEFAULT_CAPTURE_SCRIPT = SCRIPTS_ROOT / "capture_rekordbox_playlist_truth.py"
@@ -295,6 +295,8 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             if reviewed_file_names:
                 capture.extend(["--file-list", str(reviewed_file_list)])
             captured = run_json_command(capture, REPO_ROOT)
+            captured_truth = load_json(truth_temp)
+            _assert_v2_truth_maps(truth_temp, truth_tracks(captured_truth, truth_temp))
             paths = [item for item in temp_audio.iterdir() if item.is_file()]
             roster = _build_roster(paths, identity)
             assert_truth_audio_alignment(truth_temp, roster)
@@ -745,9 +747,28 @@ def _finalize(args: argparse.Namespace) -> dict[str, Any]:
         }
 
 
+def _assert_v2_truth_maps(truth_path: Path, tracks: list[dict[str, Any]]) -> None:
+    for track in tracks:
+        beat_grid_map = track.get("beatGridMap")
+        if not isinstance(beat_grid_map, dict) or beat_grid_map.get("version") != 2:
+            raise SealedBatchError(f"truth must use v2 beatGridMap: {truth_path}")
+        if beat_grid_map.get("source") not in {"manual", "analysis"}:
+            raise SealedBatchError(f"truth map has invalid source: {truth_path}")
+        if not isinstance(beat_grid_map.get("signature"), str) or not beat_grid_map["signature"].strip():
+            raise SealedBatchError(f"truth map is missing signature: {truth_path}")
+        clips = beat_grid_map.get("clips")
+        if not isinstance(clips, list) or not clips:
+            raise SealedBatchError(f"truth map has no clips: {truth_path}")
+        for clip in clips:
+            phase = clip.get("downbeatBeatOffset") if isinstance(clip, dict) else None
+            if not isinstance(phase, int) or not 0 <= phase < 4:
+                raise SealedBatchError(f"truth map has invalid four-beat phase: {truth_path}")
+
+
 def _find_consumed_audio(truth_path: Path, audio_roots: list[Path]) -> list[Path]:
     truth = load_json(truth_path)
     tracks = truth_tracks(truth, truth_path)
+    _assert_v2_truth_maps(truth_path, tracks)
     resolved_roots = [root.resolve() for root in audio_roots]
     indices: dict[str, list[Path]] = {}
     for root in resolved_roots:

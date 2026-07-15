@@ -8,7 +8,7 @@ import {
 import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { t } from '@renderer/utils/translate'
 import { formatDeletedAtMs, getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
-import { summarizeSongBeatGridBpm } from '@shared/songBeatGridMap'
+import { summarizeSongBeatGridV2Bpm } from '@shared/songBeatGridMapV2'
 
 export const useSongRowDisplay = (params: {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -44,7 +44,7 @@ export const useSongRowDisplay = (params: {
     }
     const raw = song[colKey as keyof ISongInfo]
     if (colKey === 'bpm') {
-      const bpmSummary = summarizeSongBeatGridBpm(song.beatGridMap, song.bpm)
+      const bpmSummary = summarizeSongBeatGridV2Bpm(song.beatGridMap, song.bpm)
       if (bpmSummary.displayText) {
         return bpmSummary.displayText
       }
@@ -66,7 +66,7 @@ export const useSongRowDisplay = (params: {
 
   const getCellTitle = (song: ISongInfo, colKey: string): string => {
     if (colKey === 'bpm') {
-      const bpmSummary = summarizeSongBeatGridBpm(song.beatGridMap, song.bpm)
+      const bpmSummary = summarizeSongBeatGridV2Bpm(song.beatGridMap, song.bpm)
       if (bpmSummary.titleText) return bpmSummary.titleText
     }
     return String(getCellValue(song, colKey))

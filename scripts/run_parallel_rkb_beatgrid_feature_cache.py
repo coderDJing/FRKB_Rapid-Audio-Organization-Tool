@@ -28,9 +28,26 @@ from rkb_dataset_contract import (
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FEATURE_CACHE_SCRIPT = REPO_ROOT / "scripts" / "rkb_beatgrid_feature_cache.py"
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
-CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
+CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.v2.json"
 DEFAULT_REGISTRY = BENCHMARK_OUTPUT_DIR / "rkb-dataset-registry.json"
 DEFAULT_SHARD_DIR = BENCHMARK_OUTPUT_DIR / "feature-cache-shards"
+
+
+def _has_v2_map(track: dict[str, Any]) -> bool:
+    beat_grid_map = track.get("beatGridMap")
+    if not isinstance(beat_grid_map, dict) or beat_grid_map.get("version") != 2:
+        return False
+    if beat_grid_map.get("source") not in {"manual", "analysis"}:
+        return False
+    clips = beat_grid_map.get("clips")
+    if not isinstance(clips, list) or not clips:
+        return False
+    return all(
+        isinstance(clip, dict)
+        and isinstance(clip.get("downbeatBeatOffset"), int)
+        and 0 <= clip["downbeatBeatOffset"] < 4
+        for clip in clips
+    )
 
 
 def _load_raw_truth_tracks(truth_path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
@@ -39,7 +56,10 @@ def _load_raw_truth_tracks(truth_path: Path) -> tuple[dict[str, Any], list[dict[
     tracks = payload.get("tracks") if isinstance(payload, dict) else None
     if not isinstance(tracks, list) or not tracks:
         raise RuntimeError(f"truth contains no tracks: {truth_path}")
-    return payload, [item for item in tracks if isinstance(item, dict)]
+    normalized_tracks = [item for item in tracks if isinstance(item, dict)]
+    if any(not _has_v2_map(track) for track in normalized_tracks):
+        raise RuntimeError(f"truth contains a legacy or invalid v2 grid map: {truth_path}")
+    return payload, normalized_tracks
 
 
 def _normalize_lookup_key(value: Any) -> str:

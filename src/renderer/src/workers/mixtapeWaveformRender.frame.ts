@@ -7,7 +7,7 @@ import type {
 import {
   buildWaveformTileCacheKey,
   resolveFrameBufferMultiplier,
-  resolveGridBarWidth
+  resolveGridDownbeatWidth
 } from './mixtapeWaveformRender.cache'
 import { resolveCanvasScaleMetrics, resizeCanvasWithScaleMetrics } from '../utils/canvasScale'
 
@@ -17,12 +17,11 @@ type CreateFrameRendererOptions = {
   debugTrackLines: boolean
   rawWaveformMinZoom: number
   waveformHeightScale: number
-  gridBarOnlyZoom: number
-  gridBeat4LineZoom: number
+  gridDownbeatLineZoom: number
   gridBeatLineZoom: number
-  gridBarWidthMin: number
-  gridBarWidthMax: number
-  gridBarWidthMaxZoom: number
+  gridDownbeatWidthMin: number
+  gridDownbeatWidthMax: number
+  gridDownbeatWidthMaxZoom: number
   waveformTileWidth: number
   renderTileBitmap: (payload: RenderTilePayload) => ImageBitmap | null
   drawTrackGridLines: (
@@ -32,10 +31,9 @@ type CreateFrameRendererOptions = {
     track: RenderFramePayload['tracks'][number],
     renderPxPerSec: number,
     range: { start: number; end: number },
-    barOnly: boolean,
-    showBeat4: boolean,
+    showDownbeat: boolean,
     showBeat: boolean,
-    barWidth: number
+    downbeatWidth: number
   ) => void
 }
 
@@ -46,12 +44,11 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
     debugTrackLines,
     rawWaveformMinZoom,
     waveformHeightScale,
-    gridBarOnlyZoom,
-    gridBeat4LineZoom,
+    gridDownbeatLineZoom,
     gridBeatLineZoom,
-    gridBarWidthMin,
-    gridBarWidthMax,
-    gridBarWidthMaxZoom,
+    gridDownbeatWidthMin,
+    gridDownbeatWidthMax,
+    gridDownbeatWidthMaxZoom,
     waveformTileWidth,
     renderTileBitmap,
     drawTrackGridLines
@@ -283,15 +280,14 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
   ) => {
     const showGridLines = payload.showGridLines !== false
     const allowTileBuild = payload.allowTileBuild !== false
-    const barOnlyGrid = payload.zoom <= gridBarOnlyZoom
-    const showBeat4Grid = payload.zoom >= gridBeat4LineZoom
+    const showDownbeatGrid = payload.zoom >= gridDownbeatLineZoom
     const showBeatGrid = payload.zoom >= gridBeatLineZoom
-    const barWidth = resolveGridBarWidth({
+    const downbeatWidth = resolveGridDownbeatWidth({
       zoom: payload.zoom,
       rawWaveformMinZoom,
-      gridBarWidthMin,
-      gridBarWidthMax,
-      gridBarWidthMaxZoom
+      gridDownbeatWidthMin,
+      gridDownbeatWidthMax,
+      gridDownbeatWidthMaxZoom
     })
     const laneStride = payload.laneHeight + payload.laneGap
     const endX = viewStartX + viewWidth
@@ -368,10 +364,9 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           track,
           payload.renderPxPerSec,
           { start: localStart, end: localEnd },
-          barOnlyGrid,
-          showBeat4Grid,
+          showDownbeatGrid,
           showBeatGrid,
-          barWidth
+          downbeatWidth
         )
         ctx.restore()
       }
@@ -837,15 +832,14 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
 
       if (showGridLines) {
         if (!useColorProgram(slot.width, slot.height)) return
-        const barOnlyGrid = payload.zoom <= gridBarOnlyZoom
-        const showBeat4Grid = payload.zoom >= gridBeat4LineZoom
+        const showDownbeatGrid = payload.zoom >= gridDownbeatLineZoom
         const showBeatGrid = payload.zoom >= gridBeatLineZoom
-        const barWidth = resolveGridBarWidth({
+        const downbeatWidth = resolveGridDownbeatWidth({
           zoom: payload.zoom,
           rawWaveformMinZoom,
-          gridBarWidthMin,
-          gridBarWidthMax,
-          gridBarWidthMaxZoom
+          gridDownbeatWidthMin,
+          gridDownbeatWidthMax,
+          gridDownbeatWidthMaxZoom
         })
         for (const track of payload.tracks) {
           const trackWidth = track.trackWidth
@@ -867,7 +861,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
           const localStart = visibleStart - trackStartX
           const localEnd = visibleEnd - trackStartX
           const gridCanvas = new OffscreenCanvas(
-            Math.max(1, Math.ceil(visibleEnd - visibleStart + barWidth + 4)),
+            Math.max(1, Math.ceil(visibleEnd - visibleStart + downbeatWidth + 4)),
             Math.max(1, Math.ceil(trackLaneHeight))
           )
           const gridCtx = gridCanvas.getContext('2d')
@@ -879,10 +873,9 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
             track,
             payload.renderPxPerSec,
             { start: localStart, end: localEnd },
-            barOnlyGrid,
-            showBeat4Grid,
+            showDownbeatGrid,
             showBeatGrid,
-            barWidth
+            downbeatWidth
           )
           const gridTexture = createTextureFromCanvas(gridCanvas)
           if (!gridTexture) continue
@@ -890,7 +883,7 @@ export const createFrameRenderer = (options: CreateFrameRendererOptions) => {
             gridTexture,
             trackStartX + localStart - slot.startX,
             trackY,
-            Math.max(1, Math.ceil(visibleEnd - visibleStart + barWidth + 4)),
+            Math.max(1, Math.ceil(visibleEnd - visibleStart + downbeatWidth + 4)),
             trackLaneHeight
           )
           if (gl) {

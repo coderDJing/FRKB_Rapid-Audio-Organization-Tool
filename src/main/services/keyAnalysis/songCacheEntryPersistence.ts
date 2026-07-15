@@ -3,9 +3,9 @@ import * as LibraryCacheDb from '../../libraryCacheDb'
 import { stripBeatThisDebugInfo } from '../../libraryCacheDb/pathResolvers'
 import { applyLiteDefaults, buildLiteSongInfo } from '../songInfoLite'
 import type { ISongInfo } from '../../../types/globals'
+import type { SongBeatGridMapV2 } from '../../../shared/songBeatGridMapV2'
 import { CURRENT_SONG_ENERGY_ALGORITHM_VERSION } from '../../../shared/songEnergy'
 import {
-  hasUsableSongStructureAnalysis,
   normalizeSongStructureAnalysis,
   type SongStructureAnalysis
 } from '../../../shared/songStructure'
@@ -13,13 +13,9 @@ import {
 export type EnsureSongCacheEntryPayload = {
   keyText?: string
   keyAnalysisAlgorithmVersion?: number
-  bpm?: number
-  firstBeatMs?: number
-  barBeatOffset?: number
-  timeBasisOffsetMs?: number
   beatGridAlgorithmVersion?: number | null
-  beatGridSource?: ISongInfo['beatGridSource']
   beatGridStatus?: ISongInfo['beatGridStatus']
+  beatGridMap?: SongBeatGridMapV2 | null
   energyScore?: number
   energyAlgorithmVersion?: number
   songStructure?: SongStructureAnalysis | null
@@ -66,20 +62,6 @@ export const ensureSongCacheEntry = async (
   if (payload.keyAnalysisAlgorithmVersion !== undefined) {
     info.keyAnalysisAlgorithmVersion = payload.keyAnalysisAlgorithmVersion
   }
-  if (payload.bpm !== undefined) {
-    delete info.beatGridStatus
-    delete info.beatGridMap
-    info.bpm = payload.bpm
-  }
-  if (payload.firstBeatMs !== undefined) {
-    info.firstBeatMs = payload.firstBeatMs
-  }
-  if (payload.barBeatOffset !== undefined) {
-    info.barBeatOffset = payload.barBeatOffset
-  }
-  if (payload.timeBasisOffsetMs !== undefined) {
-    info.timeBasisOffsetMs = payload.timeBasisOffsetMs
-  }
   if (Object.prototype.hasOwnProperty.call(payload, 'beatGridAlgorithmVersion')) {
     if (payload.beatGridAlgorithmVersion === null) {
       delete info.beatGridAlgorithmVersion
@@ -87,11 +69,20 @@ export const ensureSongCacheEntry = async (
       info.beatGridAlgorithmVersion = payload.beatGridAlgorithmVersion
     }
   }
-  if (payload.beatGridSource !== undefined) {
-    info.beatGridSource = payload.beatGridSource
-  }
   if (payload.beatGridStatus !== undefined) {
     info.beatGridStatus = payload.beatGridStatus
+  }
+  if (Object.prototype.hasOwnProperty.call(payload, 'beatGridMap')) {
+    if (payload.beatGridMap) {
+      delete info.bpm
+      delete info.firstBeatMs
+      delete (info as unknown as Record<string, unknown>).barBeatOffset
+      delete info.beatGridSource
+      delete info.beatGridStatus
+      info.beatGridMap = payload.beatGridMap
+    } else {
+      delete info.beatGridMap
+    }
   }
   if (payload.energyScore !== undefined) {
     info.energyScore = payload.energyScore
@@ -105,14 +96,6 @@ export const ensureSongCacheEntry = async (
     } else {
       delete info.songStructure
     }
-  } else if (
-    (payload.bpm !== undefined ||
-      payload.firstBeatMs !== undefined ||
-      payload.barBeatOffset !== undefined ||
-      payload.beatGridStatus !== undefined) &&
-    !hasUsableSongStructureAnalysis(info)
-  ) {
-    delete info.songStructure
   }
   const validation = options.validateBeforeWrite?.()
   if (validation instanceof Promise ? !(await validation) : validation === false) return

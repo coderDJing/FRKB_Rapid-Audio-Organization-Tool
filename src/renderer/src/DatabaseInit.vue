@@ -22,10 +22,112 @@ import hintIconAsset from '@renderer/assets/hint.svg?asset'
 import { formatWindowTitle } from '@renderer/utils/windowTitle'
 const runtime = useRuntimeStore()
 const uuid = uuidV4()
+const isSchemaMigrationMode =
+  new URLSearchParams(window.location.search).get('mode') === 'schema-migration'
 const flashArea = ref('') // 控制动画是否正在播放
 const hintIcon = hintIconAsset
 type FingerprintMode = 'pcm' | 'file'
-const databaseInitWindowTitle = computed(() => formatWindowTitle(t('database.selectLocation')))
+type SchemaMigrationPhase =
+  | 'checking-version'
+  | 'checking-space'
+  | 'creating-backup'
+  | 'converting'
+  | 'restoring-time-basis'
+  | 'validating'
+  | 'complete'
+  | 'failed'
+type SchemaMigrationProgress = {
+  phase: SchemaMigrationPhase
+  databasePath: string
+  backupPath?: string
+  message?: string
+  processedRows?: number
+  totalRows?: number
+  processedPages?: number
+  totalPages?: number
+}
+const databaseInitWindowTitle = computed(() =>
+  formatWindowTitle(
+    isSchemaMigrationMode ? t('database.schemaMigrationTitle') : t('database.selectLocation')
+  )
+)
+const schemaMigrationProgress = ref<SchemaMigrationProgress | null>(null)
+const schemaMigrationIsBlocking = computed(
+  () => !!schemaMigrationProgress.value && schemaMigrationProgress.value.phase !== 'failed'
+)
+const schemaMigrationStatus = computed(() => {
+  switch (schemaMigrationProgress.value?.phase) {
+    case 'checking-version':
+      return t('database.schemaMigrationCheckingVersion')
+    case 'checking-space':
+      return t('database.schemaMigrationCheckingSpace')
+    case 'creating-backup':
+      return t('database.schemaMigrationCreatingBackup')
+    case 'converting':
+      return t('database.schemaMigrationConverting')
+    case 'restoring-time-basis':
+      return t('database.schemaMigrationRestoringTimeBasis')
+    case 'validating':
+      return t('database.schemaMigrationValidating')
+    case 'complete':
+      return t('database.schemaMigrationComplete')
+    case 'failed':
+      return t('database.schemaMigrationFailed')
+    default:
+      return ''
+  }
+})
+const schemaMigrationPercent = computed(() => {
+  const progress = schemaMigrationProgress.value
+  if (!progress) return 0
+  if (progress.phase === 'checking-version') return 3
+  if (progress.phase === 'checking-space') return 8
+  if (progress.phase === 'creating-backup') {
+    const totalPages = Number(progress.totalPages)
+    const processedPages = Number(progress.processedPages)
+    if (Number.isFinite(totalPages) && totalPages > 0 && Number.isFinite(processedPages)) {
+      return Math.round(10 + Math.min(1, Math.max(0, processedPages / totalPages)) * 60)
+    }
+    return 10
+  }
+  if (progress.phase === 'converting' || progress.phase === 'restoring-time-basis') {
+    const totalRows = Number(progress.totalRows)
+    const processedRows = Number(progress.processedRows)
+    if (Number.isFinite(totalRows) && totalRows > 0 && Number.isFinite(processedRows)) {
+      return Math.round(70 + Math.min(1, Math.max(0, processedRows / totalRows)) * 24)
+    }
+    return 70
+  }
+  if (progress.phase === 'validating') return 97
+  if (progress.phase === 'complete') return 100
+  return 0
+})
+const schemaMigrationUnitProgress = computed(() => {
+  const progress = schemaMigrationProgress.value
+  const totalPages = Number(progress?.totalPages)
+  const processedPages = Number(progress?.processedPages)
+  if (progress?.phase === 'creating-backup' && Number.isFinite(totalPages) && totalPages > 0) {
+    return t('database.schemaMigrationBackupProgress', {
+      processedPages: Math.min(
+        Math.max(0, Math.floor(processedPages) || 0),
+        Math.floor(totalPages)
+      ),
+      totalPages: Math.floor(totalPages)
+    })
+  }
+  const totalRows = Number(progress?.totalRows)
+  const processedRows = Number(progress?.processedRows)
+  if (
+    (progress?.phase !== 'converting' && progress?.phase !== 'restoring-time-basis') ||
+    !Number.isFinite(totalRows) ||
+    totalRows <= 0
+  )
+    return ''
+  return t('database.schemaMigrationRecordProgress', {
+    processedRows: Math.min(Math.max(0, Math.floor(processedRows) || 0), Math.floor(totalRows)),
+    totalRows: Math.floor(totalRows)
+  })
+})
 
 watch(
   databaseInitWindowTitle,
@@ -335,9 +437,16 @@ const submitConfirm = async () => {
   )
 }
 const cancel = () => {
+  if (isSchemaMigrationMode) return
+  if (schemaMigrationIsBlocking.value) return
   window.electron.ipcRenderer.send('databaseInitWindow-toggle-close')
 }
+const closeSchemaMigrationWindow = () => {
+  if (!isSchemaMigrationMode || schemaMigrationProgress.value?.phase !== 'failed') return
+  window.electron.ipcRenderer.send('databaseSchemaMigrationWindow-close')
+}
 onMounted(async () => {
+  if (isSchemaMigrationMode) return
   hotkeys('E,Enter', uuid, () => {
     submitConfirm()
   })
@@ -352,15 +461,56 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  if (isSchemaMigrationMode) return
   utils.delHotkeysScope(uuid)
 })
 
-window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (_event, databaseUrl) => {
+type DatabaseInitErrorHint =
+  | {
+      kind: 'schema-too-new'
+      databaseUrl: string
+      databaseVersion: number
+      maximumSupportedVersion: number
+    }
+  | {
+      kind: 'cannot-read'
+      databaseUrl: string
+    }
+
+window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (_event, payload) => {
+  const hint: DatabaseInitErrorHint =
+    typeof payload === 'string'
+      ? { kind: 'cannot-read', databaseUrl: payload }
+      : (payload as DatabaseInitErrorHint)
+  if (hint.kind === 'schema-too-new') {
+    await confirm({
+      title: t('common.error'),
+      content: [
+        hint.databaseUrl,
+        t('database.schemaTooNew'),
+        t('database.schemaVersion', {
+          databaseVersion: hint.databaseVersion,
+          maximumSupportedVersion: hint.maximumSupportedVersion
+        }),
+        t('database.updateRequired')
+      ],
+      confirmShow: false
+    })
+    return
+  }
   await confirm({
     title: t('common.error'),
-    content: [databaseUrl, t('database.cannotRead'), t('database.possibleDamage')],
+    content: [hint.databaseUrl, t('database.cannotRead'), t('database.possibleDamage')],
     confirmShow: false
   })
+})
+
+window.electron.ipcRenderer.on('databaseInitWindow-schemaMigrationProgress', (_event, payload) => {
+  if (!payload || typeof payload !== 'object') {
+    schemaMigrationProgress.value = null
+    return
+  }
+  schemaMigrationProgress.value = payload as SchemaMigrationProgress
 })
 </script>
 
@@ -376,151 +526,207 @@ window.electron.ipcRenderer.on('databaseInitWindow-showErrorHint', async (_event
     "
     class="unselectable"
   >
-    <div
-      style="text-align: center; height: 30px; line-height: 30px; font-size: 15px"
-      class="canDrag"
-    >
-      <span style="font-weight: bold" class="title unselectable">{{
-        databaseInitWindowTitle
-      }}</span>
-    </div>
-
-    <div style="padding: 10px 20px 0 20px">
-      <div class="tabs">
-        <div class="tab" :class="{ active: activeTab === 'create' }" @click="activeTab = 'create'">
-          {{ t('database.createNewDb') }}
-        </div>
+    <template v-if="isSchemaMigrationMode">
+      <div class="schema-migration-card schema-migration-card-standalone">
+        <div class="schema-migration-title canDrag">{{ t('database.schemaMigrationTitle') }}</div>
+        <div class="schema-migration-status">{{ schemaMigrationStatus }}</div>
         <div
-          class="tab"
-          :class="{ active: activeTab === 'existing' }"
-          @click="activeTab = 'existing'"
+          class="schema-migration-progress"
+          role="progressbar"
+          :aria-valuenow="schemaMigrationPercent"
+          aria-valuemin="0"
+          aria-valuemax="100"
         >
-          {{ t('database.chooseExistingDb') }}
+          <div
+            class="schema-migration-progress-fill"
+            :style="{ width: `${schemaMigrationPercent}%` }"
+          />
         </div>
-      </div>
-    </div>
-
-    <div
-      style="
-        padding: 12px 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-        flex: 1;
-        overflow: hidden;
-        font-size: 14px;
-      "
-    >
-      <template v-if="activeTab === 'existing'">
-        <div class="field">
-          <div class="fieldLabel" style="font-size: 14px">{{ t('database.chooseExistingDb') }}</div>
-          <div>
+        <div class="schema-migration-percent">{{ schemaMigrationPercent }}%</div>
+        <div v-if="schemaMigrationUnitProgress" class="schema-migration-record-progress">
+          {{ schemaMigrationUnitProgress }}
+        </div>
+        <div v-if="schemaMigrationProgress" class="schema-migration-path">
+          {{ schemaMigrationProgress.databasePath }}
+        </div>
+        <div v-if="schemaMigrationProgress?.phase === 'failed'" class="schema-migration-error">
+          <div>{{ t('database.schemaMigrationFailedHint') }}</div>
+          <div v-if="schemaMigrationProgress.backupPath">
+            {{ t('database.schemaMigrationBackupRetained') }}
+            {{ schemaMigrationProgress.backupPath }}
+          </div>
+          <div v-if="schemaMigrationProgress.message">{{ schemaMigrationProgress.message }}</div>
+          <div style="display: flex; justify-content: center; margin-top: 14px">
             <div
               class="button"
-              style="display: inline-block; text-align: center; padding: 0 12px; font-size: 12px"
-              @click="clickChooseExistingDb()"
+              style="width: 120px; text-align: center"
+              @click="closeSchemaMigrationWindow()"
             >
-              {{ t('database.pickManifestFile') }}
+              {{ t('common.close') }}
             </div>
           </div>
         </div>
-        <div class="helper">
-          {{ t('database.initHintExisting', { manifestName: manifestDisplayName }) }}
+        <div v-else class="schema-migration-hint">
+          {{ t('database.schemaMigrationBlockingHint') }}
         </div>
-      </template>
+      </div>
+    </template>
+    <template v-else>
+      <div
+        style="text-align: center; height: 30px; line-height: 30px; font-size: 15px"
+        class="canDrag"
+      >
+        <span style="font-weight: bold" class="title unselectable">{{
+          databaseInitWindowTitle
+        }}</span>
+      </div>
 
-      <template v-else>
-        <div class="field">
-          <div class="fieldLabel" style="font-size: 14px">{{ t('database.createNewDb') }}</div>
-          <bubbleBoxTrigger
-            tag="div"
-            class="chooseDirDiv flashing-border"
-            :title="folderPathVal"
-            :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
-            style="width: 100%"
-            @click="clickChooseDir()"
+      <div style="padding: 10px 20px 0 20px">
+        <div class="tabs">
+          <div
+            class="tab"
+            :class="{ active: activeTab === 'create' }"
+            @click="activeTab = 'create'"
           >
-            {{ folderPathVal || t('database.pickFolder') }}
-          </bubbleBoxTrigger>
-        </div>
-        <div class="field">
-          <div class="fieldLabel" style="font-size: 14px">{{ t('database.inputDbName') }}</div>
-          <div>
-            <input
-              v-model="dbName"
-              class="nameInput flashing-border"
-              :class="{ 'is-flashing': flashArea == 'dbName' }"
-              :placeholder="t('database.inputDbNamePlaceholder')"
-              style="width: 100%"
-            />
-          </div>
-        </div>
-        <div class="helper">{{ t('database.initHintCreate') }}</div>
-        <div class="field" style="border-radius: 4px">
-          <div class="fieldLabel" style="display: flex; align-items: center; gap: 6px">
-            <span>{{ t('fingerprints.mode') }}</span>
+            {{ t('database.createNewDb') }}
           </div>
           <div
-            class="flashing-border"
-            :class="{ 'is-flashing': flashArea == 'fingerprintMode' }"
-            style="
-              border-radius: 4px;
-              padding-top: 6px;
-              padding-bottom: 0px;
-              padding-left: 8px;
-              padding-right: 8px;
-            "
+            class="tab"
+            :class="{ active: activeTab === 'existing' }"
+            @click="activeTab = 'existing'"
           >
-            <singleRadioGroup
-              v-model="fingerprintModeModel"
-              :options="[
-                { label: t('fingerprints.modePCM'), value: 'pcm' },
-                { label: t('fingerprints.modeFile'), value: 'file' }
-              ]"
-              name="fpModeInit"
-              :option-font-size="12"
-            >
-              <template #option="{ opt }">
-                <span class="label">{{ opt.label }}</span>
-                <img
-                  :ref="(el) => setOptionHintRef(opt.value, el)"
-                  :src="hintIcon"
-                  style="width: 14px; height: 14px; margin-left: 6px"
-                  :draggable="false"
-                  class="theme-icon"
-                />
-                <bubbleBox
-                  :dom="optionHintRefs[opt.value] ?? null"
-                  :title="
-                    opt.value === 'pcm'
-                      ? t('fingerprints.modePCMHint')
-                      : t('fingerprints.modeFileHint')
-                  "
-                  :max-width="360"
-                />
-              </template>
-            </singleRadioGroup>
-          </div>
-          <div class="helper" style="font-size: 11px; color: var(--text-weak)">
-            {{ t('fingerprints.modeIncompatibleWarning') }}
+            {{ t('database.chooseExistingDb') }}
           </div>
         </div>
-      </template>
-    </div>
+      </div>
 
-    <div style="display: flex; justify-content: center; padding: 10px 0 12px 0; gap: 10px">
       <div
-        v-if="activeTab === 'create'"
-        class="button"
-        style="width: 120px; text-align: center"
-        @click="submitConfirm()"
+        style="
+          padding: 12px 20px;
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+          flex: 1;
+          overflow: hidden;
+          font-size: 14px;
+        "
       >
-        {{ t('common.confirm') }} (E)
+        <template v-if="activeTab === 'existing'">
+          <div class="field">
+            <div class="fieldLabel" style="font-size: 14px">
+              {{ t('database.chooseExistingDb') }}
+            </div>
+            <div>
+              <div
+                class="button"
+                style="display: inline-block; text-align: center; padding: 0 12px; font-size: 12px"
+                @click="clickChooseExistingDb()"
+              >
+                {{ t('database.pickManifestFile') }}
+              </div>
+            </div>
+          </div>
+          <div class="helper">
+            {{ t('database.initHintExisting', { manifestName: manifestDisplayName }) }}
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="field">
+            <div class="fieldLabel" style="font-size: 14px">{{ t('database.createNewDb') }}</div>
+            <bubbleBoxTrigger
+              tag="div"
+              class="chooseDirDiv flashing-border"
+              :title="folderPathVal"
+              :class="{ 'is-flashing': flashArea == 'folderPathVal' }"
+              style="width: 100%"
+              @click="clickChooseDir()"
+            >
+              {{ folderPathVal || t('database.pickFolder') }}
+            </bubbleBoxTrigger>
+          </div>
+          <div class="field">
+            <div class="fieldLabel" style="font-size: 14px">{{ t('database.inputDbName') }}</div>
+            <div>
+              <input
+                v-model="dbName"
+                class="nameInput flashing-border"
+                :class="{ 'is-flashing': flashArea == 'dbName' }"
+                :placeholder="t('database.inputDbNamePlaceholder')"
+                style="width: 100%"
+              />
+            </div>
+          </div>
+          <div class="helper">{{ t('database.initHintCreate') }}</div>
+          <div class="field" style="border-radius: 4px">
+            <div class="fieldLabel" style="display: flex; align-items: center; gap: 6px">
+              <span>{{ t('fingerprints.mode') }}</span>
+            </div>
+            <div
+              class="flashing-border"
+              :class="{ 'is-flashing': flashArea == 'fingerprintMode' }"
+              style="
+                border-radius: 4px;
+                padding-top: 6px;
+                padding-bottom: 0px;
+                padding-left: 8px;
+                padding-right: 8px;
+              "
+            >
+              <singleRadioGroup
+                v-model="fingerprintModeModel"
+                :options="[
+                  { label: t('fingerprints.modePCM'), value: 'pcm' },
+                  { label: t('fingerprints.modeFile'), value: 'file' }
+                ]"
+                name="fpModeInit"
+                :option-font-size="12"
+              >
+                <template #option="{ opt }">
+                  <span class="label">{{ opt.label }}</span>
+                  <img
+                    :ref="(el) => setOptionHintRef(opt.value, el)"
+                    :src="hintIcon"
+                    style="width: 14px; height: 14px; margin-left: 6px"
+                    :draggable="false"
+                    class="theme-icon"
+                  />
+                  <bubbleBox
+                    :dom="optionHintRefs[opt.value] ?? null"
+                    :title="
+                      opt.value === 'pcm'
+                        ? t('fingerprints.modePCMHint')
+                        : t('fingerprints.modeFileHint')
+                    "
+                    :max-width="360"
+                  />
+                </template>
+              </singleRadioGroup>
+            </div>
+            <div class="helper" style="font-size: 11px; color: var(--text-weak)">
+              {{ t('fingerprints.modeIncompatibleWarning') }}
+            </div>
+          </div>
+        </template>
       </div>
-      <div class="button" style="width: 120px; text-align: center" @click="cancel()">
-        {{ t('menu.exit') }} (Esc)
+
+      <div
+        v-if="!schemaMigrationIsBlocking"
+        style="display: flex; justify-content: center; padding: 10px 0 12px 0; gap: 10px"
+      >
+        <div
+          v-if="activeTab === 'create'"
+          class="button"
+          style="width: 120px; text-align: center"
+          @click="submitConfirm()"
+        >
+          {{ t('common.confirm') }} (E)
+        </div>
+        <div class="button" style="width: 120px; text-align: center" @click="cancel()">
+          {{ t('menu.exit') }} (Esc)
+        </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 <style lang="scss">
@@ -670,5 +876,70 @@ body {
 .radio:hover .dot {
   border-color: var(--border);
   background: rgba(0, 0, 0, 0.02);
+}
+
+.schema-migration-card {
+  width: min(460px, 100%);
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  box-shadow: 0 12px 30px color-mix(in srgb, #000 35%, transparent);
+}
+
+.schema-migration-card-standalone {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.schema-migration-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.schema-migration-status {
+  margin-top: 12px;
+  color: var(--accent);
+}
+
+.schema-migration-progress {
+  height: 8px;
+  margin-top: 14px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.schema-migration-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease-out;
+}
+
+.schema-migration-percent,
+.schema-migration-record-progress {
+  margin-top: 6px;
+  color: var(--text-weak);
+  font-size: 12px;
+}
+
+.schema-migration-path,
+.schema-migration-error,
+.schema-migration-hint {
+  margin-top: 10px;
+  color: var(--text-weak);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.schema-migration-error {
+  color: var(--danger, #dc3545);
 }
 </style>

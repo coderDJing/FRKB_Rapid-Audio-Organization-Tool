@@ -1,5 +1,7 @@
-import { GRID_BEAT4_LINE_ZOOM, GRID_BEAT_LINE_ZOOM } from '@renderer/composables/mixtape/constants'
-import { normalizeBeatOffset } from '@renderer/composables/mixtape/beatSyncModel'
+import {
+  GRID_BEAT_LINE_ZOOM,
+  GRID_DOWNBEAT_LINE_ZOOM
+} from '@renderer/composables/mixtape/constants'
 import {
   BPM_MIN_VALUE,
   BPM_POINT_SEC_EPSILON,
@@ -9,18 +11,18 @@ import {
 } from '@renderer/composables/mixtape/trackTempoModel'
 import type { MixtapeBpmPoint, MixtapeTrackLoopSegment } from '@renderer/composables/mixtape/types'
 import {
-  createSongBeatGridRuntime,
-  type SongBeatGridLine,
-  type SongBeatGridLineLevel,
-  type SongBeatGridMap,
-  type SongBeatGridRuntime,
-  type SongBeatGridRuntimeClip
-} from '@shared/songBeatGridMap'
+  createUnifiedSongBeatGridRuntime,
+  type UnifiedSongBeatGridLine,
+  type UnifiedSongBeatGridLineLevel,
+  type UnifiedSongBeatGridRuntime,
+  type UnifiedSongBeatGridRuntimeClip
+} from '@shared/songBeatGridRuntime'
+import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 export type TrackVisibleGridLine = {
   sec: number
   sourceSec: number
-  level: 'bar' | 'beat4' | 'beat'
+  level: 'downbeat' | 'beat'
 }
 
 export type TrackTimeMapInput = {
@@ -31,8 +33,8 @@ export type TrackTimeMapInput = {
   fallbackBpm: number
   firstBeatSourceSec: number
   beatSourceSec: number
-  barBeatOffset?: number
-  sourceBeatGridMap?: SongBeatGridMap | null
+  downbeatBeatOffset?: number
+  sourceBeatGridMap?: SongBeatGridMapV2 | null
   loopSegments?: MixtapeTrackLoopSegment[]
   loopSegment?: MixtapeTrackLoopSegment
   mappingMode?: 'tempoEnvelope' | 'masterGrid'
@@ -49,7 +51,7 @@ export type TrackTimeMap = {
   sourceDurationSec: number
   firstBeatSourceSec: number
   beatSourceSec: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
   mapLocalToSource: (localSec: number) => number
   mapSourceToLocal: (sourceSec: number) => number
   sampleBpmAtLocal: (localSec: number) => number
@@ -69,34 +71,32 @@ export type TrackTimeMap = {
 }
 
 export type DynamicSourceBeatMap = {
-  runtime: SongBeatGridRuntime
+  runtime: UnifiedSongBeatGridRuntime
   startBeatOrdinal: number
   endBeatOrdinal: number
   beatSpan: number
-  lines: SongBeatGridLine[]
+  lines: UnifiedSongBeatGridLine[]
   firstBeatDelta: number
-  firstBarBeatDelta: number | null
+  firstDownbeatBeatDelta: number | null
   mapSourceToBeatOrdinal: (sourceSec: number) => number
   mapBeatOrdinalToSource: (beatOrdinal: number) => number
 }
 
 const resolveVisibleGridVisibility = (zoom: number) => ({
-  showBar: true,
-  showBeat4: zoom >= GRID_BEAT4_LINE_ZOOM,
+  showDownbeat: zoom >= GRID_DOWNBEAT_LINE_ZOOM,
   showBeat: zoom >= GRID_BEAT_LINE_ZOOM
 })
 
-const shouldShowGridLineLevel = (level: SongBeatGridLineLevel, zoom: number) => {
+const shouldShowGridLineLevel = (level: UnifiedSongBeatGridLineLevel, zoom: number) => {
   const visibility = resolveVisibleGridVisibility(zoom)
-  if (level === 'bar') return visibility.showBar
-  if (level === 'beat4') return visibility.showBeat4
+  if (level === 'downbeat') return visibility.showDownbeat
   return visibility.showBeat
 }
 
 const resolveRuntimeClipAtSec = (
-  runtime: SongBeatGridRuntime,
+  runtime: UnifiedSongBeatGridRuntime,
   secInput: number
-): SongBeatGridRuntimeClip | null => {
+): UnifiedSongBeatGridRuntimeClip | null => {
   const sec = clampTrackTempoNumber(Number(secInput) || 0, 0, runtime.durationSec)
   let left = 0
   let right = runtime.clips.length - 1
@@ -115,7 +115,7 @@ const resolveRuntimeClipAtSec = (
   return answer && sec <= answer.endSec + BPM_POINT_SEC_EPSILON ? answer : null
 }
 
-const resolveRuntimeBeatOrdinalAtSec = (runtime: SongBeatGridRuntime, secInput: number) => {
+const resolveRuntimeBeatOrdinalAtSec = (runtime: UnifiedSongBeatGridRuntime, secInput: number) => {
   const sec = clampTrackTempoNumber(Number(secInput) || 0, 0, runtime.durationSec)
   const lines = runtime.lines
   if (!lines.length) return 0
@@ -135,7 +135,10 @@ const resolveRuntimeBeatOrdinalAtSec = (runtime: SongBeatGridRuntime, secInput: 
   return referenceLine.beatOrdinal + (sec - referenceLine.sec) / clip.beatSec
 }
 
-const resolveRuntimeSecAtBeatOrdinal = (runtime: SongBeatGridRuntime, beatOrdinalInput: number) => {
+const resolveRuntimeSecAtBeatOrdinal = (
+  runtime: UnifiedSongBeatGridRuntime,
+  beatOrdinalInput: number
+) => {
   const beatOrdinal = Number(beatOrdinalInput)
   const lines = runtime.lines
   if (!Number.isFinite(beatOrdinal) || !lines.length) return 0
@@ -176,18 +179,18 @@ const resolveRuntimeSecAtBeatOrdinal = (runtime: SongBeatGridRuntime, beatOrdina
 }
 
 export const createDynamicSourceBeatMap = (
-  sourceBeatGridMap: SongBeatGridMap | null | undefined,
+  sourceBeatGridMap: SongBeatGridMapV2 | null | undefined,
   sourceDurationSecInput: number
 ): DynamicSourceBeatMap | null => {
   const sourceDurationSec = Math.max(0, Number(sourceDurationSecInput) || 0)
-  const runtime = createSongBeatGridRuntime(sourceBeatGridMap, sourceDurationSec)
+  const runtime = createUnifiedSongBeatGridRuntime(sourceBeatGridMap, sourceDurationSec)
   if (!runtime) return null
   const startBeatOrdinal = resolveRuntimeBeatOrdinalAtSec(runtime, 0)
   const endBeatOrdinal = resolveRuntimeBeatOrdinalAtSec(runtime, sourceDurationSec)
   const beatSpan = endBeatOrdinal - startBeatOrdinal
   if (!Number.isFinite(beatSpan) || beatSpan <= BPM_POINT_SEC_EPSILON) return null
   const firstBeatLine = runtime.lines[0] || null
-  const firstBarLine = runtime.lines.find((line) => line.level === 'bar') || null
+  const firstDownbeatLine = runtime.lines.find((line) => line.level === 'downbeat') || null
   return {
     runtime,
     startBeatOrdinal,
@@ -195,7 +198,9 @@ export const createDynamicSourceBeatMap = (
     beatSpan,
     lines: runtime.lines,
     firstBeatDelta: firstBeatLine ? firstBeatLine.beatOrdinal - startBeatOrdinal : 0,
-    firstBarBeatDelta: firstBarLine ? firstBarLine.beatOrdinal - startBeatOrdinal : null,
+    firstDownbeatBeatDelta: firstDownbeatLine
+      ? firstDownbeatLine.beatOrdinal - startBeatOrdinal
+      : null,
     mapSourceToBeatOrdinal: (sourceSec: number) =>
       resolveRuntimeBeatOrdinalAtSec(runtime, sourceSec),
     mapBeatOrdinalToSource: (beatOrdinal: number) =>
@@ -204,12 +209,12 @@ export const createDynamicSourceBeatMap = (
 }
 
 export const resolveDynamicSourceBeatSpan = (
-  sourceBeatGridMap: SongBeatGridMap | null | undefined,
+  sourceBeatGridMap: SongBeatGridMapV2 | null | undefined,
   sourceDurationSec: number
 ) => createDynamicSourceBeatMap(sourceBeatGridMap, sourceDurationSec)?.beatSpan ?? null
 
 export const resolveDynamicSourceTimelineDurationByBpm = (params: {
-  sourceBeatGridMap?: SongBeatGridMap | null
+  sourceBeatGridMap?: SongBeatGridMapV2 | null
   sourceDurationSec: number
   targetBpm: number
 }) => {
@@ -867,72 +872,16 @@ export const resolveTrackBpmEnvelopeRenderablePoints = (params: {
   })
 }
 
-const buildTrackBeatPositionsFromSourceGrid = (params: {
-  points: MixtapeBpmPoint[]
-  durationSec: number
-  sourceDurationSec: number
-  firstBeatSourceSec: number
-  beatSourceSec: number
-  originalBpm: number
-  fallbackBpm: number
-}) => {
-  const positions: number[] = []
-  const safeDurationSec = Math.max(0, Number(params.durationSec) || 0)
-  const safeSourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
-  const firstBeatSourceSec = Number(params.firstBeatSourceSec)
-  const beatSourceSec = Number(params.beatSourceSec)
-  if (
-    safeDurationSec <= BPM_POINT_SEC_EPSILON ||
-    safeSourceDurationSec <= BPM_POINT_SEC_EPSILON ||
-    !Number.isFinite(firstBeatSourceSec) ||
-    !Number.isFinite(beatSourceSec) ||
-    beatSourceSec <= BPM_POINT_SEC_EPSILON
-  ) {
-    return {
-      positions,
-      anchorIndex: 0
-    }
-  }
-  const minIndex = Math.ceil((0 - firstBeatSourceSec) / beatSourceSec)
-  const maxIndex = Math.floor((safeSourceDurationSec - firstBeatSourceSec) / beatSourceSec)
-  if (minIndex > maxIndex) {
-    return {
-      positions,
-      anchorIndex: 0
-    }
-  }
-  const tempoRatioIntegralCache = buildTempoRatioIntegralCache({
-    points: params.points,
-    durationSec: safeDurationSec,
-    originalBpm: params.originalBpm,
-    fallbackBpm: params.fallbackBpm
-  })
-  for (let beatIndex = minIndex; beatIndex <= maxIndex; beatIndex += 1) {
-    const sourceSec = firstBeatSourceSec + beatIndex * beatSourceSec
-    const localSec = resolveTrackLocalSecAtSourceTime({
-      points: params.points,
-      sourceSec,
-      durationSec: safeDurationSec,
-      sourceDurationSec: safeSourceDurationSec,
-      originalBpm: params.originalBpm,
-      fallbackBpm: params.fallbackBpm,
-      integralCache: tempoRatioIntegralCache
-    })
-    positions.push(roundTrackTempoSec(localSec))
-  }
-  return {
-    positions,
-    anchorIndex: -minIndex
-  }
-}
-
 export const buildTrackVisibleGridLinesFromDynamicSourceGrid = (params: {
-  sourceBeatGridMap?: SongBeatGridMap | null
+  sourceBeatGridMap?: SongBeatGridMapV2 | null
   sourceDurationSec: number
   zoom?: number
   mapSourceToLocal: (sourceSec: number) => number
 }) => {
-  const runtime = createSongBeatGridRuntime(params.sourceBeatGridMap, params.sourceDurationSec)
+  const runtime = createUnifiedSongBeatGridRuntime(
+    params.sourceBeatGridMap,
+    params.sourceDurationSec
+  )
   if (!runtime) return null
   const zoom = Number(params.zoom) || 0
   const lines: TrackVisibleGridLine[] = []
@@ -955,8 +904,8 @@ export const buildTrackVisibleGridLines = (params: {
   sourceDurationSec: number
   firstBeatSourceSec: number
   beatSourceSec: number
-  barBeatOffset?: number
-  sourceBeatGridMap?: SongBeatGridMap | null
+  downbeatBeatOffset?: number
+  sourceBeatGridMap?: SongBeatGridMapV2 | null
   zoom?: number
   originalBpm: number
   fallbackBpm: number
@@ -975,52 +924,5 @@ export const buildTrackVisibleGridLines = (params: {
         fallbackBpm: params.fallbackBpm
       })
   })
-  if (dynamicLines) return dynamicLines
-
-  const beatGrid = buildTrackBeatPositionsFromSourceGrid({
-    points: params.points,
-    durationSec: params.durationSec,
-    sourceDurationSec: params.sourceDurationSec,
-    firstBeatSourceSec: params.firstBeatSourceSec,
-    beatSourceSec: params.beatSourceSec,
-    originalBpm: params.originalBpm,
-    fallbackBpm: params.fallbackBpm
-  })
-  const normalizedBarOffset = normalizeBeatOffset(params.barBeatOffset, 32)
-  const anchorIndex = Math.max(0, beatGrid.anchorIndex)
-  const visibility = resolveVisibleGridVisibility(Number(params.zoom) || 0)
-  const lines: TrackVisibleGridLine[] = []
-  for (let index = 0; index < beatGrid.positions.length; index += 1) {
-    const positionSec = beatGrid.positions[index]
-    const sourceSec = params.firstBeatSourceSec + (index - anchorIndex) * params.beatSourceSec
-    const relativeBeatIndex = index - anchorIndex
-    const shiftedIndex = relativeBeatIndex - normalizedBarOffset
-    const mod32 = ((shiftedIndex % 32) + 32) % 32
-    const mod4 = ((shiftedIndex % 4) + 4) % 4
-    const level: TrackVisibleGridLine['level'] = mod32 === 0 ? 'bar' : mod4 === 0 ? 'beat4' : 'beat'
-    if (level === 'bar' && visibility.showBar) {
-      lines.push({
-        sec: roundTrackTempoSec(positionSec),
-        sourceSec: roundTrackTempoSec(sourceSec),
-        level
-      })
-      continue
-    }
-    if (level === 'beat4' && visibility.showBeat4) {
-      lines.push({
-        sec: roundTrackTempoSec(positionSec),
-        sourceSec: roundTrackTempoSec(sourceSec),
-        level
-      })
-      continue
-    }
-    if (level === 'beat' && visibility.showBeat) {
-      lines.push({
-        sec: roundTrackTempoSec(positionSec),
-        sourceSec: roundTrackTempoSec(sourceSec),
-        level
-      })
-    }
-  }
-  return lines
+  return dynamicLines ?? []
 }

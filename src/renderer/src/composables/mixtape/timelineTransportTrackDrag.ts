@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import {
-  GRID_BEAT4_LINE_ZOOM,
   GRID_BEAT_LINE_ZOOM,
+  GRID_DOWNBEAT_LINE_ZOOM,
   LANE_COUNT,
   normalizeMixtapeLaneIndex
 } from '@renderer/composables/mixtape/constants'
@@ -318,16 +318,16 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
     return roundTrackTempoSec(nearestDeltaSec)
   }
 
-  const resolveVisibleGridSnapStepBeats = () => {
-    const zoomValue = Number(normalizedRenderZoom.value) || 0
-    if (zoomValue >= GRID_BEAT_LINE_ZOOM) return 1
-    if (zoomValue >= GRID_BEAT4_LINE_ZOOM) return 4
-    return 32
-  }
+  const resolveVisibleGridSnapStepBeats = () =>
+    Number(normalizedRenderZoom.value) >= GRID_BEAT_LINE_ZOOM
+      ? 1
+      : Number(normalizedRenderZoom.value) >= GRID_DOWNBEAT_LINE_ZOOM
+        ? 4
+        : 4
 
   const buildGlobalTimelineGridSecs = (
     snapshotTracks: MixtapeTrack[],
-    options?: { minSec?: number; maxSec?: number; fullDetail?: boolean }
+    options?: { minSec?: number; maxSec?: number; fullDetail?: boolean; downbeatsOnly?: boolean }
   ) => {
     if (!isMixtapeGlobalTempoReady()) return [] as number[]
     const fallbackBpm =
@@ -356,12 +356,13 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
           maxSec: Math.max(0, maxSec + beatBufferSec)
         }
       )
+      .filter((line) => options?.downbeatsOnly !== true || line.level === 'downbeat')
       .map((line) => Number(line.sec.toFixed(4)))
   }
 
   const buildTrackVisibleLocalGridSecs = (
     track: MixtapeTrack,
-    options?: { startSec?: number; fullDetail?: boolean }
+    options?: { startSec?: number; fullDetail?: boolean; downbeatsOnly?: boolean }
   ) => {
     const projectedTrack =
       typeof options?.startSec === 'number' && Number.isFinite(options.startSec)
@@ -377,7 +378,9 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
       durationSec,
       zoom: options?.fullDetail ? Number.POSITIVE_INFINITY : Number(normalizedRenderZoom.value) || 0
     }).visibleGridLines
-    return lines.map((line) => Number(line.sec.toFixed(4)))
+    return lines
+      .filter((line) => options?.downbeatsOnly !== true || line.level === 'downbeat')
+      .map((line) => Number(line.sec.toFixed(4)))
   }
 
   const resolveStrictVisibleGridSnappedStartSec = (payload: {
@@ -389,7 +392,7 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
   }) => {
     if (!isMixtapeGlobalTempoReady()) return null
     const intervalBeats = resolveVisibleGridSnapStepBeats()
-    if (![1, 4, 32].includes(intervalBeats)) return null
+    if (![1, 4].includes(intervalBeats)) return null
     const gridSourceBpm = resolveTrackGridSourceBpm(payload.track)
     const beatSourceSec = resolveBeatSecByBpm(gridSourceBpm)
     if (!Number.isFinite(beatSourceSec) || beatSourceSec <= BPM_POINT_SEC_EPSILON) return null
@@ -408,25 +411,15 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
     const firstBeatSourceBeats = dynamicSourceBeatMap
       ? dynamicSourceBeatMap.firstBeatDelta
       : firstBeatSourceSec / beatSourceSec
-    const barBeatOffset = normalizeBeatOffset(payload.track.barBeatOffset, 32)
+    const downbeatBeatOffset = normalizeBeatOffset(payload.track.downbeatBeatOffset, 4)
     let phaseOffsetBeats = firstBeatSourceBeats
     let hasVisibleFamily = true
-    if (intervalBeats === 32) {
+    if (intervalBeats === 4) {
       phaseOffsetBeats =
-        dynamicSourceBeatMap?.firstBarBeatDelta ?? firstBeatSourceBeats + barBeatOffset
+        dynamicSourceBeatMap?.firstDownbeatBeatDelta ?? firstBeatSourceBeats + downbeatBeatOffset
       hasVisibleFamily = dynamicSourceBeatMap
-        ? dynamicSourceBeatMap.firstBarBeatDelta !== null &&
+        ? dynamicSourceBeatMap.firstDownbeatBeatDelta !== null &&
           phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
-        : phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
-    } else if (intervalBeats === 4) {
-      const firstBeat4Line = dynamicSourceBeatMap?.lines.find(
-        (line) => line.level === 'bar' || line.level === 'beat4'
-      )
-      phaseOffsetBeats = firstBeat4Line
-        ? firstBeat4Line.beatOrdinal - (dynamicSourceBeatMap?.startBeatOrdinal ?? 0)
-        : firstBeatSourceBeats + (barBeatOffset % 4)
-      hasVisibleFamily = dynamicSourceBeatMap
-        ? Boolean(firstBeat4Line) && phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
         : phaseOffsetBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
     }
     if (!hasVisibleFamily) return null
@@ -496,6 +489,7 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
     minStartSec: number
     maxStartSec: number
     targetTimelineGridSecs: number[]
+    downbeatsOnly: boolean
     boundaryCandidates?: number[]
   }) => {
     let candidateStartSec = clampNumber(
@@ -504,7 +498,9 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
       payload.maxStartSec
     )
     let currentLocalGridSecs = buildTrackVisibleLocalGridSecs(payload.track, {
-      startSec: candidateStartSec
+      startSec: candidateStartSec,
+      fullDetail: payload.downbeatsOnly,
+      downbeatsOnly: payload.downbeatsOnly
     })
     let snappedStartSec = resolveSnappedStartSecByVisibleGrid({
       rawStartSec: candidateStartSec,
@@ -524,14 +520,18 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
       if (Math.abs(stabilizedStartSec - candidateStartSec) <= 0.0001) {
         candidateStartSec = stabilizedStartSec
         currentLocalGridSecs = buildTrackVisibleLocalGridSecs(payload.track, {
-          startSec: candidateStartSec
+          startSec: candidateStartSec,
+          fullDetail: payload.downbeatsOnly,
+          downbeatsOnly: payload.downbeatsOnly
         })
         snappedStartSec = stabilizedStartSec
         break
       }
       candidateStartSec = stabilizedStartSec
       currentLocalGridSecs = buildTrackVisibleLocalGridSecs(payload.track, {
-        startSec: candidateStartSec
+        startSec: candidateStartSec,
+        fullDetail: payload.downbeatsOnly,
+        downbeatsOnly: payload.downbeatsOnly
       })
       snappedStartSec = resolveSnappedStartSecByVisibleGrid({
         rawStartSec: candidateStartSec,
@@ -637,7 +637,9 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
     if (isMixtapeGlobalTempoReady()) {
       const previousTimelineGridSecs = buildGlobalTimelineGridSecs(trackDragState.snapshotTracks, {
         minSec: 0,
-        maxSec: rawStartSec + trackDurationSec
+        maxSec: rawStartSec + trackDurationSec,
+        fullDetail: snapStepBeats === 4,
+        downbeatsOnly: snapStepBeats === 4
       })
       const strictSnappedStartSec = resolveStrictVisibleGridSnappedStartSec({
         track: currentTrackForSnap,
@@ -651,7 +653,9 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
           ? {
               snappedStartSec: strictSnappedStartSec,
               currentLocalGridSecs: buildTrackVisibleLocalGridSecs(currentTrackForSnap, {
-                startSec: strictSnappedStartSec
+                startSec: strictSnappedStartSec,
+                fullDetail: snapStepBeats === 4,
+                downbeatsOnly: snapStepBeats === 4
               }),
               candidateStartSec: strictSnappedStartSec
             }
@@ -661,6 +665,7 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
               minStartSec: 0,
               maxStartSec: Number.POSITIVE_INFINITY,
               targetTimelineGridSecs: previousTimelineGridSecs,
+              downbeatsOnly: snapStepBeats === 4,
               boundaryCandidates: initialPlacement.boundaryCandidates
             })
       if (typeof projectedSnap.snappedStartSec === 'number') {
@@ -677,7 +682,7 @@ export const createTimelineTransportTrackDragModule = (ctx: TimelineTransportTra
           startSec: rawStartSec,
           firstBeatSec: currentFirstBeatSec,
           beatSec,
-          barBeatOffset: normalizeBeatOffset(currentTrackForSnap.barBeatOffset, 32)
+          downbeatBeatOffset: normalizeBeatOffset(currentTrackForSnap.downbeatBeatOffset, 4)
         })
         const snappedStartSec = resolveSnappedStartSec({
           rawStartSec,

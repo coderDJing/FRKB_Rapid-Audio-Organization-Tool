@@ -26,10 +26,7 @@ export type PioneerSongSnapshot = {
   container: string | undefined
   key: string | undefined
   originalKey: string | undefined
-  bpm: number | undefined
   originalBpm: number | undefined
-  firstBeatMs: number | undefined
-  barBeatOffset: number | undefined
   energyScore: number | undefined
   energyAlgorithmVersion: number | undefined
   hotCues: ISongHotCue[]
@@ -197,10 +194,7 @@ export const usePioneerSongsProjection = (params: UsePioneerSongsProjectionParam
       container: song.container,
       key: song.key,
       originalKey: song.key,
-      bpm: song.bpm,
       originalBpm: song.bpm,
-      firstBeatMs: song.firstBeatMs,
-      barBeatOffset: song.barBeatOffset,
       energyScore: song.energyScore,
       energyAlgorithmVersion: song.energyAlgorithmVersion,
       hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],

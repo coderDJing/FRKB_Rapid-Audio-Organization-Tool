@@ -9,11 +9,11 @@ import benchmark_rkb_rekordbox_truth as benchmark
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
-DEFAULT_CURRENT_BENCHMARK = BENCHMARK_OUTPUT_DIR / "frkb-current-latest.json"
-DEFAULT_CLASSIFICATION = BENCHMARK_OUTPUT_DIR / "frkb-classification-current.json"
-DEFAULT_SAMPLE_BENCHMARK = BENCHMARK_OUTPUT_DIR / "sample-regression-latest.json"
-DEFAULT_FAILURE_BENCHMARK = BENCHMARK_OUTPUT_DIR / "grid-failures-current-latest.json"
-DEFAULT_FAILURE_MANIFEST = BENCHMARK_OUTPUT_DIR / "grid-failures-current-manifest.json"
+DEFAULT_CURRENT_BENCHMARK = BENCHMARK_OUTPUT_DIR / "frkb-current-latest.v2.json"
+DEFAULT_CLASSIFICATION = BENCHMARK_OUTPUT_DIR / "frkb-classification-current.v2.json"
+DEFAULT_SAMPLE_BENCHMARK = BENCHMARK_OUTPUT_DIR / "sample-regression-latest.v2.json"
+DEFAULT_FAILURE_BENCHMARK = BENCHMARK_OUTPUT_DIR / "grid-failures-current-latest.v2.json"
+DEFAULT_FAILURE_MANIFEST = BENCHMARK_OUTPUT_DIR / "grid-failures-current-manifest.v2.json"
 
 
 def _normalize_key(value: Any) -> str:
@@ -38,9 +38,16 @@ def _category(row: dict[str, Any]) -> str:
     return _normalize_key((row.get("currentTimeline") or {}).get("category")) or "unknown"
 
 
+def _truth_clip(truth: dict[str, Any]) -> dict[str, Any]:
+    beat_grid_map = truth.get("beatGridMap")
+    clips = beat_grid_map.get("clips") if isinstance(beat_grid_map, dict) else None
+    return clips[0] if isinstance(clips, list) and clips and isinstance(clips[0], dict) else {}
+
+
 def _row_identity(row: dict[str, Any]) -> dict[str, Any]:
     truth = row.get("truth") if isinstance(row.get("truth"), dict) else {}
     analysis = row.get("analysis") if isinstance(row.get("analysis"), dict) else {}
+    truth_clip = _truth_clip(truth)
     timeline = row.get("currentTimeline") if isinstance(row.get("currentTimeline"), dict) else {}
     category = _category(row)
     return {
@@ -50,13 +57,13 @@ def _row_identity(row: dict[str, Any]) -> dict[str, Any]:
         "category": category,
         "targetSet": "sample" if category == "pass" else "grid-failures-current",
         "bpm": analysis.get("bpm"),
-        "truthBpm": truth.get("bpm"),
+        "truthBpm": truth_clip.get("bpm"),
         "gridMeanAbsMs": timeline.get("gridMeanAbsMs"),
         "gridMaxAbsMs": timeline.get("gridMaxAbsMs"),
         "firstBeatPhaseAbsErrorMs": timeline.get("firstBeatPhaseAbsErrorMs"),
         "bpmOnlyDrift128BeatsMs": timeline.get("bpmOnlyDrift128BeatsMs"),
-        "barBeatOffset": analysis.get("barBeatOffset"),
-        "truthBarBeatOffset": truth.get("barBeatOffset"),
+        "downbeatBeatOffset": analysis.get("downbeatBeatOffset"),
+        "truthDownbeatBeatOffset": truth_clip.get("downbeatBeatOffset"),
         "anchorStrategy": analysis.get("anchorStrategy"),
         "gridSolverSelectedSource": analysis.get("gridSolverSelectedSource"),
         "gridSolverCandidateCount": analysis.get("gridSolverCandidateCount"),

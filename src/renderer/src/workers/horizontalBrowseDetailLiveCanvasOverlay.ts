@@ -4,7 +4,10 @@ import {
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailOverlayCanvas'
 import { resolveCanvasScaleMetrics } from '@renderer/utils/canvasScale'
 import type { HorizontalBrowseDetailLiveCanvasRenderRequest } from './horizontalBrowseDetailLiveCanvas.types'
-import { createSongBeatGridRuntime, type SongBeatGridRuntime } from '@shared/songBeatGridMap'
+import {
+  createUnifiedSongBeatGridRuntime,
+  type UnifiedSongBeatGridRuntime
+} from '@shared/songBeatGridRuntime'
 
 type CanvasMetrics = {
   cssWidth: number
@@ -26,9 +29,6 @@ type OverlayFrameState = {
   height: number
   waveformHeight: number
   direction: 'up' | 'down'
-  bpm: number
-  firstBeatMs: number
-  barBeatOffset: number
   beatGridMapSignature: string
   beatGridEditMode: boolean
   beatGridVisibleFromSec: number | null
@@ -57,12 +57,9 @@ const applyCanvasScaleTransform = (
   targetCtx.setTransform(scaleX, 0, 0, scaleY, 0, 0)
 }
 
-const BAR_BEAT_INTERVAL = 32
-const BEAT4_INTERVAL = 4
-const BAR_GRID_LINE_WIDTH = 2.05
 const MAJOR_GRID_LINE_WIDTH = 1.85
 const MINOR_GRID_LINE_WIDTH = 1.45
-const GRID_LINE_VERTICAL_OVERSCAN = 2
+const GRID_LINE_DIRECTIONAL_PROTRUSION_PX = 3
 const CLIP_BOUNDARY_LINE_WIDTH = 1
 const CLIP_BOUNDARY_SELECTED_LINE_WIDTH = 1
 const CLIP_BOUNDARY_SELECTED_CAP_WIDTH = 7
@@ -74,20 +71,9 @@ type GridLineStyle = {
   haloExtraWidth: number
 }
 
-const normalizeBeatOffset = (value: number, interval: number) => {
-  if (!Number.isFinite(value) || interval <= 0) return 0
-  const rounded = Math.round(value)
-  return ((rounded % interval) + interval) % interval
-}
-
 const resolveGridPalette = (themeVariant: 'light' | 'dark') =>
   themeVariant === 'light'
     ? {
-        barLine: {
-          core: 'rgba(8, 13, 23, 0.84)',
-          halo: 'rgba(255, 255, 255, 0.56)',
-          haloExtraWidth: 1.25
-        },
         majorGrid: {
           core: 'rgba(8, 13, 23, 0.78)',
           halo: 'rgba(255, 255, 255, 0.52)',
@@ -110,11 +96,6 @@ const resolveGridPalette = (themeVariant: 'light' | 'dark') =>
         }
       }
     : {
-        barLine: {
-          core: 'rgba(255, 255, 255, 0.9)',
-          halo: 'rgba(0, 0, 0, 0.36)',
-          haloExtraWidth: 1.25
-        },
         majorGrid: {
           core: 'rgba(255, 255, 255, 0.84)',
           halo: 'rgba(0, 0, 0, 0.4)',
@@ -138,7 +119,7 @@ const resolveGridPalette = (themeVariant: 'light' | 'dark') =>
       }
 
 const resolveFirstVisibleDynamicLineIndex = (
-  lines: SongBeatGridRuntime['lines'],
+  lines: UnifiedSongBeatGridRuntime['lines'],
   startSec: number
 ) => {
   let left = 0
@@ -161,11 +142,9 @@ const drawBeatGridOverlay = (
   width: number,
   waveformTop: number,
   waveformHeight: number,
+  direction: 'up' | 'down',
   overlayHeight: number,
-  bpm: number,
-  firstBeatMs: number,
-  barBeatOffset: number,
-  dynamicRuntime: SongBeatGridRuntime | null,
+  runtime: UnifiedSongBeatGridRuntime | null,
   playbackDurationSec: number,
   rangeStartSec: number,
   rangeDurationSec: number,
@@ -203,12 +182,10 @@ const drawBeatGridOverlay = (
     const right = Math.min(width, drawRight, rawLeft + safeWidth)
     if (right <= left) return
     ctx.fillStyle = color
-    ctx.fillRect(
-      left,
-      waveformTop - GRID_LINE_VERTICAL_OVERSCAN,
-      right - left,
-      waveformHeight + GRID_LINE_VERTICAL_OVERSCAN * 2
-    )
+    const lineTop =
+      direction === 'up' ? waveformTop - GRID_LINE_DIRECTIONAL_PROTRUSION_PX : waveformTop
+    const lineHeight = waveformHeight + GRID_LINE_DIRECTIONAL_PROTRUSION_PX
+    ctx.fillRect(left, lineTop, right - left, lineHeight)
   }
 
   const drawVerticalLine = (x: number, lineWidth: number, style: GridLineStyle) => {
@@ -242,60 +219,27 @@ const drawBeatGridOverlay = (
     ctx.fillRect(capLeft, Math.max(0, overlayHeight - capHeight), capWidth, capHeight)
   }
 
-  if (dynamicRuntime) {
-    const lines = dynamicRuntime.lines
+  if (runtime) {
+    const lines = runtime.lines
     const firstLineIndex = resolveFirstVisibleDynamicLineIndex(lines, lineDrawStartSec - 0.001)
     for (let index = firstLineIndex; index < lines.length; index += 1) {
       const line = lines[index]
       const beatTime = line.sec
       if (beatTime > drawEndSec + 0.001) break
       const x = ((beatTime - rangeStartSec) / rangeDurationSec) * width
-      if (line.level === 'bar') {
-        drawVerticalLine(x, BAR_GRID_LINE_WIDTH, palette.barLine)
-      } else if (line.level === 'beat4') {
+      if (line.level === 'downbeat') {
         drawVerticalLine(x, MAJOR_GRID_LINE_WIDTH, palette.majorGrid)
       } else {
         drawVerticalLine(x, MINOR_GRID_LINE_WIDTH, palette.minorGrid)
       }
     }
-    for (const boundarySec of dynamicRuntime.clipBoundaries) {
+    for (const boundarySec of runtime.clipBoundaries) {
       if (boundarySec < drawStartSec - 0.001 || boundarySec > drawEndSec + 0.001) continue
       const x = ((boundarySec - rangeStartSec) / rangeDurationSec) * width
       const selected =
         beatGridSelectedBoundarySec !== null &&
         Math.abs(boundarySec - beatGridSelectedBoundarySec) <= 0.001
       drawClipBoundary(x, selected ? palette.selectedClipBoundary : palette.clipBoundary, selected)
-    }
-    return
-  }
-
-  if (!Number.isFinite(bpm) || bpm <= 0) return
-  const beatSec = 60 / bpm
-  if (!Number.isFinite(beatSec) || beatSec <= 0) return
-
-  const firstBeatSec = (Number(firstBeatMs) || 0) / 1000
-  const normalizedBarOffset = normalizeBeatOffset(barBeatOffset, BAR_BEAT_INTERVAL)
-  const startIndex = Math.floor((lineDrawStartSec - firstBeatSec) / beatSec) - 2
-  const endIndex = Math.ceil((drawEndSec - firstBeatSec) / beatSec) + 2
-  for (let i = startIndex; i <= endIndex; i += 1) {
-    const beatTime = firstBeatSec + i * beatSec
-    const x = ((beatTime - rangeStartSec) / rangeDurationSec) * width
-    if (beatTime < lineDrawStartSec - 0.001) {
-      continue
-    }
-    if (beatTime > drawEndSec + 0.001) {
-      continue
-    }
-    if (beatTime < rangeStartSec - beatSec || beatTime > rangeEndSec + beatSec) continue
-    const shiftedIndex = i - normalizedBarOffset
-    const modBar = ((shiftedIndex % BAR_BEAT_INTERVAL) + BAR_BEAT_INTERVAL) % BAR_BEAT_INTERVAL
-    const mod4 = ((shiftedIndex % BEAT4_INTERVAL) + BEAT4_INTERVAL) % BEAT4_INTERVAL
-    if (modBar === 0) {
-      drawVerticalLine(x, BAR_GRID_LINE_WIDTH, palette.barLine)
-    } else if (mod4 === 0) {
-      drawVerticalLine(x, MAJOR_GRID_LINE_WIDTH, palette.majorGrid)
-    } else {
-      drawVerticalLine(x, MINOR_GRID_LINE_WIDTH, palette.minorGrid)
     }
   }
 }
@@ -307,7 +251,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
   let dynamicRuntimeCache: {
     signature: string
     durationSec: number
-    runtime: SongBeatGridRuntime | null
+    runtime: UnifiedSongBeatGridRuntime | null
   } | null = null
 
   const reset = () => {
@@ -370,9 +314,6 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
     height: metrics.cssHeight,
     waveformHeight: metrics.waveformCssHeight,
     direction: request.direction,
-    bpm: Number(request.bpm) || 0,
-    firstBeatMs: Number(request.firstBeatMs) || 0,
-    barBeatOffset: Number(request.barBeatOffset) || 0,
     beatGridMapSignature: String(request.beatGridMap?.signature || ''),
     beatGridEditMode: request.beatGridEditMode === true,
     beatGridVisibleFromSec: Number.isFinite(Number(request.beatGridVisibleFromSec))
@@ -424,9 +365,6 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
       lastFrame.height === current.height &&
       lastFrame.waveformHeight === current.waveformHeight &&
       lastFrame.direction === current.direction &&
-      lastFrame.bpm === current.bpm &&
-      lastFrame.firstBeatMs === current.firstBeatMs &&
-      lastFrame.barBeatOffset === current.barBeatOffset &&
       lastFrame.beatGridMapSignature === current.beatGridMapSignature &&
       lastFrame.beatGridEditMode === current.beatGridEditMode &&
       lastFrame.beatGridVisibleFromSec === current.beatGridVisibleFromSec &&
@@ -475,7 +413,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
     })
   }
 
-  const resolveDynamicRuntime = (
+  const resolveGridRuntime = (
     beatGridMap: HorizontalBrowseDetailLiveCanvasRenderRequest['beatGridMap'],
     durationSec: number
   ) => {
@@ -489,7 +427,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
     ) {
       return dynamicRuntimeCache.runtime
     }
-    const runtime = createSongBeatGridRuntime(beatGridMap, safeDurationSec)
+    const runtime = createUnifiedSongBeatGridRuntime(beatGridMap, safeDurationSec)
     dynamicRuntimeCache = {
       signature,
       durationSec: safeDurationSec,
@@ -525,11 +463,9 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
         metrics.cssWidth,
         HORIZONTAL_BROWSE_DETAIL_OVERLAY_EXTEND_PX,
         metrics.waveformCssHeight,
+        request.direction,
         metrics.cssHeight,
-        Number(request.bpm) || 0,
-        Number(request.firstBeatMs) || 0,
-        Number(request.barBeatOffset) || 0,
-        resolveDynamicRuntime(request.beatGridMap, playbackDurationSec),
+        resolveGridRuntime(request.beatGridMap, playbackDurationSec),
         playbackDurationSec,
         rangeStartSec,
         rangeDurationSec,

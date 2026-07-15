@@ -24,7 +24,7 @@ defineProps({
     type: Boolean,
     default: false
   },
-  previewBarLinePicking: {
+  previewDownbeatLinePicking: {
     type: Boolean,
     default: false
   },
@@ -45,7 +45,7 @@ defineProps({
 const emit = defineEmits<{
   (event: 'toggle-playback'): void
   (event: 'stop-to-start'): void
-  (event: 'toggle-barline-pick'): void
+  (event: 'toggle-downbeat-line-pick'): void
   (event: 'cycle-metronome-state'): void
 }>()
 </script>
@@ -107,16 +107,16 @@ const emit = defineEmits<{
         </svg>
       </bubbleBoxTrigger>
       <button
-        class="barline-btn"
+        class="downbeat-line-btn"
         type="button"
-        :class="{ 'is-active': previewBarLinePicking }"
+        :class="{ 'is-active': previewDownbeatLinePicking }"
         :disabled="!canAdjustGrid"
-        @click="emit('toggle-barline-pick')"
+        @click="emit('toggle-downbeat-line-pick')"
       >
         {{
-          previewBarLinePicking
-            ? t('mixtape.gridAdjustSetBarLineCancel')
-            : t('mixtape.gridAdjustSetBarLine')
+          previewDownbeatLinePicking
+            ? t('mixtape.gridAdjustSetDownbeatLineCancel')
+            : t('mixtape.gridAdjustSetDownbeatLine')
         }}
       </button>
       <BeatGridMetronomeControls
@@ -158,12 +158,12 @@ const emit = defineEmits<{
 }
 
 .playback-icon-btn:focus,
-.barline-btn:focus {
+.downbeat-line-btn:focus {
   outline: none;
 }
 
 .playback-icon-btn:focus-visible,
-.barline-btn:focus-visible {
+.downbeat-line-btn:focus-visible {
   outline: none;
   box-shadow: none;
 }
@@ -201,7 +201,7 @@ const emit = defineEmits<{
   }
 }
 
-.barline-btn {
+.downbeat-line-btn {
   min-width: 122px;
   height: 24px;
   padding: 0 10px;
@@ -213,17 +213,17 @@ const emit = defineEmits<{
   cursor: pointer;
 }
 
-.barline-btn:hover:not(:disabled) {
+.downbeat-line-btn:hover:not(:disabled) {
   border-color: var(--accent);
   background: var(--hover);
 }
 
-.barline-btn:disabled {
+.downbeat-line-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.barline-btn.is-active {
+.downbeat-line-btn.is-active {
   border-color: rgba(145, 205, 255, 0.95);
   box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
   background: rgba(145, 205, 255, 0.12);

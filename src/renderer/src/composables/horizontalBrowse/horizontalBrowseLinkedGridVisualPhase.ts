@@ -11,7 +11,7 @@ type LinkedGridSample = {
   currentSec: number
   beatDistance: number
   beatPhase: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
 }
 
 type LinkedGridRenderClockSample = {
@@ -26,15 +26,15 @@ export type LinkedGridVisualPhaseInput = {
   clockActive: boolean
   bpm: number
   firstBeatMs: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
   currentSec: number
   playbackRate: number
   phaseLocked?: boolean
 }
 
 type LinkedGridVisualPhaseResult = {
-  barBeatOffset: number
-  sourceBarBeatOffset: number
+  downbeatBeatOffset: number
+  sourceDownbeatBeatOffset: number
   playbackSeconds: number
   sourcePlaybackSeconds: number
   playbackRenderClockEpochMs: number | null
@@ -44,7 +44,7 @@ type LinkedGridVisualPhaseResult = {
   referenceDirection: HorizontalBrowseDirection | null
 }
 
-const BAR_BEAT_INTERVAL = 32
+const DOWNBEAT_BEAT_INTERVAL = 4
 const LINKED_GRID_SAMPLE_MAX_AGE_MS = 1000
 const LINKED_GRID_BPM_EPSILON = 0.001
 const LINKED_GRID_EFFECTIVE_BPM_EPSILON = 0.01
@@ -71,8 +71,8 @@ const resolveCircularDelta = (left: number, right: number, modulo: number) => {
   return normalized > modulo / 2 ? modulo - normalized : normalized
 }
 
-const normalizeBarBeatOffset = (value: number) =>
-  normalizePhase(Math.round(Number.isFinite(value) ? value : 0), BAR_BEAT_INTERVAL)
+const normalizeDownbeatBeatOffset = (value: number) =>
+  normalizePhase(Math.round(Number.isFinite(value) ? value : 0), DOWNBEAT_BEAT_INTERVAL)
 
 const resolveRenderClockSample = (
   direction: HorizontalBrowseDirection,
@@ -118,7 +118,7 @@ const buildSample = (input: LinkedGridVisualPhaseInput, nowMs: number): LinkedGr
     currentSec,
     beatDistance,
     beatPhase: normalizePhase(beatDistance, 1),
-    barBeatOffset: normalizeBarBeatOffset(input.barBeatOffset)
+    downbeatBeatOffset: normalizeDownbeatBeatOffset(input.downbeatBeatOffset)
   }
 }
 
@@ -187,7 +187,7 @@ export const publishHorizontalBrowseLinkedGridVisualPhaseSample = (
 export const resolveHorizontalBrowseLinkedGridVisualPhase = (
   input: LinkedGridVisualPhaseInput
 ): LinkedGridVisualPhaseResult => {
-  const sourceBarBeatOffset = normalizeBarBeatOffset(input.barBeatOffset)
+  const sourceDownbeatBeatOffset = normalizeDownbeatBeatOffset(input.downbeatBeatOffset)
   const sourcePlaybackSeconds = Number(input.currentSec) || 0
   const nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now()
   const currentSample = buildSample(input, nowMs)
@@ -202,12 +202,12 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
     currentSec: sourcePlaybackSeconds,
     beatDistance: 0,
     beatPhase: 0,
-    barBeatOffset: sourceBarBeatOffset
+    downbeatBeatOffset: sourceDownbeatBeatOffset
   }
   if (!currentSample) {
     return {
-      barBeatOffset: sourceBarBeatOffset,
-      sourceBarBeatOffset,
+      downbeatBeatOffset: sourceDownbeatBeatOffset,
+      sourceDownbeatBeatOffset,
       playbackSeconds: sourcePlaybackSeconds,
       sourcePlaybackSeconds,
       playbackRenderClockEpochMs: null,
@@ -219,8 +219,8 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
   }
   if (input.phaseLocked === true) {
     return {
-      barBeatOffset: sourceBarBeatOffset,
-      sourceBarBeatOffset,
+      downbeatBeatOffset: sourceDownbeatBeatOffset,
+      sourceDownbeatBeatOffset,
       playbackSeconds: sourcePlaybackSeconds,
       sourcePlaybackSeconds,
       playbackRenderClockEpochMs: currentSample.epochMs,
@@ -241,8 +241,8 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
     canLinkSamples(currentSample, reference, nowMs, input.clockActive)
   if (input.direction === 'up' && linkedToCounterpart) {
     return {
-      barBeatOffset: sourceBarBeatOffset,
-      sourceBarBeatOffset,
+      downbeatBeatOffset: sourceDownbeatBeatOffset,
+      sourceDownbeatBeatOffset,
       playbackSeconds: sourcePlaybackSeconds,
       sourcePlaybackSeconds,
       playbackRenderClockEpochMs: currentSample.epochMs,
@@ -254,8 +254,8 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
   }
   if (!referenceDirection || !reference || !linkedToCounterpart) {
     return {
-      barBeatOffset: sourceBarBeatOffset,
-      sourceBarBeatOffset,
+      downbeatBeatOffset: sourceDownbeatBeatOffset,
+      sourceDownbeatBeatOffset,
       playbackSeconds: sourcePlaybackSeconds,
       sourcePlaybackSeconds,
       playbackRenderClockEpochMs: currentSample.epochMs,
@@ -270,8 +270,8 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
       ? ((currentSample.epochMs - reference.epochMs) / 1000) * currentSample.playbackRate
       : 0
     return {
-      barBeatOffset: sourceBarBeatOffset,
-      sourceBarBeatOffset,
+      downbeatBeatOffset: sourceDownbeatBeatOffset,
+      sourceDownbeatBeatOffset,
       playbackSeconds: sourcePlaybackSeconds - currentClockDeltaSec,
       sourcePlaybackSeconds,
       playbackRenderClockEpochMs: reference.epochMs,
@@ -286,8 +286,8 @@ export const resolveHorizontalBrowseLinkedGridVisualPhase = (
     ? ((currentSample.epochMs - reference.epochMs) / 1000) * reference.playbackRate
     : 0
   return {
-    barBeatOffset: sourceBarBeatOffset,
-    sourceBarBeatOffset,
+    downbeatBeatOffset: sourceDownbeatBeatOffset,
+    sourceDownbeatBeatOffset,
     playbackSeconds: sourcePlaybackSeconds - clockDeltaSec,
     sourcePlaybackSeconds,
     playbackRenderClockEpochMs: reference.epochMs,

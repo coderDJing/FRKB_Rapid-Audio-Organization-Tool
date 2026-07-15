@@ -1,3 +1,5 @@
+import { normalizeSongBeatGridMapV2 } from './songBeatGridMapV2'
+
 export const SONG_BEAT_GRID_MAP_VERSION = 1
 export const SONG_BEAT_GRID_BAR_BEAT_INTERVAL = 32
 
@@ -19,7 +21,7 @@ export type SongBeatGridClip = {
 
 export type SongBeatGridMap = {
   version: number
-  source: 'manual'
+  source: 'manual' | 'analysis'
   clips: SongBeatGridClip[]
   signature: string
 }
@@ -217,14 +219,28 @@ export const normalizeSongBeatGridMap = (
   value: unknown,
   options: NormalizeSongBeatGridMapOptions = {}
 ): SongBeatGridMap | null => {
+  const v2Map = normalizeSongBeatGridMapV2(value, options)
+  if (v2Map) {
+    return {
+      version: v2Map.version,
+      source: v2Map.source,
+      clips: v2Map.clips.map((clip) => ({
+        startSec: clip.startSec,
+        anchorSec: clip.anchorSec,
+        bpm: clip.bpm,
+        barBeatOffset: clip.downbeatBeatOffset
+      })),
+      signature: v2Map.signature
+    }
+  }
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   const record = value as Record<string, unknown>
-  if (record.source !== 'manual') return null
+  if (record.source !== 'manual' && record.source !== 'analysis') return null
   const clips = normalizeClips(record.clips, options)
   if (!clips) return null
   return {
     version: SONG_BEAT_GRID_MAP_VERSION,
-    source: 'manual',
+    source: record.source,
     clips,
     signature: calculateSongBeatGridMapSignature(clips)
   }

@@ -36,7 +36,7 @@ type PointerInteractionOptions = {
     update: (anchorSec: number) => void
     stop: (options?: { flushPending?: boolean }) => void
   }
-  handlePreviewMouseDownForBarLinePicking: (event: PointerEvent) => boolean
+  handlePreviewMouseDownForDownbeatLinePicking: (event: PointerEvent) => boolean
   emitToolbarState: () => void
   schedulePersistGridDefinition: () => void
   emitDragSessionStart: () => void
@@ -199,8 +199,8 @@ export const createHorizontalBrowseWaveformPointerInteraction = (
     const durationSec = options.resolvePreviewDurationSec()
     if (event.button !== 0 || options.dragging.value) return
     if (!options.hasSong() || !durationSec) return
-    const barLinePicked = options.handlePreviewMouseDownForBarLinePicking(event)
-    if (barLinePicked) {
+    const downbeatLinePicked = options.handlePreviewMouseDownForDownbeatLinePicking(event)
+    if (downbeatLinePicked) {
       options.emitToolbarState()
       options.schedulePersistGridDefinition()
       return

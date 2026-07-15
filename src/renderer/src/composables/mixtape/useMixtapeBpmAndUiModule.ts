@@ -74,7 +74,7 @@ type BpmAnalysisResultItem = {
   filePath?: unknown
   bpm?: unknown
   firstBeatMs?: unknown
-  barBeatOffset?: unknown
+  downbeatBeatOffset?: unknown
   timeBasisOffsetMs?: unknown
 }
 
@@ -160,7 +160,7 @@ type UseMixtapeBpmAndUiModuleContext = {
     current: MixtapeOutputProgressState,
     nextPayload?: MixtapeOutputProgressPayload | null
   ) => MixtapeOutputProgressState
-  normalizeBarBeatOffset: (value: unknown) => number
+  normalizeDownbeatBeatOffset: (value: unknown) => number
   normalizeFirstBeatMs: (value: unknown) => number
   normalizeBpm: (value: unknown) => number | null
   MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL: MixtapeEnvelopeParamId[]
@@ -251,7 +251,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
     notifyMissingTracksRemoved,
     resolveMixtapeStemModelByProfile,
     resolveMixtapeOutputProgressState,
-    normalizeBarBeatOffset,
+    normalizeDownbeatBeatOffset,
     normalizeFirstBeatMs,
     normalizeBpm,
     MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL,
@@ -374,7 +374,7 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
       gridPhaseOffsetSec?: number
     }
   ) => {
-    const GRID_ALIGN_BAR_INTERVAL = 32
+    const GRID_ALIGN_DOWNBEAT_INTERVAL = 4
     const fallbackBpm = resolveDefaultGlobalBpmFromTracks(inputTracks)
     const safePoints =
       Array.isArray(globalSnapshot?.bpmEnvelope) && globalSnapshot.bpmEnvelope.length >= 2
@@ -404,15 +404,18 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
       const sourceDurationBeats = dynamicSourceBeatMap
         ? dynamicSourceBeatMap.beatSpan
         : sourceDurationSec / beatSourceSec
-      const normalizedBarBeatOffset = normalizeBarBeatOffset(track?.barBeatOffset)
-      const firstBarLineSourceBeats =
-        dynamicSourceBeatMap?.firstBarBeatDelta ?? firstBeatSourceBeats + normalizedBarBeatOffset
-      const hasVisibleBarLine = dynamicSourceBeatMap
-        ? dynamicSourceBeatMap.firstBarBeatDelta !== null &&
-          firstBarLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
-        : firstBarLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
-      const sourceAnchorBeats = hasVisibleBarLine ? firstBarLineSourceBeats : firstBeatSourceBeats
-      const anchorIntervalBeats = hasVisibleBarLine ? GRID_ALIGN_BAR_INTERVAL : 1
+      const normalizedDownbeatBeatOffset = normalizeDownbeatBeatOffset(track?.downbeatBeatOffset)
+      const firstDownbeatLineSourceBeats =
+        dynamicSourceBeatMap?.firstDownbeatBeatDelta ??
+        firstBeatSourceBeats + normalizedDownbeatBeatOffset
+      const hasVisibleDownbeatLine = dynamicSourceBeatMap
+        ? dynamicSourceBeatMap.firstDownbeatBeatDelta !== null &&
+          firstDownbeatLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+        : firstDownbeatLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+      const sourceAnchorBeats = hasVisibleDownbeatLine
+        ? firstDownbeatLineSourceBeats
+        : firstBeatSourceBeats
+      const anchorIntervalBeats = hasVisibleDownbeatLine ? GRID_ALIGN_DOWNBEAT_INTERVAL : 1
       const shouldPlaceTrackAtTimelineStart = cursorSec <= BPM_POINT_SEC_EPSILON
       const nextGlobalAnchorIndex = shouldPlaceTrackAtTimelineStart
         ? 0
@@ -859,8 +862,6 @@ export const createUseMixtapeBpmAndUiModule = (ctx: UseMixtapeBpmAndUiModuleCont
     ensureDefaultGlobalTempoEnvelope,
     resolveTrackDurationSeconds,
     normalizeMixtapeFilePath,
-    normalizeBarBeatOffset,
-    normalizeFirstBeatMs,
     normalizeBpm,
     MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL,
     MIXTAPE_ENVELOPE_PARAMS_STEM,

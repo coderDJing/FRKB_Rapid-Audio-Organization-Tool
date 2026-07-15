@@ -9,7 +9,6 @@ import type {
   ISongInfo,
   ISongMemoryCue
 } from '../../../types/globals'
-import type { SongBeatGridMap } from '../../../shared/songBeatGridMap'
 
 type MixtapeAppendInfo = {
   filePath: string
@@ -27,15 +26,7 @@ type MixtapeAppendInfo = {
   key: string | undefined
   keyAnalysisAlgorithmVersion: number | undefined
   originalKey: string | undefined
-  bpm: number | undefined
   originalBpm: number | undefined
-  firstBeatMs: number | undefined
-  barBeatOffset: number | undefined
-  timeBasisOffsetMs: number | undefined
-  beatGridSource: 'manual' | 'analysis' | undefined
-  beatGridStatus: 'no-bpm' | undefined
-  beatGridMap: SongBeatGridMap | undefined
-  beatGridAlgorithmVersion: number | undefined
   energyScore: number | undefined
   energyAlgorithmVersion: number | undefined
   hotCues: ISongHotCue[]
@@ -101,15 +92,7 @@ const buildSongSnapshot = (
     key: song?.key,
     keyAnalysisAlgorithmVersion: song?.keyAnalysisAlgorithmVersion,
     originalKey: song?.key,
-    bpm: song?.bpm,
     originalBpm: song?.bpm,
-    firstBeatMs: song?.firstBeatMs,
-    barBeatOffset: song?.barBeatOffset,
-    timeBasisOffsetMs: song?.timeBasisOffsetMs,
-    beatGridSource: song?.beatGridSource,
-    beatGridStatus: song?.beatGridStatus,
-    beatGridMap: song?.beatGridMap,
-    beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
     energyScore: song?.energyScore,
     energyAlgorithmVersion: song?.energyAlgorithmVersion,
     hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
@@ -146,8 +129,8 @@ const chooseMixtapeTarget = async (actionMode: LibraryTransferActionMode) => {
 }
 
 const appendItemsToMixtape = async (playlistId: string, rawItems: MixtapeAppendItem[]) => {
-  const items = rawItems.filter((item) => item.info.beatGridStatus !== 'no-bpm')
-  const skippedBySnapshot = rawItems.length - items.length
+  const items = rawItems
+  const skippedBySnapshot = 0
   if (!items.length) {
     emitNoBpmMixtapeHint(skippedBySnapshot)
     return

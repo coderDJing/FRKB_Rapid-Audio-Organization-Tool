@@ -600,8 +600,8 @@ const shouldPreserveGridShiftPhase = (deck: DeckKey) => {
 }
 const {
   handleToolbarStateChange,
-  handleDeckBarLinePickingToggle,
-  handleDeckSetBarLineAtPlayhead,
+  handleDeckDownbeatLinePickingToggle,
+  handleDeckSetDownbeatLineAtPlayhead,
   handleDeckGridShiftLargeLeft,
   handleDeckGridShiftSmallLeft,
   handleDeckGridShiftSmallRight,
@@ -904,7 +904,7 @@ onUnmounted(() => {
         @eject-song="handleDeckEjectSong('top')"
         @seek="handleDeckPlayheadSeek('top', $event)"
         @seek-play="handleDeckSectionSeekPlay('top', $event)"
-        @set-bar-line="handleDeckSetBarLineAtPlayhead('top')"
+        @set-downbeat-line="handleDeckSetDownbeatLineAtPlayhead('top')"
         @shift-left-large="handleDeckGridShiftLargeLeft('top')"
         @shift-left-small="handleDeckGridShiftSmallLeft('top')"
         @shift-right-small="handleDeckGridShiftSmallRight('top')"
@@ -916,7 +916,7 @@ onUnmounted(() => {
         @select-whole-adjustment="handleDeckSelectWholeAdjustment('top')"
         @split-after-playhead="handleDeckSplitAfterPlayhead('top')"
         @delete-boundary="handleDeckDeleteBoundary('top')"
-        @toggle-bar-line-picking="handleDeckBarLinePickingToggle('top')"
+        @toggle-downbeat-line-picking="handleDeckDownbeatLinePickingToggle('top')"
         @cycle-metronome-state="handleDeckMetronomeStateCycle('top')"
         @loop-step-down="handleDeckLoopStepDown('top')"
         @loop-step-up="handleDeckLoopStepUp('top')"
@@ -1047,7 +1047,7 @@ onUnmounted(() => {
         @eject-song="handleDeckEjectSong('bottom')"
         @seek="handleDeckPlayheadSeek('bottom', $event)"
         @seek-play="handleDeckSectionSeekPlay('bottom', $event)"
-        @set-bar-line="handleDeckSetBarLineAtPlayhead('bottom')"
+        @set-downbeat-line="handleDeckSetDownbeatLineAtPlayhead('bottom')"
         @shift-left-large="handleDeckGridShiftLargeLeft('bottom')"
         @shift-left-small="handleDeckGridShiftSmallLeft('bottom')"
         @shift-right-small="handleDeckGridShiftSmallRight('bottom')"
@@ -1059,7 +1059,7 @@ onUnmounted(() => {
         @select-whole-adjustment="handleDeckSelectWholeAdjustment('bottom')"
         @split-after-playhead="handleDeckSplitAfterPlayhead('bottom')"
         @delete-boundary="handleDeckDeleteBoundary('bottom')"
-        @toggle-bar-line-picking="handleDeckBarLinePickingToggle('bottom')"
+        @toggle-downbeat-line-picking="handleDeckDownbeatLinePickingToggle('bottom')"
         @cycle-metronome-state="handleDeckMetronomeStateCycle('bottom')"
         @loop-step-down="handleDeckLoopStepDown('bottom')"
         @loop-step-up="handleDeckLoopStepUp('bottom')"

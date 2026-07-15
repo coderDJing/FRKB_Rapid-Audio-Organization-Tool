@@ -5,20 +5,23 @@ export const resolveFrameBufferMultiplier = (zoom: number, mixTapeBufferMultipli
   return mixTapeBufferMultiplier
 }
 
-export const resolveGridBarWidth = (params: {
+export const resolveGridDownbeatWidth = (params: {
   zoom: number
   rawWaveformMinZoom: number
-  gridBarWidthMin: number
-  gridBarWidthMax: number
-  gridBarWidthMaxZoom: number
+  gridDownbeatWidthMin: number
+  gridDownbeatWidthMax: number
+  gridDownbeatWidthMaxZoom: number
 }) => {
   const safeZoom = Number.isFinite(params.zoom) ? params.zoom : 1
   const minZoom = params.rawWaveformMinZoom
-  const maxZoom = params.gridBarWidthMaxZoom
-  if (safeZoom <= minZoom) return params.gridBarWidthMin
-  if (safeZoom >= maxZoom) return params.gridBarWidthMax
+  const maxZoom = params.gridDownbeatWidthMaxZoom
+  if (safeZoom <= minZoom) return params.gridDownbeatWidthMin
+  if (safeZoom >= maxZoom) return params.gridDownbeatWidthMax
   const ratio = (safeZoom - minZoom) / Math.max(0.0001, maxZoom - minZoom)
-  return params.gridBarWidthMin + (params.gridBarWidthMax - params.gridBarWidthMin) * ratio
+  return (
+    params.gridDownbeatWidthMin +
+    (params.gridDownbeatWidthMax - params.gridDownbeatWidthMin) * ratio
+  )
 }
 
 export const buildWaveformTileCacheKey = (params: {

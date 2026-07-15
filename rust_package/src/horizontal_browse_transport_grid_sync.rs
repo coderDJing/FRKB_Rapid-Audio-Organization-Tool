@@ -23,7 +23,7 @@ impl HorizontalBrowseTransportEngine {
     deck: DeckId,
     bpm: Option<f64>,
     first_beat_ms: Option<f64>,
-    bar_beat_offset: Option<f64>,
+    downbeat_beat_offset: Option<f64>,
     beat_grid_clips: Option<Vec<HorizontalBrowseTransportBeatGridClipInput>>,
     time_basis_offset_ms: Option<f64>,
   ) {
@@ -33,9 +33,9 @@ impl HorizontalBrowseTransportEngine {
     let audio_timeline_mapping_changed;
     let next_bpm = bpm.filter(|value| value.is_finite() && *value > 0.0);
     let next_first_beat_ms = first_beat_ms.filter(|value| value.is_finite() && *value >= 0.0);
-    let next_bar_beat_offset = bar_beat_offset
+    let next_downbeat_beat_offset = downbeat_beat_offset
       .filter(|value| value.is_finite())
-      .map(Self::normalize_bar_beat_offset);
+      .and_then(Self::normalize_downbeat_beat_offset);
     let next_dynamic_beat_grid =
       Self::normalize_dynamic_beat_grid(beat_grid_clips, self.deck(deck).duration_sec);
     let next_time_basis_offset_ms =
@@ -44,7 +44,8 @@ impl HorizontalBrowseTransportEngine {
       let target = self.deck_mut(deck);
       grid_changed |= Self::set_grid_value(&mut target.bpm, next_bpm);
       grid_changed |= Self::set_grid_value(&mut target.first_beat_ms, next_first_beat_ms);
-      grid_changed |= Self::set_grid_value(&mut target.bar_beat_offset, next_bar_beat_offset);
+      grid_changed |=
+        Self::set_grid_value(&mut target.downbeat_beat_offset, next_downbeat_beat_offset);
       if target.dynamic_beat_grid != next_dynamic_beat_grid {
         target.dynamic_beat_grid = next_dynamic_beat_grid;
         grid_changed = true;

@@ -6,7 +6,7 @@ import { formatBpmDisplay } from '@renderer/utils/bpm'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { getKeyDisplayText } from '@shared/keyDisplay'
 import { t } from '@renderer/utils/translate'
-import { resolveSongBeatGridBpmAtSec } from '@shared/songBeatGridMap'
+import { resolveSongBeatGridV2BpmAtSec } from '@shared/songBeatGridMapV2'
 
 const props = defineProps<{
   song: ISongInfo | null
@@ -139,7 +139,7 @@ const keyDisplayText = computed(() => {
   return display || '--'
 })
 const bpmText = computed(() => {
-  const dynamicBpm = resolveSongBeatGridBpmAtSec(
+  const dynamicBpm = resolveSongBeatGridV2BpmAtSec(
     props.song?.beatGridMap,
     totalSeconds.value,
     elapsedSeconds.value

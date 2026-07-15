@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, watch, type Ref } from 'vue'
-import { createSongBeatGridRuntime, type SongBeatGridMap } from '@shared/songBeatGridMap'
+import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
+import { createUnifiedSongBeatGridRuntime } from '@shared/songBeatGridRuntime'
 
 export type MetronomeVolumeLevel = 1 | 2 | 3
 
@@ -14,7 +15,7 @@ type UseMixtapeBeatAlignMetronomeParams = {
   outputMode?: 'internal' | 'external'
   syncExternalState?: (state: { enabled: boolean; volumeLevel: MetronomeVolumeLevel }) => void
   resolveAnchorSec: () => number
-  beatGridMap?: () => SongBeatGridMap | null | undefined
+  beatGridMap?: () => SongBeatGridMapV2 | null | undefined
   resolveDurationSec?: () => number
 }
 
@@ -75,7 +76,7 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
   const metronomeEnabled = ref(false)
   const metronomeVolumeLevel = ref<MetronomeVolumeLevel>(DEFAULT_METRONOME_VOLUME_LEVEL)
   const metronomeSupported = computed(() => {
-    const dynamicRuntime = createSongBeatGridRuntime(
+    const dynamicRuntime = createUnifiedSongBeatGridRuntime(
       params.beatGridMap?.(),
       params.resolveDurationSec?.()
     )
@@ -105,7 +106,7 @@ export const useMixtapeBeatAlignMetronome = (params: UseMixtapeBeatAlignMetronom
   }
 
   const resolveBeatClock = (): BeatClock | null => {
-    const dynamicRuntime = createSongBeatGridRuntime(
+    const dynamicRuntime = createUnifiedSongBeatGridRuntime(
       params.beatGridMap?.(),
       params.resolveDurationSec?.()
     )

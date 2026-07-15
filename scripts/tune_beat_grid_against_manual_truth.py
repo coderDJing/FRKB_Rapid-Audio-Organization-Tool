@@ -8,7 +8,7 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_SCRIPT = REPO_ROOT / "scripts" / "benchmark_beat_grid_against_manual_truth.py"
-OUTPUT_PATH = REPO_ROOT / "grid-analysis-lab" / "manual-truth" / "tuning-latest.json"
+OUTPUT_PATH = REPO_ROOT / "grid-analysis-lab" / "manual-truth" / "tuning-latest.v2.json"
 
 
 def _load_module(module_path: Path, module_name: str):
@@ -49,16 +49,22 @@ def _prepare_selected_track(
     )
     if not prepared_windows:
         return None
-    legacy_result = bridge._analyze_prepared_windows_to_track_result(
-        prepared_windows,
-        signal,
-        benchmark.SAMPLE_RATE,
-        scan_duration_sec,
-        bridge._resolve_anchor_tuning(),
-        file_path,
-        force_legacy_anchor=True,
-        use_global_solver=False,
+    legacy_result = benchmark._normalize_result(
+        bridge._to_public_downbeat_result(
+            bridge._analyze_prepared_windows_to_track_result(
+                prepared_windows,
+                signal,
+                benchmark.SAMPLE_RATE,
+                scan_duration_sec,
+                bridge._resolve_anchor_tuning(),
+                file_path,
+                force_legacy_anchor=True,
+                use_global_solver=False,
+            )
+        )
     )
+    if not legacy_result:
+        return None
     legacy_metrics = benchmark._derive_grid_metrics(legacy_result, ground_truth)
 
     return {
@@ -93,15 +99,17 @@ def _evaluate_candidate(
         legacy_result = track["legacyResult"]
 
         refined_result = benchmark._normalize_result(
-            bridge._analyze_prepared_windows_to_track_result(
-                prepared_windows,
-                signal,
-                benchmark.SAMPLE_RATE,
-                scan_duration_sec,
-                tuning,
-                track["filePath"],
-                force_legacy_anchor=False,
-                use_global_solver=True,
+            bridge._to_public_downbeat_result(
+                bridge._analyze_prepared_windows_to_track_result(
+                    prepared_windows,
+                    signal,
+                    benchmark.SAMPLE_RATE,
+                    scan_duration_sec,
+                    tuning,
+                    track["filePath"],
+                    force_legacy_anchor=False,
+                    use_global_solver=True,
+                )
             )
         )
         if not refined_result:

@@ -16,16 +16,10 @@ import {
 } from './playlistTrackNumbers'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 import { hasCurrentSongEnergyAnalysis, hasUsableSongEnergyAnalysis } from '../../shared/songEnergy'
+import { normalizeSongBeatGridMapV2 } from '../../shared/songBeatGridMapV2'
 import {
-  normalizeSongBeatGridMap,
-  projectSongBeatGridMapToFixedGrid
-} from '../../shared/songBeatGridMap'
-import {
-  hasRequiredSongStructureAnalysis,
   hasUsableKeyAnalysis,
-  hasUsableNoBpmBeatGridResult,
-  hasUsableSongBeatGridAnalysis,
-  resolveUsableSongBeatGrid
+  resolveCanonicalSongBeatGridV2
 } from '../../shared/songAnalysisCompleteness'
 import {
   discardIncompatibleSongStructure,
@@ -36,66 +30,46 @@ type ScanSongListOptions = {
   enablePostScanTasks?: boolean
 }
 
-const hasFirstBeatMs = (value: unknown): boolean =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0
-const hasBarBeatOffset = (value: unknown): boolean =>
-  typeof value === 'number' && Number.isFinite(value)
-const hasFiniteNumber = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isFinite(value)
-const hasPositiveInteger = (value: unknown): value is number =>
-  hasFiniteNumber(value) && Math.floor(value) === value && value > 0
 type CachedKeyInfo = Pick<ISongInfo, 'key' | 'keyAnalysisAlgorithmVersion'>
 type CachedGridInfo = Pick<
   ISongInfo,
-  | 'bpm'
-  | 'firstBeatMs'
-  | 'barBeatOffset'
-  | 'beatGridAlgorithmVersion'
-  | 'beatGridSource'
-  | 'beatGridStatus'
-  | 'beatGridMap'
+  'beatGridAlgorithmVersion' | 'beatGridStatus' | 'beatGridMap'
 > & {
   beatThisWindowCount?: unknown
 }
 type CachedEnergyInfo = Pick<ISongInfo, 'energyScore' | 'energyAlgorithmVersion'>
 const hasCurrentKeyAnalysis = (info: CachedKeyInfo | null | undefined) =>
   hasUsableKeyAnalysis(info) && shouldAcceptKeyAnalysisCacheVersion(info)
-const hasCompleteNumericGrid = (info: CachedGridInfo | null | undefined) =>
-  resolveUsableSongBeatGrid(info).kind === 'fixed'
 const hasCompleteGrid = (info: CachedGridInfo | null | undefined) =>
-  hasUsableSongBeatGridAnalysis(info)
-
+  resolveCanonicalSongBeatGridV2(info).kind !== 'missing'
 const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
   const next = { ...info }
   if (!hasUsableKeyAnalysis(next)) {
     delete next.key
     delete next.keyAnalysisAlgorithmVersion
   }
-  const grid = resolveUsableSongBeatGrid(next)
-  if (grid.kind === 'dynamic') {
-    const projection = projectSongBeatGridMapToFixedGrid(grid.beatGridMap)
+  const grid = resolveCanonicalSongBeatGridV2(next)
+  if (grid.kind === 'grid') {
     delete next.beatGridStatus
     next.beatGridMap = grid.beatGridMap
-    next.beatGridSource = 'manual'
-    if (projection) {
-      next.bpm = projection.bpm
-      next.firstBeatMs = projection.firstBeatMs
-      next.barBeatOffset = projection.barBeatOffset
-    }
-  } else if (grid.kind === 'fixed') {
-    delete next.beatGridStatus
-    delete next.beatGridMap
+    delete next.bpm
+    delete next.firstBeatMs
+    delete next.downbeatBeatOffset
+    delete (next as Record<string, unknown>).barBeatOffset
+    delete next.beatGridSource
   } else if (grid.kind === 'no-bpm') {
     delete next.bpm
     delete next.firstBeatMs
-    delete next.barBeatOffset
+    delete next.downbeatBeatOffset
+    delete (next as Record<string, unknown>).barBeatOffset
     delete next.timeBasisOffsetMs
     delete next.beatGridSource
     delete next.beatGridMap
   } else {
     delete next.bpm
     delete next.firstBeatMs
-    delete next.barBeatOffset
+    delete next.downbeatBeatOffset
+    delete (next as Record<string, unknown>).barBeatOffset
     delete next.timeBasisOffsetMs
     delete next.beatGridSource
     delete next.beatGridStatus
@@ -106,7 +80,7 @@ const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
     delete next.energyScore
     delete next.energyAlgorithmVersion
   }
-  discardIncompatibleSongStructure(next)
+  if (grid.kind !== 'grid') discardIncompatibleSongStructure(next)
   return next
 }
 
@@ -120,18 +94,17 @@ const preserveCachedKeyAndBpm = (target: ISongInfo, cachedInfo?: ISongInfo | nul
     target.key = cachedInfo.key as string
     target.keyAnalysisAlgorithmVersion = cachedInfo.keyAnalysisAlgorithmVersion
   }
-  if (!hasCompleteNumericGrid(target) && hasCompleteNumericGrid(cachedInfo)) {
-    target.bpm = cachedInfo.bpm as number
-  }
 }
 
 const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
   if (!cachedInfo) return
-  if (hasUsableNoBpmBeatGridResult(cachedInfo)) {
+  const cachedGrid = resolveCanonicalSongBeatGridV2(cachedInfo)
+  if (cachedGrid.kind === 'no-bpm') {
     if (hasCompleteGrid(target)) return
     delete target.bpm
     delete target.firstBeatMs
-    delete target.barBeatOffset
+    delete target.downbeatBeatOffset
+    delete (target as unknown as Record<string, unknown>).barBeatOffset
     delete target.timeBasisOffsetMs
     delete target.beatGridSource
     delete target.beatGridMap
@@ -139,44 +112,19 @@ const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongI
     target.beatGridAlgorithmVersion = cachedInfo.beatGridAlgorithmVersion
     return
   }
-  const cachedBeatGridMap = normalizeSongBeatGridMap(cachedInfo.beatGridMap)
+  const cachedBeatGridMap = normalizeSongBeatGridMapV2(cachedInfo.beatGridMap, {
+    allowSingleClip: true
+  })
   if (cachedBeatGridMap) {
     if (hasCompleteGrid(target)) return
-    const projection = projectSongBeatGridMapToFixedGrid(cachedBeatGridMap)
     delete target.beatGridStatus
     target.beatGridMap = cachedBeatGridMap
-    target.beatGridSource = 'manual'
-    if (projection) {
-      target.bpm = projection.bpm
-      target.firstBeatMs = projection.firstBeatMs
-      target.barBeatOffset = projection.barBeatOffset
-    }
+    delete target.bpm
+    delete target.firstBeatMs
+    delete target.downbeatBeatOffset
+    delete (target as unknown as Record<string, unknown>).barBeatOffset
+    delete target.beatGridSource
     return
-  }
-  if (!hasCompleteNumericGrid(cachedInfo)) return
-  delete target.beatGridStatus
-  delete target.beatGridMap
-  if (!hasFirstBeatMs(target.firstBeatMs) && hasFirstBeatMs(cachedInfo.firstBeatMs)) {
-    target.firstBeatMs = cachedInfo.firstBeatMs
-  }
-  if (!hasBarBeatOffset(target.barBeatOffset) && hasBarBeatOffset(cachedInfo.barBeatOffset)) {
-    target.barBeatOffset = cachedInfo.barBeatOffset
-  }
-  if (!hasFiniteNumber(target.timeBasisOffsetMs) && hasFiniteNumber(cachedInfo.timeBasisOffsetMs)) {
-    target.timeBasisOffsetMs = cachedInfo.timeBasisOffsetMs
-  }
-  if (
-    !hasPositiveInteger(target.beatGridAlgorithmVersion) &&
-    hasPositiveInteger(cachedInfo.beatGridAlgorithmVersion)
-  ) {
-    target.beatGridAlgorithmVersion = cachedInfo.beatGridAlgorithmVersion
-  }
-  if (
-    target.beatGridSource !== 'manual' &&
-    target.beatGridSource !== 'analysis' &&
-    (cachedInfo.beatGridSource === 'manual' || cachedInfo.beatGridSource === 'analysis')
-  ) {
-    target.beatGridSource = cachedInfo.beatGridSource
   }
 }
 
@@ -200,7 +148,12 @@ const preserveCachedAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo 
   preserveCachedKeyAndBpm(target, cachedInfo)
   preserveCachedGridAnalysisFields(target, cachedInfo)
   preserveCachedEnergyAnalysisFields(target, cachedInfo)
-  preserveBestAvailableSongStructure(target, cachedInfo)
+  if (
+    resolveCanonicalSongBeatGridV2(target).kind !== 'grid' &&
+    resolveCanonicalSongBeatGridV2(cachedInfo).kind !== 'grid'
+  ) {
+    preserveBestAvailableSongStructure(target, cachedInfo)
+  }
 }
 
 export const scheduleSongListPostScanTasks = async (
@@ -226,8 +179,7 @@ export const scheduleSongListPostScanTasks = async (
         (info) =>
           !hasUsableKeyAnalysis(info) ||
           !hasCompleteGrid(info) ||
-          !hasUsableSongEnergyAnalysis(info) ||
-          !hasRequiredSongStructureAnalysis(info)
+          !hasUsableSongEnergyAnalysis(info)
       )
       .map((info) => info.filePath)
       .filter((filePath) => typeof filePath === 'string' && filePath.trim().length > 0)
@@ -453,8 +405,7 @@ export async function scanSongList(
       const missingAnalysis =
         !hasUsableKeyAnalysis(entry.info) ||
         !hasCompleteGrid(entry.info) ||
-        !hasUsableSongEnergyAnalysis(entry.info) ||
-        !hasRequiredSongStructureAnalysis(entry.info)
+        !hasUsableSongEnergyAnalysis(entry.info)
       if (!missingAnalysis) continue
       const refreshed = await LibraryCacheDb.loadSongCacheEntry(cacheRoot, st.file)
       if (refreshed?.info) {

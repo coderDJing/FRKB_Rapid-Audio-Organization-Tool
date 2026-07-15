@@ -206,6 +206,7 @@
     "song-structure:truth:add": "tsx scripts/add_song_structure_truth_sample.ts",
     "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "test:key-analysis": "vitest run src/main/libraryCacheDb/songCacheAnalysisFields.spec.ts src/main/services/keyAnalysis/jobOwnership.spec.ts src/main/services/keyAnalysis/queueActiveFollowUp.spec.ts src/main/services/keyAnalysis/structurePersistence.spec.ts src/main/services/songStructureCachePolicy.spec.ts src/main/services/sharedSongGridCachePolicy.spec.ts src/main/services/sharedSongGrid.spec.ts src/renderer/src/composables/horizontalBrowse/useHorizontalBrowseDeckSongSync.spec.ts src/renderer/src/utils/manualKeyAnalysis.spec.ts",
+    "grid:check-active-v2": "node scripts/check-active-grid-v2.mjs",
     "test:song-structure": "vitest run src/main/workers/songAnalysisAudioDecoder.spec.ts src/shared/songAnalysisCompleteness.spec.ts src/shared/songStructureFeatureData.spec.ts src/shared/songStructureSemanticRefinement.spec.ts src/shared/songStructureSpectral.spec.ts src/shared/songStructureStale.spec.ts src/shared/songStructureTimeBasis.spec.ts",
     "start": "electron-vite preview",
     "dev": "node scripts/run-frkb-dev.mjs",

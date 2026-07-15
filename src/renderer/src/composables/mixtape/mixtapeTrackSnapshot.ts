@@ -12,9 +12,9 @@ import type {
   MixtapeTrack
 } from '@renderer/composables/mixtape/types'
 import {
-  normalizeSongBeatGridMap,
-  projectSongBeatGridMapToFixedGrid
-} from '@shared/songBeatGridMap'
+  normalizeSongBeatGridMapV2,
+  projectSongBeatGridMapV2ToFixedGrid
+} from '@shared/songBeatGridMapV2'
 
 const parseSnapshotInfo = (raw: MixtapeRawItem): Record<string, unknown> | null => {
   if (!raw?.infoJson) return null
@@ -30,11 +30,10 @@ export const normalizeMixtapeFilePath = (value: unknown) => {
   return value.trim()
 }
 
-export const normalizeBarBeatOffset = (value: unknown) => {
+export const normalizeDownbeatBeatOffset = (value: unknown) => {
   const numeric = Number(value)
-  if (!Number.isFinite(numeric)) return 0
-  const rounded = Math.round(numeric)
-  return ((rounded % 32) + 32) % 32
+  if (!Number.isInteger(numeric) || numeric < 0 || numeric >= 4) return 0
+  return numeric
 }
 
 export const normalizeFirstBeatMs = (value: unknown) => {
@@ -83,48 +82,32 @@ export const parseSnapshot = (
   unknownTrackLabel: string
 ): MixtapeTrack => {
   const info = parseSnapshotInfo(raw)
-  const parsedBeatGridMap = normalizeSongBeatGridMap(info?.beatGridMap)
-  const beatGridProjection = projectSongBeatGridMapToFixedGrid(parsedBeatGridMap)
+  const parsedBeatGridMapV2 = normalizeSongBeatGridMapV2(raw.canonicalGrid?.beatGridMap, {
+    allowSingleClip: true
+  })
+  const beatGridProjectionV2 = projectSongBeatGridMapV2ToFixedGrid(parsedBeatGridMapV2)
   const filePath =
     normalizeMixtapeFilePath(raw?.filePath) || normalizeMixtapeFilePath(info?.filePath)
   const fileName = filePath.split(/[/\\]/).pop() || filePath || unknownTrackLabel
-  const parsedBpm =
-    beatGridProjection?.bpm ??
-    (typeof info?.bpm === 'number' && Number.isFinite(info.bpm) && info.bpm > 0
-      ? info.bpm
-      : undefined)
+  const parsedBpm = beatGridProjectionV2?.bpm
   const parsedOriginalBpmCandidate = Number(info?.originalBpm)
   const parsedOriginalBpm =
-    beatGridProjection?.bpm ??
-    (Number.isFinite(parsedOriginalBpmCandidate) && parsedOriginalBpmCandidate > 0
+    Number.isFinite(parsedOriginalBpmCandidate) && parsedOriginalBpmCandidate > 0
       ? parsedOriginalBpmCandidate
-      : parsedBpm)
+      : parsedBpm
   const parsedMasterTempo = info?.masterTempo !== false
-  const hasFirstBeatField = !!info && Object.prototype.hasOwnProperty.call(info, 'firstBeatMs')
-  const hasBarBeatOffsetField =
-    !!info && Object.prototype.hasOwnProperty.call(info, 'barBeatOffset')
-  const hasTimeBasisOffsetField =
-    !!info && Object.prototype.hasOwnProperty.call(info, 'timeBasisOffsetMs')
   const hasLaneIndexField = !!info && Object.prototype.hasOwnProperty.call(info, 'laneIndex')
-  const parsedFirstBeatMsValue = Number(info?.firstBeatMs)
-  const parsedFirstBeatMs =
-    beatGridProjection?.firstBeatMs ??
-    (hasFirstBeatField && Number.isFinite(parsedFirstBeatMsValue) && parsedFirstBeatMsValue >= 0
-      ? parsedFirstBeatMsValue
-      : undefined)
-  const parsedTimeBasisOffsetMsValue = Number(info?.timeBasisOffsetMs)
+  const parsedFirstBeatMs = beatGridProjectionV2?.firstBeatMs
   const parsedTimeBasisOffsetMs =
-    hasTimeBasisOffsetField &&
-    Number.isFinite(parsedTimeBasisOffsetMsValue) &&
-    parsedTimeBasisOffsetMsValue >= 0
-      ? parsedTimeBasisOffsetMsValue
+    typeof raw.canonicalGrid?.timeBasisOffsetMs === 'number' &&
+    Number.isFinite(raw.canonicalGrid.timeBasisOffsetMs) &&
+    raw.canonicalGrid.timeBasisOffsetMs >= 0
+      ? raw.canonicalGrid.timeBasisOffsetMs
       : undefined
   const parsedKey = typeof info?.key === 'string' ? info.key.trim() : ''
   const parsedOriginalKeyRaw = typeof info?.originalKey === 'string' ? info.originalKey.trim() : ''
   const parsedOriginalKey = parsedOriginalKeyRaw || parsedKey || undefined
-  const parsedBarBeatOffset = hasBarBeatOffsetField
-    ? (beatGridProjection?.barBeatOffset ?? normalizeBarBeatOffset(info?.barBeatOffset))
-    : beatGridProjection?.barBeatOffset
+  const parsedDownbeatBeatOffset = beatGridProjectionV2?.downbeatBeatOffset
   const parsedGainEnvelope = normalizeGainEnvelopePoints(info?.gainEnvelope)
   const parsedHighEnvelope = normalizeMixEnvelopePoints('high', info?.highEnvelope)
   const parsedMidEnvelope = normalizeMixEnvelopePoints('mid', info?.midEnvelope)
@@ -193,9 +176,9 @@ export const parseSnapshot = (
     volumeEnvelope: parsedVolumeEnvelope.length ? parsedVolumeEnvelope : undefined,
     volumeMuteSegments: parsedVolumeMuteSegments.length ? parsedVolumeMuteSegments : undefined,
     firstBeatMs: parsedFirstBeatMs,
-    barBeatOffset: parsedBarBeatOffset,
+    downbeatBeatOffset: parsedDownbeatBeatOffset,
     timeBasisOffsetMs: parsedTimeBasisOffsetMs,
-    beatGridMap: parsedBeatGridMap ?? undefined,
+    beatGridMap: parsedBeatGridMapV2 ?? undefined,
     stemStatus: parsedStemStatus,
     stemError: parsedStemError,
     stemReadyAt: parsedStemReadyAt,

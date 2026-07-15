@@ -1,9 +1,5 @@
 import type { ISongHotCue } from '../types/globals'
-import {
-  normalizeSongBeatGridMap,
-  resolveNearestSongBeatGridLine,
-  type SongBeatGridMap
-} from './songBeatGridMap'
+import { resolveNearestUnifiedSongBeatGridLine } from './songBeatGridRuntime'
 
 export const HOT_CUE_SLOT_COUNT = 8
 const HOT_CUE_SLOT_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as const
@@ -241,16 +237,17 @@ export const resolveNearestHotCueGridSec = (params: {
   durationSec?: number
   bpm?: number
   firstBeatMs?: number
-  beatGridMap?: SongBeatGridMap | null
+  beatGridMap?: unknown
 }) => {
   const durationSec = Number(params.durationSec)
   const safeDuration = Number.isFinite(durationSec) && durationSec > 0 ? durationSec : undefined
   const safeCurrent = normalizeSongHotCueSec(params.currentSec, safeDuration)
   if (safeCurrent === null) return null
-  const beatGridMap = normalizeSongBeatGridMap(params.beatGridMap)
-  const nearestDynamicLine = beatGridMap
-    ? resolveNearestSongBeatGridLine(beatGridMap, safeDuration, safeCurrent)
-    : null
+  const nearestDynamicLine = resolveNearestUnifiedSongBeatGridLine(
+    params.beatGridMap,
+    safeDuration,
+    safeCurrent
+  )
   if (nearestDynamicLine) {
     const dynamicCandidate = normalizeSongHotCueSec(nearestDynamicLine.sec, safeDuration)
     if (dynamicCandidate !== null) {

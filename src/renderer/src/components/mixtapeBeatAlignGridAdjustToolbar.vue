@@ -67,7 +67,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits<{
-  (event: 'set-bar-line'): void
+  (event: 'set-downbeat-line'): void
   (event: 'shift-left-large'): void
   (event: 'shift-left-small'): void
   (event: 'shift-right-small'): void
@@ -368,9 +368,9 @@ onBeforeUnmount(() => {
         class="grid-adjust-icon-btn"
         type="button"
         :disabled="controlsDisabled"
-        :title="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
-        :aria-label="t('mixtape.gridAdjustSetBarLineAtPlayhead')"
-        @click="emit('set-bar-line')"
+        :title="t('mixtape.gridAdjustSetDownbeatLineAtPlayhead')"
+        :aria-label="t('mixtape.gridAdjustSetDownbeatLineAtPlayhead')"
+        @click="emit('set-downbeat-line')"
       >
         <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="M3 2v12"></path>

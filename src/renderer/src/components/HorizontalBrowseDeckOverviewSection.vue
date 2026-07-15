@@ -19,7 +19,7 @@ type DeckToolbarState = {
   bpmInputFirst?: boolean
   showTapButton?: boolean
   tapBpmTitle?: string
-  barLinePicking: boolean
+  downbeatLinePicking: boolean
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
@@ -73,7 +73,7 @@ const emit = defineEmits<{
   (event: 'eject-song'): void
   (event: 'seek', seconds: number): void
   (event: 'seek-play', seconds: number): void
-  (event: 'set-bar-line'): void
+  (event: 'set-downbeat-line'): void
   (event: 'shift-left-large'): void
   (event: 'shift-left-small'): void
   (event: 'shift-right-small'): void
@@ -85,7 +85,7 @@ const emit = defineEmits<{
   (event: 'select-whole-adjustment'): void
   (event: 'split-after-playhead'): void
   (event: 'delete-boundary'): void
-  (event: 'toggle-bar-line-picking'): void
+  (event: 'toggle-downbeat-line-picking'): void
   (event: 'loop-step-down'): void
   (event: 'loop-step-up'): void
   (event: 'toggle-loop'): void
@@ -170,7 +170,7 @@ const isTop = props.position === 'top'
         :show-split-after-playhead="props.toolbarState.showSplitAfterPlayhead"
         :show-delete-boundary="props.toolbarState.showDeleteBoundary"
         :grid-adjust-scope="props.toolbarState.gridAdjustScope"
-        :bar-line-picking="props.toolbarState.barLinePicking"
+        :downbeat-line-picking="props.toolbarState.downbeatLinePicking"
         :loop-beat-label="props.toolbarState.loopBeatLabel"
         :loop-active="props.toolbarState.loopActive"
         :loop-disabled="props.toolbarState.loopDisabled"
@@ -184,7 +184,7 @@ const isTop = props.position === 'top'
         :metronome-volume-level="props.toolbarState.metronomeVolumeLevel"
         :can-toggle-metronome="props.toolbarState.canToggleMetronome"
         :show-large-shift-buttons="props.showLargeShiftButtons"
-        @set-bar-line="emit('set-bar-line')"
+        @set-downbeat-line="emit('set-downbeat-line')"
         @shift-left-large="emit('shift-left-large')"
         @shift-left-small="emit('shift-left-small')"
         @shift-right-small="emit('shift-right-small')"
@@ -196,7 +196,7 @@ const isTop = props.position === 'top'
         @select-whole-adjustment="emit('select-whole-adjustment')"
         @split-after-playhead="emit('split-after-playhead')"
         @delete-boundary="emit('delete-boundary')"
-        @toggle-bar-line-picking="emit('toggle-bar-line-picking')"
+        @toggle-downbeat-line-picking="emit('toggle-downbeat-line-picking')"
         @loop-step-down="emit('loop-step-down')"
         @loop-step-up="emit('loop-step-up')"
         @toggle-loop="emit('toggle-loop')"

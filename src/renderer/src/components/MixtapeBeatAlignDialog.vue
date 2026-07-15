@@ -30,8 +30,8 @@ import {
   resolveHorizontalBrowseGridShiftMs
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailExpose'
 import {
-  PREVIEW_BAR_BEAT_INTERVAL,
-  PREVIEW_BAR_LINE_HIT_RADIUS_PX,
+  PREVIEW_DOWNBEAT_BEAT_INTERVAL,
+  PREVIEW_DOWNBEAT_LINE_HIT_RADIUS_PX,
   PREVIEW_BPM_MAX,
   PREVIEW_BPM_MIN,
   PREVIEW_BPM_STEP,
@@ -51,7 +51,11 @@ import {
   parsePreviewBpmInput
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import { projectSongBeatGridMapToFixedGrid, type SongBeatGridMap } from '@shared/songBeatGridMap'
+import {
+  createSongBeatGridMapV2FromFixedGrid,
+  projectSongBeatGridMapV2ToFixedGrid,
+  type SongBeatGridMapV2
+} from '@shared/songBeatGridMapV2'
 
 const props = defineProps({
   trackTitle: {
@@ -78,12 +82,12 @@ const props = defineProps({
     type: Number,
     default: 0
   },
-  barBeatOffset: {
+  downbeatBeatOffset: {
     type: Number,
     default: 0
   },
   beatGridMap: {
-    type: Object as PropType<SongBeatGridMap | null>,
+    type: Object as PropType<SongBeatGridMapV2 | null>,
     default: null
   },
   windowVolume: {
@@ -97,10 +101,7 @@ const emit = defineEmits<{
   (
     event: 'save-grid-definition',
     payload: {
-      barBeatOffset: number
-      firstBeatMs: number
-      bpm: number
-      beatGridMap?: SongBeatGridMap | null
+      beatGridMap: SongBeatGridMapV2
     }
   ): void
 }>()
@@ -118,10 +119,10 @@ const previewStartSec = ref(0)
 const previewDragging = ref(false)
 const previewPlaying = ref(false)
 const overviewCurrentSec = ref(0)
-const previewBarBeatOffset = ref(0)
+const previewDownbeatBeatOffset = ref(0)
 const previewFirstBeatMs = ref(0)
 const previewTimeBasisOffsetMs = ref(0)
-const previewBeatGridMap = ref<SongBeatGridMap | null>(null)
+const previewBeatGridMap = ref<SongBeatGridMapV2 | null>(null)
 const previewBpm = ref(128)
 const previewBpmInput = ref('128.00')
 const bpmTapTimestamps = ref<number[]>([])
@@ -238,17 +239,22 @@ const closeDialog = () => {
 const cancel = () => closeDialog()
 
 const save = () => {
-  const dynamicProjection = projectSongBeatGridMapToFixedGrid(previewBeatGridMap.value)
-  const hasSourceBeatGridMap = props.beatGridMap !== null && props.beatGridMap !== undefined
+  const dynamicProjection = projectSongBeatGridMapV2ToFixedGrid(previewBeatGridMap.value)
+  const beatGridMap =
+    previewBeatGridMap.value ??
+    createSongBeatGridMapV2FromFixedGrid({
+      bpm: dynamicProjection?.bpm ?? normalizePreviewBpm(previewBpm.value),
+      firstBeatMs:
+        dynamicProjection?.firstBeatMs ??
+        (Number.isFinite(Number(previewFirstBeatMs.value)) ? Number(previewFirstBeatMs.value) : 0),
+      downbeatBeatOffset:
+        dynamicProjection?.downbeatBeatOffset ??
+        normalizeBeatOffset(previewDownbeatBeatOffset.value, PREVIEW_DOWNBEAT_BEAT_INTERVAL),
+      source: 'manual'
+    })
+  if (!beatGridMap) return
   emit('save-grid-definition', {
-    barBeatOffset:
-      dynamicProjection?.barBeatOffset ??
-      normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL),
-    firstBeatMs:
-      dynamicProjection?.firstBeatMs ??
-      (Number.isFinite(Number(previewFirstBeatMs.value)) ? Number(previewFirstBeatMs.value) : 0),
-    bpm: dynamicProjection?.bpm ?? normalizePreviewBpm(previewBpm.value),
-    beatGridMap: previewBeatGridMap.value ?? (hasSourceBeatGridMap ? null : undefined)
+    beatGridMap
   })
   closeDialog()
 }
@@ -285,7 +291,10 @@ const beatAlignSong = computed<ISongInfo | null>(() => {
     key: String(props.trackKey || '').trim() || undefined,
     bpm: Number(previewBpm.value) || 0,
     firstBeatMs: Number(previewFirstBeatMs.value) || 0,
-    barBeatOffset: normalizeBeatOffset(previewBarBeatOffset.value, PREVIEW_BAR_BEAT_INTERVAL),
+    downbeatBeatOffset: normalizeBeatOffset(
+      previewDownbeatBeatOffset.value,
+      PREVIEW_DOWNBEAT_BEAT_INTERVAL
+    ),
     timeBasisOffsetMs: Number(previewTimeBasisOffsetMs.value) || 0,
     ...(previewBeatGridMap.value ? { beatGridMap: previewBeatGridMap.value } : {})
   }
@@ -353,7 +362,7 @@ const {
   previewZoom,
   previewBpm,
   previewFirstBeatMs,
-  previewBarBeatOffset,
+  previewDownbeatBeatOffset,
   previewTimeBasisOffsetMs,
   dragging: previewDragging,
   allowNegativeTimeline: () => false,
@@ -557,7 +566,7 @@ const dynamicGridEdit = useHorizontalBrowseDynamicBeatGridEdit({
   previewBpm,
   previewBpmInput,
   previewFirstBeatMs,
-  previewBarBeatOffset,
+  previewDownbeatBeatOffset,
   previewStartSec,
   previewWrapRef,
   resolveCurrentSec: () => getPreviewPlaybackSec(),
@@ -598,22 +607,22 @@ const dynamicGridAdjustScope = computed(() => dynamicGridEdit.adjustmentScope.va
 
 const {
   canAdjustGrid,
-  previewBarLinePicking,
-  previewBarLineHoverVisible,
-  previewBarLineGlowStyle,
-  handleBarLinePickingToggle,
-  handlePreviewMouseMoveForBarLinePicking,
-  handlePreviewMouseLeaveForBarLinePicking,
-  handlePreviewMouseDownForBarLinePicking,
-  handleSetBarLineAtPlayhead,
+  previewDownbeatLinePicking,
+  previewDownbeatLineHoverVisible,
+  previewDownbeatLineGlowStyle,
+  handleDownbeatLinePickingToggle,
+  handlePreviewMouseMoveForDownbeatLinePicking,
+  handlePreviewMouseLeaveForDownbeatLinePicking,
+  handlePreviewMouseDownForDownbeatLinePicking,
+  handleSetDownbeatLineAtPlayhead,
   handleGridShift,
-  resetBarLinePicking
+  resetDownbeatLinePicking
 } = useMixtapeBeatAlignGridAdjust({
   previewWrapRef,
   previewLoading,
   previewMixxxData,
   previewPlaying,
-  previewBarBeatOffset,
+  previewDownbeatBeatOffset,
   previewFirstBeatMs,
   previewStartSec,
   bpm: previewBpm,
@@ -624,8 +633,8 @@ const {
   clampPreviewStart,
   getPreviewPlaybackSec,
   schedulePreviewDraw,
-  barBeatInterval: PREVIEW_BAR_BEAT_INTERVAL,
-  barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX,
+  downbeatBeatInterval: PREVIEW_DOWNBEAT_BEAT_INTERVAL,
+  downbeatLineHitRadiusPx: PREVIEW_DOWNBEAT_LINE_HIT_RADIUS_PX,
   dynamicGridEdit
 })
 
@@ -666,7 +675,7 @@ const { handlePreviewWheel, handlePreviewMouseDown, stopPreviewDragging } =
     resolvePreviewAnchorSec,
     clampPreviewStart,
     getPreviewPlaybackSec,
-    handlePreviewMouseDownForBarLinePicking,
+    handlePreviewMouseDownForDownbeatLinePicking,
     requestCompactVisualWaveformStrip,
     startPreviewScrub,
     updatePreviewScrub,
@@ -738,12 +747,15 @@ const loadPreviewWaveform = async (filePath: string) => {
   previewStartSec.value = 0
   overviewCurrentSec.value = 0
   syncPreviewBpmFromProps()
-  previewBarBeatOffset.value = normalizeBeatOffset(props.barBeatOffset, PREVIEW_BAR_BEAT_INTERVAL)
+  previewDownbeatBeatOffset.value = normalizeBeatOffset(
+    props.downbeatBeatOffset,
+    PREVIEW_DOWNBEAT_BEAT_INTERVAL
+  )
   previewFirstBeatMs.value = Number.isFinite(Number(props.firstBeatMs))
     ? Number(props.firstBeatMs)
     : 0
   previewTimeBasisOffsetMs.value = Math.max(0, Number(props.timeBasisOffsetMs) || 0)
-  resetBarLinePicking()
+  resetDownbeatLinePicking()
   stopPreviewDragging()
   resetCompactVisualWaveformStrip()
   schedulePreviewDraw()
@@ -794,9 +806,9 @@ const handleWindowKeydown = (event: KeyboardEvent) => {
   if (!dialogVisible.value) return
   if (isEditableEventTarget(event.target)) return
 
-  if (event.code === 'Escape' && previewBarLinePicking.value) {
+  if (event.code === 'Escape' && previewDownbeatLinePicking.value) {
     event.preventDefault()
-    resetBarLinePicking()
+    resetDownbeatLinePicking()
     return
   }
 
@@ -847,11 +859,11 @@ watch(
 )
 
 watch(
-  () => props.barBeatOffset,
+  () => props.downbeatBeatOffset,
   (next) => {
-    const normalized = normalizeBeatOffset(next, PREVIEW_BAR_BEAT_INTERVAL)
-    if (previewBarBeatOffset.value === normalized) return
-    previewBarBeatOffset.value = normalized
+    const normalized = normalizeBeatOffset(next, PREVIEW_DOWNBEAT_BEAT_INTERVAL)
+    if (previewDownbeatBeatOffset.value === normalized) return
+    previewDownbeatBeatOffset.value = normalized
     schedulePreviewDraw()
   }
 )
@@ -897,7 +909,7 @@ watch(
     } else {
       stopOverviewClock()
       resetPreviewBpmTap()
-      resetBarLinePicking()
+      resetDownbeatLinePicking()
       stopPreviewPlayback({ syncPosition: false })
     }
   }
@@ -919,7 +931,7 @@ onBeforeUnmount(() => {
   stopOverviewClock()
   disposeWaveformCanvas()
   disposeCompactVisualWaveformStrip()
-  resetBarLinePicking()
+  resetDownbeatLinePicking()
   stopPreviewDragging()
   window.electron.ipcRenderer.removeListener('song-waveform-updated', handleSongWaveformUpdated)
   window.removeEventListener('resize', handleWindowResize)
@@ -948,22 +960,25 @@ onBeforeUnmount(() => {
           :can-toggle-preview-playback="canTogglePreviewPlayback"
           :can-stop-preview-playback="canStopPreviewPlayback"
           :can-adjust-grid="canAdjustGrid"
-          :preview-bar-line-picking="previewBarLinePicking"
+          :preview-downbeat-line-picking="previewDownbeatLinePicking"
           :metronome-enabled="metronomeEnabled"
           :metronome-volume-level="metronomeVolumeLevel"
           :can-toggle-metronome="canToggleMetronome"
           @toggle-playback="handlePreviewPlaybackToggle"
           @stop-to-start="handlePreviewStopToStart"
-          @toggle-barline-pick="handleBarLinePickingToggle"
+          @toggle-downbeat-line-pick="handleDownbeatLinePickingToggle"
           @cycle-metronome-state="handleMetronomeStateCycle"
         />
         <div
           ref="previewWrapRef"
           class="preview-canvas-wrap raw-detail-waveform raw-detail-waveform--up"
-          :class="{ 'is-dragging': previewDragging, 'is-bar-selecting': previewBarLinePicking }"
+          :class="{
+            'is-dragging': previewDragging,
+            'is-downbeat-selecting': previewDownbeatLinePicking
+          }"
           @mousedown="handlePreviewMouseDown"
-          @mousemove="handlePreviewMouseMoveForBarLinePicking"
-          @mouseleave="handlePreviewMouseLeaveForBarLinePicking"
+          @mousemove="handlePreviewMouseMoveForDownbeatLinePicking"
+          @mouseleave="handlePreviewMouseLeaveForDownbeatLinePicking"
           @wheel.prevent="handlePreviewWheel"
         >
           <div ref="waveformSurfaceRef" class="raw-detail-waveform__surface">
@@ -987,9 +1002,9 @@ onBeforeUnmount(() => {
             ></canvas>
           </div>
           <div
-            v-if="previewBarLineHoverVisible"
-            class="raw-detail-waveform__barline-glow"
-            :style="previewBarLineGlowStyle"
+            v-if="previewDownbeatLineHoverVisible"
+            class="raw-detail-waveform__downbeat-line-glow"
+            :style="previewDownbeatLineGlowStyle"
           ></div>
           <div
             class="preview-anchor-line"
@@ -1013,7 +1028,7 @@ onBeforeUnmount(() => {
           :show-split-after-playhead="true"
           :show-delete-boundary="dynamicBoundarySelected"
           :grid-adjust-scope="dynamicGridAdjustScope"
-          @set-bar-line="handleSetBarLineAtPlayhead"
+          @set-downbeat-line="handleSetDownbeatLineAtPlayhead"
           @shift-left-large="handlePreviewGridShiftLargeLeft"
           @shift-left-small="handlePreviewGridShiftSmallLeft"
           @shift-right-small="handlePreviewGridShiftSmallRight"

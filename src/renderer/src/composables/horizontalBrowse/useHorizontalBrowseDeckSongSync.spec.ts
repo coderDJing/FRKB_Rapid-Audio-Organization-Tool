@@ -10,6 +10,8 @@ import {
   patchHorizontalBrowseRuntimeSongSnapshots,
   type HorizontalBrowseSongSnapshotRuntime
 } from './horizontalBrowseSongSnapshotPatch'
+import { mergeHorizontalBrowseSongWithSharedGrid } from './horizontalBrowseShellSongs'
+import { createSongBeatGridMapV2FromFixedGrid } from '../../../../shared/songBeatGridMapV2'
 
 const FILE_PATH = 'G:\\FRKB_database-A\\library\\FilterLibrary\\test.mp3'
 
@@ -54,11 +56,57 @@ const createSong = (songStructure: SongStructureAnalysis): ISongInfo => ({
   container: undefined,
   bpm: 128,
   firstBeatMs: 0,
-  barBeatOffset: 0,
   songStructure
 })
 
 describe('useHorizontalBrowseDeckSongSync', () => {
+  it('网格更新保留历史段落结果', () => {
+    const songStructure = createStructure('groove')
+    const song = createSong(songStructure)
+    const beatGridMap = createSongBeatGridMapV2FromFixedGrid({
+      bpm: 130,
+      firstBeatMs: 125,
+      downbeatBeatOffset: 1,
+      source: 'manual'
+    })
+    if (!beatGridMap) throw new Error('v2 grid fixture failed')
+
+    const updated = mergeHorizontalBrowseSongWithSharedGrid(song, {
+      filePath: FILE_PATH,
+      beatGridMap
+    })
+
+    expect(updated.beatGridMap?.signature).toBe(beatGridMap.signature)
+    expect(updated.songStructure).toEqual(songStructure)
+  })
+
+  it('网格更新只替换 v2 map，不把投影根字段写回歌曲副本', () => {
+    const song = createSong(createStructure('groove'))
+    const beatGridMap = createSongBeatGridMapV2FromFixedGrid({
+      bpm: 130,
+      firstBeatMs: 125,
+      downbeatBeatOffset: 1,
+      source: 'manual'
+    })
+    if (!beatGridMap) throw new Error('v2 grid fixture failed')
+
+    const legacyShapedPayload = {
+      filePath: FILE_PATH,
+      bpm: 130,
+      firstBeatMs: 125,
+      downbeatBeatOffset: 1,
+      beatGridSource: 'manual',
+      beatGridMap
+    }
+    const updated = mergeHorizontalBrowseSongWithSharedGrid(song, legacyShapedPayload)
+
+    expect(updated.beatGridMap?.signature).toBe(beatGridMap.signature)
+    expect(updated.bpm).toBe(128)
+    expect(updated.firstBeatMs).toBe(0)
+    expect(updated.downbeatBeatOffset).toBeUndefined()
+    expect(updated.beatGridSource).toBeUndefined()
+  })
+
   it('段落更新会同步播放快照和 Deck 来源歌单', () => {
     const oldStructure = createStructure('groove')
     const nextStructure = createStructure('drop')

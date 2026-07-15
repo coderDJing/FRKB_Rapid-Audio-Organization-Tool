@@ -12,12 +12,47 @@ import {
 } from './services/libraryMerge/participants'
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const SCHEMA_VERSION = 35
+const SCHEMA_VERSION = 38
+export const MAX_SUPPORTED_DATABASE_SCHEMA_VERSION = SCHEMA_VERSION
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 
 export type SqliteDatabase = InstanceType<SqliteDatabaseCtor>
 type SqliteRow = Record<string, unknown>
+
+export class DatabaseSchemaVersionError extends Error {
+  readonly databasePath: string
+  readonly databaseVersion: number
+  readonly maximumSupportedVersion: number
+
+  constructor(databasePath: string, databaseVersion: number, maximumSupportedVersion: number) {
+    super(
+      `数据库版本 ${databaseVersion} 高于当前软件支持上限 ${maximumSupportedVersion}：${databasePath}`
+    )
+    this.name = 'DatabaseSchemaVersionError'
+    this.databasePath = databasePath
+    this.databaseVersion = databaseVersion
+    this.maximumSupportedVersion = maximumSupportedVersion
+  }
+}
+
+export class DatabaseSchemaMigrationRequiredError extends Error {
+  constructor(
+    readonly databasePath: string,
+    readonly databaseVersion: number
+  ) {
+    super(`数据库需要先完成受保护升级：${databasePath}（当前版本 ${databaseVersion}）`)
+    this.name = 'DatabaseSchemaMigrationRequiredError'
+  }
+}
+
+export const isDatabaseSchemaVersionError = (error: unknown): error is DatabaseSchemaVersionError =>
+  error instanceof DatabaseSchemaVersionError
+
+export const isDatabaseSchemaMigrationRequiredError = (
+  error: unknown
+): error is DatabaseSchemaMigrationRequiredError =>
+  error instanceof DatabaseSchemaMigrationRequiredError
 
 export function isSqliteRow(value: unknown): value is SqliteRow {
   return !!value && typeof value === 'object' && !Array.isArray(value)
@@ -79,13 +114,48 @@ function assertStoredMetadataContracts(dbInstance: SqliteDatabase): void {
   }
 }
 
+const readDatabaseSchemaVersion = (dbInstance: SqliteDatabase): number => {
+  const value = Number(dbInstance.pragma('user_version', { simple: true }))
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0
+}
+
+const assertSupportedDatabaseSchemaVersion = (dbPath: string, userVersion: number): void => {
+  if (userVersion > MAX_SUPPORTED_DATABASE_SCHEMA_VERSION) {
+    throw new DatabaseSchemaVersionError(dbPath, userVersion, MAX_SUPPORTED_DATABASE_SCHEMA_VERSION)
+  }
+}
+
+// 只读预检必须发生在任何 WAL、迁移或业务查询之前。
+export function assertExistingDatabaseSchemaSupported(dbPath: string): number {
+  const normalizedPath = String(dbPath || '').trim()
+  if (!normalizedPath) throw new Error('数据库路径不能为空')
+  const Database = require('better-sqlite3') as SqliteDatabaseCtor
+  const instance = new Database(normalizedPath, { readonly: true, fileMustExist: true })
+  try {
+    const userVersion = readDatabaseSchemaVersion(instance)
+    assertSupportedDatabaseSchemaVersion(normalizedPath, userVersion)
+    return userVersion
+  } finally {
+    instance.close()
+  }
+}
+
 function createDatabase(dbPath: string): SqliteDatabase {
   const Database = require('better-sqlite3') as SqliteDatabaseCtor
   const instance = new Database(dbPath)
+  const userVersion = readDatabaseSchemaVersion(instance)
+  try {
+    assertSupportedDatabaseSchemaVersion(dbPath, userVersion)
+    if (userVersion > 0 && userVersion < SCHEMA_VERSION) {
+      throw new DatabaseSchemaMigrationRequiredError(dbPath, userVersion)
+    }
+  } catch (error) {
+    instance.close()
+    throw error
+  }
   instance.pragma('journal_mode = WAL')
   instance.pragma('busy_timeout = 5000')
   instance.pragma('foreign_keys = ON')
-  const userVersion = instance.pragma('user_version', { simple: true }) as number
   if (userVersion < 1) {
     instance.exec(`
       CREATE TABLE IF NOT EXISTS meta (
@@ -950,9 +1020,11 @@ export function initLibraryDb(dirPath: string): SqliteDatabase | null {
     dbRoot = dirPath
     log.error('[sqlite] init failed', error)
     if (
-      isConfiguredDevDatabase(dirPath) &&
-      (error instanceof LibraryMergeParticipantContractError ||
-        error instanceof LibraryMetadataContractError)
+      isDatabaseSchemaVersionError(error) ||
+      isDatabaseSchemaMigrationRequiredError(error) ||
+      (isConfiguredDevDatabase(dirPath) &&
+        (error instanceof LibraryMergeParticipantContractError ||
+          error instanceof LibraryMetadataContractError))
     ) {
       throw error
     }

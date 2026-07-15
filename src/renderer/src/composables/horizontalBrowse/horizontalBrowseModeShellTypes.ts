@@ -17,8 +17,8 @@ export type SharedDetailZoomState = {
 export type DeckCuePanelMode = 'memory' | 'hot-cue'
 
 export type HorizontalBrowseDeckDetailLaneExpose = {
-  toggleBarLinePicking?: () => void
-  setBarLineAtPlayhead?: () => void
+  toggleDownbeatLinePicking?: () => void
+  setDownbeatLineAtPlayhead?: () => void
   shiftGridLargeLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridSmallLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridSmallRight?: (options?: HorizontalBrowseGridShiftOptions) => void
@@ -62,7 +62,7 @@ export const createDefaultDeckToolbarState = () => ({
   bpmInputFirst: false,
   showTapButton: false,
   tapBpmTitle: '',
-  barLinePicking: false,
+  downbeatLinePicking: false,
   metronomeEnabled: false,
   metronomeVolumeLevel: 2 as 1 | 2 | 3,
   canToggleMetronome: false,

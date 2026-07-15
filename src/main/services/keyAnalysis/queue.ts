@@ -297,13 +297,8 @@ export class KeyAnalysisQueue {
   }
 
   private applyIncludeStructureOption(job: KeyAnalysisJob, includeStructure?: boolean) {
-    if (includeStructure === true) {
-      job.includeStructure = true
-      return
-    }
-    if (includeStructure === false && job.includeStructure !== true) {
-      job.includeStructure = false
-    }
+    void includeStructure
+    job.includeStructure = false
   }
 
   private applyRequestFlags(job: KeyAnalysisJob, flags: KeyAnalysisRequestFlags) {
@@ -441,7 +436,7 @@ export class KeyAnalysisQueue {
       preemptible: options.preemptible === true,
       category: options.category,
       waveformOnly: options.waveformOnly === true,
-      includeStructure: options.includeStructure !== false,
+      includeStructure: false,
       forceAnalysis: options.forceAnalysis === true,
       manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }
@@ -1018,20 +1013,6 @@ export class KeyAnalysisQueue {
       this.doneByPath.delete(normalizedPath)
       this.failedByPath.delete(normalizedPath)
       this.probeCache.delete(normalizedPath)
-    }
-  }
-
-  invalidateSongStructureByPath(filePaths: string[]) {
-    if (!Array.isArray(filePaths) || filePaths.length === 0) return
-    for (const filePath of filePaths) {
-      if (!filePath) continue
-      const normalizedPath = normalizePath(filePath)
-      const done = this.doneByPath.get(normalizedPath)
-      if (!done?.songStructure) continue
-      this.doneByPath.set(normalizedPath, {
-        ...done,
-        songStructure: undefined
-      })
     }
   }
 

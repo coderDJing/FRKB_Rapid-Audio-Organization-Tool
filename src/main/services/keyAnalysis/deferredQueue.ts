@@ -47,8 +47,7 @@ export class KeyAnalysisDeferredQueue {
   }
 
   requiresFollowUp(active: KeyAnalysisJob, options: DeferredRequestOptions) {
-    const requiresStructureUpgrade =
-      options.includeStructure === true && active.includeStructure !== true
+    const requiresStructureUpgrade = false
     const requiresFullAnalysisUpgrade =
       options.waveformOnly !== true && active.waveformOnly === true
     const requiresForcedAnalysisUpgrade =
@@ -92,7 +91,7 @@ export class KeyAnalysisDeferredQueue {
       preemptible: options.preemptible === true,
       category: options.category,
       waveformOnly: options.waveformOnly === true,
-      includeStructure: options.includeStructure !== false,
+      includeStructure: false,
       forceAnalysis: options.forceAnalysis === true,
       manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }

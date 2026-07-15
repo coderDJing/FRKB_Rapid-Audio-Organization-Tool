@@ -302,17 +302,18 @@ const resolveTrackVisibleAnchorLocalSec = (params: {
   const sourceDurationBeats = sourceDurationSec / beatSourceSec
   const firstBeatSourceSec = resolveMixtapeAudioFirstBeatSec(track)
   const firstBeatSourceBeats = firstBeatSourceSec / beatSourceSec
-  const normalizedBarBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
-  const firstBarLineSourceBeats = firstBeatSourceBeats + normalizedBarBeatOffset
-  const hasVisibleBarLine = firstBarLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
+  const normalizedDownbeatBeatOffset = normalizeBeatOffset(track.downbeatBeatOffset, 4)
+  const firstDownbeatLineSourceBeats = firstBeatSourceBeats + normalizedDownbeatBeatOffset
+  const hasVisibleDownbeatLine =
+    firstDownbeatLineSourceBeats <= sourceDurationBeats + BPM_POINT_SEC_EPSILON
   const currentBeatSec = Math.max(
     BPM_POINT_SEC_EPSILON,
     resolveBeatSecByBpm(Number(track.bpm) || gridSourceBpm)
   )
   const firstBeatLocalSec = Math.max(0, Number(params.resolveTrackFirstBeatSeconds(track)) || 0)
   return roundTrackTempoSec(
-    hasVisibleBarLine
-      ? firstBeatLocalSec + normalizedBarBeatOffset * currentBeatSec
+    hasVisibleDownbeatLine
+      ? firstBeatLocalSec + normalizedDownbeatBeatOffset * currentBeatSec
       : firstBeatLocalSec
   )
 }

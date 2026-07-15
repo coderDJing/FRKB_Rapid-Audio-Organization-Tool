@@ -5,13 +5,12 @@ import {
   createEmptyHorizontalBrowseTransportSnapshot,
   HORIZONTAL_BROWSE_TRANSPORT_SNAPSHOT_EVENT,
   type HorizontalBrowseTransportBeatGridInput,
-  type HorizontalBrowseTransportBeatGridClipInput,
   type HorizontalBrowseTransportBandState,
   type HorizontalBrowseDeckKey,
   type HorizontalBrowseTransportSnapshot,
   type HorizontalBrowseTransportVisualizerSnapshot
 } from '@shared/horizontalBrowseTransport'
-import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
+import { resolveHorizontalBrowseTransportGrid } from '@shared/horizontalBrowseTransportGrid'
 export type {
   HorizontalBrowseTransportBeatGridInput,
   HorizontalBrowseTransportBandState,
@@ -34,19 +33,6 @@ type LocalDeckState = {
 type SnapshotListener = (snapshot: HorizontalBrowseTransportSnapshot) => void
 type SnapshotApplyOptions = {
   notifySnapshotListeners?: boolean
-}
-
-const buildNativeBeatGridClips = (
-  song: ISongInfo | null | undefined
-): HorizontalBrowseTransportBeatGridClipInput[] | undefined => {
-  const map = normalizeSongBeatGridMap(song?.beatGridMap)
-  if (!map) return undefined
-  return map.clips.map((clip) => ({
-    startSec: clip.startSec,
-    anchorSec: clip.anchorSec,
-    bpm: clip.bpm,
-    barBeatOffset: clip.barBeatOffset
-  }))
 }
 
 export const createHorizontalBrowseNativeTransport = () => {
@@ -132,13 +118,11 @@ export const createHorizontalBrowseNativeTransport = () => {
   const setDeckState = async (deck: HorizontalBrowseDeckKey, payload: LocalDeckState) => {
     const nowMs = performance.now()
     const finishTiming = startHorizontalBrowseUserTiming(`frkb:hb:native:set-deck-state:${deck}`)
+    const beatGrid = resolveHorizontalBrowseTransportGrid(payload.song || {})
     const snapshot = await invoke('horizontal-browse-transport:set-deck-state', deck, nowMs, {
       filePath: payload.song?.filePath || '',
       title: payload.song?.title || payload.song?.fileName || '',
-      bpm: Number(payload.song?.bpm) || 0,
-      firstBeatMs: Number(payload.song?.firstBeatMs) || 0,
-      barBeatOffset: Number(payload.song?.barBeatOffset) || 0,
-      beatGridClips: buildNativeBeatGridClips(payload.song),
+      ...beatGrid,
       timeBasisOffsetMs: Number(payload.song?.timeBasisOffsetMs) || 0,
       durationSec: Number(payload.durationSec) || 0,
       currentSec: Number(payload.currentSec) || 0,
@@ -161,15 +145,14 @@ export const createHorizontalBrowseNativeTransport = () => {
     options: SnapshotApplyOptions = {}
   ) => {
     const nowMs = performance.now()
+    const topBeatGrid = resolveHorizontalBrowseTransportGrid(payload.top.song || {})
+    const bottomBeatGrid = resolveHorizontalBrowseTransportGrid(payload.bottom.song || {})
     const snapshot = await invoke('horizontal-browse-transport:set-state', {
       nowMs,
       top: {
         filePath: payload.top.song?.filePath || '',
         title: payload.top.song?.title || payload.top.song?.fileName || '',
-        bpm: Number(payload.top.song?.bpm) || 0,
-        firstBeatMs: Number(payload.top.song?.firstBeatMs) || 0,
-        barBeatOffset: Number(payload.top.song?.barBeatOffset) || 0,
-        beatGridClips: buildNativeBeatGridClips(payload.top.song),
+        ...topBeatGrid,
         timeBasisOffsetMs: Number(payload.top.song?.timeBasisOffsetMs) || 0,
         durationSec: Number(payload.top.durationSec) || 0,
         currentSec: Number(payload.top.currentSec) || 0,
@@ -181,10 +164,7 @@ export const createHorizontalBrowseNativeTransport = () => {
       bottom: {
         filePath: payload.bottom.song?.filePath || '',
         title: payload.bottom.song?.title || payload.bottom.song?.fileName || '',
-        bpm: Number(payload.bottom.song?.bpm) || 0,
-        firstBeatMs: Number(payload.bottom.song?.firstBeatMs) || 0,
-        barBeatOffset: Number(payload.bottom.song?.barBeatOffset) || 0,
-        beatGridClips: buildNativeBeatGridClips(payload.bottom.song),
+        ...bottomBeatGrid,
         timeBasisOffsetMs: Number(payload.bottom.song?.timeBasisOffsetMs) || 0,
         durationSec: Number(payload.bottom.durationSec) || 0,
         currentSec: Number(payload.bottom.currentSec) || 0,

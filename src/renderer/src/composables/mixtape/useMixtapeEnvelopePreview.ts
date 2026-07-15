@@ -164,7 +164,6 @@ export const useMixtapeEnvelopePreview = (options: UseMixtapeEnvelopePreviewOpti
     resolveRenderZoom: () => Math.max(0, Number(unwrapMaybeRef(options.renderZoomLevel)) || 0),
     resolveTrackDurationSeconds: options.resolveTrackDurationSeconds,
     resolveTrackSourceDurationSeconds: options.resolveTrackSourceDurationSeconds,
-    resolveTrackFirstBeatSeconds: options.resolveTrackFirstBeatSeconds,
     isStemSegmentParam: (param) => STEM_PREVIEW_ROW_ORDER.includes(param as MixtapeWaveformStemId)
   })
   const { resolveTrackStemSegmentState } = trackStateModule

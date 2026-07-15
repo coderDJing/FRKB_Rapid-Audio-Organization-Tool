@@ -3,6 +3,7 @@ import fs = require('fs-extra')
 import path = require('path')
 import store from '../store'
 import databaseInitWindow from '../window/databaseInitWindow'
+import databaseSchemaMigrationWindow from '../window/databaseSchemaMigrationWindow'
 import mainWindow from '../window/mainWindow'
 import startupWindow from '../window/startupWindow'
 import { initDatabaseStructure } from '../initDatabase'
@@ -14,6 +15,13 @@ import {
 import { loadList } from '../fingerprintStore'
 import { ensureLegacyMigration } from '../libraryMigration'
 import { recoverIncompleteLibraryMerges } from '../services/libraryMerge'
+import {
+  assertExistingDatabaseSchemaSupported,
+  getLibraryDbPath,
+  isDatabaseSchemaVersionError
+} from '../libraryDb'
+import { migrateLibrarySchemaV35ToV36 } from '../librarySchemaV36Migration'
+import { migrateLibrarySchemaToV38 } from '../librarySchemaV37Migration'
 
 const isConfiguredDevDatabase = (): boolean => {
   if (app.isPackaged) return false
@@ -61,9 +69,25 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
   try {
     // 合并恢复必须先于任何 schema 初始化、树同步或后台任务；否则未提交任务的
     // SQLite 提交标记和已提升文件可能先被普通启动流程干扰。
-    const databaseFilePath = path.join(store.settingConfig.databaseUrl, 'FRKB.database.sqlite')
+    const databaseFilePath = getLibraryDbPath(store.settingConfig.databaseUrl)
     if (await fs.pathExists(databaseFilePath)) {
       startupWindow.setStage('recovering-library')
+      let databaseVersion = assertExistingDatabaseSchemaSupported(databaseFilePath)
+      if (databaseVersion === 35) {
+        startupWindow.closeWindow()
+        databaseSchemaMigrationWindow.createWindow()
+        await migrateLibrarySchemaV35ToV36(databaseFilePath, {
+          onProgress: databaseSchemaMigrationWindow.setSchemaMigrationProgress
+        })
+        databaseVersion = assertExistingDatabaseSchemaSupported(databaseFilePath)
+      }
+      if (databaseVersion === 36 || databaseVersion === 37) {
+        startupWindow.closeWindow()
+        databaseSchemaMigrationWindow.createWindow()
+        await migrateLibrarySchemaToV38(databaseFilePath, {
+          onProgress: databaseSchemaMigrationWindow.setSchemaMigrationProgress
+        })
+      }
       await recoverIncompleteLibraryMerges(store.settingConfig.databaseUrl)
     }
     // 幂等创建/修复结构
@@ -93,8 +117,12 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     store.songFingerprintList = Array.isArray(list) ? list : []
     // 创建主窗口
     startupWindow.setStage('opening-main-window')
+    databaseSchemaMigrationWindow.close()
     mainWindow.createWindow()
+    databaseInitWindow.instance?.close()
   } catch (error) {
+    if (databaseSchemaMigrationWindow.hasFailedMigration()) return
+    databaseSchemaMigrationWindow.close()
     if (isConfiguredDevDatabase()) {
       console.error(
         `[frkb-dev] Configured database failed the library merge contract check: ${
@@ -107,6 +135,17 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     }
     startupWindow.setStage('selecting-library')
     startupWindow.closeWindow()
+    if (isDatabaseSchemaVersionError(error)) {
+      databaseInitWindow.createWindow({
+        errorHint: {
+          kind: 'schema-too-new',
+          databaseUrl: store.settingConfig.databaseUrl,
+          databaseVersion: error.databaseVersion,
+          maximumSupportedVersion: error.maximumSupportedVersion
+        }
+      })
+      return
+    }
     databaseInitWindow.createWindow({ needErrorHint: true })
   }
 }

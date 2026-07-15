@@ -9,7 +9,7 @@ import { areSongHotCuesEqual, normalizeSongHotCues } from '@shared/hotCues'
 import { areSongMemoryCuesEqual, normalizeSongMemoryCues } from '@shared/memoryCues'
 import { normalizeSongEnergyScore } from '@shared/songEnergy'
 import { normalizeSongStructureAnalysis, type SongStructureAnalysis } from '@shared/songStructure'
-import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
+import { normalizeSongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import type { OpenSongListOptions } from './useSongsLoader'
 
@@ -473,119 +473,6 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     patchExternalPlaylistSongByPath(normalizedTargetPath, applyKeyPatch)
   }
 
-  const onSongBpmUpdated = (
-    _e: unknown,
-    payload: {
-      filePath?: string
-      bpm?: number
-      firstBeatMs?: number
-      barBeatOffset?: number
-      timeBasisOffsetMs?: number
-      beatGridAlgorithmVersion?: number | null
-      beatGridStatus?: ISongInfo['beatGridStatus']
-    }
-  ) => {
-    const filePath = payload?.filePath
-    const bpmValue =
-      typeof payload?.bpm === 'number' && Number.isFinite(payload.bpm) ? payload.bpm : undefined
-    const isNoBpm = payload?.beatGridStatus === 'no-bpm'
-    if (!filePath || (!isNoBpm && bpmValue === undefined)) return
-    const normalizedTargetPath = normalizePath(filePath)
-    const hasFirstBeatMs =
-      typeof payload?.firstBeatMs === 'number' && Number.isFinite(payload.firstBeatMs)
-    const hasBarBeatOffset =
-      typeof payload?.barBeatOffset === 'number' && Number.isFinite(payload.barBeatOffset)
-    const hasTimeBasisOffsetMs =
-      typeof payload?.timeBasisOffsetMs === 'number' && Number.isFinite(payload.timeBasisOffsetMs)
-    const rawBeatGridAlgorithmVersion = payload?.beatGridAlgorithmVersion
-    const nextBeatGridAlgorithmVersion =
-      typeof rawBeatGridAlgorithmVersion === 'number' &&
-      Number.isFinite(rawBeatGridAlgorithmVersion)
-        ? rawBeatGridAlgorithmVersion
-        : undefined
-
-    const applyBpmPatch = (song: ISongInfo): ISongInfo => {
-      let nextSong: ISongInfo | null = null
-      const ensureNextSong = () => {
-        if (!nextSong) {
-          nextSong = { ...song }
-        }
-        return nextSong
-      }
-
-      if (isNoBpm) {
-        if (song.bpm !== undefined) delete ensureNextSong().bpm
-        if (song.firstBeatMs !== undefined) delete ensureNextSong().firstBeatMs
-        if (song.barBeatOffset !== undefined) delete ensureNextSong().barBeatOffset
-        if (song.timeBasisOffsetMs !== undefined) delete ensureNextSong().timeBasisOffsetMs
-        if (song.beatGridSource !== undefined) delete ensureNextSong().beatGridSource
-        if (song.beatGridMap !== undefined) delete ensureNextSong().beatGridMap
-        if (song.beatGridStatus !== 'no-bpm') {
-          ensureNextSong().beatGridStatus = 'no-bpm'
-        }
-        if (
-          nextBeatGridAlgorithmVersion !== undefined &&
-          song.beatGridAlgorithmVersion !== nextBeatGridAlgorithmVersion
-        ) {
-          ensureNextSong().beatGridAlgorithmVersion = nextBeatGridAlgorithmVersion
-        }
-        return nextSong || song
-      }
-
-      if (song.bpm !== bpmValue) {
-        ensureNextSong().bpm = bpmValue
-      }
-      if (song.beatGridStatus !== undefined) {
-        delete ensureNextSong().beatGridStatus
-      }
-      if (hasFirstBeatMs && song.firstBeatMs !== payload.firstBeatMs) {
-        ensureNextSong().firstBeatMs = payload.firstBeatMs
-      }
-      if (hasBarBeatOffset && song.barBeatOffset !== payload.barBeatOffset) {
-        ensureNextSong().barBeatOffset = payload.barBeatOffset
-      }
-      if (hasTimeBasisOffsetMs && song.timeBasisOffsetMs !== payload.timeBasisOffsetMs) {
-        ensureNextSong().timeBasisOffsetMs = payload.timeBasisOffsetMs
-      }
-      if (
-        nextBeatGridAlgorithmVersion !== undefined &&
-        song.beatGridAlgorithmVersion !== nextBeatGridAlgorithmVersion
-      ) {
-        ensureNextSong().beatGridAlgorithmVersion = nextBeatGridAlgorithmVersion
-      }
-      return nextSong || song
-    }
-
-    const changedFields = isNoBpm
-      ? [
-          'bpm',
-          'firstBeatMs',
-          'barBeatOffset',
-          'timeBasisOffsetMs',
-          'beatGridSource',
-          'beatGridMap',
-          'beatGridStatus',
-          nextBeatGridAlgorithmVersion !== undefined ? 'beatGridAlgorithmVersion' : ''
-        ].filter(Boolean)
-      : [
-          'bpm',
-          hasFirstBeatMs ? 'firstBeatMs' : '',
-          hasBarBeatOffset ? 'barBeatOffset' : '',
-          hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : '',
-          'beatGridStatus',
-          nextBeatGridAlgorithmVersion !== undefined ? 'beatGridAlgorithmVersion' : ''
-        ].filter(Boolean)
-
-    if (patchOriginalSongByPath(normalizedTargetPath, applyBpmPatch)) {
-      scheduleApplyIfNeeded(changedFields)
-    }
-
-    patchSongsAreaSongByPath(normalizedTargetPath, applyBpmPatch)
-    patchPlayingSongByPath(normalizedTargetPath, applyBpmPatch)
-    patchPlayingSongListByPath(normalizedTargetPath, applyBpmPatch)
-    patchExternalPlaylistSongByPath(normalizedTargetPath, applyBpmPatch)
-  }
-
   const onSongEnergyUpdated = (
     _e: unknown,
     payload: {
@@ -674,11 +561,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     _e: unknown,
     payload: {
       filePath?: string
-      bpm?: number
-      firstBeatMs?: number
-      barBeatOffset?: number
       timeBasisOffsetMs?: number
-      beatGridSource?: ISongInfo['beatGridSource']
       beatGridMap?: ISongInfo['beatGridMap'] | null
     }
   ) => {
@@ -686,84 +569,36 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (!filePath) return
     const normalizedTargetPath = normalizePath(filePath)
 
-    const hasBpm = typeof payload?.bpm === 'number' && Number.isFinite(payload.bpm)
-    const hasFirstBeatMs =
-      typeof payload?.firstBeatMs === 'number' && Number.isFinite(payload.firstBeatMs)
-    const hasBarBeatOffset =
-      typeof payload?.barBeatOffset === 'number' && Number.isFinite(payload.barBeatOffset)
     const hasTimeBasisOffsetMs =
       typeof payload?.timeBasisOffsetMs === 'number' && Number.isFinite(payload.timeBasisOffsetMs)
     const hasBeatGridMapPayload = Object.prototype.hasOwnProperty.call(payload, 'beatGridMap')
-    const nextBeatGridMap = normalizeSongBeatGridMap(payload?.beatGridMap)
+    const nextBeatGridMap = normalizeSongBeatGridMapV2(payload?.beatGridMap, {
+      allowSingleClip: true
+    })
     const shouldClearBeatGridMap = hasBeatGridMapPayload && payload?.beatGridMap === null
     const hasBeatGridMap = nextBeatGridMap !== null
-    const hasBeatGridSource =
-      payload?.beatGridSource === 'manual' || payload?.beatGridSource === 'analysis'
-    if (
-      !hasBpm &&
-      !hasFirstBeatMs &&
-      !hasBarBeatOffset &&
-      !hasTimeBasisOffsetMs &&
-      !hasBeatGridMapPayload &&
-      !hasBeatGridSource
-    ) {
+    if (!hasTimeBasisOffsetMs && !hasBeatGridMapPayload) {
       return
     }
     const changedFields = [
-      hasBpm ? 'bpm' : '',
-      hasFirstBeatMs ? 'firstBeatMs' : '',
-      hasBarBeatOffset ? 'barBeatOffset' : '',
       hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : '',
-      hasBeatGridSource ? 'beatGridSource' : '',
-      hasBeatGridMapPayload ? 'beatGridMap' : '',
-      hasBpm ? 'beatGridStatus' : '',
-      hasBpm || hasFirstBeatMs || hasBarBeatOffset || hasBeatGridMapPayload ? 'songStructure' : ''
+      hasBeatGridMapPayload ? 'beatGridMap' : ''
     ].filter(Boolean)
 
     const applyGridPatch = (song: ISongInfo): ISongInfo => {
       let touched = false
-      let structureGridChanged = false
       const nextSong: ISongInfo = { ...song }
-      if (hasBpm && nextSong.bpm !== payload.bpm) {
-        nextSong.bpm = payload.bpm
-        touched = true
-        structureGridChanged = true
-      }
-      if (hasBpm && nextSong.beatGridStatus !== undefined) {
-        delete nextSong.beatGridStatus
-        touched = true
-      }
-      if (hasBeatGridSource && nextSong.beatGridSource !== payload.beatGridSource) {
-        nextSong.beatGridSource = payload.beatGridSource
-        touched = true
-      }
       if (hasBeatGridMap) {
         if (nextSong.beatGridMap?.signature !== nextBeatGridMap.signature) {
           nextSong.beatGridMap = nextBeatGridMap
           touched = true
-          structureGridChanged = true
         }
       } else if (shouldClearBeatGridMap && nextSong.beatGridMap !== undefined) {
         delete nextSong.beatGridMap
         touched = true
-        structureGridChanged = true
-      }
-      if (hasFirstBeatMs && nextSong.firstBeatMs !== payload.firstBeatMs) {
-        nextSong.firstBeatMs = payload.firstBeatMs
-        touched = true
-        structureGridChanged = true
-      }
-      if (hasBarBeatOffset && nextSong.barBeatOffset !== payload.barBeatOffset) {
-        nextSong.barBeatOffset = payload.barBeatOffset
-        touched = true
-        structureGridChanged = true
       }
       if (hasTimeBasisOffsetMs && nextSong.timeBasisOffsetMs !== payload.timeBasisOffsetMs) {
         nextSong.timeBasisOffsetMs = payload.timeBasisOffsetMs
-        touched = true
-      }
-      if (structureGridChanged && nextSong.songStructure !== undefined) {
-        delete nextSong.songStructure
         touched = true
       }
       return touched ? nextSong : song
@@ -943,7 +778,6 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     emitter.on('songsMovedByDrag', onSongsMovedByDrag)
     emitter.on('external-playlist/refresh', onExternalPlaylistRefresh)
     window.electron.ipcRenderer.on('song-key-updated', onSongKeyUpdated)
-    window.electron.ipcRenderer.on('song-bpm-updated', onSongBpmUpdated)
     window.electron.ipcRenderer.on('song-energy-updated', onSongEnergyUpdated)
     window.electron.ipcRenderer.on('song-structure-updated', onSongStructureUpdated)
     window.electron.ipcRenderer.on('song-grid-updated', onSongGridUpdated)
@@ -967,7 +801,6 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     emitter.off('songsMovedByDrag', onSongsMovedByDrag)
     emitter.off('external-playlist/refresh', onExternalPlaylistRefresh)
     window.electron.ipcRenderer.removeListener('song-key-updated', onSongKeyUpdated)
-    window.electron.ipcRenderer.removeListener('song-bpm-updated', onSongBpmUpdated)
     window.electron.ipcRenderer.removeListener('song-energy-updated', onSongEnergyUpdated)
     window.electron.ipcRenderer.removeListener('song-structure-updated', onSongStructureUpdated)
     window.electron.ipcRenderer.removeListener('song-grid-updated', onSongGridUpdated)

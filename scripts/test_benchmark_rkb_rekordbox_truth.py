@@ -27,10 +27,19 @@ class BenchmarkRkbRekordboxTruthIdentityTest(unittest.TestCase):
             "fileName": "Same Song.mp3",
             "title": "Same Song",
             "artist": "Tester",
-            "bpm": 120.0,
-            "firstBeatMs": 10.0,
-            "firstBeatLabel": 1,
-            "barBeatOffset": 0,
+            "beatGridMap": {
+                "version": 2,
+                "source": "manual",
+                "signature": "sbgm_test",
+                "clips": [
+                    {
+                        "startSec": 0,
+                        "anchorSec": 0.01,
+                        "bpm": 120.0,
+                        "downbeatBeatOffset": 0,
+                    }
+                ],
+            },
             "instanceId": f"{batch_id}:{asset_sha256}",
             "batchId": batch_id,
             "assetSha256": asset_sha256,
@@ -159,7 +168,7 @@ class BenchmarkRkbRekordboxTruthIdentityTest(unittest.TestCase):
                     "firstBeatMs": 10.0,
                     "absoluteFirstBeatMs": 10.0,
                     "rawFirstBeatMs": 10.0,
-                    "barBeatOffset": 0,
+                    "downbeatBeatOffset": 0,
                     "gridSolverCandidates": [],
                 },
                 tracks[0],
@@ -184,6 +193,27 @@ class BenchmarkRkbRekordboxTruthIdentityTest(unittest.TestCase):
             self._write_truth(truth_path, [track, dict(track)])
 
             with self.assertRaisesRegex(DatasetContractError, "duplicate identity"):
+                benchmark._load_truth_tracks(truth_path, [root], root / "ffprobe.exe")
+
+    def test_legacy_grid_roots_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            audio_path = root / "Legacy Song.mp3"
+            audio_path.write_bytes(b"audio")
+            truth_path = root / "truth.json"
+            self._write_truth(
+                truth_path,
+                [
+                    {
+                        "fileName": audio_path.name,
+                        "bpm": 120.0,
+                        "firstBeatMs": 0.0,
+                        "barBeatOffset": 0,
+                    }
+                ],
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "valid fixed v2 map"):
                 benchmark._load_truth_tracks(truth_path, [root], root / "ffprobe.exe")
 
     def test_parent_split_source_path_contract_is_enforced_by_loader(self) -> None:
@@ -239,8 +269,19 @@ class BenchmarkRkbRekordboxTruthIdentityTest(unittest.TestCase):
                 [
                     {
                         "fileName": "Same Song.mp3",
-                        "bpm": 120.0,
-                        "firstBeatMs": 0.0,
+                        "beatGridMap": {
+                            "version": 2,
+                            "source": "manual",
+                            "signature": "sbgm_test",
+                            "clips": [
+                                {
+                                    "startSec": 0,
+                                    "anchorSec": 0,
+                                    "bpm": 120.0,
+                                    "downbeatBeatOffset": 0,
+                                }
+                            ],
+                        },
                         "sourcePath": str(root / "stale" / "Same Song.mp3"),
                     }
                 ],
@@ -277,7 +318,7 @@ class BenchmarkRkbRekordboxTruthIdentityTest(unittest.TestCase):
             self.assertEqual("pcm-a", tracks[0]["pcmSha256"])
             self.assertEqual(str(source_path), tracks[0]["sourcePath"])
 
-    def test_legacy_truth_without_instance_keeps_filename_audio_root_compatibility(self) -> None:
+    def test_v2_truth_without_instance_keeps_filename_audio_root_compatibility(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             audio_path = root / "Legacy Song.mp3"
@@ -285,7 +326,15 @@ class BenchmarkRkbRekordboxTruthIdentityTest(unittest.TestCase):
             truth_path = root / "truth.json"
             self._write_truth(
                 truth_path,
-                [{"fileName": audio_path.name, "bpm": 120.0, "firstBeatMs": 0.0}],
+                [{
+                    "fileName": audio_path.name,
+                    "beatGridMap": {
+                        "version": 2,
+                        "source": "manual",
+                        "signature": "sbgm_test",
+                        "clips": [{"startSec": 0, "anchorSec": 0, "bpm": 120.0, "downbeatBeatOffset": 0}],
+                    },
+                }],
             )
 
             with patch.object(benchmark, "_probe_time_basis", return_value={"offsetMs": 0.0}):
@@ -303,7 +352,15 @@ class BenchmarkRkbRekordboxTruthIdentityTest(unittest.TestCase):
             truth_path = root / "truth.json"
             self._write_truth(
                 truth_path,
-                [{"fileName": audio_path.name, "bpm": 120.0, "firstBeatMs": 0.0}],
+                [{
+                    "fileName": audio_path.name,
+                    "beatGridMap": {
+                        "version": 2,
+                        "source": "manual",
+                        "signature": "sbgm_test",
+                        "clips": [{"startSec": 0, "anchorSec": 0, "bpm": 120.0, "downbeatBeatOffset": 0}],
+                    },
+                }],
             )
             ffmpeg_path = root / "ffmpeg.exe"
             ffprobe_path = root / "ffprobe.exe"
@@ -332,7 +389,7 @@ class BenchmarkRkbRekordboxTruthIdentityTest(unittest.TestCase):
                 "firstBeatMs": 0.0,
                 "absoluteFirstBeatMs": 0.0,
                 "rawFirstBeatMs": 0.0,
-                "barBeatOffset": 0,
+                "downbeatBeatOffset": 0,
                 "gridSolverCandidates": [],
             }
             with (

@@ -1,14 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { createSongBeatGridMapFromClips } from './songBeatGridMap'
 import { CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION } from './songStructure'
 import {
   hasRequiredSongStructureAnalysis,
   hasUsableCoreSongAnalysis,
   hasUsableKeyAnalysis,
+  resolveCanonicalSongBeatGridV2,
   resolveUsableSongBeatGrid
 } from './songAnalysisCompleteness'
+import {
+  createSongBeatGridMapV2FromClips,
+  createSongBeatGridMapV2FromFixedGrid
+} from './songBeatGridMapV2'
 
 const GRID = { bpm: 128, firstBeatMs: 125, barBeatOffset: 0 }
+
+const createFixedGrid = (downbeatBeatOffset = 0) => {
+  const beatGridMap = createSongBeatGridMapV2FromFixedGrid({
+    bpm: GRID.bpm,
+    firstBeatMs: GRID.firstBeatMs,
+    downbeatBeatOffset,
+    source: 'analysis'
+  })
+  if (!beatGridMap) throw new Error('v2 fixed grid fixture failed')
+  return beatGridMap
+}
 
 const createStructure = (algorithmVersion: number) => ({
   formatVersion: 1,
@@ -42,29 +57,50 @@ describe('song analysis completeness', () => {
         {
           key: '8A',
           energyScore: 72,
-          ...GRID
+          beatGridMap: createFixedGrid()
         },
         { waveformAvailable: true }
       )
     ).toBe(true)
   })
 
-  it('accepts a valid dynamic grid without a Beat Grid algorithm version', () => {
-    const beatGridMap = createSongBeatGridMapFromClips([
-      { startSec: 0, anchorSec: 0.125, bpm: 128, barBeatOffset: 0 },
-      { startSec: 32, anchorSec: 32.25, bpm: 130, barBeatOffset: 0 }
-    ])
+  it('accepts a valid dynamic v2 grid without a Beat Grid algorithm version', () => {
+    const beatGridMap = createSongBeatGridMapV2FromClips(
+      [
+        { startSec: 0, anchorSec: 0.125, bpm: 128, downbeatBeatOffset: 0 },
+        { startSec: 32, anchorSec: 32.25, bpm: 130, downbeatBeatOffset: 0 }
+      ],
+      'analysis'
+    )
     expect(beatGridMap).not.toBeNull()
     expect(resolveUsableSongBeatGrid({ beatGridMap })).toMatchObject({
-      kind: 'dynamic',
+      kind: 'grid',
       bpm: 128,
       firstBeatMs: 125,
-      barBeatOffset: 0
+      downbeatBeatOffset: 0
     })
   })
 
+  it('exposes only a canonical v2 grid to new consumers', () => {
+    const beatGridMap = createSongBeatGridMapV2FromFixedGrid({
+      bpm: 128,
+      firstBeatMs: 125,
+      downbeatBeatOffset: 3,
+      source: 'analysis'
+    })
+    expect(resolveCanonicalSongBeatGridV2({ beatGridMap })).toMatchObject({
+      kind: 'grid',
+      bpm: 128,
+      firstBeatMs: 125,
+      downbeatBeatOffset: 3
+    })
+    expect(resolveCanonicalSongBeatGridV2({ ...GRID, beatGridMap: undefined }).kind).toBe('missing')
+  })
+
   it('prefers a usable grid over a stray no-bpm marker', () => {
-    expect(resolveUsableSongBeatGrid({ ...GRID, beatGridStatus: 'no-bpm' }).kind).toBe('fixed')
+    expect(
+      resolveUsableSongBeatGrid({ beatGridMap: createFixedGrid(), beatGridStatus: 'no-bpm' }).kind
+    ).toBe('grid')
   })
 
   it('treats no-bpm as a completed grid and does not require structure', () => {
@@ -80,7 +116,7 @@ describe('song analysis completeness', () => {
     const info = {
       key: '8A',
       energyScore: 72,
-      ...GRID,
+      beatGridMap: createFixedGrid(),
       songStructure: createStructure(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1)
     }
     expect(hasRequiredSongStructureAnalysis(info)).toBe(true)
@@ -93,21 +129,23 @@ describe('song analysis completeness', () => {
     const info = {
       key: '8A',
       energyScore: 72,
-      ...GRID,
-      firstBeatMs: GRID.firstBeatMs + 250,
+      beatGridMap: createFixedGrid(1),
       songStructure: createStructure(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1)
     }
-    expect(hasRequiredSongStructureAnalysis(info)).toBe(false)
+    expect(hasRequiredSongStructureAnalysis(info)).toBe(true)
     expect(
       hasUsableCoreSongAnalysis(info, { includeStructure: true, waveformAvailable: true })
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it('matches dynamic-grid structure by signature instead of algorithm version', () => {
-    const beatGridMap = createSongBeatGridMapFromClips([
-      { startSec: 0, anchorSec: 0.125, bpm: 128, barBeatOffset: 0 },
-      { startSec: 32, anchorSec: 32.25, bpm: 130, barBeatOffset: 0 }
-    ])
+    const beatGridMap = createSongBeatGridMapV2FromClips(
+      [
+        { startSec: 0, anchorSec: 0.125, bpm: 128, downbeatBeatOffset: 0 },
+        { startSec: 32, anchorSec: 32.25, bpm: 130, downbeatBeatOffset: 0 }
+      ],
+      'analysis'
+    )
     expect(beatGridMap).not.toBeNull()
     const structure = {
       ...createStructure(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1),
@@ -119,7 +157,7 @@ describe('song analysis completeness', () => {
         beatGridMap,
         songStructure: { ...structure, beatGridSignature: 'sbgm_changed' }
       })
-    ).toBe(false)
+    ).toBe(true)
   })
 
   it('still reports a genuinely missing result as incomplete', () => {
@@ -127,7 +165,7 @@ describe('song analysis completeness', () => {
       hasUsableCoreSongAnalysis(
         {
           key: '8A',
-          ...GRID
+          beatGridMap: createFixedGrid()
         },
         { waveformAvailable: true }
       )
@@ -137,7 +175,7 @@ describe('song analysis completeness', () => {
         {
           key: '8A',
           energyScore: 72,
-          ...GRID
+          beatGridMap: createFixedGrid()
         },
         { waveformAvailable: false }
       )

@@ -16,7 +16,7 @@ import {
 } from '@renderer/composables/mixtape/gainEnvelope'
 import {
   normalizeBpm,
-  normalizeBarBeatOffset,
+  normalizeDownbeatBeatOffset,
   normalizeFirstBeatMs,
   normalizeMixtapeFilePath,
   normalizeUniquePaths,
@@ -327,16 +327,15 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     scheduleFullPreRender()
     scheduleWorkerPreRender()
   }
-  const { handleSongKeyUpdated, handleSongBpmUpdated, handleSongGridUpdated } =
-    createMixtapeSongMetadataSync({
-      tracks,
-      mixtapeRawItems,
-      normalizeMixtapeFilePath,
-      normalizeBpm,
-      normalizeFirstBeatMs,
-      normalizeBarBeatOffset,
-      refreshMixtapeTrackDerivedUi
-    })
+  const { handleSongKeyUpdated, handleSongGridUpdated } = createMixtapeSongMetadataSync({
+    tracks,
+    mixtapeRawItems,
+    normalizeMixtapeFilePath,
+    normalizeBpm,
+    normalizeFirstBeatMs,
+    normalizeDownbeatBeatOffset,
+    refreshMixtapeTrackDerivedUi
+  })
   const buildBpmTargets = () => buildMixtapeBpmTargets(tracks.value)
   const resolveMissingBpmCount = (bpmTargets: Set<string>) =>
     resolveMissingBpmTrackCount(tracks.value, bpmTargets)
@@ -492,7 +491,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     notifyMissingTracksRemoved,
     resolveMixtapeStemModelByProfile,
     resolveMixtapeOutputProgressState,
-    normalizeBarBeatOffset,
+    normalizeDownbeatBeatOffset,
     normalizeFirstBeatMs,
     normalizeBpm,
     MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL,
@@ -672,7 +671,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
   onMounted(() => {
     applyPayload(resolveInitialMixtapePayload())
     window.electron.ipcRenderer.on('song-key-updated', handleSongKeyUpdated)
-    window.electron.ipcRenderer.on('song-bpm-updated', handleSongBpmUpdated)
     window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
     window.electron.ipcRenderer.on('mixtape-open', handleOpen)
     window.electron.ipcRenderer.on('mixtape-bpm-batch-ready', handleBpmBatchReady)
@@ -698,7 +696,6 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
       window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)
     } catch {}
     try {
-      window.electron.ipcRenderer.removeListener('song-bpm-updated', handleSongBpmUpdated)
     } catch {}
     try {
       window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)

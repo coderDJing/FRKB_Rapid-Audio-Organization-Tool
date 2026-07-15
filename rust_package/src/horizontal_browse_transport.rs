@@ -11,10 +11,10 @@ mod horizontal_browse_transport_audio;
 mod horizontal_browse_transport_auto_gain;
 #[path = "horizontal_browse_transport_decode.rs"]
 mod horizontal_browse_transport_decode;
-#[path = "horizontal_browse_transport_engine_state.rs"]
-mod horizontal_browse_transport_engine_state;
 #[path = "horizontal_browse_transport_dynamic_grid.rs"]
 mod horizontal_browse_transport_dynamic_grid;
+#[path = "horizontal_browse_transport_engine_state.rs"]
+mod horizontal_browse_transport_engine_state;
 #[path = "horizontal_browse_transport_grid_sync.rs"]
 mod horizontal_browse_transport_grid_sync;
 #[path = "horizontal_browse_transport_loop.rs"]
@@ -47,8 +47,8 @@ use horizontal_browse_transport_types::{
   DynamicBeatGridClipSnapshot,
 };
 pub use horizontal_browse_transport_types::{
-  HorizontalBrowseTransportBandState, HorizontalBrowseTransportBeatGridInput,
-  HorizontalBrowseTransportBeatGridClipInput, HorizontalBrowseTransportDeckInput,
+  HorizontalBrowseTransportBandState, HorizontalBrowseTransportBeatGridClipInput,
+  HorizontalBrowseTransportBeatGridInput, HorizontalBrowseTransportDeckInput,
   HorizontalBrowseTransportDeckSnapshot, HorizontalBrowseTransportDecodeDiagnostic,
   HorizontalBrowseTransportOutputSnapshot, HorizontalBrowseTransportSnapshot,
   HorizontalBrowseTransportStateInput, HorizontalBrowseTransportVisualizerSnapshot,
@@ -65,7 +65,7 @@ struct DeckState {
   title: Option<String>,
   bpm: Option<f64>,
   first_beat_ms: Option<f64>,
-  bar_beat_offset: Option<f64>,
+  downbeat_beat_offset: Option<f64>,
   dynamic_beat_grid: Vec<DynamicBeatGridClipSnapshot>,
   time_basis_offset_ms: Option<f64>,
   duration_sec: f64,
@@ -240,7 +240,7 @@ impl Default for DeckState {
       title: None,
       bpm: None,
       first_beat_ms: None,
-      bar_beat_offset: None,
+      downbeat_beat_offset: None,
       dynamic_beat_grid: Vec::new(),
       time_basis_offset_ms: None,
       duration_sec: 0.0,

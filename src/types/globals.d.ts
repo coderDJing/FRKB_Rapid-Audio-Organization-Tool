@@ -4,7 +4,7 @@ import { PreloadApi } from '../preload/index'
 import { IPicture } from 'music-metadata'
 import type { RekordboxSourceKind, RekordboxSourceLibraryType } from '../shared/rekordboxSources'
 import type { SongStructureAnalysis } from '../shared/songStructure'
-import type { SongBeatGridMap } from '../shared/songBeatGridMap'
+import type { SongBeatGridMapV2 } from '../shared/songBeatGridMapV2'
 import type { PlaybackRangeMode, PlaybackRangeSectionMatchMode } from '../shared/playbackRange'
 
 interface IDir {
@@ -49,10 +49,10 @@ interface ISongInfo {
   keyAnalysisAlgorithmVersion?: number
   bpm?: number
   firstBeatMs?: number
-  barBeatOffset?: number
+  downbeatBeatOffset?: number
   beatGridSource?: 'manual' | 'analysis'
   beatGridStatus?: BeatGridStatus
-  beatGridMap?: SongBeatGridMap
+  beatGridMap?: SongBeatGridMapV2
   energyScore?: number
   energyAlgorithmVersion?: number
   songStructure?: SongStructureAnalysis

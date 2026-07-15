@@ -1,24 +1,25 @@
 import type { Ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
-import type { SongBeatGridMap } from '@shared/songBeatGridMap'
+import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 import {
-  PREVIEW_BAR_BEAT_INTERVAL,
+  PREVIEW_DOWNBEAT_BEAT_INTERVAL,
   PREVIEW_BPM_TAP_RESET_MS,
   normalizeBeatOffset
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { buildHorizontalBrowseRawWaveformGridSignature } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformGridSignature'
 import {
-  normalizeSongBeatGridMap,
-  projectSongBeatGridMapToFixedGrid
-} from '@shared/songBeatGridMap'
+  createSongBeatGridMapV2FromFixedGrid,
+  normalizeSongBeatGridMapV2,
+  projectSongBeatGridMapV2ToFixedGrid
+} from '@shared/songBeatGridMapV2'
 
 type HorizontalBrowseDetailGridPersistenceParams = {
   song: () => ISongInfo | null
   previewBpm: Ref<number>
   previewFirstBeatMs: Ref<number>
-  previewBarBeatOffset: Ref<number>
+  previewDownbeatBeatOffset: Ref<number>
   previewTimeBasisOffsetMs: Ref<number>
-  previewBeatGridMap?: Ref<SongBeatGridMap | null>
+  previewBeatGridMap?: Ref<SongBeatGridMapV2 | null>
   resolvePreviewDurationSec?: () => number
   bpmTapTimestamps: Ref<number[]>
 }
@@ -48,7 +49,7 @@ export const createHorizontalBrowseDetailGridPersistence = (
     buildHorizontalBrowseRawWaveformGridSignature({
       bpm: params.previewBpm.value,
       firstBeatMs: params.previewFirstBeatMs.value,
-      barBeatOffset: params.previewBarBeatOffset.value,
+      downbeatBeatOffset: params.previewDownbeatBeatOffset.value,
       timeBasisOffsetMs: params.previewTimeBasisOffsetMs.value,
       beatGridMapSignature: params.previewBeatGridMap?.value?.signature
     })
@@ -57,7 +58,7 @@ export const createHorizontalBrowseDetailGridPersistence = (
     buildHorizontalBrowseRawWaveformGridSignature({
       bpm: params.song()?.bpm,
       firstBeatMs: params.song()?.firstBeatMs,
-      barBeatOffset: params.song()?.barBeatOffset,
+      downbeatBeatOffset: params.song()?.downbeatBeatOffset,
       timeBasisOffsetMs: params.song()?.timeBasisOffsetMs,
       beatGridMapSignature: params.song()?.beatGridMap?.signature
     })
@@ -81,24 +82,28 @@ export const createHorizontalBrowseDetailGridPersistence = (
     if (!filePath) return
     pendingLocalGridSignature = buildPreviewGridSignature()
     pendingLocalGridStartedAt = Date.now()
-    const previewBeatGridMap = normalizeSongBeatGridMap(params.previewBeatGridMap?.value, {
-      durationSec: params.resolvePreviewDurationSec?.()
+    const previewBeatGridMap = normalizeSongBeatGridMapV2(params.previewBeatGridMap?.value, {
+      durationSec: params.resolvePreviewDurationSec?.(),
+      allowSingleClip: true
     })
-    const beatGridProjection = projectSongBeatGridMapToFixedGrid(previewBeatGridMap)
+    const beatGridProjection = projectSongBeatGridMapV2ToFixedGrid(previewBeatGridMap)
     const firstBeatMs = Number(params.previewFirstBeatMs.value)
     const fallbackBpm = Number(params.previewBpm.value) || 0
     const fallbackFirstBeatMs = Number.isFinite(firstBeatMs) ? firstBeatMs : 0
-    const fallbackBarBeatOffset = normalizeBeatOffset(
-      params.previewBarBeatOffset.value,
-      PREVIEW_BAR_BEAT_INTERVAL
+    const fallbackDownbeatBeatOffset = normalizeBeatOffset(
+      params.previewDownbeatBeatOffset.value,
+      PREVIEW_DOWNBEAT_BEAT_INTERVAL
     )
-    const payload = {
-      filePath,
-      bpm: beatGridProjection?.bpm ?? fallbackBpm,
-      firstBeatMs: beatGridProjection?.firstBeatMs ?? fallbackFirstBeatMs,
-      barBeatOffset: beatGridProjection?.barBeatOffset ?? fallbackBarBeatOffset,
-      beatGridMap: previewBeatGridMap
-    }
+    const beatGridMap =
+      previewBeatGridMap ??
+      createSongBeatGridMapV2FromFixedGrid({
+        bpm: beatGridProjection?.bpm ?? fallbackBpm,
+        firstBeatMs: beatGridProjection?.firstBeatMs ?? fallbackFirstBeatMs,
+        downbeatBeatOffset: beatGridProjection?.downbeatBeatOffset ?? fallbackDownbeatBeatOffset,
+        source: 'manual'
+      })
+    if (!beatGridMap) return
+    const payload = { filePath, beatGridMap }
     try {
       await window.electron.ipcRenderer.invoke('mixtape:update-grid-definition', payload)
     } catch (error) {

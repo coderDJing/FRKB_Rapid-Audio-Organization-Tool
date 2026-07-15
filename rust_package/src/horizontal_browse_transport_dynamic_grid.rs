@@ -7,12 +7,15 @@ struct DynamicBeatGridLineSnapshot {
 }
 
 impl HorizontalBrowseTransportEngine {
-  pub(super) fn normalize_bar_beat_offset(value: f64) -> f64 {
+  pub(super) fn normalize_downbeat_beat_offset(value: f64) -> Option<f64> {
     if !value.is_finite() {
-      return 0.0;
+      return None;
     }
     let rounded = value.round();
-    ((rounded % 32.0) + 32.0) % 32.0
+    if (value - rounded).abs() > 0.000001 || !(0.0..4.0).contains(&rounded) {
+      return None;
+    }
+    Some(rounded)
   }
 
   pub(super) fn deck_time_basis_offset_sec(deck_state: &DeckState) -> f64 {
@@ -33,13 +36,11 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn dynamic_grid_first_beat_index(start_sec: f64, anchor_sec: f64, beat_sec: f64) -> i64 {
-    ((start_sec - anchor_sec - HORIZONTAL_BROWSE_DYNAMIC_GRID_EPSILON_SEC) / beat_sec).ceil()
-      as i64
+    ((start_sec - anchor_sec - HORIZONTAL_BROWSE_DYNAMIC_GRID_EPSILON_SEC) / beat_sec).ceil() as i64
   }
 
   fn dynamic_grid_last_beat_index(end_sec: f64, anchor_sec: f64, beat_sec: f64) -> i64 {
-    ((end_sec - anchor_sec - HORIZONTAL_BROWSE_DYNAMIC_GRID_EPSILON_SEC) / beat_sec).floor()
-      as i64
+    ((end_sec - anchor_sec - HORIZONTAL_BROWSE_DYNAMIC_GRID_EPSILON_SEC) / beat_sec).floor() as i64
   }
 
   pub(super) fn normalize_dynamic_beat_grid(
@@ -63,11 +64,16 @@ impl HorizontalBrowseTransportEngine {
       {
         return Vec::new();
       }
+      let Some(downbeat_beat_offset) =
+        Self::normalize_downbeat_beat_offset(clip.downbeat_beat_offset)
+      else {
+        return Vec::new();
+      };
       normalized.push((
         clip.start_sec.max(0.0),
         clip.anchor_sec,
         clip.bpm,
-        Self::normalize_bar_beat_offset(clip.bar_beat_offset),
+        downbeat_beat_offset,
       ));
     }
     normalized.sort_by(|left, right| {
@@ -76,8 +82,7 @@ impl HorizontalBrowseTransportEngine {
         .partial_cmp(&right.0)
         .unwrap_or(std::cmp::Ordering::Equal)
     });
-    if normalized.is_empty() || normalized[0].0.abs() > HORIZONTAL_BROWSE_DYNAMIC_GRID_EPSILON_SEC
-    {
+    if normalized.is_empty() || normalized[0].0.abs() > HORIZONTAL_BROWSE_DYNAMIC_GRID_EPSILON_SEC {
       return Vec::new();
     }
     normalized[0].0 = 0.0;
@@ -93,7 +98,7 @@ impl HorizontalBrowseTransportEngine {
     let mut result = Vec::new();
     let mut first_beat_ordinal = 0_i64;
     for index in 0..normalized.len() {
-      let (start_sec, anchor_sec, bpm, bar_beat_offset) = normalized[index];
+      let (start_sec, anchor_sec, bpm, downbeat_beat_offset) = normalized[index];
       let end_sec = normalized
         .get(index + 1)
         .map(|clip| clip.0)
@@ -111,7 +116,7 @@ impl HorizontalBrowseTransportEngine {
         anchor_sec,
         bpm,
         beat_sec,
-        bar_beat_offset,
+        downbeat_beat_offset,
         first_beat_index,
         first_beat_ordinal,
         line_count,
@@ -159,7 +164,7 @@ impl HorizontalBrowseTransportEngine {
       bpm: clip.bpm,
       beat_sec: clip.beat_sec,
       first_beat_sec: Self::dynamic_grid_first_line_sec(clip),
-      bar_beat_offset: clip.bar_beat_offset,
+      downbeat_beat_offset: clip.downbeat_beat_offset,
     }
   }
 
@@ -192,11 +197,8 @@ impl HorizontalBrowseTransportEngine {
       if !beat_sec.is_finite() || beat_sec <= 0.0 || clip.end_sec <= clip.start_sec {
         continue;
       }
-      let first_beat_index = Self::dynamic_grid_first_beat_index(
-        clip.start_sec,
-        clip.anchor_sec,
-        beat_sec,
-      );
+      let first_beat_index =
+        Self::dynamic_grid_first_beat_index(clip.start_sec, clip.anchor_sec, beat_sec);
       let last_beat_index =
         Self::dynamic_grid_last_beat_index(clip.end_sec, clip.anchor_sec, beat_sec);
       for beat_index in first_beat_index..=last_beat_index {
@@ -245,7 +247,7 @@ impl HorizontalBrowseTransportEngine {
             anchor_sec: first_line.sec,
             bpm: 120.0,
             beat_sec: 0.5,
-            bar_beat_offset: 0.0,
+            downbeat_beat_offset: 0.0,
             first_beat_index: 0,
             first_beat_ordinal: 0,
             line_count: 0,

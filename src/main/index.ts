@@ -18,6 +18,7 @@ import mainWindow from './window/mainWindow'
 import mixtapeWindow from './window/mixtapeWindow'
 import databaseInitWindow from './window/databaseInitWindow'
 import startupWindow from './window/startupWindow'
+import databaseSchemaMigrationWindow from './window/databaseSchemaMigrationWindow'
 import { is } from '@electron-toolkit/utils'
 import store from './store'
 import {
@@ -197,6 +198,7 @@ const attachExternalOpenRendererLifecycle = (): void => {
 }
 
 const ensurePrimaryWindowVisible = async (): Promise<void> => {
+  if (focusWindowIfPossible(databaseSchemaMigrationWindow.instance)) return
   if (focusWindowIfPossible(databaseInitWindow.instance)) return
   if (focusWindowIfPossible(mainWindow.instance)) return
   await prepareAndOpenMainWindow()
@@ -357,15 +359,6 @@ keyAnalysisEvents.on('key-updated', (payload) => {
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('song-key-updated', payload)
-    } catch {}
-  }
-})
-
-keyAnalysisEvents.on('bpm-updated', (payload) => {
-  markGlobalSongSearchDirty('key-analysis:bpm-updated')
-  if (mainWindow.instance) {
-    try {
-      mainWindow.instance.webContents.send('song-bpm-updated', payload)
     } catch {}
   }
 })

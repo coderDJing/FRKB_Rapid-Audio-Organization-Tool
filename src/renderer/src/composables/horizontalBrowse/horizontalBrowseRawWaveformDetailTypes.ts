@@ -79,8 +79,8 @@ export type HorizontalBrowseRawWaveformDetailEmit = {
 }
 
 export type HorizontalBrowseRawWaveformDetailExpose = {
-  toggleBarLinePicking: () => void
-  setBarLineAtPlayhead: () => void
+  toggleDownbeatLinePicking: () => void
+  setDownbeatLineAtPlayhead: () => void
   shiftGridSmallLeft: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridLargeLeft: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridSmallRight: (options?: HorizontalBrowseGridShiftOptions) => void

@@ -11,12 +11,12 @@ def _to_float(value: Any) -> float | None:
     return numeric
 
 
-def _normalize_bar_offset(value: Any, modulo: int) -> int:
+def _normalize_downbeat_offset(value: Any) -> int:
     try:
         numeric = int(value)
     except Exception:
         numeric = 0
-    return ((numeric % modulo) + modulo) % modulo
+    return ((numeric % 4) + 4) % 4
 
 
 def _normalize_feature_map(value: Any) -> dict[str, Any]:
@@ -43,7 +43,9 @@ def _normalize_candidates(value: Any, limit: int | None = None) -> list[dict[str
                 "score": round(_to_float(item.get("score")) or 0.0, 6),
                 "bpm": round(_to_float(item.get("bpm")) or 0.0, 6),
                 "firstBeatMs": round(_to_float(item.get("firstBeatMs")) or 0.0, 3),
-                "barBeatOffset": _normalize_bar_offset(item.get("barBeatOffset"), 32),
+                "downbeatBeatOffset": _normalize_downbeat_offset(
+                    item.get("downbeatBeatOffset", item.get("barBeatOffset"))
+                ),
                 "features": _normalize_feature_map(item.get("features")),
             }
         )
@@ -58,7 +60,9 @@ def normalize_bridge_result(result: dict[str, Any]) -> dict[str, Any]:
         "rawFirstBeatMs": round(_to_float(result.get("rawFirstBeatMs")) or 0.0, 3),
         "absoluteFirstBeatMs": round(_to_float(result.get("absoluteFirstBeatMs")) or 0.0, 3),
         "absoluteRawFirstBeatMs": round(_to_float(result.get("absoluteRawFirstBeatMs")) or 0.0, 3),
-        "barBeatOffset": _normalize_bar_offset(result.get("barBeatOffset"), 32),
+        "downbeatBeatOffset": _normalize_downbeat_offset(
+            result.get("downbeatBeatOffset", result.get("barBeatOffset"))
+        ),
         "beatCount": int(result.get("beatCount") or 0),
         "downbeatCount": int(result.get("downbeatCount") or 0),
         "durationSec": round(_to_float(result.get("durationSec")) or 0.0, 3),

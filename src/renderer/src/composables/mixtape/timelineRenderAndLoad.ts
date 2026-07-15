@@ -136,7 +136,7 @@ type TimelineRenderAndLoadContext = {
     track: MixtapeTrack,
     trackStartSec: number,
     renderPxPerSec: number,
-    barBeatOffset: number,
+    downbeatBeatOffset: number,
     range: { start: number; end: number },
     barWidth: number
   ) => void
@@ -416,7 +416,7 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
             track,
             Number(item.startSec) || 0,
             resolveRenderPxPerSec(zoomValue),
-            Number(track.barBeatOffset) || 0,
+            Number(track.downbeatBeatOffset) || 0,
             { start: localStart, end: localEnd },
             resolveGridBarWidth(zoomValue)
           )

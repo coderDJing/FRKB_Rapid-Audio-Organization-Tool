@@ -2,9 +2,10 @@ import type { ISongInfo } from '../../../../types/globals'
 import { normalizeSongHotCues } from '@shared/hotCues'
 import { normalizeSongMemoryCues } from '@shared/memoryCues'
 import {
-  normalizeSongBeatGridMap,
-  projectSongBeatGridMapToFixedGrid
-} from '@shared/songBeatGridMap'
+  normalizeSongBeatGridMapV2,
+  projectSongBeatGridMapV2ToFixedGrid,
+  type SongBeatGridMapV2
+} from '@shared/songBeatGridMapV2'
 
 type MixtapeSnapshotSongRaw = {
   id?: string | number | null
@@ -13,6 +14,10 @@ type MixtapeSnapshotSongRaw = {
   originPlaylistUuid?: string | null
   originPathSnapshot?: string | null
   infoJson?: string | null
+  canonicalGrid?: {
+    beatGridMap?: SongBeatGridMapV2 | null
+    timeBasisOffsetMs?: number
+  }
 }
 
 type SnapshotInfo = Partial<ISongInfo> & {
@@ -49,8 +54,10 @@ export const mapMixtapeSnapshotToSongInfo = (
   options: SnapshotMapperOptions = {}
 ): ISongInfo => {
   const info = parseSnapshotInfo(raw)
-  const beatGridMap = normalizeSongBeatGridMap(info?.beatGridMap)
-  const beatGridProjection = projectSongBeatGridMapToFixedGrid(beatGridMap)
+  const beatGridMap = normalizeSongBeatGridMapV2(raw.canonicalGrid?.beatGridMap, {
+    allowSingleClip: true
+  })
+  const beatGridProjection = projectSongBeatGridMapV2ToFixedGrid(beatGridMap)
   const filePath = String(raw?.filePath || info?.filePath || '')
   const meta = resolveFileNameAndFormat(filePath)
   const originUuid = String(raw?.originPlaylistUuid || '')
@@ -71,28 +78,21 @@ export const mapMixtapeSnapshotToSongInfo = (
     bitrate: info?.bitrate,
     container: info?.container,
     key: info?.key,
-    bpm: beatGridProjection?.bpm ?? info?.bpm,
-    beatGridStatus: info?.beatGridStatus,
-    beatGridSource: beatGridMap ? 'manual' : info?.beatGridSource,
+    bpm: beatGridProjection?.bpm,
+    beatGridStatus: undefined,
+    beatGridSource: beatGridMap?.source,
     beatGridMap: beatGridMap ?? undefined,
     beatGridAlgorithmVersion: info?.beatGridAlgorithmVersion,
     energyScore: info?.energyScore,
     energyAlgorithmVersion: info?.energyAlgorithmVersion,
     hotCues: normalizeSongHotCues(info?.hotCues),
     memoryCues: normalizeSongMemoryCues(info?.memoryCues),
-    firstBeatMs:
-      beatGridProjection?.firstBeatMs ??
-      (typeof info?.firstBeatMs === 'number' && Number.isFinite(info.firstBeatMs)
-        ? info.firstBeatMs
-        : undefined),
-    barBeatOffset:
-      beatGridProjection?.barBeatOffset ??
-      (typeof info?.barBeatOffset === 'number' && Number.isFinite(info.barBeatOffset)
-        ? info.barBeatOffset
-        : undefined),
+    firstBeatMs: beatGridProjection?.firstBeatMs,
+    downbeatBeatOffset: beatGridProjection?.downbeatBeatOffset,
     timeBasisOffsetMs:
-      typeof info?.timeBasisOffsetMs === 'number' && Number.isFinite(info.timeBasisOffsetMs)
-        ? info.timeBasisOffsetMs
+      typeof raw.canonicalGrid?.timeBasisOffsetMs === 'number' &&
+      Number.isFinite(raw.canonicalGrid.timeBasisOffsetMs)
+        ? raw.canonicalGrid.timeBasisOffsetMs
         : undefined,
     mixOrder: Number(raw?.mixOrder) || fallbackIndex + 1,
     mixtapeItemId: raw?.id ? String(raw.id) : undefined,

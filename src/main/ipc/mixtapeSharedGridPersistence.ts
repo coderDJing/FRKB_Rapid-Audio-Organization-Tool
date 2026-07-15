@@ -1,8 +1,6 @@
-import { upsertMixtapeItemGridByFilePath } from '../mixtapeDb'
+import { clearMixtapeItemGridCopiesByFilePath } from '../mixtapeDb'
 import {
-  isCompleteSharedSongGridDefinition,
   loadSharedSongGridDefinition,
-  loadSharedSongGridDefinitions,
   persistSharedSongGridDefinition,
   shouldKeepManualSharedSongGridDefinition,
   type SharedSongGridDefinition
@@ -20,7 +18,6 @@ export const resolveWritableSharedGridEntries = async (
         item.filePath.trim().length > 0 &&
         (item.bpm !== undefined ||
           item.firstBeatMs !== undefined ||
-          item.barBeatOffset !== undefined ||
           item.timeBasisOffsetMs !== undefined ||
           item.beatGridMap !== undefined ||
           item.beatGridAlgorithmVersion !== undefined)
@@ -65,7 +62,9 @@ export const persistAndBroadcastSharedGridBatch = async (
   await persistAndBroadcastSharedGridEntries(writableEntries)
 }
 
-export const hydrateMixtapeItemsGridFromShared = async (items: Array<{ filePath?: string }>) => {
+export const clearMixtapeItemsGridCopiesFromShared = async (
+  items: Array<{ filePath?: string }>
+) => {
   const filePaths = Array.from(
     new Set(
       items
@@ -75,22 +74,6 @@ export const hydrateMixtapeItemsGridFromShared = async (items: Array<{ filePath?
   )
   if (!filePaths.length) return { updated: 0 }
 
-  const sharedGridMap = await loadSharedSongGridDefinitions(filePaths).catch(
-    (): Map<string, SharedSongGridDefinition> => new Map()
-  )
-  const entries: SharedSongGridDefinition[] = []
-  for (const filePath of filePaths) {
-    const sharedGrid = sharedGridMap.get(filePath)
-    if (!isCompleteSharedSongGridDefinition(sharedGrid)) continue
-    entries.push({
-      filePath,
-      bpm: sharedGrid.bpm,
-      firstBeatMs: sharedGrid.firstBeatMs,
-      barBeatOffset: sharedGrid.barBeatOffset,
-      timeBasisOffsetMs: sharedGrid.timeBasisOffsetMs,
-      beatGridMap: sharedGrid.beatGridMap ?? undefined,
-      beatGridAlgorithmVersion: sharedGrid.beatGridAlgorithmVersion
-    })
-  }
-  return upsertMixtapeItemGridByFilePath(entries)
+  // 项目 item 不保存歌曲网格；打开项目时仅顺手删除可能残留的历史副本。
+  return clearMixtapeItemGridCopiesByFilePath(filePaths.map((filePath) => ({ filePath })))
 }

@@ -330,7 +330,7 @@ fn external_same_file_state_does_not_rewind_playing_deck() {
       title: Some("A".to_string()),
       bpm: Some(128.0),
       first_beat_ms: Some(0.0),
-      bar_beat_offset: Some(0.0),
+      downbeat_beat_offset: Some(0.0),
       beat_grid_clips: None,
       time_basis_offset_ms: Some(0.0),
       duration_sec: 20.0,
@@ -727,7 +727,7 @@ fn align_to_leader_snaps_requested_deck_to_nearest_leader_beat_grid_line() {
     top.loaded_file_path = Some("leader.mp3".to_string());
     top.bpm = Some(140.0);
     top.first_beat_ms = Some(20.0);
-    top.bar_beat_offset = Some(8.0);
+    top.downbeat_beat_offset = Some(0.0);
     top.duration_sec = 240.0;
     top.current_sec = 15.36;
     top.last_observed_at_ms = 1000.0;
@@ -741,7 +741,7 @@ fn align_to_leader_snaps_requested_deck_to_nearest_leader_beat_grid_line() {
     bottom.loaded_file_path = Some("follower.mp3".to_string());
     bottom.bpm = Some(70.0);
     bottom.first_beat_ms = Some(110.0);
-    bottom.bar_beat_offset = Some(0.0);
+    bottom.downbeat_beat_offset = Some(0.0);
     bottom.duration_sec = 382.0;
     bottom.current_sec = 142.867;
     bottom.last_observed_at_ms = 1000.0;
@@ -990,7 +990,7 @@ fn align_to_leader_skip_grid_snap_preserves_position_and_sets_rate() {
     top.loaded_file_path = Some("leader.mp3".to_string());
     top.bpm = Some(140.0);
     top.first_beat_ms = Some(20.0);
-    top.bar_beat_offset = Some(8.0);
+    top.downbeat_beat_offset = Some(0.0);
     top.duration_sec = 240.0;
     top.current_sec = 15.36;
     top.last_observed_at_ms = 1000.0;
@@ -1004,7 +1004,7 @@ fn align_to_leader_skip_grid_snap_preserves_position_and_sets_rate() {
     bottom.loaded_file_path = Some("follower.mp3".to_string());
     bottom.bpm = Some(70.0);
     bottom.first_beat_ms = Some(110.0);
-    bottom.bar_beat_offset = Some(0.0);
+    bottom.downbeat_beat_offset = Some(0.0);
     bottom.duration_sec = 382.0;
     bottom.current_sec = 142.867;
     bottom.last_observed_at_ms = 1000.0;

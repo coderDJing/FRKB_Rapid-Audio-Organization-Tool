@@ -90,13 +90,6 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
   const buildSongAnalysisSnapshot = (song?: ISongInfo | null) => ({
     key: song?.key,
     keyAnalysisAlgorithmVersion: song?.keyAnalysisAlgorithmVersion,
-    bpm: song?.bpm,
-    firstBeatMs: song?.firstBeatMs,
-    barBeatOffset: song?.barBeatOffset,
-    timeBasisOffsetMs: song?.timeBasisOffsetMs,
-    beatGridSource: song?.beatGridSource,
-    beatGridStatus: song?.beatGridStatus,
-    beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
     energyScore: song?.energyScore,
     energyAlgorithmVersion: song?.energyAlgorithmVersion,
     hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],

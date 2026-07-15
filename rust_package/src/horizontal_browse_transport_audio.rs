@@ -272,8 +272,7 @@ fn one_pole_alpha(cutoff_hz: f64, output_sample_rate: f64) -> f32 {
   if !cutoff_hz.is_finite() || cutoff_hz <= 0.0 || output_sample_rate <= 0.0 {
     return 1.0;
   }
-  (1.0 - (-std::f64::consts::TAU * cutoff_hz / output_sample_rate).exp()).clamp(0.0, 1.0)
-    as f32
+  (1.0 - (-std::f64::consts::TAU * cutoff_hz / output_sample_rate).exp()).clamp(0.0, 1.0) as f32
 }
 
 fn low_pass_sample(previous: &mut f32, input: f32, alpha: f32) -> f32 {
@@ -301,12 +300,26 @@ pub(super) fn apply_band_filter(
 
   let low_alpha = one_pole_alpha(BAND_LOW_SPLIT_HZ, output_sample_rate);
   let high_alpha = one_pole_alpha(BAND_HIGH_SPLIT_HZ, output_sample_rate);
-  let low_left = low_pass_sample(&mut target.band_filter_state.low_split.left, left, low_alpha);
-  let low_right = low_pass_sample(&mut target.band_filter_state.low_split.right, right, low_alpha);
-  let low_mid_left =
-    low_pass_sample(&mut target.band_filter_state.high_split.left, left, high_alpha);
-  let low_mid_right =
-    low_pass_sample(&mut target.band_filter_state.high_split.right, right, high_alpha);
+  let low_left = low_pass_sample(
+    &mut target.band_filter_state.low_split.left,
+    left,
+    low_alpha,
+  );
+  let low_right = low_pass_sample(
+    &mut target.band_filter_state.low_split.right,
+    right,
+    low_alpha,
+  );
+  let low_mid_left = low_pass_sample(
+    &mut target.band_filter_state.high_split.left,
+    left,
+    high_alpha,
+  );
+  let low_mid_right = low_pass_sample(
+    &mut target.band_filter_state.high_split.right,
+    right,
+    high_alpha,
+  );
   let mid_left = low_mid_left - low_left;
   let mid_right = low_mid_right - low_right;
   let high_left = left - low_mid_left;

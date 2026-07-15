@@ -100,7 +100,7 @@ export type TransportEntry = {
   tempoSnapshot: SerializedTrackTempoSnapshot
   beatSec: number
   firstBeatSec: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
   masterTempo: boolean
   syncAnchorSec: number
   sourceDuration: number
@@ -335,12 +335,12 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
       const firstBeatSec = runtimeTempoSnapshot.timeMap.mapSourceToLocal(
         runtimeTempoSnapshot.firstBeatSourceSec
       )
-      const barBeatOffset = normalizeBeatOffset(track.barBeatOffset, 32)
+      const downbeatBeatOffset = normalizeBeatOffset(track.downbeatBeatOffset, 4)
       const masterTempo = track.masterTempo !== false
       const trackStartSec = startSecById.get(track.id) ?? ctx.resolveTrackStartSec(track)
-      const visibleBarLines = runtimeTempoSnapshot.timeMap
+      const visibleDownbeatLines = runtimeTempoSnapshot.timeMap
         .buildVisibleGridLines(Number.POSITIVE_INFINITY)
-        .filter((line) => line.level === 'bar')
+        .filter((line) => line.level === 'downbeat')
       const activeParams = ctx.resolveMixEnvelopeParams()
       const mixEnvelopes = activeParams.reduce(
         (acc, param) => {
@@ -463,8 +463,8 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
               )
             )
           : sourceDuration
-        const firstBarLine =
-          visibleBarLines.find(
+        const firstDownbeatLine =
+          visibleDownbeatLines.find(
             (line) =>
               line.sec >= (splitLoopSections ? section.displayStartSec : 0) - 0.0001 &&
               line.sec < (splitLoopSections ? section.displayEndSec : trackDuration) - 0.0001
@@ -473,13 +473,13 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           (trackStartSec + (splitLoopSections ? section.displayStartSec : 0)).toFixed(4)
         )
         const syncAnchorSec =
-          typeof firstBarLine?.sec === 'number'
-            ? Number((trackStartSec + firstBarLine.sec).toFixed(4))
+          typeof firstDownbeatLine?.sec === 'number'
+            ? Number((trackStartSec + firstDownbeatLine.sec).toFixed(4))
             : resolveGridAnchorSec({
                 startSec,
                 firstBeatSec: Math.max(0, firstBeatSec - (splitLoopSections ? localStartSec : 0)),
                 beatSec,
-                barBeatOffset
+                downbeatBeatOffset
               })
         entries.push({
           trackId: track.id,
@@ -490,7 +490,7 @@ export const createTimelineTransportAudioDataModule = (ctx: TimelineTransportAud
           tempoSnapshot,
           beatSec,
           firstBeatSec,
-          barBeatOffset,
+          downbeatBeatOffset,
           masterTempo,
           syncAnchorSec,
           sourceDuration,

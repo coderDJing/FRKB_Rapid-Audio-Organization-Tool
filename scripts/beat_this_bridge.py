@@ -945,6 +945,17 @@ def _analyze_prepared_windows_to_track_result(
             return constant_grid_result
     return selected_result
 
+
+def _to_public_downbeat_result(result: dict[str, Any]) -> dict[str, Any]:
+    next_result = dict(result)
+    raw_offset = next_result.pop("downbeatBeatOffset", next_result.pop("barBeatOffset", 0))
+    try:
+        downbeat_beat_offset = int(round(float(raw_offset))) % 4
+    except Exception:
+        downbeat_beat_offset = 0
+    next_result["downbeatBeatOffset"] = downbeat_beat_offset
+    return next_result
+
 def _uses_accelerated_device(device: str) -> bool:
     normalized = str(device or "").strip().lower()
     return normalized not in {"", "cpu"}
@@ -1089,7 +1100,7 @@ def serve(device: str, dbn: bool) -> int:
                 {
                     "type": "result",
                     "requestId": request_id,
-                    "result": result,
+                    "result": _to_public_downbeat_result(result),
                 }
             )
         except Exception as error:

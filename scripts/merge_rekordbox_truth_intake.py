@@ -7,8 +7,8 @@ from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
-DEFAULT_CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
-DEFAULT_INTAKE_TRUTH = BENCHMARK_OUTPUT_DIR / "intake-current-truth.json"
+DEFAULT_CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.v2.json"
+DEFAULT_INTAKE_TRUTH = BENCHMARK_OUTPUT_DIR / "intake-current-truth.v2.json"
 
 
 def _normalize_key(value: Any) -> str:
@@ -22,12 +22,41 @@ def _load_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _has_v2_map(track: dict[str, Any]) -> bool:
+    beat_grid_map = track.get("beatGridMap")
+    if not isinstance(beat_grid_map, dict):
+        return False
+    if beat_grid_map.get("version") != 2 or beat_grid_map.get("source") not in {"manual", "analysis"}:
+        return False
+    clips = beat_grid_map.get("clips")
+    if not isinstance(clips, list) or len(clips) != 1 or not isinstance(clips[0], dict):
+        return False
+    clip = clips[0]
+    downbeat_beat_offset = clip.get("downbeatBeatOffset")
+    try:
+        return (
+            float(clip.get("startSec")) == 0.0
+            and float(clip.get("anchorSec")) >= 0.0
+            and float(clip.get("bpm")) > 0.0
+            and isinstance(downbeat_beat_offset, int)
+            and 0 <= downbeat_beat_offset < 4
+            and isinstance(beat_grid_map.get("signature"), str)
+            and bool(beat_grid_map["signature"].strip())
+        )
+    except (TypeError, ValueError):
+        return False
+
+
 def _load_truth(path: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     payload = _load_json(path)
     tracks = payload.get("tracks")
     if not isinstance(tracks, list):
         raise RuntimeError(f"truth has no tracks array: {path}")
-    return payload, [item for item in tracks if isinstance(item, dict)]
+    normalized_tracks = [item for item in tracks if isinstance(item, dict)]
+    invalid_tracks = [item for item in normalized_tracks if not _has_v2_map(item)]
+    if invalid_tracks:
+        raise RuntimeError(f"truth contains a legacy or invalid v2 grid map: {path}")
+    return payload, normalized_tracks
 
 
 def _dedupe_tracks(tracks: list[dict[str, Any]], source_label: str) -> tuple[list[dict[str, Any]], set[str]]:
@@ -83,6 +112,8 @@ def _build_current_payload(
     source = existing_payload.get("source") if isinstance(existing_payload.get("source"), dict) else {}
     return {
         **existing_payload,
+        "type": "frkb-grid-truth-v2",
+        "schemaVersion": 2,
         "source": {
             **source,
             "type": "rekordbox-current-grid-truth",

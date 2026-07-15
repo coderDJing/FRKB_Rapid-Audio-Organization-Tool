@@ -35,7 +35,10 @@ fn sync_phase_beat(engine: &HorizontalBrowseTransportEngine, deck: DeckId) -> f6
     .rem_euclid(1.0)
 }
 
-fn dynamic_grid(clips: Vec<(f64, f64, f64)>, duration_sec: f64) -> Vec<DynamicBeatGridClipSnapshot> {
+fn dynamic_grid(
+  clips: Vec<(f64, f64, f64)>,
+  duration_sec: f64,
+) -> Vec<DynamicBeatGridClipSnapshot> {
   HorizontalBrowseTransportEngine::normalize_dynamic_beat_grid(
     Some(
       clips
@@ -45,13 +48,36 @@ fn dynamic_grid(clips: Vec<(f64, f64, f64)>, duration_sec: f64) -> Vec<DynamicBe
             start_sec,
             anchor_sec,
             bpm,
-            bar_beat_offset: 0.0,
+            downbeat_beat_offset: 0.0,
           },
         )
         .collect(),
     ),
     duration_sec,
   )
+}
+
+#[test]
+fn dynamic_grid_rejects_an_invalid_downbeat_phase() {
+  let grid = HorizontalBrowseTransportEngine::normalize_dynamic_beat_grid(
+    Some(vec![
+      HorizontalBrowseTransportBeatGridClipInput {
+        start_sec: 0.0,
+        anchor_sec: 0.0,
+        bpm: 120.0,
+        downbeat_beat_offset: 4.0,
+      },
+      HorizontalBrowseTransportBeatGridClipInput {
+        start_sec: 5.0,
+        anchor_sec: 5.0,
+        bpm: 120.0,
+        downbeat_beat_offset: 0.0,
+      },
+    ]),
+    10.0,
+  );
+
+  assert!(grid.is_empty());
 }
 
 fn setup_full_sync_grid_shift_engine() -> HorizontalBrowseTransportEngine {
@@ -377,9 +403,23 @@ fn set_beat_grid_same_values_does_not_reapply_phase_compensation() {
   let previous_current_sec = engine.deck(DeckId::Bottom).current_sec;
   let next_first_beat_ms = engine.deck(DeckId::Bottom).first_beat_ms.unwrap() + 5.0;
 
-  engine.set_beat_grid(DeckId::Bottom, None, Some(next_first_beat_ms), None, None, None);
+  engine.set_beat_grid(
+    DeckId::Bottom,
+    None,
+    Some(next_first_beat_ms),
+    None,
+    None,
+    None,
+  );
   let shifted_current_sec = engine.deck(DeckId::Bottom).current_sec;
-  engine.set_beat_grid(DeckId::Bottom, None, Some(next_first_beat_ms), None, None, None);
+  engine.set_beat_grid(
+    DeckId::Bottom,
+    None,
+    Some(next_first_beat_ms),
+    None,
+    None,
+    None,
+  );
 
   assert!((shifted_current_sec - previous_current_sec - 0.005).abs() < 0.0001);
   assert!((engine.deck(DeckId::Bottom).current_sec - shifted_current_sec).abs() < 0.0001);
@@ -396,7 +436,14 @@ fn set_beat_grid_phase_compensation_resets_audio_owned_playhead() {
   let _ = engine.sample_deck(DeckId::Bottom);
   let next_first_beat_ms = engine.deck(DeckId::Bottom).first_beat_ms.unwrap() + 5.0;
 
-  engine.set_beat_grid(DeckId::Bottom, None, Some(next_first_beat_ms), None, None, None);
+  engine.set_beat_grid(
+    DeckId::Bottom,
+    None,
+    Some(next_first_beat_ms),
+    None,
+    None,
+    None,
+  );
   let shifted_current_sec = engine.deck(DeckId::Bottom).current_sec;
   let _ = engine.sample_deck(DeckId::Bottom);
 

@@ -2,7 +2,7 @@ type GridAnchorParams = {
   startSec: number
   firstBeatSec: number
   beatSec: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
 }
 
 type SyncPlaybackRateParams = {
@@ -68,8 +68,8 @@ export const resolveGridAnchorSec = (params: GridAnchorParams) => {
   if (!Number.isFinite(beatSec) || beatSec <= 0) {
     return Number(params.startSec) + Number(params.firstBeatSec || 0)
   }
-  const barOffset = normalizeBeatOffset(params.barBeatOffset, 32)
-  return Number(params.startSec) + Number(params.firstBeatSec || 0) + barOffset * beatSec
+  const downbeatOffset = normalizeBeatOffset(params.downbeatBeatOffset, 4)
+  return Number(params.startSec) + Number(params.firstBeatSec || 0) + downbeatOffset * beatSec
 }
 
 const wrapPhaseDiffSec = (diffSec: number, beatSec: number) => {

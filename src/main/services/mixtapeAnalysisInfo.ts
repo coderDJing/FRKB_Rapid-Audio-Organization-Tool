@@ -1,16 +1,8 @@
 import type { ISongInfo } from '../../types/globals'
-import type { SongBeatGridMap } from '../../shared/songBeatGridMap'
 import type { SongStructureAnalysis } from '../../shared/songStructure'
 
 type MixtapeAnalysisCopyField =
-  | 'bpm'
   | 'originalBpm'
-  | 'firstBeatMs'
-  | 'barBeatOffset'
-  | 'timeBasisOffsetMs'
-  | 'beatGridAlgorithmVersion'
-  | 'beatGridStatus'
-  | 'beatGridMap'
   | 'songStructure'
   | 'key'
   | 'originalKey'
@@ -23,15 +15,31 @@ type MixtapeAnalysisCopyField =
   | 'stemBassPath'
   | 'stemDrumsPath'
 
+export const MIXTAPE_GRID_COPY_FIELDS = [
+  'bpm',
+  'firstBeatMs',
+  'downbeatBeatOffset',
+  'barBeatOffset',
+  'timeBasisOffsetMs',
+  'beatGridSource',
+  'beatGridStatus',
+  'beatGridAlgorithmVersion',
+  'beatGridMap'
+] as const
+
+export const stripMixtapeGridCopies = (info: Record<string, unknown>): boolean => {
+  let removed = false
+  for (const field of MIXTAPE_GRID_COPY_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(info, field)) continue
+    delete info[field]
+    removed = true
+  }
+  return removed
+}
+
 export type MixtapeAnalysisInfo = Record<string, unknown> & {
-  bpm?: number
   originalBpm?: number
-  firstBeatMs?: number
-  barBeatOffset?: number
-  timeBasisOffsetMs?: number
-  beatGridAlgorithmVersion?: number
   beatGridStatus?: ISongInfo['beatGridStatus']
-  beatGridMap?: SongBeatGridMap
   songStructure?: SongStructureAnalysis
   key?: string
   originalKey?: string
@@ -46,14 +54,7 @@ export type MixtapeAnalysisInfo = Record<string, unknown> & {
 }
 
 export const MIXTAPE_ANALYSIS_COPY_FIELDS: MixtapeAnalysisCopyField[] = [
-  'bpm',
   'originalBpm',
-  'firstBeatMs',
-  'barBeatOffset',
-  'timeBasisOffsetMs',
-  'beatGridAlgorithmVersion',
-  'beatGridStatus',
-  'beatGridMap',
   'songStructure',
   'key',
   'originalKey',

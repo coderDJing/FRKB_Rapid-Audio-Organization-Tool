@@ -42,7 +42,7 @@ except Exception:
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
-DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "rekordbox-test-need-review-latest.json"
+DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "rekordbox-test-need-review-latest.v2.json"
 DEFAULT_FFMPEG = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffmpeg.exe"
 DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
 DEFAULT_PREDICTION_CACHE_DIR = BENCHMARK_OUTPUT_DIR / "beatthis-prediction-cache"
@@ -337,8 +337,8 @@ def _difference_reasons(row: dict[str, Any]) -> list[str]:
         reasons.append(f"first beat grid differs by more than ±{benchmark.STRICT_TOLERANCE_MS:g}ms")
     if current.get("gridMaxStatus") == "fail":
         reasons.append(f"grid line drift exceeds ±{benchmark.STRICT_TOLERANCE_MS:g}ms")
-    if current.get("barBeatOffsetStatus") == "fail":
-        reasons.append("downbeat/barBeatOffset differs from Rekordbox")
+    if current.get("downbeatBeatOffsetStatus") == "fail":
+        reasons.append("四拍线相位与 Rekordbox 不一致")
     if not reasons and category and category != "pass":
         reasons.append(f"classified as {category}")
     return reasons

@@ -369,7 +369,7 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
       originalBpm: Number(tempoSnapshot.originalBpm) || 0,
       firstBeatSourceSec: Number(tempoSnapshot.firstBeatSourceSec) || 0,
       beatSourceSec: Number(tempoSnapshot.beatSourceSec) || 0,
-      barBeatOffset: Number(tempoSnapshot.barBeatOffset) || 0,
+      downbeatBeatOffset: Number(tempoSnapshot.downbeatBeatOffset) || 0,
       sourceBeatGridMap: tempoSnapshot.sourceBeatGridMap,
       mappingMode: tempoSnapshot.mappingMode,
       trackStartSec: Number(tempoSnapshot.trackStartSec) || 0,
@@ -634,10 +634,9 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     },
     renderPxPerSec: number,
     range: { start: number; end: number },
-    barOnly: boolean,
-    showBeat4: boolean,
+    showDownbeat: boolean,
     showBeat: boolean,
-    barWidth: number
+    downbeatWidth: number
   ) => {
     const trackWidth = Math.max(0, Number(track.trackWidth) || 0)
     const timelineDurationSeconds = Math.max(0, Number(track.tempoSnapshot.durationSec) || 0)
@@ -646,45 +645,51 @@ export const createTileRenderer = (options: CreateTileRendererOptions) => {
     const endX = range.end
     if (endX <= startX || width <= 0 || height <= 0 || trackWidth <= 0) return
     if (timelineDurationSeconds <= 0 || sourceDurationSeconds <= 0) return
-    const visibleGridLines =
-      Array.isArray(track.visibleGridLines) && track.visibleGridLines.length > 0
-        ? track.visibleGridLines
-        : createTimeMapFromTempoSnapshot(track.tempoSnapshot).buildVisibleGridLines(
-            Number.POSITIVE_INFINITY
-          )
-    if (!visibleGridLines.length) return
-
+    const visibleGridLines = Array.isArray(track.visibleGridLines)
+      ? track.visibleGridLines
+      : createTimeMapFromTempoSnapshot(track.tempoSnapshot).buildVisibleGridLines(
+          Number.POSITIVE_INFINITY
+        )
     ctx.save()
-    for (const line of visibleGridLines) {
-      const level = line.level
-      if (barOnly && level !== 'bar') continue
-      if (!showBeat4 && level !== 'bar') continue
-      if (!showBeat && level === 'beat') continue
-      const rawX = resolveRoundedTrackLocalPx({
-        trackStartSec: Number(track.startSec) || 0,
-        localSec: line.sec,
-        pxPerSec: renderPxPerSec
-      })
-      if (rawX < startX - 64 || rawX > endX + 64) continue
-      const lineWidth =
-        level === 'bar'
-          ? barWidth
-          : level === 'beat4'
-            ? GRID_BEAT4_LINE_WIDTH
-            : GRID_BEAT_LINE_WIDTH
-      const x = rawX - startX - lineWidth / 2
-      if (level === 'bar') {
-        ctx.globalAlpha = 0.95
-        ctx.fillStyle = 'rgba(0, 110, 220, 0.98)'
-        ctx.fillRect(x, 0, lineWidth, height)
-      } else if (level === 'beat4') {
-        ctx.globalAlpha = 0.85
-        ctx.fillStyle = 'rgba(120, 200, 255, 0.98)'
-        ctx.fillRect(x, 0, lineWidth, height)
-      } else {
-        ctx.globalAlpha = 0.8
-        ctx.fillStyle = 'rgba(180, 225, 255, 0.95)'
-        ctx.fillRect(x, 0, lineWidth, height)
+    if (visibleGridLines.length) {
+      for (const line of visibleGridLines) {
+        const level = line.level
+        if (!showDownbeat && level === 'downbeat') continue
+        if (!showBeat && level === 'beat') continue
+        const rawX = resolveRoundedTrackLocalPx({
+          trackStartSec: Number(track.startSec) || 0,
+          localSec: line.sec,
+          pxPerSec: renderPxPerSec
+        })
+        if (rawX < startX - 64 || rawX > endX + 64) continue
+        const lineWidth = level === 'downbeat' ? downbeatWidth : GRID_BEAT_LINE_WIDTH
+        const x = rawX - startX - lineWidth / 2
+        if (level === 'downbeat') {
+          ctx.globalAlpha = 0.85
+          ctx.fillStyle = 'rgba(120, 200, 255, 0.98)'
+          ctx.fillRect(x, 0, lineWidth, height)
+        } else {
+          ctx.globalAlpha = 0.8
+          ctx.fillStyle = 'rgba(180, 225, 255, 0.95)'
+          ctx.fillRect(x, 0, lineWidth, height)
+        }
+      }
+    }
+    const sourceBeatGridMap = track.tempoSnapshot.sourceBeatGridMap
+    if (sourceBeatGridMap?.clips.length && sourceBeatGridMap.clips.length > 1) {
+      const timeMap = createTimeMapFromTempoSnapshot(track.tempoSnapshot)
+      ctx.globalAlpha = 0.9
+      ctx.fillStyle = 'rgba(255, 214, 92, 0.96)'
+      const boundaryWidth = Math.max(1.5, downbeatWidth + 0.5)
+      for (const clip of sourceBeatGridMap.clips.slice(1)) {
+        const localSec = timeMap.mapSourceToLocal(clip.startSec)
+        const rawX = resolveRoundedTrackLocalPx({
+          trackStartSec: Number(track.startSec) || 0,
+          localSec,
+          pxPerSec: renderPxPerSec
+        })
+        if (rawX < startX - 64 || rawX > endX + 64) continue
+        ctx.fillRect(rawX - startX - boundaryWidth / 2, 0, boundaryWidth, height)
       }
     }
     ctx.restore()

@@ -107,7 +107,7 @@ export interface HorizontalBrowseTransportDeckInput {
   title?: string
   bpm?: number
   firstBeatMs?: number
-  barBeatOffset?: number
+  downbeatBeatOffset?: number
   timeBasisOffsetMs?: number
   durationSec: number
   currentSec: number
@@ -120,7 +120,7 @@ export interface HorizontalBrowseTransportBeatGridInput {
   filePath?: string
   bpm?: number
   firstBeatMs?: number
-  barBeatOffset?: number
+  downbeatBeatOffset?: number
   timeBasisOffsetMs?: number
 }
 export interface HorizontalBrowseTransportBandState {

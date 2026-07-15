@@ -4,7 +4,10 @@ import {
   resolveMixtapeAudioFirstBeatSec
 } from './mixtapeAudioGridBasis'
 import type { MixtapeTrack } from './types'
-import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
+import {
+  createSongBeatGridMapV2FromClips,
+  createSongBeatGridMapV2FromFixedGrid
+} from '@shared/songBeatGridMapV2'
 
 const createTrack = (overrides: Partial<MixtapeTrack> = {}): MixtapeTrack => ({
   id: 'track',
@@ -19,8 +22,15 @@ const createTrack = (overrides: Partial<MixtapeTrack> = {}): MixtapeTrack => ({
 
 describe('mixtape audio grid basis', () => {
   it('converts the external timeline first beat to the actual audio coordinate', () => {
-    const track = createTrack({
+    const beatGridMap = createSongBeatGridMapV2FromFixedGrid({
+      bpm: 128,
       firstBeatMs: 99.114,
+      downbeatBeatOffset: 0,
+      source: 'analysis'
+    })
+    expect(beatGridMap).not.toBeNull()
+    const track = createTrack({
+      beatGridMap: beatGridMap ?? undefined,
       timeBasisOffsetMs: 50.114
     })
 
@@ -28,14 +38,14 @@ describe('mixtape audio grid basis', () => {
   })
 
   it('converts dynamic grid clip coordinates to the audio coordinate', () => {
-    const beatGridMap = normalizeSongBeatGridMap({
-      version: 1,
-      source: 'manual',
-      clips: [
-        { startSec: 0, anchorSec: 0.1, bpm: 128, barBeatOffset: 0 },
-        { startSec: 10, anchorSec: 10.1, bpm: 129, barBeatOffset: 0 }
-      ]
-    })
+    const beatGridMap = createSongBeatGridMapV2FromClips(
+      [
+        { startSec: 0, anchorSec: 0.1, bpm: 128, downbeatBeatOffset: 0 },
+        { startSec: 10, anchorSec: 10.1, bpm: 129, downbeatBeatOffset: 0 }
+      ],
+      'manual',
+      { allowSingleClip: true }
+    )
     expect(beatGridMap).not.toBeNull()
     const track = createTrack({
       timeBasisOffsetMs: 50,

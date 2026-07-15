@@ -12,11 +12,30 @@ import {
   writeManifest,
   ensureManifestMinVersion
 } from '../databaseManifest'
-import { getLibraryDbPath } from '../libraryDb'
+import {
+  assertExistingDatabaseSchemaSupported,
+  getLibraryDbPath,
+  isDatabaseSchemaVersionError
+} from '../libraryDb'
+import { migrateLibrarySchemaV35ToV36 } from '../librarySchemaV36Migration'
+import { migrateLibrarySchemaToV38 } from '../librarySchemaV37Migration'
 import { ensureLegacyMigration } from '../libraryMigration'
 import { persistSettingConfig } from '../settingsPersistence'
 import { restrictExternalNavigation } from './externalNavigation'
+import databaseSchemaMigrationWindow from './databaseSchemaMigrationWindow'
 let databaseInitWindow: BrowserWindow | null = null
+
+type DatabaseInitErrorHint =
+  | {
+      kind: 'schema-too-new'
+      databaseUrl: string
+      databaseVersion: number
+      maximumSupportedVersion: number
+    }
+  | {
+      kind: 'cannot-read'
+      databaseUrl: string
+    }
 
 type BrowserWindowWithVisualEffect = BrowserWindow & {
   setVisualEffectMaterial?: (material: string) => void
@@ -25,10 +44,15 @@ type BrowserWindowWithVisualEffect = BrowserWindow & {
 const getFingerprintMode = (): 'pcm' | 'file' =>
   store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
 
-const createWindow = ({ needErrorHint = false } = {}) => {
+const createWindow = ({
+  needErrorHint = false,
+  errorHint
+}: { needErrorHint?: boolean; errorHint?: DatabaseInitErrorHint } = {}) => {
   if (databaseInitWindow && !databaseInitWindow.isDestroyed()) {
     if (databaseInitWindow.isMinimized()) databaseInitWindow.restore()
     databaseInitWindow.focus()
+    if (errorHint)
+      databaseInitWindow.webContents.send('databaseInitWindow-showErrorHint', errorHint)
     return
   }
   databaseInitWindow = new BrowserWindow({
@@ -74,12 +98,12 @@ const createWindow = ({ needErrorHint = false } = {}) => {
 
   databaseInitWindow.on('ready-to-show', () => {
     databaseInitWindow?.show()
-    if (needErrorHint) {
-      databaseInitWindow?.webContents.send(
-        'databaseInitWindow-showErrorHint',
-        store.settingConfig.databaseUrl
-      )
-    }
+    const nextHint =
+      errorHint ||
+      (needErrorHint
+        ? { kind: 'cannot-read' as const, databaseUrl: store.settingConfig.databaseUrl }
+        : null)
+    if (nextHint) databaseInitWindow?.webContents.send('databaseInitWindow-showErrorHint', nextHint)
   })
 
   ipcMain.on('databaseInitWindow-toggle-close', () => {
@@ -92,6 +116,43 @@ const createWindow = ({ needErrorHint = false } = {}) => {
       dirPath: string,
       options?: { createSamples?: boolean; reset?: boolean; fingerprintMode?: 'pcm' | 'file' }
     ) => {
+      const databasePath = getLibraryDbPath(dirPath)
+      if (options?.reset !== true && fs.pathExistsSync(databasePath)) {
+        let databaseVersion: number
+        try {
+          databaseVersion = assertExistingDatabaseSchemaSupported(databasePath)
+        } catch (error) {
+          if (isDatabaseSchemaVersionError(error)) {
+            databaseInitWindow?.webContents.send('databaseInitWindow-showErrorHint', {
+              kind: 'schema-too-new',
+              databaseUrl: dirPath,
+              databaseVersion: error.databaseVersion,
+              maximumSupportedVersion: error.maximumSupportedVersion
+            } satisfies DatabaseInitErrorHint)
+            return { status: 'schema-too-new' as const }
+          }
+          throw error
+        }
+        try {
+          if (databaseVersion === 35 || databaseVersion === 36 || databaseVersion === 37) {
+            databaseSchemaMigrationWindow.createWindow()
+            databaseInitWindow?.close()
+          }
+          if (databaseVersion === 35) {
+            await migrateLibrarySchemaV35ToV36(databasePath, {
+              onProgress: databaseSchemaMigrationWindow.setSchemaMigrationProgress
+            })
+            databaseVersion = assertExistingDatabaseSchemaSupported(databasePath)
+          }
+          if (databaseVersion === 36 || databaseVersion === 37) {
+            await migrateLibrarySchemaToV38(databasePath, {
+              onProgress: databaseSchemaMigrationWindow.setSchemaMigrationProgress
+            })
+          }
+        } catch {
+          return { status: 'schema-migration-failed' as const }
+        }
+      }
       // 发现旧版 V1 指纹文件则直接删除（不再兼容）
       try {
         const v1 = path.join(dirPath, 'songFingerprint', 'songFingerprint.json')
@@ -147,6 +208,7 @@ const createWindow = ({ needErrorHint = false } = {}) => {
       const mode = getFingerprintMode()
       const list = await FingerprintStore.loadList(mode)
       store.songFingerprintList = Array.isArray(list) ? list : []
+      databaseSchemaMigrationWindow.close()
       databaseInitWindow?.close()
       mainWindow.createWindow()
     }

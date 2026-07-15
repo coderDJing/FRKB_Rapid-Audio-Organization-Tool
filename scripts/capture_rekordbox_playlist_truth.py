@@ -21,12 +21,14 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BRIDGE = REPO_ROOT / "resources" / "rekordboxDesktopLibrary" / "bridge.py"
 DEFAULT_REKORDBOX_RUNTIME_ROOT = REPO_ROOT / "vendor" / "rekordbox-desktop-runtime"
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
-DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "intake-current-truth.json"
+DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "intake-current-truth.v2.json"
 DEFAULT_TRUTH = (
-    BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
+    BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.v2.json"
 )
 DEFAULT_AUDIO_ROOT = FRKB_FILTER_NEW_ROOT
 DUPLICATE_BPM_TOLERANCE = 0.01
+SIGNATURE_HASH_OFFSET = 2166136261
+SIGNATURE_HASH_PRIME = 16777619
 
 
 def _default_rekordbox_python() -> Path:
@@ -63,9 +65,10 @@ def _to_float(value: Any) -> float | None:
 
 
 def _duplicate_bpm(track: dict[str, Any]) -> float | None:
-    bpm = _to_float(track.get("bpm"))
-    if bpm is None:
-        bpm = _to_float(track.get("gridBpm"))
+    beat_grid_map = track.get("beatGridMap")
+    clips = beat_grid_map.get("clips") if isinstance(beat_grid_map, dict) else None
+    clip = clips[0] if isinstance(clips, list) and clips and isinstance(clips[0], dict) else {}
+    bpm = _to_float(clip.get("bpm"))
     return bpm if bpm is not None and bpm > 0 else None
 
 
@@ -82,6 +85,15 @@ def _to_int(value: Any) -> int | None:
     if numeric is None:
         return None
     return int(round(numeric))
+
+
+def _map_signature(clip: dict[str, Any]) -> str:
+    payload = "v2:{startSec:.6f},{anchorSec:.6f},{bpm:.6f},{downbeatBeatOffset}".format(**clip)
+    value = SIGNATURE_HASH_OFFSET
+    for character in payload:
+        value ^= ord(character)
+        value = (value * SIGNATURE_HASH_PRIME) & 0xFFFFFFFF
+    return f"sbgm_{value:08x}"
 
 
 def _run_bridge(bridge_path: Path, command: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -149,7 +161,6 @@ def _truth_track_from_rekordbox_track(track: dict[str, Any]) -> dict[str, Any]:
     file_name = str(track.get("fileName") or "").strip()
     bpm = _to_float(track.get("gridBpm"))
     first_beat_ms = _to_float(track.get("gridFirstBeatMs"))
-    first_beat_label = _to_int(track.get("gridFirstBeatLabel"))
     bar_beat_offset = _to_int(track.get("gridBarBeatOffset"))
 
     if not file_name:
@@ -161,21 +172,26 @@ def _truth_track_from_rekordbox_track(track: dict[str, Any]) -> dict[str, Any]:
     if first_beat_ms is None or first_beat_ms < 0:
         print(f"错误：曲目 \"{file_name}\" 的 gridFirstBeatMs 无效（值为 {track.get('gridFirstBeatMs')}），请在 Rekordbox 中重新分析该曲目", file=sys.stderr)
         sys.exit(1)
-    if first_beat_label is None or first_beat_label < 1 or first_beat_label > 4:
-        print(f"错误：曲目 \"{file_name}\" 的 gridFirstBeatLabel 无效（值为 {track.get('gridFirstBeatLabel')}），请在 Rekordbox 中重新分析该曲目", file=sys.stderr)
-        sys.exit(1)
     if bar_beat_offset is None:
         print(f"错误：曲目 \"{file_name}\" 的 gridBarBeatOffset 无效，请在 Rekordbox 中重新分析该曲目", file=sys.stderr)
         sys.exit(1)
 
+    clip = {
+        "startSec": 0,
+        "anchorSec": round(float(first_beat_ms) / 1000.0, 6),
+        "bpm": round(float(bpm), 6),
+        "downbeatBeatOffset": int(bar_beat_offset) % 4,
+    }
     return {
         "fileName": file_name,
         "title": str(track.get("title") or "").strip(),
         "artist": str(track.get("artist") or "").strip(),
-        "bpm": round(float(bpm), 6),
-        "firstBeatMs": round(float(first_beat_ms), 3),
-        "firstBeatLabel": int(first_beat_label),
-        "barBeatOffset": int(bar_beat_offset) % 4,
+        "beatGridMap": {
+            "version": 2,
+            "source": "manual",
+            "clips": [clip],
+            "signature": _map_signature(clip),
+        },
     }
 
 
@@ -352,6 +368,8 @@ def _filter_existing_truth_tracks(
 
 def _build_snapshot(source: dict[str, Any], tracks: list[dict[str, Any]]) -> dict[str, Any]:
     return {
+        "type": "frkb-grid-truth-v2",
+        "schemaVersion": 2,
         "source": source,
         "tracks": tracks,
     }
@@ -403,6 +421,8 @@ def _merge_truth(
         "note": f"{datetime.now().strftime('%Y-%m-%d')} unified Rekordbox truth snapshot",
     }
     return {
+        "type": "frkb-grid-truth-v2",
+        "schemaVersion": 2,
         "source": merged_source,
         "tracks": merged_tracks,
     }

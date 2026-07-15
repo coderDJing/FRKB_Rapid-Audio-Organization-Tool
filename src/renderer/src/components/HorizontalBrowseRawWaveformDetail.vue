@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { normalizeSongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import { useRuntimeStore } from '@renderer/stores/runtime'
@@ -13,8 +14,8 @@ import { useHorizontalBrowseGridToolbar } from '@renderer/composables/horizontal
 import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatAlignGridAdjust'
 import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
 import {
-  PREVIEW_BAR_BEAT_INTERVAL,
-  PREVIEW_BAR_LINE_HIT_RADIUS_PX,
+  PREVIEW_DOWNBEAT_BEAT_INTERVAL,
+  PREVIEW_DOWNBEAT_LINE_HIT_RADIUS_PX,
   clampNumber
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRawWaveformCanvas'
@@ -50,7 +51,7 @@ import {
   watchHorizontalBrowseRawWaveformDynamicGridSelection
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDynamicGridSelection'
 import { watchHorizontalBrowseRawWaveformPlaybackToggle } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformPlaybackToggleWatch'
-import type { SongBeatGridMap } from '@shared/songBeatGridMap'
+import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 const HORIZONTAL_BROWSE_TIMELINE_TAIL_TOLERANCE_SEC = 0.75
 const props = defineProps<HorizontalBrowseRawWaveformDetailProps>()
@@ -61,12 +62,12 @@ const mixxxData = ref<MixxxWaveformData | null>(null)
 const previewLoading = ref(false)
 const previewStartSec = ref(0)
 const dragging = ref(false)
-const previewBarBeatOffset = ref(0)
+const previewDownbeatBeatOffset = ref(0)
 const previewFirstBeatMs = ref(0)
 const previewTimeBasisOffsetMs = ref(0)
 const previewBpm = ref(0)
 const previewBpmInput = ref('')
-const previewBeatGridMap = ref<SongBeatGridMap | null>(null)
+const previewBeatGridMap = ref<SongBeatGridMapV2 | null>(null)
 const bpmTapTimestamps = ref<number[]>([])
 const previewZoom = ref(HORIZONTAL_BROWSE_DETAIL_MIN_ZOOM)
 const compactVisualWaveformActive = ref(false)
@@ -167,14 +168,14 @@ const presentationState = createHorizontalBrowseDetailPresentationState({
   resolveWaveformPlaybackRate,
   previewBpm,
   previewFirstBeatMs,
-  previewBarBeatOffset,
+  previewDownbeatBeatOffset,
   previewTimeBasisOffsetMs
 })
 const {
   previewRenderBpm,
   visualGridBpm,
   visualGridFirstBeatMs,
-  visualGridBarBeatOffset,
+  visualGridDownbeatBeatOffset,
   visualGridTimeBasisOffsetMs,
   visualGridRenderBpm,
   resolveDisplayGridBpm,
@@ -243,8 +244,11 @@ const {
   previewZoom,
   previewBpm: visualGridRenderBpm,
   previewFirstBeatMs: visualGridFirstBeatMs,
-  previewBarBeatOffset: visualGridBarBeatOffset,
-  beatGridMap: () => previewBeatGridMap.value ?? props.song?.beatGridMap ?? null,
+  previewDownbeatBeatOffset: visualGridDownbeatBeatOffset,
+  beatGridMap: () =>
+    previewBeatGridMap.value ??
+    normalizeSongBeatGridMapV2(props.song?.beatGridMap, { allowSingleClip: true }) ??
+    null,
   beatGridEditMode: () => props.gridEditMode === true,
   beatGridVisibleFromSec: resolveGridEditVisibleFromSec,
   beatGridSelectedBoundarySec: () => selectedDynamicGridBoundarySec.value,
@@ -386,7 +390,7 @@ const {
   song: () => props.song,
   previewBpm,
   previewFirstBeatMs,
-  previewBarBeatOffset,
+  previewDownbeatBeatOffset,
   previewTimeBasisOffsetMs,
   previewBeatGridMap,
   resolvePreviewDurationSec,
@@ -408,7 +412,7 @@ const dynamicBeatGridEdit = useHorizontalBrowseDynamicBeatGridEdit({
   previewBpm,
   previewBpmInput,
   previewFirstBeatMs,
-  previewBarBeatOffset,
+  previewDownbeatBeatOffset,
   previewStartSec,
   previewWrapRef: wrapRef,
   resolveCurrentSec: () =>
@@ -434,23 +438,23 @@ watch(
 )
 
 const {
-  previewBarLinePicking,
-  previewBarLineHoverVisible,
-  previewBarLineGlowStyle,
-  handleBarLinePickingToggle,
-  handlePreviewMouseMoveForBarLinePicking,
-  handlePreviewMouseLeaveForBarLinePicking,
-  handlePreviewMouseDownForBarLinePicking,
-  handleSetBarLineAtPlayhead,
+  previewDownbeatLinePicking,
+  previewDownbeatLineHoverVisible,
+  previewDownbeatLineGlowStyle,
+  handleDownbeatLinePickingToggle,
+  handlePreviewMouseMoveForDownbeatLinePicking,
+  handlePreviewMouseLeaveForDownbeatLinePicking,
+  handlePreviewMouseDownForDownbeatLinePicking,
+  handleSetDownbeatLineAtPlayhead,
   handleGridShift,
-  resetBarLinePicking
+  resetDownbeatLinePicking
 } = useMixtapeBeatAlignGridAdjust({
   previewWrapRef: wrapRef,
   previewLoading,
   previewMixxxData: mixxxData,
   canAdjustGrid,
   previewPlaying,
-  previewBarBeatOffset,
+  previewDownbeatBeatOffset,
   previewFirstBeatMs,
   previewStartSec,
   bpm: previewBpm,
@@ -462,8 +466,8 @@ const {
   getPreviewPlaybackSec: resolvePreviewAnchorSec,
   schedulePreviewDraw: scheduleGridOverlayDraw,
   applyPlaybackPhaseCompensation: applyLocalGridShiftPhaseCompensation,
-  barBeatInterval: PREVIEW_BAR_BEAT_INTERVAL,
-  barLineHitRadiusPx: PREVIEW_BAR_LINE_HIT_RADIUS_PX,
+  downbeatBeatInterval: PREVIEW_DOWNBEAT_BEAT_INTERVAL,
+  downbeatLineHitRadiusPx: PREVIEW_DOWNBEAT_LINE_HIT_RADIUS_PX,
   dynamicGridEdit: dynamicBeatGridEdit
 })
 
@@ -482,7 +486,10 @@ const {
   outputMode: 'external',
   syncExternalState: syncNativeMetronomeState,
   resolveAnchorSec: () => Math.max(0, Number(props.currentSeconds) || 0),
-  beatGridMap: () => previewBeatGridMap.value ?? props.song?.beatGridMap ?? null,
+  beatGridMap: () =>
+    previewBeatGridMap.value ??
+    normalizeSongBeatGridMapV2(props.song?.beatGridMap, { allowSingleClip: true }) ??
+    null,
   resolveDurationSec: resolvePreviewDurationSec
 })
 
@@ -494,8 +501,8 @@ const {
   handlePreviewBpmInputUpdate,
   handlePreviewBpmInputBlur,
   handlePreviewBpmTap,
-  toggleBarLinePicking,
-  setBarLineAtPlayhead,
+  toggleDownbeatLinePicking,
+  setDownbeatLineAtPlayhead,
   shiftGrid,
   cycleMetronomeState,
   splitAfterPlayhead,
@@ -507,26 +514,26 @@ const {
   previewBpm,
   previewBpmInput,
   previewFirstBeatMs,
-  previewBarBeatOffset,
+  previewDownbeatBeatOffset,
   previewTimeBasisOffsetMs,
   bpmTapTimestamps,
-  previewBarLinePicking,
+  previewDownbeatLinePicking,
   metronomeEnabled,
   metronomeVolumeLevel,
   canToggleMetronome,
   emitToolbarStateChange: (value) => emit('toolbar-state-change', value),
   resolveDisplayGridBpm,
   resolveSongFirstBeatMs: () => Number(props.song?.firstBeatMs) || 0,
-  resolveSongBarBeatOffset: () => Number(props.song?.barBeatOffset) || 0,
+  resolveSongDownbeatBeatOffset: () => Number(props.song?.downbeatBeatOffset) || 0,
   resolveSongTimeBasisOffsetMs: () => Number(props.song?.timeBasisOffsetMs) || 0,
   scheduleDraw: scheduleGridOverlayDraw,
   schedulePreviewBpmTapReset,
   persistGridDefinition,
   schedulePersistGridDefinition,
   resetPreviewBpmTap,
-  resetBarLinePicking,
-  handleBarLinePickingToggle,
-  handleSetBarLineAtPlayhead,
+  resetDownbeatLinePicking,
+  handleDownbeatLinePickingToggle,
+  handleSetDownbeatLineAtPlayhead,
   handleGridShift,
   handleMetronomeStateCycle: cycleMetronomeRuntimeState,
   resolveGridControlsDisabled: () => dynamicBeatGridEdit.gridControlsDisabled.value,
@@ -610,7 +617,7 @@ const {
   resolveGridTimeBasis: () => ({
     bpm: previewRenderBpm.value,
     firstBeatMs: previewFirstBeatMs.value,
-    barBeatOffset: previewBarBeatOffset.value,
+    downbeatBeatOffset: previewDownbeatBeatOffset.value,
     timeBasisOffsetMs: previewTimeBasisOffsetMs.value
   }),
   invalidateWaveformTiles,
@@ -651,7 +658,7 @@ const { handleSharedZoomState, handlePresentationState } =
     applyGridTimeBasis: (gridTimeBasis) => {
       visualGridBpm.value = gridTimeBasis.bpm
       visualGridFirstBeatMs.value = gridTimeBasis.firstBeatMs
-      visualGridBarBeatOffset.value = gridTimeBasis.barBeatOffset
+      visualGridDownbeatBeatOffset.value = gridTimeBasis.downbeatBeatOffset
       visualGridTimeBasisOffsetMs.value = gridTimeBasis.timeBasisOffsetMs
     },
     drawWaveformNow,
@@ -682,7 +689,7 @@ const { stopDragging, handlePointerDown, handleWheel } =
     clearDragReleaseHandoff: dragReleaseHandoff.clear,
     beginDragReleaseHandoff: dragReleaseHandoff.begin,
     scrubPreview,
-    handlePreviewMouseDownForBarLinePicking,
+    handlePreviewMouseDownForDownbeatLinePicking,
     emitToolbarState,
     schedulePersistGridDefinition,
     emitDragSessionStart: () => emit('drag-session-start'),
@@ -769,7 +776,7 @@ watch(
     [
       props.song?.bpm,
       props.song?.firstBeatMs,
-      props.song?.barBeatOffset,
+      props.song?.downbeatBeatOffset,
       props.song?.beatGridMap?.signature,
       props.song?.timeBasisOffsetMs,
       presentationLinkedGridVisualPending.value
@@ -833,7 +840,7 @@ watch(
       props.song?.filePath ?? '',
       visualGridRenderBpm.value,
       visualGridFirstBeatMs.value,
-      visualGridBarBeatOffset.value,
+      visualGridDownbeatBeatOffset.value,
       props.currentSeconds,
       props.playbackRate,
       waveformPlaybackActive.value,
@@ -969,7 +976,7 @@ watch(
       previewBpm.value,
       previewRenderBpm.value,
       previewFirstBeatMs.value,
-      previewBarBeatOffset.value,
+      previewDownbeatBeatOffset.value,
       previewTimeBasisOffsetMs.value,
       presentationLinkedGridVisualPending.value
     ] as const,
@@ -1032,8 +1039,8 @@ onUnmounted(() => {
 
 defineExpose(
   createHorizontalBrowseRawWaveformDetailExpose({
-    toggleBarLinePicking,
-    setBarLineAtPlayhead,
+    toggleDownbeatLinePicking,
+    setDownbeatLineAtPlayhead,
     shiftGrid,
     updateBpmInput: handlePreviewBpmInputUpdate,
     blurBpmInput: handlePreviewBpmInputBlur,
@@ -1060,13 +1067,13 @@ defineExpose(
       `raw-detail-waveform--${props.direction}`,
       {
         'is-dragging': dragging,
-        'is-bar-selecting': previewBarLinePicking,
+        'is-downbeat-selecting': previewDownbeatLinePicking,
         'is-loading': previewLoading
       }
     ]"
     @pointerdown.stop="handlePointerDown"
-    @mousemove="handlePreviewMouseMoveForBarLinePicking"
-    @mouseleave="handlePreviewMouseLeaveForBarLinePicking"
+    @mousemove="handlePreviewMouseMoveForDownbeatLinePicking"
+    @mouseleave="handlePreviewMouseLeaveForDownbeatLinePicking"
     @wheel.prevent.stop="handleWheel"
   >
     <div ref="waveformSurfaceRef" class="raw-detail-waveform__surface">
@@ -1090,9 +1097,9 @@ defineExpose(
       />
     </div>
     <div
-      v-if="previewBarLineHoverVisible"
-      class="raw-detail-waveform__barline-glow"
-      :style="previewBarLineGlowStyle"
+      v-if="previewDownbeatLineHoverVisible"
+      class="raw-detail-waveform__downbeat-line-glow"
+      :style="previewDownbeatLineGlowStyle"
     ></div>
   </div>
 </template>

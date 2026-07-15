@@ -1,5 +1,6 @@
 import type { MixtapeBpmPoint, MixtapeTrack } from '@renderer/composables/mixtape/types'
 import { BPM_INTERNAL_DECIMALS, formatBpmDisplay } from '@renderer/utils/bpm'
+import { projectSongBeatGridMapV2ToFixedGrid } from '@shared/songBeatGridMapV2'
 
 export const BPM_POINT_SEC_EPSILON = 0.0001
 export const BPM_MIN_VALUE = 1
@@ -99,8 +100,10 @@ export const resolveTrackBpmEnvelopeBaseValue = (
 }
 
 export const resolveTrackGridSourceBpm = (
-  track: Pick<MixtapeTrack, 'bpm' | 'gridBaseBpm' | 'originalBpm'>
+  track: Pick<MixtapeTrack, 'bpm' | 'gridBaseBpm' | 'originalBpm' | 'beatGridMap'>
 ): number => {
+  const gridBpm = projectSongBeatGridMapV2ToFixedGrid(track.beatGridMap)?.bpm
+  if (gridBpm !== undefined) return gridBpm
   const candidates = [track.gridBaseBpm, track.originalBpm, track.bpm]
   for (const candidate of candidates) {
     const normalized = normalizeTrackBpmValue(candidate)

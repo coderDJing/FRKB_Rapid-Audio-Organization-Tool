@@ -9,9 +9,9 @@ import { getOriginalPlaylistDisplay } from '@renderer/utils/recycleBinDisplay'
 import { normalizeArtistName, splitArtistNames } from '@shared/artistNames'
 import { normalizeBpmDisplayScaled } from '@renderer/utils/bpm'
 import {
-  resolveSongBeatGridBpmFilterValues,
-  resolveSongBeatGridBpmSortValue
-} from '@shared/songBeatGridMap'
+  resolveSongBeatGridV2BpmFilterValues,
+  resolveSongBeatGridV2BpmSortValue
+} from '@shared/songBeatGridMapV2'
 import libraryUtils from '@renderer/utils/libraryUtils'
 
 interface UseSongsAreaColumnsParams {
@@ -488,7 +488,7 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
       } else if (col.filterType === 'bpm' && col.filterOp && col.filterNumber) {
         const target = parseComparableBpm(col.filterNumber)
         filtered = filtered.filter((song) => {
-          const bpmValues = resolveSongBeatGridBpmFilterValues(song.beatGridMap, song.bpm)
+          const bpmValues = resolveSongBeatGridV2BpmFilterValues(song.beatGridMap, song.bpm)
           if (!bpmValues.length || target === null) return false
           return bpmValues.some((bpmValue) => {
             const bpm = parseComparableBpm(bpmValue)
@@ -578,8 +578,8 @@ export function useSongsAreaColumns(params: UseSongsAreaColumnsParams) {
         })
       } else if (sortedCol.key === 'bpm') {
         filtered = [...filtered].sort((a, b) => {
-          const valueA = resolveSongBeatGridBpmSortValue(a.beatGridMap, a.bpm)
-          const valueB = resolveSongBeatGridBpmSortValue(b.beatGridMap, b.bpm)
+          const valueA = resolveSongBeatGridV2BpmSortValue(a.beatGridMap, a.bpm)
+          const valueB = resolveSongBeatGridV2BpmSortValue(b.beatGridMap, b.bpm)
           const validA = valueA !== null
           const validB = valueB !== null
           if (!validA && !validB) return 0

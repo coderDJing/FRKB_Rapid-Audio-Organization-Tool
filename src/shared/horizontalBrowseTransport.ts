@@ -9,7 +9,7 @@ export type HorizontalBrowseTransportBeatGridClipInput = {
   startSec: number
   anchorSec: number
   bpm: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
 }
 
 export type HorizontalBrowseTransportDeckInput = {
@@ -17,7 +17,7 @@ export type HorizontalBrowseTransportDeckInput = {
   title?: string
   bpm?: number
   firstBeatMs?: number
-  barBeatOffset?: number
+  downbeatBeatOffset?: number
   beatGridClips?: HorizontalBrowseTransportBeatGridClipInput[]
   timeBasisOffsetMs?: number
   durationSec: number
@@ -32,7 +32,7 @@ export type HorizontalBrowseTransportBeatGridInput = {
   filePath?: string
   bpm?: number
   firstBeatMs?: number
-  barBeatOffset?: number
+  downbeatBeatOffset?: number
   beatGridClips?: HorizontalBrowseTransportBeatGridClipInput[]
   timeBasisOffsetMs?: number
 }

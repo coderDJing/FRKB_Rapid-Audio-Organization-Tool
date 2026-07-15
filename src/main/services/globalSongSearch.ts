@@ -16,7 +16,7 @@ import {
 } from '../../shared/songStructure'
 import {
   hasUsableKeyAnalysis,
-  resolveUsableSongBeatGrid
+  resolveCanonicalSongBeatGridV2
 } from '../../shared/songAnalysisCompleteness'
 
 type CoreLibraryName = 'FilterLibrary' | 'CuratedLibrary' | 'MixtapeLibrary' | 'RecycleBin'
@@ -301,25 +301,17 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
   const keyAnalysisAlgorithmVersion = hasKeyAnalysis
     ? rawInfo?.keyAnalysisAlgorithmVersion
     : undefined
-  const grid = resolveUsableSongBeatGrid(rawInfo)
-  const bpm = grid.kind === 'fixed' || grid.kind === 'dynamic' ? grid.bpm : undefined
-  const firstBeatMs =
-    grid.kind === 'fixed' || grid.kind === 'dynamic' ? grid.firstBeatMs : undefined
-  const barBeatOffset =
-    grid.kind === 'fixed' || grid.kind === 'dynamic' ? grid.barBeatOffset : undefined
-  const beatGridMap = grid.kind === 'dynamic' ? grid.beatGridMap : undefined
+  const grid = resolveCanonicalSongBeatGridV2(rawInfo)
+  const bpm = grid.kind === 'grid' ? grid.bpm : undefined
+  const firstBeatMs = grid.kind === 'grid' ? grid.firstBeatMs : undefined
+  const downbeatBeatOffset = grid.kind === 'grid' ? grid.downbeatBeatOffset : undefined
+  const beatGridMap = grid.kind === 'grid' ? grid.beatGridMap : undefined
   const beatGridAlgorithmVersion =
     grid.kind !== 'missing' ? rawInfo?.beatGridAlgorithmVersion : undefined
-  const beatGridSource =
-    grid.kind === 'dynamic'
-      ? 'manual'
-      : grid.kind === 'fixed' &&
-          (rawInfo?.beatGridSource === 'manual' || rawInfo?.beatGridSource === 'analysis')
-        ? rawInfo.beatGridSource
-        : undefined
+  const beatGridSource = grid.kind === 'grid' ? grid.beatGridMap.source : undefined
   const beatGridStatus = grid.kind === 'no-bpm' ? 'no-bpm' : undefined
   const timeBasisOffsetMs =
-    grid.kind === 'fixed' &&
+    grid.kind === 'grid' &&
     typeof rawInfo?.timeBasisOffsetMs === 'number' &&
     Number.isFinite(rawInfo.timeBasisOffsetMs)
       ? rawInfo.timeBasisOffsetMs
@@ -349,7 +341,7 @@ const toSongInfo = (rawInfo: Partial<ISongInfo> | null, filePath: string): ISong
     keyAnalysisAlgorithmVersion,
     bpm,
     firstBeatMs,
-    barBeatOffset,
+    downbeatBeatOffset,
     timeBasisOffsetMs,
     beatGridAlgorithmVersion,
     beatGridSource,

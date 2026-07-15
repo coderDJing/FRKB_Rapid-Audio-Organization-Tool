@@ -13,22 +13,17 @@ import { moveFileToRecycleBin } from '../recycleBinService'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
-import { BEAT_GRID_STATUS_NO_BPM } from '../services/beatGridAlgorithmVersion'
 import { hasUsableSongEnergyAnalysis } from '../../shared/songEnergy'
 import {
-  normalizeSongBeatGridMap,
-  projectSongBeatGridMapToFixedGrid
-} from '../../shared/songBeatGridMap'
-import {
   hasRequiredSongStructureAnalysis,
-  hasUsableKeyAnalysis,
-  resolveUsableSongBeatGrid
+  hasUsableKeyAnalysis
 } from '../../shared/songAnalysisCompleteness'
 import {
   hasUsableSongStructureAnalysis,
   normalizeSongStructureAnalysis
 } from '../../shared/songStructure'
 import type { ISongInfo } from '../../types/globals'
+import { buildSetAnalysisSnapshot } from '../services/setAnalysisSnapshot'
 import {
   listSetItemsByPlaylist,
   listSetItemsByIds,
@@ -77,13 +72,6 @@ const hasPositiveInteger = (value: unknown): value is number =>
 const hasCompleteKeyAnalysis = (info: Partial<ISongInfo> | null | undefined) =>
   hasUsableKeyAnalysis(info)
 
-const hasCompleteNumericGrid = (info: Partial<ISongInfo> | null | undefined) =>
-  resolveUsableSongBeatGrid(info).kind === 'fixed'
-const hasDynamicBeatGridMap = (info: Partial<ISongInfo> | null | undefined) =>
-  normalizeSongBeatGridMap(info?.beatGridMap) !== null
-const hasCompleteGrid = (info: Partial<ISongInfo> | null | undefined) =>
-  resolveUsableSongBeatGrid(info).kind !== 'missing'
-
 function parseSetItemAnalysisJson(raw: unknown): Partial<ISongInfo> | null {
   if (typeof raw !== 'string' || !raw.trim()) return null
   try {
@@ -93,66 +81,6 @@ function parseSetItemAnalysisJson(raw: unknown): Partial<ISongInfo> | null {
   } catch {
     return null
   }
-}
-
-function buildSetAnalysisSnapshot(
-  source: Partial<ISongInfo> | null
-): Record<string, unknown> | null {
-  if (!source) return null
-  const snapshot: Record<string, unknown> = {}
-  if (hasCompleteKeyAnalysis(source)) {
-    snapshot.key = source.key
-    if (hasPositiveInteger(source.keyAnalysisAlgorithmVersion)) {
-      snapshot.keyAnalysisAlgorithmVersion = source.keyAnalysisAlgorithmVersion
-    }
-  }
-  if (resolveUsableSongBeatGrid(source).kind === 'no-bpm') {
-    snapshot.beatGridStatus = BEAT_GRID_STATUS_NO_BPM
-    if (hasPositiveInteger(source.beatGridAlgorithmVersion)) {
-      snapshot.beatGridAlgorithmVersion = source.beatGridAlgorithmVersion
-    }
-  } else if (hasDynamicBeatGridMap(source)) {
-    const beatGridMap = normalizeSongBeatGridMap(source.beatGridMap)
-    const projection = projectSongBeatGridMapToFixedGrid(beatGridMap)
-    if (projection && beatGridMap) {
-      snapshot.bpm = projection.bpm
-      snapshot.firstBeatMs = projection.firstBeatMs
-      snapshot.barBeatOffset = projection.barBeatOffset
-      snapshot.beatGridSource = 'manual'
-      snapshot.beatGridMap = beatGridMap
-    }
-  } else if (hasCompleteNumericGrid(source)) {
-    snapshot.bpm = source.bpm
-    snapshot.firstBeatMs = source.firstBeatMs
-    snapshot.barBeatOffset = source.barBeatOffset
-    if (hasFiniteNumber(source.timeBasisOffsetMs)) {
-      snapshot.timeBasisOffsetMs = source.timeBasisOffsetMs
-    }
-    if (hasPositiveInteger(source.beatGridAlgorithmVersion)) {
-      snapshot.beatGridAlgorithmVersion = source.beatGridAlgorithmVersion
-    }
-    if (source.beatGridSource === 'manual' || source.beatGridSource === 'analysis') {
-      snapshot.beatGridSource = source.beatGridSource
-    }
-  }
-  if (hasUsableSongEnergyAnalysis(source)) {
-    snapshot.energyScore = source.energyScore
-    if (hasPositiveInteger(source.energyAlgorithmVersion)) {
-      snapshot.energyAlgorithmVersion = source.energyAlgorithmVersion
-    }
-  }
-  if (hasUsableSongStructureAnalysis(source)) {
-    snapshot.songStructure = normalizeSongStructureAnalysis(source.songStructure)
-  }
-  const hotCues = normalizeSongHotCues(source.hotCues)
-  if (hotCues.length > 0) {
-    snapshot.hotCues = hotCues
-  }
-  const memoryCues = normalizeSongMemoryCues(source.memoryCues)
-  if (memoryCues.length > 0) {
-    snapshot.memoryCues = memoryCues
-  }
-  return Object.keys(snapshot).length > 0 ? snapshot : null
 }
 
 function persistSetAnalysisSnapshotIfChanged(
@@ -171,44 +99,6 @@ function mergeSetAnalysisFields(target: ISongInfo, source: Partial<ISongInfo> | 
     next.key = source.key as string
     if (hasPositiveInteger(source.keyAnalysisAlgorithmVersion)) {
       next.keyAnalysisAlgorithmVersion = source.keyAnalysisAlgorithmVersion
-    }
-  }
-  if (!hasCompleteGrid(next) && resolveUsableSongBeatGrid(source).kind === 'no-bpm') {
-    delete next.bpm
-    delete next.firstBeatMs
-    delete next.barBeatOffset
-    delete next.timeBasisOffsetMs
-    delete next.beatGridSource
-    delete next.beatGridMap
-    next.beatGridStatus = BEAT_GRID_STATUS_NO_BPM
-    if (hasPositiveInteger(source.beatGridAlgorithmVersion)) {
-      next.beatGridAlgorithmVersion = source.beatGridAlgorithmVersion
-    }
-  } else if (!hasCompleteGrid(next) && hasDynamicBeatGridMap(source)) {
-    const beatGridMap = normalizeSongBeatGridMap(source.beatGridMap)
-    const projection = projectSongBeatGridMapToFixedGrid(beatGridMap)
-    if (beatGridMap && projection) {
-      delete next.beatGridStatus
-      next.bpm = projection.bpm
-      next.firstBeatMs = projection.firstBeatMs
-      next.barBeatOffset = projection.barBeatOffset
-      next.beatGridSource = 'manual'
-      next.beatGridMap = beatGridMap
-    }
-  } else if (!hasCompleteNumericGrid(next) && hasCompleteNumericGrid(source)) {
-    delete next.beatGridStatus
-    delete next.beatGridMap
-    next.bpm = source.bpm as number
-    next.firstBeatMs = source.firstBeatMs as number
-    next.barBeatOffset = source.barBeatOffset as number
-    if (hasFiniteNumber(source.timeBasisOffsetMs)) {
-      next.timeBasisOffsetMs = source.timeBasisOffsetMs
-    }
-    if (hasPositiveInteger(source.beatGridAlgorithmVersion)) {
-      next.beatGridAlgorithmVersion = source.beatGridAlgorithmVersion
-    }
-    if (source.beatGridSource === 'manual' || source.beatGridSource === 'analysis') {
-      next.beatGridSource = source.beatGridSource
     }
   }
   if (!hasUsableSongEnergyAnalysis(next) && hasUsableSongEnergyAnalysis(source)) {
@@ -417,7 +307,6 @@ async function enrichSetSongFromSourceAnalysis(
       persistSetAnalysisSnapshotIfChanged(item, buildSetAnalysisSnapshot(cached.info))
       if (
         hasCompleteKeyAnalysis(next) &&
-        hasCompleteGrid(next) &&
         hasUsableSongEnergyAnalysis(next) &&
         hasRequiredSongStructureAnalysis(next)
       ) {
@@ -426,7 +315,6 @@ async function enrichSetSongFromSourceAnalysis(
     }
     if (
       hasCompleteKeyAnalysis(next) &&
-      hasCompleteGrid(next) &&
       hasUsableSongEnergyAnalysis(next) &&
       hasRequiredSongStructureAnalysis(next)
     ) {

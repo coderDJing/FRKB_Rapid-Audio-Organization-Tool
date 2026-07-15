@@ -8,7 +8,7 @@ import { ensurePioneerUsbIdentity } from './usbIdentity'
 import { hasUsableSongEnergyAnalysis } from '../../../shared/songEnergy'
 import {
   hasUsableKeyAnalysis,
-  resolveUsableSongBeatGrid
+  resolveCanonicalSongBeatGridV2
 } from '../../../shared/songAnalysisCompleteness'
 import type { ISongInfo } from '../../../types/globals'
 import type { ExternalAnalysisSourceKind } from '../../libraryCacheDb'
@@ -65,7 +65,7 @@ const hasCompleteFrkbAnalysis = (info: Partial<ISongInfo> | null | undefined) =>
   return (
     hasUsableKeyAnalysis(info) &&
     hasUsableSongEnergyAnalysis(info) &&
-    resolveUsableSongBeatGrid(info).kind !== 'missing'
+    resolveCanonicalSongBeatGridV2(info).kind !== 'missing'
   )
 }
 

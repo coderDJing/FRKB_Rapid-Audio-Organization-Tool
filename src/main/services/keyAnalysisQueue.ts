@@ -331,7 +331,6 @@ export function enqueueManualKeyAnalysisBatch(
     preemptible: true,
     category: 'manual-batch',
     manualBatchId: batchId,
-    includeStructure: true,
     forceAnalysis: options?.forceAnalysis
   })
   reevaluateConcurrency()
@@ -396,12 +395,6 @@ export function invalidateKeyAnalysisCache(filePaths: string[] | string) {
   const list = Array.isArray(filePaths) ? filePaths : [filePaths]
   queue.invalidateDoneByPath(list)
   LibraryCacheDb.unregisterExternalAnalysisContexts(list)
-}
-
-export function invalidateKeyAnalysisSongStructure(filePaths: string[] | string) {
-  if (!queue) return
-  const list = Array.isArray(filePaths) ? filePaths : [filePaths]
-  queue.invalidateSongStructureByPath(list)
 }
 
 export function remapKeyAnalysisTrackedPath(fromPath: string, toPath: string) {

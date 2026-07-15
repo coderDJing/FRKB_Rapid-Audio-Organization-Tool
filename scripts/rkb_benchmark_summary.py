@@ -44,6 +44,17 @@ def _summarize_metric(rows: list[dict[str, Any]], metric_path: tuple[str, ...]) 
     }
 
 
+def _truth_first_clip(row: dict[str, Any]) -> dict[str, Any]:
+    truth = row.get("truth")
+    if not isinstance(truth, dict):
+        return {}
+    beat_grid_map = truth.get("beatGridMap")
+    if not isinstance(beat_grid_map, dict):
+        return {}
+    clips = beat_grid_map.get("clips")
+    return clips[0] if isinstance(clips, list) and clips and isinstance(clips[0], dict) else {}
+
+
 def build_summary(
     rows: list[dict[str, Any]],
     error_rows: list[dict[str, Any]],
@@ -125,24 +136,23 @@ def build_summary(
             "gridP95AbsMs": _summarize_metric(rows, ("absoluteTimelineCandidate", "gridP95AbsMs")),
             "gridMaxAbsMs": _summarize_metric(rows, ("absoluteTimelineCandidate", "gridMaxAbsMs")),
         },
-        "downbeatMismatchMod4Count": sum(
-            1 for row in rows if not bool((row.get("currentTimeline") or {}).get("barBeatOffsetMatchedMod4"))
-        ),
-        "exact32OffsetMismatchCount": sum(
-            1 for row in rows if not bool((row.get("currentTimeline") or {}).get("barBeatOffsetMatchedExact32"))
+        "downbeatMismatchCount": sum(
+            1
+            for row in rows
+            if not bool((row.get("currentTimeline") or {}).get("downbeatBeatOffsetMatches"))
         ),
         "worstTracks": [
             {
                 "fileName": row["fileName"],
                 "category": (row.get("currentTimeline") or {}).get("category"),
                 "bpm": (row.get("analysis") or {}).get("bpm"),
-                "truthBpm": (row.get("truth") or {}).get("bpm"),
+                "truthBpm": _truth_first_clip(row).get("bpm"),
                 "firstBeatPhaseAbsErrorMs": (row.get("currentTimeline") or {}).get("firstBeatPhaseAbsErrorMs"),
                 "gridMeanAbsMs": (row.get("currentTimeline") or {}).get("gridMeanAbsMs"),
                 "gridMaxAbsMs": (row.get("currentTimeline") or {}).get("gridMaxAbsMs"),
                 "bpmOnlyDrift128BeatsMs": (row.get("currentTimeline") or {}).get("bpmOnlyDrift128BeatsMs"),
-                "barBeatOffset": (row.get("analysis") or {}).get("barBeatOffset"),
-                "truthBarBeatOffset": (row.get("truth") or {}).get("barBeatOffset"),
+                "downbeatBeatOffset": (row.get("analysis") or {}).get("downbeatBeatOffset"),
+                "truthDownbeatBeatOffset": _truth_first_clip(row).get("downbeatBeatOffset"),
                 "anchorStrategy": (row.get("analysis") or {}).get("anchorStrategy"),
                 "gridSolverSelectedSource": (row.get("analysis") or {}).get("gridSolverSelectedSource"),
                 "candidateOracle": row.get("candidateOracle"),

@@ -1,4 +1,4 @@
-import type { SongBeatGridMap } from '@shared/songBeatGridMap'
+import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 export type StemWaveformBand = {
   left: Uint8Array
@@ -45,8 +45,8 @@ export type SerializedWorkerTrackTempoSnapshot = {
   originalBpm: number
   firstBeatSourceSec: number
   beatSourceSec: number
-  barBeatOffset: number
-  sourceBeatGridMap?: SongBeatGridMap
+  downbeatBeatOffset: number
+  sourceBeatGridMap?: SongBeatGridMapV2
   mappingMode?: 'tempoEnvelope' | 'masterGrid'
   trackStartSec?: number
   masterGridFallbackBpm?: number
@@ -60,7 +60,7 @@ export type SerializedWorkerTrackTempoSnapshot = {
 export type SerializedWorkerVisibleGridLine = {
   sec: number
   sourceSec: number
-  level: 'bar' | 'beat4' | 'beat'
+  level: 'downbeat' | 'beat'
 }
 
 export type RenderTilePayload = {

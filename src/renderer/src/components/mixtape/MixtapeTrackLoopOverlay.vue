@@ -21,9 +21,8 @@ const props = defineProps<{
 
 const hoveredGridKey = ref('')
 
-const resolveGridTone = (level: 'bar' | 'beat4' | 'beat') => {
-  if (level === 'bar') return 'rgba(255, 232, 150, 0.34)'
-  if (level === 'beat4') return 'rgba(255, 223, 120, 0.26)'
+const resolveGridTone = (level: 'downbeat' | 'beat') => {
+  if (level === 'downbeat') return 'rgba(255, 223, 120, 0.26)'
   return 'rgba(255, 223, 120, 0.18)'
 }
 

@@ -13,7 +13,7 @@ const createTempoSnapshot = (): SerializedTrackTempoSnapshot => ({
   originalBpm: 128,
   firstBeatSourceSec: 0,
   beatSourceSec: 60 / 128,
-  barBeatOffset: 0,
+  downbeatBeatOffset: 0,
   controlPoints: []
 })
 

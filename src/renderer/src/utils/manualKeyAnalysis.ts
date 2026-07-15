@@ -18,7 +18,6 @@ type ScanSongListResult = {
     key?: unknown
     bpm?: unknown
     firstBeatMs?: unknown
-    barBeatOffset?: unknown
     beatGridMap?: unknown
     beatGridStatus?: unknown
     energyScore?: unknown

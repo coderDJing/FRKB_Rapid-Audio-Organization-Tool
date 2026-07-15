@@ -1,7 +1,9 @@
 import type { ISongInfo } from 'src/types/globals'
 import { clampNumber } from '@renderer/composables/horizontalBrowse/horizontalBrowseMath'
 import { HORIZONTAL_BROWSE_DETAIL_PLAYHEAD_RATIO } from '@renderer/composables/horizontalBrowse/horizontalBrowseWaveform.constants'
-import { resolveNearestSongBeatGridLine } from '@shared/songBeatGridMap'
+import { resolveNearestUnifiedSongBeatGridLine } from '@shared/songBeatGridRuntime'
+
+type HorizontalBrowseGridSong = Pick<ISongInfo, 'beatGridMap'>
 
 export const clampHorizontalBrowsePreviewStartByVisibleDuration = (
   value: number,
@@ -44,7 +46,7 @@ export const resolveHorizontalBrowseTimePercent = (
 }
 
 export const resolveHorizontalBrowseCuePointSec = (
-  song: ISongInfo | null,
+  song: HorizontalBrowseGridSong | null,
   candidateSec: number,
   durationSec: number
 ) => {
@@ -53,7 +55,7 @@ export const resolveHorizontalBrowseCuePointSec = (
   const safeCandidate =
     duration > 0 ? clampNumber(candidateSec, 0, duration) : Math.max(0, candidateSec)
   if (safeCandidate <= 0.000001) return 0
-  const nearestDynamicLine = resolveNearestSongBeatGridLine(
+  const nearestDynamicLine = resolveNearestUnifiedSongBeatGridLine(
     song?.beatGridMap,
     duration,
     safeCandidate
@@ -68,35 +70,17 @@ export const resolveHorizontalBrowseCuePointSec = (
       : snappedDynamicSec
   }
 
-  const bpm = Number(song?.bpm)
-  if (!Number.isFinite(bpm) || bpm <= 0) return 0
-
-  const beatSec = 60 / bpm
-  if (!Number.isFinite(beatSec) || beatSec <= 0) return 0
-
-  const firstBeatMs = Number(song?.firstBeatMs)
-  const firstBeatSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
-  const nearestBeatIndex = Math.round((safeCandidate - firstBeatSec) / beatSec)
-  const snappedBeatSec =
-    duration > 0
-      ? clampNumber(firstBeatSec + nearestBeatIndex * beatSec, 0, duration)
-      : Math.max(0, firstBeatSec + nearestBeatIndex * beatSec)
-
-  return Math.abs(safeCandidate) <= Math.abs(safeCandidate - snappedBeatSec) ? 0 : snappedBeatSec
+  return 0
 }
 
 export const resolveHorizontalBrowseDefaultCuePointSec = (
-  song: ISongInfo | null,
+  song: HorizontalBrowseGridSong | null,
   durationSec = 0
 ) => {
-  const duration =
-    Number.isFinite(durationSec) && durationSec > 0 ? durationSec : Number.POSITIVE_INFINITY
-  const nearestDynamicLine = resolveNearestSongBeatGridLine(song?.beatGridMap, duration, 0)
+  const duration = Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 0
+  const nearestDynamicLine = resolveNearestUnifiedSongBeatGridLine(song?.beatGridMap, duration, 0)
   if (nearestDynamicLine) {
     return clampNumber(nearestDynamicLine.sec, 0, duration)
   }
-  const firstBeatMs = Number(song?.firstBeatMs)
-  const firstBeatSec = Number.isFinite(firstBeatMs) ? firstBeatMs / 1000 : 0
-  if (firstBeatSec <= 0.000001) return 0
-  return clampNumber(firstBeatSec, 0, duration)
+  return 0
 }

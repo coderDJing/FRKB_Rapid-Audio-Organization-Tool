@@ -48,9 +48,7 @@ struct RecordingSession {
 
 enum RecordingState {
   Idle,
-  Armed {
-    file_path: String,
-  },
+  Armed { file_path: String },
   Recording(RecordingSession),
 }
 
@@ -269,7 +267,12 @@ impl RecordingController {
       RecordingState::Recording(session) => {
         let error = session.error.clone();
         HorizontalBrowseTransportRecordingStatus {
-          state: if error.is_some() { "error" } else { "recording" }.to_string(),
+          state: if error.is_some() {
+            "error"
+          } else {
+            "recording"
+          }
+          .to_string(),
           file_path: Some(session.file_path.clone()),
           sample_rate: session.sample_rate,
           channels: session.channels as u32,

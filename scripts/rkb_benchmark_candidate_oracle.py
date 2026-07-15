@@ -3,7 +3,7 @@ from typing import Any, Callable
 GridMetricsFn = Callable[..., dict[str, Any]]
 ClassifyFn = Callable[[dict[str, Any], float, float], dict[str, str]]
 ToFloatFn = Callable[[Any], float | None]
-NormalizeBarOffsetFn = Callable[[Any, int], int]
+NormalizeDownbeatOffsetFn = Callable[[Any], int]
 
 
 def _evaluate_grid_candidate(
@@ -16,18 +16,18 @@ def _evaluate_grid_candidate(
     derive_grid_metrics: GridMetricsFn,
     classify: ClassifyFn,
     to_float: ToFloatFn,
-    normalize_bar_offset: NormalizeBarOffsetFn,
+    normalize_downbeat_offset: NormalizeDownbeatOffsetFn,
 ) -> dict[str, Any] | None:
     bpm = to_float(candidate.get("bpm"))
     first_beat_ms = to_float(candidate.get("firstBeatMs"))
     if bpm is None or bpm <= 0.0 or first_beat_ms is None:
         return None
-    bar_beat_offset = normalize_bar_offset(candidate.get("barBeatOffset"), 32)
+    downbeat_beat_offset = normalize_downbeat_offset(candidate.get("downbeatBeatOffset"))
     timeline_first_beat_ms = float(first_beat_ms) + offset_ms
     metrics = derive_grid_metrics(
         result_bpm=float(bpm),
         result_first_beat_timeline_ms=timeline_first_beat_ms,
-        result_bar_beat_offset=bar_beat_offset,
+        result_downbeat_beat_offset=downbeat_beat_offset,
         truth=truth,
         compare_count=compare_count,
     )
@@ -39,12 +39,12 @@ def _evaluate_grid_candidate(
         "bpm": round(float(bpm), 6),
         "firstBeatMs": round(float(first_beat_ms), 3),
         "timelineFirstBeatMs": round(timeline_first_beat_ms, 3),
-        "barBeatOffset": bar_beat_offset,
+        "downbeatBeatOffset": downbeat_beat_offset,
         "category": classification["category"],
         "firstBeatPhaseAbsErrorMs": metrics["firstBeatPhaseAbsErrorMs"],
         "gridMaxAbsMs": metrics["gridMaxAbsMs"],
         "bpmOnlyDrift128BeatsMs": metrics["bpmOnlyDrift128BeatsMs"],
-        "barBeatOffsetMatchedMod4": metrics["barBeatOffsetMatchedMod4"],
+        "downbeatBeatOffsetMatches": metrics["downbeatBeatOffsetMatches"],
     }
 
 
@@ -57,7 +57,7 @@ def derive_candidate_oracle(
     derive_grid_metrics: GridMetricsFn,
     classify: ClassifyFn,
     to_float: ToFloatFn,
-    normalize_bar_offset: NormalizeBarOffsetFn,
+    normalize_downbeat_offset: NormalizeDownbeatOffsetFn,
 ) -> dict[str, Any]:
     raw_candidates = analysis.get("gridSolverCandidates")
     if not isinstance(raw_candidates, list):
@@ -75,7 +75,7 @@ def derive_candidate_oracle(
             derive_grid_metrics=derive_grid_metrics,
             classify=classify,
             to_float=to_float,
-            normalize_bar_offset=normalize_bar_offset,
+            normalize_downbeat_offset=normalize_downbeat_offset,
         )
         if item is not None:
             evaluated.append(item)

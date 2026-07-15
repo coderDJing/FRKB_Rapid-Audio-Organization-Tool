@@ -157,14 +157,6 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (job?.needsEnergy === true && payloadResult?.energyScore === undefined) {
       errors.push('energy: missing energy score from analyzer')
     }
-    if (
-      job?.needsStructure === true &&
-      payloadResult?.songStructure === undefined &&
-      !payloadResult?.bpmError
-    ) {
-      const structureError = String(payloadResult?.songStructureError || '').trim()
-      errors.push(`structure: ${structureError || 'missing song structure from analyzer'}`)
-    }
     if (payloadError) errors.push(`worker错误: ${payloadError}`)
     return errors
   }
@@ -229,7 +221,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         job.filePath,
         partialResult.bpm,
         partialResult.firstBeatMs,
-        partialResult.barBeatOffset,
+        partialResult.downbeatBeatOffset,
         partialResult.timeBasisOffsetMs,
         { firstBeatCoordinate: 'audio', shouldPersist }
       )
@@ -416,7 +408,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
               job.filePath,
               bpmValue,
               payloadResult.firstBeatMs,
-              payloadResult.barBeatOffset,
+              payloadResult.downbeatBeatOffset,
               payloadResult.timeBasisOffsetMs,
               { firstBeatCoordinate: 'audio', shouldPersist }
             )
@@ -430,12 +422,6 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
           payloadResult.energyScore,
           payloadResult.energyAlgorithmVersion
         )
-      }
-
-      if (shouldPersist() && payloadResult?.songStructure && job.needsStructure) {
-        await deps.persistence.persistSongStructure(job.filePath, payloadResult.songStructure, {
-          shouldPersist
-        })
       }
 
       if (shouldPersist() && payloadResult?.mixxxWaveformData && job.needsWaveform) {

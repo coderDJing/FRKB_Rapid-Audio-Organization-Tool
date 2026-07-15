@@ -11,6 +11,7 @@ import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import { RECYCLE_BIN_UUID } from '@shared/recycleBin'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
+import { projectSongBeatGridMapV2ToFixedGrid } from '@shared/songBeatGridMapV2'
 import {
   resolveLibraryTransferActionModeForPlayback,
   type LibraryTransferActionMode,
@@ -103,14 +104,7 @@ export function usePlayerControlsLogic({
       key: song?.key,
       keyAnalysisAlgorithmVersion: song?.keyAnalysisAlgorithmVersion,
       originalKey: song?.key,
-      bpm: song?.bpm,
-      originalBpm: song?.bpm,
-      firstBeatMs: song?.firstBeatMs,
-      barBeatOffset: song?.barBeatOffset,
-      timeBasisOffsetMs: song?.timeBasisOffsetMs,
-      beatGridSource: song?.beatGridSource,
-      beatGridStatus: song?.beatGridStatus,
-      beatGridAlgorithmVersion: song?.beatGridAlgorithmVersion,
+      originalBpm: projectSongBeatGridMapV2ToFixedGrid(song?.beatGridMap)?.bpm,
       energyScore: song?.energyScore,
       energyAlgorithmVersion: song?.energyAlgorithmVersion,
       hotCues: Array.isArray(song?.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],
@@ -120,13 +114,6 @@ export function usePlayerControlsLogic({
   const buildSongAnalysisSnapshot = (song: ISongInfo) => ({
     key: song.key,
     keyAnalysisAlgorithmVersion: song.keyAnalysisAlgorithmVersion,
-    bpm: song.bpm,
-    firstBeatMs: song.firstBeatMs,
-    barBeatOffset: song.barBeatOffset,
-    timeBasisOffsetMs: song.timeBasisOffsetMs,
-    beatGridSource: song.beatGridSource,
-    beatGridStatus: song.beatGridStatus,
-    beatGridAlgorithmVersion: song.beatGridAlgorithmVersion,
     energyScore: song.energyScore,
     energyAlgorithmVersion: song.energyAlgorithmVersion,
     hotCues: Array.isArray(song.hotCues) ? song.hotCues.map((cue) => ({ ...cue })) : [],

@@ -1,9 +1,9 @@
-import { normalizeSongBeatGridMap, type SongBeatGridMap } from '@shared/songBeatGridMap'
+import { normalizeSongBeatGridMapV2, type SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 export const cloneSongBeatGridMapForHorizontalBrowseWorker = (
   value: unknown
-): SongBeatGridMap | null => {
-  const map = normalizeSongBeatGridMap(value)
+): SongBeatGridMapV2 | null => {
+  const map = normalizeSongBeatGridMapV2(value, { allowSingleClip: true })
   if (!map) return null
   return {
     version: map.version,
@@ -13,7 +13,7 @@ export const cloneSongBeatGridMapForHorizontalBrowseWorker = (
       startSec: clip.startSec,
       anchorSec: clip.anchorSec,
       bpm: clip.bpm,
-      barBeatOffset: clip.barBeatOffset
+      downbeatBeatOffset: clip.downbeatBeatOffset
     }))
   }
 }

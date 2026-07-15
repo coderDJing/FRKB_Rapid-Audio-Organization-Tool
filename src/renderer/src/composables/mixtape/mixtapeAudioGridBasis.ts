@@ -1,5 +1,9 @@
 import type { MixtapeTrack } from '@renderer/composables/mixtape/types'
-import { normalizeSongBeatGridMap, type SongBeatGridMap } from '@shared/songBeatGridMap'
+import {
+  normalizeSongBeatGridMapV2,
+  projectSongBeatGridMapV2ToFixedGrid,
+  type SongBeatGridMapV2
+} from '@shared/songBeatGridMapV2'
 
 export const resolveMixtapeTimeBasisOffsetSec = (track: MixtapeTrack) => {
   const offsetMs = Number(track.timeBasisOffsetMs)
@@ -8,32 +12,37 @@ export const resolveMixtapeTimeBasisOffsetSec = (track: MixtapeTrack) => {
 }
 
 export const resolveMixtapeAudioFirstBeatSec = (track: MixtapeTrack) => {
-  const firstBeatMs = Number(track.firstBeatMs)
+  const map = resolveMixtapeAudioBeatGridMap(track)
+  const firstBeatMs = projectSongBeatGridMapV2ToFixedGrid(map)?.firstBeatMs
   if (!Number.isFinite(firstBeatMs)) return 0
-  return Math.max(0, firstBeatMs / 1000 - resolveMixtapeTimeBasisOffsetSec(track))
+  return Math.max(0, Number(firstBeatMs) / 1000)
 }
 
 export const resolveMixtapeAudioBeatGridMap = (
   track: MixtapeTrack,
   sourceDurationSec?: number
-): SongBeatGridMap | null => {
+): SongBeatGridMapV2 | null => {
   const map = track.beatGridMap
   if (!map) return null
+  const mapV2 = normalizeSongBeatGridMapV2(map, { allowSingleClip: true })
   const offsetSec = resolveMixtapeTimeBasisOffsetSec(track)
-  if (offsetSec <= 0) return map
-  return normalizeSongBeatGridMap(
-    {
-      ...map,
-      clips: map.clips.map((clip, index) => ({
-        ...clip,
-        startSec: index === 0 ? 0 : Math.max(0, clip.startSec - offsetSec),
-        anchorSec: clip.anchorSec - offsetSec
-      }))
-    },
-    {
-      durationSec: sourceDurationSec,
-      allowSingleClip: false,
-      mergeContinuousClips: false
-    }
-  )
+  if (mapV2) {
+    if (offsetSec <= 0) return mapV2
+    return normalizeSongBeatGridMapV2(
+      {
+        ...mapV2,
+        clips: mapV2.clips.map((clip, index) => ({
+          ...clip,
+          startSec: index === 0 ? 0 : Math.max(0, clip.startSec - offsetSec),
+          anchorSec: clip.anchorSec - offsetSec
+        }))
+      },
+      {
+        durationSec: sourceDurationSec,
+        allowSingleClip: true,
+        mergeContinuousClips: false
+      }
+    )
+  }
+  return null
 }

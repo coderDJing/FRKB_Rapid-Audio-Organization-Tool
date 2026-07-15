@@ -17,6 +17,7 @@ import { resolvePlayerWaveformTraceElapsedMs, sendPlayerWaveformTrace } from './
 import { normalizePlaybackHandoffSeconds } from '@renderer/utils/mainWindowPlaybackHandoff'
 import { shouldQueueBrowserMainPlayerAnalysis } from '@renderer/utils/playlistAnalysisGate'
 import { resolveInitialPlaybackRangeStartSec } from '@shared/playbackRange'
+import { projectSongBeatGridMapV2ToFixedGrid } from '@shared/songBeatGridMapV2'
 
 type WaveformCacheResponse = {
   items?: Array<{
@@ -281,7 +282,9 @@ export function useSongLoader(params: {
   }
 
   const resolveBpmValue = () => {
-    const cachedBpm = runtime.playingData.playingSong?.bpm
+    const cachedBpm = projectSongBeatGridMapV2ToFixedGrid(
+      runtime.playingData.playingSong?.beatGridMap
+    )?.bpm
     if (typeof cachedBpm === 'number' && Number.isFinite(cachedBpm) && cachedBpm > 0) {
       bpm.value = cachedBpm
       return true

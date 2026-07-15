@@ -3,6 +3,7 @@ import {
   resolveMixtapeAudioBeatGridMap,
   resolveMixtapeAudioFirstBeatSec
 } from '@renderer/composables/mixtape/mixtapeAudioGridBasis'
+import { projectSongBeatGridMapV2ToFixedGrid } from '@shared/songBeatGridMapV2'
 import {
   type TrackTimeMap,
   type TrackTimeMapInput
@@ -48,7 +49,7 @@ type TrackRuntimeTempoSnapshot = {
   originalBpm: number
   sourceBeatGridMapSignature?: string
   firstBeatSourceSec: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
   timeMapInput: TrackTimeMapInput
   timeMap: TrackTimeMap
   visibleGridLines: ReturnType<TrackTimeMap['buildVisibleGridLines']>
@@ -161,7 +162,7 @@ export const serializeTrackRuntimeTempoSnapshot = (
   originalBpm: snapshot.originalBpm,
   firstBeatSourceSec: snapshot.firstBeatSourceSec,
   beatSourceSec: snapshot.timeMapInput.beatSourceSec,
-  barBeatOffset: snapshot.barBeatOffset,
+  downbeatBeatOffset: snapshot.downbeatBeatOffset,
   sourceBeatGridMap: snapshot.timeMapInput.sourceBeatGridMap ?? undefined,
   mappingMode: snapshot.timeMapInput.mappingMode,
   trackStartSec: snapshot.timeMapInput.trackStartSec,
@@ -208,14 +209,15 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
   const track = params.track
   const sourceDurationSec = Math.max(0, Number(params.sourceDurationSec) || 0)
   const fallbackTrackBpm = resolveTrackBpmEnvelopeBaseValue(track)
-  const gridSourceBpm = resolveTrackGridSourceBpm(track)
+  const sourceBeatGridMap = resolveMixtapeAudioBeatGridMap(track, sourceDurationSec)
+  const sourceBeatGridProjection = projectSongBeatGridMapV2ToFixedGrid(sourceBeatGridMap)
+  const gridSourceBpm = sourceBeatGridProjection?.bpm ?? resolveTrackGridSourceBpm(track)
   const originalBpm =
     Number(track.originalBpm) || Number(track.gridBaseBpm) || Number(track.bpm) || fallbackTrackBpm
   const hasExplicitRawPoints = params.rawPoints !== undefined && params.rawPoints !== null
   const shouldUseMasterGrid = !hasExplicitRawPoints && isMixtapeGlobalTempoReady()
   const trackStartSec = Math.max(0, Number(track.startSec) || 0)
   const beatSourceSec = 60 / Math.max(1, gridSourceBpm)
-  const sourceBeatGridMap = resolveMixtapeAudioBeatGridMap(track, sourceDurationSec)
   const masterGrid =
     shouldUseMasterGrid && mixtapeGlobalTempoEnvelope.value.length >= 2
       ? createMixtapeMasterGrid({
@@ -287,7 +289,7 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
     firstBeatSourceSec: resolveMixtapeAudioFirstBeatSec(track),
     beatSourceSec,
     sourceBeatGridMap,
-    barBeatOffset: Number(track.barBeatOffset) || 0,
+    downbeatBeatOffset: sourceBeatGridProjection?.downbeatBeatOffset ?? 0,
     loopSegments: normalizedLoopSegments,
     loopSegment: normalizedLoopSegments?.[0],
     mappingMode: masterGrid ? 'masterGrid' : 'tempoEnvelope',
@@ -308,7 +310,7 @@ export const buildTrackRuntimeTempoSnapshot = (params: {
     originalBpm,
     sourceBeatGridMapSignature: sourceBeatGridMap?.signature,
     firstBeatSourceSec: timeMapInput.firstBeatSourceSec,
-    barBeatOffset: Number(track.barBeatOffset) || 0,
+    downbeatBeatOffset: sourceBeatGridProjection?.downbeatBeatOffset ?? 0,
     timeMapInput,
     timeMap,
     visibleGridLines,

@@ -56,6 +56,7 @@ import {
   type MainWindowPlaybackSnapshot
 } from '@renderer/utils/mainWindowPlaybackHandoff'
 import { normalizeSongStructureAnalysis } from '@shared/songStructure'
+import { projectSongBeatGridMapV2ToFixedGrid } from '@shared/songBeatGridMapV2'
 const musicIcon = musicIconAsset
 type WaveformPreviewStatePayload = {
   active?: boolean
@@ -802,7 +803,7 @@ watch(
 )
 
 watch(
-  () => runtime.playingData.playingSong?.bpm,
+  () => projectSongBeatGridMapV2ToFixedGrid(runtime.playingData.playingSong?.beatGridMap)?.bpm,
   (newBpm) => {
     if (typeof newBpm === 'number' && Number.isFinite(newBpm) && newBpm > 0) {
       bpm.value = newBpm

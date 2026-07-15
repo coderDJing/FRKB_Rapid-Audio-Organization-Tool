@@ -28,26 +28,26 @@ from run_parallel_rkb_beatgrid_feature_cache import DEFAULT_REGISTRY
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_SCRIPT = REPO_ROOT / "scripts" / "benchmark_rkb_rekordbox_truth.py"
 BENCHMARK_OUTPUT_DIR = REPO_ROOT / "grid-analysis-lab" / "rkb-rekordbox-benchmark"
-INTAKE_TRUTH = BENCHMARK_OUTPUT_DIR / "intake-current-truth.json"
-CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.json"
-DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "parallel-latest.json"
+INTAKE_TRUTH = BENCHMARK_OUTPUT_DIR / "intake-current-truth.v2.json"
+CURRENT_TRUTH = BENCHMARK_OUTPUT_DIR / "rekordbox-current-truth.v2.json"
+DEFAULT_OUTPUT = BENCHMARK_OUTPUT_DIR / "parallel-latest.v2.json"
 PROFILE_DEFAULTS: dict[str, dict[str, str]] = {
     "current": {
         "truth": str(CURRENT_TRUTH),
         "audio_root": str(benchmark.DEFAULT_AUDIO_ROOT),
-        "output": str(BENCHMARK_OUTPUT_DIR / "frkb-current-latest.json"),
+        "output": str(BENCHMARK_OUTPUT_DIR / "frkb-current-latest.v2.json"),
         "solver": "legacy",
     },
     "constant-grid-dp-current": {
         "truth": str(CURRENT_TRUTH),
         "audio_root": str(benchmark.DEFAULT_AUDIO_ROOT),
-        "output": str(BENCHMARK_OUTPUT_DIR / "frkb-constant-grid-dp-current-latest.json"),
+        "output": str(BENCHMARK_OUTPUT_DIR / "frkb-constant-grid-dp-current-latest.v2.json"),
         "solver": "constant-grid-dp",
     },
     "intake": {
         "truth": str(INTAKE_TRUTH),
         "audio_root": str(FRKB_FILTER_NEW_ROOT),
-        "output": str(BENCHMARK_OUTPUT_DIR / "intake-current-latest.json"),
+        "output": str(BENCHMARK_OUTPUT_DIR / "intake-current-latest.v2.json"),
         "solver": "legacy",
     },
 }

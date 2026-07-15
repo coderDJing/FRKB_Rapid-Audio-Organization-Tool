@@ -15,7 +15,6 @@ import { requestBackgroundTaskExecution } from '../backgroundOrchestrator'
 import { getBackgroundIdleSnapshot } from '../backgroundIdleGate'
 import store from '../../store'
 import {
-  hasRequiredSongStructureAnalysis,
   hasUsableKeyAnalysis,
   hasUsableSongBeatGridAnalysis
 } from '../../../shared/songAnalysisCompleteness'
@@ -49,7 +48,6 @@ type CachedAnalysisInfo = {
   keyAnalysisAlgorithmVersion?: unknown
   bpm?: unknown
   firstBeatMs?: unknown
-  barBeatOffset?: unknown
   beatThisWindowCount?: unknown
   beatGridAlgorithmVersion?: unknown
   beatGridSource?: unknown
@@ -483,7 +481,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const hasKey = hasUsableKeyAnalysis(info)
       const hasBpm = hasUsableSongBeatGridAnalysis(info)
       const hasEnergy = hasUsableSongEnergyAnalysis(info)
-      const hasStructure = hasRequiredSongStructureAnalysis(info)
       const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
       if (!listRoot) continue
       const absFilePath = LibraryCacheDb.resolveCacheFilePath(listRoot, filePath)
@@ -500,7 +497,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           mtimeMs
         )
       }
-      if (!hasKey || !hasBpm || !hasEnergy || !hasStructure || !hasWaveform) {
+      if (!hasKey || !hasBpm || !hasEnergy || !hasWaveform) {
         results.push(absFilePath)
         if (results.length >= limit) {
           processedAll = false
@@ -567,7 +564,6 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           const hasKey = hasUsableKeyAnalysis(cached?.info)
           const hasBpm = hasUsableSongBeatGridAnalysis(cached?.info)
           const hasEnergy = hasUsableSongEnergyAnalysis(cached?.info)
-          const hasStructure = hasRequiredSongStructureAnalysis(cached?.info)
           let hasWaveform = false
           if (cached && Number.isFinite(cached.size) && Number.isFinite(cached.mtimeMs)) {
             hasWaveform = await LibraryCacheDb.hasWaveformSurfaceCacheEntryByMeta(
@@ -577,7 +573,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
               cached.mtimeMs
             )
           }
-          if (!cached || !hasKey || !hasBpm || !hasEnergy || !hasStructure || !hasWaveform) {
+          if (!cached || !hasKey || !hasBpm || !hasEnergy || !hasWaveform) {
             results.push(filePath)
             if (results.length >= limit) break
           }

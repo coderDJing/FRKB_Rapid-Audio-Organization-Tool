@@ -12,8 +12,8 @@ import type {
 type HorizontalBrowseDeckToolbarState = HorizontalBrowseGridToolbarState
 
 type HorizontalBrowseDetailExpose = {
-  toggleBarLinePicking?: () => void
-  setBarLineAtPlayhead?: () => void
+  toggleDownbeatLinePicking?: () => void
+  setDownbeatLineAtPlayhead?: () => void
   shiftGridLargeLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridSmallLeft?: (options?: HorizontalBrowseGridShiftOptions) => void
   shiftGridSmallRight?: (options?: HorizontalBrowseGridShiftOptions) => void
@@ -67,14 +67,14 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
     toolbarStateRef.value = nextValue
   }
 
-  const handleDeckBarLinePickingToggle = (deck: HorizontalBrowseDeckKey) => {
+  const handleDeckDownbeatLinePickingToggle = (deck: HorizontalBrowseDeckKey) => {
     params.touchDeckInteraction(deck)
-    params.resolveDetailRef(deck)?.toggleBarLinePicking?.()
+    params.resolveDetailRef(deck)?.toggleDownbeatLinePicking?.()
   }
 
-  const handleDeckSetBarLineAtPlayhead = (deck: HorizontalBrowseDeckKey) => {
+  const handleDeckSetDownbeatLineAtPlayhead = (deck: HorizontalBrowseDeckKey) => {
     params.touchDeckInteraction(deck)
-    params.resolveDetailRef(deck)?.setBarLineAtPlayhead?.()
+    params.resolveDetailRef(deck)?.setDownbeatLineAtPlayhead?.()
   }
 
   const handleDeckGridShiftLargeLeft = (deck: HorizontalBrowseDeckKey) => {
@@ -196,8 +196,8 @@ export const useHorizontalBrowseDeckToolbarInteractions = (
 
   return {
     handleToolbarStateChange,
-    handleDeckBarLinePickingToggle,
-    handleDeckSetBarLineAtPlayhead,
+    handleDeckDownbeatLinePickingToggle,
+    handleDeckSetDownbeatLineAtPlayhead,
     handleDeckGridShiftLargeLeft,
     handleDeckGridShiftSmallLeft,
     handleDeckGridShiftSmallRight,

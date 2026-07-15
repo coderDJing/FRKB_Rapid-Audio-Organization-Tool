@@ -1,6 +1,6 @@
 import type { Ref } from 'vue'
 import {
-  PREVIEW_BAR_BEAT_INTERVAL,
+  PREVIEW_DOWNBEAT_BEAT_INTERVAL,
   PREVIEW_BPM_MAX,
   PREVIEW_BPM_MIN,
   PREVIEW_BPM_STEP,
@@ -20,7 +20,7 @@ export type HorizontalBrowseGridToolbarState = {
   bpmStep: number
   bpmMin: number
   bpmMax: number
-  barLinePicking: boolean
+  downbeatLinePicking: boolean
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
@@ -40,26 +40,26 @@ type UseHorizontalBrowseGridToolbarParams = {
   previewBpm: Ref<number>
   previewBpmInput: Ref<string>
   previewFirstBeatMs: Ref<number>
-  previewBarBeatOffset: Ref<number>
+  previewDownbeatBeatOffset: Ref<number>
   previewTimeBasisOffsetMs: Ref<number>
   bpmTapTimestamps: Ref<number[]>
-  previewBarLinePicking: Ref<boolean>
+  previewDownbeatLinePicking: Ref<boolean>
   metronomeEnabled: Ref<boolean>
   metronomeVolumeLevel: Ref<1 | 2 | 3>
   canToggleMetronome: Ref<boolean>
   emitToolbarStateChange: (value: HorizontalBrowseGridToolbarState) => void
   resolveDisplayGridBpm: () => number
   resolveSongFirstBeatMs: () => number
-  resolveSongBarBeatOffset: () => number
+  resolveSongDownbeatBeatOffset: () => number
   resolveSongTimeBasisOffsetMs: () => number
   scheduleDraw: () => void
   schedulePreviewBpmTapReset: () => void
   persistGridDefinition: () => Promise<void>
   schedulePersistGridDefinition: () => void
   resetPreviewBpmTap: () => void
-  resetBarLinePicking: () => void
-  handleBarLinePickingToggle: () => void
-  handleSetBarLineAtPlayhead: () => void
+  resetDownbeatLinePicking: () => void
+  handleDownbeatLinePickingToggle: () => void
+  handleSetDownbeatLineAtPlayhead: () => void
   handleGridShift: (deltaMs: number, options?: HorizontalBrowseGridShiftOptions) => void
   handleMetronomeStateCycle: () => void
   resolveGridControlsDisabled?: () => boolean
@@ -80,7 +80,7 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
       bpmStep: PREVIEW_BPM_STEP,
       bpmMin: PREVIEW_BPM_MIN,
       bpmMax: PREVIEW_BPM_MAX,
-      barLinePicking: params.previewBarLinePicking.value,
+      downbeatLinePicking: params.previewDownbeatLinePicking.value,
       metronomeEnabled: params.metronomeEnabled.value,
       metronomeVolumeLevel: params.metronomeVolumeLevel.value,
       canToggleMetronome: params.canToggleMetronome.value,
@@ -96,16 +96,16 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     params.previewBpmInput.value =
       params.previewBpm.value > 0 ? formatPreviewBpm(params.previewBpm.value) : ''
     params.previewFirstBeatMs.value = Math.max(0, params.resolveSongFirstBeatMs())
-    params.previewBarBeatOffset.value = normalizeBeatOffset(
-      params.resolveSongBarBeatOffset(),
-      PREVIEW_BAR_BEAT_INTERVAL
+    params.previewDownbeatBeatOffset.value = normalizeBeatOffset(
+      params.resolveSongDownbeatBeatOffset(),
+      PREVIEW_DOWNBEAT_BEAT_INTERVAL
     )
     params.previewTimeBasisOffsetMs.value = Math.max(
       0,
       Number(params.resolveSongTimeBasisOffsetMs()) || 0
     )
     params.resetPreviewBpmTap()
-    params.resetBarLinePicking()
+    params.resetDownbeatLinePicking()
     emitToolbarState()
   }
 
@@ -170,14 +170,14 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     params.schedulePersistGridDefinition()
   }
 
-  const toggleBarLinePicking = () => {
-    params.handleBarLinePickingToggle()
+  const toggleDownbeatLinePicking = () => {
+    params.handleDownbeatLinePickingToggle()
     emitToolbarState()
   }
 
-  const setBarLineAtPlayhead = () => {
+  const setDownbeatLineAtPlayhead = () => {
     if (params.resolveGridControlsDisabled?.() === true) return
-    params.handleSetBarLineAtPlayhead()
+    params.handleSetDownbeatLineAtPlayhead()
     emitToolbarState()
     params.schedulePersistGridDefinition()
   }
@@ -216,8 +216,8 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     handlePreviewBpmInputUpdate,
     handlePreviewBpmInputBlur,
     handlePreviewBpmTap,
-    toggleBarLinePicking,
-    setBarLineAtPlayhead,
+    toggleDownbeatLinePicking,
+    setDownbeatLineAtPlayhead,
     shiftGrid,
     cycleMetronomeState,
     selectWholeAdjustment,

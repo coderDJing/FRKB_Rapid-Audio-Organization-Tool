@@ -27,7 +27,7 @@ type TrackLoopGridLine = {
   key: string
   baseSec: number
   displaySec: number
-  level: 'bar' | 'beat4' | 'beat'
+  level: 'downbeat' | 'beat'
   style: CSSProperties
   active: boolean
   disabled: boolean
@@ -223,10 +223,9 @@ export const useMixtapeTrackLoopEditor = (options: UseMixtapeTrackLoopEditorOpti
     return roundSec((offsetX / hostRect.width) * displayDurationSec)
   }
 
-  const resolveFinestVisibleLevel = (levels: Array<'bar' | 'beat4' | 'beat'>) => {
+  const resolveFinestVisibleLevel = (levels: Array<'downbeat' | 'beat'>) => {
     if (levels.includes('beat')) return 'beat'
-    if (levels.includes('beat4')) return 'beat4'
-    return 'bar'
+    return 'downbeat'
   }
 
   const resolveTrackVisibleGridLines = (track: MixtapeTrack) => {

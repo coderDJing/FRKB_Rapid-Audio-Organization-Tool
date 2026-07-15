@@ -10,8 +10,8 @@ export const HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX = 1
 export const HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX = 2.5
 
 type CreateHorizontalBrowseRawWaveformDetailExposeParams = {
-  toggleBarLinePicking: () => void
-  setBarLineAtPlayhead: () => void
+  toggleDownbeatLinePicking: () => void
+  setDownbeatLineAtPlayhead: () => void
   shiftGrid: (deltaMs: number, options?: HorizontalBrowseGridShiftOptions) => void
   updateBpmInput: (value: string) => void
   blurBpmInput: () => void
@@ -59,8 +59,8 @@ export const createHorizontalBrowseRawWaveformDetailExpose = (
     }
 
   return {
-    toggleBarLinePicking: params.toggleBarLinePicking,
-    setBarLineAtPlayhead: params.setBarLineAtPlayhead,
+    toggleDownbeatLinePicking: params.toggleDownbeatLinePicking,
+    setDownbeatLineAtPlayhead: params.setDownbeatLineAtPlayhead,
     shiftGridSmallLeft: shiftBy(HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX, -1),
     shiftGridLargeLeft: shiftBy(HORIZONTAL_BROWSE_GRID_SHIFT_LARGE_TARGET_CSS_PX, -1),
     shiftGridSmallRight: shiftBy(HORIZONTAL_BROWSE_GRID_SHIFT_SMALL_TARGET_CSS_PX, 1),

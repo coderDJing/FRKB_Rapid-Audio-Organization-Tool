@@ -1,5 +1,8 @@
 import type ConfirmDialog from '@renderer/components/confirmDialog'
-import { normalizeSongBeatGridMap } from '@shared/songBeatGridMap'
+import {
+  normalizeSongBeatGridMapV2,
+  projectSongBeatGridMapV2ToFixedGrid
+} from '@shared/songBeatGridMapV2'
 import type {
   MixtapeEnvelopeParamId,
   MixtapeGainPoint,
@@ -24,9 +27,6 @@ export type MixtapeEnvelopeField =
   | 'volumeEnvelope'
 
 export type MixtapeBeatAlignGridDefinitionPayload = {
-  barBeatOffset: number
-  firstBeatMs: number
-  bpm: number
   beatGridMap?: MixtapeTrack['beatGridMap'] | null
 }
 
@@ -42,8 +42,6 @@ type CreateMixtapeBeatAlignGridDefinitionSaverContext = {
   ) => void
   resolveTrackDurationSeconds: (track: MixtapeTrack) => number
   normalizeMixtapeFilePath: (value: unknown) => string
-  normalizeBarBeatOffset: (value: unknown) => number
-  normalizeFirstBeatMs: (value: unknown) => number
   normalizeBpm: (value: unknown) => number | null
   MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL: MixtapeEnvelopeParamId[]
   MIXTAPE_ENVELOPE_PARAMS_STEM: MixtapeEnvelopeParamId[]
@@ -77,8 +75,6 @@ export const createMixtapeBeatAlignGridDefinitionSaver = (
     ensureDefaultGlobalTempoEnvelope,
     resolveTrackDurationSeconds,
     normalizeMixtapeFilePath,
-    normalizeBarBeatOffset,
-    normalizeFirstBeatMs,
     normalizeBpm,
     MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL,
     MIXTAPE_ENVELOPE_PARAMS_STEM,
@@ -97,27 +93,16 @@ export const createMixtapeBeatAlignGridDefinitionSaver = (
     if (targetIndex < 0) return
     const currentTrack = tracks.value[targetIndex]
     if (!currentTrack) return
-    const normalizedOffset = normalizeBarBeatOffset(nextGrid?.barBeatOffset)
-    const normalizedFirstBeatMs = normalizeFirstBeatMs(nextGrid?.firstBeatMs)
-    const normalizedInputBpm = normalizeBpm(nextGrid?.bpm)
-    const hasBeatGridMapInput = Object.prototype.hasOwnProperty.call(nextGrid || {}, 'beatGridMap')
-    const nextBeatGridMap = normalizeSongBeatGridMap(nextGrid?.beatGridMap)
-    const shouldClearBeatGridMap = hasBeatGridMapInput && nextGrid?.beatGridMap === null
-    const currentOffset = normalizeBarBeatOffset(currentTrack.barBeatOffset)
-    const currentFirstBeatMs = normalizeFirstBeatMs(currentTrack.firstBeatMs)
-    const offsetChanged = normalizedOffset !== currentOffset
-    const firstBeatChanged = Math.abs(normalizedFirstBeatMs - currentFirstBeatMs) > 0.0001
-    const beatGridMapChanged =
-      (nextBeatGridMap !== null &&
-        currentTrack.beatGridMap?.signature !== nextBeatGridMap.signature) ||
-      (shouldClearBeatGridMap && currentTrack.beatGridMap !== undefined)
+    const nextBeatGridMap = normalizeSongBeatGridMapV2(nextGrid?.beatGridMap, {
+      allowSingleClip: true
+    })
+    if (!nextBeatGridMap) return
+    const beatGridMapChanged = currentTrack.beatGridMap?.signature !== nextBeatGridMap.signature
     const targetFilePath = normalizeMixtapeFilePath(currentTrack.filePath)
-    const gridBaseBpm = normalizeBpm(currentTrack.gridBaseBpm)
     const originalBpm = normalizeBpm(currentTrack.originalBpm)
-    const bpmCompareBase = gridBaseBpm ?? originalBpm ?? normalizeBpm(currentTrack.bpm)
+    const nextBpm = projectSongBeatGridMapV2ToFixedGrid(nextBeatGridMap)?.bpm ?? null
     const shouldPersistBpm =
-      normalizedInputBpm !== null &&
-      (bpmCompareBase === null || Math.abs(normalizedInputBpm - bpmCompareBase) > 0.0001)
+      nextBpm !== null && (originalBpm === null || Math.abs(nextBpm - originalBpm) > 0.0001)
     const isSameTrack = (track: MixtapeTrack) =>
       targetFilePath.length > 0
         ? normalizeMixtapeFilePath(track.filePath) === targetFilePath
@@ -126,15 +111,12 @@ export const createMixtapeBeatAlignGridDefinitionSaver = (
       shouldPersistBpm &&
       tracks.value.some((track: MixtapeTrack) => {
         if (!isSameTrack(track)) return false
-        const trackBpmBase =
-          normalizeBpm(track.gridBaseBpm) ??
-          normalizeBpm(track.originalBpm) ??
-          normalizeBpm(track.bpm)
+        const trackBpmBase = normalizeBpm(track.originalBpm)
         if (trackBpmBase === null) return true
-        return Math.abs(trackBpmBase - Number(normalizedInputBpm)) > 0.0001
+        return Math.abs(trackBpmBase - Number(nextBpm)) > 0.0001
       })
-    if (!offsetChanged && !firstBeatChanged && !bpmChanged && !beatGridMapChanged) return
-    const gridPositionChanged = firstBeatChanged || bpmChanged || beatGridMapChanged
+    if (!bpmChanged && !beatGridMapChanged) return
+    const gridPositionChanged = bpmChanged || beatGridMapChanged
     const activeEnvelopeParams =
       mixtapeMixMode.value === 'eq'
         ? MIXTAPE_ENVELOPE_PARAMS_TRADITIONAL
@@ -150,26 +132,11 @@ export const createMixtapeBeatAlignGridDefinitionSaver = (
     if (gridPositionChanged && !shouldResetEnvelope) return
     const nextTracks = tracks.value.map((track: MixtapeTrack) => {
       if (!isSameTrack(track)) return track
-      const fallbackGridBaseBpm =
-        normalizeBpm(track.gridBaseBpm) ?? normalizeBpm(track.originalBpm) ?? track.gridBaseBpm
       const nextTrack: MixtapeTrack = {
         ...track,
-        barBeatOffset: normalizedOffset,
-        firstBeatMs: normalizedFirstBeatMs,
-        gridBaseBpm:
-          shouldPersistBpm && normalizedInputBpm !== null
-            ? Number(normalizedInputBpm)
-            : fallbackGridBaseBpm,
-        originalBpm:
-          shouldPersistBpm && normalizedInputBpm !== null
-            ? Number(normalizedInputBpm)
-            : track.originalBpm
+        originalBpm: shouldPersistBpm && nextBpm !== null ? Number(nextBpm) : track.originalBpm
       }
-      if (nextBeatGridMap) {
-        nextTrack.beatGridMap = nextBeatGridMap
-      } else if (shouldClearBeatGridMap) {
-        delete nextTrack.beatGridMap
-      }
+      nextTrack.beatGridMap = nextBeatGridMap
       if (!shouldResetEnvelope) return nextTrack
       for (const param of activeEnvelopeParams as MixtapeEnvelopeParamId[]) {
         const envelopeField = getTrackEnvelopeField(MIXTAPE_ENVELOPE_TRACK_FIELD_BY_PARAM[param])
@@ -190,18 +157,12 @@ export const createMixtapeBeatAlignGridDefinitionSaver = (
       void window.electron.ipcRenderer
         .invoke('mixtape:update-grid-definition', {
           filePath: targetFilePath,
-          barBeatOffset: normalizedOffset,
-          firstBeatMs: normalizedFirstBeatMs,
-          bpm: bpmChanged ? normalizedInputBpm : undefined,
-          beatGridMap: nextBeatGridMap ?? (shouldClearBeatGridMap ? null : undefined)
+          beatGridMap: nextBeatGridMap
         })
         .catch((error: unknown) => {
           console.error('[mixtape] update grid definition failed', {
             filePath: targetFilePath,
-            barBeatOffset: normalizedOffset,
-            firstBeatMs: normalizedFirstBeatMs,
-            bpm: bpmChanged ? normalizedInputBpm : undefined,
-            beatGridMap: nextBeatGridMap ?? (shouldClearBeatGridMap ? null : undefined),
+            beatGridMap: nextBeatGridMap,
             error
           })
         })
@@ -251,11 +212,11 @@ export const createMixtapeBeatAlignGridDefinitionSaver = (
           })
         : Promise.resolve(null)
     const originalBpmUpdateTask =
-      bpmChanged && normalizedInputBpm !== null
+      bpmChanged && nextBpm !== null
         ? window.electron.ipcRenderer.invoke('mixtape:update-track-start-sec', {
             entries: affectedTracks.map((track: MixtapeTrack) => ({
               itemId: track.id,
-              originalBpm: Number(normalizedInputBpm)
+              originalBpm: Number(nextBpm)
             }))
           })
         : Promise.resolve(null)

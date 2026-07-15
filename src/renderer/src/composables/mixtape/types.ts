@@ -1,6 +1,6 @@
 import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
-import type { SongBeatGridMap } from '@shared/songBeatGridMap'
+import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 export type StemWaveformBand = {
   left: Uint8Array
@@ -29,6 +29,10 @@ export type MixtapeRawItem = {
   originPlaylistUuid?: string | null
   originPathSnapshot?: string | null
   infoJson?: string | null
+  canonicalGrid?: {
+    beatGridMap?: SongBeatGridMapV2 | null
+    timeBasisOffsetMs?: number
+  }
 }
 
 export type MixtapeMixMode = 'eq' | 'stem'
@@ -97,12 +101,12 @@ export type MixtapeTrack = {
   volumeMuteSegments?: MixtapeMuteSegment[]
   // 首拍偏移（毫秒）
   firstBeatMs?: number
-  // 大节线相位偏移（以拍为单位，仅改变网格线定义，不改变网格线位置）
-  barBeatOffset?: number
+  // 四拍 downbeat 相位（以拍为单位，仅改变网格线定义，不改变网格线位置）
+  downbeatBeatOffset?: number
   // 仅用于把 FRKB 播放/波形时间基准对齐到外部分析源（如 Rekordbox）
   timeBasisOffsetMs?: number
-  // 动态多 clip 网格事实源；固定 BPM 曲目保持为空
-  beatGridMap?: SongBeatGridMap
+  // 只读歌曲网格快照；项目数据库不再持久化网格副本
+  beatGridMap?: SongBeatGridMapV2
   // Stem 素材状态（pending/running/ready/failed）
   stemStatus?: MixtapeStemStatus
   stemError?: string
@@ -150,8 +154,8 @@ export type SerializedTrackTempoSnapshot = {
   originalBpm: number
   firstBeatSourceSec: number
   beatSourceSec: number
-  barBeatOffset: number
-  sourceBeatGridMap?: SongBeatGridMap
+  downbeatBeatOffset: number
+  sourceBeatGridMap?: SongBeatGridMapV2
   mappingMode?: 'tempoEnvelope' | 'masterGrid'
   trackStartSec?: number
   masterGridFallbackBpm?: number
@@ -165,7 +169,7 @@ export type SerializedTrackTempoSnapshot = {
 export type SerializedVisibleGridLine = {
   sec: number
   sourceSec: number
-  level: 'bar' | 'beat4' | 'beat'
+  level: 'downbeat' | 'beat'
 }
 
 export type MixtapeMuteSegment = {
