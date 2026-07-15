@@ -578,8 +578,13 @@ const handleBeforeUnload = () => {
 }
 
 const getLibrary = async () => {
-  runtime.libraryTree = await window.electron.ipcRenderer.invoke('getLibrary')
-  runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
+  runtime.libraryTreeLoading = true
+  try {
+    runtime.libraryTree = await window.electron.ipcRenderer.invoke('getLibrary')
+    runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
+  } finally {
+    runtime.libraryTreeLoading = false
+  }
 }
 getLibrary()
 

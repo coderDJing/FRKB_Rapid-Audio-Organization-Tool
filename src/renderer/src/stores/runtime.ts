@@ -148,6 +148,7 @@ interface Runtime {
   songDragSuppressClickUntilMs: number
   libraryTree: IDir
   oldLibraryTree: IDir
+  libraryTreeLoading: boolean
   selectSongListDialogShow: boolean
   dialogSelectedSongListUUID: string
   songsArea: ISongsAreaPaneRuntimeState
@@ -255,6 +256,7 @@ export const useRuntimeStore = defineStore('runtime', {
         dirName: 'library',
         order: 1
       },
+      libraryTreeLoading: false,
       selectSongListDialogShow: false, //全局是否有歌单选择器正在展示
       dialogSelectedSongListUUID: '', //dialog中被选中的歌单UUID
       // 注意：songsArea 和 songsAreaPanels.panes.single 共享同一个对象引用。

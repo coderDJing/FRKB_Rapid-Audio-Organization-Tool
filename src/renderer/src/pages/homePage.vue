@@ -719,13 +719,24 @@ const drop = async (e: DragEvent) => {
             v-if="isPioneerDeviceLibraryView"
             style="width: 100%; height: 100%"
           />
-          <div
-            v-for="item of runtime.libraryTree.children"
-            v-else
-            v-show="librarySelected == item.dirName"
-            style="width: 100%; height: 100%"
-          >
-            <libraryArea :uuid="item.uuid"></libraryArea>
+          <div v-else class="localLibraryTreePanel">
+            <div
+              v-for="item of runtime.libraryTree.children"
+              v-show="librarySelected == item.dirName"
+              style="width: 100%; height: 100%"
+            >
+              <libraryArea :uuid="item.uuid"></libraryArea>
+            </div>
+
+            <div
+              v-if="runtime.libraryTreeLoading"
+              class="localLibraryTreeLoading"
+              role="status"
+              aria-live="polite"
+            >
+              <span class="localLibraryTreeLoadingSpinner" aria-hidden="true"></span>
+              <span>{{ t('common.loading') }}</span>
+            </div>
           </div>
         </div>
         <div
@@ -891,6 +902,42 @@ const drop = async (e: DragEvent) => {
 
   &.librarySwitching {
     animation: librarySwitchFade 220ms ease;
+  }
+}
+
+.localLibraryTreePanel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.localLibraryTreeLoading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-weak);
+  font-size: 12px;
+  background-color: var(--bg);
+  pointer-events: all;
+}
+
+.localLibraryTreeLoadingSpinner {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: localLibraryTreeLoadingSpin 0.75s linear infinite;
+}
+
+@keyframes localLibraryTreeLoadingSpin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
