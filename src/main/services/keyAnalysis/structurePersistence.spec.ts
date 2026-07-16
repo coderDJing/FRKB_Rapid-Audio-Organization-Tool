@@ -5,6 +5,7 @@ import {
   CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
   type SongStructureAnalysis
 } from '../../../shared/songStructure'
+import { createSongBeatGridMapV2FromFixedGrid } from '../../../shared/songBeatGridMapV2'
 
 const mocks = vi.hoisted(() => ({
   stat: vi.fn(),
@@ -46,23 +47,25 @@ import { createPersistSongStructure } from './structurePersistence'
 
 const FILE_PATH = 'G:\\FRKB_database-A\\library\\FilterLibrary\\test.mp3'
 const LIST_ROOT = 'G:\\FRKB_database-A'
+const BEAT_GRID_MAP = createSongBeatGridMapV2FromFixedGrid({
+  bpm: 128,
+  firstBeatMs: 0,
+  downbeatBeatOffset: 0,
+  source: 'manual'
+})!
 
 const createStructure = (): SongStructureAnalysis => ({
   formatVersion: CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
   algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
   source: 'algorithmic',
   durationSec: 64,
-  bpm: 128,
-  firstBeatMs: 0,
-  barBeatOffset: 0,
-  phraseBars: 8,
+  beatGridSignature: BEAT_GRID_MAP.signature,
   sections: [
     {
       startSec: 0,
       endSec: 64,
-      startBar: 1,
-      endBar: 32,
-      phraseIndex: 0,
+      startDownbeatOrdinal: 0,
+      endDownbeatOrdinal: 32,
       kind: 'groove',
       confidence: 0.8,
       energy: 0.7,
@@ -81,10 +84,7 @@ describe('createPersistSongStructure', () => {
     mocks.resolveExternalAnalysisContext.mockReturnValue(null)
     mocks.loadSharedSongGridDefinition.mockResolvedValue({
       filePath: FILE_PATH,
-      bpm: 128,
-      firstBeatMs: 0,
-      barBeatOffset: 0,
-      beatGridSource: 'manual'
+      beatGridMap: BEAT_GRID_MAP
     })
   })
 

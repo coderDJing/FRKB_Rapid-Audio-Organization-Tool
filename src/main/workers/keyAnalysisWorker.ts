@@ -19,6 +19,13 @@ import {
   decodeSongAnalysisAudio,
   shouldUseNativeLibavSongAnalysisDecode
 } from './songAnalysisAudioDecoder'
+import {
+  createSongBeatGridMapV2FromFixedGrid,
+  normalizeSongBeatGridMapV2,
+  type SongBeatGridMapV2
+} from '../../shared/songBeatGridMapV2'
+import { buildSongStructureAnalysisV23 } from '../../shared/songStructureV23'
+import type { SongStructureAnalysisV23 } from '../../shared/songStructureV23Common'
 
 type KeyJob = {
   jobId: number
@@ -30,7 +37,9 @@ type KeyJob = {
   needsEnergy?: boolean
   needsStructure?: boolean
   cachedBpm?: number
+  cachedBeatGridMap?: SongBeatGridMapV2
   cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
+  analyzedTimeBasisOffsetMs?: number
 }
 
 type KeyResultPayload = {
@@ -41,6 +50,8 @@ type KeyResultPayload = {
   downbeatBeatOffset?: number
   timeBasisOffsetMs?: number
   bpmError?: string
+  songStructureError?: string
+  songStructure?: SongStructureAnalysisV23
   energyScore?: number
   energyAlgorithmVersion?: number
   mixxxWaveformData?: MixxxWaveformData | null
@@ -258,6 +269,7 @@ const analyzeKeyForFile = (
     needsEnergy: boolean
     needsStructure: boolean
     cachedBpm?: number
+    cachedBeatGridMap?: SongBeatGridMapV2
     cachedFirstBeatMs?: number
     cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
     analyzedTimeBasisOffsetMs?: number
@@ -277,7 +289,9 @@ const analyzeKeyForFileInternal = async (
     needsEnergy: boolean
     needsStructure: boolean
     cachedBpm?: number
+    cachedBeatGridMap?: SongBeatGridMapV2
     cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
+    analyzedTimeBasisOffsetMs?: number
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -286,17 +300,21 @@ const analyzeKeyForFileInternal = async (
   const needsBpm = Boolean(options.needsBpm) && getBeatThisRuntimeAvailabilitySnapshot() !== false
   const needsWaveform = Boolean(options.needsWaveform)
   const needsEnergy = Boolean(options.needsEnergy)
-  const needsStructure = false
-  const cachedUnifiedDisplayWaveformData = needsEnergy
-    ? resolveCachedUnifiedDisplayWaveformData(options.cachedUnifiedDisplayWaveformData)
-    : null
+  const needsStructure = Boolean(options.needsStructure)
+  const cachedUnifiedDisplayWaveformData =
+    needsEnergy || needsStructure
+      ? resolveCachedUnifiedDisplayWaveformData(options.cachedUnifiedDisplayWaveformData)
+      : null
+  let structureWaveformData = cachedUnifiedDisplayWaveformData
   const needsPcmEnergy = needsEnergy && !cachedUnifiedDisplayWaveformData
   const useNativeLibavWaveformDecode =
-    (needsWaveform || needsPcmEnergy) && shouldUseNativeLibavSongAnalysisDecode(filePath)
+    (needsWaveform || needsPcmEnergy || (needsStructure && !structureWaveformData)) &&
+    shouldUseNativeLibavSongAnalysisDecode(filePath)
   const useNativeLibavPrimaryDecode = (needsKey || needsPcmEnergy) && useNativeLibavWaveformDecode
   const needsRustDecode =
     (needsKey && !useNativeLibavPrimaryDecode) ||
-    ((needsWaveform || needsPcmEnergy) && !useNativeLibavWaveformDecode)
+    ((needsWaveform || needsPcmEnergy || (needsStructure && !structureWaveformData)) &&
+      !useNativeLibavWaveformDecode)
   let rust: RustBinding | null = null
   let decoded: DecodedAudioPcm | null = null
   let beatGridDecoded: DecodedBeatGridPcm | null = null
@@ -408,6 +426,7 @@ const analyzeKeyForFileInternal = async (
         result.bpm = beatThisResult.bpm
         result.firstBeatMs = beatThisResult.firstBeatMs
         result.downbeatBeatOffset = beatThisResult.downbeatBeatOffset
+        result.timeBasisOffsetMs = options.analyzedTimeBasisOffsetMs
         result.bpmError = undefined
       } catch (error) {
         result.bpmError =
@@ -484,7 +503,7 @@ const analyzeKeyForFileInternal = async (
   }
 
   if (
-    needsWaveform &&
+    (needsWaveform || (needsStructure && !structureWaveformData)) &&
     (typeof resolveRustBinding().computeMixxxWaveformWithRate === 'function' ||
       typeof resolveRustBinding().computeMixxxWaveform === 'function')
   ) {
@@ -531,6 +550,7 @@ const analyzeKeyForFileInternal = async (
       const unifiedDisplayWaveformData = mixxxWaveformData
         ? buildUnifiedDisplayWaveformDetailFromMixxx(mixxxWaveformData, rawWaveformData)
         : null
+      structureWaveformData = unifiedDisplayWaveformData
       if (needsWaveform) {
         result.mixxxWaveformData = mixxxWaveformData
         result.unifiedDisplayWaveformData = unifiedDisplayWaveformData
@@ -564,6 +584,43 @@ const analyzeKeyForFileInternal = async (
         needsStructure,
         detail: 'waveform-failed'
       })
+    }
+  }
+
+  if (needsStructure) {
+    const cachedBeatGridMap = normalizeSongBeatGridMapV2(options.cachedBeatGridMap, {
+      allowSingleClip: true
+    })
+    const analyzedFirstBeatMs = Number(result.firstBeatMs)
+    const timeBasisOffsetMs = Number(options.analyzedTimeBasisOffsetMs)
+    const analyzedBeatGridMap =
+      Number.isFinite(Number(result.bpm)) &&
+      Number.isFinite(analyzedFirstBeatMs) &&
+      Number.isInteger(result.downbeatBeatOffset)
+        ? createSongBeatGridMapV2FromFixedGrid({
+            bpm: result.bpm,
+            firstBeatMs: Number.isFinite(timeBasisOffsetMs)
+              ? analyzedFirstBeatMs + Math.max(0, timeBasisOffsetMs)
+              : analyzedFirstBeatMs,
+            downbeatBeatOffset: result.downbeatBeatOffset,
+            source: 'analysis'
+          })
+        : null
+    const beatGridMap =
+      cachedBeatGridMap?.source === 'manual' || !analyzedBeatGridMap
+        ? cachedBeatGridMap
+        : analyzedBeatGridMap
+    if (!structureWaveformData) {
+      result.songStructureError = 'missing unified waveform for v23 structure analysis'
+    } else if (!beatGridMap) {
+      result.songStructureError = 'missing v2 beat grid for v23 structure analysis'
+    } else {
+      const songStructure = buildSongStructureAnalysisV23({
+        waveformData: structureWaveformData,
+        beatGridMap
+      })
+      if (songStructure) result.songStructure = songStructure
+      else result.songStructureError = 'v23 structure analyzer returned no result'
     }
   }
 
@@ -609,7 +666,9 @@ parentPort?.on('message', async (job: KeyJob) => {
         needsEnergy: Boolean(job.needsEnergy),
         needsStructure: Boolean(job.needsStructure),
         cachedBpm: job.cachedBpm,
-        cachedUnifiedDisplayWaveformData: job.cachedUnifiedDisplayWaveformData
+        cachedBeatGridMap: job.cachedBeatGridMap,
+        cachedUnifiedDisplayWaveformData: job.cachedUnifiedDisplayWaveformData,
+        analyzedTimeBasisOffsetMs: job.analyzedTimeBasisOffsetMs
       },
       reportProgress
     )

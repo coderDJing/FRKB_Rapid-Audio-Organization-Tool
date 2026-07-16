@@ -4,7 +4,7 @@ import type { SongStructureSpectralBarFeature } from './songStructureSpectralFea
 import type { SongStructureSemanticRange } from './songStructureSemanticOutro'
 
 const CONTEXTUAL_BUILD_BAR_OPTIONS = [16, 8] as const
-const MAX_BUILD_START_AFTER_BREAKDOWN_BARS = 8
+const MAX_BUILD_CONTEXT_DISTANCE_BARS = 16
 const MAX_BUILD_REENTRY_AFTER_BREAKDOWN_BARS = 24
 const CONTEXTUAL_BUILD_MIN_RAMP = 0.42
 const CONTEXTUAL_BUILD_MIN_DROP_ACTIVITY = 0.45
@@ -82,8 +82,8 @@ const findBreakdownContext = (
     .find(
       (range) =>
         range.kind === 'breakdown' &&
-        range.startIndex <= buildStartIndex &&
-        buildStartIndex <= range.endIndex + MAX_BUILD_START_AFTER_BREAKDOWN_BARS &&
+        buildStartIndex >= range.startIndex - MAX_BUILD_CONTEXT_DISTANCE_BARS &&
+        buildStartIndex <= range.endIndex + MAX_BUILD_CONTEXT_DISTANCE_BARS &&
         reentryIndex >= range.endIndex &&
         reentryIndex <= range.endIndex + MAX_BUILD_REENTRY_AFTER_BREAKDOWN_BARS
     )
@@ -91,7 +91,8 @@ const findBreakdownContext = (
 const buildContextualBuildCandidate = (
   bars: readonly SongStructureSpectralBarFeature[],
   ranges: readonly SongStructureSemanticRange[],
-  reentryIndex: number
+  reentryIndex: number,
+  activeReentryIndexes: readonly number[]
 ): ContextualBuildCandidate | null => {
   const reentryBar = bars[reentryIndex]
   if (!reentryBar || reentryIndex + 4 > bars.length) return null
@@ -101,7 +102,27 @@ const buildContextualBuildCandidate = (
 
   for (const buildBars of CONTEXTUAL_BUILD_BAR_OPTIONS) {
     const startIndex = reentryIndex - buildBars
-    if (startIndex < 0 || !findBreakdownContext(ranges, startIndex, reentryIndex)) continue
+    const breakdownContext = findBreakdownContext(ranges, startIndex, reentryIndex)
+    if (startIndex < 0 || !breakdownContext) continue
+    if (
+      startIndex > breakdownContext.endIndex &&
+      activeReentryIndexes.some(
+        (candidateIndex) =>
+          candidateIndex >= breakdownContext.endIndex && candidateIndex < startIndex
+      )
+    ) {
+      continue
+    }
+    if (
+      activeReentryIndexes.some(
+        (candidateIndex) =>
+          candidateIndex > startIndex &&
+          candidateIndex < reentryIndex &&
+          reentryIndex - candidateIndex >= 8
+      )
+    ) {
+      continue
+    }
 
     const rampScore = resolveSongStructureBuildRampScore(bars, startIndex, reentryIndex)
     if (rampScore < CONTEXTUAL_BUILD_MIN_RAMP) continue
@@ -193,7 +214,12 @@ export const refineContextualBuildRanges = (
   for (const reentryIndex of [...new Set(activeReentryIndexes)].sort(
     (left, right) => left - right
   )) {
-    const candidate = buildContextualBuildCandidate(bars, result, reentryIndex)
+    const candidate = buildContextualBuildCandidate(
+      bars,
+      result,
+      reentryIndex,
+      activeReentryIndexes
+    )
     if (!candidate || candidate.startIndex < lastBuildEndIndex) continue
     result = relabelRangeWindowAsBuild(result, candidate)
     lastBuildEndIndex = candidate.endIndex

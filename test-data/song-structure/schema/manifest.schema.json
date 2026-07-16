@@ -7,7 +7,7 @@
   "required": ["schemaVersion", "tracks"],
   "properties": {
     "$schema": { "type": "string" },
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "audioRootHint": { "type": "string", "minLength": 1 },
     "tracks": {
       "type": "array",
@@ -18,12 +18,12 @@
     "fixedGrid": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "bpm", "firstBeatMs", "barBeatOffset"],
+      "required": ["kind", "bpm", "firstBeatMs", "downbeatBeatOffset"],
       "properties": {
         "kind": { "const": "fixed" },
         "bpm": { "type": "number", "exclusiveMinimum": 0 },
         "firstBeatMs": { "type": "number" },
-        "barBeatOffset": { "type": "number" }
+        "downbeatBeatOffset": { "type": "integer", "minimum": 0, "maximum": 3 }
       }
     },
     "dynamicGrid": {
@@ -38,12 +38,16 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["startSec", "anchorSec", "bpm", "barBeatOffset"],
+            "required": ["startSec", "anchorSec", "bpm", "downbeatBeatOffset"],
             "properties": {
               "startSec": { "type": "number", "minimum": 0 },
               "anchorSec": { "type": "number" },
               "bpm": { "type": "number", "exclusiveMinimum": 0 },
-              "barBeatOffset": { "type": "integer" }
+              "downbeatBeatOffset": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              }
             }
           }
         }

@@ -3,7 +3,7 @@ import { buildKeyAnalysisWorkerMessage } from './workerDispatch'
 import { normalizePath, type KeyAnalysisJob } from './types'
 
 describe('buildKeyAnalysisWorkerMessage', () => {
-  it('never dispatches the frozen legacy segment step to a worker', async () => {
+  it('dispatches v23 structure analysis to a worker', async () => {
     const job: KeyAnalysisJob = {
       jobId: 1,
       filePath: 'D:/music/legacy-segment.mp3',
@@ -11,11 +11,12 @@ describe('buildKeyAnalysisWorkerMessage', () => {
       priority: 'medium',
       fastAnalysis: false,
       source: 'foreground',
+      needsBpm: false,
       needsStructure: true
     }
 
     await expect(buildKeyAnalysisWorkerMessage(job)).resolves.toMatchObject({
-      needsStructure: false
+      needsStructure: true
     })
   })
 })

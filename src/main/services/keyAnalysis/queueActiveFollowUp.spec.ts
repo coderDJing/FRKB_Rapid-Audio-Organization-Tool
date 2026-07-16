@@ -25,8 +25,7 @@ const createHelpers = () => {
       if (waveformOnly !== undefined) job.waveformOnly = waveformOnly
     },
     applyIncludeStructureOption: (job: KeyAnalysisJob, includeStructure?: boolean) => {
-      void includeStructure
-      job.includeStructure = false
+      if (includeStructure === true) job.includeStructure = true
     },
     applyRequestFlags: (job: KeyAnalysisJob, flags: { forceAnalysis?: boolean }) => {
       if (flags.forceAnalysis === true) job.forceAnalysis = true
@@ -49,7 +48,7 @@ const createHelpers = () => {
 }
 
 describe('KeyAnalysisDeferredQueue', () => {
-  it('ignores a legacy segment request instead of creating a follow-up job', () => {
+  it('creates a follow-up when v23 structure is requested behind an active core-only job', () => {
     const deferredQueue = new KeyAnalysisDeferredQueue()
     const active = createActiveJob('D:/music/active.mp3')
     const options = {
@@ -58,11 +57,11 @@ describe('KeyAnalysisDeferredQueue', () => {
       preemptible: true
     }
 
-    expect(deferredQueue.requiresFollowUp(active, options)).toBe(false)
+    expect(deferredQueue.requiresFollowUp(active, options)).toBe(true)
     expect(deferredQueue.size).toBe(0)
   })
 
-  it('does not treat a legacy segment request as an active-job upgrade', () => {
+  it('reuses an active job that already includes v23 structure', () => {
     const deferredQueue = new KeyAnalysisDeferredQueue()
     const active = createActiveJob('D:/music/compatible.mp3', { includeStructure: true })
 
@@ -86,7 +85,7 @@ describe('KeyAnalysisDeferredQueue', () => {
     expect(deferredQueue.get(active.normalizedPath)).toMatchObject({
       forceAnalysis: true,
       category: 'manual-batch',
-      includeStructure: false,
+      includeStructure: true,
       manualBatchIds: ['manual-force']
     })
   })
@@ -117,7 +116,7 @@ describe('KeyAnalysisDeferredQueue', () => {
       helpers
     )
 
-    expect(deferredQueue.get(active.normalizedPath)?.includeStructure).toBe(false)
+    expect(deferredQueue.get(active.normalizedPath)?.includeStructure).toBe(true)
 
     deferredQueue.removeManualBatch('manual-3', helpers)
 

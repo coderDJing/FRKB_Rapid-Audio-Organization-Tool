@@ -71,6 +71,7 @@ import {
 } from '../services/mixtapeOutput'
 import { moveOrCopyItemWithCheckIsExist, runWithConcurrency, waitForUserDecision } from '../utils'
 import { getMixtapeVaultRootAbs } from '../recycleBinService'
+import { enqueueKeyAnalysis } from '../services/keyAnalysisQueue'
 import {
   MIXTAPE_ANALYSIS_COPY_FIELDS,
   type MixtapeAnalysisInfo
@@ -821,6 +822,13 @@ export function registerMixtapeHandlers() {
         ],
         'manual'
       )
+      if (nextBeatGridMap) {
+        enqueueKeyAnalysis(filePath, 'low', {
+          source: 'foreground',
+          preemptible: true,
+          includeStructure: true
+        })
+      }
       return result
     }
   )

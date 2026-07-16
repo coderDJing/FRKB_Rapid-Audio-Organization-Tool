@@ -148,12 +148,7 @@ const preserveCachedAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo 
   preserveCachedKeyAndBpm(target, cachedInfo)
   preserveCachedGridAnalysisFields(target, cachedInfo)
   preserveCachedEnergyAnalysisFields(target, cachedInfo)
-  if (
-    resolveCanonicalSongBeatGridV2(target).kind !== 'grid' &&
-    resolveCanonicalSongBeatGridV2(cachedInfo).kind !== 'grid'
-  ) {
-    preserveBestAvailableSongStructure(target, cachedInfo)
-  }
+  preserveBestAvailableSongStructure(target, cachedInfo)
 }
 
 export const scheduleSongListPostScanTasks = async (

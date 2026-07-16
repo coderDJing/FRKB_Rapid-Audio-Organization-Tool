@@ -8,13 +8,20 @@ import {
   projectSongBeatGridMapToFixedGrid,
   type SongBeatGridClip
 } from '../src/shared/songBeatGridMap'
+import {
+  createSongBeatGridMapV2FromClips,
+  createSongBeatGridMapV2FromFixedGrid,
+  type SongBeatGridMapV2
+} from '../src/shared/songBeatGridMapV2'
 import type {
   BuildSongStructureInput,
   SongStructureAnalysis,
   SongStructureSectionKind
 } from '../src/shared/songStructureCommon'
+import type { SongStructureSectionV23 } from '../src/shared/songStructureV23'
 
-export const SONG_STRUCTURE_TRUTH_SCHEMA_VERSION = 1
+export const SONG_STRUCTURE_TRUTH_SCHEMA_VERSION = 2
+export const SONG_STRUCTURE_PREDICTION_SCHEMA_VERSION = 1
 export const SONG_STRUCTURE_SECTION_KINDS = [
   'intro',
   'groove',
@@ -35,12 +42,17 @@ export type SongStructureTruthFixedGrid = {
   kind: 'fixed'
   bpm: number
   firstBeatMs: number
-  barBeatOffset: number
+  downbeatBeatOffset: number
 }
 
 export type SongStructureTruthDynamicGrid = {
   kind: 'dynamic'
-  clips: SongBeatGridClip[]
+  clips: Array<{
+    startSec: number
+    anchorSec: number
+    bpm: number
+    downbeatBeatOffset: number
+  }>
 }
 
 export type SongStructureTruthGrid = SongStructureTruthFixedGrid | SongStructureTruthDynamicGrid
@@ -77,13 +89,13 @@ export type SongStructureTruthManifest = {
 }
 
 export type SongStructureTruthSection = {
-  startBar: number
-  endBar: number
+  startDownbeatOrdinal: number
+  endDownbeatOrdinal: number
   startSec: number
   endSec: number
   kind: SongStructureSectionKind
   acceptableKinds: SongStructureSectionKind[]
-  boundaryToleranceBars: {
+  boundaryToleranceDownbeats: {
     start: number
     end: number
   }
@@ -104,6 +116,31 @@ export type SongStructureTruthFile = {
   sections: SongStructureTruthSection[]
 }
 
+export type SongStructurePredictionSection =
+  | (Pick<
+      SongStructureAnalysis['sections'][number],
+      'startSec' | 'endSec' | 'startBar' | 'endBar' | 'kind' | 'confidence'
+    > &
+      Partial<
+        Pick<
+          SongStructureAnalysis['sections'][number],
+          'phraseIndex' | 'energy' | 'low' | 'high' | 'novelty'
+        >
+      >)
+  | Pick<
+      SongStructureSectionV23,
+      | 'startSec'
+      | 'endSec'
+      | 'startDownbeatOrdinal'
+      | 'endDownbeatOrdinal'
+      | 'kind'
+      | 'confidence'
+      | 'energy'
+      | 'low'
+      | 'high'
+      | 'novelty'
+    >
+
 export type SongStructurePredictionFile = {
   $schema?: string
   schemaVersion: number
@@ -120,18 +157,7 @@ export type SongStructurePredictionFile = {
   durationSec: number
   gridKind: SongStructureTruthGrid['kind']
   analysisMs: number
-  sections: Array<
-    Pick<
-      SongStructureAnalysis['sections'][number],
-      'startSec' | 'endSec' | 'startBar' | 'endBar' | 'kind' | 'confidence'
-    > &
-      Partial<
-        Pick<
-          SongStructureAnalysis['sections'][number],
-          'phraseIndex' | 'energy' | 'low' | 'high' | 'novelty'
-        >
-      >
-  >
+  sections: SongStructurePredictionSection[]
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -171,12 +197,20 @@ function validateGrid(grid: unknown, context: string): asserts grid is SongStruc
     assertFiniteNumber(grid.bpm, `${context}.bpm 无效`)
     assertCondition(grid.bpm > 0, `${context}.bpm 必须大于 0`)
     assertFiniteNumber(grid.firstBeatMs, `${context}.firstBeatMs 无效`)
-    assertFiniteNumber(grid.barBeatOffset, `${context}.barBeatOffset 无效`)
+    assertFiniteNumber(grid.downbeatBeatOffset, `${context}.downbeatBeatOffset 无效`)
+    assertCondition(
+      Number.isInteger(grid.downbeatBeatOffset) &&
+        grid.downbeatBeatOffset >= 0 &&
+        grid.downbeatBeatOffset <= 3,
+      `${context}.downbeatBeatOffset 必须是 0..3`
+    )
     return
   }
   assertCondition(grid.kind === 'dynamic', `${context}.kind 必须是 fixed 或 dynamic`)
   assertCondition(Array.isArray(grid.clips) && grid.clips.length >= 2, `${context}.clips 至少 2 段`)
-  const beatGridMap = createSongBeatGridMapFromClips(grid.clips as SongBeatGridClip[])
+  const beatGridMap = createSongBeatGridMapV2FromClips(grid.clips, 'manual', {
+    allowSingleClip: true
+  })
   assertCondition(beatGridMap !== null, `${context}.clips 不是有效动态网格`)
 }
 
@@ -286,20 +320,21 @@ export function validateSongStructureTruthFile(
     value.review.status !== 'approved' || value.coverage !== 'none',
     'approved truth 不能是 coverage=none'
   )
-  let previousEndBar = 0
+  let previousEndDownbeatOrdinal = 0
   let previousEndSec = 0
   for (const [index, rawSection] of value.sections.entries()) {
     const context = `truth.sections[${index}]`
     assertCondition(isRecord(rawSection), `${context} 必须是对象`)
-    assertFiniteNumber(rawSection.startBar, `${context}.startBar 无效`)
-    assertFiniteNumber(rawSection.endBar, `${context}.endBar 无效`)
+    assertFiniteNumber(rawSection.startDownbeatOrdinal, `${context}.startDownbeatOrdinal 无效`)
+    assertFiniteNumber(rawSection.endDownbeatOrdinal, `${context}.endDownbeatOrdinal 无效`)
     assertCondition(
-      Number.isInteger(rawSection.startBar) && rawSection.startBar > 0,
-      `${context}.startBar 必须是正整数`
+      Number.isInteger(rawSection.startDownbeatOrdinal) && rawSection.startDownbeatOrdinal >= 0,
+      `${context}.startDownbeatOrdinal 必须是非负整数`
     )
     assertCondition(
-      Number.isInteger(rawSection.endBar) && rawSection.endBar >= rawSection.startBar,
-      `${context}.endBar 无效`
+      Number.isInteger(rawSection.endDownbeatOrdinal) &&
+        rawSection.endDownbeatOrdinal > rawSection.startDownbeatOrdinal,
+      `${context}.endDownbeatOrdinal 无效`
     )
     assertFiniteNumber(rawSection.startSec, `${context}.startSec 无效`)
     assertFiniteNumber(rawSection.endSec, `${context}.endSec 无效`)
@@ -323,28 +358,31 @@ export function validateSongStructureTruthFile(
       rawSection.acceptableKinds.includes(rawSection.kind),
       `${context}.acceptableKinds 必须包含严格 kind`
     )
-    assertCondition(isRecord(rawSection.boundaryToleranceBars), `${context} 缺少边界容差`)
-    assertFiniteNumber(rawSection.boundaryToleranceBars.start, `${context}.start 容差无效`)
-    assertFiniteNumber(rawSection.boundaryToleranceBars.end, `${context}.end 容差无效`)
+    assertCondition(isRecord(rawSection.boundaryToleranceDownbeats), `${context} 缺少边界容差`)
+    assertFiniteNumber(rawSection.boundaryToleranceDownbeats.start, `${context}.start 容差无效`)
+    assertFiniteNumber(rawSection.boundaryToleranceDownbeats.end, `${context}.end 容差无效`)
     assertCondition(
-      Number.isInteger(rawSection.boundaryToleranceBars.start) &&
-        rawSection.boundaryToleranceBars.start >= 0,
+      Number.isInteger(rawSection.boundaryToleranceDownbeats.start) &&
+        rawSection.boundaryToleranceDownbeats.start >= 0,
       `${context}.start 容差必须是非负整数`
     )
     assertCondition(
-      Number.isInteger(rawSection.boundaryToleranceBars.end) &&
-        rawSection.boundaryToleranceBars.end >= 0,
+      Number.isInteger(rawSection.boundaryToleranceDownbeats.end) &&
+        rawSection.boundaryToleranceDownbeats.end >= 0,
       `${context}.end 容差必须是非负整数`
     )
-    assertCondition(rawSection.startBar > previousEndBar, `${context} 与前一区间重叠`)
+    assertCondition(
+      rawSection.startDownbeatOrdinal >= previousEndDownbeatOrdinal,
+      `${context} 与前一区间重叠`
+    )
     assertCondition(rawSection.startSec >= previousEndSec, `${context} 时间与前一区间重叠`)
     if (value.coverage === 'full' && index > 0) {
       assertCondition(
-        rawSection.startBar === previousEndBar + 1,
-        `${context} full truth 不能漏 bar`
+        rawSection.startDownbeatOrdinal === previousEndDownbeatOrdinal,
+        `${context} full truth 不能漏四拍块`
       )
     }
-    previousEndBar = rawSection.endBar
+    previousEndDownbeatOrdinal = rawSection.endDownbeatOrdinal
     previousEndSec = rawSection.endSec
   }
 }
@@ -355,7 +393,7 @@ export function validateSongStructurePredictionFile(
 ): asserts value is SongStructurePredictionFile {
   assertCondition(isRecord(value), 'prediction 文件必须是对象')
   assertCondition(
-    value.schemaVersion === SONG_STRUCTURE_TRUTH_SCHEMA_VERSION,
+    value.schemaVersion === SONG_STRUCTURE_PREDICTION_SCHEMA_VERSION,
     'prediction 版本无效'
   )
   assertCondition(typeof value.trackId === 'string', 'prediction.trackId 无效')
@@ -437,16 +475,52 @@ export const resolveSongStructureGridInput = (
     return {
       bpm: grid.bpm,
       firstBeatMs: grid.firstBeatMs,
-      barBeatOffset: grid.barBeatOffset
+      barBeatOffset: grid.downbeatBeatOffset
     }
   }
-  const beatGridMap = createSongBeatGridMapFromClips(grid.clips, {
-    durationSec,
-    allowSingleClip: true
-  })
+  const beatGridMap = createSongBeatGridMapFromClips(
+    grid.clips.map(
+      (clip): SongBeatGridClip => ({
+        startSec: clip.startSec,
+        anchorSec: clip.anchorSec,
+        bpm: clip.bpm,
+        barBeatOffset: clip.downbeatBeatOffset
+      })
+    ),
+    {
+      durationSec,
+      allowSingleClip: true
+    }
+  )
   const projection = projectSongBeatGridMapToFixedGrid(beatGridMap)
   assertCondition(beatGridMap && projection, '动态网格无法生成生产分析输入')
   return { ...projection, beatGridMap }
+}
+
+export const resolveSongStructureGridV2Map = (
+  grid: SongStructureTruthGrid,
+  durationSec?: number
+): SongBeatGridMapV2 => {
+  const beatGridMap =
+    grid.kind === 'fixed'
+      ? createSongBeatGridMapV2FromFixedGrid({
+          bpm: grid.bpm,
+          firstBeatMs: grid.firstBeatMs,
+          downbeatBeatOffset: grid.downbeatBeatOffset,
+          source: 'analysis'
+        })
+      : createSongBeatGridMapV2FromClips(
+          grid.clips.map((clip) => ({
+            startSec: clip.startSec,
+            anchorSec: clip.anchorSec,
+            bpm: clip.bpm,
+            downbeatBeatOffset: clip.downbeatBeatOffset
+          })),
+          'manual',
+          { durationSec, allowSingleClip: true }
+        )
+  assertCondition(beatGridMap, '段落真值网格无法转换为 v2 四拍网格')
+  return beatGridMap
 }
 
 export const calculateFileSha256 = async (filePath: string) => {

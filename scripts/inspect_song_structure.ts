@@ -1,8 +1,12 @@
 import path from 'node:path'
 import { SONG_ANALYSIS_NATIVE_LIBAV_BACKEND } from '../src/main/workers/songAnalysisAudioDecoder'
+import { createSongBeatGridMapV2FromFixedGrid } from '../src/shared/songBeatGridMapV2'
 import { buildSongStructureAnalysis } from '../src/shared/songStructure'
 import { SONG_STRUCTURE_FEATURE_DEFAULT_FRAME_RATE } from '../src/shared/songStructureFeatureData'
-import { buildSpectralSongStructureSections } from '../src/shared/songStructureSpectral'
+import {
+  buildSongStructureAnalysisV23,
+  buildSongStructureV23SpectralCandidate
+} from '../src/shared/songStructureV23'
 import { clusterSongStructureSpectralBars } from '../src/shared/songStructureSpectralClustering'
 import { buildSongStructureSpectralFeatures } from '../src/shared/songStructureSpectralFeatures'
 import { buildSongStructureSemanticDiagnostics } from '../src/shared/songStructureSemanticLabels'
@@ -13,19 +17,20 @@ const args = process.argv.slice(2)
 const HELP_TEXT = `歌曲段落分析诊断工具
 
 用法：
-  pnpm run inspect:song-structure -- --file <音频路径> --bpm <BPM> --first-beat-ms <毫秒> --bar-beat-offset <偏移> [选项]
+  pnpm run inspect:song-structure -- --file <音频路径> --bpm <BPM> --first-beat-ms <毫秒> --downbeat-beat-offset <0..3> [选项]
 
 必填参数：
   --file <路径>               待分析音频文件
   --bpm <数值>                歌曲 BPM
   --first-beat-ms <数值>      第一拍相对歌曲开头的毫秒位置
-  --bar-beat-offset <数值>    32 拍 phrase 网格偏移
+  --downbeat-beat-offset <值> 四拍 downbeat 相位，合法值 0..3
 
 选项：
   --summary                   输出精简的最终段落结果
   --diagnostics               附加谱聚类边界、cluster 数量和语义 emission 诊断
   --absolute-bands            使用 Rust Mixxx absolute low/mid/high/all 实验特征
   --feature-rate <8|16|32>    absolute 实验特征帧率，默认 16 Hz
+  --algorithm <22|23|24|25|26> 选择冻结 v22 或原生四拍网格算法，默认 26
   --help, -h                  显示本帮助
 
 参数同时支持 --name=value 形式。
@@ -46,7 +51,8 @@ const readArg = (name: string) => {
 const filePath = path.resolve(String(readArg('--file') || '').trim())
 const bpm = Number(readArg('--bpm'))
 const firstBeatMs = Number(readArg('--first-beat-ms'))
-const barBeatOffset = Number(readArg('--bar-beat-offset'))
+const downbeatBeatOffset = Number(readArg('--downbeat-beat-offset') ?? readArg('--bar-beat-offset'))
+const algorithmVersion = Number(readArg('--algorithm') ?? 26)
 const summaryOnly = args.includes('--summary')
 const diagnosticsEnabled = args.includes('--diagnostics')
 const absoluteBandsEnabled = args.includes('--absolute-bands')
@@ -61,8 +67,11 @@ if (!Number.isFinite(bpm) || bpm <= 0) {
 if (!Number.isFinite(firstBeatMs)) {
   throw new Error('缺少有效 --first-beat-ms')
 }
-if (!Number.isFinite(barBeatOffset)) {
-  throw new Error('缺少有效 --bar-beat-offset')
+if (!Number.isInteger(downbeatBeatOffset) || downbeatBeatOffset < 0 || downbeatBeatOffset > 3) {
+  throw new Error('缺少有效 --downbeat-beat-offset，合法值为 0..3')
+}
+if (![22, 23, 24, 25, 26].includes(algorithmVersion)) {
+  throw new Error('--algorithm 仅支持 22、23、24、25 或 26')
 }
 if (absoluteBandsEnabled && ![8, 16, 32].includes(featureRate)) {
   throw new Error('--feature-rate 仅支持 8、16、32')
@@ -74,25 +83,49 @@ const prepared = prepareSongStructureAudio(filePath, {
 })
 const { decoderBackend, unified, structureFeatureData, structureFeatureBuildMs } = prepared
 
-const structureInput = {
+const legacyStructureInput = {
   waveformData: unified,
   structureFeatureData,
   bpm,
   firstBeatMs,
-  barBeatOffset
+  barBeatOffset: downbeatBeatOffset
 }
+const beatGridMap = createSongBeatGridMapV2FromFixedGrid({
+  bpm,
+  firstBeatMs,
+  downbeatBeatOffset,
+  source: 'analysis'
+})
+if (!beatGridMap) throw new Error('无法构建 v2 四拍网格')
+const v23StructureInput = { waveformData: unified, structureFeatureData, beatGridMap }
 const spectralStartedAt = performance.now()
-const spectralCandidate = buildSpectralSongStructureSections(structureInput, unified.duration)
+const v23SpectralCandidate =
+  algorithmVersion !== 22
+    ? buildSongStructureV23SpectralCandidate(v23StructureInput, unified.duration)
+    : null
+const featureSet =
+  algorithmVersion !== 22
+    ? (v23SpectralCandidate?.featureSet ?? null)
+    : buildSongStructureSpectralFeatures(legacyStructureInput, unified.duration)
+const spectralClustering = featureSet
+  ? algorithmVersion !== 22
+    ? (v23SpectralCandidate?.clustering ?? null)
+    : clusterSongStructureSpectralBars(featureSet.bars)
+  : null
 const spectralAnalysisMs = performance.now() - spectralStartedAt
 const productionStartedAt = performance.now()
-const structure = buildSongStructureAnalysis(structureInput)
+const structure =
+  algorithmVersion !== 22
+    ? buildSongStructureAnalysisV23(v23StructureInput)
+    : buildSongStructureAnalysis(legacyStructureInput)
 const productionAnalysisMs = performance.now() - productionStartedAt
 if (!structure) throw new Error('段落分析没有生成结果')
-const featureStrategy = spectralCandidate
-  ? absoluteBandsEnabled
-    ? `spectral-v${structure.algorithmVersion}-absolute-${featureRate}hz`
-    : `spectral-v${structure.algorithmVersion}-pseudo-color`
-  : 'legacy-compatibility'
+const featureStrategy =
+  featureSet && spectralClustering
+    ? absoluteBandsEnabled
+      ? `spectral-v${structure.algorithmVersion}-absolute-${featureRate}hz`
+      : `spectral-v${structure.algorithmVersion}-pseudo-color`
+    : 'legacy-compatibility'
 const decoderStrategy =
   decoderBackend === SONG_ANALYSIS_NATIVE_LIBAV_BACKEND
     ? 'production-native-libav-44k1-stereo'
@@ -134,14 +167,13 @@ const structureFeatureStats =
 
 const spectralDiagnostics = (() => {
   if (!diagnosticsEnabled) return undefined
-  const featureSet = buildSongStructureSpectralFeatures(structureInput, unified.duration)
   if (!featureSet) {
     return {
       available: false,
       stage: 'features'
     }
   }
-  const clustering = clusterSongStructureSpectralBars(featureSet.bars)
+  const clustering = spectralClustering
   if (!clustering) {
     return {
       available: false,
@@ -155,11 +187,33 @@ const spectralDiagnostics = (() => {
     available: true,
     barCount: featureSet.bars.length,
     clusterCount: clustering.clusterCount,
+    ...(algorithmVersion !== 22 && v23SpectralCandidate
+      ? {
+          directionalEvents: v23SpectralCandidate.directional.events
+            .filter((event) =>
+              v23SpectralCandidate.directional.boundaries.some(
+                (boundary) => boundary.index === event.index
+              )
+            )
+            .map((event) => ({
+              index: event.index,
+              sec: Number((featureSet.bars[event.index]?.startSec ?? unified.duration).toFixed(3)),
+              kind: event.kind,
+              score: Number(event.score.toFixed(6)),
+              fallScore: Number(event.fallScore.toFixed(6)),
+              landingScore: Number(event.landingScore.toFixed(6)),
+              switchScore: Number(event.switchScore.toFixed(6)),
+              switchPersistence: Number(event.switchPersistence.toFixed(6))
+            }))
+        }
+      : {}),
     boundaries: clustering.boundaries.map((boundary) => {
       const bar = featureSet.bars[boundary.index]
       return {
         index: boundary.index,
-        bar: bar?.startBar ?? (lastBar?.startBar ?? featureSet.bars.length) + 1,
+        ...(algorithmVersion !== 22
+          ? { downbeatOrdinal: boundary.index }
+          : { bar: bar?.startBar ?? (lastBar?.startBar ?? featureSet.bars.length) + 1 }),
         sec: Number((bar?.startSec ?? unified.duration).toFixed(3)),
         score: Number(boundary.score.toFixed(6)),
         buildRamp: Number((boundary.buildRamp ?? 0).toFixed(6))
@@ -171,8 +225,12 @@ const spectralDiagnostics = (() => {
       return {
         startIndex: segment.startIndex,
         endIndex: segment.endIndex,
-        startBar: firstBar?.startBar,
-        endBar: finalBar?.startBar,
+        ...(algorithmVersion !== 22
+          ? {
+              startDownbeatOrdinal: segment.startIndex,
+              endDownbeatOrdinal: segment.endIndex
+            }
+          : { startBar: firstBar?.startBar, endBar: finalBar?.startBar }),
         startSec: firstBar ? Number(firstBar.startSec.toFixed(3)) : undefined,
         endSec: finalBar ? Number(finalBar.endSec.toFixed(3)) : undefined,
         decodedKind: segment.decodedKind,
@@ -188,7 +246,9 @@ const spectralDiagnostics = (() => {
       }
     }),
     terminalOutro: buildSongStructureTerminalOutroDiagnostics(featureSet.bars).map((candidate) => ({
-      bar: candidate.index + 1,
+      ...(algorithmVersion !== 22
+        ? { downbeatOrdinal: candidate.index }
+        : { bar: candidate.index + 1 }),
       sec: Number((featureSet.bars[candidate.index]?.startSec ?? unified.duration).toFixed(3)),
       normalizedReduction: Number(candidate.normalizedReduction.toFixed(6)),
       foundationDrop: Number(candidate.foundationDrop.toFixed(6)),
@@ -210,14 +270,25 @@ const output = summaryOnly
       structureFeaturePayloadBytes: prepared.structureFeaturePayloadBytes,
       spectralAnalysisMs: Number(spectralAnalysisMs.toFixed(3)),
       productionAnalysisMs: Number(productionAnalysisMs.toFixed(3)),
-      sections: structure.sections.map((section) => ({
-        kind: section.kind,
-        startSec: section.startSec,
-        endSec: section.endSec,
-        startBar: section.startBar,
-        endBar: section.endBar,
-        confidence: section.confidence
-      })),
+      sections: structure.sections.map((section) =>
+        'startBar' in section
+          ? {
+              kind: section.kind,
+              startSec: section.startSec,
+              endSec: section.endSec,
+              startBar: section.startBar,
+              endBar: section.endBar,
+              confidence: section.confidence
+            }
+          : {
+              kind: section.kind,
+              startSec: section.startSec,
+              endSec: section.endSec,
+              startDownbeatOrdinal: section.startDownbeatOrdinal,
+              endDownbeatOrdinal: section.endDownbeatOrdinal,
+              confidence: section.confidence
+            }
+      ),
       ...(diagnosticsEnabled ? { spectralDiagnostics } : {}),
       ...(diagnosticsEnabled && structureFeatureStats ? { structureFeatureStats } : {})
     }
@@ -226,7 +297,8 @@ const output = summaryOnly
       durationSec: unified.duration,
       bpm,
       firstBeatMs,
-      barBeatOffset,
+      downbeatBeatOffset,
+      algorithmVersion,
       strategy,
       decoderBackend,
       structureFeatureBuildMs: Number(structureFeatureBuildMs.toFixed(3)),

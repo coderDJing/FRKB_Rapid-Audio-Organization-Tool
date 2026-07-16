@@ -25,20 +25,18 @@ const createFixedGrid = (downbeatBeatOffset = 0) => {
   return beatGridMap
 }
 
-const createStructure = (algorithmVersion: number) => ({
-  formatVersion: 1,
+const createStructure = (beatGridSignature: string, algorithmVersion: number) => ({
+  formatVersion: 2,
   algorithmVersion,
   source: 'algorithmic',
   durationSec: 60,
-  ...GRID,
-  phraseBars: 8,
+  beatGridSignature,
   sections: [
     {
       startSec: 0,
       endSec: 60,
-      startBar: 1,
-      endBar: 32,
-      phraseIndex: 0,
+      startDownbeatOrdinal: 0,
+      endDownbeatOrdinal: 32,
       kind: 'groove',
       confidence: 0.6,
       energy: 0.6,
@@ -112,12 +110,16 @@ describe('song analysis completeness', () => {
     ).toBe(true)
   })
 
-  it('keeps a same-grid structure usable regardless of its algorithm version', () => {
+  it('keeps a same-grid structure usable across algorithm upgrades', () => {
+    const beatGridMap = createFixedGrid()
     const info = {
       key: '8A',
       energyScore: 72,
-      beatGridMap: createFixedGrid(),
-      songStructure: createStructure(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1)
+      beatGridMap,
+      songStructure: createStructure(
+        beatGridMap.signature,
+        CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1
+      )
     }
     expect(hasRequiredSongStructureAnalysis(info)).toBe(true)
     expect(
@@ -126,19 +128,23 @@ describe('song analysis completeness', () => {
   })
 
   it('requires structure replacement when its grid dependency no longer matches', () => {
+    const originalGrid = createFixedGrid()
     const info = {
       key: '8A',
       energyScore: 72,
       beatGridMap: createFixedGrid(1),
-      songStructure: createStructure(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1)
+      songStructure: createStructure(
+        originalGrid.signature,
+        CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION
+      )
     }
-    expect(hasRequiredSongStructureAnalysis(info)).toBe(true)
+    expect(hasRequiredSongStructureAnalysis(info)).toBe(false)
     expect(
       hasUsableCoreSongAnalysis(info, { includeStructure: true, waveformAvailable: true })
-    ).toBe(true)
+    ).toBe(false)
   })
 
-  it('matches dynamic-grid structure by signature instead of algorithm version', () => {
+  it('matches dynamic-grid structure by signature across algorithm upgrades', () => {
     const beatGridMap = createSongBeatGridMapV2FromClips(
       [
         { startSec: 0, anchorSec: 0.125, bpm: 128, downbeatBeatOffset: 0 },
@@ -148,8 +154,7 @@ describe('song analysis completeness', () => {
     )
     expect(beatGridMap).not.toBeNull()
     const structure = {
-      ...createStructure(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1),
-      beatGridSignature: beatGridMap!.signature
+      ...createStructure(beatGridMap!.signature, CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1)
     }
     expect(hasRequiredSongStructureAnalysis({ beatGridMap, songStructure: structure })).toBe(true)
     expect(
@@ -157,7 +162,7 @@ describe('song analysis completeness', () => {
         beatGridMap,
         songStructure: { ...structure, beatGridSignature: 'sbgm_changed' }
       })
-    ).toBe(true)
+    ).toBe(false)
   })
 
   it('still reports a genuinely missing result as incomplete', () => {

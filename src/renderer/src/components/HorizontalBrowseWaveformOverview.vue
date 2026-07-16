@@ -139,7 +139,7 @@ const structureSections = computed(() => {
       const endSec = Math.max(startSec, Math.min(totalSeconds.value, Number(section.endSec) || 0))
       if (endSec - startSec <= 0.2) return null
       return {
-        key: `${section.phraseIndex}-${section.kind}-${section.startSec}-${section.endSec}`,
+        key: `${section.kind}-${section.startSec}-${section.endSec}`,
         kind: section.kind,
         label: resolveStructureLabel(section.kind),
         startSec,

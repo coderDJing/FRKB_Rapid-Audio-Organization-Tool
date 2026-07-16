@@ -1,6 +1,6 @@
 {
   "$schema": "../schema/truth.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "trackId": "ae6867d752c216bf1eef89b414f6e5c5e22cc1a9724e8408aa5239bb0b0f5304",
   "coverage": "partial",
   "review": {
@@ -11,31 +11,31 @@
   },
   "sections": [
     {
-      "startBar": 81,
-      "endBar": 96,
+      "startDownbeatOrdinal": 80,
+      "endDownbeatOrdinal": 96,
       "startSec": 157.586,
       "endSec": 189.062,
       "kind": "drop",
       "acceptableKinds": ["drop"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     },
     {
-      "startBar": 97,
-      "endBar": 120,
+      "startDownbeatOrdinal": 96,
+      "endDownbeatOrdinal": 120,
       "startSec": 189.062,
       "endSec": 236.275,
       "kind": "breakdown",
       "acceptableKinds": ["breakdown"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     },
     {
-      "startBar": 121,
-      "endBar": 144,
+      "startDownbeatOrdinal": 120,
+      "endDownbeatOrdinal": 144,
       "startSec": 236.275,
       "endSec": 283.488,
       "kind": "drop",
       "acceptableKinds": ["drop"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     }
   ]
 }

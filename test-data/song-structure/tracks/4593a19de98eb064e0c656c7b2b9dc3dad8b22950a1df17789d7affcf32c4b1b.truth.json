@@ -1,6 +1,6 @@
 {
   "$schema": "../schema/truth.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "trackId": "4593a19de98eb064e0c656c7b2b9dc3dad8b22950a1df17789d7affcf32c4b1b",
   "coverage": "none",
   "review": {

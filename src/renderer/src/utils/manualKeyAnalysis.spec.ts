@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createSongBeatGridMapV2FromFixedGrid } from '../../../shared/songBeatGridMapV2'
+import { CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION } from '../../../shared/songStructure'
 import {
   collectMissingAnalysisFilesFromSongs,
   resolveMissingAnalysisReasons
@@ -13,7 +14,7 @@ const FIXED_GRID_V2 = createSongBeatGridMapV2FromFixedGrid({
 })
 
 describe('manual key analysis completeness', () => {
-  it('does not treat a missing frozen segment result as pending analysis', () => {
+  it('treats a missing v23 structure result as pending analysis', () => {
     const filePath = 'D:\\music\\stale-techno.wav'
     expect(
       resolveMissingAnalysisReasons(
@@ -25,6 +26,80 @@ describe('manual key analysis completeness', () => {
           energyAlgorithmVersion: 1,
           beatGridAlgorithmVersion: 1,
           beatGridMap: FIXED_GRID_V2 ?? undefined
+        },
+        true,
+        { includeSongStructure: true, missingWaveformFilePaths: [] }
+      )
+    ).toEqual(['missing-song-structure'])
+  })
+
+  it('accepts a current v23 structure result bound to the canonical grid', () => {
+    const filePath = 'D:\\music\\current-structure.wav'
+    expect(
+      resolveMissingAnalysisReasons(
+        {
+          filePath,
+          key: '8A',
+          energyScore: 72,
+          beatGridMap: FIXED_GRID_V2 ?? undefined,
+          songStructure: {
+            formatVersion: 2,
+            algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
+            source: 'algorithmic',
+            durationSec: 64,
+            beatGridSignature: FIXED_GRID_V2?.signature,
+            sections: [
+              {
+                startSec: 0,
+                endSec: 64,
+                startDownbeatOrdinal: 0,
+                endDownbeatOrdinal: 32,
+                kind: 'groove',
+                confidence: 0.8,
+                energy: 0.7,
+                low: 0.7,
+                high: 0.5,
+                novelty: 0.2
+              }
+            ]
+          }
+        },
+        true,
+        { includeSongStructure: true, missingWaveformFilePaths: [] }
+      )
+    ).toEqual([])
+  })
+
+  it('accepts an older complete structure result bound to the same grid', () => {
+    const filePath = 'D:\\music\\older-structure.wav'
+    expect(
+      resolveMissingAnalysisReasons(
+        {
+          filePath,
+          key: '8A',
+          energyScore: 72,
+          beatGridMap: FIXED_GRID_V2 ?? undefined,
+          songStructure: {
+            formatVersion: 2,
+            algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1,
+            source: 'algorithmic',
+            durationSec: 64,
+            beatGridSignature: FIXED_GRID_V2?.signature,
+            sections: [
+              {
+                startSec: 0,
+                endSec: 64,
+                startDownbeatOrdinal: 0,
+                endDownbeatOrdinal: 32,
+                kind: 'groove',
+                confidence: 0.8,
+                energy: 0.7,
+                low: 0.7,
+                high: 0.5,
+                novelty: 0.2
+              }
+            ]
+          }
         },
         true,
         { includeSongStructure: true, missingWaveformFilePaths: [] }
@@ -52,7 +127,7 @@ describe('manual key analysis completeness', () => {
     ).toEqual([filePath])
   })
 
-  it('accepts a canonical v2 manual grid without an analysis algorithm version', () => {
+  it('accepts a canonical v2 manual grid without requiring structure by default', () => {
     const beatGridMap = createSongBeatGridMapV2FromFixedGrid({
       bpm: 128,
       firstBeatMs: 125,

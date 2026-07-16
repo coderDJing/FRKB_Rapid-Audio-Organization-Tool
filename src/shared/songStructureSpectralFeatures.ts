@@ -5,6 +5,10 @@ import {
   type SongBeatGridRuntime
 } from './songBeatGridMap'
 import {
+  createUnifiedSongBeatGridRuntime,
+  type UnifiedSongBeatGridRuntime
+} from './songBeatGridRuntime'
+import {
   clamp,
   clamp01,
   normalizeStructureGrid,
@@ -13,6 +17,7 @@ import {
   type BuildSongStructureInput
 } from './songStructureCommon'
 import type { UnifiedDisplayWaveformDetailData } from './unifiedDisplayWaveform'
+import type { BuildSongStructureV23Input } from './songStructureV23Common'
 import {
   isValidSongStructureFeatureData,
   type SongStructureFeatureData
@@ -48,7 +53,7 @@ export type SongStructureBarSpan = {
   endSec: number
   startBar: number
   phraseIndex: number
-  isPhraseBoundary: boolean
+  hasPeriodicStructurePrior: boolean
   isClipBoundary: boolean
   clipIndex: number
 }
@@ -69,7 +74,7 @@ export type SongStructureSpectralFeatureSet = {
 
 type BoundarySeed = {
   sec: number
-  isPhraseBoundary: boolean
+  hasPeriodicStructurePrior: boolean
   isClipBoundary: boolean
   clipIndex: number
 }
@@ -103,7 +108,7 @@ const mergeBoundarySeed = (target: BoundarySeed[], seed: BoundarySeed) => {
     target.push(seed)
     return
   }
-  existing.isPhraseBoundary ||= seed.isPhraseBoundary
+  existing.hasPeriodicStructurePrior ||= seed.hasPeriodicStructurePrior
   existing.isClipBoundary ||= seed.isClipBoundary
   if (seed.isClipBoundary) existing.clipIndex = seed.clipIndex
 }
@@ -115,7 +120,7 @@ const toBoundarySeed = (line: SongBeatGridLine, durationSec: number): BoundarySe
   }
   return {
     sec: normalizeBoundarySec(line.sec),
-    isPhraseBoundary: line.level === 'bar',
+    hasPeriodicStructurePrior: line.level === 'bar',
     isClipBoundary: false,
     clipIndex: line.clipIndex
   }
@@ -158,12 +163,13 @@ const compactBoundarySeeds = (
     if (seed.sec >= durationSec - BOUNDARY_EPSILON_SEC) {
       result[result.length - 1] = {
         ...seed,
-        isPhraseBoundary: previous.isPhraseBoundary || seed.isPhraseBoundary,
+        hasPeriodicStructurePrior:
+          previous.hasPeriodicStructurePrior || seed.hasPeriodicStructurePrior,
         isClipBoundary: previous.isClipBoundary || seed.isClipBoundary
       }
       continue
     }
-    previous.isPhraseBoundary ||= seed.isPhraseBoundary
+    previous.hasPeriodicStructurePrior ||= seed.hasPeriodicStructurePrior
     previous.isClipBoundary ||= seed.isClipBoundary
   }
   return result
@@ -171,7 +177,7 @@ const compactBoundarySeeds = (
 
 const attachClipBoundaryPriors = (
   seeds: BoundarySeed[],
-  runtime: SongBeatGridRuntime,
+  runtime: Pick<SongBeatGridRuntime | UnifiedSongBeatGridRuntime, 'clips'>,
   durationSec: number
 ) => {
   const candidates = seeds.filter(
@@ -193,28 +199,14 @@ const attachClipBoundaryPriors = (
   }
 }
 
-const buildBarSpans = (
-  runtime: SongBeatGridRuntime,
+const finalizeBarSpans = (
+  seeds: BoundarySeed[],
+  runtime: Pick<SongBeatGridRuntime | UnifiedSongBeatGridRuntime, 'clips'>,
   durationSec: number
 ): SongStructureBarSpan[] => {
-  const seeds: BoundarySeed[] = [
-    {
-      sec: 0,
-      isPhraseBoundary: runtime.lines.some(
-        (line) => line.level === 'bar' && Math.abs(line.sec) <= BOUNDARY_EPSILON_SEC
-      ),
-      isClipBoundary: false,
-      clipIndex: 0
-    }
-  ]
-
-  for (const line of runtime.lines) {
-    const seed = toBoundarySeed(line, durationSec)
-    if (seed) mergeBoundarySeed(seeds, seed)
-  }
   mergeBoundarySeed(seeds, {
     sec: normalizeBoundarySec(durationSec),
-    isPhraseBoundary: false,
+    hasPeriodicStructurePrior: false,
     isClipBoundary: false,
     clipIndex: Math.max(0, runtime.clips.length - 1)
   })
@@ -227,14 +219,14 @@ const buildBarSpans = (
     const start = compactedSeeds[index]
     const end = compactedSeeds[index + 1]
     if (!start || !end || end.sec <= start.sec) continue
-    if (spans.length > 0 && start.isPhraseBoundary) phraseIndex += 1
+    if (spans.length > 0 && start.hasPeriodicStructurePrior) phraseIndex += 1
     spans.push({
       index: spans.length,
       startSec: start.sec,
       endSec: end.sec,
       startBar: spans.length + 1,
       phraseIndex,
-      isPhraseBoundary: start.isPhraseBoundary,
+      hasPeriodicStructurePrior: start.hasPeriodicStructurePrior,
       isClipBoundary: start.isClipBoundary,
       clipIndex: start.clipIndex
     })
@@ -264,6 +256,55 @@ const buildBarSpans = (
     startBar: index + 1,
     phraseIndex: Math.max(0, span.phraseIndex - firstPhraseIndex)
   }))
+}
+
+const buildBarSpans = (
+  runtime: SongBeatGridRuntime,
+  durationSec: number
+): SongStructureBarSpan[] => {
+  const seeds: BoundarySeed[] = [
+    {
+      sec: 0,
+      hasPeriodicStructurePrior: runtime.lines.some(
+        (line) => line.level === 'bar' && Math.abs(line.sec) <= BOUNDARY_EPSILON_SEC
+      ),
+      isClipBoundary: false,
+      clipIndex: 0
+    }
+  ]
+
+  for (const line of runtime.lines) {
+    const seed = toBoundarySeed(line, durationSec)
+    if (seed) mergeBoundarySeed(seeds, seed)
+  }
+  return finalizeBarSpans(seeds, runtime, durationSec)
+}
+
+const buildV23DownbeatSpans = (
+  runtime: UnifiedSongBeatGridRuntime,
+  durationSec: number
+): SongStructureBarSpan[] => {
+  const seeds: BoundarySeed[] = [
+    {
+      sec: 0,
+      hasPeriodicStructurePrior: false,
+      isClipBoundary: false,
+      clipIndex: 0
+    }
+  ]
+  for (const line of runtime.lines) {
+    if (line.level !== 'downbeat') continue
+    if (line.sec <= BOUNDARY_EPSILON_SEC || line.sec >= durationSec - BOUNDARY_EPSILON_SEC) {
+      continue
+    }
+    mergeBoundarySeed(seeds, {
+      sec: normalizeBoundarySec(line.sec),
+      hasPeriodicStructurePrior: false,
+      isClipBoundary: false,
+      clipIndex: line.clipIndex
+    })
+  }
+  return finalizeBarSpans(seeds, runtime, durationSec)
 }
 
 const normalizePulse = (values: readonly number[]) => {
@@ -603,18 +644,16 @@ const buildRecurrenceVector = (
   ]
 }
 
-export const buildSongStructureSpectralFeatures = (
-  input: BuildSongStructureInput,
-  durationSec: number
+const buildSpectralFeaturesFromSpans = (
+  data: UnifiedDisplayWaveformDetailData | null | undefined,
+  structureFeatureDataInput: SongStructureFeatureData | null | undefined,
+  spans: readonly SongStructureBarSpan[],
+  beatGridSignature?: string
 ): SongStructureSpectralFeatureSet | null => {
-  const data = input.waveformData
-  const structureFeatureData = isValidSongStructureFeatureData(input.structureFeatureData)
-    ? input.structureFeatureData
+  const structureFeatureData = isValidSongStructureFeatureData(structureFeatureDataInput)
+    ? structureFeatureDataInput
     : null
-  if ((!data && !structureFeatureData) || durationSec <= 0) return null
-  const runtimeResult = buildRuntime(input, durationSec)
-  if (!runtimeResult) return null
-  const spans = buildBarSpans(runtimeResult.runtime, durationSec)
+  if (!data && !structureFeatureData) return null
   if (spans.length < 8) return null
   const rawBars = structureFeatureData
     ? spans.map((span) => summarizeAbsoluteBar(structureFeatureData, span))
@@ -630,10 +669,40 @@ export const buildSongStructureSpectralFeatures = (
       recurrenceVector: buildRecurrenceVector(normalized, previous, bar.pulseAttack, bar.pulseHigh)
     }
   })
-  return {
-    bars,
-    beatGridSignature: runtimeResult.dynamic ? runtimeResult.runtime.signature : undefined
-  }
+  return { bars, beatGridSignature }
+}
+
+export const buildSongStructureSpectralFeatures = (
+  input: BuildSongStructureInput,
+  durationSec: number
+): SongStructureSpectralFeatureSet | null => {
+  const data = input.waveformData
+  if ((!data && !input.structureFeatureData) || durationSec <= 0) return null
+  const runtimeResult = buildRuntime(input, durationSec)
+  if (!runtimeResult) return null
+  const spans = buildBarSpans(runtimeResult.runtime, durationSec)
+  return buildSpectralFeaturesFromSpans(
+    data,
+    input.structureFeatureData,
+    spans,
+    runtimeResult.dynamic ? runtimeResult.runtime.signature : undefined
+  )
+}
+
+export const buildSongStructureV23SpectralFeatures = (
+  input: BuildSongStructureV23Input,
+  durationSec: number
+): SongStructureSpectralFeatureSet | null => {
+  if (durationSec <= 0) return null
+  const runtime = createUnifiedSongBeatGridRuntime(input.beatGridMap, durationSec)
+  if (!runtime) return null
+  const spans = buildV23DownbeatSpans(runtime, durationSec)
+  return buildSpectralFeaturesFromSpans(
+    input.waveformData,
+    input.structureFeatureData,
+    spans,
+    runtime.signature
+  )
 }
 
 export const cosineSimilarity = (left: readonly number[], right: readonly number[]) => {

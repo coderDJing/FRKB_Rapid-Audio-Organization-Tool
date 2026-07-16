@@ -157,6 +157,13 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
     if (job?.needsEnergy === true && payloadResult?.energyScore === undefined) {
       errors.push('energy: missing energy score from analyzer')
     }
+    if (job?.needsStructure === true) {
+      if (payloadResult?.songStructureError) {
+        errors.push(`structure: ${payloadResult.songStructureError}`)
+      } else if (!payloadResult?.songStructure) {
+        errors.push('structure: missing v23 structure result from analyzer')
+      }
+    }
     if (payloadError) errors.push(`worker错误: ${payloadError}`)
     return errors
   }
@@ -433,6 +440,17 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         if (shouldPersist()) {
           deps.events.emit('waveform-updated', { filePath: job.filePath })
         }
+      }
+
+      if (
+        shouldPersist() &&
+        job.needsStructure &&
+        payloadResult?.songStructure &&
+        !payloadResult.songStructureError
+      ) {
+        await deps.persistence.persistSongStructure(job.filePath, payloadResult.songStructure, {
+          shouldPersist
+        })
       }
     } catch (error) {
       persistenceErrorDetail = `persist: ${

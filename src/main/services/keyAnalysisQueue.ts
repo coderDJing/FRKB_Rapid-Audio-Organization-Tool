@@ -331,7 +331,8 @@ export function enqueueManualKeyAnalysisBatch(
     preemptible: true,
     category: 'manual-batch',
     manualBatchId: batchId,
-    forceAnalysis: options?.forceAnalysis
+    forceAnalysis: options?.forceAnalysis,
+    includeStructure: true
   })
   reevaluateConcurrency()
   scheduleCooldownReevaluation()

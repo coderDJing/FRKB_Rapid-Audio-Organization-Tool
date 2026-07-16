@@ -39,7 +39,11 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["startSec", "endSec", "startBar", "endBar", "kind", "confidence"]
+        "required": ["startSec", "endSec", "kind", "confidence"],
+        "oneOf": [
+          { "required": ["startBar", "endBar"] },
+          { "required": ["startDownbeatOrdinal", "endDownbeatOrdinal"] }
+        ]
       }
     }
   }

@@ -50,6 +50,8 @@ import { createPersistEnergy } from './energyPersistence'
 import { createPersistWaveform } from './waveformPersistence'
 import { removeCoverCacheForMissingTrack } from './coverCacheCleanup'
 import { ensureSongCacheEntry } from './songCacheEntryPersistence'
+import { createPersistSongStructure } from './structurePersistence'
+import { hasUsableSongStructureAnalysis } from '../../../shared/songStructure'
 
 type KeyAnalysisPersistenceDeps = {
   doneByPath: Map<string, DoneEntry>
@@ -555,10 +557,19 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     isMissingFileError
   })
 
+  const persistSongStructure = createPersistSongStructure({
+    doneByPath: deps.doneByPath,
+    events: deps.events,
+    ensureSongCacheEntry,
+    cleanupMissingPersistTarget,
+    isMissingFileError
+  })
+
   const prepareJob = async (job: KeyAnalysisJob): Promise<boolean> => {
     const filePath = job.filePath
     const forceAnalysis = job.forceAnalysis === true
     job.cachedUnifiedDisplayWaveformData = undefined
+    job.cachedBeatGridMap = undefined
     let stat: { size: number; mtimeMs: number }
     let listRootResolved = false
     let externalCacheResolved = false
@@ -570,7 +581,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     let needsBpm = false
     let needsWaveform = false
     let needsEnergy = false
-    let needsStructure = false
+    let needsStructure = job.includeStructure === true
     const buildCurrentPrepareDetails = () =>
       buildPrepareDetails({
         listRootResolved,
@@ -621,8 +632,6 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     needsBpm = true
     needsWaveform = true
     needsEnergy = true
-    // 旧段落算法依赖已移除的大小节语义；在新段落功能独立重写前，不再生产任何结果。
-    needsStructure = false
     const done = deps.doneByPath.get(job.normalizedPath)
     if (done && done.size === stat.size && Math.abs(done.mtimeMs - stat.mtimeMs) < 1) {
       doneEntryHit = true
@@ -634,9 +643,11 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       }
       if (hasDoneCompleteGrid) {
         job.cachedBpm = doneGrid.bpm
+        job.cachedBeatGridMap = doneGrid.beatGridMap
         if (!forceAnalysis) needsBpm = false
       } else if (!forceAnalysis && hasDoneNoBpm) {
         needsBpm = false
+        needsStructure = false
       }
       if (!forceAnalysis && done.hasWaveform) {
         needsWaveform = false
@@ -644,6 +655,16 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
       if (!forceAnalysis && hasUsableSongEnergyAnalysis(done)) {
         energyCacheHit = true
         needsEnergy = false
+      }
+      if (
+        !forceAnalysis &&
+        hasDoneCompleteGrid &&
+        hasUsableSongStructureAnalysis({
+          beatGridMap: doneGrid.beatGridMap,
+          songStructure: done.songStructure
+        })
+      ) {
+        needsStructure = false
       }
       if (!needsKey && !needsBpm && !needsWaveform && !needsEnergy && !needsStructure) {
         applyJobNeeds()
@@ -699,9 +720,21 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
         }
         if (hasCompleteGrid) {
           job.cachedBpm = cachedGrid.bpm
+          job.cachedBeatGridMap = cachedGrid.beatGridMap
           if (!forceAnalysis) needsBpm = false
         } else if (!forceAnalysis && needsBpm && hasNoBpm) {
           needsBpm = false
+          needsStructure = false
+        }
+        if (
+          !forceAnalysis &&
+          hasCompleteGrid &&
+          hasUsableSongStructureAnalysis({
+            beatGridMap: cachedGrid.beatGridMap,
+            songStructure: cached.info?.songStructure
+          })
+        ) {
+          needsStructure = false
         }
         const hasWaveform = await LibraryCacheDb.hasWaveformSurfaceCacheEntryByMeta(
           listRoot,
@@ -726,7 +759,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
             hasWaveform: true
           })
           if (!forceAnalysis) needsWaveform = false
-          if (!forceAnalysis && needsEnergy) {
+          if (!forceAnalysis && (needsEnergy || needsStructure)) {
             const cachedUnifiedWaveform = await LibraryCacheDb.loadUnifiedDisplayWaveformCacheData(
               listRoot,
               filePath,
@@ -791,11 +824,23 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
           }
           if (hasCompleteGrid) {
             job.cachedBpm = cachedGrid.bpm
+            job.cachedBeatGridMap = cachedGrid.beatGridMap
             if (!forceAnalysis) needsBpm = false
           } else if (!forceAnalysis && needsBpm && hasNoBpm) {
             needsBpm = false
+            needsStructure = false
           }
-          if (!forceAnalysis && cached.hasWaveform) {
+          if (
+            !forceAnalysis &&
+            hasCompleteGrid &&
+            hasUsableSongStructureAnalysis({
+              beatGridMap: cachedGrid.beatGridMap,
+              songStructure: cached.info?.songStructure
+            })
+          ) {
+            needsStructure = false
+          }
+          if (!forceAnalysis && cached.hasWaveform && !needsStructure) {
             waveformCacheHit = true
             needsWaveform = false
           }
@@ -862,6 +907,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     persistBpm,
     persistNoBpm,
     persistWaveform,
+    persistSongStructure,
     prepareJob,
     removeCoverCacheForMissingTrack
   }

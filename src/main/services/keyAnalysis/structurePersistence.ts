@@ -68,9 +68,8 @@ export const createPersistSongStructure = (params: CreateStructurePersistencePar
           log.error('[闲时分析] 段落结果网格校验失败，已拒绝写入', {
             filePath,
             structureGrid: {
-              bpm: normalizedSongStructure.bpm,
-              firstBeatMs: normalizedSongStructure.firstBeatMs,
-              barBeatOffset: normalizedSongStructure.barBeatOffset,
+              formatVersion: normalizedSongStructure.formatVersion,
+              algorithmVersion: normalizedSongStructure.algorithmVersion,
               beatGridSignature: normalizedSongStructure.beatGridSignature
             },
             currentGrid: initialGridValidation.currentGrid

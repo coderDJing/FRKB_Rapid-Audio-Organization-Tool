@@ -4,6 +4,7 @@ import {
   type SongBeatGridMapV2
 } from './songBeatGridMapV2'
 import { hasUsableSongEnergyAnalysis } from './songEnergy'
+import { hasUsableSongStructureAnalysis } from './songStructure'
 
 export type SongAnalysisCompletenessInfo = {
   key?: unknown
@@ -58,7 +59,12 @@ export const hasRequiredSongStructureAnalysis = (
   info: SongAnalysisCompletenessInfo | null | undefined
 ) => {
   const grid = resolveUsableSongBeatGrid(info)
-  return grid.kind !== 'missing'
+  if (grid.kind === 'no-bpm') return true
+  if (grid.kind === 'missing') return false
+  return hasUsableSongStructureAnalysis({
+    beatGridMap: grid.beatGridMap,
+    songStructure: info?.songStructure
+  })
 }
 
 export const hasUsableCoreSongAnalysis = (
@@ -69,5 +75,6 @@ export const hasUsableCoreSongAnalysis = (
   if (options.waveformAvailable === false) return false
   const grid = resolveUsableSongBeatGrid(info)
   if (grid.kind === 'missing') return false
+  if (options.includeStructure && !hasRequiredSongStructureAnalysis(info)) return false
   return true
 }

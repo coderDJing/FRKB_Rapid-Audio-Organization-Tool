@@ -12,6 +12,10 @@ import {
 } from '../src/shared/songStructureFeatureData'
 import type { SongStructureAnalysis } from '../src/shared/songStructureCommon'
 import {
+  buildSongStructureAnalysisV23,
+  type SongStructureAnalysisV23
+} from '../src/shared/songStructureV23'
+import {
   UNIFIED_DISPLAY_WAVEFORM_DETAIL_RATE,
   buildUnifiedDisplayWaveformDetailFromMixxx
 } from '../src/shared/unifiedDisplayWaveform'
@@ -19,6 +23,7 @@ import { computeRawWaveform } from '../src/main/workers/rawWaveformBuilder'
 import type { MixxxWaveformData } from '../src/main/waveformCodec'
 import {
   resolveSongStructureGridInput,
+  resolveSongStructureGridV2Map,
   type SongStructureTruthGrid
 } from './song_structure_truth_common'
 
@@ -34,6 +39,7 @@ type RustBinding = SongAnalysisAudioDecoderBinding & {
 export type SongStructureAudioPreparationOptions = {
   absoluteBands?: boolean
   featureRate?: number
+  algorithmVersion?: 22 | 23 | 24 | 25 | 26
 }
 
 export const prepareSongStructureAudio = (
@@ -90,7 +96,7 @@ export const analyzeSongStructureAudio = (
   grid: SongStructureTruthGrid,
   options: SongStructureAudioPreparationOptions = {}
 ): {
-  structure: SongStructureAnalysis
+  structure: SongStructureAnalysis | SongStructureAnalysisV23
   analysisMs: number
   durationSec: number
   decoderBackend: string
@@ -98,13 +104,19 @@ export const analyzeSongStructureAudio = (
   structureFeaturePayloadBytes: number
 } => {
   const prepared = prepareSongStructureAudio(filePath, options)
-  const structureInput = {
-    waveformData: prepared.unified,
-    structureFeatureData: prepared.structureFeatureData,
-    ...resolveSongStructureGridInput(grid, prepared.unified.duration)
-  }
   const startedAt = performance.now()
-  const structure = buildSongStructureAnalysis(structureInput)
+  const structure =
+    options.algorithmVersion !== 22
+      ? buildSongStructureAnalysisV23({
+          waveformData: prepared.unified,
+          structureFeatureData: prepared.structureFeatureData,
+          beatGridMap: resolveSongStructureGridV2Map(grid, prepared.unified.duration)
+        })
+      : buildSongStructureAnalysis({
+          waveformData: prepared.unified,
+          structureFeatureData: prepared.structureFeatureData,
+          ...resolveSongStructureGridInput(grid, prepared.unified.duration)
+        })
   const analysisMs = performance.now() - startedAt
   if (!structure) throw new Error('生产段落算法没有生成结果')
   return {

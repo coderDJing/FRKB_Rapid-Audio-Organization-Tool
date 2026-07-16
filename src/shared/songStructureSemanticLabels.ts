@@ -18,6 +18,17 @@ import {
   type SongStructureSemanticRange as SemanticRange
 } from './songStructureSemanticOutro'
 import { refineContextualBuildRanges } from './songStructureSemanticBuild'
+import {
+  isDecisiveActiveReentry,
+  positiveSongStructureActivityDifference as positiveDifference,
+  resolveActiveSemanticScore,
+  resolveInactiveSemanticScore,
+  resolveSongStructureSemanticActivity as resolveSemanticActivity
+} from './songStructureSemanticActivity'
+import { resolveSongStructureMacroActivityKinds } from './songStructureSemanticMacroActivity'
+import { refineSongStructureSemanticStateKinds } from './songStructureSemanticStateGuards'
+import { stabilizeSongStructureSemanticRanges } from './songStructureSemanticStability'
+import { refinePostBreakdownStructuralReentries } from './songStructureSemanticReentry'
 import * as inactiveValley from './songStructureSemanticInactiveValley'
 import {
   SONG_STRUCTURE_SPECTRAL_VALUE_KEYS,
@@ -165,19 +176,6 @@ const averageLocalVector = (
   return result
 }
 
-const positiveDifference = (
-  current: SongStructureSpectralValues,
-  previous: SongStructureSpectralValues
-) =>
-  clamp01(
-    Math.max(0, current.energy - previous.energy) * 0.2 +
-      Math.max(0, current.low - previous.low) * 0.22 +
-      Math.max(0, current.mid - previous.mid) * 0.14 +
-      Math.max(0, current.high - previous.high) * 0.12 +
-      Math.max(0, current.attackDensity - previous.attackDensity) * 0.14 +
-      Math.max(0, current.density - previous.density) * 0.18
-  )
-
 const resolveStability = (
   bars: readonly SongStructureSpectralBarFeature[],
   startIndex: number,
@@ -195,21 +193,7 @@ const resolveStability = (
   return 1 - ramp(distanceSum / Math.max(1, count), 0.08, 0.52)
 }
 
-const durationPrior = (bars: number, preferred: number, tolerance: number) =>
-  1 - ramp(Math.abs(bars - preferred), tolerance * 0.3, tolerance)
 const toRank = (value: number) => clamp01(value * 0.5 + 0.5)
-
-const resolveSemanticActivity = (values: SongStructureSpectralValues) => {
-  const energy = toRank(values.energy)
-  const low = toRank(values.low)
-  const mid = toRank(values.mid)
-  const high = toRank(values.high)
-  const attack = toRank(values.attackDensity)
-  const density = toRank(values.density)
-  return clamp01(
-    energy * 0.2 + low * 0.23 + mid * 0.1 + high * 0.08 + attack * 0.17 + density * 0.22
-  )
-}
 
 const createEmptyScores = (): SongStructureSemanticScores => ({
   intro: 0,
@@ -278,7 +262,6 @@ const scoreSegment = (
     early * 0.3 +
       thin * 0.2 +
       risingDensity * 0.12 +
-      durationPrior(segment.bars, 16, 28) * 0.12 +
       (segmentIndex === 0 ? 1 : 0) * 0.2 +
       (1 - segment.entryRise) * 0.06
   )
@@ -286,7 +269,6 @@ const scoreSegment = (
     late * 0.31 +
       thin * 0.16 +
       fallingDensity * 0.17 +
-      durationPrior(segment.bars, 16, 28) * 0.12 +
       (segmentIndex === segmentCount - 1 ? 1 : 0) * 0.2 +
       (1 - segment.nextRise) * 0.04
   )
@@ -296,7 +278,6 @@ const scoreSegment = (
       (1 - attack) * 0.13 +
       mid * 0.07 +
       segment.entryTimbre * 0.1 +
-      durationPrior(segment.bars, 8, 18) * 0.12 +
       corePosition * 0.1
   )
   scores.build = clamp01(
@@ -306,7 +287,6 @@ const scoreSegment = (
       segment.nextRise * 0.05 +
       (1 - low) * 0.04 +
       segment.entryTimbre * 0.05 +
-      durationPrior(segment.bars, 8, 14) * 0.1 +
       corePosition * 0.04 +
       (1 - segment.stability) * 0.02
   )
@@ -318,7 +298,6 @@ const scoreSegment = (
       segment.entryTimbre * 0.08 +
       segment.stability * 0.08 +
       segment.repetition * 0.06 +
-      durationPrior(segment.bars, 16, 24) * 0.06 +
       corePosition * 0.04
   )
   scores.groove =
@@ -326,7 +305,6 @@ const scoreSegment = (
       active * 0.29 +
         segment.stability * 0.21 +
         segment.repetition * 0.17 +
-        durationPrior(segment.bars, 16, 28) * 0.13 +
         (1 - transitionStrength) * 0.12 +
         corePosition * 0.08
     ) *
@@ -538,12 +516,6 @@ const decodeSemanticKinds = (segments: readonly SemanticSegment[]) => {
   return result
 }
 
-const resolveActiveSemanticScore = (segment: SemanticSegment) =>
-  Math.max(segment.scores.drop, segment.scores.groove)
-
-const resolveInactiveSemanticScore = (segment: SemanticSegment) =>
-  Math.max(segment.scores.breakdown, segment.scores.outro)
-
 const MAX_PENDING_BREAKDOWN_BARS = 24
 const MAX_CONTEXTUAL_DROP_GROOVE_ADVANTAGE = 0.14
 
@@ -551,24 +523,33 @@ const isLowActivityContext = (segment: SemanticSegment) =>
   segment.scores.breakdown >= resolveActiveSemanticScore(segment) - 0.04 &&
   resolveSemanticActivity(segment.normalized) <= 0.58
 
-const isDecisiveActiveReentry = (previous: SemanticSegment, current: SemanticSegment) => {
-  const previousActivity = resolveSemanticActivity(previous.normalized)
-  const currentActivity = resolveSemanticActivity(current.normalized)
-  const componentRise = positiveDifference(current.normalized, previous.normalized)
-  const activeDominates =
-    resolveActiveSemanticScore(current) >= resolveInactiveSemanticScore(current) - 0.015
-  const entryEvidence =
-    current.entryRise >= 0.085 ||
-    currentActivity - previousActivity >= 0.075 ||
-    componentRise >= 0.08 ||
-    (current.entryTimbre >= 0.3 && currentActivity - previousActivity >= 0.035)
-  const strongWaveformLanding =
-    current.entryRise >= 0.22 && currentActivity >= 0.36 && componentRise >= 0.06
-  return activeDominates && ((currentActivity >= 0.45 && entryEvidence) || strongWaveformLanding)
-}
-
 const isDropCompetitiveAtContextualReentry = (segment: SemanticSegment) =>
   segment.scores.drop >= segment.scores.groove - MAX_CONTEXTUAL_DROP_GROOVE_ADVANTAGE
+
+const isDirectDropLanding = (previous: SemanticSegment, current: SemanticSegment) => {
+  const previousActivity = resolveSemanticActivity(previous.normalized)
+  const currentActivity = resolveSemanticActivity(current.normalized)
+  const hasStrongStructuralBoundary = current.boundaryScore >= 0.5 && current.scores.drop >= 0.5
+  return (
+    current.entryRise >= 0.22 &&
+    current.entryTimbre >= 0.45 &&
+    currentActivity - previousActivity >= 0.06 &&
+    currentActivity >= 0.52 &&
+    (current.scores.drop >= 0.58 || hasStrongStructuralBoundary) &&
+    isDropCompetitiveAtContextualReentry(current)
+  )
+}
+
+const isPreDropRecoveryPlateau = (
+  previousKind: SongStructureSectionKind | undefined,
+  current: SemanticSegment,
+  next: SemanticSegment | undefined
+) =>
+  previousKind === 'breakdown' &&
+  current.scores.groove >= current.scores.drop + 0.14 &&
+  resolveSemanticActivity(current.normalized) < 0.5 &&
+  !!next &&
+  isDirectDropLanding(current, next)
 
 const applyBuildContextGuards = (
   segments: readonly SemanticSegment[],
@@ -603,36 +584,6 @@ const applyBuildContextGuards = (
       result[index] = 'drop'
     } else {
       result[index] = isLowActivityContext(segment) ? 'breakdown' : 'groove'
-    }
-  }
-  return result
-}
-
-const bridgeBreakdownFamilies = (
-  segments: readonly SemanticSegment[],
-  kinds: readonly SongStructureSectionKind[]
-) => {
-  const result = [...kinds]
-  for (let left = 0; left < result.length - 2; left += 1) {
-    if (result[left] !== 'breakdown') continue
-    let gapBars = 0
-    let hasActiveReentry = false
-    for (let right = left + 1; right < result.length; right += 1) {
-      const kind = result[right]
-      const segment = segments[right]
-      const previous = segments[right - 1]
-      if (!segment || !kind) break
-      if (kind === 'intro' || kind === 'outro') break
-      if (kind === 'drop' && previous && isDecisiveActiveReentry(previous, segment)) break
-      if (kind === 'breakdown') {
-        if (!hasActiveReentry && gapBars <= 24) {
-          for (let index = left + 1; index < right; index += 1) result[index] = 'breakdown'
-        }
-        break
-      }
-      gapBars += segment.bars
-      if (previous && isDecisiveActiveReentry(previous, segment)) hasActiveReentry = true
-      if (gapBars > 24 || hasActiveReentry) break
     }
   }
   return result
@@ -685,8 +636,24 @@ const isConfirmedBreakdownRange = (
   const baselineReduction = dropBaseline - activity
   const surroundingReduction = surroundingPeak - activity
   const scoreMargin = breakdownScore - activeScore
+  const entryBoundaryScore = segments[startIndex]?.boundaryScore ?? 0
 
-  if (bars < 8) return false
+  if (bars < 4) return false
+  if (bars < 8) {
+    return (
+      (baselineReduction >= 0.065 && entryBoundaryScore >= 0.34) ||
+      surroundingReduction >= 0.12 ||
+      scoreMargin >= 0.1 ||
+      breakdownScore >= 0.82
+    )
+  }
+  if (
+    breakdownScore < activeScore - 0.08 &&
+    baselineReduction < 0.12 &&
+    surroundingReduction < 0.14
+  ) {
+    return false
+  }
   return (
     baselineReduction >= 0.055 ||
     surroundingReduction >= 0.075 ||
@@ -710,7 +677,7 @@ const isConfirmedTerminalOutroSegment = (segment: SemanticSegment, dropBaseline:
 
 const isContinuousDropCore = (segment: SemanticSegment, dropBaseline: number) => {
   const activity = resolveSemanticActivity(segment.normalized)
-  return segment.relativeReduction < 0.13 && activity >= dropBaseline - 0.085
+  return segment.relativeReduction < 0.2 && activity >= dropBaseline - 0.085
 }
 
 const isShortDropBridge = (segment: SemanticSegment, dropBaseline: number) =>
@@ -746,6 +713,14 @@ const propagateMacroSemanticStates = (
       pendingBreakdownBars = null
       continue
     }
+    const previous = segments[index - 1]
+    if (previous && kind !== 'build' && isDirectDropLanding(previous, segment)) {
+      result[index] = 'drop'
+      inDrop = true
+      dropBaseline = resolveSemanticActivity(segment.normalized)
+      pendingBreakdownBars = null
+      continue
+    }
     if (kind === 'breakdown') {
       let endIndex = index + 1
       while (endIndex < result.length && result[endIndex] === 'breakdown') endIndex += 1
@@ -763,8 +738,15 @@ const propagateMacroSemanticStates = (
       continue
     }
 
-    const previous = segments[index - 1]
     const previousKind = result[index - 1]
+    const next = segments[index + 1]
+    if (kind === 'drop' && isPreDropRecoveryPlateau(previousKind, segment, next)) {
+      result[index] = 'groove'
+      inDrop = false
+      dropBaseline = 0
+      pendingBreakdownBars = null
+      continue
+    }
     const contextualDrop =
       !!previous &&
       kind !== 'build' &&
@@ -801,7 +783,8 @@ const propagateMacroSemanticStates = (
       const weakIsolatedDrop =
         segment.scores.drop < 0.48 &&
         segment.scores.drop <= segment.scores.groove + 0.015 &&
-        segment.entryRise < 0.075
+        segment.entryRise < 0.075 &&
+        (segment.bars <= 8 || resolveSemanticActivity(segment.normalized) < 0.5)
       if (weakIsolatedDrop) {
         result[index] = 'groove'
         continue
@@ -866,9 +849,11 @@ const applySemanticGuards = (
   decoded: readonly SongStructureSectionKind[]
 ) => {
   const buildGuarded = applyBuildContextGuards(segments, decoded)
-  const bridgedBreakdowns = bridgeBreakdownFamilies(segments, buildGuarded)
+  const bridgedBreakdowns = resolveSongStructureMacroActivityKinds(segments, buildGuarded)
   const propagated = propagateMacroSemanticStates(segments, bridgedBreakdowns)
-  return smoothSemanticKinds(segments, propagated)
+  const macroResolved = resolveSongStructureMacroActivityKinds(segments, propagated)
+  const stateRefined = refineSongStructureSemanticStateKinds(segments, macroResolved)
+  return smoothSemanticKinds(segments, stateRefined)
 }
 
 const resolveSemanticConfidence = (segment: SemanticSegment, kind: SongStructureSectionKind) => {
@@ -913,112 +898,6 @@ const mergeSemanticRanges = (
     })
   }
   return ranges
-}
-
-const MAX_ACTIVE_RANGE_RATIO = 0.5
-const MIN_RECOVERY_SECTION_BARS = 4
-
-const resolveRangeActivity = (
-  bars: readonly SongStructureSpectralBarFeature[],
-  startIndex: number,
-  endIndex: number
-) => {
-  const start = clamp(Math.floor(startIndex), 0, bars.length)
-  const end = clamp(Math.ceil(endIndex), start, bars.length)
-  if (end <= start) return 0
-  let total = 0
-  for (let index = start; index < end; index += 1) {
-    const bar = bars[index]
-    if (bar) total += resolveSemanticActivity(bar.normalized)
-  }
-  return total / Math.max(1, end - start)
-}
-
-const findOversizedActiveRangeSplit = (
-  bars: readonly SongStructureSpectralBarFeature[],
-  boundaries: readonly SongStructureSpectralBoundary[],
-  range: SemanticRange,
-  maxActiveBars: number
-) => {
-  const boundaryScores = new Map(boundaries.map((boundary) => [boundary.index, boundary.score]))
-  const start = range.startIndex
-  const end = range.endIndex
-  const minimumSideBars = Math.min(MIN_RECOVERY_SECTION_BARS, Math.floor((end - start) / 2))
-  const midpoint = (start + end) / 2
-  let bestIndex = -1
-  let bestScore = -Infinity
-  for (let index = start + minimumSideBars; index <= end - minimumSideBars; index += 1) {
-    if (index - start > maxActiveBars) break
-    const boundaryScore = boundaryScores.get(index) ?? 0
-    if (!bars[index]) continue
-    const beforeActivity = resolveRangeActivity(bars, Math.max(start, index - 4), index)
-    const afterActivity = resolveRangeActivity(bars, index, Math.min(end, index + 4))
-    const localActivity = resolveRangeActivity(
-      bars,
-      Math.max(start, index - 2),
-      Math.min(end, index + 2)
-    )
-    const localValley = Math.max(0, Math.max(beforeActivity, afterActivity) - localActivity)
-    const midpointFit = 1 - Math.min(1, Math.abs(index - midpoint) / Math.max(1, midpoint - start))
-    const score =
-      boundaryScore * 1.35 +
-      Math.abs(beforeActivity - afterActivity) * 0.38 +
-      localValley * 0.3 +
-      midpointFit * 0.06
-    if (
-      score > bestScore ||
-      (score === bestScore && Math.abs(index - midpoint) < Math.abs(bestIndex - midpoint))
-    ) {
-      bestIndex = index
-      bestScore = score
-    }
-  }
-  if (bestIndex >= 0) return bestIndex
-  const fallbackIndex = Math.max(
-    start + minimumSideBars,
-    Math.min(end - minimumSideBars, Math.round(midpoint))
-  )
-  return fallbackIndex > start && fallbackIndex < end ? fallbackIndex : null
-}
-
-const splitOversizedActiveRange = (
-  bars: readonly SongStructureSpectralBarFeature[],
-  boundaries: readonly SongStructureSpectralBoundary[],
-  range: SemanticRange,
-  maxActiveBars: number
-): SemanticRange[] => {
-  if (range.endIndex - range.startIndex <= maxActiveBars) return [{ ...range }]
-  const splitIndex = findOversizedActiveRangeSplit(bars, boundaries, range, maxActiveBars)
-  if (splitIndex === null) return [{ ...range }]
-  return [
-    ...splitOversizedActiveRange(
-      bars,
-      boundaries,
-      { ...range, endIndex: splitIndex },
-      maxActiveBars
-    ),
-    ...splitOversizedActiveRange(
-      bars,
-      boundaries,
-      { ...range, startIndex: splitIndex },
-      maxActiveBars
-    )
-  ]
-}
-
-export const repairOversizedActiveRanges = (
-  bars: readonly SongStructureSpectralBarFeature[],
-  boundaries: readonly SongStructureSpectralBoundary[],
-  ranges: readonly SemanticRange[],
-  totalBars = bars.length
-): SemanticRange[] => {
-  const maxActiveBars = Math.max(1, Math.floor(Math.max(0, totalBars) * MAX_ACTIVE_RANGE_RATIO))
-  if (maxActiveBars <= 0) return [...ranges]
-  return ranges.flatMap((range) =>
-    range.kind === 'drop' || range.kind === 'groove'
-      ? splitOversizedActiveRange(bars, boundaries, range, maxActiveBars)
-      : [{ ...range }]
-  )
 }
 
 const findBoundaryScore = (boundaries: readonly SongStructureSpectralBoundary[], index: number) =>
@@ -1075,14 +954,17 @@ export const labelSongStructureSpectralSegments = (
     inactiveValleyRefinedRanges,
     activeReentryIndexes
   )
-  const terminalRefinedRanges = refineTerminalOutroRanges(
+  const reentryRefinedRanges = refinePostBreakdownStructuralReentries(
     bars,
     buildRefinedRanges,
+    clustering.boundaries
+  )
+  const terminalRefinedRanges = refineTerminalOutroRanges(
+    bars,
+    reentryRefinedRanges,
     activeReentryIndexes
   )
-  const ranges = repairOversizedActiveRanges(
-    bars,
-    clustering.boundaries,
+  const ranges = stabilizeSongStructureSemanticRanges(
     inactiveValley.refineInitialGrooveDropRanges(bars, terminalRefinedRanges, clustering.boundaries)
   )
   const sections = ranges

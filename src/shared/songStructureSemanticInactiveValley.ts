@@ -138,7 +138,7 @@ const isStructuralBoundary = (
   const bar = bars[index]
   return (
     !!bar &&
-    (bar.isPhraseBoundary ||
+    (bar.hasPeriodicStructurePrior ||
       bar.isClipBoundary ||
       (allowSpectralBoundary && spectralBoundaryIndexes.has(index)))
   )

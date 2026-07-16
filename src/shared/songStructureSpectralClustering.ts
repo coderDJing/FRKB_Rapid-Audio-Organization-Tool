@@ -41,6 +41,19 @@ export type SongStructureSpectralClusteringResult = {
   clusterCount: number
 }
 
+export type SongStructureSpectralClusterModel = Omit<
+  SongStructureSpectralClusteringResult,
+  'boundaries'
+>
+
+export type SongStructureSpectralClusteringOptions = {
+  useStoredPeriodicPrior?: boolean
+  inferPeriodicPhase?: boolean
+  periodicPhase?: number
+  boundaryContextBars?: number
+  boundaryRefineRadiusBars?: number
+}
+
 type KMeansResult = {
   assignments: number[]
   inertia: number
@@ -51,6 +64,7 @@ type BoundaryEvidence = {
   contrast: number
   prominence: number
   buildRamp: number
+  periodicPrior: boolean
 }
 
 const squaredDistance = (left: readonly number[], right: readonly number[]) => {
@@ -468,29 +482,73 @@ export const resolveSongStructureBuildRampScore = (
 
 const resolveBoundaryBuildRampScore = (
   bars: readonly SongStructureSpectralBarFeature[],
-  index: number
+  index: number,
+  eligible: boolean
 ) => {
-  if (!bars[index]?.isPhraseBoundary || index + 8 > bars.length) return 0
+  if (!eligible || index + 8 > bars.length) return 0
   return resolveSongStructureBuildRampScore(bars, index, index + 8)
 }
 
-const buildBoundaryEvidence = (bars: readonly SongStructureSpectralBarFeature[]) => {
-  const vectors = bars.map((bar) => bar.localVector)
-  const base = bars.map((bar, index) => {
-    if (index <= 0 || index >= bars.length) {
-      return { score: 0, contrast: 0, buildRamp: 0 }
+const resolveInferredPeriodicPhase = (contrasts: readonly number[]) => {
+  const PERIOD = 8
+  let bestPhase = 0
+  let bestScore = -Infinity
+  for (let phase = 0; phase < PERIOD; phase += 1) {
+    const values: number[] = []
+    for (
+      let index = Math.max(MIN_SECTION_BARS, phase);
+      index < contrasts.length - 4;
+      index += PERIOD
+    ) {
+      const contrast = contrasts[index] ?? 0
+      const localPeak = contrast >= Math.max(contrasts[index - 1] ?? 0, contrasts[index + 1] ?? 0)
+      if (localPeak) values.push(contrast)
     }
-    const left = averageVectors(vectors, index - 4, index)
-    const right = averageVectors(vectors, index, index + 4)
-    const contrast = ramp(Math.sqrt(squaredDistance(left, right)), 0.16, 1.35)
-    const phrasePrior = bar.isPhraseBoundary ? 1 : 0
+    const strongest = [...values].sort((left, right) => right - left).slice(0, 6)
+    const score =
+      strongest.reduce((total, value, index) => total + value / (index + 1), 0) +
+      percentile(values, 0.5) * 0.35
+    if (score > bestScore) {
+      bestPhase = phase
+      bestScore = score
+    }
+  }
+  return bestPhase
+}
+
+const buildBoundaryEvidence = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  options: SongStructureSpectralClusteringOptions
+) => {
+  const vectors = bars.map((bar) => bar.localVector)
+  const boundaryContextBars = clamp(Math.floor(Number(options.boundaryContextBars) || 4), 1, 8)
+  const contrasts = bars.map((_, index) => {
+    if (index <= 0 || index >= bars.length) {
+      return 0
+    }
+    const left = averageVectors(vectors, index - boundaryContextBars, index)
+    const right = averageVectors(vectors, index, index + boundaryContextBars)
+    return ramp(Math.sqrt(squaredDistance(left, right)), 0.16, 1.35)
+  })
+  const configuredPhase = Number(options.periodicPhase)
+  const inferredPhase = Number.isInteger(configuredPhase)
+    ? ((configuredPhase % 8) + 8) % 8
+    : options.inferPeriodicPhase
+      ? resolveInferredPeriodicPhase(contrasts)
+      : null
+  const base = bars.map((bar, index) => {
+    const contrast = contrasts[index] ?? 0
+    const periodicPrior =
+      (options.useStoredPeriodicPrior && bar.hasPeriodicStructurePrior) ||
+      (inferredPhase !== null && index % 8 === inferredPhase)
     const clipPrior = bar.isClipBoundary ? 1 : 0
-    const buildRamp = resolveBoundaryBuildRampScore(bars, index)
-    const localScore = clamp01(contrast * 0.78 + phrasePrior * 0.16 + clipPrior * 0.06)
+    const buildRamp = resolveBoundaryBuildRampScore(bars, index, periodicPrior)
+    const localScore = clamp01(contrast * 0.78 + Number(periodicPrior) * 0.16 + clipPrior * 0.06)
     return {
       score: Math.max(localScore, buildRamp),
       contrast,
-      buildRamp
+      buildRamp,
+      periodicPrior
     }
   })
   return base.map((evidence, index): BoundaryEvidence => {
@@ -510,15 +568,21 @@ const buildBoundaryEvidence = (bars: readonly SongStructureSpectralBarFeature[])
 const refineBoundaryIndex = (
   index: number,
   evidence: readonly BoundaryEvidence[],
-  barCount: number
+  barCount: number,
+  options: SongStructureSpectralClusteringOptions
 ) => {
   const minimumIndex = Math.min(MIN_SECTION_BARS, barCount - 1)
   const maximumIndex = Math.max(minimumIndex, barCount - MIN_SECTION_BARS)
   let bestIndex = clamp(index, minimumIndex, maximumIndex)
   let bestScore = evidence[bestIndex]?.score ?? 0
+  const boundaryRefineRadiusBars = clamp(
+    Math.floor(Number(options.boundaryRefineRadiusBars) || BOUNDARY_REFINE_RADIUS_BARS),
+    0,
+    4
+  )
   for (
-    let candidate = Math.max(minimumIndex, index - BOUNDARY_REFINE_RADIUS_BARS);
-    candidate <= Math.min(maximumIndex, index + BOUNDARY_REFINE_RADIUS_BARS);
+    let candidate = Math.max(minimumIndex, index - boundaryRefineRadiusBars);
+    candidate <= Math.min(maximumIndex, index + boundaryRefineRadiusBars);
     candidate += 1
   ) {
     const score = evidence[candidate]?.score ?? 0
@@ -536,9 +600,10 @@ const refineBoundaryIndex = (
 
 const selectBoundaries = (
   bars: readonly SongStructureSpectralBarFeature[],
-  clusterIds: readonly number[]
+  clusterIds: readonly number[],
+  options: SongStructureSpectralClusteringOptions
 ) => {
-  const evidence = buildBoundaryEvidence(bars)
+  const evidence = buildBoundaryEvidence(bars, options)
   const interiorContrasts = evidence.slice(1, -1).map((item) => item.contrast)
   const contrastMedian = percentile(interiorContrasts, 0.5)
   const contrastP90 = percentile(interiorContrasts, 0.9)
@@ -558,7 +623,7 @@ const selectBoundaries = (
     const clusterChanged = clusterIds[index] !== clusterIds[index - 1]
     const prominent = current.prominence >= NOVELTY_PROMINENCE_FLOOR
     const phraseCandidate =
-      bar.isPhraseBoundary &&
+      current.periodicPrior &&
       localPeak &&
       current.contrast >= Math.max(NOVELTY_CONTRAST_FLOOR, adaptiveContrast * PHRASE_CONTRAST_SCALE)
     const clipCandidate =
@@ -583,7 +648,7 @@ const selectBoundaries = (
     if (clipCandidate || buildRampCandidate) {
       candidates.push({ index, score: current.score, buildRamp: current.buildRamp })
     } else {
-      candidates.push(refineBoundaryIndex(index, evidence, bars.length))
+      candidates.push(refineBoundaryIndex(index, evidence, bars.length, options))
     }
   }
   candidates.sort((left, right) => left.index - right.index || right.score - left.score)
@@ -613,9 +678,9 @@ const selectBoundaries = (
   ]
 }
 
-export const clusterSongStructureSpectralBars = (
+export const buildSongStructureSpectralClusterModel = (
   bars: readonly SongStructureSpectralBarFeature[]
-): SongStructureSpectralClusteringResult | null => {
+): SongStructureSpectralClusterModel | null => {
   if (bars.length < 12 || bars.length > MAX_SPECTRAL_BARS) return null
   const clusterCount = resolveClusterCount(bars.length)
   const recurrence = enhanceRecurrenceDiagonals(buildRecurrenceAffinity(bars))
@@ -623,10 +688,35 @@ export const clusterSongStructureSpectralBars = (
   const affinity = buildBalancedAffinity(recurrence, path)
   const embedding = buildSpectralEmbedding(affinity, clusterCount)
   const clusterIds = runKMeans(embedding, clusterCount)
-  const boundaries = selectBoundaries(bars, clusterIds)
   return {
-    boundaries,
     clusterIds,
     clusterCount
   }
+}
+
+export const buildSongStructureSpectralClusteringFromModel = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  model: SongStructureSpectralClusterModel,
+  options: SongStructureSpectralClusteringOptions = {}
+): SongStructureSpectralClusteringResult | null => {
+  if (bars.length < 12 || bars.length > MAX_SPECTRAL_BARS) return null
+  if (model.clusterIds.length !== bars.length || model.clusterCount <= 0) return null
+  const resolvedOptions: SongStructureSpectralClusteringOptions = {
+    useStoredPeriodicPrior: options.useStoredPeriodicPrior !== false,
+    inferPeriodicPhase: options.inferPeriodicPhase === true,
+    periodicPhase: options.periodicPhase
+  }
+  return {
+    boundaries: selectBoundaries(bars, model.clusterIds, resolvedOptions),
+    clusterIds: model.clusterIds,
+    clusterCount: model.clusterCount
+  }
+}
+
+export const clusterSongStructureSpectralBars = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  options: SongStructureSpectralClusteringOptions = {}
+): SongStructureSpectralClusteringResult | null => {
+  const model = buildSongStructureSpectralClusterModel(bars)
+  return model ? buildSongStructureSpectralClusteringFromModel(bars, model, options) : null
 }

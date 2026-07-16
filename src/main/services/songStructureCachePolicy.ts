@@ -1,17 +1,23 @@
-import { normalizeSongStructureAnalysis } from '../../shared/songStructure'
+import {
+  hasUsableSongStructureAnalysis,
+  normalizeSongStructureAnalysis
+} from '../../shared/songStructure'
 import type { ISongInfo } from '../../types/globals'
 
-type SongStructureCarrier = Pick<ISongInfo, 'songStructure'>
+type SongStructureCarrier = Pick<ISongInfo, 'beatGridMap' | 'songStructure'>
 
-// 段落分析已冻结：网格变化不得清除历史段落结果，也不再用旧网格语义判定其有效性。
-export const discardIncompatibleSongStructure = (_info: SongStructureCarrier) => {}
+export const discardIncompatibleSongStructure = (info: SongStructureCarrier) => {
+  if (!normalizeSongStructureAnalysis(info.songStructure)) return
+  if (!hasUsableSongStructureAnalysis(info)) delete info.songStructure
+}
 
 export const preserveBestAvailableSongStructure = (
   target: SongStructureCarrier,
   cachedInfo?: SongStructureCarrier | null
 ) => {
-  if (!cachedInfo || normalizeSongStructureAnalysis(target.songStructure)) return
+  if (!cachedInfo || hasUsableSongStructureAnalysis(target)) return
   const structure = normalizeSongStructureAnalysis(cachedInfo.songStructure)
   if (!structure) return
+  if (!hasUsableSongStructureAnalysis({ ...target, songStructure: structure })) return
   target.songStructure = structure
 }

@@ -1,0 +1,103 @@
+{
+  "$schema": "../../schema/prediction.schema.json",
+  "schemaVersion": 1,
+  "trackId": "3b5c43113c023d6e9cffb4855fbf09854da4f7f2cef57673a89bcb35a0f77a29",
+  "generatedAt": "2026-07-16T12:55:13.149Z",
+  "algorithm": {
+    "version": 26,
+    "formatVersion": 2,
+    "strategy": "offline-native-downbeat-pseudo-color-native-libav-44k1-stereo",
+    "decoderBackend": "native-libav-waveform",
+    "gitHead": "7357984c61eb5fda0ef2204e6ca3f858aee6f7da",
+    "dirty": true
+  },
+  "durationSec": 348.286,
+  "gridKind": "fixed",
+  "analysisMs": 127.966,
+  "sections": [
+    {
+      "startSec": 0,
+      "endSec": 13.826,
+      "startDownbeatOrdinal": 0,
+      "endDownbeatOrdinal": 8,
+      "kind": "intro",
+      "confidence": 0.626,
+      "energy": 0.561,
+      "low": 0.543,
+      "high": 0.219,
+      "novelty": 0.517
+    },
+    {
+      "startSec": 13.826,
+      "endSec": 51.009,
+      "startDownbeatOrdinal": 8,
+      "endDownbeatOrdinal": 30,
+      "kind": "groove",
+      "confidence": 0.659,
+      "energy": 0.647,
+      "low": 0.708,
+      "high": 0.21,
+      "novelty": 0.517
+    },
+    {
+      "startSec": 51.009,
+      "endSec": 81.432,
+      "startDownbeatOrdinal": 30,
+      "endDownbeatOrdinal": 48,
+      "kind": "breakdown",
+      "confidence": 0.863,
+      "energy": 0.453,
+      "low": 0.308,
+      "high": 0.208,
+      "novelty": 0.918
+    },
+    {
+      "startSec": 81.432,
+      "endSec": 155.798,
+      "startDownbeatOrdinal": 48,
+      "endDownbeatOrdinal": 92,
+      "kind": "drop",
+      "confidence": 0.583,
+      "energy": 0.653,
+      "low": 0.707,
+      "high": 0.213,
+      "novelty": 0.918
+    },
+    {
+      "startSec": 155.798,
+      "endSec": 209.883,
+      "startDownbeatOrdinal": 92,
+      "endDownbeatOrdinal": 124,
+      "kind": "breakdown",
+      "confidence": 0.705,
+      "energy": 0.401,
+      "low": 0.254,
+      "high": 0.193,
+      "novelty": 0.987
+    },
+    {
+      "startSec": 209.883,
+      "endSec": 334.953,
+      "startDownbeatOrdinal": 124,
+      "endDownbeatOrdinal": 198,
+      "kind": "drop",
+      "confidence": 0.621,
+      "energy": 0.64,
+      "low": 0.682,
+      "high": 0.224,
+      "novelty": 0.987
+    },
+    {
+      "startSec": 334.953,
+      "endSec": 348.286,
+      "startDownbeatOrdinal": 198,
+      "endDownbeatOrdinal": 206,
+      "kind": "outro",
+      "confidence": 0.985,
+      "energy": 0.389,
+      "low": 0.324,
+      "high": 0.201,
+      "novelty": 0
+    }
+  ]
+}

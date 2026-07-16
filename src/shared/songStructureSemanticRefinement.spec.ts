@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import { refineContextualBuildRanges } from './songStructureSemanticBuild'
+import { refinePostBreakdownStructuralReentries } from './songStructureSemanticReentry'
 import {
   refineInactiveDropValleyRanges,
   refineInitialGrooveDropRanges
 } from './songStructureSemanticInactiveValley'
-import { repairOversizedActiveRanges } from './songStructureSemanticLabels'
 import type { SongStructureSpectralBoundary } from './songStructureSpectralClustering'
 import {
   refineTerminalOutroRanges,
@@ -52,7 +52,7 @@ const createBar = (
   endSec: (index + 1) * 2,
   startBar: index + 1,
   phraseIndex: Math.floor(index / 8),
-  isPhraseBoundary: index % 8 === 0,
+  hasPeriodicStructurePrior: index % 8 === 0,
   isClipBoundary: false,
   clipIndex: 0,
   values: toRawValues(normalized),
@@ -151,30 +151,6 @@ const createShortBuildEpisodeValues = (index: number, startIndex: number) => {
 }
 
 describe('歌曲结构语义范围精修', () => {
-  it('超过整曲一半的单个 Drop 会按内部谱边界重新切分，而不是改名返回', () => {
-    const bars = Array.from({ length: 64 }, (_, index) => createBar(index, createDropValues()))
-    const ranges = [createRange(0, 33, 'drop'), createRange(33, 64, 'outro')]
-    const boundaries: SongStructureSpectralBoundary[] = [{ index: 16, score: 0.8 }]
-
-    expect(repairOversizedActiveRanges(bars, boundaries, ranges)).toMatchObject([
-      { startIndex: 0, endIndex: 16, kind: 'drop' },
-      { startIndex: 16, endIndex: 33, kind: 'drop' },
-      { startIndex: 33, endIndex: 64, kind: 'outro' }
-    ])
-  })
-
-  it('超过整曲一半的单个 Groove 同样会被重新切分', () => {
-    const bars = Array.from({ length: 64 }, (_, index) => createBar(index, createDropValues()))
-    const ranges = [createRange(0, 33, 'groove'), createRange(33, 64, 'outro')]
-    const boundaries: SongStructureSpectralBoundary[] = [{ index: 16, score: 0.8 }]
-
-    expect(repairOversizedActiveRanges(bars, boundaries, ranges)).toMatchObject([
-      { startIndex: 0, endIndex: 16, kind: 'groove' },
-      { startIndex: 16, endIndex: 33, kind: 'groove' },
-      { startIndex: 33, endIndex: 64, kind: 'outro' }
-    ])
-  })
-
   it('能从连续 Drop 中找出被初始 Groove 标签掩盖的长低谷', () => {
     const bars = Array.from({ length: 64 }, (_, index) => {
       if (index < 16 || index >= 40) return createBar(index, createDropValues())
@@ -396,7 +372,7 @@ describe('歌曲结构语义范围精修', () => {
       createRange(46, 80, 'drop')
     ]
 
-    expect(bars[46]?.isPhraseBoundary).toBe(false)
+    expect(bars[46]?.hasPeriodicStructurePrior).toBe(false)
     expect(refineContextualBuildRanges(bars, ranges, [46])).toMatchObject([
       { startIndex: 0, endIndex: 24, kind: 'groove' },
       { startIndex: 24, endIndex: 30, kind: 'breakdown' },
@@ -456,6 +432,29 @@ describe('歌曲结构语义范围精修', () => {
     ]
 
     expect(refineContextualBuildRanges(bars, ranges, [40])).toEqual(ranges)
+  })
+
+  it('Breakdown 后的长 Groove 会在强恢复边界拆回 Drop，而不是吞掉整段', () => {
+    const bars = Array.from({ length: 72 }, (_, index) => {
+      if (index < 16) return createBar(index, createDropValues())
+      if (index < 24) return createBar(index, createBreakdownValues())
+      if (index < 40) return createBar(index, createPartialFoundationRecoveryValues())
+      return createBar(index, createDropValues())
+    })
+    const ranges = [
+      createRange(0, 16, 'drop'),
+      createRange(16, 24, 'breakdown'),
+      createRange(24, 72, 'groove')
+    ]
+
+    expect(
+      refinePostBreakdownStructuralReentries(bars, ranges, [{ index: 40, score: 0.8 }])
+    ).toMatchObject([
+      { startIndex: 0, endIndex: 16, kind: 'drop' },
+      { startIndex: 16, endIndex: 24, kind: 'breakdown' },
+      { startIndex: 24, endIndex: 40, kind: 'breakdown' },
+      { startIndex: 40, endIndex: 72, kind: 'drop' }
+    ])
   })
 
   it('终局低档平台中的周期重音不会阻止 Outro 向前修正', () => {

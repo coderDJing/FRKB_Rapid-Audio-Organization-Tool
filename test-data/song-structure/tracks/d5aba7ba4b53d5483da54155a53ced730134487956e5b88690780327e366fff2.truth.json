@@ -1,86 +1,86 @@
 {
   "$schema": "../schema/truth.schema.json",
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "trackId": "d5aba7ba4b53d5483da54155a53ced730134487956e5b88690780327e366fff2",
   "coverage": "full",
   "review": {
     "status": "approved",
     "source": "user-listening",
-    "reviewedOn": "2026-07-11",
-    "notes": "用户明确表示整首段落结果满意。"
+    "reviewedOn": "2026-07-16",
+    "notes": "用户复核确认：171.760s 开始 Breakdown；187.370s 为新段落，Groove 或 Drop 均可；216.638s 开始 Drop。其余已批准段落保持不变。"
   },
   "sections": [
     {
-      "startBar": 1,
-      "endBar": 8,
+      "startDownbeatOrdinal": 0,
+      "endDownbeatOrdinal": 8,
       "startSec": 0,
       "endSec": 15.663,
       "kind": "intro",
       "acceptableKinds": ["intro"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     },
     {
-      "startBar": 9,
-      "endBar": 40,
+      "startDownbeatOrdinal": 8,
+      "endDownbeatOrdinal": 40,
       "startSec": 15.663,
       "endSec": 78.102,
       "kind": "groove",
       "acceptableKinds": ["groove"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     },
     {
-      "startBar": 41,
-      "endBar": 46,
+      "startDownbeatOrdinal": 40,
+      "endDownbeatOrdinal": 46,
       "startSec": 78.102,
       "endSec": 89.809,
       "kind": "breakdown",
       "acceptableKinds": ["breakdown"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     },
     {
-      "startBar": 47,
-      "endBar": 88,
+      "startDownbeatOrdinal": 46,
+      "endDownbeatOrdinal": 88,
       "startSec": 89.809,
       "endSec": 171.76,
       "kind": "drop",
       "acceptableKinds": ["drop"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     },
     {
-      "startBar": 89,
-      "endBar": 96,
+      "startDownbeatOrdinal": 88,
+      "endDownbeatOrdinal": 96,
       "startSec": 171.76,
       "endSec": 187.37,
       "kind": "breakdown",
       "acceptableKinds": ["breakdown"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     },
     {
-      "startBar": 97,
-      "endBar": 112,
+      "startDownbeatOrdinal": 96,
+      "endDownbeatOrdinal": 111,
       "startSec": 187.37,
-      "endSec": 218.59,
+      "endSec": 216.638,
       "kind": "groove",
-      "acceptableKinds": ["groove"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "acceptableKinds": ["groove", "drop"],
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     },
     {
-      "startBar": 113,
-      "endBar": 160,
-      "startSec": 218.59,
+      "startDownbeatOrdinal": 111,
+      "endDownbeatOrdinal": 160,
+      "startSec": 216.638,
       "endSec": 312.248,
       "kind": "drop",
       "acceptableKinds": ["drop"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     },
     {
-      "startBar": 161,
-      "endBar": 177,
+      "startDownbeatOrdinal": 160,
+      "endDownbeatOrdinal": 177,
       "startSec": 312.248,
       "endSec": 346.044,
       "kind": "outro",
       "acceptableKinds": ["outro"],
-      "boundaryToleranceBars": { "start": 0, "end": 0 }
+      "boundaryToleranceDownbeats": { "start": 0, "end": 0 }
     }
   ]
 }

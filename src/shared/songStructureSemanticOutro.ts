@@ -252,7 +252,7 @@ const findTerminalOutroBoundary = (
       resolvePositiveLayerReduction(reference.rawValues, onset.rawValues, false)
     )
     if (onsetReduction < 0.015 && rawOnsetReduction < 0.006) continue
-    const aligned = bars[index]?.isPhraseBoundary ?? false
+    const aligned = bars[index]?.hasPeriodicStructurePrior ?? false
     const strongNormalizedRelease = aligned
       ? normalizedReduction >= 0.055
       : foundationDrop >= 0.12 || layerDrop >= 0.12

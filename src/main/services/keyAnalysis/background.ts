@@ -16,7 +16,8 @@ import { getBackgroundIdleSnapshot } from '../backgroundIdleGate'
 import store from '../../store'
 import {
   hasUsableKeyAnalysis,
-  hasUsableSongBeatGridAnalysis
+  hasUsableSongBeatGridAnalysis,
+  hasRequiredSongStructureAnalysis
 } from '../../../shared/songAnalysisCompleteness'
 import { hasUsableSongEnergyAnalysis } from '../../../shared/songEnergy'
 import type { KeyAnalysisPersistence } from './persistence'
@@ -69,7 +70,12 @@ type KeyAnalysisBackgroundDeps = {
   enqueueList: (
     filePaths: string[],
     priority: KeyAnalysisPriority,
-    options?: { urgent?: boolean; source?: KeyAnalysisSource; fastAnalysis?: boolean }
+    options?: {
+      urgent?: boolean
+      source?: KeyAnalysisSource
+      fastAnalysis?: boolean
+      includeStructure?: boolean
+    }
   ) => void
   clearPendingBackground: () => void
   hasForegroundWork: () => boolean
@@ -481,6 +487,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const hasKey = hasUsableKeyAnalysis(info)
       const hasBpm = hasUsableSongBeatGridAnalysis(info)
       const hasEnergy = hasUsableSongEnergyAnalysis(info)
+      const hasStructure = hasRequiredSongStructureAnalysis(info)
       const listRoot = typeof row?.list_root === 'string' ? row.list_root.trim() : ''
       if (!listRoot) continue
       const absFilePath = LibraryCacheDb.resolveCacheFilePath(listRoot, filePath)
@@ -497,7 +504,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           mtimeMs
         )
       }
-      if (!hasKey || !hasBpm || !hasEnergy || !hasWaveform) {
+      if (!hasKey || !hasBpm || !hasEnergy || !hasWaveform || !hasStructure) {
         results.push(absFilePath)
         if (results.length >= limit) {
           processedAll = false
@@ -564,6 +571,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
           const hasKey = hasUsableKeyAnalysis(cached?.info)
           const hasBpm = hasUsableSongBeatGridAnalysis(cached?.info)
           const hasEnergy = hasUsableSongEnergyAnalysis(cached?.info)
+          const hasStructure = hasRequiredSongStructureAnalysis(cached?.info)
           let hasWaveform = false
           if (cached && Number.isFinite(cached.size) && Number.isFinite(cached.mtimeMs)) {
             hasWaveform = await LibraryCacheDb.hasWaveformSurfaceCacheEntryByMeta(
@@ -573,7 +581,7 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
               cached.mtimeMs
             )
           }
-          if (!cached || !hasKey || !hasBpm || !hasEnergy || !hasWaveform) {
+          if (!cached || !hasKey || !hasBpm || !hasEnergy || !hasWaveform || !hasStructure) {
             results.push(filePath)
             if (results.length >= limit) break
           }
@@ -677,7 +685,10 @@ export const createKeyAnalysisBackground = (deps: KeyAnalysisBackgroundDeps) => 
       const candidates = await collectBackgroundCandidates(BACKGROUND_BATCH_SIZE)
       if (backgroundEnabled) {
         if (candidates.length > 0) {
-          deps.enqueueList(candidates, 'background', { source: 'background' })
+          deps.enqueueList(candidates, 'background', {
+            source: 'background',
+            includeStructure: true
+          })
         } else {
           const cleaned = await cleanupMissingCacheEntries(BACKGROUND_CLEAN_BATCH_SIZE)
           if (cleaned === 0 && !deps.hasForegroundWork()) {

@@ -73,7 +73,7 @@ export function registerKeyAnalysisHandlers() {
         urgent: true,
         source: 'foreground',
         focusSlot: payload?.focusSlot,
-        includeStructure: false
+        includeStructure: true
       })
     }
   )
@@ -86,7 +86,7 @@ export function registerKeyAnalysisHandlers() {
     enqueueKeyAnalysis(filePath, 'low', {
       source: 'foreground',
       preemptible: true,
-      includeStructure: false
+      includeStructure: true
     })
   })
 

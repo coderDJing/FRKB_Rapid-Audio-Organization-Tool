@@ -1,30 +1,33 @@
 import { describe, expect, it } from 'vitest'
 import {
   CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
-  CURRENT_SONG_STRUCTURE_FORMAT_VERSION,
   type SongStructureAnalysis
 } from '../../shared/songStructure'
+import { createSongBeatGridMapV2FromFixedGrid } from '../../shared/songBeatGridMapV2'
 import {
   discardIncompatibleSongStructure,
   preserveBestAvailableSongStructure
 } from './songStructureCachePolicy'
 
-const GRID = { bpm: 128, firstBeatMs: 100, barBeatOffset: 0 }
+const GRID = createSongBeatGridMapV2FromFixedGrid({
+  bpm: 128,
+  firstBeatMs: 100,
+  downbeatBeatOffset: 0,
+  source: 'analysis'
+})!
 
-const createStructure = (algorithmVersion: number, includeFormatVersion = true) => ({
-  ...(includeFormatVersion ? { formatVersion: CURRENT_SONG_STRUCTURE_FORMAT_VERSION } : {}),
-  algorithmVersion,
+const createStructure = (beatGridSignature = GRID.signature): SongStructureAnalysis => ({
+  formatVersion: 2,
+  algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
   source: 'algorithmic',
   durationSec: 60,
-  ...GRID,
-  phraseBars: 8,
+  beatGridSignature,
   sections: [
     {
       startSec: 0,
       endSec: 60,
-      startBar: 1,
-      endBar: 32,
-      phraseIndex: 0,
+      startDownbeatOrdinal: 0,
+      endDownbeatOrdinal: 32,
       kind: 'groove',
       confidence: 0.6,
       energy: 0.6,
@@ -36,70 +39,55 @@ const createStructure = (algorithmVersion: number, includeFormatVersion = true) 
 })
 
 describe('songStructureCachePolicy', () => {
-  it('keeps a same-grid stale algorithm result', () => {
-    const info = {
-      ...GRID,
-      songStructure: createStructure(
-        CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1,
-        false
-      ) as unknown as SongStructureAnalysis
-    }
+  it('keeps a structure result bound to the current v2 grid', () => {
+    const info = { beatGridMap: GRID, songStructure: createStructure() }
 
     discardIncompatibleSongStructure(info)
 
     expect(info.songStructure).toBeDefined()
   })
 
-  it('preserves a historical result after the grid changes', () => {
-    const info = {
-      ...GRID,
-      firstBeatMs: GRID.firstBeatMs + 25,
-      songStructure: createStructure(
-        CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1,
-        false
-      ) as unknown as SongStructureAnalysis
-    }
+  it('drops a result when the current grid signature changes', () => {
+    const changedGrid = createSongBeatGridMapV2FromFixedGrid({
+      bpm: 128,
+      firstBeatMs: 125,
+      downbeatBeatOffset: 0,
+      source: 'analysis'
+    })!
+    const info = { beatGridMap: changedGrid, songStructure: createStructure() }
 
     discardIncompatibleSongStructure(info)
 
-    expect(info.songStructure).toBeDefined()
+    expect(info.songStructure).toBeUndefined()
   })
 
-  it('restores a usable stale result when the scanned target has none', () => {
-    const target = { ...GRID, songStructure: undefined as SongStructureAnalysis | undefined }
-    const cached = {
-      ...GRID,
-      songStructure: createStructure(
-        CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1,
-        false
-      ) as unknown as SongStructureAnalysis
-    }
-
-    preserveBestAvailableSongStructure(target, cached)
-
-    expect(target.songStructure).toMatchObject({
-      formatVersion: 1,
-      algorithmVersion: CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1
-    })
-  })
-
-  it('does not replace an existing historical target result', () => {
+  it('restores a cached v23 result when the scanned target has the same grid', () => {
     const target = {
-      ...GRID,
-      songStructure: createStructure(
-        CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1,
-        false
-      ) as unknown as SongStructureAnalysis
+      beatGridMap: GRID,
+      songStructure: undefined as SongStructureAnalysis | undefined
     }
-    const cached = {
-      ...GRID,
-      songStructure: createStructure(
-        CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION
-      ) as unknown as SongStructureAnalysis
-    }
+    const cached = { beatGridMap: GRID, songStructure: createStructure() }
 
     preserveBestAvailableSongStructure(target, cached)
 
-    expect(target.songStructure.algorithmVersion).toBe(CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION - 1)
+    expect(target.songStructure).toEqual(cached.songStructure)
+  })
+
+  it('does not restore a cached result onto a different grid', () => {
+    const changedGrid = createSongBeatGridMapV2FromFixedGrid({
+      bpm: 128,
+      firstBeatMs: 125,
+      downbeatBeatOffset: 0,
+      source: 'analysis'
+    })!
+    const target = {
+      beatGridMap: changedGrid,
+      songStructure: undefined as SongStructureAnalysis | undefined
+    }
+    const cached = { beatGridMap: GRID, songStructure: createStructure() }
+
+    preserveBestAvailableSongStructure(target, cached)
+
+    expect(target.songStructure).toBeUndefined()
   })
 })

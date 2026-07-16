@@ -104,6 +104,7 @@ export type KeyAnalysisJob = {
   needsEnergy?: boolean
   needsStructure?: boolean
   cachedBpm?: number
+  cachedBeatGridMap?: SongBeatGridMapV2
   cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
   startTime?: number
   trace?: KeyAnalysisJobTrace

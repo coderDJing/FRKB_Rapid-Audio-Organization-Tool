@@ -1,17 +1,20 @@
 # 面向 Techno / EDM 的歌曲段落分析优化草案
 
-> 当前状态（2026-07-11）：生产候选算法已推进到 `v22`。v22 补齐长 Groove 内多轮
-> Breakdown / Build / Drop 恢复、8/16-bar Build、弱 Outro 二次确认，并统一正式 Worker、
-> inspector 与 benchmark 的 MP3 native-libav 解码路径。本文保留架构演进和历史实验背景；
+> 当前状态（2026-07-16）：生产候选算法已推进到原生四拍网格 `v26`。v26 不再依赖大节线、
+> 小节线或固定 phrase 相位，只允许连续四拍 downbeat 作为结构落点；补齐持续下降入口、宏观
+> Active / Inactive 状态、Breakdown / Build 后强重入、短状态稳定性、终局 Outro 与相邻同标签
+> 归并，并统一正式 Worker、inspector 与 benchmark 的 MP3 native-libav 解码路径。本文保留架构
+> 演进和历史实验背景；
 > 样本位置、人工真值、prediction baseline、benchmark 命令与后续会话入口，以
-> `drafts/song-structure-truth-benchmark-workflow.md` 为唯一有效流程文档。本文后续出现的
-> `v16 / v17` 表述属于当时阶段记录，禁止据此判断当前实现状态。
+> `drafts/song-structure/song-structure-truth-benchmark-workflow.md` 为唯一有效流程文档。本文后续出现的
+> `v16 / v17 / v22`、`bar / phrase / 大节线 / 小节线` 表述都属于当时阶段记录，禁止据此判断
+> 当前实现状态或恢复已经删除的层级语义。
 
 创建日期：2026-07-10
 
-状态：目标架构草案；MSAF 风格光谱聚类验证版已于 2026-07-10 以算法版本 `17` 接入工作区，但尚未通过真值 benchmark，不视为正式发布门槛已完成
+状态：历史架构与实验记录；当前可提交节点为 v26，真实样本与验收口径见唯一流程文档
 
-当前 v17 是用于先看实际效果的第一版：
+历史 v17 是用于先看实际效果的第一版：
 
 - 已实现 bar 级稳健特征、MSAF 风格 recurrence/path affinity、Laplacian 光谱聚类和六类语义解码。
 - 已统一固定网格与动态网格的 bar 投影。
@@ -21,6 +24,19 @@
 - 已增加 `--absolute-bands --feature-rate 8|16|32` 离线 A/B；absolute 实验尚未切换生产 winner，也尚未建立 SQLite feature cache。
 - 当前仍从 `UnifiedDisplayWaveform` 派生 low / mid / high presence，尚未落地独立 absolute band 特征缓存。
 - 目标架构中的独立缓存、人工真值 benchmark 和数据驱动语义分类仍属于后续阶段。
+
+## 当前 v26 收口节点
+
+- 输入时间基统一为零基、半开区间的四拍 downbeat ordinal；历史 prediction 的 `startBar / endBar`
+  只在 benchmark 兼容读取层存在。
+- 方向边界负责 Fall / Landing / Switch；语义后处理拆为 Activity、Macro Activity、Build、Outro、
+  Structural Reentry 和稳定状态模块，禁止再用“段落超过半曲就硬切同标签”这类模板修复。
+- 完整分析缓存只要格式、网格 signature 和必要字段可用，就继续尊重旧结果；算法升级不会未经用户
+  选择自动覆盖已有完整结构。查看 v26 效果需主动重新分析曲目。
+- 7 首开发样本均已冻结 v26 production prediction。只有 A Night 完整 truth 和 ANOTR 局部 truth
+  自动计分；其余样本即使用户认为当前结果合理，也不能由 prediction 自动升级为人工真值。
+- 当前 v26 计分节点：Boundary F1 `0.736842`，严格/宽松标签准确率 `0.892116`；这只是 1 首完整
+  truth 加 1 首局部 truth 的结果，不代表 7 首总体准确率或泛化能力。
 
 ## 1. 目标
 
@@ -777,7 +793,7 @@ Drop 专项：
 - 三首样本的 body 通道没有 255 饱和；all-band P90 peak 饱和约 `0–9.34%`，因此 peak 只能保留小权重。
 - 8 Hz 在约 130 BPM 时不足以稳定支撑每 bar 16 个 pulse bin；32 Hz 是否带来可听收益仍需真值验证。16 Hz 暂时是首选，不是已经冻结的生产参数。
 
-当前生产 `v17` 仍使用 pseudo-color 特征。absolute 实验只有在真值 / 人工试听证明收益后，才进入独立缓存和生产切换；正式切换时应升新算法版本，不能把旧 pseudo-color `v17` 当成同一结果继续复用。
+历史生产节点 `v17` 使用 pseudo-color 特征。absolute 实验只有在真值 / 人工试听证明收益后，才进入独立缓存和生产切换；正式切换时应升新算法版本，不能把旧 pseudo-color `v17` 当成同一结果继续复用。
 
 ## 8. 分阶段实施
 
@@ -843,7 +859,7 @@ Drop 专项：
 
 ### 阶段 5：受控切换 v17
 
-当前工作区为了尽快人工试听，已经提前让实验性 `v17` 优先进入生产分析入口。这只是工程验证状态，不代表下列受控切换条件已经满足；正式发布前仍要补齐 benchmark 和真实 absolute feature。
+历史工作区为了尽快人工试听，曾让实验性 `v17` 优先进入生产分析入口。这只是当时的工程验证状态，不代表当前 v26 的发布结论；当前验收以 benchmark 工作流文档为准。
 
 满足全部条件后：
 
@@ -1049,7 +1065,7 @@ Drop 专项：
 
 最优先做三件事：
 
-1. 建立 60 首结构真值 MVP，并冻结 v16 / 当前实验性 v17 报告。
+1. 建立 60 首结构真值 MVP，并保留 v16 / 历史实验性 v17 报告作为演进对照。
 2. 用熟悉的 Techno 样本人工复核 pseudo-color 与 absolute 8 / 16 / 32 Hz 输出，先锁定边界和 Build / Drop 语义，再冻结帧率与通道。
 3. 在边界 benchmark 成立后，确定 `SongStructureFeatureData` 和独立缓存 schema；首版先随正常分析生成，不立即开启全库解码预热。
 

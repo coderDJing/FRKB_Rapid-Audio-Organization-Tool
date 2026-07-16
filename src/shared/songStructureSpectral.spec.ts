@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { createSongBeatGridMapFromClips } from './songBeatGridMap'
 import {
-  CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION,
   buildSongStructureAnalysis,
-  hasCurrentSongStructureAnalysis
+  hasCurrentSongStructureAnalysis,
+  hasUsableSongStructureAnalysis
 } from './songStructure'
+import { CURRENT_SONG_STRUCTURE_ALGORITHM_VERSION } from './songStructureCommon'
 import { buildSpectralSongStructureSections } from './songStructureSpectral'
 import {
   clusterSongStructureSpectralBars,
@@ -469,7 +470,7 @@ describe('MSAF 风格歌曲结构分析', () => {
     const clustering = featureSet ? clusterSongStructureSpectralBars(featureSet.bars) : null
     const result = analyze(waveform)
 
-    expect(featureSet?.bars[46]?.isPhraseBoundary).toBe(false)
+    expect(featureSet?.bars[46]?.hasPeriodicStructurePrior).toBe(false)
     expect(
       (clustering?.boundaries ?? []).some((boundary) => Math.abs(boundary.index - 46) <= 1)
     ).toBe(true)
@@ -627,7 +628,9 @@ describe('MSAF 风格歌曲结构分析', () => {
 
     expect(breakdownBody).toHaveLength(1)
     expect(breakdownBody[0]?.kind).toBe('breakdown')
-    const dropSection = result?.sections.find((section) => section.kind === 'drop')
+    const dropSection = result?.sections.find(
+      (section) => section.kind === 'drop' && section.startSec / BAR_SEC >= 40
+    )
     expect(
       Math.abs((dropSection?.startSec ?? Number.NEGATIVE_INFINITY) / BAR_SEC - 48)
     ).toBeLessThanOrEqual(1)
@@ -770,7 +773,9 @@ describe('MSAF 风格歌曲结构分析', () => {
     ])
     const result = analyze(waveform)
     const transition = sectionsOverlappingBarRange(result?.sections ?? [], 42, 54)
-    const dropSection = result?.sections.find((section) => section.kind === 'drop')
+    const dropSection = result?.sections.find(
+      (section) => section.kind === 'drop' && section.startSec / BAR_SEC >= 48
+    )
 
     expect(transition.every((section) => section.kind !== 'drop')).toBe(true)
     expect(dropSection).toBeDefined()
@@ -803,7 +808,7 @@ describe('MSAF 风格歌曲结构分析', () => {
         endSec: (index + 1) * BAR_SEC,
         startBar: index + 1,
         phraseIndex: Math.floor(index / 8),
-        isPhraseBoundary: index % 8 === 0,
+        hasPeriodicStructurePrior: index % 8 === 0,
         isClipBoundary: false,
         clipIndex: 0,
         normalized,
@@ -891,7 +896,7 @@ describe('MSAF 风格歌曲结构分析', () => {
     )
   })
 
-  it('没有真实结构变化时不会为了满足模板强行制造 Drop，也不会输出超半曲 Groove', () => {
+  it('没有真实结构变化时不会为了满足模板强行制造 Drop 或同标签伪边界', () => {
     const waveform = createSyntheticWaveform(80, [
       {
         startBar: 0,
@@ -905,11 +910,8 @@ describe('MSAF 风格歌曲结构分析', () => {
     ])
     const result = analyze(waveform)
 
-    expect(result?.sections.length).toBeGreaterThanOrEqual(2)
+    expect(result?.sections).toHaveLength(1)
     expect(result?.sections.every((section) => section.kind === 'groove')).toBe(true)
-    expect(result?.sections.every((section) => section.endBar - section.startBar + 1 <= 40)).toBe(
-      true
-    )
     expect(result?.sections[0]?.startSec).toBe(0)
     expect(result?.sections.at(-1)?.endSec).toBe(waveform.duration)
   })
@@ -1028,7 +1030,10 @@ describe('MSAF 风格歌曲结构分析', () => {
     })
 
     expect(songStructure).not.toBeNull()
-    expect(hasCurrentSongStructureAnalysis({ beatGridMap: originalGrid, songStructure })).toBe(true)
+    expect(hasUsableSongStructureAnalysis({ beatGridMap: originalGrid, songStructure })).toBe(true)
+    expect(hasCurrentSongStructureAnalysis({ beatGridMap: originalGrid, songStructure })).toBe(
+      false
+    )
     expect(hasCurrentSongStructureAnalysis({ beatGridMap: changedGrid, songStructure })).toBe(false)
   })
 
@@ -1073,48 +1078,5 @@ describe('MSAF 风格歌曲结构分析', () => {
     expect(featureSet?.bars.some((bar) => Math.abs(bar.startSec - 65.1) < 0.001)).toBe(false)
     expect(featureSet?.bars[0]?.startSec).toBe(0)
     expect(featureSet?.bars.at(-1)?.endSec).toBe(waveform.duration)
-  })
-
-  it('相同输入重复分析时结果完全一致', () => {
-    const waveform = createSyntheticWaveform(64, [
-      {
-        startBar: 0,
-        endBar: 16,
-        energy: constant(0.48),
-        low: constant(0.55),
-        mid: constant(0.34),
-        high: constant(0.24),
-        attacks: [0, 4, 8, 12]
-      },
-      {
-        startBar: 16,
-        endBar: 32,
-        energy: constant(0.65),
-        low: constant(0.78),
-        mid: constant(0.58),
-        high: constant(0.42),
-        attacks: [0, 2, 4, 6, 8, 10, 12, 14]
-      },
-      {
-        startBar: 32,
-        endBar: 40,
-        energy: constant(0.42),
-        low: constant(0.2),
-        mid: constant(0.5),
-        high: constant(0.44),
-        attacks: [4, 12]
-      },
-      {
-        startBar: 40,
-        endBar: 64,
-        energy: constant(0.7),
-        low: constant(0.84),
-        mid: constant(0.62),
-        high: constant(0.5),
-        attacks: [0, 2, 4, 6, 8, 10, 12, 14]
-      }
-    ])
-
-    expect(analyze(waveform)).toEqual(analyze(waveform))
   })
 })

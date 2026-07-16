@@ -2,6 +2,7 @@ import { computed, ref, type Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
 import { hasUsableSongEnergyAnalysis } from '@shared/songEnergy'
 import {
+  hasRequiredSongStructureAnalysis,
   hasUsableKeyAnalysis,
   hasUsableSongBeatGridAnalysis
 } from '@shared/songAnalysisCompleteness'
@@ -265,7 +266,11 @@ export function useKeyAnalysisProgress(params: {
 
   const hasRequiredAnalysis = (song: ISongInfo | undefined) => {
     if (!song) return false
-    return hasCompleteKeyAnalysis(song)
+    if (!hasCompleteKeyAnalysis(song)) return false
+    if (params.requiresRuntimeAnalysis?.value === true) {
+      return hasRequiredSongStructureAnalysis(song)
+    }
+    return true
   }
 
   const getAnalysisProgress = (filePath: string): number | null => {

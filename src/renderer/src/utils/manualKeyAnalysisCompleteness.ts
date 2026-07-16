@@ -1,5 +1,6 @@
 import { hasUsableSongEnergyAnalysis } from '../../../shared/songEnergy'
 import {
+  hasRequiredSongStructureAnalysis,
   hasUsableKeyAnalysis,
   resolveCanonicalSongBeatGridV2
 } from '../../../shared/songAnalysisCompleteness'
@@ -61,7 +62,12 @@ export const resolveMissingAnalysisReasons = (
 
   const grid = resolveCanonicalSongBeatGridV2(song)
   if (grid.kind === 'no-bpm') return reasons
-  if (grid.kind === 'grid') return reasons
+  if (grid.kind === 'grid') {
+    if (options.includeSongStructure && !hasRequiredSongStructureAnalysis(song)) {
+      reasons.push('missing-song-structure')
+    }
+    return reasons
+  }
 
   reasons.push('missing-bpm', 'missing-first-beat', 'missing-downbeat-beat-offset')
   return reasons

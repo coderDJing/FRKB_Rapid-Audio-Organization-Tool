@@ -24,7 +24,7 @@ const HELP_TEXT = `添加歌曲段落真值样本
 
 固定网格：
   pnpm run song-structure:truth:add -- --file <音频> --title <标题> \\
-    --bpm <BPM> --first-beat-ms <毫秒> --bar-beat-offset <偏移> [选项]
+    --bpm <BPM> --first-beat-ms <毫秒> --downbeat-beat-offset <0..3> [选项]
 
 动态网格：
   pnpm run song-structure:truth:add -- --file <音频> --title <标题> \\
@@ -40,7 +40,7 @@ const HELP_TEXT = `添加歌曲段落真值样本
   --help, -h                  显示本帮助
 
 grid JSON 格式：
-  {"kind":"dynamic","clips":[{"startSec":0,"anchorSec":0.1,"bpm":128,"barBeatOffset":0}, ...]}
+  {"kind":"dynamic","clips":[{"startSec":0,"anchorSec":0.1,"bpm":128,"downbeatBeatOffset":0}, ...]}
 
 该命令只创建 review truth 草稿，绝不把当前算法 prediction 自动批准为人工真值。
 `
@@ -85,8 +85,8 @@ const readGrid = async (): Promise<SongStructureTruthGrid> => {
   }
   const bpm = parseRequiredFiniteNumber('--bpm')
   const firstBeatMs = parseRequiredFiniteNumber('--first-beat-ms')
-  const barBeatOffset = parseRequiredFiniteNumber('--bar-beat-offset')
-  return { kind: 'fixed', bpm, firstBeatMs, barBeatOffset }
+  const downbeatBeatOffset = parseRequiredFiniteNumber('--downbeat-beat-offset')
+  return { kind: 'fixed', bpm, firstBeatMs, downbeatBeatOffset }
 }
 
 const main = async () => {
@@ -117,7 +117,7 @@ const main = async () => {
   const truthRelativePath = `tracks/${sha256}.truth.json`
   const truth: SongStructureTruthFile = {
     $schema: '../schema/truth.schema.json',
-    schemaVersion: 1,
+    schemaVersion: 2,
     trackId: sha256,
     coverage: 'none',
     review: {

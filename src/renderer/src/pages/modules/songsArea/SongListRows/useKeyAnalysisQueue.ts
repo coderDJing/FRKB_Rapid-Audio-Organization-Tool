@@ -3,6 +3,7 @@ import type { Ref } from 'vue'
 import type { ISongInfo } from '../../../../../../types/globals'
 import { hasUsableSongEnergyAnalysis } from '@shared/songEnergy'
 import {
+  hasRequiredSongStructureAnalysis,
   hasUsableKeyAnalysis,
   hasUsableSongBeatGridAnalysis
 } from '@shared/songAnalysisCompleteness'
@@ -21,7 +22,7 @@ const hasRequiredKeyAnalysis = (song: ISongInfo | undefined, requiresRuntimeAnal
   if (!song) return false
   if (!hasUsableSongEnergyAnalysis(song) || !hasUsableKeyAnalysis(song)) return false
   if (!requiresRuntimeAnalysis) return true
-  return hasUsableSongBeatGridAnalysis(song)
+  return hasUsableSongBeatGridAnalysis(song) && hasRequiredSongStructureAnalysis(song)
 }
 
 export function useKeyAnalysisQueue({

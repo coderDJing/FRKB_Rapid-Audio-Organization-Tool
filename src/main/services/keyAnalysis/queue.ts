@@ -297,8 +297,7 @@ export class KeyAnalysisQueue {
   }
 
   private applyIncludeStructureOption(job: KeyAnalysisJob, includeStructure?: boolean) {
-    void includeStructure
-    job.includeStructure = false
+    if (includeStructure === true) job.includeStructure = true
   }
 
   private applyRequestFlags(job: KeyAnalysisJob, flags: KeyAnalysisRequestFlags) {
@@ -436,7 +435,7 @@ export class KeyAnalysisQueue {
       preemptible: options.preemptible === true,
       category: options.category,
       waveformOnly: options.waveformOnly === true,
-      includeStructure: false,
+      includeStructure: options.includeStructure === true,
       forceAnalysis: options.forceAnalysis === true,
       manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }
@@ -471,7 +470,7 @@ export class KeyAnalysisQueue {
       preemptible: true,
       category: 'visible',
       waveformOnly: options.waveformOnly === true,
-      includeStructure: false
+      includeStructure: options.waveformOnly !== true
     })
     this.drain()
   }
