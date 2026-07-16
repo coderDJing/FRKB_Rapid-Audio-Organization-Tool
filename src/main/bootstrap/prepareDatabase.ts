@@ -40,8 +40,8 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
   // 未配置数据库路径：进入初始化
   if (!store.settingConfig.databaseUrl) {
     startupWindow.setStage('selecting-library')
-    startupWindow.closeWindow()
     databaseInitWindow.createWindow()
+    startupWindow.closeWindow()
     return
   }
 
@@ -55,14 +55,14 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     const libraryExists = fs.pathExistsSync(libraryRoot)
     if (!rootExists || !libraryExists) {
       startupWindow.setStage('selecting-library')
-      startupWindow.closeWindow()
       databaseInitWindow.createWindow({ needErrorHint: true })
+      startupWindow.closeWindow()
       return
     }
   } catch (_e) {
     startupWindow.setStage('selecting-library')
-    startupWindow.closeWindow()
     databaseInitWindow.createWindow({ needErrorHint: true })
+    startupWindow.closeWindow()
     return
   }
 
@@ -74,16 +74,18 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
       startupWindow.setStage('recovering-library')
       let databaseVersion = assertExistingDatabaseSchemaSupported(databaseFilePath)
       if (databaseVersion === 35) {
-        startupWindow.closeWindow()
         databaseSchemaMigrationWindow.createWindow()
+        // 先建立接替窗口，再销毁启动窗口；否则会短暂触发 window-all-closed 并退出应用。
+        startupWindow.closeWindow()
         await migrateLibrarySchemaV35ToV36(databaseFilePath, {
           onProgress: databaseSchemaMigrationWindow.setSchemaMigrationProgress
         })
         databaseVersion = assertExistingDatabaseSchemaSupported(databaseFilePath)
       }
       if (databaseVersion === 36 || databaseVersion === 37) {
-        startupWindow.closeWindow()
         databaseSchemaMigrationWindow.createWindow()
+        // 同上，schema 升级窗口必须先存在，避免启动窗口关闭时误触发全局退出。
+        startupWindow.closeWindow()
         await migrateLibrarySchemaToV38(databaseFilePath, {
           onProgress: databaseSchemaMigrationWindow.setSchemaMigrationProgress
         })
@@ -134,7 +136,6 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
       return
     }
     startupWindow.setStage('selecting-library')
-    startupWindow.closeWindow()
     if (isDatabaseSchemaVersionError(error)) {
       databaseInitWindow.createWindow({
         errorHint: {
@@ -144,8 +145,10 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
           maximumSupportedVersion: error.maximumSupportedVersion
         }
       })
+      startupWindow.closeWindow()
       return
     }
     databaseInitWindow.createWindow({ needErrorHint: true })
+    startupWindow.closeWindow()
   }
 }

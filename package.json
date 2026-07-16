@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.2.1-rc.202607152337",
+  "version": "1.2.1-rc.202607161743",
   "description": "Rapid Audio Organization Tool",
   "license": "GPL-3.0-or-later",
   "main": "./out/main/index.js",
