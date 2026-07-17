@@ -30,7 +30,7 @@ const HELP_TEXT = `歌曲段落分析诊断工具
   --diagnostics               附加谱聚类边界、cluster 数量和语义 emission 诊断
   --absolute-bands            使用 Rust Mixxx absolute low/mid/high/all 实验特征
   --feature-rate <8|16|32>    absolute 实验特征帧率，默认 16 Hz
-  --algorithm <22|23|24|25|26> 选择冻结 v22 或原生四拍网格算法，默认 26
+  --algorithm <22|23|24|25|26|27> 选择冻结 v22 或原生四拍网格算法，默认 27
   --help, -h                  显示本帮助
 
 参数同时支持 --name=value 形式。
@@ -52,7 +52,7 @@ const filePath = path.resolve(String(readArg('--file') || '').trim())
 const bpm = Number(readArg('--bpm'))
 const firstBeatMs = Number(readArg('--first-beat-ms'))
 const downbeatBeatOffset = Number(readArg('--downbeat-beat-offset') ?? readArg('--bar-beat-offset'))
-const algorithmVersion = Number(readArg('--algorithm') ?? 26)
+const algorithmVersion = Number(readArg('--algorithm') ?? 27)
 const summaryOnly = args.includes('--summary')
 const diagnosticsEnabled = args.includes('--diagnostics')
 const absoluteBandsEnabled = args.includes('--absolute-bands')
@@ -70,8 +70,8 @@ if (!Number.isFinite(firstBeatMs)) {
 if (!Number.isInteger(downbeatBeatOffset) || downbeatBeatOffset < 0 || downbeatBeatOffset > 3) {
   throw new Error('缺少有效 --downbeat-beat-offset，合法值为 0..3')
 }
-if (![22, 23, 24, 25, 26].includes(algorithmVersion)) {
-  throw new Error('--algorithm 仅支持 22、23、24、25 或 26')
+if (![22, 23, 24, 25, 26, 27].includes(algorithmVersion)) {
+  throw new Error('--algorithm 仅支持 22、23、24、25、26 或 27')
 }
 if (absoluteBandsEnabled && ![8, 16, 32].includes(featureRate)) {
   throw new Error('--feature-rate 仅支持 8、16、32')

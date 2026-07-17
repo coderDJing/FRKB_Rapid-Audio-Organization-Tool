@@ -18,6 +18,7 @@ import {
   type SongStructureSemanticRange as SemanticRange
 } from './songStructureSemanticOutro'
 import { refineContextualBuildRanges } from './songStructureSemanticBuild'
+import { refineFoundationLandingBuildRanges } from './songStructureSemanticFoundationLanding'
 import {
   isDecisiveActiveReentry,
   positiveSongStructureActivityDifference as positiveDifference,
@@ -954,18 +955,35 @@ export const labelSongStructureSpectralSegments = (
     inactiveValleyRefinedRanges,
     activeReentryIndexes
   )
-  const reentryRefinedRanges = refinePostBreakdownStructuralReentries(
+  const foundationLandingRefinedRanges = refineFoundationLandingBuildRanges(
     bars,
     buildRefinedRanges,
+    clustering.boundaries,
+    inactiveValleyRefinedRanges
+  )
+  const reentryRefinedRanges = refinePostBreakdownStructuralReentries(
+    bars,
+    foundationLandingRefinedRanges,
     clustering.boundaries
   )
   const terminalRefinedRanges = refineTerminalOutroRanges(
     bars,
     reentryRefinedRanges,
-    activeReentryIndexes
+    activeReentryIndexes,
+    clustering.boundaries
+  )
+  const initialRefinedRanges = inactiveValley.refineInitialGrooveDropRanges(
+    bars,
+    terminalRefinedRanges,
+    clustering.boundaries
   )
   const ranges = stabilizeSongStructureSemanticRanges(
-    inactiveValley.refineInitialGrooveDropRanges(bars, terminalRefinedRanges, clustering.boundaries)
+    refineTerminalOutroRanges(
+      bars,
+      initialRefinedRanges,
+      activeReentryIndexes,
+      clustering.boundaries
+    )
   )
   const sections = ranges
     .map((range) => buildSection(bars, clustering.boundaries, range))

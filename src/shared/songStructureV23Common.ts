@@ -3,7 +3,7 @@ import type { SongStructureFeatureData } from './songStructureFeatureData'
 import type { SongStructureSectionKind } from './songStructureCommon'
 import type { UnifiedDisplayWaveformDetailData } from './unifiedDisplayWaveform'
 
-export const SONG_STRUCTURE_NATIVE_ALGORITHM_VERSION = 26
+export const SONG_STRUCTURE_NATIVE_ALGORITHM_VERSION = 27
 export const SONG_STRUCTURE_V23_FORMAT_VERSION = 2
 
 export type BuildSongStructureV23Input = {

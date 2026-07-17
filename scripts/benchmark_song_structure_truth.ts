@@ -37,7 +37,7 @@ const HELP_TEXT = `歌曲段落真值 benchmark
   --verify-hash               benchmark 前重新计算音频 SHA-256
   --absolute-bands            使用 absolute low/mid/high/all 生产特征
   --feature-rate <8|16|32>    absolute 特征帧率，默认 16 Hz
-  --algorithm <22|23|24|25|26> 选择冻结 v22 或原生四拍网格算法，默认 26
+  --algorithm <22|23|24|25|26|27> 选择冻结 v22 或原生四拍网格算法，默认 27
   --write-baseline            写入 baselines/v<algorithmVersion>/ 并登记 manifest
   --overwrite-baseline        允许覆盖已有同版本 prediction（须与 --write-baseline 一起）
   --report <路径>             指定报告路径；默认写入 structure-analysis-lab/reports/
@@ -95,8 +95,8 @@ type TrackMetric = {
   labels: LabelMetric
 }
 
-const isSupportedAlgorithmVersion = (value: number): value is 22 | 23 | 24 | 25 | 26 =>
-  value === 22 || value === 23 || value === 24 || value === 25 || value === 26
+const isSupportedAlgorithmVersion = (value: number): value is 22 | 23 | 24 | 25 | 26 | 27 =>
+  value === 22 || value === 23 || value === 24 || value === 25 || value === 26 || value === 27
 
 const divide = (numerator: number, denominator: number) =>
   denominator > 0 ? toRounded(numerator / denominator) : null
@@ -304,9 +304,9 @@ const main = async () => {
   }
   const absoluteBands = args.includes('--absolute-bands')
   const featureRate = Number(readArgument(args, '--feature-rate') ?? 16)
-  const algorithmVersion = Number(readArgument(args, '--algorithm') ?? 26)
+  const algorithmVersion = Number(readArgument(args, '--algorithm') ?? 27)
   if (!isSupportedAlgorithmVersion(algorithmVersion)) {
-    throw new Error('--algorithm 仅支持 22、23、24、25 或 26')
+    throw new Error('--algorithm 仅支持 22、23、24、25、26 或 27')
   }
   if (absoluteBands && ![8, 16, 32].includes(featureRate)) {
     throw new Error('--feature-rate 仅支持 8、16、32')

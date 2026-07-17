@@ -39,7 +39,7 @@ type RustBinding = SongAnalysisAudioDecoderBinding & {
 export type SongStructureAudioPreparationOptions = {
   absoluteBands?: boolean
   featureRate?: number
-  algorithmVersion?: 22 | 23 | 24 | 25 | 26
+  algorithmVersion?: 22 | 23 | 24 | 25 | 26 | 27
 }
 
 export const prepareSongStructureAudio = (

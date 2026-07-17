@@ -4,6 +4,7 @@ import {
   type SongStructureSpectralBarFeature,
   type SongStructureSpectralValues
 } from './songStructureSpectralFeatures'
+import type { SongStructureSpectralBoundary } from './songStructureSpectralClustering'
 
 export type SongStructureSemanticRange = {
   startIndex: number
@@ -20,6 +21,18 @@ type TerminalActivityWindow = {
   normalizedFoundation: number
   rawFoundation: number
 }
+
+const MIN_STRUCTURAL_RELEASE_POSITION_RATIO = 0.87
+const MIN_TERMINAL_REENTRY_POSITION_RATIO = 0.88
+const MIN_TERMINAL_REENTRY_BOUNDARY_SCORE = 0.5
+const MAX_TERMINAL_REENTRY_REMAINING_BLOCKS = 24
+const TERMINAL_REENTRY_REFERENCE_BLOCKS = 8
+const TERMINAL_REENTRY_VALLEY_BLOCKS = 2
+const TERMINAL_REENTRY_RETURN_BLOCKS = 8
+const MIN_TERMINAL_REENTRY_VALLEY_DROP = 0.16
+const MIN_TERMINAL_REENTRY_RECOVERY_GAIN = 0.12
+const MIN_TERMINAL_REENTRY_REDUCTION = 0.025
+const MIN_TERMINAL_REENTRY_TAIL_REDUCTION = 0.1
 
 export type SongStructureTerminalOutroDiagnostic = {
   index: number
@@ -143,7 +156,7 @@ const resolveTerminalPersistence = (
   const recoveredDropLevel = peakFoundation >= reference.normalizedFoundation - 0.1
   return {
     persistence: persistentWindows / Math.max(1, totalWindows),
-    hasDecisiveRecovery: recoveryGain >= Math.max(0.12, initialDrop * 0.55) && recoveredDropLevel
+    hasDecisiveRecovery: recoveryGain >= Math.max(0.06, initialDrop * 0.55) && recoveredDropLevel
   }
 }
 
@@ -203,18 +216,99 @@ export const buildSongStructureTerminalOutroDiagnostics = (
   return result
 }
 
+const findTerminalReentryOutroBoundary = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  finalDropRange: SongStructureSemanticRange,
+  activeReentryIndexes: readonly number[],
+  spectralBoundaries: readonly SongStructureSpectralBoundary[]
+) => {
+  const minimumIndex = Math.floor(bars.length * MIN_TERMINAL_REENTRY_POSITION_RATIO)
+  for (const boundary of spectralBoundaries) {
+    const index = boundary.index
+    const remainingBlocks = bars.length - index
+    if (
+      index < minimumIndex ||
+      index > finalDropRange.endIndex ||
+      remainingBlocks < 8 ||
+      remainingBlocks > MAX_TERMINAL_REENTRY_REMAINING_BLOCKS ||
+      boundary.score < MIN_TERMINAL_REENTRY_BOUNDARY_SCORE
+    ) {
+      continue
+    }
+    if (
+      activeReentryIndexes.some((candidate) => candidate > index + 4 && candidate < bars.length - 3)
+    ) {
+      continue
+    }
+    const valleyStart = index - TERMINAL_REENTRY_VALLEY_BLOCKS
+    const referenceStart = valleyStart - TERMINAL_REENTRY_REFERENCE_BLOCKS
+    if (referenceStart < 0) continue
+    const reference = summarizeTerminalActivityWindow(bars, referenceStart, valleyStart)
+    const valley = summarizeTerminalActivityWindow(bars, valleyStart, index)
+    const returned = summarizeTerminalActivityWindow(
+      bars,
+      index,
+      Math.min(bars.length, index + TERMINAL_REENTRY_RETURN_BLOCKS)
+    )
+    const tail = summarizeTerminalActivityWindow(
+      bars,
+      Math.max(index + 4, bars.length - 6),
+      bars.length
+    )
+    const valleyDrop = reference.normalizedFoundation - valley.normalizedFoundation
+    const recoveryGain = returned.normalizedFoundation - valley.normalizedFoundation
+    const returnedReduction = Math.max(
+      reference.normalizedFoundation - returned.normalizedFoundation,
+      resolvePositiveLayerReduction(reference.normalizedValues, returned.normalizedValues, true)
+    )
+    const tailReduction = Math.max(
+      returned.normalizedFoundation - tail.normalizedFoundation,
+      resolvePositiveLayerReduction(returned.normalizedValues, tail.normalizedValues, true)
+    )
+    if (
+      valleyDrop < MIN_TERMINAL_REENTRY_VALLEY_DROP ||
+      recoveryGain < MIN_TERMINAL_REENTRY_RECOVERY_GAIN ||
+      returnedReduction < MIN_TERMINAL_REENTRY_REDUCTION ||
+      tailReduction < MIN_TERMINAL_REENTRY_TAIL_REDUCTION
+    ) {
+      continue
+    }
+    return {
+      index,
+      confidence: clamp01(
+        0.56 +
+          ramp(boundary.score, 0.5, 0.9) * 0.18 +
+          ramp(returnedReduction, 0.025, 0.12) * 0.14 +
+          ramp(tailReduction, 0.1, 0.35) * 0.12
+      )
+    }
+  }
+  return null
+}
+
 const findTerminalOutroBoundary = (
   bars: readonly SongStructureSpectralBarFeature[],
   finalDropRange: SongStructureSemanticRange,
-  activeReentryIndexes: readonly number[]
+  activeReentryIndexes: readonly number[],
+  spectralBoundaries: readonly SongStructureSpectralBoundary[]
 ) => {
   if (bars.length < 24 || finalDropRange.endIndex - finalDropRange.startIndex < 8) return null
+  const terminalReentryBoundary = findTerminalReentryOutroBoundary(
+    bars,
+    finalDropRange,
+    activeReentryIndexes,
+    spectralBoundaries
+  )
+  if (terminalReentryBoundary) return terminalReentryBoundary
   const scanStart = Math.max(
     finalDropRange.startIndex + 8,
     bars.length - 48,
     Math.floor(bars.length * 0.6)
   )
   const scanEnd = bars.length - 4
+  const spectralBoundaryScores = new Map(
+    spectralBoundaries.map((boundary) => [boundary.index, boundary.score])
+  )
   let weakAlignedCandidateIndex: number | null = null
   for (let index = scanStart; index <= scanEnd; index += 1) {
     const reference = summarizeTerminalActivityWindow(bars, Math.max(0, index - 8), index)
@@ -253,9 +347,14 @@ const findTerminalOutroBoundary = (
     )
     if (onsetReduction < 0.015 && rawOnsetReduction < 0.006) continue
     const aligned = bars[index]?.hasPeriodicStructurePrior ?? false
+    const structurallyAligned =
+      (spectralBoundaryScores.get(index) ?? 0) >= 0.3 &&
+      index >= Math.floor(bars.length * MIN_STRUCTURAL_RELEASE_POSITION_RATIO)
     const strongNormalizedRelease = aligned
       ? normalizedReduction >= 0.055
-      : foundationDrop >= 0.12 || layerDrop >= 0.12
+      : structurallyAligned
+        ? normalizedReduction >= 0.08
+        : foundationDrop >= 0.12 || layerDrop >= 0.12
     if (!strongNormalizedRelease || (rawReduction < 0.012 && normalizedReduction < 0.14)) continue
     const persistence = resolveTerminalPersistence(
       bars,
@@ -312,11 +411,17 @@ const mergeAdjacentSemanticRanges = (ranges: readonly SongStructureSemanticRange
 export const refineTerminalOutroRanges = (
   bars: readonly SongStructureSpectralBarFeature[],
   ranges: readonly SongStructureSemanticRange[],
-  activeReentryIndexes: readonly number[]
+  activeReentryIndexes: readonly number[],
+  spectralBoundaries: readonly SongStructureSpectralBoundary[] = []
 ) => {
   const finalDropRange = [...ranges].reverse().find((range) => range.kind === 'drop')
   if (!finalDropRange) return [...ranges]
-  const boundary = findTerminalOutroBoundary(bars, finalDropRange, activeReentryIndexes)
+  const boundary = findTerminalOutroBoundary(
+    bars,
+    finalDropRange,
+    activeReentryIndexes,
+    spectralBoundaries
+  )
   if (!boundary) return [...ranges]
   const refined: SongStructureSemanticRange[] = []
   let boundaryClusterId = finalDropRange.clusterId

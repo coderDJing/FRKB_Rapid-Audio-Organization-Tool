@@ -528,4 +528,131 @@ describe('歌曲结构语义范围精修', () => {
       { startIndex: 48, endIndex: 64, kind: 'outro' }
     ])
   })
+
+  it('保留低频但主编排在强结构边界退出时允许进入 Outro', () => {
+    const active = createValues({
+      energy: 0.34,
+      low: 0.3,
+      mid: 0.24,
+      high: 0.2,
+      attackDensity: 0.2,
+      density: 0.34
+    })
+    const lowFrequencyOutro = createValues({
+      energy: 0.12,
+      low: 0.24,
+      mid: -0.12,
+      high: -0.08,
+      attackDensity: 0.24,
+      density: 0.08
+    })
+    const finalTail = createValues({
+      energy: -0.32,
+      low: -0.24,
+      mid: -0.3,
+      high: -0.2,
+      attackDensity: -0.22,
+      density: -0.34
+    })
+    const bars = Array.from({ length: 64 }, (_, index) =>
+      createBar(index, index < 56 ? active : index < 60 ? lowFrequencyOutro : finalTail)
+    )
+    const ranges = [createRange(0, 60, 'drop'), createRange(60, 64, 'outro')]
+
+    expect(
+      refineTerminalOutroRanges(bars, ranges, [], [{ index: 56, score: 0.42, buildRamp: 0 }])
+    ).toMatchObject([
+      { startIndex: 0, endIndex: 56, kind: 'drop' },
+      { startIndex: 56, endIndex: 64, kind: 'outro' }
+    ])
+  })
+
+  it('尾部短抽空后只恢复低配鼓和低频时从回归边界进入 Outro', () => {
+    const active = createValues({
+      energy: 0.42,
+      low: 0.44,
+      mid: 0.3,
+      high: 0.22,
+      attackDensity: 0.36,
+      density: 0.44
+    })
+    const valley = createValues({
+      energy: -0.72,
+      low: -0.86,
+      mid: -0.38,
+      high: -0.3,
+      attackDensity: -0.82,
+      density: -0.74
+    })
+    const reducedReturn = createValues({
+      energy: 0.18,
+      low: 0.34,
+      mid: 0.02,
+      high: -0.08,
+      attackDensity: 0.12,
+      density: 0.14
+    })
+    const finalTail = createValues({
+      energy: -0.48,
+      low: -0.42,
+      mid: -0.5,
+      high: -0.42,
+      attackDensity: -0.46,
+      density: -0.52
+    })
+    const bars = Array.from({ length: 96 }, (_, index) => {
+      if (index < 84) return createBar(index, active)
+      if (index < 86) return createBar(index, valley)
+      if (index < 94) return createBar(index, reducedReturn)
+      return createBar(index, finalTail)
+    })
+    const ranges = [createRange(0, 94, 'drop'), createRange(94, 96, 'outro')]
+
+    expect(
+      refineTerminalOutroRanges(bars, ranges, [86], [{ index: 86, score: 0.82, buildRamp: 0 }])
+    ).toMatchObject([
+      { startIndex: 0, endIndex: 86, kind: 'drop' },
+      { startIndex: 86, endIndex: 96, kind: 'outro' }
+    ])
+  })
+
+  it('尾部短抽空后完整恢复主体 Drop 时不能误判为 Outro', () => {
+    const active = createValues({
+      energy: 0.42,
+      low: 0.44,
+      mid: 0.3,
+      high: 0.22,
+      attackDensity: 0.36,
+      density: 0.44
+    })
+    const valley = createValues({
+      energy: -0.72,
+      low: -0.86,
+      mid: -0.38,
+      high: -0.3,
+      attackDensity: -0.82,
+      density: -0.74
+    })
+    const finalTail = createValues({
+      energy: -0.48,
+      low: -0.42,
+      mid: -0.5,
+      high: -0.42,
+      attackDensity: -0.46,
+      density: -0.52
+    })
+    const bars = Array.from({ length: 96 }, (_, index) => {
+      if (index < 84 || (index >= 86 && index < 94)) return createBar(index, active)
+      if (index < 86) return createBar(index, valley)
+      return createBar(index, finalTail)
+    })
+    const ranges = [createRange(0, 94, 'drop'), createRange(94, 96, 'outro')]
+
+    expect(
+      refineTerminalOutroRanges(bars, ranges, [86], [{ index: 86, score: 0.82, buildRamp: 0 }])
+    ).toMatchObject([
+      { startIndex: 0, endIndex: 94, kind: 'drop' },
+      { startIndex: 94, endIndex: 96, kind: 'outro' }
+    ])
+  })
 })

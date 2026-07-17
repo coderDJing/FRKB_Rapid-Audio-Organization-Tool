@@ -1,9 +1,11 @@
 # 面向 Techno / EDM 的歌曲段落分析优化草案
 
-> 当前状态（2026-07-16）：生产候选算法已推进到原生四拍网格 `v26`。v26 不再依赖大节线、
+> 当前状态（2026-07-17）：冻结基线为原生四拍网格 `v26`，当前待试听候选为 `v27`。v26 起不再依赖大节线、
 > 小节线或固定 phrase 相位，只允许连续四拍 downbeat 作为结构落点；补齐持续下降入口、宏观
 > Active / Inactive 状态、Breakdown / Build 后强重入、短状态稳定性、终局 Outro 与相邻同标签
-> 归并，并统一正式 Worker、inspector 与 benchmark 的 MP3 native-libav 解码路径。本文保留架构
+> 归并，并统一正式 Worker、inspector 与 benchmark 的 MP3 native-libav 解码路径。v27 在此基础上
+> 增加低频基础真实落地、长 Build 延伸、直接 `Drop → Build → Drop` 与保留低频的终段 Outro 识别。
+> 本文保留架构
 > 演进和历史实验背景；
 > 样本位置、人工真值、prediction baseline、benchmark 命令与后续会话入口，以
 > `drafts/song-structure/song-structure-truth-benchmark-workflow.md` 为唯一有效流程文档。本文后续出现的
@@ -12,7 +14,7 @@
 
 创建日期：2026-07-10
 
-状态：历史架构与实验记录；当前可提交节点为 v26，真实样本与验收口径见唯一流程文档
+状态：历史架构与实验记录；冻结基线为 v26，当前待试听候选为 v27，真实样本与验收口径见唯一流程文档
 
 历史 v17 是用于先看实际效果的第一版：
 
@@ -25,7 +27,7 @@
 - 当前仍从 `UnifiedDisplayWaveform` 派生 low / mid / high presence，尚未落地独立 absolute band 特征缓存。
 - 目标架构中的独立缓存、人工真值 benchmark 和数据驱动语义分类仍属于后续阶段。
 
-## 当前 v26 收口节点
+## 当前 v26 冻结基线与 v27 待试听候选
 
 - 输入时间基统一为零基、半开区间的四拍 downbeat ordinal；历史 prediction 的 `startBar / endBar`
   只在 benchmark 兼容读取层存在。
@@ -33,10 +35,19 @@
   Structural Reentry 和稳定状态模块，禁止再用“段落超过半曲就硬切同标签”这类模板修复。
 - 完整分析缓存只要格式、网格 signature 和必要字段可用，就继续尊重旧结果；算法升级不会未经用户
   选择自动覆盖已有完整结构。查看 v26 效果需主动重新分析曲目。
-- 7 首开发样本均已冻结 v26 production prediction。只有 A Night 完整 truth 和 ANOTR 局部 truth
-  自动计分；其余样本即使用户认为当前结果合理，也不能由 prediction 自动升级为人工真值。
-- 当前 v26 计分节点：Boundary F1 `0.736842`，严格/宽松标签准确率 `0.892116`；这只是 1 首完整
-  truth 加 1 首局部 truth 的结果，不代表 7 首总体准确率或泛化能力。
+- 实际样本、人工 truth、prediction baseline 和 benchmark 指标均为本机私有数据，不再提交 Git。
+  当前数量与批准状态必须通过本机 manifest 和报告读取，禁止在本文固化逐曲信息。
+- v27 不覆盖 v26 baseline。候选规则要求 Drop 落地同时具备结构边界、低频基础回归和落地后的
+  activity / foundation，避免只有高频与密度增强时误判 Drop。
+- v27 允许把低频持续缺失的伪 Drop 延长回 Build，并识别低频抽离、高频张力增加的直接
+  `Drop → Build → Drop`；保护完整 Drop 与完整 Breakdown，禁止跨段吞并已批准结构。
+- 直接 Build 的多块宏观边界可能比真实起始沿晚 1–3 个四拍块。v27 会在宏观边界确认后向前
+  回溯，只有当前块与下一块都持续出现低频基础下降、高频张力上升和 activity 下降时，才采用
+  更早的起点；单块 fill 或瞬时抽空不得触发回溯。
+- v27 的 Outro 可以在尾段仍保留低频时开始，但必须有歌曲后 13% 内的强结构退出和持续性证据；
+  同时识别后续恢复，避免把临时削减当成 Outro。
+- v27 已用本机真实音频完成逐曲回归，并补齐直接 Build 起始沿回溯和尾部低频回归型 Outro；具体
+  曲名、边界、truth 覆盖率和指标只保留在本机数据集与报告中。该开发集仍不代表新的盲测泛化证据。
 
 ## 1. 目标
 

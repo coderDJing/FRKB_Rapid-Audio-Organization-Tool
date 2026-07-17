@@ -99,7 +99,7 @@ describe('songStructure v23 native downbeat grid', () => {
     expect(result).not.toBeNull()
     expect(result).toMatchObject({
       formatVersion: 2,
-      algorithmVersion: 26,
+      algorithmVersion: 27,
       beatGridSignature: beatGridMap?.signature
     })
     expect(result?.sections.length).toBeGreaterThan(1)
