@@ -25,6 +25,11 @@ export function useLibraryTrackCount({ runtime, dirDataRef, props }: UseLibraryT
     if (!runtime.setting.showPlaylistTrackCount) return
     if (fetchingCount) return
     if (!dirData || (dirData.type !== 'songList' && dirData.type !== 'setList')) return
+    // 未命名的临时歌单/集合没有真实目录，避免把父目录当作目标而统计成总数
+    if (!dirData.dirName) {
+      trackCount.value = null
+      return
+    }
     try {
       fetchingCount = true
       if (dirData.type === 'setList') {
