@@ -19,6 +19,7 @@ from rkb_dataset_contract import (
     validate_sealed_benchmark_output,
 )
 from rkb_dataset_registry import verify_registry_baseline
+from rkb_multiscale_usable_grid_fresh_eval import validate_fresh_candidate_output
 from rkb_sealed_batch_prepare_support import (
     acceptance_policy as _acceptance_policy,
     build_roster as _build_roster,
@@ -29,7 +30,9 @@ from rkb_sealed_batch_prepare_support import (
     reviewed_report_file_names as _reviewed_report_file_names,
     verify_reviewed_development_roster as _verify_reviewed_development_roster,
 )
-from rkb_sealed_batch_relocation_cli import add_relocation_commands, create_root_remap
+from rkb_sealed_batch_parser import build_parser as _build_parser
+from rkb_sealed_batch_relocation_cli import create_root_remap
+from rkb_sealed_batch_solver_cli import build_usable_grid_cli_payload as _lock_cli_payload
 from rkb_sealed_batch_common import (
     MANIFEST_NAME,
     SCHEMA_VERSION,
@@ -76,6 +79,11 @@ DEFAULT_SYNC_SCRIPT = SCRIPTS_ROOT / "sync_rekordbox_playlist_audio.py"
 DEFAULT_CAPTURE_SCRIPT = SCRIPTS_ROOT / "capture_rekordbox_playlist_truth.py"
 DEFAULT_FEATURE_SCRIPT = SCRIPTS_ROOT / "run_parallel_rkb_beatgrid_feature_cache.py"
 DEFAULT_BENCHMARK_SCRIPT = SCRIPTS_ROOT / "run_parallel_rkb_rekordbox_benchmark.py"
+DEFAULT_MULTISCALE_FEATURE_SCRIPT = SCRIPTS_ROOT / "rkb_multiscale_feature_cache.py"
+DEFAULT_USABLE_GRID_EVAL_SCRIPT = SCRIPTS_ROOT / "rkb_multiscale_usable_grid_fresh_eval.py"
+DEFAULT_USABLE_GRID_CANDIDATE = (
+    SCRIPTS_ROOT / "models" / "rkb-multiscale-usable-grid-candidate-v1.json"
+)
 DEFAULT_IDENTITY_HELPER = SCRIPTS_ROOT / "rkb_sealed_audio_identity.mjs"
 DEFAULT_IDENTITY_CACHE_DIR = BENCHMARK_ROOT / "audio-identity-cache"
 DEFAULT_BRIDGE = REPO_ROOT / "resources" / "rekordboxDesktopLibrary" / "bridge.py"
@@ -88,6 +96,8 @@ DEFAULT_SOLVER_ENTRYPOINTS = (
     SCRIPTS_ROOT / "benchmark_rkb_rekordbox_truth.py",
     DEFAULT_FEATURE_SCRIPT,
     DEFAULT_BENCHMARK_SCRIPT,
+    DEFAULT_MULTISCALE_FEATURE_SCRIPT,
+    DEFAULT_USABLE_GRID_EVAL_SCRIPT,
     DEFAULT_IDENTITY_HELPER,
     Path(__file__).resolve(),
 )
@@ -99,87 +109,10 @@ INTAKE_METADATA_NAMES = {".frkb.uuid"}
 REVIEWED_DEVELOPMENT_ORIGIN = "reviewed-development"
 
 
-def _lock_cli_payload(
-    *, python: str, feature_script: Path, benchmark_script: Path, truth: Path, audio: Path, batch: Path, args: argparse.Namespace
-) -> dict[str, Any]:
-    feature_cache = batch / "feature-cache"
-    work = batch / "work"
-    common = {
-        "python": python,
-        "device": str(args.device),
-        "jobs": int(args.jobs),
-        "predictionCacheDir": str(Path(args.prediction_cache_dir).resolve()),
-        "ffmpeg": str(Path(args.ffmpeg).resolve()),
-        "ffprobe": str(Path(args.ffprobe).resolve()),
-    }
-    return {
-        **common,
-        "featureCache": [
-            python,
-            str(feature_script),
-            "--truth",
-            str(truth),
-            "--truth-batch-id",
-            batch.name,
-            "--registry",
-            str(Path(args.registry).resolve()),
-            "--audio-root",
-            str(audio),
-            "--ffmpeg",
-            common["ffmpeg"],
-            "--ffprobe",
-            common["ffprobe"],
-            "--cache-dir",
-            str(feature_cache),
-            "--prediction-cache-dir",
-            common["predictionCacheDir"],
-            "--device",
-            common["device"],
-            "--jobs",
-            str(common["jobs"]),
-            "--shard-dir",
-            str(work / "feature-cache-shards"),
-            "--keep-shards",
-        ],
-        "benchmarkTemplate": [
-            python,
-            str(benchmark_script),
-            "--truth",
-            str(truth),
-            "--truth-batch-id",
-            batch.name,
-            "--registry",
-            str(Path(args.registry).resolve()),
-            "--audio-root",
-            str(audio),
-            "--ffmpeg",
-            common["ffmpeg"],
-            "--ffprobe",
-            common["ffprobe"],
-            "--output",
-            "{attemptOutput}",
-            "--solver",
-            "constant-grid-dp",
-            "--feature-cache-dir",
-            str(feature_cache),
-            "--prediction-cache-dir",
-            common["predictionCacheDir"],
-            "--device",
-            common["device"],
-            "--jobs",
-            str(common["jobs"]),
-            "--shard-dir",
-            str(work / "benchmark-shards"),
-            "--progress-output",
-            str(work / "benchmark-progress.json"),
-            "--keep-shards",
-        ],
-    }
-
-
 def _prepare(args: argparse.Namespace) -> dict[str, Any]:
     reviewed_report_info = _load_reviewed_development_report(args)
-    reviewed_development = reviewed_report_info is not None
+    reviewed_development = bool(getattr(args, "reviewed_development", False))
+    fresh_validation = bool(getattr(args, "fresh_validation", False))
     reviewed_file_names = (
         _reviewed_report_file_names(reviewed_report_info[1]) if reviewed_report_info is not None else []
     )
@@ -212,6 +145,9 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
         "capture": Path(args.capture_script).resolve(),
         "feature": Path(args.feature_cache_script).resolve(),
         "benchmark": Path(args.benchmark_script).resolve(),
+        "multiscale": Path(args.multiscale_feature_script).resolve(),
+        "usableGridEval": Path(args.usable_grid_eval_script).resolve(),
+        "usableGridCandidate": Path(args.usable_grid_candidate).resolve(),
     }
     for path in scripts.values():
         if not path.is_file():
@@ -330,7 +266,13 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
             final_truth = batch_dir / TRUTH_NAME
             created_at = utc_now()
             origin: dict[str, Any] = {
-                "kind": REVIEWED_DEVELOPMENT_ORIGIN if reviewed_development else "sealed-fresh",
+                "kind": (
+                    REVIEWED_DEVELOPMENT_ORIGIN
+                    if reviewed_development
+                    else "sealed-fresh-reviewed"
+                    if fresh_validation
+                    else "sealed-fresh"
+                ),
                 "playlist": str(args.playlist),
             }
             if reviewed_report_info is not None:
@@ -393,6 +335,9 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
                     python=python,
                     feature_script=scripts["feature"],
                     benchmark_script=scripts["benchmark"],
+                    multiscale_script=scripts["multiscale"],
+                    candidate_eval_script=scripts["usableGridEval"],
+                    candidate_path=scripts["usableGridCandidate"],
                     truth=final_truth,
                     audio=final_audio,
                     batch=batch_dir,
@@ -402,14 +347,20 @@ def _prepare(args: argparse.Namespace) -> dict[str, Any]:
                     manifest=manifest,
                     cli_payload=cli,
                     checkpoint_path=checkpoint,
-                    dependency_entrypoints=[*DEFAULT_SOLVER_ENTRYPOINTS, scripts["feature"], scripts["benchmark"]],
+                    dependency_entrypoints=[
+                        *DEFAULT_SOLVER_ENTRYPOINTS,
+                        scripts["feature"],
+                        scripts["benchmark"],
+                        scripts["multiscale"],
+                        scripts["usableGridEval"],
+                    ],
                     repo_root=REPO_ROOT,
                     scripts_root=SCRIPTS_ROOT,
                 )
             write_json_new(temp_batch / MANIFEST_NAME, manifest)
             if solver_lock is not None:
                 write_json_new(temp_batch / SOLVER_LOCK_NAME, solver_lock)
-            if reviewed_report_info is not None:
+            if reviewed_development:
                 report_path, _report = reviewed_report_info
                 finalization = {
                     "schemaVersion": SCHEMA_VERSION,
@@ -574,8 +525,10 @@ def _evaluate(args: argparse.Namespace) -> dict[str, Any]:
             write_json_atomic(batch_dir / STATE_NAME, state)
         cli = (solver_lock.get("locked") or {}).get("cli") or {}
         feature_command = [str(item) for item in cli.get("featureCache") or []]
-        benchmark_template = [str(item) for item in cli.get("benchmarkTemplate") or []]
-        if not feature_command or not benchmark_template:
+        baseline_template = [str(item) for item in cli.get("baselineBenchmarkTemplate") or []]
+        multiscale_command = [str(item) for item in cli.get("multiscaleFeatureCache") or []]
+        candidate_template = [str(item) for item in cli.get("candidateEvaluationTemplate") or []]
+        if not feature_command or not baseline_template or not multiscale_command or not candidate_template:
             raise SealedBatchError("solver lock contains no evaluation commands")
         work = batch_dir / "work"
         work.mkdir(parents=True, exist_ok=True)
@@ -595,26 +548,85 @@ def _evaluate(args: argparse.Namespace) -> dict[str, Any]:
             return _mark_failed(
                 batch_dir, "feature-cache", feature_exit, feature_stdout, feature_stderr, solver_lock
             )
-        attempt_output = work / f"benchmark-attempt-{attempt}.json"
-        command = [item.replace("{attemptOutput}", str(attempt_output)) for item in benchmark_template]
+        expected_track_count = int((manifest.get("truth") or {}).get("trackCount") or 0)
+        baseline_output = work / f"baseline-benchmark-attempt-{attempt}.json"
+        command = [item.replace("{baselineOutput}", str(baseline_output)) for item in baseline_template]
         if args.resume:
             command.append("--resume-existing-shards")
-        benchmark_stdout = work / f"benchmark-attempt-{attempt}.stdout.log"
-        benchmark_stderr = work / f"benchmark-attempt-{attempt}.stderr.log"
-        benchmark_exit = run_logged_command(command, benchmark_stdout, benchmark_stderr, REPO_ROOT)
+        baseline_stdout = work / f"baseline-benchmark-attempt-{attempt}.stdout.log"
+        baseline_stderr = work / f"baseline-benchmark-attempt-{attempt}.stderr.log"
+        baseline_exit = run_logged_command(command, baseline_stdout, baseline_stderr, REPO_ROOT)
         try:
-            payload = validate_sealed_benchmark_output(
-                attempt_output,
-                expected_track_count=int((manifest.get("truth") or {}).get("trackCount") or 0),
-                exit_code=benchmark_exit,
-                maximum_error_rate=float(manifest["acceptancePolicy"].get("maximumErrorRate") or 0.0),
+            validate_sealed_benchmark_output(
+                baseline_output,
+                expected_track_count=expected_track_count,
+                exit_code=baseline_exit,
+                maximum_error_rate=0.0,
                 manifest=manifest,
                 registry=registry,
             )
-            policy_result = _evaluate_policy(payload["summary"], manifest["acceptancePolicy"])
         except DatasetContractError:
             _mark_failed(
-                batch_dir, "benchmark", benchmark_exit, benchmark_stdout, benchmark_stderr, solver_lock
+                batch_dir,
+                "baseline-benchmark",
+                baseline_exit,
+                baseline_stdout,
+                baseline_stderr,
+                solver_lock,
+            )
+            raise
+        multiscale_stdout = work / f"multiscale-feature-cache-attempt-{attempt}.stdout.log"
+        multiscale_stderr = work / f"multiscale-feature-cache-attempt-{attempt}.stderr.log"
+        multiscale_exit = run_logged_command(
+            multiscale_command, multiscale_stdout, multiscale_stderr, REPO_ROOT
+        )
+        try:
+            multiscale_result = load_last_json_object(multiscale_stdout)
+            stats = multiscale_result.get("stats") if isinstance(multiscale_result.get("stats"), dict) else {}
+            if (
+                multiscale_exit != 0
+                or int(multiscale_result.get("entryCount") or 0) != expected_track_count
+                or int(stats.get("error") or 0) != 0
+            ):
+                raise SealedBatchError("multiscale feature cache did not cover the sealed denominator")
+        except (DatasetContractError, SealedBatchError):
+            _mark_failed(
+                batch_dir,
+                "multiscale-feature-cache",
+                multiscale_exit,
+                multiscale_stdout,
+                multiscale_stderr,
+                solver_lock,
+            )
+            raise
+        attempt_output = work / f"usable-grid-attempt-{attempt}.json"
+        candidate_command = [
+            item.replace("{baselineOutput}", str(baseline_output)).replace(
+                "{attemptOutput}", str(attempt_output)
+            )
+            for item in candidate_template
+        ]
+        candidate_stdout = work / f"usable-grid-attempt-{attempt}.stdout.log"
+        candidate_stderr = work / f"usable-grid-attempt-{attempt}.stderr.log"
+        candidate_exit = run_logged_command(
+            candidate_command, candidate_stdout, candidate_stderr, REPO_ROOT
+        )
+        try:
+            payload = validate_fresh_candidate_output(
+                attempt_output,
+                expected_track_count=expected_track_count,
+                exit_code=candidate_exit,
+                manifest=manifest,
+            )
+            policy_result = _evaluate_policy(payload["summary"], manifest["acceptancePolicy"])
+        except (DatasetContractError, SealedBatchError):
+            _mark_failed(
+                batch_dir,
+                "usable-grid-candidate",
+                candidate_exit,
+                candidate_stdout,
+                candidate_stderr,
+                solver_lock,
             )
             raise
         final_output = batch_dir / BENCHMARK_NAME
@@ -627,14 +639,16 @@ def _evaluate(args: argparse.Namespace) -> dict[str, Any]:
         state["evaluation"] = {
             **state.get("evaluation", {}),
             "status": "complete",
-            "exitCode": benchmark_exit,
+            "exitCode": candidate_exit,
             "finishedAt": utc_now(),
             "benchmark": str(final_output),
             "benchmarkSha256": sha256_file(final_output),
+            "baselineBenchmark": str(baseline_output),
+            "baselineBenchmarkSha256": sha256_file(baseline_output),
             "summary": summary,
             "acceptance": policy_result,
-            "stdout": str(benchmark_stdout),
-            "stderr": str(benchmark_stderr),
+            "stdout": str(candidate_stdout),
+            "stderr": str(candidate_stderr),
         }
         write_json_atomic(batch_dir / STATE_NAME, state)
         rebuild_registry(batches_root, registry_path)
@@ -976,94 +990,6 @@ def _initialize_registry(args: argparse.Namespace) -> dict[str, Any]:
         "batchCount": len(imported_batches),
         "registry": str(registry_path),
     }
-
-
-def _add_storage_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--batches-root", default=str(DEFAULT_BATCHES_ROOT))
-    parser.add_argument("--registry", default=str(DEFAULT_REGISTRY))
-    parser.add_argument("--baseline", default=str(DEFAULT_BASELINE))
-
-
-def _add_identity_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--node", default="node")
-    parser.add_argument("--identity-helper", default=str(DEFAULT_IDENTITY_HELPER))
-    parser.add_argument("--identity-max-seconds", type=int, default=120)
-    parser.add_argument("--identity-cache-dir", default=str(DEFAULT_IDENTITY_CACHE_DIR))
-    parser.add_argument("--identity-chunk-size", type=int, default=16)
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Enforce one-shot Rekordbox sealed beatgrid batches")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    prepare = subparsers.add_parser("prepare")
-    _add_storage_args(prepare)
-    _add_identity_args(prepare)
-    prepare.add_argument("--playlist", default="test")
-    prepare.add_argument(
-        "--reviewed-development",
-        action="store_true",
-        help=(
-            "Consume a human-reviewed batch as development-only data. "
-            "Requires --triage-report and never creates fresh proof."
-        ),
-    )
-    prepare.add_argument(
-        "--triage-report",
-        default="",
-        help="Immutable pre-review triage report required by --reviewed-development.",
-    )
-    prepare.add_argument("--python", default=sys.executable)
-    prepare.add_argument("--checkpoint", default="")
-    prepare.add_argument("--audio-intake-root", default=str(FRKB_FILTER_SEALED_INTAKE_ROOT))
-    prepare.add_argument("--audio-archive-root", default=str(FRKB_FILTER_SEALED_ROOT))
-    prepare.add_argument("--bridge", default=str(DEFAULT_BRIDGE))
-    prepare.add_argument("--db-path", default="")
-    prepare.add_argument("--current-truth", default=str(DEFAULT_CURRENT_TRUTH))
-    prepare.add_argument("--sync-script", default=str(DEFAULT_SYNC_SCRIPT))
-    prepare.add_argument("--capture-script", default=str(DEFAULT_CAPTURE_SCRIPT))
-    prepare.add_argument("--feature-cache-script", default=str(DEFAULT_FEATURE_SCRIPT))
-    prepare.add_argument("--benchmark-script", default=str(DEFAULT_BENCHMARK_SCRIPT))
-    prepare.add_argument("--prediction-cache-dir", default=str(DEFAULT_PREDICTION_CACHE_DIR))
-    prepare.add_argument("--ffmpeg", default=str(DEFAULT_FFMPEG))
-    prepare.add_argument("--ffprobe", default=str(DEFAULT_FFPROBE))
-    prepare.add_argument("--device", default="cpu")
-    prepare.add_argument("--jobs", type=int, default=4)
-    prepare.add_argument("--minimum-strict-accuracy", type=float, default=0.80)
-    prepare.add_argument("--maximum-error-rate", type=float, default=0.0)
-    prepare.add_argument("--maximum-bpm-big-error-rate", type=float, default=0.05)
-    prepare.add_argument("--minimum-candidate-oracle-rate", type=float, default=0.94)
-
-    evaluate = subparsers.add_parser("evaluate")
-    _add_storage_args(evaluate)
-    evaluate.add_argument("--batch", default="latest")
-    evaluate.add_argument("--resume", action="store_true")
-
-    finalize = subparsers.add_parser("finalize")
-    _add_storage_args(finalize)
-    finalize.add_argument("--batch", default="latest")
-    finalize.add_argument("--decision", choices=["eligible", "reject", "consume"], required=True)
-    finalize.add_argument("--note", default="")
-
-    imported = subparsers.add_parser("import-consumed")
-    _add_storage_args(imported)
-    _add_identity_args(imported)
-    imported.add_argument("--batch-id", required=True)
-    imported.add_argument("--truth", required=True)
-    imported.add_argument("--audio-root", action="append", required=True)
-
-    initialize = subparsers.add_parser("initialize-registry")
-    _add_storage_args(initialize)
-    initialize.add_argument("--expected-track-count", type=int, required=True)
-    initialize.add_argument(
-        "--expected-batch",
-        action="append",
-        default=[],
-        help="Require an exact imported batch as BATCH_ID=TRACK_COUNT. Can be repeated.",
-    )
-
-    add_relocation_commands(subparsers, _add_storage_args)
-    return parser
 
 
 def run(argv: list[str] | None = None) -> dict[str, Any]:

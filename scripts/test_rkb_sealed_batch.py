@@ -51,6 +51,12 @@ class SealedBatchTests(unittest.TestCase):
         self.capture_script = self._write_script("fake_capture.py", FAKE_CAPTURE)
         self.feature_script = self._write_script("fake_feature.py", FAKE_FEATURE)
         self.benchmark_script = self._write_script("fake_benchmark.py", FAKE_BENCHMARK)
+        self.multiscale_script = self._write_script("fake_multiscale.py", FAKE_MULTISCALE)
+        self.usable_grid_eval_script = self._write_script(
+            "fake_usable_grid_eval.py", FAKE_USABLE_GRID_EVAL
+        )
+        self.usable_grid_candidate = self.root / "fake-candidate.json"
+        self.usable_grid_candidate.write_text("{}\n", encoding="utf-8")
         self.identity_helper = self._write_script("fake_identity.mjs", FAKE_IDENTITY)
         self.environment = patch.dict(
             os.environ,
@@ -285,6 +291,12 @@ class SealedBatchTests(unittest.TestCase):
                 str(self.feature_script),
                 "--benchmark-script",
                 str(self.benchmark_script),
+                "--multiscale-feature-script",
+                str(self.multiscale_script),
+                "--usable-grid-eval-script",
+                str(self.usable_grid_eval_script),
+                "--usable-grid-candidate",
+                str(self.usable_grid_candidate),
                 "--ffmpeg",
                 str(self.ffmpeg),
                 "--ffprobe",
@@ -371,6 +383,93 @@ class SealedBatchTests(unittest.TestCase):
         self.assertFalse((batch_dir / "solver-lock.json").exists())
         self.assertTrue(Path(str(result["batchDir"])).is_dir())
         self.assertTrue((self.archive / str(result["batchId"])).is_dir())
+
+    def test_fresh_validation_binds_review_report_without_consuming_batch(self) -> None:
+        self._import_baseline()
+        source = self.sources / "fresh-reviewed.wav"
+        content = b"fresh-reviewed-audio"
+        source.write_bytes(content)
+        self._write_playlist(
+            [
+                {
+                    "fileName": "fresh-reviewed.wav",
+                    "filePath": str(source),
+                    "title": "fresh-reviewed",
+                    "artist": "tester",
+                    "gridBpm": 128.0,
+                    "gridFirstBeatMs": 10.0,
+                    "gridFirstBeatLabel": 1,
+                    "gridBarBeatOffset": 0,
+                }
+            ]
+        )
+        report_path = self.root / "fresh-pre-review.json"
+        report_path.write_text("{}\n", encoding="utf-8")
+        report = {
+            "summary": {"mode": "dry-run", "errorTrackCount": 0},
+            "workflowGuard": {
+                "mode": "pre-review-label-qa",
+                "denominatorAudioIdentities": [
+                    {
+                        "fileName": "fresh-reviewed.wav",
+                        "assetSha256": hashlib.sha256(content).hexdigest(),
+                    }
+                ],
+            },
+            "batch": {"denominatorEntries": [{"fileName": "fresh-reviewed.wav"}]},
+        }
+        with patch.object(prepare_support, "load_report_for_apply", return_value=report):
+            result = sealed.run(
+                [
+                    "prepare",
+                    *self._storage_args(),
+                    *self._identity_args(),
+                    "--playlist",
+                    "review",
+                    "--fresh-validation",
+                    "--triage-report",
+                    str(report_path),
+                    "--python",
+                    sys.executable,
+                    "--checkpoint",
+                    str(self.checkpoint),
+                    "--audio-intake-root",
+                    str(self.intake),
+                    "--audio-archive-root",
+                    str(self.archive),
+                    "--bridge",
+                    str(self.bridge),
+                    "--current-truth",
+                    str(self.current_truth),
+                    "--sync-script",
+                    str(self.sync_script),
+                    "--capture-script",
+                    str(self.capture_script),
+                    "--feature-cache-script",
+                    str(self.feature_script),
+                    "--benchmark-script",
+                    str(self.benchmark_script),
+                    "--multiscale-feature-script",
+                    str(self.multiscale_script),
+                    "--usable-grid-eval-script",
+                    str(self.usable_grid_eval_script),
+                    "--usable-grid-candidate",
+                    str(self.usable_grid_candidate),
+                    "--ffmpeg",
+                    str(self.ffmpeg),
+                    "--ffprobe",
+                    str(self.ffprobe),
+                ]
+            )
+
+        batch_dir = Path(str(result["batchDir"]))
+        manifest = load_json(batch_dir / "manifest.json")
+        state = load_json(batch_dir / "state.json")
+        self.assertEqual(result["status"], "fresh")
+        self.assertEqual(state["status"], "fresh")
+        self.assertEqual(manifest["origin"]["kind"], "sealed-fresh-reviewed")
+        self.assertTrue(manifest["lifecyclePolicy"]["freshProofEligible"])
+        self.assertEqual(manifest["acceptancePolicy"]["version"], 2)
 
     def test_prepare_rejects_tampered_consumed_baseline_state(self) -> None:
         self._import_baseline()
@@ -475,30 +574,37 @@ class SealedBatchTests(unittest.TestCase):
             ["cache-a.wav"],
         ])
 
-    def test_acceptance_policy_uses_inclusive_eighty_percent_boundary(self) -> None:
+    def test_usable_grid_acceptance_enforces_net_and_raw_downbeat_limits(self) -> None:
         policy = {
-            "minimumStrictAccuracy": 0.8,
+            "version": 2,
+            "minimumUsableGridNetPassCount": 1,
             "maximumErrorRate": 0.0,
-            "maximumBpmBigErrorRate": 0.05,
+            "maximumDownbeatFailureRateIncrease": 0.005,
+            "maximumNewDownbeatFailureRate": 0.005,
+            "maximumNonOctaveTempoFailureRate": 0.0,
             "minimumCandidateOracleRate": 0.94,
         }
         passing = sealed._evaluate_policy(
             {
-                "trackTotal": 5,
-                "categoryCounts": {"pass": 4, "first-beat-phase": 1},
+                "trackTotal": 500,
                 "errorTrackCount": 0,
-                "bpmBigErrorCount": 0,
-                "candidateOracle": {"candidatePassRate": 0.95},
+                "usableGridNetPassCount": 1,
+                "downbeatFailureRateIncrease": 0.004,
+                "newDownbeatFailureRate": 0.004,
+                "nonOctaveTempoFailureRate": 0.0,
+                "candidateOracle": {"candidateUsablePassRate": 0.95},
             },
             policy,
         )
         failing = sealed._evaluate_policy(
             {
-                "trackTotal": 5,
-                "categoryCounts": {"pass": 3, "first-beat-phase": 2},
+                "trackTotal": 500,
                 "errorTrackCount": 0,
-                "bpmBigErrorCount": 0,
-                "candidateOracle": {"candidatePassRate": 0.95},
+                "usableGridNetPassCount": 1,
+                "downbeatFailureRateIncrease": 0.004,
+                "newDownbeatFailureRate": 0.006,
+                "nonOctaveTempoFailureRate": 0.0,
+                "candidateOracle": {"candidateUsablePassRate": 0.95},
             },
             policy,
         )
@@ -507,7 +613,9 @@ class SealedBatchTests(unittest.TestCase):
 
     def test_acceptance_policy_rejects_invalid_rates_and_error_bypass(self) -> None:
         parser = sealed._build_parser()
-        invalid = parser.parse_args(["prepare", "--minimum-strict-accuracy", "1.1"])
+        invalid = parser.parse_args(
+            ["prepare", "--maximum-new-downbeat-failure-rate", "1.1"]
+        )
         with self.assertRaisesRegex(SealedBatchError, "between 0 and 1"):
             sealed._acceptance_policy(invalid)
         error_bypass = parser.parse_args(["prepare", "--maximum-error-rate", "0.01"])
@@ -580,7 +688,8 @@ class SealedBatchTests(unittest.TestCase):
         self.assertTrue(track["fingerprint"])
         self.assertTrue(str(track["familyId"]).startswith("chromaprint:"))
         self.assertNotEqual(track["familyId"], f"asset:{track['assetSha256']}")
-        self.assertEqual(manifest["acceptancePolicy"]["minimumStrictAccuracy"], 0.8)
+        self.assertEqual(manifest["acceptancePolicy"]["minimumUsableGridNetPassCount"], 1)
+        self.assertEqual(manifest["acceptancePolicy"]["maximumNewDownbeatFailureRate"], 0.005)
         self.assertEqual(
             manifest["audioIsolationGuard"]["policySha256"],
             "e7e52a9df88ea17686bb7825c9ab017edbdf459dfe0a110cc65c2c5b1185be98",
@@ -711,7 +820,7 @@ class SealedBatchTests(unittest.TestCase):
         self._import_baseline()
         prepared = self._prepare(file_name="hard.wav", content=b"hard-audio")
         batch_id = str(prepared["batchId"])
-        with patch.dict(os.environ, {"FAKE_BENCHMARK_PASS_COUNT": "0"}, clear=False):
+        with patch.dict(os.environ, {"FAKE_USABLE_NET_PASS_COUNT": "0"}, clear=False):
             evaluated = sealed.run(["evaluate", *self._storage_args(), "--batch", batch_id])
         self.assertFalse(evaluated["acceptance"]["passed"])
         with self.assertRaisesRegex(SealedBatchError, "not eligible"):
@@ -832,6 +941,32 @@ print(json.dumps({'summary': {
 """
 
 
+FAKE_MULTISCALE = r"""
+import argparse
+import json
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--source-cache-dir', required=True)
+parser.add_argument('--output-cache-dir', required=True)
+args, _ = parser.parse_known_args()
+source = Path(args.source_cache_dir)
+output = Path(args.output_cache_dir)
+locked = json.loads((source.parent / 'dataset-lock.json').read_text(encoding='utf-8'))['locked']
+count = int(locked['registryBatchTrackCount'])
+output.mkdir(parents=True, exist_ok=True)
+(output / 'index.json').write_text(
+    json.dumps({
+        'type': 'rkb-multiscale-spectral-sidecar-index',
+        'spectralPolicy': {'version': 'rkb-multiscale-spectral-v1'},
+        'entries': [{'instanceId': f'fake:{index}'} for index in range(count)],
+    }),
+    encoding='utf-8',
+)
+print(json.dumps({'entryCount': count, 'stats': {'hit': 0, 'miss': count, 'error': 0}}))
+"""
+
+
 FAKE_BENCHMARK = r"""
 import argparse
 import hashlib
@@ -882,6 +1017,63 @@ Path(args.output).write_text(
     encoding='utf-8',
 )
 print(json.dumps({'summary': summary, 'output': args.output}))
+"""
+
+
+FAKE_USABLE_GRID_EVAL = r"""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--truth', required=True)
+parser.add_argument('--truth-batch-id', required=True)
+parser.add_argument('--output', required=True)
+args, _ = parser.parse_known_args()
+truth = json.loads(Path(args.truth).read_text(encoding='utf-8'))
+total = len(truth['tracks'])
+net_pass = int(os.environ.get('FAKE_USABLE_NET_PASS_COUNT', '1'))
+new_downbeat = int(os.environ.get('FAKE_NEW_DOWNBEAT_FAILURE_COUNT', '0'))
+summary = {
+    'trackTotal': total,
+    'analyzedTrackCount': total,
+    'errorTrackCount': 0,
+    'baselineUsablePassCount': max(0, total - 1),
+    'selectedUsablePassCount': max(0, total - 1 + net_pass),
+    'usableGridNetPassCount': net_pass,
+    'baselineUsableGridAccuracy': max(0, total - 1) / max(1, total),
+    'selectedUsableGridAccuracy': max(0, total - 1 + net_pass) / max(1, total),
+    'usableGridAccuracyDeltaRate': net_pass / max(1, total),
+    'baselineDownbeatFailureCount': 0,
+    'selectedDownbeatFailureCount': new_downbeat,
+    'downbeatFailureCountIncrease': new_downbeat,
+    'downbeatFailureRateIncrease': new_downbeat / max(1, total),
+    'newDownbeatFailureCount': new_downbeat,
+    'newDownbeatFailureRate': new_downbeat / max(1, total),
+    'fixedDownbeatFailureCount': 0,
+    'nonOctaveTempoFailureCount': 0,
+    'nonOctaveTempoFailureRate': 0.0,
+    'switchCount': max(0, net_pass),
+    'candidateOracle': {'candidateUsablePassCount': total, 'candidateUsablePassRate': 1.0},
+}
+payload = {
+    'schemaVersion': 1,
+    'type': 'rkb-multiscale-usable-grid-fresh-evaluation',
+    'batchId': args.truth_batch_id,
+    'candidate': {
+        'candidateSha256': '28e92006d712a024f4488ddfab5b2a5e5dec12de7a1cb6075402ea21cc9c6207'
+    },
+    'summary': summary,
+    'tracks': [{} for _ in range(total)],
+    'errors': [],
+}
+body = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+payload['payloadSha256'] = hashlib.sha256(body.encode('utf-8')).hexdigest()
+Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+Path(args.output).write_text(json.dumps(payload), encoding='utf-8')
+print(json.dumps(summary))
 """
 
 

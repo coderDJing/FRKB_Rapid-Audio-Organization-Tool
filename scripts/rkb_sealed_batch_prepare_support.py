@@ -20,17 +20,28 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def acceptance_policy(args: Any) -> dict[str, Any]:
     policy = {
-        "version": 1,
-        "minimumStrictAccuracy": float(args.minimum_strict_accuracy),
+        "version": 2,
+        "metricFamily": "usable-grid-octave-equivalence-v1",
+        "candidateSha256": "28e92006d712a024f4488ddfab5b2a5e5dec12de7a1cb6075402ea21cc9c6207",
+        "minimumUsableGridNetPassCount": int(args.minimum_usable_grid_net_pass_count),
         "maximumErrorRate": float(args.maximum_error_rate),
-        "maximumBpmBigErrorRate": float(args.maximum_bpm_big_error_rate),
+        "maximumDownbeatFailureRateIncrease": float(
+            args.maximum_downbeat_failure_rate_increase
+        ),
+        "maximumNewDownbeatFailureRate": float(args.maximum_new_downbeat_failure_rate),
+        "maximumNonOctaveTempoFailureRate": float(
+            args.maximum_non_octave_tempo_failure_rate
+        ),
         "minimumCandidateOracleRate": float(args.minimum_candidate_oracle_rate),
         "promotionSemantics": "passing creates eligible status only; production promotion is external",
     }
+    if int(policy["minimumUsableGridNetPassCount"]) <= 0:
+        raise SealedBatchError("minimumUsableGridNetPassCount must be positive")
     for name in (
-        "minimumStrictAccuracy",
         "maximumErrorRate",
-        "maximumBpmBigErrorRate",
+        "maximumDownbeatFailureRateIncrease",
+        "maximumNewDownbeatFailureRate",
+        "maximumNonOctaveTempoFailureRate",
         "minimumCandidateOracleRate",
     ):
         value = float(policy[name])
@@ -42,6 +53,59 @@ def acceptance_policy(args: Any) -> dict[str, Any]:
 
 
 def evaluate_policy(summary: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+    if int(policy.get("version") or 1) == 1:
+        return _evaluate_legacy_policy(summary, policy)
+    required = (
+        "trackTotal",
+        "errorTrackCount",
+        "usableGridNetPassCount",
+        "downbeatFailureRateIncrease",
+        "newDownbeatFailureRate",
+        "nonOctaveTempoFailureRate",
+        "candidateOracle",
+    )
+    missing = [name for name in required if name not in summary]
+    if missing:
+        raise SealedBatchError(f"usable-grid acceptance summary is missing fields: {missing}")
+    total = int(summary.get("trackTotal") or 0)
+    if total <= 0:
+        raise SealedBatchError("usable-grid acceptance requires a positive denominator")
+    error_count = int(summary.get("errorTrackCount") or 0)
+    net_pass_count = int(summary.get("usableGridNetPassCount") or 0)
+    error_rate = error_count / total
+    downbeat_increase = float(summary.get("downbeatFailureRateIncrease") or 0.0)
+    new_downbeat_rate = float(summary.get("newDownbeatFailureRate") or 0.0)
+    non_octave_rate = float(summary.get("nonOctaveTempoFailureRate") or 0.0)
+    oracle = summary.get("candidateOracle") if isinstance(summary.get("candidateOracle"), dict) else {}
+    oracle_rate = float(oracle.get("candidateUsablePassRate") or 0.0)
+    gates = {
+        "minimumUsableGridNetPassCount": net_pass_count
+        >= int(policy["minimumUsableGridNetPassCount"]),
+        "maximumErrorRate": error_rate <= float(policy["maximumErrorRate"]),
+        "maximumDownbeatFailureRateIncrease": downbeat_increase
+        <= float(policy["maximumDownbeatFailureRateIncrease"]),
+        "maximumNewDownbeatFailureRate": new_downbeat_rate
+        <= float(policy["maximumNewDownbeatFailureRate"]),
+        "maximumNonOctaveTempoFailureRate": non_octave_rate
+        <= float(policy["maximumNonOctaveTempoFailureRate"]),
+        "minimumCandidateOracleRate": oracle_rate >= float(policy["minimumCandidateOracleRate"]),
+    }
+    return {
+        "passed": all(gates.values()),
+        "gates": gates,
+        "metrics": {
+            "usableGridNetPassCount": net_pass_count,
+            "errorRate": round(error_rate, 9),
+            "downbeatFailureRateIncrease": round(downbeat_increase, 9),
+            "newDownbeatFailureRate": round(new_downbeat_rate, 9),
+            "nonOctaveTempoFailureRate": round(non_octave_rate, 9),
+            "candidateOracleRate": round(oracle_rate, 9),
+        },
+        "policy": policy,
+    }
+
+
+def _evaluate_legacy_policy(summary: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
     total = int(summary.get("trackTotal") or 0)
     categories = summary.get("categoryCounts") if isinstance(summary.get("categoryCounts"), dict) else {}
     pass_count = int(categories.get("pass") or 0)
@@ -100,13 +164,19 @@ def identity_tool(args: Any) -> dict[str, Any]:
 
 def load_reviewed_development_report(args: Any) -> tuple[Path, dict[str, Any]] | None:
     reviewed_development = bool(getattr(args, "reviewed_development", False))
+    fresh_validation = bool(getattr(args, "fresh_validation", False))
     raw_path = str(getattr(args, "triage_report", "") or "").strip()
-    if not reviewed_development:
+    if reviewed_development and fresh_validation:
+        raise SealedBatchError("--reviewed-development and --fresh-validation are mutually exclusive")
+    if not reviewed_development and not fresh_validation:
         if raw_path:
-            raise SealedBatchError("--triage-report requires --reviewed-development")
+            raise SealedBatchError(
+                "--triage-report requires --reviewed-development or --fresh-validation"
+            )
         return None
     if not raw_path:
-        raise SealedBatchError("--reviewed-development requires --triage-report")
+        mode = "--reviewed-development" if reviewed_development else "--fresh-validation"
+        raise SealedBatchError(f"{mode} requires --triage-report")
     report_path = Path(raw_path).resolve()
     if not report_path.is_file():
         raise SealedBatchError(f"pre-review triage report not found: {report_path}")

@@ -786,7 +786,7 @@ def _build_registry_payload_unmapped(
                     or int(snapshot.get("trackCount") or -1) != len(rows)
                 ):
                     raise SealedBatchError(f"baseline imported batch snapshot mismatch: {batch_id}")
-        elif origin == "sealed-fresh":
+        elif origin in {"sealed-fresh", "sealed-fresh-reviewed"}:
             if status not in {"fresh", "evaluating", "exposed", "consumed"}:
                 raise SealedBatchError(f"sealed-fresh registry batch has invalid status: {batch_id}")
             if status == "consumed":
@@ -801,7 +801,7 @@ def _build_registry_payload_unmapped(
             raise SealedBatchError(f"unsupported registry batch origin: {batch_id}:{origin}")
         audio = manifest.get("audio") if isinstance(manifest.get("audio"), dict) else {}
         sealed_source_root = ""
-        if origin in {"sealed-fresh", "reviewed-development"}:
+        if origin in {"sealed-fresh", "sealed-fresh-reviewed", "reviewed-development"}:
             root_key = "archiveRoot" if status == "consumed" else "stagingRoot"
             sealed_source_root = str(audio.get(root_key) or "")
             if not sealed_source_root:

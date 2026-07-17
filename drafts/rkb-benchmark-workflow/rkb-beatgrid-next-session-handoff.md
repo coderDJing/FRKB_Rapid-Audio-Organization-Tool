@@ -1,9 +1,9 @@
 # RKB Beatgrid 下一次会话交接
 
 > 样本 intake 的现行流程以 [`分拣脚本.md`](./分拣脚本.md) 和
-> [`准备好rkb新样本.md`](./准备好rkb新样本.md) 为准：`test` 分拣是 pre-review label QA；`review` 被用于
-> 训练/调参后才成为 development。本文中任何“先对 test fresh prepare/evaluate，再分拣”的旧命令仅为
-> 历史记录，禁止按其执行。
+> [`准备好rkb新样本.md`](./准备好rkb新样本.md) 为准：`test` 分拣是 pre-review label QA。当前已有冻结
+> v3，所以下一批完整 `review` report roster 必须先走 `--fresh-validation`，evaluate/finalize 后才成为
+> consumed development；禁止先用 `--reviewed-development` 消耗掉这批 fresh 资格。
 
 ## 当前仓库状态
 
@@ -67,8 +67,11 @@
   主 split 文件 SHA、各 split roster、registry/truth/seed/policy/assignment hashes，每首同时写
   `assignmentKey`；benchmark/feature 与 derived shard 消费或 resume 时重验 parent/run provenance。
 - canonical path 硬锁 seed=`frkb-rkb-grid-v2`、tune=0.2、holdout=0.2；改协议只能写非 canonical diagnostic output，防止挑 seed 刷 holdout。
-- `leaveOneBatchOut` 当前仅是无泄漏 outer/inner membership/hash 定义，nested LOBO runner 尚未实现；
-  不能声称已有多数批次同向、最差批次或任何 LOBO 模型成绩。
+- nested LOBO runner 已实现并完成首个六折 primary study：
+  `rkb-primary-nested-lobo-v2-groot` 状态为 `primary_complete`。该 study 只比较默认
+  `phaseStepMs = 2.0` 与 `1.0` 两个 fixed/no-fit 候选，六折均选择 baseline，结果为 0 个正向 fold、
+  6 个中性 fold、macro 净增 0，因此 aggregate gate 未通过。它证明 runner 与防泄漏证据链已跑通，
+  不证明现有 scorer 获得提升；后续新算法应复用该 runner 开新 study，禁止重做 runner。
 - `feature-cache-by-batch/new357/index.json` 当前只有 2 个强身份 entry；旧 355 首身份不可证明，
   强制重算前禁止把 new357 357 首 replay 当可靠全量结果。
 
@@ -466,10 +469,114 @@ structural phase v2 在 latest `test` 上仍只新增这一首命中：
 结论：v3 / structural phase v2 都是已消耗 `test` 上的窄边界开发优化，不是新的 sealed
 泛化证明。下一批要证明泛化，必须使用未曝光的新歌曲，仍可放进 `test`，且在跑之前锁住候选规则。
 
+## 多尺度频谱 scorer 开发诊断（2026-07-16）
+
+已根据 Rekordbox `detect_beat` 逆向线索实现独立的多尺度频谱 sidecar，未修改 production solver：
+
+- `scripts/rkb_multiscale_spectral.py`：44.1kHz、10ms hop、1024/2048/4096 三尺度，分别提取
+  low/mid/high/full 正向 spectral flux；
+- `scripts/rkb_multiscale_feature_cache.py`：从现有 3388 首强身份 feature cache 生成独立 sidecar，
+  全量结果为 `3388 / 3388`、error `0`，每条重新校验 asset SHA-256，并锁定 sidecar arrays SHA-256；
+- `scripts/rkb_multiscale_ranker_study.py`：复用现有六折 fold plan，在每折 development train 内拟合
+  ridge scorer、development tune 内选阈值/模式、outer 只回放一次。它是 consumed development diagnostic，
+  `primaryNestedEstimateEligible = false`、`freshProofEligible = false`，不能冒充未曝光 nested primary。
+
+v1 使用最高 `0.8` 的宽松阈值：六折 inner selector 全部选择 baseline，outer 净增 `0`。多尺度候选在
+inner tune 上虽有约 `+3.7%` 到 `+5.7%` macro 净增，但 `pass -> fail`、BPM 和 downbeat 回归远超门槛。
+
+根据 v1 结果建立的 post-hoc v2 只扩展保守阈值到 `0.8..1.4`，结果：
+
+- 正向 / 中性 / 负向 folds：`4 / 1 / 1`；
+- macro 净增：`+0.236064%`；总净 pass：`+5 / 3388`；`pass -> fail = 3`；
+- 最差 fold：`-0.164474%`，仍在 `-0.25%` 门槛内；
+- 最差 BPM 大错率增加：`+0.316456%`，超过 `+0.25%` 门槛；
+- aggregate `passed = false`。
+
+上面的 BPM gate 结论已经被后续产品口径纠正，不能继续引用为否决理由。项目现在明确允许
+`0.5x / 1x / 2x` tempo family，只要倍频归一化后的 BPM 漂移、首拍相位和网格最大误差均在 `5ms`
+以内；精确 BPM 一致只作诊断，downbeat 继续单列 safety gate。新增：
+
+- `scripts/rkb_grid_acceptance.py`：实现倍频等价网格判定，三倍等非 octave family 不会被放行；
+- `scripts/rkb_multiscale_usable_grid_replay.py`：只读取 v2 已冻结的六折模型、mode 和 threshold，禁止
+  重训/重选，并逐折断言旧 strict 统计必须完整复现；
+- replay 产物：`multiscale-studies/rkb-multiscale-ridge-nested-development-v2-usable-grid-replay/`，
+  包含 `report.json`、`strict-regressions.json`、`usable-regressions.json` 和 `changed-decisions.json`。
+
+replay 同时发现原 development adapter 的 truth schema bug：split catalog 使用 `barBeatOffset`，旧代码却读
+`downbeatBeatOffset`，导致 3745 首中 536 首非零 downbeat 真值被静默按 0 比较。replay 保留旧 row-cache
+分类只用于证明冻结选择未变；新的 usable/downbeat 指标显式规范化两个字段，禁止延续旧口径。
+
+冻结 v2 的纠正后结果：
+
+- 旧 strict 结果完整复现：净 `+5 / 3388`、`pass -> fail = 3`；
+- `100 -> 200 BPM` 的唯一倍频退化归一化后 phase/grid 都为 `5ms`，改判
+  `pass -> octave-equivalent-pass`，符合新产品口径；
+- 正向 / 中性 / 负向 folds 改为 `3 / 1 / 2`；macro usable 净增 `+0.202264%`，总净 usable pass
+  仍为 `+5 / 3388`；
+- usable `pass -> fail = 4`，最差 fold `-0.611621%`，最差 usable pass-to-fail `0.917431%`，
+  最差 downbeat failure 增量 `0.611621%`；aggregate `passed = false`；
+- 4 首真实 usable 退化中，1 首为 downbeat、1 首为 `6ms` 首拍相位、另 2 首是旧 schema 曾误报为
+  `downbeat -> pass`、纠正后实际为 `pass -> downbeat`。
+
+结论：多尺度频谱确实有小幅信号，且不再因半倍/双倍 BPM 被误杀；但纠正 truth schema 后，冻结 v2
+仍因跨折稳定性、真实 phase/downbeat 退化而失败，禁止接入 production。不能继续在同一 3388 首上扫
+threshold。下一版若继续，必须使用规范化 downbeat truth 和 usable-grid label 开新的 development study，
+然后锁死候选等待下一批 fresh；旧 v2 只保留为 consumed post-hoc 诊断。
+
+### usable-grid v3 训练与冻结结果
+
+已按上面的纠正口径完成 `rkb-multiscale-ridge-usable-grid-development-v3`：
+
+- `scripts/rkb_multiscale_usable_grid_study.py` 不重算音频特征，复用已锁身份的 3388 首 v2 feature vectors，
+  但从 authoritative truth + benchmark analysis 重新生成 corrected labels；每个候选按 rank/BPM 回查原始
+  analysis，防止旧 row 与候选错位；
+- corrected row cache 为 `3388 / 3388`，唯一 instance `3388`、空文件 `0`，共 `54208` 个候选；
+- fold train/tune/outer instance overlap 为 `0`；selected model feature names 未发现 truth、文件名、artist、
+  title、path、batch、instance、category 或 pass/fail 泄漏；
+- 六折全部正向：blind `+6`、current `+8`、old377 `+4`、test316 `+6`、test327 `+1`、
+  test353 `+5`；总净 usable pass `+30 / 3388`，usable `pass -> fail = 0`；
+- macro `+1.0395685%`，最差 fold 仍为 `+0.3058104%`；最差 downbeat failure 净增
+  `+0.3289474%`，低于 `+0.5%` gate；六折 aggregate `passed = true`；
+- outer 共 64 次 switch，58 次 usable category 变化；其中 30 次 `fail -> pass`，其余主要是已 pass
+  切到 octave-equivalent pass。category-change 明细里 43 次选择半速候选、0 次双速候选；这是产品允许
+  的 tempo family，但 exact BPM drift 只能作为 diagnostic 报告，不能再拿来否决；
+- 有 5 次单曲 downbeat 从正确变错误，同时也有 downbeat 改善。fresh 已锁双门槛：downbeat failure
+  净增与新增错误率都 `<= 0.5%`；500 首时各最多 2 首。看到 fresh 后禁止改口径。
+
+根据六折 inner-selected exact config 的众数，已用全部 corrected consumed rows 拟合并冻结最终候选：
+
+```text
+family = multiscale
+l2 = 1.0
+mode = ranked-top16
+threshold = 1.1
+candidateSha256 = 28e92006d712a024f4488ddfab5b2a5e5dec12de7a1cb6075402ea21cc9c6207
+```
+
+冻结产物：
+
+- `multiscale-studies/rkb-multiscale-ridge-usable-grid-development-v3/report.json`
+- `multiscale-studies/rkb-multiscale-ridge-usable-grid-development-v3/corrected-row-index.json`
+- `multiscale-studies/rkb-multiscale-ridge-usable-grid-development-v3/frozen-candidate.json`
+- `multiscale-studies/rkb-multiscale-ridge-usable-grid-development-v3/decision-changes.json`
+- tracked runtime copy：`scripts/models/rkb-multiscale-usable-grid-candidate-v1.json`
+
+`frozen-candidate.json` 明确写入 `productionEligible = false`、`freshProofEligible = false`、
+`parameterSelectionAllowed = false`。v3 是看过 v2 后形成的 consumed post-hoc development candidate；
+当前只允许交给下一批未曝光 fresh 原样验证，禁止继续在旧 3388 首上调模型、family、mode 或 threshold，
+也尚未接入 production solver。
+
+fresh sealed 链路已接好，但仍不代表 production 接入：`rkb_sealed_batch.py prepare --fresh-validation`
+会绑定 pre-review report roster，并把 production baseline、`rkb_multiscale_feature_cache.py`、
+`rkb_multiscale_usable_grid_fresh_eval.py`、tracked candidate SHA 和 acceptance policy 一起写入 solver lock。
+evaluate 固定运行四阶段并输出相对 baseline 的 usable-grid、downbeat 净增/新增错误、非 octave tempo 和
+candidate oracle；只允许 finalize 自动通过的 immutable 结果为 `eligible`。
+
 ## 当前候选假设
 
 下面是当前 production baseline 的组成，只用于锁定一次性 fresh 对照。新 selector/scorer 使用 stable
-assignment split 开发；LOBO 目前只有定义，nested runner 是尚未完成的晋级前置项：
+assignment split 开发；fixed/no-fit nested runner 已实现并完成首个 study，需要训练的 scorer 目前通过
+独立 development adapter 评估，不能替代下一批 fresh：
 
 ```text
 rising-edge locked ranker + legacy integer BPM snap + rank1 material legacy weakness + rank1 structural phase v2 + rank1 high structural score v1 + rank1 negative legacy score v2 + head near-zero + rank1 octave-down
@@ -522,9 +629,9 @@ rank1 high structural score v1、rank1 negative legacy score v2、rank1 octave-d
 2. `evaluate` 只运行一次，输出 frozen 全量分母上的严格正确率、candidate oracle、scorer missed、
    first-beat-phase/downbeat/bpm 分布、confidence 分层和运行错误。低置信、`needReview` 和人工待查歌曲
    全部留在分母中。
-3. 晋级先看全部 consumed 数据统一 solver 回放；还必须先实现 nested LOBO runner，再验证多数 primary
-   批次同向、最差批次无预注册灾难性回归，并报告 `fail -> pass`、`pass -> fail`、
-   BPM 大错率和 downbeat 回归。`new357` 单列 diagnostic，不进 primary aggregate；零
+3. 晋级先看全部 consumed 数据统一 solver 回放；再复用现有 nested LOBO runner 对锁定候选开独立 study，
+   验证多数 primary 批次同向、最差批次无预注册灾难性回归，并报告 `fail -> pass`、`pass -> fail`、
+   exact BPM diagnostic、非 octave tempo、downbeat 净增和新增错误。`new357` 单列 diagnostic，不进 primary aggregate；零
    `pass -> fail` 不是绝对条件。
 4. fresh 只验证锁死候选是否达到预注册门槛，不在本批扫描 topN、阈值、guard 或重新训练。
    如果结果不达标，本批 finalize 为 reject/consume，允许进入下一版本训练；下一版本必须等下一批 fresh。
@@ -542,9 +649,9 @@ rank1 high structural score v1、rank1 negative legacy score v2、rank1 octave-d
 
 - 若要发布安装包，先补跑 `pnpm run build:unpack` 验证新拆分模块进入 bootstrap，
   再跑 `pnpm run build:win`。
-- stable-assignment split v4 与 LOBO membership 已完成；下一步是全部 consumed 同版本回放、new357 剩余
-  355 首强身份 cache 重算，以及实现 nested LOBO runner。runner 完成前禁止汇报 LOBO 多数/最差批成绩。
-  候选锁死后，再让用户按原流程把新歌放进 `test`，无需新建歌单。
+- stable-assignment split v4、LOBO membership 和 fixed/no-fit nested LOBO runner 已完成。下一步是为新的
+  scorer / 特征候选建立独立、预注册的 nested study；若候选需要 fold 内训练，应在现有 runner 上扩展
+  trainer contract，禁止另起一套 LOBO。候选锁死后，再让用户按原流程把新歌放进 `test`，无需新建歌单。
 
 不要改阈值、不要现场挑歌、不要重训选择规则；完整 `test` 必须在分拣到 `needReview` 前冻结。
 
@@ -592,10 +699,11 @@ LOBO 字段只是 membership，不是 runner 成绩。
 & "vendor/demucs/win32-x64/runtime-cpu/python.exe" "scripts/rkb_sealed_batch.py" prepare --playlist "test"
 ```
 
-prepare 默认锁定 `--minimum-strict-accuracy = 0.80`、`--maximum-error-rate = 0`、
-`--maximum-bpm-big-error-rate = 0.05`、`--minimum-candidate-oracle-rate = 0.94`。需要调整只能在
-prepare 前显式传入；写进 immutable manifest 后禁止修改。prepare 还会用 approximate isolation guard
-排除 consumed/fresh 近重复录音，并记录 `excludedIsolationDuplicates` / `audioIsolationGuard`。
+prepare 默认锁定 `--minimum-usable-grid-net-pass-count = 1`、`--maximum-error-rate = 0`、
+`--maximum-downbeat-failure-rate-increase = 0.005`、`--maximum-new-downbeat-failure-rate = 0.005`、
+`--maximum-non-octave-tempo-failure-rate = 0`、`--minimum-candidate-oracle-rate = 0.94`。写进 immutable
+manifest 后禁止修改。prepare 还会锁定 candidate SHA 和四阶段命令链，并用 approximate isolation guard
+排除 consumed/fresh 近重复录音，记录 `excludedIsolationDuplicates` / `audioIsolationGuard`。
 
 只运行一次锁定评估：
 
@@ -691,7 +799,9 @@ batchId，校验后传给后三步。直接运行 triage 脚本整理 `test` 时
   其 batch cache index 当前仅 2 个强身份 entry。
 - fresh prepare 已接入 consumed + fresh approximate isolation duplicate guard；baseline 后
   `import-consumed` 被拒绝，test triage 也已强制绑定 sealed batch 或 explicit maintenance。
-- LOBO outer/inner membership 已验证无 isolation overlap，但 nested runner 尚未实现，当前没有 LOBO 模型成绩。
+- LOBO outer/inner membership 已验证无 isolation overlap；fixed/no-fit runner 的首个六折 study 已完成，
+  但六折全部选择 baseline、净增 0、aggregate gate 未通过。该结果只否定本轮 `phaseStepMs = 1.0`
+  候选，不能泛化成“所有新 scorer 都无效”。
 - dataset contract、sealed/isolation/triage、split/migration、solver semantic 共 153 项单测通过；三个
   canonical truth 的 parent 文件 SHA、roster、sourcePath、assignment/ratio 契约已由消费端实际重验。
 - `py_compile` 通过：`rkb_constant_grid_dp_high_structural.py`、
