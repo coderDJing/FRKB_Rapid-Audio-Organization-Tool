@@ -8,6 +8,7 @@ import {
   type DragState
 } from '../../utils/dragUtils'
 import libraryUtils from '@renderer/utils/libraryUtils'
+import { isLibraryTreeManualSort } from '@renderer/utils/libraryTreeSort'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IDir } from '../../../../types/globals'
 
@@ -16,7 +17,7 @@ interface UseLibraryDragAndDropOptions {
   dirDataRef: Ref<IDir | null>
   fatherDirDataRef: Ref<IDir | null>
   deleteDir: () => Promise<void>
-  props: { uuid: string }
+  props: { uuid: string; libraryName: string }
   handleDropToSongList: (targetUuid: string, sourceUuid: string) => Promise<string[]>
   emitter: { emit: (event: string, payload?: unknown) => void }
 }
@@ -45,7 +46,15 @@ export function useLibraryDragAndDrop({
     }
   )
 
+  const isTreeReorderAllowed = () =>
+    runtime.libraryAreaSelected !== 'RecycleBin' && isLibraryTreeManualSort(props.libraryName)
+
   const dragstart = async (event: DragEvent) => {
+    if (!isTreeReorderAllowed()) {
+      event.preventDefault()
+      runtime.dragItemData = null
+      return
+    }
     const shouldDelete = await handleDragStart(event, props.uuid)
     if (shouldDelete) {
       runtime.dragItemData = null
@@ -164,6 +173,11 @@ export function useLibraryDragAndDrop({
       dragState.dragApproach = 'center'
       return
     }
+    if (!isTreeReorderAllowed()) {
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+      dragState.dragApproach = ''
+      return
+    }
     handleDragOver(e, dirData, dragState)
   }
 
@@ -183,6 +197,11 @@ export function useLibraryDragAndDrop({
     ) {
       e.preventDefault()
       dragState.dragApproach = 'center'
+      return
+    }
+    if (!isTreeReorderAllowed()) {
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+      dragState.dragApproach = ''
       return
     }
     handleDragEnter(e, dirData, dragState)
@@ -227,6 +246,11 @@ export function useLibraryDragAndDrop({
           preservePlaybackForRemovedPaths: true
         })
       }
+      return
+    }
+    if (!isTreeReorderAllowed()) {
+      dragState.dragApproach = ''
+      runtime.dragItemData = null
       return
     }
     const shouldDelete = await handleDrop(e, dirData, dragState, fatherDirData)

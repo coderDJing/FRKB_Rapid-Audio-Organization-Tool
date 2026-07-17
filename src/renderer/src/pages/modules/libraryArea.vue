@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useTemplateRef } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -11,13 +11,30 @@ import emitter from '../../utils/mitt'
 import { handleLibraryAreaEmptySpaceDrop } from '@renderer/utils/dragUtils'
 import { OverlayScrollbarsComponent } from 'overlayscrollbars-vue'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import sortManualIconAsset from '@renderer/assets/librarySortManual.svg?asset'
+import sortNameAscIconAsset from '@renderer/assets/librarySortNameAsc.svg?asset'
+import sortNameDescIconAsset from '@renderer/assets/librarySortNameDesc.svg?asset'
+import sortCountAscIconAsset from '@renderer/assets/librarySortCountAsc.svg?asset'
+import sortCountDescIconAsset from '@renderer/assets/librarySortCountDesc.svg?asset'
 import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
 import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
 import {
   persistMixtapeProjectMode,
   setPendingMixtapeProjectMode
 } from '@renderer/composables/mixtape/stemMode'
-import type { IDir } from 'src/types/globals'
+import {
+  getLibraryTreeSortRule,
+  isLibraryTreeManualSort,
+  libraryTreeSortRuleVersion,
+  libraryTreeTrackCountVersion,
+  libraryTreeSortRuleLabelKey,
+  libraryTreeSortRuleMenuKey,
+  prefetchLibraryTreeTrackCounts,
+  setLibraryTreeSortRule,
+  sortLibraryTreeChildren,
+  type LibraryTreeSortRule
+} from '@renderer/utils/libraryTreeSort'
+import type { IDir, IMenu } from 'src/types/globals'
 
 const runtime = useRuntimeStore()
 const props = defineProps({
@@ -34,13 +51,46 @@ const libraryData = computed(() => {
   return data
 })
 
-const displayedChildren = computed(() => {
-  if (runtime.libraryAreaSelected === 'RecycleBin' && libraryData.value.children) {
-    // 创建一个倒序副本，不改变原数组
-    return [...libraryData.value.children].reverse()
-  }
-  return libraryData.value.children
+const libraryName = computed(() => libraryData.value.dirName)
+const isRecycleBin = computed(() => runtime.libraryAreaSelected === 'RecycleBin')
+const currentSortRule = computed(() => {
+  void libraryTreeSortRuleVersion.value
+  return isRecycleBin.value ? 'manual' : getLibraryTreeSortRule(libraryName.value)
 })
+const isManualSort = computed(() => currentSortRule.value === 'manual')
+const sortButtonBubbleTitle = computed(() => t(libraryTreeSortRuleLabelKey(currentSortRule.value)))
+const showSortButton = computed(() => !isRecycleBin.value)
+const sortIconByRule: Record<LibraryTreeSortRule, string> = {
+  manual: sortManualIconAsset,
+  nameAsc: sortNameAscIconAsset,
+  nameDesc: sortNameDescIconAsset,
+  countAsc: sortCountAscIconAsset,
+  countDesc: sortCountDescIconAsset
+}
+const sortIconMaskStyle = computed(() => ({
+  '--sort-icon-mask': `url("${sortIconByRule[currentSortRule.value]}")`
+}))
+
+const displayedChildren = computed(() => {
+  const children = libraryData.value.children
+  if (!children) return children
+  if (isRecycleBin.value) {
+    return [...children].reverse()
+  }
+  // 依赖曲目数缓存版本，确保 count 规则在预取完成后重排
+  void libraryTreeTrackCountVersion.value
+  return sortLibraryTreeChildren(children, currentSortRule.value)
+})
+
+watch(
+  () => [libraryName.value, currentSortRule.value, libraryData.value.children?.length] as const,
+  () => {
+    if (isRecycleBin.value) return
+    if (currentSortRule.value !== 'countAsc' && currentSortRule.value !== 'countDesc') return
+    void prefetchLibraryTreeTrackCounts(libraryData.value)
+  },
+  { immediate: true }
+)
 
 const showHint = computed(() => {
   const children = libraryData.value.children
@@ -49,7 +99,6 @@ const showHint = computed(() => {
   )
   return !children?.length || (children?.length === 1 && hasSpecialChild)
 })
-const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
 
 // 将核心库名称映射为 i18n key，仅用于显示
 const libraryTitleText = computed(() => toLibraryDisplayName(libraryData.value.dirName))
@@ -240,12 +289,58 @@ const collapseButtonHandleClick = async () => {
   emitter.emit('collapseButtonHandleClick', libraryData.value.dirName)
 }
 
+const sortButtonRef = useTemplateRef<HTMLDivElement>('sortButtonRef')
+const collapseButtonRef = useTemplateRef<HTMLDivElement>('collapseButtonRef')
+
+const openSortMenu = async (event: MouseEvent) => {
+  if (isRecycleBin.value) return
+  const rule = currentSortRule.value
+  const check = (value: LibraryTreeSortRule): string | undefined =>
+    rule === value ? '✓' : undefined
+  const menuArr: IMenu[][] = [
+    [{ menuName: libraryTreeSortRuleMenuKey('manual'), shortcutKey: check('manual') }],
+    [
+      { menuName: libraryTreeSortRuleMenuKey('nameAsc'), shortcutKey: check('nameAsc') },
+      { menuName: libraryTreeSortRuleMenuKey('nameDesc'), shortcutKey: check('nameDesc') }
+    ],
+    [
+      { menuName: libraryTreeSortRuleMenuKey('countAsc'), shortcutKey: check('countAsc') },
+      { menuName: libraryTreeSortRuleMenuKey('countDesc'), shortcutKey: check('countDesc') }
+    ]
+  ]
+  const result = await rightClickMenu({ menuArr, clickEvent: event })
+  if (result === 'cancel') return
+  const selected = result.menuName
+  const nextRule: LibraryTreeSortRule | null =
+    selected === libraryTreeSortRuleMenuKey('manual')
+      ? 'manual'
+      : selected === libraryTreeSortRuleMenuKey('nameAsc')
+        ? 'nameAsc'
+        : selected === libraryTreeSortRuleMenuKey('nameDesc')
+          ? 'nameDesc'
+          : selected === libraryTreeSortRuleMenuKey('countAsc')
+            ? 'countAsc'
+            : selected === libraryTreeSortRuleMenuKey('countDesc')
+              ? 'countDesc'
+              : null
+  if (!nextRule) return
+  setLibraryTreeSortRule(libraryName.value, nextRule)
+  if (nextRule === 'countAsc' || nextRule === 'countDesc') {
+    void prefetchLibraryTreeTrackCounts(libraryData.value)
+  }
+}
+
 const dragApproach = ref('')
 const dragover = (e: DragEvent) => {
   if (runtime.libraryAreaSelected === 'RecycleBin') {
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = 'none'
     }
+    return
+  }
+  if (!isLibraryTreeManualSort(libraryName.value)) {
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+    dragApproach.value = ''
     return
   }
   if (e.dataTransfer === null) {
@@ -264,6 +359,11 @@ const dragenter = (e: DragEvent) => {
     if (e.dataTransfer) {
       e.dataTransfer.dropEffect = 'none'
     }
+    return
+  }
+  if (!isLibraryTreeManualSort(libraryName.value)) {
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
+    dragApproach.value = ''
     return
   }
   if (e.dataTransfer === null) {
@@ -293,6 +393,10 @@ const dragleave = (e: DragEvent) => {
 }
 const drop = async (e: DragEvent) => {
   if (runtime.libraryAreaSelected === 'RecycleBin') {
+    runtime.dragItemData = null
+    return
+  }
+  if (!isLibraryTreeManualSort(libraryName.value)) {
     runtime.dragItemData = null
     return
   }
@@ -334,8 +438,22 @@ const handleContentClick = () => {
   <div class="content" @contextmenu.stop="contextmenuEvent" @click="handleContentClick">
     <div class="unselectable libraryTitle">
       <span>{{ libraryTitleText }}</span>
-      <div style="display: flex; justify-content: center; align-items: center">
-        <div ref="collapseButtonRef" class="collapseButton" @click="collapseButtonHandleClick()">
+      <div class="libraryTitleActions">
+        <div
+          v-if="showSortButton"
+          ref="sortButtonRef"
+          class="titleActionButton"
+          :class="{ isActive: !isManualSort }"
+          @click.stop="openSortMenu"
+        >
+          <span class="sortIcon" :style="sortIconMaskStyle"></span>
+        </div>
+        <bubbleBox
+          v-if="showSortButton"
+          :dom="sortButtonRef || undefined"
+          :title="sortButtonBubbleTitle"
+        />
+        <div ref="collapseButtonRef" class="titleActionButton" @click="collapseButtonHandleClick()">
           <svg
             width="16"
             height="16"
@@ -496,18 +614,43 @@ const handleContentClick = () => {
     display: flex;
     justify-content: space-between;
 
-    .collapseButton {
+    .libraryTitleActions {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .titleActionButton {
       color: var(--text);
       width: 20px;
       height: 20px;
       display: flex;
       justify-content: center;
       align-items: center;
-
       border-radius: 5px;
+      cursor: pointer;
 
       &:hover {
         background-color: var(--hover);
+      }
+
+      &.isActive {
+        color: var(--accent);
+      }
+
+      .sortIcon {
+        width: 16px;
+        height: 16px;
+        background-color: currentColor;
+        mask-image: var(--sort-icon-mask);
+        mask-repeat: no-repeat;
+        mask-position: center;
+        mask-size: contain;
+        -webkit-mask-image: var(--sort-icon-mask);
+        -webkit-mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        -webkit-mask-size: contain;
       }
     }
   }

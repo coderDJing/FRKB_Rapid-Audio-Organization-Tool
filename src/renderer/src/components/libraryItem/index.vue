@@ -26,6 +26,15 @@ import {
   resolveSongsAreaPaneForLibraryClick
 } from '@renderer/utils/songsAreaSplit'
 import { createTouchLongPressDrag } from '@renderer/utils/touchLongPressDrag'
+import {
+  getLibraryTreeSortRule,
+  isLibraryTreeManualSort,
+  libraryTreeSortRuleVersion,
+  libraryTreeTrackCountVersion,
+  setLibraryTreeTrackCount,
+  sortLibraryTreeChildren
+} from '@renderer/utils/libraryTreeSort'
+import { showNearMouseTip } from '@renderer/utils/nearMouseTip'
 import type { IDir } from '../../../../types/globals'
 const listIcon = listIconAsset
 const listIconMaskStyle = {
@@ -128,6 +137,23 @@ const {
 } = useLibraryItemEditing({ dirDataRef, fatherDirDataRef, runtime, props, emitter })
 
 const { trackCount } = useLibraryTrackCount({ runtime, dirDataRef, props })
+
+watch(
+  trackCount,
+  (value) => {
+    if (typeof value === 'number') setLibraryTreeTrackCount(props.uuid, value)
+  },
+  { immediate: true }
+)
+
+const displayedFolderChildren = computed(() => {
+  const children = dirData.value?.children
+  if (!children?.length) return children || []
+  if (runtime.libraryAreaSelected === 'RecycleBin') return children
+  void libraryTreeSortRuleVersion.value
+  void libraryTreeTrackCountVersion.value
+  return sortLibraryTreeChildren(children, getLibraryTreeSortRule(props.libraryName))
+})
 
 const dirChildShow = ref(false)
 const dirChildRendered = ref(false)
@@ -348,13 +374,37 @@ const openMixtapeHandleClick = () => {
   })
 }
 
-const canStartLibraryItemDrag = computed(
-  () =>
-    !!dirData.value?.dirName && !renameDivShow.value && runtime.libraryAreaSelected !== 'RecycleBin'
-)
+const canStartLibraryItemDrag = computed(() => {
+  void libraryTreeSortRuleVersion.value
+  return (
+    !!dirData.value?.dirName &&
+    !renameDivShow.value &&
+    runtime.libraryAreaSelected !== 'RecycleBin' &&
+    isLibraryTreeManualSort(props.libraryName)
+  )
+})
+
+const notifyAutoSortBlocksDrag = (clientX: number, clientY: number) => {
+  if (isLibraryTreeManualSort(props.libraryName)) return
+  if (runtime.libraryAreaSelected === 'RecycleBin') return
+  showNearMouseTip(clientX, clientY, t('playlist.sortAutoBlocksDrag'))
+}
+
+const handleDragStartGuard = (event: DragEvent) => {
+  if (!isLibraryTreeManualSort(props.libraryName)) {
+    event.preventDefault()
+    notifyAutoSortBlocksDrag(event.clientX, event.clientY)
+    return
+  }
+  void dragstart(event)
+}
 
 const handleTouchStart = (event: TouchEvent) => {
-  if (!canStartLibraryItemDrag.value) return
+  if (!canStartLibraryItemDrag.value) {
+    const touch = event.touches[0]
+    if (touch) notifyAutoSortBlocksDrag(touch.clientX, touch.clientY)
+    return
+  }
   const sourceElement = event.currentTarget
   if (!(sourceElement instanceof HTMLElement)) return
   touchPlaylistDrag.handleTouchStart(event, sourceElement)
@@ -385,7 +435,7 @@ onUnmounted(() => {
     @click.stop="dirHandleClick($event)"
     @touchstart="handleTouchStart"
     @dragover.stop.prevent="dragover"
-    @dragstart.stop="dragstart"
+    @dragstart.stop="handleDragStartGuard"
     @dragenter.stop.prevent="dragenter"
     @drop.stop.prevent="drop"
     @dragleave.stop="dragleave"
@@ -549,7 +599,7 @@ onUnmounted(() => {
     v-show="dirChildShow"
     style="width: 100%; box-sizing: border-box"
   >
-    <template v-for="item of dirData.children" :key="item.uuid">
+    <template v-for="item of displayedFolderChildren" :key="item.uuid">
       <libraryItem
         :uuid="item.uuid"
         :library-name="props.libraryName"
