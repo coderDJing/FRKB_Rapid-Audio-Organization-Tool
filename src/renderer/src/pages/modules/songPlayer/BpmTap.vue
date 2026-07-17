@@ -37,7 +37,7 @@ watch(
   }
 )
 
-// 将显示值统一成字符串
+// 将显示值统一成字符串；缺失侧用 `-` 占位，始终保留 BPM/Key 格式
 const displayValue = computed<string>(() => {
   let bpmText = ''
   if (isManual.value && manualBpm.value !== null) {
@@ -47,19 +47,19 @@ const displayValue = computed<string>(() => {
   } else {
     bpmText = props.bpm || ''
   }
+  if (!bpmText) bpmText = '-'
 
   const rawKey = typeof props.keyText === 'string' ? props.keyText.trim() : ''
   let keyText = ''
   if (!rawKey) {
-    keyText = ''
+    keyText = '-'
   } else if (rawKey.toLowerCase() === 'o') {
     keyText = '-'
   } else {
     const style = runtime.setting.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
-    keyText = getKeyDisplayText(rawKey, style)
+    keyText = getKeyDisplayText(rawKey, style) || '-'
   }
 
-  if (bpmText === '' && keyText === '') return ''
   return `${bpmText}/${keyText}`
 })
 
