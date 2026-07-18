@@ -11,6 +11,7 @@ export type {
   LibraryMergeBusyClassification,
   LibraryMergeBusyReason,
   LibraryMergeCapacity,
+  LibraryMergeDuplicatePlaylistPolicy,
   LibraryMergeMode,
   LibraryMergeOptions,
   LibraryMergePhase,

@@ -142,7 +142,7 @@ export const getMergeFilePathKey = (filePath: string): string => {
   return resolved.toLocaleLowerCase()
 }
 
-const uniqueTargetFilePath = async (
+export const uniqueTargetFilePath = async (
   targetRoot: string,
   sourceRelativePath: string,
   sourceLabel: string,

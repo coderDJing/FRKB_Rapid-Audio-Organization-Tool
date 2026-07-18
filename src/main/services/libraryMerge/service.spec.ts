@@ -1079,6 +1079,132 @@ describe('FRKB library merge service', () => {
     ).rejects.toMatchObject({ code: 'SOURCE_CURATED_EMPTY' })
   })
 
+  it('merges curated same-name playlists into the existing playlist when policy is merge-into', async () => {
+    const targetRoot = await makeRoot('target-curated-merge-into')
+    const sourceRoot = await makeRoot('source-curated-merge-into')
+    const targetList = await addSongList({
+      root: targetRoot,
+      parentName: 'House',
+      playlistName: 'Favorites',
+      fileName: 'shared.mp3',
+      content: 'target-shared',
+      withCache: true,
+      coreLibraryName: 'CuratedLibrary'
+    })
+    const sourceList = await addSongList({
+      root: sourceRoot,
+      parentName: 'House',
+      playlistName: 'Favorites',
+      // Same basename as the target track — merge-into must suffix the imported file.
+      fileName: 'shared.mp3',
+      content: 'source-shared',
+      withCache: true,
+      coreLibraryName: 'CuratedLibrary'
+    })
+    const sourceOnlyName = 'source-only.mp3'
+    const sourceOnlyPath = path.join(sourceList.songListRoot, sourceOnlyName)
+    await fs.writeFile(sourceOnlyPath, 'source-only', 'utf8')
+    const sourceOnlyStat = await fs.stat(sourceOnlyPath)
+    const sourceDb = openDb(sourceRoot)
+    try {
+      sourceDb
+        .prepare(
+          'INSERT INTO song_cache (list_root, file_path, size, mtime_ms, info_json) VALUES (?, ?, ?, ?, ?)'
+        )
+        .run(
+          path.join('library', 'CuratedLibrary', 'House', 'Favorites'),
+          sourceOnlyName,
+          sourceOnlyStat.size,
+          sourceOnlyStat.mtimeMs,
+          JSON.stringify({ filePath: sourceOnlyPath, bpm: 128, key: '1A' })
+        )
+      sourceDb
+        .prepare('INSERT INTO fingerprints (mode, hash) VALUES (?, ?)')
+        .run('file', `hash-${sourceOnlyName}`)
+    } finally {
+      sourceDb.close()
+    }
+
+    const inspection = await inspectLibraryMergeSource({
+      sourceRoot,
+      targetRoot,
+      appVersion: '1.2.1',
+      scope: 'curated',
+      duplicatePlaylistPolicy: 'merge-into'
+    })
+    expect(inspection.songListCount).toBe(1)
+    expect(inspection.renamedSongListCount).toBe(0)
+    expect(inspection.mergedIntoSongListCount).toBe(1)
+    expect(inspection.duplicatePlaylistPolicy).toBe('merge-into')
+    expect(inspection.copiedFileCount).toBe(2)
+
+    const result = await mergeFrkbLibraries({
+      sourceRoot,
+      targetRoot,
+      appVersion: '1.2.1',
+      mode: 'copy',
+      scope: 'curated',
+      duplicatePlaylistPolicy: 'merge-into'
+    })
+    expect(result.mergedIntoSongListCount).toBe(1)
+    expect(result.renamedSongListCount).toBe(0)
+    expect(result.copiedFileCount).toBe(2)
+    expect(result.copiedAnalysisRows).toBe(2)
+
+    const playlistRoot = path.join(targetRoot, 'library', 'CuratedLibrary', 'House', 'Favorites')
+    // Original target file stays put; no second Favorites playlist is created.
+    expect(await fs.readFile(path.join(playlistRoot, 'shared.mp3'), 'utf8')).toBe('target-shared')
+    expect(await fs.readFile(path.join(playlistRoot, sourceOnlyName), 'utf8')).toBe('source-only')
+    const playlistEntries = await fs.readdir(playlistRoot)
+    const importedCollision = playlistEntries.find(
+      (name) => name !== 'shared.mp3' && name !== sourceOnlyName && name.startsWith('shared')
+    )
+    expect(importedCollision).toBeTruthy()
+    expect(await fs.readFile(path.join(playlistRoot, importedCollision!), 'utf8')).toBe(
+      'source-shared'
+    )
+    await expect(
+      fs.access(path.join(targetRoot, 'library', 'CuratedLibrary', 'House', `Favorites (from`))
+    ).rejects.toThrow()
+
+    const db = openDb(targetRoot)
+    try {
+      const favoritesCount = db
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM library_nodes
+           WHERE dir_name = ? AND node_type = 'songList'`
+        )
+        .get('Favorites') as { count: number }
+      expect(favoritesCount.count).toBe(1)
+      const sharedCache = db
+        .prepare('SELECT COUNT(*) AS count FROM song_cache WHERE list_root = ? AND file_path = ?')
+        .get(path.join('library', 'CuratedLibrary', 'House', 'Favorites'), 'shared.mp3') as {
+        count: number
+      }
+      expect(sharedCache.count).toBe(1)
+      const onlyCache = db
+        .prepare('SELECT list_root, info_json FROM song_cache WHERE file_path = ?')
+        .get(sourceOnlyName) as { list_root: string; info_json: string } | undefined
+      expect(onlyCache?.list_root).toBe(
+        path.join('library', 'CuratedLibrary', 'House', 'Favorites')
+      )
+      expect(JSON.parse(onlyCache?.info_json || '{}').filePath).toBe(
+        path.join(playlistRoot, sourceOnlyName)
+      )
+      // Existing target playlist uuid remains; source playlist uuid is not inserted.
+      expect(
+        db.prepare('SELECT uuid FROM library_nodes WHERE uuid = ?').get(targetList.playlistUuid)
+      ).toBeTruthy()
+      expect(
+        db.prepare('SELECT uuid FROM library_nodes WHERE uuid = ?').get(sourceList.playlistUuid)
+      ).toBeUndefined()
+      expect(db.pragma('foreign_key_check')).toHaveLength(0)
+    } finally {
+      db.close()
+    }
+  })
+
   it('clears only the source curated subtree after curated delete-source succeeds', async () => {
     const targetRoot = await makeRoot('target-curated-delete')
     const sourceRoot = await makeRoot('source-curated-delete')

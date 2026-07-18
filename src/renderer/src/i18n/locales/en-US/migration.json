@@ -2,93 +2,93 @@
   "migration": {
     "mergeLibrary": "Merge FRKB Libraries",
     "mergeCuratedLibrary": "Merge Curated Library",
-    "mergePreparing": "Preparing merge plan",
+    "mergePreparing": "Preparing…",
     "mergeFiles": "files",
-    "mergeLockedHint": "The current library is locked while merging. Do not close FRKB or make other changes.",
-    "mergeCuratedLockedHint": "The current library is locked while merging the curated library. Do not close FRKB or make other changes.",
+    "mergeLockedHint": "Library locked during merge. Do not close FRKB.",
+    "mergeCuratedLockedHint": "Library locked during merge. Do not close FRKB.",
     "mergeDialog": {
       "title": "Merge FRKB Libraries",
-      "intro": "Merge another FRKB library into the library currently in use.",
-      "contentsTitle": "What will be merged",
-      "contents": "Playlists, tracks, analysis data, audio fingerprints, SET, Mixtape, and their related resources. Recycle Bin content is not merged.",
-      "safetyTitle": "Before and during the merge",
-      "safety": "FRKB checks both libraries' integrity, directory structure, and available disk space before it starts. When a source database is older, only an isolated snapshot is upgraded; the source library itself is not modified. While merging, the current library is locked and other changes are blocked. If interrupted, uncommitted work is automatically restored.",
-      "playlistTitle": "Duplicate playlist names",
-      "playlist": "Both playlists are kept. A playlist from the source library with the same name automatically receives a source-library suffix.",
-      "startSetup": "Set Up Merge",
-      "sourceTitle": "Choose source library",
-      "sourceInstruction": "Choose FRKB.database.frkbdb inside the source library, not the folder itself.",
-      "selectSource": "Choose Source Library",
-      "sourceSelected": "Source library selected",
+      "intro": "Merge another FRKB library into the current one.",
+      "contentsTitle": "What is merged",
+      "contents": "Playlists, tracks, analysis/fingerprints, SET, Mixtape, and related resources. Recycle Bin is skipped.",
+      "safetyTitle": "Before and during merge",
+      "safety": "Integrity and disk space are checked first; the source library is not modified. The current library is locked during merge and can recover if interrupted.",
+      "playlistTitle": "Same-name playlists",
+      "playlist": "Both are kept; the source playlist gets a “(from …)” suffix.",
+      "startSetup": "Set Up",
+      "sourceTitle": "Source library",
+      "sourceInstruction": "Select FRKB.database.frkbdb in the source library.",
+      "selectSource": "Choose Source",
+      "sourceSelected": "Selected",
       "sourceRequired": "Choose a source library first.",
-      "checkingSource": "Checking source library…",
-      "sourceCheckPassed": "Check passed: the source structure, integrity, and available disk space meet the merge requirements.",
+      "checkingSource": "Checking…",
+      "sourceCheckPassed": "Check passed.",
       "sourceIssues": {
         "invalid-selection": {
           "title": "Choose the FRKB database file",
-          "description": "Select FRKB.database.frkbdb in the source library root, not a folder or another file."
+          "description": "Select FRKB.database.frkbdb in the source library root."
         },
         "same-library": {
-          "title": "This is the library currently in use",
-          "description": "Choose another FRKB library as the source. A library cannot be merged into itself."
+          "title": "Cannot merge into itself",
+          "description": "Choose a different FRKB library."
         },
         "nested-library": {
-          "title": "The two library locations cannot contain one another",
-          "description": "Move the source library outside the current library directory, or choose a library in another location."
+          "title": "Library paths cannot nest",
+          "description": "Move the source library outside the current library path."
         },
         "version-incompatible": {
-          "title": "The source library needs a newer FRKB version",
-          "description": "Update FRKB, then open the source library with the newer version before merging it."
+          "title": "Source library is too old",
+          "description": "Update FRKB, open the source library once, then merge."
         },
         "unregistered-data": {
-          "title": "The source library contains data that is not registered yet",
-          "description": "This usually comes from a new feature or a development build. FRKB will not merge it to avoid losing data; its name is in log.txt."
+          "title": "Unregistered source data",
+          "description": "Likely a new feature or dev build; merge is blocked. See log.txt."
         },
         "invalid-library": {
-          "title": "This source library cannot be merged safely",
-          "description": "Choose a complete FRKB library that has not been edited by hand. If it still fails, open and check it in FRKB first."
+          "title": "Source cannot be merged safely",
+          "description": "Use a complete, unmodified FRKB library, or open it in FRKB first."
         },
         "empty-curated-library": {
-          "title": "The source curated library is empty",
-          "description": "The source curated library has no folders or playlists to import, so the merge cannot start."
+          "title": "Source curated library is empty",
+          "description": "No folders or playlists to import."
         },
         "insufficient-space": {
-          "title": "The current library disk does not have enough space",
-          "description": "Free space on the disk that contains the current library, then choose the source again. Neither library has been changed."
+          "title": "Not enough disk space",
+          "description": "Free space on the current library disk, then try again. Nothing was changed."
         },
         "space-unavailable": {
-          "title": "The current library disk space cannot be checked",
-          "description": "Ensure the current library disk is accessible and FRKB can read its space information, then choose the source again."
+          "title": "Cannot check disk space",
+          "description": "Ensure the current library disk is accessible, then choose again."
         },
         "current-library": {
-          "title": "The current library is not ready to merge",
-          "description": "Make sure the current library opens normally and complete any required upgrade with this version of FRKB."
+          "title": "Current library not ready",
+          "description": "Open the current library normally and finish any required upgrade."
         },
         "unavailable": {
-          "title": "This source library is not available right now",
-          "description": "Choose the source again. If this continues, confirm both libraries can be opened normally in FRKB."
+          "title": "Source library unavailable",
+          "description": "Choose again. If it continues, confirm both libraries open in FRKB."
         }
       },
-      "modeTitle": "What should happen to the source library?",
-      "copyMode": "Copy and merge (recommended)",
-      "copyDescription": "Keep the source library unchanged while the current library receives the merged content.",
-      "deleteMode": "Delete source after a successful merge",
-      "deleteDescription": "The source is cleaned up only after the current library is successfully saved. A cleanup failure does not affect the completed merge.",
+      "modeTitle": "Source library",
+      "copyMode": "Keep source (recommended)",
+      "copyDescription": "Copy into the current library; leave the source unchanged.",
+      "deleteMode": "Delete source after merge",
+      "deleteDescription": "Clean up the source only after a successful save. Cleanup failure does not undo the merge.",
       "back": "Back",
       "startMerge": "Start Merge",
-      "progressTitle": "Merging FRKB Libraries",
-      "completedTitle": "FRKB library merge complete",
+      "progressTitle": "Merging…",
+      "completedTitle": "Merge complete",
       "completed": "Merged {songListCount} playlists and {copiedFileCount} files.",
-      "sourceDeleteWarning": "The current library was merged successfully, but source cleanup did not finish.",
-      "failedTitle": "Unable to merge FRKB libraries",
+      "sourceDeleteWarning": "Merge succeeded, but source cleanup did not finish.",
+      "failedTitle": "Unable to merge",
       "returnToSetup": "Back to Setup",
-      "busyBlockingTitle": "The current library has tasks that cannot be interrupted",
-      "busyBlockingLead": "To avoid interrupting file moves or other library writes, finish or cancel these operations before merging:",
-      "busyCancellableTitle": "Analysis tasks need to stop first",
-      "busyCancellableLead": "Merging needs exclusive access to the current library. These analysis tasks are actively running (queued-only work is cleared automatically without asking) and can be cancelled safely:",
-      "busyCancellableConfirm": "Cancel analysis and start merge",
+      "busyBlockingTitle": "Tasks that cannot be interrupted",
+      "busyBlockingLead": "Finish or cancel these first:",
+      "busyCancellableTitle": "Stop analysis first",
+      "busyCancellableLead": "These tasks are running and can be cancelled (queued-only work is cleared automatically):",
+      "busyCancellableConfirm": "Cancel and merge",
       "busyCancellableCancel": "Not now",
-      "busyCancelFailed": "FRKB tried to cancel the analysis tasks, but the library is still busy. Try again in a moment.",
+      "busyCancelFailed": "Could not stop analysis. Try again in a moment.",
       "busyReasons": {
         "key-analysis": "Track analysis (key / BPM / grid / energy / structure / waveform)",
         "metadata-auto-fill": "Automatic metadata fill",
@@ -107,87 +107,92 @@
     },
     "mergeCuratedDialog": {
       "title": "Merge Curated Library",
-      "intro": "Import only the curated library playlist tree from another FRKB library into the library currently in use.",
-      "contentsTitle": "What will be merged",
-      "contents": "Only folders, playlists, and audio files under the source curated library (CuratedLibrary), plus retained analysis data and fingerprints for those tracks. Filter, SET, Mixtape, Recording, Recycle Bin content, and curated artist lists are not merged.",
-      "safetyTitle": "Before and during the merge",
-      "safety": "FRKB checks both libraries' integrity, directory structure, and available disk space, and requires the source curated library to be non-empty before it starts. When a source database is older, only an isolated snapshot is upgraded; the source library itself is not modified. While merging, the current library is locked and other changes are blocked. If interrupted, uncommitted work is automatically restored.",
-      "playlistTitle": "Duplicate playlist names",
-      "playlist": "Folders with the same name are merged. Playlists with the same name are all kept; a playlist from the source library automatically receives a source-library suffix.",
-      "startSetup": "Set Up Merge",
-      "sourceTitle": "Choose source library",
-      "sourceInstruction": "Choose FRKB.database.frkbdb inside the source library, not the folder itself.",
-      "selectSource": "Choose Source Library",
-      "sourceSelected": "Source library selected",
+      "intro": "Import the curated library from another FRKB library into the current one.",
+      "contentsTitle": "What is imported",
+      "contents": "Only curated folders, playlists, audio, and track analysis/fingerprints. Filter, SET, Mixtape, Recording, Recycle Bin, and curated artists are skipped.",
+      "safetyTitle": "Before and during merge",
+      "safety": "Integrity and disk space are checked first; the source library is not modified. The current library is locked during merge and can recover if interrupted.",
+      "playlistTitle": "Same-name playlists",
+      "playlist": "Same-name folders merge. For same-name playlists, choose keep both or merge into existing in setup.",
+      "startSetup": "Set Up",
+      "sourceTitle": "Source library",
+      "sourceInstruction": "Select FRKB.database.frkbdb in the source library.",
+      "selectSource": "Choose Source",
+      "sourceSelected": "Selected",
       "sourceRequired": "Choose a source library first.",
-      "checkingSource": "Checking source curated library…",
-      "sourceCheckPassed": "Check passed: the source curated library structure, integrity, and available disk space meet the merge requirements.",
+      "checkingSource": "Checking…",
+      "sourceCheckPassed": "Check passed.",
+      "duplicatePlaylistTitle": "Same-name playlists",
+      "duplicateRenameMode": "Keep both (recommended)",
+      "duplicateRenameDescription": "Source playlist gets a “(from …)” suffix.",
+      "duplicateMergeIntoMode": "Merge into existing",
+      "duplicateMergeIntoDescription": "Tracks go into the current playlist; colliding files get a suffix.",
       "sourceIssues": {
         "invalid-selection": {
           "title": "Choose the FRKB database file",
-          "description": "Select FRKB.database.frkbdb in the source library root, not a folder or another file."
+          "description": "Select FRKB.database.frkbdb in the source library root."
         },
         "same-library": {
-          "title": "This is the library currently in use",
-          "description": "Choose another FRKB library as the source. A library cannot be merged into itself."
+          "title": "Cannot merge into itself",
+          "description": "Choose a different FRKB library."
         },
         "nested-library": {
-          "title": "The two library locations cannot contain one another",
-          "description": "Move the source library outside the current library directory, or choose a library in another location."
+          "title": "Library paths cannot nest",
+          "description": "Move the source library outside the current library path."
         },
         "version-incompatible": {
-          "title": "The source library needs a newer FRKB version",
-          "description": "Update FRKB, then open the source library with the newer version before merging it."
+          "title": "Source library is too old",
+          "description": "Update FRKB, open the source library once, then merge."
         },
         "unregistered-data": {
-          "title": "The source library contains data that is not registered yet",
-          "description": "This usually comes from a new feature or a development build. FRKB will not merge it to avoid losing data; its name is in log.txt."
+          "title": "Unregistered source data",
+          "description": "Likely a new feature or dev build; merge is blocked. See log.txt."
         },
         "invalid-library": {
-          "title": "This source library cannot be merged safely",
-          "description": "Choose a complete FRKB library that has not been edited by hand. If it still fails, open and check it in FRKB first."
+          "title": "Source cannot be merged safely",
+          "description": "Use a complete, unmodified FRKB library, or open it in FRKB first."
         },
         "empty-curated-library": {
-          "title": "The source curated library is empty",
-          "description": "The source curated library has no folders or playlists to import, so the merge cannot start."
+          "title": "Source curated library is empty",
+          "description": "No folders or playlists to import."
         },
         "insufficient-space": {
-          "title": "The current library disk does not have enough space",
-          "description": "Free space on the disk that contains the current library, then choose the source again. Neither library has been changed."
+          "title": "Not enough disk space",
+          "description": "Free space on the current library disk, then try again. Nothing was changed."
         },
         "space-unavailable": {
-          "title": "The current library disk space cannot be checked",
-          "description": "Ensure the current library disk is accessible and FRKB can read its space information, then choose the source again."
+          "title": "Cannot check disk space",
+          "description": "Ensure the current library disk is accessible, then choose again."
         },
         "current-library": {
-          "title": "The current library is not ready to merge",
-          "description": "Make sure the current library opens normally and complete any required upgrade with this version of FRKB."
+          "title": "Current library not ready",
+          "description": "Open the current library normally and finish any required upgrade."
         },
         "unavailable": {
-          "title": "This source library is not available right now",
-          "description": "Choose the source again. If this continues, confirm both libraries can be opened normally in FRKB."
+          "title": "Source library unavailable",
+          "description": "Choose again. If it continues, confirm both libraries open in FRKB."
         }
       },
-      "modeTitle": "What should happen to the source curated library?",
-      "copyMode": "Copy and merge (recommended)",
-      "copyDescription": "Keep the source curated library unchanged while the current library receives the merged curated content.",
-      "deleteMode": "Delete source curated library after a successful merge",
-      "deleteDescription": "The source curated library subtree is cleared only after the current library is successfully saved. A cleanup failure does not affect the completed merge.",
+      "modeTitle": "Source curated library",
+      "copyMode": "Keep source (recommended)",
+      "copyDescription": "Copy into the current library; leave the source unchanged.",
+      "deleteMode": "Clear source after merge",
+      "deleteDescription": "Clear the source curated tree only after a successful save. Cleanup failure does not undo the merge.",
       "back": "Back",
       "startMerge": "Start Merge",
-      "progressTitle": "Merging curated library",
-      "completedTitle": "Curated library merge complete",
-      "completed": "Imported {songListCount} curated playlists and {copiedFileCount} files.",
-      "sourceDeleteWarning": "The current library was merged successfully, but source curated library cleanup did not finish.",
-      "failedTitle": "Unable to merge curated library",
+      "progressTitle": "Merging…",
+      "completedTitle": "Merge complete",
+      "completed": "Imported {songListCount} playlists and {copiedFileCount} files.",
+      "sourceDeleteWarning": "Merge succeeded, but source curated cleanup did not finish.",
+      "failedTitle": "Unable to merge",
       "returnToSetup": "Back to Setup",
-      "busyBlockingTitle": "The current library has tasks that cannot be interrupted",
-      "busyBlockingLead": "To avoid interrupting file moves or other library writes, finish or cancel these operations before merging the curated library:",
-      "busyCancellableTitle": "Analysis tasks need to stop first",
-      "busyCancellableLead": "Merging the curated library needs exclusive access to the current library. These analysis tasks are actively running (queued-only work is cleared automatically without asking) and can be cancelled safely:",
-      "busyCancellableConfirm": "Cancel analysis and start merge",
+      "busyBlockingTitle": "Tasks that cannot be interrupted",
+      "busyBlockingLead": "Finish or cancel these first:",
+      "busyCancellableTitle": "Stop analysis first",
+      "busyCancellableLead": "These tasks are running and can be cancelled (queued-only work is cleared automatically):",
+      "busyCancellableConfirm": "Cancel and merge",
       "busyCancellableCancel": "Not now",
-      "busyCancelFailed": "FRKB tried to cancel the analysis tasks, but the library is still busy. Try again in a moment.",
+      "busyCancelFailed": "Could not stop analysis. Try again in a moment.",
       "busyReasons": {
         "key-analysis": "Track analysis (key / BPM / grid / energy / structure / waveform)",
         "metadata-auto-fill": "Automatic metadata fill",
@@ -205,40 +210,40 @@
       }
     },
     "mergePhase": {
-      "preflight": "Checking FRKB libraries",
-      "staging": "Copying source library",
-      "promoting": "Preparing merged content",
-      "committing": "Saving merged library",
-      "deleting-source": "Cleaning up source library",
-      "completed": "FRKB library merge complete",
-      "failed": "FRKB library merge failed"
+      "preflight": "Checking…",
+      "staging": "Copying…",
+      "promoting": "Preparing…",
+      "committing": "Saving…",
+      "deleting-source": "Cleaning source…",
+      "completed": "Merge complete",
+      "failed": "Merge failed"
     },
     "mergeDescription": {
-      "preflight": "Checking directory structure, database consistency, and free disk space. When needed, the source library is upgraded in an isolated snapshot.",
-      "staging": "Files are written to hidden staging first; the current library is not committed yet.",
-      "promoting": "Promoting verified files into the current library.",
-      "committing": "Writing playlists, analysis data, and fingerprints in one database transaction.",
-      "deleting-source": "The current library is merged. Cleaning the source library as requested.",
+      "preflight": "Checking structure, consistency, and disk space.",
+      "staging": "Writing to staging first; not committed yet.",
+      "promoting": "Writing into the current library.",
+      "committing": "Saving playlists and analysis data.",
+      "deleting-source": "Merge succeeded; cleaning the source library.",
       "completed": "Refreshing the current library.",
-      "failed": "The current library did not commit incomplete merge content."
+      "failed": "Incomplete content was not committed."
     },
     "mergeCuratedPhase": {
-      "preflight": "Checking curated library",
-      "staging": "Copying source curated library",
-      "promoting": "Preparing curated library content",
-      "committing": "Saving curated library merge",
-      "deleting-source": "Cleaning up source curated library",
-      "completed": "Curated library merge complete",
-      "failed": "Curated library merge failed"
+      "preflight": "Checking…",
+      "staging": "Copying…",
+      "promoting": "Preparing…",
+      "committing": "Saving…",
+      "deleting-source": "Cleaning source curated…",
+      "completed": "Merge complete",
+      "failed": "Merge failed"
     },
     "mergeCuratedDescription": {
-      "preflight": "Checking the source curated library structure, integrity, and free disk space. When needed, the source library is upgraded in an isolated snapshot.",
-      "staging": "Curated library files are written to hidden staging first; the current library is not committed yet.",
-      "promoting": "Promoting verified curated library files into the current library.",
-      "committing": "Writing curated playlists and analysis data in one database transaction.",
-      "deleting-source": "The current library is merged. Clearing the source curated library with the full deletion path.",
+      "preflight": "Checking curated structure and disk space.",
+      "staging": "Writing to staging first; not committed yet.",
+      "promoting": "Writing into the current library.",
+      "committing": "Saving curated playlists and analysis data.",
+      "deleting-source": "Merge succeeded; clearing source curated library.",
       "completed": "Refreshing the current library.",
-      "failed": "The current library did not commit incomplete curated library merge content."
+      "failed": "Incomplete content was not committed."
     },
     "legacyTitle": "Library Upgrade",
     "legacyInProgress": "Previous upgrade didn't finish. It will run again.",

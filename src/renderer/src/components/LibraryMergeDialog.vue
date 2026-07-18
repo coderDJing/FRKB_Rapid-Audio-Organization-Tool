@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
@@ -10,6 +10,7 @@ import utils from '@renderer/utils/utils'
 
 type LibraryMergeMode = 'copy' | 'delete-source'
 type LibraryMergeScope = 'full' | 'curated'
+type LibraryMergeDuplicatePlaylistPolicy = 'rename' | 'merge-into'
 type LibraryMergePhase =
   | 'preflight'
   | 'staging'
@@ -96,6 +97,8 @@ const lockedHintKey = computed(() =>
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const step = ref<LibraryMergeStep>('intro')
 const mode = ref<LibraryMergeMode>('copy')
+/** Curated-only: how to handle same-name playlists under the same folder. */
+const duplicatePlaylistPolicy = ref<LibraryMergeDuplicatePlaylistPolicy>('rename')
 const sourceRoot = ref('')
 const sourceChecked = ref(false)
 const sourceCheckIssue = ref<SourceCheckIssue | null>(null)
@@ -300,6 +303,37 @@ const openSetup = () => {
   failureMessage.value = ''
 }
 
+const runSourceInspect = async (selectedRoot: string) => {
+  step.value = 'checking'
+  sourceChecked.value = false
+  sourceCheckIssue.value = null
+  const generation = (inspectGeneration.value += 1)
+  try {
+    const inspected: unknown = await window.electron.ipcRenderer.invoke('library-merge:inspect', {
+      sourceRoot: selectedRoot,
+      scope: props.scope,
+      // Full merge ignores this; curated plan counts depend on the chosen policy.
+      duplicatePlaylistPolicy: isCuratedScope.value ? duplicatePlaylistPolicy.value : 'rename'
+    })
+    if (generation !== inspectGeneration.value) return
+    if (!isSuccessResponse(inspected)) {
+      if (getErrorCode(inspected) === 'INSPECT_CANCELLED') {
+        step.value = 'setup'
+        return
+      }
+      setSourceCheckIssue(inspected)
+      step.value = 'setup'
+      return
+    }
+    sourceChecked.value = true
+    step.value = 'setup'
+  } catch (error) {
+    if (generation !== inspectGeneration.value) return
+    setSourceCheckIssue(error)
+    step.value = 'setup'
+  }
+}
+
 const selectSource = async () => {
   if (isWorking.value) return
   sourceCheckIssue.value = null
@@ -326,37 +360,24 @@ const selectSource = async () => {
     isSelectingSource.value = false
   }
 
-  step.value = 'checking'
-  const generation = (inspectGeneration.value += 1)
-  try {
-    const inspected: unknown = await window.electron.ipcRenderer.invoke('library-merge:inspect', {
-      sourceRoot: selectedRoot,
-      scope: props.scope
-    })
-    if (generation !== inspectGeneration.value) return
-    if (!isSuccessResponse(inspected)) {
-      if (getErrorCode(inspected) === 'INSPECT_CANCELLED') {
-        step.value = 'setup'
-        return
-      }
-      setSourceCheckIssue(inspected)
-      step.value = 'setup'
-      return
-    }
-    sourceChecked.value = true
-    step.value = 'setup'
-  } catch (error) {
-    if (generation !== inspectGeneration.value) return
-    setSourceCheckIssue(error)
-    step.value = 'setup'
-  }
+  await runSourceInspect(selectedRoot)
 }
+
+// Curated policy changes the merge plan (rename vs merge-into). Re-check when already selected.
+watch(duplicatePlaylistPolicy, () => {
+  if (!isCuratedScope.value) return
+  if (!sourceRoot.value) return
+  if (step.value !== 'setup' && step.value !== 'checking') return
+  if (isSelectingSource.value) return
+  void runSourceInspect(sourceRoot.value)
+})
 
 const invokeStartMerge = async (cancelCancellableTasks: boolean): Promise<unknown> =>
   window.electron.ipcRenderer.invoke('library-merge:start', {
     sourceRoot: sourceRoot.value,
     mode: mode.value,
     scope: props.scope,
+    duplicatePlaylistPolicy: isCuratedScope.value ? duplicatePlaylistPolicy.value : 'rename',
     cancelCancellableTasks
   })
 
@@ -596,6 +617,34 @@ onUnmounted(() => {
             <div v-else class="library-merge-dialog__status">
               {{ t(`${dialogTextPrefix}.sourceRequired`) }}
             </div>
+          </section>
+
+          <section v-if="isCuratedScope" class="library-merge-dialog__section">
+            <h3>{{ t(`${dialogTextPrefix}.duplicatePlaylistTitle`) }}</h3>
+            <label class="library-merge-dialog__mode-option">
+              <input
+                v-model="duplicatePlaylistPolicy"
+                type="radio"
+                value="rename"
+                :disabled="isWorking"
+              />
+              <span>
+                <strong>{{ t(`${dialogTextPrefix}.duplicateRenameMode`) }}</strong>
+                <small>{{ t(`${dialogTextPrefix}.duplicateRenameDescription`) }}</small>
+              </span>
+            </label>
+            <label class="library-merge-dialog__mode-option">
+              <input
+                v-model="duplicatePlaylistPolicy"
+                type="radio"
+                value="merge-into"
+                :disabled="isWorking"
+              />
+              <span>
+                <strong>{{ t(`${dialogTextPrefix}.duplicateMergeIntoMode`) }}</strong>
+                <small>{{ t(`${dialogTextPrefix}.duplicateMergeIntoDescription`) }}</small>
+              </span>
+            </label>
           </section>
 
           <section class="library-merge-dialog__section">

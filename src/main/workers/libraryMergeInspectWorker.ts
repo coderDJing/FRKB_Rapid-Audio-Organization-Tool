@@ -1,12 +1,17 @@
 import { parentPort } from 'node:worker_threads'
 import { inspectLibraryMergeSource } from '../services/libraryMerge/inspection'
-import { LibraryMergeError, type LibraryMergeScope } from '../services/libraryMerge/types'
+import {
+  LibraryMergeError,
+  type LibraryMergeDuplicatePlaylistPolicy,
+  type LibraryMergeScope
+} from '../services/libraryMerge/types'
 
 type WorkerRequest = {
   sourceRoot?: string
   targetRoot?: string
   appVersion?: string
   scope?: LibraryMergeScope
+  duplicatePlaylistPolicy?: LibraryMergeDuplicatePlaylistPolicy
 }
 
 parentPort?.on('message', async (payload: WorkerRequest) => {
@@ -15,7 +20,8 @@ parentPort?.on('message', async (payload: WorkerRequest) => {
       sourceRoot: String(payload?.sourceRoot || ''),
       targetRoot: String(payload?.targetRoot || ''),
       appVersion: payload?.appVersion,
-      scope: payload?.scope
+      scope: payload?.scope,
+      duplicatePlaylistPolicy: payload?.duplicatePlaylistPolicy
     })
     parentPort?.postMessage({ summary })
   } catch (error) {

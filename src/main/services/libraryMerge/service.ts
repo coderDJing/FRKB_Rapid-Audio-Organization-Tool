@@ -617,6 +617,7 @@ export async function mergeFrkbLibraries(
       targetDb,
       appVersion: options.appVersion,
       scope,
+      duplicatePlaylistPolicy: options.duplicatePlaylistPolicy,
       sourceSchemaSnapshotBytes: sourceSchemaSnapshot?.reserveBytes,
       availableBytesBeforeSourceSnapshot: sourceSchemaSnapshot?.availableBytesBeforeSnapshot
     })
@@ -650,6 +651,8 @@ export async function mergeFrkbLibraries(
     }
     await writeJournal(journalPath, journal)
 
+    // Stage roots are only needed for newly created playlists. merge-into files stage
+    // under a unique path but promote as individual files into the existing directory.
     for (const node of plan.nodes) {
       if (node.nodeType !== 'songList') continue
       await fs.mkdir(path.join(payloadDir, node.targetUuid), { recursive: true })
@@ -727,8 +730,11 @@ export async function mergeFrkbLibraries(
       })
     }
     const targetStats = new Map<string, TargetFileStat>()
-    const plannedSongLists = plan.nodes.filter((node) => node.nodeType === 'songList')
-    for (const node of plannedSongLists) {
+    // Promote brand-new playlists as whole directories (historical full/curated rename path).
+    const plannedNewSongLists = plan.nodes.filter(
+      (node) => node.nodeType === 'songList' && node.isNew
+    )
+    for (const node of plannedNewSongLists) {
       const stageRoot = path.join(payloadDir, node.targetUuid)
       journal.promotionIntents.push(node.targetAbs)
       await writeJournal(journalPath, journal)
@@ -736,19 +742,22 @@ export async function mergeFrkbLibraries(
       journal.promotedRoots.push(node.targetAbs)
       await writeJournal(journalPath, journal)
     }
-    const plannedAssets = plan.files.filter((file) => file.kind === 'asset')
-    for (const asset of plannedAssets) {
+    // Assets and curated merge-into song files are promoted one path at a time.
+    const plannedSingleFilePromotions = plan.files.filter(
+      (file) => file.kind === 'asset' || file.promoteMode === 'into-existing'
+    )
+    for (const file of plannedSingleFilePromotions) {
       await createDirectoryWithJournal({
         targetRoot,
-        directoryPath: path.dirname(asset.targetAbs),
+        directoryPath: path.dirname(file.targetAbs),
         journal,
         journalPath
       })
-      const stagedAsset = path.join(payloadDir, asset.stageRel)
-      journal.promotionIntents.push(asset.targetAbs)
+      const stagedFile = path.join(payloadDir, file.stageRel)
+      journal.promotionIntents.push(file.targetAbs)
       await writeJournal(journalPath, journal)
-      await fs.rename(stagedAsset, asset.targetAbs)
-      journal.promotedRoots.push(asset.targetAbs)
+      await fs.rename(stagedFile, file.targetAbs)
+      journal.promotedRoots.push(file.targetAbs)
       await writeJournal(journalPath, journal)
     }
     for (const file of plan.files) {
@@ -789,9 +798,10 @@ export async function mergeFrkbLibraries(
       const insertNode = targetDb.prepare(
         'INSERT INTO library_nodes (uuid, parent_uuid, dir_name, node_type, sort_order) VALUES (?, ?, ?, ?, ?)'
       )
-      const sortedNodes = [...plan.nodes].sort(
-        (left, right) => left.targetRel.length - right.targetRel.length
-      )
+      // Only insert brand-new tree nodes. merge-into reuses existing playlist UUIDs.
+      const sortedNodes = plan.nodes
+        .filter((node) => node.isNew)
+        .sort((left, right) => left.targetRel.length - right.targetRel.length)
       for (const node of sortedNodes) {
         insertNode.run(
           node.targetUuid,
@@ -841,7 +851,8 @@ export async function mergeFrkbLibraries(
       await writeJournal(journalPath, journal)
       verifyTargetRows(
         targetDb,
-        plan.nodes.map((node) => node.targetUuid),
+        // Unique target UUIDs: merge-into reuses existing playlist ids.
+        Array.from(new Set(plan.nodes.map((node) => node.targetUuid))),
         commitKey
       )
       try {

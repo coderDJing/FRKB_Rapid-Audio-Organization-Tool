@@ -11,6 +11,7 @@ import {
   getLibraryMergeBusySnapshot,
   isLibraryMergeActive,
   mergeFrkbLibraries,
+  type LibraryMergeDuplicatePlaylistPolicy,
   type LibraryMergeMode,
   type LibraryMergeScope
 } from '../services/libraryMerge'
@@ -26,6 +27,7 @@ type LibraryMergeStartPayload = {
   sourceRoot?: unknown
   mode?: unknown
   scope?: unknown
+  duplicatePlaylistPolicy?: unknown
   cancelCancellableTasks?: unknown
 }
 
@@ -34,6 +36,9 @@ const normalizeMode = (value: unknown): LibraryMergeMode =>
 
 const normalizeScope = (value: unknown): LibraryMergeScope =>
   value === 'curated' ? 'curated' : 'full'
+
+const normalizeDuplicatePlaylistPolicy = (value: unknown): LibraryMergeDuplicatePlaylistPolicy =>
+  value === 'merge-into' ? 'merge-into' : 'rename'
 
 const getTargetRoot = (): string =>
   String(store.databaseDir || store.settingConfig?.databaseUrl || '').trim()
@@ -74,7 +79,8 @@ const runMerge = async (
   sourceRoot: string,
   mode: LibraryMergeMode,
   scope: LibraryMergeScope,
-  cancelCancellableTasks: boolean
+  cancelCancellableTasks: boolean,
+  duplicatePlaylistPolicy: LibraryMergeDuplicatePlaylistPolicy
 ) => {
   const targetRoot = getTargetRoot()
   if (!targetRoot) throw new LibraryMergeError('TARGET_NOT_READY', '当前 FRKB 库尚未打开')
@@ -89,6 +95,7 @@ const runMerge = async (
       appVersion: app.getVersion(),
       mode,
       scope,
+      duplicatePlaylistPolicy,
       onProgress: (progress) => {
         try {
           mainWindow.instance?.webContents.send('library-merge:progress', {
@@ -152,6 +159,12 @@ export function registerLibraryMergeHandlers(): void {
       payload && typeof payload === 'object' && 'scope' in payload
         ? normalizeScope((payload as { scope?: unknown }).scope)
         : 'full'
+    const duplicatePlaylistPolicy =
+      payload && typeof payload === 'object' && 'duplicatePlaylistPolicy' in payload
+        ? normalizeDuplicatePlaylistPolicy(
+            (payload as { duplicatePlaylistPolicy?: unknown }).duplicatePlaylistPolicy
+          )
+        : 'rename'
     activeInspectAbort?.abort()
     const abortController = new AbortController()
     activeInspectAbort = abortController
@@ -163,6 +176,7 @@ export function registerLibraryMergeHandlers(): void {
         targetRoot,
         appVersion: app.getVersion(),
         scope,
+        duplicatePlaylistPolicy,
         signal: abortController.signal
       })
       return { success: true as const, summary }
@@ -215,7 +229,8 @@ export function registerLibraryMergeHandlers(): void {
         sourceRoot,
         normalizeMode(payload?.mode),
         scope,
-        payload?.cancelCancellableTasks === true
+        payload?.cancelCancellableTasks === true,
+        normalizeDuplicatePlaylistPolicy(payload?.duplicatePlaylistPolicy)
       )
       return { success: true as const, result }
     } catch (error) {

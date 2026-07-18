@@ -2,6 +2,13 @@ export type LibraryMergeMode = 'copy' | 'delete-source'
 
 export type LibraryMergeScope = 'full' | 'curated'
 
+/**
+ * Curated-merge only. Full library merge always renames colliding playlists.
+ * - rename: keep both playlists; source gets ` (from <label>)` suffix
+ * - merge-into: import source tracks into the existing same-name playlist
+ */
+export type LibraryMergeDuplicatePlaylistPolicy = 'rename' | 'merge-into'
+
 export type LibraryMergePhase =
   | 'preflight'
   | 'staging'
@@ -39,6 +46,9 @@ export type LibraryMergePlanSummary = {
   targetManifestUuid: string
   songListCount: number
   renamedSongListCount: number
+  /** Curated merge-into: same-name source playlists mapped onto existing target playlists. */
+  mergedIntoSongListCount: number
+  duplicatePlaylistPolicy: LibraryMergeDuplicatePlaylistPolicy
   copiedFileCount: number
   copiedBytes: number
   capacity: LibraryMergeCapacity
@@ -59,6 +69,8 @@ export type LibraryMergeOptions = {
   appVersion?: string
   mode: LibraryMergeMode
   scope?: LibraryMergeScope
+  /** Only honored for curated scope; full merge always uses rename. */
+  duplicatePlaylistPolicy?: LibraryMergeDuplicatePlaylistPolicy
   onProgress?: (progress: LibraryMergeProgress) => void
 }
 

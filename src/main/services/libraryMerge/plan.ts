@@ -8,12 +8,14 @@ import {
   assertLeafDirectoryHasNoUserContent,
   getMergeFilePathKey,
   LIBRARY_MERGE_IGNORED_CACHE_DIRECTORY_NAMES,
-  planAssets
+  planAssets,
+  uniqueTargetFilePath
 } from './planFiles'
 import { LIBRARY_MERGE_KNOWN_TABLES } from './participants'
 import {
   LibraryMergeError,
   type LibraryMergeCapacity,
+  type LibraryMergeDuplicatePlaylistPolicy,
   type LibraryMergePlanSummary,
   type LibraryMergeScope
 } from './types'
@@ -52,6 +54,11 @@ export type PlannedFile = {
   targetFilePath: string
   size: number
   mtimeMs: number
+  /**
+   * song-list files default to promoting the whole playlist folder.
+   * merge-into curated collisions promote each file into an existing playlist.
+   */
+  promoteMode?: 'playlist-root' | 'into-existing'
 }
 
 export type LibraryMergePlan = {
@@ -449,7 +456,14 @@ const getCapacity = async (
   }
 }
 
-const assertSourceSongList = async (node: PlannedNode): Promise<PlannedFile[]> => {
+const assertSourceSongList = async (
+  node: PlannedNode,
+  options: {
+    sourceLabel: string
+    reservedPaths: Set<string>
+    mergeIntoExisting: boolean
+  }
+): Promise<PlannedFile[]> => {
   await assertDirectory(node.sourceAbs, 'SOURCE_TREE_INVALID')
   const entries = await fs.readdir(node.sourceAbs, { withFileTypes: true })
   const files: PlannedFile[] = []
@@ -480,6 +494,29 @@ const assertSourceSongList = async (node: PlannedNode): Promise<PlannedFile[]> =
         `普通歌单只能包含常规文件，发现不支持的项目：${sourceAbs}`
       )
     }
+    if (options.mergeIntoExisting) {
+      // Import into the existing playlist directory; rename only when the basename collides.
+      const targetAbs = await uniqueTargetFilePath(
+        node.targetAbs,
+        entry.name,
+        options.sourceLabel,
+        options.reservedPaths
+      )
+      const targetFilePath = path.basename(targetAbs)
+      files.push({
+        kind: 'song-list',
+        sourceAbs,
+        // Stage under a unique name so two imports into the same playlist cannot clash.
+        stageRel: path.join(node.targetUuid, `${uuidV4()}_${targetFilePath}`),
+        targetAbs,
+        targetListRoot: node.targetRel,
+        targetFilePath,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+        promoteMode: 'into-existing'
+      })
+      continue
+    }
     files.push({
       kind: 'song-list',
       sourceAbs,
@@ -488,7 +525,8 @@ const assertSourceSongList = async (node: PlannedNode): Promise<PlannedFile[]> =
       targetListRoot: node.targetRel,
       targetFilePath: entry.name,
       size: stat.size,
-      mtimeMs: stat.mtimeMs
+      mtimeMs: stat.mtimeMs,
+      promoteMode: 'playlist-root'
     })
   }
   return files
@@ -651,6 +689,15 @@ const validateSpecialDataRows = async (params: {
   }
 }
 
+export const normalizeLibraryMergeDuplicatePlaylistPolicy = (
+  scope: LibraryMergeScope,
+  policy?: LibraryMergeDuplicatePlaylistPolicy
+): LibraryMergeDuplicatePlaylistPolicy => {
+  // Full library merge keeps the historical rename-only behavior.
+  if (scope !== 'curated') return 'rename'
+  return policy === 'merge-into' ? 'merge-into' : 'rename'
+}
+
 export async function buildLibraryMergePlan(params: {
   sourceRoot: string
   targetRoot: string
@@ -658,10 +705,15 @@ export async function buildLibraryMergePlan(params: {
   targetDb: SqliteDatabase
   appVersion?: string
   scope?: LibraryMergeScope
+  duplicatePlaylistPolicy?: LibraryMergeDuplicatePlaylistPolicy
   sourceSchemaSnapshotBytes?: number
   availableBytesBeforeSourceSnapshot?: number
 }): Promise<LibraryMergePlan> {
   const scope: LibraryMergeScope = params.scope === 'curated' ? 'curated' : 'full'
+  const duplicatePlaylistPolicy = normalizeLibraryMergeDuplicatePlaylistPolicy(
+    scope,
+    params.duplicatePlaylistPolicy
+  )
   const importedCoreLibraryNames = getImportedCoreLibraryNames(scope)
   const sourceRoot = path.resolve(params.sourceRoot)
   const targetRoot = path.resolve(params.targetRoot)
@@ -885,11 +937,6 @@ export async function buildLibraryMergePlan(params: {
         continue
       }
 
-      const needsRename = !!existing
-      const targetName = needsRename
-        ? suffixName(sourceNode.dirName, sourceLabel, new Set(occupied.keys()))
-        : sourceNode.dirName
-      const targetUuid = uuidV4()
       const parentTargetPath =
         'targetRel' in parentPlan
           ? { abs: parentPlan.targetAbs, rel: parentPlan.targetRel }
@@ -898,6 +945,58 @@ export async function buildLibraryMergePlan(params: {
       if (!parentTargetPath || !sourcePath) {
         throw new LibraryMergeError('SOURCE_TREE_INVALID', '无法建立来源节点映射')
       }
+
+      // Curated only: optionally fold same-name playlists into the existing target playlist.
+      if (
+        duplicatePlaylistPolicy === 'merge-into' &&
+        sourceNode.nodeType === 'songList' &&
+        existing &&
+        'nodeType' in existing &&
+        existing.nodeType === 'songList'
+      ) {
+        const existingTarget =
+          'targetRel' in existing
+            ? {
+                uuid: existing.targetUuid,
+                rel: existing.targetRel,
+                abs: existing.targetAbs,
+                order: existing.order
+              }
+            : (() => {
+                const targetPath = targetPaths.get(existing.uuid)
+                if (!targetPath) return null
+                return {
+                  uuid: existing.uuid,
+                  rel: targetPath.rel,
+                  abs: targetPath.abs,
+                  order: existing.order
+                }
+              })()
+        if (!existingTarget) {
+          throw new LibraryMergeError('SOURCE_TREE_INVALID', '无法映射同名目标歌单')
+        }
+        const mergePlan: PlannedNode = {
+          sourceUuid: sourceNode.uuid,
+          targetUuid: existingTarget.uuid,
+          parentTargetUuid,
+          sourceRel: sourcePath.rel,
+          targetRel: existingTarget.rel,
+          sourceAbs: sourcePath.abs,
+          targetAbs: existingTarget.abs,
+          nodeType: 'songList',
+          order: existingTarget.order,
+          isNew: false
+        }
+        plannedNodes.push(mergePlan)
+        sourceToPlan.set(sourceNode.uuid, mergePlan)
+        continue
+      }
+
+      const needsRename = !!existing
+      const targetName = needsRename
+        ? suffixName(sourceNode.dirName, sourceLabel, new Set(occupied.keys()))
+        : sourceNode.dirName
+      const targetUuid = uuidV4()
       const nextPlan: PlannedNode = {
         sourceUuid: sourceNode.uuid,
         targetUuid,
@@ -947,9 +1046,16 @@ export async function buildLibraryMergePlan(params: {
   }
 
   const files: PlannedFile[] = []
+  const reservedSongListPaths = new Set<string>()
   for (const node of plannedNodes) {
     if (node.nodeType === 'songList') {
-      files.push(...(await assertSourceSongList(node)))
+      files.push(
+        ...(await assertSourceSongList(node, {
+          sourceLabel,
+          reservedPaths: reservedSongListPaths,
+          mergeIntoExisting: !node.isNew
+        }))
+      )
       continue
     }
     if (node.nodeType === 'mixtapeList' || node.nodeType === 'setList') {
@@ -1044,7 +1150,11 @@ export async function buildLibraryMergePlan(params: {
   const renamedSongListCount = plannedNodes.filter(
     (node) =>
       node.nodeType === 'songList' &&
+      node.isNew &&
       path.basename(node.sourceRel) !== path.basename(node.targetRel)
+  ).length
+  const mergedIntoSongListCount = plannedNodes.filter(
+    (node) => node.nodeType === 'songList' && !node.isNew
   ).length
   if (scope === 'curated' && songListCount === 0) {
     throw new LibraryMergeError('SOURCE_CURATED_EMPTY', '来源库的精选库为空，没有可合并的内容')
@@ -1057,6 +1167,8 @@ export async function buildLibraryMergePlan(params: {
     targetManifestUuid: targetManifest.uuid,
     songListCount,
     renamedSongListCount,
+    mergedIntoSongListCount,
+    duplicatePlaylistPolicy,
     copiedFileCount: files.length,
     copiedBytes,
     capacity

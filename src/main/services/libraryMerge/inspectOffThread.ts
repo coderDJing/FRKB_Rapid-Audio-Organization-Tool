@@ -2,13 +2,19 @@ import fs from 'node:fs'
 import { Worker } from 'node:worker_threads'
 import { resolveMainWorkerPath } from '../../workerPath'
 import { inspectLibraryMergeSource } from './inspection'
-import { LibraryMergeError, type LibraryMergePlanSummary, type LibraryMergeScope } from './types'
+import {
+  LibraryMergeError,
+  type LibraryMergeDuplicatePlaylistPolicy,
+  type LibraryMergePlanSummary,
+  type LibraryMergeScope
+} from './types'
 
 type WorkerRequest = {
   sourceRoot: string
   targetRoot: string
   appVersion?: string
   scope?: LibraryMergeScope
+  duplicatePlaylistPolicy?: LibraryMergeDuplicatePlaylistPolicy
 }
 
 type WorkerResponse = {
@@ -90,6 +96,7 @@ export const inspectLibraryMergeSourceOffMainThread = async (params: {
   targetRoot: string
   appVersion?: string
   scope?: LibraryMergeScope
+  duplicatePlaylistPolicy?: LibraryMergeDuplicatePlaylistPolicy
   signal?: AbortSignal
 }): Promise<LibraryMergePlanSummary> => {
   if (params.signal?.aborted) {
@@ -105,7 +112,8 @@ export const inspectLibraryMergeSourceOffMainThread = async (params: {
       sourceRoot: params.sourceRoot,
       targetRoot: params.targetRoot,
       appVersion: params.appVersion,
-      scope: params.scope
+      scope: params.scope,
+      duplicatePlaylistPolicy: params.duplicatePlaylistPolicy
     },
     workerPath,
     params.signal

@@ -3,7 +3,11 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertDistinctLibraryMergeRoots, buildLibraryMergePlan } from './plan'
 import { createUpgradedSourceSchemaSnapshot } from './sourceSchemaSnapshot'
-import type { LibraryMergePlanSummary, LibraryMergeScope } from './types'
+import type {
+  LibraryMergeDuplicatePlaylistPolicy,
+  LibraryMergePlanSummary,
+  LibraryMergeScope
+} from './types'
 
 type SqliteDatabase = InstanceType<typeof import('better-sqlite3')>
 
@@ -24,6 +28,7 @@ export async function inspectLibraryMergeSource(params: {
   targetRoot: string
   appVersion?: string
   scope?: LibraryMergeScope
+  duplicatePlaylistPolicy?: LibraryMergeDuplicatePlaylistPolicy
 }): Promise<LibraryMergePlanSummary> {
   const scope: LibraryMergeScope = params.scope === 'curated' ? 'curated' : 'full'
   const sourceRoot = path.resolve(params.sourceRoot)
@@ -65,6 +70,7 @@ export async function inspectLibraryMergeSource(params: {
       targetDb,
       appVersion: params.appVersion,
       scope,
+      duplicatePlaylistPolicy: params.duplicatePlaylistPolicy,
       sourceSchemaSnapshotBytes: snapshot?.reserveBytes,
       availableBytesBeforeSourceSnapshot: snapshot?.availableBytesBeforeSnapshot
     })
