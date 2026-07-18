@@ -175,6 +175,36 @@ export class KeyAnalysisQueue {
     return this.hasForegroundWork()
   }
 
+  /**
+   * Library-merge gate: distinguish real in-flight work (needs user confirm)
+   * from pending-only queues that can be dropped silently.
+   */
+  getLibraryMergeActivity(): {
+    inFlight: boolean
+    pendingOnly: boolean
+    any: boolean
+  } {
+    const hasInFlightJobs = this.inFlight.size > 0
+    const background = this.background.getBackgroundStatusSnapshot()
+    const hasProcessing = background.processing > 0
+    const hasPendingQueues =
+      this.pendingHigh.length > 0 ||
+      this.pendingMedium.length > 0 ||
+      this.pendingLow.length > 0 ||
+      this.pendingBackground.length > 0 ||
+      this.deferred.size > 0 ||
+      background.pending > 0
+    // Scan itself is not a DB writer; treat as pending-side activity.
+    const hasScan = background.scanInProgress
+    const inFlight = hasInFlightJobs || hasProcessing
+    const any = inFlight || hasPendingQueues || hasScan
+    return {
+      inFlight,
+      pendingOnly: !inFlight && any,
+      any
+    }
+  }
+
   getWorkerCount(): number {
     return this.workers.length
   }
@@ -568,6 +598,42 @@ export class KeyAnalysisQueue {
       await Promise.allSettled(terminations)
       this.background.emitBackgroundStatus()
     }
+  }
+
+  /**
+   * Safe cancel path used before library merge: drop pending analysis work and terminate
+   * in-flight workers so they cannot keep writing song_cache / waveform rows during merge.
+   */
+  async cancelAllWorkForLibraryMerge() {
+    this.background.cancelBackgroundWork()
+    this.deferred.clearAll()
+
+    for (const job of Array.from(this.pendingByPath.values())) {
+      this.removePending(job)
+    }
+    this.pendingHigh = []
+    this.pendingMedium = []
+    this.pendingLow = []
+    this.pendingBackground = []
+    this.focusPathBySlot.clear()
+
+    const terminations: Array<Promise<unknown>> = []
+    for (const [worker, jobId] of Array.from(this.busy.entries())) {
+      const job = this.inFlight.get(jobId)
+      if (job?.source === 'background') {
+        this.background.unmarkProcessing(job.jobId)
+      }
+      this.markExpectedWorkerTermination(worker, 'library-merge-cancel')
+      terminations.push(
+        worker.terminate().catch(() => {
+          this.clearExpectedWorkerTermination(worker)
+        })
+      )
+    }
+    if (terminations.length > 0) {
+      await Promise.allSettled(terminations)
+    }
+    this.background.emitBackgroundStatus()
   }
 
   private markExpectedWorkerTermination(worker: Worker, reason: string) {

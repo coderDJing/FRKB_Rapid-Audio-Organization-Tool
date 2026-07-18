@@ -348,6 +348,16 @@ export async function cancelManualKeyAnalysisBatch(batchId: string) {
   return { canceled: true }
 }
 
+/** Cancel every key-analysis queue item (manual/visible/playing/background) before library merge. */
+export async function cancelAllKeyAnalysisForLibraryMerge() {
+  const batches = Array.from(manualBatches.values())
+  for (const batch of batches) {
+    finishManualBatch(batch, true)
+  }
+  if (!queue) return
+  await queue.cancelAllWorkForLibraryMerge()
+}
+
 export function replaceVisibleKeyAnalysisList(
   filePaths: string[],
   options: { waveformOnly?: boolean } = {}
@@ -389,6 +399,18 @@ export function getKeyAnalysisBackgroundStatus(): KeyAnalysisBackgroundStatus {
 export function isKeyAnalysisForegroundBusy(): boolean {
   if (!queue) return false
   return queue.isForegroundBusy()
+}
+
+/** Activity snapshot for library-merge busy gating (in-flight vs pending-only). */
+export function getKeyAnalysisLibraryMergeActivity(): {
+  inFlight: boolean
+  pendingOnly: boolean
+  any: boolean
+} {
+  if (!queue) {
+    return { inFlight: false, pendingOnly: false, any: false }
+  }
+  return queue.getLibraryMergeActivity()
 }
 
 export function invalidateKeyAnalysisCache(filePaths: string[] | string) {

@@ -22,8 +22,10 @@ import {
   type LibraryMergeOptions,
   type LibraryMergePhase,
   type LibraryMergeProgress,
-  type LibraryMergeResult
+  type LibraryMergeResult,
+  type LibraryMergeScope
 } from './types'
+import { clearSourceCuratedLibrarySubtree } from './clearSourceCuratedLibrary'
 
 type SqliteDatabase = InstanceType<typeof import('better-sqlite3')>
 
@@ -31,6 +33,7 @@ type Journal = {
   version: 1
   jobId: string
   mode: 'copy' | 'delete-source'
+  scope: LibraryMergeScope
   sourceRoot: string
   targetRoot: string
   sourceManifestUuid: string
@@ -50,10 +53,15 @@ type TargetFileStat = {
 }
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
-const MERGE_WORK_DIR_NAME = '.frkb-merge'
+const FULL_MERGE_WORK_DIR_NAME = '.frkb-merge'
+const CURATED_MERGE_WORK_DIR_NAME = '.frkb-curated-merge'
 const MERGE_LOCK_FILE_NAME = '.frkb-merge.lock'
+const MERGE_WORK_DIR_NAMES = [FULL_MERGE_WORK_DIR_NAME, CURATED_MERGE_WORK_DIR_NAME] as const
 
 let activeMerge = false
+
+const getMergeWorkDirName = (scope: LibraryMergeScope): string =>
+  scope === 'curated' ? CURATED_MERGE_WORK_DIR_NAME : FULL_MERGE_WORK_DIR_NAME
 
 const toErrorMessage = (error: unknown): string => {
   if (error instanceof Error && error.message) return error.message
@@ -82,7 +90,8 @@ const writeJsonDurably = async (filePath: string, value: unknown): Promise<void>
   const tempPath = `${filePath}.next`
   const body = `${JSON.stringify(value, null, 2)}\n`
   await fs.writeFile(tempPath, body, 'utf8')
-  const file = await fs.open(tempPath, 'r')
+  // Windows 上只读句柄不能 fsync，需要 r+。
+  const file = await fs.open(tempPath, 'r+')
   try {
     await file.sync()
   } finally {
@@ -174,7 +183,8 @@ const isPathInside = (parentPath: string, targetPath: string): boolean => {
 }
 
 const fsyncFile = async (filePath: string): Promise<void> => {
-  const handle = await fs.open(filePath, 'r')
+  // Windows 上只读句柄不能 fsync，需要 r+。
+  const handle = await fs.open(filePath, 'r+')
   try {
     await handle.sync()
   } finally {
@@ -387,13 +397,61 @@ const rollbackUncommittedJournal = async (journal: Journal, journalDir: string):
   await fs.rm(journalDir, { recursive: true, force: true })
 }
 
-const getCommitKey = (jobId: string) => `library_merge.${jobId}.committed`
+const getCommitKey = (jobId: string, scope: LibraryMergeScope) =>
+  scope === 'curated'
+    ? `curated_library_merge.${jobId}.committed`
+    : `library_merge.${jobId}.committed`
 
-const hasCommitMarker = (db: SqliteDatabase, jobId: string): boolean => {
-  const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(getCommitKey(jobId)) as
+const normalizeScope = (value: unknown): LibraryMergeScope =>
+  value === 'curated' ? 'curated' : 'full'
+
+const hasCommitMarker = (db: SqliteDatabase, jobId: string, scope: LibraryMergeScope): boolean => {
+  const row = db.prepare('SELECT value FROM meta WHERE key = ?').get(getCommitKey(jobId, scope)) as
     | Record<string, unknown>
     | undefined
   return String(row?.value || '') === '1'
+}
+
+const deleteSourceAfterCommit = async (params: {
+  mode: 'copy' | 'delete-source'
+  scope: LibraryMergeScope
+  sourceRoot: string
+  sourceManifestUuid: string
+}): Promise<{ sourceDeleted: boolean; sourceDeleteError?: string }> => {
+  if (params.mode !== 'delete-source') {
+    return { sourceDeleted: false }
+  }
+  try {
+    await assertSourceRootIdentity(params.sourceRoot, params.sourceManifestUuid)
+    if (params.scope === 'curated') {
+      const Database = getDatabaseCtor()
+      const sourceDb = new Database(path.join(params.sourceRoot, DB_FILE_NAME), {
+        fileMustExist: true
+      })
+      try {
+        sourceDb.pragma('foreign_keys = ON')
+        sourceDb.pragma('busy_timeout = 5000')
+        await clearSourceCuratedLibrarySubtree({
+          sourceRoot: params.sourceRoot,
+          sourceDb
+        })
+      } finally {
+        try {
+          sourceDb.close()
+        } catch {}
+      }
+    } else {
+      await fs.rm(params.sourceRoot, {
+        recursive: true,
+        force: false,
+        maxRetries: 2,
+        retryDelay: 250
+      })
+    }
+    return { sourceDeleted: true }
+  } catch (error) {
+    return { sourceDeleted: false, sourceDeleteError: toErrorMessage(error) }
+  }
 }
 
 const acquireMergeLock = async (targetRoot: string, jobId: string): Promise<string> => {
@@ -424,61 +482,75 @@ const emitProgress = (
 
 export const isLibraryMergeActive = (): boolean => activeMerge
 
-export async function recoverIncompleteLibraryMerges(targetRootInput: string): Promise<void> {
-  const targetRoot = path.resolve(targetRootInput)
-  const workRoot = path.join(targetRoot, MERGE_WORK_DIR_NAME)
-  await fs.rm(path.join(targetRoot, '.frkb-merge-preflight'), { recursive: true, force: true })
-  const entries = await fs.readdir(workRoot, { withFileTypes: true }).catch(() => [])
+const recoverIncompleteLibraryMergesInWorkRoot = async (params: {
+  targetRoot: string
+  workRoot: string
+  targetDb: SqliteDatabase
+}): Promise<void> => {
+  const entries = await fs.readdir(params.workRoot, { withFileTypes: true }).catch(() => [])
   if (entries.length === 0) {
-    await removeDirectoryIfEmpty(workRoot)
-    await fs.rm(path.join(targetRoot, MERGE_LOCK_FILE_NAME), { force: true })
+    await removeDirectoryIfEmpty(params.workRoot)
     return
   }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue
+    const journalDir = path.join(params.workRoot, entry.name)
+    const journal = await readJson<Journal>(path.join(journalDir, 'journal.json'))
+    if (
+      !journal ||
+      journal.version !== 1 ||
+      journal.targetRoot !== params.targetRoot ||
+      (journal.mode !== 'copy' && journal.mode !== 'delete-source') ||
+      !journal.fileHashes ||
+      typeof journal.fileHashes !== 'object'
+    ) {
+      throw new LibraryMergeError('RECOVERY_JOURNAL_INVALID', '发现无法识别的库合并恢复日志')
+    }
+    const journalScope = normalizeScope(journal.scope)
+    if (hasCommitMarker(params.targetDb, journal.jobId, journalScope)) {
+      if (journal.mode === 'delete-source') {
+        try {
+          if (await fileExists(journal.sourceRoot)) {
+            if (!(await isExpectedSourceRoot(journal.sourceRoot, journal.sourceManifestUuid))) {
+              continue
+            }
+            const deleteResult = await deleteSourceAfterCommit({
+              mode: journal.mode,
+              scope: journalScope,
+              sourceRoot: journal.sourceRoot,
+              sourceManifestUuid: journal.sourceManifestUuid
+            })
+            if (deleteResult.sourceDeleteError) continue
+          }
+        } catch {
+          continue
+        }
+      }
+      await fs.rm(journalDir, { recursive: true, force: true })
+    } else {
+      await rollbackUncommittedJournal(journal, journalDir)
+    }
+  }
+  await removeDirectoryIfEmpty(params.workRoot)
+}
+
+export async function recoverIncompleteLibraryMerges(targetRootInput: string): Promise<void> {
+  const targetRoot = path.resolve(targetRootInput)
+  await fs.rm(path.join(targetRoot, '.frkb-merge-preflight'), { recursive: true, force: true })
   const Database = getDatabaseCtor()
   const targetDb = new Database(path.join(targetRoot, DB_FILE_NAME), { fileMustExist: true })
   targetDb.pragma('foreign_keys = ON')
   try {
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue
-      const journalDir = path.join(workRoot, entry.name)
-      const journal = await readJson<Journal>(path.join(journalDir, 'journal.json'))
-      if (
-        !journal ||
-        journal.version !== 1 ||
-        journal.targetRoot !== targetRoot ||
-        (journal.mode !== 'copy' && journal.mode !== 'delete-source') ||
-        !journal.fileHashes ||
-        typeof journal.fileHashes !== 'object'
-      ) {
-        throw new LibraryMergeError('RECOVERY_JOURNAL_INVALID', '发现无法识别的库合并恢复日志')
-      }
-      if (hasCommitMarker(targetDb, journal.jobId)) {
-        if (journal.mode === 'delete-source') {
-          try {
-            if (await fileExists(journal.sourceRoot)) {
-              if (!(await isExpectedSourceRoot(journal.sourceRoot, journal.sourceManifestUuid))) {
-                continue
-              }
-              await fs.rm(journal.sourceRoot, {
-                recursive: true,
-                force: false,
-                maxRetries: 2,
-                retryDelay: 250
-              })
-            }
-          } catch {
-            continue
-          }
-        }
-        await fs.rm(journalDir, { recursive: true, force: true })
-      } else {
-        await rollbackUncommittedJournal(journal, journalDir)
-      }
+    for (const workDirName of MERGE_WORK_DIR_NAMES) {
+      await recoverIncompleteLibraryMergesInWorkRoot({
+        targetRoot,
+        workRoot: path.join(targetRoot, workDirName),
+        targetDb
+      })
     }
   } finally {
     targetDb.close()
   }
-  await removeDirectoryIfEmpty(workRoot)
   await fs.rm(path.join(targetRoot, MERGE_LOCK_FILE_NAME), { force: true })
 }
 
@@ -488,6 +560,7 @@ export async function mergeFrkbLibraries(
   if (activeMerge) {
     throw new LibraryMergeError('MERGE_ALREADY_ACTIVE', '当前已有合并任务正在运行')
   }
+  const scope = normalizeScope(options.scope)
   const sourceRoot = path.resolve(options.sourceRoot)
   const targetRoot = path.resolve(options.targetRoot)
   await assertDistinctLibraryMergeRoots(sourceRoot, targetRoot)
@@ -516,7 +589,8 @@ export async function mergeFrkbLibraries(
     sourceDb.exec('BEGIN')
     targetDb = new Database(path.join(targetRoot, DB_FILE_NAME), { fileMustExist: true })
     targetDb.pragma('foreign_keys = ON')
-    journalDir = path.join(targetRoot, MERGE_WORK_DIR_NAME, jobId)
+    const workDirName = getMergeWorkDirName(scope)
+    journalDir = path.join(targetRoot, workDirName, jobId)
     const sourceSchemaSnapshot = await createUpgradedSourceSchemaSnapshot({
       sourceDb,
       targetDb,
@@ -542,6 +616,7 @@ export async function mergeFrkbLibraries(
       sourceDb,
       targetDb,
       appVersion: options.appVersion,
+      scope,
       sourceSchemaSnapshotBytes: sourceSchemaSnapshot?.reserveBytes,
       availableBytesBeforeSourceSnapshot: sourceSchemaSnapshot?.availableBytesBeforeSnapshot
     })
@@ -561,6 +636,7 @@ export async function mergeFrkbLibraries(
       version: 1,
       jobId,
       mode: options.mode,
+      scope,
       sourceRoot,
       targetRoot,
       sourceManifestUuid: plan.sourceManifestUuid,
@@ -725,8 +801,12 @@ export async function mergeFrkbLibraries(
           node.order
         )
       }
+      // curated 范围也需要 fingerprints 并集：分析/指纹相关功能依赖该表，不得静默丢弃。
+      // 精选艺人 meta / SET / Mixtape 行变换仅在整库合并中执行。
       const mergedFingerprintCount = mergeRegisteredLibraryUnionRows(sourceDb, targetDb)
-      mergeRegisteredLibraryMetadata(sourceDb, targetDb)
+      if (scope === 'full') {
+        mergeRegisteredLibraryMetadata(sourceDb, targetDb)
+      }
       const copiedAnalysisRows = copyAnalysisRows(
         sourceDb,
         targetDb,
@@ -734,15 +814,17 @@ export async function mergeFrkbLibraries(
         plan.sourceListRootToTarget,
         targetStats
       )
-      mergeRegisteredLibraryRowTransforms({
-        sourceDb,
-        targetDb,
-        sourceRoot,
-        sourceFilePathToTarget: plan.sourceFilePathToTarget,
-        sourceNodePaths: plan.nodePathMappings,
-        nodeUuidMap: plan.nodeUuidMap
-      })
-      const commitKey = getCommitKey(jobId)
+      if (scope === 'full') {
+        mergeRegisteredLibraryRowTransforms({
+          sourceDb,
+          targetDb,
+          sourceRoot,
+          sourceFilePathToTarget: plan.sourceFilePathToTarget,
+          sourceNodePaths: plan.nodePathMappings,
+          nodeUuidMap: plan.nodeUuidMap
+        })
+      }
+      const commitKey = getCommitKey(jobId, scope)
       targetDb
         .prepare(
           'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
@@ -785,12 +867,15 @@ export async function mergeFrkbLibraries(
           copiedFiles,
           plan.summary.copiedFileCount
         )
-        try {
-          await assertSourceRootIdentity(sourceRoot, plan.sourceManifestUuid)
-          await fs.rm(sourceRoot, { recursive: true, force: false, maxRetries: 2, retryDelay: 250 })
-          sourceDeleted = true
-        } catch (error) {
-          sourceDeleteError = toErrorMessage(error)
+        const deleteResult = await deleteSourceAfterCommit({
+          mode: options.mode,
+          scope,
+          sourceRoot,
+          sourceManifestUuid: plan.sourceManifestUuid
+        })
+        sourceDeleted = deleteResult.sourceDeleted
+        sourceDeleteError = deleteResult.sourceDeleteError
+        if (sourceDeleteError) {
           journal.phase = 'deleting-source'
           await writeJournal(journalPath, journal)
         }
@@ -800,7 +885,7 @@ export async function mergeFrkbLibraries(
       }
       if (!sourceDeleteError) {
         await fs.rm(journalDir, { recursive: true, force: true })
-        await removeDirectoryIfEmpty(path.join(targetRoot, MERGE_WORK_DIR_NAME))
+        await removeDirectoryIfEmpty(path.join(targetRoot, workDirName))
       }
       emitProgress(
         options.onProgress,
@@ -813,6 +898,7 @@ export async function mergeFrkbLibraries(
       return {
         ...plan.summary,
         mode: options.mode,
+        scope,
         sourceDeleted,
         ...(sourceDeleteError ? { sourceDeleteError } : {}),
         copiedAnalysisRows,
@@ -841,11 +927,11 @@ export async function mergeFrkbLibraries(
     if (!committed && journal && journalDir) {
       try {
         await rollbackUncommittedJournal(journal, journalDir)
-        await removeDirectoryIfEmpty(path.join(targetRoot, MERGE_WORK_DIR_NAME))
+        await removeDirectoryIfEmpty(path.join(targetRoot, getMergeWorkDirName(scope)))
       } catch {}
     } else if (!committed && journalDir) {
       await fs.rm(journalDir, { recursive: true, force: true }).catch(() => {})
-      await removeDirectoryIfEmpty(path.join(targetRoot, MERGE_WORK_DIR_NAME))
+      await removeDirectoryIfEmpty(path.join(targetRoot, getMergeWorkDirName(scope)))
     }
     emitProgress(options.onProgress, 'failed', 0, 0, 0, 0, toErrorMessage(error))
     throw error

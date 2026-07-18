@@ -3,11 +3,13 @@ import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
 import { v4 as uuidV4 } from 'uuid'
 import hotkeys from 'hotkeys-js'
 import bubbleBox from '@renderer/components/bubbleBox.vue'
+import confirmDialog from '@renderer/components/confirmDialog'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import { t } from '@renderer/utils/translate'
 import utils from '@renderer/utils/utils'
 
 type LibraryMergeMode = 'copy' | 'delete-source'
+type LibraryMergeScope = 'full' | 'curated'
 type LibraryMergePhase =
   | 'preflight'
   | 'staging'
@@ -32,6 +34,7 @@ type SourceCheckIssueKind =
   | 'version-incompatible'
   | 'unregistered-data'
   | 'invalid-library'
+  | 'empty-curated-library'
   | 'insufficient-space'
   | 'space-unavailable'
   | 'current-library'
@@ -44,12 +47,52 @@ type MergeResultSummary = {
   copiedFileCount: number
   sourceDeleteError: string
 }
+type LibraryMergeBusyReason =
+  | 'key-analysis'
+  | 'metadata-auto-fill'
+  | 'mixtape-waveform'
+  | 'mixtape-raw-waveform'
+  | 'background-task'
+  | 'import'
+  | 'audio-conversion'
+  | 'playlist-batch-rename'
+  | 'mixtape-stem'
+  | 'mixtape-window'
+  | 'library-tree-watcher'
+  | 'recording'
+  | 'unknown'
+type LibraryMergeBusyDetails = {
+  blocking: LibraryMergeBusyReason[]
+  cancellable: LibraryMergeBusyReason[]
+}
+
+const props = withDefaults(
+  defineProps<{
+    scope?: LibraryMergeScope
+  }>(),
+  {
+    scope: 'full'
+  }
+)
 
 const emit = defineEmits<{
   close: []
 }>()
 
 const uuid = uuidV4()
+const isCuratedScope = computed(() => props.scope === 'curated')
+const dialogTextPrefix = computed(() =>
+  isCuratedScope.value ? 'migration.mergeCuratedDialog' : 'migration.mergeDialog'
+)
+const phaseTextPrefix = computed(() =>
+  isCuratedScope.value ? 'migration.mergeCuratedPhase' : 'migration.mergePhase'
+)
+const phaseDescriptionPrefix = computed(() =>
+  isCuratedScope.value ? 'migration.mergeCuratedDescription' : 'migration.mergeDescription'
+)
+const lockedHintKey = computed(() =>
+  isCuratedScope.value ? 'migration.mergeCuratedLockedHint' : 'migration.mergeLockedHint'
+)
 const { dialogVisible, closeWithAnimation } = useDialogTransition()
 const step = ref<LibraryMergeStep>('intro')
 const mode = ref<LibraryMergeMode>('copy')
@@ -90,6 +133,73 @@ const getErrorMessage = (value: unknown): string => {
 const getErrorCode = (value: unknown): string =>
   isRecord(value) ? getString(value.code).toUpperCase() : ''
 
+const KNOWN_BUSY_REASONS = new Set<LibraryMergeBusyReason>([
+  'key-analysis',
+  'metadata-auto-fill',
+  'mixtape-waveform',
+  'mixtape-raw-waveform',
+  'background-task',
+  'import',
+  'audio-conversion',
+  'playlist-batch-rename',
+  'mixtape-stem',
+  'mixtape-window',
+  'library-tree-watcher',
+  'recording'
+])
+
+const normalizeBusyReason = (value: unknown): LibraryMergeBusyReason => {
+  const reason = getString(value) as LibraryMergeBusyReason
+  return KNOWN_BUSY_REASONS.has(reason) ? reason : 'unknown'
+}
+
+const getBusyDetails = (value: unknown): LibraryMergeBusyDetails => {
+  const details = isRecord(value) && isRecord(value.details) ? value.details : null
+  const blockingRaw = details && Array.isArray(details.blocking) ? details.blocking : []
+  const cancellableRaw = details && Array.isArray(details.cancellable) ? details.cancellable : []
+  return {
+    blocking: blockingRaw.map(normalizeBusyReason),
+    cancellable: cancellableRaw.map(normalizeBusyReason)
+  }
+}
+
+const formatBusyReasonLines = (reasons: LibraryMergeBusyReason[]): string[] => {
+  const unique = Array.from(new Set(reasons.filter(Boolean)))
+  if (unique.length === 0) return [`• ${t(`${dialogTextPrefix.value}.busyReasons.unknown`)}`]
+  return unique.map((reason) => {
+    const key = `${dialogTextPrefix.value}.busyReasons.${reason}`
+    const label = t(key)
+    return `• ${label === key ? t(`${dialogTextPrefix.value}.busyReasons.unknown`) : label}`
+  })
+}
+
+const showBusyBlockingDialog = async (reasons: LibraryMergeBusyReason[]) => {
+  await confirmDialog({
+    title: t(`${dialogTextPrefix.value}.busyBlockingTitle`),
+    content: [t(`${dialogTextPrefix.value}.busyBlockingLead`), ...formatBusyReasonLines(reasons)],
+    confirmShow: false,
+    textAlign: 'left',
+    cancelText: t('common.close')
+  })
+}
+
+const confirmCancelCancellableTasks = async (
+  reasons: LibraryMergeBusyReason[]
+): Promise<boolean> => {
+  const result = await confirmDialog({
+    title: t(`${dialogTextPrefix.value}.busyCancellableTitle`),
+    content: [
+      t(`${dialogTextPrefix.value}.busyCancellableLead`),
+      ...formatBusyReasonLines(reasons)
+    ],
+    confirmShow: true,
+    textAlign: 'left',
+    confirmText: t(`${dialogTextPrefix.value}.busyCancellableConfirm`),
+    cancelText: t(`${dialogTextPrefix.value}.busyCancellableCancel`)
+  })
+  return result === 'confirm'
+}
+
 const getSourceCheckIssueKind = (value: unknown): SourceCheckIssueKind => {
   const code = getErrorCode(value)
   if (code === 'SOURCE_MANIFEST_INVALID') return 'invalid-selection'
@@ -99,6 +209,7 @@ const getSourceCheckIssueKind = (value: unknown): SourceCheckIssueKind => {
     return 'version-incompatible'
   }
   if (code === 'SOURCE_METADATA_UNSUPPORTED') return 'unregistered-data'
+  if (code === 'SOURCE_CURATED_EMPTY') return 'empty-curated-library'
   if (code === 'INSUFFICIENT_SPACE') return 'insufficient-space'
   if (code === 'CAPACITY_UNAVAILABLE') return 'space-unavailable'
   if (code === 'TARGET_NOT_READY' || code === 'TARGET_VERSION_INCOMPATIBLE') {
@@ -132,7 +243,10 @@ const isWorking = computed(
 const canStart = computed(
   () => step.value === 'setup' && sourceCheckPassed.value && !isWorking.value
 )
-const canClose = computed(() => !isWorking.value && step.value !== 'running')
+// Allow closing during source inspection so a multi-second integrity check cannot trap the UI.
+// The actual merge run remains non-cancellable.
+const canClose = computed(() => step.value !== 'running' && !isSelectingSource.value)
+const inspectGeneration = ref(0)
 const currentPath = computed(() => getString(progress.value.currentPath))
 const hasKnownByteTotal = computed(() => progress.value.totalBytes > 0)
 const progressPercent = computed(() => {
@@ -143,14 +257,17 @@ const progressPercent = computed(() => {
 const progressPercentText = computed(() =>
   progressPercent.value === null ? '' : `${Math.round(progressPercent.value)}%`
 )
-const phaseTitleKey = computed(() => `migration.mergePhase.${progress.value.phase}`)
-const phaseDescriptionKey = computed(() => `migration.mergeDescription.${progress.value.phase}`)
+const phaseTitleKey = computed(() => `${phaseTextPrefix.value}.${progress.value.phase}`)
+const phaseDescriptionKey = computed(
+  () => `${phaseDescriptionPrefix.value}.${progress.value.phase}`
+)
 const sourceCheckIssueTitleKey = computed(
-  () => `migration.mergeDialog.sourceIssues.${sourceCheckIssue.value?.kind || 'unavailable'}.title`
+  () =>
+    `${dialogTextPrefix.value}.sourceIssues.${sourceCheckIssue.value?.kind || 'unavailable'}.title`
 )
 const sourceCheckIssueDescriptionKey = computed(
   () =>
-    `migration.mergeDialog.sourceIssues.${sourceCheckIssue.value?.kind || 'unavailable'}.description`
+    `${dialogTextPrefix.value}.sourceIssues.${sourceCheckIssue.value?.kind || 'unavailable'}.description`
 )
 
 const formatBytes = (value: number) => {
@@ -166,8 +283,14 @@ const formatBytes = (value: number) => {
   return `${result.toFixed(precision)} ${units[index]}`
 }
 
+const cancelActiveInspect = () => {
+  inspectGeneration.value += 1
+  void window.electron.ipcRenderer.invoke('library-merge:cancel-inspect').catch(() => {})
+}
+
 const close = () => {
   if (!canClose.value) return
+  if (step.value === 'checking') cancelActiveInspect()
   closeWithAnimation(() => emit('close'))
 }
 
@@ -179,8 +302,9 @@ const openSetup = () => {
 
 const selectSource = async () => {
   if (isWorking.value) return
-  isSelectingSource.value = true
   sourceCheckIssue.value = null
+  isSelectingSource.value = true
+  let selectedRoot = ''
   try {
     const response: unknown = await window.electron.ipcRenderer.invoke(
       'library-merge:select-source'
@@ -190,16 +314,31 @@ const selectSource = async () => {
       setSourceCheckIssue(response)
       return
     }
-    const selectedRoot = getString(response.sourceRoot)
+    selectedRoot = getString(response.sourceRoot)
     if (!selectedRoot) return
     sourceRoot.value = selectedRoot
     sourceChecked.value = false
-    step.value = 'checking'
-    const inspected: unknown = await window.electron.ipcRenderer.invoke(
-      'library-merge:inspect',
-      selectedRoot
-    )
+  } catch (error) {
+    setSourceCheckIssue(error)
+    return
+  } finally {
+    // Native file dialog is done; keep cancel available during the long inspect phase.
+    isSelectingSource.value = false
+  }
+
+  step.value = 'checking'
+  const generation = (inspectGeneration.value += 1)
+  try {
+    const inspected: unknown = await window.electron.ipcRenderer.invoke('library-merge:inspect', {
+      sourceRoot: selectedRoot,
+      scope: props.scope
+    })
+    if (generation !== inspectGeneration.value) return
     if (!isSuccessResponse(inspected)) {
+      if (getErrorCode(inspected) === 'INSPECT_CANCELLED') {
+        step.value = 'setup'
+        return
+      }
       setSourceCheckIssue(inspected)
       step.value = 'setup'
       return
@@ -207,11 +346,39 @@ const selectSource = async () => {
     sourceChecked.value = true
     step.value = 'setup'
   } catch (error) {
+    if (generation !== inspectGeneration.value) return
     setSourceCheckIssue(error)
     step.value = 'setup'
-  } finally {
-    isSelectingSource.value = false
   }
+}
+
+const invokeStartMerge = async (cancelCancellableTasks: boolean): Promise<unknown> =>
+  window.electron.ipcRenderer.invoke('library-merge:start', {
+    sourceRoot: sourceRoot.value,
+    mode: mode.value,
+    scope: props.scope,
+    cancelCancellableTasks
+  })
+
+const handleBusyStartFailure = async (response: unknown): Promise<'handled' | 'retry-cancel'> => {
+  const code = getErrorCode(response)
+  if (code === 'LIBRARY_BUSY_BLOCKING') {
+    const busy = getBusyDetails(response)
+    await showBusyBlockingDialog(busy.blocking.length > 0 ? busy.blocking : busy.cancellable)
+    return 'handled'
+  }
+  if (code === 'LIBRARY_BUSY_CANCELLABLE') {
+    const busy = getBusyDetails(response)
+    const confirmed = await confirmCancelCancellableTasks(busy.cancellable)
+    return confirmed ? 'retry-cancel' : 'handled'
+  }
+  if (code === 'LIBRARY_BUSY_CANCEL_FAILED') {
+    failureMessage.value =
+      getErrorMessage(response) || t(`${dialogTextPrefix.value}.busyCancelFailed`)
+    step.value = 'failed'
+    return 'handled'
+  }
+  return 'handled'
 }
 
 const startMerge = async () => {
@@ -225,12 +392,62 @@ const startMerge = async () => {
     copiedFiles: 0,
     totalFiles: 0
   }
+
+  let cancelCancellableTasks = false
+  try {
+    // Scope-aware probe: curated skips mixtape-window/stem hard-blocks; pending-only
+    // analysis is not reported here and is cleared silently when the lock is taken.
+    const busyStatus: unknown = await window.electron.ipcRenderer.invoke(
+      'library-merge:busy-status',
+      { scope: props.scope }
+    )
+    if (isSuccessResponse(busyStatus)) {
+      const blocking = Array.isArray(busyStatus.blocking)
+        ? busyStatus.blocking.map(normalizeBusyReason)
+        : []
+      const cancellable = Array.isArray(busyStatus.cancellable)
+        ? busyStatus.cancellable.map(normalizeBusyReason)
+        : []
+      if (blocking.length > 0) {
+        await showBusyBlockingDialog(blocking)
+        return
+      }
+      if (cancellable.length > 0) {
+        const confirmed = await confirmCancelCancellableTasks(cancellable)
+        if (!confirmed) return
+        cancelCancellableTasks = true
+      }
+    }
+  } catch {
+    // If the probe fails, fall through and let the start lock report the real busy state.
+  }
+
   step.value = 'running'
   try {
-    const response: unknown = await window.electron.ipcRenderer.invoke('library-merge:start', {
-      sourceRoot: sourceRoot.value,
-      mode: mode.value
-    })
+    let response: unknown = await invokeStartMerge(cancelCancellableTasks)
+    let code = getErrorCode(response)
+    if (
+      code === 'LIBRARY_BUSY_BLOCKING' ||
+      code === 'LIBRARY_BUSY_CANCELLABLE' ||
+      code === 'LIBRARY_BUSY_CANCEL_FAILED'
+    ) {
+      step.value = 'setup'
+      const action = await handleBusyStartFailure(response)
+      if (action !== 'retry-cancel') return
+      step.value = 'running'
+      response = await invokeStartMerge(true)
+      code = getErrorCode(response)
+      if (
+        code === 'LIBRARY_BUSY_BLOCKING' ||
+        code === 'LIBRARY_BUSY_CANCELLABLE' ||
+        code === 'LIBRARY_BUSY_CANCEL_FAILED'
+      ) {
+        step.value = 'setup'
+        await handleBusyStartFailure(response)
+        return
+      }
+    }
+
     if (!isSuccessResponse(response) || !isRecord(response.result)) {
       failureMessage.value = getErrorMessage(response)
       step.value = 'failed'
@@ -257,6 +474,8 @@ const returnToSetup = () => {
 
 const handleProgress = (_event: unknown, payload: unknown) => {
   if (!isRecord(payload)) return
+  const progressScope = getString(payload.scope)
+  if (progressScope && progressScope !== props.scope) return
   const phase = getString(payload.phase)
   const phases: LibraryMergePhase[] = [
     'preflight',
@@ -293,6 +512,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  cancelActiveInspect()
   utils.delHotkeysScope(uuid)
   window.electron.ipcRenderer.removeListener('library-merge:progress', handleProgress)
 })
@@ -308,29 +528,29 @@ onUnmounted(() => {
   >
     <section v-dialog-drag="'.dialog-title'" class="inner">
       <div id="library-merge-dialog-title" class="dialog-title dialog-header">
-        {{ t('migration.mergeDialog.title') }}
+        {{ t(`${dialogTextPrefix}.title`) }}
       </div>
       <div class="library-merge-dialog__body">
         <template v-if="step === 'intro'">
-          <p class="library-merge-dialog__lead">{{ t('migration.mergeDialog.intro') }}</p>
+          <p class="library-merge-dialog__lead">{{ t(`${dialogTextPrefix}.intro`) }}</p>
           <section class="library-merge-dialog__section">
-            <h3>{{ t('migration.mergeDialog.contentsTitle') }}</h3>
-            <p>{{ t('migration.mergeDialog.contents') }}</p>
+            <h3>{{ t(`${dialogTextPrefix}.contentsTitle`) }}</h3>
+            <p>{{ t(`${dialogTextPrefix}.contents`) }}</p>
           </section>
           <section class="library-merge-dialog__section">
-            <h3>{{ t('migration.mergeDialog.safetyTitle') }}</h3>
-            <p>{{ t('migration.mergeDialog.safety') }}</p>
+            <h3>{{ t(`${dialogTextPrefix}.safetyTitle`) }}</h3>
+            <p>{{ t(`${dialogTextPrefix}.safety`) }}</p>
           </section>
           <section class="library-merge-dialog__section">
-            <h3>{{ t('migration.mergeDialog.playlistTitle') }}</h3>
-            <p>{{ t('migration.mergeDialog.playlist') }}</p>
+            <h3>{{ t(`${dialogTextPrefix}.playlistTitle`) }}</h3>
+            <p>{{ t(`${dialogTextPrefix}.playlist`) }}</p>
           </section>
         </template>
 
         <template v-else-if="step === 'setup' || step === 'checking'">
           <section class="library-merge-dialog__section">
-            <h3>{{ t('migration.mergeDialog.sourceTitle') }}</h3>
-            <p>{{ t('migration.mergeDialog.sourceInstruction') }}</p>
+            <h3>{{ t(`${dialogTextPrefix}.sourceTitle`) }}</h3>
+            <p>{{ t(`${dialogTextPrefix}.sourceInstruction`) }}</p>
             <div class="library-merge-dialog__source-actions">
               <button
                 class="button library-merge-dialog__button"
@@ -339,10 +559,10 @@ onUnmounted(() => {
                 :disabled="isWorking"
                 @click="selectSource"
               >
-                {{ t('migration.mergeDialog.selectSource') }}
+                {{ t(`${dialogTextPrefix}.selectSource`) }}
               </button>
               <span v-if="sourceRoot" class="library-merge-dialog__source-selected">
-                {{ t('migration.mergeDialog.sourceSelected') }}
+                {{ t(`${dialogTextPrefix}.sourceSelected`) }}
               </span>
             </div>
             <div v-if="sourceRoot" ref="sourcePathRef" class="library-merge-dialog__path">
@@ -358,13 +578,13 @@ onUnmounted(() => {
               v-if="step === 'checking'"
               class="library-merge-dialog__status library-merge-dialog__status--checking"
             >
-              {{ t('migration.mergeDialog.checkingSource') }}
+              {{ t(`${dialogTextPrefix}.checkingSource`) }}
             </div>
             <div
               v-else-if="sourceRoot && !sourceCheckIssue"
               class="library-merge-dialog__status library-merge-dialog__status--success"
             >
-              {{ t('migration.mergeDialog.sourceCheckPassed') }}
+              {{ t(`${dialogTextPrefix}.sourceCheckPassed`) }}
             </div>
             <div v-else-if="sourceCheckIssue" class="library-merge-dialog__source-issue">
               <div class="library-merge-dialog__source-issue-icon" aria-hidden="true">!</div>
@@ -374,24 +594,24 @@ onUnmounted(() => {
               </div>
             </div>
             <div v-else class="library-merge-dialog__status">
-              {{ t('migration.mergeDialog.sourceRequired') }}
+              {{ t(`${dialogTextPrefix}.sourceRequired`) }}
             </div>
           </section>
 
           <section class="library-merge-dialog__section">
-            <h3>{{ t('migration.mergeDialog.modeTitle') }}</h3>
+            <h3>{{ t(`${dialogTextPrefix}.modeTitle`) }}</h3>
             <label class="library-merge-dialog__mode-option">
               <input v-model="mode" type="radio" value="copy" :disabled="isWorking" />
               <span>
-                <strong>{{ t('migration.mergeDialog.copyMode') }}</strong>
-                <small>{{ t('migration.mergeDialog.copyDescription') }}</small>
+                <strong>{{ t(`${dialogTextPrefix}.copyMode`) }}</strong>
+                <small>{{ t(`${dialogTextPrefix}.copyDescription`) }}</small>
               </span>
             </label>
             <label class="library-merge-dialog__mode-option">
               <input v-model="mode" type="radio" value="delete-source" :disabled="isWorking" />
               <span>
-                <strong>{{ t('migration.mergeDialog.deleteMode') }}</strong>
-                <small>{{ t('migration.mergeDialog.deleteDescription') }}</small>
+                <strong>{{ t(`${dialogTextPrefix}.deleteMode`) }}</strong>
+                <small>{{ t(`${dialogTextPrefix}.deleteDescription`) }}</small>
               </span>
             </label>
           </section>
@@ -431,16 +651,16 @@ onUnmounted(() => {
             :title="currentPath"
             :max-width="620"
           />
-          <div class="library-merge-dialog__lock-hint">{{ t('migration.mergeLockedHint') }}</div>
+          <div class="library-merge-dialog__lock-hint">{{ t(lockedHintKey) }}</div>
         </template>
 
         <template v-else-if="step === 'completed'">
           <div class="library-merge-dialog__result-title">
-            {{ t('migration.mergeDialog.completedTitle') }}
+            {{ t(`${dialogTextPrefix}.completedTitle`) }}
           </div>
           <p class="library-merge-dialog__result-copy">
             {{
-              t('migration.mergeDialog.completed', {
+              t(`${dialogTextPrefix}.completed`, {
                 songListCount: resultSummary?.songListCount || 0,
                 copiedFileCount: resultSummary?.copiedFileCount || 0
               })
@@ -450,7 +670,7 @@ onUnmounted(() => {
             v-if="resultSummary?.sourceDeleteError"
             class="library-merge-dialog__status library-merge-dialog__status--warning"
           >
-            <div>{{ t('migration.mergeDialog.sourceDeleteWarning') }}</div>
+            <div>{{ t(`${dialogTextPrefix}.sourceDeleteWarning`) }}</div>
             <div class="library-merge-dialog__error-detail">
               {{ resultSummary.sourceDeleteError }}
             </div>
@@ -459,7 +679,7 @@ onUnmounted(() => {
 
         <template v-else-if="step === 'failed'">
           <div class="library-merge-dialog__result-title">
-            {{ t('migration.mergeDialog.failedTitle') }}
+            {{ t(`${dialogTextPrefix}.failedTitle`) }}
           </div>
           <div class="library-merge-dialog__status library-merge-dialog__status--error">
             <div class="library-merge-dialog__error-detail">{{ failureMessage }}</div>
@@ -469,7 +689,7 @@ onUnmounted(() => {
       <footer class="dialog-footer library-merge-dialog__footer">
         <template v-if="step === 'intro'">
           <button class="button library-merge-dialog__button" type="button" @click="openSetup">
-            {{ t('migration.mergeDialog.startSetup') }} (Enter)
+            {{ t(`${dialogTextPrefix}.startSetup`) }} (Enter)
           </button>
           <button class="button library-merge-dialog__button" type="button" @click="close">
             {{ t('common.cancel') }} (Esc)
@@ -483,7 +703,7 @@ onUnmounted(() => {
             :disabled="isWorking"
             @click="step = 'intro'"
           >
-            {{ t('migration.mergeDialog.back') }}
+            {{ t(`${dialogTextPrefix}.back`) }}
           </button>
           <button
             class="button library-merge-dialog__button library-merge-dialog__button--primary"
@@ -492,20 +712,20 @@ onUnmounted(() => {
             :disabled="!canStart"
             @click="startMerge"
           >
-            {{ t('migration.mergeDialog.startMerge') }} (Enter)
+            {{ t(`${dialogTextPrefix}.startMerge`) }} (Enter)
           </button>
           <button
             class="button library-merge-dialog__button"
-            :class="{ 'library-merge-dialog__button--disabled': isWorking }"
+            :class="{ 'library-merge-dialog__button--disabled': !canClose }"
             type="button"
-            :disabled="isWorking"
+            :disabled="!canClose"
             @click="close"
           >
             {{ t('common.cancel') }} (Esc)
           </button>
         </template>
         <template v-else-if="step === 'running'">
-          <div class="library-merge-dialog__running-hint">{{ t('migration.mergeLockedHint') }}</div>
+          <div class="library-merge-dialog__running-hint">{{ t(lockedHintKey) }}</div>
         </template>
         <template v-else-if="step === 'completed'">
           <button
@@ -518,7 +738,7 @@ onUnmounted(() => {
         </template>
         <template v-else-if="step === 'failed'">
           <button class="button library-merge-dialog__button" type="button" @click="returnToSetup">
-            {{ t('migration.mergeDialog.returnToSetup') }}
+            {{ t(`${dialogTextPrefix}.returnToSetup`) }}
           </button>
           <button class="button library-merge-dialog__button" type="button" @click="close">
             {{ t('common.close') }} (Esc)

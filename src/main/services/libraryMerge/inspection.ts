@@ -3,7 +3,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { assertDistinctLibraryMergeRoots, buildLibraryMergePlan } from './plan'
 import { createUpgradedSourceSchemaSnapshot } from './sourceSchemaSnapshot'
-import type { LibraryMergePlanSummary } from './types'
+import type { LibraryMergePlanSummary, LibraryMergeScope } from './types'
 
 type SqliteDatabase = InstanceType<typeof import('better-sqlite3')>
 
@@ -23,7 +23,9 @@ export async function inspectLibraryMergeSource(params: {
   sourceRoot: string
   targetRoot: string
   appVersion?: string
+  scope?: LibraryMergeScope
 }): Promise<LibraryMergePlanSummary> {
+  const scope: LibraryMergeScope = params.scope === 'curated' ? 'curated' : 'full'
   const sourceRoot = path.resolve(params.sourceRoot)
   const targetRoot = path.resolve(params.targetRoot)
   await assertDistinctLibraryMergeRoots(sourceRoot, targetRoot)
@@ -32,10 +34,17 @@ export async function inspectLibraryMergeSource(params: {
     readonly: true,
     fileMustExist: true
   })
-  const targetDb = new Database(path.join(targetRoot, DB_FILE_NAME), { fileMustExist: true })
+  // Inspect is read-only planning: open the live target library without write intent so
+  // concurrent app readers are less likely to contend while integrity checks run.
+  const targetDb = new Database(path.join(targetRoot, DB_FILE_NAME), {
+    readonly: true,
+    fileMustExist: true
+  })
   const workspaceDir = path.join(targetRoot, PREFLIGHT_WORK_DIR_NAME, randomUUID())
   targetDb.pragma('foreign_keys = ON')
+  targetDb.pragma('busy_timeout = 5000')
   try {
+    sourceDb.pragma('busy_timeout = 5000')
     sourceDb.exec('BEGIN')
     const snapshot = await createUpgradedSourceSchemaSnapshot({
       sourceDb,
@@ -46,6 +55,7 @@ export async function inspectLibraryMergeSource(params: {
     if (snapshot) {
       closeDb(sourceDb)
       sourceDb = new Database(snapshot.databasePath, { readonly: true, fileMustExist: true })
+      sourceDb.pragma('busy_timeout = 5000')
       sourceDb.exec('BEGIN')
     }
     const plan = await buildLibraryMergePlan({
@@ -54,6 +64,7 @@ export async function inspectLibraryMergeSource(params: {
       sourceDb,
       targetDb,
       appVersion: params.appVersion,
+      scope,
       sourceSchemaSnapshotBytes: snapshot?.reserveBytes,
       availableBytesBeforeSourceSnapshot: snapshot?.availableBytesBeforeSnapshot
     })

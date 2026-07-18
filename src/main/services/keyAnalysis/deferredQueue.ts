@@ -126,6 +126,10 @@ export class KeyAnalysisDeferredQueue {
     }
   }
 
+  clearAll() {
+    this.jobsByPath.clear()
+  }
+
   hasForegroundWork() {
     for (const job of this.jobsByPath.values()) {
       if (job.source === 'foreground') return true

@@ -12,6 +12,7 @@ import { isLibraryMergeMutationLocked } from './libraryMerge/mutationGate'
 
 const MIXTAPE_WAVEFORM_TARGET_RATE = 441
 const inflight = new Set<string>()
+let cancelGeneration = 0
 
 const normalizeTargetRate = (value: number | undefined) => {
   const parsed = Number(value)
@@ -62,9 +63,12 @@ const computeMixtapeWaveform = async (filePath: string, listRoot?: string) => {
   const normalized = filePath.trim()
   if (!normalized) return
   if (inflight.has(normalized)) return
+  const generation = cancelGeneration
   inflight.add(normalized)
   try {
+    if (generation !== cancelGeneration) return
     const resolved = await resolveMixtapeFilePathWithFallback(normalized, 'waveform')
+    if (generation !== cancelGeneration) return
     const targetPath = resolved?.filePath || ''
     let resolvedRoot = listRoot?.trim() || ''
     if (!resolvedRoot || resolved?.recovered) {
@@ -73,11 +77,13 @@ const computeMixtapeWaveform = async (filePath: string, listRoot?: string) => {
     }
     if (!resolvedRoot) return
     if (!targetPath) {
+      if (generation !== cancelGeneration) return
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(resolvedRoot, normalized)
       return
     }
     const stat = await fs.stat(targetPath).catch(() => null)
     if (!stat) {
+      if (generation !== cancelGeneration) return
       await LibraryCacheDb.removeMixtapeWaveformCacheEntry(resolvedRoot, normalized)
       return
     }
@@ -87,13 +93,14 @@ const computeMixtapeWaveform = async (filePath: string, listRoot?: string) => {
     })
     if (cached) return
     const waveform = await requestMixtapeWaveform(targetPath, MIXTAPE_WAVEFORM_TARGET_RATE)
-    if (!waveform) return
+    if (!waveform || generation !== cancelGeneration) return
     await LibraryCacheDb.upsertMixtapeWaveformCacheEntry(
       resolvedRoot,
       targetPath,
       { size: stat.size, mtimeMs: stat.mtimeMs },
       waveform
     )
+    if (generation !== cancelGeneration) return
     notifyMixtapeWaveformUpdated(targetPath)
   } catch (error) {
     log.error('[mixtape] waveform build failed', { filePath: normalized, error })
@@ -114,4 +121,18 @@ export function queueMixtapeWaveforms(filePaths: string[], listRoot?: string) {
 
 export function isMixtapeWaveformQueueBusy(): boolean {
   return inflight.size > 0
+}
+
+/** Invalidate in-flight waveform writers so they skip cache writes after library-merge cancel. */
+export function cancelMixtapeWaveformQueueForLibraryMerge() {
+  cancelGeneration += 1
+}
+
+export async function waitForMixtapeWaveformQueueIdle(timeoutMs = 30000): Promise<boolean> {
+  const deadline = Date.now() + Math.max(0, timeoutMs)
+  while (inflight.size > 0) {
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  return true
 }

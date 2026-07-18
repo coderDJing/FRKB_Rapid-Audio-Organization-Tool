@@ -10,6 +10,7 @@ import { isLibraryMergeMutationLocked } from './libraryMerge/mutationGate'
 
 const RAW_WAVEFORM_TARGET_RATE = 2400
 const inflight = new Set<string>()
+let cancelGeneration = 0
 
 export async function requestMixtapeRawWaveform(
   filePath: string,
@@ -54,9 +55,12 @@ const computeMixtapeRawWaveform = async (
   const normalized = filePath.trim()
   if (!normalized) return
   if (inflight.has(normalized)) return
+  const generation = cancelGeneration
   inflight.add(normalized)
   try {
+    if (generation !== cancelGeneration) return
     const resolved = await resolveMixtapeFilePathWithFallback(normalized, 'raw-waveform')
+    if (generation !== cancelGeneration) return
     const targetPath = resolved?.filePath || ''
     let resolvedRoot = listRoot?.trim() || ''
     if (!resolvedRoot || resolved?.recovered) {
@@ -65,11 +69,13 @@ const computeMixtapeRawWaveform = async (
     }
     if (!resolvedRoot) return
     if (!targetPath) {
+      if (generation !== cancelGeneration) return
       await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(resolvedRoot, normalized)
       return
     }
     const stat = await fs.stat(targetPath).catch(() => null)
     if (!stat) {
+      if (generation !== cancelGeneration) return
       await LibraryCacheDb.removeMixtapeRawWaveformCacheEntry(resolvedRoot, normalized)
       return
     }
@@ -79,7 +85,7 @@ const computeMixtapeRawWaveform = async (
     })
     if (cached) return
     const waveform = await requestMixtapeRawWaveform(targetPath, targetRate)
-    if (!waveform) return
+    if (!waveform || generation !== cancelGeneration) return
     await LibraryCacheDb.upsertMixtapeRawWaveformCacheEntry(
       resolvedRoot,
       targetPath,
@@ -109,4 +115,17 @@ export function queueMixtapeRawWaveforms(
 
 export function isMixtapeRawWaveformQueueBusy(): boolean {
   return inflight.size > 0
+}
+
+export function cancelMixtapeRawWaveformQueueForLibraryMerge() {
+  cancelGeneration += 1
+}
+
+export async function waitForMixtapeRawWaveformQueueIdle(timeoutMs = 30000): Promise<boolean> {
+  const deadline = Date.now() + Math.max(0, timeoutMs)
+  while (inflight.size > 0) {
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  return true
 }

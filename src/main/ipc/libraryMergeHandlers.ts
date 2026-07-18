@@ -8,27 +8,44 @@ import { getLibrary } from '../utils'
 import { markGlobalSongSearchDirty } from '../services/globalSongSearch'
 import {
   LibraryMergeError,
-  inspectLibraryMergeSource,
+  getLibraryMergeBusySnapshot,
   isLibraryMergeActive,
   mergeFrkbLibraries,
-  type LibraryMergeMode
+  type LibraryMergeMode,
+  type LibraryMergeScope
 } from '../services/libraryMerge'
+import {
+  inspectLibraryMergeSourceOffMainThread,
+  LibraryMergeInspectCancelledError
+} from '../services/libraryMerge/inspectOffThread'
 import { acquireLibraryMergeMutationLock } from '../services/libraryMerge/runtime'
+
+let activeInspectAbort: AbortController | null = null
 
 type LibraryMergeStartPayload = {
   sourceRoot?: unknown
   mode?: unknown
+  scope?: unknown
+  cancelCancellableTasks?: unknown
 }
 
 const normalizeMode = (value: unknown): LibraryMergeMode =>
   value === 'delete-source' ? 'delete-source' : 'copy'
+
+const normalizeScope = (value: unknown): LibraryMergeScope =>
+  value === 'curated' ? 'curated' : 'full'
 
 const getTargetRoot = (): string =>
   String(store.databaseDir || store.settingConfig?.databaseUrl || '').trim()
 
 const getErrorPayload = (error: unknown) => {
   if (error instanceof LibraryMergeError) {
-    return { success: false as const, code: error.code, message: error.message }
+    return {
+      success: false as const,
+      code: error.code,
+      message: error.message,
+      ...(error.details ? { details: error.details } : {})
+    }
   }
   return {
     success: false as const,
@@ -40,7 +57,7 @@ const getErrorPayload = (error: unknown) => {
 const logLibraryMergeFailure = (
   operation: 'select-source' | 'inspect-source' | 'start',
   error: unknown,
-  sourceRoot?: string
+  context?: { sourceRoot?: string; scope?: LibraryMergeScope }
 ): void => {
   const code = error instanceof LibraryMergeError ? error.code : 'LIBRARY_MERGE_FAILED'
   const message = error instanceof Error ? error.message : String(error || 'unknown error')
@@ -48,28 +65,43 @@ const logLibraryMergeFailure = (
     operation,
     code,
     message,
-    ...(sourceRoot ? { sourceRoot } : {})
+    ...(context?.scope ? { scope: context.scope } : {}),
+    ...(context?.sourceRoot ? { sourceRoot: context.sourceRoot } : {})
   })
 }
 
-const runMerge = async (sourceRoot: string, mode: LibraryMergeMode) => {
+const runMerge = async (
+  sourceRoot: string,
+  mode: LibraryMergeMode,
+  scope: LibraryMergeScope,
+  cancelCancellableTasks: boolean
+) => {
   const targetRoot = getTargetRoot()
   if (!targetRoot) throw new LibraryMergeError('TARGET_NOT_READY', '当前 FRKB 库尚未打开')
-  const releaseMutationLock = await acquireLibraryMergeMutationLock(mainWindow.instance)
+  const releaseMutationLock = await acquireLibraryMergeMutationLock(mainWindow.instance, {
+    cancelCancellableTasks,
+    scope
+  })
   try {
     const result = await mergeFrkbLibraries({
       sourceRoot,
       targetRoot,
       appVersion: app.getVersion(),
       mode,
+      scope,
       onProgress: (progress) => {
         try {
-          mainWindow.instance?.webContents.send('library-merge:progress', progress)
+          mainWindow.instance?.webContents.send('library-merge:progress', {
+            ...progress,
+            scope
+          })
         } catch {}
       }
     })
     markGlobalSongSearchDirty('library-merge')
-    notifyCuratedArtistLibraryChanged()
+    if (scope === 'full') {
+      notifyCuratedArtistLibraryChanged()
+    }
     const libraryTree = await getLibrary({ skipSync: true })
     mainWindow.instance?.webContents.send('library-tree-updated', libraryTree)
     return result
@@ -91,9 +123,11 @@ const selectSourceRoot = async (): Promise<string | null> => {
   return path.dirname(manifestPath)
 }
 
-export function openLibraryMergeDialog(): void {
+export function openLibraryMergeDialog(scope: LibraryMergeScope = 'full'): void {
   if (isLibraryMergeActive()) return
-  mainWindow.instance?.webContents.send('library-merge:open-dialog')
+  const channel =
+    scope === 'curated' ? 'curated-library-merge:open-dialog' : 'library-merge:open-dialog'
+  mainWindow.instance?.webContents.send(channel)
 }
 
 export function registerLibraryMergeHandlers(): void {
@@ -107,37 +141,95 @@ export function registerLibraryMergeHandlers(): void {
     }
   })
 
-  ipcMain.handle('library-merge:inspect', async (_event, sourceRoot: unknown) => {
+  ipcMain.handle('library-merge:inspect', async (_event, payload: unknown) => {
+    const sourceRoot =
+      typeof payload === 'string'
+        ? payload
+        : payload && typeof payload === 'object' && 'sourceRoot' in payload
+          ? String((payload as { sourceRoot?: unknown }).sourceRoot || '')
+          : ''
+    const scope =
+      payload && typeof payload === 'object' && 'scope' in payload
+        ? normalizeScope((payload as { scope?: unknown }).scope)
+        : 'full'
+    activeInspectAbort?.abort()
+    const abortController = new AbortController()
+    activeInspectAbort = abortController
     try {
       const targetRoot = getTargetRoot()
       if (!targetRoot) throw new LibraryMergeError('TARGET_NOT_READY', '当前 FRKB 库尚未打开')
-      const summary = await inspectLibraryMergeSource({
-        sourceRoot: String(sourceRoot || ''),
+      const summary = await inspectLibraryMergeSourceOffMainThread({
+        sourceRoot,
         targetRoot,
-        appVersion: app.getVersion()
+        appVersion: app.getVersion(),
+        scope,
+        signal: abortController.signal
       })
       return { success: true as const, summary }
     } catch (error) {
-      logLibraryMergeFailure('inspect-source', error, String(sourceRoot || '').trim())
+      if (error instanceof LibraryMergeInspectCancelledError) {
+        return {
+          success: false as const,
+          code: 'INSPECT_CANCELLED',
+          message: '已取消来源库检查'
+        }
+      }
+      logLibraryMergeFailure('inspect-source', error, {
+        sourceRoot: sourceRoot.trim(),
+        scope
+      })
       return getErrorPayload(error)
+    } finally {
+      if (activeInspectAbort === abortController) activeInspectAbort = null
+    }
+  })
+
+  ipcMain.handle('library-merge:cancel-inspect', () => {
+    activeInspectAbort?.abort()
+    activeInspectAbort = null
+    return { success: true as const }
+  })
+
+  ipcMain.handle('library-merge:busy-status', (_event, payload?: { scope?: unknown }) => {
+    const scope = normalizeScope(payload?.scope)
+    // User-facing probe: only in-flight cancellable work + hard blocks for this scope.
+    // Pending-only queues are not reported (acquire clears them silently).
+    const snapshot = getLibraryMergeBusySnapshot({
+      includeBackgroundTask: false,
+      scope
+    })
+    return {
+      success: true as const,
+      busy: snapshot.blocking.length > 0 || snapshot.cancellable.length > 0,
+      scope,
+      ...snapshot
     }
   })
 
   ipcMain.handle('library-merge:start', async (_event, payload?: LibraryMergeStartPayload) => {
+    const scope = normalizeScope(payload?.scope)
     try {
       const sourceRoot = String(payload?.sourceRoot || '').trim()
       if (!sourceRoot) throw new LibraryMergeError('SOURCE_MANIFEST_INVALID', '未选择来源库')
-      const result = await runMerge(sourceRoot, normalizeMode(payload?.mode))
+      const result = await runMerge(
+        sourceRoot,
+        normalizeMode(payload?.mode),
+        scope,
+        payload?.cancelCancellableTasks === true
+      )
       return { success: true as const, result }
     } catch (error) {
-      logLibraryMergeFailure('start', error, String(payload?.sourceRoot || '').trim())
+      logLibraryMergeFailure('start', error, {
+        sourceRoot: String(payload?.sourceRoot || '').trim(),
+        scope
+      })
       return getErrorPayload(error)
     }
   })
 
   ipcMain.handle('library-merge:active', () => isLibraryMergeActive())
-  ipcMain.handle('library-merge:run-from-menu', async () => {
-    openLibraryMergeDialog()
+  ipcMain.handle('library-merge:run-from-menu', async (_event, payload?: { scope?: unknown }) => {
+    openLibraryMergeDialog(normalizeScope(payload?.scope))
     return { success: true as const }
   })
 }

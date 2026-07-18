@@ -172,6 +172,23 @@ export function cancelMetadataAutoFill(progressId?: string) {
   cancelAcoustIdRequests()
 }
 
+export function cancelAllMetadataAutoFill() {
+  for (const token of cancelTokens.values()) {
+    token.cancelled = true
+  }
+  cancelMusicBrainzRequests()
+  cancelAcoustIdRequests()
+}
+
+export async function waitForMetadataAutoFillIdle(timeoutMs = 30000): Promise<boolean> {
+  const deadline = Date.now() + Math.max(0, timeoutMs)
+  while (cancelTokens.size > 0) {
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  return true
+}
+
 export async function autoFillTrackMetadata(
   payload: IMetadataAutoFillRequest
 ): Promise<IMetadataAutoFillSummary> {

@@ -76,6 +76,13 @@ const makeRoot = async (name: string): Promise<string> => {
         created_at_ms INTEGER NOT NULL,
         FOREIGN KEY (playlist_uuid) REFERENCES library_nodes(uuid) ON DELETE CASCADE
       );
+      CREATE TABLE recycle_bin_records (
+        file_path TEXT PRIMARY KEY,
+        deleted_at_ms INTEGER NOT NULL,
+        original_playlist_path TEXT,
+        original_file_name TEXT,
+        source_type TEXT
+      );
       CREATE TABLE library_nodes (
         uuid TEXT PRIMARY KEY,
         parent_uuid TEXT,
@@ -124,24 +131,26 @@ const addSongList = async (params: {
   fileName: string
   content: string
   withCache?: boolean
+  coreLibraryName?: 'FilterLibrary' | 'CuratedLibrary'
 }) => {
+  const coreLibraryName = params.coreLibraryName || 'FilterLibrary'
   const db = openDb(params.root)
   try {
-    const filter = db
+    const core = db
       .prepare(
         'SELECT uuid FROM library_nodes WHERE parent_uuid IS NOT NULL AND dir_name = ? LIMIT 1'
       )
-      .get('FilterLibrary') as { uuid: string }
+      .get(coreLibraryName) as { uuid: string }
     const existingDirectory = db
       .prepare('SELECT uuid FROM library_nodes WHERE parent_uuid = ? AND dir_name = ? LIMIT 1')
-      .get(filter.uuid, params.parentName) as { uuid: string } | undefined
+      .get(core.uuid, params.parentName) as { uuid: string } | undefined
     const directoryUuid =
       existingDirectory?.uuid || `${params.parentName}-dir-${Math.random().toString(16).slice(2)}`
     const playlistUuid = `${params.playlistName}-list-${Math.random().toString(16).slice(2)}`
     if (!existingDirectory) {
       db.prepare(
         'INSERT INTO library_nodes (uuid, parent_uuid, dir_name, node_type, sort_order) VALUES (?, ?, ?, ?, ?)'
-      ).run(directoryUuid, filter.uuid, params.parentName, 'dir', 100)
+      ).run(directoryUuid, core.uuid, params.parentName, 'dir', 100)
     }
     db.prepare(
       'INSERT INTO library_nodes (uuid, parent_uuid, dir_name, node_type, sort_order) VALUES (?, ?, ?, ?, ?)'
@@ -149,7 +158,7 @@ const addSongList = async (params: {
     const songListRoot = path.join(
       params.root,
       'library',
-      'FilterLibrary',
+      coreLibraryName,
       params.parentName,
       params.playlistName
     )
@@ -161,7 +170,7 @@ const addSongList = async (params: {
       db.prepare(
         'INSERT INTO song_cache (list_root, file_path, size, mtime_ms, info_json) VALUES (?, ?, ?, ?, ?)'
       ).run(
-        path.join('library', 'FilterLibrary', params.parentName, params.playlistName),
+        path.join('library', coreLibraryName, params.parentName, params.playlistName),
         params.fileName,
         stat.size,
         stat.mtimeMs,
@@ -174,13 +183,13 @@ const addSongList = async (params: {
       db.prepare(
         'INSERT INTO cover_index (list_root, file_path, hash, ext) VALUES (?, ?, ?, ?)'
       ).run(
-        path.join('library', 'FilterLibrary', params.parentName, params.playlistName),
+        path.join('library', coreLibraryName, params.parentName, params.playlistName),
         params.fileName,
         `cover-${params.fileName}`,
         '.jpg'
       )
     }
-    return { songListRoot, filePath }
+    return { songListRoot, filePath, playlistUuid }
   } finally {
     db.close()
   }
@@ -935,5 +944,245 @@ describe('FRKB library merge service', () => {
     await expect(fs.access(promotedRoot)).rejects.toThrow()
     await expect(fs.access(journalDir)).rejects.toThrow()
     await expect(fs.access(path.join(targetRoot, '.frkb-merge.lock'))).rejects.toThrow()
+  })
+
+  it('merges only curated library content and remaps analysis without curated artist meta', async () => {
+    const targetRoot = await makeRoot('target-curated-scope')
+    const sourceRoot = await makeRoot('source-curated-scope')
+    await addSongList({
+      root: targetRoot,
+      parentName: 'House',
+      playlistName: 'Favorites',
+      fileName: 'target-curated.mp3',
+      content: 'target-curated',
+      coreLibraryName: 'CuratedLibrary'
+    })
+    await addSongList({
+      root: sourceRoot,
+      parentName: 'House',
+      playlistName: 'Favorites',
+      fileName: 'source-curated.mp3',
+      content: 'source-curated',
+      withCache: true,
+      coreLibraryName: 'CuratedLibrary'
+    })
+    await addSongList({
+      root: sourceRoot,
+      parentName: 'House',
+      playlistName: 'FilterOnly',
+      fileName: 'filter-only.mp3',
+      content: 'filter-only',
+      withCache: true,
+      coreLibraryName: 'FilterLibrary'
+    })
+    await addSetList({
+      root: sourceRoot,
+      playlistName: 'Warmup Set',
+      fileName: 'set-track.wav',
+      content: 'set-track'
+    })
+    const curatedKey = 'curated_artist_library_v1'
+    const sourceDb = openDb(sourceRoot)
+    try {
+      sourceDb
+        .prepare('INSERT INTO meta (key, value) VALUES (?, ?)')
+        .run(
+          curatedKey,
+          JSON.stringify([{ name: 'Source Artist', count: 1, fingerprints: ['d'.repeat(64)] }])
+        )
+    } finally {
+      sourceDb.close()
+    }
+
+    const inspection = await inspectLibraryMergeSource({
+      sourceRoot,
+      targetRoot,
+      appVersion: '1.2.1',
+      scope: 'curated'
+    })
+    expect(inspection.songListCount).toBe(1)
+    expect(inspection.renamedSongListCount).toBe(1)
+    expect(inspection.copiedFileCount).toBe(1)
+
+    const result = await mergeFrkbLibraries({
+      sourceRoot,
+      targetRoot,
+      appVersion: '1.2.1',
+      mode: 'copy',
+      scope: 'curated'
+    })
+    expect(result.scope).toBe('curated')
+    expect(result.sourceDeleted).toBe(false)
+    // curated 范围对 fingerprints 采用安全并集，可包含来源库中其它子库的指纹行。
+    expect(result.mergedFingerprintCount).toBeGreaterThanOrEqual(1)
+    expect(result.copiedAnalysisRows).toBe(1)
+
+    const importedName = `Favorites (from ${result.sourceLabel})`
+    const importedRoot = path.join(targetRoot, 'library', 'CuratedLibrary', 'House', importedName)
+    expect(await fs.readFile(path.join(importedRoot, 'source-curated.mp3'), 'utf8')).toBe(
+      'source-curated'
+    )
+    await expect(
+      fs.access(path.join(targetRoot, 'library', 'FilterLibrary', 'House', 'FilterOnly'))
+    ).rejects.toThrow()
+    await expect(
+      fs.access(path.join(targetRoot, 'library', 'SetLibrary', 'Warmup Set'))
+    ).rejects.toThrow()
+    await expect(fs.access(path.join(targetRoot, '.frkb-curated-merge'))).rejects.toThrow()
+
+    const db = openDb(targetRoot)
+    try {
+      const cache = db
+        .prepare('SELECT list_root, info_json FROM song_cache WHERE file_path = ?')
+        .get('source-curated.mp3') as { list_root: string; info_json: string } | undefined
+      expect(cache?.list_root).toBe(path.join('library', 'CuratedLibrary', 'House', importedName))
+      expect(JSON.parse(cache?.info_json || '{}').filePath).toBe(
+        path.join(importedRoot, 'source-curated.mp3')
+      )
+      const fingerprint = db
+        .prepare('SELECT hash FROM fingerprints WHERE mode = ? AND hash = ?')
+        .get('file', 'hash-source-curated.mp3') as { hash: string } | undefined
+      expect(fingerprint?.hash).toBe('hash-source-curated.mp3')
+      const curatedMeta = db.prepare('SELECT value FROM meta WHERE key = ?').get(curatedKey) as
+        | { value: string }
+        | undefined
+      expect(curatedMeta).toBeUndefined()
+      const setCount = db.prepare('SELECT COUNT(*) AS count FROM set_items').get() as {
+        count: number
+      }
+      expect(setCount.count).toBe(0)
+      expect(db.pragma('foreign_key_check')).toHaveLength(0)
+    } finally {
+      db.close()
+    }
+  })
+
+  it('rejects empty curated libraries for curated scope', async () => {
+    const targetRoot = await makeRoot('target-curated-empty')
+    const sourceRoot = await makeRoot('source-curated-empty')
+    await addSongList({
+      root: sourceRoot,
+      parentName: 'House',
+      playlistName: 'FilterOnly',
+      fileName: 'filter-only.mp3',
+      content: 'filter-only',
+      coreLibraryName: 'FilterLibrary'
+    })
+
+    await expect(
+      inspectLibraryMergeSource({
+        sourceRoot,
+        targetRoot,
+        appVersion: '1.2.1',
+        scope: 'curated'
+      })
+    ).rejects.toMatchObject({ code: 'SOURCE_CURATED_EMPTY' })
+  })
+
+  it('clears only the source curated subtree after curated delete-source succeeds', async () => {
+    const targetRoot = await makeRoot('target-curated-delete')
+    const sourceRoot = await makeRoot('source-curated-delete')
+    await addSongList({
+      root: sourceRoot,
+      parentName: 'House',
+      playlistName: 'Favorites',
+      fileName: 'source-curated.mp3',
+      content: 'source-curated',
+      withCache: true,
+      coreLibraryName: 'CuratedLibrary'
+    })
+    await addSongList({
+      root: sourceRoot,
+      parentName: 'House',
+      playlistName: 'FilterKeep',
+      fileName: 'filter-keep.mp3',
+      content: 'filter-keep',
+      coreLibraryName: 'FilterLibrary'
+    })
+    const sourceSet = await addSetList({
+      root: sourceRoot,
+      playlistName: 'Warmup Set',
+      fileName: 'set-ref.wav',
+      content: 'set-ref'
+    })
+    const curatedTrackPath = path.join(
+      sourceRoot,
+      'library',
+      'CuratedLibrary',
+      'House',
+      'Favorites',
+      'source-curated.mp3'
+    )
+    const sourceDb = openDb(sourceRoot)
+    try {
+      sourceDb
+        .prepare(
+          `INSERT INTO set_items (
+            id, playlist_uuid, file_path, sort_order, origin_playlist_uuid,
+            origin_path_snapshot, analysis_json, created_at_ms
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          `set-item-curated-ref-${Math.random().toString(16).slice(2)}`,
+          sourceSet.playlistUuid,
+          curatedTrackPath,
+          2,
+          null,
+          null,
+          JSON.stringify({ bpm: 120 }),
+          Date.now()
+        )
+    } finally {
+      sourceDb.close()
+    }
+
+    const result = await mergeFrkbLibraries({
+      sourceRoot,
+      targetRoot,
+      appVersion: '1.2.1',
+      mode: 'delete-source',
+      scope: 'curated'
+    })
+    expect(result.scope).toBe('curated')
+    expect(result.sourceDeleted).toBe(true)
+    expect(result.sourceDeleteError).toBeUndefined()
+
+    await expect(fs.access(sourceRoot)).resolves.toBeUndefined()
+    await expect(
+      fs.access(path.join(sourceRoot, 'library', 'CuratedLibrary', 'House', 'Favorites'))
+    ).rejects.toThrow()
+    await expect(
+      fs.readFile(
+        path.join(sourceRoot, 'library', 'FilterLibrary', 'House', 'FilterKeep', 'filter-keep.mp3'),
+        'utf8'
+      )
+    ).resolves.toBe('filter-keep')
+
+    const db = openDb(sourceRoot)
+    try {
+      const remainingCuratedChildren = db
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM library_nodes child
+           JOIN library_nodes parent ON child.parent_uuid = parent.uuid
+           WHERE parent.dir_name = ?`
+        )
+        .get('CuratedLibrary') as { count: number }
+      expect(remainingCuratedChildren.count).toBe(0)
+      const setItem = db
+        .prepare('SELECT file_path FROM set_items WHERE file_path LIKE ?')
+        .get('%source-curated.mp3') as { file_path: string } | undefined
+      expect(setItem?.file_path).toContain(path.join('SetLibrary', '__set_custody__'))
+      expect(await fs.readFile(setItem?.file_path || '', 'utf8')).toBe('source-curated')
+      const recycleCount = db
+        .prepare('SELECT COUNT(*) AS count FROM recycle_bin_records')
+        .get() as {
+        count: number
+      }
+      expect(recycleCount.count).toBe(0)
+      expect(db.pragma('foreign_key_check')).toHaveLength(0)
+    } finally {
+      db.close()
+    }
   })
 })

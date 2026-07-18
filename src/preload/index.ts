@@ -146,6 +146,7 @@ const exactListenChannels = new Set([
   'layoutConfigReaded',
   'library-merge:open-dialog',
   'library-merge:progress',
+  'curated-library-merge:open-dialog',
   'library-tree-updated',
   'mainWin-max',
   'mainWindowBlur',

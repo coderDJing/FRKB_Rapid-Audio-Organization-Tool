@@ -38,6 +38,10 @@ export default defineConfig({
           mixtapeRawWaveformWorker: resolve(
             __dirname,
             'src/main/workers/mixtapeRawWaveformWorker.ts'
+          ),
+          libraryMergeInspectWorker: resolve(
+            __dirname,
+            'src/main/workers/libraryMergeInspectWorker.ts'
           )
         },
         output: {
@@ -60,6 +64,9 @@ export default defineConfig({
             }
             if (chunk.name === 'mixtapeRawWaveformWorker') {
               return 'workers/mixtapeRawWaveformWorker.js'
+            }
+            if (chunk.name === 'libraryMergeInspectWorker') {
+              return 'workers/libraryMergeInspectWorker.js'
             }
             return '[name].js'
           }

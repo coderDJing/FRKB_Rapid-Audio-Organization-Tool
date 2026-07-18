@@ -74,8 +74,12 @@ watch(
 window.electron.ipcRenderer.on('layoutConfigReaded', handleLayoutConfigReaded)
 const activeDialog = ref('')
 const libraryMergeDialogVisible = ref(false)
+const curatedLibraryMergeDialogVisible = ref(false)
 const openLibraryMergeDialog = () => {
   libraryMergeDialogVisible.value = true
+}
+const openCuratedLibraryMergeDialog = () => {
+  curatedLibraryMergeDialogVisible.value = true
 }
 const fileOpDialogVisible = ref(false)
 const fileOpContext = ref('')
@@ -750,6 +754,7 @@ onMounted(() => {
   window.electron.ipcRenderer.on('file-op-interrupted', handleFileOpInterrupted)
   window.electron.ipcRenderer.on('library-tree-updated', handleLibraryTreeUpdated)
   window.electron.ipcRenderer.on('library-merge:open-dialog', openLibraryMergeDialog)
+  window.electron.ipcRenderer.on('curated-library-merge:open-dialog', openCuratedLibraryMergeDialog)
 
   window.addEventListener('pointerdown', handleContextMenuPointerDownCapture, true)
   window.addEventListener('pointerdown', handleMainWindowBrowseModeMenuPointerDown, true)
@@ -801,6 +806,10 @@ onBeforeUnmount(() => {
   window.electron.ipcRenderer.removeListener('file-op-interrupted', handleFileOpInterrupted)
   window.electron.ipcRenderer.removeListener('library-tree-updated', handleLibraryTreeUpdated)
   window.electron.ipcRenderer.removeListener('library-merge:open-dialog', openLibraryMergeDialog)
+  window.electron.ipcRenderer.removeListener(
+    'curated-library-merge:open-dialog',
+    openCuratedLibraryMergeDialog
+  )
   window.removeEventListener('openDialogFromChild', handleOpenDialogFromChild)
   window.electron.ipcRenderer.removeListener('cloudSync/state', handleCloudSyncState)
   window.electron.ipcRenderer.removeListener('cloudSync/progress', handleCloudSyncProgress)
@@ -980,6 +989,11 @@ onBeforeUnmount(() => {
     :hint="t('analysisRuntime.downloadBlockingHint')"
   />
   <LibraryMergeDialog v-if="libraryMergeDialogVisible" @close="libraryMergeDialogVisible = false" />
+  <LibraryMergeDialog
+    v-if="curatedLibraryMergeDialogVisible"
+    scope="curated"
+    @close="curatedLibraryMergeDialogVisible = false"
+  />
   <cloudSyncSummaryDialog
     v-if="runtime.cloudSync.summaryVisible"
     :summary="runtime.cloudSync.summary"

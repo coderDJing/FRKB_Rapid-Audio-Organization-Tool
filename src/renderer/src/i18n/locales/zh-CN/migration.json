@@ -1,9 +1,11 @@
 {
   "migration": {
     "mergeLibrary": "合并 FRKB 库",
+    "mergeCuratedLibrary": "合并精选库",
     "mergePreparing": "正在准备合并计划",
     "mergeFiles": "个文件",
     "mergeLockedHint": "合并期间已锁定当前库，请不要关闭 FRKB 或执行其他操作。",
+    "mergeCuratedLockedHint": "精选库合并期间已锁定当前库，请不要关闭 FRKB 或执行其他操作。",
     "mergeDialog": {
       "title": "合并 FRKB 库",
       "intro": "将另一个 FRKB 库的内容合并到当前正在使用的库。",
@@ -46,6 +48,10 @@
           "title": "这个来源库无法安全合并",
           "description": "请确认选择的是完整、未被手动改动的 FRKB 库；如仍无法通过，请先用 FRKB 打开并检查该库。"
         },
+        "empty-curated-library": {
+          "title": "来源精选库为空",
+          "description": "来源库的精选库中没有可导入的文件夹或歌单，无法开始合并。"
+        },
         "insufficient-space": {
           "title": "当前库所在磁盘空间不足",
           "description": "请释放当前库所在磁盘的空间后重新选择。合并前不会修改任何库。"
@@ -75,7 +81,128 @@
       "completed": "已合并 {songListCount} 个歌单和 {copiedFileCount} 个文件。",
       "sourceDeleteWarning": "当前库已合并成功，但来源库清理未完成。",
       "failedTitle": "无法合并 FRKB 库",
-      "returnToSetup": "返回设置"
+      "returnToSetup": "返回设置",
+      "busyBlockingTitle": "当前库有不能中断的任务",
+      "busyBlockingLead": "为避免移动文件或写入库时中途被打断，请先完成或取消下列操作后再合并：",
+      "busyCancellableTitle": "需要先停止当前分析任务",
+      "busyCancellableLead": "合并期间需要独占当前库。检测到下列分析任务正在执行（仅排队的任务会自动清理，无需确认），可安全取消后继续：",
+      "busyCancellableConfirm": "取消分析并开始合并",
+      "busyCancellableCancel": "暂不合并",
+      "busyCancelFailed": "已尝试取消分析任务，但当前库仍未空闲。请稍后再试。",
+      "busyReasons": {
+        "key-analysis": "曲目分析（调性 / BPM / 网格 / 能量 / 段落 / 波形）",
+        "metadata-auto-fill": "元数据自动补全",
+        "mixtape-waveform": "Mixtape 波形分析",
+        "mixtape-raw-waveform": "Mixtape 原始波形分析",
+        "background-task": "后台维护任务",
+        "import": "正在导入歌曲",
+        "audio-conversion": "音频格式转换",
+        "playlist-batch-rename": "批量重命名歌单",
+        "mixtape-stem": "Mixtape 分轨任务",
+        "mixtape-window": "已打开的 Mixtape 窗口",
+        "library-tree-watcher": "库树同步",
+        "recording": "正在录音",
+        "unknown": "其他库写入任务"
+      }
+    },
+    "mergeCuratedDialog": {
+      "title": "合并精选库",
+      "intro": "仅将另一个 FRKB 库的精选库歌单树导入到当前正在使用的库。",
+      "contentsTitle": "会合并的内容",
+      "contents": "仅导入来源库精选库（CuratedLibrary）下的文件夹、歌单、音频文件，以及随曲目保留的分析数据与指纹。不会导入筛选库、SET、Mixtape、录音库、回收站，也不会合并精选艺人列表。",
+      "safetyTitle": "开始前与合并期间",
+      "safety": "FRKB 会先检查两个库的完整性、目录结构和磁盘空间，并确认来源精选库非空；检查通过才会开始。来源库的数据库版本较旧时，只会在临时快照中升级，来源库本身不会被修改。合并期间会锁定当前库并阻止其他更改，如意外中断会自动恢复未提交的内容。",
+      "playlistTitle": "同名歌单",
+      "playlist": "同名中间目录会合并；同名歌单都会保留，来源库中的同名歌单会自动添加来源库后缀。",
+      "startSetup": "开始设置",
+      "sourceTitle": "选择来源库",
+      "sourceInstruction": "请选择来源库中的 FRKB.database.frkbdb 文件，而不是文件夹。",
+      "selectSource": "选择来源库",
+      "sourceSelected": "已选择来源库",
+      "sourceRequired": "请先选择来源库。",
+      "checkingSource": "正在检查来源精选库…",
+      "sourceCheckPassed": "检查通过：来源精选库的结构、完整性和当前磁盘空间均符合合并要求。",
+      "sourceIssues": {
+        "invalid-selection": {
+          "title": "请选择 FRKB 数据库文件",
+          "description": "请在来源库根目录中选择 FRKB.database.frkbdb，而不是文件夹或其他文件。"
+        },
+        "same-library": {
+          "title": "这就是当前正在使用的库",
+          "description": "请选择另一个 FRKB 库作为来源；当前库不能合并到自己。"
+        },
+        "nested-library": {
+          "title": "两个库的位置不能相互包含",
+          "description": "请将来源库移到当前库目录之外，或选择位于其他位置的 FRKB 库。"
+        },
+        "version-incompatible": {
+          "title": "来源库需要更新版本的 FRKB",
+          "description": "请先升级 FRKB，并用新版本打开该来源库完成升级后再合并。"
+        },
+        "unregistered-data": {
+          "title": "来源库包含尚未登记的数据",
+          "description": "这通常来自新功能或开发版本。为避免遗漏数据，FRKB 暂不合并；具体数据名已写入 log.txt。"
+        },
+        "invalid-library": {
+          "title": "这个来源库无法安全合并",
+          "description": "请确认选择的是完整、未被手动改动的 FRKB 库；如仍无法通过，请先用 FRKB 打开并检查该库。"
+        },
+        "empty-curated-library": {
+          "title": "来源精选库为空",
+          "description": "来源库的精选库中没有可导入的文件夹或歌单，无法开始合并。"
+        },
+        "insufficient-space": {
+          "title": "当前库所在磁盘空间不足",
+          "description": "请释放当前库所在磁盘的空间后重新选择。合并前不会修改任何库。"
+        },
+        "space-unavailable": {
+          "title": "无法检查当前磁盘空间",
+          "description": "请确认当前库所在磁盘可访问且有权限读取空间信息，然后重新选择。"
+        },
+        "current-library": {
+          "title": "当前库还不能开始合并",
+          "description": "请先确保当前库已正常打开，并使用当前版本的 FRKB 完成必要升级。"
+        },
+        "unavailable": {
+          "title": "暂时无法使用这个来源库",
+          "description": "请重新选择来源库；若仍出现此提示，请先确认来源库和当前库均能被 FRKB 正常打开。"
+        }
+      },
+      "modeTitle": "合并后如何处理来源精选库？",
+      "copyMode": "复制并合并（推荐）",
+      "copyDescription": "保留来源精选库不变；当前库获得一份合并后的精选内容。",
+      "deleteMode": "合并成功后删除来源精选库",
+      "deleteDescription": "只有当前库已成功保存后，才清空来源库的精选库子树。清理失败不会影响已完成的合并。",
+      "back": "返回",
+      "startMerge": "开始合并",
+      "progressTitle": "正在合并精选库",
+      "completedTitle": "精选库合并完成",
+      "completed": "已导入 {songListCount} 个精选歌单和 {copiedFileCount} 个文件。",
+      "sourceDeleteWarning": "当前库已合并成功，但来源精选库清理未完成。",
+      "failedTitle": "无法合并精选库",
+      "returnToSetup": "返回设置",
+      "busyBlockingTitle": "当前库有不能中断的任务",
+      "busyBlockingLead": "为避免移动文件或写入库时中途被打断，请先完成或取消下列操作后再合并精选库：",
+      "busyCancellableTitle": "需要先停止当前分析任务",
+      "busyCancellableLead": "合并精选库期间需要独占当前库。检测到下列分析任务正在执行（仅排队的任务会自动清理，无需确认），可安全取消后继续：",
+      "busyCancellableConfirm": "取消分析并开始合并",
+      "busyCancellableCancel": "暂不合并",
+      "busyCancelFailed": "已尝试取消分析任务，但当前库仍未空闲。请稍后再试。",
+      "busyReasons": {
+        "key-analysis": "曲目分析（调性 / BPM / 网格 / 能量 / 段落 / 波形）",
+        "metadata-auto-fill": "元数据自动补全",
+        "mixtape-waveform": "Mixtape 波形分析",
+        "mixtape-raw-waveform": "Mixtape 原始波形分析",
+        "background-task": "后台维护任务",
+        "import": "正在导入歌曲",
+        "audio-conversion": "音频格式转换",
+        "playlist-batch-rename": "批量重命名歌单",
+        "mixtape-stem": "Mixtape 分轨任务",
+        "mixtape-window": "已打开的 Mixtape 窗口",
+        "library-tree-watcher": "库树同步",
+        "recording": "正在录音",
+        "unknown": "其他库写入任务"
+      }
     },
     "mergePhase": {
       "preflight": "正在检查 FRKB 库",
@@ -94,6 +221,24 @@
       "deleting-source": "当前库已合并成功，正在按你的选择清理来源库。",
       "completed": "正在刷新当前库。",
       "failed": "当前库未提交不完整的合并内容。"
+    },
+    "mergeCuratedPhase": {
+      "preflight": "正在检查精选库",
+      "staging": "正在复制来源精选库",
+      "promoting": "正在整理精选库内容",
+      "committing": "正在保存精选库合并结果",
+      "deleting-source": "正在清理来源精选库",
+      "completed": "精选库合并完成",
+      "failed": "精选库合并失败"
+    },
+    "mergeCuratedDescription": {
+      "preflight": "正在校验来源精选库结构、完整性与磁盘可用空间；必要时会在隔离快照中升级来源库。",
+      "staging": "精选库文件先写入隐藏暂存区，当前库尚未提交修改。",
+      "promoting": "正在把已校验的精选库文件提升到当前库。",
+      "committing": "正在以单次数据库事务写入精选歌单与分析数据。",
+      "deleting-source": "当前库已合并成功，正在按完整删除链路清空来源精选库。",
+      "completed": "正在刷新当前库。",
+      "failed": "当前库未提交不完整的精选库合并内容。"
     },
     "legacyTitle": "库升级",
     "legacyInProgress": "检测到上次升级未完成，将重新执行。",

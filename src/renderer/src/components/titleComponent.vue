@@ -177,7 +177,10 @@ const defaultMenuConfigs = computed<MenuConfig[]>(() => [
     name: 'menu.migration',
     subMenu: [
       [{ name: 'fingerprints.exportDatabase' }, { name: 'fingerprints.importDatabase' }],
-      [{ name: 'migration.mergeLibrary', action: 'library-merge' }]
+      [
+        { name: 'migration.mergeLibrary', action: 'library-merge' },
+        { name: 'migration.mergeCuratedLibrary', action: 'curated-library-merge' }
+      ]
     ]
   },
   {
@@ -343,7 +346,11 @@ const menuButtonClick = async (item: MenuItem) => {
     return
   }
   if (item.action === 'library-merge') {
-    await window.electron.ipcRenderer.invoke('library-merge:run-from-menu')
+    await window.electron.ipcRenderer.invoke('library-merge:run-from-menu', { scope: 'full' })
+    return
+  }
+  if (item.action === 'curated-library-merge') {
+    await window.electron.ipcRenderer.invoke('library-merge:run-from-menu', { scope: 'curated' })
     return
   }
   if (item.action === 'download-analysis-runtime') {

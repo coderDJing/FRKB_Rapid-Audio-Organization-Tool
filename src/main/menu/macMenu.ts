@@ -191,7 +191,13 @@ const buildFullMenu = () =>
         {
           label: tMenu('migration.mergeLibrary'),
           click: () => {
-            openLibraryMergeDialog()
+            openLibraryMergeDialog('full')
+          }
+        },
+        {
+          label: tMenu('migration.mergeCuratedLibrary'),
+          click: () => {
+            openLibraryMergeDialog('curated')
           }
         }
       ]

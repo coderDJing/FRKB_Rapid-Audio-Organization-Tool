@@ -11,7 +11,12 @@ import {
   planAssets
 } from './planFiles'
 import { LIBRARY_MERGE_KNOWN_TABLES } from './participants'
-import { LibraryMergeError, type LibraryMergeCapacity, type LibraryMergePlanSummary } from './types'
+import {
+  LibraryMergeError,
+  type LibraryMergeCapacity,
+  type LibraryMergePlanSummary,
+  type LibraryMergeScope
+} from './types'
 
 type SqliteDatabase = InstanceType<typeof import('better-sqlite3')>
 
@@ -74,13 +79,20 @@ const CORE_LIBRARY_ALIASES: Record<string, string[]> = {
   RecycleBin: ['RecycleBin', '回收站']
 }
 
-const IMPORTED_CORE_LIBRARY_NAMES = [
+const FULL_IMPORTED_CORE_LIBRARY_NAMES = [
   'FilterLibrary',
   'CuratedLibrary',
   'SetLibrary',
   'MixtapeLibrary',
   'RecordingLibrary'
 ] as const
+
+const CURATED_IMPORTED_CORE_LIBRARY_NAMES = ['CuratedLibrary'] as const
+
+const getImportedCoreLibraryNames = (
+  scope: LibraryMergeScope
+): readonly (typeof FULL_IMPORTED_CORE_LIBRARY_NAMES)[number][] =>
+  scope === 'curated' ? CURATED_IMPORTED_CORE_LIBRARY_NAMES : FULL_IMPORTED_CORE_LIBRARY_NAMES
 
 const CONTROL_FILE_NAMES = new Set(['.frkb.uuid', '.description.json', '.description.json.legacy'])
 const SET_CUSTODY_DIR_NAME = '__set_custody__'
@@ -214,6 +226,9 @@ const requireRegisteredMetadata = (db: SqliteDatabase): void => {
 }
 
 const getIntegrityError = (db: SqliteDatabase): string | null => {
+  // Prefer the already-open connection so we do not contend with an open write
+  // transaction (e.g. BEGIN IMMEDIATE during merge). Callers that run on the
+  // Electron main thread should invoke buildLibraryMergePlan off-thread first.
   const integrity = db.pragma('integrity_check', { simple: true })
   if (String(integrity).toLowerCase() !== 'ok') return `integrity_check: ${String(integrity)}`
   const foreignRows = db.pragma('foreign_key_check') as Array<Record<string, unknown>>
@@ -642,9 +657,12 @@ export async function buildLibraryMergePlan(params: {
   sourceDb: SqliteDatabase
   targetDb: SqliteDatabase
   appVersion?: string
+  scope?: LibraryMergeScope
   sourceSchemaSnapshotBytes?: number
   availableBytesBeforeSourceSnapshot?: number
 }): Promise<LibraryMergePlan> {
+  const scope: LibraryMergeScope = params.scope === 'curated' ? 'curated' : 'full'
+  const importedCoreLibraryNames = getImportedCoreLibraryNames(scope)
   const sourceRoot = path.resolve(params.sourceRoot)
   const targetRoot = path.resolve(params.targetRoot)
   await assertDistinctLibraryMergeRoots(sourceRoot, targetRoot)
@@ -826,7 +844,7 @@ export async function buildLibraryMergePlan(params: {
   }
 
   mapSourceNode(sourceRootNode, targetRootNode)
-  for (const coreKey of IMPORTED_CORE_LIBRARY_NAMES) {
+  for (const coreKey of importedCoreLibraryNames) {
     const sourceCore = sourceCores.get(coreKey)
     const targetCore = targetCores.get(coreKey)
     if (!sourceCore || !targetCore) continue
@@ -906,14 +924,26 @@ export async function buildLibraryMergePlan(params: {
     }
   }
 
-  for (const coreKey of [
-    'FilterLibrary',
-    'CuratedLibrary',
-    'SetLibrary',
-    'MixtapeLibrary'
-  ] as const) {
+  for (const coreKey of importedCoreLibraryNames) {
+    if (coreKey === 'RecordingLibrary') continue
     const sourceCore = sourceCores.get(coreKey)
     if (sourceCore) await planChildren(sourceCore)
+  }
+
+  if (scope === 'curated') {
+    const curatedCore = sourceCores.get('CuratedLibrary')
+    const curatedChildren = curatedCore ? sourceChildren.get(curatedCore.uuid) || [] : []
+    if (curatedChildren.length === 0) {
+      throw new LibraryMergeError('SOURCE_CURATED_EMPTY', '来源库的精选库为空，没有可合并的内容')
+    }
+    for (const node of plannedNodes) {
+      if (node.nodeType !== 'dir' && node.nodeType !== 'songList') {
+        throw new LibraryMergeError(
+          'SOURCE_TREE_INVALID',
+          `精选库合并不支持节点类型：${node.nodeType}`
+        )
+      }
+    }
   }
 
   const files: PlannedFile[] = []
@@ -927,65 +957,73 @@ export async function buildLibraryMergePlan(params: {
     }
   }
   const reservedAssetPaths = new Set<string>()
-  const sourceSetCore = sourceCores.get('SetLibrary')
-  const targetSetCore = targetCores.get('SetLibrary')
-  const sourceMixtapeCore = sourceCores.get('MixtapeLibrary')
-  const targetMixtapeCore = targetCores.get('MixtapeLibrary')
-  const targetRecordingCore = targetCores.get('RecordingLibrary')
-  const sourceSetPath = sourceSetCore ? sourcePaths.get(sourceSetCore.uuid) : null
-  const targetSetPath = targetSetCore ? targetPaths.get(targetSetCore.uuid) : null
-  const sourceMixtapePath = sourceMixtapeCore ? sourcePaths.get(sourceMixtapeCore.uuid) : null
-  const targetMixtapePath = targetMixtapeCore ? targetPaths.get(targetMixtapeCore.uuid) : null
-  const sourceRecordingPath = recordingSourceCore ? sourcePaths.get(recordingSourceCore.uuid) : null
-  const targetRecordingPath = targetRecordingCore ? targetPaths.get(targetRecordingCore.uuid) : null
-  if (sourceSetPath && targetSetPath) {
-    const custodyPath = path.join(sourceSetPath.abs, SET_CUSTODY_DIR_NAME)
-    if (await fs.lstat(custodyPath).catch(() => null)) {
+  if (scope === 'full') {
+    const sourceSetCore = sourceCores.get('SetLibrary')
+    const targetSetCore = targetCores.get('SetLibrary')
+    const sourceMixtapeCore = sourceCores.get('MixtapeLibrary')
+    const targetMixtapeCore = targetCores.get('MixtapeLibrary')
+    const targetRecordingCore = targetCores.get('RecordingLibrary')
+    const sourceSetPath = sourceSetCore ? sourcePaths.get(sourceSetCore.uuid) : null
+    const targetSetPath = targetSetCore ? targetPaths.get(targetSetCore.uuid) : null
+    const sourceMixtapePath = sourceMixtapeCore ? sourcePaths.get(sourceMixtapeCore.uuid) : null
+    const targetMixtapePath = targetMixtapeCore ? targetPaths.get(targetMixtapeCore.uuid) : null
+    const sourceRecordingPath = recordingSourceCore
+      ? sourcePaths.get(recordingSourceCore.uuid)
+      : null
+    const targetRecordingPath = targetRecordingCore
+      ? targetPaths.get(targetRecordingCore.uuid)
+      : null
+    if (sourceSetPath && targetSetPath) {
+      const custodyPath = path.join(sourceSetPath.abs, SET_CUSTODY_DIR_NAME)
+      if (await fs.lstat(custodyPath).catch(() => null)) {
+        files.push(
+          ...(await planAssets({
+            sourceDir: custodyPath,
+            targetDir: path.join(targetSetPath.abs, SET_CUSTODY_DIR_NAME),
+            sourceLabel,
+            stagePrefix: 'set-custody',
+            reservedPaths: reservedAssetPaths
+          }))
+        )
+      }
+    }
+    if (sourceMixtapePath && targetMixtapePath) {
+      const vaultPath = path.join(sourceMixtapePath.abs, MIXTAPE_VAULT_DIR_NAME)
+      if (await fs.lstat(vaultPath).catch(() => null)) {
+        files.push(
+          ...(await planAssets({
+            sourceDir: vaultPath,
+            targetDir: path.join(targetMixtapePath.abs, MIXTAPE_VAULT_DIR_NAME),
+            sourceLabel,
+            stagePrefix: 'mixtape-vault',
+            reservedPaths: reservedAssetPaths
+          }))
+        )
+      }
+    }
+    if (sourceRecordingPath && targetRecordingPath) {
       files.push(
         ...(await planAssets({
-          sourceDir: custodyPath,
-          targetDir: path.join(targetSetPath.abs, SET_CUSTODY_DIR_NAME),
+          sourceDir: sourceRecordingPath.abs,
+          targetDir: targetRecordingPath.abs,
           sourceLabel,
-          stagePrefix: 'set-custody',
+          stagePrefix: 'recordings',
           reservedPaths: reservedAssetPaths
         }))
       )
     }
-  }
-  if (sourceMixtapePath && targetMixtapePath) {
-    const vaultPath = path.join(sourceMixtapePath.abs, MIXTAPE_VAULT_DIR_NAME)
-    if (await fs.lstat(vaultPath).catch(() => null)) {
-      files.push(
-        ...(await planAssets({
-          sourceDir: vaultPath,
-          targetDir: path.join(targetMixtapePath.abs, MIXTAPE_VAULT_DIR_NAME),
-          sourceLabel,
-          stagePrefix: 'mixtape-vault',
-          reservedPaths: reservedAssetPaths
-        }))
-      )
-    }
-  }
-  if (sourceRecordingPath && targetRecordingPath) {
-    files.push(
-      ...(await planAssets({
-        sourceDir: sourceRecordingPath.abs,
-        targetDir: targetRecordingPath.abs,
-        sourceLabel,
-        stagePrefix: 'recordings',
-        reservedPaths: reservedAssetPaths
-      }))
-    )
   }
   const sourceFilePathToTarget = new Map(
     files.map((file) => [getMergeFilePathKey(file.sourceAbs), path.resolve(file.targetAbs)])
   )
-  await validateSpecialDataRows({
-    sourceDb: params.sourceDb,
-    sourceRoot,
-    sourceToPlan,
-    sourceFilePathToTarget
-  })
+  if (scope === 'full') {
+    await validateSpecialDataRows({
+      sourceDb: params.sourceDb,
+      sourceRoot,
+      sourceToPlan,
+      sourceFilePathToTarget
+    })
+  }
   const copiedBytes = files.reduce((total, file) => total + file.size, 0)
   const capacity = await getCapacity(
     targetRoot,
@@ -1008,6 +1046,9 @@ export async function buildLibraryMergePlan(params: {
       node.nodeType === 'songList' &&
       path.basename(node.sourceRel) !== path.basename(node.targetRel)
   ).length
+  if (scope === 'curated' && songListCount === 0) {
+    throw new LibraryMergeError('SOURCE_CURATED_EMPTY', '来源库的精选库为空，没有可合并的内容')
+  }
   const summary: LibraryMergePlanSummary = {
     sourceRoot,
     targetRoot,
