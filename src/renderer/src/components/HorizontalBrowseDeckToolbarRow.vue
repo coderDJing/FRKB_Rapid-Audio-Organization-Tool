@@ -5,7 +5,6 @@ import HorizontalBrowseDeckMoveButton from '@renderer/components/HorizontalBrows
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import type { HorizontalBrowseDeckMoveTargetLibrary } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckMove'
 import type { LibraryTransferActionMode } from '@renderer/utils/libraryTransfer'
-import { t } from '@renderer/utils/translate'
 import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckTempoNudge'
 
 const props = defineProps<{
@@ -22,7 +21,6 @@ const props = defineProps<{
   showSplitAfterPlayhead?: boolean
   showDeleteBoundary?: boolean
   gridAdjustScope?: 'whole' | 'after'
-  downbeatLinePicking: boolean
   loopBeatLabel: string
   loopActive: boolean
   loopDisabled: boolean
@@ -51,7 +49,6 @@ const emit = defineEmits<{
   (event: 'select-whole-adjustment'): void
   (event: 'split-after-playhead'): void
   (event: 'delete-boundary'): void
-  (event: 'toggle-downbeat-line-picking'): void
   (event: 'loop-step-down'): void
   (event: 'loop-step-up'): void
   (event: 'toggle-loop'): void
@@ -184,21 +181,6 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
             <path d="M5.5 3.5 10 8l-4.5 4.5"></path>
           </svg>
         </bubbleBoxTrigger>
-      </div>
-      <div class="overview__toolbar-group">
-        <button
-          type="button"
-          class="overview__set-bar-btn"
-          :class="{ 'is-active': props.downbeatLinePicking }"
-          :disabled="props.disabled"
-          @click="emit('toggle-downbeat-line-picking')"
-        >
-          {{
-            props.downbeatLinePicking
-              ? t('mixtape.gridAdjustSetDownbeatLineCancel')
-              : t('mixtape.gridAdjustSetDownbeatLine')
-          }}
-        </button>
       </div>
       <div class="overview__toolbar-group">
         <BeatGridMetronomeControls
@@ -484,43 +466,6 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
 
 .overview__loop-arrow:disabled,
 .overview__loop-value:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.overview__set-bar-btn {
-  height: 22px;
-  min-width: 36px;
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--bg-elev);
-  color: var(--text);
-  font-size: 11px;
-  line-height: 20px;
-  white-space: nowrap;
-  box-sizing: border-box;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    border-color 0.14s ease,
-    background-color 0.14s ease;
-}
-
-.overview__set-bar-btn:hover {
-  border-color: var(--accent);
-  background: var(--hover);
-}
-
-.overview__set-bar-btn.is-active {
-  border-color: rgba(145, 205, 255, 0.95);
-  box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
-  background: rgba(145, 205, 255, 0.12);
-}
-
-.overview__set-bar-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

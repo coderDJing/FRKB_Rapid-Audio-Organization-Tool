@@ -6,7 +6,7 @@ import {
 } from '@shared/songBeatGridMapV2'
 import { useHorizontalBrowseDynamicBeatGridEdit } from './useHorizontalBrowseDynamicBeatGridEdit'
 
-describe('horizontal browse v2 grid downbeat picking', () => {
+describe('horizontal browse v2 grid edit', () => {
   it('uses a single-clip v2 grid instead of the retired root first-beat projection', () => {
     const beatGridMap = createSongBeatGridMapV2FromFixedGrid({
       bpm: 120,
@@ -21,7 +21,7 @@ describe('horizontal browse v2 grid downbeat picking', () => {
 
     const previewBeatGridMap = ref(beatGridMap)
     const controller = useHorizontalBrowseDynamicBeatGridEdit({
-      // 双轨模式不开放动态分段编辑，但基础四拍线选择仍必须使用同一份 v2 网格。
+      // 双轨模式不开放动态分段编辑，但播放竖线设为四拍线仍必须使用同一份 v2 网格。
       enabled: () => false,
       autoSyncFromSong: false,
       song: () => null,
@@ -48,10 +48,6 @@ describe('horizontal browse v2 grid downbeat picking', () => {
     ).not.toBeNull()
     expect(controller.hasV2GridMap.value).toBe(true)
     expect(controller.isDynamic.value).toBe(false)
-    expect(controller.resolveDownbeatLinePickCandidateByClientX(200)).toMatchObject({
-      beatIndex: 0,
-      lineX: 200,
-      hit: true
-    })
+    expect(controller.setActiveGridDownbeatLineAtSec(2)).toBe(true)
   })
 })

@@ -11,7 +11,6 @@ import {
   createSongBeatGridMapV2FromFixedGrid,
   normalizeSongBeatGridMapV2,
   projectSongBeatGridMapV2ToFixedGrid,
-  resolveNearestSongBeatGridV2Line,
   type SongBeatGridClipV2,
   type SongBeatGridMapV2
 } from '@shared/songBeatGridMapV2'
@@ -21,17 +20,6 @@ type DynamicBeatGridTarget =
   | { type: 'boundary'; index: number; manual: boolean }
 
 type DynamicBeatGridAdjustmentScope = 'whole' | 'after'
-
-export type DynamicBeatGridDownbeatLinePickCandidate = {
-  beatIndex: number
-  clipIndex: number
-  lineX: number
-  lineSec: number
-  targetSec: number
-  rangeStartSec: number
-  rangeDurationSec: number
-  hit: boolean
-}
 
 type UseHorizontalBrowseDynamicBeatGridEditParams = {
   enabled: () => boolean
@@ -364,46 +352,6 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
 
   const resolveClientXSec = (clientX: number) => resolveClientXContext(clientX)?.targetSec ?? null
 
-  const resolveDownbeatLinePickCandidateByClientX = (
-    clientX: number,
-    hitRadiusPx = BOUNDARY_SELECT_HIT_PX
-  ): DynamicBeatGridDownbeatLinePickCandidate | null => {
-    const map = resolveV2GridMap()
-    const durationSec = resolveDurationSec()
-    const context = resolveClientXContext(clientX)
-    if (!map || !context) return null
-    // 画布已经有可见时间范围时，不能因为歌曲总时长仍在异步刷新就放弃整张 v2 网格。
-    const runtimeDurationSec = Math.max(
-      0.001,
-      durationSec,
-      context.rangeStartSec + context.rangeDurationSec
-    )
-    const nearestLine = resolveNearestSongBeatGridV2Line(map, runtimeDurationSec, context.targetSec)
-    if (!nearestLine || !map.clips[nearestLine.clipIndex]) return null
-    const lineRatio = (nearestLine.sec - context.rangeStartSec) / context.rangeDurationSec
-    const lineX = clampNumber(lineRatio * context.rect.width, 0, context.rect.width)
-    return {
-      beatIndex: nearestLine.clipBeatIndex,
-      clipIndex: nearestLine.clipIndex,
-      lineX,
-      lineSec: nearestLine.sec,
-      targetSec: context.targetSec,
-      rangeStartSec: context.rangeStartSec,
-      rangeDurationSec: context.rangeDurationSec,
-      hit: Math.abs(context.localX - lineX) <= Math.max(1, hitRadiusPx)
-    }
-  }
-
-  const applyDownbeatLinePickCandidate = (
-    candidate: DynamicBeatGridDownbeatLinePickCandidate | null
-  ) => {
-    if (!candidate?.hit) return false
-    const map = resolveV2GridMap()
-    if (!map || !selectClipByIndex(map, candidate.clipIndex, true)) return false
-    adjustmentScope.value = 'after'
-    return setSelectedClipDownbeatBeatOffset(candidate.beatIndex)
-  }
-
   const selectTargetByPointer = (event: PointerEvent) => {
     if (!params.enabled() || !isDynamic.value) return false
     const wrap = params.previewWrapRef.value
@@ -547,25 +495,6 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
   const shiftActiveGrid = (deltaMs: number) =>
     adjustmentScope.value === 'after' ? shiftSelectedClip(deltaMs) : shiftWholeGrid(deltaMs)
 
-  const setSelectedClipDownbeatBeatOffset = (downbeatBeatOffset: number) =>
-    updateSelectedClip((clip) => ({
-      ...clip,
-      downbeatBeatOffset: normalizeBeatOffset(downbeatBeatOffset, PREVIEW_DOWNBEAT_BEAT_INTERVAL)
-    }))
-
-  const setWholeGridDownbeatBeatOffset = (downbeatBeatOffset: number) => {
-    const nextOffset = normalizeBeatOffset(downbeatBeatOffset, PREVIEW_DOWNBEAT_BEAT_INTERVAL)
-    return updateWholeGrid((clip) => ({
-      ...clip,
-      downbeatBeatOffset: nextOffset
-    }))
-  }
-
-  const setActiveGridDownbeatBeatOffset = (downbeatBeatOffset: number) =>
-    adjustmentScope.value === 'after'
-      ? setSelectedClipDownbeatBeatOffset(downbeatBeatOffset)
-      : setWholeGridDownbeatBeatOffset(downbeatBeatOffset)
-
   const setSelectedClipDownbeatLineAtSec = (sec: number) =>
     updateSelectedClip((clip) => {
       const bpm = normalizePreviewBpm(clip.bpm)
@@ -645,16 +574,12 @@ export const useHorizontalBrowseDynamicBeatGridEdit = (
     syncFromSong,
     selectWholeAdjustment,
     selectTargetByPointer,
-    resolveDownbeatLinePickCandidateByClientX,
-    applyDownbeatLinePickCandidate,
     createBoundaryAfterPlayhead,
     deleteSelectedBoundary,
     setSelectedClipBpm,
     setActiveGridBpm,
     shiftSelectedClip,
     shiftActiveGrid,
-    setSelectedClipDownbeatBeatOffset,
-    setActiveGridDownbeatBeatOffset,
     setSelectedClipDownbeatLineAtSec,
     setActiveGridDownbeatLineAtSec,
     syncPreviewFromSelectedTarget,

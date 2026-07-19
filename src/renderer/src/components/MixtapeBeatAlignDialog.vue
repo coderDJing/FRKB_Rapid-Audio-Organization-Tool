@@ -31,7 +31,6 @@ import {
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDetailExpose'
 import {
   PREVIEW_DOWNBEAT_BEAT_INTERVAL,
-  PREVIEW_DOWNBEAT_LINE_HIT_RADIUS_PX,
   PREVIEW_BPM_MAX,
   PREVIEW_BPM_MIN,
   PREVIEW_BPM_STEP,
@@ -607,16 +606,9 @@ const dynamicGridAdjustScope = computed(() => dynamicGridEdit.adjustmentScope.va
 
 const {
   canAdjustGrid,
-  previewDownbeatLinePicking,
-  previewDownbeatLineHoverVisible,
-  previewDownbeatLineGlowStyle,
-  handleDownbeatLinePickingToggle,
-  handlePreviewMouseMoveForDownbeatLinePicking,
-  handlePreviewMouseLeaveForDownbeatLinePicking,
-  handlePreviewMouseDownForDownbeatLinePicking,
+  handlePreviewMouseDownForGridTargetSelect,
   handleSetDownbeatLineAtPlayhead,
-  handleGridShift,
-  resetDownbeatLinePicking
+  handleGridShift
 } = useMixtapeBeatAlignGridAdjust({
   previewWrapRef,
   previewLoading,
@@ -634,7 +626,6 @@ const {
   getPreviewPlaybackSec,
   schedulePreviewDraw,
   downbeatBeatInterval: PREVIEW_DOWNBEAT_BEAT_INTERVAL,
-  downbeatLineHitRadiusPx: PREVIEW_DOWNBEAT_LINE_HIT_RADIUS_PX,
   dynamicGridEdit
 })
 
@@ -675,7 +666,7 @@ const { handlePreviewWheel, handlePreviewMouseDown, stopPreviewDragging } =
     resolvePreviewAnchorSec,
     clampPreviewStart,
     getPreviewPlaybackSec,
-    handlePreviewMouseDownForDownbeatLinePicking,
+    handlePreviewMouseDownForGridTargetSelect,
     requestCompactVisualWaveformStrip,
     startPreviewScrub,
     updatePreviewScrub,
@@ -755,7 +746,6 @@ const loadPreviewWaveform = async (filePath: string) => {
     ? Number(props.firstBeatMs)
     : 0
   previewTimeBasisOffsetMs.value = Math.max(0, Number(props.timeBasisOffsetMs) || 0)
-  resetDownbeatLinePicking()
   stopPreviewDragging()
   resetCompactVisualWaveformStrip()
   schedulePreviewDraw()
@@ -805,12 +795,6 @@ const handleSongWaveformUpdated = (_event: unknown, payload?: { filePath?: strin
 const handleWindowKeydown = (event: KeyboardEvent) => {
   if (!dialogVisible.value) return
   if (isEditableEventTarget(event.target)) return
-
-  if (event.code === 'Escape' && previewDownbeatLinePicking.value) {
-    event.preventDefault()
-    resetDownbeatLinePicking()
-    return
-  }
 
   if (event.code === 'Space' || event.key === ' ') {
     event.preventDefault()
@@ -909,7 +893,6 @@ watch(
     } else {
       stopOverviewClock()
       resetPreviewBpmTap()
-      resetDownbeatLinePicking()
       stopPreviewPlayback({ syncPosition: false })
     }
   }
@@ -931,7 +914,6 @@ onBeforeUnmount(() => {
   stopOverviewClock()
   disposeWaveformCanvas()
   disposeCompactVisualWaveformStrip()
-  resetDownbeatLinePicking()
   stopPreviewDragging()
   window.electron.ipcRenderer.removeListener('song-waveform-updated', handleSongWaveformUpdated)
   window.removeEventListener('resize', handleWindowResize)
@@ -959,26 +941,20 @@ onBeforeUnmount(() => {
           :preview-playing="previewPlaying"
           :can-toggle-preview-playback="canTogglePreviewPlayback"
           :can-stop-preview-playback="canStopPreviewPlayback"
-          :can-adjust-grid="canAdjustGrid"
-          :preview-downbeat-line-picking="previewDownbeatLinePicking"
           :metronome-enabled="metronomeEnabled"
           :metronome-volume-level="metronomeVolumeLevel"
           :can-toggle-metronome="canToggleMetronome"
           @toggle-playback="handlePreviewPlaybackToggle"
           @stop-to-start="handlePreviewStopToStart"
-          @toggle-downbeat-line-pick="handleDownbeatLinePickingToggle"
           @cycle-metronome-state="handleMetronomeStateCycle"
         />
         <div
           ref="previewWrapRef"
           class="preview-canvas-wrap raw-detail-waveform raw-detail-waveform--up"
           :class="{
-            'is-dragging': previewDragging,
-            'is-downbeat-selecting': previewDownbeatLinePicking
+            'is-dragging': previewDragging
           }"
           @mousedown="handlePreviewMouseDown"
-          @mousemove="handlePreviewMouseMoveForDownbeatLinePicking"
-          @mouseleave="handlePreviewMouseLeaveForDownbeatLinePicking"
           @wheel.prevent="handlePreviewWheel"
         >
           <div ref="waveformSurfaceRef" class="raw-detail-waveform__surface">
@@ -1001,11 +977,6 @@ onBeforeUnmount(() => {
               class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay raw-detail-waveform__canvas--buffer-back"
             ></canvas>
           </div>
-          <div
-            v-if="previewDownbeatLineHoverVisible"
-            class="raw-detail-waveform__downbeat-line-glow"
-            :style="previewDownbeatLineGlowStyle"
-          ></div>
           <div
             class="preview-anchor-line"
             :class="{ 'is-active': previewPlaying }"

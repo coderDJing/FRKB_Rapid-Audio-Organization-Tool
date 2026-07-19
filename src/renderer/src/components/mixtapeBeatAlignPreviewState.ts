@@ -107,7 +107,7 @@ type UseMixtapeBeatAlignPreviewInteractionParams = {
   resolvePreviewAnchorSec: () => number
   clampPreviewStart: (value: number) => number
   getPreviewPlaybackSec: () => number
-  handlePreviewMouseDownForDownbeatLinePicking: (event: MouseEvent) => boolean
+  handlePreviewMouseDownForGridTargetSelect: (event: MouseEvent) => boolean
   requestCompactVisualWaveformStrip: (
     anchorSec?: number,
     options?: { force?: boolean; clearIfOutside?: boolean }
@@ -223,7 +223,7 @@ export const useMixtapeBeatAlignPreviewInteraction = (
 
   const handlePreviewMouseDown = (event: MouseEvent) => {
     if (event.button !== 0 || !params.previewMixxxData.value) return
-    if (params.handlePreviewMouseDownForDownbeatLinePicking(event)) return
+    if (params.handlePreviewMouseDownForGridTargetSelect(event)) return
 
     params.previewDragging.value = true
     dragStartClientX = event.clientX

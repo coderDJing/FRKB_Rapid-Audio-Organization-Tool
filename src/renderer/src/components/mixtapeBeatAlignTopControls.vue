@@ -20,14 +20,6 @@ defineProps({
     type: Boolean,
     default: false
   },
-  canAdjustGrid: {
-    type: Boolean,
-    default: false
-  },
-  previewDownbeatLinePicking: {
-    type: Boolean,
-    default: false
-  },
   metronomeEnabled: {
     type: Boolean,
     default: false
@@ -45,7 +37,6 @@ defineProps({
 const emit = defineEmits<{
   (event: 'toggle-playback'): void
   (event: 'stop-to-start'): void
-  (event: 'toggle-downbeat-line-pick'): void
   (event: 'cycle-metronome-state'): void
 }>()
 </script>
@@ -106,19 +97,6 @@ const emit = defineEmits<{
           <rect x="4" y="4" width="8" height="8" rx="1"></rect>
         </svg>
       </bubbleBoxTrigger>
-      <button
-        class="downbeat-line-btn"
-        type="button"
-        :class="{ 'is-active': previewDownbeatLinePicking }"
-        :disabled="!canAdjustGrid"
-        @click="emit('toggle-downbeat-line-pick')"
-      >
-        {{
-          previewDownbeatLinePicking
-            ? t('mixtape.gridAdjustSetDownbeatLineCancel')
-            : t('mixtape.gridAdjustSetDownbeatLine')
-        }}
-      </button>
       <BeatGridMetronomeControls
         :metronome-enabled="metronomeEnabled"
         :metronome-volume-level="metronomeVolumeLevel"
@@ -157,13 +135,11 @@ const emit = defineEmits<{
   cursor: pointer;
 }
 
-.playback-icon-btn:focus,
-.downbeat-line-btn:focus {
+.playback-icon-btn:focus {
   outline: none;
 }
 
-.playback-icon-btn:focus-visible,
-.downbeat-line-btn:focus-visible {
+.playback-icon-btn:focus-visible {
   outline: none;
   box-shadow: none;
 }
@@ -199,33 +175,5 @@ const emit = defineEmits<{
   to {
     transform: rotate(360deg);
   }
-}
-
-.downbeat-line-btn {
-  min-width: 122px;
-  height: 24px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--bg-elev);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.downbeat-line-btn:hover:not(:disabled) {
-  border-color: var(--accent);
-  background: var(--hover);
-}
-
-.downbeat-line-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.downbeat-line-btn.is-active {
-  border-color: rgba(145, 205, 255, 0.95);
-  box-shadow: 0 0 0 1px rgba(145, 205, 255, 0.25) inset;
-  background: rgba(145, 205, 255, 0.12);
 }
 </style>

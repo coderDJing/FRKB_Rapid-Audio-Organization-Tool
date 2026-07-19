@@ -600,7 +600,6 @@ const shouldPreserveGridShiftPhase = (deck: DeckKey) => {
 }
 const {
   handleToolbarStateChange,
-  handleDeckDownbeatLinePickingToggle,
   handleDeckSetDownbeatLineAtPlayhead,
   handleDeckGridShiftLargeLeft,
   handleDeckGridShiftSmallLeft,
@@ -916,7 +915,6 @@ onUnmounted(() => {
         @select-whole-adjustment="handleDeckSelectWholeAdjustment('top')"
         @split-after-playhead="handleDeckSplitAfterPlayhead('top')"
         @delete-boundary="handleDeckDeleteBoundary('top')"
-        @toggle-downbeat-line-picking="handleDeckDownbeatLinePickingToggle('top')"
         @cycle-metronome-state="handleDeckMetronomeStateCycle('top')"
         @loop-step-down="handleDeckLoopStepDown('top')"
         @loop-step-up="handleDeckLoopStepUp('top')"
@@ -1059,7 +1057,6 @@ onUnmounted(() => {
         @select-whole-adjustment="handleDeckSelectWholeAdjustment('bottom')"
         @split-after-playhead="handleDeckSplitAfterPlayhead('bottom')"
         @delete-boundary="handleDeckDeleteBoundary('bottom')"
-        @toggle-downbeat-line-picking="handleDeckDownbeatLinePickingToggle('bottom')"
         @cycle-metronome-state="handleDeckMetronomeStateCycle('bottom')"
         @loop-step-down="handleDeckLoopStepDown('bottom')"
         @loop-step-up="handleDeckLoopStepUp('bottom')"

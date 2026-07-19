@@ -15,7 +15,6 @@ import { useMixtapeBeatAlignGridAdjust } from '@renderer/components/mixtapeBeatA
 import { useMixtapeBeatAlignMetronome } from '@renderer/components/mixtapeBeatAlignMetronome'
 import {
   PREVIEW_DOWNBEAT_BEAT_INTERVAL,
-  PREVIEW_DOWNBEAT_LINE_HIT_RADIUS_PX,
   clampNumber
 } from '@renderer/components/MixtapeBeatAlignDialog.constants'
 import { useHorizontalBrowseRawWaveformCanvas } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRawWaveformCanvas'
@@ -438,16 +437,9 @@ watch(
 )
 
 const {
-  previewDownbeatLinePicking,
-  previewDownbeatLineHoverVisible,
-  previewDownbeatLineGlowStyle,
-  handleDownbeatLinePickingToggle,
-  handlePreviewMouseMoveForDownbeatLinePicking,
-  handlePreviewMouseLeaveForDownbeatLinePicking,
-  handlePreviewMouseDownForDownbeatLinePicking,
+  handlePreviewMouseDownForGridTargetSelect,
   handleSetDownbeatLineAtPlayhead,
-  handleGridShift,
-  resetDownbeatLinePicking
+  handleGridShift
 } = useMixtapeBeatAlignGridAdjust({
   previewWrapRef: wrapRef,
   previewLoading,
@@ -467,7 +459,6 @@ const {
   schedulePreviewDraw: scheduleGridOverlayDraw,
   applyPlaybackPhaseCompensation: applyLocalGridShiftPhaseCompensation,
   downbeatBeatInterval: PREVIEW_DOWNBEAT_BEAT_INTERVAL,
-  downbeatLineHitRadiusPx: PREVIEW_DOWNBEAT_LINE_HIT_RADIUS_PX,
   dynamicGridEdit: dynamicBeatGridEdit
 })
 
@@ -501,7 +492,6 @@ const {
   handlePreviewBpmInputUpdate,
   handlePreviewBpmInputBlur,
   handlePreviewBpmTap,
-  toggleDownbeatLinePicking,
   setDownbeatLineAtPlayhead,
   shiftGrid,
   cycleMetronomeState,
@@ -517,7 +507,6 @@ const {
   previewDownbeatBeatOffset,
   previewTimeBasisOffsetMs,
   bpmTapTimestamps,
-  previewDownbeatLinePicking,
   metronomeEnabled,
   metronomeVolumeLevel,
   canToggleMetronome,
@@ -531,8 +520,6 @@ const {
   persistGridDefinition,
   schedulePersistGridDefinition,
   resetPreviewBpmTap,
-  resetDownbeatLinePicking,
-  handleDownbeatLinePickingToggle,
   handleSetDownbeatLineAtPlayhead,
   handleGridShift,
   handleMetronomeStateCycle: cycleMetronomeRuntimeState,
@@ -689,7 +676,7 @@ const { stopDragging, handlePointerDown, handleWheel } =
     clearDragReleaseHandoff: dragReleaseHandoff.clear,
     beginDragReleaseHandoff: dragReleaseHandoff.begin,
     scrubPreview,
-    handlePreviewMouseDownForDownbeatLinePicking,
+    handlePreviewMouseDownForGridTargetSelect,
     emitToolbarState,
     schedulePersistGridDefinition,
     emitDragSessionStart: () => emit('drag-session-start'),
@@ -1039,7 +1026,6 @@ onUnmounted(() => {
 
 defineExpose(
   createHorizontalBrowseRawWaveformDetailExpose({
-    toggleDownbeatLinePicking,
     setDownbeatLineAtPlayhead,
     shiftGrid,
     updateBpmInput: handlePreviewBpmInputUpdate,
@@ -1067,13 +1053,10 @@ defineExpose(
       `raw-detail-waveform--${props.direction}`,
       {
         'is-dragging': dragging,
-        'is-downbeat-selecting': previewDownbeatLinePicking,
         'is-loading': previewLoading
       }
     ]"
     @pointerdown.stop="handlePointerDown"
-    @mousemove="handlePreviewMouseMoveForDownbeatLinePicking"
-    @mouseleave="handlePreviewMouseLeaveForDownbeatLinePicking"
     @wheel.prevent.stop="handleWheel"
   >
     <div ref="waveformSurfaceRef" class="raw-detail-waveform__surface">
@@ -1096,11 +1079,6 @@ defineExpose(
         class="raw-detail-waveform__canvas raw-detail-waveform__canvas--overlay raw-detail-waveform__canvas--buffer-back"
       />
     </div>
-    <div
-      v-if="previewDownbeatLineHoverVisible"
-      class="raw-detail-waveform__downbeat-line-glow"
-      :style="previewDownbeatLineGlowStyle"
-    ></div>
   </div>
 </template>
 <style scoped lang="scss" src="./HorizontalBrowseRawWaveformDetail.scss"></style>

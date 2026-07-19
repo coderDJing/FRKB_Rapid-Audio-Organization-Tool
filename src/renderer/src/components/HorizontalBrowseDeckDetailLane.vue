@@ -76,7 +76,6 @@ const emit = defineEmits<{
 const detailRef = ref<HorizontalBrowseRawWaveformDetailExpose | null>(null)
 
 defineExpose<HorizontalBrowseRawWaveformDetailExpose>({
-  toggleDownbeatLinePicking: () => detailRef.value?.toggleDownbeatLinePicking?.(),
   setDownbeatLineAtPlayhead: () => detailRef.value?.setDownbeatLineAtPlayhead?.(),
   shiftGridLargeLeft: (options?: HorizontalBrowseGridShiftOptions) =>
     detailRef.value?.shiftGridLargeLeft?.(options),

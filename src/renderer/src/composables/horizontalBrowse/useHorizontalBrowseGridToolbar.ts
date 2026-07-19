@@ -20,7 +20,6 @@ export type HorizontalBrowseGridToolbarState = {
   bpmStep: number
   bpmMin: number
   bpmMax: number
-  downbeatLinePicking: boolean
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
@@ -43,7 +42,6 @@ type UseHorizontalBrowseGridToolbarParams = {
   previewDownbeatBeatOffset: Ref<number>
   previewTimeBasisOffsetMs: Ref<number>
   bpmTapTimestamps: Ref<number[]>
-  previewDownbeatLinePicking: Ref<boolean>
   metronomeEnabled: Ref<boolean>
   metronomeVolumeLevel: Ref<1 | 2 | 3>
   canToggleMetronome: Ref<boolean>
@@ -57,8 +55,6 @@ type UseHorizontalBrowseGridToolbarParams = {
   persistGridDefinition: () => Promise<void>
   schedulePersistGridDefinition: () => void
   resetPreviewBpmTap: () => void
-  resetDownbeatLinePicking: () => void
-  handleDownbeatLinePickingToggle: () => void
   handleSetDownbeatLineAtPlayhead: () => void
   handleGridShift: (deltaMs: number, options?: HorizontalBrowseGridShiftOptions) => void
   handleMetronomeStateCycle: () => void
@@ -80,7 +76,6 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
       bpmStep: PREVIEW_BPM_STEP,
       bpmMin: PREVIEW_BPM_MIN,
       bpmMax: PREVIEW_BPM_MAX,
-      downbeatLinePicking: params.previewDownbeatLinePicking.value,
       metronomeEnabled: params.metronomeEnabled.value,
       metronomeVolumeLevel: params.metronomeVolumeLevel.value,
       canToggleMetronome: params.canToggleMetronome.value,
@@ -105,7 +100,6 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
       Number(params.resolveSongTimeBasisOffsetMs()) || 0
     )
     params.resetPreviewBpmTap()
-    params.resetDownbeatLinePicking()
     emitToolbarState()
   }
 
@@ -170,11 +164,6 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     params.schedulePersistGridDefinition()
   }
 
-  const toggleDownbeatLinePicking = () => {
-    params.handleDownbeatLinePickingToggle()
-    emitToolbarState()
-  }
-
   const setDownbeatLineAtPlayhead = () => {
     if (params.resolveGridControlsDisabled?.() === true) return
     params.handleSetDownbeatLineAtPlayhead()
@@ -216,7 +205,6 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
     handlePreviewBpmInputUpdate,
     handlePreviewBpmInputBlur,
     handlePreviewBpmTap,
-    toggleDownbeatLinePicking,
     setDownbeatLineAtPlayhead,
     shiftGrid,
     cycleMetronomeState,

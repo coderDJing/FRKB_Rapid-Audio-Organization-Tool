@@ -85,15 +85,3 @@
 .raw-detail-waveform.is-bar-selecting {
   cursor: crosshair;
 }
-
-.raw-detail-waveform__downbeat-line-glow {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 2px;
-  margin-left: -1px;
-  background: rgba(255, 214, 92, 0.88);
-  box-shadow: 0 0 0 1px rgba(255, 214, 92, 0.2);
-  pointer-events: none;
-  z-index: 5;
-}

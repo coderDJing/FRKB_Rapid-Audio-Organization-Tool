@@ -19,7 +19,6 @@ type DeckToolbarState = {
   bpmInputFirst?: boolean
   showTapButton?: boolean
   tapBpmTitle?: string
-  downbeatLinePicking: boolean
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
@@ -85,7 +84,6 @@ const emit = defineEmits<{
   (event: 'select-whole-adjustment'): void
   (event: 'split-after-playhead'): void
   (event: 'delete-boundary'): void
-  (event: 'toggle-downbeat-line-picking'): void
   (event: 'loop-step-down'): void
   (event: 'loop-step-up'): void
   (event: 'toggle-loop'): void
@@ -170,7 +168,6 @@ const isTop = props.position === 'top'
         :show-split-after-playhead="props.toolbarState.showSplitAfterPlayhead"
         :show-delete-boundary="props.toolbarState.showDeleteBoundary"
         :grid-adjust-scope="props.toolbarState.gridAdjustScope"
-        :downbeat-line-picking="props.toolbarState.downbeatLinePicking"
         :loop-beat-label="props.toolbarState.loopBeatLabel"
         :loop-active="props.toolbarState.loopActive"
         :loop-disabled="props.toolbarState.loopDisabled"
@@ -196,7 +193,6 @@ const isTop = props.position === 'top'
         @select-whole-adjustment="emit('select-whole-adjustment')"
         @split-after-playhead="emit('split-after-playhead')"
         @delete-boundary="emit('delete-boundary')"
-        @toggle-downbeat-line-picking="emit('toggle-downbeat-line-picking')"
         @loop-step-down="emit('loop-step-down')"
         @loop-step-up="emit('loop-step-up')"
         @toggle-loop="emit('toggle-loop')"
