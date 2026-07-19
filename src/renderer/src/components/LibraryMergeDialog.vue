@@ -59,7 +59,6 @@ type LibraryMergeBusyReason =
   | 'playlist-batch-rename'
   | 'mixtape-stem'
   | 'mixtape-window'
-  | 'library-tree-watcher'
   | 'recording'
   | 'unknown'
 type LibraryMergeBusyDetails = {
@@ -147,7 +146,6 @@ const KNOWN_BUSY_REASONS = new Set<LibraryMergeBusyReason>([
   'playlist-batch-rename',
   'mixtape-stem',
   'mixtape-window',
-  'library-tree-watcher',
   'recording'
 ])
 
@@ -956,22 +954,39 @@ onUnmounted(() => {
 .library-merge-dialog__mode-option {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
+  gap: 0;
   margin-top: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .library-merge-dialog__mode-option:has(input:checked) {
   border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
 }
 
+.library-merge-dialog__mode-option:has(input:disabled) {
+  cursor: default;
+  opacity: 0.72;
+}
+
+/* Keep radios for a11y / v-model; selection is shown by the card border only. */
 .library-merge-dialog__mode-option input {
-  margin: 2px 0 0;
-  accent-color: var(--accent);
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .library-merge-dialog__mode-option strong,

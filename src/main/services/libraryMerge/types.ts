@@ -85,7 +85,6 @@ export type LibraryMergeBusyReason =
   | 'playlist-batch-rename'
   | 'mixtape-stem'
   | 'mixtape-window'
-  | 'library-tree-watcher'
   | 'recording'
 
 export type LibraryMergeBusyClassification = {

@@ -21,7 +21,7 @@
       "selectSource": "Choose Source",
       "sourceSelected": "Selected",
       "sourceRequired": "Choose a source library first.",
-      "checkingSource": "Checking…",
+      "checkingSource": "Checking source structure, database, and disk space…",
       "sourceCheckPassed": "Check passed.",
       "sourceIssues": {
         "invalid-selection": {
@@ -70,7 +70,7 @@
         }
       },
       "modeTitle": "Source library",
-      "copyMode": "Keep source (recommended)",
+      "copyMode": "Keep source",
       "copyDescription": "Copy into the current library; leave the source unchanged.",
       "deleteMode": "Delete source after merge",
       "deleteDescription": "Clean up the source only after a successful save. Cleanup failure does not undo the merge.",
@@ -100,7 +100,6 @@
         "playlist-batch-rename": "Batch playlist rename",
         "mixtape-stem": "Mixtape stem separation",
         "mixtape-window": "Open Mixtape window",
-        "library-tree-watcher": "Library tree sync",
         "recording": "Recording in progress",
         "unknown": "Other library write task"
       }
@@ -120,10 +119,10 @@
       "selectSource": "Choose Source",
       "sourceSelected": "Selected",
       "sourceRequired": "Choose a source library first.",
-      "checkingSource": "Checking…",
+      "checkingSource": "Checking curated structure, database, and disk space…",
       "sourceCheckPassed": "Check passed.",
       "duplicatePlaylistTitle": "Same-name playlists",
-      "duplicateRenameMode": "Keep both (recommended)",
+      "duplicateRenameMode": "Keep both",
       "duplicateRenameDescription": "Source playlist gets a “(from …)” suffix.",
       "duplicateMergeIntoMode": "Merge into existing",
       "duplicateMergeIntoDescription": "Tracks go into the current playlist; colliding files get a suffix.",
@@ -174,7 +173,7 @@
         }
       },
       "modeTitle": "Source curated library",
-      "copyMode": "Keep source (recommended)",
+      "copyMode": "Keep source",
       "copyDescription": "Copy into the current library; leave the source unchanged.",
       "deleteMode": "Clear source after merge",
       "deleteDescription": "Clear the source curated tree only after a successful save. Cleanup failure does not undo the merge.",
@@ -204,7 +203,6 @@
         "playlist-batch-rename": "Batch playlist rename",
         "mixtape-stem": "Mixtape stem separation",
         "mixtape-window": "Open Mixtape window",
-        "library-tree-watcher": "Library tree sync",
         "recording": "Recording in progress",
         "unknown": "Other library write task"
       }

@@ -23,9 +23,10 @@ import {
   waitForMixtapeWaveformQueueIdle
 } from '../mixtapeWaveformQueue'
 import {
-  isLibraryTreeWatcherBusy,
+  discardPendingLibraryTreeReconcile,
   startLibraryTreeWatcher,
-  stopLibraryTreeWatcher
+  stopLibraryTreeWatcher,
+  waitForLibraryTreeWatcherIdle
 } from '../../libraryTreeWatcher'
 import {
   getBackgroundTaskExecutionStatus,
@@ -50,6 +51,8 @@ export { isLibraryMergeMutationLocked } from './mutationGate'
  * - Hard-blocking covers moves/import/rename/recording and full-scope mixtape writers.
  * - Curated merge does not hard-block open mixtape windows or stem jobs (they do not
  *   share curated playlist / analysis write paths the same way full merge does).
+ * - Library tree watcher is never a user-facing busy reason: debounce is discarded,
+ *   real reconcile/bulk is waited on silently, then the watcher is stopped for the lock.
  */
 const CANCELLABLE_BUSY_REASONS = new Set<LibraryMergeBusyReason>([
   'key-analysis',
@@ -96,7 +99,8 @@ const collectBusyReasons = (options: BusyCollectOptions = {}): LibraryMergeBusyR
     if (isAnyMixtapeWindowOpen()) reasons.push('mixtape-window')
   }
 
-  if (isLibraryTreeWatcherBusy()) reasons.push('library-tree-watcher')
+  // library-tree-watcher is handled silently in acquireLibraryMergeMutationLock
+  // (discard debounce + wait for real reconcile/bulk). Never surface as user-facing busy.
   if (isHorizontalBrowseTransportRecordingActive()) reasons.push('recording')
 
   // Pending orchestrator work is dropped by interruptBackgroundTaskExecution.
@@ -133,15 +137,6 @@ export const getLibraryMergeBusyReasons = (options: BusyCollectOptions = {}): st
 export const getLibraryMergeBusySnapshot = (
   options: BusyCollectOptions = {}
 ): LibraryMergeBusyClassification => classifyLibraryMergeBusyReasons(collectBusyReasons(options))
-
-const waitForLibraryTreeWatcherIdle = async (timeoutMs = 30000): Promise<boolean> => {
-  const deadline = Date.now() + Math.max(0, timeoutMs)
-  while (isLibraryTreeWatcherBusy()) {
-    if (Date.now() >= deadline) return false
-    await new Promise((resolve) => setTimeout(resolve, 50))
-  }
-  return true
-}
 
 /** Drop queued key-analysis work that has not started writing yet — no user prompt. */
 const silentClearPendingOnlyKeyAnalysis = async (): Promise<void> => {
@@ -205,9 +200,20 @@ export const acquireLibraryMergeMutationLock = async (
 
   const scope = normalizeScope(options.scope)
 
-  // Give an in-flight tree reconcile a short window to finish before treating it as hard-busy.
-  if (isLibraryTreeWatcherBusy()) {
-    await waitForLibraryTreeWatcherIdle(5000)
+  // Tree watcher is internal bookkeeping, not a user-facing busy task:
+  // drop debounce, wait for real reconcile/bulk, stop the watcher ASAP so new
+  // fs events cannot re-arm it, then re-check once for a race that slipped in.
+  discardPendingLibraryTreeReconcile()
+  let treeIdle = await waitForLibraryTreeWatcherIdle(30000)
+  if (!treeIdle) {
+    throw new LibraryMergeError('LIBRARY_TREE_BUSY', '库树后台更新尚未完成，请稍后再试')
+  }
+  stopLibraryTreeWatcher()
+  discardPendingLibraryTreeReconcile()
+  treeIdle = await waitForLibraryTreeWatcherIdle(5000)
+  if (!treeIdle) {
+    startLibraryTreeWatcher(mainWindow)
+    throw new LibraryMergeError('LIBRARY_TREE_BUSY', '库树后台更新尚未完成，请稍后再试')
   }
 
   // Drop pending orchestrator work and wait for any running bounded callback.
@@ -251,11 +257,11 @@ export const acquireLibraryMergeMutationLock = async (
     }
   } catch (error) {
     resumeBackgroundTasks()
+    startLibraryTreeWatcher(mainWindow)
     throw error
   }
 
   setLibraryMergeMutationLocked(true)
-  stopLibraryTreeWatcher()
   let released = false
   return () => {
     if (released) return

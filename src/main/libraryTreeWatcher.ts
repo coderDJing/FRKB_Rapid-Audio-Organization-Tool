@@ -15,8 +15,13 @@ let pendingBulkReconcileWindow: BrowserWindow | null = null
 
 const WATCH_DEBOUNCE_MS = 400
 
+/**
+ * True only while a real tree write is in flight (reconcile) or a bulk
+ * maintenance section has paused scheduling. Pending debounce alone is not busy —
+ * callers that need a quiet tree should discard the timer instead of blocking.
+ */
 export function isLibraryTreeWatcherBusy(): boolean {
-  return reconciling || bulkOperationDepth > 0 || debounceTimer !== null
+  return reconciling || bulkOperationDepth > 0
 }
 
 function clearDebounceTimer() {
@@ -24,6 +29,24 @@ function clearDebounceTimer() {
     clearTimeout(debounceTimer)
     debounceTimer = null
   }
+}
+
+/** Drop a scheduled reconcile that has not started yet (debounce window only). */
+export function discardPendingLibraryTreeReconcile(): void {
+  clearDebounceTimer()
+}
+
+/**
+ * Wait until reconcile / bulk depth drain. Does not treat debounce as busy;
+ * call discardPendingLibraryTreeReconcile first when preparing a mutation lock.
+ */
+export async function waitForLibraryTreeWatcherIdle(timeoutMs = 30000): Promise<boolean> {
+  const deadline = Date.now() + Math.max(0, timeoutMs)
+  while (isLibraryTreeWatcherBusy()) {
+    if (Date.now() >= deadline) return false
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  return true
 }
 
 async function reconcileLibraryTree(window: BrowserWindow | null) {

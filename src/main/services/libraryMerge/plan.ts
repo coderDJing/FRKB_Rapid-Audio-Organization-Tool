@@ -232,12 +232,20 @@ const requireRegisteredMetadata = (db: SqliteDatabase): void => {
   )
 }
 
-const getIntegrityError = (db: SqliteDatabase): string | null => {
+const getIntegrityError = (
+  db: SqliteDatabase,
+  options: { includeForeignKeyCheck?: boolean } = {}
+): string | null => {
   // Prefer the already-open connection so we do not contend with an open write
   // transaction (e.g. BEGIN IMMEDIATE during merge). Callers that run on the
   // Electron main thread should invoke buildLibraryMergePlan off-thread first.
-  const integrity = db.pragma('integrity_check', { simple: true })
-  if (String(integrity).toLowerCase() !== 'ok') return `integrity_check: ${String(integrity)}`
+  //
+  // Use quick_check instead of full integrity_check: full checks scan every page
+  // and can take minutes on multi‑GB libraries, freezing the "checking" UI.
+  // quick_check still catches most corruption without freelist traversal.
+  const integrity = db.pragma('quick_check', { simple: true })
+  if (String(integrity).toLowerCase() !== 'ok') return `quick_check: ${String(integrity)}`
+  if (options.includeForeignKeyCheck === false) return null
   const foreignRows = db.pragma('foreign_key_check') as Array<Record<string, unknown>>
   if (Array.isArray(foreignRows) && foreignRows.length > 0) return 'foreign_key_check failed'
   return null
@@ -735,18 +743,13 @@ export async function buildLibraryMergePlan(params: {
       '当前库版本不受当前 FRKB 支持，请先升级 FRKB 后再合并'
     )
   }
+  // Source may be external / untrusted — quick_check + FK. Target is already open in the
+  // live app, so skip a second multi-second scan of the same multi‑GB database here.
   const sourceIntegrityError = getIntegrityError(params.sourceDb)
   if (sourceIntegrityError) {
     throw new LibraryMergeError(
       'SOURCE_DATABASE_CORRUPT',
       `来源数据库完整性检查失败：${sourceIntegrityError}`
-    )
-  }
-  const targetIntegrityError = getIntegrityError(params.targetDb)
-  if (targetIntegrityError) {
-    throw new LibraryMergeError(
-      'TARGET_DATABASE_CORRUPT',
-      `当前数据库完整性检查失败：${targetIntegrityError}`
     )
   }
   const sourceSchemaVersion = getUserVersion(params.sourceDb)

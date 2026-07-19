@@ -21,7 +21,7 @@
       "selectSource": "选择来源库",
       "sourceSelected": "已选择",
       "sourceRequired": "请先选择来源库。",
-      "checkingSource": "正在检查…",
+      "checkingSource": "正在校验来源库结构、数据库与磁盘空间…",
       "sourceCheckPassed": "检查通过。",
       "sourceIssues": {
         "invalid-selection": {
@@ -70,7 +70,7 @@
         }
       },
       "modeTitle": "来源库",
-      "copyMode": "保留来源（推荐）",
+      "copyMode": "保留来源",
       "copyDescription": "只复制到当前库，不改来源。",
       "deleteMode": "合并后删除来源",
       "deleteDescription": "当前库保存成功后再清理来源；清理失败不影响已合并内容。",
@@ -100,7 +100,6 @@
         "playlist-batch-rename": "批量重命名歌单",
         "mixtape-stem": "Mixtape 分轨任务",
         "mixtape-window": "已打开的 Mixtape 窗口",
-        "library-tree-watcher": "库树同步",
         "recording": "正在录音",
         "unknown": "其他库写入任务"
       }
@@ -120,10 +119,10 @@
       "selectSource": "选择来源库",
       "sourceSelected": "已选择",
       "sourceRequired": "请先选择来源库。",
-      "checkingSource": "正在检查…",
+      "checkingSource": "正在校验来源精选库结构、数据库与磁盘空间…",
       "sourceCheckPassed": "检查通过。",
       "duplicatePlaylistTitle": "同名歌单",
-      "duplicateRenameMode": "保留两个（推荐）",
+      "duplicateRenameMode": "保留两个",
       "duplicateRenameDescription": "来源歌单加 “(from …)” 后缀。",
       "duplicateMergeIntoMode": "并入现有",
       "duplicateMergeIntoDescription": "曲目写入当前同名歌单；文件名冲突时再加后缀。",
@@ -174,7 +173,7 @@
         }
       },
       "modeTitle": "来源精选库",
-      "copyMode": "保留来源（推荐）",
+      "copyMode": "保留来源",
       "copyDescription": "只复制到当前库，不改来源。",
       "deleteMode": "合并后清空来源",
       "deleteDescription": "当前库保存成功后再清空来源精选库；清理失败不影响已合并内容。",
@@ -204,7 +203,6 @@
         "playlist-batch-rename": "批量重命名歌单",
         "mixtape-stem": "Mixtape 分轨任务",
         "mixtape-window": "已打开的 Mixtape 窗口",
-        "library-tree-watcher": "库树同步",
         "recording": "正在录音",
         "unknown": "其他库写入任务"
       }
