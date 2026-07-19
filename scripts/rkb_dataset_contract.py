@@ -997,6 +997,8 @@ def build_benchmark_provenance(
     feature_cache_dir: Path,
     prediction_cache_dir: Path,
     prediction_cache_enabled: bool,
+    official_high_attack_cache_dir: Path | None = None,
+    compact_output: bool = False,
 ) -> dict[str, Any]:
     configuration = {
         "solver": str(solver),
@@ -1009,6 +1011,13 @@ def build_benchmark_provenance(
             "enabled": bool(prediction_cache_enabled),
             "path": normalize_path(prediction_cache_dir),
         },
+        "officialHighAttackCache": {
+            "enabled": official_high_attack_cache_dir is not None,
+            "path": normalize_path(official_high_attack_cache_dir)
+            if official_high_attack_cache_dir is not None
+            else None,
+        },
+        "compactOutput": bool(compact_output),
     }
     payload = {
         "schemaVersion": SCHEMA_VERSION,
@@ -1034,6 +1043,12 @@ def build_benchmark_provenance_from_args(
         feature_cache_dir=Path(str(getattr(args, "feature_cache_dir", "") or "")),
         prediction_cache_dir=Path(str(getattr(args, "prediction_cache_dir", "") or "")),
         prediction_cache_enabled=not bool(getattr(args, "no_prediction_cache", False)),
+        official_high_attack_cache_dir=(
+            Path(str(getattr(args, "official_high_attack_cache_dir", "") or ""))
+            if str(getattr(args, "official_high_attack_cache_dir", "") or "").strip()
+            else None
+        ),
+        compact_output=bool(getattr(args, "compact_output", False)),
     )
 
 

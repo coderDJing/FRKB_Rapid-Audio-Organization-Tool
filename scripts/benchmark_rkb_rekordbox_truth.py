@@ -1,4 +1,3 @@
-import argparse
 import hashlib
 import inspect
 import importlib.util
@@ -21,8 +20,6 @@ from rkb_benchmark_summary import build_summary as _build_summary_impl
 from frkb_database_paths import FRKB_BENCHMARK_CURRENT_AUDIO_ROOT
 from rkb_dataset_contract import (
     OUTPUT_IDENTITY_FIELDS,
-    attach_benchmark_result_digest,
-    build_benchmark_provenance_from_args,
     matches_track_filters,
     validate_truth_contract,
 )
@@ -649,6 +646,7 @@ def _resolve_audio_path(audio_roots: list[Path], file_name: str) -> Path:
 def _load_truth_tracks(
     truth_path: Path, audio_roots: list[Path], ffprobe_path: Path,
     truth_batch_id: str = "", registry_path: Path | None = None,
+    require_audio_files: bool = True,
 ) -> list[dict[str, Any]]:
     from rkb_beatgrid_lab_common import track_identity_key
     payload = json.loads(truth_path.read_text(encoding="utf-8"))
@@ -677,7 +675,7 @@ def _load_truth_tracks(
         if instance_id and not source_path_value:
             raise RuntimeError(f"instance truth track is missing sourcePath: {instance_id}")
         file_path = Path(source_path_value) if source_path_value else _resolve_audio_path(audio_roots, file_name)
-        if source_path_value and not file_path.is_file():
+        if require_audio_files and source_path_value and not file_path.is_file():
             raise RuntimeError(f"truth sourcePath is not an existing file: {file_path}")
         beat_grid_map = _read_fixed_truth_map(item)
         if not beat_grid_map:
@@ -698,7 +696,13 @@ def _load_truth_tracks(
                 "downbeatBeatOffset": int(clip["downbeatBeatOffset"]),
                 "beatGridMap": beat_grid_map,
                 "fileExists": file_path.exists(),
-                "timeBasis": _probe_time_basis(ffprobe_path, file_path) if file_path.exists() else None,
+                "timeBasis": (
+                    dict(item.get("timeBasis") or {})
+                    if isinstance(item.get("timeBasis"), dict)
+                    else _probe_time_basis(ffprobe_path, file_path)
+                    if file_path.exists()
+                    else None
+                ),
             }
         )
     return resolved
@@ -879,11 +883,15 @@ def _analyze_track_constant_grid_dp(
     *,
     constant_grid_dp_solver: Any,
     feature_cache_dir: Path,
+    feature_index_map: dict[str, dict[str, Any]],
+    official_high_attack_cache_dir: Path | None,
     truth: dict[str, Any],
 ) -> dict[str, Any]:
     result = constant_grid_dp_solver.solve_constant_grid_dp_from_cache(
         track=truth,
         feature_cache_dir=feature_cache_dir,
+        feature_index_map=feature_index_map,
+        official_high_attack_cache_dir=official_high_attack_cache_dir,
     )
     return _normalize_bridge_result(result)
 
@@ -960,169 +968,26 @@ def _build_track_report(analysis: dict[str, Any], truth: dict[str, Any]) -> dict
     }
 
 
+def _compact_track_report(row: dict[str, Any]) -> dict[str, Any]:
+    compact = dict(row)
+    analysis = dict(compact.get("analysis") or {})
+    analysis.pop("gridSolverCandidates", None)
+    analysis.pop("gridSolverTopCandidates", None)
+    compact["analysis"] = analysis
+    candidate_oracle = dict(compact.get("candidateOracle") or {})
+    candidate_oracle.pop("topCandidates", None)
+    compact["candidateOracle"] = candidate_oracle
+    return compact
+
+
 def _build_summary(rows: list[dict[str, Any]], error_rows: list[dict[str, Any]]) -> dict[str, Any]:
     return _build_summary_impl(rows, error_rows, strict_tolerance_ms=STRICT_TOLERANCE_MS)
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Benchmark FRKB BeatThis grid against Rekordbox truth")
-    parser.add_argument("--truth", default=str(DEFAULT_TRUTH))
-    parser.add_argument("--truth-batch-id", default="")
-    parser.add_argument("--registry", default=str(DEFAULT_REGISTRY))
-    parser.add_argument("--audio-root", default=str(DEFAULT_AUDIO_ROOT))
-    parser.add_argument("--ffmpeg", default=str(DEFAULT_FFMPEG))
-    parser.add_argument("--ffprobe", default=str(DEFAULT_FFPROBE))
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
-    parser.add_argument("--solver", choices=["legacy", "hybrid", "constant-grid-dp"], default="legacy")
-    parser.add_argument("--device", default="cpu")
-    parser.add_argument("--feature-cache-dir", default=str(DEFAULT_FEATURE_CACHE_DIR))
-    parser.add_argument("--prediction-cache-dir", default=str(DEFAULT_PREDICTION_CACHE_DIR))
-    parser.add_argument(
-        "--no-prediction-cache",
-        action="store_true",
-        help="Disable deterministic BeatThis raw prediction cache.",
-    )
-    parser.add_argument("--limit", type=int, default=0)
-    parser.add_argument(
-        "--only",
-        action="append",
-        default=[],
-        help="Filter tracks by case-insensitive file/title/artist substring. Can be repeated.",
-    )
-    args = parser.parse_args()
+    from rkb_rekordbox_benchmark_cli import run_benchmark_cli
 
-    truth_path = Path(args.truth)
-    audio_roots = _parse_audio_roots(args.audio_root)
-    ffmpeg_path = Path(args.ffmpeg)
-    ffprobe_path = Path(args.ffprobe)
-    output_path = Path(args.output)
-    solver = str(args.solver or "legacy").strip().lower()
-    feature_cache_dir = Path(args.feature_cache_dir)
-    device = str(args.device or "cpu").strip() or "cpu"
-    prediction_cache_dir = None if args.no_prediction_cache else Path(args.prediction_cache_dir)
-    if not truth_path.exists():
-        legacy_truth_path = truth_path.with_name("rekordbox-current-truth.json")
-        raise SystemExit(
-            "v2 Rekordbox truth not found: "
-            f"{truth_path}. Generate a derived file without changing {legacy_truth_path} with: "
-            f'py -3 scripts/convert_legacy_grid_truth_to_v2.py --input "{legacy_truth_path}" '
-            f'--output "{truth_path}" --apply'
-        )
-    missing_audio_roots = [item for item in audio_roots if not item.exists()]
-    if missing_audio_roots:
-        missing = ", ".join(str(item) for item in missing_audio_roots)
-        raise SystemExit(f"audio root not found: {missing}")
-    if not ffmpeg_path.exists():
-        raise SystemExit(f"ffmpeg not found: {ffmpeg_path}")
-    if not ffprobe_path.exists():
-        raise SystemExit(f"ffprobe not found: {ffprobe_path}")
-    if solver in {"hybrid", "constant-grid-dp"} and not feature_cache_dir.exists():
-        raise SystemExit(f"feature cache dir not found: {feature_cache_dir}")
-    started_at = time.time()
-    truth_contract = validate_truth_contract(truth_path)
-    truth_tracks = _load_truth_tracks(
-        truth_path, audio_roots, ffprobe_path, str(args.truth_batch_id or "").strip(), Path(args.registry),
-    )
-    missing_tracks = [item for item in truth_tracks if not item["fileExists"]]
-    if missing_tracks:
-        missing_names = ", ".join(item["fileName"] for item in missing_tracks[:5])
-        raise SystemExit(f"truth tracks missing from audio roots: {missing_names}")
-    only_filters = [_normalize_lookup_key(item) for item in args.only if _normalize_lookup_key(item)]
-    truth_tracks = [item for item in truth_tracks if matches_track_filters(item, only_filters)]
-    if args.limit and args.limit > 0:
-        truth_tracks = truth_tracks[: args.limit]
-    bridge = None
-    checkpoint_path = ""
-    predictor = None
-    cpu_spect = None
-    hybrid_solver = None
-    constant_grid_dp_solver = None
-    if solver == "legacy":
-        bridge = _load_bridge_module()
-        _install_full_logit_prediction_cache(bridge)
-        checkpoint_path = str(bridge._resolve_checkpoint_path())
-        predictor = bridge.Audio2Beats(checkpoint_path=checkpoint_path, device=device, dbn=False)
-        cpu_spect = bridge.LogMelSpect(device="cpu") if bridge._uses_accelerated_device(device) else None
-    elif solver == "hybrid":
-        hybrid_solver = _load_hybrid_solver_module()
-    else:
-        constant_grid_dp_solver = _load_constant_grid_dp_solver_module()
-    prediction_cache_stats = _cache_stats()
-    run_provenance = build_benchmark_provenance_from_args(args, truth_contract)
-
-    rows: list[dict[str, Any]] = []
-    error_rows: list[dict[str, Any]] = []
-    for index, truth in enumerate(truth_tracks, start=1):
-        label = f"[{index}/{len(truth_tracks)}] {truth['fileName']}"
-        print(label, flush=True)
-        try:
-            if solver == "legacy":
-                analysis = _analyze_track(
-                    bridge=bridge,
-                    predictor=predictor,
-                    cpu_spect=cpu_spect,
-                    ffmpeg_path=ffmpeg_path,
-                    device=device,
-                    checkpoint_path=checkpoint_path,
-                    prediction_cache_dir=prediction_cache_dir,
-                    prediction_cache_stats=prediction_cache_stats,
-                    truth=truth,
-                )
-            elif solver == "hybrid":
-                analysis = _analyze_track_hybrid(
-                    hybrid_solver=hybrid_solver,
-                    feature_cache_dir=feature_cache_dir,
-                    truth=truth,
-                )
-            else:
-                analysis = _analyze_track_constant_grid_dp(
-                    constant_grid_dp_solver=constant_grid_dp_solver,
-                    feature_cache_dir=feature_cache_dir,
-                    truth=truth,
-                )
-            rows.append(_build_track_report(analysis, truth))
-        except Exception as error:
-            error_rows.append(
-                {
-                    **truth,
-                    "error": str(error),
-                }
-            )
-            print(f"  error: {error}", flush=True)
-
-    summary = _build_summary(rows, error_rows)
-    payload = attach_benchmark_result_digest({
-        "summary": {
-            **summary,
-            "truthPath": str(truth_path),
-            "runProvenance": run_provenance,
-            "truthBatchId": str(args.truth_batch_id or "").strip() or None,
-            "registry": str(args.registry) if str(args.truth_batch_id or "").strip() else None,
-            "audioRoot": str(args.audio_root),
-            "audioRoots": [str(item) for item in audio_roots],
-            "device": device,
-            "solver": solver,
-            "windowSec": WINDOW_SEC,
-            "maxScanSec": MAX_SCAN_SEC,
-            "featureCache": {
-                "enabled": solver in {"hybrid", "constant-grid-dp"},
-                "dir": str(feature_cache_dir) if solver in {"hybrid", "constant-grid-dp"} else None,
-            },
-            "strictToleranceMs": STRICT_TOLERANCE_MS,
-            "predictionCache": {
-                "enabled": prediction_cache_dir is not None,
-                "dir": str(prediction_cache_dir) if prediction_cache_dir is not None else None,
-                **prediction_cache_stats,
-            },
-            "durationSec": round(time.time() - started_at, 3),
-        },
-        "errors": error_rows,
-        "tracks": rows,
-    })
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps({"summary": payload["summary"], "output": str(output_path)}, ensure_ascii=False, indent=2))
-    return 0 if not error_rows else 1
+    return run_benchmark_cli(sys.modules[__name__])
 
 
 if __name__ == "__main__":

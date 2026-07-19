@@ -28,6 +28,7 @@ from rkb_beatgrid_lab_common import (
     update_feature_index_entry,
     validate_feature_metadata_identity,
 )
+from rkb_official_phase_selector import build_high_attack_from_signal
 
 
 def _array_stats(values: np.ndarray) -> dict[str, Any]:
@@ -124,6 +125,9 @@ def _feature_cache_payload(
             ),
             "predictFrameLogits": benchmark._function_source_signature(rescue_predict),
             "buildAttackEnvelope": benchmark._function_source_signature(build_attack_envelope),
+            "buildOfficialHighAttackEnvelope": benchmark._function_source_signature(
+                build_high_attack_from_signal
+            ),
         },
     }
 
@@ -188,6 +192,8 @@ def _write_feature_arrays(
     full_attack_rate: int,
     lowrate_attack: np.ndarray,
     lowrate_attack_rate: int,
+    high_attack: np.ndarray,
+    high_attack_rate: int,
 ) -> None:
     arrays_path.parent.mkdir(parents=True, exist_ok=True)
     with arrays_path.open("wb") as output:
@@ -201,6 +207,8 @@ def _write_feature_arrays(
             fullAttackSampleRate=np.asarray(full_attack_rate, dtype="int32"),
             lowrateAttackEnvelope=_normalize_array(lowrate_attack),
             lowrateAttackSampleRate=np.asarray(lowrate_attack_rate, dtype="int32"),
+            officialHighAttackEnvelope=_normalize_array(high_attack),
+            officialHighAttackSampleRate=np.asarray(high_attack_rate, dtype="int32"),
         )
 
 
@@ -330,6 +338,10 @@ def _extract_track_features(
         tuning=tuning,
         focus_mode="low",
     )
+    high_attack, high_attack_rate = build_high_attack_from_signal(
+        signal,
+        sample_rate=benchmark.SAMPLE_RATE,
+    )
     legacy_grid_solver = _build_legacy_grid_solver_feature(
         bridge=bridge,
         predictor=predictor,
@@ -354,6 +366,8 @@ def _extract_track_features(
         full_attack_rate=full_attack_rate,
         lowrate_attack=lowrate_attack,
         lowrate_attack_rate=lowrate_attack_rate,
+        high_attack=high_attack,
+        high_attack_rate=high_attack_rate,
     )
     metadata = {
         "cacheKey": cache_key,
@@ -380,6 +394,7 @@ def _extract_track_features(
         "attack": {
             "full": {"sampleRate": full_attack_rate, **_array_stats(full_attack)},
             "lowrate": {"sampleRate": lowrate_attack_rate, **_array_stats(lowrate_attack)},
+            "officialHigh": {"sampleRate": high_attack_rate, **_array_stats(high_attack)},
         },
         "predictionCache": {
             "enabled": prediction_cache_dir is not None,

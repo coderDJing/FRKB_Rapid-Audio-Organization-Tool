@@ -5,6 +5,7 @@ import numpy as np
 from beat_this_full_logit_rescue import _predict_frame_logits
 from beat_this_grid_solver import build_attack_envelope
 from rkb_constant_grid_dp_solver import solve_constant_grid_dp
+from rkb_official_phase_selector import build_high_attack_from_signal
 
 
 def _normalize_array(values: np.ndarray | None) -> np.ndarray:
@@ -83,6 +84,10 @@ def _runtime_arrays(
         tuning=tuning,
         focus_mode="low",
     )
+    high_attack, high_attack_rate = build_high_attack_from_signal(
+        signal,
+        sample_rate=sample_rate,
+    )
     return {
         "beatLogits": _normalize_array(beat_logits),
         "downbeatLogits": _normalize_array(downbeat_logits),
@@ -92,6 +97,8 @@ def _runtime_arrays(
         "fullAttackSampleRate": np.asarray(full_attack_rate, dtype="int32"),
         "lowrateAttackEnvelope": lowrate_attack,
         "lowrateAttackSampleRate": np.asarray(lowrate_attack_rate, dtype="int32"),
+        "officialHighAttackEnvelope": _normalize_array(high_attack),
+        "officialHighAttackSampleRate": np.asarray(high_attack_rate, dtype="int32"),
     }
 
 
@@ -132,6 +139,7 @@ def _constant_grid_used_new_result(result: dict[str, Any]) -> bool:
     features = result.get("gridSolverFeatures") if isinstance(result.get("gridSolverFeatures"), dict) else {}
     return source != "constant-grid-dp:legacy-fallback" or bool(
         features.get("constantGridDpUsedNewCandidate")
+        or features.get("officialHighAttackPhaseApplied")
     )
 
 

@@ -250,6 +250,15 @@ def _run_shard(
     ]
     if args.no_prediction_cache:
         cmd.append("--no-prediction-cache")
+    if bool(getattr(args, "compact_output", False)):
+        cmd.append("--compact-output")
+    official_high_attack_cache_dir = str(
+        getattr(args, "official_high_attack_cache_dir", "") or ""
+    ).strip()
+    if official_high_attack_cache_dir:
+        cmd.extend(
+            ["--official-high-attack-cache-dir", official_high_attack_cache_dir]
+        )
 
     print(f"[shard {shard_index + 1}/{shard_count}] start {shard_truth_path.name}", flush=True)
     result = subprocess.run(
@@ -424,6 +433,14 @@ def _merge_payloads(
                 if str(args.solver) in {"hybrid", "constant-grid-dp"}
                 else None,
             },
+            "officialHighAttackCache": {
+                "enabled": bool(
+                    str(getattr(args, "official_high_attack_cache_dir", "") or "").strip()
+                ),
+                "dir": str(getattr(args, "official_high_attack_cache_dir", "") or "")
+                if str(getattr(args, "official_high_attack_cache_dir", "") or "").strip()
+                else None,
+            },
             "strictToleranceMs": benchmark.STRICT_TOLERANCE_MS,
             "predictionCache": {
                 "enabled": not bool(args.no_prediction_cache),
@@ -533,8 +550,10 @@ def main() -> int:
     parser.add_argument("--solver", choices=["legacy", "hybrid", "constant-grid-dp"], default="legacy")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--feature-cache-dir", default=str(benchmark.DEFAULT_FEATURE_CACHE_DIR))
+    parser.add_argument("--official-high-attack-cache-dir", default="")
     parser.add_argument("--prediction-cache-dir", default=str(benchmark.DEFAULT_PREDICTION_CACHE_DIR))
     parser.add_argument("--no-prediction-cache", action="store_true")
+    parser.add_argument("--compact-output", action="store_true")
     parser.add_argument("--jobs", type=int, default=0)
     parser.add_argument("--shard-dir", default="")
     parser.add_argument("--progress-output", default="")

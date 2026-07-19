@@ -39,6 +39,7 @@ from rkb_constant_grid_dp_octave import (
     rank1_octave_down_diagnostic_features,
 )
 from rkb_locked_phase_ranker import choose_locked_rising_edge_candidate
+from rkb_official_phase_selector import refine_fixed_bpm_candidate
 from rkb_runtime_grid_common import (
     metadata_legacy_candidate as _metadata_legacy_candidate,
     window_summary as _window_summary,
@@ -50,7 +51,7 @@ DEFAULT_TEMPO_STEP_BPM = 0.5
 DEFAULT_TEMPO_LIMIT = 24
 DEFAULT_PHASE_STEP_MS = 2.0
 DEFAULT_MAX_CANDIDATES = 640
-SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-locked-phase-downbeat-ordinal-v1-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-high-structural-score-v1-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1"
+SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-locked-phase-downbeat-ordinal-v1-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-high-structural-score-v1-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1-official-high-attack-phase-v1"
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -76,6 +77,27 @@ def _candidate_source(candidate: dict[str, Any]) -> str:
 
 def _round_feature(value: float) -> float:
     return round(float(value), 6) if math.isfinite(float(value)) else 0.0
+
+
+def _apply_official_phase_refiner(
+    *,
+    selected: dict[str, Any],
+    arrays: dict[str, Any],
+    duration_sec: float,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    if "officialHighAttackEnvelope" not in arrays or "officialHighAttackSampleRate" not in arrays:
+        return selected, {
+            "applied": False,
+            "reason": "missing-high-attack-envelope",
+        }
+    high_attack = np.asarray(arrays["officialHighAttackEnvelope"], dtype="float64")
+    high_attack_rate = _to_float(np.asarray(arrays["officialHighAttackSampleRate"]).item())
+    return refine_fixed_bpm_candidate(
+        selected,
+        high_attack=high_attack,
+        frame_rate=high_attack_rate,
+        duration_sec=duration_sec,
+    )
 
 
 def _sample_values_at_rate(values: np.ndarray, times_sec: np.ndarray, frame_rate: float) -> np.ndarray:
@@ -793,6 +815,13 @@ def solve_constant_grid_dp(
             selected_source=baseline_selected_source,
         )
 
+    selected, official_phase_meta = _apply_official_phase_refiner(
+        selected=selected,
+        arrays=arrays,
+        duration_sec=duration_sec,
+    )
+    official_phase_applied = bool(official_phase_meta.get("applied"))
+
     selected_bpm = _to_float(selected.get("bpm"))
     selected_first_beat_ms = _to_float(selected.get("firstBeatMs"))
     beat_interval_sec = 60.0 / selected_bpm if selected_bpm > 0.0 else 0.0
@@ -828,7 +857,16 @@ def solve_constant_grid_dp(
         guard = "legacy-fallback-integer-bpm-snap"
     else:
         guard = "legacy-fallback-low-confidence"
-    if use_new:
+    original_guard = guard
+    if official_phase_applied:
+        guard = f"{guard}+official-high-attack-overall-shape"
+    if official_phase_applied:
+        original_source = _candidate_source(selected) if use_new else baseline_selected_source
+        selected_source = f"{original_source}:official-high-attack-overall-shape"
+        refined_payload = _diagnostic_candidate(selected)
+        refined_payload["source"] = selected_source
+        candidate_payload.append(refined_payload)
+    elif use_new:
         selected_source = _candidate_source(selected)
     else:
         selected_source = "constant-grid-dp:legacy-fallback"
@@ -903,6 +941,17 @@ def solve_constant_grid_dp(
             "constantGridDpLegacyIntegerBpmMaxDelta": _to_float(
                 integer_bpm_snap_meta.get("maxDeltaBpm"), 0.04
             ),
+            "officialHighAttackPhaseApplied": official_phase_applied,
+            "officialHighAttackPhaseReason": str(official_phase_meta.get("reason") or ""),
+            "officialHighAttackPhaseVersion": str(official_phase_meta.get("version") or ""),
+            "officialHighAttackPhaseOriginalGuard": original_guard,
+            "officialHighAttackPhaseOriginalFirstBeatMs": _to_float(
+                official_phase_meta.get("originalFirstBeatMs")
+            ),
+            "officialHighAttackPhaseRefinedFirstBeatMs": _to_float(
+                official_phase_meta.get("refinedFirstBeatMs")
+            ),
+            "officialHighAttackPhaseShiftMs": _to_float(official_phase_meta.get("shiftMs")),
             "constantGridDpLockedRisingEdgeRankerSwitch": locked_ranker_switch,
             "constantGridDpLockedRisingEdgeRankerReason": str(locked_ranker_meta.get("reason") or ""),
             "constantGridDpLockedRisingEdgeRankerProbability": round(_to_float(locked_ranker_meta.get("probability")), 9),
