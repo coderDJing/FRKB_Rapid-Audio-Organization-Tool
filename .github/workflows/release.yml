@@ -284,6 +284,7 @@ jobs:
             "ffmpeg/win32-x64/ffprobe.exe",
             "demucs/bootstrap/mixtape_demucs_bootstrap.py",
             "demucs/bootstrap/beat_this_bridge.py",
+            "demucs/bootstrap/rkb_official_phase_selector.py",
             "demucs/models/htdemucs.yaml",
             "demucs/models/955717e8-8726e21a.th",
             "rekordboxDesktopLibrary/bridge.py",
@@ -311,6 +312,10 @@ jobs:
           }
 
           Write-Host "Packaged Demucs resources verified (Windows, runtime excluded)."
+          python scripts/verify_packaged_python_import_closure.py `
+            --source-root scripts `
+            --packaged-root "$resourcesRoot/demucs/bootstrap" `
+            --entry beat_this_bridge.py
 
       # 不再复制 rc.yml，严格遵循 GitHub provider 读取 latest.yml / latest-mac.yml
 
@@ -749,6 +754,7 @@ jobs:
             "ffmpeg/darwin/ffprobe"
             "demucs/bootstrap/mixtape_demucs_bootstrap.py"
             "demucs/bootstrap/beat_this_bridge.py"
+            "demucs/bootstrap/rkb_official_phase_selector.py"
             "demucs/models/htdemucs.yaml"
             "demucs/models/955717e8-8726e21a.th"
             "rekordboxDesktopLibrary/bridge.py"
@@ -780,6 +786,11 @@ jobs:
           if [ "$MISSING" -ne 0 ]; then
             exit 1
           fi
+
+          python3 scripts/verify_packaged_python_import_closure.py \
+            --source-root scripts \
+            --packaged-root "${RESOURCES_DIR}/demucs/bootstrap" \
+            --entry beat_this_bridge.py
 
           echo "Packaged Demucs resources verified (macOS, runtime excluded)."
 

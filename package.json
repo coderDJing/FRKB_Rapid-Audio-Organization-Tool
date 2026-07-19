@@ -77,6 +77,7 @@
           "rkb_constant_grid_dp_phase_path.py",
           "rkb_constant_grid_dp_selection.py",
           "rkb_constant_grid_dp_solver.py",
+          "rkb_official_phase_selector.py",
           "rkb_locked_phase_ranker.py",
           "rkb_locked_phase_ranker_features.py",
           "rkb_runtime_candidate_utils.py",
