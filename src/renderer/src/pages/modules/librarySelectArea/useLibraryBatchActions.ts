@@ -14,7 +14,7 @@ import {
   startAudioConvertFromFiles
 } from '@renderer/utils/audioConvertActions'
 import {
-  queueManualKeyAnalysisBatch,
+  promptAndQueueManualKeyAnalysisBatch,
   scanSongListsForMissingAnalysisFiles
 } from '@renderer/utils/manualKeyAnalysis'
 import { emptyRecycleBinWithOptimisticUpdate } from '@renderer/utils/recycleBinActions'
@@ -209,7 +209,7 @@ export function useLibraryBatchActions(options: {
       includeSongStructure: true
     })
     if (files.length) {
-      await queueManualKeyAnalysisBatch(files, 'tracks.analyzingMissingTracks')
+      await promptAndQueueManualKeyAnalysisBatch(files, 'tracks.analyzingMissingTracks')
       return
     }
     await confirm({

@@ -142,6 +142,7 @@ def _solver_contract() -> dict[str, Any]:
         SCRIPTS_ROOT / "rkb_nested_lobo_contract.py",
         SCRIPTS_ROOT / "rkb_nested_lobo_evaluator.py",
         SCRIPTS_ROOT / "rkb_constant_grid_dp_solver.py",
+        SCRIPTS_ROOT / "models" / "rkb-official-downbeat-rotation-candidate-v1.json",
         SCRIPTS_ROOT / "rkb_beatgrid_candidate_lab.py",
     ]
     dependencies = collect_dependency_files(entrypoints, SCRIPTS_ROOT)

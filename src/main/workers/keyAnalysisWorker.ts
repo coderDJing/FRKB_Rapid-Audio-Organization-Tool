@@ -26,6 +26,7 @@ import {
 } from '../../shared/songBeatGridMapV2'
 import { buildSongStructureAnalysisV23 } from '../../shared/songStructureV23'
 import type { SongStructureAnalysisV23 } from '../../shared/songStructureV23Common'
+import type { AnalysisBpmRange } from '../../shared/analysisBpmRange'
 
 type KeyJob = {
   jobId: number
@@ -36,6 +37,7 @@ type KeyJob = {
   needsWaveform?: boolean
   needsEnergy?: boolean
   needsStructure?: boolean
+  analysisBpmRange?: AnalysisBpmRange
   cachedBpm?: number
   cachedBeatGridMap?: SongBeatGridMapV2
   cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
@@ -273,6 +275,7 @@ const analyzeKeyForFile = (
     cachedFirstBeatMs?: number
     cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
     analyzedTimeBasisOffsetMs?: number
+    analysisBpmRange?: AnalysisBpmRange
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -292,6 +295,7 @@ const analyzeKeyForFileInternal = async (
     cachedBeatGridMap?: SongBeatGridMapV2
     cachedUnifiedDisplayWaveformData?: UnifiedDisplayWaveformDetailData
     analyzedTimeBasisOffsetMs?: number
+    analysisBpmRange?: AnalysisBpmRange
   },
   reportProgress: (progress: Omit<KeyProgressPayload, 'elapsedMs'>) => void
 ): Promise<KeyResultPayload> => {
@@ -421,7 +425,9 @@ const analyzeKeyForFileInternal = async (
           pcmData: beatGridDecoded.pcmData,
           sampleRate: beatGridDecoded.sampleRate,
           channels: beatGridDecoded.channels,
-          sourceFilePath: filePath
+          sourceFilePath: filePath,
+          minBpm: options.analysisBpmRange?.minBpm,
+          maxBpm: options.analysisBpmRange?.maxBpm
         })
         result.bpm = beatThisResult.bpm
         result.firstBeatMs = beatThisResult.firstBeatMs
@@ -668,7 +674,8 @@ parentPort?.on('message', async (job: KeyJob) => {
         cachedBpm: job.cachedBpm,
         cachedBeatGridMap: job.cachedBeatGridMap,
         cachedUnifiedDisplayWaveformData: job.cachedUnifiedDisplayWaveformData,
-        analyzedTimeBasisOffsetMs: job.analyzedTimeBasisOffsetMs
+        analyzedTimeBasisOffsetMs: job.analyzedTimeBasisOffsetMs,
+        analysisBpmRange: job.analysisBpmRange
       },
       reportProgress
     )

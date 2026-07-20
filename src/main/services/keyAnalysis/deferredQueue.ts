@@ -5,6 +5,10 @@ import type {
   KeyAnalysisRequestFlags,
   KeyAnalysisSource
 } from './types'
+import {
+  resolveAnalysisBpmRange,
+  type AnalysisBpmRangePresetId
+} from '../../../shared/analysisBpmRange'
 
 type DeferredRequestOptions = KeyAnalysisRequestFlags & {
   fastAnalysis?: boolean
@@ -12,6 +16,7 @@ type DeferredRequestOptions = KeyAnalysisRequestFlags & {
   category?: KeyAnalysisQueueCategory
   waveformOnly?: boolean
   includeStructure?: boolean
+  analysisBpmRangeId?: AnalysisBpmRangePresetId
 }
 
 type DeferredQueueHelpers = {
@@ -93,6 +98,10 @@ export class KeyAnalysisDeferredQueue {
       category: options.category,
       waveformOnly: options.waveformOnly === true,
       includeStructure: options.includeStructure === true,
+      analysisBpmRange: resolveAnalysisBpmRange(
+        options.analysisBpmRangeId,
+        active.analysisBpmRange?.id
+      ),
       forceAnalysis: options.forceAnalysis === true,
       manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }

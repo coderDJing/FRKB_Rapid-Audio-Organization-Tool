@@ -21,7 +21,7 @@ import { setPendingMixtapeProjectMode } from '@renderer/composables/mixtape/stem
 import { startAudioConvertFromFiles } from '@renderer/utils/audioConvertActions'
 import { appendOrderedTracksToMixtape } from '@renderer/utils/mixtapePlaylistAppend'
 import {
-  queueManualKeyAnalysisBatch,
+  promptAndQueueManualKeyAnalysisBatch,
   scanSongListsForMissingAnalysisFiles
 } from '@renderer/utils/manualKeyAnalysis'
 import {
@@ -1051,7 +1051,7 @@ export function useLibraryContextMenu({
           })
           return
         }
-        await queueManualKeyAnalysisBatch(files, 'tracks.analyzingMissingTracks')
+        await promptAndQueueManualKeyAnalysisBatch(files, 'tracks.analyzingMissingTracks')
         break
       }
       case 'tracks.reanalyzePlaylist': {

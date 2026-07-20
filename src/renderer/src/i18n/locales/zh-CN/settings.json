@@ -1,5 +1,15 @@
 {
   "settings": {
+    "analysisBpmRange": {
+      "label": "BPM 分析范围",
+      "dialogTitle": "分析曲目",
+      "dialogSummary": "发现 {count} 首曲目需要分析。",
+      "dialogHint": "范围决定半速/倍速解释；此选择也会用于之后的闲时自动分析。",
+      "settingsHint": "较窄范围可以避免半速/倍速歧义，分析结果会始终限制在所选范围内。",
+      "settingsScopeHint": "修改后仅影响新入队和重新分析的曲目，不会改动已有分析结果。",
+      "start": "开始分析",
+      "legacyOption": "{range}（原有范围）"
+    },
     "showPlaylistTrackCount": "在歌单名称后显示曲目数量",
     "curatedArtistTracking": {
       "title": "精选表演者联动",
@@ -88,6 +98,7 @@
       "sectionPlaybackRangeTitle": "区间播放",
       "sectionPlaybackTitle": "播放与快捷键",
       "sectionPlaybackDesc": "播放器行为、波形显示和全局快捷键统一归到一组。",
+      "sectionAnalysisTitle": "曲目分析",
       "sectionMetadataTitle": "元数据与指纹",
       "sectionMetadataDesc": "AcoustID、指纹模式和扫描格式集中管理，少绕路。",
       "sectionLibraryTitle": "资料库与列表",

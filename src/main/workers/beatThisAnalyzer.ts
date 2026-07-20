@@ -410,6 +410,8 @@ const analyzeBeatGridWithBeatThisFromPcm = async (params: {
   sourceFilePath?: string
   windowSec?: number
   maxScanSec?: number
+  minBpm?: number
+  maxBpm?: number
 }) => {
   const pcmData = Buffer.isBuffer(params.pcmData) ? params.pcmData : Buffer.from(params.pcmData)
   const totalSamples = Math.floor(pcmData.byteLength / 4)
@@ -437,7 +439,9 @@ const analyzeBeatGridWithBeatThisFromPcm = async (params: {
         maxScanSec: Math.max(
           Math.max(1, Number(params.windowSec) || DEFAULT_WINDOW_SEC),
           Number(params.maxScanSec) || DEFAULT_MAX_SCAN_SEC
-        )
+        ),
+        minBpm: Number(params.minBpm),
+        maxBpm: Number(params.maxBpm)
       })
 
       const response = new Promise<BeatThisAnalyzeResult>((resolve, reject) => {
@@ -464,6 +468,8 @@ export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
   sourceFilePath?: string
   windowSec?: number
   maxScanSec?: number
+  minBpm?: number
+  maxBpm?: number
 }) => {
   const pcmData = Buffer.isBuffer(params.pcmData) ? params.pcmData : Buffer.from(params.pcmData)
   const sampleRate = Math.max(1, Math.floor(Number(params.sampleRate) || 0))
@@ -482,6 +488,8 @@ export const analyzeBeatGridWithBeatThisSlidingWindowsFromPcm = async (params: {
     channels,
     sourceFilePath: params.sourceFilePath,
     windowSec,
-    maxScanSec
+    maxScanSec,
+    minBpm: params.minBpm,
+    maxBpm: params.maxBpm
   })
 }

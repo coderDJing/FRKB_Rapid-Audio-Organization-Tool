@@ -1,4 +1,5 @@
 import type { IPlayerGlobalShortcuts, ISettingConfig } from 'src/types/globals'
+import { normalizeAnalysisBpmRangeId } from '@shared/analysisBpmRange'
 
 export const AUDIO_OUTPUT_FOLLOW_SYSTEM_ID = ''
 
@@ -23,6 +24,7 @@ export const ensurePlayerGlobalShortcuts = (
 }
 
 export const ensureSettingDialogRuntimeDefaults = (runtime: SettingDialogRuntime) => {
+  runtime.setting.analysisBpmRange = normalizeAnalysisBpmRangeId(runtime.setting.analysisBpmRange)
   if (runtime.setting.enablePlaybackRange === undefined) {
     runtime.setting.enablePlaybackRange = false
   }

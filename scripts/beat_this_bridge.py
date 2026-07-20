@@ -15,73 +15,6 @@ DEFAULT_BEAT_THIS_CHECKPOINT_RELATIVE_PATH = os.path.join("beat-this-checkpoints
 _DLL_DIR_HANDLES: list[Any] = []
 WINDOW_MIN_DURATION_SEC = 8.0
 
-DEFAULT_ANCHOR_TUNING = {
-    "focusMode": "low",
-    "envelopeSampleRateLow": 800,
-    "envelopeSampleRateFull": 4000,
-    "scoreWindowMs": 8.0,
-    "bpmSnapIntegerThreshold": 0.03,
-    "maxShiftSecCap": 0.03,
-    "maxShiftSecFloor": 0.015,
-    "maxShiftIntervalRatio": 0.06,
-    "stepMs": 2.0,
-    "maxBeats": 64,
-    "backtrackThresholdRatio": 0.10,
-    "backtrackThresholdFloor": 0.004,
-    "valleySearchBack": 8,
-    "valleySearchForward": 2,
-    "backtrackSafetyFrames": 36,
-    "backtrackDropRatio": 0.01,
-    "backtrackThresholdMultiplier": 1.05,
-    "localPeakMin": 0.12,
-    "refineRadiusMs": 10.0,
-    "confidenceFloor": 0.42,
-    "relativeGainScale": 0.18,
-    "scoreContrastScale": 0.08,
-    "matchRatioCenter": 0.55,
-    "matchRatioScale": 0.30,
-    "offsetMadCenterMs": 8.0,
-    "offsetMadScaleMs": 5.0,
-    "positiveShiftPolicy": "allow",
-    "positiveMinRawFirstBeatMs": 0.0,
-    "positiveMinShiftMs": 6.0,
-    "positiveMaxShiftMs": 8.0,
-    "positiveMatchRatioMin": 0.82,
-    "positiveOffsetMadMaxMs": 5.0,
-    "positiveRelativeGainMin": 0.08,
-    "positiveScoreContrastMin": 0.025,
-    "positiveConfidenceMin": 0.82,
-    "positiveAmbiguityGuardRawFirstBeatMinMs": 100.0,
-    "positiveAmbiguityGuardMinCorrectionMs": 6.0,
-    "positiveAmbiguityGuardWideLeadMs": 30.0,
-    "positiveAmbiguityGuardWideScoreRatioMin": 1.02,
-    "lowbandFallbackMinMatchRatio": 1.01,
-    "lowbandFallbackMaxOffsetMadMs": 10.0,
-    "headBootstrapMinRawFirstBeatMs": 99999.0,
-    "headBootstrapMinShiftMs": 20.0,
-    "headBootstrapMaxShiftMs": 90.0,
-    "headBootstrapMinPeak": 0.25,
-    "headBootstrapMinSupport": 8,
-    "negativeMinShiftMs": 4.0,
-    "negativeMaxShiftMs": 18.0,
-    "negativeMatchRatioMin": 0.72,
-    "negativeOffsetMadMaxMs": 7.5,
-    "negativeRelativeGainMin": 0.08,
-    "negativeScoreContrastMin": 0.025,
-    "negativeConfidenceMin": 0.91,
-    "gridSolverPolicy": "conservative",
-    "gridSolverMinRawFirstBeatMs": 160.0,
-    "gridSolverMaxAnchorCorrectionMs": 8.0,
-    "gridSolverMinCorrectionMs": 6.0,
-    "gridSolverMaxCorrectionMs": 12.0,
-    "gridSolverMinCorrectionGainMs": 4.0,
-    "gridSolverMinRelativeGain": 0.18,
-    "gridSolverMinScoreContrast": 0.12,
-    "snapToZeroRawFirstBeatMaxMs": 24.0,
-    "snapToZeroCorrectedMaxMs": 18.0,
-    "snapToZeroMinNegativeShiftMs": 4.0,
-}
-
 
 def _split_env_paths(env_name: str) -> list[str]:
     raw_value = str(os.environ.get(env_name) or "").strip()
@@ -113,6 +46,7 @@ if SCRIPT_DIR not in sys.path:
 import numpy as np
 import soxr
 import torch
+from beat_this_anchor_tuning_defaults import DEFAULT_ANCHOR_TUNING
 
 import beat_this.inference as _beat_this_inference
 from beat_this.inference import Audio2Beats, split_predict_aggregate
@@ -765,6 +699,8 @@ def _analyze_prepared_windows_to_track_result(
     device: str = "cpu",
     time_basis: dict[str, Any] | None = None,
     use_runtime_constant_grid: bool = False,
+    min_bpm: float = 70.0,
+    max_bpm: float = 200.0,
 ) -> dict[str, Any]:
     if not prepared_windows:
         raise RuntimeError(f"no valid beat-this result for {source_file_path}")
@@ -940,6 +876,8 @@ def _analyze_prepared_windows_to_track_result(
             cpu_spect=cpu_spect,
             device=device,
             time_basis=time_basis,
+            min_bpm=min_bpm,
+            max_bpm=max_bpm,
         )
         if constant_grid_result is not None:
             return constant_grid_result
@@ -1060,6 +998,8 @@ def serve(device: str, dbn: bool) -> int:
             time_basis = header.get("timeBasis") if isinstance(header.get("timeBasis"), dict) else None
             window_sec = max(1.0, float(header.get("windowSec") or 30.0))
             max_scan_sec = max(window_sec, float(header.get("maxScanSec") or 120.0))
+            min_bpm = max(1.0, float(header.get("minBpm") or 70.0))
+            max_bpm = max(min_bpm, float(header.get("maxBpm") or 200.0))
             if sample_rate <= 0:
                 raise RuntimeError("sampleRate must be positive")
             if channels <= 0:
@@ -1094,7 +1034,16 @@ def serve(device: str, dbn: bool) -> int:
                 device=device,
                 time_basis=time_basis,
                 use_runtime_constant_grid=str(tuning.get("gridSolverPolicy") or "") != "off",
+                min_bpm=min_bpm,
+                max_bpm=max_bpm,
             )
+
+            result_bpm = float(result.get("bpm") or 0.0)
+            if not (min_bpm <= result_bpm <= max_bpm):
+                raise RuntimeError(
+                    f"analyzed BPM {result_bpm:.6f} is outside configured range "
+                    f"{min_bpm:.6f}-{max_bpm:.6f}"
+                )
 
             _emit(
                 {

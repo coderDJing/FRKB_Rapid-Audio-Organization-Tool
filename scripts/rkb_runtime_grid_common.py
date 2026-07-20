@@ -4,7 +4,7 @@ from typing import Any
 LEGACY_GRID_SOURCE = "beat-this-current-global-solver"
 
 
-def _to_float(value: Any, default: float = 0.0) -> float:
+def to_float(value: Any, default: float = 0.0) -> float:
     try:
         numeric = float(value)
     except Exception:
@@ -12,10 +12,25 @@ def _to_float(value: Any, default: float = 0.0) -> float:
     return numeric if math.isfinite(numeric) else default
 
 
-def _clamp01(value: float) -> float:
+def clamp01(value: float) -> float:
     if not math.isfinite(value):
         return 0.0
     return max(0.0, min(1.0, value))
+
+
+def candidate_is_within_bpm_range(
+    candidate: dict[str, Any] | None,
+    min_bpm: float,
+    max_bpm: float,
+) -> bool:
+    if candidate is None:
+        return False
+    bpm = to_float(candidate.get("bpm"))
+    return bpm > 0.0 and float(min_bpm) <= bpm <= float(max_bpm)
+
+
+def round_feature(value: float) -> float:
+    return round(float(value), 6) if math.isfinite(float(value)) else 0.0
 
 
 def metadata_legacy_candidate(metadata: dict[str, Any]) -> dict[str, Any] | None:
@@ -23,16 +38,16 @@ def metadata_legacy_candidate(metadata: dict[str, Any]) -> dict[str, Any] | None
     result = payload.get("result") if isinstance(payload, dict) and isinstance(payload.get("result"), dict) else None
     if result is None:
         return None
-    bpm = _to_float(result.get("bpm"))
-    first_beat_ms = _to_float(result.get("firstBeatMs"))
+    bpm = to_float(result.get("bpm"))
+    first_beat_ms = to_float(result.get("firstBeatMs"))
     if bpm <= 0.0 or not math.isfinite(first_beat_ms):
         return None
     features = result.get("gridSolverFeatures") if isinstance(result.get("gridSolverFeatures"), dict) else {}
-    legacy_score = _to_float(result.get("gridSolverScore"))
-    anchor_confidence = _to_float(result.get("anchorConfidenceScore"))
-    drift_128_ms = abs(_to_float(result.get("beatThisEstimatedDrift128Ms")))
-    confidence_score = _clamp01(anchor_confidence)
-    drift_score = _clamp01((24.0 - min(24.0, drift_128_ms)) / 24.0)
+    legacy_score = to_float(result.get("gridSolverScore"))
+    anchor_confidence = to_float(result.get("anchorConfidenceScore"))
+    drift_128_ms = abs(to_float(result.get("beatThisEstimatedDrift128Ms")))
+    confidence_score = clamp01(anchor_confidence)
+    drift_score = clamp01((24.0 - min(24.0, drift_128_ms)) / 24.0)
     return {
         "source": "hybrid-legacy-source",
         "tempoSource": LEGACY_GRID_SOURCE,
@@ -45,7 +60,7 @@ def metadata_legacy_candidate(metadata: dict[str, Any]) -> dict[str, Any] | None
         "features": {
             "tempoScore": round(drift_score, 6),
             "phaseScore": round(confidence_score, 6),
-            "downbeatScore": round(_to_float(features.get("downbeatConsensusScore")), 6),
+            "downbeatScore": round(to_float(features.get("downbeatConsensusScore")), 6),
             "legacyGridSolverScore": round(legacy_score, 6),
             "legacyGridSolverSelectedSource": str(result.get("gridSolverSelectedSource") or ""),
             "anchorConfidenceScore": round(anchor_confidence, 6),
@@ -66,12 +81,12 @@ def window_summary(metadata: dict[str, Any]) -> dict[str, Any]:
             "windowDurationSec": 0.0,
             "windowCount": 0,
         }
-    best = max(valid, key=lambda item: _to_float(item.get("qualityScore")))
+    best = max(valid, key=lambda item: to_float(item.get("qualityScore")))
     return {
         "beatCount": int(best.get("beatCount") or 0),
         "downbeatCount": int(best.get("downbeatCount") or 0),
-        "qualityScore": round(_to_float(best.get("qualityScore")), 6),
+        "qualityScore": round(to_float(best.get("qualityScore")), 6),
         "windowIndex": int(best.get("windowIndex") or 0),
-        "windowDurationSec": round(_to_float(best.get("windowDurationSec")), 3),
+        "windowDurationSec": round(to_float(best.get("windowDurationSec")), 3),
         "windowCount": len(valid),
     }

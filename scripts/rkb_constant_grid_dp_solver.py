@@ -39,9 +39,18 @@ from rkb_constant_grid_dp_octave import (
     rank1_octave_down_diagnostic_features,
 )
 from rkb_locked_phase_ranker import choose_locked_rising_edge_candidate
+from rkb_official_downbeat_selector import (
+    build_downbeat_rotation_evidence,
+    load_linear_downbeat_artifact,
+    select_downbeat_rotation_with_linear_model,
+)
 from rkb_official_phase_selector import refine_fixed_bpm_candidate
 from rkb_runtime_grid_common import (
+    candidate_is_within_bpm_range as _candidate_is_within_bpm_range,
+    clamp01 as _clamp01,
     metadata_legacy_candidate as _metadata_legacy_candidate,
+    round_feature as _round_feature,
+    to_float as _to_float,
     window_summary as _window_summary,
 )
 
@@ -51,21 +60,8 @@ DEFAULT_TEMPO_STEP_BPM = 0.5
 DEFAULT_TEMPO_LIMIT = 24
 DEFAULT_PHASE_STEP_MS = 2.0
 DEFAULT_MAX_CANDIDATES = 640
-SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-locked-phase-downbeat-ordinal-v1-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-high-structural-score-v1-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1-official-high-attack-phase-v1"
-
-
-def _to_float(value: Any, default: float = 0.0) -> float:
-    try:
-        numeric = float(value)
-    except Exception:
-        return default
-    return numeric if math.isfinite(numeric) else default
-
-
-def _clamp01(value: float) -> float:
-    if not math.isfinite(value):
-        return 0.0
-    return max(0.0, min(1.0, value))
+SOLVER_VERSION = "constant-grid-dp-cache-v3-locked-rising-edge-ranker-locked-phase-downbeat-ordinal-v1-integer-bpm-snap-rank1-material-legacy-weakness-v3-rank1-structural-phase-v2-rank1-high-structural-score-v1-rank1-negative-legacy-score-v2-head-near-zero-v1-rank1-octave-down-v1-official-high-attack-phase-v1-official-downbeat-rotation-v1"
+OFFICIAL_DOWNBEAT_ARTIFACT = load_linear_downbeat_artifact()
 
 
 def _candidate_source(candidate: dict[str, Any]) -> str:
@@ -73,10 +69,6 @@ def _candidate_source(candidate: dict[str, Any]) -> str:
     phase_source = str(candidate.get("phaseSource") or "phase")
     bar_source = str(candidate.get("barSource") or "bar")
     return f"constant-grid-dp:{tempo_source}:{phase_source}:{bar_source}"
-
-
-def _round_feature(value: float) -> float:
-    return round(float(value), 6) if math.isfinite(float(value)) else 0.0
 
 
 def _apply_official_phase_refiner(
@@ -98,6 +90,47 @@ def _apply_official_phase_refiner(
         frame_rate=high_attack_rate,
         duration_sec=duration_sec,
     )
+
+
+def _apply_official_downbeat_selector(
+    *,
+    selected: dict[str, Any],
+    arrays: dict[str, Any],
+    duration_sec: float,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    current_rotation = int(selected.get("barBeatOffset") or 0) % 4
+    evidence = build_downbeat_rotation_evidence(
+        arrays=arrays,
+        bpm=_to_float(selected.get("bpm")),
+        first_beat_ms=_to_float(selected.get("firstBeatMs")),
+        duration_sec=duration_sec,
+    )
+    meta = select_downbeat_rotation_with_linear_model(
+        evidence=evidence,
+        current_rotation=current_rotation,
+        artifact=OFFICIAL_DOWNBEAT_ARTIFACT,
+    )
+    if not meta.get("applied"):
+        return selected, meta
+    selected_rotation = int(meta.get("selectedRotation") or 0) % 4
+    features = dict(selected.get("features") or {})
+    features.update(
+        {
+            "officialDownbeatRotationApplied": True,
+            "officialDownbeatRotationVersion": str(meta.get("version") or ""),
+            "officialDownbeatRotationArtifactVersion": str(meta.get("artifactVersion") or ""),
+            "officialDownbeatRotationOriginal": current_rotation,
+            "officialDownbeatRotationSelected": selected_rotation,
+            "officialDownbeatRotationAdvantage": _round_feature(_to_float(meta.get("advantage"))),
+            "officialDownbeatRotationMargin": _round_feature(_to_float(meta.get("margin"))),
+            "officialDownbeatRotationBlockAgreement": _round_feature(_to_float(meta.get("blockAgreement"))),
+        }
+    )
+    return {
+        **selected,
+        "barBeatOffset": selected_rotation,
+        "features": features,
+    }, meta
 
 
 def _sample_values_at_rate(values: np.ndarray, times_sec: np.ndarray, frame_rate: float) -> np.ndarray:
@@ -593,8 +626,15 @@ def solve_constant_grid_dp(
         phase_step_ms=phase_step_ms,
         max_candidates=max_candidates,
     )
-    legacy_candidate = _metadata_legacy_candidate(metadata)
+    raw_legacy_candidate = _metadata_legacy_candidate(metadata)
+    legacy_outside_configured_range = bool(
+        raw_legacy_candidate is not None
+        and not _candidate_is_within_bpm_range(raw_legacy_candidate, min_bpm, max_bpm)
+    )
+    legacy_candidate = None if legacy_outside_configured_range else raw_legacy_candidate
     if not candidates and legacy_candidate is None:
+        if legacy_outside_configured_range:
+            raise RuntimeError("constant-grid-dp has no candidate within configured BPM range")
         raise RuntimeError("constant-grid-dp candidate pool is empty")
 
     new_selected = candidates[0] if candidates else None
@@ -821,6 +861,12 @@ def solve_constant_grid_dp(
         duration_sec=duration_sec,
     )
     official_phase_applied = bool(official_phase_meta.get("applied"))
+    selected, official_downbeat_meta = _apply_official_downbeat_selector(
+        selected=selected,
+        arrays=arrays,
+        duration_sec=duration_sec,
+    )
+    official_downbeat_applied = bool(official_downbeat_meta.get("applied"))
 
     selected_bpm = _to_float(selected.get("bpm"))
     selected_first_beat_ms = _to_float(selected.get("firstBeatMs"))
@@ -853,6 +899,8 @@ def solve_constant_grid_dp(
         guard = "constant-grid-dp-conservative-switch"
     elif phase_evidence_switch and use_new:
         guard = "constant-grid-dp-phase-evidence-switch"
+    elif legacy_outside_configured_range and use_new:
+        guard = "constant-grid-dp-configured-bpm-range"
     elif bool(integer_bpm_snap_meta.get("snapped")):
         guard = "legacy-fallback-integer-bpm-snap"
     else:
@@ -870,6 +918,12 @@ def solve_constant_grid_dp(
         selected_source = _candidate_source(selected)
     else:
         selected_source = "constant-grid-dp:legacy-fallback"
+    if official_downbeat_applied:
+        guard = f"{guard}+official-downbeat-rotation"
+        selected_source = f"{selected_source}:official-downbeat-rotation"
+        downbeat_payload = _diagnostic_candidate(selected)
+        downbeat_payload["source"] = selected_source
+        candidate_payload.append(downbeat_payload)
     anchor_confidence_score = (
         _to_float(locked_ranker_meta.get("probability"))
         if locked_ranker_switch
@@ -930,6 +984,9 @@ def solve_constant_grid_dp(
             "constantGridDpPhaseEvidenceSwitchScore": phase_evidence_score,
             "constantGridDpPhaseEvidenceRank": phase_evidence_rank,
             "constantGridDpLegacyWeaknessScore": legacy_weakness,
+            "constantGridDpLegacyOutsideConfiguredBpmRange": legacy_outside_configured_range,
+            "constantGridDpConfiguredMinBpm": round(float(min_bpm), 6),
+            "constantGridDpConfiguredMaxBpm": round(float(max_bpm), 6),
             "constantGridDpLegacyIntegerBpmSnap": bool(integer_bpm_snap_meta.get("snapped")),
             "constantGridDpLegacyIntegerBpmOriginalBpm": _to_float(
                 integer_bpm_snap_meta.get("originalBpm")
@@ -952,6 +1009,28 @@ def solve_constant_grid_dp(
                 official_phase_meta.get("refinedFirstBeatMs")
             ),
             "officialHighAttackPhaseShiftMs": _to_float(official_phase_meta.get("shiftMs")),
+            "officialDownbeatRotationApplied": official_downbeat_applied,
+            "officialDownbeatRotationReason": str(official_downbeat_meta.get("reason") or ""),
+            "officialDownbeatRotationVersion": str(official_downbeat_meta.get("version") or ""),
+            "officialDownbeatRotationArtifactVersion": str(official_downbeat_meta.get("artifactVersion") or ""),
+            "officialDownbeatRotationOriginal": int(
+                official_downbeat_meta.get("currentRotation") or 0
+            ),
+            "officialDownbeatRotationSelected": int(
+                official_downbeat_meta.get("selectedRotation") or 0
+            ),
+            "officialDownbeatRotationEvidenceTop": int(
+                official_downbeat_meta.get("evidenceTopRotation") or 0
+            ),
+            "officialDownbeatRotationAdvantage": _to_float(
+                official_downbeat_meta.get("advantage")
+            ),
+            "officialDownbeatRotationMargin": _to_float(
+                official_downbeat_meta.get("margin")
+            ),
+            "officialDownbeatRotationBlockAgreement": _to_float(
+                official_downbeat_meta.get("blockAgreement")
+            ),
             "constantGridDpLockedRisingEdgeRankerSwitch": locked_ranker_switch,
             "constantGridDpLockedRisingEdgeRankerReason": str(locked_ranker_meta.get("reason") or ""),
             "constantGridDpLockedRisingEdgeRankerProbability": round(_to_float(locked_ranker_meta.get("probability")), 9),

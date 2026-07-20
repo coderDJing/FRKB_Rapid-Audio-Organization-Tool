@@ -9,6 +9,7 @@ import type {
 import { KEY_ANALYSIS_WORKER_MAX, normalizePath } from './keyAnalysis/types'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { isLibraryMergeMutationLocked } from './libraryMerge/mutationGate'
+import type { AnalysisBpmRangePresetId } from '../../shared/analysisBpmRange'
 
 type EnqueueKeyAnalysisOptions = KeyAnalysisRequestFlags & {
   urgent?: boolean
@@ -19,6 +20,7 @@ type EnqueueKeyAnalysisOptions = KeyAnalysisRequestFlags & {
   category?: KeyAnalysisQueueCategory
   waveformOnly?: boolean
   includeStructure?: boolean
+  analysisBpmRangeId?: AnalysisBpmRangePresetId
   manualBatchId?: string
   manualBatchIds?: string[]
 }
@@ -291,7 +293,10 @@ keyAnalysisEvents.on(
 
 export function enqueueManualKeyAnalysisBatch(
   filePaths: string[],
-  options?: { titleKey?: string } & KeyAnalysisRequestFlags
+  options?: {
+    titleKey?: string
+    analysisBpmRangeId?: AnalysisBpmRangePresetId
+  } & KeyAnalysisRequestFlags
 ) {
   if (isLibraryMergeMutationLocked()) return { batchId: '', queued: 0 }
   pruneUntrackedManualBatchPaths()
@@ -332,6 +337,7 @@ export function enqueueManualKeyAnalysisBatch(
     category: 'manual-batch',
     manualBatchId: batchId,
     forceAnalysis: options?.forceAnalysis,
+    analysisBpmRangeId: options?.analysisBpmRangeId,
     includeStructure: true
   })
   reevaluateConcurrency()

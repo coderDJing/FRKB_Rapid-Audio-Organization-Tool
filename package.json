@@ -68,6 +68,7 @@
         "from": "scripts",
         "to": "demucs/bootstrap",
         "filter": [
+          "beat_this_anchor_tuning_defaults.py",
           "beat_this_runtime_constant_grid.py",
           "rkb_beatgrid_candidate_lab.py",
           "rkb_constant_grid_dp_cache.py",
@@ -77,11 +78,13 @@
           "rkb_constant_grid_dp_phase_path.py",
           "rkb_constant_grid_dp_selection.py",
           "rkb_constant_grid_dp_solver.py",
+          "rkb_official_downbeat_selector.py",
           "rkb_official_phase_selector.py",
           "rkb_locked_phase_ranker.py",
           "rkb_locked_phase_ranker_features.py",
           "rkb_runtime_candidate_utils.py",
-          "rkb_runtime_grid_common.py"
+          "rkb_runtime_grid_common.py",
+          "models/rkb-official-downbeat-rotation-candidate-v1.json"
         ]
       }
     ],
@@ -206,7 +209,7 @@
     "inspect:song-structure": "tsx scripts/inspect_song_structure.ts",
     "song-structure:truth:add": "tsx scripts/add_song_structure_truth_sample.ts",
     "lint": "eslint . --ext .js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
-    "test:key-analysis": "vitest run src/main/libraryCacheDb/songCacheAnalysisFields.spec.ts src/main/services/keyAnalysis/jobOwnership.spec.ts src/main/services/keyAnalysis/queueActiveFollowUp.spec.ts src/main/services/keyAnalysis/structurePersistence.spec.ts src/main/services/songStructureCachePolicy.spec.ts src/main/services/sharedSongGridCachePolicy.spec.ts src/main/services/sharedSongGrid.spec.ts src/renderer/src/composables/horizontalBrowse/useHorizontalBrowseDeckSongSync.spec.ts src/renderer/src/utils/manualKeyAnalysis.spec.ts",
+    "test:key-analysis": "vitest run src/main/libraryCacheDb/songCacheAnalysisFields.spec.ts src/main/services/keyAnalysis/jobOwnership.spec.ts src/main/services/keyAnalysis/queueActiveFollowUp.spec.ts src/main/services/keyAnalysis/structurePersistence.spec.ts src/main/services/keyAnalysis/workerDispatch.spec.ts src/main/services/songStructureCachePolicy.spec.ts src/main/services/sharedSongGridCachePolicy.spec.ts src/main/services/sharedSongGrid.spec.ts src/renderer/src/composables/horizontalBrowse/useHorizontalBrowseDeckSongSync.spec.ts src/renderer/src/utils/manualKeyAnalysis.spec.ts src/shared/analysisBpmRange.spec.ts",
     "grid:check-active-v2": "node scripts/check-active-grid-v2.mjs",
     "test:song-structure": "vitest run src/main/workers/songAnalysisAudioDecoder.spec.ts src/shared/songAnalysisCompleteness.spec.ts src/shared/songStructureDirectionalBoundaries.spec.ts src/shared/songStructureFeatureData.spec.ts src/shared/songStructureSemanticFoundationLanding.spec.ts src/shared/songStructureSemanticMacroActivity.spec.ts src/shared/songStructureSemanticRefinement.spec.ts src/shared/songStructureSemanticStability.spec.ts src/shared/songStructureSemanticStateGuards.spec.ts src/shared/songStructureSpectral.spec.ts src/shared/songStructureStale.spec.ts src/shared/songStructureTimeBasis.spec.ts src/shared/songStructureV23.spec.ts",
     "start": "electron-vite preview",

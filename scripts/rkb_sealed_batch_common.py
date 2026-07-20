@@ -290,7 +290,10 @@ def collect_dependency_files(entrypoints: Iterable[Path], scripts_root: Path) ->
         if not path.is_file():
             raise SealedBatchError(f"solver dependency not found: {path}")
         visited.add(path)
-        pending.extend(item for item in _local_imports(path, scripts_root) if item.resolve() not in visited)
+        if path.suffix.casefold() == ".py":
+            pending.extend(
+                item for item in _local_imports(path, scripts_root) if item.resolve() not in visited
+            )
     return sorted(visited, key=lambda item: str(item).casefold())
 
 

@@ -20,6 +20,7 @@ import {
   removeCuratedArtist
 } from '../curatedArtistLibrary'
 import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
+import { normalizeAnalysisBpmRangeId } from '../../shared/analysisBpmRange'
 
 type Dependencies = {
   loadFingerprintList: (mode: 'pcm' | 'file') => Promise<string[]>
@@ -41,8 +42,12 @@ export function registerSettingsHandlers(deps: Dependencies) {
         assertLibraryMergeMutationAllowed()
         const prevContextMenu = !!store.settingConfig?.enableExplorerContextMenu
         const prevMode = store.settingConfig?.fingerprintMode === 'file' ? 'file' : 'pcm'
-        store.settingConfig = setting
-        await persistSettingConfig(setting)
+        const normalizedSetting = {
+          ...setting,
+          analysisBpmRange: normalizeAnalysisBpmRangeId(setting?.analysisBpmRange)
+        }
+        store.settingConfig = normalizedSetting
+        await persistSettingConfig(normalizedSetting)
         await saveLibrarySettingsFromConfig()
 
         try {
@@ -52,7 +57,7 @@ export function registerSettingsHandlers(deps: Dependencies) {
           const allWindows = BrowserWindow.getAllWindows()
           for (const win of allWindows) {
             try {
-              win.webContents.send('setting-changed', setting)
+              win.webContents.send('setting-changed', normalizedSetting)
             } catch {}
           }
         } catch {}

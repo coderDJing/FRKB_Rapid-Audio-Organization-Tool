@@ -6,6 +6,11 @@ import url from '../url'
 import mainWindow from '../window/mainWindow'
 import type { IPlayerGlobalShortcuts, ISettingConfig } from '../../types/globals'
 import { persistSettingConfigSync } from '../settingsPersistence'
+import {
+  DEFAULT_ANALYSIS_BPM_RANGE_ID,
+  LEGACY_ANALYSIS_BPM_RANGE,
+  normalizeAnalysisBpmRangeId
+} from '../../shared/analysisBpmRange'
 import fs = require('fs-extra')
 
 const platform = process.platform
@@ -72,6 +77,7 @@ const defaultSettings = {
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
   showIdleAnalysisStatus: false,
+  analysisBpmRange: DEFAULT_ANALYSIS_BPM_RANGE_ID,
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,
@@ -163,6 +169,11 @@ export function loadInitialSettings(options: LoadSettingsOptions): ISettingConfi
     waveformMode: mergedSettings.waveformMode === 'full' ? 'full' : 'half',
     keyDisplayStyle: mergedSettings.keyDisplayStyle === 'Camelot' ? 'Camelot' : 'Classic'
   }
+
+  finalSettings.analysisBpmRange = normalizeAnalysisBpmRangeId(
+    loadedSettings.analysisBpmRange,
+    settingFileExisted ? LEGACY_ANALYSIS_BPM_RANGE.id : DEFAULT_ANALYSIS_BPM_RANGE_ID
+  )
 
   if (process.platform === 'win32') {
     if (typeof finalSettings.enableExplorerContextMenu !== 'boolean') {

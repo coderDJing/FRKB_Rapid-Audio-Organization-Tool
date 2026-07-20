@@ -26,6 +26,7 @@ BENCHMARK_NAME = "benchmark.json"
 TRUTH_NAME = "truth.json"
 PRODUCTION_SOLVER_SOURCE_FILES = (
     "benchmark_rkb_rekordbox_truth.py",
+    "beat_this_anchor_tuning_defaults.py",
     "beat_this_bridge.py",
     "beat_this_bpm_metrics.py",
     "beat_this_candidate_solver.py",
@@ -43,6 +44,8 @@ PRODUCTION_SOLVER_SOURCE_FILES = (
     "rkb_constant_grid_dp_phase_path.py",
     "rkb_constant_grid_dp_selection.py",
     "rkb_constant_grid_dp_solver.py",
+    "rkb_official_downbeat_selector.py",
+    "models/rkb-official-downbeat-rotation-candidate-v1.json",
     "rkb_locked_phase_ranker.py",
     "rkb_playlist_triage_report.py",
     "rkb_runtime_grid_common.py",

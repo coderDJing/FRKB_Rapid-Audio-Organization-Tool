@@ -11,6 +11,7 @@ import {
 } from '../services/keyAnalysisQueue'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 import { isLibraryMergeMutationLocked } from '../services/libraryMerge/runtime'
+import { normalizeAnalysisBpmRangeId } from '../../shared/analysisBpmRange'
 
 type VisibleQueuePayload = {
   filePaths?: string[]
@@ -21,6 +22,7 @@ type VisibleQueuePayload = {
 type ManualBatchPayload = {
   filePaths?: string[]
   titleKey?: string
+  analysisBpmRangeId?: string
 }
 
 export function registerKeyAnalysisHandlers() {
@@ -105,7 +107,8 @@ export function registerKeyAnalysisHandlers() {
       .filter((p) => typeof p === 'string' && p.trim().length > 0)
       .filter((filePath) => !isInRecordingLibraryAbsPath(filePath))
     return enqueueManualKeyAnalysisBatch(normalized, {
-      titleKey: typeof payload?.titleKey === 'string' ? payload.titleKey : undefined
+      titleKey: typeof payload?.titleKey === 'string' ? payload.titleKey : undefined,
+      analysisBpmRangeId: normalizeAnalysisBpmRangeId(payload?.analysisBpmRangeId)
     })
   })
 

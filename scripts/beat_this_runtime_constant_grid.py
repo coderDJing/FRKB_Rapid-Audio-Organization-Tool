@@ -172,6 +172,8 @@ def try_solve_runtime_constant_grid_dp(
     cpu_spect: Any,
     device: str,
     time_basis: dict[str, Any] | None,
+    min_bpm: float = 70.0,
+    max_bpm: float = 200.0,
 ) -> dict[str, Any] | None:
     arrays = _runtime_arrays(
         predictor=predictor,
@@ -188,7 +190,12 @@ def try_solve_runtime_constant_grid_dp(
         legacy_result=legacy_result,
         time_basis=time_basis,
     )
-    result = solve_constant_grid_dp(metadata=metadata, arrays=arrays)
+    result = solve_constant_grid_dp(
+        metadata=metadata,
+        arrays=arrays,
+        min_bpm=float(min_bpm),
+        max_bpm=float(max_bpm),
+    )
     if not _constant_grid_used_new_result(result):
         return None
     return _merge_runtime_quality_fields(result=result, legacy_result=legacy_result)

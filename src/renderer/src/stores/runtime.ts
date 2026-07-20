@@ -401,6 +401,7 @@ export const useRuntimeStore = defineStore('runtime', {
         hiddenPlayControlArea: false,
         waveformMode: 'half',
         keyDisplayStyle: 'Classic',
+        analysisBpmRange: '70-180',
         autoPlayNextSong: false,
         startPlayPercent: 0,
         endPlayPercent: 100,

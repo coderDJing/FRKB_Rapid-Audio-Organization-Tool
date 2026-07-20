@@ -1,5 +1,15 @@
 {
   "settings": {
+    "analysisBpmRange": {
+      "label": "BPM analysis range",
+      "dialogTitle": "Analyze Tracks",
+      "dialogSummary": "{count} tracks require analysis.",
+      "dialogHint": "The range determines half/double-time interpretation and is also used for future idle analysis.",
+      "settingsHint": "A narrower range prevents half/double-time ambiguity. Results always stay inside the selected range.",
+      "settingsScopeHint": "Changes affect newly queued and reanalyzed tracks only; existing results are unchanged.",
+      "start": "Start Analysis",
+      "legacyOption": "{range} (previous range)"
+    },
     "showPlaylistTrackCount": "Show track count after playlist name",
     "curatedArtistTracking": {
       "title": "Curated artist tracking",
@@ -88,6 +98,7 @@
       "sectionPlaybackRangeTitle": "Playback Range",
       "sectionPlaybackTitle": "Playback & Shortcuts",
       "sectionPlaybackDesc": "Player behavior, waveform display, and global shortcuts live in one place.",
+      "sectionAnalysisTitle": "Track Analysis",
       "sectionMetadataTitle": "Metadata & Fingerprints",
       "sectionMetadataDesc": "Manage AcoustID, fingerprint mode, and scan formats without extra hopping around.",
       "sectionLibraryTitle": "Library & Lists",

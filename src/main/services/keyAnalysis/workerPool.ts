@@ -5,6 +5,7 @@ import { log } from '../../log'
 import { resolveMainWorkerPath } from '../../workerPath'
 import type { KeyAnalysisBackground } from './background'
 import type { KeyAnalysisPersistence } from './persistence'
+import type { AnalysisBpmRangePresetId } from '../../../shared/analysisBpmRange'
 import { hasCurrentKeyAnalysisJobOwnership } from './jobOwnership'
 import {
   isNoBpmBeatGridResultError,
@@ -48,6 +49,7 @@ type KeyAnalysisWorkerPoolDeps = {
       category?: KeyAnalysisQueueCategory
       waveformOnly?: boolean
       includeStructure?: boolean
+      analysisBpmRangeId?: AnalysisBpmRangePresetId
       manualBatchIds?: string[]
     }
   ) => void
@@ -98,6 +100,7 @@ export const createKeyAnalysisWorkerPool = (deps: KeyAnalysisWorkerPoolDeps) => 
         category: job.category,
         waveformOnly: job.waveformOnly,
         includeStructure: job.includeStructure,
+        analysisBpmRangeId: job.analysisBpmRange?.id,
         forceAnalysis: job.forceAnalysis,
         manualBatchIds: job.manualBatchIds
       }

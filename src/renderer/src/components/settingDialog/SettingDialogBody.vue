@@ -19,6 +19,11 @@ import {
   type PlaybackRangeSectionMatchMode
 } from '@shared/playbackRange'
 import type { SongStructureSectionKind } from '@shared/songStructure'
+import { buildAnalysisBpmRangeOptions } from '@renderer/utils/analysisBpmRangeUi'
+import {
+  normalizeAnalysisBpmRangeId,
+  type AnalysisBpmRangePresetId
+} from '@shared/analysisBpmRange'
 
 const ctx = inject<SettingDialogContext>(settingDialogContextKey)
 
@@ -82,6 +87,17 @@ const showIdleAnalysisStatusModel = computed<boolean>({
     runtime.setting.showIdleAnalysisStatus = value
   }
 })
+
+const analysisBpmRangeModel = computed<AnalysisBpmRangePresetId>({
+  get: () => normalizeAnalysisBpmRangeId(runtime.setting.analysisBpmRange),
+  set: (value) => {
+    runtime.setting.analysisBpmRange = normalizeAnalysisBpmRangeId(value)
+  }
+})
+
+const analysisBpmRangeOptions = computed(() =>
+  buildAnalysisBpmRangeOptions(analysisBpmRangeModel.value)
+)
 
 const autoFillSkipCompletedModel = computed<boolean>({
   get: () => runtime.setting.autoFillSkipCompleted !== false,
@@ -378,17 +394,6 @@ const rekordboxDesktopTrackStorageDirText = computed(
               />
             </div>
 
-            <label class="setting-block" for="setting-checkbox-showIdleAnalysisStatus"
-              >{{ t('player.showIdleAnalysisStatus') }}：</label
-            >
-            <div class="setting-control">
-              <singleCheckbox
-                id="setting-checkbox-showIdleAnalysisStatus"
-                v-model="showIdleAnalysisStatusModel"
-                @change="setSetting"
-              />
-            </div>
-
             <div class="setting-block">{{ t('shortcuts.playerGlobalShortcuts') }}：</div>
             <div class="setting-control">
               <div class="playerShortcutList">
@@ -480,6 +485,36 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 @blur="setSetting()"
               />
               <span>{{ t('player.seconds') }}</span>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="section-title">{{ t('settings.layout.sectionAnalysisTitle') }}</div>
+
+            <div class="setting-block">{{ t('settings.analysisBpmRange.label') }}：</div>
+            <div class="setting-control">
+              <BaseSelect
+                v-model="analysisBpmRangeModel"
+                :options="analysisBpmRangeOptions"
+                :width="220"
+                :max-height="280"
+                @change="setSetting"
+              />
+              <div class="setting-hint">{{ t('settings.analysisBpmRange.settingsHint') }}</div>
+              <div class="setting-hint">
+                {{ t('settings.analysisBpmRange.settingsScopeHint') }}
+              </div>
+            </div>
+
+            <label class="setting-block" for="setting-checkbox-showIdleAnalysisStatus"
+              >{{ t('player.showIdleAnalysisStatus') }}：</label
+            >
+            <div class="setting-control">
+              <singleCheckbox
+                id="setting-checkbox-showIdleAnalysisStatus"
+                v-model="showIdleAnalysisStatusModel"
+                @change="setSetting"
+              />
             </div>
           </div>
 

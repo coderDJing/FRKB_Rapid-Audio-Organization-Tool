@@ -8,7 +8,21 @@ import { createKeyAnalysisFailureTracker, type KeyAnalysisFailureTracker } from 
 import { hasCurrentKeyAnalysisJobOwnership } from './jobOwnership'
 import { KeyAnalysisDeferredQueue } from './deferredQueue'
 import { buildKeyAnalysisWorkerMessage } from './workerDispatch'
+import {
+  addManualBatchIdsToJob,
+  applyKeyAnalysisIncludeStructureOption,
+  applyKeyAnalysisQueueCategory,
+  applyKeyAnalysisRequestFlags,
+  applyKeyAnalysisWaveformOnlyOption,
+  isHigherKeyAnalysisPriority,
+  normalizeKeyAnalysisFocusSlot,
+  normalizeManualBatchIds,
+  removeManualBatchIdFromJob,
+  type KeyAnalysisEnqueueOptions
+} from './queueJobOptions'
 import { log } from '../../log'
+import store from '../../store'
+import { resolveAnalysisBpmRange } from '../../../shared/analysisBpmRange'
 import {
   BACKGROUND_MAX_INFLIGHT,
   KEY_ANALYSIS_ANALYZE_STAGE_TIMEOUT_MS,
@@ -27,22 +41,8 @@ import {
   type KeyAnalysisPriority,
   type KeyAnalysisProgress,
   type KeyAnalysisQueueCategory,
-  type KeyAnalysisRequestFlags,
-  type KeyAnalysisSource
+  type KeyAnalysisRequestFlags
 } from './types'
-
-type KeyAnalysisEnqueueOptions = KeyAnalysisRequestFlags & {
-  urgent?: boolean
-  source?: KeyAnalysisSource
-  fastAnalysis?: boolean
-  focusSlot?: string
-  preemptible?: boolean
-  category?: KeyAnalysisQueueCategory
-  waveformOnly?: boolean
-  includeStructure?: boolean
-  manualBatchId?: string
-  manualBatchIds?: string[]
-}
 
 /** 所有手动、可见、播放和后台分析任务共享的全局队列。 */
 export class KeyAnalysisQueue {
@@ -84,22 +84,21 @@ export class KeyAnalysisQueue {
   private globalConcurrencyLimit = 1
   private readonly deferredHelpers = {
     nextJobId: () => ++this.nextJobId,
-    isHigherPriority: (next: KeyAnalysisPriority, current: KeyAnalysisPriority) =>
-      this.isHigherPriority(next, current),
+    isHigherPriority: isHigherKeyAnalysisPriority,
     applyQueueCategory: (job: KeyAnalysisJob, category?: KeyAnalysisQueueCategory) =>
-      this.applyQueueCategory(job, category),
+      applyKeyAnalysisQueueCategory(job, category),
     applyWaveformOnlyOption: (job: KeyAnalysisJob, waveformOnly?: boolean) =>
-      this.applyWaveformOnlyOption(job, waveformOnly),
+      applyKeyAnalysisWaveformOnlyOption(job, waveformOnly),
     applyIncludeStructureOption: (job: KeyAnalysisJob, includeStructure?: boolean) =>
-      this.applyIncludeStructureOption(job, includeStructure),
+      applyKeyAnalysisIncludeStructureOption(job, includeStructure),
     applyRequestFlags: (job: KeyAnalysisJob, flags: KeyAnalysisRequestFlags) =>
-      this.applyRequestFlags(job, flags),
+      applyKeyAnalysisRequestFlags(job, flags),
     addManualBatchIdsToJob: (job: KeyAnalysisJob, batchIds: string[]) =>
-      this.addManualBatchIdsToJob(job, batchIds),
+      addManualBatchIdsToJob(job, batchIds),
     addFocusSlotToJob: (job: KeyAnalysisJob, focusSlot?: string) =>
       this.addFocusSlotToJob(job, focusSlot),
     removeManualBatchIdFromJob: (job: KeyAnalysisJob, batchId: string) =>
-      this.removeManualBatchIdFromJob(job, batchId),
+      removeManualBatchIdFromJob(job, batchId),
     isManualOnlyJob: (job: KeyAnalysisJob) => this.isManualOnlyJob(job)
   }
 
@@ -306,51 +305,6 @@ export class KeyAnalysisQueue {
     )
   }
 
-  private applyWaveformOnlyOption(job: KeyAnalysisJob, waveformOnly?: boolean) {
-    if (waveformOnly !== true) {
-      if (waveformOnly === false || job.waveformOnly) {
-        job.waveformOnly = false
-      }
-      return
-    }
-    if (job.waveformOnly === true) {
-      job.waveformOnly = true
-    }
-  }
-
-  private applyQueueCategory(job: KeyAnalysisJob, category?: KeyAnalysisQueueCategory) {
-    if (!category) return
-    if (job.category === 'manual-batch' && category !== 'manual-batch') return
-    if (job.priority === 'high' && category === 'visible') return
-    if (job.category === 'visible' && category === 'waveform-preview') return
-    job.category = category
-  }
-
-  private applyIncludeStructureOption(job: KeyAnalysisJob, includeStructure?: boolean) {
-    if (includeStructure === true) job.includeStructure = true
-  }
-
-  private applyRequestFlags(job: KeyAnalysisJob, flags: KeyAnalysisRequestFlags) {
-    if (flags.forceAnalysis === true) {
-      job.forceAnalysis = true
-    }
-  }
-  private normalizeManualBatchIds(options: {
-    manualBatchId?: string
-    manualBatchIds?: string[]
-  }): string[] {
-    const ids = [options.manualBatchId, ...(options.manualBatchIds || [])]
-    return Array.from(
-      new Set(ids.map((id) => String(id || '').trim()).filter((id) => id.length > 0))
-    )
-  }
-
-  private addManualBatchIdsToJob(job: KeyAnalysisJob, batchIds: string[]) {
-    if (!batchIds.length) return
-    const current = Array.isArray(job.manualBatchIds) ? job.manualBatchIds.filter(Boolean) : []
-    job.manualBatchIds = Array.from(new Set([...current, ...batchIds]))
-  }
-
   private isTerminalStage(stage: unknown): stage is 'job-done' | 'job-error' {
     return stage === 'job-done' || stage === 'job-error'
   }
@@ -369,14 +323,6 @@ export class KeyAnalysisQueue {
     })
   }
 
-  private removeManualBatchIdFromJob(job: KeyAnalysisJob, batchId: string): boolean {
-    const current = job.manualBatchIds?.filter(Boolean) || []
-    if (!current.includes(batchId)) return false
-    const next = current.filter((id) => id !== batchId)
-    job.manualBatchIds = next.length ? next : undefined
-    return true
-  }
-
   private isManualOnlyJob(job: KeyAnalysisJob): boolean {
     return job.category === 'manual-batch' && !this.hasActiveFocusSlot(job)
   }
@@ -391,8 +337,8 @@ export class KeyAnalysisQueue {
     this.background.clearBackgroundTimer()
     const normalizedPath = normalizePath(filePath)
     const source = options.source || (priority === 'background' ? 'background' : 'foreground')
-    const focusSlot = this.normalizeFocusSlot(options.focusSlot)
-    const manualBatchIds = this.normalizeManualBatchIds(options)
+    const focusSlot = normalizeKeyAnalysisFocusSlot(options.focusSlot)
+    const manualBatchIds = normalizeManualBatchIds(options)
     if (source === 'foreground') {
       this.background.touchForeground()
     }
@@ -414,13 +360,13 @@ export class KeyAnalysisQueue {
         )
         return
       }
-      this.addManualBatchIdsToJob(active, manualBatchIds)
+      addManualBatchIdsToJob(active, manualBatchIds)
       this.emitTerminalStageForManualBatchIds(active, manualBatchIds)
       return
     }
     const existing = this.pendingByPath.get(normalizedPath)
     if (existing) {
-      if (this.isHigherPriority(priority, existing.priority)) {
+      if (isHigherKeyAnalysisPriority(priority, existing.priority)) {
         this.removePending(existing)
         existing.priority = priority
         existing.source = source
@@ -430,22 +376,22 @@ export class KeyAnalysisQueue {
         if (options.preemptible !== undefined) {
           existing.preemptible = options.preemptible
         }
-        this.applyQueueCategory(existing, options.category)
-        this.applyWaveformOnlyOption(existing, options.waveformOnly)
-        this.applyIncludeStructureOption(existing, options.includeStructure)
-        this.applyRequestFlags(existing, options)
-        this.addManualBatchIdsToJob(existing, manualBatchIds)
+        applyKeyAnalysisQueueCategory(existing, options.category)
+        applyKeyAnalysisWaveformOnlyOption(existing, options.waveformOnly)
+        applyKeyAnalysisIncludeStructureOption(existing, options.includeStructure)
+        applyKeyAnalysisRequestFlags(existing, options)
+        addManualBatchIdsToJob(existing, manualBatchIds)
         this.addFocusSlotToJob(existing, focusSlot)
         this.addPending(existing, options.urgent)
       } else {
         if (options.preemptible !== undefined) {
           existing.preemptible = options.preemptible
         }
-        this.applyQueueCategory(existing, options.category)
-        this.applyWaveformOnlyOption(existing, options.waveformOnly)
-        this.applyIncludeStructureOption(existing, options.includeStructure)
-        this.applyRequestFlags(existing, options)
-        this.addManualBatchIdsToJob(existing, manualBatchIds)
+        applyKeyAnalysisQueueCategory(existing, options.category)
+        applyKeyAnalysisWaveformOnlyOption(existing, options.waveformOnly)
+        applyKeyAnalysisIncludeStructureOption(existing, options.includeStructure)
+        applyKeyAnalysisRequestFlags(existing, options)
+        addManualBatchIdsToJob(existing, manualBatchIds)
         this.addFocusSlotToJob(existing, focusSlot)
       }
       if (options.urgent && existing.priority === 'high') {
@@ -466,6 +412,9 @@ export class KeyAnalysisQueue {
       category: options.category,
       waveformOnly: options.waveformOnly === true,
       includeStructure: options.includeStructure === true,
+      analysisBpmRange: resolveAnalysisBpmRange(
+        options.analysisBpmRangeId ?? store.settingConfig.analysisBpmRange
+      ),
       forceAnalysis: options.forceAnalysis === true,
       manualBatchIds: manualBatchIds.length ? manualBatchIds : undefined
     }
@@ -572,7 +521,7 @@ export class KeyAnalysisQueue {
     if (!normalizedBatchId) return
 
     for (const job of Array.from(this.pendingByPath.values())) {
-      if (!this.removeManualBatchIdFromJob(job, normalizedBatchId)) continue
+      if (!removeManualBatchIdFromJob(job, normalizedBatchId)) continue
       if (!job.manualBatchIds && this.isManualOnlyJob(job)) {
         this.removePending(job)
       }
@@ -584,7 +533,7 @@ export class KeyAnalysisQueue {
     for (const [worker, jobId] of Array.from(this.busy.entries())) {
       const job = this.inFlight.get(jobId)
       if (!job) continue
-      if (!this.removeManualBatchIdFromJob(job, normalizedBatchId)) continue
+      if (!removeManualBatchIdFromJob(job, normalizedBatchId)) continue
       if (job.manualBatchIds || !this.isManualOnlyJob(job)) continue
       this.markExpectedWorkerTermination(worker, 'manual-batch-cancel')
       terminations.push(
@@ -659,18 +608,8 @@ export class KeyAnalysisQueue {
     this.deferred.clearBackground()
   }
 
-  private isHigherPriority(next: KeyAnalysisPriority, current: KeyAnalysisPriority): boolean {
-    const rank = { high: 4, medium: 3, low: 2, background: 1 }
-    return rank[next] > rank[current]
-  }
-
-  private normalizeFocusSlot(value: unknown): string {
-    if (typeof value !== 'string') return ''
-    return value.trim().toLowerCase()
-  }
-
   private addFocusSlotToJob(job: KeyAnalysisJob, focusSlot?: string) {
-    const normalizedSlot = this.normalizeFocusSlot(focusSlot)
+    const normalizedSlot = normalizeKeyAnalysisFocusSlot(focusSlot)
     if (!normalizedSlot) return
     const currentSlots = Array.isArray(job.focusSlots) ? job.focusSlots.filter(Boolean) : []
     if (!currentSlots.includes(normalizedSlot)) {
@@ -682,10 +621,10 @@ export class KeyAnalysisQueue {
   }
 
   private removeFocusSlotFromJob(job: KeyAnalysisJob, focusSlot: string) {
-    const normalizedSlot = this.normalizeFocusSlot(focusSlot)
+    const normalizedSlot = normalizeKeyAnalysisFocusSlot(focusSlot)
     if (!normalizedSlot || !Array.isArray(job.focusSlots) || job.focusSlots.length === 0) return
     const nextSlots = job.focusSlots.filter(
-      (slot) => this.normalizeFocusSlot(slot) !== normalizedSlot
+      (slot) => normalizeKeyAnalysisFocusSlot(slot) !== normalizedSlot
     )
     job.focusSlots = nextSlots.length > 0 ? nextSlots : undefined
   }

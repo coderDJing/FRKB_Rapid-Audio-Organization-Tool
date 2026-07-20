@@ -31,6 +31,7 @@ import {
 import { CURRENT_BEAT_GRID_ALGORITHM_VERSION } from '../services/beatGridAlgorithmVersion'
 import { resolveMissingMixtapeFilePath } from '../recycleBinService'
 import { getBeatThisRuntimeAvailabilitySnapshot } from '../workers/beatThisRuntime'
+import { resolveAnalysisBpmRange } from '../../shared/analysisBpmRange'
 import {
   normalizeSongBeatGridMapV2,
   projectSongBeatGridMapV2ToFixedGrid
@@ -144,6 +145,7 @@ const analyzeMixtapeBpmBatch = async (
   }
 
   const fastAnalysis = options.fastAnalysis === true
+  const analysisBpmRange = resolveAnalysisBpmRange(store.settingConfig.analysisBpmRange)
   const jobTimeoutMs = resolveBpmJobTimeoutMs(fastAnalysis)
 
   const maxWorkers = Math.max(1, Math.min(2, os.cpus().length, unique.length))
@@ -275,7 +277,8 @@ const analyzeMixtapeBpmBatch = async (
         fastAnalysis,
         needsKey: false,
         needsBpm: true,
-        needsWaveform: false
+        needsWaveform: false,
+        analysisBpmRange
       })
     }
 

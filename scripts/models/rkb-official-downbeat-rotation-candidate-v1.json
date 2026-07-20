@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "type": "rkb-official-downbeat-rotation-linear-candidate",
+  "version": "rkb-official-downbeat-rotation-v1",
+  "evidenceRole": "consumed-development-candidate-not-fresh-proof",
+  "trainingScope": {
+    "trackCount": 3388,
+    "timingEligibleTrackCount": 2978,
+    "isolationFamilyCount": 3337,
+    "candidateCount": 11912
+  },
+  "selection": {
+    "minimumAdvantage": 0.04,
+    "minimumMargin": 0.02,
+    "minimumBlockAgreement": 0.4
+  },
+  "model": {
+    "kind": "ridge-one-vs-rest-candidate-score",
+    "l2": 10.0,
+    "featureNames": [
+      "classLikelihoodZ",
+      "downbeatContrastZ",
+      "robustBlockZ",
+      "blockAgreementZ",
+      "lowEnergyZ",
+      "fullEnergyZ",
+      "transitionZ",
+      "introBoundaryZ",
+      "delta.classLikelihoodZ",
+      "delta.downbeatContrastZ",
+      "delta.robustBlockZ",
+      "delta.blockAgreementZ",
+      "delta.lowEnergyZ",
+      "delta.fullEnergyZ",
+      "delta.transitionZ",
+      "delta.introBoundaryZ",
+      "isCurrentRotation"
+    ],
+    "mean": [
+      0.000000000006, -0.000000000001, -0.000000000001, 0.000000000146, 0.000000000006,
+      0.000000000005, 0.000000000019, 0.000000000034, -1.407725577469, -1.447993378674,
+      -1.387931557826, -1.426950445168, 0.186344122964, 0.231713523772, 0.130207513478,
+      0.07408826239, 0.25
+    ],
+    "scale": [
+      0.999999999999, 1.000000000003, 0.999999999999, 1.000000000108, 0.875952901462,
+      0.979302255695, 0.984261645743, 0.790091424704, 1.17032590582, 1.184598607041, 1.184862062122,
+      1.208109210441, 1.23724374878, 1.382893351694, 1.361830768205, 1.081964491068, 0.433012701892
+    ],
+    "coefficients": [
+      0.286821538438, 0.09219258158, 0.042378469059, -0.017960296221, 0.046011877154,
+      -0.004416711269, -0.003414536505, 0.004194286569, -0.000481705365, 0.069154528468,
+      0.007680685093, -0.004256926804, 0.018273002445, -0.008888969934, -0.004046778789,
+      0.005672283159, 0.000175029469, 0.186120324597
+    ]
+  },
+  "validation": {
+    "baselineStrictPass": 2691,
+    "nestedLoboSelectedStrictPass": 2747,
+    "nestedLoboNetStrictPassDelta": 56,
+    "nestedLoboFailToPass": 87,
+    "nestedLoboPassToFail": 31,
+    "baselineDownbeatFailure": 401,
+    "nestedLoboDownbeatFailure": 323,
+    "nestedLoboDownbeatFailureDelta": -78,
+    "positiveBatchCount": 6,
+    "batchCount": 6
+  }
+}

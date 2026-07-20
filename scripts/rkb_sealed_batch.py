@@ -92,6 +92,7 @@ DEFAULT_FFPROBE = REPO_ROOT / "vendor" / "ffmpeg" / "win32-x64" / "ffprobe.exe"
 DEFAULT_SOLVER_ENTRYPOINTS = (
     SCRIPTS_ROOT / "rkb_constant_grid_dp_cache.py",
     SCRIPTS_ROOT / "rkb_constant_grid_dp_solver.py",
+    SCRIPTS_ROOT / "models" / "rkb-official-downbeat-rotation-candidate-v1.json",
     SCRIPTS_ROOT / "rkb_beatgrid_feature_cache.py",
     SCRIPTS_ROOT / "benchmark_rkb_rekordbox_truth.py",
     DEFAULT_FEATURE_SCRIPT,

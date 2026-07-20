@@ -44,6 +44,7 @@ let settingConfig: ISettingConfig = {
   hiddenPlayControlArea: false,
   waveformMode: 'half',
   keyDisplayStyle: 'Classic' as 'Classic' | 'Camelot',
+  analysisBpmRange: '70-180',
   autoPlayNextSong: false,
   startPlayPercent: 0,
   endPlayPercent: 100,

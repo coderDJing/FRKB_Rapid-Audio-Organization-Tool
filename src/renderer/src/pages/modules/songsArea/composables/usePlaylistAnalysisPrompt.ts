@@ -1,8 +1,8 @@
 import { computed, onMounted, onUnmounted, ref, type Ref } from 'vue'
-import confirm from '@renderer/components/confirmDialog'
-import { t } from '@renderer/utils/translate'
 import {
   collectMissingAnalysisFilesFromSongs,
+  promptAnalysisBpmRangeForManualBatch,
+  promptAndQueueManualKeyAnalysisBatch,
   queueManualKeyAnalysisBatch
 } from '@renderer/utils/manualKeyAnalysis'
 import { EXTERNAL_PLAYLIST_UUID } from '@shared/externalPlayback'
@@ -188,20 +188,12 @@ export function usePlaylistAnalysisPrompt({
       return
     }
 
-    const choice = await confirm({
-      title: t('tracks.analyzePlaylistPromptTitle'),
-      content: [
-        t('tracks.analyzePlaylistPromptContent', { count: missingCount }),
-        t('tracks.analyzePlaylistPromptQuestion')
-      ],
-      confirmText: t('tracks.analyzePlaylistConfirm'),
-      cancelText: t('tracks.analyzePlaylistCancel')
-    })
+    const analysisBpmRangeId = await promptAnalysisBpmRangeForManualBatch(missingCount)
 
     if (songsAreaState.songListUUID !== songListUUID) {
       return
     }
-    if (choice !== 'confirm') {
+    if (!analysisBpmRangeId) {
       const stillMissingFiles = missingAnalysisFiles.value
       if (stillMissingFiles.length) markDismissedSongList(songListUUID)
       return
@@ -215,7 +207,8 @@ export function usePlaylistAnalysisPrompt({
     autoAnalyzeEnabled.value = true
     const result = (await queueManualKeyAnalysisBatch(
       confirmMissingResult.files,
-      'tracks.analyzingPlaylist'
+      'tracks.analyzingPlaylist',
+      analysisBpmRangeId
     )) as QueueManualBatchResult
     rememberManualBatch(result, songListUUID)
   }
@@ -246,10 +239,15 @@ export function usePlaylistAnalysisPrompt({
     try {
       const pendingResult = await filterManualBatchPendingFiles(missingFiles)
       if (!pendingResult.files.length) return
-      const result = (await queueManualKeyAnalysisBatch(
+      const result = (await promptAndQueueManualKeyAnalysisBatch(
         pendingResult.files,
         'tracks.analyzingPlaylist'
       )) as QueueManualBatchResult
+      if (!result.batchId) {
+        autoAnalyzeEnabled.value = false
+        markDismissedSongList(songListUUID)
+        return
+      }
       rememberManualBatch(result, songListUUID)
     } catch (error) {
       autoAnalyzeEnabled.value = false

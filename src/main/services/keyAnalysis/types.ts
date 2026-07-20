@@ -5,6 +5,7 @@ import type { UnifiedDisplayWaveformDetailData } from '../../../shared/unifiedDi
 import type { BeatGridStatus } from '../../../types/globals'
 import type { SongStructureAnalysis } from '../../../shared/songStructure'
 import type { SongBeatGridMapV2 } from '../../../shared/songBeatGridMapV2'
+import type { AnalysisBpmRange } from '../../../shared/analysisBpmRange'
 
 export type KeyAnalysisPriority = 'high' | 'medium' | 'low' | 'background'
 export type KeyAnalysisSource = 'foreground' | 'background'
@@ -95,6 +96,7 @@ export type KeyAnalysisJob = {
   category?: KeyAnalysisQueueCategory
   waveformOnly?: boolean
   includeStructure?: boolean
+  analysisBpmRange?: AnalysisBpmRange
   forceAnalysis?: boolean
   focusSlots?: string[]
   manualBatchIds?: string[]
