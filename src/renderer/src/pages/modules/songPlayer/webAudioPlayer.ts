@@ -333,13 +333,11 @@ export class WebAudioPlayer {
     this.volume = Math.max(0, Math.min(1, volume))
     if (this.mode === 'html' && this.htmlOutputGainNode) {
       this.htmlOutputGainNode.gain.value = this.volume
-      return
     }
-    if (this.mode === 'pcm' && this.pcmGainNode) {
+    if (this.pcmGainNode) {
       this.pcmGainNode.gain.value = this.volume
-      return
     }
-    if (this.audioElement) {
+    if ((this.mode !== 'html' || !this.htmlOutputGainNode) && this.audioElement) {
       this.audioElement.volume = this.volume
     }
   }
@@ -908,6 +906,10 @@ export class WebAudioPlayer {
       if (sampleRate && this.pcmContext.sampleRate !== sampleRate) {
         this.releasePcmContext()
       } else {
+        if (this.pcmGainNode) {
+          this.pcmGainNode.gain.value = this.volume
+        }
+        this.setVisualizerAnalyserNode(this.pcmAnalyserNode)
         return this.pcmContext
       }
     }

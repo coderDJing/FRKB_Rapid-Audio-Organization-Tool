@@ -128,6 +128,9 @@ const normalizeExtension = (filePath: string) => {
 }
 
 const FORCE_PCM_EXTENSIONS = new Set([
+  // Chromium 对 AIFF 的 HTML 音频输出和 MediaElementAudioSource 兼容性不稳定，统一走 PCM。
+  'aif',
+  'aiff',
   'm4a',
   'm4b',
   'mp4',
