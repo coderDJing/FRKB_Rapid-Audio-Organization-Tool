@@ -11,6 +11,16 @@
 G:/FRKB_database-A/analysis/song-structure-truth/audio/
 ```
 
+用户在 FRKB 中直接查看的实体 truth 歌单：
+
+```text
+G:/FRKB_database-A/library/FilterLibrary/truth/
+```
+
+“加入段落真值”固定包含两份音频落点：哈希音频根用于可复现 benchmark，实体 truth 歌单用于用户
+试听和日常检查。禁止只写 manifest/哈希库而漏掉实体歌单；写入后必须核对两份音频 SHA-256 一致，
+并确认 truth 歌单数量增加。
+
 音频以 SHA-256 前两位分桶：
 
 ```text
@@ -145,6 +155,10 @@ pnpm run song-structure:truth:add -- --file "G:/path/track.mp3" --title "Artist 
 ```powershell
 pnpm run song-structure:truth:add -- --file "G:/path/track.mp3" --title "Artist - Track" --bpm 128 --first-beat-ms 42 --downbeat-beat-offset 0 --split development --status review-queue --apply
 ```
+
+脚本会从 `.env` 的 `FRKB_DEV_DATABASE_URL` 推导实体 truth 歌单，也可使用
+`FRKB_SONG_STRUCTURE_TRUTH_PLAYLIST_ROOT` 或 `--playlist-root` 显式覆盖。dry-run 输出必须同时包含
+`destinationPath` 与 `playlistDestinationPath`；`--apply` 后两处都成功才允许写 manifest/truth 草稿。
 
 动态网格通过 `--grid-json` 输入，格式见第 2.1 节。添加工具只会创建
 `coverage=none / review-queue` 草稿，故意不提供 `approved` 快捷参数。

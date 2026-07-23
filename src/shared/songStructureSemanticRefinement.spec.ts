@@ -402,6 +402,20 @@ describe('歌曲结构语义范围精修', () => {
     ])
   })
 
+  it('上下文 Build 不会向前吞掉 Breakdown 前已经成立的 Active 平台', () => {
+    const bars = Array.from({ length: 64 }, (_, index) => {
+      if (index < 22 || index >= 38) return createBar(index, createDropValues())
+      return createBar(index, createBuildEpisodeValues(index, 22))
+    })
+    const ranges = [
+      createRange(0, 34, 'drop'),
+      createRange(34, 38, 'breakdown'),
+      createRange(38, 64, 'drop')
+    ]
+
+    expect(refineContextualBuildRanges(bars, ranges, [38])).toEqual(ranges)
+  })
+
   it('Breakdown 后突然重击时不会凭空制造 Build', () => {
     const bars = Array.from({ length: 64 }, (_, index) =>
       createBar(index, index < 40 ? createBreakdownValues() : createDropValues())

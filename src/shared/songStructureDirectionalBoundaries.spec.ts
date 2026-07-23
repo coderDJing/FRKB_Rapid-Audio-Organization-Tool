@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { buildSongStructureDirectionalBoundaries } from './songStructureDirectionalBoundaries'
+import {
+  buildSongStructureDirectionalBoundaries,
+  resolveSongStructureLandingSwitchTieMargin
+} from './songStructureDirectionalBoundaries'
 import type {
   SongStructureSpectralBarFeature,
   SongStructureSpectralValues
@@ -55,6 +58,11 @@ const build = (bars: SongStructureSpectralBarFeature[]) =>
   })
 
 describe('songStructureDirectionalBoundaries', () => {
+  it('landing 与 switch 接近时使用有上限的相对容差，避免低分候选阈值悬崖', () => {
+    expect(resolveSongStructureLandingSwitchTieMargin(0.1026)).toBeCloseTo(0.012312, 6)
+    expect(resolveSongStructureLandingSwitchTieMargin(0.5)).toBe(0.02)
+  })
+
   it('忽略单个 downbeat 的音色毛刺，但保留持续音色切换', () => {
     const bars = Array.from({ length: 28 }, (_, index) => createBar(index))
     bars[8] = createBar(8, {

@@ -11,6 +11,7 @@ import {
   cosineSimilarity,
   type SongStructureSpectralBarFeature
 } from './songStructureSpectralFeatures'
+import { resolveSongStructureDiscriminativeBoundaryEvidence } from './songStructureStructuralEvidence'
 
 const RECURRENCE_EXCLUSION_BARS = 4
 const RECURRENCE_SMOOTH_RADIUS = 4
@@ -568,6 +569,7 @@ const buildBoundaryEvidence = (
 const refineBoundaryIndex = (
   index: number,
   evidence: readonly BoundaryEvidence[],
+  bars: readonly SongStructureSpectralBarFeature[],
   barCount: number,
   options: SongStructureSpectralClusteringOptions
 ) => {
@@ -575,6 +577,7 @@ const refineBoundaryIndex = (
   const maximumIndex = Math.max(minimumIndex, barCount - MIN_SECTION_BARS)
   let bestIndex = clamp(index, minimumIndex, maximumIndex)
   let bestScore = evidence[bestIndex]?.score ?? 0
+  let bestDiscriminative = resolveSongStructureDiscriminativeBoundaryEvidence(bars, bestIndex).score
   const boundaryRefineRadiusBars = clamp(
     Math.floor(Number(options.boundaryRefineRadiusBars) || BOUNDARY_REFINE_RADIUS_BARS),
     0,
@@ -586,9 +589,15 @@ const refineBoundaryIndex = (
     candidate += 1
   ) {
     const score = evidence[candidate]?.score ?? 0
-    if (score > bestScore + 1e-8) {
+    const discriminative = resolveSongStructureDiscriminativeBoundaryEvidence(bars, candidate).score
+    const scoreMargin = score - bestScore
+    const discriminativeGain = discriminative - bestDiscriminative
+    const clearlyStronger = scoreMargin > 0.018
+    const comparableWithBetterStructure = scoreMargin >= -0.012 && discriminativeGain > 0.08
+    if (clearlyStronger || comparableWithBetterStructure) {
       bestIndex = candidate
       bestScore = score
+      bestDiscriminative = discriminative
     }
   }
   return {
@@ -648,7 +657,7 @@ const selectBoundaries = (
     if (clipCandidate || buildRampCandidate) {
       candidates.push({ index, score: current.score, buildRamp: current.buildRamp })
     } else {
-      candidates.push(refineBoundaryIndex(index, evidence, bars.length, options))
+      candidates.push(refineBoundaryIndex(index, evidence, bars, bars.length, options))
     }
   }
   candidates.sort((left, right) => left.index - right.index || right.score - left.score)

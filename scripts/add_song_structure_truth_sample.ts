@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { constants } from 'node:fs'
 import { copyFile, mkdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
@@ -32,17 +33,19 @@ const HELP_TEXT = `添加歌曲段落真值样本
 
 选项：
   --audio-root <路径>         哈希音频库根；也可设置 FRKB_SONG_STRUCTURE_AUDIO_ROOT
+  --playlist-root <路径>      实体 truth 歌单根；默认由 FRKB_DEV_DATABASE_URL 推导
   --duration-sec <秒>         可选的已知时长
   --split <名称>              默认 development
   --status <名称>             review-queue（默认）或 known-failure
   --notes <文本>              manifest 备注
-  --apply                     执行复制与仓库元数据写入
+  --apply                     同步实体 truth 歌单、哈希音频库与本机真值元数据
   --help, -h                  显示本帮助
 
 grid JSON 格式：
   {"kind":"dynamic","clips":[{"startSec":0,"anchorSec":0.1,"bpm":128,"downbeatBeatOffset":0}, ...]}
 
-该命令只创建 review truth 草稿，绝不把当前算法 prediction 自动批准为人工真值。
+该命令只创建 review truth 草稿，绝不把当前算法 prediction 自动批准为人工真值。实体 truth 歌单
+与 benchmark 真值集必须同步维护，任一目标发生同名异内容冲突时拒绝写入。
 `
 
 if (args.includes('--help') || args.includes('-h')) {
@@ -68,6 +71,36 @@ const parseRequiredFiniteNumber = (name: string): number => {
   const value = parseFiniteNumber(name)
   if (value === undefined) throw new Error(`缺少有效 ${name}`)
   return value
+}
+
+const resolveTruthPlaylistRoot = () => {
+  const configured =
+    readArgument(args, '--playlist-root')?.trim() ||
+    process.env.FRKB_SONG_STRUCTURE_TRUTH_PLAYLIST_ROOT?.trim()
+  if (configured) return path.resolve(configured)
+  const databaseRoot =
+    process.env.FRKB_DEV_DATABASE_URL?.trim() || process.env.FRKB_BENCHMARK_DATABASE_ROOT?.trim()
+  if (!databaseRoot) {
+    throw new Error(
+      '缺少 truth 歌单根：请设置 --playlist-root、FRKB_SONG_STRUCTURE_TRUTH_PLAYLIST_ROOT 或 FRKB_DEV_DATABASE_URL'
+    )
+  }
+  return path.resolve(databaseRoot, 'library', 'FilterLibrary', 'truth')
+}
+
+const copyVerifiedAudio = async (sourcePath: string, destinationPath: string, sha256: string) => {
+  if (path.resolve(sourcePath) === path.resolve(destinationPath)) return
+  await mkdir(path.dirname(destinationPath), { recursive: true })
+  try {
+    await copyFile(sourcePath, destinationPath, constants.COPYFILE_EXCL)
+  } catch (error) {
+    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
+    if (code !== 'EEXIST') throw error
+    const destinationHash = await calculateFileSha256(destinationPath)
+    if (destinationHash !== sha256) {
+      throw new Error(`目标音频已存在但哈希不一致，拒绝覆盖: ${destinationPath}`)
+    }
+  }
 }
 
 const readGrid = async (): Promise<SongStructureTruthGrid> => {
@@ -114,6 +147,7 @@ const main = async () => {
   }
   const grid = await readGrid()
   const audioRoot = resolveSongStructureAudioRoot(manifest, readArgument(args, '--audio-root'))
+  const playlistRoot = resolveTruthPlaylistRoot()
   const truthRelativePath = `tracks/${sha256}.truth.json`
   const truth: SongStructureTruthFile = {
     $schema: '../schema/truth.schema.json',
@@ -149,10 +183,12 @@ const main = async () => {
   validateSongStructureTruthFile(truth, sha256)
 
   const destinationPath = path.resolve(audioRoot, relativeAudioPath)
+  const playlistDestinationPath = path.resolve(playlistRoot, path.basename(filePath))
   const plan = {
     apply: args.includes('--apply'),
     sourcePath: filePath,
     destinationPath,
+    playlistDestinationPath,
     manifestPath: SONG_STRUCTURE_MANIFEST_PATH,
     truthPath: resolveSongStructureDataPath(truthRelativePath),
     track: nextTrack
@@ -163,15 +199,8 @@ const main = async () => {
     process.exit(0)
   }
 
-  await mkdir(path.dirname(destinationPath), { recursive: true })
-  try {
-    await copyFile(filePath, destinationPath, constants.COPYFILE_EXCL)
-  } catch (error) {
-    const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : ''
-    if (code !== 'EEXIST') throw error
-    const destinationHash = await calculateFileSha256(destinationPath)
-    if (destinationHash !== sha256) throw new Error('目标音频已存在但哈希不一致，拒绝覆盖')
-  }
+  await copyVerifiedAudio(filePath, destinationPath, sha256)
+  await copyVerifiedAudio(filePath, playlistDestinationPath, sha256)
   await writeJsonFile(resolveSongStructureDataPath(truthRelativePath), truth)
   await writeJsonFile(SONG_STRUCTURE_MANIFEST_PATH, manifest)
   process.stdout.write(`${JSON.stringify({ ...plan, completed: true }, null, 2)}\n`)

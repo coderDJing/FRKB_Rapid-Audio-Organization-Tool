@@ -9,6 +9,7 @@ const MAX_BUILD_REENTRY_AFTER_BREAKDOWN_BARS = 24
 const CONTEXTUAL_BUILD_MIN_RAMP = 0.42
 const CONTEXTUAL_BUILD_MIN_DROP_ACTIVITY = 0.45
 const CONTEXTUAL_BUILD_MIN_FOUNDATION_RECOVERY = 0.08
+const MIN_LEADING_ACTIVE_PLATEAU_BLOCKS = 4
 
 type NormalizedBuildValues = Pick<
   SongStructureSpectralBarFeature['normalized'],
@@ -88,6 +89,18 @@ const findBreakdownContext = (
         reentryIndex <= range.endIndex + MAX_BUILD_REENTRY_AFTER_BREAKDOWN_BARS
     )
 
+const overlapsLeadingActivePlateau = (
+  ranges: readonly SongStructureSemanticRange[],
+  buildStartIndex: number,
+  breakdownStartIndex: number
+) =>
+  ranges.some((range) => {
+    if (range.kind !== 'drop' && range.kind !== 'groove') return false
+    const overlapStart = Math.max(range.startIndex, buildStartIndex)
+    const overlapEnd = Math.min(range.endIndex, breakdownStartIndex)
+    return overlapEnd - overlapStart >= MIN_LEADING_ACTIVE_PLATEAU_BLOCKS
+  })
+
 const buildContextualBuildCandidate = (
   bars: readonly SongStructureSpectralBarFeature[],
   ranges: readonly SongStructureSemanticRange[],
@@ -104,6 +117,7 @@ const buildContextualBuildCandidate = (
     const startIndex = reentryIndex - buildBars
     const breakdownContext = findBreakdownContext(ranges, startIndex, reentryIndex)
     if (startIndex < 0 || !breakdownContext) continue
+    if (overlapsLeadingActivePlateau(ranges, startIndex, breakdownContext.startIndex)) continue
     if (
       startIndex > breakdownContext.endIndex &&
       activeReentryIndexes.some(

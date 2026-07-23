@@ -23,6 +23,12 @@ type TerminalActivityWindow = {
 }
 
 const MIN_STRUCTURAL_RELEASE_POSITION_RATIO = 0.87
+const MIN_CUMULATIVE_RELEASE_POSITION_RATIO = 0.82
+const MIN_CUMULATIVE_RELEASE_BLOCKS = 12
+const MIN_CUMULATIVE_INITIAL_REDUCTION = 0.045
+const MIN_CUMULATIVE_SUSTAINED_REDUCTION = 0.055
+const MIN_CUMULATIVE_RAW_REDUCTION = 0.018
+const MAX_CUMULATIVE_RAW_REDUCTION = 0.05
 const MIN_TERMINAL_REENTRY_POSITION_RATIO = 0.88
 const MIN_TERMINAL_REENTRY_BOUNDARY_SCORE = 0.5
 const MAX_TERMINAL_REENTRY_REMAINING_BLOCKS = 24
@@ -33,6 +39,11 @@ const MIN_TERMINAL_REENTRY_VALLEY_DROP = 0.16
 const MIN_TERMINAL_REENTRY_RECOVERY_GAIN = 0.12
 const MIN_TERMINAL_REENTRY_REDUCTION = 0.025
 const MIN_TERMINAL_REENTRY_TAIL_REDUCTION = 0.1
+const TERMINAL_ONSET_LOOKAHEAD_BLOCKS = 4
+const MIN_REFINED_ONSET_NORMALIZED_REDUCTION = 0.025
+const MIN_REFINED_ONSET_RAW_REDUCTION = 0.008
+const MIN_REFINED_ONSET_REDUCTION_SHARE = 0.5
+const MIN_REFINED_ONSET_NEXT_REDUCTION_SHARE = 0.5
 
 export type SongStructureTerminalOutroDiagnostic = {
   index: number
@@ -40,6 +51,12 @@ export type SongStructureTerminalOutroDiagnostic = {
   foundationDrop: number
   layerDrop: number
   rawReduction: number
+  onsetReduction: number
+  onsetFoundationDrop: number
+  rawOnsetReduction: number
+  nextOnsetReduction: number
+  nextOnsetFoundationDrop: number
+  nextRawOnsetReduction: number
   persistence: number
   hasDecisiveRecovery: boolean
 }
@@ -178,6 +195,109 @@ const hasRecoveredDropBaseline = (
     )
   })
 
+const resolveTerminalWindowReduction = (
+  reference: TerminalActivityWindow,
+  current: TerminalActivityWindow
+) =>
+  Math.max(
+    reference.normalizedFoundation - current.normalizedFoundation,
+    resolvePositiveLayerReduction(reference.normalizedValues, current.normalizedValues, true)
+  )
+
+const resolveTerminalRawWindowReduction = (
+  reference: TerminalActivityWindow,
+  current: TerminalActivityWindow
+) =>
+  Math.max(
+    reference.rawFoundation - current.rawFoundation,
+    resolvePositiveLayerReduction(reference.rawValues, current.rawValues, false)
+  )
+
+const refineTerminalReleaseOnset = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  candidateIndex: number,
+  maximumIndex: number,
+  reference: TerminalActivityWindow,
+  confirmedReduction: number,
+  confirmedRawReduction: number
+) => {
+  const normalizedThreshold = Math.max(
+    MIN_REFINED_ONSET_NORMALIZED_REDUCTION,
+    confirmedReduction * MIN_REFINED_ONSET_REDUCTION_SHARE
+  )
+  const rawThreshold = Math.max(
+    MIN_REFINED_ONSET_RAW_REDUCTION,
+    confirmedRawReduction * MIN_REFINED_ONSET_REDUCTION_SHARE
+  )
+  const scanEnd = Math.min(
+    bars.length - 1,
+    maximumIndex,
+    candidateIndex + TERMINAL_ONSET_LOOKAHEAD_BLOCKS - 1
+  )
+  for (let index = candidateIndex; index <= scanEnd; index += 1) {
+    const current = summarizeTerminalActivityWindow(bars, index, index + 1)
+    const normalizedReduction = resolveTerminalWindowReduction(reference, current)
+    const rawReduction = resolveTerminalRawWindowReduction(reference, current)
+    if (normalizedReduction < normalizedThreshold && rawReduction < rawThreshold) continue
+    if (index + 1 < bars.length) {
+      const next = summarizeTerminalActivityWindow(bars, index + 1, index + 2)
+      const nextNormalizedReduction = resolveTerminalWindowReduction(reference, next)
+      const nextRawReduction = resolveTerminalRawWindowReduction(reference, next)
+      if (
+        nextNormalizedReduction < normalizedReduction * MIN_REFINED_ONSET_NEXT_REDUCTION_SHARE &&
+        nextRawReduction < rawReduction * MIN_REFINED_ONSET_NEXT_REDUCTION_SHARE
+      ) {
+        continue
+      }
+    }
+    return index
+  }
+  return candidateIndex
+}
+
+const resolveCumulativeTerminalRelease = (
+  bars: readonly SongStructureSpectralBarFeature[],
+  index: number,
+  finalDropEndIndex: number,
+  existingOutroStartIndex: number | undefined,
+  reference: TerminalActivityWindow,
+  initialReduction: number,
+  foundationDrop: number,
+  layerDrop: number,
+  rawReduction: number,
+  persistence: ReturnType<typeof resolveTerminalPersistence>
+) => {
+  if (
+    index < Math.floor(bars.length * MIN_CUMULATIVE_RELEASE_POSITION_RATIO) ||
+    index > finalDropEndIndex ||
+    (index === finalDropEndIndex && index !== existingOutroStartIndex) ||
+    bars.length - index < MIN_CUMULATIVE_RELEASE_BLOCKS ||
+    initialReduction < MIN_CUMULATIVE_INITIAL_REDUCTION ||
+    foundationDrop > 0.045 ||
+    layerDrop - Math.max(0, foundationDrop) < 0.015 ||
+    rawReduction < MIN_CUMULATIVE_RAW_REDUCTION ||
+    rawReduction > MAX_CUMULATIVE_RAW_REDUCTION ||
+    persistence.persistence < 0.9 ||
+    persistence.hasDecisiveRecovery
+  ) {
+    return null
+  }
+  const sustainedEight = summarizeTerminalActivityWindow(bars, index, index + 8)
+  const sustainedTwelve = summarizeTerminalActivityWindow(bars, index, index + 12)
+  const eightBlockReduction = resolveTerminalWindowReduction(reference, sustainedEight)
+  const twelveBlockReduction = resolveTerminalWindowReduction(reference, sustainedTwelve)
+  if (
+    eightBlockReduction < MIN_CUMULATIVE_SUSTAINED_REDUCTION ||
+    twelveBlockReduction < MIN_CUMULATIVE_SUSTAINED_REDUCTION
+  ) {
+    return null
+  }
+  return {
+    strength: Math.min(eightBlockReduction, twelveBlockReduction),
+    persistence: persistence.persistence
+  }
+}
+
 export const buildSongStructureTerminalOutroDiagnostics = (
   bars: readonly SongStructureSpectralBarFeature[]
 ): SongStructureTerminalOutroDiagnostic[] => {
@@ -196,6 +316,14 @@ export const buildSongStructureTerminalOutroDiagnostics = (
       resolvePositiveLayerReduction(reference.rawValues, initial.rawValues, false)
     )
     const normalizedReduction = Math.max(foundationDrop, layerDrop)
+    const onset = summarizeTerminalActivityWindow(bars, index, index + 1)
+    const nextOnset = summarizeTerminalActivityWindow(bars, index + 1, index + 2)
+    const onsetFoundationDrop = reference.normalizedFoundation - onset.normalizedFoundation
+    const nextOnsetFoundationDrop = reference.normalizedFoundation - nextOnset.normalizedFoundation
+    const onsetReduction = resolveTerminalWindowReduction(reference, onset)
+    const nextOnsetReduction = resolveTerminalWindowReduction(reference, nextOnset)
+    const rawOnsetReduction = resolveTerminalRawWindowReduction(reference, onset)
+    const nextRawOnsetReduction = resolveTerminalRawWindowReduction(reference, nextOnset)
     const persistence = resolveTerminalPersistence(
       bars,
       index,
@@ -209,6 +337,12 @@ export const buildSongStructureTerminalOutroDiagnostics = (
       foundationDrop,
       layerDrop,
       rawReduction,
+      onsetReduction,
+      onsetFoundationDrop,
+      rawOnsetReduction,
+      nextOnsetReduction,
+      nextOnsetFoundationDrop,
+      nextRawOnsetReduction,
       persistence: persistence.persistence,
       hasDecisiveRecovery: persistence.hasDecisiveRecovery
     })
@@ -290,7 +424,8 @@ const findTerminalOutroBoundary = (
   bars: readonly SongStructureSpectralBarFeature[],
   finalDropRange: SongStructureSemanticRange,
   activeReentryIndexes: readonly number[],
-  spectralBoundaries: readonly SongStructureSpectralBoundary[]
+  spectralBoundaries: readonly SongStructureSpectralBoundary[],
+  existingOutroStartIndex: number | undefined
 ) => {
   if (bars.length < 24 || finalDropRange.endIndex - finalDropRange.startIndex < 8) return null
   const terminalReentryBoundary = findTerminalReentryOutroBoundary(
@@ -350,12 +485,6 @@ const findTerminalOutroBoundary = (
     const structurallyAligned =
       (spectralBoundaryScores.get(index) ?? 0) >= 0.3 &&
       index >= Math.floor(bars.length * MIN_STRUCTURAL_RELEASE_POSITION_RATIO)
-    const strongNormalizedRelease = aligned
-      ? normalizedReduction >= 0.055
-      : structurallyAligned
-        ? normalizedReduction >= 0.08
-        : foundationDrop >= 0.12 || layerDrop >= 0.12
-    if (!strongNormalizedRelease || (rawReduction < 0.012 && normalizedReduction < 0.14)) continue
     const persistence = resolveTerminalPersistence(
       bars,
       index,
@@ -363,6 +492,35 @@ const findTerminalOutroBoundary = (
       initial,
       normalizedReduction
     )
+    const cumulativeRelease = resolveCumulativeTerminalRelease(
+      bars,
+      index,
+      finalDropRange.endIndex,
+      existingOutroStartIndex,
+      reference,
+      normalizedReduction,
+      foundationDrop,
+      layerDrop,
+      rawReduction,
+      persistence
+    )
+    if (cumulativeRelease) {
+      return {
+        index,
+        confidence: clamp01(
+          0.55 +
+            ramp(cumulativeRelease.strength, 0.055, 0.14) * 0.25 +
+            ramp(rawReduction, 0.018, 0.08) * 0.12 +
+            ramp(cumulativeRelease.persistence, 0.9, 1) * 0.08
+        )
+      }
+    }
+    const strongNormalizedRelease = aligned
+      ? normalizedReduction >= 0.055
+      : structurallyAligned
+        ? normalizedReduction >= 0.08
+        : foundationDrop >= 0.12 || layerDrop >= 0.12
+    if (!strongNormalizedRelease || (rawReduction < 0.012 && normalizedReduction < 0.14)) continue
     if (persistence.persistence < 0.75 || persistence.hasDecisiveRecovery) continue
     if (
       aligned &&
@@ -377,8 +535,16 @@ const findTerminalOutroBoundary = (
         continue
       }
     }
-    return {
+    const onsetIndex = refineTerminalReleaseOnset(
+      bars,
       index,
+      existingOutroStartIndex ?? finalDropRange.endIndex,
+      reference,
+      normalizedReduction,
+      rawReduction
+    )
+    return {
+      index: onsetIndex,
       confidence: clamp01(
         0.55 +
           ramp(normalizedReduction, 0.075, 0.25) * 0.25 +
@@ -416,11 +582,15 @@ export const refineTerminalOutroRanges = (
 ) => {
   const finalDropRange = [...ranges].reverse().find((range) => range.kind === 'drop')
   if (!finalDropRange) return [...ranges]
+  const existingOutroStartIndex = ranges.find(
+    (range) => range.kind === 'outro' && range.endIndex === bars.length
+  )?.startIndex
   const boundary = findTerminalOutroBoundary(
     bars,
     finalDropRange,
     activeReentryIndexes,
-    spectralBoundaries
+    spectralBoundaries,
+    existingOutroStartIndex
   )
   if (!boundary) return [...ranges]
   const refined: SongStructureSemanticRange[] = []

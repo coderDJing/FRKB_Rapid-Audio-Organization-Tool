@@ -32,6 +32,8 @@ const MAX_BOUNDARY_COUNT = 32
 const MAX_FALL_LANDING_SPAN = 12
 const MIN_PROTECTED_FALL_SCORE = 0.17
 const LANDING_SWITCH_TIE_MARGIN = 0.01
+const LANDING_SWITCH_MAX_TIE_MARGIN = 0.02
+const LANDING_SWITCH_RELATIVE_TIE_MARGIN = 0.12
 const MIN_WEAK_SWITCH_SCORE = 0.065
 const MIN_SWITCH_DOMINANCE = 0.012
 const MIN_SWITCH_PERSISTENCE = 0.52
@@ -124,6 +126,12 @@ const resolveSwitchPersistence = (stepSwitch: number, sustainedSwitch: number, s
 
 const rampRatio = (value: number, target: number) => clamp01(value / Math.max(1e-6, target))
 
+export const resolveSongStructureLandingSwitchTieMargin = (switchScore: number) =>
+  Math.min(
+    LANDING_SWITCH_MAX_TIE_MARGIN,
+    Math.max(LANDING_SWITCH_TIE_MARGIN, switchScore * LANDING_SWITCH_RELATIVE_TIE_MARGIN)
+  )
+
 const resolvePostStability = (bars: readonly SongStructureSpectralBarFeature[], index: number) => {
   const start = clamp(index, 0, bars.length - 1)
   const end = clamp(index + 4, start + 1, bars.length)
@@ -173,11 +181,12 @@ const buildDirectionalEvents = (bars: readonly SongStructureSpectralBarFeature[]
     const score = Math.max(fallScore, landingScore, switchScore)
     const hasSustainedLanding =
       contextLanding >= Math.max(0.018, stepLanding * 0.32) && stability >= 0.45
+    const landingSwitchTieMargin = resolveSongStructureLandingSwitchTieMargin(switchScore)
     const kind: SongStructureDirectionalBoundaryKind =
       fallScore >= landingScore && fallScore >= switchScore
         ? 'fall'
         : landingScore >= switchScore ||
-            (hasSustainedLanding && landingScore >= switchScore - LANDING_SWITCH_TIE_MARGIN)
+            (hasSustainedLanding && landingScore >= switchScore - landingSwitchTieMargin)
           ? 'landing'
           : 'switch'
     events.push({

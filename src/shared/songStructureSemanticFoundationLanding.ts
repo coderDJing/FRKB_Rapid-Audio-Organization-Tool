@@ -30,6 +30,8 @@ const MIN_DIRECT_BUILD_ONSET_LOW_DROP = 0.18
 const MIN_DIRECT_BUILD_ONSET_HIGH_GAIN = 0.08
 const MAX_DIRECT_BUILD_ONSET_ACTIVITY_GAIN = -0.04
 const MIN_DIRECT_BUILD_ONSET_FOUNDATION_DROP = 0.08
+const MIN_COMPLETED_ACTIVE_REENTRY_BLOCKS = 8
+const MIN_LANDING_GAP_AFTER_ACTIVE_REENTRY_BLOCKS = 4
 
 type WindowSummary = {
   values: SongStructureSpectralValues
@@ -255,6 +257,20 @@ const hasProtectedFullBreakdown = (
       range.endIndex - range.startIndex >= 8
   )
 
+const overlapsCompletedBreakdown = (
+  ranges: readonly SongStructureSemanticRange[],
+  buildStart: number,
+  landingIndex: number
+) =>
+  ranges.some(
+    (range) =>
+      range.kind === 'breakdown' &&
+      range.startIndex <= buildStart &&
+      range.endIndex > buildStart &&
+      range.endIndex < landingIndex &&
+      range.endIndex - range.startIndex >= 4
+  )
+
 const findContextualBuildStart = (
   bars: readonly SongStructureSpectralBarFeature[],
   ranges: readonly SongStructureSemanticRange[],
@@ -275,6 +291,20 @@ const findContextualBuildStart = (
     ) {
       continue
     }
+    const hasCompletedActiveReentry = ranges.some((candidate) => {
+      if (!isActiveKind(candidate.kind)) return false
+      const overlapStart = Math.max(candidate.startIndex, range.endIndex)
+      const overlapEnd = Math.min(candidate.endIndex, landing.boundary.index)
+      if (
+        overlapEnd - overlapStart < MIN_COMPLETED_ACTIVE_REENTRY_BLOCKS ||
+        candidate.endIndex > landing.boundary.index - MIN_LANDING_GAP_AFTER_ACTIVE_REENTRY_BLOCKS
+      ) {
+        return false
+      }
+      const activeReentry = summarizeWindow(bars, overlapStart, overlapEnd)
+      return landing.after.values.low - activeReentry.values.low < MIN_CONTEXT_LOW_DEFICIT
+    })
+    if (hasCompletedActiveReentry) continue
     const hasActiveContinuation = ranges.some(
       (candidate) =>
         isActiveKind(candidate.kind) &&
@@ -351,6 +381,8 @@ export const refineFoundationLandingBuildRanges = (
       (directBuildStart !== undefined &&
       !hasEmbeddedDrop(ranges, directBuildStart, landingIndex) &&
       !hasEmbeddedDrop(protectedRanges, directBuildStart, landingIndex) &&
+      !overlapsCompletedBreakdown(ranges, directBuildStart, landingIndex) &&
+      !overlapsCompletedBreakdown(protectedRanges, directBuildStart, landingIndex) &&
       !hasProtectedFullBreakdown(protectedRanges, directBuildStart, landingIndex)
         ? directBuildStart
         : undefined) ??

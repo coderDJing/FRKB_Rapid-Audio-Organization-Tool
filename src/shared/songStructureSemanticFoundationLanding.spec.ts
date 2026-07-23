@@ -227,4 +227,46 @@ describe('低频落地与长 Build 精修', () => {
       ])
     ).toEqual(ranges)
   })
+
+  it('较早 Build 结束处已有落地和完整 Active 重入时，不把后续低谷一起抹成长 Build', () => {
+    const bars = Array.from({ length: 96 }, (_, index) => {
+      if (index < 22 || (index >= 38 && index < 46) || index >= 72) {
+        return createBar(index, DROP)
+      }
+      return createBar(index, BUILD)
+    })
+    const ranges = [
+      createRange(0, 22, 'drop'),
+      createRange(22, 38, 'build'),
+      createRange(38, 46, 'drop'),
+      createRange(46, 72, 'breakdown'),
+      createRange(72, 96, 'drop')
+    ]
+
+    expect(
+      refineFoundationLandingBuildRanges(bars, ranges, [
+        createBoundary(38, 0.46),
+        createBoundary(72, 0.46)
+      ])
+    ).toEqual(ranges)
+  })
+
+  it('直接 Build 回溯不会吞并已经完成的前置 Breakdown', () => {
+    const bars = Array.from({ length: 40 }, (_, index) =>
+      createBar(index, index >= 16 && index < 28 ? BUILD : DROP)
+    )
+    const ranges = [
+      createRange(0, 16, 'groove'),
+      createRange(16, 20, 'breakdown'),
+      createRange(20, 28, 'build'),
+      createRange(28, 40, 'drop')
+    ]
+
+    expect(
+      refineFoundationLandingBuildRanges(bars, ranges, [
+        createBoundary(16, 0.44),
+        createBoundary(28, 0.46)
+      ])
+    ).toEqual(ranges)
+  })
 })

@@ -30,6 +30,8 @@ import { resolveSongStructureMacroActivityKinds } from './songStructureSemanticM
 import { refineSongStructureSemanticStateKinds } from './songStructureSemanticStateGuards'
 import { stabilizeSongStructureSemanticRanges } from './songStructureSemanticStability'
 import { refinePostBreakdownStructuralReentries } from './songStructureSemanticReentry'
+import { refineSongStructureSemanticBoundaryAlignment } from './songStructureSemanticBoundaryAlignment'
+import { resolveSongStructureSoftMotifRepetition } from './songStructureStructuralEvidence'
 import * as inactiveValley from './songStructureSemanticInactiveValley'
 import {
   SONG_STRUCTURE_SPECTRAL_VALUE_KEYS,
@@ -381,12 +383,14 @@ const buildSemanticSegments = (
     current.bars += segment.bars
     clusterCounts.set(segment.clusterId, current)
   }
+  const softMotifRepetition = resolveSongStructureSoftMotifRepetition(bars, rawSegments)
   return rawSegments.map((segment, index): SemanticSegment => {
     const cluster = clusterCounts.get(segment.clusterId) ?? { segments: 1, bars: segment.bars }
-    const repetition = clamp01(
+    const clusterRepetition = clamp01(
       ramp(cluster.segments, 1, 3) * 0.72 +
         ramp(cluster.bars / Math.max(1, bars.length), 0.08, 0.38) * 0.28
     )
+    const repetition = Math.max(clusterRepetition, (softMotifRepetition[index] ?? 0) * 0.9)
     const withRepetition = {
       ...segment,
       repetition
@@ -977,7 +981,7 @@ export const labelSongStructureSpectralSegments = (
     terminalRefinedRanges,
     clustering.boundaries
   )
-  const ranges = stabilizeSongStructureSemanticRanges(
+  const stabilizedRanges = stabilizeSongStructureSemanticRanges(
     refineTerminalOutroRanges(
       bars,
       initialRefinedRanges,
@@ -985,6 +989,7 @@ export const labelSongStructureSpectralSegments = (
       clustering.boundaries
     )
   )
+  const ranges = refineSongStructureSemanticBoundaryAlignment(bars, stabilizedRanges)
   const sections = ranges
     .map((range) => buildSection(bars, clustering.boundaries, range))
     .filter((section): section is SongStructureSection => section !== null)
