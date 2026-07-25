@@ -58,6 +58,7 @@ const exactInvokeChannels = new Set([
   'paths:exists',
   'permanentlyDelSongs',
   'playerGlobalShortcut:update',
+  'playlist:batchTrackCount',
   'probe-database-dir',
   'reSelectLibrary',
   'read-directory',

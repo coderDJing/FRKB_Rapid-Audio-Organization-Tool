@@ -31,7 +31,6 @@ import {
   isLibraryTreeManualSort,
   libraryTreeSortRuleVersion,
   libraryTreeTrackCountVersion,
-  setLibraryTreeTrackCount,
   sortLibraryTreeChildren
 } from '@renderer/utils/libraryTreeSort'
 import { showNearMouseTip } from '@renderer/utils/nearMouseTip'
@@ -136,15 +135,8 @@ const {
   startRename
 } = useLibraryItemEditing({ dirDataRef, fatherDirDataRef, runtime, props, emitter })
 
+// trackCount 直接读写共享的曲目数缓存，无需再单独同步一次
 const { trackCount } = useLibraryTrackCount({ runtime, dirDataRef, props })
-
-watch(
-  trackCount,
-  (value) => {
-    if (typeof value === 'number') setLibraryTreeTrackCount(props.uuid, value)
-  },
-  { immediate: true }
-)
 
 const displayedFolderChildren = computed(() => {
   const children = dirData.value?.children

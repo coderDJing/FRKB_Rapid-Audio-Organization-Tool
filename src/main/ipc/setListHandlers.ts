@@ -32,6 +32,7 @@ import {
   removeSetItemsByPlaylist,
   reorderSetPlaylistItems,
   countSetItemsByPlaylist,
+  countSetItemsByPlaylists,
   findSetItemsByFilePath,
   updateSetItemFilePath,
   updateSetItemAnalysisSnapshot,
@@ -805,6 +806,18 @@ export function registerSetListHandlers() {
     } catch (error) {
       log.error('[setList] count failed', error)
       return 0
+    }
+  })
+
+  ipcMain.handle('setList:batchCount', async (_e, playlistUuids?: string[]) => {
+    try {
+      const uuids = Array.isArray(playlistUuids)
+        ? playlistUuids.filter((uuid): uuid is string => typeof uuid === 'string' && !!uuid.trim())
+        : []
+      return countSetItemsByPlaylists(uuids)
+    } catch (error) {
+      log.error('[setList] batch count failed', error)
+      return {}
     }
   })
 

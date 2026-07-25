@@ -348,6 +348,35 @@ export function countSetItemsByPlaylist(playlistUuid: string): number {
   }
 }
 
+/** 一次查出多个 set 歌单的条目数，避免逐个歌单往返 */
+export function countSetItemsByPlaylists(playlistUuids: string[]): Record<string, number> {
+  const result: Record<string, number> = {}
+  const uuids = [...new Set(playlistUuids.filter((uuid) => !!uuid))]
+  if (!uuids.length) return result
+  for (const uuid of uuids) result[uuid] = 0
+  const db = getLibraryDb()
+  if (!db) return result
+  try {
+    for (let index = 0; index < uuids.length; index += IN_CLAUSE_CHUNK_SIZE) {
+      const chunk = uuids.slice(index, index + IN_CLAUSE_CHUNK_SIZE)
+      const placeholders = chunk.map(() => '?').join(',')
+      const rows = db
+        .prepare(
+          `SELECT playlist_uuid, COUNT(*) AS cnt FROM ${TABLE} WHERE playlist_uuid IN (${placeholders}) GROUP BY playlist_uuid`
+        )
+        .all(...chunk)
+      for (const row of rows) {
+        if (!isSqliteRow(row) || !row.playlist_uuid) continue
+        result[String(row.playlist_uuid)] = Number(row.cnt) || 0
+      }
+    }
+    return result
+  } catch (error) {
+    log.error('[sqlite] set count items batch failed', error)
+    return result
+  }
+}
+
 export function normalizeSetItemOrder(playlistUuid: string): void {
   if (!playlistUuid) return
   const db = getLibraryDb()

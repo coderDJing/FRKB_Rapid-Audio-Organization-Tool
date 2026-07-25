@@ -7,7 +7,10 @@ import mainWindow from '../window/mainWindow'
 import { EXTERNAL_PLAYLIST_UUID } from '../../shared/externalPlayback'
 import { scheduleSongListPostScanTasks } from '../services/scanSongs'
 import { scanSongListOffMainThread } from '../services/songListScanWorker'
-import { countSongListTracksOffMainThread } from '../services/songListTrackCount'
+import {
+  countSongListTracksBatchOffMainThread,
+  countSongListTracksOffMainThread
+} from '../services/songListTrackCount'
 import {
   collectFilesWithExtensions,
   getSongsAnalyseResult,
@@ -251,6 +254,42 @@ export function registerPlaylistHandlers() {
       return 0
     }
   })
+
+  // 库树按曲目数排序时需要一次拿到整棵树的数量，逐歌单往返会导致列表反复重排
+  ipcMain.handle(
+    'playlist:batchTrackCount',
+    async (_e, payload?: { songLists?: Array<{ uuid?: string; songListPath?: string }> }) => {
+      const result: Record<string, number> = {}
+      try {
+        const requests = Array.isArray(payload?.songLists) ? payload.songLists : []
+        const resolved: Array<{ uuid: string; scanPath: string }> = []
+        for (const item of requests) {
+          const uuid = String(item?.uuid || '').trim()
+          const songListPath = String(item?.songListPath || '').trim()
+          if (!uuid || !songListPath) continue
+          if (result[uuid] !== undefined) continue
+          result[uuid] = 0
+          try {
+            resolved.push({ uuid, scanPath: resolveLibraryPath(songListPath).absPath })
+          } catch {
+            // 路径已失效的节点保持 0，不影响其余歌单
+          }
+        }
+        if (!resolved.length) return result
+        const counts = await countSongListTracksBatchOffMainThread({
+          scanPaths: resolved.map((item) => item.scanPath),
+          audioExt: store.settingConfig.audioExt
+        })
+        resolved.forEach((item, index) => {
+          result[item.uuid] = counts[index] ?? 0
+        })
+        return result
+      } catch (error) {
+        log.error('playlist:batchTrackCount failed', error)
+        return result
+      }
+    }
+  )
 
   ipcMain.handle('songList:resolve-by-file-path', async (_e, rawFilePath?: string) => {
     try {

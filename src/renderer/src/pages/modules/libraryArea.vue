@@ -29,6 +29,7 @@ import {
   libraryTreeTrackCountVersion,
   libraryTreeSortRuleLabelKey,
   libraryTreeSortRuleMenuKey,
+  hasCompleteLibraryTreeTrackCounts,
   prefetchLibraryTreeTrackCounts,
   setLibraryTreeSortRule,
   sortLibraryTreeChildren,
@@ -71,6 +72,10 @@ const sortIconMaskStyle = computed(() => ({
   '--sort-icon-mask': `url("${sortIconByRule[currentSortRule.value]}")`
 }))
 
+const isCountSortRule = computed(
+  () => currentSortRule.value === 'countAsc' || currentSortRule.value === 'countDesc'
+)
+
 const displayedChildren = computed(() => {
   const children = libraryData.value.children
   if (!children) return children
@@ -82,14 +87,47 @@ const displayedChildren = computed(() => {
   return sortLibraryTreeChildren(children, currentSortRule.value)
 })
 
+/**
+ * 按曲目数排序且尚无任何数量数据时，先不渲染列表：
+ * 否则会先按手动序闪一帧、再随统计结果整体重排。
+ * 有持久化缓存的正常情况下这里立刻为 false，不会引入额外等待。
+ */
+const isAwaitingTrackCounts = ref(false)
+const refreshTrackCountReadiness = () => {
+  if (isRecycleBin.value || !isCountSortRule.value) {
+    isAwaitingTrackCounts.value = false
+    return
+  }
+  isAwaitingTrackCounts.value = !hasCompleteLibraryTreeTrackCounts(libraryData.value)
+}
+
 watch(
-  () => [libraryName.value, currentSortRule.value, libraryData.value.children?.length] as const,
+  () =>
+    [
+      libraryName.value,
+      currentSortRule.value,
+      libraryData.value.children?.length,
+      runtime.setting.showPlaylistTrackCount
+    ] as const,
   () => {
+    refreshTrackCountReadiness()
     if (isRecycleBin.value) return
-    if (currentSortRule.value !== 'countAsc' && currentSortRule.value !== 'countDesc') return
-    void prefetchLibraryTreeTrackCounts(libraryData.value)
+    // 数量徽标和按数量排序都依赖这份数据，统一走一次批量预取：
+    // 既刷新掉可能过期的持久化缓存，也避免每个歌单各自发一次 IPC
+    if (!isCountSortRule.value && !runtime.setting.showPlaylistTrackCount) return
+    void prefetchLibraryTreeTrackCounts(libraryData.value).then(() => {
+      refreshTrackCountReadiness()
+    })
   },
   { immediate: true }
+)
+
+// 曲目数落地后解除等待（缓存命中时首帧就已解除，不会额外等待）
+watch(
+  () => [libraryTreeTrackCountVersion.value, currentSortRule.value] as const,
+  () => {
+    refreshTrackCountReadiness()
+  }
 )
 
 const showHint = computed(() => {
@@ -527,7 +565,11 @@ const handleContentClick = () => {
         defer
       >
         <div class="libraryTreeDropSurface">
-          <template v-for="item of displayedChildren" :key="item.uuid">
+          <div v-if="isAwaitingTrackCounts" class="trackCountSortLoading" role="status">
+            <span class="trackCountSortLoadingSpinner" aria-hidden="true"></span>
+            <span>{{ t('common.loading') }}</span>
+          </div>
+          <template v-for="item of displayedChildren" v-else :key="item.uuid">
             <libraryItem
               v-if="!(runtime.selectSongListDialogShow && !item.dirName)"
               :uuid="item.uuid"
@@ -568,6 +610,32 @@ const handleContentClick = () => {
   min-height: 100%;
   display: flex;
   flex-direction: column;
+}
+
+.trackCountSortLoading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 8px;
+  color: var(--text-weak);
+  font-size: 12px;
+}
+
+.trackCountSortLoadingSpinner {
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: trackCountSortLoadingSpin 0.75s linear infinite;
+}
+
+@keyframes trackCountSortLoadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .libraryDropSpace {

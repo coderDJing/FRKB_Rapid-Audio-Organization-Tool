@@ -56,6 +56,7 @@ import {
   isRuntimeLibraryTree
 } from '@renderer/utils/appRuntimeStateGuards'
 import { stopWindowAudio } from '@renderer/utils/windowAudioCleanup'
+import { pruneLibraryTreeTrackCounts } from '@renderer/utils/libraryTreeSort'
 
 const runtime = useRuntimeStore()
 const contextMenuClickThroughGuard = createClickThroughGuard()
@@ -586,6 +587,7 @@ const getLibrary = async () => {
   try {
     runtime.libraryTree = await window.electron.ipcRenderer.invoke('getLibrary')
     runtime.oldLibraryTree = JSON.parse(JSON.stringify(runtime.libraryTree))
+    pruneLibraryTreeTrackCounts(runtime.libraryTree)
   } finally {
     runtime.libraryTreeLoading = false
   }
@@ -661,6 +663,7 @@ const handleLibraryTreeUpdated = async (_e: unknown, tree: unknown) => {
     if (isRuntimeLibraryTree(tree)) {
       runtime.libraryTree = tree
       runtime.oldLibraryTree = JSON.parse(JSON.stringify(tree))
+      pruneLibraryTreeTrackCounts(tree)
       markGlobalSongSearchDirty('library-tree-updated')
       return
     }
