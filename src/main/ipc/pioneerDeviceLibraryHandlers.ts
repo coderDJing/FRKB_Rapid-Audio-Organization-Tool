@@ -15,8 +15,7 @@ import {
   loadPioneerPreviewWaveformsByDrivePath,
   streamPioneerPreviewWaveformsByDrivePath
 } from '../services/pioneerDeviceLibrary/waveform'
-import { preparePioneerUsbPlaylistAnalysis } from '../services/pioneerDeviceLibrary/playlistAnalysis'
-import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
+import { loadPioneerDetailWaveformsByDrivePath } from '../services/pioneerDeviceLibrary/detailWaveform'
 
 export function registerPioneerDeviceLibraryHandlers() {
   const mimeFromExt = (ext: string) =>
@@ -50,26 +49,16 @@ export function registerPioneerDeviceLibraryHandlers() {
   )
 
   ipcMain.handle(
-    'pioneer-device-library:load-playlist-tracks',
-    async (_event, rootPath: string, playlistId: number, libraryType?: PioneerLibraryKind) => {
-      return await loadPioneerPlaylistTracksByDrivePath(rootPath, playlistId, libraryType)
+    'pioneer-device-library:get-detail-waveforms',
+    async (_event, rootPath: string, analyzePaths: string[]) => {
+      return await loadPioneerDetailWaveformsByDrivePath(rootPath, analyzePaths)
     }
   )
 
   ipcMain.handle(
-    'pioneer-device-library:prepare-playlist-analysis',
-    async (
-      _event,
-      payload: {
-        rootPath?: string
-        tracks?: Array<{ filePath?: string }>
-      }
-    ) => {
-      assertLibraryMergeMutationAllowed()
-      return await preparePioneerUsbPlaylistAnalysis({
-        rootPath: String(payload?.rootPath || '').trim(),
-        tracks: Array.isArray(payload?.tracks) ? payload.tracks : []
-      })
+    'pioneer-device-library:load-playlist-tracks',
+    async (_event, rootPath: string, playlistId: number, libraryType?: PioneerLibraryKind) => {
+      return await loadPioneerPlaylistTracksByDrivePath(rootPath, playlistId, libraryType)
     }
   )
 

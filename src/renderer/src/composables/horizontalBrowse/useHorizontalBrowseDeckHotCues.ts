@@ -5,6 +5,7 @@ import type {
   HorizontalBrowseTransportDeckSnapshot
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRenderSync'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -72,6 +73,7 @@ export const useHorizontalBrowseDeckHotCues = (params: UseHorizontalBrowseDeckHo
       await params.handleDeckHotCueRecall(deck, existingHotCue)
       return
     }
+    if (isRekordboxExternalPlaybackSource('', song)) return
 
     const storedCueDefinition = params.buildDeckStoredCueDefinition(deck)
     if (!storedCueDefinition) return
@@ -107,6 +109,7 @@ export const useHorizontalBrowseDeckHotCues = (params: UseHorizontalBrowseDeckHo
       ? song.hotCues.find((item) => item.slot === slot)
       : null
     if (!existingHotCue) return
+    if (isRekordboxExternalPlaybackSource('', song)) return
 
     const result = (await window.electron.ipcRenderer.invoke('song:delete-hot-cue', {
       filePath: song.filePath,

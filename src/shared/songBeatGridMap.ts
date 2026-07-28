@@ -21,7 +21,7 @@ export type SongBeatGridClip = {
 
 export type SongBeatGridMap = {
   version: number
-  source: 'manual' | 'analysis'
+  source: 'manual' | 'analysis' | 'rekordbox'
   clips: SongBeatGridClip[]
   signature: string
 }

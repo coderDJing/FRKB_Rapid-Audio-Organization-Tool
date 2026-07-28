@@ -12,6 +12,7 @@ import {
 import type { SongStructureAnalysis } from '@shared/songStructure'
 import { buildHorizontalBrowseTransportGridPayload } from '@shared/horizontalBrowseTransportGrid'
 import { sendHorizontalBrowseInteractionTrace } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTrace'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 import { resolveHorizontalBrowseInteractionElapsedMs } from '@renderer/composables/horizontalBrowse/horizontalBrowseInteractionTimeline'
 import type { HorizontalBrowseTransportBeatGridInput } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 
@@ -52,13 +53,18 @@ export const createHorizontalBrowseDeckAssigner = (
   params: CreateHorizontalBrowseDeckAssignerParams
 ) => {
   const queueDeckSongPriorityAnalysis = (deck: DeckKey, song: ISongInfo | null | undefined) => {
+    if (isRekordboxExternalPlaybackSource('', song)) return
     const filePath = String(song?.filePath || '').trim()
     if (!filePath) return
     if (params.shouldDeferDeckSongPriorityAnalysis(deck)) {
-      window.electron.ipcRenderer.send('key-analysis:queue-deck-idle', { filePath })
+      window.electron.ipcRenderer.send('key-analysis:queue-deck-idle', {
+        analysisAuthority: 'frkb',
+        filePath
+      })
       return
     }
     window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+      analysisAuthority: 'frkb',
       filePath,
       focusSlot: `horizontal-browse-${deck}`
     })
@@ -70,6 +76,7 @@ export const createHorizontalBrowseDeckAssigner = (
   const resolveDeckSongWithSharedGrid = async (song: ISongInfo) => {
     const filePath = String(song.filePath || '').trim()
     if (!filePath) return { ...song }
+    if (isRekordboxExternalPlaybackSource('', song)) return { ...song }
     const startedAt = performance.now()
     sendHorizontalBrowseInteractionTrace('resolve-deck-song:start', { filePath })
     try {

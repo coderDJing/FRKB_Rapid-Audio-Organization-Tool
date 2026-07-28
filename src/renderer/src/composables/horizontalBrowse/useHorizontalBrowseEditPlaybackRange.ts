@@ -169,6 +169,7 @@ export const useHorizontalBrowseEditPlaybackRange = (
     queuedSectionAnalysisFilePath.value = filePath
     try {
       window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+        analysisAuthority: 'frkb',
         filePath,
         focusSlot: 'horizontal-browse-top'
       })

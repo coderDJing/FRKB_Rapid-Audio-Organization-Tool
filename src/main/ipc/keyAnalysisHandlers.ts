@@ -14,20 +14,32 @@ import { isLibraryMergeMutationLocked } from '../services/libraryMerge/runtime'
 import { normalizeAnalysisBpmRangeId } from '../../shared/analysisBpmRange'
 
 type VisibleQueuePayload = {
+  analysisAuthority?: 'frkb'
   filePaths?: string[]
   waveformOnly?: boolean
   scope?: 'list' | 'waveform-preview'
 }
 
 type ManualBatchPayload = {
+  analysisAuthority?: 'frkb'
   filePaths?: string[]
   titleKey?: string
   analysisBpmRangeId?: string
 }
 
+type PlaybackQueuePayload = {
+  analysisAuthority?: 'frkb'
+  filePath?: string
+  focusSlot?: string
+}
+
+const hasFrkbAnalysisAuthority = (payload: { analysisAuthority?: unknown } | null | undefined) =>
+  payload?.analysisAuthority === 'frkb'
+
 export function registerKeyAnalysisHandlers() {
   ipcMain.on('key-analysis:queue-visible', (_e, payload: VisibleQueuePayload) => {
     if (isLibraryMergeMutationLocked()) return
+    if (!hasFrkbAnalysisAuthority(payload)) return
     const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     const normalized = paths
       .map((p) => (typeof p === 'string' ? p.trim() : ''))
@@ -64,24 +76,23 @@ export function registerKeyAnalysisHandlers() {
     )
   })
 
-  ipcMain.on(
-    'key-analysis:queue-playing',
-    (_e, payload: { filePath?: string; focusSlot?: string }) => {
-      if (isLibraryMergeMutationLocked()) return
-      const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
-      if (!filePath) return
-      if (isInRecordingLibraryAbsPath(filePath)) return
-      enqueueKeyAnalysis(filePath, 'high', {
-        urgent: true,
-        source: 'foreground',
-        focusSlot: payload?.focusSlot,
-        includeStructure: true
-      })
-    }
-  )
-
-  ipcMain.on('key-analysis:queue-deck-idle', (_e, payload: { filePath?: string }) => {
+  ipcMain.on('key-analysis:queue-playing', (_e, payload: PlaybackQueuePayload) => {
     if (isLibraryMergeMutationLocked()) return
+    if (!hasFrkbAnalysisAuthority(payload)) return
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
+    if (!filePath) return
+    if (isInRecordingLibraryAbsPath(filePath)) return
+    enqueueKeyAnalysis(filePath, 'high', {
+      urgent: true,
+      source: 'foreground',
+      focusSlot: payload?.focusSlot,
+      includeStructure: true
+    })
+  })
+
+  ipcMain.on('key-analysis:queue-deck-idle', (_e, payload: PlaybackQueuePayload) => {
+    if (isLibraryMergeMutationLocked()) return
+    if (!hasFrkbAnalysisAuthority(payload)) return
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath) return
     if (isInRecordingLibraryAbsPath(filePath)) return
@@ -102,6 +113,7 @@ export function registerKeyAnalysisHandlers() {
     if (isLibraryMergeMutationLocked()) {
       return { batchId: '', queued: 0, blocked: true }
     }
+    if (!hasFrkbAnalysisAuthority(payload)) return { batchId: '', queued: 0, blocked: true }
     const paths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
     const normalized = paths
       .filter((p) => typeof p === 'string' && p.trim().length > 0)

@@ -36,6 +36,13 @@ export const resolveSongExternalWaveformSource = (
     rootPath?: string | null | undefined
   }
 ): ResolvedExternalWaveformSource | null => {
+  // Only the explicitly tagged Rekordbox USB/Desktop projections may use this path.
+  // A regular external file can have an analyze-like path too; it remains an FRKB source.
+  const sourceKind =
+    normalizeRekordboxSourceKind(song?.externalSourceKind) ||
+    normalizeRekordboxSourceKind(fallback?.sourceKind)
+  if (!sourceKind) return null
+
   const externalAnalyzePath = String(
     song?.externalAnalyzePath || song?.pioneerAnalyzePath || ''
   ).trim()
@@ -43,11 +50,6 @@ export const resolveSongExternalWaveformSource = (
     song?.externalWaveformRootPath || song?.pioneerDeviceRootPath || fallback?.rootPath || ''
   ).trim()
   if (!externalAnalyzePath || !externalRootPath) return null
-
-  const sourceKind =
-    normalizeRekordboxSourceKind(song?.externalSourceKind) ||
-    normalizeRekordboxSourceKind(fallback?.sourceKind) ||
-    'usb'
 
   return {
     sourceKind,
@@ -58,6 +60,9 @@ export const resolveSongExternalWaveformSource = (
 
 export const getRekordboxPreviewWaveformRequestChannel = (sourceKind: RekordboxSourceKind) =>
   buildRekordboxSourceChannel(sourceKind, 'get-preview-waveforms')
+
+export const getRekordboxDetailWaveformRequestChannel = (sourceKind: RekordboxSourceKind) =>
+  buildRekordboxSourceChannel(sourceKind, 'get-detail-waveforms')
 
 export const getRekordboxPreviewWaveformStreamChannel = (sourceKind: RekordboxSourceKind) =>
   buildRekordboxSourceChannel(sourceKind, 'stream-preview-waveforms')

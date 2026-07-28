@@ -11,6 +11,8 @@ import type { HorizontalBrowsePlaybackRangeOverlay } from '@renderer/composables
 
 type DeckToolbarState = {
   disabled: boolean
+  bpmInputDisabled: boolean
+  showGridControls: boolean
   bpmInputValue: string
   bpmStep: number
   bpmMin: number
@@ -29,6 +31,7 @@ type DeckToolbarState = {
   loopBeatLabel: string
   loopActive: boolean
   loopDisabled: boolean
+  showMetronome: boolean
 }
 
 type HorizontalBrowseLoopRange = {
@@ -156,6 +159,8 @@ const isTop = props.position === 'top'
       <HorizontalBrowseDeckToolbarRow
         v-else-if="(isTop && regionId === 3) || (!isTop && regionId === 6)"
         :disabled="props.toolbarState.disabled"
+        :bpm-input-disabled="props.toolbarState.bpmInputDisabled"
+        :show-grid-controls="props.toolbarState.showGridControls"
         :bpm-input-value="props.toolbarState.bpmInputValue"
         :bpm-step="props.toolbarState.bpmStep"
         :bpm-min="props.toolbarState.bpmMin"
@@ -175,6 +180,7 @@ const isTop = props.position === 'top'
         :read-only-source="props.readOnlySource"
         :quantize-enabled="props.quantizeEnabled"
         :master-tempo-enabled="props.masterTempoEnabled"
+        :show-metronome="props.toolbarState.showMetronome"
         :tempo-nudge-active-direction="props.tempoNudgeActiveDirection"
         :show-tempo-nudge="props.showTempoNudge"
         :metronome-enabled="props.toolbarState.metronomeEnabled"

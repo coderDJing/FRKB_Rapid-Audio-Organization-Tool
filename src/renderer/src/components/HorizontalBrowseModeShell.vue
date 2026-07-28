@@ -79,6 +79,7 @@ import {
   resolveHorizontalBrowseDeckToolbarBpmInputValue,
   resolveHorizontalBrowseDeckWaveformPlaybackActive
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseModeShellPresentationResolvers'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 import { resolveInitialPlaybackRangeStartSec } from '@shared/playbackRange'
 
 type DeckKey = HorizontalBrowseDeckKey
@@ -633,8 +634,8 @@ const resolveDeckSyncUiEnabled = (deck: DeckKey) =>
     resolveDeckCuePreviewRuntimeState(deck).syncEnabledBefore
   )
 
-const resolveDeckToolbarState = (deck: DeckKey) =>
-  buildHorizontalBrowseDeckToolbarState(
+const resolveDeckToolbarState = (deck: DeckKey) => {
+  const toolbarState = buildHorizontalBrowseDeckToolbarState(
     deck === 'top' ? topDeckToolbarState.value : bottomDeckToolbarState.value,
     resolveDeckToolbarBpmInputValue(deck),
     {
@@ -647,6 +648,18 @@ const resolveDeckToolbarState = (deck: DeckKey) =>
       tapBpmTitle: isEditMode.value ? EDIT_MODE_TAP_BPM_TITLE : ''
     }
   )
+  return {
+    ...toolbarState,
+    // 双轨的 BPM 是 transport 临时速度目标，不能被只读网格/细节波形的状态禁用。
+    bpmInputDisabled: isEditMode.value
+      ? toolbarState.bpmInputDisabled
+      : !resolveDeckSong(deck)?.filePath,
+    // 外部曲目的网格属于 Rekordbox；双轨只保留临时速度控制，隐藏无效的网格工具。
+    showGridControls:
+      isEditMode.value || !isRekordboxExternalPlaybackSource('', resolveDeckSong(deck)),
+    showMetronome: isEditMode.value || !isRekordboxExternalPlaybackSource('', resolveDeckSong(deck))
+  }
+}
 
 useHorizontalBrowseModeShellHotkeys({
   runtime,
@@ -1075,6 +1088,8 @@ onUnmounted(() => {
         v-model:bottom-mode="deckCuePanelMode.bottom"
         :top-hot-cues="topDeckSong?.hotCues || []"
         :bottom-hot-cues="bottomDeckSong?.hotCues || []"
+        :top-hot-cue-editable="!isRekordboxExternalPlaybackSource('', topDeckSong)"
+        :bottom-hot-cue-editable="!isRekordboxExternalPlaybackSource('', bottomDeckSong)"
         :top-memory-cues="topDeckSong?.memoryCues || []"
         :bottom-memory-cues="bottomDeckSong?.memoryCues || []"
         @hotcue-press="void handleDeckHotCuePress($event.deck, $event.slot)"

@@ -35,6 +35,7 @@ import {
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseLinkedDeckOrder'
 import { createHorizontalBrowseSectionSeekPlayHandler } from '@renderer/composables/horizontalBrowse/horizontalBrowseSectionSeekPlay'
 import { createHorizontalBrowseBeatJumpHandlers } from '@renderer/composables/horizontalBrowse/horizontalBrowseBeatJumpHandlers'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 
 type DeckKey = HorizontalBrowseDeckKey
 
@@ -166,9 +167,11 @@ export const useHorizontalBrowseDeckPlaybackController = (
   })
 
   const queueDeckSongPriorityAnalysis = (deck: DeckKey, filePath: string) => {
+    if (isRekordboxExternalPlaybackSource('', params.resolveDeckSong(deck))) return
     const normalizedPath = String(filePath || '').trim()
     if (!normalizedPath) return
     window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+      analysisAuthority: 'frkb',
       filePath: normalizedPath,
       focusSlot: `horizontal-browse-${deck}`
     })

@@ -299,7 +299,11 @@ const canCommitBlankRawSegment = (
     Math.min(Math.floor(Number(rawData.loadedFrames ?? frames) || 0), frames)
   )
   if (!loadedFrames) return false
-  const timeBasisOffsetSec = Math.max(0, Number(state.timeBasisOffsetMs) || 0) / 1000
+  const timeBasisOffsetSec =
+    rawData.nativeWaveformKind === 'rekordbox-rgb' ||
+    rawData.nativeWaveformKind === 'rekordbox-triband'
+      ? 0
+      : Math.max(0, Number(state.timeBasisOffsetMs) || 0) / 1000
   const rawStartSec = Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec
   const rawEndSec = rawStartSec + loadedFrames / rate
   const rangeEndSec = rangeStartSec + rangeDurationSec
@@ -819,6 +823,7 @@ const processRender = (
         renderViewportOnly: request.renderViewportOnly === true,
         renderTargetIndex: request.renderTargetIndex,
         stableWaveformSource: request.stableWaveformSource === true,
+        rawWaveformKind: rawData?.nativeWaveformKind,
         notReadyReason
       }
     })

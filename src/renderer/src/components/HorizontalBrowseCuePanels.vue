@@ -25,6 +25,8 @@ const props = defineProps<{
   bottomMode: DeckCuePanelMode
   topHotCues?: ISongHotCue[] | null
   bottomHotCues?: ISongHotCue[] | null
+  topHotCueEditable?: boolean
+  bottomHotCueEditable?: boolean
   topMemoryCues?: ISongMemoryCue[] | null
   bottomMemoryCues?: ISongMemoryCue[] | null
 }>()
@@ -69,6 +71,7 @@ const panels = computed(() => [
   {
     deck: 'top' as DeckKey,
     mode: props.topMode,
+    hotCueEditable: props.topHotCueEditable !== false,
     hotCueRows: buildHotCueRows(props.topHotCues),
     memoryCueRows: normalizeSongMemoryCues(props.topMemoryCues).map((item) => ({
       sec: item.sec,
@@ -88,6 +91,7 @@ const panels = computed(() => [
   {
     deck: 'bottom' as DeckKey,
     mode: props.bottomMode,
+    hotCueEditable: props.bottomHotCueEditable !== false,
     hotCueRows: buildHotCueRows(props.bottomHotCues),
     memoryCueRows: normalizeSongMemoryCues(props.bottomMemoryCues).map((item) => ({
       sec: item.sec,
@@ -133,6 +137,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
             class="cue-panel__hotcue-row"
             :class="{ 'has-value': row.active }"
             :style="{ '--cue-slot-color': row.color }"
+            :disabled="!row.active && !panel.hotCueEditable"
             :title="row.title"
             @click="emit('hotcue-press', { deck: panel.deck, slot: row.slot })"
           >
@@ -155,6 +160,7 @@ const updateMode = (deck: DeckKey, mode: DeckCuePanelMode) => {
               tag="button"
               type="button"
               class="cue-panel__hotcue-delete"
+              :disabled="!panel.hotCueEditable"
               title="Delete Hot Cue"
               aria-label="Delete Hot Cue"
               @click.stop="emit('hotcue-delete', { deck: panel.deck, slot: row.slot })"

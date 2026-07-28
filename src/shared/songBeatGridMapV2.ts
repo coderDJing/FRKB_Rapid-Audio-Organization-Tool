@@ -10,7 +10,7 @@ const BPM_DISPLAY_SCALE = 10 ** BPM_DISPLAY_DECIMALS
 const PHASE_EPSILON_BEATS = 0.0001
 const LINE_EPSILON_SEC = 0.000001
 
-export type SongBeatGridV2Source = 'analysis' | 'manual'
+export type SongBeatGridV2Source = 'analysis' | 'manual' | 'rekordbox'
 
 export type SongBeatGridClipV2 = {
   startSec: number
@@ -30,6 +30,12 @@ export type SongBeatGridFixedProjectionV2 = {
   bpm: number
   firstBeatMs: number
   downbeatBeatOffset: number
+}
+
+export type RekordboxBeatGridEntry = {
+  timeMs: number
+  bpm: number
+  beatNumber: number
 }
 
 export type SongBeatGridBpmSummaryV2 = {
@@ -206,7 +212,7 @@ export const normalizeSongBeatGridMapV2 = (
   const record = value as Record<string, unknown>
   if (
     record.version !== SONG_BEAT_GRID_MAP_V2_VERSION ||
-    (record.source !== 'analysis' && record.source !== 'manual')
+    (record.source !== 'analysis' && record.source !== 'manual' && record.source !== 'rekordbox')
   ) {
     return null
   }
@@ -226,6 +232,51 @@ export const createSongBeatGridMapV2FromClips = (
   options: NormalizeSongBeatGridMapV2Options = {}
 ): SongBeatGridMapV2 | null =>
   normalizeSongBeatGridMapV2({ version: SONG_BEAT_GRID_MAP_V2_VERSION, source, clips }, options)
+
+const REKORDBOX_GRID_CONTINUITY_TOLERANCE_SEC = 0.003
+
+const isRekordboxGridEntryContinuousWithPrevious = (
+  previous: RekordboxBeatGridEntry,
+  current: RekordboxBeatGridEntry
+) => {
+  if (Math.abs(previous.bpm - current.bpm) > 0.000001) return false
+  if (current.beatNumber !== (previous.beatNumber % SONG_BEAT_GRID_DOWNBEAT_BEAT_INTERVAL) + 1)
+    return false
+  const expectedTimeMs = previous.timeMs + 60_000 / previous.bpm
+  return Math.abs(current.timeMs - expectedTimeMs) <= REKORDBOX_GRID_CONTINUITY_TOLERANCE_SEC * 1000
+}
+
+// PQTZ 给出的是每一拍的真值。这里仅合并连续拍为渲染所需的 tempo clip，绝不重新分析或改写真值。
+export const createSongBeatGridMapV2FromRekordboxEntries = (
+  entries: readonly RekordboxBeatGridEntry[]
+): SongBeatGridMapV2 | null => {
+  if (!entries.length) return null
+  const first = entries[0]
+  const clips: SongBeatGridClipV2[] = [
+    {
+      startSec: 0,
+      anchorSec: first.timeMs / 1000,
+      bpm: first.bpm,
+      downbeatBeatOffset:
+        (SONG_BEAT_GRID_DOWNBEAT_BEAT_INTERVAL + 1 - first.beatNumber) %
+        SONG_BEAT_GRID_DOWNBEAT_BEAT_INTERVAL
+    }
+  ]
+  for (let index = 1; index < entries.length; index += 1) {
+    const previous = entries[index - 1]
+    const current = entries[index]
+    if (isRekordboxGridEntryContinuousWithPrevious(previous, current)) continue
+    clips.push({
+      startSec: current.timeMs / 1000,
+      anchorSec: current.timeMs / 1000,
+      bpm: current.bpm,
+      downbeatBeatOffset:
+        (SONG_BEAT_GRID_DOWNBEAT_BEAT_INTERVAL + 1 - current.beatNumber) %
+        SONG_BEAT_GRID_DOWNBEAT_BEAT_INTERVAL
+    })
+  }
+  return createSongBeatGridMapV2FromClips(clips, 'rekordbox', { allowSingleClip: true })
+}
 
 export const createSongBeatGridMapV2FromFixedGrid = (input: {
   bpm?: unknown

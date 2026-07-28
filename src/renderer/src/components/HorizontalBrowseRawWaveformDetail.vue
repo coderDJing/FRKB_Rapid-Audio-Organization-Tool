@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { normalizeSongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
+import { createRawPlaceholderMixxxData } from '@renderer/components/beatGridWaveformPlaceholder'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import {
   HORIZONTAL_BROWSE_DETAIL_MAX_ZOOM,
@@ -44,6 +45,11 @@ import { createHorizontalBrowseDetailGridPersistence } from '@renderer/composabl
 import { createHorizontalBrowseDetailPresentationConsumer } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPresentationConsumer'
 import { watchHorizontalBrowseDetailPlaybackPosition } from '@renderer/composables/horizontalBrowse/horizontalBrowseDetailPlaybackPositionWatch'
 import { useHorizontalBrowseDynamicBeatGridEdit } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDynamicBeatGridEdit'
+import {
+  getRekordboxDetailWaveformRequestChannel,
+  isRekordboxExternalPlaybackSource,
+  resolveSongExternalWaveformSource
+} from '@renderer/utils/rekordboxExternalSource'
 import { createHorizontalBrowseNativeMetronomeSync } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeMetronome'
 import {
   createHorizontalBrowseRawWaveformDynamicGridSelectionState,
@@ -103,6 +109,135 @@ const stableRenderRevision = computed(() => {
   return 0
 })
 const waveformPlaybackActive = computed(() => Boolean(props.playbackActive ?? props.playing))
+const isRekordboxReadOnlySong = computed(() => isRekordboxExternalPlaybackSource('', props.song))
+const externalDetailWaveformUnavailable = computed(
+  () => isRekordboxReadOnlySong.value && !rawData.value
+)
+
+type PioneerDetailWaveformColumn = {
+  height?: number
+  bandLow?: number
+  band_low?: number
+  bandMid?: number
+  band_mid?: number
+  bandHigh?: number
+  band_high?: number
+  colorR?: number
+  color_r?: number
+  colorG?: number
+  color_g?: number
+  colorB?: number
+  color_b?: number
+}
+
+type PioneerDetailWaveformData = {
+  style?: string
+  detailRate?: number
+  detail_rate?: number
+  columns?: PioneerDetailWaveformColumn[]
+}
+
+const createPioneerDetailRawWaveform = (
+  columns: PioneerDetailWaveformColumn[],
+  trackDuration: number,
+  detailRate: number | undefined,
+  style?: string
+): RawWaveformData | null => {
+  if (!columns.length || !Number.isFinite(trackDuration) || trackDuration <= 0) return null
+  const frames = columns.length
+  const nativeDetailRate = Number(detailRate)
+  const rate =
+    Number.isFinite(nativeDetailRate) && nativeDetailRate > 0
+      ? nativeDetailRate
+      : frames / trackDuration
+  const duration = frames / rate
+  const minLeft = new Float32Array(frames)
+  const maxLeft = new Float32Array(frames)
+  const minRight = new Float32Array(frames)
+  const maxRight = new Float32Array(frames)
+  const colorRed = new Uint8Array(frames)
+  const colorGreen = new Uint8Array(frames)
+  const colorBlue = new Uint8Array(frames)
+  const colorLow = new Uint8Array(frames)
+  const colorMid = new Uint8Array(frames)
+  const colorHigh = new Uint8Array(frames)
+  const colorIndex = new Uint8Array(frames)
+  const isNativeTriBand = style === 'triband-detail' || style === 'triband-preview'
+  const isNativeRekordbox = isNativeTriBand || style === 'rgb' || style === 'blue'
+  const nativeAmplitudeMax = isNativeTriBand ? 127 : 255
+  const nativeColorMax = isNativeTriBand ? 127 : 255
+  for (let index = 0; index < frames; index += 1) {
+    const column = columns[index]
+    const height = Math.max(0, Math.min(1, Number(column?.height) / nativeAmplitudeMax || 0))
+    minLeft[index] = -height
+    maxLeft[index] = height
+    minRight[index] = -height
+    maxRight[index] = height
+    if (isNativeTriBand) {
+      colorLow[index] = Math.round(
+        Math.max(
+          0,
+          Math.min(1, Number(column?.bandLow ?? column?.band_low) / nativeColorMax || 0)
+        ) * 255
+      )
+      colorMid[index] = Math.round(
+        Math.max(
+          0,
+          Math.min(1, Number(column?.bandMid ?? column?.band_mid) / nativeColorMax || 0)
+        ) * 255
+      )
+      colorHigh[index] = Math.round(
+        Math.max(
+          0,
+          Math.min(1, Number(column?.bandHigh ?? column?.band_high) / nativeColorMax || 0)
+        ) * 255
+      )
+    } else {
+      colorRed[index] = Math.round(
+        Math.max(0, Math.min(1, Number(column?.colorR ?? column?.color_r) / nativeColorMax || 0)) *
+          255
+      )
+      colorGreen[index] = Math.round(
+        Math.max(0, Math.min(1, Number(column?.colorG ?? column?.color_g) / nativeColorMax || 0)) *
+          255
+      )
+      colorBlue[index] = Math.round(
+        Math.max(0, Math.min(1, Number(column?.colorB ?? column?.color_b) / nativeColorMax || 0)) *
+          255
+      )
+    }
+    colorIndex[index] = 1
+  }
+  return {
+    duration,
+    sampleRate: Math.max(1, Math.round(rate)),
+    rate,
+    frames,
+    startSec: 0,
+    loadedFrames: frames,
+    minLeft,
+    maxLeft,
+    minRight,
+    maxRight,
+    compactColorIndex: colorIndex,
+    compactColorLow: colorLow,
+    compactColorMid: colorMid,
+    compactColorHigh: colorHigh,
+    compactColorRed: colorRed,
+    compactColorGreen: colorGreen,
+    compactColorBlue: colorBlue,
+    compactColorRateDivisor: 1,
+    compactColorStartFrame: 0,
+    nativeWaveformKind: isNativeRekordbox
+      ? isNativeTriBand
+        ? 'rekordbox-triband'
+        : 'rekordbox-rgb'
+      : undefined
+  }
+}
+const gridEditingEnabled = computed(
+  () => props.gridEditMode === true && !isRekordboxReadOnlySong.value
+)
 const presentationLinkedDragActive = computed(
   () => Boolean(props.linkedDragActive) || props.presentationState?.owner === 'linked-drag'
 )
@@ -131,7 +266,11 @@ const previewMaxZoom = computed(() => {
 const resolveWaveformLayout = () =>
   props.waveformLayout === 'full' ? 'full' : props.direction === 'up' ? 'top-half' : 'bottom-half'
 const resolveWaveformRenderStyle = () =>
-  props.waveformRenderStyle === 'raw-curve' ? 'raw-curve' : 'columns'
+  isRekordboxReadOnlySong.value
+    ? 'columns'
+    : props.waveformRenderStyle === 'raw-curve'
+      ? 'raw-curve'
+      : 'columns'
 const resolveDetailDeck = () => (props.direction === 'up' ? 'top' : 'bottom')
 
 const resolveWaveformCurrentSeconds = () =>
@@ -141,7 +280,7 @@ const resolveWaveformCurrentSeconds = () =>
 const resolveWaveformPlaybackRate = () => Math.max(0.25, Number(props.playbackRate) || 1)
 
 const resolveGridEditVisibleFromSec = () =>
-  props.gridEditMode === true ? selectedDynamicGridVisibleFromSec.value : null
+  gridEditingEnabled.value ? selectedDynamicGridVisibleFromSec.value : null
 
 let resizeObserver: ResizeObserver | null = null
 let loadToken = 0
@@ -248,7 +387,11 @@ const {
     previewBeatGridMap.value ??
     normalizeSongBeatGridMapV2(props.song?.beatGridMap, { allowSingleClip: true }) ??
     null,
-  beatGridEditMode: () => props.gridEditMode === true,
+  rekordboxGridEntries: () =>
+    isRekordboxExternalPlaybackSource('', props.song)
+      ? props.song?.rekordboxGridEntries
+      : undefined,
+  beatGridEditMode: () => gridEditingEnabled.value,
   beatGridVisibleFromSec: resolveGridEditVisibleFromSec,
   beatGridSelectedBoundarySec: () => selectedDynamicGridBoundarySec.value,
   previewTimeBasisOffsetMs: visualGridTimeBasisOffsetMs,
@@ -366,6 +509,12 @@ const applyPresentationSeekTarget = (targetSeconds: number, revision: number) =>
 
 const canAdjustGrid = computed(() => {
   if (previewLoading.value) return false
+  if (isRekordboxReadOnlySong.value) return false
+  return !!props.song?.filePath && resolvePreviewDurationSec() > 0
+})
+const canAdjustBpmInput = computed(() => {
+  if (previewLoading.value) return false
+  if (props.gridEditMode === true) return canAdjustGrid.value
   return !!props.song?.filePath && resolvePreviewDurationSec() > 0
 })
 const previewFirstBeatMsComputed = computed(() => Number(previewFirstBeatMs.value) || 0)
@@ -404,7 +553,7 @@ const forceDynamicGridFrameRefresh = () => {
 }
 
 const dynamicBeatGridEdit = useHorizontalBrowseDynamicBeatGridEdit({
-  enabled: () => props.gridEditMode === true,
+  enabled: () => gridEditingEnabled.value,
   autoSyncFromSong: false,
   song: () => props.song,
   previewBeatGridMap,
@@ -500,6 +649,7 @@ const {
   deleteBoundary
 } = useHorizontalBrowseGridToolbar({
   canAdjustGrid,
+  canAdjustBpmInput,
   previewLoading,
   previewBpm,
   previewBpmInput,
@@ -524,7 +674,7 @@ const {
   handleGridShift,
   handleMetronomeStateCycle: cycleMetronomeRuntimeState,
   resolveGridControlsDisabled: () => dynamicBeatGridEdit.gridControlsDisabled.value,
-  resolveShowSplitAfterPlayhead: () => props.gridEditMode === true && canAdjustGrid.value,
+  resolveShowSplitAfterPlayhead: () => gridEditingEnabled.value && canAdjustGrid.value,
   resolveShowDeleteBoundary: () => dynamicBeatGridEdit.isBoundarySelected.value,
   resolveGridAdjustScope: () => dynamicBeatGridEdit.adjustmentScope.value,
   handleSelectWholeAdjustment: dynamicBeatGridEdit.selectWholeAdjustment,
@@ -715,6 +865,35 @@ const loadWaveform = async () => {
 
   const filePath = String(currentSong?.filePath || '').trim()
   if (!filePath) {
+    syncGridStateFromSongForDisplay()
+    return
+  }
+  if (isRekordboxExternalPlaybackSource('', currentSong)) {
+    const external = resolveSongExternalWaveformSource(currentSong)
+    if (external) {
+      try {
+        const response = (await window.electron.ipcRenderer.invoke(
+          getRekordboxDetailWaveformRequestChannel(external.sourceKind),
+          external.rootPath,
+          [external.analyzePath]
+        )) as { items?: Array<{ data?: PioneerDetailWaveformData | null }> }
+        if (currentToken !== loadToken || props.song?.filePath !== currentSong?.filePath) return
+        const detailData = response?.items?.[0]?.data
+        const detailRaw = createPioneerDetailRawWaveform(
+          detailData?.columns || [],
+          resolvePreviewDurationSec(),
+          detailData?.detailRate ?? detailData?.detail_rate,
+          detailData?.style
+        )
+        if (detailRaw) {
+          rawData.value = detailRaw
+          mixxxData.value = createRawPlaceholderMixxxData(detailRaw)
+          replaceLiveWaveformRaw(detailRaw)
+          compactVisualWaveformActive.value = true
+          scheduleDraw({ preferPreviewStart: true })
+        }
+      } catch {}
+    }
     syncGridStateFromSongForDisplay()
     return
   }
@@ -951,7 +1130,7 @@ watch(
 )
 
 watch(
-  () => canAdjustGrid.value,
+  () => [canAdjustGrid.value, canAdjustBpmInput.value] as const,
   () => {
     emitToolbarState()
   }
@@ -1068,6 +1247,9 @@ defineExpose(
         ref="waveformCanvasBackRef"
         class="raw-detail-waveform__canvas raw-detail-waveform__canvas--waveform raw-detail-waveform__canvas--buffer-back"
       />
+    </div>
+    <div v-if="externalDetailWaveformUnavailable" class="raw-detail-waveform__unavailable">
+      Rekordbox 未提供细节波形
     </div>
     <div ref="overlaySurfaceRef" class="raw-detail-waveform__overlay-surface">
       <canvas

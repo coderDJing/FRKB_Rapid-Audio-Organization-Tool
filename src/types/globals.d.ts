@@ -51,9 +51,10 @@ interface ISongInfo {
   bpm?: number
   firstBeatMs?: number
   downbeatBeatOffset?: number
-  beatGridSource?: 'manual' | 'analysis'
+  beatGridSource?: 'manual' | 'analysis' | 'rekordbox'
   beatGridStatus?: BeatGridStatus
   beatGridMap?: SongBeatGridMapV2
+  rekordboxGridEntries?: IRekordboxBeatGridEntry[]
   energyScore?: number
   energyAlgorithmVersion?: number
   songStructure?: SongStructureAnalysis
@@ -217,6 +218,9 @@ interface IPioneerPlaylistTrack {
   discNumber?: number
   year?: number
   analyzePath?: string
+  rekordboxGridEntries?: IRekordboxBeatGridEntry[]
+  beatGridMap?: SongBeatGridMapV2
+  timeBasisOffsetMs?: number
   comment?: string
   dateAdded?: string
   artworkId?: number
@@ -225,6 +229,12 @@ interface IPioneerPlaylistTrack {
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]
   fileMissing?: boolean
+}
+
+interface IRekordboxBeatGridEntry {
+  timeMs: number
+  bpm: number
+  beatNumber: number
 }
 
 interface IMusicBrainzSearchPayload {
@@ -816,6 +826,7 @@ export {
   IPioneerDeviceLibraryKind,
   IPioneerPlaylistTreeNode,
   IPioneerPlaylistTrack,
+  IRekordboxBeatGridEntry,
   SongStructureAnalysis,
   SongBeatGridMap,
   ITrackMetadataUpdatePayload,

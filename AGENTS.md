@@ -45,6 +45,7 @@
 
 ## Debug Logging
 - 涉及运行时排查、交互链路排查、状态机排查时，默认把调试日志写入 `log.txt` 可落盘链路，不要依赖浏览器控制台临时输出。
+- 开发模式通过 `pnpm run dev` 启动时，`log.txt` 固定在项目根目录（即 `<repo>/log.txt`），Codex 必须优先读取该文件；只有打包运行时才读取 Electron `userData` 目录下的 `log.txt`，禁止混淆两者。
 - Renderer 侧调试信息应通过现有 console bridge / `outputLog` / 主进程 `log` 体系进入 `log.txt`，确保我复现一次后，Codex 可以自行读取日志继续排查。
 - 禁止把“请把控制台日志复制给我”当成默认方案；除非日志链路本身损坏，否则应优先由 Codex 自己读取 `log.txt`。
 - 常驻代码里禁止保留非报错落盘日志；提交前默认必须清理 `log.info` / `log.warn` / `log.debug`、普通 `console.log` / `console.info` / `console.warn` / `console.debug`、以及各类 trace 型 `outputLog`。默认只保留真正的错误/异常日志进入 `log.txt`。若用户明确要求提交诊断日志用于排查未来偶发问题，可以保留对应日志，但必须说明触发条件、字段含义和后续清理条件，禁止把泛滥 trace 当成常驻日志提交。

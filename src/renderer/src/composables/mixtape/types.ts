@@ -206,6 +206,7 @@ export type RawWaveformData = {
   compactColorBlue?: Uint8Array
   compactColorRateDivisor?: number
   compactColorStartFrame?: number
+  nativeWaveformKind?: 'rekordbox-rgb' | 'rekordbox-triband'
 }
 
 export type RawWaveformLevel = RawWaveformData & {

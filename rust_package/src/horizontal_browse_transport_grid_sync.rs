@@ -25,6 +25,7 @@ impl HorizontalBrowseTransportEngine {
     first_beat_ms: Option<f64>,
     downbeat_beat_offset: Option<f64>,
     beat_grid_clips: Option<Vec<HorizontalBrowseTransportBeatGridClipInput>>,
+    rekordbox_beat_grid_entries: Option<Vec<HorizontalBrowseTransportRekordboxBeatGridEntryInput>>,
     time_basis_offset_ms: Option<f64>,
   ) {
     let sync_reference = self.resolve_grid_change_sync_reference(deck);
@@ -38,6 +39,8 @@ impl HorizontalBrowseTransportEngine {
       .and_then(Self::normalize_downbeat_beat_offset);
     let next_dynamic_beat_grid =
       Self::normalize_dynamic_beat_grid(beat_grid_clips, self.deck(deck).duration_sec);
+    let next_rekordbox_beat_grid_entries =
+      Self::normalize_rekordbox_beat_grid_entries(rekordbox_beat_grid_entries);
     let next_time_basis_offset_ms =
       time_basis_offset_ms.filter(|value| value.is_finite() && *value >= 0.0);
     {
@@ -48,6 +51,10 @@ impl HorizontalBrowseTransportEngine {
         Self::set_grid_value(&mut target.downbeat_beat_offset, next_downbeat_beat_offset);
       if target.dynamic_beat_grid != next_dynamic_beat_grid {
         target.dynamic_beat_grid = next_dynamic_beat_grid;
+        grid_changed = true;
+      }
+      if target.rekordbox_beat_grid_entries != next_rekordbox_beat_grid_entries {
+        target.rekordbox_beat_grid_entries = next_rekordbox_beat_grid_entries;
         grid_changed = true;
       }
       audio_timeline_mapping_changed =

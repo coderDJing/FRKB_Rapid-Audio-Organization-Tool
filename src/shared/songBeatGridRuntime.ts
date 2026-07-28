@@ -1,4 +1,8 @@
-import { createSongBeatGridRuntimeV2, type SongBeatGridLineLevelV2 } from './songBeatGridMapV2'
+import {
+  createSongBeatGridRuntimeV2,
+  type SongBeatGridLineLevelV2,
+  type SongBeatGridV2Source
+} from './songBeatGridMapV2'
 
 export type UnifiedSongBeatGridLineLevel = SongBeatGridLineLevelV2
 
@@ -26,6 +30,7 @@ export type UnifiedSongBeatGridRuntimeClip = {
 
 export type UnifiedSongBeatGridRuntime = {
   signature: string
+  source: SongBeatGridV2Source
   durationSec: number
   clips: UnifiedSongBeatGridRuntimeClip[]
   lines: UnifiedSongBeatGridLine[]
@@ -40,6 +45,7 @@ export const createUnifiedSongBeatGridRuntime = (
   if (!v2) return null
   return {
     signature: v2.signature,
+    source: v2.map.source,
     durationSec: v2.durationSec,
     clips: v2.clips,
     lines: v2.lines,

@@ -297,8 +297,12 @@ export const drawRawCurveWaveform = (options: DrawRawCurveWaveformOptions) => {
     )
   )
   const rawRate = Math.max(1, Number(rawData.rate) || 1)
-  const rawStartSec =
-    Math.max(0, Number(rawData.startSec) || 0) + Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
+  const timeBasisOffsetSec =
+    rawData.nativeWaveformKind === 'rekordbox-rgb' ||
+    rawData.nativeWaveformKind === 'rekordbox-triband'
+      ? 0
+      : Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
+  const rawStartSec = Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec
   const rawEndSec = rawStartSec + rawFrames / rawRate
   const visibleStartSec = Math.max(rangeStartSec, rawStartSec)
   const visibleEndSec = Math.min(rangeStartSec + rangeDurationSec, rawEndSec)

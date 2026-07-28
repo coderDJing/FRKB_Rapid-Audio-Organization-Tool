@@ -31,7 +31,10 @@ import { createHorizontalBrowseRawWaveformDragReleaseState } from '@renderer/com
 import { resolveHorizontalBrowseCueAccentColor } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformCanvasData'
 import { createHorizontalBrowseRawWaveformDisplayViewportState } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformDisplayViewport'
 import { createHorizontalBrowseRawWaveformSurfaceVisibility } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformSurfaceVisibility'
-import { cloneSongBeatGridMapForHorizontalBrowseWorker } from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformWorkerGrid'
+import {
+  cloneRekordboxBeatGridEntriesForHorizontalBrowseWorker,
+  cloneSongBeatGridMapForHorizontalBrowseWorker
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseRawWaveformWorkerGrid'
 import {
   canReplacePendingHorizontalBrowseStableRevisionRender,
   clearHorizontalBrowseRawWaveformGridCanvas,
@@ -423,6 +426,9 @@ export const useHorizontalBrowseRawWaveformCanvas = (
     const renderBeatGridMap = cloneSongBeatGridMapForHorizontalBrowseWorker(
       options.beatGridMap?.() ?? options.song()?.beatGridMap ?? null
     )
+    const renderRekordboxGridEntries = cloneRekordboxBeatGridEntriesForHorizontalBrowseWorker(
+      options.rekordboxGridEntries?.() ?? options.song()?.rekordboxGridEntries
+    )
     const renderBeatGridMapSignature = renderBeatGridMap?.signature ?? ''
     const renderBeatGridEditMode = options.beatGridEditMode?.() === true
     const rawBeatGridVisibleFromSec = Number(options.beatGridVisibleFromSec?.())
@@ -610,6 +616,7 @@ export const useHorizontalBrowseRawWaveformCanvas = (
       firstBeatMs: renderFirstBeatMs,
       downbeatBeatOffset: visualGridPhase.downbeatBeatOffset,
       beatGridMap: renderBeatGridMap,
+      rekordboxGridEntries: renderRekordboxGridEntries,
       beatGridEditMode: renderBeatGridEditMode,
       beatGridVisibleFromSec: renderBeatGridVisibleFromSec,
       beatGridSelectedBoundarySec: renderBeatGridSelectedBoundarySec,

@@ -45,6 +45,7 @@ import {
   type TitleAudioVisualizerSource
 } from '@renderer/composables/titleAudioVisualizerBridge'
 import { shouldQueueBrowserMainPlayerAnalysis } from '@renderer/utils/playlistAnalysisGate'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 import { sendPlayerWaveformTrace } from './playerWaveformTrace'
 import { usePlaybackRangeController } from './usePlaybackRangeController'
 import {
@@ -769,9 +770,13 @@ watch(
   (newSong, oldSong) => {
     if (newSong?.filePath && newSong.filePath !== oldSong?.filePath) {
       keyboardPercentSeek.clear('song-change')
-      if (shouldQueueBrowserMainPlayerAnalysis(runtime)) {
+      if (
+        shouldQueueBrowserMainPlayerAnalysis(runtime) &&
+        !isRekordboxExternalPlaybackSource(runtime.playingData.playingSongListUUID, newSong)
+      ) {
         try {
           window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+            analysisAuthority: 'frkb',
             filePath: newSong.filePath,
             focusSlot: 'main-player'
           })

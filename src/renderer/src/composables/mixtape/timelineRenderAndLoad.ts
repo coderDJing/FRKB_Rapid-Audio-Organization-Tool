@@ -896,6 +896,7 @@ export const createTimelineRenderAndLoadModule = (ctx: TimelineRenderAndLoadCont
           waveformQueuedMissing.add(filePath)
         }
         window.electron.ipcRenderer.send('key-analysis:queue-visible', {
+          analysisAuthority: 'frkb',
           filePaths: toQueue,
           waveformOnly: true,
           scope: 'waveform-preview'

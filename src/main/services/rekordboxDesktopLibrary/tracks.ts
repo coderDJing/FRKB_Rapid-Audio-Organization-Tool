@@ -1,6 +1,8 @@
 import type { IPioneerPlaylistTrack } from '../../../types/globals'
 import { enrichPioneerTracksWithCueData } from '../pioneerDeviceLibrary/cues'
 import { markMissingFiles } from '../fileExistenceCheck'
+import { createSongBeatGridMapV2FromRekordboxEntries } from '../../../shared/songBeatGridMapV2'
+import { resolveAudioTimeBasisOffsetMsForFile } from '../audioTimeBasisOffset'
 import { requireRekordboxDesktopLibraryProbe } from './detect'
 import { buildRekordboxDesktopFailureSummary, logRekordboxDesktopFailure } from './failure'
 import { runRekordboxDesktopHelper } from './helper'
@@ -19,6 +21,41 @@ import type {
   RekordboxDesktopRemovePlaylistTracksResponse
 } from '../../../shared/rekordboxDesktopPlaylist'
 
+const normalizeRekordboxGridEntries = (
+  value: RekordboxDesktopHelperTrackRecord['rekordboxGridEntries']
+) => {
+  if (!Array.isArray(value) || value.length === 0) return []
+  const entries = value
+    .map((entry) => ({
+      timeMs: Number(entry?.timeMs),
+      bpm: Number(entry?.bpm),
+      beatNumber: Number(entry?.beatNumber)
+    }))
+    .filter(
+      (entry) =>
+        Number.isFinite(entry.timeMs) &&
+        entry.timeMs >= 0 &&
+        Number.isFinite(entry.bpm) &&
+        entry.bpm > 0 &&
+        Number.isInteger(entry.beatNumber) &&
+        entry.beatNumber >= 1 &&
+        entry.beatNumber <= 4
+    )
+    .sort((left, right) => left.timeMs - right.timeMs)
+  if (
+    !entries.length ||
+    entries.some((entry, index) => index > 0 && entry.timeMs <= entries[index - 1].timeMs)
+  ) {
+    return []
+  }
+  return entries
+}
+
+const buildRekordboxRuntimeBeatGrid = (entries: IPioneerPlaylistTrack['rekordboxGridEntries']) => {
+  if (!entries?.length) return undefined
+  return createSongBeatGridMapV2FromRekordboxEntries(entries)
+}
+
 const normalizeTrack = (
   track: RekordboxDesktopHelperTrackRecord | null | undefined
 ): IPioneerPlaylistTrack | null => {
@@ -29,6 +66,7 @@ const normalizeTrack = (
   const entryIndex = Number(track?.entryIndex) || 0
   if (!rowKey || !filePath || !playlistId || !trackId) return null
 
+  const rekordboxGridEntries = normalizeRekordboxGridEntries(track?.rekordboxGridEntries)
   return {
     rowKey,
     playlistId,
@@ -55,6 +93,7 @@ const normalizeTrack = (
     discNumber: Number(track?.discNumber) || undefined,
     year: Number(track?.year) || undefined,
     analyzePath: String(track?.analyzePath || '').trim() || undefined,
+    rekordboxGridEntries: rekordboxGridEntries.length ? rekordboxGridEntries : undefined,
     comment: String(track?.comment || '').trim() || undefined,
     dateAdded: String(track?.dateAdded || '').trim() || undefined,
     artworkPath: String(track?.artworkPath || '').trim() || undefined,
@@ -63,6 +102,22 @@ const normalizeTrack = (
     memoryCues: Array.isArray(track?.memoryCues)
       ? track.memoryCues.map((cue) => ({ ...cue }))
       : undefined
+  }
+}
+
+const attachRekordboxRuntimeGrid = async (track: IPioneerPlaylistTrack) => {
+  const beatGridMap = buildRekordboxRuntimeBeatGrid(track.rekordboxGridEntries)
+  if (!beatGridMap) return track
+  try {
+    const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(track.filePath)
+    return {
+      ...track,
+      timeBasisOffsetMs,
+      beatGridMap,
+      bpm: beatGridMap.clips[0]?.bpm || track.bpm
+    }
+  } catch {
+    return track
   }
 }
 
@@ -96,13 +151,14 @@ export async function loadRekordboxDesktopPlaylistTracks(
 
   const tracksWithCues = await enrichPioneerTracksWithCueData(probe.sourceRootPath, tracks)
   await markMissingFiles(tracksWithCues)
+  const tracksWithRuntimeGrid = await Promise.all(tracksWithCues.map(attachRekordboxRuntimeGrid))
 
   return {
     probe,
     playlistId: Number(payload?.playlistId) || safePlaylistId,
     playlistName: String(payload?.playlistName || '').trim(),
-    trackTotal: Number(payload?.trackTotal) || tracksWithCues.length,
-    tracks: tracksWithCues
+    trackTotal: Number(payload?.trackTotal) || tracksWithRuntimeGrid.length,
+    tracks: tracksWithRuntimeGrid
   }
 }
 

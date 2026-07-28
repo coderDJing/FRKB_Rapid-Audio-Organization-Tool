@@ -271,6 +271,7 @@ fn set_beat_grid_preserves_follower_full_sync_with_phase_compensation() {
     None,
     None,
     None,
+    None,
   );
 
   let snapshot = engine.snapshot(1000.0);
@@ -323,6 +324,7 @@ fn set_beat_grid_preserves_leader_full_sync_with_phase_compensation() {
     DeckId::Top,
     None,
     Some(previous_first_beat_ms + 20.0),
+    None,
     None,
     None,
     None,
@@ -385,6 +387,7 @@ fn set_beat_grid_preserves_link_button_sync_with_phase_compensation() {
     None,
     None,
     None,
+    None,
   );
 
   let snapshot = engine.snapshot(1000.0);
@@ -410,12 +413,14 @@ fn set_beat_grid_same_values_does_not_reapply_phase_compensation() {
     None,
     None,
     None,
+    None,
   );
   let shifted_current_sec = engine.deck(DeckId::Bottom).current_sec;
   engine.set_beat_grid(
     DeckId::Bottom,
     None,
     Some(next_first_beat_ms),
+    None,
     None,
     None,
     None,
@@ -440,6 +445,7 @@ fn set_beat_grid_phase_compensation_resets_audio_owned_playhead() {
     DeckId::Bottom,
     None,
     Some(next_first_beat_ms),
+    None,
     None,
     None,
     None,

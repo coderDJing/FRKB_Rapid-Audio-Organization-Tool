@@ -5,6 +5,7 @@ import emitter from '@renderer/utils/mitt'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import {
   getRekordboxPreviewWaveformRequestChannel,
+  isRekordboxExternalPlaybackSource,
   resolveSongExternalWaveformSource
 } from '@renderer/utils/rekordboxExternalSource'
 import { WebAudioPlayer, canPlayHtmlAudio } from './webAudioPlayer'
@@ -308,6 +309,14 @@ export function useSongLoader(params: {
   }
 
   const fetchWaveformCache = async (filePath: string, requestId: number) => {
+    if (
+      isRekordboxExternalPlaybackSource(
+        runtime.playingData.playingSongListUUID,
+        runtime.playingData.playingSong
+      )
+    ) {
+      return false
+    }
     let response: WaveformCacheResponse | null = null
     tracePlayerWaveform('loader', 'formal-cache:query-start', filePath)
     try {
@@ -468,6 +477,7 @@ export function useSongLoader(params: {
             if (!shouldQueueBrowserMainPlayerAnalysis(runtime)) return
             tracePlayerWaveform('loader', 'formal-cache:queue-generation', filePath)
             window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+              analysisAuthority: 'frkb',
               filePath,
               focusSlot: 'main-player'
             })
@@ -476,8 +486,18 @@ export function useSongLoader(params: {
       } else {
         clearHtmlPlaybackForegroundActivity()
         tracePlayerWaveform('loader', 'pcm-decode:request', filePath)
+        const isRekordboxReadOnly = isRekordboxExternalPlaybackSource(
+          runtime.playingData.playingSongListUUID,
+          currentSong
+        )
         window.electron.ipcRenderer.send('readSongFile', filePath, String(requestId), {
-          skipPlaybackGridAnalysis: !shouldQueueBrowserMainPlayerAnalysis(runtime)
+          analysisAuthority:
+            !isRekordboxReadOnly && shouldQueueBrowserMainPlayerAnalysis(runtime)
+              ? 'frkb'
+              : undefined,
+          skipPlaybackGridAnalysis:
+            !shouldQueueBrowserMainPlayerAnalysis(runtime) || isRekordboxReadOnly,
+          suppressFrkbWaveformData: isRekordboxReadOnly
         })
       }
     } catch (loadError: unknown) {

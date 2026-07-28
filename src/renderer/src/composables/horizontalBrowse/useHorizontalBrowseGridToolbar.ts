@@ -16,6 +16,7 @@ import {
 
 export type HorizontalBrowseGridToolbarState = {
   disabled: boolean
+  bpmInputDisabled: boolean
   bpmInputValue: string
   bpmStep: number
   bpmMin: number
@@ -35,6 +36,7 @@ export type HorizontalBrowseGridShiftOptions = {
 
 type UseHorizontalBrowseGridToolbarParams = {
   canAdjustGrid: Ref<boolean>
+  canAdjustBpmInput?: Ref<boolean>
   previewLoading: Ref<boolean>
   previewBpm: Ref<number>
   previewBpmInput: Ref<string>
@@ -72,6 +74,9 @@ export const useHorizontalBrowseGridToolbar = (params: UseHorizontalBrowseGridTo
   const emitToolbarState = () => {
     params.emitToolbarStateChange({
       disabled: !params.canAdjustGrid.value || params.previewLoading.value,
+      bpmInputDisabled:
+        !(params.canAdjustBpmInput?.value ?? params.canAdjustGrid.value) ||
+        params.previewLoading.value,
       bpmInputValue: params.previewBpmInput.value,
       bpmStep: PREVIEW_BPM_STEP,
       bpmMin: PREVIEW_BPM_MIN,

@@ -8,9 +8,17 @@ const props = defineProps({
     type: Boolean,
     default: false
   },
+  bpmInputDisabled: {
+    type: Boolean,
+    default: undefined
+  },
   gridControlsDisabled: {
     type: Boolean,
     default: false
+  },
+  showGridControls: {
+    type: Boolean,
+    default: true
   },
   bpmInputValue: {
     type: String,
@@ -103,6 +111,7 @@ let bpmDragActive = false
 let bpmDragInputTarget: HTMLInputElement | null = null
 let bodyUserSelectBeforeBpmDrag = ''
 const controlsDisabled = computed(() => props.disabled || props.gridControlsDisabled)
+const bpmInputDisabled = computed(() => props.bpmInputDisabled ?? controlsDisabled.value)
 
 const clearShiftHoldTimers = () => {
   if (holdStartTimer) {
@@ -180,7 +189,7 @@ const handleShiftClick = (eventName: ShiftEventName) => {
 }
 
 const handleBpmInput = (event: Event) => {
-  if (controlsDisabled.value) return
+  if (bpmInputDisabled.value) return
   const target = event.target as HTMLInputElement | null
   emit('update-bpm-input', target?.value || '')
 }
@@ -263,7 +272,7 @@ const clearBpmDrag = () => {
 }
 
 function handleWindowBpmDragMove(event: PointerEvent) {
-  if (bpmDragPointerId === null || event.pointerId !== bpmDragPointerId || controlsDisabled.value)
+  if (bpmDragPointerId === null || event.pointerId !== bpmDragPointerId || bpmInputDisabled.value)
     return
   const deltaY = bpmDragStartY - event.clientY
   if (!bpmDragActive && Math.abs(deltaY) >= BPM_DRAG_THRESHOLD_PX) {
@@ -289,7 +298,7 @@ function handleWindowBpmDragEnd(event: PointerEvent) {
 }
 
 const handleBpmPointerDown = (event: PointerEvent) => {
-  if (controlsDisabled.value || event.button !== 0 || event.pointerType === 'touch') return
+  if (bpmInputDisabled.value || event.button !== 0 || event.pointerType === 'touch') return
   const target = event.target as HTMLInputElement | null
   if (!target) return
   event.preventDefault()
@@ -319,7 +328,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="grid-adjust-toolbar" :class="{ 'grid-adjust-toolbar--bpm-first': bpmInputFirst }">
-    <div class="grid-adjust-toolbar__group grid-adjust-toolbar__group--icons">
+    <div
+      v-if="showGridControls"
+      class="grid-adjust-toolbar__group grid-adjust-toolbar__group--icons"
+    >
       <bubbleBoxTrigger
         v-if="showLargeShiftButtons"
         wrapper-tag="span"
@@ -496,7 +508,7 @@ onBeforeUnmount(() => {
         :step="bpmStep"
         :min="bpmMin"
         :max="bpmMax"
-        :disabled="controlsDisabled"
+        :disabled="bpmInputDisabled"
         :value="bpmInputValue"
         :title="bpmInputTitle || t('mixtape.bpm')"
         :aria-label="bpmInputTitle || t('mixtape.bpm')"

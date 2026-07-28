@@ -24,7 +24,7 @@ export type SharedSongGridDefinition = {
   firstBeatMs?: number
   downbeatBeatOffset?: number
   timeBasisOffsetMs?: number
-  beatGridSource?: 'manual' | 'analysis'
+  beatGridSource?: 'manual' | 'analysis' | 'rekordbox'
   beatGridMap?: SongBeatGridMapV2 | null
   beatGridAlgorithmVersion?: number
 }

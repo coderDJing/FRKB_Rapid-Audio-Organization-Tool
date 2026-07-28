@@ -38,6 +38,7 @@ export function useKeyAnalysisQueue({
   const shouldRequireRuntimeAnalysis = () => requiresRuntimeAnalysis?.value === true
   const sendVisibleQueue = (filePaths: string[]) => {
     window.electron.ipcRenderer.send('key-analysis:queue-visible', {
+      analysisAuthority: 'frkb',
       filePaths,
       scope: 'list'
     })

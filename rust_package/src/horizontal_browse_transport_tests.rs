@@ -332,6 +332,7 @@ fn external_same_file_state_does_not_rewind_playing_deck() {
       first_beat_ms: Some(0.0),
       downbeat_beat_offset: Some(0.0),
       beat_grid_clips: None,
+      rekordbox_beat_grid_entries: None,
       time_basis_offset_ms: Some(0.0),
       duration_sec: 20.0,
       current_sec: 1.0,

@@ -185,7 +185,9 @@ export const drawSongListPioneerPreviewWaveform = (
   const samplesPerColumn = columns.length / columnCount
   const spacing = width / columnCount
   const drawWidth = Math.max(1, spacing)
-  const scaleY = height / maxHeight
+  const verticalPadding = Math.min(4, Math.max(0, Math.floor((height - 1) / 2)))
+  const drawableHeight = Math.max(1, height - verticalPadding * 2)
+  const scaleY = drawableHeight / maxHeight
   for (let index = 0; index < columnCount; index++) {
     const start = Math.floor(index * samplesPerColumn)
     const end = Math.min(
@@ -211,7 +213,7 @@ export const drawSongListPioneerPreviewWaveform = (
         g: selected.backColorG || 0,
         b: selected.backColorB || 0
       })
-      ctx.fillRect(x, height - backPixelHeight, drawWidth, backPixelHeight)
+      ctx.fillRect(x, height - verticalPadding - backPixelHeight, drawWidth, backPixelHeight)
     }
     if (frontHeight > 0) {
       const frontPixelHeight = Math.max(1, frontHeight * scaleY)
@@ -220,7 +222,7 @@ export const drawSongListPioneerPreviewWaveform = (
         g: selected.frontColorG || 0,
         b: selected.frontColorB || 0
       })
-      ctx.fillRect(x, height - frontPixelHeight, drawWidth, frontPixelHeight)
+      ctx.fillRect(x, height - verticalPadding - frontPixelHeight, drawWidth, frontPixelHeight)
     }
   }
   const clampedPlayed = clamp01(playedPercent)

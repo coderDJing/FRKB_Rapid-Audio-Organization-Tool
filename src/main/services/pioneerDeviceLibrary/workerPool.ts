@@ -21,6 +21,18 @@ type ReadPreviewWaveformsJob = {
   analyzeFilePaths: string[]
 }
 
+type ReadBeatGridsJob = {
+  jobId: number
+  type: 'read-beat-grids'
+  analyzeFilePaths: string[]
+}
+
+type ReadDetailWaveformsJob = {
+  jobId: number
+  type: 'read-detail-waveforms'
+  analyzeFilePaths: string[]
+}
+
 type ReadCueJob = {
   jobId: number
   type: 'read-cues'
@@ -31,6 +43,8 @@ type PioneerWorkerJob =
   | ReadPlaylistTreeJob
   | ReadPlaylistTracksJob
   | ReadPreviewWaveformsJob
+  | ReadBeatGridsJob
+  | ReadDetailWaveformsJob
   | ReadCueJob
 
 type PioneerWorkerResponse = {
@@ -136,6 +150,14 @@ class PioneerDeviceWorkerPool {
     return this.runJob<T>('read-preview-waveforms', { analyzeFilePaths }, { onProgress })
   }
 
+  readBeatGrids<T>(analyzeFilePaths: string[], onProgress?: (progress: unknown) => void) {
+    return this.runJob<T>('read-beat-grids', { analyzeFilePaths }, { onProgress })
+  }
+
+  readDetailWaveforms<T>(analyzeFilePaths: string[], onProgress?: (progress: unknown) => void) {
+    return this.runJob<T>('read-detail-waveforms', { analyzeFilePaths }, { onProgress })
+  }
+
   readCues<T>(analyzeFilePaths: string[], onProgress?: (progress: unknown) => void) {
     return this.runJob<T>('read-cues', { analyzeFilePaths }, { onProgress })
   }
@@ -159,6 +181,16 @@ export const readPioneerPreviewWaveformsInWorker = <T>(
   analyzeFilePaths: string[],
   onProgress?: (progress: unknown) => void
 ) => getPioneerDeviceWorkerPool().readPreviewWaveforms<T>(analyzeFilePaths, onProgress)
+
+export const readPioneerBeatGridsInWorker = <T>(
+  analyzeFilePaths: string[],
+  onProgress?: (progress: unknown) => void
+) => getPioneerDeviceWorkerPool().readBeatGrids<T>(analyzeFilePaths, onProgress)
+
+export const readPioneerDetailWaveformsInWorker = <T>(
+  analyzeFilePaths: string[],
+  onProgress?: (progress: unknown) => void
+) => getPioneerDeviceWorkerPool().readDetailWaveforms<T>(analyzeFilePaths, onProgress)
 
 export const readPioneerCuesInWorker = <T>(
   analyzeFilePaths: string[],

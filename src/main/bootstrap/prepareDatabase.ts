@@ -22,6 +22,8 @@ import {
 } from '../libraryDb'
 import { migrateLibrarySchemaV35ToV36 } from '../librarySchemaV36Migration'
 import { migrateLibrarySchemaToV38 } from '../librarySchemaV37Migration'
+import { migrateLibrarySchemaV38ToV39 } from '../librarySchemaV38Migration'
+import { log } from '../log'
 
 const isConfiguredDevDatabase = (): boolean => {
   if (app.isPackaged) return false
@@ -89,6 +91,18 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
         await migrateLibrarySchemaToV38(databaseFilePath, {
           onProgress: databaseSchemaMigrationWindow.setSchemaMigrationProgress
         })
+        databaseVersion = assertExistingDatabaseSchemaSupported(databaseFilePath)
+      }
+      if (databaseVersion === 38) {
+        try {
+          await migrateLibrarySchemaV38ToV39(databaseFilePath)
+        } catch (error) {
+          // 清理失败时保留原库和备份；下次启动会在 38 版本上重试。
+          log.error('[library-schema] Rekordbox 外部缓存静默清理失败，将在下次启动重试', {
+            databaseFilePath,
+            error
+          })
+        }
       }
       await recoverIncompleteLibraryMerges(store.settingConfig.databaseUrl)
     }

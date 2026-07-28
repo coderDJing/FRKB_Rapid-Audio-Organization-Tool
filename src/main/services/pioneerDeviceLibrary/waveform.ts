@@ -1,10 +1,8 @@
-import fs from 'node:fs/promises'
 import path from 'node:path'
 import type {
   IPioneerPreviewWaveformData,
   IPioneerPreviewWaveformColumn
 } from '../../../types/globals'
-import * as LibraryCacheDb from '../../libraryCacheDb'
 import { readPioneerPreviewWaveformsInWorker } from './workerPool'
 
 type RustPioneerPreviewWaveformColumn = {
@@ -54,10 +52,7 @@ type PioneerPreviewWaveformLoadItem = {
 type PreparedAnalyzePathItem = {
   analyzePath: string
   absoluteAnalyzePath: string
-  signature: string
 }
-
-const PIONEER_PREVIEW_WAVEFORM_SIGNATURE_VERSION = 'preview-v2'
 
 const resolvePioneerDevicePath = (rootPath: string, devicePath: string) => {
   const normalizedRoot = String(rootPath || '').trim()
@@ -65,38 +60,6 @@ const resolvePioneerDevicePath = (rootPath: string, devicePath: string) => {
   if (!normalizedRoot || !normalizedDevicePath) return ''
   const sanitized = normalizedDevicePath.replace(/^[/\\]+/, '')
   return path.join(normalizedRoot, sanitized)
-}
-
-const buildPreviewCandidatePaths = (absoluteAnalyzePath: string) => {
-  const normalized = String(absoluteAnalyzePath || '').trim()
-  if (!normalized) return []
-  const candidates = new Set<string>()
-  const parsed = path.parse(normalized)
-  const extensions = ['.EXT', '.DAT', '.2EX']
-  for (const ext of extensions) {
-    candidates.add(path.join(parsed.dir, `${parsed.name}${ext}`))
-  }
-  candidates.add(normalized)
-  return Array.from(candidates)
-}
-
-const normalizeSignaturePath = (value: string) => {
-  const normalized = path.resolve(String(value || '').trim())
-  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
-}
-
-const buildPreviewFileSignature = async (absoluteAnalyzePath: string) => {
-  const candidatePaths = buildPreviewCandidatePaths(absoluteAnalyzePath)
-  const parts: string[] = [PIONEER_PREVIEW_WAVEFORM_SIGNATURE_VERSION]
-  for (const candidatePath of candidatePaths) {
-    try {
-      const stat = await fs.stat(candidatePath)
-      parts.push(
-        `${normalizeSignaturePath(candidatePath)}|${stat.size}|${Math.round(Number(stat.mtimeMs) || 0)}`
-      )
-    } catch {}
-  }
-  return parts.length ? parts.join('||') : 'missing'
 }
 
 const normalizeWaveformColumn = (
@@ -174,8 +137,7 @@ const prepareAnalyzePathItems = async (rootPath: string, analyzePaths: string[])
     }
     preparedItems.set(analyzePath, {
       analyzePath,
-      absoluteAnalyzePath,
-      signature: await buildPreviewFileSignature(absoluteAnalyzePath)
+      absoluteAnalyzePath
     })
   }
 
@@ -206,19 +168,6 @@ export async function loadPioneerPreviewWaveformsByDrivePath(
   for (const analyzePath of prepared.analyzePaths) {
     const preparedItem = prepared.preparedItems.get(analyzePath)
     if (!preparedItem) continue
-    const cached = await LibraryCacheDb.loadPioneerPreviewWaveformCacheEntry(
-      prepared.rootPath,
-      analyzePath,
-      preparedItem.signature
-    )
-    if (cached) {
-      items.set(analyzePath, {
-        analyzePath,
-        data: cached.status === 'ready' ? cached.data : null,
-        error: cached.error
-      })
-      continue
-    }
     relativeAnalyzePathByAbsolute.set(preparedItem.absoluteAnalyzePath, analyzePath)
     absoluteAnalyzePaths.push(preparedItem.absoluteAnalyzePath)
   }
@@ -231,16 +180,6 @@ export async function loadPioneerPreviewWaveformsByDrivePath(
       const analyzePath = relativeAnalyzePathByAbsolute.get(absoluteAnalyzePath)
       if (!analyzePath) return
       const normalized = normalizeWaveformData(item?.dump || null)
-      const preparedItem = prepared.preparedItems.get(analyzePath)
-      if (preparedItem) {
-        void LibraryCacheDb.upsertPioneerPreviewWaveformCacheEntry(prepared.rootPath, analyzePath, {
-          signature: preparedItem.signature,
-          status: normalized.data ? 'ready' : 'missing',
-          previewFilePath: normalized.data?.previewFilePath,
-          data: normalized.data,
-          error: normalized.error || undefined
-        })
-      }
       items.set(analyzePath, {
         analyzePath,
         data: normalized.data,
@@ -254,12 +193,6 @@ export async function loadPioneerPreviewWaveformsByDrivePath(
     if (!preparedItem) continue
     const current = items.get(analyzePath)
     if (current?.data || current?.error) continue
-    void LibraryCacheDb.upsertPioneerPreviewWaveformCacheEntry(prepared.rootPath, analyzePath, {
-      signature: preparedItem.signature,
-      status: 'missing',
-      data: null,
-      error: 'waveform worker returned no item'
-    })
     items.set(analyzePath, {
       analyzePath,
       data: null,
@@ -300,19 +233,6 @@ export async function streamPioneerPreviewWaveformsByDrivePath(
     }
     const preparedItem = prepared.preparedItems.get(analyzePath)
     if (!preparedItem) continue
-    const cached = await LibraryCacheDb.loadPioneerPreviewWaveformCacheEntry(
-      prepared.rootPath,
-      analyzePath,
-      preparedItem.signature
-    )
-    if (cached) {
-      onItem({
-        analyzePath,
-        data: cached.status === 'ready' ? cached.data : null,
-        error: cached.error
-      })
-      continue
-    }
     absoluteAnalyzePaths.push(preparedItem.absoluteAnalyzePath)
     relativeAnalyzePathByAbsolute.set(preparedItem.absoluteAnalyzePath, analyzePath)
   }
@@ -325,16 +245,6 @@ export async function streamPioneerPreviewWaveformsByDrivePath(
       const analyzePath = relativeAnalyzePathByAbsolute.get(absoluteAnalyzePath)
       if (!analyzePath) return
       const normalized = normalizeWaveformData(item?.dump || null)
-      const preparedItem = prepared.preparedItems.get(analyzePath)
-      if (preparedItem) {
-        void LibraryCacheDb.upsertPioneerPreviewWaveformCacheEntry(prepared.rootPath, analyzePath, {
-          signature: preparedItem.signature,
-          status: normalized.data ? 'ready' : 'missing',
-          previewFilePath: normalized.data?.previewFilePath,
-          data: normalized.data,
-          error: normalized.error || undefined
-        })
-      }
       onItem({
         analyzePath,
         data: normalized.data,

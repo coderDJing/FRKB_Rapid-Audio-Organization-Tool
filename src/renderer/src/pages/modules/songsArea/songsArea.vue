@@ -622,6 +622,7 @@ const requestImmediateAnalysis = (song: ISongInfo) => {
   if (!shouldQueueBrowserMainPlayerAnalysis(runtime, songsAreaState.songListUUID)) return
   try {
     window.electron.ipcRenderer.send('key-analysis:queue-playing', {
+      analysisAuthority: 'frkb',
       filePath,
       focusSlot: 'main-player'
     })

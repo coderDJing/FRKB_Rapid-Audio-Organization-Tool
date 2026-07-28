@@ -13,7 +13,7 @@ import {
 
 const DB_FILE_NAME = 'FRKB.database.sqlite'
 const SCHEMA_VERSION = 38
-export const MAX_SUPPORTED_DATABASE_SCHEMA_VERSION = SCHEMA_VERSION
+export const MAX_SUPPORTED_DATABASE_SCHEMA_VERSION = 39
 
 type SqliteDatabaseCtor = typeof import('better-sqlite3')
 

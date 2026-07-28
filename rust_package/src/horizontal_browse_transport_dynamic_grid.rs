@@ -130,6 +130,125 @@ impl HorizontalBrowseTransportEngine {
     }
   }
 
+  pub(super) fn normalize_rekordbox_beat_grid_entries(
+    raw_entries: Option<Vec<HorizontalBrowseTransportRekordboxBeatGridEntryInput>>,
+  ) -> Vec<RekordboxBeatGridEntrySnapshot> {
+    let Some(raw_entries) = raw_entries else {
+      return Vec::new();
+    };
+    if raw_entries.len() < 2 {
+      return Vec::new();
+    }
+    let mut entries = Vec::with_capacity(raw_entries.len());
+    for entry in raw_entries {
+      if !entry.time_ms.is_finite()
+        || entry.time_ms < 0.0
+        || !entry.bpm.is_finite()
+        || entry.bpm <= 0.0
+        || !(1..=4).contains(&entry.beat_number)
+      {
+        return Vec::new();
+      }
+      entries.push(RekordboxBeatGridEntrySnapshot {
+        sec: entry.time_ms / 1000.0,
+        bpm: entry.bpm,
+        beat_number: entry.beat_number,
+      });
+    }
+    entries.sort_by(|left, right| left.sec.total_cmp(&right.sec));
+    if entries.windows(2).any(|pair| pair[1].sec <= pair[0].sec) {
+      return Vec::new();
+    }
+    entries
+  }
+
+  pub(super) fn rekordbox_grid_as_fixed_snapshot_at_sec(
+    deck_state: &DeckState,
+    sec: f64,
+  ) -> Option<BeatGridSnapshot> {
+    let first = *deck_state.rekordbox_beat_grid_entries.first()?;
+    let safe_sec = if sec.is_finite() { sec } else { first.sec };
+    let mut entry = first;
+    for candidate in &deck_state.rekordbox_beat_grid_entries {
+      if candidate.sec > safe_sec {
+        break;
+      }
+      entry = *candidate;
+    }
+    Some(BeatGridSnapshot {
+      bpm: entry.bpm,
+      beat_sec: 60.0 / entry.bpm,
+      first_beat_sec: entry.sec,
+      downbeat_beat_offset: (5 - entry.beat_number).rem_euclid(4) as f64,
+    })
+  }
+
+  fn raw_rekordbox_beat_distance_at_sec(
+    entries: &[RekordboxBeatGridEntrySnapshot],
+    sec: f64,
+  ) -> Option<f64> {
+    let first = *entries.first()?;
+    let last = *entries.last()?;
+    if !sec.is_finite() {
+      return None;
+    }
+    if sec <= first.sec {
+      return Some((sec - first.sec) / (60.0 / first.bpm));
+    }
+    if sec >= last.sec {
+      return Some((entries.len() as f64 - 1.0) + (sec - last.sec) / (60.0 / last.bpm));
+    }
+    for (index, pair) in entries.windows(2).enumerate() {
+      let left = pair[0];
+      let right = pair[1];
+      if sec < left.sec || sec > right.sec {
+        continue;
+      }
+      let span_sec = right.sec - left.sec;
+      if span_sec <= HORIZONTAL_BROWSE_DYNAMIC_GRID_EPSILON_SEC {
+        return Some(index as f64);
+      }
+      return Some(index as f64 + (sec - left.sec) / span_sec);
+    }
+    None
+  }
+
+  pub(super) fn rekordbox_beat_distance_at_sec_with_multiplier(
+    deck_state: &DeckState,
+    sec: f64,
+    multiplier: f64,
+  ) -> Option<f64> {
+    let normalized_multiplier = Self::normalized_bpm_multiplier(multiplier);
+    Self::raw_rekordbox_beat_distance_at_sec(&deck_state.rekordbox_beat_grid_entries, sec)
+      .map(|distance| distance * normalized_multiplier)
+  }
+
+  pub(super) fn rekordbox_sec_at_beat_distance_with_multiplier(
+    deck_state: &DeckState,
+    beat_distance: f64,
+    multiplier: f64,
+  ) -> Option<f64> {
+    if !beat_distance.is_finite() {
+      return None;
+    }
+    let entries = &deck_state.rekordbox_beat_grid_entries;
+    let first = *entries.first()?;
+    let last = *entries.last()?;
+    let raw_distance = beat_distance / Self::normalized_bpm_multiplier(multiplier);
+    if raw_distance <= 0.0 {
+      return Some(first.sec + raw_distance * (60.0 / first.bpm));
+    }
+    let final_ordinal = entries.len() as f64 - 1.0;
+    if raw_distance >= final_ordinal {
+      return Some(last.sec + (raw_distance - final_ordinal) * (60.0 / last.bpm));
+    }
+    let left_index = raw_distance.floor() as usize;
+    let right_index = left_index + 1;
+    let left = entries.get(left_index)?;
+    let right = entries.get(right_index)?;
+    Some(left.sec + (right.sec - left.sec) * (raw_distance - left_index as f64))
+  }
+
   pub(super) fn dynamic_grid_clip_at_sec(
     deck_state: &DeckState,
     sec: f64,

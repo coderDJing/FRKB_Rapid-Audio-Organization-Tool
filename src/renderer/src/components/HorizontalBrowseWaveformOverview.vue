@@ -436,14 +436,6 @@ const loadWaveform = async () => {
   const filePath = String(currentSong?.filePath || '').trim()
   if (!filePath) return
 
-  const globalOverview = await loadWaveformGlobalOverviewData(filePath).catch(() => null)
-  if (currentToken !== loadToken) return
-  if (globalOverview) {
-    compactVisualData.value = globalOverview
-    drawWaveform()
-    return
-  }
-
   const externalWaveformSource = resolveSongExternalWaveformSource(currentSong, {
     rootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
     sourceKind: runtime.pioneerDeviceLibrary.selectedSourceKind || undefined
@@ -467,6 +459,17 @@ const loadWaveform = async () => {
         return
       }
     } catch {}
+    drawWaveform()
+    return
+  }
+
+  // Normal file libraries still use FRKB's cached overview and may queue its analysis.
+  const globalOverview = await loadWaveformGlobalOverviewData(filePath).catch(() => null)
+  if (currentToken !== loadToken) return
+  if (globalOverview) {
+    compactVisualData.value = globalOverview
+    drawWaveform()
+    return
   }
 
   drawWaveform()

@@ -8,6 +8,7 @@ import {
   createUnifiedSongBeatGridRuntime,
   type UnifiedSongBeatGridRuntime
 } from '@shared/songBeatGridRuntime'
+import type { RekordboxBeatGridEntry } from '@shared/songBeatGridMapV2'
 
 type CanvasMetrics = {
   cssWidth: number
@@ -30,6 +31,7 @@ type OverlayFrameState = {
   waveformHeight: number
   direction: 'up' | 'down'
   beatGridMapSignature: string
+  rekordboxGridEntriesSignature: string
   beatGridEditMode: boolean
   beatGridVisibleFromSec: number | null
   beatGridSelectedBoundarySec: number | null
@@ -137,6 +139,10 @@ const resolveFirstVisibleDynamicLineIndex = (
   return answer
 }
 
+const resolveRekordboxGridEntriesSignature = (
+  entries: readonly RekordboxBeatGridEntry[] | undefined
+) => entries?.map((entry) => `${entry.timeMs}:${entry.bpm}:${entry.beatNumber}`).join('|') || ''
+
 const drawBeatGridOverlay = (
   ctx: OffscreenCanvasRenderingContext2D,
   width: number,
@@ -145,6 +151,7 @@ const drawBeatGridOverlay = (
   direction: 'up' | 'down',
   overlayHeight: number,
   runtime: UnifiedSongBeatGridRuntime | null,
+  rekordboxGridEntries: readonly RekordboxBeatGridEntry[] | undefined,
   playbackDurationSec: number,
   rangeStartSec: number,
   rangeDurationSec: number,
@@ -219,7 +226,19 @@ const drawBeatGridOverlay = (
     ctx.fillRect(capLeft, Math.max(0, overlayHeight - capHeight), capWidth, capHeight)
   }
 
-  if (runtime) {
+  if (rekordboxGridEntries?.length) {
+    for (const entry of rekordboxGridEntries) {
+      const beatTime = entry.timeMs / 1000
+      if (beatTime < lineDrawStartSec - 0.001) continue
+      if (beatTime > drawEndSec + 0.001) break
+      const x = ((beatTime - rangeStartSec) / rangeDurationSec) * width
+      if (entry.beatNumber === 1) {
+        drawVerticalLine(x, MAJOR_GRID_LINE_WIDTH, palette.majorGrid)
+      } else {
+        drawVerticalLine(x, MINOR_GRID_LINE_WIDTH, palette.minorGrid)
+      }
+    }
+  } else if (runtime) {
     const lines = runtime.lines
     const firstLineIndex = resolveFirstVisibleDynamicLineIndex(lines, lineDrawStartSec - 0.001)
     for (let index = firstLineIndex; index < lines.length; index += 1) {
@@ -233,13 +252,19 @@ const drawBeatGridOverlay = (
         drawVerticalLine(x, MINOR_GRID_LINE_WIDTH, palette.minorGrid)
       }
     }
-    for (const boundarySec of runtime.clipBoundaries) {
-      if (boundarySec < drawStartSec - 0.001 || boundarySec > drawEndSec + 0.001) continue
-      const x = ((boundarySec - rangeStartSec) / rangeDurationSec) * width
-      const selected =
-        beatGridSelectedBoundarySec !== null &&
-        Math.abs(boundarySec - beatGridSelectedBoundarySec) <= 0.001
-      drawClipBoundary(x, selected ? palette.selectedClipBoundary : palette.clipBoundary, selected)
+    if (runtime.source !== 'rekordbox') {
+      for (const boundarySec of runtime.clipBoundaries) {
+        if (boundarySec < drawStartSec - 0.001 || boundarySec > drawEndSec + 0.001) continue
+        const x = ((boundarySec - rangeStartSec) / rangeDurationSec) * width
+        const selected =
+          beatGridSelectedBoundarySec !== null &&
+          Math.abs(boundarySec - beatGridSelectedBoundarySec) <= 0.001
+        drawClipBoundary(
+          x,
+          selected ? palette.selectedClipBoundary : palette.clipBoundary,
+          selected
+        )
+      }
     }
   }
 }
@@ -315,6 +340,9 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
     waveformHeight: metrics.waveformCssHeight,
     direction: request.direction,
     beatGridMapSignature: String(request.beatGridMap?.signature || ''),
+    rekordboxGridEntriesSignature: resolveRekordboxGridEntriesSignature(
+      request.rekordboxGridEntries
+    ),
     beatGridEditMode: request.beatGridEditMode === true,
     beatGridVisibleFromSec: Number.isFinite(Number(request.beatGridVisibleFromSec))
       ? Number(request.beatGridVisibleFromSec)
@@ -366,6 +394,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
       lastFrame.waveformHeight === current.waveformHeight &&
       lastFrame.direction === current.direction &&
       lastFrame.beatGridMapSignature === current.beatGridMapSignature &&
+      lastFrame.rekordboxGridEntriesSignature === current.rekordboxGridEntriesSignature &&
       lastFrame.beatGridEditMode === current.beatGridEditMode &&
       lastFrame.beatGridVisibleFromSec === current.beatGridVisibleFromSec &&
       lastFrame.beatGridSelectedBoundarySec === current.beatGridSelectedBoundarySec &&
@@ -466,6 +495,7 @@ export const createHorizontalBrowseDetailLiveCanvasOverlayRenderer = () => {
         request.direction,
         metrics.cssHeight,
         resolveGridRuntime(request.beatGridMap, playbackDurationSec),
+        request.rekordboxGridEntries,
         playbackDurationSec,
         rangeStartSec,
         rangeDurationSec,

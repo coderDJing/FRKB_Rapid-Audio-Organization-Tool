@@ -60,6 +60,9 @@ impl HorizontalBrowseTransportEngine {
     sec: f64,
   ) -> Option<BeatGridSnapshot> {
     let deck_state = self.deck(deck);
+    if !deck_state.rekordbox_beat_grid_entries.is_empty() {
+      return Self::rekordbox_grid_as_fixed_snapshot_at_sec(deck_state, sec);
+    }
     if let Some(clip) = Self::dynamic_grid_clip_at_sec(deck_state, sec) {
       return Some(Self::dynamic_grid_as_fixed_snapshot(clip));
     }
@@ -346,6 +349,9 @@ impl HorizontalBrowseTransportEngine {
   pub(super) fn sync_beat_distance_at_sec(&self, deck: DeckId, sec: f64) -> Option<f64> {
     let multiplier = self.bpm_multiplier[Self::deck_index(deck)];
     let deck_state = self.deck(deck);
+    if !deck_state.rekordbox_beat_grid_entries.is_empty() {
+      return Self::rekordbox_beat_distance_at_sec_with_multiplier(deck_state, sec, multiplier);
+    }
     if !deck_state.dynamic_beat_grid.is_empty() {
       return Self::dynamic_beat_distance_at_sec_with_multiplier(deck_state, sec, multiplier);
     }
@@ -364,6 +370,13 @@ impl HorizontalBrowseTransportEngine {
   ) -> Option<f64> {
     let multiplier = self.bpm_multiplier[Self::deck_index(deck)];
     let deck_state = self.deck(deck);
+    if !deck_state.rekordbox_beat_grid_entries.is_empty() {
+      return Self::rekordbox_sec_at_beat_distance_with_multiplier(
+        deck_state,
+        beat_distance,
+        multiplier,
+      );
+    }
     if !deck_state.dynamic_beat_grid.is_empty() {
       return Self::dynamic_sec_at_beat_distance_with_multiplier(
         deck_state,
@@ -595,6 +608,10 @@ impl HorizontalBrowseTransportEngine {
         payload.beat_grid_clips,
         payload.duration_sec,
       );
+      target.rekordbox_beat_grid_entries =
+        HorizontalBrowseTransportEngine::normalize_rekordbox_beat_grid_entries(
+          payload.rekordbox_beat_grid_entries,
+        );
       target.time_basis_offset_ms = payload.time_basis_offset_ms;
       target.duration_sec = payload.duration_sec;
       target.current_sec = next_current_sec;

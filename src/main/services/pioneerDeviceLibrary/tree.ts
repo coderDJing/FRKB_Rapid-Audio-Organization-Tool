@@ -3,7 +3,14 @@ import { enrichPioneerTracksWithCueData } from './cues'
 import { markMissingFiles } from '../fileExistenceCheck'
 import { probePioneerDeviceLibraryRoot } from './deviceDetection'
 import { readOneLibraryPlaylistTracks, readOneLibraryPlaylistTree } from './oneLibraryDb'
-import { readPioneerPlaylistTracksInWorker, readPioneerPlaylistTreeInWorker } from './workerPool'
+import {
+  readPioneerBeatGridsInWorker,
+  readPioneerPlaylistTracksInWorker,
+  readPioneerPlaylistTreeInWorker
+} from './workerPool'
+import { createSongBeatGridMapV2FromRekordboxEntries } from '../../../shared/songBeatGridMapV2'
+import { resolveAudioTimeBasisOffsetMsForFile } from '../audioTimeBasisOffset'
+import { log } from '../../log'
 import type { IPioneerPlaylistTrack, IPioneerPlaylistTreeNode } from '../../../types/globals'
 import type {
   PioneerDeviceLibraryProbe,
@@ -94,6 +101,26 @@ type RustPioneerPlaylistTrackDump = {
   track_total?: number
   tracks?: RustPioneerPlaylistTrackRecord[]
   error?: string
+}
+
+type RustPioneerBeatGridEntry = {
+  beatNumber?: number
+  beat_number?: number
+  bpm?: number
+  timeMs?: number
+  time_ms?: number
+}
+
+type RustPioneerBeatGridDump = {
+  analyzeFilePath?: string
+  analyze_file_path?: string
+  entries?: RustPioneerBeatGridEntry[]
+  error?: string
+}
+
+type WorkerBeatGridItem = {
+  analyzeFilePath?: string
+  dump?: RustPioneerBeatGridDump | null
 }
 
 const resolvePioneerDatabasePath = (
@@ -290,6 +317,84 @@ const resolvePioneerDevicePath = (rootPath: string, devicePath: string) => {
   return path.join(normalizedRoot, sanitized)
 }
 
+const normalizePioneerBeatGridEntries = (value: RustPioneerBeatGridEntry[] | undefined) => {
+  if (!Array.isArray(value) || value.length === 0) return []
+  const entries = value
+    .map((entry) => ({
+      beatNumber: Number(entry?.beatNumber ?? entry?.beat_number),
+      bpm: Number(entry?.bpm),
+      timeMs: Number(entry?.timeMs ?? entry?.time_ms)
+    }))
+    .filter(
+      (entry) =>
+        Number.isInteger(entry.beatNumber) &&
+        entry.beatNumber >= 1 &&
+        entry.beatNumber <= 4 &&
+        Number.isFinite(entry.bpm) &&
+        entry.bpm > 0 &&
+        Number.isFinite(entry.timeMs) &&
+        entry.timeMs >= 0
+    )
+    .sort((left, right) => left.timeMs - right.timeMs)
+  if (entries.some((entry, index) => index > 0 && entry.timeMs <= entries[index - 1].timeMs)) {
+    return []
+  }
+  return entries
+}
+
+const attachPioneerRuntimeBeatGrids = async (rootPath: string, tracks: IPioneerPlaylistTrack[]) => {
+  const absoluteAnalyzePathToTrack = new Map<string, IPioneerPlaylistTrack>()
+  for (const track of tracks) {
+    const analyzePath = String(track.analyzePath || '').trim()
+    const absoluteAnalyzePath = resolvePioneerDevicePath(rootPath, analyzePath)
+    if (absoluteAnalyzePath) absoluteAnalyzePathToTrack.set(absoluteAnalyzePath, track)
+  }
+  if (!absoluteAnalyzePathToTrack.size) return tracks
+
+  const entriesByTrack = new Map<
+    IPioneerPlaylistTrack,
+    ReturnType<typeof normalizePioneerBeatGridEntries>
+  >()
+  await readPioneerBeatGridsInWorker<{ total?: number }>(
+    Array.from(absoluteAnalyzePathToTrack.keys()),
+    (progress) => {
+      const item = progress as WorkerBeatGridItem | null
+      const absoluteAnalyzePath = String(item?.analyzeFilePath || '').trim()
+      const track = absoluteAnalyzePathToTrack.get(absoluteAnalyzePath)
+      const dump = item?.dump
+      if (!track) return
+      if (dump?.error) {
+        return
+      }
+      const entries = normalizePioneerBeatGridEntries(dump?.entries)
+      if (entries.length) {
+        entriesByTrack.set(track, entries)
+      }
+    }
+  )
+
+  return await Promise.all(
+    tracks.map(async (track) => {
+      const entries = entriesByTrack.get(track)
+      if (!entries?.length) return track
+      const beatGridMap = createSongBeatGridMapV2FromRekordboxEntries(entries)
+      if (!beatGridMap) return track
+      try {
+        const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(track.filePath)
+        return {
+          ...track,
+          rekordboxGridEntries: entries,
+          beatGridMap,
+          timeBasisOffsetMs,
+          bpm: beatGridMap.clips[0]?.bpm || track.bpm
+        }
+      } catch {
+        return track
+      }
+    })
+  )
+}
+
 const deriveArtistFromFileName = (fileName: string) => {
   const normalized = String(fileName || '').trim()
   if (!normalized) return ''
@@ -426,7 +531,8 @@ export async function loadPioneerPlaylistTracksByDrivePath(
     }
   })
 
-  const tracksWithCues = await enrichPioneerTracksWithCueData(rootPath, tracks)
+  const tracksWithRuntimeGrid = await attachPioneerRuntimeBeatGrids(rootPath, tracks)
+  const tracksWithCues = await enrichPioneerTracksWithCueData(rootPath, tracksWithRuntimeGrid)
   await markMissingFiles(tracksWithCues)
 
   return {

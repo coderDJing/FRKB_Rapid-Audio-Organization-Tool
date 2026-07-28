@@ -1,6 +1,6 @@
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
 import type { ISongHotCue, ISongMemoryCue } from 'src/types/globals'
-import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
+import type { RekordboxBeatGridEntry, SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 type HorizontalBrowseDetailLiveCanvasRawSlot = 'live'
 type HorizontalBrowseDetailLiveCanvasDirection = 'up' | 'down'
@@ -24,6 +24,7 @@ export type HorizontalBrowseDetailLiveCanvasRenderRequest = {
   firstBeatMs: number
   downbeatBeatOffset: number
   beatGridMap?: SongBeatGridMapV2 | null
+  rekordboxGridEntries?: RekordboxBeatGridEntry[]
   beatGridEditMode?: boolean
   beatGridVisibleFromSec?: number | null
   beatGridSelectedBoundarySec?: number | null
@@ -104,6 +105,7 @@ export type HorizontalBrowseDetailLiveCanvasWorkerOutgoing =
         renderViewportOnly?: boolean
         renderTargetIndex?: number
         stableWaveformSource?: boolean
+        rawWaveformKind?: 'rekordbox-rgb' | 'rekordbox-triband'
         notReadyReason?: 'missing-metrics' | 'missing-raw-data' | 'render-full-frame-failed'
       }
     }

@@ -53,6 +53,9 @@ export const createDefaultSharedDetailZoomState = (value: number): SharedDetailZ
 
 export const createDefaultDeckToolbarState = () => ({
   disabled: true,
+  bpmInputDisabled: true,
+  showGridControls: true,
+  showMetronome: true,
   bpmInputValue: '',
   bpmStep: 0.01,
   bpmMin: 1,

@@ -2,8 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pipeline } from 'node:stream/promises'
-import { createReadStream, createWriteStream } from 'node:fs'
+import { createReadStream, createWriteStream, type Dirent } from 'node:fs'
 import { MANIFEST_FILE_NAME, readManifestFile } from '../../databaseManifest'
+import { log } from '../../log'
 import {
   assertDistinctLibraryMergeRoots,
   buildLibraryMergePlan,
@@ -536,22 +537,45 @@ const recoverIncompleteLibraryMergesInWorkRoot = async (params: {
 
 export async function recoverIncompleteLibraryMerges(targetRootInput: string): Promise<void> {
   const targetRoot = path.resolve(targetRootInput)
-  await fs.rm(path.join(targetRoot, '.frkb-merge-preflight'), { recursive: true, force: true })
-  const Database = getDatabaseCtor()
-  const targetDb = new Database(path.join(targetRoot, DB_FILE_NAME), { fileMustExist: true })
-  targetDb.pragma('foreign_keys = ON')
+  const startedAt = Date.now()
+  const preflightPath = path.join(targetRoot, '.frkb-merge-preflight')
+  const lockPath = path.join(targetRoot, MERGE_LOCK_FILE_NAME)
+  const workRoots = await Promise.all(
+    MERGE_WORK_DIR_NAMES.map(async (workDirName) => {
+      const workRoot = path.join(targetRoot, workDirName)
+      const entries = await fs.readdir(workRoot, { withFileTypes: true }).catch((): Dirent[] => [])
+      return {
+        workDirName,
+        journalDirCount: entries.filter((entry) => entry.isDirectory()).length
+      }
+    })
+  )
   try {
-    for (const workDirName of MERGE_WORK_DIR_NAMES) {
-      await recoverIncompleteLibraryMergesInWorkRoot({
-        targetRoot,
-        workRoot: path.join(targetRoot, workDirName),
-        targetDb
-      })
+    await fs.rm(preflightPath, { recursive: true, force: true })
+    const Database = getDatabaseCtor()
+    const targetDb = new Database(path.join(targetRoot, DB_FILE_NAME), { fileMustExist: true })
+    targetDb.pragma('foreign_keys = ON')
+    try {
+      for (const workDirName of MERGE_WORK_DIR_NAMES) {
+        await recoverIncompleteLibraryMergesInWorkRoot({
+          targetRoot,
+          workRoot: path.join(targetRoot, workDirName),
+          targetDb
+        })
+      }
+    } finally {
+      targetDb.close()
     }
-  } finally {
-    targetDb.close()
+    await fs.rm(lockPath, { force: true })
+  } catch (error) {
+    log.error('[library-merge-recovery] failed', {
+      targetRoot,
+      workRoots,
+      durationMs: Date.now() - startedAt,
+      error
+    })
+    throw error
   }
-  await fs.rm(path.join(targetRoot, MERGE_LOCK_FILE_NAME), { force: true })
 }
 
 export async function mergeFrkbLibraries(

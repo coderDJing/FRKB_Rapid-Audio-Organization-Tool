@@ -4,7 +4,12 @@ const HORIZONTAL_BROWSE_RAW_DURATION_TAIL_TOLERANCE_SEC = 0.75
 
 const resolveRawDataStartSec = (rawData: RawWaveformData | null, timeBasisOffsetSec: number) => {
   if (!rawData) return 0
-  return Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec
+  const offsetSec =
+    rawData.nativeWaveformKind === 'rekordbox-rgb' ||
+    rawData.nativeWaveformKind === 'rekordbox-triband'
+      ? 0
+      : timeBasisOffsetSec
+  return Math.max(0, Number(rawData.startSec) || 0) + offsetSec
 }
 
 const resolveRawDataCoverageStartSec = (

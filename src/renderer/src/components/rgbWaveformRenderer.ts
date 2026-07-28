@@ -42,6 +42,7 @@ type WaveformColumn = {
   rawEnergyPeak?: number
   rawEnergyShape?: RawEnergyShapeParams
   frequencyRatios?: WaveformFrequencyRatios
+  rekordboxTriBand?: WaveformFrequencyRatios
   color: WaveformRgbColor
 }
 
@@ -60,6 +61,11 @@ const COLUMN_ATTACK_MIN_AMP = 0.06
 const COLUMN_ATTACK_MIN_RISE = 0.04
 const COLUMN_ATTACK_RELATIVE_RISE = 0.65
 const RAW_PEAKS_ONLY_FALLBACK_COLOR: WaveformRgbColor = { r: 235, g: 242, b: 248 }
+const REKORDBOX_TRI_BAND_COLORS = {
+  low: 'rgb(38, 82, 242)',
+  mid: 'rgba(255, 143, 20, 0.68)',
+  high: 'rgba(245, 250, 255, 0.96)'
+}
 const MIXXX_RGB_COMPONENTS = {
   low: { r: 1, g: 0, b: 0 },
   mid: { r: 0, g: 1, b: 0 },
@@ -100,6 +106,10 @@ const normalizeWaveformGain = (value?: number) => {
   if (!Number.isFinite(numeric)) return 1
   return clamp(numeric, 0, 16)
 }
+
+const isNativeRekordboxWaveform = (rawData: RawWaveformData | null) =>
+  rawData?.nativeWaveformKind === 'rekordbox-rgb' ||
+  rawData?.nativeWaveformKind === 'rekordbox-triband'
 const resolveColumnEnergy = (column: WaveformColumn | null | undefined) =>
   column ? Math.max(column.ampTop, column.ampBottom) : 0
 
@@ -257,15 +267,34 @@ const resolveRawColumnByTimeRange = (
     ampBottom: clamp((rawPeaks?.ampBottom ?? 0) * waveformGain, 0, 1)
   }
   if (rawAmps.ampTop <= 0 && rawAmps.ampBottom <= 0) return null
-  const rawColorUsesEnergyShape = preferRawPeaksOnly ? false : useRawEnergyEnvelope
-  const rawFftProfile = resolveRawFftBandProfile(
-    rawData,
-    rawStartFrame,
-    rawEndFrame,
-    maxSamplesPerPixel,
-    rawColorUsesEnergyShape
-  )
-  const color = rawFftProfile?.color ?? (preferRawPeaksOnly ? RAW_PEAKS_ONLY_FALLBACK_COLOR : null)
+  const isNativeRekordboxTriBand = rawData.nativeWaveformKind === 'rekordbox-triband'
+  const rawColorUsesEnergyShape =
+    preferRawPeaksOnly || isNativeRekordboxWaveform(rawData) ? false : useRawEnergyEnvelope
+  let rekordboxTriBand: WaveformFrequencyRatios | undefined
+  if (isNativeRekordboxTriBand) {
+    let low = 0
+    let mid = 0
+    let high = 0
+    for (let frame = rawStartFrame; frame <= rawEndFrame; frame += 1) {
+      low = Math.max(low, rawData.compactColorLow?.[frame] || 0)
+      mid = Math.max(mid, rawData.compactColorMid?.[frame] || 0)
+      high = Math.max(high, rawData.compactColorHigh?.[frame] || 0)
+    }
+    rekordboxTriBand = { low: low / 255, mid: mid / 255, high: high / 255 }
+  }
+  const rawFftProfile = isNativeRekordboxTriBand
+    ? null
+    : resolveRawFftBandProfile(
+        rawData,
+        rawStartFrame,
+        rawEndFrame,
+        maxSamplesPerPixel,
+        rawColorUsesEnergyShape
+      )
+  const color =
+    rawFftProfile?.color ??
+    (isNativeRekordboxTriBand ? { r: 38, g: 82, b: 242 } : null) ??
+    (preferRawPeaksOnly ? RAW_PEAKS_ONLY_FALLBACK_COLOR : null)
   if (!color) return null
   return {
     ampTop: rawAmps.ampTop,
@@ -274,6 +303,7 @@ const resolveRawColumnByTimeRange = (
     rawEnergyPeak: rawEnergyProfile?.peak,
     rawEnergyShape: rawEnergyProfile?.shape,
     frequencyRatios: rawFftProfile?.bands,
+    rekordboxTriBand,
     color
   }
 }
@@ -321,12 +351,17 @@ const buildWaveformColumns = (
     : 0
   const rawRate = hasRaw ? Number(rawData.rate) : 0
   const timeBasisOffsetSec = Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
-  const rawStartSec = hasRaw ? Math.max(0, Number(rawData.startSec) || 0) + timeBasisOffsetSec : 0
+  const rawStartSec = hasRaw
+    ? Math.max(0, Number(rawData.startSec) || 0) +
+      (isNativeRekordboxWaveform(rawData) ? 0 : timeBasisOffsetSec)
+    : 0
   const rawColumnDurationSec = rangeDurationSec / Math.max(1, width)
   const safeWaveformGain = normalizeWaveformGain(waveformGain)
   const rawPeaksOnly = preferRawPeaksOnly === true
-  const shouldSmoothRawColumns = smoothColumns && !rawPeaksOnly
-  const shouldUseRawEnergyEnvelope = useRawEnergyEnvelope && !rawPeaksOnly
+  const nativeRekordboxWaveform = isNativeRekordboxWaveform(rawData)
+  const shouldSmoothRawColumns = smoothColumns && !rawPeaksOnly && !nativeRekordboxWaveform
+  const shouldUseRawEnergyEnvelope =
+    useRawEnergyEnvelope && !rawPeaksOnly && !nativeRekordboxWaveform
   const rawDetailColumnDurationSec = Math.max(rawColumnDurationSec, 1 / REKORDBOX_RGB_DETAIL_RATE)
   const rawTimelineColumnCache = new Map<number, WaveformColumn | null>()
   const resolveRawTimelineColumn = (timelineColumnIndex: number) => {
@@ -608,10 +643,13 @@ const resolveColumnRect = (
   ampScale: number,
   waveformLayout: WaveformLayout,
   ampTop: number,
-  ampBottom: number
+  ampBottom: number,
+  minimumVisibleHeight = 1
 ) => {
-  const topHeight = Math.max(1, Math.round(ampTop * ampScale))
-  const bottomHeight = Math.max(1, Math.round(ampBottom * ampScale))
+  const resolveVisibleHeight = (amplitude: number) =>
+    amplitude > 0 ? Math.max(minimumVisibleHeight, Math.round(amplitude * ampScale)) : 0
+  const topHeight = resolveVisibleHeight(ampTop)
+  const bottomHeight = resolveVisibleHeight(ampBottom)
   const singleHeight = Math.max(topHeight, bottomHeight)
   if (waveformLayout === 'top-half') {
     return {
@@ -641,6 +679,7 @@ const drawWaveformColumns = (
     showCenterLine?: boolean
     palette?: WaveformPalette
     waveformLayout?: WaveformLayout
+    nativeRekordboxWaveform?: boolean
   }
 ) => {
   const centerY = Math.round(height / 2)
@@ -648,6 +687,9 @@ const drawWaveformColumns = (
   const showCenterLine = options?.showCenterLine !== false
   const palette = options?.palette || DARK_WAVEFORM_PALETTE
   const waveformLayout = options?.waveformLayout || 'full'
+  // PWV5 的低档位（1/31、2/31）在 1px 时会被随后绘制的中心线遮住，视觉上像空白。
+  // 仅对原生 Rekordbox 非零列保留 2px 像素下限；不改 ANLZ 数值，也不套 FRKB 包络。
+  const minimumVisibleHeight = options?.nativeRekordboxWaveform ? 2 : 1
   const ampScale =
     waveformLayout === 'full'
       ? Math.max(1, centerY - 2)
@@ -659,7 +701,35 @@ const drawWaveformColumns = (
     if (!column) continue
     const ampTop = column.ampTop
     const ampBottom = column.ampBottom
-    const rect = resolveColumnRect(height, centerY, ampScale, waveformLayout, ampTop, ampBottom)
+    const rect = resolveColumnRect(
+      height,
+      centerY,
+      ampScale,
+      waveformLayout,
+      ampTop,
+      ampBottom,
+      minimumVisibleHeight
+    )
+    if (column.rekordboxTriBand) {
+      const drawBand = (amp: number, color: string) => {
+        if (amp <= 0) return
+        const bandRect = resolveColumnRect(
+          height,
+          centerY,
+          ampScale,
+          waveformLayout,
+          amp,
+          amp,
+          minimumVisibleHeight
+        )
+        ctx.fillStyle = color
+        ctx.fillRect(x, bandRect.y, 1, bandRect.h)
+      }
+      drawBand(column.rekordboxTriBand.low, REKORDBOX_TRI_BAND_COLORS.low)
+      drawBand(column.rekordboxTriBand.mid, REKORDBOX_TRI_BAND_COLORS.mid)
+      drawBand(column.rekordboxTriBand.high, REKORDBOX_TRI_BAND_COLORS.high)
+      continue
+    }
     ctx.fillStyle = `rgb(${column.color.r}, ${column.color.g}, ${column.color.b})`
     ctx.fillRect(x, rect.y, 1, rect.h)
 
@@ -756,7 +826,8 @@ export const drawRgbWaveform = (ctx: WaveformCanvasContext, options: DrawWavefor
     showDetailHighlights,
     showCenterLine,
     palette,
-    waveformLayout: resolvedWaveformLayout
+    waveformLayout: resolvedWaveformLayout,
+    nativeRekordboxWaveform: isNativeRekordboxWaveform(rawData || null)
   })
 
   return true

@@ -57,6 +57,9 @@ export const resolveHorizontalBrowseDeckWaveformGain = (snapshot: {
 export const buildHorizontalBrowseDeckToolbarState = (
   toolbarState: {
     disabled: boolean
+    bpmInputDisabled: boolean
+    showGridControls?: boolean
+    showMetronome?: boolean
     bpmStep: number
     bpmMin: number
     bpmMax: number
@@ -80,6 +83,9 @@ export const buildHorizontalBrowseDeckToolbarState = (
   }
 ) => ({
   disabled: toolbarState.disabled,
+  bpmInputDisabled: toolbarState.bpmInputDisabled,
+  showGridControls: toolbarState.showGridControls !== false,
+  showMetronome: toolbarState.showMetronome !== false,
   bpmInputValue,
   bpmStep: toolbarState.bpmStep,
   bpmMin: toolbarState.bpmMin,

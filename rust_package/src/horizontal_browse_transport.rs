@@ -51,8 +51,16 @@ pub use horizontal_browse_transport_types::{
   HorizontalBrowseTransportBeatGridInput, HorizontalBrowseTransportDeckInput,
   HorizontalBrowseTransportDeckSnapshot, HorizontalBrowseTransportDecodeDiagnostic,
   HorizontalBrowseTransportOutputSnapshot, HorizontalBrowseTransportSnapshot,
-  HorizontalBrowseTransportStateInput, HorizontalBrowseTransportVisualizerSnapshot,
+  HorizontalBrowseTransportRekordboxBeatGridEntryInput, HorizontalBrowseTransportStateInput,
+  HorizontalBrowseTransportVisualizerSnapshot,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct RekordboxBeatGridEntrySnapshot {
+  pub(super) sec: f64,
+  pub(super) bpm: f64,
+  pub(super) beat_number: i32,
+}
 
 struct DeckState {
   file_path: Option<String>,
@@ -67,6 +75,7 @@ struct DeckState {
   first_beat_ms: Option<f64>,
   downbeat_beat_offset: Option<f64>,
   dynamic_beat_grid: Vec<DynamicBeatGridClipSnapshot>,
+  rekordbox_beat_grid_entries: Vec<RekordboxBeatGridEntrySnapshot>,
   time_basis_offset_ms: Option<f64>,
   duration_sec: f64,
   current_sec: f64,
@@ -242,6 +251,7 @@ impl Default for DeckState {
       first_beat_ms: None,
       downbeat_beat_offset: None,
       dynamic_beat_grid: Vec::new(),
+      rekordbox_beat_grid_entries: Vec::new(),
       time_basis_offset_ms: None,
       duration_sec: 0.0,
       current_sec: 0.0,

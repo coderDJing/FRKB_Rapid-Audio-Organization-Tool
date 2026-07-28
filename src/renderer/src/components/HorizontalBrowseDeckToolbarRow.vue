@@ -9,6 +9,8 @@ import type { HorizontalBrowseTempoNudgeDirection } from '@renderer/composables/
 
 const props = defineProps<{
   disabled: boolean
+  bpmInputDisabled: boolean
+  showGridControls: boolean
   bpmInputValue: string
   bpmStep: number
   bpmMin: number
@@ -28,6 +30,7 @@ const props = defineProps<{
   readOnlySource: boolean
   quantizeEnabled: boolean
   masterTempoEnabled: boolean
+  showMetronome: boolean
   metronomeEnabled: boolean
   metronomeVolumeLevel: 1 | 2 | 3
   canToggleMetronome: boolean
@@ -112,7 +115,9 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
     <div class="overview__toolbar-main">
       <MixtapeBeatAlignGridAdjustToolbar
         :disabled="props.disabled"
+        :bpm-input-disabled="props.bpmInputDisabled"
         :grid-controls-disabled="props.gridControlsDisabled"
+        :show-grid-controls="props.showGridControls"
         :bpm-input-value="props.bpmInputValue"
         :bpm-step="props.bpmStep"
         :bpm-min="props.bpmMin"
@@ -121,7 +126,7 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
         :bpm-input-first="props.bpmInputFirst"
         :show-tap-button="props.showTapButton === true"
         :tap-bpm-title="props.tapBpmTitle"
-        show-memory-button
+        :show-memory-button="props.showGridControls"
         :show-split-after-playhead="props.showSplitAfterPlayhead"
         :show-delete-boundary="props.showDeleteBoundary"
         :grid-adjust-scope="props.gridAdjustScope"
@@ -182,7 +187,7 @@ const handleTempoNudgeKeyUp = (direction: HorizontalBrowseTempoNudgeDirection) =
           </svg>
         </bubbleBoxTrigger>
       </div>
-      <div class="overview__toolbar-group">
+      <div v-if="props.showMetronome" class="overview__toolbar-group">
         <BeatGridMetronomeControls
           :metronome-enabled="props.metronomeEnabled"
           :metronome-volume-level="props.metronomeVolumeLevel"

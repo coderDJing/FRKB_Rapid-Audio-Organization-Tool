@@ -24,7 +24,8 @@ const cloneRawData = (rawData: RawWaveformData): RawWaveformData => ({
   compactColorGreen: rawData.compactColorGreen,
   compactColorBlue: rawData.compactColorBlue,
   compactColorRateDivisor: rawData.compactColorRateDivisor,
-  compactColorStartFrame: rawData.compactColorStartFrame
+  compactColorStartFrame: rawData.compactColorStartFrame,
+  nativeWaveformKind: rawData.nativeWaveformKind
 })
 
 export const createHorizontalBrowseDetailLiveCanvasRawStore = (

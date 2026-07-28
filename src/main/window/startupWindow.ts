@@ -28,8 +28,8 @@ const startupMessages: Record<StartupStage, { zhCN: string; enUS: string }> = {
     enUS: 'Checking music library…'
   },
   'recovering-library': {
-    zhCN: '正在恢复上次未完成的操作…',
-    enUS: 'Recovering unfinished work…'
+    zhCN: '正在检查并迁移音乐库数据…',
+    enUS: 'Checking and migrating library data…'
   },
   'preparing-library': {
     zhCN: '正在准备音乐库…',

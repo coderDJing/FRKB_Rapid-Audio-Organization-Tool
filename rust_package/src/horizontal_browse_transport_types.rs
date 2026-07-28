@@ -40,6 +40,14 @@ pub struct HorizontalBrowseTransportBeatGridClipInput {
 }
 
 #[napi(object)]
+#[derive(Clone)]
+pub struct HorizontalBrowseTransportRekordboxBeatGridEntryInput {
+  pub time_ms: f64,
+  pub bpm: f64,
+  pub beat_number: i32,
+}
+
+#[napi(object)]
 pub struct HorizontalBrowseTransportDeckInput {
   pub file_path: Option<String>,
   pub title: Option<String>,
@@ -47,6 +55,7 @@ pub struct HorizontalBrowseTransportDeckInput {
   pub first_beat_ms: Option<f64>,
   pub downbeat_beat_offset: Option<f64>,
   pub beat_grid_clips: Option<Vec<HorizontalBrowseTransportBeatGridClipInput>>,
+  pub rekordbox_beat_grid_entries: Option<Vec<HorizontalBrowseTransportRekordboxBeatGridEntryInput>>,
   pub time_basis_offset_ms: Option<f64>,
   pub duration_sec: f64,
   pub current_sec: f64,
@@ -63,6 +72,7 @@ pub struct HorizontalBrowseTransportBeatGridInput {
   pub first_beat_ms: Option<f64>,
   pub downbeat_beat_offset: Option<f64>,
   pub beat_grid_clips: Option<Vec<HorizontalBrowseTransportBeatGridClipInput>>,
+  pub rekordbox_beat_grid_entries: Option<Vec<HorizontalBrowseTransportRekordboxBeatGridEntryInput>>,
   pub time_basis_offset_ms: Option<f64>,
 }
 

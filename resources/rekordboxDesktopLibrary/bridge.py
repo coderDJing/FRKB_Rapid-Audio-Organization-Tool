@@ -548,11 +548,27 @@ def _resolve_track_grid_payload(db: Any, content: Any, share_dir: str) -> Dict[s
         if first_bpm is None or first_bpm <= 0 or first_time_sec is None or first_time_sec < 0:
             return {}
 
+        entries = []
+        for beat, bpm, time_sec in zip(beats, bpms, times):
+            entry_bpm = _parse_float(bpm)
+            entry_time_sec = _parse_float(time_sec)
+            entry_beat = _parse_int(beat, 1)
+            if entry_bpm is None or entry_bpm <= 0 or entry_time_sec is None or entry_time_sec < 0:
+                return {}
+            if entry_beat < 1 or entry_beat > 4:
+                return {}
+            entries.append({
+                "timeMs": round(float(entry_time_sec) * 1000.0, 3),
+                "bpm": round(float(entry_bpm), 6),
+                "beatNumber": entry_beat,
+            })
+
         return {
             "gridBpm": round(float(first_bpm), 6),
             "gridFirstBeatMs": round(float(first_time_sec) * 1000.0, 3),
             "gridFirstBeatLabel": first_label,
             "gridBarBeatOffset": (5 - first_label) % 4,
+            "rekordboxGridEntries": entries,
         }
     except Exception:
         return {}
@@ -973,6 +989,7 @@ def _build_track_record(
         "discNumber": _parse_int(getattr(content, "DiscNo", 0)) or None,
         "year": _parse_int(getattr(content, "ReleaseYear", 0)) or None,
         "analyzePath": _resolve_track_analyze_path(db, content, share_dir) or None,
+        "rekordboxGridEntries": grid_payload.get("rekordboxGridEntries"),
         "gridBpm": grid_payload.get("gridBpm"),
         "gridFirstBeatMs": grid_payload.get("gridFirstBeatMs"),
         "gridFirstBeatLabel": grid_payload.get("gridFirstBeatLabel"),

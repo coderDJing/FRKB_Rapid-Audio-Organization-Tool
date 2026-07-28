@@ -21,8 +21,12 @@ const resolveRawTimelineEndSec = (
   if (rawStartSec > 0.0001 || rate <= 0 || totalFrames <= 0 || loadedFrames < totalFrames) {
     return null
   }
-  const rawEndSec =
-    rawStartSec + totalFrames / rate + Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
+  const timeBasisOffsetSec =
+    rawData.nativeWaveformKind === 'rekordbox-rgb' ||
+    rawData.nativeWaveformKind === 'rekordbox-triband'
+      ? 0
+      : Math.max(0, Number(timeBasisOffsetMs) || 0) / 1000
+  const rawEndSec = rawStartSec + totalFrames / rate + timeBasisOffsetSec
   const tailGapSec = durationSec - rawEndSec
   if (durationSec <= 0 || rawEndSec <= 0 || tailGapSec < 0 || tailGapSec > tailToleranceSec) {
     return null

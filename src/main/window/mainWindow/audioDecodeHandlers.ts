@@ -23,7 +23,9 @@ import {
 } from '../../../shared/waveformSurfaceCache'
 
 type DecodeRequestOptions = {
+  analysisAuthority?: 'frkb'
   skipPlaybackGridAnalysis?: boolean
+  suppressFrkbWaveformData?: boolean
 }
 
 const clonePcmData = (pcmData: unknown): Float32Array => {
@@ -71,8 +73,13 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
       options?: DecodeRequestOptions
     ) => {
       try {
-        const sharedGrid = await loadSharedSongGridDefinition(filePath).catch(() => null)
+        const permitsFrkbAnalysis =
+          options?.analysisAuthority === 'frkb' && options?.suppressFrkbWaveformData !== true
+        const sharedGrid = permitsFrkbAnalysis
+          ? await loadSharedSongGridDefinition(filePath).catch(() => null)
+          : null
         const needsGridAnalysis =
+          permitsFrkbAnalysis &&
           options?.skipPlaybackGridAnalysis !== true &&
           !isInRecordingLibraryAbsPath(filePath) &&
           !isCompleteSharedSongGridDefinition(sharedGrid)
@@ -88,7 +95,9 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
           stat = { size: fsStat.size, mtimeMs: fsStat.mtimeMs }
         } catch {}
 
-        const listRoot = await findSongListRoot(path.dirname(filePath))
+        const listRoot = options?.suppressFrkbWaveformData
+          ? ''
+          : await findSongListRoot(path.dirname(filePath))
         let compactVisualWaveformData: WaveformGlobalOverviewData | null = null
         if (stat && listRoot) {
           compactVisualWaveformData =

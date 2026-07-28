@@ -35,6 +35,18 @@
   overflow: hidden;
 }
 
+.raw-detail-waveform__unavailable {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-weak);
+  font-size: 12px;
+  pointer-events: none;
+}
+
 .raw-detail-waveform__overlay-surface {
   position: absolute;
   left: 0;

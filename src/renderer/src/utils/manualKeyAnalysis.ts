@@ -66,6 +66,7 @@ export const queueManualKeyAnalysisBatch = async (
   analysisBpmRangeId: AnalysisBpmRangePresetId
 ) =>
   await window.electron.ipcRenderer.invoke('key-analysis:queue-manual-batch', {
+    analysisAuthority: 'frkb',
     filePaths,
     titleKey,
     analysisBpmRangeId

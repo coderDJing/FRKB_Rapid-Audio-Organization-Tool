@@ -26,7 +26,6 @@ import { useSongLocateFlash } from '@renderer/pages/modules/songsArea/composable
 import type { ISongsAreaPaneRuntimeState, SongsAreaPaneKey } from '@renderer/stores/runtime'
 import { useParentRafSampler } from '@renderer/pages/modules/songsArea/composables/useParentRafSampler'
 import { usePioneerDesktopPlaylistActions } from './pioneerSongsArea/usePioneerDesktopPlaylistActions'
-import { usePioneerExternalPlaylistAnalysis } from './pioneerSongsArea/usePioneerExternalPlaylistAnalysis'
 import { usePioneerPlaylistTracks } from './pioneerSongsArea/usePioneerPlaylistTracks'
 import { usePioneerSongDrag } from './pioneerSongsArea/usePioneerSongDrag'
 import { usePioneerSongContextMenu } from './pioneerSongsArea/usePioneerSongContextMenu'
@@ -420,14 +419,6 @@ const handleColumnClick = (column: ISongsAreaColumn) => {
 const isCurrentPlaylistLoadTarget = (sourceCacheKey: string, playlistId: number) =>
   selectedSourceCacheKey.value === sourceCacheKey && selectedPlaylistId.value === playlistId
 
-const { frkbAnalyzedFilePaths, resetFrkbAnalyzedFilePaths, prepareExternalPlaylistAnalysis } =
-  usePioneerExternalPlaylistAnalysis({
-    sourceKind: selectedSourceKind,
-    sourceKey: selectedSourceKey,
-    visibleSongs,
-    isCurrentPlaylistLoadTarget
-  })
-
 const { loadPlaylistTracks } = usePioneerPlaylistTracks({
   selectedSourceCacheKey,
   selectedPlaylistId,
@@ -438,8 +429,6 @@ const { loadPlaylistTracks } = usePioneerPlaylistTracks({
   visibleSongs,
   loading,
   selectedRowKeys,
-  resetFrkbAnalyzedFilePaths,
-  prepareExternalPlaylistAnalysis,
   applyFiltersAndSorting,
   isCurrentPlaylistLoadTarget,
   emitPioneerSongsAreaLog
@@ -577,18 +566,6 @@ const handleRenumberTracksByVisibleOrder = async () => {
   await renumberTracksInDesktopPlaylist(visibleSongs.value, canRenumberDesktopTracks.value)
 }
 
-const requestImmediateAnalysis = (song: ISongInfo) => {
-  const filePath = song?.filePath
-  if (!filePath) return
-  if (runtime.mainWindowBrowseMode !== 'browser') return
-  try {
-    window.electron.ipcRenderer.send('key-analysis:queue-playing', {
-      filePath,
-      focusSlot: 'main-player'
-    })
-  } catch {}
-}
-
 const { handleSongDragStart, handleSongDragEnd } = usePioneerSongDrag({
   selectedRowKeys,
   visibleSongs,
@@ -640,7 +617,6 @@ const handleSongDblClick = async (song: ISongInfo, event?: MouseEvent) => {
   selectedRowKeys.value = []
 
   const normalizedSong = { ...song }
-  requestImmediateAnalysis(normalizedSong)
   if (runtime.mainWindowBrowseMode !== 'browser') {
     const deck =
       runtime.mainWindowBrowseMode === 'edit' ? 'top' : event?.shiftKey ? 'bottom' : 'top'
@@ -749,7 +725,6 @@ onUnmounted(() => {
         :allow-dblclick-when-read-only="true"
         :allow-waveform-preview-when-read-only="true"
         :allow-song-drag-when-read-only="true"
-        :analysis-complete-file-paths="frkbAnalyzedFilePaths"
         :reorder-mode="canReorderDesktopTracks ? 'playlist' : 'none'"
         song-list-root-dir="library/PioneerDeviceLibrary"
         :enable-cover-thumbnails="true"

@@ -19,6 +19,16 @@ type WorkerRequest =
     }
   | {
       jobId: number
+      type: 'read-beat-grids'
+      analyzeFilePaths: string[]
+    }
+  | {
+      jobId: number
+      type: 'read-detail-waveforms'
+      analyzeFilePaths: string[]
+    }
+  | {
+      jobId: number
       type: 'read-cues'
       analyzeFilePaths: string[]
     }
@@ -36,6 +46,8 @@ const loadRust = () => {
     readPioneerPlaylistTree?: (exportPdbPath: string) => unknown
     readPioneerPlaylistTracks?: (exportPdbPath: string, playlistId: number) => unknown
     readPioneerPreviewWaveform?: (analyzeFilePath: string) => unknown
+    readPioneerBeatGrid?: (analyzeFilePath: string) => unknown
+    readPioneerDetailWaveform?: (analyzeFilePath: string) => unknown
     readPioneerCues?: (analyzeFilePath: string) => unknown
   }
 }
@@ -78,6 +90,54 @@ parentPort?.on('message', (request: WorkerRequest) => {
         }
         for (const analyzeFilePath of request.analyzeFilePaths) {
           const dump = rust.readPioneerPreviewWaveform!(analyzeFilePath)
+          respond({
+            jobId: request.jobId,
+            type: request.type,
+            progress: {
+              analyzeFilePath,
+              dump
+            }
+          })
+        }
+        respond({
+          jobId: request.jobId,
+          type: request.type,
+          result: {
+            total: request.analyzeFilePaths.length
+          }
+        })
+        return
+      }
+      case 'read-beat-grids': {
+        if (typeof rust.readPioneerBeatGrid !== 'function') {
+          throw new Error('rust_package.readPioneerBeatGrid 不可用')
+        }
+        for (const analyzeFilePath of request.analyzeFilePaths) {
+          const dump = rust.readPioneerBeatGrid(analyzeFilePath)
+          respond({
+            jobId: request.jobId,
+            type: request.type,
+            progress: {
+              analyzeFilePath,
+              dump
+            }
+          })
+        }
+        respond({
+          jobId: request.jobId,
+          type: request.type,
+          result: {
+            total: request.analyzeFilePaths.length
+          }
+        })
+        return
+      }
+      case 'read-detail-waveforms': {
+        if (typeof rust.readPioneerDetailWaveform !== 'function') {
+          throw new Error('rust_package.readPioneerDetailWaveform 不可用')
+        }
+        for (const analyzeFilePath of request.analyzeFilePaths) {
+          const dump = rust.readPioneerDetailWaveform(analyzeFilePath)
           respond({
             jobId: request.jobId,
             type: request.type,

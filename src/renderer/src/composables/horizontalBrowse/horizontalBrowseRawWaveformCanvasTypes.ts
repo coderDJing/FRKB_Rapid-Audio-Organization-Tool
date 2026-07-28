@@ -2,7 +2,7 @@ import type { Ref } from 'vue'
 import type { ISongHotCue, ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type { MixxxWaveformData } from '@renderer/pages/modules/songPlayer/webAudioPlayer'
 import type { RawWaveformData } from '@renderer/composables/mixtape/types'
-import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
+import type { RekordboxBeatGridEntry, SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 export type HorizontalBrowseDirection = 'up' | 'down'
 export type HorizontalBrowseWaveformLayout = 'full' | 'top-half' | 'bottom-half'
@@ -29,6 +29,7 @@ export type UseHorizontalBrowseRawWaveformCanvasOptions = {
   previewFirstBeatMs: Ref<number>
   previewDownbeatBeatOffset: Ref<number>
   beatGridMap?: () => SongBeatGridMapV2 | null | undefined
+  rekordboxGridEntries?: () => RekordboxBeatGridEntry[] | null | undefined
   beatGridEditMode?: () => boolean
   beatGridVisibleFromSec?: () => number | null | undefined
   beatGridSelectedBoundarySec?: () => number | null | undefined

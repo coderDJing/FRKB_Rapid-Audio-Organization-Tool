@@ -12,6 +12,7 @@ import {
   normalizeSongBeatGridMapV2,
   projectSongBeatGridMapV2ToFixedGrid
 } from '@shared/songBeatGridMapV2'
+import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
 
 type HorizontalBrowseDetailGridPersistenceParams = {
   song: () => ISongInfo | null
@@ -78,7 +79,9 @@ export const createHorizontalBrowseDetailGridPersistence = (
 
   const persistGridDefinition = async () => {
     clearPersistTimer()
-    const filePath = String(params.song()?.filePath || '').trim()
+    const song = params.song()
+    if (isRekordboxExternalPlaybackSource('', song)) return
+    const filePath = String(song?.filePath || '').trim()
     if (!filePath) return
     pendingLocalGridSignature = buildPreviewGridSignature()
     pendingLocalGridStartedAt = Date.now()
