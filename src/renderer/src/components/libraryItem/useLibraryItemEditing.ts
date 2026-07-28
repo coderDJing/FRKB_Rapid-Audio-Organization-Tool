@@ -6,6 +6,7 @@ import {
   consumePendingMixtapeProjectMode,
   persistMixtapeProjectMode
 } from '@renderer/composables/mixtape/stemMode'
+import { setLibraryTreeTrackCount } from '@renderer/utils/libraryTreeSort'
 import type { useRuntimeStore } from '@renderer/stores/runtime'
 import type { IDir } from '../../../../types/globals'
 
@@ -104,6 +105,10 @@ export function useLibraryItemEditing({
       resetDraftNode()
       return
     }
+    // 必须早于名称写入：名称变化会立即触发曲目数 watcher，晚一步就会产生一次错误扫描。
+    if (dirData.type === 'songList') {
+      runtime.creatingSongListUUID = dirData.uuid
+    }
     for (const item of fatherDirData.children) {
       if (item.order) {
         item.order++
@@ -113,10 +118,11 @@ export function useLibraryItemEditing({
     dirData.order = 1
     dirData.children = []
     operationInputValue.value = ''
-    if (dirData.type === 'songList') {
-      runtime.creatingSongListUUID = dirData.uuid
-    }
     const success = await libraryUtils.diffLibraryTreeExecuteFileOperation()
+    // 创建期间不扫描尚未落盘的目录；成功创建的空歌单直接写入确定的初始计数。
+    if (success && dirData.type === 'songList') {
+      setLibraryTreeTrackCount(dirData.uuid, 0)
+    }
     if (dirData.type === 'mixtapeList') {
       const projectMode = consumePendingMixtapeProjectMode(dirData.uuid)
       if (success && projectMode) {

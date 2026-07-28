@@ -156,4 +156,19 @@ describe('libraryTreeSort track counts', () => {
       mod.sortLibraryTreeChildren(root.children, 'countDesc').map((item) => item.uuid)
     ).toEqual(['pending', 'a'])
   })
+
+  it('does not batch-count an unnamed pending playlist through its parent directory', async () => {
+    installGlobals()
+    const mod = await loadModule()
+    const pending = playlist('pending', '')
+    const root = library([playlist('a', 'Alpha'), pending])
+    invoke.mockResolvedValue({ a: 2 })
+
+    await mod.prefetchLibraryTreeTrackCounts(root)
+
+    expect(invoke).toHaveBeenCalledWith('playlist:batchTrackCount', {
+      songLists: [{ uuid: 'a', songListPath: 'library/a' }]
+    })
+    expect(mod.libraryTreeTrackCountMap.pending).toBeUndefined()
+  })
 })

@@ -310,6 +310,8 @@ const runPrefetchLibraryTreeTrackCounts = async (rootKey: string, root?: IDir | 
       setListUuids.push(node.uuid)
       continue
     }
+    // 新建歌单尚未命名时，路径解析会指向父目录；绝不能把它送进递归统计。
+    if (!String(node.dirName || '').trim()) continue
     const songListPath = libraryUtils.findDirPathByUuid(node.uuid)
     if (!songListPath) {
       setLibraryTreeTrackCount(node.uuid, 0)

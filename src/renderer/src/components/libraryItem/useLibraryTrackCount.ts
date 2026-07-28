@@ -43,6 +43,9 @@ export function useLibraryTrackCount({ runtime, dirDataRef, props }: UseLibraryT
     if (!dirData || (dirData.type !== 'songList' && dirData.type !== 'setList')) return
     // 未命名的临时歌单/集合没有真实目录，避免把父目录当作目标而统计成总数
     if (!dirData.dirName) return
+    // 新歌单已在树上命名、但目录尚未落盘时，禁止扫描。此时路径解析可能落到父目录，
+    // 会把同级歌单的曲目总数误写进新歌单徽标。
+    if (runtime.creatingSongListUUID === props.uuid) return
     // 缓存已有值时不再逐项发 IPC；内容变更走 force 主动刷新
     if (!options?.force && typeof libraryTreeTrackCountMap[props.uuid] === 'number') return
     try {
