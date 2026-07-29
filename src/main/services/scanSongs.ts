@@ -7,7 +7,10 @@ import { readWavRiffInfoWindows } from './wavRiffInfo'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { normalizeSongHotCues } from '../../shared/hotCues'
 import { normalizeSongMemoryCues } from '../../shared/memoryCues'
-import { BEAT_GRID_STATUS_NO_BPM } from './beatGridAlgorithmVersion'
+import {
+  BEAT_GRID_STATUS_NO_BPM,
+  normalizeBeatGridAlgorithmVersion
+} from './beatGridAlgorithmVersion'
 import { shouldAcceptKeyAnalysisCacheVersion } from './keyAnalysisAlgorithmVersion'
 import {
   ensurePlaylistTrackNumbers,
@@ -33,7 +36,7 @@ type ScanSongListOptions = {
 type CachedKeyInfo = Pick<ISongInfo, 'key' | 'keyAnalysisAlgorithmVersion'>
 type CachedGridInfo = Pick<
   ISongInfo,
-  'beatGridAlgorithmVersion' | 'beatGridStatus' | 'beatGridMap'
+  'beatGridAlgorithmVersion' | 'beatGridStatus' | 'beatGridMap' | 'timeBasisOffsetMs'
 > & {
   beatThisWindowCount?: unknown
 }
@@ -96,7 +99,29 @@ const preserveCachedKeyAndBpm = (target: ISongInfo, cachedInfo?: ISongInfo | nul
   }
 }
 
-const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongInfo | null) => {
+const preserveCachedGridTimeBasisFields = (target: ISongInfo, cachedInfo: ISongInfo) => {
+  const cachedTimeBasisOffsetMs = Number(cachedInfo.timeBasisOffsetMs)
+  const targetTimeBasisOffsetMs = Number(target.timeBasisOffsetMs)
+  if (!Number.isFinite(targetTimeBasisOffsetMs) || targetTimeBasisOffsetMs < 0) {
+    if (Number.isFinite(cachedTimeBasisOffsetMs) && cachedTimeBasisOffsetMs >= 0) {
+      target.timeBasisOffsetMs = Number(cachedTimeBasisOffsetMs.toFixed(3))
+    }
+  }
+
+  if (target.beatGridAlgorithmVersion === undefined) {
+    const cachedBeatGridAlgorithmVersion = normalizeBeatGridAlgorithmVersion(
+      cachedInfo.beatGridAlgorithmVersion
+    )
+    if (cachedBeatGridAlgorithmVersion !== undefined) {
+      target.beatGridAlgorithmVersion = cachedBeatGridAlgorithmVersion
+    }
+  }
+}
+
+export const preserveCachedGridAnalysisFields = (
+  target: ISongInfo,
+  cachedInfo?: ISongInfo | null
+) => {
   if (!cachedInfo) return
   const cachedGrid = resolveCanonicalSongBeatGridV2(cachedInfo)
   if (cachedGrid.kind === 'no-bpm') {
@@ -116,6 +141,7 @@ const preserveCachedGridAnalysisFields = (target: ISongInfo, cachedInfo?: ISongI
     allowSingleClip: true
   })
   if (cachedBeatGridMap) {
+    preserveCachedGridTimeBasisFields(target, cachedInfo)
     if (hasCompleteGrid(target)) return
     delete target.beatGridStatus
     target.beatGridMap = cachedBeatGridMap

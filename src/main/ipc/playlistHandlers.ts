@@ -7,6 +7,10 @@ import mainWindow from '../window/mainWindow'
 import { EXTERNAL_PLAYLIST_UUID } from '../../shared/externalPlayback'
 import { scheduleSongListPostScanTasks } from '../services/scanSongs'
 import { scanSongListOffMainThread } from '../services/songListScanWorker'
+import { resolveAudioTimeBasisOffsetMsForFile } from '../services/audioTimeBasisOffset'
+import { resolveCanonicalSongBeatGridV2 } from '../../shared/songAnalysisCompleteness'
+import * as LibraryCacheDb from '../libraryCacheDb'
+import { findSongListRoot } from '../services/cacheMaintenance'
 import {
   countSongListTracksBatchOffMainThread,
   countSongListTracksOffMainThread
@@ -36,7 +40,8 @@ import { prepareExternalPlaybackPlaylistAnalysis } from '../services/pioneerDevi
 import type {
   IBatchRenameExecutionRequestItem,
   IBatchRenameTemplateSegment,
-  IBatchRenameTrackInput
+  IBatchRenameTrackInput,
+  ISongInfo
 } from '../../types/globals'
 import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runtime'
 
@@ -67,6 +72,34 @@ type CompactSongListTrackNumbersPayload = {
 }
 
 export function registerPlaylistHandlers() {
+  const repairScannedSongGridTimeBases = async (songs: ISongInfo[]) =>
+    await Promise.all(
+      songs.map(async (song) => {
+        const grid = resolveCanonicalSongBeatGridV2(song)
+        if (grid.kind !== 'grid') return song
+        const currentOffset = Number(song.timeBasisOffsetMs)
+        const missingOffset = !Number.isFinite(currentOffset) || currentOffset < 0
+        const legacyMp3Zero =
+          currentOffset === 0 &&
+          song.beatGridAlgorithmVersion === undefined &&
+          path.extname(song.filePath).toLowerCase() === '.mp3'
+        if (!missingOffset && !legacyMp3Zero) return song
+
+        const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(song.filePath)
+        const nextSong = { ...song, timeBasisOffsetMs: Number(timeBasisOffsetMs.toFixed(3)) }
+        const listRoot = await findSongListRoot(path.dirname(song.filePath))
+        const stat = await fs.stat(song.filePath).catch(() => null)
+        if (listRoot && stat?.isFile()) {
+          await LibraryCacheDb.upsertSongCacheEntry(listRoot, song.filePath, {
+            size: stat.size,
+            mtimeMs: stat.mtimeMs,
+            info: nextSong
+          })
+        }
+        return nextSong
+      })
+    )
+
   const runSongListScan = async (scanPath: string | string[], songListUUID: string) => {
     const result = await scanSongListOffMainThread({
       scanPath,
@@ -74,8 +107,9 @@ export function registerPlaylistHandlers() {
       songListUUID,
       databaseDir: store.databaseDir
     })
-    void scheduleSongListPostScanTasks(scanPath, result.scanData)
-    return result
+    const scanData = await repairScannedSongGridTimeBases(result.scanData)
+    void scheduleSongListPostScanTasks(scanPath, scanData)
+    return { ...result, scanData }
   }
 
   ipcMain.handle(
