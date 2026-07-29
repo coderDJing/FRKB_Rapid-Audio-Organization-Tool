@@ -40,6 +40,7 @@ import { assertLibraryMergeMutationAllowed } from '../services/libraryMerge/runt
 type MoveSongsToDirOptions = {
   mode?: 'copy' | 'move'
   curatedArtistNames?: Array<string | null | undefined>
+  returnSummary?: boolean
 }
 
 type ExportSongInput = {
@@ -408,10 +409,12 @@ export function registerExportHandlers() {
     const isCuratedTarget = targetDir === curatedRoot || targetDir.startsWith(`${curatedRoot}/`)
     const targetListRoot = target.absPath
     const tasks: Array<() => Promise<string>> = []
+    const taskSourcePaths: string[] = []
     for (const src of srcs) {
       const filename = path.basename(String(src || ''))
       if (filename) {
         const targetPath = resolveLibraryChildPath(target.absPath, filename)
+        taskSourcePaths.push(String(src))
         tasks.push(async () => {
           const movedPath = await moveOrCopyItemWithCheckIsExist(src, targetPath, isMove)
           if (isMove) {
@@ -493,7 +496,12 @@ export function registerExportHandlers() {
         total: tasks.length
       })
     }
-    const movedPaths = results.filter((item): item is string => typeof item === 'string')
+    const movedEntries = results.flatMap((item, index) => {
+      const sourcePath = taskSourcePaths[index]
+      if (typeof item !== 'string' || !sourcePath) return []
+      return [{ sourcePath, targetPath: item }]
+    })
+    const movedPaths = movedEntries.map((item) => item.targetPath)
     if (movedPaths.length > 0 && isSupportedPlaylistTrackNumberListRoot(targetListRoot)) {
       await appendSongListTrackNumbers({
         listRoot: targetListRoot,
@@ -515,7 +523,7 @@ export function registerExportHandlers() {
     if (movedPaths.length > 0) {
       markGlobalSongSearchDirty(isMove ? 'moveSongsToDir' : 'copySongsToDir')
     }
-    if (failed > 0) {
+    if (failed > 0 && !options.returnSummary) {
       throw new Error(isMove ? 'moveSongsToDir failed' : 'copySongsToDir failed')
     }
     if (isCuratedTarget) {
@@ -540,6 +548,9 @@ export function registerExportHandlers() {
       }).catch((error) => {
         log.error('[curatedArtists] remember after move failed', error)
       })
+    }
+    if (options.returnSummary) {
+      return { movedEntries, failed }
     }
     return movedPaths
   })

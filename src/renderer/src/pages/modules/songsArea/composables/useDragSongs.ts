@@ -6,6 +6,7 @@ import emitter from '@renderer/utils/mitt'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import { buildMixtapeDragSessionItem } from '@renderer/utils/mixtapeDragSession'
 import { t } from '@renderer/utils/translate'
+import { type MoveSongsToDirSummary, useSongMoveTransaction } from './useSongMoveTransaction'
 
 interface DragSongData {
   songFilePaths: string[]
@@ -29,6 +30,7 @@ interface UseDragSongsParams {
 export function useDragSongs(params: UseDragSongsParams = {}) {
   const runtime = useRuntimeStore()
   const songsAreaState = params.songsAreaState ?? runtime.songsArea
+  const { prepareSongMove } = useSongMoveTransaction()
   const isDragging = ref(false)
   const dragData = ref<DragSongData | null>(null)
   let dragCleanupTimer: ReturnType<typeof setTimeout> | null = null
@@ -369,25 +371,47 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
         return []
       }
 
-      // 调用移动歌曲的 IPC，确保所有参数都是可序列化的
-      const movedPaths = (await window.electron.ipcRenderer.invoke(
-        'moveSongsToDir',
-        orderedSongFilePaths,
-        targetDirPath,
-        {
-          curatedArtistNames: orderedSongFilePaths.map((filePath) => {
-            const song = sourceSongsAreaState.songInfoArr.find((item) => item.filePath === filePath)
-            return song?.artist || ''
-          })
-        }
-      )) as string[]
+      const moveTransaction = await prepareSongMove({
+        sourceSongListUUID,
+        sourceSongs: sourceSongsAreaState.songInfoArr,
+        filePaths: orderedSongFilePaths
+      })
+      let moveSummary: MoveSongsToDirSummary
+      try {
+        moveSummary = (await window.electron.ipcRenderer.invoke(
+          'moveSongsToDir',
+          orderedSongFilePaths,
+          targetDirPath,
+          {
+            returnSummary: true,
+            curatedArtistNames: orderedSongFilePaths.map((filePath) => {
+              const song = sourceSongsAreaState.songInfoArr.find(
+                (item) => item.filePath === filePath
+              )
+              return song?.artist || ''
+            })
+          }
+        )) as MoveSongsToDirSummary
+      } catch (error) {
+        moveTransaction.restoreSourceList()
+        throw error
+      }
+      const movedSourcePathSet = new Set(
+        moveSummary.movedEntries.map((item) => normalizePath(item.sourcePath))
+      )
+      const failedSourcePaths = orderedSongFilePaths.filter(
+        (filePath) => !movedSourcePathSet.has(normalizePath(filePath))
+      )
+      if (failedSourcePaths.length > 0) {
+        moveTransaction.restoreSourceList(failedSourcePaths)
+      }
       const sourceSongMap = new Map(
         sourceSongsAreaState.songInfoArr.map((song) => [song.filePath, song])
       )
       await copySongCueDefinitionsToTargets(
-        movedPaths.map((targetFilePath, index) => ({
-          targetFilePath,
-          sourceSong: sourceSongMap.get(orderedSongFilePaths[index])
+        moveSummary.movedEntries.map(({ sourcePath, targetPath }) => ({
+          targetFilePath: targetPath,
+          sourceSong: sourceSongMap.get(sourcePath)
         }))
       )
 
@@ -397,41 +421,22 @@ export function useDragSongs(params: UseDragSongsParams = {}) {
         emitter.emit('playlistContentChanged', { uuids: affected })
       } catch {}
 
-      const normalizedMovedPlaybackSet = new Set(orderedSongFilePaths.map((p) => normalizePath(p)))
-      const movedCurrentPlaying =
-        runtime.playingData.playingSongListUUID === sourceSongListUUID &&
-        runtime.playingData.playingSong?.filePath &&
-        normalizedMovedPlaybackSet.has(normalizePath(runtime.playingData.playingSong.filePath))
-      if (movedCurrentPlaying) {
-        const playbackList = [...runtime.playingData.playingSongListData]
-        const currentIndex = playbackList.findIndex(
-          (song) =>
-            normalizePath(song.filePath) ===
-            normalizePath(runtime.playingData.playingSong?.filePath)
-        )
-        const nextList = playbackList.filter(
-          (song) => !normalizedMovedPlaybackSet.has(normalizePath(song.filePath))
-        )
-        runtime.playingData.playingSongListData = nextList
-        runtime.playingData.playingSong =
-          currentIndex >= 0 && nextList.length > 0
-            ? nextList[Math.min(currentIndex, nextList.length - 1)] || null
-            : null
-        if (!runtime.playingData.playingSong) {
-          runtime.playingData.playingSongListUUID = ''
-        }
-      }
-
-      // 广播：源歌单移除这些歌曲，确保当前视图（若显示源歌单或其筛选结果）能及时剔除并重建
+      // 乐观移除已在文件移动前执行；保留该事件以同步未参与乐观更新的订阅方。
       try {
-        const normalized = orderedSongFilePaths.map((p) => normalizePath(p))
+        const normalized = moveSummary.movedEntries.map(({ sourcePath }) =>
+          normalizePath(sourcePath)
+        )
         emitter.emit('songsRemoved', {
           listUUID: sourceSongListUUID,
           paths: normalized,
           preservePlaybackForRemovedPaths: true,
-          resumeMainPlayerAfterPreviewStop: !movedCurrentPlaying
+          resumeMainPlayerAfterPreviewStop: true
         })
       } catch {}
+
+      if (failedSourcePaths.length > 0 || moveSummary.failed > 0) {
+        throw new Error('moveSongsToDir incomplete')
+      }
 
       return orderedSongFilePaths
     } finally {

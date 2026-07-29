@@ -5,6 +5,7 @@ import emitter from '@renderer/utils/mitt'
 import { t } from '@renderer/utils/translate'
 import { copySongCueDefinitionsToTargets } from '@renderer/utils/songCueTransfer'
 import type { ISongInfo } from '../../../../../../types/globals'
+import { type MoveSongsToDirSummary, useSongMoveTransaction } from './useSongMoveTransaction'
 import {
   resolveLibraryTransferActionModeForSongList,
   type LibraryTransferActionMode
@@ -32,6 +33,7 @@ type MixtapeAppendResult = {
 
 export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
   const { songsAreaState } = params
+  const { prepareSongMove } = useSongMoveTransaction()
   const normalizeUniqueStrings = (values: unknown[]): string[] =>
     Array.from(
       new Set(
@@ -345,20 +347,41 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
       return
     }
 
-    const movedPaths = (await window.electron.ipcRenderer.invoke(
-      'moveSongsToDir',
-      selectedPaths,
-      libraryUtils.findDirPathByUuid(targetSongListUUID),
-      {
-        curatedArtistNames: selectedPaths.map(
-          (filePath: string) => songMap.get(filePath)?.artist || ''
-        )
-      }
-    )) as string[]
+    const moveTransaction = await prepareSongMove({
+      sourceSongListUUID,
+      sourceSongs: songsAreaState.songInfoArr,
+      filePaths: selectedPaths
+    })
+    let moveSummary: MoveSongsToDirSummary
+    try {
+      moveSummary = (await window.electron.ipcRenderer.invoke(
+        'moveSongsToDir',
+        selectedPaths,
+        libraryUtils.findDirPathByUuid(targetSongListUUID),
+        {
+          returnSummary: true,
+          curatedArtistNames: selectedPaths.map(
+            (filePath: string) => songMap.get(filePath)?.artist || ''
+          )
+        }
+      )) as MoveSongsToDirSummary
+    } catch (error) {
+      moveTransaction.restoreSourceList()
+      throw error
+    }
+    const movedSourcePathSet = new Set(
+      moveSummary.movedEntries.map((item) => item.sourcePath.replace(/\//g, '\\').toLowerCase())
+    )
+    const failedSourcePaths = selectedPaths.filter(
+      (filePath) => !movedSourcePathSet.has(filePath.replace(/\//g, '\\').toLowerCase())
+    )
+    if (failedSourcePaths.length > 0) {
+      moveTransaction.restoreSourceList(failedSourcePaths)
+    }
     await copySongCueDefinitionsToTargets(
-      movedPaths.map((targetFilePath, index) => ({
-        targetFilePath,
-        sourceSong: songMap.get(selectedPaths[index])
+      moveSummary.movedEntries.map(({ sourcePath, targetPath }) => ({
+        targetFilePath: targetPath,
+        sourceSong: songMap.get(sourcePath)
       }))
     )
 
@@ -369,7 +392,7 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
     // 通知全局，保证 songsArea 与其他视图收到统一的移除事件
     emitter.emit('songsRemoved', {
       listUUID: songsAreaState.songListUUID,
-      paths: selectedPaths,
+      paths: moveSummary.movedEntries.map(({ sourcePath }) => sourcePath),
       preservePlaybackForRemovedPaths: options.preservePlaybackForRemovedPaths,
       resumeMainPlayerAfterPreviewStop: options.resumeMainPlayerAfterPreviewStop
     })
@@ -379,6 +402,10 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
       const affected = [sourceSongListUUID, targetSongListUUID].filter(Boolean)
       emitter.emit('playlistContentChanged', { uuids: affected })
     } catch {}
+
+    if (failedSourcePaths.length > 0 || moveSummary.failed > 0) {
+      throw new Error('moveSongsToDir incomplete')
+    }
   }
 
   const handleDialogCancel = () => {
