@@ -11,7 +11,7 @@
   "files": [
     "rust_src.linux-x64-gnu.node"
   ],
-  "license": "GPL-3.0-or-later",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "engines": {
     "node": ">= 10"
   },
