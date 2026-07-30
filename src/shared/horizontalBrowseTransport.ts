@@ -94,6 +94,8 @@ type HorizontalBrowseTransportOutputSnapshot = {
   masterGain: number
   topDeckGain: number
   bottomDeckGain: number
+  limiterOverload: boolean
+  limiterGainReductionDb: number
   sampleRate: number
   channels: number
 }
@@ -110,6 +112,10 @@ export type HorizontalBrowseTransportSnapshot = {
 
 export type HorizontalBrowseTransportVisualizerSnapshot = {
   timeDomainData: number[]
+  limiterOverload: boolean
+  limiterGainReductionDb: number
+  preLimiterPeakLeftDb: number
+  preLimiterPeakRightDb: number
 }
 
 type HorizontalBrowseRecordingState = 'idle' | 'armed' | 'recording' | 'error'
@@ -180,6 +186,8 @@ export const createEmptyHorizontalBrowseTransportSnapshot =
       masterGain: 1,
       topDeckGain: 1,
       bottomDeckGain: 1,
+      limiterOverload: false,
+      limiterGainReductionDb: 0,
       sampleRate: 44100,
       channels: 2
     }

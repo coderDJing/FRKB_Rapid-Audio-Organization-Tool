@@ -32,6 +32,10 @@ pub(super) fn visualizer_snapshot(
   if ring.len() != sample_count {
     return HorizontalBrowseTransportVisualizerSnapshot {
       time_domain_data: vec![128; sample_count],
+      limiter_overload: false,
+      limiter_gain_reduction_db: 0.0,
+      pre_limiter_peak_left_db: -100.0,
+      pre_limiter_peak_right_db: -100.0,
     };
   }
   let available = if filled {
@@ -44,7 +48,13 @@ pub(super) fn visualizer_snapshot(
     time_domain_data.push(128);
   }
   if available == 0 {
-    return HorizontalBrowseTransportVisualizerSnapshot { time_domain_data };
+    return HorizontalBrowseTransportVisualizerSnapshot {
+      time_domain_data,
+      limiter_overload: false,
+      limiter_gain_reduction_db: 0.0,
+      pre_limiter_peak_left_db: -100.0,
+      pre_limiter_peak_right_db: -100.0,
+    };
   }
   let start_index = if filled { write_index } else { 0 };
   for offset in 0..available {
@@ -53,5 +63,11 @@ pub(super) fn visualizer_snapshot(
     let encoded = ((sample.clamp(-1.0, 1.0) * 0.5 + 0.5) * 255.0).round() as i32;
     time_domain_data.push(encoded.clamp(0, 255) as u8);
   }
-  HorizontalBrowseTransportVisualizerSnapshot { time_domain_data }
+  HorizontalBrowseTransportVisualizerSnapshot {
+    time_domain_data,
+    limiter_overload: false,
+    limiter_gain_reduction_db: 0.0,
+    pre_limiter_peak_left_db: -100.0,
+    pre_limiter_peak_right_db: -100.0,
+  }
 }

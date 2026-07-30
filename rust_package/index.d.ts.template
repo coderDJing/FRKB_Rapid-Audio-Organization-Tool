@@ -169,6 +169,8 @@ export interface HorizontalBrowseTransportOutputSnapshot {
   masterGain: number
   topDeckGain: number
   bottomDeckGain: number
+  limiterOverload: boolean
+  limiterGainReductionDb: number
 }
 export interface HorizontalBrowseTransportSnapshot {
   snapshotSequence: number
@@ -401,6 +403,10 @@ export declare function horizontalBrowseTransportSnapshot(
 ): HorizontalBrowseTransportSnapshot
 export interface HorizontalBrowseTransportVisualizerSnapshot {
   timeDomainData: number[]
+  limiterOverload: boolean
+  limiterGainReductionDb: number
+  preLimiterPeakLeftDb: number
+  preLimiterPeakRightDb: number
 }
 export declare function horizontalBrowseTransportVisualizerSnapshot(): HorizontalBrowseTransportVisualizerSnapshot
 export interface HorizontalBrowseTransportDecodeDiagnostic {

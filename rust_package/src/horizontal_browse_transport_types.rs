@@ -136,6 +136,8 @@ pub struct HorizontalBrowseTransportOutputSnapshot {
   pub master_gain: f64,
   pub top_deck_gain: f64,
   pub bottom_deck_gain: f64,
+  pub limiter_overload: bool,
+  pub limiter_gain_reduction_db: f64,
   pub sample_rate: f64,
   pub channels: f64,
 }
@@ -153,6 +155,10 @@ pub struct HorizontalBrowseTransportSnapshot {
 #[napi(object)]
 pub struct HorizontalBrowseTransportVisualizerSnapshot {
   pub time_domain_data: Vec<u8>,
+  pub limiter_overload: bool,
+  pub limiter_gain_reduction_db: f64,
+  pub pre_limiter_peak_left_db: f64,
+  pub pre_limiter_peak_right_db: f64,
 }
 
 #[napi(object)]

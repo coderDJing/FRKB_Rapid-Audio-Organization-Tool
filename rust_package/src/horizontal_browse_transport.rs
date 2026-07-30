@@ -17,6 +17,8 @@ mod horizontal_browse_transport_dynamic_grid;
 mod horizontal_browse_transport_engine_state;
 #[path = "horizontal_browse_transport_grid_sync.rs"]
 mod horizontal_browse_transport_grid_sync;
+#[path = "horizontal_browse_transport_limiter.rs"]
+mod horizontal_browse_transport_limiter;
 #[path = "horizontal_browse_transport_loop.rs"]
 mod horizontal_browse_transport_loop;
 #[path = "horizontal_browse_transport_mix.rs"]
@@ -305,6 +307,7 @@ struct HorizontalBrowseTransportEngine {
   trim_gain: [f32; 2],
   master_gain: f32,
   crossfader_value: f32,
+  master_limiter: horizontal_browse_transport_limiter::MasterLimiterState,
   visualizer_ring: Vec<f32>,
   visualizer_write_index: usize,
   visualizer_filled: bool,
@@ -333,6 +336,7 @@ impl Default for HorizontalBrowseTransportEngine {
       trim_gain: [1.0, 1.0],
       master_gain: 1.0,
       crossfader_value: 0.0,
+      master_limiter: horizontal_browse_transport_limiter::MasterLimiterState::default(),
       visualizer_ring: vec![0.0; HORIZONTAL_BROWSE_VISUALIZER_SAMPLE_COUNT],
       visualizer_write_index: 0,
       visualizer_filled: false,
@@ -603,17 +607,24 @@ impl HorizontalBrowseTransportEngine {
       record_left += deck_output.program.0;
       record_right += deck_output.program.1;
     }
-    let clamped_playback_left = playback_left.clamp(-1.0, 1.0);
-    let clamped_playback_right = playback_right.clamp(-1.0, 1.0);
-    let clamped_record_left = record_left.clamp(-1.0, 1.0);
-    let clamped_record_right = record_right.clamp(-1.0, 1.0);
-    self.push_visualizer_sample((clamped_playback_left + clamped_playback_right) * 0.5);
+    let (limited_record_left, limited_record_right) = self.master_limiter.process(
+      record_left,
+      record_right,
+      self.output_sample_rate,
+    );
+    let playback_left = limited_record_left + (playback_left - record_left);
+    let playback_right = limited_record_right + (playback_right - record_right);
+    let protected_playback_left =
+      horizontal_browse_transport_limiter::soft_limit_sample(playback_left);
+    let protected_playback_right =
+      horizontal_browse_transport_limiter::soft_limit_sample(playback_right);
+    self.push_visualizer_sample((protected_playback_left + protected_playback_right) * 0.5);
     self.recording.capture_frame(
       self.output_sample_rate.max(1),
-      clamped_record_left,
-      clamped_record_right,
+      limited_record_left,
+      limited_record_right,
     );
-    (clamped_playback_left, clamped_playback_right)
+    (protected_playback_left, protected_playback_right)
   }
 
   fn resolve_next_metronome_beat_index(current_sec: f64, grid: BeatGridSnapshot) -> i64 {
@@ -777,11 +788,16 @@ impl HorizontalBrowseTransportEngine {
   }
 
   fn visualizer_snapshot(&self) -> HorizontalBrowseTransportVisualizerSnapshot {
-    horizontal_browse_transport_visualizer::visualizer_snapshot(
+    let mut snapshot = horizontal_browse_transport_visualizer::visualizer_snapshot(
       &self.visualizer_ring,
       self.visualizer_write_index,
       self.visualizer_filled,
-    )
+    );
+    snapshot.limiter_overload = self.master_limiter.overload();
+    snapshot.limiter_gain_reduction_db = self.master_limiter.gain_reduction_db() as f64;
+    snapshot.pre_limiter_peak_left_db = self.master_limiter.pre_limiter_peak_left_db() as f64;
+    snapshot.pre_limiter_peak_right_db = self.master_limiter.pre_limiter_peak_right_db() as f64;
+    snapshot
   }
 
   fn deck(&self, deck: DeckId) -> &DeckState {

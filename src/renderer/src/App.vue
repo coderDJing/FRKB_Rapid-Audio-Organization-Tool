@@ -31,6 +31,8 @@ import { useAnalysisRuntimeDownload } from '@renderer/composables/useAnalysisRun
 import settingDialog from '@renderer/components/settingDialog.vue'
 import settingIconAsset from '@renderer/assets/setting.svg?asset'
 import WindowVolumeDial from '@renderer/components/WindowVolumeDial.vue'
+import HorizontalBrowseMasterMeter from '@renderer/components/HorizontalBrowseMasterMeter.vue'
+import { horizontalBrowseMasterMeter } from '@renderer/composables/horizontalBrowse/horizontalBrowseMasterMeterBridge'
 import TopToolbarRecordingButton from '@renderer/components/TopToolbarRecordingButton.vue'
 import {
   MAIN_WINDOW_VOLUME_CHANGED_EVENT,
@@ -909,6 +911,13 @@ onBeforeUnmount(() => {
         <TopToolbarRecordingButton />
       </div>
       <div class="topToolbarActions">
+        <HorizontalBrowseMasterMeter
+          v-if="showHorizontalModeShell && horizontalBrowseMasterMeter.active"
+          :pre-limiter-peak-left-db="horizontalBrowseMasterMeter.preLimiterPeakLeftDb"
+          :pre-limiter-peak-right-db="horizontalBrowseMasterMeter.preLimiterPeakRightDb"
+          :limiter-gain-reduction-db="horizontalBrowseMasterMeter.limiterGainReductionDb"
+          :limiter-overload="horizontalBrowseMasterMeter.limiterOverload"
+        />
         <WindowVolumeDial
           :model-value="mainWindowVolume"
           :label="t('player.volumeControl')"

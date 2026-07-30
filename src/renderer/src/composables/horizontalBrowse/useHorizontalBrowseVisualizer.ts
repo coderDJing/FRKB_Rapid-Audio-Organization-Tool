@@ -5,9 +5,17 @@ import {
   type TitleAudioVisualizerAnalyserLike,
   type TitleAudioVisualizerSource
 } from '@renderer/composables/titleAudioVisualizerBridge'
+import {
+  clearHorizontalBrowseMasterMeter,
+  publishHorizontalBrowseMasterMeter
+} from '@renderer/composables/horizontalBrowse/horizontalBrowseMasterMeterBridge'
 
 type HorizontalBrowseVisualizerSnapshot = {
   timeDomainData?: unknown
+  limiterOverload?: unknown
+  limiterGainReductionDb?: unknown
+  preLimiterPeakLeftDb?: unknown
+  preLimiterPeakRightDb?: unknown
 }
 
 type UseHorizontalBrowseVisualizerParams = {
@@ -108,6 +116,12 @@ export const useHorizontalBrowseVisualizer = ({
   const updateSyntheticVisualizerData = (snapshot?: HorizontalBrowseVisualizerSnapshot | null) => {
     scratchTimeDomainData.fill(128)
     const raw = resolveByteArray(snapshot?.timeDomainData)
+    publishHorizontalBrowseMasterMeter({
+      limiterOverload: snapshot?.limiterOverload,
+      limiterGainReductionDb: snapshot?.limiterGainReductionDb,
+      preLimiterPeakLeftDb: snapshot?.preLimiterPeakLeftDb,
+      preLimiterPeakRightDb: snapshot?.preLimiterPeakRightDb
+    })
     if (!raw.length) {
       syntheticTimeDomainData.set(scratchTimeDomainData)
       updateSyntheticFrequencyData()
@@ -159,6 +173,7 @@ export const useHorizontalBrowseVisualizer = ({
 
   onUnmounted(() => {
     unregisterTitleAudioVisualizerSource('mainWindow', titleAudioVisualizerSource)
+    clearHorizontalBrowseMasterMeter()
     stopVisualizerPolling()
   })
 }
