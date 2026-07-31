@@ -48,7 +48,7 @@ impl SoundTouchHandle {
       frkb_soundtouch_set_tempo(handle, tempo);
       frkb_soundtouch_set_pitch(handle, 1.0);
       frkb_soundtouch_set_rate(handle, 1.0);
-      frkb_soundtouch_set_setting(handle, ST_SETTING_USE_QUICKSEEK, 1);
+      frkb_soundtouch_set_setting(handle, ST_SETTING_USE_QUICKSEEK, 0);
     }
     Some(Self(handle))
   }
