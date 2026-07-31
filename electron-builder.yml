@@ -156,6 +156,30 @@ publish:
   repo: 'FRKB_Rapid-Audio-Organization-Tool'
 releaseInfo:
   releaseNotes: |
-    for test update 1.0.0-beta.4
+    New Features
+      - Added read-only analysis support for external Rekordbox libraries, including waveform, beatgrid, cue, and metadata display without writing back to the source library
+      - Added temporary dual-track tempo adjustment for external Rekordbox tracks
+      - Added a master output limiter with real-time gain-reduction metering to protect the final output while preserving channel volume, EQ, crossfader, and Auto Gain controls
+      - Improved fixed-BPM beatgrid phase refinement and four-beat structure analysis
+
+    Bug Fixes
+      - Fixed playback continuing to reference the old path after moving songs between playlists or folders, including partial-move recovery and current-track handling
+      - Fixed dual-track beatgrid time-basis offsets being overwritten during scans, which could cause grid alignment and Beat Sync drift
+      - Fixed rapid search while real-time tempo adjustment is active in dual-track mode
+      - Fixed newly created playlist count badges briefly showing counts from another playlist
+      - Improved external Rekordbox source guards so analysis and edit operations remain blocked for read-only libraries
+
+    新功能
+      - 新增外部 Rekordbox 资料库只读分析支持，可展示波形、网格、Cue 和元数据，不会写回来源资料库
+      - 外部 Rekordbox 曲目在双轨模式中支持临时调速
+      - 新增主输出限幅器和实时增益衰减表，在保留通道音量、EQ、crossfader 与自动增益控制语义的同时保护最终输出
+      - 优化固定 BPM 网格相位精修和四拍段落结构分析
+
+    问题修复
+      - 修复歌曲在歌单或目录间移动后播放仍可能访问旧路径的问题，并完善部分移动失败与当前曲目的处理
+      - 修复扫描过程中覆盖双轨网格时间基偏移，导致网格对齐和 Beat Sync 漂移的问题
+      - 修复双轨实时调速期间快速搜索的异常行为
+      - 修复新建歌单曲目数徽标短暂显示其他歌单数量的问题
+      - 完善外部 Rekordbox 资料库的只读保护，阻止对来源资料库执行分析和编辑操作
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
