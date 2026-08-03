@@ -278,7 +278,7 @@ const {
 const { scheduleSweepCovers } = useSweepCovers({ runtime, songsAreaState })
 
 // 歌单加载
-const { loadingShow, isRequesting, openSongList } = useSongsLoader({
+const { loadingShow, isRequesting, openSongList, invalidatePendingSongListLoads } = useSongsLoader({
   runtime,
   songsAreaState,
   originalSongInfoArr,
@@ -411,6 +411,7 @@ useSongsAreaEvents({
   applyFiltersAndSorting,
   shouldApplyFiltersAndSortingForSongChange,
   openSongList,
+  invalidatePendingSongListLoads,
   scheduleSweepCovers,
   activeWaveformPreviewFilePath: activePreviewFilePath,
   onUserOpenedSongList: handleUserOpenedSongList

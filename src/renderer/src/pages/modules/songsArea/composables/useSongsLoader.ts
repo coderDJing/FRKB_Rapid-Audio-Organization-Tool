@@ -13,6 +13,10 @@ import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { t } from '@renderer/utils/translate'
 import { normalizeSongStructureAnalysis } from '@shared/songStructure'
 import { normalizeSongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
+import {
+  createSongListLoadGenerationGuard,
+  type SongListLoadTicket
+} from './songListLoadGeneration'
 
 interface UseSongsLoaderParams {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -39,6 +43,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
   const loadingShow = ref(false)
   const isRequesting = ref<boolean>(false)
+  const loadGenerationGuard = createSongListLoadGenerationGuard(() => songsAreaState.songListUUID)
   const hydrateFromPaneSnapshot = () => {
     if (originalSongInfoArr.value.length > 0) return false
     if (!songsAreaState.songListUUID || songsAreaState.songInfoArr.length === 0) return false
@@ -52,16 +57,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
   // 渐进式渲染（当前行数）
   const renderCount = ref(0)
 
-  const isMixtapeListView = () => {
-    const node = libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)
-    return node?.type === 'mixtapeList'
-  }
   const isMixtapeListUUID = (songListUUID: string) =>
     libraryUtils.getLibraryTreeByUUID(songListUUID)?.type === 'mixtapeList'
-  const isSetListView = () => {
-    const node = libraryUtils.getLibraryTreeByUUID(songsAreaState.songListUUID)
-    return node?.type === 'setList'
-  }
   const isSetListUUID = (songListUUID: string) =>
     libraryUtils.getLibraryTreeByUUID(songListUUID)?.type === 'setList'
   const normalizeSongPath = (value: string | undefined | null) =>
@@ -138,6 +135,13 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     backgroundRefreshTimer = null
   }
 
+  const invalidatePendingSongListLoads = () => {
+    loadGenerationGuard.invalidate()
+    clearBackgroundRefreshTimer()
+    isRequesting.value = false
+    loadingShow.value = false
+  }
+
   const maybeShowPlaylistTrackNumberInitHint = (
     songListUUID: string,
     payload?: { initialized?: boolean } | null
@@ -161,23 +165,27 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     } catch {}
   }
 
-  const scheduleBackgroundSongListRefresh = (songListPath: string, songListUUID: string) => {
+  const scheduleBackgroundSongListRefresh = (songListPath: string, ticket: SongListLoadTicket) => {
     clearBackgroundRefreshTimer()
     backgroundRefreshTimer = setTimeout(() => {
       backgroundRefreshTimer = null
-      if (songsAreaState.songListUUID !== songListUUID) return
-      void loadSongListFromDisk(songListPath, songListUUID).catch(() => {})
+      if (!loadGenerationGuard.isCurrent(ticket)) return
+      void loadSongListFromDisk(songListPath, ticket).catch(() => {})
     }, 1500)
   }
 
-  const hydrateRenderCount = async () => {
+  const hydrateRenderCount = async (ticket?: SongListLoadTicket) => {
+    const isCurrent = () => !ticket || loadGenerationGuard.isCurrent(ticket)
+    if (!isCurrent()) return
     const totalRows = songsAreaState.songInfoArr.length
     const INITIAL_ROWS = 40
     const CHUNK_ROWS = 80
     renderCount.value = Math.min(totalRows, INITIAL_ROWS)
     await nextTick()
+    if (!isCurrent()) return
     ;(() => {
       const step = () => {
+        if (!isCurrent()) return
         if (renderCount.value >= totalRows) return
         renderCount.value = Math.min(renderCount.value + CHUNK_ROWS, totalRows)
         requestAnimationFrame(step)
@@ -185,6 +193,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       requestAnimationFrame(step)
     })()
     await nextTick()
+    if (!isCurrent()) return
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
   }
 
@@ -515,40 +524,41 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     }
   }
 
-  const applySongListData = async (
-    scanData: ISongInfo[],
-    songListUUID = songsAreaState.songListUUID
-  ) => {
+  const applySongListData = async (scanData: ISongInfo[], ticket: SongListLoadTicket) => {
+    if (!loadGenerationGuard.isCurrent(ticket)) return false
     originalSongInfoArr.value = markRaw(scanData)
     await applyFiltersAndSorting()
-    syncSelectedKeysAfterReload(scanData, songListUUID)
-    syncPlayingStateAfterReload(scanData, songListUUID)
-    lastAppliedSongListUUID = songListUUID
+    if (!loadGenerationGuard.isCurrent(ticket)) return false
+    syncSelectedKeysAfterReload(scanData, ticket.songListUUID)
+    syncPlayingStateAfterReload(scanData, ticket.songListUUID)
+    lastAppliedSongListUUID = ticket.songListUUID
     try {
-      emitter.emit('playlistContentChanged', { uuids: [songListUUID] })
+      emitter.emit('playlistContentChanged', { uuids: [ticket.songListUUID] })
     } catch {}
-    await hydrateRenderCount()
+    await hydrateRenderCount(ticket)
+    return loadGenerationGuard.isCurrent(ticket)
   }
 
   const loadSongListFromDisk = async (
     songListPath: string,
-    songListUUID: string,
+    ticket: SongListLoadTicket,
     options?: LoadSongListFromDiskOptions
   ) => {
     const result = await window.electron.ipcRenderer.invoke(
       'scanSongList',
       songListPath,
-      songListUUID
+      ticket.songListUUID
     )
+    if (!loadGenerationGuard.isCurrent(ticket)) return false
     const scanData = Array.isArray(result?.scanData) ? result.scanData : []
     const loadedUUID = String(result?.songListUUID || '')
-    if (loadedUUID !== songsAreaState.songListUUID) return false
+    if (loadedUUID !== ticket.songListUUID) return false
     songsAreaState.missingWaveformFilePaths = normalizeMissingWaveformFilePaths(
       result?.missingWaveformFilePaths
     )
     maybeShowPlaylistTrackNumberInitHint(loadedUUID, result?.playlistTrackNumbering || null)
     const unchanged = await isEquivalentSongListSnapshot(scanData, originalSongInfoArr.value)
-    if (loadedUUID !== songsAreaState.songListUUID) return false
+    if (!loadGenerationGuard.isCurrent(ticket)) return false
     if (unchanged) {
       lastAppliedSongListUUID = loadedUUID
       if (options?.forceNotifySongSearchDirty) {
@@ -557,9 +567,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       return true
     }
     const diffSummary = await summarizeSongListDiff(scanData, originalSongInfoArr.value)
-    if (loadedUUID !== songsAreaState.songListUUID) return false
+    if (!loadGenerationGuard.isCurrent(ticket)) return false
     if (!diffSummary.hasMeaningfulDiffs && diffSummary.hasIgnoredOnlyDiffs) {
-      await applySongListData(scanData, loadedUUID)
+      if (!(await applySongListData(scanData, ticket))) return false
       lastAppliedSongListUUID = loadedUUID
       notifySongSearchDirty('scanSongList-analysis-fields')
       if (options?.forceNotifySongSearchDirty) {
@@ -567,7 +577,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       }
       return true
     }
-    await applySongListData(scanData, loadedUUID)
+    if (!(await applySongListData(scanData, ticket))) return false
     scheduleCoverSweepForCurrentList()
     notifySongSearchDirty('scanSongList')
     return true
@@ -575,6 +585,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
   const openSongList = async (options: OpenSongListOptions = {}) => {
     const requestUUID = songsAreaState.songListUUID
+    const ticket = loadGenerationGuard.begin(requestUUID)
     clearBackgroundRefreshTimer()
     isRequesting.value = true
     const shouldResetVisibleList = lastAppliedSongListUUID !== requestUUID
@@ -585,9 +596,10 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       originalSongInfoArr.value = []
       renderCount.value = 0
       await nextTick()
+      if (!loadGenerationGuard.isCurrent(ticket)) return
     }
 
-    if (songsAreaState.songListUUID === EXTERNAL_PLAYLIST_UUID) {
+    if (requestUUID === EXTERNAL_PLAYLIST_UUID) {
       const songs = runtime.externalPlaylist.songs || []
       songsAreaState.missingWaveformFilePaths = []
       originalSongInfoArr.value = markRaw([...songs])
@@ -595,65 +607,72 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       syncSelectedKeysAfterReload(songsAreaState.songInfoArr, requestUUID)
       syncPlayingStateAfterReload(songsAreaState.songInfoArr, requestUUID)
       lastAppliedSongListUUID = requestUUID
-      isRequesting.value = false
-      loadingShow.value = false
+      if (loadGenerationGuard.isCurrent(ticket)) {
+        isRequesting.value = false
+        loadingShow.value = false
+      }
       return
     }
-    if (songsAreaState.songListUUID === RECYCLE_BIN_UUID) {
+    if (requestUUID === RECYCLE_BIN_UUID) {
       songsAreaState.missingWaveformFilePaths = []
       loadingShow.value = false
       const loadingSetTimeout = setTimeout(() => {
-        loadingShow.value = true
+        if (loadGenerationGuard.isCurrent(ticket)) loadingShow.value = true
       }, 100)
       try {
         const { scanData, songListUUID } =
           await window.electron.ipcRenderer.invoke('recycleBin:list')
-        if (songListUUID !== songsAreaState.songListUUID) return
+        if (!loadGenerationGuard.isCurrent(ticket) || songListUUID !== requestUUID) return
         originalSongInfoArr.value = markRaw(scanData)
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(scanData, songListUUID)
         syncPlayingStateAfterReload(scanData, songListUUID)
         lastAppliedSongListUUID = songListUUID
       } finally {
-        isRequesting.value = false
         clearTimeout(loadingSetTimeout)
-        loadingShow.value = false
+        if (loadGenerationGuard.isCurrent(ticket)) {
+          isRequesting.value = false
+          loadingShow.value = false
+        }
       }
       return
     }
-    if (songsAreaState.songListUUID === RECORDING_LIBRARY_UUID) {
+    if (requestUUID === RECORDING_LIBRARY_UUID) {
       songsAreaState.missingWaveformFilePaths = []
       loadingShow.value = false
       const loadingSetTimeout = setTimeout(() => {
-        loadingShow.value = true
+        if (loadGenerationGuard.isCurrent(ticket)) loadingShow.value = true
       }, 100)
       try {
         const { scanData, songListUUID } =
           await window.electron.ipcRenderer.invoke('recordingLibrary:list')
-        if (songListUUID !== songsAreaState.songListUUID) return
+        if (!loadGenerationGuard.isCurrent(ticket) || songListUUID !== requestUUID) return
         originalSongInfoArr.value = markRaw(scanData)
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(scanData, songListUUID)
         syncPlayingStateAfterReload(scanData, songListUUID)
         lastAppliedSongListUUID = songListUUID
       } finally {
-        isRequesting.value = false
         clearTimeout(loadingSetTimeout)
-        loadingShow.value = false
+        if (loadGenerationGuard.isCurrent(ticket)) {
+          isRequesting.value = false
+          loadingShow.value = false
+        }
       }
       return
     }
 
-    if (isMixtapeListView()) {
+    if (isMixtapeListUUID(requestUUID)) {
       songsAreaState.missingWaveformFilePaths = []
       loadingShow.value = false
       const loadingSetTimeout = setTimeout(() => {
-        loadingShow.value = true
+        if (loadGenerationGuard.isCurrent(ticket)) loadingShow.value = true
       }, 100)
       try {
         const result = await window.electron.ipcRenderer.invoke('mixtape:list', {
-          playlistId: songsAreaState.songListUUID
+          playlistId: requestUUID
         })
+        if (!loadGenerationGuard.isCurrent(ticket)) return
         const rawItems = Array.isArray(result?.items)
           ? (result.items as Array<Record<string, unknown>>)
           : []
@@ -667,97 +686,90 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         syncSelectedKeysAfterReload(songs, requestUUID)
         syncPlayingStateAfterReload(songs, requestUUID)
         lastAppliedSongListUUID = requestUUID
-
-        const totalRows = songsAreaState.songInfoArr.length
-        const INITIAL_ROWS = 40
-        const CHUNK_ROWS = 80
-        renderCount.value = Math.min(totalRows, INITIAL_ROWS)
-        await nextTick()
-        ;(() => {
-          const step = () => {
-            if (renderCount.value >= totalRows) return
-            renderCount.value = Math.min(renderCount.value + CHUNK_ROWS, totalRows)
-            requestAnimationFrame(step)
-          }
-          requestAnimationFrame(step)
-        })()
-
-        await nextTick()
-        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
+        await hydrateRenderCount(ticket)
       } finally {
-        isRequesting.value = false
         clearTimeout(loadingSetTimeout)
-        loadingShow.value = false
+        if (loadGenerationGuard.isCurrent(ticket)) {
+          isRequesting.value = false
+          loadingShow.value = false
+        }
       }
       return
     }
 
-    if (isSetListView()) {
+    if (isSetListUUID(requestUUID)) {
       songsAreaState.missingWaveformFilePaths = []
       loadingShow.value = false
       const loadingSetTimeout = setTimeout(() => {
-        loadingShow.value = true
+        if (loadGenerationGuard.isCurrent(ticket)) loadingShow.value = true
       }, 100)
       try {
         const { scanData, songListUUID } = await window.electron.ipcRenderer.invoke(
           'setList:load-items',
-          songsAreaState.songListUUID
+          requestUUID
         )
-        if (songListUUID !== songsAreaState.songListUUID) return
+        if (!loadGenerationGuard.isCurrent(ticket) || songListUUID !== requestUUID) return
         const songs = Array.isArray(scanData) ? scanData : []
         originalSongInfoArr.value = markRaw(songs)
         applyFiltersAndSorting()
         syncSelectedKeysAfterReload(songs, songListUUID)
         syncPlayingStateAfterReload(songs, songListUUID)
         lastAppliedSongListUUID = songListUUID
-        await hydrateRenderCount()
+        await hydrateRenderCount(ticket)
       } finally {
-        isRequesting.value = false
         clearTimeout(loadingSetTimeout)
-        loadingShow.value = false
+        if (loadGenerationGuard.isCurrent(ticket)) {
+          isRequesting.value = false
+          loadingShow.value = false
+        }
       }
       return
     }
 
-    const songListPath = libraryUtils.findDirPathByUuid(songsAreaState.songListUUID)
+    const songListPath = libraryUtils.findDirPathByUuid(requestUUID)
 
     // 先走主进程内存索引快照，保证首屏秒开
     try {
       const fastPayload = await window.electron.ipcRenderer.invoke(
         'song-search:playlist-fast-load',
         {
-          songListUUID: songsAreaState.songListUUID
+          songListUUID: requestUUID
         }
       )
+      if (!loadGenerationGuard.isCurrent(ticket)) return
       const hit = Boolean(fastPayload?.hit)
       if (hit) {
         const fastItems = Array.isArray(fastPayload?.items) ? fastPayload.items : []
-        await applySongListData(fastItems)
-        isRequesting.value = false
-        loadingShow.value = false
+        if (!(await applySongListData(fastItems, ticket))) return
+        if (loadGenerationGuard.isCurrent(ticket)) {
+          isRequesting.value = false
+          loadingShow.value = false
+        }
         if (options.waitForFreshAnalysisFields === true) {
-          await loadSongListFromDisk(songListPath, songsAreaState.songListUUID)
+          await loadSongListFromDisk(songListPath, ticket)
           return
         }
         // 内存快照只负责立即展示；磁盘校验放到后台，不能拿一次慢盘遍历卡住窗口。
-        scheduleBackgroundSongListRefresh(songListPath, songsAreaState.songListUUID)
+        scheduleBackgroundSongListRefresh(songListPath, ticket)
         return
       }
     } catch {}
 
     loadingShow.value = false
     const loadingSetTimeout = setTimeout(() => {
-      loadingShow.value = true
+      if (loadGenerationGuard.isCurrent(ticket)) loadingShow.value = true
     }, 100)
 
     try {
-      await loadSongListFromDisk(songListPath, songsAreaState.songListUUID, {
+      await loadSongListFromDisk(songListPath, ticket, {
         forceNotifySongSearchDirty: true
       })
     } finally {
-      isRequesting.value = false
       clearTimeout(loadingSetTimeout)
-      loadingShow.value = false
+      if (loadGenerationGuard.isCurrent(ticket)) {
+        isRequesting.value = false
+        loadingShow.value = false
+      }
     }
   }
 
@@ -769,6 +781,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     loadingShow,
     isRequesting,
     renderCount,
-    openSongList
+    openSongList,
+    invalidatePendingSongListLoads
   }
 }

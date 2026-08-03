@@ -438,6 +438,7 @@ export function useSongItemContextMenu(
         return null
       }
       case 'tracks.deleteAllAbove': {
+        const sourceSongListUUID = songsAreaState.songListUUID
         // 1. 基于当前状态和右键的歌曲，确定要删除的歌曲信息和路径 (delPaths)
         const initialSongInfoArrSnapshot = [...songsAreaState.songInfoArr]
         const songIndex = initialSongInfoArrSnapshot.findIndex(
@@ -460,7 +461,7 @@ export function useSongItemContextMenu(
           await window.electron.ipcRenderer.invoke('setList:remove-items', itemIds)
           songsAreaState.selectedSongFilePath.length = 0
           if (
-            runtime.playingData.playingSongListUUID === songsAreaState.songListUUID &&
+            runtime.playingData.playingSongListUUID === sourceSongListUUID &&
             runtime.playingData.playingSong?.setItemId &&
             itemIds.includes(runtime.playingData.playingSong.setItemId)
           ) {
@@ -468,9 +469,9 @@ export function useSongItemContextMenu(
             runtime.playingData.playingSongListData = []
             runtime.playingData.playingSong = null
           }
-          emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
+          emitter.emit('playlistContentChanged', { uuids: [sourceSongListUUID] })
           emitter.emit('songsRemoved', {
-            listUUID: songsAreaState.songListUUID,
+            listUUID: sourceSongListUUID,
             itemIds
           })
           scrollSongsAreaToTop()
@@ -505,7 +506,7 @@ export function useSongItemContextMenu(
         const canOptimisticallyUpdate = true
         clearPlayingStateIfTouched(removedPathSet)
         emitter.emit('songsArea/optimistic-remove', {
-          listUUID: songsAreaState.songListUUID,
+          listUUID: sourceSongListUUID,
           paths: delPaths
         })
         scrollSongsAreaToTop()
@@ -530,7 +531,7 @@ export function useSongItemContextMenu(
               : []
           if (failedRestoreItems.length > 0) {
             emitter.emit('songsArea/optimistic-restore', {
-              listUUID: songsAreaState.songListUUID,
+              listUUID: sourceSongListUUID,
               items: failedRestoreItems
             })
           }
@@ -542,7 +543,7 @@ export function useSongItemContextMenu(
         } catch {
           if (canOptimisticallyUpdate && optimisticRestoreItems.length > 0) {
             emitter.emit('songsArea/optimistic-restore', {
-              listUUID: songsAreaState.songListUUID,
+              listUUID: sourceSongListUUID,
               items: optimisticRestoreItems
             })
           }
@@ -563,10 +564,10 @@ export function useSongItemContextMenu(
         // 通知全局，保证其他视图也能同步（包含当前 songsArea 监听的统一删除处理）
         if (removedPathsForEvent.length > 0) {
           emitter.emit('songsRemoved', {
-            listUUID: songsAreaState.songListUUID,
+            listUUID: sourceSongListUUID,
             paths: removedPathsForEvent
           })
-          emitter.emit('playlistContentChanged', { uuids: [songsAreaState.songListUUID] })
+          emitter.emit('playlistContentChanged', { uuids: [sourceSongListUUID] })
         }
         return { action: 'songsRemoved', paths: removedPathsForEvent }
       }

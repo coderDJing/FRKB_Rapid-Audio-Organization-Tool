@@ -391,7 +391,7 @@ export function useSelectAndMoveSongs(params: UseSelectAndMoveSongsParams) {
 
     // 通知全局，保证 songsArea 与其他视图收到统一的移除事件
     emitter.emit('songsRemoved', {
-      listUUID: songsAreaState.songListUUID,
+      listUUID: sourceSongListUUID,
       paths: moveSummary.movedEntries.map(({ sourcePath }) => sourcePath),
       preservePlaybackForRemovedPaths: options.preservePlaybackForRemovedPaths,
       resumeMainPlayerAfterPreviewStop: options.resumeMainPlayerAfterPreviewStop

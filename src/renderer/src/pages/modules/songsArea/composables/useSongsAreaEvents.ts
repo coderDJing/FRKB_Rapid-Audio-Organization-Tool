@@ -27,6 +27,7 @@ interface UseSongsAreaEventsParams {
   applyFiltersAndSorting: () => void
   shouldApplyFiltersAndSortingForSongChange: (fields: string[]) => boolean
   openSongList: (options?: OpenSongListOptions) => Promise<void>
+  invalidatePendingSongListLoads: () => void
   scheduleSweepCovers: () => void
   activeWaveformPreviewFilePath?: Ref<string>
   // 用户主动打开/切换到某个歌单（首次挂载或点击切换）后触发；
@@ -45,6 +46,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     applyFiltersAndSorting,
     shouldApplyFiltersAndSortingForSongChange,
     openSongList,
+    invalidatePendingSongListLoads,
     scheduleSweepCovers,
     activeWaveformPreviewFilePath,
     onUserOpenedSongList
@@ -135,6 +137,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (listUUID && listUUID !== currentListUUID) return
     const pathsToRemove: string[] = Array.isArray(payload?.paths) ? payload.paths : []
     if (!pathsToRemove.length) return
+    invalidatePendingSongListLoads()
     const normalizedSet = new Set<string>(
       pathsToRemove.map((p: string) => normalizePath(p)).filter(Boolean)
     )
@@ -169,6 +172,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (listUUID && listUUID !== currentListUUID) return
     const items = Array.isArray(payload?.items) ? payload.items : []
     if (!items.length) return
+    invalidatePendingSongListLoads()
 
     const current = [...originalSongInfoArr.value]
     const existingSet = new Set(current.map((song) => normalizePath(song.filePath)))
@@ -241,6 +245,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     if (itemIds.length > 0) {
       if (!isMixtapeView && !isSetView) return
       if (listUUID && listUUID !== currentListUUID) return
+      invalidatePendingSongListLoads()
       const idSet = new Set(itemIds)
       const removedPathSet = new Set(
         originalSongInfoArr.value
@@ -286,6 +291,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
 
     const pathsToRemove: string[] = Array.isArray(payload?.paths) ? payload.paths : []
+    if (!pathsToRemove.length) return
     const normalizedSet = new Set<string>(
       pathsToRemove.map((p: string) => normalizePath(p)).filter(Boolean)
     )
@@ -293,7 +299,9 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       normalizedSet.has(normalizePath(s.filePath))
     )
 
-    if (!pathsToRemove.length) return
+    if ((listUUID === currentListUUID && normalizedSet.size > 0) || hasIntersection) {
+      invalidatePendingSongListLoads()
+    }
     // 任意视图：仅在当前列表与要移除的路径存在交集时才更新，避免误删与不必要重建
     if (!hasIntersection) return
 
@@ -340,6 +348,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     const normalizedMovedSet = new Set(
       movedSongPaths.map((path) => normalizePath(path)).filter(Boolean)
     )
+    const hasIntersection = originalSongInfoArr.value.some((song) =>
+      normalizedMovedSet.has(normalizePath(song.filePath))
+    )
+    if (hasIntersection) invalidatePendingSongListLoads()
     stopActiveWaveformPreviewIfRemoved(
       normalizedMovedSet,
       Array.isArray(payload) ? undefined : payload?.resumeMainPlayerAfterPreviewStop
@@ -369,6 +381,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
 
   const onExternalPlaylistRefresh = () => {
     if (songsAreaState.songListUUID !== EXTERNAL_PLAYLIST_UUID) return
+    invalidatePendingSongListLoads()
     const songs = runtime.externalPlaylist.songs || []
     originalSongInfoArr.value = markRaw([...songs])
     applyFiltersAndSorting()
@@ -720,6 +733,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
       songsAreaState.selectedSongFilePath.length = 0
     }
     if (!songListUUID) {
+      invalidatePendingSongListLoads()
       songsAreaState.songInfoArr = []
       songsAreaState.missingWaveformFilePaths = []
       songsAreaState.totalSongCount = 0
