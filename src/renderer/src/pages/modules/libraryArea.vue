@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, useTemplateRef, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import libraryItem from '@renderer/components/libraryItem/index.vue'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import libraryUtils from '@renderer/utils/libraryUtils'
@@ -145,6 +145,65 @@ const emptyRecycleBinHandleClick = async () => {
   await emptyRecycleBinWithOptimisticUpdate(runtime)
 }
 
+let welcomeCreatedPlaylistTimer: ReturnType<typeof setTimeout> | null = null
+const markWelcomeCreatedPlaylist = (uuid: string) => {
+  runtime.welcomeCreatedPlaylistUUID = uuid
+  emitter.emit('welcome:playlist-created', { uuid })
+  if (welcomeCreatedPlaylistTimer) clearTimeout(welcomeCreatedPlaylistTimer)
+  welcomeCreatedPlaylistTimer = setTimeout(() => {
+    if (runtime.welcomeCreatedPlaylistUUID === uuid) {
+      runtime.welcomeCreatedPlaylistUUID = ''
+    }
+    welcomeCreatedPlaylistTimer = null
+  }, 680)
+}
+
+const handleWelcomeCreatePlaylist = (kind: unknown) => {
+  if (runtime.libraryAreaSelected !== libraryName.value) return
+
+  if (
+    kind === 'songList' &&
+    (libraryName.value === 'FilterLibrary' || libraryName.value === 'CuratedLibrary')
+  ) {
+    const newUuid = uuidV4()
+    libraryData.value.children = libraryData.value.children || []
+    libraryData.value.children.unshift({
+      uuid: newUuid,
+      type: 'songList',
+      dirName: ''
+    })
+    markWelcomeCreatedPlaylist(newUuid)
+    return
+  }
+
+  if (kind === 'setList' && libraryName.value === 'SetLibrary') {
+    const newUuid = uuidV4()
+    libraryData.value.children = libraryData.value.children || []
+    libraryData.value.children.unshift({
+      uuid: newUuid,
+      type: 'setList',
+      dirName: ''
+    })
+    markWelcomeCreatedPlaylist(newUuid)
+    return
+  }
+
+  if (libraryName.value === 'MixtapeLibrary' && kind === 'stemMixtape') {
+    markWelcomeCreatedPlaylist(createPendingMixtapeList('stem'))
+  } else if (libraryName.value === 'MixtapeLibrary' && kind === 'eqMixtape') {
+    markWelcomeCreatedPlaylist(createPendingMixtapeList('eq'))
+  }
+}
+
+onMounted(() => {
+  emitter.on('welcome:create-playlist', handleWelcomeCreatePlaylist)
+})
+
+onUnmounted(() => {
+  emitter.off('welcome:create-playlist', handleWelcomeCreatePlaylist)
+  if (welcomeCreatedPlaylistTimer) clearTimeout(welcomeCreatedPlaylistTimer)
+})
+
 // 歌单筛选关键词（仅匹配歌单名）
 const playlistSearch = ref('')
 // 扁平化当前库下的全部歌单（不关心折叠状态）
@@ -210,6 +269,7 @@ const createPendingMixtapeList = (mixMode: 'stem' | 'eq') => {
     mixMode,
     stemProfile: DEFAULT_MIXTAPE_STEM_PROFILE
   })
+  return newUuid
 }
 const createNow = async () => {
   const name = String(playlistSearch.value || '').trim()

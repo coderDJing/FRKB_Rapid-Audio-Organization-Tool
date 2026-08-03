@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import welcomeLogoAsset from '@renderer/assets/welcomeLogo.png?asset'
+import WelcomeCreatePlaylistActions from '@renderer/components/WelcomeCreatePlaylistActions.vue'
 import { t } from '@renderer/utils/translate'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
@@ -289,6 +290,7 @@ onUnmounted(() => {
         :class="{ 'welcome-logo--horizontal': isHorizontalMode }"
         draggable="false"
       />
+      <WelcomeCreatePlaylistActions :horizontal="isHorizontalMode" />
       <div v-if="isHorizontalMode" class="shortcuts shortcuts--horizontal">
         <template v-for="(item, itemIndex) in horizontalShortcutLayoutItems" :key="itemIndex">
           <div v-if="item.kind === 'section'" class="shortcuts--horizontal-section">
@@ -496,6 +498,7 @@ onUnmounted(() => {
 
 <style lang="scss" scoped>
 .welcome-container {
+  position: relative;
   width: 100%;
   height: 100%;
   padding: 20px;

@@ -213,6 +213,8 @@ interface Runtime {
   isSwitchingSong: boolean
   // 正在创建中的歌单 UUID（用于 UI 微动效）
   creatingSongListUUID: string
+  // 从欢迎页创建后短暂标记目标节点，用于把视线自然引向左侧输入框
+  welcomeCreatedPlaylistUUID: string
   // 最后点击的区域，用于决定 Ctrl+A 的行为
   focusArea: 'none' | 'library' | 'songsArea'
   // 歌单列表多选状态
@@ -280,6 +282,7 @@ export const useRuntimeStore = defineStore('runtime', {
       },
       importingSongListUUID: '', //正在执行导入中的歌单
       creatingSongListUUID: '', //正在创建中的歌单（用于微动效）
+      welcomeCreatedPlaylistUUID: '',
       isProgressing: false, //正在执行某计算或IO任务
       analysisRuntime: {
         available: false,

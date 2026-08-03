@@ -421,7 +421,8 @@ onUnmounted(() => {
       borderBottom: dragApproach == 'bottom',
       borderCenter: dragApproach == 'center',
       selectedDir: isOpenedInSongsArea && !runtime.selectedPlaylistIds.includes(props.uuid),
-      selectedLibrary: runtime.selectedPlaylistIds.includes(props.uuid)
+      selectedLibrary: runtime.selectedPlaylistIds.includes(props.uuid),
+      welcomeCreatedPlaylist: runtime.welcomeCreatedPlaylistUUID === props.uuid
     }"
     @contextmenu.stop="contextmenuEvent"
     @click.stop="dirHandleClick($event)"
@@ -555,6 +556,9 @@ onUnmounted(() => {
           ref="myInput"
           v-model="operationInputValue"
           class="myInput"
+          :data-welcome-created-playlist-input="
+            runtime.welcomeCreatedPlaylistUUID === props.uuid ? props.uuid : undefined
+          "
           :class="{ myInputRedBorder: inputHintShow }"
           @blur="inputBlurHandle"
           @keydown.enter="inputKeyDownEnter"
@@ -615,6 +619,22 @@ onUnmounted(() => {
   -webkit-mask-repeat: no-repeat;
   -webkit-mask-position: center;
   -webkit-mask-size: contain;
+}
+
+.mainBody.welcomeCreatedPlaylist {
+  animation: welcomeCreatedPlaylistPulse 0.68s ease-out;
+}
+
+@keyframes welcomeCreatedPlaylistPulse {
+  0% {
+    background-color: color-mix(in srgb, var(--accent) 26%, transparent);
+    box-shadow: inset 2px 0 0 var(--accent);
+  }
+
+  100% {
+    background-color: transparent;
+    box-shadow: inset 2px 0 0 transparent;
+  }
 }
 .library-list-icon.is-playing {
   color: var(--accent);
