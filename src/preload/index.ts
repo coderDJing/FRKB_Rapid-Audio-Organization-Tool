@@ -93,6 +93,7 @@ const exactSendChannels = new Set([
   'mixtapeWindow-toggle-close',
   'mixtapeWindow-toggle-maximize',
   'mixtapeWindow-toggle-minimize',
+  'open-current-library-root-in-explorer',
   'openFileExplorer',
   'openLocalBrowser',
   'openLog',

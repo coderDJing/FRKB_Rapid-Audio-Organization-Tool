@@ -55,6 +55,7 @@
     },
     "currentLibraryPath": "Current library path",
     "currentLibraryPathHint": "Shows the FRKB library root currently in use for quick confirmation and troubleshooting.",
+    "openCurrentLibraryInExplorer": "Open in File Explorer",
     "explorerContextMenuLabel": "Play in FRKB",
     "enableExplorerContextMenu": "Explorer context menu: \"Play in FRKB\"",
     "clearDirtyData": {

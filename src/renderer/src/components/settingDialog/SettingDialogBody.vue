@@ -176,6 +176,11 @@ const togglePlaybackRangeSectionKind = (kind: SongStructureSectionKind, checked:
 const currentLibraryPathText = computed(
   () => runtime.setting.databaseUrl || t('database.notConfigured')
 )
+
+const openCurrentLibraryInExplorer = () => {
+  window.electron.ipcRenderer.send('open-current-library-root-in-explorer')
+}
+
 const rekordboxDesktopTrackStorageDirText = computed(
   () =>
     runtime.setting.rekordboxDesktopTrackStorageDir ||
@@ -708,6 +713,11 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 {{ currentLibraryPathText }}
               </bubbleBoxTrigger>
               <div class="setting-hint">{{ t('settings.currentLibraryPathHint') }}</div>
+              <div class="buttonRow">
+                <div class="button settings-inline-button" @click="openCurrentLibraryInExplorer()">
+                  {{ t('settings.openCurrentLibraryInExplorer') }}
+                </div>
+              </div>
             </div>
 
             <div class="setting-block">{{ t('database.reselectLocation') }}：</div>

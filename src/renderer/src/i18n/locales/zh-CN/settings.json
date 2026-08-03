@@ -55,6 +55,7 @@
     },
     "currentLibraryPath": "当前音乐库所在路径",
     "currentLibraryPathHint": "这里显示当前正在使用的 FRKB 资料库根目录，方便确认和排查。",
+    "openCurrentLibraryInExplorer": "在资源浏览器中打开",
     "explorerContextMenuLabel": "在 FRKB 中播放",
     "enableExplorerContextMenu": "资源管理器右键菜单“在 FRKB 中播放”",
     "clearDirtyData": {

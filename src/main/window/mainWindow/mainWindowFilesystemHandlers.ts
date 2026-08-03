@@ -142,6 +142,17 @@ export function registerMainWindowFilesystemHandlers(getWindow: () => BrowserWin
     }
   })
 
+  ipcMain.on('open-current-library-root-in-explorer', () => {
+    const libraryRoot = String(store.databaseDir || '')
+    if (!libraryRoot) {
+      log.error(
+        'open-current-library-root-in-explorer failed: library database root is not configured'
+      )
+      return
+    }
+    void shell.openPath(libraryRoot)
+  })
+
   ipcMain.on('show-item-in-folder', (_e, filePath: string) => {
     shell.showItemInFolder(filePath)
   })
