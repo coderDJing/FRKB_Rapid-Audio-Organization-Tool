@@ -40,6 +40,7 @@ import {
   collectOrderedSongsForMixtape,
   collectSongsForSimilarBatch,
   loadSetPlaylistSongs,
+  scanSongListsForSongs,
   scanSongListsForFiles,
   uniqueFilePaths
 } from './libraryContextMenuHelpers'
@@ -742,6 +743,18 @@ export function useLibraryContextMenu({
           playlistPath,
           playlistName: currentDirData?.dirName
         })
+        break
+      }
+      case 'playlist.calculateSetDuration': {
+        const currentDirData = getDirData()
+        if (currentDirData?.type !== 'setList' && currentDirData?.type !== 'songList') break
+        const songs =
+          currentDirData.type === 'setList'
+            ? await loadSetPlaylistSongs(props.uuid)
+            : await scanSongListsForSongs([props.uuid])
+        const { default: openSetDurationDialog } =
+          await import('@renderer/components/setDurationDialog')
+        await openSetDurationDialog(songs)
         break
       }
       case 'tracks.showInFileExplorer': {

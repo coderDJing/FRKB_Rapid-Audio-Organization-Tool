@@ -98,6 +98,7 @@ export const buildLibraryContextMenuArr = ({
       [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
       [{ menuName: 'tracks.analyzeMissingTracks' }, { menuName: 'tracks.reanalyzePlaylist' }],
       [{ menuName: 'similarTracks.menu' }],
+      [{ menuName: 'playlist.calculateSetDuration' }],
       [{ menuName: 'library.addToMixtape' }],
       [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }]
     ]
@@ -119,6 +120,7 @@ export const buildLibraryContextMenuArr = ({
     [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'playlist.batchRename' }],
     [{ menuName: 'playlist.fingerprintDeduplicate' }, { menuName: 'fingerprints.analyzeAndAdd' }],
     [{ menuName: 'similarTracks.menu' }],
+    ...(dirData.type === 'songList' ? [[{ menuName: 'playlist.calculateSetDuration' }]] : []),
     ...(dirData.type === 'songList' ? [[{ menuName: 'library.addToMixtape' }]] : []),
     [{ menuName: 'tracks.convertFormat' }, { menuName: 'tracks.convertNonMp3ToMp3' }],
     ...(isCoreLibrary

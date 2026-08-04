@@ -57,7 +57,11 @@
       </OverlayScrollbarsComponent>
     </transition>
   </div>
-  <bubbleBox :dom="triggerRef || undefined" :title="selectedLabel || placeholder" />
+  <bubbleBox
+    v-if="showBubble"
+    :dom="triggerRef || undefined"
+    :title="selectedLabel || placeholder"
+  />
 </template>
 
 <script setup lang="ts">
@@ -101,6 +105,10 @@ const props = defineProps({
   width: {
     type: [Number, String],
     default: '200px'
+  },
+  showBubble: {
+    type: Boolean,
+    default: true
   }
 })
 

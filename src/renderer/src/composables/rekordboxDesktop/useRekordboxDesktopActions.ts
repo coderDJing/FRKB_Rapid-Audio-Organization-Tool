@@ -5,6 +5,7 @@ import rightClickMenu from '@renderer/components/rightClickMenu'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ensureRekordboxDesktopWriteAvailable } from '@renderer/utils/rekordboxDesktopWriteAvailability'
 import { clearRekordboxSourceCachesByKind } from '@renderer/utils/rekordboxLibraryCache'
+import { openSetDurationForRekordboxPlaylist } from '@renderer/utils/rekordboxPlaylistSetDuration'
 import { t } from '@renderer/utils/translate'
 import { buildRekordboxSourceChannel } from '@shared/rekordboxSources'
 import type {
@@ -279,9 +280,19 @@ export function useRekordboxDesktopActions(
       return
     }
 
-    const menuArr = [[{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }]]
+    const menuArr = [
+      [{ menuName: 'playlist.calculateSetDuration' }],
+      [{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }]
+    ]
     const result = await rightClickMenu({ menuArr, clickEvent: event })
     if (result === 'cancel') return
+    if (result.menuName === 'playlist.calculateSetDuration') {
+      await openSetDurationForRekordboxPlaylist({
+        sourceKind: 'desktop',
+        playlistId: Number(node.id) || 0
+      })
+      return
+    }
     if (result.menuName === renameMenuKey) {
       await openRenameNodeDialog(node)
       return

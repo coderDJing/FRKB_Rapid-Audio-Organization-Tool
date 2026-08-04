@@ -20,6 +20,7 @@ import { copyPioneerNodeToLibrary } from '@renderer/composables/rekordboxDesktop
 import { copyPioneerPlaylistToMixtape } from '@renderer/composables/rekordboxDesktop/usePioneerCopyToMixtape'
 import { importCuratedArtistsFromPioneerSource } from '@renderer/composables/rekordboxDesktop/useImportCuratedArtists'
 import { usePioneerDeviceTreeDrag } from '@renderer/composables/rekordboxDesktop/usePioneerDeviceTreeDrag'
+import { openSetDurationForRekordboxPlaylist } from '@renderer/utils/rekordboxPlaylistSetDuration'
 import {
   collectRekordboxSimilarTracksSeeds,
   openBatchSimilarTracksDialogForSeeds
@@ -546,12 +547,24 @@ const importArtistsForNode = async (node: IPioneerPlaylistTreeNode) => {
   })
 }
 
+const calculateSetDuration = async (node: IPioneerPlaylistTreeNode) => {
+  const sourceKind = runtime.pioneerDeviceLibrary.selectedSourceKind
+  if ((sourceKind !== 'desktop' && sourceKind !== 'usb') || node.isFolder) return
+  await openSetDurationForRekordboxPlaylist({
+    sourceKind,
+    playlistId: Number(node.id) || 0,
+    sourceRootPath: runtime.pioneerDeviceLibrary.selectedSourceRootPath,
+    sourceLibraryType: runtime.pioneerDeviceLibrary.selectedLibraryType || ''
+  })
+}
+
 const handleCopyOnlyContextMenu = async (event: MouseEvent, node: IPioneerPlaylistTreeNode) => {
   const result = await rightClickMenu({
     menuArr: [
       [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
       [{ menuName: 'pioneer.importArtistsToCurated' }],
       [{ menuName: 'similarTracks.menu' }],
+      ...(node.isFolder ? [] : [[{ menuName: 'playlist.calculateSetDuration' }]]),
       ...(node.isFolder ? [] : [[{ menuName: 'library.addToMixtapeByCopy' }]])
     ],
     clickEvent: event
@@ -575,6 +588,10 @@ const handleCopyOnlyContextMenu = async (event: MouseEvent, node: IPioneerPlayli
   }
   if (result.menuName === 'similarTracks.menu') {
     await openSimilarTracksForRekordboxNodes([node])
+    return
+  }
+  if (result.menuName === 'playlist.calculateSetDuration') {
+    await calculateSetDuration(node)
     return
   }
 }
@@ -635,6 +652,7 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
     [{ menuName: 'pioneer.copyToFilter' }, { menuName: 'pioneer.copyToCurated' }],
     [{ menuName: 'pioneer.importArtistsToCurated' }],
     [{ menuName: 'similarTracks.menu' }],
+    [{ menuName: 'playlist.calculateSetDuration' }],
     [{ menuName: 'library.addToMixtapeByCopy' }],
     [{ menuName: renameMenuKey }, { menuName: deletePlaylistMenuKey }],
     [{ menuName: 'pioneer.cleanMissingFiles' }]
@@ -659,6 +677,10 @@ const handleNodeContextmenu = async (event: MouseEvent, node: IPioneerPlaylistTr
   }
   if (result.menuName === 'similarTracks.menu') {
     await openSimilarTracksForRekordboxNodes([node])
+    return
+  }
+  if (result.menuName === 'playlist.calculateSetDuration') {
+    await calculateSetDuration(node)
     return
   }
   if (result.menuName === renameMenuKey) {
