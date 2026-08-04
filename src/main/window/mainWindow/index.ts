@@ -43,6 +43,7 @@ import {
 } from '../../../shared/windowScreenshotFeature'
 import { restrictExternalNavigation } from '../externalNavigation'
 import startupWindow from '../startupWindow'
+import { attachMainWindowResponsivenessDiagnostics } from './responsivenessDiagnostics'
 
 let mainWindow: BrowserWindow | null = null
 const getMainWindow = () => mainWindow
@@ -410,6 +411,7 @@ function createWindow() {
   })
 
   restrictExternalNavigation(mainWindow.webContents)
+  attachMainWindowResponsivenessDiagnostics(mainWindow)
 
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if ((input.control || input.meta) && input.key.toLowerCase() === 'w') {
