@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { enrichPioneerTracksWithCueData } from './cues'
+import { reconcileDeviceLibraryPlaylistTracks } from './deviceLibraryTrackReconciliation'
 import { markMissingFiles } from '../fileExistenceCheck'
 import { probePioneerDeviceLibraryRoot } from './deviceDetection'
 import { readOneLibraryPlaylistTracks, readOneLibraryPlaylistTree } from './oneLibraryDb'
@@ -474,6 +475,19 @@ export async function loadPioneerPlaylistTracksByDrivePath(
       throw new Error(String(result.error))
     }
     loaded = normalizePioneerPlaylistTrackDump(result, safePlaylistId, databasePath)
+
+    if (probe.oneLibraryDbPath) {
+      try {
+        const oneLibrary = readOneLibraryPlaylistTracks(probe.oneLibraryDbPath, safePlaylistId)
+        loaded = reconcileDeviceLibraryPlaylistTracks(loaded, oneLibrary).result
+      } catch (error) {
+        log.error('[pioneer-device-library] read OneLibrary companion for Device Library failed', {
+          playlistId: safePlaylistId,
+          databasePath: probe.oneLibraryDbPath,
+          error
+        })
+      }
+    }
   }
 
   const playlistName = String(loaded.playlistName || '').trim()

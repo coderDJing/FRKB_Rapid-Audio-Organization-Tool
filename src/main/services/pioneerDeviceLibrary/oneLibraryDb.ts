@@ -19,7 +19,7 @@ type SqliteDatabaseCtor = new (
   options?: { readonly?: boolean; fileMustExist?: boolean; timeout?: number }
 ) => SqliteDatabase
 
-type PlaylistRow = {
+export type OneLibraryPlaylistRow = {
   id?: number
   parentId?: number
   name?: string
@@ -119,6 +119,23 @@ const toOptionalNumber = (value: unknown) => {
 
 const toSafeText = (value: unknown) => String(value || '').trim()
 
+export const normalizeOneLibraryPlaylistTreeRows = (
+  rows: OneLibraryPlaylistRow[]
+): PioneerPlaylistNodeRecord[] =>
+  rows.map((row, index) => {
+    const attribute = toSafeNumber(row?.attribute)
+    const rawOrder = Number(row?.order)
+    const order = Number.isFinite(rawOrder) && rawOrder >= 0 ? Math.round(rawOrder) : index
+    return {
+      id: toSafeNumber(row?.id),
+      parentId: toSafeNumber(row?.parentId),
+      name: toSafeText(row?.name),
+      isFolder: attribute === 1,
+      order,
+      sortOrder: order
+    }
+  })
+
 export function readOneLibraryPlaylistTree(databasePath: string): PioneerPlaylistTreeLoadResult {
   const db = openOneLibraryDatabase(databasePath)
   try {
@@ -135,20 +152,9 @@ export function readOneLibraryPlaylistTree(databasePath: string): PioneerPlaylis
           ORDER BY p."sequenceNo", p."playlist_id"
         `
       )
-      .all() as PlaylistRow[]
+      .all() as OneLibraryPlaylistRow[]
 
-    const nodes: PioneerPlaylistNodeRecord[] = rows.map((row, index) => {
-      const attribute = toSafeNumber(row?.attribute)
-      const order = toSafeNumber(row?.order) || index
-      return {
-        id: toSafeNumber(row?.id),
-        parentId: toSafeNumber(row?.parentId),
-        name: toSafeText(row?.name),
-        isFolder: attribute === 1,
-        order,
-        sortOrder: order
-      }
-    })
+    const nodes = normalizeOneLibraryPlaylistTreeRows(rows)
 
     return {
       databasePath,
