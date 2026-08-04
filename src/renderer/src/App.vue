@@ -2,7 +2,7 @@
 import homePage from './pages/homePage.vue'
 import titleComponent from './components/titleComponent.vue'
 import TitleBarAudioVisualizer from '@renderer/components/TitleBarAudioVisualizer.vue'
-import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
+import { openNewSongsImport } from '@renderer/utils/newSongsImport'
 import { useRuntimeStore } from '@renderer/stores/runtime'
 import bottomInfoArea from './pages/modules/bottomInfoArea.vue'
 import manualAddSongFingerprintDialog from './components/manualAddSongFingerprintDialog.vue'
@@ -605,11 +605,11 @@ const handleOpenGlobalSongSearch = async () => {
 }
 const handleTrayAction = async (_e: unknown, action: string) => {
   if (action === 'import-new-filter') {
-    await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
+    await openNewSongsImport('FilterLibrary')
     return
   }
   if (action === 'import-new-curated') {
-    await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
+    await openNewSongsImport('CuratedLibrary')
     return
   }
   if (action === 'exit') {

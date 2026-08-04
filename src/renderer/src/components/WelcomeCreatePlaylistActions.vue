@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { useRuntimeStore } from '@renderer/stores/runtime'
+import {
+  isNewSongsImportLibrary,
+  openNewSongsImport,
+  type NewSongsImportLibrary
+} from '@renderer/utils/newSongsImport'
 import emitter from '@renderer/utils/mitt'
 import { t, toLibraryDisplayName } from '@renderer/utils/translate'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
@@ -35,6 +40,15 @@ const welcomePlaylistActions = computed<WelcomePlaylistAction[]>(() => {
   }
 })
 const selectedLibraryLabel = computed(() => toLibraryDisplayName(runtime.libraryAreaSelected))
+const selectedImportLibrary = computed<NewSongsImportLibrary | null>(() => {
+  const libraryName = runtime.libraryAreaSelected
+  return isNewSongsImportLibrary(libraryName) ? libraryName : null
+})
+const importNewSongsLabel = computed(() =>
+  selectedImportLibrary.value
+    ? t('library.importNewTracks', { libraryType: selectedLibraryLabel.value })
+    : ''
+)
 const isCreationNudgeActive = ref(false)
 const creationNudgeStyle = ref<Record<string, string>>({})
 let creationNudgeTimer: ReturnType<typeof setTimeout> | null = null
@@ -99,6 +113,12 @@ const createPlaylistFromWelcome = (kind: WelcomePlaylistAction['kind'], event: M
   emitter.emit('welcome:create-playlist', kind)
 }
 
+const importNewSongsFromWelcome = async () => {
+  const libraryName = selectedImportLibrary.value
+  if (!libraryName) return
+  await openNewSongsImport(libraryName)
+}
+
 onMounted(() => {
   emitter.on('welcome:playlist-created', handleWelcomePlaylistCreated)
 })
@@ -138,6 +158,22 @@ onUnmounted(() => {
       </span>
       <span class="welcome-create-playlist__copy">
         <span class="welcome-create-playlist__title">{{ action.label }}</span>
+        <span class="welcome-create-playlist__hint">{{ selectedLibraryLabel }}</span>
+      </span>
+    </button>
+    <button
+      v-if="selectedImportLibrary"
+      type="button"
+      class="welcome-create-playlist welcome-import-songs"
+      @click="importNewSongsFromWelcome"
+    >
+      <span class="welcome-create-playlist__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M12 3v12m0 0 5-5m-5 5-5-5M5 19h14" />
+        </svg>
+      </span>
+      <span class="welcome-create-playlist__copy">
+        <span class="welcome-create-playlist__title">{{ importNewSongsLabel }}</span>
         <span class="welcome-create-playlist__hint">{{ selectedLibraryLabel }}</span>
       </span>
     </button>

@@ -8,7 +8,7 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { ref, computed, watch } from 'vue'
 import menuComponent from './menu.vue'
 import confirm from '@renderer/components/confirmDialog'
-import scanNewSongDialog from '@renderer/components/scanNewSongDialog'
+import { openNewSongsImport } from '@renderer/utils/newSongsImport'
 import { t } from '@renderer/utils/translate'
 import hotkeys from 'hotkeys-js'
 import pkg from '../../../../package.json'
@@ -283,13 +283,13 @@ if (props.enableMenuHotkeys) {
 
   hotkeys('alt+q', 'windowGlobal', () => {
     ;(async () => {
-      await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
+      await openNewSongsImport('FilterLibrary')
     })()
   })
 
   hotkeys('alt+e', 'windowGlobal', () => {
     ;(async () => {
-      await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
+      await openNewSongsImport('CuratedLibrary')
     })()
   })
 }
@@ -320,10 +320,10 @@ const menuButtonClick = async (item: MenuItem) => {
       return
     }
     if (item.action === 'import-new-filter') {
-      await scanNewSongDialog({ libraryName: 'FilterLibrary', songListUuid: '' })
+      await openNewSongsImport('FilterLibrary')
       return
     } else if (item.action === 'import-new-curated') {
-      await scanNewSongDialog({ libraryName: 'CuratedLibrary', songListUuid: '' })
+      await openNewSongsImport('CuratedLibrary')
       return
     }
   }
