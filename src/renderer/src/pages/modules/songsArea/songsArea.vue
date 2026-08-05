@@ -96,6 +96,10 @@ const resolveCoreLibraryNameBySongListUUID = (uuid: string) => {
   }
   return ''
 }
+const currentSongListSourceLibraryName = computed(
+  () =>
+    resolveCoreLibraryNameBySongListUUID(songsAreaState.songListUUID) || runtime.libraryAreaSelected
+)
 const songsAreaRef = useTemplateRef<OverlayScrollbarsComponentRef>('songsAreaRef')
 const handleOverlayClick = (e: MouseEvent) => {
   if (e.button === 0) {
@@ -425,7 +429,7 @@ const handleWaveformPreviewState = (payload?: WaveformPreviewStatePayload) => {
     payload?.active &&
     payload?.sourcePane === props.pane &&
     String(payload?.sourceSongListUUID || '').trim() === songsAreaState.songListUUID &&
-    String(payload?.sourceLibraryName || '').trim() === runtime.libraryAreaSelected
+    String(payload?.sourceLibraryName || '').trim() === currentSongListSourceLibraryName.value
   ) {
     activePreviewFilePath.value = String(payload?.filePath || '').trim()
     return
@@ -446,7 +450,7 @@ const handlePreviewMoveRequest = (payload?: PreviewMoveRequestPayload) => {
   const sourceSongListUUID = String(payload?.sourceSongListUUID || '').trim()
   const targetLibraryName = payload?.targetLibraryName
   if (!song?.filePath || !sourceSongListUUID || payload?.sourcePane !== props.pane) return
-  if (sourceLibraryName && sourceLibraryName !== runtime.libraryAreaSelected) return
+  if (sourceLibraryName && sourceLibraryName !== currentSongListSourceLibraryName.value) return
   if (sourceSongListUUID !== songsAreaState.songListUUID) return
   if (
     targetLibraryName !== 'FilterLibrary' &&
@@ -889,7 +893,7 @@ const { shouldShowEmptyState, emptyTitleText, emptyHintText } = useSongsAreaEmpt
                   :flash-row-token="globalSearchFlashToken"
                   :harmonic-reference-key="harmonicReferenceKeyForRows"
                   :total-width="totalColumnsWidth"
-                  :source-library-name="runtime.libraryAreaSelected"
+                  :source-library-name="currentSongListSourceLibraryName"
                   :source-song-list-u-u-i-d="songsAreaState.songListUUID"
                   :source-pane-key="props.pane"
                   :enable-key-analysis-queue="songListAutoAnalyzeEnabled"
