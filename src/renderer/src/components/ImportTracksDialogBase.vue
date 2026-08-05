@@ -23,6 +23,7 @@ const props = defineProps({
   mode: { type: String as () => Mode, required: true },
   libraryName: { type: String, default: 'FilterLibrary' },
   songListUuid: { type: String },
+  openSongListAfterImport: { type: Boolean, default: false },
   confirmCallback: { type: Function, required: true },
   cancelCallback: { type: Function, required: true }
 })
@@ -179,6 +180,9 @@ const confirm = () => {
   }
 
   if (props.mode === 'scan') {
+    if (props.openSongListAfterImport) {
+      runtime.openSongListAfterImportUUID = importingSongListUUID
+    }
     runtime.importingSongListUUID = importingSongListUUID
     runtime.isProgressing = true
     window.electron.ipcRenderer.send('startImportSongs', {

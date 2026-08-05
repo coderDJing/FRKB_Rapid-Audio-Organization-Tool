@@ -682,6 +682,13 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
   }
 
   const onImportFinished = async (_event: unknown, songListUUID: string, _summary: unknown) => {
+    if (runtime.openSongListAfterImportUUID === songListUUID) {
+      runtime.openSongListAfterImportUUID = ''
+      if (!songsAreaState.songListUUID) {
+        songsAreaState.songListUUID = songListUUID
+      }
+      return
+    }
     if (songListUUID === songsAreaState.songListUUID) {
       setTimeout(async () => {
         await openSongList({ waitForFreshAnalysisFields: true })
@@ -762,6 +769,10 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     }
   }
 
+  const onNoAudioFileWasScanned = () => {
+    runtime.openSongListAfterImportUUID = ''
+  }
+
   // 仅当加载完成后用户仍停留在同一歌单时，才通知“用户主动打开了此歌单”
   const notifyUserOpenedSongList = (songListUUID: string, options?: UserOpenedSongListOptions) => {
     if (!onUserOpenedSongList) return
@@ -798,6 +809,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.on('song-memory-cues-updated', onSongMemoryCuesUpdated)
     window.electron.ipcRenderer.on('importFinished', onImportFinished)
+    window.electron.ipcRenderer.on('noAudioFileWasScanned', onNoAudioFileWasScanned)
     window.electron.ipcRenderer.on('audio:convert:done', onAudioConvertDone)
     window.electron.ipcRenderer.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
     emitter.on(RECORDING_LIBRARY_CHANGED_EVENT, onRecordingLibraryChanged)
@@ -821,6 +833,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.removeListener('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.removeListener('song-memory-cues-updated', onSongMemoryCuesUpdated)
     window.electron.ipcRenderer.removeListener('importFinished', onImportFinished)
+    window.electron.ipcRenderer.removeListener('noAudioFileWasScanned', onNoAudioFileWasScanned)
     window.electron.ipcRenderer.removeListener('audio:convert:done', onAudioConvertDone)
     window.electron.ipcRenderer.removeListener(
       RECORDING_LIBRARY_CHANGED_EVENT,

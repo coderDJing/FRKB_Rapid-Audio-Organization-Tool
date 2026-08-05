@@ -1,7 +1,16 @@
 import { createVNode, render } from 'vue'
 import ImportTracksDialogBase from './ImportTracksDialogBase.vue'
 import { attachAppContext } from '@renderer/utils/appContext'
-export default ({ libraryName, songListUuid }: { libraryName: string; songListUuid: string }) => {
+
+export default ({
+  libraryName,
+  songListUuid,
+  openSongListAfterImport = false
+}: {
+  libraryName: string
+  songListUuid: string
+  openSongListAfterImport?: boolean
+}) => {
   return new Promise((resolve, _reject) => {
     const div = document.createElement('div')
     document.body.appendChild(div)
@@ -20,6 +29,7 @@ export default ({ libraryName, songListUuid }: { libraryName: string; songListUu
       mode: 'scan',
       libraryName,
       songListUuid,
+      openSongListAfterImport,
       confirmCallback,
       cancelCallback
     })

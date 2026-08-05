@@ -116,7 +116,7 @@ const createPlaylistFromWelcome = (kind: WelcomePlaylistAction['kind'], event: M
 const importNewSongsFromWelcome = async () => {
   const libraryName = selectedImportLibrary.value
   if (!libraryName) return
-  await openNewSongsImport(libraryName)
+  await openNewSongsImport(libraryName, { openSongListAfterImport: true })
 }
 
 onMounted(() => {

@@ -164,6 +164,7 @@ interface Runtime {
     MixtapeLibrary: string
   }
   importingSongListUUID: string
+  openSongListAfterImportUUID: string
   isProgressing: boolean
   analysisRuntime: {
     available: boolean
@@ -281,6 +282,7 @@ export const useRuntimeStore = defineStore('runtime', {
         MixtapeLibrary: ''
       },
       importingSongListUUID: '', //正在执行导入中的歌单
+      openSongListAfterImportUUID: '', //导入完成后需要打开的歌单
       creatingSongListUUID: '', //正在创建中的歌单（用于微动效）
       welcomeCreatedPlaylistUUID: '',
       isProgressing: false, //正在执行某计算或IO任务

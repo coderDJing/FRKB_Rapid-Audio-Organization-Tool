@@ -4,13 +4,19 @@ import { useRuntimeStore } from '@renderer/stores/runtime'
 import { t } from '@renderer/utils/translate'
 
 export type NewSongsImportLibrary = 'FilterLibrary' | 'CuratedLibrary'
+type NewSongsImportOptions = {
+  openSongListAfterImport?: boolean
+}
 
 export const isNewSongsImportLibrary = (
   libraryName: string
 ): libraryName is NewSongsImportLibrary =>
   libraryName === 'FilterLibrary' || libraryName === 'CuratedLibrary'
 
-export const openNewSongsImport = async (libraryName: NewSongsImportLibrary) => {
+export const openNewSongsImport = async (
+  libraryName: NewSongsImportLibrary,
+  options: NewSongsImportOptions = {}
+) => {
   const runtime = useRuntimeStore()
   if (runtime.isProgressing) {
     await confirm({
@@ -21,5 +27,9 @@ export const openNewSongsImport = async (libraryName: NewSongsImportLibrary) => 
     return
   }
 
-  await scanNewSongDialog({ libraryName, songListUuid: '' })
+  await scanNewSongDialog({
+    libraryName,
+    songListUuid: '',
+    openSongListAfterImport: options.openSongListAfterImport === true
+  })
 }
