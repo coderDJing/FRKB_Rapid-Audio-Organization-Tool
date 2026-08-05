@@ -8,10 +8,6 @@ import {
   openRekordboxDesktopPlaylistForPlaylist,
   openRekordboxDesktopPlaylistForSelectedTracks
 } from '@renderer/utils/rekordboxDesktopPlaylist'
-import {
-  openRekordboxXmlExportForPlaylist,
-  openRekordboxXmlExportForSelectedTracks
-} from '@renderer/utils/rekordboxXmlExport'
 import { t } from '@renderer/utils/translate'
 import libraryUtils from '@renderer/utils/libraryUtils'
 import { DEFAULT_MIXTAPE_STEM_PROFILE } from '@shared/mixtapeStemProfiles'
@@ -44,6 +40,7 @@ import {
   scanSongListsForFiles,
   uniqueFilePaths
 } from './libraryContextMenuHelpers'
+import { handleRekordboxXmlPlaylistExport } from './handleRekordboxXmlPlaylistExport'
 import type { IDir, IMenu, IMetadataAutoFillSummary } from '../../../../types/globals'
 
 type ExportSongsToDirSummary = {
@@ -539,104 +536,21 @@ export function useLibraryContextMenu({
                 runtime.playingData.playingSongListData = []
                 runtime.playingData.playingSong = null
               }
+              emitter.emit('playlistContentChanged', { uuids: [uuid] })
             }
           }
         }
         break
       }
       case 'rekordboxXmlExport.menuExportPlaylist': {
-        if (runtime.isProgressing) {
-          await confirmTaskBusy()
-          return
-        }
-        const currentDirData = getDirData()
-        const playlistName = String(currentDirData?.dirName || '').trim()
-        if (currentDirData?.type === 'setList' || props.libraryName === 'SetLibrary') {
-          runtime.isProgressing = true
-          try {
-            const tracks = await loadSetPlaylistSongs(props.uuid)
-            if (!tracks.length) {
-              await confirm({
-                title: t('rekordboxXmlExport.failureTitle'),
-                content: [t('rekordboxXmlExport.noTracksToExport')],
-                confirmShow: false
-              })
-              return
-            }
-            const summary = await openRekordboxXmlExportForSelectedTracks({
-              tracks,
-              sourceLibraryName: 'SetLibrary',
-              songListUUID: props.uuid,
-              playlistName
-            })
-            if (summary?.mode === 'move' && summary.removedSetItemIds?.length) {
-              const removedSetItemIds = summary.removedSetItemIds
-              emitter.emit('songsRemoved', {
-                listUUID: props.uuid,
-                itemIds: removedSetItemIds
-              })
-              if (runtime.playingData.playingSongListUUID === props.uuid) {
-                const removedIdSet = new Set(removedSetItemIds)
-                runtime.playingData.playingSongListData =
-                  runtime.playingData.playingSongListData.filter(
-                    (item) => !removedIdSet.has(item.setItemId || '')
-                  )
-                if (
-                  runtime.playingData.playingSong?.setItemId &&
-                  removedIdSet.has(runtime.playingData.playingSong.setItemId)
-                ) {
-                  runtime.playingData.playingSong = null
-                }
-              }
-              if (runtime.setting.showPlaylistTrackCount) {
-                trackCount.value = Math.max(
-                  0,
-                  Number(trackCount.value || 0) - removedSetItemIds.length
-                )
-              }
-              try {
-                emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
-              } catch {}
-            }
-          } finally {
-            runtime.isProgressing = false
-          }
-          break
-        }
-        if (props.libraryName !== 'FilterLibrary' && props.libraryName !== 'CuratedLibrary') {
-          await confirm({
-            title: t('rekordboxXmlExport.failureTitle'),
-            content: [t('rekordboxXmlExport.unsupportedSource')],
-            confirmShow: false
-          })
-          return
-        }
-        const songListPath = libraryUtils.findDirPathByUuid(props.uuid)
-        runtime.isProgressing = true
-        try {
-          const summary = await openRekordboxXmlExportForPlaylist({
-            sourceLibraryName: props.libraryName,
-            songListUUID: props.uuid,
-            songListPath,
-            playlistName
-          })
-          if (summary?.mode === 'move') {
-            clearSongsAreaPaneBySongListUUID(runtime, props.uuid)
-            if (runtime.playingData.playingSongListUUID === props.uuid) {
-              runtime.playingData.playingSongListUUID = ''
-              runtime.playingData.playingSongListData = []
-              runtime.playingData.playingSong = null
-            }
-            if (runtime.setting.showPlaylistTrackCount) {
-              trackCount.value = 0
-            }
-            try {
-              emitter.emit('playlistContentChanged', { uuids: [props.uuid] })
-            } catch {}
-          }
-        } finally {
-          runtime.isProgressing = false
-        }
+        await handleRekordboxXmlPlaylistExport({
+          getDirData,
+          runtime,
+          props,
+          emitter,
+          trackCount,
+          confirmTaskBusy
+        })
         break
       }
       case 'rekordboxDesktop.menuCreatePlaylistFromPlaylist': {
