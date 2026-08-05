@@ -3,7 +3,11 @@ import { enrichPioneerTracksWithCueData } from './cues'
 import { reconcileDeviceLibraryPlaylistTracks } from './deviceLibraryTrackReconciliation'
 import { markMissingFiles } from '../fileExistenceCheck'
 import { probePioneerDeviceLibraryRoot } from './deviceDetection'
-import { readOneLibraryPlaylistTracks, readOneLibraryPlaylistTree } from './oneLibraryDb'
+import {
+  OneLibraryPlaylistNotFoundError,
+  readOneLibraryPlaylistTracks,
+  readOneLibraryPlaylistTree
+} from './oneLibraryDb'
 import {
   readPioneerBeatGridsInWorker,
   readPioneerPlaylistTracksInWorker,
@@ -481,11 +485,17 @@ export async function loadPioneerPlaylistTracksByDrivePath(
         const oneLibrary = readOneLibraryPlaylistTracks(probe.oneLibraryDbPath, safePlaylistId)
         loaded = reconcileDeviceLibraryPlaylistTracks(loaded, oneLibrary).result
       } catch (error) {
-        log.error('[pioneer-device-library] read OneLibrary companion for Device Library failed', {
-          playlistId: safePlaylistId,
-          databasePath: probe.oneLibraryDbPath,
-          error
-        })
+        // Device Library PDB 可以存在 OneLibrary 中没有的歌单，保留 PDB 原始曲目即可。
+        if (!(error instanceof OneLibraryPlaylistNotFoundError)) {
+          log.error(
+            '[pioneer-device-library] read OneLibrary companion for Device Library failed',
+            {
+              playlistId: safePlaylistId,
+              databasePath: probe.oneLibraryDbPath,
+              error
+            }
+          )
+        }
       }
     }
   }

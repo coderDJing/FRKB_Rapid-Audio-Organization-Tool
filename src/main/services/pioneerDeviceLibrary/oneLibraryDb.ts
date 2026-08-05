@@ -27,6 +27,13 @@ export type OneLibraryPlaylistRow = {
   order?: number
 }
 
+export class OneLibraryPlaylistNotFoundError extends Error {
+  constructor(playlistId: number) {
+    super(`未找到 OneLibrary 歌单: ${playlistId}`)
+    this.name = 'OneLibraryPlaylistNotFoundError'
+  }
+}
+
 type PlaylistTrackRow = {
   playlistId?: number
   trackId?: number
@@ -188,7 +195,7 @@ export function readOneLibraryPlaylistTracks(
       .get(playlistId) as { id?: number; name?: string } | undefined
 
     if (!playlistRow?.id) {
-      throw new Error(`未找到 OneLibrary 歌单: ${playlistId}`)
+      throw new OneLibraryPlaylistNotFoundError(playlistId)
     }
 
     const rows = db

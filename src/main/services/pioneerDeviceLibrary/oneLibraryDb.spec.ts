@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { normalizeOneLibraryPlaylistTreeRows } from './oneLibraryDb'
+import {
+  OneLibraryPlaylistNotFoundError,
+  normalizeOneLibraryPlaylistTreeRows
+} from './oneLibraryDb'
 
 describe('normalizeOneLibraryPlaylistTreeRows', () => {
   it('preserves sequence number zero so the first playlist remains first', () => {
@@ -20,5 +23,9 @@ describe('normalizeOneLibraryPlaylistTreeRows', () => {
     ])
 
     expect(node?.sortOrder).toBe(0)
+  })
+
+  it('marks a PDB-only playlist as absent from the OneLibrary companion', () => {
+    expect(new OneLibraryPlaylistNotFoundError(121)).toBeInstanceOf(OneLibraryPlaylistNotFoundError)
   })
 })
