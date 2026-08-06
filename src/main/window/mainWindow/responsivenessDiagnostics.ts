@@ -1,5 +1,6 @@
 import { app, type BrowserWindow, type ProcessMetric } from 'electron'
 import { log } from '../../log'
+import { getPlaylistScanDiagnosticSnapshot } from '../../services/playlistScanDiagnostics'
 
 const MAIN_PROCESS_STALL_THRESHOLD_MS = 3_000
 const MAIN_PROCESS_HEARTBEAT_INTERVAL_MS = 1_000
@@ -13,6 +14,7 @@ type ResponsivenessSnapshot = {
   focused: boolean
   visible: boolean
   processMetrics: ProcessMetric[]
+  playlistScans: ReturnType<typeof getPlaylistScanDiagnosticSnapshot>
 }
 
 const getRendererPid = (browserWindow: BrowserWindow): number | null => {
@@ -54,7 +56,8 @@ const captureSnapshot = (browserWindow: BrowserWindow): ResponsivenessSnapshot =
     loading: browserWindow.webContents.isLoading(),
     focused: browserWindow.isFocused(),
     visible: browserWindow.isVisible(),
-    processMetrics: getProcessMetrics(rendererPid)
+    processMetrics: getProcessMetrics(rendererPid),
+    playlistScans: getPlaylistScanDiagnosticSnapshot()
   }
 }
 

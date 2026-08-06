@@ -7,10 +7,14 @@ import mainWindow from '../window/mainWindow'
 import { EXTERNAL_PLAYLIST_UUID } from '../../shared/externalPlayback'
 import { scheduleSongListPostScanTasks } from '../services/scanSongs'
 import { scanSongListOffMainThread } from '../services/songListScanWorker'
-import { resolveAudioTimeBasisOffsetMsForFile } from '../services/audioTimeBasisOffset'
+import {
+  hasCachedAudioTimeBasisOffsetMsForFile,
+  resolveAudioTimeBasisOffsetMsForFile
+} from '../services/audioTimeBasisOffset'
 import { resolveCanonicalSongBeatGridV2 } from '../../shared/songAnalysisCompleteness'
 import * as LibraryCacheDb from '../libraryCacheDb'
 import { findSongListRoot } from '../services/cacheMaintenance'
+import { beginPlaylistScanDiagnostic } from '../services/playlistScanDiagnostics'
 import {
   countSongListTracksBatchOffMainThread,
   countSongListTracksOffMainThread
@@ -71,57 +75,284 @@ type CompactSongListTrackNumbersPayload = {
   filePaths?: string[]
 }
 
+type PlaylistScanDiagnosticContext = {
+  traceId?: string
+  source?: string
+}
+
+type TimeBasisRepairDiagnostics = {
+  candidateCount: number
+  cacheHitCount: number
+  cacheMissCount: number
+  extensionCounts: Record<string, number>
+  taskLaunchDurationMs: number
+  totalDurationMs: number
+  resolveDurationTotalMs: number
+  resolveDurationMaxMs: number
+  resolvedNonZeroCount: number
+  cachePersistenceDurationTotalMs: number
+  cachePersistenceDurationMaxMs: number
+  cacheUpsertAttemptedCount: number
+  cacheUpsertSucceededCount: number
+  cacheRootMissingCount: number
+  fileStatMissingCount: number
+}
+
+let playlistScanDiagnosticSequence = 0
+
+const normalizeDiagnosticText = (value: unknown, maxLength: number) =>
+  String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9:_-]+/g, '-')
+    .slice(0, maxLength)
+
+const createPlaylistScanTraceId = (requestedTraceId: unknown) => {
+  const normalized = normalizeDiagnosticText(requestedTraceId, 80)
+  if (normalized) return normalized
+  playlistScanDiagnosticSequence += 1
+  return `main-${Date.now().toString(36)}-${playlistScanDiagnosticSequence.toString(36)}`
+}
+
+const summarizeScanPaths = (scanPath: string | string[]) => {
+  const paths = Array.isArray(scanPath) ? scanPath : [scanPath]
+  return {
+    scanPathCount: paths.length,
+    scanPaths: paths.slice(0, 3)
+  }
+}
+
+const shouldRepairSongTimeBasis = (song: ISongInfo) => {
+  const grid = resolveCanonicalSongBeatGridV2(song)
+  if (grid.kind !== 'grid') return false
+  const currentOffset = Number(song.timeBasisOffsetMs)
+  const missingOffset = !Number.isFinite(currentOffset) || currentOffset < 0
+  const legacyMp3Zero =
+    currentOffset === 0 &&
+    song.beatGridAlgorithmVersion === undefined &&
+    path.extname(song.filePath).toLowerCase() === '.mp3'
+  return missingOffset || legacyMp3Zero
+}
+
 export function registerPlaylistHandlers() {
-  const repairScannedSongGridTimeBases = async (songs: ISongInfo[]) =>
-    await Promise.all(
-      songs.map(async (song) => {
-        const grid = resolveCanonicalSongBeatGridV2(song)
-        if (grid.kind !== 'grid') return song
-        const currentOffset = Number(song.timeBasisOffsetMs)
-        const missingOffset = !Number.isFinite(currentOffset) || currentOffset < 0
-        const legacyMp3Zero =
-          currentOffset === 0 &&
-          song.beatGridAlgorithmVersion === undefined &&
-          path.extname(song.filePath).toLowerCase() === '.mp3'
-        if (!missingOffset && !legacyMp3Zero) return song
-
-        const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(song.filePath)
-        const nextSong = { ...song, timeBasisOffsetMs: Number(timeBasisOffsetMs.toFixed(3)) }
-        const listRoot = await findSongListRoot(path.dirname(song.filePath))
-        const stat = await fs.stat(song.filePath).catch(() => null)
-        if (listRoot && stat?.isFile()) {
-          await LibraryCacheDb.upsertSongCacheEntry(listRoot, song.filePath, {
-            size: stat.size,
-            mtimeMs: stat.mtimeMs,
-            info: nextSong
-          })
-        }
-        return nextSong
-      })
-    )
-
-  const runSongListScan = async (scanPath: string | string[], songListUUID: string) => {
-    const result = await scanSongListOffMainThread({
-      scanPath,
-      audioExt: store.settingConfig.audioExt,
-      songListUUID,
-      databaseDir: store.databaseDir
+  const repairScannedSongGridTimeBases = async (
+    songs: ISongInfo[],
+    traceId: string,
+    updatePhase: (phase: string, details?: Record<string, unknown>) => void
+  ): Promise<{ scanData: ISongInfo[]; diagnostics: TimeBasisRepairDiagnostics }> => {
+    const startedAt = Date.now()
+    const candidates = songs.filter(shouldRepairSongTimeBasis)
+    const candidateSet = new Set(candidates)
+    const extensionCounts: Record<string, number> = {}
+    let cacheHitCount = 0
+    for (const song of candidates) {
+      const extension = path.extname(song.filePath).toLowerCase() || '(none)'
+      extensionCounts[extension] = (extensionCounts[extension] || 0) + 1
+      if (hasCachedAudioTimeBasisOffsetMsForFile(song.filePath)) {
+        cacheHitCount += 1
+      }
+    }
+    const cacheMissCount = candidates.length - cacheHitCount
+    updatePhase('time-basis-plan', {
+      trackCount: songs.length,
+      candidateCount: candidates.length,
+      cacheHitCount,
+      cacheMissCount,
+      extensionCounts
     })
-    const scanData = await repairScannedSongGridTimeBases(result.scanData)
-    void scheduleSongListPostScanTasks(scanPath, scanData)
-    return { ...result, scanData }
+    log.info('[playlist-scan-diagnostic] time-basis repair planned', {
+      traceId,
+      trackCount: songs.length,
+      candidateCount: candidates.length,
+      cacheHitCount,
+      cacheMissCount,
+      extensionCounts
+    })
+
+    let resolveDurationTotalMs = 0
+    let resolveDurationMaxMs = 0
+    let resolvedNonZeroCount = 0
+    let cachePersistenceDurationTotalMs = 0
+    let cachePersistenceDurationMaxMs = 0
+    let cacheUpsertAttemptedCount = 0
+    let cacheUpsertSucceededCount = 0
+    let cacheRootMissingCount = 0
+    let fileStatMissingCount = 0
+
+    updatePhase('time-basis-task-launch')
+    const taskLaunchStartedAt = Date.now()
+    const repairTasks = songs.map(async (song) => {
+      if (!candidateSet.has(song)) return song
+
+      const resolveStartedAt = Date.now()
+      const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(song.filePath)
+      const resolveDurationMs = Date.now() - resolveStartedAt
+      resolveDurationTotalMs += resolveDurationMs
+      resolveDurationMaxMs = Math.max(resolveDurationMaxMs, resolveDurationMs)
+      if (timeBasisOffsetMs > 0) resolvedNonZeroCount += 1
+
+      const nextSong = { ...song, timeBasisOffsetMs: Number(timeBasisOffsetMs.toFixed(3)) }
+      const persistenceStartedAt = Date.now()
+      const listRoot = await findSongListRoot(path.dirname(song.filePath))
+      if (!listRoot) cacheRootMissingCount += 1
+      const stat = await fs.stat(song.filePath).catch(() => null)
+      if (!stat?.isFile()) fileStatMissingCount += 1
+      if (listRoot && stat?.isFile()) {
+        cacheUpsertAttemptedCount += 1
+        const upserted = await LibraryCacheDb.upsertSongCacheEntry(listRoot, song.filePath, {
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          info: nextSong
+        })
+        if (upserted) cacheUpsertSucceededCount += 1
+      }
+      const persistenceDurationMs = Date.now() - persistenceStartedAt
+      cachePersistenceDurationTotalMs += persistenceDurationMs
+      cachePersistenceDurationMaxMs = Math.max(cachePersistenceDurationMaxMs, persistenceDurationMs)
+      return nextSong
+    })
+    const taskLaunchDurationMs = Date.now() - taskLaunchStartedAt
+    updatePhase('time-basis-await', { taskLaunchDurationMs })
+    log.info('[playlist-scan-diagnostic] time-basis tasks launched', {
+      traceId,
+      candidateCount: candidates.length,
+      taskLaunchDurationMs
+    })
+
+    const scanData = await Promise.all(repairTasks)
+    const diagnostics: TimeBasisRepairDiagnostics = {
+      candidateCount: candidates.length,
+      cacheHitCount,
+      cacheMissCount,
+      extensionCounts,
+      taskLaunchDurationMs,
+      totalDurationMs: Date.now() - startedAt,
+      resolveDurationTotalMs,
+      resolveDurationMaxMs,
+      resolvedNonZeroCount,
+      cachePersistenceDurationTotalMs,
+      cachePersistenceDurationMaxMs,
+      cacheUpsertAttemptedCount,
+      cacheUpsertSucceededCount,
+      cacheRootMissingCount,
+      fileStatMissingCount
+    }
+    log.info('[playlist-scan-diagnostic] time-basis repair completed', {
+      traceId,
+      ...diagnostics
+    })
+    return { scanData, diagnostics }
+  }
+
+  const runSongListScan = async (
+    scanPath: string | string[],
+    songListUUID: string,
+    diagnosticContext?: PlaylistScanDiagnosticContext
+  ) => {
+    const traceId = createPlaylistScanTraceId(diagnosticContext?.traceId)
+    const source = normalizeDiagnosticText(diagnosticContext?.source, 40) || 'unknown'
+    const startedAtMs = Date.now()
+    const pathSummary = summarizeScanPaths(scanPath)
+    const activity = beginPlaylistScanDiagnostic(traceId, {
+      source,
+      songListUUID,
+      ...pathSummary
+    })
+    let stage = 'worker-scan'
+    log.info('[playlist-scan-diagnostic] main scan started', {
+      traceId,
+      source,
+      songListUUID,
+      startedAtMs,
+      ...pathSummary
+    })
+
+    try {
+      const workerStartedAt = Date.now()
+      const result = await scanSongListOffMainThread({
+        scanPath,
+        audioExt: store.settingConfig.audioExt,
+        songListUUID,
+        databaseDir: store.databaseDir
+      })
+      const workerDurationMs = Date.now() - workerStartedAt
+      activity.update('worker-result-received', {
+        trackCount: result.scanData.length,
+        workerDurationMs
+      })
+      log.info('[playlist-scan-diagnostic] worker scan completed', {
+        traceId,
+        trackCount: result.scanData.length,
+        workerDurationMs,
+        workerPerf: result.perf
+      })
+
+      stage = 'time-basis-repair'
+      const repairResult = await repairScannedSongGridTimeBases(
+        result.scanData,
+        traceId,
+        activity.update
+      )
+      stage = 'post-scan-schedule'
+      activity.update('post-scan-schedule')
+      void scheduleSongListPostScanTasks(scanPath, repairResult.scanData)
+
+      const responseReadyAtMs = Date.now()
+      const mainDurationMs = responseReadyAtMs - startedAtMs
+      const scanDiagnostics = {
+        traceId,
+        source,
+        mainStartedAtMs: startedAtMs,
+        responseReadyAtMs,
+        mainDurationMs,
+        workerDurationMs,
+        timeBasisRepair: repairResult.diagnostics
+      }
+      activity.complete({
+        trackCount: repairResult.scanData.length,
+        mainDurationMs,
+        workerDurationMs,
+        timeBasisRepairDurationMs: repairResult.diagnostics.totalDurationMs
+      })
+      log.info('[playlist-scan-diagnostic] main response ready', {
+        traceId,
+        source,
+        trackCount: repairResult.scanData.length,
+        responseReadyAtMs,
+        mainDurationMs,
+        workerDurationMs,
+        timeBasisRepairDurationMs: repairResult.diagnostics.totalDurationMs
+      })
+      return { ...result, scanData: repairResult.scanData, scanDiagnostics }
+    } catch (error) {
+      const message = error instanceof Error ? error.stack || error.message : String(error)
+      activity.fail({ stage, message })
+      log.error('[playlist-scan-diagnostic] main scan failed', {
+        traceId,
+        source,
+        songListUUID,
+        stage,
+        durationMs: Date.now() - startedAtMs,
+        error: message
+      })
+      throw error
+    }
   }
 
   ipcMain.handle(
     'scanSongList',
-    async (_e, songListPath: string | string[], songListUUID: string) => {
+    async (
+      _e,
+      songListPath: string | string[],
+      songListUUID: string,
+      diagnosticContext?: PlaylistScanDiagnosticContext
+    ) => {
       assertLibraryMergeMutationAllowed()
       if (typeof songListPath === 'string') {
         const scanPath = resolveLibraryPath(songListPath).absPath
-        return await runSongListScan(scanPath, songListUUID)
+        return await runSongListScan(scanPath, songListUUID, diagnosticContext)
       } else {
         const scanPaths = songListPath.map((p) => resolveLibraryPath(p).absPath)
-        return await runSongListScan(scanPaths, songListUUID)
+        return await runSongListScan(scanPaths, songListUUID, diagnosticContext)
       }
     }
   )

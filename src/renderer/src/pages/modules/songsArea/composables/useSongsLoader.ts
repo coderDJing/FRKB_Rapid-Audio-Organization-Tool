@@ -27,6 +27,7 @@ interface UseSongsLoaderParams {
 
 interface LoadSongListFromDiskOptions {
   forceNotifySongSearchDirty?: boolean
+  diagnosticSource?: string
 }
 
 export interface OpenSongListOptions {
@@ -36,6 +37,45 @@ export interface OpenSongListOptions {
 interface SongListDiffSummary {
   hasIgnoredOnlyDiffs: boolean
   hasMeaningfulDiffs: boolean
+}
+
+type SongListScanResult = {
+  scanData?: ISongInfo[]
+  songListUUID?: string
+  missingWaveformFilePaths?: unknown
+  playlistTrackNumbering?: {
+    initialized?: boolean
+    repaired?: boolean
+  } | null
+  scanDiagnostics?: {
+    traceId?: string
+    responseReadyAtMs?: number
+    mainDurationMs?: number
+    workerDurationMs?: number
+    timeBasisRepair?: Record<string, unknown>
+  }
+}
+
+let songListScanDiagnosticSequence = 0
+
+const createSongListScanTraceId = () => {
+  songListScanDiagnosticSequence += 1
+  return `renderer-${Date.now().toString(36)}-${songListScanDiagnosticSequence.toString(36)}`
+}
+
+const writeSongListScanDiagnostic = (
+  level: 'info' | 'error',
+  message: string,
+  details: Record<string, unknown>
+) => {
+  try {
+    window.electron.ipcRenderer.send('outputLog', {
+      level,
+      source: 'renderer',
+      scope: 'playlist-scan-diagnostic',
+      message: `${message} ${JSON.stringify(details)}`
+    })
+  } catch {}
 }
 
 export function useSongsLoader(params: UseSongsLoaderParams) {
@@ -170,7 +210,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     backgroundRefreshTimer = setTimeout(() => {
       backgroundRefreshTimer = null
       if (!loadGenerationGuard.isCurrent(ticket)) return
-      void loadSongListFromDisk(songListPath, ticket).catch(() => {})
+      void loadSongListFromDisk(songListPath, ticket, {
+        diagnosticSource: 'background-refresh'
+      }).catch(() => {})
     }, 1500)
   }
 
@@ -544,11 +586,55 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     ticket: SongListLoadTicket,
     options?: LoadSongListFromDiskOptions
   ) => {
-    const result = await window.electron.ipcRenderer.invoke(
-      'scanSongList',
+    const traceId = createSongListScanTraceId()
+    const diagnosticSource = options?.diagnosticSource || 'disk-load'
+    const rendererStartedAtMs = Date.now()
+    writeSongListScanDiagnostic('info', 'request started', {
+      traceId,
+      diagnosticSource,
+      songListUUID: ticket.songListUUID,
       songListPath,
-      ticket.songListUUID
-    )
+      rendererStartedAtMs
+    })
+    let result: SongListScanResult
+    try {
+      result = (await window.electron.ipcRenderer.invoke(
+        'scanSongList',
+        songListPath,
+        ticket.songListUUID,
+        {
+          traceId,
+          source: diagnosticSource
+        }
+      )) as SongListScanResult
+    } catch (error) {
+      writeSongListScanDiagnostic('error', 'request failed', {
+        traceId,
+        diagnosticSource,
+        songListUUID: ticket.songListUUID,
+        rendererDurationMs: Date.now() - rendererStartedAtMs,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      throw error
+    }
+    const receivedAtMs = Date.now()
+    const responseReadyAtMs = Number(result.scanDiagnostics?.responseReadyAtMs)
+    writeSongListScanDiagnostic('info', 'response received', {
+      traceId: result.scanDiagnostics?.traceId || traceId,
+      diagnosticSource,
+      songListUUID: ticket.songListUUID,
+      trackCount: Array.isArray(result.scanData) ? result.scanData.length : 0,
+      rendererStartedAtMs,
+      receivedAtMs,
+      responseReadyAtMs: Number.isFinite(responseReadyAtMs) ? responseReadyAtMs : null,
+      rendererDurationMs: receivedAtMs - rendererStartedAtMs,
+      mainDurationMs: result.scanDiagnostics?.mainDurationMs,
+      workerDurationMs: result.scanDiagnostics?.workerDurationMs,
+      deliveryAfterMainReadyMs: Number.isFinite(responseReadyAtMs)
+        ? Math.max(0, receivedAtMs - responseReadyAtMs)
+        : null,
+      timeBasisRepair: result.scanDiagnostics?.timeBasisRepair
+    })
     if (!loadGenerationGuard.isCurrent(ticket)) return false
     const scanData = Array.isArray(result?.scanData) ? result.scanData : []
     const loadedUUID = String(result?.songListUUID || '')
@@ -746,7 +832,9 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
           loadingShow.value = false
         }
         if (options.waitForFreshAnalysisFields === true) {
-          await loadSongListFromDisk(songListPath, ticket)
+          await loadSongListFromDisk(songListPath, ticket, {
+            diagnosticSource: 'fresh-analysis'
+          })
           return
         }
         // 内存快照只负责立即展示；磁盘校验放到后台，不能拿一次慢盘遍历卡住窗口。
@@ -762,7 +850,8 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
 
     try {
       await loadSongListFromDisk(songListPath, ticket, {
-        forceNotifySongSearchDirty: true
+        forceNotifySongSearchDirty: true,
+        diagnosticSource: 'foreground-open'
       })
     } finally {
       clearTimeout(loadingSetTimeout)

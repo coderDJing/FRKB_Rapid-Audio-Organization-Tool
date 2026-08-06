@@ -130,6 +130,11 @@ export const resolveAudioTimeBasisOffsetMsForFile = async (filePath: string) => 
   return await promise
 }
 
+export const hasCachedAudioTimeBasisOffsetMsForFile = (filePath: string) => {
+  const cacheKey = normalizeLookupKey(path.resolve(filePath))
+  return Boolean(cacheKey && timeBasisOffsetCache.has(cacheKey))
+}
+
 export const resolveAudioFirstBeatTimelineMs = (
   firstBeatAudioMs: number,
   timeBasisOffsetMs: number
