@@ -61,6 +61,7 @@ const buildPioneerSongMenuGroups = (canRemoveTracksFromDesktopPlaylist: boolean)
   groups.push([{ menuName: 'similarTracks.menu' }])
   groups.push([{ menuName: 'fingerprints.analyzeAndAdd' }])
   groups.push([{ menuName: 'tracks.clearTrackCache' }])
+  groups.push([{ menuName: 'stemSeparation.menu' }])
   return groups
 }
 
@@ -149,6 +150,15 @@ export const usePioneerSongContextMenu = (params: UsePioneerSongContextMenuParam
           }
         )
         return
+      case 'stemSeparation.menu': {
+        const { default: openLibraryStemSeparationDialog } =
+          await import('@renderer/components/libraryStemSeparationDialog')
+        await openLibraryStemSeparationDialog({
+          filePath: song.filePath,
+          songTitle: song.title
+        })
+        return
+      }
       case 'tracks.clearTrackCache':
         if (!existingTracks.length) {
           await showSelectedMissingHint()

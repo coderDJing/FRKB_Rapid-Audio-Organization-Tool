@@ -6,8 +6,10 @@ import { normalizeMixtapeStemMode } from '../shared/mixtapeStemMode'
 
 const ITEM_TABLE = 'mixtape_items'
 const STEM_ASSET_TABLE = 'library_stem_assets'
+const LEGACY_STEM_ASSET_TABLE = 'mixtape_stem_assets'
+const STEM_WAVEFORM_CACHE_TABLE = 'mixtape_stem_waveform_cache'
 
-export type MixtapeStemStatus = 'pending' | 'running' | 'ready' | 'failed'
+export type MixtapeStemStatus = 'idle' | 'pending' | 'running' | 'ready' | 'failed'
 
 export type MixtapeStemSummary = Record<MixtapeStemStatus, number>
 
@@ -67,6 +69,7 @@ type MixtapeTrackStemStatusRecord = {
 }
 
 const DEFAULT_STEM_SUMMARY: MixtapeStemSummary = {
+  idle: 0,
   pending: 0,
   running: 0,
   ready: 0,
@@ -77,7 +80,13 @@ const normalizeStemStatus = (
   value: unknown,
   fallback: MixtapeStemStatus = 'pending'
 ): MixtapeStemStatus => {
-  if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+  if (
+    value === 'idle' ||
+    value === 'pending' ||
+    value === 'running' ||
+    value === 'ready' ||
+    value === 'failed'
+  ) {
     return value
   }
   return fallback
@@ -468,6 +477,54 @@ export function upsertMixtapeItemStemStateById(entries: MixtapeItemStemStatePatc
   } catch (error) {
     log.error('[sqlite] mixtape item stem state upsert failed', error)
     return { updated: 0 }
+  }
+}
+
+export function resetMixtapeStemSessionState(): {
+  assetsDeleted: number
+  itemsReset: number
+} {
+  const db = getLibraryDb()
+  if (!db) return { assetsDeleted: 0, itemsReset: 0 }
+  try {
+    return db.transaction(() => {
+      const assetsDeleted =
+        Number(db.prepare(`DELETE FROM ${STEM_ASSET_TABLE}`).run().changes || 0) +
+        Number(db.prepare(`DELETE FROM ${LEGACY_STEM_ASSET_TABLE}`).run().changes || 0)
+      db.prepare(`DELETE FROM ${STEM_WAVEFORM_CACHE_TABLE}`).run()
+      const rows = db
+        .prepare(
+          `SELECT i.id, i.info_json
+           FROM ${ITEM_TABLE} i
+           INNER JOIN mixtape_projects p ON p.playlist_uuid = i.playlist_uuid
+           WHERE p.mix_mode = 'stem'`
+        )
+        .all() as Array<{ id?: string | null; info_json?: string | null }>
+      const updateStmt = db.prepare(`UPDATE ${ITEM_TABLE} SET info_json = ? WHERE id = ?`)
+      const now = Date.now()
+      let itemsReset = 0
+      for (const row of rows) {
+        const itemId = normalizeText(row?.id, 80)
+        if (!itemId) continue
+        const info = parseInfoJson(row?.info_json)
+        info.stemStatus = 'idle'
+        delete info.stemError
+        delete info.stemReadyAt
+        delete info.stemModel
+        delete info.stemVersion
+        delete info.stemVocalPath
+        delete info.stemInstPath
+        delete info.stemBassPath
+        delete info.stemDrumsPath
+        info.stemUpdatedAt = now
+        updateStmt.run(JSON.stringify(info), itemId)
+        itemsReset += 1
+      }
+      return { assetsDeleted, itemsReset }
+    })()
+  } catch (error) {
+    log.error('[sqlite] reset mixtape stem session state failed', { error })
+    return { assetsDeleted: 0, itemsReset: 0 }
   }
 }
 

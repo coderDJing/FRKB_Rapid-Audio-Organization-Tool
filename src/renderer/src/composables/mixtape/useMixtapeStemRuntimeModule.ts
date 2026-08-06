@@ -19,6 +19,7 @@ type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 type ConfirmDialogFn = typeof import('@renderer/components/confirmDialog').default
 
 export type MixtapeStemSummary = {
+  idle: number
   pending: number
   running: number
   ready: number
@@ -78,6 +79,7 @@ type StemRuntimeProgressPayload = {
 const STEM_RUNTIME_PROGRESS_MAX_VISIBLE_ITEMS = 6
 
 export const createEmptyStemSummary = (): MixtapeStemSummary => ({
+  idle: 0,
   pending: 0,
   running: 0,
   ready: 0,
@@ -99,7 +101,13 @@ export const createUseMixtapeStemRuntimeModule = (
   ): RendererMixtapeStemProfile => normalizeMixtapeStemProfile(value, fallback)
 
   const normalizeMixtapeStemStatus = (value: unknown): MixtapeStemStatus => {
-    if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+    if (
+      value === 'idle' ||
+      value === 'pending' ||
+      value === 'running' ||
+      value === 'ready' ||
+      value === 'failed'
+    ) {
       return value
     }
     return 'ready'
@@ -128,7 +136,7 @@ export const createUseMixtapeStemRuntimeModule = (
         ...track,
         stemStatus
       }
-      if (stemStatus === 'pending' || stemStatus === 'running') {
+      if (stemStatus === 'idle' || stemStatus === 'pending' || stemStatus === 'running') {
         delete nextTrack.stemError
         delete nextTrack.stemReadyAt
         delete nextTrack.stemVocalPath
@@ -163,6 +171,7 @@ export const createUseMixtapeStemRuntimeModule = (
   const normalizeStemSummary = (value: unknown): MixtapeStemSummary => {
     const raw = value && typeof value === 'object' ? (value as Record<string, unknown>) : {}
     return {
+      idle: normalizeStemSummaryValue(raw.idle),
       pending: normalizeStemSummaryValue(raw.pending),
       running: normalizeStemSummaryValue(raw.running),
       ready: normalizeStemSummaryValue(raw.ready),

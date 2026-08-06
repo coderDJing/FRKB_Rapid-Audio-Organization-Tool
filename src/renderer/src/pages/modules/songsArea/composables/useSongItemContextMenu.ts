@@ -429,6 +429,15 @@ export function useSongItemContextMenu(
         }
         return null
       }
+      case 'stemSeparation.menu': {
+        const { default: openLibraryStemSeparationDialog } =
+          await import('@renderer/components/libraryStemSeparationDialog')
+        await openLibraryStemSeparationDialog({
+          filePath: song.filePath,
+          songTitle: song.title
+        })
+        return null
+      }
       case 'similarTracks.menu': {
         const seeds = resolveSelectedSongs()
         if (!seeds.length) return null

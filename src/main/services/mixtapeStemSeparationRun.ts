@@ -54,6 +54,20 @@ const {
   resolveDemucsDeviceArg
 } = probe
 
+const STEM_INFERENCE_PROGRESS_MAX_PERCENT = 94
+
+const parseStemRenderingStage = (line: string): { completed: number; total: number } | null => {
+  const match = String(line || '')
+    .trim()
+    .match(/^FRKB_STEM_STAGE=rendering:(\d+)\/(\d+)$/)
+  if (!match) return null
+  const completed = Number(match[1])
+  const total = Number(match[2])
+  if (!Number.isInteger(completed) || !Number.isInteger(total) || total <= 0) return null
+  if (completed < 0 || completed > total) return null
+  return { completed, total }
+}
+
 const resolveDemucsBootstrapPath = () =>
   path.join(resolveBundledDemucsBootstrapDirPath(), 'mixtape_demucs_bootstrap.py')
 
@@ -458,6 +472,7 @@ export const runStemSeparation = async (params: {
   let selectedDevice: MixtapeStemComputeDevice | null = null
   let selectedDemucsModelName = ''
   let lastModelError: unknown = null
+  let highestProgressPercent = 0
   try {
     for (let modelIndex = 0; modelIndex < demucsModelCandidates.length; modelIndex += 1) {
       const demucsModelName = demucsModelCandidates[modelIndex]
@@ -510,25 +525,62 @@ export const runStemSeparation = async (params: {
           etaSec: number | null
         }) => {
           const now = Date.now()
-          const percent = Math.max(0, Math.min(100, Math.round(parsed.percent)))
-          const shouldForceEmit = percent === 0 || percent === 100
-          if (!shouldForceEmit) {
+          const reportedPercent = Math.max(0, Math.min(100, Math.round(parsed.percent)))
+          const percent = Math.min(STEM_INFERENCE_PROGRESS_MAX_PERCENT, reportedPercent)
+          if (percent < highestProgressPercent) return
+          const isInitialProgress = percent === 0 && highestProgressPercent === 0
+          if (!isInitialProgress) {
             const noPercentChange = percent === lastProgressPercent
             if (noPercentChange && now - lastProgressEmitAt < 2000) return
           }
+          highestProgressPercent = percent
           lastProgressEmitAt = now
           lastProgressPercent = percent
           params.onProgress?.({
             device,
+            stage: 'separating',
             percent,
+            stageCompleted: null,
+            stageTotal: null,
             processedSec: parsed.processedSec,
             totalSec: parsed.totalSec,
             etaSec: parsed.etaSec
           })
         }
         const handleStderrChunk = (chunk: string) => {
+          const emitRenderingProgress = (stage: { completed: number; total: number }) => {
+            const completed = Math.max(0, Math.min(stage.total, stage.completed))
+            const total = Math.max(1, stage.total)
+            const percent = STEM_INFERENCE_PROGRESS_MAX_PERCENT + (completed / total) * 2
+            if (percent < highestProgressPercent) return
+            highestProgressPercent = percent
+            lastProgressEmitAt = Date.now()
+            lastProgressPercent = percent
+            params.onProgress?.({
+              device,
+              stage: 'rendering',
+              percent,
+              stageCompleted: completed,
+              stageTotal: total,
+              processedSec:
+                Number.isFinite(Number(inputDurationSec)) && Number(inputDurationSec) > 0
+                  ? Number(inputDurationSec)
+                  : null,
+              totalSec:
+                Number.isFinite(Number(inputDurationSec)) && Number(inputDurationSec) > 0
+                  ? Number(inputDurationSec)
+                  : null,
+              etaSec: null
+            })
+          }
+
           const chunks = chunk.split(/[\r\n]+/)
           for (const line of chunks) {
+            const renderingStage = parseStemRenderingStage(line)
+            if (renderingStage) {
+              emitRenderingProgress(renderingStage)
+              continue
+            }
             const parsed = parseDemucsProgressText(line)
             if (!parsed) continue
             emitProgress(parsed)
@@ -735,7 +787,34 @@ export const runStemSeparation = async (params: {
     await fs.promises.rm(bootstrapInputDir, { recursive: true, force: true }).catch(() => {})
     throw error
   }
+  const completedDevice = selectedDevice
+  const emitPostInferenceProgress = (progress: {
+    stage: 'validating' | 'saving' | 'cleaning'
+    percent: number
+    stageCompleted: number | null
+    stageTotal: number | null
+  }) => {
+    params.onProgress?.({
+      device: completedDevice,
+      stage: progress.stage,
+      percent: progress.percent,
+      stageCompleted: progress.stageCompleted,
+      stageTotal: progress.stageTotal,
+      processedSec:
+        Number.isFinite(inputDurationSec) && Number(inputDurationSec) > 0 ? inputDurationSec : null,
+      totalSec:
+        Number.isFinite(inputDurationSec) && Number(inputDurationSec) > 0 ? inputDurationSec : null,
+      etaSec: null
+    })
+  }
+  let stemAssetsWritten = false
   try {
+    emitPostInferenceProgress({
+      stage: 'validating',
+      percent: 97,
+      stageCompleted: null,
+      stageTotal: null
+    })
     const vocalsPath = resolveDemucsRawStemPath({
       rawOutputRoot,
       model: selectedDemucsModelName,
@@ -770,10 +849,28 @@ export const runStemSeparation = async (params: {
     const instOutputPath = path.join(stemCacheDir, 'inst.wav')
     const drumsOutputPath = path.join(stemCacheDir, 'drums.wav')
     const bassOutputPath = path.join(stemCacheDir, 'bass.wav')
-    await fs.promises.copyFile(vocalsPath, vocalOutputPath)
-    await fs.promises.copyFile(drumsPath, drumsOutputPath)
-    await fs.promises.copyFile(bassPath, bassOutputPath)
-    await fs.promises.copyFile(otherPath, instOutputPath)
+    const stemOutputs = [
+      [vocalsPath, vocalOutputPath],
+      [otherPath, instOutputPath],
+      [bassPath, bassOutputPath],
+      [drumsPath, drumsOutputPath]
+    ] as const
+    emitPostInferenceProgress({
+      stage: 'saving',
+      percent: 98,
+      stageCompleted: 0,
+      stageTotal: stemOutputs.length
+    })
+    for (const [index, [sourcePath, outputPath]] of stemOutputs.entries()) {
+      await fs.promises.copyFile(sourcePath, outputPath)
+      emitPostInferenceProgress({
+        stage: 'saving',
+        percent: 98 + (index + 1) / stemOutputs.length,
+        stageCompleted: index + 1,
+        stageTotal: stemOutputs.length
+      })
+    }
+    stemAssetsWritten = true
     return {
       vocalPath: vocalOutputPath,
       instPath: instOutputPath,
@@ -781,7 +878,31 @@ export const runStemSeparation = async (params: {
       drumsPath: drumsOutputPath
     }
   } finally {
+    if (stemAssetsWritten) {
+      emitPostInferenceProgress({
+        stage: 'cleaning',
+        percent: 99,
+        stageCompleted: 0,
+        stageTotal: 2
+      })
+    }
     await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
+    if (stemAssetsWritten) {
+      emitPostInferenceProgress({
+        stage: 'cleaning',
+        percent: 99,
+        stageCompleted: 1,
+        stageTotal: 2
+      })
+    }
     await fs.promises.rm(bootstrapInputDir, { recursive: true, force: true }).catch(() => {})
+    if (stemAssetsWritten) {
+      emitPostInferenceProgress({
+        stage: 'cleaning',
+        percent: 99,
+        stageCompleted: 2,
+        stageTotal: 2
+      })
+    }
   }
 }

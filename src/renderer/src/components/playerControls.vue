@@ -452,6 +452,18 @@ const handleConvertFormat = async () => {
   }
 }
 
+const handleStemSeparation = async () => {
+  const song = runtime.playingData.playingSong
+  if (!song?.filePath) return
+  closeMoreMenu()
+  const { default: openLibraryStemSeparationDialog } =
+    await import('@renderer/components/libraryStemSeparationDialog')
+  await openLibraryStemSeparationDialog({
+    filePath: song.filePath,
+    songTitle: song.title
+  })
+}
+
 const handleClearTrackCache = async () => {
   const filePath = runtime.playingData.playingSong?.filePath
   if (!filePath) return
@@ -861,6 +873,9 @@ onUnmounted(() => {
         <div style="padding: 5px 5px">
           <div class="menuButton" @click="handleClearTrackCache()">
             <span>{{ t('tracks.clearTrackCache') }}</span>
+          </div>
+          <div class="menuButton" @click="handleStemSeparation()">
+            <span>{{ t('stemSeparation.menu') }}</span>
           </div>
         </div>
       </div>

@@ -9,7 +9,12 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from mixtape_demucs_bootstrap import _maybe_import_directml, _patch_torch_load, _save_wav
+from mixtape_demucs_bootstrap import (
+    _emit_stem_stage,
+    _maybe_import_directml,
+    _patch_torch_load,
+    _save_wav,
+)
 
 
 STATE = {
@@ -178,8 +183,11 @@ def _run_infer(payload):
     sources = sources + ref.mean()
 
     target_dir = output_dir / model_name
-    for source, name in zip(sources, model.sources):
+    total_sources = len(model.sources)
+    _emit_stem_stage("rendering", 0, total_sources)
+    for index, (source, name) in enumerate(zip(sources, model.sources), start=1):
         _save_wav(target_dir / f"{name}.wav", source, model.samplerate)
+        _emit_stem_stage("rendering", index, total_sources)
 
 
 def _handle_request(message):

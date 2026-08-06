@@ -38,7 +38,7 @@ export type MixtapeRawItem = {
 export type MixtapeMixMode = 'eq' | 'stem'
 export type MixtapeStemMode = typeof FIXED_MIXTAPE_STEM_MODE
 export type MixtapeStemProfile = 'quality'
-export type MixtapeStemStatus = 'pending' | 'running' | 'ready' | 'failed'
+export type MixtapeStemStatus = 'idle' | 'pending' | 'running' | 'ready' | 'failed'
 export type MixtapeWaveformStemId = 'vocal' | 'inst' | 'bass' | 'drums'
 
 export type MixtapeEnvelopeParamId =
@@ -107,7 +107,7 @@ export type MixtapeTrack = {
   timeBasisOffsetMs?: number
   // 只读歌曲网格快照；项目数据库不再持久化网格副本
   beatGridMap?: SongBeatGridMapV2
-  // Stem 素材状态（pending/running/ready/failed）
+  // Stem 素材状态（idle/pending/running/ready/failed）
   stemStatus?: MixtapeStemStatus
   stemError?: string
   stemReadyAt?: number

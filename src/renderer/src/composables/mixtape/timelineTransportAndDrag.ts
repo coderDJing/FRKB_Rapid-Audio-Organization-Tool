@@ -164,7 +164,13 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     return Number(numeric.toFixed(4))
   }
   const normalizeMixtapeStemStatus = (value: unknown): MixtapeStemStatus => {
-    if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+    if (
+      value === 'idle' ||
+      value === 'pending' ||
+      value === 'running' ||
+      value === 'ready' ||
+      value === 'failed'
+    ) {
       return value
     }
     return 'ready'

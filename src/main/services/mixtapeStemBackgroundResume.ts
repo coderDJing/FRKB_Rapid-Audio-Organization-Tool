@@ -106,7 +106,7 @@ const collectBackgroundResumeGroups = (
     if (!filePath || !fs.existsSync(filePath)) continue
 
     const stemStatus = resolveMixtapeStemStatusFromInfo(row?.info_json)
-    if (stemStatus === 'ready') continue
+    if (stemStatus === 'ready' || stemStatus === 'idle') continue
 
     if (isNewPlaylist) {
       playlistSet.add(playlistId)

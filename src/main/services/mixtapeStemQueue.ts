@@ -27,6 +27,11 @@ import {
 import { findSongListRoot } from './cacheMaintenance'
 import { computeLibraryStemSourceSignature, getLibraryRootAbs } from './libraryStemAssetStorage'
 import { runStemSeparation } from './mixtapeStemSeparationRun'
+import {
+  configureLibraryStemSeparationService,
+  createLibraryStemSnapshot,
+  notifyLibraryStemStatus
+} from './libraryStemSeparationService'
 import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
 import { isLibraryMergeMutationLocked } from './libraryMerge/mutationGate'
 import { getCachedStemDeviceProbeSnapshot, probeDemucsDevices } from './mixtapeStemSeparationProbe'
@@ -44,7 +49,6 @@ import {
 
 const DEFAULT_STEM_MODEL = resolveMixtapeStemModelByProfile(DEFAULT_MIXTAPE_STEM_PROFILE)
 const DEFAULT_STEM_VERSION = 'demucs-waveform-builtin-20260313-stem-v2'
-
 type MixtapeStemQueueTarget = {
   playlistId: string
   itemIds: string[]
@@ -295,7 +299,10 @@ const notifyStemRuntimeProgress = (params: {
   filePath?: string
   model?: string
   device: MixtapeStemComputeDevice
+  stage: 'separating' | 'rendering' | 'validating' | 'saving' | 'cleaning'
   percent: number
+  stageCompleted: number | null
+  stageTotal: number | null
   processedSec: number | null
   totalSec: number | null
   etaSec: number | null
@@ -314,7 +321,10 @@ const notifyStemRuntimeProgress = (params: {
       filePath: normalizeFilePath(params.filePath),
       model: normalizeText(params.model, 128) || null,
       device: params.device,
+      stage: params.stage,
       percent,
+      stageCompleted: normalizeNumberOrNull(params.stageCompleted),
+      stageTotal: normalizeNumberOrNull(params.stageTotal),
       processedSec: normalizeNumberOrNull(params.processedSec),
       totalSec: normalizeNumberOrNull(params.totalSec),
       etaSec: normalizeNumberOrNull(params.etaSec),
@@ -618,7 +628,6 @@ const runQueueLoop = () => {
 
 const processQueueJob = async (job: MixtapeStemQueueJob) => {
   const targets = buildQueueTargets(job)
-  if (!targets.length) return
   upsertItemStemStatus(targets, 'running', {
     stemError: null,
     stemModel: job.model,
@@ -640,6 +649,14 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
     errorCode: null,
     errorMessage: null
   })
+  notifyLibraryStemStatus(
+    createLibraryStemSnapshot({
+      filePath: job.filePath,
+      stemMode: job.stemMode,
+      model: job.model,
+      status: 'running'
+    })
+  )
   try {
     const separation = await runStemSeparation({
       filePath: job.filePath,
@@ -666,12 +683,31 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
             filePath: job.filePath,
             model: job.model,
             device: progress.device,
+            stage: progress.stage,
             percent: progress.percent,
+            stageCompleted: progress.stageCompleted,
+            stageTotal: progress.stageTotal,
             processedSec: progress.processedSec,
             totalSec: progress.totalSec,
             etaSec: progress.etaSec
           })
         }
+        notifyLibraryStemStatus(
+          createLibraryStemSnapshot({
+            filePath: job.filePath,
+            stemMode: job.stemMode,
+            model: job.model,
+            status: 'running',
+            percent: progress.percent,
+            device: progress.device,
+            stage: progress.stage,
+            stageCompleted: progress.stageCompleted,
+            stageTotal: progress.stageTotal,
+            processedSec: progress.processedSec,
+            totalSec: progress.totalSec,
+            etaSec: progress.etaSec
+          })
+        )
       }
     })
     const requiredPaths = resolveAssetRequiredPaths(job.stemMode, separation)
@@ -703,17 +739,30 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
       stemDrumsPath: separation.drumsPath || null,
       filePath: job.filePath
     })
-    prewarmStemWaveformBundleFromPaths({
-      libraryRoot: job.libraryRoot,
-      sourceFilePath: job.filePath,
-      stemMode: job.stemMode,
-      stemModel: job.model,
-      stemVersion: job.stemVersion,
-      vocalPath: separation.vocalPath || null,
-      instPath: separation.instPath || null,
-      bassPath: separation.bassPath || null,
-      drumsPath: separation.drumsPath || null
-    })
+    if (job.targets.size > 0)
+      prewarmStemWaveformBundleFromPaths({
+        libraryRoot: job.libraryRoot,
+        sourceFilePath: job.filePath,
+        stemMode: job.stemMode,
+        stemModel: job.model,
+        stemVersion: job.stemVersion,
+        vocalPath: separation.vocalPath || null,
+        instPath: separation.instPath || null,
+        bassPath: separation.bassPath || null,
+        drumsPath: separation.drumsPath || null
+      })
+    notifyLibraryStemStatus(
+      createLibraryStemSnapshot({
+        filePath: job.filePath,
+        stemMode: job.stemMode,
+        model: job.model,
+        status: 'ready',
+        vocalPath: separation.vocalPath,
+        instPath: separation.instPath,
+        bassPath: separation.bassPath,
+        drumsPath: separation.drumsPath
+      })
+    )
   } catch (error) {
     const errorCode = getErrorCode(error) || 'STEM_SPLIT_FAILED'
     const errorMessage = normalizeText(
@@ -749,6 +798,16 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
       filePath: job.filePath,
       errorCode
     })
+    notifyLibraryStemStatus(
+      createLibraryStemSnapshot({
+        filePath: job.filePath,
+        stemMode: job.stemMode,
+        model: job.model,
+        status: 'failed',
+        errorCode,
+        errorMessage
+      })
+    )
   }
 }
 
@@ -779,6 +838,29 @@ const resolveLibraryRootForFile = async (filePath: string): Promise<string> => {
   } catch {}
   return normalizeFilePath(path.dirname(normalizedPath))
 }
+
+const getLibraryStemQueueJobStatus = (jobKey: string): 'idle' | 'pending' | 'running' => {
+  return inFlightJobMap.has(jobKey) ? 'running' : pendingJobMap.has(jobKey) ? 'pending' : 'idle'
+}
+
+configureLibraryStemSeparationService({
+  isMutationLocked: isLibraryMergeMutationLocked,
+  resolveLibraryRootForFile,
+  getJobStatus: getLibraryStemQueueJobStatus,
+  enqueueForegroundJob: (input) => {
+    const currentStatus = getLibraryStemQueueJobStatus(input.key)
+    if (currentStatus !== 'idle') return currentStatus
+    const job: MixtapeStemQueueJob = {
+      ...input,
+      source: 'foreground',
+      targets: new Map<string, Set<string>>()
+    }
+    pendingJobMap.set(job.key, job)
+    pendingQueue.push(job)
+    runQueueLoop()
+    return 'pending'
+  }
+})
 
 export async function enqueueMixtapeStemJobs(
   params: MixtapeStemEnqueueParams

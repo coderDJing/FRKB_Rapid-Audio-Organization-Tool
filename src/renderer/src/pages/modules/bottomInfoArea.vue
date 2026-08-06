@@ -55,6 +55,45 @@ type Task = {
   disableProgressTransition?: boolean
 }
 const tasks = ref<Task[]>([])
+const libraryStemTask = ref<LibraryStemTask | null>(null)
+let libraryStemRestoreRunning = false
+const libraryStemTaskVisible = computed(() => {
+  const task = libraryStemTask.value
+  return !!task?.minimized && (task.status === 'pending' || task.status === 'running')
+})
+const libraryStemTaskPercent = computed(() => {
+  const task = libraryStemTask.value
+  if (!task) return 0
+  return Math.max(0, Math.min(100, Math.round(task.percent)))
+})
+type LibraryStemTaskStatus = 'idle' | 'pending' | 'running' | 'ready' | 'failed'
+type LibraryStemTaskStage = 'separating' | 'rendering' | 'validating' | 'saving' | 'cleaning'
+type LibraryStemTask = {
+  filePath: string
+  songTitle: string
+  status: LibraryStemTaskStatus
+  percent: number
+  stage: LibraryStemTaskStage | null
+  stageCompleted: number | null
+  stageTotal: number | null
+  minimized: boolean
+  errorMessage: string | null
+}
+
+const libraryStemTaskText = computed(() => {
+  const task = libraryStemTask.value
+  if (!task || task.status === 'pending') return t('stemSeparation.pending')
+  if (task.stage === 'rendering' && task.stageCompleted !== null && task.stageTotal !== null) {
+    return t('stemSeparation.rendering', { done: task.stageCompleted, total: task.stageTotal })
+  }
+  if (task.stage === 'validating') return t('stemSeparation.validating')
+  if (task.stage === 'saving' && task.stageCompleted !== null && task.stageTotal !== null) {
+    return t('stemSeparation.saving', { done: task.stageCompleted, total: task.stageTotal })
+  }
+  if (task.stage === 'cleaning') return t('stemSeparation.cleaning')
+  return t('stemSeparation.running', { percent: libraryStemTaskPercent.value })
+})
+
 const analysisRuntimeTaskVisible = computed(() =>
   isAnalysisRuntimeDownloadActiveStatus(runtime.analysisRuntime.state.status)
 )
@@ -78,7 +117,11 @@ const cloudSyncTaskPercent = computed(() =>
   Math.max(0, Math.min(100, Math.round(runtime.cloudSync.percent || 0)))
 )
 const hasAnyVisibleTask = computed(
-  () => analysisRuntimeTaskVisible.value || cloudSyncTaskVisible.value || tasks.value.length > 0
+  () =>
+    analysisRuntimeTaskVisible.value ||
+    cloudSyncTaskVisible.value ||
+    libraryStemTaskVisible.value ||
+    tasks.value.length > 0
 )
 const showTotalRow = ref(!hasAnyVisibleTask.value)
 const cancelMenuTaskId = ref<string | null>(null)
@@ -448,6 +491,114 @@ const handleManualKeyAnalysisBatchStart = (_event: unknown, payload?: { filePath
 }
 window.electron.ipcRenderer.on('key-analysis:manual-batch-start', handleManualKeyAnalysisBatchStart)
 
+const normalizeLibraryStemTaskStatus = (value: unknown): LibraryStemTaskStatus | null => {
+  if (
+    value === 'idle' ||
+    value === 'pending' ||
+    value === 'running' ||
+    value === 'ready' ||
+    value === 'failed'
+  ) {
+    return value
+  }
+  return null
+}
+
+const normalizeLibraryStemTaskStage = (value: unknown): LibraryStemTaskStage | null => {
+  if (
+    value === 'separating' ||
+    value === 'rendering' ||
+    value === 'validating' ||
+    value === 'saving' ||
+    value === 'cleaning'
+  ) {
+    return value
+  }
+  return null
+}
+
+const restoreLibraryStemTask = async () => {
+  const task = libraryStemTask.value
+  if (!task || libraryStemRestoreRunning || !task.filePath) return
+  libraryStemRestoreRunning = true
+  libraryStemTask.value = { ...task, minimized: false }
+  try {
+    const { default: openLibraryStemSeparationDialog } =
+      await import('@renderer/components/libraryStemSeparationDialog')
+    await openLibraryStemSeparationDialog({
+      filePath: task.filePath,
+      songTitle: task.songTitle,
+      initialSnapshot: {
+        filePath: task.filePath,
+        status: task.status,
+        percent: task.percent,
+        stage: task.stage,
+        stageCompleted: task.stageCompleted,
+        stageTotal: task.stageTotal,
+        errorMessage: task.errorMessage
+      }
+    })
+  } finally {
+    libraryStemRestoreRunning = false
+  }
+}
+
+const applyLibraryStemTaskSnapshot = (payload: unknown) => {
+  if (!isRecord(payload)) return
+  const filePath = typeof payload.filePath === 'string' ? payload.filePath.trim() : ''
+  const task = libraryStemTask.value
+  if (!task || !task.minimized || !filePath) return
+  if (normalizeAnalysisPath(task.filePath) !== normalizeAnalysisPath(filePath)) return
+  const status = normalizeLibraryStemTaskStatus(payload.status)
+  if (!status) return
+  const stage = normalizeLibraryStemTaskStage(payload.stage)
+  const nextPercent = Math.max(0, Math.min(100, Math.round(Number(payload.percent) || 0)))
+  const previousStatus = task.status
+  task.status = status
+  task.percent =
+    status === 'ready'
+      ? 100
+      : previousStatus === 'running' && status === 'running'
+        ? Math.max(task.percent, nextPercent)
+        : nextPercent
+  task.stage = stage
+  task.stageCompleted = Number.isFinite(Number(payload.stageCompleted))
+    ? Number(payload.stageCompleted)
+    : null
+  task.stageTotal = Number.isFinite(Number(payload.stageTotal)) ? Number(payload.stageTotal) : null
+  task.errorMessage =
+    typeof payload.errorMessage === 'string' ? payload.errorMessage.trim() || null : null
+  if (status === 'ready' || status === 'failed') void restoreLibraryStemTask()
+}
+
+const handleLibraryStemMinimized = (event: Event) => {
+  const detail = event instanceof CustomEvent && isRecord(event.detail) ? event.detail : null
+  const filePath = typeof detail?.filePath === 'string' ? detail.filePath.trim() : ''
+  if (!filePath) return
+  libraryStemTask.value = {
+    filePath,
+    songTitle: typeof detail?.songTitle === 'string' ? detail.songTitle.trim() : '',
+    status: 'pending',
+    percent: 0,
+    stage: null,
+    stageCompleted: null,
+    stageTotal: null,
+    minimized: true,
+    errorMessage: null
+  }
+  void window.electron.ipcRenderer
+    .invoke('library-stem:get-status', { filePath })
+    .then(applyLibraryStemTaskSnapshot)
+    .catch(() => {})
+}
+
+const handleLibraryStemStatusUpdated = (_event: unknown, payload: unknown) => {
+  applyLibraryStemTaskSnapshot(payload)
+}
+
+window.addEventListener('library-stem:minimized', handleLibraryStemMinimized)
+window.electron.ipcRenderer.on('library-stem-status-updated', handleLibraryStemStatusUpdated)
+
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick)
 })
@@ -596,6 +747,11 @@ onBeforeUnmount(() => {
     'key-analysis:manual-batch-start',
     handleManualKeyAnalysisBatchStart
   )
+  window.removeEventListener('library-stem:minimized', handleLibraryStemMinimized)
+  window.electron?.ipcRenderer?.removeListener(
+    'library-stem-status-updated',
+    handleLibraryStemStatusUpdated
+  )
 })
 </script>
 <template>
@@ -640,6 +796,31 @@ onBeforeUnmount(() => {
         <div class="progress">
           <div class="progress-bar" :style="{ width: `${cloudSyncTaskPercent}%` }" />
         </div>
+      </div>
+    </div>
+    <div v-if="libraryStemTaskVisible" class="task-row task-row--library-stem">
+      <div class="spinner">
+        <div class="loading">
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+          <div></div>
+        </div>
+      </div>
+      <div class="label">
+        {{ libraryStemTaskText }}
+        <span>{{ libraryStemTaskPercent }}%</span>
+      </div>
+      <div class="container">
+        <div class="progress">
+          <div class="progress-bar" :style="{ width: `${libraryStemTaskPercent}%` }" />
+        </div>
+      </div>
+      <div class="actions">
+        <button class="task-btn" type="button" @click="restoreLibraryStemTask">
+          {{ t('stemSeparation.restore') }}
+        </button>
       </div>
     </div>
     <TransitionGroup

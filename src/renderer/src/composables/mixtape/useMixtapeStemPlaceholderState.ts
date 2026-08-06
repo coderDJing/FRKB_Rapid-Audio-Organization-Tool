@@ -24,7 +24,13 @@ type UseMixtapeStemPlaceholderStateOptions = {
 }
 
 const normalizeTrackStemStatus = (value: unknown): MixtapeStemStatus => {
-  if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+  if (
+    value === 'idle' ||
+    value === 'pending' ||
+    value === 'running' ||
+    value === 'ready' ||
+    value === 'failed'
+  ) {
     return value
   }
   return 'ready'
@@ -33,9 +39,9 @@ const normalizeTrackStemStatus = (value: unknown): MixtapeStemStatus => {
 const hasTrackStemAssetsReady = (track: MixtapeTrack) =>
   Boolean(
     String(track.stemVocalPath || '').trim() &&
-      String(track.stemInstPath || '').trim() &&
-      String(track.stemBassPath || '').trim() &&
-      String(track.stemDrumsPath || '').trim()
+    String(track.stemInstPath || '').trim() &&
+    String(track.stemBassPath || '').trim() &&
+    String(track.stemDrumsPath || '').trim()
   )
 
 const clampStemProgressPercent = (value: unknown) => {
@@ -114,9 +120,11 @@ export const useMixtapeStemPlaceholderState = ({
       next[trackId] = {
         kind: 'pending',
         label: t(
-          stemStatus === 'ready' && !stemAssetsReady
-            ? 'mixtape.stemTrackStatusPreparing'
-            : 'mixtape.stemTrackStatusQueued'
+          stemStatus === 'idle'
+            ? 'mixtape.stemTrackStatusIdle'
+            : stemStatus === 'ready' && !stemAssetsReady
+              ? 'mixtape.stemTrackStatusPreparing'
+              : 'mixtape.stemTrackStatusQueued'
         ),
         detail: t('mixtape.stemTrackSilentHint'),
         percent: null

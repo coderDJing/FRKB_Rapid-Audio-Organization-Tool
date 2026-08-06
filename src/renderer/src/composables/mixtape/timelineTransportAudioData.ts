@@ -34,7 +34,7 @@ import type {
   MixtapeTrack
 } from '@renderer/composables/mixtape/types'
 
-type MixtapeStemStatusValue = 'pending' | 'running' | 'ready' | 'failed'
+type MixtapeStemStatusValue = 'idle' | 'pending' | 'running' | 'ready' | 'failed'
 
 type TimelineSequentialLayoutEntry = {
   track: MixtapeTrack

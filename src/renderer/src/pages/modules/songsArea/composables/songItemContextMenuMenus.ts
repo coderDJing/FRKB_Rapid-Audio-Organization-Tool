@@ -73,7 +73,8 @@ export const createDefaultMenuArr = (songListUUID: string): IMenu[][] => [
   [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'tracks.editMetadata' }],
   [{ menuName: 'fingerprints.analyzeAndAdd' }],
   [{ menuName: 'tracks.convertFormat' }],
-  [{ menuName: 'tracks.clearTrackCache' }]
+  [{ menuName: 'tracks.clearTrackCache' }],
+  [{ menuName: 'stemSeparation.menu' }]
 ]
 
 export const createSetMenuArr = (songListUUID: string): IMenu[][] =>
@@ -103,7 +104,8 @@ export const createRecycleMenuArr = (): IMenu[][] => [
   [{ menuName: 'metadata.autoFillMenu' }, { menuName: 'tracks.editMetadata' }],
   [{ menuName: 'fingerprints.analyzeAndAdd' }],
   [{ menuName: 'tracks.convertFormat' }],
-  [{ menuName: 'tracks.clearTrackCache' }]
+  [{ menuName: 'tracks.clearTrackCache' }],
+  [{ menuName: 'stemSeparation.menu' }]
 ]
 
 export const createMixtapeMenuArr = (): IMenu[][] => [
@@ -119,7 +121,8 @@ export const createMixtapeMenuArr = (): IMenu[][] => [
   createNeteaseSearchMenu(),
   [{ menuName: 'similarTracks.menu' }],
   [{ menuName: 'tracks.editMetadata' }],
-  [{ menuName: 'tracks.clearTrackCache' }]
+  [{ menuName: 'tracks.clearTrackCache' }],
+  [{ menuName: 'stemSeparation.menu' }]
 ]
 
 export const withoutRecordingAnalysisMenus = (groups: IMenu[][]): IMenu[][] =>

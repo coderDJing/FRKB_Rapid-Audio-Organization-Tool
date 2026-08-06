@@ -7,6 +7,10 @@ from pathlib import Path
 import numpy as np
 
 
+def _emit_stem_stage(stage, completed, total):
+    print(f"FRKB_STEM_STAGE={stage}:{completed}/{total}", file=sys.stderr, flush=True)
+
+
 def _patch_torch_load():
     import torch
 
@@ -150,8 +154,11 @@ def _run_waveform_mode(payload):
     sources = sources + ref.mean()
 
     target_dir = output_dir / model_name
-    for source, name in zip(sources, model.sources):
+    total_sources = len(model.sources)
+    _emit_stem_stage("rendering", 0, total_sources)
+    for index, (source, name) in enumerate(zip(sources, model.sources), start=1):
         _save_wav(target_dir / "{}.wav".format(name), source, model.samplerate)
+        _emit_stem_stage("rendering", index, total_sources)
 
 
 def main():

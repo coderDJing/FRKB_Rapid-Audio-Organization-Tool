@@ -579,7 +579,13 @@ const normalizeInfoText = (value: unknown): string =>
   typeof value === 'string' ? value.trim() : ''
 
 const normalizeStemStatus = (value: unknown): MixtapeStemStatus => {
-  if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+  if (
+    value === 'idle' ||
+    value === 'pending' ||
+    value === 'running' ||
+    value === 'ready' ||
+    value === 'failed'
+  ) {
     return value
   }
   return 'ready'

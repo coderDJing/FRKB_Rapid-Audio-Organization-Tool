@@ -20,7 +20,13 @@ type UseMixtapeOutputAvailabilityParams = {
 
 const resolveStemStatus = (track: MixtapeTrack) => {
   const value = String(track.stemStatus || '').trim()
-  if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+  if (
+    value === 'idle' ||
+    value === 'pending' ||
+    value === 'running' ||
+    value === 'ready' ||
+    value === 'failed'
+  ) {
     return value
   }
   return 'ready'
@@ -29,9 +35,9 @@ const resolveStemStatus = (track: MixtapeTrack) => {
 const hasTrackStemAssetsReady = (track: MixtapeTrack) =>
   Boolean(
     String(track.stemVocalPath || '').trim() &&
-      String(track.stemInstPath || '').trim() &&
-      String(track.stemBassPath || '').trim() &&
-      String(track.stemDrumsPath || '').trim()
+    String(track.stemInstPath || '').trim() &&
+    String(track.stemBassPath || '').trim() &&
+    String(track.stemDrumsPath || '').trim()
   )
 
 export const useMixtapeOutputAvailability = (params: UseMixtapeOutputAvailabilityParams) => {

@@ -34,8 +34,8 @@ export const DEMUCS_PROFILE_OPTIONS: Record<
   { shifts: string; overlap: string; segmentSec: string }
 > = {
   quality: {
-    shifts: '1',
-    overlap: '0.25',
+    shifts: '4',
+    overlap: '0.5',
     segmentSec: '11'
   }
 }
@@ -47,13 +47,22 @@ export type MixtapeStemSeparationResult = {
 }
 
 export type MixtapeStemComputeDevice = 'cuda' | 'mps' | 'xpu' | 'directml' | 'cpu'
+export type MixtapeStemRuntimeStage =
+  | 'separating'
+  | 'rendering'
+  | 'validating'
+  | 'saving'
+  | 'cleaning'
 export type MixtapeStemCpuFallbackReasonCode =
   | 'gpu_unavailable'
   | 'gpu_failed'
   | 'gpu_backend_missing'
 export type MixtapeStemRuntimeProgress = {
   device: MixtapeStemComputeDevice
+  stage: MixtapeStemRuntimeStage
   percent: number
+  stageCompleted: number | null
+  stageTotal: number | null
   processedSec: number | null
   totalSec: number | null
   etaSec: number | null

@@ -52,7 +52,13 @@ const normalizeStemStatus = (
   value: unknown,
   fallback: MixtapeStemStatus = 'ready'
 ): MixtapeStemStatus => {
-  if (value === 'pending' || value === 'running' || value === 'ready' || value === 'failed') {
+  if (
+    value === 'idle' ||
+    value === 'pending' ||
+    value === 'running' ||
+    value === 'ready' ||
+    value === 'failed'
+  ) {
     return value
   }
   return fallback

@@ -24,6 +24,7 @@ import { migrateLibrarySchemaV35ToV36 } from '../librarySchemaV36Migration'
 import { migrateLibrarySchemaToV38 } from '../librarySchemaV37Migration'
 import { migrateLibrarySchemaV38ToV39 } from '../librarySchemaV38Migration'
 import { log } from '../log'
+import { clearLibraryStemSessionCacheOnStartup } from '../services/libraryStemSessionCache'
 
 const isConfiguredDevDatabase = (): boolean => {
   if (app.isPackaged) return false
@@ -131,6 +132,7 @@ export const prepareAndOpenMainWindow = async (): Promise<void> => {
     const list = await loadList(mode)
     store.databaseDir = store.settingConfig.databaseUrl
     store.songFingerprintList = Array.isArray(list) ? list : []
+    await clearLibraryStemSessionCacheOnStartup()
     // 创建主窗口
     startupWindow.setStage('opening-main-window')
     databaseSchemaMigrationWindow.close()
