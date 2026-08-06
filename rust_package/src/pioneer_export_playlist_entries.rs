@@ -184,14 +184,9 @@ pub(super) fn recover_complete_raw_playlist_entries(
       }
     }
   }
-  let Some((&indexed_last_entry_index, &indexed_last_track_id)) = indexed_entries.last_key_value()
-  else {
-    return;
-  };
-
   let mut raw_entries_by_index: BTreeMap<u32, Vec<RawPlaylistEntry>> = BTreeMap::new();
   for raw_entry in raw_entries {
-    if !track_map.contains_key(&raw_entry.track_id) {
+    if raw_entry.entry_index == 0 || !track_map.contains_key(&raw_entry.track_id) {
       continue;
     }
     raw_entries_by_index
@@ -202,6 +197,35 @@ pub(super) fn recover_complete_raw_playlist_entries(
   for entries in raw_entries_by_index.values_mut() {
     entries.sort_by_key(|entry| entry.location);
   }
+
+  if indexed_entries.is_empty() {
+    let Some((&last_entry_index, _)) = raw_entries_by_index.last_key_value() else {
+      return;
+    };
+    let mut recovered_entries = BTreeMap::new();
+    for entry_index in 1..=last_entry_index {
+      let Some(entries) = raw_entries_by_index.get(&entry_index) else {
+        return;
+      };
+      let Some(first_entry) = entries.first() else {
+        return;
+      };
+      if entries
+        .iter()
+        .any(|entry| entry.track_id != first_entry.track_id)
+      {
+        return;
+      }
+      recovered_entries.insert(entry_index, first_entry.track_id);
+    }
+    *playlist_entries = recovered_entries.into_iter().collect();
+    return;
+  }
+
+  let Some((&indexed_last_entry_index, &indexed_last_track_id)) = indexed_entries.last_key_value()
+  else {
+    return;
+  };
 
   let mut recovered_entries = indexed_entries;
   for entry_index in 1..=indexed_last_entry_index {
@@ -305,6 +329,60 @@ mod playlist_entry_recovery_tests {
         .map(|index| (index, index + 100))
         .collect::<Vec<_>>()
     );
+  }
+
+  #[test]
+  fn restores_a_complete_sequence_without_indexed_entries() {
+    let mut indexed_entries = Vec::new();
+    let raw_entries = vec![
+      RawPlaylistEntry {
+        entry_index: 1,
+        track_id: 101,
+        location: 100,
+      },
+      RawPlaylistEntry {
+        entry_index: 2,
+        track_id: 102,
+        location: 20,
+      },
+      RawPlaylistEntry {
+        entry_index: 3,
+        track_id: 103,
+        location: 30,
+      },
+    ];
+    let track_map = track_map(101..=103);
+
+    recover_complete_raw_playlist_entries(&mut indexed_entries, &raw_entries, &track_map);
+
+    assert_eq!(indexed_entries, vec![(1, 101), (2, 102), (3, 103)]);
+  }
+
+  #[test]
+  fn rejects_a_conflicting_complete_sequence_without_indexed_entries() {
+    let mut indexed_entries = Vec::new();
+    let raw_entries = vec![
+      RawPlaylistEntry {
+        entry_index: 1,
+        track_id: 101,
+        location: 10,
+      },
+      RawPlaylistEntry {
+        entry_index: 1,
+        track_id: 201,
+        location: 20,
+      },
+      RawPlaylistEntry {
+        entry_index: 2,
+        track_id: 102,
+        location: 30,
+      },
+    ];
+    let track_map = track_map([101, 102, 201]);
+
+    recover_complete_raw_playlist_entries(&mut indexed_entries, &raw_entries, &track_map);
+
+    assert!(indexed_entries.is_empty());
   }
 
   #[test]

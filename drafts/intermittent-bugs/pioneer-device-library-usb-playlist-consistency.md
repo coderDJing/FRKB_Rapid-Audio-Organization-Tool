@@ -2,12 +2,12 @@
 
 ## 当前状态
 
-- 状态：`候选修复待验收`
+- 状态：`持续维护`
 - 首次记录：2026-08-06
 - 当前源码版本：`1.2.2-rc.202608061042`
 - 影响范围：Rekordbox 导出的 Pioneer Device Library U 盘，尤其是同时存在 `export.pdb` 与 `exportLibrary.db` 的设备。
 - 当前结论：Device Library 的 PDB 歌单树和曲目是主数据；OneLibrary 仅在严格一致时补全，不能因 OneLibrary 缺少歌单而认定 PDB 歌单已删除。
-- 待完成验收：重启 FRKB 后，在真实页面确认 `Device Library / 未完Set / abyss` 的 24 首曲目与 Rekordbox 顺序一致。
+- 本次验收：根目录 `8.2` 已由用户在 FRKB 页面确认恢复为 32 首。`abyss` 的旧 24 首快照对应的 PDB 已被重新导出，后续若再排查必须以当前 Rekordbox 和当前文件哈希为准。
 
 本文是长期维护手册。每次遇到 U 盘歌单“消失、少曲、顺序错乱或标题错位”时，先按本文取证和交叉验证，不要直接改 UI、直接覆盖 PDB 条目，或把 OneLibrary 当成唯一真相。
 
@@ -67,16 +67,20 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | 2026-08-05 | `playlistId=121`，`无标题列表 (3)` | 18 首 | 仅 7 首（`12..18`） | 不存在该歌单 | 恢复连续 `1..18` | 已关闭，保留回归案例 |
 | 2026-08-06 | `playlistId=116`，`未完Set/abyss` | 24 首 | 8 首：`1,2,3,5..9` | 20 首且不完整 | 实盘原生读取为连续 `1..24`；第 5 首 `Afar (Joyhauser remix)`，第 6 首 `DHEA`，第 16 首 `Cancel Your Ego (Original Mix)`，第 24 首 `The Quick (Original Mix)` | 候选修复待 FRKB 页面验收 |
+| 2026-08-06 | `playlistId=115`，根目录 `8.2` | 32 首 | 0 首 | 未作为恢复依据 | 页尾有效条目完整覆盖 `1..32`，原生读取恢复 32 首；首首 `Liquid Feat. Fran`，第 4 首 `Shooting Stars (Extended Mix)`，尾首 `Euphoria (Original Mix)` | 已关闭：用户已在 FRKB 页面验收 |
 
 台账必须记录实际曲目数、至少一个中间位置和最后一首。只记录“数量一样”不足以证明顺序正确。
+
+同日后续取证发现 `export.pdb` 已重新写入，`abyss` 的当前原始序列变为 26 首，包含 `Changing Plans (Original Mix)` 和 `Sect Train (Original Mix)`。这不是旧 24 首快照可直接判定的代码回归；必须先由 Rekordbox 确认当前导出的实际曲目数，再决定是否需要继续修复。
 
 ## 下次现场排查流程
 
 ### 1. 先保护现场
 
 1. 记录 U 盘根目录、导出时间、Rekordbox 看到的歌单路径、`playlistId`、曲目数和至少 3 个位置的标题。
-2. 只读检查 `PIONEER/rekordbox/export.pdb`、可选的 `exportLibrary.db` 与 `exportExt.pdb`。不要让 FRKB、脚本或系统修复工具写回 U 盘。
-3. 不要因为 OneLibrary 报“未找到歌单”就从 Device Library 树中删除该节点。
+2. 同时记录 `export.pdb` 的 `LastWriteTime` 和 SHA-256；同一块 U 盘在 Rekordbox 再次导出后，曲目数、条目位置和页尾位图都可能变化。
+3. 只读检查 `PIONEER/rekordbox/export.pdb`、可选的 `exportLibrary.db` 与 `exportExt.pdb`。不要让 FRKB、脚本或系统修复工具写回 U 盘。
+4. 不要因为 OneLibrary 报“未找到歌单”就从 Device Library 树中删除该节点。
 
 ### 2. 直接读取 PDB，核对数量、连续索引和身份
 
@@ -102,6 +106,8 @@ console.log(JSON.stringify({
 - `continuous=false`：不能把结果视为已恢复，先保留现场并检查原始 PDB 页。
 - 数量相同但中间标题不同：优先查是否覆盖了已有 PDB 条目，以及是否漏用了页尾有效位图。
 - 第一个、中间位置和最后一个均相同：才可进入 FRKB 页面验收。
+
+在认定“新代码导致回归”前，先比较本次和上次记录的 `export.pdb` 时间戳与 SHA-256。哈希不同表示 Rekordbox 已生成新的现场数据，必须重新以当前 Rekordbox 页面为参照，不能拿旧的曲目数或旧顺序硬判。
 
 ### 3. 检查 FRKB 调用链和日志
 
@@ -157,16 +163,18 @@ pnpm run build
 
 本次源码验证结果：PDB 恢复单测 4 项通过，`npx vue-tsc --noEmit` 与 `pnpm run build` 通过；针对 `playlistId=116` 的真实 PDB 原生读取返回 24 首连续条目并通过上述关键位置核验。
 
-## 临时诊断和关闭条件
+## 临时诊断和单个案例关闭条件
 
 当前没有为本问题保留常驻非错误日志。只有在新的现场仍不能判定时，才临时增加经过阈值控制且可检索的 `log.txt` 诊断；页面验收后必须删除。
 
-将本文状态改为 `已关闭` 前，需要同时满足：
+将案例台账中的单个条目标记为 `已关闭` 前，需要同时满足：
 
 1. FRKB 页面与 Rekordbox 的数量、顺序和关键曲目身份一致；
 2. OneLibrary 缺失不再导致 Device Library 歌单消失或报误导性错误；
 3. 至少已对案例台账中的两个 PDB 结构完成原生读取回归；
 4. 无临时诊断日志遗留。
+
+本文是长期交叉验证手册，不因单个案例关闭而删除；新的现场问题应新增一行台账并记录对应的 `export.pdb` 时间戳和 SHA-256。
 
 ## 给下一次对话的接手指令
 
