@@ -539,9 +539,18 @@ impl HorizontalBrowseTransportEngine {
           ) else {
             continue;
           };
-          let target = self.deck_mut(deck);
-          target.current_sec = aligned_sec;
-          target.last_observed_at_ms = now_ms;
+          let phase_adjusted = (aligned_sec - target_current_sec).abs()
+            > HORIZONTAL_BROWSE_MASTER_TEMPO_PHASE_RESET_THRESHOLD_SEC;
+          {
+            let target = self.deck_mut(deck);
+            target.current_sec = aligned_sec;
+            target.last_observed_at_ms = now_ms;
+          }
+          if phase_adjusted
+            && horizontal_browse_transport_audio::should_use_master_tempo(self.deck(deck))
+          {
+            self.reset_and_prime_master_tempo_state(deck);
+          }
         }
       }
       self.recompute_distances();

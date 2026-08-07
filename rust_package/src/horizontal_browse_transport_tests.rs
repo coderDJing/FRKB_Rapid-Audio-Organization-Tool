@@ -196,6 +196,50 @@ fn negative_playhead_outputs_silence_until_zero_then_audio() {
 }
 
 #[test]
+fn time_basis_lead_in_does_not_jump_master_tempo_playhead_to_pcm_start() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  let playback_rate = 134.0 / 131.0;
+  let pcm_start_timeline_sec = 0.050_114;
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("time-basis-lead-in.mp3".to_string());
+    top.loaded_file_path = top.file_path.clone();
+    top.duration_sec = 20.0;
+    top.current_sec = 0.032;
+    top.last_observed_at_ms = -1.0;
+    top.playing = true;
+    top.playback_rate = playback_rate;
+    top.master_tempo_enabled = true;
+    top.time_basis_offset_ms = Some(pcm_start_timeline_sec * 1000.0);
+    top.sample_rate = 44_100;
+    top.channels = 1;
+    top.pcm_start_sec = 0.0;
+    top.pcm_data = Arc::new(vec![1.0; 44_100]);
+  }
+  engine.reset_and_prime_master_tempo_state(DeckId::Top);
+
+  let frame_step_sec = playback_rate / engine.output_sample_rate as f64;
+  let mut silent_frame_count = 0;
+  while engine.deck(DeckId::Top).current_sec < pcm_start_timeline_sec {
+    let before_sec = engine.deck(DeckId::Top).current_sec;
+    let (sample, _) = engine.sample_deck(DeckId::Top);
+    let after_sec = engine.deck(DeckId::Top).current_sec;
+    assert_eq!(sample, (0.0, 0.0));
+    assert!((after_sec - before_sec - frame_step_sec).abs() < 0.000001);
+    silent_frame_count += 1;
+    assert!(silent_frame_count < 1000);
+  }
+
+  assert!(silent_frame_count > 700);
+  assert!(engine.deck(DeckId::Top).current_sec - pcm_start_timeline_sec <= frame_step_sec);
+  let before_audio_sec = engine.deck(DeckId::Top).current_sec;
+  let _ = engine.sample_deck(DeckId::Top);
+  let after_audio_sec = engine.deck(DeckId::Top).current_sec;
+  assert!(after_audio_sec >= before_audio_sec);
+  assert!(after_audio_sec - before_audio_sec <= frame_step_sec + 0.000001);
+}
+
+#[test]
 fn fully_decoded_pcm_tail_stops_at_real_audio_end() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   engine.output_sample_rate = 4;

@@ -229,6 +229,52 @@ fn refresh_sync_state_keeps_dynamic_master_phase_across_clip_boundary() {
 }
 
 #[test]
+fn refresh_sync_state_reprime_master_tempo_after_phase_alignment() {
+  let mut engine = HorizontalBrowseTransportEngine::default();
+  engine.last_now_ms = 1000.0;
+  {
+    let top = engine.deck_mut(DeckId::Top);
+    top.file_path = Some("leader.mp3".to_string());
+    top.loaded_file_path = Some("leader.mp3".to_string());
+    top.bpm = Some(134.0);
+    top.first_beat_ms = Some(25.0);
+    top.duration_sec = 120.0;
+    top.current_sec = 10.105;
+    top.last_observed_at_ms = 1000.0;
+    top.playing = true;
+    top.playback_rate = 1.0;
+    install_loaded_test_pcm(top, 120);
+  }
+  {
+    let bottom = engine.deck_mut(DeckId::Bottom);
+    bottom.file_path = Some("follower.mp3".to_string());
+    bottom.loaded_file_path = Some("follower.mp3".to_string());
+    bottom.bpm = Some(131.0);
+    bottom.first_beat_ms = Some(56.0);
+    bottom.duration_sec = 120.0;
+    bottom.current_sec = 0.127;
+    bottom.last_observed_at_ms = 1000.0;
+    bottom.playing = true;
+    bottom.playback_rate = 134.0 / 131.0;
+    bottom.master_tempo_enabled = true;
+    install_loaded_test_pcm(bottom, 120);
+  }
+  engine.leader = Some(DeckId::Top);
+  engine.sync_enabled = [true, true];
+  engine.sync_lock = ["full", "full"];
+
+  engine.reset_and_prime_master_tempo_state(DeckId::Bottom);
+  engine.refresh_sync_state(true);
+  let aligned_sec = engine.deck(DeckId::Bottom).current_sec;
+  assert!(aligned_sec - 0.127 > 0.005);
+
+  let _ = engine.sample_deck(DeckId::Bottom);
+  let after_sample_sec = engine.deck(DeckId::Bottom).current_sec;
+  assert!(after_sample_sec >= aligned_sec);
+  assert!(after_sample_sec - aligned_sec < 0.001);
+}
+
+#[test]
 fn set_beat_grid_preserves_follower_full_sync_with_phase_compensation() {
   let mut engine = HorizontalBrowseTransportEngine::default();
   engine.last_now_ms = 1000.0;

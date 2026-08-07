@@ -387,12 +387,14 @@ fn sample_silent_lead_in(target: &mut DeckState, output_sample_rate: f64) -> boo
     target.current_sec = 0.0;
     return false;
   }
-  if target.current_sec >= 0.0 {
+  let pcm_start_timeline_sec =
+    super::HorizontalBrowseTransportEngine::audio_sec_to_timeline_sec(target, target.pcm_start_sec);
+  if target.current_sec >= pcm_start_timeline_sec {
     return false;
   }
   target.current_sec += clamp_rate(target.playback_rate) / output_sample_rate.max(1.0);
   target.last_observed_at_ms = -1.0;
-  if target.current_sec >= 0.0 {
+  if target.current_sec >= pcm_start_timeline_sec {
     reset_master_tempo_state(target);
   }
   true
