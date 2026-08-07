@@ -86,6 +86,20 @@
       "partialFailedHint": "建议先重启 FRKB 后再重试；若仍失败，再检查是否有进程占用相关文件。",
       "failed": "清除本地分析运行时失败"
     },
+    "ultraStemModel": {
+      "title": "超高质量 Stem 模型",
+      "desc": "在 Stem 工作台选择“超高质量分析”后按需下载；模型会在软件重启后保留，可随时删除释放空间。",
+      "statusChecking": "正在检查模型状态…",
+      "statusInstalled": "已安装 · {size}",
+      "statusNotInstalled": "尚未下载（请在 Stem 工作台中下载）",
+      "statusUnavailable": "暂时无法获取模型状态",
+      "diskUsage": "磁盘占用 {size}",
+      "removeButton": "删除超高质量模型",
+      "removeConfirmLine1": "将删除本机的超高质量 Stem 模型（约 {size}）。",
+      "removeConfirmLine2": "删除后不能使用“超高质量分析”，直到再次下载；已导出的 Stem 文件不会受影响。",
+      "removeBusy": "当前有 Stem 分离或模型下载任务，完成后才能删除模型。",
+      "removeFailed": "删除超高质量模型失败"
+    },
     "layout": {
       "headerHint": "按使用优先级重新整理，常改项目靠前，危险操作单独隔离。",
       "quickNavTitle": "快速定位",

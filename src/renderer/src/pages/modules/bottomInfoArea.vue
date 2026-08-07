@@ -71,8 +71,10 @@ type LibraryStemTaskStage = 'separating' | 'rendering' | 'validating' | 'saving'
 type LibraryStemTask = {
   filePath: string
   songTitle: string
+  model: string
   status: LibraryStemTaskStatus
   percent: number
+  activityConfirmedAt: number | null
   stage: LibraryStemTaskStage | null
   stageCompleted: number | null
   stageTotal: number | null
@@ -83,15 +85,21 @@ type LibraryStemTask = {
 const libraryStemTaskText = computed(() => {
   const task = libraryStemTask.value
   if (!task || task.status === 'pending') return t('stemSeparation.pending')
+  let text = ''
   if (task.stage === 'rendering' && task.stageCompleted !== null && task.stageTotal !== null) {
-    return t('stemSeparation.rendering', { done: task.stageCompleted, total: task.stageTotal })
+    text = t('stemSeparation.rendering', { done: task.stageCompleted, total: task.stageTotal })
+  } else if (task.stage === 'validating') {
+    text = t('stemSeparation.validating')
+  } else if (task.stage === 'saving' && task.stageCompleted !== null && task.stageTotal !== null) {
+    text = t('stemSeparation.saving', { done: task.stageCompleted, total: task.stageTotal })
+  } else if (task.stage === 'cleaning') {
+    text = t('stemSeparation.cleaning')
+  } else {
+    text = t('stemSeparation.running', { percent: libraryStemTaskPercent.value })
   }
-  if (task.stage === 'validating') return t('stemSeparation.validating')
-  if (task.stage === 'saving' && task.stageCompleted !== null && task.stageTotal !== null) {
-    return t('stemSeparation.saving', { done: task.stageCompleted, total: task.stageTotal })
-  }
-  if (task.stage === 'cleaning') return t('stemSeparation.cleaning')
-  return t('stemSeparation.running', { percent: libraryStemTaskPercent.value })
+  return task.status === 'running' && task.activityConfirmedAt
+    ? `${text} · ${t('stemSeparation.stillProcessing')}`
+    : text
 })
 
 const analysisRuntimeTaskVisible = computed(() =>
@@ -530,8 +538,10 @@ const restoreLibraryStemTask = async () => {
       songTitle: task.songTitle,
       initialSnapshot: {
         filePath: task.filePath,
+        model: task.model,
         status: task.status,
         percent: task.percent,
+        activityConfirmedAt: task.activityConfirmedAt,
         stage: task.stage,
         stageCompleted: task.stageCompleted,
         stageTotal: task.stageTotal,
@@ -551,6 +561,9 @@ const applyLibraryStemTaskSnapshot = (payload: unknown) => {
   if (normalizeAnalysisPath(task.filePath) !== normalizeAnalysisPath(filePath)) return
   const status = normalizeLibraryStemTaskStatus(payload.status)
   if (!status) return
+  if (status === 'idle' && (task.status === 'pending' || task.status === 'running')) {
+    return
+  }
   const stage = normalizeLibraryStemTaskStage(payload.stage)
   const nextPercent = Math.max(0, Math.min(100, Math.round(Number(payload.percent) || 0)))
   const previousStatus = task.status
@@ -561,6 +574,10 @@ const applyLibraryStemTaskSnapshot = (payload: unknown) => {
       : previousStatus === 'running' && status === 'running'
         ? Math.max(task.percent, nextPercent)
         : nextPercent
+  task.activityConfirmedAt =
+    status === 'running' && Number.isFinite(Number(payload.activityConfirmedAt))
+      ? Number(payload.activityConfirmedAt)
+      : null
   task.stage = stage
   task.stageCompleted = Number.isFinite(Number(payload.stageCompleted))
     ? Number(payload.stageCompleted)
@@ -575,19 +592,38 @@ const handleLibraryStemMinimized = (event: Event) => {
   const detail = event instanceof CustomEvent && isRecord(event.detail) ? event.detail : null
   const filePath = typeof detail?.filePath === 'string' ? detail.filePath.trim() : ''
   if (!filePath) return
+  const minimizedSnapshot = isRecord(detail?.snapshot) ? detail.snapshot : null
+  const snapshotStatus = normalizeLibraryStemTaskStatus(minimizedSnapshot?.status)
+  const snapshotModel =
+    typeof minimizedSnapshot?.model === 'string' ? minimizedSnapshot.model.trim() : ''
+  const snapshotPercent = Math.max(
+    0,
+    Math.min(100, Math.round(Number(minimizedSnapshot?.percent) || 0))
+  )
   libraryStemTask.value = {
     filePath,
     songTitle: typeof detail?.songTitle === 'string' ? detail.songTitle.trim() : '',
-    status: 'pending',
-    percent: 0,
-    stage: null,
-    stageCompleted: null,
-    stageTotal: null,
+    model: snapshotModel,
+    status: snapshotStatus === 'running' ? 'running' : 'pending',
+    percent: snapshotPercent,
+    activityConfirmedAt: Number.isFinite(Number(minimizedSnapshot?.activityConfirmedAt))
+      ? Number(minimizedSnapshot?.activityConfirmedAt)
+      : null,
+    stage: normalizeLibraryStemTaskStage(minimizedSnapshot?.stage),
+    stageCompleted: Number.isFinite(Number(minimizedSnapshot?.stageCompleted))
+      ? Number(minimizedSnapshot?.stageCompleted)
+      : null,
+    stageTotal: Number.isFinite(Number(minimizedSnapshot?.stageTotal))
+      ? Number(minimizedSnapshot?.stageTotal)
+      : null,
     minimized: true,
-    errorMessage: null
+    errorMessage:
+      typeof minimizedSnapshot?.errorMessage === 'string'
+        ? minimizedSnapshot.errorMessage.trim() || null
+        : null
   }
   void window.electron.ipcRenderer
-    .invoke('library-stem:get-status', { filePath })
+    .invoke('library-stem:get-status', { filePath, model: snapshotModel || undefined })
     .then(applyLibraryStemTaskSnapshot)
     .catch(() => {})
 }

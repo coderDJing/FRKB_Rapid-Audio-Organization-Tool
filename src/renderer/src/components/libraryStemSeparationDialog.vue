@@ -5,6 +5,7 @@ import { v4 as uuidV4 } from 'uuid'
 import { t } from '@renderer/utils/translate'
 import utils from '@renderer/utils/utils'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import { useDemucsUltraModel, type StemProfile } from '@renderer/composables/useDemucsUltraModel'
 import StemWaveformPreview from '@renderer/components/StemWaveformPreview.vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 
@@ -13,6 +14,7 @@ type StemStatus = 'idle' | 'pending' | 'running' | 'ready' | 'failed'
 type StemProgressStage = 'separating' | 'rendering' | 'validating' | 'saving' | 'cleaning'
 type LibraryStemStatusSnapshot = {
   filePath: string
+  model: string
   status: StemStatus
   errorMessage: string | null
   vocalPath: string | null
@@ -20,10 +22,15 @@ type LibraryStemStatusSnapshot = {
   bassPath: string | null
   drumsPath: string | null
   percent: number | null
+  activityConfirmedAt: number | null
   device: string | null
   stage: StemProgressStage | null
   stageCompleted: number | null
   stageTotal: number | null
+}
+const STEM_MODEL_BY_PROFILE: Record<StemProfile, string> = {
+  quality: 'htdemucs@quality',
+  ultra: 'htdemucs_ft@ultra'
 }
 
 const props = defineProps<{
@@ -34,7 +41,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  minimize: []
+  minimize: [snapshot: LibraryStemStatusSnapshot]
 }>()
 
 const uuid = uuidV4()
@@ -47,8 +54,18 @@ const stemPreviewById = new Map<StemId, StemWaveformPreviewController>()
 const stemWaveforms = ref<Partial<Record<StemId, number[]>>>({})
 const loadingStemWaveforms = ref(false)
 let stemWaveformRequest = 0
+const selectedProfile = ref<StemProfile>('quality')
+const {
+  ultraModelInfo,
+  ultraModelReady,
+  modelDownloadBusy,
+  refreshUltraModelInfo,
+  handleUltraModelDownloadState
+} = useDemucsUltraModel(selectedProfile)
+const selectedModel = computed(() => STEM_MODEL_BY_PROFILE[selectedProfile.value])
 const snapshot = ref<LibraryStemStatusSnapshot>({
   filePath: props.filePath,
+  model: STEM_MODEL_BY_PROFILE.quality,
   status: 'idle',
   errorMessage: null,
   vocalPath: null,
@@ -56,6 +73,7 @@ const snapshot = ref<LibraryStemStatusSnapshot>({
   bassPath: null,
   drumsPath: null,
   percent: null,
+  activityConfirmedAt: null,
   device: null,
   stage: null,
   stageCompleted: null,
@@ -74,6 +92,17 @@ const normalizeStatus = (value: unknown): StemStatus => {
 
 const normalizeOptionalText = (value: unknown) =>
   typeof value === 'string' && value.trim() ? value.trim() : null
+
+const normalizeStemModel = (value: unknown) => {
+  if (typeof value !== 'string') return STEM_MODEL_BY_PROFILE.quality
+  const normalized = value.trim()
+  return normalized === STEM_MODEL_BY_PROFILE.ultra
+    ? STEM_MODEL_BY_PROFILE.ultra
+    : STEM_MODEL_BY_PROFILE.quality
+}
+
+const resolveStemProfile = (model: string): StemProfile =>
+  model === STEM_MODEL_BY_PROFILE.ultra ? 'ultra' : 'quality'
 
 const normalizeOptionalNumber = (value: unknown) => {
   const numberValue = Number(value)
@@ -99,6 +128,7 @@ const parseSnapshot = (value: unknown): LibraryStemStatusSnapshot | null => {
   if (!filePath) return null
   return {
     filePath,
+    model: normalizeStemModel(value.model),
     status: normalizeStatus(value.status),
     errorMessage: normalizeOptionalText(value.errorMessage),
     vocalPath: normalizeOptionalText(value.vocalPath),
@@ -106,6 +136,7 @@ const parseSnapshot = (value: unknown): LibraryStemStatusSnapshot | null => {
     bassPath: normalizeOptionalText(value.bassPath),
     drumsPath: normalizeOptionalText(value.drumsPath),
     percent: normalizeOptionalNumber(value.percent),
+    activityConfirmedAt: normalizeOptionalNumber(value.activityConfirmedAt),
     device: normalizeOptionalText(value.device),
     stage: normalizeProgressStage(value.stage),
     stageCompleted: normalizeOptionalNumber(value.stageCompleted),
@@ -119,12 +150,14 @@ const isCurrentSong = (value: string) =>
 
 const initialSnapshot = parseSnapshot(props.initialSnapshot)
 if (initialSnapshot && isCurrentSong(initialSnapshot.filePath)) {
+  selectedProfile.value = resolveStemProfile(initialSnapshot.model)
   snapshot.value = initialSnapshot
 }
 
 const applySnapshot = (value: unknown) => {
   const parsed = parseSnapshot(value)
-  if (!parsed || !isCurrentSong(parsed.filePath)) return false
+  if (!parsed || !isCurrentSong(parsed.filePath) || parsed.model !== selectedModel.value)
+    return false
   const previous = snapshot.value
   if (previous.status === 'running') {
     if (parsed.status === 'pending') return true
@@ -142,6 +175,11 @@ const applySnapshot = (value: unknown) => {
 
 const isSeparating = computed(
   () => snapshot.value.status === 'pending' || snapshot.value.status === 'running'
+)
+const selectedProfileLabel = computed(() =>
+  selectedProfile.value === 'ultra'
+    ? t('stemSeparation.ultraProfile')
+    : t('stemSeparation.qualityProfile')
 )
 
 const stemRows = computed(() => {
@@ -166,7 +204,19 @@ const hasReadyStems = computed(
 const progressPercent = computed(() =>
   Math.max(0, Math.min(100, Math.round(snapshot.value.percent || 0)))
 )
-const canStart = computed(() => !starting.value && !isSeparating.value)
+const progressMetaText = computed(() => {
+  const deviceText = snapshot.value.device
+    ? t('stemSeparation.device', { device: snapshot.value.device })
+    : ''
+  const activityText =
+    snapshot.value.status === 'running' && snapshot.value.activityConfirmedAt
+      ? t('stemSeparation.stillProcessing')
+      : ''
+  return [deviceText, activityText].filter(Boolean).join(' · ')
+})
+const canStart = computed(
+  () => !starting.value && !isSeparating.value && !modelDownloadBusy.value && ultraModelReady.value
+)
 const statusText = computed(() => {
   switch (snapshot.value.status) {
     case 'pending':
@@ -199,17 +249,23 @@ const statusText = computed(() => {
     case 'failed':
       return snapshot.value.errorMessage || t('stemSeparation.failed')
     default:
-      return t('stemSeparation.idleHint')
+      return selectedProfileLabel.value
   }
 })
 const primaryActionLabel = computed(() => {
+  if (selectedProfile.value === 'ultra' && !ultraModelReady.value) {
+    if (modelDownloadBusy.value) return t('stemSeparation.modelDownloading')
+    return ultraModelInfo.value?.state.status === 'failed'
+      ? t('stemSeparation.retryModelDownload')
+      : t('stemSeparation.downloadUltraModel')
+  }
   if (isSeparating.value) return statusText.value
   if (hasReadyStems.value) return t('stemSeparation.exportAll')
   if (snapshot.value.status === 'failed') return t('stemSeparation.retry')
   return t('stemSeparation.start')
 })
 const primaryActionDisabled = computed(
-  () => isSeparating.value || starting.value || !!exportingStem.value
+  () => isSeparating.value || starting.value || !!exportingStem.value || modelDownloadBusy.value
 )
 
 const stemStateText = (state: 'waiting' | 'processing' | 'ready' | 'failed') =>
@@ -239,7 +295,8 @@ const loadStemWaveforms = async () => {
   loadingStemWaveforms.value = true
   try {
     const response = await window.electron.ipcRenderer.invoke('library-stem:preview-waveforms', {
-      filePath: props.filePath
+      filePath: props.filePath,
+      model: selectedModel.value
     })
     if (request !== stemWaveformRequest || !isRecord(response) || !isRecord(response.stems)) return
     const next: Partial<Record<StemId, number[]>> = {}
@@ -258,7 +315,8 @@ const loadStemWaveforms = async () => {
 const refreshStatus = async () => {
   try {
     const next = await window.electron.ipcRenderer.invoke('library-stem:get-status', {
-      filePath: props.filePath
+      filePath: props.filePath,
+      model: selectedModel.value
     })
     applySnapshot(next)
   } catch (error) {
@@ -276,7 +334,8 @@ const startSeparation = async () => {
   exportMessage.value = ''
   try {
     const next = await window.electron.ipcRenderer.invoke('library-stem:start', {
-      filePath: props.filePath
+      filePath: props.filePath,
+      model: selectedModel.value
     })
     applySnapshot(next)
   } catch (error) {
@@ -312,6 +371,7 @@ const exportStems = async (stem: 'all' | StemId) => {
   try {
     const result = await window.electron.ipcRenderer.invoke('library-stem:export', {
       filePath: props.filePath,
+      model: selectedModel.value,
       stem
     })
     const exportedPaths =
@@ -329,11 +389,59 @@ const exportStems = async (stem: 'all' | StemId) => {
 
 const runPrimaryAction = async () => {
   if (primaryActionDisabled.value) return
+  if (selectedProfile.value === 'ultra' && !ultraModelReady.value) {
+    await openUltraModelDownloadDialog()
+    return
+  }
   if (hasReadyStems.value) {
     await exportStems('all')
     return
   }
   await startSeparation()
+}
+
+const openUltraModelDownloadDialog = async () => {
+  if (starting.value) return
+  starting.value = true
+  try {
+    const { default: openDemucsUltraModelDownloadDialog } =
+      await import('./demucsUltraModelDownloadDialog')
+    await openDemucsUltraModelDownloadDialog({ initialInfo: ultraModelInfo.value })
+  } finally {
+    await Promise.all([refreshUltraModelInfo(), refreshStatus()])
+    starting.value = false
+  }
+}
+
+const selectProfile = async (profile: StemProfile) => {
+  if (profile === selectedProfile.value || isSeparating.value || starting.value) return
+  selectedProfile.value = profile
+  stemWaveformRequest += 1
+  loadingStemWaveforms.value = false
+  stemWaveforms.value = {}
+  for (const preview of stemPreviewById.values()) preview.pause()
+  snapshot.value = {
+    filePath: props.filePath,
+    model: selectedModel.value,
+    status: 'idle',
+    errorMessage: null,
+    vocalPath: null,
+    instPath: null,
+    bassPath: null,
+    drumsPath: null,
+    percent: null,
+    activityConfirmedAt: null,
+    device: null,
+    stage: null,
+    stageCompleted: null,
+    stageTotal: null
+  }
+  if (profile === 'ultra') {
+    void refreshStatus()
+    if (!ultraModelReady.value) await openUltraModelDownloadDialog()
+    return
+  }
+  await Promise.all([refreshStatus(), refreshUltraModelInfo()])
 }
 
 const closeDialog = () => {
@@ -342,7 +450,8 @@ const closeDialog = () => {
 
 const minimizeDialog = () => {
   if (!isSeparating.value) return
-  closeWithAnimation(() => emit('minimize'))
+  const minimizedSnapshot = { ...snapshot.value }
+  closeWithAnimation(() => emit('minimize', minimizedSnapshot))
 }
 
 const handleStemStatusUpdated = (_event: unknown, payload: unknown) => {
@@ -356,13 +465,18 @@ watch(
 
 onMounted(() => {
   window.electron.ipcRenderer.on('library-stem-status-updated', handleStemStatusUpdated)
+  window.electron.ipcRenderer.on('demucs-model-download-state', handleUltraModelDownloadState)
   hotkeys('Esc', uuid, closeDialog)
   utils.setHotkeysScpoe(uuid)
-  void refreshStatus()
+  void Promise.all([refreshStatus(), refreshUltraModelInfo()])
 })
 
 onUnmounted(() => {
   window.electron.ipcRenderer.removeListener('library-stem-status-updated', handleStemStatusUpdated)
+  window.electron.ipcRenderer.removeListener(
+    'demucs-model-download-state',
+    handleUltraModelDownloadState
+  )
   stemWaveformRequest += 1
   for (const preview of stemPreviewById.values()) preview.pause()
   stemPreviewById.clear()
@@ -381,7 +495,29 @@ onUnmounted(() => {
           <div class="library-stem-dialog__song-title">
             {{ props.songTitle || t('tracks.unknownTrack') }}
           </div>
-          <div class="library-stem-dialog__profile">{{ t('stemSeparation.idleHint') }}</div>
+          <div
+            class="library-stem-dialog__profile-picker"
+            :aria-label="t('stemSeparation.profileLabel')"
+          >
+            <button
+              class="library-stem-dialog__profile-option"
+              type="button"
+              :class="{ 'is-selected': selectedProfile === 'quality' }"
+              :disabled="isSeparating || starting"
+              @click="selectProfile('quality')"
+            >
+              {{ t('stemSeparation.qualityProfile') }}
+            </button>
+            <button
+              class="library-stem-dialog__profile-option"
+              type="button"
+              :class="{ 'is-selected': selectedProfile === 'ultra' }"
+              :disabled="isSeparating || starting"
+              @click="selectProfile('ultra')"
+            >
+              {{ t('stemSeparation.ultraProfile') }}
+            </button>
+          </div>
         </section>
 
         <section class="library-stem-dialog__progress-card" :class="`is-${snapshot.status}`">
@@ -400,10 +536,10 @@ onUnmounted(() => {
           <bubbleBoxTrigger
             tag="span"
             class="status-device"
-            :class="{ 'is-hidden': !snapshot.device }"
-            :title="snapshot.device ? t('stemSeparation.device', { device: snapshot.device }) : ''"
+            :class="{ 'is-hidden': !progressMetaText }"
+            :title="progressMetaText"
           >
-            {{ snapshot.device ? t('stemSeparation.device', { device: snapshot.device }) : '—' }}
+            {{ progressMetaText || '—' }}
           </bubbleBoxTrigger>
           <div
             class="library-stem-dialog__progress-track"
@@ -527,15 +663,54 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 
-.library-stem-dialog__profile {
+.library-stem-dialog__profile-picker {
+  display: flex;
   flex: 0 0 auto;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--waveform-bg-elev);
+  gap: 2px;
+}
+
+.library-stem-dialog__profile-option {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  appearance: none;
+  background: transparent;
   color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
   font-size: 11px;
-  line-height: 1;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.library-stem-dialog__profile-option:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--waveform-bg-elev));
+  color: var(--text);
+}
+
+.library-stem-dialog__profile-option.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--waveform-bg-elev));
+  color: var(--text);
+}
+
+.library-stem-dialog__profile-option:disabled {
+  cursor: default;
+}
+
+.library-stem-dialog__profile-option:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 65%, transparent);
+  outline-offset: 2px;
 }
 
 .library-stem-dialog__progress-card {
@@ -799,7 +974,7 @@ onUnmounted(() => {
   white-space: nowrap;
 }
 .library-stem-dialog__footer-primary {
-  width: 112px;
+  width: 124px;
 }
 .library-stem-dialog__footer-button.disabled {
   opacity: 0.44;
@@ -828,8 +1003,14 @@ onUnmounted(() => {
     padding: 14px 12px 10px;
   }
 
-  .library-stem-dialog__profile {
-    display: none;
+  .library-stem-dialog__profile-picker {
+    gap: 1px;
+  }
+
+  .library-stem-dialog__profile-option {
+    min-height: 24px;
+    padding: 0 5px;
+    font-size: 10px;
   }
 
   .library-stem-dialog__stem-row {

@@ -1,5 +1,6 @@
 import type { UnifiedDisplayWaveformDetailData } from '@shared/unifiedDisplayWaveform'
 import { FIXED_MIXTAPE_STEM_MODE } from '@shared/mixtapeStemMode'
+import type { MixtapeStemProfile as SharedMixtapeStemProfile } from '@shared/mixtapeStemProfiles'
 import type { SongBeatGridMapV2 } from '@shared/songBeatGridMapV2'
 
 export type StemWaveformBand = {
@@ -37,7 +38,7 @@ export type MixtapeRawItem = {
 
 export type MixtapeMixMode = 'eq' | 'stem'
 export type MixtapeStemMode = typeof FIXED_MIXTAPE_STEM_MODE
-export type MixtapeStemProfile = 'quality'
+export type MixtapeStemProfile = SharedMixtapeStemProfile
 export type MixtapeStemStatus = 'idle' | 'pending' | 'running' | 'ready' | 'failed'
 export type MixtapeWaveformStemId = 'vocal' | 'inst' | 'bass' | 'drums'
 

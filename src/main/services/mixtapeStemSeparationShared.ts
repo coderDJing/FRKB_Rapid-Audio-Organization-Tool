@@ -37,6 +37,11 @@ export const DEMUCS_PROFILE_OPTIONS: Record<
     shifts: '4',
     overlap: '0.5',
     segmentSec: '11'
+  },
+  ultra: {
+    shifts: '4',
+    overlap: '0.5',
+    segmentSec: '7.8'
   }
 }
 export type MixtapeStemSeparationResult = {
@@ -61,6 +66,7 @@ export type MixtapeStemRuntimeProgress = {
   device: MixtapeStemComputeDevice
   stage: MixtapeStemRuntimeStage
   percent: number
+  activityConfirmedAt?: number | null
   stageCompleted: number | null
   stageTotal: number | null
   processedSec: number | null

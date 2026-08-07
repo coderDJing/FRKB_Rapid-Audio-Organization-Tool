@@ -13,7 +13,7 @@ interface IDir {
   type: 'root' | 'library' | 'dir' | 'songList' | 'mixtapeList' | 'setList'
   dirName: string
   mixMode?: 'eq' | 'stem'
-  stemProfile?: 'quality'
+  stemProfile?: 'quality' | 'ultra'
   order?: number
   children?: IDir[]
 }

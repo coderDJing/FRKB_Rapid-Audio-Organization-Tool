@@ -1,6 +1,7 @@
 import json
 import subprocess
 import sys
+import threading
 import wave
 from pathlib import Path
 
@@ -9,6 +10,20 @@ import numpy as np
 
 def _emit_stem_stage(stage, completed, total):
     print(f"FRKB_STEM_STAGE={stage}:{completed}/{total}", file=sys.stderr, flush=True)
+
+
+def _run_with_stem_heartbeat(task):
+    stop_event = threading.Event()
+
+    def emit_heartbeat():
+        while not stop_event.wait(60):
+            print("FRKB_STEM_HEARTBEAT", file=sys.stderr, flush=True)
+
+    threading.Thread(target=emit_heartbeat, name="frkb-stem-heartbeat", daemon=True).start()
+    try:
+        return task()
+    finally:
+        stop_event.set()
 
 
 def _patch_torch_load():
@@ -71,7 +86,7 @@ def _save_wav(path, wav_tensor, samplerate):
 def _run_cli_mode(argv):
     separate = _patch_load_track()
     sys.argv = argv
-    separate.main(argv[1:])
+    _run_with_stem_heartbeat(lambda: separate.main(argv[1:]))
 
 
 def _run_waveform_mode(payload):
@@ -139,17 +154,20 @@ def _run_waveform_mode(payload):
     wav = wav - ref.mean()
     wav = wav / ref.std()
 
-    sources = apply_model(
-        model,
-        wav[None],
-        device=device,
-        shifts=shifts,
-        split=split,
-        overlap=overlap,
-        progress=split,
-        num_workers=jobs,
-        segment=segment_sec,
-    )[0]
+    def run_apply_model():
+        return apply_model(
+            model,
+            wav[None],
+            device=device,
+            shifts=shifts,
+            split=split,
+            overlap=overlap,
+            progress=split,
+            num_workers=jobs,
+            segment=segment_sec,
+        )[0]
+
+    sources = _run_with_stem_heartbeat(run_apply_model)
     sources = sources * ref.std()
     sources = sources + ref.mean()
 

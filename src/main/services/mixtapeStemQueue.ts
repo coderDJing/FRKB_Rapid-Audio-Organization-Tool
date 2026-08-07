@@ -301,6 +301,7 @@ const notifyStemRuntimeProgress = (params: {
   device: MixtapeStemComputeDevice
   stage: 'separating' | 'rendering' | 'validating' | 'saving' | 'cleaning'
   percent: number
+  activityConfirmedAt?: number | null
   stageCompleted: number | null
   stageTotal: number | null
   processedSec: number | null
@@ -323,6 +324,7 @@ const notifyStemRuntimeProgress = (params: {
       device: params.device,
       stage: params.stage,
       percent,
+      activityConfirmedAt: normalizeNumberOrNull(params.activityConfirmedAt),
       stageCompleted: normalizeNumberOrNull(params.stageCompleted),
       stageTotal: normalizeNumberOrNull(params.stageTotal),
       processedSec: normalizeNumberOrNull(params.processedSec),
@@ -685,6 +687,7 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
             device: progress.device,
             stage: progress.stage,
             percent: progress.percent,
+            activityConfirmedAt: progress.activityConfirmedAt,
             stageCompleted: progress.stageCompleted,
             stageTotal: progress.stageTotal,
             processedSec: progress.processedSec,
@@ -699,6 +702,7 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
             model: job.model,
             status: 'running',
             percent: progress.percent,
+            activityConfirmedAt: progress.activityConfirmedAt,
             device: progress.device,
             stage: progress.stage,
             stageCompleted: progress.stageCompleted,

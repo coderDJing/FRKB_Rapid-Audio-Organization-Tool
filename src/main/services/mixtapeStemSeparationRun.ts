@@ -5,14 +5,14 @@ import {
   resolveBundledDemucsBootstrapDirPath,
   resolveBundledDemucsModelsPath,
   resolveBundledDemucsPythonPath,
-  resolveBundledDemucsRuntimeDir
+  resolveBundledDemucsRuntimeDir,
+  resolveInstalledDemucsModelPath
 } from '../demucs'
 import type { MixtapeStemMode } from '../mixtapeDb'
 import {
   DEFAULT_MIXTAPE_STEM_BASE_MODEL,
   DEFAULT_MIXTAPE_STEM_PROFILE,
-  parseMixtapeStemModel,
-  resolveMixtapeStemBaseModelByProfile
+  parseMixtapeStemModel
 } from '../../shared/mixtapeStemProfiles'
 import * as shared from './mixtapeStemSeparationShared'
 import * as probe from './mixtapeStemSeparationProbe'
@@ -55,6 +55,7 @@ const {
 } = probe
 
 const STEM_INFERENCE_PROGRESS_MAX_PERCENT = 94
+const STEM_INFERENCE_ACTIVITY_CHECK_INTERVAL_MS = 60 * 1000
 
 const parseStemRenderingStage = (line: string): { completed: number; total: number } | null => {
   const match = String(line || '')
@@ -67,6 +68,8 @@ const parseStemRenderingStage = (line: string): { completed: number; total: numb
   if (completed < 0 || completed > total) return null
   return { completed, total }
 }
+
+const isStemInferenceHeartbeat = (line: string) => line.trim() === 'FRKB_STEM_HEARTBEAT'
 
 const resolveDemucsBootstrapPath = () =>
   path.join(resolveBundledDemucsBootstrapDirPath(), 'mixtape_demucs_bootstrap.py')
@@ -324,43 +327,20 @@ const resolveDemucsModelCandidates = (params: {
   requestedModel: string
   modelRepoPath: string
 }): string[] => {
-  const requestedCandidates: string[] = []
-  const pushCandidate = (model: string) => {
-    const normalized = normalizeText(model, 128)
-    if (!normalized) return
-    if (requestedCandidates.includes(normalized)) return
-    requestedCandidates.push(normalized)
-  }
-  pushCandidate(params.requestedModel)
-  pushCandidate(resolveMixtapeStemBaseModelByProfile('quality', 'quality'))
-
+  const requestedModel = normalizeText(params.requestedModel, 128)
   const localWeightFiles = listLocalDemucsWeightFiles(params.modelRepoPath)
-  const availableCandidates: string[] = []
-  const skippedDetails: Array<{ model: string; reason: string }> = []
-  for (const candidate of requestedCandidates) {
-    const inspected = inspectLocalDemucsModel({
-      modelRepoPath: params.modelRepoPath,
-      demucsModelName: candidate,
-      localWeightFiles
-    })
-    if (inspected.available) {
-      availableCandidates.push(candidate)
-      continue
-    }
-    skippedDetails.push({
-      model: candidate,
-      reason: inspected.reason
-    })
-  }
-  if (!availableCandidates.length) {
-    const reason = skippedDetails.map((item) => `${item.model}:${item.reason}`).join(' | ')
-    const modelRepoPath = resolveBundledDemucsModelsPath()
+  const inspected = inspectLocalDemucsModel({
+    modelRepoPath: params.modelRepoPath,
+    demucsModelName: requestedModel,
+    localWeightFiles
+  })
+  if (!inspected.available) {
     throw createStemError(
       'STEM_MODEL_MISSING',
-      `未找到可用的本地 Demucs 模型，请检查 ${modelRepoPath}: ${reason || 'none'}`
+      `未找到请求的本地 Demucs 模型，请检查 ${params.modelRepoPath}: ${requestedModel}:${inspected.reason}`
     )
   }
-  return availableCandidates
+  return [requestedModel]
 }
 
 export const runStemSeparation = async (params: {
@@ -381,7 +361,14 @@ export const runStemSeparation = async (params: {
   if (!filePath || !fs.existsSync(filePath)) {
     throw createStemError('STEM_SOURCE_MISSING', 'Stem 源文件不存在')
   }
-  const modelRepoPath = resolveBundledDemucsModelsPath()
+  const parsedModel = parseMixtapeStemModel(params.model, DEFAULT_MIXTAPE_STEM_PROFILE)
+  const requestedDemucsModelName =
+    normalizeText(parsedModel.demucsModel, 128) || DEFAULT_MIXTAPE_STEM_BASE_MODEL
+  const stemProfile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_PROFILE)
+  const modelRepoPath =
+    stemProfile === 'ultra'
+      ? resolveInstalledDemucsModelPath(requestedDemucsModelName)
+      : resolveBundledDemucsModelsPath()
   const ffmpegPath = resolveBundledFfmpegPath()
   const ffprobePath = resolveBundledFfprobePath()
   if (!fs.existsSync(modelRepoPath)) {
@@ -412,11 +399,6 @@ export const runStemSeparation = async (params: {
     Number.isFinite(inputDurationSec) &&
     Number(inputDurationSec) > 0 &&
     Number(inputDurationSec) <= DEMUCS_NO_SPLIT_MAX_DURATION_SECONDS
-  const parsedModel = parseMixtapeStemModel(params.model, DEFAULT_MIXTAPE_STEM_PROFILE)
-  const requestedDemucsModelName =
-    normalizeText(parsedModel.demucsModel, 128) || DEFAULT_MIXTAPE_STEM_BASE_MODEL
-  const stemProfile = normalizeStemProfile(parsedModel.profile, DEFAULT_MIXTAPE_STEM_PROFILE)
-
   let runtimeDir = normalizeFilePath(deviceSnapshot.runtimeDir) || resolveBundledDemucsRuntimeDir()
   let pythonPath =
     normalizeFilePath(deviceSnapshot.pythonPath) || resolveBundledDemucsPythonPath(runtimeDir)
@@ -518,6 +500,7 @@ export const runStemSeparation = async (params: {
         await fs.promises.mkdir(rawOutputRoot, { recursive: true })
         let lastProgressEmitAt = 0
         let lastProgressPercent = -1
+        let lastProgressAdvancedAt = Date.now()
         const emitProgress = (parsed: {
           percent: number
           processedSec: number | null
@@ -534,6 +517,7 @@ export const runStemSeparation = async (params: {
             if (noPercentChange && now - lastProgressEmitAt < 2000) return
           }
           highestProgressPercent = percent
+          if (percent > lastProgressPercent) lastProgressAdvancedAt = now
           lastProgressEmitAt = now
           lastProgressPercent = percent
           params.onProgress?.({
@@ -545,6 +529,21 @@ export const runStemSeparation = async (params: {
             processedSec: parsed.processedSec,
             totalSec: parsed.totalSec,
             etaSec: parsed.etaSec
+          })
+        }
+        const emitInferenceActivityConfirmation = () => {
+          const now = Date.now()
+          if (now - lastProgressAdvancedAt < STEM_INFERENCE_ACTIVITY_CHECK_INTERVAL_MS) return
+          params.onProgress?.({
+            device,
+            stage: 'separating',
+            percent: highestProgressPercent,
+            activityConfirmedAt: now,
+            stageCompleted: null,
+            stageTotal: null,
+            processedSec: null,
+            totalSec: null,
+            etaSec: null
           })
         }
         const handleStderrChunk = (chunk: string) => {
@@ -576,6 +575,10 @@ export const runStemSeparation = async (params: {
 
           const chunks = chunk.split(/[\r\n]+/)
           for (const line of chunks) {
+            if (isStemInferenceHeartbeat(line)) {
+              emitInferenceActivityConfirmation()
+              continue
+            }
             const renderingStage = parseStemRenderingStage(line)
             if (renderingStage) {
               emitRenderingProgress(renderingStage)

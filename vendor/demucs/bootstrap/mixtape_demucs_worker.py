@@ -13,6 +13,7 @@ from mixtape_demucs_bootstrap import (
     _emit_stem_stage,
     _maybe_import_directml,
     _patch_torch_load,
+    _run_with_stem_heartbeat,
     _save_wav,
 )
 
@@ -168,17 +169,20 @@ def _run_infer(payload):
     wav = wav - ref.mean()
     wav = wav / ref_std
 
-    sources = apply_model(
-        model,
-        wav[None],
-        device=device,
-        shifts=shifts,
-        split=split,
-        overlap=overlap,
-        progress=split,
-        num_workers=jobs,
-        segment=segment_sec,
-    )[0]
+    def run_apply_model():
+        return apply_model(
+            model,
+            wav[None],
+            device=device,
+            shifts=shifts,
+            split=split,
+            overlap=overlap,
+            progress=split,
+            num_workers=jobs,
+            segment=segment_sec,
+        )[0]
+
+    sources = _run_with_stem_heartbeat(run_apply_model)
     sources = sources * ref_std
     sources = sources + ref.mean()
 

@@ -58,6 +58,7 @@ import { registerClipboardHandlers } from './ipc/clipboardHandlers'
 import { registerExportHandlers } from './ipc/exportHandlers'
 import { registerKeyAnalysisHandlers } from './ipc/keyAnalysisHandlers'
 import { registerAnalysisRuntimeHandlers } from './ipc/analysisRuntimeHandlers'
+import { registerDemucsModelHandlers } from './ipc/demucsModelHandlers'
 import { registerMixtapeHandlers } from './ipc/mixtapeHandlers'
 import { registerLibraryStemHandlers } from './ipc/libraryStemHandlers'
 import { registerMixtapeDragSessionHandlers } from './ipc/mixtapeDragSessionHandlers'
@@ -88,6 +89,7 @@ import { songGridEvents } from './services/songGridEvents'
 import { songHotCueEvents } from './services/songHotCueEvents'
 import { songMemoryCueEvents } from './services/songMemoryCueEvents'
 import { analysisRuntimeDownloadEvents } from './services/analysisRuntimeDownload'
+import { demucsUltraModelDownloadEvents } from './services/demucsUltraModelDownload'
 import { startMixtapeStemBackgroundResume } from './services/mixtapeStemBackgroundResume'
 import { isMixtapeStemQueueBusy } from './services/mixtapeStemQueue'
 import { isMixtapeWaveformQueueBusy } from './services/mixtapeWaveformQueue'
@@ -328,6 +330,7 @@ registerClipboardHandlers()
 registerExportHandlers()
 registerKeyAnalysisHandlers()
 registerAnalysisRuntimeHandlers()
+registerDemucsModelHandlers()
 registerMixtapeHandlers()
 registerLibraryStemHandlers()
 registerMixtapeDragSessionHandlers()
@@ -455,6 +458,14 @@ analysisRuntimeDownloadEvents.on('state', (payload) => {
   if (mainWindow.instance) {
     try {
       mainWindow.instance.webContents.send('analysis-runtime-download-state', payload)
+    } catch {}
+  }
+})
+
+demucsUltraModelDownloadEvents.on('state', (payload) => {
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('demucs-model-download-state', payload)
     } catch {}
   }
 })

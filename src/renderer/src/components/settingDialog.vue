@@ -25,6 +25,7 @@ import { SUPPORTED_AUDIO_FORMATS } from '../../../shared/audioFormats'
 import type { PlayerGlobalShortcutAction } from 'src/types/globals'
 import { mapAcoustIdClientError } from '@renderer/utils/acoustid'
 import { useDialogTransition } from '@renderer/composables/useDialogTransition'
+import { formatAnalysisRuntimeBytes } from '@renderer/utils/analysisRuntimeDownloadUi'
 import SettingDialogBody from './settingDialog/SettingDialogBody.vue'
 import {
   AUDIO_OUTPUT_FOLLOW_SYSTEM_ID,
@@ -75,6 +76,94 @@ const isDevOrPrerelease = computed(() => {
   const version = String(pkg.version || '')
   return version.includes('-')
 })
+
+type DemucsUltraModelManagerState = {
+  status: 'idle' | 'available' | 'downloading' | 'extracting' | 'ready' | 'failed'
+  archiveSize: number
+}
+
+type DemucsUltraModelManagerInfo = {
+  archiveSize: number
+  installedSize: number
+  alreadyAvailable: boolean
+  error: string
+  state: DemucsUltraModelManagerState
+}
+
+const ultraModelInfo = ref<DemucsUltraModelManagerInfo | null>(null)
+const ultraModelStatusText = computed(() => {
+  if (!ultraModelInfo.value) return t('settings.ultraStemModel.statusChecking')
+  if (ultraModelInfo.value.alreadyAvailable) {
+    return t('settings.ultraStemModel.statusInstalled', {
+      size: formatAnalysisRuntimeBytes(ultraModelInfo.value.installedSize)
+    })
+  }
+  if (ultraModelInfo.value.error) return t('settings.ultraStemModel.statusUnavailable')
+  return t('settings.ultraStemModel.statusNotInstalled')
+})
+
+const parseUltraModelInfo = (value: unknown): DemucsUltraModelManagerInfo | null => {
+  if (!value || typeof value !== 'object') return null
+  const source = value as Record<string, unknown>
+  const stateRaw = source.state
+  if (!stateRaw || typeof stateRaw !== 'object') return null
+  const stateSource = stateRaw as Record<string, unknown>
+  const status = stateSource.status
+  if (
+    status !== 'idle' &&
+    status !== 'available' &&
+    status !== 'downloading' &&
+    status !== 'extracting' &&
+    status !== 'ready' &&
+    status !== 'failed'
+  ) {
+    return null
+  }
+  return {
+    archiveSize: Math.max(0, Number(source.archiveSize) || 0),
+    installedSize: Math.max(0, Number(source.installedSize) || 0),
+    alreadyAvailable: source.alreadyAvailable === true,
+    error: typeof source.error === 'string' ? source.error.trim() : '',
+    state: {
+      status,
+      archiveSize: Math.max(0, Number(stateSource.archiveSize) || 0)
+    }
+  }
+}
+
+const refreshUltraModelInfo = async () => {
+  try {
+    const response = await window.electron.ipcRenderer.invoke('demucs-model:get-ultra-status')
+    ultraModelInfo.value = parseUltraModelInfo(response)
+  } catch {
+    ultraModelInfo.value = null
+  }
+}
+
+const handleUltraModelDownloadState = (_event: unknown, payload: unknown) => {
+  if (!payload || typeof payload !== 'object') return
+  const source = payload as Record<string, unknown>
+  const status = source.status
+  if (
+    status !== 'idle' &&
+    status !== 'available' &&
+    status !== 'downloading' &&
+    status !== 'extracting' &&
+    status !== 'ready' &&
+    status !== 'failed'
+  ) {
+    return
+  }
+  const archiveSize = Math.max(0, Number(source.archiveSize) || 0)
+  ultraModelInfo.value = {
+    archiveSize: archiveSize || ultraModelInfo.value?.archiveSize || 0,
+    installedSize: status === 'ready' ? archiveSize : ultraModelInfo.value?.installedSize || 0,
+    alreadyAvailable: status === 'ready',
+    error: typeof source.error === 'string' ? source.error.trim() : '',
+    state: { status, archiveSize }
+  }
+  if (status === 'ready') void refreshUltraModelInfo()
+}
 
 // 将布尔设置映射为单选值（与指纹模式类似的布局与交互）
 const songListBubbleMode = computed<'overflowOnly' | 'always'>({
@@ -145,6 +234,8 @@ onMounted(() => {
   utils.setHotkeysScpoe(uuid)
   // 获取指纹库长度
   getSongFingerprintListLength()
+  void refreshUltraModelInfo()
+  window.electron.ipcRenderer.on('demucs-model-download-state', handleUltraModelDownloadState)
   if (audioOutputSupported.value && navigator.mediaDevices) {
     const handleDeviceChange = () => {
       void refreshAudioOutputDevices()
@@ -182,6 +273,10 @@ onUnmounted(() => {
     cleanupAudioDeviceListener = null
   }
   utils.delHotkeysScope(uuid)
+  window.electron.ipcRenderer.removeListener(
+    'demucs-model-download-state',
+    handleUltraModelDownloadState
+  )
 })
 
 const setSetting = async () => {
@@ -722,6 +817,49 @@ const clearAnalysisRuntime = async () => {
   }
 }
 
+const removeUltraModel = async () => {
+  if (!ultraModelInfo.value?.alreadyAvailable) return
+  const resConfirm = await confirm({
+    title: t('common.warning'),
+    content: [
+      t('settings.ultraStemModel.removeConfirmLine1', {
+        size: formatAnalysisRuntimeBytes(ultraModelInfo.value.installedSize)
+      }),
+      t('settings.ultraStemModel.removeConfirmLine2')
+    ],
+    textAlign: 'left',
+    innerWidth: 560,
+    innerHeight: 0
+  })
+  if (resConfirm !== 'confirm') return
+  try {
+    const result = await window.electron.ipcRenderer.invoke('demucs-model:remove-ultra')
+    if (result?.busy === true) {
+      await confirm({
+        title: t('common.setting'),
+        content: [t('settings.ultraStemModel.removeBusy')],
+        confirmShow: false
+      })
+      return
+    }
+    if (result?.removedModel !== true) {
+      await confirm({
+        title: t('common.error'),
+        content: [t('settings.ultraStemModel.removeFailed')],
+        confirmShow: false
+      })
+      return
+    }
+    await refreshUltraModelInfo()
+  } catch (error) {
+    await confirm({
+      title: t('common.error'),
+      content: [t('settings.ultraStemModel.removeFailed'), getErrorMessage(error)],
+      confirmShow: false
+    })
+  }
+}
+
 const bindFpModeHintRef = (value: string) => (el: Element | ComponentPublicInstance | null) => {
   setFpModeHintRef(value, el instanceof HTMLImageElement ? el : null)
 }
@@ -770,6 +908,9 @@ const settingDialogContext: SettingDialogContext = {
   clearCloudFingerprints,
   clearLibraryDirtyData,
   clearAnalysisRuntime,
+  ultraModelInfo,
+  ultraModelStatusText,
+  removeUltraModel,
   openCloudSyncSettings
 }
 

@@ -45,18 +45,30 @@ const resolveUnusedPath = async (basePath: string, isDirectory: boolean): Promis
 }
 
 export function registerLibraryStemHandlers() {
-  ipcMain.handle('library-stem:get-status', async (_event, payload?: { filePath?: unknown }) => {
-    return await getLibraryStemStatusSnapshot(normalizeText(payload?.filePath))
-  })
+  ipcMain.handle(
+    'library-stem:get-status',
+    async (_event, payload?: { filePath?: unknown; model?: unknown }) => {
+      return await getLibraryStemStatusSnapshot(normalizeText(payload?.filePath), payload?.model)
+    }
+  )
 
-  ipcMain.handle('library-stem:start', async (_event, payload?: { filePath?: unknown }) => {
-    return await enqueueLibraryStemJob({ filePath: normalizeText(payload?.filePath) })
-  })
+  ipcMain.handle(
+    'library-stem:start',
+    async (_event, payload?: { filePath?: unknown; model?: unknown }) => {
+      return await enqueueLibraryStemJob({
+        filePath: normalizeText(payload?.filePath),
+        model: payload?.model
+      })
+    }
+  )
 
   ipcMain.handle(
     'library-stem:preview-waveforms',
-    async (_event, payload?: { filePath?: unknown }) => {
-      const snapshot = await getLibraryStemStatusSnapshot(normalizeText(payload?.filePath))
+    async (_event, payload?: { filePath?: unknown; model?: unknown }) => {
+      const snapshot = await getLibraryStemStatusSnapshot(
+        normalizeText(payload?.filePath),
+        payload?.model
+      )
       if (snapshot.status !== 'ready') return { stems: {} }
 
       const stemPaths = resolveStemPaths(snapshot)
@@ -73,7 +85,7 @@ export function registerLibraryStemHandlers() {
 
   ipcMain.handle(
     'library-stem:export',
-    async (event, payload?: { filePath?: unknown; stem?: unknown }) => {
+    async (event, payload?: { filePath?: unknown; model?: unknown; stem?: unknown }) => {
       const filePath = normalizeText(payload?.filePath)
       const selectedStem = normalizeText(payload?.stem, 16)
       const selectedIds =
@@ -82,7 +94,7 @@ export function registerLibraryStemHandlers() {
         throw new Error('STEM_EXPORT_INVALID_SELECTION')
       }
 
-      const snapshot = await getLibraryStemStatusSnapshot(filePath)
+      const snapshot = await getLibraryStemStatusSnapshot(filePath, payload?.model)
       if (snapshot.status !== 'ready') {
         throw new Error('STEM_EXPORT_NOT_READY')
       }

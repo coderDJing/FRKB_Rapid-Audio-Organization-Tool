@@ -13,9 +13,26 @@ import type {
 
 type RuntimeInstallProgress = Partial<MixtapeStemRuntimeDownloadState>
 
-type RuntimeInstallDeps = {
+export type VerifiedArchiveEntry = {
+  archiveName: string
+  archiveUrl: string
+  archiveSha256: string
+  archiveSize: number
+  archiveParts?: Array<{
+    index: number
+    archiveName: string
+    archiveUrl: string
+    archiveSha256: string
+    archiveSize: number
+  }>
+}
+
+export type VerifiedArchiveDownloadDeps = {
   fetchRuntimeAsset: (url: string, init?: UndiciRequestInit) => Promise<UndiciResponse>
   computeFileSha256: (filePath: string) => Promise<string>
+}
+
+type RuntimeInstallDeps = VerifiedArchiveDownloadDeps & {
   resolveRuntimeDownloadCacheDir: () => string
   resolveRuntimeInstalledVersionPath: (runtimeDir: string) => string
   resolveRuntimeProfileTitle: (profile: RuntimeAssetEntry['profile'] | '') => string
@@ -141,7 +158,7 @@ const resolveRuntimeDownloadPercent = (downloadedBytes: number, totalBytes: numb
     : 0
 
 const downloadRuntimeArchivePart = async (
-  deps: RuntimeInstallDeps,
+  deps: VerifiedArchiveDownloadDeps,
   params: {
     archiveUrl: string
     archivePath: string
@@ -234,7 +251,7 @@ const downloadRuntimeArchivePart = async (
 }
 
 const tryUseCachedRuntimeArchive = async (
-  deps: RuntimeInstallDeps,
+  deps: VerifiedArchiveDownloadDeps,
   params: {
     archivePath: string
     archiveSha256: string
@@ -261,7 +278,10 @@ const tryUseCachedRuntimeArchive = async (
   return true
 }
 
-const probeRuntimeArchiveRangeSupport = async (deps: RuntimeInstallDeps, archiveUrl: string) => {
+const probeRuntimeArchiveRangeSupport = async (
+  deps: VerifiedArchiveDownloadDeps,
+  archiveUrl: string
+) => {
   const idle = createDownloadIdleController()
   try {
     const response = await deps.fetchRuntimeAsset(archiveUrl, {
@@ -329,7 +349,7 @@ const runWithConcurrency = async <T>(
 }
 
 const downloadRuntimeArchiveRangeSegment = async (
-  deps: RuntimeInstallDeps,
+  deps: VerifiedArchiveDownloadDeps,
   params: {
     archiveUrl: string
     segment: RuntimeRangeSegment
@@ -421,8 +441,8 @@ const combineRuntimeRangeSegments = async (
 }
 
 const downloadRuntimeArchiveWithRangeSegments = async (
-  deps: RuntimeInstallDeps,
-  entry: RuntimeAssetEntry,
+  deps: VerifiedArchiveDownloadDeps,
+  entry: VerifiedArchiveEntry,
   archivePath: string,
   onProgress?: (payload: RuntimeArchiveDownloadProgress) => void
 ) => {
@@ -477,9 +497,9 @@ const downloadRuntimeArchiveWithRangeSegments = async (
   await Promise.all(segments.map((segment) => fs.promises.rm(segment.path, { force: true })))
 }
 
-const downloadRuntimeArchive = async (
-  deps: RuntimeInstallDeps,
-  entry: RuntimeAssetEntry,
+export const downloadVerifiedArchive = async (
+  deps: VerifiedArchiveDownloadDeps,
+  entry: VerifiedArchiveEntry,
   archivePath: string,
   onProgress?: (payload: { downloadedBytes: number; totalBytes: number; percent: number }) => void
 ) => {
@@ -569,7 +589,7 @@ const downloadRuntimeArchive = async (
   )
 }
 
-const extractRuntimeArchive = async (archivePath: string, outputDir: string) => {
+export const extractVerifiedArchive = async (archivePath: string, outputDir: string) => {
   await fs.promises.mkdir(outputDir, { recursive: true })
   if (process.platform === 'win32') {
     await runProcess('tar.exe', ['-xf', archivePath, '-C', outputDir], {
@@ -616,7 +636,7 @@ export const installRuntimeFromManifestEntry = async (
     message: `正在下载 ${deps.resolveRuntimeProfileTitle(entry.profile)} 加速组件`,
     error: ''
   })
-  await downloadRuntimeArchive(deps, entry, archivePath, (progress) => {
+  await downloadVerifiedArchive(deps, entry, archivePath, (progress) => {
     onState?.({
       status: 'downloading',
       profile: entry.profile,
@@ -660,7 +680,7 @@ export const installRuntimeFromManifestEntry = async (
     message: `正在解压 ${deps.resolveRuntimeProfileTitle(entry.profile)} 加速组件`,
     error: ''
   })
-  await extractRuntimeArchive(archivePath, tempExtractRoot)
+  await extractVerifiedArchive(archivePath, tempExtractRoot)
   const extractedRuntimeDir = path.join(tempExtractRoot, entry.runtimeKey)
   const extractedPythonPath = path.join(extractedRuntimeDir, entry.pythonRelativePath)
   if (!(await deps.fileExists(extractedPythonPath))) {

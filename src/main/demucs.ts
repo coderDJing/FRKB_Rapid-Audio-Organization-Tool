@@ -25,6 +25,9 @@ const resolveDefaultBundledDemucsRootPath = (): string => {
   return path.resolve(__dirname, '../../vendor/demucs')
 }
 
+const resolveDevDownloadedDemucsModelsRootPath = (): string =>
+  path.join(resolveDefaultBundledDemucsRootPath(), 'dev-models')
+
 const resolveDevDemucsRootOverridePath = (): string => {
   if (app.isPackaged) return ''
   const configuredRoot = String(process.env[DEMUCS_DEV_ROOT_ENV] || '').trim()
@@ -85,6 +88,18 @@ export function resolveBundledDemucsPlatformRootCandidates(): string[] {
 
 export function resolveInstalledDemucsRootPath(): string {
   return path.join(app.getPath('userData'), 'demucs-runtimes')
+}
+
+export function resolveInstalledDemucsModelsRootPath(): string {
+  if (!app.isPackaged) return resolveDevDownloadedDemucsModelsRootPath()
+  return path.join(app.getPath('userData'), 'demucs-models')
+}
+
+export function resolveInstalledDemucsModelPath(modelName: string): string {
+  const normalizedName = String(modelName || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+  return path.join(resolveInstalledDemucsModelsRootPath(), normalizedName || 'unknown')
 }
 
 export function resolveInstalledDemucsPlatformRootPath(): string {

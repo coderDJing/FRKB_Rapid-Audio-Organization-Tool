@@ -122,6 +122,7 @@ const exactSendChannels = new Set([
 const exactListenChannels = new Set([
   'addSongFingerprintFinished',
   'analysis-runtime-download-state',
+  'demucs-model-download-state',
   'audio:convert:done',
   'cloudSync/error',
   'cloudSync/notice',
@@ -197,6 +198,7 @@ const invokePrefixes = [
   'cloudSync/',
   'curatedArtists:',
   'dev-songlist-trace:',
+  'demucs-model:',
   'externalPlaylist:',
   'fingerprints:',
   'horizontal-browse-transport:',

@@ -246,7 +246,7 @@ const ensureRuntimeDownloadProxyInitialized = async () => {
   }
 }
 
-const fetchRuntimeAsset = async (
+export const fetchDemucsAsset = async (
   url: string,
   init?: UndiciRequestInit
 ): Promise<UndiciResponse> => {
@@ -267,7 +267,7 @@ const fileExists = async (targetPath: string) => {
   }
 }
 
-const computeFileSha256 = async (filePath: string): Promise<string> => {
+export const computeDemucsAssetSha256 = async (filePath: string): Promise<string> => {
   const hash = crypto.createHash('sha256')
   const stream = fs.createReadStream(filePath)
   return await new Promise<string>((resolve, reject) => {
@@ -372,7 +372,7 @@ const readRuntimeManifest = async (): Promise<RuntimeAssetManifest | null> => {
   runtimeManifestPromise = (async () => {
     const manifestUrl = resolveRuntimeManifestUrl()
     try {
-      const response = await fetchRuntimeAsset(manifestUrl, {
+      const response = await fetchDemucsAsset(manifestUrl, {
         headers: {
           Accept: 'application/json'
         }
@@ -845,8 +845,8 @@ const ensureRuntimeProfileAvailable = async (
       await installRuntimeFromManifestEntry(
         entry,
         {
-          fetchRuntimeAsset,
-          computeFileSha256,
+          fetchRuntimeAsset: fetchDemucsAsset,
+          computeFileSha256: computeDemucsAssetSha256,
           resolveRuntimeDownloadCacheDir,
           resolveRuntimeInstalledVersionPath,
           resolveRuntimeProfileTitle,

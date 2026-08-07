@@ -20,6 +20,7 @@ import {
 } from '@shared/playbackRange'
 import type { SongStructureSectionKind } from '@shared/songStructure'
 import { buildAnalysisBpmRangeOptions } from '@renderer/utils/analysisBpmRangeUi'
+import { formatAnalysisRuntimeBytes } from '@renderer/utils/analysisRuntimeDownloadUi'
 import {
   normalizeAnalysisBpmRangeId,
   type AnalysisBpmRangePresetId
@@ -71,7 +72,10 @@ const {
   onFingerprintModeChange,
   clearCloudFingerprints,
   clearLibraryDirtyData,
-  clearAnalysisRuntime
+  clearAnalysisRuntime,
+  ultraModelInfo,
+  ultraModelStatusText,
+  removeUltraModel
 } = ctx
 
 const fingerprintModeModel = computed<'pcm' | 'file'>({
@@ -520,6 +524,26 @@ const rekordboxDesktopTrackStorageDirText = computed(
                 v-model="showIdleAnalysisStatusModel"
                 @change="setSetting"
               />
+            </div>
+
+            <div class="setting-block">{{ t('settings.ultraStemModel.title') }}：</div>
+            <div class="setting-control">
+              <div class="setting-hint">{{ t('settings.ultraStemModel.desc') }}</div>
+              <div class="model-manager-row">
+                <span>{{ ultraModelStatusText }}</span>
+                <span v-if="ultraModelInfo?.alreadyAvailable">
+                  {{
+                    t('settings.ultraStemModel.diskUsage', {
+                      size: formatAnalysisRuntimeBytes(ultraModelInfo.installedSize)
+                    })
+                  }}
+                </span>
+              </div>
+              <div v-if="ultraModelInfo?.alreadyAvailable" class="actionRow">
+                <div class="dangerButton settings-inline-button" @click="removeUltraModel()">
+                  {{ t('settings.ultraStemModel.removeButton') }}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1011,6 +1035,20 @@ label.setting-block {
   color: var(--text-secondary, #8c8c8c);
   margin-top: 8px;
   line-height: 1.5;
+}
+
+.model-manager-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.model-manager-row span + span {
+  color: var(--text-secondary, #8c8c8c);
 }
 
 .settings-inline-button {

@@ -72,6 +72,18 @@ export type SettingDialogContext = {
   clearCloudFingerprints: () => Promise<void>
   clearLibraryDirtyData: () => Promise<void>
   clearAnalysisRuntime: () => Promise<void>
+  ultraModelInfo: Ref<{
+    archiveSize: number
+    installedSize: number
+    alreadyAvailable: boolean
+    error: string
+    state: {
+      status: 'idle' | 'available' | 'downloading' | 'extracting' | 'ready' | 'failed'
+      archiveSize: number
+    }
+  } | null>
+  ultraModelStatusText: ComputedRef<string>
+  removeUltraModel: () => Promise<void>
   openCloudSyncSettings: () => void
 }
 

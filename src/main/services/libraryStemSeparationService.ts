@@ -9,9 +9,11 @@ import {
 import { FIXED_MIXTAPE_STEM_MODE, normalizeMixtapeStemMode } from '../../shared/mixtapeStemMode'
 import {
   DEFAULT_MIXTAPE_STEM_PROFILE,
+  parseMixtapeStemModel,
   resolveMixtapeStemModelByProfile
 } from '../../shared/mixtapeStemProfiles'
 import { computeLibraryStemSourceSignature } from './libraryStemAssetStorage'
+import { isDemucsUltraModelInstalled } from './demucsUltraModelDownload'
 import type {
   MixtapeStemComputeDevice,
   MixtapeStemRuntimeStage
@@ -34,6 +36,7 @@ export type LibraryStemStatusSnapshot = {
   bassPath: string | null
   drumsPath: string | null
   percent: number | null
+  activityConfirmedAt: number | null
   device: MixtapeStemComputeDevice | null
   stage: MixtapeStemRuntimeStage | null
   stageCompleted: number | null
@@ -69,6 +72,9 @@ const normalizeText = (value: unknown, maxLen = 2000): string => {
 }
 
 const normalizeFilePath = (value: unknown) => normalizeText(value, 4000)
+
+const normalizeStemModel = (value: unknown) =>
+  parseMixtapeStemModel(value, DEFAULT_MIXTAPE_STEM_PROFILE).requestedModel
 
 const normalizeNumberOrNull = (value: unknown): number | null => {
   if (value === null || value === undefined || value === '') return null
@@ -106,7 +112,7 @@ export const createLibraryStemSnapshot = (
 ): LibraryStemStatusSnapshot => ({
   filePath: normalizeFilePath(params.filePath),
   stemMode: params.stemMode || normalizeMixtapeStemMode(FIXED_MIXTAPE_STEM_MODE),
-  model: normalizeText(params.model, 128) || DEFAULT_STEM_MODEL,
+  model: normalizeStemModel(params.model || DEFAULT_STEM_MODEL),
   status: params.status || 'idle',
   errorCode: normalizeText(params.errorCode, 80) || null,
   errorMessage: normalizeText(params.errorMessage, 1200) || null,
@@ -115,6 +121,7 @@ export const createLibraryStemSnapshot = (
   bassPath: normalizeFilePath(params.bassPath) || null,
   drumsPath: normalizeFilePath(params.drumsPath) || null,
   percent: normalizeNumberOrNull(params.percent),
+  activityConfirmedAt: normalizeNumberOrNull(params.activityConfirmedAt),
   device: params.device || null,
   stage: params.stage || null,
   stageCompleted: normalizeNumberOrNull(params.stageCompleted),
@@ -136,11 +143,12 @@ export function configureLibraryStemSeparationService(adapter: LibraryStemQueueA
 }
 
 export async function getLibraryStemStatusSnapshot(
-  inputFilePath: string
+  inputFilePath: string,
+  inputModel?: unknown
 ): Promise<LibraryStemStatusSnapshot> {
   const filePath = normalizeFilePath(inputFilePath)
   const stemMode = normalizeMixtapeStemMode(FIXED_MIXTAPE_STEM_MODE)
-  const model = DEFAULT_STEM_MODEL
+  const model = normalizeStemModel(inputModel || DEFAULT_STEM_MODEL)
   if (!filePath || !fs.existsSync(filePath)) {
     return createLibraryStemSnapshot({
       filePath,
@@ -200,20 +208,31 @@ export async function getLibraryStemStatusSnapshot(
 
 export async function enqueueLibraryStemJob(params: {
   filePath: string
+  model?: unknown
   force?: boolean
 }): Promise<LibraryStemStatusSnapshot> {
+  const model = normalizeStemModel(params?.model || DEFAULT_STEM_MODEL)
   const adapter = getQueueAdapter()
   if (adapter.isMutationLocked()) {
     return createLibraryStemSnapshot({
       filePath: params?.filePath || '',
+      model,
       status: 'failed',
       errorCode: 'LIBRARY_MUTATION_LOCKED',
       errorMessage: '资料库整理中，暂时不能开始 Stem 分离'
     })
   }
 
-  const snapshot = await getLibraryStemStatusSnapshot(params?.filePath || '')
+  const snapshot = await getLibraryStemStatusSnapshot(params?.filePath || '', model)
   if (!snapshot.filePath || !fs.existsSync(snapshot.filePath)) return snapshot
+  if (parseMixtapeStemModel(model).profile === 'ultra' && !(await isDemucsUltraModelInstalled())) {
+    return createLibraryStemSnapshot({
+      ...snapshot,
+      status: 'failed',
+      errorCode: 'STEM_ULTRA_MODEL_NOT_INSTALLED',
+      errorMessage: '超高质量模型尚未下载'
+    })
+  }
   if (snapshot.status === 'ready' && !params?.force) {
     notifyLibraryStemStatus(snapshot)
     return snapshot

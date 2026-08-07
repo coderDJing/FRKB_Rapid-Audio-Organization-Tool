@@ -17,10 +17,10 @@ export default (args: OpenLibraryStemSeparationDialogArgs) => {
       container.remove()
       resolve()
     }
-    const minimize = () => {
+    const minimize = (snapshot: unknown) => {
       window.dispatchEvent(
         new CustomEvent('library-stem:minimized', {
-          detail: { filePath: args.filePath, songTitle: args.songTitle || '' }
+          detail: { filePath: args.filePath, songTitle: args.songTitle || '', snapshot }
         })
       )
       close()

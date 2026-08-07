@@ -86,6 +86,20 @@
       "partialFailedHint": "Restart FRKB and try again. If it still fails, check for processes that are holding the related files.",
       "failed": "Failed to clear the local analysis runtime"
     },
+    "ultraStemModel": {
+      "title": "Ultra-quality Stem model",
+      "desc": "Download it on demand from the Stem Workspace after choosing Ultra Quality. It stays after restart and can be removed at any time to free space.",
+      "statusChecking": "Checking model status…",
+      "statusInstalled": "Installed · {size}",
+      "statusNotInstalled": "Not downloaded (download it in Stem Workspace)",
+      "statusUnavailable": "Model status is currently unavailable",
+      "diskUsage": "Uses {size} on disk",
+      "removeButton": "Remove Ultra-quality Model",
+      "removeConfirmLine1": "This removes the local ultra-quality Stem model (about {size}).",
+      "removeConfirmLine2": "Ultra Quality stays unavailable until it is downloaded again. Exported Stem files are not affected.",
+      "removeBusy": "Wait for the active Stem separation or model download to finish before removing the model.",
+      "removeFailed": "Failed to remove the ultra-quality model"
+    },
     "layout": {
       "headerHint": "Reordered by usage priority, with high-risk actions isolated at the end.",
       "quickNavTitle": "Quick Jump",
