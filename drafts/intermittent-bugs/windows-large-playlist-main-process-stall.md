@@ -2,12 +2,12 @@
 
 ## 当前状态
 
-- 状态：`诊断中`
+- 状态：`已修复，待问题电脑现场验收`
 - 首次记录：2026-08-06
-- 已知影响版本：`1.2.2-rc.202608051614`
+- 已知影响版本：`1.2.2-rc.202608051614`、`1.2.2-rc.202608070938`
 - 现场：另一台 Windows 电脑打开千首级筛选库歌单时几乎必现；当前开发电脑打开 1798 首的 `wait` 歌单无法复现明显未响应。
-- 当前结论：只能确认 Electron 主进程事件循环发生长时间停顿，尚未确认具体阻塞代码。
-- 阶段诊断和本文档已纳入源码交付，但尚未随新安装包发布，也未在问题电脑上验收。
+- 当前结论：`1.2.2-rc.202608070938` 的现场日志已确认主进程在无界创建 1224 个时间基修复任务时连续阻塞约 20 秒；代码修复已完成，但尚未发布新安装包，也未在问题电脑上验收。
+- 另一台性能更低、歌单更多的电脑未复现，说明硬件性能和歌单总数不是充分根因；现场环境会放大 Windows 子进程创建成本，但不影响“主进程禁止无界启动 FFprobe”的修复结论。
 
 ## 用户可感知现象
 
@@ -47,8 +47,40 @@
 7. `resolveAudioTimeBasisOffsetMsForFile()` 的缓存仅存在于当前进程内，不能跨 FRKB 重启复用。
 8. `better-sqlite3` 是同步驱动，即使外层函数声明为 `async`，JSON 序列化和数据库语句仍可能阻塞主事件循环。
 9. 当前电脑打开同规模歌单没有明显未响应，因此“1798 首”或“缺少时间基”本身不能作为充分根因。
+10. 问题电脑在 `traceId = renderer-msj67yl5-2` 中扫描 1224 首歌曲，worker 仅耗时 2862 ms，主进程响应却耗时 23972 ms。
+11. 该批次有 1224 个时间基候选且全部为进程内缓存 miss；从 `time-basis repair planned` 到 `time-basis tasks launched` 耗时 20376 ms。
+12. 同一时段心跳记录 `stallDurationMs: 20097`，与任务创建区间吻合；IPC 送达仅耗时 84 ms，因此已排除 renderer 接收和 IPC 传输作为本次主因。
+13. 原实现的 `songs.map(async ...)` 会在 `Promise.all` 前同步执行每个回调直到首次 `await`，因此会连续调用 1224 次 `execFile(ffprobe.exe)`，没有并发上限，也没有让出主事件循环。
+14. 本次 1224 首中只有 168 首解析出非零偏移；其余合法零偏移若没有独立的解析版本标记，会在跨进程重启后继续被误判为旧版未修复数据。
 
-## 当前嫌疑链
+## 2026-08-08 修复
+
+修复原则：歌单打开链路只负责 worker 扫描和时间基候选规划，不再等待整批 FFprobe 与缓存回写。
+
+- 时间基修复进入全局后台队列；批次串行执行，单批最多同时运行 4 个 FFprobe。
+- 队列接收的是尚未启动的任务函数，禁止在构造任务数组时提前创建子进程。
+- `scanSongList` 在后台修复完成前即可返回，当前歌单通过已有 `song-grid-updated` 事件逐首接收修复结果。
+- 同目录歌曲复用一次歌单根查询，避免逐首同步查询 `library_nodes`。
+- 缓存持久化只使用 SQLite `json_set` 原子更新 `timeBasisOffsetMs` 和 `timeBasisOffsetAlgorithmVersion`，不再拿扫描时的整首旧对象覆盖 `info_json`，避免后台任务覆盖用户随后做出的网格编辑。
+- 新增 `timeBasisOffsetAlgorithmVersion`。已确认的合法零偏移也会记录版本，后续冷启动不会重复探测；没有该标记的旧版 MP3 零偏移仍会执行一次兼容修复。
+- FFprobe 的 `execFile` 调用在专用 Node worker thread 中执行；不能只把 Promise 放到后台，因为 Windows 子进程创建本身可能同步阻塞调用它的线程。
+- 原有诊断日志继续保留，用于现场确认主响应先返回、后台最大并发不超过 4，以及不再出现同 trace 的主进程长停顿。
+
+### 2026-08-08 开发模式首次验收后的补充修复
+
+第一次实现只把修复移出歌单响应链并限制并发，FFprobe 仍由 Electron 主线程调用。开发模式现场日志证明这还不充分：
+
+- `traceId = renderer-msj8mk00-1` 只有 2 个 MP3 候选；
+- `main response ready` 后 11 ms renderer 已收到结果；
+- 后台修复期间仍出现 `stallDurationMs: 3224`；
+- `resolveDurationMaxMs: 3746`，而 SQLite 两次原子更新总计仅 1 ms；
+- 第二次打开候选已降为 0，说明版本标记持久化正确。
+
+因此第二次修复把 FFprobe 探测和 Windows 子进程启动整体移入 `audioTimeBasisOffsetWorker`。后台队列仍在主线程负责最多并发 4、缓存原子更新和界面事件，但主线程不再直接调用 `execFile(ffprobe.exe)`。
+
+## 复现前的嫌疑链（历史记录）
+
+以下分支是取得 `1.2.2-rc.202608070938` 现场日志之前的排查假设。新日志已经把本次卡顿收敛到时间基任务无界启动；磁盘和杀毒软件仍可能放大进程创建耗时，但不再作为等待修复的前置条件。
 
 以下方向需要用新日志确认，禁止提前定性：
 
@@ -127,8 +159,8 @@ traceId
 - `main scan started`
 - `worker scan completed`
 - `time-basis repair planned`
-- `time-basis tasks launched`
-- `time-basis repair completed`
+- `time-basis background repair started`
+- `time-basis background repair completed`
 - `main response ready`
 - `main scan failed`
 
@@ -138,12 +170,14 @@ traceId
 - `candidateCount`
 - `cacheHitCount` / `cacheMissCount`
 - `extensionCounts`
-- `taskLaunchDurationMs`
+- `backgroundScheduled` / `concurrency`
+- `executionContext`：修复后固定为 `worker-thread`
+- `queueWaitDurationMs` / `repairDurationMs`
 - `resolveDurationTotalMs` / `resolveDurationMaxMs`
 - `cachePersistenceDurationTotalMs` / `cachePersistenceDurationMaxMs`
-- `cacheUpsertAttemptedCount` / `cacheUpsertSucceededCount`
+- `cachePatchAttemptedCount` / `cachePatchSucceededCount`
 - `cacheRootMissingCount`
-- `fileStatMissingCount`
+- `maxActiveCount` / `failedCount`
 - `mainDurationMs`
 
 ### 主进程卡顿快照
@@ -171,22 +205,23 @@ traceId
 ```text
 worker-scan
 worker-result-received
-time-basis-plan
-time-basis-task-launch
-time-basis-await
+time-basis-background-queued
+time-basis-background-running
+response-ready-background-repair
 post-scan-schedule
 response-ready
 failed
 ```
 
-## 下次复现流程
+## 修复后现场验收流程
 
-1. 确认问题电脑安装的版本已经包含本文诊断代码。当前源码交付尚未随新安装包发布，后续发布后应在本节补充版本号和提交 SHA。
+1. 确认问题电脑安装的版本已经包含本次修复。当前源码尚未随新安装包发布，后续发布后应在本节补充版本号和提交 SHA。
 2. 完全退出 FRKB，确认任务管理器中没有残留 `FRKB.exe` 和 `ffprobe.exe`。
 3. 重新启动 FRKB，第一次打开问题歌单；不要先打开其他大歌单预热缓存。
-4. 出现未响应后等待窗口自行恢复，不要立即强制结束进程。
+4. 确认歌单在 worker 扫描结束后即可打开，窗口保持可交互；后台时间基事件可继续逐首回填。
 5. 保存问题电脑的 `%APPDATA%\FRKB\log.txt`。
-6. 同时记录：音频所在盘符、磁盘类型、是否为 USB/网络盘、杀毒软件，以及同一进程内第二次打开是否还会卡。
+6. 核对同一 trace：`main response ready` 应早于 `time-basis background repair completed`，`maxActiveCount <= 4`，且不应再出现覆盖该后台阶段的长时间 `main-process event loop stalled`。
+7. 完全退出并重启后再次打开同一歌单；已记录 `timeBasisOffsetAlgorithmVersion` 的合法零偏移歌曲不应重新成为候选。
 
 如果日志已经复制到当前仓库根目录，优先执行：
 
@@ -260,8 +295,19 @@ rg -n -C 30 "playlist-scan-diagnostic|main-process event loop stalled|renderer u
 ```text
 src/main/ipc/playlistHandlers.ts
 src/main/services/audioTimeBasisOffset.ts
+src/main/services/audioTimeBasisOffsetProbe.ts
+src/main/services/audioTimeBasisOffsetWorker.ts
+src/main/services/playlistTimeBasisRepair.ts
+src/main/services/playlistTimeBasisRepair.spec.ts
+src/main/workers/audioTimeBasisOffsetWorker.ts
 src/main/services/playlistScanDiagnostics.ts
 src/main/window/mainWindow/responsivenessDiagnostics.ts
+src/main/libraryCacheDb.ts
+src/main/libraryCacheDb/songCache.ts
+src/main/librarySchemaV37Migration.ts
+src/main/services/scanSongs.ts
+src/types/globals.d.ts
+electron.vite.config.ts
 src/renderer/src/pages/modules/songsArea/composables/useSongsLoader.ts
 drafts/intermittent-bugs/README.md
 drafts/intermittent-bugs/windows-large-playlist-main-process-stall.md
@@ -277,13 +323,19 @@ drafts/intermittent-bugs/windows-large-playlist-main-process-stall.md
 ## 已完成验证
 
 ```powershell
+npx vitest run src/main/services/playlistTimeBasisRepair.spec.ts src/main/services/scanSongs.spec.ts
 npx vue-tsc --noEmit
-npx eslint "src/main/services/playlistScanDiagnostics.ts" "src/main/services/audioTimeBasisOffset.ts" "src/main/window/mainWindow/responsivenessDiagnostics.ts" "src/main/ipc/playlistHandlers.ts" "src/renderer/src/pages/modules/songsArea/composables/useSongsLoader.ts"
-node "node_modules/prettier/bin/prettier.cjs" --check "src/main/services/playlistScanDiagnostics.ts" "src/main/services/audioTimeBasisOffset.ts" "src/main/window/mainWindow/responsivenessDiagnostics.ts" "src/main/ipc/playlistHandlers.ts" "src/renderer/src/pages/modules/songsArea/composables/useSongsLoader.ts"
+pnpm run build
+npx eslint "electron.vite.config.ts" "src/main/ipc/playlistHandlers.ts" "src/main/libraryCacheDb.ts" "src/main/libraryCacheDb/songCache.ts" "src/main/librarySchemaV37Migration.spec.ts" "src/main/librarySchemaV37Migration.ts" "src/main/services/audioTimeBasisOffset.ts" "src/main/services/audioTimeBasisOffsetProbe.ts" "src/main/services/audioTimeBasisOffsetWorker.ts" "src/main/services/keyAnalysis/persistence.ts" "src/main/services/playlistTimeBasisRepair.spec.ts" "src/main/services/playlistTimeBasisRepair.ts" "src/main/services/scanSongs.spec.ts" "src/main/services/scanSongs.ts" "src/main/workers/audioTimeBasisOffsetWorker.ts" "src/types/globals.d.ts"
+node "node_modules/prettier/bin/prettier.cjs" --check "electron.vite.config.ts" "src/main/ipc/playlistHandlers.ts" "src/main/libraryCacheDb.ts" "src/main/libraryCacheDb/songCache.ts" "src/main/librarySchemaV37Migration.spec.ts" "src/main/librarySchemaV37Migration.ts" "src/main/services/audioTimeBasisOffset.ts" "src/main/services/audioTimeBasisOffsetProbe.ts" "src/main/services/audioTimeBasisOffsetWorker.ts" "src/main/services/keyAnalysis/persistence.ts" "src/main/services/playlistTimeBasisRepair.spec.ts" "src/main/services/playlistTimeBasisRepair.ts" "src/main/services/scanSongs.spec.ts" "src/main/services/scanSongs.ts" "src/main/workers/audioTimeBasisOffsetWorker.ts" "src/types/globals.d.ts"
 git diff --check
 ```
 
-结果：全部通过，仅出现 npm 对旧项目配置项的弃用警告。
+结果：
+
+- 定向 Vitest 共 2 个文件、6 个测试通过，覆盖候选筛选、合法零偏移版本标记、偏移与版本标记一致性、最大并发 4、同目录根查询复用，以及入队立即返回。
+- `npx vue-tsc --noEmit`、`pnpm run build`、定向 ESLint、Prettier 检查和 `git diff --check` 通过；构建产物包含 `out/main/workers/audioTimeBasisOffsetWorker.js`，仅出现 npm 对旧项目配置项的弃用警告和既有 Vite chunk 提示。
+- `npx vitest run src/main/librarySchemaV37Migration.spec.ts` 未进入断言：本机 `better_sqlite3.node` 使用 `NODE_MODULE_VERSION 145` 编译，而当前 Node 需要 `137`。这是本机原生模块 ABI 不匹配，不是迁移逻辑测试失败；未为此次验证擅自重编依赖。
 
 没有启动新的 dev/Electron 实例，也没有在当前电脑强行制造 1798 个 FFprobe 压力测试。
 

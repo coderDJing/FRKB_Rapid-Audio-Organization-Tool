@@ -7,14 +7,11 @@ import mainWindow from '../window/mainWindow'
 import { EXTERNAL_PLAYLIST_UUID } from '../../shared/externalPlayback'
 import { scheduleSongListPostScanTasks } from '../services/scanSongs'
 import { scanSongListOffMainThread } from '../services/songListScanWorker'
-import {
-  hasCachedAudioTimeBasisOffsetMsForFile,
-  resolveAudioTimeBasisOffsetMsForFile
-} from '../services/audioTimeBasisOffset'
-import { resolveCanonicalSongBeatGridV2 } from '../../shared/songAnalysisCompleteness'
-import * as LibraryCacheDb from '../libraryCacheDb'
-import { findSongListRoot } from '../services/cacheMaintenance'
 import { beginPlaylistScanDiagnostic } from '../services/playlistScanDiagnostics'
+import {
+  preparePlaylistTimeBasisRepair,
+  queuePlaylistTimeBasisRepair
+} from '../services/playlistTimeBasisRepair'
 import {
   countSongListTracksBatchOffMainThread,
   countSongListTracksOffMainThread
@@ -80,24 +77,6 @@ type PlaylistScanDiagnosticContext = {
   source?: string
 }
 
-type TimeBasisRepairDiagnostics = {
-  candidateCount: number
-  cacheHitCount: number
-  cacheMissCount: number
-  extensionCounts: Record<string, number>
-  taskLaunchDurationMs: number
-  totalDurationMs: number
-  resolveDurationTotalMs: number
-  resolveDurationMaxMs: number
-  resolvedNonZeroCount: number
-  cachePersistenceDurationTotalMs: number
-  cachePersistenceDurationMaxMs: number
-  cacheUpsertAttemptedCount: number
-  cacheUpsertSucceededCount: number
-  cacheRootMissingCount: number
-  fileStatMissingCount: number
-}
-
 let playlistScanDiagnosticSequence = 0
 
 const normalizeDiagnosticText = (value: unknown, maxLength: number) =>
@@ -121,128 +100,7 @@ const summarizeScanPaths = (scanPath: string | string[]) => {
   }
 }
 
-const shouldRepairSongTimeBasis = (song: ISongInfo) => {
-  const grid = resolveCanonicalSongBeatGridV2(song)
-  if (grid.kind !== 'grid') return false
-  const currentOffset = Number(song.timeBasisOffsetMs)
-  const missingOffset = !Number.isFinite(currentOffset) || currentOffset < 0
-  const legacyMp3Zero =
-    currentOffset === 0 &&
-    song.beatGridAlgorithmVersion === undefined &&
-    path.extname(song.filePath).toLowerCase() === '.mp3'
-  return missingOffset || legacyMp3Zero
-}
-
 export function registerPlaylistHandlers() {
-  const repairScannedSongGridTimeBases = async (
-    songs: ISongInfo[],
-    traceId: string,
-    updatePhase: (phase: string, details?: Record<string, unknown>) => void
-  ): Promise<{ scanData: ISongInfo[]; diagnostics: TimeBasisRepairDiagnostics }> => {
-    const startedAt = Date.now()
-    const candidates = songs.filter(shouldRepairSongTimeBasis)
-    const candidateSet = new Set(candidates)
-    const extensionCounts: Record<string, number> = {}
-    let cacheHitCount = 0
-    for (const song of candidates) {
-      const extension = path.extname(song.filePath).toLowerCase() || '(none)'
-      extensionCounts[extension] = (extensionCounts[extension] || 0) + 1
-      if (hasCachedAudioTimeBasisOffsetMsForFile(song.filePath)) {
-        cacheHitCount += 1
-      }
-    }
-    const cacheMissCount = candidates.length - cacheHitCount
-    updatePhase('time-basis-plan', {
-      trackCount: songs.length,
-      candidateCount: candidates.length,
-      cacheHitCount,
-      cacheMissCount,
-      extensionCounts
-    })
-    log.info('[playlist-scan-diagnostic] time-basis repair planned', {
-      traceId,
-      trackCount: songs.length,
-      candidateCount: candidates.length,
-      cacheHitCount,
-      cacheMissCount,
-      extensionCounts
-    })
-
-    let resolveDurationTotalMs = 0
-    let resolveDurationMaxMs = 0
-    let resolvedNonZeroCount = 0
-    let cachePersistenceDurationTotalMs = 0
-    let cachePersistenceDurationMaxMs = 0
-    let cacheUpsertAttemptedCount = 0
-    let cacheUpsertSucceededCount = 0
-    let cacheRootMissingCount = 0
-    let fileStatMissingCount = 0
-
-    updatePhase('time-basis-task-launch')
-    const taskLaunchStartedAt = Date.now()
-    const repairTasks = songs.map(async (song) => {
-      if (!candidateSet.has(song)) return song
-
-      const resolveStartedAt = Date.now()
-      const timeBasisOffsetMs = await resolveAudioTimeBasisOffsetMsForFile(song.filePath)
-      const resolveDurationMs = Date.now() - resolveStartedAt
-      resolveDurationTotalMs += resolveDurationMs
-      resolveDurationMaxMs = Math.max(resolveDurationMaxMs, resolveDurationMs)
-      if (timeBasisOffsetMs > 0) resolvedNonZeroCount += 1
-
-      const nextSong = { ...song, timeBasisOffsetMs: Number(timeBasisOffsetMs.toFixed(3)) }
-      const persistenceStartedAt = Date.now()
-      const listRoot = await findSongListRoot(path.dirname(song.filePath))
-      if (!listRoot) cacheRootMissingCount += 1
-      const stat = await fs.stat(song.filePath).catch(() => null)
-      if (!stat?.isFile()) fileStatMissingCount += 1
-      if (listRoot && stat?.isFile()) {
-        cacheUpsertAttemptedCount += 1
-        const upserted = await LibraryCacheDb.upsertSongCacheEntry(listRoot, song.filePath, {
-          size: stat.size,
-          mtimeMs: stat.mtimeMs,
-          info: nextSong
-        })
-        if (upserted) cacheUpsertSucceededCount += 1
-      }
-      const persistenceDurationMs = Date.now() - persistenceStartedAt
-      cachePersistenceDurationTotalMs += persistenceDurationMs
-      cachePersistenceDurationMaxMs = Math.max(cachePersistenceDurationMaxMs, persistenceDurationMs)
-      return nextSong
-    })
-    const taskLaunchDurationMs = Date.now() - taskLaunchStartedAt
-    updatePhase('time-basis-await', { taskLaunchDurationMs })
-    log.info('[playlist-scan-diagnostic] time-basis tasks launched', {
-      traceId,
-      candidateCount: candidates.length,
-      taskLaunchDurationMs
-    })
-
-    const scanData = await Promise.all(repairTasks)
-    const diagnostics: TimeBasisRepairDiagnostics = {
-      candidateCount: candidates.length,
-      cacheHitCount,
-      cacheMissCount,
-      extensionCounts,
-      taskLaunchDurationMs,
-      totalDurationMs: Date.now() - startedAt,
-      resolveDurationTotalMs,
-      resolveDurationMaxMs,
-      resolvedNonZeroCount,
-      cachePersistenceDurationTotalMs,
-      cachePersistenceDurationMaxMs,
-      cacheUpsertAttemptedCount,
-      cacheUpsertSucceededCount,
-      cacheRootMissingCount,
-      fileStatMissingCount
-    }
-    log.info('[playlist-scan-diagnostic] time-basis repair completed', {
-      traceId,
-      ...diagnostics
-    })
-    return { scanData, diagnostics }
-  }
-
   const runSongListScan = async (
     scanPath: string | string[],
     songListUUID: string,
@@ -286,15 +144,54 @@ export function registerPlaylistHandlers() {
         workerPerf: result.perf
       })
 
-      stage = 'time-basis-repair'
-      const repairResult = await repairScannedSongGridTimeBases(
-        result.scanData,
+      stage = 'time-basis-plan'
+      const preparedRepair = preparePlaylistTimeBasisRepair(result.scanData)
+      activity.update('time-basis-background-queued', {
+        trackCount: result.scanData.length,
+        ...preparedRepair.plan
+      })
+      log.info('[playlist-scan-diagnostic] time-basis repair planned', {
         traceId,
-        activity.update
-      )
+        trackCount: result.scanData.length,
+        ...preparedRepair.plan
+      })
+      const repairJob = queuePlaylistTimeBasisRepair(preparedRepair, {
+        onStarted: (details) => {
+          activity.update('time-basis-background-running', details)
+          log.info('[playlist-scan-diagnostic] time-basis background repair started', {
+            traceId,
+            candidateCount: preparedRepair.plan.candidateCount,
+            ...details
+          })
+        }
+      })
+      if (repairJob.completion) {
+        void repairJob.completion
+          .then((diagnostics) => {
+            log.info('[playlist-scan-diagnostic] time-basis background repair completed', {
+              traceId,
+              ...diagnostics
+            })
+            activity.complete({
+              trackCount: result.scanData.length,
+              backgroundRepairCompleted: true,
+              backgroundRepairDurationMs: diagnostics.repairDurationMs,
+              backgroundRepairFailedCount: diagnostics.failedCount,
+              maxActiveCount: diagnostics.maxActiveCount
+            })
+          })
+          .catch((error) => {
+            const message = error instanceof Error ? error.stack || error.message : String(error)
+            activity.fail({ stage: 'time-basis-background-repair', message })
+            log.error('[playlist-scan-diagnostic] time-basis background repair failed', {
+              traceId,
+              error: message
+            })
+          })
+      }
       stage = 'post-scan-schedule'
       activity.update('post-scan-schedule')
-      void scheduleSongListPostScanTasks(scanPath, repairResult.scanData)
+      void scheduleSongListPostScanTasks(scanPath, result.scanData)
 
       const responseReadyAtMs = Date.now()
       const mainDurationMs = responseReadyAtMs - startedAtMs
@@ -305,24 +202,33 @@ export function registerPlaylistHandlers() {
         responseReadyAtMs,
         mainDurationMs,
         workerDurationMs,
-        timeBasisRepair: repairResult.diagnostics
+        timeBasisRepair: repairJob.plan
       }
-      activity.complete({
-        trackCount: repairResult.scanData.length,
-        mainDurationMs,
-        workerDurationMs,
-        timeBasisRepairDurationMs: repairResult.diagnostics.totalDurationMs
-      })
+      if (repairJob.completion) {
+        activity.update('response-ready-background-repair', {
+          trackCount: result.scanData.length,
+          mainDurationMs,
+          workerDurationMs,
+          backgroundRepairPending: true
+        })
+      } else {
+        activity.complete({
+          trackCount: result.scanData.length,
+          mainDurationMs,
+          workerDurationMs,
+          backgroundRepairPending: false
+        })
+      }
       log.info('[playlist-scan-diagnostic] main response ready', {
         traceId,
         source,
-        trackCount: repairResult.scanData.length,
+        trackCount: result.scanData.length,
         responseReadyAtMs,
         mainDurationMs,
         workerDurationMs,
-        timeBasisRepairDurationMs: repairResult.diagnostics.totalDurationMs
+        timeBasisRepair: repairJob.plan
       })
-      return { ...result, scanData: repairResult.scanData, scanDiagnostics }
+      return { ...result, scanDiagnostics }
     } catch (error) {
       const message = error instanceof Error ? error.stack || error.message : String(error)
       activity.fail({ stage, message })

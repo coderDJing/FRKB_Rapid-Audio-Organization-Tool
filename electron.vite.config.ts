@@ -26,6 +26,10 @@ export default defineConfig({
           index: resolve(__dirname, 'src/main/index.ts'),
           audioDecodeWorker: resolve(__dirname, 'src/main/workers/audioDecodeWorker.ts'),
           keyAnalysisWorker: resolve(__dirname, 'src/main/workers/keyAnalysisWorker.ts'),
+          audioTimeBasisOffsetWorker: resolve(
+            __dirname,
+            'src/main/workers/audioTimeBasisOffsetWorker.ts'
+          ),
           songListScanWorker: resolve(__dirname, 'src/main/workers/songListScanWorker.ts'),
           songListTrackCountWorker: resolve(
             __dirname,
@@ -52,6 +56,9 @@ export default defineConfig({
             }
             if (chunk.name === 'keyAnalysisWorker') {
               return 'workers/keyAnalysisWorker.js'
+            }
+            if (chunk.name === 'audioTimeBasisOffsetWorker') {
+              return 'workers/audioTimeBasisOffsetWorker.js'
             }
             if (chunk.name === 'songListScanWorker') {
               return 'workers/songListScanWorker.js'

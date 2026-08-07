@@ -750,6 +750,7 @@ export function stripSongCoreAnalysisFields(info: ISongInfo): ISongInfo {
   delete next.beatGridMap
   delete next.beatGridAlgorithmVersion
   delete next.timeBasisOffsetMs
+  delete next.timeBasisOffsetAlgorithmVersion
   delete next.energyScore
   delete next.energyAlgorithmVersion
   delete next.songStructure
@@ -865,6 +866,58 @@ export async function upsertSongCacheEntry(
     return true
   } catch (error) {
     log.error('[sqlite] song cache upsert failed', error)
+    return false
+  }
+}
+
+export async function updateSongCacheTimeBasisOffset(
+  listRoot: string,
+  filePath: string,
+  timeBasisOffsetMs: number,
+  algorithmVersion: number
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !filePath) return false
+  const normalizedOffset = Number(timeBasisOffsetMs)
+  if (!Number.isFinite(normalizedOffset) || normalizedOffset < 0) return false
+  const normalizedAlgorithmVersion = Math.floor(Number(algorithmVersion))
+  if (!Number.isFinite(normalizedAlgorithmVersion) || normalizedAlgorithmVersion <= 0) return false
+  const resolvedRoot = resolveListRootInput(listRoot)
+  if (!resolvedRoot) return false
+  const listRootKey = resolvedRoot.key
+  const listRootAbs = resolvedRoot.abs || resolveAbsoluteListRoot(listRootKey)
+  const resolvedFile = resolveFilePathInput(listRootAbs, filePath)
+  if (!resolvedFile) return false
+  const legacyListRoot =
+    resolvedRoot.legacyAbs && resolvedRoot.legacyAbs !== listRootKey
+      ? resolvedRoot.legacyAbs
+      : undefined
+  const candidates: Array<{ listRoot: string; filePath: string }> = [
+    { listRoot: listRootKey, filePath: resolvedFile.key }
+  ]
+  if (resolvedFile.keyRaw) {
+    candidates.push({ listRoot: listRootKey, filePath: resolvedFile.keyRaw })
+  }
+  if (legacyListRoot && resolvedFile.legacyAbs) {
+    candidates.push({ listRoot: legacyListRoot, filePath: resolvedFile.legacyAbs })
+  }
+  try {
+    await ensureSongCacheMigrated(db, listRoot)
+    const update = db.prepare(
+      "UPDATE song_cache SET info_json = json_set(info_json, '$.timeBasisOffsetMs', ?, '$.timeBasisOffsetAlgorithmVersion', ?) WHERE list_root = ? AND file_path = ?"
+    )
+    for (const candidate of candidates) {
+      const result = update.run(
+        Number(normalizedOffset.toFixed(3)),
+        normalizedAlgorithmVersion,
+        candidate.listRoot,
+        candidate.filePath
+      )
+      if (Number(result?.changes || 0) > 0) return true
+    }
+    return false
+  } catch (error) {
+    log.error('[sqlite] song cache time basis update failed', error)
     return false
   }
 }

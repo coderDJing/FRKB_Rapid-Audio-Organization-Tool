@@ -60,6 +60,7 @@ interface ISongInfo {
   songStructure?: SongStructureAnalysis
   playlistTrackNumber?: number
   timeBasisOffsetMs?: number
+  timeBasisOffsetAlgorithmVersion?: number
   beatGridAlgorithmVersion?: number
   hotCues?: ISongHotCue[]
   memoryCues?: ISongMemoryCue[]

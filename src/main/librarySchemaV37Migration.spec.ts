@@ -70,6 +70,7 @@ describe('v36 or v37 to v38 library schema migration', () => {
         SONG_TIME_BASIS_REPAIR_SCHEMA_VERSION
       )
       expect(info.timeBasisOffsetMs).toBe(50.114)
+      expect(info.timeBasisOffsetAlgorithmVersion).toBe(1)
       expect(info.beatGridMap.clips[0].anchorSec).toBe(0.052114)
     } finally {
       db.close()

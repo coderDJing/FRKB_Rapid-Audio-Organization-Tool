@@ -9,6 +9,7 @@ export {
   clearSongCacheAnalysisFields,
   replaceSongCache,
   upsertSongCacheEntry,
+  updateSongCacheTimeBasisOffset,
   removeSongCacheEntry
 } from './libraryCacheDb/songCache'
 

@@ -84,6 +84,7 @@ export const createKeyAnalysisPersistence = (deps: KeyAnalysisPersistenceDeps) =
     delete info.firstBeatMs
     delete (info as unknown as Record<string, unknown>).barBeatOffset
     delete info.timeBasisOffsetMs
+    delete info.timeBasisOffsetAlgorithmVersion
     delete info.beatGridSource
     delete info.beatGridStatus
     delete info.beatGridMap

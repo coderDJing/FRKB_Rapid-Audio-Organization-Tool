@@ -2,7 +2,10 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { SqliteDatabase } from './libraryDb'
 import { normalizeSongBeatGridMapV2 } from '../shared/songBeatGridMapV2'
-import { resolveAudioTimeBasisOffsetMsForFile } from './services/audioTimeBasisOffset'
+import {
+  CURRENT_AUDIO_TIME_BASIS_OFFSET_ALGORITHM_VERSION,
+  resolveAudioTimeBasisOffsetMsForFile
+} from './services/audioTimeBasisOffset'
 import {
   getLibrarySchemaMigrationAvailableBytes,
   getLibrarySchemaV36ReserveBytes,
@@ -101,7 +104,11 @@ const buildTimeBasisUpdates = async (
           updates.push({
             tableName: row.tableName,
             rowid: row.rowid,
-            json: JSON.stringify({ ...info, timeBasisOffsetMs })
+            json: JSON.stringify({
+              ...info,
+              timeBasisOffsetMs,
+              timeBasisOffsetAlgorithmVersion: CURRENT_AUDIO_TIME_BASIS_OFFSET_ALGORITHM_VERSION
+            })
           })
         }
       }

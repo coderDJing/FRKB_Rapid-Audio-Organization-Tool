@@ -36,7 +36,11 @@ type ScanSongListOptions = {
 type CachedKeyInfo = Pick<ISongInfo, 'key' | 'keyAnalysisAlgorithmVersion'>
 type CachedGridInfo = Pick<
   ISongInfo,
-  'beatGridAlgorithmVersion' | 'beatGridStatus' | 'beatGridMap' | 'timeBasisOffsetMs'
+  | 'beatGridAlgorithmVersion'
+  | 'beatGridStatus'
+  | 'beatGridMap'
+  | 'timeBasisOffsetMs'
+  | 'timeBasisOffsetAlgorithmVersion'
 > & {
   beatThisWindowCount?: unknown
 }
@@ -66,6 +70,7 @@ const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
     delete next.downbeatBeatOffset
     delete (next as Record<string, unknown>).barBeatOffset
     delete next.timeBasisOffsetMs
+    delete next.timeBasisOffsetAlgorithmVersion
     delete next.beatGridSource
     delete next.beatGridMap
   } else {
@@ -74,6 +79,7 @@ const discardStaleAnalysisFields = (info: ISongInfo): ISongInfo => {
     delete next.downbeatBeatOffset
     delete (next as Record<string, unknown>).barBeatOffset
     delete next.timeBasisOffsetMs
+    delete next.timeBasisOffsetAlgorithmVersion
     delete next.beatGridSource
     delete next.beatGridStatus
     delete next.beatGridMap
@@ -102,10 +108,28 @@ const preserveCachedKeyAndBpm = (target: ISongInfo, cachedInfo?: ISongInfo | nul
 const preserveCachedGridTimeBasisFields = (target: ISongInfo, cachedInfo: ISongInfo) => {
   const cachedTimeBasisOffsetMs = Number(cachedInfo.timeBasisOffsetMs)
   const targetTimeBasisOffsetMs = Number(target.timeBasisOffsetMs)
+  let targetUsesCachedTimeBasisOffset = false
   if (!Number.isFinite(targetTimeBasisOffsetMs) || targetTimeBasisOffsetMs < 0) {
     if (Number.isFinite(cachedTimeBasisOffsetMs) && cachedTimeBasisOffsetMs >= 0) {
       target.timeBasisOffsetMs = Number(cachedTimeBasisOffsetMs.toFixed(3))
+      targetUsesCachedTimeBasisOffset = true
     }
+  } else if (
+    Number.isFinite(cachedTimeBasisOffsetMs) &&
+    cachedTimeBasisOffsetMs >= 0 &&
+    Math.abs(targetTimeBasisOffsetMs - cachedTimeBasisOffsetMs) <= 0.001
+  ) {
+    targetUsesCachedTimeBasisOffset = true
+  }
+
+  const cachedOffsetAlgorithmVersion = Number(cachedInfo.timeBasisOffsetAlgorithmVersion)
+  if (
+    targetUsesCachedTimeBasisOffset &&
+    target.timeBasisOffsetAlgorithmVersion === undefined &&
+    Number.isFinite(cachedOffsetAlgorithmVersion) &&
+    cachedOffsetAlgorithmVersion > 0
+  ) {
+    target.timeBasisOffsetAlgorithmVersion = Math.floor(cachedOffsetAlgorithmVersion)
   }
 
   if (target.beatGridAlgorithmVersion === undefined) {
@@ -131,6 +155,7 @@ export const preserveCachedGridAnalysisFields = (
     delete target.downbeatBeatOffset
     delete (target as unknown as Record<string, unknown>).barBeatOffset
     delete target.timeBasisOffsetMs
+    delete target.timeBasisOffsetAlgorithmVersion
     delete target.beatGridSource
     delete target.beatGridMap
     target.beatGridStatus = BEAT_GRID_STATUS_NO_BPM

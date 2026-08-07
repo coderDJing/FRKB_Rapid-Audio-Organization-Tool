@@ -37,6 +37,7 @@ describe('preserveCachedGridAnalysisFields', () => {
       analysisOnly: true,
       beatGridMap: createGrid(),
       timeBasisOffsetMs: 25.057,
+      timeBasisOffsetAlgorithmVersion: 1,
       beatGridAlgorithmVersion: 9
     }
 
@@ -44,6 +45,7 @@ describe('preserveCachedGridAnalysisFields', () => {
 
     expect(target.beatGridMap).toEqual(cached.beatGridMap)
     expect(target.timeBasisOffsetMs).toBe(25.057)
+    expect(target.timeBasisOffsetAlgorithmVersion).toBe(1)
     expect(target.beatGridAlgorithmVersion).toBe(9)
   })
 
@@ -65,5 +67,24 @@ describe('preserveCachedGridAnalysisFields', () => {
 
     expect(target.timeBasisOffsetMs).toBe(0)
     expect(target.beatGridAlgorithmVersion).toBe(10)
+  })
+
+  it('does not attach a cached offset version to a different target offset', () => {
+    const target: ISongInfo = {
+      ...createSong(),
+      beatGridMap: createGrid(),
+      timeBasisOffsetMs: 0
+    }
+    const cached: ISongInfo = {
+      ...createSong(),
+      beatGridMap: createGrid(),
+      timeBasisOffsetMs: 25.057,
+      timeBasisOffsetAlgorithmVersion: 1
+    }
+
+    preserveCachedGridAnalysisFields(target, cached)
+
+    expect(target.timeBasisOffsetMs).toBe(0)
+    expect(target.timeBasisOffsetAlgorithmVersion).toBeUndefined()
   })
 })
