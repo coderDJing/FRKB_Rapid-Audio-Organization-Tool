@@ -127,6 +127,38 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
     }
   }
 
+  const handleSongGridBatchUpdated = (
+    _event: unknown,
+    payloads: Array<Exclude<SharedSongGridPayload, null>>
+  ) => {
+    if (!Array.isArray(payloads) || payloads.length === 0) return
+    const activePaths = new Set(
+      [
+        params.topDeckSong.value?.filePath,
+        params.bottomDeckSong.value?.filePath,
+        runtime.playingData.playingSong?.filePath
+      ]
+        .map((filePath) =>
+          String(filePath || '')
+            .replace(/\//g, '\\')
+            .toLowerCase()
+        )
+        .filter(Boolean)
+    )
+    if (activePaths.size === 0) return
+    const handledPaths = new Set<string>()
+    for (const payload of payloads) {
+      const normalizedPath = String(payload?.filePath || '')
+        .replace(/\//g, '\\')
+        .toLowerCase()
+      if (!normalizedPath || !activePaths.has(normalizedPath) || handledPaths.has(normalizedPath)) {
+        continue
+      }
+      handledPaths.add(normalizedPath)
+      handleSongGridUpdated(undefined, payload)
+    }
+  }
+
   const handleSongKeyUpdated = (
     _event: unknown,
     payload: { filePath?: string; keyText?: string }
@@ -169,8 +201,9 @@ export const useHorizontalBrowseDeckSongSync = (params: UseHorizontalBrowseDeckS
   }
 
   return {
-    disposeSongSync() {},
+    disposeSongSync: () => undefined,
     handleExternalDeckSongLoad,
+    handleSongGridBatchUpdated,
     handleSongGridUpdated,
     handleSongKeyUpdated,
     handleSongStructureUpdated

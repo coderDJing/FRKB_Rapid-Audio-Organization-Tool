@@ -157,8 +157,24 @@ export const createMixtapeSongMetadataSync = (ctx: SongMetadataSyncContext) => {
     }
   }
 
+  const handleSongGridBatchUpdated = (_e: unknown, eventPayloads: SongGridUpdatedPayload[]) => {
+    if (!Array.isArray(eventPayloads) || eventPayloads.length === 0) return
+    const activeTrackPaths = new Set(
+      ctx.tracks.value
+        .map((track) => normalizeMixtapeComparePath(ctx, track.filePath))
+        .filter(Boolean)
+    )
+    if (activeTrackPaths.size === 0) return
+    for (const eventPayload of eventPayloads) {
+      const normalizedTargetPath = normalizeMixtapeComparePath(ctx, eventPayload?.filePath)
+      if (!normalizedTargetPath || !activeTrackPaths.has(normalizedTargetPath)) continue
+      handleSongGridUpdated(undefined, eventPayload)
+    }
+  }
+
   return {
     handleSongKeyUpdated,
-    handleSongGridUpdated
+    handleSongGridUpdated,
+    handleSongGridBatchUpdated
   }
 }

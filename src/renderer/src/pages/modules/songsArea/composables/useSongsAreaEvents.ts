@@ -462,6 +462,120 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     return true
   }
 
+  type SongGridUpdatePayload = {
+    filePath?: string
+    timeBasisOffsetMs?: number
+    beatGridMap?: ISongInfo['beatGridMap'] | null
+  }
+
+  type PreparedSongGridPatch = {
+    normalizedTargetPath: string
+    timeBasisOffsetMs?: number
+    hasTimeBasisOffsetMs: boolean
+    hasBeatGridMapPayload: boolean
+    nextBeatGridMap: ISongInfo['beatGridMap'] | null
+    shouldClearBeatGridMap: boolean
+  }
+
+  const prepareSongGridPatch = (
+    payload: SongGridUpdatePayload | null | undefined
+  ): PreparedSongGridPatch | null => {
+    const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
+    if (!filePath) return null
+    const hasTimeBasisOffsetMs =
+      typeof payload?.timeBasisOffsetMs === 'number' && Number.isFinite(payload.timeBasisOffsetMs)
+    const hasBeatGridMapPayload = Object.prototype.hasOwnProperty.call(payload, 'beatGridMap')
+    if (!hasTimeBasisOffsetMs && !hasBeatGridMapPayload) return null
+    const nextBeatGridMap = normalizeSongBeatGridMapV2(payload?.beatGridMap, {
+      allowSingleClip: true
+    })
+    return {
+      normalizedTargetPath: normalizePath(filePath),
+      timeBasisOffsetMs: payload?.timeBasisOffsetMs,
+      hasTimeBasisOffsetMs,
+      hasBeatGridMapPayload,
+      nextBeatGridMap,
+      shouldClearBeatGridMap: hasBeatGridMapPayload && payload?.beatGridMap === null
+    }
+  }
+
+  const applyPreparedSongGridPatch = (song: ISongInfo, patch: PreparedSongGridPatch) => {
+    let touched = false
+    const nextSong: ISongInfo = { ...song }
+    if (patch.nextBeatGridMap) {
+      if (nextSong.beatGridMap?.signature !== patch.nextBeatGridMap.signature) {
+        nextSong.beatGridMap = patch.nextBeatGridMap
+        touched = true
+      }
+    } else if (patch.shouldClearBeatGridMap && nextSong.beatGridMap !== undefined) {
+      delete nextSong.beatGridMap
+      touched = true
+    }
+    if (patch.hasTimeBasisOffsetMs && nextSong.timeBasisOffsetMs !== patch.timeBasisOffsetMs) {
+      nextSong.timeBasisOffsetMs = patch.timeBasisOffsetMs
+      touched = true
+    }
+    return touched ? nextSong : song
+  }
+
+  const patchSongListByGridPatchMap = (
+    songs: ISongInfo[] | null | undefined,
+    patchByPath: Map<string, PreparedSongGridPatch>
+  ) => {
+    if (!songs?.length || patchByPath.size === 0) return false
+    let touched = false
+    for (let index = 0; index < songs.length; index += 1) {
+      const song = songs[index]
+      const patch = patchByPath.get(normalizePath(song?.filePath))
+      if (!song || !patch) continue
+      const nextSong = applyPreparedSongGridPatch(song, patch)
+      if (nextSong === song) continue
+      songs[index] = nextSong
+      touched = true
+    }
+    return touched
+  }
+
+  const applySongGridUpdates = (payloads: SongGridUpdatePayload[]) => {
+    const preparedPatches = payloads
+      .map((payload) => prepareSongGridPatch(payload))
+      .filter((patch): patch is PreparedSongGridPatch => patch !== null)
+    if (preparedPatches.length === 0) return
+    const patchByPath = new Map(
+      preparedPatches.map((patch) => [patch.normalizedTargetPath, patch] as const)
+    )
+    const changedFields = Array.from(
+      new Set(
+        preparedPatches.flatMap((patch) => [
+          patch.hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : '',
+          patch.hasBeatGridMapPayload ? 'beatGridMap' : ''
+        ])
+      )
+    ).filter(Boolean)
+
+    const originalTouched = patchSongListByGridPatchMap(originalSongInfoArr.value, patchByPath)
+    if (originalTouched) {
+      triggerRef(originalSongInfoArr)
+      scheduleApplyIfNeeded(changedFields)
+    }
+    patchSongListByGridPatchMap(songsAreaState.songInfoArr, patchByPath)
+
+    const currentPlayingSong = runtime.playingData.playingSong
+    if (currentPlayingSong) {
+      const patch = patchByPath.get(normalizePath(currentPlayingSong.filePath))
+      if (patch) {
+        const nextPlayingSong = applyPreparedSongGridPatch(currentPlayingSong, patch)
+        if (nextPlayingSong !== currentPlayingSong) {
+          runtime.playingData.playingSong = nextPlayingSong
+        }
+      }
+    }
+    if (runtime.playingData.playingSongListData !== songsAreaState.songInfoArr) {
+      patchSongListByGridPatchMap(runtime.playingData.playingSongListData, patchByPath)
+    }
+    patchSongListByGridPatchMap(runtime.externalPlaylist.songs, patchByPath)
+  }
+
   const onSongKeyUpdated = (_e: unknown, payload: { filePath?: string; keyText?: string }) => {
     const filePath = payload?.filePath
     const keyText = payload?.keyText
@@ -570,61 +684,13 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     patchExternalPlaylistSongByPath(normalizedTargetPath, applyStructurePatch)
   }
 
-  const onSongGridUpdated = (
-    _e: unknown,
-    payload: {
-      filePath?: string
-      timeBasisOffsetMs?: number
-      beatGridMap?: ISongInfo['beatGridMap'] | null
-    }
-  ) => {
-    const filePath = typeof payload?.filePath === 'string' ? payload.filePath : ''
-    if (!filePath) return
-    const normalizedTargetPath = normalizePath(filePath)
+  const onSongGridUpdated = (_e: unknown, payload: SongGridUpdatePayload) => {
+    applySongGridUpdates([payload])
+  }
 
-    const hasTimeBasisOffsetMs =
-      typeof payload?.timeBasisOffsetMs === 'number' && Number.isFinite(payload.timeBasisOffsetMs)
-    const hasBeatGridMapPayload = Object.prototype.hasOwnProperty.call(payload, 'beatGridMap')
-    const nextBeatGridMap = normalizeSongBeatGridMapV2(payload?.beatGridMap, {
-      allowSingleClip: true
-    })
-    const shouldClearBeatGridMap = hasBeatGridMapPayload && payload?.beatGridMap === null
-    const hasBeatGridMap = nextBeatGridMap !== null
-    if (!hasTimeBasisOffsetMs && !hasBeatGridMapPayload) {
-      return
-    }
-    const changedFields = [
-      hasTimeBasisOffsetMs ? 'timeBasisOffsetMs' : '',
-      hasBeatGridMapPayload ? 'beatGridMap' : ''
-    ].filter(Boolean)
-
-    const applyGridPatch = (song: ISongInfo): ISongInfo => {
-      let touched = false
-      const nextSong: ISongInfo = { ...song }
-      if (hasBeatGridMap) {
-        if (nextSong.beatGridMap?.signature !== nextBeatGridMap.signature) {
-          nextSong.beatGridMap = nextBeatGridMap
-          touched = true
-        }
-      } else if (shouldClearBeatGridMap && nextSong.beatGridMap !== undefined) {
-        delete nextSong.beatGridMap
-        touched = true
-      }
-      if (hasTimeBasisOffsetMs && nextSong.timeBasisOffsetMs !== payload.timeBasisOffsetMs) {
-        nextSong.timeBasisOffsetMs = payload.timeBasisOffsetMs
-        touched = true
-      }
-      return touched ? nextSong : song
-    }
-
-    if (patchOriginalSongByPath(normalizedTargetPath, applyGridPatch)) {
-      scheduleApplyIfNeeded(changedFields)
-    }
-
-    patchSongsAreaSongByPath(normalizedTargetPath, applyGridPatch)
-    patchPlayingSongByPath(normalizedTargetPath, applyGridPatch)
-    patchPlayingSongListByPath(normalizedTargetPath, applyGridPatch)
-    patchExternalPlaylistSongByPath(normalizedTargetPath, applyGridPatch)
+  const onSongGridBatchUpdated = (_e: unknown, payloads: SongGridUpdatePayload[]) => {
+    if (!Array.isArray(payloads)) return
+    applySongGridUpdates(payloads)
   }
 
   const onSongHotCuesUpdated = (
@@ -805,6 +871,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.on('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.on('song-energy-updated', onSongEnergyUpdated)
     window.electron.ipcRenderer.on('song-structure-updated', onSongStructureUpdated)
+    window.electron.ipcRenderer.on('song-grid-batch-updated', onSongGridBatchUpdated)
     window.electron.ipcRenderer.on('song-grid-updated', onSongGridUpdated)
     window.electron.ipcRenderer.on('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.on('song-memory-cues-updated', onSongMemoryCuesUpdated)
@@ -829,6 +896,7 @@ export function useSongsAreaEvents(params: UseSongsAreaEventsParams) {
     window.electron.ipcRenderer.removeListener('song-key-updated', onSongKeyUpdated)
     window.electron.ipcRenderer.removeListener('song-energy-updated', onSongEnergyUpdated)
     window.electron.ipcRenderer.removeListener('song-structure-updated', onSongStructureUpdated)
+    window.electron.ipcRenderer.removeListener('song-grid-batch-updated', onSongGridBatchUpdated)
     window.electron.ipcRenderer.removeListener('song-grid-updated', onSongGridUpdated)
     window.electron.ipcRenderer.removeListener('song-hot-cues-updated', onSongHotCuesUpdated)
     window.electron.ipcRenderer.removeListener('song-memory-cues-updated', onSongMemoryCuesUpdated)

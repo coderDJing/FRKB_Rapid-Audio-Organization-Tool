@@ -694,6 +694,7 @@ const {
 const {
   disposeSongSync,
   handleExternalDeckSongLoad,
+  handleSongGridBatchUpdated,
   handleSongGridUpdated,
   handleSongKeyUpdated,
   handleSongStructureUpdated
@@ -767,6 +768,7 @@ onMounted(() => {
   emitter.on(MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT, handleMainWindowPlaybackSnapshotRequest)
   emitter.on('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   emitter.on('songsRemoved', handleSongsRemoved)
+  window.electron.ipcRenderer.on('song-grid-batch-updated', handleSongGridBatchUpdated)
   window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.on('song-key-updated', handleSongKeyUpdated)
   window.electron.ipcRenderer.on('song-structure-updated', handleSongStructureUpdated)
@@ -794,6 +796,7 @@ onUnmounted(() => {
   emitter.off(MAIN_WINDOW_PLAYBACK_SNAPSHOT_REQUEST_EVENT, handleMainWindowPlaybackSnapshotRequest)
   emitter.off('horizontalBrowse/load-song', handleExternalDeckSongLoad)
   emitter.off('songsRemoved', handleSongsRemoved)
+  window.electron.ipcRenderer.removeListener('song-grid-batch-updated', handleSongGridBatchUpdated)
   window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
   window.electron.ipcRenderer.removeListener('song-key-updated', handleSongKeyUpdated)
   window.electron.ipcRenderer.removeListener('song-structure-updated', handleSongStructureUpdated)

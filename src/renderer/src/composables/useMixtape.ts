@@ -327,15 +327,16 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     scheduleFullPreRender()
     scheduleWorkerPreRender()
   }
-  const { handleSongKeyUpdated, handleSongGridUpdated } = createMixtapeSongMetadataSync({
-    tracks,
-    mixtapeRawItems,
-    normalizeMixtapeFilePath,
-    normalizeBpm,
-    normalizeFirstBeatMs,
-    normalizeDownbeatBeatOffset,
-    refreshMixtapeTrackDerivedUi
-  })
+  const { handleSongKeyUpdated, handleSongGridUpdated, handleSongGridBatchUpdated } =
+    createMixtapeSongMetadataSync({
+      tracks,
+      mixtapeRawItems,
+      normalizeMixtapeFilePath,
+      normalizeBpm,
+      normalizeFirstBeatMs,
+      normalizeDownbeatBeatOffset,
+      refreshMixtapeTrackDerivedUi
+    })
   const buildBpmTargets = () => buildMixtapeBpmTargets(tracks.value)
   const resolveMissingBpmCount = (bpmTargets: Set<string>) =>
     resolveMissingBpmTrackCount(tracks.value, bpmTargets)
@@ -671,6 +672,7 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
   onMounted(() => {
     applyPayload(resolveInitialMixtapePayload())
     window.electron.ipcRenderer.on('song-key-updated', handleSongKeyUpdated)
+    window.electron.ipcRenderer.on('song-grid-batch-updated', handleSongGridBatchUpdated)
     window.electron.ipcRenderer.on('song-grid-updated', handleSongGridUpdated)
     window.electron.ipcRenderer.on('mixtape-open', handleOpen)
     window.electron.ipcRenderer.on('mixtape-bpm-batch-ready', handleBpmBatchReady)
@@ -699,6 +701,12 @@ export const useMixtape = (options: UseMixtapeOptions = {}) => {
     } catch {}
     try {
       window.electron.ipcRenderer.removeListener('song-grid-updated', handleSongGridUpdated)
+    } catch {}
+    try {
+      window.electron.ipcRenderer.removeListener(
+        'song-grid-batch-updated',
+        handleSongGridBatchUpdated
+      )
     } catch {}
     try {
       window.electron.ipcRenderer.removeListener('mixtape-open', handleOpen)

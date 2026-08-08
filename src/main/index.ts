@@ -396,6 +396,16 @@ songGridEvents.on('grid-updated', (payload) => {
   mixtapeWindow.broadcast?.('song-grid-updated', payload)
 })
 
+songGridEvents.on('grid-batch-updated', (payloads) => {
+  markGlobalSongSearchDirty('song-grid:grid-batch-updated')
+  if (mainWindow.instance) {
+    try {
+      mainWindow.instance.webContents.send('song-grid-batch-updated', payloads)
+    } catch {}
+  }
+  mixtapeWindow.broadcast?.('song-grid-batch-updated', payloads)
+})
+
 songHotCueEvents.on('hot-cues-updated', (payload) => {
   markGlobalSongSearchDirty('song-hot-cues:updated')
   if (mainWindow.instance) {

@@ -175,6 +175,7 @@ const exactListenChannels = new Set([
   'releaseNotesRange',
   'setting-changed',
   'song-energy-updated',
+  'song-grid-batch-updated',
   'song-grid-updated',
   'song-hot-cues-updated',
   'song-key-updated',

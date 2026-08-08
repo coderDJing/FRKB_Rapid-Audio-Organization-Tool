@@ -9,7 +9,7 @@ import {
   resolveAudioTimeBasisOffsetMsOffMainThread
 } from './audioTimeBasisOffsetWorker'
 import { findSongListRoot } from './cacheMaintenance'
-import { emitSongGridUpdated } from './songGridEvents'
+import { emitSongGridBatchUpdated } from './songGridEvents'
 
 export const PLAYLIST_TIME_BASIS_REPAIR_CONCURRENCY = 4
 
@@ -37,6 +37,7 @@ export type PlaylistTimeBasisRepairDiagnostics = PlaylistTimeBasisRepairPlan & {
   cacheRootMissingCount: number
   failedCount: number
   maxActiveCount: number
+  rendererBatchUpdateCount: number
 }
 
 export type PreparedPlaylistTimeBasisRepair = {
@@ -53,7 +54,7 @@ export type PlaylistTimeBasisRepairDependencies = {
     offsetMs: number,
     algorithmVersion: number
   ) => Promise<boolean>
-  emitUpdated: (payload: { filePath: string; timeBasisOffsetMs: number }) => void
+  emitUpdatedBatch: (payloads: Array<{ filePath: string; timeBasisOffsetMs: number }>) => void
   now: () => number
 }
 
@@ -66,7 +67,7 @@ const defaultDependencies: PlaylistTimeBasisRepairDependencies = {
   resolveOffset: resolveAudioTimeBasisOffsetMsOffMainThread,
   findRoot: findSongListRoot,
   patchCacheOffset: LibraryCacheDb.updateSongCacheTimeBasisOffset,
-  emitUpdated: emitSongGridUpdated,
+  emitUpdatedBatch: emitSongGridBatchUpdated,
   now: Date.now
 }
 
@@ -138,6 +139,7 @@ export const runPreparedPlaylistTimeBasisRepair = async (
   let cachePatchAttemptedCount = 0
   let cachePatchSucceededCount = 0
   let cacheRootMissingCount = 0
+  const rendererUpdates: Array<{ filePath: string; timeBasisOffsetMs: number }> = []
   const rootByDirectory = new Map<string, Promise<string | null>>()
 
   const tasks = prepared.candidates.map((song) => async () => {
@@ -178,7 +180,7 @@ export const runPreparedPlaylistTimeBasisRepair = async (
       cachePersistenceDurationMaxMs = Math.max(cachePersistenceDurationMaxMs, persistenceDurationMs)
 
       if (Number(song.timeBasisOffsetMs) !== timeBasisOffsetMs) {
-        dependencies.emitUpdated({ filePath: song.filePath, timeBasisOffsetMs })
+        rendererUpdates.push({ filePath: song.filePath, timeBasisOffsetMs })
       }
       return timeBasisOffsetMs
     } finally {
@@ -190,6 +192,7 @@ export const runPreparedPlaylistTimeBasisRepair = async (
     concurrency: PLAYLIST_TIME_BASIS_REPAIR_CONCURRENCY,
     yieldEvery: 1
   })
+  dependencies.emitUpdatedBatch(rendererUpdates)
   const completedAtMs = dependencies.now()
   return {
     ...prepared.plan,
@@ -205,7 +208,8 @@ export const runPreparedPlaylistTimeBasisRepair = async (
     cachePatchSucceededCount,
     cacheRootMissingCount,
     failedCount: result.failed,
-    maxActiveCount
+    maxActiveCount,
+    rendererBatchUpdateCount: rendererUpdates.length
   }
 }
 

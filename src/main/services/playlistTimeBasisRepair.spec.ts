@@ -18,7 +18,7 @@ vi.mock('./cacheMaintenance', () => ({
   findSongListRoot: vi.fn(async () => null)
 }))
 vi.mock('./songGridEvents', () => ({
-  emitSongGridUpdated: vi.fn()
+  emitSongGridBatchUpdated: vi.fn()
 }))
 
 import {
@@ -63,7 +63,7 @@ const createDependencies = (
   resolveOffset: async () => 25.057,
   findRoot: async () => 'D:/music/playlist',
   patchCacheOffset: async () => true,
-  emitUpdated: () => {},
+  emitUpdatedBatch: () => {},
   now: Date.now,
   ...overrides
 })
@@ -117,7 +117,7 @@ describe('runPreparedPlaylistTimeBasisRepair', () => {
     let maxResolveCount = 0
     let rootLookupCount = 0
     const patchedPaths: string[] = []
-    const emittedPaths: string[] = []
+    const emittedBatches: Array<Array<{ filePath: string; timeBasisOffsetMs: number }>> = []
     const dependencies = createDependencies({
       resolveOffset: async () => {
         activeResolveCount += 1
@@ -134,7 +134,7 @@ describe('runPreparedPlaylistTimeBasisRepair', () => {
         patchedPaths.push(filePath)
         return true
       },
-      emitUpdated: ({ filePath }) => emittedPaths.push(filePath)
+      emitUpdatedBatch: (payloads) => emittedBatches.push(payloads)
     })
 
     const diagnostics = await runPreparedPlaylistTimeBasisRepair(prepared, Date.now(), dependencies)
@@ -146,7 +146,9 @@ describe('runPreparedPlaylistTimeBasisRepair', () => {
     expect(diagnostics.cachePatchSucceededCount).toBe(12)
     expect(rootLookupCount).toBe(1)
     expect(patchedPaths).toHaveLength(12)
-    expect(emittedPaths).toHaveLength(12)
+    expect(emittedBatches).toHaveLength(1)
+    expect(emittedBatches[0]).toHaveLength(12)
+    expect(diagnostics.rendererBatchUpdateCount).toBe(12)
   })
 
   it('入队后立即返回，完成 Promise 等待后台探测结束', async () => {
