@@ -239,16 +239,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     await new Promise((resolve) => requestAnimationFrame(() => resolve(null)))
   }
 
-  const scheduleCoverSweepForCurrentList = () => {
-    try {
-      const listRootDir = libraryUtils.findDirPathByUuid(songsAreaState.songListUUID) || ''
-      const currentPaths = songsAreaState.songInfoArr.map((s) => s.filePath)
-      setTimeout(() => {
-        window.electron.ipcRenderer.invoke('sweepSongListCovers', listRootDir, currentPaths)
-      }, 0)
-    } catch {}
-  }
-
   const syncSelectedKeysAfterReload = (scanData: ISongInfo[], songListUUID: string) => {
     const currentSelection = songsAreaState.selectedSongFilePath.filter(Boolean)
     if (!currentSelection.length) return
@@ -664,7 +654,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       return true
     }
     if (!(await applySongListData(scanData, ticket))) return false
-    scheduleCoverSweepForCurrentList()
     notifySongSearchDirty('scanSongList')
     return true
   }

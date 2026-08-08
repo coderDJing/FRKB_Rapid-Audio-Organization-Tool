@@ -239,8 +239,8 @@ export const scheduleSongListPostScanTasks = async (
   }
 
   const currentFilePaths = scanData.map((info) => info.filePath)
-  const { sweepSongListCovers } = await import('./covers')
-  sweepSongListCovers(cacheRoot, currentFilePaths).catch(() => {})
+  const { scheduleSongListCoverSweep } = await import('./covers')
+  scheduleSongListCoverSweep(cacheRoot, currentFilePaths)
 }
 
 // 扫描歌单目录，带 SQLite 缓存

@@ -15,6 +15,7 @@ export {
 
 export {
   loadCoverIndexEntry,
+  replaceCoverIndexExtByHash,
   upsertCoverIndexEntry,
   removeCoverIndexEntry,
   loadCoverIndexEntries,

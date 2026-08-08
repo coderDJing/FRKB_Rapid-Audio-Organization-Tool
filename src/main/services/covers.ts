@@ -3,6 +3,25 @@ import fs = require('fs-extra')
 import { operateHiddenFile, resolveLibraryPath } from '../utils'
 import * as LibraryCacheDb from '../libraryCacheDb'
 
+const DISPLAY_CACHE_MARKER = '.display-v1'
+let pendingPostScanSweepTimer: NodeJS.Timeout | null = null
+
+export type CoverThumbRequestContext = {
+  shouldAbort?: () => boolean
+}
+
+export type CoverThumbResult = {
+  format: string
+  data: Buffer
+  cacheStatus: 'hit' | 'miss' | 'disabled'
+  sourceBytes: number
+  outputBytes: number
+  resized: boolean
+  needsDisplayCache?: boolean
+  imageHash?: string
+  legacyExt?: string
+}
+
 const toNodeBuffer = (value: unknown): Buffer | null => {
   if (!value) return null
   if (Buffer.isBuffer(value)) return value
@@ -42,13 +61,13 @@ export async function getSongCover(
 }
 
 const mimeFromExt = (ext: string) =>
-  ext === '.png'
+  ext.toLowerCase().endsWith('.png')
     ? 'image/png'
-    : ext === '.webp'
+    : ext.toLowerCase().endsWith('.webp')
       ? 'image/webp'
-      : ext === '.gif'
+      : ext.toLowerCase().endsWith('.gif')
         ? 'image/gif'
-        : ext === '.bmp'
+        : ext.toLowerCase().endsWith('.bmp')
           ? 'image/bmp'
           : 'image/jpeg'
 export const extFromMime = (mime: string) => {
@@ -60,12 +79,32 @@ export const extFromMime = (mime: string) => {
   return '.jpg'
 }
 
+const isDisplayCacheExt = (ext: string) => ext.toLowerCase().includes(DISPLAY_CACHE_MARKER)
+
+const displayCacheExtFromFormat = (format: string) =>
+  `${DISPLAY_CACHE_MARKER}${extFromMime(format)}`
+
+const writeDisplayCacheFile = async (targetPath: string, data: Buffer) => {
+  const tmp = `${targetPath}.tmp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  try {
+    await fs.writeFile(tmp, data)
+    await fs.move(tmp, targetPath, { overwrite: true })
+    await operateHiddenFile(targetPath, async () => {})
+  } finally {
+    try {
+      if (await fs.pathExists(tmp)) await fs.remove(tmp)
+    } catch {}
+  }
+}
+
 export async function getSongCoverThumb(
   filePath: string,
   _size: number = 48,
-  listRootDir?: string | null
-): Promise<{ format: string; data: Buffer; dataUrl: string } | null> {
+  listRootDir?: string | null,
+  context?: CoverThumbRequestContext
+): Promise<CoverThumbResult | null> {
   try {
+    if (context?.shouldAbort?.()) return null
     const mm = await import('music-metadata')
     const crypto = await import('crypto')
 
@@ -92,6 +131,7 @@ export async function getSongCoverThumb(
     if (useDiskCache && coversDir) {
       const listRoot = resolvedRoot as string
       const entry = await LibraryCacheDb.loadCoverIndexEntry(listRoot, filePath)
+      if (context?.shouldAbort?.()) return null
       if (entry === undefined) {
         useDiskCache = false
         coversDir = null
@@ -113,8 +153,28 @@ export async function getSongCoverThumb(
         if (st0.size > 0) {
           const data = await fs.readFile(p)
           const mime = mimeFromExt(ext)
-          const dataUrl = `data:${mime};base64,${data.toString('base64')}`
-          return { format: mime, data, dataUrl }
+          if (context?.shouldAbort?.()) return null
+          if (isDisplayCacheExt(ext)) {
+            return {
+              format: mime,
+              data,
+              cacheStatus: 'hit',
+              sourceBytes: data.length,
+              outputBytes: data.length,
+              resized: false
+            }
+          }
+          return {
+            format: mime,
+            data,
+            cacheStatus: 'hit',
+            sourceBytes: data.length,
+            outputBytes: data.length,
+            resized: false,
+            needsDisplayCache: true,
+            imageHash: dbEntry.hash,
+            legacyExt: ext
+          }
         }
       }
     }
@@ -124,6 +184,7 @@ export async function getSongCoverThumb(
     let data: Buffer | null = null
     try {
       const metadata = await mm.parseFile(filePath)
+      if (context?.shouldAbort?.()) return null
       const cover = mm.selectCover(metadata.common.picture)
       if (!cover) return null
       format = cover.format || 'image/jpeg'
@@ -134,32 +195,63 @@ export async function getSongCoverThumb(
     if (!data || data.length === 0) return null
 
     const imageHash = (await crypto).createHash('sha1').update(data).digest('hex')
-    const ext = extFromMime(format)
-    const mime = format || 'image/jpeg'
-    const dataUrl = `data:${mime};base64,${data.toString('base64')}`
-
-    if (useDiskCache && coversDir) {
-      const targetPath = path.join(coversDir, `${imageHash}${ext}`)
-      const tmp = `${targetPath}.tmp_${Date.now()}`
-      try {
-        await fs.writeFile(tmp, data)
-        await fs.move(tmp, targetPath, { overwrite: true })
-        await operateHiddenFile(targetPath, async () => {})
-        const listRoot = resolvedRoot as string
-        const saved = await LibraryCacheDb.upsertCoverIndexEntry(listRoot, filePath, imageHash, ext)
-        if (!saved) {
-          return { format: mime, data, dataUrl }
-        }
-      } catch {
-      } finally {
-        try {
-          if (await fs.pathExists(tmp)) await fs.remove(tmp)
-        } catch {}
-      }
+    return {
+      format: format || 'image/jpeg',
+      data,
+      cacheStatus: useDiskCache ? 'miss' : 'disabled',
+      sourceBytes: data.length,
+      outputBytes: data.length,
+      resized: false,
+      needsDisplayCache: useDiskCache,
+      imageHash: useDiskCache ? imageHash : undefined,
+      legacyExt: useDiskCache && dbEntry ? dbEntry.ext : undefined
     }
-    return { format: mime, data, dataUrl }
   } catch {
     return null
+  }
+}
+
+export async function persistSongCoverDisplayCache(params: {
+  filePath: string
+  listRootDir: string
+  imageHash: string
+  legacyExt?: string
+  format: string
+  data: Buffer | Uint8Array
+  context?: CoverThumbRequestContext
+}): Promise<boolean> {
+  const { filePath, listRootDir, imageHash, legacyExt, format, data, context } = params
+  if (context?.shouldAbort?.() || !filePath || !listRootDir || !/^[a-f0-9]{40}$/i.test(imageHash)) {
+    return false
+  }
+  try {
+    let input = listRootDir
+    if (process.platform === 'win32' && /^\//.test(input)) input = input.replace(/^\/+/, '')
+    const resolvedRoot = path.isAbsolute(input) ? input : resolveLibraryPath(input).absPath
+    if (!(await fs.pathExists(resolvedRoot)) || context?.shouldAbort?.()) return false
+    const coversDir = path.join(resolvedRoot, '.frkb_covers')
+    await fs.ensureDir(coversDir)
+    await operateHiddenFile(coversDir, async () => {})
+    const ext = displayCacheExtFromFormat(format)
+    const targetPath = path.join(coversDir, `${imageHash}${ext}`)
+    const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data)
+    if (!buffer.length || context?.shouldAbort?.()) return false
+    if (!(await fs.pathExists(targetPath))) await writeDisplayCacheFile(targetPath, buffer)
+    if (context?.shouldAbort?.()) return false
+    const replacedLegacyExt =
+      !legacyExt ||
+      legacyExt === ext ||
+      (await LibraryCacheDb.replaceCoverIndexExtByHash(resolvedRoot, imageHash, legacyExt, ext))
+    const saved = await LibraryCacheDb.upsertCoverIndexEntry(resolvedRoot, filePath, imageHash, ext)
+    if (!saved) return false
+    if (legacyExt && legacyExt !== ext && replacedLegacyExt) {
+      try {
+        await fs.remove(path.join(coversDir, `${imageHash}${legacyExt}`))
+      } catch {}
+    }
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -178,33 +270,30 @@ export async function sweepSongListCovers(
     const dbEntries = await LibraryCacheDb.loadCoverIndexEntries(resolvedRoot)
     if (dbEntries) {
       const alive = new Set(currentFilePaths || [])
-      const hashCounts = new Map<string, number>()
-      const hashToExt = new Map<string, string>()
+      const fileCounts = new Map<string, number>()
       for (const entry of dbEntries) {
-        hashCounts.set(entry.hash, (hashCounts.get(entry.hash) || 0) + 1)
-        if (!hashToExt.has(entry.hash)) {
-          hashToExt.set(entry.hash, entry.ext || '.jpg')
-        }
+        const cacheName = `${entry.hash}${entry.ext || '.jpg'}`
+        fileCounts.set(cacheName, (fileCounts.get(cacheName) || 0) + 1)
       }
       const toRemove: string[] = []
       for (const entry of dbEntries) {
         if (!alive.has(entry.filePath)) {
           toRemove.push(entry.filePath)
-          hashCounts.set(entry.hash, (hashCounts.get(entry.hash) || 1) - 1)
+          const cacheName = `${entry.hash}${entry.ext || '.jpg'}`
+          fileCounts.set(cacheName, (fileCounts.get(cacheName) || 1) - 1)
         }
       }
       if (toRemove.length > 0) {
         await LibraryCacheDb.removeCoverIndexEntries(resolvedRoot, toRemove)
       }
       let removed = 0
-      const liveHashes = new Set<string>()
-      for (const [hash, count] of hashCounts.entries()) {
+      const liveCacheNames = new Set<string>()
+      for (const [cacheName, count] of fileCounts.entries()) {
         if (count > 0) {
-          liveHashes.add(hash)
+          liveCacheNames.add(cacheName)
           continue
         }
-        const ext = hashToExt.get(hash) || '.jpg'
-        const p = path.join(coversDir, `${hash}${ext}`)
+        const p = path.join(coversDir, cacheName)
         try {
           if (await fs.pathExists(p)) {
             await fs.remove(p)
@@ -214,7 +303,7 @@ export async function sweepSongListCovers(
       }
       try {
         const entries = await fs.readdir(coversDir)
-        const imgRegex = /^[a-f0-9]{40}\.(jpg|png|webp|gif|bmp)$/i
+        const imgRegex = /^[a-f0-9]{40}(?:\.display-v1)?\.(jpg|png|webp|gif|bmp)$/i
         for (const name of entries) {
           const full = path.join(coversDir, name)
           if (name.includes('.tmp_')) {
@@ -224,8 +313,7 @@ export async function sweepSongListCovers(
             continue
           }
           if (!imgRegex.test(name)) continue
-          const hash = name.slice(0, 40).toLowerCase()
-          if (!liveHashes.has(hash)) {
+          if (!liveCacheNames.has(name)) {
             try {
               await fs.remove(full)
               removed++
@@ -240,4 +328,19 @@ export async function sweepSongListCovers(
   } catch {
     return { removed: 0 }
   }
+}
+
+export function scheduleSongListCoverSweep(
+  listRootDir: string,
+  currentFilePaths: string[],
+  delayMs: number = 10_000
+) {
+  if (pendingPostScanSweepTimer) clearTimeout(pendingPostScanSweepTimer)
+  pendingPostScanSweepTimer = setTimeout(
+    () => {
+      pendingPostScanSweepTimer = null
+      void sweepSongListCovers(listRootDir, currentFilePaths)
+    },
+    Math.max(1_000, delayMs)
+  )
 }

@@ -3,6 +3,7 @@ import { log } from '../log'
 import {
   getSongCover as svcGetSongCover,
   getSongCoverThumb as svcGetSongCoverThumb,
+  persistSongCoverDisplayCache as svcPersistSongCoverDisplayCache,
   sweepSongListCovers as svcSweepSongListCovers
 } from '../services/covers'
 import {
@@ -37,6 +38,23 @@ import {
   ISimilarTrackBlockTarget
 } from '../../types/globals'
 import { isLibraryMergeMutationLocked } from '../services/libraryMerge/runtime'
+import {
+  SongCoverSessionRegistry,
+  type SongCoverSessionContext
+} from '../services/songCoverSessions'
+
+const songCoverSessions = new SongCoverSessionRegistry()
+const songCoverCleanupAttachedSenderIds = new Set<number>()
+
+type PersistSongCoverDisplayCachePayload = {
+  filePath?: unknown
+  listRootDir?: unknown
+  imageHash?: unknown
+  legacyExt?: unknown
+  format?: unknown
+  data?: unknown
+  requestContext?: SongCoverSessionContext
+}
 
 type MetadataUpdateError = {
   message?: unknown
@@ -52,8 +70,61 @@ export function registerMediaMetadataHandlers() {
 
   ipcMain.handle(
     'getSongCoverThumb',
-    async (_e, filePath: string, size: number = 48, listRootDir?: string | null) => {
-      return await svcGetSongCoverThumb(filePath, size, listRootDir)
+    async (
+      event,
+      filePath: string,
+      size: number = 48,
+      listRootDir?: string | null,
+      requestContext?: SongCoverSessionContext
+    ) => {
+      const senderId = event.sender.id
+      const session = songCoverSessions.activate(senderId, requestContext)
+      if (session) {
+        if (!songCoverCleanupAttachedSenderIds.has(senderId)) {
+          songCoverCleanupAttachedSenderIds.add(senderId)
+          event.sender.once('destroyed', () => {
+            songCoverCleanupAttachedSenderIds.delete(senderId)
+            songCoverSessions.clearSender(senderId)
+          })
+        }
+      }
+      return await svcGetSongCoverThumb(filePath, size, listRootDir, {
+        shouldAbort: () =>
+          event.sender.isDestroyed() || (!!session && songCoverSessions.isStale(session))
+      })
+    }
+  )
+
+  ipcMain.on('cancelSongCoverSession', (event, requestContext?: SongCoverSessionContext) => {
+    songCoverSessions.cancel(event.sender.id, requestContext)
+  })
+
+  ipcMain.handle(
+    'persistSongCoverDisplayCache',
+    async (event, payload?: PersistSongCoverDisplayCachePayload) => {
+      const session = songCoverSessions.activate(event.sender.id, payload?.requestContext)
+      const data =
+        payload?.data instanceof Uint8Array
+          ? payload.data
+          : payload?.data &&
+              typeof payload.data === 'object' &&
+              'data' in payload.data &&
+              Array.isArray(payload.data.data)
+            ? new Uint8Array(payload.data.data)
+            : null
+      if (!data) return false
+      return await svcPersistSongCoverDisplayCache({
+        filePath: typeof payload?.filePath === 'string' ? payload.filePath : '',
+        listRootDir: typeof payload?.listRootDir === 'string' ? payload.listRootDir : '',
+        imageHash: typeof payload?.imageHash === 'string' ? payload.imageHash : '',
+        legacyExt: typeof payload?.legacyExt === 'string' ? payload.legacyExt : undefined,
+        format: typeof payload?.format === 'string' ? payload.format : 'image/jpeg',
+        data,
+        context: {
+          shouldAbort: () =>
+            event.sender.isDestroyed() || (!!session && songCoverSessions.isStale(session))
+        }
+      })
     }
   )
 

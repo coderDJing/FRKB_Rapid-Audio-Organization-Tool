@@ -263,6 +263,42 @@ export async function upsertCoverIndexEntry(
   }
 }
 
+export async function replaceCoverIndexExtByHash(
+  listRoot: string,
+  hash: string,
+  oldExt: string,
+  newExt: string
+): Promise<boolean> {
+  const db = getLibraryDb()
+  if (!db || !listRoot || !hash || !oldExt || !newExt) return false
+  const resolvedRoot = resolveListRootInput(listRoot)
+  if (!resolvedRoot) return false
+  const listRootKey = resolvedRoot.key
+  const legacyListRoot =
+    resolvedRoot.legacyAbs && resolvedRoot.legacyAbs !== listRootKey
+      ? resolvedRoot.legacyAbs
+      : undefined
+  try {
+    return await enqueueCoverIndexDbTask(async () => {
+      await ensureCoverIndexMigratedInternal(db, listRoot)
+      const update = db.prepare(
+        'UPDATE cover_index SET ext = ? WHERE list_root = ? AND hash = ? AND ext = ?'
+      )
+      const run = db.transaction(() => {
+        update.run(newExt, listRootKey, hash, oldExt)
+        if (legacyListRoot) {
+          update.run(newExt, legacyListRoot, hash, oldExt)
+        }
+      })
+      run()
+      return true
+    })
+  } catch (error) {
+    log.error('[sqlite] cover index ext replacement failed', error)
+    return false
+  }
+}
+
 export async function removeCoverIndexEntry(
   listRoot: string,
   filePath: string

@@ -56,6 +56,7 @@ const exactInvokeChannels = new Set([
   'moveSongsToDir',
   'operateFileSystemChange',
   'paths:exists',
+  'persistSongCoverDisplayCache',
   'permanentlyDelSongs',
   'playerGlobalShortcut:update',
   'playlist:batchTrackCount',
@@ -73,6 +74,7 @@ const exactInvokeChannels = new Set([
 
 const exactSendChannels = new Set([
   'addSongFingerprint',
+  'cancelSongCoverSession',
   'checkForUpdates',
   'cloudSync/cancel',
   'databaseInitWindow-toggle-close',
