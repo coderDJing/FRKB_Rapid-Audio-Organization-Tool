@@ -105,13 +105,24 @@ export function useCoverThumbnails({
   const MAX_CONCURRENCY = 6
   const MAX_PREFETCH_CONCURRENCY = 2
 
+  const formatCoverDiagnosticMessage = (
+    message: string,
+    details: Record<string, unknown>
+  ): string => {
+    try {
+      return `${message} ${JSON.stringify(details)}`
+    } catch {
+      return message
+    }
+  }
+
   const writeCoverDiagnosticEvent = (message: string, details: Record<string, unknown>) => {
     try {
       window.electron.ipcRenderer.send('outputLog', {
         level: 'info',
         source: 'renderer',
         scope: 'cover-load-diagnostic',
-        message,
+        message: formatCoverDiagnosticMessage(message, details),
         details
       })
     } catch {}
@@ -261,32 +272,33 @@ export function useCoverThumbnails({
       return false
     }
     try {
+      const details = {
+        reason,
+        clientKey,
+        generation: snapshot.generation,
+        identity: snapshot.identity,
+        nextIdentity: resetContext?.nextIdentity,
+        coverCacheEntryCount: resetContext?.coverCacheEntryCount,
+        elapsedMs,
+        requestedCount: snapshot.requestedCount,
+        completedCount: snapshot.completedCount,
+        staleCount: snapshot.staleCount,
+        failedCount: snapshot.failedCount,
+        imageErrorCount: snapshot.imageErrorCount,
+        cacheHitCount: snapshot.cacheHitCount,
+        cacheMissCount: snapshot.cacheMissCount,
+        resizedCount: snapshot.resizedCount,
+        sourceBytes: snapshot.sourceBytes,
+        outputBytes: snapshot.outputBytes,
+        maxRequestDurationMs: snapshot.maxRequestDurationMs,
+        maxQueueWaitDurationMs: snapshot.maxQueueWaitDurationMs
+      }
       window.electron.ipcRenderer.send('outputLog', {
         level: 'info',
         source: 'renderer',
         scope: 'cover-load-diagnostic',
-        message: 'cover session completed',
-        details: {
-          reason,
-          clientKey,
-          generation: snapshot.generation,
-          identity: snapshot.identity,
-          nextIdentity: resetContext?.nextIdentity,
-          coverCacheEntryCount: resetContext?.coverCacheEntryCount,
-          elapsedMs,
-          requestedCount: snapshot.requestedCount,
-          completedCount: snapshot.completedCount,
-          staleCount: snapshot.staleCount,
-          failedCount: snapshot.failedCount,
-          imageErrorCount: snapshot.imageErrorCount,
-          cacheHitCount: snapshot.cacheHitCount,
-          cacheMissCount: snapshot.cacheMissCount,
-          resizedCount: snapshot.resizedCount,
-          sourceBytes: snapshot.sourceBytes,
-          outputBytes: snapshot.outputBytes,
-          maxRequestDurationMs: snapshot.maxRequestDurationMs,
-          maxQueueWaitDurationMs: snapshot.maxQueueWaitDurationMs
-        }
+        message: formatCoverDiagnosticMessage('cover session completed', details),
+        details
       })
       snapshot.diagnosticLogged = true
       return true
