@@ -222,14 +222,22 @@ export function useCoverThumbnails({
     }
   }
 
-  const writeDiagnostic = (reason: string, snapshot: CoverSessionStats | null): boolean => {
+  const writeDiagnostic = (
+    reason: string,
+    snapshot: CoverSessionStats | null,
+    resetContext?: { nextIdentity: string; coverCacheEntryCount: number }
+  ): boolean => {
     if (!snapshot || snapshot.diagnosticLogged) return false
     const elapsedMs = Date.now() - snapshot.startedAtMs
+    const lifecycleClearedCovers =
+      (reason === 'session-changed' || reason === 'unmounted') &&
+      Number(resetContext?.coverCacheEntryCount || 0) > 0
     if (
       snapshot.maxRequestDurationMs < 500 &&
       snapshot.maxQueueWaitDurationMs < 500 &&
       snapshot.staleCount === 0 &&
-      snapshot.failedCount === 0
+      snapshot.failedCount === 0 &&
+      !lifecycleClearedCovers
     ) {
       return false
     }
@@ -244,6 +252,8 @@ export function useCoverThumbnails({
           clientKey,
           generation: snapshot.generation,
           identity: snapshot.identity,
+          nextIdentity: resetContext?.nextIdentity,
+          coverCacheEntryCount: resetContext?.coverCacheEntryCount,
           elapsedMs,
           requestedCount: snapshot.requestedCount,
           completedCount: snapshot.completedCount,
@@ -285,6 +295,7 @@ export function useCoverThumbnails({
   const resetSession = (reason: string) => {
     const previousGeneration = generation
     const previousRunning = runningByGeneration.get(previousGeneration)
+    const nextIdentity = resolveSessionIdentity()
     if (stats?.generation === previousGeneration) {
       stats.staleCount +=
         (previousRunning?.visible || 0) +
@@ -292,7 +303,10 @@ export function useCoverThumbnails({
         pendingVisibleQueue.length +
         pendingPrefetchQueue.length
     }
-    writeDiagnostic(reason, stats)
+    writeDiagnostic(reason, stats, {
+      nextIdentity,
+      coverCacheEntryCount: coverUrlCache.size
+    })
     generation += 1
     cancelMainSession(previousGeneration)
     clearQueues()
@@ -305,7 +319,7 @@ export function useCoverThumbnails({
     displayWorker = createCoverDisplayWorkerClient()
     stats = {
       generation,
-      identity: resolveSessionIdentity(),
+      identity: nextIdentity,
       startedAtMs: Date.now(),
       requestedCount: 0,
       completedCount: 0,
@@ -590,7 +604,10 @@ export function useCoverThumbnails({
   })
 
   onUnmounted(() => {
-    writeDiagnostic('unmounted', stats)
+    writeDiagnostic('unmounted', stats, {
+      nextIdentity: resolveSessionIdentity(),
+      coverCacheEntryCount: coverUrlCache.size
+    })
     cancelMainSession(generation)
     disposed = true
     emitter.off('songMetadataUpdated', handleSongMetadataUpdated)

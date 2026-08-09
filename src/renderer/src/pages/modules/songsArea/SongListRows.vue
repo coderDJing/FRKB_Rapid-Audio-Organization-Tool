@@ -341,10 +341,7 @@ const { coversTick, getCoverUrl, fetchCoverUrl, onImgError } = useCoverThumbnail
   actualEndIndex,
   visibleCount,
   songListRootDir: songListRootDirRef,
-  sessionIdentity: computed(
-    () =>
-      `${props.sourceLibraryName}:${props.sourcePaneKey}:${props.sourceSongListUUID}:${props.songListRootDir || ''}`
-  ),
+  sessionIdentity: computed(() => `${props.sourcePaneKey}:${props.sourceSongListUUID}`),
   enabled: enableCoverThumbnailsRef
 })
 
