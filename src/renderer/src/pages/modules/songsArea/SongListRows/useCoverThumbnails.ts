@@ -42,6 +42,7 @@ type QueueTask = {
   filePath: string
   generation: number
   priority: QueuePriority
+  queuedAtMs: number
   run: () => void
   resolve: (value: string | null) => void
 }
@@ -71,6 +72,7 @@ type CoverSessionStats = {
   sourceBytes: number
   outputBytes: number
   maxRequestDurationMs: number
+  maxQueueWaitDurationMs: number
   diagnosticLogged: boolean
 }
 
@@ -91,7 +93,7 @@ export function useCoverThumbnails({
   const pendingVisibleQueue: QueueTask[] = []
   const pendingPrefetchQueue: QueueTask[] = []
   const runningByGeneration = new Map<number, RunningCoverCounts>()
-  const displayWorker = createCoverDisplayWorkerClient()
+  let displayWorker = createCoverDisplayWorkerClient()
   const displayConversionCache = new Map<string, CoverDisplayWorkerResult>()
   const displayConversionInflight = new Map<string, Promise<CoverDisplayWorkerResult>>()
   const coversTick = ref(0)
@@ -132,49 +134,83 @@ export function useCoverThumbnails({
     return new Uint8Array(data.data || [])
   }
 
-  const prepareDisplayResponse = async (
+  const persistDisplayCache = (
     filePath: string,
     response: CoverThumbResponse,
+    converted: CoverDisplayWorkerResult,
     taskGeneration: number
-  ): Promise<CoverThumbResponse> => {
-    const raw = toUint8Array(response.data)
-    const imageHash = String(response.imageHash || '').trim()
-    const listRootDir = String(resolveRootDir() || '').trim()
-    if (!response.needsDisplayCache || !raw?.length || !imageHash || !listRootDir) {
-      return response
-    }
-    const conversionKey = `${listRootDir}:${imageHash}`
-    let converted = displayConversionCache.get(conversionKey)
-    if (!converted) {
-      let conversionTask = displayConversionInflight.get(conversionKey)
-      if (!conversionTask) {
-        conversionTask = displayWorker
-          .resize(raw, response.format || 'image/jpeg', 256)
-          .then((result) => {
-            displayConversionCache.set(conversionKey, result)
-            return result
-          })
-          .finally(() => displayConversionInflight.delete(conversionKey))
-        displayConversionInflight.set(conversionKey, conversionTask)
-      }
-      try {
-        converted = await conversionTask
-      } catch {
-        return response
-      }
-    }
-    if (!isCurrentGeneration(taskGeneration)) return response
+  ) => {
+    if (!isCurrentGeneration(taskGeneration)) return
     void window.electron.ipcRenderer
       .invoke('persistSongCoverDisplayCache', {
         filePath,
-        listRootDir,
-        imageHash,
+        listRootDir: String(resolveRootDir() || '').trim(),
+        imageHash: String(response.imageHash || '').trim(),
         legacyExt: response.legacyExt,
         format: converted.format,
         data: converted.data,
         requestContext: { clientKey, generation: taskGeneration }
       })
       .catch(() => {})
+  }
+
+  const scheduleDisplayCache = (
+    filePath: string,
+    response: CoverThumbResponse,
+    taskGeneration: number
+  ) => {
+    const raw = toUint8Array(response.data)
+    const imageHash = String(response.imageHash || '').trim()
+    const listRootDir = String(resolveRootDir() || '').trim()
+    if (!response.needsDisplayCache || !raw?.length || !imageHash || !listRootDir) return
+
+    const conversionKey = `${listRootDir}:${imageHash}`
+    const converted = displayConversionCache.get(conversionKey)
+    if (converted) {
+      persistDisplayCache(filePath, response, converted, taskGeneration)
+      return
+    }
+
+    let conversionTask = displayConversionInflight.get(conversionKey)
+    if (!conversionTask) {
+      conversionTask = displayWorker
+        .resize(raw, response.format || 'image/jpeg', 256)
+        .then((result) => {
+          displayConversionCache.set(conversionKey, result)
+          if (stats?.generation === taskGeneration && result.resized) {
+            stats.resizedCount += 1
+          }
+          persistDisplayCache(filePath, response, result, taskGeneration)
+          return result
+        })
+        .finally(() => displayConversionInflight.delete(conversionKey))
+      displayConversionInflight.set(conversionKey, conversionTask)
+      void conversionTask.catch(() => {})
+      return
+    }
+    void conversionTask
+      .then((result) => persistDisplayCache(filePath, response, result, taskGeneration))
+      .catch(() => {})
+  }
+
+  const prepareDisplayResponse = (
+    filePath: string,
+    response: CoverThumbResponse,
+    taskGeneration: number
+  ): CoverThumbResponse => {
+    if (!response.needsDisplayCache) return response
+    const raw = toUint8Array(response.data)
+    const imageHash = String(response.imageHash || '').trim()
+    const listRootDir = String(resolveRootDir() || '').trim()
+    if (!raw?.length || !imageHash || !listRootDir) return response
+
+    const conversionKey = `${listRootDir}:${imageHash}`
+    const converted = displayConversionCache.get(conversionKey)
+    if (!converted) {
+      scheduleDisplayCache(filePath, response, taskGeneration)
+      return response
+    }
+    persistDisplayCache(filePath, response, converted, taskGeneration)
     return {
       ...response,
       format: converted.format,
@@ -191,6 +227,7 @@ export function useCoverThumbnails({
     const elapsedMs = Date.now() - snapshot.startedAtMs
     if (
       snapshot.maxRequestDurationMs < 500 &&
+      snapshot.maxQueueWaitDurationMs < 500 &&
       snapshot.staleCount === 0 &&
       snapshot.failedCount === 0
     ) {
@@ -217,7 +254,8 @@ export function useCoverThumbnails({
           resizedCount: snapshot.resizedCount,
           sourceBytes: snapshot.sourceBytes,
           outputBytes: snapshot.outputBytes,
-          maxRequestDurationMs: snapshot.maxRequestDurationMs
+          maxRequestDurationMs: snapshot.maxRequestDurationMs,
+          maxQueueWaitDurationMs: snapshot.maxQueueWaitDurationMs
         }
       })
       snapshot.diagnosticLogged = true
@@ -262,6 +300,9 @@ export function useCoverThumbnails({
     coverUrlCache.clear()
     inflight.clear()
     displayConversionCache.clear()
+    displayConversionInflight.clear()
+    displayWorker.dispose()
+    displayWorker = createCoverDisplayWorkerClient()
     stats = {
       generation,
       identity: resolveSessionIdentity(),
@@ -276,6 +317,7 @@ export function useCoverThumbnails({
       sourceBytes: 0,
       outputBytes: 0,
       maxRequestDurationMs: 0,
+      maxQueueWaitDurationMs: 0,
       diagnosticLogged: false
     }
     coversTick.value++
@@ -368,15 +410,17 @@ export function useCoverThumbnails({
             resolve(null)
             return
           }
-          const resp = rawResp
-            ? await prepareDisplayResponse(filePath, rawResp, taskGeneration)
-            : null
+          const resp = rawResp ? prepareDisplayResponse(filePath, rawResp, taskGeneration) : null
           if (!isCurrentGeneration(taskGeneration)) {
             if (stats?.generation === taskGeneration) stats.staleCount += 1
             resolve(null)
             return
           }
           if (stats?.generation === taskGeneration) {
+            stats.maxQueueWaitDurationMs = Math.max(
+              stats.maxQueueWaitDurationMs,
+              requestStartedAtMs - (queuedTask?.queuedAtMs || requestStartedAtMs)
+            )
             stats.completedCount += 1
             if (resp?.cacheStatus === 'hit') stats.cacheHitCount += 1
             if (resp?.cacheStatus === 'miss') stats.cacheMissCount += 1
@@ -445,6 +489,7 @@ export function useCoverThumbnails({
         filePath,
         generation: taskGeneration,
         priority,
+        queuedAtMs: Date.now(),
         run,
         resolve
       }
