@@ -6,6 +6,7 @@ import {
   createCoverDisplayWorkerClient,
   type CoverDisplayWorkerResult
 } from './coverDisplayWorkerClient'
+import { resolveCoverPathIdentity } from './coverPathIdentity'
 
 interface UseCoverThumbnailsOptions {
   songs: Ref<ISongInfo[] | undefined>
@@ -17,6 +18,7 @@ interface UseCoverThumbnailsOptions {
   visibleCount: Ref<number>
   songListRootDir?: Ref<string | undefined>
   sessionIdentity?: Ref<string | undefined>
+  platform?: Ref<string | undefined>
   enabled?: Ref<boolean>
 }
 
@@ -87,6 +89,7 @@ export function useCoverThumbnails({
   visibleCount,
   songListRootDir,
   sessionIdentity,
+  platform,
   enabled
 }: UseCoverThumbnailsOptions) {
   const coverUrlCache = markRaw(new Map<string, string | null>())
@@ -128,10 +131,10 @@ export function useCoverThumbnails({
     } catch {}
   }
 
-  const normalizeFilePath = (value: string | undefined | null) =>
-    String(value || '')
-      .replace(/\//g, '\\')
-      .toLowerCase()
+  const resolveCoverCacheKey = (value: string | undefined | null) => {
+    return resolveCoverPathIdentity(value, platform?.value)
+  }
+  const normalizeFilePath = (value: string | undefined | null) => resolveCoverCacheKey(value)
 
   const revokeCoverUrl = (url: string | null | undefined) => {
     if (url && url.startsWith('blob:')) URL.revokeObjectURL(url)
@@ -142,8 +145,10 @@ export function useCoverThumbnails({
   const isEnabled = () => (enabled ? enabled.value !== false : true)
   const resolveSessionIdentity = () =>
     String(sessionIdentity?.value || `${resolveRootDir() || ''}:${resolveSongs().length}`)
-  const resolveSongByFilePath = (filePath: string) =>
-    resolveSongs().find((song) => String(song?.filePath || '').trim() === filePath) || null
+  const resolveSongByFilePath = (filePath: string) => {
+    const cacheKey = resolveCoverCacheKey(filePath)
+    return resolveSongs().find((song) => resolveCoverCacheKey(song?.filePath) === cacheKey) || null
+  }
   const isCurrentGeneration = (taskGeneration: number) => !disposed && taskGeneration === generation
 
   const cacheCoverUrl = (filePath: string, url: string | null, taskGeneration: number) => {
@@ -151,7 +156,7 @@ export function useCoverThumbnails({
       revokeCoverUrl(url)
       return false
     }
-    coverUrlCache.set(filePath, url)
+    coverUrlCache.set(resolveCoverCacheKey(filePath), url)
     coversTick.value++
     return true
   }
@@ -374,6 +379,7 @@ export function useCoverThumbnails({
       generation,
       identity: nextIdentity,
       enabled: isEnabled(),
+      platform: platform?.value || '',
       songCount: resolveSongs().length,
       songListRootDir: String(resolveRootDir() || '').trim()
     })
@@ -400,7 +406,8 @@ export function useCoverThumbnails({
 
   function onImgError(filePath: string) {
     if (disposed) return
-    const failedUrl = coverUrlCache.get(filePath)
+    const cacheKey = resolveCoverCacheKey(filePath)
+    const failedUrl = coverUrlCache.get(cacheKey)
     if (stats?.generation === generation) {
       stats.imageErrorCount += 1
       if (stats.imageErrorCount === 1) {
@@ -420,7 +427,7 @@ export function useCoverThumbnails({
   }
 
   function getCoverUrl(filePath: string): string | null | undefined {
-    return coverUrlCache.get(filePath)
+    return coverUrlCache.get(resolveCoverCacheKey(filePath))
   }
 
   function fetchCoverUrl(
@@ -430,9 +437,10 @@ export function useCoverThumbnails({
     if (disposed || !isEnabled()) return Promise.resolve(null)
     if (!filePath) return Promise.resolve(null)
     const taskGeneration = generation
-    const cached = coverUrlCache.get(filePath)
+    const cacheKey = resolveCoverCacheKey(filePath)
+    const cached = coverUrlCache.get(cacheKey)
     if (cached !== undefined) return Promise.resolve(cached)
-    const existing = inflight.get(filePath)
+    const existing = inflight.get(cacheKey)
     if (existing?.generation === taskGeneration) {
       if (priority === 'visible' && existing.task?.priority === 'prefetch') {
         const pendingIndex = pendingPrefetchQueue.indexOf(existing.task)
@@ -459,6 +467,7 @@ export function useCoverThumbnails({
             return
           }
           const song = resolveSongByFilePath(filePath)
+          const requestFilePath = String(song?.filePath || filePath).trim()
           const pioneerCoverPath = String(song?.pioneerCoverPath || '').trim()
           const sourceKind =
             song?.externalSourceKind === 'desktop' || song?.externalSourceKind === 'usb'
@@ -471,7 +480,7 @@ export function useCoverThumbnails({
               )) as CoverThumbResponse | null)
             : ((await window.electron.ipcRenderer.invoke(
                 'getSongCoverThumb',
-                filePath,
+                requestFilePath,
                 48,
                 resolveRootDir(),
                 { clientKey, generation: taskGeneration }
@@ -482,7 +491,9 @@ export function useCoverThumbnails({
             resolve(null)
             return
           }
-          const resp = rawResp ? prepareDisplayResponse(filePath, rawResp, taskGeneration) : null
+          const resp = rawResp
+            ? prepareDisplayResponse(requestFilePath, rawResp, taskGeneration)
+            : null
           if (!isCurrentGeneration(taskGeneration)) {
             if (stats?.generation === taskGeneration) stats.staleCount += 1
             resolve(null)
@@ -533,8 +544,8 @@ export function useCoverThumbnails({
               Date.now() - requestStartedAtMs
             )
           }
-          const activeInflight = inflight.get(filePath)
-          if (activeInflight?.generation === taskGeneration) inflight.delete(filePath)
+          const activeInflight = inflight.get(cacheKey)
+          if (activeInflight?.generation === taskGeneration) inflight.delete(cacheKey)
           const running = runningByGeneration.get(taskGeneration)
           if (running) {
             running[runningPriority] = Math.max(0, running[runningPriority] - 1)
@@ -570,7 +581,7 @@ export function useCoverThumbnails({
       pump()
     })
 
-    inflight.set(filePath, { generation: taskGeneration, promise, task: queuedTask })
+    inflight.set(cacheKey, { generation: taskGeneration, promise, task: queuedTask })
     return promise
   }
 
@@ -579,7 +590,7 @@ export function useCoverThumbnails({
     for (const queue of [pendingVisibleQueue, pendingPrefetchQueue]) {
       for (let i = queue.length - 1; i >= 0; i -= 1) {
         const task = queue[i]
-        if (task.filePath === filePath) {
+        if (resolveCoverCacheKey(task.filePath) === resolveCoverCacheKey(filePath)) {
           queue.splice(i, 1)
           task.resolve(null)
         }
@@ -591,15 +602,17 @@ export function useCoverThumbnails({
     if (disposed) return
     const newPath = payload?.filePath
     if (payload?.oldFilePath) {
-      revokeCoverUrl(coverUrlCache.get(payload.oldFilePath))
-      coverUrlCache.delete(payload.oldFilePath)
-      inflight.delete(payload.oldFilePath)
+      const oldCacheKey = resolveCoverCacheKey(payload.oldFilePath)
+      revokeCoverUrl(coverUrlCache.get(oldCacheKey))
+      coverUrlCache.delete(oldCacheKey)
+      inflight.delete(oldCacheKey)
       clearPendingByPath(payload.oldFilePath)
     }
     if (!newPath) return
-    revokeCoverUrl(coverUrlCache.get(newPath))
-    coverUrlCache.delete(newPath)
-    inflight.delete(newPath)
+    const newCacheKey = resolveCoverCacheKey(newPath)
+    revokeCoverUrl(coverUrlCache.get(newCacheKey))
+    coverUrlCache.delete(newCacheKey)
+    inflight.delete(newCacheKey)
     clearPendingByPath(newPath)
     coversTick.value++
     void fetchCoverUrl(newPath)
@@ -612,19 +625,20 @@ export function useCoverThumbnails({
     const actualEnd = Math.min(arr.length, actualEndIndex.value)
     for (let i = actualStart; i < actualEnd; i += 1) {
       const fp = arr[i]?.filePath
-      if (fp && !coverUrlCache.has(fp)) void fetchCoverUrl(fp, 'visible')
+      if (fp && !coverUrlCache.has(resolveCoverCacheKey(fp))) void fetchCoverUrl(fp, 'visible')
     }
     const start = Math.max(0, startIndex.value - visibleCount.value)
     const end = Math.min(arr.length, endIndex.value + visibleCount.value)
     for (let i = start; i < end; i += 1) {
       if (i >= actualStart && i < actualEnd) continue
       const fp = arr[i]?.filePath
-      if (fp && !coverUrlCache.has(fp)) void fetchCoverUrl(fp, 'prefetch')
+      if (fp && !coverUrlCache.has(resolveCoverCacheKey(fp))) void fetchCoverUrl(fp, 'prefetch')
     }
   }
 
   const stopSessionWatch = watch(
-    () => `${resolveSessionIdentity()}|${isEnabled() ? 'enabled' : 'disabled'}`,
+    () =>
+      `${resolveSessionIdentity()}|${isEnabled() ? 'enabled' : 'disabled'}|${platform?.value || ''}`,
     () => {
       resetSession('session-changed')
       if (isEnabled()) primePrefetchWindow()
