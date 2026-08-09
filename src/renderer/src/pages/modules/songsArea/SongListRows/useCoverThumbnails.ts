@@ -73,6 +73,7 @@ type CoverSessionStats = {
   outputBytes: number
   maxRequestDurationMs: number
   maxQueueWaitDurationMs: number
+  imageErrorCount: number
   diagnosticLogged: boolean
 }
 
@@ -103,6 +104,23 @@ export function useCoverThumbnails({
   let disposed = false
   const MAX_CONCURRENCY = 6
   const MAX_PREFETCH_CONCURRENCY = 2
+
+  const writeCoverDiagnosticEvent = (message: string, details: Record<string, unknown>) => {
+    try {
+      window.electron.ipcRenderer.send('outputLog', {
+        level: 'info',
+        source: 'renderer',
+        scope: 'cover-load-diagnostic',
+        message,
+        details
+      })
+    } catch {}
+  }
+
+  const normalizeFilePath = (value: string | undefined | null) =>
+    String(value || '')
+      .replace(/\//g, '\\')
+      .toLowerCase()
 
   const revokeCoverUrl = (url: string | null | undefined) => {
     if (url && url.startsWith('blob:')) URL.revokeObjectURL(url)
@@ -237,6 +255,7 @@ export function useCoverThumbnails({
       snapshot.maxQueueWaitDurationMs < 500 &&
       snapshot.staleCount === 0 &&
       snapshot.failedCount === 0 &&
+      snapshot.imageErrorCount === 0 &&
       !lifecycleClearedCovers
     ) {
       return false
@@ -259,6 +278,7 @@ export function useCoverThumbnails({
           completedCount: snapshot.completedCount,
           staleCount: snapshot.staleCount,
           failedCount: snapshot.failedCount,
+          imageErrorCount: snapshot.imageErrorCount,
           cacheHitCount: snapshot.cacheHitCount,
           cacheMissCount: snapshot.cacheMissCount,
           resizedCount: snapshot.resizedCount,
@@ -293,6 +313,7 @@ export function useCoverThumbnails({
   }
 
   const resetSession = (reason: string) => {
+    const hadPreviousSession = stats !== null
     const previousGeneration = generation
     const previousRunning = runningByGeneration.get(previousGeneration)
     const nextIdentity = resolveSessionIdentity()
@@ -332,8 +353,18 @@ export function useCoverThumbnails({
       outputBytes: 0,
       maxRequestDurationMs: 0,
       maxQueueWaitDurationMs: 0,
+      imageErrorCount: 0,
       diagnosticLogged: false
     }
+    writeCoverDiagnosticEvent('cover session started', {
+      reason: hadPreviousSession ? reason : 'initial',
+      clientKey,
+      generation,
+      identity: nextIdentity,
+      enabled: isEnabled(),
+      songCount: resolveSongs().length,
+      songListRootDir: String(resolveRootDir() || '').trim()
+    })
     coversTick.value++
   }
 
@@ -357,7 +388,22 @@ export function useCoverThumbnails({
 
   function onImgError(filePath: string) {
     if (disposed) return
-    revokeCoverUrl(coverUrlCache.get(filePath))
+    const failedUrl = coverUrlCache.get(filePath)
+    if (stats?.generation === generation) {
+      stats.imageErrorCount += 1
+      if (stats.imageErrorCount === 1) {
+        writeCoverDiagnosticEvent('cover image element failed', {
+          clientKey,
+          generation,
+          identity: stats.identity,
+          filePath,
+          urlKind: failedUrl?.startsWith('blob:') ? 'blob' : failedUrl ? 'other' : 'missing',
+          coverCacheEntryCount: coverUrlCache.size,
+          songCount: resolveSongs().length
+        })
+      }
+    }
+    revokeCoverUrl(failedUrl)
     cacheCoverUrl(filePath, null, generation)
   }
 
@@ -585,6 +631,68 @@ export function useCoverThumbnails({
     { immediate: true }
   )
 
+  const stopSongsReferenceWatch = watch(
+    () => resolveSongs(),
+    (nextSongs, previousSongs) => {
+      if (nextSongs === previousSongs) return
+      const previousPaths = (previousSongs || [])
+        .map((song) => String(song?.filePath || '').trim())
+        .filter(Boolean)
+      const nextPaths = (nextSongs || [])
+        .map((song) => String(song?.filePath || '').trim())
+        .filter(Boolean)
+      if (previousPaths.length === 0 && coverUrlCache.size === 0) return
+
+      const previousExact = new Set(previousPaths)
+      const previousByNormalized = new Map<string, string>()
+      for (const filePath of previousPaths) {
+        const normalized = normalizeFilePath(filePath)
+        if (normalized && !previousByNormalized.has(normalized)) {
+          previousByNormalized.set(normalized, filePath)
+        }
+      }
+      const cachedExact = new Set(coverUrlCache.keys())
+      const cachedNormalized = new Set([...cachedExact].map(normalizeFilePath))
+      let exactPathOverlapCount = 0
+      let normalizedPathOverlapCount = 0
+      let nextExactCoverCacheHitCount = 0
+      let nextNormalizedCoverCacheHitCount = 0
+      const pathRepresentationSamples: Array<{ previous: string; next: string }> = []
+
+      for (const filePath of nextPaths) {
+        if (previousExact.has(filePath)) exactPathOverlapCount += 1
+        const normalized = normalizeFilePath(filePath)
+        const previousPath = previousByNormalized.get(normalized)
+        if (previousPath) {
+          normalizedPathOverlapCount += 1
+          if (previousPath !== filePath && pathRepresentationSamples.length < 3) {
+            pathRepresentationSamples.push({ previous: previousPath, next: filePath })
+          }
+        }
+        if (cachedExact.has(filePath)) nextExactCoverCacheHitCount += 1
+        if (cachedNormalized.has(normalized)) nextNormalizedCoverCacheHitCount += 1
+      }
+
+      writeCoverDiagnosticEvent('cover song data replaced', {
+        clientKey,
+        generation,
+        identity: resolveSessionIdentity(),
+        previousSongCount: previousPaths.length,
+        nextSongCount: nextPaths.length,
+        exactPathOverlapCount,
+        normalizedPathOverlapCount,
+        pathRepresentationChangedCount: Math.max(
+          0,
+          normalizedPathOverlapCount - exactPathOverlapCount
+        ),
+        coverCacheEntryCount: coverUrlCache.size,
+        nextExactCoverCacheHitCount,
+        nextNormalizedCoverCacheHitCount,
+        pathRepresentationSamples
+      })
+    }
+  )
+
   const stopRangeWatch = watch(
     () =>
       [
@@ -604,6 +712,16 @@ export function useCoverThumbnails({
   })
 
   onUnmounted(() => {
+    writeCoverDiagnosticEvent('cover rows unmounted', {
+      clientKey,
+      generation,
+      identity: stats?.identity || resolveSessionIdentity(),
+      songCount: resolveSongs().length,
+      coverCacheEntryCount: coverUrlCache.size,
+      requestedCount: stats?.requestedCount || 0,
+      completedCount: stats?.completedCount || 0,
+      imageErrorCount: stats?.imageErrorCount || 0
+    })
     writeDiagnostic('unmounted', stats, {
       nextIdentity: resolveSessionIdentity(),
       coverCacheEntryCount: coverUrlCache.size
@@ -612,6 +730,7 @@ export function useCoverThumbnails({
     disposed = true
     emitter.off('songMetadataUpdated', handleSongMetadataUpdated)
     stopVisibleWatch()
+    stopSongsReferenceWatch()
     stopRangeWatch()
     stopSessionWatch()
     for (const url of coverUrlCache.values()) revokeCoverUrl(url)
