@@ -47,13 +47,6 @@ type SongListScanResult = {
     initialized?: boolean
     repaired?: boolean
   } | null
-  scanDiagnostics?: {
-    traceId?: string
-    responseReadyAtMs?: number
-    mainDurationMs?: number
-    workerDurationMs?: number
-    timeBasisRepair?: Record<string, unknown>
-  }
 }
 
 let songListScanDiagnosticSequence = 0
@@ -63,14 +56,10 @@ const createSongListScanTraceId = () => {
   return `renderer-${Date.now().toString(36)}-${songListScanDiagnosticSequence.toString(36)}`
 }
 
-const writeSongListScanDiagnostic = (
-  level: 'info' | 'error',
-  message: string,
-  details: Record<string, unknown>
-) => {
+const writeSongListScanError = (message: string, details: Record<string, unknown>) => {
   try {
     window.electron.ipcRenderer.send('outputLog', {
-      level,
+      level: 'error',
       source: 'renderer',
       scope: 'playlist-scan-diagnostic',
       message: `${message} ${JSON.stringify(details)}`
@@ -579,13 +568,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
     const traceId = createSongListScanTraceId()
     const diagnosticSource = options?.diagnosticSource || 'disk-load'
     const rendererStartedAtMs = Date.now()
-    writeSongListScanDiagnostic('info', 'request started', {
-      traceId,
-      diagnosticSource,
-      songListUUID: ticket.songListUUID,
-      songListPath,
-      rendererStartedAtMs
-    })
     let result: SongListScanResult
     try {
       result = (await window.electron.ipcRenderer.invoke(
@@ -598,7 +580,7 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
         }
       )) as SongListScanResult
     } catch (error) {
-      writeSongListScanDiagnostic('error', 'request failed', {
+      writeSongListScanError('request failed', {
         traceId,
         diagnosticSource,
         songListUUID: ticket.songListUUID,
@@ -607,24 +589,6 @@ export function useSongsLoader(params: UseSongsLoaderParams) {
       })
       throw error
     }
-    const receivedAtMs = Date.now()
-    const responseReadyAtMs = Number(result.scanDiagnostics?.responseReadyAtMs)
-    writeSongListScanDiagnostic('info', 'response received', {
-      traceId: result.scanDiagnostics?.traceId || traceId,
-      diagnosticSource,
-      songListUUID: ticket.songListUUID,
-      trackCount: Array.isArray(result.scanData) ? result.scanData.length : 0,
-      rendererStartedAtMs,
-      receivedAtMs,
-      responseReadyAtMs: Number.isFinite(responseReadyAtMs) ? responseReadyAtMs : null,
-      rendererDurationMs: receivedAtMs - rendererStartedAtMs,
-      mainDurationMs: result.scanDiagnostics?.mainDurationMs,
-      workerDurationMs: result.scanDiagnostics?.workerDurationMs,
-      deliveryAfterMainReadyMs: Number.isFinite(responseReadyAtMs)
-        ? Math.max(0, receivedAtMs - responseReadyAtMs)
-        : null,
-      timeBasisRepair: result.scanDiagnostics?.timeBasisRepair
-    })
     if (!loadGenerationGuard.isCurrent(ticket)) return false
     const scanData = Array.isArray(result?.scanData) ? result.scanData : []
     const loadedUUID = String(result?.songListUUID || '')

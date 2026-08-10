@@ -116,13 +116,6 @@ export function registerPlaylistHandlers() {
       ...pathSummary
     })
     let stage = 'worker-scan'
-    log.info('[playlist-scan-diagnostic] main scan started', {
-      traceId,
-      source,
-      songListUUID,
-      startedAtMs,
-      ...pathSummary
-    })
 
     try {
       const workerStartedAt = Date.now()
@@ -137,12 +130,6 @@ export function registerPlaylistHandlers() {
         trackCount: result.scanData.length,
         workerDurationMs
       })
-      log.info('[playlist-scan-diagnostic] worker scan completed', {
-        traceId,
-        trackCount: result.scanData.length,
-        workerDurationMs,
-        workerPerf: result.perf
-      })
 
       stage = 'time-basis-plan'
       const preparedRepair = preparePlaylistTimeBasisRepair(result.scanData)
@@ -150,28 +137,14 @@ export function registerPlaylistHandlers() {
         trackCount: result.scanData.length,
         ...preparedRepair.plan
       })
-      log.info('[playlist-scan-diagnostic] time-basis repair planned', {
-        traceId,
-        trackCount: result.scanData.length,
-        ...preparedRepair.plan
-      })
       const repairJob = queuePlaylistTimeBasisRepair(preparedRepair, {
         onStarted: (details) => {
           activity.update('time-basis-background-running', details)
-          log.info('[playlist-scan-diagnostic] time-basis background repair started', {
-            traceId,
-            candidateCount: preparedRepair.plan.candidateCount,
-            ...details
-          })
         }
       })
       if (repairJob.completion) {
         void repairJob.completion
           .then((diagnostics) => {
-            log.info('[playlist-scan-diagnostic] time-basis background repair completed', {
-              traceId,
-              ...diagnostics
-            })
             activity.complete({
               trackCount: result.scanData.length,
               backgroundRepairCompleted: true,
@@ -195,15 +168,6 @@ export function registerPlaylistHandlers() {
 
       const responseReadyAtMs = Date.now()
       const mainDurationMs = responseReadyAtMs - startedAtMs
-      const scanDiagnostics = {
-        traceId,
-        source,
-        mainStartedAtMs: startedAtMs,
-        responseReadyAtMs,
-        mainDurationMs,
-        workerDurationMs,
-        timeBasisRepair: repairJob.plan
-      }
       if (repairJob.completion) {
         activity.update('response-ready-background-repair', {
           trackCount: result.scanData.length,
@@ -219,16 +183,7 @@ export function registerPlaylistHandlers() {
           backgroundRepairPending: false
         })
       }
-      log.info('[playlist-scan-diagnostic] main response ready', {
-        traceId,
-        source,
-        trackCount: result.scanData.length,
-        responseReadyAtMs,
-        mainDurationMs,
-        workerDurationMs,
-        timeBasisRepair: repairJob.plan
-      })
-      return { ...result, scanDiagnostics }
+      return result
     } catch (error) {
       const message = error instanceof Error ? error.stack || error.message : String(error)
       activity.fail({ stage, message })
