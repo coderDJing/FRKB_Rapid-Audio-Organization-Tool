@@ -370,6 +370,7 @@ onUnmounted(() => {
 }
 
 .welcome-create-playlist-actions--horizontal {
+  align-self: center;
   width: min(100%, 460px);
 
   .welcome-create-playlist {
