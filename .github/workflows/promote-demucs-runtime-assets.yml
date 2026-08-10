@@ -73,3 +73,12 @@ jobs:
           else
             gh release create "$TARGET_TAG" "${assets[@]}" --title "$TARGET_TAG"
           fi
+
+          release_id="$(gh release view "$TARGET_TAG" --json databaseId --jq .databaseId)"
+          gh api --method PATCH "repos/$GH_REPO/releases/$release_id" -F make_latest=false >/dev/null
+
+          latest_tag="$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)"
+          if [ "$latest_tag" = "$TARGET_TAG" ]; then
+            echo "Runtime asset release must not be the GitHub Latest release: $TARGET_TAG"
+            exit 1
+          fi

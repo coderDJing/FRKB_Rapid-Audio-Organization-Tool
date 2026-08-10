@@ -395,3 +395,12 @@ jobs:
               gh release create "$TAG_NAME" "${assets[@]}" --title "$TAG_NAME" --verify-tag
             fi
           fi
+
+          release_id="$(gh release view "$TAG_NAME" --json databaseId --jq .databaseId)"
+          gh api --method PATCH "repos/$GH_REPO/releases/$release_id" -F make_latest=false >/dev/null
+
+          latest_tag="$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)"
+          if [ "$latest_tag" = "$TAG_NAME" ]; then
+            echo "Runtime asset release must not be the GitHub Latest release: $TAG_NAME"
+            exit 1
+          fi
