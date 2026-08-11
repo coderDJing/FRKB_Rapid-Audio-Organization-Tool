@@ -1,6 +1,6 @@
 # 双轨混音对拍与听感错位长期维护手册
 
-状态：本次样本已完成真实试听验收；其他双轨操作序列持续回归
+状态：启动固定错位已完成真实试听验收；周期性误恢复候选修复待现场复测
 
 首次记录：2026-08-07
 
@@ -125,14 +125,51 @@ pcmStartTimelineSec = audio_sec_to_timeline_sec(pcm_start_sec)
 
 该结论关闭的是这对样本的已播放 leader 上加入 follower 场景。暂停恢复、切换 master、seek、loop、`paired-start` 等操作仍按后文清单持续回归，禁止据此宣称所有双轨路径永久关闭。
 
-### 6. 修复代价与行为边界
+### 6. 已确认问题三：快照投递空窗触发双轨误恢复
+
+2026-08-11 对相同 `Push` / `Rollende Technodingen` 组合持续播放约 107 秒。精细生命周期日志确认：
+
+- 99 个诊断采样中只有一次异常采样间隔，从正常约 1 秒变为 `3.541s`；
+- 诊断采集与 Transport Snapshot 广播位于同一个主进程 250ms broadcaster 回调，因此该空窗同时代表快照投递没有按期运行；
+- 空窗结束后约 52ms，`stateRevision` 从 `29 -> 30 -> 31`，两次调用都来自 `horizontal_browse_transport_engine_state.rs::set_playing`；
+- 两次调用前 Top、Bottom 都已经是 `playing=true`，随后两轨分别记录 `command:set_playing` reset；
+- Bottom 的 Master Tempo 处理器在 reset 前已收到 `2231403` 帧、消费 `2227491` 帧，reset 后重新从 4096 帧预热；
+- 同一时间没有 seek、解码应用、联结重建、underrun、错误或警告。
+
+这证明周期性跑马不是网格逐渐漂移，而是缓存快照暂时不更新后，Renderer 的 `horizontalBrowsePlaybackStallRecovery` 把“状态投递暂停”误判成“原生音频卡死”。旧恢复器每 250ms 检查一次缓存，连续 500ms 不变化就对每轨执行：
+
+```text
+preparePlayhead(deck)
+setPlaying(deck, true)
+```
+
+Rust `set_playing` 即使目标轨本来已经是 `playing=true`，也会 reset Master Tempo。两轨共享同一个快照投递空窗，所以恢复器会近乎同时重置两轨，造成短暂听感抖动后重新稳定。
+
+当前候选修复：只在疑似卡死分支主动请求一次新鲜 native snapshot；满足任一条件立即取消恢复：
+
+- 新快照显示该轨已经不再播放；
+- `currentSec`、`audioCurrentSec` 或 `renderCurrentSec` 任一项相对缓存值继续前进至少 30ms。
+
+只有新鲜原生快照也完全不前进时，才继续原来的 `preparePlayhead + setPlaying(true)`。对应回归测试：
+
+- `新鲜原生快照仍在前进时不重启播放`；
+- `新鲜原生快照也没有前进时保留恢复动作`。
+
+长期约束：
+
+- 状态投递活性不等于音频引擎活性，禁止仅凭缓存快照不变执行会 reset DSP/Transport 的动作；
+- 双轨共享 broadcaster 时，两个 Deck 同时“停住”应先怀疑公共投递链路，不能立即分别恢复两次；
+- 任何自动恢复都必须先读取新鲜 native 状态，再决定是否允许重建播放处理器；
+- 本候选修复在正常播放路径没有新增轮询，只在原本准备执行恢复时多一次 IPC snapshot；仍需相同样本连续播放现场验收。
+
+### 7. 修复代价与行为边界
 
 - phase alignment 改动超过 1ms 且 Master Tempo 活跃时，会一次性 reset + prime SoundTouch；本次 `setPlaying` 总耗时为 `3.7ms`，没有观察到断音。该数值包含整个 handler，不能当作 reset + prime 的独立 benchmark。
 - `sample_silent_lead_in` 每个播放帧会多做一次 PCM 起点换算和比较，只有简单浮点运算，无新增分配，相比 SoundTouch 和混音 DSP 可忽略。
 - 时间基之前现在输出正确静音。若输入的 `timeBasisOffsetMs` 本身错误，会按错误时间基表现，因此不能放松时间基生成、持久化和载入验证。
 - 本次没有修改 BPM、Rekordbox 网格、QuickSeek、Master Tempo 音质参数、EQ、Auto Gain、Limiter 或混音增益语义。
 
-### 7. 最终自动验证
+### 8. 最终自动验证
 
 清理临时诊断后执行：
 

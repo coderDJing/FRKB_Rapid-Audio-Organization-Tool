@@ -1,7 +1,8 @@
 import type { ISongInfo, ISongMemoryCue } from 'src/types/globals'
 import type {
   HorizontalBrowseDeckKey,
-  HorizontalBrowseTransportDeckSnapshot
+  HorizontalBrowseTransportDeckSnapshot,
+  HorizontalBrowseTransportSnapshot
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import type { HorizontalBrowseLoopRange } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckLoopController'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRenderSync'
@@ -45,7 +46,7 @@ export type UseHorizontalBrowseDeckPlaybackControllerParams =
         options?: { notifySnapshotListeners?: boolean }
       ) => Promise<unknown>
       setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
-      snapshot: (nowMs?: number) => Promise<unknown>
+      snapshot: (nowMs?: number) => Promise<HorizontalBrowseTransportSnapshot>
     }
     syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
     commitDeckStatesToNative: CommitHorizontalBrowseDeckStatesToNative

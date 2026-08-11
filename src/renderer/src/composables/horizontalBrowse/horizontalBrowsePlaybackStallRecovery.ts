@@ -1,7 +1,8 @@
 import type { ISongInfo } from 'src/types/globals'
 import type {
   HorizontalBrowseDeckKey,
-  HorizontalBrowseTransportDeckSnapshot
+  HorizontalBrowseTransportDeckSnapshot,
+  HorizontalBrowseTransportSnapshot
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import type { HorizontalBrowseRenderSyncOptions } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseRenderSync'
 
@@ -20,7 +21,7 @@ type HorizontalBrowsePlaybackStallRecoveryParams = {
   nativeTransport: {
     preparePlayhead: (deck: DeckKey) => Promise<unknown>
     setPlaying: (deck: DeckKey, playing: boolean) => Promise<unknown>
-    snapshot: (nowMs?: number) => Promise<unknown>
+    snapshot: (nowMs?: number) => Promise<HorizontalBrowseTransportSnapshot>
   }
   syncDeckRenderState: (input?: number | HorizontalBrowseRenderSyncOptions) => void
   resolveDeckSong: (deck: DeckKey) => ISongInfo | null
@@ -89,6 +90,12 @@ export const createHorizontalBrowsePlaybackStallRecovery = (
     state.lastRecoveryAtMs = nowMs
     void (async () => {
       try {
+        const freshTransportSnapshot = await params.nativeTransport.snapshot(performance.now())
+        const freshDeckSnapshot =
+          deck === 'top' ? freshTransportSnapshot.top : freshTransportSnapshot.bottom
+        if (!freshDeckSnapshot.playing || hasSnapshotProgressed(state, freshDeckSnapshot)) {
+          return
+        }
         await params.nativeTransport.preparePlayhead(deck)
         if (params.resolveTransportDeckSnapshot(deck).playing) {
           await params.nativeTransport.setPlaying(deck, true)

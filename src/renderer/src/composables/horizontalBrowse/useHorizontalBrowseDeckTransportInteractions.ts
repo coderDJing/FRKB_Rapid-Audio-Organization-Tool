@@ -2,7 +2,8 @@ import { watch, type Ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import type {
   HorizontalBrowseDeckKey,
-  HorizontalBrowseTransportDeckSnapshot
+  HorizontalBrowseTransportDeckSnapshot,
+  HorizontalBrowseTransportSnapshot
 } from '@renderer/composables/horizontalBrowse/horizontalBrowseNativeTransport'
 import { useHorizontalBrowseDeckCueController } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckCueController'
 import { useHorizontalBrowseDeckLoopController } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseDeckLoopController'
@@ -38,7 +39,7 @@ type UseHorizontalBrowseDeckTransportInteractionsParams =
       ) => Promise<unknown>
       beatsync: (deck: DeckKey) => Promise<unknown>
       alignToLeader: (deck: DeckKey, targetSec?: number, skipGridSnap?: boolean) => Promise<unknown>
-      snapshot: (nowMs?: number) => Promise<unknown>
+      snapshot: (nowMs?: number) => Promise<HorizontalBrowseTransportSnapshot>
       setSyncEnabled: (deck: DeckKey, enabled: boolean) => Promise<unknown>
       toggleLoop: (deck: DeckKey) => Promise<unknown>
       stepLoopBeats: (deck: DeckKey, direction: -1 | 1) => Promise<unknown>
