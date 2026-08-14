@@ -37,7 +37,8 @@
 
 | 状态 | 文档 | 简述 |
 | --- | --- | --- |
-| 诊断中 | [Windows 大歌单主进程偶发未响应](./windows-large-playlist-main-process-stall.md) | 另一台 Windows 电脑打开千首级筛选库歌单时几乎必现，本机相同规模无法复现 |
+| 候选修复待验收 | [Horizontal Browse pending-play 偶发慢启动](./horizontal-browse-pending-play.md) | 歌曲加载后立即播放偶发等待数秒，需以现场日志区分 decode 覆盖、FFmpeg 启动和 renderer 状态问题 |
+| 已解决 | [Windows 大歌单主进程卡顿](./windows-large-playlist-main-process-stall.md) | 无界 FFprobe 创建会阻塞主线程；后台队列、worker thread、并发上限和零偏移版本标记已解决 |
 | 持续维护 | [Pioneer Device Library U 盘歌单一致性](./pioneer-device-library-usb-playlist-consistency.md) | PDB 页尾条目截断、OneLibrary 缺歌单和恢复后错序的交叉验证手册 |
-| 候选修复待验收 | [双轨混音对拍与听感错位长期维护手册](./dual-track-mix-alignment-long-term-maintenance.md) | 双轨时间基、网格、PCM、Master Tempo 和联结起播的长期交叉验证手册 |
+| 候选修复待验收 | [双轨联结起播与播放状态恢复维护手册](./dual-track-mix-alignment-long-term-maintenance.md) | 双轨时间基、联结起播、PCM 对齐与快照恢复的长期交叉验证手册 |
 | 持续维护 | [双轨 Master Tempo 瞬态稳定与 Keylock 算法长期维护手册](./dual-track-master-tempo-transient-stability.md) | SoundTouch 瞬态漂移、Signalsmith 实验、Mixxx/Rubber Band 路线与免费泛化方案 |

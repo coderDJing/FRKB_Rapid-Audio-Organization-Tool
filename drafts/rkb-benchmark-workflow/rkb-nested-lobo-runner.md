@@ -4,6 +4,11 @@
 LOBO。它提供的是历史 consumed 数据上的防泄漏泛化估计，不是 fresh sealed 证明，也不能替代下一批
 fresh 的一次性验收。
 
+> `rkb-primary-nested-lobo-v2-groot` 及其 `phaseStepMs = 2.0 / 1.0` 候选已经完成 outer exposure，
+> 结果为全部 fold 选择 baseline、aggregate 未通过。它只可在
+> [`rkb-beatgrid-evidence-ledger.md`](./rkb-beatgrid-evidence-ledger.md) 中作为历史证据查阅，禁止按本文
+> 命令重跑或把同一 candidate set 当作新的 primary study。
+
 用户侧人工流程仍然是 `Upan -> test -> needReview -> review`。本文步骤只属于开发者内部评估，不要求
 用户改变分拣操作。
 
@@ -12,16 +17,19 @@ fresh 的一次性验收。
 
 ## 1. 固定输入
 
-本文使用以下候选 manifest：
+每个新 study 都必须先创建自己的 immutable candidate manifest：
 
-- [`drafts/rkb-nested-lobo-candidates.example.json`](../rkb-nested-lobo-candidates.example.json)
-- 唯一 no-op：当前 solver 默认参数，`complexityRank = 0`
-- 唯一非 no-op：只把 `phaseStepMs` 从 `2.0` 改成 `1.0`
-- candidate grid 故意保持很小，避免在 3745 首已消费样本上继续扩大搜索空间
+- 必须包含当前 solver 默认参数对应的 no-op，`complexityRank = 0`；
+- 其他候选必须在 `select` 前写清算法、模型、特征、阈值、mode、rank limit 和 complexity rank；
+- candidate grid 必须足够小，避免在 3745 首已消费样本上继续扩大搜索空间；
+- [`rkb-nested-lobo-candidates.example.json`](../rkb-nested-lobo-candidates.example.json) 仅保留为已曝光的
+  历史示例，不能复制后作为新 study 的候选集。
 
-示例 policy 是一份可直接运行的、偏保守的预注册起点，不是跑完后可以追着结果改的参数模板。开始
-`select` 前可以基于业务风险一次性审阅；一旦开始同一个 primary study，就不得根据 inner 或 outer
-结果修改候选、阈值、objective 或 complexity rank。
+只有中央 exposure ledger 接受一个此前未暴露 outer 的 frozen dataset contract 时，才可创建新的 primary
+study。换一个目录、`studyId` 或 candidate manifest 不会让同一已暴露 contract 恢复 primary 身份；此时只能
+做 post-outer diagnostic，不能按下文 `evaluate` 宣称新的 primary estimate。开始 `select` 前可以基于业务
+风险一次性审阅 policy；一旦开始同一个 primary study，就不得根据 inner 或 outer 结果修改候选、阈值、
+objective 或 complexity rank。
 
 示例阈值的量纲与含义如下：
 
@@ -58,10 +66,10 @@ fresh 的一次性验收。
 $Python = (Resolve-Path "vendor/demucs/win32-x64/runtime-xpu/python.exe").Path
 $Runner = "scripts/run_rkb_nested_lobo.py"
 $Splits = "grid-analysis-lab/rkb-rekordbox-benchmark/rkb-dataset-splits-current.json"
-$Candidates = "drafts/rkb-nested-lobo-candidates.example.json"
+$StudyId = "<仅用于未曝光-dataset-contract 的新-study-id>"
+$Candidates = "grid-analysis-lab/rkb-rekordbox-benchmark/nested-lobo/$StudyId/candidates.json"
 $FeatureCache = "grid-analysis-lab/rkb-rekordbox-benchmark/feature-cache-by-batch/primary"
 $New357FeatureCache = "grid-analysis-lab/rkb-rekordbox-benchmark/feature-cache-by-batch/new357"
-$StudyId = "rkb-primary-nested-lobo-v2-groot"
 $WorkDir = "grid-analysis-lab/rkb-rekordbox-benchmark/nested-lobo/$StudyId"
 $Ledger = "grid-analysis-lab/rkb-rekordbox-benchmark/nested-lobo-outer-exposure-ledger.json"
 ```
@@ -84,12 +92,14 @@ py "scripts/run_rkb_nested_lobo.py" --help
 `vendor/demucs/win32-x64/runtime-xpu/python.exe`。本机 Intel Arc 可用时，feature 生成必须配合
 `--device xpu`，避免无意义地把 BeatThis 推理放回 CPU。
 
-## 3. feature-generation policy 与 G 盘权威库
+## 3. feature-generation policy 与配置的权威库
 
-当前权威音频库是 `.env` 所指向的 `G:/FRKB_database-E`；D 盘路径已经失效，禁止回退或拿旧 manifest
-判断样本总数。现有 XPU feature cache 已完成身份校验和物化：primary 为 3388 首，`new357` 为 357 首。
-下面的重建命令仅用于 cache 损坏后的恢复，不能作为常规 LOBO 前置步骤，更不能在已封存 study 后用
-`--force` 覆盖 cache。
+权威音频库只认 `.env` 的 `FRKB_BENCHMARK_DATABASE_ROOT` / `FRKB_DEV_DATABASE_URL`；禁止写死盘符、
+回退旧目录或拿旧 manifest 判断样本总数。现有 XPU primary feature cache 已完成身份校验和物化，共 3388
+个实例。`new357` 当前只有 2 条强身份 cache，不能作为完整 diagnostic replay 输入。
+
+下面的重建命令仅用于 cache 损坏恢复，或明确要重建 `new357` 的 357 条强身份时使用；不能作为常规 LOBO
+前置步骤，更不能在已封存 study 后用 `--force` 覆盖 cache。
 
 runner 会从每条 metadata 的 `cachePayload` 锁定 feature cache version、sample rate、channels、scan
 时长、device、checkpoint、BeatThis 签名和 feature function 源码签名，并要求 3388 个 primary 实例的
@@ -101,7 +111,7 @@ policy SHA 完全一致。混用两代 cache 会 fail closed，这是必要保�
 ```powershell
 $BatchesRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/sealed-batches"
 $Registry = "grid-analysis-lab/rkb-rekordbox-benchmark/rkb-dataset-registry.json"
-$DatabaseRoot = "G:/FRKB_database-E"
+$DatabaseRoot = (& $Python -c "import sys; sys.path.insert(0, 'scripts'); from frkb_database_paths import resolve_frkb_database_root; print(resolve_frkb_database_root())").Trim()
 $RebuiltRoot = "grid-analysis-lab/rkb-rekordbox-benchmark/feature-cache-policy-current"
 
 foreach ($BatchId in @("current1407", "blind608", "old377", "test316", "test327", "test353", "new357")) {
@@ -276,11 +286,12 @@ runner 在每折实际求值前先追加 `outer-exposed` ledger 事件。若进�
 崩溃：相同输入的 `--resume` 只允许重验六个已有 fold result、重算 report aggregate 并补齐 event/state，
 绝不会再次运行 outer solver。最终报告只聚合六个 primary folds，`freshProofEligible` 固定为 `false`。
 
-## 8. post-outer diagnostic：独立 replay `new357`
+## 8. post-outer diagnostic：独立 replay `new357`（当前阻塞）
 
-primary 完整结束后，使用独立 replayer，而不是向已封存 primary workDir 写入 diagnostic。它会先验证
-primary 的六折结果、selection locks、3388 条 primary feature proof、357 条 `new357` feature proof，然后
-在单独目录创建自己的 immutable diagnostic lock：
+当前 `new357` 只有 2 条强身份 cache，因此不得运行本节命令。只有先按第 3 节完成 357 条身份重建、验证
+完整 feature proof 后，才可在 primary 完整结束后使用独立 replayer。它不会向已封存 primary workDir 写入
+diagnostic，而会先验证 primary 的六折结果、selection locks、3388 条 primary feature proof 和 357 条
+`new357` feature proof，再在单独目录创建 immutable diagnostic lock：
 
 ```powershell
 $PostOuterRunner = "scripts/run_rkb_post_outer_diagnostic.py"
@@ -307,8 +318,8 @@ $PostOuterWorkDir = "grid-analysis-lab/rkb-rekordbox-benchmark/post-outer-diagno
 `diagnosticSolverMatchesPrimary = false`，它只是一份由当前封存诊断代码生成的回放记录，不能与 primary
 aggregate 混合，更不能据此调参或宣称提升。
 
-`new357` 也必须先按第 3 节完整重建为 357 条强 instance identity，才允许运行这条命令；禁止拿局部
-结果冒充整批 diagnostic。
+`new357` 必须先按第 3 节完整重建为 357 条强 instance identity，才允许运行这条命令；禁止拿局部结果
+冒充整批 diagnostic。
 
 ## 9. 怎么读结果而不继续过拟合
 

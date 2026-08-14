@@ -3,18 +3,21 @@
 > 未来任何段落算法会话先读本文。本文是样本位置、人工真值、prediction、benchmark、批准流程和
 > holdout 纪律的长期唯一入口；不要再靠聊天记录猜哪首歌曾经“效果不错”。
 
-## 1. 三个固定根目录
+## 1. 本机根目录与配置
 
-当前机器的完整音频根：
+完整音频根由 `FRKB_SONG_STRUCTURE_AUDIO_ROOT` 或命令行 `--audio-root` 指定。推荐放在当前
+`.env` 所配置的 FRKB 数据库根目录下：
 
 ```text
-G:/FRKB_database-A/analysis/song-structure-truth/audio/
+<FRKB_DATABASE_ROOT>/analysis/song-structure-truth/audio/
 ```
 
-用户在 FRKB 中直接查看的实体 truth 歌单：
+用户在 FRKB 中直接查看的实体 truth 歌单由 `.env` 的 `FRKB_DEV_DATABASE_URL` 或
+`FRKB_BENCHMARK_DATABASE_ROOT` 推导；必要时可用 `FRKB_SONG_STRUCTURE_TRUTH_PLAYLIST_ROOT`
+或 `--playlist-root` 显式覆盖：
 
 ```text
-G:/FRKB_database-A/library/FilterLibrary/truth/
+<FRKB_DATABASE_ROOT>/library/FilterLibrary/truth/
 ```
 
 “加入段落真值”固定包含两份音频落点：哈希音频根用于可复现 benchmark，实体 truth 歌单用于用户
@@ -30,7 +33,7 @@ G:/FRKB_database-A/library/FilterLibrary/truth/
 换机器时不要改 manifest 里的样本 ID。通过环境变量或命令行覆盖音频根：
 
 ```powershell
-$env:FRKB_SONG_STRUCTURE_AUDIO_ROOT = "G:/FRKB_database-A/analysis/song-structure-truth/audio"
+$env:FRKB_SONG_STRUCTURE_AUDIO_ROOT = "<FRKB_DATABASE_ROOT>/analysis/song-structure-truth/audio"
 ```
 
 仓库工作区内、但由 Git 忽略的本机真值根：
@@ -275,7 +278,7 @@ consumed。不能在同一批歌上反复调参，再拿同一批分数证明泛
 ## 9. 维护边界
 
 - 本文只维护当前有效流程和当前样本状态，不追加聊天流水账。
-- 算法草案仍在 `drafts/song-structure/techno-song-structure-analysis-optimization-draft.md`；评估执行以本文为准。
+- 算法研究仍在 `drafts/song-structure/techno-song-structure-analysis-research.md`；评估执行以本文为准。
 - 不要修改 README 来记录内部真值路径。
 - 不要删除旧 prediction 来“让新版本看起来更好”。
 - 不要把原始音频、可恢复音频的高分辨率特征或本地报告提交到仓库。

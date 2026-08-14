@@ -2,7 +2,7 @@
 
 ## 1. 目的与边界
 
-本合同约束未来的 nested Leave-One-Batch-Out runner。它只回答：一个预注册的训练/选择流程在
+本合同约束当前及后续扩展的 nested Leave-One-Batch-Out runner。它只回答：一个预注册的训练/选择流程在
 历史 consumed 批次间是否稳定。它不是 fresh proof，也不能把已经看过的 outer fold 重新包装成
 未触碰验证集。
 
@@ -339,7 +339,7 @@ dataset contract 才能恢复 primary claim。
 | L33 | 第二个 study 明确标为 post-outer diagnostic | 可运行，但 primary claim 固定 false |
 | L34 | 六个 primary folds 完成，`new357` 仅 replay | 输出 macro/worst/positive + 单列六配置 replay |
 
-## 10. 与现有代码的映射和已知缺口
+## 10. 与现有代码的映射
 
 - `build_rkb_rekordbox_dataset_splits.py` 已提供权威 outer/inner membership；runner 不应重算 split。
 - parent membership 会把 diagnostic batch 留在 development 视图；primary runner 必须再按

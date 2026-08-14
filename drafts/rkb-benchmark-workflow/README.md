@@ -6,20 +6,21 @@
 ## 用户唯一入口
 
 - [`准备好rkb新样本.md`](./准备好rkb新样本.md)：人工 review 后，用户只艾特本文档；Codex 从
-  `review` 的报告绑定完整样本创建 consumed development batch。
+  `review` 的报告绑定完整样本，并按冻结候选状态进入 fresh validation 或 reviewed development。
 
 ## Codex 内部参考
 
 - [`分拣脚本.md`](./分拣脚本.md)：
   从 `Upan` 取 500 首，再执行 `test -> needReview -> review` 的人工分拣规则。
+- [`rkb-sealed-batch-workflow.md`](./rkb-sealed-batch-workflow.md)：report-bound review 后的
+  fresh / reviewed-development 分支、prepare、一次 evaluate 和 finalize 生命周期。
 - [`rkb-nested-lobo-runner.md`](./rkb-nested-lobo-runner.md)：准备改算法时的已消费样本筛选与 post-outer
   diagnostic。
 - [`rkb-nested-lobo-anti-overfit-contract.md`](./rkb-nested-lobo-anti-overfit-contract.md)：防泄漏与不许借
   historical 样本过拟合的硬约束。
-- [`rkb-beatgrid-next-session-handoff.md`](./rkb-beatgrid-next-session-handoff.md)：当前策略、运行状态与
-  下一次算法工作入口。
+- [`rkb-beatgrid-current-status.md`](./rkb-beatgrid-current-status.md)：当前策略、运行状态与下一次算法工作入口。
+- [`rkb-beatgrid-evidence-ledger.md`](./rkb-beatgrid-evidence-ledger.md)：已接入规则、历史 benchmark 和
+  frozen research candidate 的证据索引。
+- [`rkb-beatgrid-evidence-data-contract.md`](./rkb-beatgrid-evidence-data-contract.md)：truth、音频目录、
+  时间轴、5ms 判定、缓存和人工归因的统一语义。
 - [`rkb-beatgrid-solver-pitfalls.md`](./rkb-beatgrid-solver-pitfalls.md)：已证伪方向、错误模式与验收红线。
-- [`archive/rkb-database-root-relocation.md`](./archive/rkb-database-root-relocation.md)：历史迁移草案，禁止
-  按其中命令执行；当前权威根目录以 `.env` 的 `G:/FRKB_database-E` 为准。
-- [`archive/rkb-rekordbox-truth-validation-workflow.md`](./archive/rkb-rekordbox-truth-validation-workflow.md)：
-  较完整的历史实现参考，不是用户入口；与 fresh handoff 和 `.env` 冲突时，以现行入口为准。

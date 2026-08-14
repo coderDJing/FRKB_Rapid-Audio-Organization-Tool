@@ -1,8 +1,7 @@
 # 动态多 clip 网格功能验收速查
 
-创建日期：2026-07-05
-
-这份文档只列本轮需要看的功能面，避免测试漏项；完整语义见 `drafts/dynamic-segmented-beat-grid-design-draft.md`。
+这是一份可重复执行的回归测试清单，用于避免动态网格测试漏项；完整语义见
+`drafts/dynamic-segmented-beat-grid-design.md`。本文记录测试步骤，不记录某一次测试结果。
 
 ## 1. 固定 BPM 旧路径
 
