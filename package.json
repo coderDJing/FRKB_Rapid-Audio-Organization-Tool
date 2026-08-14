@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.2.2-rc.202608141653",
+  "version": "1.2.2-rc.202608150108",
   "description": "Rapid Audio Organization Tool",
   "license": "PolyForm-Noncommercial-1.0.0",
   "main": "./out/main/index.js",
