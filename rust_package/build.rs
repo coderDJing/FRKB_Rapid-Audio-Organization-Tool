@@ -65,36 +65,6 @@ fn main() {
     .warnings(false)
     .compile("kissfft");
 
-  let soundtouch_root = manifest_dir.join("native/soundtouch");
-  let soundtouch_source_root = soundtouch_root.join("source");
-  emit_rerun_if_changed_recursive(&soundtouch_root);
-  let mut soundtouch_build = cc::Build::new();
-  soundtouch_build
-    .cpp(true)
-    .include(soundtouch_root.join("include"))
-    .include(&soundtouch_source_root)
-    .define("SOUNDTOUCH_FLOAT_SAMPLES", Some("1"))
-    .file(soundtouch_source_root.join("AAFilter.cpp"))
-    .file(soundtouch_source_root.join("BPMDetect.cpp"))
-    .file(soundtouch_source_root.join("FIFOSampleBuffer.cpp"))
-    .file(soundtouch_source_root.join("FIRFilter.cpp"))
-    .file(soundtouch_source_root.join("InterpolateCubic.cpp"))
-    .file(soundtouch_source_root.join("InterpolateLinear.cpp"))
-    .file(soundtouch_source_root.join("InterpolateShannon.cpp"))
-    .file(soundtouch_source_root.join("PeakFinder.cpp"))
-    .file(soundtouch_source_root.join("RateTransposer.cpp"))
-    .file(soundtouch_source_root.join("SoundTouch.cpp"))
-    .file(soundtouch_source_root.join("TDStretch.cpp"))
-    .file(soundtouch_source_root.join("cpu_detect_x86.cpp"))
-    .file(soundtouch_source_root.join("mmx_optimized.cpp"))
-    .file(soundtouch_source_root.join("sse_optimized.cpp"))
-    .file(soundtouch_root.join("frkb_soundtouch_wrapper.cpp"))
-    .flag_if_supported("-std=c++14")
-    .flag_if_supported("/std:c++14")
-    .flag_if_supported("/EHsc")
-    .warnings(false)
-    .compile("frkb_soundtouch");
-
   let r3_stretch_root = manifest_dir.join("native/r3_stretch");
   emit_rerun_if_changed_recursive(&r3_stretch_root);
   let mut r3_stretch_build = cc::Build::new();

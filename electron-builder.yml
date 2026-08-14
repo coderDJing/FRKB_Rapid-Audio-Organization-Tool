@@ -10,6 +10,7 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
   - '!drafts{,/**/*}'
   - '!tmp{,/**/*}'
+  - '!.codex_tmp{,/**/*}'
   - '!test-data{,/**/*}'
   - '!grid-analysis-lab{,/**/*}'
   - '!structure-analysis-lab{,/**/*}'

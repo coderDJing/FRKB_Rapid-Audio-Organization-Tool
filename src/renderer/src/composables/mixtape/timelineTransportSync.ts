@@ -50,6 +50,7 @@ type ApplyTransportSyncParams = {
   masterTrackId: string
   sharedMasterBpm?: number | null
   audioCtx: BaseAudioContext | null
+  automationAtSec?: number
   collectDiagnostics?: boolean
 }
 
@@ -488,8 +489,12 @@ export const applyTimelineTransportSync = (
       phaseErrorSec = postSyncDiagnostics.phaseErrorSec
       phasePull = postSyncDiagnostics.phasePull
     }
+    const automationAtSec = Number(params.automationAtSec)
+    const rateChangeAtSec = Number.isFinite(automationAtSec)
+      ? Math.max(0, automationAtSec)
+      : audioCtx.currentTime
     try {
-      node.source.playbackRate.setTargetAtTime(nextRate, audioCtx.currentTime, 0.04)
+      node.source.playbackRate.setTargetAtTime(nextRate, rateChangeAtSec, 0.04)
     } catch {}
     const estimatedSourceSec = updateEstimatedSourceSec(node, timelineSec, nextRate)
     if (isMasterNode) {

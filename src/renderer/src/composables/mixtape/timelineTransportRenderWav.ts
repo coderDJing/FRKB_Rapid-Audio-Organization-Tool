@@ -1,12 +1,12 @@
 import { applyTimelineTransportSync } from '@renderer/composables/mixtape/timelineTransportSync'
 import {
   createTransportBufferSource,
-  createTransportKeyLockSource,
-  ensureTransportKeyLockWorkletModule,
-  type TransportPlayableAudioContext
+  type TransportPlayableAudioContext,
+  type TransportPlayableSource
 } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
-import { hasTransportDynamicTempoSegments } from '@renderer/composables/mixtape/timelineTransportDynamicTempoSegments'
-import { processMixtapeAudioBufferWithSoundTouch } from '@renderer/composables/mixtape/mixtapeSoundTouch'
+import { createTransportR3Source } from '@renderer/composables/mixtape/timelineTransportR3Source'
+import { createTransportPlanBuffer } from '@renderer/composables/mixtape/timelineTransportR3Plan'
+import { resolveEntryPlaybackOffsetPlanSec } from '@renderer/composables/mixtape/timelineTransportPositionMapping'
 import type { TransportSyncNode } from '@renderer/composables/mixtape/timelineTransportSync'
 import type { MixtapeEnvelopeParamId } from '@renderer/composables/mixtape/types'
 import type {
@@ -34,9 +34,7 @@ export type MixtapeRenderedWavResult = {
   trackCount: number
 }
 
-type RenderTransportEntry = TransportEntry & {
-  soundTouchRendered?: boolean
-}
+type RenderTransportEntry = TransportEntry
 
 type TimelineTransportRenderWavCtx = {
   t: (key: string, payload?: Record<string, unknown>) => string
@@ -244,10 +242,11 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
         nodes: schedulingNodes,
         timelineSec,
         masterTrackId,
-        audioCtx: offlineCtx
+        audioCtx: offlineCtx,
+        automationAtSec: renderSec
       })
       masterTrackId = syncResult.masterTrackId
-      mirrorTransportStemPlaybackRates(nodes, offlineCtx, timelineSec)
+      mirrorTransportStemPlaybackRates(nodes, offlineCtx, renderSec)
       if (step % SCHEDULING_PROGRESS_STEP === 0 || step === totalSteps) {
         emitProgress({
           stageKey: 'mixtape.outputProgressScheduling',
@@ -281,204 +280,182 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
     })
   }
 
-  const buildOutputTrackNodes = (
+  const buildOutputTrackNodes = async (
     offlineCtx: OfflineAudioContext,
     entries: RenderTransportEntry[],
-    timelineOriginSec: number,
-    useRealtimeKeyLock: boolean
-  ): TrackGraphNode[] => {
+    timelineOriginSec: number
+  ): Promise<TrackGraphNode[]> => {
     const nodes: TrackGraphNode[] = []
+    const createdSources = new Set<TransportPlayableSource>()
     const useStemMode = isStemMixMode()
     const stemIds = resolveStemIds()
-    for (const entry of entries) {
-      if (useStemMode) {
-        const stemAudios = stemIds
-          .map((stemId) => entry.stemAudioById?.[stemId])
-          .filter((item): item is TransportStemAudioRef => !!item && !!item.audioBuffer)
-        if (!stemAudios.length) continue
-        const stemBus = offlineCtx.createGain()
+    const playableCtx = offlineCtx as TransportPlayableAudioContext
+    const createOutputSource = async (entry: RenderTransportEntry, buffer: AudioBuffer) => {
+      let source: TransportPlayableSource
+      if (entry.masterTempo) {
+        source = await createTransportR3Source(playableCtx, buffer, entry.playbackSequence)
+      } else if (entry.playbackSequence?.segments && entry.playbackSequence.segments.length > 1) {
+        source = createTransportBufferSource(
+          playableCtx,
+          createTransportPlanBuffer(playableCtx, buffer, entry.playbackSequence)
+        )
+        source.startOffsetKind = 'plan'
+      } else {
+        source = createTransportBufferSource(playableCtx, buffer)
+      }
+      createdSources.add(source)
+      return source
+    }
+    const resolveStartOffset = (entry: RenderTransportEntry, source: TransportPlayableSource) =>
+      source.startOffsetKind === 'plan'
+        ? resolveEntryPlaybackOffsetPlanSec(entry, 0)
+        : Math.max(0, Number(entry.sourceOffsetSec) || 0)
+
+    try {
+      for (const entry of entries) {
+        if (useStemMode) {
+          const stemAudios = stemIds
+            .map((stemId) => entry.stemAudioById?.[stemId])
+            .filter((item): item is TransportStemAudioRef => !!item && !!item.audioBuffer)
+          if (!stemAudios.length) continue
+          const stemBus = offlineCtx.createGain()
+          const volume = offlineCtx.createGain()
+          const gain = offlineCtx.createGain()
+
+          const initialTimelineSec = timelineOriginSec
+          const initialLocalSec = Math.max(0, initialTimelineSec - entry.startSec)
+          volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', initialLocalSec)
+          gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', initialLocalSec)
+          stemBus.gain.value = 1
+          stemBus.connect(volume)
+          volume.connect(gain)
+          gain.connect(offlineCtx.destination)
+
+          const stemNodes: TrackStemGraphNode[] = []
+          for (const stemAudio of stemAudios) {
+            const source = await createOutputSource(entry, stemAudio.audioBuffer as AudioBuffer)
+            source.playbackRate.value = entry.tempoRatio
+            const stemGain = offlineCtx.createGain()
+            stemGain.gain.value = resolveEntryEnvelopeValue(
+              entry,
+              stemAudio.stemId,
+              initialLocalSec
+            )
+            source.connect(stemGain)
+            stemGain.connect(stemBus)
+            source.start(
+              Math.max(0, entry.startSec - timelineOriginSec),
+              resolveStartOffset(entry, source)
+            )
+            source.stop(
+              Math.max(0, entry.startSec - timelineOriginSec) +
+                Math.max(0.02, Number(entry.duration) || 0) +
+                0.02
+            )
+            stemNodes.push({
+              stemId: stemAudio.stemId,
+              source,
+              stemGain
+            })
+          }
+          const primaryStemNode = stemNodes[0]
+          if (!primaryStemNode) continue
+
+          nodes.push({
+            trackId: entry.trackId,
+            entry,
+            source: primaryStemNode.source,
+            stemNodes,
+            stemBus,
+            eqHigh: null,
+            eqMid: null,
+            eqLow: null,
+            volume,
+            gain
+          })
+          continue
+        }
+
+        const audioBuffer = entry.audioRef?.audioBuffer
+        if (!audioBuffer) continue
+        const source = await createOutputSource(entry, audioBuffer)
+        source.playbackRate.value = entry.tempoRatio
+
+        const eqLow = offlineCtx.createBiquadFilter()
+        eqLow.type = 'lowshelf'
+        eqLow.frequency.value = 220
+
+        const eqMid = offlineCtx.createBiquadFilter()
+        eqMid.type = 'peaking'
+        eqMid.frequency.value = 1000
+        eqMid.Q.value = 0.9
+
+        const eqHigh = offlineCtx.createBiquadFilter()
+        eqHigh.type = 'highshelf'
+        eqHigh.frequency.value = 3200
+
         const volume = offlineCtx.createGain()
         const gain = offlineCtx.createGain()
-
         const initialTimelineSec = timelineOriginSec
         const initialLocalSec = Math.max(0, initialTimelineSec - entry.startSec)
+        eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', initialLocalSec)
+        eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', initialLocalSec)
+        eqLow.gain.value = resolveEntryEqDbValue(entry, 'low', initialLocalSec)
         volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', initialLocalSec)
         gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', initialLocalSec)
-        stemBus.gain.value = 1
-        stemBus.connect(volume)
+
+        source.connect(eqLow)
+        eqLow.connect(eqMid)
+        eqMid.connect(eqHigh)
+        eqHigh.connect(volume)
         volume.connect(gain)
         gain.connect(offlineCtx.destination)
-
-        const stemNodes: TrackStemGraphNode[] = []
-        for (const stemAudio of stemAudios) {
-          const source =
-            useRealtimeKeyLock && entry.masterTempo
-              ? createTransportKeyLockSource(
-                  offlineCtx as TransportPlayableAudioContext,
-                  stemAudio.audioBuffer as AudioBuffer
-                )
-              : createTransportBufferSource(
-                  offlineCtx as TransportPlayableAudioContext,
-                  stemAudio.audioBuffer as AudioBuffer
-                )
-          source.playbackRate.value = entry.soundTouchRendered ? 1 : entry.tempoRatio
-          const stemGain = offlineCtx.createGain()
-          stemGain.gain.value = resolveEntryEnvelopeValue(entry, stemAudio.stemId, initialLocalSec)
-          source.connect(stemGain)
-          stemGain.connect(stemBus)
-          source.start(
-            Math.max(0, entry.startSec - timelineOriginSec),
-            entry.soundTouchRendered
-              ? Math.max(0, Number(entry.baseLocalStartSec) || 0)
-              : Math.max(0, Number(entry.sourceOffsetSec) || 0)
-          )
-          source.stop(
-            Math.max(0, entry.startSec - timelineOriginSec) +
-              Math.max(0.02, Number(entry.duration) || 0) +
-              0.02
-          )
-          stemNodes.push({
-            stemId: stemAudio.stemId,
-            source,
-            stemGain
-          })
-        }
-        const primaryStemNode = stemNodes[0]
-        if (!primaryStemNode) continue
+        source.start(
+          Math.max(0, entry.startSec - timelineOriginSec),
+          resolveStartOffset(entry, source)
+        )
+        source.stop(
+          Math.max(0, entry.startSec - timelineOriginSec) +
+            Math.max(0.02, Number(entry.duration) || 0) +
+            0.02
+        )
 
         nodes.push({
           trackId: entry.trackId,
           entry,
-          source: primaryStemNode.source,
-          stemNodes,
-          stemBus,
-          eqHigh: null,
-          eqMid: null,
-          eqLow: null,
+          source,
+          stemNodes: [],
+          stemBus: null,
+          eqHigh,
+          eqMid,
+          eqLow,
           volume,
           gain
         })
-        continue
       }
-
-      const audioBuffer = entry.audioRef?.audioBuffer
-      if (!audioBuffer) continue
-      const source =
-        useRealtimeKeyLock && entry.masterTempo
-          ? createTransportKeyLockSource(offlineCtx as TransportPlayableAudioContext, audioBuffer)
-          : createTransportBufferSource(offlineCtx as TransportPlayableAudioContext, audioBuffer)
-      source.playbackRate.value = entry.soundTouchRendered ? 1 : entry.tempoRatio
-
-      const eqLow = offlineCtx.createBiquadFilter()
-      eqLow.type = 'lowshelf'
-      eqLow.frequency.value = 220
-
-      const eqMid = offlineCtx.createBiquadFilter()
-      eqMid.type = 'peaking'
-      eqMid.frequency.value = 1000
-      eqMid.Q.value = 0.9
-
-      const eqHigh = offlineCtx.createBiquadFilter()
-      eqHigh.type = 'highshelf'
-      eqHigh.frequency.value = 3200
-
-      const volume = offlineCtx.createGain()
-      const gain = offlineCtx.createGain()
-      const initialTimelineSec = timelineOriginSec
-      const initialLocalSec = Math.max(0, initialTimelineSec - entry.startSec)
-      eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', initialLocalSec)
-      eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', initialLocalSec)
-      eqLow.gain.value = resolveEntryEqDbValue(entry, 'low', initialLocalSec)
-      volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', initialLocalSec)
-      gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', initialLocalSec)
-
-      source.connect(eqLow)
-      eqLow.connect(eqMid)
-      eqMid.connect(eqHigh)
-      eqHigh.connect(volume)
-      volume.connect(gain)
-      gain.connect(offlineCtx.destination)
-      source.start(
-        Math.max(0, entry.startSec - timelineOriginSec),
-        entry.soundTouchRendered
-          ? Math.max(0, Number(entry.baseLocalStartSec) || 0)
-          : Math.max(0, Number(entry.sourceOffsetSec) || 0)
-      )
-      source.stop(
-        Math.max(0, entry.startSec - timelineOriginSec) +
-          Math.max(0.02, Number(entry.duration) || 0) +
-          0.02
-      )
-
-      nodes.push({
-        trackId: entry.trackId,
-        entry,
-        source,
-        stemNodes: [],
-        stemBus: null,
-        eqHigh,
-        eqMid,
-        eqLow,
-        volume,
-        gain
-      })
+    } catch (error) {
+      for (const source of createdSources) {
+        try {
+          source.disconnect()
+        } catch {}
+      }
+      throw error
     }
     return nodes
   }
 
-  const preprocessEntriesWithSoundTouch = async (
-    offlineCtx: OfflineAudioContext,
-    entries: RenderTransportEntry[]
-  ) => {
-    const processedFileKeys = new Set<string>()
-    for (const entry of entries) {
-      if (hasTransportDynamicTempoSegments(entry)) {
-        entry.soundTouchRendered = false
-        continue
-      }
-      if (!entry.masterTempo || Math.abs(Number(entry.tempoRatio) - 1) <= 0.0001) {
-        entry.soundTouchRendered = false
-        continue
-      }
-      try {
-        if (isStemMixMode()) {
-          for (const stemId of resolveStemIds()) {
-            const stemAudio = entry.stemAudioById?.[stemId]
-            if (!stemAudio?.audioBuffer) continue
-            const processKey = `${stemId}:${stemAudio.filePath}`
-            if (processedFileKeys.has(processKey)) continue
-            stemAudio.audioBuffer = await processMixtapeAudioBufferWithSoundTouch(
-              stemAudio.filePath,
-              stemAudio.audioBuffer,
-              entry.tempoRatio,
-              (channels, frameCount, sampleRate) =>
-                offlineCtx.createBuffer(channels, frameCount, sampleRate)
-            )
-            processedFileKeys.add(processKey)
-          }
-        } else if (entry.audioRef?.audioBuffer) {
-          const processKey = `mix:${entry.audioRef.filePath}`
-          if (processedFileKeys.has(processKey)) {
-            entry.soundTouchRendered = true
-            continue
-          }
-          entry.audioRef.audioBuffer = await processMixtapeAudioBufferWithSoundTouch(
-            entry.audioRef.filePath,
-            entry.audioRef.audioBuffer,
-            entry.tempoRatio,
-            (channels, frameCount, sampleRate) =>
-              offlineCtx.createBuffer(channels, frameCount, sampleRate)
-          )
-          processedFileKeys.add(processKey)
-        }
-        entry.soundTouchRendered = true
-      } catch (error) {
-        entry.soundTouchRendered = false
-        console.error('[mixtape-output] SoundTouch preprocess failed, fallback to worklet', {
-          filePath: entry.filePath,
-          tempoRatio: entry.tempoRatio,
-          error
-        })
+  const disposeOutputTrackNodes = (nodes: TrackGraphNode[]) => {
+    const disposedSources = new Set<TransportPlayableSource>()
+    for (const node of nodes) {
+      const sources = node.stemNodes.length
+        ? node.stemNodes.map((stemNode) => stemNode.source)
+        : [node.source]
+      for (const source of sources) {
+        if (disposedSources.has(source)) continue
+        disposedSources.add(source)
+        try {
+          source.disconnect()
+        } catch {}
       }
     }
   }
@@ -621,23 +598,14 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
     const outputChannels = resolveOutputChannels(playableEntries)
     const frameCount = Math.max(1, Math.ceil(durationSec * sampleRate))
     const offlineCtx = new OfflineAudioContext(outputChannels, frameCount, sampleRate)
-    await preprocessEntriesWithSoundTouch(offlineCtx, playableEntries)
-    let offlineKeyLockWorkletReady = false
-    if (playableEntries.some((entry) => entry.masterTempo && !entry.soundTouchRendered)) {
-      try {
-        await ensureTransportKeyLockWorkletModule(offlineCtx as TransportPlayableAudioContext)
-        offlineKeyLockWorkletReady = true
-      } catch (error) {
-        console.error('[mixtape-output] key lock worklet unavailable, export aborted', error)
-        throw new Error(t('mixtape.outputKeyLockUnavailable'))
-      }
+    let nodes: TrackGraphNode[] = []
+    try {
+      nodes = await buildOutputTrackNodes(offlineCtx, playableEntries, timelineOriginSec)
+    } catch (error) {
+      disposeOutputTrackNodes(nodes)
+      console.error('[mixtape-output] R3 initialisation failed, export aborted', error)
+      throw new Error('R3 主速度引擎初始化失败')
     }
-    const nodes = buildOutputTrackNodes(
-      offlineCtx,
-      playableEntries,
-      timelineOriginSec,
-      offlineKeyLockWorkletReady
-    )
 
     emitProgress({
       stageKey: 'mixtape.outputProgressScheduling',
@@ -674,6 +642,7 @@ export const createTimelineTransportRenderWavModule = (ctx: TimelineTransportRen
       renderedBuffer = await offlineCtx.startRendering()
     } finally {
       clearInterval(renderTicker)
+      disposeOutputTrackNodes(nodes)
     }
     if (!renderedBuffer) {
       throw new Error(t('mixtape.outputProgressFailed'))

@@ -1,6 +1,6 @@
 {
   "name": "frkb",
-  "version": "1.2.2-rc.202608100053",
+  "version": "1.2.2-rc.202608141653",
   "description": "Rapid Audio Organization Tool",
   "license": "PolyForm-Noncommercial-1.0.0",
   "main": "./out/main/index.js",
@@ -97,6 +97,7 @@
       "!vendor{,/**/*}",
       "!drafts{,/**/*}",
       "!tmp{,/**/*}",
+      "!.codex_tmp{,/**/*}",
       "!test-data{,/**/*}",
       "!grid-analysis-lab{,/**/*}",
       "!structure-analysis-lab{,/**/*}",
@@ -255,9 +256,9 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@ainsej/rubberband-wasm": "4.0.1",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@soundtouchjs/audio-worklet": "^1.0.10",
     "better-sqlite3": "^12.10.0",
     "better-sqlite3-multiple-ciphers": "^12.9.0",
     "dompurify": "^3.4.5",

@@ -1,19 +1,16 @@
 import {
   createTransportBufferSource,
-  createTransportKeyLockSource,
   createTransportSequencedBufferSource,
-  createTransportSequencedKeyLockSource,
-  createTransportSequencedSoundTouchSource,
-  createTransportSoundTouchPreviewSource,
   type TransportPlayableSource
-} from '@renderer/composables/mixtape/timelineTransportPlayableSource'
-import { createTrackTimeMapFromSnapshotPayload } from '@renderer/composables/mixtape/trackTimeMapFactory'
-import { resolveTransportDynamicTempoSegmentAtLocalSec } from '@renderer/composables/mixtape/timelineTransportDynamicTempoSegments'
+} from './timelineTransportPlayableSource'
+import { createTransportR3Source } from './timelineTransportR3Source'
+import { createTrackTimeMapFromSnapshotPayload } from './trackTimeMapFactory'
+import { resolveTransportDynamicTempoSegmentAtLocalSec } from './timelineTransportDynamicTempoSegments'
 import type {
   TransportEntry,
   TransportStemAudioRef,
   TransportStemId
-} from '@renderer/composables/mixtape/timelineTransportAudioData'
+} from './timelineTransportAudioData'
 
 export type TrackStemGraphNode = {
   stemId: TransportStemId
@@ -34,19 +31,18 @@ export type TrackGraphNode = {
   gain: GainNode
 }
 
-export type TransportPlaybackSourceMode =
-  | 'buffer'
-  | 'soundtouch'
-  | 'sequenced-soundtouch'
-  | 'sequenced-buffer'
-  | 'sequenced-keylock'
+export type TransportPlaybackSourceMode = 'buffer' | 'r3' | 'sequenced-buffer' | 'sequenced-r3'
 
-type StartTransportTrackGraphNodeParams = {
+export type PreparedTransportTrackGraphNode = {
+  start: (whenSec: number) => void
+  dispose: () => void
+}
+
+type PrepareTransportTrackGraphNodeParams = {
   entry: TransportEntry
   offsetTimelineSec: number
   offsetPlanSec: number
   offsetSourceSec: number
-  whenSec: number
   transportGraphNodes: TrackGraphNode[]
   isStemMixMode: () => boolean
   resolveStemIdsForMode: () => TransportStemId[]
@@ -65,13 +61,72 @@ type StartTransportTrackGraphNodeParams = {
   ) => number
 }
 
-export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNodeParams) => {
+const resolveSourceStartOffset = (params: {
+  source: TransportPlayableSource
+  entry: TransportEntry
+  bufferDuration: number
+  offsetPlanSec: number
+  offsetSourceSec: number
+}) => {
+  const { source, entry, bufferDuration, offsetPlanSec, offsetSourceSec } = params
+  const baseOffsetSec = source.startOffsetKind === 'plan' ? offsetPlanSec : offsetSourceSec
+  const offsetDuration =
+    source.startOffsetKind === 'plan'
+      ? Math.max(0, Number(entry.playbackSequence?.totalPlanSec) || 0)
+      : Math.max(0, bufferDuration)
+  return Math.max(0, Math.min(baseOffsetSec, Math.max(0, offsetDuration - 0.02)))
+}
+
+const resolveInitialTempoRatio = (entry: TransportEntry, offsetTimelineSec: number) => {
+  const localStartSec = Math.max(0, Number(entry.localStartSec) || 0)
+  const localSec = localStartSec + Math.max(0, Number(offsetTimelineSec) || 0)
+  const dynamicSegment = resolveTransportDynamicTempoSegmentAtLocalSec(
+    entry.dynamicTempoSegments,
+    localSec
+  )
+  if (!dynamicSegment) return entry.tempoRatio
+  const targetBpm = createTrackTimeMapFromSnapshotPayload(entry.tempoSnapshot).sampleBpmAtLocal(
+    localSec
+  )
+  const sourceBpm = Number(dynamicSegment.sourceBpm)
+  if (!Number.isFinite(targetBpm) || targetBpm <= 0 || !Number.isFinite(sourceBpm)) {
+    return entry.tempoRatio
+  }
+  return Math.max(0.25, Math.min(4, targetBpm / Math.max(0.000001, sourceBpm)))
+}
+
+const createPlaybackSource = async (
+  ctx: AudioContext,
+  buffer: AudioBuffer,
+  entry: TransportEntry,
+  mode: TransportPlaybackSourceMode
+) => {
+  if (mode === 'sequenced-r3') {
+    return await createTransportR3Source(ctx, buffer, entry.playbackSequence)
+  }
+  if (mode === 'r3') {
+    return await createTransportR3Source(ctx, buffer)
+  }
+  if (mode === 'sequenced-buffer' && entry.playbackSequence) {
+    return createTransportSequencedBufferSource(ctx, buffer, entry.playbackSequence)
+  }
+  return createTransportBufferSource(ctx, buffer)
+}
+
+const disconnectSource = (source: TransportPlayableSource) => {
+  try {
+    source.disconnect()
+  } catch {}
+}
+
+export const prepareTransportTrackGraphNode = async (
+  params: PrepareTransportTrackGraphNodeParams
+): Promise<PreparedTransportTrackGraphNode | null> => {
   const {
     entry,
     offsetTimelineSec,
     offsetPlanSec,
     offsetSourceSec,
-    whenSec,
     transportGraphNodes,
     isStemMixMode,
     resolveStemIdsForMode,
@@ -81,263 +136,179 @@ export const startTransportTrackGraphNode = (params: StartTransportTrackGraphNod
     resolveEntryEnvelopeValue,
     resolveEntryEqDbValue
   } = params
-
-  const resolveSourceStartOffset = (source: TransportPlayableSource, bufferDuration: number) => {
-    const baseOffsetSec = source.startOffsetKind === 'plan' ? offsetPlanSec : offsetSourceSec
-    const offsetDuration =
-      source.startOffsetKind === 'plan'
-        ? Math.max(0, Number(entry.playbackSequence?.totalPlanSec) || 0)
-        : Math.max(0, bufferDuration)
-    return Math.max(0, Math.min(baseOffsetSec, Math.max(0, offsetDuration - 0.02)))
-  }
-
-  const resolveInitialTempoRatio = () => {
-    const localStartSec = Math.max(0, Number(entry.localStartSec) || 0)
-    const localSec = localStartSec + Math.max(0, Number(offsetTimelineSec) || 0)
-    const dynamicSegment = resolveTransportDynamicTempoSegmentAtLocalSec(
-      entry.dynamicTempoSegments,
-      localSec
-    )
-    if (!dynamicSegment) return entry.tempoRatio
-    const targetBpm = createTrackTimeMapFromSnapshotPayload(entry.tempoSnapshot).sampleBpmAtLocal(
-      localSec
-    )
-    const sourceBpm = Number(dynamicSegment.sourceBpm)
-    if (!Number.isFinite(targetBpm) || targetBpm <= 0 || !Number.isFinite(sourceBpm)) {
-      return entry.tempoRatio
-    }
-    return Math.max(0.25, Math.min(4, targetBpm / Math.max(0.000001, sourceBpm)))
-  }
-
-  const createPlaybackSource = (
-    ctx: AudioContext,
-    buffer: AudioBuffer,
-    mode: TransportPlaybackSourceMode
-  ) => {
-    if (mode === 'sequenced-keylock' && entry.playbackSequence) {
-      return createTransportSequencedKeyLockSource(ctx, buffer, entry.playbackSequence)
-    }
-    if (mode === 'sequenced-soundtouch' && entry.playbackSequence) {
-      return createTransportSequencedSoundTouchSource(ctx, buffer, entry.playbackSequence)
-    }
-    if (mode === 'sequenced-buffer' && entry.playbackSequence) {
-      return createTransportSequencedBufferSource(ctx, buffer, entry.playbackSequence)
-    }
-    if (mode === 'soundtouch') {
-      return createTransportSoundTouchPreviewSource(ctx, buffer)
-    }
-    if (mode === 'sequenced-keylock') {
-      return createTransportKeyLockSource(ctx, buffer)
-    }
-    return createTransportBufferSource(ctx, buffer)
-  }
+  const initialTempoRatio = resolveInitialTempoRatio(entry, offsetTimelineSec)
+  const mode = resolvePlaybackSourceMode(entry)
 
   if (isStemMixMode()) {
-    const initialTempoRatio = resolveInitialTempoRatio()
-    const stemIds = resolveStemIdsForMode()
-    const stemAudios = stemIds
+    const stemAudios = resolveStemIdsForMode()
       .map((stemId) => entry.stemAudioById?.[stemId])
-      .filter((item): item is TransportStemAudioRef => !!item && !!item.audioBuffer)
-    if (!stemAudios.length) return
+      .filter((item): item is TransportStemAudioRef => !!item?.audioBuffer)
+    if (!stemAudios.length) return null
+
+    const sampleRate = Number(stemAudios[0]?.audioBuffer?.sampleRate || 0) || undefined
+    const ctx = ensureTransportAudioContext(sampleRate)
+    const stemBus = ctx.createGain()
+    const volume = ctx.createGain()
+    const gain = ctx.createGain()
+    volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', offsetTimelineSec)
+    gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', offsetTimelineSec)
+    stemBus.connect(volume)
+    volume.connect(gain)
+    gain.connect(resolveTransportOutputNode(ctx))
+
+    const stemNodes: TrackStemGraphNode[] = []
     try {
-      const sampleRate = Number(stemAudios[0]?.audioBuffer?.sampleRate || 0) || undefined
-      const ctx = ensureTransportAudioContext(sampleRate)
-      if (ctx.state === 'suspended') {
-        void ctx.resume()
-      }
-
-      const stemBus = ctx.createGain()
-      const volume = ctx.createGain()
-      const gain = ctx.createGain()
-      const outputNode = resolveTransportOutputNode(ctx)
-      volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', offsetTimelineSec)
-      gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', offsetTimelineSec)
-      stemBus.gain.value = 1
-      stemBus.connect(volume)
-      volume.connect(gain)
-      gain.connect(outputNode)
-
-      const stemNodes: TrackStemGraphNode[] = []
       for (const stemAudio of stemAudios) {
-        const source = createPlaybackSource(
+        const source = await createPlaybackSource(
           ctx,
           stemAudio.audioBuffer as AudioBuffer,
-          resolvePlaybackSourceMode(entry)
+          entry,
+          mode
         )
         source.playbackRate.value = initialTempoRatio
         const stemGain = ctx.createGain()
         stemGain.gain.value = resolveEntryEnvelopeValue(entry, stemAudio.stemId, offsetTimelineSec)
         source.connect(stemGain)
         stemGain.connect(stemBus)
-        stemNodes.push({
-          stemId: stemAudio.stemId,
-          source,
-          stemGain
-        })
+        stemNodes.push({ stemId: stemAudio.stemId, source, stemGain })
       }
-      const primaryStemNode = stemNodes[0]
-      if (!primaryStemNode) {
-        try {
-          stemBus.disconnect()
-        } catch {}
-        try {
-          volume.disconnect()
-        } catch {}
-        try {
-          gain.disconnect()
-        } catch {}
-        return
-      }
-
-      const safeWhen = Number.isFinite(whenSec)
-        ? Math.max(ctx.currentTime, whenSec)
-        : ctx.currentTime
-      const remainingTimelineSec = Math.max(0.02, Number(entry.duration) - offsetTimelineSec)
-      for (const stemNode of stemNodes) {
-        const stemDuration = Number(stemNode.source.buffer?.duration || 0)
-        const safeOffset = resolveSourceStartOffset(stemNode.source, stemDuration)
-        try {
-          stemNode.source.playbackRate.setTargetAtTime(initialTempoRatio, safeWhen, 0.0001)
-        } catch {}
-        stemNode.source.start(safeWhen, safeOffset)
-        stemNode.source.stop(safeWhen + remainingTimelineSec + 0.02)
-      }
-
-      const graphNode: TrackGraphNode = {
-        trackId: entry.trackId,
-        entry,
-        source: primaryStemNode.source,
-        stemNodes,
-        stemBus,
-        eqHigh: null,
-        eqMid: null,
-        eqLow: null,
-        volume,
-        gain
-      }
-      transportGraphNodes.push(graphNode)
-
-      let cleaned = false
-      const cleanupNode = () => {
-        if (cleaned) return
-        cleaned = true
-        const idx = transportGraphNodes.indexOf(graphNode)
-        if (idx >= 0) transportGraphNodes.splice(idx, 1)
-        for (const stemNode of stemNodes) {
-          try {
-            stemNode.source.disconnect()
-          } catch {}
-          try {
-            stemNode.stemGain.disconnect()
-          } catch {}
-        }
-        try {
-          stemBus.disconnect()
-        } catch {}
-        try {
-          volume.disconnect()
-        } catch {}
-        try {
-          gain.disconnect()
-        } catch {}
-      }
-      primaryStemNode.source.onended = cleanupNode
     } catch (error) {
-      console.error('[mixtape-transport] 播放启动失败:', entry.filePath, error)
-    }
-    return
-  }
-
-  const audioBuffer = entry.audioRef?.audioBuffer
-  if (!audioBuffer) return
-  try {
-    const initialTempoRatio = resolveInitialTempoRatio()
-    const ctx = ensureTransportAudioContext(audioBuffer.sampleRate)
-    if (ctx.state === 'suspended') {
-      void ctx.resume()
+      for (const stemNode of stemNodes) {
+        disconnectSource(stemNode.source)
+        stemNode.stemGain.disconnect()
+      }
+      stemBus.disconnect()
+      volume.disconnect()
+      gain.disconnect()
+      throw error
     }
 
-    const source = createPlaybackSource(ctx, audioBuffer, resolvePlaybackSourceMode(entry))
-    source.playbackRate.value = initialTempoRatio
-
-    const eqLow = ctx.createBiquadFilter()
-    eqLow.type = 'lowshelf'
-    eqLow.frequency.value = 220
-
-    const eqMid = ctx.createBiquadFilter()
-    eqMid.type = 'peaking'
-    eqMid.frequency.value = 1000
-    eqMid.Q.value = 0.9
-
-    const eqHigh = ctx.createBiquadFilter()
-    eqHigh.type = 'highshelf'
-    eqHigh.frequency.value = 3200
-
-    const volume = ctx.createGain()
-    const gain = ctx.createGain()
-    const outputNode = resolveTransportOutputNode(ctx)
-    eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', offsetTimelineSec)
-    eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', offsetTimelineSec)
-    eqLow.gain.value = resolveEntryEqDbValue(entry, 'low', offsetTimelineSec)
-    volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', offsetTimelineSec)
-    gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', offsetTimelineSec)
-
-    source.connect(eqLow)
-    eqLow.connect(eqMid)
-    eqMid.connect(eqHigh)
-    eqHigh.connect(volume)
-    volume.connect(gain)
-    gain.connect(outputNode)
-
-    const safeWhen = Number.isFinite(whenSec) ? Math.max(ctx.currentTime, whenSec) : ctx.currentTime
-    const safeOffset = resolveSourceStartOffset(source, audioBuffer.duration)
-    try {
-      source.playbackRate.setTargetAtTime(initialTempoRatio, safeWhen, 0.0001)
-    } catch {}
-    source.start(safeWhen, safeOffset)
-    source.stop(safeWhen + Math.max(0.02, Number(entry.duration) - offsetTimelineSec) + 0.02)
-
+    const primaryStemNode = stemNodes[0]
+    if (!primaryStemNode) return null
     const graphNode: TrackGraphNode = {
       trackId: entry.trackId,
       entry,
-      source,
-      stemNodes: [],
-      stemBus: null,
-      eqHigh,
-      eqMid,
-      eqLow,
+      source: primaryStemNode.source,
+      stemNodes,
+      stemBus,
+      eqHigh: null,
+      eqMid: null,
+      eqLow: null,
       volume,
       gain
     }
-    transportGraphNodes.push(graphNode)
-
-    let cleaned = false
-    const cleanupNode = () => {
-      if (cleaned) return
-      cleaned = true
-      const idx = transportGraphNodes.indexOf(graphNode)
-      if (idx >= 0) transportGraphNodes.splice(idx, 1)
-      try {
-        source.disconnect()
-      } catch {}
-      try {
-        eqLow.disconnect()
-      } catch {}
-      try {
-        eqMid.disconnect()
-      } catch {}
-      try {
-        eqHigh.disconnect()
-      } catch {}
-      try {
-        volume.disconnect()
-      } catch {}
-      try {
-        gain.disconnect()
-      } catch {}
+    let disposed = false
+    const dispose = () => {
+      if (disposed) return
+      disposed = true
+      const index = transportGraphNodes.indexOf(graphNode)
+      if (index >= 0) transportGraphNodes.splice(index, 1)
+      for (const stemNode of stemNodes) {
+        disconnectSource(stemNode.source)
+        stemNode.stemGain.disconnect()
+      }
+      stemBus.disconnect()
+      volume.disconnect()
+      gain.disconnect()
     }
-    source.onended = cleanupNode
-  } catch (error) {
-    console.error('[mixtape-transport] 播放启动失败:', entry.filePath, error)
+    primaryStemNode.source.onended = dispose
+
+    return {
+      dispose,
+      start(whenSec: number) {
+        if (disposed) return
+        const safeWhen = Math.max(ctx.currentTime, whenSec)
+        const stopAt = safeWhen + Math.max(0.02, Number(entry.duration) - offsetTimelineSec) + 0.02
+        transportGraphNodes.push(graphNode)
+        for (const stemNode of stemNodes) {
+          const safeOffset = resolveSourceStartOffset({
+            source: stemNode.source,
+            entry,
+            bufferDuration: Number(stemNode.source.buffer?.duration || 0),
+            offsetPlanSec,
+            offsetSourceSec
+          })
+          stemNode.source.playbackRate.setTargetAtTime(initialTempoRatio, safeWhen, 0.0001)
+          stemNode.source.start(safeWhen, safeOffset)
+          stemNode.source.stop(stopAt)
+        }
+      }
+    }
+  }
+
+  const audioBuffer = entry.audioRef?.audioBuffer
+  if (!audioBuffer) return null
+  const ctx = ensureTransportAudioContext(audioBuffer.sampleRate)
+  const source = await createPlaybackSource(ctx, audioBuffer, entry, mode)
+  source.playbackRate.value = initialTempoRatio
+
+  const eqLow = ctx.createBiquadFilter()
+  eqLow.type = 'lowshelf'
+  eqLow.frequency.value = 220
+  const eqMid = ctx.createBiquadFilter()
+  eqMid.type = 'peaking'
+  eqMid.frequency.value = 1000
+  eqMid.Q.value = 0.9
+  const eqHigh = ctx.createBiquadFilter()
+  eqHigh.type = 'highshelf'
+  eqHigh.frequency.value = 3200
+  const volume = ctx.createGain()
+  const gain = ctx.createGain()
+  eqHigh.gain.value = resolveEntryEqDbValue(entry, 'high', offsetTimelineSec)
+  eqMid.gain.value = resolveEntryEqDbValue(entry, 'mid', offsetTimelineSec)
+  eqLow.gain.value = resolveEntryEqDbValue(entry, 'low', offsetTimelineSec)
+  volume.gain.value = resolveEntryEnvelopeValue(entry, 'volume', offsetTimelineSec)
+  gain.gain.value = resolveEntryEnvelopeValue(entry, 'gain', offsetTimelineSec)
+  source.connect(eqLow)
+  eqLow.connect(eqMid)
+  eqMid.connect(eqHigh)
+  eqHigh.connect(volume)
+  volume.connect(gain)
+  gain.connect(resolveTransportOutputNode(ctx))
+
+  const graphNode: TrackGraphNode = {
+    trackId: entry.trackId,
+    entry,
+    source,
+    stemNodes: [],
+    stemBus: null,
+    eqHigh,
+    eqMid,
+    eqLow,
+    volume,
+    gain
+  }
+  let disposed = false
+  const dispose = () => {
+    if (disposed) return
+    disposed = true
+    const index = transportGraphNodes.indexOf(graphNode)
+    if (index >= 0) transportGraphNodes.splice(index, 1)
+    disconnectSource(source)
+    eqLow.disconnect()
+    eqMid.disconnect()
+    eqHigh.disconnect()
+    volume.disconnect()
+    gain.disconnect()
+  }
+  source.onended = dispose
+
+  return {
+    dispose,
+    start(whenSec: number) {
+      if (disposed) return
+      const safeWhen = Math.max(ctx.currentTime, whenSec)
+      const safeOffset = resolveSourceStartOffset({
+        source,
+        entry,
+        bufferDuration: audioBuffer.duration,
+        offsetPlanSec,
+        offsetSourceSec
+      })
+      source.playbackRate.setTargetAtTime(initialTempoRatio, safeWhen, 0.0001)
+      source.start(safeWhen, safeOffset)
+      source.stop(safeWhen + Math.max(0.02, Number(entry.duration) - offsetTimelineSec) + 0.02)
+      transportGraphNodes.push(graphNode)
+    }
   }
 }

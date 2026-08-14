@@ -1,6 +1,19 @@
 import { resolve } from 'path'
+import { readFile } from 'node:fs/promises'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import vue from '@vitejs/plugin-vue'
+
+const inlineWasmPlugin = () => ({
+  name: 'frkb-inline-wasm',
+  enforce: 'pre' as const,
+  async load(id: string) {
+    const [filePath, query = ''] = id.split('?')
+    if (!filePath.endsWith('.wasm') || !query.split('&').includes('inline')) return null
+    const bytes = await readFile(filePath)
+    const dataUrl = `data:application/wasm;base64,${bytes.toString('base64')}`
+    return `export default ${JSON.stringify(dataUrl)}`
+  }
+})
 
 const rendererDevPort = Number.parseInt(process.env.FRKB_DEV_SERVER_PORT || '', 10)
 const rendererServer =
@@ -133,7 +146,7 @@ export default defineConfig({
         '@shared': resolve('src/shared')
       }
     },
-    plugins: [vue()],
+    plugins: [inlineWasmPlugin(), vue()],
     build: {
       rollupOptions: {
         input: {

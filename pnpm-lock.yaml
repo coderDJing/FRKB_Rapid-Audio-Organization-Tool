@@ -11,15 +11,15 @@ importers:
 
   .:
     dependencies:
+      '@ainsej/rubberband-wasm':
+        specifier: 4.0.1
+        version: 4.0.1
       '@electron-toolkit/preload':
         specifier: ^3.0.2
         version: 3.0.2(electron@41.6.1)
       '@electron-toolkit/utils':
         specifier: ^4.0.0
         version: 4.0.0(electron@41.6.1)
-      '@soundtouchjs/audio-worklet':
-        specifier: ^1.0.10
-        version: 1.0.10
       better-sqlite3:
         specifier: ^12.10.0
         version: 12.10.0
@@ -155,6 +155,9 @@ packages:
 
   7zip-bin@5.2.0:
     resolution: {integrity: sha512-ukTPVhqG4jNzMro2qA9HSCSSVJN3aN7tlb+hfqYCt3ER0yWroeA2VR38MNrOHLQ/cVj+DaIMad0kFCtWWowh/A==}
+
+  '@ainsej/rubberband-wasm@4.0.1':
+    resolution: {integrity: sha512-37fPslOT9sVUI6Il2pOrquWxWV7BKQ3YPLYtOw5T9QohXmxSVHTfCTco9+NKGhJ1eFAfK5l5z2MCxqJFNfhWXQ==}
 
   '@algolia/abtesting@1.12.3':
     resolution: {integrity: sha512-0SpSdnME0RCS6UHSs9XD3ox4bMcCg1JTmjAJ3AU6rcTlX54CZOAEPc2as8uSghX6wfKGT0HWes4TeUpjJMg6FQ==}
@@ -1479,12 +1482,6 @@ packages:
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
     engines: {node: '>=10'}
-
-  '@soundtouchjs/audio-worklet@1.0.10':
-    resolution: {integrity: sha512-MfMOhcCss1f0L+6MV38AAD3OFF1S8dNGqr1JhjCnt71osCE1saeU0YfF2EpXgjF0wNGeAS2ekNxiZ3UUPq54Dw==}
-
-  '@soundtouchjs/core@1.0.10':
-    resolution: {integrity: sha512-KeifMox5hFxc4hzdHCG96/84JJbZC6wuNiE33FChHcuM/BjFqDcD6Uli5v2K1cw3mchH5K7rIGXJiQSvHvJkWQ==}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -4321,6 +4318,8 @@ snapshots:
 
   7zip-bin@5.2.0: {}
 
+  '@ainsej/rubberband-wasm@4.0.1': {}
+
   '@algolia/abtesting@1.12.3':
     dependencies:
       '@algolia/client-common': 5.46.3
@@ -5394,12 +5393,6 @@ snapshots:
   '@shikijs/vscode-textmate@10.0.2': {}
 
   '@sindresorhus/is@4.6.0': {}
-
-  '@soundtouchjs/audio-worklet@1.0.10':
-    dependencies:
-      '@soundtouchjs/core': 1.0.10
-
-  '@soundtouchjs/core@1.0.10': {}
 
   '@standard-schema/spec@1.1.0': {}
 

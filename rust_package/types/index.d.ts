@@ -41,19 +41,6 @@ export interface ChromaprintFingerprintResult {
   /** 错误描述（失败时） */
   error?: string
 }
-/** SoundTouch 处理结果 */
-export interface SoundTouchProcessResult {
-  /** PCM 数据（Buffer，内部为 f32 小端序） */
-  pcmData: Buffer
-  /** 采样率 */
-  sampleRate: number
-  /** 声道数 */
-  channels: number
-  /** 总帧数 */
-  totalFrames: number
-  /** 错误描述（失败时） */
-  error?: string
-}
 /** 调性分析结果 */
 export interface KeyAnalysisResult {
   /** ID3v2 ASCII key 文本 */
@@ -244,13 +231,6 @@ export declare function generateChromaprintFingerprint(
   filePath: string,
   maxLengthSeconds?: number
 ): ChromaprintFingerprintResult
-/** 使用 SoundTouch 对交错 PCM 做不变调变速 */
-export declare function processSoundtouchPcm(
-  pcmData: Buffer,
-  sampleRate: number,
-  channels: number,
-  tempoRatio: number
-): SoundTouchProcessResult
 /**
  * 基于 PCM 计算 Mixxx RGB 波形
  *

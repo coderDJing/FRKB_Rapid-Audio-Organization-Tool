@@ -44,23 +44,18 @@ component licenses below.
 - Current use: packaged FFmpeg/FFprobe binaries and FFmpeg libraries used by
   native decode/fingerprint paths.
 
-## SoundTouch
+## Rubber Band Library
 
-- Projects:
-  - SoundTouch
-  - SoundTouchJS / `@soundtouchjs/audio-worklet`
-  - `@soundtouchjs/core`
+- Project: Rubber Band Library and `@ainsej/rubberband-wasm`
 - Repository paths:
-  - `rust_package/native/soundtouch`
-  - packaged dependencies in `node_modules`
+  - `rust_package/native/r3_stretch`
+  - `src/renderer/src/workers/mixtapeTransportR3.worklet.js`
+  - packaged dependency in `node_modules`
 - Sources:
-  - https://www.surina.net/soundtouch/
-  - https://github.com/cutterbl/SoundTouchJS
-- Licenses:
-  - SoundTouch native sources: LGPL-2.1-or-later
-  - `@soundtouchjs/audio-worklet`: LGPL-2.1
-  - `@soundtouchjs/core`: LGPL-2.1
-- Current use: tempo/pitch processing in native and renderer audio paths.
+  - https://breakfastquay.com/rubberband/
+  - https://github.com/ains/rubberband-wasm
+- License: GPL-2.0
+- Current use: R3 tempo/pitch processing in native and renderer audio paths.
 
 ## Chromaprint
 

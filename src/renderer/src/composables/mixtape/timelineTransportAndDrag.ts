@@ -16,13 +16,10 @@ import {
 } from '@renderer/composables/mixtape/timelineTransportRenderWav'
 import { createTimelineTransportTrackDragModule } from '@renderer/composables/mixtape/timelineTransportTrackDrag'
 import { createTimelineTransportResolversModule } from '@renderer/composables/mixtape/timelineTransportResolvers'
+import { ensureTransportSequencerWorkletModule } from '@renderer/composables/mixtape/timelineTransportPlayableSource'
 import {
-  ensureTransportKeyLockWorkletModule,
-  ensureTransportSequencerWorkletModule,
-  ensureTransportSoundTouchWorkletModule
-} from '@renderer/composables/mixtape/timelineTransportPlayableSource'
-import {
-  startTransportTrackGraphNode,
+  prepareTransportTrackGraphNode,
+  type PreparedTransportTrackGraphNode,
   type TrackGraphNode,
   type TransportPlaybackSourceMode
 } from '@renderer/composables/mixtape/timelineTransportPlaybackNodes'
@@ -144,8 +141,6 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
   let transportGraphNodes: TrackGraphNode[] = []
   let transportMasterTrackId = ''
   let transportVersion = 0
-  let transportSoundTouchWorkletReady = false
-  let transportKeyLockWorkletReady = false
   let transportSequencerWorkletReady = false
   const titleAudioVisualizerSource: TitleAudioVisualizerSource = {
     getAnalyser: () => transportAnalyserNode
@@ -190,23 +185,11 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     hasInternalPlaybackSequence(entry.playbackSequence)
   const resolvePlaybackSourceMode = (entry: TransportEntry): TransportPlaybackSourceMode => {
     const hasSequence = hasEntryInternalSequence(entry)
-    if (
-      hasSequence &&
-      entry.masterTempo &&
-      transportSequencerWorkletReady &&
-      transportSoundTouchWorkletReady
-    ) {
-      return 'sequenced-soundtouch'
-    }
-    if (hasSequence && entry.masterTempo && transportKeyLockWorkletReady) {
-      return 'sequenced-keylock'
-    }
+    if (hasSequence && entry.masterTempo) return 'sequenced-r3'
     if (hasSequence && transportSequencerWorkletReady) {
       return 'sequenced-buffer'
     }
-    if (entry.masterTempo && transportSoundTouchWorkletReady) {
-      return 'soundtouch'
-    }
+    if (entry.masterTempo) return 'r3'
     return 'buffer'
   }
 
@@ -736,68 +719,30 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
       return
     }
 
-    transportSoundTouchWorkletReady = false
-    transportKeyLockWorkletReady = false
     transportSequencerWorkletReady = false
-    const needsSequencePlayback = playableEntries.some((entry) => hasEntryInternalSequence(entry))
-    const needsSequencedKeyLock = playableEntries.some(
-      (entry) => hasEntryInternalSequence(entry) && entry.masterTempo
+    const sampleRate = resolveTransportPlanSampleRate(playableEntries)
+    const transportCtx = ensureTransportAudioContext(sampleRate)
+    if (transportCtx.state === 'suspended') {
+      try {
+        await transportCtx.resume()
+      } catch {}
+    }
+    const needsSequencedBuffer = playableEntries.some(
+      (entry) => hasEntryInternalSequence(entry) && !entry.masterTempo
     )
-    const needsSequencedBuffer = needsSequencePlayback
-    const needsSoundTouch = playableEntries.some((entry) => entry.masterTempo)
-    if (needsSequencedKeyLock || needsSequencedBuffer || needsSoundTouch) {
-      const sampleRate = resolveTransportPlanSampleRate(playableEntries)
-      const transportCtx = ensureTransportAudioContext(sampleRate)
-      if (transportCtx.state === 'suspended') {
-        try {
-          await transportCtx.resume()
-        } catch {}
+    if (needsSequencedBuffer) {
+      try {
+        await ensureTransportSequencerWorkletModule(transportCtx)
+        transportSequencerWorkletReady = true
+      } catch (error) {
+        console.error('[mixtape-transport] sequencer worklet unavailable', error)
+        transportError.value = 'Loop 连续播放引擎不可用'
+        playheadVisible.value = false
+        transportPlaying.value = false
+        return
       }
-      if (needsSequencedBuffer) {
-        try {
-          await ensureTransportSequencerWorkletModule(transportCtx)
-          transportSequencerWorkletReady = true
-        } catch (error) {
-          transportSequencerWorkletReady = false
-          console.error('[mixtape-transport] sequencer worklet unavailable', error)
-        }
-      }
-      if (needsSequencedKeyLock) {
-        try {
-          await ensureTransportKeyLockWorkletModule(transportCtx)
-          transportKeyLockWorkletReady = true
-        } catch (error) {
-          transportKeyLockWorkletReady = false
-          console.error('[mixtape-transport] keylock worklet unavailable', error)
-        }
-      }
-      if (needsSoundTouch) {
-        try {
-          await ensureTransportSoundTouchWorkletModule(transportCtx)
-          transportSoundTouchWorkletReady = true
-        } catch (error) {
-          transportSoundTouchWorkletReady = false
-          console.error(
-            '[mixtape-transport] soundtouch worklet unavailable, fallback to rate',
-            error
-          )
-        }
-      }
-      if (transportVersion !== version) return
     }
-    const sequenceUnavailable = playableEntries.some((entry) => {
-      if (!hasEntryInternalSequence(entry)) return false
-      return entry.masterTempo
-        ? (!transportSequencerWorkletReady || !transportSoundTouchWorkletReady) &&
-            !transportKeyLockWorkletReady
-        : !transportSequencerWorkletReady
-    })
-    if (sequenceUnavailable) {
-      transportError.value = 'Loop 连续播放引擎不可用'
-      playheadVisible.value = false
-      transportPlaying.value = false
-      return
-    }
+    if (transportVersion !== version) return
 
     if (plan.decodeFailedCount > 0) {
       transportError.value = t('mixtape.transportPartialDecodeFailed', {
@@ -812,42 +757,63 @@ export const createTimelineTransportAndDragModule = (ctx: TimelineTransportAndDr
     playheadVisible.value = true
     playheadSec.value = startSec
     syncTimelineScrollByPlayhead(startSec)
-    const transportCtx = playableEntries.length > 0 ? ensureTransportAudioContext() : null
-    if (transportCtx?.state === 'suspended') {
-      try {
-        await transportCtx.resume()
-      } catch {}
+    const preparedNodes: Array<{
+      delaySec: number
+      node: PreparedTransportTrackGraphNode
+    }> = []
+    try {
+      for (const entry of playableEntries) {
+        const entryEnd = entry.startSec + entry.duration
+        if (entryEnd <= startSec) continue
+        const delaySec = Math.max(0, entry.startSec - startSec)
+        const offsetTimelineSec = Math.max(0, startSec - entry.startSec)
+        const preparedNode = await prepareTransportTrackGraphNode({
+          entry,
+          offsetTimelineSec,
+          offsetPlanSec: resolveEntryPlaybackOffsetPlanSec(entry, offsetTimelineSec),
+          offsetSourceSec: resolveEntryPlaybackOffsetSourceSec(entry, offsetTimelineSec),
+          transportGraphNodes,
+          isStemMixMode,
+          resolveStemIdsForMode,
+          ensureTransportAudioContext,
+          resolveTransportOutputNode,
+          resolvePlaybackSourceMode,
+          resolveEntryEnvelopeValue,
+          resolveEntryEqDbValue
+        })
+        if (transportVersion !== version) {
+          preparedNode?.dispose()
+          for (const prepared of preparedNodes) prepared.node.dispose()
+          return
+        }
+        if (preparedNode) preparedNodes.push({ delaySec, node: preparedNode })
+      }
+    } catch (error) {
+      for (const prepared of preparedNodes) prepared.node.dispose()
+      console.error('[mixtape-transport] R3 playback initialisation failed', error)
+      transportError.value = 'R3 主速度引擎初始化失败'
+      playheadVisible.value = false
+      transportPlaying.value = false
+      return
     }
-    if (transportVersion !== version) return
+
     const scheduleLeadSec = 0.03
-    const scheduleStartAt = transportCtx ? transportCtx.currentTime + scheduleLeadSec : 0
+    const scheduleStartAt = transportCtx.currentTime + scheduleLeadSec
     transportBaseSec = startSec
     transportStartedAt = performance.now() + scheduleLeadSec * 1000
-    transportAudioStartAt = transportCtx ? scheduleStartAt : 0
+    transportAudioStartAt = scheduleStartAt
     transportPlaying.value = true
-
-    for (const entry of playableEntries) {
-      const entryEnd = entry.startSec + entry.duration
-      if (entryEnd <= startSec) continue
-      const delaySec = Math.max(0, entry.startSec - startSec)
-      const offsetTimelineSec = Math.max(0, startSec - entry.startSec)
-      const offsetPlanSec = resolveEntryPlaybackOffsetPlanSec(entry, offsetTimelineSec)
-      const offsetSourceSec = resolveEntryPlaybackOffsetSourceSec(entry, offsetTimelineSec)
-      startTransportTrackGraphNode({
-        entry,
-        offsetTimelineSec,
-        offsetPlanSec,
-        offsetSourceSec,
-        whenSec: scheduleStartAt + delaySec,
-        transportGraphNodes,
-        isStemMixMode,
-        resolveStemIdsForMode,
-        ensureTransportAudioContext,
-        resolveTransportOutputNode,
-        resolvePlaybackSourceMode,
-        resolveEntryEnvelopeValue,
-        resolveEntryEqDbValue
-      })
+    try {
+      for (const prepared of preparedNodes) {
+        prepared.node.start(scheduleStartAt + prepared.delaySec)
+      }
+    } catch (error) {
+      for (const prepared of preparedNodes) prepared.node.dispose()
+      console.error('[mixtape-transport] R3 playback scheduling failed', error)
+      transportError.value = 'R3 主速度引擎启动失败'
+      transportPlaying.value = false
+      playheadVisible.value = false
+      return
     }
 
     const tick = () => {
