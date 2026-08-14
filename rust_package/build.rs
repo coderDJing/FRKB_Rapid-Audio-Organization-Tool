@@ -95,6 +95,19 @@ fn main() {
     .warnings(false)
     .compile("frkb_soundtouch");
 
+  let r3_stretch_root = manifest_dir.join("native/r3_stretch");
+  emit_rerun_if_changed_recursive(&r3_stretch_root);
+  let mut r3_stretch_build = cc::Build::new();
+  r3_stretch_build
+    .cpp(true)
+    .include(&r3_stretch_root)
+    .file(r3_stretch_root.join("frkb_r3_stretch_wrapper.cpp"))
+    .flag_if_supported("-std=c++17")
+    .flag_if_supported("/std:c++17")
+    .flag_if_supported("/EHsc")
+    .warnings(false)
+    .compile("frkb_r3_stretch");
+
   // ===== Chromaprint =====
   let chromaprint_root = manifest_dir.join("native/chromaprint");
   let kissfft_cp_root = chromaprint_root.join("kissfft");

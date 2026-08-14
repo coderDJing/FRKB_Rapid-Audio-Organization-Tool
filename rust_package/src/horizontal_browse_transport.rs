@@ -25,6 +25,8 @@ mod horizontal_browse_transport_loop;
 mod horizontal_browse_transport_mix;
 #[path = "horizontal_browse_transport_napi.rs"]
 mod horizontal_browse_transport_napi;
+#[path = "horizontal_browse_transport_r3_stretch.rs"]
+mod horizontal_browse_transport_r3_stretch;
 #[path = "horizontal_browse_transport_recording.rs"]
 mod horizontal_browse_transport_recording;
 #[path = "horizontal_browse_transport_runtime.rs"]

@@ -1,94 +1,18 @@
+use super::horizontal_browse_transport_r3_stretch::R3MasterTempoProcessor;
 use super::DeckState;
-use std::ffi::c_void;
 
 const MIN_RATE: f64 = 0.25;
 const MAX_RATE: f64 = 4.0;
 const SCRUB_MIN_RATE: f64 = 0.04;
 const SCRUB_MAX_RATE: f64 = 8.0;
 const SCRUB_RAMP_SEC: f64 = 0.006;
-const MASTER_TEMPO_FEED_FRAMES: usize = 4096;
 const MASTER_TEMPO_PULL_FRAMES: usize = 4096;
 const BAND_LOW_SPLIT_HZ: f64 = 360.0;
 const BAND_HIGH_SPLIT_HZ: f64 = 2600.0;
 const BAND_REDUCED_GAIN: f32 = 0.12;
 
-const ST_SETTING_USE_QUICKSEEK: i32 = 2;
-
-unsafe extern "C" {
-  fn frkb_soundtouch_create() -> *mut c_void;
-  fn frkb_soundtouch_destroy(handle: *mut c_void);
-  fn frkb_soundtouch_set_channels(handle: *mut c_void, channels: u32);
-  fn frkb_soundtouch_set_sample_rate(handle: *mut c_void, sample_rate: u32);
-  fn frkb_soundtouch_set_tempo(handle: *mut c_void, tempo: f64);
-  fn frkb_soundtouch_set_pitch(handle: *mut c_void, pitch: f64);
-  fn frkb_soundtouch_set_rate(handle: *mut c_void, rate: f64);
-  fn frkb_soundtouch_set_setting(handle: *mut c_void, setting_id: i32, value: i32);
-  fn frkb_soundtouch_put_samples(handle: *mut c_void, samples: *const f32, num_samples: u32);
-  fn frkb_soundtouch_receive_samples(
-    handle: *mut c_void,
-    output: *mut f32,
-    max_samples: u32,
-  ) -> u32;
-  fn frkb_soundtouch_flush(handle: *mut c_void);
-}
-
-struct SoundTouchHandle(*mut c_void);
-
-unsafe impl Send for SoundTouchHandle {}
-
-impl SoundTouchHandle {
-  fn new(channels: u32, sample_rate: u32, tempo: f64) -> Option<Self> {
-    let handle = unsafe { frkb_soundtouch_create() };
-    if handle.is_null() {
-      return None;
-    }
-    unsafe {
-      frkb_soundtouch_set_channels(handle, channels);
-      frkb_soundtouch_set_sample_rate(handle, sample_rate);
-      frkb_soundtouch_set_tempo(handle, tempo);
-      frkb_soundtouch_set_pitch(handle, 1.0);
-      frkb_soundtouch_set_rate(handle, 1.0);
-      frkb_soundtouch_set_setting(handle, ST_SETTING_USE_QUICKSEEK, 0);
-    }
-    Some(Self(handle))
-  }
-
-  fn set_tempo(&mut self, tempo: f64) {
-    unsafe { frkb_soundtouch_set_tempo(self.0, tempo) }
-  }
-
-  fn put_samples(&mut self, samples: &[f32], num_samples: usize) {
-    if samples.is_empty() || num_samples == 0 {
-      return;
-    }
-    unsafe { frkb_soundtouch_put_samples(self.0, samples.as_ptr(), num_samples as u32) }
-  }
-
-  fn receive_samples(&mut self, output: &mut [f32], max_samples: usize) -> usize {
-    if output.is_empty() || max_samples == 0 {
-      return 0;
-    }
-    unsafe {
-      frkb_soundtouch_receive_samples(self.0, output.as_mut_ptr(), max_samples as u32) as usize
-    }
-  }
-
-  fn flush(&mut self) {
-    unsafe { frkb_soundtouch_flush(self.0) }
-  }
-}
-
-impl Drop for SoundTouchHandle {
-  fn drop(&mut self) {
-    if !self.0.is_null() {
-      unsafe { frkb_soundtouch_destroy(self.0) }
-      self.0 = std::ptr::null_mut();
-    }
-  }
-}
-
 pub(super) struct DeckMasterTempoState {
-  processor: Option<SoundTouchHandle>,
+  processor: Option<R3MasterTempoProcessor>,
   channels: usize,
   processor_sample_rate: u32,
   source_frame_cursor: f64,
@@ -161,7 +85,7 @@ fn configure_processor(target: &mut DeckState, output_sample_rate: f64) {
     return;
   }
   let processor_sample_rate = resolved_output_sample_rate(output_sample_rate, target.sample_rate);
-  let processor = SoundTouchHandle::new(
+  let processor = R3MasterTempoProcessor::new(
     channels as u32,
     processor_sample_rate,
     clamp_rate(target.playback_rate),
@@ -188,8 +112,9 @@ pub(super) fn reset_master_tempo_state(target: &mut DeckState) {
   target.master_tempo_state.output_buffer.clear();
   target.master_tempo_state.output_offset = 0;
   target.master_tempo_state.flushed = false;
-  target.master_tempo_state.processor = None;
-  target.master_tempo_state.processor_sample_rate = 0;
+  if let Some(processor) = target.master_tempo_state.processor.as_mut() {
+    processor.reset(clamp_rate(target.playback_rate));
+  }
 }
 
 pub(super) fn clear_master_tempo_state(target: &mut DeckState) {
@@ -349,6 +274,9 @@ fn ensure_processor_configured(target: &mut DeckState, output_sample_rate: f64) 
     && target.master_tempo_state.channels == channels
     && target.master_tempo_state.processor_sample_rate == processor_sample_rate;
   if already_configured {
+    if let Some(processor) = target.master_tempo_state.processor.as_mut() {
+      processor.set_tempo(clamp_rate(target.playback_rate));
+    }
     return;
   }
   configure_processor(target, output_sample_rate);
@@ -406,7 +334,13 @@ pub(super) fn is_scrub_preview_rendering(target: &DeckState) -> bool {
 }
 
 fn append_source_chunk(target: &mut DeckState, output_sample_rate: f64) -> bool {
-  if target.master_tempo_state.processor.is_none() {
+  let frames_required = target
+    .master_tempo_state
+    .processor
+    .as_ref()
+    .map(R3MasterTempoProcessor::input_frames_required)
+    .unwrap_or(0);
+  if frames_required == 0 {
     return false;
   }
   let channels = target.master_tempo_state.channels.max(1);
@@ -419,7 +353,7 @@ fn append_source_chunk(target: &mut DeckState, output_sample_rate: f64) -> bool 
   let remaining_output_frames = ((frame_count as f64 - start_frame) / source_step.max(0.000001))
     .ceil()
     .max(0.0) as usize;
-  let frames_to_feed = MASTER_TEMPO_FEED_FRAMES.min(remaining_output_frames);
+  let frames_to_feed = frames_required.min(remaining_output_frames);
   if frames_to_feed == 0 {
     return false;
   }
@@ -446,10 +380,9 @@ fn append_source_chunk(target: &mut DeckState, output_sample_rate: f64) -> bool 
 
   if let Some(processor) = target.master_tempo_state.processor.as_mut() {
     processor.set_tempo(clamp_rate(target.playback_rate));
-    processor.put_samples(
-      &target.master_tempo_state.staging_input,
-      target.master_tempo_state.staging_input.len() / channels,
-    );
+    if !processor.process_interleaved(&target.master_tempo_state.staging_input, frames_to_feed) {
+      return false;
+    }
   }
   target.master_tempo_state.source_frame_cursor =
     (start_frame + frames_to_feed as f64 * source_step).min(frame_count as f64);
@@ -462,7 +395,7 @@ fn pull_processed_output(target: &mut DeckState) -> usize {
     return 0;
   };
   processor.set_tempo(clamp_rate(target.playback_rate));
-  let received = processor.receive_samples(
+  let received = processor.retrieve_interleaved(
     target.master_tempo_state.staging_output.as_mut_slice(),
     MASTER_TEMPO_PULL_FRAMES,
   );
@@ -496,7 +429,7 @@ fn ensure_output_samples(target: &mut DeckState, output_sample_rate: f64) {
 
     if !target.master_tempo_state.flushed {
       if let Some(processor) = target.master_tempo_state.processor.as_mut() {
-        processor.flush();
+        processor.finish();
       }
       target.master_tempo_state.flushed = true;
       continue;

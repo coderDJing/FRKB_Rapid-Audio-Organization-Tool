@@ -148,6 +148,10 @@
         {
           "from": "vendor/demucs/bootstrap",
           "to": "demucs/bootstrap"
+        },
+        {
+          "from": "vendor/r3-stretch/win32-x64",
+          "to": "r3-stretch/win32-x64"
         }
       ]
     },

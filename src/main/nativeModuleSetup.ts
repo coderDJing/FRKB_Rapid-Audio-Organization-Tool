@@ -10,6 +10,25 @@ if (process.platform === 'win32') {
   const path = require('path') as typeof import('path')
   const fs = require('fs') as typeof import('fs')
 
+  function configureR3StretchRuntime(): string | null {
+    const configuredLibrary = String(process.env.FRKB_R3_STRETCH_LIBRARY || '').trim()
+    if (configuredLibrary && fs.existsSync(configuredLibrary)) {
+      return path.dirname(configuredLibrary)
+    }
+
+    const candidates = [
+      path.join(process.cwd(), 'vendor', 'r3-stretch', 'win32-x64'),
+      path.join(path.dirname(process.execPath), 'resources', 'r3-stretch', 'win32-x64')
+    ]
+    for (const directory of candidates) {
+      const libraryPath = path.join(directory, 'rubberband-2.dll')
+      if (!fs.existsSync(libraryPath)) continue
+      process.env.FRKB_R3_STRETCH_LIBRARY = libraryPath
+      return directory
+    }
+    return null
+  }
+
   function findFfmpegDllDir(): string | null {
     // 1. 环境变量
     const envDir = process.env.FRKB_FFMPEG_DLL_DIR
@@ -37,9 +56,11 @@ if (process.platform === 'win32') {
     return null
   }
 
-  const dllDir = findFfmpegDllDir()
-  if (dllDir) {
+  const nativeDllDirs = [configureR3StretchRuntime(), findFfmpegDllDir()].filter(
+    (directory): directory is string => Boolean(directory)
+  )
+  if (nativeDllDirs.length > 0) {
     // 将 DLL 目录添加到 PATH 最前面，LoadLibrary 会搜索 PATH
-    process.env.PATH = dllDir + path.delimiter + (process.env.PATH || '')
+    process.env.PATH = [...nativeDllDirs, process.env.PATH || ''].join(path.delimiter)
   }
 }

@@ -47,6 +47,10 @@ vendor/demucs/*
 !vendor/demucs/bootstrap/
 vendor/demucs/bootstrap/*
 !vendor/demucs/bootstrap/mixtape_demucs_bootstrap.py
+!vendor/r3-stretch/
+vendor/r3-stretch/*
+!vendor/r3-stretch/win32-x64/
+!vendor/r3-stretch/win32-x64/*.dll
 
 .codex_tmp
 .playwright-mcp/
