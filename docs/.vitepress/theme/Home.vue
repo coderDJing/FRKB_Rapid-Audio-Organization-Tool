@@ -163,7 +163,7 @@ const zhContent = {
     titleTop: '终结混乱的',
     titleBottom: 'DJ 音频工作站',
     subtitle:
-      '不再需要在多个软件间疲于奔命。从真实文件整理、SET 歌单、指纹去重、波形试听、Rekordbox 库集成，到双轨横推、录音库与 Mixtape Stem 工作流，FRKB 用键盘优先的操作方式，为你打造一站式、所见即所得的桌面音频整理引擎。'
+      '不再需要在多个软件间疲于奔命。从真实文件整理、SET 歌单、指纹去重、波形试听、Rekordbox 库集成、段落与能量分析、本地库合并，到双轨横推、录音库、单曲 Stem 分离与 Mixtape 工作流，FRKB 用键盘优先的操作方式，为你打造一站式、所见即所得的桌面音频整理引擎。'
   },
   impacts: [
     {
@@ -280,8 +280,21 @@ const zhContent = {
       details: '后台分析统一走闲时调度与限流，保障前台操作绝对流畅。'
     },
     {
+      title: '合并 FRKB 库',
+      details:
+        '把另一个 FRKB 库合并进当前库，覆盖歌单、曲目、分析、SET 和 Mixtape；来源库本身不会被修改。'
+    },
+    {
+      title: '能量与段落分析',
+      details: '分析曲目能量和段落结构，在播放器中展示，并可用指定段落做区间试听。'
+    },
+    {
+      title: '单曲 Stem 工作台',
+      details: '对单曲做高质量 4 轨分离，可试听、导出 WAV，并按需下载超高质量模型。'
+    },
+    {
       title: '代码开源与透明',
-      details: '核心代码完全开源，接受社区监督。架构清晰，欢迎开发者共同参与贡献。'
+      details: '源码公开，采用非商业许可。架构清晰，欢迎在许可范围内参与贡献。'
     }
   ],
   specs: {
@@ -299,7 +312,7 @@ const enContent = {
     titleTop: 'End the Chaos.',
     titleBottom: 'The Ultimate DJ Audio Workspace.',
     subtitle:
-      'Stop bouncing between apps. From real file organization, SET playlists, fingerprint dedup, waveform preview, and Rekordbox integration, to dual-deck browsing, the Recording Library, and Mixtape Stem workflows. FRKB delivers an all-in-one, WYSIWYG desktop engine built around keyboard-first control.'
+      'Stop bouncing between apps. From real file organization, SET playlists, fingerprint dedup, waveform preview, Rekordbox integration, section and energy analysis, and library merge, to dual-deck browsing, the Recording Library, single-track stem separation, and Mixtape workflows. FRKB delivers an all-in-one, WYSIWYG desktop engine built around keyboard-first control.'
   },
   impacts: [
     {
@@ -424,9 +437,24 @@ const enContent = {
         'Background analysis runs through unified idle scheduling to guarantee absolute UI fluidity.'
     },
     {
+      title: 'Merge FRKB Libraries',
+      details:
+        'Merge another FRKB library into the current one, including playlists, tracks, analysis, SET, and Mixtape data, without modifying the source library.'
+    },
+    {
+      title: 'Energy & Section Analysis',
+      details:
+        'Analyze track energy and song structure, show them in the player, and audition by analyzed sections.'
+    },
+    {
+      title: 'Single-track Stem Workspace',
+      details:
+        'Separate a single track into high-quality 4 stems, preview and export WAV files, and download the ultra-quality model when needed.'
+    },
+    {
       title: 'Open Source & Transparent',
       details:
-        'Core code is fully open-source. Clear architecture welcomes community contributions.'
+        'Source is public under a noncommercial license. Clear architecture welcomes contributions within that license.'
     }
   ],
   specs: {

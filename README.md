@@ -24,7 +24,7 @@
 
 ## What It Is
 
-**FRKB** is a desktop audio workflow tool for DJs and music collectors who need to organize, preview, analyze, and prepare large track libraries quickly. It combines real file-based library management, SET playlist preparation, waveform browsing, fingerprint deduplication, Rekordbox and Pioneer library access, dual-deck auditioning, recording, metadata cleanup, conversion, similar-track discovery, cloud fingerprint sync, and Mixtape preparation in one Windows/macOS app.
+**FRKB** is a desktop audio workflow tool for DJs and music collectors who need to organize, preview, analyze, and prepare large track libraries quickly. It combines real file-based library management, SET playlist preparation, waveform browsing, fingerprint deduplication, Rekordbox and Pioneer library access, section and energy analysis, library merge, dual-deck auditioning, recording, metadata cleanup, conversion, similar-track discovery, cloud fingerprint sync, single-track stem separation, and Mixtape preparation in one Windows/macOS app.
 
 FRKB is built around a simple rule: the structure you see in the app should match the actual music files on disk. It is not just a reference manager. When you organize, move, export, deduplicate, or restore tracks, the file system stays aligned with your library.
 
@@ -50,6 +50,9 @@ FRKB does not provide an official Linux release.
 - **Real file management**: FRKB manages the audio files themselves, so playlists and library folders stay reflected on disk.
 - **Filter and Curated libraries**: A two-stage DJ workflow for fast triage and long-term selection.
 - **SET playlists**: Prepare performance sets as mapping-based playlists that support duplicate entries, stable track indices, drag reordering, and deletion protection for referenced source tracks.
+- **SET duration**: Estimate SET length in playlist order, using Hot Cues as start and end points when available.
+- **Merge FRKB libraries**: Merge another FRKB library into the current one, including playlists, tracks, analysis, SET, and Mixtape data, without modifying the source library. Integrity and disk space are checked first, and same-name playlists are kept on both sides. Curated libraries can also be merged separately.
+- **Playlist tree sorting**: Sort the playlist tree by name or track count, or switch back to manual order.
 - **Drag-and-drop import and movement**: Import files or folders, move tracks between playlists, and drag copies out to Explorer/Finder with Ctrl/Option.
 - **Safe recycle bin**: Deleted tracks and deduplicated items go to FRKB's recycle bin and can be restored to their original playlists.
 - **Playlist cleanup tools**: Clear playlists with visible progress, batch rename playlist tracks, clean missing external-library records, and keep selection counts visible before bulk operations.
@@ -61,6 +64,8 @@ FRKB does not provide an official Linux release.
 - **Playlist fingerprint deduplication**: Analyze a playlist and move duplicates to the recycle bin in one workflow.
 - **BPM and beat-grid analysis**: Analyze tempo and grid placement, tap BPM manually, restore system-analyzed BPM, and work with stricter grid candidate rules for difficult tracks.
 - **Key analysis**: Display musical key in Classic notation such as `C#m` or Camelot notation such as `1A/1B`.
+- **Energy and section analysis**: Analyze track energy and song structure, show them in the player, and audition by analyzed sections.
+- **Locate unanalyzed tracks**: Jump from the bottom status bar to the first track that still needs analysis.
 - **Visible analysis progress**: Track-level analysis status is surfaced in the song list instead of leaving background work invisible.
 - **Manual analysis control**: Playlist analysis can be confirmed, skipped, or started manually, so imported crates do not unexpectedly consume foreground playback resources.
 - **Fingerprint library scanning**: Build a reusable fingerprint library from selected libraries to make future deduplication and similar-track workflows faster and more consistent.
@@ -87,6 +92,7 @@ FRKB does not provide an official Linux release.
 - **Mixer controls**: Use independent deck volume faders, channel controls, and a crossfader to judge transitions quickly.
 - **Beat Sync and Master behavior**: Sync tempo and grid behavior between decks while keeping visible waveform scale stable.
 - **Tempo nudge**: Temporarily push a deck faster or slower with hold controls, then return cleanly to the base tempo.
+- **Temporary tempo**: Temporarily change a deck's tempo during dual-deck auditioning without writing back to the source file.
 - **Auto Gain**: Match deck loudness against the current master so A/B comparisons are not distorted by level differences.
 - **Cue monitoring**: Monitor cue output per deck while preparing comparisons.
 - **Recording**: Record the dual-deck output to high-quality WAV and save it directly into the Recording Library.
@@ -109,15 +115,18 @@ FRKB does not provide an official Linux release.
 - **External-library context menus**: Use familiar right-click actions on Rekordbox and Pioneer rows, including copying to Filter or Curated libraries.
 - **Keyboard multi-selection**: Select multiple songs in Rekordbox/Pioneer lists with keyboard-style range selection.
 - **Curated artist import**: Import curated artist data from Rekordbox and Pioneer USB libraries to keep selection tags useful across sources.
+- **Read-only analysis for external tracks**: Analyze BPM, beat grid, energy, and sections for Rekordbox, Pioneer USB, and ordinary external tracks. Results stay inside FRKB and are not written back to the source library.
 - **Missing-file handling**: Missing source files are clearly marked, blocked from playback, and can be cleaned from Rekordbox playlist records when appropriate.
 
 ### Mixtape And Stem Workflow
 
 - **Mixtape timeline workspace**: Arrange tracks on a timeline, preview transitions, edit beat alignment, and export a timeline-accurate result.
 - **Cross-window track drag-in**: Drag songs from the main library directly into the Mixtape workspace.
+- **Add to Mixtape from playlists**: Add tracks to Mixtape auto-recording from ordinary playlist context menus.
 - **Beat alignment tools**: Adjust grids, preview alignment on unified waveform controls, use metronome tools, and keep timeline playback aligned with edited grid data.
 - **Gain, BPM, mute, and loop controls**: Shape the mix with timeline controls, envelopes, mute sections, loop overlays, and undo support.
 - **Stem preparation**: Managed Stem runtime, separation cache management, ONNX fast separation, and DirectML/XPU acceleration support auto-recording and mix preparation workflows.
+- **Single-track Stem workspace**: Separate a single track into high-quality 4 stems (vocals / drums / bass / other), preview and export WAV files, and download the ultra-quality model when needed.
 
 ### Export, Conversion, And Formats
 
@@ -201,7 +210,7 @@ Issues, feature suggestions, and pull requests are welcome.
 
 ## License
 
-FRKB project code written by CoderDJing is licensed under the MIT License. The current packaged application includes GPL/LGPL third-party components; see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+FRKB project code written by CoderDJing is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE) for noncommercial use. The current packaged application includes GPL/LGPL third-party components; see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Backlog
 
