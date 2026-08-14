@@ -4,6 +4,7 @@ import path from 'node:path'
 import { resolveBundledDemucsBootstrapDirPath } from '../demucs'
 import mixtapeWindow from '../window/mixtapeWindow'
 import { registerChildProcess, terminateChildProcess } from './childProcessRegistry'
+import { createStemCancelledError, throwIfStemCancelled } from './mixtapeStemSeparationShared'
 
 const XPU_WORKER_POOL_SIZE = 2
 const XPU_WORKER_PRIMARY_IDLE_TIMEOUT_MS = 120_000
@@ -79,6 +80,7 @@ type RunPersistentXpuStemInferenceParams = {
   timeoutMs: number
   traceLabel: string
   payload: PersistentWorkerInferPayload
+  signal?: AbortSignal
   onStderrChunk?: (chunk: string) => void
 }
 
@@ -297,8 +299,10 @@ class PersistentXpuStemWorkerSlot {
   private sendRequest<T extends PersistentWorkerResponse>(
     request: PersistentWorkerRequest,
     timeoutMs: number,
-    onStderrChunk?: (chunk: string) => void
+    onStderrChunk?: (chunk: string) => void,
+    signal?: AbortSignal
   ): Promise<T> {
+    throwIfStemCancelled(signal)
     if (!this.child) {
       throw createWorkerError('PERSISTENT_XPU_WORKER_UNAVAILABLE', 'XPU 常驻 worker 未启动')
     }
@@ -318,6 +322,12 @@ class PersistentXpuStemWorkerSlot {
         },
         Math.max(1000, Number(timeoutMs) || XPU_WORKER_MESSAGE_TIMEOUT_MS)
       )
+      const onAbort = () => {
+        this.rejectInflight(createStemCancelledError())
+        this.stopWorker('cancelled')
+      }
+      signal?.addEventListener('abort', onAbort)
+      const cleanupAbort = () => signal?.removeEventListener('abort', onAbort)
       this.inflight = {
         id: request.requestId,
         type: request.type,
@@ -325,8 +335,14 @@ class PersistentXpuStemWorkerSlot {
         timeoutTimer,
         stderrText: '',
         onStderrChunk,
-        resolve: (value) => resolve(value as T),
-        reject
+        resolve: (value) => {
+          cleanupAbort()
+          resolve(value as T)
+        },
+        reject: (error) => {
+          cleanupAbort()
+          reject(error)
+        }
       }
       try {
         this.child?.stdin.write(`${JSON.stringify(request)}\n`, 'utf8')
@@ -341,6 +357,7 @@ class PersistentXpuStemWorkerSlot {
           )
         )
       }
+      if (signal?.aborted) onAbort()
     })
   }
 
@@ -364,7 +381,9 @@ class PersistentXpuStemWorkerSlot {
         requestId: this.nextRequestId(),
         payload: warmupPayload
       },
-      Math.min(Math.max(params.timeoutMs, 30_000), XPU_WORKER_MESSAGE_TIMEOUT_MS)
+      Math.min(Math.max(params.timeoutMs, 30_000), XPU_WORKER_MESSAGE_TIMEOUT_MS),
+      undefined,
+      params.signal
     )
   }
 
@@ -391,7 +410,8 @@ class PersistentXpuStemWorkerSlot {
           payload: params.payload
         },
         params.timeoutMs,
-        params.onStderrChunk
+        params.onStderrChunk,
+        params.signal
       )
       this.scheduleShutdown(this.idleTimeoutMs, 'idle-timeout')
     } catch (error) {
@@ -486,6 +506,7 @@ class PersistentXpuStemWorkerManager {
   }
 
   async runInference(params: RunPersistentXpuStemInferenceParams) {
+    throwIfStemCancelled(params.signal)
     if (params.payload.device !== 'xpu') {
       throw createWorkerError('PERSISTENT_XPU_WORKER_INVALID_DEVICE', '仅支持 xpu 设备')
     }

@@ -34,6 +34,7 @@ const {
   DEMUCS_PROFILE_OPTIONS,
   buildStemProcessEnv,
   createStemError,
+  isStemCancelledError,
   normalizeFilePath,
   normalizeText,
   normalizeStemProfile,
@@ -43,7 +44,8 @@ const {
   resolveDemucsRawStemPath,
   resolveStemCacheDir,
   resolveStemProcessTimeoutMs,
-  runProcess
+  runProcess,
+  throwIfStemCancelled
 } = shared
 
 const {
@@ -113,14 +115,17 @@ const runDemucsSeparate = async (params: {
   timeoutMs: number
   traceLabel: string
   useBootstrap: boolean
+  signal?: AbortSignal
   onStderrChunk?: (chunk: string) => void
 }) => {
+  throwIfStemCancelled(params.signal)
   if (!params.useBootstrap) {
     await runProcess(params.pythonPath, ['-m', 'demucs.separate', ...params.demucsArgs], {
       env: params.env,
       timeoutMs: params.timeoutMs,
       traceLabel: params.traceLabel,
       progressIntervalMs: 30_000,
+      signal: params.signal,
       onStderrChunk: params.onStderrChunk
     })
     return
@@ -133,6 +138,7 @@ const runDemucsSeparate = async (params: {
       timeoutMs: params.timeoutMs,
       traceLabel: params.traceLabel,
       progressIntervalMs: 30_000,
+      signal: params.signal,
       onStderrChunk: params.onStderrChunk
     })
     return
@@ -142,6 +148,7 @@ const runDemucsSeparate = async (params: {
     timeoutMs: params.timeoutMs,
     traceLabel: params.traceLabel,
     progressIntervalMs: 30_000,
+    signal: params.signal,
     onStderrChunk: params.onStderrChunk
   })
 }
@@ -190,8 +197,10 @@ const runDemucsWaveformInference = async (params: {
   timeoutMs: number
   traceLabel: string
   payload: DemucsWaveformBootstrapPayload
+  signal?: AbortSignal
   onStderrChunk?: (chunk: string) => void
 }) => {
+  throwIfStemCancelled(params.signal)
   const bootstrapPath = resolveDemucsBootstrapPath()
   if (!fs.existsSync(bootstrapPath)) {
     throw createStemError('STEM_BOOTSTRAP_MISSING', `未找到 Demucs bootstrap: ${bootstrapPath}`)
@@ -202,11 +211,13 @@ const runDemucsWaveformInference = async (params: {
     timeoutMs: params.timeoutMs,
     traceLabel: params.traceLabel,
     progressIntervalMs: 30_000,
+    signal: params.signal,
     onStderrChunk: params.onStderrChunk
   })
 }
 
 const shouldRetryWithNextDevice = (error: unknown): boolean => {
+  if (isStemCancelledError(error)) return false
   const message = normalizeText(
     error instanceof Error ? error.message : String(error || ''),
     4000
@@ -243,6 +254,7 @@ const shouldRetryWithNextDevice = (error: unknown): boolean => {
 }
 
 const shouldRetryWithFallbackModel = (error: unknown): boolean => {
+  if (isStemCancelledError(error)) return false
   const message = normalizeText(
     error instanceof Error ? error.message : String(error || ''),
     4000
@@ -348,6 +360,7 @@ export const runStemSeparation = async (params: {
   sourceSignature?: string
   stemMode: MixtapeStemMode
   model: string
+  signal?: AbortSignal
   onDeviceStart?: (
     device: MixtapeStemComputeDevice,
     context?: {
@@ -381,6 +394,7 @@ export const runStemSeparation = async (params: {
     throw createStemError('STEM_FFPROBE_MISSING', `未找到 ffprobe: ${ffprobePath}`)
   }
   let deviceSnapshot = await probeDemucsDevices(ffmpegPath)
+  throwIfStemCancelled(params.signal)
 
   const stemCacheDir = await resolveStemCacheDir({
     filePath,
@@ -404,6 +418,7 @@ export const runStemSeparation = async (params: {
     normalizeFilePath(deviceSnapshot.pythonPath) || resolveBundledDemucsPythonPath(runtimeDir)
   if (!fs.existsSync(pythonPath)) {
     const downloaded = await downloadPreferredStemRuntime()
+    throwIfStemCancelled(params.signal)
     if (downloaded) {
       invalidateStemDeviceProbeCache()
       deviceSnapshot = await probeDemucsDevices(ffmpegPath)
@@ -440,6 +455,7 @@ export const runStemSeparation = async (params: {
       filePath,
       inputDir: bootstrapInputDir
     })
+    throwIfStemCancelled(params.signal)
     waveformBootstrapReady = fs.existsSync(resolveDemucsBootstrapPath())
   } catch {
     // waveform bootstrap 是性能优化路径；失败后会走常规 Demucs 分离。
@@ -466,6 +482,7 @@ export const runStemSeparation = async (params: {
       const isHtDemucsModel = normalizeText(demucsModelName, 128).toLowerCase().includes('htdemucs')
       const noSplitDisabledReason = isHtDemucsModel ? 'htdemucs_requires_segmented_inference' : null
       const runDemucsForDevice = async (device: MixtapeStemComputeDevice) => {
+        throwIfStemCancelled(params.signal)
         const processTimeoutMs = resolveStemProcessTimeoutMs({
           device,
           inputDurationSec
@@ -629,10 +646,12 @@ export const runStemSeparation = async (params: {
                 timeoutMs: processTimeoutMs,
                 traceLabel: `mixtape-stem-waveform:${demucsModelName}:${device}`,
                 payload,
+                signal: params.signal,
                 onStderrChunk: handleStderrChunk
               })
               return
-            } catch {
+            } catch (error) {
+              if (isStemCancelledError(error)) throw error
               // XPU 常驻 worker 只是加速路径；失败后仍会尝试普通 bootstrap。
               // 最终不可恢复错误会由外层设备/模型重试链路抛出，这里保持静默。
               await fs.promises.rm(rawOutputRoot, { recursive: true, force: true }).catch(() => {})
@@ -645,6 +664,7 @@ export const runStemSeparation = async (params: {
             timeoutMs: processTimeoutMs,
             traceLabel: `mixtape-stem-waveform:${demucsModelName}:${device}`,
             payload,
+            signal: params.signal,
             onStderrChunk: handleStderrChunk
           })
         }
@@ -660,6 +680,7 @@ export const runStemSeparation = async (params: {
             timeoutMs: processTimeoutMs,
             traceLabel: `mixtape-stem-demucs:${demucsModelName}:${device}`,
             useBootstrap: device !== 'cpu',
+            signal: params.signal,
             onStderrChunk: handleStderrChunk
           })
         }
@@ -693,7 +714,8 @@ export const runStemSeparation = async (params: {
                 : null,
             etaSec: 0
           })
-        } catch {
+        } catch (error) {
+          if (isStemCancelledError(error)) throw error
           // no-split 只是短音频优化路径；失败后立即回到 split 模式。
           // split 再失败时外层会抛出真实错误，不在这里提前污染 log.txt。
           await runDeviceInference(true)

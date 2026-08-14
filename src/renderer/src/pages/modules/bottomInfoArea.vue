@@ -561,7 +561,10 @@ const applyLibraryStemTaskSnapshot = (payload: unknown) => {
   if (normalizeAnalysisPath(task.filePath) !== normalizeAnalysisPath(filePath)) return
   const status = normalizeLibraryStemTaskStatus(payload.status)
   if (!status) return
-  if (status === 'idle' && (task.status === 'pending' || task.status === 'running')) {
+  if (status === 'idle') {
+    if (task.status === 'pending' || task.status === 'running') {
+      libraryStemTask.value = null
+    }
     return
   }
   const stage = normalizeLibraryStemTaskStage(payload.stage)

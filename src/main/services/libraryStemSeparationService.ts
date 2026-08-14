@@ -61,6 +61,7 @@ type LibraryStemQueueAdapter = {
   resolveLibraryRootForFile: (filePath: string) => Promise<string>
   getJobStatus: (jobKey: string) => 'idle' | 'pending' | 'running'
   enqueueForegroundJob: (job: LibraryStemJobInput) => 'pending' | 'running'
+  cancelJob: (jobKey: string) => Promise<void>
 }
 
 let queueAdapter: LibraryStemQueueAdapter | null = null
@@ -285,4 +286,27 @@ export async function enqueueLibraryStemJob(params: {
   const queued = createLibraryStemSnapshot({ ...pending, status: scheduledStatus })
   notifyLibraryStemStatus(queued)
   return queued
+}
+
+export async function cancelLibraryStemJob(params: {
+  filePath: string
+  model?: unknown
+}): Promise<LibraryStemStatusSnapshot> {
+  const snapshot = await getLibraryStemStatusSnapshot(params?.filePath || '', params?.model)
+  if (snapshot.status !== 'pending' && snapshot.status !== 'running') return snapshot
+
+  const adapter = getQueueAdapter()
+  const libraryRoot = await adapter.resolveLibraryRootForFile(snapshot.filePath)
+  const sourceSignature = await computeLibraryStemSourceSignature(snapshot.filePath)
+  if (!libraryRoot || !sourceSignature) return snapshot
+
+  await adapter.cancelJob(
+    buildJobKey({
+      libraryRoot,
+      sourceSignature,
+      stemMode: snapshot.stemMode,
+      model: snapshot.model
+    })
+  )
+  return await getLibraryStemStatusSnapshot(snapshot.filePath, snapshot.model)
 }

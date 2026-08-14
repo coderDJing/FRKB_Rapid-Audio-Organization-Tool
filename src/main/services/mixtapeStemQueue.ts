@@ -32,6 +32,7 @@ import {
   createLibraryStemSnapshot,
   notifyLibraryStemStatus
 } from './libraryStemSeparationService'
+import { isStemCancelledError } from './mixtapeStemSeparationShared'
 import { getStemBackgroundConcurrencyHint } from './backgroundIdleGate'
 import { isLibraryMergeMutationLocked } from './libraryMerge/mutationGate'
 import { getCachedStemDeviceProbeSnapshot, probeDemucsDevices } from './mixtapeStemSeparationProbe'
@@ -106,6 +107,9 @@ type MixtapeStemEnqueueResult = {
 const pendingQueue: MixtapeStemQueueJob[] = []
 const pendingJobMap = new Map<string, MixtapeStemQueueJob>()
 const inFlightJobMap = new Map<string, MixtapeStemQueueJob>()
+const inFlightAbortByKey = new Map<string, AbortController>()
+const inFlightDoneByKey = new Map<string, Promise<void>>()
+const cancelledJobKeySet = new Set<string>()
 let activeWorkers = 0
 let stemQueueProbeWarmupPromise: Promise<void> | null = null
 const cpuSlowHintNotifiedPlaylistIdSet = new Set<string>()
@@ -609,9 +613,17 @@ const runQueueLoop = () => {
     if (pendingJobMap.get(job.key) !== job) continue
     pendingJobMap.delete(job.key)
     inFlightJobMap.set(job.key, job)
+    const abortController = new AbortController()
+    inFlightAbortByKey.set(job.key, abortController)
+    let resolveDone = () => {}
+    const done = new Promise<void>((resolve) => {
+      resolveDone = resolve
+    })
+    inFlightDoneByKey.set(job.key, done)
     activeWorkers += 1
-    void processQueueJob(job)
+    void processQueueJob(job, abortController.signal)
       .catch((error) => {
+        if (isStemCancelledError(error)) return
         log.error('[mixtape-stem] process queue job failed', {
           filePath: job.filePath,
           stemMode: job.stemMode,
@@ -623,12 +635,16 @@ const runQueueLoop = () => {
         if (inFlightJobMap.get(job.key) === job) {
           inFlightJobMap.delete(job.key)
         }
+        inFlightAbortByKey.delete(job.key)
+        inFlightDoneByKey.delete(job.key)
+        cancelledJobKeySet.delete(job.key)
+        resolveDone()
         runQueueLoop()
       })
   }
 }
 
-const processQueueJob = async (job: MixtapeStemQueueJob) => {
+const processQueueJob = async (job: MixtapeStemQueueJob, signal?: AbortSignal) => {
   const targets = buildQueueTargets(job)
   upsertItemStemStatus(targets, 'running', {
     stemError: null,
@@ -665,6 +681,7 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
       sourceSignature: job.sourceSignature,
       stemMode: job.stemMode,
       model: job.model,
+      signal,
       onDeviceStart: (device, context) => {
         if (device !== 'cpu') return
         for (const target of targets) {
@@ -768,6 +785,10 @@ const processQueueJob = async (job: MixtapeStemQueueJob) => {
       })
     )
   } catch (error) {
+    if (isStemCancelledError(error) || cancelledJobKeySet.has(job.key)) {
+      resetCancelledJob(job)
+      return
+    }
     const errorCode = getErrorCode(error) || 'STEM_SPLIT_FAILED'
     const errorMessage = normalizeText(
       error instanceof Error ? error.message : String(error || 'stem split failed'),
@@ -847,6 +868,75 @@ const getLibraryStemQueueJobStatus = (jobKey: string): 'idle' | 'pending' | 'run
   return inFlightJobMap.has(jobKey) ? 'running' : pendingJobMap.has(jobKey) ? 'pending' : 'idle'
 }
 
+const resetCancelledJob = (job: MixtapeStemQueueJob) => {
+  const targets = buildQueueTargets(job)
+  upsertMixtapeStemAsset({
+    libraryRoot: job.libraryRoot,
+    sourceSignature: job.sourceSignature,
+    filePath: job.filePath,
+    stemMode: job.stemMode,
+    model: job.model,
+    status: 'idle',
+    vocalPath: null,
+    instPath: null,
+    bassPath: null,
+    drumsPath: null,
+    errorCode: null,
+    errorMessage: null
+  })
+  if (targets.length) {
+    upsertItemStemStatus(targets, 'idle', {
+      stemError: null,
+      stemModel: job.model,
+      stemVersion: job.stemVersion,
+      stemReadyAt: null,
+      stemVocalPath: null,
+      stemInstPath: null,
+      stemBassPath: null,
+      stemDrumsPath: null,
+      filePath: job.filePath
+    })
+  }
+  notifyLibraryStemStatus(
+    createLibraryStemSnapshot({
+      filePath: job.filePath,
+      stemMode: job.stemMode,
+      model: job.model,
+      status: 'idle'
+    })
+  )
+}
+
+const waitForInFlightJob = async (jobKey: string, timeoutMs: number) => {
+  const done = inFlightDoneByKey.get(jobKey)
+  if (!done) return
+  await Promise.race([
+    done,
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, Math.max(1000, timeoutMs))
+    })
+  ])
+}
+
+const cancelQueueJob = async (jobKey: string) => {
+  const pending = pendingJobMap.get(jobKey)
+  if (pending) {
+    pendingJobMap.delete(jobKey)
+    const index = pendingQueue.indexOf(pending)
+    if (index >= 0) pendingQueue.splice(index, 1)
+    resetCancelledJob(pending)
+    return
+  }
+  const running = inFlightJobMap.get(jobKey)
+  if (!running) return
+  cancelledJobKeySet.add(jobKey)
+  inFlightAbortByKey.get(jobKey)?.abort()
+  await waitForInFlightJob(jobKey, 8000)
+  if (inFlightJobMap.get(jobKey) === running) {
+    resetCancelledJob(running)
+  }
+}
+
 configureLibraryStemSeparationService({
   isMutationLocked: isLibraryMergeMutationLocked,
   resolveLibraryRootForFile,
@@ -863,7 +953,8 @@ configureLibraryStemSeparationService({
     pendingQueue.push(job)
     runQueueLoop()
     return 'pending'
-  }
+  },
+  cancelJob: cancelQueueJob
 })
 
 export async function enqueueMixtapeStemJobs(

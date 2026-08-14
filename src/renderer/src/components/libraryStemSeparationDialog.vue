@@ -8,6 +8,7 @@ import { useDialogTransition } from '@renderer/composables/useDialogTransition'
 import { useDemucsUltraModel, type StemProfile } from '@renderer/composables/useDemucsUltraModel'
 import StemWaveformPreview from '@renderer/components/StemWaveformPreview.vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
+import confirm from '@renderer/components/confirmDialog'
 
 type StemId = 'vocal' | 'inst' | 'bass' | 'drums'
 type StemStatus = 'idle' | 'pending' | 'running' | 'ready' | 'failed'
@@ -47,6 +48,7 @@ const emit = defineEmits<{
 const uuid = uuidV4()
 const { dialogVisible, closeWithAnimation } = useDialogTransition(160)
 const starting = ref(false)
+const closing = ref(false)
 const exportingStem = ref<'all' | StemId | ''>('')
 const exportMessage = ref('')
 type StemWaveformPreviewController = { pause: () => void }
@@ -215,7 +217,12 @@ const progressMetaText = computed(() => {
   return [deviceText, activityText].filter(Boolean).join(' · ')
 })
 const canStart = computed(
-  () => !starting.value && !isSeparating.value && !modelDownloadBusy.value && ultraModelReady.value
+  () =>
+    !starting.value &&
+    !closing.value &&
+    !isSeparating.value &&
+    !modelDownloadBusy.value &&
+    ultraModelReady.value
 )
 const statusText = computed(() => {
   switch (snapshot.value.status) {
@@ -265,7 +272,12 @@ const primaryActionLabel = computed(() => {
   return t('stemSeparation.start')
 })
 const primaryActionDisabled = computed(
-  () => isSeparating.value || starting.value || !!exportingStem.value || modelDownloadBusy.value
+  () =>
+    isSeparating.value ||
+    starting.value ||
+    closing.value ||
+    !!exportingStem.value ||
+    modelDownloadBusy.value
 )
 
 const stemStateText = (state: 'waiting' | 'processing' | 'ready' | 'failed') =>
@@ -414,7 +426,8 @@ const openUltraModelDownloadDialog = async () => {
 }
 
 const selectProfile = async (profile: StemProfile) => {
-  if (profile === selectedProfile.value || isSeparating.value || starting.value) return
+  if (profile === selectedProfile.value || isSeparating.value || starting.value || closing.value)
+    return
   selectedProfile.value = profile
   stemWaveformRequest += 1
   loadingStemWaveforms.value = false
@@ -444,12 +457,37 @@ const selectProfile = async (profile: StemProfile) => {
   await Promise.all([refreshStatus(), refreshUltraModelInfo()])
 }
 
-const closeDialog = () => {
+const closeDialog = async () => {
+  if (closing.value) return
+  if (isSeparating.value) {
+    const result = await confirm({
+      title: t('stemSeparation.cancelConfirmTitle'),
+      content: [t('stemSeparation.cancelConfirmContent')],
+      confirmText: t('stemSeparation.cancelConfirmAction'),
+      cancelText: t('stemSeparation.cancelConfirmStay')
+    })
+    if (result !== 'confirm') return
+    closing.value = true
+    try {
+      await window.electron.ipcRenderer.invoke('library-stem:cancel', {
+        filePath: props.filePath,
+        model: selectedModel.value
+      })
+    } catch (error) {
+      closing.value = false
+      snapshot.value = {
+        ...snapshot.value,
+        status: 'failed',
+        errorMessage: error instanceof Error ? error.message : t('common.unknownError')
+      }
+      return
+    }
+  }
   closeWithAnimation(() => emit('close'))
 }
 
 const minimizeDialog = () => {
-  if (!isSeparating.value) return
+  if (!isSeparating.value || closing.value) return
   const minimizedSnapshot = { ...snapshot.value }
   closeWithAnimation(() => emit('minimize', minimizedSnapshot))
 }
@@ -466,7 +504,9 @@ watch(
 onMounted(() => {
   window.electron.ipcRenderer.on('library-stem-status-updated', handleStemStatusUpdated)
   window.electron.ipcRenderer.on('demucs-model-download-state', handleUltraModelDownloadState)
-  hotkeys('Esc', uuid, closeDialog)
+  hotkeys('Esc', uuid, () => {
+    void closeDialog()
+  })
   utils.setHotkeysScpoe(uuid)
   void Promise.all([refreshStatus(), refreshUltraModelInfo()])
 })
@@ -503,7 +543,7 @@ onUnmounted(() => {
               class="library-stem-dialog__profile-option"
               type="button"
               :class="{ 'is-selected': selectedProfile === 'quality' }"
-              :disabled="isSeparating || starting"
+              :disabled="isSeparating || starting || closing"
               @click="selectProfile('quality')"
             >
               {{ t('stemSeparation.qualityProfile') }}
@@ -512,7 +552,7 @@ onUnmounted(() => {
               class="library-stem-dialog__profile-option"
               type="button"
               :class="{ 'is-selected': selectedProfile === 'ultra' }"
-              :disabled="isSeparating || starting"
+              :disabled="isSeparating || starting || closing"
               @click="selectProfile('ultra')"
             >
               {{ t('stemSeparation.ultraProfile') }}
@@ -615,14 +655,18 @@ onUnmounted(() => {
           {{ starting || exportingStem === 'all' ? t('common.loading') : primaryActionLabel }}
         </div>
         <div
-          v-if="isSeparating"
+          v-if="isSeparating && !closing"
           class="button library-stem-dialog__footer-button"
           @click="minimizeDialog"
         >
           {{ t('stemSeparation.minimize') }}
         </div>
-        <div class="button library-stem-dialog__footer-button" @click="closeDialog">
-          {{ t('common.close') }} (Esc)
+        <div
+          class="button library-stem-dialog__footer-button"
+          :class="{ disabled: closing }"
+          @click="closeDialog"
+        >
+          {{ closing ? t('common.loading') : `${t('common.close')} (Esc)` }}
         </div>
       </div>
     </div>

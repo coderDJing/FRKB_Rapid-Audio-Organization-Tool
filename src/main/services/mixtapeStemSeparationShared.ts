@@ -160,6 +160,23 @@ export const createStemError = (code: string, message: string): Error & { code: 
   return error
 }
 
+export const STEM_CANCELLED_CODE = 'STEM_CANCELLED'
+
+export const createStemCancelledError = () =>
+  createStemError(STEM_CANCELLED_CODE, 'Stem 分离已取消')
+
+export const isStemCancelledError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false
+  return (
+    Reflect.get(error, 'code') === STEM_CANCELLED_CODE ||
+    Reflect.get(error, 'name') === 'AbortError'
+  )
+}
+
+export const throwIfStemCancelled = (signal?: AbortSignal) => {
+  if (signal?.aborted) throw createStemCancelledError()
+}
+
 export const resolveStemCacheDir = async (params: {
   filePath: string
   sourceSignature?: string
@@ -200,10 +217,12 @@ export const runProcess = async (
     absoluteTimeoutMs?: number
     traceLabel?: string
     progressIntervalMs?: number
+    signal?: AbortSignal
     onStdoutChunk?: (chunk: string) => void
     onStderrChunk?: (chunk: string) => void
   }
 ) => {
+  throwIfStemCancelled(options?.signal)
   await new Promise<void>((resolve, reject) => {
     const startedAt = Date.now()
     let lastActivityAt = startedAt
@@ -216,6 +235,7 @@ export const runProcess = async (
     let stderrText = ''
     let stdoutText = ''
     let timedOut = false
+    let aborted = false
     let timeoutReason: 'idle' | 'absolute' | null = null
     const timeoutMs = Math.max(10_000, Number(options?.timeoutMs) || STEM_PROCESS_TIMEOUT_MS)
     const absoluteTimeoutMs = Math.max(
@@ -225,8 +245,15 @@ export const runProcess = async (
         Math.max(Number(options?.absoluteTimeoutMs) || 0, timeoutMs * 4)
       )
     )
+    const abortProcess = () => {
+      if (aborted) return
+      aborted = true
+      terminateChildProcess(child, options?.traceLabel || 'stem-separation')
+    }
+    const onAbort = () => abortProcess()
+    options?.signal?.addEventListener('abort', onAbort)
     const timeoutWatcher = setInterval(() => {
-      if (timedOut) return
+      if (timedOut || aborted) return
       const now = Date.now()
       if (now - startedAt >= absoluteTimeoutMs) {
         timedOut = true
@@ -240,6 +267,10 @@ export const runProcess = async (
         terminateChildProcess(child, options?.traceLabel || 'stem-separation')
       }
     }, 1000)
+    const cleanup = () => {
+      clearInterval(timeoutWatcher)
+      options?.signal?.removeEventListener('abort', onAbort)
+    }
 
     child.stdout?.on('data', (chunk) => {
       const text = String(chunk || '')
@@ -266,11 +297,15 @@ export const runProcess = async (
       } catch {}
     })
     child.on('error', (error) => {
-      clearInterval(timeoutWatcher)
-      reject(error)
+      cleanup()
+      reject(aborted || options?.signal?.aborted ? createStemCancelledError() : error)
     })
     child.on('exit', (code) => {
-      clearInterval(timeoutWatcher)
+      cleanup()
+      if (aborted || options?.signal?.aborted) {
+        reject(createStemCancelledError())
+        return
+      }
       if (timedOut) {
         const output = normalizeText(`${stderrText}\n${stdoutText}`, 3000)
         const timeoutText =
@@ -294,6 +329,7 @@ export const runProcess = async (
         )
       )
     })
+    if (options?.signal?.aborted) abortProcess()
   })
 }
 

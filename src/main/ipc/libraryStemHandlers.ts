@@ -4,6 +4,7 @@ import path from 'node:path'
 import {
   enqueueLibraryStemJob,
   getLibraryStemStatusSnapshot,
+  cancelLibraryStemJob,
   type LibraryStemStatusSnapshot
 } from '../services/libraryStemSeparationService'
 import { readLibraryStemPreviewWaveform } from '../services/libraryStemPreviewWaveform'
@@ -56,6 +57,16 @@ export function registerLibraryStemHandlers() {
     'library-stem:start',
     async (_event, payload?: { filePath?: unknown; model?: unknown }) => {
       return await enqueueLibraryStemJob({
+        filePath: normalizeText(payload?.filePath),
+        model: payload?.model
+      })
+    }
+  )
+
+  ipcMain.handle(
+    'library-stem:cancel',
+    async (_event, payload?: { filePath?: unknown; model?: unknown }) => {
+      return await cancelLibraryStemJob({
         filePath: normalizeText(payload?.filePath),
         model: payload?.model
       })
