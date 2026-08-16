@@ -4,5 +4,6 @@
 
 - `song-structure-truth-benchmark-workflow.md`：当前唯一有效的真值集、样本身份、baseline、评估与回归工作流。
 - `techno-song-structure-analysis-research.md`：Techno / EDM 段落算法的问题分析、历史实验与当前收口节点记录。
+- `song-structure-rebuild-direction-draft.md`：2026-07-28 的现状诊断与重做方向候选；只做方向讨论，未实施。
 
 执行样本添加、真值维护或回归评估时，以工作流文档为准；研究文档中的历史版本和历史术语仅用于追溯算法演进。
