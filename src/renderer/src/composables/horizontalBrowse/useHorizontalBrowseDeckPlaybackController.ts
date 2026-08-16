@@ -1040,6 +1040,13 @@ export const useHorizontalBrowseDeckPlaybackController = (
     void executeDeckPlayPauseToggle(deck, nextPlaying)
   }
 
+  const pauseAllDeckPlayback = () => {
+    deckPendingPlayOnLoad.top = false
+    deckPendingPlayOnLoad.bottom = false
+    void executeDeckPlayPauseToggle('top', false)
+    void executeDeckPlayPauseToggle('bottom', false)
+  }
+
   const maybeResumePendingPlay = (deck: DeckKey, playheadReady: boolean) => {
     if (!deckPendingPlayOnLoad[deck] || !playheadReady) return
     if (isDualTransportSyncActive()) {
@@ -1085,6 +1092,7 @@ export const useHorizontalBrowseDeckPlaybackController = (
     handleDeckMemoryCueRecall,
     handleDeckHotCueRecall,
     handleDeckPlayPauseToggle,
+    pauseAllDeckPlayback,
     maybeResumePendingPlay
   }
 }

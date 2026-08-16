@@ -1,4 +1,4 @@
-import { watch, type Ref } from 'vue'
+import { onScopeDispose, watch, type Ref } from 'vue'
 import type { ISongInfo } from 'src/types/globals'
 import type {
   HorizontalBrowseDeckKey,
@@ -14,6 +14,11 @@ import type {
   HorizontalBrowseDeckTransportStateOverride
 } from '@renderer/composables/horizontalBrowse/useHorizontalBrowseTransportMutations'
 import type { HorizontalBrowseBeatSyncDragReleaseVisualTransactionHooks } from '@renderer/composables/horizontalBrowse/horizontalBrowseBeatSyncRawWaveformDragRelease'
+import emitter from '@renderer/utils/mitt'
+import {
+  EXCLUSIVE_PLAYBACK_PAUSE_OTHERS_EVENT,
+  isExclusivePlaybackPauseOthersPayload
+} from '@renderer/utils/exclusivePlayback'
 
 type DeckKey = HorizontalBrowseDeckKey
 type HorizontalBrowsePendingPlayViewMode = 'dual' | 'edit' | 'unknown'
@@ -111,6 +116,7 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     handleDeckMemoryCueRecall,
     handleDeckHotCueRecall,
     handleDeckPlayPauseToggle,
+    pauseAllDeckPlayback,
     maybeResumePendingPlay
   } = useHorizontalBrowseDeckPlaybackController({
     touchDeckInteraction: params.touchDeckInteraction,
@@ -169,6 +175,17 @@ export const useHorizontalBrowseDeckTransportInteractions = (
     resolveDeckCuePlacementSec: params.resolveDeckCuePlacementSec,
     resolveDeckWaveformDragAnchorSec,
     commitDeckWaveformDragCuePlacement
+  })
+
+  const handleExclusivePlaybackPauseOthers = (payload: unknown) => {
+    if (!isExclusivePlaybackPauseOthersPayload(payload)) return
+    if (payload.owner === 'horizontal-browse') return
+    stopAllDeckCuePreview()
+    pauseAllDeckPlayback()
+  }
+  emitter.on(EXCLUSIVE_PLAYBACK_PAUSE_OTHERS_EVENT, handleExclusivePlaybackPauseOthers)
+  onScopeDispose(() => {
+    emitter.off(EXCLUSIVE_PLAYBACK_PAUSE_OTHERS_EVENT, handleExclusivePlaybackPauseOthers)
   })
 
   const handleDeckLoopToggle = (deck: DeckKey) => {

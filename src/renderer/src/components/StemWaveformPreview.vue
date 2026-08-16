@@ -2,6 +2,7 @@
 import { nextTick, onUnmounted, ref, watch } from 'vue'
 import bubbleBoxTrigger from '@renderer/components/bubbleBoxTrigger.vue'
 import { t } from '@renderer/utils/translate'
+import { pauseOtherAppPlayback } from '@renderer/utils/exclusivePlayback'
 
 const props = defineProps<{
   src: string
@@ -74,6 +75,8 @@ const syncPlayedRatio = () => {
 const play = async (fromStart = false) => {
   const element = audio.value
   if (!element) return
+  pauseOtherAppPlayback('stem-preview')
+  emit('play')
   if (fromStart) {
     element.currentTime = 0
     playedRatio.value = 0
@@ -107,7 +110,6 @@ const seekAndPlay = (event: MouseEvent) => {
 
 const handlePlay = () => {
   isPlaying.value = true
-  emit('play')
 }
 
 const handlePause = () => {
