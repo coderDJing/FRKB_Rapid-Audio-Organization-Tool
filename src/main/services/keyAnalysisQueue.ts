@@ -123,6 +123,13 @@ const manualBatches = new Map<string, ManualKeyAnalysisBatch>()
 const isPathTrackedByQueue = (normalizedPath: string): boolean =>
   Boolean(queue?.hasTrackedPath(normalizedPath))
 
+/** 等待中、进行中或延迟补跑的分析任务都视为已在队列中。 */
+export function isKeyAnalysisPathQueued(filePath: string): boolean {
+  const normalized = normalizePath(typeof filePath === 'string' ? filePath.trim() : '')
+  if (!normalized) return false
+  return isPathTrackedByQueue(normalized)
+}
+
 const isPathPendingInManualBatch = (normalizedPath: string): boolean => {
   if (!normalizedPath) return false
   for (const batch of manualBatches.values()) {

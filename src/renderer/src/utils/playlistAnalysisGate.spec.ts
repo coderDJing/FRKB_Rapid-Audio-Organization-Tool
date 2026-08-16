@@ -1,0 +1,46 @@
+import { describe, expect, it } from 'vitest'
+import {
+  buildMainPlayerPlayingAnalysisPayload,
+  resolveBrowserMainPlayerAnalysisIntent
+} from './playlistAnalysisGate'
+
+const createRuntime = (mode: string) => ({
+  mainWindowBrowseMode: mode,
+  playingData: {
+    playingSongListUUID: 'list-a'
+  },
+  playlistAnalysisPromptDismissedSongListUUIDs: ['list-a']
+})
+
+describe('browser main player analysis gate', () => {
+  it('does not create a new analysis job from browser playback', () => {
+    expect(resolveBrowserMainPlayerAnalysisIntent(createRuntime('browser'))).toBe(
+      'promote-if-queued'
+    )
+    expect(
+      buildMainPlayerPlayingAnalysisPayload('D:\\music\\track.wav', createRuntime('browser'))
+    ).toEqual({
+      analysisAuthority: 'frkb',
+      filePath: 'D:\\music\\track.wav',
+      focusSlot: 'main-player',
+      onlyIfQueued: true
+    })
+  })
+
+  it('keeps immediate analysis when leaving browser mode', () => {
+    expect(resolveBrowserMainPlayerAnalysisIntent(createRuntime('horizontal'))).toBe('immediate')
+    expect(resolveBrowserMainPlayerAnalysisIntent(createRuntime('edit'))).toBe('immediate')
+    expect(
+      buildMainPlayerPlayingAnalysisPayload('D:\\music\\track.wav', createRuntime('horizontal'))
+    ).toEqual({
+      analysisAuthority: 'frkb',
+      filePath: 'D:\\music\\track.wav',
+      focusSlot: 'main-player',
+      onlyIfQueued: false
+    })
+  })
+
+  it('ignores empty playback paths', () => {
+    expect(buildMainPlayerPlayingAnalysisPayload('', createRuntime('browser'))).toBeNull()
+  })
+})

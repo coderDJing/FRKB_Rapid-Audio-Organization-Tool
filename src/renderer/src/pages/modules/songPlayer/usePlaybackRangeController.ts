@@ -16,6 +16,7 @@ import {
 } from '@shared/playbackRange'
 import { WebAudioPlayer } from './webAudioPlayer'
 import { isRekordboxExternalPlaybackSource } from '@renderer/utils/rekordboxExternalSource'
+import { queueMainPlayerPlayingAnalysis } from '@renderer/utils/playlistAnalysisGate'
 
 type PlaybackRangeControllerOptions = {
   runtime: ReturnType<typeof useRuntimeStore>
@@ -266,13 +267,7 @@ export function usePlaybackRangeController(options: PlaybackRangeControllerOptio
     const filePath = song?.filePath
     if (!filePath || queuedSectionAnalysisFilePath.value === filePath) return
     queuedSectionAnalysisFilePath.value = filePath
-    try {
-      window.electron.ipcRenderer.send('key-analysis:queue-playing', {
-        analysisAuthority: 'frkb',
-        filePath,
-        focusSlot: 'main-player'
-      })
-    } catch {}
+    queueMainPlayerPlayingAnalysis(runtime, filePath)
   }
 
   const handleLateSectionRangeReady = () => {

@@ -19,7 +19,7 @@ import { t } from '@renderer/utils/translate'
 import { ISongInfo } from '../../../../../types/globals'
 import { RECORDING_LIBRARY_UUID } from '@shared/recordingLibrary'
 import { activateSongsAreaPane } from '@renderer/utils/songsAreaSplit'
-import { shouldQueueBrowserMainPlayerAnalysis } from '@renderer/utils/playlistAnalysisGate'
+import { queueMainPlayerPlayingAnalysis } from '@renderer/utils/playlistAnalysisGate'
 import type { MoveSongsLibraryName } from '@renderer/pages/modules/songsArea/composables/useSelectAndMoveSongs'
 import { usePlaylistAnalysisPrompt } from '@renderer/pages/modules/songsArea/composables/usePlaylistAnalysisPrompt'
 import { useSongsAreaEmptyState } from '@renderer/pages/modules/songsArea/composables/useSongsAreaEmptyState'
@@ -624,14 +624,7 @@ const requestImmediateAnalysis = (song: ISongInfo) => {
   const filePath = song?.filePath
   if (!filePath) return
   if (runtime.mainWindowBrowseMode !== 'browser') return
-  if (!shouldQueueBrowserMainPlayerAnalysis(runtime, songsAreaState.songListUUID)) return
-  try {
-    window.electron.ipcRenderer.send('key-analysis:queue-playing', {
-      analysisAuthority: 'frkb',
-      filePath,
-      focusSlot: 'main-player'
-    })
-  } catch {}
+  queueMainPlayerPlayingAnalysis(runtime, filePath)
 }
 
 const songDblClick = async (song: ISongInfo, event?: MouseEvent) => {

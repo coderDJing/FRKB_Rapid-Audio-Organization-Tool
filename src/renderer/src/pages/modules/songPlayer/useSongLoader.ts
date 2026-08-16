@@ -16,7 +16,10 @@ import type { IPioneerPreviewWaveformData } from 'src/types/globals'
 import type { WaveformGlobalOverviewData } from '@shared/waveformSurfaceCache'
 import { resolvePlayerWaveformTraceElapsedMs, sendPlayerWaveformTrace } from './playerWaveformTrace'
 import { normalizePlaybackHandoffSeconds } from '@renderer/utils/mainWindowPlaybackHandoff'
-import { shouldQueueBrowserMainPlayerAnalysis } from '@renderer/utils/playlistAnalysisGate'
+import {
+  queueMainPlayerPlayingAnalysis,
+  resolveBrowserMainPlayerAnalysisIntent
+} from '@renderer/utils/playlistAnalysisGate'
 import { resolveInitialPlaybackRangeStartSec } from '@shared/playbackRange'
 import { projectSongBeatGridMapV2ToFixedGrid } from '@shared/songBeatGridMapV2'
 
@@ -474,13 +477,8 @@ export function useSongLoader(params: {
             if (hasCachedWaveform) return
             if (requestId !== currentLoadRequestId.value) return
             if (runtime.playingData.playingSong?.filePath !== filePath) return
-            if (!shouldQueueBrowserMainPlayerAnalysis(runtime)) return
             tracePlayerWaveform('loader', 'formal-cache:queue-generation', filePath)
-            window.electron.ipcRenderer.send('key-analysis:queue-playing', {
-              analysisAuthority: 'frkb',
-              filePath,
-              focusSlot: 'main-player'
-            })
+            queueMainPlayerPlayingAnalysis(runtime, filePath)
           })()
         }
       } else {
@@ -490,13 +488,11 @@ export function useSongLoader(params: {
           runtime.playingData.playingSongListUUID,
           currentSong
         )
+        const analysisIntent = resolveBrowserMainPlayerAnalysisIntent(runtime)
         window.electron.ipcRenderer.send('readSongFile', filePath, String(requestId), {
-          analysisAuthority:
-            !isRekordboxReadOnly && shouldQueueBrowserMainPlayerAnalysis(runtime)
-              ? 'frkb'
-              : undefined,
-          skipPlaybackGridAnalysis:
-            !shouldQueueBrowserMainPlayerAnalysis(runtime) || isRekordboxReadOnly,
+          analysisAuthority: !isRekordboxReadOnly ? 'frkb' : undefined,
+          skipPlaybackGridAnalysis: isRekordboxReadOnly,
+          onlyIfQueued: analysisIntent === 'promote-if-queued',
           suppressFrkbWaveformData: isRekordboxReadOnly
         })
       }

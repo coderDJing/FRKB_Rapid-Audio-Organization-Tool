@@ -6,11 +6,13 @@ import {
   enqueueKeyAnalysisList,
   enqueueManualKeyAnalysisBatch,
   getManualKeyAnalysisPendingFilePaths,
+  isKeyAnalysisPathQueued,
   replaceVisibleKeyAnalysisList,
   getKeyAnalysisBackgroundStatus
 } from '../services/keyAnalysisQueue'
 import { isInRecordingLibraryAbsPath } from '../recordingLibraryService'
 import { isLibraryMergeMutationLocked } from '../services/libraryMerge/runtime'
+import { shouldEnqueuePlayingAnalysis } from '../services/keyAnalysis/playingQueuePolicy'
 import { normalizeAnalysisBpmRangeId } from '../../shared/analysisBpmRange'
 
 type VisibleQueuePayload = {
@@ -31,6 +33,7 @@ type PlaybackQueuePayload = {
   analysisAuthority?: 'frkb'
   filePath?: string
   focusSlot?: string
+  onlyIfQueued?: boolean
 }
 
 const hasFrkbAnalysisAuthority = (payload: { analysisAuthority?: unknown } | null | undefined) =>
@@ -82,6 +85,9 @@ export function registerKeyAnalysisHandlers() {
     const filePath = typeof payload?.filePath === 'string' ? payload.filePath.trim() : ''
     if (!filePath) return
     if (isInRecordingLibraryAbsPath(filePath)) return
+    if (!shouldEnqueuePlayingAnalysis(payload?.onlyIfQueued, isKeyAnalysisPathQueued(filePath))) {
+      return
+    }
     enqueueKeyAnalysis(filePath, 'high', {
       urgent: true,
       source: 'foreground',

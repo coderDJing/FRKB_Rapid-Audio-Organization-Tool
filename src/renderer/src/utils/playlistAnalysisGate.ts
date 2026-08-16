@@ -6,6 +6,15 @@ type PlaylistAnalysisGateRuntime = {
   playlistAnalysisPromptDismissedSongListUUIDs?: string[]
 }
 
+export type BrowserMainPlayerAnalysisIntent = 'immediate' | 'promote-if-queued'
+
+export type MainPlayerPlayingAnalysisPayload = {
+  analysisAuthority: 'frkb'
+  filePath: string
+  focusSlot: 'main-player'
+  onlyIfQueued: boolean
+}
+
 const normalizeSongListUUID = (value: unknown) => String(value || '').trim()
 
 export const isPlaylistAnalysisPromptDismissed = (
@@ -19,10 +28,36 @@ export const isPlaylistAnalysisPromptDismissed = (
     : false
 }
 
-export const shouldQueueBrowserMainPlayerAnalysis = (
+export const resolveBrowserMainPlayerAnalysisIntent = (
+  runtime: PlaylistAnalysisGateRuntime
+): BrowserMainPlayerAnalysisIntent => {
+  // 浏览器模式播放不新建分析，只把已在队列里的歌提升为立即分析。
+  if (runtime.mainWindowBrowseMode === 'browser') return 'promote-if-queued'
+  return 'immediate'
+}
+
+export const buildMainPlayerPlayingAnalysisPayload = (
+  filePath: string,
+  runtime: PlaylistAnalysisGateRuntime
+): MainPlayerPlayingAnalysisPayload | null => {
+  const trimmed = String(filePath || '').trim()
+  if (!trimmed) return null
+  const intent = resolveBrowserMainPlayerAnalysisIntent(runtime)
+  return {
+    analysisAuthority: 'frkb',
+    filePath: trimmed,
+    focusSlot: 'main-player',
+    onlyIfQueued: intent === 'promote-if-queued'
+  }
+}
+
+export const queueMainPlayerPlayingAnalysis = (
   runtime: PlaylistAnalysisGateRuntime,
-  songListUUID = runtime.playingData?.playingSongListUUID
+  filePath: string
 ) => {
-  if (runtime.mainWindowBrowseMode !== 'browser') return true
-  return !isPlaylistAnalysisPromptDismissed(runtime, songListUUID)
+  const payload = buildMainPlayerPlayingAnalysisPayload(filePath, runtime)
+  if (!payload) return
+  try {
+    window.electron.ipcRenderer.send('key-analysis:queue-playing', payload)
+  } catch {}
 }

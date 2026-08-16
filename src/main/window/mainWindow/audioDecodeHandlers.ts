@@ -3,7 +3,8 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { log } from '../../log'
 import { findSongListRoot } from '../../services/cacheMaintenance'
-import { enqueueKeyAnalysis } from '../../services/keyAnalysisQueue'
+import { enqueueKeyAnalysis, isKeyAnalysisPathQueued } from '../../services/keyAnalysisQueue'
+import { shouldEnqueuePlayingAnalysis } from '../../services/keyAnalysis/playingQueuePolicy'
 import {
   isCompleteSharedSongGridDefinition,
   loadSharedSongGridDefinition
@@ -26,6 +27,7 @@ type DecodeRequestOptions = {
   analysisAuthority?: 'frkb'
   skipPlaybackGridAnalysis?: boolean
   suppressFrkbWaveformData?: boolean
+  onlyIfQueued?: boolean
 }
 
 const clonePcmData = (pcmData: unknown): Float32Array => {
@@ -55,7 +57,12 @@ const clonePcmData = (pcmData: unknown): Float32Array => {
   return new Float32Array(0)
 }
 
-const enqueuePlaybackGridAnalysis = (filePath: string, focusSlot?: string) => {
+const enqueuePlaybackGridAnalysis = (
+  filePath: string,
+  focusSlot?: string,
+  onlyIfQueued?: boolean
+) => {
+  if (!shouldEnqueuePlayingAnalysis(onlyIfQueued, isKeyAnalysisPathQueued(filePath))) return
   enqueueKeyAnalysis(filePath, focusSlot ? 'high' : 'medium', {
     urgent: Boolean(focusSlot),
     source: 'foreground',
@@ -86,7 +93,8 @@ export function registerAudioDecodeHandlers(getWindow: () => BrowserWindow | nul
         if (needsGridAnalysis) {
           enqueuePlaybackGridAnalysis(
             filePath,
-            eventName === 'readSongFile' ? 'main-player' : undefined
+            eventName === 'readSongFile' ? 'main-player' : undefined,
+            options?.onlyIfQueued === true
           )
         }
         let stat: { size: number; mtimeMs: number } | null = null
